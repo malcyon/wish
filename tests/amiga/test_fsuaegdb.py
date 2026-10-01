@@ -761,6 +761,38 @@ def test_foreground_takes_xvfb_down_when_interrupted_while_it_settles(
     assert procs[0].signals
 
 
+def test_detached_takes_xvfb_down_when_the_emulator_will_not_start(
+        tmp_path, procs, monkeypatch):
+    def popen(argv, **kw):
+        if argv[0] != "Xvfb":
+            raise OSError("cannot exec")
+        return FakeProc(argv, **kw)
+
+    monkeypatch.setattr(fsuaegdb.subprocess, "Popen", popen)
+    with pytest.raises(OSError):
+        fsuaegdb.launch(launch_args(tmp_path))
+    assert procs[0].signals
+
+
+def test_detached_takes_xvfb_down_when_interrupted_while_it_settles(
+        tmp_path, procs, monkeypatch):
+    def interrupted(seconds):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(fsuaegdb.time, "sleep", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        fsuaegdb.launch(launch_args(tmp_path))
+    assert procs[0].signals
+
+
+def test_detached_leaves_both_running_when_the_port_never_opens(
+        tmp_path, procs, monkeypatch):
+    monkeypatch.setattr(fsuaegdb.subprocess, "run",
+                        lambda *a, **k: argparse.Namespace(stdout=""))
+    assert fsuaegdb.launch(launch_args(tmp_path)) == 1
+    assert not any(p.signals for p in procs)
+
+
 def test_the_joystick_option_appears_only_under_foreground(tmp_path, procs):
     fsuaegdb.launch(launch_args(tmp_path))
     assert "--joystick_port_1=none" not in procs[1].argv
@@ -852,6 +884,33 @@ def test_a_bad_or_unconfigured_command_is_an_error_row_and_the_session_goes_on(
 def test_swap_without_a_sequence_names_the_missing_option(driven, tmp_path):
     events, _ = run_session(tmp_path, ["swap 2"])
     assert "--swap-sequence" in events["swap"]["error"]
+
+
+@pytest.mark.parametrize("line", ["wait x", "peek +0x10 zz"])
+def test_an_error_row_names_the_exception_type(driven, tmp_path, line):
+    _, rows = run_session(tmp_path, [line])
+    assert next(r for r in rows if r.get("error"))["error"].startswith(
+        "ValueError: ")
+
+
+def _swap_row(tmp_path, **kw):
+    events, _ = run_session(tmp_path, ["swap 2"], **kw)
+    return events["swap"]
+
+
+def test_a_swap_on_the_default_sequence_without_a_log_is_marked_unchecked(
+        driven, tmp_path):
+    row = _swap_row(tmp_path, swap_sequence=fsuaegdb.DEFAULT_SWAP_SEQUENCE)
+    assert row["default_sequence"] is True and row["unchecked"] is True
+
+
+def test_a_swap_with_a_log_or_a_chosen_sequence_is_not_marked(driven, tmp_path):
+    fs_log = tmp_path / "fs-uae.log"
+    fs_log.write_text("")
+    with_log = _swap_row(tmp_path, swap_sequence=fsuaegdb.DEFAULT_SWAP_SEQUENCE,
+                         fs_uae_log=str(fs_log))
+    chosen = _swap_row(tmp_path, swap_sequence="F12 Return")
+    assert "unchecked" not in with_log and "unchecked" not in chosen
 
 
 def test_the_cli_default_swap_sequence_is_the_measured_menu_walk():

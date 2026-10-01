@@ -508,8 +508,14 @@ def session(args) -> int:
                         if swap_error is not None:
                             note(event="swap", at=now, error=swap_error)
                         else:
-                            note(event="swap", at=now,
-                                 **do_swap(args, int(rest), out, swap_log))
+                            row = do_swap(args, int(rest), out, swap_log)
+                            # The default Down count is measured for one
+                            # disk set; with no emulator log nothing says
+                            # the right disk went in.
+                            if (args.swap_sequence == DEFAULT_SWAP_SEQUENCE
+                                    and swap_log is None):
+                                row.update(default_sequence=True, unchecked=True)
+                            note(event="swap", at=now, **row)
                     elif word == "observe":
                         note(event="observe", at=now,
                              **observe(args, rest or str(now), tgt, maps, out,
@@ -551,7 +557,8 @@ def session(args) -> int:
                         note(event="unknown", line=line, at=now)
                 except (ValueError, NotImplementedError) as exc:
                     print(f"           {exc}")
-                    note(event=word, at=now, error=str(exc))
+                    note(event=word, at=now,
+                         error=f"{type(exc).__name__}: {exc}")
             # The heartbeat is also the proof: a read every second, from a
             # machine nobody has stopped.
             vh = gdb.read_memory(VHPOSR, 2)
@@ -833,6 +840,12 @@ def launch(args) -> int:
             time.sleep(0.5)
         print("listening  NO -- see " + str(run / "fs-uae.log"))
         return 1
+    except BaseException:
+        # Detached, `stop` is given the pids printed after both starts, so a
+        # failure before that leaves an Xvfb in its own session nobody can find.
+        if not foreground:
+            terminate(emulator, xvfb)
+        raise
     finally:
         # From the first Popen, so a failing emulator start or an interrupt
         # during the Xvfb's settling sleep does not leave the Xvfb behind.
