@@ -1424,7 +1424,7 @@ def stop_args(**kw):
 
 def test_stop_waits_until_the_process_is_gone_and_says_so(monkeypatch, capsys):
     states = iter([True, True, False, False])
-    monkeypatch.setattr(fsuaegdb.os, "killpg", lambda pid, sig: None)
+    monkeypatch.setattr(fsuaegdb.os, "killpg", lambda pid, sig: None, raising=False)
     monkeypatch.setattr(fsuaegdb, "alive", lambda pid: next(states))
     monkeypatch.setattr(fsuaegdb.time, "sleep", lambda s: None)
     assert fsuaegdb.stop(stop_args()) == 0
@@ -1433,7 +1433,7 @@ def test_stop_waits_until_the_process_is_gone_and_says_so(monkeypatch, capsys):
 
 def test_stop_reports_a_process_that_outlives_the_wait(monkeypatch, capsys):
     clock = iter(range(0, 100))
-    monkeypatch.setattr(fsuaegdb.os, "killpg", lambda pid, sig: None)
+    monkeypatch.setattr(fsuaegdb.os, "killpg", lambda pid, sig: None, raising=False)
     monkeypatch.setattr(fsuaegdb, "alive", lambda pid: True)
     monkeypatch.setattr(fsuaegdb.time, "sleep", lambda s: None)
     monkeypatch.setattr(fsuaegdb.time, "monotonic", lambda: next(clock))
@@ -1446,7 +1446,7 @@ def test_stop_does_not_call_a_live_pid_without_a_group_not_running(
     def no_group(pid, sig):
         raise ProcessLookupError
 
-    monkeypatch.setattr(fsuaegdb.os, "killpg", no_group)
+    monkeypatch.setattr(fsuaegdb.os, "killpg", no_group, raising=False)
     monkeypatch.setattr(fsuaegdb, "alive", lambda pid: True)
     assert fsuaegdb.stop(stop_args()) == 1
     assert capsys.readouterr().out == (
@@ -1458,7 +1458,7 @@ def test_stop_says_not_running_for_a_pid_that_is_gone(monkeypatch, capsys):
     def no_group(pid, sig):
         raise ProcessLookupError
 
-    monkeypatch.setattr(fsuaegdb.os, "killpg", no_group)
+    monkeypatch.setattr(fsuaegdb.os, "killpg", no_group, raising=False)
     monkeypatch.setattr(fsuaegdb, "alive", lambda pid: False)
     assert fsuaegdb.stop(stop_args()) == 0
     assert "5 is not running" in capsys.readouterr().out
