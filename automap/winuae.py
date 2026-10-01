@@ -96,6 +96,12 @@ def _api():
     return _winapi
 
 
+class PipeTimeout(PipeError):
+    """WinUAE did not answer in time; the machine may be slow or at its prompt."""
+
+    timed_out = True
+
+
 class WinuaeLocalPipe:
     """`read_memory` over `\\\\.\\pipe\\<pipe>`, holding one handle open."""
 
@@ -218,7 +224,7 @@ class WinuaeLocalPipe:
                 except OSError:
                     pass
                 self._quiet_until = self._clock() + self.BACKOFF
-                raise PipeError(f"WinUAE did not {what} in time; it may be "
+                raise PipeTimeout(f"WinUAE did not {what} in time; it may be "
                                 "waiting at the debugger's prompt.")
         return ov.GetOverlappedResult(True)
 

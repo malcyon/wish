@@ -657,8 +657,10 @@ directory and opens nothing, because WinUAE serves one client at a time.
   tried again for five seconds. A reply is read on only while WinUAE says more
   is coming, and a complete message without its NUL is an error.
 * **The search for the running title is read in 64 KB pieces** (16 KB after a
-  piece fails) through `wish/amigalocate.py`, one second a tick; what was read
-  is kept for five seconds and the next tick goes on from there, with the
+  piece times out) through `wish/amigalocate.py`, one second a tick, each piece
+  waiting no more than what is left of that second (0.2 s at least); what was
+  read is kept and the next tick goes on from there, dropped only after five
+  seconds without a new piece, with the
   window shown its waiting line meanwhile. Leftover dump files of this process
   are deleted when the pipe is opened and when it is closed.
 * **The row is not defined yet.** Its name and setup hint are interface text and

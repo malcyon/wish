@@ -57,13 +57,18 @@ def connect(pipes=winuae.winuae_pipes, factory=winuae.WinuaeLocalPipe,
     global _transport
     names = pipes()
     if not names:
-        raise amiga.PipeError("there is no WinUAE pipe")
+        raise amiga.PipeError("There is no WinUAE pipe.")
     if _transport is None or _transport.pipe != names[0]:
         reset()
         _transport = factory(pipe=names[0])
+    locator = locator or _locator
     try:
-        return (locator or _locator).target(_transport.read_memory, _transport,
-                                            factory=WinuaeTarget)
+        return locator.target(_transport.read_memory, _transport,
+                              factory=WinuaeTarget)
+    except locator.paused:
+        # The sweep goes on at the next tick; closing would reopen the pipe
+        # (and write its log lines) once per tick for nothing.
+        raise
     except Exception:
         _transport.close()
         raise

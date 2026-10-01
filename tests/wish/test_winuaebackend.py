@@ -6,6 +6,7 @@ from __future__ import annotations
 import pytest
 
 from automap import amiga
+from automap import winuae as winuae_transport
 from automap.maps import AMIGA_ONLY_TITLES
 from wish import amigalocate, winuae
 from wish import backends as bk
@@ -187,17 +188,7 @@ def test_a_sweep_stops_at_its_deadline_and_goes_on_from_what_it_read():
     assert max(length for _, length in reads) <= locator.SWEEP_CHUNK
 
 
-def test_a_failed_piece_makes_the_next_sweep_use_smaller_pieces():
-    transport = FakeTransport(memory=loaded())
-    now = [0.0]
-    locator = amigalocate.Locator(clock=lambda: now[0])
-
-    def failing(addr, length, timeout=None):
-        raise amiga.PipeError("Timed out.")
-
-    with pytest.raises(amiga.PipeError):
-        locator.target(failing, transport)
-    now[0] += locator.SWEEP_EVERY
+def _sizes_of_next_sweep(locator, transport):
     sizes = []
     inner = transport.read_memory
 
@@ -206,7 +197,124 @@ def test_a_failed_piece_makes_the_next_sweep_use_smaller_pieces():
         return inner(addr, length)
 
     locator.target(watching, transport)
-    assert max(sizes) == locator.SWEEP_SMALL_CHUNK
+    return sizes
+
+
+def test_a_timed_out_piece_makes_the_next_sweep_use_smaller_pieces():
+    transport = FakeTransport(memory=loaded())
+    now = [0.0]
+    locator = amigalocate.Locator(clock=lambda: now[0])
+
+    def timing_out(addr, length, timeout=None):
+        raise winuae_transport.PipeTimeout("Timed out.")
+
+    with pytest.raises(amiga.PipeError):
+        locator.target(timing_out, transport)
+    now[0] += locator.SWEEP_EVERY
+    assert max(_sizes_of_next_sweep(locator, transport)) == \
+        locator.SWEEP_SMALL_CHUNK
+
+
+def test_a_piece_that_fails_for_another_reason_does_not_shrink_the_pieces():
+    transport = FakeTransport(memory=loaded())
+    now = [0.0]
+    locator = amigalocate.Locator(clock=lambda: now[0])
+
+    def refusing(addr, length, timeout=None):
+        raise amiga.PipeError("Refused.")
+
+    with pytest.raises(amiga.PipeError):
+        locator.target(refusing, transport)
+    now[0] += locator.SWEEP_EVERY
+    assert max(_sizes_of_next_sweep(locator, transport)) == locator.SWEEP_CHUNK
+
+
+def test_a_finished_sweep_goes_back_to_the_big_pieces():
+    transport = FakeTransport(memory=loaded())
+    now = [0.0]
+    locator = amigalocate.Locator(clock=lambda: now[0])
+
+    def timing_out(addr, length, timeout=None):
+        raise winuae_transport.PipeTimeout("Timed out.")
+
+    with pytest.raises(amiga.PipeError):
+        locator.target(timing_out, transport)
+    now[0] += locator.SWEEP_EVERY
+    locator.target(transport.read_memory, transport)        # finishes, small
+    locator.machine = locator.base = None
+    now[0] += locator.SWEEP_EVERY
+    assert max(_sizes_of_next_sweep(locator, transport)) == locator.SWEEP_CHUNK
+
+
+def test_a_slow_sweep_that_keeps_gaining_pieces_outlasts_the_age_limit():
+    transport = FakeTransport(memory=loaded())
+    now = [1000.0]
+    locator = amigalocate.Locator(clock=lambda: now[0])
+    locator.SWEEP_DEADLINE = 0.0                    # one piece a tick
+    locator._piece = locator.SWEEP_SMALL_CHUNK
+    ticks = 0
+    while True:
+        ticks += 1
+        now[0] += 1.0                               # steady ticks
+        try:
+            locator.target(transport.read_memory, transport)
+            break
+        except locator.paused:
+            assert ticks < 500
+    assert ticks * 1.0 > locator.SWEEP_CACHE_AGE
+
+
+def test_a_gap_in_the_ticks_throws_the_unfinished_sweep_away():
+    transport = FakeTransport(memory=loaded())
+    now = [1000.0]
+    locator = amigalocate.Locator(clock=lambda: now[0])
+    locator.SWEEP_DEADLINE = 0.0
+    with pytest.raises(locator.paused):
+        locator.target(transport.read_memory, transport)
+    first = dict(locator._pieces)
+    now[0] += locator.SWEEP_CACHE_AGE + 1
+    with pytest.raises(locator.paused):
+        locator.target(transport.read_memory, transport)
+    assert len(locator._pieces) == 1 and locator._pieces != first
+
+
+def test_paused_ticks_never_close_the_pipe():
+    transport = FakeTransport(memory=loaded())
+    now = [1000.0]
+    locator = amigalocate.Locator(clock=lambda: now[0])
+    locator.SWEEP_DEADLINE = 0.0
+    kwargs = dict(pipes=lambda: ["WinUAE"], factory=lambda pipe: transport,
+                  locator=locator)
+    paused = 0
+    for _ in range(500):
+        now[0] += 1.0
+        try:
+            winuae.connect(**kwargs)
+            break
+        except locator.paused:
+            paused += 1
+            assert transport.closed == 0
+    assert paused > 3 and transport.closed == 0
+
+
+def test_one_tick_is_bounded_by_the_sweep_deadline_and_the_minimum_timeout():
+    now = [1000.0]
+    given = []
+
+    class Costly(FakeTransport):
+        def read_memory(self, addr, length, timeout=None):
+            given.append(timeout)
+            now[0] += timeout                       # the worst WinUAE may take
+            return super().read_memory(addr, length)
+
+    transport = Costly(memory=loaded())
+    locator = amigalocate.Locator(clock=lambda: now[0])
+    started = now[0]
+    with pytest.raises(locator.paused):
+        locator.target(transport.read_memory, transport)
+    assert min(given) >= locator.MIN_PIECE_TIMEOUT
+    assert all(t <= locator.SWEEP_DEADLINE for t in given)
+    assert now[0] - started <= locator.SWEEP_DEADLINE + locator.MIN_PIECE_TIMEOUT
 
 
 def test_pieces_older_than_the_age_limit_are_not_searched():
@@ -228,3 +336,30 @@ def test_the_target_remembers_where_the_anchor_was_found():
     target = winuae.connect(pipes=lambda: ["WinUAE"],
                             factory=lambda pipe: transport)
     assert target.anchor_base == BASE
+
+
+def test_a_target_that_fails_its_own_check_makes_the_next_call_sweep_afresh():
+    transport = FakeTransport(memory=loaded())
+    now = [1000.0]
+    locator = amigalocate.Locator(clock=lambda: now[0])
+    bad_guard = [True]
+
+    def factory(debugger, machine, anchor_base=None):
+        if bad_guard[0]:
+            raise amiga.GuestError("The data hunk is not where it was.")
+        return amiga.AmigaTarget(debugger, machine, anchor_base=anchor_base)
+
+    with pytest.raises(amiga.GuestError):
+        locator.target(transport.read_memory, transport, factory=factory)
+    assert locator.machine is None
+    bad_guard[0] = False
+    now[0] += locator.SWEEP_EVERY
+    reads = []
+    inner = transport.read_memory
+
+    def counting(addr, length, timeout=None):
+        reads.append(length)
+        return inner(addr, length)
+
+    target = locator.target(counting, transport, factory=factory)
+    assert len(reads) > 1 and target.anchor_base == BASE

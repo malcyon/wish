@@ -922,3 +922,17 @@ def test_a_finished_sweep_goes_back_to_the_big_pieces():
     else:
         raise AssertionError("the sweep never finished")
     assert fsuae._piece == fsuae.SWEEP_CHUNK
+
+
+def test_a_bad_guard_that_stays_bad_makes_the_next_sweep_look_again():
+    sock, clock = FakeSocket(_pool_memory(data_guard=0x1234)), Clock()
+    opener = Opener(sock)
+    for _ in range(2):                    # the anchor is intact both times
+        with pytest.raises(amiga.GuestError):
+            fsuae.connect(opener=opener, clock=clock)
+    assert fsuae._machine is None and fsuae._base is None
+    sock.memory = _pool_memory(h31=0xC30000, h32=0xC40000)
+    clock.later()
+    target = fsuae.connect(opener=opener, clock=clock)
+    assert target.anchor_base == 0xC30000 and target.data_base == 0xC40000
+    assert opener.calls == 1

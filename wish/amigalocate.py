@@ -8,10 +8,11 @@ on every call and the sweep runs again only when that fails.
 **A sweep never holds the window for long.** `target()` runs on the window's
 timer, and half a megabyte a region is too much for one tick, so memory is read
 in pieces. Once `SWEEP_DEADLINE` seconds are spent the call raises a
-`not-connected` error, the pieces already read are kept for `SWEEP_CACHE_AGE`
-seconds, and the next call goes on from there. After a piece fails, the next
-sweep uses `SWEEP_SMALL_CHUNK`, so a machine too slow for the big piece still
-gets through.
+`not-connected` error, the pieces already read are kept, and the next call goes
+on from there. After a piece times out, the next sweep uses
+`SWEEP_SMALL_CHUNK`, so a machine too slow for the big piece still gets
+through; a finished sweep goes back to the big one. One call takes about the
+deadline plus the 0.2 s that the last piece may still be given.
 """
 
 from __future__ import annotations
@@ -27,24 +28,31 @@ class Locator:
     #: The soonest a second sweep may start after the last one ended.
     SWEEP_EVERY = 5.0
 
-    #: Memory is read in pieces this big, and the small size after a failure.
+    #: Memory is read in pieces this big, and the small size after a timeout.
     SWEEP_CHUNK = 0x10000
     SWEEP_SMALL_CHUNK = 0x4000
 
     #: How long one call may spend reading pieces (one piece is always read).
     SWEEP_DEADLINE = 1.0
 
-    #: How long a piece read for an unfinished sweep stays usable. A game that
-    #: reboots between two ticks must not be searched as one memory made of old
-    #: and new pieces.
+    #: How long an unfinished sweep may go without gaining a piece before what
+    #: it holds is thrown away. This catches only a gap in the ticks (the window
+    #: not asking for five seconds, say). It does not detect a reboot or a
+    #: reload during a sweep whose ticks keep adding pieces; the result of such
+    #: a sweep is caught afterwards, by the "more than one place" check and by
+    #: the anchor re-read at the next call. A slow machine whose ticks keep
+    #: adding pieces is not limited in total time.
     SWEEP_CACHE_AGE = 5.0
+
+    #: The least a piece is given to answer, however little of the tick is left.
+    MIN_PIECE_TIMEOUT = 0.2
 
     def __init__(self, clock=time.monotonic, error=amiga.GuestError):
         self._clock = clock
         self._error = error
         #: Raised when the time for this tick is spent; the sweep goes on later.
         self.paused = type("SweepPaused", (error,), {})
-        self._pieces: dict[int, tuple[float, bytes]] = {}
+        self._pieces: dict[int, tuple[float, bytes]] = {}   # when read, bytes
         self._piece = self.SWEEP_CHUNK
         self.machine: amiga.AmigaMachine | None = None
         self.base: int | None = None
@@ -60,9 +68,9 @@ class Locator:
         started = self._clock()
         deadline = started + self.SWEEP_DEADLINE
         fetched = 0
-        for at in [a for a, (when, _) in self._pieces.items()
-                   if started - when > self.SWEEP_CACHE_AGE]:
-            del self._pieces[at]
+        if self._pieces and started - max(
+                when for when, _ in self._pieces.values()) > self.SWEEP_CACHE_AGE:
+            self._pieces.clear()
 
         def read(base: int, length: int) -> bytes:
             nonlocal fetched
@@ -73,8 +81,16 @@ class Locator:
                     if fetched and self._clock() >= deadline:
                         raise self.paused(
                             "Still sweeping the Amiga's memory.")
-                    blob = read_memory(at, min(self._piece, base + length - at))
-                    self._pieces[at] = (self._clock(), blob)
+                    try:
+                        blob = read_memory(
+                            at, min(self._piece, base + length - at),
+                            timeout=max(self.MIN_PIECE_TIMEOUT,
+                                        deadline - self._clock()))
+                    except Exception as exc:
+                        if getattr(exc, "timed_out", False):
+                            self._piece = self.SWEEP_SMALL_CHUNK
+                        raise
+                    self._pieces[at] = (started, blob)
                     fetched += 1
                 else:
                     blob = held[1]
@@ -88,7 +104,8 @@ class Locator:
         """A target on the title in memory, or the `error` saying what is missing."""
         if self.machine is not None:
             held = read_memory(self.base + self.machine.anchor_offset,
-                               len(self.machine.anchor))
+                               len(self.machine.anchor),
+                               timeout=self.SWEEP_DEADLINE)
             if held != self.machine.anchor:
                 self.machine = self.base = None
         if self.machine is None:
@@ -108,10 +125,10 @@ class Locator:
             except Exception:
                 self.swept_at = self._clock()
                 self._pieces.clear()
-                self._piece = self.SWEEP_SMALL_CHUNK
                 raise
             self.swept_at = self._clock()
             self._pieces.clear()
+            self._piece = self.SWEEP_CHUNK
             if not found:
                 raise self._error(
                     "None of the titles this knows is in the Amiga's memory yet.")
@@ -125,4 +142,10 @@ class Locator:
             self.machine = next(m for m in amiga.MACHINES.values()
                                 if m.title == title)
             self.base = bases[0]
-        return factory(transport, self.machine, anchor_base=self.base)
+        try:
+            return factory(transport, self.machine, anchor_base=self.base)
+        except amiga.GuestError:
+            # An intact anchor with a data hunk that is not where it was: the
+            # target's own check fails on every call unless the sweep runs again.
+            self.machine = self.base = None
+            raise
