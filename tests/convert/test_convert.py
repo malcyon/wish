@@ -4376,3 +4376,41 @@ def test_the_preferences_route_reads_the_item_types_and_converts_giles_to_nine(a
         assert _files_giles_stale(files) == 9
     finally:
         window.close()
+
+
+def _disk_with_a_looping_root_hash_chain(tmp_path):
+    import struct
+
+    from goldbox.amiga_adf import BLOCK_SIZE, AmigaDisk
+
+    disk = AmigaDisk.blank("Secret 2")
+    disk.write_file("LOOP.BIN", b"x")
+    block = disk.lookup("LOOP.BIN").block
+    struct.pack_into(">I", disk._data, block * BLOCK_SIZE + BLOCK_SIZE - 16,
+                     block)
+    path = tmp_path / "loop.adf"
+    path.write_bytes(disk.to_bytes())
+    return path, AmigaDisk.open(str(path))
+
+
+def test_a_root_directory_that_cannot_be_read_is_not_reported_as_holding_no_save(
+        tmp_path):
+    """Only an absent `save` entry means no slots; a looping hash chain in the
+    root says nothing about whether the disk holds a saved game."""
+    from goldbox import amiga_savegame
+
+    path, disk = _disk_with_a_looping_root_hash_chain(tmp_path)
+    with pytest.raises(amiga_savegame.AmigaSaveError, match="loops"):
+        amiga_savegame.por_slots_present(disk)
+    with pytest.raises(convert.ConvertError) as raised:
+        convert.Source.detect(path)
+    assert "holds no" not in str(raised.value)
+
+
+def test_an_explicit_drawer_is_used_without_looking_for_the_save_entry():
+    from goldbox import amiga_savegame
+    from goldbox.amiga_adf import AmigaDisk
+
+    disk = AmigaDisk.blank("Secret 2")
+    assert amiga_savegame.por_slots_present(disk, "") == []
+    assert amiga_savegame.por_slots_present(disk, "save") == []

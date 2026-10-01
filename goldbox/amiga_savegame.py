@@ -850,13 +850,19 @@ def por_slots_present(disk: AmigaDisk, drawer: str | None = None) -> list[str]:
 
     A disk with no `save` entry holds no slots, so it is an empty list and
     not the `AmigaSaveError` `por_save_drawer` raises: the callers ask
-    whether a disk holds a save, and "no" is their answer.
+    whether a disk holds a save, and "no" is their answer.  A directory that
+    cannot be read still raises `AmigaSaveError`.
     """
     if drawer is None:
+        # Only an absent entry is "no slots"; a root that cannot be read is
+        # not a disk known to hold nothing.
         try:
-            drawer = por_save_drawer(disk)
-        except AmigaSaveError:
+            names = {entry.name.lower() for entry in disk.entries()}
+        except AmigaDiskError as exc:
+            raise AmigaSaveError(str(exc)) from exc
+        if POR_SAVE_DRAWER not in names:
             return []
+        drawer = por_save_drawer(disk)
     from . import amiga_por
     out = []
     for letter in POR_SLOT_LETTERS:
