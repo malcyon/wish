@@ -68,22 +68,25 @@ SWEEP_EVERY = 5.0
 HELPER_RETRY = 10.0
 
 #: A sweep reads the machine's memory in pieces this big, and stops for the
-#: tick once it has spent `SWEEP_DEADLINE` seconds. `connect()` runs on the window's
-#: timer, so one call may not hold the window for the twenty seconds a
-#: half-megabyte read is allowed; what was read is kept and the next call goes
-#: on from there. A piece waits `POLL_TIMEOUT`, so a call takes about the
+#: tick once it has spent `SWEEP_DEADLINE` seconds. `connect()` runs on the
+#: window's timer, so one call may not hold the window for the twenty seconds
+#: a half-megabyte read is allowed. What was read is kept and the next call
+#: goes on from there. A piece waits `POLL_TIMEOUT`, so a call takes about the
 #: deadline plus that. The time a piece takes on a real machine has not been
-#: measured. When a piece fails (a timeout, say) the next sweep uses
-#: `SWEEP_SMALL_CHUNK`, so a machine too slow for the big piece still gets
-#: through; `reset()` goes back to the big one.
+#: measured. After a piece times out, the next sweep uses `SWEEP_SMALL_CHUNK`,
+#: so a machine too slow for the big piece still gets through; a finished
+#: sweep and `reset()` go back to the big one.
 SWEEP_CHUNK = fsuaehelper.SWEEP_CHUNK
 SWEEP_SMALL_CHUNK = 0x4000
 SWEEP_DEADLINE = 1.0
 
 #: How long an unfinished sweep may go without gaining a piece before what it
-#: holds is thrown away. A game that reboots or loads another title between two
-#: ticks must not be searched as one memory made of old and new pieces; a slow
-#: machine whose ticks keep adding pieces is not limited in total time.
+#: holds is thrown away. This catches only a gap in the ticks (the window not
+#: asking for five seconds, say). It does not detect a reboot or a reload
+#: during a sweep whose ticks keep adding pieces; the result of such a sweep is
+#: caught afterwards, by the "more than one place" check and by the anchor
+#: re-read at the next `connect()`. A slow machine whose ticks keep adding
+#: pieces is not limited in total time.
 SWEEP_CACHE_AGE = 5.0
 
 
@@ -162,6 +165,7 @@ def _chunked_read(transport, deadline_clock):
         _sweep_cache.clear()
 
     def read(base: int, length: int) -> bytes:
+        global _piece
         nonlocal fetched
         out = bytearray()
         for at in range(base, base + length, _piece):
@@ -171,9 +175,16 @@ def _chunked_read(transport, deadline_clock):
                 # One piece at least per call, so a slow machine finishes.
                 if fetched and deadline_clock() >= deadline:
                     raise SweepPaused("still sweeping the Amiga's memory")
-                blob = transport.read_memory(
-                    at, min(_piece, base + length - at),
-                    timeout=amiga.FsuaeGdb.POLL_TIMEOUT)
+                try:
+                    blob = transport.read_memory(
+                        at, min(_piece, base + length - at),
+                        timeout=amiga.FsuaeGdb.POLL_TIMEOUT)
+                except amiga.FsuaeError:
+                    # `_unresolved` is how the transport records a timeout; a
+                    # refusal (`E01`) is not the machine being slow.
+                    if getattr(transport, "_unresolved", False):
+                        _piece = SWEEP_SMALL_CHUNK
+                    raise
                 _sweep_cache[at] = (started, blob)
                 fetched += 1
             out += blob
@@ -289,10 +300,10 @@ def connect(port: int | None = None, opener=None,
         except Exception:
             _swept_at = clock()
             _sweep_cache.clear()
-            _piece = SWEEP_SMALL_CHUNK
             raise
         _swept_at = clock()
         _sweep_cache.clear()
+        _piece = SWEEP_CHUNK
         if not found:
             raise amiga.FsuaeError(
                 "none of the titles this knows is in the Amiga's memory yet")

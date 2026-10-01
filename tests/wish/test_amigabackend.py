@@ -831,3 +831,43 @@ def test_a_sweep_longer_in_total_than_the_age_limit_still_finishes_if_ticks_keep
         raise AssertionError("the sweep never finished")
     assert stepping.now - started > fsuae.SWEEP_CACHE_AGE
     assert sock.sweeps() == 1
+
+
+class Refusing(FakeSocket):
+    """Answers every `m` with `E01`, as the fork does for unreadable memory."""
+
+    def sendall(self, data: bytes) -> None:
+        body = data[1:-3].decode("latin-1")
+        if body.startswith("m"):
+            self.received.append(body)
+            self._out += b"+" + self._frame("E01")
+        else:
+            super().sendall(data)
+
+
+def test_a_refused_read_does_not_shrink_the_pieces():
+    opener, clock = Opener(Refusing(loaded(BLADES))), Clock()
+    with pytest.raises(amiga.FsuaeError, match="refused"):
+        fsuae.connect(opener=opener, clock=clock, deadline_clock=Stepping())
+    assert fsuae._piece == fsuae.SWEEP_CHUNK
+
+
+def test_a_finished_sweep_goes_back_to_the_big_pieces():
+    sock = FakeSocket(loaded(BLADES))
+    opener, clock, stepping = Opener(sock), Clock(), Stepping()
+    _pause_a_sweep(opener, clock, stepping)
+    sock.mute = True
+    with pytest.raises(amiga.FsuaeError):
+        fsuae.connect(opener=opener, clock=clock, deadline_clock=stepping)
+    assert fsuae._piece == fsuae.SWEEP_SMALL_CHUNK
+    sock.mute = False
+    clock.later()
+    for _ in range(80):
+        try:
+            fsuae.connect(opener=opener, clock=clock, deadline_clock=stepping)
+            break
+        except amiga.FsuaeError:
+            pass
+    else:
+        raise AssertionError("the sweep never finished")
+    assert fsuae._piece == fsuae.SWEEP_CHUNK
