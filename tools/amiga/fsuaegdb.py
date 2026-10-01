@@ -572,7 +572,8 @@ def session(args) -> int:
         window = None
         if args.window:
             window = open_window(tgt, args.maps, out)
-        note(event="session", port=args.port, maps=len(maps), image=str(image),
+        note(event="session", port=args.port, maps=len(maps),
+             image=None if image is None else str(image),
              window=bool(args.window))
         while time.monotonic() - started < args.seconds:
             lines = commands.read_text().splitlines()
@@ -699,9 +700,9 @@ def check_arguments(args) -> list[tuple[str, int]]:
         raise SystemExit("--maps and --window need --title "
                          f"({', '.join(sorted(amiga.MACHINES))}): without one "
                          "the title is detected after the connection is open")
-    if args.window and args.title == NO_TITLE:
-        raise SystemExit(f"--window needs a title's layout; --title {NO_TITLE} "
-                         "has none")
+    if (args.maps or args.window) and args.title == NO_TITLE:
+        raise SystemExit(f"--maps and --window need a title's layout; "
+                         f"--title {NO_TITLE} has none")
     if args.window and not args.maps:
         raise SystemExit("--window needs --maps to be the folder holding the "
                          "game's disk images")

@@ -1266,6 +1266,19 @@ def test_a_window_needs_a_title_and_is_refused_before_connecting(
     assert refusing == []
 
 
+def test_maps_need_a_title_and_are_refused_before_connecting(
+        refusing, tmp_path):
+    with pytest.raises(SystemExit, match="--maps"):
+        fsuaegdb.session(session_args(tmp_path, title="none",
+                                      maps=str(tmp_path)))
+    assert refusing == []
+
+
+def test_a_session_without_a_title_logs_no_image(untitled, tmp_path):
+    _, rows = run_session(tmp_path, [], title="none")
+    assert next(r for r in rows if r["event"] == "session")["image"] is None
+
+
 def test_title_none_is_a_choice_on_the_command_line():
     seen = []
     real = fsuaegdb.session

@@ -251,6 +251,15 @@ def test_two_titles_in_memory_are_refused_and_both_are_named():
     assert CURSE.title in str(raised.value)
 
 
+def test_two_titles_in_different_regions_are_both_named():
+    memory = loaded(BLADES)
+    memory.update(loaded(CURSE, at=0x10000))
+    with pytest.raises(amiga.FsuaeError) as raised:
+        fsuae.connect(opener=Opener(FakeSocket(memory)), clock=Clock())
+    assert BLADES.title in str(raised.value)
+    assert CURSE.title in str(raised.value)
+
+
 #: Curse's map bar, which Curse's row once anchored on. It is in the code
 #: hunks of Silver Blades' and Pools of Darkness' executables as well.
 CURSE_MAP_BAR = b"Area Cast View Encamp Search Look"
