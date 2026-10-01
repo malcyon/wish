@@ -208,17 +208,19 @@ def capture_script(out: str) -> str:
     ])
 
 
-def shot_script(token: str, timeout: int = 20) -> str:
+def shot_script(token: str, timeout: int = 20, capture=None) -> str:
     """What the ssh session runs: start the capture in session 1, return it.
 
     `token` names the task and the file, so two agents taking a screenshot at
     once do not collide.  The task and the file are removed whatever happens.
+    `capture` builds the session 1 script from the output path; the default
+    grabs the whole desktop.
     """
     if not re.fullmatch(r"[A-Za-z0-9]{1,32}", token):
         raise WinvmError(f"not a usable token: {token!r}")
     task = f"winvm-shot-{token}"
     out = rf"C:\Users\Public\{task}.png"
-    inner = encode_powershell(capture_script(out))
+    inner = encode_powershell((capture or capture_script)(out))
     args = f"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand {inner}"
     return "\n".join([
         "$ErrorActionPreference = 'Stop'",
