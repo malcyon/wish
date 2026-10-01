@@ -379,7 +379,7 @@ def test_the_sweep_says_how_wide_the_zero_argument_is(specimens):
     4,072 of the 13,141 bytes are written zero because no Amiga saved game
     here holds anything at that address, and that argument is only as wide as
     the places the parties have stood.  The table says how wide: how many
-    words are ever non-zero, and how many a set of specimens of one place alone would
+    words are ever non-zero, and how many saves from one place alone would
     have missed.
 
     Asserted as a shape rather than as the numbers, which move whenever a

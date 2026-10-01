@@ -295,7 +295,7 @@ def test_anything_but_a_read_is_refused_and_never_reaches_the_emulator(
     assert "\x03" not in fork.received
 
 
-def test_a_read_is_relayed_byte_for_byte_and_so_is_a_refusal(running):
+def test_a_read_is_relayed_byte_for_byte_and_so_is_a_rejection(running):
     client = Client(sock_path(running))
     assert client.ask("mc10000,40") == memory_at(0xC10000, 0x40).hex()
     assert client.ask(f"m{UNREADABLE:x},4") == "E01"
@@ -385,7 +385,7 @@ def test_a_client_leaving_does_not_end_the_emulators_connection(fork, runtime, p
     assert fork.accepted == 1
 
 
-def test_two_helpers_started_together_give_one_helper_and_one_refusal(
+def test_two_helpers_started_together_give_one_helper_and_one_rejection(
         fork, runtime, procs):
     first = fsuaehelper.start(fork.port, runtime)
     second = fsuaehelper.start(fork.port, runtime)
@@ -425,7 +425,7 @@ def test_a_live_pid_with_another_command_line_is_not_a_helper(fork, runtime):
     assert fsuaehelper.find(fork.port, runtime) is None
 
 
-# -- refusals at startup -------------------------------------------------------
+# -- rejections at startup -------------------------------------------------------
 
 def synthetic_proc(path: pathlib.Path, port: int, *states: str) -> pathlib.Path:
     (path / "net").mkdir(parents=True)

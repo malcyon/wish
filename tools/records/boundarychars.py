@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Deliberately extreme Pool of Radiance characters, for `tests/records/test_boundary.py`.
 
-`#516`:
+`#516 (Generate boundary characters and check every writer's field widths,
+since no real save reaches a limit and the corpus cannot find a wrong one)`:
 every conversion test in this project runs against records that exist, which
 is the right specimens for asking whether a conversion is faithful and the wrong
 one for asking whether it is *safe* -- a real party rarely sits near a limit,

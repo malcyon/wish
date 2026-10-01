@@ -299,7 +299,7 @@ def test_every_geo_block_in_the_archives_is_read_as_a_map():
     """165 of 165, where the reader used to take 95.
 
     Treasures of the Savage Frontier was absent from the specimens altogether and
-    Pools of Darkness was a set of specimens of one, because the reader asked for the
+    Pools of Darkness had a single specimen, because the reader asked for the
     C64's `00 04` in front and neither title has a C64 release.
     """
     dos_blocks()

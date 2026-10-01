@@ -671,7 +671,7 @@ def test_session_poke_takes_a_data_hunk_offset_and_an_absolute_address(
     "poke 0xC20000 " + "aa" * 65,   # longer than 64 bytes
     "poke 0xC20000 zz",             # not hex
     "poke 0xC20000"])               # nothing to write
-def test_session_poke_refusals_send_nothing_and_the_session_goes_on(
+def test_session_poke_rejections_send_nothing_and_the_session_goes_on(
         driven, tmp_path, line):
     guest, row, rows = _poke(driven, tmp_path, line, writable=True)
     assert row["error"]
@@ -710,7 +710,7 @@ def test_session_poke_that_the_server_acknowledges_but_ignores_is_an_error(
     assert "read back" in row["error"]
 
 
-def test_poke_does_not_change_the_targets_refusal_to_write(driven):
+def test_poke_does_not_change_the_targets_rejection_of_writes(driven):
     guest, _ = driven
     guest.writable = True
     tgt = amiga.AmigaTarget(transport(guest), POD)
@@ -1104,7 +1104,7 @@ def test_session_still_and_wait_are_logged(driven, tmp_path):
     assert events["wait"]["seconds"] == 0.5
 
 
-def test_session_peek_before_locate_is_logged_as_a_refusal(driven, tmp_path):
+def test_session_peek_before_locate_is_logged_as_a_rejection(driven, tmp_path):
     events, _ = run_session(tmp_path, ["peek +0x10 1"])
     assert events["peek"]["hex"] is None and "locate" in events["peek"]["error"]
 

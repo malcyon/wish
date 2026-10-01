@@ -33,14 +33,14 @@ If a Jira MCP server is ever configured, the same eight checks run unchanged aga
 
 ## Query before reading
 
-**Pull structured fields first and let them tell you where to look.** Do not read bodies until the structure has narrowed the specimens.
+**Pull structured fields first and let them tell you where to look.** Do not read bodies until the structure has narrowed the set of issues.
 
 ```sh
 gh issue list --state all --limit 200 \
   --json number,state,labels,createdAt,updatedAt,assignees
 ```
 
-**Report the specimens size and the exact query you used.** A finding from an unstated specimens cannot be reproduced.
+**Report how many issues you read and the exact query you used.** A finding from an unstated set of issues cannot be reproduced.
 
 ## Eight checks, in yield order
 
@@ -72,7 +72,7 @@ version it was checking against.
 
 Report every hit with its issue number and the sentence it sits in, and **say what the sentence is actually trying to say**, because that is the useful half. A title is what a reader sees first and never opens; one that needs the jargon explained is a title that fails.
 
-Two exceptions, both narrow. A hit is **not** a finding when the word is a **code identifier** the ticket is citing by name — Qt's `ElideRight`, `RETARGET_WRITES` — since `AGENTS.md` keeps the API's spelling in code. And **not** when the ticket is quoting another issue's title verbatim to reference it, since a citation that does not match cannot be found.
+Two exceptions, both narrow. A hit is **not** a finding when the word is a **code identifier** the ticket is citing by name — Qt's `ElideRight`, `setTextElideMode` — since `AGENTS.md` keeps the API's spelling in code. And **not** when the ticket is quoting another issue's title verbatim to reference it, since a citation that does not match cannot be found.
 
 **8. Unnamed issue references.** `.claude/rules/issues.md` requires a citation to carry the issue's title — `#59 (Map the DOS saved game, not just the character record)` — in comments and documents. A bare `#59` is an opaque number to anyone reading without a browser open, and tells the reader nothing about what the issue is.
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Disassemble a window around a file offset in a 16-bit DOS overlay.
 
-#516.
+#516 (Generate boundary characters and check every writer's field widths, since no real save reaches a limit and the corpus cannot find a wrong one).
 Back-synchronises: tries every start in [at-back, at) and keeps the earliest
 one whose decode lands an instruction boundary exactly on `at`, which is how a
 linear 16-bit scan finds the real stream without a symbol table.  `capstone`

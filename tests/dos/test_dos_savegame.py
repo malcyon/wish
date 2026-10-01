@@ -954,7 +954,7 @@ def _played():
     #175's five drives, and they hold only the containers the engine wrote: a
     snapshot byte-identical to a shipped one was left out when they were
     added, because counting it would put the new-game initialiser's own output
-    in a set of specimens of played saves. Eight distinct containers across the five.
+    in the played saves. Eight distinct containers across the five.
     A container Wish staged for an acceptance run, rather than one the game
     wrote, is excluded by name through `_WISH_WRITTEN`.
 

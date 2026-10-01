@@ -1,6 +1,7 @@
 """`tools/dos/dosarraywidth.py`'s `LOOKBACK` window, and the one field it settled.
 
-`#516`'s
+`#516 (Generate boundary characters and check every writer's field widths,
+since no real save reaches a limit and the corpus cannot find a wrong one)`'s
 slice 3 found the flat 90-byte lookback crossing a `retf` into a different
 subroutine: Pool of Radiance's `spells_castable_cleric` read "8" because the
 guard the tool tallied, `cmp byte [bp-1], 7` at `0x02ac08`, belongs to the

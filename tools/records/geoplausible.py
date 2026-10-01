@@ -9,7 +9,7 @@ four thresholds, and every one of them is a claim about two corpora:
 * every **other** 1024-byte window of every other file on the same disks,
   which must all fail.
 
-A threshold set against a set of specimens nobody can re-take is a threshold that drifts.
+A threshold set against specimens nobody can re-take is a threshold that drifts.
 `MAP_WALL_AGREEMENT = 0.5` was fitted to Pool of Radiance and Curse before
 Silver Blades or the Amiga were in the project, and by 2026-09-08 it was
 throwing out 31 of the 95 maps on this machine.

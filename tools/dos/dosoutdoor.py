@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Make an engine-written DOS overland saved game, without playing there.
 
-`#50` and
+`#50 (Lift the wilderness refusal from the DOS save converter)` and
 `#59 (Map the DOS saved game, not just the character record)` both needed a
 DOS saved game made on the travel grid, and the three that were made for them
 in 2026-08 lived in `p59-outdoor/` (scratch, deleted) and are gone -- along with the run

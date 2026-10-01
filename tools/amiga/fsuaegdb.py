@@ -407,7 +407,7 @@ def dump_row(gdb, rest: str, out: pathlib.Path) -> dict:
 
 
 def peek_row(tgt, spec: str, length: int) -> dict:
-    """One `read_spec` as a log row; a refusal or a failed read is a row too."""
+    """One `read_spec` as a log row; a rejection or a failed read is a row too."""
     row = {"spec": spec, "length": length}
     try:
         got = read_spec(tgt, spec, length)

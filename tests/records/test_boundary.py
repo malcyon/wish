@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-"""Boundary characters: `#516`.
+"""Boundary characters: `#516 (Generate boundary characters and check every
+writer's field widths, since no real save reaches a limit and the corpus
+cannot find a wrong one)`.
 
 Every conversion test elsewhere in this project runs against records that
 exist, which cannot find a width that is wrong until a real save happens to

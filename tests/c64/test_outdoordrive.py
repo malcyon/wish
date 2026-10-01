@@ -11,7 +11,8 @@ The reason these are tests rather than notes is that all three faults in
 its facing out of the word OUTDOORS)` were invisible from the outside: the
 driver reported a facing, reported `moved=False`, and reported a square, and
 every one of the three was wrong in a way that reads exactly like a save that
-cannot walk.  An hour of `#50`'s end-to-end proof went on it.
+cannot walk.  An hour of `#50 (Lift the wilderness refusal from the DOS save
+converter)`'s end-to-end proof went on it.
 """
 
 from conftest import load_tools_module

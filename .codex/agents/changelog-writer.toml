@@ -26,7 +26,7 @@ it had to be thrown away and redone. Do not do that.
 
 ## Where the truth is
 
-**`git log <last tag>..HEAD` is the specimens**, and `git tag --list` gives the
+**`git log <last tag>..HEAD` is the material**, and `git tag --list` gives the
 tag. Read the commit messages -- this project writes one sentence per commit
 and ends it with the issue number, so the log is unusually close to a changelog
 already.
@@ -41,7 +41,7 @@ says what the code does.
 **Write from the reader's side of the program, not from the diff.** They have
 the last release installed. The only question that matters is **what is new to
 them** — and a commit list cannot answer it, because most of what is in one
-never reaches a user at all. Read the specimens to find candidates; decide each one
+never reaches a user at all. Read that range to find candidates; decide each one
 by asking what the person running the last version would see change.
 
 **The test is: would a person using the program notice, and would they care?**

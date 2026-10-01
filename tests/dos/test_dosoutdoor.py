@@ -10,7 +10,7 @@ loads into the wrong world or does not load.
 Those four came from `#59 (Map the DOS saved game, not just the character
 record)`, three overland specimens against three indoor ones, and the seed
 built from them was loaded in DOSBox on 2026-09-02 for `#50 (Lift the
-wilderness rejection from the DOS save converter)`: the game drew the travel
+wilderness refusal from the DOS save converter)`: the game drew the travel
 window and the status line read `20,29 N 10:02`, which is window-local (7,29)
 plus window 26's offset of 13.
 

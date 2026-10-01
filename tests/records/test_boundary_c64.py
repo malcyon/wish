@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-"""Boundary characters through the C64 writer: `#516`, steps 4 and 5.
+"""Boundary characters through the C64 writer: `#516 (Generate boundary
+characters and check every writer's field widths, since no real save reaches a
+limit and the corpus cannot find a wrong one)`, steps 4 and 5.
 
 `tests/records/test_boundary.py` runs four Pool of Radiance extremes through
 `goldbox.dos_codec.write`.  This module does the same into

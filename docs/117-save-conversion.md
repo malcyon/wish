@@ -1545,7 +1545,7 @@ of slot 2, the travel square in `$49C3`/`$49C4`,
 side against three engine-written overland saves: the DOS travel square is
 the same `$49C3`/`$49C4` pair, window-local, `$49E6` = 0, and the area id in
 `$49F2` alone (`$49C5` reads 0 out there, so `convert_save` keys on
-`dos_savegame.current_area`). The converted outdoor save follows #47 (Decode the travel grid's cache entries, so the wilderness can be moved too)'s
+`dos_savegame.current_area`). The converted outdoor save follows #47 (Decode the travel grid's cache entries, so the wilderness can be retargeted too)'s
 live-proven cold-boot recipe exactly, but **the conversion itself has not
 been loaded on a C64 end to end** — that run is the remaining proof for the
 outdoor save. The indoor one has run three times, on all three of the
