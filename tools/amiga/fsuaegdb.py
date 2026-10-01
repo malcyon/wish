@@ -889,7 +889,7 @@ WISH_UNSET = ("POR_MONITOR", "WISH_EXPERIMENTAL_C64_ULTIMATE", "POR_ULTIMATE",
 #: What the `wish` command sets for the window and puts back afterwards.
 WISH_FLAG = "WISH_EXPERIMENTAL_AMIGA_FSUAE"
 WISH_ENV = (*WISH_UNSET, WISH_FLAG, "XDG_CONFIG_HOME", "XDG_DATA_HOME",
-            "XDG_RUNTIME_DIR",
+            "APPDATA", "LOCALAPPDATA", "XDG_RUNTIME_DIR",
             # Set by `mapmarker._offscreen`, which this process calls.
             "QT_QPA_PLATFORM", "WAYLAND_DISPLAY", "XDG_SESSION_TYPE",
             "GDK_BACKEND")

@@ -2042,13 +2042,41 @@ def test_wish_sets_the_port_and_the_flag_for_the_window_and_puts_them_back(
         wished, tmp_path, monkeypatch):
     monkeypatch.setenv(fsuaegdb.WISH_FLAG, "off")
     monkeypatch.setenv("XDG_CONFIG_HOME", "/somewhere")
+    monkeypatch.setenv("APPDATA", "/roaming")
     before = fsuaegdb.amiga.FSUAE_PORT
     run_wish(tmp_path, [])
     assert wished["port"] == [6531] and wished["flag"] == ["1"]
     assert fsuaegdb.amiga.FSUAE_PORT == before
     assert os.environ[fsuaegdb.WISH_FLAG] == "off"
     assert os.environ["XDG_CONFIG_HOME"] == "/somewhere"
+    assert os.environ["APPDATA"] == "/roaming"
     assert "XDG_DATA_HOME" not in os.environ
+
+
+@pytest.mark.parametrize("platform", ["win32", "linux"])
+def test_private_settings_move_both_directories_on_every_platform(
+        tmp_path, monkeypatch, platform):
+    from automap import paths
+    from tools.gui import mapmarker
+
+    for var in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "APPDATA", "LOCALAPPDATA"):
+        monkeypatch.setenv(var, "/player/own")
+    monkeypatch.setattr(paths.sys, "platform", platform)
+    mapmarker.private_settings(tmp_path)
+    run = tmp_path.resolve()
+    assert run in paths.config_dir().parents
+    assert run in paths.data_dir().parents
+
+
+def test_private_settings_stop_on_macos_instead_of_using_the_players_folder(
+        tmp_path, monkeypatch):
+    from automap import paths
+    from tools.gui import mapmarker
+
+    monkeypatch.setattr(mapmarker.sys, "platform", "darwin")
+    monkeypatch.setattr(paths.sys, "platform", "darwin")
+    with pytest.raises(RuntimeError, match="not supported on macOS"):
+        mapmarker.private_settings(tmp_path)
 
 
 def test_wish_puts_the_port_back_when_the_window_will_not_open(
@@ -2066,20 +2094,24 @@ def test_wish_puts_the_port_back_when_the_window_will_not_open(
 
 def test_wish_writes_the_title_folder_where_preferences_keeps_it(
         wished, tmp_path, monkeypatch):
+    from automap import paths
     from automap.config import Settings
 
     folder = tmp_path / "adfs"
     folder.mkdir()
     read = []
+    kept = []
 
     def open_wish(out):
+        kept.append(paths.config_dir())
         read.append(Settings.load().game_folders)
         return FakeApp(), FakeWindow()
 
     monkeypatch.setattr(fsuaegdb, "open_wish", open_wish)
     run_wish(tmp_path, [], disks_for=[f"pools-of-darkness={folder}"])
     assert read == [{"pools-of-darkness": str(folder.resolve())}]
-    assert (tmp_path / "run" / "config").is_dir()
+    assert (tmp_path / "run").resolve() in kept[0].parents
+    assert kept[0].is_dir()
 
 
 @pytest.mark.parametrize("item,text", [
