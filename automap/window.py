@@ -969,11 +969,17 @@ class AutomapBinding(QObject):
             self.world_canvas.show_world(world)
 
     def _build_view_buttons(self) -> None:
-        """The two radios that choose the outdoor picture, at the right end of
-        the first action row (`view_bar` in `wish/window.ui`)."""
+        """The two radios that choose the outdoor picture, in a row of their
+        own between the map and the action buttons (`view_bar` in
+        `wish/window.ui`)."""
         full = self.root.findChild(QRadioButton, "view_full")
         area = self.root.findChild(QRadioButton, "view_area")
         self.view_bar = self.root.findChild(QWidget, "view_bar")
+        # Hidden, the bar keeps its row, so the map does not change size when
+        # the party walks between a town and the wilderness.
+        policy = self.view_bar.sizePolicy()
+        policy.setRetainSizeWhenHidden(True)
+        self.view_bar.setSizePolicy(policy)
         self.view_bar.setVisible(False)
         group = QButtonGroup(self)
         group.addButton(full)
