@@ -67,14 +67,24 @@ SWEEP_EVERY = 5.0
 #: be started again on every one-second tick.
 HELPER_RETRY = 10.0
 
-#: A sweep reads the machine's memory in pieces this big, and stops for the tick
-#: once it has spent `SWEEP_DEADLINE` seconds. `connect()` runs on the window's
+#: A sweep reads the machine's memory in pieces this big, and stops for the
+#: tick once it has spent `SWEEP_DEADLINE` seconds. `connect()` runs on the window's
 #: timer, so one call may not hold the window for the twenty seconds a
 #: half-megabyte read is allowed; what was read is kept and the next call goes
 #: on from there. A piece waits `POLL_TIMEOUT`, so a call takes about the
-#: deadline plus that.
-SWEEP_CHUNK = 0x10000
+#: deadline plus that. The time a piece takes on a real machine has not been
+#: measured. When a piece fails (a timeout, say) the next sweep uses
+#: `SWEEP_SMALL_CHUNK`, so a machine too slow for the big piece still gets
+#: through; `reset()` goes back to the big one.
+SWEEP_CHUNK = fsuaehelper.SWEEP_CHUNK
+SWEEP_SMALL_CHUNK = 0x4000
 SWEEP_DEADLINE = 1.0
+
+#: How long an unfinished sweep may go without gaining a piece before what it
+#: holds is thrown away. A game that reboots or loads another title between two
+#: ticks must not be searched as one memory made of old and new pieces; a slow
+#: machine whose ticks keep adding pieces is not limited in total time.
+SWEEP_CACHE_AGE = 5.0
 
 
 def _listeners(path: str, wanted: frozenset[str]) -> set[int]:
@@ -98,8 +108,8 @@ def listening(port: int | None = None, proc: str = PROC_NET) -> bool:
     The second half asks about loopback (or every address). **Opens no
     socket**, which is what this function is for -- see the module docstring.
     False on any `OSError` and on a machine with no `/proc/net`, and it never
-    raises: it runs on a timer with no emulator present most of the
-    time. Where there is no `/proc` the backend is simply never offered, which
+    raises: it runs on a timer with no emulator present most of the time.
+    Where there is no `/proc` the backend is simply never offered, which
     is right, because the emulator is a Linux x86-64 binary.
     """
     port = amiga.FSUAE_PORT if port is None else port
@@ -129,32 +139,42 @@ _helper = None
 _helper_at: float | None = None
 
 
-#: The pieces of an unfinished sweep, `{address: bytes}`.
-_sweep_cache: dict[int, bytes] = {}
+#: The pieces of an unfinished sweep, `{address: (when it was read, bytes)}`.
+_sweep_cache: dict[int, tuple[float, bytes]] = {}
+#: The size of piece the next sweep reads.
+_piece = SWEEP_CHUNK
 
 
 class SweepPaused(amiga.FsuaeError):
     """The sweep spent its time for this tick and goes on at the next."""
 
 
-def _chunked_read(transport, now, deadline_clock):
-    """A `read(addr, length)` for `locate_machines` that stops at the deadline."""
-    deadline = deadline_clock() + SWEEP_DEADLINE
+def _chunked_read(transport, deadline_clock):
+    """A `read(addr, length)` for `locate_machines` that stops at the deadline.
+
+    All pieces are dropped first if none was added for `SWEEP_CACHE_AGE`.
+    """
+    started = deadline_clock()
+    deadline = started + SWEEP_DEADLINE
     fetched = 0
+    if _sweep_cache and started - max(
+            when for when, _ in _sweep_cache.values()) > SWEEP_CACHE_AGE:
+        _sweep_cache.clear()
 
     def read(base: int, length: int) -> bytes:
         nonlocal fetched
         out = bytearray()
-        for at in range(base, base + length, SWEEP_CHUNK):
-            blob = _sweep_cache.get(at)
+        for at in range(base, base + length, _piece):
+            held = _sweep_cache.get(at)
+            blob = None if held is None else held[1]
             if blob is None:
-                # At least one piece per call, so a slow machine still finishes.
+                # One piece at least per call, so a slow machine finishes.
                 if fetched and deadline_clock() >= deadline:
                     raise SweepPaused("still sweeping the Amiga's memory")
                 blob = transport.read_memory(
-                    at, min(SWEEP_CHUNK, base + length - at),
+                    at, min(_piece, base + length - at),
                     timeout=amiga.FsuaeGdb.POLL_TIMEOUT)
-                _sweep_cache[at] = blob
+                _sweep_cache[at] = (started, blob)
                 fetched += 1
             out += blob
         return bytes(out)
@@ -163,15 +183,16 @@ def _chunked_read(transport, now, deadline_clock):
 
 
 def reset() -> None:
-    """Forget the connection to the helper, so the next `connect()` opens a new one.
+    """Forget the helper connection, so the next `connect()` opens a new one.
 
     Costs nothing: the helper keeps the emulator's connection.
     """
-    global _transport, _port, _machine, _base, _swept_at
+    global _transport, _port, _machine, _base, _swept_at, _piece
     if _transport is not None:
         _transport.close()
     _transport = _port = _machine = _base = _swept_at = None
     _sweep_cache.clear()
+    _piece = SWEEP_CHUNK
 
 
 def forget_helper() -> None:
@@ -239,7 +260,7 @@ def connect(port: int | None = None, opener=None,
     would end the run's debugging, so an unloaded game is waited out and not
     reconnected to.
     """
-    global _transport, _port, _machine, _base, _swept_at
+    global _transport, _port, _machine, _base, _swept_at, _piece
     wanted = amiga.FSUAE_PORT if port is None else port
     if _transport is not None and (_transport.lost or _transport.sock is None
                                    or _port != wanted):
@@ -261,13 +282,14 @@ def connect(port: int | None = None, opener=None,
                 f"s ago and no more than one is made every {SWEEP_EVERY:.0f}s")
         try:
             found = amiga.locate_machines(
-                _chunked_read(_transport, clock, deadline_clock),
+                _chunked_read(_transport, deadline_clock),
                 amiga.MACHINES.values(), sweep_all=True)
         except SweepPaused:
             raise
-        except BaseException:
+        except Exception:
             _swept_at = clock()
             _sweep_cache.clear()
+            _piece = SWEEP_SMALL_CHUNK
             raise
         _swept_at = clock()
         _sweep_cache.clear()
