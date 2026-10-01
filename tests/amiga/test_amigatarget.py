@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import base64
 import json
+import pathlib
 
 import pytest
 from support.amigatarget import BASE, SSB, Guest, target
@@ -275,6 +276,17 @@ DISK = {"secret-of-the-silver-blades": "silver",
         "pools-of-darkness": "darkness"}
 
 
+def _named(key: str, label: str) -> bool:
+    """Whether this image is called after `key`'s title.
+
+    The file's own name, and the zip's for a member of one, and never the
+    folders above them: a folder called `darkness` must not make every disk
+    under it Pools of Darkness'.
+    """
+    names = " ".join(pathlib.PurePath(part).name for part in label.split("!"))
+    return DISK[key] in names.lower().replace("_", "")
+
+
 def _image(key: str, tmp_path, accept):
     """The first Amiga image of this title that `accept` takes, or None.
 
@@ -284,12 +296,15 @@ def _image(key: str, tmp_path, accept):
     """
     from automap import gamedisks
     from tools.amiga import amigasaves
-    want = DISK[key]
+
+    def named(label: str) -> bool:
+        return _named(key, label)
+
     for root in gamedisks.candidates("amiga"):
         if not root.is_dir():
             continue
         for image in sorted(root.rglob("*.adf")):
-            if want not in image.name.lower().replace("_", ""):
+            if not named(image.name):
                 continue
             try:
                 if accept(image):
@@ -297,7 +312,7 @@ def _image(key: str, tmp_path, accept):
             except Exception:
                 continue
     for n, (label, data) in enumerate(amigasaves.images()):
-        if want not in label.lower().replace("_", ""):
+        if not named(label):
             continue
         image = tmp_path / f"{n}.adf"
         image.write_bytes(data)
@@ -567,15 +582,29 @@ def test_the_anchor_is_in_its_own_executable_once(key, tmp_path):
     assert exe.count(layout.anchor) == 1
 
 
-@pytest.mark.parametrize("other", ["secret-of-the-silver-blades",
-                                   "curse-of-the-azure-bonds"])
-def test_the_pools_of_darkness_anchor_is_in_no_other_title(other, tmp_path):
-    """`locate_machines` sweeps every row, so a machine running another title
-    must never match this one."""
+@pytest.mark.parametrize("key,other", [
+    (key, other) for key in sorted(amiga.MACHINES)
+    for other in sorted(amiga.MACHINES) if other != key])
+def test_no_anchor_is_in_another_titles_executable(key, other):
+    """`locate_machines` sweeps every row, so a machine running `other` must
+    never match `key`'s row as well, in its code hunk or anywhere else. Every
+    release of `other` on the player's disks is read, not only the first."""
     from goldbox.amiga_adf import AmigaDisk
-    exe = AmigaDisk.open(_adf(other, tmp_path)).read_file(
-        amiga.MACHINES[other].executable)
-    assert amiga.MACHINES["pools-of-darkness"].anchor not in exe
+    from tools.amiga import amigasaves
+    executable = amiga.MACHINES[other].executable
+    found = []
+    for label, data in amigasaves.images():
+        if not _named(other, label):
+            continue
+        try:
+            exe = AmigaDisk(bytearray(data)).read_file(executable)
+        except Exception:
+            continue
+        found.append((label, exe))
+    if not found:
+        pytest.skip(f"no Amiga disk carrying {executable}; set $AMIGA_DISKS")
+    anchor = amiga.MACHINES[key].anchor
+    assert [label for label, exe in found if anchor in exe] == []
 
 
 def test_a_disk_with_no_library_on_it_is_not_an_error(tmp_path):

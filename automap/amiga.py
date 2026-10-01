@@ -195,11 +195,16 @@ MACHINES: dict[str, AmigaMachine] = {
         notes={"wall_ahead": 0x57A3, "square_attribute": 0x57A4,
                "array_pointer": 0x5160, "array_offset": 0x508},
     ),
+    # The camp bar. The map bar this row used to anchor on is also in the
+    # code hunks of `/Secret`, `/Pools of Darkness` and Pool of Radiance's
+    # `/program`, so a machine running any of those matched this row too; the
+    # camp bar is in no other file on any Gold Box disk (Silver Blades' says
+    # `Alt Fix Load`).
     "curse-of-the-azure-bonds": AmigaMachine(
         title="Curse of the Azure Bonds",
         executable="/Curse",
-        anchor=b"Area Cast View Encamp Search Look",
-        anchor_offset=0x1C9E,
+        anchor=b"Save View Magic Rest Alter Fix Exit",
+        anchor_offset=0xC05,
         party_x=0x3F5E,
         party_y=0x3F60,
         party_facing=0x3F62,
@@ -1630,7 +1635,10 @@ def locate_machines(read, machines, memory=MEMORY) -> dict[str, list[int]]:
     none of them is loaded (or the one that is has not finished loading). A
     title with more than one base is returned with all of them, for the caller
     to refuse: see `find_anchor` on why a second copy is reported rather than
-    resolved here.
+    resolved here. Because every row is tried, each anchor must be in its own
+    executable and no other one, or a running title is also reported as a
+    second; `tests/amiga/test_amigatarget.py` checks every pair on the
+    player's disks.
 
     **A read that raises ends the whole sweep, and `MEMORY` puts SLOW first.**
     `FsuaeGdb.read_memory` raises on the server's `E01`, so on a machine with

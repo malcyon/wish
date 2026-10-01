@@ -251,6 +251,24 @@ def test_two_titles_in_memory_are_refused_and_both_are_named():
     assert CURSE.title in str(raised.value)
 
 
+#: Curse's map bar, which Curse's row once anchored on. It is in the code
+#: hunks of Silver Blades' and Pools of Darkness' executables as well.
+CURSE_MAP_BAR = b"Area Cast View Encamp Search Look"
+
+
+@pytest.mark.parametrize("key", ["secret-of-the-silver-blades",
+                                 "pools-of-darkness"])
+def test_another_titles_menu_text_in_the_code_is_not_taken_for_curse(key):
+    """A title's code carrying a string Curse also has is still that title,
+    and not two titles at once."""
+    machine = amiga.MACHINES[key]
+    memory = loaded(machine)
+    memory[0xC40000] = CURSE_MAP_BAR
+    target = fsuae.connect(opener=Opener(FakeSocket(memory)), clock=Clock())
+    assert target.layout is machine
+    assert target.data_base == BASE
+
+
 def test_a_read_timeout_does_not_cost_the_socket():
     """One slow frame must not become a second connection, which the fork will
     not accept, and the late reply must not become the next read's answer."""
