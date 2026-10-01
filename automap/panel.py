@@ -957,7 +957,9 @@ class BottomStrip(QObject):
         # (`#205 (A party that walks out onto the travel grid leaves the
         # automapper's marker behind)`, Donald's wording).
         if self.where is not None:
-            if state.outdoors:
+            if state.world_map:
+                self.where.setText("")
+            elif state.outdoors:
                 self.where.setText(f"{OUTDOORS_WHERE} ({state.x},{state.y})")
             else:
                 self.where.setText(

@@ -216,6 +216,14 @@ class AutomapState:
     #: `area`, `geo`, `exploration`, `notes`, `candidates` and the fingerprint
     #: are the last indoor ones and are left alone -- see `Automapper.poll`.
     outdoors: bool = False
+    #: True while the party is on a world-map screen: travelling between
+    #: places, with no square and no map. Everything else here is left as the
+    #: last area had it, so the party's return finds its map and notes intact.
+    world_map: bool = False
+    #: Only while `world_map`: the place the party stands at and the one it
+    #: is travelling to, as the title numbers them, or None where unread.
+    world_node: int | None = None
+    world_leg: int | None = None
     #: Which wilderness window (0 west, 1 middle, 2 east) the party is in, or
     #: None until one has been identified. Set only while `outdoors`.
     window: int | None = None
@@ -249,6 +257,8 @@ class AutomapState:
         `#205 (A party that walks out onto the travel grid leaves the
         automapper's marker behind)`.
         """
+        if self.world_map:
+            return ""
         if self.outdoors:
             return OUTDOORS_AREA
         if not self.area:
@@ -533,10 +543,12 @@ class Automapper:
                 self._check_resident()
             return False
 
+        if fix.world_map:
+            return self._poll_world_map(fix)
         if fix.outdoors:
             return self._poll_outdoors(fix)
 
-        returning = self.state.outdoors
+        returning = self.state.outdoors or self.state.world_map
         changed_area = False
         if returning:
             # Coming back in, possibly somewhere else entirely -- the boat to
@@ -547,6 +559,8 @@ class Automapper:
             # loaded before the party left it, for up to `RESIDENT_EVERY`
             # ticks.
             self.state.outdoors = False
+            self.state.world_map = False
+            self.state.world_node = self.state.world_leg = None
             self.state.window = None
             self.state.heading = None
             changed_area = self._check_resident()
@@ -595,6 +609,25 @@ class Automapper:
         self._started = True
         self._last = fix
         self.state.exploration.visit(fix.x, fix.y, self.state.geo)
+        return changed
+
+    def _poll_world_map(self, fix: Fix) -> bool:
+        """The party is on a world-map screen: say so and touch nothing else.
+
+        `x`, `y`, `facing`, `area`, `geo`, the explored set, the notes, the
+        candidates and the fingerprint stay as the last area left them, and
+        the walk state is cleared as `_poll_outdoors` does, so the return
+        (see `poll`) is not mistaken for a step. True when the state changed.
+        """
+        changed = (not self.state.world_map
+                   or (fix.world_node, fix.world_leg)
+                   != (self.state.world_node, self.state.world_leg))
+        self.state.world_map = True
+        self.state.world_node = fix.world_node
+        self.state.world_leg = fix.world_leg
+        self._started = False
+        self._last = None
+        self._pending = None
         return changed
 
     def _poll_outdoors(self, fix: Fix) -> bool:
@@ -730,6 +763,10 @@ class Automapper:
         """
         if fix.source == "status":
             self._proved = self._ticks
+            return True
+        # The flag and the script id read together are proof by themselves,
+        # as the travel grid's window is for Pool of Radiance.
+        if fix.world_map:
             return True
         standing = self._proved is not None
         if standing and self._ticks - self._proved < self.PROVEN_FOR:

@@ -176,6 +176,15 @@ class Title:
     #: stage 9 deletes.
     travel_grid: bool = False
 
+    #: The script ids (`current_script`) that are a world map: a screen the
+    #: party travels on between places, with no `GEO` area and no squares.
+    #: Empty means this title has none measured. Curse of the Azure Bonds'
+    #: Dalelands map runs as scripts `$50` and `$51`, with the indoors flag
+    #: clear; see the route comment on #804 (Check the automapper's outdoor
+    #: travel in Curse, Silver Blades and Pools of Darkness, and make it work
+    #: in any title where it does not).
+    world_map_areas: tuple[int, ...] = ()
+
     @property
     def race_names(self) -> dict[int, str] | None:
         """Race code -> name, or None when this title's list is unknown."""
@@ -194,7 +203,8 @@ POOL_OF_RADIANCE = Title(
 
 CURSE_OF_THE_AZURE_BONDS = Title(
     key="curse-of-the-azure-bonds", title="Curse of the Azure Bonds",
-    races=RACES_CURSE, class_bits=CLASS_BITS_WITH_PALADIN_RANGER)
+    races=RACES_CURSE, class_bits=CLASS_BITS_WITH_PALADIN_RANGER,
+    world_map_areas=(0x50, 0x51))
 
 SECRET_OF_THE_SILVER_BLADES = Title(
     key="secret-of-the-silver-blades", title="Secret of the Silver Blades",

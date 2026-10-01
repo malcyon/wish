@@ -321,7 +321,7 @@ class MapCanvas(QWidget):
         # A click on the bare lattice outdoors would open a note on a
         # window-local travel-grid square filed under the last indoor area --
         # a note nobody could ever find again once the party moved on.
-        if self.state.outdoors:
+        if self.state.outdoors or self.state.world_map:
             return
         at = event.globalPosition().toPoint()
         # **Let the tooltip finish dying first.** `QToolTip.hideText()` does
@@ -366,7 +366,7 @@ class MapCanvas(QWidget):
         # either; the strip and the status line say so instead
         # (`OUTDOORS_WHERE`/`OUTDOORS_AREA` in `automap/state.py`,
         # `OUTDOORS_STATUS` above).
-        if st.outdoors or st.geo is None:
+        if st.outdoors or st.world_map or st.geo is None:
             return
 
         # The primitives are asked for at margin zero and the painter is moved
@@ -1361,6 +1361,11 @@ class AutomapBinding(QObject):
         self._sync_controls()
         if self.world_canvas is not None:
             self.world_canvas.update()
+        if st.world_map:
+            # Nothing is said until the tab has something to show here.
+            self._say("")
+            self.canvas.update()
+            return
         if st.outdoors:
             # `window` is set only when a world identifies the block.
             if st.window is not None:
@@ -1415,7 +1420,7 @@ class AutomapBinding(QObject):
 
     def note_here(self) -> None:
         """`N`: a note on the party's own square, if we know where that is."""
-        if self.state.outdoors:
+        if self.state.outdoors or self.state.world_map:
             return   # a window-local square, on no map this tab draws
         if self.state.source or self.snapshot is not None:
             self.edit_note(self.state.x, self.state.y)

@@ -38,7 +38,7 @@ from typing import Protocol
 
 from goldbox import c64_port
 
-from .c64 import machine_for
+from .c64 import WORLD_MAP_SCRIPT_SPAN, machine_for
 from .screen import SCREEN_COLS, Banks, codes_to_text, is_bitmap, screen_address
 from .vice import Monitor, MonitorError, banked, monitor_address
 
@@ -139,6 +139,15 @@ class Fix:
     source: str
     clock: int | None = None
     outdoors: bool = False
+    #: True on a world-map screen: the party travels between places, there is
+    #: no square, and `x`, `y` and `facing` mean nothing. Any backend may
+    #: raise it; the automapper's state handling does not depend on the title.
+    world_map: bool = False
+    #: Only with `world_map`: the place the party stands at and the one it is
+    #: travelling to, as the title numbers them, or None where unread. For a
+    #: later route diagram to highlight.
+    world_node: int | None = None
+    world_leg: int | None = None
 
     @property
     def square(self) -> tuple[int, int]:
@@ -256,6 +265,15 @@ def party_fix(read, game: c64_port.C64Container | None = None, banks=None) -> Fi
             return None
         # Fall through to the ordinary indoor read below:
         # `machine.live_position` is the same $C04B either way.
+    if machine.world_map_flag_base is not None:
+        # The flag and the script id are one read; the script id alone is
+        # also set in the camp and fights of the area it belongs to.
+        span = read(machine.world_map_flag_base, WORLD_MAP_SCRIPT_SPAN)
+        if (len(span) == WORLD_MAP_SCRIPT_SPAN and span[0] == 0
+                and span[-1] in machine.title.world_map_areas):
+            node = read(machine.world_node_base, 2)
+            return Fix(0, 0, None, "memory", None, world_map=True,
+                       world_node=node[0], world_leg=node[1])
     if machine.live_position is None:
         return None
     x, y, facing = read(machine.live_position,

@@ -113,6 +113,14 @@ RESIDENT_WINDOW = 0x8C00
 #: The travel grid's heading byte.
 TRAVEL_HEADING = 0x033D
 
+#: Bytes from the indoors flag (`+$E6`) to the script id (`+$F2`), inclusive:
+#: one read covers both.
+WORLD_MAP_SCRIPT_SPAN = 13
+
+#: Payload offset of the world map's current-town byte (`$4C9B` with the save
+#: image at `$4B00`); the destination follows it. Route comment on #804.
+WORLD_NODE_OFFSET = 0x19B
+
 
 @dataclass(frozen=True)
 class C64Machine:
@@ -211,6 +219,30 @@ class C64Machine:
         c = self.container
         return self.save_load_address + (c.indoors if c else
                                          c64_save.INDOORS_FLAG_OFFSET)
+
+    @property
+    def world_map_flag_base(self) -> int | None:
+        """The indoors flag's address, for a title that has a world-map screen.
+
+        None unless `title.world_map_areas` is set. Separate from
+        `indoors_flag_base` on purpose: that one gates the travel grid's
+        square read, and a title with a world map but no travel grid must
+        still answer None there. A world map is told from this flag together
+        with the script id, `WORLD_MAP_SCRIPT_SPAN` bytes on.
+        """
+        if not self.title.world_map_areas:
+            return None
+        c = self.container
+        return self.save_load_address + (c.indoors if c else
+                                         c64_save.INDOORS_FLAG_OFFSET)
+
+    @property
+    def world_node_base(self) -> int | None:
+        """`$4C9B`, then `$4C9C`: the town the party stands at and the one it
+        is travelling to, on Curse's world map. None unless the title has one."""
+        if not self.title.world_map_areas:
+            return None
+        return self.save_load_address + WORLD_NODE_OFFSET
 
     @property
     def travel_position_base(self) -> int | None:
