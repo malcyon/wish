@@ -1,11 +1,9 @@
-"""The status line outdoors names the region, behind
-`WISH_EXPERIMENTAL_WILDERNESS_MAP`. Synthetic windows, no disks, no emulator."""
+"""The status line outdoors names the region. Synthetic windows, no disks, no emulator."""
 
 import pytest
 from support.automapwindow import make_window
 
 from automap import c64
-from automap.state import WILDERNESS_ENV
 from automap.target import Fix, ReplayTarget
 from goldbox.world import GRID_SIZE, MIN_FILE_SIZE, Window, World
 
@@ -36,11 +34,7 @@ def app():
     return QApplication.instance() or QApplication([])
 
 
-def _status(app, tmp_path, monkeypatch, block, flag="1"):
-    if flag is None:
-        monkeypatch.delenv(WILDERNESS_ENV, raising=False)
-    else:
-        monkeypatch.setenv(WILDERNESS_ENV, flag)
+def _status(app, tmp_path, monkeypatch, block):
     fix = Fix(8, 27, None, "status", 1000, outdoors=True)
     win = make_window(app, tmp_path, monkeypatch, Target([fix], block))
     win.mapper.use_world(_world())
@@ -59,10 +53,4 @@ def test_the_status_line_names_the_region_and_the_local_square(
 
 def test_an_unidentified_block_keeps_the_old_line(app, tmp_path, monkeypatch):
     assert (_status(app, tmp_path, monkeypatch, bytes(GRID_SIZE))
-            == "Outdoors, no map   [status]")
-
-
-@pytest.mark.parametrize("flag", [None, "0", "off", ""])
-def test_with_the_flag_off_the_old_line_stays(app, tmp_path, monkeypatch, flag):
-    assert (_status(app, tmp_path, monkeypatch, _grid(1), flag)
             == "Outdoors, no map   [status]")

@@ -1,5 +1,4 @@
-"""The outdoor picture, its two radios and the page switch, behind
-`WISH_EXPERIMENTAL_WILDERNESS_MAP`. Synthetic windows whose every square is one
+"""The outdoor picture, its two radios and the page switch. Synthetic windows whose every square is one
 solid colour per window: no game bytes, no disks, no emulator."""
 
 import pytest
@@ -9,7 +8,7 @@ from support.automapwindow import make_window
 from automap import c64
 from automap.config import Settings
 from automap.render import CELL, CELL_MIN, MARGIN
-from automap.state import WILDERNESS_ENV, AutomapState
+from automap.state import AutomapState
 from automap.target import Fix, ReplayTarget
 from automap.window import (
     AREA_VIEW,
@@ -90,11 +89,7 @@ def indoors(x=3, y=3):
     return Fix(x, y, 0, "status", 1001)
 
 
-def _window_on(app, tmp_path, monkeypatch, fixes, window=1, flag="1", heading=2):
-    if flag is None:
-        monkeypatch.delenv(WILDERNESS_ENV, raising=False)
-    else:
-        monkeypatch.setenv(WILDERNESS_ENV, flag)
+def _window_on(app, tmp_path, monkeypatch, fixes, window=1, heading=2):
     target = Target(fixes, _grid(window), heading)
     win = make_window(app, tmp_path, monkeypatch, target)
     win.set_world(_world())
@@ -167,20 +162,9 @@ def test_disks_without_glyphs_keep_the_map_page(app, tmp_path, monkeypatch):
     assert win.stack.currentWidget() is win.canvas
 
 
-# -- the flag ------------------------------------------------------------------
+# -- the widgets ----------------------------------------------------------------
 
-@pytest.mark.parametrize("flag", [None, "0", "off", ""])
-def test_with_the_flag_off_there_is_no_page_and_no_radio(
-        app, tmp_path, monkeypatch, flag):
-    win, _ = _window_on(app, tmp_path, monkeypatch, [out(8, 27)], flag=flag)
-    _step(win)
-    assert win.world_canvas is None
-    assert win.view_buttons == ()
-    assert win.stack.currentWidget() is win.canvas
-    assert win.stack.count() == 2
-
-
-def test_with_the_flag_on_the_page_and_two_radios_exist(
+def test_the_page_and_two_radios_exist(
         app, tmp_path, monkeypatch):
     win, _ = _window_on(app, tmp_path, monkeypatch, [out(8, 27)])
     assert win.world_canvas is not None

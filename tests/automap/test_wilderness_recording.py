@@ -1,15 +1,11 @@
-"""Reading the travel grid's window, behind `WISH_EXPERIMENTAL_WILDERNESS_MAP`.
+"""Reading the travel grid's window.
 No disks and no emulator: the windows are synthetic and `ReplayTarget` answers
 `$8C00`."""
 
 import pytest
 
 from automap import c64
-from automap.state import (
-    WILDERNESS_ENV,
-    Automapper,
-    wilderness_enabled,
-)
+from automap.state import Automapper
 from automap.target import Fix, ReplayTarget
 from goldbox.world import GRID_SIZE, MIN_FILE_SIZE, Window, World
 
@@ -50,7 +46,6 @@ def app():
 
 @pytest.fixture
 def on(monkeypatch, tmp_path):
-    monkeypatch.setenv(WILDERNESS_ENV, "1")
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
 
 
@@ -128,33 +123,6 @@ def test_a_target_that_is_not_a_c64_is_never_read(on):
     mapper, target = mapper_for([out(8, 20)], _window(1))
     target.c64_memory = False
     mapper.poll()
-    assert target.reads == []
-
-
-# -- the flag ----------------------------------------------------------------
-
-def test_the_flag_is_off_by_default(monkeypatch):
-    monkeypatch.delenv(WILDERNESS_ENV, raising=False)
-    assert wilderness_enabled() is False
-
-
-@pytest.mark.parametrize("value", ["0", "off", "", "no", "false"])
-def test_a_forgotten_value_does_not_turn_it_on(monkeypatch, value):
-    monkeypatch.setenv(WILDERNESS_ENV, value)
-    assert wilderness_enabled() is False
-
-
-@pytest.mark.parametrize("value", ["1", "true", "yes", "on", "ON"])
-def test_the_flag_turns_it_on(monkeypatch, value):
-    monkeypatch.setenv(WILDERNESS_ENV, value)
-    assert wilderness_enabled() is True
-
-
-def test_with_the_flag_off_nothing_is_read(monkeypatch, tmp_path):
-    monkeypatch.delenv(WILDERNESS_ENV, raising=False)
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-    mapper, target = mapper_for([out(8, 20, "memory")], _window(1))
-    assert mapper.poll() is False           # no proof, as before
     assert target.reads == []
 
 

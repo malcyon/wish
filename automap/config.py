@@ -125,7 +125,7 @@ class Settings:
     # On by default -- discovering the map is the point -- but the choice is
     # remembered, so turning it off stays off.
     reveal: bool = True
-    # Which outdoor picture the map draws behind `WISH_EXPERIMENTAL_WILDERNESS_MAP`:
+    # Which outdoor picture the map draws on the wilderness:
     # `"full"`, the whole wilderness, or `"area"`, a piece centred on the party.
     # Anything else in the file reads as `"full"` (`__post_init__`).
     wilderness_view: str = "full"

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import pathlib
 from dataclasses import dataclass, field
 
@@ -43,26 +42,6 @@ OUTDOORS_AREA = "Wilderness"
 #: The three wilderness windows' names, indexed by `AutomapState.window`
 #: (west, middle, east). Donald's names, approved 2026-09-24, and fixed.
 OUTDOORS_REGIONS = ("West of Phlan", "Stojanow Valley", "East of Phlan")
-
-#: `WISH_EXPERIMENTAL_WILDERNESS_MAP`: drawing the game's own wilderness tiles
-#: on the map while the party is on the travel grid. The truthiness rule is
-#: `wish/debugmode.py`'s: an empty string, `0` and `off` are off, so a variable
-#: somebody exported once and forgot does not put an unfinished feature in
-#: front of them.
-#:
-#: **Comes off when `#11 (Draw the wilderness on the automapper)` closes**,
-#: which needs a `grab()` of the world page in both views, posted on that
-#: issue as our own visual check, the live walk across a seam, and the live
-#: check that a site the game has painted over is drawn with its own art, run
-#: and posted there.
-WILDERNESS_ENV = "WISH_EXPERIMENTAL_WILDERNESS_MAP"
-_TRUE = ("1", "true", "yes", "on")
-
-
-def wilderness_enabled() -> bool:
-    """Is the wilderness map drawn on the travel grid in this run?"""
-    return os.environ.get(WILDERNESS_ENV, "").strip().lower() in _TRUE
-
 
 #: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
 #: when the log is on and its level swallows them when it is off. The window's
@@ -448,10 +427,8 @@ class Automapper:
 
     def use_world(self, world) -> None:
         """The wilderness windows to identify the resident block against.
-
-        Ignored unless `WISH_EXPERIMENTAL_WILDERNESS_MAP` is on.
-        """
-        self._world = world if wilderness_enabled() else None
+"""
+        self._world = world
         self._block = None
 
     def _read_window(self) -> tuple[bytes, tuple[int, int] | None] | None:

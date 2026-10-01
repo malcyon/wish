@@ -89,7 +89,7 @@ from .render import (
     party_marker,
     travel_marker,
 )
-from .state import OUTDOORS_REGIONS, OUTDOORS_WHERE, wilderness_enabled
+from .state import OUTDOORS_REGIONS, OUTDOORS_WHERE
 
 PAPER = QColor("#fbfcfd")
 LATTICE = QColor("#dbe3ec")
@@ -794,16 +794,12 @@ class AutomapBinding(QObject):
 
         self.canvas = MapCanvas(self.state, parent=self.root, host=self)
         self.battle_canvas = CombatCanvas(parent=self.root, host=self)
-        #: The wilderness page and its two radios exist only behind
-        #: `WISH_EXPERIMENTAL_WILDERNESS_MAP`: with it off there is no widget
-        #: to grey out or explain.
         self.world_canvas: WorldCanvas | None = None
         self.view_buttons: tuple[QRadioButton, ...] = ()
         #: None until the host says, because the controls are not in a window
         #: before it does and showing one would open it on its own.
         self._controls_shown: bool | None = None
-        if wilderness_enabled():
-            self.world_canvas = WorldCanvas(self.state, parent=self.root)
+        self.world_canvas = WorldCanvas(self.state, parent=self.root)
         # One tab, two canvases, and only ever one of them true: when the game
         # enters combat the area map becomes the combat map and changes back
         # afterwards. Two tabs would mean the useful one is always the one you
@@ -960,13 +956,9 @@ class AutomapBinding(QObject):
         self._refresh()
 
     def _use_world(self, disks) -> None:
-        """Load the wilderness windows off these disks, if the experimental
-        drawing is on."""
+        """Load the wilderness windows off these disks."""
         from .maps import load_world
-        world = None
-        if wilderness_enabled():
-            world = load_world(disks, game_named(self.state.title))
-        self.set_world(world)
+        self.set_world(load_world(disks, game_named(self.state.title)))
 
     def set_world(self, world) -> None:
         """Hand the mapper the wilderness windows to identify the party's

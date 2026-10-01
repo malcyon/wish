@@ -4,9 +4,8 @@ The situation: the automapper draws every dungeon and every city block, and
 the moment the party takes the boat out of Phlan the map tab goes to a bare
 lattice. Since `#205 (A party that walks out onto the travel grid leaves the
 automapper's marker behind)` the tab at least says `Outdoors (7,29)` and
-`Wilderness` and stops drawing a stale indoor marker. With
-`WISH_EXPERIMENTAL_WILDERNESS_MAP` on it also draws the game's own wilderness
-tiles and the party's marker; with the flag off it draws neither.
+`Wilderness` and stops drawing a stale indoor marker. It
+also draws the game's own wilderness tiles and the party's marker.
 
 This is the plan another agent executes for
 `#11 (Draw the wilderness on the automapper)`. Two earlier documents planned
@@ -167,8 +166,7 @@ reading on another window is taken.
 ## 4. The order of work
 
 Each piece is one reviewable commit with a test that goes red without it.
-Pieces 1 to 6 are built behind `WISH_EXPERIMENTAL_WILDERNESS_MAP`; 7 waits on
-Donald's decision 3.
+Pieces 1 to 6 are built; 7 waits on Donald's decision 3.
 
 **1. `tools/pool_of_radiance/worldtiles.py`, measurement A.** `sheet` writes the three
 sheets; `view WINDOW X Y` writes the game's own pane around a square; `sample
