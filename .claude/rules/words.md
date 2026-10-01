@@ -19,6 +19,10 @@
 | **floor**, for anything but a story of a building -- "a floor under the window", "a green suite is the floor" | say the thing: "the window never gets narrower than this", "passing it proves nothing broke" |
 | **carried**, of anything a conversion does not convert -- "not carried", "carries it across", "nowhere to carry it" | **converted**, and then say what a player loses: "the ring does not resist fire on the other side yet". The word is how an agent gives up and makes it sound like a finding. |
 | **census**, for anything but a government counting a country's people house by house -- "the census found", "a census of the saves", "run a census" | say what was counted: "a count of", "a sweep of", "a survey of", "the list of every X", "a measurement across the saves we have". The ban covers file names and identifiers too. |
+| **refusal**, the noun, and **refusals** -- "the refusal", "a refusal rather than a loss", "the hook's refusal" | say what happens: "Save As fails and writes no converted save", "the hook blocks the command and prints why", "the game prints NOT HERE and the step stops". Not "error" by reflex: an error does not say the action was stopped on purpose. The verbs stay. The ban covers identifiers, keys, file names, quotations and code spans too, with no exemption. |
+
+`tests/suite/test_banned_words.py` enforces this table; `tools/suite/bannedwords.py`
+lists the rows no pattern can check.
 
 **A row's examples are examples; the word is banned however it is phrased**,
 and the table is not the whole rule -- the habit behind it is reaching for
