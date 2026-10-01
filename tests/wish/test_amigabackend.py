@@ -641,7 +641,8 @@ def test_a_live_helper_is_read_through_and_no_second_one_starts(helperless, monk
 
     sock = FakeSocket(loaded(BLADES))
     monkeypatch.setattr(fsuaehelper, "find", lambda port, runtime, platform=None: {"socket": "x"})
-    monkeypatch.setattr(fsuaehelper.PLATFORM, "connect", lambda info: sock)
+    monkeypatch.setattr(fsuaehelper.PLATFORM, "connect",
+                        lambda info, timeout=None: sock)
 
     def starter(port, runtime):
         raise AssertionError("a helper was started with one running")
@@ -658,3 +659,33 @@ def test_a_live_helper_counts_as_something_to_connect_to(tmp_path, monkeypatch):
                         lambda port, runtime, platform=None: {"socket": "x"})
     assert fsuae.listening(2345, proc=str(tmp_path / "nothing")) is True
 
+
+
+def test_the_helper_is_connected_and_greeted_with_the_short_timeout_then_reads_with_the_long_one(
+        helperless, monkeypatch):
+    from automap import fsuaehelper
+
+    seen = []
+    sock = FakeSocket(loaded(BLADES))
+    monkeypatch.setattr(fsuaehelper, "find",
+                        lambda port, runtime, platform=None: {"socket": "x"})
+    monkeypatch.setattr(fsuaehelper.PLATFORM, "connect",
+                        lambda info, timeout=None: seen.append(timeout) or sock)
+    fsuae.connect(port=2345, clock=Clock())
+    assert seen == [amiga.FsuaeGdb.POLL_TIMEOUT]
+    assert fsuae._transport.timeout == amiga.FsuaeGdb.TIMEOUT
+
+
+def test_a_helper_whose_socket_will_not_take_the_connection_is_a_not_connected(
+        helperless, monkeypatch):
+    from automap import fsuaehelper
+
+    def stuck(info, timeout=None):
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(fsuaehelper, "find",
+                        lambda port, runtime, platform=None: {"socket": "x"})
+    monkeypatch.setattr(fsuaehelper.PLATFORM, "connect", stuck)
+    with pytest.raises(amiga.FsuaeError):
+        fsuae.connect(port=2345, clock=Clock())
+    assert fsuae._transport is None

@@ -537,7 +537,11 @@ reads.
   no helper is alive and the fork is listening, `connect()` starts one detached
   (not more often than `HELPER_RETRY`) and raises `FsuaeError` at once, so the
   window shows its waiting line and asks again a second later; it never waits
-  for the helper. `listening(port)` also says yes while a helper is alive.
+  for the helper. The helper's socket is connected, and greeted, with
+  `FsuaeGdb.POLL_TIMEOUT`, so a busy helper costs a tick and not twenty
+  seconds. **A helper that dies after taking the fork's connection cannot be
+  replaced:** the fork never listens again, so the player has to restart
+  FS-UAE. `listening(port)` also says yes while a helper is alive.
   `connect()` opens the helper's socket once per emulator run and caches the
   transport, the title found on it and the data hunk's base together. The window
   detaches on any `NotConnected` and attaches again on its next tick, and

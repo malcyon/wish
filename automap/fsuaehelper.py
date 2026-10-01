@@ -118,9 +118,10 @@ class Posix:
     def secure_dir(self, runtime: pathlib.Path) -> None:
         """Create the runtime directory readable by this user alone.
 
-        Raises `OSError` for a directory that already exists and is not this
-        user's, is a symlink, or lets others write to it. Only a directory
-        created here has its mode set: another program's is not ours to change.
+        Creates the directory with mode 0700 when it is missing. One that
+        already exists is accepted only if it is a real directory (not a
+        symlink) owned by this user and not writable by group or others, and
+        its mode is left alone; anything else raises `OSError`.
         """
         try:
             runtime.mkdir(mode=0o700, parents=True)
@@ -177,10 +178,19 @@ class Posix:
     def remove_endpoint(self, files: "Paths") -> None:
         files.sock.unlink(missing_ok=True)
 
-    def connect(self, info: dict):
-        """A connected client socket for the helper `info` describes."""
+    def connect(self, info: dict, timeout: float | None = None):
+        """A connected client socket for the helper `info` describes.
+
+        `timeout` bounds the connect, which waits when the helper's backlog is
+        full; expiry raises `OSError`.
+        """
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        sock.connect(info["socket"])
+        sock.settimeout(timeout)
+        try:
+            sock.connect(info["socket"])
+        except OSError:
+            sock.close()
+            raise
         return sock
 
     def command_line(self, pid: int) -> list[str] | None:
@@ -324,6 +334,12 @@ class Helper:
                     f"its greeting was {self.gdb.greeting!r}")
         try:
             self.gdb.resume()
+        except amiga.FsuaeError as exc:
+            staged.close()
+            temp.unlink(missing_ok=True)
+            return self._fail(EXIT_NOT_PUBLISHED,
+                              f"could not publish the helper: {exc}")
+        try:
             info = {"version": 1, "pid": os.getpid(), "port": self.port,
                     "socket": self.platform.endpoint(self.paths),
                     "upstream_local_port": self.gdb.sock.getsockname()[1],

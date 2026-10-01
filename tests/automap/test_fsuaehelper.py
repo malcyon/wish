@@ -664,3 +664,33 @@ def test_a_second_wish_finds_the_helper_the_first_started_and_the_fork_never_not
     finally:
         fork.close()
         wait_for(lambda: not processes_naming(str(runtime)), 10)
+
+
+def test_connecting_to_a_helper_with_a_full_backlog_gives_up_at_the_timeout(runtime):
+    path = str(runtime / "full.sock")
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listener.bind(path)
+    listener.listen(0)
+    held = []
+    try:
+        began = time.monotonic()
+        with pytest.raises(OSError):
+            for _ in range(20):
+                held.append(fsuaehelper.PLATFORM.connect({"socket": path}, 0.2))
+        assert time.monotonic() - began < 5
+    finally:
+        for sock in held:
+            sock.close()
+        listener.close()
+
+
+def test_a_failed_resume_leaves_no_half_published_helper(fork, runtime, monkeypatch):
+    def refuse(self):
+        raise amiga.FsuaeError("no")
+
+    monkeypatch.setattr(amiga.FsuaeGdb, "resume", refuse)
+    helper = fsuaehelper.Helper(fork.port, runtime)
+    assert helper.startup() == fsuaehelper.EXIT_NOT_PUBLISHED
+    helper._cleanup()
+    files = fsuaehelper.Paths(fork.port, runtime)
+    assert not files.json.exists() and not files.json.with_suffix(".json.tmp").exists()
