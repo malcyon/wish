@@ -93,6 +93,31 @@ looks.
 can write settings back. His file is read as a template and never opened for
 writing.
 
+**Snapshot before any risky leg, and roll back instead of fighting.** A risky
+leg is a walk through an area with random encounters or a journey across a
+world map. C64 drivers: `Session.snapshot(name)` saves the whole machine, the
+1541 and its disk included, under the slot's `~/.cache/wish` folder;
+`restore(name)` puts it back; `discard_snapshot(name)` deletes it;
+`walk_with_retry(moves, retries=3)` does the snapshot, walk, restore and retry
+for a leg and returns False, with the machine restored, when every attempt met
+an encounter. After a restore `save_game` raises until a disk is attached on
+purpose. Amiga: (equivalent not yet established.)
+
+**Suppress random encounters with `Session.no_encounters = True`, unless the
+run proves a conversion or must meet encounters.** C64 drivers: it writes the
+running area's gate from `ENCOUNTER_GATES` before every move key, and
+`skip_world_map_ambushes = True` skips Curse's fixed world-map fights. Both are
+for automapper and driver testing only, never for conversion acceptance or for
+a save that proves a conversion: the pokes are save-page bytes, so once any is
+written `save_game` raises unless `allow_suppressed=True` is passed. An area
+missing from the table is logged once as unsuppressed; add its gate to
+`ENCOUNTER_GATES` to cover it. Amiga: (equivalent not yet established.)
+
+**Every emulator run that walks a party through areas with random encounters,
+or travels a world map, uses snapshots, plus `no_encounters` unless it proves a
+conversion or must meet encounters.** A brief for an `emulator-runner` says
+which of the two it wants.
+
 **A new tool that needs the player's disks reads `$POR_DISKS`, then
 `automap.paths.find_disks()`** -- not a fourth way, and never a hardcoded path.
 `tools/areas/geomap.py` is the one-liner.
