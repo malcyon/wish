@@ -39,6 +39,10 @@ stay unaffected by the flag.
 unset it is absent in the same way: no entry, no probe, no import of
 `wish.fsuae`. `docs/96-live-memory-automapper.md` says what it reads and what
 the fork needs.
+
+**The WinUAE backend is behind `WISH_EXPERIMENTAL_AMIGA_WINUAE`** and is absent
+the same way, and it also needs `wish.winuae.AMIGA_WINUAE`, the row whose name
+and setup hint are not written yet.
 """
 
 from __future__ import annotations
@@ -77,6 +81,17 @@ TRUE = ("1", "true", "yes", "on")
 #: The flag also decides whether Wish names Pools of Darkness from its Amiga
 #: disks and offers its folder row.
 AMIGA_FSUAE_ENV = "WISH_EXPERIMENTAL_AMIGA_FSUAE"
+
+#: `WISH_EXPERIMENTAL_AMIGA_WINUAE`: the Amiga row that reads WinUAE on the same
+#: Windows machine, through its named pipe. Same truthiness rule as `TRUE`.
+#:
+#: **Comes off when a party has been walked under the window with WinUAE on
+#: Windows on each title that has a row in `automap.amiga.MACHINES`, which is
+#: the check `#34 (Validate the live automapper tab per title)` asks for.**
+#: `#37 (Automap the Amiga version, not just the C64)` is where that gets
+#: settled. Like the FS-UAE flag it also decides whether Wish names Pools of
+#: Darkness from its Amiga disks and offers its folder row.
+AMIGA_WINUAE_ENV = "WISH_EXPERIMENTAL_AMIGA_WINUAE"
 
 
 def ultimate_enabled() -> bool:
@@ -140,6 +155,16 @@ def _ultimate() -> list[Backend]:
     return [ULTIMATE]
 
 
+def amiga_winuae_enabled() -> bool:
+    """Is the WinUAE backend offered in this run?"""
+    return os.environ.get(AMIGA_WINUAE_ENV, "").strip().lower() in TRUE
+
+
+def amiga_enabled() -> bool:
+    """Is either Amiga backend on?"""
+    return amiga_fsuae_enabled() or amiga_winuae_enabled()
+
+
 def amiga_fsuae_enabled() -> bool:
     """Is the Amiga backend offered in this run?"""
     return os.environ.get(AMIGA_FSUAE_ENV, "").strip().lower() in TRUE
@@ -148,7 +173,7 @@ def amiga_fsuae_enabled() -> bool:
 def amiga_only_titles() -> tuple:
     """The titles that have Amiga disks and no C64 container, while the Amiga
     backend is on; nothing otherwise, so the flag off changes no lookup."""
-    if not amiga_fsuae_enabled():
+    if not amiga_enabled():
         return ()
     from automap.maps import AMIGA_ONLY_TITLES
     return AMIGA_ONLY_TITLES
@@ -171,9 +196,26 @@ def _amiga_fsuae() -> list[Backend]:
     return [AMIGA_FSUAE]
 
 
+def _amiga_winuae() -> list[Backend]:
+    """WinUAE on this machine, if `WISH_EXPERIMENTAL_AMIGA_WINUAE` says so and
+    `wish.winuae` defines its row.
+
+    Built like `_amiga_fsuae()`. Until the row's name and setup hint are
+    approved, `AMIGA_WINUAE` does not exist and this offers nothing.
+    """
+    if not amiga_winuae_enabled():
+        return []
+    try:
+        from .winuae import AMIGA_WINUAE
+    except Exception as exc:
+        debuglog.debug("the WinUAE backend is not available: %s", exc)
+        return []
+    return [AMIGA_WINUAE]
+
+
 def backends() -> list[Backend]:
     """Every backend, in the order they are tried."""
-    return [VICE] + _ultimate() + _amiga_fsuae()
+    return [VICE] + _ultimate() + _amiga_fsuae() + _amiga_winuae()
 
 
 def available() -> list[Backend]:
