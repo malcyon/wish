@@ -13,7 +13,9 @@ and closes its door for good when that client leaves, so a Wish that held the
 connection would end the player's debugging when it closed. A background helper
 (`automap.fsuaehelper`) holds it instead and outlives Wish; `connect()` finds
 that helper, or starts one when the fork is listening and none runs, and reads
-memory through it. Starting is not waited for: `connect()` raises `FsuaeError`
+memory through it. **If the helper itself dies while the game runs, the
+connection cannot be remade:** the fork never listens again once its one client
+has left, so the player has to restart FS-UAE. Starting is not waited for: `connect()` raises `FsuaeError`
 (a `NotConnected`) and the window asks again on its next tick.
 
 **`connect()` opens the helper's socket once per emulator run.** The window
@@ -84,8 +86,9 @@ def listening(port: int | None = None, proc: str = PROC_NET) -> bool:
     """Is a helper alive for `port`, or something listening there for TCP?
 
     The second half asks about loopback (or every address). **Opens no
-    socket**, which is what this function is for -- see the module docstring. False on any `OSError` and on a machine with no `/proc/net`, and
-    it never raises: it runs on a timer with no emulator present most of the
+    socket**, which is what this function is for -- see the module docstring.
+    False on any `OSError` and on a machine with no `/proc/net`, and it never
+    raises: it runs on a timer with no emulator present most of the
     time. Where there is no `/proc` the backend is simply never offered, which
     is right, because the emulator is a Linux x86-64 binary.
     """
@@ -158,8 +161,15 @@ def _open_transport(wanted: int, port, opener, clock, starter) -> amiga.FsuaeGdb
         return amiga.FsuaeGdb(port=port, opener=opener)
     info = fsuaehelper.find(wanted, fsuaehelper.runtime_dir())
     if info is not None:
-        return amiga.FsuaeGdb(
-            port=wanted, opener=lambda: fsuaehelper.PLATFORM.connect(info))
+        # This runs on the window's timer, so neither the connect nor the
+        # greeting may wait the transport's usual twenty seconds; a timeout is
+        # a FsuaeError and the window asks again on its next tick.
+        short = amiga.FsuaeGdb.POLL_TIMEOUT
+        gdb = amiga.FsuaeGdb(
+            port=wanted, timeout=short,
+            opener=lambda: fsuaehelper.PLATFORM.connect(info, short))
+        gdb.timeout = amiga.FsuaeGdb.TIMEOUT    # the sweep's reads need it
+        return gdb
     if listening(wanted):
         _ensure_helper(wanted, clock, starter)
         raise amiga.FsuaeError("starting the connection helper")
