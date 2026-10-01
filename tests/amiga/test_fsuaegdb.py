@@ -22,6 +22,7 @@ Amiga game run on one machine?)`.
 
 from __future__ import annotations
 
+import dataclasses
 import pathlib
 import re
 import socket
@@ -2632,3 +2633,178 @@ def test_a_session_wait_for_the_first_key_beats_in_short_pieces(
                                first_key_after=15.0)
     assert [r["event"] for r in rows].count("beat") >= 2
     assert events["key"]["keys"] == "KP_Up"
+
+
+# no_encounters
+
+SCRIPT = 0xC30000
+GATE_AT = SCRIPT + 0x82EA
+#: Made-up operands after the opcode: only the opcode is the driver's to know.
+POD_GATE = bytes([0x08, 0x11, 0x22, 0x33, 0x44, 0x55])
+POD_PATCHED = bytes([0x09, 0x11, 0x22, 0x33, 0x44, 0x55])
+
+
+@pytest.fixture
+def scripted(driven, monkeypatch):
+    """The driven machine with Pools of Darkness' script buffer loaded.
+
+    The table's hash is swapped for one of the made-up statement, so the test
+    memory holds no real script bytes.
+    """
+    from tools.amiga import noencounters
+    monkeypatch.setattr(noencounters, "ROWS", tuple(
+        dataclasses.replace(r, digest=noencounters.digest(POD_GATE))
+        if r.title == "pools-of-darkness" and r.kind == noencounters.GATE
+        else r for r in noencounters.ROWS))
+    guest, log = driven
+    guest.writable = True
+    data = bytearray(guest.memory[BASE])
+    data[0x6EA6:0x6EAA] = SCRIPT.to_bytes(4, "big")
+    guest.memory[BASE] = bytes(data)
+    script = bytearray(0x9000)
+    script[0x82EA:0x82EA + 6] = POD_GATE
+    guest.memory[SCRIPT] = bytes(script)
+    return guest, log
+
+
+def gate_bytes(guest):
+    return guest.peek(GATE_AT, 6)
+
+
+def on_each_key(monkeypatch, guest, log, after=None):
+    """Record the gate as the game would see it when a key lands."""
+    from tools.amiga import fsuaepor
+    seen = []
+
+    def press(a):
+        log["keys"].append((a.key, a.hold))
+        seen.append(gate_bytes(guest))
+        if after:
+            after()
+    monkeypatch.setattr(fsuaepor, "keys", press)
+    return seen
+
+
+def reload_script(guest):
+    guest.memory[SCRIPT] = (guest.memory[SCRIPT][:0x82EA] + POD_GATE
+                            + guest.memory[SCRIPT][0x82F0:])
+
+
+def test_no_encounters_is_not_applied_unless_asked(scripted, tmp_path, monkeypatch):
+    guest, log = scripted
+    seen = on_each_key(monkeypatch, guest, log)
+    run_session(tmp_path, ["locate", "key a", "wait 0.5"])
+    assert seen == [POD_GATE]
+    assert not any(b.startswith("M") for b in guest.received)
+
+
+def test_no_encounters_on_changes_the_roll_and_off_puts_it_back(scripted, tmp_path):
+    guest, _ = scripted
+    events, rows = run_session(
+        tmp_path, ["locate", "no_encounters on", "wait 0.5",
+                   "no_encounters off", "wait 0.5"])
+    actions = [r["action"] for r in rows if r["event"] == "no_encounters"]
+    assert actions[0] == "on" and actions[-1] == "off"
+    assert [b for b in guest.received if b.startswith("M")] == [
+        f"M{GATE_AT:x},1:09", f"M{GATE_AT:x},1:08"]
+    assert gate_bytes(guest) == POD_GATE
+
+
+def test_no_encounters_is_applied_again_after_the_script_reloads(
+        scripted, tmp_path, monkeypatch):
+    guest, log = scripted
+    seen = on_each_key(monkeypatch, guest, log,
+                       after=lambda: reload_script(guest))
+    run_session(tmp_path, ["locate", "no_encounters on", "key a", "key a"])
+    assert seen == [POD_PATCHED, POD_PATCHED]
+
+
+def test_no_encounters_leaves_a_different_script_alone(scripted, tmp_path):
+    guest, _ = scripted
+    other = bytes([0x00, 0x11, 0x22, 0x33, 0x44, 0x55])
+    guest.memory[SCRIPT] = (guest.memory[SCRIPT][:0x82EA] + other
+                            + guest.memory[SCRIPT][0x82F0:])
+    _, rows = run_session(tmp_path, ["locate", "no_encounters on",
+                                     "wait 0.5"])
+    assert gate_bytes(guest) == other
+    assert not any(b.startswith("M") for b in guest.received)
+    refusals = [x for r in rows if r["event"] == "no_encounters"
+                for x in r.get("rows", []) if "refused" in x]
+    assert len(refusals) == 1               # logged once, not every heartbeat
+
+
+def test_a_roll_opcode_with_a_different_hash_is_not_written(scripted, tmp_path):
+    guest, _ = scripted
+    other = bytes([0x08, 0x11, 0x22, 0x33, 0x44, 0x56])
+    guest.memory[SCRIPT] = (guest.memory[SCRIPT][:0x82EA] + other
+                            + guest.memory[SCRIPT][0x82F0:])
+    run_session(tmp_path, ["locate", "no_encounters on", "wait 0.5"])
+    assert gate_bytes(guest) == other
+    assert not any(b.startswith("M") for b in guest.received)
+
+
+def test_the_slums_roll_has_its_constant_zeroed_and_put_back(monkeypatch):
+    from tools.amiga import noencounters
+    memory = {0x1000: bytes([0x08, 0x00, 0x0D, 0x01, 0x02, 0x03])}
+    monkeypatch.setattr(noencounters, "ROWS", tuple(
+        dataclasses.replace(r, digest=noencounters.digest(memory[0x1000]))
+        if r.spec == "*0xA4+0x23A" else r for r in noencounters.ROWS))
+    writes = []
+
+    def read(address, n):
+        return memory[address][:n]
+
+    def write(address, data):
+        writes.append(data)
+        memory[address] = data + memory[address][len(data):]
+        return {}
+    switch = noencounters.EncounterSwitch(
+        "pool-of-radiance",
+        lambda spec: 0x1000 if spec == "*0xA4+0x23A" else None, read, write)
+    switch.apply()
+    assert memory[0x1000][:3] == bytes([0x09, 0x00, 0x00])
+    switch.off()
+    assert memory[0x1000][:3] == bytes([0x08, 0x00, 0x0D])
+    assert writes == [bytes([0x09, 0x00, 0x00]), bytes([0x08, 0x00, 0x0D])]
+
+
+def test_a_save_key_is_refused_while_it_is_on(scripted, tmp_path, monkeypatch):
+    guest, log = scripted
+    seen = on_each_key(monkeypatch, guest, log)
+    events, _ = run_session(tmp_path, ["locate", "no_encounters on", "key s"])
+    assert seen == []
+    assert "save" in events["key"]["error"]
+
+
+def test_a_save_key_with_allow_save_sees_the_original_and_it_is_restored_after(
+        scripted, tmp_path, monkeypatch):
+    guest, log = scripted
+    seen = on_each_key(monkeypatch, guest, log)
+    run_session(tmp_path, ["locate", "no_encounters on allow-save",
+                           "key s", "key a"])
+    assert seen == [POD_GATE, POD_PATCHED]
+
+
+def test_the_session_ends_with_the_script_as_the_game_loaded_it(scripted, tmp_path):
+    guest, _ = scripted
+    run_session(tmp_path, ["locate", "no_encounters on", "wait 0.5"])
+    assert gate_bytes(guest) == POD_GATE
+
+
+def test_speculative_rest_rows_are_held_only_when_asked(scripted, tmp_path):
+    guest, _ = scripted
+    chance = 0xC20000 + 0x2C
+    data = bytearray(guest.memory[BASE])
+    data[0x57AC:0x57B0] = (0xC20000).to_bytes(4, "big")
+    guest.memory[BASE] = bytes(data)
+    guest.memory[0xC20000] = bytes([1] * 0x40)
+    run_session(tmp_path, ["locate", "no_encounters on"])
+    assert not any(b.startswith("Mc2002c") for b in guest.received)
+    run_session(tmp_path, ["locate", "no_encounters on speculative", "wait 0.5"])
+    assert f"M{chance:x},1:00" in guest.received
+    assert guest.peek(chance, 1) == b"\x01"                  # put back at the end
+
+
+def test_no_encounters_with_a_bad_argument_is_an_error_row(scripted, tmp_path):
+    events, _ = run_session(tmp_path, ["locate", "no_encounters maybe"])
+    assert "no_encounters wants" in events["no_encounters"]["error"]

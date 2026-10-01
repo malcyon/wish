@@ -68,6 +68,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent.parent))
 
 from automap import amiga, fsuaehelper  # noqa: E402
+from tools.amiga import noencounters  # noqa: E402
 
 #: The small-data base these titles are linked with, printed beside the hunk
 #: address.  `tools/amiga/amigatarget.py` has the same constant for the same reason:
@@ -90,7 +91,7 @@ VHPOSR = 0xDFF006
 NO_TITLE = "none"
 
 #: The session commands that need a layout, and so are refused under it.
-TITLED_COMMANDS = ("locate", "fix", "peek", "observe", "poll")
+TITLED_COMMANDS = ("locate", "fix", "peek", "observe", "poll", "no_encounters")
 
 #: One `dump` is at most one region of the A500's memory, the size `probe`'s
 #: largest read and `AmigaTarget.locate()`'s sweep already take in one packet.
@@ -725,6 +726,17 @@ def session(args) -> int:
                             address; a write outside chip and slow memory is
                             an error row.  Needs a server with `M`; read back,
                             so an ignored write is an error row too
+        no_encounters on [speculative] [allow-save] | off
+                            CHANGES THE RUNNING GAME: turns the loaded area
+                            script's random-encounter roll into a constant
+                            (tools/amiga/noencounters.py has the rows and
+                            their grades), holds the rest-interruption chance
+                            at 0, and applies both again on every heartbeat and
+                            before every `key`.  `speculative` also holds the
+                            ungraded rest rows.  A `key` line with `s` or `S`
+                            is refused while it is on, unless `allow-save`
+                            was given, which puts the original bytes back
+                            first because a save carries the loaded script
         swap <index>        put swap list image <index> in the drive, by the
                             keys of `--swap-sequence` (default: the F12 menu
                             walk, see DEFAULT_SWAP_SEQUENCE)
@@ -793,6 +805,8 @@ def session(args) -> int:
     was = mapstate._data_dir                            # noqa: SLF001
     mapstate._data_dir = lambda: out / "data"           # noqa: SLF001
     started = time.monotonic()
+    #: The no_encounters switch, and whether a save key is being held.
+    enc = {"switch": None, "saving": False}
     try:
         once = None if untitled else poller(tgt, maps, layout, out, note)[1]
         window = None
@@ -803,7 +817,73 @@ def session(args) -> int:
              window=bool(args.window))
         swap = (swap_error, swap_log)
 
+        def reapply(now: float) -> None:
+            switch = enc["switch"]
+            if switch is None or not switch.active or enc["saving"]:
+                return
+            try:
+                done = switch.apply()
+            except (ValueError, amiga.GuestError, amiga.FsuaeError) as exc:
+                note(event="no_encounters", at=now,
+                     error=f"{type(exc).__name__}: {exc}")
+                return
+            if done:
+                note(event="no_encounters", action="apply", at=now, rows=done)
+
+        def no_encounters(rest: str, now: float) -> None:
+            words = rest.split()
+            try:
+                if words == ["off"]:
+                    switch = enc["switch"]
+                    done = [] if switch is None else switch.off()
+                    enc["switch"] = None
+                    note(event="no_encounters", action="off", at=now, rows=done)
+                    return
+                extra = set(words[1:])
+                if (not words or words[0] != "on"
+                        or not extra <= {"speculative", "allow-save"}):
+                    raise ValueError("no_encounters wants `on [speculative] "
+                                     "[allow-save]` or `off`")
+                key = next(k for k, v in amiga.MACHINES.items() if v is layout)
+                enc["switch"] = noencounters.EncounterSwitch(
+                    key, lambda spec: resolve_spec(tgt, spec),
+                    gdb.read_memory,
+                    lambda address, data: poke_row(
+                        gdb, tgt, f"{address:#x} {data.hex()}"),
+                    speculative="speculative" in extra,
+                    allow_save="allow-save" in extra)
+                done = enc["switch"].apply()
+                note(event="no_encounters", action="on", at=now,
+                     rows=done, held=[r.spec for r in enc["switch"].rows])
+            except (ValueError, StopIteration, amiga.GuestError,
+                    amiga.FsuaeError) as exc:
+                enc["switch"] = None
+                print(f"           {exc}")
+                note(event="no_encounters", at=now,
+                     error=f"{type(exc).__name__}: {exc}")
+
         def handle(word: str, rest: str, line: str, now: float) -> bool:
+            switch = enc["switch"]
+            if word == "key" and switch is not None and switch.active:
+                if noencounters.is_save_key(rest):
+                    if not switch.allow_save:
+                        error = ("no_encounters is on and a save carries the "
+                                 "changed script: turn it off, or turn it on "
+                                 "with allow-save")
+                        print(f"           {error}")
+                        note(event="key", keys=rest, at=now, error=error)
+                        return True
+                    note(event="no_encounters", action="release", at=now,
+                         rows=switch.release())
+                    enc["saving"] = True
+                else:
+                    reapply(now)
+            try:
+                return dispatch(word, rest, line, now)
+            finally:
+                enc["saving"] = False
+
+        def dispatch(word: str, rest: str, line: str, now: float) -> bool:
             if untitled and word in TITLED_COMMANDS:
                 error = (f"no title: `{word}` needs a layout and this "
                          f"session was started with --title {NO_TITLE}")
@@ -824,6 +904,8 @@ def session(args) -> int:
                 row = poke_row(gdb, tgt, rest)
                 print(f"           {row}")
                 note(event="poke", at=now, **row)
+            elif word == "no_encounters":
+                no_encounters(rest, now)
             elif word == "observe":
                 note(event="observe", at=now,
                      **observe(args, rest or str(now), tgt, maps, out,
@@ -869,6 +951,7 @@ def session(args) -> int:
             vh = gdb.read_memory(VHPOSR, 2)
             note(event="beat", vhposr=vh.hex(),
                  at=round(time.monotonic() - started, 1))
+            reapply(round(time.monotonic() - started, 1))
 
         def idle(seconds: float) -> None:
             # Short sleeps with the heartbeat between them, so a long wait does
@@ -882,6 +965,13 @@ def session(args) -> int:
 
         run_commands(args, commands, started, note, handle, beat, time.sleep)
     finally:
+        if enc["switch"] is not None:
+            # The emulator outlives this connection, so leave its script as
+            # the disk has it.
+            try:
+                enc["switch"].off()
+            except (ValueError, amiga.GuestError, amiga.FsuaeError):
+                pass
         mapstate._data_dir = was                        # noqa: SLF001
         log.close()
         gdb.close()
@@ -986,7 +1076,8 @@ WISH_ENV = (*WISH_UNSET, WISH_FLAG, "XDG_CONFIG_HOME", "XDG_DATA_HOME",
 #: The session commands that read the emulator, which `wish` refuses: the
 #: window holds the only way to the game, and the point of the run is that
 #: nothing else does.
-WISH_REFUSED = ("peek", "poke", "locate", "fix", "dump", "poll", "time", "geo")
+WISH_REFUSED = ("peek", "poke", "locate", "fix", "dump", "poll", "time", "geo",
+                "no_encounters")
 
 #: How often the window's events run while a command waits.
 PUMP_STEP = 0.05
