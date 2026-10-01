@@ -14,9 +14,10 @@ RECORD = 0xC30000
 
 def _memory(layout, flag=None, pointer=RECORD, x=0, y=3, doubled=2):
     mem = {}
-    for offset, value in ((layout.party_x, x), (layout.party_y, y),
-                          (layout.party_facing, doubled)):
+    for offset, value in ((layout.party_x, x), (layout.party_y, y)):
         mem[BASE + offset] = value.to_bytes(layout.width, "big")
+    # The facing is one byte on every title; the wall type ahead follows it.
+    mem[BASE + layout.party_facing] = bytes([doubled, 0])
     if layout.overland_pointer is not None:
         mem[BASE + layout.overland_pointer] = pointer.to_bytes(4, "big")
     if flag is not None:
@@ -64,7 +65,7 @@ def test_other_titles_never_read_the_overland_pointer():
         real = t.read
         t.read = lambda addr, n, real=real: (reads.append(addr),
                                              real(addr, n))[1]
-        assert t.fix() is not None
+        assert t.fix() == Fix(0, 3, 1, "memory")
         assert BASE + 0x57AC not in reads
         assert all(not (BASE + 0x57AC <= a < BASE + 0x57B0) for a in reads)
 
