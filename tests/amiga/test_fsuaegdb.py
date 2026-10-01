@@ -1009,6 +1009,48 @@ def test_journal_answer_letters_are_typed_lower_case(monkeypatch):
     assert sent == ["a", "b", "Return"]
 
 
+@pytest.mark.parametrize("key", ["!", "@", "~", "alt+Q", "ctrl+alt+A"])
+def test_shifted_symbols_and_compound_upper_case_keys_are_refused(key):
+    with pytest.raises(ValueError, match="^Key .* would send Shift"):
+        fsuaegdb.refuse_shift_letter(key)
+
+
+@pytest.mark.parametrize("key", ["Return", "F12", "alt+q", "KP_Up", "q", "7",
+                                 "alt+F4"])
+def test_other_keys_are_not_refused(key):
+    fsuaegdb.refuse_shift_letter(key)
+
+
+def test_swap_sequence_with_a_bad_key_sends_nothing():
+    sent = []
+    with pytest.raises(ValueError, match="'Q'"):
+        fsuaegdb.insert_floppy("F12 Down Q Return", 0, sent.append,
+                               lambda label: None)
+    assert sent == []
+
+
+def test_held_key_refuses_an_upper_case_letter_with_a_hold(monkeypatch):
+    from tools.amiga import fsuaepor
+
+    monkeypatch.setattr(fsuaepor, "keys",
+                        lambda ns: pytest.fail("sent"))
+    args = argparse.Namespace(display=":99", hold=0.12, settle=0)
+    with pytest.raises(ValueError, match="'Q'"):
+        fsuaegdb.held_key(args, "Q")
+
+
+@pytest.mark.parametrize("kw", [{"boot": "40:Return;62:P"}, {"walk": "KP_Up Q"}])
+def test_automap_boot_and_walk_keys_are_checked_before_it_connects(
+        monkeypatch, tmp_path, kw):
+    monkeypatch.setattr(fsuaegdb, "connect", lambda args: pytest.fail("connected"))
+    args = argparse.Namespace(title="por", out=str(tmp_path), maps=None,
+                              boot="", walk="", **{})
+    for k, v in kw.items():
+        setattr(args, k, v)
+    with pytest.raises(SystemExit, match="--boot/--walk: Key"):
+        fsuaegdb.automap(args)
+
+
 def test_session_key_named_keysyms_and_lower_case_letters_are_not_refused(
         driven, tmp_path):
     _, log = driven
