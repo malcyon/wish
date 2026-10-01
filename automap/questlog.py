@@ -180,7 +180,7 @@ def _sentence(text: str) -> str:
 def _note(commission, entries) -> str:
     """The one fact a commission needs on its face, when it has one.
 
-    Two shapes. A commission spanning several ledger entries counts them --
+    Two kinds. A commission spanning several ledger entries counts them --
     "3 of 6 books recovered". A single entry that keeps a progress marker says
     what the marker means, which `goldbox.commissions.marker_text` decoded: only
     four entries have one, and only the slums' counts anything.

@@ -68,7 +68,7 @@ def test_the_quickfight_byte_is_0x10f_not_0x10e():
 
 
 def _snapshot(pairs, slums=0):
-    """A `party_state`-shaped dict from `(experience, hp_current)` pairs."""
+    """A `party_state`-style dict from `(experience, hp_current)` pairs."""
     chars = []
     for n, (xp, hp) in enumerate(pairs, start=1):
         rec = bytearray(285)

@@ -87,7 +87,7 @@ def deltas_for(size: int) -> "dos_port.DosDeltas":
 
 
 #: The titles an Amiga save slot can be **converted from** today, as the DOS
-#: shapes whose `key` `editor/convert.py` registers a direction against.
+#: forms whose `key` `editor/convert.py` registers a direction against.
 #:
 #: Pool of Radiance, Curse of the Azure Bonds and Secret of the Silver
 #: Blades.  `goldbox.amiga_savegame` reads the later titles' whole containers
@@ -100,7 +100,7 @@ CONVERTS: "tuple[dos_port.DosDeltas, ...]" = (
 )
 
 #: The titles a C64 or DOS save can be **converted to** an Amiga save disk
-#: today, as the DOS shapes whose `key` `editor/convert.py` registers a
+#: today, as the DOS forms whose `key` `editor/convert.py` registers a
 #: direction against -- the mirror of `dos.WRITES`, and named the same way
 #: for the same reason: what the *destination* can be written from nothing,
 #: not what the source happens to be.

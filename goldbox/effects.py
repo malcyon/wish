@@ -42,7 +42,7 @@ EFFECT_SLOTS = 0x40
 
 # Owner encoding: a party member by slot, a monster, or everybody.
 #
-# **The engine uses both shapes for a spell on the party, and neither can be
+# **The engine uses both forms for a spell on the party, and neither can be
 # dropped.** Measured in the running game on `#142 (The party effects line is
 # computed every poll and shown nowhere)`, two casts on one party:
 #

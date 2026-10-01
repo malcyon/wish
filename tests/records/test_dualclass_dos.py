@@ -1,6 +1,6 @@
 """The former class of a dual-classed character, named and read (#256, #234).
 
-`goldbox/dos_port.py`'s three later shapes have always had the level array
+`goldbox/dos_port.py`'s three later forms have always had the level array
 `former_class_levels`, and the byte right after `level` that repeats the same
 number -- both write once, by the same routine, in Curse of the Azure Bonds,
 Secret of the Silver Blades and Pools of Darkness.  Until now the second byte

@@ -1000,7 +1000,7 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
                 f"({f.confidence}), read big-endian through the DOS table",
                 f.confidence)
 
-    # -- the abilities, a DOS-shaped pair carrying the same asymmetry --------
+    # -- the abilities, a DOS-style pair carrying the same asymmetry --------
     # `goldbox.dos_codec.DIRECT` hands every name in `ABILITY_ORDER` back as a
     # two-byte `RAW` chunk rather than a number (`goldbox/dos_port.py`'s
     # `sizes` widen every one of the seven), so the loop above would

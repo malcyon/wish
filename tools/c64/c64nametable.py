@@ -165,7 +165,7 @@ def sites(body: bytes,
     """Every instruction in `GEN` whose absolute operand is `$5700`.
 
     A byte pair is not an instruction, so each hit is decoded and only the
-    four addressing shapes in `SITE_KINDS` are named.
+    four addressing forms in `SITE_KINDS` are named.
 
     **Pass `dropped` a list to see what was thrown away**, as
     `(address, text)` -- the whole finding on `#435` is "these six sites and

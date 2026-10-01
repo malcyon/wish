@@ -393,10 +393,10 @@ def test_every_c64_colour_has_a_row_and_the_pair_is_a_light_and_a_dark(table):
 
 def test_every_icon_on_the_players_disks_reads_back_into_menu_choices(parts):
     """The measurement that says the recogniser works on real saves rather
-    than on shapes this test composed itself.
+    than on figures this test composed itself.
 
     222 icons over the three C64 disk sets on this machine, 35 distinct
-    shapes, and every one of them names a weapon and a head. Seven of the 35
+    figures, and every one of them names a weapon and a head. Seven of the 35
     are not a simple (weapon, head) composition -- they carry a cell an
     earlier menu choice left behind, which the game draws exactly as stored
     -- and the recogniser has to name those too, because a conversion that

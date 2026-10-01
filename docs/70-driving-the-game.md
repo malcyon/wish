@@ -735,10 +735,34 @@ blind a second time corrupted a live routine (`LDA #$01` → `NOP NOP`).
 ## Snapshots
 
 `DUMP` (`0x41`) / `UNDUMP` (`0x42`) over the binary monitor save and restore full
-machine state. `E003-past-protection.vsf` (scratch, deleted) is a snapshot taken at the
-party-creation menu. Restoring proved unreliable in practice — the one attempt
-left the machine at a fresh boot — so treat it as a convenience, not a
-dependency.
+machine state, and `Session` wraps them. An earlier attempt restored to a fresh
+boot because it left the 1541 and its disk out; the wrapper saves the drive too
+(`save_disks`).
+
+| Call | Does |
+|---|---|
+| `snapshot(name)` | Saves memory, CPU, chips and the 1541 with its disk under `<slot>/snapshots/`, beside a record of the attached disk and of whether pokes were written. The machine runs on. |
+| `restore(name)` | Puts the machine back and attaches the recorded disk again, so the drive and its host file agree. `save_game` raises until a disk is attached on purpose, because the drive holds the snapshot's copy. |
+| `discard_snapshot(name)` | Deletes the snapshot and its records. |
+| `walk_with_retry(moves, retries=3)` | Snapshots, walks, and on an encounter restores and walks again; True with the snapshot deleted when a leg meets none, False with the machine restored when the retries run out. |
+
+Use them before any walk through an area with random encounters or a journey
+across a world map, and roll back instead of fighting.
+
+## Suppressing encounters
+
+`Session.no_encounters = True` writes the running area's entry in
+`ENCOUNTER_GATES` before every move key and zeroes the rest interruption in
+camp. Each entry carries a grade (`CONFIRMED` measured, `PROBABLE` read from the
+area script only). `skip_world_map_ambushes = True` sets Curse's world-map
+once-flags so its fixed ambushes are skipped. An area missing from the table is
+logged once as unsuppressed; adding a row is how to cover it.
+
+This is for automapper and driver testing only. The pokes are save-page bytes
+and some are story counters, so a run that proves a conversion leaves both off,
+and once any poke is written `save_game` raises unless `allow_suppressed=True`.
+The flag is sticky until a fresh boot, and a snapshot records it so a restore
+puts back the snapshot's value.
 
 ## Character creation
 

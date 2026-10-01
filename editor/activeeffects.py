@@ -72,7 +72,7 @@ HEADER_EFFECT = "Party Effect"
 HEADER_OWNER = "Target"
 
 #: An effect the owner byte puts on the whole party rather than on one
-#: character. The engine writes both shapes and neither can be dropped: Bless
+#: character. The engine writes both forms and neither can be dropped: Bless
 #: writes one row per character and Prayer writes a single row owned by
 #: everybody.
 OWNER_PARTY = "Entire Party"

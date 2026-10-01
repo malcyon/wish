@@ -33,7 +33,7 @@ weapons:
   11: {c64: 25}
   12: {c64: 5}
   13: {c64: 19}      # mace with a small round head; 19 is a knob on a
-                      # stick, 5 has a hammer-shaped head. Judgement
+                      # stick, 5 has a hammer-like head. Judgement
   14: {c64: 11}      # axe on a long handle held up and back; 11 is the
                       # axe, 5 is a mace. C64 4 has the same diagonal
                       # pose but no visible blade

@@ -2,7 +2,7 @@
 
 Everything named here was read off the screen: a `.pc` was written onto a copy
 of PoD's disk 3, added through `Add Character -> Pools`, and the character
-sheet photographed. Two payload shapes did the work. A **ramp** -- every byte
+sheet photographed. Two payload forms did the work. A **ramp** -- every byte
 holding its own offset -- makes a number the sheet draws name the offset it
 came from, and that found the numeric fields. A ramp cannot find an enum,
 because a wrong index draws unrelated game text rather than a number, so the
@@ -1142,7 +1142,7 @@ class PodCharacter:
         `goldbox.dos_codec._ability_pair` read the asymmetry out of the shipped
         overlay for `#401`: byte 0 of an ability pair is the permanent score
         and byte 1 is the one in force, and exceptional strength is the other
-        way round.  The importer copies both halves of both shapes across, so
+        way round.  The importer copies both halves of both forms across, so
         the Amiga's pairs are DOS's pairs and the same rule applies.
         """
         return [self.raw[ABILITIES + 2 * i] for i in range(ABILITY_COUNT)]

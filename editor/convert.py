@@ -1351,7 +1351,7 @@ class DosToAmiga(Direction):
 #: `UnnamedConversionError` fires here, at import time, if `CONVERTS` ever
 #: names a title `DOS_TO_C64_NAMES` does not; `titles.UnknownTitleError` does
 #: the same for `WRITES` and a title with no C64 game at all.
-#: The DOS shapes with a C64 port on the other side.
+#: The DOS forms with a C64 port on the other side.
 #:
 #: **`goldbox.dos_codec.CONVERTS` stopped being that list on 2026-09-08**, when
 #: Pools of Darkness joined it (`#194 (Import and export a Pools of Darkness

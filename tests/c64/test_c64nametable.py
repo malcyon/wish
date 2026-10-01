@@ -55,7 +55,7 @@ def specimen_disk(name: str) -> pathlib.Path:
 
 @pytest.mark.parametrize("title", TITLES)
 def test_gen_touches_the_table_in_six_places_and_no_others(title):
-    """Six sites, and the four shapes they come in.
+    """Six sites, and the four forms they come in.
 
     A seventh would be a reader nobody has accounted for, which is exactly
     what would reopen `#435`.

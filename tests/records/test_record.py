@@ -369,7 +369,7 @@ def test_a_c64_write_does_not_claim_the_cure_and_lay_on_hands_bytes_for_the_name
 def test_a_c64_source_writes_its_own_cure_disease_count_back_unchanged() -> None:
     """A C64 source's own byte is the C64's own recovery bookkeeping, so a
     C64-to-C64 Save As keeps a paladin's remaining count exactly rather than
-    copying a DOS-shaped value over it (#626, #600)."""
+    copying a DOS-style value over it (#626, #600)."""
     from goldbox import c64_codec, neutral
     from goldbox.c64_port import CURSE_OF_THE_AZURE_BONDS
 

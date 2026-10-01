@@ -391,7 +391,7 @@ def _char_class_shown(raw, record, game):
     **Gated on `goldbox.c64_codec.deltas_for(game).class_code_repairable`,
     Curse only** -- the same gate the neutral reader uses. Pool of Radiance's
     own disagreements between the two fields are not this bug (a DWARVEN
-    FIGHTER-shaped mismatch is legitimate, `docs/50-experiments.md`), and a
+    FIGHTER-style mismatch is legitimate, `docs/50-experiments.md`), and a
     title nobody has measured the overlays of raises out of `deltas_for`
     rather than guessing, so that is read as "no known repair" too.
     """
@@ -3445,7 +3445,7 @@ class EditorBinding(QObject):
         Pool of Radiance's rule disagrees with the C64's once a thief passes
         level four.
 
-        `member.record` -- the C64-shaped record the sheet edits on every
+        `member.record` -- the C64-style record the sheet edits on every
         port, kept current by `_flush` -- is read back through
         `c64_codec.read`, the same neutral reader a C64-to-anything
         conversion uses, rather than through `member.native`: `native` is the
@@ -3459,7 +3459,7 @@ class EditorBinding(QObject):
         On DOS and Amiga, `former_levels`' classes are zeroed back out of
         `levels` before the rule runs, matching what `dos_codec.write` -- the
         writer both those ports go through -- does to a regained class's
-        slot on every save. `member.record`'s C64-shaped copy can carry a
+        slot on every save. `member.record`'s C64-style copy can carry a
         regained level there once the character's new class has passed the
         one he left, the way the C64's own `GEN` regains it, and neither DOS
         engine ever holds it that way, so this row must not read it that way
@@ -3474,7 +3474,7 @@ class EditorBinding(QObject):
             port = self._BACKSTAB_PORTS[self.party.port]
             char = c64_codec.read(member.record, game=self.party.game)
             if port != "C64":
-                # `member.record` is a C64-shaped copy on every port, so a
+                # `member.record` is a C64-style copy on every port, so a
                 # dual-classed character whose new class has passed the
                 # level he left the old one at carries the old class's
                 # level in its own slot the way the C64's own `GEN` regains

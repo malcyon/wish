@@ -1106,7 +1106,7 @@ def curse_machine() -> MemoryTarget:
 
     Curse's `$1D00` payload is Pool of Radiance's `$1C00` with the roster's
     `$100` folded on, which is exactly these two fixtures concatenated -- so a
-    Curse-shaped machine can be built from a Pool of Radiance save with no new
+    Curse-style machine can be built from a Pool of Radiance save with no new
     bytes and no game disk. Nothing here claims the *contents* are a Curse
     party; what is under test is which addresses get read.
     """
@@ -2152,7 +2152,7 @@ def test_the_nine_kinds_that_existed_before_the_sixteen_still_mean_what_they_mea
 
 def test_an_old_notes_file_still_loads_after_the_sixteen_arrived(tmp_path,
                                                                 monkeypatch):
-    """Both shapes an old file comes in -- the bare string that predates
+    """Both forms an old file comes in -- the bare string that predates
     types, and a typed note -- read back as what they were. Adding kinds is
     supposed to cost a saved file nothing, and this is where that is checked
     rather than assumed."""

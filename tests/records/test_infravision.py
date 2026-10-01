@@ -9,7 +9,7 @@ behind the measurement that settled it:
   character generator -- so the byte carries nothing the `race` byte does not;
 * the **DOS record has no such byte**, across eight characters of six races
   rolled in the DOS game's own creation screens;
-* and the **DOS engine puts nothing race-shaped back** when it loads a
+* and the **DOS engine puts nothing race-like back** when it loads a
   converted party, measured on its own resave of one.
 
 Everything here reads the player's own disks or the specimen tree and skips

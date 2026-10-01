@@ -106,7 +106,7 @@ def test_the_two_call_argument_sets_really_can_disagree():
 
     Hand `classcode.repair` a mask that says fighter and a level array that
     says fighter **and** magic-user, with a former class, and the two call
-    shapes give different codes -- 2 against 13.  So the agreement the rest of
+    forms give different codes -- 2 against 13.  So the agreement the rest of
     this file measures is a fact about what Curse's engine leaves on disk, and
     not two identical calls agreeing with themselves.  No record has this
     form; it is built here to make the branch discriminate.

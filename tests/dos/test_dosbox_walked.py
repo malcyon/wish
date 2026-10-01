@@ -17,7 +17,7 @@ from tools.dos import dosbox  # noqa: E402
 
 
 def describe(area: int, x: int, y: int, facing: int) -> dict:
-    """A `describe()`/`describe_dos()`-shaped dict, with only what
+    """A `describe()`/`describe_dos()`-style dict, with only what
     `run_walked` reads."""
     return {"area": area, "square": [x, y, facing]}
 

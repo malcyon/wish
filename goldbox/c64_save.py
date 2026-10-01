@@ -163,7 +163,7 @@ _UNKNOWN_RULES = Title(key="", title="")
 class C64Container:
     """One title's saved game: the file on the disk, and the map of its bytes.
 
-    `roster_file` is the whole difference between the two shapes.  When it is
+    `roster_file` is the whole difference between the two forms.  When it is
     None the roster is `roster_offset` bytes into the main payload; when it is
     set the roster is that separate file, and `roster_offset` is an offset
     within *it*.

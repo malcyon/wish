@@ -55,12 +55,12 @@ many specimens share one flat directory.  Every other platform's specimen is
 usually several files (DOS: `.CHA`, `.SPC`, `.SAV`, `.ITM`; Amiga: the `.sav`
 or `.dat` the game itself wrote, alongside the one it was made from), so it
 gets its own directory and `provenance.toml` sits inside it, unambiguous. The
-tree tells the two shapes apart structurally, and **the two add up rather than
+tree tells the two forms apart structurally, and **the two add up rather than
 excluding each other**: a platform directory's own
 `WISH-SPEC-*.provenance.toml` files are specimens of the C64 kind, and every
 subdirectory holding a `provenance.toml` is one of the other kind, whether or
 not the flat ones are there too.  Reading the flat ones and stopping is what
-left a directory-shaped specimen under `por-c64` hashed by nothing
+left a directory-style specimen under `por-c64` hashed by nothing
 (`#450 (A directory-shaped specimen under por-c64 is invisible to
 specimens.py check, so eight files in the tree are never verified)`).
 
@@ -408,7 +408,7 @@ def _specimen_dirs(root: pathlib.Path) -> list[pathlib.Path]:
     """Every directory holding a `provenance.toml`, C64's platform-title
     directory included -- its disk-image specimens are flat files there.
 
-    **The two shapes add up rather than excluding each other.**  `por-c64`
+    **The two forms add up rather than excluding each other.**  `por-c64`
     holds twenty flat `.d64` specimens *and* one directory of memory captures
     (`#286`), and while a non-empty flat list meant "this directory is the C64
     kind, stop here" that whole specimen was listed by nothing and hashed by
@@ -427,7 +427,7 @@ def list_specimens(root: pathlib.Path | None = None) -> list[dict]:
     """One dict per specimen -- provenance fields plus `_files`, the paths
     checked and hashed against it.
 
-    A platform directory can hold both shapes at once, so the flat C64
+    A platform directory can hold both forms at once, so the flat C64
     specimens and any subdirectory carrying its own `provenance.toml` are both
     listed; see `_specimen_dirs` and `#450`.
     """

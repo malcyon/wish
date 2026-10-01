@@ -167,7 +167,7 @@ class Member:
         ranger above the classic four, and Krynn a Knight of Solamnia.
 
         A dual-classed human's former class and the level he left it at ride
-        along, `(was fighter 5)`-shaped (#256) -- Donald's decision of
+        along, `(was fighter 5)`-style (#256) -- Donald's decision of
         2026-09-05. Wording approved 2026-09-15 -- *"The wording '(was
         magic-user 6)' is approved as written"* (`.claude/rules/gui-text.md`).
         """

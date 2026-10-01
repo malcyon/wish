@@ -312,7 +312,7 @@ def test_a_build_that_declines_a_word_says_so_rather_than_claiming_it_is_zero_ev
 # ---------------------------------------------------------------------------
 
 def _poolsave_disk(tmp_path, names=("savgamB.dat", "savgamC.dat")):
-    """A `POOLSAVE` disk shaped like the one a conversion writes.
+    """A `POOLSAVE` disk laid out like the one a conversion writes.
 
     Synthetic on purpose, so this never skips: what is being tested is where
     the reader looks, not what the bytes say.

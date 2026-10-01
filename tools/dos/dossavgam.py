@@ -174,7 +174,7 @@ def main() -> int:
     for path in found:
         describe(path, regions=args.regions, runs=args.runs)
     shapes = {sg.container_for(p.stat().st_size).key for p in found}
-    print(f"{len(found)} containers, {len(shapes)} shapes, "
+    print(f"{len(found)} containers, {len(shapes)} forms, "
           f"{len({game_of(p) for p in found})} game folders.")
     return 0
 

@@ -121,7 +121,7 @@ def test_a_c64_party_converted_to_the_amiga_names_no_platform():
 
 def test_an_amiga_pool_of_radiance_source_names_no_platform():
     """The sixth instance: `goldbox.amiga_por.to_neutral` reads an Amiga Pool of
-    Radiance record through a DOS-shaped intermediate table
+    Radiance record through a DOS-style intermediate table
     (`goldbox.amiga_por.to_dos_record`) and reported its own trailing pad byte as
     something "the DOS record has no room for" -- unconditionally, while
     reading the source, before `to_neutral` or `write_por` know whether the

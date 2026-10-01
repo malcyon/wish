@@ -110,7 +110,7 @@ def load_tables(path: pathlib.Path = TABLE_PATH,
     """The weapon, head and colour tables, read out of the YAML source.
 
     Returns `(weapons, weapon_alternatives, heads, head_alternatives,
-    ega_to_c64)`, the same shapes the tool used to hold as Python literals.
+    ega_to_c64)`, the same forms the tool used to hold as Python literals.
     """
     data = yaml.safe_load(path.read_text())
 

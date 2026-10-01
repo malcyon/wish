@@ -381,7 +381,7 @@ def test_a_walk_that_did_nothing_fails_the_run(tmp_path, clock):
     guest = TitleGuest(clock, land=dict(START))
     _, result = _run(tmp_path, clock, guest=guest)
     assert result["walk"]["d_ok"] is False and result["success"] is False
-    # The stall is also named as a distinct, wall-shaped outcome.
+    # The stall is also named as a distinct, wall-like outcome.
     assert result["walk"]["walk_blocked"] is True
     # A pinned run's own party has a measured open path, so a stall is not excused.
     assert result["substitute_walk_blocked"] is False

@@ -1799,7 +1799,7 @@ def test_each_layout_tiles_its_own_record():
 
 def test_the_pool_of_radiance_layout_is_the_table_it_was_read_from():
     """The generator must reproduce the hand-written table exactly -- offsets,
-    widths, kinds and notes.  Without this the other three shapes would be
+    widths, kinds and notes.  Without this the other three containers would be
     free to drift the one that is measured against 24 specimens."""
     assert dos_port.layout_for(dos_port.POOL_OF_RADIANCE) \
         == dos_port.LAYOUT

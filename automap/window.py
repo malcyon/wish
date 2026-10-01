@@ -1664,7 +1664,7 @@ class AutomapBinding(QObject):
 
         **Whether a spell has to be chosen is not decided from `class_name`
         either.** `LevelUp.offers` already answers "is the magic-user one of
-        the classes this visit trains", correctly for both shapes -- asking
+        the classes this visit trains", correctly for both forms -- asking
         `class_name == "magic-user"` first agreed with it for a title that
         trains one class a press, and disagreed with it for one that trains
         several: a Curse character with two classes ready, the magic-user one

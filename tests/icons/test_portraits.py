@@ -346,7 +346,7 @@ def test_curse_has_no_run_of_fourteen_and_twelve_ids_anywhere_on_its_sides():
             hits += sum(1 for st in h_at if st + portraits.HEAD_COUNT in b_at)
             hits += sum(1 for st in b_at if st + portraits.BODY_COUNT in h_at)
     assert hits == 0, (
-        f"{hits} adjacency hit(s) found -- Curse does carry a run shaped "
+        f"{hits} adjacency hit(s) found -- Curse does carry a run that looks "
         f"like the creation menu after all; #300's finding needs revising")
 
 

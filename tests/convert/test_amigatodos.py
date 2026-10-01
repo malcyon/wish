@@ -8,7 +8,7 @@ direction reuses whole (`tests/convert/test_amigatoc64.py` owns those tests).
 
 **What is left for this file is the writing half**, and it is a shorter list
 than `#353`'s because the destination is the port the Amiga record was
-already shaped like: `goldbox.amiga_por.to_dos_record` re-cuts 288 Amiga bytes
+already laid out like: `goldbox.amiga_por.to_dos_record` re-cuts 288 Amiga bytes
 into the 285 DOS ones, so a converted record can be compared with its source
 field for field rather than through a codec. That comparison is the point of
 this file -- `test_the_written_record_is_the_amiga_record` names every byte

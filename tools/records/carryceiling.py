@@ -531,7 +531,7 @@ def _amiga_later_characters(data: bytes, what: str, label: str, problems):
     """The characters in a `.guy` file or a saved game, through its own deltas.
 
     **A saved game's title comes from `goldbox.amiga_savegame.detect`,
-    never from trying each deltas until one parses.**  `party_in_savegame`
+    never from trying each title's deltas until one parses.**  `party_in_savegame`
     trusts whatever deltas it is handed, and Curse's 428-byte record signature
     matches inside a Silver Blades saved game -- which read Silver Blades'
     savgamA.sav as two Curse characters, with an `item_count` taken from the
@@ -541,24 +541,24 @@ def _amiga_later_characters(data: bytes, what: str, label: str, problems):
     from goldbox import amiga_later, amiga_port, amiga_savegame
     if what != "record":
         try:
-            container = amiga_savegame.detect(data).deltas
+            deltas = amiga_savegame.detect(data).deltas
         except Exception as exc:
             problems.append(f"{label}: {type(exc).__name__}: {exc}")
             return
-        if container is None:                # Pool of Radiance: party is filenames
+        if deltas is None:                # Pool of Radiance: party is filenames
             return
         try:
-            yield from amiga_later.party_in_savegame(data, container)
+            yield from amiga_later.party_in_savegame(data, deltas)
         except Exception as exc:                         # pragma: no cover
             problems.append(f"{label}: {type(exc).__name__}: {exc}")
         return
-    for container in amiga_port.AMIGA_DELTAS:
-        if len(data) < container.record_size:
+    for deltas in amiga_port.AMIGA_DELTAS:
+        if len(data) < deltas.record_size:
             continue
-        if not amiga_later.looks_like_amiga_record(data, 0, container):
+        if not amiga_later.looks_like_amiga_record(data, 0, deltas):
             continue
         try:
-            char, end = amiga_later._amiga_block(data, 0, container, label)
+            char, end = amiga_later._amiga_block(data, 0, deltas, label)
         except Exception:
             continue                     # the tail does not fit these deltas
         if end == len(data):             # only these deltas account for it all

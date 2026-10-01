@@ -38,7 +38,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 from tools.registry import scratch  # noqa: E402
 
 #: `(effect slot, id, owner, duration)`. The ids are all CONFIRMED names, and
-#: the owners are the three shapes the panel has to tell apart: a character in
+#: the owners are the three forms the panel has to tell apart: a character in
 #: the party, everybody, and something that was in a fight. 253 is an id
 #: nobody has named, which is the fourth row a reader has to be able to make
 #: sense of. The durations are real bytes and none of them is shown.

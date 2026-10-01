@@ -355,7 +355,7 @@ DEFAULT = MACHINES[c64_port.DEFAULT.key]
 def machine_for(game=None) -> C64Machine:
     """The machine for a title: a `C64Container`, a `Title`, a key, or None.
 
-    Takes the same shapes `goldbox.c64_save.container_for` does, so a caller
+    Takes the same forms `goldbox.c64_save.container_for` does, so a caller
     holding any of them does not have to convert first. None is Pool of
     Radiance's, matching every caller's own `game or games.DEFAULT`.
 

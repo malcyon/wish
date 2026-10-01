@@ -149,7 +149,7 @@ def test_each_part_takes_the_nibble_that_covers_most_of_it(parts, tables):
     **Every byte here holds two different colours**, which is what makes the
     test say anything: a DOS byte is a pair and the C64 keeps one colour a
     part, so the conversion has to choose. The leg and the shield take the
-    high nibble because that is the colour covering most of those two shapes
+    high nibble because that is the colour covering most of those two figures
     -- 56-65% of the leg in 32 of 32 bodies, 68-72% of the shield in 8 of 8
     (`tools/icons/dosnibbles.py`, #130). Everything else takes the low one.
     Reading the low nibble for all six turned MAGNUS's yellow shield black.

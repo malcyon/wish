@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Walk a party on the C64 travel grid, reading the square out of memory.
 
-The status line has two shapes: indoors it reads `E 16:48 5,2` and outdoors it
+The status line has two forms: indoors it reads `E 16:48 5,2` and outdoors it
 reads `OUTDOORS 22:02 7,28`, with the word where the facing letter goes.  A
 driver that watches it to decide whether a move happened therefore has, on the
 travel grid, no facing to turn from, and a step it will see late -- the line

@@ -364,7 +364,7 @@ def boot(gdb, args) -> None:
     """Press a schedule of keys while the machine boots, and say what it did.
 
     **The connection is open the whole time**, which is the constraint that
-    shapes this: the emulator gives out one connection per run and shuts the
+    forms this: the emulator gives out one connection per run and shuts the
     listening socket when it goes, so a run cannot boot the game with one
     process and map it with another.
 

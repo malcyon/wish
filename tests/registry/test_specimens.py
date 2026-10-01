@@ -310,7 +310,7 @@ def test_check_on_an_empty_tree_finds_nothing_wrong(tree):
     assert specimens.check_specimens(tree) == []
 
 
-# --- a platform directory holding both shapes at once (#450) -------------
+# --- a platform directory holding both forms at once (#450) -------------
 
 
 def _mixed_specimens(tree, tmp_path):
@@ -339,7 +339,7 @@ def _mixed_specimens(tree, tmp_path):
 
 
 def test_a_directory_specimen_beside_the_flat_ones_is_listed(tree, tmp_path):
-    """Both shapes at once. Until `#450` a non-empty flat list meant "stop
+    """Both forms at once. Until `#450` a non-empty flat list meant "stop
     here", and the directory specimen was listed by nothing."""
     _mixed_specimens(tree, tmp_path)
     names = sorted(e["name"] for e in specimens.list_specimens(tree))

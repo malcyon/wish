@@ -154,7 +154,7 @@ def test_c64_to_amiga_direction_with_no_icon_parts_still_converts(tmp_path):
 
 # ---------------------------------------------------------------------------
 # `DosToAmiga`: a DOS source's own icon_head/icon_body/icon_colours, already
-# a `DosIcon`-shaped number in the record (#424 (A DOS party converted to an
+# a `DosIcon`-style number in the record (#424 (A DOS party converted to an
 # Amiga save disk arrives with no combat figure either, though #422 says
 # that route needs no fix))
 # ---------------------------------------------------------------------------

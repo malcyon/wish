@@ -1498,7 +1498,7 @@ def _race_combat_effects(game: object, race: int,
 
     `game` is whatever a caller has in hand for the title -- a
     `goldbox.c64_port.C64Container`, its `.key`, or None for Pool of Radiance -- the same
-    three shapes `c64_codec._infravision` accepts, and `goldbox.titles.race_table`
+    three forms `c64_codec._infravision` accepts, and `goldbox.titles.race_table`
     resolves all three the same way, Pools of Darkness' own key included
     (`#460 (goldbox/games.py has no Pools of Darkness entry, so every lookup
     answers with Pool of Radiance's tables for it)`).
@@ -3103,7 +3103,7 @@ def _icon_for(char: "DosCharacter", icon: "bytes | IconParts | None",
 def _neutral_icon_for(char: NeutralCharacter, source: DosIcon | None,
                       icon: "bytes | IconParts | None",
                       tables: "DosIconTables | None" = None) -> bytes | None:
-    """Compose a non-DOS source's already decoded DOS-shaped combat icon."""
+    """Compose a non-DOS source's already decoded DOS-style combat icon."""
     if not isinstance(icon, IconParts):
         return icon
     if source is None:
@@ -3864,7 +3864,7 @@ WRITE_DEFAULTS: tuple[tuple[str, bytes, str, str], ...] = (
      "source whose caller recognised the record's own combat icon converts "
      "its seven colour parts to these six instead, through "
      "`tools/icons/iconreverse.yaml`'s colour table (#320) -- the C64's one "
-     "3-bit colour a part becomes both nibbles of the pair, the shape "
+     "3-bit colour a part becomes both nibbles of the pair, the form "
      "every freshly-made DOS record's own default set already has",
      "zero is not neutral here: all six parts become EGA 8, dark grey, "
      "which is the combat arena's own colour, so the character is about 64 "
@@ -4555,7 +4555,7 @@ def _deduplicate_party_identities(
     return result
 
 
-#: The DOS shapes :func:`write` will build a record for -- the same three
+#: The DOS forms :func:`write` will build a record for -- the same three
 #: :data:`CONVERTS` reads, because a conversion is between two ports of the
 #: same title and both directions have to exist for a title to be offered.
 #:
@@ -4767,7 +4767,7 @@ WRITE_DERIVED_LATER: tuple[tuple[str, str], ...] = (
      "**only when the source holds no such byte**, which is a C64 source: "
      "1 for a character who is or was a paladin and 0 for everybody else, "
      "which is what every engine-written record holds: 8 paladins across "
-     "four record shapes and six titles read 1 and 71 other characters read "
+     "four record forms and six titles read 1 and 71 other characters read "
      "0. The C64 has no counterpart to convert from -- no byte of "
      "`goldbox/layout.py` separates a paladin that way in 78 C64 records -- "
      "and 1 is the value the DOS engine's own character creation writes "
@@ -5448,7 +5448,7 @@ def write(char: NeutralCharacter,
     # measured ports rather than "everything but DOS": that broader gate
     # let an *Amiga* source through too, because `goldbox.amiga_later.write_later`
     # reuses this writer as its own stepping stone and repacks the
-    # DOS-shaped bytes it gets back into an Amiga record, so a native Amiga
+    # DOS-style bytes it gets back into an Amiga record, so a native Amiga
     # round trip hit this recompute and broke
     # `tests/amiga/test_amigalaterwrite.py::test_every_record_on_the_disks_
     # round_trips` the same way a DOS round trip broke

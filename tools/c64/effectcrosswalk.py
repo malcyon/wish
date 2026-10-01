@@ -138,7 +138,7 @@ def exact_durations(minutes: int, clock_minutes: int) -> tuple[int, ...]:
 
 
 def duration_sweep(clock_minutes: int) -> tuple[int, int]:
-    """Exact DOS minute values and worst early expiry under a floor policy.
+    """Exact DOS minute values and worst early expiry under a round-down policy.
 
     Enumerates the measured camp-clock model, not a conversion policy chosen
     by a writer. Zero-count encodings are excluded because they are unmeasured.
@@ -1439,7 +1439,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"CONFIRMED Library quotient return at ${packing.divide:04X}; truncates")
     exact, loss = duration_sweep(args.clock_minutes)
     print(f"CONFIRMED Camp-clock arithmetic at {args.clock_minutes} minutes: "
-          f"{exact}/65535 exact durations; minimum-policy loss at most {loss} minutes")
+          f"{exact}/65535 exact durations; round-down loss at most {loss} minutes")
 
     from tools.dos import dosbox, unexepack
 

@@ -13,7 +13,7 @@ every byte-level check that existed.
 What it reads, in order:
 
 * whether the game's `LOAD SAVED GAME` picker takes the disk at all -- the
-  `#109`-shaped failure, where a file is written correctly and the game's own
+  `#109`-style failure, where a file is written correctly and the game's own
   load screen does not list it;
 * the status line: facing, clock and square, which is the DOS save's own;
 * the party panel: every name the game lists, with its armour class and hit

@@ -89,7 +89,7 @@ MONFLAGS = (
 RE_GAME_SIDE = re.compile(r"INSERT\s+(?:YOUR\s+)?(?:SIDE|GAME\s+DISK)\s*#?\s*(\d)")
 SAVE_PROMPT = "SAVE GAME DISK"
 
-# The in-game status line, and **it has two shapes**.  Indoors it carries the
+# The in-game status line, and **it has two forms**.  Indoors it carries the
 # facing letter -- `E 16:48 5,2`.  On the travel grid the word `OUTDOORS`
 # stands where that letter goes -- `OUTDOORS 22:02 7,28` -- and there is no
 # facing out there at all.
@@ -3687,7 +3687,7 @@ class Session:
         gets off the bar.**  `GUARD` is not always offered -- some characters
         get `DELAY QUIT SPEED EXIT` with no GUARD on it at all -- and the
         driver used to fall to `DELAY` there, which postpones the character
-        instead of ending its turn.  `QUIT` is on both shapes of the bar and
+        instead of ending its turn.  `QUIT` is on both forms of the bar and
         ends the turn, so it is what a bar with no GUARD gets.
 
         **Ask only for a word that is on the bar.**  `combat_bar` has no way of

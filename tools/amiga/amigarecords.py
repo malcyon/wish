@@ -3,7 +3,7 @@
 
 The twenty-one records `#55 (Decode the Amiga Curse and Silver Blades
 records)` rests on are not loose files on any machine.  They are inside
-AmigaDOS disk images, in two shapes:
+AmigaDOS disk images, in two forms:
 
 * **eleven `SAVE/*.guy` pregenerated characters** on Curse of the Azure Bonds
   disk 1 -- ARIEL, BJORN DARKSTONE, GALAIN, GWYDION, HOLLAND, IILANDA,
@@ -66,7 +66,7 @@ def _record_file(data: bytes) -> bool:
 
 
 def _savegame_party(data: bytes) -> int:
-    """How many character blocks a saved game holds, across both shapes."""
+    """How many character blocks a saved game holds, across both forms."""
     return max((len(party_in_savegame(data, deltas))
                 for deltas in AMIGA_DELTAS), default=0)
 

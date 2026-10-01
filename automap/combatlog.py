@@ -53,7 +53,7 @@ below the cursor so a follow-up ("GOES DOWN", "IS KILLED") lands under what is
 already there. Only when a block runs past row 22 does `LIBRARY $2D28` call
 `$2CA5`, which scrolls the window up by one line.
 
-So the four shapes a frame-to-frame change can take are: **grew** (more rows,
+So the four kinds a frame-to-frame change can take are: **grew** (more rows,
 or more characters on the last row), **shrank** (the same rows with the bottom
 ones cleared, which `$29B7` does when a follow-up's delay runs out),
 **scrolled** (everything moved up one), and **replaced** (anything else). Each

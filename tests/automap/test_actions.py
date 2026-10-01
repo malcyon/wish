@@ -406,7 +406,7 @@ def test_levelling_a_character_in_another_title_refuses_and_writes_nothing():
     Both genuinely level now."""
     from goldbox import c64_port
 
-    # A Krynn-shaped machine, so the rejection is the trainer's and not an
+    # A Krynn-style machine, so the rejection is the trainer's and not an
     # accident of reading its addresses on Pool of Radiance's memory. It has
     # a combat flag, so `Action.legality` lets this through and the gate that
     # stops it is `level_up_blockers`, which is the right one.

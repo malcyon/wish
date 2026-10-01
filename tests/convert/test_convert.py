@@ -157,7 +157,7 @@ def test_source_detect_identifies_each_dos_title(tmp_path, deltas):
 
 def test_source_detect_refuses_a_folder_with_no_character_record(tmp_path):
     """A folder holding only `SAVGAM?.PTY` -- no `CHRDAT` beside it -- is
-    DOS-shaped but its title cannot be read from anything. A `ConvertError`
+    DOS-style but its title cannot be read from anything. A `ConvertError`
     a caller can show a player, not a raw `FileNotFoundError`."""
     folder = tmp_path / "pod"
     folder.mkdir()

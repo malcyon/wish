@@ -30,7 +30,7 @@ and yellow with a black shadow over two greens.  Everything in a tile that is
 not one of the two greens or the border's two greys is the glyph, and that
 mask is enough to tell the 26 Espruar and 22 Dethek runes apart: the reference
 bitmaps in `coab/images/` are the same runes rendered from the C64's own
-`SECSET10`, so the two are the same shapes in different paint, compared as
+`SECSET10`, so the two are the same forms in different paint, compared as
 normalised grids with a cell of slack rather than pixel for pixel.
 
 **The path** is the row under the runes: `----------`, `..........` or

@@ -49,7 +49,7 @@ def synthetic(addr=POR, main_loop: int = 0x0809,
               saved_sp: int | None = None,
               call: int | None = None,
               after_step_calls: int | None = None) -> bytes:
-    """An image shaped like `DUNGEON`, with every checked site written.
+    """An image laid out like `DUNGEON`, with every checked site written.
 
     Each of the four keyword arguments is one place a wrong address can be
     planted, so a test can plant exactly one and watch exactly one check go

@@ -75,7 +75,7 @@ class FakeSession:
 
 
 def charpic(mapping: dict[int, bytes]) -> bytes:
-    """A `CHARPIC00`-shaped charset with `mapping`'s codes filled in."""
+    """A `CHARPIC00`-style charset with `mapping`'s codes filled in."""
     out = bytearray(2030)
     for code, bits in mapping.items():
         out[code * 8:code * 8 + 8] = bits

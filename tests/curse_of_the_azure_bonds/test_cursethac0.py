@@ -114,7 +114,7 @@ def test_library_is_the_only_overlay_that_writes_the_stored_thac0():
 # -- the staging half, which is ours and needs no disks ---------------------
 
 def a_payload() -> bytearray:
-    """A `SAVEAZURE`-shaped block of our own bytes, two slots filled in."""
+    """A `SAVEAZURE`-style block of our own bytes, two slots filled in."""
     body = bytearray(0x1D00)
     for slot, (name, base, index, gate, roster) in enumerate(
             [(b"MARK", 44, 20, 0, 46), (b"MATHEW", 45, 23, 0, 47)]):

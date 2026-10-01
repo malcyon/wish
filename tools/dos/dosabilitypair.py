@@ -51,7 +51,7 @@ from tools.dos import dosbox  # noqa: E402
 
 #: The seven pairs and the lower address of each, in the order the record
 #: holds them.  `goldbox/dos_port.py` declares the same offsets for the
-#: 422-, 439- and 510-byte shapes; Pool of Radiance keeps one byte apiece and
+#: 422-, 439- and 510-byte forms; Pool of Radiance keeps one byte apiece and
 #: has no pairs at all.
 PAIRS: dict[str, int] = {
     "str": 0x010, "int": 0x012, "wis": 0x014, "dex": 0x016,

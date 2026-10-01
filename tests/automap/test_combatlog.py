@@ -426,7 +426,7 @@ def warnings_in(window) -> list[str]:
 # Everything above proves `CombatLog.poll(game=...)` in isolation. This is the
 # one level up: `AutomapBinding.poll_battle` and `.poll_combat_log` are the
 # window's own live loop, and until they pass `self.mapper.game` through, a
-# Curse-titled window standing on a Curse-shaped combat arena found no fight
+# Curse-titled window standing on a Curse-style combat arena found no fight
 # and logged nothing at all -- Pool of Radiance's `$6E11`/`$49FC` regardless of
 # what `self.mapper.game` said.
 

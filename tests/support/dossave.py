@@ -102,7 +102,7 @@ CLEAN_ROLLS = ("gnomf1", "gnomt2", "gnomft3", "dwarfc4", "halfl5", "elf6",
 
 #: The two states of the training run. Their experience, gold and encumbrance
 #: went in as *ours* -- `tools/dos/dostrainprobe.py`'s `install` writes all three --
-#: so nothing money-shaped in them is the game's arithmetic. Everything the
+#: so nothing money-like in them is the game's arithmetic. Everything the
 #: trainer itself wrote is: level, the per-class levels, hit points, the spell
 #: slots, and the experience it left behind.
 CLEAN_TRAINED = ("por-party-trained-c2", "por-train-clamp")

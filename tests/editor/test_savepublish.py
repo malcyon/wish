@@ -857,7 +857,7 @@ def test_a_lower_case_c64_name_saves_as_dos_and_amiga_with_its_spelling(
     mixed-case bytes intact. `File ▸ Save As…` to DOS or the Amiga writes
     `Guy de Valois` exactly, as SSI's own DOS pregen and Amiga save do, but
     before this fix the read-back guard rebuilds the written destination's
-    name through the sheet's C64-shaped record, which folds every name to
+    name through the sheet's C64-style record, which folds every name to
     capitals regardless of port -- so it refuses the whole party on `name:
     'Guy de Valois' arrived as 'GUY DE VALOIS'`, though the bytes just
     written are exactly right.
@@ -1185,7 +1185,7 @@ def test_c64_cached_values_follow_the_dos_rules_without_weakening_the_guard(
 
     # The written DOS records themselves store `strength_bonus`, unlike the
     # C64's own cache of it -- read raw off the folder Save As actually
-    # wrote, not through the C64-shaped sheet the assertion above already
+    # wrote, not through the C64-style sheet the assertion above already
     # covers.
     bonus_at = dos_port.FIELDS_BY_NAME_FOR[
         plan.destination.title.key]["strength_bonus"].offset

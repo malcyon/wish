@@ -107,7 +107,7 @@ def test_the_engine_written_specimen_has_the_target_class_encoding():
 
 def test_a_regained_character_converts_to_dos_in_the_engines_own_class_encoding():
     """PHILIPPE, trained past the level she left magic-user at, converts to
-    a Curse DOS record shaped like MATHEW's: the old class's `class_levels`
+    a Curse DOS record laid out like MATHEW's: the old class's `class_levels`
     slot zero, `char_class` the new class alone, `class_bits` both bits.
 
     This is the case #408 exists for: before the fix, `class_levels` carried

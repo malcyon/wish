@@ -3,7 +3,7 @@ from __future__ import annotations
 """The Amiga character record against the offsets the character sheet actually
 drew.
 
-Two probe shapes did the work and both are rebuilt here. The **ramp** -- a
+Two probe patterns did the work and both are rebuilt here. The **ramp** -- a
 `.pc` whose byte at every offset is that offset -- makes a number the sheet
 prints name where it came from, and found the numeric fields. The **plausible**
 payload puts a chosen legal value in a chosen byte, which is the only way to
@@ -3094,7 +3094,7 @@ def test_a_byte_pair_field_raises_rather_than_copies_bytes(
     form every one of the seven abilities had before the fix -- raises
     rather than handing a byte pair to a neutral field the writer expects to
     be a number.  Simulated by adding a field `goldbox.dos_codec.DIRECT` has no
-    entry for today, because no other field of either later title is shaped
+    entry for today, because no other field of either later title is built
     this way to test it against for real -- which is the coupling `#292 (An Amiga
     Curse or Silver Blades character arrives on the C64 with no class at
     all, since class_bits dropped out of dos.DIRECT)` named as the hole

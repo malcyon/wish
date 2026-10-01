@@ -14,7 +14,7 @@ standing in, the clock and the 217 quest flags.
 committed: an Amiga disk image is the game's own code and data
 (`AGENTS.md`), and a slice of one is the same copy under a new name.
 
-The two sources are the two shapes of disk, on purpose:
+The two sources are the two forms of disk, on purpose:
 
 * **the shipped disk 1, slot A** -- a `save` drawer, six characters with
   items, portraits and their own combat figures, standing on New Phlan's

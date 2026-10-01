@@ -566,7 +566,7 @@ def test_the_shared_ecl_space_stops_at_the_last_quest_flag():
 #
 # Everything above is Pool of Radiance's, synthetic and offline. These read the
 # player's own archives and skip without them, which means CI never runs them:
-# what stands behind the other three shapes on a machine with no archives is
+# what stands behind the other three containers on a machine with no archives is
 # the width sum in `DosContainer.__post_init__` and
 # `test_every_shape_tiles_its_own_container`, and neither says a field is in
 # the right place. Say in the commit that you ran these somewhere the archives
@@ -610,7 +610,7 @@ def test_a_container_whose_widths_do_not_add_up_is_refused_at_import():
     wide moves every one after it, and the container raises rather than reading
     somebody else's bytes.
 
-    Asserting that the *existing* shapes tile was not this check and could
+    Asserting that the *existing* forms tile was not this check and could
     not fail until #253: `square` was computed backwards from `size`, so
     `party_table + entries + scratch == size` reduced to `size == size` for
     any widths at all.  It is computed forwards now, which makes that a real
@@ -657,7 +657,7 @@ def test_no_two_containers_collide_on_the_size_that_selects_them():
 
 def test_the_pool_of_radiance_container_is_the_offsets_the_module_was_built_on():
     """The generator must reproduce the hand-measured constants exactly.
-    Without this the other three shapes would be free to drift the one that
+    Without this the other three containers would be free to drift the one that
     twelve engine-written specimens stand behind."""
     container = sg.SAVE_POOL_OF_RADIANCE
     assert container.size == sg.SAVGAM_SIZE

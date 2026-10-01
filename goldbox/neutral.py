@@ -73,7 +73,7 @@ class Provenance(enum.Enum):
     """How a value's report line reads, which is also what kind of value it is.
 
     The separator is the whole of it, and the three of them are the three
-    honest sentence shapes a provenance line has: this byte came *from*
+    honest sentence forms a provenance line has: this byte came *from*
     somewhere, this byte *is* something, or this byte is the same value in the
     destination's own form.
     """

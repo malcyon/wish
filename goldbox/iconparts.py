@@ -33,7 +33,7 @@ SIZE only switches which lists this session offers. So an icon may legally mix a
 large body with a small head, and one on our disks does -- HOGARTH's. That is
 why `legal_screen_codes` explores both pairs together rather than one at a time.
 
-Reconstruction is the evidence: 17 of the 18 distinct shapes on our disks come
+Reconstruction is the evidence: 17 of the 18 distinct figures on our disks come
 out of a (weapon, head) pair exactly, and the 18th is HOGARTH's mixed-size one.
 
 **`SPELLE64` is byte-identical in Pool of Radiance, Curse of the Azure Bonds
@@ -772,7 +772,7 @@ class IconParts:
         earlier choice, which the weapon that came after would not paint
         over -- legal, on the player's own disks, and drawn by the game
         exactly as stored.  47 of the 222 icons on this machine's three C64
-        disk sets are like that, over 7 of their 35 distinct shapes.
+        disk sets are like that, over 7 of their 35 distinct figures.
 
         Raises `ValueError` for a figure no weapon option drew, which is a
         hand-authored icon or a figure with no weapon chosen at all.
@@ -895,7 +895,7 @@ class IconParts:
         """Every figure reachable by any sequence of menu choices.
 
         Not the product of the two lists. A weapon preserves the head cells, so
-        the order of edits matters and mixing the two size pairs reaches shapes
+        the order of edits matters and mixing the two size pairs reaches figures
         neither pair reaches alone -- 15328 against the 805 + 392 a naive
         "one weapon times one head" count would predict.
         """

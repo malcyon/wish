@@ -1030,7 +1030,7 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
                 rec.class_bits = want
 
         # class_code follows the bitmask when the classes were edited, unless
-        # the file gives one of its own -- which is how an NPC-shaped record
+        # the file gives one of its own -- which is how an NPC-style record
         # gets written deliberately.
         old_code = rec.get("char_class")
         given_code = entry.get("class_code")

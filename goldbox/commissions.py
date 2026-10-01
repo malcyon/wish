@@ -435,7 +435,7 @@ def offered(source, limit: int = OFFER_LIMIT,
 
 # --- appointments -----------------------------------------------------------
 
-# Two shapes share this idea. A *summons* runs 254 = go there, 255 = the
+# Two forms share this idea. A *summons* runs 254 = go there, 255 = the
 # interview has happened. A *marker* is only ever 255, and what that means
 # differs per flag, so each carries its own words.
 SUMMONS = "summons"

@@ -3169,7 +3169,7 @@ def test_backstab_reads_a_dual_classed_humans_regained_former_level(tmp_path):
     save's does; the earlier version of this test picked levels that stayed
     clear of `c64_codec.write`'s own dual-class fold-in instead of matching
     what a real save looks like, and so never exercised it. That fold-in
-    means `member.record` -- the sheet's C64-shaped copy -- already carries
+    means `member.record` -- the sheet's C64-style copy -- already carries
     HERO1's regained thief level in the current-class slot the way the C64
     itself would, which is what makes ×8 the expected answer computed the
     honest way: DOS never holds it there, so the true DOS form is

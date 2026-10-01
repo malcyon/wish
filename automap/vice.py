@@ -16,7 +16,7 @@ work, close it. For a long-running poller that would stutter the game, so use
 
 Screen reading lives in `screen.py` now, over a simple `read` callable, because
 none of it is VICE-specific. The wrappers at the foot of this file keep the
-Monitor-shaped spelling `tools/` uses.
+Monitor-style spelling `tools/` uses.
 """
 
 from __future__ import annotations
@@ -324,7 +324,7 @@ class Monitor:
 
 # -- screen -----------------------------------------------------------------
 # The decoding moved to `screen.py`, which works over any `read` callable.
-# These wrappers keep the Monitor-shaped spelling `tools/` already uses.
+# These wrappers keep the Monitor-style spelling `tools/` already uses.
 
 from . import screen as _screen  # noqa: E402
 from .screen import (  # noqa: E402,F401
@@ -355,7 +355,7 @@ class ScreenUnreadable(MonitorError):
     "the game is showing nothing" is not "I do not know where the screen is",
     which forty spaces never let anybody tell apart.
 
-    **Only the Monitor-shaped wrappers below raise it.** `ViceTarget` answers
+    **Only the Monitor-style wrappers below raise it.** `ViceTarget` answers
     None instead, because its `fix()` reads a `MonitorError` as the emulator
     having gone away and would hang up on a connection that is perfectly well.
     """

@@ -396,7 +396,7 @@ def divide_between_classes(value: int, class_count: int, rng=None,
     here is `randrange(class_count) + 1`, which is `1..class_count` -- the
     range the bytecode reads, above.
 
-    Pool of Radiance then minimums the result at 1 (`$20A2 BNE / LDA #$01`) and
+    Pool of Radiance then raises the result to at least 1 (`$20A2 BNE / LDA #$01`) and
     Curse does not (`$11CC` is a bare `LDA $4C / RTS`), so a Curse character
     with three classes can come out of a training with nothing.
     """
@@ -743,7 +743,7 @@ def _hit_point_maximum(record, class_levels: dict[str, int], hp_rolled: int,
     $1282,Y`) -- times that slot's constitution bonus, which is the capped one
     for slots 0 to 2. It adds one whole extra bonus for a ranger (`$128A`,
     because a ranger is 2d8 at level 1), divides by the class count, adds
-    `hp_rolled`, and finally minimums the answer at the character's `level` and
+    `hp_rolled`, and finally raises the answer to at least the character's `level` and
     throws away anything reaching 200 (`$123C`/`$1241`).
 
     **The arithmetic is eight-bit and the constitution row is signed**, which

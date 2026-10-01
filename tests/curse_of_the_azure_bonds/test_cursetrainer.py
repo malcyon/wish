@@ -312,8 +312,8 @@ def test_the_hit_die_is_rolled_twice_and_the_better_roll_kept():
     """`GEN $15FC`, and Pool of Radiance does not do this.
 
     Two `LDY $161E,X / JSR $2F6A` in a row, then `CMP $4C / BCS / LDA $4C` --
-    the larger of two rolls. Pool of Radiance's `$2037` rolls once and minimums a
-    *single-class fighter* at 4 (`CMP #$04` against `class_bits == 8`); Curse
+    the larger of two rolls. Pool of Radiance's `$2037` rolls once and raises a
+    *single-class fighter* to at least 4 (`CMP #$04` against `class_bits == 8`); Curse
     has no such minimum and gives every class the better of two dice instead.
 
     So `levelup.roll_hit_points` is not Curse's rule, and a replay of a Curse
@@ -457,7 +457,7 @@ def test_every_derived_field_of_the_shipped_party_comes_out_of_this_module():
     THAC0, five saving throws, the turning level, `attack_level`, `level`,
     `attack_forms` and `hp_max` for all six, plus the eight thief skills for
     the one thief. **Zero mismatches**, and this is the broadest single check
-    that Curse's tables are in the right shapes rather than merely present.
+    that Curse's tables are in the right forms rather than merely present.
 
     It says nothing about the racial saving-throw bonus: none of the six is a
     dwarf, gnome or halfling, which is why `$0F19` is PROBABLE. Nor does it

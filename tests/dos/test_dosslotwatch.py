@@ -10,7 +10,7 @@ None of this drives DOSBox-X.  `RawSession`, `claim_free` and `boot_settled`
 are all replaced, so what runs is exactly the staging and the patch, and
 nothing downstream of them -- `dosboxx.unavailable()` is bypassed for the same
 reason: this test asserts nothing about the debugger build, only about the
-copy loop that runs before anything DOSBox-X-shaped is touched.
+copy loop that runs before anything DOSBox-X-style is touched.
 """
 
 from __future__ import annotations

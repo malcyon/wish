@@ -302,7 +302,7 @@ all. That one container holds **29 blocks, ids 0-11 and 13-29** -- every area a
 party can stand in, the late ones included: Stojanow Gate (9), Valhingen
 Graveyard (10), Kovel Mansion (14), Yarash's Pyramid (22) and its lower level
 (23), the Temple of Bane (24), Kuto's Well (29) and all five Valjevo Castle
-minimums (3-7), which is where the game ends. Every block N is the C64's own
+floors (3-7), which is where the game ends. Every block N is the C64's own
 `ECL<N>`: 94.6-100% of bytes in common over all 29, eight of them identical
 byte for byte. So no area needs a disk the player has not already been asked
 for, and there is no third disk to ask for.

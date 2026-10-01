@@ -388,12 +388,12 @@ def _amiga_key(deltas) -> str:
 
 
 def _amiga_later_characters(data: bytes, what: str, label: str):
-    """The characters in one Curse or Silver Blades file, at its own deltas.
+    """The characters in one Curse or Silver Blades file, by its own title's deltas.
 
-    A saved game's deltas come from `goldbox.amiga_savegame.detect`, never from trying
-    `party_in_savegame` with each deltas in turn: the record signature it scans
+    A saved game's title comes from `goldbox.amiga_savegame.detect`, never from trying
+    `party_in_savegame` with each title's deltas in turn: the record signature it scans
     for is the name and the ability pairs, which sit at the same offsets in
-    both titles, so a Silver Blades save handed the Curse deltas yields six
+    both titles, so a Silver Blades save handed Curse's deltas yields six
     characters read through the wrong table -- plausible rubbish rather than
     an error.  A `.guy`-style record file is named by its size, which is
     distinct between the two.

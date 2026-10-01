@@ -175,7 +175,7 @@ class FakeSession(Session):
         self.said.append(" ".join(str(x) for x in a))
 
 
-# -- the status line, which has two shapes ---------------------------------
+# -- the status line, which has two forms ---------------------------------
 
 
 def test_the_travel_grid_status_line_answers_no_facing():

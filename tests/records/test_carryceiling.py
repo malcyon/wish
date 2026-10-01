@@ -10,7 +10,7 @@ as an item's grant, and a C64 title whose disks are on the machine and not in
 the registry.
 
 Nothing here reads a game file.  The records are built from the documented
-shapes, so the tests run on a machine with no game on it.
+forms, so the tests run on a machine with no game on it.
 """
 
 from __future__ import annotations
@@ -149,7 +149,7 @@ def _silver_blades_savegame() -> bytes:
 
 
 def test_a_silver_blades_saved_game_is_not_read_as_curse():
-    """The signature matches under both shapes; only `detect` separates them.
+    """The signature matches under both forms; only `detect` separates them.
 
     `party_in_savegame` trusts whatever deltas it is handed, so trying each in
     turn read Silver Blades' `savgamA.sav` as two Curse characters on the

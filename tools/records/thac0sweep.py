@@ -98,7 +98,7 @@ def c64_table(title: str = "pool-of-radiance") -> dict[str, list[int]]:
     """One class name to THAC0 by level, read off the player's own `GEN`.
 
     Pool of Radiance only: the later titles hold their rows at other addresses
-    and in other shapes, and `goldbox/levels.py`'s docstring has them.
+    and in other forms, and `goldbox/levels.py`'s docstring has them.
     """
     if title != "pool-of-radiance":
         raise SystemExit(f"the C64 side of {title} is not read here; "

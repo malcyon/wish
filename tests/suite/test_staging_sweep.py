@@ -25,7 +25,7 @@ reads each call site instead and writes down which it is.
 ## What the sweep flags
 
 A destination that reaches one of three directories, tracked through
-assignments and through a helper's `out`-shaped parameters:
+assignments and through a helper's `out`-style parameters:
 
 * **a pool slot's own directory** -- `slot.dir`, `slot_dir`.  Reused by every
   later tenant of that slot.
@@ -583,7 +583,7 @@ def test_a_wrapped_copy_is_not_flagged(tmp_path):
     assert reused_destination_copies(tmp_path) == {}
 
 
-# -- the shapes the sweep exists to catch, spelled out ------------------------
+# -- the forms the sweep exists to catch, spelled out ------------------------
 
 def test_the_sweep_catches_a_copy_into_a_pool_slot(tmp_path):
     """`#430`, `#455`, `#469`: the slot's own directory, written inline."""

@@ -297,7 +297,7 @@ def test_pool_of_radiances_wisdom_rule_would_answer_differently(wis):
 
     `GEN $10AD` there is the off-by-one in `docs/125-bug-notes.md`, and Silver
     Blades tabulates the *Players Handbook* row like Curse instead. So this is
-    a title-shaped rule and `wisdom_bonus_spells` must not answer Pool of
+    a title-like rule and `wisdom_bonus_spells` must not answer Pool of
     Radiance's for it.
     """
     assert levels.wisdom_bonus_spells(12) == (1, 0, 0)

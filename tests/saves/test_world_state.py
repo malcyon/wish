@@ -127,7 +127,7 @@ def test_the_later_titles_copied_header_words_are_read():
     """`+$E7`-`+$E9` and `+$FD`-`+$FE`: Pool of Radiance copies none of them,
     Curse of the Azure Bonds copies `+$E7`-`+$E8` and Secret of the Silver
     Blades all five (`c64_save.Container.copied`) -- read here regardless of
-    title, so `header` is never a title-shaped lookup for a caller."""
+    title, so `header` is never a title-like lookup for a caller."""
     savgam = _dos_savgam("curse-299-whole-engine-resave", "D")
     state = world_state.from_dos(savgam)
     assert set(state.header) == set(world_state.HEADER_ADDRESSES)

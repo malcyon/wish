@@ -258,14 +258,14 @@ def print_sweep(rows: list[dict]) -> None:
         where = f"{disk}#{slot}"
         if "error" in row:
             unread += 1
-            print(f"{row["figure"]}  n={row['slots']:3d}  UNREAD  {where}")
+            print(f"{row['figure']}  n={row['slots']:3d}  UNREAD  {where}")
             continue
         c = row["choice"]
         if c.alternatives:
             ambiguous += 1
         alt = (f"  head also {[f'{s} {o}' for s, o in c.alternatives]}"
                if c.alternatives else "")
-        print(f"{row["figure"]}  n={row['slots']:3d}  "
+        print(f"{row['figure']}  n={row['slots']:3d}  "
               f"{c.weapon_size} weapon {c.weapon:2d}, "
               f"{c.head_size} head {c.head:2d}"
               f"{'' if c.exact else '  (carries a cell from an earlier choice)'}"

@@ -15,7 +15,7 @@ E1  Sample the CPU's PC while the party stands still in DUNGEON, and count how
     the Fast Travel button's own gate, so the miss rate *is* the flicker rate.
 E2  With one binary-monitor connection held, what does a second attach do and
     how long does it take?  (The state wish is left in after a give-up.)
-E3  Round-trip times for an automapper-shaped poll, idle and across a walk.
+E3  Round-trip times for an automapper-style poll, idle and across a walk.
 """
 from __future__ import annotations
 

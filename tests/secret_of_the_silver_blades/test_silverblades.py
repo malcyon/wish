@@ -412,7 +412,7 @@ def test_every_shipped_icon_is_a_weapon_and_a_head_from_the_editors_lists():
     The parts data is byte-identical to Pool of Radiance's; only the load
     address moves, to `$8E00`. `IconParts` fits that base out of the pointers
     rather than naming it, and the test of the fit is that all eight shipped
-    shapes come back out of a (weapon, head) pair -- where the hardcoded
+    forms come back out of a (weapon, head) pair -- where the hardcoded
     `$A700` raised `IndexError` before #31.
     """
     from goldbox.iconparts import IconParts

@@ -265,10 +265,10 @@ def _amiga_key(deltas) -> str:
 
 
 def _amiga_later_characters(data: bytes, what: str, label: str):
-    """The characters in one Curse or Silver Blades file, at its own deltas.
+    """The characters in one Curse or Silver Blades file, by its own title's deltas.
 
-    A saved game's deltas come from `goldbox.amiga_savegame.detect`, never from trying
-    each deltas in turn: the signature `party_in_savegame` scans for sits at
+    A saved game's title comes from `goldbox.amiga_savegame.detect`, never from trying
+    each title's deltas in turn: the signature `party_in_savegame` scans for sits at
     the same offsets in both titles, so a Silver Blades save handed the Curse
     deltas yields six characters read through the wrong table -- plausible
     rubbish rather than an error.  Copied from `tools/records/spellbooksweep.py`.

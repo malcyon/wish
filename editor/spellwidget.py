@@ -1,6 +1,6 @@
 """Spells by name: the spellbook a character knows, and what is memorised.
 
-Two record fields, two shapes, one controller each. Both bind by `objectName`
+Two record fields, two forms, one controller each. Both bind by `objectName`
 like everything else -- `field_spells_known` at `0x078` and `field_spells_memorised`
 at `0x020`.
 
@@ -489,7 +489,7 @@ class MemorisedEditor(SpellEditor):
     def _describe(self) -> None:
         """The line under the list: how many are prepared against how many fit.
 
-        Three shapes, because there are three things that can be true. A
+        Three forms, because there are three things that can be true. A
         capacity to compare against; a caster whose title's progression tables
         we have not read, where the count is all that can honestly be said; and
         a character who casts nothing.

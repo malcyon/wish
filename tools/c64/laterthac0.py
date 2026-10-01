@@ -197,7 +197,7 @@ def _class_bits(image: bytes, at: int, rows: int) -> bytes | None:
 def writers(title: str) -> list[tuple[int, str, int | None]]:
     """Every `GAME.OVR` instruction touching `thac0_base`, in file order.
 
-    `(offset, what, immediate)`.  The four shapes are all the compiler emits
+    `(offset, what, immediate)`.  The four forms are all the compiler emits
     for a `char` field at a `disp8` displacement off `es:di`, which is how
     every one of these titles addresses the record.
     """

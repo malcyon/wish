@@ -820,7 +820,7 @@ class SaveGame1:
     def roster(self, index: int) -> RosterBlock:
         if not 0 <= index < ROSTER_COUNT:
             raise IndexError(f"roster index {index} out of range 0..{ROSTER_COUNT - 1}")
-        # `_data` is the roster payload itself in both shapes -- Pool of
+        # `_data` is the roster payload itself in both forms -- Pool of
         # Radiance's whole SAVEDGAME1, or the single page lifted out of a
         # later title's save -- so blocks always start at 0 within it.
         return RosterBlock(self._data, index, self.game)

@@ -8,7 +8,7 @@ four offsets `tools/dos/dosbyteimm.py` finds the engines' own compares at --
 `0x084`, `0x0F7`, `0x0FF`, `0x147`, one per title's `GAME.OVR`
 (`docs/195-three-dos-record-bytes-named-from-the-overlays.md`).
 
-No game data is read here; the shapes are this project's own declarations.
+No game data is read here; the forms are this project's own declarations.
 """
 
 from __future__ import annotations

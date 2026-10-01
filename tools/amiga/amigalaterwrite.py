@@ -153,7 +153,7 @@ def _records_in(data: bytes) -> dict:
 
     `amigasavegame.detect` is what says which, from where a record signature
     lands: Curse's party begins at 12825 and Silver Blades' at 5143.  Trying
-    the shapes in turn instead finds a Silver Blades saved game as a Curse
+    the forms in turn instead finds a Silver Blades saved game as a Curse
     party and reads six characters of rubbish out of it, which is the trap
     this function exists to keep out of the comparison.
     """

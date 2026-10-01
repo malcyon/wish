@@ -4,7 +4,7 @@
 `#396 (Whether an Amiga Curse or Silver Blades record's combat-icon fields
 share DOS's own numbering is unmeasured)` asked whether an Amiga record's
 `icon_head`, `icon_body`, `icon_dimension` and `icon_colours` mean what the
-same fields mean on DOS, or whether they are DOS-shaped bytes indexing a
+same fields mean on DOS, or whether they are DOS-style bytes indexing a
 different set of drawings.  This is the measurement.
 
 Three questions, three modes.

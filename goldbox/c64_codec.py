@@ -573,7 +573,7 @@ def _infravision(game: object, race: int) -> int:
 
     `game` is whatever a caller has in hand for the title -- a
     `goldbox.c64_port.C64Container`, its `.key`, or None for Pool of Radiance -- the same
-    three shapes :func:`deltas_for` accepts, and for the same reason: a
+    three forms :func:`deltas_for` accepts, and for the same reason: a
     conversion carries a bare key rather than the descriptor.
     `goldbox.titles.race_table` is duck-typed on `.key` and resolves all
     three itself, Pools of Darkness' own key included
@@ -2655,7 +2655,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # enemy's) and bit 7 is quickfight, set by QUICK and never cleared
     # (goldbox-bugs.md bug 3).  DOS keeps the same two flags separately at
     # 0x10E and 0x10F -- the DOS engine's own script-field accessor converts
-    # between the two shapes, which is what fixes this byte's meaning
+    # between the two forms, which is what fixes this byte's meaning
     # (docs/169-dos-combat-side.md, #235).  A source supplying neither writes
     # 0x00, which is what every fresh C64 character holds.
     hostile, quickfight = use("hostile"), use("quickfight")

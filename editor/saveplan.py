@@ -1069,7 +1069,7 @@ def written_records(port: str, at: pathlib.Path,
 def stored_name(member: Any) -> str:
     """The name as the member's own port actually stores it.
 
-    `member.record` is always the C64-shaped sheet record, whose `name`
+    `member.record` is always the C64-style sheet record, whose `name`
     field round-trips through `goldbox.petscii.encode_record_name` and folds
     to capitals -- correct for a C64 member, and wrong for a DOS or Amiga one,
     whose own bytes the sheet's C64 form never represents case-faithfully
@@ -1182,7 +1182,7 @@ def _expected_strength_bonus_flag(destination: "Destination") -> "int | None":
 
     Neither port keeps the C64's own cached flag: DOS writes the measured
     constant 1 into every player record regardless of what the source held
-    (`goldbox.dos_codec.WRITE_CONSTANTS`), and the Amiga keeps the DOS-shaped
+    (`goldbox.dos_codec.WRITE_CONSTANTS`), and the Amiga keeps the DOS-style
     field. `None` for a native or a C64 destination, where the byte is the
     C64's own and is compared literally.
     """

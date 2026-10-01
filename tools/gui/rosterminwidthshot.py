@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Photograph the window's minimum width, at an ordinary party, under each of
-the three fix shapes `#474 (Raising the UI font grows the window's minimum
+the three fix forms `#474 (Raising the UI font grows the window's minimum
 width with an ordinary party open, which is the defect #41 removed for the
 widest one)` names -- and today's behaviour, for comparison.
 

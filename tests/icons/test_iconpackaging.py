@@ -8,7 +8,7 @@ picks `File > Import`, chooses his DOS party, and either every character
 arrives with his own figure or the conversion stops with `the combat-figure
 table is not at ...` and no party at all.
 
-Two build shapes, both now carrying the file:
+Two build forms, both now carrying the file:
 
 * **The wheel carries it.**  `pyproject.toml` lists `tools` among the wheel's
   packages and hatchling ships every file in a package directory, so

@@ -90,7 +90,7 @@ Curse = load_tools_module("curserun")
 class SSBFakeSession(SSB.SSBSession):
     """`SSBSession`'s own `character_sheet` path, everything around it fixed.
 
-    Same shape as `FakeSession` above, over the real driver class instead of
+    Same form as `FakeSession` above, over the real driver class instead of
     the base one -- loading the real class is what would have caught this
     ticket, the way `tests/c64/test_session_indoors.py:142` did for #426."""
 

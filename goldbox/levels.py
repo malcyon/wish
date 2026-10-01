@@ -67,7 +67,7 @@ them is not the same as being able to write a Curse record**, and four of the
 readings are a different *rule* rather than the same rule at a new address:
 
 * **the hit die is rolled twice and the better roll kept** (`$15FC`), where
-  Pool of Radiance rolls once and minimums a single-class fighter at 4;
+  Pool of Radiance rolls once and raises a single-class fighter to at least 4;
 * **`hp_max` is per class slot**, `min(level, roll_to) * bonus` summed over the
   slots, one extra bonus for a ranger, then divided by how many classes the
   character has -- against `hp_rolled + level * bonus` here. It disagrees with
@@ -79,7 +79,7 @@ readings are a different *rule* rather than the same rule at a new address:
   workspace whenever the sheet is drawn, and all six shipped characters hold
   zero there.
 
-**Curse's tables are now in this file, and the four shapes that could not
+**Curse's tables are now in this file, and the four forms that could not
 carry them have been widened** (`#18`): `thief_skill_row` takes a dexterity,
 `constitution_hp_bonus` takes a class slot, `wisdom_bonus_spells` takes a title
 and returns as many spell levels as that title reaches, and `turning_level`
@@ -2035,7 +2035,7 @@ def _pod_progression(name: str) -> tuple[Level, ...]:
 #:   and that rule is not read closely enough to reproduce
 #:   (`saving_throw_rule_read`);
 #: * the trainer's own rules -- whether one press raises every ready class,
-#:   the divide's round-up (`0x027084` divides and minimums at 1 with no
+#:   the divide's round-up (`0x027084` divides and clamps at 1 with no
 #:   round-up at all, which neither setting of
 #:   `hit_die_divide_round_up_on_tie` says), whether `attack_forms` is
 #:   overwritten -- keep the defaults, and `trainer_measured` is False, so
@@ -2139,7 +2139,7 @@ DEFAULT = POOL_OF_RADIANCE
 #: **`_level_up` now gates on `LevelUp.offers`** -- which itself now asks
 #: `ready_classes` rather than `best_class` for a `trains_all_ready_classes`
 #: title, answering "is the magic-user one of the classes this visit trains"
-#: correctly for both shapes of trainer -- instead of `class_for`'s single
+#: correctly for both forms of trainer -- instead of `class_for`'s single
 #: answer.
 #:
 #: One of the readings behind Curse's tables is PROBABLE rather than
