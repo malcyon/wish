@@ -2381,6 +2381,10 @@ def test_a_real_window_opens_no_debugger_connection(tmp_path, monkeypatch):
     monkeypatch.setenv(fsuaegdb.WISH_FLAG, "1")
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "rt"))
     monkeypatch.setattr(fsuaegdb.amiga, "FSUAE_PORT", 6598)
+    # `private_settings` writes `os.environ` directly; setting each name first
+    # makes monkeypatch put the original value (or absence) back afterwards.
+    for var in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "APPDATA", "LOCALAPPDATA"):
+        monkeypatch.setenv(var, "unused")
     mapmarker.private_settings(tmp_path)
     app, window = fsuaegdb.open_wish(tmp_path)
     try:

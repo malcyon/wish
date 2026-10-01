@@ -430,6 +430,10 @@ def test_main_start_passes_no_flag_through(capsys):
     assert f"$env:{winwish.FLAG}" not in body
 
 
+# `os.kill(pid, SIGTERM)` on Windows is `TerminateProcess`: no handler runs, so
+# signalling itself kills the pytest worker and the Windows job never reports.
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="SIGTERM has no handler on Windows")
 def test_a_second_sigterm_during_the_undo_does_not_skip_the_release(tmp_path, monkeypatch):
     import os
     import signal
