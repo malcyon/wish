@@ -24,4 +24,5 @@ Tests for the live automapper in `automap/`: its map model and geometry, the par
 | `test_messages_panel.py` | Checks that the Messages panel follows the newest line only while the reader is at the bottom. |
 | `test_panel.py` | Checks that a roster card keeps its classes, level and Level up button in the width its column gives it, however many badges are lit or how large the font. |
 | `test_pertitle_live.py` | Checks that the roster card's badges, class and experience bar come from the open title's tables rather than Pool of Radiance's. |
+| `test_routediagram.py` | Checks that Curse's world map draws as a diagram with each place at its marker cell and the party's place filled in, that the strip names that place, and that a failed read, another title or missing disks leave the canvas blank. |
 | `test_shading.py` | Checks the three ways solid rock is shaded on the combat map: anchored to the square, joined across neighbours and still legible when the cell shrinks. |

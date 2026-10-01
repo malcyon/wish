@@ -169,7 +169,7 @@ def test_the_page_and_two_radios_exist(
     win, _ = _window_on(app, tmp_path, monkeypatch, [out(8, 27)])
     assert win.world_canvas is not None
     assert [b.text() for b in win.view_buttons] == ["Full View", "Area View"]
-    assert win.stack.count() == 3
+    assert win.stack.count() == 4
 
 
 # -- the radios' place and visibility ------------------------------------------

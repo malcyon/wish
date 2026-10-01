@@ -941,7 +941,7 @@ class BottomStrip(QObject):
         #: would drown the file.
         self._loaded: tuple[int, ...] = ()
 
-    def show_state(self, state, snap=None) -> None:
+    def show_state(self, state, snap=None, place: str = "") -> None:
         """The map's own state answers "where"; the snapshot answers the rest.
 
         The square and facing come from `AutomapState` on purpose: it prefers
@@ -966,7 +966,8 @@ class BottomStrip(QObject):
                     f"({state.x},{state.y}) facing {state.facing_letter}"
                     if state.source else "square --")
         if self.area is not None:
-            self.area.setText(state.area_label)
+            self.area.setText(place if state.world_map and place
+                              else state.area_label)
         self.show_effects(snap)
         if snap is None:
             return

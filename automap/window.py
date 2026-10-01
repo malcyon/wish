@@ -89,6 +89,7 @@ from .render import (
     party_marker,
     travel_marker,
 )
+from .routes import display_name, load_route_map, place_labels, place_points
 from .state import OUTDOORS_REGIONS, OUTDOORS_WHERE
 
 PAPER = QColor("#fbfcfd")
@@ -728,6 +729,96 @@ class WorldCanvas(QWidget):
         p.drawPolygon(QPolygonF([QPointF(a, b) for a, b in marker.points]))
 
 
+class RouteCanvas(QWidget):
+    """Paints Curse's world map as a route diagram: the places at the cells the
+    game's own picture marks them at, the roads between them as lines, and the
+    place the party stands at filled in the party's colour.
+
+    The places and roads are read off the player's disks when the window opens
+    (`automap.routes.load_route_map`) and are never stored. Where nothing was
+    read, `has_map` is False and the window shows the ordinary canvas.
+    """
+
+    #: A place's circle, in pixels.
+    NODE_RADIUS = 7
+    #: Between a circle and its name.
+    LABEL_GAP = 4
+
+    def __init__(self, state, parent=None):
+        super().__init__(parent)
+        from PyQt6.QtWidgets import QSizePolicy
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.state = state
+        self.route = None
+        # The same minimum and size hint as `MapCanvas`, so the stack is no
+        # taller on this page and no page raises the window's floor.
+        self.setMinimumSize(GRID * CELL_MIN + MARGIN * 2,
+                            GRID * CELL_MIN + MARGIN * 2)
+
+    def sizeHint(self):
+        return QSize(GRID * CELL + MARGIN * 2, GRID * CELL + MARGIN * 2)
+
+    @property
+    def has_map(self) -> bool:
+        return self.route is not None
+
+    def show_map(self, route) -> bool:
+        """Draw these places and roads; None draws nothing. True when there is
+        a map to draw."""
+        self.route = route
+        self.update()
+        return self.has_map
+
+    def place_name(self, node: int | None) -> str:
+        """The name of a place, as the tab writes it, or "" where unknown."""
+        if self.route is None or node is None:
+            return ""
+        for place in self.route.places:
+            if place.index == node:
+                return display_name(place.name)
+        return ""
+
+    @property
+    def points(self) -> dict[int, tuple[float, float]]:
+        """Each place's centre in this widget, by place index."""
+        if self.route is None:
+            return {}
+        return place_points(self.route, MARGIN, MARGIN,
+                            self.width() - MARGIN * 2,
+                            self.height() - MARGIN * 2)
+
+    def paintEvent(self, _event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.fillRect(self.rect(), PAPER)
+        if self.route is None:
+            return
+        points = self.points
+        pen = QPen(INK, 2)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        p.setPen(pen)
+        for road in self.route.roads:
+            if road.a in points and road.b in points:
+                p.drawLine(QPointF(*points[road.a]), QPointF(*points[road.b]))
+        names = {place.index: display_name(place.name)
+                 for place in self.route.places}
+        metrics = p.fontMetrics()
+        radius = self.NODE_RADIUS
+        for index, (x, y) in points.items():
+            p.setPen(QPen(INK, 2))
+            p.setBrush(PARTY if index == self.state.world_node else PAPER)
+            p.drawEllipse(QPointF(x, y), radius, radius)
+        sizes = {i: (metrics.horizontalAdvance(n), metrics.height())
+                 for i, n in names.items() if n}
+        boxes = place_labels(self.route, points, sizes, radius, self.LABEL_GAP,
+                             (0, 0, self.width(), self.height()))
+        p.setPen(INK)
+        for index, (left, top, wide, high) in boxes.items():
+            p.drawText(QRectF(left, top, wide, high),
+                       Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                       names[index])
+
+
 class AutomapBinding(QObject):
     """The map, which opens whether or not there is a game to watch.
 
@@ -801,6 +892,7 @@ class AutomapBinding(QObject):
         #: before it does and showing one would open it on its own.
         self._controls_shown: bool | None = None
         self.world_canvas = WorldCanvas(self.state, parent=self.root)
+        self.route_canvas = RouteCanvas(self.state, parent=self.root)
         # One tab, two canvases, and only ever one of them true: when the game
         # enters combat the area map becomes the combat map and changes back
         # afterwards. Two tabs would mean the useful one is always the one you
@@ -811,6 +903,7 @@ class AutomapBinding(QObject):
         self.stack.addWidget(self.battle_canvas)
         if self.world_canvas is not None:
             self.stack.addWidget(self.world_canvas)
+        self.stack.addWidget(self.route_canvas)
         self.battle = None
         #: The two dividers down the tab, and the widths the user drags them
         #: to. Built before the panels so that a column restored shut is shut
@@ -958,7 +1051,9 @@ class AutomapBinding(QObject):
     def _use_world(self, disks) -> None:
         """Load the wilderness windows off these disks."""
         from .maps import load_world
-        self.set_world(load_world(disks, game_named(self.state.title)))
+        game = game_named(self.state.title)
+        self.set_world(load_world(disks, game))
+        self.route_canvas.show_map(load_route_map(disks, game))
 
     def set_world(self, world) -> None:
         """Hand the mapper the wilderness windows to identify the party's
@@ -1003,9 +1098,21 @@ class AutomapBinding(QObject):
                 and self.state.window is not None
                 and self.world_canvas.has_picture)
 
+    def route_page_shown(self) -> bool:
+        """Is the party on a world-map screen with a route diagram to show?"""
+        return self.state.world_map and self.route_canvas.has_map
+
     def _page(self) -> QWidget:
         """The canvas the tab shows when no fight is on."""
+        if self.route_page_shown():
+            return self.route_canvas
         return self.world_canvas if self.world_page_shown() else self.canvas
+
+    def _show_strip(self, snap) -> None:
+        """The strip under the map, naming the place on a world map."""
+        place = (self.route_canvas.place_name(self.state.world_node)
+                 if self.route_page_shown() else "")
+        self.strip.show_state(self.state, snap, place=place)
 
     def show_controls(self, shown: bool) -> None:
         """The host says whether this tab is the visible one. The Fog of war
@@ -1282,7 +1389,7 @@ class AutomapBinding(QObject):
             self.actions_bar.attach(None)
             self.fasttravel_bar.attach(None)
             self.roster.set_stale(True)
-            self.strip.show_state(self.state, self.snapshot)
+            self._show_strip(self.snapshot)
             return
         # The buttons follow the mode flag, and the watcher gets its tick here
         # rather than from a timer of its own -- the edge it fires on is the
@@ -1305,11 +1412,11 @@ class AutomapBinding(QObject):
             # The quest log is left alone for the same reason, and a
             # better one: plot flags do not move while the game is in a menu.
             self.roster.set_stale(True)
-            self.strip.show_state(self.state, self.snapshot)
+            self._show_strip(self.snapshot)
             return
         self.snapshot = snap
         self.roster.show_snapshot(snap)
-        self.strip.show_state(self.state, snap)
+        self._show_strip(snap)
         self.questlog.update_from(save0_bytes)
         self.show_strength(save0_bytes, roster_bytes)
 
@@ -1353,7 +1460,7 @@ class AutomapBinding(QObject):
 
     def _refresh(self) -> None:
         st = self.state
-        self.strip.show_state(st, self.snapshot)
+        self._show_strip(self.snapshot)
         # Cheap: the panel compares the notes to what it drew and returns.
         self.notes_panel.show_notes(st.notes)
         if self.battle is None:
@@ -1361,6 +1468,7 @@ class AutomapBinding(QObject):
         self._sync_controls()
         if self.world_canvas is not None:
             self.world_canvas.update()
+        self.route_canvas.update()
         if st.world_map:
             # Nothing is said until the tab has something to show here.
             self._say("")
