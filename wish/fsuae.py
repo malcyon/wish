@@ -8,17 +8,22 @@ goes, so a probing connect could take the run's only debugging door with it, and
 while somebody is playing. `listening` reads the kernel's table of TCP sockets
 instead, which asks the question without touching the emulator.
 
-**`connect()` opens the socket once per emulator run.** The window detaches on
-any `NotConnected` and attaches again on its next tick, and
-`AmigaTarget.close()` leaves the transport alone on purpose, so a `connect()`
-that built a fresh `FsuaeGdb` every time would find nothing listening the moment
-the first one had been dropped -- and the player would have to restart the
-emulator, and with it the game. The transport, the machine found on it and the
-data hunk's base are cached together, so a retry after a failed or unfinished
-locate costs one packet and not a second socket. The machine and the base are
-checked against memory on every `connect()`, because a reset inside the same
-emulator run can load another title, or the same one somewhere else, on the same
-socket.
+**Wish never connects to the fork itself.** The fork serves one client per run
+and closes its door for good when that client leaves, so a Wish that held the
+connection would end the player's debugging when it closed. A background helper
+(`automap.fsuaehelper`) holds it instead and outlives Wish; `connect()` finds
+that helper, or starts one when the fork is listening and none runs, and reads
+memory through it. Starting is not waited for: `connect()` raises `FsuaeError`
+(a `NotConnected`) and the window asks again on its next tick.
+
+**`connect()` opens the helper's socket once per emulator run.** The window
+detaches on any `NotConnected` and attaches again on its next tick, and
+`AmigaTarget.close()` leaves the transport alone on purpose. The transport, the
+machine found on it and the data hunk's base are cached together, so a retry
+after a failed or unfinished locate costs one packet and not a second socket.
+The machine and the base are checked against memory on every `connect()`,
+because a reset inside the same emulator run can load another title, or the same
+one somewhere else, on the same socket.
 """
 
 from __future__ import annotations
@@ -26,8 +31,9 @@ from __future__ import annotations
 import os
 import time
 
-from automap import amiga
+from automap import amiga, fsuaehelper
 
+from . import debuglog
 from .backends import Backend
 
 #: `/proc/net` is where a Linux kernel lists its TCP sockets. Not a constant of
@@ -53,6 +59,11 @@ ANY6 = "0" * 32
 #: title that has not loaded yet on every tick.
 SWEEP_EVERY = 5.0
 
+#: The soonest a second helper may be started after the last one was. A helper
+#: that exits at once (the fork is held by another client, say) would otherwise
+#: be started again on every one-second tick.
+HELPER_RETRY = 10.0
+
 
 def _listeners(path: str, wanted: frozenset[str]) -> set[int]:
     """Ports in state LISTEN on one of `wanted`'s addresses, out of one file."""
@@ -70,16 +81,18 @@ def _listeners(path: str, wanted: frozenset[str]) -> set[int]:
 
 
 def listening(port: int | None = None, proc: str = PROC_NET) -> bool:
-    """Is something listening for TCP on loopback (or every address) at `port`?
+    """Is a helper alive for `port`, or something listening there for TCP?
 
-    **Opens no socket**, which is what this function is for -- see the module
-    docstring. False on any `OSError` and on a machine with no `/proc/net`, and
+    The second half asks about loopback (or every address). **Opens no
+    socket**, which is what this function is for -- see the module docstring. False on any `OSError` and on a machine with no `/proc/net`, and
     it never raises: it runs on a timer with no emulator present most of the
     time. Where there is no `/proc` the backend is simply never offered, which
     is right, because the emulator is a Linux x86-64 binary.
     """
     port = amiga.FSUAE_PORT if port is None else port
     try:
+        if fsuaehelper.find(port, fsuaehelper.runtime_dir()) is not None:
+            return True
         return (port in _listeners(os.path.join(proc, "tcp"),
                                    frozenset({LOOPBACK, ANY}))
                 or port in _listeners(os.path.join(proc, "tcp6"),
@@ -96,11 +109,17 @@ _base: int | None = None
 _swept_at: float | None = None
 
 
-def reset() -> None:
-    """Forget the connection, so the next `connect()` opens a new socket.
+#: The helper this process started, and when. The `Popen` is kept so that it is
+#: reaped and its exit code reaches the debug log; `reset()` leaves both, so a
+#: dropped connection does not start a helper at once.
+_helper = None
+_helper_at: float | None = None
 
-    The emulator side of that is only useful when the emulator has been
-    restarted: the fork does not listen again after a client leaves.
+
+def reset() -> None:
+    """Forget the connection to the helper, so the next `connect()` opens a new one.
+
+    Costs nothing: the helper keeps the emulator's connection.
     """
     global _transport, _port, _machine, _base, _swept_at
     if _transport is not None:
@@ -108,12 +127,52 @@ def reset() -> None:
     _transport = _port = _machine = _base = _swept_at = None
 
 
+def forget_helper() -> None:
+    """Forget the helper this process started. For tests; the helper itself runs on."""
+    global _helper, _helper_at
+    _helper = _helper_at = None
+
+
+def _ensure_helper(port: int, clock, starter) -> None:
+    """Start a helper for `port` unless this process has one running or just tried."""
+    global _helper, _helper_at
+    if _helper is not None:
+        code = _helper.poll()
+        if code is None:
+            return                              # still starting, or running
+        debuglog.note("the Amiga connection helper exited with %s", code)
+        _helper = None
+    now = clock()
+    if _helper_at is not None and now - _helper_at < HELPER_RETRY:
+        return
+    _helper_at = now
+    try:
+        _helper = starter(port, fsuaehelper.runtime_dir())
+    except OSError as exc:
+        debuglog.note("the Amiga connection helper would not start: %s", exc)
+
+
+def _open_transport(wanted: int, port, opener, clock, starter) -> amiga.FsuaeGdb:
+    """A transport through the helper, or through `opener` when one is given."""
+    if opener is not None:
+        return amiga.FsuaeGdb(port=port, opener=opener)
+    info = fsuaehelper.find(wanted, fsuaehelper.runtime_dir())
+    if info is not None:
+        return amiga.FsuaeGdb(
+            port=wanted, opener=lambda: fsuaehelper.PLATFORM.connect(info))
+    if listening(wanted):
+        _ensure_helper(wanted, clock, starter)
+        raise amiga.FsuaeError("starting the connection helper")
+    raise amiga.FsuaeError(f"nothing is listening on port {wanted}")
+
+
 def connect(port: int | None = None, opener=None,
-            clock=time.monotonic) -> amiga.AmigaTarget:
+            clock=time.monotonic, starter=fsuaehelper.start) -> amiga.AmigaTarget:
     """A target on the running Amiga, or a `NotConnected` saying what is missing.
 
-    `opener` and `clock` are injected so the tests need no emulator and no
-    waiting. Raises `amiga.FsuaeError` -- a `NotConnected`, so the window goes
+    `opener`, `clock` and `starter` are injected so the tests need no emulator,
+    no waiting and no helper process. With an `opener` the helper is not
+    consulted. Raises `amiga.FsuaeError` -- a `NotConnected`, so the window goes
     back to waiting -- when nothing is listening, when no title with a row in
     `amiga.MACHINES` is in memory yet, and when the sweep is being rate-limited.
     A raise after the socket has opened leaves the transport cached.
@@ -131,8 +190,7 @@ def connect(port: int | None = None, opener=None,
                                    or _port != wanted):
         reset()
     if _transport is None:
-        # Sends `vCont;c`: the fork sits halted in warp until a client does.
-        _transport = amiga.FsuaeGdb(port=port, opener=opener)
+        _transport = _open_transport(wanted, port, opener, clock, starter)
         _port = wanted
     if _machine is not None:
         held = _transport.read_memory(_base + _machine.anchor_offset,

@@ -1517,6 +1517,11 @@ class FsuaeGdb:
         while True:
             while self._buf[:1] in (b"+", b"-"):
                 self._buf = self._buf[1:]
+            if self._buf and not self._buf.startswith(b"$"):
+                # Half of a console packet left by an earlier drain: skip to
+                # the next packet start rather than wait behind it for ever.
+                start = self._buf.find(b"$")
+                self._buf = self._buf[start:] if start != -1 else b""
             if self._buf.startswith(b"$"):
                 end = self._buf.find(b"#")
                 if end != -1 and len(self._buf) >= end + 3:

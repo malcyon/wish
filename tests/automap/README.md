@@ -18,7 +18,7 @@ Tests for the live automapper in `automap/`: its map model and geometry, the par
 | `test_commissions.py` | Checks the decoder for the City Council's ledger flags and the panel that draws the commissions. |
 | `test_commissions_data.py` | Checks what the ledger's entries mean against the shipped scripts and disks: which keep a marker, which is dead and which two scripts share one address. |
 | `test_conditionbadges.py` | Checks that the roster card shows a badge for each effect it belongs to and no other, keeps its height with every badge lit, and credits every glyph. |
-| `test_fsuaehelper.py` | Checks, against a fake FS-UAE, that the helper forwards only memory reads, answers two clients their own replies, refuses a second helper per port and exits with the emulator, and that a stale lock file is detected. |
+| `test_fsuaehelper.py` | Checks, against a fake FS-UAE, that the helper forwards only memory reads, answers two clients their own replies, refuses a second helper per port and exits with the emulator, and that a stale JSON file and socket left by a dead helper are ignored. |
 | `test_issue286a2.py` | Checks that a live tick makes four reads, and twelve on every fifth tick, from a machine standing in New Phlan. |
 | `test_latercombat.py` | Checks that a fight in Curse or Silver Blades is read at those titles' own addresses and that the reader as it stood finds none. |
 | `test_marching_order.py` | Checks that the automapper and the editor list the party from the highest occupied slot down, including across a gap in the slots. |

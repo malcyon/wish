@@ -12,7 +12,9 @@ subcommands' module falling out of the bundle.
 
 import importlib.util
 import io
+import os
 import re
+import subprocess
 import sys
 import tomllib
 
@@ -272,3 +274,26 @@ def test_with_neither_it_is_silence_and_not_a_crash(entry, monkeypatch):
 def test_no_console_is_borrowed_off_windows(entry):
     """The ctypes call is guarded by the platform check and nothing else."""
     assert entry._attach_windows_console() is False
+
+
+def test_the_helper_flag_runs_the_connection_helper_before_any_window_code(tmp_path):
+    """A frozen build has no `-m`, so `wish --fsuae-helper` is the helper's door.
+
+    A socket path over the limit makes the helper return at once, before it
+    touches the network, with a log line only the helper writes.
+    """
+    deep = tmp_path / ("d" * 120)
+    probe = (
+        "import runpy, sys\n"
+        "sys.argv = ['wish_main.py', '--fsuae-helper', '--port', '1',"
+        f" '--runtime', {str(deep)!r}]\n"
+        "try:\n"
+        "    runpy.run_path('packaging/wish_main.py', run_name='__main__')\n"
+        "except SystemExit as exc:\n"
+        "    print('exit', exc.code)\n"
+        "print('qt', any(m.startswith('PyQt6') for m in sys.modules))\n")
+    result = subprocess.run([sys.executable, "-c", probe], cwd=ROOT,
+                            capture_output=True, text=True, timeout=60,
+                            env={**os.environ, "PYTHONPATH": str(ROOT)})
+    assert "too long" in result.stderr, result.stderr
+    assert result.stdout.split() == ["exit", "2", "qt", "False"]

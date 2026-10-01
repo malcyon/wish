@@ -2,13 +2,24 @@
 
 A frozen build needs a plain script to start from, not a `-m` module, and the
 relative imports in `wish/__main__.py` only work when it is imported as part of
-its package. This is that one line of indirection, and the stream repair below.
+its package. This is that one line of indirection, the stream repair below, and
+the door a frozen build uses to run the FS-UAE connection helper.
 """
 
 from __future__ import annotations
 
 import os
 import sys
+
+# The connection helper (`automap.fsuaehelper.start`) re-runs this binary with
+# `--fsuae-helper`. It must run before anything below touches a console: the
+# helper has to outlive Wish, and a console that closes ends every process
+# attached to it. `_attach_windows_console` is only reached from
+# `_repair_streams`, which comes after this.
+if sys.argv[1:2] == ["--fsuae-helper"]:
+    from automap.fsuaehelper import main as _helper_main
+
+    sys.exit(_helper_main())
 
 # `AttachConsole(ATTACH_PARENT_PROCESS)`, and the error it returns when the
 # process is already attached to one.

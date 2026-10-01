@@ -8,6 +8,7 @@ for good. No emulator is needed, so no pool slot.
 
 import os
 import pathlib
+import re
 import shutil
 import signal
 import socket
@@ -259,6 +260,25 @@ def test_the_greeting_is_answered_from_the_cache_and_the_resume_is_swallowed(
     assert [p for p in fork.received if p.startswith("qSupported")] == ["qSupported"]
 
 
+ALLOWED = re.compile(r"^(m[0-9a-f]{1,8},[0-9a-f]+|qSupported|vCont;c)$")
+
+
+@pytest.mark.parametrize("body", ["k", "D", "Mc00000,2:0102", "s", "S05",
+                                  "vCont;s", "vCont;t", "?", "g", "vKill",
+                                  "mc10000", "m,4", "mc10000,0", "m1ffffffff,4"])
+def test_only_the_three_allowed_packets_ever_reach_the_emulator(
+        running, fork, body):
+    client = Client(sock_path(running))
+    client.send(body)
+    assert client.reply() == ""
+    assert client.ask("m10,4") == memory_at(0x10, 4).hex()
+    assert all(ALLOWED.match(p) for p in fork.received), fork.received
+
+
+def test_the_client_socket_is_for_its_owner_alone(running):
+    assert (sock_path(running).stat().st_mode & 0o777) == 0o600
+
+
 @pytest.mark.parametrize("body", ["k", "D", "Mc00000,2:0102", "s", "S05",
                                   "vCont;s", "vCont;t", "\x03", "?", "g"])
 def test_anything_but_a_read_is_refused_and_never_reaches_the_emulator(
@@ -440,6 +460,8 @@ def test_a_greeting_without_continue_support_exits_5(runtime):
         assert helper.startup() == 5
         helper._cleanup()
         assert not fsuaehelper.Paths(other.port, runtime).json.exists()
+        # Not the fork, so it was not told to run the machine.
+        assert "vCont;c" not in other.received
     finally:
         other.close()
 
@@ -511,3 +533,134 @@ def test_a_frozen_helpers_command_line_is_recognised(fork, runtime):
     fake.command_line = lambda pid: [
         "wish", fsuaehelper.HELPER_FLAG, "--port", str(fork.port)]
     assert fsuaehelper.find(fork.port, runtime, fake) is not None
+
+
+def test_a_failure_to_set_up_the_client_socket_comes_before_the_emulator_is_touched(
+        fork, runtime):
+    files = fsuaehelper.Paths(fork.port, runtime)
+    runtime.mkdir(exist_ok=True)
+    files.sock.mkdir()                       # cannot be replaced by a socket
+    helper = fsuaehelper.Helper(fork.port, runtime)
+    assert helper.startup() == fsuaehelper.EXIT_NOT_PUBLISHED
+    helper._cleanup()
+    assert fork.accepted == 0 and not fork.door_closed
+
+
+def test_a_symlinked_runtime_directory_is_not_used(fork, runtime):
+    real = runtime / "real"
+    real.mkdir(mode=0o700)
+    link = runtime / "link"
+    link.symlink_to(real)
+    helper = fsuaehelper.Helper(fork.port, link)
+    assert helper.startup() == fsuaehelper.EXIT_RUNTIME_DIR
+    helper._cleanup()
+    assert fork.accepted == 0
+
+
+def test_a_directory_that_was_there_already_keeps_its_mode(fork, runtime):
+    target = runtime / "mine"
+    target.mkdir(mode=0o750)
+    target.chmod(0o750)
+    fsuaehelper.PLATFORM.secure_dir(target)
+    assert (target.stat().st_mode & 0o777) == 0o750
+
+
+def test_a_directory_others_can_write_to_is_not_used(runtime):
+    target = runtime / "open"
+    target.mkdir()
+    target.chmod(0o777)
+    with pytest.raises(OSError):
+        fsuaehelper.PLATFORM.secure_dir(target)
+
+
+def test_a_new_start_does_not_erase_the_log_of_a_running_helper(runtime, monkeypatch):
+    files = fsuaehelper.Paths(5, runtime)
+    runtime.chmod(0o700)
+    files.log.write_text("the first helper's line\n")
+    monkeypatch.setattr(fsuaehelper, "command",
+                        lambda port, rt: [sys.executable, "-c", "print('second')"])
+    fsuaehelper.start(5, runtime).wait(10)
+    text = files.log.read_text()
+    assert "the first helper's line" in text and "second" in text
+
+
+class _Stream:
+    """A socket holding the bytes of a half-read console packet, then a reply."""
+
+    def __init__(self, chunks):
+        self.chunks = list(chunks)
+
+    def settimeout(self, _s): pass
+
+    def sendall(self, _data): pass
+
+    def close(self): pass
+
+    def recv(self, _n):
+        if not self.chunks:
+            raise socket.timeout()
+        return self.chunks.pop(0)
+
+
+def test_a_half_drained_console_packet_does_not_swallow_the_next_reply():
+    gdb = amiga.FsuaeGdb(opener=lambda: _Stream(
+        [frame(GREETING)]), resume=False)
+    gdb._buf = b"6869#ab"                    # the tail of an "O" packet
+    gdb.sock.chunks.append(frame("0102"))
+    assert gdb.ask("m0,2") == "0102"
+
+
+CHILD = """
+import sys, time
+from wish import fsuae
+from automap import amiga
+port, mode = int(sys.argv[1]), sys.argv[2]
+deadline = time.time() + 25
+while time.time() < deadline:
+    try:
+        fsuae.connect(port=port)
+    except amiga.FsuaeError as exc:
+        if mode == "once":
+            print("listening", fsuae.listening(port))
+            print("transport", fsuae._transport is not None)
+            sys.exit(0)
+        if fsuae._transport is not None:
+            print(fsuae._transport.read_memory(0x10, 2).hex())
+            sys.exit(0)
+        time.sleep(0.2)
+sys.exit(3)
+"""
+
+
+def wish_process(fork, runtime, mode="until"):
+    """A separate Python process standing in for one run of Wish."""
+    root = str(pathlib.Path(amiga.__file__).resolve().parent.parent)
+    return subprocess.run(
+        [sys.executable, "-c", CHILD, str(fork.port), mode],
+        capture_output=True, text=True, timeout=60,
+        env={**os.environ, "PYTHONPATH": root, "XDG_RUNTIME_DIR": str(runtime)})
+
+
+def test_a_second_wish_finds_the_helper_the_first_started_and_the_fork_never_notices(
+        fork, runtime):
+    # `fsuae.connect` runs in other processes; the runtime directory is theirs.
+    first = wish_process(fork, runtime)
+    try:
+        assert first.returncode == 0, first.stderr
+        assert first.stdout.strip() == memory_at(0x10, 2).hex()
+        info = wait_for(lambda: fsuaehelper.find(fork.port, runtime / "wish"))
+        pid = info["pid"]
+        second = wish_process(fork, runtime)
+        assert second.returncode == 0, second.stderr
+        assert second.stdout.strip() == memory_at(0x10, 2).hex()
+        assert fsuaehelper.find(fork.port, runtime / "wish")["pid"] == pid
+        assert fork.accepted == 1 and not fork.client_left.is_set()
+
+        os.kill(pid, signal.SIGKILL)
+        wait_for(lambda: fork.client_left.is_set() and fork.door_closed)
+        third = wish_process(fork, runtime, "once")
+        assert third.returncode == 0, third.stderr
+        assert third.stdout.split() == ["listening", "False", "transport", "False"]
+    finally:
+        fork.close()
+        wait_for(lambda: not processes_naming(str(runtime)), 10)
