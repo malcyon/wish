@@ -435,7 +435,7 @@ def test_the_target_takes_the_transport_s_word_that_nothing_halts():
 
 
 def test_read_blocks_asks_for_the_memory_and_names_no_file():
-    """The shape difference: GDB-remote answers memory in the reply.
+    """The difference in form: GDB-remote answers memory in the reply.
 
     So there is no `S <file> <addr> <n>`, no dump file and no token -- and the
     check for that is that neither ever goes out on the wire.
@@ -1673,6 +1673,7 @@ def test_stop_signals_a_live_pid_that_leads_no_group_itself(
 
     monkeypatch.setattr(fsuaegdb.os, "killpg", no_group, raising=False)
     monkeypatch.setattr(fsuaegdb.os, "kill", kill)
+    monkeypatch.setattr(fsuaegdb, "is_fsuae", lambda pid: True)
     monkeypatch.setattr(fsuaegdb, "alive", lambda pid: live[pid])
     monkeypatch.setattr(fsuaegdb.time, "sleep", lambda s: None)
     assert fsuaegdb.stop(stop_args()) == 0
@@ -1690,6 +1691,7 @@ def test_stop_reports_a_group_less_pid_that_outlives_the_wait(monkeypatch, capsy
 
     monkeypatch.setattr(fsuaegdb.os, "killpg", no_group, raising=False)
     monkeypatch.setattr(fsuaegdb.os, "kill", lambda pid, sig: None)
+    monkeypatch.setattr(fsuaegdb, "is_fsuae", lambda pid: True)
     monkeypatch.setattr(fsuaegdb, "alive", lambda pid: True)
     monkeypatch.setattr(fsuaegdb.time, "sleep", lambda s: None)
     monkeypatch.setattr(fsuaegdb.time, "monotonic", lambda: next(clock))
@@ -2384,3 +2386,35 @@ def test_wish_removes_the_c64_backends_environment_for_the_window_and_restores_i
     run_wish(tmp_path, [])
     assert inside == [{n: None for n in values}]
     assert {n: os.environ.get(n) for n in values} == values
+
+
+def test_stop_does_not_signal_a_group_less_pid_that_is_not_fs_uae(
+        monkeypatch, capsys):
+    def no_group(pid, sig):
+        raise ProcessLookupError
+
+    monkeypatch.setattr(fsuaegdb.os, "killpg", no_group, raising=False)
+    monkeypatch.setattr(fsuaegdb.os, "kill", lambda pid, sig: pytest.fail("killed"))
+    monkeypatch.setattr(fsuaegdb, "is_fsuae", lambda pid: False)
+    monkeypatch.setattr(fsuaegdb, "alive", lambda pid: True)
+    assert fsuaegdb.stop(stop_args()) == 1
+    assert "not an FS-UAE launch" in capsys.readouterr().out
+
+
+def test_is_fsuae_reads_the_binary_name_from_proc(monkeypatch, tmp_path):
+    real = pathlib.Path.read_bytes
+    cmdlines = {"/proc/11/cmdline": b"/usr/local/bin/fs-uae-gdb\0--fullscreen\0",
+                "/proc/12/cmdline": b"/usr/bin/python3\0fs-uae.py\0",
+                "/proc/13/cmdline": b"fs-uae\0"}
+
+    def read_bytes(self):
+        if str(self) in cmdlines:
+            return cmdlines[str(self)]
+        if str(self).startswith("/proc/"):
+            raise FileNotFoundError(str(self))
+        return real(self)
+
+    monkeypatch.setattr(pathlib.Path, "read_bytes", read_bytes)
+    assert fsuaegdb.is_fsuae(11) and fsuaegdb.is_fsuae(13)
+    assert not fsuaegdb.is_fsuae(12)
+    assert not fsuaegdb.is_fsuae(14)             # unreadable: not vouched for
