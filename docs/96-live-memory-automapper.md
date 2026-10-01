@@ -545,17 +545,21 @@ reads.
   `connect()` opens the helper's socket once per emulator run and caches the
   transport, the title found on it and the data hunk's base together. The window
   detaches on any `NotConnected` and attaches again on its next tick, and
-  closing an `AmigaTarget` leaves the transport open on purpose. A title that has not
-  loaded yet raises `FsuaeError` (a `NotConnected`) with the transport still
+  closing an `AmigaTarget` leaves the transport open on purpose. A title that
+  has not loaded yet raises `FsuaeError` (a `NotConnected`) with the transport still
   cached, and the memory sweep is not repeated more often than `SWEEP_EVERY`
-  after one ends, because each 512K read makes the emulated machine miss a frame.
-  A sweep reads 64 KB at a time and stops for the tick after `SWEEP_DEADLINE`
-  (one second), keeping what it has read until `SWEEP_CACHE_AGE` (five seconds)
-  passes with no new piece, which is what a reboot between ticks looks like, so
-  old pieces are never joined to new ones
-  and going on at the next tick, so one `connect()` holds the window for about
-  two seconds at most. If a piece fails, the next sweep reads 16 KB pieces. How
-  long a piece takes on a real machine has not been measured. A transport
+  after one ends, because each 512K read makes the emulated machine miss a
+  frame.
+  A sweep reads 64 KB at a time. It stops for the tick after
+  `SWEEP_DEADLINE` (one second) and keeps what it has read, so one `connect()`
+  holds the window for about two seconds at most and the next tick goes on from
+  there. What it keeps is thrown away if no piece is added for
+  `SWEEP_CACHE_AGE` (five seconds), which catches a gap in the ticks. It does
+  not detect a reboot or reload during a sweep whose ticks keep adding pieces;
+  such a result is caught afterwards, by the "more than one place" check and by
+  the anchor re-read at the next `connect()`. After a piece times out, the next
+  sweep reads 16 KB pieces, and a finished sweep goes back to 64 KB. How long
+  a piece takes on a real machine has not been measured. A transport
   whose connection has failed (`FsuaeGdb.lost`) is dropped and replaced; a read
   timeout is not that, and keeps it. Because GDB-remote has no request ids, a
 transport that timed out drops whatever its socket holds before the next request,
