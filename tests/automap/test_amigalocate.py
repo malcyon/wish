@@ -62,6 +62,24 @@ def test_the_sweep_goes_on_to_chip_memory_only_when_slow_memory_had_nothing():
     assert memory.reads == [(0xC00000, 0x80000), (0x000000, 0x80000)]
 
 
+def test_a_full_sweep_reads_chip_memory_even_after_a_hit_in_slow_memory():
+    memory = Memory(_c10000=loaded(BLADES))
+    amiga.locate_machines(memory, [BLADES, CURSE], sweep_all=True)
+    assert memory.reads == [(0xC00000, 0x80000), (0x000000, 0x80000)]
+
+
+def test_a_full_sweep_reports_two_titles_in_different_regions():
+    memory = Memory(_c10000=loaded(BLADES), _10000=loaded(CURSE))
+    assert amiga.locate_machines(memory, [BLADES, CURSE], sweep_all=True) == {
+        BLADES.title: [0xC10000], CURSE.title: [0x10000]}
+
+
+def test_the_default_sweep_stops_at_the_first_region_with_a_hit():
+    memory = Memory(_c10000=loaded(BLADES), _10000=loaded(CURSE))
+    assert amiga.locate_machines(memory, [BLADES, CURSE]) == {
+        BLADES.title: [0xC10000]}
+
+
 def test_two_titles_in_one_region_are_both_reported():
     both = bytearray(loaded(BLADES))
     both[CURSE.anchor_offset:CURSE.anchor_offset + len(CURSE.anchor)] = \

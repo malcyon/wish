@@ -526,6 +526,7 @@ def test_the_real_opener_is_a_loopback_socket(monkeypatch):
 # -- the command line ---------------------------------------------------------
 
 import argparse  # noqa: E402
+import hashlib  # noqa: E402
 import json  # noqa: E402
 import os  # noqa: E402
 
@@ -1045,7 +1046,7 @@ def test_key_presses_find_the_window_under_either_of_its_names(monkeypatch):
 
     def run(argv, **kw):
         seen.append(argv)
-        return argparse.Namespace(stdout="42\n")
+        return argparse.Namespace(stdout="42\n", stderr="")
 
     monkeypatch.setattr(fsuaepor.subprocess, "run", run)
     monkeypatch.setattr(fsuaegdb.subprocess, "run", run)
@@ -1178,6 +1179,112 @@ def test_a_session_with_a_window_and_an_image_connects(driven, tmp_path,
     run_session(tmp_path, [], maps=str(image), window=True)
 
 
+# session: dump, and a session with no title
+
+
+def test_session_dump_writes_the_range_and_a_row_before_locate(driven, tmp_path):
+    guest, _ = driven
+    events, _ = run_session(tmp_path, ["dump first 0xC00000 0x40"])
+    blob = guest.peek(0xC00000, 0x40)
+    assert (tmp_path / "run" / "dumps" / "first.bin").read_bytes() == blob
+    row = events["dump"]
+    assert (row["name"], row["address"], row["length"], row["sha256"]) == (
+        "first", 0xC00000, 0x40, hashlib.sha256(blob).hexdigest())
+
+
+def test_session_dump_refuses_more_than_half_a_megabyte(driven, tmp_path):
+    _, rows = run_session(tmp_path, ["dump big 0x0 0x80001", "wait 0.5"])
+    row = next(r for r in rows if r["event"] == "dump")
+    assert row["error"].startswith("ValueError: ") and "0x80000" in row["error"]
+    assert not (tmp_path / "run" / "dumps" / "big.bin").exists()
+    assert rows[-1]["event"] != "unknown" and any(r["event"] == "wait" for r in rows)
+
+
+def test_session_dump_takes_half_a_megabyte_exactly(driven, tmp_path):
+    events, _ = run_session(tmp_path, ["dump chip 0x0 0x80000"])
+    assert events["dump"]["length"] == 0x80000 and "error" not in events["dump"]
+
+
+@pytest.mark.parametrize("line", [
+    "dump", "dump a 0x0", "dump ../a 0x0 4", "dump a zz 4", "dump a 0x0 0"])
+def test_a_bad_dump_is_an_error_row_and_writes_nothing(driven, tmp_path, line):
+    _, rows = run_session(tmp_path, [line])
+    assert next(r for r in rows if r["event"] == "dump")["error"].startswith(
+        "ValueError: ")
+    assert not (tmp_path / "run" / "dumps").exists() or not list(
+        (tmp_path / "run" / "dumps").iterdir())
+
+
+def test_a_dump_the_server_refuses_is_an_error_row_not_the_end(driven, tmp_path):
+    guest, _ = driven
+    guest.unreadable.add(0x10)
+    _, rows = run_session(tmp_path, ["dump bad 0x0 0x20", "wait 0.5"])
+    row = next(r for r in rows if r["event"] == "dump")
+    assert row["error"].startswith("FsuaeError: ")
+    assert any(r["event"] == "wait" for r in rows)
+
+
+@pytest.fixture
+def untitled(driven, monkeypatch):
+    """A session with `--title none`, over a machine that does carry a title.
+
+    Detection would find Pools of Darkness here, so a session that still
+    detects, or loads maps, is caught.
+    """
+    monkeypatch.setattr(fsuaegdb, "detect_layout",
+                        lambda gdb: pytest.fail("detected a title"))
+    from tools.amiga import amigatarget
+    monkeypatch.setattr(amigatarget, "find_maps",
+                        lambda *a: pytest.fail("looked for maps"))
+    return driven
+
+
+@pytest.mark.parametrize("line, event", [
+    ("locate", "locate"), ("fix", "fix"), ("peek +0x10 1", "peek"),
+    ("observe a", "observe"), ("poll", "poll")])
+def test_a_titled_command_without_a_title_is_an_error_row_and_the_session_goes_on(
+        untitled, tmp_path, line, event):
+    _, rows = run_session(tmp_path, [line, "wait 0.5"], title="none")
+    assert [r["event"] for r in rows if r.get("error")] == [event]
+    assert "no title" in next(r for r in rows if r.get("error"))["error"]
+    assert any(r["event"] == "wait" for r in rows)
+
+
+def test_a_session_without_a_title_still_dumps_and_keys(untitled, tmp_path):
+    _, log = untitled
+    events, _ = run_session(tmp_path, ["key p", "dump x 0xC00000 8"],
+                            title="none")
+    assert log["keys"] == [(["p"], 0.12)]
+    assert events["dump"]["length"] == 8
+
+
+def test_a_window_needs_a_title_and_is_refused_before_connecting(
+        refusing, tmp_path):
+    with pytest.raises(SystemExit, match="--window"):
+        fsuaegdb.session(session_args(tmp_path, title="none", window=True,
+                                      maps=str(tmp_path)))
+    assert refusing == []
+
+
+def test_title_none_is_a_choice_on_the_command_line():
+    seen = []
+    real = fsuaegdb.session
+    try:
+        fsuaegdb.session = lambda a: seen.append(a.title) or 0
+        assert fsuaegdb.main(["--title", "none", "session", "--out", "o",
+                              "--commands", "c"]) == 0
+    finally:
+        fsuaegdb.session = real
+    assert seen == ["none"]
+
+
+def test_a_command_that_needs_a_layout_refuses_title_none(monkeypatch):
+    monkeypatch.setattr(fsuaegdb, "connect", lambda args: pytest.fail("connected"))
+    args = argparse.Namespace(title="none", host="h", port=1, timeout=None)
+    with pytest.raises(SystemExit, match="none"):
+        fsuaegdb.target(args)
+
+
 def stop_args(**kw):
     return argparse.Namespace(**{**dict(pid=[5], wait=1.0), **kw})
 
@@ -1209,9 +1316,9 @@ def test_stop_does_not_call_a_live_pid_without_a_group_not_running(
     monkeypatch.setattr(fsuaegdb.os, "killpg", no_group)
     monkeypatch.setattr(fsuaegdb, "alive", lambda pid: True)
     assert fsuaegdb.stop(stop_args()) == 1
-    out = capsys.readouterr().out
-    assert "not running" not in out and "no process group" in out.replace(
-        "leads no process group", "no process group")
+    assert capsys.readouterr().out == (
+        "5 is running but leads no process group, so nothing was signalled; a "
+        "--foreground launch ends with the process that holds its lease\n")
 
 
 def test_stop_says_not_running_for_a_pid_that_is_gone(monkeypatch, capsys):
@@ -1250,3 +1357,62 @@ def test_the_known_focus_error_is_hidden_and_any_other_is_not(
     shown = capsys.readouterr().err
     assert "BadMatch" not in shown
     assert "Can't open display" in shown and "BadWindow" in shown
+
+
+def test_a_known_focus_error_beside_another_error_hides_only_itself(
+        monkeypatch, capsys):
+    from tools.amiga import fsuaepor
+
+    other = ("X Error of failed request:  BadWindow (invalid Window "
+             "parameter)\n  Major opcode of failed request:  42 "
+             "(X_SetInputFocus)\n")
+    err = BAD_MATCH + other
+    monkeypatch.setattr(fsuaepor.subprocess, "run",
+                        lambda *a, **k: argparse.Namespace(stdout="", stderr=err))
+    fsuaepor.focus(":77", "42")
+    shown = capsys.readouterr().err
+    assert "BadMatch" not in shown
+    assert shown == other
+
+
+def test_target_closes_the_connection_when_no_title_can_be_chosen(monkeypatch):
+    guest = FakeAmiga({})
+    monkeypatch.setattr(fsuaegdb, "connect", lambda args: transport(guest))
+    args = argparse.Namespace(title=None, host="h", port=1, timeout=None)
+    with pytest.raises(SystemExit, match="no known title"):
+        fsuaegdb.target(args)
+    assert guest.closed
+
+
+def test_a_session_that_cannot_detect_its_title_closes_the_connection(
+        driven, tmp_path, monkeypatch):
+    guest, _ = driven
+    monkeypatch.setattr(fsuaegdb, "detect_layout",
+                        lambda gdb: (_ for _ in ()).throw(SystemExit("none")))
+    with pytest.raises(SystemExit):
+        run_session(tmp_path, [], title=None)
+    assert guest.closed
+
+
+@pytest.mark.parametrize("kw, text", [
+    (dict(maps="DISK"), "--maps"), (dict(window=True, maps="DISK"), "--title")])
+def test_maps_without_a_title_are_refused_before_connecting(
+        refusing, tmp_path, kw, text):
+    disk = tmp_path / "DISK"
+    disk.mkdir()
+    kw = {**kw, "maps": str(disk)}
+    with pytest.raises(SystemExit, match=text):
+        fsuaegdb.session(session_args(tmp_path, title=None, **kw))
+    assert refusing == []
+
+
+def test_detection_names_two_titles_loaded_in_different_regions():
+    memory = pod_memory(0x57AC, 0, {})
+    data = bytearray(0x8000)
+    data[BLADES.anchor_offset:BLADES.anchor_offset + len(BLADES.anchor)] = \
+        BLADES.anchor
+    memory[0x10000] = bytes(data)
+    with pytest.raises(SystemExit, match="more than one") as err:
+        fsuaegdb.detect_layout(transport(FakeAmiga(memory)))
+    assert "Pools of Darkness" in str(err.value)
+    assert "Secret of the Silver Blades" in str(err.value)

@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import hashlib
 import json
 import os
 import pathlib
@@ -70,6 +71,19 @@ PROBE_SIZES = (16, 1024, 65536, 512 * 1024)
 VHPOSR = 0xDFF006
 
 
+#: `--title none`: a session with no `MACHINES` row, for measuring a title that
+#: has none yet.  It reads raw memory and drives the emulator; anything that
+#: needs a layout says so.
+NO_TITLE = "none"
+
+#: The session commands that need a layout, and so are refused under it.
+TITLED_COMMANDS = ("locate", "fix", "peek", "observe", "poll")
+
+#: One `dump` is at most one region of the A500's memory, the size `probe`'s
+#: largest read and `AmigaTarget.locate()`'s sweep already take in one packet.
+DUMP_LIMIT = 0x80000
+
+
 def connect(args, resume: bool = True) -> amiga.FsuaeGdb:
     return amiga.FsuaeGdb(host=args.host, port=args.port,
                           timeout=args.timeout, resume=resume)
@@ -83,7 +97,8 @@ def detect_layout(gdb) -> amiga.AmigaMachine:
     matching stops with the names, since the choice is then the caller's.
     """
     machines = {m.title: m for m in amiga.MACHINES.values()}
-    found = amiga.locate_machines(gdb.read_memory, machines.values())
+    found = amiga.locate_machines(gdb.read_memory, machines.values(),
+                                   sweep_all=True)
     if len(found) == 1:
         return machines[next(iter(found))]
     tried = ", ".join(sorted(amiga.MACHINES))
@@ -99,6 +114,13 @@ def resolve_layout(args, gdb) -> amiga.AmigaMachine:
     return amiga.MACHINES[args.title] if args.title else detect_layout(gdb)
 
 
+def refuse_no_title(args, command: str) -> None:
+    """Stop a command that needs a layout before it connects, under `--title none`."""
+    if args.title == NO_TITLE:
+        raise SystemExit(f"{command} needs a title's layout; --title {NO_TITLE} "
+                         f"is for `session` ({', '.join(sorted(amiga.MACHINES))})")
+
+
 def target(args) -> amiga.AmigaTarget:
     """A located `AmigaTarget` over the socket, with the base measured.
 
@@ -106,8 +128,13 @@ def target(args) -> amiga.AmigaTarget:
     relocates the executable on every `LoadSeg`, so an address from yesterday
     is wrong today.
     """
+    refuse_no_title(args, "this command")
     gdb = connect(args)
-    layout = resolve_layout(args, gdb)
+    try:
+        layout = resolve_layout(args, gdb)
+    except BaseException:
+        gdb.close()
+        raise
     tgt = amiga.AmigaTarget(gdb, layout)
     started = time.monotonic()
     base = tgt.locate()
@@ -260,6 +287,33 @@ def read_spec(tgt, spec: str, length: int) -> bytes | None:
     if pointer == 0:
         return None
     return tgt.read(pointer + int(found["off"], 0), length)
+
+
+def dump_row(gdb, rest: str, out: pathlib.Path) -> dict:
+    """`dump NAME ADDRESS LENGTH` as a log row, the bytes in `out/dumps/NAME.bin`.
+
+    Absolute, read straight off the connection: the point is to capture memory
+    of a title that has no layout, and a read the server refuses is a row too
+    because the one connection cannot be taken up again.
+    """
+    parts = rest.split()
+    if len(parts) != 3:
+        raise ValueError("dump wants NAME ADDRESS LENGTH")
+    name, address, length = parts[0], int(parts[1], 0), int(parts[2], 0)
+    if not re.fullmatch(r"\w[\w.-]*", name):
+        raise ValueError(f"dump name {name!r} must be a plain file name")
+    if not 0 < length <= DUMP_LIMIT:
+        raise ValueError(f"dump length {length:#x} is outside 1..{DUMP_LIMIT:#x}")
+    row = {"name": name, "address": address, "length": length}
+    try:
+        blob = gdb.read_memory(address, length)
+    except (amiga.GuestError, amiga.FsuaeError) as exc:
+        return {**row, "error": f"{type(exc).__name__}: {exc}"}
+    (out / "dumps").mkdir(exist_ok=True)
+    path = out / "dumps" / f"{name}.bin"
+    path.write_bytes(blob)
+    return {**row, "length": len(blob), "sha256": hashlib.sha256(blob).hexdigest(),
+            "path": str(path)}
 
 
 def peek_row(tgt, spec: str, length: int) -> dict:
@@ -435,6 +489,10 @@ def session(args) -> int:
         shot <name>         a screenshot into the run directory
         still [label]       wait until the screen stops changing
         wait <seconds>      wait
+        dump <name> <addr> <n>
+                            n bytes (at most 0x80000) from an absolute address
+                            into `dumps/<name>.bin`, with a row giving the
+                            address, length and sha256.  Needs no `locate`
         locate              measure the data hunk's load address
         fix                 where the party is, from the engine's globals
         peek <spec> <n>     n bytes of memory: `+0x5B12` is a data-hunk
@@ -451,6 +509,11 @@ def session(args) -> int:
         journal [adf]       answer Silver Blades' journal prompt
         quit
 
+    `--title none` starts a session with no layout, for a title that has no
+    `MACHINES` row: no detection, no maps, no poller.  `locate`, `fix`, `peek`,
+    `observe` and `poll` then log an error row (`no title`); `key`, `shot`,
+    `still`, `wait`, `swap`, `time`, `journal` and `dump` work as usual.
+
     Anything unrecognised, and any command with a bad argument or no
     configuration (`swap` with no key sequence, `wait x`), is logged as a row
     with an `error` and the session carries on: a typo costs a line rather than
@@ -466,14 +529,15 @@ def session(args) -> int:
     (out / "shots").mkdir(parents=True, exist_ok=True)
     commands = pathlib.Path(args.commands)
     commands.touch()
-    layout = amiga.MACHINES[args.title] if args.title else None
+    untitled = args.title == NO_TITLE
+    layout = amiga.MACHINES[args.title] if args.title and not untitled else None
     maps = image = None
     if layout is not None:
         maps, image = find_maps(layout, args.maps)
     swap_log = pathlib.Path(args.fs_uae_log) if args.fs_uae_log else None
     gdb = connect(args)
     print(f"Server     {gdb.greeting}")
-    if layout is None:
+    if layout is None and not untitled:
         try:
             layout = detect_layout(gdb)
             maps, image = find_maps(layout, args.maps)
@@ -481,8 +545,12 @@ def session(args) -> int:
             gdb.close()
             raise
         print(f"Title      {layout.title}")
-    print(f"Maps       {len(maps)} from {image}")
-    tgt = amiga.AmigaTarget(gdb, layout)
+    if untitled:
+        maps = {}
+        print("Title      none: no layout, so no maps and no poller")
+    else:
+        print(f"Maps       {len(maps)} from {image}")
+    tgt = None if untitled else amiga.AmigaTarget(gdb, layout)
     log = (out / "session.jsonl").open("a", encoding="utf-8")
 
     def note(**payload) -> None:
@@ -500,7 +568,7 @@ def session(args) -> int:
     started = time.monotonic()
     read = 0
     try:
-        _mapper, once = poller(tgt, maps, layout, out, note)
+        once = None if untitled else poller(tgt, maps, layout, out, note)[1]
         window = None
         if args.window:
             window = open_window(tgt, args.maps, out)
@@ -521,7 +589,12 @@ def session(args) -> int:
                 # A mistyped or unconfigured command costs its own line, not
                 # the run: the one connection cannot be taken up again.
                 try:
-                    if word == "key":
+                    if untitled and word in TITLED_COMMANDS:
+                        error = (f"no title: `{word}` needs a layout and this "
+                                 f"session was started with --title {NO_TITLE}")
+                        print(f"           {error}")
+                        note(event=word, at=now, error=error)
+                    elif word == "key":
                         for key in rest.split():
                             held_key(args, key)
                         note(event="key", keys=rest, at=now)
@@ -533,6 +606,10 @@ def session(args) -> int:
                     elif word == "wait":
                         time.sleep(float(rest))
                         note(event="wait", seconds=float(rest), at=now)
+                    elif word == "dump":
+                        row = dump_row(gdb, rest, out)
+                        print(f"           {row}")
+                        note(event="dump", at=now, **row)
                     elif word == "peek":
                         spec, _, length = rest.rpartition(" ")
                         row = peek_row(tgt, spec, int(length or 1, 0))
@@ -616,6 +693,15 @@ def check_arguments(args) -> list[tuple[str, int]]:
     if args.maps and not pathlib.Path(args.maps).exists():
         raise SystemExit(f"--maps {args.maps} does not exist; it takes a disk "
                          "image or the folder holding the game's disk images")
+    if (args.maps or args.window) and not args.title:
+        # With no title the layout is detected after connecting, and only then
+        # can the maps be looked for; a bad `--maps` would spend the one client.
+        raise SystemExit("--maps and --window need --title "
+                         f"({', '.join(sorted(amiga.MACHINES))}): without one "
+                         "the title is detected after the connection is open")
+    if args.window and args.title == NO_TITLE:
+        raise SystemExit(f"--window needs a title's layout; --title {NO_TITLE} "
+                         "has none")
     if args.window and not args.maps:
         raise SystemExit("--window needs --maps to be the folder holding the "
                          "game's disk images")
@@ -755,6 +841,7 @@ def automap(args) -> int:
     from automap import state as mapstate
     from tools.amiga.amigatarget import find_maps
 
+    refuse_no_title(args, "automap")
     if not args.title:
         # The game may not be loaded yet (`--boot`), so there is nothing to
         # detect before the connection is open, and a wrong guess costs a boot.
@@ -1041,10 +1128,14 @@ def main(argv: list[str] | None = None) -> int:
                              f"{amiga.FSUAE_PORT})")
     parser.add_argument("--timeout", type=float, default=None,
                         help="seconds to wait for one packet's reply")
-    parser.add_argument("--title", choices=sorted(amiga.MACHINES),
+    parser.add_argument("--title", choices=[*sorted(amiga.MACHINES), NO_TITLE],
                         help="which title is running; without it the running "
                              "title is detected from the Amiga's memory "
-                             "(`automap` needs it, because it boots the game)")
+                             "(`automap` needs it, because it boots the game); "
+                             f"`{NO_TITLE}` starts a `session` with no layout "
+                             "for a title that has no row, where `dump` reads "
+                             "raw memory and the commands that need a layout "
+                             "log an error")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("probe", help="connect, continue, and time reads")

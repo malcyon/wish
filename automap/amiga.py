@@ -1628,15 +1628,20 @@ def find_anchor(memory: bytes, base: int, anchor: bytes,
     return out
 
 
-def locate_machines(read, machines, memory=MEMORY) -> dict[str, list[int]]:
+def locate_machines(read, machines, memory=MEMORY,
+                    sweep_all: bool = False) -> dict[str, list[int]]:
     """Which of these titles is in memory, and at which base: `{title: bases}`.
 
     **One sweep for any number of titles.** Each region of `memory` is read
     once through `read(addr, length)` and searched for every machine's anchor,
     so asking after two titles costs what asking after one does -- half a
-    megabyte a region is not something to fetch twice. The sweep stops at the
-    first region where any anchor is found, because a game is in one region
-    and not two.
+    megabyte a region is not something to fetch twice. By default the sweep
+    stops at the first region where any anchor is found, because a game is in
+    one region and not two, and a locate of one known title should cost one
+    read. **`sweep_all=True` reads every region and collects every hit**, for
+    the caller asking which title is running: stopping early would report one
+    of two titles loaded in different regions (SLOW comes first) and leave it
+    believing that one was alone.
 
     A title with no hit is absent from the result, and an empty result means
     none of them is loaded (or the one that is has not finished loading). A
@@ -1666,10 +1671,10 @@ def locate_machines(read, machines, memory=MEMORY) -> dict[str, list[int]]:
             hits = find_anchor(blob, base, machine.anchor,
                                machine.anchor_offset)
             if hits:
-                found[machine.title] = sorted(set(hits))
-        if found:
+                found.setdefault(machine.title, []).extend(hits)
+        if found and not sweep_all:
             break
-    return found
+    return {title: sorted(set(bases)) for title, bases in found.items()}
 
 
 # -- the maps, off the player's own disk --------------------------------------

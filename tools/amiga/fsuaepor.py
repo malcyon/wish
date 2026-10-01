@@ -729,14 +729,27 @@ def _xenv(display: str) -> dict[str, str]:
 #: SDL refuses the focus request, the keys arrive anyway.
 FOCUS_BAD_MATCH = re.compile(r"BadMatch.*X_SetInputFocus", re.S)
 
+#: Where one X error report begins, so stderr can be judged a report at a time.
+X_ERROR = re.compile(r"(?=X Error of failed request:)")
+
+
+def without_focus_bad_match(err: str) -> str:
+    """`err` minus the reports that are the harmless focus `BadMatch`.
+
+    A report is dropped only when it carries both words itself, so a different
+    error in the same stderr still reaches the person running the tool.
+    """
+    return "".join(block for block in X_ERROR.split(err)
+                   if not FOCUS_BAD_MATCH.search(block))
+
 
 def focus(display: str, window: str) -> None:
     """Focus `window`, hiding the one harmless `BadMatch` and nothing else."""
     done = subprocess.run(["xdotool", "windowfocus", window],
                           env=_xenv(display), capture_output=True, text=True,
                           check=False)
-    err = getattr(done, "stderr", "") or ""
-    if err and not FOCUS_BAD_MATCH.search(err):
+    err = without_focus_bad_match(done.stderr or "")
+    if err:
         sys.stderr.write(err)
 
 

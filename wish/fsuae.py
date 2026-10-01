@@ -147,7 +147,8 @@ def connect(port: int | None = None, opener=None,
                 f"s ago and no more than one is made every {SWEEP_EVERY:.0f}s")
         _swept_at = now
         found = amiga.locate_machines(_transport.read_memory,
-                                      amiga.MACHINES.values())
+                                      amiga.MACHINES.values(),
+                                      sweep_all=True)
         if not found:
             raise amiga.FsuaeError(
                 "none of the titles this knows is in the Amiga's memory yet")
