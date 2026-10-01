@@ -161,7 +161,8 @@ def test_the_status_line_reads_through_the_unchanged_party_fix():
     """`STATUS_ROW` and `RE_STATUS` transfer: Curse draws `S 0:03  5,13` on the
     same row 14 of the same `$CC00` screen, and the automapper's preferred
     source needs no change at all."""
-    fix = party_fix(MemoryTarget(status=" S 0:03  5,13").read)
+    fix = party_fix(MemoryTarget({CURSE_LIVE_POSITION: bytes([5, 13, 2])},
+                                 status=" S 0:03  5,13").read)
     assert fix is not None
     assert (fix.x, fix.y, fix.facing) == (5, 13, 2)
     assert fix.source == "status"
@@ -230,3 +231,19 @@ def test_geo01_agrees_with_every_step_the_game_allowed_and_the_one_it_refused():
         assert geo01.is_passable(x0, y0, direction), (x0, y0, direction)
     (x, y), direction = REFUSED
     assert not geo01.is_passable(x, y, direction)
+
+
+def test_the_sewers_are_entered_at_the_square_the_game_names_on_the_real_maps(
+        tmp_path, monkeypatch):
+    """Tilverton's `GEO01` to the sewers' `GEO03` while the status line still
+    reads the town's last square: the sewers are drawn from (0,0), not (14,15)."""
+    from support.stalestatus import walk_into_the_sewers
+    maps = _curse_maps()
+    if "GEO01" not in maps or "GEO03" not in maps:
+        pytest.skip("needs Curse's GEO01 and GEO03")
+    mapper = walk_into_the_sewers(maps["GEO01"], maps["GEO03"],
+                                  tmp_path, monkeypatch)
+    state = mapper.state
+    assert state.area == "GEO03"
+    assert (state.x, state.y, state.facing) == (0, 0, 2)
+    assert (14, 15) not in state.exploration

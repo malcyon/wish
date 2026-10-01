@@ -306,6 +306,8 @@ def test_the_guard_reads_the_bus_first_and_nothing_else_when_it_is_busy(
 
 def test_a_released_bus_lets_the_whole_tick_through_after_the_byte(
         app, tmp_path, monkeypatch):
+    """Each tick is the guard byte, then the tick's own reads, one of which is
+    the stale-line check: the engine's `$C04B` triple read after the status line."""
     machine = guarded_machine(RELEASED)
     window = make_window(app, tmp_path, monkeypatch, machine)
     counts = []
@@ -314,8 +316,8 @@ def test_a_released_bus_lets_the_whole_tick_through_after_the_byte(
         window.tick()
         assert machine.reads[0] == (busguard.CIA2_PORT_A, 1)
         counts.append(len(machine.reads))
-    # `tests/automap/test_issue286a2.py`'s four and twelve, plus the guard byte.
-    assert counts == [5, 5, 5, 5, 13] * 2
+    # `tests/automap/test_issue286a2.py`'s five and thirteen, plus the guard byte.
+    assert counts == [6, 6, 6, 6, 14] * 2
 
 
 def test_a_target_that_does_not_stop_the_processor_is_never_guarded(
@@ -380,7 +382,10 @@ def test_a_held_off_tick_does_not_spend_the_roster_cadence(
     """Four ticks at rest, a load on the fifth, and the roster read lands on
     the next tick that runs rather than five ticks later -- whether that
     tick reads the bus itself or is held off by the back-off from an earlier
-    one still counted as busy."""
+    one still counted as busy.
+
+    The tick that lands is the guard byte plus thirteen reads, one of them the
+    stale-line check on the engine's `$C04B` triple."""
     machine = guarded_machine(RELEASED)
     window = make_window(app, tmp_path, monkeypatch, machine)
     clock = FakeClock()
@@ -396,7 +401,7 @@ def test_a_held_off_tick_does_not_spend_the_roster_cadence(
     machine.memory[0xDD00] = bytes([RELEASED])
     machine.reads.clear()
     window.tick()
-    assert len(machine.reads) == 13
+    assert len(machine.reads) == 14
 
 
 def test_the_fastloaders_rest_state_now_costs_settle_seconds_and_no_more(
@@ -406,7 +411,10 @@ def test_the_fastloaders_rest_state_now_costs_settle_seconds_and_no_more(
     ordinary ticks -- but reaching it now takes three seconds rather than
     the `SETTLE` * 500 ms = 1.5 s of the fixed tick, because the two ticks
     before the settle are a second and two seconds apart rather than half a
-    second."""
+    second.
+
+    A settled tick costs five reads plus the guard byte, the sixth being the
+    stale-line check on the engine's `$C04B` triple."""
     machine = guarded_machine(FASTLOADER_REST)
     window = make_window(app, tmp_path, monkeypatch, machine)
     clock = FakeClock()
@@ -420,7 +428,7 @@ def test_the_fastloaders_rest_state_now_costs_settle_seconds_and_no_more(
         if settled_at is None and window.bus_guard.settled:
             settled_at = clock.now
         clock.advance(window.bus_guard.wait_seconds or 0.5)
-    assert sizes == [1] * (busguard.SETTLE - 1) + [5, 5, 5]
+    assert sizes == [1] * (busguard.SETTLE - 1) + [6, 6, 6]
     assert settled_at == 3.0
 
 

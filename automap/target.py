@@ -229,6 +229,16 @@ def party_fix(read, game: c64_port.C64Container | None = None, banks=None) -> Fi
         x, y = int(m.group(4)), int(m.group(5))
         if _plausible(x, y, facing):
             clock = int(m.group(2)) * 60 + int(m.group(3))
+            # The line is a copy of the engine's triple and Curse redraws it a
+            # step late, so at an area change it can still name the square
+            # the party has just left. The engine's own triple wins when it
+            # disagrees and is a square at all; the world map's 33,208,202
+            # is not, and leaves the line standing.
+            live = machine_for(game).live_position
+            if live is not None:
+                mx, my, mf = read(live, POSITION_BYTES)[:POSITION_BYTES]
+                if _plausible(mx, my, mf) and (mx, my, mf) != (x, y, facing):
+                    return Fix(mx, my, mf, "memory", clock)
             return Fix(x, y, facing, "status", clock)
     m = RE_OUTDOOR_STATUS.search(text)
     if m:

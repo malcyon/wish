@@ -138,4 +138,6 @@ def a_machine(*, port1: int = CHIPS_OUT, d011: int = 0x1B,
     if status:
         ram.update(row_at(TRUE_SCREEN, STATUS_ROW, TRUE_STATUS))
         ram.update(row_at(JUNK_SCREEN, STATUS_ROW, JUNK_STATUS))
+        # The engine's own copy of what the true line says: east, 5,2.
+        ram[0xC04B] = bytes([5, 2, 1])
     return FakeMonitor(port1=port1, chips=chips, ram=ram, banks=banks)

@@ -169,10 +169,14 @@ def test_the_reader_as_it_was_could_answer_a_square_the_party_was_not_on():
     reader reads on, finds `N 03:00  9,9` at the address it computed out of
     RAM, and `_plausible` cannot refuse it: the marker moves to a square the
     party is not on and the explored set is fed from it.
+
+    `$C04B` holds an implausible triple, so the line is what both readers
+    answer from.
     """
     from automap.target import party_fix
 
     mon = a_machine(ram_d011=0x1B)
+    mon.ram[0xC04B] = bytes([33, 208, 202])
     was = party_fix(mon.read)
     assert (was.x, was.y, was.facing) == (9, 9, 0)
     now = party_fix(mon.read, None, banked(mon))
