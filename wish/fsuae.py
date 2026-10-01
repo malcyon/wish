@@ -181,7 +181,7 @@ def _chunked_read(transport, deadline_clock):
                         timeout=amiga.FsuaeGdb.POLL_TIMEOUT)
                 except amiga.FsuaeError:
                     # `_unresolved` is how the transport records a timeout; a
-                    # refusal (`E01`) is not the machine being slow.
+                    # rejected request (`E01`) is not the machine being slow.
                     if getattr(transport, "_unresolved", False):
                         _piece = SWEEP_SMALL_CHUNK
                     raise

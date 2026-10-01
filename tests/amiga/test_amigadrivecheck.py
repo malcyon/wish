@@ -134,11 +134,11 @@ class FakePipe:
     def refused_verb(self, verb, holder, args):
         self.guest._do("lane_verb", holder, args[1])
         if holder != HOLDER:
-            raise amiga.GuestRefusal(f"fail the WinUAE lane is claimed by {HOLDER} since t, "
+            raise amiga.GuestRejection(f"fail the WinUAE lane is claimed by {HOLDER} since t, "
                                      f"not by {holder}")
         if "intruder" in args[1]:
-            raise amiga.GuestRefusal(f"fail {args[1]} is not staged for {holder}")
-        raise amiga.GuestRefusal(f"fail {args[1]} does not exist")
+            raise amiga.GuestRejection(f"fail {args[1]} is not staged for {holder}")
+        raise amiga.GuestRejection(f"fail {args[1]} does not exist")
 
 
 @pytest.fixture
@@ -287,7 +287,7 @@ def test_a_control_that_is_accepted_fails_the_probe(tmp_path, clock, proof):
 def test_a_control_refused_for_the_wrong_reason_fails_the_probe(tmp_path, clock, proof):
     class Wrong(FakePipe):
         def refused_verb(self, verb, holder, args):
-            raise amiga.GuestRefusal("fail something else")
+            raise amiga.GuestRejection("fail something else")
 
     _, result = run(tmp_path, clock, proof, pipe=Wrong)
     assert result["passed"] is False and "not for the expected reason" in result["error"]
@@ -557,7 +557,7 @@ def test_a_powershell_error_after_a_failed_line_is_not_a_rejection_unless_the_fa
         amiga.GuestError("winvm ssh failed: Exception: fail x does not exist")))
     with pytest.raises(amiga.FloppyError) as caught:
         real.refused_verb("insert", HOLDER, ["0", "p", "s"])
-    assert not isinstance(caught.value, amiga.GuestRefusal)
+    assert not isinstance(caught.value, amiga.GuestRejection)
 
 
 def test_the_deployed_read_ignores_progress_text_and_silences_progress():

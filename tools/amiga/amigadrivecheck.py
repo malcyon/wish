@@ -207,7 +207,7 @@ def run_drivecheck(*, guest: Any, run_dir: pathlib.Path, holder: str,
         try:
             said = call()
         except Exception as exc:
-            text = exc.line if isinstance(exc, amiga.GuestRefusal) else str(exc)
+            text = exc.line if isinstance(exc, amiga.GuestRejection) else str(exc)
             if not isinstance(exc, error):
                 step(name, "fail", expected=needle, observed=text)
                 raise RouteError(f"{name}: not refused as expected: {text}") from exc
@@ -254,7 +254,7 @@ def run_drivecheck(*, guest: Any, run_dir: pathlib.Path, holder: str,
             return pipe_factory(limit(30)).refused_verb(
                 "insert", INTRUDER, ["0", windows["B"], generated["B"]["sha256"]])
 
-        refused("control: another holder's claim", wrong_holder, amiga.GuestRefusal,
+        refused("control: another holder's claim", wrong_holder, amiga.GuestRejection,
                 f"claimed by {holder}")
         read_drives("control: another holder's claim leaves both drives", both)
 
@@ -264,7 +264,7 @@ def run_drivecheck(*, guest: Any, run_dir: pathlib.Path, holder: str,
         refused("control: another holder's path, refused in the guest",
                 lambda: pipe_factory(limit(30)).refused_verb(
                     "insert", holder, ["0", foreign, generated["B"]["sha256"]]),
-                amiga.GuestRefusal, f"is not staged for {holder}")
+                amiga.GuestRejection, f"is not staged for {holder}")
         read_drives("control: another holder's path leaves both drives", both)
 
         refused("control: a file never staged, refused in Python",
@@ -273,7 +273,7 @@ def run_drivecheck(*, guest: Any, run_dir: pathlib.Path, holder: str,
         refused("control: a file never staged, refused in the guest",
                 lambda: pipe_factory(limit(30)).refused_verb(
                     "insert", holder, ["0", never, generated["B"]["sha256"]]),
-                amiga.GuestRefusal, "does not exist")
+                amiga.GuestRejection, "does not exist")
         read_drives("control: a file never staged leaves both drives", both)
 
         again = guest_insert(0, windows["A"], generated["A"]["sha256"])

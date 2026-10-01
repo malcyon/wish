@@ -473,7 +473,7 @@ def _blob(out: str, name: str) -> bytes | None:
 #: `open_console()` -- a console window in front of whoever is playing, which
 #: is the one thing this route exists to avoid. `m`, `S`, `W` and `T` stay
 #: inside `debug_parser` and are safe; the rest of the command set has not been
-#: read, so the refusal is a list of the ones known to be dangerous plus
+#: read, so the block list is the ones known to be dangerous plus
 #: `IPC_QUIT`, which quits the emulator outright (`uaeipc.cpp:38`).
 UNSAFE_COMMANDS = frozenset("g t f b w z q x".split())
 
@@ -577,7 +577,7 @@ class FloppyError(GuestError):
         self.receipt = receipt or {}
 
 
-class GuestRefusal(FloppyError):
+class GuestRejection(FloppyError):
     """The lane script itself answered `fail ...`; `line` is that line, unchanged."""
 
     def __init__(self, line: str, receipt: dict | None = None):
@@ -764,7 +764,7 @@ def _read_guest(out: str, verb: str, holder: str, drive, path, sha256,
 
 
 def _check_status(receipt: FloppyReceipt) -> None:
-    """Stop on the guest's own refusal; anything but `ok` or `fail` is an error."""
+    """Stop on the guest's own `fail` reply; anything but `ok` or `fail` is an error."""
     status = receipt.status
     if status.startswith("fail"):
         raise FloppyError("The guest refused the floppy change: "
@@ -1105,28 +1105,28 @@ Write-Output '<<end>>'
         try:
             return self._run(argv, self.timeout), time.monotonic() - begun
         except GuestError as exc:
-            # The lane script exits 1 on a refusal made before it opened the pipe.
+            # The lane script exits 1 on a `fail` reply made before it opened the pipe.
             text = str(exc)
             line = _guest_fail_line(text)
             if line is not None:
-                raise GuestRefusal(line, {"output": text}) from exc
+                raise GuestRejection(line, {"output": text}) from exc
             raise FloppyError(f"The guest could not be run: {text}",
                               {"output": text}) from exc
 
     def refused_verb(self, verb: str, holder: str, args: list[str]) -> str:
         """Run a lane verb that a control expects the guest to refuse; give its first line.
 
-        A `fail` first line raises `GuestRefusal` with the guest's line, whether the
+        A `fail` first line raises `GuestRejection` with the guest's line, whether the
         guest exited 1 before opening the pipe or 0 after it, exactly as
         `insert_floppy` reads a verdict. Any other first line is returned so the
         caller can record what the guest said instead. A transport or PowerShell
-        failure stays a plain `FloppyError`, never a refusal.
+        failure stays a plain `FloppyError`, never a `GuestRejection`.
         """
         out, _seconds = self.lane_verb(verb, holder, None, args)
         lines = [line.strip() for line in out.splitlines() if line.strip()]
         status = lines[0] if lines else ""
         if status.startswith("fail "):
-            raise GuestRefusal(status, {"output": out})
+            raise GuestRejection(status, {"output": out})
         return status
 
     def batch(self, lines: list[str],
@@ -1325,7 +1325,7 @@ FSUAE_PORT = 2345
 #: * `\\x03` -- the interrupt byte, which calls `activate_debugger()`.
 #:
 #: This transport reads a machine somebody is playing. Everything it needs is
-#: `qSupported`, `vCont;c` and `m`, so the refusal is on the packet's **first
+#: `qSupported`, `vCont;c` and `m`, so the check is on the packet's **first
 #: character**, which is what the server's own dispatch switches on.
 UNSAFE_PACKETS = frozenset("kDsS") | {"\x03"}
 
@@ -1749,7 +1749,7 @@ def locate_machines(read, machines, memory=MEMORY,
     Reading the fork's `m` branch settles it; so does one `m c00000,10` sent to
     an FS-UAE started with no `bogomem_size` (or `slow_memory`) line in its
     configuration. If it is `E01`, the sweep has to try each region on its own
-    and treat a refusal as "nothing here"; if it is not, this is not a defect.
+    and treat an `E01` reply as "nothing here"; if it is not, this is not a defect.
     """
     machines = list(machines)
     found: dict[str, list[int]] = {}
