@@ -617,7 +617,10 @@ def test_nothing_is_pressed_after_begin_until_the_mode_leaves_gen(
     # read of 1, after which nothing more needs reading.
     assert modes.reads == 7
     assert pressed_at and set(pressed_at) == {1}
-    assert sess.kernal == [0x0D] + [0x0D] * len(sess.bars)
+    # EXIT is chosen by `select_bar`'s own Return; a KERNAL Return after it
+    # would reach the next bar's highlighted word (#801).
+    assert sess.bars and set(sess.bars) == {"EXIT"}
+    assert sess.kernal == [0x0D]
 
 
 def test_a_slow_load_out_of_gen_is_waited_for_not_given_up(monkeypatch):

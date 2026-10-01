@@ -679,9 +679,11 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
     waiting in is the same six writes and the same jump. So the first moment
     the machine is demonstrably idle is the moment to leave from, whatever
     menu happens to be on screen. The prologue's later screens -- the
-    experience share and the character sheet after it -- run under POST.COM
-    with `$7F11` at 5, where DUNGEON's tail is not resident, so the idle exit
-    waits for 1 (`~/.cache/wish/acceptance/796/prologue2`).
+    experience share and the treasure bar, and the sheet a Return on the
+    bar's VIEW opens -- run under POST.COM with `$7F11` at 5, where DUNGEON's
+    tail is not resident, so the idle exit waits for 1
+    (`~/.cache/wish/acceptance/796/prologue2`). `clear_messages` takes the
+    party on from there to the command bar.
 
     **That fetcher also serves the party menu**, so after BEGIN ADVENTURING
     nothing is pressed until LINKER's mode byte has left GEN, and the idle
@@ -813,12 +815,17 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
             elif mode == GEN and gen_screen_stuck(sess, addr, state, text,
                                                   since, STUCK):
                 return False
-        elif "EXIT" in state and state != "ENCAMP":
-            # The prologue hands the party its starting treasure and puts up
-            # `VIEW TAKE POOL SHARE EXIT`. Nothing here wants the treasure --
-            # the party only has to be somewhere -- so take the way out.
+        elif closing_screen(s) is not None:
+            # The prologue hands the party its starting treasure. Nothing
+            # here wants the treasure -- the party only has to be somewhere
+            # -- so take the way out, with no KERNAL Return after it: that
+            # one reached the treasure bar's VIEW and reopened the sheet
+            # (#801).
+            leave_closing_screen(sess, s, closing_screen(s))
+            since = time.time()
+        elif "EXIT" in state.split():
             sess.select_bar("EXIT", timeout=10)
-            sess.press_kernal(0x0D)
+            await_screen_change(sess, text)
             since = time.time()
         elif any(w in state for w in ("CONTINUE", "MORE", "PRESS")) \
                 and not disk_prompt_up(text):
@@ -828,8 +835,12 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
             # `ECL11` -- where the shipped save starts -- is four screens of
             # prologue, each closed by a one-option menu, and then
             # `SAVE 1, [$7F12] / NEWECL 16`. Escaping out of those is how a
-            # run ends up with the party still in the prologue.
-            sess.press_kernal(0x0D)
+            # run ends up with the party still in the prologue. One Return
+            # per page, once it is fully drawn: a second sent while the page
+            # is still up reaches the screen after it.
+            if drawn_and_still(sess, text):
+                sess.press_kernal(0x0D)
+                await_screen_change(sess, text)
             since = time.time()
         elif state != "(blank)" and time.time() - since > STUCK:
             # A screen unchanged for STUCK seconds is what a stuck menu and a
@@ -884,8 +895,98 @@ def snapshot(sess, addr: Addresses) -> dict:
         }
 
 
-def clear_messages(sess, timeout: float = 150.0) -> str:
-    """Answer the arriving script's messages until the command bar is back."""
+#: The opening scene's close, as row 24 reads it on the C64 (#801, live:
+#: `~/.cache/wish/acceptance/432/sheetfix/probe1/`). The starting-treasure
+#: bar opens with VIEW highlighted, so a Return that reaches it opens the
+#: first character's sheet, whose bar opens with ITEMS highlighted. EXIT on
+#: the sheet goes back to the treasure bar; EXIT there asks `GO BACK LEAVE
+#: TREASURE` with GO BACK highlighted, and LEAVE TREASURE runs the scene's
+#: last three pages. Every one of these takes the XTEST Return `select_bar`
+#: sends once its walk is done.
+TREASURE_WORDS = ("VIEW", "TAKE", "EXIT")
+LEAVE_TREASURE = "LEAVE TREASURE"
+
+
+def closing_screen(s) -> str | None:
+    """Which bar of the opening scene's close row 24 holds: `"treasure"`,
+    `"leave"` or `"sheet"`, or None for any other row."""
+    words = s.row(24).split()
+    row = " ".join(words)
+    if "GO BACK" in row and LEAVE_TREASURE in row:
+        return "leave"
+    if all(w in words for w in TREASURE_WORDS):
+        return "treasure"
+    if words[:1] == ["ITEMS"] and words[-1:] == ["EXIT"]:
+        return "sheet"
+    return None
+
+
+#: The word each of those bars is left through. Leaving the treasure keeps
+#: the party's packs as the save had them, which is what a check of a
+#: converted party needs.
+CLOSING_WAY_OUT = {"treasure": "EXIT", "leave": LEAVE_TREASURE,
+                   "sheet": "EXIT"}
+
+#: How long a screen that has been answered is given to go before it is
+#: answered again. The prologue's pages and bars changed within seven
+#: seconds of their key on every one read live (#801).
+ANSWERED_GRACE = 8.0
+
+
+def await_screen_change(sess, was: str, timeout: float = ANSWERED_GRACE
+                        ) -> bool:
+    """Wait for the screen's text to differ from *was*; False on timeout.
+
+    A page that has taken its Return can stay drawn for a moment, and a
+    second Return sent then reaches whatever replaces it. At the end of the
+    prologue that is the treasure bar's VIEW, which opens a sheet.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        s = sess.screen()
+        if s is not None and s.text() != was:
+            return True
+        time.sleep(0.5)
+    return False
+
+
+def drawn_and_still(sess, text: str, gap: float = 0.6) -> bool:
+    """Whether the screen still reads *text* after *gap* seconds.
+
+    A page read while it is still being drawn changes when the drawing
+    finishes, and `await_screen_change` would take that change for the page
+    having gone; the Return sent next then reaches the screen after it.
+    """
+    time.sleep(gap)
+    s = sess.screen()
+    return s is not None and s.text() == text
+
+
+def leave_closing_screen(sess, s, kind: str) -> bool:
+    """Choose the way out of a closing bar, and wait for the bar to go.
+
+    `select_bar` walks the highlight and sends its own Return. No KERNAL
+    Return follows it: the bar after each of these has its highlight on a
+    word that leads back (VIEW, GO BACK), so a second Return undoes the
+    first.
+    """
+    label = CLOSING_WAY_OUT[kind]
+    sess.log(f"  bar: leaving {kind} through {label}")
+    if not sess.select_bar(label, timeout=10):
+        return False
+    await_screen_change(sess, s.text())
+    return True
+
+
+def clear_messages(sess, timeout: float = 300.0) -> str:
+    """Answer the arriving script's screens until the command bar is back.
+
+    A page gets one Return once it reads the same on two looks, and no other
+    until it has gone or `ANSWERED_GRACE` has passed. The opening scene's treasure bar, the sheet
+    a stray Return opens from it and the question leaving it asks are left
+    through `closing_screen`'s way out, and the move sub-bar the scene ends
+    on gets one Return. Nothing is pressed at any other screen.
+    """
     deadline = time.time() + timeout
     seen = ""
     while time.time() < deadline:
@@ -902,8 +1003,21 @@ def clear_messages(sess, timeout: float = 150.0) -> str:
         if sess.handle_prompt(s):
             time.sleep(1.0)
             continue
-        if "CONTINUE" in bar or "MORE" in bar or "PRESS" in bar:
-            sess.press_kernal(0x0D)
+        text = s.text()
+        kind = closing_screen(s)
+        if kind is not None:
+            leave_closing_screen(sess, s, kind)
+            continue
+        if por.MOVE_SUBBAR in bar or (
+                any(w in bar for w in ("CONTINUE", "MORE", "PRESS"))
+                and not disk_prompt_up(text)):
+            # Not a disk prompt `handle_prompt` is holding back from
+            # answering twice. The move sub-bar is left by Return as well
+            # (Escape does nothing there).
+            if drawn_and_still(sess, text):
+                sess.press_kernal(0x0D)
+                await_screen_change(sess, text)
+            continue
         time.sleep(1.0)
     return f"(never got the command bar back; last {seen!r})"
 

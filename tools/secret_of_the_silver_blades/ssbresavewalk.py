@@ -34,8 +34,23 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from tools.c64 import session as S  # noqa: E402
 from tools.c64.runlog import Log  # noqa: E402
-from tools.c64.savecheck import answer_bars, panel, walk_step_routed  # noqa: E402
+from tools.c64.savecheck import panel, walk_step_routed  # noqa: E402
 from tools.secret_of_the_silver_blades import ssbsession  # noqa: E402
+
+
+def arrive(sess, addr, log: Log, timeout: float = 300.0) -> str:
+    """Begin adventuring and answer what the arrival puts up; `"world"` once
+    the command bar is back, otherwise what was last seen.
+
+    Through `ssbsession.enter_world` and `ssbsession.clear_messages`, which
+    know a party that has not yet set out: its prologue ends on the
+    starting-treasure bar, where a spare Return opens a sheet (#801).
+    """
+    if not ssbsession.enter_world(sess, addr, timeout=timeout):
+        return "stuck"
+    bar = ssbsession.clear_messages(sess, timeout=timeout)
+    log.say(f"  arrival bar: {bar!r}")
+    return "world" if "ENCAMP" in bar else bar
 
 
 def sheet_workaround(sess, index: int, tag: str, log: Log,
@@ -93,9 +108,8 @@ def main(argv=None) -> int:
                                "BEGIN ADVENTURING")
         log.say("reached BEGIN ADVENTURING")
 
-        if not sess.select_row("BEGIN ADVENTURING"):
-            raise RuntimeError("BEGIN ADVENTURING could not be selected")
-        arrived = answer_bars(sess, log, "NO", seconds=120)
+        arrived = arrive(sess, ssbsession.Addresses(sess.game,
+                                                    str(args.disks)), log)
         log.emit("arrival", outcome=arrived)
         if arrived != "world":
             sess.kbd.screenshot(str(out / "stuck.png"))
