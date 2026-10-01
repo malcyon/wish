@@ -344,9 +344,12 @@ def report(settings, flag=None, beside=None,
                                          settings=settings,
                                          also=backends.amiga_only_titles())
     rows = [("In use", str(where) if where is not None else "nothing found")]
-    wanted = ([game] if getattr(game, "disk_glob", None)
-              else list(c64_port.GAMES)[:2])
-    patterns = " or ".join(_pretty(g.disk_glob) for g in wanted)
+    if isinstance(game, titles.Title):
+        patterns = ".adf disk images"
+    else:
+        wanted = ([game] if getattr(game, "disk_glob", None)
+                  else list(c64_port.GAMES)[:2])
+        patterns = " or ".join(_pretty(g.disk_glob) for g in wanted)
     if where is None:
         return rows + [("Titles",
                         f"none; nowhere with {patterns} in it was found")]
@@ -1099,6 +1102,10 @@ class PreferencesDialog(QDialog):
                                   flag=self.win.disks_flag,
                                   beside=self.win.editor.path,
                                   game=self.win.disk_game()):
+            # Only the first letter: `str.capitalize()` would lower-case a
+            # title. "In use" keeps its own wording.
+            if name == "Titles":
+                value = value[:1].upper() + value[1:]
             self.report_rows[name].setText(value)
         self._say_game_folders()
         self._say_backups()

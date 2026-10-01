@@ -454,3 +454,42 @@ def test_the_dialog_reports_the_folder_the_window_uses(
         assert rows["In use"] == str(win.disks) == str(pod)
     finally:
         win.close()
+
+
+def test_the_titles_line_of_a_pools_window_names_adf_images(
+        tmp_path, monkeypatch, amiga_on):
+    nowhere(tmp_path, monkeypatch)
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    rows = dict(preferences.report(Settings(), flag=str(empty), game=POD))
+    assert rows["Titles"] == "none; no .adf disk images here"
+    rows = dict(preferences.report(Settings(), game=POD))
+    assert rows["Titles"] == "none; nowhere with .adf disk images in it was found"
+
+
+def test_the_titles_line_of_a_c64_window_keeps_its_patterns(
+        tmp_path, monkeypatch, amiga_on):
+    nowhere(tmp_path, monkeypatch)
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    glob = preferences._pretty(POOL.disk_glob)
+    rows = dict(preferences.report(Settings(), flag=str(empty), game=POOL))
+    assert rows["Titles"] == f"none; no {glob} here"
+    rows = dict(preferences.report(Settings(), game=POOL))
+    assert rows["Titles"] == f"none; nowhere with {glob} in it was found"
+
+
+def test_the_dialog_capitalises_the_composed_titles_line(
+        app, tmp_path, monkeypatch, amiga_on):
+    nowhere(tmp_path, monkeypatch)
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    win = window(app)
+    try:
+        win.disks_flag = str(empty)
+        win._title = POD.title
+        dialog = PreferencesDialog(win)
+        dialog.refresh()
+        assert dialog.report_rows["Titles"].text() == NONE_FOUND
+    finally:
+        win.close()
