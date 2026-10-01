@@ -538,8 +538,8 @@ reads.
   (not more often than `HELPER_RETRY`) and raises `FsuaeError` at once, so the
   window shows its waiting line and asks again a second later; it never waits
   for the helper. The helper's socket is connected, and greeted, with
-  `FsuaeGdb.POLL_TIMEOUT`, so a busy helper costs a tick and not twenty
-  seconds. **A helper that dies after taking the fork's connection cannot be
+  `FsuaeGdb.POLL_TIMEOUT` (one second each), so a busy helper holds the window
+  for two seconds at most and the next tick tries again. **A helper that dies after taking the fork's connection cannot be
   replaced:** the fork never listens again, so the player has to restart
   FS-UAE. `listening(port)` also says yes while a helper is alive.
   `connect()` opens the helper's socket once per emulator run and caches the
@@ -547,17 +547,20 @@ reads.
   detaches on any `NotConnected` and attaches again on its next tick, and
   closing an `AmigaTarget` leaves the transport open on purpose. A title that has not
   loaded yet raises `FsuaeError` (a `NotConnected`) with the transport still
-  cached, and the memory sweep is not repeated more often than `SWEEP_EVERY`,
-  because each 512K read makes the emulated machine miss a frame. A transport
+  cached, and the memory sweep is not repeated more often than `SWEEP_EVERY`
+  after one ends, because each 512K read makes the emulated machine miss a frame.
+  A sweep reads 64 KB at a time and stops for the tick after `SWEEP_DEADLINE`
+  (one second), keeping what it has read and going on at the next tick, so one
+  `connect()` holds the window for about two seconds at most. A transport
   whose connection has failed (`FsuaeGdb.lost`) is dropped and replaced; a read
   timeout is not that, and keeps it. Because GDB-remote has no request ids, a
 transport that timed out drops whatever its socket holds before the next request,
 so a reply that was only late is not read as that request's answer. Whether the
 fork drops or answers a request that reaches it while the emulator is paused
 behind its menu has not been measured. A read of at most 4 KB waits one second
-(`FsuaeGdb.POLL_TIMEOUT`, a choice and not a measurement) and the handshake and a
-half-megabyte sweep read wait twenty, because a poll runs on the window's own
-thread. Each `connect()` re-reads the cached title's anchor at its base and, when
+(`FsuaeGdb.POLL_TIMEOUT`, a choice and not a measurement), as does each piece
+of a sweep and the helper handshake, because a poll runs on the window's own
+thread; the transport's own twenty seconds is for reads made off it. Each `connect()` re-reads the cached title's anchor at its base and, when
 it is gone, forgets the title and sweeps again without closing the socket; a
 different port gets a new transport.
 

@@ -15,8 +15,9 @@ connection would end the player's debugging when it closed. A background helper
 that helper, or starts one when the fork is listening and none runs, and reads
 memory through it. **If the helper itself dies while the game runs, the
 connection cannot be remade:** the fork never listens again once its one client
-has left, so the player has to restart FS-UAE. Starting is not waited for: `connect()` raises `FsuaeError`
-(a `NotConnected`) and the window asks again on its next tick.
+has left, so the player has to restart FS-UAE. Starting is not waited for:
+`connect()` raises `FsuaeError` (a `NotConnected`) and the window asks again on
+its next tick.
 
 **`connect()` opens the helper's socket once per emulator run.** The window
 detaches on any `NotConnected` and attaches again on its next tick, and
@@ -65,6 +66,15 @@ SWEEP_EVERY = 5.0
 #: that exits at once (the fork is held by another client, say) would otherwise
 #: be started again on every one-second tick.
 HELPER_RETRY = 10.0
+
+#: A sweep reads the machine's memory in pieces this big, and stops for the tick
+#: once it has spent `SWEEP_DEADLINE` seconds. `connect()` runs on the window's
+#: timer, so one call may not hold the window for the twenty seconds a
+#: half-megabyte read is allowed; what was read is kept and the next call goes
+#: on from there. A piece waits `POLL_TIMEOUT`, so a call takes about the
+#: deadline plus that.
+SWEEP_CHUNK = 0x10000
+SWEEP_DEADLINE = 1.0
 
 
 def _listeners(path: str, wanted: frozenset[str]) -> set[int]:
@@ -119,6 +129,39 @@ _helper = None
 _helper_at: float | None = None
 
 
+#: The pieces of an unfinished sweep, `{address: bytes}`.
+_sweep_cache: dict[int, bytes] = {}
+
+
+class SweepPaused(amiga.FsuaeError):
+    """The sweep spent its time for this tick and goes on at the next."""
+
+
+def _chunked_read(transport, now, deadline_clock):
+    """A `read(addr, length)` for `locate_machines` that stops at the deadline."""
+    deadline = deadline_clock() + SWEEP_DEADLINE
+    fetched = 0
+
+    def read(base: int, length: int) -> bytes:
+        nonlocal fetched
+        out = bytearray()
+        for at in range(base, base + length, SWEEP_CHUNK):
+            blob = _sweep_cache.get(at)
+            if blob is None:
+                # At least one piece per call, so a slow machine still finishes.
+                if fetched and deadline_clock() >= deadline:
+                    raise SweepPaused("still sweeping the Amiga's memory")
+                blob = transport.read_memory(
+                    at, min(SWEEP_CHUNK, base + length - at),
+                    timeout=amiga.FsuaeGdb.POLL_TIMEOUT)
+                _sweep_cache[at] = blob
+                fetched += 1
+            out += blob
+        return bytes(out)
+
+    return read
+
+
 def reset() -> None:
     """Forget the connection to the helper, so the next `connect()` opens a new one.
 
@@ -128,6 +171,7 @@ def reset() -> None:
     if _transport is not None:
         _transport.close()
     _transport = _port = _machine = _base = _swept_at = None
+    _sweep_cache.clear()
 
 
 def forget_helper() -> None:
@@ -177,10 +221,11 @@ def _open_transport(wanted: int, port, opener, clock, starter) -> amiga.FsuaeGdb
 
 
 def connect(port: int | None = None, opener=None,
-            clock=time.monotonic, starter=fsuaehelper.start) -> amiga.AmigaTarget:
+            clock=time.monotonic, starter=fsuaehelper.start,
+            deadline_clock=time.monotonic) -> amiga.AmigaTarget:
     """A target on the running Amiga, or a `NotConnected` saying what is missing.
 
-    `opener`, `clock` and `starter` are injected so the tests need no emulator,
+    `opener`, `clock`, `starter` and `deadline_clock` are injected so the tests need no emulator,
     no waiting and no helper process. With an `opener` the helper is not
     consulted. Raises `amiga.FsuaeError` -- a `NotConnected`, so the window goes
     back to waiting -- when nothing is listening, when no title with a row in
@@ -209,14 +254,23 @@ def connect(port: int | None = None, opener=None,
             _machine = _base = None
     if _machine is None:
         now = clock()
-        if _swept_at is not None and now - _swept_at < SWEEP_EVERY:
+        if (not _sweep_cache and _swept_at is not None
+                and now - _swept_at < SWEEP_EVERY):
             raise amiga.FsuaeError(
                 f"the last sweep of the Amiga's memory was {now - _swept_at:.1f}"
                 f"s ago and no more than one is made every {SWEEP_EVERY:.0f}s")
-        _swept_at = now
-        found = amiga.locate_machines(_transport.read_memory,
-                                      amiga.MACHINES.values(),
-                                      sweep_all=True)
+        try:
+            found = amiga.locate_machines(
+                _chunked_read(_transport, clock, deadline_clock),
+                amiga.MACHINES.values(), sweep_all=True)
+        except SweepPaused:
+            raise
+        except BaseException:
+            _swept_at = clock()
+            _sweep_cache.clear()
+            raise
+        _swept_at = clock()
+        _sweep_cache.clear()
         if not found:
             raise amiga.FsuaeError(
                 "none of the titles this knows is in the Amiga's memory yet")
