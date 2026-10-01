@@ -22,6 +22,7 @@ pytest.importorskip("capstone")
 
 from support.hunks import hunk_file, pad4  # noqa: E402
 
+from goldbox import amiga_hunks  # noqa: E402
 from tools.amiga import amiga68k, amigaindexedrefs  # noqa: E402
 
 RTS = b"\x4e\x75"
@@ -53,7 +54,7 @@ def code_hunk() -> bytes:
     indexed read whose displacement byte is 0x84."""
     body = pad4(RTS + INDEXED_44 + INDEXED_50 + LEA_8C + LEA_88 + INDEXED_84
                 + RTS)
-    return hunk_file([(amiga68k.HUNK_CODE, body, [])])
+    return hunk_file([(amiga_hunks.HUNK_CODE, body, [])])
 
 
 def _file_offset(data: bytes) -> int:

@@ -20,6 +20,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from support.hunks import hunk_file, pad4, u32
 
+from goldbox import amiga_hunks  # noqa: E402
 from tools.amiga import amiga68k  # noqa: E402
 from tools.amiga.amiga68k import Executable, pc_references  # noqa: E402
 
@@ -44,9 +45,9 @@ def small_data_program() -> bytes:
     data += b"\0" * (0x7FFE + 8 - len(data))  # room for a4 = data + 0x7ffe
     data = pad4(bytes(data))
     return hunk_file([
-        (amiga68k.HUNK_CODE, code, []),
-        (amiga68k.HUNK_DATA, data, [(0, [2])]),
-        (amiga68k.HUNK_BSS, u32(4), []),
+        (amiga_hunks.HUNK_CODE, code, []),
+        (amiga_hunks.HUNK_DATA, data, [(0, [2])]),
+        (amiga_hunks.HUNK_BSS, u32(4), []),
     ])
 
 
@@ -82,8 +83,8 @@ def absolute_program() -> bytes:
     code = b"\x48\x79" + u32(4) + b"\x4e\x75"     # pea $4.l ; rts
     data = pad4(b"\0\0\0\0Loading...\0")
     return hunk_file([
-        (amiga68k.HUNK_CODE, code, [(1, [2])]),
-        (amiga68k.HUNK_DATA, data, []),
+        (amiga_hunks.HUNK_CODE, code, [(1, [2])]),
+        (amiga_hunks.HUNK_DATA, data, []),
     ])
 
 

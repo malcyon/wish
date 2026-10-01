@@ -389,3 +389,11 @@ def test_every_site_is_drawn_with_its_own_art(name, x, y, disk, paint):
     want_paint = [list(r) for r in tile_pixels(window.tile(paint), world.charsets[index])]
     assert want_paint != want_disk
     assert got == want_disk
+
+
+def test_the_c64_picture_is_its_indices_and_the_c64_palette():
+    from goldbox.icons import C64_PALETTE
+    glyphs = bytes(CHARSET_GLYPHS * GLYPH_BYTES)
+    world = World(tuple(Window(synthetic_window(fill=k)) for k in range(3)),
+                  (glyphs,) * 3)
+    assert world.picture() == (world_indices(world), C64_PALETTE)

@@ -50,6 +50,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
+from goldbox import amiga_hunks  # noqa: E402
 from tools.amiga import amiga68k, amigabackstab  # noqa: E402
 
 TITLES = amigabackstab.TITLES
@@ -108,7 +109,7 @@ def _push(raw: bytes) -> int:
     return 0 if raw == b"\x42\x67" else struct.unpack(">H", raw[2:])[0]
 
 
-def _code(exe) -> amiga68k.Hunk:
+def _code(exe) -> amiga_hunks.Hunk:
     return next(h for h in exe.hunks if h.kind == "CODE")
 
 

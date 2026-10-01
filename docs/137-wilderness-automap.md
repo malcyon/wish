@@ -234,3 +234,9 @@ What the drawing does and does not do, from
   holds each site's own art, so every site is drawn, including the four squares
   the game paints ordinary terrain over until their site is found
   (`tests/areas/test_p3.py` `PAINTED`).
+
+## 7. Amiga Pool of Radiance
+
+The Amiga game's travel page is drawn from the player's own disks, with the same 44 x 36 squares of 24 pixels as the C64's. The grid is `/program` hunk 31 + `0x1A84`, 1,584 bytes indexed `y * 44 + world_x`, holding tile + 1. The 16 colours are the 12-bit words at hunk 23 + `0x60` (`+0x20` is an identical copy), each nibble times 17. Tiles 0-41 are `bacpac.dax` block 1, tiles 42-127 `sqrpaci.dax` block 1, and tiles 128-255 `sqrpaci.dax` block 2 at index `t & 0x7F`; a block is a 12-byte header and then four bit planes, tile `t` sitting at tile-row `t // 2`, column `t % 2`. This layout matched 13,824 of 13,824 pixels of the live screen at four checkpoints.
+
+The nine site records at hunk 26 + `0x1E2` are not applied. The grid already holds each site's own art (tiles 248-254) and the records hold ordinary terrain that the game paints over a site while it is hidden, so applying them would hide sites the map shows (`goldbox/amiga_world.py`).

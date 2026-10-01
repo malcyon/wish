@@ -47,10 +47,11 @@ def load_maps_titled(disks: str | None = None, game: C64Container | None = None,
     return found, game
 
 def load_world(disks: str | None, game: C64Container | None):
-    """The three wilderness windows off a title's C64 disks, or None.
+    """The wilderness off a title's C64 disks, or failing that its Amiga
+    disks, or None.
 
-    None for a title without a travel grid, a folder with no C64 disks, and a
-    set of disks that does not carry all three windows. An image that cannot
+    None for a title without a travel grid, a folder with neither, and a
+    set of disks that does not carry the whole world. An image that cannot
     be opened is skipped, so one damaged file does not cost the windows the
     good disks carry.
     """
@@ -70,11 +71,27 @@ def load_world(disks: str | None, game: C64Container | None):
         except (D64Error, OSError):
             continue
         images.append(image)
-    if not images:
-        return None
+    if images:
+        try:
+            return World.from_disks(images)
+        except (WorldError, D64Error, OSError):
+            pass
+    return _amiga_world(disks, game)
+
+
+def _amiga_world(disks: str, game: C64Container):
+    """The wilderness off the title's Amiga disks, or None.
+
+    Tried only after the C64 disks have given no world, so a folder holding both
+    keeps drawing the C64 picture.
+    """
+    from goldbox.amiga_adf import AmigaDisk, AmigaDiskError
+    from goldbox.amiga_world import AmigaWorld
+    from goldbox.world import WorldError
     try:
-        return World.from_disks(images)
-    except (WorldError, D64Error, OSError):
+        opened = [AmigaDisk.open(path) for path in amiga_images(disks, game)]
+        return AmigaWorld.from_disks(opened) if opened else None
+    except (WorldError, AmigaDiskError, OSError):
         return None
 
 
@@ -103,7 +120,8 @@ def _volume_title(volume: str, amiga_only: bool = False
 
 def amiga_images(where, title: titles.Title) -> list[pathlib.Path]:
     """The loose `.adf` images in a folder whose volume name says they are
-    `title`'s, which can only be an `AMIGA_ONLY_TITLES` one.
+    `title`'s: Pool of Radiance's `poolgame` and `pooldata`, or an
+    `AMIGA_ONLY_TITLES` title's.
 
     The same recognition `_amiga_maps_titled` uses, so a folder cannot count a
     disk the loader would skip.
