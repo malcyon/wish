@@ -25,6 +25,7 @@ from __future__ import annotations
 import pathlib
 import re
 import socket
+import sys
 
 import pytest
 
@@ -2437,6 +2438,8 @@ def test_stop_does_not_signal_a_group_less_pid_that_is_not_fs_uae(
     assert "not an FS-UAE launch" in capsys.readouterr().out
 
 
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="is_fsuae reads /proc, which Windows does not have")
 def test_is_fsuae_reads_the_binary_name_from_proc(monkeypatch, tmp_path):
     real = pathlib.Path.read_bytes
     cmdlines = {"/proc/11/cmdline": b"/usr/local/bin/fs-uae-gdb\0--fullscreen\0",

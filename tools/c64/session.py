@@ -979,6 +979,10 @@ class Session:
     #: snapshot records it so a restore puts back the snapshot's value.
     _pokes_written = False
 
+    #: True after a snapshot restore until `attach` runs; a class default so a
+    #: `Session` built without `__init__` still passes `_refuse_save`.
+    _restored_unattached = False
+
     #: Areas already reported as unsuppressed, so each is logged once.
     _unsuppressed_logged: set | None = None
 

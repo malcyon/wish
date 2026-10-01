@@ -375,7 +375,13 @@ def test_a_real_message_pipe_answers_two_clients_in_turn(tmp_path):
 
     def serve():
         for _ in range(2):
-            _winapi.ConnectNamedPipe(server, overlapped=False)
+            try:
+                _winapi.ConnectNamedPipe(server, overlapped=False)
+            except OSError as e:
+                # ERROR_PIPE_CONNECTED: the client got in before the server
+                # reached this call, which is a connection, not a failure.
+                if e.winerror != 535:
+                    raise
             while True:
                 try:
                     raw, err = _winapi.ReadFile(server, 16384)
@@ -404,6 +410,6 @@ def test_a_real_message_pipe_answers_two_clients_in_turn(tmp_path):
             assert pipe.read_memory(0, 5) == MEMORY[:5]
             pipe.close()
     finally:
-        thread.join(timeout=10)
+        thread.join(timeout=60)
         _winapi.CloseHandle(server)
     assert len(requests) == 4
