@@ -196,6 +196,17 @@ def probe(args) -> int:
 # -- the shipped automapper ---------------------------------------------------
 
 
+def refuse_shift_letter(key: str) -> None:
+    """ValueError for a single upper-case letter.
+
+    xdotool sends it as Shift plus the letter, and the Amiga games ignore
+    modifiers and read Left Shift as the key `7`.
+    """
+    if len(key) == 1 and key.isalpha() and key.isupper():
+        raise ValueError(f"Key {key!r} would send Shift, which the game reads "
+                         f"as 7; use {key.lower()!r}.")
+
+
 def press(display: str, key: str, settle: float) -> None:
     """One keystroke into the emulator, through XTEST on its own display.
 
@@ -206,6 +217,7 @@ def press(display: str, key: str, settle: float) -> None:
     """
     from tools.amiga import fsuaepor
 
+    refuse_shift_letter(key)
     env = {"DISPLAY": display, "PATH": "/usr/bin:/bin"}
     found = fsuaepor.find_windows(display)
     if found:
@@ -534,8 +546,11 @@ def journal(args, adf: str = "") -> bool:
         holder="", settle=args.settle,
         adf=journal_tool.find_disk(adf or None),
         capture=lambda path: shot(args.display, pathlib.Path(path)),
+        # The answer's case comes from the disk's tables; the game shows
+        # upper case whatever is typed.
         press=lambda key: press(args.display,
-                                "Return" if key == "RET" else key,
+                                "Return" if key == "RET" else
+                                key.lower() if len(key) == 1 else key,
                                 args.settle))
 
 
@@ -813,6 +828,7 @@ def resolve_key(display: str, key: str) -> str:
     a `keyup`, which releases a key nobody holds.
     """
     key = KEY_ALIASES.get(key, key)
+    refuse_shift_letter(key)
     if not key_known(display, key):
         raise ValueError(f"no such key name {key!r}")
     return key
