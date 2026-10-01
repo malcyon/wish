@@ -355,8 +355,16 @@ def test_the_constants_are_the_ones_winapi_uses():
 @windows
 def test_a_real_message_pipe_answers_two_clients_in_turn(tmp_path):
     import _winapi
+    import ctypes
+    import ctypes.wintypes
     import threading
     import uuid
+
+    # `_winapi` has no DisconnectNamedPipe; WinUAE calls it to take the next
+    # client on the same instance, so the server does too.
+    disconnect = ctypes.windll.kernel32.DisconnectNamedPipe
+    disconnect.argtypes = [ctypes.wintypes.HANDLE]
+    disconnect.restype = ctypes.wintypes.BOOL
 
     name = f"wish-test-{uuid.uuid4().hex}"
     server = _winapi.CreateNamedPipe(
@@ -384,7 +392,7 @@ def test_a_real_message_pipe_answers_two_clients_in_turn(tmp_path):
                 receipt = (f"Wrote {addr:08X} - {addr + length - 1:08X} "
                            f"({length} bytes) to '{path}'.").encode() + b"\0"
                 _winapi.WriteFile(server, receipt)
-            _winapi.DisconnectNamedPipe(server)
+            assert disconnect(server)
 
     thread = threading.Thread(target=serve, daemon=True)
     thread.start()
