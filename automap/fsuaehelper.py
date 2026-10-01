@@ -16,8 +16,9 @@ the empty reply GDB reads as "not supported".
 
 Only Linux is implemented, in `Posix`, which holds every operating-system
 dependency (socket kind, lock, runtime directory, process check) behind
-`PLATFORM`. `fcntl` is imported where it is used so the module imports on
-Windows.
+`PLATFORM`. Elsewhere `main()` exits with `EXIT_UNSUPPORTED` and `start()`
+raises `OSError`, before anything platform-specific is touched. `fcntl` is
+imported where it is used so the module imports on Windows.
 """
 
 import argparse
@@ -56,6 +57,7 @@ EXIT_NOT_THE_FORK = 5
 EXIT_FORK_UNREACHABLE = 6
 EXIT_RUNTIME_DIR = 7
 EXIT_NOT_PUBLISHED = 8
+EXIT_UNSUPPORTED = 9
 
 #: `/proc/net/tcp` state column.
 _ESTABLISHED = "01"
@@ -114,6 +116,10 @@ class Posix:
 
     def __init__(self, proc: str = "/proc"):
         self.proc = proc
+
+    def supported(self) -> bool:
+        """Is this the platform `Posix` is written for? Only Linux is."""
+        return sys.platform.startswith("linux")
 
     def runtime_dir(self, environ=None) -> pathlib.Path:
         """`$XDG_RUNTIME_DIR/wish`, or the data directory's `run` where it is unset."""
@@ -215,7 +221,8 @@ class Posix:
         return {"start_new_session": True, "close_fds": True}
 
     def ignore_hangups(self) -> None:
-        signal.signal(signal.SIGHUP, signal.SIG_IGN)
+        if hasattr(signal, "SIGHUP"):
+            signal.signal(signal.SIGHUP, signal.SIG_IGN)
         signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 
@@ -532,6 +539,8 @@ def command(port: int, runtime) -> list[str]:
 
 def start(port: int, runtime) -> subprocess.Popen:
     """Start a helper detached from this process and return without waiting."""
+    if not PLATFORM.supported():
+        raise OSError(f"the connection helper is not supported on {sys.platform}")
     files = Paths(port, runtime)
     PLATFORM.secure_dir(files.runtime)
     env = dict(os.environ)
@@ -558,6 +567,11 @@ def main(argv=None) -> int:
     if argv[:1] == [HELPER_FLAG]:
         argv = argv[1:]
     args = parser.parse_args(argv)
+    if not PLATFORM.supported():
+        # Before anything Posix-only (locks, AF_UNIX, /proc) is touched.
+        print(f"fsuaehelper: not supported on {sys.platform}",
+              file=sys.stderr, flush=True)
+        return EXIT_UNSUPPORTED
     helper = Helper(args.port, args.runtime or runtime_dir())
     PLATFORM.ignore_hangups()
     signal.signal(signal.SIGTERM, lambda *_: setattr(helper, "stopping", True))

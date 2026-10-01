@@ -725,3 +725,34 @@ def test_a_source_run_puts_the_checkout_first_on_pythonpath(runtime, monkeypatch
     fsuaehelper.start(7, runtime)
     assert seen["env"]["PYTHONPATH"].split(os.pathsep)[0] == str(
         fsuaehelper.assets.root())
+
+
+def test_a_platform_without_sighup_still_ignores_interrupts(monkeypatch):
+    monkeypatch.delattr(signal, "SIGHUP")
+    before = signal.getsignal(signal.SIGINT)
+    try:
+        fsuaehelper.Posix().ignore_hangups()
+        assert signal.getsignal(signal.SIGINT) == signal.SIG_IGN
+    finally:
+        signal.signal(signal.SIGINT, before)
+
+
+class _Unsupported:
+    def supported(self):
+        return False
+
+    def __getattr__(self, name):
+        raise AssertionError(f"touched {name} on an unsupported platform")
+
+
+def test_an_unsupported_platform_exits_before_touching_anything(
+        runtime, monkeypatch):
+    monkeypatch.setattr(fsuaehelper, "PLATFORM", _Unsupported())
+    assert fsuaehelper.main(["--port", "1", "--runtime", str(runtime)]) == \
+        fsuaehelper.EXIT_UNSUPPORTED
+
+
+def test_an_unsupported_platform_cannot_start_a_helper(runtime, monkeypatch):
+    monkeypatch.setattr(fsuaehelper, "PLATFORM", _Unsupported())
+    with pytest.raises(OSError, match="not supported"):
+        fsuaehelper.start(1, runtime)
