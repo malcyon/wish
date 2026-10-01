@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import inspect
 import io
 import os
 import pathlib
@@ -51,8 +52,10 @@ from automap import c64 as machines  # noqa: E402
 from automap import gamedisks  # noqa: E402
 from automap.actions import CMD_REGISTERS_AVAILABLE, PC_REGISTER  # noqa: E402
 from automap.vice import (  # noqa: E402
+    CMD_DUMP,
     CMD_REGISTERS_GET,
     CMD_REGISTERS_SET,
+    CMD_UNDUMP,
     Monitor,
     MonitorError,
     ScreenUnreadable,
@@ -260,7 +263,7 @@ class Status(NamedTuple):
     a failure -- the game prints no facing out there.  A NamedTuple so the
     four values still index and compare as the simple tuple this used to
     return, which is what `walk_one` and `tools/c64/savecheck.py` do with it; the
-    change a caller has to cope with is `facing` being absent, not the shape.
+    change a caller has to cope with is `facing` being absent, not the form.
     """
 
     facing: int | None
@@ -283,7 +286,7 @@ class Status(NamedTuple):
 def parse_status(text: str) -> Status | None:
     """The status line out of a screen's text, whichever of the two it is.
 
-    Indoors first, then the travel grid.  Either shape or None, and None means
+    Indoors first, then the travel grid.  Either form or None, and None means
     no status line was on the screen -- a menu, a bitmap, camp -- rather than
     an error.
     """
@@ -1116,6 +1119,140 @@ class Session:
         # inside it passes no emulated cycles at all and the drive's own
         # settling time never runs down.
         time.sleep(self.ATTACH_SETTLE if settle is None else settle)
+
+    # -- machine snapshots ------------------------------------------------
+
+    #: A snapshot name becomes a file name, so it is a word and not a path.
+    SNAPSHOT_NAME = re.compile(r"[A-Za-z0-9_-]+\Z")
+
+    #: Seconds a monitor connection waits for VICE to write or read a snapshot;
+    #: the file is about 0.8 MB with the disk in it.
+    SNAPSHOT_TIMEOUT = 30.0
+
+    #: Seconds `walk_with_retry` lets the restored machine run before each
+    #: retry, times the attempt number.  A restore puts the random number
+    #: generator back where it was, so without the pause a retry replays the
+    #: same leg and meets the same encounter.
+    RETRY_SETTLE = 0.7
+
+    def snapshot_path(self, name: str) -> str:
+        """The file `snapshot(name)` writes, under this run's own directory.
+
+        That directory is under `~/.cache/wish`, which the flatpak VICE can
+        write; its `/tmp` is private and a snapshot named there is never seen.
+        """
+        if not self.SNAPSHOT_NAME.match(name):
+            raise ValueError(f"a snapshot name is letters, digits, - and _: {name!r}")
+        return os.path.join(self.here, "snapshots", f"{name}.vsf")
+
+    def snapshot(self, name: str) -> str:
+        """Save the whole machine -- memory, CPU, chips **and the 1541 with its
+        disk image** -- under `name`, and return the file.
+
+        The drive goes in with the machine (`save_disks`), so a snapshot taken
+        while a load is in flight comes back as the same load in flight, which
+        VICE completes after the restore (measured on Curse: a load snapshotted
+        a second in finished with the party on screen).  The disk image goes in
+        as a copy; `restore` sees to it that the drive's host file is the one
+        that was in it.
+
+        The machine runs on after the file is written.
+        """
+        path = self.snapshot_path(name)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        wire = path.encode()
+        # save_roms 0, save_disks 1, then the name.
+        with self.mon(self.SNAPSHOT_TIMEOUT) as m:
+            m.command(CMD_DUMP, struct.pack("<BBB", 0, 1, len(wire)) + wire)
+        self._snapshot_attached = {**self._snapshot_attached, name: self.attached}
+        self.log(f"  snapshot {name}")
+        return path
+
+    def restore(self, name: str) -> None:
+        """Put the machine back as `snapshot(name)` left it, drive included.
+
+        Raises `FileNotFoundError` for a name never saved and `MonitorError`
+        if VICE refuses the file.  The machine runs on from the snapshot's
+        instant when this returns.
+        """
+        path = self.snapshot_path(name)
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"no snapshot {name!r} at {path}")
+        wire = path.encode()
+        with self.mon(self.SNAPSHOT_TIMEOUT) as m:
+            m.command(CMD_UNDUMP, struct.pack("<B", len(wire)) + wire)
+        # VICE puts back the drive's contents from the snapshot but leaves its
+        # host file as it was at restore time, so after a swap the drive would
+        # hold one disk and write to another's file.  Attaching the recorded
+        # image resets the drive; a load in flight still finishes (measured).
+        was = self._snapshot_attached.get(name)
+        if was is not None and os.path.abspath(was) != os.path.abspath(self.attached):
+            self.attach(was)
+        self.log(f"  restored {name}")
+
+    def walk_with_retry(self, moves: str, retries: int = 3,
+                        name: str = "walk-retry", hold=0.15, gap=0.30) -> bool:
+        """Walk `moves` from a snapshot; if an encounter starts, roll back and
+        walk them again, up to `retries` more times.
+
+        True when no encounter began, with the party where the leg left it.
+        False when the retries ran out, **with the machine restored to the
+        start of the leg**, so the caller is never left standing in a fight it
+        asked not to have; `walk_refused` and `walk_retries` say what happened.
+        A move a wall stops is not an encounter and is not retried: as in
+        `walk`, the leg goes on to its next move.
+
+        An encounter is `walk_one` seeing the live square move under a status
+        line that does not (`walk_encounter_started`), stopping at an
+        encounter menu or other screen it does not answer, or the game's mode
+        byte reading COMBAT afterwards.
+        """
+        self.walk_retries = 0
+        self.snapshot(name)
+        for attempt in range(retries + 1):
+            met = self._walk_leg(moves, hold, gap)
+            if met is None:
+                return True
+            self.log(f"  walk_with_retry: {met} on attempt {attempt + 1} of "
+                     f"{retries + 1}; restoring")
+            self.restore(name)
+            self.walk_retries = attempt + 1
+            if attempt < retries:
+                time.sleep(self.RETRY_SETTLE * (attempt + 1))
+        self.walk_refused = (f"an encounter began on each of {retries + 1} "
+                             f"attempts at the leg {moves!r}")
+        return False
+
+    #: Retries the last `walk_with_retry` used.
+    walk_retries = 0
+
+    def _walk_leg(self, moves: str, hold: float, gap: float) -> str | None:
+        """Walk `moves`; what stopped it if an encounter did, else None.
+
+        `encounters=True` is passed only to a `walk_one` that takes it: Curse's
+        override does not, and reads an encounter off the screen and the mode
+        byte instead.
+        """
+        takes = "encounters" in inspect.signature(self.walk_one).parameters
+        for ch in moves.upper():
+            # Left over from the last move, either would read as this one's.
+            self.walk_encounter_started = False
+            self.walk_stop_screen = None
+            moved = (self.walk_one(ch, hold, gap, encounters=True) if takes
+                     else self.walk_one(ch, hold, gap))
+            if self.walk_encounter_started:
+                return f"an encounter started at {ch}"
+            if self.walk_stop_screen is not None:
+                return f"{ch} stopped at an encounter screen"
+            if self.in_combat():
+                return f"the game is in combat after {ch}"
+            if not moved:
+                s = self.screen()
+                if s is not None and ENCOUNTER_FIGHT in s.row(24):
+                    return f"{ch} met an encounter menu"
+        return None
+
+    _snapshot_attached: dict[str, str] = {}
 
     # -- screen -----------------------------------------------------------
 
@@ -2143,7 +2280,7 @@ class Session:
         unseen until an arrival that was neither of those two was driven
         (#182).
 
-        Same shape as `outdoor_key`: read what row 24 actually says and act on
+        Same form as `outdoor_key`: read what row 24 actually says and act on
         it, rather than sitting for the one thing that was expected.
         `combat_state` and `BAR_PRESS` are reused rather than a second copy of
         the same classification, and the prompt is answered the way `fight`'s
@@ -2267,7 +2404,7 @@ class Session:
         One monitor block, so the square and the world it was chosen for
         cannot come from either side of a boundary crossing.  `position()`
         used to call `square()` and then `indoors()` separately, which is two
-        reads of one fact -- the same shape `select_bar`'s docstring names as
+        reads of one fact -- the same form `select_bar`'s docstring names as
         `#173`, where two `$D800` reads were treated as one snapshot.  Found
         in the code review of #189.
 
@@ -3005,7 +3142,7 @@ class Session:
 
         **The byte is at a different address in each title and this used to
         read Pool of Radiance's.**  `$6E11` in Curse and Silver Blades is a
-        byte of somebody else's code, so a party standing on the combat floor
+        byte of somebody else's code, so a party standing on the combat arena
         answered `1` and every caller was told there was no fight -- which
         looks exactly like a save that failed to enter combat, and is how a
         working conversion gets written up as broken (`#334`).  `LINKER` opens
@@ -3049,7 +3186,7 @@ class Session:
         Pool of Radiance's row there is the same six numbers `automap.combat`
         already used, so nothing about this title's answer changes; Curse and
         Silver Blades used to be read at those numbers and answered None on a
-        combat floor (`#334`).
+        combat arena (`#334`).
         """
         from automap.combat import read_battle
 
@@ -3429,17 +3566,17 @@ class Session:
         now, and `None` means what it says -- there is no path at all, or
         every first step on one is in `avoid`.
         """
-        shape = battle.shape
+        geometry = battle.geometry
         start = (me.x, me.y)
         goal = (target.x, target.y)
-        if goal == start or not shape.holds(*start):
+        if goal == start or not geometry.holds(*start):
             return None
 
         blocked = {(x, y)
-                   for y in range(shape.height) for x in range(shape.width)
+                   for y in range(geometry.height) for x in range(geometry.width)
                    if battle.square(x, y)}
         for c in battle.combatants:
-            if not shape.holds(c.x, c.y):
+            if not geometry.holds(c.x, c.y):
                 continue
             if (c.x, c.y) in (start, goal):
                 continue
@@ -3454,7 +3591,7 @@ class Session:
             for at in frontier:
                 for dx, dy in STEP_KEYS:
                     sq = (at[0] + dx, at[1] + dy)
-                    if sq in dist or not shape.holds(*sq) or sq in blocked:
+                    if sq in dist or not geometry.holds(*sq) or sq in blocked:
                         continue
                     dist[sq] = dist[at] + 1
                     nxt.append(sq)
@@ -3466,7 +3603,7 @@ class Session:
             if key in avoid:
                 continue
             sq = (me.x + dx, me.y + dy)
-            if not shape.holds(*sq) or sq in blocked:
+            if not geometry.holds(*sq) or sq in blocked:
                 continue
             d = dist.get(sq)
             if d is None:
@@ -4049,7 +4186,7 @@ def handle(sess: Session, line: str) -> bool:
         if b is None:
             print("not in a fight")
         else:
-            print(f"shape {b.shape.width}x{b.shape.height} camera {b.camera}")
+            print(f"geometry {b.geometry.width}x{b.geometry.height} camera {b.camera}")
             for c in b.combatants:
                 print(f"  {c.index:2d} {c.kind:9s} ({c.x:2d},{c.y:2d}) "
                       f"init {c.initiative:3d} hp {c.hp_text} {c.name}")
