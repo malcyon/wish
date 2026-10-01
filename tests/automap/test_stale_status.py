@@ -44,8 +44,9 @@ def test_the_sewers_are_entered_at_the_square_the_game_names(tmp_path, monkeypat
 
 
 def arrive_in_the_sewers(arrival, tmp_path, monkeypatch):
-    """Tilverton, then the sewers' map loaded with the engine at *arrival* and
-    the line without coordinates, all on one target whose bytes change in place."""
+    """Tilverton, then the sewers' map loaded with the engine at *arrival* while
+    the line still reads the town's square, all on one target whose bytes change
+    in place."""
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     town, sewers = synthetic_map(1), synthetic_map(2)
     target = curse_target("S 8:37 14,15", (14, 15, 2), town)
@@ -53,13 +54,13 @@ def arrive_in_the_sewers(arrival, tmp_path, monkeypatch):
                         area="GEO01", title=CURSE.title)
     for _ in range(mapper.RESIDENT_EVERY - 1):
         mapper.poll()
-    go(target, mapper, (*arrival, 2), sewers)
+    go(target, mapper, (*arrival, 2), sewers, status="S 8:37 14,15")
     assert mapper.state.area == "GEO03"
     return target, mapper, sewers
 
 
-def go(target, mapper, triple, geo=None, polls=1):
-    target.memory.update(curse_target("S 8:37", triple, geo).memory)
+def go(target, mapper, triple, geo=None, polls=1, status="S 8:37"):
+    target.memory.update(curse_target(status, triple, geo).memory)
     for _ in range(polls):
         mapper.poll()
 
@@ -101,7 +102,7 @@ def test_a_confirmed_status_jump_after_an_arrival_keeps_it_explored(
                         area="GEO01", title=CURSE.title)
     for _ in range(mapper.RESIDENT_EVERY - 1):
         mapper.poll()
-    target.memory.update(curse_target("S 8:37 0,0", (0, 0, 2), sewers).memory)
+    target.memory.update(curse_target("S 8:37 14,15", (0, 0, 2), sewers).memory)
     mapper.poll()
     assert mapper.state.area == "GEO03"
     assert (mapper.state.x, mapper.state.y) == (0, 0)
