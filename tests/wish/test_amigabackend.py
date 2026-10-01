@@ -204,10 +204,10 @@ def test_a_running_title_gives_a_target_at_its_own_base():
     assert target.halts_on_read is False
 
 
-def _pool_memory(data_guard: int | None = None) -> dict[int, bytes]:
+def _pool_memory(data_guard: int | None = None, h31: int = 0xC10000,
+                 h32: int = 0xC20000) -> dict[int, bytes]:
     row = amiga.MACHINES["pool-of-radiance"]
     seg = row.segments
-    h31, h32 = 0xC10000, 0xC20000
     first = bytearray(0x4000)
     first[8 + row.anchor_offset:8 + row.anchor_offset + len(row.anchor)] = \
         row.anchor
@@ -225,6 +225,24 @@ def test_a_title_with_its_data_in_another_hunk_gives_that_hunks_base():
     assert target.anchor_base == 0xC10000 and target.data_base == 0xC20000
     # The cached anchor check hops again and gives the same base.
     assert fsuae.connect(opener=opener, clock=Clock()).data_base == 0xC20000
+
+
+def test_a_game_started_again_at_new_addresses_detaches_and_reconnects():
+    """Quit and start the game in the same emulator: AmigaDOS loads it
+    elsewhere. The old target notices within its re-check interval, raises the
+    error the session detaches on, and the next connect finds the new base."""
+    sock, clock = FakeSocket(_pool_memory()), Clock()
+    opener = Opener(sock)
+    old = fsuae.connect(opener=opener, clock=clock)
+    old.REVALIDATE_EVERY = 0
+    assert old.data_base == 0xC20000
+    sock.memory = _pool_memory(h31=0xC30000, h32=0xC40000)
+    with pytest.raises(amiga.GuestError, match="no longer at 0xc10000"):
+        old.fix()
+    clock.later()
+    new = fsuae.connect(opener=opener, clock=clock)
+    assert (new.anchor_base, new.data_base) == (0xC30000, 0xC40000)
+    assert opener.calls == 1
 
 
 def test_a_bad_guard_waits_and_keeps_the_transport():
