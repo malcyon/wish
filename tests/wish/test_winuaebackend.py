@@ -156,3 +156,75 @@ def test_the_first_pipe_is_used_and_a_different_one_replaces_it():
                    factory=lambda pipe: next(made))
     winuae.connect(pipes=lambda: ["WinUAE_1"], factory=lambda pipe: next(made))
     assert first.closed == 1
+
+
+# -- the sweep, which may not hold the window ----------------------------------
+
+def test_a_sweep_stops_at_its_deadline_and_goes_on_from_what_it_read():
+    transport = FakeTransport(memory=loaded())
+    reads = []
+    now = [1000.0]
+    inner = transport.read_memory
+
+    def counting(addr, length, timeout=None):
+        reads.append((addr, length))
+        now[0] += 0.1                               # what one piece costs
+        return inner(addr, length)
+
+    locator = amigalocate.Locator(clock=lambda: now[0])
+    locator.SWEEP_DEADLINE = 0.15                   # two pieces a call
+    paused = 0
+    for _ in range(400):
+        try:
+            target = locator.target(counting, transport)
+            break
+        except locator.paused:
+            paused += 1
+    else:
+        pytest.fail("the sweep never finished")
+    assert paused > 1 and target.data_base == BASE
+    assert len(reads) == len(set(reads))            # no piece read twice
+    assert max(length for _, length in reads) <= locator.SWEEP_CHUNK
+
+
+def test_a_failed_piece_makes_the_next_sweep_use_smaller_pieces():
+    transport = FakeTransport(memory=loaded())
+    now = [0.0]
+    locator = amigalocate.Locator(clock=lambda: now[0])
+
+    def failing(addr, length, timeout=None):
+        raise amiga.PipeError("Timed out.")
+
+    with pytest.raises(amiga.PipeError):
+        locator.target(failing, transport)
+    now[0] += locator.SWEEP_EVERY
+    sizes = []
+    inner = transport.read_memory
+
+    def watching(addr, length, timeout=None):
+        sizes.append(length)
+        return inner(addr, length)
+
+    locator.target(watching, transport)
+    assert max(sizes) == locator.SWEEP_SMALL_CHUNK
+
+
+def test_pieces_older_than_the_age_limit_are_not_searched():
+    transport = FakeTransport(memory=loaded())
+    now = [0.0]
+    locator = amigalocate.Locator(clock=lambda: now[0])
+    locator.SWEEP_DEADLINE = 0.0                    # one piece a call
+    with pytest.raises(locator.paused):
+        locator.target(transport.read_memory, transport)
+    assert locator._pieces
+    now[0] += locator.SWEEP_CACHE_AGE + 1
+    with pytest.raises(locator.paused):
+        locator.target(transport.read_memory, transport)
+    assert len(locator._pieces) == 1                # the old piece was dropped
+
+
+def test_the_target_remembers_where_the_anchor_was_found():
+    transport = FakeTransport(memory=loaded())
+    target = winuae.connect(pipes=lambda: ["WinUAE"],
+                            factory=lambda pipe: transport)
+    assert target.anchor_base == BASE

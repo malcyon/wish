@@ -187,8 +187,8 @@ GAME_FOLDER_TITLES: tuple[c64_port.C64Container, ...] = (
 def game_folder_titles() -> tuple[c64_port.C64Container | titles.Title, ...]:
     """The titles that have a folder row in this run: the three above, then
     the titles with Amiga disks and no C64 container while the experimental
-    Amiga backend is on (`backends.amiga_fsuae_enabled`)."""
-    if backends.amiga_fsuae_enabled():
+    Amiga backend is on (`backends.amiga_enabled`)."""
+    if backends.amiga_enabled():
         return GAME_FOLDER_TITLES + maps.AMIGA_ONLY_TITLES
     return GAME_FOLDER_TITLES
 
@@ -354,7 +354,7 @@ def report(settings, flag=None, beside=None,
         return rows + [("Titles",
                         f"none; nowhere with {patterns} in it was found")]
 
-    present = _scan(str(where), backends.amiga_fsuae_enabled())["titles"]
+    present = _scan(str(where), backends.amiga_enabled())["titles"]
     if present:
         titles_line = " · ".join(f"{g.title} ({n} disk{'' if n == 1 else 's'})"
                                       for g, n in present)
@@ -588,7 +588,7 @@ class PreferencesDialog(QDialog):
         Designer; a run without the flag never shows it, and nothing in the
         dialog refers to it.
         """
-        if backends.amiga_fsuae_enabled():
+        if backends.amiga_enabled():
             return
         for game in maps.AMIGA_ONLY_TITLES:
             group = getattr(self.ui,

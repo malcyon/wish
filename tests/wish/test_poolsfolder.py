@@ -400,6 +400,37 @@ def test_the_titles_to_try_come_from_the_flag(monkeypatch):
     assert bk.amiga_only_titles() == AMIGA_ONLY_TITLES
 
 
+def test_a_winuae_only_player_gets_the_pod_folder_and_its_maps(
+        app, tmp_path, monkeypatch):
+    settings, pod = _only_pod(tmp_path, monkeypatch)
+    monkeypatch.delenv(bk.AMIGA_FSUAE_ENV, raising=False)
+    monkeypatch.setenv(bk.AMIGA_WINUAE_ENV, "1")
+    assert bk.amiga_only_titles() == AMIGA_ONLY_TITLES
+    win = window(app, maps=None, settings=settings)
+    try:
+        assert win.map.state.title == POD.title
+        assert "GEO24" in win.mapper._maps
+    finally:
+        win.close()
+
+
+def test_a_winuae_only_player_gets_the_pod_folder_row(
+        app, tmp_path, monkeypatch):
+    nowhere(tmp_path, monkeypatch)
+    monkeypatch.delenv(bk.AMIGA_FSUAE_ENV, raising=False)
+    monkeypatch.setenv(bk.AMIGA_WINUAE_ENV, "1")
+    assert preferences.game_folder_titles() == (
+        preferences.GAME_FOLDER_TITLES + AMIGA_ONLY_TITLES)
+    win = window(app)
+    try:
+        dialog = PreferencesDialog(win)
+        assert POD.key in dialog.game_folder_edits
+        assert dialog.findChild(preferences.QLabel,
+                                "game_folder_label_pools_of_darkness") is not None
+    finally:
+        win.close()
+
+
 def test_a_window_with_only_the_pod_folder_names_its_title(
         app, tmp_path, monkeypatch, amiga_on):
     settings, pod = _only_pod(tmp_path, monkeypatch)

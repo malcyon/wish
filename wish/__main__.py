@@ -138,11 +138,11 @@ def main(argv: list[str] | None = None) -> int:
     # so the maps it is handed and the folder it reports cannot disagree.
     from automap.paths import resolve_disks
 
-    from .backends import amiga_fsuae_enabled, amiga_only_titles
+    from .backends import amiga_enabled, amiga_only_titles
     where, source = resolve_disks(flag=args.disks, beside=args.save, game=game,
                                   also=amiga_only_titles())
     maps, game = load_maps_titled(str(where) if where else None, game,
-                                  amiga_only=amiga_fsuae_enabled())
+                                  amiga_only=amiga_enabled())
     if args.svg:
         from automap.render import to_svg
         name, out = args.svg

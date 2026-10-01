@@ -629,6 +629,45 @@ nothing here says whether the `GEO` pointer moves on an area change or the
 buffer is refilled in place. The automapper is right either way, because it
 re-reads the pointer, but the fact is unmeasured.
 
+### The WinUAE backend: its transport and its missing row
+
+Wish and WinUAE on one Windows machine talk through WinUAE's own named pipe,
+`\\.\pipe\WinUAE` (then `WinUAE_1` to `WinUAE_9`). `automap/winuae.py` opens it
+from Python in message mode: no PowerShell, no console window, nothing pressed
+in the emulator. `wish/winuae.py` is the window side; its probe lists the pipe
+directory and opens nothing, because WinUAE serves one client at a time.
+
+* **Reads are `S "<absolute path>" <addr> <len>`,** one per range, into a file
+  with a name of its own under Wish's data folder (`run/winuae`); `m` is not used
+  because its output is capped near 4 KB a reply and about 500 lines for the life
+  of the emulator process. The path is quoted, so spaces are safe. A pure-ASCII
+  path goes as 8-bit text; any other goes with the UTF-8 byte-order mark, which
+  has not been run against a real WinUAE. The reply's receipt is checked for the
+  address, byte count and file name, and `wish-*.bin` files left behind by an
+  abandoned request are deleted when the pipe is opened.
+* **One handle is held while Wish is attached,** so the player's WinUAE log gets
+  one connect line and not one per read. The target the window holds releases
+  it on `close()`, and a connect that fails releases it too. A pipe another tool
+  holds is waited for up to half a second (`WaitNamedPipe`), then the window
+  asks again on its next tick.
+* **Every read and write is overlapped with a deadline.** WinUAE does not
+  service the pipe while its debugger waits at the F11 prompt, and a plain read
+  would hang the window. A request waits two seconds, then is cancelled and the
+  handle dropped (a late reply would answer the next request), and nothing is
+  tried again for five seconds. A reply is read on only while WinUAE says more
+  is coming, and a complete message without its NUL is an error.
+* **The search for the running title is read in 64 KB pieces** (16 KB after a
+  piece fails) through `wish/amigalocate.py`, one second a tick; what was read
+  is kept for five seconds and the next tick goes on from there, with the
+  window shown its waiting line meanwhile. Leftover dump files of this process
+  are deleted when the pipe is opened and when it is closed.
+* **The row is not defined yet.** Its name and setup hint are interface text and
+  wait for Donald's wording, so `WISH_EXPERIMENTAL_AMIGA_WINUAE` offers nothing
+  until `wish.winuae.AMIGA_WINUAE` exists. With either Amiga flag on, the window
+  loads the Amiga-only titles' maps and offers the Pools of Darkness folder.
+* **Never run against a real WinUAE.** The tests use a fake pipe; the
+  Windows-only tests that use a real one have not run yet.
+
 ## Still open
 
 * **The multi-class experience split.** A card draws one bar per class, each

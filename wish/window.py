@@ -93,8 +93,8 @@ def load_maps_titled(disks: str | None = None, game=None) -> tuple[dict, object]
     try:
         from automap.maps import load_maps_titled as _load
 
-        from .backends import amiga_fsuae_enabled
-        return _load(disks, game, amiga_only=amiga_fsuae_enabled())
+        from .backends import amiga_enabled
+        return _load(disks, game, amiga_only=amiga_enabled())
     except Exception:
         debuglog.exception("could not read the maps under %s", disks)
         return {}, None
@@ -450,7 +450,7 @@ class WishWindow(QMainWindow):
         current = self.map.state.title
         out: dict[str, dict] = {}
         for g in c64_port.GAMES + (AMIGA_ONLY_TITLES
-                                   if backends.amiga_fsuae_enabled() else ()):
+                                   if backends.amiga_enabled() else ()):
             if g.title == current:
                 continue
             folder = (folders.get(g.key, "") or "").strip()

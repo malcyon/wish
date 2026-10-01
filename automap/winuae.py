@@ -145,18 +145,18 @@ class WinuaeLocalPipe:
             except OSError as exc:
                 code = getattr(exc, "winerror", None)
                 if code == ERROR_FILE_NOT_FOUND:
-                    raise PipeError(f"there is no pipe named {name}") from exc
+                    raise PipeError(f"There is no WinUAE pipe called {self.pipe}.") from exc
                 if code != ERROR_PIPE_BUSY:
-                    raise PipeError(f"could not open {name}: {exc}") from exc
+                    raise PipeError(f"Could not open the WinUAE pipe: {exc}") from exc
                 left = deadline - self._clock()
                 if left <= 0:
-                    raise PipeError(f"{name} is held by another client") \
+                    raise PipeError("Another program holds the WinUAE pipe.") \
                         from exc
                 try:
                     win.WaitNamedPipe(name, max(1, int(left * 1000)))
                 except OSError as wait:
                     if getattr(wait, "winerror", None) != ERROR_SEM_TIMEOUT:
-                        raise PipeError(f"could not wait for {name}: {wait}") \
+                        raise PipeError(f"Could not wait for the WinUAE pipe: {wait}") \
                             from wait
                 else:
                     self._sleep(0.005)
@@ -165,17 +165,21 @@ class WinuaeLocalPipe:
                                         None)
         except OSError as exc:
             win.CloseHandle(handle)
-            raise PipeError(f"could not set message mode on {name}: {exc}") \
+            raise PipeError(f"Could not set message mode on the WinUAE pipe: {exc}") \
                 from exc
         self._handle = handle
         self.lost = False
-        self._clear_leftovers()
+        self._clear_leftovers(create=True)
 
-    def _clear_leftovers(self) -> None:
-        """Remove dumps a request left behind that WinUAE wrote after Wish gave up."""
+    def _clear_leftovers(self, create: bool = False) -> None:
+        """Remove this process's dumps that WinUAE wrote after Wish gave up.
+
+        Only this process's: another Wish may be reading at the same time.
+        """
         folder = self._folder()
-        folder.mkdir(parents=True, exist_ok=True)
-        for leftover in folder.glob("wish-*.bin"):
+        if create:
+            folder.mkdir(parents=True, exist_ok=True)
+        for leftover in folder.glob(f"wish-{os.getpid()}-*.bin"):
             try:
                 leftover.unlink()
             except OSError:
@@ -192,6 +196,10 @@ class WinuaeLocalPipe:
                 self._win().CloseHandle(handle)
             except OSError:
                 pass
+        try:
+            self._clear_leftovers()
+        except OSError:
+            pass
 
     def _drop(self) -> None:
         self.lost = True
@@ -211,17 +219,17 @@ class WinuaeLocalPipe:
                     pass
                 self._quiet_until = self._clock() + self.BACKOFF
                 raise PipeError(f"WinUAE did not {what} in time; it may be "
-                                "waiting at the debugger's prompt")
+                                "waiting at the debugger's prompt.")
         return ov.GetOverlappedResult(True)
 
     def _write(self, data: bytes, deadline: float) -> None:
         ov, err = self._win().WriteFile(self._handle, data, overlapped=True)
         written, err = self._finish(ov, err, deadline, "take the request")
         if err != 0 or written != len(data):
-            raise PipeError(f"WinUAE took {written} of {len(data)} bytes")
+            raise PipeError(f"WinUAE took {written} of {len(data)} bytes of a request.")
 
     def _read_reply(self, deadline: float) -> bytes:
-        """One reply: every part of it, ending at its NUL."""
+        """One reply: every part of it, read on while WinUAE says more is coming."""
         win = self._win()
         data = b""
         while True:
@@ -231,10 +239,10 @@ class WinuaeLocalPipe:
             if err == ERROR_MORE_DATA:
                 continue
             if err != 0:
-                raise PipeError(f"reading the reply failed with error {err}")
-            if data.endswith(b"\0"):
-                return data[:-1]
-            # A message that ended without its NUL is not the whole reply.
+                raise PipeError(f"Reading the reply failed with error {err}.")
+            if not data.endswith(b"\0"):
+                raise PipeError("The reply ended without its terminator.")
+            return data[:-1]
 
     # -- reading ---------------------------------------------------------
 
@@ -246,7 +254,7 @@ class WinuaeLocalPipe:
         deadline = self._clock() + timeout
         if self._clock() < self._quiet_until:
             raise PipeError("WinUAE stopped answering a moment ago; not "
-                            "asking again yet")
+                            "asking again yet.")
         try:
             if self._handle is None:
                 self._open(min(deadline, self._clock() + self.CONNECT_S))
@@ -255,8 +263,8 @@ class WinuaeLocalPipe:
         except OSError as exc:
             self._drop()
             if getattr(exc, "winerror", None) == ERROR_BROKEN_PIPE:
-                raise PipeError("WinUAE closed the pipe") from exc
-            raise PipeError(f"the pipe failed: {exc}") from exc
+                raise PipeError("WinUAE closed the pipe.") from exc
+            raise PipeError(f"The WinUAE pipe failed: {exc}") from exc
         except PipeError:
             self._drop()
             raise
@@ -266,15 +274,15 @@ class WinuaeLocalPipe:
                     timeout: float | None = None) -> bytes:
         """`length` bytes at `addr`, through one `S` and the file it writes."""
         if length <= 0:
-            raise ValueError(f"a read of {length} bytes is not a read")
+            raise ValueError(f"A read of {length} bytes is not a read.")
         self._count += 1
         target = self._folder() / f"wish-{os.getpid()}-{self._count}.bin"
         path = str(target)
         if len(path) > PATH_LIMIT:
-            raise PipeError(f"the dump path is {len(path)} characters; "
-                            f"WinUAE reads at most {PATH_LIMIT} safely")
+            raise PipeError(f"The dump path is {len(path)} characters; "
+                            f"WinUAE reads at most {PATH_LIMIT} safely.")
         if '"' in path:
-            raise PipeError("the dump path contains a double quote")
+            raise PipeError("The dump path contains a double quote.")
         try:
             reply = self._request(
                 f'DBG S "{path}" {addr:x} {length:x}',
@@ -283,11 +291,10 @@ class WinuaeLocalPipe:
             try:
                 data = target.read_bytes()
             except OSError as exc:
-                raise PipeError(f"WinUAE reported the dump and {path} is not "
-                                f"there: {exc}") from exc
+                raise PipeError("WinUAE reported the dump and the file is not "
+                                f"there: {exc.strerror}.") from exc
             if len(data) != length:
-                raise PipeError(f"asked for {length} bytes at {addr:#x} and "
-                                f"the dump holds {len(data)}")
+                raise PipeError(f"A dump of {length} bytes holds {len(data)}.")
             return data
         finally:
             try:
@@ -296,16 +303,24 @@ class WinuaeLocalPipe:
                 pass
 
 
+def _without(reply: str, path: str) -> str:
+    """The reply with the dump's path taken out, and cut short."""
+    folder = os.path.dirname(path)
+    return (reply.replace(path, "the dump file").replace(folder, "the dump folder")
+            .strip()[:120])
+
+
 def _check_receipt(reply: str, addr: int, length: int, path: str) -> None:
     """`Wrote AAAAAAAA - BBBBBBBB (N bytes) to 'path'.` for this very request."""
     match = _RECEIPT.match(reply)
     if match is None:
-        raise PipeError(f"WinUAE did not write the dump: {reply.strip()[:200]}")
+        raise PipeError("WinUAE did not write the dump: "
+                        + _without(reply, path))
     start, _, count, name = match.groups()
     if (int(start, 16) != addr or int(count) != length
             or name.casefold() != path.casefold()):
         raise PipeError("WinUAE's receipt is for another request: "
-                        f"{reply.strip()[:200]}")
+                        + _without(reply, path))
 
 
 def present(listdir=None) -> bool:

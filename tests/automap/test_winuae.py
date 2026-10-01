@@ -8,6 +8,7 @@ here opens a real pipe except the last test, which needs Windows.
 
 from __future__ import annotations
 
+import os
 import re
 import sys
 
@@ -120,7 +121,7 @@ class FakeWinuae:
             int(match.group(3), 16)
         with open(path, "wb") as out:
             out.write(MEMORY[addr:addr + length])
-        reply = (self.receipt if self.receipt is not None else
+        reply = (self.receipt.replace("{path}", path) if self.receipt is not None else
                  f"Wrote {addr:08X} - {addr + length - 1:08X} "
                  f"({length} bytes) to '{path}'.").encode("utf-8")
         reply = reply if self.drop_nul else reply + b"\0"
@@ -155,10 +156,10 @@ def test_a_reply_in_several_parts_is_put_together(rig):
     assert pipe.read_memory(0, 64) == MEMORY[:64]
 
 
-def test_a_reply_without_its_nul_is_never_complete(rig):
+def test_a_complete_message_without_its_nul_is_an_error(rig):
     pipe, api, *_ = rig
     api.drop_nul = True
-    with pytest.raises(amiga.PipeError, match="did not answer"):
+    with pytest.raises(amiga.PipeError, match="terminator"):
         pipe.read_memory(0, 16)
     assert pipe.lost and api.closes == 1
 
@@ -190,7 +191,7 @@ def test_a_busy_pipe_is_waited_for_and_then_opened(rig):
 def test_a_pipe_that_stays_busy_gives_up_with_a_pipe_error(rig):
     pipe, api, *_ = rig
     api.always_busy = True
-    with pytest.raises(amiga.PipeError, match="held by another client"):
+    with pytest.raises(amiga.PipeError, match="Another program holds"):
         pipe.read_memory(0, 4)
     assert isinstance(amiga.PipeError("x"), amiga.NotConnected)
 
@@ -198,7 +199,7 @@ def test_a_pipe_that_stays_busy_gives_up_with_a_pipe_error(rig):
 def test_no_pipe_is_a_pipe_error(rig):
     pipe, api, *_ = rig
     api.missing = True
-    with pytest.raises(amiga.PipeError, match="no pipe"):
+    with pytest.raises(amiga.PipeError, match="no WinUAE pipe"):
         pipe.read_memory(0, 4)
 
 
@@ -241,14 +242,52 @@ def test_a_path_outside_ascii_goes_in_the_utf8_framing(tmp_path):
     assert message.endswith(b"\0")
 
 
-def test_dumps_left_by_an_abandoned_request_are_cleared_at_connect(rig):
+def test_this_processs_leftover_dumps_are_cleared_at_connect_and_at_close(rig):
     pipe, _api, _clock, folder = rig
     folder.mkdir()
-    (folder / "wish-9-1.bin").write_bytes(b"old")
+    mine = folder / f"wish-{os.getpid()}-99.bin"
+    other = folder / f"wish-{os.getpid() + 1}-1.bin"
+    mine.write_bytes(b"old")
+    other.write_bytes(b"another Wish's")
     (folder / "keep.txt").write_bytes(b"mine")
     pipe.read_memory(0, 8)
-    assert not (folder / "wish-9-1.bin").exists()
-    assert (folder / "keep.txt").exists()
+    assert not mine.exists()
+    assert other.exists() and (folder / "keep.txt").exists()
+    mine.write_bytes(b"late")                   # WinUAE wrote it after we gave up
+    pipe.close()
+    assert not mine.exists() and other.exists()
+
+
+def test_no_message_a_player_could_see_holds_a_path_or_starts_lowercase(
+        rig, tmp_path):
+    pipe, api, clock, folder = rig
+    messages = []
+
+    def fail(setup, undo=lambda: None):
+        setup()
+        with pytest.raises(amiga.PipeError) as caught:
+            pipe.read_memory(0, 16)
+        messages.append(str(caught.value))
+        undo()
+        pipe.close()
+        clock.now += 100
+
+    fail(lambda: setattr(api, "missing", True),
+         lambda: setattr(api, "missing", False))
+    fail(lambda: setattr(api, "always_busy", True),
+         lambda: setattr(api, "always_busy", False))
+    fail(lambda: setattr(api, "silent", True),
+         lambda: setattr(api, "silent", False))
+    fail(lambda: setattr(api, "drop_nul", True),
+         lambda: setattr(api, "drop_nul", False))
+    fail(lambda: setattr(api, "receipt", "Couldn't open file '{path}'."),
+         lambda: setattr(api, "receipt", None))
+    fail(lambda: setattr(api, "receipt", "Wrote 00000001 - 00000008 (8 bytes) to 'x'."))
+    for message in messages:
+        assert message[:1].isupper(), message
+        assert str(tmp_path) not in message, message
+        assert "0x" not in message, message
+
 
 
 def test_a_receipt_for_another_request_is_refused_and_the_pipe_kept(rig):
