@@ -1802,6 +1802,10 @@ def data_base_for(read, machine: AmigaMachine, anchor_base: int) -> int:
 
 
 def _check_guard(read, base: int, size: int, machine: AmigaMachine) -> None:
+    if not _in_memory(base - 8, 8):
+        raise GuestError(
+            f"the allocation length before {base:#x} is outside the Amiga's "
+            f"memory, so it is not a hunk of {machine.title}")
     found = _long(read, base - 8)
     if found != size + 8:
         raise GuestError(
@@ -2193,9 +2197,16 @@ class AmigaTarget:
             return Fix(0, 0, None, "memory", None, world_map=True)
         grid = self.layout.travel_grid
         if grid is not None:
-            view = self.read(self._at(grid.view), 1)[0]
-            if view in grid.views:
-                return self._travel_fix(grid, view)
+            # The four fixed-offset reads in one round trip; only the block
+            # read waits for the pointer. Costs the indoor poll three reads it
+            # does not use, and saves the outdoor one three round trips.
+            view, pointer, area, facing = self.read_blocks([
+                (self._at(grid.view), 1), (self._at(grid.block_pointer), 4),
+                (self._at(grid.area), 1),
+                (self._at(self.layout.party_facing), 1)])
+            if view[0] in grid.views:
+                return self._travel_fix(grid, view[0], int.from_bytes(
+                    pointer, "big"), area[0], facing[0])
         span = self.layout.width
         lo = min(self.layout.party_x, self.layout.party_y,
                  self.layout.party_facing)
@@ -2220,7 +2231,8 @@ class AmigaTarget:
             return None
         return Fix(x, y, doubled // 2, "memory")
 
-    def _travel_fix(self, grid: TravelGrid, view: int) -> Fix | None:
+    def _travel_fix(self, grid: TravelGrid, view: int, pointer: int,
+                    area: int, facing: int) -> Fix | None:
         """The fix on the travel grid, or None while the engine's bytes
         disagree.
 
@@ -2231,22 +2243,18 @@ class AmigaTarget:
         read: it lags a crossing.
         """
         window = grid.views.index(view)
-        pointer = int.from_bytes(
-            self.read(self._at(grid.block_pointer), 4), "big")
         span = grid.indoors + 2 - grid.x
         if pointer == 0 or not _in_memory(pointer + grid.x, span):
             return None
         blob = self.read(pointer + grid.x, span)
         if int.from_bytes(blob[grid.indoors - grid.x:], "big") != 0:
             return None
-        area = self.read(self._at(grid.area), 1)[0]
         if area not in grid.areas or grid.areas.index(area) != window:
             return None
         x = int.from_bytes(blob[:2], "big")
         y = int.from_bytes(blob[grid.y - grid.x:grid.y - grid.x + 2], "big")
         if not (0 <= x < WINDOW_W and 0 <= y < WINDOW_H):
             return None
-        facing = self.read(self._at(self.layout.party_facing), 1)[0]
         return Fix(x, y, None, "memory", None, outdoors=True, window=window,
                    heading=facing if facing < 8 else None)
 
