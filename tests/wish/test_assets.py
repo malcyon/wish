@@ -88,7 +88,7 @@ def test_in_a_checkout_it_is_the_checkout():
 
 
 def test_frozen_it_is_meipass(monkeypatch, tmp_path):
-    """The shape PyInstaller's bootloader leaves: `sys.frozen` set,
+    """The form PyInstaller's bootloader leaves: `sys.frozen` set,
     `sys._MEIPASS` naming the unpacked `datas`."""
     (tmp_path / "assets" / "logo").mkdir(parents=True)
     shutil.copy(ROOT / "assets" / "logo" / "mark.svg",

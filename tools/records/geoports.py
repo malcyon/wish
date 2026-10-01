@@ -118,7 +118,7 @@ def _amiga_named(maps: dict[str, bytes]) -> dict[str, bytes]:
 def dos_geo_blocks(all_titles: bool = False):
     """Yield `(title, file name, block id, whole block)` for the archives.
 
-    Every block of every `GEO<n>.DAX`, whatever shape it turns out to be, so a
+    Every block of every `GEO<n>.DAX`, whatever form it turns out to be, so a
     caller can count what it rejected instead of discovering a title is missing
     by its absence from a report. One walk, so `dos_maps` and the `blocks`
     sweep cannot disagree about what is there.
@@ -350,7 +350,7 @@ def closest_within_sets(corpora: dict[str, dict[str, dict[str, bytes]]]
     """`(distance, "Title Port", name, name)` for each candidate set, nearest
     pair first.
 
-    A candidate set is one title on one port, because that is the only shape
+    A candidate set is one title on one port, because that is the only form
     `ResidentGeo.verdict` is ever handed: the automapper's maps come from
     `automap.maps.load_maps`, which globs a single title's disks. Taking the
     minimum over all the specimens instead would mix in cross-title pairs the
@@ -379,7 +379,7 @@ def report_closest(out: io.TextIOBase, show: int = 10,
       reach for a block loaded by one port to be recognised from the other
       port's copy;
     * **two different areas inside one candidate set** -- one title on one
-      port, which is the only shape `ResidentGeo.verdict` is ever handed:
+      port, which is the only form `ResidentGeo.verdict` is ever handed:
       `Automapper._maps` comes from `automap.maps.load_maps`, which globs one
       title's disks. This is the bound the constant is set from, and the rule
       is **under half of it**, because two maps both within `NEAR_ENOUGH` of

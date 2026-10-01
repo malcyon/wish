@@ -23,7 +23,7 @@ from goldbox.neutral import NeutralCharacter
 from goldbox.portraits import PortraitTables
 from goldbox.record import CharacterRecord
 
-#: A synthetic menu with the same shape as Pool of Radiance's own real one:
+#: A synthetic menu with the same form as Pool of Radiance's own real one:
 #: fourteen heads with `HEAD00` -- art id `0x00` -- as the menu's first
 #: entry, and twelve bodies starting at `0x01`, since `BODY00` names no art
 #: on any port. A test does not depend on which other ids the game ships.

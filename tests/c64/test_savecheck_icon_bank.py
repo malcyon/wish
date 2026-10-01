@@ -98,7 +98,7 @@ class FakeSession:
 
 
 def floor_codes(blocks: list[tuple[int, int, int]]) -> list[int]:
-    """A 1000-code floor with each figure placed as nine consecutive codes."""
+    """A 1000-code arena with each figure placed as nine consecutive codes."""
     codes = [0] * 1000
     for row, col, start in blocks:
         for dr in range(3):

@@ -6,7 +6,7 @@ game's own editor labels READY and ACTION -- and
 `docs/174-combat-figures-in-the-running-game.md` proved the engine draws the
 first nine from the save's own bytes, 405 readings, 6 of 6 figures.  The
 second nine had never been seen, because the driver passed every turn and
-because nobody had looked anywhere but the combat floor.  This looks in three
+because nobody had looked anywhere but the combat arena.  This looks in three
 places at once; `docs/186-ready-and-action.md` is what it found.
 
 * **A fight driven with `Session.melee_turn`**, so party members strike rather
@@ -87,11 +87,11 @@ def expanded_reading(sess, slots: list[dict], charset: bytes) -> dict:
     for entry in slots:
         n = entry["slot"]
         base = n * EXPANDED_STRIDE
-        shape = bytes.fromhex(entry["shape"])
+        figure = bytes.fromhex(entry["shape"])
         hues = bytes.fromhex(entry["colours"])
         drawn = [bytes(blob[base + i * 8: base + i * 8 + 8])
                  for i in range(EXPANDED_GLYPHS)]
-        want = [V.glyph_of(charset, c) for c in shape]
+        want = [V.glyph_of(charset, c) for c in figure]
         same = [a == b for a, b in zip(drawn, want)]
         out["slots"].append({
             "slot": n, "occupied": entry["occupied"],
@@ -168,11 +168,11 @@ def editor_reading(sess, rows: list[bytes], hues: bytes,
         for entry in slots:
             if not entry["occupied"]:
                 continue
-            shape = bytes.fromhex(entry["shape"])
+            figure = bytes.fromhex(entry["shape"])
             hue = bytes.fromhex(entry["colours"])
             for pose in (0, 1):
                 want = [V.glyph_of(charset, x)
-                        for x in shape[pose * 9:pose * 9 + 9]]
+                        for x in figure[pose * 9:pose * 9 + 9]]
                 for kind, cells in (("unmirrored", drawn),
                                     ("mirrored", V.mirrored(drawn, colours))):
                     same = sum(1 for a, b in zip(cells, want) if a == b)

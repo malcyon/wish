@@ -32,11 +32,11 @@ POOL_OF_RADIANCE = dos_port.POOL_OF_RADIANCE
 
 
 # --- helpers ------------------------------------------------------------
-def dos_record(shape: dos_port.DosDeltas, **values) -> bytes:
-    """A record of the given shape with the named fields set, built from
+def dos_record(deltas: dos_port.DosDeltas, **values) -> bytes:
+    """A record of the given deltas with the named fields set, built from
     `goldbox/dos_port.py`'s own table -- no game data, runs anywhere."""
-    rec = bytearray(shape.record_size)
-    table = dos_port.FIELDS_BY_NAME_FOR[shape.key]
+    rec = bytearray(deltas.record_size)
+    table = dos_port.FIELDS_BY_NAME_FOR[deltas.key]
     for name, value in values.items():
         f = table[name]
         raw = bytes([value] * f.size) if isinstance(value, int) else value
@@ -45,14 +45,14 @@ def dos_record(shape: dos_port.DosDeltas, **values) -> bytes:
     return bytes(rec)
 
 
-def neutral_of(shape: dos_port.DosDeltas, **values):
-    return dos_codec.to_neutral(dos_codec.DosCharacter(dos_record(shape, **values),
-                                           deltas=shape))
+def neutral_of(deltas: dos_port.DosDeltas, **values):
+    return dos_codec.to_neutral(dos_codec.DosCharacter(dos_record(deltas, **values),
+                                           deltas=deltas))
 
 
-def _former_class_levels(shape: dos_port.DosDeltas, **slots: int) -> bytes:
-    """The former-class array for one shape, by class name."""
-    size = dos_port.FIELDS_BY_NAME_FOR[shape.key]["former_class_levels"].size
+def _former_class_levels(deltas: dos_port.DosDeltas, **slots: int) -> bytes:
+    """The former-class array for one title, by class name."""
+    size = dos_port.FIELDS_BY_NAME_FOR[deltas.key]["former_class_levels"].size
     arr = bytearray(size)
     for name, level in slots.items():
         arr[dos_codec._DOS_CLASS_SLOT[name]] = level
@@ -78,8 +78,8 @@ def test_former_level_is_named_at_the_measured_offset_in_the_three_layouts():
 def test_former_level_is_confirmed_not_a_gap():
     """It used to be `gap_0e6`/`gap_0ef`/`gap_139`, UNKNOWN. Naming it moves
     it to CONFIRMED, on the two watched training-hall transitions below."""
-    for shape in (CURSE, SILVER_BLADES, POOLS_OF_DARKNESS):
-        f = dos_port.FIELDS_BY_NAME_FOR[shape.key]["former_level"]
+    for deltas in (CURSE, SILVER_BLADES, POOLS_OF_DARKNESS):
+        f = dos_port.FIELDS_BY_NAME_FOR[deltas.key]["former_level"]
         assert f.confidence == dos_port.Confidence.CONFIRMED
 
 
@@ -121,25 +121,25 @@ def test_pool_of_radiance_has_no_former_levels_field_at_all():
 
 
 # --- the disposition tables: the mandatory row ------------------------------
-@pytest.mark.parametrize("shape", (CURSE, SILVER_BLADES, POOLS_OF_DARKNESS),
+@pytest.mark.parametrize("deltas", (CURSE, SILVER_BLADES, POOLS_OF_DARKNESS),
                          ids=lambda s: s.key)
-def test_former_level_has_a_disposition_in_every_later_layout(shape):
+def test_former_level_has_a_disposition_in_every_later_layout(deltas):
     """A field the table declares and `field_disposition` names nowhere is a
     field dropped in silence -- the mechanism that makes the row mandatory."""
-    table = dos_codec.field_disposition(shape)
+    table = dos_codec.field_disposition(deltas)
     assert "former_level" in table
     assert "former_class_levels" in table
 
 
 def test_former_level_has_a_disposition_in_the_amiga_reader():
-    for shape in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
-        declared = [f.name for f in dos_port.layout_for(shape.dos)]
+    for deltas in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
+        declared = [f.name for f in dos_port.layout_for(deltas.dos)]
         unaccounted, unknown = neutral.undeclared(
-            declared, amiga_later.later_field_disposition(shape))
-        assert not unaccounted, (shape.key, sorted(unaccounted))
-        assert not unknown, (shape.key, sorted(unknown))
-        assert "former_level" in amiga_later.later_field_disposition(shape)
-        assert "former_class_levels" in amiga_later.later_field_disposition(shape)
+            declared, amiga_later.later_field_disposition(deltas))
+        assert not unaccounted, (deltas.key, sorted(unaccounted))
+        assert not unknown, (deltas.key, sorted(unknown))
+        assert "former_level" in amiga_later.later_field_disposition(deltas)
+        assert "former_class_levels" in amiga_later.later_field_disposition(deltas)
 
 
 # --- the Amiga reader: converted, not dropped ---------------------------------
@@ -148,16 +148,16 @@ def test_amiga_reads_former_levels_with_no_drop_line():
     there was nowhere to put it -- stale since `former_levels` landed. A fake
     record with the array set now reaches the neutral record and the report
     says nothing about a drop."""
-    shape = amiga_port.CURSE_DELTAS
-    f = shape.dos_field("former_class_levels")
-    raw = bytearray(shape.record_size)
+    deltas = amiga_port.CURSE_DELTAS
+    f = deltas.dos_field("former_class_levels")
+    raw = bytearray(deltas.record_size)
     for i in range(6):
         raw[0x10 + 2 * i] = raw[0x11 + 2 * i] = 12   # a legal ability pair
     arr = bytearray(f.size)
     arr[dos_codec._DOS_CLASS_SLOT["paladin"]] = 5
-    at = shape.offset(f.offset)
+    at = deltas.offset(f.offset)
     raw[at:at + f.size] = arr
-    char = amiga_later.AmigaCharacter.from_bytes(bytes(raw), shape)
+    char = amiga_later.AmigaCharacter.from_bytes(bytes(raw), deltas)
     n = amiga_later.to_neutral_later(char)
     assert n.get("former_levels") == {"paladin": 5}
     assert not any("former" in d.lower() for d in n.dropped)
@@ -171,7 +171,7 @@ def test_the_amiga_curse_engine_resave_keeps_attack_level_through_dual_class():
     in-the-running-game.md`).  Curse's rule for `attack_level` counts only
     `fighter` (`DosDeltas.attack_level_classes`), and MATHEW has never been
     one -- neither the paladin he trained out of nor the magic-user he
-    became feeds it -- so the engine's own floor of 1 is what the byte
+    became feeds it -- so the engine's own minimum of 1 is what the byte
     holds, and this pins that `to_neutral_later` still reads it.
 
     `#527`'s fix moved `attack_level` off `dos_codec.DIRECT`, which is what

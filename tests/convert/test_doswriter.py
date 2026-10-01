@@ -303,8 +303,8 @@ def _effect(effect_id: int, duration: int = 0, value: int = 0xFF) -> bytes:
 
 
 def test_a_permanent_item_granted_effect_is_converted_whole():
-    """A Ring of Fire Resistance, id 61, at duration zero -- the shape the
-    engine wrote in front of `tools/dos/dosspcexpiry.py` and the shape CONJURER
+    """A Ring of Fire Resistance, id 61, at duration zero -- the form the
+    engine wrote in front of `tools/dos/dosspcexpiry.py` and the form CONJURER
     carries on the Amiga -- reaches `granted_effects` with all five of its
     meaning-bearing bytes, and comes back out of the writer as the same
     record.
@@ -356,7 +356,7 @@ def test_a_record_with_only_innate_ids_sets_no_granted_field():
     out = dos_codec.to_neutral(char)
     assert "granted_effects" not in out
     # Compared against the same record with no `.SPC` at all rather than
-    # against a fixed phrase: other drop lines share the same shape for
+    # against a fixed phrase: other drop lines share the same form for
     # their own reasons, and this test is about what the effect adds.
     assert out.dropped == dos_codec.to_neutral(_dos_record([])).dropped
 
@@ -367,7 +367,7 @@ def test_a_running_spell_is_converted_with_its_time_and_not_reported():
     end.  So it lands in `running_effects` whole, comes back out of the
     writer with its minutes, and puts no line in front of the player.
     """
-    char = _dos_record([_effect(61, duration=2, value=1)])   # BLESS's shape
+    char = _dos_record([_effect(61, duration=2, value=1)])   # BLESS's form
     out = dos_codec.to_neutral(char)
     assert "granted_effects" not in out
     assert [bytes(r) for r in out.get("running_effects")] == \
@@ -539,7 +539,7 @@ def _c64_thief_character(race: int, dexterity: int, stored: tuple[int, ...],
                          game: str = "pool-of-radiance"
                          ) -> neutral.NeutralCharacter:
     """A C64-read neutral thief, holding the C64's own eight stored
-    percentages -- the shape a real C64 -> DOS conversion hands `dos_codec.write`.
+    percentages -- the form a real C64 -> DOS conversion hands `dos_codec.write`.
     """
     char = neutral.NeutralCharacter("C64", game=game)
     char.set("race", race, "test fixture")
@@ -1031,7 +1031,7 @@ def test_a_conversion_with_no_game_directory_says_the_faces_went(tmp_path):
 @needs_dos_saves
 def test_the_written_icon_colours_are_not_zero():
     """A DOS combat icon whose six colour pairs are zero paints all six parts
-    EGA 8, dark grey -- which is the combat floor's own colour, so the
+    EGA 8, dark grey -- which is the combat arena's own colour, so the
     character is ~64 black outline pixels on a background of exactly its own
     shade and reads as not being there at all (#112, measured in three
     fights; the shipped default draws a person).
@@ -1110,9 +1110,9 @@ def test_the_icon_from_a_c64_party_reaches_the_written_record(tmp_path):
 
     # BRUTUS's own icon table entry, poked to something the default never is.
     container = c64_save.container_for(None)
-    shape = parts.compose("large", 7, 4)
-    seed = bytes([DEFAULT_BACKGROUND | MULTICOLOUR] * len(shape))
-    icon = shape + parts.colours_for(shape, DEFAULT_PART_COLOURS, seed)
+    figure = parts.compose("large", 7, 4)
+    seed = bytes([DEFAULT_BACKGROUND | MULTICOLOUR] * len(figure))
+    icon = figure + parts.colours_for(figure, DEFAULT_PART_COLOURS, seed)
     at = container.icon(0)
     poked = bytearray(save0)
     poked[at:at + container.icon_size] = icon
@@ -1128,7 +1128,7 @@ def test_the_icon_from_a_c64_party_reaches_the_written_record(tmp_path):
 
 
 def test_a_hand_authored_icon_does_not_fail_the_whole_party(tmp_path):
-    """`recognise` refuses a shape the game's own ICON menu never composed
+    """`recognise` refuses a figure the game's own ICON menu never composed
     (SHARA THE GRAY's, #130); `c64_party` catches that for one character
     rather than losing every character's figure to it.
 
@@ -1214,9 +1214,9 @@ def test_a_c64_party_of_six_different_icons_gets_six_different_dos_figures(
         base[off:off + SLOT_STRIDE] = slot0
         base[off:off + len(names[i])] = names[i]
         base[off + len(names[i]):off + 20] = bytes(20 - len(names[i]))
-        shape = parts.compose(size, weapon, head)
-        seed = bytes([DEFAULT_BACKGROUND | MULTICOLOUR] * len(shape))
-        icon = shape + parts.colours_for(shape, DEFAULT_PART_COLOURS, seed)
+        figure = parts.compose(size, weapon, head)
+        seed = bytes([DEFAULT_BACKGROUND | MULTICOLOUR] * len(figure))
+        icon = figure + parts.colours_for(figure, DEFAULT_PART_COLOURS, seed)
         at = container.icon(i)
         base[at:at + container.icon_size] = icon
 
@@ -1265,7 +1265,7 @@ def test_field_10c_10f_status_active_and_quickfight_are_a_default_not_a_constant
     engine writing `00 01 00 01` after a fight and `04 00 00 00` for a
     character at zero hit points, so `00 01 00 00` is not "the one value all
     specimens hold" that `WRITE_CONSTANTS`' own docstring promises -- it is
-    what a freshly made character carries, the same shape as `icon_colours`.
+    what a freshly made character carries, the same form as `icon_colours`.
 
     **All four bytes are converted now.** A record staged at status
     Unconscious, not active, on the enemy's side and quick-fought (`0x10C` =
@@ -1718,7 +1718,7 @@ def test_a_c64_curse_or_silver_blades_source_still_gets_the_digest():
     """The behaviour `#378` must not change: a C64 title whose GEN never
     draws the identity pair -- Curse of the Azure Bonds or Secret of the
     Silver Blades -- has no `unnamed_0ab` in the neutral record at all
-    (`goldbox.c64_codec.read` sets it only when `shape.identity_pair`,
+    (`goldbox.c64_codec.read` sets it only when `deltas.identity_pair`,
     which is Pool of Radiance's alone), so the DOS writer must keep
     deriving the digest for it exactly as before, whatever `char.port`
     says.
@@ -1842,7 +1842,7 @@ def test_the_amiga_port_of_pool_of_radiance_keeps_a_fighting_level():
     fighter = _c64_source({"fighter": 8}, 8)
     assert dos_codec.write(fighter)[0][f.offset] == 1
     assert dos_codec.write(fighter, into="Amiga")[0][f.offset] == 8
-    # A caster gets the floor on both ports: no Amiga record holds 0 either.
+    # A caster gets the minimum on both ports: no Amiga record holds 0 either.
     caster = _c64_source({"magic-user": 8}, 0)
     assert dos_codec.write(caster)[0][f.offset] == 1
     assert dos_codec.write(caster, into="Amiga")[0][f.offset] == 1
@@ -2071,7 +2071,7 @@ def test_the_roster_spell_counts_are_derived_not_dropped():
 #
 # `party_order` is C64 record 0x10D, one past the 256 a save slot stores, so
 # `c64_codec.DIRECT`'s copy fired only for a 580-byte `.chr` export and never
-# for a save -- the same shape `roster_in_use` (0x100) and `combat_side`
+# for a save -- the same form `roster_in_use` (0x100) and `combat_side`
 # (0x10C) had before #281.  The saves below are built from the format through
 # `SaveGame0.slot` and `SaveGame1.roster`, the way a real one reaches the
 # reader, rather than as a full-width `CharacterRecord` whose `is_stored` is
@@ -2737,7 +2737,7 @@ def test_the_script_scratch_is_the_c64s_and_not_the_templates(tmp_path):
 # `write_dos_save` used to copy an existing `SAVGAM<slot>.DAT` and rewrite the
 # fields it could source, so every byte nobody had decoded kept a value
 # belonging to **a different party in a different place**.  These are the
-# tests of the other shape: 13137 zero bytes, and every one of them written
+# tests of the other case: 13137 zero bytes, and every one of them written
 # from the C64 party, written to a measured constant, or written zero with the
 # reason it is nobody's.  The proof that the zeroes are survivable is not here
 # -- it is `tools/dos/dosnewsave.py`, whose party loads, walks, changes area and

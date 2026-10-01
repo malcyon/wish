@@ -68,10 +68,10 @@ def test_the_geometry_is_read_and_never_assumed():
     block = bytearray(synthetic_arena()[combat.PARAMS])
     block[combat.P_STRIDE] = 20
     block[combat.P_MAX_X], block[combat.P_MAX_Y] = 17, 35
-    shape = combat.geometry_from_params(bytes(block))
-    assert (shape.stride, shape.width, shape.height) == (18, 18, 36)
-    assert shape.length == 18 * 36
-    assert shape.index(3, 2) == 39
+    geometry = combat.geometry_from_params(bytes(block))
+    assert (geometry.stride, geometry.width, geometry.height) == (18, 18, 36)
+    assert geometry.length == 18 * 36
+    assert geometry.index(3, 2) == 39
 
 
 def test_the_stride_comes_from_the_bounds_not_from_0607():
@@ -92,8 +92,8 @@ def test_the_stride_comes_from_the_bounds_not_from_0607():
 # --- what the fight holds ---------------------------------------------------
 
 def test_the_captured_duel_decodes(battle):
-    assert (battle.shape.width, battle.shape.height) == (56, 26)
-    assert battle.shape.map_base == 0x8C00 and battle.shape.stride == 56
+    assert (battle.geometry.width, battle.geometry.height) == (56, 26)
+    assert battle.geometry.map_base == 0x8C00 and battle.geometry.stride == 56
     assert battle.camera == (22, 10)
     assert [(c.index, c.name, c.square) for c in battle.combatants] == [
         (0, "BRUTUS", (25, 13)), (8, "ORC", (30, 13))]
@@ -161,10 +161,10 @@ def test_bit_seven_of_a_square_agrees_with_the_position_table(battle):
     other. $C086 BPL branches past the glyph lookup when bit 7 is set."""
     standing = {c.square for c in battle.combatants}
     marked = {(x, y)
-              for y in range(battle.shape.height)
-              for x in range(battle.shape.width) if battle.occupied(x, y)}
+              for y in range(battle.geometry.height)
+              for x in range(battle.geometry.width) if battle.occupied(x, y)}
     assert marked == standing
-    assert all(battle.square(x, y) == 0 for x, y in standing)   # floor beneath
+    assert all(battle.square(x, y) == 0 for x, y in standing)   # open ground beneath
 
 
 def test_the_combat_numbers_come_from_the_roster_not_the_record(battle):
@@ -259,7 +259,7 @@ def test_one_that_leaves_the_map_keeps_its_last_square(battle):
 def test_only_the_part_of_the_map_the_fight_uses_is_drawn(battle):
     """56 x 26 is 1456 squares and both maps seen put the action in a corner."""
     x0, y0, w, h = combat.extent(battle)
-    assert (w, h) < (battle.shape.width, battle.shape.height)
+    assert (w, h) < (battle.geometry.width, battle.geometry.height)
     assert all(x0 <= c.x < x0 + w and y0 <= c.y < y0 + h
                for c in battle.combatants)
     assert combat.cell_for(w) <= combat.CELL_MAX
@@ -356,10 +356,10 @@ def test_a_bar_never_rounds_a_survivor_away_to_nothing():
 def test_the_battlefield_draws_a_bar_for_a_wounded_combatant():
     """A combatant below full health draws a `Bar` sized to match, against
     the geometry `bar_for` itself computes -- not a number read off one run."""
-    shape = combat.MapGeometry(map_base=0, stride=10, width=10, height=10,
+    geometry = combat.MapGeometry(map_base=0, stride=10, width=10, height=10,
                         positions=0, count=1)
     hurt = combat.Battle(
-        shape=shape, terrain=bytes(shape.length), camera=(0, 0),
+        geometry=geometry, terrain=bytes(geometry.length), camera=(0, 0),
         combatants=(_combatant(index=0, x=2, y=2, hp=1, hp_max=4),))
     box = (0, 0, 10, 10)
     cell = 30

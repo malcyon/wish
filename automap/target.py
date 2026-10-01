@@ -17,7 +17,7 @@ not per byte: a 7168-byte read costs the same as one `peek`, and four peeks with
 four resumes cost 45.9 ms against 14.4 ms batched. So batch reads and keep
 resumes rare -- right advice, wrong reason.
 
-Two hazards from `docs/70-driving-the-game.md` shape what is *not* here:
+Two hazards from `docs/70-driving-the-game.md` decide what is *not* here:
 
 * **No checkpoints.** A stop that fires with no connection open halts the
   machine until the next connection reads it, and a connection must end with
@@ -128,7 +128,7 @@ class Fix:
     *refused* step be spotted: see `Automapper.poll`.
 
     `outdoors` is True on the travel grid, where `facing` is None -- the game
-    prints no facing out there, the same shape `tools/c64/session.py`'s `Status`
+    prints no facing out there, the same form `tools/c64/session.py`'s `Status`
     already has. At the end of the field list so every positional
     `Fix(x, y, f, "status")` already in this project still constructs.
     """
@@ -192,7 +192,7 @@ def party_fix(read, game: c64_port.C64Container | None = None, banks=None) -> Fi
     """Where the party is, read through any backend's `read(addr, length)`.
 
     Tries the game's own status line first -- indoors, then the travel grid's
-    own shape -- and falls back to the engine's live position triple. Returns
+    own format -- and falls back to the engine's live position triple. Returns
     None on a bitmap screen (title, credits), in camp, in a menu, or before a
     save is loaded -- all ordinary states, not errors. The caller holds its
     last good fix rather than drawing garbage.
@@ -217,7 +217,7 @@ def party_fix(read, game: c64_port.C64Container | None = None, banks=None) -> Fi
     they did before this existed. Where it is set, it is read *first*,
     because `$C04B` and `$49C3` are two different facts about two different
     worlds and a plausible reading of the wrong one is worse than none --
-    `Session.square_and_world()` in `tools/c64/session.py` is the same shape, for
+    `Session.square_and_world()` in `tools/c64/session.py` does the same, for
     the same reason.
 
     Nothing here is VICE-specific, which is the point: reading the status line

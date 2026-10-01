@@ -1516,7 +1516,7 @@ def test_the_new_key_wins_and_an_empty_old_list_is_still_a_choice(app, tmp_path,
 
 def test_a_config_already_keyed_by_title_is_read_as_it_stands(app, tmp_path,
                                                               monkeypatch):
-    """The third shape: a file this build wrote. No migration, and a title
+    """The third form: a file this build wrote. No migration, and a title
     nobody has ticked for keeps its own default rather than borrowing Pool of
     Radiance's."""
     nowhere(tmp_path, monkeypatch)
@@ -1736,11 +1736,11 @@ def test_the_size_the_compositor_forces_does_not_become_the_memory(
     # Measured off the window, not written down: the layout will not go under
     # its own minimum, and that minimum is a different number under every
     # theme and font.
-    floor = win.minimumSizeHint()
-    wanted = (floor.width() + 200, floor.height() + 100)
+    minimum = win.minimumSizeHint()
+    wanted = (minimum.width() + 200, minimum.height() + 100)
     win.resize(*wanted)
     hold_geometry(win, space=space)
-    win.resize(floor.width() + 20, floor.height() + 10)     # the configure
+    win.resize(minimum.width() + 20, minimum.height() + 10)     # the configure
     win.close()                       # closeEvent is what remembers
 
     # What the next run opens at. Reading it back through `restore_geometry`
@@ -1782,7 +1782,7 @@ def test_a_window_placed_off_the_edge_is_brought_back_on(app, tmp_path,
 def test_settings_from_before_this_still_give_a_size(app, tmp_path,
                                                      monkeypatch):
     """Nobody loses their window: with no `geometry` the remembered width and
-    height are used, and a floor raises a small one for the merged window.
+    height are used, and a minimum raises a small one for the merged window.
 
     The sizes are deliberately small. `restore_geometry` clamps to the screen,
     and the offscreen platform's screen is 800x800 here and on CI -- asserting
@@ -1794,7 +1794,7 @@ def test_settings_from_before_this_still_give_a_size(app, tmp_path,
     win = window(app)
     assert restore_geometry(win, old) is False
     assert (win.width(), win.height()) == (420, 300)
-    restore_geometry(win, old, floor=(500, 380))
+    restore_geometry(win, old, minimum=(500, 380))
     assert (win.width(), win.height()) == (500, 380)
     win.close()
 

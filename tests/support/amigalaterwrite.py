@@ -23,7 +23,7 @@ OURS = {
     "WISH-SPEC-ssb-amiga-moved/savgamC.sav",
 }
 
-#: Which shape each specimen drawer's saved games are.
+#: Which deltas each specimen drawer's saved games are.
 _DRAWERS = (("coab-amiga", amiga_port.CURSE_DELTAS, ".dat"),
             ("ssb-amiga", amiga_port.SILVER_BLADES_DELTAS, ".sav"))
 
@@ -58,7 +58,7 @@ def engine_written_parties():
     if root is None:
         return []
     out = []
-    for drawer, shape, suffix in _DRAWERS:
+    for drawer, deltas, suffix in _DRAWERS:
         for where in sorted((root / drawer).glob("WISH-SPEC-*")):
             if not where.is_dir():
                 continue
@@ -66,6 +66,6 @@ def engine_written_parties():
             for path in sorted(where.glob(f"savgam*{suffix}")):
                 if f"{where.name}/{path.name}" in OURS:
                     continue
-                for char in amiga_later.party_in_savegame(path.read_bytes(), shape):
+                for char in amiga_later.party_in_savegame(path.read_bytes(), deltas):
                     out.append((f"{where.name}/{path.name}", char))
     return out

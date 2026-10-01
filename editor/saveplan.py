@@ -501,12 +501,12 @@ def requirements(source: Any, port: str) -> tuple[str, ...]:
     if port == "c64":
         needs.append(DESTINATION_DISKS)
     elif port == "dos":
-        if dos_needs_game_folder(direction.shape):
+        if dos_needs_game_folder(direction.deltas):
             needs.append(DOS_GAME_FOLDER)
     else:
-        if amiga_needs_disk_one(direction.shape):
+        if amiga_needs_disk_one(direction.deltas):
             needs.append(AMIGA_DISK_ONE)
-        if amiga_needs_game_disk(direction.shape, source):
+        if amiga_needs_game_disk(direction.deltas, source):
             needs.append(AMIGA_GAME_DISK)
     if source.port == "c64" and port in ("dos", "amiga"):
         needs.append(SOURCE_DISKS)
@@ -1072,14 +1072,14 @@ def stored_name(member: Any) -> str:
     `member.record` is always the C64-shaped sheet record, whose `name`
     field round-trips through `goldbox.petscii.encode_record_name` and folds
     to capitals -- correct for a C64 member, and wrong for a DOS or Amiga one,
-    whose own bytes the sheet's C64 shape never represents case-faithfully
+    whose own bytes the sheet's C64 form never represents case-faithfully
     (#638). So a C64 member (`member.native is None`) is read off the sheet
     record, which `decode_record_name` does not fold, and any other member is
     read off `member.native`, the port's own object, instead.
 
     An Amiga Pool of Radiance member's `native` is an `amiga_por.
     AmigaPorCharacter`, whose own `name` decodes the field directly rather
-    than through the `$FF`-for-space substitution the DOS shape applies
+    than through the `$FF`-for-space substitution the DOS form applies
     (#631), so it goes through `amiga_por.to_dos_character` first, the same
     reader `dos_codec.write_c64_save` uses.
     """

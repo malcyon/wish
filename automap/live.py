@@ -505,7 +505,7 @@ def _classes(record, game) -> tuple[ClassProgress, ...]:
     `TypeError` here instead of a roster card quietly showing Pool of
     Radiance's thresholds for somebody else's game -- which is the fault #187
     was filed for. `#196 (The automapper's condition badges name a Silver
-    Blades trait with Pool of Radiance's meaning)` is the same shape one
+    Blades trait with Pool of Radiance's meaning)` is the same kind of fault one
     function away in this file, where a game reaches `characters()` and is
     dropped before `badges()`. Raised in the code review of #187.
 
@@ -739,10 +739,10 @@ def snapshot_from_bytes(save0_bytes: bytes, roster_bytes: bytes,
 def read_blocks(target, game: c64_port.C64Container | None = None) -> list[bytes]:
     """The save image and the roster page, in one burst where the backend can.
 
-    Always a pair, whichever shape the title stores them in: a title that keeps
+    Always a pair, whichever form the title stores them in: a title that keeps
     its roster inside the payload is read once and sliced, so every caller
     downstream sees `(save0_bytes, roster_bytes)` and none of them has to know
-    which shape this title is.
+    which form this title has.
 
     `ViceTarget.read_blocks` stops the machine once and resumes once, because
     each resume hands the emulation ~14.3 ms of extra emulated time. A backend

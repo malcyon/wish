@@ -4,7 +4,7 @@ Items are not in the character record at all: they live in `SAVEDGAME0` at
 `$5900 + slot * $100`, sixteen 16-byte records per character, so a `.chr`
 export has none and a roster disk has none either.
 
-Two things decide the shape of this module.
+Two things decide the structure of this module.
 
 **The list may have holes.** The game can empty a slot by zeroing its type byte
 while leaving the other bytes intact, with live items in later slots. Deleting
@@ -261,7 +261,7 @@ class InventoryModel(QAbstractTableModel):
         self.inventory = inventory
         self.endResetModel()
 
-    # -- shape ------------------------------------------------------------
+    # -- structure ------------------------------------------------------------
 
     def slot_of(self, row: int) -> int:
         """The item slot drawn on `row`: the filled slots from the highest
@@ -526,7 +526,7 @@ class ItemTraitsModel(QAbstractTableModel):
         self.rows = [] if item is None or item.is_empty else self._describe(item)
         self.endResetModel()
 
-    # -- shape ------------------------------------------------------------
+    # -- structure ------------------------------------------------------------
 
     def rowCount(self, _parent=QModelIndex()) -> int:
         return len(self.rows)

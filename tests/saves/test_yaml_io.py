@@ -775,7 +775,7 @@ def test_spell_inconsistencies_are_reported(tmp_path):
 
 def _disagreeing_save(tmp_path):
     """A save where a character has a fighter's bits and a cleric's code --
-    the shape DWARVEN FIGHTER has in the shipped game data."""
+    the case DWARVEN FIGHTER has in the shipped game data."""
     import shutil
 
     from goldbox.savegame import SaveGame0 as SG

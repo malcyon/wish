@@ -75,7 +75,7 @@ def find_executable(stem: str, names: tuple[str, ...]) -> pathlib.Path | None:
     """The resident executable for one title, inside the player's archives.
 
     `dosbox.find_game` insists on `START.EXE`, which Pools of Darkness does
-    not have, so this walks the same `<collection>/games/*/GAME/<stem>` shape
+    not have, so this walks the same `<collection>/games/*/GAME/<stem>` form
     itself and takes the first of `names` that is there.
     """
     if not dosbox.ARCHIVES.is_dir():
@@ -181,16 +181,16 @@ def main(argv: list[str] | None = None) -> int:
 
     bad = 0
     for key, (path, offset, stride, read) in found.items():
-        shape = dos_port.deltas_for(key)
+        deltas = dos_port.deltas_for(key)
         lower = tuple(n.lower() for n in read)
-        print(f"{shape.title}  ({path.name}, entry 0 at 0x{offset:06x}, "
+        print(f"{deltas.title}  ({path.name}, entry 0 at 0x{offset:06x}, "
               f"stride {stride}, {len(read)} entries)")
         for i, name in enumerate(read):
             print(f"  {i}  {name}")
         if args.check:
-            if lower != tuple(shape.race_numbers):
+            if lower != tuple(deltas.race_numbers):
                 bad += 1
-                print(f"  MISMATCH: dos_layout says {tuple(shape.race_numbers)}")
+                print(f"  MISMATCH: dos_layout says {tuple(deltas.race_numbers)}")
             else:
                 print("  matches dos_layout")
         print()

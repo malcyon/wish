@@ -35,7 +35,7 @@ unavailable still has the other:
   a sweep result and not a reading of the engine.
 
 `--by rule` is what the import itself applies -- `goldbox.dos_codec.never_adventured`,
-the buffer where the shape has one and the word where it does not -- so a
+the buffer where the container has one and the word where it does not -- so a
 sweep can say whether the rule and either reading ever part company.  They
 agreed on all 107 containers where both could be taken on 2026-09-06.
 
@@ -107,7 +107,7 @@ def roots(extra: list[str] | None = None) -> list[pathlib.Path]:
     return [p for p in out if p is not None]
 
 
-def never_adventured(save: bytes, shape: sg.DosContainer,
+def never_adventured(save: bytes, container: sg.DosContainer,
                      by: str = "buffer") -> bool | None:
     """Was this container saved before the party began adventuring?
 
@@ -115,38 +115,38 @@ def never_adventured(save: bytes, shape: sg.DosContainer,
     script buffer -- so a caller cannot mistake "cannot tell" for "no".
     """
     if by == "rule":
-        return dos_codec.never_adventured(save, shape)
+        return dos_codec.never_adventured(save, container)
     if by == "word":
-        return sg.word(save, NEVER_ADVENTURED_WORD, shape) == 0
-    span = shape.script_buffer
+        return sg.word(save, NEVER_ADVENTURED_WORD, container) == 0
+    span = container.script_buffer
     if span is None:
         return None
     return not any(save[span[0]:span[1]])
 
 
-def describe(path: pathlib.Path, shape: sg.DosContainer, by: str) -> dict:
+def describe(path: pathlib.Path, container: sg.DosContainer, by: str) -> dict:
     save = path.read_bytes()
-    span = shape.script_buffer
+    span = container.script_buffer
     return {
         "label": dossavsweep._label(path),
         "path": str(path),
-        "title": shape.title,
-        "never_adventured": never_adventured(save, shape, by),
+        "title": container.title,
+        "never_adventured": never_adventured(save, container, by),
         "script_bytes": (sum(1 for b in save[span[0]:span[1]] if b)
                          if span else None),
-        "square": list(sg.position(save, shape)),
+        "square": list(sg.position(save, container)),
         "clock": list(sg.clock(save)),
-        "party_size": sg.party_size(save, shape),
-        "words": {name: sg.word(save, addr, shape) for name, addr in WORDS},
+        "party_size": sg.party_size(save, container),
+        "words": {name: sg.word(save, addr, container) for name, addr in WORDS},
         "hand_built": dossavsweep.hand_built(path),
     }
 
 
-def sweep(shape: sg.DosContainer, extra: list[str] | None = None,
+def sweep(container: sg.DosContainer, extra: list[str] | None = None,
           by: str = "buffer") -> list[dict]:
     paths = dossavsweep.find_saves([p for p in roots(extra) if p.exists()],
-                                    shape=shape)
-    return [describe(p, shape, by) for p in paths]
+                                    container=container)
+    return [describe(p, container, by) for p in paths]
 
 
 def _group(rows: list[dict]) -> dict:
@@ -158,9 +158,9 @@ def _group(rows: list[dict]) -> dict:
     return groups
 
 
-def report(shape: sg.DosContainer, rows: list[dict], verbose: bool) -> None:
-    place = areas.area_in(0, shape.title)
-    print(f"=== {shape.title}: {len(rows)} distinct containers; "
+def report(container: sg.DosContainer, rows: list[dict], verbose: bool) -> None:
+    place = areas.area_in(0, container.title)
+    print(f"=== {container.title}: {len(rows)} distinct containers; "
           f"area 0 is {place.name if place else 'not an area of this title'}")
     for key, group in _group(rows).items():
         print(f"  -- {key}: {len(group)}")
@@ -201,11 +201,11 @@ def main(argv: list[str] | None = None) -> int:
             ap.error(f"no title keyed {args.title!r} has a word array")
 
     out = {}
-    for shape in shapes:
-        rows = sweep(shape, args.extra or None, args.by)
-        out[shape.key] = rows
+    for container in shapes:
+        rows = sweep(container, args.extra or None, args.by)
+        out[container.key] = rows
         if not args.json:
-            report(shape, rows, args.list)
+            report(container, rows, args.list)
     if not args.json and not any(out.values()):
         print(dostailsweep.NO_RECORDS)
     if args.json:

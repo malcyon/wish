@@ -5,7 +5,7 @@ nothing, because the pane never shows a warning)` turns on one number: does
 any real character come near sixteen items or ten trait slots?  Everything
 below is about the ways a sweep can answer that question wrongly and look
 right -- a record graded by whichever copy of it sorted first, an Amiga saved
-game read through the wrong title's record shape, a `running` spell counted
+game read through the wrong title's record layout, a `running` spell counted
 as an item's grant, and a C64 title whose disks are on the machine and not in
 the registry.
 
@@ -127,7 +127,7 @@ def test_a_record_in_the_played_dos_directory_is_graded_edited():
         == "found"
 
 
-# -- the Amiga: the wrong shape reads plausible rubbish ----------------------
+# -- the Amiga: the wrong deltas read plausible rubbish ----------------------
 
 def _silver_blades_savegame() -> bytes:
     """A saved game with one Silver Blades record where its header ends.
@@ -138,20 +138,20 @@ def _silver_blades_savegame() -> bytes:
     """
     from goldbox import amiga_savegame
     at = amiga_savegame.SILVER_BLADES.party_at
-    shape = amiga_port.SILVER_BLADES_DELTAS
-    record = bytearray(shape.record_size)
+    deltas = amiga_port.SILVER_BLADES_DELTAS
+    record = bytearray(deltas.record_size)
     record[0:6] = b"MALACH"
     for i in range(6):                    # six equal (permanent, in force) pairs
         record[0x10 + 2 * i] = record[0x11 + 2 * i] = 12
     data = bytearray(at + 700)
-    data[at:at + shape.record_size] = record
+    data[at:at + deltas.record_size] = record
     return bytes(data)
 
 
 def test_a_silver_blades_saved_game_is_not_read_as_curse():
     """The signature matches under both shapes; only `detect` separates them.
 
-    `party_in_savegame` trusts whatever shape it is handed, so trying each in
+    `party_in_savegame` trusts whatever deltas it is handed, so trying each in
     turn read Silver Blades' `savgamA.sav` as two Curse characters on the
     first run of this sweep -- with an `item_count` taken from an offset 84
     bytes away from the real one.
@@ -162,7 +162,7 @@ def test_a_silver_blades_saved_game_is_not_read_as_curse():
                                             problems))
     assert problems == []
     assert [c.deltas for c in found] == [amiga_port.SILVER_BLADES_DELTAS]
-    # The trap is real: handed Curse's shape, the same bytes parse anyway.
+    # The trap is real: handed Curse's deltas, the same bytes parse anyway.
     assert amiga_later.party_in_savegame(data, amiga_port.CURSE_DELTAS)
 
 

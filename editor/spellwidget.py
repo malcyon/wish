@@ -297,7 +297,7 @@ class MemorisedEditor(SpellEditor):
 
     Ids repeat -- two CURE LIGHT WOUNDS is two entries -- so this is a list and
     not a set. A new one is inserted so that the list stays ordered by
-    descending spell level, which is the shape `goldbox/layout.py` records the
+    descending spell level, which is the order `goldbox/layout.py` records the
     game's own lists in.
     """
 

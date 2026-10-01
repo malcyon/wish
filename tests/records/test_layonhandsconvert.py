@@ -43,20 +43,20 @@ def _dos_effects(spc: bytes) -> list[bytes]:
 
 # --- DOS: writing -------------------------------------------------------
 
-@pytest.mark.parametrize("shape", (CURSE, SSB, POD), ids=lambda s: s.key)
-def test_a_paladin_who_may_heal_writes_no_dos_node(shape):
-    char = _neutral(shape.key, lay_on_hands_minutes=0)
+@pytest.mark.parametrize("deltas", (CURSE, SSB, POD), ids=lambda s: s.key)
+def test_a_paladin_who_may_heal_writes_no_dos_node(deltas):
+    char = _neutral(deltas.key, lay_on_hands_minutes=0)
     _rec, _itm, spc, rep = dos_codec.write(char)
-    dos_id, _amiga_id = IDS[shape.key]
+    dos_id, _amiga_id = IDS[deltas.key]
     assert dos_id not in [e[0] for e in _dos_effects(spc)]
     assert not any("lay_on_hands_minutes" in d for d in rep.dropped)
 
 
-@pytest.mark.parametrize("shape", (CURSE, SSB, POD), ids=lambda s: s.key)
-def test_a_spent_paladin_writes_a_dos_node_with_the_titles_own_id(shape):
-    char = _neutral(shape.key, lay_on_hands_minutes=723)
+@pytest.mark.parametrize("deltas", (CURSE, SSB, POD), ids=lambda s: s.key)
+def test_a_spent_paladin_writes_a_dos_node_with_the_titles_own_id(deltas):
+    char = _neutral(deltas.key, lay_on_hands_minutes=723)
     _rec, _itm, spc, rep = dos_codec.write(char)
-    dos_id, _amiga_id = IDS[shape.key]
+    dos_id, _amiga_id = IDS[deltas.key]
     nodes = [e for e in _dos_effects(spc) if e[0] == dos_id]
     assert len(nodes) == 1, _dos_effects(spc)
     assert int.from_bytes(nodes[0][1:3], "little") == 723
@@ -81,21 +81,21 @@ def test_a_non_paladin_gets_nothing():
 
 # --- DOS: reading --------------------------------------------------------
 
-@pytest.mark.parametrize("shape", (CURSE, SSB, POD), ids=lambda s: s.key)
-def test_reading_the_dos_node_back_gives_the_same_minutes(shape):
-    dos_id, _amiga_id = IDS[shape.key]
-    rec = bytes(shape.record_size)
+@pytest.mark.parametrize("deltas", (CURSE, SSB, POD), ids=lambda s: s.key)
+def test_reading_the_dos_node_back_gives_the_same_minutes(deltas):
+    dos_id, _amiga_id = IDS[deltas.key]
+    rec = bytes(deltas.record_size)
     node = bytes((dos_id,)) + (500).to_bytes(2, "little") + bytes(2) \
         + dos_codec.EFFECT_NEXT_NULL
-    dc = dos_codec.DosCharacter(rec, effects=[node], deltas=shape)
+    dc = dos_codec.DosCharacter(rec, effects=[node], deltas=deltas)
     out = dos_codec.to_neutral(dc)
     assert out.get("lay_on_hands_minutes") == 500
 
 
-@pytest.mark.parametrize("shape", (CURSE, SSB, POD), ids=lambda s: s.key)
-def test_reading_no_dos_node_means_he_may_heal_now(shape):
-    rec = bytes(shape.record_size)
-    dc = dos_codec.DosCharacter(rec, effects=[], deltas=shape)
+@pytest.mark.parametrize("deltas", (CURSE, SSB, POD), ids=lambda s: s.key)
+def test_reading_no_dos_node_means_he_may_heal_now(deltas):
+    rec = bytes(deltas.record_size)
+    dc = dos_codec.DosCharacter(rec, effects=[], deltas=deltas)
     out = dos_codec.to_neutral(dc)
     assert out.get("lay_on_hands_minutes") == 0
 
@@ -106,10 +106,10 @@ _AMIGA_SHAPES = ((CURSE, amiga_port.CURSE_DELTAS),
                  (SSB, amiga_port.SILVER_BLADES_DELTAS))
 
 
-@pytest.mark.parametrize("shape,deltas", _AMIGA_SHAPES,
+@pytest.mark.parametrize("dos_deltas,deltas", _AMIGA_SHAPES,
                          ids=lambda s: getattr(s, "key", str(s)))
-def test_a_spent_paladin_converts_dos_to_amiga_with_the_amiga_id(shape, deltas):
-    char = _neutral(shape.key, lay_on_hands_minutes=640)
+def test_a_spent_paladin_converts_dos_to_amiga_with_the_amiga_id(dos_deltas, deltas):
+    char = _neutral(dos_deltas.key, lay_on_hands_minutes=640)
     amiga, report = amiga_later.write_later(char, deltas=deltas)
     heal = [e for e in amiga.effects if e[0] == 140]
     assert len(heal) == 1, amiga.effects
@@ -120,33 +120,33 @@ def test_a_spent_paladin_converts_dos_to_amiga_with_the_amiga_id(shape, deltas):
     assert back.get("lay_on_hands_minutes") == 640
 
 
-@pytest.mark.parametrize("shape,deltas", _AMIGA_SHAPES,
+@pytest.mark.parametrize("dos_deltas,deltas", _AMIGA_SHAPES,
                          ids=lambda s: getattr(s, "key", str(s)))
-def test_a_healed_paladin_converts_dos_to_amiga_with_no_node(shape, deltas):
-    char = _neutral(shape.key, lay_on_hands_minutes=0)
+def test_a_healed_paladin_converts_dos_to_amiga_with_no_node(dos_deltas, deltas):
+    char = _neutral(dos_deltas.key, lay_on_hands_minutes=0)
     amiga, _report = amiga_later.write_later(char, deltas=deltas)
     assert 140 not in [e[0] for e in amiga.effects]
     back = amiga_later.to_neutral_later(amiga)
     assert back.get("lay_on_hands_minutes") == 0
 
 
-@pytest.mark.parametrize("shape,deltas", _AMIGA_SHAPES,
+@pytest.mark.parametrize("dos_deltas,deltas", _AMIGA_SHAPES,
                          ids=lambda s: getattr(s, "key", str(s)))
-def test_a_spent_paladin_converts_amiga_to_dos_with_dos_own_id(shape, deltas):
+def test_a_spent_paladin_converts_amiga_to_dos_with_dos_own_id(dos_deltas, deltas):
     """The Amiga's 140 must become the title's own DOS id on the way back --
     never copied unchanged (docs/231, "An effect copied with the same id")."""
-    dos_id, _amiga_id = IDS[shape.key]
+    dos_id, _amiga_id = IDS[dos_deltas.key]
     node = bytes((140, 0)) + (400).to_bytes(2, "big") + bytes(2) + bytes(4)
     amiga_char = amiga_later.AmigaCharacter.from_bytes(
         bytes(deltas.record_size), deltas=deltas, effects=[node])
     reread = amiga_later.to_neutral_later(amiga_char)
     assert reread.get("lay_on_hands_minutes") == 400
 
-    _rec, _itm, spc, rep = dos_codec.write(reread, deltas=shape)
+    _rec, _itm, spc, rep = dos_codec.write(reread, deltas=dos_deltas)
     nodes = [e for e in _dos_effects(spc) if e[0] == dos_id]
     assert len(nodes) == 1, _dos_effects(spc)
     assert int.from_bytes(nodes[0][1:3], "little") == 400
-    assert dos_id != 140 or shape is CURSE  # sanity: SSB's own id is 109
+    assert dos_id != 140 or dos_deltas is CURSE  # sanity: SSB's own id is 109
     assert not any("lay_on_hands_minutes" in d for d in rep.dropped)
 
 

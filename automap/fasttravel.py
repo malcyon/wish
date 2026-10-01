@@ -361,7 +361,7 @@ class ExitRoute:
 #: there while passing every local run.
 #:
 #: `tests/generate/test_genexits.py` re-derives this off the player's own disks and
-#: compares, the same shape `tests/areas/test_newecl.py` already holds the address
+#: compares, the same way `tests/areas/test_newecl.py` already holds the address
 #: table to.
 EXIT_ROUTES: Mapping[tuple[int, int], ExitRoute] = MappingProxyType({
     (0, 8): ExitRoute(1, (4, 4)),

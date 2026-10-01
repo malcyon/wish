@@ -246,7 +246,7 @@ def test_c64_to_dos_matches_the_library_for_every_title(
     files `goldbox.dos_codec.new_dos_save` writes directly for the same C64 source,
     the same DOS game directory and slot `"A"` -- and reports the same drops.
     Same four requirements as the DOS -> C64 case above, mirrored: the
-    direction is `C64ToDos`, its destination is `game`'s own DOS shape, never
+    direction is `C64ToDos`, its destination is `game`'s own DOS deltas, never
     another title's.
     """
     try:
@@ -266,7 +266,7 @@ def test_c64_to_dos_matches_the_library_for_every_title(
         source = convert.Source.detect(disk_path)
         save0, save1 = source.save0, source.save1
 
-    shape = dos_port.DELTAS_BY_KEY[game.key]
+    deltas = dos_port.DELTAS_BY_KEY[game.key]
     out = tmp_path / "out"
     # The source title's own combat icon table, off its C64 disks: without
     # one the conversion reports a loss and the dialog refuses it, as Save As
@@ -280,8 +280,8 @@ def test_c64_to_dos_matches_the_library_for_every_title(
     try:
         assert type(dialog.direction) is convert.C64ToDos
         assert dialog.direction in convert.DIRECTIONS
-        assert dialog.source.key == shape.key
-        assert dialog.direction.destination_game.key == shape.key
+        assert dialog.source.key == deltas.key
+        assert dialog.direction.destination_game.key == deltas.key
         # First, not only: `#36 (Write an Amiga disk image, not just the
         # character files)` registered the two Amiga rows on 2026-09-07, so a
         # Pool of Radiance source now offers Amiga as well. What this line
@@ -404,7 +404,7 @@ _AMIGA_DIRECTIONS = [d for d in convert.DIRECTIONS
 
 @pytest.mark.parametrize(
     "direction",
-    [pytest.param(d, id=f"{type(d).__name__}-{d.shape.key}")
+    [pytest.param(d, id=f"{type(d).__name__}-{d.deltas.key}")
      for d in _AMIGA_DIRECTIONS])
 def test_save_as_prepares_what_convert_writes_amiga_directions(
         app, tmp_path, direction):
@@ -429,30 +429,30 @@ def test_save_as_prepares_what_convert_writes_amiga_directions(
             break
     if source_path is None:
         pytest.skip(f"needs a {direction.source_port} specimen for "
-                    f"{direction.shape.key} (tools/convert/convertdrops.sources)")
+                    f"{direction.deltas.key} (tools/convert/convertdrops.sources)")
 
     party = roster.Party(str(source_path))
     source = party.source or convert.Source.detect(source_path)
 
     kwargs = {"game_files": convertdrops.game_files}
     if direction.destination_port == "dos":
-        stem = convertdrops.DOS_DIRS.get(direction.shape.key)
+        stem = convertdrops.DOS_DIRS.get(direction.deltas.key)
         try:
             kwargs["dos_folder"] = dosbox.find_game(stem) if stem else None
         except FileNotFoundError:
             kwargs["dos_folder"] = None
     elif direction.destination_port == "amiga":
         kwargs["amiga_disk"] = convertdrops.amiga_game_disks(scratch).get(
-            direction.shape.key)
+            direction.deltas.key)
         kwargs["amiga_disk_one"] = convertdrops.amiga_disks_one(scratch).get(
-            direction.shape.key)
+            direction.deltas.key)
 
     try:
         assets = saveplan.resolve_assets(source, direction.destination_port,
                                          **kwargs)
     except saveplan.MissingAssets as exc:
         pytest.skip(f"needs {', '.join(exc.missing)} for "
-                    f"{direction.shape.title} ({direction.destination_port})")
+                    f"{direction.deltas.title} ({direction.destination_port})")
 
     suffix = saveplan.DESTINATION_SUFFIX.get(direction.destination_port, "")
     plan = saveplan.prepare_save_as(

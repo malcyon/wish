@@ -5,7 +5,7 @@ from __future__ import annotations
 Two groups. The arithmetic -- window bounds, the world-coordinate seams, the
 glyph-table split -- is tested against a synthetic window built from the
 documented format, the way `tests/gamedata.py`'s `synthetic_geo` is: no game
-bytes are needed to prove the shape is read correctly. Everything that checks
+bytes are needed to prove the form is read correctly. Everything that checks
 an actual value -- file sizes, a known site square, the seam agreement counts
 `docs/113-world-map.md` reports -- is read off the player's own disks through
 `disk_dir()` and skipped when there are none.

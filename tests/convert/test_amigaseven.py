@@ -89,7 +89,7 @@ def test_a_seven_member_party_converts_to_amiga_through_file_convert(
     source, assets = _assets(party, tmp_path)
     direction = next(d for d in convert.DIRECTIONS
                      if type(d) is direction_type
-                     and d.shape.key == c64_port.POOL_OF_RADIANCE.key)
+                     and d.deltas.key == c64_port.POOL_OF_RADIANCE.key)
     rehearsal, slot = saveplan.rehearse(direction, source, assets)
     assert saveplan.losses(rehearsal.report) == []
     images = [data for name, data in rehearsal.files.items()

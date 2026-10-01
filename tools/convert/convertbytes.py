@@ -93,9 +93,9 @@ def sources(root: pathlib.Path, scratch: pathlib.Path):
     later = (list(root.glob("coab-amiga/WISH-SPEC-*/savgam?.dat"))
              + list(root.glob("ssb-amiga/WISH-SPEC-*/savgam?.sav")))
     for index, path in enumerate(sorted(later)):
-        shape = amiga_savegame.detect(path.read_bytes())
+        container = amiga_savegame.detect(path.read_bytes())
         slot = path.stem[-1]
-        disk = amiga_savegame.make_save_disk(shape, slot, path.read_bytes())
+        disk = amiga_savegame.make_save_disk(container, slot, path.read_bytes())
         image = scratch / f"later-amiga-{index:02d}-{path.parent.name}.adf"
         image.write_bytes(disk.to_bytes())
         out.append(image)

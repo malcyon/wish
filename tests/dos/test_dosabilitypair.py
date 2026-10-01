@@ -40,7 +40,7 @@ sys.path.insert(0, str(ROOT))
 from goldbox import dos_port  # noqa: E402
 from tools.dos import dosabilitypair as ap  # noqa: E402
 
-#: Long enough for the 422-byte Curse shape, which is the smallest of the three
+#: Long enough for the 422-byte Curse record, which is the smallest of the three
 #: that keep pairs.
 RECORD_SIZE = 422
 
@@ -80,14 +80,14 @@ def test_the_pair_offsets_are_the_ones_the_layout_declares():
         assert layout[long].size == 2, long
 
 
-@pytest.mark.parametrize("shape", [
+@pytest.mark.parametrize("deltas", [
     dos_port.CURSE_OF_THE_AZURE_BONDS,
     dos_port.SECRET_OF_THE_SILVER_BLADES,
     dos_port.POOLS_OF_DARKNESS])
-def test_every_later_layout_puts_the_pairs_at_the_same_offsets(shape):
+def test_every_later_layout_puts_the_pairs_at_the_same_offsets(deltas):
     """The three later record sizes differ everywhere after the abilities and
     nowhere before them, so one set of offsets answers for all three."""
-    layout = {f.name: f for f in dos_port.layout_for(shape)}
+    layout = {f.name: f for f in dos_port.layout_for(deltas)}
     assert layout["strength"].offset == 0x010
     assert layout["exceptional_strength"].offset == 0x01C
 
@@ -255,7 +255,7 @@ def test_one_routine_compares_against_the_pair_0x10_and_0x1d(stem):
 
 
 def test_the_higher_byte_is_the_one_the_curse_overlay_mostly_touches():
-    """The sweep's shape, which is the C64's the other way round.
+    """The sweep's form, which is the C64's the other way round.
 
     `#367` counted 129 references to the C64's current array against 38 to its
     base; here the six higher bytes outnumber the six lower ones by more than

@@ -2,7 +2,7 @@
 """Why a DOS Curse thief's eight stored skills sit seven points high (#437).
 
 The DOS engines compute a thief's eight percentages in one routine, and all
-three builds of it are the same shape: a loop over skills 1 to 8 that adds a
+three builds of it are the same form: a loop over skills 1 to 8 that adds a
 level row, a racial row, a dexterity row for the first five columns, and a
 one-byte stack local this file calls `var_2` -- the item bonus for a readied
 pair of thieves' tools.  **Curse never initialises that local**, so a thief
@@ -29,7 +29,7 @@ first read of the local.
 
 **A byte pattern is not proof that bytes are code**, the caution
 `tools/c64/d6502.py` and `tools/dos/dosdis16.py` both carry.  What makes this one
-sound is that the three matches sit inside three routines of identical shape,
+sound is that the three matches sit inside three routines of identical form,
 each reading three tables at displacements 0x60 and 0x73 apart -- the same
 geometry `tools/records/thiefskillsweep.py` reads the tables at -- and each storing
 eight bytes into the record offset this project has already attributed.

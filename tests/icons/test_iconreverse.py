@@ -104,8 +104,8 @@ def test_every_composed_icon_names_its_own_weapon_back(parts):
             base = parts.apply(blank, wsize, "weapon", weapon)
             for hsize in ("small", "large"):
                 for head in range(parts.count(hsize, "head")):
-                    shape = parts.apply(base, hsize, "head", head)
-                    read = parts.recognise(shape, prefer=hsize)
+                    figure = parts.apply(base, hsize, "head", head)
+                    read = parts.recognise(figure, prefer=hsize)
                     assert (read.weapon_size, read.weapon) == (wsize, weapon)
                     named = {(read.head_size, read.head), *read.alternatives}
                     assert (hsize, head) in named, (wsize, weapon, hsize, head)
@@ -125,7 +125,7 @@ def test_the_head_is_named_alone_except_where_a_weapon_hides_the_difference(
     must be able to see it, which is what `alternatives` is for.
     """
     blank = bytes([SPACE] * (CELLS_PER_POSE * 2))
-    ambiguous, shapes = 0, set()
+    ambiguous, figures = 0, set()
     for wsize in ("small", "large"):
         for weapon in range(parts.count(wsize, "weapon")):
             base = parts.apply(blank, wsize, "weapon", weapon)
@@ -135,8 +135,8 @@ def test_the_head_is_named_alone_except_where_a_weapon_hides_the_difference(
                                                        head), prefer=hsize)
                     if read.alternatives:
                         ambiguous += 1
-                        shapes.add(parts.apply(base, hsize, "head", head))
-    assert (ambiguous, len(shapes)) == (201, 96)
+                        figures.add(parts.apply(base, hsize, "head", head))
+    assert (ambiguous, len(figures)) == (201, 96)
 
 
 def test_small_heads_zero_and_five_are_the_same_drawing(parts):
@@ -165,9 +165,9 @@ def test_an_icon_no_weapon_drew_is_refused(parts):
 def test_a_mixed_size_icon_is_read_as_the_two_lists_it_came_from(parts):
     """Size is never written back, so a large weapon under a small head is
     legal and one is on the player's disks -- HOGARTH's."""
-    shape = parts.apply(parts.apply(bytes([SPACE] * 18), "small", "weapon", 21),
+    figure = parts.apply(parts.apply(bytes([SPACE] * 18), "small", "weapon", 21),
                         "large", "head", 1)
-    read = parts.recognise(shape)
+    read = parts.recognise(figure)
     assert (read.weapon_size, read.weapon) == ("small", 21)
     assert (read.head_size, read.head) == ("large", 1)
 
@@ -190,10 +190,10 @@ def test_the_default_icon_reads_back_as_the_choices_that_made_it(parts):
 
 def _composed(parts, size, weapon, head, colours=None):
     """One whole 36-byte icon, the way `tools/icons/iconpoke.py` composes one."""
-    shape = parts.compose(size, weapon, head)
+    figure = parts.compose(size, weapon, head)
     per_class = colours or DEFAULT_PART_COLOURS
-    seed = bytes([DEFAULT_BACKGROUND | MULTICOLOUR] * len(shape))
-    return shape + parts.colours_for(shape, per_class, seed)
+    seed = bytes([DEFAULT_BACKGROUND | MULTICOLOUR] * len(figure))
+    return figure + parts.colours_for(figure, per_class, seed)
 
 
 def test_the_default_icon_becomes_dos_head_5_body_0(parts, reverse_tables):
@@ -410,8 +410,8 @@ def test_every_icon_on_the_players_disks_reads_back_into_menu_choices(parts):
     if not rows:
         pytest.skip("no C64 saved games on the disks that are here")
     unread = [r for r in rows if "error" in r]
-    assert not unread, [r["shape"] for r in unread]
-    assert len(rows) >= 19, f"only {len(rows)} distinct shapes; expected 19+"
+    assert not unread, [r["figure"] for r in unread]
+    assert len(rows) >= 19, f"only {len(rows)} distinct figures; expected 19+"
     residue = [r for r in rows if not r["choice"].exact]
     assert residue, "no icon carrying an earlier choice's cell was found"
 

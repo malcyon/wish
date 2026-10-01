@@ -136,10 +136,10 @@ def relocate_staged_save(path: pathlib.Path, game: pathlib.Path, *, area: int,
     path = pathlib.Path(path)
     game = pathlib.Path(game)
     original = path.read_bytes()
-    shape = dos_savegame.container_for(len(original))
-    if shape is not dos_savegame.SAVE_CURSE_OF_THE_AZURE_BONDS:
+    container = dos_savegame.container_for(len(original))
+    if container is not dos_savegame.SAVE_CURSE_OF_THE_AZURE_BONDS:
         raise ValueError(
-            f"Slot save is {shape.title}, not Curse of the Azure Bonds")
+            f"Slot save is {container.title}, not Curse of the Azure Bonds")
     where = areas.area_in(area, areas.CURSE_OF_THE_AZURE_BONDS)
     if where is None:
         raise ValueError(f"Area {area} is not a registered Curse area")
@@ -164,15 +164,15 @@ def relocate_staged_save(path: pathlib.Path, game: pathlib.Path, *, area: int,
     dax_name = f"ECL{dax}.DAX"
     data = (game / dax_name).read_bytes()
     script = dos_savegame.dax_block(data, area, name=dax_name)
-    wallset, _wallmap = dos_savegame.wall_block(original, shape)
+    wallset, _wallmap = dos_savegame.wall_block(original, container)
     moved = bytearray(original)
-    script_start, script_end = shape.script_buffer
+    script_start, script_end = container.script_buffer
     moved[script_start:script_end] = bytes(script_end - script_start)
     dos_savegame.move_to_area(moved, area=area, dax=dax, geo=source_geo,
-                          wallset=wallset, script=script, container=shape)
-    dos_savegame.put_word(moved, dos_savegame.INDOORS, 1, shape)
-    dos_savegame.put_position(moved, x, y, facing, shape)
-    dos_savegame.put_tail_state(moved, indoors=True, container=shape)
+                          wallset=wallset, script=script, container=container)
+    dos_savegame.put_word(moved, dos_savegame.INDOORS, 1, container)
+    dos_savegame.put_position(moved, x, y, facing, container)
+    dos_savegame.put_tail_state(moved, indoors=True, container=container)
     path.write_bytes(moved)
     return {"file": path.name, "area": area, "geo": source_geo, "dax": dax,
             "position": [x, y, facing]}

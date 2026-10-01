@@ -275,7 +275,7 @@ def _size_combo(combo: QComboBox) -> None:
         QComboBox.SizeAdjustPolicy.AdjustToContentsOnFirstShow)
     widest = max((combo.fontMetrics().horizontalAdvance(combo.itemText(i))
                   for i in range(combo.count())), default=0)
-    # A floor as well as a ceiling. With only a maximum, a box capped to its
+    # A minimum as well as a ceiling. With only a maximum, a box capped to its
     # own size hint squeezed the combo below its text and `magic-user/thief`
     # came out as `magic-user`.
     width = widest + _combo_chrome(combo) + CARET
@@ -401,7 +401,7 @@ def _char_class_shown(raw, record, game):
         # A title whose overlays nobody has measured. Logged rather than
         # swallowed, because every other handler in this file logs and a
         # silent fallback here draws the stale byte with no trail saying why.
-        _log.debug("no record shape for %s; class code not repairable",
+        _log.debug("no record deltas for %s; class code not repairable",
                    getattr(game, "key", game))
         repairable = False
     if not repairable or not isinstance(raw, int):
@@ -492,11 +492,11 @@ MAX_ROSTER_ROWS = 8
 #: at their contents, and below it the owner line elides.
 #:
 #: A constant for the reason `ROSTER_MIN_WIDTH` is one: the header does not
-#: scroll, so anything standing in it is a floor under the whole window, and
+#: scroll, so anything standing in it is a minimum size for the whole window, and
 #: this panel's widest line is a *sentence* rather than a field -- it says who
 #: an effect is on, and "everybody in the party" is longer than any name. Sized
 #: from what it can cost rather than from what it would like: with the widest
-#: party a save can hold the editor's floor is 958px without the panel, and
+#: party a save can hold the editor's minimum is 958px without the panel, and
 #: Donald's screen is 1366, so 260 leaves 148px of margin. Its two column
 #: headings alone want 430, which is what a panel sized to its own contents
 #: would have put in the way of a 1366 screen.
@@ -506,7 +506,7 @@ MAX_ROSTER_ROWS = 8
 #: the outcome -- the window fits the screen -- rather than this number.
 #:
 #: This clamps the table (`_size_active_effects`), not the `QGroupBox` around
-#: it -- and the box has a floor of its own that the table's clamp cannot
+#: it -- and the box has a minimum of its own that the table's clamp cannot
 #: reach: `QGroupBox.minimumSizeHint()` grows to fit its own *title* text
 #: (`Effects running in this saved game...`), in the same font the table's
 #: two columns are measured in, so it grows exactly like they do and was
@@ -523,7 +523,7 @@ ACTIVE_EFFECTS_MIN_WIDTH = 260
 #: Fields whose widest possible value does not earn the width it costs. `name`
 #: is twenty bytes and so twenty capital Ws -- 318px at three points of extra
 #: UI font, and it sits in the header, which does not scroll and is therefore a
-#: floor under the whole window. Donald asked for 30% off. A twenty-character
+#: minimum size for the whole window. Donald asked for 30% off. A twenty-character
 #: name still fits the bytes and still edits; it scrolls inside the box.
 TRIMMED = {"name": 0.7}
 #: Boxes that must not be squeezed below a readable list. Stated here and not
@@ -536,7 +536,7 @@ HEADER_IDENTITY_MIN_WIDTH = 480
 #: Which header boxes are held to a constant, and to what. Keyed by
 #: objectName like everything else on the form. `box_active_effects` is not
 #: here, though it wants the same treatment: `_size_active_effects` sets its
-#: floor beside the panel's own, from the one `natural`/`floor` pair both are
+#: minimum beside the panel's own, from the one `natural`/`minimum` pair both are
 #: measured from (see `ACTIVE_EFFECTS_MIN_WIDTH`), rather than duplicating
 #: that arithmetic here.
 HEADER_FLOOR = {"box_identity": HEADER_IDENTITY_MIN_WIDTH}
@@ -548,7 +548,7 @@ TOOLBAR_BUTTONS = ("button_open", "button_save", "button_preview")
 # the bug: 36 px is what Fusion and Breeze want, and Windows draws its up/down
 # buttons wider, so a box sized to fit "255" plus 36 came out as two arrows and
 # no number. `_spin_width` and `_line_width` below ask the style instead and
-# these are floors under the answer.
+# these are minimums under the answer.
 SPINBOX_CHROME = 36
 LINE_CHROME = 14
 COMBO_CHROME = 30
@@ -724,7 +724,7 @@ class RowSplitter(QObject):
     #: spare, in lines of the user's own font. Not zero: a pane with no height
     #: is one nobody can see is there, and the window would open looking as
     #: though the roster had gone. Not the height of what is in it either --
-    #: that is the 456px at 25pt this exists to stop putting a floor under the
+    #: that is the 456px at 25pt this exists to stop putting a minimum size on the
     #: window. Two lines is enough to read the roster's headings and to aim
     #: the divider at, and it is measured from the font rather than written
     #: down, so it means the same on a machine whose text is bigger.
@@ -771,8 +771,8 @@ class RowSplitter(QObject):
 
         Before the window is shown, deliberately: `setSizes` records what each
         row asked for and the splitter divides the real height against those
-        the moment there is one, so the first frame is already the right shape
-        rather than the default shape corrected afterwards.
+        the moment there is one, so the first frame is already the right size
+        rather than the default size corrected afterwards.
         """
         if self.splitter is None:
             return
@@ -1253,10 +1253,10 @@ class EditorBinding(QObject):
                 box.setMaximumWidth(max(box.sizeHint().width(),
                                         box.minimumSizeHint().width()))
 
-        for name, floor in LIST_FLOOR.items():
+        for name, minimum in LIST_FLOOR.items():
             box = self._child(name)
             if box is not None:
-                box.setMinimumHeight(floor)
+                box.setMinimumHeight(minimum)
 
         # Before the loop below and not after it, because the loop reads
         # `box_identity.minimumSizeHint()` and that number can be stale. A
@@ -1264,16 +1264,16 @@ class EditorBinding(QObject):
         # `setupUi` -- before the dropdowns have anything in them -- and Qt
         # caches what it measured against `columns_identity`'s layout item.
         # Read cold, Character asks for 218px rather than 495 and is then held
-        # to a 200px floor it was never meant to have: the whole point of
+        # to a 200px minimum it was never meant to have: the whole point of
         # `HEADER_FLOOR` is that it may be squeezed to 480 and no further.
         # `_pin_identity_columns` sets a minimum on `columns_identity`, and
         # setting one is what throws the cache away.
         self._pin_identity_columns()
-        for name, floor in HEADER_FLOOR.items():
+        for name, minimum in HEADER_FLOOR.items():
             box = self._child(name)
             if box is None:
                 continue
-            box.setMinimumWidth(floor)
+            box.setMinimumWidth(minimum)
         for name in TOOLBAR_BUTTONS:
             button = self._child(name)
             if button is not None:
@@ -2129,20 +2129,20 @@ class EditorBinding(QObject):
         view.measure(natural, header.sectionSize(NAME_COLUMN))
         # With no rows -- an empty window, or a roster disk with nothing on it
         # -- `natural` is the five headings alone, and it is font-derived, so
-        # `min(natural, ROSTER_MIN_WIDTH)` would set the window's floor to the
+        # `min(natural, ROSTER_MIN_WIDTH)` would set the window's minimum to the
         # headings' own width and bring back #41, which
         # `test_the_windows_minimum_does_not_follow_the_ui_font` caught. The
         # *maximum* still wants setting either way, or the table keeps
         # spreading into whatever the layout has spare (#471).
         #
         # **This gate covers the empty case and nothing more, and the loaded
-        # case is not sound.** `ROSTER_MIN_WIDTH` is not a floor a party is
+        # case is not sound.** `ROSTER_MIN_WIDTH` is not a minimum a party is
         # always above: an ordinary six-character party measures `natural` at
         # 219 against the constant's 440, so `min` picks the font-derived
-        # number here too and the whole window's floor runs 727, 784, 844, 916
+        # number here too and the whole window's minimum runs 727, 784, 844, 916
         # at +0, +3, +6 and +10 points of UI font. #474 has the measurement
         # and the three ways out; `gamedata.synthetic_party`'s widest-of-
-        # everything shape is the one party that stays above 440, which is why
+        # everything party is the one party that stays above 440, which is why
         # `test_the_windows_minimum_does_not_follow_the_ui_font_with_a_save_
         # open` reads a flat 948 and cannot see this.
         if self.model.rowCount():
@@ -2163,7 +2163,7 @@ class EditorBinding(QObject):
         The roster is capped at the eight rows a save disk can hold, so it
         never scrolls. This one has 64 slots to draw and cannot be sized to
         them: the header does not scroll, so a table as tall as its contents
-        there would be a floor under the whole window that grew with the
+        there would be a minimum size for the whole window that grew with the
         number of spells the party happened to have running.
         """
         panel = self._active_effects_view()
@@ -2183,25 +2183,25 @@ class EditorBinding(QObject):
         columns = sum(max(panel.sizeHintForColumn(c), head.sectionSizeHint(c))
                       for c in range(panel.model().columnCount()))
         natural = columns + 2 * panel.frameWidth() + bar
-        floor = min(natural, ACTIVE_EFFECTS_MIN_WIDTH)
-        panel.setMinimumWidth(floor)
+        minimum = min(natural, ACTIVE_EFFECTS_MIN_WIDTH)
+        panel.setMinimumWidth(minimum)
         panel.setMaximumWidth(max(natural, ACTIVE_EFFECTS_MIN_WIDTH))
         # The box that holds it, not just the table: a `QGroupBox` reserves
         # room for its own title whether or not anything in its layout asks
         # for that much -- an unset minimum width lets `BOX_TITLE` alone set
-        # the floor, and that string is 51 characters read by a font this
+        # the minimum, and that string is 51 characters read by a font this
         # machine does not have. Measured here: an unconstrained box with
         # this title wants 307px at this machine's own font and 505px six
         # points larger, while an explicit `setMinimumWidth` holds the box's
         # contribution to the layout at what was asked for, flat across every
-        # font tried. Matching `floor` and not `ACTIVE_EFFECTS_MIN_WIDTH`
+        # font tried. Matching `minimum` and not `ACTIVE_EFFECTS_MIN_WIDTH`
         # keeps a narrow panel (an empty save, before it has ever been sized)
         # from being handed more room than its own columns want.
         box = self._child("box_active_effects")
         if box is not None:
-            # The constant, not `floor`. `floor` is `min(natural, ...)`, and
+            # The constant, not `minimum`. `minimum` is `min(natural, ...)`, and
             # once Donald's shorter headings of 2026-09-08 made `natural`
-            # smaller than the constant, `floor` became the columns' own
+            # smaller than the constant, `minimum` became the columns' own
             # width -- which grows with the UI font, and took the window's
             # own minimum with it: 1052px at +0pt against 1131px at +10pt,
             # caught by `test_the_effects_panel_is_not_a_floor_under_the_
@@ -2212,9 +2212,9 @@ class EditorBinding(QObject):
             # left its title to be clipped by the box's own frame instead --
             # `QGroupBox` does not cut its title with an ellipsis on its own,
             # it draws past its edge and paints nothing to say a word is
-            # missing. `floor` is the box's *guaranteed* width -- it never
+            # missing. `minimum` is the box's *guaranteed* width -- it never
             # gets any narrower once opened, whatever the window is resized
-            # to afterwards -- so cutting the title to fit `floor` now is
+            # to afterwards -- so cutting the title to fit `minimum` now is
             # never wrong later, only sometimes shorter than it had to be.
             # No title at all. Donald, 2026-09-08: *"I think you actually
             # don't need the `Party Effects` title. You could just change the
@@ -3262,7 +3262,7 @@ class EditorBinding(QObject):
                     # A save slot holds only the first 256 of the 580 bytes a
                     # record carries, so this byte is not in the file at all
                     # -- draw blank, not a fabricated zero (#150). The
-                    # sentinel sits one below the field's real floor, and
+                    # sentinel sits one below the field's real minimum, and
                     # only while there is nothing to show: whenever this
                     # field genuinely holds its lowest legal value the range
                     # above is what applies, so that value still reads as

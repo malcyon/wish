@@ -357,7 +357,7 @@ def synthetic_geo() -> bytes:
 # needs *a* party rather than a specific one gets one built from the format we
 # documented, so the guarantee it holds runs on a machine with no game.
 #
-# It exists to be measured. The window's floor only appears once a save is open
+# It exists to be measured. The window's minimum only appears once a save is open
 # -- `EditorBinding._adopt` runs then, and `_size_roster` with it -- so #63 and
 # #70 both wanted a party CI could open. What sets those widths is the roster's
 # five columns, and every one of them is sized from the strings it holds; hence
@@ -369,7 +369,7 @@ PARTY_SLOTS = 6
 #: player would ever see.
 #:
 #: `hp_max` is two bytes (`goldbox/layout.py` `0x076`), so 65535 rather than a
-#: three-digit total: capping it at 999 understated the window's floor by 14px,
+#: three-digit total: capping it at 999 understated the window's minimum by 14px,
 #: which is 1251 against 1265 at the base font and exactly the number #71 turns
 #: on. The roster's current-hit-points byte is one byte and 255 is its ceiling.
 #:
@@ -482,7 +482,7 @@ def synthetic_party(game=None, race=None, trait_codes=()) -> bytes:
     puts a Level up button on every card (`WIDEST_EXPERIENCE`, #168).
 
     Widest and not plausible, because widths are the whole reason this exists.
-    A party of six-letter names produces a floor that is true of nothing, and
+    A party of six-letter names produces a minimum that is true of nothing, and
     the roster is the one thing left in the header that is sized from the
     strings it holds.
     """
@@ -596,7 +596,7 @@ def synthetic_arena(fighters=((0, 25, 13), (8, 30, 13)),
 
     * the parameter block at `$0600`, which is what the reader must consult
       rather than assuming 56 x 26;
-    * the map at `$8C00`, empty floor with bit 7 set under each combatant;
+    * the map at `$8C00`, open ground with bit 7 set under each combatant;
     * the position table at `$8B00`, `$FF $FF` for everyone not fighting.
 
     `fighters` is `(index, x, y)`, index 0-7 the party and 8 upward monsters.
@@ -636,7 +636,7 @@ def synthetic_arena(fighters=((0, 25, 13), (8, 30, 13)),
     squares = ARENA_STRIDE * (ARENA_MAX_Y + 1)
     field = bytearray(squares)
     # A block of impassable terrain in view of the fight, so the renderer has
-    # something to draw besides floor. Bit 7 is "a combatant stands here"; the
+    # something to draw besides ground. Bit 7 is "a combatant stands here"; the
     # low bits are the square's own kind.
     for y in range(11, 16):
         for x in range(20, 23):
@@ -684,7 +684,7 @@ def synthetic_arena(fighters=((0, 25, 13), (8, 30, 13)),
     # Slot 8 holds no record in a saved game -- combat slots are live-only --
     # so build a monster there. An ORC, with the Monster Manual's numbers, so
     # the tooltip has something real to be checked against.
-    orc = bytearray(records[0:0x100])                   # a valid record's shape
+    orc = bytearray(records[0:0x100])                   # a valid record's form
     orc[0x000:0x014] = b"ORC".ljust(0x14, b"\x00")
     orc[0x0A0] = 1                                      # one hit die
     orc[0x0E1] = COMBAT_BIAS - 6                        # armour class 6

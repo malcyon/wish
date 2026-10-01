@@ -141,10 +141,10 @@ DOS_TITLE_KEYS = (
 @pytest.mark.parametrize("key", DOS_TITLE_KEYS)
 def test_titles_and_dos_race_tables_agree_except_the_documented_exceptions(
         key):
-    shape = dos_port.deltas_for(key)
+    deltas = dos_port.deltas_for(key)
     race_names = titles.by_key(key).race_names or {}
     exceptions = RACE_TABLE_EXCEPTIONS.get(key, {})
-    for code, dos_name in enumerate(shape.race_numbers):
+    for code, dos_name in enumerate(deltas.race_numbers):
         title_name = race_names.get(code)
         if code in exceptions:
             expected_title_name, expected_dos_name, _ = exceptions[code]

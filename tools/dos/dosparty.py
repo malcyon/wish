@@ -238,7 +238,7 @@ def open_session(note: str, out: pathlib.Path) -> tuple[dosbox.Session, dosbox.S
 
 
 def menu_bar(session: dosbox.Session) -> str:
-    """The `CHOOSE A FUNCTION` strip, by shape.
+    """The `CHOOSE A FUNCTION` strip, by outline.
 
     The add list and the party menu are told apart by this and nothing else.
     **The add list closes itself when the last unstarred entry is taken**, so

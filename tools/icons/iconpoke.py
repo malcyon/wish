@@ -4,8 +4,8 @@
 A measurement instrument, not a feature.  `#184 (A converted combat icon's
 colours are proven in the game and its shapes are not)` needs a party whose
 six icons are **deliberately different**, because a party of six identical
-ones cannot tell "the engine drew each character's own shape" apart from "the
-engine drew the same shape six times".  The conversion writes one composed
+ones cannot tell "the engine drew each character's own figure" apart from "the
+engine drew the same figure six times".  The conversion writes one composed
 default into all six slots today, which is
 `#130 (A converted DOS party arrives with six identical combat figures, not
 its own)`, so the party has to be made by hand.
@@ -20,7 +20,7 @@ read off the disks at run time.
 
 The disk is edited **in place**, so point it at a copy.  It
 refuses a directory it was not given, refuses to write two slots the same
-shape, and prints the eighteen screen codes it left in each slot so the run
+figure, and prints the eighteen screen codes it left in each slot so the run
 that follows has the file's side of the comparison in its log.
 """
 from __future__ import annotations
@@ -73,9 +73,9 @@ def compose(parts: IconParts, size: str, weapon: int, head: int) -> bytes:
     so a poked party's colour half is the colour half a converted party has
     and the two runs stay comparable.
     """
-    shape = parts.compose(size, weapon, head)
-    seed = bytes([DEFAULT_BACKGROUND | MULTICOLOUR] * len(shape))
-    return shape + parts.colours_for(shape, DEFAULT_PART_COLOURS, seed)
+    figure = parts.compose(size, weapon, head)
+    seed = bytes([DEFAULT_BACKGROUND | MULTICOLOUR] * len(figure))
+    return figure + parts.colours_for(figure, DEFAULT_PART_COLOURS, seed)
 
 
 def parts_from(disks: pathlib.Path) -> IconParts:

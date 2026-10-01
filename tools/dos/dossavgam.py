@@ -2,7 +2,7 @@
 """Survey the DOS saved-game containers of every Gold Box title on the machine.
 
     tools/dos/dossavgam.py                 every container under $FR_ARCHIVES
-    tools/dos/dossavgam.py --regions       add the region map each shape declares
+    tools/dos/dossavgam.py --regions       add the region map each container declares
     tools/dos/dossavgam.py --runs          add every run of nonzero bytes outside
                                        the party table, which is what the
                                        per-title region map was read from
@@ -10,7 +10,7 @@
                                        against the 7680-byte staging buffer
 
 This is the tool that answered #53's third question -- whether `SAVGAM?.DAT`
-and its siblings have the same shape in all four titles.  It reads only, and
+and its siblings have the same form in all four titles.  It reads only, and
 it reads the player's own archives; nothing it prints is committed.
 
 The anchor is the party table: six length-prefixed `CHRDAT<letter><n>` names
@@ -82,44 +82,44 @@ def game_of(path: pathlib.Path) -> str:
 
 def describe(path: pathlib.Path, *, regions: bool, runs: bool) -> None:
     data = path.read_bytes()
-    shape = sg.container_for(len(data))
-    names = sg.character_files(data, shape)
-    # The shape is named by the size, and Treasures of the Savage Frontier
+    container = sg.container_for(len(data))
+    names = sg.character_files(data, container)
+    # The container is named by the size, and Treasures of the Savage Frontier
     # writes the same 1364-byte container Pools of Darkness does -- so print
     # where the file came from, which is the only thing that says which game.
-    print(f"{path.name}  {len(data)} bytes  {shape.title} shape  "
+    print(f"{path.name}  {len(data)} bytes  {container.title} container  "
           f"[{game_of(path)}]")
-    print(f"    Party of {sg.party_size(data, shape)}, "
+    print(f"    Party of {sg.party_size(data, container)}, "
           f"{len(names)} named files, first {names[0] if names else '-'}, "
-          f"square {sg.position(data, shape)}")
-    if shape.dax_bytes:
-        print(f"    Container byte {sg.dax_number(data, shape)}, "
-              f"$5012 {sg.word(data, sg.DISK, shape)}, "
-              f"$503E {sg.word(data, sg.PARTY_SIZE, shape)}, "
-              f"$49E6 {sg.word(data, sg.INDOORS, shape)}")
+          f"square {sg.position(data, container)}")
+    if container.dax_bytes:
+        print(f"    Container byte {sg.dax_number(data, container)}, "
+              f"$5012 {sg.word(data, sg.DISK, container)}, "
+              f"$503E {sg.word(data, sg.PARTY_SIZE, container)}, "
+              f"$49E6 {sg.word(data, sg.INDOORS, container)}")
     if regions:
-        for label, start, size in region_map(shape):
+        for label, start, size in region_map(container):
             print(f"    {start:>6}  {size:>6}  {label}")
     if runs:
         print("    Nonzero runs before the party table:")
-        for at, run in nonzero_runs(data, shape.party_table):
+        for at, run in nonzero_runs(data, container.party_table):
             print(f"      {at:>6}  {run.hex(' ')}")
 
 
-def region_map(shape) -> list[tuple[str, int, int]]:
-    """`(what, offset, size)` for one shape, in file order."""
+def region_map(container) -> list[tuple[str, int, int]]:
+    """`(what, offset, size)` for one container, in file order."""
     out, at = [], 0
-    for label, size in (("ECL variables, one byte each", shape.var_bytes),
-                        ("Undecoded head", shape.head),
-                        ("Container number", shape.dax_bytes),
-                        ("ECL variables", 2 * shape.var_words),
-                        ("Staged script", shape.script_bytes),
+    for label, size in (("ECL variables, one byte each", container.var_bytes),
+                        ("Undecoded head", container.head),
+                        ("Container number", container.dax_bytes),
+                        ("ECL variables", 2 * container.var_words),
+                        ("Staged script", container.script_bytes),
                         # The twelve Curse and Silver Blades carry sit
                         # *inside* the block, after the engine state and
                         # before the count -- #253, read off each writer.
                         ("Square and engine state",
-                         shape.square_bytes - 1),
-                        ("Wallset and wallmap copies", shape.unnamed),
+                         container.square_bytes - 1),
+                        ("Wallset and wallmap copies", container.unnamed),
                         ("Party size", 1),
                         ("Character slots",
                          sg.NAME_SLOTS * sg.PARTY_ENTRY)):
@@ -158,7 +158,7 @@ def scripts(roots=None) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--regions", action="store_true",
-                    help="print the region map each shape declares")
+                    help="print the region map each container declares")
     ap.add_argument("--runs", action="store_true",
                     help="print every nonzero run before the party table")
     ap.add_argument("--scripts", action="store_true",

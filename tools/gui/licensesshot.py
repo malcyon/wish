@@ -52,13 +52,13 @@ def main(argv=None) -> int:
         app.processEvents()
         size = box.size()
         hint = box.sizeHint()
-        floor = box.minimumSizeHint()
+        minimum = box.minimumSizeHint()
         path = out / f"licenses-{'+' if bump else ''}{bump}pt.png"
         box.grab().save(str(path))
         print(f"{bump:+d}pt base={base + bump:.1f}  "
               f"shown={size.width()}x{size.height()}"
               f"  sizeHint={hint.width()}x{hint.height()}"
-              f"  minimumSizeHint={floor.width()}x{floor.height()}  -> {path}")
+              f"  minimumSizeHint={minimum.width()}x{minimum.height()}  -> {path}")
         box.close()
     return 0
 

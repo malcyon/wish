@@ -273,7 +273,7 @@ def sector_offset(track: int, sector: int, track_count: int = TRACK_COUNT) -> in
 
 @dataclass(frozen=True)
 class Variant:
-    """One recognised ``.D64`` shape, keyed by file size.
+    """One recognised ``.D64`` variant, keyed by file size.
 
     ``writable`` is the standard 35-track image and nothing else; see the module
     docstring for why, and :class:`ReadOnlyImageError` for what enforces it.

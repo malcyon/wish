@@ -111,8 +111,8 @@ def test_a_figure_is_matched_to_the_slot_whose_codes_it_was_drawn_from():
     """Two characters, two different icons, one figure each.
 
     The engine hands each combatant its own run of nine sequential screen
-    codes, so the codes on the floor are never the icon's; the bitmaps behind
-    them are.  What proves the shape converted is that all nine agree with
+    codes, so the codes in the arena are never the icon's; the bitmaps behind
+    them are.  What proves the figure converted is that all nine agree with
     `CHARPIC00[code * 8]` for the nine codes that character's own slot holds.
     """
     charset = charpic({code: bytes([code]) * 8 for code in range(1, 60)})
@@ -124,7 +124,7 @@ def test_a_figure_is_matched_to_the_slot_whose_codes_it_was_drawn_from():
     ]
     # The combat charset: slot 0's first pose copied to codes $5E-$66 and
     # slot 1's second pose to $70-$78, which is the renumbering the engine
-    # does and the reason an icon's own codes appear nowhere on the floor.
+    # does and the reason an icon's own codes appear nowhere in the arena.
     charset_at = {}
     for n, code in enumerate(range(1, 10)):
         charset_at[0xD000 // 8 + 0x5E + n] = bytes([code]) * 8
@@ -150,7 +150,7 @@ def test_a_figure_is_matched_to_the_slot_whose_codes_it_was_drawn_from():
 
 
 def test_a_figure_drawn_from_the_wrong_bitmaps_matches_nothing():
-    """The failure this exists to catch: right colours, wrong shape.
+    """The failure this exists to catch: right colours, wrong figure.
 
     One byte of one glyph is changed, which is what "the engine drew a
     different figure" looks like from here -- and the whole point of `#184`

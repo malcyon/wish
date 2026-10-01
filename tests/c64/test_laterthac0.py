@@ -80,7 +80,7 @@ def test_the_locator_lands_where_the_class_bit_anchor_does():
                           (SSB, 7, 19, 0xDE2)])
 def test_every_title_is_located_by_three_independent_checks(
         title, rows, stride, segment):
-    """The shape comes from the engine and the record, not from a guess.
+    """The form comes from the engine and the record, not from a guess.
 
     `rows` is the width of `class_levels`, which is 7 for Silver Blades
     because it drops the monk; `stride` is the `mul` in the engine's own

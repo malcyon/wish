@@ -9,7 +9,7 @@ a Curse or Silver Blades save and nobody has ever watched the game draw the
 result. `#32 (One Curse session, to get a party with items)` step 4 is the
 same sentence -- *"round-trip an item edit and confirm it in the game"*.
 
-`tools/secret_of_the_silver_blades/ssbedit.py` is the shape this follows and could not be reused: it
+`tools/secret_of_the_silver_blades/ssbedit.py` is the form this follows and could not be reused: it
 stages `name`, `gold` and `strength`, which are fields of the character
 record. Items are not in the record at all -- they live in `SAVEDGAME0` at
 the container's own `item_area` -- so nothing about the staging transfers,

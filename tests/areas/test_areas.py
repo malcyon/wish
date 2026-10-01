@@ -22,7 +22,7 @@ from goldbox.areas import (
     Confidence,
 )
 
-# -- the shape of the table --------------------------------------------------
+# -- the structure of the table --------------------------------------------------
 
 
 def test_thirty_areas_with_one_hole_at_twelve():
@@ -800,7 +800,7 @@ def test_fourteen_curse_arrivals_are_landed_and_probable():
     because re-deriving off the disks is `tests/areas/test_areatable.py`'s job and
     this file's is to prove what got typed into `goldbox/areas.py` is what
     the tool said. `$32` is the one row with no facing -- its script saves
-    `x` and `y` and never writes a direction, the same shape as Pool of
+    `x` and `y` and never writes a direction, the same case as Pool of
     Radiance's area 7.
     """
     table = {a.id: a for a in areas.AREAS_CURSE}
@@ -1073,7 +1073,7 @@ def test_every_pool_map_the_table_claims_is_one_its_script_loads(pool_table):
     well as its own 7, on its way into area 3, and the table gives `GEO03` to
     area 3 rather than to area 7. That is deliberate, and Silver Blades'
     `ECL30` does the same thing for areas `$31` and `$32`, so a script loading
-    the *next* area's map is a shape both titles have.
+    the *next* area's map is a case both titles have.
 
     `ECL1E` used to be a second, unintended exception here: the table gave it
     no map at all, and its script actually carries `LOADFILES 18, 2, 255` at

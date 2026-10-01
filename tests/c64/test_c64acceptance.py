@@ -1924,7 +1924,7 @@ def test_curse_plain_fight_keeps_plain_route_and_tactic(monkeypatch, tmp_path):
 
         def __init__(self, out, quiet):
             self.file = SimpleNamespace(close=lambda: None)
-            calls.append("simple-route-route")
+            calls.append("battle-route-started")
 
         def goto(self, target, steps, geo):
             return True
@@ -1958,7 +1958,7 @@ def test_curse_plain_fight_keeps_plain_route_and_tactic(monkeypatch, tmp_path):
     run.observe_curse = lambda *a, **k: pytest.fail("diagnostic observation")
     got = run.fight("10", "I", 5)
     assert got["walked"] == 3
-    assert calls[0] == "simple-route-route"
+    assert calls[0] == "battle-route-started"
     assert calls[-3] == "optional-command-wait"
     assert calls[-2] == ("fight", A.S.Session.melee_turn)
 
@@ -2056,7 +2056,7 @@ def test_curse_one_step_skips_wall_edge_and_occupant_and_checks_landing():
     picked = []
 
     class Battle:
-        shape = SimpleNamespace(holds=lambda x, y: x >= 5 and y >= 5)
+        geometry = SimpleNamespace(holds=lambda x, y: x >= 5 and y >= 5)
         combatants = (actor, other)
 
         @staticmethod

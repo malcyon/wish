@@ -70,8 +70,8 @@ def _classes(raw: bytes):
 
 def _constitution_bonus(constitution: int) -> int:
     """AD&D 1e: +1 saving throw per 3.5 points of constitution."""
-    for floor, bonus in ((18, 5), (14, 4), (11, 3), (7, 2), (4, 1)):
-        if constitution >= floor:
+    for minimum, bonus in ((18, 5), (14, 4), (11, 3), (7, 2), (4, 1)):
+        if constitution >= minimum:
             return bonus
     return 0
 

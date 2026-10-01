@@ -726,7 +726,7 @@ def test_silver_blades_saves_match_the_modules_own_table():
 
 
 def test_silver_blades_hit_dice_match_the_three_arrays_through_the_module():
-    """The shape of `test_curse_hit_dice_come_from_the_games_three_arrays`,
+    """The form of `test_curse_hit_dice_come_from_the_games_three_arrays`,
     for the six Silver Blades classes."""
     from goldbox import levels
 

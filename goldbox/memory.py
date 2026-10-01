@@ -217,9 +217,9 @@ MAP: tuple[Region, ...] = (
     Region(0x8C00, 0x5B0, "the combat map", OK,
            note="one byte per square at $8C00 + y*stride + x, 56 x 26 with "
                 "stride 56 in the fights seen. Bit 7 means a combatant stands "
-                "there; mask & $7F for the terrain, 0 = floor. Outside combat "
+                "there; mask & $7F for the terrain, 0 = open ground. Outside combat "
                 "this is LIBRARY's file staging buffer and holds graphics, so "
-                "gate on MODE. Read the shape from $0607/$0612/$0613, not from "
+                "gate on MODE. Read the geometry from $0607/$0612/$0613, not from "
                 "constants"),
     Region(0x0400, 0x400, "SQRPACI<nn>", OK,
            note="the combat-map descriptor page: $0580 tile remap, the "

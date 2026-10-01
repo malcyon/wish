@@ -188,7 +188,7 @@ _GRANT_LOOP = re.compile(
 def _cleric_grant_table(payload: bytes):
     """(level -> set of spell ids) from Curse's cleric grant routine.
 
-    The starting-book routine also has a grant-loop shape, but clamps its row
+    The starting-book routine also has a grant-loop form, but clamps its row
     index after `LDY`; these ten raw level rows are only the cleric's table.
     """
     for match in _GRANT_LOOP.finditer(payload):

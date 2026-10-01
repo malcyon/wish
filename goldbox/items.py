@@ -133,7 +133,7 @@ TYPE_WEAPON_FLAGS = 14
 # **They are not alternatives, though they read like them.** Of the 58 POOL1
 # type records that carry damage dice, 54 hold one bit or the other; four hold
 # **both** -- the HEAVY CROSSBOW, and the DECK, DRUMS and DUST, three magic
-# items that reuse the weapon shape -- and four hold neither, BILL-GUISARME,
+# items that reuse the weapon figure -- and four hold neither, BILL-GUISARME,
 # GUISARME-VOULGE, BAG and the unnamed record 0. The engine's two blocks each
 # add when their own bit is set and neither excludes the other, so a heavy
 # crossbow takes both adjustments.

@@ -62,7 +62,7 @@ def _dos_pod_record(armour_class_base: int,
                     items: tuple[dos_codec.DosItem, ...] = ()
                     ) -> dos_codec.DosCharacter:
     """A made-up DOS Pools of Darkness paladin, level 12, holding the given
-    stored armour-class base -- the same record shape
+    stored armour-class base -- the same record form
     `test_a_paladins_cure_byte_survives_dos_to_amiga_and_back` builds in
     `tests/amiga/test_podamiga.py`, so this needs no disks and carries no
     game bytes."""

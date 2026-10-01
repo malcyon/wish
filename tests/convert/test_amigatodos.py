@@ -110,7 +110,7 @@ def test_the_amiga_to_dos_row_takes_the_c64_to_dos_constructor():
     way `AmigaToC64` derives from `DosToC64` for everything but `rehearse`:
     the destination is the same DOS save folder written by the same engine
     to the same file names (`goldbox.dos_codec.new_dos_save_from`), so the
-    shape lookup and the put-the-bytes-down are one implementation rather
+    deltas lookup and the put-the-bytes-down are one implementation rather
     than two (#619's Stage A). What differs is where the party and the
     place are read from, which is `rehearse` alone."""
     assert issubclass(convert.AmigaToDos, convert.C64ToDos)

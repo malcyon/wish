@@ -429,7 +429,7 @@ def find_block(body_map: dict[str, bytes], lists_at: int, high_at: int,
     lists still decode and pick up the tail of the handler table as a
     thirteen-id list 0. **A file of pure data has no such evidence**: Pool of
     Radiance's `SPELLE65` resolves nothing at any base, and there the block's
-    own shape decides -- distinct ids first, which is what separates it from
+    own form decides -- distinct ids first, which is what separates it from
     the run of map data in `GEO1A` that also decodes (27 lists over 10
     distinct values against the block's 20 over 92), then list count.
     """

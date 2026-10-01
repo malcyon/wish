@@ -10,7 +10,7 @@ things more -- maps, item names, icons -- until Donald called that too chatty
 in 2026-08; what those three answered is visible on the map tab and in the
 item column, where you are already looking.
 
-Three things about the shape of it:
+Three things about the design of it:
 
 * **No OK, no Cancel -- one Close.** Every control here applies at once, as the
   backend menu it replaces already did. A Cancel would need an undo path back
@@ -387,7 +387,7 @@ def apply_ultimate_host(host: str) -> None:
 
 
 #: The spin box no longer carries 0 as "let the backend decide" -- the
-#: checkbox does. So it needs a real floor, and 50 ms is four times the
+#: checkbox does. So it needs a real minimum, and 50 ms is four times the
 #: fastest poll anything here runs at.
 MIN_INTERVAL_MS = 50
 

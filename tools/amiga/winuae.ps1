@@ -78,7 +78,7 @@ param(
 # Measured, with -Holder at Position 99 and $Rest at Position 1:
 # `key 7A` bound cmd=[key] holder=[7A] rest=[], and the keypress was then
 # refused for having no VK code. Reading them here leaves every existing call
-# shape exactly as it was.
+# form exactly as it was.
 #
 # For the same family of reasons neither name may be abbreviated by the caller:
 # PowerShell would match `-f` to -Holder-like names by prefix, and `-f`, `-log`
@@ -173,7 +173,7 @@ function Boot-Stamp { (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToS
 # Creating the file IS the claim, and this is deliberately not a read-then-write.
 # Two `claim` calls arriving together would both read an empty lane, both write
 # it and both print "ok claimed by ...", which is exactly the belief #116 exists
-# to destroy -- the same shape of race as `winvm acquire`, with a narrower
+# to destroy -- the same kind of race as `winvm acquire`, with a narrower
 # window. [IO.File]::Open with CreateNew is one atomic NTFS operation: exactly
 # one caller creates the file and every other gets an IOException and is told it
 # lost.
@@ -1020,7 +1020,7 @@ Report "ok pressed VK 0x$vk$how at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
     # -match is not global, so it reads only the FIRST -TargetPid: given two,
     # the check would pass on the good one while both were forwarded to
     # winuae-send.ps1, whose binder's preference between them is not something
-    # this depends on. Refuse the shape instead of needing the answer.
+    # this depends on. Refuse the form instead of needing the answer.
     # 'IgnoreCase' is not decoration: [regex]::Matches is the static .NET call
     # and is case-SENSITIVE, while the -match below is not. Without it,
     # `-targetpid 6136 -TargetPid 8272` counts as one occurrence, the rejection

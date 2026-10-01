@@ -48,7 +48,7 @@ ZOOM = 4                    # 33% increase (UI scaled) over native
 
 # The two poses are drawn side by side rather than stacked. Stacked, the icon is
 # 24 wide by 48 tall, and a widget that tall pushed the roster strip to 430
-# pixels for a table needing 240 -- the shape fought the layout. Side by side it
+# pixels for a table needing 240 -- the arrangement fought the layout. Side by side it
 # is 48 by 24, which is also the better read: you compare the poses at a glance.
 FRAME_WIDE = PIXELS_WIDE * POSES     # two poses
 FRAME_HIGH = POSE_ROWS * 8
@@ -227,7 +227,7 @@ class IconEditor(QWidget):
                              bytes(self._icon.colours), self._size, self)
         if dialog.exec() != int(QDialog.DialogCode.Accepted):
             return
-        self.set_cells(dialog.shape, dialog.colours)
+        self.set_cells(dialog.figure, dialog.colours)
 
     def set_cells(self, screen_codes: bytes, colours: bytes) -> None:
         if not self.isEnabled() or self._icon is None:

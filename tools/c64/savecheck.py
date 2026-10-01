@@ -26,7 +26,7 @@ What it reads, in order:
 * with `--resave`, the game's own `ENCAMP > SAVE` writing the party back --
   after the walk, so the disk it writes holds wherever `--walk` left the
   party rather than where it arrived (`#543`);
-* the combat floor, when `--fight` is given, and the screen codes each party
+* the combat arena, when `--fight` is given, and the screen codes each party
   figure is drawn from -- which is the only place a converted combat icon is
   ever seen.
 
@@ -363,7 +363,7 @@ def sheets(sess, count: int, log: Log, tag: str) -> list[list[str]]:
     return out
 
 
-def floor(sess) -> list[str]:
+def arena(sess) -> list[str]:
     """The combat map as screen codes, one row of hex per line.
 
     Read as codes and not as text because the party figures are `CHARPIC00`
@@ -380,7 +380,7 @@ def floor(sess) -> list[str]:
 def combatants(sess, s=None) -> list[tuple[int, int, bytes]]:
     """Every 3x3 block of nine **consecutive** screen codes on the screen.
 
-    That is what a figure on the combat floor is, and it is not the icon's
+    That is what a figure on the combat arena is, and it is not the icon's
     own codes.  Measured on a converted Slums save in a fight: the six party
     members were drawn from codes `$5E`-`$93`, six runs of nine in order, and
     the five orcs from one run of nine reused -- while every one of the six
@@ -410,7 +410,7 @@ def combatants(sess, s=None) -> list[tuple[int, int, bytes]]:
 def roll_call(sess) -> dict:
     """Who the engine has in the fight, out of its own combatant table.
 
-    The floor scan can only ever count what is **drawn**, and the game draws a
+    The arena scan can only ever count what is **drawn**, and the game draws a
     7x7 window (`automap.combat.VIEW`, `COM.PREP $08C6 LDA #$07`) onto a map
     that has been 56x26 in every fight read here.  So "four figures for a party
     of six" is not by itself a fault: two members standing more than six
@@ -420,7 +420,7 @@ def roll_call(sess) -> dict:
     `read_battle` settles it without an inference.  The position table says
     where all `count` combatants are, `$FF` says a combatant has left the map
     altogether, and `$037E` is the window's own top-left square -- so a member
-    that is absent from the floor can be told apart three ways: outside the
+    that is absent from the arena can be told apart three ways: outside the
     window, off the map, or not in the table at all.  Only the last two are
     defects, and only the last would be the conversion's (`#185`).
 
@@ -448,10 +448,10 @@ def roll_call(sess) -> dict:
               "in_window": inside(c)}
              for c in battle.characters]
     return {
-        "map": [battle.shape.width, battle.shape.height],
+        "map": [battle.geometry.width, battle.geometry.height],
         "camera": [x0, y0],
         "view": C.VIEW,
-        "count": battle.shape.count,
+        "count": battle.geometry.count,
         "party": party,
         "party_size": len(party),
         "party_on_map": sum(1 for c in party if c["on_map"]),
@@ -462,7 +462,7 @@ def roll_call(sess) -> dict:
 
 
 def undrawn(roll: dict, blocks: int) -> list[str]:
-    """The complaint a floor scan on its own cannot make.
+    """The complaint an arena scan on its own cannot make.
 
     `--icon` counted the figures it found and said nothing about how many it
     should have found, so a converted party of six that draws four was reported
@@ -481,11 +481,11 @@ def undrawn(roll: dict, blocks: int) -> list[str]:
     """
     if not roll:
         return ["The fight's combatant table could not be read, so the "
-                "figures on the floor were not checked against it"]
+                "figures in the arena were not checked against it"]
     out = []
     want = roll["party_in_window"] + roll["enemies_in_window"]
     if blocks < want:
-        out.append(f"The floor drew only {blocks} figures where the combatant "
+        out.append(f"The arena drew only {blocks} figures where the combatant "
                    f"table puts {want} inside the {roll['view']}x{roll['view']}"
                    f" window ({roll['party_in_window']} of the party, "
                    f"{roll['enemies_in_window']} enemies)")
@@ -503,7 +503,7 @@ def icon_evidence(sess, icon: bytes, slots: list[dict] | None = None,
 
     With `slots` (this disk's own eight icon entries), `charset`
     (`CHARPIC00`) and `roll` (the fight's combatant table), each figure on
-    the floor is compared cell by cell against the bitmaps its own save slot
+    the arena is compared cell by cell against the bitmaps its own save slot
     names -- which is the whole of `#184 (A converted combat icon's colours
     are proven in the game and its shapes are not)`.  Without them the two
     older readings below are all that is taken, which is what the unit tests
@@ -587,9 +587,9 @@ def icon_evidence(sess, icon: bytes, slots: list[dict] | None = None,
         # what `$A0` draws is `CHARPIC00`'s business, not the ROM's (#184).
         out["top_row"].append((r, c, [glyphs[code].hex() for code in block[:3]]))
         drawn = [bytes(glyphs[code]) for code in block]
-        shape = b"".join(drawn)
-        if shape not in out["distinct_figures"]:
-            out["distinct_figures"].append(shape)
+        figure = b"".join(drawn)
+        if figure not in out["distinct_figures"]:
+            out["distinct_figures"].append(figure)
         if slots is not None and charset is not None:
             out["figures"].append(
                 figure_reading(r, c, block, drawn, here, slots, charset,
@@ -601,11 +601,11 @@ def icon_evidence(sess, icon: bytes, slots: list[dict] | None = None,
 def figure_reading(row: int, col: int, block: bytes, drawn: list[bytes],
                    colours: bytes, slots: list[dict], charset: bytes,
                    who: dict | None) -> dict:
-    """One figure on the floor, against every icon the save carries.
+    """One figure in the arena, against every icon the save carries.
 
     The comparison the ticket asks for.  The engine hands each combatant its
     own run of nine sequential screen codes, so an icon's own codes never
-    appear on the floor -- but the *bitmaps* behind those nine codes are
+    appear in the arena -- but the *bitmaps* behind those nine codes are
     copied out of `CHARPIC00`, and `CHARPIC00[code * 8]` is exactly what the
     save's eighteen screen codes name.  So a figure is scored against both
     poses of all eight slots **and against the mirror of each**, and `exact`
@@ -614,10 +614,10 @@ def figure_reading(row: int, col: int, block: bytes, drawn: list[bytes],
     """
     scored = []
     for entry in slots:
-        shape = bytes.fromhex(entry["shape"])
+        figure = bytes.fromhex(entry["shape"])
         colour = bytes.fromhex(entry["colours"])
         for pose in range(2):
-            codes = shape[pose * 9:pose * 9 + 9]
+            codes = figure[pose * 9:pose * 9 + 9]
             hues = colour[pose * 9:pose * 9 + 9]
             want = [glyph_of(charset, code) for code in codes]
             for kind, cells, want_hues in (
@@ -692,12 +692,12 @@ def mirrored_colours(hues: bytes) -> bytes:
 def watch_turns(seen: list, evidence=None) -> object:
     """A fight tactic that takes a roll call every time the party is asked.
 
-    The floor is read once, before the first blow, and one reading cannot show
+    The arena is read once, before the first blow, and one reading cannot show
     the thing `#185` turns on: that the seven-square window **moves**, so which
     party members are drawn changes from turn to turn while the party itself
     does not.  Watching every command bar is what turns "they were probably
     off the window" into a measurement -- a turn where the table puts five of
-    six inside the window and the floor draws five party figures says it
+    six inside the window and the arena draws five party figures says it
     outright.
 
     Passes the turn, which is `Session.fight`'s own default: this is here to
@@ -711,7 +711,7 @@ def watch_turns(seen: list, evidence=None) -> object:
             if evidence is not None:
                 # A figure's *second* pose is only ever on the screen for
                 # part of a fight -- the position table's pose byte was 0 for
-                # all six party members when the first floor was read, and
+                # all six party members when the first arena was read, and
                 # three of the six had taken another value by the end of the
                 # same fight.  Each combatant's run in the combat character
                 # set is nine codes long, so the charset holds one pose at a
@@ -880,9 +880,9 @@ def run(args, log: Log) -> int:
                 steps += 1
             if sess.in_combat():
                 sess.settle(2)
-                codes = floor(sess)
-                log.emit("floor", rows=codes)
-                log.say("the combat floor, as screen codes:")
+                codes = arena(sess)
+                log.emit("arena", rows=codes)
+                log.say("the combat arena, as screen codes:")
                 for line in codes:
                     log.say(f"    {line}")
                 sess.kbd.screenshot(str(log.dir / f"{args.tag}-combat.png"))
@@ -919,7 +919,7 @@ def run(args, log: Log) -> int:
                     found = icon_evidence(sess, icon, slots=slots,
                                           charset=charset, roll=roll)
                     log.emit("icons", **found)
-                    log.say(f"figures on the floor: {found.get('blocks')}, "
+                    log.say(f"figures in the arena: {found.get('blocks')}, "
                             f"distinct: {found.get('distinct_figures')}")
                     for fig in found.get("figures", []):
                         who = fig["who"] or "an enemy"
@@ -967,7 +967,7 @@ def run(args, log: Log) -> int:
                     for line in undrawn(roll, roll["blocks"]):
                         log.say(f"  ** {line}")
                     # Only the figures whose pose byte has moved: the first
-                    # floor already reported every pose-0 figure, and what is
+                    # arena already reported every pose-0 figure, and what is
                     # unproven is the other nine of an icon's eighteen codes
                     # (#184).
                     for fig in roll.get("icons", {}).get("figures", []):
@@ -1055,7 +1055,7 @@ def main(argv=None) -> int:
                         "ENCAMP > SAVE write the party back, and copy that "
                         "disk here")
     p.add_argument("--icon", action="store_true",
-                   help="check the combat floor against the composed icon")
+                   help="check the combat arena against the composed icon")
     p.add_argument("--answer", default="NO",
                    help="what to answer a YES NO bar a walked step puts up")
     p.add_argument("--boat", default=None, choices=("STAY", "TAKE"),

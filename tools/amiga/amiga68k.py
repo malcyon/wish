@@ -2,7 +2,7 @@
 """Read a Gold Box Amiga executable: hunks, references, annotated 68000 code.
 
 `#28 (Decode an Amiga saved game, not just a character file)` found the
-saved game's shape by reading the save routine out of each title's
+saved game's layout by reading the save routine out of each title's
 executable, and this is the tool that read it -- kept because the next
 question about the Amiga port (a loader, a display routine, the item node's
 last two bytes) starts the same way.  It needs `capstone`, which the

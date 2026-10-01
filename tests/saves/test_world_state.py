@@ -173,11 +173,11 @@ def test_has_not_set_out_ignores_the_area_a_reader_substituted():
     """`from_dos` moves a Silver Blades party from the party menu to area 0x10,
     and `from_c64` leaves a Curse one at raw area 0; both are still parties
     that have not set out.  Pool of Radiance's and a later state are not."""
-    shape = dos_savegame.SAVE_SECRET_OF_THE_SILVER_BLADES
-    savgam = bytearray(shape.size)
-    dos_savegame.put_word(savgam, dos_savegame.INDOORS, 1, shape)
-    dos_savegame.put_position(savgam, 7, 13, 0, shape)
-    state = world_state.from_dos(bytes(savgam), shape)
+    container = dos_savegame.SAVE_SECRET_OF_THE_SILVER_BLADES
+    savgam = bytearray(container.size)
+    dos_savegame.put_word(savgam, dos_savegame.INDOORS, 1, container)
+    dos_savegame.put_position(savgam, 7, 13, 0, container)
+    state = world_state.from_dos(bytes(savgam), container)
     assert state.area == 0x10
     assert world_state.has_not_set_out(state)
 

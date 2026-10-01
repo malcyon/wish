@@ -15,7 +15,7 @@ relocated, and `keys` below prints it out of the player's own `LIBRARY`:
     tools/c64/sheetexit.py keys --title curse-of-the-azure-bonds
     tools/c64/sheetexit.py run --save DISK --out DIR --who NAME --then NAME
 
-`keys` finds the interpreter by shape and nothing else.  The anchor is the
+`keys` finds the interpreter by pattern and nothing else.  The anchor is the
 sheet's own menu string -- `ITEMS SPELLS TRADE DROP CURE HEAL EXIT`, or Pool
 of Radiance's five-entry version -- and from there: the `LDX #lo / LDY #hi`
 that hands the table to the menu builder, the interpreter's own

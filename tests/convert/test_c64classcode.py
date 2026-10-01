@@ -44,7 +44,7 @@ def _c64_record(**fields) -> CharacterRecord:
 
 
 def test_a_trained_curse_records_zeroed_code_reads_repaired():
-    """TRAVIS's shape: a dwarf thief 6 / fighter 5 whose code reads 0, what
+    """TRAVIS's case: a dwarf thief 6 / fighter 5 whose code reads 0, what
     Curse's own trainer leaves. The neutral record carries 14
     (fighter/thief), marked `COMPUTED` rather than `COPIED`, so anything
     reading the neutral value -- not only `goldbox.dos_codec.write` -- sees the
@@ -70,13 +70,13 @@ def test_silas_class_encoding_reads_copied_and_unchanged():
 
 
 def test_a_pool_of_radiance_records_disagreement_is_left_alone():
-    """`DWARVEN FIGHTER`'s own shape -- fighter bits, cleric code -- is a
+    """`DWARVEN FIGHTER`'s own case -- fighter bits, cleric code -- is a
     disagreement Pool of Radiance's own NPCs ship with, not a Curse-trainer
     artifact (`docs/50-experiments.md`, "A losslessness bug, found by
     taking the NPCs seriously": *"if the game ships records like that, an
     editor that forces them into agreement cannot represent them."*)
 
-    A blanket, title-agnostic repair fired on this shape too -- `class_bits`
+    A blanket, title-agnostic repair fired on this case too -- `class_bits`
     `0x08` (fighter) and `char_class` 0 (cleric) came back **2**, a
     fabricated code nobody wrote, because nothing distinguished Curse's
     stale byte from a title that never stops maintaining its own. Pool of

@@ -3,7 +3,7 @@
 `#130 (A converted DOS party arrives with six identical combat figures, not
 its own)`: every character a DOS import produced got the same composed
 default, so a party of an archer, a robed mage and four fighters walked onto
-the combat floor as six identical unarmed men.  `IconParts.dos_icon` is what
+the combat arena as six identical unarmed men.  `IconParts.dos_icon` is what
 gives each of them his own figure back.
 
 What these check is what a player would see go wrong: two characters who
@@ -54,7 +54,7 @@ def tables():
 
 @pytest.fixture(scope="module")
 def legal() -> frozenset[bytes]:
-    """Every shape any sequence of ICON menu choices reaches, shared with
+    """Every figure any sequence of ICON menu choices reaches, shared with
     every other test in the process."""
     return iconcodes.legal_screen_codes()
 

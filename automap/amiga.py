@@ -42,7 +42,7 @@ whatever shell the guest hands it to, and PowerShell; a batch full of
 backslashed Windows paths is not something to send through three quoting
 layers by hand.
 
-**The `ssh` is this project's test rig, not the shape of the product.** Wish and
+**The `ssh` is this project's test rig, not the design of the product.** Wish and
 WinUAE on one Windows machine is a local pipe opened by a local process, which
 is `WinuaePipe(connection="local")`; the Linux-to-VM arrangement is the awkward
 case and it is where the round trip comes from.
@@ -1134,7 +1134,7 @@ Write-Output '<<end>>'
     def batch(self, lines: list[str],
               fetch: list[tuple[str, str]] | None = None
               ) -> tuple[str, dict[str, bytes | None]]:
-        """`WinuaeDebugger.batch`'s shape, so `AmigaTarget` needs neither told.
+        """`WinuaeDebugger.batch`'s interface, so `AmigaTarget` needs neither told.
 
         The two transports answer the same call and differ in one thing a
         caller can see: `halts_machine`. **Nothing here appends a `g`**, and a
@@ -1858,7 +1858,7 @@ def geo_library(data: bytes) -> dict[int, bytes]:
 
     A pair naming a block that is not `GEO_SIZE` bytes is dropped rather than
     returned short: the index is the container's own claim about itself and a
-    block of another shape is not a map, whatever the index says.
+    block of another kind is not a map, whatever the index says.
 
     **An index too short for the count it declares is an error, not an empty
     library.** Slicing past the end of `bytes` gives `b""`, which reads as id
@@ -2051,7 +2051,7 @@ class AmigaTarget:
         than a few percent of one.
 
         A block may name its memory -- `(addr, length, "io")` -- because the
-        C64 side's callers pass that shape. **The name is ignored**, which is
+        C64 side's callers pass that form. **The name is ignored**, which is
         the documented behaviour for a backend that cannot tell two memories
         apart, and here it is not a limitation: there is only one memory.
 
@@ -2060,7 +2060,7 @@ class AmigaTarget:
         back in the `m` packet -- so a transport carrying a `read_memory` is
         asked for each block directly and no file is ever named. It is one
         packet per block rather than one round trip for the batch, which is the
-        honest shape: batching bought the WinUAE routes a keypress, a scheduled
+        honest design: batching bought the WinUAE routes a keypress, a scheduled
         task and a console batch typed at 700 ms a line, and here it would buy
         one frame's wait. `FsuaeGdb.read_memory` says why the capability is not
         simply "has a `memory` method".

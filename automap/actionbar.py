@@ -15,7 +15,7 @@ game in the other window and has to be dismissed before the map is usable
 again. The only dialog left is the confirmation an irreversible action asks
 first, because that one needs an answer.
 
-`FastTravelBar` is the same shape for the one action that is not in that row: the
+`FastTravelBar` has the same form for the one action that is not in that row: the
 Fast Travel row. It asks nothing before it writes: the game itself stops and
 asks for the disk it wants, so the confirmation was a question the game was
 about to ask again. What travelling costs is the Fast Travel button's own
@@ -281,7 +281,7 @@ VERIFY_SECONDS = 30.0
 WAIT_SECONDS = 2.0
 
 #: How often to look while waiting. Each look is a round trip, so this is a
-#: floor rather than a period: on this machine a look costs 5-20 ms anyway.
+#: minimum rather than a period: on this machine a look costs 5-20 ms anyway.
 WAIT_EVERY = 0.02
 
 #: The Fast Travel button's own help text, and Donald's wording exactly. The

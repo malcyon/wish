@@ -63,8 +63,8 @@ def deltas_for(size: int) -> "dos_port.DosDeltas":
     :data:`AMIGA_DELTAS` because it has no `AmigaDeltas` of its own: it is
     read straight through the DOS field table (:func:`to_dos_record`).
 
-    Answers with the **DOS** shape rather than the Amiga one, because that
-    is the shape carrying the `key` a conversion is registered against
+    Answers with the **DOS** deltas rather than the Amiga one, because that
+    is the one carrying the `key` a conversion is registered against
     (`editor/convert.py`'s `Direction.source_key`) and the one both Amiga
     readers already re-cut into.
     """
@@ -129,6 +129,6 @@ WRITES: "tuple[dos_port.DosDeltas, ...]" = CONVERTS
 #: The other three characters have an empty book on both ports.
 #:
 #: Curse does **not** do this: its Amiga spellbook is 100 bytes of 0 and 1 at
-#: `0x079`, DOS's own shape, and the ids that come out of the eleven pregens
+#: `0x079`, DOS's own form, and the ids that come out of the eleven pregens
 #: are clean class-coherent sets -- KAROLYN the cleric holds 1-8, 22-28 and
 #: 37-44, ARIEL the magic-user holds 10, 11, 12, 15, 18, 21, 31, 34.  So this

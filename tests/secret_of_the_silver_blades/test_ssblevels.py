@@ -205,7 +205,7 @@ def test_the_trainer_gave_the_bonus_to_the_dwarf_and_to_nobody_else():
     `RACIAL_SAVE_BONUS_MEASURED`.
 
     Give the gnome the bonus too -- `sturdy_races=(3, 4, 5)`, Pool of
-    Radiance's shape under this title's numbering -- and rows 2 and 3 fail.
+    Radiance's form under this title's numbering -- and rows 2 and 3 fail.
     """
     for race, wrote in MALACHITE_PRESSES:
         got = levels.saving_throws({"thief": 9, "fighter": 7}, race, 17,
@@ -220,7 +220,7 @@ def test_the_trainer_gave_the_bonus_to_the_dwarf_and_to_nobody_else():
 
 # --- `#89`'s trainer inputs -------------------------------------------------
 # The five fields `tests/secret_of_the_silver_blades/test_silverblades.py` checks live against `GEN` and
-# `ECL65`; these check the shape of what landed here without needing a disk.
+# `ECL65`; these check the form of what landed here without needing a disk.
 
 CURSE = levels.CURSE_OF_THE_AZURE_BONDS
 
@@ -265,8 +265,8 @@ def test_the_seven_trainer_deltas_fields_are_curses_own():
     Blades' own `GEN` as instruction-for-instruction or byte-for-byte the
     same routine as Curse's -- the hit die (`$1808` = Curse's `$15E1`), its
     divide (`$0D96` = Curse's `$11AB`), one press raising every ready class
-    (`$156F`, Curse's `$14F8` shape), `attack_forms` written outright
-    (`$13EB`, Curse's `$1909` shape) and `spells_castable` never stored
+    (`$156F`, Curse's `$14F8` form), `attack_forms` written outright
+    (`$13EB`, Curse's `$1909` form) and `spells_castable` never stored
     (same absrefsweep result as Curse's). So Silver Blades takes Curse's
     values on all seven, not Pool of Radiance's silent defaults.
     """

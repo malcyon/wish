@@ -16,7 +16,7 @@ This drives the same Tilverton `PUNCH BARKEEP` fight `#334 (The session
 driver cannot fight in Curse or Silver Blades, and says the party is not in a
 fight while it is standing on the combat floor)` proved
 (`tools/c64/laterbattle.py`, `cited/334/run5`), and reads those thirteen
-bytes before combat, on first reaching the floor, and again after every
+bytes before combat, on first reaching the arena, and again after every
 `QUICK`-resolved turn -- so a change is seen against a baseline rather than
 read once and trusted.
 
@@ -142,14 +142,14 @@ def main(argv=None) -> int:
             if state.kind == S.BAR_PRESS or s is None:
                 sess.press_kernal(0x0D)
             sess.settle(4.0)
-        run.dump("combat-floor")
+        run.dump("combat-arena")
         run.log("combat", on_the_floor=run.in_combat(), mode=sess.mode(),
                 row24=run.row24())
         if not run.in_combat():
             rc = 2
             return rc
-        run.probe("combat-floor")
-        run.read_rolls("combat-floor")
+        run.probe("combat-arena")
+        run.read_rolls("combat-arena")
         run.quickfight_with_rolls(args.turns)
         run.probe("after-quick")
         run.read_rolls("after-quick")

@@ -102,7 +102,7 @@ def local_clear_bar(sess, run, accept: bool = False) -> str | None:
 def reach_fight(run, sess) -> bool | None:
     """Teleport to `15,11`, step onto `15,12` and watch 90 s for the fight.
 
-    True once the combat floor is up, False when 90 s pass without one, None
+    True once the combat arena is up, False when 90 s pass without one, None
     when the teleport or the step did not take (an escape hatch, logged).
     """
     with sess.mon(8) as m:
@@ -216,7 +216,7 @@ def main(argv: list[str] | None = None) -> int:
             rc = 0
             return rc
 
-        run.log("probe-on-the-floor", **{k: v for k, v in
+        run.log("probe-in-the-arena", **{k: v for k, v in
                                          run.probe("combat").items()})
         run.log("driving-fight")
         result = sess.fight(budget=300.0, tactic=S.Session.melee_turn)

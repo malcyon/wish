@@ -43,9 +43,9 @@ MARGIN = 26
 
 #: The smallest square the area map is drawn at. Everything here is a fraction
 #: of the cell, so the drawing survives the shrink; what does not survive is
-#: the reading, and 20 is where a door leaf is still a leaf. The floor exists
-#: because 596px of map was a hard floor under the whole window, and on a
-#: 1080p Windows desktop at 125% that floor put the menu bar off the top of
+#: the reading, and 20 is where a door leaf is still a leaf. The minimum exists
+#: because 596px of map was a hard minimum size for the whole window, and on a
+#: 1080p Windows desktop at 125% that minimum put the menu bar off the top of
 #: the screen.
 CELL_MIN = 20
 
@@ -87,7 +87,7 @@ ROCK_FILL = "#c3d0dd"
 ROCK_HATCH = "#68809a"    # the hatching pen: ink thinned, never the wall ink
 
 #: Hatch lines per cell, and the closest they may come in pixels measured
-#: **across** the lines. Below the floor the pattern fills in and the square is
+#: **across** the lines. Below the minimum the pattern fills in and the square is
 #: drawn as a flat fill instead, which is honest about what it has become.
 #: Cross-hatching lays down two sets and so is spaced wider: at the single
 #: pattern's spacing it stops reading as strokes and becomes a grey.

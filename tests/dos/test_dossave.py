@@ -450,7 +450,7 @@ def test_item_names_are_spelled_out_in_the_item_record():
     banded mail -- and `seen >= 10` is what stops this passing on a set of specimens too
     small to have found anything. Dropping it to two to reach the specimen
     tree would leave the test green and saying nothing, which is worse than
-    reading records whose provenance is unknown for a claim about the *shape*
+    reading records whose provenance is unknown for a claim about the *form*
     of a field rather than its value. What would move it is a `#249` party
     driven through a shop in New Phlan: ten items bought and saved, added to
     the specimen tree.
@@ -1000,7 +1000,7 @@ def test_a_joined_scroll_is_one_item_and_the_plate_mail_after_it_is_read(
     assert plate.display_line == "Plate Mail +1 "
 
 
-# --- an item file present and the wrong shape is a defect, not a gap (#221) ----
+# --- an item file present and the wrong size is a defect, not a gap (#221) ----
 # `min(count, len(itm) // stride)` used to paper over exactly this: a sibling
 # file that exists but does not reconcile with the record's own item count
 # read back as fewer items, with nothing to say why. #113's fix was to find
@@ -1025,7 +1025,7 @@ def test_an_item_file_that_is_present_and_empty_is_refused(tmp_path):
 
     `#221 (An item file that does not match its own count is read silently)`
     turns on telling "no sibling file" from "a sibling file that is the wrong
-    shape", and a zero-byte file is the one that looks like both.  `_sibling`
+    size", and a zero-byte file is the one that looks like both.  `_sibling`
     handed back `b""` for either, which is why the check had to move out of it.
     """
     from goldbox import dos_codec

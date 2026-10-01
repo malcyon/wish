@@ -65,10 +65,10 @@ C64_DISKS = (
 )
 
 
-def dos_offsets(shape) -> tuple[int, int]:
+def dos_offsets(deltas) -> tuple[int, int]:
     """(control, share) in one DOS title's own record.
 
-    Derived from the shape rather than tabulated per title: the run
+    Derived from the deltas rather than tabulated per title: the run
     `goldbox/dos_port.py` calls `field_83_87` is five bytes in Pool of
     Radiance and Curse and four in Silver Blades and Pools of Darkness, and
     it is the **first** byte that the later two dropped -- Curse's own Pool
@@ -78,7 +78,7 @@ def dos_offsets(shape) -> tuple[int, int]:
     which reproduces the four offsets `tools/dos/dosbyteimm.py` finds the
     compares at: `0x084`, `0x0F7`, `0x0FF`, `0x147`.
     """
-    field = dl.FIELDS_BY_NAME_FOR[shape.key]["field_83_87"]
+    field = dl.FIELDS_BY_NAME_FOR[deltas.key]["field_83_87"]
     control = field.offset + field.size - 4
     return control, control + 1
 
@@ -178,10 +178,10 @@ def sweep_dos(want_built: bool) -> int:
               f"size as a title read here, and not the same id space")
     by_title = collections.defaultdict(list)
     for spec in specs:
-        by_title[spec.shape.title].append(spec)
+        by_title[spec.deltas.title].append(spec)
     for title in sorted(by_title):
         specs = by_title[title]
-        control, share = dos_offsets(specs[0].shape)
+        control, share = dos_offsets(specs[0].deltas)
         print(f"\n  {title} -- control {control:#05x}, share {share:#05x}, "
               f"{len(specs)} records")
         partition = collections.Counter(s.data[control] for s in specs)

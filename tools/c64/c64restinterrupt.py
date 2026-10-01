@@ -643,7 +643,7 @@ def show_code(args) -> int:
         except Exception as exc:
             print(f"  {script:<6} could not be walked: {exc}")
             continue
-        shape = ("never checked" if values == {0}
+        summary = ("never checked" if values == {0}
                  else "always checked" if 0 not in values
                  else "conditional")
         dead = [x for x in inert_tests(script, root) if x["decides_nothing"]]
@@ -651,7 +651,7 @@ def show_code(args) -> int:
                 if dead else "")
         print(f"  {script:<6} $6DD2 in "
               f"{{{', '.join(str(v) for v in sorted(values)) or '-'}}}"
-              f"   {shape}{note}")
+              f"   {summary}{note}")
         for x in dead:
             print(f"           ${x['at']:04X}  {x['text']:<8s} both arms "
                   f"arrive at ${x['arrives'][0]:04X}")

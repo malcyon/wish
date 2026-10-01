@@ -15,7 +15,7 @@ is only evidence if we know who wrote it" has the whole account; read it
 before adding anything here.
 
 **The tree lives outside the repository, at `$WISH_SPECIMENS` or
-`~/wish-specimens` by default** -- the same shape as `$POR_DISKS` and
+`~/wish-specimens` by default** -- the same way as `$POR_DISKS` and
 `automap.paths.find_disks()`, not a fourth way.  scratch is not kept and has
 been lost twice; this is not that.  The game's data must never be committed,
 so only this tool and its tests live in `tools/` and `tests/` -- the tree
@@ -35,7 +35,7 @@ an editor, and the hash of every file it holds.  `add` refuses to create one
 without the required fields; `check` and `list` flag any file in the tree
 that no `provenance.toml` accounts for.
 
-Shape:
+Layout:
 
     $WISH_SPECIMENS/
       DO-NOT-EDIT.md
@@ -57,8 +57,8 @@ or `.dat` the game itself wrote, alongside the one it was made from), so it
 gets its own directory and `provenance.toml` sits inside it, unambiguous. The
 tree tells the two shapes apart structurally, and **the two add up rather than
 excluding each other**: a platform directory's own
-`WISH-SPEC-*.provenance.toml` files are specimens of the C64 shape, and every
-subdirectory holding a `provenance.toml` is one of the other shape, whether or
+`WISH-SPEC-*.provenance.toml` files are specimens of the C64 kind, and every
+subdirectory holding a `provenance.toml` is one of the other kind, whether or
 not the flat ones are there too.  Reading the flat ones and stopping is what
 left a directory-shaped specimen under `por-c64` hashed by nothing
 (`#450 (A directory-shaped specimen under por-c64 is invisible to
@@ -110,7 +110,7 @@ PLATFORMS = ("c64", "dos", "amiga")
 #: independently wrote by hand for #28 (Decode an Amiga saved game, not just a
 #: character file) and #331 (Amiga Silver Blades asks a journal word before it
 #: will adventure, so the title cannot be driven past its party menu) before
-#: this tool took Amiga specimens at all, and both picked this same shape.
+#: this tool took Amiga specimens at all, and both picked this same form.
 #: `add` refuses a title that is not here rather than guessing an abbreviation.
 #: `pod` is the fourth, added for #575 so the engine-written Pools of
 #: Darkness containers a `tools/dos/dospod.py` drive left in scratch could be
@@ -130,7 +130,7 @@ REQUIRED_FIELDS = ("name", "platform", "title", "issue", "made_by", "what",
 
 
 def tree_root() -> pathlib.Path:
-    """`$WISH_SPECIMENS`, or `~/wish-specimens` -- `automap.paths`'s shape,
+    """`$WISH_SPECIMENS`, or `~/wish-specimens` -- `automap.paths`'s way,
     not a fourth way."""
     env = os.environ.get("WISH_SPECIMENS")
     return pathlib.Path(env) if env else pathlib.Path.home() / "wish-specimens"
@@ -388,7 +388,7 @@ def add(platform: str, name: str, sources: list[pathlib.Path], *,
 def _c64_specimens(pdir: pathlib.Path) -> list[str]:
     """C64 specimen names, from `WISH-SPEC-<name>.provenance.toml` sitting
     directly in `pdir` -- also how a platform-title directory is told apart
-    from the DOS/Amiga shape, which has no such file at its own top level."""
+    from the DOS/Amiga kind, which has no such file at its own top level."""
     names = []
     for prov in sorted(pdir.glob(f"WISH-SPEC-*.{PROVENANCE_NAME}")):
         names.append(prov.name[len("WISH-SPEC-"):-len(f".{PROVENANCE_NAME}")])
@@ -411,7 +411,7 @@ def _specimen_dirs(root: pathlib.Path) -> list[pathlib.Path]:
     **The two shapes add up rather than excluding each other.**  `por-c64`
     holds twenty flat `.d64` specimens *and* one directory of memory captures
     (`#286`), and while a non-empty flat list meant "this directory is the C64
-    shape, stop here" that whole specimen was listed by nothing and hashed by
+    kind, stop here" that whole specimen was listed by nothing and hashed by
     nothing -- `#450 (A directory-shaped specimen under por-c64 is invisible
     to specimens.py check, so eight files in the tree are never verified)`.
     """

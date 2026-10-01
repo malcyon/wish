@@ -176,7 +176,7 @@ def test_a_fasttravel_to_a_window_puts_the_party_on_the_windows_square():
 
 def test_a_window_with_no_overland_square_says_so():
     """A stand-in area with no `overland` -- none of the three real windows
-    are in this state any more, so this is the shape rather than a live
+    are in this state any more, so this is the form rather than a live
     case."""
     class _NoOverlandWindow:
         id = 63
@@ -363,7 +363,7 @@ def test_the_wall_pins_are_cleared_on_every_fast_travel():
     `ECL0A` (Valhingen Graveyard) pin one flag apiece at `$49E7`-`$49E9` so
     `DUNGEON $14CB` skips relocating that wall piece, and each clears its own
     pin only on the way out -- the part `FastTravel` skips by entering
-    `NEWECL` at its tail (`#179`). Cleared unconditionally, the same shape as
+    `NEWECL` at its tail (`#179`). Cleared unconditionally, the same form as
     `walls_slot` (`#156`): a piece nobody pinned is already zero,
     so the write costs nothing there."""
     writes = actions.newecl_writes(from_area=10, to_area=18)   # Graveyard to Podol

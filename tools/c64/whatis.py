@@ -38,7 +38,7 @@ from automap.paths import disk_globs, tool_disks  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 
 #: Below this many overlapping bytes a percentage says nothing.
-FLOOR = 64
+MINIMUM_CODES = 64
 
 
 def game_disks(root: str) -> list[str]:
@@ -103,7 +103,7 @@ def main(argv: list[str]) -> int:
             continue
         off = load - args.base
         n = min(len(body), len(blob) - off)
-        if n < FLOOR:
+        if n < MINIMUM_CODES:
             continue
         same = sum(x == y for x, y in zip(blob[off:off + n], body[:n]))
         rows.append((same / n, same, n, name, load))

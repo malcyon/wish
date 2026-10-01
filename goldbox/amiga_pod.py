@@ -452,7 +452,7 @@ HP_CURRENT = 0x191
 MOVEMENT_CURRENT = 0x192
 
 #: Damage and armour class sit on *odd* offsets two apart, which is the same
-#: base/current pair shape the abilities use at 0x070: the sheet draws the
+#: base/current pair form the abilities use at 0x070: the sheet draws the
 #: second byte of each pair. So the damage triple is three pairs at 0x0AC and
 #: armour class is a pair at 0x0B2.
 PAIR_CURRENT = 1
@@ -700,7 +700,7 @@ ITEMS = 0x0B6
 CONFIDENCE = {
     "name": "CONFIRMED",
     "abilities": "CONFIRMED",
-    "exceptional_strength": "PROBABLE",   # shape only; never varied on screen
+    "exceptional_strength": "PROBABLE",   # form only; never varied on screen
     "hit_points_max": "CONFIRMED",
     "hit_points_current": "CONFIRMED",
     "movement": "CONFIRMED",
@@ -1952,7 +1952,7 @@ class Report(neutral.Report):
     """Where every non-zero byte of the `.pc` came from, and what stayed.
 
     The same bargain `goldbox/c64_codec.py` strikes in the other direction, in the
-    one shape `goldbox/neutral.py` gives every direction: a field the Amiga cannot
+    one form `goldbox/neutral.py` gives every direction: a field the Amiga cannot
     hold is *named*, never dropped quietly.  `unaccounted` is the acceptance
     test -- `docs/124-amiga-port.md` phase 6 asks for a provenance report with
     no "template" category, and a byte is either a field a probe put on the
@@ -2240,7 +2240,7 @@ def pod_write_field_disposition() -> dict[str, str]:
 
     The test that keeps this module honest: a field `goldbox/neutral.py` declares
     and this table does not name would be a field silently dropped.  The
-    shape is `goldbox/neutral.py`'s, so every direction reports the same way.
+    form is `goldbox/neutral.py`'s, so every direction reports the same way.
     """
     return neutral.disposition(
         POD_WRITE_DIRECT, POD_WRITE_TRANSFORMED + POD_WRITE_WHEN_PRESENT,

@@ -22,7 +22,7 @@ routine that recomputes it (`0x3A2C7`) walks `next` at `0x02A` and never
 `0x03F` -- so a file holding a bundle has **more 67-byte records than the
 record's `item_count`**, and a reader that takes the first `item_count` of
 them reads a bundle's spell nodes as items and loses that many real ones off
-the end.  `walk` below is the engine's own shape; `slice_naively` is the other
+the end.  `walk` below is the engine's own form; `slice_naively` is the other
 one, and `sweep` reports where they disagree.
 
 `sites` prints the code this rests on, with the five 63-byte titles as
@@ -151,8 +151,8 @@ def siblings(root: pathlib.Path):
             continue
         if len(record) not in sizes:
             continue
-        shape = dos_port.deltas_for(len(record))
-        item_path = path.with_suffix(shape.item_suffix)
+        deltas = dos_port.deltas_for(len(record))
+        item_path = path.with_suffix(deltas.item_suffix)
         if not item_path.is_file():
             continue
         yield path, record, item_path.read_bytes()
@@ -206,9 +206,9 @@ def cmd_read(args) -> int:
     for name in args.roots:
         path = pathlib.Path(name)
         record = path.read_bytes()
-        shape = dos_port.deltas_for(len(record))
-        items = path.with_suffix(shape.item_suffix).read_bytes()
-        stride = shape.item_size
+        deltas = dos_port.deltas_for(len(record))
+        items = path.with_suffix(deltas.item_suffix).read_bytes()
+        stride = deltas.item_size
         print(f"=== {path.name}: {len(items)} bytes at {stride}, "
               f"item_count {item_count(record)}")
         for entry in walk(items, stride):

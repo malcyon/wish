@@ -93,7 +93,7 @@ def stale_reason(path: pathlib.Path) -> str | None:
                  if name in parts), None)
 
 
-def masked(shape: dos_port.DosDeltas) -> set[int]:
+def masked(deltas: dos_port.DosDeltas) -> set[int]:
     """The offsets the writer itself says it does not take from the source.
 
     The round trip's mask comes from the writer's own declarations --
@@ -114,7 +114,7 @@ def masked(shape: dos_port.DosDeltas) -> set[int]:
     the split `#304` measured and closed -- the share is 1 for a character
     the player has taken through MODIFY and 0 for one he has not.
     """
-    table = dos_port.FIELDS_BY_NAME_FOR[shape.key]
+    table = dos_port.FIELDS_BY_NAME_FOR[deltas.key]
     out: set[int] = set()
     named = ([n for n, _ in dos_codec.WRITE_UNSOURCED + dos_codec.WRITE_UNSOURCED_LATER]
              + [n for n, _, _, _ in dos_codec.WRITE_DEFAULTS
@@ -126,7 +126,7 @@ def masked(shape: dos_port.DosDeltas) -> set[int]:
     return out
 
 
-def name_padding(shape: dos_port.DosDeltas, original: bytes) -> set[int]:
+def name_padding(deltas: dos_port.DosDeltas, original: bytes) -> set[int]:
     """The name bytes past the count byte, which the writer zeroes.
 
     The neutral record carries a *name*, so what the engine happened to leave
@@ -134,30 +134,30 @@ def name_padding(shape: dos_port.DosDeltas, original: bytes) -> set[int]:
     space at the seventh byte over a count of six.  Masking only the bytes
     past the count keeps every byte of the name itself under test.
     """
-    table = dos_port.FIELDS_BY_NAME_FOR[shape.key]
+    table = dos_port.FIELDS_BY_NAME_FOR[deltas.key]
     text = table["name_text"]
     count = original[table["name_length"].offset]
     return set(range(text.offset + count, text.end))
 
 
-def field_at(shape: dos_port.DosDeltas, offset: int) -> str:
-    for f in dos_port.LAYOUTS[shape.key]:
+def field_at(deltas: dos_port.DosDeltas, offset: int) -> str:
+    for f in dos_port.LAYOUTS[deltas.key]:
         if f.offset <= offset < f.end:
             return f.name
     return "?"
 
 
-def compare(shape: dos_port.DosDeltas, original: bytes, written: bytes,
+def compare(deltas: dos_port.DosDeltas, original: bytes, written: bytes,
             skip_name_padding: bool = True) -> dict[str, list[int]]:
     """Offsets that differ, grouped by the field they land in, after the
     writer's own mask."""
-    mask = masked(shape)
+    mask = masked(deltas)
     if skip_name_padding:
-        mask |= name_padding(shape, original)
+        mask |= name_padding(deltas, original)
     out: dict[str, list[int]] = collections.defaultdict(list)
     for i in range(min(len(original), len(written))):
         if original[i] != written[i] and i not in mask:
-            out[field_at(shape, i)].append(i)
+            out[field_at(deltas, i)].append(i)
     return dict(out)
 
 
@@ -278,12 +278,12 @@ def from_c64(disk: pathlib.Path, out: pathlib.Path, slot: str,
     if not force and any(out.glob("CHRDAT*")):
         print(f"{out} already holds CHRDAT files; pass --force to replace")
         return 1
-    shape = dos_codec.write_deltas(party[0])
+    deltas = dos_codec.write_deltas(party[0])
     # DOS lists the party from the other end: the C64 shows the highest slot
     # first and DOS shows CHRDAT<slot>1 first, so the file order is the
     # reverse of the slot order -- the same reversal `write_dos_save` makes.
     party = list(reversed(party))
-    order = dos_port.FIELDS_BY_NAME_FOR[shape.key]["combat_figure"].offset
+    order = dos_port.FIELDS_BY_NAME_FOR[deltas.key]["combat_figure"].offset
     for n, char in enumerate(party, start=1):
         rec, itm, spc, report = dos_codec.write(char)
         rec = bytearray(rec)
@@ -291,13 +291,13 @@ def from_c64(disk: pathlib.Path, out: pathlib.Path, slot: str,
         stem = out / f"CHRDAT{slot}{n}"
         stem.with_suffix(".SAV").write_bytes(bytes(rec))
         if itm:
-            stem.with_suffix(shape.item_suffix).write_bytes(itm)
+            stem.with_suffix(deltas.item_suffix).write_bytes(itm)
         if spc:
-            stem.with_suffix(shape.effect_suffix).write_bytes(spc)
+            stem.with_suffix(deltas.effect_suffix).write_bytes(spc)
         print(f"  {stem.name}{'':2s} {char.get('name'):16s} "
               f"{len(rec)} + {len(itm)} + {len(spc)} bytes, "
               f"{len(report.dropped)} reported")
-    print(f"{shape.title}: {len(party)} records in {out}")
+    print(f"{deltas.title}: {len(party)} records in {out}")
     print("No SAVGAM was written, and the DOS engine loads a party from one: "
           "this mode measures the records alone. goldbox.dos_codec.new_dos_save "
           "builds the whole save for every title this writer writes (#299)")
@@ -308,9 +308,9 @@ def loop(disk: pathlib.Path, folder: pathlib.Path, slot: str) -> int:
     """The full loop: DOS records, out to the C64, back from the C64 save the
     engine wrote, and compared with where they started."""
     game, party = _c64_party(disk)
-    shape = dos_codec.write_deltas(party[0])
+    deltas = dos_codec.write_deltas(party[0])
     party = list(reversed(party))
-    print(f"{disk.name}: {shape.title}, {len(party)} characters")
+    print(f"{disk.name}: {deltas.title}, {len(party)} characters")
     bad = 0
     for n, char in enumerate(party, start=1):
         source = folder / f"CHRDAT{slot}{n}.SAV"
@@ -320,14 +320,14 @@ def loop(disk: pathlib.Path, folder: pathlib.Path, slot: str) -> int:
             continue
         original = dos_codec.read_character(source)
         rec, _itm, _spc, _report = dos_codec.write(char)
-        differs = compare(shape, original.to_bytes(), rec)
+        differs = compare(deltas, original.to_bytes(), rec)
         # `combat_figure` -- the combat-icon slot, #305 -- is renumbered by
         # the file position on the way out, which is the reversal above and
         # not a loss; the DOS loader re-allocates it in file order anyway.
-        table = dos_port.FIELDS_BY_NAME_FOR[shape.key]
+        table = dos_port.FIELDS_BY_NAME_FOR[deltas.key]
         rec = bytearray(rec)
         rec[table["combat_figure"].offset] = original.get("combat_figure")
-        differs = compare(shape, original.to_bytes(), bytes(rec))
+        differs = compare(deltas, original.to_bytes(), bytes(rec))
         if differs:
             bad += 1
         print(f"  {source.name} {original.name:16s} "

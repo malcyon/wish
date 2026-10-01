@@ -4,7 +4,7 @@
 `#130 (A converted DOS party arrives with six identical combat figures, not
 its own)`: the shipped conversion writes one composed default into all six
 slots, so a DOS party of an archer, a robed mage and four fighters arrives on
-the combat floor as six identical unarmed men.  This builds the same disk
+the combat arena as six identical unarmed men.  This builds the same disk
 `tools/dos/dosdisk.py` builds and then gives every character the figure his own
 DOS record names, through `goldbox.iconparts.IconParts.dos_icon`.
 
@@ -256,13 +256,13 @@ def mixed_png(disks: pathlib.Path, path: pathlib.Path, scale: int = 6) -> None:
     per_class = dos_part_colours(bytes.fromhex("91a2b3c4e6f7"), tables)
     rows = []
     for row in mixed_rows(parts, tables):
-        shape = bytes([SPACE] * 18)
-        shape = parts.apply(shape, row["weapon_size"], "weapon",
+        figure = bytes([SPACE] * 18)
+        figure = parts.apply(figure, row["weapon_size"], "weapon",
                             row["weapon_option"])
-        shape = parts.apply(shape, row["head_size"], "head",
+        figure = parts.apply(figure, row["head_size"], "head",
                             row["head_option"])
         seed = bytes([DEFAULT_BACKGROUND | MULTICOLOUR] * 18)
-        icon = icons.Icon(shape + parts.colours_for(shape, per_class, seed))
+        icon = icons.Icon(figure + parts.colours_for(figure, per_class, seed))
         rows.append((f"small figure, "
                      f"{'large-only ' if row['big'] else 'small '}"
                      f"{row['kind']} {row['option']}",

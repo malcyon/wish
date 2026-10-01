@@ -21,7 +21,7 @@ The disks are opened **read-only**; nothing is written anywhere but `--out`.
 What counts as a specimen
 -------------------------
 A file of exactly `AMIGA_POR_RECORD_SIZE` (288) bytes in a `save/` drawer, on
-a disk that carries one.  That is a shape test rather than a name test on
+a disk that carries one.  That is a form test rather than a name test on
 purpose: the six on disk 1 are `CHRDATA<n>.sav` and the fourteen on the Curse
 disk are arbitrary `.cha` names, and neither list is a rule.  Anything else of
 that size on a Gold Box disk would be a find rather than a miss, so it is

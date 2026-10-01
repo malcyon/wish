@@ -45,7 +45,7 @@ wall (measured against a live machine, `#207`).
 Reads the scripts off the player's own disks, the way `tools/areas/eclwalk.py` and
 `tools/areas/eclexitkinds.py` do; nothing here is committed game data, only the
 few integers -- an area id, an entry number, a square -- that the generated
-table carries, the same shape `automap/fasttravel.py`'s address rows already
+table carries, the same form `automap/fasttravel.py`'s address rows already
 are.
 """
 from __future__ import annotations

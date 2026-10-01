@@ -487,7 +487,7 @@ def appointments(source) -> tuple[Appointment, ...]:
 #
 # A quest the City Council never hears about: an area script hands it out, an
 # area script closes it, and no ledger byte moves. Ohlo's potion errand in the
-# Slums is the first one found (#157) and the shape is built for the rest.
+# Slums is the first one found (#157) and the structure is built for the rest.
 #
 # **The accept flag and the finish flag are not in the same half of the page.**
 # `$4A00`-`$4A1F` is scratch the engine zeroes on every area change -- the

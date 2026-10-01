@@ -50,7 +50,7 @@ def test_the_captured_character_sums_the_way_the_routine_does():
     (brutus,) = party.parts
     assert brutus.name == "BRUTUS"
     # THAC0 18, so a field of 42: 5 x (42 - 39) = 15, plus 11 hit points
-    # maximum. A fighter, so no class term, and AC 9 is nowhere near the floor.
+    # maximum. A fighter, so no class term, and AC 9 is nowhere near the minimum.
     assert brutus.thac0 == 18 and brutus.hp_term == 11
     assert brutus.thac0_term == 15 and brutus.armour_term == 0
     assert brutus.total == 26

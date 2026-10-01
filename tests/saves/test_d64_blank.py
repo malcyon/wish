@@ -302,7 +302,7 @@ def test_the_directory_track_is_all_a_1541_directory_gets():
 # committed.
 
 
-#: The shape this check needs: a save disk holding the two save files and
+#: The form this check needs: a save disk holding the two save files and
 #: nothing else.  Two of the player's fifteen carry staged character files as
 #: well and are skipped rather than special-cased -- they are also the two
 #: written at interleave 10, so a disk built at 16 would differ from them
@@ -340,7 +340,7 @@ def test_a_built_disk_matches_the_ones_the_1541_wrote():
 
     **The sample size is part of the finding**, so it is counted rather than
     assumed: this was written against `PORSAVE13` alone and reported n=1 with
-    fifteen disks beside it.  Thirteen of Donald's fifteen are of the shape
+    fifteen disks beside it.  Thirteen of Donald's fifteen are of the form
     `SAVE_PAIR` describes and all thirteen reproduce.
     """
     checked = []
@@ -451,7 +451,7 @@ def test_every_real_directorys_slot_accounting_is_internally_consistent():
     however many sectors the chain grew to -- and never fewer than the real
     entries need.
 
-    This is the shape `test_directory_include_empty` used to pin at "3 files,
+    This is the form `test_directory_include_empty` used to pin at "3 files,
     5 empty slots" before #211: a played disk moves the first number, so this
     states the relationship between the two instead of one save's numbers.
     """

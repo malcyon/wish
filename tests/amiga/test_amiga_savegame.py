@@ -13,32 +13,32 @@ from tools.amiga import amigasaves
 from tools.registry import specimens
 
 
-def _fake_record(shape, name: str) -> bytes:
-    raw = bytearray(shape.deltas.record_size)
+def _fake_record(container, name: str) -> bytes:
+    raw = bytearray(container.deltas.record_size)
     raw[:len(name)] = name.encode("ascii")
     for i in range(6):
         raw[0x10 + 2 * i] = raw[0x11 + 2 * i] = 12
     return bytes(raw)
 
 
-def _synthetic(shape, names=("ALPHA", "BETA")) -> bytes:
-    out = bytearray((2 if shape is amiga_savegame.CURSE else 1,))
+def _synthetic(container, names=("ALPHA", "BETA")) -> bytes:
+    out = bytearray((2 if container is amiga_savegame.CURSE else 1,))
     vm = bytearray(amiga_savegame.VM_BYTES)
     for address, value in ((dos_savegame.DISK, out[0]),
                            (dos_savegame.PARTY_SIZE, len(names)),
                            (dos_savegame.SCRIPT, 1)):
-        at = shape.vm_offset(address) - 1
+        at = container.vm_offset(address) - 1
         vm[at:at + 2] = value.to_bytes(2, "big")
     out += vm
-    out += bytes(shape.ecl_bytes)
-    out += (3).to_bytes(shape.x_bytes, "big")
-    out += (14).to_bytes(shape.x_bytes, "big")
+    out += bytes(container.ecl_bytes)
+    out += (3).to_bytes(container.x_bytes, "big")
+    out += (14).to_bytes(container.x_bytes, "big")
     out += bytes((2, 0, 0, 0, 4, 2))
     for block, slot in ((1, 1), (2, 2), (0xFFFF, 0xFFFF)):
         out += block.to_bytes(2, "big") + slot.to_bytes(2, "big")
     out += len(names).to_bytes(2, "big")
     for name in names:
-        out += _fake_record(shape, name)
+        out += _fake_record(container, name)
     return bytes(out)
 
 
@@ -206,23 +206,23 @@ def _curse_ecl() -> bytes:
     pytest.skip("needs the player's Amiga Curse disk B")
 
 
-@pytest.mark.parametrize("shape,drawer,specimen,filename", [
+@pytest.mark.parametrize("container,drawer,specimen,filename", [
     (amiga_savegame.CURSE, "coab-amiga",
      "WISH-SPEC-coab-amiga-resave", "savgamE.dat"),
     (amiga_savegame.SILVER_BLADES, "ssb-amiga",
      "WISH-SPEC-ssbwalk", "savgamF.sav"),
 ])
 def test_an_engine_written_save_round_trips_square_clock_and_order(
-        shape, drawer, specimen, filename):
+        container, drawer, specimen, filename):
     path = _verified_later_save(drawer, specimen, filename)
-    source = amiga_savegame.parse(path.read_bytes(), shape, str(path))
+    source = amiga_savegame.parse(path.read_bytes(), container, str(path))
     state = amiga_savegame.state_from_savegame(source)
     neutral_party = [amiga_later.to_neutral_later(char)
                      for char in source.characters]
     built, report = amiga_savegame.new_savegame(
         state, neutral_party, "B",
-        _curse_ecl() if shape is amiga_savegame.CURSE else None)
-    landed = amiga_savegame.parse(built, shape)
+        _curse_ecl() if container is amiga_savegame.CURSE else None)
+    landed = amiga_savegame.parse(built, container)
     landed_state = amiga_savegame.state_from_savegame(landed)
 
     assert report.unwritten == []
@@ -319,23 +319,23 @@ def test_a_party_saved_before_begin_adventuring_converts_to_the_shipped_form(key
     assert state.set_out is False
     assert (state.area, state.geo) == (0, 0)
     characters, _icons = dos_codec.c64_party(save0, None, game)
-    shape = amiga_savegame.container_for(key)
-    is_curse = shape is amiga_savegame.CURSE
+    container = amiga_savegame.container_for(key)
+    is_curse = container is amiga_savegame.CURSE
 
     # The Curse script region stays zero, so no ECL.GLB is needed.
     built, report = amiga_savegame.new_savegame(state, characters, "B")
 
     assert report.unwritten == []
-    assert amiga_savegame.parse(built, shape).count == len(characters) == 6
+    assert amiga_savegame.parse(built, container).count == len(characters) == 6
     if is_curse:
         shipped = _dos_shipped("CURSE")
         vm_end = 1 + amiga_savegame.VM_BYTES
         assert _unswapped(built) == shipped[:vm_end]
-        assert built[vm_end:shape.square_at] == shipped[vm_end:shape.square_at]
-        assert not any(built[shape.ecl_at:shape.square_at])
+        assert built[vm_end:container.square_at] == shipped[vm_end:container.square_at]
+        assert not any(built[container.ecl_at:container.square_at])
     else:
         shipped = _shipped_amiga_silver_blades()
-        assert built[:shape.party_at] == shipped[:shape.party_at]
+        assert built[:container.party_at] == shipped[:container.party_at]
 
 
 @pytest.mark.parametrize("key", sorted(PRE_ADVENTURE))
@@ -348,11 +348,11 @@ def test_a_c64_party_lands_with_each_combat_figure_at_its_file_position(key):
     state = world_state.from_c64(save0, game=game)
     characters, _icons = dos_codec.c64_party(save0, None, game)
     assert [c.get("combat_figure") for c in characters] == [5, 4, 3, 2, 1, 0]
-    shape = amiga_savegame.container_for(key)
+    container = amiga_savegame.container_for(key)
 
     built, _report = amiga_savegame.new_savegame(state, characters, "B")
 
-    landed = amiga_savegame.parse(built, shape).characters
+    landed = amiga_savegame.parse(built, container).characters
     assert [c.get("combat_figure") for c in landed] == [0, 1, 2, 3, 4, 5]
 
 
@@ -389,7 +389,7 @@ def test_a_dos_party_saved_before_begin_adventuring_converts_to_the_amiga_pre_ad
     from goldbox import dos_codec, world_state
     stem = PRE_ADVENTURE[key][2]
     folder = _dos_saves_folder(stem)
-    shape = amiga_savegame.container_for(key)
+    amiga_container = amiga_savegame.container_for(key)
     container = dos_savegame.container_for(key)
     dos = (folder / f"SAVGAMA{container.suffix}").read_bytes()
     party = [dos_codec.to_neutral(c) for c in dos_codec.read_party(folder, "A")]
@@ -399,15 +399,15 @@ def test_a_dos_party_saved_before_begin_adventuring_converts_to_the_amiga_pre_ad
     built, report = amiga_savegame.new_savegame(state, party, "A")
 
     assert report.unwritten == []
-    assert amiga_savegame.parse(built, shape).count == len(party) == 6
-    if shape is amiga_savegame.CURSE:
+    assert amiga_savegame.parse(built, amiga_container).count == len(party) == 6
+    if amiga_container is amiga_savegame.CURSE:
         vm_end = 1 + amiga_savegame.VM_BYTES
         assert _unswapped(built) == dos[:vm_end]
-        assert built[vm_end:shape.square_at] == dos[vm_end:shape.square_at]
-        assert not any(built[shape.ecl_at:shape.square_at])
+        assert built[vm_end:amiga_container.square_at] == dos[vm_end:amiga_container.square_at]
+        assert not any(built[amiga_container.ecl_at:amiga_container.square_at])
     else:
         shipped = _shipped_amiga_silver_blades()
-        assert built[:shape.party_at] == shipped[:shape.party_at]
+        assert built[:amiga_container.party_at] == shipped[:amiga_container.party_at]
 
 
 @pytest.mark.parametrize("key", sorted(PRE_ADVENTURE))
@@ -428,10 +428,10 @@ def test_an_amiga_party_saved_before_begin_adventuring_converts_to_the_dos_pre_a
     except FileNotFoundError:
         pytest.skip(f"needs the DOS {stem} archives")
     container = dos_savegame.container_for(key)
-    shape = amiga_savegame.container_for(key)
+    amiga_container = amiga_savegame.container_for(key)
     shipped = (folder / f"SAVGAMA{container.suffix}").read_bytes()
 
-    if shape is amiga_savegame.CURSE:
+    if amiga_container is amiga_savegame.CURSE:
         game = c64_port.by_key(key)
         save0 = _c64_pre_adventure(key)
         characters, _icons = dos_codec.c64_party(save0, None, game)
@@ -439,13 +439,13 @@ def test_an_amiga_party_saved_before_begin_adventuring_converts_to_the_dos_pre_a
             world_state.from_c64(save0, game=game), characters, "A")
         sources = [
             ("the C64-sourced synthetic Amiga save",
-             amiga_savegame.parse(synthetic, shape)),
+             amiga_savegame.parse(synthetic, amiga_container)),
             ("the specimen's engine-written party-menu save",
              _curse_specimen_party_menu_before_begin_adventuring()),
         ]
     else:
         sources = [("the shipped savgamA.sav",
-                    amiga_savegame.parse(_shipped_amiga_silver_blades(), shape))]
+                    amiga_savegame.parse(_shipped_amiga_silver_blades(), amiga_container))]
 
     for label, save in sources:
         state = amiga_savegame.state_from_savegame(save)
@@ -484,20 +484,20 @@ def test_an_amiga_party_saved_before_begin_adventuring_converts_to_the_c64_s_own
     from goldbox.iconparts import amiga_combat_icon
     game = c64_port.by_key(key)
     shipped_c64 = _c64_pre_adventure(key)
-    shape = amiga_savegame.container_for(key)
-    if shape is amiga_savegame.CURSE:
+    container = amiga_savegame.container_for(key)
+    if container is amiga_savegame.CURSE:
         characters, _icons = dos_codec.c64_party(shipped_c64, None, game)
         synthetic, _report = amiga_savegame.new_savegame(
             world_state.from_c64(shipped_c64, game=game), characters, "A")
         sources = [
             ("the Amiga writer's output from SAVEAZURE",
-             amiga_savegame.parse(synthetic, shape), True),
+             amiga_savegame.parse(synthetic, container), True),
             ("the specimen's engine-written party-menu save",
              _curse_specimen_party_menu_before_begin_adventuring(), False),
         ]
     else:
         sources = [("the shipped savgamA.sav",
-                    amiga_savegame.parse(_shipped_amiga_silver_blades(), shape), True)]
+                    amiga_savegame.parse(_shipped_amiga_silver_blades(), container), True)]
 
     for label, save, byte_exact_header in sources:
         state = amiga_savegame.state_from_savegame(save)

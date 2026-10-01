@@ -8,7 +8,7 @@ title's own files rather than carrying Pool of Radiance's across:
 
 * the message printer, found by its `LDA #$0A / STA <window top>` skeleton,
   which also names the window-top and cursor-row addresses it writes;
-* the four-byte text window the printer installs, found by the thunk shape
+* the four-byte text window the printer installs, found by the thunk form
   `STA $07 / STY $08 / JMP <print> / LDA #lo / LDX #hi / JMP <copy>` -- the
   operand names the block and the four bytes after the thunk are it;
 * the message delay byte, found by the `LDA <delay> / BEQ <RTS>` gate whose
@@ -130,9 +130,9 @@ def word(body: bytes, at: int, base: int = BASE) -> int:
 def delay_gate(body: bytes, base: int = BASE) -> list[tuple[int, int]]:
     """Every `LDA abs / BEQ <RTS>` whose gate opens with a call.
 
-    That is the shape of the message delay in all three titles -- Pool of
+    That is the form of the message delay in all three titles -- Pool of
     Radiance jumps straight into `LIBRARY`'s busy loop at `COMBAT $28C3`, and
-    the later two make three calls -- but the shape alone is **not** unique
+    the later two make three calls -- but the form alone is **not** unique
     inside a 9K overlay, so every hit is printed and the caller says which one
     reads the save payload. Do not read a single hit as the answer.
     """

@@ -13,7 +13,7 @@ BASE = 0xC12340
 
 
 class Guest:
-    """A fake Windows guest, answering exactly the shape the real one does."""
+    """A fake Windows guest, answering exactly the form the real one does."""
 
     def __init__(self, memory: dict[int, bytes] | None = None):
         self.memory = dict(memory or {})

@@ -11,7 +11,7 @@ prompt)`, both comments on that issue): a dot is a 3x3 diamond at columns
 2-4, rows 4-6 of its 8x8 text cell; a dash is a 7px-wide bar across rows 2-3.
 `identify()` runs its whole pipeline against the `codewheel` entry's reference
 bitmaps without any frame corresponding to a real challenge; what is
-asserted is the shape of the command line's own output, never which rune it
+asserted is the format of the command line's own output, never which rune it
 decided on.
 """
 

@@ -171,7 +171,7 @@ class Note:
 
     @classmethod
     def from_json(cls, payload) -> Note:
-        """One note, from the new shape or from a bare string."""
+        """One note, from the new form or from a bare string."""
         if isinstance(payload, str):
             return cls(text=payload, type=DEFAULT)
         return cls(text=str(payload.get("text", "")),
@@ -190,7 +190,7 @@ def dump_notes(notes: dict[Square, list[Note]]) -> dict[str, list[dict]]:
 
 
 def load_notes(payload) -> dict[Square, list[Note]]:
-    """Read the mapping back, in whichever shape the file is in.
+    """Read the mapping back, in whichever form the file is in.
 
     Accepts the new list-per-square, a bare string per square (the format
     before types existed), and a single object per square. Anything else for a

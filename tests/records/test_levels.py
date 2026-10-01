@@ -562,7 +562,7 @@ def test_the_dos_thac0_rows_are_the_games_own():
     The geometry is the engine's, not a guess: `GAME.OVR:0x01A68D` reaches the
     table with `mov dx, 0xB / mul dx / mov di, ax / add di, cx /
     mov al, [di+0x3C7C]`, so the rows are 11 wide and indexed by level with
-    entry 0 unused. `tools/records/thac0sweep.py code` prints every site of that shape
+    entry 0 unused. `tools/records/thac0sweep.py code` prints every site of that kind
     and all four Pool of Radiance ones carry the same stride and offset.
     """
     table = _dos_tables()

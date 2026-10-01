@@ -17,7 +17,7 @@ Three kinds of test, and the middle one is the finding:
   on and would be worthless if it could not fail;
 * the sweep against the player's own `/Curse` and `/Secret`, which skips
   when there are no Amiga disks;
-* the shape of the byte in every Amiga Curse and Silver Blades saved game on
+* the pattern of the byte in every Amiga Curse and Silver Blades saved game on
   this machine: non-zero only in nodes sitting in the first three slots of
   the pool, which is what stale memory looks like and not what a field does.
 

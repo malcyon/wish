@@ -125,7 +125,7 @@ def test_an_empty_file_is_reported_rather_than_read_as_no_effects(tmp_path):
 
 
 def test_describe_names_the_id_and_the_four_payload_bytes(tmp_path):
-    """One innate record, in the shape every measured specimen holds."""
+    """One innate record, in the form every measured specimen holds."""
     path = tmp_path / "ONE.SPC"
     path.write_bytes(bytes((97, 0, 0, 0xFF, 0)) + bytes(4))
     line, = dosgnome.describe(path)
@@ -174,7 +174,7 @@ def test_every_innate_record_we_watched_being_written_carries_the_same_payload()
 
     `goldbox.dos_codec.INNATE_PAYLOAD` is those four bytes.  24 innate records
     across the two parties, and every one of them holds the same four -- so a
-    change to the reader that broke the shape fails here rather than only in
+    change to the reader that broke the form fails here rather than only in
     an emulator run nobody reruns.
     """
     from goldbox import dos_codec

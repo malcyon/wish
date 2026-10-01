@@ -388,7 +388,7 @@ def test_more_innate_effects_than_slots_is_silent():
 
 
 def _granted(effect_id: int) -> bytes:
-    """One nine-byte `granted_effects` node, in the shared shape
+    """One nine-byte `granted_effects` node, in the shared form
     `goldbox/dos_codec.py` reads: id, a zero duration, the value `0x0C` a passive
     item grant carries, a clear removal flag, and a NULL next pointer."""
     return bytes((effect_id, 0, 0, 0x0C, 0, 0, 0, 0, 0))
@@ -491,10 +491,10 @@ def test_a_name_dropped_from_a_writers_table_is_named_rather_than_lost():
 
 # --- the shared take-refuse-report protocol ----------------------------------
 
-def _writer(char, floor=Confidence.GUESS, dropped=(), derived=(),
+def _writer(char, minimum=Confidence.GUESS, dropped=(), derived=(),
             constants=()):
     rep = neutral.Report()
-    return neutral.Writer(char, rep, into="test", floor=floor,
+    return neutral.Writer(char, rep, into="test", minimum=minimum,
                           dropped=dropped, derived=derived,
                           constants=constants), rep
 
@@ -828,7 +828,7 @@ def test_the_c64_reader_supplies_what_the_c64_writer_takes(game):
 
 def test_deltas_for_refuses_a_title_it_has_not_measured():
     """Champions of Krynn has a `Game` but no `C64Deltas` row (#274): asking
-    for its shape must not hand back Pool of Radiance's silently."""
+    for its deltas must not hand back Pool of Radiance's silently."""
     with pytest.raises(KeyError):
         c64_codec.deltas_for(c64_port.BY_KEY["champions-of-krynn"])
     with pytest.raises(KeyError):

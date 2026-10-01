@@ -28,7 +28,7 @@ that moves whenever a routine above it changes size.
    tables.  That gives the handler tables without knowing where they are.
 3. Opcode `$20` is `NEWECL` (`docs/128-guide-and-scripting.md` §12.3.3), so
    entry `$20` of those tables is the handler.
-4. The handler's shape is then **checked against Pool of Radiance's**
+4. The handler's form is then **checked against Pool of Radiance's**
    instruction by instruction with the relocations worked out from the
    operands, so a title whose handler is *not* the same routine says so rather
    than handing back a plausible address.

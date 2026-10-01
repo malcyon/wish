@@ -61,7 +61,7 @@ from automap.screen import band  # noqa: E402
 from tools.c64 import overlay  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
-#: Where `SPELLN00` is loaded, and the shape of its pointer table.
+#: Where `SPELLN00` is loaded, and the form of its pointer table.
 SPELLN_LOAD = 0xAF00
 SPELLN_ENTRIES = 128
 #: The high bytes sit at `$AF80`, which `COMBAT $29A8 LDY $AF80,X` reads --

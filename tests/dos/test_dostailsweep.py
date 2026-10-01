@@ -59,7 +59,7 @@ def test_a_gateway_record_is_not_counted_as_curse(tmp_path):
     specs, skipped = dostailsweep.collect([tmp_path], want_built=False)
 
     curse_names = {s.path.name for s in specs
-                   if s.shape.key == "curse-of-the-azure-bonds"}
+                   if s.deltas.key == "curse-of-the-azure-bonds"}
     assert curse_names == {"GENUINE.CHA"}
     assert "TARLREN.GUY" not in curse_names
     assert skipped["gateway to the savage frontier"] == 1
@@ -75,7 +75,7 @@ def test_a_treasures_record_is_not_counted_as_pools_of_darkness(tmp_path):
     specs, skipped = dostailsweep.collect([tmp_path], want_built=False)
 
     pod_names = {s.path.name for s in specs
-                 if s.shape.key == "pools-of-darkness"}
+                 if s.deltas.key == "pools-of-darkness"}
     assert pod_names == {"GENUINE.SAV"}
     assert "CHRDATA1.SAV" not in pod_names
     assert skipped["treasures of the savage frontier"] == 1
@@ -106,7 +106,7 @@ def _archives():
 
 def test_the_curse_pile_holds_no_gateway_record():
     specs, skipped = dostailsweep.collect([_archives()], want_built=False)
-    curse = [s for s in specs if s.shape.key == "curse-of-the-azure-bonds"]
+    curse = [s for s in specs if s.deltas.key == "curse-of-the-azure-bonds"]
     from_gateway = [s for s in curse
                     if "gateway to the savage frontier" in s.path.as_posix().lower()]
     assert from_gateway == []
@@ -115,7 +115,7 @@ def test_the_curse_pile_holds_no_gateway_record():
 
 def test_the_pools_of_darkness_pile_holds_no_treasures_record():
     specs, skipped = dostailsweep.collect([_archives()], want_built=False)
-    pod = [s for s in specs if s.shape.key == "pools-of-darkness"]
+    pod = [s for s in specs if s.deltas.key == "pools-of-darkness"]
     from_treasures = [s for s in pod
                       if "treasures of the savage frontier" in s.path.as_posix().lower()]
     assert from_treasures == []

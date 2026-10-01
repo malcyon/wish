@@ -71,7 +71,7 @@ def render_block(block: bytes) -> tuple[int, int, list[list[int]]]:
     """`(width, height, rows of palette indices)` for one `.DAX` image block.
 
     Palette indices rather than colours, so a comparison against a captured
-    frame is a comparison of *shape* and can be made after mapping the
+    frame is a comparison of *outline* and can be made after mapping the
     frame's own EGA colours back to indices.
     """
     rows = block[0]

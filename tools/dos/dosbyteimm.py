@@ -20,7 +20,7 @@ own.**  The image is scanned as an undifferentiated byte stream, so a match may
 land in data; a displacement match does not prove the pointer is a character
 record; and an offset reached without a matching displacement is invisible
 here.  So a count is an upper bound and an empty result is evidence rather than
-proof.  What raises a single site to a finding is the *shape* of the set of
+proof.  What raises a single site to a finding is the *pattern* of the set of
 immediates -- a loop that stores 0, compares 8 and increments is an allocation
 whatever else is in the image -- or a second source agreeing.
 

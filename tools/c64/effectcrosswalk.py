@@ -1439,7 +1439,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"CONFIRMED Library quotient return at ${packing.divide:04X}; truncates")
     exact, loss = duration_sweep(args.clock_minutes)
     print(f"CONFIRMED Camp-clock arithmetic at {args.clock_minutes} minutes: "
-          f"{exact}/65535 exact durations; floor-policy loss at most {loss} minutes")
+          f"{exact}/65535 exact durations; minimum-policy loss at most {loss} minutes")
 
     from tools.dos import dosbox, unexepack
 

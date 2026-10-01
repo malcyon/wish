@@ -43,7 +43,7 @@ def test_read_slot_gives_what_read_por_slot_and_to_neutral_give(
     """The same slot, the same six characters, the same saved game.
 
     `read_slot` is now nothing but `amiga_savegame.read_por_slot` plus
-    `dos_codec.to_neutral` over each of its characters -- this pins that shape
+    `dos_codec.to_neutral` over each of its characters -- this pins that form
     directly, so a hand rewrite that quietly changed what it composes would
     be caught here rather than only by a byte-for-byte comparison downstream.
     """

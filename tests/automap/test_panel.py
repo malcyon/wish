@@ -199,7 +199,7 @@ def test_the_readied_line_gives_way_to_the_badges_and_not_the_other_way(
 
 def test_the_badges_on_the_readied_line_cost_the_card_no_height(
         app, tmp_path, monkeypatch):
-    """Eight cards in a column, each a row of badges taller, is the shape of
+    """Eight cards in a column, each a row of badges taller, is the case of
     `#135 (The automapper's roster column does not scroll, so a full party
     puts a 944px floor under the window)`. The badges moved down a line; they
     did not add one, and they must not put one under the window either.
@@ -209,7 +209,7 @@ def test_the_badges_on_the_readied_line_cost_the_card_no_height(
     readied line, whose whole point is that it asks the layout for no height
     at all (`ReadiedLabel.SHORT`), and a badge row that insisted on its own
     13px would hand that back eight times over. So the control is the same
-    card with the badge rows hidden: the card's floor has to be the same
+    card with the badge rows hidden: the card's minimum has to be the same
     number either way.
 
     Every number here is measured twice in this run and compared, so none of

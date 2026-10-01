@@ -136,23 +136,23 @@ def test_source_detect_refuses_a_path_that_is_neither(tmp_path):
         convert.Source.detect(tmp_path / "nowhere")
 
 
-@pytest.mark.parametrize("shape", dos_port.DELTAS, ids=lambda s: s.key)
-def test_source_detect_identifies_each_dos_title(tmp_path, shape):
-    """Every one of the four titles' record sizes names its own shape --
+@pytest.mark.parametrize("deltas", dos_port.DELTAS, ids=lambda s: s.key)
+def test_source_detect_identifies_each_dos_title(tmp_path, deltas):
+    """Every one of the four titles' record sizes names its own deltas --
     including Pools of Darkness, whose container is `SAVGAM?.PTY` rather
     than `SAVGAM?.DAT` (`goldbox/dos_savegame.py`'s `SAVE_POOLS_OF_DARKNESS`),
     the case `#52`'s plan calls out by name."""
-    folder = tmp_path / shape.key
+    folder = tmp_path / deltas.key
     folder.mkdir()
-    suffix = dos_savegame.CONTAINERS_BY_KEY[shape.key].suffix
+    suffix = dos_savegame.CONTAINERS_BY_KEY[deltas.key].suffix
     (folder / f"SAVGAMA{suffix}").write_bytes(b"\x00")
-    (folder / "CHRDATA1.SAV").write_bytes(b"\x00" * shape.record_size)
+    (folder / "CHRDATA1.SAV").write_bytes(b"\x00" * deltas.record_size)
 
     source = convert.Source.detect(folder)
 
     assert source.port == "dos"
-    assert source.title is shape
-    assert source.key == shape.key
+    assert source.title is deltas
+    assert source.key == deltas.key
 
 
 def test_source_detect_refuses_a_folder_with_no_character_record(tmp_path):
@@ -238,24 +238,24 @@ def test_destinations_for_lists_pool_of_radiances_registered_directions():
     assert directions[1].destination_game is dos_port.POOL_OF_RADIANCE
 
 
-@pytest.mark.parametrize("shape", [dos_port.CURSE_OF_THE_AZURE_BONDS,
+@pytest.mark.parametrize("deltas", [dos_port.CURSE_OF_THE_AZURE_BONDS,
                                    dos_port.SECRET_OF_THE_SILVER_BLADES],
                         ids=lambda s: s.key)
 def test_destinations_for_a_curse_or_ssb_c64_source_answers_both_directions(
-        shape):
+        deltas):
     """`#299 (goldbox.dos.write builds only Pool of Radiance's record, so
     nothing can be converted to DOS for the later titles)`'s container
     writer put both later titles on `goldbox.dos_codec.WRITES`, so each is offered
     with no edit to this module beyond the derivation itself -- the same
-    shape `test_destinations_for_a_curse_source_answers_the_curse_c64_direction`
+    way `test_destinations_for_a_curse_source_answers_the_curse_c64_direction`
     already proves for the other direction."""
-    c64_source = convert.Source(port="c64", title=c64_port.by_key(shape.key),
+    c64_source = convert.Source(port="c64", title=c64_port.by_key(deltas.key),
                                 path=pathlib.Path("."))
     directions = convert.destinations_for(c64_source)
     assert [type(d) for d in directions] == [convert.C64ToDos,
                                              convert.C64ToAmiga]
-    assert directions[0].destination_game is shape
-    assert directions[1].destination_game is shape
+    assert directions[0].destination_game is deltas
+    assert directions[1].destination_game is deltas
 
 
 def test_directions_holds_eighteen_rows_derived_from_four_library_tuples():
@@ -338,9 +338,9 @@ def test_every_converts_entry_has_a_dos_to_c64_name():
     registry must fail loudly on -- `#52`'s plan calls this out by name --
     and `DIRECTIONS` already proves it by having built without raising, but
     this pins the table directly against the source of truth."""
-    for shape in convert.C64_PAIRED:
-        assert shape.key in convert.DOS_TO_C64_NAMES, (
-            f"{shape.title} converts but names no .D64 file")
+    for deltas in convert.C64_PAIRED:
+        assert deltas.key in convert.DOS_TO_C64_NAMES, (
+            f"{deltas.title} converts but names no .D64 file")
     # `dos_codec.CONVERTS` and `C64_PAIRED` differ by exactly the titles with no
     # C64 port, and there is one: Pools of Darkness reads and writes for its
     # **Amiga** pairing (`#194 (Import and export a Pools of Darkness save
@@ -386,11 +386,11 @@ def test_a_converts_entry_missing_its_name_fails_at_construction():
     loudly, not the *game* lookup that would run first for a title nobody
     has heard of.
 
-    The shape is built here rather than named from `dos_port`, because
+    The deltas object is built here rather than named from `dos_port`, because
     every title that has one is now in `DOS_TO_C64_NAMES` -- Silver Blades
     joined on 2026-09-05 with `#193 (Convert a Secret of the Silver Blades
     DOS save into a C64 one, which the importer refuses today)`. Copying a
-    real shape under a key nothing names is what leaves this test asserting
+    real deltas under a key nothing names is what leaves this test asserting
     the same thing it always did. Champions of Krynn is the key to borrow:
     `goldbox/c64_port.py` knows it, so `c64_port.by_key` succeeds and the failure
     can only come from the name lookup, which is the point."""
@@ -926,9 +926,9 @@ def _make_root():
     return QWidget()
 
 
-def _synthetic_dos_folder(tmp_path, shape, slot="A", suffix="DAT",
+def _synthetic_dos_folder(tmp_path, deltas, slot="A", suffix="DAT",
                           name="dos"):
-    """A folder just real enough for `Source.detect` to name its shape --
+    """A folder just real enough for `Source.detect` to name its deltas --
     one `SAVGAM<slot>.<suffix>` and one right-sized `CHRDAT<slot>1.SAV`,
     neither of them anything `goldbox.dos_codec` could actually read. Every test
     that uses this is testing the dialog's wiring, not the game
@@ -938,7 +938,7 @@ def _synthetic_dos_folder(tmp_path, shape, slot="A", suffix="DAT",
     folder = tmp_path / name
     folder.mkdir(exist_ok=True)
     (folder / f"SAVGAM{slot}.{suffix}").write_bytes(b"\x00")
-    (folder / f"CHRDAT{slot}1.SAV").write_bytes(b"\x00" * shape.record_size)
+    (folder / f"CHRDAT{slot}1.SAV").write_bytes(b"\x00" * deltas.record_size)
     return folder
 
 
@@ -1093,13 +1093,13 @@ def test_a_pool_of_radiance_savgam_file_lists_c64_and_records_its_slot(
         dialog.close()
 
 
-@pytest.mark.parametrize("shape", [dos_port.CURSE_OF_THE_AZURE_BONDS,
+@pytest.mark.parametrize("deltas", [dos_port.CURSE_OF_THE_AZURE_BONDS,
                                    dos_port.SECRET_OF_THE_SILVER_BLADES],
                         ids=lambda s: s.key)
-def test_a_curse_or_silver_blades_savgam_file_lists_c64(tmp_path, shape):
+def test_a_curse_or_silver_blades_savgam_file_lists_c64(tmp_path, deltas):
     """Both later titles convert now (`goldbox.dos_codec.CONVERTS`), so the
     dialog offers the Commodore 64 for either without an edit here."""
-    folder = _synthetic_dos_folder(tmp_path, shape)
+    folder = _synthetic_dos_folder(tmp_path, deltas)
     dialog = convert.ConvertDialog(
         str(folder / "SAVGAMA.DAT"), None, _no_disks)
     try:
@@ -1228,7 +1228,7 @@ def test_disk_candidates_picks_the_destination_pattern_not_the_open_partys(
     """`EditorBinding._disk_candidates`'s new `pattern` argument: a fake
     disks folder holding both a `POOL*` and a `CURSE*` name, asked for each
     in turn, answers only the one that matches (`cited/reports/52-plan.md`
-    step B's own suggested test shape)."""
+    step B's own suggested test design)."""
     disks = tmp_path / "disks"
     disks.mkdir()
     (disks / "POOL1.D64").write_bytes(b"pool")
@@ -1802,7 +1802,7 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     #: `automap.actions` went from one to two on 2026-09-07: Curse's trainer
     #: raises every ready class in one press (`GEN $14F8`), so the message
     #: after a level-up can now name more than one class in a sentence --
-    #: a shape no player has seen, because Pool of Radiance's trainer never
+    #: a case no player has seen, because Pool of Radiance's trainer never
     #: raises two classes at once. `#415 (automap/window.py picks the
     #: level-up spell dialog's class the same wrong way plan would have,
     #: blocking Curse's trainer)`. Naming only the last class raised would
@@ -1968,7 +1968,7 @@ def test_the_approved_strings_are_the_ones_donald_worded():
     # Ruled on `#316 (Write the Amiga Pool of Radiance saved game from the
     # source save, so a converted party arrives where it was standing)`,
     # 2026-09-07 -- `LABEL_DISK` over `Amiga disk 2` and `Amiga data disk`,
-    # `CONVERTED_AMIGA` over the `CONVERTED_DOS` shape.
+    # `CONVERTED_AMIGA` over the `CONVERTED_DOS` wording.
     assert convert.LABEL_DISK == "Amiga game disk 2"
     assert convert.DISK_TITLE == "Choose Amiga game disk 2"
     assert convert.NO_DISK == "Choose Amiga game disk 2."
@@ -3147,7 +3147,7 @@ def test_a_successful_dos_conversion_pops_the_confirmation_alongside_the_status_
     """`#52`'s `CONVERT_SUCCESS` box, on the DOS branch, alongside --
     never instead of -- `CONVERTED_DOS`'s own status line and the slot it
     names. CI-safe: a hand-built direction that never touches real game
-    data, the same shape as the Amiga test above."""
+    data, the same form as the Amiga test above."""
     window = EditorBinding(_make_root())
     destination = tmp_path / "out"
     destination.mkdir()
@@ -3196,7 +3196,7 @@ def test_a_refused_conversion_never_pops_the_success_confirmation(
     """A write that fails still shows only its own rejection
     (`CANNOT_CONVERT`, via `dialog.refuse`) -- never `CONVERT_SUCCESS`
     alongside it. CI-safe: a direction whose `write` always raises, the
-    same retry shape `test_a_writer_that_fails_partway_leaves_no_folder_
+    same retry form `test_a_writer_that_fails_partway_leaves_no_folder_
     behind` proves against a real DOS write."""
     window = EditorBinding(_make_root())
     destination = tmp_path / "out"
@@ -3250,7 +3250,7 @@ def test_a_refused_conversion_never_pops_the_success_confirmation(
 def _synthetic_amiga_rehearsal():
     """An `AmigaWriteRehearsal` with no real game data behind it, on a
     `synthetic_savegame()` (`tests/amiga/test_amiga.py`), so
-    `C64ToAmiga.write`/`DosToAmiga.write`'s own file-placement shape can be
+    `C64ToAmiga.write`/`DosToAmiga.write`'s own file-placement form can be
     proven on CI -- `write` reads only `rehearsal.files`, never the disk
     that built it, so nothing here needs an Amiga disk or a specimen."""
     from support.amigarecords import synthetic_savegame
@@ -3273,7 +3273,7 @@ def test_a_rehearsal_writes_nothing(tmp_path):
 
 def test_write_puts_one_adf_in_its_own_folder(tmp_path):
     """`write` puts exactly one `POOLSAVE.ADF` in the folder it is given and
-    touches nothing else -- the same shape
+    touches nothing else -- the same form
     `test_c64_to_dos_direction_writes_only_into_its_own_folder` proves for
     the DOS destination. One rehearsal proves both directions, since
     `C64ToAmiga.write` and `DosToAmiga.write` are the same few lines."""
@@ -3469,7 +3469,7 @@ def test_an_amiga_source_with_several_slots_shows_the_slot_combo_and_the_dos_fol
     Both fit because the combo rides on the `From` row instead of taking
     the third-row position the DOS folder needs -- under the rejected
     design the window would have grown to five rows here, which is the
-    shape `#413` exists to remove."""
+    layout `#413` exists to remove."""
     path = _outdoor_amiga_disk(tmp_path)
     dialog = convert.ConvertDialog(str(path), None, _no_disks,
                                    destination="dos")

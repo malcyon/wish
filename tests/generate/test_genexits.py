@@ -1,5 +1,5 @@
 """`tools/generate/genexits.py` re-derives `automap.fasttravel.EXIT_ROUTES` off the
-player's own disks; this checks the two agree, the same shape
+player's own disks; this checks the two agree, the same way
 `tests/areas/test_newecl.py` already holds `automap/fasttravel.py`'s address table
 to. A mismatch here means the table was pasted from an older run of the
 generator, not a bug in `FastTravel` itself.

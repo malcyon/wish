@@ -22,7 +22,7 @@ them) generated as `for i := 1 to N`, which puts `offset - 1` in the
 instruction's displacement and `N` in the guard immediate.  Scanning at the
 field's own offset finds nothing for one of these, because the instruction
 carries the offset one lower: pass `--displacement <offset-1>` to reach it.
-`tools/dos/dosrecordloops.py` reads this shape directly, by tying the guard to
+`tools/dos/dosrecordloops.py` reads this pattern directly, by tying the guard to
 the stack slot actually added into `di` and reading its initialiser, rather
 than assuming 0-based.
 
@@ -96,7 +96,7 @@ STEMS = {
 LOOKBACK = 90
 
 #: `cmp byte [bp+d], imm` and `cmp byte [bx+d], imm` -- a Turbo Pascal `for`
-#: over a byte index keeps the index in a stack slot, so this is the shape.
+#: over a byte index keeps the index in a stack slot, so this is the pattern.
 GUARDS = ((rb"\x80\x7e(.)(.)", "bp"), (rb"\x80\x7f(.)(.)", "bx"))
 
 

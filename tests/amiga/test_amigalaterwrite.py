@@ -60,7 +60,7 @@ def disk_characters():
 # The mask, built from what the writers declare
 # ---------------------------------------------------------------------------
 
-def _record_mask(shape: amiga_port.AmigaDeltas) -> set[int]:
+def _record_mask(deltas: amiga_port.AmigaDeltas) -> set[int]:
     """Amiga record offsets a round trip may differ in, by declared list.
 
     The DOS writer's own five tables, mapped through this title's shift map:
@@ -76,11 +76,11 @@ def _record_mask(shape: amiga_port.AmigaDeltas) -> set[int]:
     names |= {n for n, _, _ in dos_codec.WRITE_CONSTANTS}
     names |= {n for n, _, _, _ in dos_codec.WRITE_DEFAULTS}
     out: set[int] = set()
-    for f in dos_port.layout_for(shape.dos):
+    for f in dos_port.layout_for(deltas.dos):
         if f.name not in names:
             continue
         try:
-            at = shape.offset(f.offset)
+            at = deltas.offset(f.offset)
         except amiga_port.AmigaRecordError:
             continue
         out.update(range(at, at + f.size))
@@ -89,17 +89,17 @@ def _record_mask(shape: amiga_port.AmigaDeltas) -> set[int]:
 
 def _block_mask(char: amiga_later.AmigaCharacter) -> set[int]:
     """The same over a whole block: record, item nodes, effect chain."""
-    shape = char.deltas
-    out = _record_mask(shape)
-    at = shape.record_size
+    deltas = char.deltas
+    out = _record_mask(deltas)
+    at = deltas.record_size
     for _ in char.items:
         for offset, size, _why in amiga_later.LATER_ITEM_WRITE_UNSOURCED:
             out.update(range(at + offset, at + offset + size))
-        at += shape.item_size
+        at += deltas.item_size
     for _ in char.effects:
         for offset, size, _why in amiga_later.LATER_EFFECT_WRITE_UNSOURCED:
             out.update(range(at + offset, at + offset + size))
-        at += shape.effect_size
+        at += deltas.effect_size
     return out
 
 
@@ -111,11 +111,11 @@ def test_the_unsourced_list_is_the_shift_maps_own_gaps():
     """A pad the shift map creates and the writer's table forgets would be a
     byte written from nothing and explained by nothing.  Computed from the
     map, compared with the list, both directions."""
-    for shape in amiga_port.AMIGA_DELTAS:
+    for deltas in amiga_port.AMIGA_DELTAS:
         declared = tuple(sorted(
-            offset for at, size, _ in amiga_later.LATER_WRITE_UNSOURCED[shape.key]
+            offset for at, size, _ in amiga_later.LATER_WRITE_UNSOURCED[deltas.key]
             for offset in range(at, at + size)))
-        assert declared == amiga_later.later_unsourced_offsets(shape), shape.title
+        assert declared == amiga_later.later_unsourced_offsets(deltas), deltas.title
 
 
 def test_curse_has_six_unsourced_bytes_and_silver_blades_three():
@@ -147,10 +147,10 @@ def test_the_writer_refuses_a_title_it_has_no_record_for():
 
 def test_the_title_is_the_characters_own():
     """A conversion is between two ports of the same title and never between
-    titles, so the shape comes off the character rather than the caller."""
-    for shape in amiga_port.AMIGA_DELTAS:
-        char = neutral.NeutralCharacter("test", game=c64_port.by_key(shape.key))
-        assert amiga_later.later_write_deltas(char) is shape
+    titles, so the deltas come off the character rather than the caller."""
+    for deltas in amiga_port.AMIGA_DELTAS:
+        char = neutral.NeutralCharacter("test", game=c64_port.by_key(deltas.key))
+        assert amiga_later.later_write_deltas(char) is deltas
 
 
 def test_the_silver_blades_spellbook_packs_the_way_the_reader_unpacks_it():
@@ -159,25 +159,25 @@ def test_the_silver_blades_spellbook_packs_the_way_the_reader_unpacks_it():
     The bit order is `/Secret`'s own mask table at `g234e`, and the test that
     it is the same one both ways is a book written and read back.
     """
-    shape = amiga_port.SILVER_BLADES_DELTAS
-    book = shape.dos_field("spellbook")
+    deltas = amiga_port.SILVER_BLADES_DELTAS
+    book = deltas.dos_field("spellbook")
     ids = [1, 8, 9, 29, 77, 78, 79, 80, 117]
-    record = bytearray(shape.dos.record_size)
+    record = bytearray(deltas.dos.record_size)
     for spell in ids:
         record[book.offset + spell - dos_port.SPELLBOOK_FIRST_ID] = 1
-    mask = amiga_later._later_spellbook_bytes(bytes(record), shape)
+    mask = amiga_later._later_spellbook_bytes(bytes(record), deltas)
     assert len(mask) == amiga_later.AMIGA_SSB_SPELLBOOK_BYTES
-    out = bytearray(shape.record_size)
+    out = bytearray(deltas.record_size)
     out[amiga_later.AMIGA_SSB_SPELLBOOK_AT:
         amiga_later.AMIGA_SSB_SPELLBOOK_AT + len(mask)] = mask
-    assert amiga_later.AmigaCharacter.from_bytes(bytes(out), shape).spellbook == ids
+    assert amiga_later.AmigaCharacter.from_bytes(bytes(out), deltas).spellbook == ids
 
 
 # ---------------------------------------------------------------------------
 # The empty case and the extreme one, which need no game data either
 # ---------------------------------------------------------------------------
 
-def _bare(shape: amiga_port.AmigaDeltas) -> neutral.NeutralCharacter:
+def _bare(deltas: amiga_port.AmigaDeltas) -> neutral.NeutralCharacter:
     """A character with a name and six scores and nothing else.
 
     Both are here because the saved game's party is found by scanning for
@@ -185,7 +185,7 @@ def _bare(shape: amiga_port.AmigaDeltas) -> neutral.NeutralCharacter:
     six legal ability pairs -- so a character with neither is one
     `party_in_savegame` cannot find, whatever the writer did with it.
     """
-    char = neutral.NeutralCharacter("test", game=c64_port.by_key(shape.key))
+    char = neutral.NeutralCharacter("test", game=c64_port.by_key(deltas.key))
     ok = Confidence.CONFIRMED
     char.set("name", "TESTER", "a test name", ok)
     for ability in neutral.ABILITIES:
@@ -204,19 +204,19 @@ def test_a_character_who_owns_nothing_gets_a_block_that_is_only_the_record():
     nothing behind it would leave the stream mid-block and every later
     character in the party would read rubbish.
     """
-    for shape in amiga_port.AMIGA_DELTAS:
-        built, report = amiga_later.write_later(_bare(shape))
+    for deltas in amiga_port.AMIGA_DELTAS:
+        built, report = amiga_later.write_later(_bare(deltas))
         block = built.block_bytes()
-        assert len(block) == shape.record_size
+        assert len(block) == deltas.record_size
         assert built.get("item_count") == 0
         assert built.item_chain == 0
         assert built.effect_chain == 0
         assert report.unaccounted == []
 
 
-def _loaded(shape: amiga_port.AmigaDeltas, items: int = 16
+def _loaded(deltas: amiga_port.AmigaDeltas, items: int = 16
             ) -> neutral.NeutralCharacter:
-    char = _bare(shape)
+    char = _bare(deltas)
     ok = Confidence.CONFIRMED
     char.set("inventory", [bytes([n + 1]) + bytes(15) for n in range(items)],
              "a test inventory", ok)
@@ -234,11 +234,11 @@ def test_a_character_carrying_everything_chains_every_node():
     `record + 16 x item + 3 x effect` -- which is the arithmetic the loader
     does to find where the next character in the party begins.
     """
-    for shape in amiga_port.AMIGA_DELTAS:
-        built, report = amiga_later.write_later(_loaded(shape))
+    for deltas in amiga_port.AMIGA_DELTAS:
+        built, report = amiga_later.write_later(_loaded(deltas))
         block = built.block_bytes()
-        assert len(block) == (shape.record_size + 16 * shape.item_size
-                              + 3 * shape.effect_size)
+        assert len(block) == (deltas.record_size + 16 * deltas.item_size
+                              + 3 * deltas.effect_size)
         assert built.get("item_count") == 16
         assert built.item_chain != 0
         assert built.effect_chain != 0
@@ -253,10 +253,10 @@ def test_a_character_carrying_everything_chains_every_node():
 def test_a_written_block_reads_back_as_the_party_it_is():
     """The block the writer hands `goldbox.amiga_savegame` has to be one the
     reader finds: a scan for the record signature and a walk of the counts."""
-    for shape in amiga_port.AMIGA_DELTAS:
-        built, _ = amiga_later.write_later(_loaded(shape))
+    for deltas in amiga_port.AMIGA_DELTAS:
+        built, _ = amiga_later.write_later(_loaded(deltas))
         blocks = amiga_later.party_block_bytes([built, built])
-        found = amiga_later.party_in_savegame(blocks, shape)
+        found = amiga_later.party_in_savegame(blocks, deltas)
         assert len(found) == 2
         assert [len(c.items) for c in found] == [16, 16]
         assert [len(c.effects) for c in found] == [3, 3]
@@ -273,8 +273,8 @@ def test_the_effect_chain_is_the_neutral_records_and_not_the_races():
     3, 3 and 4.  So this writer builds the chain itself, and a character with
     three effect records gets three nodes.
     """
-    for shape in amiga_port.AMIGA_DELTAS:
-        built, _ = amiga_later.write_later(_loaded(shape))
+    for deltas in amiga_port.AMIGA_DELTAS:
+        built, _ = amiga_later.write_later(_loaded(deltas))
         assert [node[0] for node in built.effects] == [61, 26, 47]
 
 
@@ -303,8 +303,8 @@ def test_no_line_a_player_reads_carries_an_offset():
     """`.claude/rules/gui-text.md`: a memory address, a record offset or a
     bare issue number has no place in anything shown in the interface, and
     the tables behind this writer carry all three on purpose."""
-    for shape in amiga_port.AMIGA_DELTAS:
-        _, report = amiga_later.write_later(_loaded(shape))
+    for deltas in amiga_port.AMIGA_DELTAS:
+        _, report = amiga_later.write_later(_loaded(deltas))
         for line in report.dropped:
             assert "0x" not in line and "#" not in line, line
 
@@ -375,12 +375,12 @@ def test_every_engine_written_specimen_round_trips():
 # The direction this writer exists for: a C64 party arriving on the Amiga
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("name, shape, expect_items", [
+@pytest.mark.parametrize("name, deltas, expect_items", [
     ("curse-h-engine-resave", amiga_port.CURSE_DELTAS, False),
     ("ssb-d-engine-resave", amiga_port.SILVER_BLADES_DELTAS, True),
 ])
 def test_a_c64_party_becomes_amiga_records_of_its_own_title(
-        name, shape, expect_items):
+        name, deltas, expect_items):
     """Both C64 saves the **C64 engine itself** wrote, converted.
 
     The same two specimens `tests/dos/test_doslatertitles.py` uses for C64 to
@@ -397,15 +397,15 @@ def test_a_c64_party_becomes_amiga_records_of_its_own_title(
     for char in party:
         built, report = amiga_later.write_later(char)
         block = built.block_bytes()
-        assert built.deltas is shape, char.get("name")
-        assert len(block) == (shape.record_size
-                              + len(built.items) * shape.item_size
-                              + len(built.effects) * shape.effect_size)
+        assert built.deltas is deltas, char.get("name")
+        assert len(block) == (deltas.record_size
+                              + len(built.items) * deltas.item_size
+                              + len(built.effects) * deltas.effect_size)
         assert built.get("item_count") == len(built.items)
         assert bool(built.item_chain) is bool(built.items)
         assert bool(built.effect_chain) is bool(built.effects)
         assert report.unaccounted == []
-        assert amiga_later.party_in_savegame(block, shape)
+        assert amiga_later.party_in_savegame(block, deltas)
         carried += bool(built.items)
     assert bool(carried) is expect_items
 
@@ -485,42 +485,42 @@ def test_the_engine_agrees_with_the_encumbrance_this_writer_computes():
     assert written.get("encumbrance") == 282
 
 
-@pytest.mark.parametrize("shape", amiga_port.AMIGA_DELTAS, ids=lambda s: s.dos.key)
-def test_a_paladins_cure_byte_survives_an_amiga_curse_or_silver_blades_round_trip(shape):
-    """The byte at DOS `paladin_cures`, mapped through the shape's shift map,
+@pytest.mark.parametrize("deltas", amiga_port.AMIGA_DELTAS, ids=lambda s: s.dos.key)
+def test_a_paladins_cure_byte_survives_an_amiga_curse_or_silver_blades_round_trip(deltas):
+    """The byte at DOS `paladin_cures`, mapped through the deltas' shift map,
     is read into the neutral record and written back to the same place -- a
     made-up record, so it runs with no disks.
 
     Both values are checked, because a writer that copied the class rule
     instead would agree with the 1 and give the 0 away: a fighter holding 1
     and a paladin holding 0 are what tell the copy from the derivation."""
-    at = shape.offset(shape.dos_field("paladin_cures").offset)
+    at = deltas.offset(deltas.dos_field("paladin_cures").offset)
     for held in (1, 0):
-        raw = bytearray(shape.record_size)
+        raw = bytearray(deltas.record_size)
         raw[:6] = b"TESTER"
         raw[at] = held
-        char = amiga_later.AmigaCharacter.from_bytes(bytes(raw), shape)
+        char = amiga_later.AmigaCharacter.from_bytes(bytes(raw), deltas)
         out = amiga_later.to_neutral_later(char)
         assert out.get("paladin_cures") == held
         built, _ = amiga_later.write_later(out)
         assert built.raw[at] == held
 
 
-@pytest.mark.parametrize("shape", amiga_port.AMIGA_DELTAS, ids=lambda s: s.dos.key)
-def test_a_c64_former_paladin_who_has_not_regained_is_written_at_his_full_count(shape):
+@pytest.mark.parametrize("deltas", amiga_port.AMIGA_DELTAS, ids=lambda s: s.dos.key)
+def test_a_c64_former_paladin_who_has_not_regained_is_written_at_his_full_count(deltas):
     """The C64 holds 0 for him until its regain, which the Amiga never
     reseeds, so the block holds the full count for his old level."""
     from goldbox import c64_codec
     char = neutral.NeutralCharacter("test", source="made up",
-                                    game=shape.dos.key)
+                                    game=deltas.dos.key)
     char.set("name", "TESTER", "test")
     char.set("levels", {"magic-user": 1}, "test")
     char.set("former_levels", {"paladin": 5}, "test")
     char.set("paladin_cures", 1, "test")
     c64, _rep = c64_codec.write(char)
     built, _ = amiga_later.write_later(
-        c64_codec.read(c64, game=shape.dos.key))
-    at = shape.offset(shape.dos_field("paladin_cures").offset)
+        c64_codec.read(c64, game=deltas.dos.key))
+    at = deltas.offset(deltas.dos_field("paladin_cures").offset)
     assert built.raw[at] == 1
 
 

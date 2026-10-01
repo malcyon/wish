@@ -61,7 +61,7 @@ def library_for(title: str) -> bytes:
 
 @pytest.mark.parametrize("title", TITLES)
 def test_one_interpreter_reads_every_command_bar(title):
-    """Exactly one, or the shape this rests on is not the shape it found.
+    """Exactly one, or the pattern this rests on is not the pattern it found.
 
     Three of three titles, one hit each.  A second match would mean the
     prologue is not the discriminator it is being used as, and every address
@@ -122,7 +122,7 @@ def test_the_later_titles_put_the_reader_in_the_same_place():
     The interpreter moved `$306D` -> `$31F1` -> `$46F1` across the three, which
     is no constant at all -- so a reader that took one title's address and
     added a delta would be wrong on both the others.  That is the reason
-    `tools/c64/sheetexit.py` finds it by shape.
+    `tools/c64/sheetexit.py` finds it by pattern.
     """
     seen = {t: sheetexit.read_library(library_for(t))["interpreter"]
             for t in TITLES}
@@ -229,7 +229,7 @@ def test_cancel_bar_answers_the_bar_rather_than_the_keypress():
 def test_the_key_chain_stops_at_the_joystick():
     """`CMP #imm / BEQ` up to `LDA $03F0`, and not one test past it.
 
-    The interpreter tests five joystick values in the same shape immediately
+    The interpreter tests five joystick values in the same form immediately
     afterwards, and reading those as keys would name `$0F` as a key nobody can
     press.
     """

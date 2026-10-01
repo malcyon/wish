@@ -18,7 +18,7 @@ Three kinds of test here, in order of how much they matter.
   writer's own declared mask.  The mask is `goldbox.dos_codec.WRITE_UNSOURCED`,
   `WRITE_UNSOURCED_LATER`, `WRITE_DEFAULTS` and `WRITE_DERIVED`, never
   whatever happened to differ.
-* **The shape**, which needs no save at all: the width of every field the
+* **The deltas**, which need no save at all: the width of every field the
   writer fills comes off `goldbox/dos_port.py`'s table for the title, so a
   63-byte item stride or a 56-spell book cannot be hard-coded back in.
 * **The tables**, which say the writer accounts for every field of every
@@ -47,14 +47,14 @@ LATER = (CURSE, SSB)
 
 # --- the tables: every field of every title has a target ---------------------
 
-@pytest.mark.parametrize("shape", dos_codec.WRITES, ids=lambda s: s.key)
-def test_write_targets_tile_every_title_this_writer_writes(shape):
+@pytest.mark.parametrize("deltas", dos_codec.WRITES, ids=lambda s: s.key)
+def test_write_targets_tile_every_title_this_writer_writes(deltas):
     """The promise `test_write_targets_tile_the_dos_layout` makes for Pool of
     Radiance, made for all three: a field a title declares and the writer
     names nowhere is a byte written or zeroed in silence."""
-    declared = {f.name for f in dos_port.LAYOUTS[shape.key]
+    declared = {f.name for f in dos_port.LAYOUTS[deltas.key]
                 if not f.name.startswith("gap_")}
-    targets = dos_codec.write_targets(shape)
+    targets = dos_codec.write_targets(deltas)
     assert declared - set(targets) == set()
     assert set(targets) - declared == set()
 
@@ -66,19 +66,19 @@ def test_pool_of_radiances_targets_are_the_module_constant():
     assert dos_codec.write_targets() == dos_codec.WRITE_TARGETS
 
 
-@pytest.mark.parametrize("shape", dos_codec.WRITES, ids=lambda s: s.key)
-def test_every_neutral_field_has_a_write_disposition_in_every_title(shape):
+@pytest.mark.parametrize("deltas", dos_codec.WRITES, ids=lambda s: s.key)
+def test_every_neutral_field_has_a_write_disposition_in_every_title(deltas):
     assert neutral.undeclared(neutral.FIELDS,
-                              dos_codec.write_field_disposition(shape)) \
+                              dos_codec.write_field_disposition(deltas)) \
         == (set(), set())
 
 
-@pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
-def test_the_later_titles_convert_what_pool_of_radiance_drops(shape):
+@pytest.mark.parametrize("deltas", LATER, ids=lambda s: s.key)
+def test_the_later_titles_convert_what_pool_of_radiance_drops(deltas):
     """Two fields are a loss in Pool of Radiance and a conversion here: the
     second copy of each ability score, and the class a dual-classed character
     left."""
-    later = dos_codec.write_field_disposition(shape)
+    later = dos_codec.write_field_disposition(deltas)
     pool = dos_codec.write_field_disposition(POOL)
     for name in ("abilities_second", "former_levels"):
         assert pool[name].startswith("dropped:"), name
@@ -95,12 +95,12 @@ def _neutral(game, **fields) -> neutral.NeutralCharacter:
     return char
 
 
-@pytest.mark.parametrize("shape", dos_codec.WRITES, ids=lambda s: s.key)
-def test_the_record_is_the_characters_own_titles(shape):
+@pytest.mark.parametrize("deltas", dos_codec.WRITES, ids=lambda s: s.key)
+def test_the_record_is_the_characters_own_titles(deltas):
     """The bug #299 names, at its root: the title comes off the character,
     not off the writer.  A Curse character used to come back as 285 bytes."""
-    rec, _itm, _spc, _rep = dos_codec.write(_neutral(shape.key, name="TESTER"))
-    assert len(rec) == shape.record_size
+    rec, _itm, _spc, _rep = dos_codec.write(_neutral(deltas.key, name="TESTER"))
+    assert len(rec) == deltas.record_size
 
 
 def test_a_character_with_no_title_is_pool_of_radiances():
@@ -124,11 +124,11 @@ def test_pools_of_darkness_is_written_now_that_it_has_a_second_port():
     That is still true and is no longer the whole question: the title's
     second port is the **Amiga**, `#194 (Import and export a Pools of
     Darkness save between DOS and the Amiga)` is the pair, and a pair needs
-    both directions -- so the shape joined `CONVERTS` and `WRITES` together.
+    both directions -- so the deltas joined `CONVERTS` and `WRITES` together.
     A 510-byte record comes back for a Pools of Darkness character, and the
     C64 remains a title it can never be converted to for the reason it always
     was: `goldbox/c64_port.py` has no Pools of Darkness at all, so
-    `editor/convert.py`'s `c64_port.by_key(shape.key)` never offers a
+    `editor/convert.py`'s `c64_port.by_key(deltas.key)` never offers a
     destination.
     """
     rec, _itm, _spc, _rep = dos_codec.write(_neutral(POD.key, name="X"))
@@ -205,11 +205,11 @@ def test_the_memorised_list_fills_from_the_end_of_the_titles_own_run():
     reaches the array through `es:[di+0x17]`, Curse's against `0x53` at three
     sites through `es:[di+0x1e]`, Silver Blades' against `0x4A`.
     """
-    for shape, slots, at in ((POOL, 21, 0x017), (CURSE, 84, 0x01E),
+    for deltas, slots, at in ((POOL, 21, 0x017), (CURSE, 84, 0x01E),
                              (SSB, 75, 0x01E)):
-        f = dos_port.FIELDS_BY_NAME_FOR[shape.key]["spells_memorised"]
+        f = dos_port.FIELDS_BY_NAME_FOR[deltas.key]["spells_memorised"]
         assert (f.offset, f.size) == (at, slots)
-        rec, _, _, _ = dos_codec.write(_neutral(shape.key, spells_memorised=[9, 3]))
+        rec, _, _, _ = dos_codec.write(_neutral(deltas.key, spells_memorised=[9, 3]))
         assert rec[f.end - 2:f.end] == bytes((3, 9))
         assert rec[f.offset:f.end - 2] == bytes(slots - 2)
 
@@ -223,15 +223,15 @@ def test_a_character_memorised_to_the_titles_ceiling_loses_nothing(caplog):
     `21 spells memorised and Pool of Radiance has 16 slots; the rest dropped`
     on `rep.warnings`.
     """
-    for shape, slots in ((POOL, 21), (CURSE, 84), (SSB, 75)):
-        f = dos_port.FIELDS_BY_NAME_FOR[shape.key]["spells_memorised"]
+    for deltas, slots in ((POOL, 21), (CURSE, 84), (SSB, 75)):
+        f = dos_port.FIELDS_BY_NAME_FOR[deltas.key]["spells_memorised"]
         ids = list(range(slots, 0, -1))
         with caplog.at_level("WARNING", logger="wish.goldbox.dos_codec"):
             rec, _, _, rep = dos_codec.write(
-                _neutral(shape.key, spells_memorised=ids))
+                _neutral(deltas.key, spells_memorised=ids))
         assert rep.warnings == []
         assert list(rec[f.offset:f.end]) == list(reversed(ids))
-        assert dos_codec.DosCharacter(rec, deltas=shape).spells_memorised == ids
+        assert dos_codec.DosCharacter(rec, deltas=deltas).spells_memorised == ids
     assert not [r for r in caplog.records
                 if "spells_memorised" in r.getMessage()]
 
@@ -271,13 +271,13 @@ def test_the_level_array_is_seven_slots_in_silver_blades():
 def test_the_spell_slot_arrays_are_three_five_and_seven_levels_deep():
     slots = {"cleric": (5, 4, 3, 2, 1, 1, 1), "druid": (1, 1, 0, 0, 0, 0, 0),
              "magic-user": (4, 3, 2, 1, 0, 0, 0)}
-    for shape, depth in ((POOL, 3), (CURSE, 5), (SSB, 7)):
-        rec, _, _, rep = dos_codec.write(_neutral(shape.key, spells_castable=slots))
-        table = dos_port.FIELDS_BY_NAME_FOR[shape.key]
+    for deltas, depth in ((POOL, 3), (CURSE, 5), (SSB, 7)):
+        rec, _, _, rep = dos_codec.write(_neutral(deltas.key, spells_castable=slots))
+        table = dos_port.FIELDS_BY_NAME_FOR[deltas.key]
         f = table["spells_castable_cleric"]
         assert f.size == depth
         assert rec[f.offset:f.end] == bytes(slots["cleric"][:depth])
-        if shape is POOL:
+        if deltas is POOL:
             # Pool of Radiance has no druid array and says so.
             assert "spells_castable_druid" not in table
             assert any("no druid spell-slot array" in d for d in rep.dropped)
@@ -291,12 +291,12 @@ def test_the_spell_slot_arrays_are_three_five_and_seven_levels_deep():
 def test_silver_blades_items_are_sixty_seven_bytes_with_a_measured_zero_tail():
     """`#113 (Play DOS Curse far enough to save a party with items)` is the
     trap this writer must not walk into: the stride is 63 in three titles and
-    67 in Silver Blades, and it comes off the shape."""
+    67 in Silver Blades, and it comes off the deltas."""
     one = bytes(range(16))
-    for shape in dos_codec.WRITES:
+    for deltas in dos_codec.WRITES:
         _rec, itm, _spc, _rep = dos_codec.write(
-            _neutral(shape.key, inventory=[one]))
-        assert len(itm) == shape.item_size, shape.key
+            _neutral(deltas.key, inventory=[one]))
+        assert len(itm) == deltas.item_size, deltas.key
     _rec, itm, _, _ = dos_codec.write(_neutral(SSB.key, inventory=[one]))
     assert len(itm) == 67
     at, size = dos_codec.ITEM_TAIL
@@ -334,15 +334,15 @@ def test_each_ability_is_written_as_a_base_and_current_pair():
     the C64's two arrays are named)` settled which byte is which: the DOS
     record's lower byte is the permanent score and the higher one is what is
     in force -- `docs/204-the-dos-ability-pair.md`."""
-    for shape in LATER:
-        table = dos_port.FIELDS_BY_NAME_FOR[shape.key]
-        rec, _, _, _ = dos_codec.write(_neutral(shape.key, strength=15))
+    for deltas in LATER:
+        table = dos_port.FIELDS_BY_NAME_FOR[deltas.key]
+        rec, _, _, _ = dos_codec.write(_neutral(deltas.key, strength=15))
         f = table["strength"]
         assert f.size == 2
         assert rec[f.offset:f.end] == bytes((15, 15))
 
         rec, _, _, _ = dos_codec.write(_neutral(
-            shape.key, strength=12, abilities_second={"strength": 18}))
+            deltas.key, strength=12, abilities_second={"strength": 18}))
         assert rec[f.offset:f.end] == bytes((18, 12))
 
 
@@ -358,10 +358,10 @@ def test_the_class_a_dual_classed_character_left_is_written_twice():
     DOS loses the class he trained out of)`: the later titles keep it in a
     second level array *and* in the byte after `level`, and both come from
     the one neutral value."""
-    for shape in LATER:
-        table = dos_port.FIELDS_BY_NAME_FOR[shape.key]
+    for deltas in LATER:
+        table = dos_port.FIELDS_BY_NAME_FOR[deltas.key]
         rec, _, _, rep = dos_codec.write(_neutral(
-            shape.key, levels={"cleric": 1}, former_levels={"paladin": 5}))
+            deltas.key, levels={"cleric": 1}, former_levels={"paladin": 5}))
         array = table["former_class_levels"]
         assert rec[array.offset + 3] == 5          # the paladin's slot
         assert rec[table["former_level"].offset] == 5
@@ -408,14 +408,14 @@ def test_pools_of_darkness_writes_and_reads_the_level_drain_marks():
 def test_the_other_titles_report_the_level_drain_marks_as_absent():
     """Only Pools of Darkness keeps them, so a source that carries them loses
     them, and says so, in the three titles whose record has no field."""
-    for shape in (POOL, CURSE, SSB):
+    for deltas in (POOL, CURSE, SSB):
         _rec, _, _, rep = dos_codec.write(_neutral(
-            shape.key, levels={"fighter": 3}, highest_levels={"fighter": 9},
+            deltas.key, levels={"fighter": 3}, highest_levels={"fighter": 9},
             highest_experience=51234, highest_hp_max=77, ready_to_train=True))
         for name in ("highest_levels", "highest_experience", "highest_hp_max",
                      "ready_to_train"):
             assert any(line.startswith(f"{name}:") for line in rep.dropped), (
-                shape.key, name, rep.dropped)
+                deltas.key, name, rep.dropped)
 
 
 def test_pool_of_radiance_reports_a_former_class_it_cannot_hold():
@@ -425,8 +425,8 @@ def test_pool_of_radiance_reports_a_former_class_it_cannot_hold():
                for d in rep.dropped), rep.dropped
 
 
-@pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
-def test_a_paladin_gets_the_byte_every_engine_written_paladin_holds(shape):
+@pytest.mark.parametrize("deltas", LATER, ids=lambda s: s.key)
+def test_a_paladin_gets_the_byte_every_engine_written_paladin_holds(deltas):
     """`paladin_cures` is 1 for every paladin in every engine-written record
     and 0 for everybody else, and the C64 has no byte to convert it from, so
     the writer derives it from the class.
@@ -438,15 +438,15 @@ def test_a_paladin_gets_the_byte_every_engine_written_paladin_holds(shape):
     it does do there is get cleared by a cure -- a staged 2 came back 0 in the
     engine's own resave.
     """
-    f = dos_port.FIELDS_BY_NAME_FOR[shape.key]["paladin_cures"]
-    paladin, _, _, _ = dos_codec.write(_neutral(shape.key, levels={"paladin": 5}))
+    f = dos_port.FIELDS_BY_NAME_FOR[deltas.key]["paladin_cures"]
+    paladin, _, _, _ = dos_codec.write(_neutral(deltas.key, levels={"paladin": 5}))
     assert paladin[f.offset] == 1
-    fighter, _, _, _ = dos_codec.write(_neutral(shape.key, levels={"fighter": 5}))
+    fighter, _, _, _ = dos_codec.write(_neutral(deltas.key, levels={"fighter": 5}))
     assert fighter[f.offset] == 0
     # And it stays set for a paladin who has been through HUMAN CHANGE
     # CLASSES, which is what DEMELTINA's own record does.
     former, _, _, _ = dos_codec.write(_neutral(
-        shape.key, levels={"cleric": 1}, former_levels={"paladin": 5}))
+        deltas.key, levels={"cleric": 1}, former_levels={"paladin": 5}))
     assert former[f.offset] == 1
 
 
@@ -477,9 +477,9 @@ def test_the_later_titles_draw_no_sheet_portrait():
     either end and a converted one has lost nothing
     (`docs/188-the-sheet-portrait-per-title.md`).
     """
-    for shape in LATER:
-        table = dos_port.FIELDS_BY_NAME_FOR[shape.key]
-        rec, _, _, rep = dos_codec.write(_neutral(shape.key, portrait_head=0x2D,
+    for deltas in LATER:
+        table = dos_port.FIELDS_BY_NAME_FOR[deltas.key]
+        rec, _, _, rep = dos_codec.write(_neutral(deltas.key, portrait_head=0x2D,
                                             portrait_body=0x01))
         assert rec[table["portrait_head"].offset] == 0
         assert rec[table["portrait_body"].offset] == 0
@@ -504,11 +504,11 @@ def test_a_later_titles_import_says_nothing_about_a_face_it_never_had():
     that his game never drew. Pool of Radiance is the control: it does draw
     one, so its own two lines have to stay until #57 is done.
     """
-    for shape in LATER:
-        char = dos_codec.DosCharacter(bytes(shape.record_size), deltas=shape.key)
+    for deltas in LATER:
+        char = dos_codec.DosCharacter(bytes(deltas.record_size), deltas=deltas.key)
         dropped = dos_codec.to_neutral(char).dropped
         assert not [d for d in dropped if "portrait" in d.lower()], \
-            (shape.key, dropped)
+            (deltas.key, dropped)
     # Pool of Radiance is the control, and it needs a character who actually
     # chose a face. An all-zero record carries position 0 in both fields,
     # which is "no face" rather than "a face that could not cross" -- and
@@ -538,7 +538,7 @@ def test_a_later_titles_import_says_nothing_about_a_face_it_never_had():
         dos_codec.DosCharacter(bytes(chose), deltas=POOL.key)).dropped
         if "portrait" in d.lower()]
 
-    # And the shape `#377` is about: no face chosen, nothing reported.
+    # And the case `#377` is about: no face chosen, nothing reported.
     faceless = dos_codec.DosCharacter(bytes(POOL.record_size), deltas=POOL.key)
     assert not [d for d in dos_codec.to_neutral(faceless).dropped
                 if "portrait" in d.lower()]
@@ -547,10 +547,10 @@ def test_a_later_titles_import_says_nothing_about_a_face_it_never_had():
 def test_the_identity_byte_is_digested_at_the_titles_own_offset():
     """`unnamed_0ab` is at 0x0AB, 0x126 and 0x12B; a Pool of Radiance offset
     used on a Curse record would blank a byte of the money block."""
-    for shape in dos_codec.WRITES:
-        f = dos_port.FIELDS_BY_NAME_FOR[shape.key]["unnamed_0ab"]
-        rec, _, _, _ = dos_codec.write(_neutral(shape.key, name="DUPLICO"))
-        assert rec[f.offset] == dos_codec.identity_byte(rec, shape)
+    for deltas in dos_codec.WRITES:
+        f = dos_port.FIELDS_BY_NAME_FOR[deltas.key]["unnamed_0ab"]
+        rec, _, _, _ = dos_codec.write(_neutral(deltas.key, name="DUPLICO"))
+        assert rec[f.offset] == dos_codec.identity_byte(rec, deltas)
         assert rec[f.offset] == dos_codec.identity_byte(rec)     # size names it
 
 
@@ -559,13 +559,13 @@ def test_the_report_accounts_for_every_byte_of_every_title():
     for a character carrying something in every field the writer takes."""
     from support.neutralrecords import _filled
 
-    for shape in dos_codec.WRITES:
-        char = _filled(shape.key)
+    for deltas in dos_codec.WRITES:
+        char = _filled(deltas.key)
         char.set("abilities_second", {"strength": 18}, "made up")
         char.set("former_levels", {"paladin": 5}, "made up")
         _rec, itm, spc, rep = dos_codec.write(char)
-        assert rep.unaccounted == [], (shape.key, rep.unaccounted[:8])
-        assert rep.total == shape.record_size + len(itm) + len(spc)
+        assert rep.unaccounted == [], (deltas.key, rep.unaccounted[:8])
+        assert rep.total == deltas.record_size + len(itm) + len(spc)
 
 
 # --- the sibling files carry the title's own names ---------------------------
@@ -602,10 +602,10 @@ SPECIMENS = ("curse-131-four-items-readied",
              "ssb-slote-zeroed140")
 
 
-def _records_of(shape, dirs):
+def _records_of(deltas, dirs):
     for where in dirs:
         for path in sorted(where.rglob("*")):
-            if path.is_file() and path.stat().st_size == shape.record_size:
+            if path.is_file() and path.stat().st_size == deltas.record_size:
                 yield path
 
 
@@ -613,8 +613,8 @@ def _specimen_dirs():
     return [specimen(name) for name in SPECIMENS]
 
 
-@pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
-def test_every_engine_written_record_of_a_later_title_round_trips(shape):
+@pytest.mark.parametrize("deltas", LATER, ids=lambda s: s.key)
+def test_every_engine_written_record_of_a_later_title_round_trips(deltas):
     """DOS -> `to_neutral` -> `write`, against the original bytes.
 
     **Curse: 20 of 20 identical outside the mask.  Silver Blades: 17 of
@@ -629,27 +629,27 @@ def test_every_engine_written_record_of_a_later_title_round_trips(shape):
         pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     seen = clean = 0
     exceptions: list[str] = []
-    for path in _records_of(shape, _specimen_dirs()):
+    for path in _records_of(deltas, _specimen_dirs()):
         char = dos_codec.read_character(path)
         rec, itm, spc, _rep = dos_codec.write(dos_codec.to_neutral(char))
-        assert len(rec) == shape.record_size
-        assert len(itm) == len(char.items) * shape.item_size
+        assert len(rec) == deltas.record_size
+        assert len(itm) == len(char.items) * deltas.item_size
         assert len(spc) % dos_port.EFFECT_SIZE == 0
         original = char.to_bytes()
-        mask = _mask(shape, original)
+        mask = _mask(deltas, original)
         differs = {i for i in range(len(original))
                    if original[i] != rec[i] and i not in mask}
         seen += 1
         if not differs:
             clean += 1
             continue
-        fields = {f.name for f in dos_port.LAYOUTS[shape.key]
+        fields = {f.name for f in dos_port.LAYOUTS[deltas.key]
                   for i in differs if f.offset <= i < f.end}
         exceptions.append(f"{char.name} ({path.name}): {sorted(fields)}")
         assert fields == {"field_83_87"}, exceptions[-1]
         assert char.name == "MALACHITE", exceptions[-1]
-    assert seen >= 8, f"{seen} {shape.title} records"
-    if shape is CURSE:
+    assert seen >= 8, f"{seen} {deltas.title} records"
+    if deltas is CURSE:
         assert clean == seen, exceptions
     else:
         assert clean == seen - len(exceptions)
@@ -666,7 +666,7 @@ def test_the_shipped_records_of_the_later_titles_round_trip_too():
     Savage Frontier's `.GUY` exports are 422 bytes and Treasures of the
     Savage Frontier's records are 510, so a sweep of the whole archive by
     size reads two games this project does not convert (`deltas_for`'s own
-    docstring says the size names the shape and the directory names the
+    docstring says the size names the deltas and the directory names the
     game).
     """
     if _save_dir() is None:
@@ -678,21 +678,21 @@ def test_the_shipped_records_of_the_later_titles_round_trip_too():
     if not all(roots.values()):
         pytest.skip("needs the CURSE and SECRET archive folders")
     counts = {CURSE.key: [0, 0], SSB.key: [0, 0]}
-    for shape in LATER:
-        for path in _records_of(shape, [roots[shape.key]]):
+    for deltas in LATER:
+        for path in _records_of(deltas, [roots[deltas.key]]):
             char = dos_codec.read_character(path)
-            if char.deltas is not shape:
+            if char.deltas is not deltas:
                 continue
             rec, _itm, _spc, _rep = dos_codec.write(dos_codec.to_neutral(char))
             original = char.to_bytes()
-            mask = _mask(shape, original)
+            mask = _mask(deltas, original)
             differs = {i for i in range(len(original))
                        if original[i] != rec[i] and i not in mask}
-            counts[shape.key][1] += 1
+            counts[deltas.key][1] += 1
             if not differs:
-                counts[shape.key][0] += 1
+                counts[deltas.key][0] += 1
             else:
-                fields = {f.name for f in dos_port.LAYOUTS[shape.key]
+                fields = {f.name for f in dos_port.LAYOUTS[deltas.key]
                           for i in differs if f.offset <= i < f.end}
                 assert fields == {"field_83_87"}, (path, sorted(fields))
     for key, (clean, seen) in counts.items():
@@ -703,12 +703,12 @@ def test_the_shipped_records_of_the_later_titles_round_trip_too():
 # --- the C64 to DOS direction, which did not exist before #299 ---------------
 
 
-@pytest.mark.parametrize("name, shape, expect_items", [
+@pytest.mark.parametrize("name, deltas, expect_items", [
     ("curse-h-engine-resave", CURSE, False),
     ("ssb-d-engine-resave", SSB, True),
 ])
 def test_a_c64_party_converts_to_its_own_titles_dos_records(
-        name, shape, expect_items):
+        name, deltas, expect_items):
     """The four directions `#51 (Every permutation of DOS, C64 and Amiga, in
     both directions)` ends at, measured on the two C64 saves the **C64 engine
     itself** wrote after loading a party this project converted (`#192`,
@@ -722,15 +722,15 @@ def test_a_c64_party_converts_to_its_own_titles_dos_records(
     carried = 0
     for char in party:
         rec, itm, spc, _rep = dos_codec.write(char)
-        assert len(rec) == shape.record_size, char.get("name")
-        assert len(itm) % shape.item_size == 0
+        assert len(rec) == deltas.record_size, char.get("name")
+        assert len(itm) % deltas.item_size == 0
         assert len(spc) % dos_port.EFFECT_SIZE == 0
         carried += bool(itm)
         if itm:
             # Silver Blades' twelve magic items are 804 bytes at 67 apiece,
             # which is the number #113 measured in the running game and which
             # 63 does not divide.
-            assert len(itm) // shape.item_size == len(char.get("inventory"))
+            assert len(itm) // deltas.item_size == len(char.get("inventory"))
     assert bool(carried) is expect_items
 
 
@@ -741,20 +741,20 @@ def test_a_silver_blades_party_carries_its_items_at_the_measured_stride():
     assert all(n % 67 == 0 for n in sizes), sizes
 
 
-@pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
-def test_the_sources_own_cure_byte_is_written_and_the_class_rule_is_the_fallback(shape):
+@pytest.mark.parametrize("deltas", LATER, ids=lambda s: s.key)
+def test_the_sources_own_cure_byte_is_written_and_the_class_rule_is_the_fallback(deltas):
     """A neutral record that carries `paladin_cures` gets that byte back, for
     a paladin and for a fighter alike; one that carries none gets the class
     rule, which the test above pins."""
-    f = dos_port.FIELDS_BY_NAME_FOR[shape.key]["paladin_cures"]
+    f = dos_port.FIELDS_BY_NAME_FOR[deltas.key]["paladin_cures"]
     spent, _, _, _ = dos_codec.write(_neutral(
-        shape.key, levels={"paladin": 5}, paladin_cures=0))
+        deltas.key, levels={"paladin": 5}, paladin_cures=0))
     assert spent[f.offset] == 0
     odd, _, _, _ = dos_codec.write(_neutral(
-        shape.key, levels={"fighter": 5}, paladin_cures=1))
+        deltas.key, levels={"fighter": 5}, paladin_cures=1))
     assert odd[f.offset] == 1
     none_held, _, _, _ = dos_codec.write(_neutral(
-        shape.key, levels={"paladin": 5}))
+        deltas.key, levels={"paladin": 5}))
     assert none_held[f.offset] == 1
 
 
@@ -765,16 +765,16 @@ def test_pool_of_radiance_reports_a_cure_byte_it_cannot_keep():
                for d in rep.dropped), rep.dropped
 
 
-@pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
-def test_a_dos_paladins_cure_byte_is_read_into_the_neutral_record(shape):
+@pytest.mark.parametrize("deltas", LATER, ids=lambda s: s.key)
+def test_a_dos_paladins_cure_byte_is_read_into_the_neutral_record(deltas):
     """The DOS reader names the byte in `DIRECT`, so a made-up record holding
     1 arrives with `paladin_cures` 1 rather than without the field."""
-    f = dos_port.FIELDS_BY_NAME_FOR[shape.key]["paladin_cures"]
-    raw = bytearray(shape.record_size)
+    f = dos_port.FIELDS_BY_NAME_FOR[deltas.key]["paladin_cures"]
+    raw = bytearray(deltas.record_size)
     raw[0] = 4
     raw[1:5] = b"TEST"
     raw[f.offset] = 1
-    out = dos_codec.to_neutral(dos_codec.DosCharacter(bytes(raw), deltas=shape))
+    out = dos_codec.to_neutral(dos_codec.DosCharacter(bytes(raw), deltas=deltas))
     assert out.get("paladin_cures") == 1
 
 
@@ -786,44 +786,44 @@ def _c64_round_trip(key, **fields):
     return rec, rep
 
 
-@pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
+@pytest.mark.parametrize("deltas", LATER, ids=lambda s: s.key)
 @pytest.mark.parametrize("left, full", [(5, 1), (6, 2), (11, 3)])
 def test_a_c64_former_paladin_who_has_not_regained_gets_his_full_count(
-        shape, left, full):
+        deltas, left, full):
     """The C64 holds 0 until its regain reseeds the byte and DOS never
     reseeds it, so the writer gives the full count for the old level."""
-    f = dos_port.FIELDS_BY_NAME_FOR[shape.key]["paladin_cures"]
+    f = dos_port.FIELDS_BY_NAME_FOR[deltas.key]["paladin_cures"]
     rec, rep = _c64_round_trip(
-        shape.key, levels={"magic-user": 1}, former_levels={"paladin": left},
+        deltas.key, levels={"magic-user": 1}, former_levels={"paladin": left},
         paladin_cures=full)
     assert rec[f.offset] == full
     assert not [d for d in rep.dropped if "paladin_cures" in d]
 
 
-@pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
-def test_a_c64_regained_paladin_keeps_the_sources_byte(shape):
-    f = dos_port.FIELDS_BY_NAME_FOR[shape.key]["paladin_cures"]
-    char = _neutral(shape.key, levels={"paladin": 6},
+@pytest.mark.parametrize("deltas", LATER, ids=lambda s: s.key)
+def test_a_c64_regained_paladin_keeps_the_sources_byte(deltas):
+    f = dos_port.FIELDS_BY_NAME_FOR[deltas.key]["paladin_cures"]
+    char = _neutral(deltas.key, levels={"paladin": 6},
                     former_levels={"paladin": 6}, paladin_cures=2)
     char.port = "C64"
     rec, _, _, _ = dos_codec.write(char)
     assert rec[f.offset] == 2
 
 
-@pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
-def test_a_c64_character_who_never_was_a_paladin_writes_zero(shape):
-    f = dos_port.FIELDS_BY_NAME_FOR[shape.key]["paladin_cures"]
-    char = _neutral(shape.key, levels={"magic-user": 1},
+@pytest.mark.parametrize("deltas", LATER, ids=lambda s: s.key)
+def test_a_c64_character_who_never_was_a_paladin_writes_zero(deltas):
+    f = dos_port.FIELDS_BY_NAME_FOR[deltas.key]["paladin_cures"]
+    char = _neutral(deltas.key, levels={"magic-user": 1},
                     former_levels={"magic-user": 5}, paladin_cures=0)
     char.port = "C64"
     rec, _, _, _ = dos_codec.write(char)
     assert rec[f.offset] == 0
 
 
-@pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
-def test_a_dos_former_paladin_keeps_the_sources_byte(shape):
-    f = dos_port.FIELDS_BY_NAME_FOR[shape.key]["paladin_cures"]
-    char = _neutral(shape.key, levels={"magic-user": 1},
+@pytest.mark.parametrize("deltas", LATER, ids=lambda s: s.key)
+def test_a_dos_former_paladin_keeps_the_sources_byte(deltas):
+    f = dos_port.FIELDS_BY_NAME_FOR[deltas.key]["paladin_cures"]
+    char = _neutral(deltas.key, levels={"magic-user": 1},
                     former_levels={"paladin": 6}, paladin_cures=1)
     char.port = "DOS"
     rec, _, _, _ = dos_codec.write(char)

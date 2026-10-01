@@ -18,7 +18,7 @@ insistence that the money fields come from `goldbox/dos_port.py`.
 
 One thing these do **not** assert: a remembered address.  The tool finds the
 routine by signature, and pinning `0x1758` here would turn a re-derivation
-into a copy of the answer.  What is pinned is the *shape* -- a zero, an
+into a copy of the answer.  What is pinned is the *sequence* -- a zero, an
 accumulate and a store, in that order, in one routine.
 """
 
@@ -50,7 +50,7 @@ def _found(stem: str):
 
 
 def test_the_money_offsets_come_from_the_layout_rather_than_a_local_table():
-    """A shape correction in `goldbox/dos_port.py` must move this tool.
+    """A correction to the deltas in `goldbox/dos_port.py` must move this tool.
 
     The failure this prevents is silent: a tool with its own copy of the seven
     displacements goes on reading whatever used to be at `0x88` and reports a

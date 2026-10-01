@@ -43,7 +43,7 @@ def _call(eid: int) -> bytes:
 
 
 def _switch(branches: dict[int, list[int]]) -> bytes:
-    """A creation switch in the engine's own shape, for the races given."""
+    """A creation switch in the engine's own form, for the races given."""
     bodies = [(race, b"".join(_call(e) for e in ids))
               for race, ids in branches.items()]
     out = bytearray(dosracialseed.RACE_READ)

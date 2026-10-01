@@ -72,7 +72,7 @@ def _run(tmp_path, monkeypatch, who: str, trait: str) -> tuple[int, object]:
 def test_the_add_button_and_the_file_menu_change_one_byte(tmp_path, monkeypatch):
     """The whole disk differs by the trait, and by nothing else.
 
-    This is the shape of M3's first half. If `tools/c64/traitsave.py` ever stopped
+    This is the form of M3's first half. If `tools/c64/traitsave.py` ever stopped
     going through the button and wrote the byte itself the assertion below
     would still pass -- so the guard is the *count*: a save that rewrote a
     derived field, a checksum or a name would show more than one byte here,

@@ -257,7 +257,7 @@ def main(argv=None) -> int:
         sess.select_row("SAVE CURRENT GAME", timeout=15.0)
         settle(sess, 20.0)
         # `SAVE GAME ? YES NO` first, and then `MAKE SAVE GAME DISK ? YES NO`
-        # if the drive would not take the write -- which is the shape a
+        # if the drive would not take the write -- which is the state a
         # write-protected image puts the run into, so NO there rather than
         # formatting one.
         print("save game:", answer(sess, "YES", timeout=30.0), flush=True)

@@ -78,7 +78,7 @@ def game_files(disks: pathlib.Path) -> tuple[IconParts, bytes]:
 
     `ANIMATE00` is byte-identical on all eight `POOL` sides and the icon
     tables are on `POOL3`, so this walks the directory rather than naming a
-    side -- the same shape as `EditorWindow._find_disk`.
+    side -- the same form as `EditorWindow._find_disk`.
     """
     icon = animate = None
     for path in sorted(disks.glob("*.[dD]64")):

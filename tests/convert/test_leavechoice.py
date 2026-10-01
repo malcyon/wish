@@ -102,7 +102,7 @@ def test_a_direction_that_writes_no_c64_record_refuses_a_choice(name):
         pytest.skip(f"no {name} class")
     inst = direction.__new__(direction)
     inst.source_port, inst.destination_port = "a", "b"
-    inst.shape = SSB
+    inst.deltas = SSB
     with pytest.raises(saveplan.SaveAsError):
         inst.rehearse(type("S", (), {"slot": "A", "path": "x"})(), "A", None,
                       leave={0: {1}})
@@ -117,7 +117,7 @@ def test_the_choice_reaches_the_dos_to_c64_direction(monkeypatch):
 
     monkeypatch.setattr(dosimport, "rehearse", fake)
     direction = convert.DosToC64.__new__(convert.DosToC64)
-    direction.source_port, direction.shape = "dos", SSB
+    direction.source_port, direction.deltas = "dos", SSB
     direction._name = "N{slot}"
 
     class Source:
@@ -198,7 +198,7 @@ def test_the_effects_choice_reaches_the_dos_to_c64_direction(monkeypatch):
 
     monkeypatch.setattr(dosimport, "rehearse", fake)
     direction = convert.DosToC64.__new__(convert.DosToC64)
-    direction.source_port, direction.shape = "dos", SSB
+    direction.source_port, direction.deltas = "dos", SSB
     direction._name = "N{slot}"
 
     class Source:

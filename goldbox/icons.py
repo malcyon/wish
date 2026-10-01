@@ -3,7 +3,7 @@
 Eight entries of 36 bytes, one per character slot, ending exactly at $4D00
 where slot 0 begins. Each entry splits cleanly in half:
 
-    +0  .. +17    18 screen codes  -- the shape / pose
+    +0  .. +17    18 screen codes  -- the figure / pose
     +18 .. +35    18 colour values -- one per character cell, C64 colours 0-15
 
 Established by having Donald change every character's icon in-game and diffing
@@ -62,7 +62,7 @@ class Icon:
         return seen
 
     def __repr__(self) -> str:
-        return f"<Icon shape={self.screen_codes.hex()} palette={'/'.join(self.palette)}>"
+        return f"<Icon figure={self.screen_codes.hex()} palette={'/'.join(self.palette)}>"
 
 
 def icon_for_slot(save0_payload: bytes, slot: int) -> Icon:
@@ -80,7 +80,7 @@ POSES = 2
 CELL_ROWS = POSE_ROWS * POSES
 
 # The glyphs. CHARPIC00 -- "character picture" -- is the only charset on the
-# disks big enough: icon shape codes reach 243, and the other candidate,
+# disks big enough: icon figure codes reach 243, and the other candidate,
 # CHARSET, holds 64 glyphs. Byte-identical on all eight disks.
 #
 # **Eight bytes per glyph from byte 0, no header.** Splitting it at every phase,
@@ -90,7 +90,7 @@ CELL_ROWS = POSE_ROWS * POSES
 # glyph 253: 2032 = 8 x 254 is the largest an eight-block PRG carries, and a full
 # 2048-byte charset would need a ninth block. Glyph 253's lost tail is `D4 D4`,
 # recoverable because glyphs 81 and 251 are the only ones sharing its six present
-# bytes. Nothing reaches it -- the highest shape code across every source is 243,
+# bytes. Nothing reaches it -- the highest figure code across every source is 243,
 # ending 72 bytes clear -- so the clamp in `icon_pixels` never fires.
 ICON_CHARSET_FILE = b"CHARPIC00"
 

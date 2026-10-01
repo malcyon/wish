@@ -382,7 +382,7 @@ def test_the_sweep_says_how_wide_the_zero_argument_is(specimens):
     words are ever non-zero, and how many saves from one place alone would
     have missed.
 
-    Asserted as a shape rather than as the numbers, which move whenever a
+    Asserted as a pattern rather than as the numbers, which move whenever a
     saved game is added -- except the one that must not move, that the whole
     set of specimens sees at least what any one place in it sees.
     """

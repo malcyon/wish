@@ -15,7 +15,7 @@ gets wrong -- **before any of it is loaded in the game**.
 
 **This is a consistency check and not proof.**  `.claude/rules/testing.md`:
 a save found on a disk has no chain of custody, so neither side is evidence
-about the game on its own.  What it is good for is the *shape* of the
+about the game on its own.  What it is good for is the *pattern* of the
 disagreement -- a field this project calls DIRECT differing on all six is a
 wrong offset or a wrong encoding, and that is a defect in our table rather
 than a fact about SSI's party.

@@ -34,15 +34,15 @@ from goldbox import dos_savegame as sg  # noqa: E402
 from tools.dos import dossavsweep as sweep  # noqa: E402
 
 
-def _blank(shape: sg.DosContainer = sg.SAVE_POOL_OF_RADIANCE, **words) -> bytes:
+def _blank(container: sg.DosContainer = sg.SAVE_POOL_OF_RADIANCE, **words) -> bytes:
     """A container of the right size, all zero but for the words named.
 
-    Not a slice of anything: `bytearray(shape.size)` and then `put_word` at
+    Not a slice of anything: `bytearray(container.size)` and then `put_word` at
     the addresses a test cares about.
     """
-    save = bytearray(shape.size)
+    save = bytearray(container.size)
     for address, value in words.items():
-        at = sg.word_offset(int(address.lstrip("a"), 16), shape)
+        at = sg.word_offset(int(address.lstrip("a"), 16), container)
         struct.pack_into("<H", save, at, value)
     return bytes(save)
 
@@ -112,7 +112,7 @@ def test_the_counts_exclude_hand_built_and_never_adventured(tmp_path):
 def test_never_adventured_is_named_for_what_it_is_not_for_shipping(tmp_path):
     """#327 (dossavsweep calls a party saved before it set out a shipped
     stub, and drops thirteen engine-written containers from every count):
-    an engine-written save this project drove itself -- the shape of
+    an engine-written save this project drove itself -- the form of
     `cited/304/probe/created/SAVGAMC.DAT` -- carries the same zero
     script buffer and 00:00 clock a shipped never-adventured save does, and
     the classification has to say so without claiming it shipped with the

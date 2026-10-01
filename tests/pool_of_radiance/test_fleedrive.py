@@ -42,7 +42,7 @@ def test_a_fight_the_party_runs_away_from_is_classified_from_the_screen():
     """The fleeing branch, against the row a driven flight actually drew.
 
     `cited/445/run2/screens.txt` at +686.7s: the line alone on row 10 in
-    a cleared full-width window, and row 24 blank -- the same shape as the
+    a cleared full-width window, and row 24 blank -- the same form as the
     losing line, which is why nothing else is on the row here.
     """
     bar = "MOVE VIEW AIM USE QUICK DONE"
@@ -80,7 +80,7 @@ def test_the_three_outcomes_are_told_apart_and_nothing_else_is_claimed():
 def test_the_fleeing_line_is_the_one_the_game_prints_rather_than_a_guess():
     """`THE PARTY RUNS AWAY`, and the two lines it is chosen between.
 
-    A regression test on a *word*, the same shape as the losing one: the
+    A regression test on a *word*, the same form as the losing one: the
     three are `POST.COM`'s string table entries 2, 3 and 4, all three of them
     on the disks of all three C64 titles, and only the winning one has an
     exclamation mark.
@@ -131,20 +131,20 @@ def test_the_walk_reaches_the_edge_of_the_map_and_stops_there():
 
     The real map in the Slums ambush is 56 x 26 with the party at y 12-13, so
     the nearest way out is south and it is twelve squares -- one round for a
-    move-12 character and two for a move-9 one. This walks the same shape.
+    move-12 character and two for a move-9 one. This walks the same case.
     """
     b = arena(25, 13)
     at = Where(25, 13)
     path = [(at.x, at.y)]
     for _ in range(40):
-        if fleedrive.edges_of(b.shape, at):
+        if fleedrive.edges_of(b.geometry, at):
             break
         key = fleedrive.step_to_edge(b, at)
         assert key is not None, path
         dx, dy = next(d for d, k in session.STEP_KEYS.items() if k == key)
         at = Where(at.x + dx, at.y + dy)
         path.append((at.x, at.y))
-    assert path[-1] == (25, b.shape.height - 1), path
+    assert path[-1] == (25, b.geometry.height - 1), path
     assert len(path) - 1 == 12, path
 
 
@@ -162,12 +162,12 @@ def test_the_walk_prefers_a_straight_step_to_a_diagonal_one():
 
 def test_a_character_already_on_the_edge_is_told_which_way_is_out():
     b = arena(25, 13)
-    w, h = b.shape.width, b.shape.height
-    assert fleedrive.edges_of(b.shape, Where(3, 0)) == [(0, -1)]
-    assert fleedrive.edges_of(b.shape, Where(3, h - 1)) == [(0, 1)]
-    assert fleedrive.edges_of(b.shape, Where(0, 5)) == [(-1, 0)]
-    assert fleedrive.edges_of(b.shape, Where(w - 1, 5)) == [(1, 0)]
-    assert fleedrive.edges_of(b.shape, Where(20, 10)) == []
+    w, h = b.geometry.width, b.geometry.height
+    assert fleedrive.edges_of(b.geometry, Where(3, 0)) == [(0, -1)]
+    assert fleedrive.edges_of(b.geometry, Where(3, h - 1)) == [(0, 1)]
+    assert fleedrive.edges_of(b.geometry, Where(0, 5)) == [(-1, 0)]
+    assert fleedrive.edges_of(b.geometry, Where(w - 1, 5)) == [(1, 0)]
+    assert fleedrive.edges_of(b.geometry, Where(20, 10)) == []
 
 
 def test_every_way_out_has_a_key_that_takes_it():

@@ -6,7 +6,7 @@ emulator)`: `tools/secret_of_the_silver_blades/ssbrun.py --help` claimed a poole
 booted it, because the tool scanned `sys.argv` by hand and silently ignored
 any token it did not recognise -- so `--help` fell through to the tool's
 normal job. `tools/curse_of_the_azure_bonds/curserun.py` and `tools/c64/session.py` shared the identical
-manual-scan shape, and `tools/c64/session.py`'s is worse: with no `--pool` it
+manual-scan form, and `tools/c64/session.py`'s is worse: with no `--pool` it
 drives the *legacy* session on Donald's own 6502/6510/6600, so its
 `--help` used to reach for his own machine rather than a pooled one.
 `tools/generate/genui.py` and `tools/generate/genlicenses.py` shared a smaller version of the

@@ -5,8 +5,8 @@ and when. This module is the map itself.
 
 **The overland map is not a `GEO`.** It is the combat square engine --
 `SQRPACI` descriptor, one byte a square -- pointed at `SQRDATA0n` instead of
-a combat arena. `automap/combat.py` reads exactly this shape for a fight;
-this module reads the same shape for the three files that make up Pool of
+a combat arena. `automap/combat.py` reads exactly this form for a fight;
+this module reads the same form for the three files that make up Pool of
 Radiance's wilderness.
 
 A `SQRDATA` file is **648 bytes of grid, then 120 tile entries of 18 bytes

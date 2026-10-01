@@ -6,14 +6,14 @@ the elf's, in the specimen both ids were graded from)` is why this exists.
 `goldbox/dos_codec.py` grades effect id 134 as Curse of the Azure Bonds' ranger id
 and 107 as the elf's, and a code review found a cleric carrying 134 and a
 human carrying 107 in the same specimen the grades cite.  A grade of that
-shape is a claim about a **partition** -- every carrier of this id is a
+kind is a claim about a **partition** -- every carrier of this id is a
 ranger, and no non-ranger carries it -- and a partition can be checked two
 ways, so there is a subcommand for each.
 
 **`seed` reads the engine's own creation table** out of `GAME.OVR`, which is
 the route `.claude/rules/testing.md` says to prefer when provenance is in
 doubt: a finding taken from the game's own instructions cannot be poisoned by
-an edited save.  It finds `add_affect` by the shape of its call sites, walks
+an edited save.  It finds `add_affect` by the pattern of its call sites, walks
 character creation's switch on the record's race byte and on its class byte,
 and prints the `(id, duration, data, flag)` each branch pushes -- which is the
 nine-byte `.SPC`/`.FX` record the engine then writes.
@@ -72,12 +72,12 @@ from goldbox import dos_port as dl  # noqa: E402
 from tools.dos import dostailsweep  # noqa: E402
 from tools.registry import specimens  # noqa: E402
 
-#: The four titles' effect-file suffixes, from each shape.  Named here so the
+#: The four titles' effect-file suffixes, from each title.  Named here so the
 #: sweep can find a record's effects without opening every file twice.
 EFFECT_SUFFIXES = tuple(sorted({s.effect_suffix for s in dl.DELTAS_BY_SIZE.values()}))
 
 #: Bytes 1-4 of an innate effect's record.  `goldbox/dos_codec.py`'s own constant;
-#: a record matching it in those four bytes is in "the innate payload shape",
+#: a record matching it in those four bytes is in "the innate payload form",
 #: which is the phrase `#395` uses.
 INNATE_PAYLOAD = gdos.INNATE_PAYLOAD
 
@@ -114,8 +114,8 @@ class Record:
         self.path = path
         self.data = data
         self.spc = spc
-        self.shape = dl.deltas_for(len(data))
-        self.char = gdos.DosCharacter(data, deltas=self.shape)
+        self.deltas = dl.deltas_for(len(data))
+        self.char = gdos.DosCharacter(data, deltas=self.deltas)
         self.effects = [spc[i:i + dl.EFFECT_SIZE]
                         for i in range(0, len(spc), dl.EFFECT_SIZE)
                         if len(spc[i:i + dl.EFFECT_SIZE]) == dl.EFFECT_SIZE]
@@ -145,7 +145,7 @@ class Record:
     @property
     def race(self) -> str:
         n = self._get("race")
-        table = self.shape.race_numbers
+        table = self.deltas.race_numbers
         return table[n] if isinstance(n, int) and n < len(table) else f"?{n}"
 
     @property
@@ -219,10 +219,10 @@ def collect(roots, want_ours: bool, title: str | None,
             if other and not foreign:
                 skipped[other] += 1
                 continue
-            shape = dl.DELTAS_BY_SIZE[size]
-            if title and title.lower() not in shape.key:
+            deltas = dl.DELTAS_BY_SIZE[size]
+            if title and title.lower() not in deltas.key:
                 continue
-            spc_path = path.with_suffix(shape.effect_suffix)
+            spc_path = path.with_suffix(deltas.effect_suffix)
             spc = spc_path.read_bytes() if spc_path.is_file() else b""
             try:
                 rec = Record(path, path.read_bytes(), spc)
@@ -231,7 +231,7 @@ def collect(roots, want_ours: bool, title: str | None,
                 continue
             if rec.ours and not want_ours:
                 continue
-            key = f"{rec.shape.key}:{rec.digest}"
+            key = f"{rec.deltas.key}:{rec.digest}"
             if key in seen:
                 seen[key].paths.append(path)
             else:
@@ -240,7 +240,7 @@ def collect(roots, want_ours: bool, title: str | None,
 
 
 def by_record(records: list[Record]) -> None:
-    for rec in sorted(records, key=lambda r: (r.shape.key, r.name)):
+    for rec in sorted(records, key=lambda r: (r.deltas.key, r.name)):
         effects = ", ".join(
             f"{e[0]} [{rec.effect_payload_text(e)}]" for e in rec.effects) or "-"
         print(f"  {rec.grade:5s} {rec.who} items{rec.char.get('item_count'):<3d}"
@@ -322,9 +322,9 @@ def add_affect(ovr: bytes, race_field: int, window: int = 0x400) -> tuple[int, i
 
     `docs/162-spc-permanence.md` names it `add_affect(id, duration, data,
     flag)` in Pool of Radiance, where it is `lcall 0xB0:0x52`.  The address
-    moves between titles and the **shape** does not, so it is found by the
-    shape -- but "the call reached with four constants most often in the
-    overlay" is the wrong shape and picks something else in Pool of Radiance.
+    moves between titles and the **pattern** does not, so it is found by the
+    pattern -- but "the call reached with four constants most often in the
+    overlay" is the wrong pattern and picks something else in Pool of Radiance.
 
     What is distinctive is *where* it is called from: inside a switch on the
     record's race byte.  So this scores each far-call target by the constant
@@ -419,16 +419,16 @@ def constant_sites(ovr: bytes, target: tuple[int, int],
 
 def seed(game: pathlib.Path, ids: list[int]) -> int:
     ovr = (game / "GAME.OVR").read_bytes()
-    shape = _deltas_for_game(game)
-    fields = dl.FIELDS_BY_NAME_FOR[shape.key]
+    deltas = _deltas_for_game(game)
+    fields = dl.FIELDS_BY_NAME_FOR[deltas.key]
     target = add_affect(ovr, fields["race"].offset)
     print(f"{game}")
-    print(f"  GAME.OVR {len(ovr)} bytes, read as {shape.title}")
+    print(f"  GAME.OVR {len(ovr)} bytes, read as {deltas.title}")
     print(f"  add_affect is lcall {target[0]:04x}:{target[1]:04x}, "
           f"{len(constant_sites(ovr, target))} call sites with "
           f"four constant arguments")
     for what, field, names in (
-            ("race", fields["race"].offset, shape.race_numbers),
+            ("race", fields["race"].offset, deltas.race_numbers),
             ("class", fields["char_class"].offset, dl.CLASS_NUMBERS)):
         print(f"\n  switch on the record's {what} byte 0x{field:02X} "
               f"-- (id, duration, data, flag)")
@@ -507,7 +507,7 @@ def main(argv=None) -> int:
     c.add_argument("roots", nargs="*", type=pathlib.Path,
                    help="directories to sweep; default the specimen tree, "
                         "the archives and the played DOS game directory")
-    c.add_argument("--title", help="substring of a shape key: pool, curse, "
+    c.add_argument("--title", help="substring of a title key: pool, curse, "
                                    "silver, darkness")
     c.add_argument("--by-id", action="store_true",
                    help="one block per effect id, with every carrier")

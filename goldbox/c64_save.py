@@ -789,7 +789,7 @@ def container_for(game=None) -> C64Container:
     """The container for a title, Pool of Radiance's by default.
 
     Takes a `C64Container`, a key, anything carrying one as `.key`, or None --
-    the same shape `goldbox.spells.for_game` takes, so a caller holding any of
+    the same form `goldbox.spells.for_game` takes, so a caller holding any of
     them does not have to convert first.  A title with no measured payload map
     raises: handing back another title's header offsets would be inventing its
     geometry, and an unrecognised key is more likely a typo than a new title.

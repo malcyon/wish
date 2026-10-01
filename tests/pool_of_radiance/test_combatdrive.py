@@ -329,7 +329,7 @@ def test_a_fight_the_party_loses_is_classified_from_the_screen():
     say it claimed nothing about the game's wording.  It can now: a party of
     six wounded to 1 hit point through the monitor and left to the orcs drew
     `THE PARTY HAS LOST` at row 10 with the result byte `$6DC7` at `$80`
-    (`#128`, `tools/pool_of_radiance/defeatdrive.py`), so the row below is the shape the game
+    (`#128`, `tools/pool_of_radiance/defeatdrive.py`), so the row below is the form the game
     puts on the screen -- the line alone in a cleared full-width window,
     which is why nothing else is on the row.
     """
@@ -666,7 +666,7 @@ def test_a_turn_with_nothing_left_to_fight_passes_instead_of_moving():
     """Every enemy dead or gone: take DONE rather than walk into a corpse."""
     b = combat.read_battle(MemoryTarget(synthetic_arena()))
     me = b.party[0]
-    dead = combat.Battle(shape=b.shape, terrain=b.terrain, camera=b.camera,
+    dead = combat.Battle(geometry=b.geometry, terrain=b.terrain, camera=b.camera,
                          combatants=tuple(c for c in b.combatants
                                           if c.is_party))
     sess = ArenaSession(dead, me.name, steps=3, highlight="DONE")
@@ -688,7 +688,7 @@ def test_a_name_inside_another_name_does_not_steal_the_turn():
     Taking the first match in index order would hand every one of BROTHER
     SEAN's turns to SEAN, and the wrong character would walk into the orcs.
     The party this ran against carries BROTHER SEAN, so it is not a
-    hypothetical shape.
+    hypothetical case.
     """
     party = _Party("SEAN", "BROTHER SEAN", "PHINEAS")
     sess = FakeSession([(COMBAT, FakeScreen({}))])
@@ -730,14 +730,14 @@ def test_the_step_towards_an_enemy_goes_round_an_ally_and_not_through_it():
     assert Session.step_towards(b, me, enemy) == "KP_6"
 
     ally = dataclasses.replace(me, index=1, x=me.x + 1, y=me.y)
-    blocked = combat.Battle(shape=b.shape, terrain=b.terrain, camera=b.camera,
+    blocked = combat.Battle(geometry=b.geometry, terrain=b.terrain, camera=b.camera,
                             combatants=(me, ally) + b.enemies)
     key = Session.step_towards(blocked, me, enemy)
     assert key in ("KP_9", "KP_3")                    # round it, not through it
 
     # The enemy's own square is never dropped: that step is the blow.
     adjacent = dataclasses.replace(enemy, x=me.x + 1, y=me.y)
-    touching = combat.Battle(shape=b.shape, terrain=b.terrain, camera=b.camera,
+    touching = combat.Battle(geometry=b.geometry, terrain=b.terrain, camera=b.camera,
                              combatants=(me, adjacent))
     assert Session.step_towards(touching, me, adjacent) == "KP_6"
 
@@ -747,7 +747,7 @@ def test_a_step_that_gets_no_closer_is_not_taken():
     b = combat.read_battle(MemoryTarget(synthetic_arena()))
     me = b.party[0]
     on_top = dataclasses.replace(b.enemies[0], x=me.x, y=me.y)
-    same = combat.Battle(shape=b.shape, terrain=b.terrain, camera=b.camera,
+    same = combat.Battle(geometry=b.geometry, terrain=b.terrain, camera=b.camera,
                          combatants=(me, on_top))
     assert chebyshev(me, on_top) == 0
     assert Session.step_towards(same, me, on_top) is None
@@ -809,7 +809,7 @@ def test_a_character_boxed_in_by_its_own_party_passes_its_turn():
     assert all(b.square(22, y) != 0 for y in (12, 13, 14))   # rock, west
     walls = [dataclasses.replace(me, index=i, x=x, y=y)
              for i, (x, y) in enumerate(shut, start=1)]
-    boxed = combat.Battle(shape=b.shape, terrain=b.terrain, camera=b.camera,
+    boxed = combat.Battle(geometry=b.geometry, terrain=b.terrain, camera=b.camera,
                           combatants=(me,) + tuple(walls) + (orc,))
     assert Session.step_towards(boxed, me, orc) is None
 
@@ -831,7 +831,7 @@ def test_a_character_walks_round_the_friends_in_the_way_rather_than_stopping():
     me, enemy = b.party[0], b.enemies[0]
     walls = [dataclasses.replace(me, index=i, x=me.x + 1, y=me.y + dy)
              for i, dy in enumerate((-1, 0, 1), start=1)]
-    penned = combat.Battle(shape=b.shape, terrain=b.terrain, camera=b.camera,
+    penned = combat.Battle(geometry=b.geometry, terrain=b.terrain, camera=b.camera,
                            combatants=(me,) + tuple(walls) + (enemy,))
     assert Session.step_towards(penned, me, enemy) == "KP_8"
 
@@ -850,7 +850,7 @@ def test_a_step_is_never_taken_into_rock():
     me, enemy = b.party[0], b.enemies[0]
     west = dataclasses.replace(me, x=19, y=13)
     far = dataclasses.replace(enemy, x=25, y=13)
-    walled = combat.Battle(shape=b.shape, terrain=b.terrain, camera=b.camera,
+    walled = combat.Battle(geometry=b.geometry, terrain=b.terrain, camera=b.camera,
                            combatants=(west, far))
     assert b.square(20, 13) != 0                 # the rock is really there
     assert b.square(19, 12) == 0                 # and the way round is not
@@ -935,7 +935,7 @@ def test_guard_is_still_preferred_when_the_bar_offers_it():
 class TurnQueue(FakeSession):
     """Two characters, and a sub-bar that does what the game's does.
 
-    `GUARD` is offered to the second and not to the first -- the shape
+    `GUARD` is offered to the second and not to the first -- the form
     MALCYON's bar had all through the fight in `#165`.  Taking `DELAY` hands
     the turn back to **the same** character; `GUARD` and `QUIT` move on to the
     next.  That is the only difference between a fight that goes round the
@@ -1208,7 +1208,7 @@ class WorldBar(Session):
     `Session.highlight_span` opens a **second** monitor connection and reads
     `$D800` again, so where it says the highlight is has nothing to do with
     the snapshot the text came from.  Here it is stuck on `CAST` while the
-    highlight really sits on `MOVE`, which is the shape of what `#173` saw:
+    highlight really sits on `MOVE`, which is what `#173` saw:
     `select_bar("CAST")` pressed Return at once and opened `VIEW`.
     """
 

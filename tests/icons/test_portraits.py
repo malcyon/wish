@@ -3,7 +3,7 @@
 `goldbox/portraits.py` claims three things, and each has a test here:
 
 * the fourteen heads and twelve bodies are a table in the game's own binary,
-  findable by the shape of the run rather than by a file offset;
+  findable by the pattern of the run rather than by a file offset;
 * **both ports carry the same table, in the same order** -- so the DOS
   record's menu position and the C64 record's art id are two spellings of one
   choice;
@@ -377,7 +377,7 @@ def test_a_silver_blades_folder_reports_no_portrait_art_rather_than_a_table():
 def test_a_table_is_found_across_sides_even_when_gen_carries_no_art_itself(
         tmp_path, monkeypatch):
     """The mechanism #300 asked for, proven on synthetic disks so it does not
-    depend on any title actually shipping this shape.
+    depend on any title actually shipping this form.
 
     `GEN` and its table sit alone on one side; every `HEAD<xx>`/`BODY<xx>`
     file sits on a second. `tables_from_c64` -- one disk only -- cannot
@@ -405,7 +405,7 @@ def test_a_table_is_found_across_sides_even_when_gen_carries_no_art_itself(
 
 def test_no_table_is_found_when_a_side_has_gen_but_no_art_anywhere(
         tmp_path, monkeypatch):
-    """The Silver Blades shape: a side carries `GEN`, but no side -- this one
+    """The Silver Blades case: a side carries `GEN`, but no side -- this one
     or any other matching the same title -- carries a `HEAD<xx>`/`BODY<xx>`
     file for a found run to be checked against."""
     monkeypatch.setattr(portraits, "HEAD_COUNT", 3)
@@ -712,7 +712,7 @@ def test_the_amiga_screen_palette_is_thirty_two_words_the_boot_code_copies():
 
     `tools/amiga/amigaportraitmenu.py` drew the Amiga art through the EGA palette
     until 2026-09-10 and said in its own docstring that the colours were
-    wrong, so a montage was evidence about shape and not about colour.  The
+    wrong, so a montage was evidence about form and not about colour.  The
     table is the first thing in the executable's first referenced `DATA`
     hunk: thirty-two big-endian `0RGB` words, copied one at a time into the
     open screen's colour table.  Entry 0 is black and the first sixteen are

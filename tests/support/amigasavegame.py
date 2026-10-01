@@ -8,19 +8,19 @@ from goldbox.amiga_savegame import (
 )
 
 
-def fake_record(shape: amiga_port.AmigaDeltas, name: str) -> bytes:
+def fake_record(deltas: amiga_port.AmigaDeltas, name: str) -> bytes:
     """A record the signature scan accepts, carrying no items or effects."""
-    raw = bytearray(shape.record_size)
+    raw = bytearray(deltas.record_size)
     raw[:len(name)] = name.encode()
     for i in range(6):
         raw[0x10 + 2 * i] = raw[0x11 + 2 * i] = 12
     return bytes(raw)
 
 
-def vm_with(shape, **words) -> bytearray:
+def vm_with(deltas, **words) -> bytearray:
     vm = bytearray(amiga_savegame.VM_BYTES)
     for name, value in words.items():
-        at = shape.vm_offset(int(name, 16)) - shape.vm_at
+        at = deltas.vm_offset(int(name, 16)) - deltas.vm_at
         vm[at:at + 2] = value.to_bytes(2, "big")
     return vm
 

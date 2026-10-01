@@ -177,11 +177,11 @@ def test_a_curse_or_silver_blades_players_share_is_never_the_flag(game):
     assert (back.get("flags_0b8"), back.get("treasure_share")) == (0, 1)
 
     # -- Amiga --
-    shape = _LATER_AMIGA_DELTAS[game]
+    deltas = _LATER_AMIGA_DELTAS[game]
     ac, _rep = amiga_later.write_later(neutral, deltas=game)
-    a_field = shape.dos_field("field_83_87")
-    a_control = shape.offset(a_field.offset) + control_index
-    a_share = shape.offset(a_field.offset) + share_index
+    a_field = deltas.dos_field("field_83_87")
+    a_control = deltas.offset(a_field.offset) + control_index
+    a_share = deltas.offset(a_field.offset) + share_index
     assert ac.raw[a_control] == 0x00
     assert ac.raw[a_share] == 0x01
 

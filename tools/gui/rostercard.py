@@ -104,8 +104,8 @@ def build(app, *, party=8, readied=READIED, badges=len(LIVING), width=None,
     while widget is not None:
         widget.updateGeometry()
         widget = widget.parentWidget()
-    floor = shotwindow.floor_of(win)
-    win.resize(max(floor.width(), 900), max(floor.height(), height))
+    minimum = shotwindow.floor_of(win)
+    win.resize(max(minimum.width(), 900), max(minimum.height(), height))
     for _ in range(3):
         app.processEvents()
     return win, roster
@@ -210,14 +210,14 @@ def main(argv: list[str]) -> int:
         try:
             edge, rows = state(win, roster)
             card = roster.cards[0].frame
-            floor = win.minimumSizeHint()
+            minimum = win.minimumSizeHint()
             print(f"Interface font {bigger.pointSizeF():g}pt, "
                   f"{args.badges} badge{'' if args.badges == 1 else 's'}, "
                   f"{'nothing' if args.no_readied else 'a full hand'} readied")
             print(f"Column {edge}px, card asks for "
                   f"{card.minimumSizeHint().width()}x"
-                  f"{card.minimumSizeHint().height()}, window floor "
-                  f"{floor.width()}x{floor.height()}")
+                  f"{card.minimumSizeHint().height()}, window minimum "
+                  f"{minimum.width()}x{minimum.height()}")
             for row in rows:
                 print(f"    {row}")
             if args.out:

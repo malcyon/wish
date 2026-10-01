@@ -221,15 +221,15 @@ def test_pool_of_radiance_still_writes_its_spell_slots():
 
 
 # --- the tables -------------------------------------------------------------
-@pytest.mark.parametrize("shape", dos_port.DELTAS,
+@pytest.mark.parametrize("deltas", dos_port.DELTAS,
                          ids=[s.key for s in dos_port.DELTAS])
-def test_every_declared_field_has_a_disposition_in_every_title(shape):
+def test_every_declared_field_has_a_disposition_in_every_title(deltas):
     """The disposition is asked per title, because the four tables are not the
     same table: Curse and Silver Blades declare fields Pool of Radiance has
     never heard of, and Pools of Darkness is missing nine of its."""
-    declared = {f.name for f in dos_port.LAYOUTS[shape.key]
+    declared = {f.name for f in dos_port.LAYOUTS[deltas.key]
                 if not f.name.startswith("gap_")}
-    table = dos_codec.field_disposition(shape)
+    table = dos_codec.field_disposition(deltas)
     assert declared - set(table) == set()
     assert set(table) - declared == set()
 
@@ -246,9 +246,9 @@ def test_the_conversion_no_longer_refuses_curse():
     C64 one, which the importer refuses today)`); Pools of Darkness joined
     on 2026-09-08 for its Amiga pairing rather than for a C64 one it will
     never have (`#194 (Import and export a Pools of Darkness save between
-    DOS and the Amiga)`). So **every DOS shape this project reads now
+    DOS and the Amiga)`). So **every DOS title this project reads now
     converts**, and what this asserts is that -- with a title the DOS reader
-    has no shape for at all standing in for the rejection."""
+    has no deltas for at all standing in for the rejection."""
     assert CURSE in dos_codec.CONVERTS
     dos_codec.to_neutral(dos_codec.DosCharacter(curse_record()))     # does not raise
     assert [s.key for s in dos_codec.CONVERTS] == \
@@ -267,10 +267,10 @@ def test_a_curse_address_is_not_a_variable_address():
     is why the module keeps naming words by Pool of Radiance's address and
     `pool_address` is what converts.
     """
-    shape = sg.container_for(CURSE.key)
-    assert shape.var_base == 0x4B00
-    assert sg.pool_address(0x4C20, shape) == 0x4A20
-    assert sg.word_offset(0x4C20, shape) - sg.word_offset(0x4A20, shape) == 1024
+    container = sg.container_for(CURSE.key)
+    assert container.var_base == 0x4B00
+    assert sg.pool_address(0x4C20, container) == 0x4A20
+    assert sg.word_offset(0x4C20, container) - sg.word_offset(0x4A20, container) == 1024
 
 
 # --- the container ----------------------------------------------------------
@@ -324,15 +324,15 @@ def test_the_last_flag_word_reaches_the_c64_payload():
     word before Pool of Radiance's window stops, and inside Curse's own
     window -- reaches the C64 payload at `+$1FE` (#289).
 
-    `$4AFE` is a Pool of Radiance address; `sg.pool_address(0x4CFE, shape)`
+    `$4AFE` is a Pool of Radiance address; `sg.pool_address(0x4CFE, container)`
     is what a Curse script would call it, and the two name the same word
     (`test_a_curse_address_is_not_a_variable_address` above).
     """
-    shape = sg.container_for(CURSE.key)
-    savgam = bytearray(shape.size)
-    off = sg.word_offset(0x4AFE, shape)
+    container = sg.container_for(CURSE.key)
+    savgam = bytearray(container.size)
+    off = sg.word_offset(0x4AFE, container)
     savgam[off], savgam[off + 1] = 0xFF, 0x00
-    state = world_state.from_dos(bytes(savgam), shape)
+    state = world_state.from_dos(bytes(savgam), container)
     save0 = bytearray(c64_save.CURSE_OF_THE_AZURE_BONDS.payload_size)
     window = c64_save.CURSE_OF_THE_AZURE_BONDS.quest_flags
     dos_codec.apply_quest_flags(save0, state, window)
@@ -525,8 +525,8 @@ def test_the_script_scratch_is_copied_and_the_picture_buffer_is_not():
     save0, _, _ = dos_codec.new_save(folder, _DOS_SLOT, icon=bytes(36),
                                animate=bytes(852), game=CURSE_GAME)
     savgam = (folder / f"SAVGAM{_DOS_SLOT}.DAT").read_bytes()
-    shape = sg.container_for(len(savgam))
-    want = bytes(sg.word(savgam, 0x4A00 + i, shape) & 0xFF for i in range(0x20))
+    container = sg.container_for(len(savgam))
+    want = bytes(sg.word(savgam, 0x4A00 + i, container) & 0xFF for i in range(0x20))
     assert bytes(save0[0x100:0x120]) == want
     assert any(want)                     # the copy is not a copy of nothing
     at, size = c64_save.CURSE_OF_THE_AZURE_BONDS.picture_buffer
@@ -587,7 +587,7 @@ def curse_parts():
 
 @pytest.fixture(scope="module")
 def curse_reachable(curse_parts):
-    """Every shape one weapon and then one head reaches, all four size pairs.
+    """Every figure one weapon and then one head reaches, all four size pairs.
 
     An icon outside this set is eighteen `CHARPIC00` screen codes in an order
     no menu produces, and the engine draws it without complaint -- which is
@@ -599,10 +599,10 @@ def curse_reachable(curse_parts):
     out = set()
     for weapon_size in ("small", "large"):
         for w in range(curse_parts.count(weapon_size, "weapon")):
-            shape = curse_parts.apply(blank, weapon_size, "weapon", w)
+            figure = curse_parts.apply(blank, weapon_size, "weapon", w)
             for head_size in ("small", "large"):
                 for h in range(curse_parts.count(head_size, "head")):
-                    out.add(curse_parts.apply(shape, head_size, "head", h))
+                    out.add(curse_parts.apply(figure, head_size, "head", h))
     return out
 
 
@@ -620,7 +620,7 @@ def test_a_curse_record_composes_a_figure_curses_own_menus_can_make(
         curse_parts, curse_reachable):
     """The whole point of `#330`, on a Curse record and Curse's own tables.
 
-    A row naming an option Curse does not have would raise here, and a shape
+    A row naming an option Curse does not have would raise here, and a figure
     the ICON menu cannot reach would fail the membership test -- neither of
     which the `icon=bytes(36)` the rest of this file passes would ever show.
     """

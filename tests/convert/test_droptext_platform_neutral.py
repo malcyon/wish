@@ -44,7 +44,7 @@ A sixth turned up in `goldbox.amiga_por.to_neutral` (the Amiga Pool of Radiance
 *reader*): its trailing-pad drop line named "the DOS record" while reading
 the source, before any writer was chosen, and `tests/convert/test_amigatoc64.py`
 already proves an Amiga Pool of Radiance save converts to the C64 as well as
-to DOS -- the same read-before-you-know-the-destination shape `region_220`
+to DOS -- the same read-before-you-know-the-destination form `region_220`
 had.
 """
 
@@ -218,7 +218,7 @@ def test_a_c64_pool_of_radiance_party_converted_to_the_amiga_names_no_platform()
 
 
 def test_an_amiga_source_character_converted_to_the_amiga_names_no_platform():
-    """A different field than `#389`'s own finding, in the same shape:
+    """A different field than `#389`'s own finding, in the same form:
     `goldbox.dos_codec.WRITE_DROPPED`'s `encumbrance` reason said "the identity the
     DOS engine itself uses", and `goldbox.amiga_later.write_later` copies
     `goldbox.dos_codec.write`'s report verbatim -- so an Amiga Curse or Silver

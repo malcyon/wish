@@ -191,7 +191,7 @@ def predicted_hp_max(con: dict, record) -> int | None:
 
     `Σ min(level, roll_to) * bonus(slot)` over the eight class slots, one more
     bonus for a ranger (`$0E9A`), divided by how many classes the character
-    holds (`$0D96`), plus the rolled hit points. The divide has no floor and
+    holds (`$0D96`), plus the rolled hit points. The divide has no minimum and
     rounds up at random, so this returns the rounded-down answer and the caller
     allows one more.
     """

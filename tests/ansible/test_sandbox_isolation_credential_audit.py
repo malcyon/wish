@@ -122,8 +122,8 @@ def home(tmp_path: pathlib.Path) -> pathlib.Path:
 def _synthetic_globs(tmp_path: pathlib.Path) -> list[str]:
     """The shipped `sandbox_net_credential_prune_globs` is anchored to a real
     `/home` and `/root`, neither of which a test may scan. Re-anchor the same
-    glob shapes at `tmp_path` instead of hand-writing a second pattern here,
-    so a change to the shipped globs' *shape* -- not just their value -- is
+    glob forms at `tmp_path` instead of hand-writing a second pattern here,
+    so a change to the shipped globs' *form* -- not just their value -- is
     exercised."""
     real_globs = _prune_globs_and_pattern()[0]
     out = []

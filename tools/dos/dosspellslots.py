@@ -293,7 +293,7 @@ def builder_classes(ovr: bytes, site: int) -> list[SlotClass]:
         if found is None:
             # Silver Blades' cleric branch calls a local helper whose own
             # frame holds the row loops.  Resolve near calls from their signed
-            # displacement and accept one only when it has the same row shape.
+            # displacement and accept one only when it has the same row form.
             branch = site + at
             for call in re.finditer(rb"\xe8(..)", body, re.S):
                 rel = struct.unpack("<h", call.group(1))[0]
@@ -378,8 +378,8 @@ def cmd_tables(a, ovr, image, block, width):
 def cmd_sites(a, ovr, image, block, width):
     md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
     for site, count in fill_sites(ovr, block):
-        shape = f"{count} = {count // width} x {width}" if count else "no count"
-        print(f"{site:06X}  add di, {block:#x}; FillChar {shape}")
+        summary = f"{count} = {count // width} x {width}" if count else "no count"
+        print(f"{site:06X}  add di, {block:#x}; FillChar {summary}")
         for ins in md.disasm(ovr[site:site + 24], site):
             print(f"    {ins.address:06x} {ins.mnemonic} {ins.op_str}")
         t = table_offset(ovr, site)

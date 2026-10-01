@@ -329,7 +329,7 @@ class Screen:
         return hashlib.sha1(self.rows(rect)).hexdigest()[:16]
 
     def ink(self, rect: tuple[int, int, int, int] | None = None) -> str:
-        """A digest of the same rectangle's *shape*, ignoring colour.
+        """A digest of the same rectangle's *outline*, ignoring colour.
 
         The game recolours the command bar without changing a glyph -- it is
         white for one frame after the party arrives somewhere and green
@@ -344,7 +344,7 @@ class Screen:
         return hashlib.sha1(bits).hexdigest()[:16]
 
     def glyphs(self, rect: tuple[int, int, int, int] | None = None) -> str:
-        """A digest of the same rectangle's shape, against its own background.
+        """A digest of the same rectangle's outline, against its own background.
 
         `ink` compares every pixel with one fixed threshold, and that is only
         safe where the paper is dark.  **On the combat screen it is not**: the
@@ -379,7 +379,7 @@ class Screen:
         return len({px[i:i + 3] for i in range(0, len(px), 3)}) <= 1
 
     def highlight_row(self, rect: tuple[int, int, int, int],
-                      row_height: int = 8, floor: int = 10) -> int | None:
+                      row_height: int = 8, minimum: int = 10) -> int | None:
         """Which 8px-high row of `rect` the game has drawn in reverse video.
 
         #555: DOS Curse's generic list menu (`PICK A SPELL TO MEMORIZE`,
@@ -388,7 +388,7 @@ class Screen:
         near-white pixels per band and returning the band with the most is
         how the highlight is read rather than assumed -- measured against
         `PALADIN'S SPELLS IN GRIMOIRE`, where 186-394 pixels lit the
-        highlighted row and 0 lit every other one, so `floor` only refuses a
+        highlighted row and 0 lit every other one, so `minimum` only refuses a
         rectangle carrying no highlight at all rather than discriminating
         between rows.
 
@@ -397,12 +397,12 @@ class Screen:
         where there was none (`cited/555/highlight-findings.md`).
 
         Returns the row's index within `rect` (0 at its top), or `None` when
-        no band clears `floor` -- the caller's signal that the list is not
+        no band clears `minimum` -- the caller's signal that the list is not
         showing a highlight at all, which must not be misread as "found row
         0".
         """
         x, y, w, h = rect
-        best_row, best_count = None, floor - 1
+        best_row, best_count = None, minimum - 1
         for row in range(h // row_height):
             top = y + row * row_height
             count = 0
@@ -1281,7 +1281,7 @@ class PoolOfRadiance:
     # -- screen predicates, as digests rather than text ------------------
 
     def bar(self) -> str:
-        """The command bar, by shape.  See `Screen.ink` for why not by colour."""
+        """The command bar, by outline.  See `Screen.ink` for why not by colour."""
         return self.s.capture().ink(BAR)
 
     def on_map(self, screen: Screen | None = None) -> bool:

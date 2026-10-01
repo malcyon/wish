@@ -4,7 +4,7 @@ the conversion fix that stops them crossing a save (`#440`).
 Everything here reads the player's own files at run time -- each title's
 `GAME.OVR` out of the DOS archives, the specimen tree's Curse saves, the C64
 disks -- and skips cleanly on a machine that has none.  No game bytes are
-committed; what is asserted is the *shape* of the three engines' shared
+committed; what is asserted is the *form* of the three engines' shared
 routine and the residual the records carry.
 
 The finding: the routine adds a one-byte stack local to every one of the eight

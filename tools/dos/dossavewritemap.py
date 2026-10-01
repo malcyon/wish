@@ -12,7 +12,7 @@ the first `BlockWrite` starts at file offset 0 and each one after it starts
 where the last ended.  That is what settled `#253`, where the square block's
 first byte had been placed twelve bytes late.
 
-The chain is found by its shape rather than by a hardcoded address.  A save
+The chain is found by its pattern rather than by a hardcoded address.  A save
 `BlockWrite` compiles to `xor ax, ax; push ax; push ax; lcall seg:off` -- the
 `var Result` argument passed as `NIL` -- where the *load* side passes a real
 `var` and so pushes `ss:di` instead.  The longest run of those calls whose
@@ -182,7 +182,7 @@ def square_region(regions: list[Region]) -> "Region | None":
 
 
 def title_of(regions: list[Region]) -> "sg.DosContainer | None":
-    """The shape whose size the chain's widths add up to, or None."""
+    """The container whose size the chain's widths add up to, or None."""
     total = sum(r.total for r in regions)
     return sg.CONTAINERS_BY_SIZE.get(total)
 
@@ -190,42 +190,42 @@ def title_of(regions: list[Region]) -> "sg.DosContainer | None":
 def save_chain(image: bytes) -> tuple[list[Region], "sg.DosContainer | None"]:
     """The save routine's regions, picked out of every candidate chain."""
     best: list[Region] = []
-    shape = None
+    container = None
     for chain in _chains(image):
         if len(chain) < 6:
             continue
         regions = write_map(image, chain)
         found = title_of(regions)
         if found and len(regions) > len(best):
-            best, shape = regions, found
-    return best, shape
+            best, container = regions, found
+    return best, container
 
 
 def report(name: str, regions: list[Region],
-           shape: "sg.DosContainer | None") -> list[str]:
+           container: "sg.DosContainer | None") -> list[str]:
     """The printed map, and the lines a `--check` disagreement produces."""
     print(f"=== {name}")
-    if not shape:
+    if not container:
         print("  no BlockWrite chain here adds up to a known container size")
         return [f"{name}: no save chain found"]
-    print(f"  {shape.title}, {shape.size} bytes")
+    print(f"  {container.title}, {container.size} bytes")
     print(f"  {'offset':>7}  {'bytes':>6}  source")
     for r in regions:
         times = f" x{r.times}" if r.times > 1 else ""
         print(f"  {r.at:>7}  {r.total:>6}  {r.source}{times}")
     block = square_region(regions)
     x = block.at if block else -1
-    print(f"  x is written at file offset {x}; the shape says {shape.pos_x}")
+    print(f"  x is written at file offset {x}; the container says {container.pos_x}")
     bad = []
-    if x != shape.pos_x:
-        bad.append(f"{shape.key}: the writer puts x at {x}, "
-                   f"the shape says {shape.pos_x}")
-    if regions[-1].at != shape.party_table:
-        bad.append(f"{shape.key}: the writer puts the character table at "
-                   f"{regions[-1].at}, the shape says {shape.party_table}")
-    if regions[-2].at != shape.party_table - 1:
-        bad.append(f"{shape.key}: the writer puts the party size at "
-                   f"{regions[-2].at}, the shape says {shape.party_table - 1}")
+    if x != container.pos_x:
+        bad.append(f"{container.key}: the writer puts x at {x}, "
+                   f"the container says {container.pos_x}")
+    if regions[-1].at != container.party_table:
+        bad.append(f"{container.key}: the writer puts the character table at "
+                   f"{regions[-1].at}, the container says {container.party_table}")
+    if regions[-2].at != container.party_table - 1:
+        bad.append(f"{container.key}: the writer puts the party size at "
+                   f"{regions[-2].at}, the container says {container.party_table - 1}")
     return bad
 
 
@@ -235,7 +235,7 @@ def main(argv: "list[str] | None" = None) -> int:
                     help=f"a title stem; default all of {', '.join(GAMES)}")
     ap.add_argument("--path", help="a GAME.OVR to read instead")
     ap.add_argument("--check", action="store_true",
-                    help="exit non-zero if a map disagrees with its shape")
+                    help="exit non-zero if a map disagrees with its container")
     args = ap.parse_args(argv)
 
     paths = []
@@ -252,8 +252,8 @@ def main(argv: "list[str] | None" = None) -> int:
         if not path.is_file():
             print(f"=== {path}\n  no such file")
             continue
-        regions, shape = save_chain(path.read_bytes())
-        bad += report(path.parent.name, regions, shape)
+        regions, container = save_chain(path.read_bytes())
+        bad += report(path.parent.name, regions, container)
     for line in bad:
         print(f"MISMATCH {line}")
     return 1 if (args.check and bad) else 0

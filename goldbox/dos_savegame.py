@@ -42,7 +42,7 @@ The file, in five regions
                       names the loader uses; all eight slots fit the block.
 ====================  =========================================================
 
-Pools of Darkness is the other shape
+Pools of Darkness is the other form
 ------------------------------------
 It writes 1024 **byte-wide** ECL variables from file offset 0, variable *N* at
 offset *N* - 1, where the first three titles write 2560 ``u16le`` words from
@@ -269,7 +269,7 @@ class DosContainer:
     #: between its seventh byte and the party-size byte that ends it.  Zero in
     #: Pool of Radiance and in Pools of Darkness.
     #:
-    #: Twelve bytes, and their *shape* is no longer unknown: the writer emits
+    #: Twelve bytes, and their *layout* is no longer unknown: the writer emits
     #: them as three passes of two `u16` each, `DS:0x722A + 4*i` and
     #: `DS:0x722C + 4*i` for `i` = 1, 2, 3 in Curse (`GAME.OVR:0x1F9D4`) and
     #: `DS:0x89D8`/`DS:0x89DA` in Silver Blades (`GAME.OVR:0x26BC7`).  So they
@@ -630,7 +630,7 @@ def pool_address(address: int, container: "DosContainer | None" = None) -> int:
     `$4C20` is a Curse of the Azure Bonds quest flag and `$4A20` is Pool of
     Radiance's; they are the **same word index**, `$120`, at the same file
     offset, because the whole save image moved by `$200` between the two
-    titles and the array did not change shape (`DosContainer.var_base`).
+    titles and the array did not change form (`DosContainer.var_base`).
 
     This exists because `word_offset` cannot tell the two apart: `$4C20` is
     inside Pool of Radiance's `$4900`-`$52FF` guard, so passing it raises

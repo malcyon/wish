@@ -5980,7 +5980,7 @@ class CurseRun(PoolRun):
         if actor is None:
             raise StepFailed("no actor at the first command bar")
         step = next(((delta, key) for delta, key in S.STEP_KEYS.items()
-                     if battle.shape.holds(actor.x + delta[0],
+                     if battle.geometry.holds(actor.x + delta[0],
                                            actor.y + delta[1])
                      and not battle.square(actor.x + delta[0],
                                            actor.y + delta[1])

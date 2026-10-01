@@ -2,7 +2,7 @@
 """Draw the combat map's square as a letter over a miniature health bar, so
 `#345` can be decided by looking at it.
 
-Donald settled the shape on 2026-09-06 -- *"Change the hit point number in
+Donald settled the design on 2026-09-06 -- *"Change the hit point number in
 the square to a miniature health bar. Put a letter above it to indicate who
 the square belongs to"* -- and nobody had drawn one. This draws it, in the
 canvas's own colours and at the cells the canvas actually paints: 12 px at

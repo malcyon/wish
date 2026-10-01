@@ -13,7 +13,7 @@ The two numbers answer different questions and both matter:
   set at 55 -- a dashed outline whose dashes fall below a pixel long before
   13 px, so on a card it was a smudge rather than a badge.
 * **pieces** is whether it survives as *one thing*. A glyph that comes apart
-  is legible only as a general shape; `hat-wizard`'s brim stopped touching its
+  is legible only as a general outline; `hat-wizard`'s brim stopped touching its
   cone at 13 px and it read as a shark's fin.
 
 A pixel counts as ink when it is **at least half covered**, and pieces are

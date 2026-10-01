@@ -9,7 +9,7 @@ Fast Travel now hands control back to the game's own machine before it warps:
 them was measured in a running machine rather than read off a disk.
 
 This is the reading half. It opens the player's own `DUNGEON`, **derives** two
-of the five from the bytes and checks the shape of the other three, so a wrong
+of the five from the bytes and checks the form of the other three, so a wrong
 address fails here instead of in an emulator slot:
 
 * `saved_sp` and the main loop's entry are read out of `NEWECL`'s own tail --
@@ -87,14 +87,14 @@ def read_tail(body: bytes, base: int, tail: int) -> tuple[int, int]:
 
     The tail is `JSR abs / INC abs / LDX abs / TXS / JMP abs`. The `LDX`
     operand is where the main loop parked its stack pointer and the `JMP`
-    target is the main loop. Raises `ValueError` when the shape is not that,
+    target is the main loop. Raises `ValueError` when the code is not that,
     because a tail that does not rebuild the stack is a different routine and
     guessing at its operands would invent an address.
     """
     block = at(body, base, tail, 13)
-    shape = (block[0] == 0x20 and block[3] == 0xEE and block[6] == 0xAE
+    matches = (block[0] == 0x20 and block[3] == 0xEE and block[6] == 0xAE
              and block[9] == 0x9A and block[10] == 0x4C)
-    if not shape:
+    if not matches:
         raise ValueError(f"${tail:04X} is not JSR/INC/LDX/TXS/JMP: "
                          f"{block.hex(' ')}")
     return word(body, base, tail + 7), word(body, base, tail + 11)

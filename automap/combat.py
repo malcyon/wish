@@ -11,7 +11,7 @@ repeat -- `0` GEN, `1` DUNGEON, **`2` COMBAT**, `3` INIT, `4` COM.PREP,
 combat `$8B00` is a graphics buffer, and in a captured world snapshot it reads
 `00 00 FF FF ...`, so an ungated reader draws combatants stacked at (0,0).
 
-**The shape is read, never assumed.** `SQRPACI<nn>` supplies a parameter block
+**The geometry is read, never assumed.** `SQRPACI<nn>` supplies a parameter block
 at `$0600` and the two combat files seen do not agree: `SQRPACI01` has a row
 bounds 55 x 25, `SQRPACI00` bounds 17 x 35 -- and 18 x 36 squares is exactly
 the 648 bytes that sit in front of the glyph table in a `SQRDATA` file.
@@ -171,16 +171,16 @@ def geometry_from_params(block: bytes) -> MapGeometry | None:
     # square. In a fight the two agree at 56 and the difference never shows;
     # on the overland map `$0607` is 20 against a true 18, and reading it there
     # shears every row two squares further along than the one before.
-    shape = MapGeometry(map_base=word(P_MAP), stride=block[P_MAX_X] + 1,
+    geometry = MapGeometry(map_base=word(P_MAP), stride=block[P_MAX_X] + 1,
                   width=block[P_MAX_X] + 1, height=block[P_MAX_Y] + 1,
                   positions=word(P_POSITIONS), count=block[P_COUNT])
-    if not (shape.map_base and shape.positions and shape.count):
+    if not (geometry.map_base and geometry.positions and geometry.count):
         return None
-    if not (0 < shape.width <= shape.stride <= 0x100):
+    if not (0 < geometry.width <= geometry.stride <= 0x100):
         return None
-    if not (0 < shape.height <= 0x100 and shape.count <= 0x100):
+    if not (0 < geometry.height <= 0x100 and geometry.count <= 0x100):
         return None
-    return shape
+    return geometry
 
 
 @dataclass(frozen=True)
@@ -337,7 +337,7 @@ class Combatant:
 class Battle:
     """One reading of a fight in progress."""
 
-    shape: MapGeometry
+    geometry: MapGeometry
     terrain: bytes
     combatants: tuple[Combatant, ...]
     camera: tuple[int, int]
@@ -348,14 +348,14 @@ class Battle:
         `$C086 BPL` branches past the glyph lookup when bit 7 is set and draws
         a combatant instead, so bit 7 is occupancy and bits 0-6 are the ground.
         """
-        if not self.shape.holds(x, y):
+        if not self.geometry.holds(x, y):
             return 0
-        return self.terrain[self.shape.index(x, y)] & 0x7F
+        return self.terrain[self.geometry.index(x, y)] & 0x7F
 
     def occupied(self, x: int, y: int) -> bool:
-        if not self.shape.holds(x, y):
+        if not self.geometry.holds(x, y):
             return False
-        return bool(self.terrain[self.shape.index(x, y)] & 0x80)
+        return bool(self.terrain[self.geometry.index(x, y)] & 0x80)
 
     @property
     def party(self) -> tuple[Combatant, ...]:
@@ -415,14 +415,14 @@ def helpless_indices(save_head: bytes) -> dict[int, frozenset[int]]:
 
 
 def _combatant(index: int, positions: bytes, roster: bytes, records: bytes,
-               initiative: bytes, shape: MapGeometry, previous: Battle | None,
+               initiative: bytes, geometry: MapGeometry, previous: Battle | None,
                helpless: dict[int, frozenset[int]] | None = None
                ) -> Combatant | None:
     helpless = helpless or {}
     at = index * POSITION_STRIDE
     x, y, packed = positions[at], positions[at + 1], positions[at + 2]
     on_map = x != OFF_MAP and y != OFF_MAP
-    if on_map and not shape.holds(x, y):
+    if on_map and not geometry.holds(x, y):
         return None                      # not a square; do not draw it anywhere
     if not on_map:
         # Dead or fled. Keep it where it last stood so it can be dimmed rather
@@ -600,27 +600,27 @@ def read_battle(target, game=None, previous: Battle | None = None) -> Battle | N
                                             (CAMERA, 2)))
     if not mode or mode[0] != COMBAT:
         return None
-    shape = geometry_from_params(params)
-    if shape is None:
+    geometry = geometry_from_params(params)
+    if geometry is None:
         return None
     terrain, roster, positions, initiative, save_head = _blocks(target, (
-        (shape.map_base, shape.length),
-        (where.roster, shape.count * ROSTER_STRIDE),
-        (shape.positions, shape.count * POSITION_STRIDE),
-        (where.initiative, shape.count),
+        (geometry.map_base, geometry.length),
+        (where.roster, geometry.count * ROSTER_STRIDE),
+        (geometry.positions, geometry.count * POSITION_STRIDE),
+        (where.initiative, geometry.count),
         (where.save_head, where.save_head_length)))
-    if len(terrain) < shape.length \
+    if len(terrain) < geometry.length \
             or len(save_head) < where.save_head_length:
         return None
     records = save_head[where.records - where.save_head:]
     helpless = helpless_indices(save_head)
     people = []
-    for i in range(shape.count):
-        who = _combatant(i, positions, roster, records, initiative, shape,
+    for i in range(geometry.count):
+        who = _combatant(i, positions, roster, records, initiative, geometry,
                          previous, helpless)
         if who is not None:
             people.append(who)
-    return Battle(shape=shape, terrain=bytes(terrain),
+    return Battle(geometry=geometry, terrain=bytes(terrain),
                   combatants=tuple(people),
                   camera=(camera[0], camera[1]))
 
@@ -643,9 +643,9 @@ def extent(battle: Battle, pad: int = PAD,
     x0, x1 = min(xs) - pad, max(xs) + pad
     y0, y1 = min(ys) - pad, max(ys) + pad
     w, h = max(x1 - x0 + 1, least), max(y1 - y0 + 1, least)
-    w, h = min(w, battle.shape.width), min(h, battle.shape.height)
-    x0 = max(0, min(x0, battle.shape.width - w))
-    y0 = max(0, min(y0, battle.shape.height - h))
+    w, h = min(w, battle.geometry.width), min(h, battle.geometry.height)
+    x0 = max(0, min(x0, battle.geometry.width - w))
+    y0 = max(0, min(y0, battle.geometry.height - h))
     return x0, y0, w, h
 
 
@@ -661,7 +661,7 @@ def _rock(battle: Battle, box, cell: int, margin: int, shading: str):
     it is drawn on and the next square's fill would paint over half of it.
 
     The outline is drawn only where rock meets ground, so a mass of rock is one
-    heavy shape rather than a grid of squares -- which is the difference between
+    heavy outline rather than a grid of squares -- which is the difference between
     a map somebody inked and a map something tiled.
     """
     x0, y0, w, h = box

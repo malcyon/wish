@@ -109,7 +109,7 @@ def test_the_two_call_argument_sets_really_can_disagree():
     shapes give different codes -- 2 against 13.  So the agreement the rest of
     this file measures is a fact about what Curse's engine leaves on disk, and
     not two identical calls agreeing with themselves.  No record has this
-    shape; it is built here to make the branch discriminate.
+    form; it is built here to make the branch discriminate.
     """
     mask_only = classcode.repair(0, 0x08, game=CURSE)
     with_levels = classcode.repair(

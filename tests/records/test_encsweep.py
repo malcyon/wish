@@ -90,7 +90,7 @@ def test_a_record_whose_item_file_is_missing_is_refused_with_the_readers_reason(
 
 
 def test_a_record_with_no_items_is_judged_on_its_money_alone(tmp_path):
-    """The training-fee shape: no items at all, and the stored total 1000
+    """The training-fee case: no items at all, and the stored total 1000
     above the purse.  This one is a real failure and must be counted."""
     _record(tmp_path / "CHRDATA1.SAV", gold=19000, encumbrance=20000)
 

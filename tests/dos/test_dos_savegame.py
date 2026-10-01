@@ -1,6 +1,6 @@
 """`goldbox/dos_savegame.py`, the DOS saved game's byte map.
 
-Fixed-offset indexing into a 13137-byte file, which is the shape of bug this
+Fixed-offset indexing into a 13137-byte file, which is the kind of bug this
 project has actually shipped -- a stride slip, a width read at half, a slice
 off by one. So the boundaries are tested from both sides rather than the
 middle, and a real specimen is used where one is available.
@@ -174,7 +174,7 @@ def test_a_position_is_written_with_the_facing_doubled():
 
 
 def test_a_pool_of_radiance_position_lands_on_the_module_constants():
-    """The default shape a bare `put_position`/`position` infer from a
+    """The default container a bare `put_position`/`position` infer from a
     13137-byte buffer's own length is Pool of Radiance's, so this must keep
     landing on `POS_X`/`POS_Y`/`POS_FACING` exactly -- the fix for #220 must
     not move Pool of Radiance's own offsets."""
@@ -199,17 +199,17 @@ def test_a_later_titles_square_is_where_its_own_writer_puts_it(key, x, table):
     `tests/dos/test_dossavewritemap.py` has the same claim read out of each
     engine's own `BlockWrite` chain, which is where it is settled.
     """
-    shape = sg.container_for(key)
-    assert (shape.pos_x, shape.pos_y, shape.pos_facing) == (x, x + 1, x + 2)
-    assert shape.unnamed == 12
+    container = sg.container_for(key)
+    assert (container.pos_x, container.pos_y, container.pos_facing) == (x, x + 1, x + 2)
+    assert container.unnamed == 12
     # The twelve are between the block's seventh byte and the party size.
-    assert shape.pos_x + 7 + shape.unnamed == shape.party_table - 1
+    assert container.pos_x + 7 + container.unnamed == container.party_table - 1
     # And the party table did not move with the square.
-    assert shape.party_table == table
+    assert container.party_table == table
 
-    save = bytearray(shape.size)
-    sg.put_position(save, 8, 14, 3, shape)
-    assert sg.position(bytes(save), shape) == (8, 14, 3)
+    save = bytearray(container.size)
+    sg.put_position(save, 8, 14, 3, container)
+    assert sg.position(bytes(save), container) == (8, 14, 3)
     # Nothing was written twelve bytes on, where #220 put the square.
     assert save[x + 12:x + 15] == b"\x00\x00\x00"
 
@@ -574,9 +574,9 @@ def test_the_shared_ecl_space_stops_at_the_last_quest_flag():
 
 
 def _containers():
-    """Every distinct DOS saved game the archives hold, by shape key.
+    """Every distinct DOS saved game the archives hold, by container key.
 
-    By *shape*, not by title: Treasures of the Savage Frontier writes the same
+    By *container*, not by title: Treasures of the Savage Frontier writes the same
     1364-byte container Pools of Darkness does, so on this machine its two
     files land in the Pools of Darkness bucket and the assertions below hold
     for them too.  That is a fact about the format rather than a slip -- see
@@ -607,14 +607,14 @@ _ALL_SHAPES = pytest.mark.parametrize(
 
 def test_a_container_whose_widths_do_not_add_up_is_refused_at_import():
     """The check that makes a fifth title cheap to try: a region declared too
-    wide moves every one after it, and the shape raises rather than reading
+    wide moves every one after it, and the container raises rather than reading
     somebody else's bytes.
 
     Asserting that the *existing* shapes tile was not this check and could
     not fail until #253: `square` was computed backwards from `size`, so
     `party_table + entries + scratch == size` reduced to `size == size` for
     any widths at all.  It is computed forwards now, which makes that a real
-    assertion -- see the test below.  Building a wrong shape is still what
+    assertion -- see the test below.  Building a wrong container is still what
     exercises this guard.
     """
     good = dict(key="fifth", title="A Fifth Title",
@@ -625,7 +625,7 @@ def test_a_container_whose_widths_do_not_add_up_is_refused_at_import():
     assert "add up to" in str(raised.value)
     assert str(sg.SAVGAM_SIZE) in str(raised.value)
 
-    # And the same shape with the missing width put back is accepted.
+    # And the same container with the missing width put back is accepted.
     width = sg.ECL_BUFFER[1] - sg.ECL_BUFFER[0]
     assert sg.DosContainer(**{**good, "script_bytes": width}).size == sg.SAVGAM_SIZE
 
@@ -640,13 +640,13 @@ def test_every_container_reaches_its_own_end_from_the_front():
     `party_table` and the count byte off the end of the character table, and
     the shipped containers stop naming six files.
     """
-    for shape in sg.CONTAINERS:
-        assert (shape.party_table + sg.PARTY_ENTRIES * sg.PARTY_ENTRY
-                + sg.UI_SCRATCH) == shape.size, shape.key
-        assert shape.square + shape.unnamed + shape.square_bytes == \
-            shape.party_table, shape.key
-        if shape.script_buffer:
-            assert shape.script_buffer[1] == shape.square, shape.key
+    for container in sg.CONTAINERS:
+        assert (container.party_table + sg.PARTY_ENTRIES * sg.PARTY_ENTRY
+                + sg.UI_SCRATCH) == container.size, container.key
+        assert container.square + container.unnamed + container.square_bytes == \
+            container.party_table, container.key
+        if container.script_buffer:
+            assert container.script_buffer[1] == container.square, container.key
 
 
 def test_no_two_containers_collide_on_the_size_that_selects_them():
@@ -659,23 +659,23 @@ def test_the_pool_of_radiance_container_is_the_offsets_the_module_was_built_on()
     """The generator must reproduce the hand-measured constants exactly.
     Without this the other three shapes would be free to drift the one that
     twelve engine-written specimens stand behind."""
-    shape = sg.SAVE_POOL_OF_RADIANCE
-    assert shape.size == sg.SAVGAM_SIZE
-    assert shape.var_offset == sg.VAR_OFFSET
-    assert shape.var_words == sg.VAR_WORDS
-    assert shape.script_buffer == sg.ECL_BUFFER
-    assert shape.square == sg.POS_X
-    assert shape.pos_x == sg.POS_X
-    assert shape.pos_y == sg.POS_Y
-    assert shape.pos_facing == sg.POS_FACING
-    assert shape.party_table == sg.PARTY_TABLE
+    container = sg.SAVE_POOL_OF_RADIANCE
+    assert container.size == sg.SAVGAM_SIZE
+    assert container.var_offset == sg.VAR_OFFSET
+    assert container.var_words == sg.VAR_WORDS
+    assert container.script_buffer == sg.ECL_BUFFER
+    assert container.square == sg.POS_X
+    assert container.pos_x == sg.POS_X
+    assert container.pos_y == sg.POS_Y
+    assert container.pos_facing == sg.POS_FACING
+    assert container.party_table == sg.PARTY_TABLE
 
 
 @_ALL_SHAPES
 def test_every_container_names_six_character_files(key):
     """The party table is the anchor the whole per-title map was measured
     backwards from: six length-prefixed `CHRDAT<letter><n>` names, 41 bytes
-    apart, ending 82 bytes before the end of the file. A shape whose head
+    apart, ending 82 bytes before the end of the file. A container whose head
     region is one byte out finds five names, or none."""
     for path, data in _of(key):
         names = sg.character_files(data, sg.container_for(key))
@@ -705,9 +705,9 @@ def test_a_shipped_container_reads_a_square_and_not_three_empty_markers(key):
     puts it, and 255 is not a value the writer can produce for any of three.
     """
     for path, data in _of(key):
-        shape = sg.container_for(key)
-        assert data[shape.pos_facing] % sg.FACING_SCALE == 0, path
-        x, y, facing = sg.position(data, shape)
+        container = sg.container_for(key)
+        assert data[container.pos_facing] % sg.FACING_SCALE == 0, path
+        x, y, facing = sg.position(data, container)
         assert 0 <= facing <= 3, path
         assert 0 <= x < 32 and 0 <= y < 32, path
 
@@ -720,9 +720,9 @@ def test_the_container_number_is_also_a_variable(key):
     Curse, 1/1 in Silver Blades. Two independent readings of the same fact
     3620 bytes apart, so a variable array at the wrong offset in Curse or
     Silver Blades could not agree with the header byte by accident."""
-    shape = sg.container_for(key)
+    container = sg.container_for(key)
     for path, data in _of(key):
-        assert sg.word(data, sg.DISK, shape) == sg.dax_number(data, shape), \
+        assert sg.word(data, sg.DISK, container) == sg.dax_number(data, container), \
             path
 
 
@@ -731,10 +731,10 @@ def test_the_container_number_is_also_a_variable(key):
 def test_the_party_size_is_also_a_variable(key):
     """`$503E` and the square block's last byte hold the same count. The
     second anchor for the shared variable array, 1602 words from the first."""
-    shape = sg.container_for(key)
+    container = sg.container_for(key)
     for path, data in _of(key):
-        assert sg.word(data, sg.PARTY_SIZE, shape) == \
-            sg.party_size(data, shape), path
+        assert sg.word(data, sg.PARTY_SIZE, container) == \
+            sg.party_size(data, container), path
 
 
 def test_pools_of_darkness_has_no_word_variable_array_to_read():
@@ -742,15 +742,15 @@ def test_pools_of_darkness_has_no_word_variable_array_to_read():
     (#175) -- so a caller that reaches for `$5012` or `$503E` is reaching for
     a word that does not exist here, and gets a rejection rather than two bytes
     out of the byte array."""
-    shape = sg.container_for("pools-of-darkness")
-    assert shape.var_offset is None
-    assert shape.script_buffer is None
-    assert shape.var_bytes == sg.POD_VAR_COUNT
+    container = sg.container_for("pools-of-darkness")
+    assert container.var_offset is None
+    assert container.script_buffer is None
+    assert container.var_bytes == sg.POD_VAR_COUNT
     for _, data in _of("pools-of-darkness"):
         with pytest.raises(sg.DosSaveError):
-            sg.word(data, sg.PARTY_SIZE, shape)
+            sg.word(data, sg.PARTY_SIZE, container)
         with pytest.raises(sg.DosSaveError):
-            sg.dax_number(data, shape)
+            sg.dax_number(data, container)
 
 
 def test_silver_blades_stages_no_script_and_its_scripts_are_no_smaller():
@@ -768,7 +768,7 @@ def test_silver_blades_stages_no_script_and_its_scripts_are_no_smaller():
 
 
 def test_a_container_of_an_unknown_length_is_refused():
-    """A file that is none of the four sizes names no shape, and guessing is
+    """A file that is none of the four sizes names no container, and guessing is
     how a reader hands back a party that is not there."""
     with pytest.raises(sg.DosSaveError):
         sg.container_for(9999)
@@ -808,10 +808,10 @@ def test_the_byte_array_is_refused_on_a_title_that_has_no_such_thing():
     error."""
     for key in ("pool-of-radiance", "curse-of-the-azure-bonds",
                 "secret-of-the-silver-blades"):
-        shape = sg.container_for(key)
-        assert shape.var_bytes == 0
+        container = sg.container_for(key)
+        assert container.var_bytes == 0
         with pytest.raises(sg.DosSaveError):
-            sg.pod_var_offset(sg.POD_IN_DUNGEON, shape)
+            sg.pod_var_offset(sg.POD_IN_DUNGEON, container)
     with pytest.raises(sg.DosSaveError):
         sg.pod_var(bytes(sg.SAVGAM_SIZE), sg.POD_IN_DUNGEON)
 
@@ -847,13 +847,13 @@ def test_the_pools_of_darkness_square_block_is_twelve_bytes():
     #175, which put the square three bytes past where it is. The widths still
     tile the file either way -- that is what makes the error survivable and
     is why the tiling check alone cannot catch it."""
-    shape = sg.container_for("pools-of-darkness")
-    assert shape.square_bytes == 12
-    assert (shape.pos_x, shape.pos_y, shape.pos_facing) == (1024, 1025, 1026)
-    assert shape.unnamed == 0
+    container = sg.container_for("pools-of-darkness")
+    assert container.square_bytes == 12
+    assert (container.pos_x, container.pos_y, container.pos_facing) == (1024, 1025, 1026)
+    assert container.unnamed == 0
     assert (sg.POD_PREVIOUS_MODE, sg.POD_MODE) == (1029, 1030)
     assert (sg.POD_MAP, sg.POD_MAP_BLOCK) == (1031, 1033)
-    assert shape.party_table - 1 == 1035          # the count of names
+    assert container.party_table - 1 == 1035          # the count of names
 
 
 def test_the_character_table_is_eight_slots_in_every_title():
@@ -862,13 +862,13 @@ def test_the_character_table_is_eight_slots_in_every_title():
 
     The second reading is not a guess: Pools of Darkness' own loader seeks to
     5140 in a Silver Blades container and reads 0x148 = 328 bytes there, and
-    5140 is that shape's count byte to the byte."""
+    5140 is that container's count byte to the byte."""
     assert sg.NAME_SLOTS * sg.PARTY_ENTRY == (sg.PARTY_ENTRIES * sg.PARTY_ENTRY
                                               + sg.UI_SCRATCH)
     silver = sg.container_for("secret-of-the-silver-blades")
     assert silver.party_table - 1 == 5140
-    for shape in sg.CONTAINERS:
-        assert shape.size - shape.party_table == sg.NAME_SLOTS * sg.PARTY_ENTRY
+    for container in sg.CONTAINERS:
+        assert container.size - container.party_table == sg.NAME_SLOTS * sg.PARTY_ENTRY
 
 
 # --- and against the containers on this machine ------------------------------
@@ -897,7 +897,7 @@ def test_the_two_titles_that_share_this_file_size_are_not_the_same_specimen():
     others = {data for path, data in _of("pools-of-darkness")
               if "Pools of Darkness" not in str(path)}
     if not others:
-        pytest.skip("only one title of this shape is on this machine")
+        pytest.skip("only one title of this container is on this machine")
     assert darkness.isdisjoint(others)
 
 

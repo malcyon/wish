@@ -23,11 +23,11 @@ pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 SHAPES = (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS)
 
 
-def _window_at(shape: amiga_port.AmigaDeltas) -> tuple[int, int, list[int]]:
+def _window_at(deltas: amiga_port.AmigaDeltas) -> tuple[int, int, list[int]]:
     """The window's Amiga offset, its size, and its indices no neutral field names."""
-    f = shape.dos_field("field_83_87")
+    f = deltas.dos_field("field_83_87")
     control = 1 if f.size == 5 else 0
-    return (shape.offset(f.offset), f.size,
+    return (deltas.offset(f.offset), f.size,
             [i for i in range(f.size) if i not in (control, control + 1)])
 
 
@@ -43,31 +43,31 @@ def _planted(char: amiga_later.AmigaCharacter) -> tuple[amiga_later.AmigaCharact
     return planted, bytes(raw[at:at + size])
 
 
-def _built(shape: amiga_port.AmigaDeltas) -> amiga_later.AmigaCharacter:
-    raw = bytearray(shape.record_size)
+def _built(deltas: amiga_port.AmigaDeltas) -> amiga_later.AmigaCharacter:
+    raw = bytearray(deltas.record_size)
     raw[:6] = b"TESTER"
-    return amiga_later.AmigaCharacter.from_bytes(bytes(raw), shape)
+    return amiga_later.AmigaCharacter.from_bytes(bytes(raw), deltas)
 
 
 def _check(label: str, char: amiga_later.AmigaCharacter) -> None:
     planted, window = _planted(char)
-    shape = planted.deltas
-    at, size, unnamed = _window_at(shape)
+    deltas = planted.deltas
+    at, size, unnamed = _window_at(deltas)
     neutral = amiga_later.to_neutral_later(planted)
     assert dos_codec.window_source(neutral) == window, label
 
-    amiga, _ = amiga_later.write_later(neutral, deltas=shape)
+    amiga, _ = amiga_later.write_later(neutral, deltas=deltas)
     assert amiga.raw[at:at + size] == window, f"{label}: Amiga to Amiga"
 
-    dos, _itm, _spc, _rep = dos_codec.write(neutral, deltas=shape.dos)
-    f = shape.dos_field("field_83_87")
+    dos, _itm, _spc, _rep = dos_codec.write(neutral, deltas=deltas.dos)
+    f = deltas.dos_field("field_83_87")
     assert dos[f.offset:f.end] == window, f"{label}: Amiga to DOS"
     assert all(window[i] for i in unnamed), label
 
 
-@pytest.mark.parametrize("shape", SHAPES, ids=lambda s: s.key)
-def test_a_built_record_keeps_its_unnamed_window_bytes(shape):
-    _check(shape.key, _built(shape))
+@pytest.mark.parametrize("deltas", SHAPES, ids=lambda s: s.key)
+def test_a_built_record_keeps_its_unnamed_window_bytes(deltas):
+    _check(deltas.key, _built(deltas))
 
 
 def test_every_curse_record_keeps_its_unnamed_window_bytes():

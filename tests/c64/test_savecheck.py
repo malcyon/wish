@@ -6,7 +6,7 @@ of the running machine.
 
 The reason these are tests is
 `#185 (Two of six party members were not drawn on the combat floor at Sokol
-Keep)`.  `savecheck --icon` counted the party figures it found on the floor and
+Keep)`.  `savecheck --icon` counted the party figures it found in the arena and
 never said what it should have found, so a converted party of six that drew
 four was reported as a pass and the shortfall was noticed by a person reading
 the log.
@@ -28,7 +28,7 @@ undrawn = savecheck.undrawn
 
 from automap.combat import VIEW, Battle, Combatant, MapGeometry  # noqa: E402
 
-SHAPE = MapGeometry(map_base=0x8C00, stride=56, width=56, height=26,
+GEOMETRY = MapGeometry(map_base=0x8C00, stride=56, width=56, height=26,
               positions=0x8B00, count=16)
 
 
@@ -38,7 +38,7 @@ def who(index: int, x: int, y: int, on_map: bool = True) -> Combatant:
 
 
 def fight(*people: Combatant, camera=(24, 10)) -> Battle:
-    return Battle(shape=SHAPE, terrain=bytes(SHAPE.length),
+    return Battle(geometry=GEOMETRY, terrain=bytes(GEOMETRY.length),
                   combatants=tuple(people), camera=camera)
 
 
@@ -75,8 +75,8 @@ def test_the_window_is_measured_from_the_camera_and_not_from_the_party():
 
 
 def test_a_party_member_outside_the_drawn_window_is_not_a_missing_figure():
-    # Sokol Keep's shape: six on the map, two of them further than the seven
-    # squares the game draws, and a floor that therefore shows four.
+    # Sokol Keep's case: six on the map, two of them further than the seven
+    # squares the game draws, and an arena that therefore shows four.
     roll = roll_call(FakeSession(party_of_six(spread=6)))
     assert roll["party_size"] == 6
     assert roll["party_on_map"] == 6
@@ -95,7 +95,7 @@ def test_a_figure_the_engine_puts_in_the_window_and_the_floor_omits_is_reported(
 
 def test_a_screen_still_holding_the_frame_before_a_scroll_is_not_a_complaint():
     # The camera moves between one combatant's turn and the next, and the
-    # screen read and the memory read are milliseconds apart, so the floor can
+    # screen read and the memory read are milliseconds apart, so the arena can
     # carry figures from before the scroll.  Measured on the engine-written
     # Sokol Keep control: 27 turns of 30 matched exactly and three drew two
     # **more** than the table put in the window, never fewer.  Reporting that
@@ -111,7 +111,7 @@ def test_a_party_member_off_the_map_is_named_even_when_the_count_agrees():
     people.append(who(5, 0xFF, 0xFF, on_map=False))
     roll = roll_call(FakeSession(fight(*people, camera=(x0, y0))))
     assert roll["party_on_map"] == 5
-    # The floor draws exactly what the table puts in the window, so the count
+    # The arena draws exactly what the table puts in the window, so the count
     # is silent -- and the missing sixth still has to be reported.
     said = undrawn(roll, blocks=5)
     assert said == ["Off the map altogether: #5"]

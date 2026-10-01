@@ -98,7 +98,7 @@ def test_the_slums_open_the_gate_only_for_the_murder_flag():
 
     The two tests below that one jump to `$9A2F` and fall through to `$9A2F`,
     so neither decides anything; this asserts the outcome of that rather than
-    the shape, because the shape is what could be misread.
+    the form, because the form is what could be misread.
     """
     values, lines = R._intervals("ECL14", _root())
     assert values == {0, 24}

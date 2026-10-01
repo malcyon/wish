@@ -814,7 +814,7 @@ def test_nothing_writes_a_disk():
 # The bytes below are still Pool of Radiance's captured party. Nothing here
 # claims they are a Curse party; what is under test is which addresses an
 # action reads and writes, and Curse's payload is Pool of Radiance's with the
-# roster page folded on, so the shape is exactly right for that question.
+# roster page folded on, so the form is exactly right for that question.
 
 CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
 
@@ -996,7 +996,7 @@ from automap import fasttravel  # noqa: E402
 
 class ReenterTarget(MemoryTarget):
     """A `MemoryTarget` with the optional `reenter(pc, sp)` capability
-    `actions.reenter` looks for -- the same shape `Machine.set_pc` gives
+    `actions.reenter` looks for -- the same form `Machine.set_pc` gives
     `jump` in `tests/areas/test_fasttravel.py`, kept local so this file does not
     reach into a test module another change owns."""
 

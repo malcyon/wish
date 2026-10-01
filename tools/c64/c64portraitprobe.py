@@ -178,7 +178,7 @@ def sheet(sess, index: int, shot: pathlib.Path, log,
     """Open one character's `VIEW` sheet and measure it while it is up.
 
     `Session.character_sheet` photographs and then leaves, which is the right
-    shape for reading text and the wrong one here: the cache has to be read at
+    form for reading text and the wrong one here: the cache has to be read at
     the moment the sheet is on the screen, and that is a moment the caller
     never holds.
 

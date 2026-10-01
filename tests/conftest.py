@@ -174,7 +174,7 @@ collect_ignore_glob = [IGNORE_GLOB]
 # even started -- a per-test "was it changed during this test" snapshot would
 # never have seen that, since the corruption was already there when the first
 # such snapshot was taken. Comparing every test's end state against this one
-# fixed point catches that shape too, not only a test that rebinds and
+# fixed point catches that kind of case too, not only a test that rebinds and
 # forgets to clean up after itself.
 from automap import state as _automap_state_for_guard  # noqa: E402
 

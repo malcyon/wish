@@ -1805,7 +1805,7 @@ def test_a_c64_name_too_long_for_the_amiga_field_is_not_silently_cut():
 
     The C64 allows fifteen characters and DOS a count byte plus fifteen, so
     nothing a real save holds overflows -- but a name of exactly sixteen would
-    fill the field with no NUL, which is the shape the reader warns about on
+    fill the field with no NUL, which is the form the reader warns about on
     the way in.  Written here so the writer's behaviour is pinned rather than
     assumed: fifteen is the most that can arrive, and it still terminates.
     """
@@ -1978,7 +1978,7 @@ def test_a_disk_with_no_slot_list_lists_nothing():
 def test_the_slot_list_ignores_the_padding_and_keeps_the_letters():
     """A letter counts wherever it sits, spaces and all.
 
-    `"ADB       "` is not a shape the game writes -- it is what our own writer
+    `"ADB       "` is not a form the game writes -- it is what our own writer
     produced before #109 measured the file -- and reading it as three slots is
     what lets the next write put all three in their proper bytes.
     """
@@ -2089,12 +2089,12 @@ ITEM_UNPACKERS = {
 }
 
 
-def _unpacker_rows(shape, table):
+def _unpacker_rows(deltas, table):
     """`(dos offset, amiga offset)` for every byte the unpacker copies."""
     from automap import gamedisks
     from goldbox.amiga_adf import AmigaDisk
     from tools.amiga import amiga68k, amigaunpack
-    name, start, end, size = table[shape.key]
+    name, start, end, size = table[deltas.key]
     want = "curse" if name == "/Curse" else "silver"
     for root in gamedisks.candidates("amiga"):
         if not root.is_dir():
@@ -2128,13 +2128,13 @@ def test_the_curse_shift_map_is_the_one_the_game_s_own_unpacker_writes():
     the routine copies them as one flat run and lands two of the three in the
     wrong bytes, which is the game's defect rather than this map's.
     """
-    shape = amiga_port.CURSE_DELTAS
-    rows = _unpacker_rows(shape, UNPACKERS)
+    deltas = amiga_port.CURSE_DELTAS
+    rows = _unpacker_rows(deltas, UNPACKERS)
     assert len(rows) > 200
     for dos_offset, amiga_offset in sorted(rows.items()):
         if 0x12D <= dos_offset < 0x13C:
             continue
-        assert shape.offset(dos_offset) == amiga_offset, hex(dos_offset)
+        assert deltas.offset(dos_offset) == amiga_offset, hex(dos_offset)
 
 
 def test_the_curse_monster_loader_misplaces_two_of_the_slot_arrays():
@@ -2152,14 +2152,14 @@ def test_the_curse_monster_loader_misplaces_two_of_the_slot_arrays():
     characters all read `goldbox/spells.py`'s Curse table at `0x13A`, which
     only the indexed reading puts there.
     """
-    shape = amiga_port.CURSE_DELTAS
-    rows = _unpacker_rows(shape, UNPACKERS)
+    deltas = amiga_port.CURSE_DELTAS
+    rows = _unpacker_rows(deltas, UNPACKERS)
     for dos_offset in range(0x12D, 0x132):          # the cleric array
-        assert rows[dos_offset] == shape.offset(dos_offset)
+        assert rows[dos_offset] == deltas.offset(dos_offset)
     for dos_offset in range(0x132, 0x137):          # the druid array
-        assert rows[dos_offset] == shape.offset(dos_offset) - 1
+        assert rows[dos_offset] == deltas.offset(dos_offset) - 1
     for dos_offset in range(0x137, 0x13C):          # the magic-user array
-        assert rows[dos_offset] == shape.offset(dos_offset) - 2
+        assert rows[dos_offset] == deltas.offset(dos_offset) - 2
     assert set(rows.values()).isdisjoint({0x13D, 0x13E, 0x13F})
 
 
@@ -2167,17 +2167,17 @@ def test_the_silver_blades_shift_map_is_the_one_its_unpacker_writes():
     """The same check on `/Secret` `0x281A2`, whose record is 340 bytes.
 
     It skips the spellbook, which the routine turns from 117 one-byte flags
-    into 15 bytes of bitmask rather than copying, and which `shape.offset`
+    into 15 bytes of bitmask rather than copying, and which `deltas.offset`
     refuses for that reason.
     """
-    shape = amiga_port.SILVER_BLADES_DELTAS
-    book = shape.dos_field("spellbook")
-    rows = _unpacker_rows(shape, UNPACKERS)
+    deltas = amiga_port.SILVER_BLADES_DELTAS
+    book = deltas.dos_field("spellbook")
+    rows = _unpacker_rows(deltas, UNPACKERS)
     assert len(rows) > 150
     for dos_offset, amiga_offset in sorted(rows.items()):
         if book.offset <= dos_offset < book.offset + book.size:
             continue
-        assert shape.offset(dos_offset) == amiga_offset, hex(dos_offset)
+        assert deltas.offset(dos_offset) == amiga_offset, hex(dos_offset)
 
 
 @pytest.mark.parametrize("key", sorted(ITEM_UNPACKERS))
@@ -2188,16 +2188,16 @@ def test_both_item_shift_maps_are_what_their_unpackers_write(key):
     Silver Blades' fourth pointer, so the same assertion covers both and the
     66-byte node is the 70-byte one without its last field.
     """
-    shape = amiga_port.AMIGA_DELTAS_BY_SIZE[
+    deltas = amiga_port.AMIGA_DELTAS_BY_SIZE[
         428 if key == "curse-of-the-azure-bonds" else 340]
-    rows = _unpacker_rows(shape, ITEM_UNPACKERS)
+    rows = _unpacker_rows(deltas, ITEM_UNPACKERS)
     text = dos_port.ITEM_FIELDS_BY_NAME["text"]
     for dos_offset, amiga_offset in sorted(rows.items()):
         if dos_offset < text.offset + text.size:
             continue
-        assert shape.item_offset(dos_offset) == amiga_offset, hex(dos_offset)
+        assert deltas.item_offset(dos_offset) == amiga_offset, hex(dos_offset)
     assert set(rows.values()).isdisjoint({0x02F, 0x03B, 0x03E})
-    assert shape.item_offset(0x03C) == 0x03F        # charges, not 0x03E
+    assert deltas.item_offset(0x03C) == 0x03F        # charges, not 0x03E
 
 
 def test_the_record_size_names_the_amiga_title():
@@ -2224,8 +2224,8 @@ def test_every_curse_insertion_is_placed_to_the_byte():
     * `sex` and `alignment`, which no character sheet could place, are at
       `0x11A` and `0x11C`.
     """
-    shape = amiga_port.CURSE_DELTAS
-    assert shape.unplaced == ()
+    deltas = amiga_port.CURSE_DELTAS
+    assert deltas.unplaced == ()
     placed = {
         0x0F2: 0x0F2,        # the effect chain
         0x0F6: 0x0F6,        # field_83_87, whose third byte is DOS 0x0F8
@@ -2240,7 +2240,7 @@ def test_every_curse_insertion_is_placed_to_the_byte():
         0x14D: 0x152,        # the item chain, where the writer starts it
     }
     for dos_offset, want in placed.items():
-        assert shape.offset(dos_offset) == want, hex(dos_offset)
+        assert deltas.offset(dos_offset) == want, hex(dos_offset)
     for char in curse_characters():
         for name in ("field_83_87", "spells_castable_druid",
                       "experience_award"):
@@ -2267,11 +2267,11 @@ def test_the_placed_field_83_87_reads_the_constant_dos_holds():
 
 def test_the_silver_blades_spellbook_has_no_one_to_one_offset():
     """It is 15 bytes of bitmask where DOS spends 117, so there is none."""
-    shape = amiga_port.SILVER_BLADES_DELTAS
-    assert shape.offset(0x070) == 0x070            # hp_max, just before it
+    deltas = amiga_port.SILVER_BLADES_DELTAS
+    assert deltas.offset(0x070) == 0x070            # hp_max, just before it
     with pytest.raises(AmigaRecordError):
-        shape.offset(0x071)
-    assert shape.offset(0x0E6) == 0x080            # attack_level, just after
+        deltas.offset(0x071)
+    assert deltas.offset(0x0E6) == 0x080            # attack_level, just after
 
 
 def test_every_curse_specimen_decodes_to_a_coherent_character():
@@ -2343,9 +2343,9 @@ def test_the_item_node_reads_the_fields_the_constructor_writes():
     `0x3E` look like `charges`; the constructor says both are padding, and a
     Chain Mail with 47 charges was never a plausible reading.
     """
-    shape = amiga_port.CURSE_DELTAS
-    assert shape.item_offset(0x03C) == 0x03F        # charges
-    assert shape.item_offset(0x02F) == 0x030        # name1, past the pad
+    deltas = amiga_port.CURSE_DELTAS
+    assert deltas.item_offset(0x03C) == 0x03F        # charges
+    assert deltas.item_offset(0x02F) == 0x030        # name1, past the pad
     items = [i for c in curse_characters() for i in c.items]
     assert len(items) == 9
     for item in items:
@@ -2401,13 +2401,13 @@ def test_the_curse_shift_map_agrees_with_dos_on_every_shared_constant():
     if not dos:
         pytest.skip("needs the DOS Curse party; set $FR_ARCHIVES")
     chars = curse_characters()
-    shape = amiga_port.CURSE_DELTAS
+    deltas = amiga_port.CURSE_DELTAS
     checked = 0
-    for f in dos_port.layout_for(shape.dos):
+    for f in dos_port.layout_for(deltas.dos):
         if f.name in ("name_length", "name_text"):
             continue
         try:
-            at = shape.offset(f.offset)
+            at = deltas.offset(f.offset)
         except AmigaRecordError:
             continue
         want = {r[f.offset:f.offset + f.size] for r in dos.values()}
@@ -2442,8 +2442,8 @@ def test_every_silver_blades_field_decodes_to_what_its_dos_twin_holds():
                ("pick_pockets", "open_locks", "find_traps", "move_silently",
                 "hide_in_shadows", "hear_noise", "climb_walls",
                 "read_languages")}
-    shape = amiga_port.SILVER_BLADES_DELTAS
-    fields = [f for f in dos_port.layout_for(shape.dos)
+    deltas = amiga_port.SILVER_BLADES_DELTAS
+    fields = [f for f in dos_port.layout_for(deltas.dos)
               if f.name not in ("name_length", "name_text", "spellbook")]
     compared = differing = 0
     chars = silver_blades_characters()
@@ -2525,23 +2525,23 @@ def test_the_record_signature_finds_the_party_and_nothing_else():
         if not path.name.endswith((".dat", ".sav")):
             continue
         data = path.read_bytes()
-        shape = (amiga_port.CURSE_DELTAS if path.name.startswith("CurseA")
+        deltas = (amiga_port.CURSE_DELTAS if path.name.startswith("CurseA")
                  else amiga_port.SILVER_BLADES_DELTAS)
-        hits = [at for at in range(len(data) - shape.record_size + 1)
-                if amiga_later.looks_like_amiga_record(data, at, shape)]
-        assert len(hits) == len(amiga_later.party_in_savegame(data, shape))
+        hits = [at for at in range(len(data) - deltas.record_size + 1)
+                if amiga_later.looks_like_amiga_record(data, at, deltas)]
+        assert len(hits) == len(amiga_later.party_in_savegame(data, deltas))
         assert len(hits) in (4, 6)
 
 
-def _unequal_pair_save(shape, first_pair) -> tuple[bytes, list[int]]:
+def _unequal_pair_save(deltas, first_pair) -> tuple[bytes, list[int]]:
     """Three item-less characters after a header, each with one unequal pair.
 
     Built from nothing, so it runs with no disks.  Returns the bytes and the
     offset each record starts at.
     """
-    data, starts = bytearray(b"\0" * amiga_savegame.container_for(shape).party_at), []
+    data, starts = bytearray(b"\0" * amiga_savegame.container_for(deltas).party_at), []
     for name, pair in (("ONE", first_pair), ("TWO", (18, 9)), ("THREE", (7, 15))):
-        record = bytearray(shape.record_size)
+        record = bytearray(deltas.record_size)
         record[:len(name)] = name.encode()
         for i in range(6):
             record[0x10 + 2 * i:0x12 + 2 * i] = bytes((12, 12))
@@ -2557,20 +2557,20 @@ def test_a_record_whose_ability_pairs_differ_is_found_and_detected():
     The first character's pair (9, 17) is what `detect` reads, and the scan
     must find all three.
     """
-    for shape in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
-        data, starts = _unequal_pair_save(shape, (9, 17))
+    for deltas in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
+        data, starts = _unequal_pair_save(deltas, (9, 17))
         assert [at for at in range(len(data))
-                if amiga_later.looks_like_amiga_record(data, at, shape)] \
-            == starts, shape.key
-        assert len(amiga_later.party_in_savegame(data, shape)) == 3, shape.key
-        assert amiga_savegame.detect(data).deltas is shape, shape.key
+                if amiga_later.looks_like_amiga_record(data, at, deltas)] \
+            == starts, deltas.key
+        assert len(amiga_later.party_in_savegame(data, deltas)) == 3, deltas.key
+        assert amiga_savegame.detect(data).deltas is deltas, deltas.key
 
 
 def test_the_signature_still_refuses_an_illegal_ability_byte():
-    shape = amiga_port.CURSE_DELTAS
+    deltas = amiga_port.CURSE_DELTAS
     for bad in (0, 26):
-        data, starts = _unequal_pair_save(shape, (9, bad))
-        assert not amiga_later.looks_like_amiga_record(data, starts[0], shape)
+        data, starts = _unequal_pair_save(deltas, (9, bad))
+        assert not amiga_later.looks_like_amiga_record(data, starts[0], deltas)
 
 
 def test_a_specimen_with_unequal_ability_pairs_finds_all_six():
@@ -2662,9 +2662,9 @@ def test_the_curse_size_byte_is_one_for_the_small_races():
     four Amiga specimens that are not carrying a custom icon.
     """
     small = {"dwarf", "gnome", "halfling"}
-    shape = amiga_port.CURSE_DELTAS
-    assert shape.offset(0x144) == 0x148
-    assert shape.offset(0x145) == 0x149
+    deltas = amiga_port.CURSE_DELTAS
+    assert deltas.offset(0x144) == 0x148
+    assert deltas.offset(0x145) == 0x149
     for char in curse_characters():
         race = dos_port.RACE_NUMBERS[char.get("race")]
         assert char.get("size") == (1 if race in small else 2), char.name
@@ -2810,12 +2810,12 @@ def test_every_declared_field_of_a_later_title_has_a_disposition():
     forbids.  Both directions: a name the table does not declare fails too.
     """
     from goldbox import neutral
-    for shape in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
-        declared = [f.name for f in dos_port.layout_for(shape.dos)]
+    for deltas in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
+        declared = [f.name for f in dos_port.layout_for(deltas.dos)]
         unaccounted, unknown = neutral.undeclared(
-            declared, amiga_later.later_field_disposition(shape))
-        assert not unaccounted, (shape.key, sorted(unaccounted))
-        assert not unknown, (shape.key, sorted(unknown))
+            declared, amiga_later.later_field_disposition(deltas))
+        assert not unaccounted, (deltas.key, sorted(unaccounted))
+        assert not unknown, (deltas.key, sorted(unknown))
 
 
 # --- the class mask: this port gives paladin and ranger one bit, as DOS does -
@@ -2823,20 +2823,20 @@ def test_every_declared_field_of_a_later_title_has_a_disposition():
 PALADIN_SLOT, RANGER_SLOT = 3, 4
 
 
-def _later_record(shape, class_bits: int, slot: int | None, level: int = 8):
-    """A record of `shape` holding one class mask and one class level.
+def _later_record(deltas, class_bits: int, slot: int | None, level: int = 8):
+    """A record of `deltas` holding one class mask and one class level.
 
-    Built from `goldbox/dos_port.py`'s own table through the shape's shift
+    Built from `goldbox/dos_port.py`'s own table through the deltas' shift
     map, so it belongs to this project and runs with no disks. Every other
     byte is zero, which is what makes the two fields the only thing under
     test.
     """
-    raw = bytearray(shape.record_size)
+    raw = bytearray(deltas.record_size)
     raw[:6] = b"TESTER"
-    raw[shape.offset(shape.dos_field("class_bits").offset)] = class_bits
+    raw[deltas.offset(deltas.dos_field("class_bits").offset)] = class_bits
     if slot is not None:
-        raw[shape.offset(shape.dos_field("class_levels").offset) + slot] = level
-    return amiga_later.AmigaCharacter.from_bytes(bytes(raw), shape)
+        raw[deltas.offset(deltas.dos_field("class_levels").offset) + slot] = level
+    return amiga_later.AmigaCharacter.from_bytes(bytes(raw), deltas)
 
 
 def test_a_later_amiga_read_sets_the_class_mask_at_all():
@@ -2850,11 +2850,11 @@ def test_a_later_amiga_read_sets_the_class_mask_at_all():
     """
     from goldbox import dos_codec
     assert "class_bits" not in [n for n, _ in dos_codec.DIRECT]
-    for shape in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
-        char = _later_record(shape, 0x08, slot=5)     # a simple fighter
+    for deltas in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
+        char = _later_record(deltas, 0x08, slot=5)     # a simple fighter
         out = amiga_later.to_neutral_later(char)
-        assert "class_bits" in out.fields, shape.key
-        assert out.get("class_bits") == 0x08, shape.key
+        assert "class_bits" in out.fields, deltas.key
+        assert out.get("class_bits") == 0x08, deltas.key
 
 
 def test_a_later_amiga_ranger_gets_the_shared_orders_own_bit():
@@ -2864,9 +2864,9 @@ def test_a_later_amiga_ranger_gets_the_shared_orders_own_bit():
     Amiga stores the field the same way: bit 6 for both classes, and the
     level array is the only thing that says which.
     """
-    for shape in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
-        ranger = _later_record(shape, 0x40, RANGER_SLOT)
-        paladin = _later_record(shape, 0x40, PALADIN_SLOT)
+    for deltas in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
+        ranger = _later_record(deltas, 0x40, RANGER_SLOT)
+        paladin = _later_record(deltas, 0x40, PALADIN_SLOT)
         assert amiga_later.to_neutral_later(ranger).get("class_bits") == 0x80
         assert amiga_later.to_neutral_later(paladin).get("class_bits") == 0x40
 
@@ -2875,13 +2875,13 @@ def test_only_the_shared_bit_of_a_later_amiga_mask_is_reread():
     """Every other bit is the byte the game wrote, and a record with bit 6
     and neither level slot filled keeps bit 6 -- there is nothing to read it
     as. A dual-classed fighter/ranger keeps its fighter bit alongside."""
-    for shape in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
+    for deltas in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
         assert amiga_later.to_neutral_later(
-            _later_record(shape, 0x40, None)).get("class_bits") == 0x40
+            _later_record(deltas, 0x40, None)).get("class_bits") == 0x40
         assert amiga_later.to_neutral_later(
-            _later_record(shape, 0x48, RANGER_SLOT)).get("class_bits") == 0x88
+            _later_record(deltas, 0x48, RANGER_SLOT)).get("class_bits") == 0x88
         assert amiga_later.to_neutral_later(
-            _later_record(shape, 0x01, 0)).get("class_bits") == 0x01
+            _later_record(deltas, 0x01, 0)).get("class_bits") == 0x01
 
 
 def test_every_later_specimen_sets_a_class_mask_its_levels_agree_with():
@@ -2925,11 +2925,11 @@ def test_a_later_amiga_ability_reaches_the_neutral_record_as_a_number():
     names the way the DOS reader's own loop does.
     """
     from goldbox import c64_codec
-    for shape in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
-        char = _ability_record(shape, "strength", 0x12, 0x12)
+    for deltas in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
+        char = _ability_record(deltas, "strength", 0x12, 0x12)
         out = amiga_later.to_neutral_later(char)
-        assert isinstance(out.get("strength"), int), shape.key
-        assert out.get("strength") == 0x12, shape.key
+        assert isinstance(out.get("strength"), int), deltas.key
+        assert out.get("strength") == 0x12, deltas.key
         c64_codec.write(out)          # raised ValueError before the fix
 
 
@@ -2949,32 +2949,32 @@ def test_a_later_amiga_ability_pair_splits_permanent_and_in_force_byte():
     what this test asserted before.  Exceptional strength keeps the old
     order, because its percentile pair runs the other way on both ports.
     """
-    for shape in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
-        char = _ability_record(shape, "dexterity", 0x0A, 0x0B)
+    for deltas in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
+        char = _ability_record(deltas, "dexterity", 0x0A, 0x0B)
         out = amiga_later.to_neutral_later(char)
-        assert out.get("dexterity") == 0x0B, shape.key
-        assert out.get("abilities_second")["dexterity"] == 0x0A, shape.key
+        assert out.get("dexterity") == 0x0B, deltas.key
+        assert out.get("abilities_second")["dexterity"] == 0x0A, deltas.key
 
-        pct = _ability_record(shape, "exceptional_strength", 0x64, 0x00)
+        pct = _ability_record(deltas, "exceptional_strength", 0x64, 0x00)
         out = amiga_later.to_neutral_later(pct)
-        assert out.get("exceptional_strength") == 0x64, shape.key
+        assert out.get("exceptional_strength") == 0x64, deltas.key
         assert out.get("abilities_second")["exceptional_strength"] == 0x00, \
-            shape.key
+            deltas.key
 
 
 # --- the NPC control byte: field_83_87's one homed byte ---------------------
-def _control_byte_record(shape, control: int):
-    """A record of `shape` holding only a control byte in `field_83_87`.
+def _control_byte_record(deltas, control: int):
+    """A record of `deltas` holding only a control byte in `field_83_87`.
 
     Built the way `_later_record` and `_ability_record` are, so it belongs to
     this project and runs with no disks.
     """
-    raw = bytearray(shape.record_size)
+    raw = bytearray(deltas.record_size)
     raw[:6] = b"TESTER"
-    f = shape.dos_field("field_83_87")
+    f = deltas.dos_field("field_83_87")
     index = 1 if f.size == 5 else 0
-    raw[shape.offset(f.offset) + index] = control
-    return amiga_later.AmigaCharacter.from_bytes(bytes(raw), shape)
+    raw[deltas.offset(f.offset) + index] = control
+    return amiga_later.AmigaCharacter.from_bytes(bytes(raw), deltas)
 
 
 def test_a_later_amiga_control_and_treasure_share_reach_neutral():
@@ -2987,43 +2987,43 @@ def test_a_later_amiga_control_and_treasure_share_reach_neutral():
     `goldbox.dos_codec.to_neutral` computes (#303), and the four-byte alignment is
     the one nothing had exercised before this test.
     """
-    for shape in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
-        companion = _control_byte_record(shape, 0x93)   # bit 7 + morale 0x13
+    for deltas in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
+        companion = _control_byte_record(deltas, 0x93)   # bit 7 + morale 0x13
         out = amiga_later.to_neutral_later(companion)
-        assert out.get("npc") is True, shape.key
-        assert out.get("npc_control_byte") == 0x93, shape.key
+        assert out.get("npc") is True, deltas.key
+        assert out.get("npc_control_byte") == 0x93, deltas.key
 
-        player = _control_byte_record(shape, 0x00)
+        player = _control_byte_record(deltas, 0x00)
         out = amiga_later.to_neutral_later(player)
-        assert out.get("npc") is False, shape.key
-        assert "npc_control_byte" not in out.fields, shape.key
+        assert out.get("npc") is False, deltas.key
+        assert "npc_control_byte" not in out.fields, deltas.key
 
         # Bit 7 set with every morale bit clear -- a naive truthiness test
         # (`if control:`) reads 0x80 as "not a companion", the exact hole
         # `286c731` filled on the DOS side; the implementation here already
         # tests the bit (`bool(control & 0x80)`), so this pins that rather
         # than finding a live bug.
-        edge = _control_byte_record(shape, 0x80)
+        edge = _control_byte_record(deltas, 0x80)
         out = amiga_later.to_neutral_later(edge)
-        assert out.get("npc") is True, shape.key
-        assert out.get("npc_control_byte") == 0x80, shape.key
+        assert out.get("npc") is True, deltas.key
+        assert out.get("npc_control_byte") == 0x80, deltas.key
 
-        full = _control_byte_record(shape, 0xFF)
+        full = _control_byte_record(deltas, 0xFF)
         out = amiga_later.to_neutral_later(full)
-        assert out.get("npc") is True, shape.key
-        assert out.get("npc_control_byte") == 0xFF, shape.key
+        assert out.get("npc") is True, deltas.key
+        assert out.get("npc_control_byte") == 0xFF, deltas.key
 
-        f = shape.dos_field("field_83_87")
+        f = deltas.dos_field("field_83_87")
         control_index = 1 if f.size == 5 else 0
         share_index = control_index + 1
         for share in (0, 3):
-            raw = bytearray(_control_byte_record(shape, 0).raw)
-            raw[shape.offset(f.offset) + share_index] = share
+            raw = bytearray(_control_byte_record(deltas, 0).raw)
+            raw[deltas.offset(f.offset) + share_index] = share
             out = amiga_later.to_neutral_later(
-                amiga_later.AmigaCharacter.from_bytes(bytes(raw), shape))
-            assert out.get("treasure_share") == share, shape.key
-            written, _ = amiga_later.write_later(out, deltas=shape)
-            assert written.raw[shape.offset(f.offset) + share_index] == share
+                amiga_later.AmigaCharacter.from_bytes(bytes(raw), deltas))
+            assert out.get("treasure_share") == share, deltas.key
+            written, _ = amiga_later.write_later(out, deltas=deltas)
+            assert written.raw[deltas.offset(f.offset) + share_index] == share
             assert not any("Treasure share" in line for line in out.dropped)
 
 
@@ -3054,14 +3054,14 @@ def test_a_later_amiga_identity_byte_reaches_the_neutral_record():
     """The 0x0AB identity byte varies per character and has an existing
     neutral home, so both later Amiga readers copy it rather than report it
     lost."""
-    for shape in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
-        raw = bytearray(shape.record_size)
+    for deltas in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
+        raw = bytearray(deltas.record_size)
         raw[:6] = b"TESTER"
-        f = shape.dos_field("unnamed_0ab")
-        raw[shape.offset(f.offset)] = 0x6D
-        char = amiga_later.AmigaCharacter.from_bytes(bytes(raw), shape)
+        f = deltas.dos_field("unnamed_0ab")
+        raw[deltas.offset(f.offset)] = 0x6D
+        char = amiga_later.AmigaCharacter.from_bytes(bytes(raw), deltas)
         out = amiga_later.to_neutral_later(char)
-        assert out.get("unnamed_0ab") == 0x6D, shape.key
+        assert out.get("unnamed_0ab") == 0x6D, deltas.key
 
 
 def test_every_later_specimen_converts_a_legal_ability_score_end_to_end():
@@ -3091,7 +3091,7 @@ def test_a_byte_pair_field_raises_rather_than_copies_bytes(
         monkeypatch):
     """The guard the fix for `#294` adds: a name that reaches
     `to_neutral_later`'s `DIRECT` loop and reads back as raw bytes -- the
-    shape every one of the seven abilities had before the fix -- raises
+    form every one of the seven abilities had before the fix -- raises
     rather than handing a byte pair to a neutral field the writer expects to
     be a number.  Simulated by adding a field `goldbox.dos_codec.DIRECT` has no
     entry for today, because no other field of either later title is shaped

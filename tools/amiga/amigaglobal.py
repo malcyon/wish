@@ -47,7 +47,7 @@ import capstone  # noqa: E402
 
 from tools.amiga.amiga68k import SMALL_DATA_BIAS, Executable, load  # noqa: E402
 
-#: `jmp abs.l`, the shape of every entry in the far-call table.
+#: `jmp abs.l`, the form of every entry in the far-call table.
 JMP_ABS = b"\x4e\xf9"
 
 

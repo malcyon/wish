@@ -526,7 +526,7 @@ _DECLARED: Sequence[Field] = (
     _f(0x0AA, 1, _U8, "strength_bonus", "Strength bonus flag", _MAYBE,
        "1 in all 24 shipped records and in the six this project rolled in "
        "the game's own creation screens. The C64 keeps a flag of the same "
-       "name and shape one byte further on, at 0x0E3, and its LIBRARY reads "
+       "name and form one byte further on, at 0x0E3, and its LIBRARY reads "
        "it at $375C to decide whether the AD&D strength tables apply at "
        "all; so the C64's counterpart of this byte is strength_bonus_flag, "
        "and `goldbox.c64_codec.write` sets it. PROBABLE rather than "
@@ -706,7 +706,7 @@ _DECLARED: Sequence[Field] = (
        "**Zero is not neutral, which is why a conversion may not write it.** "
        "The engine does not rebuild these: `docs/117` records that its own "
        "resave kept our zeros. A zeroed block paints all six parts EGA 8, "
-       "dark grey -- the combat floor\'s own colour -- so the figure is about "
+       "dark grey -- the combat arena\'s own colour -- so the figure is about "
        "64 black outline pixels on a background of exactly its own shade and "
        "reads as not being there. Measured over three fights, 4 zeroed icons "
        "against 9 default ones; a box round a zeroed figure holds two "
@@ -947,7 +947,7 @@ class DosDeltas:
     `goldbox/layout.py`'s C64 table are. Named `DosDeltas` rather than
     `DosShape` for that reason (Donald, 2026-09-09, on `#470`'s class
     diagram: *"What is a C64Shape? I think the choice of the word 'Shape'
-    might not be quite right"*) -- a shape is a record's whole form, and this
+    might not be quite right"*) -- that name promised a record's whole form, and this
     class holds none of it, only where one title parts ways with another's.
     """
 
@@ -973,7 +973,7 @@ class DosDeltas:
     #: from -- `0x06B` in Pool of Radiance and `0x0E6` in Silver Blades --
     #: with `None` where nobody has measured it.  **An empty tuple is not an
     #: empty rule**: it says the engine takes the byte from no class at all,
-    #: and with the floor below that makes it the constant 1.  What the *C64*
+    #: and with the minimum below that makes it the constant 1.  What the *C64*
     #: means by the same field is a different question and
     #: `goldbox.dos_codec.fighting_level` is where it is answered.
     #: The default is `None` rather than `()`, so a title nobody has
@@ -1003,7 +1003,7 @@ class DosDeltas:
         ranger 8 and still reads 8, in the two specimens that watched the
         transition happen.
 
-        **The floor of 1 is measured in all three titles that have a rule**
+        **The minimum of 1 is measured in all three titles that have a rule**
         and is not a guard against a zero: DOS Pool of Radiance stores 1 for
         every character it ever wrote, Curse stores 1 for a paladin 5 and for
         a cleric alike, and Silver Blades stores 1 for its clerics and

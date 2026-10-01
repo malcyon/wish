@@ -172,7 +172,7 @@ def answer_the_exit(sess, target, out: pathlib.Path,
 
     The exit prints a question, offers two words, then prints seventy-two more
     bytes, and each of those may want a keypress.  Rather than guessing the
-    sequence, read row 24 and answer what is there -- the same shape as
+    sequence, read row 24 and answer what is there -- the same form as
     `tools/areas/wallpins.py`'s `overland_key`.
     """
     deadline, shots, seen = time.time() + budget, 0, []

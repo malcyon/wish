@@ -54,7 +54,7 @@ digits, rather than to a confident wrong answer.
 
 `AREAS_SILVER_BLADES` is the second table, built for
 `#20 (Build an area table for Silver Blades)` and read off that title's own
-six sides by `tools/areas/areatable.py`. It shares the `Area` shape and nothing else:
+six sides by `tools/areas/areatable.py`. It shares the `Area` form and nothing else:
 sparse ids, disk sides 1-6, and five areas whose map is not their own id. Its
 own comment carries what does not carry over. Twenty of its twenty-two rows
 carry a name read out of the title's own scripts; `$04` and `$11` are the
@@ -488,7 +488,7 @@ def _s(id: int, disk: int, geos: tuple[str, ...],
 #: disagreeing, and the loader has now asked for six of them out loud.
 #:
 #: Four things do **not** carry over from Pool of Radiance, and each is a trap
-#: for anything that reads this table expecting the older shape.
+#: for anything that reads this table expecting the older form.
 #:
 #: * **The ids are sparse and blocked by side.** `$04`, `$10`-`$11`,
 #:   `$20`-`$22`, `$30`-`$34`, `$40`-`$42`, `$44`, `$50`-`$52`, `$60`-`$63`.

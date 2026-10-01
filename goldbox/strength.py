@@ -59,7 +59,7 @@ CLASS_CLERIC = 0x02
 
 #: What the routine subtracts from each biased field. THAC0's subtraction at
 #: `$1C01` has **no underflow guard**; armour class's at `$1C16` has one
-#: (`BCC`), which is why only the second has a floor here.
+#: (`BCC`), which is why only the second has a minimum here.
 THAC0_OFFSET = 39
 ARMOUR_FLOOR = 60
 

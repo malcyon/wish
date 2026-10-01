@@ -260,29 +260,29 @@ def amiga_rows():
     return rows
 
 
-def _amiga_key(shape) -> str:
-    return getattr(shape, "key", getattr(shape, "title", "?"))
+def _amiga_key(deltas) -> str:
+    return getattr(deltas, "key", getattr(deltas, "title", "?"))
 
 
 def _amiga_later_characters(data: bytes, what: str, label: str):
-    """The characters in one Curse or Silver Blades file, at its own shape.
+    """The characters in one Curse or Silver Blades file, at its own deltas.
 
-    A saved game's shape comes from `goldbox.amiga_savegame.detect`, never from trying
-    each shape in turn: the signature `party_in_savegame` scans for sits at
+    A saved game's deltas come from `goldbox.amiga_savegame.detect`, never from trying
+    each deltas in turn: the signature `party_in_savegame` scans for sits at
     the same offsets in both titles, so a Silver Blades save handed the Curse
-    shape yields six characters read through the wrong table -- plausible
+    deltas yields six characters read through the wrong table -- plausible
     rubbish rather than an error.  Copied from `tools/records/spellbooksweep.py`.
     """
     if what == "record":
-        shape = amiga_port.AMIGA_DELTAS_BY_SIZE.get(len(data))
-        if shape is None:                                # pragma: no cover
+        deltas = amiga_port.AMIGA_DELTAS_BY_SIZE.get(len(data))
+        if deltas is None:                                # pragma: no cover
             for candidate in amiga_port.AMIGA_DELTAS:
                 if amiga_later.looks_like_amiga_record(data, 0, candidate):
-                    shape = candidate
+                    deltas = candidate
                     break
-        if shape is None:                                # pragma: no cover
+        if deltas is None:                                # pragma: no cover
             return
-        yield amiga_later.AmigaCharacter.from_bytes(data[:shape.record_size], shape,
+        yield amiga_later.AmigaCharacter.from_bytes(data[:deltas.record_size], deltas,
                                               source=label)
         return
     try:

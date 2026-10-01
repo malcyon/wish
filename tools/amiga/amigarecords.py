@@ -60,15 +60,15 @@ SAVEGAME_SUFFIXES = (".dat", ".sav")
 
 def _record_file(data: bytes) -> bool:
     """Whether a file is a character record with its tail, `.guy`-style."""
-    return any(len(data) >= shape.record_size
-               and looks_like_amiga_record(data, 0, shape)
-               for shape in AMIGA_DELTAS)
+    return any(len(data) >= deltas.record_size
+               and looks_like_amiga_record(data, 0, deltas)
+               for deltas in AMIGA_DELTAS)
 
 
 def _savegame_party(data: bytes) -> int:
     """How many character blocks a saved game holds, across both shapes."""
-    return max((len(party_in_savegame(data, shape))
-                for shape in AMIGA_DELTAS), default=0)
+    return max((len(party_in_savegame(data, deltas))
+                for deltas in AMIGA_DELTAS), default=0)
 
 
 def specimens(roots: list[pathlib.Path] | None = None):

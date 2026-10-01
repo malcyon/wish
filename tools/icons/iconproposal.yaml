@@ -162,7 +162,7 @@ small:
 # shares alike, which is what the base table and its size sections are for.
 # Secret of the Silver Blades is the only title with one today.
 #
-# Shape, one section per title key, each holding "weapons" and/or "heads"
+# Layout, one section per title key, each holding "weapons" and/or "heads"
 # exactly like the tables above:
 #
 #   overrides:

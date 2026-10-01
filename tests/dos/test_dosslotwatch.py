@@ -66,7 +66,7 @@ class _FakeClaim:
 
 @pytest.fixture
 def source(tmp_path):
-    """A read-only `--save` directory, the shape a `$WISH_SPECIMENS` save is:
+    """A read-only `--save` directory, the form a `$WISH_SPECIMENS` save is:
     one `CHRDAT` record and the `SAVGAM` container."""
     d = tmp_path / "source"
     d.mkdir()

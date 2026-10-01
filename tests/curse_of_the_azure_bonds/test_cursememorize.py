@@ -425,8 +425,8 @@ def test_relocation_changes_only_the_copied_slot_a_save(
         staged, game, area=2, x=8, y=0, facing=1)
 
     result = staged.read_bytes()
-    shape = sg.SAVE_CURSE_OF_THE_AZURE_BONDS
-    start, end = shape.script_buffer
+    container = sg.SAVE_CURSE_OF_THE_AZURE_BONDS
+    start, end = container.script_buffer
     assert source.read_bytes() == original
     assert sg.current_area(result) == moved["area"] == 2
     assert sg.geo_block(result) == moved["geo"] == 1

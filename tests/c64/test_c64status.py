@@ -623,7 +623,7 @@ def test_a_dead_quick_fought_character_reads_and_converts_correctly_through_slot
     assert rec[TAIL.offset + 1] == 0       # not active
 
 
-# --- #303's extremes: the byte at its ends, and the four-byte shape ----------
+# --- #303's extremes: the byte at its ends, and the four-byte form ----------
 
 def test_a_companion_with_no_morale_at_all_still_arrives_a_companion():
     """`0x80` is bit 7 set and every morale bit clear, and it is not a

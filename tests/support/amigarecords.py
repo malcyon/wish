@@ -170,16 +170,16 @@ def silver_blades_characters():
 
 
 # --- the ability pairs: a (base, current) pair here too, as on DOS ---------
-def _ability_record(shape, name: str, first: int, second: int):
-    """A record of `shape` holding one ability pair and nothing else.
+def _ability_record(deltas, name: str, first: int, second: int):
+    """A record of `deltas` holding one ability pair and nothing else.
 
-    Built from `goldbox/dos_port.py`'s own table through the shape's shift
+    Built from `goldbox/dos_port.py`'s own table through the deltas' shift
     map, the way `_later_record` builds a class mask above, so it belongs to
     this project and runs with no disks.
     """
-    raw = bytearray(shape.record_size)
+    raw = bytearray(deltas.record_size)
     raw[:6] = b"TESTER"
-    at = shape.offset(shape.dos_field(name).offset)
+    at = deltas.offset(deltas.dos_field(name).offset)
     raw[at] = first
     raw[at + 1] = second
-    return amiga_later.AmigaCharacter.from_bytes(bytes(raw), shape)
+    return amiga_later.AmigaCharacter.from_bytes(bytes(raw), deltas)

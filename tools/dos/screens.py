@@ -20,7 +20,7 @@ ITEM_READIED_COLUMN = (16, 40, 24, 144)
 ITEM_INK = 60
 
 #: The list's rows, for `Screen.highlight_row`.  The highlighted row lights
-#: 629-1,114 near-white pixels and the mouse arrow at most 22, so a floor of
+#: 629-1,114 near-white pixels and the mouse arrow at most 22, so a minimum of
 #: 100 separates them (measured on 14 captures).
 ITEM_LIST_RECT = (16, 40, 288, 144)
 
@@ -216,4 +216,4 @@ def item_highlight(screen: dosbox.Screen) -> int | None:
     or with no row highlighted."""
     if not on_items_list(screen):
         return None
-    return screen.highlight_row(ITEM_LIST_RECT, floor=ITEM_HIGHLIGHT_PIXELS)
+    return screen.highlight_row(ITEM_LIST_RECT, minimum=ITEM_HIGHLIGHT_PIXELS)

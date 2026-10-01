@@ -407,7 +407,7 @@ def leave_sheet(sess, r: Run, walk) -> bool:
         sess.settle(2.5)
         # **A bar with one word on it may not be highlighted at all**, and
         # `Session.select_bar` walks a highlight it cannot find, so it presses
-        # nothing and times out -- the same shape as Curse's colour-7 item bar
+        # nothing and times out -- the same form as Curse's colour-7 item bar
         # in `docs/120-curse-testing.md` §3.3.  A sheet whose character can
         # neither trade nor drop draws `EXIT` alone, so send both Returns
         # rather than leave the run stuck on a screen with one way off it.

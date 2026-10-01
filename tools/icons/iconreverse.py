@@ -114,7 +114,7 @@ def load_tables(path: pathlib.Path = TABLE_PATH) -> dict:
 
     `{("large", "weapons"): {c64: (dos, alternatives)}, ...}` plus a
     `"colours"` entry mapping a C64 colour 0-7 to its `(low, high)` EGA pair.
-    The shape mirrors `tools/icons/iconproposal.py`'s `load_tables`, one level
+    The form mirrors `tools/icons/iconproposal.py`'s `load_tables`, one level
     deeper because a C64 option number means a different drawing at each
     size.
     """
@@ -213,7 +213,7 @@ def print_coverage(tables: dict) -> None:
 def sweep(parts: IconParts, folders: dict[str, pathlib.Path]) -> list[dict]:
     """Every icon on the disks in `folders`, read back into menu choices.
 
-    One row per distinct shape, with how many slots carry it and where the
+    One row per distinct figure, with how many slots carry it and where the
     first was found. The point is not the icons -- it is whether
     `IconParts.recognise` names a weapon and a head for every one of them,
     which is what the conversion has to do for a real save.
@@ -231,18 +231,18 @@ def sweep(parts: IconParts, folders: dict[str, pathlib.Path]) -> list[dict]:
                     continue
                 for slot in range(SLOTS):
                     off = ICON_TABLE_OFFSET + slot * icons.ICON_SIZE
-                    shape = bytes(payload[off:off + icons.CELLS])
-                    if len(shape) < icons.CELLS or not any(shape):
+                    figure = bytes(payload[off:off + icons.CELLS])
+                    if len(figure) < icons.CELLS or not any(figure):
                         continue
-                    if set(shape) == {0x20}:
+                    if set(figure) == {0x20}:
                         continue
-                    seen[shape].append((title, pathlib.Path(path).name, slot))
+                    seen[figure].append((title, pathlib.Path(path).name, slot))
     rows = []
-    for shape, where in sorted(seen.items(), key=lambda kv: -len(kv[1])):
-        row = {"shape": shape.hex(), "slots": len(where), "where": where[0],
+    for figure, where in sorted(seen.items(), key=lambda kv: -len(kv[1])):
+        row = {"figure": figure.hex(), "slots": len(where), "where": where[0],
                "titles": sorted({t for t, _, _ in where})}
         try:
-            choice = parts.recognise(shape)
+            choice = parts.recognise(figure)
         except ValueError as exc:
             row["error"] = str(exc)
         else:
@@ -258,20 +258,20 @@ def print_sweep(rows: list[dict]) -> None:
         where = f"{disk}#{slot}"
         if "error" in row:
             unread += 1
-            print(f"{row['shape']}  n={row['slots']:3d}  UNREAD  {where}")
+            print(f"{row["figure"]}  n={row['slots']:3d}  UNREAD  {where}")
             continue
         c = row["choice"]
         if c.alternatives:
             ambiguous += 1
         alt = (f"  head also {[f'{s} {o}' for s, o in c.alternatives]}"
                if c.alternatives else "")
-        print(f"{row['shape']}  n={row['slots']:3d}  "
+        print(f"{row["figure"]}  n={row['slots']:3d}  "
               f"{c.weapon_size} weapon {c.weapon:2d}, "
               f"{c.head_size} head {c.head:2d}"
               f"{'' if c.exact else '  (carries a cell from an earlier choice)'}"
               f"{alt}  {where}")
     total = sum(r["slots"] for r in rows)
-    print(f"{total} icons, {len(rows)} distinct shapes: "
+    print(f"{total} icons, {len(rows)} distinct figures: "
           f"{len(rows) - unread} read back into menu choices, {unread} not; "
           f"{ambiguous} name more than one head")
 

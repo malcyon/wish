@@ -159,8 +159,8 @@ SHAPES = {s.key: s for s in (dos_port.CURSE_OF_THE_AZURE_BONDS,
 def _fields(shape_key: str | None, items: bool):
     if shape_key is None:
         return {}
-    shape = SHAPES[shape_key]
-    layout = dos_port.ITEM_LAYOUT if items else dos_port.layout_for(shape)
+    deltas = SHAPES[shape_key]
+    layout = dos_port.ITEM_LAYOUT if items else dos_port.layout_for(deltas)
     return {f.offset: f.name for f in layout}
 
 

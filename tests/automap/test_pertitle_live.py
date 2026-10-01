@@ -6,7 +6,7 @@ Pool of Radiance's tables.
 Two faults, one function apart in `automap/live.py`, both found after
 `#186 (The character sheet gives a Silver Blades elf a Pool of Radiance
 ability)` and `#187 (Silver Blades characters are shown Pool of Radiance's
-level progression)` fixed the same shape elsewhere:
+level progression)` fixed the same fault elsewhere:
 
 * `#196 (The automapper's condition badges name a Silver Blades trait with
   Pool of Radiance's meaning)` -- `badges()` called `traits.describe(i)` with
@@ -228,7 +228,7 @@ def test_a_silver_blades_ranger_gets_a_class_and_an_experience_bar():
 
 
 def test_a_curse_paladin_gets_a_class_and_an_experience_bar():
-    """GUY DE VALOIS' shape, on the title whose shipped party is literally
+    """GUY DE VALOIS' case, on the title whose shipped party is literally
     named PALADIN and RANGER."""
     record = _record(class_bits=0x40, level_paladin=8, level=8,
                      experience=200_000)
@@ -286,7 +286,7 @@ def test_pool_of_radiance_still_has_no_paladin():
 
 
 def test_a_multi_class_card_still_draws_a_bar_each():
-    """LADY KATHERINE's shape -- the classic four still multi-class, and the
+    """LADY KATHERINE's case -- the classic four still multi-class, and the
     per-class level array is where each one's level comes from."""
     record = _record(class_bits=5, level_magic_user=4, level_thief=6, level=6,
                      experience=20_000)

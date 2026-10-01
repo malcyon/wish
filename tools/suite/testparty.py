@@ -870,7 +870,7 @@ def summary(one: Built) -> dict:
 
 
 def write_records(built: list[Built], out: pathlib.Path) -> list[pathlib.Path]:
-    """One 582-byte `.CHR` export per character, the shape `wish` reads."""
+    """One 582-byte `.CHR` export per character, the form `wish` reads."""
     out.mkdir(parents=True, exist_ok=True)
     written = []
     for one in built:

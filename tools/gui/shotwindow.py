@@ -2,7 +2,7 @@
 """Photograph the editor's window offscreen, at a chosen UI font and width.
 
 Issue #71 was decided by looking at three of these. Donald could not tell from
-`minimumSizeHint()` whether a header squeezed to its floor was acceptable --
+`minimumSizeHint()` whether a header squeezed to its minimum was acceptable --
 the numbers said 1447 and the picture said the Character box was drawing on top
 of itself -- and the script that made the pictures lived in `/tmp` and is gone.
 This is that script, kept.
@@ -17,7 +17,7 @@ Three things it can answer that a test cannot:
   Windows' base font -- CI answered 1447 where this machine answered 1451 at
   +6pt -- so a Windows-sized layout can be looked at without a Windows machine.
 * **what the layout does at a width.** `--width` draws it there; where the
-  floor is wider than the width asked for, Qt clamps and the report says what
+  minimum is wider than the width asked for, Qt clamps and the report says what
   it was actually drawn at.
 * **where the screen ends.** `--target` marks a line, so a window wider than a
   1280px laptop says so in the picture rather than in a number.
@@ -31,7 +31,7 @@ pasted into an issue arrives without its terminal.
     .venv/bin/python tools/gui/shotwindow.py --save PORSAVE11.D64 --tab map
 
 The default party is `tests/gamedata.synthetic_party` -- six characters of the
-widest shape the record allows -- so this runs on a machine with no game disks,
+widest form the record allows -- so this runs on a machine with no game disks,
 and the picture is the worst case rather than a plausible one.
 
 **Output goes to the `shotwindow` scratch directory, outside the repository.** A synthetic party is
@@ -148,14 +148,14 @@ def floor_of(win) -> "QSize":  # noqa: F821
 
 def shoot(app, save: str | None, extra: float = 0.0, width: int | None = None,
           height: int | None = None, tab: int = EDITOR_TAB) -> tuple:
-    """Draw the window and return `(image, floor, drawn)`.
+    """Draw the window and return `(image, minimum, drawn)`.
 
     `extra` is points added to the UI font, `width` and `height` the size to
-    draw at -- either defaulting to the window's own floor. `image` is the
+    draw at -- either defaulting to the window's own minimum. `image` is the
     grab, without the caption strip.
 
     The font is set on the application *before* the window is built, because
-    half of what the floor is made of is measured at construction.
+    half of what the minimum is made of is measured at construction.
     """
     base = app.font()
     bigger = QFont(base)
@@ -173,13 +173,13 @@ def shoot(app, save: str | None, extra: float = 0.0, width: int | None = None,
             win.show()
             app.processEvents()
 
-            floor = floor_of(win)
-            win.resize(width or floor.width(), height or floor.height())
+            minimum = floor_of(win)
+            win.resize(width or minimum.width(), height or minimum.height())
             app.processEvents()
 
             pixmap: QPixmap = win.grab()
             drawn = (win.width(), win.height())
-            return pixmap.toImage(), floor, drawn
+            return pixmap.toImage(), minimum, drawn
         finally:
             # Not `close()`: that asks about unsaved changes, and an offscreen
             # message box is a run that never ends. But `closeEvent` is also
@@ -293,11 +293,11 @@ def main(argv: list[str]) -> int:
                     help="points added to the UI font. +6 measures here about "
                          "like Windows' base font (default: +0)")
     ap.add_argument("--width", type=int,
-                    help="the width to draw at (default: the window's floor). "
-                         "A width under the floor is clamped by Qt, and the "
+                    help="the width to draw at (default: the window's minimum). "
+                         "A width under the minimum is clamped by Qt, and the "
                          "report says what was drawn")
     ap.add_argument("--height", type=int,
-                    help="the height to draw at (default: the window's floor)")
+                    help="the height to draw at (default: the window's minimum)")
     ap.add_argument("--target", type=int, default=TARGET, metavar="N",
                     help="mark a line here when the window is wider "
                          "(default: %(default)s; 0 for none)")
@@ -317,7 +317,7 @@ def main(argv: list[str]) -> int:
         save = str(synthetic_save(tmp.name))
 
     try:
-        image, floor, drawn = shoot(app, save, extra=args.font,
+        image, minimum, drawn = shoot(app, save, extra=args.font,
                                     width=args.width, height=args.height,
                                     tab=TABS[args.tab])
     finally:
@@ -327,7 +327,7 @@ def main(argv: list[str]) -> int:
     what = ("nothing open" if args.empty else
             pathlib.Path(args.save).name if args.save else "synthetic party")
     line = (f"{what}  |  {args.tab}  |  UI font +{args.font:g}pt  |  "
-            f"floor {floor.width()}x{floor.height()}  |  "
+            f"minimum {minimum.width()}x{minimum.height()}  |  "
             f"drawn {drawn[0]}x{drawn[1]}")
     target = args.target or None
     if target and drawn[0] > target:

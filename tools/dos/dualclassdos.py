@@ -129,7 +129,7 @@ def record_paths(extra: list[str], archives: bool = True) -> list[pathlib.Path]:
 
 
 def read_records(extra: list[str], archives: bool = True):
-    """`(shape, character, paths)` for every distinct record, by bytes.
+    """`(deltas, character, paths)` for every distinct record, by bytes.
 
     The archives ship most save directories twice and a run's scratch
     directory copies them again, so the same record turns up a dozen times.  One entry
@@ -138,8 +138,8 @@ def read_records(extra: list[str], archives: bool = True):
     by_size = {s.record_size: s for s in dos_port.DELTAS}
     seen: dict[str, list] = {}
     for path in record_paths(extra, archives):
-        shape = by_size.get(path.stat().st_size)
-        if shape is None:
+        deltas = by_size.get(path.stat().st_size)
+        if deltas is None:
             continue
         data = path.read_bytes()
         key = hashlib.sha1(data).hexdigest()
@@ -147,11 +147,11 @@ def read_records(extra: list[str], archives: bool = True):
             seen[key][2].append(path)
             continue
         try:
-            char = dos_codec.DosCharacter(data, deltas=shape)
+            char = dos_codec.DosCharacter(data, deltas=deltas)
             char.name                                  # raises on a non-record
         except Exception:
             continue
-        seen[key] = [shape, char, [path]]
+        seen[key] = [deltas, char, [path]]
     return list(seen.values())
 
 
@@ -164,7 +164,7 @@ def former_of(char) -> list[int]:
 def old_level_byte(char) -> int | None:
     """The byte immediately after `level`, which the trainer writes too.
 
-    Unnamed in every shape -- `gap_0e6` in Curse, `gap_0ef` in Silver Blades,
+    Unnamed in every title -- `gap_0e6` in Curse, `gap_0ef` in Silver Blades,
     `gap_139` in Pools of Darkness -- and equal to the former class's level in
     every dual-classed record these specimens hold, including the two written by
     a training hall under DOSBox for `#234`.
@@ -185,15 +185,15 @@ def sweep(args: argparse.Namespace) -> int:
         print("no DOS character records under those roots; set $FR_ARCHIVES")
         return 0
     by_title = collections.defaultdict(list)
-    for shape, char, paths in records:
-        by_title[shape.key].append((char, paths))
-    for shape in dos_port.DELTAS:
-        rows = by_title.get(shape.key)
+    for deltas, char, paths in records:
+        by_title[deltas.key].append((char, paths))
+    for deltas in dos_port.DELTAS:
+        rows = by_title.get(deltas.key)
         if not rows:
             continue
         dual = [r for r in rows if any(former_of(r[0]))]
         came_from = collections.Counter(source_title(r[1][0]) for r in rows)
-        print(f"=== read as {shape.title} ({shape.record_size} bytes): "
+        print(f"=== read as {deltas.title} ({deltas.record_size} bytes): "
               f"{len(rows)} distinct record(s), {len(dual)} dual-classed")
         print("    out of " + ", ".join(f"{t} x{n}" for t, n
                                         in sorted(came_from.items())))
@@ -219,17 +219,17 @@ def sweep(args: argparse.Namespace) -> int:
     return 0
 
 
-#: Each title's overlay, the directory it lives in, and the shape whose
+#: Each title's overlay, the directory it lives in, and the deltas whose
 #: offsets it is read against.  Pool of Radiance is in the list precisely
 #: because it should come back empty.
 #:
-#: **Two of the six have no shape of their own**, and are read against the one
+#: **Two of the six have no deltas of their own**, and are read against the one
 #: their record size names: Gateway to the Savage Frontier writes 422-byte
 #: records like Curse and Treasures of the Savage Frontier 510-byte ones like
 #: Pools of Darkness.  So `dos_layout`'s "the size names the title" holds
 #: among the four it models and not on this machine, where six titles share
 #: four sizes -- `#234 (A dual-classed Curse or Silver Blades character
-#: converted to DOS loses the class he trained out of)`.  Borrowing the shape
+#: converted to DOS loses the class he trained out of)`.  Borrowing the deltas
 #: is sound here and only here: the question is whether the same routine sits
 #: at the same displacement, and the answer either agrees or it does not.
 OVERLAYS = (("pool-of-radiance", "POOLRAD", "pool-of-radiance"),
@@ -335,7 +335,7 @@ def main(argv: list[str] | None = None) -> int:
     c.set_defaults(func=sweep)
 
     d = sub.add_parser("code", help="who writes the former array, per title")
-    d.add_argument("--title", default=None, help="one shape key only")
+    d.add_argument("--title", default=None, help="one title key only")
     d.add_argument("--window", type=int, default=80,
                    help="bytes of listing either side of the write; 0 for none")
     d.set_defaults(func=code)

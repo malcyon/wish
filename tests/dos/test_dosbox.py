@@ -260,16 +260,16 @@ def test_highlight_row_is_none_when_nothing_is_lit():
 
 
 def test_a_stray_lit_pixel_does_not_beat_a_real_highlighted_row():
-    """One pixel under `floor` must not read as a highlight of its own row.
+    """One pixel under `minimum` must not read as a highlight of its own row.
 
     Border noise reading as a highlight is exactly what #555's own live run
     found at x=0..320 before it narrowed to a rectangle clear of the list's
-    border columns; the floor is the same protection inside the rectangle.
+    border columns; the minimum is the same protection inside the rectangle.
     """
     rect = (16, 40, 288, 88)
     screen = _rect_frame(320, 200, rect, lit_row=5)
     px = bytearray(screen.px)
-    # One stray near-white pixel in row 0's band -- far under the floor.
+    # One stray near-white pixel in row 0's band -- far under the minimum.
     stray_y = rect[1] + 1
     stray_x = rect[0] + 1
     i = (stray_y * 320 + stray_x) * 3

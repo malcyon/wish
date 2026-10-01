@@ -38,7 +38,7 @@ from tools.c64.session import STEP_KEYS, Session  # noqa: E402
 
 
 def variant(base, combatants):
-    return combat.Battle(shape=base.shape, terrain=base.terrain,
+    return combat.Battle(geometry=base.geometry, terrain=base.terrain,
                          camera=base.camera, combatants=tuple(combatants))
 
 

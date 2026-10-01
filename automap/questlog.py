@@ -451,7 +451,7 @@ def side_quest_rows(flags) -> list[tuple]:
     """One tuple per side quest the durable bytes say something about.
 
     `(name, state word, tooltip, sub-line, draw the name muted)`, the same
-    shape `commission_rows` draws. Takes the same `Flags` object
+    form `commission_rows` draws. Takes the same `Flags` object
     `update_from` already built from `flags()` -- not the raw source, and
     never `scratch()` -- so the byte the game itself forgets never reaches
     this row. A quest whose `durable_state` is `QUEST_UNSEEN` gets no row:

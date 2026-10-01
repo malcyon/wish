@@ -1,6 +1,6 @@
 """The control byte's offset in each DOS title, and how a value reads.
 
-`tools/records/controlbyte.py` derives the offset from each title's own shape rather
+`tools/records/controlbyte.py` derives the offset from each title's own deltas rather
 than tabulating it, so the derivation is the thing that can silently go wrong:
 if `field_83_87` ever moves or changes width, the sweep would keep printing
 partitions of whatever byte happened to land there.  These pin it against the
@@ -34,8 +34,8 @@ MEASURED = {
 
 @pytest.mark.parametrize("key,offset", sorted(MEASURED.items()))
 def test_the_control_byte_lands_where_the_engine_compares_it(key, offset):
-    shape = dl.DELTAS_BY_KEY[key]
-    control, share = controlbyte.dos_offsets(shape)
+    deltas = dl.DELTAS_BY_KEY[key]
+    control, share = controlbyte.dos_offsets(deltas)
     assert control == offset
     assert share == offset + 1
 
@@ -45,12 +45,12 @@ def test_the_control_byte_is_inside_the_run_it_is_derived_from():
 
     Curse's own Pool of Radiance importer copies `0x083`-`0x087` into
     `0x0F6`-`0x0FA` one for one, so the control byte is the fourth from the
-    end of the run in every title.  A shape that shrank the run at the other
+    end of the run in every title.  A deltas object that shrank the run at the other
     end would still pass the offsets above by luck; this says which end.
     """
-    for shape in dl.DELTAS:
-        run = dl.FIELDS_BY_NAME_FOR[shape.key]["field_83_87"]
-        control, share = controlbyte.dos_offsets(shape)
+    for deltas in dl.DELTAS:
+        run = dl.FIELDS_BY_NAME_FOR[deltas.key]["field_83_87"]
+        control, share = controlbyte.dos_offsets(deltas)
         assert run.offset <= control < run.offset + run.size
         assert control == run.offset + run.size - 4
         assert share < run.offset + run.size

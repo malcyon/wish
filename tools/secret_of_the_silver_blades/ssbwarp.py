@@ -91,7 +91,7 @@ def pc_histogram(sess, addr, samples: int = 60, gap: float = 0.05) -> dict:
     """Where the CPU actually is, when it is not where it should be.
 
     A `wait_idle` that times out says only "not in a key window", which is
-    the shape of a hang, a fight and a full-screen picture alike. Sixty
+    the form of a hang, a fight and a full-screen picture alike. Sixty
     samples say which: a tight cluster is a loop and a spread is code that is
     getting on with something.
     """

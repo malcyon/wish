@@ -52,8 +52,8 @@ SLOT_ARRAYS = ("spells_castable_cleric", "spells_castable_druid",
 
 
 def field(spec, name: str) -> bytes:
-    """The bytes a named field holds in this record's own shape, or b""."""
-    f = dl.FIELDS_BY_NAME_FOR[spec.shape.key].get(name)
+    """The bytes a named field holds in this record's own deltas, or b""."""
+    f = dl.FIELDS_BY_NAME_FOR[spec.deltas.key].get(name)
     if f is None:
         return b""
     return spec.data[f.offset:f.offset + f.size]
@@ -100,7 +100,7 @@ def columns(spec) -> dict[str, str]:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("title", help="a goldbox.dos_port shape key")
+    parser.add_argument("title", help="a goldbox.dos_port title key")
     parser.add_argument("roots", nargs="*", type=pathlib.Path,
                         help="directories to sweep; the default is "
                              "tools/dos/dostailsweep.py's")
@@ -112,7 +112,7 @@ def main(argv=None) -> int:
 
     roots = list(args.roots) or dostailsweep.dos_record_roots()
     all_specs, skipped = dostailsweep.collect(roots, args.built)
-    specs = [s for s in all_specs if s.shape.key == args.title]
+    specs = [s for s in all_specs if s.deltas.key == args.title]
     if not specs:
         raise SystemExit(f"No {args.title} records under {roots}.")
     for other, n in sorted(skipped.items()):
@@ -161,7 +161,7 @@ def main(argv=None) -> int:
         raws = [field(s, name) for s in specs]
         raws = [r for r in raws if r]
         if not raws:
-            print(f"    {name:26} not in this shape")
+            print(f"    {name:26} not in this title")
             continue
         width = len(raws[0])
         counts = [sum(1 for r in raws if r[i]) for i in range(width)]

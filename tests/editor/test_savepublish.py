@@ -416,9 +416,9 @@ def test_a_curse_party_not_yet_set_out_asks_for_no_amiga_game_disk(
                                      game_files=lambda title: object(),
                                      amiga_disk_one=tmp_path / "one.adf")
     assert assets.amiga_disk is None
-    shape = dos_port.CURSE_OF_THE_AZURE_BONDS
+    deltas = dos_port.CURSE_OF_THE_AZURE_BONDS
     assert convert._amiga_destination_data(
-        shape, tmp_path / "no-such-disk.adf", source) is None
+        deltas, tmp_path / "no-such-disk.adf", source) is None
 
     real = world_state.from_c64
 
@@ -436,7 +436,7 @@ def test_a_curse_party_not_yet_set_out_asks_for_no_amiga_game_disk(
     assert caught.value.missing == (saveplan.AMIGA_GAME_DISK,)
     with pytest.raises(FileNotFoundError):
         convert._amiga_destination_data(
-            shape, tmp_path / "no-such-disk.adf", source)
+            deltas, tmp_path / "no-such-disk.adf", source)
 
 
 def test_the_c64_to_amiga_rehearsal_hands_its_source_to_the_disk_check(
@@ -449,9 +449,9 @@ def test_the_c64_to_amiga_rehearsal_hands_its_source_to_the_disk_check(
     seen = []
     real = convert._amiga_destination_data
 
-    def spy(shape, options, source=None):
+    def spy(deltas, options, source=None):
         seen.append(source)
-        return real(shape, options, source)
+        return real(deltas, options, source)
 
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(convert, "_amiga_destination_data", spy)
@@ -1005,7 +1005,7 @@ def test_a_trained_c64_curse_character_saves_as_dos_with_its_current_class(
     # actually stages a script.
     payload[party.game.current_script] = 1
     # `synthetic_party` also leaves every slot's combat icon at zero, which
-    # is not a shape the game's own ICON menu ever draws -- `default_icon`
+    # is not a figure the game's own ICON menu ever draws -- `default_icon`
     # is the 36 bytes a freshly rolled character actually gets (#57), so the
     # conversion can recognise each character's figure instead of reporting
     # one more loss this fix has nothing to do with.
@@ -2075,17 +2075,17 @@ def test_an_unreadable_dos_curse_save_still_asks_for_the_amiga_game_disk(
         tmp_path, monkeypatch):
     """The requirement question does not read the save's error: the
     conversion reports it, as it did before the question looked inside."""
-    shape = dos_port.CURSE_OF_THE_AZURE_BONDS
-    container = convert.dos_savegame.container_for(shape.key)
+    deltas = dos_port.CURSE_OF_THE_AZURE_BONDS
+    container = convert.dos_savegame.container_for(deltas.key)
     (tmp_path / f"SAVGAMA{container.suffix}").write_bytes(b"\0" * 16)
 
     def refuse(*_args, **_kwargs):
         raise convert.dos_codec.DosRecordError("unreadable")
 
     monkeypatch.setattr(convert.world_state, "from_dos", refuse)
-    source = convert.Source(port="dos", title=shape, path=tmp_path, slot="A")
+    source = convert.Source(port="dos", title=deltas, path=tmp_path, slot="A")
 
-    assert convert.amiga_needs_game_disk(shape, source) is True
+    assert convert.amiga_needs_game_disk(deltas, source) is True
     assert saveplan.requirements(source, "amiga") == (
         saveplan.AMIGA_DISK_ONE, saveplan.AMIGA_GAME_DISK)
 
@@ -2259,12 +2259,12 @@ def test_a_pool_of_radiance_dos_save_offers_c64_and_amiga_and_records_its_slot(
     assert saveplan.destination_ports(source) == ["dos", "c64", "amiga"]
 
 
-@pytest.mark.parametrize("shape", [dos_port.CURSE_OF_THE_AZURE_BONDS,
+@pytest.mark.parametrize("deltas", [dos_port.CURSE_OF_THE_AZURE_BONDS,
                                    dos_port.SECRET_OF_THE_SILVER_BLADES],
-                         ids=lambda shape: shape.key)
+                         ids=lambda deltas: deltas.key)
 def test_a_curse_or_silver_blades_dos_save_offers_c64_and_amiga(
-        tmp_path, shape):
-    folder = dos_folder(tmp_path, deltas=shape)
+        tmp_path, deltas):
+    folder = dos_folder(tmp_path, deltas=deltas)
 
     source = convert.Source.detect(folder)
 
@@ -2272,9 +2272,9 @@ def test_a_curse_or_silver_blades_dos_save_offers_c64_and_amiga(
 
 
 def test_a_pools_of_darkness_dos_save_offers_only_a_copy_of_itself(tmp_path):
-    shape = dos_port.POOLS_OF_DARKNESS
+    deltas = dos_port.POOLS_OF_DARKNESS
     (tmp_path / "SAVGAMA.PTY").write_bytes(b"\x00")
-    (tmp_path / "CHRDATA1.SAV").write_bytes(b"\x00" * shape.record_size)
+    (tmp_path / "CHRDATA1.SAV").write_bytes(b"\x00" * deltas.record_size)
 
     source = convert.Source.detect(tmp_path / "SAVGAMA.PTY")
 
@@ -2469,7 +2469,7 @@ def test_every_title_the_amiga_writer_covers_is_offered_an_amiga_destination(
     `C64ToAmiga`."""
     from goldbox import amiga_shared
 
-    assert {shape.key for shape in amiga_shared.WRITES} == {
+    assert {deltas.key for deltas in amiga_shared.WRITES} == {
         dos_port.POOL_OF_RADIANCE.key, CURSE_KEY,
         "secret-of-the-silver-blades"}
     source = _pool_c64_source(tmp_path,

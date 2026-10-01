@@ -17,7 +17,7 @@ is `goldbox/c64_codec.py`'s, and the two never mention each other.
 neutral value carries and a writer refuses to write below.
 
 `export_party` renders the result as the editor's own YAML, so a DOS party
-and a C64 party come out in one shape; that is a view, not the interchange.
+and a C64 party come out in one form; that is a view, not the interchange.
 
 What the conversion promises
 ----------------------------
@@ -1029,7 +1029,7 @@ INNATE_EFFECTS_POOLS_OF_DARKNESS = INNATE_EFFECTS | {8, 95, 105}
 
 #: Title key -> its innate-effect set.  A title not listed gets
 #: `INNATE_EFFECTS`, which is Pool of Radiance's own and, until measured
-#: otherwise, everyone else's -- the same fallback shape
+#: otherwise, everyone else's -- the same fallback pattern
 #: `_RACE_COMBAT_EFFECTS_TABLES` uses below.
 _INNATE_EFFECTS_TABLES: dict[str, frozenset[int]] = {
     CURSE_OF_THE_AZURE_BONDS.key: INNATE_EFFECTS_CURSE,
@@ -1169,7 +1169,7 @@ EFFECT_NEXT_NULL = bytes(4)
 #: Radiance -- `add_affect` at `GAME.OVR:0x11B35` writes data `0x0C`, flag 0
 #: for a readied item whose power byte is one of `POOL_ITEM_GRANT_POWERS`,
 #: and the specimen `WISH-SPEC-por-item-granted` holds `3D 00 00 0C 00` for
-#: it.  Curse and Silver Blades' own item grant is a different shape,
+#: it.  Curse and Silver Blades' own item grant is a different form,
 #: `LATER_ITEM_GRANT_PAYLOAD` below (`#621`'s plan, Stage 3b).
 ITEM_GRANT_PAYLOAD = bytes((0x00, 0x00, 0x0C, 0x00))
 
@@ -1231,7 +1231,7 @@ C64_ITEM_GRANTS_WITHOUT_DOS_FORM: dict[str, frozenset[int]] = {
 #:
 #: SILAS's own `CHRDATA6.SPC` (`#621`, A C64 character carrying an effect in
 #: a trait slot cannot be saved as a DOS or Amiga save) is `05 00 00 FF 00 ...`
-#: and `2D 00 00 FF 00 ...`, exactly this shape, and the DOS engine itself
+#: and `2D 00 00 FF 00 ...`, exactly this form, and the DOS engine itself
 #: kept both nodes unchanged across three clock minutes.
 C64_TRAIT_PERMANENT_IDS: dict[str, frozenset[int]] = {
     POOL_OF_RADIANCE.key: frozenset(range(1, 128)) - {
@@ -1524,7 +1524,7 @@ def _race_combat_effects(game: object, race: int,
 
 
 # `STURDY_RACES = (1, 3, 5)` used to live here, Pool-of-Radiance-numbered like
-# `RACE_COMBAT_EFFECTS` above and the same bug's shape -- but a repository-wide
+# `RACE_COMBAT_EFFECTS` above and the same bug -- but a repository-wide
 # grep for it, done for #293 (A converted Silver Blades dwarf, elf or gnome
 # gets another race's innate combat effect, because RACE_COMBAT_EFFECTS is
 # keyed by Pool of Radiance's race numbers), found no reader anywhere: not in
@@ -1554,7 +1554,7 @@ CLASS_LEVEL_SLOTS: tuple[tuple[int, str, str | None], ...] = (
 #: slot; `fighter/mage/thief` fills three.  What justifies a table here is
 #: that it is a **check**: a spellbook or a memorised region one byte out
 #: moves the array, and then the slots that are set stop matching the class
-#: byte -- which is `tests/convert/test_dosconvert.py`'s test of every title's shape.
+#: byte -- which is `tests/convert/test_dosconvert.py`'s test of every title's deltas.
 CLASS_SLOTS_FOR_CLASS: dict[int, tuple[int, ...]] = {
     number: tuple(
         slot for slot, name, _ in CLASS_LEVEL_SLOTS
@@ -1794,7 +1794,7 @@ class DosCharacter(_Fielded):
     def class_levels(self) -> dict[str, int]:
         """Class name -> level, for the classes that carry one.
 
-        Bounded by the array this record's own shape declares -- eight slots
+        Bounded by the array this record's own deltas declare -- eight slots
         in Pool of Radiance and Curse of the Azure Bonds, **seven** in
         Secret of the Silver Blades and Pools of Darkness, which drop the
         monk's (#423).  A slot past the end of a seven-wide array is simply
@@ -1861,9 +1861,9 @@ def required_item_suffix(data: bytes) -> str | None:
     Raises `DosDeltasError` for a length that is no known record.  The reader
     and the specimen registry both ask this, so they refuse the same folder.
     """
-    shape = deltas_for(len(data))
-    if data[FIELDS_BY_NAME_FOR[shape.key]["item_count"].offset]:
-        return shape.item_suffix
+    deltas = deltas_for(len(data))
+    if data[FIELDS_BY_NAME_FOR[deltas.key]["item_count"].offset]:
+        return deltas.item_suffix
     return None
 
 
@@ -1875,7 +1875,7 @@ def read_character(path: str | pathlib.Path) -> DosCharacter:
     for Pool of Radiance, **`.SWG`**/`.FX` for Curse, **`.STF`**/`.SFX` for
     Silver Blades, `.THG`/`.EFX` for Pools of Darkness.  An export normally has
     neither.  **The stride is per title too**: 63 everywhere except Silver
-    Blades, which is 67, so slice at `shape.item_size`.
+    Blades, which is 67, so slice at `deltas.item_size`.
 
     Curse's `.SWG` and Silver Blades' `.STF` are both measured in the running
     game, on characters who went shopping (#113) -- 63 and 67 bytes
@@ -1906,19 +1906,19 @@ def read_character(path: str | pathlib.Path) -> DosCharacter:
     path = pathlib.Path(path)
     data = path.read_bytes()
     try:
-        shape = deltas_for(len(data))
+        deltas = deltas_for(len(data))
     except DosDeltasError as e:
         raise DosRecordError(f"{path.name}: {e}") from None
-    item_path = path.with_suffix(shape.item_suffix)
+    item_path = path.with_suffix(deltas.item_suffix)
     item_file_present = item_path.exists()
     itm = item_path.read_bytes() if item_file_present else b""
-    spc = _sibling(path, shape.effect_suffix)
+    spc = _sibling(path, deltas.effect_suffix)
     # The engine's loader reads the item file to its end and never looks at
     # the record's `item_count`, so this does too: a stale count (a scribed
     # scroll leaves it one high, an export leaves it zero) neither refuses the
     # save nor hides items the game gives the character.
-    count = data[FIELDS_BY_NAME_FOR[shape.key]["item_count"].offset]
-    stride = shape.item_size
+    count = data[FIELDS_BY_NAME_FOR[deltas.key]["item_count"].offset]
+    stride = deltas.item_size
     # A record that counts items with no item file beside it is a folder copied
     # without its item files, which would otherwise convert to an empty pack;
     # no file with a zero count is an export and stays silent.  A file that is
@@ -1941,10 +1941,10 @@ def read_character(path: str | pathlib.Path) -> DosCharacter:
         )
     if len(spc) % EFFECT_SIZE:
         raise DosRecordError(
-            f"{path.with_suffix(shape.effect_suffix).name}: {len(spc)} bytes "
+            f"{path.with_suffix(deltas.effect_suffix).name}: {len(spc)} bytes "
             f"is not a whole number of {EFFECT_SIZE}-byte effect nodes")
     effects = [spc[i:i + EFFECT_SIZE] for i in range(0, len(spc), EFFECT_SIZE)]
-    return DosCharacter(data, items, effects, source=str(path), deltas=shape)
+    return DosCharacter(data, items, effects, source=str(path), deltas=deltas)
 
 
 def slots_available(folder: str | pathlib.Path) -> list[str]:
@@ -2124,7 +2124,7 @@ DROPPED: tuple[tuple[str, str], ...] = (
 #: but whether a player loses anything, and neither does:
 #:
 #: * `icon_dimension` is how many squares a figure covers on the combat
-#:   floor.  Donald: *"All PCs are the same size, so it doesn't matter.
+#:   arena.  Donald: *"All PCs are the same size, so it doesn't matter.
 #:   Just leave that line out during conversions."*  It reads 1 in every
 #:   player record anybody has looked at.
 #: * `turn_class` is the row of the turning table **an undead creature**
@@ -2360,7 +2360,7 @@ def field_disposition(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
 
     The test that keeps this module honest: a field declared in
     `goldbox/dos_port.py` and named nowhere here would be a field silently
-    dropped, which `docs/117-save-conversion.md` forbids.  The shape is
+    dropped, which `docs/117-save-conversion.md` forbids.  The form is
     `goldbox/neutral.py`'s, so every direction reports its drops the same way.
 
     **Asked per title**, because the four tables are not the same table: Curse
@@ -2414,7 +2414,7 @@ def portrait_tables(game: str | pathlib.Path | None
         return None, str(e)
 
 
-#: The DOS shapes :func:`to_neutral` will read into a neutral character, and
+#: The DOS deltas :func:`to_neutral` will read into a neutral character, and
 #: therefore the titles the import converts.  **Curse of the Azure Bonds
 #: joined this list as step 4 of `#192 (Convert a Curse of the Azure Bonds
 #: DOS save into a C64 one, which the importer refuses today)`**, after step 3
@@ -2455,7 +2455,7 @@ def portrait_tables(game: str | pathlib.Path | None
 #:     `.claude/rules/conversions.md` is explicit that bytes matching is
 #:     necessary and not sufficient.
 #:
-#: Two of the shape's eight UNKNOWN runs turned out to carry something, and
+#: Two of the deltas' eight UNKNOWN runs turned out to carry something, and
 #: both are named in `goldbox/dos_port.py` rather than left as gaps a
 #: writer would zero: `unnamed_1a4` and `unnamed_1e0`.
 CONVERTS: tuple[DosDeltas, ...] = (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS,
@@ -2522,7 +2522,7 @@ _PERMANENT_FIRST: frozenset[str] = frozenset(
 
 
 def _ability_pair(dos: "DosCharacter", name: str) -> tuple[int, int]:
-    """One ability as `(in_force, permanent)`, whichever shape the title stores.
+    """One ability as `(in_force, permanent)`, whichever form the title stores.
 
     Pool of Radiance keeps one byte and every later title keeps two, so the
     single byte answers for both halves rather than the reader having to
@@ -3010,7 +3010,7 @@ def to_neutral(dos: DosCharacter,
                                ("portrait_body", "body_art", "BODY")):
         if portraits is None or name not in dos.fields:
             # **Pools of Darkness has no sheet portrait at all** -- neither
-            # port ships head or body art, its 510-byte shape gives the pair
+            # port ships head or body art, its 510-byte figure gives the pair
             # a width of zero, and the fourteen-and-twelve creation menu is
             # cut out of the Amiga engine's own copy of the data block that
             # carries it (#194, #451).  So there is no byte here to read and
@@ -3021,7 +3021,7 @@ def to_neutral(dos: DosCharacter,
         art = getattr(portraits, art_of)(position)
         if art is None:
             # Position 0 is not a menu entry -- it is how this record says
-            # "no face chosen" -- and that is a fact about the menu's shape
+            # "no face chosen" -- and that is a fact about the menu's layout
             # (`PortraitTables._art`'s own `1 <= n <= len(table)` gate)
             # rather than a loss this character's own save suffered.  Only a
             # position the menu *could* have answered for, and did not, is
@@ -3350,7 +3350,7 @@ def item_from_c64(record: bytes, item_size: int = ITEM_SIZE) -> bytes:
     four extra bytes are :data:`ITEM_TAIL` and are zero in 48 of 48 item
     records this project drove the game into writing (#113).  So the longer
     record is the shorter one with four measured zeroes after it, and reading
-    the stride from the shape is the whole of what the wider title needs.
+    the stride from the deltas is the whole of what the wider title needs.
     """
     if len(record) != 16:
         raise DosRecordError(f"a C64 item is 16 bytes; got {len(record)}")
@@ -3664,7 +3664,7 @@ def write_absent(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
                  ) -> tuple[tuple[str, str], ...]:
     """Neutral fields this title's DOS record has no field for, and why.
 
-    Computed from the title's own table rather than listed, so a shape that
+    Computed from the title's own table rather than listed, so a title that
     gains or loses a field cannot leave a stale row behind: a name in
     :data:`WRITE_DIRECT` whose DOS field is not declared has nowhere to go.
     """
@@ -3867,7 +3867,7 @@ WRITE_DEFAULTS: tuple[tuple[str, bytes, str, str], ...] = (
      "3-bit colour a part becomes both nibbles of the pair, the shape "
      "every freshly-made DOS record's own default set already has",
      "zero is not neutral here: all six parts become EGA 8, dark grey, "
-     "which is the combat floor's own colour, so the character is about 64 "
+     "which is the combat arena's own colour, so the character is about 64 "
      "black outline pixels on its own shade and reads as not being there "
      "(#112, three fights)"),
     ("field_10c_10f", b"\x00\x01\x00\x00",
@@ -4448,7 +4448,7 @@ _SPELL_SLOT_RECOMPUTE_FROM_PORTS = ("C64",)
 #: of Radiance is the one port of the one title that leaves this byte at its
 #: creation value**.
 #:
-#: **The floor is CONFIRMED from the Amiga engine's own hand**, not from a
+#: **The minimum is CONFIRMED from the Amiga engine's own hand**, not from a
 #: found record: a converted party written with 0 here was re-saved by the
 #: running game and MALCYON, a magic-user 1, came back holding **1**
 #: (`docs/182-amiga-por-in-the-running-game.md` §4 and
@@ -5153,7 +5153,7 @@ def write(char: NeutralCharacter,
 
     # -- everything the two ports encode the same way ------------------------
     # The abilities are a pair from Curse of the Azure Bonds on, and one byte
-    # in Pool of Radiance, so the width decides the shape of the write rather
+    # in Pool of Radiance, so the width decides how the write goes rather
     # than the title doing so.  The neutral ability is the score in force and
     # `abilities_second` is the permanent score behind it; a source that has
     # none writes the one value into both halves, which is what every record
@@ -5544,7 +5544,7 @@ def write(char: NeutralCharacter,
     # a title whose own DOS engine is confirmed to store a number no table
     # produces --------------------------------------------------------------
     # `WRITE_DIRECT`'s copy is skipped above for these eight, the same
-    # shape as `thac0_base` just above: a straight copy hands back whatever
+    # way as `thac0_base` just above: a straight copy hands back whatever
     # the source port's own table wrote, which is wrong for a title whose
     # racial row the two ports do not share.  Pool of Radiance is the one
     # measured (#431, A converted halfling thief keeps the other port's
@@ -5583,9 +5583,9 @@ def write(char: NeutralCharacter,
     # `w.get`, not `use`: the thief level, race and dexterity feeding this
     # were already taken by the `WRITE_DIRECT` copy loop above.
     #
-    # `shape.key` rather than `char.game`, the same as the THAC0 recompute
+    # `deltas.key` rather than `char.game`, the same as the THAC0 recompute
     # above: the title being *written* is what decides which table applies.
-    # A caller that ever passes a shape the source's own `game` disagrees
+    # A caller that ever passes deltas the source's own `game` disagrees
     # with would otherwise fall back to the default title, which is Pool of
     # Radiance -- the one title with a table -- and stamp its row into a
     # Curse or Silver Blades record.
@@ -5695,7 +5695,7 @@ def write(char: NeutralCharacter,
     # levels and wisdom alone -- the four misses are this project's own
     # pre-fix output sitting in the specimen tree, not the game's
     # (`tests/curse_of_the_azure_bonds/test_cursespellslots.py`'s `COUNTS`). Gated to
-    # `_SPELL_SLOT_RECOMPUTE_FROM_PORTS`, the same shape as
+    # `_SPELL_SLOT_RECOMPUTE_FROM_PORTS`, the same form as
     # `_THAC0_RECOMPUTE_FROM_PORTS` and `_THIEF_SKILL_RECOMPUTE_FROM_PORTS`:
     # an Amiga source's own array is real (fifteen of fifteen Amiga Curse
     # records read hold the table row) and a DOS source's is the engine's
@@ -5900,7 +5900,7 @@ def write(char: NeutralCharacter,
     # -- the inventory becomes the item file ---------------------------------
     # `.ITM` in Pool of Radiance, **`.SWG`** in Curse and **`.STF`** in
     # Silver Blades, whose records are 67 bytes rather than 63 (#113).  The
-    # stride is the shape's and the caller writes the file under
+    # stride is the deltas' and the caller writes the file under
     # `DosDeltas.item_suffix`; nothing here assumes either.
     itm = b""
     projected: list[bytes] = []
@@ -6512,7 +6512,7 @@ def write(char: NeutralCharacter,
     # whose value it is turning away" -- and the true question is not "which
     # port" but "does this port's own record hold a genuine draw rather than
     # something DOS itself would have to invent", which is every port but
-    # DOS.  `w.use`, not `char.get`, so a value graded below the floor is
+    # DOS.  `w.use`, not `char.get`, so a value graded below the minimum is
     # refused and reported rather than taken, and so the field counts as
     # consumed either way.
     _derived_name = "unnamed_0ab"
@@ -6798,7 +6798,7 @@ def apply_position(save0: bytearray, state: "world_state.WorldState"
     both ports, measured on DOS in #59 and on the C64 in #47 -- and this
     function writes **nothing** into `$49C0`-`$49C2`: the DOS file's
     12801-12803 x,y are the stale square the party left the grid on, not
-    where it stands, and the one proven live shape (#47 test D) wrote the
+    where it stands, and the one proven live case (#47 test D) wrote the
     travel pair alone.
 
     What those three bytes hold outdoors is :data:`DUNGEON_SQUARE`'s answer
@@ -7257,7 +7257,7 @@ def never_adventured(savgam: bytes,
       staged there, so an all-zero buffer is a party that has never had an
       area: 13 of 13 never-adventured containers, against 1954-7222
       non-zero bytes in each of the 101 others.  This is the reading with a
-      mechanism behind it and is the one used wherever the shape has a
+      mechanism behind it and is the one used wherever the container has a
       buffer;
     * **`$4FE1`** (`LATER_BEGUN_WORD`), 0 in 13 of 13 and never 0 in the
       101 -- 255, 16 or 8.  Curse's `GAME.OVR:0x832F` stores `$FF` into it
@@ -7398,7 +7398,7 @@ def apply_file_cache(save0: bytearray, state: "world_state.WorldState",
     map `$49C5` and the script id `$49F2`.  Returns the one line the report
     puts against the cache.
 
-    That is `docs/140-loaded-files-cache.md`'s recipe and is the shape both
+    That is `docs/140-loaded-files-cache.md`'s recipe and is the form both
     live tests used.  Outdoors the same recipe with slot 4 in slot 2's
     role -- `SQRDATA` where a dungeon has a `GEO` -- which is the outdoor form
     #47 proved live twice, plus `$49E6` = 0, which is on its own what boots
@@ -7522,7 +7522,7 @@ class C64SaveReport(Report):
 
     Offsets 0 to `save0_size - 1` are `SAVEDGAME0`, a verbatim image of
     `$4900`-`$64FF`; `save0_size` and up are `SAVEDGAME1`, which is `$8300`
-    onwards.  One flat offset map for two files, which is the shape
+    onwards.  One flat offset map for two files, which is the form
     :class:`WriteReport` already uses for the record and the `.ITM` payload
     beside it.
 
@@ -7666,7 +7666,7 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
 
     The engine `convert_save` and `new_save_from` share.  `state` is the
     party's place and clock, `world_state.from_dos`'s reading of a
-    `SAVGAM<slot>.DAT` rather than the bytes themselves -- the shape
+    `SAVGAM<slot>.DAT` rather than the bytes themselves -- the form
     `#353 (Convert an Amiga Pool of Radiance save to the C64, so a party
     standing in the Slums on the Amiga arrives there in VICE)` needs once an
     Amiga reader can fill one instead (`#352`'s order of work, step 2).
@@ -8127,11 +8127,11 @@ def convert_save(folder: str | pathlib.Path, slot: str,
     leaves; the routes that let a player choose pass fresh ones.
     """
     container = c64_save.container_for(game)
-    shape = dos_savegame.container_for(container.key)
+    dos_container = dos_savegame.container_for(container.key)
     party = read_party(folder, slot)
     savgam_path = pathlib.Path(folder).joinpath(
-        f"SAVGAM{slot}{shape.suffix}")
-    state = world_state.from_dos(savgam_path.read_bytes(), shape,
+        f"SAVGAM{slot}{dos_container.suffix}")
+    state = world_state.from_dos(savgam_path.read_bytes(), dos_container,
                                   source=str(savgam_path))
     return write_c64_save(save0, save1, state, party, icon=icon,
                           animate=animate, portraits=portraits, game=container,
@@ -8235,11 +8235,11 @@ def new_save(folder: str | pathlib.Path, slot: str,
     Returns the two payloads and the report, whose `unwritten` is empty.
     """
     container = c64_save.container_for(game)
-    shape = dos_savegame.container_for(container.key)
+    dos_container = dos_savegame.container_for(container.key)
     party = read_party(folder, slot)
     savgam_path = pathlib.Path(folder).joinpath(
-        f"SAVGAM{slot}{shape.suffix}")
-    state = world_state.from_dos(savgam_path.read_bytes(), shape,
+        f"SAVGAM{slot}{dos_container.suffix}")
+    state = world_state.from_dos(savgam_path.read_bytes(), dos_container,
                                   source=str(savgam_path))
     return new_save_from(state, party, icon, animate, portraits=portraits,
                          game=container, leave=leave, item_types=item_types,
@@ -8855,7 +8855,7 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
     which is the whole of how "no template" is checked rather than asserted.
 
     `state` is the party's place and clock, `world_state.from_c64`'s
-    reading of the C64 save rather than the payload itself -- the shape
+    reading of the C64 save rather than the payload itself -- the form
     `#354 (Convert an Amiga Pool of Radiance save to DOS, so a party
     standing in the Slums on the Amiga arrives there under DOSBox)` needs
     once an Amiga reader can fill one instead (`#352`'s order of work,
@@ -8899,11 +8899,11 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
     game = c64_port.by_key(getattr(game, "key", game)) if game else \
         c64_port.POOL_OF_RADIANCE
     container = c64_save.container_for(game)
-    shape = dos_savegame.container_for(game.key)
-    later = shape is not dos_savegame.SAVE_POOL_OF_RADIANCE
-    if len(savgam) != shape.size:
+    dos_container = dos_savegame.container_for(game.key)
+    later = dos_container is not dos_savegame.SAVE_POOL_OF_RADIANCE
+    if len(savgam) != dos_container.size:
         raise DosRecordError(
-            f"a {shape.title} saved game is {shape.size} bytes; the buffer "
+            f"a {dos_container.title} saved game is {dos_container.size} bytes; the buffer "
             f"is {len(savgam)}")
     area = state.area
     geo = state.geo
@@ -8916,7 +8916,7 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
         area = 0
         x, y, facing = PRE_ADVENTURE_SQUARE
         indoors = True
-        script = bytes(dos_savegame.ECL_HEADER) if shape.script_buffer else None
+        script = bytes(dos_savegame.ECL_HEADER) if dos_container.script_buffer else None
     else:
         where = areas.area_in(area, game.title)
         if dax is None:
@@ -8936,13 +8936,13 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
     dos_savegame.move_to_area(savgam, area=area, dax=dax,
                           wallset=wallset, script=script,
                           outdoors=not indoors and not fresh, geo=geo,
-                          container=shape)
+                          container=dos_container)
     if fresh:
-        report.note(shape.head, shape.dax_bytes,
+        report.note(dos_container.head, dos_container.dax_bytes,
                     f"the disk number, {dax}, the party menu's own: no "
                     f"area has been entered")
     else:
-        report.note(shape.head, shape.dax_bytes,
+        report.note(dos_container.head, dos_container.dax_bytes,
                     f"the DAX container number, {dax}, for area "
                     f"{area} ({where.name or where.ecl})"
                     + ("" if dax == where.disk else
@@ -8955,14 +8955,14 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
                "zero: the overland names no GEO, which is what an outdoor "
                "DOS save holds here in 10 of 10 -- and it is not the C64's "
                "own $49C5, which outdoors holds the SQRDATA number (#59)",
-               shape)
+               dos_container)
     _note_word(report, dos_savegame.SCRIPT, 1,
                "zero: no area has been entered" if fresh
-               else "the area's script id", shape)
+               else "the area's script id", dos_container)
     _note_word(report, dos_savegame.DISK, 1,
                "the disk number again" if fresh else
                "the DAX container number again -- the geo load reads "
-               "this word and not the header byte (#59)", shape)
+               "this word and not the header byte (#59)", dos_container)
     wallset_why = (
         "the wallset triple, from the C64 loaded-files cache "
         "slots 15-17, which carry the same three numbers" if indoors
@@ -8973,17 +8973,17 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
         "engine writes for itself out there -- it replaced a seeded "
         "(1,5,9) three times of three, and no outdoor load reads it "
         "(#59, #190)")
-    if shape.unnamed:
-        report.note(shape.wall_block, shape.unnamed,
+    if dos_container.unnamed:
+        report.note(dos_container.wall_block, dos_container.unnamed,
                     f"the twelve-byte block inside the square block: "
                     f"{wallset_why}, interleaved with its wall-index map "
                     f"(#253, #299)")
     else:
-        _note_word(report, dos_savegame.WALLSET, 3, wallset_why, shape)
+        _note_word(report, dos_savegame.WALLSET, 3, wallset_why, dos_container)
         _note_word(report, dos_savegame.WALLMAP, 3,
-                   "the wall-index map that goes with the triple", shape)
-    if shape.script_buffer is not None:
-        start, end = shape.script_buffer
+                   "the wall-index map that goes with the triple", dos_container)
+    if dos_container.script_buffer is not None:
+        start, end = dos_container.script_buffer
         if fresh:
             report.note(start, end - start,
                         "zero: no area's script is staged before the party "
@@ -8996,25 +8996,25 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
                         f"engine-written save holds past its script's end, "
                         f"6 of 6 (#59)")
     dos_savegame.put_word(savgam, dos_savegame.INDOORS, 1 if indoors else 0,
-                          shape)
+                          dos_container)
     _note_word(report, dos_savegame.INDOORS, 1,
                "indoors" if indoors else "outdoors -- 0 boots the engine "
-               "into travel mode", shape)
+               "into travel mode", dos_container)
 
     if indoors:
-        dos_savegame.put_position(savgam, x, y, facing, shape)
-        report.note(shape.pos_x, 3,
+        dos_savegame.put_position(savgam, x, y, facing, dos_container)
+        report.note(dos_container.pos_x, 3,
                     f"the initialiser's square ({x},{y}) facing north, "
                     f"which is not the C64 save's own" if fresh else
                     f"the square ({x},{y}) facing {facing}, the C64's own "
                     f"facing doubled")
     else:
         tx, ty = state.travel
-        dos_savegame.put_travel_square(savgam, tx, ty, shape)
+        dos_savegame.put_travel_square(savgam, tx, ty, dos_container)
         _note_word(report, dos_savegame.TRAVEL_X, 2,
                    f"the travel square ({tx},{ty}), window-local, the C64's "
                    f"own $49C3/$49C4 -- the same pair at the same address on "
-                   f"both ports (#47, #59)", shape)
+                   f"both ports (#47, #59)", dos_container)
         # 12801/12802 are the square the party last stood on **indoors**,
         # frozen on both ports the moment it reached the grid -- C64
         # `DUNGEON $1A3C` copies `$C04B` into `$49C0` only while `$49E6` is
@@ -9024,18 +9024,18 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
         #
         # 12803 is the exception and is the one field this conversion
         # **cannot** carry outdoors.  See OUTDOOR_FACING.
-        dos_savegame.put_position(savgam, x, y, OUTDOOR_FACING, shape)
-        report.note(shape.pos_x, 2,
+        dos_savegame.put_position(savgam, x, y, OUTDOOR_FACING, dos_container)
+        report.note(dos_container.pos_x, 2,
                     f"the stale indoor square ({x},{y}) the party left the "
                     f"grid on, the C64's own $49C0/$49C1 -- frozen on both "
                     f"ports out here and read by neither")
         # The note keeps the addresses; the player-facing copy of this
         # sentence is gone (#248, and see OUTDOOR_FACING above).
-        report.note(shape.pos_facing, 1, OUTDOOR_FACING_WHY)
-    dos_savegame.put_tail_state(savgam, indoors=indoors, container=shape)
+        report.note(dos_container.pos_facing, 1, OUTDOOR_FACING_WHY)
+    dos_savegame.put_tail_state(savgam, indoors=indoors, container=dos_container)
     where_stood = "indoors" if indoors else "outdoors"
     if later:
-        report.note(shape.tail_scratch, 4,
+        report.note(dos_container.tail_scratch, 4,
                     f"the four tail bytes, {dos_savegame.LATER_TAIL_ZERO}")
     else:
         report.note(dos_savegame.SCRATCH_BYTE, 4,
@@ -9044,15 +9044,15 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
                     f"has held (the engine rewrites it anyway), the low "
                     f"byte of $5200, the view mode from $49E6, and the "
                     f"constant {dos_savegame.TAIL_CONSTANT}")
-    dos_savegame.put_party_size(savgam, count, shape)
+    dos_savegame.put_party_size(savgam, count, dos_container)
     _note_word(report, dos_savegame.PARTY_SIZE, 1, f"the party size, {count}",
-               shape)
-    report.note(shape.party_size_byte, 1, f"the party size again, {count}")
+               dos_container)
+    report.note(dos_container.party_size_byte, 1, f"the party size again, {count}")
 
-    dos_savegame.put_character_files(savgam, slot, shape)
+    dos_savegame.put_character_files(savgam, slot, dos_container)
     for n in range(dos_savegame.PARTY_ENTRIES):
         report.note(
-            shape.party_table + n * dos_savegame.PARTY_ENTRY,
+            dos_container.party_table + n * dos_savegame.PARTY_ENTRY,
             dos_savegame.PARTY_NAME_LEN,
             f"CHRDAT{slot.upper()}{n + 1}, which is what the engine loads "
             f"the party from -- not the slot letter at the LOAD menu (#59)")
@@ -9066,40 +9066,40 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
     first, size = container.quest_flags
     for i, b in enumerate(state.flags):
         dos_savegame.put_word(savgam, dos_savegame.VAR_BASE + first + i,
-                              b, shape)
+                              b, dos_container)
     _note_word(report, dos_savegame.VAR_BASE + first, size,
                "a quest flag: the C64 byte at the same ECL address, widened "
-               "to a word", shape)
+               "to a word", dos_container)
     for addr in SHARED_SCRATCH:
-        dos_savegame.put_word(savgam, addr, state.scratch[addr], shape)
+        dos_savegame.put_word(savgam, addr, state.scratch[addr], dos_container)
         _note_word(report, addr, 1,
                    "script scratch: the C64 byte at the same ECL address, "
-                   "widened to a word", shape)
+                   "widened to a word", dos_container)
     if later:
         first, size = LATER_HEADER_COPIED
         for i in range(size):
             dos_savegame.put_word(savgam, dos_savegame.VAR_BASE + first + i,
-                                  state.header[SAVE0_BASE + first + i], shape)
+                                  state.header[SAVE0_BASE + first + i], dos_container)
         _note_word(report, dos_savegame.VAR_BASE + first, size,
                    "a per-area byte the arriving script writes and DUNGEON "
                    "reads: the C64 byte at the same ECL address, widened to "
                    "a word -- 1,1,1 in every Silver Blades container and "
-                   "disk, 0,0,0 in every Curse one (#193, #299)", shape)
+                   "disk, 0,0,0 in every Curse one (#193, #299)", dos_container)
 
     digits = list(state.clock)
-    dos_savegame.put_clock(savgam, digits, shape)
+    dos_savegame.put_clock(savgam, digits, dos_container)
     _note_word(report, dos_savegame.CLOCK, dos_savegame.CLOCK_DIGITS,
-               "a clock digit, the C64's own byte at the same address", shape)
+               "a clock digit, the C64's own byte at the same address", dos_container)
 
-    for address, value, why in savgam_constants(shape):
+    for address, value, why in savgam_constants(dos_container):
         if fresh and address in PRE_ADVENTURE_ZERO:
             _note_word(report, address, 1,
                        "zero: the engine writes this word only once the "
                        "party has set out, and every shipped party that "
-                       "has not holds it at zero", shape)
+                       "has not holds it at zero", dos_container)
             continue
-        dos_savegame.put_word(savgam, address, value, shape)
-        _note_word(report, address, 1, f"a documented constant: {why}", shape)
+        dos_savegame.put_word(savgam, address, value, dos_container)
+        _note_word(report, address, 1, f"a documented constant: {why}", dos_container)
     if later:
         # `$49FF` is in the title's own constants above -- the later
         # titles draw no sheet portrait (`draws_sheet_portrait`), so the
@@ -9115,9 +9115,9 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
             # Writing 3 there would be inventing a state rather than
             # reproducing a measured one (#57).
             continue
-        dos_savegame.put_word(savgam, address, value, shape)
+        dos_savegame.put_word(savgam, address, value, dos_container)
         _note_word(report, address, 1, f"measured in the running game: {why}",
-                   shape)
+                   dos_container)
 
 
 def savgam_zeroes(savgam: bytearray, report: "SaveReport",
@@ -9188,7 +9188,7 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
     file order for nothing, rather than building records in slot order and
     reversing the built list afterwards the way `write_dos_save` used to.
 
-    `game` is the C64 title, `c64_save.container_for`'s own shape. The
+    `game` is the C64 title, `c64_save.container_for`'s own form. The
     payload holds at most eight occupied character slots, matching the DOS
     party table.
 
@@ -9433,7 +9433,7 @@ def _build_character_files(characters: "Sequence[NeutralCharacter]",
     Split out of `write_dos_save_from` so `pod_savgam`/`new_pod_save_from`
     can build a Pools of Darkness slot's character files the same way,
     with no portrait table -- this title draws no sheet portrait -- and no
-    icon list of its own.  `empty_shape` is the record shape to report when
+    icon list of its own.  `empty_shape` is the record deltas to report when
     `characters` is empty; `write_dos_save_from` is the only caller that
     ever passes one, because every other caller's party is 1 or more.
     `item_types` is `write`'s own argument, the same table for every
@@ -9500,12 +9500,12 @@ def write_dos_save_from(state: "world_state.WorldState",
 
     Takes the place, the clock and the party as a `WorldState` and a
     `list[NeutralCharacter]` already in DOS file order -- `c64_party`'s
-    shape -- rather than a C64 payload, which is what
+    form -- rather than a C64 payload, which is what
     `#354 (Convert an Amiga Pool of Radiance save to DOS, so a party
     standing in the Slums on the Amiga arrives there under DOSBox)` needs
     once an Amiga reader can fill both instead (`#352`'s order of work,
     step 3).  `state.title` (`goldbox.c64_port.C64Container.title`) says which title's
-    own DOS record shape and quest-flag width apply; whatever built `state`
+    own DOS record deltas and quest-flag width apply; whatever built `state`
     already resolved which of Curse and Silver Blades it is -- the same
     size on the C64 and two different DOS files -- so there is no size left
     to disambiguate here the way `c64_title` had to.
@@ -9539,7 +9539,7 @@ def write_dos_save_from(state: "world_state.WorldState",
         raise DosRecordError(
             f"a save slot is a single letter, not {slot!r}")
 
-    shape = dos_savegame.container_for(c64.key)
+    container = dos_savegame.container_for(c64.key)
     characters = list(characters)
     if len(characters) > dos_savegame.PARTY_ENTRIES:
         raise DosRecordError(
@@ -9550,12 +9550,12 @@ def write_dos_save_from(state: "world_state.WorldState",
     # `out` is touched: a missing `SAVGAM<slot>.DAT` or an area with no legal
     # answer must fail with the slot still as the last conversion left it,
     # not half cleared.
-    savgam = bytearray(shape.size) if template is None else \
-        bytearray((template / f"SAVGAM{slot}{shape.suffix}").read_bytes())
-    if len(savgam) != shape.size:
+    savgam = bytearray(container.size) if template is None else \
+        bytearray((template / f"SAVGAM{slot}{container.suffix}").read_bytes())
+    if len(savgam) != container.size:
         raise DosRecordError(
-            f"the template's SAVGAM{slot}{shape.suffix} is {len(savgam)} "
-            f"bytes, not the {shape.size} a {shape.title} save is")
+            f"the template's SAVGAM{slot}{container.suffix} is {len(savgam)} "
+            f"bytes, not the {container.size} a {container.title} save is")
     fresh = world_state.has_not_set_out(state)
     if fresh:
         if template is not None:
@@ -9568,9 +9568,9 @@ def write_dos_save_from(state: "world_state.WorldState",
         # Silver Blades stages no script (`script_bytes` = 0) and reloads
         # the area's from `ECL<dax>.DAX` on load; the number is all it needs.
         script = (_area_script(state.area, template, game, c64.title, dax)
-                  if shape.script_buffer is not None else None)
+                  if container.script_buffer is not None else None)
 
-    report = SaveReport(total=shape.size)
+    report = SaveReport(total=container.size)
     # The sheet portrait crosses through the creation menu's own tables, and
     # they are in the game's own `START.EXE` -- the directory this function
     # already needs for the party's area script (#57).  A directory that
@@ -9623,7 +9623,7 @@ def write_dos_save_from(state: "world_state.WorldState",
     savgam_writes(savgam, report, state, slot, len(characters), script,
                   portraits=bool(faces), game=c64, dax=dax)
     if template is None:
-        savgam_zeroes(savgam, report, shape)
+        savgam_zeroes(savgam, report, container)
     hour, minute, day, month = dos_savegame.clock(bytes(savgam))
     # Where the party is standing, said in the terms of the world it is in.
     # Outdoors `$49C0`/`$49C1` are the frozen square it left the grid on, so
@@ -9640,7 +9640,7 @@ def write_dos_save_from(state: "world_state.WorldState",
             stood = f"at ({state.x},{state.y}) facing {state.facing}"
         script_line = (f", including the area's own script out of "
                        f"{ECL_DAX.format(dax=dax)}" if script is not None
-                       else f"; the script is not staged, {shape.title} "
+                       else f"; the script is not staged, {container.title} "
                        f"reloads it from {ECL_DAX.format(dax=dax)}")
         place.append(
             f"the place: area {state.area}, {where.name or where.ecl}, "
@@ -9657,19 +9657,19 @@ def write_dos_save_from(state: "world_state.WorldState",
         f"the clock: {hour}:{minute:02d}, day {day} month {month} -- the "
         f"C64's own six digit bytes at $49C6-$49CB",
         f"the party size, {len(characters)}, into both $503E and byte "
-        f"{shape.party_size_byte}",
+        f"{container.party_size_byte}",
     ))
 
     # What is left is what the file owes to somebody else's save, and it is
     # empty when there was no template.  `new_dos_save_from` refuses on it
     # rather than returning a save with a stranger's byte in it (#26).
-    report.unwritten = [i for i in range(shape.size)
+    report.unwritten = [i for i in range(container.size)
                         if i not in report.sources]
     for i in report.unwritten:
         report.sources[i] = (
             f"{report.address(i)}: not converted -- left as the template "
             f"had it")
-    (out / f"SAVGAM{slot}{shape.suffix}").write_bytes(bytes(savgam))
+    (out / f"SAVGAM{slot}{container.suffix}").write_bytes(bytes(savgam))
     return report
 
 
@@ -9883,7 +9883,7 @@ def pod_savgam(state: "world_state.PodWorldState", slot: str, count: int
 
     `write_dos_save_from`'s own `savgam_writes`/`savgam_zeroes` reach
     `dos_savegame.word_offset`, which refuses a container with no
-    word-wide variable array (`shape.var_words`) -- this title's own array
+    word-wide variable array (`container.var_words`) -- this title's own array
     is byte-wide, so this writer names each field's own file offset
     directly rather than adding a Pools of Darkness branch to those two.
 
@@ -9893,54 +9893,54 @@ def pod_savgam(state: "world_state.PodWorldState", slot: str, count: int
     disagree with the file it names.  It agrees in 14 of 14 played Amiga
     slots.
     """
-    shape = dos_savegame.SAVE_POOLS_OF_DARKNESS
+    container = dos_savegame.SAVE_POOLS_OF_DARKNESS
     held = state.variables[dos_savegame.POD_PARTY_COUNT - 1]
     if count != held:
         raise DosRecordError(
             f"variable {dos_savegame.POD_PARTY_COUNT} says the party is "
             f"{held}; {count} character(s) given")
 
-    out = bytearray(shape.size)
-    report = SaveReport(total=shape.size)
+    out = bytearray(container.size)
+    report = SaveReport(total=container.size)
 
-    out[:shape.var_bytes] = state.variables
-    report.note(0, shape.var_bytes, "the 1024 ECL variables, whole")
+    out[:container.var_bytes] = state.variables
+    report.note(0, container.var_bytes, "the 1024 ECL variables, whole")
 
-    dos_savegame.put_position(out, state.x, state.y, state.facing, shape)
-    report.note(shape.pos_x, 3,
+    dos_savegame.put_position(out, state.x, state.y, state.facing, container)
+    report.note(container.pos_x, 3,
                 f"the square ({state.x},{state.y}) facing {state.facing}")
 
-    out[shape.tail_scratch] = state.wall_ahead
-    out[shape.tail_scratch + 1] = state.square_property
-    report.note(shape.tail_scratch, 1, "the wall ahead of the party")
-    report.note(shape.tail_scratch + 1, 1, "the square's property byte")
+    out[container.tail_scratch] = state.wall_ahead
+    out[container.tail_scratch + 1] = state.square_property
+    report.note(container.tail_scratch, 1, "the wall ahead of the party")
+    report.note(container.tail_scratch + 1, 1, "the square's property byte")
 
-    out[shape.previous_mode] = state.previous_mode
-    out[shape.mode] = state.mode
-    report.note(shape.previous_mode, 1, "the interface mode before this one")
-    report.note(shape.mode, 1, "the current interface mode")
+    out[container.previous_mode] = state.previous_mode
+    out[container.mode] = state.mode
+    report.note(container.previous_mode, 1, "the interface mode before this one")
+    report.note(container.mode, 1, "the current interface mode")
 
     struct.pack_into("<H", out, dos_savegame.POD_MAP, state.dungeon_map)
     struct.pack_into("<H", out, dos_savegame.POD_MAP_BLOCK, state.map_block)
     report.note(dos_savegame.POD_MAP, 2, "LoadMap's first argument")
     report.note(dos_savegame.POD_MAP_BLOCK, 2, "LoadMap's second argument")
 
-    out[shape.party_size_byte] = count
-    report.note(shape.party_size_byte, 1, f"the party size, {count}")
+    out[container.party_size_byte] = count
+    report.note(container.party_size_byte, 1, f"the party size, {count}")
 
-    dos_savegame.put_character_files(out, slot, shape)
+    dos_savegame.put_character_files(out, slot, container)
     for n in range(dos_savegame.PARTY_ENTRIES):
         report.note(
-            shape.party_table + n * dos_savegame.PARTY_ENTRY,
+            container.party_table + n * dos_savegame.PARTY_ENTRY,
             dos_savegame.PARTY_NAME_LEN,
             f"CHRDAT{slot.upper()}{n + 1}, which is what the engine loads "
             f"the party from -- not the slot letter at the LOAD menu")
-        at = (shape.party_table + n * dos_savegame.PARTY_ENTRY
+        at = (container.party_table + n * dos_savegame.PARTY_ENTRY
               + dos_savegame.PARTY_NAME_LEN)
         report.note(at, dos_savegame.PARTY_ENTRY - dos_savegame.PARTY_NAME_LEN,
                     PARTY_TABLE_SCRATCH)
 
-    report.unwritten = [i for i in range(shape.size) if i not in report.sources]
+    report.unwritten = [i for i in range(container.size) if i not in report.sources]
     return out, report
 
 
@@ -10042,12 +10042,12 @@ def new_pod_save_from(state: "world_state.PodWorldState",
     out.mkdir(parents=True, exist_ok=True)
     staging = pathlib.Path(tempfile.mkdtemp(prefix=f".wish-{slot}-", dir=out))
     try:
-        shape = dos_savegame.SAVE_POOLS_OF_DARKNESS
+        container = dos_savegame.SAVE_POOLS_OF_DARKNESS
         savgam, report = pod_savgam(state, slot, len(characters))
         record_shape, built = _build_character_files(characters, None, None)
         _put_character_files(staging, slot, built, record_shape, report)
 
-        (staging / f"SAVGAM{slot}{shape.suffix}").write_bytes(bytes(savgam))
+        (staging / f"SAVGAM{slot}{container.suffix}").write_bytes(bytes(savgam))
         (staging / f"VAULT{slot}.DAT").write_bytes(pod_vault_to_dos(vault))
         report.converted.append(
             f"VAULT{slot}.DAT: {vault.platinum} platinum, {vault.gems} gems, "

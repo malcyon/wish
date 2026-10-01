@@ -385,9 +385,9 @@ def dos_rows(specimen_grades: dict[str, str], problems: list[str]):
                         f"record size as a title read here, and not the same "
                         f"id space (#400)")
     for spec in specs:
-        innate_ids = dos_codec._innate_effects(spec.shape.key)
+        innate_ids = dos_codec._innate_effects(spec.deltas.key)
         count = spec.data[dos_port.FIELDS_BY_NAME_FOR[
-            spec.shape.key]["item_count"].offset]
+            spec.deltas.key]["item_count"].offset]
         # The same record's copies can differ in what sits *beside* them: a
         # `.SAV` copied into a report directory without its `.SPC` reads as a
         # character with no effects at all.  The widest sibling any copy has
@@ -404,7 +404,7 @@ def dos_rows(specimen_grades: dict[str, str], problems: list[str]):
         innate, granted, running = max(splits, key=sum) if splits else (0, 0, 0)
         grade = ("ours" if spec.built
                  else _grade_over(spec.paths, specimen_grades))
-        yield Carried(port="dos", title=spec.shape.key, grade=grade,
+        yield Carried(port="dos", title=spec.deltas.key, grade=grade,
                       where=spec.paths[0].name, who=spec.name, items=count,
                       innate=innate, granted=granted, running=running,
                       sources=tuple(str(p) for p in spec.paths))
@@ -463,7 +463,7 @@ def amiga_rows(specimen_grades: dict[str, str], problems: list[str]):
 
 
 def _amiga_specimen(path, specimen_grades, problems):
-    """One Amiga file out of the specimen tree, whatever shape it is."""
+    """One Amiga file out of the specimen tree, whatever form it is."""
     from goldbox import amiga_later, amiga_por, amiga_savegame
     data = path.read_bytes()
     grade = _grade(path, specimen_grades)
@@ -479,17 +479,17 @@ def _amiga_specimen(path, specimen_grades, problems):
                       granted=granted, running=running, sources=(str(path),))
         return
     try:
-        shape = amiga_savegame.detect(data)
+        container = amiga_savegame.detect(data)
     except Exception:
         return                            # not a saved game: nothing to read
-    if shape.deltas is None:
+    if container.deltas is None:
         return                            # Pool of Radiance: party is filenames
     try:
-        party = amiga_later.party_in_savegame(data, shape.deltas)
+        party = amiga_later.party_in_savegame(data, container.deltas)
     except Exception as exc:
         problems.append(f"{path.name}: {type(exc).__name__}: {exc}")
         return
-    key = _amiga_key(shape.deltas)
+    key = _amiga_key(container.deltas)
     for char in party:
         innate, granted, running = _split_effects(
             [bytes(n) for n in char.effects], dos_codec._innate_effects(key), pad=1)
@@ -523,16 +523,16 @@ def _split_effects(nodes, innate_ids, pad: int = 0):
     return innate, granted, running
 
 
-def _amiga_key(shape) -> str:
-    return getattr(shape, "key", getattr(shape, "title", "?"))
+def _amiga_key(deltas) -> str:
+    return getattr(deltas, "key", getattr(deltas, "title", "?"))
 
 
 def _amiga_later_characters(data: bytes, what: str, label: str, problems):
-    """The characters in a `.guy` file or a saved game, through its own shape.
+    """The characters in a `.guy` file or a saved game, through its own deltas.
 
     **A saved game's title comes from `goldbox.amiga_savegame.detect`,
-    never from trying each shape until one parses.**  `party_in_savegame`
-    trusts whatever shape it is handed, and Curse's 428-byte record signature
+    never from trying each deltas until one parses.**  `party_in_savegame`
+    trusts whatever deltas it is handed, and Curse's 428-byte record signature
     matches inside a Silver Blades saved game -- which read Silver Blades'
     savgamA.sav as two Curse characters, with an `item_count` taken from the
     wrong offset, on the first run of this sweep.  `detect` tells them apart by
@@ -541,30 +541,30 @@ def _amiga_later_characters(data: bytes, what: str, label: str, problems):
     from goldbox import amiga_later, amiga_port, amiga_savegame
     if what != "record":
         try:
-            shape = amiga_savegame.detect(data).deltas
+            container = amiga_savegame.detect(data).deltas
         except Exception as exc:
             problems.append(f"{label}: {type(exc).__name__}: {exc}")
             return
-        if shape is None:                # Pool of Radiance: party is filenames
+        if container is None:                # Pool of Radiance: party is filenames
             return
         try:
-            yield from amiga_later.party_in_savegame(data, shape)
+            yield from amiga_later.party_in_savegame(data, container)
         except Exception as exc:                         # pragma: no cover
             problems.append(f"{label}: {type(exc).__name__}: {exc}")
         return
-    for shape in amiga_port.AMIGA_DELTAS:
-        if len(data) < shape.record_size:
+    for container in amiga_port.AMIGA_DELTAS:
+        if len(data) < container.record_size:
             continue
-        if not amiga_later.looks_like_amiga_record(data, 0, shape):
+        if not amiga_later.looks_like_amiga_record(data, 0, container):
             continue
         try:
-            char, end = amiga_later._amiga_block(data, 0, shape, label)
+            char, end = amiga_later._amiga_block(data, 0, container, label)
         except Exception:
-            continue                     # the tail does not fit this shape
-        if end == len(data):             # only this shape accounts for it all
+            continue                     # the tail does not fit these deltas
+        if end == len(data):             # only these deltas account for it all
             yield char
             return
-    problems.append(f"{label}: {len(data)} bytes match no Amiga record shape "
+    problems.append(f"{label}: {len(data)} bytes match no Amiga record layout "
                     f"with a tail that accounts for the whole file")
 
 

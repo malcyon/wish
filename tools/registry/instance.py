@@ -761,7 +761,7 @@ def stray_displays(x11_dir: Path = Path("/tmp/.X11-unix")) -> list[dict]:
     """Every X11 socket in *x11_dir* outside all three pools' bands, whose
     owner has already been reparented to init.
 
-    That reparenting -- `ppid == 1` -- is the specific shape #266 found: the
+    That reparenting -- `ppid == 1` -- is the specific case #266 found: the
     launcher that started the display is gone, and the display is still
     running with nobody watching it. A socket whose owner still has a live
     parent is not reported here -- an ordinary launch still in progress, or

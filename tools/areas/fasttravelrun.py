@@ -48,7 +48,7 @@ Nothing is written to the player's disks: `tools.c64.session.stage_disks` copies
 the sides into the slot, and `--save` is copied in as `SIDE0.D64`. The pool
 owns the emulator lifecycle throughout -- `tools.c64.session.claim_slot` leases
 a slot through `tools.registry.instance.claim`, and the slot is torn down on every
-exit path, including an exception, the same `finally` shape
+exit path, including an exception, the same `finally` form
 `tools/areas/exitreentry.py` and `tools/gui/livecheck.py` use.
 """
 from __future__ import annotations

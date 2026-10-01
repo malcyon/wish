@@ -5,7 +5,7 @@ test that reads back the bytes the generator wrote through the same tables the
 generator wrote them from passes whether or not the game agrees.  So the
 checks here are in two groups, and only the second is evidence about the game.
 
-* **Shape and ceilings.**  The party is six, every record round-trips, and each
+* **Form and ceilings.**  The party is six, every record round-trips, and each
   character reaches the thing `docs/119-test-party.md` says it exists to
   reach.  These catch a generator that stopped working; they say nothing about
   the format.
@@ -47,7 +47,7 @@ def _by_name(built):
     return {str(one.record.name): one for one in built}
 
 
-# --- shape ------------------------------------------------------------------
+# --- form ------------------------------------------------------------------
 
 def test_the_party_is_six_and_every_record_is_a_whole_one(built):
     assert len(built) == 6

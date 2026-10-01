@@ -125,7 +125,7 @@ def test_silver_blades_wall_art_is_perfectly_reciprocal():
 
 @pytest.mark.parametrize("mangle", [_swap_art_planes, _swap_art_nibbles])
 def test_a_transposed_art_parse_fails_the_floor_the_real_one_clears(mangle):
-    """The floor above is only evidence if a wrong reading falls through it."""
+    """The minimum above is only evidence if a wrong reading falls through it."""
     scores = [_art_reciprocity(mangle(p))
               for p in _geo_payloads(ssb_disks()).values()]
     assert statistics.mean(scores) < MANGLED_ART_CEILING
@@ -281,7 +281,7 @@ def _game_disk_with(name: bytes) -> pathlib.Path:
 
 
 def test_silver_blades_keeps_its_spell_names_in_combat2_like_curse():
-    """Same file, same shape, a longer text block: 194 entries at `$E000`.
+    """Same file, same form, a longer text block: 194 entries at `$E000`.
 
     The geometry is fitted by asking which entry count makes every pointer land
     inside the text -- and the same fit run against Curse recovers Curse's
@@ -425,10 +425,10 @@ def test_every_shipped_icon_is_a_weapon_and_a_head_from_the_editors_lists():
     for weapon_size in ("small", "large"):
         for head_size in ("small", "large"):
             for w in range(parts.count(weapon_size, "weapon")):
-                shape = parts.apply(bytes([0x20] * 18), weapon_size, "weapon", w)
+                figure = parts.apply(bytes([0x20] * 18), weapon_size, "weapon", w)
                 for h in range(parts.count(head_size, "head")):
                     reachable.setdefault(
-                        parts.apply(shape, head_size, "head", h),
+                        parts.apply(figure, head_size, "head", h),
                         (weapon_size, w, head_size, h))
 
     payload = D64.open(str(_save_disk())).read_file(SSB.save_file)[2:]
@@ -651,7 +651,7 @@ def test_castable_per_level_is_silver_blades_own_rows_not_pool_of_radiances():
 # Issue #81. Everything here is read out of Silver Blades' own code: the width
 # of the bitmask, and the grant tables `goldbox/spells.py` claims its spell groups
 # come from. Curse's equivalents are in `tests/curse_of_the_azure_bonds/test_curse.py`, and the two are
-# deliberately the same shape.
+# deliberately the same form.
 
 #: The grant loop, Silver Blades' spelling of it. `LDX record / ... /
 #: LDY levels,X / LDX offsets,Y / LDA masks,Y / ORA $7C78,X / STA $7C78,X /

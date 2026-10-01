@@ -312,9 +312,9 @@ def test_the_hit_die_is_rolled_twice_and_the_better_roll_kept():
     """`GEN $15FC`, and Pool of Radiance does not do this.
 
     Two `LDY $161E,X / JSR $2F6A` in a row, then `CMP $4C / BCS / LDA $4C` --
-    the larger of two rolls. Pool of Radiance's `$2037` rolls once and floors a
+    the larger of two rolls. Pool of Radiance's `$2037` rolls once and minimums a
     *single-class fighter* at 4 (`CMP #$04` against `class_bits == 8`); Curse
-    has no such floor and gives every class the better of two dice instead.
+    has no such minimum and gives every class the better of two dice instead.
 
     So `levelup.roll_hit_points` is not Curse's rule, and a replay of a Curse
     training has to be handed the roll rather than asked for one.
@@ -323,7 +323,7 @@ def test_the_hit_die_is_rolled_twice_and_the_better_roll_kept():
     assert _at(payload, 0x15FC, 6) == b"\xBC\x1E\x16\x20\x6A\x2F"
     assert _at(payload, 0x1607, 6) == b"\xBC\x1E\x16\x20\x6A\x2F"
     assert _at(payload, 0x160D, 6) == b"\xC5\x4C\xB0\x02\xA5\x4C"
-    assert b"\xC9\x04" not in _at(payload, 0x15E1, 0x3D), "a floor of 4"
+    assert b"\xC9\x04" not in _at(payload, 0x15E1, 0x3D), "a minimum of 4"
 
 
 def _hp_max(payload: bytes, record) -> int:
@@ -573,7 +573,7 @@ def test_the_dexterity_and_racial_rows_in_levels_py_are_curses_bytes():
 
 
 def test_curses_hit_die_rules_are_the_ones_levelup_now_rolls():
-    """Two dice and no floor, and the flat tail past `roll_to`.
+    """Two dice and no minimum, and the flat tail past `roll_to`.
 
     `hit_die_rolls` is 2 and `hit_die_fighter_floor` is None for Curse, which
     is `$15FC`'s pair of `JSR $2F6A` and the absence of any `CMP #$04`.
@@ -1439,7 +1439,7 @@ def test_curses_magic_user_trainer_builds_a_menu_and_does_not_grant_a_row():
     mask aside, rotates it a bit at a time, and puts every id the character
     does not know whose level is at or below that on a list at `$7A00`. It
     does not OR a row in. So `levelup.learnable`'s decision to keep treating
-    Curse as a menu was right, and Curse is not Silver Blades' shape.
+    Curse as a menu was right, and Curse is not Silver Blades' kind.
     """
     payload = _gen()
     assert _at(payload, 0x2207, 3) == b"\x4A\x69\x00"        # LSR A / ADC #$00
@@ -1493,7 +1493,7 @@ def test_the_menu_stops_at_id_94_and_nothing_is_lost_by_it():
 
 
 def test_the_magic_user_grant_row_is_character_creation_and_not_the_trainer():
-    """`GEN $167F` is a grant loop of Silver Blades' shape, and the trainer
+    """`GEN $167F` is a grant loop of Silver Blades' kind, and the trainer
     never calls it. `$23DB` and `$1646` do, and both are on the path from
     `$09B8`, which builds a character.
 
@@ -1583,7 +1583,7 @@ def test_the_spell_slot_rows_sit_where_ecl65s_own_code_reads_them():
 
 
 def test_the_wisdom_bonus_starts_at_thirteen_and_is_one_spell_a_point():
-    """`ECL65 $88F6`, and it is not Pool of Radiance's shape.
+    """`ECL65 $88F6`, and it is not Pool of Radiance's kind.
 
     `LDA level_cleric / BEQ / LDY wisdom / CPY #$0D / BCC` and then a loop that
     runs once for **every point of wisdom from 13 up**, each point buying one
@@ -1603,7 +1603,7 @@ def test_the_wisdom_bonus_starts_at_thirteen_and_is_one_spell_a_point():
     that could agree or disagree with it. So it rests on the table read plus
     the independent fact that `0 0 1 1 2 3 4` is the *Players Handbook* row --
     two sources, and as strong as this one gets short of watching the game
-    memorise a spell. It is **not** the evidentiary shape of the constitution
+    memorise a spell. It is **not** the evidentiary kind of the constitution
     bonus below, which six characters' `hp_max` votes for.
     """
     payload = _ecl65()

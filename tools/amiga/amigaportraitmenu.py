@@ -19,7 +19,7 @@ It finds the player's own Amiga disk images the way the other Amiga tools do
 reads a loose `.adf` or one inside a zip -- takes `/program` off whichever
 image carries it and `/head.dax` and `/body.dax` off whichever carries those,
 and hands the three to `goldbox.portraits.tables_from_amiga`.  The table is
-found by the shape of its run and every id in it checked against the art on
+found by the pattern of its run and every id in it checked against the art on
 the disk beside it, so nothing here depends on a file offset.
 
 `--art` is the evidence that the eighth body is a **different picture** and
@@ -38,7 +38,7 @@ than counted.  It needs Pillow and the DOS archives.
 thirty-two words at the start of the `DATA` hunk the boot code copies one
 word at a time into the screen's colour table; a four-bitplane portrait uses
 the first sixteen.  An earlier version of this tool drew them through the EGA
-palette and said so, which made the montage evidence about shape and not
+palette and said so, which made the montage evidence about form and not
 about colour.  `--palette` prints the table and where it was read, and
 `amiga_palette()` is what the drawing goes through now.
 
@@ -181,7 +181,7 @@ def _fetches_a_word_through(program: bytes, field: int) -> bool:
     `lea.l table, a0` / `adda.l dn, a0` / `move.w (a0), dn` is what the boot
     code does thirty-two times, and it is what tells the palette apart from
     the other two `DATA` hunks here that also open with a run of small words.
-    Both of those are indexed a **byte** at a time instead, so the shape of
+    Both of those are indexed a **byte** at a time instead, so the pattern of
     the fetch is the discriminator rather than the size of the table.
     """
     if program[field - 2:field] != b"\x41\xf9":            # lea.l abs.l, a0
@@ -197,7 +197,7 @@ def amiga_palette(program: bytes) -> tuple[int, list[tuple[int, int, int]]]:
 
     The table is the first thing in a `DATA` hunk and holds `AMIGA_COLOURS`
     big-endian `0RGB` words, each nibble a component.  Three of this
-    executable's `DATA` hunks open with a run of small words, so the shape of
+    executable's `DATA` hunks open with a run of small words, so the pattern of
     the run is not enough on its own: the one that is taken is the one the
     code reads **a word at a time** through, which is `_fetches_a_word_
     through` above.  In the release read here that is the hunk at file offset

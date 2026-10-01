@@ -486,7 +486,7 @@ class Caster:
             sess.press_kernal(0x0D)
             return False
         # `SPELLS: CAST EXIT` is the bar; CAST on it puts a cursor on the
-        # list, the same shape as the item list, and fire picks the row.
+        # list, the same form as the item list, and fire picks the row.
         if not sess.select_bar("CAST", timeout=10):
             self.log.say("  CAST could not be selected on the spells bar")
             return False

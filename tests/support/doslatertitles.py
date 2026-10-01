@@ -11,7 +11,7 @@ from goldbox.d64 import D64
 from goldbox.savegame import load_save
 
 
-def _mask(shape, original: bytes) -> set[int]:
+def _mask(deltas, original: bytes) -> set[int]:
     """The offsets the writer declares it does not take from the source, plus
     the name bytes past the count byte.
 
@@ -21,7 +21,7 @@ def _mask(shape, original: bytes) -> set[int]:
     not the bytes the engine left after it -- Curse's shipped TRAVIS has a
     space at the seventh byte over a count of six.
     """
-    table = dos_port.FIELDS_BY_NAME_FOR[shape.key]
+    table = dos_port.FIELDS_BY_NAME_FOR[deltas.key]
     out: set[int] = set()
     named = ([n for n, _ in dos_codec.WRITE_UNSOURCED + dos_codec.WRITE_UNSOURCED_LATER]
              + [n for n, _, _, _ in dos_codec.WRITE_DEFAULTS

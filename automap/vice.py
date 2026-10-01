@@ -110,7 +110,7 @@ class Monitor:
                 self._send(CMD_EXIT, b"")
         except Exception as exc:
             # The close below resumes the emulator too, so a failed EXIT is
-            # survivable -- but it is also the shape of a monitor that has
+            # survivable -- but it is also what a monitor that has
             # already gone, which a report should show.
             _log.debug("the monitor would not take EXIT: %s", exc)
         finally:

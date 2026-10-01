@@ -49,15 +49,15 @@ from goldbox import c64_port, dos_codec, dos_port  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
 
-def _dos_folder(root: pathlib.Path, shape, slot: str = "A",
+def _dos_folder(root: pathlib.Path, deltas, slot: str = "A",
                 suffix: str = "DAT") -> pathlib.Path:
-    """A folder just real enough for `Source.detect` to name its shape --
+    """A folder just real enough for `Source.detect` to name its deltas --
     the same synthetic specimen `tests/convert/test_convert.py` builds, never a
     slice of a real save (`.claude/rules/testing.md`)."""
-    folder = root / shape.key
+    folder = root / deltas.key
     folder.mkdir(parents=True, exist_ok=True)
     (folder / f"SAVGAM{slot}.{suffix}").write_bytes(b"\x00")
-    (folder / f"CHRDAT{slot}1.SAV").write_bytes(b"\x00" * shape.record_size)
+    (folder / f"CHRDAT{slot}1.SAV").write_bytes(b"\x00" * deltas.record_size)
     return folder
 
 
@@ -192,7 +192,7 @@ def _success_states():
     """`EditorBinding.convert`'s own success pop-up (`#52 (File ▸ Import
     and File ▸ Export for every direction the library supports)`, Donald's
     wording of 2026-09-10), for a DOS destination and a C64 one -- the two
-    the ticket asked to see, since the box is the same shape for either but
+    the ticket asked to see, since the box is the same form for either but
     the folder underneath it is not: a C64 write names one `.D64`, a DOS
     write a folder of several files, and only the folder is shown either
     way. Built directly, the same way `_modal_state` above builds `warning`

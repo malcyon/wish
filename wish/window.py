@@ -664,22 +664,22 @@ class WishWindow(QMainWindow):
         self._log_area()
 
     def _log_save(self) -> None:
-        """The shape of the open file: size, blocks, characters, area."""
+        """A summary of the open file: size, blocks, characters, area."""
         if not debuglog.is_on() or self.editor.party is None:
             return
-        shape = debuglog.save_summary(self.editor.party, self.editor.path)
-        if shape != self._logged_save:
-            self._logged_save = shape
-            debuglog.note("save file: %s", shape)
+        summary = debuglog.save_summary(self.editor.party, self.editor.path)
+        if summary != self._logged_save:
+            self._logged_save = summary
+            debuglog.note("save file: %s", summary)
 
     def _log_area(self) -> None:
         """Which map is being drawn, and how sure the fingerprint is."""
         if not debuglog.is_on():
             return
-        shape = debuglog.area_summary(self.mapper.state)
-        if shape != self._logged_area:
-            self._logged_area = shape
-            debuglog.note("map area: %s", shape)
+        summary = debuglog.area_summary(self.mapper.state)
+        if summary != self._logged_area:
+            self._logged_area = summary
+            debuglog.note("map area: %s", summary)
 
     def _editor_said(self, text: str) -> None:
         if self.tabs.currentIndex() == EDITOR_TAB and text:
@@ -819,7 +819,7 @@ def run(save: str | None = None, game_disk: str | None = None,
     # Qt's own geometry, not a width and a height: it carries the position and
     # the screen too, so a window last closed on a monitor that is no longer
     # attached comes back on one that is.
-    restore_geometry(win, settings, floor=FIRST_RUN)
+    restore_geometry(win, settings, minimum=FIRST_RUN)
     win.show()
     # Again, now that there is a frame to measure. Before `show()` the title
     # bar and the border do not exist yet, so the first clamp works off an

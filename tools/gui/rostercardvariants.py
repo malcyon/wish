@@ -147,8 +147,8 @@ def build(app, *, party=8, readied=READIED, badges=len(LIVING), width=None,
     while w is not None:
         w.updateGeometry()
         w = w.parentWidget()
-    floor = win.minimumSizeHint()
-    win.resize(max(floor.width(), 900), max(floor.height(), height))
+    minimum = win.minimumSizeHint()
+    win.resize(max(minimum.width(), 900), max(minimum.height(), height))
     settle(app, win)
     return win, roster
 

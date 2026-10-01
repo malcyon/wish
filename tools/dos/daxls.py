@@ -65,10 +65,10 @@ def image_dimensions(block: bytes) -> tuple[int, int] | None:
 
 def pixels(block: bytes) -> list[list[int]]:
     """An image block's 4-bit values, `[y][x]`, high nibble first."""
-    shape = image_dimensions(block)
-    if shape is None:
+    dimensions = image_dimensions(block)
+    if dimensions is None:
         raise DaxError("not an image block")
-    rows, width = shape
+    rows, width = dimensions
     stride = width // 2
     out = []
     for y in range(rows):
@@ -78,7 +78,7 @@ def pixels(block: bytes) -> list[list[int]]:
 
 
 def listing(data: bytes, name: str) -> list[str]:
-    """One line per block: id, offset, packed and raw sizes, image shape."""
+    """One line per block: id, offset, packed and raw sizes, image dimensions."""
     index = dax_index(data, name)
     base = 2 + struct.unpack_from("<H", data, 0)[0]
     lines = [f"{name}: {len(data)} bytes, {len(index)} blocks, "
@@ -86,9 +86,9 @@ def listing(data: bytes, name: str) -> list[str]:
     for bid, off, raw, packed in index:
         try:
             block = dax_unpack(data[base + off:base + off + packed], raw)
-            shape = image_dimensions(block)
-            extra = (f"image {shape[1]}x{shape[0]}  header "
-                     f"{block[8:IMAGE_HEADER].hex(' ')}" if shape else "")
+            dimensions = image_dimensions(block)
+            extra = (f"image {dimensions[1]}x{dimensions[0]}  header "
+                     f"{block[8:IMAGE_HEADER].hex(' ')}" if dimensions else "")
         except DaxError as e:
             extra = f"unpack failed: {e}"
         lines.append(f"  id {bid:3}  at {base + off:6}  packed {packed:5}  "

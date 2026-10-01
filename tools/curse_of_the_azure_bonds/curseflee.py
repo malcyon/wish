@@ -19,7 +19,7 @@ own fixed route from `cited/131-m1/CURSEI.D64` never met a fight at all, where
 `curse_fight` already reaches Tilverton's tavern brawl over the area's own
 `GEO` and `PUNCH BARKEEP` reliably, for `#334`'s own runs. So this file stages
 a `laterbattle.Battle`, hands it to `curse_fight`, then waits for the combat
-floor exactly as `laterbattle.main` does, and only then hands the fight to
+arena exactly as `laterbattle.main` does, and only then hands the fight to
 `Flight`.
 
 **The flee line is up for under half a second** (`tools/c64/session.py`'s own
@@ -314,9 +314,9 @@ def run(args) -> int:
         sess = battle.sess
         log.say("reached the tavern script")
 
-        # `laterbattle.main`'s own wait for the combat floor: `curse_fight`
+        # `laterbattle.main`'s own wait for the combat arena: `curse_fight`
         # only presses the script's word, and `YOU GET INTO A BRAWL.` draws
-        # over a picture and waits on a keypress before the floor appears.
+        # over a picture and waits on a keypress before the arena appears.
         for n in range(args.wait):
             if battle.in_combat():
                 break
@@ -328,14 +328,14 @@ def run(args) -> int:
             if state.kind == S.BAR_PRESS or s is None:
                 sess.press_kernal(0x0D)
             sess.settle(4.0)
-        battle.dump("combat-floor")
+        battle.dump("combat-arena")
         if not battle.in_combat():
-            raise RuntimeError("never reached the combat floor")
-        log.say("on the combat floor")
+            raise RuntimeError("never reached the combat arena")
+        log.say("on the combat arena")
 
         b = sess.battle()
         if b is not None:
-            log.say(f"  the map is {b.shape.width} x {b.shape.height}")
+            log.say(f"  the map is {b.geometry.width} x {b.geometry.height}")
             for c in b.party:
                 log.say(f"    {c.name.strip():<12} at {c.x},{c.y}  "
                         f"move {c.movement}")

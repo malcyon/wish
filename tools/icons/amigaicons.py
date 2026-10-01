@@ -158,7 +158,7 @@ def tiles(data: bytes, name: str = "library") -> dict[int, tuple]:
 
 
 def dos_tiles(path: pathlib.Path) -> dict[int, tuple]:
-    """The same shape, out of a DOS `.DAX`: two 4-bit pixels a byte, high
+    """The same figure, out of a DOS `.DAX`: two 4-bit pixels a byte, high
     nibble first, after a 17-byte header whose first byte is the row count and
     whose third is the width in eights."""
     out = {}
@@ -377,8 +377,8 @@ def report_sweep(out) -> int:
                                                      amiga_port.CURSE_DELTAS):
                     records.append((c, path.name))
             elif path.name.startswith("Secret1-savgam"):
-                shape = amiga_port.SILVER_BLADES_DELTAS
-                for c in amiga_later.party_in_savegame(path.read_bytes(), shape):
+                deltas = amiga_port.SILVER_BLADES_DELTAS
+                for c in amiga_later.party_in_savegame(path.read_bytes(), deltas):
                     records.append((c, path.name))
     if not records:
         out("no Amiga Curse or Silver Blades specimens; set $AMIGA_DISKS")

@@ -28,9 +28,9 @@ hit so the difference can be seen rather than assumed.
 indirect-indexed opcode -- `($nn),Y` after `LDY`, `($nn,X)` after `LDX`. The
 absolute-mode scan above finds nothing that goes through a pointer to the
 record; this is what tests for one rather than assuming none was used. **It
-tests for that one shape and no other**: an index computed at run time, or
+tests for that one pattern and no other**: an index computed at run time, or
 folded into the pointer's own low byte, leaves no trace here, so no hits
-means the shape is absent rather than that no pointer exists. It is a
+means the pattern is absent rather than that no pointer exists. It is a
 separate mode, beside the absolute sweep rather than in place of it -- `#230 (The indirect half of a record-offset sweep cannot
 be rerun, because its script was never kept)`:
 
@@ -113,11 +113,11 @@ def indirect_hits(data: bytes, want: set[int], window: int = INDIRECT_WINDOW):
     regardless of whether it starts a real instruction, so a hit is a claim
     about bytes and not proof of an instruction boundary.
 
-    **And read a zero narrowly.**  This matches one shape: an immediate
+    **And read a zero narrowly.**  This matches one pattern: an immediate
     `LDY #$ll`/`LDX #$ll` within `window` bytes of the opcode.  A record byte
     reached with an index computed at run time -- loaded from a variable,
     walked by a loop, or folded into the pointer's own low byte -- produces no
-    hit here and is still a real reference.  No hits means that shape is
+    hit here and is still a real reference.  No hits means that pattern is
     absent, not that no pointer exists.
 
     Yields `(load offset, register, low byte, opcode offset, mnemonic, mode)`.

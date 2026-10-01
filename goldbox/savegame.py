@@ -147,7 +147,7 @@ ROSTER_ARMOUR_BONUS = 0x10
 # each pair. The DOS record spells the same eight bytes out at 0x113-0x11A as
 # ATK_1/2_Count/Rolls/Dice/Modifier_Current, and a DOS Pool of Radiance party
 # on this machine reads `00 00 01 00 02 00 03 00` for an unarmed character,
-# which is the same shape a C64 roster block holds.
+# which is the same form a C64 roster block holds.
 #
 # The die size at +0x15 was called EQUIPMENT here, because it "rises with what
 # is readied". It does, and this is why: across thirteen of Donald's save disks
@@ -244,7 +244,7 @@ ITEM_AREA_BASE = 0x5900
 
 
 class SaveGameError(ValueError):
-    """Raised when save data is not the size or shape we expect."""
+    """Raised when save data is not the size or form we expect."""
 
 
 @dataclass(frozen=True)
@@ -375,8 +375,8 @@ class PartyPosition:
         This was read as "minutes, three decimal digits" for a while and the
         arithmetic looked sound, because 637 through 649 across PORSAVE4 to
         PORSAVE9 is a believable count either way. PORSAVE11 gave it away: 1647
-        "minutes" is 27:27, an impossible time, where the real reading is a
-        simple 16:47. PORSAVE12 and 13 are 16:58 and 16:59 -- one minute apart
+        "minutes" is 27:27, an impossible time, where the real reading is
+        16:47. PORSAVE12 and 13 are 16:58 and 16:59 -- one minute apart
         across one step, which is exactly right.
         """
         return (self._get(PARTY_CLOCK + 2),

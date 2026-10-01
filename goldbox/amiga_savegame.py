@@ -7,7 +7,7 @@ records the byte-level evidence.  This module is the library counterpart of
 ``WorldState`` and neutral characters without a template.
 
 The shared map is called :class:`AmigaContainer`, because it describes the
-saved-game container rather than an unspecified geometric shape.  The
+saved-game container rather than an unspecified geometric figure.  The
 diagnostic checker imports this map; Pool of Radiance's filename-party row is
 being consolidated here with the slot implementation.
 """
@@ -63,7 +63,7 @@ def word(save: bytes, address: int,
 
 
 class AmigaSaveError(AmigaRecordError):
-    """A later-title Amiga saved game does not have the measured shape."""
+    """A later-title Amiga saved game does not have the measured form."""
 
 
 @dataclasses.dataclass(frozen=True)

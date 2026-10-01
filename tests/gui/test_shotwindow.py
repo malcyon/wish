@@ -15,11 +15,11 @@ def make_root():
 The picture is not what is asserted on. A rendered image is not byte-identical
 between two machines -- a different font, a different Qt, a different
 antialiasing -- and this project has been bitten by exactly that more than once.
-What is stable is the shape of what comes out and the numbers the tool measures,
+What is stable is the form of what comes out and the numbers the tool measures,
 so that is what is here:
 
 * it writes a PNG, and the PNG is the window plus the caption strip;
-* the floor it reports is the same number at two UI fonts, because #71 made the
+* the minimum it reports is the same number at two UI fonts, because #71 made the
   window's minimum width a constant rather than a font metric -- if this ever
   differs, either the header has gone back to measuring a string or the tool
   has stopped measuring the window in front of it;
@@ -79,7 +79,7 @@ def test_the_floor_it_reports_does_not_follow_the_ui_font(app, save):
     _, base, _ = shotwindow.shoot(app, save, extra=0)
     _, big, _ = shotwindow.shoot(app, save, extra=6)
     assert base.width() == big.width(), (
-        f"the floor grew with the font: {base.width()} then {big.width()}")
+        f"the minimum grew with the font: {base.width()} then {big.width()}")
 
 
 def test_a_window_narrower_than_the_target_is_not_marked(app, save):

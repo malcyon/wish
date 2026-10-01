@@ -418,7 +418,7 @@ def to_dos_record(char: AmigaPorCharacter) -> bytes:
     """The 288-byte Amiga record re-cut as the 285-byte DOS one.
 
     Not a conversion between games -- the same record in the other port's
-    shape, so that `goldbox/dos_codec.py` can read it.  Every byte written came from a
+    form, so that `goldbox/dos_codec.py` can read it.  Every byte written came from a
     named Amiga field or is a documented zero; see the note above this
     function for the four rules and the one byte left behind, the Amiga's
     trailing pad at `0x11F`.
@@ -453,7 +453,7 @@ def to_dos_character(char: AmigaPorCharacter):
     sibling files, `AmigaPorItem.to_dos_bytes` and
     :func:`amiga_por_effect_to_dos` being the same re-cut for a 65-byte item
     node and a 10-byte effect node.  It is not a conversion between games --
-    the same character in the other port's shape.
+    the same character in the other port's form.
 
     `goldbox.dos_codec.write_c64_save` takes a `list[DosCharacter]` rather than a
     list of neutral records, because the combat figure crosses through
@@ -680,7 +680,7 @@ def por_filename(slot: str, index: int, suffix: str = ".sav") -> str:
     """`CHRDATA1.sav` and its siblings, for slot `A` and index 1.
 
     The engine loads a party from the names in the saved game's character
-    table rather than from the slot letter, but it writes them in this shape
+    table rather than from the slot letter, but it writes them in this form
     and the shipped disk carries them in it -- so anything we write uses it
     too.
     """
@@ -782,7 +782,7 @@ def amiga_por_item_from_dos(item: bytes) -> bytes:
     makes it a cache.** Two nodes written NUL, loaded, drawn on ITEMS and
     saved came back holding `Flail \0lail \0` and `Banded Mail \0Mail \0` --
     the current render, then the tail of a longer earlier one, exactly the
-    shape the game's own shipped nodes have. `' Yes  Flail '` is twelve
+    form the game's own shipped nodes have. `' Yes  Flail '` is twelve
     characters and `'Flail \0'` is seven, so what survives from index 7 is
     `'lail '`; `' Yes  Banded Mail '` is eighteen against thirteen, leaving
     `'Mail '`. It is composed at least twice, once with the ready column and
@@ -824,9 +824,9 @@ def write_por(char: NeutralCharacter,
                                                       PorWriteReport]:
     """Build an Amiga Pool of Radiance record and its `.itm` and `.spc`.
 
-    Returns `(record, itm, spc, report)`, the same shape `goldbox.dos_codec.write`
+    Returns `(record, itm, spc, report)`, the same form `goldbox.dos_codec.write`
     returns -- and it is `goldbox.dos_codec.write` that does the conversion, because
-    the Amiga record *is* the DOS record in another shape.  So every drop,
+    the Amiga record *is* the DOS record in another form.  So every drop,
     every warning and every provenance line this report carries was earned on
     the DOS side against 24 DOS specimens, and the only lines added here are
     the three bytes the Amiga has and DOS does not.

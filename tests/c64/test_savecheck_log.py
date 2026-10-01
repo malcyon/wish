@@ -314,7 +314,7 @@ def test_the_record_going_does_not_raise_out_of_the_failure_handler(
     `say` catches a dead terminal and writes `console_closed` to the `.jsonl`
     -- and if *that* write raises as well, because the disk is full or the
     descriptor is closed, it comes straight back out of the failure handler,
-    which is the shape of the loss #380 is about.
+    which is the form of the loss #380 is about.
     """
     out = tmp_path / "PORSAVEB.jsonl"
     log = runlog.Log(out)

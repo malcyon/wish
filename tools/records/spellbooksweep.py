@@ -310,12 +310,12 @@ def dos_rows(want_built: bool = True):
     """Every distinct DOS record, deduplicated on its bytes by the finder."""
     specs, skipped = dostailsweep.collect(dos_roots(), want_built)
     for spec in specs:
-        f = dl.FIELDS_BY_NAME_FOR[spec.shape.key].get("spellbook")
+        f = dl.FIELDS_BY_NAME_FOR[spec.deltas.key].get("spellbook")
         if f is None:                                    # pragma: no cover
             continue
         raw = spec.data[f.offset:f.offset + f.size]
-        table = _table_for_key(spec.shape.key)
-        yield Row(port="dos", title=spec.shape.key, where=spec.path.name,
+        table = _table_for_key(spec.deltas.key)
+        yield Row(port="dos", title=spec.deltas.key, where=spec.path.name,
                   who=spec.name,
                   klass=_class_name_dos(spec.klass),
                   known=tuple(i + dl.SPELLBOOK_FIRST_ID
@@ -323,7 +323,7 @@ def dos_rows(want_built: bool = True):
                   reach=table.last_spellbook_spell if table else f.size,
                   last_spell=table.last_spell if table else f.size,
                   grade="built" if spec.built else _grade_over(spec.paths),
-                  memorised=_nonzero(dl.FIELDS_BY_NAME_FOR[spec.shape.key],
+                  memorised=_nonzero(dl.FIELDS_BY_NAME_FOR[spec.deltas.key],
                                      spec.data, 0))
     for other, n in sorted(skipped.items()):
         print(f"  skipped {n} DOS record(s) under {other}: the same record "
@@ -383,31 +383,31 @@ def amiga_rows():
                           set(char.get("spells_memorised")) - {0})))
 
 
-def _amiga_key(shape) -> str:
-    return getattr(shape, "key", getattr(shape, "title", "?"))
+def _amiga_key(deltas) -> str:
+    return getattr(deltas, "key", getattr(deltas, "title", "?"))
 
 
 def _amiga_later_characters(data: bytes, what: str, label: str):
-    """The characters in one Curse or Silver Blades file, at its own shape.
+    """The characters in one Curse or Silver Blades file, at its own deltas.
 
-    A saved game's shape comes from `goldbox.amiga_savegame.detect`, never from trying
-    `party_in_savegame` with each shape in turn: the record signature it scans
+    A saved game's deltas come from `goldbox.amiga_savegame.detect`, never from trying
+    `party_in_savegame` with each deltas in turn: the record signature it scans
     for is the name and the ability pairs, which sit at the same offsets in
-    both titles, so a Silver Blades save handed the Curse shape yields six
+    both titles, so a Silver Blades save handed the Curse deltas yields six
     characters read through the wrong table -- plausible rubbish rather than
     an error.  A `.guy`-style record file is named by its size, which is
     distinct between the two.
     """
     if what == "record":
-        shape = amiga_port.AMIGA_DELTAS_BY_SIZE.get(len(data))
-        if shape is None:
+        deltas = amiga_port.AMIGA_DELTAS_BY_SIZE.get(len(data))
+        if deltas is None:
             for candidate in amiga_port.AMIGA_DELTAS:
                 if amiga_later.looks_like_amiga_record(data, 0, candidate):
-                    shape = candidate
+                    deltas = candidate
                     break
-        if shape is None:                                # pragma: no cover
+        if deltas is None:                                # pragma: no cover
             return
-        yield amiga_later.AmigaCharacter.from_bytes(data[:shape.record_size], shape,
+        yield amiga_later.AmigaCharacter.from_bytes(data[:deltas.record_size], deltas,
                                               source=label)
         return
     try:
@@ -445,17 +445,17 @@ def control_sweep(roots=None) -> tuple[int, list[tuple[pathlib.Path, str]]]:
                 size = path.stat().st_size
             except OSError:                              # pragma: no cover
                 continue
-            shape = dl.DELTAS_BY_SIZE.get(size)
-            if shape is None:
+            deltas = dl.DELTAS_BY_SIZE.get(size)
+            if deltas is None:
                 continue
-            book = dl.FIELDS_BY_NAME_FOR[shape.key].get("spellbook")
+            book = dl.FIELDS_BY_NAME_FOR[deltas.key].get("spellbook")
             if book is None:                             # pragma: no cover
                 continue
             data = path.read_bytes()
-            read[shape.key] += 1
+            read[deltas.key] += 1
             at = book.offset + (56 - dl.SPELLBOOK_FIRST_ID)
             if at < book.offset + book.size and data[at]:
-                hits.append((path, shape.key))
+                hits.append((path, deltas.key))
     return read, hits
 
 

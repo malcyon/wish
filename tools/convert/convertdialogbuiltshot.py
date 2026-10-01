@@ -47,11 +47,11 @@ FONT = SMALL = TITLE = None
 W, H = 680, 305
 
 
-def _synthetic_dos_folder(tmp_path, shape, slot="A"):
+def _synthetic_dos_folder(tmp_path, deltas, slot="A"):
     folder = tmp_path / "dos"
     folder.mkdir(exist_ok=True)
     (folder / f"SAVGAM{slot}.DAT").write_bytes(b"\x00")
-    (folder / f"CHRDAT{slot}1.SAV").write_bytes(b"\x00" * shape.record_size)
+    (folder / f"CHRDAT{slot}1.SAV").write_bytes(b"\x00" * deltas.record_size)
     return folder / f"SAVGAM{slot}.DAT"
 
 

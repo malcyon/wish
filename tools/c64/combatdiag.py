@@ -91,7 +91,7 @@ def run(args) -> int:
         cand = []
         for (dx, dy), key in S.STEP_KEYS.items():
             x, y = me.x + dx, me.y + dy
-            holds = battle.shape.holds(x, y)
+            holds = battle.geometry.holds(x, y)
             who = battle.at(x, y) if holds else None
             cand.append({
                 "key": key, "d": [dx, dy], "xy": [x, y],
@@ -141,7 +141,7 @@ def run(args) -> int:
         s = sess.screen()
         me = sess.acting(b, s)
         emit("battle", tag=tag, ok=True,
-             shape=[b.shape.width, b.shape.height],
+             geometry=[b.geometry.width, b.geometry.height],
              acting=(None if me is None else
                      {"i": me.index, "n": me.name.strip(),
                       "xy": [me.x, me.y], "hp": me.hp, "mv": me.movement}),
@@ -164,8 +164,8 @@ def run(args) -> int:
         if b is not None:
             emit("terrain", tag=f"turn{turn_no[0]}",
                  grid=["".join(f"{b.square(x, y):02x}"
-                               for x in range(b.shape.width))
-                       for y in range(b.shape.height)])
+                               for x in range(b.geometry.width))
+                       for y in range(b.geometry.height)])
         t0 = time.time()
         chose = sess_.melee_turn(state)
         emit("turn_end", n=turn_no[0], chose=chose,

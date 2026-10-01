@@ -43,7 +43,7 @@ def _from_stack(offset: int) -> bytes:
 
 
 def _chain(loop: bool) -> bytes:
-    """A whole save routine: Pool of Radiance's shape, or Curse's."""
+    """A whole save routine: Pool of Radiance's form, or Curse's."""
     body = (_write_call(_from_data(0x1000), 1)
             + _write_call(_from_heap(0x2000), 5120)
             + _write_call(_from_heap(0x2004), 7680)
@@ -66,8 +66,8 @@ def _chain(loop: bool) -> bytes:
 def test_a_synthetic_chain_reads_back_as_the_offsets_it_encodes():
     """The straight-line case: eight calls, no loop, and the widths land the
     fourth region on Pool of Radiance's own 12801."""
-    regions, shape = wm.save_chain(_chain(loop=False))
-    assert shape is sg.SAVE_POOL_OF_RADIANCE
+    regions, container = wm.save_chain(_chain(loop=False))
+    assert container is sg.SAVE_POOL_OF_RADIANCE
     assert [(r.at, r.total) for r in regions] == [
         (0, 1), (1, 5120), (5121, 7680), (12801, 5), (12806, 1), (12807, 1),
         (12808, 1), (12809, 328)]
@@ -80,8 +80,8 @@ def test_a_counted_loop_lands_its_body_once_per_trip():
 
     Without this the chain would total 13141, which is no title's size, and
     the tool would report no save routine at all rather than a wrong map."""
-    regions, shape = wm.save_chain(_chain(loop=True))
-    assert shape is sg.SAVE_CURSE_OF_THE_AZURE_BONDS
+    regions, container = wm.save_chain(_chain(loop=True))
+    assert container is sg.SAVE_CURSE_OF_THE_AZURE_BONDS
     merged = [r for r in regions if r.times > 1]
     assert len(merged) == 1, "the loop's two calls interleave, so they are one"
     assert (merged[0].at, merged[0].width, merged[0].times) == (12808, 4, 3)
@@ -93,8 +93,8 @@ def test_a_chain_whose_widths_are_no_titles_size_is_refused():
     """A misread loop or a missed call must produce nothing, because a map
     that is nearly right is the one somebody would build on."""
     broken = _chain(loop=False).replace(b"\xb8\x05\x00\x50", b"\xb8\x06\x00\x50")
-    regions, shape = wm.save_chain(broken)
-    assert shape is None and regions == []
+    regions, container = wm.save_chain(broken)
+    assert container is None and regions == []
 
 
 # --- and against the engines themselves --------------------------------------
@@ -130,10 +130,10 @@ def test_the_engine_writes_the_square_where_its_container_says(stem, key):
     arithmetic it had before #253 makes the two later titles fail here by
     exactly twelve.
     """
-    shape = sg.container_for(key)
+    container = sg.container_for(key)
     regions, found = wm.save_chain(_overlay(stem))
-    assert found is shape, f"the chain totals no {shape.title} container"
-    assert wm.square_region(regions).at == shape.pos_x
+    assert found is container, f"the chain totals no {container.title} container"
+    assert wm.square_region(regions).at == container.pos_x
     assert wm.square_region(regions).width == 5, "x, y, facing and two more"
 
 
@@ -142,12 +142,12 @@ def test_the_engine_writes_the_party_size_and_table_where_the_container_says(
         stem, key):
     """The other end of the block, which #253 must not have moved: the count
     of character files is the last byte before the table in every title."""
-    shape = sg.container_for(key)
+    container = sg.container_for(key)
     regions, found = wm.save_chain(_overlay(stem))
-    assert found is shape
-    assert regions[-1].at == shape.party_table
+    assert found is container
+    assert regions[-1].at == container.party_table
     assert regions[-1].total == sg.NAME_SLOTS * sg.PARTY_ENTRY
-    assert regions[-2].at == shape.party_table - 1
+    assert regions[-2].at == container.party_table - 1
 
 
 @ENGINES
@@ -155,10 +155,10 @@ def test_the_regions_tile_the_container_with_nothing_left_over(stem, key):
     """Every byte of the file comes from one `BlockWrite`, so the widths add
     up to the size exactly -- which is what identifies the chain as the save
     routine in the first place."""
-    shape = sg.container_for(key)
+    container = sg.container_for(key)
     regions, found = wm.save_chain(_overlay(stem))
-    assert found is shape
-    assert sum(r.total for r in regions) == shape.size
+    assert found is container
+    assert sum(r.total for r in regions) == container.size
     running = 0
     for r in regions:
         assert r.at == running
@@ -172,13 +172,13 @@ def test_the_twelve_extra_bytes_are_inside_the_block_not_in_front_of_it():
     titles that have them."""
     for stem, key in (("CURSE", "curse-of-the-azure-bonds"),
                       ("SECRET", "secret-of-the-silver-blades")):
-        shape = sg.container_for(key)
+        container = sg.container_for(key)
         regions, found = wm.save_chain(_overlay(stem))
-        assert found is shape
-        extra = [r for r in regions if r.total == shape.unnamed == 12]
+        assert found is container
+        extra = [r for r in regions if r.total == container.unnamed == 12]
         assert len(extra) == 1, key
-        assert extra[0].at == shape.pos_x + 7, key
-        assert extra[0].at + 12 == shape.party_table - 1, key
+        assert extra[0].at == container.pos_x + 7, key
+        assert extra[0].at + 12 == container.party_table - 1, key
 
 
 def test_the_command_line_check_passes_against_every_engine_here():

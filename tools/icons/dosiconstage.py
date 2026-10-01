@@ -43,7 +43,7 @@ ICON_COLOURS = 0x0C1
 #: Chosen for distance rather than meaning: a bow, a sword and shield, a
 #: robed staff, a raised axe, a crossbow and a flail, with three of the six
 #: repainted so the colour half of the conversion is exercised as well as the
-#: shape half.  `91 A2 B3 C4 E6 F7` is the set 42 of the 54 shipped records
+#: figure half.  `91 A2 B3 C4 E6 F7` is the set 42 of the 54 shipped records
 #: across the four titles carry.
 FIGURES = [
     (0, 1, "91a2b3c4e6f7"),      # short hair, bow

@@ -1,6 +1,6 @@
 """Level progression: what each class needs, and what it gets.
 
-Two titles, one shape. Pool of Radiance caps a fighter at 8 and a cleric at 6
+Two titles, one design. Pool of Radiance caps a fighter at 8 and a cleric at 6
 because it was written to hand its party on to *Curse of the Azure Bonds*;
 Curse raises every ceiling, adds paladin and ranger, and carries thirteen
 experience rows where Pool of Radiance carries nine. Nothing about that is a
@@ -14,7 +14,7 @@ carries, and where:
 | table | Pool of Radiance | Curse | Silver Blades |
 |---|---|---|---|
 | experience | `GEN` `$1DB5`, parallel low/mid/high arrays, 9 wide | `GEN` `$136E`, 6 rows x 13 entries x 3 bytes **big-endian** | `GEN` `$162D`, 6 rows x 19 entries x 3 bytes big-endian, row stride `0x39` |
-| class ceiling | `GEN` `$1E5C`, 8 bytes in class-bit order | `GEN` `$15A1`, same shape | `GEN` `$17D0`, same shape |
+| class ceiling | `GEN` `$1E5C`, 8 bytes in class-bit order | `GEN` `$15A1`, same form | `GEN` `$17D0`, same form |
 | racial class limit | `GEN` `$1E60`, 4 bytes a race | `GEN` `$15A9`, 8 bytes a race | `GEN` `$17E0`, 8 bytes a race, races 1-5 only ($178A refuses 6+) |
 | THAC0 | `GEN` `$1F1F`, 4 rows x 9, `LDA $1F1F,X` with `X = class * 9 + level` | `GEN` `$0E2C`/`$0E39`/`$0E46`, 13 wide, indexed by level; the fighter group is arithmetic instead | `GEN` `$106F`/`$107F`/`$108F`, packed (not strided) rows of `ceiling + 1`; the fighter group is `21 - level` at `$1045`, the same rule as Curse |
 | hit dice | -- (no class reaches the flat-hit-point rule) | `GEN` `$161E` die, `$1626` first flat level, `$162E` flat amount | `GEN` `$1845` die, `$184D` first flat level, `$1855` flat amount |
@@ -23,7 +23,7 @@ carries, and where:
 | racial save bonus | `GEN` `$2359`, `CON * 2 / 7` for the races flagged at `$2380` | `GEN` `$0F19`, same formula, races 1, 3 and 5 (`CMP #$06` then `AND #$01`), columns 0, 2 and 4 only (`DEX / DEX`) | `GEN` `$11D8`, same formula, dwarf (race 3) alone |
 | thief skills | `GEN` `$102E`, 9 rows of 8, plus a racial row at `$1076` | `GEN` `$1004`, 9 rows of 8, plus **a dexterity row at `$10A4`** (17 rows, `max(0, DEX - 9)`) and a racial row at `$1064` whose gnome, half-elf, halfling and half-orc rows are not Pool of Radiance's | `GEN` `$126D`, 17 rows of 8, the level clamps to 17 at `$1213`; a dexterity row at `$131D`, Curse's own 136 bytes; a racial row at `$12F5` read at `race * 8` with **no decrement** (`$124D`), so every race reads the row laid out for the *next* one -- `goldbox-bugs.md` entry 13 |
 | hit die | `GEN` `$20A7`, 4 bytes in class-bit order | `GEN` `$161E` | `GEN` `$1845` |
-| constitution hit-point bonus | `GEN` `$247B` fighter, `$2486` everyone else, indexed by the score, consulted from 15 | `GEN` `$11D7`, **one** row indexed by the score with no floor, signed; `$126D` caps a non-fighter's *score* at 16 instead of keeping a second row | `GEN` `$0E80`, the same 26 bytes as Curse's `$11D7`; `$0E6F`/`$0E73` cap the score at 16 below class slot 3 the same way |
+| constitution hit-point bonus | `GEN` `$247B` fighter, `$2486` everyone else, indexed by the score, consulted from 15 | `GEN` `$11D7`, **one** row indexed by the score with no minimum, signed; `$126D` caps a non-fighter's *score* at 16 instead of keeping a second row | `GEN` `$0E80`, the same 26 bytes as Curse's `$11D7`; `$0E6F`/`$0E73` cap the score at 16 below class slot 3 the same way |
 | wisdom bonus spells | `GEN` `$10AD`, indexed by the score | `ECL65` `$8906` (payload `0x906`), the spell level each point of wisdom from 13 up buys; the loop is `$88F6` | `ECL65` `$89F0` (payload `0x9F0`), Curse's `$8906` seven bytes exactly; the loop is `$89E0` |
 | turning level | `GEN` `$2399`, indexed by cleric level | `GEN` `$113F`, arithmetic rather than a table: `max(cleric, paladin - 2)`, `+ 1` from 4 up, capped at 10 -- the same ten numbers | `GEN` `$13A5`, Curse's arithmetic with a tail: `+ 1` from 4 up, 10 from 10 to 14, and **12** from 15 -- which is Pool of Radiance's fourteen numbers exactly |
 
@@ -67,7 +67,7 @@ them is not the same as being able to write a Curse record**, and four of the
 readings are a different *rule* rather than the same rule at a new address:
 
 * **the hit die is rolled twice and the better roll kept** (`$15FC`), where
-  Pool of Radiance rolls once and floors a single-class fighter at 4;
+  Pool of Radiance rolls once and minimums a single-class fighter at 4;
 * **`hp_max` is per class slot**, `min(level, roll_to) * bonus` summed over the
   slots, one extra bonus for a ranger, then divided by how many classes the
   character has -- against `hp_rolled + level * bonus` here. It disagrees with
@@ -296,7 +296,7 @@ TABLES = {
 #:   `mov dx, 0xB / mul dx / add di, cx / mov al, [di+0x3C7C]` and the same
 #:   store-if-better. `DS:0x3C7C` is the table: **8 rows of 11**, class in the
 #:   class-number order `cleric druid fighter paladin ranger magic-user thief
-#:   monk`, indexed by level 1-10 with entry 0 unused, exactly the shape the
+#:   monk`, indexed by level 1-10 with entry 0 unused, exactly the form the
 #:   C64's own `$1F1F` has.
 #:
 #: The cleric and fighter rows are byte for byte the C64's over every level both
@@ -342,7 +342,7 @@ TABLES = {
 #:   fighter, paladin or ranger in either title.
 #:
 #: **No clamp exists anywhere.** None of the three engines compares the field
-#: against a constant; the floor a DOS record never goes below is the level-0
+#: against a constant; the minimum a DOS record never goes below is the level-0
 #: column of these same rows, read by a loop that does not test the level --
 #: `tools/c64/laterthac0.py writers` has every site that touches the byte.
 #:
@@ -765,7 +765,7 @@ THIEF_SKILL_DEX_FROM_CURSE = 9
 #: score, which is the whole of Curse's constitution rule. Two things Pool of
 #: Radiance's pair of banded rows does not do:
 #:
-#: * it has **no floor** -- a score of 1 to 3 is -2 and 4 to 6 is -1, so a
+#: * it has **no minimum** -- a score of 1 to 3 is -2 and 4 to 6 is -1, so a
 #:   Curse character that frail loses a hit point a level where Pool of
 #:   Radiance's `CPX #$0F` refuses to look below 15 and gives zero;
 #: * there is no second row for a non-fighter. `$126D` clamps the *score* to
@@ -881,7 +881,7 @@ def constitution_hp_bonus(constitution: int, fighter: bool = False,
     rows unchanged, including the cap of +2 for anybody who is not a fighter,
     and every caller written before there was a second title means that one.
 
-    **Curse's is one signed row and no floor** -- `_HP_BONUS_CURSE` says how
+    **Curse's is one signed row and no minimum** -- `_HP_BONUS_CURSE` says how
     they differ. `class_slot` is Curse's own selector: `$126D` clamps the score
     for slots 0-2 and reads the whole row for 3 and up, which is not the same
     question as `fighter`, because a fighter/magic-user's *magic-user* slot is
@@ -963,7 +963,7 @@ class LevelTables:
     """One title's progression, as data.
 
     Pairs rather than dicts so the descriptor stays hashable and frozen, which
-    is the shape `goldbox/c64_port.py` settled on for the same reason.
+    is the form `goldbox/c64_port.py` settled on for the same reason.
 
     `class_order` is **class-bit order** -- index `n` is bit `n` of
     `class_bits` at `0x0EB` and slot `n` of the per-class level array at
@@ -1036,7 +1036,7 @@ class LevelTables:
     #: `GEN $11D7`: hit points a level from constitution, indexed by the raw
     #: score and **signed**. Empty means the title uses the two banded rows in
     #: `_HP_BONUS_FIGHTER` and `_HP_BONUS_OTHER` from `HP_BONUS_FROM` up, which
-    #: is Pool of Radiance's shape.
+    #: is Pool of Radiance's form.
     hp_bonus_by_score: tuple[int, ...] = ()
     #: What a capped score is clamped to, and the first class slot that is not
     #: capped. `$126D CPY #$03 / BCS / CPX #$11 / BCC / LDX #$10`.
@@ -1055,8 +1055,8 @@ class LevelTables:
     #: `TRAINER_MEASURED` may lean on this: an unread title keeps the default
     #: because something has to be the default, not because anybody looked.
     hit_die_rolls: int = 1
-    #: The floor a *single-class fighter*'s roll takes -- Pool of Radiance's
-    #: `CMP #$04`. None where the title has no floor of any kind, which is
+    #: The minimum a *single-class fighter*'s roll takes -- Pool of Radiance's
+    #: `CMP #$04`. None where the title has no minimum of any kind, which is
     #: Curse: `$15E1` has no `CMP #$04` in its 61 bytes.
     hit_die_fighter_floor: int | None = 4
     #: What a divided roll is floored at. Pool of Radiance's `$20A2 BNE / LDA
@@ -1380,7 +1380,7 @@ class LevelTables:
         `0x0C9` and keeps the best row; this is that recompute, and it is
         CONFIRMED for all three titles' C64 sides (`self.classes` is read
         off each title's own `GEN`). A level past this title's own table
-        contributes nothing, the same floor :meth:`saving_throws` applies --
+        contributes nothing, the same minimum :meth:`saving_throws` applies --
         a character cannot hold a level the game itself never lets him
         reach. None where no class has a level the table reaches, which is
         what the C64 engine leaves as the zero it started from.
@@ -1807,10 +1807,10 @@ SECRET_OF_THE_SILVER_BLADES = LevelTables(
     #: The remaining seven, read off `SILVER*.D64`'s own `GEN` for `#89` on
     #: 2026-09-05: `$1808` is Curse's `$15E1` instruction for instruction (the
     #: hit die, two rolls kept the higher); `$0D96` is Curse's `$11AB` byte for
-    #: byte, sharing the remainder byte `$7F3F` (the divide, no floor, the
+    #: byte, sharing the remainder byte `$7F3F` (the divide, no minimum, the
     #: same round-up-at-random #18 grades PROBABLE in both titles); `$156F`
-    #: walks class slots 7 down to 0 in one press, Curse's `$14F8` shape;
-    #: `$13EB STY $7CD9` stores outright, Curse's `$1909` shape; and
+    #: walks class slots 7 down to 0 in one press, Curse's `$14F8` form;
+    #: `$13EB STY $7CD9` stores outright, Curse's `$1909` form; and
     #: `tools/c64/absrefsweep.py secret-of-the-silver-blades 7CEE 7CF3` over 347
     #: files finds no reference to `spells_castable`, Curse's own sweep result.
     #: So Silver Blades takes Curse's values on all seven, not Pool of
@@ -2035,7 +2035,7 @@ def _pod_progression(name: str) -> tuple[Level, ...]:
 #:   and that rule is not read closely enough to reproduce
 #:   (`saving_throw_rule_read`);
 #: * the trainer's own rules -- whether one press raises every ready class,
-#:   the divide's round-up (`0x027084` divides and floors at 1 with no
+#:   the divide's round-up (`0x027084` divides and minimums at 1 with no
 #:   round-up at all, which neither setting of
 #:   `hit_die_divide_round_up_on_tie` says), whether `attack_forms` is
 #:   overwritten -- keep the defaults, and `trainer_measured` is False, so

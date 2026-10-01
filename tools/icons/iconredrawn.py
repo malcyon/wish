@@ -58,7 +58,7 @@ from tools.registry import scratch  # noqa: E402
 REFERENCE = "pool-of-radiance"
 SUBJECT = "secret-of-the-silver-blades"
 
-#: A shape cell holding no part.
+#: A figure cell holding no part.
 SPACE = 0x20
 
 #: What each of the two kinds is called in the file that holds it, and which
@@ -106,10 +106,10 @@ def redrawn(reference: pathlib.Path, subject: pathlib.Path) -> list[dict]:
 
 def draws(parts: IconParts, size: str, kind: str, option: int) -> list[str]:
     """Which named part classes one C64 menu option puts on the figure."""
-    shape = parts.apply(bytes([SPACE] * 18), parts.size_for(size, kind, option),
+    figure = parts.apply(bytes([SPACE] * 18), parts.size_for(size, kind, option),
                         kind, option)
     return sorted({PART_CLASSES[parts.part_class(g)]
-                   for g in shape if g != SPACE})
+                   for g in figure if g != SPACE})
 
 
 def candidates(parts: IconParts, size: str, kind: str, wanted: str,

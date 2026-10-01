@@ -498,7 +498,7 @@ class Run:
     def heal(self) -> dict:
         """`HEAL` on the paladin's camp sheet, on the first name offered.
 
-        The same shape as `cure`, on the lay-on-hands verb instead.
+        The same form as `cure`, on the lay-on-hands verb instead.
         """
         bar = self.open_sheet()
         if not bar:

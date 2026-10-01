@@ -129,7 +129,7 @@ class Log(runlog.Log):
     console cannot take down with it (`#442`).  `--out` defaults to
     `<tmp>/wish/defeatdrive/<save-stem>`, which has no run tag in it, so two runs on
     the same save at the default used to truncate each other -- exactly the
-    shape `d532ad6` fixed in `tools/c64/savecheck.py` after `#380`.
+    fault `d532ad6` fixed in `tools/c64/savecheck.py` after `#380`.
     """
 
     def __init__(self, out: pathlib.Path, quiet: bool = False):

@@ -195,7 +195,7 @@ def rehearse(folder: str | pathlib.Path, slot: str,
     the dialog turns into a sentence.
 
     **The title comes from the save itself, not from an assumption.** A
-    character's own record length names its shape (`goldbox.dos_port.deltas_for`),
+    character's own record length names its deltas (`goldbox.dos_port.deltas_for`),
     so a Curse or Silver Blades folder converts into its own title rather than
     being written out as a Pool of Radiance save it never was (#192). A
     Curse save has no separate roster file -- its roster lives inside the one

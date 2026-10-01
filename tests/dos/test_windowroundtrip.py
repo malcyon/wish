@@ -24,10 +24,10 @@ CURSE = dos_port.CURSE_OF_THE_AZURE_BONDS
 SILVER_BLADES = dos_port.SECRET_OF_THE_SILVER_BLADES
 
 
-def _dos_record(shape: dos_port.DosDeltas, **values) -> bytes:
-    """A record of the given shape with the named fields set."""
-    rec = bytearray(shape.record_size)
-    table = dos_port.FIELDS_BY_NAME_FOR[shape.key]
+def _dos_record(deltas: dos_port.DosDeltas, **values) -> bytes:
+    """A record of the given deltas with the named fields set."""
+    rec = bytearray(deltas.record_size)
+    table = dos_port.FIELDS_BY_NAME_FOR[deltas.key]
     for name, value in values.items():
         f = table[name]
         raw = bytes([value] * f.size) if isinstance(value, int) else value
@@ -36,22 +36,22 @@ def _dos_record(shape: dos_port.DosDeltas, **values) -> bytes:
     return bytes(rec)
 
 
-@pytest.mark.parametrize("shape,window", (
+@pytest.mark.parametrize("deltas,window", (
     (POOL_OF_RADIANCE, b"\x11\x80\x03\x22\x33"),
     (CURSE, b"\x11\x80\x03\x22\x33"),
     (SILVER_BLADES, b"\x80\x03\x22\x33"),
 ))
-def test_the_whole_window_survives_a_dos_round_trip(shape, window):
+def test_the_whole_window_survives_a_dos_round_trip(deltas, window):
     """The control byte (index 0 or 1) is `0x80` -- npc, no morale bits set
     -- and the share (the byte after it) is `3`, so the neutral fields
     `write` re-derives them from agree with what the window itself holds and
     do not mask a mismatch elsewhere in the run."""
-    f83 = dos_port.FIELDS_BY_NAME_FOR[shape.key]["field_83_87"]
-    rec = bytearray(_dos_record(shape))
+    f83 = dos_port.FIELDS_BY_NAME_FOR[deltas.key]["field_83_87"]
+    rec = bytearray(_dos_record(deltas))
     rec[f83.span] = window
     char = dos_codec.to_neutral(
-        dos_codec.DosCharacter(bytes(rec), deltas=shape))
+        dos_codec.DosCharacter(bytes(rec), deltas=deltas))
     assert dos_codec.window_source(char) == window
 
-    out, _itm, _spc, _rep = dos_codec.write(char, deltas=shape)
+    out, _itm, _spc, _rep = dos_codec.write(char, deltas=deltas)
     assert out[f83.span] == window

@@ -55,13 +55,13 @@ def _neutral(key, **fields) -> neutral.NeutralCharacter:
 
 
 def _innate_node(effect_id: int) -> bytes:
-    """One nine-byte effect record in the permanent shape: duration zero."""
+    """One nine-byte effect record in the permanent form: duration zero."""
     return bytes((effect_id,)) + dos_codec.INNATE_PAYLOAD + dos_codec.EFFECT_NEXT_NULL
 
 
-def _dos_record(shape, effects) -> dos_codec.DosCharacter:
-    return dos_codec.DosCharacter(bytes(shape.record_size), effects=effects,
-                            deltas=shape)
+def _dos_record(deltas, effects) -> dos_codec.DosCharacter:
+    return dos_codec.DosCharacter(bytes(deltas.record_size), effects=effects,
+                            deltas=deltas)
 
 
 # --- the two lists, and the ends of the block they fill from -----------------
@@ -176,8 +176,8 @@ def test_the_scan_skips_a_title_with_no_c64_port_and_keeps_the_others():
     assert not _has_c64_port(pod)
     with pytest.raises(KeyError):
         c64_codec.write(dos_codec.to_neutral(pod))
-    for shape in (POOL, CURSE, dos_port.SECRET_OF_THE_SILVER_BLADES):
-        assert _has_c64_port(_dos_record(shape, []))
+    for deltas in (POOL, CURSE, dos_port.SECRET_OF_THE_SILVER_BLADES):
+        assert _has_c64_port(_dos_record(deltas, []))
 
 
 @needs_specimens

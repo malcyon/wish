@@ -384,13 +384,13 @@ def remember_geometry(window, settings: Settings) -> None:
 
 
 def restore_geometry(window, settings: Settings,
-                     floor: tuple[int, int] | None = None,
+                     minimum: tuple[int, int] | None = None,
                      space=None) -> bool:
     """Put a window back where it was. True if a saved geometry was used.
 
     With nothing saved -- a first run, or a settings file from before this --
-    the remembered width and height are used instead, raised to `floor` if the
-    caller has one. Either way the result is clamped to the screen: **the floor
+    the remembered width and height are used instead, raised to `minimum` if the
+    caller has one. Either way the result is clamped to the screen: **the minimum
     never wins over the display**, or a laptop gets a window it cannot see the
     bottom of.
 
@@ -409,8 +409,8 @@ def restore_geometry(window, settings: Settings,
             done = False
     if not done:
         w, h = settings.window_width, settings.window_height
-        if floor:
-            w, h = max(w, floor[0]), max(h, floor[1])
+        if minimum:
+            w, h = max(w, minimum[0]), max(h, minimum[1])
         window.resize(w, h)
     clamp_to_screen(window, space)
     return done

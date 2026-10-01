@@ -319,7 +319,7 @@ def answer(sess, body, out, label, menu_at, option, expect,
     """Answer whatever the square's script puts up, until `$4A81` reads `expect`.
 
     Driven by what is on the screen rather than by a fixed sequence, the same
-    shape `tools/pool_of_radiance/koboldnpc.py`'s `answer_the_exit` uses: a script answers a
+    form `tools/pool_of_radiance/koboldnpc.py`'s `answer_the_exit` uses: a script answers a
     walked step with several screens and the order is not knowable in advance.
     `$4A81` is sampled on every pass, so the run measures when the engine
     wrote it rather than assuming the screen that followed.
@@ -355,7 +355,7 @@ def answer(sess, body, out, label, menu_at, option, expect,
             seen.append(row)
             shots += 1
             sess.kbd.screenshot(str(out / f"{label}-bar-{shots:02d}.png"))
-            # The bar is the game's own words: its length and its shape go in
+            # The bar is the game's own words: its length and its outline go in
             # the log, never the words themselves.
             result["screens"].append({"len": len(row.strip()),
                                       "words": len(row.split())})

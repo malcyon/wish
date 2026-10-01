@@ -172,7 +172,7 @@ VALUABLE_FIELDS = ("gems", "jewelry")
 def offsets(stem: str) -> dict[str, list[int] | int]:
     """The encumbrance and the money displacements for this title.
 
-    Straight out of `goldbox/dos_port.py`, so a shape correction there moves
+    Straight out of `goldbox/dos_port.py`, so a correction to the deltas there moves
     this tool rather than leaving it quietly reading the wrong field.  Pools of
     Darkness declares no money fields, so its purses come back empty and its
     `callers` row has nothing to intersect.
@@ -264,7 +264,7 @@ def _gate_before(data: bytes, site: int) -> tuple[int, list[int]] | None:
     But `docs/125-bug-notes.md` N24 quotes this scan to conclude that nothing
     can set Curse's gate, and a conclusion that rests on seven unchecked
     encodings is not the conclusion the prose claims.  The `lea` sweep is the
-    same shape and now covers all eight 16-bit registers.
+    same pattern and now covers all eight 16-bit registers.
     """
     window = data[max(0, site - 0x40):site]
     m = None

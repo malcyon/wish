@@ -199,7 +199,7 @@ def _base(game: str = GAME) -> NeutralCharacter:
     char.set("npc_control_byte", 0x80, "base: bit 7 set, no morale")
     char.set("treasure_share", 0, "base")
     char.set("granted_effects", [_effect(61, value=12)], "base: a Ring of "
-             "Fire Resistance, the shape #232 measured the engine writing")
+             "Fire Resistance, the form #232 measured the engine writing")
     char.set("running_effects", [_effect(1, value=1, minutes=0xFFFF),
                                  _effect(1, value=1, minutes=1)],
              "base: a running Bless at the largest duration the two-byte "

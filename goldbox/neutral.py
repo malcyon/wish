@@ -35,7 +35,7 @@ about it.
 
 Reporting
 ---------
-:class:`Report` is the one shape every direction reports in: a provenance for
+:class:`Report` is the one form every direction reports in: a provenance for
 every output byte, the fields left behind, and the conversions that changed
 something.  :func:`disposition` builds the table that makes a silent drop
 impossible -- a field the source declares and the codec names nowhere.
@@ -75,7 +75,7 @@ class Provenance(enum.Enum):
     The separator is the whole of it, and the three of them are the three
     honest sentence shapes a provenance line has: this byte came *from*
     somewhere, this byte *is* something, or this byte is the same value in the
-    destination's own shape.
+    destination's own form.
     """
 
     #: Taken from a named field of the source port.  ``thac0 <- DOS ...``
@@ -83,7 +83,7 @@ class Provenance(enum.Enum):
     #: Derived by a rule; the source port does not store it at all.
     #: ``infravision: computed from race ...``
     COMPUTED = ": "
-    #: The same value, re-cut to the destination's shape.
+    #: The same value, re-cut to the destination's form.
     #: ``name, re-padded from ...``
     RESHAPED = ", "
 
@@ -91,7 +91,7 @@ class Provenance(enum.Enum):
 @dataclasses.dataclass(frozen=True)
 class Value:
     """One field of the neutral record: the value, where it came from, how far
-    it is trusted, and the shape of the sentence that will report it."""
+    it is trusted, and the form of the sentence that will report it."""
 
     value: Any
     origin: str
@@ -276,7 +276,7 @@ FIELDS: dict[str, str] = {
                       "than spells running on it",
     "granted_effects": "whole effect records that never expire and are not "
                        "innate -- what a readied ring, girdle or cloak "
-                       "granted. Nine bytes each, in the shared shape "
+                       "granted. Nine bytes each, in the shared form "
                        "`goldbox/dos_codec.py` reads: the effect id, a "
                        "little-endian duration of zero, the value the effect "
                        "carries, the flag the engine reads when the item "
@@ -284,7 +284,7 @@ FIELDS: dict[str, str] = {
                        "engine rebuilds the chain on load",
     "running_effects": "whole effect records still counting down -- a spell "
                        "the character has running, such as a Bless with two "
-                       "minutes left. Nine bytes each, in the shape "
+                       "minutes left. Nine bytes each, in the form "
                        "`granted_effects` states, except that the two bytes "
                        "after the effect id are the time left as a "
                        "little-endian count of game-clock minutes and are "
@@ -493,8 +493,8 @@ class NeutralCharacter:
         return default if v is None else v.value
 
     def take(self, name: str,
-             floor: Confidence = Confidence.GUESS) -> Value | None:
-        """The value, or None when the reader trusts it less than `floor`.
+             minimum: Confidence = Confidence.GUESS) -> Value | None:
+        """The value, or None when the reader trusts it less than `minimum`.
 
         This is how a codec refuses to write what it does not understand: it
         asks for a field at the grade it is willing to stand behind, and a
@@ -502,7 +502,7 @@ class NeutralCharacter:
         to report, never as a plausible-looking guess.
         """
         v = self.fields.get(name)
-        if v is None or _RANK[v.confidence] < _RANK[floor]:
+        if v is None or _RANK[v.confidence] < _RANK[minimum]:
             return None
         return v
 
@@ -516,14 +516,14 @@ class NeutralCharacter:
         return [n for n in self.fields if n not in seen]
 
 
-#: Ordered worst to best, so `take` can compare.  UNKNOWN is below every floor
+#: Ordered worst to best, so `take` can compare.  UNKNOWN is below every minimum
 #: a writer can name, which is what makes it unwritable.
 _RANK = {Confidence.UNKNOWN: 0, Confidence.GUESS: 1,
          Confidence.PROBABLE: 2, Confidence.CONFIRMED: 3}
 
 
 # ---------------------------------------------------------------------------
-# The report -- what became of every byte, in one shape for every direction
+# The report -- what became of every byte, in one form for every direction
 # ---------------------------------------------------------------------------
 @dataclasses.dataclass
 class Report:
@@ -600,12 +600,12 @@ class Writer:
     class exists to end.  A writer constructs one around the character and
     its own report and gets four things it would otherwise re-implement:
 
-    * :meth:`use` -- take a field at the floor, and turn a rejection into a
+    * :meth:`use` -- take a field at the minimum, and turn a rejection into a
       report line rather than silence.  A refused value's own `dropped` list
       still reaches the report: what a reader had to leave behind to produce
       a value is a fact about the source whether or not the value is written.
     * :meth:`emit` -- the provenance note for the bytes a value became.
-    * :meth:`get` -- a bare value for a *derivation*, at the same floor.
+    * :meth:`get` -- a bare value for a *derivation*, at the same minimum.
       `NeutralCharacter.get` does not apply one, and a writer that computes
       a byte from a field it would have refused to copy is standing behind
       the value twice as hard, not half as hard.
@@ -626,26 +626,26 @@ class Writer:
     """
 
     def __init__(self, char: "NeutralCharacter", report: "Report",
-                 into: str, floor: Confidence = Confidence.GUESS,
+                 into: str, minimum: Confidence = Confidence.GUESS,
                  dropped: Sequence[tuple[str, str]] = (),
                  derived: Sequence[tuple[str, str]] = (),
                  constants: Sequence[tuple[str, str]] = ()) -> None:
         self.char = char
         self.report = report
         self.into = into
-        self.floor = floor
+        self.minimum = minimum
         self.reasons = dict(dropped)
         self.rebuilt = dict(derived) | dict(constants)
         self.taken: list[str] = []
 
     def use(self, name: str) -> Value | None:
-        """The value, if the reader stands behind it at the floor.
+        """The value, if the reader stands behind it at the minimum.
 
-        A field graded below the floor comes back as nothing to write and
+        A field graded below the minimum comes back as nothing to write and
         something to report, never as a plausible-looking guess.
         """
         self.taken.append(name)
-        v = self.char.take(name, self.floor)
+        v = self.char.take(name, self.minimum)
         if v is None and name in self.char:
             held = self.char.value(name)
             self.report.dropped.append(
@@ -660,14 +660,14 @@ class Writer:
         self.report.dropped.extend(v.dropped)
 
     def get(self, name: str, default: Any = None) -> Any:
-        """A bare value for a rule to compute from, floor applied.
+        """A bare value for a rule to compute from, minimum applied.
 
         Does **not** count as taking the field: a writer that derives one
         byte from `race` and also copies `race` reports the copy, and a
         writer that only derives must still `use` the field once if it wants
         the field counted as consumed.
         """
-        v = self.char.take(name, self.floor)
+        v = self.char.take(name, self.minimum)
         return default if v is None else v.value
 
     def finish(self) -> None:

@@ -9,7 +9,7 @@ The arithmetic behind the answer is worked out in
 repository's `coab/analysis/wheel.py`; what was missing was the reading --
 turning the frame on screen into the four numbers that function wants.
 `CLAUDE.md` keeps that arithmetic in Donald's separate private repository, and
-this reaches into it at run time and **records nothing** here -- the shape
+this reaches into it at run time and **records nothing** here -- the form
 `tools/amiga/amigacursewheel.py` follows for the Amiga side of the same wheel
 (#108, Amiga Curse asks its code wheel, so the title cannot be driven
 unattended).
@@ -34,7 +34,7 @@ bitmaps in `coab/images/` are the same runes rendered from the C64's own
 normalised grids with a cell of slack rather than pixel for pixel.
 
 **The path** is the row under the runes: `----------`, `..........` or
-`-..-..-..-`, drawn as marks one to a character cell, each cell's *own shape*
+`-..-..-..-`, drawn as marks one to a character cell, each cell's *own outline*
 being what tells a dash from a dot -- a dash is a 7px-wide bar across rows 2-3
 of its cell, a dot a 3x3 diamond in rows 4-6, measured off three live prompts
 on 2026-09-14 (`#537`).  A dash prompt lights only every other cell of the
@@ -183,7 +183,7 @@ def classify_cell(im, left: int, top: int) -> str:
     """`"empty"`, `"dot"`, `"dash"` or `"text"`, for the 8x8 cell at `left`,
     `top`.
 
-    A dot and a dash are read by the shape of their own ink, not by the pen --
+    A dot and a dash are read by the outline of their own ink, not by the pen --
     the pen is white here on every specimen seen, but the game's own prose
     row above is white too, so pen colour tells a mark from nothing rather
     than a mark from a letter.
@@ -210,7 +210,7 @@ def path_marks(im, top: int) -> list[str]:
 
 
 def read_path(im) -> int | None:
-    """Which of the three patterns is drawn, by the shape of the marks in one
+    """Which of the three patterns is drawn, by the outline of the marks in one
     row of cells.
 
     A run of `MIN_MARKS` or more marked cells, with nothing but empty cells

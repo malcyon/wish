@@ -23,7 +23,7 @@ out of what we wrote.
 
 `refs` is the static half -- how many absolute operands in the title's own
 overlays name each array, and in which files.  It is a sweep of bytes rather
-than a proof they are instructions, so read it as a shape: the lopsidedness is
+than a proof they are instructions, so read it as a pattern: the lopsidedness is
 the finding, not any single count.
 
 Nothing here writes to the player's disks.  `stage` copies the image it is

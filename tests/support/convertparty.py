@@ -50,9 +50,9 @@ def _six_icon_party() -> "tuple[bytes, bytes, object]":
         base[off:off + SLOT_STRIDE] = slot0
         base[off:off + len(names[i])] = names[i]
         base[off + len(names[i]):off + 20] = bytes(20 - len(names[i]))
-        shape = parts.compose(size, weapon, head)
-        seed = bytes([DEFAULT_BACKGROUND | MULTICOLOUR] * len(shape))
-        icon = shape + parts.colours_for(shape, DEFAULT_PART_COLOURS, seed)
+        figure = parts.compose(size, weapon, head)
+        seed = bytes([DEFAULT_BACKGROUND | MULTICOLOUR] * len(figure))
+        icon = figure + parts.colours_for(figure, DEFAULT_PART_COLOURS, seed)
         at = container.icon(i)
         base[at:at + container.icon_size] = icon
     return bytes(base), save1, parts

@@ -50,10 +50,10 @@ FRAME_HIGH = POSE_ROWS * 8
 FRAME_WIDE = SOURCE_WIDE
 
 
-def preview(shape: bytes, colours: bytes, charset: bytes,
+def preview(figure: bytes, colours: bytes, charset: bytes,
             zoom: int = PREVIEW_ZOOM) -> QImage:
     """One icon at an integer zoom, poses side by side, as the editor draws it."""
-    pixels = icon_pixels(Icon(bytes(shape) + bytes(colours)), charset)
+    pixels = icon_pixels(Icon(bytes(figure) + bytes(colours)), charset)
     img = QImage(SOURCE_WIDE, FRAME_HIGH, QImage.Format.Format_RGB32)
     img.fill(0)
     for y, row in enumerate(pixels):
@@ -66,16 +66,16 @@ def preview(shape: bytes, colours: bytes, charset: bytes,
 
 
 class PartsPicker(QDialog):
-    """Pick a weapon and a head; the result is `shape`."""
+    """Pick a weapon and a head; the result is `figure`."""
 
-    def __init__(self, parts: IconParts, charset: bytes, shape: bytes,
+    def __init__(self, parts: IconParts, charset: bytes, figure: bytes,
                  colours: bytes, size: str = "small", parent=None):
         super().__init__(parent)
         self.ui = Ui_PartsPicker()
         self.ui.setupUi(self)
         self.parts = parts
         self.charset = charset
-        self.shape = bytes(shape)
+        self.figure = bytes(figure)
         self.colours = bytes(colours)
         self.size = size
 
@@ -135,7 +135,7 @@ class PartsPicker(QDialog):
             blocked = view.blockSignals(True)
             view.clear()
             for option in range(self.parts.count(self.size, kind)):
-                made = self.parts.apply(self.shape, self.size, kind, option)
+                made = self.parts.apply(self.figure, self.size, kind, option)
                 row = QListWidgetItem(str(option))
                 row.setIcon(QIcon(QPixmap.fromImage(
                     preview(made, self.colours, self.charset, LIST_ZOOM))))
@@ -145,18 +145,18 @@ class PartsPicker(QDialog):
 
     def _show(self) -> None:
         self.preview.setPixmap(QPixmap.fromImage(
-            preview(self.shape, self.colours, self.charset)))
+            preview(self.figure, self.colours, self.charset)))
 
     # -- choosing --------------------------------------------------------
 
     def _chose(self, kind: str, option: int) -> None:
         if option < 0:
             return
-        self.shape = self.parts.apply(self.shape, self.size, kind, option)
+        self.figure = self.parts.apply(self.figure, self.size, kind, option)
         # Colours follow the parts: a new glyph in a cell takes its class's
         # colour, which is what the game does and what keeps the result legal.
-        per_class = self.parts.part_colours(self.colours, self.shape)
-        self.colours = self.parts.colours_for(self.shape, per_class,
+        per_class = self.parts.part_colours(self.colours, self.figure)
+        self.colours = self.parts.colours_for(self.figure, per_class,
                                               self.colours)
         self._fill()
 

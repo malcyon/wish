@@ -125,7 +125,7 @@ already area 18's own -- so it is Podol Plaza's map, shared, rather than
 having none.
 
 **The confidence column grades the *name* and nothing else.** Every PROBABLE
-row is one where the name is a guess -- the five Valjevo Castle floors and
+row is one where the name is a guess -- the five Valjevo Castle minimums and
 lower Yarash's Pyramid -- and `goldbox/areas.py`'s own grades agree row for row.
 Area 30 is UNKNOWN because it has no name: it is not a place, it is the
 attract-mode demo, so "The Attract-Mode Demo" is a description this project

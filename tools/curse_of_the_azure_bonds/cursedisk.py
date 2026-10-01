@@ -178,7 +178,7 @@ def sheet(folder: pathlib.Path, slot: str) -> list[str]:
     """The DOS party laid out the way the C64's `VIEW` screen shows it.
 
     Every line is something a person reads straight off the running game and
-    compares.  Copied in shape from `tools/dos/dosdisk.py`, with the memorised
+    compares.  Copied in form from `tools/dos/dosdisk.py`, with the memorised
     count added: Curse gives the list 69 slots where Pool of Radiance gives
     81 and `goldbox/layout.py` used to give 16
     (`#268 (A character with more than sixteen memorised spells loses the

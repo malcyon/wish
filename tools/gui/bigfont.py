@@ -10,7 +10,7 @@ Windows' base font**, and that +10 is the largest that matters -- 9pt
 base here, so the range a person uses is 9pt to 19pt.
 
 **Why a window and not a screenshot.** `tools/gui/shotwindow.py` photographs the
-window offscreen at a chosen font and captions its floor, which is the right
+window offscreen at a chosen font and captions its minimum, which is the right
 tool for a measurement. It cannot drag a splitter, resize the window, or show
 what happens when somebody tries -- and that is the whole of what a font
 question usually turns out to be. `#97 (The character editor's page cannot be
@@ -19,7 +19,7 @@ session from numbers and settled in a minute by pulling the window's bottom
 edge.
 
 The font has to be on the `QApplication` **before** the window is built: half
-of what the window's floor is made of is measured while its widgets are being
+of what the window's minimum is made of is measured while its widgets are being
 constructed, and `wish.window.run` reuses an existing instance rather than
 making its own.
 

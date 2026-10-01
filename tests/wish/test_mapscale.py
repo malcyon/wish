@@ -13,10 +13,10 @@ def make_root():
 """The area map scales to the room it is given, so the window can be small.
 
 Donald's Windows build opened taller than his screen and would not shrink: 16
-squares at `render.CELL` plus the margins is 596px, and that was a hard floor
+squares at `render.CELL` plus the margins is 596px, and that was a hard minimum
 under the map, under the automap tab, and so under the whole window. The map
 draws at `CELL` where there is room and shrinks to `render.CELL_MIN` where
-there is not; the floor is what the window's minimum now rests on.
+there is not; that smaller size is what the window's minimum now rests on.
 
 Everything the canvas answers -- what a click hits, what a tooltip describes,
 where a note popover hangs -- is derived from the same cell the paint used, so
@@ -55,7 +55,7 @@ def app():
 def canvas(app, side: int) -> MapCanvas:
     """A canvas of a given square size, with nothing to draw."""
     c = MapCanvas(AutomapState())
-    c.setMinimumSize(1, 1)              # the layout's floor is not the test's
+    c.setMinimumSize(1, 1)              # the layout's minimum is not the test's
     c.resize(side, side)
     return c
 
@@ -85,7 +85,7 @@ def test_the_cell_shrinks_and_grows_back_with_the_canvas(app):
 
 
 def test_the_cell_stops_at_the_floor_and_scales_up(app):
-    """The floor is the whole point of the exercise; the map can scale up to fill large screens."""
+    """The minimum is the whole point of the exercise; the map can scale up to fill large screens."""
     assert canvas(app, 60).cell == CELL_MIN
     assert canvas(app, square(100)).cell == 100
 
@@ -151,7 +151,7 @@ def test_the_note_marker_keeps_its_share_of_the_square():
 def test_a_fight_does_not_put_the_floor_back(app):
     """The two canvases share a stack, and a stack is as tall as its tallest
     page whichever page is showing. A combat canvas whose minimum was the cell
-    the fight asked for put a 600px floor back under the window the moment one
+    the fight asked for put a 600px minimum back on the window the moment one
     started."""
     from gamedata import synthetic_arena
 
@@ -210,9 +210,9 @@ def _floor(tmp_path, monkeypatch, save=None):
     monkeypatch.chdir(empty)
 
     win = WishWindow(save, maps={}, session=Session(find=lambda pref=None: None))
-    floor = win.minimumSizeHint()
+    minimum = win.minimumSizeHint()
     win.close()
-    return floor
+    return minimum
 
 
 def _floors(app, tmp_path, monkeypatch, save=None, fonts=(0, 3)):
@@ -239,23 +239,23 @@ def test_the_window_can_be_made_short_enough_for_a_small_laptop(app, tmp_path,
     The height went first, and the width followed: Windows CI answered
     `QSize(1546, 618)` where Linux answered `(1071, 662)`, because every
     column that was sized by its text grew with Windows' wider UI font. A
-    1546px floor still fits Donald's 1920px desktop, which is why it is not
+    1546px minimum still fits Donald's 1920px desktop, which is why it is not
     what he reported, but it does not fit a 1366x768 laptop -- and `SMALL` is
     narrower than one of those, so passing here passes there (#41).
     """
-    floor = _floor(tmp_path, monkeypatch)
-    assert floor.height() <= SMALL.height()
-    assert floor.width() <= SMALL.width()
+    minimum = _floor(tmp_path, monkeypatch)
+    assert minimum.height() <= SMALL.height()
+    assert minimum.width() <= SMALL.width()
 
 
 def test_the_windows_minimum_does_not_follow_the_ui_font(app, tmp_path,
                                                          monkeypatch):
     """And the real test, because a number measured on Linux says nothing
-    about Windows: the floor has to stop tracking the font.
+    about Windows: the minimum has to stop tracking the font.
 
     Three points of extra font used to buy 144px of minimum width, which is
     the mechanism that made Windows 475px worse than Linux. What is left is
-    the map's own floor, the roster's fixed cards and the panels' caps, and
+    the map's own minimum, the roster's fixed cards and the panels' caps, and
     none of those is text.
     """
     base = app.font()
@@ -273,7 +273,7 @@ def test_the_windows_minimum_does_not_follow_the_ui_font(app, tmp_path,
 
 #: What the two states actually measure here, so the numbers below are numbers
 #: rather than an opinion. `gamedata.synthetic_party` is the loaded one: six
-#: characters of the widest shape the record and Pool of Radiance's own tables
+#: characters of the widest form the record and Pool of Radiance's own tables
 #: allow.
 #:
 #: | UI font | empty | loaded, before #71 | loaded, now | the roster in it |
@@ -295,7 +295,7 @@ def test_the_windows_minimum_does_not_follow_the_ui_font(app, tmp_path,
 
 
 def _heights(app, tmp_path, monkeypatch, fonts=(0, 3, 6, 10)):
-    """The window's floor, the automapper page's floor and the chrome's, at
+    """The window's minimum, the automapper page's minimum and the chrome's, at
     each of several UI font sizes. Base font restored afterwards.
 
     The three are one measurement because they are one sum: the window's
@@ -338,17 +338,17 @@ def _test_the_automapper_pages_floor_does_not_follow_the_ui_font(
     The window's minimum *height* was 662 at the base font and 805 at ten
     points more, so a user who raised the UI font three points -- an ordinary
     accessibility choice -- could not fit the window on a 1366x768 panel. Of
-    the 143px, 90 were the automapper page: the map canvas's own floor is
+    the 143px, 90 were the automapper page: the map canvas's own minimum is
     `CELL_MIN` arithmetic and does not move, but the action bar under it, the
     Fast Travel row under that and the bottom strip were each as tall as their
     own font metrics, in a layout that does not scroll.
 
     Each of those three now caps its `minimumSizeHint` height at a constant
     (`ActionBar.SHORT`, `FastTravelBar.SHORT`, `BottomStrip.SHORT`), the way #41
-    capped the widths, so the page's floor is 580 at every UI font this
+    capped the widths, so the page's minimum is 580 at every UI font this
     machine can be made to draw -- 580, 605, 635 and 670 before.
 
-    **What is asserted is that the floor stops growing, not that it is the
+    **What is asserted is that the minimum stops growing, not that it is the
     same at every font.** Those are the same statement only on a machine whose
     base font is already large enough to reach the caps, and this one's is:
     580 at +0 here, where CI's Linux measures 561 and Windows 551 and both
@@ -359,7 +359,7 @@ def _test_the_automapper_pages_floor_does_not_follow_the_ui_font(
     cases; only the machine it was written on could not see the climb.
 
     So: non-decreasing, and flat by +6pt. Without the caps this machine's
-    floor runs 580, 605, 635, 670 and the last two differ, which is what makes
+    minimum runs 580, 605, 635, 670 and the last two differ, which is what makes
     this bite.
 
     The roster panel and the notes/quest log/messages column are not capped.
@@ -373,9 +373,9 @@ def _test_the_automapper_pages_floor_does_not_follow_the_ui_font(
              in _heights(app, tmp_path, monkeypatch, fonts)]
     seen = dict(zip(fonts, pages))
     assert pages == sorted(pages), (
-        f"the automapper page's floor moved about with the font: {seen}")
+        f"the automapper page's minimum moved about with the font: {seen}")
     assert pages[-1] == pages[-2], (
-        f"the automapper page's floor was still following the font at the "
+        f"the automapper page's minimum was still following the font at the "
         f"largest sizes, so the caps are not holding it: {seen}")
 
 
@@ -385,9 +385,9 @@ def _test_what_is_left_following_the_font_is_the_windows_own_chrome(
 
     A menu bar, a tab bar and a status bar are three rows of text, and a user
     who asks for a larger UI font is asking for those to be larger too;
-    capping them would clip `File`. So the window's floor is not a constant
+    capping them would clip `File`. So the window's minimum is not a constant
     the way its width is, and this is the assertion that says what the
-    remainder is made of: every pixel the floor moves is one of those three.
+    remainder is made of: every pixel the minimum moves is one of those three.
 
     Measured here, empty window: 662, 677, 694, 707 and 715 at +0, +3, +6, +8
     and +10, where before #77 it was 662, 702, 749, 782 and 805. The 720-high
@@ -400,7 +400,7 @@ def _test_what_is_left_following_the_font_is_the_windows_own_chrome(
     explains: a smaller base font sits under the caps and climbs to meet them,
     so the remainder grows until it settles. What is true wherever it runs is
     that it *does* settle -- once the caps hold the page, every further pixel
-    the window's floor gains is one its chrome gained too.
+    the window's minimum gains is one its chrome gained too.
 
     Above roughly +13 the *editor* page overtakes the automapper page and
     starts setting the height itself (378 to 630 between +0 and +16). That is
@@ -411,10 +411,10 @@ def _test_what_is_left_following_the_font_is_the_windows_own_chrome(
     slack = [window - chrome for window, _page, chrome in parts]
     seen = dict(zip(fonts, parts))
     assert slack == sorted(slack), (
-        "the window's floor moved about against its menu bar, tab bar and "
+        "the window's minimum moved about against its menu bar, tab bar and "
         f"status bar: {seen}")
     assert slack[-1] == slack[-2], (
-        "the window's floor was still growing by more than its menu bar, tab "
+        "the window's minimum was still growing by more than its menu bar, tab "
         f"bar and status bar at the largest sizes: {seen}")
 
 
@@ -428,7 +428,7 @@ def test_the_window_still_fits_the_laptop_with_a_save_open(app, tmp_path,
     in the 836 the empty window answers.
 
     The party is synthetic, so this runs on a machine with no game (#70) --
-    and it is the *widest* party rather than a plausible one, because a floor
+    and it is the *widest* party rather than a plausible one, because a minimum
     measured from six-letter names is true of nothing.
 
     **An expected failure twice over before #71 closed it.** Round eight of
@@ -441,13 +441,13 @@ def test_the_window_still_fits_the_laptop_with_a_save_open(app, tmp_path,
 
     What makes it an assertion again is that the number it measures is no
     longer a font metric. The roster gives up width instead of demanding it,
-    and its floor is a constant, so the whole window's floor is 948 at every UI
+    and its minimum is a constant, so the whole window's minimum is 948 at every UI
     font this machine can be made to draw -- 332px of margin under the screen
     rather than ten. The sibling below is the test that says so directly.
 
     Both axes are checked at all four fonts. The height used to be checked at
     two, because 720 did not hold this window above +3pt -- that was #77, and
-    #77 has since capped the automapper page's floor, so +6pt and +10pt now
+    #77 has since capped the automapper page's minimum, so +6pt and +10pt now
     fit and are asserted here rather than described in a comment. That is the
     guarantee #77 was opened for; without these rows nothing in CI compares
     the window against the screen at a raised font, and a change to the menu,
@@ -462,11 +462,11 @@ def test_the_window_still_fits_the_laptop_with_a_save_open(app, tmp_path,
 
     save = str(synthetic_save(tmp_path))
     fonts = (0, 3, 6, 10)
-    floors = _floors(app, tmp_path, monkeypatch, save, fonts=fonts)
-    for extra, floor in zip(fonts, floors):
-        assert floor.width() <= SMALL.width(), f"+{extra}pt"
-    for extra, floor in zip(fonts, floors):
-        assert floor.height() <= SMALL.height(), f"+{extra}pt"
+    minimums = _floors(app, tmp_path, monkeypatch, save, fonts=fonts)
+    for extra, minimum in zip(fonts, minimums):
+        assert minimum.width() <= SMALL.width(), f"+{extra}pt"
+    for extra, minimum in zip(fonts, minimums):
+        assert minimum.height() <= SMALL.height(), f"+{extra}pt"
 
 
 def test_the_windows_minimum_does_not_follow_the_ui_font_with_a_save_open(
@@ -505,11 +505,11 @@ def test_the_window_still_fits_the_laptop_with_an_ordinary_party_open(
     `_ordinary_party` is six characters at a size a player actually has, not
     the widest the record allows -- the widest one is what
     `test_the_window_still_fits_the_laptop_with_a_save_open` measures, and it
-    is the one shape guaranteed to stay above `ROSTER_MIN_WIDTH`, so it never
+    is the one party guaranteed to stay above `ROSTER_MIN_WIDTH`, so it never
     saw this. `EditorBinding._size_roster` hands the roster
     `min(natural, ROSTER_MIN_WIDTH)`, and an ordinary party's `natural` -- its
     five columns at their contents -- is 219px against the constant's 440, so
-    `min` picks the font-derived number and the window's floor grows with the
+    `min` picks the font-derived number and the window's minimum grows with the
     UI font here too: 993, 1050, 1110 and 1182px at +0, +3, +6 and +10.
 
     Two things were tried against that and both made the roster worse to look
@@ -529,10 +529,10 @@ def test_the_window_still_fits_the_laptop_with_an_ordinary_party_open(
 
     save = _ordinary_party(tmp_path)
     fonts = (0, 3, 6, 10)
-    floors = _floors(app, tmp_path, monkeypatch, save, fonts=fonts)
-    for extra, floor in zip(fonts, floors):
-        assert floor.width() <= SMALL.width(), f"+{extra}pt"
-        assert floor.height() <= SMALL.height(), f"+{extra}pt"
+    minimums = _floors(app, tmp_path, monkeypatch, save, fonts=fonts)
+    for extra, minimum in zip(fonts, minimums):
+        assert minimum.width() <= SMALL.width(), f"+{extra}pt"
+        assert minimum.height() <= SMALL.height(), f"+{extra}pt"
 
 
 def test_the_players_own_party_is_no_wider_than_the_synthetic_one(app, tmp_path,
@@ -564,9 +564,9 @@ def test_the_players_own_party_is_no_wider_than_the_synthetic_one(app, tmp_path,
         assert yours.height() <= mine.height(), f"+{extra}pt"
     # And the line #43 round five drew, on the party a player really has:
     # 1027x662 and 1124x702 here.
-    for extra, floor in zip((0, 3), theirs):
-        assert floor.width() <= SMALL.width(), f"+{extra}pt"
-        assert floor.height() <= SMALL.height(), f"+{extra}pt"
+    for extra, minimum in zip((0, 3), theirs):
+        assert minimum.width() <= SMALL.width(), f"+{extra}pt"
+        assert minimum.height() <= SMALL.height(), f"+{extra}pt"
 
 
 # --- and the roster column, which is where the height went ------------------
@@ -660,13 +660,13 @@ def test_the_window_still_fits_the_laptop_with_a_full_party_of_eight(
     screen and there was nothing to be done about it.
 
     The measurement, this machine, a party of eight fifteen-letter
-    three-class characters: the window's floor was 952 at the base font and
+    three-class characters: the window's minimum was 952 at the base font and
     1179 at ten points more, against a screen of 768. With the roster's
     scroll area back it is 540 and 669.
 
     **The assertion is the screen and not a pixel count**, which is what makes
     it true of a machine whose base font is not this one: CI's Linux and
-    Windows both start smaller than here and climb, so a floor that clears
+    Windows both start smaller than here and climb, so a minimum that clears
     `SMALL` here clears it there. A number copied out of the table above
     would have been a measurement of this desk.
 
@@ -687,14 +687,14 @@ def test_the_window_still_fits_the_laptop_with_a_full_party_of_eight(
     """
     fonts = (0, 3, 6, 10)
     for extra in fonts:
-        floor = _full_party_floor(app, tmp_path, monkeypatch, extra)
-        assert floor.height() <= SMALL.height(), (
-            f"+{extra}pt: a full party of eight put a {floor.height()}px "
-            f"floor under a {SMALL.height()}px screen")
+        minimum = _full_party_floor(app, tmp_path, monkeypatch, extra)
+        assert minimum.height() <= SMALL.height(), (
+            f"+{extra}pt: a full party of eight put a {minimum.height()}px "
+            f"minimum under a {SMALL.height()}px screen")
         if extra == 0:
-            assert floor.width() <= SMALL.width(), (
-                f"+{extra}pt: the default columns put a {floor.width()}px "
-                f"floor across a {SMALL.width()}px screen at this machine's "
+            assert minimum.width() <= SMALL.width(), (
+                f"+{extra}pt: the default columns put a {minimum.width()}px "
+                f"minimum across a {SMALL.width()}px screen at this machine's "
                 f"own base font")
 
 
@@ -703,7 +703,7 @@ def test_the_party_on_the_cards_is_not_in_the_windows_floor_at_all(
     """And the mechanism, said without a pixel in it.
 
     A scrolling column reports the same minimum whatever it holds, so showing
-    a party costs the window's floor nothing. Eight cards against none is the
+    a party costs the window's minimum nothing. Eight cards against none is the
     whole of #135 -- 852 of roster against 150 before the scroll area went
     back, and the same number now.
 
@@ -716,14 +716,14 @@ def test_the_party_on_the_cards_is_not_in_the_windows_floor_at_all(
         full = _full_party_floor(app, tmp_path, monkeypatch, extra, showing=8)
         assert full.height() == empty.height(), (
             f"+{extra}pt: eight cards added "
-            f"{full.height() - empty.height()}px to the window's floor, so "
+            f"{full.height() - empty.height()}px to the window's minimum, so "
             f"the roster column is not scrolling")
 
 
 # --- and the columns the user drags them to (#162) --------------------------
 
 def _floor_with_columns(app, tmp_path, monkeypatch, widths, extra=0.0):
-    """The window's floor with the automapper's three columns at `widths`.
+    """The window's minimum with the automapper's three columns at `widths`.
 
     `#162 (Let the user resize the Quest Log and roster columns)` made the
     roster and the reading column draggable, shut included, so the widths the
@@ -733,12 +733,12 @@ def _floor_with_columns(app, tmp_path, monkeypatch, widths, extra=0.0):
 
     The window is given room before the columns are set, because a splitter
     clamps what it is asked for to the width it has: in a window sitting at
-    its own floor there is nothing to drag with, and "both columns wide"
+    its own minimum there is nothing to drag with, and "both columns wide"
     would measure the same layout as "both columns shut". The room asked for
-    is the window's own floor plus the two default column widths, so a machine
+    is the window's own minimum plus the two default column widths, so a machine
     with a wider font gets a wider window rather than a squeezed one.
 
-    Returned beside the floor are the widths actually reached, so a test can
+    Returned beside the minimum are the widths actually reached, so a test can
     say it got to the extreme rather than assume it.
     """
     from wish.session import Session
@@ -818,15 +818,15 @@ def test_the_window_still_fits_the_laptop_with_the_columns_at_either_extreme(
     promise is the one `#97` and `#135` were about and it holds.
     """
     for extra in (0, 3, 6, 10):
-        floor, widths = _floor_with_columns(app, tmp_path, monkeypatch,
+        minimum, widths = _floor_with_columns(app, tmp_path, monkeypatch,
                                             EXTREMES[what], extra)
-        assert floor.height() <= SMALL.height(), f"{what}, +{extra}pt"
+        assert minimum.height() <= SMALL.height(), f"{what}, +{extra}pt"
         if EXTREMES[what] is SHUT and extra == 0:
-            assert floor.width() <= SMALL.width(), (
-                f"{what}, +{extra}pt: {floor.width()}px across a "
+            assert minimum.width() <= SMALL.width(), (
+                f"{what}, +{extra}pt: {minimum.width()}px across a "
                 f"{SMALL.width()}px screen at this machine's own base font")
         # And the extreme was reached, or the two rows are one row measured
-        # twice. Shut is exactly zero; wide is the map down to its own floor
+        # twice. Shut is exactly zero; wide is the map down to its own minimum
         # with both side columns past their default widths.
         roster, _map_at, side = widths
         if EXTREMES[what] is SHUT:
@@ -872,7 +872,7 @@ def _editor_window(app, tmp_path, monkeypatch, extra=0.0, settings=None):
 
 
 def _editor_floors(app, tmp_path, monkeypatch, fonts):
-    """The whole window's floor and the editor page's, at each UI font."""
+    """The whole window's minimum and the editor page's, at each UI font."""
     out = []
     for extra in fonts:
         win, base = _editor_window(app, tmp_path, monkeypatch, extra)
@@ -897,7 +897,7 @@ def _editor_floors(app, tmp_path, monkeypatch, fonts):
 #: Points of extra UI font. Donald's desktop is 9pt, so this reaches 29 --
 #: well past the 25pt he was running when he reported that he could see the
 #: stats table and neither the roster nor Character. The range matters more
-#: here than in the tests above: this page's floor used to grow twice as fast
+#: here than in the tests above: this page's minimum used to grow twice as fast
 #: as the window's chrome, so a range that stops at +10 never saw it.
 EDITOR_FONTS = (0, 6, 12, 16, 20)
 
@@ -914,18 +914,18 @@ def test_the_editor_page_is_no_longer_as_tall_as_everything_on_it(
     796px tall and there was no dragging it smaller. On a 1366x768 laptop the
     bottom of it was off the screen.
 
-    The two rows are a `QSplitter` now, so the page's floor is the top row's
+    The two rows are a `QSplitter` now, so the page's minimum is the top row's
     two lines of text plus the sheet's tabs, and how the rest of the height is
     shared is the user's to drag.
 
-    **The assertion is the screen and the shape, not a pixel count.** `SMALL`
+    **The assertion is the screen and the outline, not a pixel count.** `SMALL`
     is a 1366x768 laptop; the height is what this issue is about and the width
     is #41's, capped by constants that no font moves. Non-decreasing rather
     than equal, because CI's Linux and Windows both start from a smaller base
     font than this desk and climb where this one is already flat -- #77 was
     reverted off both platforms for asserting equality here.
 
-    Measured on this machine, the synthetic party: the page's floor was 378,
+    Measured on this machine, the synthetic party: the page's minimum was 378,
     471, 570, 630 and 705 at +0, +6, +12, +16 and +20, which put the window at
     460, 585, 717, 796 and 897. It is 210, 251, 295, 322 and 355, and the
     window 449, 511, 577, 617 and 667.
@@ -934,10 +934,10 @@ def test_the_editor_page_is_no_longer_as_tall_as_everything_on_it(
     pages = [page for _win, page in parts]
     seen = dict(zip(EDITOR_FONTS, parts))
     assert pages == sorted(pages), (
-        f"the editor page's floor moved about with the font: {seen}")
+        f"the editor page's minimum moved about with the font: {seen}")
     for extra, (window, _page) in zip(EDITOR_FONTS, parts):
         assert window <= SMALL.height(), (
-            f"+{extra}pt: the character editor put a {window}px floor under a "
+            f"+{extra}pt: the character editor put a {window}px minimum under a "
             f"{SMALL.height()}px screen: {seen}")
 
 
@@ -945,9 +945,9 @@ def test_the_top_row_asks_for_more_than_the_page_makes_room_for(
         app, tmp_path, monkeypatch):
     """And the mechanism, said as a comparison rather than as a number.
 
-    What was wrong is that the page's floor *contained* the top row: whatever
+    What was wrong is that the page's minimum *contained* the top row: whatever
     Character asked for, the window had to be that tall. What is right is that
-    it no longer does -- the top row asks for one thing and the page's floor is
+    it no longer does -- the top row asks for one thing and the page's minimum is
     less than it, and the difference is what the user drags.
 
     Said as a **rate**, across two fonts, rather than as a gap at one.
@@ -961,8 +961,8 @@ def test_the_top_row_asks_for_more_than_the_page_makes_room_for(
     passed by never being asked.
 
     What is true at every font is the rate. Growing the font makes the top row
-    want much more; it must make the page's floor want much less than that, or
-    the floor is still following the row. Four measurements from one run on one
+    want much more; it must make the page's minimum want much less than that, or
+    the minimum is still following the row. Four measurements from one run on one
     machine, compared against each other -- no constant, and nothing here a
     wider font on another platform can invalidate.
     """
@@ -994,7 +994,7 @@ def test_the_top_row_asks_for_more_than_the_page_makes_room_for(
     grew_row = big_row - small_row
     assert grew_row > grew_page, (
         f"the top row grew {grew_row}px between +0 and +10pt and the page's "
-        f"floor grew {grew_page}px -- the floor is still following the row")
+        f"minimum grew {grew_page}px -- it is still moving with the row")
 
 
 def test_a_row_dragged_shut_still_has_a_divider_to_drag_it_back(

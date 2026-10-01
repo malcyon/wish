@@ -237,7 +237,7 @@ def tips(panel, group="commissions"):
 def test_the_slums_is_one_row_whatever_its_byte_reads(app, value, group, state):
     """One byte, one row. The board gates candidate 0 on ledger 21 and the
     clerk pays on the same byte; showing the two ends separately made one
-    commission look like two, which is the whole reason for this shape."""
+    commission look like two, which is the whole reason for this form."""
     panel = panel_for(app, put_ledger(blank(), 21, value))
     slums = [r for r in rows(panel, group) if r[0] in SLUMS]
     assert len(slums) == 1
@@ -502,7 +502,7 @@ def _page_4a04(value) -> bytearray:
 
 def _commission_only_rows(flags_bytes):
     """(name, state, sub-line) for the commission rows alone, matching
-    `rows()`'s shape -- the panel's prefix before the side-quest tail."""
+    `rows()`'s form -- the panel's prefix before the side-quest tail."""
     from automap import questlog
 
     return [(name, state, note) for name, state, _tip, note, _dim

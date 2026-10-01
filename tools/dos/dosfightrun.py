@@ -341,7 +341,7 @@ def capture(save: str = "J", before: str = "C", after: str = "D",
     """Walk into a fight, press the ladder, and record the whole thing.
 
     Drives nothing on purpose: the deliverable is labelled frames and a log,
-    not a driver.  What it decides is which shape `fight()` has -- whether `q`
+    not a driver.  What it decides is which form `fight()` has -- whether `q`
     at a combat command bar hands the character to the computer for the fight,
     resolves one round, or does nothing at all.
     """

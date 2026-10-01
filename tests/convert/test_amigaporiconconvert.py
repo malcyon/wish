@@ -11,7 +11,7 @@ line still says a conversion "does not carry" a combat icon)` already gave
 `goldbox.iconparts.amiga_combat_icon` for Curse and Silver Blades. This file is
 the same fix for Pool of Radiance's own writer, `goldbox.amiga_por.write_por`,
 which `#383 (The live Convert dialog never wires a C64 party's own combat
-icon into DOS, so region_220 stays on the drop list)` proves the shape of on
+icon into DOS, so region_220 stays on the drop list)` proves on
 the DOS side.
 
 Two levels: `write_por` itself, against a synthetic character built by
@@ -167,7 +167,7 @@ def test_dos_to_amiga_direction_carries_the_sources_own_combat_icon(
     `icons` at all -- `dos_codec.to_neutral` has nowhere to put a combat figure,
     and the raw `DosCharacter` list `dos_codec.read_party` returns was discarded
     before `write_por` ever saw it. `amiga_combat_icon` reads the figure off
-    that raw record instead, the same shape `AmigaToDos.rehearse` already
+    that raw record instead, the same form `AmigaToDos.rehearse` already
     uses for an Amiga source.
 
     Watched failing before the fix: `(icon_head, icon_body) == (0, 0)`, read

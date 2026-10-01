@@ -67,7 +67,7 @@ COUNTS = 0xB0DA                 # four bytes, indexed by size*2 + (0 weapon, 1 h
 POINTERS = 0xB0DE               # four little-endian addresses, same order
 FILLERS = 0xABC0                # 81 zero-terminated strings
 
-#: `SPELLE64`'s own shape, as **file** offsets, which is what transfers. The
+#: `SPELLE64`'s own layout, as **file** offsets, which is what transfers. The
 #: class byte per glyph fills the first page; the four option tables follow at
 #: `$F0` apart; the filler strings follow those. All three hold in every title
 #: that ships the file, because the file is the same bytes in each.
@@ -95,7 +95,7 @@ ALWAYS_HEAD_CELLS = (1, 10)     # the head's own; 0 and 9 are shared with the we
 CELLS_PER_POSE = 9
 
 #: The fourteen cells no head option in either list ever writes -- measured
-#: over all 37 head options, not assumed from :data:`HEAD_CELLS`.  A shape's
+#: over all 37 head options, not assumed from :data:`HEAD_CELLS`.  A figure's
 #: bytes here are the weapon's alone, which is what makes
 #: :meth:`IconParts.recognise` able to name the weapon exactly.
 WEAPON_ONLY_CELLS = tuple(c for c in range(CELLS_PER_POSE * 2)
@@ -302,7 +302,7 @@ class C64IconTables:
     #: tables -- so `tools/icons/iconreverse.yaml` gives the two sizes complete,
     #: separate lists rather than one table with exceptions.
     weapons: dict[tuple[str, int], int]
-    #: `(size, C64 head option) -> DOS icon_head`, the same shape.
+    #: `(size, C64 head option) -> DOS icon_head`, the same form.
     heads: dict[tuple[str, int], int]
     #: C64 icon colour 0-7 -> the `(low, high)` EGA pair a DOS `icon_colours`
     #: byte holds for it.
@@ -334,7 +334,7 @@ def c64_icon_tables(path: "pathlib.Path | str | None" = None,
     reverse table, which serves every title alike, can only name one of
     them. A title's own `overrides:` section here names the other: at the
     top level for a row that applies at both sizes, or under `small:` for
-    one that applies at the small size only, the same two-level shape the
+    one that applies at the small size only, the same two-level form the
     base table already has. **A size a title's section does not mention is
     untouched** -- there is no size-free row to fall through to within an
     override, because there never is one in the base table either.
@@ -571,7 +571,7 @@ class IconParts:
 
     # -- drawing ---------------------------------------------------------
 
-    def _put(self, shape: bytearray, glyph: int, cell: int) -> None:
+    def _put(self, figure: bytearray, glyph: int, cell: int) -> None:
         """Write one glyph, honouring the overwrite rule at `$B209`.
 
         A cap or hair glyph will not paint over a head cell that already holds
@@ -579,12 +579,12 @@ class IconParts:
         stops a head from erasing the weapon's shoulders.
         """
         if self.part_class(glyph) in (CAP, HAIR) and cell in HEAD_CELLS:
-            under = shape[cell]
+            under = figure[cell]
             if under != SPACE and self.part_class(under) not in (CAP, HAIR):
                 return
-        shape[cell] = glyph
+        figure[cell] = glyph
 
-    def _apply(self, shape: bytearray, size: str, kind: str, option: int) -> None:
+    def _apply(self, figure: bytearray, size: str, kind: str, option: int) -> None:
         """Draw one option into both poses: primary glyph, then its filler."""
         base, count = self.tables[(size, kind)]
         if not 0 <= option < count:
@@ -596,23 +596,23 @@ class IconParts:
             glyph = self._parts[off + PRIMARY + option]
             cell = self._parts[off + START_CELL + option] + first
             filler = self._parts[off + FILLER_INDEX + option]
-            self._put(shape, glyph, cell)
+            self._put(figure, glyph, cell)
             at = first
             for extra in self.fillers[filler] if filler else b"":
                 if at == cell:          # the primary already has this cell
                     at += 1
-                self._put(shape, extra, at)
+                self._put(figure, extra, at)
                 at += 1
 
-    def apply(self, shape: bytes, size: str, kind: str, option: int) -> bytes:
-        """`shape` with one part changed, exactly as the ICON menu would.
+    def apply(self, figure: bytes, size: str, kind: str, option: int) -> bytes:
+        """`figure` with one part changed, exactly as the ICON menu would.
 
         Changing the weapon preserves the head: `$B26F`/`$B29B` save cells 0, 1,
         9 and 10 before drawing and restore them into whatever the new weapon
         left as space. Without that the two menu items would not be independent,
         and the reachable set would be much smaller than it is.
         """
-        out = bytearray(shape)
+        out = bytearray(figure)
         if kind == "weapon":
             # Cells 1 and 10 are the head's own and always come back; 0 and 9
             # are shared with the weapon and only survive if they hold hair.
@@ -629,10 +629,10 @@ class IconParts:
         return bytes(out)
 
     def compose(self, size: str, weapon: int, head: int) -> bytes:
-        """A whole icon shape from scratch: weapon first, then head."""
-        shape = bytes([SPACE] * (CELLS_PER_POSE * 2))
-        shape = self.apply(shape, size, "weapon", weapon)
-        return self.apply(shape, size, "head", head)
+        """A whole icon figure from scratch: weapon first, then head."""
+        figure = bytes([SPACE] * (CELLS_PER_POSE * 2))
+        figure = self.apply(figure, size, "weapon", weapon)
+        return self.apply(figure, size, "head", head)
 
     def default_icon(self) -> bytes:
         """The 36 bytes the game gives a character it has just rolled (#57).
@@ -643,12 +643,12 @@ class IconParts:
 
         This is what a conversion from a port with no C64 icon writes.  Zero
         is refused: screen code 0 in `CHARPIC00` is a real glyph, so a zeroed
-        icon draws as a 3x3 block of black hooks on the combat floor (#57,
+        icon draws as a 3x3 block of black hooks on the combat arena (#57,
         seen in a fight).
         """
-        shape = self.compose(DEFAULT_SIZE, DEFAULT_WEAPON, DEFAULT_HEAD)
-        seed = bytes([DEFAULT_BACKGROUND | MULTICOLOUR] * len(shape))
-        return shape + self.colours_for(shape, DEFAULT_PART_COLOURS, seed)
+        figure = self.compose(DEFAULT_SIZE, DEFAULT_WEAPON, DEFAULT_HEAD)
+        seed = bytes([DEFAULT_BACKGROUND | MULTICOLOUR] * len(figure))
+        return figure + self.colours_for(figure, DEFAULT_PART_COLOURS, seed)
 
     # -- a DOS character's own figure -------------------------------------
 
@@ -698,14 +698,14 @@ class IconParts:
             raise ValueError(f"DOS icon body {body} is not one of "
                              f"{len(tables.weapons)} the table names")
         weapon, c64_head = tables.weapons[body], tables.heads[head]
-        shape = bytes([SPACE] * (CELLS_PER_POSE * 2))
-        shape = self.apply(shape, self.size_for(size, "weapon", weapon),
+        figure = bytes([SPACE] * (CELLS_PER_POSE * 2))
+        figure = self.apply(figure, self.size_for(size, "weapon", weapon),
                            "weapon", weapon)
-        shape = self.apply(shape, self.size_for(size, "head", c64_head),
+        figure = self.apply(figure, self.size_for(size, "head", c64_head),
                            "head", c64_head)
-        seed = bytes([DEFAULT_BACKGROUND | MULTICOLOUR] * len(shape))
-        return shape + self.colours_for(
-            shape, dos_part_colours(colours, tables), seed)
+        seed = bytes([DEFAULT_BACKGROUND | MULTICOLOUR] * len(figure))
+        return figure + self.colours_for(
+            figure, dos_part_colours(colours, tables), seed)
 
     def size_for(self, size: str, kind: str, option: int) -> str:
         """`size`, unless only the large list is long enough to hold `option`.
@@ -745,7 +745,7 @@ class IconParts:
             self._lookup = (weapons, heads)
         return self._lookup
 
-    def recognise(self, shape: bytes, prefer: str = "large") -> "IconChoice":
+    def recognise(self, figure: bytes, prefer: str = "large") -> "IconChoice":
         """Which menu choices drew these eighteen screen codes.
 
         A C64 record stores the drawn cells rather than an index, so the
@@ -761,50 +761,50 @@ class IconParts:
         (7,20), (8,13), (9,14), (12,19) -- and small heads 0 and 5 are the
         identical drawing.  So the head is first matched on cells 1 and 10,
         which no weapon in either list ever writes, and then narrowed to
-        whichever of those compose with this weapon into exactly `shape`.
+        whichever of those compose with this weapon into exactly `figure`.
         `head` is the first survivor, at `prefer`'s size where there is a
         choice, and `alternatives` names the rest -- an icon whose head this
         cannot pin down says so instead of handing back one number as though
         it were certain.
 
-        `exact` is True when composing the two answers reproduces `shape`
+        `exact` is True when composing the two answers reproduces `figure`
         byte for byte.  False means the icon carries a cell left behind by an
         earlier choice, which the weapon that came after would not paint
         over -- legal, on the player's own disks, and drawn by the game
         exactly as stored.  47 of the 222 icons on this machine's three C64
         disk sets are like that, over 7 of their 35 distinct shapes.
 
-        Raises `ValueError` for a shape no weapon option drew, which is a
+        Raises `ValueError` for a figure no weapon option drew, which is a
         hand-authored icon or a figure with no weapon chosen at all.
         """
-        if len(shape) != CELLS_PER_POSE * 2:
-            raise ValueError(f"an icon shape is {CELLS_PER_POSE * 2} screen "
-                             f"codes, not {len(shape)}")
+        if len(figure) != CELLS_PER_POSE * 2:
+            raise ValueError(f"an icon figure is {CELLS_PER_POSE * 2} screen "
+                             f"codes, not {len(figure)}")
         weapons, heads = self._recognisers()
-        hit = weapons.get(bytes(shape[c] for c in WEAPON_ONLY_CELLS))
+        hit = weapons.get(bytes(figure[c] for c in WEAPON_ONLY_CELLS))
         if hit is None:
             raise ValueError(
-                f"no weapon option in either list draws {bytes(shape).hex()}; "
+                f"no weapon option in either list draws {bytes(figure).hex()}; "
                 f"this icon was not composed by the game's own ICON menu")
         weapon_size, weapon = hit
-        wanted = bytes(shape[c] for c in ALWAYS_HEAD_CELLS)
+        wanted = bytes(figure[c] for c in ALWAYS_HEAD_CELLS)
         matches = [(size, option) for size, option, cells in heads
                    if cells == wanted]
         matches.sort(key=lambda m: (m[0] != prefer, m[1]))
         if not matches:
             raise ValueError(
                 f"no head option draws cells {ALWAYS_HEAD_CELLS} of "
-                f"{bytes(shape).hex()}; this icon was not composed by the "
+                f"{bytes(figure).hex()}; this icon was not composed by the "
                 f"game's own ICON menu")
         # Cells 0 and 9 settle most of the ties: the seven large heads that
         # are another head with hair added draw the same 1 and 10 and differ
         # only there.  So prefer a head that composes with this weapon into
         # exactly these eighteen bytes, and fall back to the looser match
         # for an icon carrying a cell an earlier choice left behind.
-        base = self.apply(bytes([SPACE] * len(shape)), weapon_size,
+        base = self.apply(bytes([SPACE] * len(figure)), weapon_size,
                           "weapon", weapon)
         exact = [m for m in matches
-                 if self.apply(base, m[0], "head", m[1]) == bytes(shape)]
+                 if self.apply(base, m[0], "head", m[1]) == bytes(figure)]
         chosen = exact or matches
         head_size, head = chosen[0]
         return IconChoice(weapon_size=weapon_size, weapon=weapon,
@@ -821,7 +821,7 @@ class IconParts:
         C64 character's own combat icon becomes.
 
         `icon` is the 36 bytes a C64 record's icon table holds -- eighteen
-        screen codes then eighteen colours, the shape :meth:`dos_icon` and
+        screen codes then eighteen colours, the figure :meth:`dos_icon` and
         :meth:`default_icon` both return.  It is read back into the menu
         choices that drew it (:meth:`recognise`) and each is looked up in
         `tools/icons/iconreverse.yaml` through `tables`, Donald's own judgement
@@ -852,10 +852,10 @@ class IconParts:
         """
         if len(icon) != CELLS_PER_POSE * 4:
             raise ValueError(f"a combat icon is {CELLS_PER_POSE * 4} bytes "
-                             f"(shape and colours), not {len(icon)}")
-        shape, colours = icon[:CELLS_PER_POSE * 2], icon[CELLS_PER_POSE * 2:]
+                             f"(figure and colours), not {len(icon)}")
+        figure, colours = icon[:CELLS_PER_POSE * 2], icon[CELLS_PER_POSE * 2:]
         tables = tables or c64_icon_tables()
-        choice = self.recognise(shape, prefer=prefer)
+        choice = self.recognise(figure, prefer=prefer)
         try:
             body = tables.weapons[(choice.weapon_size, choice.weapon)]
         except KeyError:
@@ -868,7 +868,7 @@ class IconParts:
             raise ValueError(
                 f"no row in tools/icons/iconreverse.yaml for the C64 "
                 f"{choice.head_size} head {choice.head}") from None
-        per_class = self.part_colours(colours, shape)
+        per_class = self.part_colours(colours, figure)
         dos_colours = bytearray(6)
         for i, part in enumerate(DOS_PAIR_CLASSES):
             c64_colour = per_class.get(PART_CLASSES.index(part),
@@ -892,7 +892,7 @@ class IconParts:
     # -- the legal set ---------------------------------------------------
 
     def legal_screen_codes(self, sizes: tuple[str, ...] = ("small", "large")) -> set[bytes]:
-        """Every shape reachable by any sequence of menu choices.
+        """Every figure reachable by any sequence of menu choices.
 
         Not the product of the two lists. A weapon preserves the head cells, so
         the order of edits matters and mixing the two size pairs reaches shapes
@@ -904,11 +904,11 @@ class IconParts:
         frontier = [seed]
         while frontier:
             nxt = []
-            for shape in frontier:
+            for figure in frontier:
                 for size in sizes:
                     for kind in ("weapon", "head"):
                         for option in range(self.count(size, kind)):
-                            made = self.apply(shape, size, kind, option)
+                            made = self.apply(figure, size, kind, option)
                             if made not in seen:
                                 seen.add(made)
                                 nxt.append(made)
@@ -918,7 +918,7 @@ class IconParts:
 
     # -- colour ----------------------------------------------------------
 
-    def part_colours(self, icon_colours: bytes, shape: bytes) -> dict[int, int]:
+    def part_colours(self, icon_colours: bytes, figure: bytes) -> dict[int, int]:
         """The seven COLOR-menu values implied by an icon, keyed by part class.
 
         The menu offers one colour per part -- WEAPON BODY CAP HAIR SHIELD ARM
@@ -927,7 +927,7 @@ class IconParts:
         (only hand-authored icons do) are resolved by majority.
         """
         votes: dict[int, dict[int, int]] = {}
-        for cell, glyph in enumerate(shape):
+        for cell, glyph in enumerate(figure):
             klass = self.part_class(glyph)
             if klass >= len(PART_CLASSES):
                 continue
@@ -936,9 +936,9 @@ class IconParts:
             votes[klass][value] += 1
         return {k: max(v, key=v.get) for k, v in votes.items()}
 
-    def colours_for(self, shape: bytes, per_class: dict[int, int],
+    def colours_for(self, figure: bytes, per_class: dict[int, int],
                     existing: bytes = b"") -> bytes:
-        """The 18 colour bytes a shape must carry, given a colour per part.
+        """The 18 colour bytes a figure must carry, given a colour per part.
 
         `colour[cell] = C[class(glyph)] | (8 if the glyph's class byte has bit
         7)` -- `$B2F0`/`$B400`. So the colour half is not free either: every
@@ -950,8 +950,8 @@ class IconParts:
         Computing one anyway is what made this disagree with all eight icons in
         a save: it invented colour 1 for background cells carrying 14.
         """
-        out = bytearray(existing[:len(shape)] or bytes(len(shape)))
-        for cell, glyph in enumerate(shape):
+        out = bytearray(existing[:len(figure)] or bytes(len(figure)))
+        for cell, glyph in enumerate(figure):
             klass = self.part_class(glyph)
             if klass >= len(PART_CLASSES):
                 continue
@@ -965,7 +965,7 @@ class IconParts:
 #:
 #: A DOS colour byte holds two 4-bit colours, and the C64 has one colour for
 #: the whole part, so the conversion has to pick the one that covers more of
-#: the shape.  Counted pixel by pixel over the shipped art (`tools/icons/dosnibbles.py`):
+#: the figure.  Counted pixel by pixel over the shipped art (`tools/icons/dosnibbles.py`):
 #: the high nibble covers **56-65% of the leg in 32 of 32 bodies** and
 #: **68-72% of the shield in 8 of 8 that carry one**, and the low nibble wins
 #: everywhere else.

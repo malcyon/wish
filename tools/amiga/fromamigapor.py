@@ -54,7 +54,7 @@ it out, which is what a person compares the running game against.  Bytes
 matching is necessary and not sufficient (`.claude/rules/conversions.md`):
 an AC of 9 displayed as 51, a dropped combat tail and a garbage weapon line
 are three faults this project has shipped that passed every byte-level check
-that existed.  `tools/c64/c64sheet.py` prints the same shape off the `.d64` this
+that existed.  `tools/c64/c64sheet.py` prints the same form off the `.d64` this
 writes, so the two can be read side by side.
 """
 from __future__ import annotations
@@ -175,7 +175,7 @@ def sheet(party, state) -> list[str]:
     """The Amiga party laid out the way the C64's VIEW screen shows it.
 
     `tools/dos/dosdisk.py`'s `--sheet` for a DOS folder, over an Amiga slot: the
-    records have been re-cut into the DOS shape by
+    records have been re-cut into the DOS form by
     `goldbox.amiga_por.to_dos_character`, so the same reader and the same three
     display constants serve, imported from there rather than copied.
     """

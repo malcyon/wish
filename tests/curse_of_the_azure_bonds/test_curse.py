@@ -481,7 +481,7 @@ def test_pool_of_radiance_characters_satisfy_the_same_invariants():
 # field catches a wrong plane order or a wrong direction order; it is blind to
 # the two art planes, which is exactly the transposition `docs/120` tier 2
 # flagged as PROBABLE and untested. Wall art catches that, and the mangled
-# controls below are what make either floor mean something.
+# controls below are what make either minimum mean something.
 
 MANGLED_BARRIER_CEILING = 0.90
 
@@ -523,7 +523,7 @@ def test_curse_wall_art_is_reciprocal_which_the_barrier_field_cannot_show():
 
 @pytest.mark.parametrize("mangle", [_swap_art_planes, _swap_art_nibbles])
 def test_a_transposed_art_parse_fails_the_floor_the_real_one_clears(mangle):
-    """The floor is only evidence if a wrong reading falls through it."""
+    """The minimum is only evidence if a wrong reading falls through it."""
     maps = _geo_payloads(gamedata.curse_disks())
     scores = [_art_reciprocity(mangle(p)) for p in maps.values()]
     assert statistics.mean(scores) < MANGLED_ART_CEILING
@@ -537,7 +537,7 @@ def test_reading_the_barrier_directions_backwards_fails_too():
 
 
 def test_pool_of_radiance_maps_clear_the_same_barrier_floor():
-    """The control for the barrier floor, on the specimens it was derived from."""
+    """The control for the barrier minimum, on the specimens it was derived from."""
     maps = _geo_payloads(_pool_disks())
     assert len(maps) >= 29
     scores = {n: _barrier_reciprocity(p) for n, p in maps.items()}
@@ -551,7 +551,7 @@ def test_pool_of_radiance_wall_art_is_less_reciprocal_than_curses():
     """Not a defect: Pool of Radiance draws genuinely one-sided walls.
 
     Its worst file scores 0.646 where Curse's worst is 0.919, which is why the
-    per-file art floor is asserted on Curse and only the specimens mean on Pool of
+    per-file art minimum is asserted on Curse and only the specimens mean on Pool of
     Radiance. Stated as a test so the difference stays a measurement rather
     than folklore.
     """
@@ -622,9 +622,9 @@ def test_every_shipped_curse_icon_is_a_weapon_and_a_head():
     for weapon_size in ("small", "large"):
         for head_size in ("small", "large"):
             for w in range(parts.count(weapon_size, "weapon")):
-                shape = parts.apply(bytes([0x20] * 18), weapon_size, "weapon", w)
+                figure = parts.apply(bytes([0x20] * 18), weapon_size, "weapon", w)
                 for h in range(parts.count(head_size, "head")):
-                    reachable.add(parts.apply(shape, head_size, "head", h))
+                    reachable.add(parts.apply(figure, head_size, "head", h))
 
     # SSI's own pre-generated party, not the player's: an icon a person has
     # hand-edited need not be one pair, because a weapon change preserves the

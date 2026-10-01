@@ -1194,12 +1194,12 @@ def test_main_runs_when_the_disks_match(monkeypatch, capsys):
 def brawl_battle():
     """Party member 4 at (5,5), an ally (index 41) beside it, a monster (20) three squares off."""
     from automap.combat import Battle, Combatant, MapGeometry
-    shape = MapGeometry(map_base=0x1000, stride=16, width=16, height=16,
+    geometry = MapGeometry(map_base=0x1000, stride=16, width=16, height=16,
                         positions=0x2000, count=64)
     people = tuple(Combatant(index=i, x=x, y=5, slot=0, pose=0, on_map=True,
                              initiative=1, hp=10)
                    for i, x in ((4, 5), (41, 6), (20, 9)))
-    return Battle(shape=shape, terrain=bytes(256), combatants=people, camera=(0, 0))
+    return Battle(geometry=geometry, terrain=bytes(256), combatants=people, camera=(0, 0))
 
 
 def brawl_machine():

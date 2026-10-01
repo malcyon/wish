@@ -7,7 +7,7 @@ instead, with `tools/icons/iconproposal.py` reading it and `--markdown` generati
 the judged document from it -- so `tools/icons/iconproposal.yaml` is now the single
 source, and this is where that is checked.
 
-These tests pin the **shape** of the file rather than the matches in it: every
+These tests pin the **form** of the file rather than the matches in it: every
 DOS figure has a row, every row names a C64 option, and all sixteen EGA
 colours map to one of the C64's eight. The matches themselves are Donald's
 judgement and change whenever he edits the file, which is what it is for.
@@ -27,7 +27,7 @@ from goldbox import c64_port
 from tools.icons import iconcorrespond as ic  # noqa: E402
 from tools.icons import iconproposal as ip  # noqa: E402
 
-#: The shape of the proposal, which does not change when Donald edits it.
+#: The form of the proposal, which does not change when Donald edits it.
 #:
 #: **These deliberately do not pin the values.** An earlier version of this
 #: file held the whole table as it stood in Python before the move to YAML and
@@ -100,7 +100,7 @@ def test_from_markdown_is_gone():
 
 
 def test_a_malformed_yaml_row_is_caught_by_the_type(tmp_path):
-    """A non-dict row (a bare number, the old Python shape) fails loudly.
+    """A non-dict row (a bare number, the old Python form) fails loudly.
 
     `tmp_path` rather than `tempfile.mkstemp`: the latter hands back an open
     descriptor as well as a path, and on Windows a file already open cannot
@@ -380,7 +380,7 @@ def test_pool_of_radiance_and_curse_have_no_overrides_section_left():
 
 def test_the_small_section_is_a_base_level_key_not_a_titles_override():
     """`small:` now lives beside `weapons:`/`heads:`, not under any title's
-    `overrides:` section -- the shape the restructure moved it to."""
+    `overrides:` section -- the form the restructure moved it to."""
     data = yaml.safe_load(ip.TABLE_PATH.read_text())
     assert "small" in data
     assert set(data["small"]) <= {"weapons", "heads"}

@@ -119,7 +119,7 @@ def main(argv=None) -> int:
         if delta is not None:
             dx, dy = delta
             dest = (me.x + dx, me.y + dy)
-            who = b.at(*dest) if b.shape.holds(*dest) else None
+            who = b.at(*dest) if b.geometry.holds(*dest) else None
         target_hp = None if who is None else who.hp
         sess.kbd.key(key, hold, 0.30)
         time.sleep(1.6)
@@ -129,8 +129,8 @@ def main(argv=None) -> int:
             who2 = next((c for c in b2.combatants if c.index == who.index),
                         None)
         emit("press", key=key, hold=hold, at=[me.x, me.y], dest=dest,
-             holds=(None if dest is None else b.shape.holds(*dest)),
-             terrain=(None if dest is None or not b.shape.holds(*dest)
+             holds=(None if dest is None else b.geometry.holds(*dest)),
+             terrain=(None if dest is None or not b.geometry.holds(*dest)
                       else b.square(*dest)),
              on_dest=(None if who is None else
                       ("party" if who.is_party else "enemy")),

@@ -2,7 +2,7 @@
 """Read an Amiga Gold Box saved game through the map its own save routine writes.
 
 `#28 (Decode an Amiga saved game, not just a character file)` found the
-container's shape by reading the save and load routines out of the three
+container's layout by reading the save and load routines out of the three
 executables -- `/Curse`, `/Secret` and Pool of Radiance's `/program` -- and
 this is the parser that proves the map was read right.  It walks the file
 region by region in the order the game writes it, and :func:`check` compares

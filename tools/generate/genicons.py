@@ -187,7 +187,7 @@ def drawing(name: str, data: bytes) -> dict[str, tuple[int, int, bytes]]:
 
     A DIB is already pixels and is taken as it stands, header and AND mask
     left off; a PNG -- the whole of a `.png`, and the 256 inside the `.ico` --
-    is decoded. The label carries the entry's shape, so an `.ico` that lost a
+    is decoded. The label carries the entry's size, depth and planes, so an `.ico` that lost a
     size or turned an entry 24-bit compares unequal rather than silently
     matching on the sizes it still has.
     """

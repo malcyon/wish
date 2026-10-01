@@ -34,7 +34,7 @@ behind this file):
 What it writes to `--out`: `run.jsonl` (one line per step, with the triple and
 the row-24 classification), a screenshot and the 25 rows of every distinct
 screen the walk met, and -- when a fight starts -- `combat.png`, the combat
-bar verbatim, and the party's figures on the floor.
+bar verbatim, and the party's figures in the arena.
 
 Nothing is written outside `--out` and the slot's own directory; the session
 this talks to owns the emulator and tears it down.
@@ -377,7 +377,7 @@ def quickfight(run: Run, turns: int) -> None:
 
     Quickfight is the one combat command a converted party can be asked for
     without anybody deciding tactics, so it is what says whether the party can
-    *fight* rather than only reach the floor.  It is per character and per
+    *fight* rather than only reach the arena.  It is per character and per
     turn, not a mode: each press resolves one combatant's turn and the panel
     moves on to the next.
     """

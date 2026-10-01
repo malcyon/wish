@@ -1402,7 +1402,7 @@ def test_the_two_new_glyphs_draw_silence_and_slowed(app):
 
 
 def test_a_party_with_nothing_running_draws_nothing_at_all(app):
-    """The blank state is the one a player sees most, and the old shape's
+    """The blank state is the one a player sees most, and the old layout's
     fault was that it took up room saying so. No icons, no tooltip, and no
     line reading `party effects: none`."""
     names, tip = shown(app, party_snapshot((1, 0), (39, 3)))
@@ -2424,7 +2424,7 @@ def test_the_readied_line_does_not_grow_with_the_ui_font(app):
     The line asks for the same height at every font because its point size is
     set in `wish/window.ui` and so does not inherit the application's, and it
     asks the layout for nothing at all -- `ReadiedLabel.SHORT` is 0, which is
-    what keeps it out of the window's floor entirely.
+    what keeps it out of the window's minimum entirely.
     """
     from PyQt6.QtGui import QFont
 
@@ -2432,7 +2432,7 @@ def test_the_readied_line_does_not_grow_with_the_ui_font(app):
     base = app.font()
     fonts = (0, 3, 6, 10)
     try:
-        natural, floor = [], []
+        natural, minimum = [], []
         for extra in fonts:
             bigger = QFont(base)
             bigger.setPointSizeF(base.pointSizeF() + extra)
@@ -2440,15 +2440,15 @@ def test_the_readied_line_does_not_grow_with_the_ui_font(app):
             card = CharacterCard(make_root(), 0)
             card.show_character(_character(readied=("LONG SWORD",)))
             natural.append(card.readied.sizeHint().height())
-            floor.append(card.readied.minimumSizeHint().height())
+            minimum.append(card.readied.minimumSizeHint().height())
     finally:
         app.setFont(base)
     assert natural == [natural[0]] * len(fonts), (
         f"the readied line got taller with the UI font: "
         f"{dict(zip(fonts, natural))}")
-    assert floor == [0] * len(fonts), (
+    assert minimum == [0] * len(fonts), (
         f"the readied line is holding the window open: "
-        f"{dict(zip(fonts, floor))}")
+        f"{dict(zip(fonts, minimum))}")
 
 
 def _eight_card_floor(app, extra: float, *, line: bool) -> int:
@@ -2499,7 +2499,7 @@ def test_eight_readied_lines_cost_the_window_less_than_one_line(app):
     The roster column does not scroll, so with a full party of eight it is
     already the tallest thing on the automapper page and its height is the
     height the window cannot be made smaller than. Eight cards each insisting
-    on a line of their own would be eight lines added to that floor.
+    on a line of their own would be eight lines added to that minimum.
 
     **What is asserted is that the eight lines cost less than one line**, not
     a pixel count: the numbers here are this machine's and the same assertion
@@ -2508,9 +2508,9 @@ def test_eight_readied_lines_cost_the_window_less_than_one_line(app):
     `wish/window.ui` rather than anything measured from a font -- so the cost
     is also the same at every UI font, which is the second assertion.
 
-    Measured here, a party of eight three-class characters: the form's floor
+    Measured here, a party of eight three-class characters: the form's minimum
     is 917 without the line and 925 with it -- a cost of 8 -- at every one of
-    +0, +3, +6 and +10. Take the `SHORT` cap off and the floor is 1045 and the
+    +0, +3, +6 and +10. Take the `SHORT` cap off and the minimum is 1045 and the
     cost 128, which is eight whole lines and sixteen times what the cap leaves.
     """
     fonts = (0, 3, 6, 10)
@@ -2523,9 +2523,9 @@ def test_eight_readied_lines_cost_the_window_less_than_one_line(app):
     one_line = card.readied.sizeHint().height()
     assert max(costs) < one_line, (
         f"eight readied lines added more than one line's height to the "
-        f"window's floor: {seen}, against a line of {one_line}")
+        f"window's minimum: {seen}, against a line of {one_line}")
     assert costs == [costs[0]] * len(fonts), (
-        f"what the readied lines cost the window's floor moved with the UI "
+        f"what the readied lines cost the window's minimum moved with the UI "
         f"font: {seen}")
 
 
@@ -3272,7 +3272,7 @@ def test_the_quickfight_sabre_is_the_artists_own_drawing(app):
     figure to hasted, and two runners on one card at 13px cannot be told apart
     -- `#4 (Condition badges on the roster card)`.
 
-    Pinned as ink rather than as a shape: the point is that a Qt or a parser
+    Pinned as ink rather than as an outline: the point is that a Qt or a parser
     change that turned the glyph into nothing or into a blob fails here rather
     than on somebody's card. 52 pixels at 13px, measured on this machine with
     Qt 6."""

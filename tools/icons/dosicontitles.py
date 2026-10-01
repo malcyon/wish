@@ -58,7 +58,7 @@ from goldbox import dos_port  # noqa: E402
 from goldbox.dos_savegame import DaxError, dax_index, dax_unpack  # noqa: E402
 
 #: The four DOS Gold Box titles this project reads, and the directory name the
-#: archives give each.  Keyed by `goldbox.dos_port` shape key so the record
+#: archives give each.  Keyed by `goldbox.dos_port` title key so the record
 #: displacements below come from one place.
 TITLES: tuple[tuple[str, str], ...] = (
     ("pool-of-radiance", "POOLRAD"),
@@ -372,7 +372,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--titles",
                     default="pool-of-radiance,curse-of-the-azure-bonds,"
                             "secret-of-the-silver-blades",
-                    help="comma-separated shape keys, in importer order; add "
+                    help="comma-separated title keys, in importer order; add "
                          "pools-of-darkness for the fourth")
     ap.add_argument("--reference", default="pool-of-radiance",
                     help="the title every other is compared against")

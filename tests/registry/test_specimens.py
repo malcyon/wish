@@ -321,7 +321,7 @@ def _mixed_specimens(tree, tmp_path):
     specimens.add("c64", "p18party", [d64], root=tree,
                   title="Pool of Radiance", issue="#10 (test)",
                   made_by="the training hall", what="levelled up")
-    # `add` only ever makes the flat shape for c64, so this one is built the
+    # `add` only ever makes the flat form for c64, so this one is built the
     # way the real `WISH-SPEC-por-c64u-onward-bound-hang` was: by hand.
     dumps = tree / "por-c64" / "WISH-SPEC-hang-captures"
     dumps.mkdir()

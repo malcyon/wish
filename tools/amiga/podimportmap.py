@@ -105,18 +105,18 @@ def _silver_blades_field(offset: int) -> tuple[str, int]:
 
     The spellbook is the one field `AmigaDeltas` does not place, because the
     Amiga packs 117 spell ids into fifteen bytes where DOS spends 117.  It
-    sits where DOS puts it, immediately after `hp_max`, and the shape's own
+    sits where DOS puts it, immediately after `hp_max`, and the deltas' own
     `spellbook_bytes` says how wide it is.
     """
-    shape = amiga_port.SILVER_BLADES_DELTAS
-    fields = {f.name: f for f in dos_port.layout_for(shape.dos)}
-    book = shape.offset(fields["hp_max"].offset) + 1
-    if book <= offset < book + shape.spellbook_bytes:
+    deltas = amiga_port.SILVER_BLADES_DELTAS
+    fields = {f.name: f for f in dos_port.layout_for(deltas.dos)}
+    book = deltas.offset(fields["hp_max"].offset) + 1
+    if book <= offset < book + deltas.spellbook_bytes:
         return "spellbook", offset - book
-    for field in dos_port.layout_for(shape.dos):
+    for field in dos_port.layout_for(deltas.dos):
         if not field.size or field.name == "spellbook":
             continue
-        at = shape.offset(field.offset)
+        at = deltas.offset(field.offset)
         if at is None:
             continue
         if at <= offset < at + field.size:

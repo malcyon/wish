@@ -60,12 +60,12 @@ def pc_files() -> dict[str, bytes]:
 
 def item_fields(node20: bytes) -> dict[str, int]:
     """The twenty file bytes read as the later-Amiga item node's fields."""
-    shape = amiga_port.SILVER_BLADES_DELTAS          # the shifts, not the title
+    deltas = amiga_port.SILVER_BLADES_DELTAS          # the shifts, not the title
     out: dict[str, int] = {}
     for f in dos_port.ITEM_LAYOUT:
         if f.offset < ITEM_NODE_BASE:
             continue                            # display text and `next`
-        at = shape.item_offset(f.offset) - ITEM_NODE_BASE
+        at = deltas.item_offset(f.offset) - ITEM_NODE_BASE
         if at + f.size > len(node20):
             continue
         out[f.name] = int.from_bytes(node20[at:at + f.size], "big")

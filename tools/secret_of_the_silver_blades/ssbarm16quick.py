@@ -221,7 +221,7 @@ def main(argv: list[str] | None = None) -> int:
             rc = 0
             return rc
 
-        run.log("probe-on-the-floor", **{k: v for k, v in
+        run.log("probe-in-the-arena", **{k: v for k, v in
                                          run.probe("combat").items()})
         run.log("driving-fight")
         result = sess.fight(budget=900.0, tactic=quick_turn)

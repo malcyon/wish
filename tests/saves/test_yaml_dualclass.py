@@ -34,7 +34,7 @@ def _specimen_disk(name: str) -> pathlib.Path:
     """A single-file `WISH-SPEC-*.D64` specimen, hash-checked.
 
     `gamedata.specimen()` is for the directory-shaped kind; this family is
-    one file plus one `.provenance.toml` beside it, the same shape
+    one file plus one `.provenance.toml` beside it, the same form
     `tests/records/test_dualclass_c64.py` already reads.
     """
     from tools.registry import specimens

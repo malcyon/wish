@@ -68,7 +68,7 @@ def test_the_steps_are_the_ones_the_sequence_calls():
     when the title's own level-up sequence `JSR`s it.
 
     Silver Blades' `$0F7C` and Curse's `$167F` are grant loops of exactly the
-    trainer's shape and neither is in a sequence, which is how both came to be
+    trainer's kind and neither is in a sequence, which is how both came to be
     read as trainer steps in the first place.
     """
     for title in sorted(KEYS):
@@ -76,9 +76,9 @@ def test_the_steps_are_the_ones_the_sequence_calls():
             pytest.skip(f"needs the {KEYS[title]} disks")
         data = trainerspells.overlay(title, "GEN")
         called = trainerspells._sequence_calls(data, title)
-        for name, _, at, shape in trainerspells.STEPS:
+        for name, _, at, kind in trainerspells.STEPS:
             if name == title:
-                assert at in called, f"{title} ${at:04X} ({shape})"
+                assert at in called, f"{title} ${at:04X} ({kind})"
         if title == "ssb":
             assert 0x0F7C not in called, "the starting spellbook is in the "\
                 "sequence after all"
@@ -92,7 +92,7 @@ def test_silver_blades_magic_user_step_is_a_menu():
     ORs the candidate rows into them, masks off what the character already
     knows, and walks the result storing one id a slot."""
     step = _steps("ssb")["magic-user"]
-    assert step["shape"] == "menu_blades"
+    assert step["kind"] == "menu_blades"
     assert step["at"] == 0x1896
     # The permanent intelligence at `0x066`, not the score in force at 0x015.
     assert step["score"] == 0x066

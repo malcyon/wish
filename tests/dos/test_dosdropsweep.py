@@ -17,11 +17,11 @@ CURSE = dos_port.CURSE_OF_THE_AZURE_BONDS
 POR = dos_port.POOL_OF_RADIANCE
 
 
-def record(shape, **values) -> bytes:
-    """A record in `shape` with the named fields set, built from the table
+def record(deltas, **values) -> bytes:
+    """A record in `deltas` with the named fields set, built from the table
     rather than sliced out of anybody's save."""
-    rec = bytearray(shape.record_size)
-    table = dos_port.FIELDS_BY_NAME_FOR[shape.key]
+    rec = bytearray(deltas.record_size)
+    table = dos_port.FIELDS_BY_NAME_FOR[deltas.key]
     for name, value in values.items():
         f = table[name]
         raw = bytes([value] * f.size) if isinstance(value, int) else value
@@ -30,8 +30,8 @@ def record(shape, **values) -> bytes:
     return bytes(rec)
 
 
-def specimen(shape, **values) -> dostailsweep.Specimen:
-    data = record(shape, **values)
+def specimen(deltas, **values) -> dostailsweep.Specimen:
+    data = record(deltas, **values)
     return dostailsweep.Specimen(pathlib.Path("synthetic-record"), data)
 
 

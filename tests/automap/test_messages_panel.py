@@ -1,7 +1,7 @@
 """`MessagesPanel` following the newest line, and when it must not.
 
 `#349 (The Messages window does not follow the newest line during a fight, so
-the log has to be dragged to be read)`. Donald's ruling settled the shape:
+the log has to be dragged to be read)`. Donald's ruling settled the design:
 *"Scroll when it's already at the bottom."* -- so the panel follows only while
 the reader has not scrolled away, and a reader who scrolled up on purpose is
 left where they put themselves.

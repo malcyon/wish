@@ -380,7 +380,7 @@ def test_killpg_refuses_our_own_group(pool):
 # started with its own session the way `tools/c64/session.py`'s `Session.launch`
 # does, kept running with nothing left holding its lease.
 #
-# The stand-in is `time.sleep(120)` in its own session -- the same shape a
+# The stand-in is `time.sleep(120)` in its own session -- the same form a
 # VICE launch takes (`start_new_session=True`, a pgid recorded in the lease),
 # with no emulator, no monitor port and no window, so this reproduces the
 # process-management defect without any of what `.claude/rules/emulator.md`
@@ -445,7 +445,7 @@ def _isolated_port_base() -> int:
 
     Far above the pool's own 6520-6575, so a VICE an agent is running cannot
     be mistaken for a slot already in use, and below
-    `/proc/sys/net/ipv4/ip_local_port_range`'s floor -- 32768 here, and 32768
+    `/proc/sys/net/ipv4/ip_local_port_range`'s minimum -- 32768 here, and 32768
     on every Linux this project has run on -- so somebody else's outgoing
     connection cannot land in it either.  The three bases the wrapper sets
     span `base` to `base + 55`, and `* 64` is what keeps two pids' spans
@@ -490,7 +490,7 @@ def test_the_claim_wrapper_probes_no_port_the_pool_hands_out():
     whole-suite failure that could not be reproduced by re-running it,
     because by then the agent's run had finished.
 
-    32768 is the ephemeral floor -- `sysctl net.ipv4.ip_local_port_range`
+    32768 is the ephemeral minimum -- `sysctl net.ipv4.ip_local_port_range`
     reads `32768 60999` here -- so a band under it is one nobody's outgoing
     connection lands in either.
     """
@@ -1027,7 +1027,7 @@ def _listen_and_pid_file(sock_path: Path, pid_file: Path) -> str:
 def test_stray_displays_ignores_a_socket_whose_owner_still_has_a_live_parent(tmp_path):
     """An ordinary launch in progress -- launch.sh's own Xephyr while
     `Session.launch()` is still its parent -- must not be reported.  Only
-    #266's actual shape, the launcher already gone, is."""
+    #266's actual case, the launcher already gone, is."""
     x11_dir = tmp_path / "X11-unix"
     x11_dir.mkdir()
     sock_path = x11_dir / "X1096"
@@ -1048,7 +1048,7 @@ def test_stray_displays_ignores_a_socket_whose_owner_still_has_a_live_parent(tmp
 
 @posix
 def test_stray_displays_reports_a_socket_whose_owner_has_been_reparented_to_init(tmp_path):
-    """#266's exact shape: the process that launched the display has already
+    """#266's exact case: the process that launched the display has already
     exited, the display itself was reparented to init, and it is still
     running with nobody watching it."""
     _needs_proc_locks()  # both read /proc; skip together where neither exists
@@ -1616,7 +1616,7 @@ def test_stage_writable_recovers_a_read_only_leftover(pool):
 def test_curserun_stage_gives_the_game_a_writable_save_disk(pool):
     """`curserun.stage` used to carry its own `writable()`; now `stage_writable`.
 
-    Same shape as `test_ssbsession_stage_gives_the_game_a_writable_save_disk`,
+    Same form as `test_ssbsession_stage_gives_the_game_a_writable_save_disk`,
     proving the move to the shared helper did not lose the behaviour.
     """
     curserun = load_tools_module("curserun")

@@ -1406,7 +1406,7 @@ def newecl_writes(from_area: int, to_area: int, disk: int | None = None,
     arrival, so setting it empty costs nothing but a reload of `WALLS00` in
     the one area that wants it, and it is the byte the whole bug turns on.
 
-    `wall_slot_pinned` is the same shape: three departing scripts --
+    `wall_slot_pinned` is the same kind of case: three departing scripts --
     `ECL06`, `ECL07`, `ECL0A` -- clear it only on the way out, which a fast
     travel skips, so a piece can keep the previous area's wall art
     (`#179`). Written unconditionally and zero.
@@ -1583,7 +1583,7 @@ def _reentry_plan(addr: fasttravel.FastTravelAddresses,
 def can_reenter(target) -> bool:
     """Can `reenter` actually set the stack pointer on this backend?
 
-    The same optional-capability shape `jump` already has: an explicit
+    The same optional-capability form `jump` already has: an explicit
     `target.reenter`, or the VICE monitor a `ViceTarget` holds. Checked
     *before* `FastTravel.run` writes anything, so a backend without either --
     a test double, or a Commodore 64 Ultimate, whose REST API reads memory

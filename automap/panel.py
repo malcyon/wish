@@ -140,7 +140,7 @@ class IconRow(QWidget):
         # there is that the badges are drawn whole and the words give way, so
         # the width has to hold. The height must not: eight of these, one per
         # party slot, would otherwise each add 13px to what the roster column
-        # insists on, which is the shape of `#135` all over again.
+        # insists on, which is `#135` all over again.
         self.setMaximumHeight(size)
         self.setFixedWidth(0)
 
@@ -226,16 +226,16 @@ class Bar(QWidget):
 # Each of these asks for exactly the width it always did -- `sizeHint` is
 # untouched, so nothing about the full-size layout moves -- and elides only
 # once it has been given less room than its text needs. `minimumSizeHint` is
-# what a layout reads for the floor, and it is the only thing that changes.
+# what a layout reads for the minimum, and it is the only thing that changes.
 
 
-def _squeezed(hint: QSize, floor: int) -> QSize:
-    """`hint` with its width capped at `floor`. Never widens anything."""
-    return QSize(min(floor, hint.width()), hint.height())
+def _squeezed(hint: QSize, minimum: int) -> QSize:
+    """`hint` with its width capped at `minimum`. Never widens anything."""
+    return QSize(min(minimum, hint.width()), hint.height())
 
 
-def shortened(hint: QSize, floor: int) -> QSize:
-    """`hint` with its height capped at `floor`. Never heightens anything.
+def shortened(hint: QSize, minimum: int) -> QSize:
+    """`hint` with its height capped at `minimum`. Never heightens anything.
 
     The height twin of `_squeezed`, and the same argument in the other axis:
     the window's minimum *height* was the sum of the row heights its bars
@@ -245,10 +245,10 @@ def shortened(hint: QSize, floor: int) -> QSize:
 
     A row that is given less height than its font wants clips rather than
     eliding, so unlike the width caps this one is only ever reached by a
-    window squeezed to its floor. Everything above the floor lays out exactly
+    window squeezed to its minimum. Everything above the minimum lays out exactly
     as it did.
     """
-    return QSize(hint.width(), min(floor, hint.height()))
+    return QSize(hint.width(), min(minimum, hint.height()))
 
 
 def _let_it_shrink(widget) -> None:
@@ -256,7 +256,7 @@ def _let_it_shrink(widget) -> None:
 
     Buttons and checkboxes ship with `QSizePolicy.Minimum`, which is not a
     minimum at all: without the shrink flag a layout takes the widget's
-    *`sizeHint`* as its floor, so overriding `minimumSizeHint` alone changes
+    *`sizeHint`* as its minimum, so overriding `minimumSizeHint` alone changes
     nothing. `Preferred` is the same policy with the shrink flag on -- it
     still asks for `sizeHint` and neither policy expands, so the full-size
     layout is unmoved.
@@ -297,7 +297,7 @@ class ElidingButton(QPushButton):
 class ElidingCheckBox(QCheckBox):
     """The same, for a checkbox whose label is a sentence."""
 
-    #: Wider than a button's floor because the box itself eats the first 20.
+    #: Wider than a button's minimum because the box itself eats the first 20.
     SQUEEZED = 96
 
     def __init__(self, *args, **kwargs):
@@ -319,7 +319,7 @@ class ElidingCheckBox(QCheckBox):
 
 
 class ElidingComboBox(QComboBox):
-    """A dropdown whose floor is not the length of the area it is showing."""
+    """A dropdown whose minimum is not the length of the area it is showing."""
 
     #: Enough for a short area name. The whole row -- maps and disk -- is the
     #: item's tooltip whatever width the box is.
@@ -346,7 +346,7 @@ class ElidingComboBox(QComboBox):
 
 
 class ElidingLabel(QLabel):
-    """A read-out that shortens rather than setting a floor under the window.
+    """A read-out that shortens rather than setting a minimum size for the window.
 
     The text a label is holding changes while the program runs -- the bottom
     strip's party effects line grows as spells land on the party -- so a label
@@ -399,8 +399,8 @@ class CardClassLabel(ElidingLabel):
     half, and the button is the one thing on the row a player has to be able
     to hit.
 
-    `SQUEEZED = 0` for the same reason as the name's: any floor measured here
-    is a floor that cuts the button on a machine with a wider font.
+    `SQUEEZED = 0` for the same reason as the name's: any minimum measured here
+    is a minimum that cuts the button on a machine with a wider font.
     """
 
     SQUEEZED = 0
@@ -426,8 +426,8 @@ class CardNameLabel(ElidingLabel):
 
     `SQUEEZED = 0` rather than a number measured here: the classes label and
     the button are both set in points, so how many pixels they take is the
-    machine's business, and any floor big enough on this one is a floor that
-    cuts the button on a machine with a wider font.
+    machine's business, and a number big enough on this one cuts
+    the button on a machine with a wider font.
     """
 
     #: The widest this name may hold the row open. Zero, deliberately.
@@ -438,9 +438,9 @@ class ReadiedLabel(ElidingLabel):
     """The card's line of what is in hand: bounded in both axes.
 
     Width is the first of the two. The item names are read off the player's
-    disk, and a card whose floor was the width of `BANDED MAIL +1, SHIELD +2,
+    disk, and a card whose minimum was the width of `BANDED MAIL +1, SHIELD +2,
     LONG SWORD +3` would put that string under the whole window (#41). The
-    floor is zero rather than `ElidingLabel`'s 44 because the condition
+    minimum is zero rather than `ElidingLabel`'s 44 because the condition
     badges share this row and are drawn at a fixed width: this line takes
     whatever they leave, however little that is. Donald settled the order --
     *"I would rather see active effects than readied items. That is a fine
@@ -448,11 +448,11 @@ class ReadiedLabel(ElidingLabel):
 
     Height is the reason for the subclass. There are eight of these, one per
     party slot, in a column that does not scroll, so a line that insisted on
-    its own height would add eight of them to the window's floor -- and the
+    its own height would add eight of them to the window's minimum -- and the
     roster is already the tallest thing on the automapper page with a full
     party. `SHORT = 0` says the line gives way *first*: it is the least
     important row on the card, and it is only ever squeezed by a window
-    already pushed to its minimum. Anywhere above that floor the line is
+    already pushed to its minimum. Anywhere above that minimum the line is
     drawn in full.
     """
 
@@ -686,7 +686,7 @@ class CharacterCard(QObject):
 
         The label holds the whole string and `ReadiedLabel` draws as much of
         it as fits, so nothing here measures a font: the truncation is the
-        painter's and the card's floor is a constant. The full list stays
+        painter's and the card's minimum is a constant. The full list stays
         readable because the label sets no tooltip of its own and so answers
         with the frame's, which already carries it.
         """
@@ -723,12 +723,12 @@ class ColumnSplitter(QObject):
       without hiding anything, so the divider is in the window on the first
       frame of a fresh start.
 
-    A column with a floor -- the roster's is the width of a card, the reading
+    A column with a minimum -- the roster's is the width of a card, the reading
     column's is `AutomapBinding.SIDE_SQUEEZED` -- is therefore either wider
-    than its floor or shut, with nothing in between. That is Qt's own
+    than its minimum or shut, with nothing in between. That is Qt's own
     collapsing and it is the behaviour Donald asked for: dragging inwards past
-    half the floor shuts the column, and dragging outwards opens it at the
-    floor again.
+    half the minimum shuts the column, and dragging outwards opens it at the
+    minimum again.
     """
 
     #: Left to right, and the order the widths are written to the settings
@@ -800,7 +800,7 @@ class ColumnSplitter(QObject):
         Called before the window is shown, which is deliberate: `setSizes`
         records what each column asked for and the splitter divides the real
         width against those the moment there is one, so the first frame the
-        user sees is already the right shape rather than the default shape
+        user sees is already the right size rather than the default size
         corrected afterwards.
         """
         if self.splitter is None:
@@ -853,7 +853,7 @@ class RosterPanel(QObject):
 
         A `QScrollArea` reports a small minimum in *both* axes. Hiding the
         height is the whole point -- eight cards in a column that could not
-        scroll put a 944px floor under the window (#135) -- but hiding the
+        scroll put a 944px minimum size for the window (#135) -- but hiding the
         width is not: with the cards behind the scroll area the roster column
         collapsed to the width of its own heading, and a card was cut off
         somewhere in the middle of the name.
@@ -866,7 +866,7 @@ class RosterPanel(QObject):
         column's own `maximumWidth` in the form until `#162` made the divider
         draggable, and a cap is the one thing a draggable column cannot have.
         What it means here is unchanged -- a card is drawn to it -- and it is
-        a floor rather than a cap in both directions: the column can be
+        a minimum rather than a cap in both directions: the column can be
         dragged wider, and Qt's own collapsing still shuts it altogether.
         """
         if self.scroll is None or self.column is None:
@@ -923,7 +923,7 @@ class BottomStrip(QObject):
         #: One icon row for the **whole roster**, above the square and the area
         #: name. It was a `QLabel` writing out `Bless   Prayer   Protection
         #: from Evil, 10' Radius`, and the width of that is what made it
-        #: unaffordable; Donald settled the shape on `#142 (The party effects
+        #: unaffordable; Donald settled the design on `#142 (The party effects
         #: line is computed every poll and shown nowhere)`: *"I think we should
         #: have ONE line for the entire roster with party effects... Icons will
         #: take up less space than text-only names of the spells. We can put
@@ -986,7 +986,7 @@ class BottomStrip(QObject):
         at all, so a rule that read only the owner byte drew nothing for the
         one party spell anybody has watched land.
 
-        **Nothing is drawn when nothing is running.** The old shape was one
+        **Nothing is drawn when nothing is running.** The old layout was one
         line per character, blank on most of them, and eight blank lines is
         what got it removed; a strip that says "party effects: none" five times
         a second is the same mistake with one line instead of eight.

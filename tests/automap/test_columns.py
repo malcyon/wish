@@ -18,7 +18,7 @@ settings file, and a divider still in the window to pull it back out with.
 **No assertion here is a pixel count.** Every one is a bound -- is this column
 shut, is it wider than it was, is there a divider with a width at all -- or a
 comparison between two measurements taken in the same run on the same machine.
-Windows draws a wider font than this desk and a column's floor is made of
+Windows draws a wider font than this desk and a column's minimum is made of
 widgets, so a number measured here would be a claim about this desk and
 nothing else.
 """
@@ -55,8 +55,8 @@ def app():
 def _window(app, settings=None):
     """A shown window on the automapper tab, wide enough for its own columns.
 
-    The width is asked of the window rather than typed in: its floor already
-    holds every column's own minimum, so the floor plus the two side columns'
+    The width is asked of the window rather than typed in: its minimum already
+    holds every column's own minimum, so the minimum plus the two side columns'
     default widths is room to spare on any machine, and a machine with a wider
     font gets a wider window rather than a squeezed one.
     """
@@ -66,9 +66,9 @@ def _window(app, settings=None):
     win = WishWindow(None, maps={}, tab=MAP_TAB, settings=settings,
                      session=Session(find=lambda pref=None: None))
     win.show()
-    floor = win.minimumSizeHint()
-    win.resize(floor.width() + ColumnSplitter.ROSTER + ColumnSplitter.SIDE,
-               floor.height())
+    minimum = win.minimumSizeHint()
+    win.resize(minimum.width() + ColumnSplitter.ROSTER + ColumnSplitter.SIDE,
+               minimum.height())
     app.processEvents()
     return win
 
@@ -125,10 +125,10 @@ def assert_opens_at_defaults(win) -> None:
     for at, default, what in (
             (ColumnSplitter.ROSTER_AT, ColumnSplitter.ROSTER, "roster"),
             (ColumnSplitter.SIDE_AT, ColumnSplitter.SIDE, "reading")):
-        floor = win.map.columns.splitter.widget(at).minimumSizeHint().width()
-        assert widths[at] == max(default, floor), (
+        minimum = win.map.columns.splitter.widget(at).minimumSizeHint().width()
+        assert widths[at] == max(default, minimum), (
             f"the {what} column opened at {widths[at]}px, against a default "
-            f"of {default} and a content floor of {floor}")
+            f"of {default} and a content minimum of {minimum}")
     assert widths[ColumnSplitter.MAP_AT] > 0
 
 
@@ -144,7 +144,7 @@ def test_the_columns_open_at_the_widths_they_always_had(app):
     asserted the two constants exactly and went red on Windows with
     `312 == 220`: a `QSplitter` will not shrink a pane below what the widgets
     in it need, and a roster card at Windows' wider font needs more than 220.
-    The constants are ours, but the floor underneath them is the machine's, so
+    The constants are ours, but the minimum underneath them is the machine's, so
     the honest claim is that a column opens at its default **unless its
     contents will not fit in it** -- and then at the narrowest they will.
     """
@@ -211,7 +211,7 @@ def test_a_column_dragged_shut_can_be_dragged_back_out(app, what):
 
 def test_the_map_cannot_be_dragged_shut(app):
     """Neither divider may leave the automapper tab with no map on it. The
-    map gives way to its own floor and stops there."""
+    map gives way to its own minimum and stops there."""
     win = _window(app)
     try:
         splitter = win.map.columns.splitter
@@ -327,7 +327,7 @@ def test_a_column_left_shut_still_has_a_divider_on_a_fresh_start(app, what):
 
 # --- a settings file somebody has edited ------------------------------------
 
-#: Every shape of nonsense a hand-edited file can hold, and the shape a future
+#: Every kind of nonsense a hand-edited file can hold, and the form a future
 #: layout change would leave behind. `None` is the ordinary first run.
 NONSENSE = {
     "nothing remembered": None,
@@ -371,7 +371,7 @@ def test_a_settings_file_that_will_not_parse_at_all_opens_a_usable_window(app):
     """`automap/config.py` already treats an unreadable or half-written file
     as "no settings yet" rather than as an error, which is the behaviour this
     wants. Asserted here because the column widths are the first setting whose
-    absence would show up as a window shape rather than as a checkbox.
+    absence would show up as a window size rather than as a checkbox.
     """
     folder = config_dir()
     folder.mkdir(parents=True, exist_ok=True)

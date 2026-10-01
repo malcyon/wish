@@ -18,9 +18,9 @@ saved game can separate them and the answer has to come out of the engine.
 `sites` is the answer: six instruction signatures, each read out of the
 shipped `GAME.OVR` rather than out of anybody's notes, and each one saying
 which byte of the pair a routine treats as the character's own permanent
-score.  `sweep` is the shape around them -- how many byte accesses in the
+score.  `sweep` is the pattern around them -- how many byte accesses in the
 overlay name each displacement -- and it is a linear scan of an undifferentiated
-byte stream, so read it as a shape and never as a count of instructions
+byte stream, so read it as a pattern and never as a count of instructions
 (`tools/dos/dosfieldrefs.py` has the same caveat at length).
 
 `read` prints both bytes of every pair in a save directory or a single
@@ -87,7 +87,7 @@ SIGNATURES: tuple[tuple[str, bytes, str], ...] = (
      "reads is (0x10, 0x1D)"),
     ("weaken",
      rb"\x26\x80\x7d\x11\x03",
-     "cmp es:[di+0x11],3: the strength drain's floor test, on the higher byte"),
+     "cmp es:[di+0x11],3: the strength drain's minimum test, on the higher byte"),
     ("weaken-store",
      rb"\x26\xfe\x4d\x11",
      "dec byte es:[di+0x11]: the drain itself, on the higher byte"),

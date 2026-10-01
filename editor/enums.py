@@ -72,7 +72,7 @@ def race_labels(game: C64Container | None = None) -> dict[int, str]:
         # Both are named MONSTER and neither is annotated: Donald's wording,
         # approved 2026-08-24. The note that used to ride on each was three
         # times the width of the longest real race, and `Race` sets the
-        # Character box's width -- which sets the header's, which is a floor
+        # Character box's width -- which sets the header's, which is a minimum
         # under the whole window (#41, #43).
         table.setdefault(0, "monster")
     return table

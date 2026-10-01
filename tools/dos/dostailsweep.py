@@ -44,7 +44,7 @@ What it does, and it reads only:
 
 `--field` takes a layout field name (`field_83_87`) or a raw
 `0xNN:len` window in *Pool of Radiance* offsets, which is then followed
-through each title's own shape.  `--per-title` breaks the partition down by
+through each title's own deltas.  `--per-title` breaks the partition down by
 title, which is what tells "constant everywhere" from "constant within each
 title and different between them".
 
@@ -183,11 +183,11 @@ class Specimen:
     def __init__(self, path: pathlib.Path, data: bytes) -> None:
         self.path = path
         self.data = data
-        self.shape = dl.deltas_for(len(data))
+        self.deltas = dl.deltas_for(len(data))
         self.built = is_built(path)
         self.digest = hashlib.sha256(data).hexdigest()[:12]
         self.paths = [path]
-        char = gdos.DosCharacter(data, deltas=self.shape)
+        char = gdos.DosCharacter(data, deltas=self.deltas)
         self.char = char
         try:
             self.name = char.name or "(unnamed)"
@@ -249,7 +249,7 @@ def collect(roots, want_built: bool,
                 continue
             if spec.built and not want_built:
                 continue
-            key = f"{spec.shape.key}:{spec.digest}"
+            key = f"{spec.deltas.key}:{spec.digest}"
             if key in seen:
                 seen[key].paths.append(path)
             else:
@@ -258,17 +258,17 @@ def collect(roots, want_built: bool,
 
 
 def window(spec: Specimen, field: str) -> bytes | None:
-    """The bytes `field` names in this specimen's own title's shape."""
+    """The bytes `field` names in this specimen's own title's deltas."""
     if ":" in field:
         head, _, length = field.partition(":")
         start = int(head, 0)
-        if spec.shape.key != "pool-of-radiance":
+        if spec.deltas.key != "pool-of-radiance":
             # A raw window is stated in Pool of Radiance offsets; following it
             # into another title would need a per-title displacement nobody
             # has measured, so say so rather than read the wrong bytes.
             return None
         return spec.data[start:start + int(length, 0)]
-    f = dl.FIELDS_BY_NAME_FOR[spec.shape.key].get(field)
+    f = dl.FIELDS_BY_NAME_FOR[spec.deltas.key].get(field)
     if f is None:
         return None
     return spec.data[f.offset:f.offset + f.size]
@@ -281,10 +281,10 @@ def show(specs: list[Specimen], field: str, per_title: bool,
         return
     keyed = collections.defaultdict(list)
     for s in specs:
-        keyed[s.shape.key].append(s)
+        keyed[s.deltas.key].append(s)
     for key in sorted(keyed):
         f = dl.FIELDS_BY_NAME_FOR[key].get(field)
-        where = f"0x{f.offset:03X}+{f.size}" if f else "not in this shape"
+        where = f"0x{f.offset:03X}+{f.size}" if f else "not in this title"
         print(f"\n  {dl.DELTAS_BY_KEY[key].title} -- {field} {where}")
         _partition(keyed[key], field, examples, indent="    ")
 
@@ -304,7 +304,7 @@ def _partition(specs, field, examples, indent="  ") -> None:
         for s in group[:examples]:
             flag = "*" if s.built else " "
             print(f"{indent}  {flag}{s.who:38s} "
-                  f"{s.shape.key:28s} {s.path.name}")
+                  f"{s.deltas.key:28s} {s.path.name}")
         if len(group) > examples:
             print(f"{indent}  ... and {len(group) - examples} more")
 
@@ -338,7 +338,7 @@ def main(argv=None) -> int:
     fields = args.field or ["field_83_87", "field_10c_10f"]
 
     specs, skipped = collect(roots, args.built, args.foreign)
-    by_title = collections.Counter(s.shape.key for s in specs)
+    by_title = collections.Counter(s.deltas.key for s in specs)
     built = sum(1 for s in specs if s.built)
     print(f"{len(specs)} distinct records "
           f"({len(specs) - built} engine-written, {built} ours) under:")
@@ -351,9 +351,9 @@ def main(argv=None) -> int:
               f"size as a title read here, and not the same id space")
 
     if args.list:
-        for s in sorted(specs, key=lambda s: (s.shape.key, s.name)):
+        for s in sorted(specs, key=lambda s: (s.deltas.key, s.name)):
             print(f"  {'*' if s.built else ' '}{s.who:38s} "
-                  f"{s.shape.key:28s} {s.digest} {s.path}")
+                  f"{s.deltas.key:28s} {s.digest} {s.path}")
         return 0
 
     for field in fields:

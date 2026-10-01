@@ -1,7 +1,7 @@
 """`automap.amiga.WinuaePipe`: the route that reads WinUAE without stopping it.
 
 Every test here replaces the one thing that touches Windows -- the `runner`
-callable -- with a fake that answers the shape the real guest was measured
+callable -- with a fake that answers the form the real guest was measured
 answering on 2026-09-08 against WinUAE 6.0.3: `<<connect_ms>>`, one `<<reply>>`
 a command carrying base64 of the debugger's own text, then the `<<name>>`
 markers for any dumped file.

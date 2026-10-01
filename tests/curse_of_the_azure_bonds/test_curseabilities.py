@@ -3,7 +3,7 @@ abilities_second is read as a list and written as a dict).
 
 `goldbox/c64_codec.py`'s reader built `abilities_second` as `list(...)` --
 seven raw bytes with no name attached -- and the writer, at the
-`shape.second_abilities` branch, calls `.get(n, 0)` on it expecting the dict
+`deltas.second_abilities` branch, calls `.get(n, 0)` on it expecting the dict
 `goldbox/neutral.py`'s vocabulary describes: ability name -> the second copy
 of that score. Reading a Curse record and writing it straight back raised
 `AttributeError: 'list' object has no attribute 'get'` before it reached a

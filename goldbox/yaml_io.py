@@ -22,7 +22,7 @@ and the damage bonus. Those appear under `combat:`, together with the three
 bytes at `+0x03`–`+0x05` whose meaning is not established, and are the only part
 of `SAVEDGAME1` this module touches. Curse of the Azure Bonds and the four
 titles after it write **one** file with the same roster as its last page; which
-shape a disk has is `goldbox/c64_port.py`'s business, not this module's.
+form a disk has is `goldbox/c64_port.py`'s business, not this module's.
 
 **The document records the title it came from**, as `game:`, and an import into
 a different title's disk is refused. The container geometry differs between them
@@ -1109,8 +1109,8 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
                         f"{', '.join(sorted(known_classes))}")
             given = dict(given_raw)
             if given != exported_former:
-                shape = c64_codec.deltas_for(game)
-                if not shape.dual_class:
+                deltas = c64_codec.deltas_for(game)
+                if not deltas.dual_class:
                     raise ValueError_(
                         f"slot {slot} {who}: {game.title} has no field for "
                         f"a former class; former_levels must be left as "

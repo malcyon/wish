@@ -11,7 +11,7 @@ question is whether anything in a fight cares.
 lowest number the game's own THAC0 table can produce is 39 -- THAC0 21, a
 level-1 magic-user or thief -- before a strength penalty of at most -3, so
 nothing the engine computes for anybody reaches it.  A roster block still
-reading `0x0A` on the combat floor is a stored value the fight is using; one
+reading `0x0A` on the combat arena is a stored value the fight is using; one
 reading `thac0_base` plus the strength bonus is the engine's own arithmetic
 and the stored byte is dead.  `tools/c64/c64strength.py` spoils Pool of Radiance's
 roster the same way for `#277 (A DOS character converted to the C64 loses the
@@ -44,7 +44,7 @@ advance, so it takes an experience total as a third input:
 save, boots, loads the party through the game's own `LOAD SAVED GAME`, and
 reads the roster page at `$6700` and the resident record at `$7C00` at every
 stage -- after the load, after a training, after a `VIEW` sheet, on the combat
-floor and after the fight.  Every reading goes to `thac0.jsonl` as it is
+arena and after the fight.  Every reading goes to `thac0.jsonl` as it is
 taken, because a run that dies half way still has to have said what it saw.
 
 Nothing is written outside `--out` and the pool slot's own directory; the
@@ -744,9 +744,9 @@ def drive(args) -> int:
             if run.in_combat():
                 break
             sess.settle(4.0)
-        run.dump("combat-floor")
+        run.dump("combat-arena")
         run.log("combat", on_the_floor=run.in_combat(), row24=run.row24())
-        run.reading("combat-floor")
+        run.reading("combat-arena")
         rc = 0 if run.in_combat() else 2
 
         # `VIEW` on the combat bar draws the acting character's own sheet, so

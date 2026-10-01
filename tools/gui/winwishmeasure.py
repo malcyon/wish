@@ -82,9 +82,9 @@ def main(root: pathlib.Path, save: pathlib.Path) -> int:
             win.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
             win.show()
             app.processEvents()
-            floor = win.minimumSizeHint()
+            minimum = win.minimumSizeHint()
             roster = win.editor._child("roster")
-            rows.append((which, extra, floor.width(), floor.height(),
+            rows.append((which, extra, minimum.width(), minimum.height(),
                          getattr(roster, "_natural", None),
                          roster.minimumWidth()))
             win.close()

@@ -293,7 +293,7 @@ def test_main_reports_a_failed_worktree_as_one_line_not_a_traceback(
 
 
 def test_worktree_is_removed_even_when_the_run_inside_it_fails(tmp_path):
-    """The shape `main()` relies on: `add_worktree` then a failing step,
+    """The sequence `main()` relies on: `add_worktree` then a failing step,
     inside `try`/`finally`, still leaves no worktree behind."""
     repo = classdiagram.REPO
     wt = classdiagram.add_worktree(repo)

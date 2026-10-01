@@ -1001,7 +1001,7 @@ def test_a_field_a_save_slot_does_not_carry_draws_blank(app, newsave5):
 def test_the_same_fields_read_real_values_off_a_full_record(app, tmp_path):
     """The twin of the test above: a roster disk carries every byte, so none
     of these fields is ever absent there -- `PORSAVE10.D64` is a real
-    specimen of exactly this shape."""
+    specimen of exactly this form."""
     from editor.window import EditorBinding
     disk = _standalone_disk(tmp_path, hp_current=9, roster_in_use=1,
                              party_order=3, roster_movement=9,
@@ -1581,7 +1581,7 @@ def test_a_spell_list_is_wide_enough_for_the_longest_name(editor):
 
     The rule and not the pixel count: whatever the font, each list is at least
     as wide as its longest line plus the frame and the scroll bar. The
-    spellbook's tick box makes it wider still, so this is a floor for both.
+    spellbook's tick box makes it wider still, so this is a minimum for both.
     """
     from PyQt6.QtWidgets import QStyle
 
@@ -1708,9 +1708,9 @@ def test_the_icon_picker_offers_the_game_s_own_two_lists(app, editor):
     from editor.partspicker import PartsPicker
     parts = editor.icon_parts
     assert parts is not None, "no disk carrying SPELLE64 was found"
-    shape = parts.compose("small", 0, 1)
-    colours = parts.colours_for(shape, {k: 1 for k in range(7)}, bytes(18))
-    picker = PartsPicker(parts, editor.charset, shape, colours)
+    figure = parts.compose("small", 0, 1)
+    colours = parts.colours_for(figure, {k: 1 for k in range(7)}, bytes(18))
+    picker = PartsPicker(parts, editor.charset, figure, colours)
     assert picker.weapons.count() == 28
     assert picker.heads.count() == 14
 
@@ -1770,7 +1770,7 @@ def test_race_zero_is_named_rather_than_left_blank():
 
     Named `MONSTER` and not annotated since 2026-08-24: the note it used to
     carry was wider than the longest real race, and `Race` is what sets the
-    Character box's width -- and so the header's, which is a floor under the
+    Character box's width -- and so the header's, which is a minimum size for the
     whole window (#41, #43).
     """
     from editor.enums import race_names
@@ -2233,7 +2233,7 @@ BOXES = ("box_identity", "box_combat", "box_misc", "box_abilities",
 #: One box, since round eight. The combat icon spent round five on the Stats
 #: tab, came back in round six and has gone down again: it is 166px of header
 #: at every font size on every platform -- `IconEditor` is `FRAME_WIDE * ZOOM`,
-#: 48 squares at 3 pixels -- and pure floor, because nothing in it can read a
+#: 48 squares at 3 pixels -- and pure minimum, because nothing in it can read a
 #: wider window. Taking it off the header took 172px off the whole window's
 #: minimum, which is what brought the widest party a save can hold inside a
 #: 1366 screen at Donald's own font. Character Traits was tried here too and
@@ -2469,7 +2469,7 @@ def _test_the_header_s_spare_width_goes_to_the_roster_then_to_a_spacer(app, save
     That order is the fix, not decoration. A `QBoxLayout` short of room shrinks
     every item that has anything to give, in proportion, so while the roster
     hinted its contents Character was squeezed alongside it and drew one form
-    column over the other. The roster hints its floor and grows from there, and
+    column over the other. The roster hints its minimum and grows from there, and
     the row is in the layout's *expanding* case at every width that matters.
 
     Giving the spacer the stretch as well was measured and is worse: at 1366
@@ -2507,8 +2507,8 @@ def _test_the_header_s_spare_width_goes_to_the_roster_then_to_a_spacer(app, save
     assert header.sectionResizeMode(NAME_COLUMN) != header.ResizeMode.Stretch
     from editor.rosterview import ROSTER_MIN_WIDTH
     assert view.minimumWidth() == min(view.maximumWidth(), ROSTER_MIN_WIDTH), (
-        "the roster's ceiling is its own five columns and its floor is a "
-        "constant -- or its columns, when a party is narrower than the floor, "
+        "the roster's ceiling is its own five columns and its minimum is a "
+        "constant -- or its columns, when a party is narrower than the minimum, "
         "which this one is")
     # And the column really is a name's width rather than a window's.
     from goldbox.layout import NAME_SIZE
@@ -2522,18 +2522,18 @@ def _test_the_roster_elides_a_name_rather_than_widening_the_window(app, party):
 
     The roster was the last widget in the header whose minimum was the width
     of the strings it happened to be holding, and the header does not scroll,
-    so that minimum was a floor under the whole window that followed the UI
+    so that minimum became a minimum size for the whole window and changed with the UI
     font: 1093px at the base font here, 1672 at ten points more, against a
     1366-wide screen. It gives the width up instead.
 
-    What is asserted is the shape Donald approved, in order:
+    What is asserted is the design Donald approved, in order:
 
     * wide enough, and the roster is its five columns at their contents, which
       is what it has always been -- the same pixels, verified against
       screenshots taken before and after the change;
     * squeezed, and `Name` alone absorbs the shortfall; `Race`, `Class`, `AC`
       and `HP` do not move;
-    * and the window's floor does not know any of it happened.
+    * and the window's minimum does not know any of it happened.
 
     The party is the synthetic one, so this runs on a machine with no game
     (#70), and it is the widest a save can hold, so `Name` really is 20
@@ -2548,7 +2548,7 @@ def _test_the_roster_elides_a_name_rather_than_widening_the_window(app, party):
     view = w.roster
     header = view.horizontalHeader()
     natural = view.maximumWidth()
-    floor = w.root.minimumSizeHint().width()
+    minimum = w.root.minimumSizeHint().width()
 
     # "Room to spare" has to be measured, not guessed. `natural + 900` was
     # enough on Linux and not on Windows, where Character's own hint is
@@ -2562,7 +2562,7 @@ def _test_the_roster_elides_a_name_rather_than_widening_the_window(app, party):
     assert view.width() == natural, "a window with room to spare changes nothing"
     wide = [header.sectionSize(i) for i in range(header.count())]
 
-    w.root.resize(floor, 700)
+    w.root.resize(minimum, 700)
     app.processEvents()
     assert view.width() == ROSTER_MIN_WIDTH, (
         "the roster did not give the width up")
@@ -2579,9 +2579,9 @@ def _test_the_roster_elides_a_name_rather_than_widening_the_window(app, party):
     from goldbox.layout import NAME_SIZE
     assert tight[NAME_COLUMN] < view.fontMetrics().horizontalAdvance(
         "W" * NAME_SIZE)
-    assert w.root.minimumSizeHint().width() == floor, (
-        "the floor moved while the window was being resized")
-    assert w.width() == floor, "the window refused to be made as small as it says"
+    assert w.root.minimumSizeHint().width() == minimum, (
+        "the minimum moved while the window was being resized")
+    assert w.width() == minimum, "the window refused to be made as small as it says"
 
 
 def _drag_name_divider(view, x_after: int) -> None:
@@ -2606,7 +2606,7 @@ def test_dragging_the_name_divider_wider_leaves_it_where_the_user_put_it(
     `_share_width` only runs from `resizeEvent` and from `measure`, and a
     header-section drag fires neither -- `_share_width`'s own docstring
     already says this is the chosen stance rather than an oversight. What was
-    never asserted is that the stance holds, and that #71's floor -- built
+    never asserted is that the stance holds, and that #71's minimum -- built
     from `minimumSizeHint`, not from a section width -- does not move because
     of it.
     """
@@ -2617,7 +2617,7 @@ def test_dragging_the_name_divider_wider_leaves_it_where_the_user_put_it(
     w.root.show()
     app.processEvents()
     header = w.roster.horizontalHeader()
-    floor = w.root.minimumSizeHint()
+    minimum = w.root.minimumSizeHint()
 
     wide_target = header.sectionSize(NAME_COLUMN) + 120
     _drag_name_divider(w.roster, wide_target)
@@ -2626,8 +2626,8 @@ def test_dragging_the_name_divider_wider_leaves_it_where_the_user_put_it(
     app.processEvents()
     assert header.sectionSize(NAME_COLUMN) == wide_target, (
         "something undid the drag once events were processed")
-    assert w.root.minimumSizeHint() == floor, (
-        "the window's floor moved because of a section drag")
+    assert w.root.minimumSizeHint() == minimum, (
+        "the window's minimum moved because of a section drag")
 
 
 def test_dragging_the_name_divider_narrower_leaves_it_where_the_user_put_it(
@@ -2647,7 +2647,7 @@ def test_dragging_the_name_divider_narrower_leaves_it_where_the_user_put_it(
     w.root.show()
     app.processEvents()
     header = w.roster.horizontalHeader()
-    floor = w.root.minimumSizeHint()
+    minimum = w.root.minimumSizeHint()
 
     _drag_name_divider(w.roster, 5)
     landed = header.sectionSize(NAME_COLUMN)
@@ -2657,14 +2657,14 @@ def test_dragging_the_name_divider_narrower_leaves_it_where_the_user_put_it(
     app.processEvents()
     assert header.sectionSize(NAME_COLUMN) == landed, (
         "something undid the narrow drag once events were processed")
-    assert w.root.minimumSizeHint() == floor, (
-        "the window's floor moved because of a section drag")
+    assert w.root.minimumSizeHint() == minimum, (
+        "the window's minimum moved because of a section drag")
 
 
 #: The screen `tests/wish/test_mapscale.py` holds the whole window to, and the one
 #: Donald asked for in round five: a 1366x768 laptop. It used to be
 #: 1280x720 in earlier rounds before the UI redesign. The editor has to fit
-#: inside it with room to spare, or it becomes the floor instead of the map.
+#: inside it with room to spare, or it becomes the minimum instead of the map.
 SMALL_LAPTOP = (1366, 768)
 
 
@@ -2688,7 +2688,7 @@ def test_the_sheet_is_not_a_floor_under_the_window(app, save):
 
     See `test_the_header_fits_its_width_budget` below, which is the
     arithmetic, and `test_character_is_two_columns_the_way_donald_drew_it`,
-    which is the shape.
+    which is the design.
 
     What is left tracking the font is the roster, which is sized from the
     names it holds: 349px at the default UI font, 446 at three points more and
@@ -2696,7 +2696,7 @@ def test_the_sheet_is_not_a_floor_under_the_window(app, save):
     difference between the numbers above, and it is not measured by CI,
     because every test that opens a save skips without the disks.
 
-    The floor is not zero because a box of spin boxes cannot shrink, which is
+    The minimum is not zero because a box of spin boxes cannot shrink, which is
     why the scroll area survived the tabs and merely moved inside them.
 
     The assertions are relations wherever they can be, because a number
@@ -2709,23 +2709,23 @@ def test_the_sheet_is_not_a_floor_under_the_window(app, save):
     from editor.window import EditorBinding
     w = EditorBinding(make_root(), str(save))
     w.root.show()
-    floor = w.root.minimumSizeHint()
-    assert floor.width() <= SMALL_LAPTOP[0]
-    assert floor.height() <= SMALL_LAPTOP[1]
-    # The tallest tab page wants more height than the whole window's floor
+    minimum = w.root.minimumSizeHint()
+    assert minimum.width() <= SMALL_LAPTOP[0]
+    assert minimum.height() <= SMALL_LAPTOP[1]
+    # The tallest tab page wants more height than the whole window's minimum
     # gives it, so the scroll areas are still doing the work. Measured against
     # the page and not against the tallest single box since round seven:
     # Miscellaneous was 397px of one box and dissolving it left nothing on the
-    # sheet taller than the header, which is 202 of the floor's 400.
+    # sheet taller than the header, which is 202 of the minimum's 400.
     pages = ("page_stats", "page_inventory", "page_spells")
     tallest = max(w._child(name).minimumSizeHint().height() for name in pages)
-    assert floor.height() < tallest
+    assert minimum.height() < tallest
     # Every box is still on the form -- a split that dropped one would be
     # silent, since a field with no widget is simply not shown.
     assert {b.objectName() for b in w.root.findChildren(QGroupBox)} >= set(BOXES)
 
 
-#: Donald's arrangement, left column beside right. Pinned as a shape rather
+#: Donald's arrangement, left column beside right. Pinned as a layout rather
 #: than as a height: the header does not scroll, so a Character reflowed back
 #: into one column of eleven would be twice as tall for no measurement to
 #: catch.
@@ -2804,7 +2804,7 @@ def _test_miscellaneous_is_gone_and_its_fields_are_grouped(app, save):
 def _test_no_two_widgets_in_character_overlap_at_its_floor(app, save):
     """#71, and the test the issue asked for.
 
-    The header is capped so the window's floor stops following the UI font,
+    The header is capped so the window's minimum stops following the UI font,
     and at a Windows-sized font Character wants nearly twice the cap. Round
     six let the layout squeeze both form columns below their own minimums:
     the left column's labels lost all their width and vanished, and the right
@@ -2861,10 +2861,10 @@ def _test_no_two_widgets_in_character_overlap_at_its_floor(app, save):
 #:
 #: Round four derived the same budget from the automapper's 836 and got 422.
 #: That 836 is measured with nothing open (#63): with a save loaded the
-#: automapper is not the floor and the editor is, so the screen is the ceiling
+#: automapper is not the minimum and the editor is, so the screen is the ceiling
 #: that governs and the screen is what this is taken from.
 #:
-#: The 446 is history since #71 -- the roster's floor is a constant 440 at
+#: The 446 is history since #71 -- the roster's minimum is a constant 440 at
 #: every font now, so the budget could be derived exactly and would come to
 #: 814. It is left at 808 because six pixels of a budget nothing is near does not
 #: justify a number changing under a reader who goes looking for where 446 came
@@ -2900,7 +2900,7 @@ def _header_cost(app, save, extra: int = 3) -> int:
 
 
 def test_the_header_fits_its_width_budget(app, party):
-    """The header does not scroll, so every pixel in it is a floor under the
+    """The header does not scroll, so every pixel in it is a minimum size for the
     whole window -- and every widget in it is sized from font metrics, which
     is the mechanism #41 was opened to remove.
 
@@ -2930,7 +2930,7 @@ def test_the_header_fits_its_width_budget(app, party):
     -- and the roster is the next thing that would have to give.
 
     Every box in the header and not Character by name, because the budget is
-    what the header costs. A second one added without a floor of its own would
+    what the header costs. A second one added without a minimum of its own would
     pass a test that measured only the first -- which is how the combat icon's
     166px went unbudgeted through round five.
 
@@ -2958,17 +2958,17 @@ def test_the_header_fits_its_width_budget_on_a_real_save(app, save, party):
 @game_disks
 def test_the_header_boxes_do_not_widen_with_the_ui_font(app, save):
     """Every box in the header is sized from font metrics, and the header does
-    not scroll, so left alone each of them is a floor under the whole window
+    not scroll, so left alone each of them is a minimum size for the whole window
     that follows the font -- the mechanism #41 was opened to remove.
 
     Character is 521px wide at the default UI font here, 648 at three points
     more and 874 at eight. It is given an explicit minimum instead, which
-    `qSmartMinSize` takes in preference to the hint, and the floor stops
+    `qSmartMinSize` takes in preference to the hint, and the minimum stops
     moving.
 
     The combat icon used to be held the same way and is not in the header any
     more. It was the cheap box -- `IconEditor` is 144px of fixed pixels at
-    every font -- and it was still 166px of floor that nothing could ever read,
+    every font -- and it was still 166px of minimum that nothing could ever read,
     which is why round eight moved it out rather than capping it again.
 
     Pinned as a relation between font sizes rather than as a number, because
@@ -2994,7 +2994,7 @@ def test_the_header_boxes_do_not_widen_with_the_ui_font(app, save):
                 # Explicitly set, not merely hinted: it is the explicit one
                 # that `qSmartMinSize` takes, and a box left to its hint is
                 # exactly what failed on Windows.
-                assert box.minimumWidth() > 0, f"{name} has no floor of its own"
+                assert box.minimumWidth() > 0, f"{name} has no minimum of its own"
     finally:
         app.setFont(base)
     for name, widths in got.items():
@@ -3005,17 +3005,17 @@ def _test_the_editors_own_floor_does_not_follow_the_ui_font(app):
     """The Linux-runnable half of `tests/wish/test_mapscale.py`'s #41 guarantee,
     and the test that would have caught round five.
 
-    That one measures the whole window, where the automapper's own floor is
+    That one measures the whole window, where the automapper's own minimum is
     usually the larger of the two and hides what the editor is doing. This
     one measures the editor alone, with nothing open -- which is the state CI
     can reach without the disks -- and at eight points of extra font, which is
     roughly where Windows' base UI font measures.
 
     Round five put ten fields and their labels in a header that does not
-    scroll, and on Windows CI the whole window's floor went from 1036 to 1304
+    scroll, and on Windows CI the whole window's minimum went from 1036 to 1304
     with three points of font: #41's guarantee broken, and 1304 over the
     1366 screen as well. Here the same box goes from 521 to 874 and the
-    editor's floor does not move, because the header and the button row above
+    editor's minimum does not move, because the header and the button row above
     it are both held to constants.
 
     No save, so no `@game_disks`: this has to run on a machine without the
@@ -3034,7 +3034,7 @@ def _test_the_editors_own_floor_does_not_follow_the_ui_font(app):
             got.append(EditorBinding(make_root(), None).root.minimumSizeHint().width())
     finally:
         app.setFont(base)
-    assert got[0] == got[1], f"the editor's floor followed the font: {got}"
+    assert got[0] == got[1], f"the editor's minimum followed the font: {got}"
 
 
 @game_disks
@@ -3172,7 +3172,7 @@ def test_backstab_reads_a_dual_classed_humans_regained_former_level(tmp_path):
     means `member.record` -- the sheet's C64-shaped copy -- already carries
     HERO1's regained thief level in the current-class slot the way the C64
     itself would, which is what makes ×8 the expected answer computed the
-    honest way: DOS never holds it there, so the true DOS shape is
+    honest way: DOS never holds it there, so the true DOS form is
     `levels={"fighter": 30}`, `former_levels={"thief": 25}`, with no thief
     entry in `levels` at all.
 
@@ -3396,8 +3396,8 @@ def test_the_roster_at_its_natural_width_has_no_vertical_scrollbar_allowance(
         win.show()
         app.processEvents()
         view = win.editor.roster
-        floor = win.minimumSizeHint()
-        win.resize(floor.width() + view.maximumWidth(), floor.height())
+        minimum = win.minimumSizeHint()
+        win.resize(minimum.width() + view.maximumWidth(), minimum.height())
         app.processEvents()
 
         row = win.editor.root.findChild(QHBoxLayout, "header_row")
@@ -3435,7 +3435,7 @@ def test_the_roster_at_its_natural_width_has_no_vertical_scrollbar_allowance(
         app.processEvents()
         squeezed = [header.sectionSize(column)
                     for column in range(view.model().columnCount())]
-        assert win.minimumSizeHint() == floor
+        assert win.minimumSizeHint() == minimum
         assert squeezed[:NAME_COLUMN] == wide[:NAME_COLUMN]
         assert squeezed[NAME_COLUMN + 1:] == wide[NAME_COLUMN + 1:]
         assert squeezed[NAME_COLUMN] < wide[NAME_COLUMN]
@@ -3460,7 +3460,7 @@ def test_the_roster_at_its_natural_width_has_no_vertical_scrollbar_allowance(
             f"{vertical.maximum()}), rows="
             f"{[(row, top, top + height) for row, top, height in rows]}")
 
-        # The window floor is constant, but fixed columns and Qt's Name floor
+        # The window minimum is constant, but fixed columns and Qt's Name minimum
         # follow font metrics.  A bar is legitimate only after Name reaches it.
         assert horizontal.isVisible() == overflow, geometry
         assert (horizontal.maximum() > 0) == overflow, geometry
@@ -3475,7 +3475,7 @@ def test_the_roster_at_its_natural_width_has_no_vertical_scrollbar_allowance(
         assert not view.verticalScrollBar().isVisible()
         assert view.verticalScrollBar().maximum() == 0, geometry
 
-        win.resize(wide_window_width, floor.height())
+        win.resize(wide_window_width, minimum.height())
         app.processEvents()
         assert [header.sectionSize(column)
                 for column in range(view.model().columnCount())] == wide
@@ -3536,9 +3536,9 @@ def test_the_scroll_bar_does_not_eat_the_rosters_last_row(app, party, extra):
     Six points of extra UI font is where it starts here and ten is roughly a
     Windows base font. It cannot happen at the base font at any width the
     layout permits, which is why the +0 case is a control rather than the
-    test: the roster's floor of 440 clears its four fixed columns' 356.
+    test: the roster's minimum of 440 clears its four fixed columns' 356.
 
-    **The window is squeezed to its own floor rather than to 1366.** The issue
+    **The window is squeezed to its own minimum rather than to 1366.** The issue
     measured it in a 1366-wide window, and 1366 is a measurement of this
     machine's fonts as much as of the screen; asking Qt to clamp a width of 1
     puts the roster on `ROSTER_MIN_WIDTH` wherever this runs, which is the
@@ -3562,7 +3562,7 @@ def test_the_scroll_bar_does_not_eat_the_rosters_last_row(app, party, extra):
                        session=Session(find=lambda pref=None: None))
         w.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
         w.show()
-        w.resize(1, 900)                    # Qt clamps to the window's own floor
+        w.resize(1, 900)                    # Qt clamps to the window's own minimum
         app.processEvents()
         view = w.editor.roster
         room = view.viewport().height()
@@ -3800,7 +3800,7 @@ def test_a_fill_byte_keeps_the_tenth_slot_and_costs_a_place():
 
 def test_removing_a_trait_closes_the_gap_behind_it():
     """The game seeds from slot 0 upward and `SPELLE04` scans for the first
-    free slot, so a hole in the middle is a shape no record the game wrote
+    free slot, so a hole in the middle is a form no record the game wrote
     has. Removing the first of three leaves two, packed."""
     from editor.effects import EffectsView
 
@@ -4532,10 +4532,10 @@ def _effects_floor(app, party, extra: int):
     try:
         w = EditorBinding(make_root(), str(party))
         w.root.show()
-        floor = w.root.minimumSizeHint()
+        minimum = w.root.minimumSizeHint()
         box = w._child("box_active_effects")
         panel, roster = w._child("active_effects"), w.roster
-        result = (floor, box.minimumWidth(), panel.minimumWidth(),
+        result = (minimum, box.minimumWidth(), panel.minimumWidth(),
                   panel.maximumWidth(), panel.maximumHeight(),
                   roster.maximumHeight())
         w.root.close()
@@ -4545,10 +4545,10 @@ def _effects_floor(app, party, extra: int):
 
 
 def test_the_effects_panel_is_not_a_floor_under_the_window(app, party):
-    """The header does not scroll, so anything standing in it is a floor under
+    """The header does not scroll, so anything standing in it is a minimum size for
     the whole window -- and this panel's widest line is a sentence rather than
     a field, so it costs more than a field would. Its two column headings
-    alone want 430px, which on this machine put the editor's floor 12px past
+    alone want 430px, which on this machine put the editor's minimum 12px past
     Donald's screen; it keeps `ACTIVE_EFFECTS_MIN_WIDTH` and elides below
     that, and grows with the window above it.
 
@@ -4581,18 +4581,18 @@ def test_the_effects_panel_is_not_a_floor_under_the_window(app, party):
     fonts = (0, 3, 6, 10)
     results = [_effects_floor(app, party, extra) for extra in fonts]
 
-    for extra, (floor, *_rest) in zip(fonts, results):
-        assert floor.width() <= SMALL_LAPTOP[0], f"+{extra}pt"
-        assert floor.height() <= SMALL_LAPTOP[1], f"+{extra}pt"
+    for extra, (minimum, *_rest) in zip(fonts, results):
+        assert minimum.width() <= SMALL_LAPTOP[0], f"+{extra}pt"
+        assert minimum.height() <= SMALL_LAPTOP[1], f"+{extra}pt"
 
-    widths = [floor.width() for floor, *_rest in results]
+    widths = [minimum.width() for minimum, *_rest in results]
     assert widths == [widths[0]] * len(fonts), (
-        "the window's own floor grew with the font: "
+        "the window's own minimum grew with the font: "
         f"{dict(zip(fonts, widths))}")
 
     box_widths = [box_width for _floor, box_width, *_rest in results]
     assert box_widths == [ACTIVE_EFFECTS_MIN_WIDTH] * len(fonts), (
-        "the box around the panel is not held to its own floor: "
+        "the box around the panel is not held to its own minimum: "
         f"{dict(zip(fonts, box_widths))}")
 
     _, _, panel_min, panel_max, panel_max_height, roster_max_height = results[0]
@@ -5025,7 +5025,7 @@ def test_a_dos_party_of_seven_files_is_bounded_by_a_party_size_of_six(tmp_path):
 
 def test_a_dos_party_bounds_by_a_pty_container_when_there_is_no_dat(tmp_path):
     """Pins the suffix lookup: with no `SAVGAMA.DAT`, a `SAVGAMA.PTY` (Pools
-    of Darkness' container shape) is read instead. Fails today, same as
+    of Darkness' container form) is read instead. Fails today, same as
     above."""
     from goldbox import dos_codec, dos_port, dos_savegame
     _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE,

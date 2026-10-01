@@ -300,7 +300,7 @@ class C64Deltas:
     #: predicate here reintroduced the defect `docs/50-experiments.md`'s "A
     #: losslessness bug, found by taking the NPCs seriously" already fixed
     #: once: a Pool of Radiance record whose bits and code legitimately
-    #: disagree -- the `DWARVEN FIGHTER` shape -- came out of `read` with a
+    #: disagree -- the `DWARVEN FIGHTER` case -- came out of `read` with a
     #: fabricated code nobody wrote.
     class_code_repairable: bool = False
 
@@ -2064,7 +2064,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         emit(forms, "attack_forms", 0x0D9, 8)
 
     # -- computed, not copied ------------------------------------------------
-    # `w.get`, not `char.get`: the floor applies to a derivation as much as
+    # `w.get`, not `char.get`: the minimum applies to a derivation as much as
     # to a copy, so a refused race yields infravision 0 and not a value
     # computed from a grade this conversion would not write.
     rec.set("infravision", _infravision(char.game, w.get("race", 0)))
@@ -3377,7 +3377,7 @@ READ_TARGETS: dict[str, str] = (
                         "(#258)",
        "dual_class_slot": "with dual_class_level, read as neutral "
                           "former_levels -- named by the class the slot "
-                          "belongs to -- in a title whose shape has "
+                          "belongs to -- in a title whose layout has "
                           "dual_class and only when dual_class_level is "
                           "non-zero; a slot naming no class is warned about "
                           "rather than guessed at",
@@ -3914,7 +3914,7 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     # -- which of the eight loaded combat pictures is this character's -------
     # `party_order` is at 0x10D, past the 256 a slot stores, so `DIRECT`'s
     # copy above fires only for a 580-byte export and never for a save -- the
-    # third field in a row with that shape, after `roster_in_use` and
+    # third field in a row with that pattern, after `roster_in_use` and
     # `combat_side` (#282, the sibling of #281).  The roster block keeps its
     # own copy at +0x0D, which `goldbox.savegame.RosterBlock.slot_index`
     # already reads, so a save delivers the value the game itself stored
@@ -4024,10 +4024,10 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     #
     # **Gated on `deltas.class_code_repairable`, Curse only.** A blanket,
     # title-agnostic predicate here once fired on any self-contradiction at
-    # all, which is exactly the shape `docs/50-experiments.md`'s "A
+    # all, which is exactly the case `docs/50-experiments.md`'s "A
     # losslessness bug, found by taking the NPCs seriously" already
     # condemned once: a Pool of Radiance record whose bits and code
-    # legitimately disagree -- `DWARVEN FIGHTER`'s own shape -- came out
+    # legitimately disagree -- `DWARVEN FIGHTER`'s own case -- came out
     # with a fabricated code nobody wrote. Silver Blades never writes the
     # byte at all, so what its own creation code leaves there is
     # UNMEASURED and repairing it would be inventing a value rather than

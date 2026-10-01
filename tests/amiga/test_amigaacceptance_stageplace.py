@@ -134,10 +134,10 @@ def test_the_cli_refuses_a_bad_place_and_a_place_without_published_disk_one(tmp_
 
 def _silver_blades() -> bytes:
     """The synthetic Silver Blades save, made a party that has set out in area 4."""
-    shape = amiga_savegame.SILVER_BLADES
+    container = amiga_savegame.SILVER_BLADES
     data = bytearray(synthetic_amiga.synthetic_silver_blades(("ALPHA",)))
     for address, value in ((0x49F2, 4), (0x49E6, 1), (0x49C5, 16), (0x4FE1, 255)):
-        at = shape.vm_offset(address)
+        at = container.vm_offset(address)
         data[at:at + 2] = value.to_bytes(2, "big")
     return bytes(data)
 

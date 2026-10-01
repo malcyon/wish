@@ -11,7 +11,7 @@ this machine has ever had more than sixteen spells memorised.
     tools/c64/memorisedwidth.py secret-of-the-silver-blades --sites
     tools/c64/memorisedwidth.py champions-of-krynn --disks DIR
 
-The shape it looks for, once per title:
+The pattern it looks for, once per title:
 
     LDX #$50  /  LDA <record>+0x020,X          Pool of Radiance
     LDY #$44  /  LDA <record>+0x020,Y          Curse of the Azure Bonds

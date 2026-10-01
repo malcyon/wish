@@ -58,7 +58,7 @@ def _pod_disk(tmp_path):
 
 
 def _dos_folder(tmp_path):
-    """Just real enough for `Source.detect` to name its shape."""
+    """Just real enough for `Source.detect` to name its deltas."""
     folder = tmp_path / "dos"
     folder.mkdir()
     (folder / "SAVGAMA.DAT").write_bytes(b"\x00")
@@ -199,12 +199,12 @@ def test_a_dos_folder_copied_without_its_item_files_is_refused_not_a_crash(
         tmp_path, monkeypatch):
     """A record that counts items with no `.ITM` beside it reaches the same
     rejection as any other unreadable source."""
-    shape = dos_port.POOL_OF_RADIANCE
+    deltas = dos_port.POOL_OF_RADIANCE
     folder = tmp_path / "dos"
     folder.mkdir()
     (folder / "SAVGAMA.DAT").write_bytes(b"\x00")
-    record = bytearray(shape.record_size)
-    record[dos_codec.FIELDS_BY_NAME_FOR[shape.key]["item_count"].offset] = 3
+    record = bytearray(deltas.record_size)
+    record[dos_codec.FIELDS_BY_NAME_FOR[deltas.key]["item_count"].offset] = 3
     (folder / "CHRDATA1.SAV").write_bytes(bytes(record))
     warned, critical = _capture_modals(monkeypatch)
     logged: list[str] = []

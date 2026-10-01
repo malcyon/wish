@@ -1075,7 +1075,7 @@ def acted_word(words: list[list[str]], title: str, act: str) -> int | None:
     """The index of the `HEAL`/`LAY` or `CURE` word in a sheet bar's words.
 
     Shares `sheet_offers`'s guard against a bar that does not end in the
-    four-letter `EXIT`, so the two cannot read a bar's shape differently.
+    four-letter `EXIT`, so the two cannot read a bar's form differently.
     """
     if sheet_offers(words, title) is None:
         return None

@@ -182,7 +182,7 @@ def test_every_shipped_record_round_trips_outside_the_declared_mask():
     * eight records differ in `field_83_87`'s treasure-share byte, which the
       writer writes as the documented constant `1`. The split is by save
       slot -- four of slot A's six hold 1 and none of slot B's -- which is
-      the same shape Pool of Radiance's own specimens have, where the byte
+      the same pattern Pool of Radiance's own specimens have, where the byte
       records that somebody pressed KEEP in MODIFY CHARACTER and reads 0 in
       45 of the 54 records this project rolled itself (`FIELD_83_87`).
     * **PAINE differs in `spellbook`**, at the one byte in the whole DOS
@@ -250,7 +250,7 @@ def test_the_item_records_come_back_past_their_text():
     everything from `type_index` on is the source's own, record for record.
 
     **The 42 bytes of item text are not converted, in any title**, because
-    the neutral inventory is the shared sixteen-byte item shape and has no
+    the neutral inventory is the shared sixteen-byte item form and has no
     room for the DOS engine's rendered name. That is not this title's
     problem and is not fixed here.
     """
@@ -276,8 +276,8 @@ def test_the_two_unnamed_runs_are_declared_rather_than_left_as_gaps():
     assert table["unnamed_1e0"].offset == 0x1E0
     assert table["unnamed_1e0"].size == 1
     # Only this title has either, so no other title's record moves.
-    for shape in (POOL, dos_port.CURSE_OF_THE_AZURE_BONDS, SSB):
-        other = dos_port.FIELDS_BY_NAME_FOR[shape.key]
+    for deltas in (POOL, dos_port.CURSE_OF_THE_AZURE_BONDS, SSB):
+        other = dos_port.FIELDS_BY_NAME_FOR[deltas.key]
         assert "unnamed_1a4" not in other
         assert "unnamed_1e0" not in other
 
@@ -347,15 +347,15 @@ def test_the_race_is_read_through_the_titles_own_numbering():
     """
     from goldbox import c64_port
     assert c64_port.BY_KEY.get(POD.key) is None
-    # Correct without a shape now: titles.py knows this title's race 5 is
+    # Correct without deltas now: titles.py knows this title's race 5 is
     # the human, who gets nothing.
     assert dos_codec._race_combat_effects(POD.key, 5) == ()
     assert dos_codec._race_combat_effects(POD.key, 5, POD) == ()
     # And the change is inert for the three titles `c64_port` does know.
-    for shape in (POOL, dos_port.CURSE_OF_THE_AZURE_BONDS, SSB):
-        for race in range(len(shape.race_numbers)):
-            assert dos_codec._race_combat_effects(shape.key, race, shape) == \
-                dos_codec._race_combat_effects(shape.key, race), (shape.key, race)
+    for deltas in (POOL, dos_port.CURSE_OF_THE_AZURE_BONDS, SSB):
+        for race in range(len(deltas.race_numbers)):
+            assert dos_codec._race_combat_effects(deltas.key, race, deltas) == \
+                dos_codec._race_combat_effects(deltas.key, race), (deltas.key, race)
 
 
 def test_no_racial_record_is_invented_for_this_title():
@@ -417,8 +417,8 @@ def test_the_record_has_no_field_for_seven_neutral_names():
     # -- the level-drain marks and the ready-to-train byte.
     added = {"highest_levels", "highest_experience", "highest_hp_max",
              "ready_to_train"}
-    for shape in (POOL, dos_port.CURSE_OF_THE_AZURE_BONDS, SSB):
-        assert {n for n, _ in dos_codec.write_absent(shape)} == added
+    for deltas in (POOL, dos_port.CURSE_OF_THE_AZURE_BONDS, SSB):
+        assert {n for n, _ in dos_codec.write_absent(deltas)} == added
 
 
 def test_an_absent_field_is_reported_as_dropped_and_never_copied():
@@ -463,7 +463,7 @@ def test_every_field_and_every_neutral_name_is_accounted_for():
 
 def test_no_sheet_portrait_is_reported_for_a_title_that_has_none():
     """Pools of Darkness has no sheet portrait on either port -- neither
-    ships the art, the 510-byte shape gives the pair a width of zero, and the
+    ships the art, the 510-byte figure gives the pair a width of zero, and the
     creation menu is cut out of the Amiga engine's own copy of the data block
     that carries it (`#194`, `#451`).
 

@@ -37,7 +37,7 @@ so):
   on the way to DOS: see the last section of this file, and #481.
 
 Every one of the nine-byte records above reads duration zero and
-`INNATE_PAYLOAD` in bytes 1-4, which is the shape `docs/162-spc-permanence.md`
+`INNATE_PAYLOAD` in bytes 1-4, which is the form `docs/162-spc-permanence.md`
 established for a record the engine's expiry pass never removes -- not a
 `.SPC` record that just happens to share an id with a running effect.
 """
@@ -72,14 +72,14 @@ def _neutral(game, **fields) -> neutral.NeutralCharacter:
     return char
 
 
-def _record(shape, effects) -> dos_codec.DosCharacter:
-    """An all-zero record of `shape` carrying only the given `.SPC` nodes."""
-    return dos_codec.DosCharacter(bytes(shape.record_size), effects=effects,
-                            deltas=shape)
+def _record(deltas, effects) -> dos_codec.DosCharacter:
+    """An all-zero record of `deltas` carrying only the given `.SPC` nodes."""
+    return dos_codec.DosCharacter(bytes(deltas.record_size), effects=effects,
+                            deltas=deltas)
 
 
 def _innate_node(effect_id: int) -> bytes:
-    """One nine-byte `.SPC` node in `INNATE_PAYLOAD`'s own shape: duration
+    """One nine-byte `.SPC` node in `INNATE_PAYLOAD`'s own form: duration
     zero, `FF 00` at bytes 3-4, next pointer NULL."""
     return bytes((effect_id,)) + dos_codec.INNATE_PAYLOAD + dos_codec.EFFECT_NEXT_NULL
 
@@ -125,18 +125,18 @@ def test_a_titles_ranger_id_is_not_the_others():
 
 # --- the read side: to_neutral classifies the id as innate, not granted -----
 
-@pytest.mark.parametrize("shape", [CURSE, SSB], ids=lambda s: s.key)
-def test_a_paladins_protection_from_evil_reads_as_innate(shape):
-    char = _record(shape, [_innate_node(PALADIN_EFFECT)])
+@pytest.mark.parametrize("deltas", [CURSE, SSB], ids=lambda s: s.key)
+def test_a_paladins_protection_from_evil_reads_as_innate(deltas):
+    char = _record(deltas, [_innate_node(PALADIN_EFFECT)])
     out = dos_codec.to_neutral(char)
     assert out.get("innate_effects") == [PALADIN_EFFECT]
     assert "granted_effects" not in out
 
 
-@pytest.mark.parametrize("shape", [CURSE, SSB], ids=lambda s: s.key)
-def test_a_rangers_own_id_reads_as_innate(shape):
-    effect = RANGER_EFFECT[shape.key]
-    char = _record(shape, [_innate_node(effect)])
+@pytest.mark.parametrize("deltas", [CURSE, SSB], ids=lambda s: s.key)
+def test_a_rangers_own_id_reads_as_innate(deltas):
+    effect = RANGER_EFFECT[deltas.key]
+    char = _record(deltas, [_innate_node(effect)])
     out = dos_codec.to_neutral(char)
     assert out.get("innate_effects") == [effect]
     assert "granted_effects" not in out
@@ -155,19 +155,19 @@ def test_pool_of_radiance_still_reads_the_paladins_id_as_granted():
 
 # --- the write side: dos_codec.write no longer drops the two ids ------------
 
-@pytest.mark.parametrize("shape", [CURSE, SSB], ids=lambda s: s.key)
-def test_a_paladins_effect_reaches_the_spc_file(shape):
-    char = _neutral(shape.key, name="TESTER",
+@pytest.mark.parametrize("deltas", [CURSE, SSB], ids=lambda s: s.key)
+def test_a_paladins_effect_reaches_the_spc_file(deltas):
+    char = _neutral(deltas.key, name="TESTER",
                     innate_effects=[PALADIN_EFFECT])
     _rec, _itm, spc, rep = dos_codec.write(char)
     assert spc == _innate_node(PALADIN_EFFECT)
     assert not [d for d in rep.dropped if "innate_effects" in d]
 
 
-@pytest.mark.parametrize("shape", [CURSE, SSB], ids=lambda s: s.key)
-def test_a_rangers_effect_reaches_the_spc_file(shape):
-    effect = RANGER_EFFECT[shape.key]
-    char = _neutral(shape.key, name="TESTER", innate_effects=[effect])
+@pytest.mark.parametrize("deltas", [CURSE, SSB], ids=lambda s: s.key)
+def test_a_rangers_effect_reaches_the_spc_file(deltas):
+    effect = RANGER_EFFECT[deltas.key]
+    char = _neutral(deltas.key, name="TESTER", innate_effects=[effect])
     _rec, _itm, spc, rep = dos_codec.write(char)
     assert spc == _innate_node(effect)
     assert not [d for d in rep.dropped if "innate_effects" in d]
@@ -192,14 +192,14 @@ def test_a_curse_characters_own_ranger_id_still_drops_in_silver_blades():
     assert [d for d in rep.dropped if "innate_effects" in d]
 
 
-# --- #62's shape: a character with nothing gets no garbage file -------------
+# --- #62's case: a character with nothing gets no garbage file -------------
 
-@pytest.mark.parametrize("shape", [CURSE, SSB], ids=lambda s: s.key)
+@pytest.mark.parametrize("deltas", [CURSE, SSB], ids=lambda s: s.key)
 def test_a_paladin_or_ranger_title_with_no_innate_effects_gets_no_spc_file(
-        shape):
-    char = _neutral(shape.key, name="TESTER", innate_effects=[])
+        deltas):
+    char = _neutral(deltas.key, name="TESTER", innate_effects=[])
     rec, itm, spc, rep = dos_codec.write(char)
-    assert len(rec) == shape.record_size
+    assert len(rec) == deltas.record_size
     assert itm == b""
     assert spc == b""
     assert not [d for d in rep.dropped if "innate_effects" in d]
@@ -411,11 +411,11 @@ def test_pool_of_radiance_has_no_row_and_translates_nothing():
 
 # --- the write side, synthetic: every title runs this without disks ---------
 
-@pytest.mark.parametrize("shape", [CURSE, SSB], ids=lambda s: s.key)
-def test_a_c64_paladins_seed_reaches_the_spc_file_as_the_dos_id(shape):
+@pytest.mark.parametrize("deltas", [CURSE, SSB], ids=lambda s: s.key)
+def test_a_c64_paladins_seed_reaches_the_spc_file_as_the_dos_id(deltas):
     """The bug itself: 45 in, `08 00 00 FF 00` + a NULL next pointer out, and
     nothing reported."""
-    char = _c64_neutral(shape.key, name="TESTER",
+    char = _c64_neutral(deltas.key, name="TESTER",
                         class_bits=dos_codec.PALADIN_CLASS_BIT,
                         innate_effects=[PALADIN_C64_TRAIT])
     _rec, _itm, spc, rep = dos_codec.write(char)
@@ -423,8 +423,8 @@ def test_a_c64_paladins_seed_reaches_the_spc_file_as_the_dos_id(shape):
     assert _innate_drops(rep) == []
 
 
-@pytest.mark.parametrize("shape", [CURSE, SSB], ids=lambda s: s.key)
-def test_a_c64_cleric_carrying_the_same_id_gains_no_paladins_effect(shape):
+@pytest.mark.parametrize("deltas", [CURSE, SSB], ids=lambda s: s.key)
+def test_a_c64_cleric_carrying_the_same_id_gains_no_paladins_effect(deltas):
     """The guard, and the assertion this fix would be dangerous without.
 
     A C64 record's ten trait slots hold racial seeds, item grants and the
@@ -441,7 +441,7 @@ def test_a_c64_cleric_carrying_the_same_id_gains_no_paladins_effect(shape):
     being refused -- what stays pinned is that the cleric never gains the
     paladin's own 8.
     """
-    char = _c64_neutral(shape.key, name="TESTER", class_bits=2,
+    char = _c64_neutral(deltas.key, name="TESTER", class_bits=2,
                         innate_effects=[PALADIN_C64_TRAIT])
     _rec, _itm, spc, rep = dos_codec.write(char)
     assert spc == _innate_node(PALADIN_C64_TRAIT)
@@ -449,13 +449,13 @@ def test_a_c64_cleric_carrying_the_same_id_gains_no_paladins_effect(shape):
     assert _innate_drops(rep) == []
 
 
-@pytest.mark.parametrize("shape", [CURSE, SSB], ids=lambda s: s.key)
-def test_a_cleric_paladin_is_still_a_paladin(shape):
+@pytest.mark.parametrize("deltas", [CURSE, SSB], ids=lambda s: s.key)
+def test_a_cleric_paladin_is_still_a_paladin(deltas):
     """`class_bits` is a mask and the guard is a bit test, not equality: two
     of the five C64 Curse specimens carrying this are multi-classed, MARK at
     66 (cleric and paladin) and MATHEW at 72 (fighter and paladin)."""
     for bits in (2 | dos_codec.PALADIN_CLASS_BIT, 8 | dos_codec.PALADIN_CLASS_BIT):
-        char = _c64_neutral(shape.key, name="TESTER", class_bits=bits,
+        char = _c64_neutral(deltas.key, name="TESTER", class_bits=bits,
                             innate_effects=[PALADIN_C64_TRAIT])
         _rec, _itm, spc, rep = dos_codec.write(char)
         assert spc == _innate_node(PALADIN_EFFECT), bits
@@ -463,13 +463,13 @@ def test_a_cleric_paladin_is_still_a_paladin(shape):
 
 
 @pytest.mark.parametrize("held", [[45, 8], [8, 45]], ids=["45 first", "8 first"])
-@pytest.mark.parametrize("shape", [CURSE, SSB], ids=lambda s: s.key)
-def test_a_paladin_holding_both_ids_gets_one_record(shape, held):
+@pytest.mark.parametrize("deltas", [CURSE, SSB], ids=lambda s: s.key)
+def test_a_paladin_holding_both_ids_gets_one_record(deltas, held):
     """A paladin Wish converted to the C64 arrives holding 8 and keeps it, and
     `GEN $0FF0` removes only 45 and 105 before re-seeding, so a C64 record can
     legitimately hold both ids for one effect.  He crosses back with one
     `.SPC` record, not two, in either order."""
-    char = _c64_neutral(shape.key, name="TESTER",
+    char = _c64_neutral(deltas.key, name="TESTER",
                         class_bits=dos_codec.PALADIN_CLASS_BIT,
                         innate_effects=held)
     _rec, _itm, spc, rep = dos_codec.write(char)
@@ -477,12 +477,12 @@ def test_a_paladin_holding_both_ids_gets_one_record(shape, held):
     assert _innate_drops(rep) == []
 
 
-@pytest.mark.parametrize("shape", [CURSE, SSB], ids=lambda s: s.key)
-def test_a_dos_source_carrying_45_is_not_translated(shape):
+@pytest.mark.parametrize("deltas", [CURSE, SSB], ids=lambda s: s.key)
+def test_a_dos_source_carrying_45_is_not_translated(deltas):
     """The port control.  45 read out of a DOS record is a running spell or
     an item power whatever the character's class -- DOS writes 8 for the
     innate one -- so nothing about a DOS source changes here."""
-    char = _neutral(shape.key, name="TESTER",
+    char = _neutral(deltas.key, name="TESTER",
                     class_bits=dos_codec.PALADIN_CLASS_BIT,
                     innate_effects=[PALADIN_C64_TRAIT])
     char.port = "DOS"
@@ -491,12 +491,12 @@ def test_a_dos_source_carrying_45_is_not_translated(shape):
     assert _innate_drops(rep)
 
 
-@pytest.mark.parametrize("shape", [CURSE, SSB], ids=lambda s: s.key)
-def test_a_c64_paladins_other_ids_are_untouched(shape):
+@pytest.mark.parametrize("deltas", [CURSE, SSB], ids=lambda s: s.key)
+def test_a_c64_paladins_other_ids_are_untouched(deltas):
     """Only the mapped id moves.  107 is the elf's racial seed and is the
     same number on both ports, so it comes through beside the paladin's in
     the order the trait slots held them."""
-    char = _c64_neutral(shape.key, name="TESTER",
+    char = _c64_neutral(deltas.key, name="TESTER",
                         class_bits=dos_codec.PALADIN_CLASS_BIT,
                         innate_effects=[PALADIN_C64_TRAIT, 107])
     _rec, _itm, spc, rep = dos_codec.write(char)
@@ -504,12 +504,12 @@ def test_a_c64_paladins_other_ids_are_untouched(shape):
     assert _innate_drops(rep) == []
 
 
-@pytest.mark.parametrize("shape", [CURSE, SSB], ids=lambda s: s.key)
-def test_the_report_says_the_id_was_translated(shape):
+@pytest.mark.parametrize("deltas", [CURSE, SSB], ids=lambda s: s.key)
+def test_the_report_says_the_id_was_translated(deltas):
     """Every byte of the output is justified in the report, so the byte that
     changed number says which number it came from -- a reader of the report
     would otherwise see an 8 attributed to a record that holds 45."""
-    char = _c64_neutral(shape.key, name="TESTER",
+    char = _c64_neutral(deltas.key, name="TESTER",
                         class_bits=dos_codec.PALADIN_CLASS_BIT,
                         innate_effects=[PALADIN_C64_TRAIT])
     rec, itm, _spc, rep = dos_codec.write(char)
@@ -641,22 +641,22 @@ def test_a_c64_pool_of_radiance_characters_permanent_ids_reach_the_spc_file():
 
 
 _PERMANENT_CASES = [
-    (shape, e)
-    for shape in (POOL, CURSE, SSB)
-    for e in sorted(dos_codec.C64_TRAIT_PERMANENT_IDS[shape.key])
+    (deltas, e)
+    for deltas in (POOL, CURSE, SSB)
+    for e in sorted(dos_codec.C64_TRAIT_PERMANENT_IDS[deltas.key])
 ]
 
 
 @pytest.mark.parametrize(
-    "shape,effect", _PERMANENT_CASES,
+    "deltas,effect", _PERMANENT_CASES,
     ids=[f"{s.key}-{e}" for s, e in _PERMANENT_CASES])
-def test_every_id_the_engine_never_reads_past_its_duration_converts(shape, effect):
+def test_every_id_the_engine_never_reads_past_its_duration_converts(deltas, effect):
     """#621's Stage 3: `C64_TRAIT_PERMANENT_IDS` was widened to every id
     `tests/dos/test_dosaffectreads.py`'s `VALUE_READ` found unread past its
     duration, so a human fighter -- no race or class guard of rule 1's own --
     carrying any one of them in a trait slot converts as `INNATE_PAYLOAD`
     with no drop line."""
-    char = _c64_neutral(shape.key, name="TESTER", innate_effects=[effect])
+    char = _c64_neutral(deltas.key, name="TESTER", innate_effects=[effect])
     _rec, _itm, spc, rep = dos_codec.write(char)
     assert spc == _innate_node(effect)
     assert _innate_drops(rep) == []
@@ -684,7 +684,7 @@ def test_a_dos_pool_of_radiance_character_round_trips_through_the_c64():
 def test_a_readied_pool_of_radiance_items_own_grant_reaches_the_spc_file():
     """Rule 2: a readied item whose power byte is `0x80` grants the effect
     its own byte 14 names, and gets `ITEM_GRANT_PAYLOAD` rather than
-    `INNATE_PAYLOAD` -- the shape `WISH-SPEC-por-item-granted` holds for
+    `INNATE_PAYLOAD` -- the form `WISH-SPEC-por-item-granted` holds for
     effect 61."""
     item = _c64_item(effect=61, power=0x80, readied=True)
     char = _c64_neutral(POOL.key, name="TESTER", innate_effects=[61],
@@ -868,10 +868,10 @@ def test_a_silver_blades_camp_only_grant_is_still_reported_dropped_on_the_amiga(
     `c64_trait_nodes`'s own drop list outright.  `dos_codec.write`'s call
     inside the same `write_later` normally reports the same lines, so the
     gap only shows where the two calls actually diverge: an
-    `innate_effects` field held below the writer's confidence floor.
+    `innate_effects` field held below the writer's confidence minimum.
     `neutral.Writer.use` refuses it and reports one generic line with no id
     in it, while `_later_effect_nodes` reads the field straight off `char`
-    with no floor and still classifies 56 as the same unread `item_unread`
+    with no minimum and still classifies 56 as the same unread `item_unread`
     case `test_a_silver_blades_camp_only_grant_with_no_dos_form_is_still_refused`
     pins on the DOS side -- and that classification used to reach no
     accounting at all (found by the review of `8b6888a7`, `#621`).  Red

@@ -53,7 +53,7 @@ the suite must not install one. `tests/generate/test_classdiagram.py` pins the
 command line `run_pyreverse` hands to it (`-o mmd`, the target, the output
 directory) and the `.mmd` files it is expected to leave behind, so a wrong
 flag in this file goes red. **A change in what `pyreverse` itself does with
-that command line -- a new version writing a different Mermaid shape, say --
+that command line -- a new version writing a different Mermaid form, say --
 would not be caught here**, and needs a real run to notice.
 """
 
@@ -154,7 +154,7 @@ def measure_mmd(text: str) -> tuple[int, int]:
     the relation arrows pyreverse writes after the class blocks -- counts as
     an edge. Works for both a `classes_*.mmd` (classes and associations) and
     a `packages_*.mmd` (modules and imports), which pyreverse writes in the
-    same shape."""
+    same form."""
     nodes = 0
     edges = 0
     depth = 0

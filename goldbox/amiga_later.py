@@ -906,7 +906,7 @@ def _undead_read(deltas: AmigaDeltas) -> tuple[tuple[str, str], ...]:
 def later_field_disposition(deltas: AmigaDeltas) -> dict[str, str]:
     """Every field of this title's DOS table, and what the read does with it.
 
-    The test that keeps the reader honest, and the same shape
+    The test that keeps the reader honest, and the same form
     `goldbox.dos_codec.field_disposition` returns: a field the table declares and
     this names nowhere would be a field dropped in silence.  `gap_` fields are
     the bytes no field of the DOS table claims and are accounted for here as a
@@ -974,7 +974,7 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
         f = table[name]
         value = char.get(name)
         if isinstance(value, (bytes, bytearray)):
-            # `#294`, the shape rather than one field of it: a name in
+            # `#294`, the whole pattern rather than one field of it: a name in
             # `DIRECT` whose base table declares it `U8`/`I8` is read back
             # raw the moment a later title's `sizes` widens it -- the check
             # `goldbox/dos_port.py:layout_for` itself makes.  The abilities
@@ -1018,7 +1018,7 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
     # Amiga keeps a temporary strength boost or drain for good, the same
     # crossed-pair bug as #404)` both `/Curse` and `/Secret` were read
     # directly.  Each recomputes one ability from a character's items and
-    # running spells with the identical shape DOS's own recompute has
+    # running spells with the identical form DOS's own recompute has
     # (`docs/204-the-dos-ability-pair.md`): it seeds from `$10(a0, d0.l)`
     # (byte 0, the permanent score) and `$1d(a0)` (the permanent percentile),
     # walks the effects, and stores the result to `$11(a0)` (byte 1, the
@@ -1026,7 +1026,7 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
     # `/Curse` file offset `0xf5ee` seeding and `0xf9ce`-`0xf9ec` storing,
     # `/Secret` file offset `0x131f8`/`0x13202` seeding and
     # `0x13608`-`0x13612` storing.  Byte 0 is written only once elsewhere in
-    # either binary (character creation's roll), the same shape `#401` found
+    # either binary (character creation's roll), the same pattern `#401` found
     # in five DOS engines.  So for the six ability scores byte 1 is the
     # score in force and byte 0 is `abilities_second`'s permanent copy,
     # exactly `goldbox.dos_codec._PERMANENT_FIRST`'s asymmetry; exceptional
@@ -1295,7 +1295,7 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
 #
 # The third Amiga writer, and it is built the way :func:`write_por` is rather
 # than as a new invention: `goldbox.dos_codec.write` does the conversion, because
-# **the Amiga record is the title's DOS record in another shape**, and what
+# **the Amiga record is the title's DOS record in another form**, and what
 # is here is the re-cut plus the handful of bytes the Amiga has and DOS does
 # not.  Every grade and every provenance line the DOS side earned crosses
 # with it.
@@ -1658,7 +1658,7 @@ def amiga_later_item_from_dos(item: bytes, deltas: AmigaDeltas) -> bytes:
 #: Amiga source reproduces exactly, a C64 source brings the ten trait slots
 #: `goldbox.c64_codec` reads into `innate_effects`, and a DOS source brings
 #: both halves of its own `.SPC` file.  **Nothing is derived from a race
-#: table**, which is `#293`'s shape: `goldbox.dos_codec.RACE_COMBAT_EFFECTS` is
+#: table**, which is `#293`'s pattern: `goldbox.dos_codec.RACE_COMBAT_EFFECTS` is
 #: Pool of Radiance's, and Curse's own BJORN DARKSTONE, HOLLAND and SUNDRA
 #: contradict it -- 3 of 3 carry the ids that table names bar one it adds.
 LATER_EFFECTS_FROM_NEUTRAL = (
@@ -1698,8 +1698,8 @@ def _later_effect_nodes(
     common case it repeats what `dosrep.dropped` already carries from the DOS
     half's own call, but that call takes `innate_effects` through
     `neutral.Writer.use`, which refuses a field held below the writer's
-    confidence floor and reports one generic line with no id in it, where
-    this function reads the field straight off `char` with no floor and can
+    confidence minimum and reports one generic line with no id in it, where
+    this function reads the field straight off `char` with no minimum and can
     still classify an id as its own rejection.  A rejection here must still
     reach the log the way any other drop does (found by the review of
     `8b6888a7`, 2026-09-27, on `#621`).  `write_later` merges the two rather
@@ -1817,7 +1817,7 @@ def write_later(char: NeutralCharacter,
     # bytes rather than carrying another port's answer into an Amiga save.
     # Both later Amiga engines' unguarded import and training loops read entry
     # zero for every absent class.  That gives a level 1--5 magic-user THAC0
-    # 20, the same floor `dos_codec.write` applies for a C64 source.
+    # 20, the same minimum `dos_codec.write` applies for a C64 source.
     # `into="Amiga"` (#389, A conversion to the Amiga tells the player what
     # DOS does with their character): otherwise a drop line this function
     # cannot place names DOS to a player who is not converting to DOS.

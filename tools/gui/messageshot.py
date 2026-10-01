@@ -83,7 +83,7 @@ from wish.ui_window import Ui_WishWindow  # noqa: E402
 #: The message panel's own geometry, the four bytes `COMBAT $0970` holds.
 LEFT, RIGHT, BOTTOM = 23, 39, 23
 
-#: A short fight, in the shape the game paints it: each entry is one repaint of
+#: A short fight, in the form the game paints it: each entry is one repaint of
 #: the message window, and the empty ones are the game clearing it, which is
 #: what commits the block before it.
 FIGHT = (["ORC", "ATTACKS", "BRUTUS AND", "MISSES..."],

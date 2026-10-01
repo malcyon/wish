@@ -354,7 +354,7 @@ class Automapper:
     # the bytes -- but each read is its own resume, so doing it every tick would
     # double the poller's disturbance.
     #
-    # **This is a floor, not the only time the block is read.** It used to be
+    # **This is a minimum, not the only time the block is read.** It used to be
     # the only time, including on the paths that exist precisely because the
     # area may just have changed, and that is what put slums squares on New
     # Phlan: see `_area_may_have_changed`.

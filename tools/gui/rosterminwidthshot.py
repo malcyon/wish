@@ -19,7 +19,7 @@ own only in the single line the issue names -- the choice of the roster's
 `setMinimumWidth`. `editor/window.py` is `#489`'s file while this runs, so
 nothing here ever writes to it.
 
-The "round" shape's step is `#474`'s third shape's own free parameter -- how
+The "round" design's step is `#474`'s third design's own free parameter -- how
 coarse a jump counts as "coarse" -- which the issue leaves open. 100px,
 hard-coded in `_round` below, is this tool's illustrative choice, not a
 recommendation.
@@ -45,8 +45,8 @@ from tools.registry import scratch  # noqa: E402
 #: The four things being compared. Each is a function of `(natural,
 #: ROSTER_MIN_WIDTH)` -> the value `_size_roster` would hand `setMinimumWidth`
 #: when there is at least one row. `None` means "call nothing", which is
-#: shape 1: the roster keeps whatever minimum `QTableView` has of its own and
-#: stops being a floor under the window.
+#: design 1: the roster keeps whatever minimum `QTableView` has of its own and
+#: stops being a minimum size for the window.
 def _today(natural: int, cap: int) -> int:
     return min(natural, cap)
 
@@ -60,7 +60,7 @@ def _round(natural: int, cap: int, step: int = 100) -> int:
     return min(rounded, cap)
 
 
-SHAPES = {
+DESIGNS = {
     "today": _today,
     "scroll": None,
     "pin": _pin,
@@ -109,8 +109,8 @@ def _patched_size_roster(chosen):
     return _size_roster
 
 
-def _build(save: str, shape: str):
-    """A `WishWindow` on the ordinary party, sized under `shape`, squeezed to
+def _build(save: str, design: str):
+    """A `WishWindow` on the ordinary party, sized under `design`, squeezed to
     its own minimum. `editor.window.EditorBinding._size_roster` is patched
     onto the class before construction and restored before returning, so
     nothing outlives this call.
@@ -120,7 +120,7 @@ def _build(save: str, shape: str):
     from wish.window import EDITOR_TAB, WishWindow
 
     original = EditorBinding._size_roster
-    EditorBinding._size_roster = _patched_size_roster(SHAPES[shape])
+    EditorBinding._size_roster = _patched_size_roster(DESIGNS[design])
     try:
         win = WishWindow(save, maps={},
                           session=Session(find=lambda pref=None: None),
@@ -131,9 +131,9 @@ def _build(save: str, shape: str):
     from PyQt6.QtCore import Qt
     win.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
     win.show()
-    floor = win.minimumSizeHint()
-    win.resize(floor)
-    return win, floor
+    minimum = win.minimumSizeHint()
+    win.resize(minimum)
+    return win, minimum
 
 
 def main(out: pathlib.Path) -> int:
@@ -154,19 +154,19 @@ def main(out: pathlib.Path) -> int:
             bigger = QFont(base)
             bigger.setPointSizeF(base.pointSizeF() + extra)
             app.setFont(bigger)
-            for shape in ("today", "scroll", "pin", "round"):
-                win, floor = _build(save, shape)
+            for design in ("today", "scroll", "pin", "round"):
+                win, minimum = _build(save, design)
                 app.processEvents()
-                path = out / f"roster-{shape}-plus{extra}.png"
+                path = out / f"roster-{design}-plus{extra}.png"
                 win.grab().save(str(path))
-                rows.append((shape, extra, floor.width(), floor.height(), path))
+                rows.append((design, extra, minimum.width(), minimum.height(), path))
                 win.close()
     finally:
         app.setFont(base)
 
-    print(f"{'shape':<8} {'+font':<6} {'width':<7} {'height':<7} path")
-    for shape, extra, w, h, path in rows:
-        print(f"{shape:<8} +{extra:<5} {w:<7} {h:<7} {path}")
+    print(f"{'design':<8} {'+font':<6} {'width':<7} {'height':<7} path")
+    for design, extra, w, h, path in rows:
+        print(f"{design:<8} +{extra:<5} {w:<7} {h:<7} {path}")
     return 0
 
 

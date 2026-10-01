@@ -20,8 +20,8 @@ is then the *rule*, and the rule holds on both.
 
 Three of them, in the order he found them:
 
-* **The window must never open larger than the available screen**, floor or no
-  floor. It did, because the clamp ran before `show()`, when there is no frame
+* **The window must never open larger than the available screen**, minimum or no
+  minimum. It did, because the clamp ran before `show()`, when there is no frame
   to measure, and a 1030 px window plus a 39 px title bar does not fit on a
   1080 px screen with a task bar.
 * **A field must always show its value.** Widths were tuned to the arrows Fusion
@@ -112,11 +112,11 @@ def test_the_first_run_size_is_cut_down_to_a_smaller_screen(app):
     from wish.window import FIRST_RUN
 
     win = framed(QMainWindow())
-    restore_geometry(win, Settings(), floor=FIRST_RUN, space=DESKTOP)
+    restore_geometry(win, Settings(), minimum=FIRST_RUN, space=DESKTOP)
     frame = win.frameGeometry()
     assert frame.width() <= DESKTOP.width()
     assert frame.height() <= DESKTOP.height(), "the status bar is off the screen"
-    assert win.height() < FIRST_RUN[1], "the floor must not beat the display"
+    assert win.height() < FIRST_RUN[1], "the minimum must not beat the display"
     win.close()
 
 
@@ -126,7 +126,7 @@ def test_the_floor_never_beats_the_display(app):
 
     laptop = QRect(0, 0, 1366, 728)
     win = framed(QMainWindow())
-    restore_geometry(win, Settings(), floor=FIRST_RUN, space=laptop)
+    restore_geometry(win, Settings(), minimum=FIRST_RUN, space=laptop)
     assert win.frameGeometry().width() <= laptop.width()
     assert win.frameGeometry().height() <= laptop.height()
     win.close()
@@ -194,7 +194,7 @@ def test_the_whole_window_fits_a_1080p_screen_on_a_first_run(app, tmp_path,
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     win = WishWindow(None, maps={}, session=Session(find=lambda pref=None: None))
     framed(win)
-    restore_geometry(win, Settings(), floor=FIRST_RUN, space=DESKTOP)
+    restore_geometry(win, Settings(), minimum=FIRST_RUN, space=DESKTOP)
     assert win.frameGeometry().width() <= DESKTOP.width()
     assert win.frameGeometry().height() <= DESKTOP.height()
     win.close()
@@ -355,7 +355,7 @@ def test_every_field_on_the_sheet_can_show_its_widest_value(app, tmp_path):
     than named here: Donald asked for 30% off the `Name` box in round five of
     #43, because twenty bytes of name is twenty capital Ws, that is 318px at
     three points of extra UI font, and the box sits in the header, which does
-    not scroll and is therefore a floor under the whole window. A name that
+    not scroll and is therefore a minimum size for the whole window. A name that
     long still fits and still edits; it scrolls inside the box. Every other
     field on the sheet still has to show its widest value whole, and a second
     entry appearing in `TRIMMED` has to be a decision somebody made here.

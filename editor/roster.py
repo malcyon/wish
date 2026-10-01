@@ -201,12 +201,12 @@ class Member:
         from goldbox.c64_codec import LEVEL_FIELDS, deltas_for
         from goldbox.layout import FIELDS_BY_NAME
         try:
-            shape = deltas_for(self.game)
+            deltas = deltas_for(self.game)
         except KeyError as exc:
-            _log.debug("no record shape for %s; dual class not shown: %s",
+            _log.debug("no record deltas for %s; dual class not shown: %s",
                        self.name, exc)
             return ""
-        if not shape.dual_class:
+        if not deltas.dual_class:
             return ""
         try:
             level = int(self.record.get("dual_class_level") or 0)

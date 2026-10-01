@@ -222,7 +222,7 @@ def test_editing_hp_max_leaves_the_rolled_and_current_totals_alone(tmp_path):
 
 @live
 def test_a_class_code_and_bitmask_that_disagree_survive_a_round_trip(tmp_path):
-    """The shape DWARVEN FIGHTER ships in: a fighter's bits, a cleric's code."""
+    """The case DWARVEN FIGHTER ships in: a fighter's bits, a cleric's code."""
     src = _construct(tmp_path, "class", MALCYON,
                      record={"class_bits": 8, "char_class": 0})
     _unchanged(src, tmp_path)
@@ -241,7 +241,7 @@ def test_a_class_combination_with_no_code_at_all_survives_a_round_trip(tmp_path)
 
 @live
 def test_a_character_level_above_the_per_class_array_survives_a_round_trip(tmp_path):
-    """The level-drain shape: 0x0A0 is the level attained, the array the level
+    """The level-drain case: 0x0A0 is the level attained, the array the level
     now. If they are base-and-current like every other pair here, a save can
     hold this and an import that edits nothing must not flatten it."""
     src = _construct(tmp_path, "levelhigh", ROLAND, record={"level": 3})

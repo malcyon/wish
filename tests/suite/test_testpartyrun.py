@@ -139,7 +139,7 @@ def _geo(ids=None):
 
 def test_plan_keeps_new_phlan_off_scripted_squares_and_the_slums_to_plain_ids():
     # Synthetic maps have no wall at x = 0 to the west, so the exits fall in
-    # open floor; the point is which squares the planner may step on.
+    # open minimum; the point is which squares the planner may step on.
     new_phlan = _geo({(1, 4): 7, (2, 4): 7, (1, 3): 7, (1, 5): 7})
     slums = _geo({(14, 4): 9, (14, 3): 4, (13, 4): 0})
     first, second = T.plan_fight_route(new_phlan, slums, (3, 4), (12, 4))

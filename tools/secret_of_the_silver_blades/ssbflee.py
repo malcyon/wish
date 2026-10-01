@@ -42,7 +42,7 @@ def poll_for(args) -> float:
 
 
 def fight(sess, run, args, flight_log=None):
-    """Drive the fight on the floor: `Flight` with `--flee`, else `melee_turn`."""
+    """Drive the fight in the arena: `Flight` with `--flee`, else `melee_turn`."""
     poll = poll_for(args)
     if args.flee:
         flight = Flight(flight_log)

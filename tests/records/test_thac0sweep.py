@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""`tools/records/thac0sweep.py`, and the floor the DOS engine puts under `thac0_base`.
+"""`tools/records/thac0sweep.py`, and the minimum the DOS engine puts under `thac0_base`.
 
 Everything here reads the player's own files -- the EXEPACK-expanded
 `START.EXE` of each DOS title and every character record in the specimen tree
@@ -74,7 +74,7 @@ def _records(title: str) -> list[tuple]:
 
 @pytest.mark.parametrize("title", TITLES)
 def test_no_dos_row_holds_a_zero_where_the_c64_holds_a_sentinel(title):
-    """Entry 0 of every DOS row is a THAC0, which is what makes it a floor.
+    """Entry 0 of every DOS row is a THAC0, which is what makes it a minimum.
 
     The C64's own three tables start `$00` (`GEN $0E2C`, `$0E39`, `$0E46` in
     Curse), so a class with no level contributes nothing there. No DOS row in
@@ -104,7 +104,7 @@ def test_the_engine_never_writes_a_thac0_worse_than_twenty(title):
 
 
 def test_a_curse_magic_user_of_level_five_comes_out_one_better_than_the_row():
-    """The one place the floor shows, and the whole of `#608`.
+    """The one place the minimum shows, and the whole of `#608`.
 
     The magic-user row reads 21 at levels 1-5 in both later titles and the
     engine stores 20 there; `goldbox.levels.dos_base_thac0` reads the row and
@@ -154,7 +154,7 @@ def test_every_dos_record_on_this_machine_reproduces_from_the_engine_rule(
 
 
 def test_the_table_alone_misses_what_the_engine_rule_reaches():
-    """The count that says the floor is doing work rather than agreeing anyway.
+    """The count that says the minimum is doing work rather than agreeing anyway.
 
     `_best` over the classes the character has -- which is what
     `goldbox.levels.dos_base_thac0` computes -- disagrees with the stored byte

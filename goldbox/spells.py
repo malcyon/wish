@@ -3,7 +3,7 @@
 A character's memorised spells are a packed list of **spell ids** at record
 offset `0x020`, and the names live on the game disk. *Where* on the disk is the
 one thing that does not transfer between titles, so this module is a table per
-title -- the shape `goldbox/c64_port.py` settled on -- and every entry point takes an
+title -- the form `goldbox/c64_port.py` settled on -- and every entry point takes an
 optional `game`.
 
 | | Pool of Radiance | Curse of the Azure Bonds | Secret of the Silver Blades |
@@ -19,7 +19,7 @@ optional `game`.
 Neither file's PRG header helps: `SPELLN00` declares `$2710`, which is a
 scratch buffer. Curse's base needs no fitting at all -- the pointer for index 0
 is `$E000` and the text runs `$E000`-`$E7DA`, exactly the range of high bytes
-the array holds. Silver Blades' is the same file in the same shape with a
+the array holds. Silver Blades' is the same file in the same form with a
 longer text block: `$E000`-`$E877`, 194 entries, and 193 of its 194 pointers
 land on a string start where no neighbouring entry count scores better than
 167. **The method was validated on Curse first**, where it recovers the
@@ -1193,7 +1193,7 @@ def capacity(class_bits: int, level: int, wisdom: int,
     Returned per class, because a multi-class character memorises from each
     list separately. One `level` for both classes, unlike
     :func:`capacity_by_class` -- this is Pool of Radiance's own single-class
-    shape, and a multi-class caller wants that function instead.
+    form, and a multi-class caller wants that function instead.
     """
     class_levels: dict[str, int] = {}
     if class_bits & 1:

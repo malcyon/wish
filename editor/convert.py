@@ -72,7 +72,7 @@ conversion writes -- and a `CONVERTS` entry missing a row there fails loudly
 when `DIRECTIONS` is built, at import time, rather than answering `[]` for a
 title the library can actually write. `WRITES` needs no such table: a C64 →
 DOS conversion always writes the same file names (`SAVGAM<slot>.DAT`,
-`CHRDAT<slot><n>.SAV`...), whatever the title, so `c64_port.by_key(shape.key)`
+`CHRDAT<slot><n>.SAV`...), whatever the title, so `c64_port.by_key(deltas.key)`
 -- which already raises loudly on a key with no C64 game -- is the whole of
 the check that direction needs.
 
@@ -380,7 +380,7 @@ class Source:
     @classmethod
     def _detect_dos_file(cls, folder: pathlib.Path, slot: str,
                          available_slots: list[str] | None = None) -> "Source":
-        """The DOS shape at `folder`, for the save at `slot`.
+        """The DOS source at `folder`, for the save at `slot`.
 
         The one thing the two callers above disagree on is which slot: a
         bare folder (`tools/dos/dosdisk.py`, `tools/dos/dosnewsave.py`, and the
@@ -396,10 +396,10 @@ class Source:
                 f"{folder} holds SAVGAM{slot} but no CHRDAT{slot}1.SAV to "
                 f"read its shape from")
         try:
-            shape = dos_port.deltas_for(record.stat().st_size)
+            deltas = dos_port.deltas_for(record.stat().st_size)
         except dos_port.DosDeltasError as exc:
             raise ConvertError(str(exc)) from exc
-        return cls(port="dos", title=shape, path=folder, slot=slot,
+        return cls(port="dos", title=deltas, path=folder, slot=slot,
                    available_slots=available_slots)
 
     @classmethod
@@ -450,21 +450,21 @@ class Source:
         chosen = slot if slot in slots else slots[0]
         try:
             if chosen in pod_slots:
-                shape = dos_port.POOLS_OF_DARKNESS
+                deltas = dos_port.POOLS_OF_DARKNESS
             elif chosen in por_slots:
                 record = disk.read_file(amiga_savegame.por_save_path(
                     amiga_por.por_filename(chosen, 1),
                     amiga_savegame.por_save_drawer(disk)))
-                shape = amiga_shared.deltas_for(len(record))
+                deltas = amiga_shared.deltas_for(len(record))
             else:
                 container = amiga_savegame.read_slot(disk, chosen).container
                 if container.party != "records" or container.deltas is None:
                     raise ConvertError(f"slot {chosen} has no embedded party")
-                shape = container.deltas.dos
+                deltas = container.deltas.dos
         except (AmigaDiskError, AmigaRecordError,
                 amiga_savegame.AmigaSaveError) as exc:
             raise ConvertError(str(exc)) from exc
-        return cls(port="amiga", title=shape, path=path, slot=chosen,
+        return cls(port="amiga", title=deltas, path=path, slot=chosen,
                   available_slots=slots)
 
     @classmethod
@@ -512,7 +512,7 @@ def _dos_slots(folder: pathlib.Path) -> list[str]:
 
 
 def _dos_slot_is_readable(folder: pathlib.Path, slot: str) -> bool:
-    """Whether a slot has a readable first character record of a known shape."""
+    """Whether a slot has a readable first character record of a known form."""
     record = folder / f"CHRDAT{slot}1.SAV"
     try:
         with record.open("rb") as source:
@@ -580,7 +580,7 @@ class UnnamedConversionError(Exception):
 #: The `.D64` file name each DOS → C64 direction writes, keyed by
 #: `goldbox.dos_port.DosDeltas.key`. The one thing `goldbox.dos_codec.CONVERTS`
 #: does not carry, so it stays a table here rather than a property on the
-#: shape itself, which knows nothing about C64 file names.
+#: deltas object itself, which knows nothing about C64 file names.
 DOS_TO_C64_NAMES: dict[str, str] = {
     # The player's own disks are named this way (`PORSAVE2.D64`).
     dos_port.POOL_OF_RADIANCE.key: "PORSAVE{slot}.D64",
@@ -602,9 +602,9 @@ class DosToC64(Direction):
 
     `rehearse` is `editor.dosimport.rehearse` exactly as `File ▸ Import`
     calls it today -- the whole conversion happens in memory and reads the
-    title off the record itself (`goldbox.dos_port.deltas_for`), not off `shape`
+    title off the record itself (`goldbox.dos_port.deltas_for`), not off `deltas`
     here, so `write` only has to put the bytes it already built on disk.
-    `shape` decides only which source this instance answers for and what
+    `deltas` decides only which source this instance answers for and what
     the output is named.
     """
 
@@ -612,7 +612,7 @@ class DosToC64(Direction):
     destination_port = "c64"
 
     def __init__(self, deltas: dos_port.DosDeltas):
-        self.shape = deltas
+        self.deltas = deltas
         self.source_key = deltas.key
         self.destination_game = c64_port.by_key(deltas.key)
         try:
@@ -683,7 +683,7 @@ class AmigaToC64(DosToC64):
                 leave_effects: "Mapping[int, Collection[int]] | None" = None
                 ) -> Rehearsal:
         disk = source.amiga_disk()
-        if self.shape is dos_port.POOL_OF_RADIANCE:
+        if self.deltas is dos_port.POOL_OF_RADIANCE:
             party, savgam = amiga_savegame.read_por_slot(disk, slot)
             state = amiga_savegame.read_por_state(
                 savgam, source=f"{source.path} slot {slot}")
@@ -692,22 +692,22 @@ class AmigaToC64(DosToC64):
             # the check runs on its names and the choice goes to the writer.
             chosen = saveplan.check_names(
                 [c.name for c in party], self.destination_port,
-                self.shape.key, names)
+                self.deltas.key, names)
             if leave:
                 raise saveplan.SaveAsError(
                     f"{self.source_port} to c64 has no joined scroll to "
-                    f"leave anything of for {self.shape.key}")
+                    f"leave anything of for {self.deltas.key}")
             characters = party
             party_icons = None
         else:
-            save = amiga_savegame.read_slot(disk, slot, self.shape.key)
+            save = amiga_savegame.read_slot(disk, slot, self.deltas.key)
             state = amiga_savegame.state_from_savegame(save)
             characters = [amiga_later.to_neutral_later(c)
                           for c in save.characters]
             party_icons = [amiga_combat_icon(c) for c in save.characters]
             chosen = None
             characters = saveplan.fit_names(
-                characters, self.destination_port, self.shape.key, names)
+                characters, self.destination_port, self.deltas.key, names)
         if party_icons is None:
             save0, save1, report = dos_codec.new_save_from(
                 state, characters, options.icon, options.animate,
@@ -755,7 +755,7 @@ class C64ToDos(Direction):
     destination_port = "dos"
 
     def __init__(self, deltas: dos_port.DosDeltas):
-        self.shape = deltas
+        self.deltas = deltas
         self.source_key = deltas.key
         self.destination_game = deltas
         # Raises `titles.UnknownTitleError` at import time (via `DIRECTIONS`
@@ -783,7 +783,7 @@ class C64ToDos(Direction):
         characters, icons = dos_codec.c64_party(
             source.save0, source.save1, c64, icon_parts=icon_parts)
         characters = saveplan.fit_names(
-            characters, self.destination_port, self.shape.key, names)
+            characters, self.destination_port, self.deltas.key, names)
         with tempfile.TemporaryDirectory(prefix="wish-convert-") as scratch:
             scratch_path = pathlib.Path(scratch)
             report = dos_codec.new_dos_save_from(
@@ -846,7 +846,7 @@ class AmigaToDos(C64ToDos):
 
     **`__init__` is `C64ToDos`'s**, and deliberately, the way `AmigaToC64`
     takes `DosToC64`'s: the destination is the same DOS save folder written
-    by the same engine to the same file names, so the shape lookup and the
+    by the same engine to the same file names, so the deltas lookup and the
     `c64_port.by_key` check that fails loudly at import time are one
     implementation rather than two.  What differs is where the party and
     the place are read from, which is `rehearse`, and that
@@ -886,13 +886,13 @@ class AmigaToDos(C64ToDos):
             raise ConvertError(f"{source.path} names no Amiga save slot")
         game_dir = pathlib.Path(options)
         disk = source.amiga_disk()
-        if self.shape is dos_port.POOL_OF_RADIANCE:
+        if self.deltas is dos_port.POOL_OF_RADIANCE:
             party, savgam = amiga_savegame.read_por_slot(disk, source.slot)
             state = amiga_savegame.read_por_state(
                 savgam, source=f"{source.path} slot {source.slot}")
             characters = [dos_codec.to_neutral(c) for c in party]
         else:
-            save = amiga_savegame.read_slot(disk, source.slot, self.shape.key)
+            save = amiga_savegame.read_slot(disk, source.slot, self.deltas.key)
             state = amiga_savegame.state_from_savegame(save)
             party = list(save.characters)
             characters = [amiga_later.to_neutral_later(c) for c in party]
@@ -900,7 +900,7 @@ class AmigaToDos(C64ToDos):
         # the DOS field holds the same fifteen. Called anyway, so a
         # direction added later does not have to remember to.
         characters = saveplan.fit_names(
-            characters, self.destination_port, self.shape.key, names)
+            characters, self.destination_port, self.deltas.key, names)
         # The Amiga file order **is** the DOS file order (`docs/165-amiga-
         # savegame.md`), so there is no reversal here; `goldbox.dos_codec.
         # marching_slot` and `c64_party`'s own `reverse()` are the C64's
@@ -938,9 +938,9 @@ class PodAmigaToDos(Direction):
     destination_port = "dos"
 
     def __init__(self) -> None:
-        self.shape = dos_port.POOLS_OF_DARKNESS
+        self.deltas = dos_port.POOLS_OF_DARKNESS
         self.destination_game = dos_port.POOLS_OF_DARKNESS
-        self.source_key = self.shape.key
+        self.source_key = self.deltas.key
 
     def rehearse(self, source: Source, slot: str, options: Any,
                 names: "Mapping[int, str] | None" = None,
@@ -964,7 +964,7 @@ class PodAmigaToDos(Direction):
         characters = [amiga_pod.pod_to_neutral(block)
                      for block in amiga_savegame.pod_parse(data).blocks]
         characters = saveplan.fit_names(
-            characters, self.destination_port, self.shape.key, names)
+            characters, self.destination_port, self.deltas.key, names)
         vault = amiga_savegame.pod_read_vault(disk, source.slot)
         with tempfile.TemporaryDirectory(prefix="wish-convert-") as scratch:
             scratch_path = pathlib.Path(scratch)
@@ -1084,7 +1084,7 @@ def _rehearse_por_savegame(state: Any, slot: str, party: list,
         savegame)
 
 
-def _rehearse_later_savegame(state: Any, shape: dos_port.DosDeltas,
+def _rehearse_later_savegame(state: Any, deltas: dos_port.DosDeltas,
                              slot: str, party: list,
                              ecl_glb: bytes | None,
                              icons: "list | None" = None,
@@ -1099,21 +1099,21 @@ def _rehearse_later_savegame(state: Any, shape: dos_port.DosDeltas,
     savegame, report = amiga_savegame.new_savegame(
         state, party, slot, ecl_glb=ecl_glb, icons=icons)
     disk = amiga_savegame.slot_on_disk_one(
-        AmigaDisk.open(str(disk_one)), shape.key, slot, savegame)
+        AmigaDisk.open(str(disk_one)), deltas.key, slot, savegame)
     return AmigaWriteRehearsal(
         report, {POOLSAVE_FILENAME: disk.to_bytes()}, party, state, slot,
         savegame)
 
 
-def amiga_needs_disk_one(shape: dos_port.DosDeltas) -> bool:
+def amiga_needs_disk_one(deltas: dos_port.DosDeltas) -> bool:
     """Whether an Amiga destination of this title is a copy of the player's
     own disk 1: Curse and Silver Blades read their saves from its `SAVE`
     drawer and search no other disk."""
-    return shape in (dos_port.CURSE_OF_THE_AZURE_BONDS,
+    return deltas in (dos_port.CURSE_OF_THE_AZURE_BONDS,
                      dos_port.SECRET_OF_THE_SILVER_BLADES)
 
 
-def amiga_needs_game_disk(shape: dos_port.DosDeltas,
+def amiga_needs_game_disk(deltas: dos_port.DosDeltas,
                           source: "Source | None" = None) -> bool:
     """Whether an Amiga destination of this title reads anything off the
     player's own disk 2.
@@ -1124,19 +1124,19 @@ def amiga_needs_game_disk(shape: dos_port.DosDeltas,
     stages no script either. `editor.saveplan.requirements` asks this rather
     than demanding a disk for every Amiga destination alike.
     """
-    if shape is dos_port.SECRET_OF_THE_SILVER_BLADES:
+    if deltas is dos_port.SECRET_OF_THE_SILVER_BLADES:
         return False
-    if (shape is dos_port.CURSE_OF_THE_AZURE_BONDS
+    if (deltas is dos_port.CURSE_OF_THE_AZURE_BONDS
             and source is not None and source.port == "c64"
             and source.save0 is not None):
         state = world_state.from_c64(
-            source.save0, game=c64_port.by_key(shape.key),
+            source.save0, game=c64_port.by_key(deltas.key),
             source=str(source.path))
         return not world_state.has_not_set_out(state)
-    if (shape is dos_port.CURSE_OF_THE_AZURE_BONDS
+    if (deltas is dos_port.CURSE_OF_THE_AZURE_BONDS
             and source is not None and source.port == "dos"
             and source.slot):
-        container = dos_savegame.container_for(shape.key)
+        container = dos_savegame.container_for(deltas.key)
         try:
             with source.folder() as folder:
                 savgam = (pathlib.Path(folder) / f"SAVGAM{source.slot}"
@@ -1151,7 +1151,7 @@ def amiga_needs_game_disk(shape: dos_port.DosDeltas,
     return True
 
 
-def dos_needs_game_folder(shape: dos_port.DosDeltas) -> bool:
+def dos_needs_game_folder(deltas: dos_port.DosDeltas) -> bool:
     """Whether a DOS destination of this title reads anything off the
     player's own game folder.
 
@@ -1161,35 +1161,35 @@ def dos_needs_game_folder(shape: dos_port.DosDeltas) -> bool:
     and so needs no game folder at all -- the same per-title question
     `amiga_needs_game_disk` answers for an Amiga destination.
     """
-    return shape is not dos_port.POOLS_OF_DARKNESS
+    return deltas is not dos_port.POOLS_OF_DARKNESS
 
 
-def _amiga_destination_data(shape: dos_port.DosDeltas,
+def _amiga_destination_data(deltas: dos_port.DosDeltas,
                             options: "str | pathlib.Path",
                             source: "Source | None" = None) -> bytes | None:
     """The one game-data file a fresh save needs, when it needs one."""
-    if not amiga_needs_game_disk(shape, source):
+    if not amiga_needs_game_disk(deltas, source):
         return None
     from goldbox.amiga_adf import AmigaDisk
 
-    path = (_ECL_DAX_PATH if shape is dos_port.POOL_OF_RADIANCE
+    path = (_ECL_DAX_PATH if deltas is dos_port.POOL_OF_RADIANCE
             else _ECL_GLB_PATH)
     return AmigaDisk.open(str(options)).read_file(path)
 
 
-def _rehearse_amiga_savegame(state: Any, shape: dos_port.DosDeltas,
+def _rehearse_amiga_savegame(state: Any, deltas: dos_port.DosDeltas,
                              slot: str, party: list,
                              game_data: bytes | None,
                              icons: "list | None" = None,
                              disk_one: "str | pathlib.Path | None" = None,
                              ) -> AmigaWriteRehearsal:
-    if shape is dos_port.POOL_OF_RADIANCE:
+    if deltas is dos_port.POOL_OF_RADIANCE:
         if game_data is None:
             raise AmigaRecordError("Amiga Pool of Radiance needs ecl.dax")
         return _rehearse_por_savegame(
             state, slot, party, game_data, icons=icons)
     return _rehearse_later_savegame(
-        state, shape, slot, party, game_data, icons=icons,
+        state, deltas, slot, party, game_data, icons=icons,
         disk_one=disk_one)
 
 
@@ -1211,7 +1211,7 @@ class C64ToAmiga(Direction):
     IconParts` -- which turns each character's own C64 combat icon into an
     Amiga figure, mirroring `C64ToDos`'s own parameter (#422 (A C64 party
     converted to an Amiga save disk arrives with no combat figure at all,
-    because C64ToAmiga never recognises it), the same shape #383 gave the
+    because C64ToAmiga never recognises it), the same form #383 gave the
     DOS destination). `ConvertDialog` supplies it, off the *source*'s own
     title; left out, every figure is the game's own default, as before that
     ticket.
@@ -1221,7 +1221,7 @@ class C64ToAmiga(Direction):
     destination_port = "amiga"
 
     def __init__(self, deltas: dos_port.DosDeltas):
-        self.shape = deltas
+        self.deltas = deltas
         self.source_key = deltas.key
         self.destination_game = deltas
         # The C64 title `dos_codec.c64_party` reads the source disk against --
@@ -1241,15 +1241,15 @@ class C64ToAmiga(Direction):
             raise saveplan.SaveAsError(
                 f"{self.source_port} to {self.destination_port} has no "
                 f"pack to leave anything of")
-        game_data = _amiga_destination_data(self.shape, options, source)
+        game_data = _amiga_destination_data(self.deltas, options, source)
         party, icons = dos_codec.c64_party(source.save0, source.save1,
                                      game=self.title, icon_parts=icon_parts)
         party = saveplan.fit_names(
-            party, self.destination_port, self.shape.key, names)
+            party, self.destination_port, self.deltas.key, names)
         state = world_state.from_c64(
             source.save0, game=self.title, source=str(source.path))
         return _rehearse_amiga_savegame(
-            state, self.shape, "A", party, game_data, icons=icons,
+            state, self.deltas, "A", party, game_data, icons=icons,
             disk_one=disk_one)
 
     def write(self, rehearsal: AmigaWriteRehearsal,
@@ -1282,7 +1282,7 @@ class DosToAmiga(Direction):
     destination_port = "amiga"
 
     def __init__(self, deltas: dos_port.DosDeltas):
-        self.shape = deltas
+        self.deltas = deltas
         self.source_key = deltas.key
         self.destination_game = deltas
 
@@ -1303,10 +1303,10 @@ class DosToAmiga(Direction):
             # here, mirroring `AmigaToDos.rehearse`'s own guard.
             raise ConvertError(f"{source.path} names no DOS save slot")
         letter = source.slot
-        game_data = _amiga_destination_data(self.shape, options, source)
+        game_data = _amiga_destination_data(self.deltas, options, source)
         with source.folder() as folder:
             raw_party = dos_codec.read_party(folder, letter)
-            container = dos_savegame.container_for(self.shape.key)
+            container = dos_savegame.container_for(self.deltas.key)
             savgam_path = pathlib.Path(folder) / (
                 f"SAVGAM{letter}{container.suffix}")
             savgam = savgam_path.read_bytes()
@@ -1316,10 +1316,10 @@ class DosToAmiga(Direction):
         # Called anyway, so a direction added later does not have to
         # remember to.
         party = saveplan.fit_names(
-            party, self.destination_port, self.shape.key, names)
+            party, self.destination_port, self.deltas.key, names)
         # `amiga_combat_icon` is duck-typed to `goldbox.dos_codec.DosCharacter`
         # too (its own docstring) and reads the icon straight off the raw
-        # record, before `dos_codec.to_neutral` discards it -- the same shape
+        # record, before `dos_codec.to_neutral` discards it -- the same form
         # `AmigaToDos.rehearse` already uses for an Amiga source (#424,
         # mirroring #422's fix for a C64 source).
         icons = [amiga_combat_icon(c) for c in raw_party]
@@ -1329,7 +1329,7 @@ class DosToAmiga(Direction):
             savgam, container,
             source=str(pathlib.Path(source.path) / savgam_path.name))
         return _rehearse_amiga_savegame(
-            state, self.shape, letter, party, game_data, icons=icons,
+            state, self.deltas, letter, party, game_data, icons=icons,
             disk_one=disk_one)
 
     def write(self, rehearsal: AmigaWriteRehearsal,
@@ -1369,7 +1369,7 @@ class DosToAmiga(Direction):
 #: one `DosToC64.__init__` makes one line further down -- kept here so a
 #: title with no C64 game at all is *left out* rather than raising at import
 #: time.  The alarm the comment above describes is unchanged for every title
-#: that does have one: a shape `games` knows and `DOS_TO_C64_NAMES` does not
+#: that does have one: a title `games` knows and `DOS_TO_C64_NAMES` does not
 #: still raises `UnnamedConversionError`.
 #:
 #: **Do not swap this for `goldbox.titles.BY_KEY`.** Every other table this
@@ -1380,20 +1380,20 @@ class DosToAmiga(Direction):
 #: import once already, the other way round, when `dos_codec.CONVERTS` gained the
 #: title before this guard existed (`#194`'s comment of 2026-09-08).
 C64_PAIRED: tuple[dos_port.DosDeltas, ...] = tuple(
-    shape for shape in dos_codec.CONVERTS if shape.key in c64_port.BY_KEY)
+    deltas for deltas in dos_codec.CONVERTS if deltas.key in c64_port.BY_KEY)
 
 DIRECTIONS: tuple[Direction, ...] = tuple(
-    DosToC64(shape) for shape in C64_PAIRED
+    DosToC64(deltas) for deltas in C64_PAIRED
 ) + tuple(
-    C64ToDos(shape) for shape in C64_PAIRED
+    C64ToDos(deltas) for deltas in C64_PAIRED
 ) + tuple(
-    AmigaToC64(shape) for shape in amiga_shared.CONVERTS
+    AmigaToC64(deltas) for deltas in amiga_shared.CONVERTS
 ) + tuple(
-    AmigaToDos(shape) for shape in amiga_shared.CONVERTS
+    AmigaToDos(deltas) for deltas in amiga_shared.CONVERTS
 ) + tuple(
-    C64ToAmiga(shape) for shape in amiga_shared.WRITES
+    C64ToAmiga(deltas) for deltas in amiga_shared.WRITES
 ) + tuple(
-    DosToAmiga(shape) for shape in amiga_shared.WRITES
+    DosToAmiga(deltas) for deltas in amiga_shared.WRITES
 )
 
 #: Pools of Darkness directions, kept out of `DIRECTIONS` because the title
@@ -1656,7 +1656,7 @@ POOLS_OF_DARKNESS_UNSUPPORTED = "Pools of Darkness saves are not yet supported."
 #:
 #: **Silent inside `ConvertDialog`, since `#52`'s fix of 2026-09-10** -- a
 #: missing set of game disks is a field the dialog itself cannot fill in for
-#: the player, the same shape as `NO_FOLDER` and the other rows above, so a
+#: the player, the same form as `NO_FOLDER` and the other rows above, so a
 #: modal added nothing a disabled Convert button did not already say.
 #: `editor/window.py`'s own direct use of it, refusing `File ▸ Import`
 #: outright before its dialog even opened, is gone along with that menu
@@ -1677,7 +1677,7 @@ MISSING_ASSET_BLOCKS: dict[str, tuple[str, str]] = {
 #: The destination line under `Write to`, replacing the `This writes:`
 #: heading that used to sit inside the report pane
 #: (`editor/exports.py`'s own `WRITES_HEADING`, approved 2026-08-25, was the
-#: shape it copied). Donald's own wording, 2026-09-10, asking for the report
+#: form it copied). Donald's own wording, 2026-09-10, asking for the report
 #: pane's heading gone and the path moved: *"Make it say `Destination:
 #: /tmp/wish-2026-09-10/wish-2026-09-10/PORSAVEA.D64`."* Names the folder
 #: alone as of the same day's second ruling -- a C64 → DOS write can name a
@@ -1694,7 +1694,7 @@ CONVERTED_DOS = "Converted to DOS slot {slot} in {folder}"
 #: The status line after an Amiga write. Ruled on `#316 (Write the Amiga
 #: Pool of Radiance saved game from the source save, so a converted party
 #: arrives where it was standing)` on 2026-09-07, over the `CONVERTED_DOS`
-#: shape, because it names the two facts needed to actually play the
+#: form, because it names the two facts needed to actually play the
 #: result: the file to mount and the letter to type at the Amiga's own
 #: `LOAD WHICH GAME:` prompt. `{slot}` is a substitution -- a DOS-sourced
 #: conversion keeps its own source letter (`DosToAmiga`), and a C64-sourced
@@ -2086,7 +2086,7 @@ class ConvertDialog(QDialog):
             # destination is a copy of; Save As is the route for those.
             options = [d for d in destinations_for(self.source)
                        if not (d.destination_port == "amiga"
-                               and amiga_needs_disk_one(d.shape))]
+                               and amiga_needs_disk_one(d.deltas))]
         except Exception:
             _log.exception("could not read %s", self._source_path)
             self._populate_destinations([])

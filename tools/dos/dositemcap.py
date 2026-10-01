@@ -148,7 +148,7 @@ def chain(item: bytes, count: int) -> bytes:
     The loader allocates every node itself, so the stored pointer's value is
     never dereferenced -- but a NULL where a node follows is what stops the
     Amiga's loader dead (`docs/167-amiga-neutral-and-party-writing.md`), and
-    there is no reason to hand DOS a shape its own saves never have.  So the
+    there is no reason to hand DOS a form its own saves never have.  So the
     file gets what the engine's own `.ITM` files have: consecutive nodes
     `0x40` apart in one segment, and zero on the last.
     """

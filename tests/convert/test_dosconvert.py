@@ -870,7 +870,7 @@ def test_every_dropped_name_has_player_text():
     sentence is shown nothing, which is how `icon_dimension` and
     `turn_class` left the pane on 2026-09-06: Donald read both, asked what
     they meant, and neither turned out to cost a player anything -- all
-    player characters cover one square on the combat floor, and the turning
+    player characters cover one square on the combat arena, and the turning
     row belongs to the undead creature rather than to the cleric turning
     it, whose own ability `goldbox/derive.py` computes and the writer
     stores (#288).
@@ -1154,7 +1154,7 @@ def test_the_flags_and_the_square_land_where_a_c64_save_keeps_them():
 
 @needs_dos_saves
 def test_a_dos_party_exports_as_the_same_yaml_a_c64_party_does():
-    """Step 2, and the reason it has its own test: one shape, one
+    """Step 2, and the reason it has its own test: one structure, one
     set of field names, one renderer."""
     from goldbox.yaml_io import to_yaml
 
@@ -1471,7 +1471,7 @@ def test_a_training_hall_save_converts_into_the_hall_on_new_phlans_map():
 
 
 def _outdoor_savgam(script: int = 26) -> bytes:
-    """An overland save in the measured shape of `p59-outdoor`'s three (scratch, deleted):
+    """An overland save in the measured form of `p59-outdoor`'s three (scratch, deleted):
     `$49E6` = 0, `$49C5` = 0, the area id in `$49F2` alone, the square in
     `$49C3`/`$49C4`, and the stale indoor square left in 12801-12803.
 
@@ -1753,11 +1753,11 @@ def test_the_converted_inventory_follows_its_owner_to_the_reversed_slot():
 # --- the other three titles (#53) -------------------------------------------
 #
 # Reading is per title and the title is the record's own length.  These tests
-# are the evidence that `goldbox/dos_port.py`'s four shapes are right: a shape
+# are the evidence that `goldbox/dos_port.py`'s four DosDeltas rows are right: a row
 # one byte out fails several of them at once, because each check is a fact
 # about the *content* of a field rather than about the table that names it.
 
-#: The archive folder name for each shape, so a test can find that title's
+#: The archive folder name for each title, so a test can find that title's
 #: shipped party.
 _TITLE_FOLDER = {
     "pool-of-radiance": "POOLRAD",
@@ -1767,30 +1767,30 @@ _TITLE_FOLDER = {
 }
 
 
-def _title_records(shape):
+def _title_records(deltas):
     """Every shipped record of one title, or a skip."""
-    where = _game_dirs().get(_TITLE_FOLDER[shape.key])
+    where = _game_dirs().get(_TITLE_FOLDER[deltas.key])
     if where is None:
-        pytest.skip(f"no DOS {shape.title} here; set FR_ARCHIVES")
+        pytest.skip(f"no DOS {deltas.title} here; set FR_ARCHIVES")
     out = [dos_codec.read_character(p) for p in sorted(where.glob("CHRDAT*.SAV"))
-           if p.stat().st_size == shape.record_size]
+           if p.stat().st_size == deltas.record_size]
     if not out:
-        pytest.skip(f"no DOS {shape.title} records here")
+        pytest.skip(f"no DOS {deltas.title} records here")
     return out
 
 
 def _all_titles():
     return pytest.mark.parametrize(
-        "shape", dos_port.DELTAS, ids=[s.key for s in dos_port.DELTAS])
+        "deltas", dos_port.DELTAS, ids=[s.key for s in dos_port.DELTAS])
 
 
 def test_each_layout_tiles_its_own_record():
     """Every byte of all four records belongs to exactly one entry, and the
     widths add up to the size the file actually is.  `layout_for` raises on a
-    shape that does not, so this is the other half."""
-    for shape in dos_port.DELTAS:
-        table = dos_port.layout_for(shape)
-        assert sum(f.size for f in table) == shape.record_size, shape.key
+    title that does not, so this is the other half."""
+    for deltas in dos_port.DELTAS:
+        table = dos_port.layout_for(deltas)
+        assert sum(f.size for f in table) == deltas.record_size, deltas.key
         assert [f.offset for f in table] == sorted(f.offset for f in table)
     # No two titles are the same length, which is what lets a record name its
     # own title with nothing else to go on.
@@ -1813,7 +1813,7 @@ def test_a_record_of_an_unknown_length_is_refused():
 
 
 @_all_titles()
-def test_every_record_of_every_title_rebuilds_byte_for_byte(shape):
+def test_every_record_of_every_title_rebuilds_byte_for_byte(deltas):
     """Decode every field through the title's table, encode it back, compare.
 
     This is the round trip a read-only decoder can make, and it is not the
@@ -1821,14 +1821,14 @@ def test_every_record_of_every_title_rebuilds_byte_for_byte(shape):
     through `_decode`/`_encode` for every entry.  A field declared one byte
     wide that is really two comes back with its second byte zeroed.
     """
-    records = _title_records(shape)
+    records = _title_records(deltas)
     for char in records:
-        assert char.rebuild() == bytes(char), (shape.key, char.name)
-    assert len(records) >= 6, shape.key
+        assert char.rebuild() == bytes(char), (deltas.key, char.name)
+    assert len(records) >= 6, deltas.key
 
 
 @_all_titles()
-def test_the_encumbrance_identity_balances_in_every_title(shape):
+def test_the_encumbrance_identity_balances_in_every_title(deltas):
     """`money + sum(item weight x quantity)` against the stored encumbrance.
 
     Self-contained arithmetic across three structures, so it confirms the
@@ -1836,35 +1836,35 @@ def test_the_encumbrance_identity_balances_in_every_title(shape):
     order together -- and it is what says Pools of Darkness really does keep
     **three** coin slots where every earlier title keeps seven.
     """
-    for char in _title_records(shape):
+    for char in _title_records(deltas):
         if _never_rebuilt(char):
             # Rebuilt with the count on VIEW, so stored is money only.
             assert char.get("encumbrance") == sum(char.money.values()), \
-                (shape.key, char.name)
+                (deltas.key, char.name)
             continue
         assert char.expected_encumbrance() == char.get("encumbrance"), \
-            (shape.key, char.name)
+            (deltas.key, char.name)
 
 
 @_all_titles()
-def test_the_level_array_is_indexed_by_class_number_in_every_title(shape):
+def test_the_level_array_is_indexed_by_class_number_in_every_title(deltas):
     """DOS indexes its per-class levels by the class *number*, and the class
     byte says which slots may be set.  A spellbook or a memorised region one
     byte out moves this array and the check fails."""
-    for char in _title_records(shape):
+    for char in _title_records(deltas):
         number = char.get("char_class")
-        assert number in dos_codec.CLASS_SLOTS_FOR_CLASS, (shape.key, char.name,
+        assert number in dos_codec.CLASS_SLOTS_FOR_CLASS, (deltas.key, char.name,
                                                     number)
         levels = char.raw("class_levels")
         want = {n for n in dos_codec.CLASS_SLOTS_FOR_CLASS[number]
                 if n < len(levels)}
         assert {n for n, v in enumerate(levels) if v} == want, \
-            (shape.key, char.name, char.get("char_class"), list(levels))
-        assert char.get("level") == max(levels), (shape.key, char.name)
+            (deltas.key, char.name, char.get("char_class"), list(levels))
+        assert char.get("level") == max(levels), (deltas.key, char.name)
 
 
 @_all_titles()
-def test_only_the_proven_titles_convert(shape):
+def test_only_the_proven_titles_convert(deltas):
     """Reading is per title; converting is not, until a title has been proven
     the way `.claude/rules/conversions.md` asks for -- bytes matching and a
     converted save loaded in the running game.
@@ -1875,8 +1875,8 @@ def test_only_the_proven_titles_convert(shape):
     in VICE. Handing a Silver Blades record to the C64 writer would read
     Curse's or Pool of Radiance's offsets out of a 439-byte record, so it
     still raises instead."""
-    char = _title_records(shape)[0]
-    if shape in dos_codec.CONVERTS:
+    char = _title_records(deltas)[0]
+    if deltas in dos_codec.CONVERTS:
         dos_codec.to_neutral(char)
         return
     with pytest.raises(dos_codec.WrongTitleError):
@@ -1884,20 +1884,20 @@ def test_only_the_proven_titles_convert(shape):
 
 
 @_all_titles()
-def test_the_class_bitmask_is_what_the_level_arrays_imply(shape):
+def test_the_class_bitmask_is_what_the_level_arrays_imply(deltas):
     """`class_bits` against the classes the level arrays actually name.
 
-    The check that catches best a wrong shape, because the two sit at
+    The check that catches best a wrong deltas, because the two sit at
     opposite ends of the undecoded middle: move either and they disagree.
     54 of 54 shipped records across the four titles.
     """
-    for char in _title_records(shape):
+    for char in _title_records(deltas):
         assert char.get("class_bits") == dos_codec.class_bits_for(char), \
-            (shape.key, char.name, hex(char.get("class_bits")))
+            (deltas.key, char.name, hex(char.get("class_bits")))
 
 
 @_all_titles()
-def test_the_class_level_array_reads_a_seven_or_eight_slot_title_alike(shape):
+def test_the_class_level_array_reads_a_seven_or_eight_slot_title_alike(deltas):
     """`DosCharacter.class_levels` used to walk `CLASS_LEVEL_SLOTS`'
     eight rows regardless of the record's own array width, raising
     `IndexError` on every Secret of the Silver Blades and Pools of Darkness
@@ -1908,23 +1908,23 @@ def test_the_class_level_array_reads_a_seven_or_eight_slot_title_alike(shape):
     """
     named = {"PAINE": {"ranger": 8}, "MALACHITE": {"fighter": 7, "thief": 8}}
     seen = set()
-    for char in _title_records(shape):
+    for char in _title_records(deltas):
         assert char.class_levels  # does not raise, and every record has one
-        if shape.key == "secret-of-the-silver-blades" and char.name in named:
-            assert char.class_levels == named[char.name], (shape.key,
+        if deltas.key == "secret-of-the-silver-blades" and char.name in named:
+            assert char.class_levels == named[char.name], (deltas.key,
                                                             char.name)
             seen.add(char.name)
-    if shape.key == "secret-of-the-silver-blades":
+    if deltas.key == "secret-of-the-silver-blades":
         assert seen == set(named), seen
 
 
 @_all_titles()
-def test_the_shipped_party_reads_as_characters(shape):
+def test_the_shipped_party_reads_as_characters(deltas):
     """The cheap sanity of a record that decoded: abilities in range, a
     printable name, hit points inside their maximum, five saving throws that
     are d20 rolls, a size that is small or medium, a party slot."""
-    for char in _title_records(shape):
-        who = (shape.key, char.name)
+    for char in _title_records(deltas):
+        who = (deltas.key, char.name)
         assert char.name.isprintable() and char.name, who
         for stat in ("strength", "intelligence", "wisdom", "dexterity",
                      "constitution", "charisma"):
@@ -1943,8 +1943,8 @@ def test_a_dual_classed_character_carries_the_class_it_was():
     """Pools of Darkness keeps a second level array for the class a
     dual-classed character left behind, indexed the same way: ABAGAIL is a
     magic-user 12 who was a cleric 11, and her class bitmask carries both."""
-    shape = dos_port.DELTAS_BY_SIZE[510]
-    by_name = {c.name: c for c in _title_records(shape)}
+    deltas = dos_port.DELTAS_BY_SIZE[510]
+    by_name = {c.name: c for c in _title_records(deltas)}
     abagail = by_name.get("ABAGAIL")
     if abagail is None:
         pytest.skip("this Pools of Darkness party has no ABAGAIL")
@@ -1955,7 +1955,7 @@ def test_a_dual_classed_character_carries_the_class_it_was():
 
 
 def test_the_silver_blades_rangers_hold_the_c64_grant_list_exactly():
-    """The strongest single check on a shape this project did not measure
+    """The strongest single check on a title this project did not measure
     itself: the ranger's grant was read mechanically out of the **C64** `GEN`
     file, and DOS Silver Blades' three shipped rangers hold its level-8 row --
     77, 78, 79, 80 -- and nothing else.
@@ -1968,9 +1968,9 @@ def test_the_silver_blades_rangers_hold_the_c64_grant_list_exactly():
     from `SpellTable.groups` and a pair of spell levels now, so this asks the
     derivation rather than a copy of the answer (#89).
     """
-    shape = dos_port.DELTAS_BY_SIZE[439]
+    deltas = dos_port.DELTAS_BY_SIZE[439]
     want = set(levelup._ranger_spell_ids(8, c64_port.SECRET_OF_THE_SILVER_BLADES))
-    rangers = [c for c in _title_records(shape) if c.get("char_class") == 4]
+    rangers = [c for c in _title_records(deltas) if c.get("char_class") == 4]
     assert len(rangers) == 3
     for char in rangers:
         assert set(char.spells_known) == want, char.name
@@ -1979,10 +1979,10 @@ def test_the_silver_blades_rangers_hold_the_c64_grant_list_exactly():
 def test_the_silver_blades_clerics_hold_the_cleric_grant_levels():
     """The level-8 clerics know cleric levels 1-4 and nothing else, which is
     `goldbox/spells.py`'s Silver Blades groups 1-8, 22-28, 37-44, {58, 66-70}."""
-    shape = dos_port.DELTAS_BY_SIZE[439]
+    deltas = dos_port.DELTAS_BY_SIZE[439]
     want = (set(range(1, 9)) | set(range(22, 29)) | set(range(37, 45))
             | {58} | set(range(66, 71)))
-    clerics = [c for c in _title_records(shape) if c.get("char_class") == 0]
+    clerics = [c for c in _title_records(deltas) if c.get("char_class") == 0]
     assert len(clerics) == 2
     for char in clerics:
         assert set(char.spells_known) == want, char.name
@@ -2161,7 +2161,7 @@ def test_a_save_built_from_nothing_accounts_for_every_byte():
 def test_the_combat_icons_of_the_party_are_the_ones_creation_writes():
     """Zero is refused here (#57): screen code 0 in `CHARPIC00` is a real
     glyph, so a zeroed 36-byte icon draws as a 3x3 block of black hooks on the
-    combat floor rather than as nothing.
+    combat arena rather than as nothing.
 
     With the explicit default-icon argument, every slot carries that default.
     INIT seeds all eight; ADDNPC preserves any free party slot it fills, not
@@ -2436,7 +2436,7 @@ def test_the_default_icon_is_what_the_engine_seeded_the_table_with():
     still hold what the table was seeded with -- on every disk except the
     two named in :data:`NPC_SLOT_EXPLAINED`, which are Wish's own past
     output rather than the engine's. And **0** in slots 0-5, which is what
-    says the match is the creation default rather than a shape any character
+    says the match is the creation default rather than a value any character
     happens to carry.
     """
     from goldbox import icons

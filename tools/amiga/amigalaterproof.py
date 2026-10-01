@@ -75,35 +75,35 @@ _DOS_TABLES = ("WRITE_UNSOURCED", "WRITE_UNSOURCED_LATER", "WRITE_DERIVED",
                "WRITE_DERIVED_LATER", "WRITE_CONSTANTS", "WRITE_DEFAULTS")
 
 
-def declared_record_mask(shape: amiga_port.AmigaDeltas) -> set[int]:
+def declared_record_mask(deltas: amiga_port.AmigaDeltas) -> set[int]:
     """Amiga record offsets the two sides are allowed to disagree in."""
     names: set[str] = set()
     for table in _DOS_TABLES:
         for row in getattr(dos_codec, table):
             names.add(row[0])
     out: set[int] = set()
-    for field in dos_port.layout_for(shape.dos):
+    for field in dos_port.layout_for(deltas.dos):
         if field.name not in names:
             continue
         try:
-            at = shape.offset(field.offset)
+            at = deltas.offset(field.offset)
         except amiga_port.AmigaRecordError:
             continue
         out.update(range(at, at + field.size))
-    for at, size, _why in amiga_later.LATER_WRITE_UNSOURCED[shape.key]:
+    for at, size, _why in amiga_later.LATER_WRITE_UNSOURCED[deltas.key]:
         out.update(range(at, at + size))
-    for at, size, _why in amiga_later.LATER_WRITE_DERIVED[shape.key]:
+    for at, size, _why in amiga_later.LATER_WRITE_DERIVED[deltas.key]:
         out.update(range(at, at + size))
     # `field_83_87` is on `WRITE_CONSTANTS` for the control byte the writer
     # patches over it, but the control and share bytes it carries
     # (`goldbox.dos_codec.to_neutral`'s `control_index`/`share_index`) are
     # exact, sourced values now, not a constant -- take their offsets back out
     # so an engine resave is actually compared at both (#529).
-    f83 = next((f for f in dos_port.layout_for(shape.dos)
+    f83 = next((f for f in dos_port.layout_for(deltas.dos)
                 if f.name == "field_83_87"), None)
     if f83 is not None:
         try:
-            f83_at = shape.offset(f83.offset)
+            f83_at = deltas.offset(f83.offset)
         except amiga_port.AmigaRecordError:
             f83_at = None
         if f83_at is not None:
@@ -115,46 +115,46 @@ def declared_record_mask(shape: amiga_port.AmigaDeltas) -> set[int]:
 
 def declared_block_mask(char: amiga_later.AmigaCharacter) -> set[int]:
     """The same over a whole block: record, then item nodes, then effects."""
-    shape = char.deltas
-    out = declared_record_mask(shape)
-    at = shape.record_size
+    deltas = char.deltas
+    out = declared_record_mask(deltas)
+    at = deltas.record_size
     for _ in char.items:
         for offset, size, _why in amiga_later.LATER_ITEM_WRITE_UNSOURCED:
             out.update(range(at + offset, at + offset + size))
-        at += shape.item_size
+        at += deltas.item_size
     for _ in char.effects:
         for offset, size, _why in amiga_later.LATER_EFFECT_WRITE_UNSOURCED:
             out.update(range(at + offset, at + offset + size))
-        at += shape.effect_size
+        at += deltas.effect_size
     return out
 
 
-def field_at(shape: amiga_port.AmigaDeltas, offset: int) -> str:
+def field_at(deltas: amiga_port.AmigaDeltas, offset: int) -> str:
     """Which field of the record an Amiga offset lands in, for a diff line."""
-    for field in dos_port.layout_for(shape.dos):
+    for field in dos_port.layout_for(deltas.dos):
         try:
-            at = shape.offset(field.offset)
+            at = deltas.offset(field.offset)
         except amiga_port.AmigaRecordError:
             continue
         if at <= offset < at + field.size:
             return f"{field.name}+{offset - at}"
-    if shape.spellbook_bytes is not None:
+    if deltas.spellbook_bytes is not None:
         book = amiga_later.AMIGA_SSB_SPELLBOOK_AT
-        if book <= offset < book + shape.spellbook_bytes:
+        if book <= offset < book + deltas.spellbook_bytes:
             return f"spellbook+{offset - book}"
     return "-"
 
 
 def part_at(char: amiga_later.AmigaCharacter, offset: int) -> str:
     """Which part of a block an offset is in: the record, a node, or past it."""
-    shape = char.deltas
-    if offset < shape.record_size:
-        return f"record {field_at(shape, offset)}"
-    at = offset - shape.record_size
-    if at < len(char.items) * shape.item_size:
-        return f"item {at // shape.item_size} +0x{at % shape.item_size:03x}"
-    at -= len(char.items) * shape.item_size
-    return f"effect {at // shape.effect_size} +0x{at % shape.effect_size:03x}"
+    deltas = char.deltas
+    if offset < deltas.record_size:
+        return f"record {field_at(deltas, offset)}"
+    at = offset - deltas.record_size
+    if at < len(char.items) * deltas.item_size:
+        return f"item {at // deltas.item_size} +0x{at % deltas.item_size:03x}"
+    at -= len(char.items) * deltas.item_size
+    return f"effect {at // deltas.effect_size} +0x{at % deltas.effect_size:03x}"
 
 
 # ---------------------------------------------------------------------------

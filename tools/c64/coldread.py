@@ -180,7 +180,7 @@ def trait_seeds(gen: bytes, game: c64_port.C64Container, base: int
                 ) -> tuple[int | None, list[int]]:
     """Where `GEN` seeds the trait slots from, found by the read that does it.
 
-    The shape is the same in all three measured titles and the *number of
+    The form is the same in all three measured titles and the *number of
     seeded slots is not*: `LDX <record race> / LDA <table>,X / STA <slot>` once
     in Pool of Radiance, three times in Curse, twice in Silver Blades. So the
     tables are counted rather than assumed, which is the whole reason this is a
@@ -237,7 +237,7 @@ def class_ceilings(gen: bytes, game: c64_port.C64Container, base: int) -> int | 
     """The per-class level cap, found beside the array it caps.
 
     `LDA <record 0x0C9>,X / CMP <table>,X` ties the table to the exact eight
-    bytes an editor would write. Pool of Radiance does not use this shape and
+    bytes an editor would write. Pool of Radiance does not use this form and
     is answered None rather than guessed at.
 
     **`BCS` is the discriminator and it is not decoration.** Three sites in

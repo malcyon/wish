@@ -73,7 +73,7 @@ def test_the_c64_identity_pair_reads_back_as_neutral_unnamed_0ab():
 
 
 def test_curse_and_silver_blades_have_no_identity_pair_to_read():
-    """Neither title's GEN draws the pair, so a record of either shape gives
+    """Neither title's GEN draws the pair, so a record of either form gives
     the reader nothing to carry -- even when the bytes happen to be
     non-zero, which they never are in a shipped save (#258's own sweep: 6
     of 6 Curse records and 4 of 4 Silver Blades ones read `00 00`)."""

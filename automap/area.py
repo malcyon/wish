@@ -522,7 +522,7 @@ class ResidentGeo:
         None while no area is loaded, which is the same "no map right now" the
         C64 reports by holding a page of something else.
 
-        The optional-capability shape `read_fix` and `screen_banks` already
+        The optional-capability form `read_fix` and `screen_banks` already
         use: found with `getattr`, and a backend without one keeps the
         behaviour every backend had before this existed.
         """

@@ -283,7 +283,7 @@ def _tracked(statements, source: str, seeded) -> set[str]:
     Iterated to a fixed point rather than in one pass, because the chain can
     be several assignments long: `here = pathlib.Path(slot.dir)`, then
     `work_save = f"{here}/SIDE0.D64"`, then a copy into `work_save` --
-    `tools/c64/walkrun.py`, and the shape the committed `#476` sweep walked past.
+    `tools/c64/walkrun.py`, and the form the committed `#476` sweep walked past.
     """
     names = set(seeded)
     while True:
@@ -445,7 +445,7 @@ PRE_FIX = (
 #: What the sweep has to name in each of those files: the destination
 #: expression of the copy that handed the game a read-only save disk.  The two
 #: `traitsave.py` rows under `9fd51fb` are `#487`'s, and they are the ones
-#: `#476`'s shape missed -- they land straight in `--out` rather than in an
+#: `#476`'s form missed -- they land straight in `--out` rather than in an
 #: `out / "disks"` under it, and the source is a bare parameter with no
 #: `args.` in it, which is what defeated the direction test.
 PRE_FIX_SITES = {
@@ -599,7 +599,7 @@ def test_the_sweep_catches_a_copy_into_a_pool_slot(tmp_path):
 
 
 def test_the_sweep_catches_a_slot_path_built_two_assignments_earlier(tmp_path):
-    """`tools/c64/walkrun.py`'s shape, and the one the committed `#476` sweep
+    """`tools/c64/walkrun.py`'s form, and the one the committed `#476` sweep
     walked past: the slot's directory reaches the call through two hops, and
     neither the destination expression nor the assignment that built it
     mentions `slot.dir`."""
@@ -635,7 +635,7 @@ def test_the_sweep_catches_a_copy_into_any_out_scoped_directory(tmp_path):
 
 def test_the_sweep_catches_a_copy_in_a_helper_that_takes_out_as_a_parameter(
         tmp_path):
-    """`#487`'s shape: the staging happens inside a helper, so `--out` is a
+    """`#487`'s form: the staging happens inside a helper, so `--out` is a
     bare parameter and there is no `args.` anywhere near the call."""
     (tmp_path / "toolstub.py").write_text(
         "import shutil\n"

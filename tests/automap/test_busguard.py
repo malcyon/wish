@@ -401,7 +401,7 @@ def test_a_held_off_tick_does_not_spend_the_roster_cadence(
 
 def test_the_fastloaders_rest_state_now_costs_settle_seconds_and_no_more(
         app, tmp_path, monkeypatch):
-    """Cold, with no load before it: the shape of the cost is unchanged --
+    """Cold, with no load before it: the cost is unchanged --
     `SETTLE - 1` guard-byte-only ticks, then the tick that settles, then
     ordinary ticks -- but reaching it now takes three seconds rather than
     the `SETTLE` * 500 ms = 1.5 s of the fixed tick, because the two ticks

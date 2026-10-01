@@ -371,7 +371,7 @@ class SessTarget:
 
 
 class Row:
-    """One area, in the shape `FastTravel` reads a table row in.
+    """One area, in the form `FastTravel` reads a table row in.
 
     Curse has no area table -- `goldbox/areas.py` has Pool of Radiance's and
     Silver Blades' -- so a driven trip has to supply the three fields itself:

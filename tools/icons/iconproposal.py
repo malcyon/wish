@@ -261,13 +261,13 @@ def c64_figure(parts: IconParts, charset: bytes, size: str, weapon: int,
     head, or neither (#325).
     """
     blank = bytes([0x20] * 18)
-    shape = parts.apply(blank, parts.size_for(size, "weapon", weapon),
+    figure = parts.apply(blank, parts.size_for(size, "weapon", weapon),
                         "weapon", weapon)
-    shape = parts.apply(shape, parts.size_for(size, "head", head),
+    figure = parts.apply(figure, parts.size_for(size, "head", head),
                         "head", head)
-    seed = bytes([6 | MULTICOLOUR] * len(shape))
-    colours = parts.colours_for(shape, c64_part_colours(icon_colours), seed)
-    return icons.icon_pixels(icons.Icon(shape + colours), charset)
+    seed = bytes([6 | MULTICOLOUR] * len(figure))
+    colours = parts.colours_for(figure, c64_part_colours(icon_colours), seed)
+    return icons.icon_pixels(icons.Icon(figure + colours), charset)
 
 
 def dos_figure(game: pathlib.Path, size: str, body: int, head: int,
@@ -316,7 +316,7 @@ def redrawn_sizes(game: pathlib.Path, reference: pathlib.Path, kind: str,
 # titles, because `SPELLE64`'s four option tables are the identical bytes in
 # each.  They are -- but a figure is screen codes *drawn through* `CHARPIC00`,
 # and Silver Blades redraws three of that file's 253 glyphs.  Comparing the
-# composed shape therefore says "identical" about pictures that are not, which
+# composed figure therefore says "identical" about pictures that are not, which
 # is exactly the mistake a person matching by eye cannot afford.
 
 #: The three files a disk needs before it can draw a C64 figure: the option
@@ -365,11 +365,11 @@ def c64_option_pixels(parts: IconParts, charset: bytes, size: str, kind: str,
     because the codes are the same in all three titles and the glyphs they
     name are not.
     """
-    shape = parts.apply(bytes([SPACE] * 18),
+    figure = parts.apply(bytes([SPACE] * 18),
                         parts.size_for(size, kind, option), kind, option)
-    seed = bytes([MULTICOLOUR | 6] * len(shape))
-    colours = parts.colours_for(shape, c64_part_colours(icon_colours), seed)
-    return icons.icon_pixels(icons.Icon(shape + colours), charset)
+    seed = bytes([MULTICOLOUR | 6] * len(figure))
+    colours = parts.colours_for(figure, c64_part_colours(icon_colours), seed)
+    return icons.icon_pixels(icons.Icon(figure + colours), charset)
 
 
 def c64_redrawn_options(disk: pathlib.Path | None,
@@ -379,7 +379,7 @@ def c64_redrawn_options(disk: pathlib.Path | None,
     """Which C64 options `disk` draws differently from `reference`.
 
     Keyed `(kind, option)` -- the C64 option number, not the DOS one -- with
-    the sizes it differs at, the same shape `redrawn_sizes` returns for the
+    the sizes it differs at, the same form `redrawn_sizes` returns for the
     DOS side.  Empty when the two paths are the same disk, and empty for
     Curse of the Azure Bonds, whose `CHARPIC00` is Pool of Radiance's byte
     for byte.

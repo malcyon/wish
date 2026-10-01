@@ -36,7 +36,7 @@ Session = session.Session
 SILVER = c64_port.SECRET_OF_THE_SILVER_BLADES
 POOL = c64_port.POOL_OF_RADIANCE
 
-#: Where the two fighters `synthetic_arena` puts on the floor stand.
+#: Where the two fighters `synthetic_arena` puts in the arena stand.
 PARTY_AT = (25, 13)
 MONSTER_AT = (30, 13)
 
@@ -83,8 +83,8 @@ def test_a_later_titles_fight_is_read_at_its_own_addresses(game):
     target = MemoryTarget(later_arena())
     battle = combat.read_battle(target, game)
     assert battle is not None, "no fight was read at all"
-    assert battle.shape.positions == 0xCB00
-    assert battle.shape.map_base == 0x6F00
+    assert battle.geometry.positions == 0xCB00
+    assert battle.geometry.map_base == 0x6F00
     assert [(c.index, c.x, c.y) for c in battle.party] == [(0, *PARTY_AT)]
     assert [(c.index, c.x, c.y) for c in battle.enemies] == [(8, *MONSTER_AT)]
 
@@ -94,7 +94,7 @@ def test_the_reader_as_it_stood_finds_no_fight_on_a_curse_machine():
 
     `automap.combat.read_battle` reads `$6E11` for the mode, and in a running
     Curse that byte belongs to something else -- so a party standing on the
-    combat floor is reported as not fighting, `porcmd battle` says `not in a
+    combat arena is reported as not fighting, `porcmd battle` says `not in a
     fight`, and `Session.fight` returns `not fighting` with zero turns
     (`#334`). This is what `tools/c64/session.py` used to call.
     """
@@ -110,8 +110,8 @@ def test_pool_of_radiance_is_still_read_exactly_where_it_always_was():
     assert now is not None
     assert [(c.index, c.x, c.y, c.hp) for c in now.combatants] == \
            [(c.index, c.x, c.y, c.hp) for c in was.combatants]
-    assert (now.shape, now.camera, now.terrain) == \
-           (was.shape, was.camera, was.terrain)
+    assert (now.geometry, now.camera, now.terrain) == \
+           (was.geometry, was.camera, was.terrain)
 
 
 def test_a_title_nobody_has_run_under_a_monitor_is_refused():
@@ -184,12 +184,12 @@ class ModeSession(Session):
 @pytest.mark.parametrize("game,flag", [(POOL, 0x6E11), (CURSE, 0x7F11),
                                        (SILVER, 0x7F11)])
 def test_the_driver_asks_this_titles_own_mode_flag(game, flag):
-    """`in_combat` on a combat floor, whichever title is being driven.
+    """`in_combat` on a combat arena, whichever title is being driven.
 
     Before `#334` this read `$6E11` on all three, so a Curse party in a fight
     answered whatever that byte happened to hold -- `1`, in the run at
     `issue131-m2/curse-brawl` (scratch, deleted), with `MOVE VIEW AIM TURN QUICK DONE` on
-    row 24 and six figures on the floor.
+    row 24 and six figures in the arena.
     """
     sess = ModeSession(game, {flag: 2})
     assert sess.mode() == 2

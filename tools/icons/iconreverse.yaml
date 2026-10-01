@@ -313,9 +313,9 @@ colours:
 # who picked the redrawn option comes home from the C64 as somebody else's
 # figure.
 #
-# Shape, one section per title key, at the top level for a row that answers
+# Layout, one section per title key, at the top level for a row that answers
 # at both sizes and under `small:` for one that answers at the small size
-# only -- the same two-level shape the base table itself uses, since there
+# only -- the same two-level form the base table itself uses, since there
 # is no size-free row within an override to fall back to either.
 overrides:
   secret-of-the-silver-blades:

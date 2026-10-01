@@ -92,8 +92,8 @@ def _candidates():
 def _records() -> tuple[tuple[str, str, str, int, int], ...]:
     """Every shipped character record in the archives.
 
-    `(path, shape key, name, race byte, class byte)` per file.  The record
-    size names the shape, which is `deltas_for`'s own claim; a file of any
+    `(path, deltas key, name, race byte, class byte)` per file.  The record
+    size names the deltas, which is `deltas_for`'s own claim; a file of any
     other length is not a record and is skipped.
     """
     out: dict[str, tuple[str, str, str, int, int]] = {}
@@ -114,11 +114,11 @@ def _records() -> tuple[tuple[str, str, str, int, int], ...]:
                 continue
             if size not in dos_port.DELTAS_BY_SIZE:
                 continue
-            shape = dos_port.DELTAS_BY_SIZE[size]
-            fields = {f.name: f for f in dos_port.LAYOUTS[shape.key]}
+            deltas = dos_port.DELTAS_BY_SIZE[size]
+            fields = {f.name: f for f in dos_port.LAYOUTS[deltas.key]}
             blob = path.read_bytes()
             name = blob[1:1 + blob[0]].decode("latin-1").strip()
-            out[str(path)] = (str(path), shape.key, name,
+            out[str(path)] = (str(path), deltas.key, name,
                               blob[fields["race"].offset],
                               blob[fields["char_class"].offset])
     return tuple(out.values())
@@ -242,9 +242,9 @@ def test_each_titles_table_is_what_dos_layout_says_it_is():
     found = _need_tables()
     assert len(found) >= 2, f"only {sorted(found)} found"
     for key, (path, offset, stride, names) in found.items():
-        shape = dos_port.deltas_for(key)
-        assert tuple(n.lower() for n in names) == tuple(shape.race_numbers), (
-            f"{shape.title}: {path} at 0x{offset:06x} stride {stride} reads "
+        deltas = dos_port.deltas_for(key)
+        assert tuple(n.lower() for n in names) == tuple(deltas.race_numbers), (
+            f"{deltas.title}: {path} at 0x{offset:06x} stride {stride} reads "
             f"{names}")
 
 
@@ -275,7 +275,7 @@ def test_no_later_title_still_has_a_half_orc():
 
 
 def _synthetic(names, stride, before=b"", pad_after=0) -> bytes:
-    """A race table in the games' own shape, for testing the reader alone."""
+    """A race table in the games' own form, for testing the reader alone."""
     out = bytearray(before)
     for name in names:
         slot = bytes([len(name)]) + name.encode("ascii")

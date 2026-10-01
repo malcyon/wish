@@ -107,13 +107,13 @@ def test_a_pool_of_radiance_amiga_spc_keeps_the_minutes_byte_swapped():
     assert dos_spc == bytes((1, 0x02, 0x01, 1, 0)) + NULL
 
 
-@pytest.mark.parametrize("shape", list(amiga_port.AMIGA_DELTAS),
+@pytest.mark.parametrize("deltas", list(amiga_port.AMIGA_DELTAS),
                          ids=lambda s: s.key)
-def test_a_running_effect_survives_the_later_amiga_titles(shape):
+def test_a_running_effect_survives_the_later_amiga_titles(deltas):
     """Curse and Silver Blades: the neutral record writes a chain node with
     the minutes big-endian, and the reader gives it back as a running effect
     instead of dropping it with no line."""
-    char = neutral.NeutralCharacter("test", game=c64_port.by_key(shape.key))
+    char = neutral.NeutralCharacter("test", game=c64_port.by_key(deltas.key))
     ok = Confidence.CONFIRMED
     char.set("name", "TESTER", "a test name", ok)
     for ability in neutral.ABILITIES:
@@ -136,7 +136,7 @@ def test_a_running_effect_survives_the_later_amiga_titles(shape):
     # about a loss and no node missing.
     assert not [d for d in back.dropped if "effect" in d]
 
-    _rec, _itm, spc, _ = dos_codec.write(back, deltas=shape.dos)
+    _rec, _itm, spc, _ = dos_codec.write(back, deltas=deltas.dos)
     nodes = [spc[i:i + 9] for i in range(0, len(spc), 9)]
     assert [(n[0], int.from_bytes(n[1:3], "little")) for n in nodes
             if n[0] in (1, 61)] == [(61, 0), (1, 0x0102)]

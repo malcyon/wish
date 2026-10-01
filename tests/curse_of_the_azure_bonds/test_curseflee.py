@@ -242,8 +242,8 @@ def test_run_polls_fast_enough_to_catch_the_flee_line(tmp_path, monkeypatch):
 
 def test_run_logs_each_wait_iteration_and_dumps_the_combat_floor(
         tmp_path, monkeypatch):
-    """`run()`'s combat-floor wait mirrors `laterbattle.main`'s own: a
-    `waiting-for-combat` line every iteration and a `combat-floor` dump once
+    """`run()`'s combat-arena wait mirrors `laterbattle.main`'s own: a
+    `waiting-for-combat` line every iteration and a `combat-arena` dump once
     the loop ends, so a run that fails here still says what row 24 and the
     mode byte showed (review finding on `#648`)."""
     sess = FakeSession()
@@ -279,9 +279,9 @@ def test_run_logs_each_wait_iteration_and_dumps_the_combat_floor(
     assert len(waits) == in_combat_after
     assert all("mode" in kw and "row24" in kw and "bar" in kw
                and "readable" in kw for kw in waits)
-    assert ("dump", "combat-floor") in calls
+    assert ("dump", "combat-arena") in calls
     # the dump comes after the waits, matching `laterbattle.main`'s order
-    assert calls.index(("dump", "combat-floor")) > calls.index(
+    assert calls.index(("dump", "combat-arena")) > calls.index(
         ("waiting-for-combat", waits[-1]))
 
 

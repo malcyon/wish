@@ -246,7 +246,7 @@ def test_a_slow_read_is_timed_and_a_quick_one_is_not(logs):
     assert "another poll" not in text
 
 
-# --- the shape of a file, not its contents -----------------------------------
+# --- the form of a file, not its contents -----------------------------------
 
 class FakeEntry:
     block_count = 3
@@ -275,10 +275,10 @@ class FakeParty:
 
 
 def test_a_save_summary_contains_only_metadata(logs):
-    shape = debuglog.save_summary(FakeParty(), "/home/ada/saves/PORSAVE11.D64")
-    assert shape == ("PORSAVE11.D64, 174848 bytes, 6 blocks, save disk, "
+    summary = debuglog.save_summary(FakeParty(), "/home/ada/saves/PORSAVE11.D64")
+    assert summary == ("PORSAVE11.D64, 174848 bytes, 6 blocks, save disk, "
                      "2 characters, area GEO01")
-    assert "Malcyon" not in shape
+    assert "Malcyon" not in summary
 
 
 def test_an_unreadable_party_is_not_an_error(logs):

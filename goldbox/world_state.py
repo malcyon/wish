@@ -28,7 +28,7 @@ none of `NeutralCharacter`'s `Value`/`Confidence`/`Writer.take` machinery.
 The C64's loaded-files cache and icon table, DOS's container byte and name
 table, the Amiga's pad bytes -- every one of those comes from the area
 table, a measured constant or the slot letter, never from the source save
-(`#352`'s comment again).  A shape holding only what comes from the source
+(`#352`'s comment again).  A state holding only what comes from the source
 save loses nothing.
 """
 
@@ -49,7 +49,7 @@ class WorldState:
 
     The part of a saved game that belongs to the **party** rather than to
     the disk it was found on, in the ECL address space all three ports
-    share -- which is why one shape serves a C64 source, a DOS one and an
+    share -- which is why one structure serves a C64 source, a DOS one and an
     Amiga one.  Everything here is read out of the save being converted, or
     -- for a party that has never pressed `BEGIN ADVENTURING` -- substituted
     from `goldbox.areas.STARTS` the way the game's own first step would
@@ -101,7 +101,7 @@ class WorldState:
     #: The later titles' own copied header words, by address: `+$E7`-`+$E9`
     #: and `+$FD`-`+$FE` off `$4900` (`c64_save.C64Container.copied`,
     #: `dos_codec.LATER_HEADER_COPIED`).  Pool of Radiance copies none of them and
-    #: they are read anyway, so one shape answers for every title.
+    #: they are read anyway, so one structure answers for every title.
     header: "dict[int, int]"
     #: Where this was read from, for the report.
     source: str = ""
@@ -181,7 +181,7 @@ class PodWorldState:
 HEADER_ADDRESSES: "tuple[int, ...]" = (0x49E7, 0x49E8, 0x49E9, 0x49FD, 0x49FE)
 
 
-def _resolve_dos_place(savgam: bytes, shape: "dos_savegame.DosContainer"):
+def _resolve_dos_place(savgam: bytes, container: "dos_savegame.DosContainer"):
     """`(area, geo, x, y, facing, outdoors, fresh)` for a DOS save.
 
     Generalises `goldbox.dos_codec._where_the_party_is`, `._resident_geo` and the
@@ -194,13 +194,13 @@ def _resolve_dos_place(savgam: bytes, shape: "dos_savegame.DosContainer"):
     """
     from . import dos_codec as _dos
 
-    where, fresh = _dos._where_the_party_is(savgam, shape.title, shape)
+    where, fresh = _dos._where_the_party_is(savgam, container.title, container)
     if fresh:
-        start, _row = _dos._start_of_the_story(shape.title)
+        start, _row = _dos._start_of_the_story(container.title)
         x, y, facing = (start.arrival.x, start.arrival.y,
                         start.arrival.facing or 0)
     else:
-        x, y, facing = dos_savegame.position(savgam, shape)
+        x, y, facing = dos_savegame.position(savgam, container)
 
     savgam_outdoors = where.outdoors if fresh else dos_savegame.outdoors(savgam)
     if savgam_outdoors != where.outdoors:
@@ -217,7 +217,7 @@ def _resolve_dos_place(savgam: bytes, shape: "dos_savegame.DosContainer"):
     elif fresh:
         geo = areas.geo_number(where.geo)
     else:
-        geo = _dos._resident_geo(savgam, where, shape.title)
+        geo = _dos._resident_geo(savgam, where, container.title)
 
     return where.id, geo, x, y, facing, where.outdoors, fresh
 
@@ -295,7 +295,7 @@ def from_c64(save0: bytes, game=None, source: str = "") -> WorldState:
 
 
 def from_dos(savgam: bytes,
-            shape: "dos_savegame.DosContainer | int | str | None" = None,
+            container: "dos_savegame.DosContainer | int | str | None" = None,
             source: str = "") -> WorldState:
     """A DOS `SAVGAM<slot>.DAT`, as a place and a clock.
 
@@ -314,26 +314,26 @@ def from_dos(savgam: bytes,
     """
     from . import dos_codec as _dos
 
-    shape = dos_savegame.container_for(
-        shape if shape is not None else len(savgam))
+    container = dos_savegame.container_for(
+        container if container is not None else len(savgam))
     area_id, geo, x, y, facing, outdoors, fresh = _resolve_dos_place(
-        savgam, shape)
-    width = c64_save.container_for(shape.key).quest_flags[1]
+        savgam, container)
+    width = c64_save.container_for(container.key).quest_flags[1]
     return WorldState(
-        title=shape.title,
+        title=container.title,
         area=area_id, geo=geo, x=x, y=y, facing=facing,
-        clock=tuple(dos_savegame.word(savgam, dos_savegame.CLOCK + i, shape)
+        clock=tuple(dos_savegame.word(savgam, dos_savegame.CLOCK + i, container)
                     for i in range(dos_savegame.CLOCK_DIGITS)),
         wallset=dos_savegame.wall_triple(savgam),
         flags=tuple(dos_savegame.word(savgam, dos_savegame.FLAGS_FIRST + i,
-                                      shape)
+                                      container)
                     for i in range(width)),
-        scratch={a: dos_savegame.word(savgam, a, shape)
+        scratch={a: dos_savegame.word(savgam, a, container)
                  for a in _dos.SHARED_SCRATCH},
         outdoors=outdoors,
         travel=dos_savegame.travel_square(savgam),
         set_out=not fresh,
-        header={a: dos_savegame.word(savgam, a, shape)
+        header={a: dos_savegame.word(savgam, a, container)
                 for a in HEADER_ADDRESSES},
         source=source)
 
@@ -402,7 +402,7 @@ def from_amiga(savgam: bytes, source: str = "") -> WorldState:
 
 
 def pod_from_dos(savgam: bytes,
-                 shape: "dos_savegame.DosContainer | int | str | None" = None,
+                 container: "dos_savegame.DosContainer | int | str | None" = None,
                  source: str = "") -> PodWorldState:
     """A Pools of Darkness `SAVGAM<slot>.PTY`, as a place and a clock.
 
@@ -416,23 +416,23 @@ def pod_from_dos(savgam: bytes,
     answers it with this row, so `title` reads "Pools of Darkness" for it too;
     `source` is what says which game the file came from.
     """
-    shape = dos_savegame.container_for(
-        shape if shape is not None else len(savgam))
-    if not shape.var_bytes:
+    container = dos_savegame.container_for(
+        container if container is not None else len(savgam))
+    if not container.var_bytes:
         raise dos_savegame.DosSaveError(
-            f"a {shape.title} saved game holds no byte-wide variable array")
-    x, y, facing = dos_savegame.position(savgam, shape)
+            f"a {container.title} saved game holds no byte-wide variable array")
+    x, y, facing = dos_savegame.position(savgam, container)
     return PodWorldState(
-        title=shape.title,
-        variables=bytes(savgam[:shape.var_bytes]),
+        title=container.title,
+        variables=bytes(savgam[:container.var_bytes]),
         x=x, y=y, facing=facing,
-        wall_ahead=savgam[shape.tail_scratch],
-        square_property=savgam[shape.tail_scratch + 1],
-        previous_mode=savgam[shape.previous_mode],
-        mode=savgam[shape.mode],
+        wall_ahead=savgam[container.tail_scratch],
+        square_property=savgam[container.tail_scratch + 1],
+        previous_mode=savgam[container.previous_mode],
+        mode=savgam[container.mode],
         dungeon_map=struct.unpack_from(
             "<H", savgam, dos_savegame.POD_MAP)[0],
         map_block=struct.unpack_from(
             "<H", savgam, dos_savegame.POD_MAP_BLOCK)[0],
-        count=savgam[shape.party_size_byte],
+        count=savgam[container.party_size_byte],
         source=source)

@@ -74,14 +74,14 @@ def converts_ssb(monkeypatch):
         monkeypatch.setattr(dos_codec, "CONVERTS", dos_codec.CONVERTS + (SSB,))
 
 
-def _dos_record(shape, **values) -> bytes:
-    """A `shape`'s own size of DOS record with the named fields set.
+def _dos_record(deltas, **values) -> bytes:
+    """A DOS record of the size `deltas` names, with the named fields set.
 
     Built from `goldbox/dos_port.py`'s own table rather than sliced out of
     anybody's save, so it carries no game data and needs no disks.
     """
-    rec = bytearray(shape.record_size)
-    table = dos_port.FIELDS_BY_NAME_FOR[shape.key]
+    rec = bytearray(deltas.record_size)
+    table = dos_port.FIELDS_BY_NAME_FOR[deltas.key]
     for name, value in values.items():
         f = table[name]
         raw = bytes([value] * f.size) if isinstance(value, int) else value
@@ -468,8 +468,8 @@ def test_the_payload_reads_back_as_the_dos_party(converts_ssb):
                                      animate=None, game=SSB_GAME)
     payload = bytes(save0)
     savgam = (folder / f"SAVGAM{_DOS_SLOT}.DAT").read_bytes()
-    shape = sg.container_for(SSB_GAME.key)
-    x, y, facing = sg.position(savgam, shape)
+    container = sg.container_for(SSB_GAME.key)
+    x, y, facing = sg.position(savgam, container)
     assert (payload[0xC0], payload[0xC1], payload[0xC2]) == (x, y, facing)
     assert payload[0xC5] == sg.geo_block(savgam)
     assert payload[0xF2] == sg.current_area(savgam)
@@ -657,7 +657,7 @@ def ssb_parts():
 
 @pytest.fixture(scope="module")
 def ssb_reachable(ssb_parts):
-    """Every shape one weapon and then one head reaches, all four size pairs.
+    """Every figure one weapon and then one head reaches, all four size pairs.
 
     An icon outside it is eighteen `CHARPIC00` screen codes no menu produces,
     and the engine draws them anyway -- which is why this is the assertion.
@@ -668,10 +668,10 @@ def ssb_reachable(ssb_parts):
     out = set()
     for weapon_size in ("small", "large"):
         for w in range(ssb_parts.count(weapon_size, "weapon")):
-            shape = ssb_parts.apply(blank, weapon_size, "weapon", w)
+            figure = ssb_parts.apply(blank, weapon_size, "weapon", w)
             for head_size in ("small", "large"):
                 for h in range(ssb_parts.count(head_size, "head")):
-                    out.add(ssb_parts.apply(shape, head_size, "head", h))
+                    out.add(ssb_parts.apply(figure, head_size, "head", h))
     return out
 
 
@@ -698,7 +698,7 @@ def test_a_silver_blades_record_composes_a_figure_its_own_menus_can_make(
 def test_two_silver_blades_characters_with_different_records_differ(
         converts_ssb, ssb_parts):
     """What a player sees when this is wrong: six identical men on the combat
-    floor, which is what `#130 (A converted DOS party arrives with six
+    minimum, which is what `#130 (A converted DOS party arrives with six
     identical combat figures, not its own)` was."""
     knight, _ = _ssb_figure(ssb_parts, head=5, body=24, size=2)
     dwarf, _ = _ssb_figure(ssb_parts, head=13, body=3, size=1)
@@ -731,7 +731,7 @@ def test_dos_head_ten_reaches_donalds_own_c64_head_through_the_conversion(
     `tables_for_title`, which is a different reader of the same file and
     proves nothing about whether a converted character ever sees it.
 
-    The expected shape is composed independently, straight off `IconParts.
+    The expected figure is composed independently, straight off `IconParts.
     apply` with the literal C64 head option, so a passing test means the
     figure itself shows that head rather than merely that a table says so.
 
@@ -788,13 +788,13 @@ def test_a_silver_blades_party_that_has_not_set_out_converts_to_the_c64_party_me
     played ones.  Such a party becomes the C64's own pre-adventure save, so
     the C64 game plays its opening, and reading the result back says the
     party still has not set out."""
-    shape = sg.SAVE_SECRET_OF_THE_SILVER_BLADES
-    assert shape.script_buffer is None
-    savgam = bytearray(shape.size)
-    sg.put_word(savgam, sg.INDOORS, 1, shape)
-    sg.put_position(savgam, 7, 13, 0, shape)
+    container = sg.SAVE_SECRET_OF_THE_SILVER_BLADES
+    assert container.script_buffer is None
+    savgam = bytearray(container.size)
+    sg.put_word(savgam, sg.INDOORS, 1, container)
+    sg.put_position(savgam, 7, 13, 0, container)
     assert dos_codec.never_adventured(bytes(savgam))
-    state = world_state.from_dos(bytes(savgam), shape)
+    state = world_state.from_dos(bytes(savgam), container)
     cont = c64_save.container_for(SSB_GAME)
     save0 = bytearray(cont.payload_size)
     report = dos_codec.write_c64_save(save0, None, state, [], game=SSB_GAME)
@@ -807,12 +807,12 @@ def test_a_silver_blades_party_that_has_not_set_out_converts_to_the_c64_party_me
     # The same container one keypress later -- `$4FE1` written, a real area
     # -- is a party in the world and is placed where it stands, not
     # re-sent to the arrival square.
-    sg.put_word(savgam, dos_codec.LATER_BEGUN_WORD, 255, shape)
-    sg.put_word(savgam, sg.SCRIPT, 0x10, shape)
-    sg.put_word(savgam, sg.AREA, 0x10, shape)
-    sg.put_position(savgam, 5, 9, 1, shape)
+    sg.put_word(savgam, dos_codec.LATER_BEGUN_WORD, 255, container)
+    sg.put_word(savgam, sg.SCRIPT, 0x10, container)
+    sg.put_word(savgam, sg.AREA, 0x10, container)
+    sg.put_position(savgam, 5, 9, 1, container)
     assert not dos_codec.never_adventured(bytes(savgam))
-    state = world_state.from_dos(bytes(savgam), shape)
+    state = world_state.from_dos(bytes(savgam), container)
     save0 = bytearray(cont.payload_size)
     dos_codec.apply_file_cache(save0, state, cont)
     dos_codec.apply_position(save0, state)

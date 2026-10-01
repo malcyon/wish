@@ -14,7 +14,7 @@ So this tool answers it by measurement rather than by argument.  It reads
   reader `tools/icons/portraitshot.py` uses for the sheet portraits;
 * the C64 art out of `SPELLE64`, `SPELLN64` and `CHARPIC00` on `POOL3.D64`,
   through `goldbox.iconparts`, which composes one menu option at a time onto
-  an otherwise empty shape;
+  an otherwise empty figure;
 
 renders both to a 24x24 ink mask, and scores every DOS option against every
 C64 option.  A C64 cell drawn in multicolour has four double-width pixels to
@@ -39,7 +39,7 @@ for a grep: whichever C64 figure each DOS one should become is a decision
 about what a converted character looks like, and nobody can make it off a
 Jaccard score.  It draws each option as the game itself would -- the DOS
 figures in EGA with the art's own stored colours, the C64 ones in the
-combat floor's four -- and writes a PNG **outside the repository**,
+combat arena's four -- and writes a PNG **outside the repository**,
 because it is the game's art.
 """
 
@@ -111,12 +111,12 @@ def dos_options(game: pathlib.Path, stem: str, size: str,
 
 def c64_option(parts: IconParts, charset: bytes, size: str, kind: str,
                option: int, pose: int = 0) -> list[list[int]]:
-    """One C64 menu option drawn onto an empty shape, as an ink mask."""
+    """One C64 menu option drawn onto an empty figure, as an ink mask."""
     blank = bytes([SPACE] * (CELLS_PER_POSE * 2))
-    shape = parts.apply(blank, size, kind, option)
+    figure = parts.apply(blank, size, kind, option)
     out = [[0] * FIGURE for _ in range(FIGURE)]
     for i in range(CELLS_PER_POSE):
-        glyph = shape[pose * CELLS_PER_POSE + i]
+        glyph = figure[pose * CELLS_PER_POSE + i]
         multi = parts.multicolour(glyph)
         cx, cy = i % 3, i // 3
         bitmap = charset[glyph * 8:glyph * 8 + 8]
@@ -315,7 +315,7 @@ def _dos_sheet(game: pathlib.Path, size: str, kind: str) -> list[tuple]:
 
 
 def _c64_sheet(disk: pathlib.Path, size: str, kind: str) -> list[tuple]:
-    """Every C64 option of one kind, drawn the way the combat floor draws it."""
+    """Every C64 option of one kind, drawn the way the combat arena draws it."""
     from goldbox.iconparts import (
         DEFAULT_HEAD,
         DEFAULT_PART_COLOURS,
@@ -338,10 +338,10 @@ def _c64_sheet(disk: pathlib.Path, size: str, kind: str) -> list[tuple]:
     for option in range(parts.count(size, kind)):
         weapon = option if kind == "weapon" else DEFAULT_WEAPON
         head = option if kind == "head" else DEFAULT_HEAD
-        shape = parts.compose(size, weapon, head)
-        seed = bytes([DEFAULT_PART_COLOURS[1] | MULTICOLOUR] * len(shape))
-        colours = parts.colours_for(shape, palette, seed)
-        pixels = icons.icon_pixels(icons.Icon(shape + colours), charset)
+        figure = parts.compose(size, weapon, head)
+        seed = bytes([DEFAULT_PART_COLOURS[1] | MULTICOLOUR] * len(figure))
+        colours = parts.colours_for(figure, palette, seed)
+        pixels = icons.icon_pixels(icons.Icon(figure + colours), charset)
         out.append((option, [row[:FIGURE] for row in pixels[:FIGURE]]))
     return out
 

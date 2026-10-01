@@ -19,7 +19,7 @@ the instruction for every site, across every CODE hunk.  Feed a file offset stra
 Amiga ICON menu (`cmpi.b #$d` against `icon_head`), the two shipped
 inter-title importers and `icon_dimension`'s combat test were all found.
 
-**Why the candidate-and-decode shape, and what it costs.**  A linear
+**Why the candidate-and-decode design, and what it costs.**  A linear
 disassembly of a 300KB code hunk desyncs on the jump tables and string data
 between routines, so this finds every occurrence of the displacement word at
 an even offset first and decodes a short window ending at each one -- which
@@ -47,7 +47,7 @@ from tools.amiga.amiga68k import Executable, load  # noqa: E402
 
 #: How far back from the displacement word an instruction may start.  A
 #: `move.b d16(a0), d16(a1)` puts the second displacement six bytes in, and
-#: `cmpi.b #imm, d16(a0)` four; eight covers every shape either binary uses.
+#: `cmpi.b #imm, d16(a0)` four; eight covers every form either binary uses.
 BACK = (2, 4, 6, 8)
 
 

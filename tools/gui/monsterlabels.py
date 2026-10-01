@@ -9,7 +9,7 @@ chosen by hand** -- Donald, 2026-09-06: *"A '7TH LVL DW FIGHTER' could be
 two characters."* No rule produces `DF` from that name, so the labels are a
 table rather than a function, and every one of them is his.
 
-The table is `tools/gui/monsterlabels.yaml`, beside this file, in the shape
+The table is `tools/gui/monsterlabels.yaml`, beside this file, in the form
 `tools/icons/iconproposal.yaml` already has: one row per monster name, its label,
 and a comment saying which titles carry it and what its record says it is.
 Our judgement rather than the game's data, so it is committed.

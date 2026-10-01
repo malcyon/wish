@@ -17,12 +17,12 @@ CLASSES` to fighter: `WISH-SPEC-curse-dual-classed` one action later, fighter
 own `SAVE CURRENT GAME` after seven trainings took her to fighter 8, past the
 6 she left, so `class_levels {magic-user: 6, fighter: 8}` and `class_bits
 0x09` -- both classes, and `docs/209-the-regained-dual-class-on-dos.md`'s
-target shape for this fix.
+target form for this fix.
 
 `WISH-SPEC-curse-408-regained-paladin`'s `CHRDATJ1.SAV` (MATHEW) is the DOS
 engine's own record in that same regained state -- watched under DOSBox,
 `GAME.OVR:0x3B119` read out of the overlay before any of it ran -- and is the
-shape a converted record is compared against: `class_levels {magic-user: 6}`
+form a converted record is compared against: `class_levels {magic-user: 6}`
 alone, `former_class_levels {paladin: 5}`, `char_class 5` (magic-user alone),
 `class_bits 0x41` (both bits).
 
@@ -113,7 +113,7 @@ def test_a_regained_character_converts_to_dos_in_the_engines_own_class_encoding(
     This is the case #408 exists for: before the fix, `class_levels` carried
     fighter 8 **and** magic-user 6, and `char_class` came back 13
     (fighter/magic-user), which is a DOS multi-class code and not the
-    dual-classed shape DOS itself ever writes.
+    dual-classed form DOS itself ever writes.
     """
     neutral = _philippe("curse-dualclass-trained")
     rec, _itm, _spc, rep = dos_codec.write(neutral, deltas=dos_codec.CURSE_OF_THE_AZURE_BONDS)

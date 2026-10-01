@@ -10,10 +10,10 @@ way, so no specimens of generated characters could tell the two readings apart
 (`#480`).
 
 This tool settles it out of the engine.  It finds the creation menu's two
-tables in `/program` the way `tools/amiga/amigaportraitmenu.py` does -- by the shape
+tables in `/program` the way `tools/amiga/amigaportraitmenu.py` does -- by the pattern
 of the run, checked against the art beside it -- then asks the executable's
 own `RELOC32` entries **who references them**, disassembles each referring
-instruction's neighbourhood, and reports the shape it found:
+instruction's neighbourhood, and reports the pattern it found:
 
     tools/amiga/amigaportraitresolve.py                 # the finding, in full
     tools/amiga/amigaportraitresolve.py --check         # exit 1 if it no longer holds
@@ -71,7 +71,7 @@ WINDOW_BEFORE, WINDOW_AFTER = 0x30, 0x20
 
 
 class NotFound(RuntimeError):
-    """The executable does not have the shape this tool reports on."""
+    """The executable does not have the form this tool reports on."""
 
 
 # ---------------------------------------------------------------------------
@@ -92,7 +92,7 @@ def from_disks(roots=None) -> tuple[bytes, bytes, bytes, str]:
 
 
 def table_offset(program: bytes, head: bytes, body: bytes) -> int:
-    """The file offset of the heads table, found by shape and checked by art."""
+    """The file offset of the heads table, found by pattern and checked by art."""
     tables = portraits.tables_from_amiga(program, head, body)
     return int(tables.source.rsplit("@", 1)[1])
 
@@ -142,7 +142,7 @@ def resolves_through_table(program: bytes, field: int) -> dict | None:
 
     `field` is the file offset of the `abs.l` operand, so the instruction
     starts two bytes earlier.  Answers a dict describing the sequence, or
-    `None` if the neighbourhood is not the shape this tool reports.
+    `None` if the neighbourhood is not the pattern this tool reports.
     """
     lea_at = field - 2
     window = _decode(program, lea_at, lea_at + WINDOW_AFTER)
@@ -257,7 +257,7 @@ def report(program: bytes, heads_at: int, where: str, upto: int = 0) -> list[str
         for field in refs:
             found = resolves_through_table(program, field)
             if found is None:
-                lines.append(f"  0x{field - 2:06X}: not the resolving shape")
+                lines.append(f"  0x{field - 2:06X}: not the resolving pattern")
                 continue
             findings.append((name, at, count, found))
             lines.append(f"  0x{found['lea']:06X}: record +0x"

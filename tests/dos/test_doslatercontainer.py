@@ -5,7 +5,7 @@ the Silver Blades, built from nothing (#299).
 file proves the `SAVGAM<slot>.DAT` around them, which is what the DOS engine
 loads a party from.  Two kinds of test:
 
-* **synthetic**, on zeroed buffers of each shape, for the writers in
+* **synthetic**, on zeroed buffers of each container, for the writers in
   `goldbox.dos_savegame` -- no game data involved;
 * **specimen-backed**, converting the two engine-written C64 saves in
   `~/wish-specimens/por-c64` with the DOS archives' own `ECL<n>.DAX` files,
@@ -60,21 +60,21 @@ def _game_dir(stem: str) -> pathlib.Path:
         pytest.skip(str(e))
 
 
-def _payloads(shape):
-    name, _stem = SOURCES[shape]
+def _payloads(container):
+    name, _stem = SOURCES[container]
     game, sg0, sg1 = load_save(D64.open(str(_c64_disk(name))))
     return game, sg0.to_bytes(), sg1.to_bytes()
 
 
-def _built(shape, tmp_path, slot="D"):
+def _built(container, tmp_path, slot="D"):
     """A whole DOS save of this title from its C64 specimen, and its report."""
-    game, save0, save1 = _payloads(shape)
+    game, save0, save1 = _payloads(container)
     report = dos_codec.new_dos_save(save0, save1, tmp_path, slot,
-                              _game_dir(SOURCES[shape][1]), title=game)
+                              _game_dir(SOURCES[container][1]), title=game)
     return game, save0, report, (tmp_path / f"SAVGAM{slot}.DAT").read_bytes()
 
 
-def _later_containers(shape):
+def _later_containers(container):
     """Every engine-written container of this title in the specimen tree,
     as `(name, bytes)`, hand-built ones excluded by provenance."""
     root = specimen_root()
@@ -83,31 +83,31 @@ def _later_containers(shape):
     out = []
     for path in sorted((root / "por-dos").glob("WISH-SPEC-*/SAVGAM?.DAT")):
         data = path.read_bytes()
-        if len(data) == shape.size:
+        if len(data) == container.size:
             out.append((f"{path.parent.name}/{path.name}", data))
     return out
 
 
 # --- the writers, on synthetic buffers --------------------------------------
 
-@pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
-def test_the_wall_block_round_trips_inside_the_square_block(shape):
+@pytest.mark.parametrize("container", LATER, ids=lambda s: s.key)
+def test_the_wall_block_round_trips_inside_the_square_block(container):
     """The twelve bytes are two interleaved `u16[1..3]` arrays, set then
     map, in the order each engine's writer emits them (#253, #299)."""
-    save = bytearray(shape.size)
-    sg.put_wall_block(save, (21, sg.EMPTY, sg.EMPTY), shape)
-    assert sg.wall_block(save, shape) == ((21, sg.EMPTY, sg.EMPTY),
+    save = bytearray(container.size)
+    sg.put_wall_block(save, (21, sg.EMPTY, sg.EMPTY), container)
+    assert sg.wall_block(save, container) == ((21, sg.EMPTY, sg.EMPTY),
                                           (1, sg.EMPTY, sg.EMPTY))
     # The bytes, as a played Silver Blades container holds them.
-    at = shape.wall_block
+    at = container.wall_block
     assert save[at:at + 12] == bytes.fromhex("15 00 01 00 ff ff ff ff ff ff "
                                              "ff ff")
-    sg.put_wall_block(save, (1, 2, 3), shape)
-    assert sg.wall_block(save, shape) == ((1, 2, 3), (1, 2, 3))
+    sg.put_wall_block(save, (1, 2, 3), container)
+    assert sg.wall_block(save, container) == ((1, 2, 3), (1, 2, 3))
     # And it lands inside the square block, after the mode byte and before
     # the party-size byte.
-    assert at == shape.mode + 1
-    assert at + 12 == shape.party_size_byte
+    assert at == container.mode + 1
+    assert at + 12 == container.party_size_byte
 
 
 def test_pool_of_radiance_has_no_wall_block():
@@ -117,56 +117,56 @@ def test_pool_of_radiance_has_no_wall_block():
         sg.put_wall_block(bytearray(POOL.size), (1, 2, 3))
 
 
-@pytest.mark.parametrize("shape", sg.CONTAINERS[:3], ids=lambda s: s.key)
-def test_the_party_size_and_names_land_at_the_containers_own_offsets(shape):
-    save = bytearray(shape.size)
-    sg.put_party_size(save, 4, shape)
-    sg.put_character_files(save, "j", shape)
+@pytest.mark.parametrize("container", sg.CONTAINERS[:3], ids=lambda s: s.key)
+def test_the_party_size_and_names_land_at_the_containers_own_offsets(container):
+    save = bytearray(container.size)
+    sg.put_party_size(save, 4, container)
+    sg.put_character_files(save, "j", container)
     assert sg.party_size(save) == 4
     assert sg.word(save, sg.PARTY_SIZE) == 4
-    assert save[shape.party_size_byte] == 4
+    assert save[container.party_size_byte] == 4
     assert sg.character_files(save) == [
         f"CHRDATJ{n}" for n in range(1, sg.PARTY_ENTRIES + 1)]
     # The size byte is the byte before the table, whatever the title.
-    assert shape.party_size_byte == shape.party_table - 1
+    assert container.party_size_byte == container.party_table - 1
 
 
-@pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
+@pytest.mark.parametrize("container", LATER, ids=lambda s: s.key)
 def test_a_later_titles_move_writes_the_block_and_not_the_flag_page(
-        shape):
+        container):
     """`$4AFD` is a quest flag in the later titles (255 in every played
     Silver Blades container and on its C64 disk), so a move that wrote
     Pool of Radiance's wallmap there would overwrite one."""
-    save = bytearray(shape.size)
+    save = bytearray(container.size)
     script = b"\x88\x13" + bytes(range(1, 40))
     sg.move_to_area(save, area=0x10, dax=1, wallset=(21, sg.EMPTY, sg.EMPTY),
-                script=script if shape.script_bytes else None,
-                container=shape)
+                script=script if container.script_bytes else None,
+                container=container)
     assert sg.word(save, sg.WALLMAP) == 0
     assert all(sg.word(save, sg.WALLSET + i) == 0 for i in range(3))
     assert sg.wall_block(save) == ((21, sg.EMPTY, sg.EMPTY),
                                    (1, sg.EMPTY, sg.EMPTY))
     assert save[0] == 1 and sg.word(save, sg.DISK) == 1
     assert sg.current_area(save) == 0x10 and sg.geo_block(save) == 0x10
-    if shape.script_bytes:
-        start, _end = shape.script_buffer
+    if container.script_bytes:
+        start, _end = container.script_buffer
         assert save[start:start + 39] == script[2:]
     else:
         with pytest.raises(sg.DosSaveError):
             sg.move_to_area(save, area=0x10, dax=1, wallset=(21, 0, 0),
-                        script=script, container=shape)
+                        script=script, container=container)
 
 
-@pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
-def test_the_later_tail_is_written_zero_and_pool_of_radiances_is_not(shape):
-    later = bytearray(shape.size)
-    later[shape.tail_scratch:shape.party_size_byte] = b"\xaa" * (
-        shape.party_size_byte - shape.tail_scratch)
-    sg.put_tail_state(later, indoors=True, container=shape)
-    assert later[shape.tail_scratch:shape.tail_scratch + 2] == b"\0\0"
-    assert later[shape.previous_mode] == 0 and later[shape.mode] == 0
+@pytest.mark.parametrize("container", LATER, ids=lambda s: s.key)
+def test_the_later_tail_is_written_zero_and_pool_of_radiances_is_not(container):
+    later = bytearray(container.size)
+    later[container.tail_scratch:container.party_size_byte] = b"\xaa" * (
+        container.party_size_byte - container.tail_scratch)
+    sg.put_tail_state(later, indoors=True, container=container)
+    assert later[container.tail_scratch:container.tail_scratch + 2] == b"\0\0"
+    assert later[container.previous_mode] == 0 and later[container.mode] == 0
     # The block after them is untouched.
-    assert later[shape.wall_block] == 0xAA
+    assert later[container.wall_block] == 0xAA
     pool = bytearray(POOL.size)
     sg.put_tail_state(pool, indoors=True)
     assert pool[sg.TAIL_CONSTANT_BYTE] == sg.TAIL_CONSTANT
@@ -187,26 +187,26 @@ def test_a_7424_byte_payload_is_refused_without_a_title():
         dos_codec.c64_title(bytes(7168), "curse-of-the-azure-bonds")
 
 
-@pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
-def test_the_per_title_account_names_addresses_once_each(shape):
+@pytest.mark.parametrize("container", LATER, ids=lambda s: s.key)
+def test_the_per_title_account_names_addresses_once_each(container):
     """A table that names the same word twice, or one outside the array, is
     a table whose count is wrong -- the same check `tests/convert/test_doswriter.py`
     makes of Pool of Radiance's."""
     seen = set()
-    for address, words, why in dos_codec.savgam_unsourced(shape):
+    for address, words, why in dos_codec.savgam_unsourced(container):
         assert why.strip(), hex(address)
         for a in range(address, address + words):
             assert sg.VAR_BASE <= a <= sg.VAR_LAST, hex(a)
             assert a not in seen, hex(a)
             seen.add(a)
-    for address, value, why in dos_codec.savgam_constants(shape):
+    for address, value, why in dos_codec.savgam_constants(container):
         assert why.strip() and 0 <= value <= 0xFFFF
         assert sg.VAR_BASE <= address <= sg.VAR_LAST, hex(address)
         assert address not in seen, hex(address)
         seen.add(address)
     # The two later titles do not share Pool of Radiance's constants: Silver
     # Blades holds `$506D` and `$50F6` at zero in every container.
-    if shape is SSB:
+    if container is SSB:
         assert 0x506D not in seen and 0x50F6 not in seen
 
 
@@ -258,24 +258,24 @@ def test_a_missing_block_is_none_rather_than_a_guess(tmp_path):
 
 # --- a whole save from nothing, per title -----------------------------------
 
-@pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
+@pytest.mark.parametrize("container", LATER, ids=lambda s: s.key)
 def test_a_whole_save_from_nothing_is_the_titles_own_size_and_accounted(
-        shape, tmp_path):
+        container, tmp_path):
     """`container_for` sizes the buffer -- 5469 for Silver Blades, 13149 for
     Curse -- and every byte has a source.  Before #299 the writer built
     13137 bytes whatever it was handed, and refused a 7424-byte payload."""
-    _game, _save0, report, savgam = _built(shape, tmp_path)
-    assert len(savgam) == shape.size
+    _game, _save0, report, savgam = _built(container, tmp_path)
+    assert len(savgam) == container.size
     assert report.unwritten == []
-    assert len(report.sources) == report.total == shape.size
-    assert sg.container_for(len(savgam)) is shape
+    assert len(report.sources) == report.total == container.size
+    assert sg.container_for(len(savgam)) is container
 
 
-@pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
+@pytest.mark.parametrize("container", LATER, ids=lambda s: s.key)
 def test_the_written_container_reads_back_as_the_party_we_put_in(
-        shape, tmp_path):
+        container, tmp_path):
     from goldbox import c64_save
-    game, save0, _report, savgam = _built(shape, tmp_path)
+    game, save0, _report, savgam = _built(container, tmp_path)
     c = c64_save.container_for(game)
     assert sg.character_files(savgam) == [
         f"CHRDATD{n}" for n in range(1, sg.PARTY_ENTRIES + 1)]
@@ -284,7 +284,7 @@ def test_the_written_container_reads_back_as_the_party_we_put_in(
     assert sg.geo_block(savgam) == save0[c.current_geo]
     x, y, facing = save0[c.position:c.position + 3]
     assert sg.position(savgam) == (x, y, facing)
-    assert savgam[shape.pos_facing] == facing * sg.FACING_SCALE
+    assert savgam[container.pos_facing] == facing * sg.FACING_SCALE
     for i in range(sg.CLOCK_DIGITS):
         assert sg.word(savgam, sg.CLOCK + i) == save0[c.clock + i], i
     # The wall block is the C64 cache's slots 15-17, bit 7 masked, with the
@@ -304,7 +304,7 @@ def test_the_written_container_reads_back_as_the_party_we_put_in(
     assert sg.word(savgam, dos_codec.LATER_FLAGS_WORD) == 3
     party = dos_codec.read_party(tmp_path, "D")
     assert len(party) == 6
-    assert {p.deltas.key for p in party} == {shape.key}
+    assert {p.deltas.key for p in party} == {container.key}
 
 
 def test_a_curse_save_stages_its_areas_own_script(tmp_path):
@@ -332,12 +332,12 @@ def test_a_silver_blades_save_stages_no_script_and_names_the_dax(tmp_path):
     assert any("not staged" in line for line in report.converted)
 
 
-@pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
-def test_the_gate_can_fail_for_the_later_titles_too(shape, tmp_path,
+@pytest.mark.parametrize("container", LATER, ids=lambda s: s.key)
+def test_the_gate_can_fail_for_the_later_titles_too(container, tmp_path,
                                                     monkeypatch):
     """With the zero account taken away `new_dos_save` refuses rather than
     handing back a file whose zeroes nobody stands behind."""
-    game, save0, save1 = _payloads(shape)
+    game, save0, save1 = _payloads(container)
     # The codec rather than the `goldbox/dos_codec.py` shim: since `#470`'s
     # stage 8 the shim holds its own binding for every re-exported
     # name, so rebinding one there leaves the codec's own global --
@@ -345,20 +345,20 @@ def test_the_gate_can_fail_for_the_later_titles_too(shape, tmp_path,
     monkeypatch.setattr(dos_codec, "savgam_zeroes", lambda *a, **k: None)
     with pytest.raises(dos_codec.DosRecordError) as e:
         dos_codec.new_dos_save(save0, save1, tmp_path, "D",
-                         _game_dir(SOURCES[shape][1]), title=game)
+                         _game_dir(SOURCES[container][1]), title=game)
     assert "no source" in str(e.value)
     assert not (tmp_path / "SAVGAMD.DAT").exists()
 
 
-@pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
+@pytest.mark.parametrize("container", LATER, ids=lambda s: s.key)
 def test_a_character_carrying_nothing_gets_no_item_file_in_the_titles_suffix(
-        shape, tmp_path):
+        container, tmp_path):
     """`#62`'s trap on the later suffixes: a zero-length item file is how
     the engine says "one item, from whatever the heap held", so a character
     with nothing gets no `.SWG`/`.STF` at all."""
-    _game, _save0, _report, _savgam = _built(shape, tmp_path)
-    record_shape = dos_port.DELTAS_BY_KEY[shape.key]
-    table = dos_port.FIELDS_BY_NAME_FOR[shape.key]
+    _game, _save0, _report, _savgam = _built(container, tmp_path)
+    record_shape = dos_port.DELTAS_BY_KEY[container.key]
+    table = dos_port.FIELDS_BY_NAME_FOR[container.key]
     empty = carrying = 0
     for n in range(1, 7):
         rec = (tmp_path / f"CHRDATD{n}.SAV").read_bytes()
@@ -371,21 +371,21 @@ def test_a_character_carrying_nothing_gets_no_item_file_in_the_titles_suffix(
             assert sibling.stat().st_size == count * record_shape.item_size
             carrying += 1
     assert empty >= 1, "no empty-handed character to test the trap on"
-    if shape is SSB:
+    if container is SSB:
         assert carrying == 1  # Guy de Valois' twelve, and nobody else's
 
 
-@pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
-def test_a_stale_slot_in_the_titles_suffixes_is_cleared(shape, tmp_path):
-    game, save0, save1 = _payloads(shape)
-    record_shape = dos_port.DELTAS_BY_KEY[shape.key]
+@pytest.mark.parametrize("container", LATER, ids=lambda s: s.key)
+def test_a_stale_slot_in_the_titles_suffixes_is_cleared(container, tmp_path):
+    game, save0, save1 = _payloads(container)
+    record_shape = dos_port.DELTAS_BY_KEY[container.key]
     for n in range(1, 7):
         for suffix in (".SAV", record_shape.item_suffix,
                        record_shape.effect_suffix):
             (tmp_path / f"CHRDATD{n}{suffix}").write_bytes(b"stale")
     (tmp_path / "MINE.TXT").write_bytes(b"the user's")
     dos_codec.new_dos_save(save0, save1, tmp_path, "D",
-                     _game_dir(SOURCES[shape][1]), title=game)
+                     _game_dir(SOURCES[container][1]), title=game)
     assert (tmp_path / "MINE.TXT").read_bytes() == b"the user's"
     for path in tmp_path.glob("CHRDATD*"):
         assert path.read_bytes() != b"stale", path
@@ -403,16 +403,16 @@ def test_a_later_title_needs_the_game_directory(tmp_path):
 
 # --- the sweep gate: every live word of every engine container -------------
 
-@pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
+@pytest.mark.parametrize("container", LATER, ids=lambda s: s.key)
 def test_every_nonzero_word_a_later_titles_container_holds_is_written_or_declared(
-        shape):
+        container):
     """A field the engine writes that this conversion neither sources nor
     names would be written zero in silence -- the same gate
     `tests/convert/test_doswriter.py` keeps for Pool of Radiance, over every
     engine-written Curse or Silver Blades container in the specimen tree.
     """
     from goldbox import c64_save
-    c = c64_save.container_for(shape.key)
+    c = c64_save.container_for(container.key)
     written = set(range(sg.VAR_BASE + c.quest_flags[0],
                         sg.VAR_BASE + c.quest_flags[0] + c.quest_flags[1]))
     written |= set(dos_codec.SHARED_SCRATCH)
@@ -421,11 +421,11 @@ def test_every_nonzero_word_a_later_titles_container_holds_is_written_or_declare
     written |= set(range(sg.CLOCK, sg.CLOCK + sg.CLOCK_DIGITS))
     written |= {sg.AREA, sg.SCRIPT, sg.DISK, sg.INDOORS, sg.PARTY_SIZE,
                 sg.TRAVEL_X, sg.TRAVEL_Y}
-    written |= {a for a, _, _ in dos_codec.savgam_constants(shape)}
-    declared = {a + i for a, n, _ in dos_codec.savgam_unsourced(shape)
+    written |= {a for a, _, _ in dos_codec.savgam_constants(container)}
+    declared = {a + i for a, n, _ in dos_codec.savgam_unsourced(container)
                 for i in range(n)}
-    containers = _later_containers(shape)
-    assert len(containers) >= 2, f"only {len(containers)} {shape.title} " \
+    containers = _later_containers(container)
+    assert len(containers) >= 2, f"only {len(containers)} {container.title} " \
                                  f"containers in the specimen tree"
     for name, data in containers:
         for addr in range(sg.VAR_BASE, sg.VAR_LAST + 1):
@@ -448,56 +448,56 @@ PRE_ADVENTURE = {
 }
 
 
-def _pre_adventure_payload(shape):
+def _pre_adventure_payload(container):
     from automap import gamedisks
     from goldbox import c64_port
     from goldbox.d64 import split_load_address
-    key, disk, name, _stem = PRE_ADVENTURE[shape]
+    key, disk, name, _stem = PRE_ADVENTURE[container]
     for root in gamedisks.candidates(key):
         path = root / disk
         if path.is_file():
             payload = split_load_address(D64.open(path).read_file(name))[1]
-            return c64_port.by_key(shape.key), payload
+            return c64_port.by_key(container.key), payload
     pytest.skip(f"needs {disk} from the {key} registry entry")
 
 
-def _shipped_pre_adventure_save(shape) -> bytes:
+def _shipped_pre_adventure_save(container) -> bytes:
     from support.dossave import _game_dirs
-    folder = _game_dirs().get(PRE_ADVENTURE[shape][3])
+    folder = _game_dirs().get(PRE_ADVENTURE[container][3])
     if folder is None or not (folder / "SAVGAMA.DAT").is_file():
         pytest.skip("needs the archives' shipped saves")
     return (folder / "SAVGAMA.DAT").read_bytes()
 
 
-@pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
+@pytest.mark.parametrize("container", LATER, ids=lambda s: s.key)
 def test_a_party_saved_before_begin_adventuring_converts_to_the_shipped_form(
-        shape, tmp_path):
+        container, tmp_path):
     """Area 0 is no area of either title, so the party is written as the
     initialiser leaves it: every byte through the party-file table equals
     the archives' own pre-adventure save, with no script staged."""
     from goldbox import world_state
-    game, save0 = _pre_adventure_payload(shape)
-    shipped = _shipped_pre_adventure_save(shape)
+    game, save0 = _pre_adventure_payload(container)
+    shipped = _shipped_pre_adventure_save(container)
     state = world_state.from_c64(save0, game=game)
     assert state.set_out is False
     assert (state.area, state.geo) == (0, 0)
 
     report = dos_codec.new_dos_save(
-        save0, None, tmp_path, "A", _game_dir(PRE_ADVENTURE[shape][3]),
+        save0, None, tmp_path, "A", _game_dir(PRE_ADVENTURE[container][3]),
         title=game)
     assert report.unwritten == []
     written = (tmp_path / "SAVGAMA.DAT").read_bytes()
-    assert len(written) == shape.size
-    assert written[:shape.party_table] == shipped[:shape.party_table]
-    assert not (shape.script_buffer and any(
-        written[shape.script_buffer[0]:shape.script_buffer[1]]))
+    assert len(written) == container.size
+    assert written[:container.party_table] == shipped[:container.party_table]
+    assert not (container.script_buffer and any(
+        written[container.script_buffer[0]:container.script_buffer[1]]))
     assert sg.party_size(written) == 6
     assert len(dos_codec.read_party(tmp_path, "A")) == 6
 
 
-@pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
+@pytest.mark.parametrize("container", LATER, ids=lambda s: s.key)
 def test_a_dos_party_saved_before_begin_adventuring_converts_to_the_c64_s_own_form(
-        shape, tmp_path):
+        container, tmp_path):
     """The archives' pre-adventure `SAVGAMA.DAT` converts to a C64 save whose
     header, every byte before the combat icons, equals the C64 game's own
     pre-adventure save on the player's disk -- the form VICE was seen to
@@ -507,8 +507,8 @@ def test_a_dos_party_saved_before_begin_adventuring_converts_to_the_c64_s_own_fo
     from support.dossave import _game_dirs
 
     from goldbox import c64_save, world_state
-    game, shipped_c64 = _pre_adventure_payload(shape)
-    stem = PRE_ADVENTURE[shape][3]
+    game, shipped_c64 = _pre_adventure_payload(container)
+    stem = PRE_ADVENTURE[container][3]
     folder = _game_dirs().get(stem)
     if folder is None or not (folder / "SAVGAMA.DAT").is_file():
         pytest.skip("needs the archives' shipped saves")
@@ -527,4 +527,4 @@ def test_a_dos_party_saved_before_begin_adventuring_converts_to_the_c64_s_own_fo
     assert back.unwritten == []
     written = (tmp_path / "SAVGAMA.DAT").read_bytes()
     shipped_dos = (folder / "SAVGAMA.DAT").read_bytes()
-    assert written[:shape.party_table] == shipped_dos[:shape.party_table]
+    assert written[:container.party_table] == shipped_dos[:container.party_table]

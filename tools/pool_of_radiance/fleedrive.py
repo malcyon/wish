@@ -217,7 +217,7 @@ FLEE_BRANCH = bytes((0xC9, 0x81, 0xD0))
 def flee_branch(body: bytes) -> tuple[int, int, int] | None:
     """`(offset, message index, row)` of the arm that prints the fleeing line.
 
-    Found by shape rather than by address, so it answers on a title nobody
+    Found by pattern rather than by address, so it answers on a title nobody
     has mapped: `CMP #$81 / BNE <lost> / LDX #<index> / LDA #<row> / JSR`.
     """
     at = -1
@@ -363,16 +363,16 @@ OUTWARD = {(0, -1): "KP_8", (0, 1): "KP_2",
            (-1, 0): "KP_4", (1, 0): "KP_6"}
 
 
-def edges_of(shape, me) -> list[tuple[int, int]]:
+def edges_of(geometry, me) -> list[tuple[int, int]]:
     """The outward directions that leave the map from where `me` stands."""
     out = []
     if me.y == 0:
         out.append((0, -1))
-    if me.y == shape.height - 1:
+    if me.y == geometry.height - 1:
         out.append((0, 1))
     if me.x == 0:
         out.append((-1, 0))
-    if me.x == shape.width - 1:
+    if me.x == geometry.width - 1:
         out.append((1, 0))
     return out
 
@@ -380,28 +380,28 @@ def edges_of(shape, me) -> list[tuple[int, int]]:
 def step_to_edge(battle, me, avoid=()) -> str | None:
     """The key that takes `me` one square nearer the map's edge, or None.
 
-    Breadth-first **from every edge square at once**, which is the same shape
+    Breadth-first **from every edge square at once**, which is the same form
     as `Session.step_towards` and answers a different question: that one walks
     at a combatant, this one walks at the way out.  Rock and every other
     combatant are blocked; the character's own square never is, so a path can
     start.
     """
-    shape = battle.shape
+    geometry = battle.geometry
     blocked = {(x, y)
-               for y in range(shape.height) for x in range(shape.width)
+               for y in range(geometry.height) for x in range(geometry.width)
                if battle.square(x, y)}
     for c in battle.combatants:
-        if shape.holds(c.x, c.y) and (c.x, c.y) != (me.x, me.y):
+        if geometry.holds(c.x, c.y) and (c.x, c.y) != (me.x, me.y):
             blocked.add((c.x, c.y))
     dist: dict[tuple[int, int], int] = {}
     frontier: list[tuple[int, int]] = []
-    for x in range(shape.width):
-        for y in (0, shape.height - 1):
+    for x in range(geometry.width):
+        for y in (0, geometry.height - 1):
             if (x, y) not in blocked:
                 dist[(x, y)] = 0
                 frontier.append((x, y))
-    for y in range(shape.height):
-        for x in (0, shape.width - 1):
+    for y in range(geometry.height):
+        for x in (0, geometry.width - 1):
             if (x, y) not in blocked and (x, y) not in dist:
                 dist[(x, y)] = 0
                 frontier.append((x, y))
@@ -410,7 +410,7 @@ def step_to_edge(battle, me, avoid=()) -> str | None:
         for at in frontier:
             for dx, dy in S.STEP_KEYS:
                 sq = (at[0] + dx, at[1] + dy)
-                if sq in dist or not shape.holds(*sq) or sq in blocked:
+                if sq in dist or not geometry.holds(*sq) or sq in blocked:
                     continue
                 dist[sq] = dist[at] + 1
                 nxt.append(sq)
@@ -421,7 +421,7 @@ def step_to_edge(battle, me, avoid=()) -> str | None:
         if key in avoid:
             continue
         sq = (me.x + dx, me.y + dy)
-        if not shape.holds(*sq) or sq in blocked:
+        if not geometry.holds(*sq) or sq in blocked:
             continue
         d = dist.get(sq)
         if d is None:
@@ -540,7 +540,7 @@ class Flight:
             me = next((c for c in b.combatants if c.index == index), None)
             if me is None or not me.on_map:
                 break
-            out = edges_of(b.shape, me)
+            out = edges_of(b.geometry, me)
             if out:
                 # Standing on the edge: the step that leaves the map is what
                 # puts the game's own `FLEE: YES NO` up (`COMBAT $0E6E`).
@@ -763,12 +763,12 @@ def run(args) -> int:
         sess.settle(2)
         b = sess.battle()
         if b is not None:
-            log.emit("map", width=b.shape.width, height=b.shape.height,
+            log.emit("map", width=b.geometry.width, height=b.geometry.height,
                      party=[[c.index, c.name.strip(), c.x, c.y, c.movement]
                             for c in b.party],
                      enemies=[[c.index, c.x, c.y, c.movement]
                               for c in b.enemies])
-            log.say(f"  the map is {b.shape.width} x {b.shape.height}")
+            log.say(f"  the map is {b.geometry.width} x {b.geometry.height}")
             for c in b.party:
                 log.say(f"    {c.name.strip():<12} at {c.x},{c.y}  "
                         f"move {c.movement}")

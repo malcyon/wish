@@ -93,7 +93,7 @@ def _run_throwaway_test(body: str) -> subprocess.CompletedProcess:
 
 
 def test_an_import_time_rebind_fails_the_suite_instead_of_poisoning_it():
-    """The `#428` shape: a raw module-level assignment, at import time.
+    """The `#428` case: a raw module-level assignment, at import time.
 
     Reproduces the mechanism directly instead of importing
     `tools/gui/livecheck.py`, which is fixed now and would prove nothing about
@@ -102,7 +102,7 @@ def test_an_import_time_rebind_fails_the_suite_instead_of_poisoning_it():
     result = _run_throwaway_test('''
         from automap import state as mapstate
 
-        # Exactly the #428 shape: assigned at module scope, so it runs at
+        # Exactly the #428 case: assigned at module scope, so it runs at
         # collection time, before any test's fixtures -- and never undone.
         mapstate._data_dir = lambda: "/tmp/poisoned-by-a-throwaway-test"
 

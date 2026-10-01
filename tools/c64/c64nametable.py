@@ -74,7 +74,7 @@ PREFIX = {
 #: than a letter.
 SCRATCH = b"S0:"
 
-#: How the six sites are told apart, by the shape of the loop around each
+#: How the six sites are told apart, by the form of the loop around each
 #: `$5700` operand.  The addressing mode and the neighbouring instruction are
 #: the whole discriminator, so this holds for both titles at both addresses.
 #: `d6502.lines` prints `$ADDR  BB BB BB   MNEMONIC OPERAND`, and the bytes
@@ -495,7 +495,7 @@ def report_sites(title: str, disks: str | None) -> int:
     for at, text, kind in sites(body, dropped):
         print(f"  ${at:04X}  {text:<14} {kind}")
     for at, text in dropped:
-        print(f"  ${at:04X}  {text:<14} not an addressing shape this names")
+        print(f"  ${at:04X}  {text:<14} not an addressing form this names")
     return 0
 
 

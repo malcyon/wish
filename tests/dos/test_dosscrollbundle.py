@@ -13,7 +13,7 @@ The consequence a reader has to know about is that **the chain is written into
 the `.STF` file**, inline after its head item, while `item_count` counts head
 items only. So a file holding a bundle has more 67-byte records than
 `item_count` says, and taking the first `item_count` of them reads the
-bundle's spell nodes as items. `walk` is the engine's shape and
+bundle's spell nodes as items. `walk` is the engine's form and
 `slice_naively` is the other one; the tests below pin the disagreement on
 composed bytes, because no save on this machine carries a bundle.
 

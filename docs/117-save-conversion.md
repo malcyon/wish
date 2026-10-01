@@ -1771,7 +1771,7 @@ sequenceDiagram
   Writer->>W: Writer(char, rep, into = "C64", dropped = DROPPED)
   loop each C64 field this writer knows
     Writer->>W: use(name)
-    W->>Char: take(name, floor = GUESS)
+    W->>Char: take(name, minimum = GUESS)
     alt graded at or above the minimum
       Char-->>W: Value
       W-->>Writer: Value
@@ -1866,7 +1866,7 @@ classDiagram
     +list warnings
     +set(name, value, origin, confidence, how, dropped)
     +drop(what)
-    +take(name, floor) Value
+    +take(name, minimum) Value
     +get(name, default) Any
     +unwritten(taken) list
   }
@@ -1884,7 +1884,7 @@ classDiagram
     +NeutralCharacter char
     +Report report
     +str into
-    +Confidence floor
+    +Confidence minimum
     +Map~str, str~ reasons
     +list taken
     +use(name) Value
@@ -2017,7 +2017,7 @@ graph LR
   dosfile -->|"1 read_party"| dos
   dos -->|"2 offsets and grades"| dosport
   dos -->|"3 set / drop"| neutral
-  c64 -->|"4 use(name) — floor GUESS"| neutral
+  c64 -->|"4 use(name) — minimum GUESS"| neutral
   c64 -->|"5 emit: Value.line, Report.note"| neutral
   c64 -->|"6 offsets"| layout
   c64 -->|"7 rec.set, rec.set_raw"| record

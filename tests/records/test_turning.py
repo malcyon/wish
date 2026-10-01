@@ -113,7 +113,7 @@ def test_the_c64_combat_bar_drops_turn_when_the_turning_byte_is_zero():
 
 
 def test_curse_and_silver_blades_gate_the_same_command_the_same_way():
-    """The same shape in both later titles, in `ECL64` rather than `COMBAT`.
+    """The same form in both later titles, in `ECL64` rather than `COMBAT`.
 
     Curse: `LDA $7CA4 / BEQ +8`, and the fall-through is `LDA #$DF`. Silver
     Blades: `LDA $7CA4 / BEQ +5`, same `#$DF`. Each has one extra condition of
@@ -291,15 +291,15 @@ def test_the_conversion_says_it_computed_the_byte_rather_than_copying_it():
 
 # --- end to end, from a DOS record ------------------------------------------
 
-def _dos_record(shape, **values) -> bytes:
-    """A `shape`'s own size of DOS record with the named fields set.
+def _dos_record(deltas, **values) -> bytes:
+    """A DOS record of the size `deltas` names, with the named fields set.
 
     Built from `goldbox/dos_port.py`'s table, so it is ours and needs no
     disks. The same helper `tests/convert/test_ssbconvert.py` uses, kept here rather
     than imported so this file stands on its own.
     """
-    rec = bytearray(shape.record_size)
-    table = dos_port.FIELDS_BY_NAME_FOR[shape.key]
+    rec = bytearray(deltas.record_size)
+    table = dos_port.FIELDS_BY_NAME_FOR[deltas.key]
     for name, value in values.items():
         field = table[name]
         raw = bytes([value] * field.size) if isinstance(value, int) else value
@@ -319,9 +319,9 @@ def test_a_dos_cleric_converted_to_the_c64_can_turn_undead():
     """The whole path, `goldbox.dos_codec.to_c64_record`, on a DOS Pool of Radiance
     record with cleric 8 in slot 0 of its own level array and **nothing** at
     `0x076`, which is what every DOS record holds there."""
-    shape = dos_port.POOL_OF_RADIANCE
-    size = dos_port.FIELDS_BY_NAME_FOR[shape.key]["class_levels"].size
-    raw = _dos_record(shape, class_bits=0x02, char_class=0, level=8,
+    deltas = dos_port.POOL_OF_RADIANCE
+    size = dos_port.FIELDS_BY_NAME_FOR[deltas.key]["class_levels"].size
+    raw = _dos_record(deltas, class_bits=0x02, char_class=0, level=8,
                       class_levels=_class_levels(size, **{"0": 8}))
     assert raw[0x076] == 0
     rec, _rep = dos_codec.to_c64_record(dos_codec.DosCharacter(raw))

@@ -233,8 +233,8 @@ def cmd_sites(args) -> int:
     print("  every instruction addressing the pair:")
     for off in (base_off,) + ((rate_off,) if rate_off is not None else ()):
         refs = dosfieldrefs.references(ovr, off, prefixes=(0x26,))
-        shape = "  ".join(f"{r['linear']:06X}:{r['mnem']}" for r in refs)
-        print(f"    {off:#05x}: {len(refs)} -- {shape}")
+        listing = "  ".join(f"{r['linear']:06X}:{r['mnem']}" for r in refs)
+        print(f"    {off:#05x}: {len(refs)} -- {listing}")
     return 0
 
 

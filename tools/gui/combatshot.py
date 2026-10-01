@@ -150,7 +150,7 @@ def main(argv: list[str]) -> int:
         print("Nothing is fighting: the machine is not in combat, or the "
               "combat overlay is not resident.")
         return 1
-    print(f"    Battlefield {battle.shape.width}x{battle.shape.height}")
+    print(f"    Battlefield {battle.geometry.width}x{battle.geometry.height}")
     for who in battle.combatants:
         print(f"    {who.index:2d} {who.kind:12s} ({who.x:2d},{who.y:2d})  "
               f"initiative {who.initiative:3d}  hp {who.hp_text:9s} "

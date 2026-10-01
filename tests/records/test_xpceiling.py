@@ -208,11 +208,11 @@ def _clamped(key: str, value: int):
     import struct
 
     from goldbox import c64_codec, dos_codec
-    shape = dl.deltas_for(_BLANK_SIZES[key])
-    assert shape.key == key
+    deltas = dl.deltas_for(_BLANK_SIZES[key])
+    assert deltas.key == key
     buf = bytearray(_BLANK_SIZES[key])
     struct.pack_into("<I", buf, xpceiling.experience_offset(key), value)
-    dos = dos_codec.DosCharacter(bytes(buf), deltas=shape)
+    dos = dos_codec.DosCharacter(bytes(buf), deltas=deltas)
     assert dos.get("experience") == value
     return c64_codec.write(dos_codec.to_neutral(dos))
 

@@ -26,16 +26,16 @@ and by eight different rules**, all of them read off its own `GEN` and `ECL65`
 | rule | Pool of Radiance | Curse | where |
 |---|---|---|---|
 | the hit die | one roll (`$2037`) | two, keep the higher (`$15FC`) | `hit_die_rolls` |
-| a lone fighter's floor | 4 (`CMP #$04`) | none | `hit_die_fighter_floor` |
-| a divided roll's floor | 1 (`$20A2`) | none (`$11CC`) | `hit_die_divide_floor` |
+| a lone fighter's minimum | 4 (`CMP #$04`) | none | `hit_die_fighter_floor` |
+| a divided roll's minimum | 1 (`$20A2`) | none (`$11CC`) | `hit_die_divide_floor` |
 | `hp_max` | `hp_rolled + level * bonus` (`$2079`) | per class slot, summed and divided (`$11F1`) | `_hit_point_maximum` |
-| the constitution bonus | two banded rows from 15 (`$247B`) | one signed row, no floor (`$11D7`) | `hp_bonus_by_score` |
+| the constitution bonus | two banded rows from 15 (`$247B`) | one signed row, no minimum (`$11D7`) | `hp_bonus_by_score` |
 | thief skills | level and race (`$1FEC`) | level, **dexterity** and race (`$0FAD`) | `thief_skill_dexterity` |
 | `attack_forms` | raised to 3, never lowered (`$2342`) | written outright, 2 or 3 (`$1909`) | `attack_forms_overwritten` |
 | `spells_castable` | written (`$20BC`) | **never stored** | `stores_spell_capacity` |
 | a press raises | one class, the player's choice (`$1B8C`) | **every** ready class, `$14F8` walking slots 7 down to 0 | `trains_all_ready_classes`, `plan_all` |
 
-**Spells are a step per class, and the class decides the shape rather than the
+**Spells are a step per class, and the class decides the form rather than the
 title.** All three titles put the magic-user in front of a menu and grant every
 other caster a whole spell level; what changes between titles is how far the
 grant reaches and, in Silver Blades, whether an ability score is asked for.
@@ -50,7 +50,7 @@ Silver Blades' sequence is `$1527`, and this is the whole of it (#89):
 
 **The routine that looks like a trainer step and is not** is each later
 title's *starting* spellbook -- Curse's `$167F`, Silver Blades' `$0F7C`. Both
-are grant loops of the same shape, both are called only from character
+are grant loops of the same form, both are called only from character
 creation and from dual-classing, and both were read here as the trainer
 granting a row. `tools/c64/trainerspells.py` refuses to call a routine a trainer
 step unless the title's own sequence `JSR`s it, and `--check` diffs every
@@ -396,7 +396,7 @@ def divide_between_classes(value: int, class_count: int, rng=None,
     here is `randrange(class_count) + 1`, which is `1..class_count` -- the
     range the bytecode reads, above.
 
-    Pool of Radiance then floors the result at 1 (`$20A2 BNE / LDA #$01`) and
+    Pool of Radiance then minimums the result at 1 (`$20A2 BNE / LDA #$01`) and
     Curse does not (`$11CC` is a bare `LDA $4C / RTS`), so a Curse character
     with three classes can come out of a training with nothing.
     """
@@ -422,10 +422,10 @@ def roll_hit_points(class_name: str, class_count: int = 1,
     * **how many dice.** Pool of Radiance rolls one (`$2037`); Curse rolls two
       and keeps the higher (`$15FC`), which is `hit_die_rolls`. PROBABLE, from
       the bytecode alone: a roll leaves no trace of itself in a record.
-    * **the single-class fighter's floor of 4.** Pool of Radiance's `CMP #$04`
+    * **the single-class fighter's minimum of 4.** Pool of Radiance's `CMP #$04`
       against `class_bits == 8` and nothing else, which is why no fighter in
       twenty-nine trainings gained fewer than four hit points. Curse has no
-      floor of any kind -- `$15E1` carries no `CMP #$04` in its 61 bytes.
+      minimum of any kind -- `$15E1` carries no `CMP #$04` in its 61 bytes.
     * **when the dice stop.** Past `roll_to` a class adds a flat number a
       level instead of rolling (`$15F2 CMP $1626,X / BCC roll`), and the flat
       number goes through the same divide. `level` is the level being trained
@@ -444,9 +444,9 @@ def roll_hit_points(class_name: str, class_count: int = 1,
     else:
         rolled = flat
     rolled = divide_between_classes(rolled, class_count, rng, game)
-    floor = tables.hit_die_fighter_floor
-    if fighter_only and floor is not None and rolled < floor:
-        rolled = floor
+    minimum = tables.hit_die_fighter_floor
+    if fighter_only and minimum is not None and rolled < minimum:
+        rolled = minimum
     return rolled
 
 
@@ -468,7 +468,7 @@ def _permanent(record, index: int, in_force: str) -> int:
     """
     try:
         second = record.get_raw("abilities_second") or b""
-    except KeyError:                      # a record shape without the field
+    except KeyError:                      # a record without the field
         second = b""
     if len(second) > index and any(second):
         return second[index]
@@ -492,11 +492,11 @@ def menu_spell_level(level: int, intelligence: int, game=None) -> int:
     if not table.menu_spell_level:
         return (level + 1) // 2
     while level >= 1:
-        want = _row_at(table.menu_intelligence, level, floor=1)
+        want = _row_at(table.menu_intelligence, level, minimum=1)
         if want is None or intelligence >= want:
             break
         level -= 1
-    row = _row_at(table.menu_spell_level, level, floor=1)
+    row = _row_at(table.menu_spell_level, level, minimum=1)
     return row or 0
 
 
@@ -613,17 +613,17 @@ def _cleric_spell_ids(cleric_level: int, game=None,
     return sorted(_by_class_and_level("cleric", castable, game))
 
 
-def _row_at(table, level: int, floor: int = 0):
+def _row_at(table, level: int, minimum: int = 0):
     """The row for the highest key at or below `level`, or None.
 
     A per-title table only records the levels where the row actually changes,
     so a level between two entries gets the lower one -- the trainer's own
     routines do the same by indexing a monotonic array rather than by keeping
-    one row per level. None below `floor`, and None when the table starts
+    one row per level. None below `minimum`, and None when the table starts
     above `level`, which is the ordinary answer for a class that gets nothing
     yet rather than an error.
     """
-    if level < floor:
+    if level < minimum:
         return None
     keys = [k for k, _ in table if k <= level]
     if not keys:
@@ -743,7 +743,7 @@ def _hit_point_maximum(record, class_levels: dict[str, int], hp_rolled: int,
     $1282,Y`) -- times that slot's constitution bonus, which is the capped one
     for slots 0 to 2. It adds one whole extra bonus for a ranger (`$128A`,
     because a ranger is 2d8 at level 1), divides by the class count, adds
-    `hp_rolled`, and finally floors the answer at the character's `level` and
+    `hp_rolled`, and finally minimums the answer at the character's `level` and
     throws away anything reaching 200 (`$123C`/`$1241`).
 
     **The arithmetic is eight-bit and the constitution row is signed**, which

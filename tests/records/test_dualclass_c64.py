@@ -87,7 +87,7 @@ def test_silver_blades_reads_the_pair_the_same_way():
 def test_pool_of_radiance_never_reads_a_dual_class_pair():
     """`0xFF, 0xFF` is the NPC fill `goldbox/layout.py`'s note on
     `region_0e4` describes, not a slot number -- Pool of Radiance's own GEN
-    never references either byte. The shape gate has to be what stops this,
+    never references either byte. The deltas gate has to be what stops this,
     not the sentinel, since `0xFF` is non-zero."""
     rec = _c64_record(dual_class_slot=0xFF, dual_class_level=0xFF)
     out = c64_codec.read(rec, game=POOL)

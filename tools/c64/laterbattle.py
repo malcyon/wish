@@ -21,7 +21,7 @@ taken because a run that dies half way still has to have said what it saw:
 3. **the probe** -- the mode byte, the `$0600` parameter block, the camera,
    the position page, the roster page and the initiative table, raw, plus what
    `Session.battle()` makes of them. Taken once in the world as a control and
-   again on the combat floor, so a page that reads plausibly in both proves
+   again on the combat arena, so a page that reads plausibly in both proves
    nothing and is visibly proving nothing;
 4. `--keys`, the movement question: enter `MOVE`, read `MOVE LEFT`, press one
    joystick key and read the acting combatant's square back out of the
@@ -74,7 +74,7 @@ class Battle(cursethac0.Run):
     since the training hall overwrites it with the base and loses the strength
     bonus?)` four runs to get right. Reproducing it here would only produce a
     second one that is wrong in a different way, so this subclasses it and
-    changes what gets read on the floor at the end.
+    changes what gets read in the arena at the end.
     """
 
     def __init__(self, out: pathlib.Path, quiet: bool):
@@ -144,26 +144,26 @@ class Battle(cursethac0.Run):
         """
         where = combat.memory_for(self.sess.game)
         params = self.peek(combat.PARAMS, combat.PARAMS_LEN)
-        shape = combat.geometry_from_params(params)
+        geometry = combat.geometry_from_params(params)
         out: dict = {
             "stage": stage,
             "mode_at": f"${where.mode:04X}",
             "mode": self.peek(where.mode, 1)[0],
             "params": params.hex(" "),
             "camera": list(self.peek(combat.CAMERA, 2)),
-            "shape": None if shape is None else {
-                "map": f"${shape.map_base:04X}",
-                "positions": f"${shape.positions:04X}",
-                "count": shape.count,
-                "width": shape.width, "height": shape.height,
-                "stride": shape.stride},
+            "shape": None if geometry is None else {
+                "map": f"${geometry.map_base:04X}",
+                "positions": f"${geometry.positions:04X}",
+                "count": geometry.count,
+                "width": geometry.width, "height": geometry.height,
+                "stride": geometry.stride},
         }
-        if shape is not None:
-            positions = self.peek(shape.positions, shape.count * 4)
+        if geometry is not None:
+            positions = self.peek(geometry.positions, geometry.count * 4)
             out["positions"] = positions[:64].hex(" ")
             out["on_map"] = [[i, positions[i * 4], positions[i * 4 + 1],
                               positions[i * 4 + 2]]
-                             for i in range(shape.count)
+                             for i in range(geometry.count)
                              if positions[i * 4] != 0xFF]
         roster = self.peek(where.roster, 64 * ROSTER_STRIDE)
         out["roster_first_bytes"] = roster[:0x40].hex(" ")
@@ -211,7 +211,7 @@ class Battle(cursethac0.Run):
         logged, and a key that did neither is a key that did nothing.
         """
         # **Wait for a command bar first.** The first run to try this asked
-        # who was acting on the frame the floor finished drawing, before the
+        # who was acting on the frame the arena finished drawing, before the
         # round had begun: the panel named nobody, `Session.acting` answered
         # None and the sweep pressed nothing at all
         # (`cited/334/run5`, `key-sweep {'acting': None}`).
@@ -511,17 +511,17 @@ def main(argv=None) -> int:
                     readable=s is not None, bar=state.kind,
                     row24=state.text.strip())
             # `YOU GET INTO A BRAWL.` is drawn over a picture and waits on a
-            # keypress, so a run that only settles never sees the floor.
+            # keypress, so a run that only settles never sees the arena.
             if state.kind == S.BAR_PRESS or s is None:
                 sess.press_kernal(0x0D)
             sess.settle(4.0)
-        run.dump("combat-floor")
+        run.dump("combat-arena")
         run.log("combat", on_the_floor=run.in_combat(), mode=sess.mode(),
                 row24=run.row24())
         if not run.in_combat():
             rc = 2
             return rc
-        run.probe("combat-floor")
+        run.probe("combat-arena")
         if args.keys:
             run.key_sweep()
             run.probe("after-keys")

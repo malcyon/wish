@@ -17,7 +17,7 @@ spell effects, and store the result to byte 1 (and `0x1C`).  `/Curse` file
 offset `0xf5ee` seeds and `0xf9ce`-`0xf9ec` stores; `/Secret` file offset
 `0x131f8`/`0x13202` seeds and `0x13608`-`0x13612` stores.  Byte 0 is written
 by nothing else in either binary except character creation's own roll, the
-same shape `#401 (Which byte of a DOS ability pair is the current score, now
+same pattern `#401 (Which byte of a DOS ability pair is the current score, now
 that the C64's two arrays are named)` found in five DOS engines.
 
 **No real specimen can show this**, the same as on DOS and the C64: every
@@ -49,7 +49,7 @@ SIX_SCORES = tuple(n for n in _dos.ABILITY_ORDER if n != "exceptional_strength")
 def test_no_real_amiga_specimen_shows_the_crossing():
     """0 of 147 pairs across all 21 real Amiga Curse and Silver Blades
     records differ, so nothing on the disks or in `$WISH_SPECIMENS` can
-    prove which byte the engine treats as current -- exactly the shape
+    prove which byte the engine treats as current -- exactly the pattern
     `#401` found on DOS (0 of 406) and the C64 (0 of 6).  This is why the
     tests below build the crossing rather than finding one.
     """
@@ -71,12 +71,12 @@ def test_a_crossed_six_ability_pair_lands_in_force_at_the_second_byte():
     landing byte 0 at the neutral ability and byte 1 at `abilities_second`.
     """
     seen = 0
-    for shape in SHAPES:
+    for deltas in SHAPES:
         for name in SIX_SCORES:
-            char = _ability_record(shape, name, 0x12, 0x09)
+            char = _ability_record(deltas, name, 0x12, 0x09)
             out = amiga_later.to_neutral_later(char)
-            assert out.get(name) == 0x09, (shape.key, name)
-            assert out.get("abilities_second")[name] == 0x12, (shape.key, name)
+            assert out.get(name) == 0x09, (deltas.key, name)
+            assert out.get("abilities_second")[name] == 0x12, (deltas.key, name)
             seen += 1
     assert seen == 12, seen
 
@@ -87,12 +87,12 @@ def test_a_crossed_exceptional_strength_lands_in_force_at_the_first_byte():
     separately because a blanket swap would pass the six scores above and
     break this one.
     """
-    for shape in SHAPES:
-        char = _ability_record(shape, "exceptional_strength", 0x64, 0x00)
+    for deltas in SHAPES:
+        char = _ability_record(deltas, "exceptional_strength", 0x64, 0x00)
         out = amiga_later.to_neutral_later(char)
-        assert out.get("exceptional_strength") == 0x64, shape.key
+        assert out.get("exceptional_strength") == 0x64, deltas.key
         assert out.get("abilities_second")["exceptional_strength"] == 0x00, \
-            shape.key
+            deltas.key
 
 
 def test_an_agreeing_pair_converts_exactly_as_before():
@@ -101,9 +101,9 @@ def test_an_agreeing_pair_converts_exactly_as_before():
     current -- so this test cannot tell the fix from the bug, and it is here
     to prove the fix does not disturb the ordinary case.
     """
-    for shape in SHAPES:
+    for deltas in SHAPES:
         for name in _dos.ABILITY_ORDER:
-            char = _ability_record(shape, name, 0x0F, 0x0F)
+            char = _ability_record(deltas, name, 0x0F, 0x0F)
             out = amiga_later.to_neutral_later(char)
-            assert out.get(name) == 0x0F, (shape.key, name)
-            assert out.get("abilities_second")[name] == 0x0F, (shape.key, name)
+            assert out.get(name) == 0x0F, (deltas.key, name)
+            assert out.get("abilities_second")[name] == 0x0F, (deltas.key, name)

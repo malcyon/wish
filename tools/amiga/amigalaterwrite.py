@@ -149,7 +149,7 @@ def amiga_records(where: pathlib.Path) -> dict:
 
 
 def _records_in(data: bytes) -> dict:
-    """The party in one saved game, read through **its own** title's shape.
+    """The party in one saved game, read through **its own** title's deltas.
 
     `amigasavegame.detect` is what says which, from where a record signature
     lands: Curse's party begins at 12825 and Silver Blades' at 5143.  Trying

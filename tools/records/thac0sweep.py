@@ -24,14 +24,14 @@ permutation of those bits, so the anchor finds nothing in either image and
 instead; both titles sweep here. The geometry comes from the engine rather
 than from a guess: `GAME.OVR` reaches the table through `mov dx, <stride> /
 mul dx / mov di, ax / add di, cx / mov al, [di + <offset>]`, and `--code`
-prints every site of that shape with the stride and offset it carries.
+prints every site of that kind with the stride and offset it carries.
 
 The two ports implement the rule differently, and the difference is the whole
 reason a DOS sweep prints two counts. Both clear the byte and walk the class
 slots keeping the best row; the C64 skips a class the character has no level
 in, because entry 0 of each of its rows is `$00`, and the DOS loop that runs
 when a party is loaded does not skip it, so an empty slot reads an entry 0 of
-39 or 40. That puts a floor of THAC0 20 under every DOS record -- see
+39 or 40. That puts a minimum of THAC0 20 under every DOS record -- see
 `dos_engine_thac0` and `docs/224-the-dos-thac0-lower-limit.md`. No strength, no
 weapon and no clamp enter either.
 
@@ -211,7 +211,7 @@ def dos_engine_thac0(rows: dict[str, list[int]], class_levels) -> int | None:
     loads a party walks **every** class slot without checking whether the
     level is zero -- Curse `GAME.OVR:0x03B026`, Silver Blades `0x03C1B1`, Pool
     of Radiance `0x02AA87` -- so an empty slot reads its row's entry 0, which
-    is 40 in six of the eight rows.  That puts a floor of THAC0 20 under every
+    is 40 in six of the eight rows.  That puts a minimum of THAC0 20 under every
     character the engine writes, and it is the only thing that separates a DOS
     magic-user of level 1-5 from the 21 his own table gives him.
 

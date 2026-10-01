@@ -217,7 +217,7 @@ side for ever.
 
 The mechanics, in `goldbox/dos_codec.py`:
 
-* `never_adventured(savgam, shape)` is the test, off the container and never
+* `never_adventured(savgam, container)` is the test, off the container and never
   off the area word;
 * `_where_the_party_is` hands `apply_file_cache` and `convert_save` the start
   row when it is true and the save's own `$49F2` row otherwise;

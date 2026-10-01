@@ -79,7 +79,7 @@ def hand_built(path: pathlib.Path) -> bool:
 
 
 def find_saves(extra: list[pathlib.Path] | None = None,
-               shape: "sg.DosContainer | None" = None) -> list[pathlib.Path]:
+               container: "sg.DosContainer | None" = None) -> list[pathlib.Path]:
     """Every saved game of one title's size, deduplicated on its bytes.
 
     **The size is the filter rather than the directory name.** Each title in
@@ -91,7 +91,7 @@ def find_saves(extra: list[pathlib.Path] | None = None,
     so the whole sweep is meaningful for them; Pools of Darkness has no
     variable array at all and only the specimen table is of use.
     """
-    shape = shape or sg.SAVE_POOL_OF_RADIANCE
+    container = container or sg.SAVE_POOL_OF_RADIANCE
     seen: dict[str, pathlib.Path] = {}
     found: list[pathlib.Path] = []
     where = list(_roots()) + list(extra or [])
@@ -113,7 +113,7 @@ def find_saves(extra: list[pathlib.Path] | None = None,
                 data = path.read_bytes()
             except OSError:
                 continue
-            if len(data) != shape.size:
+            if len(data) != container.size:
                 continue
             digest = hashlib.sha256(data).hexdigest()
             if digest in seen:
@@ -143,7 +143,7 @@ def _label(path: pathlib.Path) -> str:
         # Pools of Darkness and Treasures of the Savage Frontier write the
         # same 1364 bytes, so the game folder has to be in the name or the
         # two titles' containers appear in one sweep as four files with two
-        # names -- `docs/141-dos-savegame.md`, "the size names the shape".
+        # names -- `docs/141-dos-savegame.md`, "the size names the container".
         tag = "steam" if "SavesDir" in str(path) else "shipped"
         for up in path.parents:
             if up.parent.name == "games":
@@ -156,16 +156,16 @@ def _label(path: pathlib.Path) -> str:
     return f"{tag}:{kind}{slot}"
 
 
-def _buffer_zero(save: bytes, shape: sg.DosContainer) -> bool:
+def _buffer_zero(save: bytes, container: sg.DosContainer) -> bool:
     """Is the staged ECL script all zeroes?  A title without one answers no."""
-    span = shape.script_buffer
+    span = container.script_buffer
     if span is None:
         return False
     return not any(save[span[0]:span[1]])
 
 
 def describe(path: pathlib.Path,
-             shape: "sg.DosContainer | None" = None) -> dict:
+             container: "sg.DosContainer | None" = None) -> dict:
     """What a reader needs in order to tell one specimen from another.
 
     Every reading that a title does not have comes back `None` rather than
@@ -174,20 +174,20 @@ def describe(path: pathlib.Path,
     plausible-looking lie.
     """
     save = path.read_bytes()
-    shape = sg.container_for(shape or len(save))
-    x, y, facing = sg.position(save, shape)
+    container = sg.container_for(container or len(save))
+    x, y, facing = sg.position(save, container)
     out = {
         "label": _label(path),
         "path": str(path),
-        "title": shape.title,
+        "title": container.title,
         "sha": hashlib.sha256(save).hexdigest()[:12],
         "square": [x, y, facing],
-        "party_size": sg.party_size(save, shape),
-        "tail": list(save[shape.square:shape.party_table]),
+        "party_size": sg.party_size(save, container),
+        "tail": list(save[container.square:container.party_table]),
         "hand_built": hand_built(path),
-        "dax_byte": save[shape.head] if shape.dax_bytes else None,
+        "dax_byte": save[container.head] if container.dax_bytes else None,
     }
-    if not shape.var_words:
+    if not container.var_words:
         # Pools of Darkness: no *word* array, so no `$49C5`, `$49C6` or
         # `$4A20` to read.  It has the byte-wide one instead (#175), and what
         # that carries goes in under its own keys rather than into fields
@@ -195,14 +195,14 @@ def describe(path: pathlib.Path,
         out.update(area=None, area_name=None, indoors=None, travel=None,
                    clock=None, disk_word=None, wallset=None, wallmap=None,
                    flags=None, never_adventured=None)
-        if shape.var_bytes:
+        if container.var_bytes:
             digits = [sg.pod_var(save, sg.POD_CLOCK + i)
                       for i in range(sg.POD_CLOCK_DIGITS)]
             out.update(
                 pod_clock=list(sg.pod_clock(save)),
                 pod_in_dungeon=sg.pod_in_dungeon(save),
                 pod_party_count=sg.pod_var(save, sg.POD_PARTY_COUNT),
-                pod_live=[i + 1 for i in range(shape.var_bytes) if save[i]],
+                pod_live=[i + 1 for i in range(container.var_bytes) if save[i]],
                 # A clock that has never run is the same never-adventured
                 # state, by the same test this tool applies to Pool of
                 # Radiance.  Both shipped containers read 00:00 and all eight
@@ -232,18 +232,18 @@ def describe(path: pathlib.Path,
         # (`#327 (dossavsweep calls a party saved before it set out a
         # shipped stub, and drops thirteen engine-written containers from
         # every count)`).
-        never_adventured=_buffer_zero(save, shape) and not any(sg.clock(save)),
+        never_adventured=_buffer_zero(save, container) and not any(sg.clock(save)),
     )
     return out
 
 
-def words(save: bytes, shape: sg.DosContainer) -> list[int]:
-    return [sg.word(save, sg.VAR_BASE + i, shape)
-            for i in range(shape.var_words)]
+def words(save: bytes, container: sg.DosContainer) -> list[int]:
+    return [sg.word(save, sg.VAR_BASE + i, container)
+            for i in range(container.var_words)]
 
 
 def sweep(specimens: list[dict], saves: list[bytes],
-           shape: sg.DosContainer) -> dict:
+           container: sg.DosContainer) -> dict:
     """Per-word values across the specimens, and the zero-everywhere count.
 
     A title with no variable array needs no special case: `var_words` is 0,
@@ -251,16 +251,16 @@ def sweep(specimens: list[dict], saves: list[bytes],
     return here for Pools of Darkness and it was dead -- removing it changed
     no test, which is what said so.
     """
-    table = [words(s, shape) for s in saves]
+    table = [words(s, container) for s in saves]
     live: dict[str, list[int]] = {}
-    for i in range(shape.var_words):
+    for i in range(container.var_words):
         column = [t[i] for t in table]
         if any(column):
             live[f"${sg.VAR_BASE + i:04X}"] = column
     return {
         "specimens": [s["label"] for s in specimens],
-        "words_total": shape.var_words,
-        "zero_everywhere": shape.var_words - len(live),
+        "words_total": container.var_words,
+        "zero_everywhere": container.var_words - len(live),
         "live": live,
     }
 
@@ -291,12 +291,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--json", action="store_true", help="Machine-readable")
     args = ap.parse_args(argv)
 
-    shape = sg.container_for(args.title)
-    paths = find_saves(args.extra, shape)
+    container = sg.container_for(args.title)
+    paths = find_saves(args.extra, container)
     if not paths:
-        print(f"no {shape.title} saved games found", file=sys.stderr)
+        print(f"no {container.title} saved games found", file=sys.stderr)
         return 1
-    specimens = [describe(p, shape) for p in paths]
+    specimens = [describe(p, container) for p in paths]
 
     def counted(s: dict) -> bool:
         if s["hand_built"] and not args.include_built:
@@ -310,8 +310,8 @@ def main(argv: list[str] | None = None) -> int:
 
     kept = [(s, p) for s, p in zip(specimens, paths) if counted(s)]
     saves = [p.read_bytes() for _, p in kept]
-    report = sweep([s for s, _ in kept], saves, shape)
-    report["title"] = shape.title
+    report = sweep([s for s, _ in kept], saves, container)
+    report["title"] = container.title
     report["all_specimens"] = specimens
 
     if args.json:
@@ -319,7 +319,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     outdoor = sum(1 for s, _ in kept if s["indoors"] is False)
-    print(f"{shape.title}: {len(paths)} distinct containers, "
+    print(f"{container.title}: {len(paths)} distinct containers, "
           f"{len(kept)} counted ({len(kept) - outdoor} indoors, "
           f"{outdoor} outdoors), "
           f"{len(paths) - len(kept)} excluded as never-adventured or "
@@ -345,17 +345,17 @@ def main(argv: list[str] | None = None) -> int:
               f"{str(s['wallset'] or '-'):>16} "
               f"{str(s['flags'] if s['flags'] is not None else '-'):>5}{mark}")
     print()
-    if shape.var_words:
-        print(f"variables: {report['zero_everywhere']} of {shape.var_words} "
+    if container.var_words:
+        print(f"variables: {report['zero_everywhere']} of {container.var_words} "
               f"words are zero in every counted specimen; "
               f"{len(report['live'])} are live somewhere")
-    elif shape.var_bytes:
+    elif container.var_bytes:
         live = sorted({n for s in specimens for n in s.get("pod_live", ())})
-        print(f"variables: {shape.var_bytes - len(live)} of "
-              f"{shape.var_bytes} one-byte variables are zero in every "
+        print(f"variables: {container.var_bytes - len(live)} of "
+              f"{container.var_bytes} one-byte variables are zero in every "
               f"specimen; {len(live)} are live somewhere -- {live}")
     else:
-        print(f"{shape.title} has no ECL variable array")
+        print(f"{container.title} has no ECL variable array")
 
     if args.tail:
         print()
@@ -363,9 +363,9 @@ def main(argv: list[str] | None = None) -> int:
         # Pool of Radiance and twelve more in the two titles that copy the
         # wallset in here (#253) -- so the header spans the row rather than
         # the block's nominal width.
-        first = shape.square
+        first = container.square
         print(f"{'specimen':<22} "
-              + " ".join(f"{n:>5}" for n in range(first, shape.party_table)))
+              + " ".join(f"{n:>5}" for n in range(first, container.party_table)))
         for s in specimens:
             print(f"{s['label']:<22} " +
                   " ".join(f"{b:>5}" for b in s["tail"]))
@@ -375,7 +375,7 @@ def main(argv: list[str] | None = None) -> int:
         print()
         print(f"${addr:04X}:")
         for (s, _), save in zip(kept, saves):
-            print(f"  {s['label']:<22} {sg.word(save, addr, shape):>6}")
+            print(f"  {s['label']:<22} {sg.word(save, addr, container):>6}")
 
     if args.nonzero:
         print()

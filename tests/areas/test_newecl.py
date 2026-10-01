@@ -16,7 +16,7 @@ except the ones `automap/actions.py` already publishes.
 `#19 (Can Curse be fast-travelled at all, or is the mechanism Pool of
 Radiance's alone?)` is where the procedure came from, and Curse and Silver
 Blades are checked here as well where their disks are present: not for a
-particular address, which no shipped code uses yet, but for the **shape** --
+particular address, which no shipped code uses yet, but for the **form** --
 that the mechanism is there at all, which is what that ticket answered.
 
 Game data comes off the player's disks at run time (`tests/gamedata.py`'s rule)
@@ -104,7 +104,7 @@ def test_the_handler_is_the_routine_the_writes_were_copied_from(newecl):
     `FastTravel.run` is a copy of this routine with the operand fetch removed.
     If the routine ever reads differently -- another release, another crack --
     the copy is wrong and the tooltip that says the writes are the game's own
-    is a lie, so the shape is asserted rather than the addresses alone.
+    is a lie, so the form is asserted rather than the addresses alone.
     """
     row = fasttravel.POOL_OF_RADIANCE
     _, _, _, _, lines = _read(newecl, c64_port.POOL_OF_RADIANCE)

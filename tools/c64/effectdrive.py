@@ -65,7 +65,7 @@ DISKS: pathlib.Path | None = tool_disks()
 #: What the run watches, address by address.  A DUNGEON address and a CAMP
 #: address are both in the `$0800` overlay window and mean different code, so
 #: the two sets are never armed at the same time.
-WALK_POINTS = {"age": 0x0E0D, "store": 0x0E46, "floor": 0x0E39,
+WALK_POINTS = {"age": 0x0E0D, "store": 0x0E46, "minimum": 0x0E39,
                "tick": 0x0DEC}
 CAMP_POINTS = {"expire": 0x131F, "dispatch": 0x12F8, "restore": 0xAD0B,
                "sweep": 0x1299}

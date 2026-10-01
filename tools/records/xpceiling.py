@@ -150,11 +150,11 @@ def convert(record: bytes, value: int) -> tuple[str, str]:
     The record is copied before the experience is replaced, so the caller's
     bytes -- a file on the player's read-only archive -- are untouched.
     """
-    shape = dl.deltas_for(len(record))
-    at = experience_offset(shape.key)
+    deltas = dl.deltas_for(len(record))
+    at = experience_offset(deltas.key)
     buf = bytearray(record)
     struct.pack_into("<I", buf, at, value)
-    dos = dos_codec.DosCharacter(bytes(buf), deltas=shape)
+    dos = dos_codec.DosCharacter(bytes(buf), deltas=deltas)
     read_back = dos.get("experience")
     neutral = dos_codec.to_neutral(dos)
     try:

@@ -47,13 +47,13 @@ def test_the_counts_come_from_the_overlay_not_from_here(parts):
 
 
 def test_a_composed_icon_is_eighteen_cells(parts):
-    shape = parts.compose("large", 0, 1)
-    assert len(shape) == CELLS_PER_POSE * 2
-    assert shape != bytes([SPACE]) * len(shape)
+    figure = parts.compose("large", 0, 1)
+    assert len(figure) == CELLS_PER_POSE * 2
+    assert figure != bytes([SPACE]) * len(figure)
 
 
 def test_the_factory_default_is_large_weapon_zero_head_one(parts):
-    """The commonest shape in the specimens, and it reconstructs exactly."""
+    """The commonest figure in the specimens, and it reconstructs exactly."""
     assert parts.compose("large", 0, 1).hex() == (
         "20a02086878806070820a020898a8b061011")
 
@@ -105,9 +105,9 @@ def test_every_icon_we_hold_is_one_the_game_could_have_made(legal):
         # perfectly legal art look unreachable.
         save0 = SaveGame0.from_prg((FIXTURES / name).read_bytes()).to_bytes()
         for slot in range(ICON_COUNT):
-            shape = bytes(icon_for_slot(save0, slot).screen_codes)
-            if set(shape) != {SPACE} and any(shape):
-                shapes.add(shape)
+            figure = bytes(icon_for_slot(save0, slot).screen_codes)
+            if set(figure) != {SPACE} and any(figure):
+                shapes.add(figure)
     assert shapes, "no icons in the fixtures"
     outside = [s.hex() for s in shapes if s not in legal]
     assert not outside, f"not reachable by any menu sequence: {outside}"
@@ -147,11 +147,11 @@ def test_the_colour_rule_reproduces_the_icons_we_hold(parts):
     checked = 0
     for slot in range(ICON_COUNT):
         icon = icon_for_slot(save0, slot)
-        shape, colours = bytes(icon.screen_codes), bytes(icon.colours)
-        if set(shape) == {SPACE} or not any(shape):
+        figure, colours = bytes(icon.screen_codes), bytes(icon.colours)
+        if set(figure) == {SPACE} or not any(figure):
             continue
-        per_class = parts.part_colours(colours, shape)
-        assert parts.colours_for(shape, per_class, colours) == colours
+        per_class = parts.part_colours(colours, figure)
+        assert parts.colours_for(figure, per_class, colours) == colours
         checked += 1
     assert checked, "no icons to check"
 
@@ -159,38 +159,38 @@ def test_the_colour_rule_reproduces_the_icons_we_hold(parts):
 def test_a_cell_holding_no_part_keeps_the_colour_it_had(parts):
     """The rule governs parts. A space has class $0F and its colour byte is
     residue -- inventing one disagreed with every icon in a save."""
-    shape = parts.compose("small", 0, 1)
-    existing = bytes([0x0E]) * len(shape)
-    out = parts.colours_for(shape, {0: 1, 1: 2}, existing)
-    for cell, glyph in enumerate(shape):
+    figure = parts.compose("small", 0, 1)
+    existing = bytes([0x0E]) * len(figure)
+    out = parts.colours_for(figure, {0: 1, 1: 2}, existing)
+    for cell, glyph in enumerate(figure):
         if parts.part_class(glyph) >= 7:
             assert out[cell] == 0x0E
 
 
 def test_the_editor_offers_only_icons_the_game_can_make(parts, legal, tmp_path):
     """The point of all of it. Whatever the picker is driven to, the result is
-    a shape reachable from the game's own menus."""
+    a figure reachable from the game's own menus."""
     pytest.importorskip("PyQt6")
     from PyQt6.QtWidgets import QApplication
 
     from editor.partspicker import PartsPicker
 
     app = QApplication.instance() or QApplication([])
-    charset = bytes(2048)               # shape is what matters, not the art
-    shape = parts.compose("large", 0, 1)
-    colours = parts.colours_for(shape, {k: 1 for k in range(7)}, bytes(18))
-    dialog = PartsPicker(parts, charset, shape, colours)
+    charset = bytes(2048)               # the figure is what matters, not the art
+    figure = parts.compose("large", 0, 1)
+    colours = parts.colours_for(figure, {k: 1 for k in range(7)}, bytes(18))
+    dialog = PartsPicker(parts, charset, figure, colours)
 
     for row in (3, 17, 30):
         dialog.weapons.setCurrentRow(row)
-        assert dialog.shape in legal
+        assert dialog.figure in legal
     for row in (2, 11, 22):
         dialog.heads.setCurrentRow(row)
-        assert dialog.shape in legal
+        assert dialog.figure in legal
     dialog.size_box.setCurrentText("small")
     dialog.weapons.setCurrentRow(5)
-    assert dialog.shape in legal, "mixing sizes must stay inside the set"
-    assert len(dialog.shape) == CELLS_PER_POSE * 2
+    assert dialog.figure in legal, "mixing sizes must stay inside the set"
+    assert len(dialog.figure) == CELLS_PER_POSE * 2
     app.processEvents()
 
 
@@ -579,9 +579,9 @@ def _draws(parts, size, kind, option) -> set[str]:
     """Which named part classes one C64 menu option puts on an empty figure."""
     from goldbox.iconparts import PART_CLASSES
 
-    shape = parts.apply(bytes([SPACE] * 18),
+    figure = parts.apply(bytes([SPACE] * 18),
                         parts.size_for(size, kind, option), kind, option)
-    return {PART_CLASSES[parts.part_class(g)] for g in shape if g != SPACE}
+    return {PART_CLASSES[parts.part_class(g)] for g in figure if g != SPACE}
 
 
 def test_only_three_small_c64_weapon_options_draw_no_weapon_at_all(parts):
@@ -634,22 +634,22 @@ def test_the_body_eleven_row_reaches_a_converted_silver_blades_dwarf(parts):
 
     The twin of `tests/convert/test_ssbconvert.py::
     test_dos_head_ten_reaches_donalds_own_c64_head_through_the_conversion`
-    for the other half of the pair.  The expected shape is composed
+    for the other half of the pair.  The expected figure is composed
     independently from the literal C64 option, so a pass means the figure
     itself holds nothing rather than that a table says it should.
     """
     from goldbox import dos_codec, dos_port
     from goldbox.iconparts import dos_icon_tables
 
-    shape = dos_port.SECRET_OF_THE_SILVER_BLADES
-    fields = dos_port.FIELDS_BY_NAME_FOR[shape.key]
+    deltas = dos_port.SECRET_OF_THE_SILVER_BLADES
+    fields = dos_port.FIELDS_BY_NAME_FOR[deltas.key]
     for size_byte, which in ((1, "small"), (2, "large")):
-        record = bytearray(shape.record_size)
+        record = bytearray(deltas.record_size)
         for name, value in (("icon_head", 0), ("icon_body", 11),
                             ("size", size_byte)):
             record[fields[name].span] = bytes([value] * fields[name].size)
         record[fields["icon_colours"].span] = bytes.fromhex("616263646566")
-        tables = dos_icon_tables(title=shape.key, size=which)
+        tables = dos_icon_tables(title=deltas.key, size=which)
         icon = dos_codec._icon_for(dos_codec.DosCharacter(bytes(record)), parts, tables)
 
         weapon, head = tables.weapons[11], tables.heads[0]
@@ -757,11 +757,11 @@ def test_a_staged_silver_blades_party_arrives_holding_what_it_held(
         assert ("cap" in drawn) is not small, (char.name, drawn)
 
 
-def _drawn_parts(parts, shape) -> set[str]:
+def _drawn_parts(parts, figure) -> set[str]:
     """Which named part classes a composed icon's eighteen cells hold."""
     from goldbox.iconparts import PART_CLASSES
 
-    return {PART_CLASSES[parts.part_class(g)] for g in shape if g != SPACE}
+    return {PART_CLASSES[parts.part_class(g)] for g in figure if g != SPACE}
 
 
 # -- the reverse table's own per-title overrides (#452) ----------------------
@@ -779,7 +779,7 @@ def _drawn_parts(parts, shape) -> set[str]:
 
 def _reverse_yaml(tmp_path, overrides: str = "") -> pathlib.Path:
     """A minimal reverse table -- two weapons and two heads at each size,
-    all eight colours -- the shape `c64_icon_tables` reads."""
+    all eight colours -- the form `c64_icon_tables` reads."""
     path = tmp_path / "reverse.yaml"
     path.write_text(
         "weapons:\n" + "".join(f"  {i}: {{dos: {i}}}\n" for i in range(2))
@@ -952,7 +952,7 @@ def test_c64_party_reads_a_converted_silver_blades_figure_home_as_itself(
     combat figure does not survive a round trip through the C64, because the
     reverse table has no per-title rows)`'s fix, `c64_party` built
     `c64_icon_tables()` with no title and every large character came home
-    head 4 and the small one came home body 0; watched red in that shape
+    head 4 and the small one came home body 0; watched red in that form
     with `goldbox/dos_codec.py` reverted to its pre-fix state, via
     `tools/icons/iconrowproof.py --home`.
     """

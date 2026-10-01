@@ -239,7 +239,7 @@ def test_curse_folds_the_fighter_group_before_taking_the_paladin_off(
 
 
 def test_silver_blades_folds_the_fighter_group_the_same_way():
-    """GUY DE VALOIS's shape: a cleric who has also regained paladin."""
+    """GUY DE VALOIS's case: a cleric who has also regained paladin."""
     assert SSB.saving_throws({"cleric": 8, "paladin": 8}, race=7,
                              constitution=17) == (5, 8, 9, 10, 10)
 

@@ -21,7 +21,7 @@ held `$0B`, which is text with the display blanked.
 shows the chips and the ram bank always shows RAM.  What is under test is
 which of those three the automapper asks.
 
-The shape being pinned is the decision on `#421`: `Target` did **not** grow a
+The design being pinned is the decision on `#421`: `Target` did **not** grow a
 bank argument, because the C64 Ultimate cannot honour one -- its DMA read
 follows the processor's banking (`#375`) -- and because thirteen more places
 duck-type `read(addr, length)`.  A backend that can tell the two memories

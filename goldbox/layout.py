@@ -1,6 +1,6 @@
 """Declarative field table for the Pool of Radiance (C64) character record.
 
-This module is the *single source of truth* for the on-disk shape of a
+This module is the *single source of truth* for the on-disk structure of a
 character record.  Nothing else in the project may hard-code an offset:
 decoders, documentation generators and (later) ImHex pattern emitters all
 derive from :data:`LAYOUT`.

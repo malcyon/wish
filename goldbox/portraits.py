@@ -70,7 +70,7 @@ BODY_COUNT = 12
 #: Where each table is, in the file that carries it.  Both are a run of
 #: **strictly increasing** art ids, and the two tables are adjacent -- DOS
 #: writes the heads first, the C64's `GEN` the bodies first.  Nothing here
-#: depends on a file offset: the run is found by its shape and every value in
+#: depends on a file offset: the run is found by its pattern and every value in
 #: it is checked against the art that exists beside it, so a table found is a
 #: table that names real portraits.
 _DOS_EXECUTABLE = "START.EXE"
@@ -209,7 +209,7 @@ def _only(hits: list[int], where: str) -> int:
     raise PortraitError(
         f"{where}: {len(hits)} runs of {HEAD_COUNT} head ids and "
         f"{BODY_COUNT} body ids, at {hits}; the table cannot be told from "
-        f"the others by shape alone")
+        f"the others by pattern alone")
 
 
 def dos_art_ids(game: str | pathlib.Path) -> tuple[set[int], set[int]]:
@@ -439,7 +439,7 @@ def tables_from_amiga(program: bytes, head: bytes, body: bytes,
 
     The table is at file offset `0x6D68F` on the release read for #194, in
     data hunk 31, heads first as DOS has them.  Nothing here depends on that
-    offset: the run is found by its shape and every id in it is checked
+    offset: the run is found by its pattern and every id in it is checked
     against the art on the disk beside it, exactly as the other two ports'
     readers do.
     """
@@ -523,7 +523,7 @@ def tables_from_amiga_disks(disks: str | pathlib.Path) -> PortraitTables:
 #: `docs/188-the-sheet-portrait-per-title.md` and the screenshots on `#300`.
 #:
 #: Kept here rather than in the conversion so both directions read one fact:
-#: `goldbox.dos_codec` decides today with `shape is POOL_OF_RADIANCE` in the
+#: `goldbox.dos_codec` decides today with `deltas is POOL_OF_RADIANCE` in the
 #: C64-to-DOS direction and does not decide at all in the other, which is
 #: why a Curse import reports a portrait it never could have written.
 #: Spelled out rather than imported from `goldbox.c64_port`: `goldbox.traits`
@@ -581,7 +581,7 @@ def draws_sheet_portrait(game=None) -> bool:
 #: committed bytes, because a slice of a game file under a new name is the
 #: file.  What is below is not a slice of anything: it is twenty-six
 #: integers that :func:`tables_from_c64` found in `GEN` and
-#: :func:`tables_from_dos` found in `START.EXE`, by the shape of the run and
+#: :func:`tables_from_dos` found in `START.EXE`, by the pattern of the run and
 #: by checking every value against the art beside it, and then *typed out*
 #: -- the same class of thing as the field offsets in `goldbox/layout.py`,
 #: the `$49FF` switch below, and every address cited in `docs/`.  It

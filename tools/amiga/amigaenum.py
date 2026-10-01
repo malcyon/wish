@@ -18,7 +18,7 @@ subcommands found the race, class, sex and alignment tables on the way past.
     tools/amiga/amigaenum.py --file SECRET_EXE table 30fc --count 9
     tools/amiga/amigaenum.py --glib STRINGS.GLB --first 44 --count 9
 
-**`sites` finds one shape of indexing and not all of them.**  It matches the
+**`sites` finds one kind of indexing and not all of them.**  It matches the
 SAS/Lattice small-data idiom `move.b d16(An), d0; ext.w; ext.l; asl.l #2;
 lea d16(a4), a0; move.l (a0, d0.l), -(a7)` -- a byte scaled to a longword and
 read out of a `char *` table.  A title that fetches its strings from a library

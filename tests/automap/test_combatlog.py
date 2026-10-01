@@ -426,7 +426,7 @@ def warnings_in(window) -> list[str]:
 # Everything above proves `CombatLog.poll(game=...)` in isolation. This is the
 # one level up: `AutomapBinding.poll_battle` and `.poll_combat_log` are the
 # window's own live loop, and until they pass `self.mapper.game` through, a
-# Curse-titled window standing on a Curse-shaped combat floor found no fight
+# Curse-titled window standing on a Curse-shaped combat arena found no fight
 # and logged nothing at all -- Pool of Radiance's `$6E11`/`$49FC` regardless of
 # what `self.mapper.game` said.
 
@@ -476,7 +476,7 @@ def test_a_curse_titled_window_finds_its_own_fight_live(app, tmp_path,
 
     Before that wiring, the window's live loop read Pool of Radiance's
     `$6E11` regardless of the title `self.mapper.game` named, so a Curse
-    party standing on its own combat floor was reported as not fighting at
+    party standing on its own combat arena was reported as not fighting at
     all -- `#334`'s failure, with the live GUI window in place of the session
     driver.
     """

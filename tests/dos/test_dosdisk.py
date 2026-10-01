@@ -8,7 +8,7 @@ from its bytes, and read back through `goldbox.savegame` and
 
 **It is the part of #119 that can be pinned without an emulator, and no
 more.**  Whether the game's own `LOAD SAVED GAME` accepts the disk, what the
-status line says and what the combat floor draws are all questions only a
+status line says and what the combat arena draws are all questions only a
 running C64 answers, and `docs/122-release-testing.md` §9 is where the recipe
 for asking them lives.  What a file *can* prove is that every number a person
 would read off the character sheet is the DOS party's own -- and that is
@@ -255,7 +255,7 @@ def test_no_character_on_the_built_disk_would_draw_as_black_hooks(tmp_path):
     """An icon of all zeros is not "no icon" (#57).
 
     Screen code 0 in `CHARPIC00` is a real glyph, so a zeroed 36-byte icon
-    draws as a 3x3 block of black hooks on the combat floor -- which is why
+    draws as a 3x3 block of black hooks on the combat arena -- which is why
     the conversion composes the icon the game's own character creation
     writes.  The failure this catches is a conversion that stops supplying
     one: `new_save` demands an `icon`, but nothing else asserts that what

@@ -85,41 +85,41 @@ def test_a_name_nobody_in_the_party_has_is_refused_rather_than_ignored():
 # The mask
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("shape", amiga_port.AMIGA_DELTAS, ids=lambda s: s.key)
-def test_every_unsourced_byte_the_writer_declares_is_in_the_mask(shape):
+@pytest.mark.parametrize("deltas", amiga_port.AMIGA_DELTAS, ids=lambda s: s.key)
+def test_every_unsourced_byte_the_writer_declares_is_in_the_mask(deltas):
     """`LATER_WRITE_UNSOURCED` is the list of Amiga offsets no DOS field
     reaches, so a resave is entitled to differ there and the diff must not
     report one."""
-    mask = proof.declared_record_mask(shape)
-    for at, size, _why in amiga_later.LATER_WRITE_UNSOURCED[shape.key]:
+    mask = proof.declared_record_mask(deltas)
+    for at, size, _why in amiga_later.LATER_WRITE_UNSOURCED[deltas.key]:
         assert set(range(at, at + size)) <= mask, hex(at)
 
 
-@pytest.mark.parametrize("shape", amiga_port.AMIGA_DELTAS, ids=lambda s: s.key)
-def test_the_mask_is_the_declared_lists_and_not_everything(shape):
+@pytest.mark.parametrize("deltas", amiga_port.AMIGA_DELTAS, ids=lambda s: s.key)
+def test_the_mask_is_the_declared_lists_and_not_everything(deltas):
     """The half that matters: a field the writer claims to convert has to be
     outside the mask, or the diff proves nothing.  Hit points, armour class
     and the seven abilities are what a player reads off the sheet."""
-    mask = proof.declared_record_mask(shape)
-    table = dos_port.FIELDS_BY_NAME_FOR[shape.dos.key]
+    mask = proof.declared_record_mask(deltas)
+    table = dos_port.FIELDS_BY_NAME_FOR[deltas.dos.key]
     for name in ("hp_max", "armour_class", "strength", "intelligence",
                  "wisdom", "dexterity", "constitution", "charisma",
                  "race", "char_class", "class_levels"):
         field = table[name]
-        at = shape.offset(field.offset)
+        at = deltas.offset(field.offset)
         assert not (set(range(at, at + field.size)) & mask), name
 
 
-@pytest.mark.parametrize("shape", amiga_port.AMIGA_DELTAS, ids=lambda s: s.key)
-def test_the_live_heap_pointers_the_engine_fills_in_are_masked(shape):
+@pytest.mark.parametrize("deltas", amiga_port.AMIGA_DELTAS, ids=lambda s: s.key)
+def test_the_live_heap_pointers_the_engine_fills_in_are_masked(deltas):
     """`effect_chain` and `item_chain` come back as real Amiga addresses in
     the engine's own resave -- measured on both titles, 2026-09-07 -- and
     `goldbox.dos_codec.WRITE_UNSOURCED` is where the writer says so."""
-    mask = proof.declared_record_mask(shape)
-    table = dos_port.FIELDS_BY_NAME_FOR[shape.dos.key]
+    mask = proof.declared_record_mask(deltas)
+    table = dos_port.FIELDS_BY_NAME_FOR[deltas.dos.key]
     for name in ("effect_chain", "item_chain"):
         field = table[name]
-        at = shape.offset(field.offset)
+        at = deltas.offset(field.offset)
         assert set(range(at, at + field.size)) <= mask, name
 
 
@@ -128,27 +128,27 @@ def test_the_derived_bytes_the_engine_recomputes_are_masked():
     load, and no declared list says so)`: the two Curse offsets in
     `LATER_WRITE_DERIVED` are exactly `thac0_current` and the sixth byte of
     `roster_tail`, computed from the shift map rather than typed twice."""
-    shape = amiga_port.CURSE_DELTAS
-    table = dos_port.FIELDS_BY_NAME_FOR[shape.dos.key]
-    want = {shape.offset(table["thac0_current"].offset),
-            shape.offset(table["roster_tail"].offset) + 5}
-    mask = proof.declared_record_mask(shape)
+    deltas = amiga_port.CURSE_DELTAS
+    table = dos_port.FIELDS_BY_NAME_FOR[deltas.dos.key]
+    want = {deltas.offset(table["thac0_current"].offset),
+            deltas.offset(table["roster_tail"].offset) + 5}
+    mask = proof.declared_record_mask(deltas)
     assert want <= mask
-    got = {at for at, _size, _why in amiga_later.LATER_WRITE_DERIVED[shape.key]}
+    got = {at for at, _size, _why in amiga_later.LATER_WRITE_DERIVED[deltas.key]}
     assert got == want
 
 
-@pytest.mark.parametrize("shape", amiga_port.AMIGA_DELTAS, ids=lambda s: s.key)
-def test_the_control_and_share_bytes_are_not_masked(shape):
+@pytest.mark.parametrize("deltas", amiga_port.AMIGA_DELTAS, ids=lambda s: s.key)
+def test_the_control_and_share_bytes_are_not_masked(deltas):
     """`field_83_87` is on `WRITE_CONSTANTS` for the control byte the writer
     patches over it, but the control and share bytes it now carries exactly
     (#529) must reach a live diff -- masking the whole field would swallow
     both silently."""
-    table = dos_port.FIELDS_BY_NAME_FOR[shape.dos.key]
+    table = dos_port.FIELDS_BY_NAME_FOR[deltas.dos.key]
     f83 = table["field_83_87"]
-    at = shape.offset(f83.offset)
+    at = deltas.offset(f83.offset)
     control_index = 1 if f83.size == 5 else 0
-    mask = proof.declared_record_mask(shape)
+    mask = proof.declared_record_mask(deltas)
     assert at + control_index not in mask
     assert at + control_index + 1 not in mask
 
@@ -162,20 +162,20 @@ class _CharStub:
         self.effects: list = []
 
 
-@pytest.mark.parametrize("shape", amiga_port.AMIGA_DELTAS, ids=lambda s: s.key)
-def test_a_control_or_share_difference_is_caught_by_the_unmasked_diff(shape):
+@pytest.mark.parametrize("deltas", amiga_port.AMIGA_DELTAS, ids=lambda s: s.key)
+def test_a_control_or_share_difference_is_caught_by_the_unmasked_diff(deltas):
     """Two records differing only in the control and share bytes: before this
     fix, `declared_record_mask` covered the whole `field_83_87` run and a
     live diff would have reported zero unexplained differences here."""
-    table = dos_port.FIELDS_BY_NAME_FOR[shape.dos.key]
+    table = dos_port.FIELDS_BY_NAME_FOR[deltas.dos.key]
     f83 = table["field_83_87"]
-    at = shape.offset(f83.offset)
+    at = deltas.offset(f83.offset)
     control_index = 1 if f83.size == 5 else 0
-    a = bytearray(shape.record_size)
-    b = bytearray(shape.record_size)
+    a = bytearray(deltas.record_size)
+    b = bytearray(deltas.record_size)
     b[at + control_index] = 0x80
     b[at + control_index + 1] = 3
-    mask = proof.declared_block_mask(_CharStub(shape))
+    mask = proof.declared_block_mask(_CharStub(deltas))
     loose = [i for i in range(len(a)) if a[i] != b[i] and i not in mask]
     assert loose == [at + control_index, at + control_index + 1]
 
@@ -215,7 +215,7 @@ def test_the_curse_resave_diff_is_the_known_gap_and_old_thac0_base():
     recompute this field on load, which is why the pre-fix zeros were
     permanent and why the fix matters more for Amiga than for DOS.
 
-    That 2026-09-14 conversion also predates the Amiga THAC0 floor proof.
+    That 2026-09-14 conversion also predates the Amiga THAC0 minimum proof.
     `write_later` then supplied 39 for the pure low-level mages MATHEW and
     PHILIPPE, and the ordinary engine resave preserved 39 without running a
     base-THAC0 rebuild.  Current conversion intentionally supplies 40, matching
@@ -306,17 +306,17 @@ def test_the_curse_resave_diff_is_the_known_gap_and_old_thac0_base():
 # ---------------------------------------------------------------------------
 
 def test_an_offset_in_the_record_is_named_by_its_field():
-    shape = amiga_port.SILVER_BLADES_DELTAS
-    at = shape.offset(dos_port.FIELDS_BY_NAME_FOR[shape.dos.key]["hp_max"]
+    deltas = amiga_port.SILVER_BLADES_DELTAS
+    at = deltas.offset(dos_port.FIELDS_BY_NAME_FOR[deltas.dos.key]["hp_max"]
                       .offset)
-    assert proof.field_at(shape, at) == "hp_max+0"
+    assert proof.field_at(deltas, at) == "hp_max+0"
 
 
 def test_silver_blades_names_its_re_encoded_spellbook():
     """The one region with no DOS field behind it: 117 flag bytes packed into
     15 of mask, which `AmigaDeltas.offset` cannot map."""
-    shape = amiga_port.SILVER_BLADES_DELTAS
-    assert proof.field_at(shape, amiga_later.AMIGA_SSB_SPELLBOOK_AT + 3) \
+    deltas = amiga_port.SILVER_BLADES_DELTAS
+    assert proof.field_at(deltas, amiga_later.AMIGA_SSB_SPELLBOOK_AT + 3) \
         == "spellbook+3"
 
 

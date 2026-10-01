@@ -104,7 +104,7 @@ def test_the_frozen_build_carries_the_table():
 def test_it_resolves_under_a_frozen_root(monkeypatch, tmp_path):
     """`PROPOSAL_PATH` is a module-level constant, so this reloads
     `goldbox.iconparts` under a simulated `sys._MEIPASS` rather than reading
-    the constant as it stands -- the shape PyInstaller's bootloader leaves,
+    the constant as it stands -- the form PyInstaller's bootloader leaves,
     per `tests/wish/test_assets.py`.
 
     **Restored from a snapshot, not by reloading again.** `importlib.reload`

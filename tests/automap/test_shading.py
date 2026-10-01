@@ -76,7 +76,7 @@ def test_cross_hatching_is_two_sets_at_opposite_slopes():
 
 def test_a_cell_too_small_for_the_spacing_falls_back_to_a_plain_fill():
     """Absolute spacing goes solid as the window shrinks the cell. Below the
-    floor there are no strokes at all, and the fill says the same thing."""
+    minimum there are no strokes at all, and the fill says the same thing."""
     assert hatch_lines(0, 0, 30, 30)
     assert hatch_lines(0, 0, 12, 12) == ()
     assert hatch_lines(0, 0, 12, 12, cross=True)          # wider spaced, still on
@@ -113,7 +113,7 @@ def test_every_rock_square_is_shaded_and_no_other_square_is():
 
 
 def test_the_heavy_line_runs_where_rock_meets_ground_only():
-    """Dyson Logos's rock is one inked shape with a hatched interior, not a
+    """Dyson Logos's rock is one inked outline with a hatched interior, not a
     tiling: the boundary is drawn, the joins between rock squares are not."""
     b = battle()
     box = combat.extent(b)
@@ -207,7 +207,7 @@ def drawn(cell=None):
     if cell is not None:
         canvas.cell = cell
         canvas._resize()
-    # `sizeHint`, not `minimumSize`: the minimum is the floor the canvas will
+    # `sizeHint`, not `minimumSize`: the minimum is the size the canvas will
     # shrink to when the window is small, and this wants the cell it asked for.
     canvas.resize(canvas.sizeHint())
     return canvas.grab().toImage(), canvas
@@ -241,7 +241,7 @@ def test_the_canvas_paints_the_strokes_over_the_fill(app):
 
 
 def test_a_small_cell_degrades_to_a_plain_fill(app):
-    """Below the stroke floor `hatch_lines` yields nothing, and the square is
+    """Below the stroke minimum `hatch_lines` yields nothing, and the square is
     the fill alone -- which is honest about what it has become."""
     from automap import window as win
 

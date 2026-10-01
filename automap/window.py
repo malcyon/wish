@@ -167,7 +167,7 @@ WRONG_GAME = ("ERROR: Wrong game disk loaded. Disabling functionality to "
 #: the player has turned the game's combat speed to its fastest, where the game
 #: clears each message with no pause at all and this window logs about a fifth
 #: of the fight, half of what it does catch cut off mid-word. Donald decided
-#: the shape on 2026-09-08 -- say the log is incomplete, on every machine, and
+#: the design on 2026-09-08 -- say the log is incomplete, on every machine, and
 #: do not try to win the race -- and the wording is his to write; this is a
 #: proposal standing in until he does.
 #:
@@ -220,8 +220,8 @@ class MapCanvas(QWidget):
         #: until the button comes back up.
         self._pressed: tuple[int, int] | None = None
         self._pressed_button = None
-        # The floor, not `CELL`. A 596px square that could never give way was
-        # a 596px floor under the whole window, and on Donald's 1080p Windows
+        # The minimum, not `CELL`. A 596px square that could never give way was
+        # a 596px minimum size for the whole window, and on Donald's 1080p Windows
         # desktop that put the menu bar off the top of the screen.
         self.setMinimumSize(GRID * CELL_MIN + MARGIN * 2,
                             GRID * CELL_MIN + MARGIN * 2)
@@ -463,7 +463,7 @@ class CombatCanvas(QWidget):
         # The minimum comes off `CELL_MIN`, not off the cell this fight would
         # like: the map canvas shares a stack with this one, and a stack is as
         # tall as its tallest page whichever page is showing. A minimum of
-        # `cell` here would put a 600px floor back under the window the moment
+        # `cell` here would put a 600px minimum back on the window the moment
         # a fight started.
         _, _, w, h = self.box
         self.setMinimumSize(w * combat.CELL_MIN + combat.MARGIN * 2,
@@ -539,7 +539,7 @@ class CombatCanvas(QWidget):
     def _draw(self, p: QPainter, prim) -> None:
         # Hatch first: it is a Rect, and the Rect branch would swallow it. When
         # the cell is too small `lines` is empty and this is a flat fill --
-        # the heavy rock-edge below still carries the shape.
+        # the heavy rock-edge below still carries the outline.
         if isinstance(prim, Hatch):
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(BLOCK)
@@ -636,7 +636,7 @@ class WorldCanvas(QWidget):
         self._image: QImage | None = None
         # The same minimum and size hint as `MapCanvas`, so the stack is no
         # taller when the party steps outside and no page raises the window's
-        # floor (see `CombatCanvas._resize`).
+        # minimum (see `CombatCanvas._resize`).
         self.setMinimumSize(GRID * CELL_MIN + MARGIN * 2,
                             GRID * CELL_MIN + MARGIN * 2)
 
@@ -692,7 +692,7 @@ class WorldCanvas(QWidget):
         """How big a square is drawn, for the room the widget has been given.
 
         Derived from the size, as `MapCanvas.cell` is. The area view has the
-        map's own floor; the whole wilderness has none but one pixel, because
+        map's own minimum; the whole wilderness has none but one pixel, because
         it is 44 squares across where the map is 16.
         """
         _, _, across, down = self.squares
@@ -760,7 +760,7 @@ class RouteCanvas(QWidget):
         self.state = state
         self.route = None
         # The same minimum and size hint as `MapCanvas`, so the stack is no
-        # taller on this page and no page raises the window's floor.
+        # taller on this page and no page raises the window's minimum.
         self.setMinimumSize(GRID * CELL_MIN + MARGIN * 2,
                             GRID * CELL_MIN + MARGIN * 2)
 
@@ -879,7 +879,7 @@ class AutomapBinding(QObject):
     SIDE_WIDTH = ColumnSplitter.SIDE
 
     #: And the narrowest. A squeezed window still shows enough of a note or a
-    #: commission to say which one it is; without a floor here the column was
+    #: commission to say which one it is; without a minimum here the column was
     #: 270px of fixed width whatever the screen was (#41).
     SIDE_SQUEEZED = 160
 
@@ -944,7 +944,7 @@ class AutomapBinding(QObject):
         # window gains lands as blank paper beside a fixed 270px panel.
         if hasattr(self.questlog, 'scroll') and self.questlog.scroll:
             self.questlog.scroll.setMaximumWidth(QWIDGETSIZE_MAX)
-        # And the floor comes off with it, for the same reason in the other
+        # And the minimum comes off with it, for the same reason in the other
         # direction: a fixed 270px was the whole of this column's minimum
         # width, and the rows inside it scroll and wrap already (#41).
         if hasattr(self.questlog, 'scroll') and self.questlog.scroll:
@@ -1372,7 +1372,7 @@ class AutomapBinding(QObject):
             return sum(1 for c in side if c.alive)
         return (f"combat   party {standing(battle.party)}/{len(battle.party)}"
                 f"   enemies {standing(battle.enemies)}/{len(battle.enemies)}"
-                f"   {battle.shape.width}x{battle.shape.height} squares")
+                f"   {battle.geometry.width}x{battle.geometry.height} squares")
 
     def poll_live(self) -> None:
         """Refresh the roster and the strip, every `LIVE_EVERY` ticks.
@@ -1603,7 +1603,7 @@ class AutomapBinding(QObject):
         """
         if self._spell_names is None:
             # `find_disks` returns the *directory*, not a list of images -- the
-            # same shape `live.item_names` walks with `_disk_names`. Iterating
+            # same form `live.item_names` walks with `_disk_names`. Iterating
             # it directly crashed the window the first time a wizard levelled.
             from .live import _disk_images
             from .paths import find_disks

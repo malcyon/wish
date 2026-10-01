@@ -176,7 +176,7 @@ def sweep(args: argparse.Namespace) -> int:
         print("no DOS character records under those roots; set $FR_ARCHIVES")
         return 0
     dual = agree = 0
-    for shape, char, paths in sorted(records, key=lambda r: r[1].name):
+    for deltas, char, paths in sorted(records, key=lambda r: r[1].name):
         if "former_class_levels" not in char.fields:
             continue
         former = {n: v for n, v in
@@ -191,7 +191,7 @@ def sweep(args: argparse.Namespace) -> int:
         back = regained(char)
         mark = "" if ok else "   <<< disagrees"
         if former or not args.dual_only:
-            print(f"{char.name:<16} {shape.title[:26]:<26} "
+            print(f"{char.name:<16} {deltas.title[:26]:<26} "
                   f"level={char.get('level'):<3} "
                   f"levels={list(char.raw('class_levels'))} "
                   f"former={list(char.raw('former_class_levels'))} "
@@ -208,7 +208,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest="command", required=True)
 
     c = sub.add_parser("code", help="find the derive in each overlay")
-    c.add_argument("--title", default=None, help="one shape key only")
+    c.add_argument("--title", default=None, help="one title key only")
     c.add_argument("--window", type=int, default=0,
                    help="bytes of listing past the clear; 0 for none")
     c.set_defaults(func=code)

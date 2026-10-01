@@ -525,8 +525,8 @@ def _later_shapes(disk: AmigaDisk, entries: list[str]):
     by_exe = {"Curse": "Curse of the Azure Bonds",
               "Secret": "Secret of the Silver Blades"}
     named = [by_exe[leaf] for leaf in by_exe if leaf in leaves]
-    return [shape for shape in AMIGA_DELTAS
-            if not named or shape.title in named]
+    return [deltas for deltas in AMIGA_DELTAS
+            if not named or deltas.title in named]
 
 
 def _names_in(disk: AmigaDisk, label: str):
@@ -559,8 +559,8 @@ def _names_in(disk: AmigaDisk, label: str):
                            data[at:at + NAME_BYTES])
         elif low.endswith(".guy") or (low.startswith("savgam")
                                       and low.endswith((".dat", ".sav"))):
-            found = [(len(party), shape.title, party) for shape in shapes
-                     for party in [party_in_savegame(data, shape)] if party]
+            found = [(len(party), deltas.title, party) for deltas in shapes
+                     for party in [party_in_savegame(data, deltas)] if party]
             if not found:
                 continue
             best = max(n for n, _title, _party in found)

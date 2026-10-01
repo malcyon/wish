@@ -21,7 +21,7 @@ and the player's own experience of the bug read off the screen.  The
 `script` disk is what the fixed reader builds.  It used to be able to
 **refuse**, when the map came out of `goldbox/areas.py` and a mapless area
 had no map to name; it now comes out of the save's own `$49C5` and the hall
-converts, so `--borrow` is kept only as the record of how the shape was
+converts, so `--borrow` is kept only as the record of how the design was
 prototyped before it shipped.
 
 The DOS folder is `--folder`, the C64 game disks are `$POR_DISKS` then
@@ -67,7 +67,7 @@ def convert(folder: pathlib.Path, slot: str, disks: pathlib.Path,
     either.  It is a **prototype of the fix, not the fix**: the shipped
     version of it would be a field on `goldbox.areas.Area`, and this patches
     `areas.area` for the length of one call so the resulting disk can be
-    booted before anybody commits to a shape.
+    booted before anybody commits to a design.
     """
     savgam = (folder / f"SAVGAM{slot}.DAT").read_bytes()
     there = READERS[reader](savgam)

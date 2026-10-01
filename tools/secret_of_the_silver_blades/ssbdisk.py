@@ -17,7 +17,7 @@ the Silver Blades DOS save into a C64 one, which the importer refuses today)`).
 **`enable_ssb()` is a reach-around and says so.** `goldbox.dos_codec.CONVERTS` does
 not carry Silver Blades: the rejection in `goldbox/dos_codec.py` stands until a party
 this tool built has been loaded in the running game and read off the screen,
-which is `#193` step 3.  This tool puts the shape on `CONVERTS` **in its own
+which is `#193` step 3.  This tool puts the deltas on `CONVERTS` **in its own
 process only**, the same way `tools/curse_of_the_azure_bonds/cursedisk.py` did while `#192` was open.
 When `CONVERTS` takes Silver Blades the call becomes a no-op and can stay.
 
@@ -138,9 +138,9 @@ def sheet(folder: pathlib.Path, slot: str) -> list[str]:
     from goldbox import dos_savegame
     from goldbox.titles import classes_to_names
 
-    shape = dos_savegame.container_for(SSB.key)
-    savgam = (folder / f"SAVGAM{slot}{shape.suffix}").read_bytes()
-    where = dos_savegame.position(savgam, shape)
+    container = dos_savegame.container_for(SSB.key)
+    savgam = (folder / f"SAVGAM{slot}{container.suffix}").read_bytes()
+    where = dos_savegame.position(savgam, container)
     clock = dos_savegame.clock(savgam)
     out = [f"DOS slot {slot}: "
            + ("outdoors" if dos_savegame.outdoors(savgam) else "indoors")

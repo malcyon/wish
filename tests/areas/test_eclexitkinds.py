@@ -212,7 +212,7 @@ def test_entry0_with_neither_a_gate_nor_an_ongoto_is_entry0_unconditional():
 
 
 def test_an_exit_only_a_later_entry_reaches_is_named_after_that_entry():
-    """`ECL0B`'s `$A20F` is this shape on the real disks: only entry 3."""
+    """`ECL0B`'s `$A20F` is this case on the real disks: only entry 3."""
     def block(asm):
         op_newecl(asm, 7)
     row = analyse_one(2, block)
@@ -403,7 +403,7 @@ def test_compare_index_flips_a_literal_first_inequality():
 
 
 def test_compare_index_reads_a_variable_first_test_unflipped():
-    """`COMPARE [var], 29` then `IF>` -- the variable comes first, the shape
+    """`COMPARE [var], 29` then `IF>` -- the variable comes first, the case
     `ECL05 $9C25`'s real exit uses, and needs no flip."""
     var = 0x6E79
     compare = W.Statement(0, 5, 0x03, [(0x02, var), (0x00, 29)])
@@ -432,7 +432,7 @@ def test_compare_index_ignores_a_compare_on_an_unrelated_flag():
 
 class CompareMachine:
     """Adds a destination operand to `AND` and a second operand to
-    `COMPARE`, the shape #255's exits need and no other test in this file
+    `COMPARE`, the form #255's exits need and no other test in this file
     uses -- kept off the shared `FakeMachine` so its own tests are untouched.
     """
     _COUNTS = {0x01: 1, 0x03: 2, 0x20: 1, 0x2F: 3}

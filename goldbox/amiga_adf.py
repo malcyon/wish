@@ -428,7 +428,7 @@ class AmigaDisk:
         self._data[:] = data
         self.root = self._find_root()
 
-    # -- the shape of the disk ---------------------------------------------
+    # -- the structure of the disk ---------------------------------------------
     @property
     def block_count(self) -> int:
         return len(self._data) // BLOCK_SIZE

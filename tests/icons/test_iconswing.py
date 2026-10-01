@@ -2,7 +2,7 @@
 
 `#184 (A converted combat icon's colours are proven in the game and its
 shapes are not)` was answered for nine of an icon's eighteen screen codes by
-reading the combat floor.  The other nine are never on the floor when the
+reading the combat arena.  The other nine are never in the arena when the
 game stops to ask for a command, so the tool these tests cover counts the
 engine's own reads instead -- and reads the table `COM.PREP` expands both
 poses into, which is where the second nine end up.
@@ -128,10 +128,10 @@ def test_the_expanded_table_is_scored_against_both_poses_separately():
     ]
     blob = bytearray(162 * 8)
     for entry, wrong_second_pose in ((slots[0], False), (slots[1], True)):
-        shape = bytes.fromhex(entry["shape"])
+        figure = bytes.fromhex(entry["shape"])
         base = entry["slot"] * 162
         for n in range(18):
-            code = shape[n - 9] if wrong_second_pose and n >= 9 else shape[n]
+            code = figure[n - 9] if wrong_second_pose and n >= 9 else figure[n]
             blob[base + n * 8:base + n * 8 + 8] = bytes([code]) * 8
         blob[base + 144:base + 162] = bytes.fromhex(entry["colours"])
     read = iconswing.expanded_reading(FakeSession(FakeMonitor(bytes(blob))),

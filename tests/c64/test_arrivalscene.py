@@ -186,9 +186,9 @@ def test_an_arrival_with_a_scene_still_reaches_the_world_bar():
     but pressing Return there ever shows `ENCAMP`.
 
     This fixture's bar never changes on its own -- only `press_kernal`
-    advances it -- so the old shape (`wait_text("ENCAMP", 240)`, watching for
+    advances it -- so the old form (`wait_text("ENCAMP", 240)`, watching for
     one thing and never answering the prompt) times out here rather than
-    reaching the world.  Reverting `Session.begin_adventuring` to that shape
+    reaching the world.  Reverting `Session.begin_adventuring` to that form
     makes this answer False instead of True.
     """
     sess = FakeSession([PRESS_BAR, WORLD_BAR])

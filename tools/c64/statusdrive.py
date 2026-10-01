@@ -338,7 +338,7 @@ def main(argv=None) -> int:
                          staged=before[at], lines=lines)
                 # The sheet is a box: rows drawn between two `$` columns, a
                 # bottom border, then the bar.  The name is its first boxed
-                # row and the status its last, so both are read by shape
+                # row and the status its last, so both are read by pattern
                 # rather than by counting rows a longer sheet would move.
                 boxed = [ln.strip("$ ") for ln in (lines or [])
                          if ln.startswith("$") and ln.strip("$ ")]

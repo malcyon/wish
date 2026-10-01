@@ -2,7 +2,7 @@
 """What each Gold Box trainer does about spells, read out of the player's disks.
 
 Every title's training hall has one step per spellcasting class, and the
-shape of the step is per class *and* per title. This reads all three C64
+form of the step is per class *and* per title. This reads all three C64
 titles' `GEN` overlays, decodes each step's own tables, and prints -- or
 checks against `goldbox/spells.py` and `goldbox/levelup.py` -- the exact set
 of spell ids a character of each level comes away with.
@@ -23,7 +23,7 @@ routine in the same place. So every step below is asserted to be a `JSR` the
 title's own level-up sequence makes, checked from the bytes on each run, and
 a step that is not in the sequence is not reported as a trainer step.
 
-The five shapes, all of them read here rather than assumed:
+The five kinds, all of them read here rather than assumed:
 
 * **`menu_pool`** -- Pool of Radiance's `$215A` and Curse's `$2200`. The
   castable spell level is `(level + 1) // 2` (`LSR A / ADC #$00`), and a
@@ -72,7 +72,7 @@ MASK = {"pool": 0x6B78, "curse": 0x7C78, "ssb": 0x7C78}
 SEQUENCE = {"pool": (0x1B8C, 0x1BB9), "curse": (0x205E, 0x2079),
             "ssb": (0x1527, 0x1542)}
 
-#: The steps, `(title, class, address, shape)`. Each address was found by
+#: The steps, `(title, class, address, kind)`. Each address was found by
 #: walking `tools/c64/trainerscan.py --callers` back from the routine that writes
 #: the spellbook mask, and each is checked against `SEQUENCE` on every run.
 STEPS = (
@@ -99,13 +99,13 @@ SPAN = {0x20BC: 0x40, 0x2305: 0x24}
 #: `$20BC`, which falls through to `$213C` and is joined to the menu at
 #: `$215A` by the `JMP` at `$2157`. So the menu's decode starts there, and
 #: the join is checked byte for byte on every run rather than assumed --
-#: `(step address) -> (where the shape starts, the joining address, its
+#: `(step address) -> (where the step starts, the joining address, its
 #: bytes)`.
 INDIRECT = {(0x20BC, "menu_pool"): (0x215A, 0x2157, b"\x4C\x5A\x21")}
 
 
 class Unreadable(Exception):
-    """The bytes at an address are not the shape this tool expects."""
+    """The bytes at an address are not the form this tool expects."""
 
 
 def _word(data: bytes, at: int) -> int:
@@ -129,7 +129,7 @@ def _sequence_calls(data: bytes, title: str) -> set[int]:
     return out
 
 
-# --- the five shapes ---------------------------------------------------------
+# --- the five kinds ---------------------------------------------------------
 
 def _clamp(gap: bytes, exit_at: int):
     """Interpret the instructions between `LDX <class level>` and the `LDY`.
@@ -186,7 +186,7 @@ def _grant_loop(data: bytes, title: str, at: int):
 
     Returns `(record offset read, level -> set of ids, the three tables)`.
     The gap between the `LDX` and the `LDY` is what the two earlier readings
-    of this shape could not allow for, and it is where every clamp lives:
+    of this kind could not allow for, and it is where every clamp lives:
     Curse's magic-user starting book clamps at 6, Silver Blades' cleric asks
     for a Wisdom of 17 above level 10, and its ranger grants nothing at all
     below 8.
@@ -392,7 +392,7 @@ def _borrowed(data: bytes, title: str, at: int):
         raise Unreadable(f"${at:04X} has no level gate")
     gate = m.group(1)[0]
     # Past the gate, because the routine opens with an `LDX #<class slot>`
-    # of the same shape as the constant row Curse loads.
+    # of the same form as the constant row Curse loads.
     tail = window[m.end():]
     fixed = re.search(rb"\xA2(.)\x20(..)", tail, re.DOTALL)
     scaled = re.search(rb"\xE9(.)\xAA\x20(..)", tail, re.DOTALL)
@@ -412,38 +412,38 @@ def read(title: str) -> dict:
     data = overlay(title, "GEN")
     called = _sequence_calls(data, title)
     out = {}
-    for name, cls, at, shape in STEPS:
+    for name, cls, at, kind in STEPS:
         if name != title:
             continue
         if at not in called:
             raise Unreadable(
                 f"{title}: ${at:04X} is not called by the level-up sequence "
                 f"at ${SEQUENCE[title][0]:04X}, so it is not a trainer step")
-        join = INDIRECT.get((at, shape))
+        join = INDIRECT.get((at, kind))
         if join is not None:
             at, where, want = join
             if data[where - BASE:where - BASE + len(want)] != want:
                 raise Unreadable(
                     f"{title}: ${where:04X} no longer joins the step to "
                     f"${at:04X}")
-        if shape == "grant_loop":
+        if kind == "grant_loop":
             byte, row_ids, tables, clamp, ids_for = _grant_loop(data, title, at)
-            out[cls] = {"shape": shape, "at": at, "record": byte - RECORD[title],
+            out[cls] = {"kind": kind, "at": at, "record": byte - RECORD[title],
                         "rows": row_ids, "tables": tables,
                         "clamp": clamp, "ids_for": ids_for}
-        elif shape.startswith("grant_inline"):
-            out[cls] = {"shape": shape, "at": at,
+        elif kind.startswith("grant_inline"):
+            out[cls] = {"kind": kind, "at": at,
                         "rows": _grant_inline(data, title, at)}
-        elif shape == "menu_pool":
+        elif kind == "menu_pool":
             rows, last = _menu_pool(data, title, at)
-            out[cls] = {"shape": shape, "at": at, "rows": rows, "last": last}
-        elif shape == "menu_blades":
+            out[cls] = {"kind": kind, "at": at, "rows": rows, "last": last}
+        elif kind == "menu_blades":
             rows, score, last = _menu_blades(data, title, at)
-            out[cls] = {"shape": shape, "at": at, "rows": rows,
+            out[cls] = {"kind": kind, "at": at, "rows": rows,
                         "score": score, "last": last}
         else:
             slot, gate, row, target = _borrowed(data, title, at)
-            out[cls] = {"shape": shape, "at": at, "slot": slot, "gate": gate,
+            out[cls] = {"kind": kind, "at": at, "slot": slot, "gate": gate,
                         "rows": row, "target": target}
     return out
 
@@ -469,8 +469,8 @@ def rows(title: str) -> None:
         if step is None:
             print(f"  {cls:11s} -- no step in this title's sequence")
             continue
-        print(f"  {cls:11s} ${step['at']:04X}  {step['shape']}")
-        if step["shape"] == "menu_blades":
+        print(f"  {cls:11s} ${step['at']:04X}  {step['kind']}")
+        if step["kind"] == "menu_blades":
             seen = None
             for level in range(1, 16):
                 for score in (9, 18):
@@ -479,14 +479,14 @@ def rows(title: str) -> None:
                         print(f"      level {level:2d} int {score:2d}: "
                               f"{_spans(ids)}")
                         seen = ids
-        elif step["shape"] == "menu_pool":
+        elif step["kind"] == "menu_pool":
             seen = None
             for level in range(1, 16):
                 ids = step["rows"][level]
                 if ids != seen:
                     print(f"      level {level:2d}: {_spans(ids)}")
                     seen = ids
-        elif step["shape"].startswith("grant_borrowed"):
+        elif step["kind"].startswith("grant_borrowed"):
             print(f"      slot {step['slot']}, from level {step['gate']}, "
                   f"into the cleric loop at ${step['target']:04X}")
             print("      " + ", ".join(
@@ -526,7 +526,7 @@ def check(title: str) -> list[str]:
         # half a single reading would have missed: below 17 the routine drops
         # a cleric of 11 back to the level-10 row.
         for score in (9, 18):
-            if step["shape"] == "grant_loop":
+            if step["kind"] == "grant_loop":
                 rows = {lv: step["ids_for"](step["clamp"](lv, score))
                         for lv in range(0, 32)}
             elif score != 18:
@@ -568,7 +568,7 @@ def check(title: str) -> list[str]:
         table = spells.for_game(game)
         for level in range(1, ceiling["magic-user"] + 1):
             for score in (9, 12, 14, 18):
-                if step["shape"] == "menu_blades":
+                if step["kind"] == "menu_blades":
                     want = list(step["rows"][(level, score)])
                 else:
                     want = list(step["rows"][level])
@@ -578,7 +578,7 @@ def check(title: str) -> list[str]:
                 if got != want:
                     bad.append(f"{title} magic-user {level} int {score}: "
                                f"{got} != {want}")
-                if step["shape"] != "menu_blades":
+                if step["kind"] != "menu_blades":
                     break
     return bad
 

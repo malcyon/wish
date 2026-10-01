@@ -63,8 +63,8 @@ def main(argv=None) -> int:
                      session=Session(find=lambda pref=None: None))
     win.show()
     app.processEvents()
-    floor = floor_of(win)
-    win.resize(max(args.size[0], floor.width()), max(args.size[1], floor.height()))
+    minimum = floor_of(win)
+    win.resize(max(args.size[0], minimum.width()), max(args.size[1], minimum.height()))
     app.processEvents()
     split = win.findChild(QSplitter, "editor_split")
     rows = "no divider"
@@ -74,7 +74,7 @@ def main(argv=None) -> int:
             app.processEvents()
         rows = "/".join(str(h) for h in split.sizes())
     line = (f"editor  |  UI font {bigger.pointSizeF():g}pt  |  "
-            f"floor {floor.width()}x{floor.height()}  |  "
+            f"minimum {minimum.width()}x{minimum.height()}  |  "
             f"drawn {win.width()}x{win.height()}  |  rows {rows}")
     out = pathlib.Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)

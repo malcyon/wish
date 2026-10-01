@@ -520,11 +520,11 @@ def _named(tmp_path, name: str, ordinary: int, *scrolls: bytearray):
 def _write_save(party, leave=None):
     from goldbox import c64_save, world_state
     from goldbox import dos_savegame as sg
-    shape = sg.SAVE_SECRET_OF_THE_SILVER_BLADES
-    savgam = bytearray(shape.size)
-    sg.put_word(savgam, sg.INDOORS, 1, shape)
-    sg.put_position(savgam, 7, 13, 0, shape)
-    state = world_state.from_dos(bytes(savgam), shape)
+    container = sg.SAVE_SECRET_OF_THE_SILVER_BLADES
+    savgam = bytearray(container.size)
+    sg.put_word(savgam, sg.INDOORS, 1, container)
+    sg.put_position(savgam, 7, 13, 0, container)
+    state = world_state.from_dos(bytes(savgam), container)
     cont = c64_save.container_for(GAME)
     save0 = bytearray(cont.payload_size)
     report = dos_codec.write_c64_save(save0, None, state, party, game=GAME,
