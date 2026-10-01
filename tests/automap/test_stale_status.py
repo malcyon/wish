@@ -8,6 +8,7 @@ between the line and the engine is an ordinary jump.
 """
 from support.stalestatus import curse_target, walk_into_the_sewers
 
+from automap.area import RESIDENT_GEO
 from automap.state import Automapper, AutomapState
 from goldbox import c64_port
 from goldbox.geo import (
@@ -211,3 +212,30 @@ def test_a_held_status_jump_is_not_explored_by_a_memory_step(tmp_path, monkeypat
     go(target, mapper, (9, 0, 2), polls=1, status="S 8:50 9,0")
     go(target, mapper, (9, 1, 2), polls=3, status="S 8:50")
     assert (9, 0) not in mapper.state.exploration
+
+
+def test_a_load_whose_block_goes_unknown_during_the_hold_explores_nothing(
+        tmp_path, monkeypatch):
+    target, mapper, sewers = arrive_in_the_sewers((2, 15), tmp_path, monkeypatch)
+    go(target, mapper, (2, 15, 2), polls=2, status="S 8:50")
+    go(target, mapper, (9, 0, 2), polls=1, status="S 8:50")
+    target.memory[RESIDENT_GEO] = bytes(GEO_SIZE)
+    go(target, mapper, (9, 0, 2), polls=1, status="S 8:50")
+    target.memory[RESIDENT_GEO] = sewers.to_bytes()
+    go(target, mapper, (9, 1, 2), polls=3, status="S 8:50")
+    assert (mapper.state.x, mapper.state.y) == (2, 15)
+    assert (9, 0) not in mapper.state.exploration
+
+
+def test_the_block_is_read_on_every_poll_only_while_a_jump_is_held(
+        tmp_path, monkeypatch):
+    target, mapper = sewers_edge_move(tmp_path, monkeypatch)
+    reads = []
+    verdict = mapper.resident.verdict
+    mapper.resident.verdict = lambda maps: reads.append(1) or verdict(maps)
+    go(target, mapper, (9, 0, 2), polls=3, status="S 8:50")
+    assert len(reads) == 3
+    go(target, mapper, (9, 1, 2), polls=1, status="S 8:50")
+    reads.clear()
+    go(target, mapper, (9, 2, 2), polls=3, status="S 8:50")
+    assert len(reads) < 3

@@ -394,6 +394,8 @@ class Automapper:
         self._pending: tuple[int, int] | None = None
         self._pending_source = ""
         self._pending_polls = 0
+        self._hold_unsafe = False
+        self._verdict = None
         #: The status line Curse left on screen after the map changed, which
         #: disagreed with the engine at that moment; refused until it changes.
         self._stale_line: tuple[int, int, int] | None = None
@@ -569,6 +571,7 @@ class Automapper:
             self._stale_line = None
         returning = self.state.outdoors or self.state.world_map
         changed_area = False
+        self._verdict = None
         if returning:
             # Coming back in, possibly somewhere else entirely -- the boat to
             # Sokol Keep, the kobold caves, a random cave. `_started` is
@@ -587,8 +590,13 @@ class Automapper:
         moved = (fix.x, fix.y) != (self.state.x, self.state.y)
         jumped = moved and self._started and not self._adjacent(fix.x, fix.y)
         if not changed_area and (jumped or self._ticks % self.RESIDENT_EVERY == 0
+                or self._pending is not None
                 or self._area_may_have_changed(fix)):
             changed_area = self._check_resident()
+        if (self._verdict is not None and self._verdict is not OURS
+                and (jumped or self._pending is not None)):
+            # A load, not a move: `$0400` went unknown while the jump was held.
+            self._hold_unsafe = True
         if changed_area and fix.source == "status":
             engine = self._engine_square()
             if engine is not None and engine != (fix.x, fix.y, fix.facing):
@@ -609,7 +617,7 @@ class Automapper:
                 self._pending_source = fix.source
                 return False                # wait for a second opinion
             # confirmed twice: believe it after all
-        self._pending = None
+        self._drop_hold()
 
         changed = moved or fix.facing != self.state.facing or changed_area or returning
 
@@ -672,7 +680,7 @@ class Automapper:
         self._started = False
         self._stale_line = None
         self._last = None
-        self._pending = None
+        self._drop_hold()
         return changed
 
     def _poll_outdoors(self, fix: Fix) -> bool:
@@ -716,7 +724,7 @@ class Automapper:
             self._started = False
             self._stale_line = None
             self._last = None
-            self._pending = None
+            self._drop_hold()
             return changed
         if not moved:
             # Back on the square the hold was waiting to leave: a later jump
@@ -757,7 +765,7 @@ class Automapper:
         self._started = False
         self._stale_line = None
         self._last = None
-        self._pending = None
+        self._drop_hold()
         return moved or changed_heading
 
     def _read_heading(self) -> bool:
@@ -795,7 +803,7 @@ class Automapper:
         self._outdoor_pending = None
         self._started = False
         self._stale_line = None
-        self._pending = None
+        self._drop_hold()
         self._last = None
         self.title_check = UNKNOWN
         self._contradictions = 0
@@ -858,18 +866,29 @@ class Automapper:
 
     MIN_HELD_POLLS = 2
 
+    def _drop_hold(self) -> None:
+        self._pending = None
+        self._pending_source = ""
+        self._pending_polls = 0
+        self._hold_unsafe = False
+
     def _stepped_from_pending(self, fix: Fix) -> bool:
         """Is *fix* one passable step from the held memory jump on the resident map?
 
         A load in progress has not been seen to take such a step before the
         block changes, so a step from a square the memory fix held for at
-        least two polls means the jump was a move inside this area. A held
-        status-line jump is never taken this way: a garbled line must not
-        mark its square explored.
+        least two polls means the jump was a move inside this area -- provided
+        `$0400` held one of our maps on every poll of the hold, which `poll`
+        reads for as long as a jump is held: a load shows an unknown block for
+        a moment where an in-area move keeps its map. A held status-line jump
+        is never taken this way, so a garbled line cannot mark its square
+        explored; the source check is defence in depth. The Amiga has no
+        `$0400`, reads no verdict, and so keeps the dwell and source checks only.
         """
         geo = self.state.geo
         if (self._pending is None or geo is None or fix.source != "memory"
                 or self._pending_source != "memory"
+                or self._hold_unsafe
                 or self._pending_polls < self.MIN_HELD_POLLS):
             return False
         delta = (fix.x - self._pending[0], fix.y - self._pending[1])
@@ -984,6 +1003,7 @@ class Automapper:
         if self.resident is None:
             return False
         verdict, name = self.resident.verdict(self._maps)
+        self._verdict = verdict
         if verdict is NOT_OURS:
             self._contradicted()
             return False
