@@ -54,9 +54,11 @@ only how a name is upper-cased for the hash and for comparing names.
   112-byte field at 0x148, a comment that does not fit there in a type-64
   block named at 0x1B8, and its date at 0x1C4. The root keeps the standard
   layout and its 30-character name, and adds the DOS type at 0x1F0 and the
-  count of blocks the bitmap marks used at 0x1D4, which every write
-  recomputes. Wish writes names of up to 106 characters, and replacing or
-  removing a file gives back its comment block. The layout is from the
+  count of blocks the bitmap marks used at 0x1D4, both of which every write
+  rewrites; a root that disagrees with the bootblock or the bitmap is
+  reported by `root_warnings()`, not by `verify()`. Wish writes names of up to
+  106 characters, and replacing or removing a file gives back its comment
+  block. The layout is from the
   `amiga-ffs` crate's `layout` module and amitools' `EntryBlock`, `RootBlock`
   and `CommentBlock`, which agree; no disk AmigaOS itself wrote has been
   read.
@@ -367,9 +369,6 @@ class AmigaDisk:
         struct.pack_into(">i", data, root * BLOCK_SIZE + _HDR_BM_FLAG, -1)
         struct.pack_into(">I", data, root * BLOCK_SIZE + _HDR_BM_PAGES, bitmap)
         struct.pack_into(">i", data, root * BLOCK_SIZE + _HDR_SEC_TYPE, ST_ROOT)
-        if dos_type in LONG_NAME_DOS_TYPES:
-            data[root * BLOCK_SIZE + _LN_ROOT_FS_TYPE:
-                 root * BLOCK_SIZE + _LN_ROOT_FS_TYPE + 4] = data[0:4]
         encoded = name.encode("latin1")
         data[root * BLOCK_SIZE + _HDR_NAME] = len(encoded)
         data[root * BLOCK_SIZE + _HDR_NAME + 1:
@@ -1321,9 +1320,12 @@ class AmigaDisk:
 
     def _fix_bitmap(self) -> None:
         """Checksum the bitmap and, on a long-name disk, recount the root's
-        used blocks, which every write that reaches here may have changed."""
+        used blocks, which every write that reaches here may have changed,
+        and copy the bootblock's DOS type into the root."""
         self._fix(self._bitmap_block(), 0)
         if self.long_names:
+            at = self.root * BLOCK_SIZE + _LN_ROOT_FS_TYPE
+            self._data[at:at + 4] = self._data[0:4]
             struct.pack_into(">I", self._data,
                              self.root * BLOCK_SIZE + _LN_ROOT_USED,
                              self.used_count())
@@ -1427,8 +1429,6 @@ class AmigaDisk:
             if self.is_free(known):
                 problems.append(
                     f"block {known} is in use and marked free in the bitmap")
-        if self.long_names:
-            problems.extend(self._verify_long_name_root())
 
         try:
             drawers = list(self.walk_dirs())
@@ -1498,21 +1498,32 @@ class AmigaDisk:
                 head = False
         return problems
 
-    def _verify_long_name_root(self) -> list[str]:
-        """A long-name root repeats the DOS type and counts used blocks."""
-        problems: list[str] = []
+    def root_warnings(self) -> list[str]:
+        """Where a long-name root disagrees with the rest of the disk: a DOS
+        type at 0x1F0 other than the bootblock's, or a count of used blocks
+        at 0x1D4 other than what the bitmap marks. Empty on any other disk
+        type.
+
+        Kept apart from :meth:`verify` because no disk AmigaOS wrote has been
+        read, so whether AmigaOS keeps either field exact is unknown, and a
+        player's disk as it came must not fail on it; every write rewrites
+        both.
+        """
+        if not self.long_names:
+            return []
+        warnings: list[str] = []
         root = self.block(self.root)
         stored = bytes(root[_LN_ROOT_FS_TYPE:_LN_ROOT_FS_TYPE + 4])
         if stored != bytes(self._data[0:4]):
-            problems.append(
+            warnings.append(
                 f"the root block gives the DOS type as {stored!r}, and the "
                 f"bootblock as {bytes(self._data[0:4])!r}")
         used = self._u32(root, _LN_ROOT_USED)
         if used != self.used_count():
-            problems.append(
+            warnings.append(
                 f"the root block counts {used} used blocks and the bitmap "
                 f"marks {self.used_count()}")
-        return problems
+        return warnings
 
     def _verify_comment(self, header: int, check) -> list[str]:
         """A long-name entry's comment: within its field, and any comment

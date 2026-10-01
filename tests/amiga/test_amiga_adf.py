@@ -1706,16 +1706,18 @@ def test_a_comment_pointer_at_another_block_is_refused_and_changes_nothing(
         assert disk.to_bytes() == bytes(image)
 
 
-def _lnfs_broken(dos_type: int, how: str) -> AmigaDisk:
+def _lnfs_broken(dos_type: int, how: str,
+                 value: int | None = None) -> AmigaDisk:
+    """A spec-built long-name disk with one thing broken, checksums fixed.
+    `value` is what `used` or `fs_type` writes into the root field."""
     image = bytearray(_spec_lnfs_image(dos_type, SPEC_LNFS))
     note = _spec_u32(image, _spec_lnfs_entry(image, COMMENTED),
                      _LN_COMMENT_BLOCK)
     number, at = 880, 20
     if how == "used":
-        struct.pack_into(">I", image, 880 * BLOCK_SIZE + _LN_USED,
-                         _spec_used(image) + 1)
+        struct.pack_into(">I", image, 880 * BLOCK_SIZE + _LN_USED, value)
     elif how == "fs_type":
-        image[880 * BLOCK_SIZE + _LN_FS_TYPE + 3] ^= 1
+        struct.pack_into(">I", image, 880 * BLOCK_SIZE + _LN_FS_TYPE, value)
     elif how == "comment_sum":
         image[note * BLOCK_SIZE + 30] ^= 1
         return AmigaDisk(image)
@@ -1747,8 +1749,6 @@ def _lnfs_broken(dos_type: int, how: str) -> AmigaDisk:
 
 @pytest.mark.parametrize("dos_type", LONG_NAME_TYPES)
 @pytest.mark.parametrize("how, says", [
-    ("used", "used blocks"),
-    ("fs_type", "DOS type"),
     ("comment_sum", "does not sum to zero"),
     ("comment_owner", "comment"),
     ("comment_free", "marked free"),
@@ -1756,6 +1756,52 @@ def _lnfs_broken(dos_type: int, how: str) -> AmigaDisk:
 def test_verify_reports_a_long_name_disk_s_own_fields(dos_type, how, says):
     problems = _lnfs_broken(dos_type, how).verify()
     assert any(says in p for p in problems), problems
+
+
+@pytest.mark.parametrize("dos_type", LONG_NAME_TYPES)
+@pytest.mark.parametrize("field, stale, says", [
+    ("used", 0, "used blocks"),
+    ("used", "wrong", "used blocks"),
+    ("fs_type", 0, "DOS type"),
+    ("fs_type", "wrong", "DOS type"),
+])
+def test_a_stale_root_field_is_a_warning_and_still_saves(
+        dos_type, field, stale, says):
+    """Nobody has read a disk AmigaOS wrote, so a root whose used-block count
+    at 0x1D4 or DOS type at 0x1F0 disagrees with the bitmap or the bootblock
+    -- left at zero, or wrong -- is reported as a warning and not as damage:
+    the disk opens, verifies, and takes a save, and the save rewrites both."""
+    image = _spec_lnfs_image(dos_type, SPEC_LNFS)
+    if field == "used":
+        value = 0 if stale == 0 else _spec_used(image) + 1
+    else:
+        value = 0 if stale == 0 else 0x444F5300 | (dos_type ^ 1)
+    disk = _lnfs_broken(dos_type, field, value)
+    assert disk.to_bytes() != image
+    assert disk.verify() == []
+    assert any(says in w for w in disk.root_warnings()), disk.root_warnings()
+    assert disk.cache_warnings() == []
+    disk.write_file("A drawer whose name runs past thirty/saved.cha",
+                    b"party" * 100, when=WHEN)
+    after = disk.to_bytes()
+    assert _spec_u32(after, 880, _LN_USED) == _spec_used(after)
+    assert after[880 * BLOCK_SIZE + _LN_FS_TYPE:
+                 880 * BLOCK_SIZE + _LN_FS_TYPE + 4] == after[0:4]
+    assert disk.verify() == [] and disk.root_warnings() == []
+    reopened = AmigaDisk(after)
+    assert reopened.verify() == [] and reopened.root_warnings() == []
+    assert reopened.read_file(
+        "A drawer whose name runs past thirty/saved.cha") == b"party" * 100
+    for path, data, _ in SPEC_LNFS:
+        if data is not None:
+            assert reopened.read_file(path) == data, path
+
+
+@pytest.mark.parametrize("dos_type", WRITABLE_TYPES)
+def test_a_disk_as_written_has_no_root_warning(dos_type):
+    disk = AmigaDisk.blank(dos_type=dos_type)
+    disk.write_file("file", b"data", when=WHEN)
+    assert disk.root_warnings() == []
 
 
 @pytest.mark.parametrize("dos_type", LONG_NAME_TYPES)
