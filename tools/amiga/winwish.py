@@ -27,12 +27,14 @@ sets `BatchMode` and `SSH_ASKPASS_REQUIRE`, so a failure is an error, never a pr
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
 import pathlib
 import re
 import secrets
+import signal
 import subprocess
 import sys
 from typing import Any, Callable
@@ -226,8 +228,10 @@ def start_script(holder: str, env: dict[str, str],
 def stop_script(holder: str) -> str:
     """End the holder's task and the `wish.exe` under its own folder, then remove the task.
 
-    Another holder's Wish, or any process whose path cannot be read, is never stopped;
-    an unreadable one is reported, because it may be this holder's.
+    This holder's readable processes are stopped first. Another holder's Wish, or a
+    process whose path cannot be read, is never stopped; an unreadable one is
+    reported only once none of this holder's is left, because it may be this
+    holder's.
     """
     run = run_dir(holder)
     return "\n".join([
@@ -237,15 +241,16 @@ def stop_script(holder: str) -> str:
         "Stop-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue",
         "for ($i = 0; $i -lt 40; $i++) {",
         "  $all = @(Get-Process -Name wish -ErrorAction SilentlyContinue)",
+        "  $mine = @($all | Where-Object { $_.Path -like \"$run\\*\" })",
+        "  if ($mine.Count -gt 0) {",
+        "    if ($i -eq 4) { $mine | Stop-Process -Force -ErrorAction SilentlyContinue }",
+        "    Start-Sleep -Milliseconds 250",
+        "    continue",
+        "  }",
+        "  Unregister-ScheduledTask -TaskName $task -Confirm:$false -ErrorAction SilentlyContinue",
         "  $blind = @($all | Where-Object { -not $_.Path })",
         "  if ($blind.Count -gt 0) { \"fail cannot tell whether wish.exe pid=$($blind[0].Id) is this holder's: its path is unreadable\"; exit 1 }",
-        "  $mine = @($all | Where-Object { $_.Path -like \"$run\\*\" })",
-        "  if ($mine.Count -eq 0) {",
-        "    Unregister-ScheduledTask -TaskName $task -Confirm:$false -ErrorAction SilentlyContinue",
-        "    'ok stopped'; exit 0",
-        "  }",
-        "  if ($i -eq 8) { $mine | Stop-Process -Force -ErrorAction SilentlyContinue }",
-        "  Start-Sleep -Milliseconds 250",
+        "  'ok stopped'; exit 0",
         "}",
         "'fail wish.exe still running 10s after stop'; exit 1",
     ])
@@ -391,10 +396,23 @@ def fetch(guest: Guest, sha: str, dest: pathlib.Path | None = None) -> pathlib.P
     return zips[0]
 
 
+@contextlib.contextmanager
+def _ignoring_sigterm():
+    """SIGTERM does nothing inside, so an undo that has begun finishes."""
+    previous = signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+
+
 def check_zip_commit(zipped: pathlib.Path, sha: str) -> None:
     """A zip that carries a commit note must name `sha`; one without cannot be checked."""
     note = zipped.parent / COMMIT_FILE
-    if note.exists() and note.read_text().strip() != sha:
+    if not note.exists():
+        print(f"winwish: {zipped} has no {COMMIT_FILE} beside it, so it cannot be "
+              f"checked against {sha}", file=sys.stderr)
+    elif note.read_text().strip() != sha:
         raise WinwishError(f"{zipped} was downloaded for {note.read_text().strip()}, "
                            f"not {sha}")
 
@@ -491,13 +509,24 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
             done = True
         finally:
             if not done:
-                if wish_tried:
-                    _quietly(guest.ps, stop_script(args.holder))
-                if started:
-                    _quietly(lane.stop, args.holder, CALL_SECONDS)
-                if claimed:
-                    _quietly(lane.release, args.holder, CALL_SECONDS)
+                _undo(guest, lane, args.holder, wish_tried, started, claimed)
     return result
+
+
+def _undo(guest: Guest, lane: Any, holder: str, wish_tried: bool,
+          started: bool, claimed: bool) -> None:
+    """Stop Wish, stop WinUAE, release the lane; a later step runs whatever an earlier one raised."""
+    with _ignoring_sigterm():
+        try:
+            if wish_tried:
+                _quietly(guest.ps, stop_script(holder))
+        finally:
+            try:
+                if started:
+                    _quietly(lane.stop, holder, CALL_SECONDS)
+            finally:
+                if claimed:
+                    _quietly(lane.release, holder, CALL_SECONDS)
 
 
 def down(guest: Guest, lane: Any, holder: str) -> dict[str, str]:

@@ -162,6 +162,12 @@ def test_an_unreadable_process_path_fails_start_and_stop_instead_of_passing():
         assert "cannot tell" in script
 
 
+def test_stop_ends_this_holders_processes_before_it_reports_an_unreadable_one():
+    script = winwish.stop_script("h")
+    assert script.index("Stop-Process") < script.index("cannot tell")
+    assert script.index("$mine.Count -gt 0") < script.index("-not $_.Path")
+
+
 def test_stop_script_touches_only_this_holders_processes_and_removes_its_task():
     script = winwish.stop_script("h")
     assert r"C:\Amiga\wish\run-h" in script and "'wish-run-h'" in script
@@ -422,3 +428,37 @@ def test_main_start_passes_no_flag_through(capsys):
     script = run.calls[-1][2]
     body = base64.b64decode(script.split("-EncodedCommand ")[1].split("'")[0]).decode("utf-16-le")
     assert f"$env:{winwish.FLAG}" not in body
+
+
+def test_a_second_sigterm_during_the_undo_does_not_skip_the_release(tmp_path, monkeypatch):
+    import os
+    import signal
+
+    class Lane(FakeLane):
+        def stop(self, holder, timeout):
+            os.kill(os.getpid(), signal.SIGTERM)     # a second one, mid-undo
+            return super().stop(holder, timeout)
+
+    lane = Lane()
+    with pytest.raises(winwish.WinwishError):
+        winwish.up(winwish.Guest(FakeRun([START_FAILS])), lane, _args(tmp_path, monkeypatch))
+    assert lane.log[-1] == "release"
+
+
+def test_an_interrupt_inside_one_undo_step_still_releases(tmp_path, monkeypatch):
+    class Lane(FakeLane):
+        def stop(self, holder, timeout):
+            raise KeyboardInterrupt
+
+    lane = Lane()
+    args = _args(tmp_path, monkeypatch)
+    with pytest.raises(KeyboardInterrupt):
+        winwish.up(winwish.Guest(FakeRun([START_FAILS])), lane, args)
+    assert lane.log[-1] == "release"
+
+
+def test_a_zip_with_no_commit_note_says_so(tmp_path, capsys):
+    zipped = tmp_path / "wish-1.zip"
+    zipped.write_bytes(b"PK")
+    winwish.check_zip_commit(zipped, SHA)
+    assert "no commit.txt" in capsys.readouterr().err
