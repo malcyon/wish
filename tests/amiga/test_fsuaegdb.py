@@ -1690,6 +1690,20 @@ def test_alive_is_true_for_this_process():
     assert fsuaegdb.alive(os.getpid())
 
 
+def test_alive_never_signals_on_windows(monkeypatch):
+    # No /proc/<pid> entry, as on Windows; os.kill(pid, 0) there is Ctrl+C.
+    def kill(*a):
+        raise AssertionError("os.kill used for a liveness check")
+
+    monkeypatch.setattr(fsuaegdb.sys, "platform", "win32")
+    monkeypatch.setattr(fsuaegdb.os, "kill", kill)
+    seen = []
+    monkeypatch.setattr(fsuaegdb, "_windows_alive",
+                        lambda pid: seen.append(pid) or True)
+    assert fsuaegdb.alive(2 ** 22 + 12345)
+    assert seen == [2 ** 22 + 12345]
+
+
 BAD_MATCH = ("X Error of failed request:  BadMatch (invalid parameter "
              "attributes)\n  Major opcode of failed request:  42 "
              "(X_SetInputFocus)\n")

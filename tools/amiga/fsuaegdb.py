@@ -63,7 +63,7 @@ from automap import amiga, fsuaehelper  # noqa: E402
 #: `automap/` must not import `tools/`, and this is a printout.
 A4_BIAS = 0x7FFE
 
-#: What `probe` reads, in the order it reads them.  16 bytes is the floor of
+#: What `probe` reads, in the order it reads them.  16 bytes is the minimum of
 #: the cost -- the wait for the next frame -- and 512K is one whole region of
 #: the A500's memory, which is what `AmigaTarget.locate()` sweeps.
 PROBE_SIZES = (16, 1024, 65536, 512 * 1024)
@@ -1597,11 +1597,30 @@ def terminate(*procs) -> None:
                 proc.kill()
 
 
+def _windows_alive(pid: int) -> bool:
+    """Liveness through the process handle: `os.kill(pid, 0)` is Ctrl+C there."""
+    import ctypes
+    kernel32 = ctypes.windll.kernel32
+    kernel32.OpenProcess.restype = ctypes.c_void_p
+    handle = kernel32.OpenProcess(0x1000, False, pid)  # QUERY_LIMITED_INFORMATION
+    if not handle:
+        # Access denied still means the pid exists.
+        return ctypes.GetLastError() == 5
+    try:
+        code = ctypes.c_ulong()
+        ok = kernel32.GetExitCodeProcess(ctypes.c_void_p(handle), ctypes.byref(code))
+        return bool(ok) and code.value == 259  # STILL_ACTIVE
+    finally:
+        kernel32.CloseHandle(ctypes.c_void_p(handle))
+
+
 def alive(pid: int) -> bool:
     """Whether `pid` is a live process; a zombie awaiting its parent is not."""
     try:
         state = pathlib.Path(f"/proc/{pid}/stat").read_text().rpartition(")")[2]
     except OSError:
+        if sys.platform == "win32":
+            return _windows_alive(pid)
         try:
             os.kill(pid, 0)
         except ProcessLookupError:
