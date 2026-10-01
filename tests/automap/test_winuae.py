@@ -74,8 +74,11 @@ class FakeWinuae:
         self.pending: list[tuple[bytes, int]] = []
 
     # -- the calls --
+    open_cost = 0.0                     # how long a CreateFile takes
+
     def CreateFile(self, name, access, share, security, disposition, flags, template):
         self.creates += 1
+        self.clock.now += self.open_cost
         assert name.startswith("\\\\.\\pipe\\")
         assert flags & winuae.FILE_FLAG_OVERLAPPED
         if self.missing:
@@ -179,6 +182,13 @@ def test_a_debugger_at_its_prompt_times_out_cancels_and_is_left_alone(rig):
     api.silent = False
     assert pipe.read_memory(0, 16) == MEMORY[:16]
     assert not pipe.lost
+
+
+def test_a_slow_reopen_is_not_counted_as_a_slow_answer(rig):
+    pipe, api, clock, _folder = rig
+    api.open_cost = 0.45
+    assert pipe.read_memory(0, 8, timeout=0.2) == MEMORY[:8]
+    assert pipe.lost is False
 
 
 def test_a_busy_pipe_is_waited_for_and_then_opened(rig):

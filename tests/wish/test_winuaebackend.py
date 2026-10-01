@@ -398,3 +398,27 @@ def test_a_target_that_fails_its_own_check_makes_the_next_call_sweep_afresh():
 
     target = locator.target(counting, transport, factory=factory)
     assert len(reads) > 1 and target.anchor_base == BASE
+
+
+def test_reads_made_while_a_target_is_built_are_bounded_and_the_target_keeps_the_pipe():
+    transport = FakeTransport(memory=loaded())
+    given = []
+    inner = transport.read_memory
+
+    def watching(addr, length, timeout=None):
+        given.append(timeout)
+        return inner(addr, length)
+
+    transport.read_memory = watching
+    now = [1000.0]
+    locator = amigalocate.Locator(clock=lambda: now[0])
+
+    def factory(debugger, machine, anchor_base=None):
+        debugger.read_memory(0, 4)                      # a guard word
+        assert debugger.halts_machine is False
+        return amiga.AmigaTarget(debugger, machine, anchor_base=anchor_base)
+
+    del given[:]
+    target = locator.target(transport.read_memory, transport, factory=factory)
+    assert given[-1] == locator.PIECE_TIMEOUT
+    assert target.debugger is transport

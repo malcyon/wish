@@ -22,6 +22,20 @@ import time
 from automap import amiga
 
 
+class _Bounded:
+    """A transport whose `read_memory` waits `timeout` unless told otherwise."""
+
+    def __init__(self, transport, timeout: float):
+        self._transport, self._timeout = transport, timeout
+
+    def read_memory(self, addr: int, length: int, timeout: float | None = None):
+        return self._transport.read_memory(
+            addr, length, timeout=self._timeout if timeout is None else timeout)
+
+    def __getattr__(self, name):
+        return getattr(self._transport, name)
+
+
 class Locator:
     """One emulator run's cached machine, anchor base and sweep progress."""
 
@@ -147,7 +161,12 @@ class Locator:
                                 if m.title == title)
             self.base = bases[0]
         try:
-            return factory(transport, self.machine, anchor_base=self.base)
+            # The target reads guard words while it is built; they get the same
+            # short wait as a piece, and the target keeps the real transport.
+            target = factory(_Bounded(transport, self.PIECE_TIMEOUT),
+                             self.machine, anchor_base=self.base)
+            target.debugger = transport
+            return target
         except amiga.GuestError as exc:
             # An intact anchor with a data hunk that is not where it was: the
             # target's own check fails on every call unless the sweep runs

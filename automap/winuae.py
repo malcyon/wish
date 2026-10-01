@@ -257,13 +257,15 @@ class WinuaeLocalPipe:
         ascii_only = text.isascii()
         body = text.encode("ascii" if ascii_only else "utf-8") + b"\0"
         message = body if ascii_only else UTF8_BOM + body
-        deadline = self._clock() + timeout
         if self._clock() < self._quiet_until:
             raise PipeError("WinUAE stopped answering a moment ago; not "
                             "asking again yet.")
         try:
+            # The reply's time starts once the pipe is open: a slow reopen is
+            # not a slow answer, and must not read as a timeout.
             if self._handle is None:
-                self._open(min(deadline, self._clock() + self.CONNECT_S))
+                self._open(self._clock() + self.CONNECT_S)
+            deadline = self._clock() + timeout
             self._write(message, deadline)
             reply = self._read_reply(deadline)
         except OSError as exc:
