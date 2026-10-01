@@ -45,14 +45,18 @@ only how a name is upper-cased for the hash and for comparing names.
 * `DOS\\4` and `DOS\\5`, directory-cache OFS and FFS, are read through the hash
   tables, which the cache does not replace, and written: every add, replace
   and remove also edits the parent drawer's cache records, and a new drawer
-  gets one empty cache block of its own.
+  gets one empty cache block of its own. A cache that already disagrees with
+  its hash table is reported by `cache_warnings()`, not by `verify()`, and a
+  write into that drawer rebuilds its records from the hash table.
 * `DOS\\6` and `DOS\\7`, long file names, are neither: their header blocks are
   laid out differently.
 
 What this does not do
 ---------------------
-* **Directories are created only by tests.** Every path a conversion needs --
-  the `SAVE` drawer -- already exists on the disks.
+* **A drawer is created only on a disk this module formatted:**
+  `amiga_savegame.make_save_disk` gives a fresh save disk its `SAVE` drawer.
+  A save written onto a copy of the player's own disk goes into the `SAVE`
+  drawer already there.
 * Comments, protection bits and the `.info` files Workbench keeps are not
   written. AmigaDOS does not need them and the game does not read them.
 """
@@ -566,16 +570,15 @@ class AmigaDisk:
             count = self._u32(current, _HDR_HIGH_SEQ)
             for index in range(count):
                 number = self._u32(current, _HDR_DATA_TABLE - 4 * index)
-                data = self.block(number)
                 if self.ffs:
                     # No header to check, so the pointer itself is checked.
-                    if (number < FIRST_DATA_BLOCK
-                            or number in (self.root, self._bitmap_block())):
+                    if self._not_ffs_data(number):
                         raise AmigaDiskError(
                             f"file header {header} names block {number} as "
                             f"file data")
-                    out += data
+                    out += self.block(number)
                     continue
+                data = self.block(number)
                 used = self._u32(data, _DAT_SIZE)
                 if used > OFS_DATA_SIZE:
                     raise AmigaDiskError(
@@ -595,6 +598,12 @@ class AmigaDisk:
             raise AmigaDiskError(
                 f"the header says {size} bytes and the chain holds {len(out)}")
         return bytes(out[:size])
+
+    def _not_ffs_data(self, number: int) -> bool:
+        """A block an FFS data pointer cannot name: outside the disk, the
+        bootblock, the root or the bitmap."""
+        return (not FIRST_DATA_BLOCK <= number < self.block_count
+                or number in (self.root, self._bitmap_block()))
 
     # -- the bitmap ---------------------------------------------------------
     #: Blocks one bitmap page can describe: its 127 usable longwords, in bits.
@@ -727,6 +736,7 @@ class AmigaDisk:
                 existing = entry
                 break
 
+        stale = self._stale_caches(parent)
         when = when or datetime.datetime.now()
         # An empty FFS file is a header alone, as the format describes; the
         # OFS writer gives an empty file one empty data block.
@@ -762,6 +772,7 @@ class AmigaDisk:
         if self.dircache:
             self._cache_add(parent, header)
             self._cache_touch(parent)
+            self._settle_caches(parent, stale)
         if parent != self.root:
             self._touch(self.root)
             self._fix(self.root, _HDR_CHECKSUM)
@@ -780,11 +791,10 @@ class AmigaDisk:
         the file of the same name is the kind of thing that corrupts a disk
         two operations later.
 
-        Production never needs it: a converted party lands in the `save`
-        drawer of a copy of the player's own game disk, which is already
-        there.  It exists so the writer above can be tested on a disk this
-        module formatted, with no game data anywhere -- which is the property
-        `tests/amiga/test_amiga_adf.py` is built on.
+        `amiga_savegame.make_save_disk` uses it to give a freshly formatted
+        save disk its `SAVE` drawer; a save written onto a copy of the
+        player's own disk goes into the drawer already there. The tests use
+        it to exercise the writer on a disk with no game data anywhere.
         """
         self._check_writable()
         parts = [p for p in path.replace("\\", "/").split("/") if p]
@@ -804,6 +814,7 @@ class AmigaDisk:
                 raise AmigaDiskError(
                     f"{name!r} is already on this disk at block {entry.block}")
 
+        stale = self._stale_caches(parent)
         header = self._allocate(1)[0]
         at = header * BLOCK_SIZE
         self._data[at:at + BLOCK_SIZE] = bytes(BLOCK_SIZE)
@@ -828,6 +839,8 @@ class AmigaDisk:
         if self.dircache:
             self._cache_add(parent, header)
             self._cache_touch(parent)
+            self._settle_caches(parent, stale)
+            self._settle_caches(header, set())
         if parent != self.root:
             self._touch(self.root)
             self._fix(self.root, _HDR_CHECKSUM)
@@ -846,6 +859,7 @@ class AmigaDisk:
         if len(parts) > 1:
             parent = self.lookup("/".join(parts[:-1])).block
         blocks = self._file_blocks(entry.block)
+        stale = self._stale_caches(parent)
         self._unlink(parent, entry)
         self._free_blocks(blocks)
         if self.dircache:
@@ -854,6 +868,7 @@ class AmigaDisk:
         self._fix(parent, _HDR_CHECKSUM)
         if self.dircache:
             self._cache_touch(parent)
+            self._settle_caches(parent, stale)
         self._fix_bitmap()
 
     def _write_data_chain(self, header: int, data: bytes,
@@ -1081,7 +1096,8 @@ class AmigaDisk:
 
     def _cache_remove(self, drawer: int, header: int) -> None:
         """Drop `header`'s record; a block left empty is unchained and freed,
-        except the drawer's last one."""
+        except the drawer's last one. A cache with no record of `header` was
+        stale already, and is rebuilt from the hash table instead."""
         chain = self._cache_chain(drawer)
         for position, number in enumerate(chain):
             records = self._cache_records(number)
@@ -1098,30 +1114,110 @@ class AmigaDisk:
                 self._set_link(chain[position - 1], _DC_NEXT, following)
             self._set_free(number, True)
             return
-        raise AmigaDiskError(
-            f"block {header} has no record in the directory cache of block "
-            f"{drawer}")
+        self._rebuild_cache(drawer)
 
     def _cache_touch(self, drawer: int) -> None:
-        """Copy a drawer's date into the record its own parent keeps."""
+        """Copy a drawer's date into the record its own parent keeps,
+        rebuilding the parent's cache first if it has no such record."""
         if drawer == self.root:
             return
         parent = self._u32(self.block(drawer), _HDR_PARENT)
         date = self.block(drawer)[_HDR_DAYS:_HDR_DAYS + 12]
         days, minutes, ticks = struct.unpack(">III", date)
-        for number in self._cache_chain(parent):
-            records = self._cache_records(number)
-            for index, record in enumerate(records):
-                if self._u32(record, 0) == drawer:
-                    changed = bytearray(record)
-                    struct.pack_into(">HHH", changed, _REC_DATE,
-                                     days, minutes, ticks)
-                    records[index] = bytes(changed)
-                    self._put_cache_records(number, records)
-                    return
+        for attempt in range(2):
+            for number in self._cache_chain(parent):
+                records = self._cache_records(number)
+                for index, record in enumerate(records):
+                    if self._u32(record, 0) == drawer:
+                        changed = bytearray(record)
+                        struct.pack_into(">HHH", changed, _REC_DATE,
+                                         days, minutes, ticks)
+                        records[index] = bytes(changed)
+                        self._put_cache_records(number, records)
+                        return
+            if attempt == 0:
+                self._rebuild_cache(parent)
         raise AmigaDiskError(
-            f"block {drawer} has no record in the directory cache of block "
-            f"{parent}")
+            f"block {drawer} is not in the hash table of its parent, block "
+            f"{parent}; nothing was written")
+
+    @staticmethod
+    def _record_agrees(record: bytes, want: bytes) -> bool:
+        """Whether a cache record gives an entry the name, type and size its
+        header does. Dates are not compared."""
+        return not AmigaDisk._record_faults(record, want)
+
+    @staticmethod
+    def _record_faults(record: bytes, want: bytes) -> list[str]:
+        return [what for what, start, end in (
+                    ("name", _REC_NAME, _REC_NAME + 1 + want[_REC_NAME]),
+                    ("type", _REC_TYPE, _REC_TYPE + 1),
+                    ("size", _REC_SIZE, _REC_SIZE + 4))
+                if record[start:end] != want[start:end]]
+
+    def _rebuild_cache(self, drawer: int) -> None:
+        """Rewrite `drawer`'s cache records from its hash table.
+
+        A record that already gives an entry the right name, type and size is
+        kept as it is; every other entry gets a record built from its header,
+        and records for blocks not in the drawer are dropped. The chain keeps
+        its blocks in order, gains one if the records need it, and gives back
+        any it no longer needs except the first.
+        """
+        chain = self._cache_chain(drawer)
+        have: dict[int, bytes] = {}
+        for number in chain:
+            for record in self._cache_records(number):
+                have.setdefault(self._u32(record, 0), record)
+        packed: list[list[bytes]] = [[]]
+        used = _DC_RECORDS
+        for entry in self.entries(drawer):
+            want = self._cache_record(entry.block)
+            record = have.get(entry.block)
+            if record is None or not self._record_agrees(record, want):
+                record = want
+            if used + len(record) > BLOCK_SIZE:
+                packed.append([])
+                used = _DC_RECORDS
+            packed[-1].append(record)
+            used += len(record)
+        while len(chain) < len(packed):
+            chain.append(self._new_cache_block(drawer))
+        if len(chain) > len(packed):
+            self._set_link(chain[len(packed) - 1], _DC_NEXT, 0)
+            for number in chain[len(packed):]:
+                self._set_free(number, True)
+        for number, records in zip(chain, packed):
+            self._put_cache_records(number, records)
+
+    def _cache_family(self, drawer: int) -> list[int]:
+        """The drawers whose caches a write into `drawer` edits: its own,
+        and its parent's, which lists it."""
+        if drawer == self.root:
+            return [drawer]
+        return [drawer, self._u32(self.block(drawer), _HDR_PARENT)]
+
+    def _stale_caches(self, drawer: int) -> set[int]:
+        """Which of the caches a write into `drawer` edits disagree with
+        their hash tables before the write."""
+        if not self.dircache:
+            return set()
+        return {number for number in self._cache_family(drawer)
+                if self._cache_mismatches("", number)}
+
+    def _settle_caches(self, drawer: int, stale: set[int]) -> None:
+        """After a write into `drawer`: rebuild a cache that was stale before
+        it, and refuse the write if a cache it edited now disagrees with its
+        hash table."""
+        for number in self._cache_family(drawer):
+            if number in stale and self._cache_mismatches("", number):
+                self._rebuild_cache(number)
+            faults = self._cache_mismatches(f"block {number}", number)
+            if faults:
+                raise AmigaDiskError(
+                    "the write would leave the directory cache of block "
+                    f"{number} disagreeing with its hash table ("
+                    + "; ".join(faults) + "); nothing was written")
 
     # -- housekeeping -------------------------------------------------------
     def _touch(self, header: int,
@@ -1275,7 +1371,13 @@ class AmigaDisk:
                             f"data block and {table} in the table")
                 for index in range(count):
                     number = self._u32(block, _HDR_DATA_TABLE - 4 * index)
-                    # An FFS data block is all file: nothing to sum.
+                    # An FFS data block is all file: nothing to sum, so the
+                    # pointer is checked the way `read_file` checks it.
+                    if self.ffs and self._not_ffs_data(number):
+                        problems.append(
+                            f"file header {entry.block} names block {number} "
+                            f"as file data")
+                        continue
                     if not self.ffs:
                         check(number, _DAT_CHECKSUM, "data block")
                     if self.is_free(number):
@@ -1291,13 +1393,9 @@ class AmigaDisk:
     def _verify_cache_chain(self, where: str, drawer: int,
                             check) -> list[str]:
         """The directory-cache blocks of one drawer: summed, typed, in use,
-        and listing exactly the drawer's entries by name, type and size.
-
-        Dates are not compared: the hash table is what this module reads, and
-        a stale date in a listing is not a reason to refuse a disk.
-        """
+        and holding the records they count. What the records say is
+        :meth:`cache_warnings`'s business."""
         problems: list[str] = []
-        problems.extend(self._verify_cache_records(where, drawer))
         number = self._u32(self.block(drawer), _HDR_EXTENSION)
         seen: set[int] = set()
         while number:
@@ -1318,6 +1416,10 @@ class AmigaDisk:
                     f"not a cache block")
                 break
             check(number, _HDR_CHECKSUM, "directory cache block")
+            try:
+                self._cache_records(number)
+            except AmigaDiskError as exc:
+                problems.append(str(exc))
             if self.is_free(number):
                 problems.append(
                     f"directory cache block {number} is in use and marked "
@@ -1325,12 +1427,38 @@ class AmigaDisk:
             number = self._u32(block, _HDR_FIRST_DATA)
         return problems
 
-    def _verify_cache_records(self, where: str, drawer: int) -> list[str]:
+    def cache_warnings(self) -> list[str]:
+        """Where a directory cache lists something other than its drawer's
+        hash table holds: a record with the wrong name, type or size, an entry
+        with no record, a record for a block not in the drawer, or one listed
+        twice. Empty on a disk with no cache.
+
+        Kept apart from :meth:`verify` because AmigaDOS finds a file through
+        the hash tables and not the cache, so a stale listing on a disk as it
+        came is not damage a save should stop for; a write rebuilds the cache
+        of the drawer it writes to. Dates are not compared. A cache too
+        broken to read is :meth:`verify`'s to report.
+        """
+        if not self.dircache:
+            return []
         try:
-            records = [record for number in self._cache_chain(drawer)
-                       for record in self._cache_records(number)]
-        except AmigaDiskError as exc:
-            return [str(exc)]
+            drawers = [("/", self.root)] + [
+                (where, entry.block) for where, entry in self.walk_dirs()]
+        except AmigaDiskError:
+            return []
+        warnings: list[str] = []
+        for where, drawer in drawers:
+            try:
+                warnings.extend(self._cache_mismatches(where, drawer))
+            except AmigaDiskError:
+                continue
+        return warnings
+
+    def _cache_mismatches(self, where: str, drawer: int) -> list[str]:
+        """One drawer's :meth:`cache_warnings`; raises on a cache it cannot
+        read."""
+        records = [record for number in self._cache_chain(drawer)
+                   for record in self._cache_records(number)]
         listed = {self._u32(record, 0): record for record in records}
         problems: list[str] = []
         if len(listed) != len(records):
@@ -1343,15 +1471,11 @@ class AmigaDisk:
                     f"{entry.name!r} in {where!r} has no record in the "
                     f"directory cache")
                 continue
-            want = self._cache_record(entry.block)
-            for what, start, end in (
-                    ("name", _REC_NAME, _REC_NAME + 1 + want[_REC_NAME]),
-                    ("type", _REC_TYPE, _REC_TYPE + 1),
-                    ("size", _REC_SIZE, _REC_SIZE + 4)):
-                if record[start:end] != want[start:end]:
-                    problems.append(
-                        f"the directory cache of {where!r} gives "
-                        f"{entry.name!r} the wrong {what}")
+            for what in self._record_faults(record,
+                                            self._cache_record(entry.block)):
+                problems.append(
+                    f"the directory cache of {where!r} gives "
+                    f"{entry.name!r} the wrong {what}")
         for block in listed:
             problems.append(
                 f"the directory cache of {where!r} lists block {block}, which "

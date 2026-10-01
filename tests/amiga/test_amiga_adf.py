@@ -793,10 +793,9 @@ def test_ffs_replace_and_remove_keep_the_hash_chains_and_the_bitmap(dos_type):
     assert disk.verify() == []
 
 
-@pytest.mark.parametrize("bad", ["boot", "zero", "root", "bitmap"])
-def test_an_ffs_data_pointer_at_a_filesystem_block_is_refused(bad):
-    """An FFS data block has no header to check, so the pointer itself is
-    checked: the bootblock, a zero, the root and the bitmap hold no file."""
+def _ffs_file_pointing_at(bad: str) -> tuple[AmigaDisk, bytes, int]:
+    """An FFS disk, and the same disk with the second data pointer of `FILE`
+    moved onto a filesystem block, and that block's number."""
     disk = AmigaDisk.blank(dos_type=1)
     disk.write_file("FILE", _ffs_payload(1000), when=WHEN)
     header = disk.lookup("FILE").block
@@ -807,9 +806,26 @@ def test_an_ffs_data_pointer_at_a_filesystem_block_is_refused(bad):
     struct.pack_into(">I", raw, at + BLOCK_SIZE - 204 - 4, pointer)
     struct.pack_into(">I", raw, at + 20, 0)
     struct.pack_into(">I", raw, at + 20, _spec_sum(raw[at:at + BLOCK_SIZE], 20))
+    return disk, bytes(raw), pointer
+
+
+@pytest.mark.parametrize("bad", ["boot", "zero", "root", "bitmap"])
+def test_an_ffs_data_pointer_at_a_filesystem_block_is_refused(bad):
+    """An FFS data block has no header to check, so the pointer itself is
+    checked: the bootblock, a zero, the root and the bitmap hold no file."""
+    disk, raw, pointer = _ffs_file_pointing_at(bad)
     with pytest.raises(AmigaDiskError, match=f"block {pointer}"):
         AmigaDisk(raw).read_file("FILE")
     assert AmigaDisk(disk.to_bytes()).read_file("FILE") == _ffs_payload(1000)
+
+
+@pytest.mark.parametrize("bad", ["boot", "zero", "root", "bitmap"])
+def test_verify_reports_an_ffs_data_pointer_at_a_filesystem_block(bad):
+    """The same pointer `read_file` refuses is damage to `verify()`."""
+    disk, raw, pointer = _ffs_file_pointing_at(bad)
+    problems = AmigaDisk(raw).verify()
+    assert any(f"block {pointer} as file data" in p for p in problems), problems
+    assert disk.verify() == []
 
 
 def test_a_drawer_and_a_file_in_it_on_ffs():
@@ -982,6 +998,7 @@ def _assert_caches_match(disk: AmigaDisk) -> None:
         assert sorted(records) == sorted(_spec_listing(image, drawer)), drawer
         assert not any(disk.is_free(number) for number in blocks)
     assert disk.verify() == []
+    assert disk.cache_warnings() == []
 
 
 @pytest.mark.parametrize("dos_type", DIRCACHE_TYPES)
@@ -1074,20 +1091,112 @@ def test_a_directory_cache_write_that_cannot_fit_changes_nothing(dos_type):
     assert disk.to_bytes() == before
 
 
-@pytest.mark.parametrize("dos_type", DIRCACHE_TYPES)
-def test_verify_reports_a_cache_that_disagrees_with_the_hash_table(dos_type):
+def _restale(raw: bytearray, number: int) -> None:
+    """Fix one cache block's checksum after a test edits its records."""
+    at = number * BLOCK_SIZE
+    struct.pack_into(">I", raw, at + 20, 0)
+    struct.pack_into(">I", raw, at + 20, _spec_sum(raw[at:at + BLOCK_SIZE], 20))
+
+
+def _stale_cache_disk(dos_type: int, stale: str) -> AmigaDisk:
+    """`_dircache_disk` with one disagreement between the root's cache and its
+    hash table: `ONE` listed under another name or size, `TWO` not listed, or
+    a record for a block that is in no drawer.
+
+    The records sit at 24 (`ONE`, 28 bytes) and 52 (`TWO`)."""
     disk = _dircache_disk(dos_type)
     cache = struct.unpack_from(">I", disk.block(disk.root), BLOCK_SIZE - 8)[0]
     raw = bytearray(disk.to_bytes())
     at = cache * BLOCK_SIZE
-    struct.pack_into(">I", raw, at + 24 + 4, 99)       # ONE's size
-    struct.pack_into(">I", raw, at + 20, 0)
-    struct.pack_into(">I", raw, at + 20, _spec_sum(raw[at:at + BLOCK_SIZE], 20))
-    assert any("ONE" in p and "size" in p for p in AmigaDisk(raw).verify())
-    struct.pack_into(">I", raw, at + 12, 1)            # TWO's record dropped
-    struct.pack_into(">I", raw, at + 20, 0)
-    struct.pack_into(">I", raw, at + 20, _spec_sum(raw[at:at + BLOCK_SIZE], 20))
-    assert any("TWO" in p and "no record" in p for p in AmigaDisk(raw).verify())
+    if stale == "name":
+        raw[at + 24 + 24:at + 24 + 27] = b"ONX"
+    elif stale == "size":
+        struct.pack_into(">I", raw, at + 24 + 4, 99)
+    elif stale == "missing":
+        struct.pack_into(">I", raw, at + 12, 1)
+    elif stale == "extra":
+        offset = at + 80
+        struct.pack_into(">IIIHHhhhb", raw, offset, 1234, 7, 0, 0, 0,
+                         1, 2, 3, -3)
+        raw[offset + 23] = 4
+        raw[offset + 24:offset + 28] = b"GONE"
+        raw[offset + 28] = 0
+        struct.pack_into(">I", raw, at + 12, 3)
+    _restale(raw, cache)
+    return AmigaDisk(raw)
+
+
+STALE_KINDS = ("name", "size", "missing", "extra")
+
+
+@pytest.mark.parametrize("dos_type", DIRCACHE_TYPES)
+@pytest.mark.parametrize("stale", STALE_KINDS)
+def test_a_stale_cache_is_a_warning_and_not_damage(dos_type, stale):
+    """AmigaDOS finds a file through the hash tables, so a listing that
+    disagrees with them is reported apart from damage `verify()` refuses."""
+    disk = _stale_cache_disk(dos_type, stale)
+    assert disk.verify() == []
+    warnings = disk.cache_warnings()
+    word = {"name": "name", "size": "size", "missing": "no record",
+            "extra": "1234"}[stale]
+    assert any(word in w for w in warnings), warnings
+    assert disk.read_file("ONE") == b"first file"
+
+
+@pytest.mark.parametrize("dos_type", DIRCACHE_TYPES)
+@pytest.mark.parametrize("stale", STALE_KINDS)
+@pytest.mark.parametrize("operation", ("add", "replace", "remove"))
+def test_a_stale_cache_on_the_disk_as_it_came_still_saves(
+        dos_type, stale, operation):
+    """The write goes through, and the drawer it wrote to comes out with a
+    cache that lists exactly what its hash table holds."""
+    disk = _stale_cache_disk(dos_type, stale)
+    if operation == "add":
+        disk.write_file("THREE", b"third", when=WHEN)
+        assert disk.read_file("THREE") == b"third"
+    elif operation == "replace":
+        disk.write_file("TWO", b"replaced", when=WHEN)
+        assert disk.read_file("TWO") == b"replaced"
+    else:
+        disk.remove_file("TWO")
+        assert [name for name, _ in disk.walk()] == ["/ONE"]
+    _assert_caches_match(AmigaDisk(disk.to_bytes()))
+
+
+@pytest.mark.parametrize("dos_type", DIRCACHE_TYPES)
+@pytest.mark.parametrize("operation", ("add", "remove", "make_dir"))
+def test_a_drawer_its_parent_does_not_list_still_takes_a_save(
+        dos_type, operation):
+    """The root's cache has lost `save`'s record: a write into `save`, which
+    redates it in the root's listing, rebuilds the root's cache instead."""
+    disk = AmigaDisk.blank(dos_type=dos_type)
+    disk.make_dir("save", when=WHEN)
+    disk.write_file("save/OLD", b"old", when=WHEN)
+    cache = struct.unpack_from(">I", disk.block(disk.root), BLOCK_SIZE - 8)[0]
+    raw = bytearray(disk.to_bytes())
+    struct.pack_into(">I", raw, cache * BLOCK_SIZE + 12, 0)
+    _restale(raw, cache)
+    disk = AmigaDisk(raw)
+    assert any("no record" in w for w in disk.cache_warnings())
+    if operation == "add":
+        disk.write_file("save/NEW", b"new", when=WHEN)
+    elif operation == "remove":
+        disk.remove_file("save/OLD")
+    else:
+        disk.make_dir("save/deeper", when=WHEN)
+    _assert_caches_match(AmigaDisk(disk.to_bytes()))
+
+
+@pytest.mark.parametrize("dos_type", DIRCACHE_TYPES)
+def test_a_cache_mismatch_the_write_introduces_is_refused(dos_type, monkeypatch):
+    """A drawer whose cache agreed before the write must agree after it: a
+    write that forgets the new record is refused and changes nothing."""
+    disk = _dircache_disk(dos_type)
+    before = disk.to_bytes()
+    monkeypatch.setattr(AmigaDisk, "_cache_add", lambda self, drawer, header: None)
+    with pytest.raises(AmigaDiskError, match="directory cache"):
+        disk.write_file("THREE", b"third", when=WHEN)
+    assert disk.to_bytes() == before
 
 
 def test_verify_reports_a_directory_cache_block_marked_free():
@@ -1097,6 +1206,31 @@ def test_verify_reports_a_directory_cache_block_marked_free():
     disk._fix_bitmap()
     assert any("directory cache block" in p and "marked free" in p
                for p in disk.verify()), disk.verify()
+
+
+@pytest.mark.parametrize("dos_type", (0, 1, 5))
+@pytest.mark.parametrize("fails", ("_free_blocks", "_fix_bitmap"))
+def test_a_remove_that_fails_part_way_puts_every_byte_back(
+        dos_type, fails, monkeypatch):
+    """`_free_blocks` raises after the file is unlinked from its drawer, and
+    `_fix_bitmap` after everything else is done: either way the image is the
+    one the call started with."""
+    disk = AmigaDisk.blank(dos_type=dos_type)
+    disk.make_dir("save", when=WHEN)
+    disk.write_file("save/KEEP", _ffs_payload(3000), when=WHEN)
+    disk.write_file("save/GONE", _ffs_payload(40000), when=WHEN)
+    before = disk.to_bytes()
+
+    def broken(self, *args, **kwargs):
+        raise OSError("failed part way")
+
+    monkeypatch.setattr(AmigaDisk, fails, broken)
+    with pytest.raises(OSError, match="failed part way"):
+        disk.remove_file("save/GONE")
+    monkeypatch.undo()
+    assert disk.to_bytes() == before
+    assert disk.read_file("save/GONE") == _ffs_payload(40000)
+    assert disk.verify() == []
 
 
 def _ffs_copy(disk: AmigaDisk, dos_type: int) -> AmigaDisk:
