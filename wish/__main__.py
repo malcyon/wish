@@ -137,8 +137,10 @@ def main(argv: list[str] | None = None) -> int:
     # folders. The window resolves the same way from the same three inputs,
     # so the maps it is handed and the folder it reports cannot disagree.
     from automap.paths import resolve_disks
-    where, source = resolve_disks(flag=args.disks, beside=args.save, game=game)
-    from .backends import amiga_fsuae_enabled
+
+    from .backends import amiga_fsuae_enabled, amiga_only_titles
+    where, source = resolve_disks(flag=args.disks, beside=args.save, game=game,
+                                  also=amiga_only_titles())
     maps, game = load_maps_titled(str(where) if where else None, game,
                                   amiga_only=amiga_fsuae_enabled())
     if args.svg:

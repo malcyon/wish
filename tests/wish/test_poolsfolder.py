@@ -363,3 +363,68 @@ def test_without_the_flag_the_window_does_not_switch(app, tmp_path,
                               for line in win.map.messages.lines()]
     finally:
         win.close()
+
+
+# --- starting with only the Pools of Darkness folder set ---------------------
+
+def _only_pod(tmp_path, monkeypatch):
+    nowhere(tmp_path, monkeypatch)
+    pod = adf(tmp_path / "pod", "d3.adf", "POD 3", walled_geo(art=5, rooms=3))
+    return Settings(game_folders={POD.key: str(pod)}), pod
+
+
+def test_the_folder_answers_with_no_title_when_asked_for(tmp_path, monkeypatch):
+    settings, pod = _only_pod(tmp_path, monkeypatch)
+    assert paths.resolve_disks(game=None, settings=settings,
+                               also=AMIGA_ONLY_TITLES) == (
+        pod, paths.GAME_PREFERENCE)
+    assert paths.resolve_disks(game=None, settings=settings) == (
+        None, paths.NOWHERE)
+
+
+def test_a_pool_of_radiance_row_still_answers_first(tmp_path, monkeypatch):
+    settings, pod = _only_pod(tmp_path, monkeypatch)
+    por = pool_folder(tmp_path, walled_geo(art=1))
+    settings.game_folders[POOL.key] = str(por)
+    assert paths.resolve_disks(game=None, settings=settings,
+                               also=AMIGA_ONLY_TITLES) == (
+        por, paths.GAME_PREFERENCE)
+
+
+def test_the_titles_to_try_come_from_the_flag(monkeypatch):
+    assert bk.amiga_only_titles() == ()
+    for off in ("", "0", "off"):
+        monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, off)
+        assert bk.amiga_only_titles() == ()
+    monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, "1")
+    assert bk.amiga_only_titles() == AMIGA_ONLY_TITLES
+
+
+def test_a_window_with_only_the_pod_folder_names_its_title(
+        app, tmp_path, monkeypatch, amiga_on):
+    settings, pod = _only_pod(tmp_path, monkeypatch)
+    win = window(app, maps=None, settings=settings)
+    try:
+        assert win.map.state.title == POD.title
+        assert "GEO24" in win.mapper._maps
+        assert str(win.disks) == str(pod)
+        win.reload_disks()
+        assert win.map.state.title == POD.title
+        assert "GEO24" in win.mapper._maps
+    finally:
+        win.close()
+
+
+@pytest.mark.parametrize("value", [None, "", "0", "off"])
+def test_without_the_flag_the_pod_folder_is_not_taken(
+        app, tmp_path, monkeypatch, value):
+    settings, _pod = _only_pod(tmp_path, monkeypatch)
+    if value is not None:
+        monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, value)
+    win = window(app, maps=None, settings=settings)
+    try:
+        assert win.disks is None
+        assert win.mapper._maps == {}
+        assert win.map.state.title != POD.title
+    finally:
+        win.close()

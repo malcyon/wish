@@ -186,7 +186,7 @@ NOWHERE = "nothing found"
 
 
 def resolve_disks(flag=None, beside=None, game: c64_port.C64Container | None = None,
-                  settings=None) -> tuple[pathlib.Path | None, str]:
+                  settings=None, also: tuple = ()) -> tuple[pathlib.Path | None, str]:
     """Where to look for the game disks, and who said so.
 
     The second half of the answer is still read by people, just not in the
@@ -211,6 +211,11 @@ def resolve_disks(flag=None, beside=None, game: c64_port.C64Container | None = N
     order that has a row answers; that is `wish/window.py`'s job to correct
     once the machine says which title is actually running, this function only
     ever answers from what is configured.
+
+    `also` names further titles to try after `c64_port.GAMES`, again only with
+    no `game`: a title with no C64 container (Pools of Darkness) has a folder
+    row too, and this module cannot import `automap.maps` to learn which those
+    are, so the caller passes them in.
     """
     # Imported here, not at module scope: `config` imports this module, and the
     # reverse at the top of the file is a cycle. `live.py` does the same.
@@ -220,7 +225,8 @@ def resolve_disks(flag=None, beside=None, game: c64_port.C64Container | None = N
     if settings is None:
         settings = Settings.load()
     per_game = getattr(settings, "game_folders", None) or {}
-    wanted = [game] if game is not None else list(c64_port.GAMES)
+    wanted = ([game] if game is not None
+              else list(c64_port.GAMES) + list(also))
     for want in wanted:
         own = (per_game.get(want.key, "") or "").strip()
         if own:

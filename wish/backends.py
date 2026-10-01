@@ -72,6 +72,9 @@ TRUE = ("1", "true", "yes", "on")
 #: `automap.amiga.MACHINES`, which is the check `#34 (Validate the live
 #: automapper tab per title)` asks for.** `#37 (Automap the Amiga version, not
 #: just the C64)` is where that gets settled.
+#:
+#: The flag also decides whether Wish names Pools of Darkness from its Amiga
+#: disks and offers its folder row.
 AMIGA_FSUAE_ENV = "WISH_EXPERIMENTAL_AMIGA_FSUAE"
 
 
@@ -139,6 +142,15 @@ def _ultimate() -> list[Backend]:
 def amiga_fsuae_enabled() -> bool:
     """Is the Amiga backend offered in this run?"""
     return os.environ.get(AMIGA_FSUAE_ENV, "").strip().lower() in TRUE
+
+
+def amiga_only_titles() -> tuple:
+    """The titles that have Amiga disks and no C64 container, while the Amiga
+    backend is on; nothing otherwise, so the flag off changes no lookup."""
+    if not amiga_fsuae_enabled():
+        return ()
+    from automap.maps import AMIGA_ONLY_TITLES
+    return AMIGA_ONLY_TITLES
 
 
 def _amiga_fsuae() -> list[Backend]:

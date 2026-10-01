@@ -127,7 +127,7 @@ class WishWindow(QMainWindow):
         self._title = title
         self.disks, self.disks_source = paths.resolve_disks(
             flag=disks, beside=save, game=folder_title_named(title),
-            settings=self.settings)
+            settings=self.settings, also=backends.amiga_only_titles())
         # Behind the flag, like everything else the Ultimate touches. A stored
         # host in a settings file predating the flag -- or hand-edited -- used
         # to reach `$POR_ULTIMATE` on every window build regardless, which is
@@ -156,9 +156,16 @@ class WishWindow(QMainWindow):
         # and somewhere else in Curse, so the caller that loaded the maps says
         # which title they are. Failing that the open save says, and only with
         # nothing open at all is this the title it has always been.
+        if maps is None:
+            maps, found = load_maps_titled(self.disks_text())
+            # An Amiga-only title has no C64 container, so with no title given
+            # nothing else would name it and the window would label its maps
+            # with the default title.
+            if (title is None and self.editor.party is None
+                    and found in AMIGA_ONLY_TITLES):
+                title = self._title = found.title
         self.mapper = Automapper(
-            None, maps if maps is not None else load_maps(self.disks_text()),
-            area=area, title=title or self._open_title())
+            None, maps, area=area, title=title or self._open_title())
         self.map = AutomapBinding(self, self.mapper, settings=self.settings, disks=self.disks_text())
         #: `(Game.key, folder)` -> maps, so `_other_title_maps` reads a
         #: configured title's disks once rather than on every tick the
@@ -402,7 +409,8 @@ class WishWindow(QMainWindow):
         """Re-resolve where the disks are and hand the answer to both tabs."""
         self.disks, self.disks_source = paths.resolve_disks(
             flag=self.disks_flag, beside=self.editor.path,
-            game=self.disk_game(), settings=self.settings)
+            game=self.disk_game(), settings=self.settings,
+            also=backends.amiga_only_titles())
         where = self.disks_text()
         debuglog.note("game disks: %s (%s)", where or "nothing found",
                       self.disks_source)
