@@ -121,6 +121,12 @@ WORLD_MAP_SCRIPT_SPAN = 13
 #: image at `$4B00`); the destination follows it. Route comment on #804.
 WORLD_NODE_OFFSET = 0x19B
 
+#: The file-cache slot holding the running area's `ECL`, and the 3D view's
+#: colour byte (`$FF` until the area's view first draws). Both are resident
+#: addresses, not inside the save image.
+SCRIPT_FILE_SLOT = 0x7F1B
+VIEW_COLOUR = 0x7EDB
+
 
 @dataclass(frozen=True)
 class C64Machine:
@@ -235,6 +241,18 @@ class C64Machine:
         c = self.container
         return self.save_load_address + (c.indoors if c else
                                          c64_save.INDOORS_FLAG_OFFSET)
+
+    @property
+    def script_file_slot(self) -> int | None:
+        """`$7F1B`, which names the arriving script before `$4BF2` does.
+        None unless the title has a world-map screen."""
+        return SCRIPT_FILE_SLOT if self.title.world_map_areas else None
+
+    @property
+    def view_colour(self) -> int | None:
+        """`$7EDB`: `$FF` until the new area's 3D view has drawn. None unless
+        the title has a world-map screen."""
+        return VIEW_COLOUR if self.title.world_map_areas else None
 
     @property
     def world_node_base(self) -> int | None:

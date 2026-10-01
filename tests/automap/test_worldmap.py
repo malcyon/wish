@@ -27,6 +27,9 @@ def world_target(game=CURSE, indoors=0, script=0x50, node=(3, 7)):
     target.memory[base + 0xE6] = bytes([indoors])
     target.memory[base + 0xF2] = bytes([script])
     target.memory[base + 0x19B] = bytes(node)
+    # Zeros in both would satisfy the arrived-in-an-area rule.
+    target.memory[0x7F1B] = bytes([script])
+    target.memory[0x7EDB] = b"\xff"
     return target
 
 
@@ -211,6 +214,62 @@ def test_the_world_map_lasts_until_the_script_id_leaves_it(tmp_path, monkeypatch
     set_bytes(1, 3, (0, 0, 2))
     for _ in range(mapper.RESIDENT_EVERY * 2):
         mapper.poll()
+    assert not state.world_map
+    assert (state.area, state.x, state.y, state.facing) == ("GEO03", 0, 0, 2)
+    assert (8, 8) not in state.exploration
+
+
+@pytest.mark.parametrize("slot,colour,left", [
+    (0x50, 13, False), (0x03, 0xFF, False), (0x83, 13, False),
+    (0x64, 0xFF, False), (0xD0, 0xFF, False),
+    (0x03, 13, True), (0x03, 0, True)])
+def test_the_world_map_is_left_by_slot_and_view_colour(slot, colour, left):
+    target = world_target()
+    target.memory[0xC04B] = bytes((0, 0, 2))
+    target.memory[0x7F1B] = bytes([slot])
+    target.memory[0x7EDB] = bytes([colour])
+    fix = party_fix(target.read, CURSE)
+    if left:
+        assert (fix.world_map, fix.x, fix.y, fix.facing) == (False, 0, 0, 2)
+    else:
+        assert fix.world_map
+
+
+def test_the_area_is_shown_while_the_entry_message_still_holds_the_script_id(
+        tmp_path, monkeypatch):
+    """The measured SEARCH AREA return into the sewers, with `$4BF2` at `$50`
+    throughout."""
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    sewers = synthetic_map(2)
+    target = world_target()
+    target.memory.update(curse_target("", (0, 0, 2), sewers).memory)
+    base = CURSE.save_load_address
+
+    def set_bytes(indoors, slot, colour, triple):
+        target.memory[base + 0xE6] = bytes([indoors])
+        target.memory[0x7F1B] = bytes([slot])
+        target.memory[0x7EDB] = bytes([colour])
+        target.memory[0xC04B] = bytes(triple)
+
+    set_bytes(1, 0x03, 0xFF, (0, 0, 2))
+    mapper = Automapper(target, {"GEO03": sewers}, area="GEO03", title=CURSE.title)
+    state = mapper.state
+    mapper.poll()
+    set_bytes(0, 0x50, 0xFF, (33, 208, 202))
+    mapper.poll()
+    assert state.world_map
+    for slot, colour, triple in [
+            (0x83, 0xFF, (33, 208, 202)), (0x83, 0xFF, (8, 8, 2)),
+            (0x03, 0xFF, (8, 8, 2)), (0x03, 0xFF, (33, 208, 202)),
+            (0x03, 13, (1, 0, 202))]:
+        set_bytes(1, slot, colour, triple)
+        for _ in range(mapper.RESIDENT_EVERY * 2):
+            mapper.poll()
+        assert state.world_map
+    set_bytes(1, 0x03, 13, (0, 0, 2))
+    for _ in range(mapper.RESIDENT_EVERY * 2):
+        mapper.poll()
+    assert target.memory[base + 0xF2] == b"\x50"
     assert not state.world_map
     assert (state.area, state.x, state.y, state.facing) == ("GEO03", 0, 0, 2)
     assert (8, 8) not in state.exploration

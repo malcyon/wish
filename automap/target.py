@@ -269,9 +269,20 @@ def party_fix(read, game: c64_port.C64Container | None = None, banks=None) -> Fi
         span = read(machine.world_map_flag_base, WORLD_MAP_SCRIPT_SPAN)
         if (len(span) == WORLD_MAP_SCRIPT_SPAN
                 and span[-1] in machine.title.world_map_areas):
-            node = read(machine.world_node_base, 2)
-            return Fix(0, 0, None, "memory", None, world_map=True,
-                       world_node=node[0], world_leg=node[1])
+            # SEARCH AREA's return waits on an entry message that holds
+            # `$4BF2` for good. The arriving script's file slot (bit 7 clear,
+            # no longer a world-map id) with the 3D view drawn (`$7EDB` not
+            # `$FF`) says the party is already there; GDRIVE01's own bytes
+            # at `$C04B` come before both and never pass.
+            slot = read(machine.script_file_slot, 1)[0]
+            colour = read(machine.view_colour, 1)[0]
+            arrived = (slot < 0x80
+                       and slot not in machine.title.world_map_areas
+                       and colour != 0xFF)
+            if not arrived:
+                node = read(machine.world_node_base, 2)
+                return Fix(0, 0, None, "memory", None, world_map=True,
+                           world_node=node[0], world_leg=node[1])
     if machine.live_position is None:
         return None
     x, y, facing = read(machine.live_position,
