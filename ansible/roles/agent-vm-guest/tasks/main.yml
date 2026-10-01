@@ -505,6 +505,98 @@
         chdir: "{{ agent_guest_wish_dir }}"
         creates: "{{ agent_guest_wish_dir }}/.venv/bin/ruff"
 
+# --- Patched FS-UAE --------------------------------------------------------
+
+- name: FS-UAE with the remote debugger
+  tags: fsuae
+  block:
+    - name: Require Linux x86-64 for the pinned FS-UAE build
+      ansible.builtin.assert:
+        that:
+          - ansible_system == 'Linux'
+          - ansible_architecture == 'x86_64'
+
+    - name: Install patched FS-UAE's runtime dependencies
+      ansible.builtin.apt:
+        name: "{{ agent_guest_fsuae_packages }}"
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+      become: true
+
+    - name: Look for the pinned FS-UAE installer in the guest checkout
+      ansible.builtin.stat:
+        path: "{{ agent_guest_wish_dir }}/tools/amiga/installfsuae.py"
+      register: agent_guest_fsuae_installer
+
+    - name: Require the checkout's FS-UAE installer
+      ansible.builtin.assert:
+        that: agent_guest_fsuae_installer.stat.exists
+        fail_msg: Run the wish tag first to create the guest checkout with tools/amiga/installfsuae.py.
+
+    - name: Read the install path from the pinned installer
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - >-
+            import pathlib, runpy, sys;
+            installer = runpy.run_path(sys.argv[1]);
+            print(installer['install_dir'](pathlib.Path(sys.argv[2])) / installer['BINARY'])
+          - "{{ agent_guest_wish_dir }}/tools/amiga/installfsuae.py"
+          - "{{ agent_guest_fsuae_dir }}"
+      register: agent_guest_fsuae_binary
+      changed_when: false
+      check_mode: false
+
+    - name: Install the checksum-verified patched FS-UAE
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ agent_guest_wish_dir }}/tools/amiga/installfsuae.py"
+          - --into
+          - "{{ agent_guest_fsuae_dir }}"
+        creates: "{{ agent_guest_fsuae_binary.stdout }}"
+
+    - name: Expose the patched FS-UAE with its bundled libraries
+      ansible.builtin.copy:
+        dest: /usr/local/bin/fs-uae-gdb
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          # The patched emulator needs its bundled libraries beside the binary.
+          export LD_LIBRARY_PATH={{ agent_guest_fsuae_binary.stdout | dirname | quote }}${LD_LIBRARY_PATH:+:"$LD_LIBRARY_PATH"}
+          exec {{ agent_guest_fsuae_binary.stdout | quote }} "$@"
+      become: true
+
+    - name: Verify the patched FS-UAE loads outside its install directory
+      ansible.builtin.command: /usr/local/bin/fs-uae-gdb --version
+      args:
+        chdir: /tmp
+      register: agent_guest_fsuae_version
+      changed_when: false
+      failed_when: >-
+        agent_guest_fsuae_version.rc != 0 or
+        'remote_debug' not in agent_guest_fsuae_version.stdout
+
+    - name: Verify the remote debugger and bundled data are installed
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - >-
+            import pathlib, sys;
+            binary = pathlib.Path(sys.argv[1]);
+            data = binary.read_bytes();
+            required = (b'remote_debugger_port', b'GDBSERVER: listen() succeeded');
+            assert all(marker in data for marker in required), 'Remote debugger missing';
+            assert (binary.parent / 'fs-uae.dat').is_file(), 'FS-UAE data missing';
+            assert (binary.parent / 'data' / 'SairaCondensed-Bold.ttf').is_file(), 'FS-UAE font missing'
+          - "{{ agent_guest_fsuae_binary.stdout }}"
+      changed_when: false
+
 # --- Node, Agent HUD and the VICE MCP server ---------------------------------
 # nvm, not NodeSource or a package: no apt repository and no root install.
 - name: Node, Agent HUD and the VICE MCP server

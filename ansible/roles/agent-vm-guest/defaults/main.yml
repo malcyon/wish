@@ -105,6 +105,21 @@ agent_guest_wish_repo: https://github.com/malcyon/wish.git
 agent_guest_wish_dir: "{{ ansible_user_dir }}/src/wish"
 agent_guest_python: python3.12
 
+# The checked-in installer pins the patched grahambates/fs-uae build and its
+# archive digest; the stock fs-uae package remains available separately.
+agent_guest_fsuae_dir: "{{ ansible_user_dir }}/.local/share/wish/fs-uae"
+agent_guest_fsuae_packages:
+  - python3
+  - ca-certificates
+  - libglib2.0-0
+  - libgl1
+  - libgl1-mesa-dri
+  - libpng16-16
+  - libsdl2-2.0-0
+  - libsdl2-ttf-2.0-0
+  - libmpeg2-4
+  - libstdc++6
+
 # --- Node, Agent HUD and the VICE MCP server ---------------------------------
 # nvm, not NodeSource or a package: no apt repository, no root. Node runs
 # Agent HUD and the VICE MCP server wish's .mcp.json names. The Node version
