@@ -16,6 +16,8 @@ an address, a position or a map.
     tools/amiga/fsuaegdb.py session --port 6525 --out DIR/run \\
         --commands DIR/cmds.txt --window --maps DIR/adfs \\
         --peeks '+0x5B12 1' '*0x57AC+0x24 3'
+    tools/amiga/fsuaegdb.py wish --port 6525 --out DIR/run \\
+        --commands DIR/cmds.txt --disks-for pools-of-darkness=DIR/adfs
 
 **`probe` is the one to run first.**  It connects, prints what the server
 advertises, continues the machine and times a read at four sizes -- and it
@@ -54,7 +56,7 @@ import time
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent.parent))
 
-from automap import amiga  # noqa: E402
+from automap import amiga, fsuaehelper  # noqa: E402
 
 #: The small-data base these titles are linked with, printed beside the hunk
 #: address.  `tools/amiga/amigatarget.py` has the same constant for the same reason:
@@ -84,7 +86,24 @@ TITLED_COMMANDS = ("locate", "fix", "peek", "observe", "poll")
 DUMP_LIMIT = 0x80000
 
 
+def refuse_when_helper_holds(args) -> None:
+    """Stop before opening a socket when a Wish connection helper has the door.
+
+    The fork takes one client per run.  A second one waits in its backlog for
+    the transport's whole timeout, and one that gives up from the backlog
+    leaves a dead connection there.
+    """
+    info = fsuaehelper.find(args.port, fsuaehelper.runtime_dir())
+    if info is not None:
+        raise SystemExit(
+            f"a connection helper (pid {info.get('pid')}) already holds the "
+            f"debugger on port {args.port}; this command would queue behind "
+            "it, so nothing was opened. Use `wish`, or end the helper by "
+            "stopping the emulator")
+
+
 def connect(args, resume: bool = True) -> amiga.FsuaeGdb:
+    refuse_when_helper_holds(args)
     return amiga.FsuaeGdb(host=args.host, port=args.port,
                           timeout=args.timeout, resume=resume)
 
@@ -391,7 +410,7 @@ def dump_row(gdb, rest: str, out: pathlib.Path) -> dict:
         raise ValueError("dump wants NAME ADDRESS LENGTH")
     name, address, length = parts[0], int(parts[1], 0), int(parts[2], 0)
     if not re.fullmatch(r"\w[\w.-]*", name):
-        raise ValueError(f"dump name {name!r} must be a plain file name")
+        raise ValueError(f"dump name {name!r} must be a simple file name")
     if not 0 < length <= DUMP_LIMIT:
         raise ValueError(f"dump length {length:#x} is outside 1..{DUMP_LIMIT:#x}")
     row = {"name": name, "address": address, "length": length}
@@ -669,7 +688,6 @@ def session(args) -> int:
     was = mapstate._data_dir                            # noqa: SLF001
     mapstate._data_dir = lambda: out / "data"           # noqa: SLF001
     started = time.monotonic()
-    read = 0
     try:
         once = None if untitled else poller(tgt, maps, layout, out, note)[1]
         window = None
@@ -678,122 +696,467 @@ def session(args) -> int:
         note(event="session", port=args.port, maps=len(maps),
              image=None if image is None else str(image),
              window=bool(args.window))
-        while time.monotonic() - started < args.seconds:
-            lines = commands.read_text().splitlines()
-            while read < len(lines):
-                line = lines[read].strip()
-                read += 1
-                if not line or line.startswith("#"):
-                    continue
-                word, _, rest = line.partition(" ")
-                now = round(time.monotonic() - started, 1)
-                print(f"[{now:7.1f}s] {line}")
-                if word == "quit":
-                    return 0
-                # A mistyped or unconfigured command costs its own line, not
-                # the run: the one connection cannot be taken up again.
+        swap = (swap_error, swap_log)
+
+        def handle(word: str, rest: str, line: str, now: float) -> bool:
+            if untitled and word in TITLED_COMMANDS:
+                error = (f"no title: `{word}` needs a layout and this "
+                         f"session was started with --title {NO_TITLE}")
+                print(f"           {error}")
+                note(event=word, at=now, error=error)
+            elif common_command(args, out, note, time.sleep, swap, word, rest,
+                                now):
+                pass
+            elif word == "dump":
+                row = dump_row(gdb, rest, out)
+                print(f"           {row}")
+                note(event="dump", at=now, **row)
+            elif word == "peek":
+                spec, _, length = rest.rpartition(" ")
+                row = peek_row(tgt, spec, int(length or 1, 0))
+                print(f"           {row}")
+                note(event="peek", at=now, **row)
+            elif word == "poke":
+                row = poke_row(gdb, tgt, rest)
+                print(f"           {row}")
+                note(event="poke", at=now, **row)
+            elif word == "observe":
+                note(event="observe", at=now,
+                     **observe(args, rest or str(now), tgt, maps, out,
+                               once, window, peeks))
+            elif word == "locate":
                 try:
-                    if untitled and word in TITLED_COMMANDS:
-                        error = (f"no title: `{word}` needs a layout and this "
-                                 f"session was started with --title {NO_TITLE}")
-                        print(f"           {error}")
-                        note(event=word, at=now, error=error)
-                    elif word == "key":
-                        names = [resolve_key(args.display, k)
-                                 for k in rest.split()]
-                        for key in names:
-                            held_key(args, key)
-                        note(event="key", keys=rest, at=now)
-                    elif word == "shot":
-                        shot(args.display, out / "shots" / f"{rest or now}.png")
-                    elif word == "still":
-                        still(args, out, rest or str(now))
-                        note(event="still", label=rest, at=now)
-                    elif word == "wait":
-                        time.sleep(float(rest))
-                        note(event="wait", seconds=float(rest), at=now)
-                    elif word == "dump":
-                        row = dump_row(gdb, rest, out)
-                        print(f"           {row}")
-                        note(event="dump", at=now, **row)
-                    elif word == "peek":
-                        spec, _, length = rest.rpartition(" ")
-                        row = peek_row(tgt, spec, int(length or 1, 0))
-                        print(f"           {row}")
-                        note(event="peek", at=now, **row)
-                    elif word == "poke":
-                        row = poke_row(gdb, tgt, rest)
-                        print(f"           {row}")
-                        note(event="poke", at=now, **row)
-                    elif word == "swap":
-                        if swap_error is not None:
-                            note(event="swap", at=now, error=swap_error)
-                        else:
-                            row = do_swap(args, int(rest), out, swap_log)
-                            # The default Down count is measured for one
-                            # disk set; with no emulator log nothing says
-                            # the right disk went in.
-                            if (args.swap_sequence == DEFAULT_SWAP_SEQUENCE
-                                    and swap_log is None):
-                                row.update(default_sequence=True, unchecked=True)
-                            note(event="swap", at=now, **row)
-                    elif word == "observe":
-                        note(event="observe", at=now,
-                             **observe(args, rest or str(now), tgt, maps, out,
-                                       once, window, peeks))
-                    elif word == "locate":
-                        try:
-                            base = tgt.locate()
-                            print(f"           data hunk {base:#010x}   "
-                                  f"a4 {base + A4_BIAS:#010x}")
-                            note(event="locate", base=base, at=now)
-                        except amiga.GuestError as exc:
-                            print(f"           {exc}")
-                            note(event="locate", base=None, why=str(exc), at=now)
-                    elif word == "fix":
-                        got = None if tgt.data_base is None else tgt.fix()
-                        print(f"           {got}")
-                        note(event="fix", fix=None if got is None else
-                             [got.x, got.y, got.facing], at=now)
-                    elif word == "poll":
-                        for _ in range(int(rest or 1)):
-                            once()
-                    elif word == "time":
-                        for size in PROBE_SIZES:
-                            got = []
-                            for _ in range(int(rest or 10)):
-                                begun = time.perf_counter()
-                                gdb.read_memory(args.at, size)
-                                got.append(1000 * (time.perf_counter() - begun))
-                            got.sort()
-                            print(f"           {size:>7} bytes  n={len(got)}  "
-                                  f"min {got[0]:.1f} ms  "
-                                  f"median {got[len(got) // 2]:.1f} ms  "
-                                  f"max {got[-1]:.1f} ms")
-                            note(event="time", size=size, ms=[round(v, 2)
-                                                              for v in got], at=now)
-                    elif word == "journal":
-                        note(event="journal", answered=journal(args, rest), at=now)
-                    else:
-                        note(event="unknown", line=line, at=now)
-                except (ValueError, NotImplementedError, SystemExit) as exc:
-                    # The `fsuaepor` helpers under `key`, `swap` and `still` end
-                    # a failed wait or a missing window with SystemExit; here
-                    # that would close the emulator's only debugger connection
-                    # for good.
+                    base = tgt.locate()
+                    print(f"           data hunk {base:#010x}   "
+                          f"a4 {base + A4_BIAS:#010x}")
+                    note(event="locate", base=base, at=now)
+                except amiga.GuestError as exc:
                     print(f"           {exc}")
-                    note(event=word, at=now,
-                         error=f"{type(exc).__name__}: {exc}")
+                    note(event="locate", base=None, why=str(exc), at=now)
+            elif word == "fix":
+                got = None if tgt.data_base is None else tgt.fix()
+                print(f"           {got}")
+                note(event="fix", fix=None if got is None else
+                     [got.x, got.y, got.facing], at=now)
+            elif word == "poll":
+                for _ in range(int(rest or 1)):
+                    once()
+            elif word == "time":
+                for size in PROBE_SIZES:
+                    got = []
+                    for _ in range(int(rest or 10)):
+                        begun = time.perf_counter()
+                        gdb.read_memory(args.at, size)
+                        got.append(1000 * (time.perf_counter() - begun))
+                    got.sort()
+                    print(f"           {size:>7} bytes  n={len(got)}  "
+                          f"min {got[0]:.1f} ms  "
+                          f"median {got[len(got) // 2]:.1f} ms  "
+                          f"max {got[-1]:.1f} ms")
+                    note(event="time", size=size, ms=[round(v, 2)
+                                                      for v in got], at=now)
+            else:
+                return False
+            return True
+
+        def beat() -> None:
             # The heartbeat is also the proof: a read every second, from a
             # machine nobody has stopped.
             vh = gdb.read_memory(VHPOSR, 2)
             note(event="beat", vhposr=vh.hex(),
                  at=round(time.monotonic() - started, 1))
-            time.sleep(args.interval)
+
+        run_commands(args, commands, started, note, handle, beat, time.sleep)
     finally:
         mapstate._data_dir = was                        # noqa: SLF001
         log.close()
         gdb.close()
+    return 0
+
+
+def common_command(args, out: pathlib.Path, note, idle, swap, word: str,
+                   rest: str, now: float) -> bool:
+    """The commands that need no connection, shared by `session` and `wish`.
+
+    `idle(seconds)` is how a driver waits: `session` sleeps, `wish` keeps its
+    window's events running.  `swap` is `(error, log path)`.  Returns False
+    for any other word.
+    """
+    swap_error, swap_log = swap
+    if word == "key":
+        names = [resolve_key(args.display, k) for k in rest.split()]
+        for key in names:
+            held_key(args, key)
+        note(event="key", keys=rest, at=now)
+    elif word == "shot":
+        shot(args.display, out / "shots" / f"{rest or now}.png")
+    elif word == "still":
+        still(args, out, rest or str(now))
+        note(event="still", label=rest, at=now)
+    elif word == "wait":
+        idle(float(rest))
+        note(event="wait", seconds=float(rest), at=now)
+    elif word == "swap":
+        if swap_error is not None:
+            note(event="swap", at=now, error=swap_error)
+        else:
+            row = do_swap(args, int(rest), out, swap_log)
+            # The default Down count is measured for one disk set; with no
+            # emulator log nothing says the right disk went in.
+            if (args.swap_sequence == DEFAULT_SWAP_SEQUENCE
+                    and swap_log is None):
+                row.update(default_sequence=True, unchecked=True)
+            note(event="swap", at=now, **row)
+    elif word == "journal":
+        note(event="journal", answered=journal(args, rest), at=now)
+    else:
+        return False
+    return True
+
+
+def run_commands(args, commands: pathlib.Path, started: float, note, handle,
+                 beat, idle) -> None:
+    """Read `commands` as it grows until `quit` or `--seconds`.
+
+    `handle(word, rest, line, now)` runs one command and returns False when it
+    does not know the word.  A mistyped or unconfigured command costs its own
+    line, not the run, because the one connection cannot be taken up again.
+    `beat()` runs after each pass and `idle(--interval)` waits before the next.
+    """
+    read = 0
+    while time.monotonic() - started < args.seconds:
+        lines = commands.read_text().splitlines()
+        while read < len(lines):
+            line = lines[read].strip()
+            read += 1
+            if not line or line.startswith("#"):
+                continue
+            word, _, rest = line.partition(" ")
+            now = round(time.monotonic() - started, 1)
+            print(f"[{now:7.1f}s] {line}")
+            if word == "quit":
+                return
+            try:
+                if not handle(word, rest, line, now):
+                    note(event="unknown", line=line, at=now)
+            except (ValueError, NotImplementedError, SystemExit) as exc:
+                # The `fsuaepor` helpers under `key`, `swap` and `still` end
+                # a failed wait or a missing window with SystemExit; here
+                # that would close the emulator's only debugger connection
+                # for good.
+                print(f"           {exc}")
+                note(event=word, at=now,
+                     error=f"{type(exc).__name__}: {exc}")
+        beat()
+        idle(args.interval)
+
+
+# -- Wish as the player runs it ------------------------------------------------
+
+#: What the `wish` command sets for the window and puts back afterwards.
+WISH_FLAG = "WISH_EXPERIMENTAL_AMIGA_FSUAE"
+WISH_ENV = (WISH_FLAG, "XDG_CONFIG_HOME", "XDG_DATA_HOME")
+
+#: The session commands that read the emulator, which `wish` refuses: the
+#: window holds the only way to the game, and the point of the run is that
+#: nothing else does.
+WISH_REFUSED = ("peek", "poke", "locate", "fix", "dump", "poll", "time", "geo")
+
+#: How often the window's events run while a command waits.
+PUMP_STEP = 0.05
+
+
+def helper_row(port: int) -> dict:
+    """What the connection helper for `port` has published, and whether it lives.
+
+    Reads files and `/proc` only; it opens no socket, so it can be asked as
+    often as a run likes without touching the emulator.
+    """
+    runtime = fsuaehelper.runtime_dir()
+    files = fsuaehelper.Paths(port, runtime)
+    try:
+        info = json.loads(files.json.read_text())
+    except (OSError, ValueError):
+        info = None
+    pid = info.get("pid") if isinstance(info, dict) else None
+    return {"json": info, "pid": pid,
+            "alive": isinstance(pid, int) and alive(pid),
+            "live": fsuaehelper.find(port, runtime) is not None,
+            "sock": files.sock.exists()}
+
+
+def parse_disks_for(items: list[str] | None) -> dict[str, str]:
+    """`--disks-for KEY=FOLDER` as the `game_folders` row a player's
+    Preferences would write, refusing an unknown title or a missing folder."""
+    from automap.maps import AMIGA_ONLY_TITLES
+    from goldbox import c64_port
+
+    known = {g.key for g in c64_port.GAMES} | {t.key for t in AMIGA_ONLY_TITLES}
+    folders: dict[str, str] = {}
+    for item in items or []:
+        key, sep, folder = item.partition("=")
+        if not sep or not key or not folder:
+            raise SystemExit(f"--disks-for {item!r}: expected KEY=FOLDER")
+        if key not in known:
+            raise SystemExit(f"--disks-for {item!r}: {key!r} is not a title "
+                             f"({', '.join(sorted(known))})")
+        if not pathlib.Path(folder).is_dir():
+            raise SystemExit(f"--disks-for {item!r}: {folder} is not a folder")
+        folders[key] = str(pathlib.Path(folder).resolve())
+    return folders
+
+
+def open_wish(out: pathlib.Path):
+    """The real Wish window, offscreen, with the default `Session`.
+
+    Settings are read from the run's private config directory, where `wish`
+    wrote `game_folders`, so the window finds its maps through the same row
+    Preferences edits.
+    """
+    from tools.gui import mapmarker
+
+    mapmarker._offscreen()                              # noqa: SLF001
+    from PyQt6.QtWidgets import QApplication
+
+    from automap.config import Settings
+    from wish.window import WishWindow
+
+    app = QApplication.instance() or QApplication([])
+    window = WishWindow(None, settings=Settings.load())
+    window.resize(1500, 950)
+    window.show()
+    app.processEvents()
+    return app, window
+
+
+class WishRun:
+    """One driver process's window, which `close` and `open` may repeat.
+
+    Closing runs the window's own `closeEvent` and then drops what the
+    `wish.fsuae` module caches, so the next window starts as a new Wish
+    process would: no transport, no title, no helper it believes it started.
+    The helper itself is detached and carries on.
+    """
+
+    def __init__(self, args, out: pathlib.Path):
+        self.args, self.out = args, out
+        self.app = self.window = None
+
+    def open(self) -> None:
+        if self.window is not None:
+            raise ValueError("the window is already open")
+        self.app, self.window = open_wish(self.out)
+
+    def close(self) -> None:
+        if self.window is None:
+            raise ValueError("no window is open")
+        from wish import fsuae
+
+        window, self.window = self.window, None
+        closed = window.close()
+        self.pump(0)
+        fsuae.reset()
+        fsuae.forget_helper()
+        if closed is False:
+            raise ValueError("the window did not close")
+
+    def pump(self, seconds: float) -> None:
+        end = time.monotonic() + seconds
+        while True:
+            if self.app is not None:
+                self.app.processEvents()
+            if time.monotonic() >= end:
+                return
+            time.sleep(PUMP_STEP)
+
+    def connected(self) -> bool:
+        return self.window is not None and self.window.session.target is not None
+
+    def wait_connected(self, seconds: float) -> dict:
+        """Run the window until its session attaches, or `seconds` pass."""
+        if self.window is None:
+            raise ValueError("no window is open")
+        began = time.monotonic()
+        while not self.connected() and time.monotonic() - began < seconds:
+            self.pump(PUMP_STEP)
+        row = {"connected": self.connected(),
+               "seconds": round(time.monotonic() - began, 1),
+               "session": self.window.session.note,
+               "helper": helper_row(self.args.port)}
+        if not row["connected"]:
+            row["error"] = f"not connected after {seconds:g} s"
+        return row
+
+    def observe(self, name: str) -> dict:
+        """The game screen, the helper, and what the window shows, as one row.
+
+        The window is run for `--observe-wait` first so its own timer does the
+        reading; nothing here ticks the map or reads memory.
+        """
+        from tools.gui import mapmarker
+
+        shot(self.args.display, self.out / "shots" / f"{name}.png")
+        row: dict = {"name": name, "error": None, "window": self.window is not None,
+                     "tab": None, "helper": helper_row(self.args.port)}
+        if self.window is None:
+            return row
+        window = self.window
+        self.pump(self.args.observe_wait)
+        row["helper"] = helper_row(self.args.port)
+        try:
+            binding = window.map
+            st = binding.state
+            row["tab"] = {"world_page": None}
+            row["session"] = {"state": window.session.state,
+                              "note": window.session.note,
+                              "connected": window.session.target is not None}
+            row["window_status"] = window.statusBar().currentMessage()
+            row["tab"].update(mapmarker.reading(binding, name))
+            world_page = (binding.world_canvas is not None
+                          and binding.world_page_shown())
+            row["tab"].update(
+                page=window.tabs.tabText(window.tabs.currentIndex()),
+                outdoors=st.outdoors, travel_window=st.window,
+                heading=st.heading, world_page=world_page)
+            mapmarker.shot(self.app, window, self.out / f"{name}-window.png")
+            mapmarker.shot(self.app, window.tabs.currentWidget(),
+                           self.out / f"{name}-tab.png")
+            mapmarker.shot(self.app, binding.canvas, self.out / f"{name}-map.png")
+            # The map canvas is grabbed whatever page is up, so a hidden world
+            # page would look like wilderness evidence.
+            if world_page:
+                mapmarker.shot(self.app, binding.world_canvas,
+                               self.out / f"{name}-world.png")
+        except Exception as exc:                # noqa: BLE001 -- the row is the evidence
+            row["error"] = f"{type(exc).__name__}: {exc}"
+        return row
+
+
+def check_wish_arguments(args) -> dict[str, str]:
+    """Everything `wish` can reject, rejected before the window exists."""
+    if args.swap_sequence:
+        try:
+            expand_sequence(args.swap_sequence, 0)
+        except ValueError as exc:
+            raise SystemExit(f"--swap-sequence {args.swap_sequence!r}: {exc}"
+                             ) from exc
+    return parse_disks_for(args.disks_for)
+
+
+def wish(args) -> int:
+    """Run the real Wish window against a running FS-UAE, as a player would.
+
+    **This never opens the debugger.**  The fork takes one client per run, and
+    here that client is the connection helper Wish starts itself
+    (`wish/fsuae.py`, `automap/fsuaehelper.py`).  What the window shows and what
+    the helper has published are read from this process; the game is driven by
+    keys through xdotool, as `session` does.
+
+    Commands, one a line, appended to `--commands` while this runs:
+    `key`, `shot`, `still`, `wait`, `swap` and `journal` as in `session`
+    (`wait` keeps the window's events running), and
+
+        await <seconds>     run the window until its session is connected
+        observe <name>      the game screenshot, then `-window.png`, `-tab.png`,
+                            `-map.png` (and `-world.png` while that page is up),
+                            the window's reading, status line and the helper's
+                            JSON with whether its pid lives
+        helper              the helper's JSON and whether its pid lives
+        close               close the window, as quitting Wish does; the
+                            helper and the emulator carry on
+        open                a new window, as starting Wish again does
+        reopen              close, then open
+        quit
+
+    `peek`, `poke`, `locate`, `fix`, `dump`, `poll`, `time` and `geo` are
+    error rows: the window owns the only way to the game.  `--disks-for
+    KEY=FOLDER` writes the title's folder where Preferences keeps it, in the
+    run's own settings.  `FSUAE_PORT` is set to `--port` for the run so the
+    window finds a pooled slot's port without a product change, and put back.
+    """
+    from tools.gui import mapmarker
+
+    out = pathlib.Path(args.out)
+    folders = check_wish_arguments(args)
+    (out / "shots").mkdir(parents=True, exist_ok=True)
+    commands = pathlib.Path(args.commands)
+    commands.touch()
+    swap_log = pathlib.Path(args.fs_uae_log) if args.fs_uae_log else None
+    swap_error = None if args.swap_sequence else (
+        "swap has no key sequence: pass --swap-sequence (see #804)")
+    swap = (swap_error, swap_log)
+    log = (out / "session.jsonl").open("a", encoding="utf-8")
+
+    def note(**payload) -> None:
+        payload["t"] = time.strftime("%H:%M:%S")
+        log.write(json.dumps(payload) + "\n")
+        log.flush()
+
+    saved = {name: os.environ.get(name) for name in WISH_ENV}
+    was_port = amiga.FSUAE_PORT
+    run = WishRun(args, out)
+    started = time.monotonic()
+    try:
+        os.environ[WISH_FLAG] = "1"
+        # `wish.fsuae.listening` and `connect` read this at call time, so the
+        # window finds the slot's port without a change to the product.
+        amiga.FSUAE_PORT = args.port
+        mapmarker.private_settings(out)
+        if folders:
+            from automap.config import Settings
+
+            settings = Settings.load()
+            settings.game_folders = {**(settings.game_folders or {}), **folders}
+            settings.save()
+        if not args.closed:
+            run.open()
+        note(event="wish", port=args.port, disks=folders,
+             window=run.window is not None)
+
+        def handle(word: str, rest: str, line: str, now: float) -> bool:
+            if word in WISH_REFUSED:
+                error = (f"`{word}` is refused: the window holds the only "
+                         "way to the game, and `wish` opens no debugger "
+                         "connection of its own")
+                print(f"           {error}")
+                note(event=word, at=now, error=error)
+            elif common_command(args, out, note, run.pump, swap, word, rest,
+                                now):
+                pass
+            elif word == "await":
+                row = run.wait_connected(float(rest or 10))
+                print(f"           {row}")
+                note(event="await", at=now, **row)
+            elif word == "observe":
+                note(event="observe", at=now, **run.observe(rest or str(now)))
+            elif word == "helper":
+                row = helper_row(args.port)
+                print(f"           {row}")
+                note(event="helper", at=now, **row)
+            elif word in ("close", "open", "reopen"):
+                if word != "open":
+                    run.close()
+                if word != "close":
+                    run.open()
+                note(event=word, at=now, helper=helper_row(args.port))
+            else:
+                return False
+            return True
+
+        run_commands(args, commands, started, note, handle, lambda: None,
+                     run.pump)
+    finally:
+        try:
+            if run.window is not None:
+                run.close()
+        finally:
+            for name, value in saved.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+            amiga.FSUAE_PORT = was_port
+            log.close()
     return 0
 
 
@@ -1218,6 +1581,7 @@ def stop(args) -> int:
     ended by ending the caller) -- which is not signalled.
     """
     status = 0
+    helper = helper_row(args.port) if getattr(args, "helper", False) else None
     for pid in args.pid:
         try:
             os.killpg(pid, signal.SIGTERM)
@@ -1238,7 +1602,34 @@ def stop(args) -> int:
             status = 1
         else:
             print(f"{pid} stopped")
+    if helper is not None:
+        status |= wait_for_helper(args, helper)
     return status
+
+
+def wait_for_helper(args, before: dict) -> int:
+    """Report whether the helper seen before the stop has gone, with its files.
+
+    The helper ends when the emulator's socket closes, a frame or two after
+    the emulator does; `--helper-wait` is how long to allow for that.
+    """
+    pid = before.get("pid")
+    if not isinstance(pid, int):
+        print(f"no helper was recorded for port {args.port}")
+        return 0
+    deadline = time.monotonic() + args.helper_wait
+    while time.monotonic() < deadline:
+        now = helper_row(args.port)
+        if not alive(pid) and not now["sock"] and now["json"] is None:
+            print(f"helper {pid} stopped; its socket and json are removed")
+            return 0
+        time.sleep(0.1)
+    now = helper_row(args.port)
+    print(f"helper {pid} after {args.helper_wait:g} s: "
+          f"{'still running' if alive(pid) else 'gone'}, "
+          f"socket {'present' if now['sock'] else 'removed'}, "
+          f"json {'present' if now['json'] is not None else 'removed'}")
+    return 1
 
 
 # -- reading one range --------------------------------------------------------
@@ -1418,15 +1809,53 @@ def main(argv: list[str] | None = None) -> int:
                    help="the emulator's log, where `swap` looks for the disk "
                         "change it caused")
 
+    w = sub.add_parser(
+        "wish", help="run the real Wish window against the emulator, as a "
+                     "player would, and drive the game by keys; opens no "
+                     "debugger connection of its own")
+    w.add_argument("--out", required=True,
+                   help="a directory for the log, the shots, the window grabs "
+                        "and the run's private settings")
+    w.add_argument("--commands", required=True,
+                   help="a file to append commands to while this runs")
+    w.add_argument("--disks-for", action="append", metavar="KEY=FOLDER",
+                   help="repeatable: the title's disk folder, written where "
+                        "Preferences keeps it (e.g. pools-of-darkness=DIR)")
+    w.add_argument("--closed", action="store_true",
+                   help="start with no window; `open` makes one")
+    w.add_argument("--display", default=os.environ.get("DISPLAY", ":0"),
+                   help="the X display the emulator is on")
+    w.add_argument("--settle", type=float, default=1.0,
+                   help="seconds to wait after each key")
+    w.add_argument("--interval", type=float, default=PUMP_STEP,
+                   help="seconds the window runs between command-file reads")
+    w.add_argument("--observe-wait", type=float, default=2.0,
+                   help="seconds the window runs before `observe` reads it")
+    w.add_argument("--seconds", type=float, default=1800.0,
+                   help="how long to stay up")
+    w.add_argument("--hold", type=float, default=0.12,
+                   help="seconds a `key` is held down; 0 sends an unheld key")
+    w.add_argument("--swap-sequence", default=DEFAULT_SWAP_SEQUENCE,
+                   help="the xdotool keys `swap` sends, as for `session`")
+    w.add_argument("--fs-uae-log",
+                   help="the emulator's log, where `swap` looks for the disk "
+                        "change it caused")
+
     killer = sub.add_parser("stop", help="kill a launch's process group")
     killer.add_argument("pid", nargs="+", type=int)
     killer.add_argument("--wait", type=float, default=5.0,
                         help="seconds to wait for each group to end")
+    killer.add_argument("--helper", action="store_true",
+                        help="also wait for the connection helper of --port "
+                             "to end and its socket and json to go, and "
+                             "report it")
+    killer.add_argument("--helper-wait", type=float, default=10.0,
+                        help="seconds to allow for that")
 
     args = parser.parse_args(argv)
     return {"probe": probe, "locate": locate, "fix": fix, "geo": geo,
             "dump": dump, "automap": automap, "session": session,
-            "launch": launch, "stop": stop}[args.command](args)
+            "wish": wish, "launch": launch, "stop": stop}[args.command](args)
 
 
 if __name__ == "__main__":

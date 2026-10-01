@@ -1771,3 +1771,349 @@ def test_detection_names_two_titles_loaded_in_different_regions():
         fsuaegdb.detect_layout(transport(FakeAmiga(memory)))
     assert "Pools of Darkness" in str(err.value)
     assert "Secret of the Silver Blades" in str(err.value)
+
+
+# connection helper: the verbs that connect stand aside for it
+
+
+@pytest.fixture
+def helper_holds(monkeypatch, tmp_path):
+    """A live helper for every port, and a transport that fails if it is built."""
+    from automap import fsuaehelper
+
+    monkeypatch.setattr(fsuaehelper, "runtime_dir", lambda environ=None: tmp_path)
+    monkeypatch.setattr(fsuaehelper, "find",
+                        lambda port, runtime, platform=None: {"pid": 4242})
+    opened = []
+
+    def build(*a, **k):
+        opened.append(k)
+        raise AssertionError("opened a socket")
+
+    monkeypatch.setattr(fsuaegdb.amiga, "FsuaeGdb", build)
+    from tools.amiga import amigatarget
+
+    monkeypatch.setattr(amigatarget, "find_maps",
+                        lambda layout, where: ({"GEO1": object()}, tmp_path / "x.adf"))
+    return opened
+
+
+VERBS = (["probe"], ["locate"], ["fix"], ["geo"],
+         ["dump", "--at", "0", "--length", "4", "--out", "{tmp}/d.bin"],
+         ["automap", "--out", "{tmp}/a"],
+         ["session", "--out", "{tmp}/s", "--commands", "{tmp}/c"])
+
+
+@pytest.mark.parametrize("verb", VERBS, ids=lambda v: v[0])
+def test_a_verb_that_connects_stops_when_a_helper_holds_the_door(
+        helper_holds, tmp_path, verb):
+    argv = [a.replace("{tmp}", str(tmp_path)) for a in verb]
+    with pytest.raises(SystemExit, match="helper .*pid 4242.*port 6525"):
+        fsuaegdb.main(["--port", "6525", "--title", "pools-of-darkness", *argv])
+    assert helper_holds == []
+
+
+def test_with_no_helper_a_verb_connects_as_before(monkeypatch, tmp_path):
+    from automap import fsuaehelper
+
+    monkeypatch.setattr(fsuaehelper, "runtime_dir", lambda environ=None: tmp_path)
+    seen = []
+    monkeypatch.setattr(fsuaegdb.amiga, "FsuaeGdb",
+                        lambda **k: seen.append(k) or "gdb")
+    assert fsuaegdb.connect(argparse.Namespace(
+        host="127.0.0.1", port=6525, timeout=None)) == "gdb"
+    assert seen[0]["port"] == 6525
+
+
+# wish: the real window, driven from outside
+
+
+class FakeApp:
+    def processEvents(self):                            # noqa: N802
+        pass
+
+
+class FakeWindow:
+    """What `observe` and `close` read off a `WishWindow`."""
+
+    def __init__(self, connected=True):
+        self.closed = False
+        self.session = argparse.Namespace(
+            target=object() if connected else None, state="connected",
+            note="Amiga (FS-UAE): connected")
+        self.map = argparse.Namespace(
+            state=argparse.Namespace(outdoors=True, window=1, heading=2),
+            canvas="canvas", world_canvas="world",
+            world_page_shown=lambda: True)
+        self.tabs = argparse.Namespace(currentIndex=lambda: 0,
+                                       tabText=lambda i: "Automap",
+                                       currentWidget=lambda: "tab")
+
+    def statusBar(self):                                # noqa: N802
+        return argparse.Namespace(currentMessage=lambda: "GEO21 at 1,2")
+
+    def close(self):
+        self.closed = True
+        return True
+
+
+def wish_args(tmp_path, **kw):
+    base = dict(out=str(tmp_path / "run"), commands=str(tmp_path / "cmds"),
+                disks_for=None, closed=False, display=":77", settle=0.0,
+                interval=0.0, observe_wait=0.0, seconds=30.0, hold=0.12,
+                swap_sequence=None, fs_uae_log=None, title=None,
+                host="127.0.0.1", port=6531, timeout=None)
+    return argparse.Namespace(**{**base, **kw})
+
+
+@pytest.fixture
+def wished(monkeypatch, tmp_path):
+    """`wish` over a fake window; no socket may be opened by anything."""
+    from automap import fsuaehelper
+    from tools.amiga import fsuaepor
+    from tools.gui import mapmarker
+    from wish import fsuae
+
+    seen = {"windows": [], "keys": [], "grabs": [], "resets": 0, "forgets": 0,
+            "port": [], "flag": [], "shots": []}
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    monkeypatch.setattr(fsuaehelper, "runtime_dir", lambda environ=None: runtime)
+    monkeypatch.setattr(fsuaehelper, "find", lambda port, rt, platform=None: None)
+
+    def refuse_socket(*a, **k):
+        raise AssertionError("the driver opened the debugger")
+
+    monkeypatch.setattr(fsuaegdb.amiga, "FsuaeGdb", refuse_socket)
+
+    def open_wish(out):
+        window = FakeWindow()
+        seen["windows"].append(window)
+        seen["port"].append(fsuaegdb.amiga.FSUAE_PORT)
+        seen["flag"].append(os.environ.get(fsuaegdb.WISH_FLAG))
+        return FakeApp(), window
+
+    monkeypatch.setattr(fsuaegdb, "open_wish", open_wish)
+    monkeypatch.setattr(fsuaepor, "keys", lambda a: seen["keys"].append(a.key))
+    monkeypatch.setattr(fsuaegdb, "key_known", lambda display, key: True)
+    monkeypatch.setattr(fsuaegdb, "shot",
+                        lambda display, path: seen["shots"].append(path.name))
+    monkeypatch.setattr(mapmarker, "reading",
+                        lambda binding, tag: {"tag": tag, "x": 1, "y": 2})
+    monkeypatch.setattr(mapmarker, "shot", lambda app, widget, path:
+                        seen["grabs"].append((widget, path.name)))
+    monkeypatch.setattr(fsuae, "reset", lambda: seen.update(
+        resets=seen["resets"] + 1))
+    monkeypatch.setattr(fsuae, "forget_helper", lambda: seen.update(
+        forgets=seen["forgets"] + 1))
+    monkeypatch.setattr(fsuaegdb.time, "sleep", lambda s: None)
+    for name in fsuaegdb.WISH_ENV:
+        monkeypatch.delenv(name, raising=False)
+    seen["runtime"] = runtime
+    return seen
+
+
+def run_wish(tmp_path, lines, **kw):
+    args = wish_args(tmp_path, **kw)
+    pathlib.Path(args.commands).write_text("\n".join([*lines, "quit"]) + "\n")
+    assert fsuaegdb.wish(args) == 0
+    rows = [json.loads(line) for line in
+            (tmp_path / "run" / "session.jsonl").read_text().splitlines()]
+    return rows
+
+
+def by_event(rows, event):
+    return [r for r in rows if r["event"] == event]
+
+
+def test_wish_observe_records_the_window_the_helper_and_four_grabs(
+        wished, tmp_path):
+    (wished["runtime"] / "fsuae-6531.json").write_text(json.dumps(
+        {"pid": os.getpid(), "socket": "x"}))
+    rows = run_wish(tmp_path, ["observe a0"])
+    row = by_event(rows, "observe")[0]
+    assert row["error"] is None
+    assert row["tab"]["tag"] == "a0"
+    assert (row["tab"]["page"], row["tab"]["world_page"]) == ("Automap", True)
+    assert row["session"] == {"state": "connected", "connected": True,
+                              "note": "Amiga (FS-UAE): connected"}
+    assert row["window_status"] == "GEO21 at 1,2"
+    assert row["helper"]["json"]["pid"] == os.getpid()
+    assert row["helper"]["alive"] is True
+    assert row["helper"]["live"] is False
+    assert wished["grabs"] == [
+        (wished["windows"][0], "a0-window.png"), ("tab", "a0-tab.png"),
+        ("canvas", "a0-map.png"), ("world", "a0-world.png")]
+    assert wished["shots"] == ["a0.png"]
+
+
+def test_wish_reports_a_helper_whose_pid_is_gone(wished, tmp_path, monkeypatch):
+    (wished["runtime"] / "fsuae-6531.json").write_text(json.dumps({"pid": 77}))
+    monkeypatch.setattr(fsuaegdb, "alive", lambda pid: False)
+    helper = by_event(run_wish(tmp_path, ["helper"]), "helper")[0]
+    assert (helper["pid"], helper["alive"], helper["sock"]) == (77, False, False)
+
+
+@pytest.mark.parametrize("word", fsuaegdb.WISH_REFUSED)
+def test_wish_refuses_every_command_that_reads_the_emulator(
+        wished, tmp_path, word):
+    rows = run_wish(tmp_path, [f"{word} +0x10 4"])
+    assert "refused" in by_event(rows, word)[0]["error"]
+
+
+def test_wish_keys_are_held_through_fsuaepor_and_a_bad_line_costs_one_row(
+        wished, tmp_path):
+    rows = run_wish(tmp_path, ["key KP_Up p", "wait x", "nonsense"])
+    assert wished["keys"] == [["KP_Up"], ["p"]]
+    assert "ValueError" in by_event(rows, "wait")[0]["error"]
+    assert by_event(rows, "unknown")[0]["line"] == "nonsense"
+
+
+def test_wish_close_drops_the_module_state_and_open_builds_a_new_window(
+        wished, tmp_path):
+    rows = run_wish(tmp_path, ["close", "helper", "observe gone", "open",
+                               "reopen"])
+    first, second, third = wished["windows"]
+    assert first.closed and second.closed
+    # close, reopen's close, and the final close when the run ends
+    assert (wished["resets"], wished["forgets"]) == (3, 3)
+    assert third.closed
+    gone = by_event(rows, "observe")[0]
+    assert (gone["window"], gone["tab"]) == (False, None)
+    assert "helper" in gone
+    assert [r["event"] for r in rows if r["event"] in ("close", "open", "reopen")
+            ] == ["close", "open", "reopen"]
+
+
+def test_wish_close_and_open_in_the_wrong_order_are_error_rows(wished, tmp_path):
+    rows = run_wish(tmp_path, ["open", "close", "close"])
+    assert "already open" in by_event(rows, "open")[0]["error"]
+    assert "no window" in by_event(rows, "close")[1]["error"]
+
+
+def test_wish_closed_starts_without_a_window(wished, tmp_path):
+    run_wish(tmp_path, [], closed=True)
+    assert wished["windows"] == []
+
+
+def test_wish_sets_the_port_and_the_flag_for_the_window_and_puts_them_back(
+        wished, tmp_path, monkeypatch):
+    monkeypatch.setenv(fsuaegdb.WISH_FLAG, "off")
+    monkeypatch.setenv("XDG_CONFIG_HOME", "/somewhere")
+    before = fsuaegdb.amiga.FSUAE_PORT
+    run_wish(tmp_path, [])
+    assert wished["port"] == [6531] and wished["flag"] == ["1"]
+    assert fsuaegdb.amiga.FSUAE_PORT == before
+    assert os.environ[fsuaegdb.WISH_FLAG] == "off"
+    assert os.environ["XDG_CONFIG_HOME"] == "/somewhere"
+    assert "XDG_DATA_HOME" not in os.environ
+
+
+def test_wish_puts_the_port_back_when_the_window_will_not_open(
+        wished, tmp_path, monkeypatch):
+    def boom(out):
+        raise RuntimeError("no display")
+
+    monkeypatch.setattr(fsuaegdb, "open_wish", boom)
+    before = fsuaegdb.amiga.FSUAE_PORT
+    with pytest.raises(RuntimeError):
+        run_wish(tmp_path, [])
+    assert fsuaegdb.amiga.FSUAE_PORT == before
+    assert fsuaegdb.WISH_FLAG not in os.environ
+
+
+def test_wish_writes_the_title_folder_where_preferences_keeps_it(
+        wished, tmp_path, monkeypatch):
+    from automap.config import Settings
+
+    folder = tmp_path / "adfs"
+    folder.mkdir()
+    read = []
+
+    def open_wish(out):
+        read.append(Settings.load().game_folders)
+        return FakeApp(), FakeWindow()
+
+    monkeypatch.setattr(fsuaegdb, "open_wish", open_wish)
+    run_wish(tmp_path, [], disks_for=[f"pools-of-darkness={folder}"])
+    assert read == [{"pools-of-darkness": str(folder.resolve())}]
+    assert (tmp_path / "run" / "config").is_dir()
+
+
+@pytest.mark.parametrize("item,text", [
+    ("pools-of-darkness", "KEY=FOLDER"),
+    ("not-a-title=/tmp", "not a title"),
+    ("pools-of-darkness=/no/such/folder", "not a folder"),
+])
+def test_wish_refuses_a_bad_disks_for_before_the_window_exists(
+        wished, tmp_path, monkeypatch, item, text):
+    monkeypatch.setattr(fsuaegdb, "open_wish", lambda out: pytest.fail("opened"))
+    with pytest.raises(SystemExit, match=text):
+        fsuaegdb.wish(wish_args(tmp_path, disks_for=[item]))
+
+
+def test_wish_await_says_how_long_the_session_took_and_flags_a_miss(
+        wished, tmp_path, monkeypatch):
+    rows = run_wish(tmp_path, ["await 5"])
+    got = by_event(rows, "await")[0]
+    assert got["connected"] is True and "error" not in got
+
+    monkeypatch.setattr(fsuaegdb, "open_wish", lambda out: (
+        FakeApp(), FakeWindow(connected=False)))
+    clock = iter(x * 0.5 for x in range(1000))
+    monkeypatch.setattr(fsuaegdb.time, "monotonic", lambda: next(clock))
+    rows = run_wish(tmp_path, ["await 2"])
+    got = by_event(rows, "await")[-1]
+    assert got["connected"] is False and "not connected" in got["error"]
+
+
+# stop: the helper goes with the emulator
+
+
+def test_stop_helper_reports_a_helper_that_went_with_its_files(
+        monkeypatch, capsys, tmp_path):
+    from automap import fsuaehelper
+
+    monkeypatch.setattr(fsuaehelper, "runtime_dir", lambda environ=None: tmp_path)
+    monkeypatch.setattr(fsuaehelper, "find", lambda *a, **k: None)
+    (tmp_path / "fsuae-6531.json").write_text(json.dumps({"pid": 99}))
+    live = {5: True, 99: True}
+
+    def killpg(pid, sig):
+        live[5] = False
+        (tmp_path / "fsuae-6531.json").unlink()      # the helper's own cleanup
+        live[99] = False
+
+    monkeypatch.setattr(fsuaegdb.os, "killpg", killpg, raising=False)
+    monkeypatch.setattr(fsuaegdb, "alive", lambda pid: live[pid])
+    monkeypatch.setattr(fsuaegdb.time, "sleep", lambda s: None)
+    assert fsuaegdb.stop(stop_args(helper=True, helper_wait=10.0,
+                                   port=6531)) == 0
+    assert "helper 99 stopped; its socket and json are removed" in (
+        capsys.readouterr().out)
+
+
+def test_stop_helper_waits_ten_seconds_and_says_what_is_left(
+        monkeypatch, capsys, tmp_path):
+    from automap import fsuaehelper
+
+    monkeypatch.setattr(fsuaehelper, "runtime_dir", lambda environ=None: tmp_path)
+    monkeypatch.setattr(fsuaehelper, "find", lambda *a, **k: None)
+    (tmp_path / "fsuae-6531.json").write_text(json.dumps({"pid": 99}))
+    (tmp_path / "fsuae-6531.sock").write_text("")
+    clock = iter(range(0, 1000))
+    monkeypatch.setattr(fsuaegdb.os, "killpg", lambda pid, sig: None, raising=False)
+    monkeypatch.setattr(fsuaegdb, "alive", lambda pid: pid == 99)
+    monkeypatch.setattr(fsuaegdb.time, "sleep", lambda s: None)
+    monkeypatch.setattr(fsuaegdb.time, "monotonic", lambda: next(clock))
+    assert fsuaegdb.stop(stop_args(wait=0, helper=True, helper_wait=10.0,
+                                   port=6531)) == 1
+    out = capsys.readouterr().out
+    assert "helper 99 after 10 s: still running, socket present, json present" in out
+
+
+def test_stop_without_helper_flag_reads_no_helper_files(monkeypatch, capsys):
+    monkeypatch.setattr(fsuaegdb, "helper_row", lambda port: pytest.fail("read"))
+    monkeypatch.setattr(fsuaegdb.os, "killpg", lambda pid, sig: None, raising=False)
+    monkeypatch.setattr(fsuaegdb, "alive", lambda pid: False)
+    assert fsuaegdb.stop(stop_args()) == 0
