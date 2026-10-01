@@ -827,3 +827,9 @@ def test_an_npc_class_code_can_be_written_deliberately(tmp_path):
     assert _record(out, "ROLAND").get("char_class") == 9
     assert _record(out, "ROLAND").get("class_bits") == 8      # bits untouched
     assert any("does not match classes" in c for c in changes)
+
+
+def test_the_export_header_says_unknown_bytes_are_copied_unchanged():
+    text = to_yaml({"source_path": "X.D64", "game": "pool-of-radiance", "party": []})
+    assert ("# The original disk is never modified. Unknown bytes and the party\n"
+            "# header are copied unchanged.\n") in text

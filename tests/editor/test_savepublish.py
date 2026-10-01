@@ -2887,3 +2887,24 @@ def test_an_amiga_pool_party_with_punctuation_the_c64_draws_differently_asks_for
     for position, name in chosen.items():
         assert written[position].record.get("name") == name
     assert "A.B*C,D?E/F:G;H" in {m.record.get("name") for m in written}
+
+
+@pytest.mark.parametrize("tracks_size", [175531, 196608, 197376])
+def test_saving_to_a_d64_the_editor_will_not_write_says_only_that_it_cannot(
+        app, tmp_path, monkeypatch, tracks_size):
+    """A 35-track image with error bytes (and the 40- and 42-track images) is
+    refused, and the box shows Donald's sentence rather than the image's size."""
+    plain = synthetic_save(tmp_path, "plain.d64").read_bytes()
+    path = tmp_path / "ripped.d64"
+    path.write_bytes(plain + bytes([1]) * (tracks_size - len(plain)))
+    editor = EditorBinding(make_root(), str(path))
+    editor.backups = tmp_path / "backups"
+    editor.roster.selectRow(0)
+    editor._widgets["gold"].setValue(9999)
+    shown = []
+    monkeypatch.setattr(ew.QMessageBox, "critical",
+                        lambda parent, title, text: shown.append((title, text)))
+
+    assert editor.save() == "failed"
+
+    assert shown == [("Cannot save", "Error: Cannot save to this disk.")]

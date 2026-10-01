@@ -110,6 +110,7 @@ but a save disk, so the safe rule costs nothing.
 
 from __future__ import annotations
 
+import logging
 import os
 import pathlib
 from dataclasses import dataclass
@@ -321,6 +322,9 @@ VARIANTS: dict[int, Variant] = _variants()
 ERROR_OK = 1
 
 
+_log = logging.getLogger("wish.goldbox.d64")
+
+
 class D64Error(Exception):
     """Base class for disk image errors."""
 
@@ -330,7 +334,18 @@ class InvalidImageError(D64Error):
 
 
 class ReadOnlyImageError(D64Error):
-    """A write was attempted on a variant this reader will not modify."""
+    """A write was attempted on a variant this reader will not modify.
+
+    The message is the sentence the Character Editor shows the player; the
+    image's size and description are kept as attributes and logged.
+    """
+
+    MESSAGE = "Error: Cannot save to this disk."
+
+    def __init__(self, size: int, description: str) -> None:
+        super().__init__(self.MESSAGE)
+        self.size = size
+        self.description = description
 
 
 class FileNotFoundInImage(D64Error, KeyError):
@@ -483,9 +498,10 @@ class D64:
 
     def _require_writable(self) -> None:
         if not self._variant.writable:
-            raise ReadOnlyImageError(
-                f"this is a {self._variant.size}-byte D64 ({self._variant.description}); "
-                f"only plain {IMAGE_SIZE}-byte 35-track images may be written")
+            _log.debug("refusing a write to a %d-byte D64 (%s); only plain "
+                       "%d-byte 35-track images may be written",
+                       self._variant.size, self._variant.description, IMAGE_SIZE)
+            raise ReadOnlyImageError(self._variant.size, self._variant.description)
 
     def error_code(self, track: int, sector: int) -> int | None:
         """The copier's error byte for a sector, or None if the image has none.
