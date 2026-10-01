@@ -977,6 +977,46 @@ def test_session_key_with_an_unknown_name_is_an_error_row_and_sends_nothing(
     assert any(r["event"] == "wait" for r in rows)
 
 
+def test_session_key_with_an_upper_case_letter_is_an_error_row_and_sends_nothing(
+        driven, tmp_path):
+    _, log = driven
+    events, rows = run_session(tmp_path, ["key p Q", "wait 0.5"])
+    assert "'q'" in events["key"]["error"]
+    assert log["keys"] == []
+    assert any(r["event"] == "wait" for r in rows)
+
+
+def test_press_refuses_an_upper_case_letter_before_any_xdotool_call(monkeypatch):
+    calls = []
+    monkeypatch.setattr(fsuaegdb.subprocess, "run",
+                        lambda *a, **k: calls.append(a))
+    with pytest.raises(ValueError, match="^Key 'Q' .*use 'q'"):
+        fsuaegdb.press(":99", "Q", 0)
+    assert calls == []
+
+
+def test_journal_answer_letters_are_typed_lower_case(monkeypatch):
+    from tools.amiga import amigabladesjournal as tool
+
+    sent = []
+    monkeypatch.setattr(fsuaegdb, "press",
+                        lambda display, key, settle: sent.append(key))
+    monkeypatch.setattr(tool, "find_disk", lambda adf: None)
+    monkeypatch.setattr(tool, "answer", lambda **kw: [
+        kw["press"](k) for k in ("A", "b", "RET")] and True)
+    args = argparse.Namespace(display=":99", settle=0)
+    fsuaegdb.journal(args)
+    assert sent == ["a", "b", "Return"]
+
+
+def test_session_key_named_keysyms_and_lower_case_letters_are_not_refused(
+        driven, tmp_path):
+    _, log = driven
+    run_session(tmp_path, ["key Return F12 Escape q"])
+    assert [k[0] for k in log["keys"]] == [["Return"], ["F12"], ["Escape"],
+                                          ["q"]]
+
+
 def test_key_known_without_xdotool_is_a_value_error(monkeypatch):
     def missing(*a, **k):
         raise FileNotFoundError("xdotool")
