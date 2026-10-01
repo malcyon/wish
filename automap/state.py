@@ -498,6 +498,8 @@ class Automapper:
         change the fix is accepted into the new one. Otherwise the fix is held
         until a second poll agrees with it -- a garbled read never survives
         that, and a genuine long move inside one area costs one extra tick.
+        A memory fix cannot be agreed with twice, so it is believed at the
+        party's first passable step from it.
 
         **A status line that disagrees with the engine at an area change is the
         old area's.** Curse redraws its status line a step late. On the one
@@ -592,7 +594,11 @@ class Automapper:
                 fix = Fix(*engine, "memory", fix.clock)
                 moved = (fix.x, fix.y) != (self.state.x, self.state.y)
         if jumped and not changed_area:
-            if fix.source == "memory" or self._pending != (fix.x, fix.y):
+            if fix.source == "memory" and self._stepped_from_pending(fix):
+                # The party walked on from the held square, so it was a move
+                # inside this area and not a load still in progress.
+                self.state.exploration.visit(*self._pending, self.state.geo)
+            elif fix.source == "memory" or self._pending != (fix.x, fix.y):
                 self._pending = (fix.x, fix.y)
                 return False                # wait for a second opinion
             # confirmed twice: believe it after all
@@ -842,6 +848,22 @@ class Automapper:
 
     def _adjacent(self, x: int, y: int) -> bool:
         return abs(x - self.state.x) + abs(y - self.state.y) == 1
+
+    def _stepped_from_pending(self, fix: Fix) -> bool:
+        """Is *fix* one passable step from the held jump on the resident map?
+
+        A load in progress has not been seen to take such a step before the
+        block changes, so a step from the held square means the jump was a
+        move inside this area.
+        """
+        geo = self.state.geo
+        if self._pending is None or geo is None:
+            return False
+        delta = (fix.x - self._pending[0], fix.y - self._pending[1])
+        for direction, step in STEP.items():
+            if step == delta:
+                return geo.is_passable(*self._pending, direction)
+        return False
 
     # A step costs the party one minute: PORSAVE12 and PORSAVE13 are 16:58 and
     # 16:59, one step apart. Anything longer is another action entirely --

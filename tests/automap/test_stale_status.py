@@ -15,6 +15,7 @@ from goldbox.geo import (
     BARRIERS,
     GEO_SIZE,
     GRID,
+    SOUTH,
     WALLS_NORTH_EAST,
     WALLS_SOUTH_WEST,
     Geo,
@@ -43,12 +44,13 @@ def test_the_sewers_are_entered_at_the_square_the_game_names(tmp_path, monkeypat
     assert (14, 15) not in state.exploration
 
 
-def arrive_in_the_sewers(arrival, tmp_path, monkeypatch):
+def arrive_in_the_sewers(arrival, tmp_path, monkeypatch, sewers=None):
     """Tilverton, then the sewers' map loaded with the engine at *arrival* while
     the line still reads the town's square, all on one target whose bytes change
     in place."""
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-    town, sewers = synthetic_map(1), synthetic_map(2)
+    town = synthetic_map(1)
+    sewers = sewers or synthetic_map(2)
     target = curse_target("S 8:37 14,15", (14, 15, 2), town)
     mapper = Automapper(target, {"GEO01": town, "GEO03": sewers},
                         area="GEO01", title=CURSE.title)
@@ -142,3 +144,40 @@ def test_the_rejection_ends_when_the_game_redraws_the_line(tmp_path, monkeypatch
     target.memory.update(curse_target("S 8:38 1,0", (1, 0, 2), synthetic_map(2)).memory)
     mapper.poll()
     assert (mapper.state.x, mapper.state.y) == (1, 0)
+
+
+def sewers_edge_move(tmp_path, monkeypatch, sewers=None):
+    """The party on (2,15) with the line hiding coordinates, then moved to (9,0)."""
+    target, mapper, sewers = arrive_in_the_sewers((2, 15), tmp_path, monkeypatch,
+                                                  sewers)
+    go(target, mapper, (2, 15, 2), polls=2, status="S 8:50")
+    go(target, mapper, (9, 0, 2), polls=3, status="S 8:50")
+    return target, mapper
+
+
+def test_a_hidden_coordinate_edge_move_is_believed_at_the_next_step(
+        tmp_path, monkeypatch):
+    target, mapper = sewers_edge_move(tmp_path, monkeypatch)
+    assert (mapper.state.x, mapper.state.y) == (2, 15)
+    go(target, mapper, (9, 1, 2), polls=1, status="S 8:50")
+    assert (mapper.state.x, mapper.state.y) == (9, 1)
+    assert (9, 0) in mapper.state.exploration
+
+
+def test_a_step_through_a_closed_edge_from_the_held_square_stays_held(
+        tmp_path, monkeypatch):
+    raw = bytearray(synthetic_map(2).to_bytes())
+    raw[BARRIERS + 0 * GRID + 9] &= ~(0x03 << (2 * SOUTH))
+    sewers = Geo(bytes(raw))
+    assert not sewers.is_passable(9, 0, SOUTH)
+    target, mapper = sewers_edge_move(tmp_path, monkeypatch, sewers)
+    go(target, mapper, (9, 1, 2), polls=2, status="S 8:50")
+    assert (mapper.state.x, mapper.state.y) == (2, 15)
+    assert (9, 0) not in mapper.state.exploration
+
+
+def test_a_move_two_squares_from_the_held_square_stays_held(tmp_path, monkeypatch):
+    target, mapper = sewers_edge_move(tmp_path, monkeypatch)
+    go(target, mapper, (9, 2, 2), polls=2, status="S 8:50")
+    assert (mapper.state.x, mapper.state.y) == (2, 15)
+    assert (9, 0) not in mapper.state.exploration
