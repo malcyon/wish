@@ -13,7 +13,7 @@ run uses.
     winwish.py fetch  --sha SHA
     winwish.py up     --sha SHA --holder H --mute-proof FILE --df0 C:\\Amiga\\Disks\\a.adf
     winwish.py shot   --holder H --window wish --out wish.png
-    winwish.py restart --sha SHA --holder H
+    winwish.py restart --holder H
     winwish.py log    --holder H --out DIR
     winwish.py down   --holder H
 
@@ -27,6 +27,7 @@ sets `BatchMode` and `SSH_ASKPASS_REQUIRE`, so a failure is an error, never a pr
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import pathlib
@@ -40,14 +41,18 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from tools.amiga import winvmguest  # noqa: E402
-from tools.amiga.winuaesession import RouteError, WinGuest, _mute_proof  # noqa: E402
+from tools.amiga.winuaesession import (  # noqa: E402
+    RouteError,
+    WinGuest,
+    _mute_proof,
+    terminating,
+)
 from tools.registry import scratch  # noqa: E402
 
 ROOT = r"C:\Amiga\wish"
 ARTIFACT = "frozen-windows"
 WORKFLOW = "release.yml"
 FLAG = "WISH_EXPERIMENTAL_AMIGA_WINUAE"
-TASK = "wish-run"
 HOLDER = winvmguest.HOLDER
 SHA = re.compile(r"^[0-9a-fA-F]{7,40}$")
 #: Seconds for one guest call; a download or an unzip is the slow one.
@@ -69,8 +74,16 @@ def short_sha(sha: str) -> str:
     return sha.lower()[:12]
 
 
-def build_dir(sha: str) -> str:
-    return rf"{ROOT}\{short_sha(sha)}"
+def task_name(holder: str) -> str:
+    """The scheduled task that holds this holder's Wish; two holders never share one."""
+    if not HOLDER.match(holder):
+        raise WinwishError(f"not a holder name winuae.ps1 accepts: {holder!r}")
+    return f"wish-run-{holder}"
+
+
+def build_root(holder: str) -> str:
+    """Where the holder's zips are unpacked, each into a folder of its own."""
+    return rf"{run_dir(holder)}\build"
 
 
 def run_dir(holder: str) -> str:
@@ -100,6 +113,12 @@ def environment(flag: bool, holder: str) -> dict[str, str]:
     return env
 
 
+#: Cleared in the task whatever the holder's own session has, so the window can
+#: reach no other backend and the flag-off control really has no Amiga row.
+CLEARED = ("WISH_EXPERIMENTAL_AMIGA_FSUAE", "POR_MONITOR", "WISH_EXPERIMENTAL_C64_ULTIMATE",
+           "POR_ULTIMATE", "WISH_ULTIMATE", "POR_ULTIMATE_PASSWORD", "WISH_ULTIMATE_PASSWORD")
+
+
 # -- PowerShell run on the guest ---------------------------------------------
 
 def q(text: str) -> str:
@@ -107,17 +126,26 @@ def q(text: str) -> str:
     return winvmguest._ps_quote(text)
 
 
-def stage_script(sha: str, zip_name: str) -> str:
-    """Unpack the copied zip and say where `wish.exe` is."""
-    build = build_dir(sha)
-    zipped = rf"{build}\{zip_name}"
+def stage_script(holder: str, zip_path: str, zip_sha: str) -> str:
+    """Unpack the copied zip into a fresh folder named by its hash; say where `wish.exe` is.
+
+    The holder's whole build folder is cleared first, so no earlier build's files
+    survive; that fails, rather than half-deleting, if a Wish is running from it.
+    The zip's hash is checked on the guest before it is unpacked.
+    """
+    root = build_root(holder)
+    dest = rf"{root}\{zip_sha[:12]}"
     return "\n".join([
         "$ErrorActionPreference = 'Stop'",
         "$ProgressPreference = 'SilentlyContinue'",
-        f"$b = {q(build)}",
-        f"Expand-Archive -LiteralPath {q(zipped)} -DestinationPath $b -Force",
-        "$exe = Get-ChildItem -LiteralPath $b -Recurse -Filter wish.exe | Select-Object -First 1",
-        "if (-not $exe) { \"fail no wish.exe under $b\"; exit 1 }",
+        f"$z = {q(zip_path)}",
+        "$got = (Get-FileHash -Algorithm SHA256 -LiteralPath $z).Hash.ToLower()",
+        f"if ($got -ne {q(zip_sha.lower())}) {{ \"fail the copied zip hashes to $got, not {zip_sha.lower()}\"; exit 1 }}",
+        f"$b = {q(root)}",
+        "if (Test-Path $b) { Remove-Item -LiteralPath $b -Recurse -Force }",
+        f"Expand-Archive -LiteralPath $z -DestinationPath {q(dest)} -Force",
+        f"$exe = Get-ChildItem -LiteralPath {q(dest)} -Recurse -Filter wish.exe | Select-Object -First 1",
+        f"if (-not $exe) {{ \"fail no wish.exe under {dest}\"; exit 1 }}",
         "'ok exe=' + $exe.FullName + ' sha256=' + (Get-FileHash -Algorithm SHA256 -LiteralPath $exe.FullName).Hash",
     ])
 
@@ -130,36 +158,43 @@ def mkdir_script(path: str) -> str:
     ])
 
 
-def _task_body(env: dict[str, str], build: str) -> str:
+def _task_body(env: dict[str, str], build: str, flag: bool) -> str:
     """What the task runs in session 1: set the environment, start Wish, wait for it.
 
     `Start-Process -Wait` because `&` returns at once for a GUI program, which would
     end the task while Wish was still up.
     """
-    lines = [f"$env:{k} = {q(v)}" for k, v in env.items()]
+    lines = [f"Remove-Item Env:{k} -ErrorAction SilentlyContinue" for k in CLEARED]
+    if not flag:
+        lines.append(f"Remove-Item Env:{FLAG} -ErrorAction SilentlyContinue")
+    lines += [f"$env:{k} = {q(v)}" for k, v in env.items()]
     lines += [f"$exe = Get-ChildItem -LiteralPath {q(build)} -Recurse -Filter wish.exe | Select-Object -First 1",
               "Start-Process -Wait -FilePath $exe.FullName -WorkingDirectory $exe.DirectoryName"]
     return "\n".join(lines)
 
 
-def start_script(sha: str, holder: str, env: dict[str, str],
+def start_script(holder: str, env: dict[str, str],
                  wait: int = START_SECONDS) -> str:
     """Seed the private settings, start `wish.exe` in session 1, wait for its window.
 
     The reply is `ok pid=N session=S window=H` or one `fail ...` line.  Session 0 is a
     failure: a window there is invisible to a screenshot.
     """
-    build, run = build_dir(sha), run_dir(holder)
-    body = winvmguest.encode_powershell(_task_body(env, build))
+    build, run = build_root(holder), run_dir(holder)
+    body = winvmguest.encode_powershell(_task_body(env, build, FLAG in env))
     args = f"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand {body}"
     return "\n".join([
         "$ErrorActionPreference = 'Stop'",
         f"$build = {q(build)}",
         f"$run = {q(run)}",
-        f"$task = {q(TASK)}",
+        f"$task = {q(task_name(holder))}",
         "$exe = Get-ChildItem -LiteralPath $build -Recurse -Filter wish.exe | Select-Object -First 1",
         "if (-not $exe) { \"fail no wish.exe under $build; stage it first\"; exit 1 }",
-        f"$mine = @(Get-Process -Name wish -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -like {q(ROOT + chr(92) + '*')} }})",
+        "$all = @(Get-Process -Name wish -ErrorAction SilentlyContinue)",
+        # A process whose path cannot be read might be ours; passing it would start a second.
+        "$blind = @($all | Where-Object { -not $_.Path })",
+        "if ($blind.Count -gt 0) { \"fail cannot tell whether wish.exe pid=$($blind[0].Id) is running from $run: its path is unreadable\"; exit 1 }",
+        "$mine = @($all | Where-Object { $_.Path -like \"$run\\*\" })",
         "if ($mine.Count -gt 0) { \"fail wish.exe already running pid=$($mine[0].Id); stop it first\"; exit 1 }",
         "New-Item -ItemType Directory -Force -Path \"$run\\appdata\\wish\", \"$run\\local\" | Out-Null",
         # No byte-order mark: `Settings.load` reads UTF-8 strictly, and a BOM makes
@@ -188,15 +223,27 @@ def start_script(sha: str, holder: str, env: dict[str, str],
     ])
 
 
-def stop_script() -> str:
-    """End the task and any `wish.exe` under the build root; never a kill by name elsewhere."""
+def stop_script(holder: str) -> str:
+    """End the holder's task and the `wish.exe` under its own folder, then remove the task.
+
+    Another holder's Wish, or any process whose path cannot be read, is never stopped;
+    an unreadable one is reported, because it may be this holder's.
+    """
+    run = run_dir(holder)
     return "\n".join([
         "$ErrorActionPreference = 'Stop'",
-        f"$root = {q(ROOT)}",
-        f"Stop-ScheduledTask -TaskName {q(TASK)} -ErrorAction SilentlyContinue",
+        f"$run = {q(run)}",
+        f"$task = {q(task_name(holder))}",
+        "Stop-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue",
         "for ($i = 0; $i -lt 40; $i++) {",
-        "  $mine = @(Get-Process -Name wish -ErrorAction SilentlyContinue | Where-Object { $_.Path -like \"$root\\*\" })",
-        "  if ($mine.Count -eq 0) { 'ok stopped'; exit 0 }",
+        "  $all = @(Get-Process -Name wish -ErrorAction SilentlyContinue)",
+        "  $blind = @($all | Where-Object { -not $_.Path })",
+        "  if ($blind.Count -gt 0) { \"fail cannot tell whether wish.exe pid=$($blind[0].Id) is this holder's: its path is unreadable\"; exit 1 }",
+        "  $mine = @($all | Where-Object { $_.Path -like \"$run\\*\" })",
+        "  if ($mine.Count -eq 0) {",
+        "    Unregister-ScheduledTask -TaskName $task -Confirm:$false -ErrorAction SilentlyContinue",
+        "    'ok stopped'; exit 0",
+        "  }",
         "  if ($i -eq 8) { $mine | Stop-Process -Force -ErrorAction SilentlyContinue }",
         "  Start-Sleep -Milliseconds 250",
         "}",
@@ -204,7 +251,7 @@ def stop_script() -> str:
     ])
 
 
-def window_capture(out: str) -> str:
+def window_capture(out: str, holder: str) -> str:
     """What the session 1 task runs: draw Wish's own window into `out`.
 
     `PrintWindow` with PW_RENDERFULLCONTENT, so a window another one overlaps still
@@ -221,7 +268,7 @@ def window_capture(out: str) -> str:
         "[StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }",
         "'@",
         "[void][WishShot.Win]::SetProcessDPIAware()",
-        f"$root = {q(ROOT)}",
+        f"$root = {q(run_dir(holder))}",
         "$w = Get-Process -Name wish -ErrorAction SilentlyContinue | "
         "Where-Object { $_.Path -like \"$root\\*\" -and $_.MainWindowHandle -ne 0 } | Select-Object -First 1",
         "if (-not $w) { throw 'no wish.exe window' }",
@@ -287,6 +334,23 @@ class Guest:
 
 # -- the steps ---------------------------------------------------------------
 
+FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
+#: Written beside the downloaded zip, so a zip given with `--zip` can be checked.
+COMMIT_FILE = "commit.txt"
+
+
+def full_sha(guest: Guest, sha: str) -> str:
+    """`sha` as 40 lower-case hex digits; a short one is resolved with `git rev-parse`."""
+    short_sha(sha)
+    if FULL_SHA.match(sha.lower()):
+        return sha.lower()
+    rc, out = guest.run(["git", "rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}"],
+                        CALL_SECONDS)
+    if rc or not FULL_SHA.match(out.strip()):
+        raise WinwishError(f"git cannot resolve {sha!r} to one commit: {out or 'no output'}")
+    return out.strip()
+
+
 def pick_run(listing: str, sha: str) -> int:
     """The newest finished, successful release run for `sha`, from `gh run list --json`."""
     try:
@@ -294,7 +358,7 @@ def pick_run(listing: str, sha: str) -> int:
     except ValueError as exc:
         raise WinwishError(f"gh run list did not print JSON: {exc}") from None
     good = [r for r in runs if r.get("conclusion") == "success"
-            and str(r.get("headSha", "")).lower().startswith(sha.lower()[:7])]
+            and str(r.get("headSha", "")).lower() == sha.lower()]
     if not good:
         raise WinwishError(
             f"no successful {WORKFLOW} run for {sha}; start one with "
@@ -303,52 +367,72 @@ def pick_run(listing: str, sha: str) -> int:
 
 
 def fetch(guest: Guest, sha: str, dest: pathlib.Path | None = None) -> pathlib.Path:
-    """Download the `frozen-windows` artifact of `sha` and return its zip."""
-    short_sha(sha)
+    """Download the `frozen-windows` artifact of `sha` and return its zip.
+
+    Safe to run again: the zips and the commit note from an earlier download are
+    removed first, so a second call never finds two zips.
+    """
+    sha = full_sha(guest, sha)
     listing = guest.gh("run", "list", "--workflow", WORKFLOW, "--commit", sha,
                        "--limit", "20", "--json",
                        "databaseId,headSha,conclusion,createdAt")
     run_id = pick_run(listing, sha)
-    dest = dest or scratch.cache_dir("winwish", short_sha(sha))
+    dest = dest or scratch.cache_dir("winwish", sha[:12])
     scratch.ensure(dest)
+    for old in [*dest.rglob("*.zip"), dest / COMMIT_FILE]:
+        old.unlink(missing_ok=True)
     guest.gh("run", "download", str(run_id), "--name", ARTIFACT, "--dir",
              str(dest), timeout=COPY_SECONDS)
     zips = sorted(dest.rglob("*.zip"))
     if len(zips) != 1:
         raise WinwishError(f"expected one zip in the {ARTIFACT} artifact, "
                            f"found {[z.name for z in zips]}")
+    (dest / COMMIT_FILE).write_text(sha + "\n")
     return zips[0]
 
 
-def stage(guest: Guest, sha: str, zipped: pathlib.Path) -> str:
-    """Copy the zip to the guest and unpack it; returns the guest's `ok exe=...` line."""
-    build = build_dir(sha)
-    guest.ps(mkdir_script(build))
-    guest.winvm("put", str(zipped), build.replace("\\", "/") + "/",
-                timeout=COPY_SECONDS)
-    return guest.ps(stage_script(sha, zipped.name), timeout=COPY_SECONDS)
+def check_zip_commit(zipped: pathlib.Path, sha: str) -> None:
+    """A zip that carries a commit note must name `sha`; one without cannot be checked."""
+    note = zipped.parent / COMMIT_FILE
+    if note.exists() and note.read_text().strip() != sha:
+        raise WinwishError(f"{zipped} was downloaded for {note.read_text().strip()}, "
+                           f"not {sha}")
 
 
-def start_wish(guest: Guest, sha: str, holder: str, flag: bool = True) -> str:
+def file_sha256(path: pathlib.Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def stage(guest: Guest, holder: str, zipped: pathlib.Path) -> str:
+    """Copy the zip to the guest and unpack it afresh; returns the guest's `ok exe=...` line."""
+    root = run_dir(holder)
+    zip_sha = file_sha256(zipped)
+    guest.ps(mkdir_script(root))
+    guest.winvm("put", str(zipped), root.replace("\\", "/") + "/", timeout=COPY_SECONDS)
+    return guest.ps(stage_script(holder, rf"{root}\{zipped.name}", zip_sha),
+                    timeout=COPY_SECONDS)
+
+
+def start_wish(guest: Guest, holder: str, flag: bool = True) -> str:
     guest.holds_lane(holder)
-    return guest.ps(start_script(sha, holder, environment(flag, holder)),
+    return guest.ps(start_script(holder, environment(flag, holder)),
                     timeout=START_SECONDS + 30)
 
 
 def stop_wish(guest: Guest, holder: str) -> str:
     guest.holds_lane(holder)
-    return guest.ps(stop_script())
+    return guest.ps(stop_script(holder))
 
 
-def restart_wish(guest: Guest, sha: str, holder: str, flag: bool = True) -> str:
+def restart_wish(guest: Guest, holder: str, flag: bool = True) -> str:
     stop_wish(guest, holder)
-    return start_wish(guest, sha, holder, flag)
+    return start_wish(guest, holder, flag)
 
 
 def shot(guest: Guest, holder: str, window: str, out: pathlib.Path) -> int:
     """Save a PNG of `window` (`wish`, `winuae` or `desktop`) to `out`; returns its size."""
     guest.holds_lane(holder)
-    capture = window_capture if window == "wish" else None
+    capture = (lambda path: window_capture(path, holder)) if window == "wish" else None
     script = winvmguest.shot_script(secrets.token_hex(6), 20, capture=capture)
     rc, text = guest.run(["winvm", "ps", script], 40.0)
     if rc:
@@ -381,32 +465,43 @@ def collect_log(guest: Guest, holder: str, out: pathlib.Path) -> list[str]:
 
 
 def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
-    """Fetch, stage, claim the lane, start WinUAE, start Wish.  Undoes what it did on failure."""
+    """Fetch, stage, claim the lane, start WinUAE, start Wish.
+
+    Anything that goes wrong between the claim and the end of `start_wish` -- an
+    error, Ctrl-C or SIGTERM -- stops Wish (if it was attempted), stops WinUAE and
+    releases the lane, in that order.
+    """
     if not _mute_proof(pathlib.Path(args.mute_proof)):
         raise WinwishError(f"{args.mute_proof} is not a fresh muted-endpoint proof; "
                            "run winuaemute.ps1 first")
-    result: dict[str, str] = {}
-    zipped = pathlib.Path(args.zip) if args.zip else fetch(guest, args.sha)
-    result["staged"] = stage(guest, args.sha, zipped)
-    claimed = started = False
-    try:
-        result["claim"] = lane.claim(args.holder, CALL_SECONDS)
-        claimed = True
-        drives = [args.df0, args.df1] if args.df1 else [args.df0]
-        result["winuae"] = lane.start(args.holder, *drives, timeout=START_SECONDS + 30)
-        started = True
-        result["wish"] = start_wish(guest, args.sha, args.holder, not args.no_flag)
-    except (RouteError, WinwishError):
-        if started:
-            _quietly(lane.stop, args.holder, CALL_SECONDS)
-        if claimed:
-            _quietly(lane.release, args.holder, CALL_SECONDS)
-        raise
+    sha = full_sha(guest, args.sha)
+    zipped = pathlib.Path(args.zip) if args.zip else fetch(guest, sha)
+    check_zip_commit(zipped, sha)
+    result: dict[str, str] = {"staged": stage(guest, args.holder, zipped)}
+    claimed = started = wish_tried = done = False
+    with terminating():
+        try:
+            result["claim"] = lane.claim(args.holder, CALL_SECONDS)
+            claimed = True
+            drives = [args.df0, args.df1] if args.df1 else [args.df0]
+            result["winuae"] = lane.start(args.holder, *drives, timeout=START_SECONDS + 30)
+            started = True
+            wish_tried = True
+            result["wish"] = start_wish(guest, args.holder, not args.no_flag)
+            done = True
+        finally:
+            if not done:
+                if wish_tried:
+                    _quietly(guest.ps, stop_script(args.holder))
+                if started:
+                    _quietly(lane.stop, args.holder, CALL_SECONDS)
+                if claimed:
+                    _quietly(lane.release, args.holder, CALL_SECONDS)
     return result
 
 
 def down(guest: Guest, lane: Any, holder: str) -> dict[str, str]:
-    """Stop Wish, stop WinUAE, release the lane; each step runs even if one before it failed."""
+    """Stop Wish and remove its task, stop WinUAE, release the lane; each step runs even if one before fails."""
     result: dict[str, str] = {}
     problems: list[str] = []
     for name, step in (("wish", lambda: stop_wish(guest, holder)),
@@ -460,7 +555,6 @@ def _parser() -> argparse.ArgumentParser:
 
     for name, text in (("start", "start wish.exe"), ("restart", "stop and start wish.exe")):
         p = sub.add_parser(name, help=text)
-        sha(p)
         holder(p)
         p.add_argument("--no-flag", action="store_true",
                        help=f"leave {FLAG} unset (the control)")
@@ -493,9 +587,9 @@ def main(argv: list[str] | None = None,
             for key, value in up(guest, lane or WinGuest(), args).items():
                 print(f"{key}: {value}")
         elif args.cmd == "start":
-            print(start_wish(guest, args.sha, args.holder, not args.no_flag))
+            print(start_wish(guest, args.holder, not args.no_flag))
         elif args.cmd == "restart":
-            print(restart_wish(guest, args.sha, args.holder, not args.no_flag))
+            print(restart_wish(guest, args.holder, not args.no_flag))
         elif args.cmd == "stop":
             print(stop_wish(guest, args.holder))
         elif args.cmd == "shot":

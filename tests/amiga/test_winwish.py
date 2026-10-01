@@ -46,14 +46,15 @@ def _script(argv: list[str]) -> str:
 
 
 class FakeLane:
-    def __init__(self, fail_on: str | None = None):
+    def __init__(self, fail_on: str | None = None, exc=RouteError):
         self.log: list[str] = []
         self.fail_on = fail_on
+        self.exc = exc
 
     def _do(self, name, *args):
         self.log.append(name)
         if name == self.fail_on:
-            raise RouteError(f"{name} failed")
+            raise self.exc(f"{name} failed")
         return f"ok {name}"
 
     def claim(self, holder, timeout):
@@ -86,6 +87,23 @@ def test_a_sha_is_checked_and_shortened():
             winwish.short_sha(bad)
 
 
+def test_a_short_sha_is_resolved_with_git_and_a_full_one_is_not():
+    run = FakeRun([(lambda a: a[0] == "git", 0, SHA + "\n")])
+    assert winwish.full_sha(winwish.Guest(run), SHA[:9]) == SHA
+    assert run.calls[0][:3] == ["git", "rev-parse", "--verify"]
+    run = FakeRun()
+    assert winwish.full_sha(winwish.Guest(run), SHA.upper()) == SHA
+    assert run.calls == []
+    bad = FakeRun([(lambda a: a[0] == "git", 1, "")])
+    with pytest.raises(winwish.WinwishError, match="cannot resolve"):
+        winwish.full_sha(winwish.Guest(bad), SHA[:9])
+
+
+def test_each_holder_has_its_own_task():
+    assert winwish.task_name("a") != winwish.task_name("b")
+    assert winwish.task_name("a") == "wish-run-a"
+
+
 def test_a_holder_cannot_climb_out_of_its_folder():
     with pytest.raises(winwish.WinwishError):
         winwish.run_dir("..\\x")
@@ -114,7 +132,7 @@ def test_the_log_folder_is_where_wish_writes_it():
 # -- the guest scripts --------------------------------------------------------
 
 def test_start_script_writes_settings_without_a_bom_and_refuses_session_zero():
-    script = winwish.start_script(SHA, "h", winwish.environment(True, "h"))
+    script = winwish.start_script("h", winwish.environment(True, "h"))
     assert "UTF8Encoding $false" in script
     assert "automap.json" in script
     assert "session 0" in script
@@ -124,23 +142,36 @@ def test_start_script_writes_settings_without_a_bom_and_refuses_session_zero():
     assert "$env:WISH_EXPERIMENTAL_AMIGA_WINUAE = '1'" in body
     assert "$env:WISH_DEBUG = '1'" in body
     assert "Start-Process -Wait" in body
+    assert "'wish-run-h'" in script
+    for name in winwish.CLEARED:
+        assert f"Remove-Item Env:{name}" in body
+    assert f"Remove-Item Env:{winwish.FLAG}" not in body
 
 
 def test_the_control_start_script_has_no_flag():
-    script = winwish.start_script(SHA, "h", winwish.environment(False, "h"))
+    script = winwish.start_script("h", winwish.environment(False, "h"))
     body = base64.b64decode(script.split("-EncodedCommand ")[1].split("'")[0]).decode("utf-16-le")
-    assert winwish.FLAG not in body
+    assert f"Remove-Item Env:{winwish.FLAG}" in body
+    assert f"$env:{winwish.FLAG}" not in body
 
 
-def test_stop_script_touches_only_processes_under_the_build_root():
-    script = winwish.stop_script()
-    assert r"C:\Amiga\wish" in script and "wish-run" in script
+def test_an_unreadable_process_path_fails_start_and_stop_instead_of_passing():
+    for script in (winwish.start_script("h", winwish.environment(True, "h")),
+                   winwish.stop_script("h")):
+        assert "-not $_.Path" in script
+        assert "cannot tell" in script
+
+
+def test_stop_script_touches_only_this_holders_processes_and_removes_its_task():
+    script = winwish.stop_script("h")
+    assert r"C:\Amiga\wish\run-h" in script and "'wish-run-h'" in script
+    assert "Unregister-ScheduledTask" in script
     assert "Stop-Process -Name" not in script
 
 
 def test_window_capture_prints_the_wish_window():
-    assert "PrintWindow" in winwish.window_capture(r"C:\x.png")
-    assert "-like \"$root" in winwish.window_capture(r"C:\x.png")
+    assert "PrintWindow" in winwish.window_capture(r"C:\x.png", "h")
+    assert r"run-h" in winwish.window_capture(r"C:\x.png", "h")
 
 
 def test_shot_script_default_is_unchanged_and_takes_a_capture():
@@ -188,9 +219,35 @@ def test_fetch_lists_by_commit_then_downloads_the_named_artifact(tmp_path):
 
     zipped = winwish.fetch(winwish.Guest(wrapped), SHA, tmp_path)
     assert zipped.name == "wish-1-windows-x86_64.zip"
+    assert (tmp_path / "commit.txt").read_text().strip() == SHA
     listing, fetching = run.calls
     assert listing[listing.index("--commit") + 1] == SHA
     assert fetching[3] == "3" and fetching[fetching.index("--name") + 1] == "frozen-windows"
+
+
+def test_fetch_can_run_twice_in_one_folder(tmp_path):
+    def wrapped(argv, timeout):
+        if argv[:3] == ["gh", "run", "download"]:
+            (tmp_path / f"wish-{len(list(tmp_path.glob('*.zip')))}.zip").write_bytes(b"PK")
+        if argv[1:3] == ["run", "list"]:
+            return 0, json.dumps(RUNS)
+        return 0, "ok"
+
+    guest = winwish.Guest(wrapped)
+    winwish.fetch(guest, SHA, tmp_path)
+    assert winwish.fetch(guest, SHA, tmp_path).parent == tmp_path
+
+
+def test_a_zip_fetched_for_another_commit_is_refused(tmp_path):
+    zipped = tmp_path / "wish-1.zip"
+    zipped.write_bytes(b"PK")
+    (tmp_path / "commit.txt").write_text("f" * 40 + "\n")
+    with pytest.raises(winwish.WinwishError, match="not " + SHA):
+        winwish.check_zip_commit(zipped, SHA)
+    (tmp_path / "commit.txt").write_text(SHA + "\n")
+    winwish.check_zip_commit(zipped, SHA)
+    (tmp_path / "commit.txt").unlink()
+    winwish.check_zip_commit(zipped, SHA)
 
 
 def test_fetch_rejects_a_sha_that_is_an_option():
@@ -203,33 +260,37 @@ def test_fetch_rejects_a_sha_that_is_an_option():
 def test_start_requires_the_lane_before_touching_the_guest():
     run = FakeRun([(lambda a: a[1] == "lane", 1, "free")])
     with pytest.raises(winwish.WinwishError, match="does not hold"):
-        winwish.start_wish(winwish.Guest(run), SHA, "h")
+        winwish.start_wish(winwish.Guest(run), "h")
     assert run.verbs() == ["lane"]
 
 
 def test_a_script_that_does_not_say_ok_is_an_error():
     run = FakeRun([(lambda a: a[1] == "ps", 1, "fail wish.exe in session 0")])
     with pytest.raises(winwish.WinwishError, match="session 0"):
-        winwish.start_wish(winwish.Guest(run), SHA, "h")
+        winwish.start_wish(winwish.Guest(run), "h")
 
 
 def test_restart_stops_before_it_starts():
     run = FakeRun()
-    winwish.restart_wish(winwish.Guest(run), SHA, "h")
+    winwish.restart_wish(winwish.Guest(run), "h")
     scripts = [c[2] for c in run.calls if c[1] == "ps"]
     assert "Stop-ScheduledTask" in scripts[0] and "Register-ScheduledTask" not in scripts[0]
     assert "Register-ScheduledTask" in scripts[1]
 
 
-def test_stage_makes_the_folder_copies_and_unpacks_in_that_order(tmp_path):
+def test_stage_makes_the_folder_copies_and_unpacks_a_fresh_build_in_that_order(tmp_path):
     zipped = tmp_path / "wish-1.zip"
     zipped.write_bytes(b"PK")
     run = FakeRun()
-    winwish.stage(winwish.Guest(run), SHA, zipped)
+    winwish.stage(winwish.Guest(run), "h", zipped)
     assert run.verbs() == ["ps", "put", "ps"]
-    put = run.calls[1]
-    assert put[3] == f"C:/Amiga/wish/{SHA[:12]}/"
-    assert "Expand-Archive" in run.calls[2][2]
+    assert run.calls[1][3] == "C:/Amiga/wish/run-h/"
+    script = run.calls[2][2]
+    zip_sha = winwish.file_sha256(zipped)
+    assert "Remove-Item -LiteralPath $b -Recurse" in script
+    assert script.index("Remove-Item") < script.index("Expand-Archive")
+    assert rf"C:\Amiga\wish\run-h\build\{zip_sha[:12]}" in script
+    assert zip_sha in script
 
 
 def test_shot_decodes_the_png_and_writes_it(tmp_path):
@@ -286,14 +347,33 @@ def test_up_refuses_without_a_fresh_mute_proof(tmp_path, monkeypatch):
     assert run.calls == [] and lane.log == []
 
 
-def test_up_gives_back_what_it_took_when_wish_does_not_start(tmp_path, monkeypatch):
+START_FAILS = (lambda a: a[1] == "ps" and "Start-ScheduledTask" in a[2], 1,
+               "fail no wish.exe window")
+
+
+def test_up_stops_wish_then_winuae_then_releases_when_wish_does_not_start(tmp_path, monkeypatch):
     args = _args(tmp_path, monkeypatch)
-    run = FakeRun([(lambda a: a[1] == "ps" and "Register-ScheduledTask" in a[2]
-                    and "wish-run" in a[2], 1, "fail no wish.exe window")])
-    lane = FakeLane()
+    run, lane = FakeRun([START_FAILS]), FakeLane()
     with pytest.raises(winwish.WinwishError):
         winwish.up(winwish.Guest(run), lane, args)
+    stops = [c for c in run.calls if c[1] == "ps" and "Unregister-ScheduledTask" in c[2]]
+    assert len(stops) == 1 and "'wish-run-h'" in stops[0][2]
     assert lane.log[-2:] == ["stop", "release"]
+
+
+@pytest.mark.parametrize("exc", [KeyboardInterrupt, SystemExit])
+def test_up_undoes_everything_on_an_interrupt_too(tmp_path, monkeypatch, exc):
+    run, lane = FakeRun(), FakeLane(fail_on="start", exc=exc)
+    with pytest.raises(exc):
+        winwish.up(winwish.Guest(run), lane, _args(tmp_path, monkeypatch))
+    assert lane.log[-1] == "release"
+
+
+def test_up_does_not_stop_wish_when_it_never_tried_to_start_it(tmp_path, monkeypatch):
+    run, lane = FakeRun(), FakeLane(fail_on="start")
+    with pytest.raises(RouteError):
+        winwish.up(winwish.Guest(run), lane, _args(tmp_path, monkeypatch))
+    assert not [c for c in run.calls if c[1] == "ps" and "Unregister-ScheduledTask" in c[2]]
 
 
 def test_up_releases_the_claim_when_winuae_does_not_start(tmp_path, monkeypatch):
@@ -301,6 +381,15 @@ def test_up_releases_the_claim_when_winuae_does_not_start(tmp_path, monkeypatch)
     with pytest.raises(RouteError):
         winwish.up(winwish.Guest(FakeRun()), lane, _args(tmp_path, monkeypatch))
     assert lane.log[-1] == "release" and "stop" not in lane.log
+
+
+def test_up_refuses_a_zip_fetched_for_another_commit(tmp_path, monkeypatch):
+    args = _args(tmp_path, monkeypatch)
+    (tmp_path / "commit.txt").write_text("f" * 40 + "\n")
+    run, lane = FakeRun(), FakeLane()
+    with pytest.raises(winwish.WinwishError, match="downloaded for"):
+        winwish.up(winwish.Guest(run), lane, args)
+    assert run.calls == [] and lane.log == []
 
 
 def test_down_runs_every_step_even_when_the_first_fails():
@@ -328,8 +417,8 @@ def test_main_prints_one_line_and_exits_1_on_a_guest_failure(capsys):
 
 def test_main_start_passes_no_flag_through(capsys):
     run = FakeRun()
-    assert winwish.main(["start", "--sha", SHA, "--holder", "h", "--no-flag"],
+    assert winwish.main(["start", "--holder", "h", "--no-flag"],
                         guest=winwish.Guest(run)) == 0
     script = run.calls[-1][2]
     body = base64.b64decode(script.split("-EncodedCommand ")[1].split("'")[0]).decode("utf-16-le")
-    assert winwish.FLAG not in body
+    assert f"$env:{winwish.FLAG}" not in body
