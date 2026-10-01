@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """The first, minimal GDB-remote client for the patched FS-UAE (the fork
-`grahambates/fs-uae`, branch `remote_debugger_barto`), and the probe it was
+`grahambates/fs-uae`, branch `remote_debugger_prb28`), and the probe it was
 written for: does a memory read return while the emulated machine runs? --
 `#464 (Can the automapper follow a live FS-UAE game on Linux, so Wish and the
 Amiga game run on one machine?)`.

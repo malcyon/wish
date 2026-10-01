@@ -572,7 +572,7 @@ neither happens, and a folder holding only Pools of Darkness disks gives no
 maps.
 
 **What the fork needs.** The player runs the game in `grahambates/fs-uae`,
-branch `remote_debugger_barto`, and not in stock FS-UAE, which has no such
+branch `remote_debugger_prb28`, and not in stock FS-UAE, which has no such
 server. The server is started by the fork's `remote_debugger=<seconds>` option, and it
 listens on 2345 unless `remote_debugger_port=<port>` says otherwise; 2345 is the
 port the row looks for, so a different port is not found. The fork closes its

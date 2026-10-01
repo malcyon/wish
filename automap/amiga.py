@@ -22,7 +22,7 @@ session. It stays because its `W` and its single-stepping reach parts of the
 debugger the pipe deliberately refuses to send.
 
 **`FsuaeGdb` is the Linux route, and the only one a player on Linux can use.**
-The patched FS-UAE at `grahambates/fs-uae`, branch `remote_debugger_barto`,
+The patched FS-UAE at `grahambates/fs-uae`, branch `remote_debugger_prb28`,
 carries `src/barto_gdbserver.cpp`, a GDB-remote server that answers a memory
 read from the frame handler of a **running** machine: `vsync_pre()` ends
 `if(debugger_state == state::connected && data_available()) handle_packet();`,

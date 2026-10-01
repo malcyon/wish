@@ -24,7 +24,7 @@ poll is the signature of a reply built in a frame handler rather than by a
 halted debugger.
 
 **The emulator this talks to is the fork `grahambates/fs-uae`, branch
-`remote_debugger_barto`**, run with `remote_debugger=<seconds>` and
+`remote_debugger_prb28`**, run with `remote_debugger=<seconds>` and
 `remote_debugger_port=<port>`.  Where a person gets that binary is not settled
 and is not this file's business: `--fs-uae` takes a path to one that is already
 on the machine, and nothing here downloads, installs or unpacks anything.
