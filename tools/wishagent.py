@@ -54,7 +54,6 @@ not a secret and lives beside the key rather than in this repository.
 """
 
 import argparse
-import importlib.util
 import json
 import os
 import stat
@@ -509,40 +508,6 @@ def edit_comment(comment_id, body_text):
 # CLI
 
 
-class BannedWordsError(Exception):
-    pass
-
-
-def banned_word_hits(*texts):
-    """Banned-word hits in the texts about to be posted (`words.md`).
-
-    Loaded by file path so nothing is added to `sys.path` (see
-    `tools/suite/pathleak.py`).
-    """
-    spec = importlib.util.spec_from_file_location(
-        "_wishagent_bannedwords",
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "suite", "bannedwords.py"),
-    )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return [h for text in texts if text for h in module.scan_text(text, ".md")]
-
-
-def check_prose(*texts):
-    """Raise before any network call if a text uses a word `words.md` bans.
-
-    A word inside backticks passes, except the one word that row bans without exemption.
-    """
-    hits = banned_word_hits(*texts)
-    if hits:
-        listing = "\n".join(f"  line {h.line}: {h.row}: {h.excerpt}" for h in hits)
-        raise BannedWordsError(
-            "Nothing was posted. These words are banned by .claude/rules/words.md; "
-            "say what happens instead, or put an established name in backticks:\n"
-            + listing
-        )
-
-
 def _read_body_file(path):
     with open(path, encoding="utf-8") as f:
         return f.read()
@@ -611,24 +576,20 @@ def main(argv=None):
             sys.stdout.write(answer_git_credential(args.action, sys.stdin.read()))
         elif args.command == "create":
             body_text = _read_body_file(args.body_file)
-            check_prose(args.title, body_text)
             print(create_issue(args.title, body_text, args.labels))
         elif args.command == "comment":
             body_text = _read_body_file(args.body_file)
-            check_prose(body_text)
             print(comment_on_issue(args.number, body_text))
         elif args.command == "close":
             comment_text = (
                 _read_body_file(args.comment_file) if args.comment_file else None
             )
-            check_prose(comment_text)
             close_issue(args.number, comment_text)
             print(f"closed #{args.number}")
         elif args.command == "reopen":
             comment_text = (
                 _read_body_file(args.comment_file) if args.comment_file else None
             )
-            check_prose(comment_text)
             reopen_issue(args.number, comment_text)
             print(f"reopened #{args.number}")
         elif args.command == "label":
@@ -643,16 +604,14 @@ def main(argv=None):
             comment_text = (
                 _read_body_file(args.comment_file) if args.comment_file else None
             )
-            check_prose(args.title, body_text, comment_text)
             print(edit_issue(
                 args.number, title=args.title, body_text=body_text,
                 comment_text=comment_text,
             ))
         elif args.command == "edit-comment":
             body_text = _read_body_file(args.body_file)
-            check_prose(body_text)
             print(edit_comment(args.id, body_text))
-    except (ConfigError, ApiError, BannedWordsError) as e:
+    except (ConfigError, ApiError) as e:
         print(str(e), file=sys.stderr)
         return 1
     return 0

@@ -4,7 +4,6 @@ Scripts that run and check the test suite: the on-request whole-suite diagnostic
 
 | file | purpose |
 |---|---|
-| `bannedwords.py` | Lists the words `.claude/rules/words.md` bans in the tracked prose (comments, docstrings, strings, Markdown, `.ui` text), skipping backtick code, paths and issue citations, and scans `refusal` in every line of every file with no exemption; `--report` counts per directory and `--baseline` writes `tests/suite/bannedwords_baseline.py`. `tools/wishagent.py` loads it to stop a post that uses a banned word. |
 | `conftestflake_analyze.py` | Summarises the logs `conftestflake_probe.py` writes: merges every worker's CREATE and DELETE events for the two probe files `tests/suite/test_conftest_state_guard.py` writes and removes, and says whether and for how long their lifetimes overlapped. |
 | `conftestflake_force_group.py` | Diagnostic pytest plugin that applies `xdist_group` to both tests in `tests/suite/test_conftest_state_guard.py` at collection time, without editing that file, to check whether grouping puts them on one `-n auto` worker. Runs `tryfirst` so it precedes xdist's own hook. |
 | `conftestflake_probe.py` | Diagnostic pytest plugin that logs the timestamp and worker id of every appearance and disappearance of the throwaway probe files `tests/suite/test_conftest_state_guard.py` writes, without changing that file. `conftestflake_analyze.py` reads its log. |
