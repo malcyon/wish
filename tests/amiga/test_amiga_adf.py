@@ -371,10 +371,9 @@ def test_a_short_or_unaligned_image_is_refused_by_name():
         AmigaDisk(bytes(BLOCK_SIZE * 4))          # no DOS signature
 
 
-@pytest.mark.parametrize("dos_type", [6, 7, 8, 0xFF])
+@pytest.mark.parametrize("dos_type", [8, 0xFF])
 def test_a_disk_type_this_module_does_not_read_is_refused_by_type(dos_type):
-    """`DOS\\6` and `DOS\\7` keep long names in a different header layout;
-    anything past 7 is no AmigaDOS type at all."""
+    """Anything past `DOS\\7` is no AmigaDOS type at all."""
     data = bytearray(AmigaDisk.blank().to_bytes())
     data[3] = dos_type
     with pytest.raises(AmigaDiskTypeError) as caught:
@@ -565,9 +564,10 @@ def test_verify_reports_a_directory_tree_that_loops_and_returns():
 # image below is laid out from the format description by code that shares
 # nothing with the module under test.
 
-FFS_TYPES = (1, 3, 5)
-WRITABLE_TYPES = (0, 1, 2, 3, 4, 5)
+FFS_TYPES = (1, 3, 5, 7)
+WRITABLE_TYPES = (0, 1, 2, 3, 4, 5, 6, 7)
 DIRCACHE_TYPES = (4, 5)
+LONG_NAME_TYPES = (6, 7)
 
 
 def _spec_sum(block: bytes, at: int) -> int:
@@ -674,10 +674,13 @@ def _spec_read_root_file(image: bytes, name: str) -> bytes:
 
     encoded = name.encode("latin1")
     international = bool(image[3] & 6)
+    # A long-name disk keeps an entry's name at the start of the merged
+    # name-and-comment field instead.
+    name_at = BLOCK_SIZE - 184 if image[3] in (6, 7) else BLOCK_SIZE - 80
     number = u32(880, 24 + 4 * _spec_hash(encoded, international))
     while number:
-        length = image[number * BLOCK_SIZE + BLOCK_SIZE - 80]
-        at = number * BLOCK_SIZE + BLOCK_SIZE - 79
+        length = image[number * BLOCK_SIZE + name_at]
+        at = number * BLOCK_SIZE + name_at + 1
         if image[at:at + length] == encoded:
             break
         number = u32(number, BLOCK_SIZE - 16)
@@ -711,8 +714,8 @@ def test_a_blank_disk_of_each_writable_type_is_consistent(dos_type):
     assert disk.international is bool(dos_type & 6)
     assert disk.verify() == []
     # Boot block pair, root, bitmap, and on a directory-cache disk the root's
-    # one empty cache block.
-    assert disk.free_count() == 1760 - 4 - bool(dos_type & 4)
+    # one empty cache block. A long-name disk has no cache.
+    assert disk.free_count() == 1760 - 4 - (dos_type in DIRCACHE_TYPES)
 
 
 @pytest.mark.parametrize("dos_type", FFS_TYPES)
@@ -1245,7 +1248,7 @@ def _ffs_copy(disk: AmigaDisk, dos_type: int) -> AmigaDisk:
     return copy
 
 
-@pytest.mark.parametrize("dos_type", (1, 3, 4, 5))
+@pytest.mark.parametrize("dos_type", (1, 3, 4, 5, 6, 7))
 def test_every_real_disk_copied_onto_another_type_reads_back_identically(
         dos_type):
     """A game disk's files fit an FFS or a directory-cache floppy and come
@@ -1265,10 +1268,11 @@ def test_every_real_disk_copied_onto_another_type_reads_back_identically(
                 for name, _ in copy.walk()} == files, path.name
 
 
-@pytest.mark.parametrize("dos_type", (1, 5))
+@pytest.mark.parametrize("dos_type", (1, 5, 7))
 def test_a_save_on_an_ffs_disk_one_round_trips_like_on_ofs(dos_type):
     """`slot_on_disk_one` writes the same slot onto the player's OFS disk 1
-    and onto an FFS or FFS directory-cache copy of it, and the two read back
+    and onto an FFS, FFS directory-cache or FFS long-name copy of it, and the
+    two read back
     the same: every file, and the parsed save."""
     import support.amigasavegame as support
 
@@ -1336,3 +1340,444 @@ def test_rebuilding_a_cache_keeps_a_record_that_already_agrees(dos_type):
     assert after[one] == before[one]
     assert after[two] == disk._cache_record(two)
     assert disk.cache_warnings() == []
+
+
+# ---------------------------------------------------------------------------
+# Long file names: `DOS\6` and `DOS\7`
+# ---------------------------------------------------------------------------
+#
+# Laid out from the format description, by code sharing nothing with the
+# module: amiga-ffs's `layout` module (longwords -46, -18, -15 of an entry
+# header; -11 and -4 of the root; block type 64) and amitools'
+# `EntryBlock._read_nac_modts`, `RootBlock` and `CommentBlock`, which agree.
+# An entry header's name and comment are two length-prefixed strings laid end
+# to end in 112 bytes at 0x148; a comment that does not fit there goes in a
+# type-64 block named at 0x1B8, and the date moves from 0x1A4 to 0x1C4. The
+# root keeps the short layout, and adds the count of blocks the bitmap marks
+# used at 0x1D4 and the DOS type itself at 0x1F0.
+
+_LN_NAC, _LN_COMMENT_BLOCK, _LN_DATE = 0x148, 0x1B8, 0x1C4
+_LN_USED, _LN_FS_TYPE = 0x1D4, 0x1F0
+#: A 106-character name, the longest the module writes.
+LONGEST = "".join(chr(ord("a") + n % 26) for n in range(105)) + "Z"
+
+
+def _spec_u32(image: bytes, number: int, offset: int) -> int:
+    return struct.unpack_from(">I", image, number * BLOCK_SIZE + offset)[0]
+
+
+def _spec_used(image: bytes) -> int:
+    """Blocks the bitmap marks used, over the blocks it covers (2 to the end),
+    read from the bitmap page the root names."""
+    bitmap = _spec_u32(image, 880, BLOCK_SIZE - 196)
+    used = 0
+    for number in range(2, len(image) // BLOCK_SIZE):
+        index = number - 2
+        word = _spec_u32(image, bitmap, 4 + 4 * (index // 32))
+        used += not word >> (index % 32) & 1
+    return used
+
+
+def _spec_lnfs_image(dos_type: int,
+                     entries: list[tuple[str, bytes | None, bytes]]) -> bytes:
+    """A long-name floppy holding `entries` -- `(path, data, comment)`, data
+    None for a drawer, drawers before what they hold -- laid out by the format
+    description: root 880, bitmap 881, then every block in ascending order."""
+    blocks, root, bitmap = 1760, 880, 881
+    ffs = dos_type == 7
+    image = bytearray(blocks * BLOCK_SIZE)
+    image[0:4] = b"DOS" + bytes([dos_type])
+
+    def put(number: int, offset: int, fmt: str, *values) -> None:
+        struct.pack_into(fmt, image, number * BLOCK_SIZE + offset, *values)
+
+    following = [bitmap + 1]
+
+    def take(count: int) -> list[int]:
+        out = list(range(following[0], following[0] + count))
+        following[0] += count
+        return out
+
+    sums: dict[int, int] = {root: 20, bitmap: 0}
+    drawers = {"": root}
+    for path, data, comment in entries:
+        parent_path, _, name = path.rpartition("/")
+        parent = drawers[parent_path]
+        encoded = name.encode("latin1")
+        header = take(1)[0]
+        sums[header] = 20
+        put(header, 0, ">I", 2)
+        put(header, 4, ">I", header)
+        nac = bytes([len(encoded)]) + encoded
+        if len(nac) + 1 + len(comment) <= 112:
+            nac += bytes([len(comment)]) + comment
+        else:
+            nac += b"\0"
+            note = take(1)[0]
+            sums[note] = 20
+            put(note, 0, ">III", 64, note, header)
+            image[note * BLOCK_SIZE + 24] = len(comment)
+            at = note * BLOCK_SIZE + 25
+            image[at:at + len(comment)] = comment
+            put(header, _LN_COMMENT_BLOCK, ">I", note)
+        image[header * BLOCK_SIZE + _LN_NAC:
+              header * BLOCK_SIZE + _LN_NAC + len(nac)] = nac
+        put(header, _LN_DATE, ">III", 4900, 754, 2800)
+        put(header, BLOCK_SIZE - 12, ">I", parent)
+        slot = _spec_hash(encoded, True)
+        put(header, BLOCK_SIZE - 16, ">I",
+            _spec_u32(image, parent, 24 + 4 * slot))
+        put(parent, 24 + 4 * slot, ">I", header)
+        if data is None:
+            put(header, BLOCK_SIZE - 4, ">i", 2)
+            drawers[path] = header
+            continue
+        put(header, BLOCK_SIZE - 4, ">i", -3)
+        put(header, BLOCK_SIZE - 188, ">I", len(data))
+        size = 512 if ffs else 488
+        count = max(-(-len(data) // size), 0 if ffs else 1)
+        assert count <= 72, "one header's worth is all this builder lays out"
+        chain = take(count)
+        put(header, 8, ">I", count)
+        if chain:
+            put(header, 16, ">I", chain[0])
+        for index, number in enumerate(chain):
+            put(header, BLOCK_SIZE - 204 - 4 * index, ">I", number)
+            chunk = data[index * size:(index + 1) * size]
+            if ffs:
+                image[number * BLOCK_SIZE:number * BLOCK_SIZE + len(chunk)] = (
+                    chunk)
+                continue
+            following_block = chain[index + 1] if index + 1 < count else 0
+            put(number, 0, ">IIIII", 8, header, index + 1, len(chunk),
+                following_block)
+            image[number * BLOCK_SIZE + 24:
+                  number * BLOCK_SIZE + 24 + len(chunk)] = chunk
+            sums[number] = 20
+    put(root, 0, ">I", 2)
+    put(root, 12, ">I", 72)
+    put(root, BLOCK_SIZE - 200, ">iI", -1, bitmap)
+    image[root * BLOCK_SIZE + BLOCK_SIZE - 80] = 3
+    image[root * BLOCK_SIZE + BLOCK_SIZE - 79:
+          root * BLOCK_SIZE + BLOCK_SIZE - 76] = b"REF"
+    put(root, BLOCK_SIZE - 4, ">i", 1)
+    for number in range(following[0], blocks):
+        index = number - 2
+        at = bitmap * BLOCK_SIZE + 4 + 4 * (index // 32)
+        struct.pack_into(">I", image, at,
+                         struct.unpack_from(">I", image, at)[0]
+                         | 1 << index % 32)
+    put(root, _LN_USED, ">I", following[0] - 2)
+    put(root, _LN_FS_TYPE, ">4s", b"DOS" + bytes([dos_type]))
+    for number, at in sums.items():
+        block = image[number * BLOCK_SIZE:(number + 1) * BLOCK_SIZE]
+        put(number, at, ">I", _spec_sum(block, at))
+    return bytes(image)
+
+
+def _spec_lnfs_entry(image: bytes, path: str) -> int:
+    """The header block of `path` on a long-name image, by hash chain and by
+    the name at the start of the merged field."""
+    number = 880
+    for part in path.strip("/").split("/"):
+        encoded = part.encode("latin1")
+        want = bytes(_spec_upper(c, True) for c in encoded)
+        number = _spec_u32(image, number, 24 + 4 * _spec_hash(encoded, True))
+        while number:
+            at = number * BLOCK_SIZE + _LN_NAC
+            name = image[at + 1:at + 1 + image[at]]
+            if bytes(_spec_upper(c, True) for c in name) == want:
+                break
+            number = _spec_u32(image, number, BLOCK_SIZE - 16)
+        assert number, f"{part} is not in its hash chain"
+    return number
+
+
+def _spec_lnfs_read(image: bytes, path: str) -> bytes:
+    header = _spec_lnfs_entry(image, path)
+    ffs = image[3] == 7
+    out = bytearray()
+    for index in range(_spec_u32(image, header, 8)):
+        number = _spec_u32(image, header, BLOCK_SIZE - 204 - 4 * index)
+        if ffs:
+            out += image[number * BLOCK_SIZE:(number + 1) * BLOCK_SIZE]
+        else:
+            used = _spec_u32(image, number, 12)
+            out += image[number * BLOCK_SIZE + 24:
+                         number * BLOCK_SIZE + 24 + used]
+    return bytes(out[:_spec_u32(image, header, BLOCK_SIZE - 188)])
+
+
+def _spec_lnfs_comment(image: bytes, path: str) -> bytes:
+    header = _spec_lnfs_entry(image, path)
+    at = header * BLOCK_SIZE + _LN_NAC
+    comment_at = at + 1 + image[at]
+    if image[comment_at]:
+        return image[comment_at + 1:comment_at + 1 + image[comment_at]]
+    note = _spec_u32(image, header, _LN_COMMENT_BLOCK)
+    if not note:
+        return b""
+    assert _spec_u32(image, note, 0) == 64
+    assert _spec_u32(image, note, 8) == header
+    return image[note * BLOCK_SIZE + 25:
+                 note * BLOCK_SIZE + 25 + image[note * BLOCK_SIZE + 24]]
+
+
+#: A name long enough that a 79-character comment no longer fits beside it.
+COMMENTED = "a file commented at length, with a long name"
+#: What `_spec_lnfs_image` lays out for the reader tests: names past 30
+#: characters at the root and in a drawer, an accented name, a comment that
+#: fits beside its name and one that needs its own block.
+SPEC_LNFS = [
+    ("short", b"one", b""),
+    (LONGEST, _ffs_payload(1500, 3), b""),
+    ("A drawer whose name runs past thirty", None, b"drawer note"),
+    ("A drawer whose name runs past thirty/inner file with a long name.cha",
+     _ffs_payload(700, 5), b"hi"),
+    ("caf\xe9 au lait with sugar, and a long name", b"accented", b""),
+    (COMMENTED, b"text", b"c" * 79),
+    ("empty", b"", b""),
+]
+
+
+@pytest.mark.parametrize("dos_type", LONG_NAME_TYPES)
+def test_a_spec_built_long_name_disk_reads_back(dos_type):
+    """The reader against a long-name image it did not write: every name,
+    every file, and a clean `verify()`."""
+    image = _spec_lnfs_image(dos_type, SPEC_LNFS)
+    disk = AmigaDisk(image)
+    assert disk.volume_name == "REF" and disk.ffs is (dos_type == 7)
+    assert not disk.dircache
+    assert disk.verify() == []
+    files = {"/" + path: data for path, data, _ in SPEC_LNFS
+             if data is not None}
+    assert {path: disk.read_file(path) for path, _ in disk.walk()} == files
+    assert [path for path, _ in disk.walk_dirs()] == [
+        "/A drawer whose name runs past thirty"]
+    assert disk.read_file("CAF\xc9 AU LAIT WITH SUGAR, AND A LONG NAME") == (
+        b"accented")
+    for path, data, comment in SPEC_LNFS:
+        assert _spec_lnfs_comment(image, path) == comment, path
+
+
+@pytest.mark.parametrize("dos_type", LONG_NAME_TYPES)
+def test_a_long_name_disk_this_module_writes_reads_by_the_spec(dos_type):
+    """The writer against a reader it does not share: names in the merged
+    field with an empty comment after them and no comment block, the date at
+    0x1C4, the root's DOS type and used-block count."""
+    disk = AmigaDisk.blank("LONGNAMES", dos_type=dos_type)
+    drawer = "A drawer whose name runs past thirty"
+    disk.make_dir(drawer, when=WHEN)
+    files = {LONGEST: _ffs_payload(1500, 3),
+             f"{drawer}/inner file with a long name.cha": _ffs_payload(700, 5),
+             "caf\xe9 au lait with sugar, and a long name": b"accented",
+             "empty": b""}
+    for path, data in files.items():
+        disk.write_file(path, data, when=WHEN)
+    assert disk.verify() == []
+    image = disk.to_bytes()
+    days = (WHEN.date() - datetime.date(1978, 1, 1)).days
+    for path, data in files.items():
+        assert _spec_lnfs_read(image, path) == data, path
+        assert _spec_lnfs_comment(image, path) == b""
+        header = _spec_lnfs_entry(image, path)
+        assert _spec_u32(image, header, _LN_COMMENT_BLOCK) == 0
+        at = header * BLOCK_SIZE + _LN_NAC
+        name = path.rpartition("/")[2].encode("latin1")
+        assert image[at:at + 112] == (
+            bytes([len(name)]) + name).ljust(112, b"\0")
+        assert struct.unpack_from(">III", image,
+                                  header * BLOCK_SIZE + _LN_DATE) == (
+            days, 12 * 60 + 34, 56 * 50)
+    assert _spec_lnfs_entry(image, drawer) == disk.lookup(drawer).block
+    assert image[880 * BLOCK_SIZE + _LN_FS_TYPE:
+                 880 * BLOCK_SIZE + _LN_FS_TYPE + 4] == (
+        b"DOS" + bytes([dos_type]))
+    assert _spec_u32(image, 880, _LN_USED) == _spec_used(image)
+    assert image[880 * BLOCK_SIZE + BLOCK_SIZE - 80:
+                 880 * BLOCK_SIZE + BLOCK_SIZE - 70] == b"\x09LONGNAMES"
+
+
+@pytest.mark.parametrize("dos_type", LONG_NAME_TYPES)
+def test_the_root_counts_used_blocks_after_every_write(dos_type):
+    disk = AmigaDisk.blank(dos_type=dos_type)
+    assert _spec_u32(disk.to_bytes(), 880, _LN_USED) == 2
+    steps = [lambda: disk.make_dir("save", when=WHEN),
+             lambda: disk.write_file("save/big", _ffs_payload(60000), when=WHEN),
+             lambda: disk.write_file("save/big", b"small", when=WHEN),
+             lambda: disk.write_file("loose", b"x" * 3000, when=WHEN),
+             lambda: disk.remove_file("save/big")]
+    for step in steps:
+        step()
+        image = disk.to_bytes()
+        assert _spec_u32(image, 880, _LN_USED) == _spec_used(image)
+        assert disk.verify() == []
+
+
+@pytest.mark.parametrize("dos_type", LONG_NAME_TYPES)
+def test_a_long_name_disk_has_no_directory_cache(dos_type):
+    """`DOS\\6` and `DOS\\7` carry the cache bit's value in their number and
+    are not cache disks: no drawer gets a cache block."""
+    disk = AmigaDisk.blank(dos_type=dos_type)
+    disk.make_dir("save", when=WHEN)
+    disk.write_file("save/file", b"data", when=WHEN)
+    image = disk.to_bytes()
+    assert _spec_u32(image, 880, BLOCK_SIZE - 8) == 0
+    assert _spec_u32(image, disk.lookup("save").block, BLOCK_SIZE - 8) == 0
+    # Boot blocks, root, bitmap, then the drawer, the file header and one
+    # data block.
+    assert disk.free_count() == 1760 - 2 - 2 - 3
+
+
+@pytest.mark.parametrize("dos_type", LONG_NAME_TYPES)
+def test_a_long_name_up_to_106_characters_is_written(dos_type):
+    disk = AmigaDisk.blank(dos_type=dos_type)
+    disk.write_file(LONGEST, b"long", when=WHEN)
+    disk.make_dir(LONGEST[1:] + "D", when=WHEN)
+    assert disk.read_file(LONGEST.upper()) == b"long"
+    assert disk.lookup(LONGEST[1:] + "d").is_dir
+    assert disk.verify() == []
+
+
+@pytest.mark.parametrize("dos_type", LONG_NAME_TYPES)
+@pytest.mark.parametrize("name", ["", LONGEST + "x", "with/slash", "a:b"])
+def test_a_name_a_long_name_disk_cannot_store_is_refused(dos_type, name):
+    disk = AmigaDisk.blank(dos_type=dos_type)
+    before = disk.to_bytes()
+    with pytest.raises(AmigaDiskError):
+        disk.write_file(name, b"x", when=WHEN)
+    with pytest.raises(AmigaDiskError):
+        disk.make_dir(name, when=WHEN)
+    assert disk.to_bytes() == before
+
+
+@pytest.mark.parametrize("dos_type", LONG_NAME_TYPES)
+def test_a_long_name_disk_keeps_a_30_character_volume_name(dos_type):
+    """The root does not move to the long layout, so its name stays at 30."""
+    AmigaDisk.blank("v" * 30, dos_type=dos_type)
+    with pytest.raises(AmigaDiskError):
+        AmigaDisk.blank("v" * 31, dos_type=dos_type)
+
+
+@pytest.mark.parametrize("dos_type", LONG_NAME_TYPES)
+@pytest.mark.parametrize("operation", ("replace", "remove"))
+def test_a_file_s_comment_block_goes_back_with_the_file(dos_type, operation):
+    """A file AmigaOS gave a long comment owns a type-64 block; replacing or
+    removing the file gives that block back, and nothing else is lost."""
+    image = _spec_lnfs_image(dos_type, SPEC_LNFS)
+    disk = AmigaDisk(image)
+    note = _spec_u32(image, _spec_lnfs_entry(image, COMMENTED),
+                     _LN_COMMENT_BLOCK)
+    assert note and not disk.is_free(note)
+    if operation == "replace":
+        disk.write_file(COMMENTED, b"new text", when=WHEN)
+        assert disk.read_file(COMMENTED) == b"new text"
+    else:
+        disk.remove_file(COMMENTED)
+    assert disk.is_free(note)
+    assert disk.verify() == []
+    after = disk.to_bytes()
+    assert _spec_u32(after, 880, _LN_USED) == _spec_used(after)
+    for path, data, _ in SPEC_LNFS:
+        if data is not None and path != COMMENTED:
+            assert disk.read_file(path) == data
+
+
+@pytest.mark.parametrize("dos_type", LONG_NAME_TYPES)
+def test_a_comment_pointer_at_another_block_is_refused_and_changes_nothing(
+        dos_type):
+    """Freeing a block a header only claims to own would free somebody
+    else's; the write is refused, every byte stays, and verify says why."""
+    image = bytearray(_spec_lnfs_image(dos_type, SPEC_LNFS))
+    header = _spec_lnfs_entry(image, COMMENTED)
+    victim = _spec_lnfs_entry(image, "short")
+    struct.pack_into(">I", image, header * BLOCK_SIZE + _LN_COMMENT_BLOCK,
+                     victim)
+    struct.pack_into(">I", image, header * BLOCK_SIZE + 20, 0)
+    block = image[header * BLOCK_SIZE:(header + 1) * BLOCK_SIZE]
+    struct.pack_into(">I", image, header * BLOCK_SIZE + 20,
+                     _spec_sum(block, 20))
+    disk = AmigaDisk(image)
+    assert any("comment" in p for p in disk.verify()), disk.verify()
+    for attempt in (lambda: disk.remove_file(COMMENTED),
+                    lambda: disk.write_file(COMMENTED, b"x")):
+        with pytest.raises(AmigaDiskError):
+            attempt()
+        assert disk.to_bytes() == bytes(image)
+
+
+def _lnfs_broken(dos_type: int, how: str) -> AmigaDisk:
+    image = bytearray(_spec_lnfs_image(dos_type, SPEC_LNFS))
+    note = _spec_u32(image, _spec_lnfs_entry(image, COMMENTED),
+                     _LN_COMMENT_BLOCK)
+    number, at = 880, 20
+    if how == "used":
+        struct.pack_into(">I", image, 880 * BLOCK_SIZE + _LN_USED,
+                         _spec_used(image) + 1)
+    elif how == "fs_type":
+        image[880 * BLOCK_SIZE + _LN_FS_TYPE + 3] ^= 1
+    elif how == "comment_sum":
+        image[note * BLOCK_SIZE + 30] ^= 1
+        return AmigaDisk(image)
+    elif how == "comment_owner":
+        number = note
+        struct.pack_into(">I", image, note * BLOCK_SIZE + 8, 880)
+    elif how == "comment_free":
+        index = note - 2
+        at = 881 * BLOCK_SIZE + 4 + 4 * (index // 32)
+        struct.pack_into(">I", image, at,
+                         struct.unpack_from(">I", image, at)[0]
+                         | 1 << index % 32)
+        number, at = 881, 0
+        struct.pack_into(">I", image, 880 * BLOCK_SIZE + _LN_USED,
+                         _spec_used(image))
+        struct.pack_into(">I", image, 880 * BLOCK_SIZE + 20, 0)
+        root = image[880 * BLOCK_SIZE:881 * BLOCK_SIZE]
+        struct.pack_into(">I", image, 880 * BLOCK_SIZE + 20,
+                         _spec_sum(root, 20))
+    elif how == "name_overrun":
+        number = _spec_lnfs_entry(image, "short")
+        image[number * BLOCK_SIZE + _LN_NAC] = 111
+    struct.pack_into(">I", image, number * BLOCK_SIZE + at, 0)
+    block = image[number * BLOCK_SIZE:(number + 1) * BLOCK_SIZE]
+    struct.pack_into(">I", image, number * BLOCK_SIZE + at,
+                     _spec_sum(block, at))
+    return AmigaDisk(image)
+
+
+@pytest.mark.parametrize("dos_type", LONG_NAME_TYPES)
+@pytest.mark.parametrize("how, says", [
+    ("used", "used blocks"),
+    ("fs_type", "DOS type"),
+    ("comment_sum", "does not sum to zero"),
+    ("comment_owner", "comment"),
+    ("comment_free", "marked free"),
+])
+def test_verify_reports_a_long_name_disk_s_own_fields(dos_type, how, says):
+    problems = _lnfs_broken(dos_type, how).verify()
+    assert any(says in p for p in problems), problems
+
+
+@pytest.mark.parametrize("dos_type", LONG_NAME_TYPES)
+def test_a_name_longer_than_the_merged_field_holds_is_refused(dos_type):
+    disk = _lnfs_broken(dos_type, "name_overrun")
+    with pytest.raises(AmigaDiskError):
+        list(disk.walk())
+    assert disk.verify()
+
+
+@pytest.mark.parametrize("dos_type", LONG_NAME_TYPES)
+def test_a_save_on_a_long_name_disk_one_keeps_its_long_names(dos_type):
+    """A disk AmigaOS laid out with long names takes a write into its drawer
+    and keeps every other entry, long names and comments included."""
+    image = _spec_lnfs_image(dos_type, SPEC_LNFS)
+    disk = AmigaDisk(image)
+    target = "A drawer whose name runs past thirty/added by wish.cha"
+    disk.write_file(target, b"party" * 100, when=WHEN)
+    after = disk.to_bytes()
+    assert disk.verify() == []
+    assert _spec_lnfs_read(after, target) == b"party" * 100
+    for path, data, comment in SPEC_LNFS:
+        if data is not None:
+            assert _spec_lnfs_read(after, path) == data, path
+        assert _spec_lnfs_comment(after, path) == comment, path
