@@ -426,7 +426,8 @@ and the transport decides how a read reaches it:
 | `FsuaeGdb` | a patched FS-UAE on the same machine | a GDB-remote `m` packet over a loopback socket, answered from the emulator's frame handler | no |
 
 `FsuaeGdb` is the one a player on Linux can use: no console, no keypress, no
-`ssh`. The fork's server accepts a memory-write (`M`) packet, but Wish's
+`ssh`. The installed `fs-uae-gdb` accepts a memory-write (`M`) packet (checked live
+on #37 (Automap the Amiga version, not just the C64)), but Wish's
 product path only reads, so `AmigaTarget.write` refuses over it by choice. The
 server closes its *listening* socket when a client goes, so one connection is
 all a run of the emulator ever gets.

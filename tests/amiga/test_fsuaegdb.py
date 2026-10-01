@@ -2,7 +2,7 @@
 
 Every test here replaces the one thing that touches an emulator -- the socket
 -- with a fake that answers the way `src/barto_gdbserver.cpp` answers, read
-off the fork `grahambates/fs-uae`, branch `remote_debugger_barto`:
+off the fork `grahambates/fs-uae`, branch `remote_debugger_prb28`:
 
 * a packet is `$<body>#<two hex checksum digits>`, and the server verifies the
   checksum before it looks at the body (`handle_packet`, the `cksum` loop);
@@ -55,9 +55,11 @@ class FakeAmiga:
         #: output arrives.
         self.chatter: list[str] = []
         self.closed = False
-        #: Made True to answer `M` the way a build with a write handler does;
-        #: the stock fork has none and answers it with an empty packet.
+        #: Made True to answer `M` the way the installed build does; False
+        #: answers it with an empty packet, as a build without a handler would.
         self.writable = False
+        #: Made True to read an `M` and never answer it.
+        self.silent_writes = False
         #: Made True to answer `OK` to `M` and change nothing.
         self.ignores_writes = False
         #: Made True to answer as a server that has dropped the connection.
@@ -133,6 +135,8 @@ class FakeAmiga:
             if any(a in self.unreadable for a in range(at, at + size)):
                 return "E01"
             return self.peek(at, size).hex()
+        if body.startswith("M") and self.silent_writes:
+            return None
         if body.startswith("M") and self.writable:
             head, _, digits = body[1:].partition(":")
             at = int(head.partition(",")[0], 16)
@@ -689,6 +693,16 @@ def test_session_poke_to_a_server_without_m_is_an_error_row(driven, tmp_path):
     assert guest.peek(0xC20024, 1) == b"\x01"
 
 
+def test_session_poke_to_a_server_that_never_answers_m_times_out_quickly_and_reads_go_on(
+        driven, tmp_path):
+    guest, _ = driven
+    guest.silent_writes = True
+    events, _ = run_session(tmp_path, ["locate", "poke 0xC20024 07", "peek +0x10 1"])
+    assert "no reply" in events["poke"]["error"]
+    assert fsuaegdb.POKE_TIMEOUT in guest.timeouts
+    assert events["peek"]["hex"] and "error" not in events["peek"]
+
+
 def test_session_poke_that_the_server_acknowledges_but_ignores_is_an_error(
         driven, tmp_path):
     _, row, _ = _poke(driven, tmp_path, "poke 0xC20024 07", writable=True,
@@ -928,6 +942,9 @@ def driven(monkeypatch, tmp_path):
     return guest, log
 
 
+_real_key_known = fsuaegdb.key_known
+
+
 def run_session(tmp_path, lines, **kw):
     args = session_args(tmp_path, **kw)
     pathlib.Path(args.commands).write_text("\n".join([*lines, "quit"]) + "\n")
@@ -956,6 +973,29 @@ def test_session_key_with_an_unknown_name_is_an_error_row_and_sends_nothing(
     monkeypatch.setattr(fsuaegdb, "KEY_ALIASES", {})
     events, rows = run_session(tmp_path, ["key KP_Up ESC", "wait 0.5"])
     assert "'ESC'" in events["key"]["error"]
+    assert log["keys"] == []
+    assert any(r["event"] == "wait" for r in rows)
+
+
+def test_key_known_without_xdotool_is_a_value_error(monkeypatch):
+    def missing(*a, **k):
+        raise FileNotFoundError("xdotool")
+
+    monkeypatch.setattr(fsuaegdb.subprocess, "run", missing)
+    with pytest.raises(ValueError, match="xdotool"):
+        fsuaegdb.key_known(":99", "p")
+
+
+def test_session_key_without_xdotool_is_an_error_row_and_the_session_goes_on(
+        driven, tmp_path, monkeypatch):
+    def missing(*a, **k):
+        raise FileNotFoundError("xdotool")
+
+    _, log = driven
+    monkeypatch.setattr(fsuaegdb, "key_known", _real_key_known)
+    monkeypatch.setattr(fsuaegdb.subprocess, "run", missing)
+    events, rows = run_session(tmp_path, ["key p", "wait 0.5"])
+    assert "xdotool" in events["key"]["error"]
     assert log["keys"] == []
     assert any(r["event"] == "wait" for r in rows)
 

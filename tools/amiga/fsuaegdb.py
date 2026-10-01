@@ -304,13 +304,17 @@ def read_spec(tgt, spec: str, length: int) -> bytes | None:
 #: receive buffer, and a test-harness edit of a few bytes needs no more.
 POKE_LIMIT = 64
 
+#: Seconds to wait for the answer to an `M`; a server with no write handler
+#: sends nothing, and the full packet timeout would stall the session.
+POKE_TIMEOUT = 3.0
+
 
 def poke_row(gdb, tgt, rest: str) -> dict:
     """`poke SPEC HEX` as a log row: a write through the session's own GDB client.
 
     `AmigaTarget.write` refuses a GDB transport because Wish's product path
     only reads, not because the emulator cannot write; this verb sends the `M`
-    packet itself, which the installed build handles. It never trusts the
+    packet itself, which the installed `fs-uae-gdb` handles. It never trusts the
     reply alone: the bytes are read back, and a write the server ignored is an
     error row.
     """
@@ -336,7 +340,8 @@ def poke_row(gdb, tgt, rest: str) -> dict:
                              "the machine's memory regions")
         old = gdb.read_memory(address, len(data))
         row["old"] = old.hex()
-        reply = gdb.ask(f"M{address:x},{len(data):x}:{data.hex()}")
+        reply = gdb.ask(f"M{address:x},{len(data):x}:{data.hex()}",
+                        timeout=POKE_TIMEOUT)
         if reply != "OK":
             raise amiga.GuestError(
                 f"the server answered {reply!r} to the write; a build "
@@ -742,9 +747,10 @@ def session(args) -> int:
                     else:
                         note(event="unknown", line=line, at=now)
                 except (ValueError, NotImplementedError, SystemExit) as exc:
-                    # `fsuaepor` ends a failed wait or a missing window with
-                    # SystemExit; here that would close the emulator's only
-                    # debugger connection for good.
+                    # The `fsuaepor` helpers under `key`, `swap` and `still` end
+                    # a failed wait or a missing window with SystemExit; here
+                    # that would close the emulator's only debugger connection
+                    # for good.
                     print(f"           {exc}")
                     note(event=word, at=now,
                          error=f"{type(exc).__name__}: {exc}")
@@ -813,9 +819,13 @@ def resolve_key(display: str, key: str) -> str:
 
 
 def key_known(display: str, key: str) -> bool:
-    done = subprocess.run(["xdotool", "keyup", key], capture_output=True,
-                          text=True, check=False,
-                          env={"DISPLAY": display, "PATH": "/usr/bin:/bin"})
+    try:
+        done = subprocess.run(["xdotool", "keyup", key], capture_output=True,
+                              text=True, check=False,
+                              env={"DISPLAY": display, "PATH": "/usr/bin:/bin"})
+    except FileNotFoundError as exc:
+        raise ValueError("xdotool is not installed, so key names cannot be "
+                         "checked or sent") from exc
     return "No such key name" not in done.stdout + done.stderr
 
 

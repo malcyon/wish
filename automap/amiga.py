@@ -1312,9 +1312,9 @@ class FsuaeGdb:
     that up on its own.
 
     **Read-only, and that is Wish's choice rather than a limit of the
-    emulator.** The installed build accepts an `M` memory write, but the
-    product path only reads, so `AmigaTarget.write` refuses over this transport
-    instead of sending one. The developer harness's `poke` verb sends `M`
+    emulator.** The installed `fs-uae-gdb` accepts an `M` memory write (checked
+    live on #37), but the product path only reads, so `AmigaTarget.write`
+    refuses over this transport instead of sending one. The developer harness's `poke` verb sends `M`
     itself and reads the bytes back.
 
     **Four limits a caller has to design around**, all of them the fork's:
