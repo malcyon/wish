@@ -5,6 +5,7 @@ Tests for Curse of the Azure Bonds: its C64 disks, saves, tables and level-up ru
 | file | purpose |
 |---|---|
 | `test_curse.py` | Checks the Curse save layout and title key, its maps and combat icons, the editor's and the export's reading of a Curse save, and the cleric grant table. |
+| `test_curse_worldmap.py` | Checks `goldbox/curse_worldmap.py` on world-map scripts and a display driver assembled here, and on the player's own `ECL50`, `ECL51` and `GDRIVE02`: fourteen named places, twenty roads, the one road listed one way and the one conditional leg. |
 | `test_curseabilities.py` | Checks that a C64 Curse record's second ability array reads as a named dictionary and writes back without an error. |
 | `test_cursedualtrain.py` | Checks what Curse's trainer does to a dual-classed character, replayed from the four routines, and that `goldbox/levelup.py` plans the same. |
 | `test_curselevels.py` | Checks Curse's ceilings, racial limits, THAC0, experience, hit dice and spell slots against the game's own tables and the shipped records. |
