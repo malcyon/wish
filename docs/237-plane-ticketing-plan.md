@@ -131,8 +131,9 @@ Imported comments require original-author provenance. Trusting an importer must
 never make all imported text trusted. Hooks remain tripwires, not a security
 boundary, especially when credentials are readable in the guest.
 
-Proposed tools are `tools/plane/planeread.py`, `tools/plane/planeagent.py` and
-`tools/plane/mcp.py`, sharing one policy layer. Provide complete paginated listing,
+Propose a new `plane` directory under `tools/` containing `planeread.py`,
+`planeagent.py` and `mcp.py`, sharing one policy layer. These are planned names,
+not references to committed tools. Provide complete paginated listing,
 filtered reads/citations, creation, comments, metadata changes and state readback.
 Use the [REST API reference](https://developers.plane.so/api-reference/introduction)
 for operations the pinned MCP cannot supply. Check API-version compatibility with
@@ -228,7 +229,7 @@ store API UUIDs separately from display identifiers.
 | `.claude/skills/orchestrate/SKILL.md`, `.agents/skills/orchestrate/SKILL.md` | Switch queue discovery, priority ordering, filtered reads and blocked-work reconstruction together. |
 | `~/.cache/wish/orchestrator-queue.md` on each orchestrator machine | Back up and translate identifiers in place at cutover; preserve decisions, deferrals, experiment details, handoff facts and Do not schedule entries. This is runtime state, not a new repository file. |
 | `.claude/agents/{backlog-auditor,junior-dev,senior-analyst,changelog-writer}.md` and matching `.codex/agents/*.toml` | Update commands, tracker assumptions and citations in both definitions. |
-| `tools/github/issueread.py`, `tools/github/ghtrust.py`, new `tools/plane/` | Keep legacy reads; implement Plane filtering for lists, descriptions, comments, search, JSON and citations. |
+| `tools/github/issueread.py`, `tools/github/ghtrust.py`, proposed `plane` directory under `tools/` | Keep legacy reads; implement Plane filtering for lists, descriptions, comments, search, JSON and citations. |
 | `tools/wishagent.py` | Retire only active ticket writes after migration. Retain `push-token` and `git-credential` for GitHub repository access. |
 | `.claude/hooks/check-issue-reads.py`, `.claude/hooks/check-issue-writes.py`, `.claude/hooks/issue-titles-context.py` | Update guards and startup context; cover adapter use and accidental writes to the old tracker. |
 | `.claude/settings.json`, `.codex/hooks.json`, `.agents/skills/orchestrate/scripts/check_hooks.py` | Wire and verify both clients' hooks, including Codex trust after configuration changes. |
