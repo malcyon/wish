@@ -7912,3 +7912,111 @@ converted, because Wish marks the world map indoors)`. The script it holds is
 `ECL.GLB` block 23, which settles that the engine finds a script through block
 0's table: `#813 (Converting a Curse party in any area past the sewers and the
 hideout to the Amiga stages the wrong area script or fails)`.
+
+## Why CI takes fifteen to eighteen minutes
+
+After a push, Donald waits for the full test matrix before the next batch can
+go out. On 2026-10-02, successful
+[Run 37072075489](https://github.com/malcyon/wish/actions/runs/37072075489)
+took **18:14**, principally inside pytest. All four test jobs started within
+eleven seconds of run creation. The jobs API gives these elapsed times:
+
+| Job | Job elapsed | Pytest step | Before pytest | Result |
+|---|---:|---:|---:|---|
+| Linux, Python 3.12 | 14:36 | 14:03 | 0:29 | 17,702 passed; 2,983 skipped |
+| Linux, Python 3.13 | 14:36 | 14:00 | 0:33 | 17,702 passed; 2,983 skipped |
+| Windows, Python 3.12 | 18:09 | 17:14 | 0:51 | 17,491 passed; 3,194 skipped |
+| Windows, Python 3.13 | 17:46 | 16:42 | 1:00 | 17,491 passed; 3,194 skipped |
+| Generated files | 0:33 | Not applicable | Not applicable | Passed |
+
+The four test jobs used **65:07 of aggregate runner elapsed time**; 61:59,
+about 95%, was inside pytest. These are elapsed allocations, not measured CPU
+use, memory, disk traffic or billed minutes. Each matrix leg collected 20,685
+cases: 82,740 results across four jobs. The logs do not print skip reasons,
+so these totals cannot separate missing game disks from platform skips.
+
+All five jobs restored pip caches. Dependency installation took eight or nine
+seconds on Linux and 26 or 31 seconds on Windows. Linux system libraries took
+eleven or twelve seconds in the test jobs; checkout took three seconds on
+Linux and eight or fourteen seconds on Windows. No test artifacts are
+uploaded. Cache improvements cannot recover the minutes spent inside pytest.
+
+Earlier successful
+[Run 36959839695](https://github.com/malcyon/wish/actions/runs/36959839695)
+took 18:47 overall, with Windows jobs lasting 18:41 and 17:01 and Linux jobs
+13:16 and 12:42. Failed
+[Run 37074641983](https://github.com/malcyon/wish/actions/runs/37074641983)
+took 15:58, with pytest summaries ranging from 11:55 to 15:25 and one failed
+test per leg. The workflow sets `fail-fast: false`.
+
+### Measurement limits
+
+The workflow runs `pytest -q`, inheriting `-n auto --dist loadgroup` from
+`pyproject.toml`. It records neither durations nor JUnit XML. Consequently,
+the logs cannot rank slow tests, separate collection from fixtures or establish
+peak memory. First progress appeared roughly a minute after pytest started;
+that is not a collection measurement because buffering and worker startup
+also contribute.
+
+The next CI measurement should record `--durations=50` and per-job JUnit XML,
+with skip reporting sufficient to classify missing-data cases. Sum durations
+by test file and compare worker completion times. Measure collection, process
+count and peak memory separately before changing worker counts. Use bounded
+runs of slow files for comparisons, rather than repeated full suites on the
+shared development machine.
+
+### Repeated work found in the tests
+
+A focused local investigation ran only `tests/hooks/test_check_issue_reads.py`
+and `tests/suite/test_toolhelp.py`, with `-n0`: **156 passed in 5.98 seconds**.
+The same selection under cProfile took 12.35 seconds. Profiler overhead more
+than doubled that run; its times are diagnostic, not CI savings estimates.
+These source counts and profiles describe the local working tree during
+concurrent development, not the exact commit of the historical CI runs.
+
+| Area | Evidence | Candidate improvement |
+|---|---|---|
+| Tool-help collection | The module parses 413 tools, reparses 385 runnable tools and later reparses 67 guarded tools; the profile recorded 871 `ast.parse` calls taking 3.396 seconds and 941 `_function_named` calls taking 5.872 seconds | Parse each file once, index its functions once, keep compact immutable results and discard the AST; preserve separate assertion cases |
+| Tool import isolation | `tests/suite/test_toolshadowing.py` starts a fresh interpreter for each of 413 tools; six legacy modules are launched twice for separate assertions, and a dedicated dosraces assertion duplicates the sweep | Combine each legacy module's two assertions into one child invocation, saving six launches; review the redundant dedicated check while retaining process isolation |
+| Synthetic Amiga disks | Each manifest in `tests/amiga/test_amigaacceptance_title.py` constructs, writes and hashes four 901,120-byte images: 3,604,480 input bytes before runtime copies | Reuse immutable generated baseline bytes per worker, then make fresh mutable disks per test; use smaller storage only where physical geometry is irrelevant |
+| Generated forms | `tests/generate/test_generated.py` runs the same form check as the separate generated-files CI job | Retain the generated-artifact gate while avoiding repeated CI execution |
+| Global fixtures | In the profiled selection, the per-test fixture took 0.166 seconds across 156 tests; configuration isolation took 0.008 seconds and temporary paths 0.077 seconds | Lower priority in this sample; do not remove isolation or Qt lifetime protection from these numbers |
+
+Every xdist worker repeats collection, so improving import-time tool analysis
+can help all workers. Keeping ASTs permanently would trade execution time for
+memory; compact results avoid that trade. Actual disk writer/reader integration
+tests must retain real geometry, and mutable disk objects cannot be shared
+between tests. None of these source observations establishes a whole-suite
+time or memory saving without a before-and-after measurement.
+
+Literal sleeps are not a runtime estimate: the 120-second child sleeps in
+`tests/registry/test_instance.py` are process-lifetime sentinels that the tests
+terminate and wait for immediately. Import isolation also has a purpose:
+running every tool in one interpreter could hide import-order defects.
+
+### Workflow options
+
+| Option | Expected effect | Cost or limitation |
+|---|---|---|
+| Measure durations, then remove repeated setup in slow families | Can cut both waiting and work while preserving assertions | Exact savings remain unmeasured |
+| Run repository policy checks before the expensive matrix | Can reject missing path citations before waiting for every test | Adds a short dependency before full testing; measure that check's CI duration before stating the saving |
+| Keep two full matrix legs per push and all four on schedule and release | Linux 3.12 plus Windows 3.13 would remove 32:45 of the sampled 65:07 runner elapsed time | The remaining slowest job still lasts 17:46; platform/version combinations receive later regression detection |
+| Split suites into balanced jobs | Can shorten waiting through additional parallel execution | Adds setup and collection; it does not necessarily save resources |
+| Adjust workers using CPU and memory measurements | Can help contention or idle CPUs | Parallelism already exists; more workers may make it slower |
+| Narrow validation for documentation-only changes | Can avoid four complete suites for smaller changes | Preserve repository-content and path checks: the sampled failure was a stale path citation |
+| Cancel superseded branch runs and avoid duplicate push/PR runs | Reduces obsolete or duplicated work | Both triggers exist and no concurrency cancellation is configured; sampled runs were pushes, so no duplicate saving was measured |
+| Tune caching or checkout | Can save setup seconds | Pip caches already hit; only about 5% of aggregate test-job elapsed time is outside pytest |
+
+Matrix reduction or selective full-suite execution would change the standing
+full-suite gate and needs Donald's decision before implementation.
+Keep coverage on both Linux and Windows because filesystem and Qt behavior
+differ. Reducing Python-version coverage changes when compatibility failures
+are detected; it does not show those tests are redundant. Keep the full
+supported matrix for releases. Preserve `emulator-pool`, `icon-tables` and
+`conftest-guard-probe` grouping when sharding, because these groups protect
+shared state from concurrent tests.
+
+This analysis implements no optimization or test deletion. Test count alone
+does not establish unnecessary coverage. Review expensive families for
+distinct player outcomes, boundaries and demonstrated regressions before
+reducing parameter combinations or replacing integration checks.
