@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from automap import actions as engine
-from automap import amigaactions
+from automap import amiga, amigaactions
 from automap import amigafasttravel as aft
 from automap import amigatrip as trips
 from automap.target import NotConnected
@@ -410,3 +410,19 @@ def test_a_disarm_that_finds_the_area_changed_tidies(disks, monkeypatch, key):
     now[0] += aft.FIRE_SECONDS + 1
     assert t.continue_pending(m) is None
     assert len(tidied) == 1 and t.trip is None and t.back is before
+
+
+@pytest.mark.parametrize("error", [NotConnected, amiga.GuestError])
+def test_a_dropped_connection_is_an_outcome_not_an_exception(disks, monkeypatch, error):
+    def drop(*a):
+        raise error("gone")
+
+    t = travel()
+    m = machine(CURSE)
+    monkeypatch.setattr(trips, "gate", drop)
+    out = t.apply(m, area(7))
+    assert not out.ok and out.message == "the machine is not readable right now"
+    t.back = engine.Waypoint(5, None, (1, 1, 0))
+    out = t.apply_back(m)
+    assert not out.ok and out.message == "the machine is not readable right now"
+    assert t.trip is None

@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from . import actions as engine
 from . import amiga, amigaactions
 from . import amigatrip as trips
+from .target import NotConnected
 
 _log = logging.getLogger("wish.automap.amigafasttravel")
 
@@ -48,8 +49,15 @@ class _Trip:
     previous_back: engine.Waypoint | None
 
 
+#: Both are `NotConnected`; named so that a reader sees what is meant.
+_LOST = (NotConnected, amiga.GuestError)
+
+
 class AmigaFastTravel(engine.FastTravel):
     """Put the party in another area of one Amiga title, and bring it back."""
+
+    #: The sentence `Action.legality` gives for a machine that cannot be read.
+    UNREADABLE = "the machine is not readable right now"
 
     def __init__(self, key: str, disks=None):
         self.key = key
@@ -126,10 +134,13 @@ class AmigaFastTravel(engine.FastTravel):
         return engine.Verdict(True)
 
     def apply(self, target, area=None, arrival=None, **kwargs) -> engine.Outcome:
-        verdict = self.legality(target, area)
-        if not verdict:
-            return engine.Outcome(False, verdict.reason)
-        return self.run(target, area=area, arrival=arrival)
+        try:
+            verdict = self.legality(target, area)
+            if not verdict:
+                return engine.Outcome(False, verdict.reason)
+            return self.run(target, area=area, arrival=arrival)
+        except _LOST:
+            return self._lost()
 
     # -- doing it ---------------------------------------------------------
 
@@ -192,6 +203,18 @@ class AmigaFastTravel(engine.FastTravel):
 
     def apply_back(self, target) -> engine.Outcome:
         """Travel to where the last trip started, on the square it started on."""
+        try:
+            return self._apply_back(target)
+        except _LOST:
+            return self._lost()
+
+    def _lost(self) -> engine.Outcome:
+        """The connection dropped between the click and the reads: a slot
+        must not raise, so say what `Action.legality` says."""
+        _log.warning("amiga fast travel: the machine went away", exc_info=True)
+        return engine.Outcome(False, self.UNREADABLE)
+
+    def _apply_back(self, target) -> engine.Outcome:
         verdict = self.back_verdict(target)
         if not verdict:
             return engine.Outcome(False, verdict.reason)
