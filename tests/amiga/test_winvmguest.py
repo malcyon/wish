@@ -106,6 +106,12 @@ def test_the_shot_runs_in_session_one_and_cleans_up_after_itself():
     assert f"'{w.SHOT_BEGIN}'" in script and f"'{w.SHOT_END}'" in script
 
 
+def test_the_shot_script_ends_by_exiting_zero_after_the_cleanup():
+    script = w.shot_script("abc123")
+    assert script.rstrip().endswith("exit 0")
+    assert script.index("finally") < script.rindex("exit 0")
+
+
 def test_the_capture_is_dpi_aware_and_written_by_rename():
     inner = w.shot_script("abc123").split("-EncodedCommand ", 1)[1].split("'", 1)[0]
     capture = _decode(inner)

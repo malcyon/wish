@@ -252,6 +252,9 @@ def shot_script(token: str, timeout: int = 20, capture=None) -> str:
         "  Unregister-ScheduledTask -TaskName $task -Confirm:$false -ErrorAction SilentlyContinue",
         "  Remove-Item $out, \"$out.tmp\" -ErrorAction SilentlyContinue",
         "}",
+        # The `Remove-Item` above fails silently for the missing `.tmp`, which leaves
+        # `$?` false, and `powershell -Command` then exits 1 after a good screenshot.
+        "exit 0",
     ])
 
 

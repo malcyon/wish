@@ -27,6 +27,7 @@ sets `BatchMode` and `SSH_ASKPASS_REQUIRE`, so a failure is an error, never a pr
 from __future__ import annotations
 
 import argparse
+import base64
 import contextlib
 import hashlib
 import json
@@ -56,6 +57,7 @@ ARTIFACT = "frozen-windows"
 WORKFLOW = "release.yml"
 FLAG = "WISH_EXPERIMENTAL_AMIGA_WINUAE"
 HOLDER = winvmguest.HOLDER
+GAME_KEY = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 SHA = re.compile(r"^[0-9a-fA-F]{7,40}$")
 #: Seconds for one guest call; a download or an unzip is the slow one.
 CALL_SECONDS = 60.0
@@ -100,9 +102,22 @@ def log_dir(holder: str) -> str:
     return rf"{run_dir(holder)}\appdata\wish\logs"
 
 
-def settings_json() -> str:
-    """The settings file Wish starts with: the log on, nothing else changed."""
-    return json.dumps({"diagnostics": True}, indent=1) + "\n"
+def disks_dir(holder: str) -> str:
+    """Where the holder's copies of the game's ADFs sit, for Wish to read the maps from."""
+    return rf"{run_dir(holder)}\disks"
+
+
+def settings_json(game: str | None = None, folder: str | None = None) -> str:
+    """The settings file Wish starts with: the log on, and a game folder when given.
+
+    `game` is a `game_folders` key (`c64_port.GAMES[i].key` or an Amiga-only title's)
+    and `folder` the guest folder holding that title's ADFs; without them Wish says
+    "No game disks found" and draws no map.
+    """
+    values: dict[str, Any] = {"diagnostics": True}
+    if game:
+        values["game_folders"] = {game: folder}
+    return json.dumps(values, indent=1) + "\n"
 
 
 def environment(flag: bool, holder: str) -> dict[str, str]:
@@ -126,6 +141,18 @@ CLEARED = ("WISH_EXPERIMENTAL_AMIGA_FSUAE", "POR_MONITOR", "WISH_EXPERIMENTAL_C6
 def q(text: str) -> str:
     """`text` as a single-quoted PowerShell string."""
     return winvmguest._ps_quote(text)
+
+
+def write_file(path: str, text: str) -> str:
+    """A PowerShell statement that writes `text` to `path` on the guest.
+
+    The text goes as base64 bytes, not nested inside a second `-EncodedCommand`: each
+    encoding multiplies the size by about 2.7, and a command line past 32,767
+    characters is refused by Windows ("exec request failed").  The BOM lets Windows
+    PowerShell 5.1 read non-ASCII text as UTF-8.
+    """
+    data = base64.b64encode(b"\xef\xbb\xbf" + text.encode("utf-8")).decode("ascii")
+    return f"[IO.File]::WriteAllBytes({q(path)}, [Convert]::FromBase64String('{data}'))"
 
 
 def stage_script(holder: str, zip_path: str, zip_sha: str) -> str:
@@ -181,12 +208,13 @@ def probe_task_name(holder: str) -> str:
     return f"wish-probe-{holder}"
 
 
-def window_probe(out: str) -> str:
-    """What the probe task runs in session 1: one line per top-level window of a `wish` process.
+def window_probe(out: str, build: str) -> str:
+    """What the probe task runs in session 1: one line per top-level window of a `wish` process under `build`.
 
     Each line is `hwnd|pid|visible|class|title`.  `Get-Process`'s `MainWindowHandle`
     only sees windows on the caller's own desktop, so a call made over ssh (session 0)
-    reads 0 for a window in session 1; only a process in session 1 can list them.
+    reads 0 for a window in session 1; only a process in session 1 can list them.  A
+    `wish` whose path is not under `build` belongs to another holder and is not listed.
     """
     tmp = out + ".tmp"
     return "\n".join([
@@ -199,7 +227,9 @@ def window_probe(out: str) -> str:
         "[DllImport(\"user32.dll\", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n);",
         "[DllImport(\"user32.dll\", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, System.Text.StringBuilder s, int n);",
         "'@",
-        "$script:ids = @(Get-Process -Name wish -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })",
+        f"$script:build = {q(build)}",
+        "$script:ids = @(Get-Process -Name wish -ErrorAction SilentlyContinue | "
+        "Where-Object { $_.Path -like \"$script:build\\*\" } | ForEach-Object { $_.Id })",
         "$script:rows = New-Object System.Collections.ArrayList",
         "$cb = [WishProbe.Win+EnumProc]{",
         "  param($h, $l)",
@@ -221,21 +251,36 @@ def window_probe(out: str) -> str:
     ])
 
 
-def start_script(holder: str, env: dict[str, str],
-                 wait: int = START_SECONDS) -> str:
+def start_script(holder: str, env: dict[str, str], wait: int = START_SECONDS,
+                 disks: tuple[str, ...] = (), game: str | None = None,
+                 reseed: bool = True) -> str:
     """Seed the private settings, start `wish.exe` in session 1, wait for its window.
 
     The reply is `ok pid=N session=S window=H` or `fail ...`.  Session 0 is a
     failure: a window there is invisible to a screenshot.  The window is looked for
     by a task in session 1 (`window_probe`), because the ssh session cannot see it; a
     failure lists every `wish` process and every window the probe found.
+
+    `disks` are ADFs already on the guest; they are copied into `disks_dir` and, with
+    `game`, the settings point that title's folder there.  A start with `reseed`
+    false (`start`, `restart`) leaves the settings of an earlier `up` in place and
+    writes them only when there are none.
+
+    The match assumes the title starts with "Wish": `WishWindow.setWindowTitle` and
+    `wish/window.py`'s `_retitle` give "Wish" plus an optional " [logging]", and nothing
+    calls `_retitle` with another base.
     """
     build, run = build_root(holder), run_dir(holder)
     body = winvmguest.encode_powershell(_task_body(env, build, FLAG in env))
     args = f"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand {body}"
     probe_out = rf"{run}\windows.txt"
-    probe_body = winvmguest.encode_powershell(window_probe(probe_out))
-    probe_args = f"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand {probe_body}"
+    copy_disks = [f"New-Item -ItemType Directory -Force -Path {q(disks_dir(holder))} | Out-Null",
+                  *(f"Copy-Item -LiteralPath {q(d)} -Destination {q(disks_dir(holder))} -Force"
+                    for d in disks)] if disks else []
+    guard = "" if reseed else "if (-not (Test-Path -LiteralPath $settings)) { "
+    tail = "" if reseed else " }"
+    probe_file = rf"{run}\probe.ps1"
+    probe_args = f"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File {probe_file}"
     return "\n".join([
         "$ErrorActionPreference = 'Stop'",
         f"$build = {q(build)}",
@@ -254,54 +299,62 @@ def start_script(holder: str, env: dict[str, str],
         "New-Item -ItemType Directory -Force -Path \"$run\\appdata\\wish\", \"$run\\local\" | Out-Null",
         # No byte-order mark: `Settings.load` reads UTF-8 strictly, and a BOM makes
         # json refuse the file, which falls back to defaults and no log.
-        f"[IO.File]::WriteAllText(\"$run\\appdata\\wish\\automap.json\", {q(settings_json())}, (New-Object Text.UTF8Encoding $false))",
+        *copy_disks,
+        "$settings = \"$run\\appdata\\wish\\automap.json\"",
+        f"{guard}[IO.File]::WriteAllText($settings, {q(settings_json(game if disks else None, disks_dir(holder)))}, (New-Object Text.UTF8Encoding $false)){tail}",
         "$p = New-ScheduledTaskPrincipal -UserId \"$env:COMPUTERNAME\\$env:USERNAME\" -LogonType Interactive",
         "$s = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries",
         f"$a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument {q(args)}",
         "Register-ScheduledTask -TaskName $task -Action $a -Principal $p -Settings $s -Force | Out-Null",
+        write_file(probe_file, window_probe(probe_out, build)),
         f"$pa = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument {q(probe_args)}",
         "Register-ScheduledTask -TaskName $probe -Action $pa -Principal $p -Settings $s -Force | Out-Null",
-        "function Get-WishWindows {",
+        # One probe at a time: starting a task that is still running does nothing, and
+        # a late finish would delete the next answer.  `$seconds` bounds the whole call.
+        "function Get-WishWindows([double]$seconds) {",
+        "  $until = (Get-Date).AddSeconds($seconds)",
+        "  while ((Get-ScheduledTask -TaskName $probe).State -ne 'Ready' -and (Get-Date) -lt $until) { Start-Sleep -Milliseconds 100 }",
+        "  if ((Get-ScheduledTask -TaskName $probe).State -ne 'Ready') { return @('the window probe was still running') }",
         "  Remove-Item -LiteralPath $probeOut -ErrorAction SilentlyContinue",
         "  Start-ScheduledTask -TaskName $probe",
-        "  $until = (Get-Date).AddSeconds(10)",
-        "  while (-not (Test-Path -LiteralPath $probeOut) -and (Get-Date) -lt $until) { Start-Sleep -Milliseconds 200 }",
+        "  while (-not (Test-Path -LiteralPath $probeOut) -and (Get-Date) -lt $until) { Start-Sleep -Milliseconds 100 }",
         "  if (Test-Path -LiteralPath $probeOut) { return @(Get-Content -LiteralPath $probeOut) }",
-        "  return @('the window probe gave no answer in 10s')",
+        "  return @(\"the window probe gave no answer in $([int]$seconds)s\")",
         "}",
         "function Close-Probe { Unregister-ScheduledTask -TaskName $probe -Confirm:$false -ErrorAction SilentlyContinue }",
-        "Stop-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue",
-        "Start-ScheduledTask -TaskName $task",
-        f"$deadline = (Get-Date).AddSeconds({int(wait)})",
-        "$rows = @()",
-        "while ((Get-Date) -lt $deadline) {",
-        "  $w = @(Get-Process -Name wish -ErrorAction SilentlyContinue | Where-Object { $_.Path -like \"$build\\*\" })",
-        "  if ($w.Count -gt 0) {",
-        "    $rows = @(Get-WishWindows)",
-        "    foreach ($row in $rows) {",
-        "      $f = $row -split '\\|', 5",
-        "      if ($f.Count -eq 5 -and $f[2] -eq '1' -and $f[4] -like 'Wish*') {",
-        "        $owner = Get-Process -Id ([int]$f[1])",
-        "        Close-Probe",
-        "        if ($owner.SessionId -eq 0) { \"fail wish.exe pid=$($owner.Id) is in session 0, where no screenshot can see it\"; exit 1 }",
-        "        \"ok pid=$($owner.Id) session=$($owner.SessionId) window=$($f[0])\"; exit 0",
+        "try {",
+        "  Stop-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue",
+        "  Start-ScheduledTask -TaskName $task",
+        f"  $deadline = (Get-Date).AddSeconds({int(wait)})",
+        "  while ($true) {",
+        "    $left = ($deadline - (Get-Date)).TotalSeconds",
+        "    if ($left -lt 1) { break }",
+        "    $w = @(Get-Process -Name wish -ErrorAction SilentlyContinue | Where-Object { $_.Path -like \"$build\\*\" })",
+        "    if ($w.Count -gt 0) {",
+        "      foreach ($row in @(Get-WishWindows ([Math]::Min(10, $left)))) {",
+        "        $f = $row -split '\\|', 5",
+        "        if ($f.Count -eq 5 -and $f[2] -eq '1' -and $f[4] -like 'Wish*') {",
+        "          $owner = Get-Process -Id ([int]$f[1]) -ErrorAction SilentlyContinue",
+        "          if (-not $owner) { continue }",
+        "          if ($owner.SessionId -eq 0) { \"fail wish.exe pid=$($owner.Id) is in session 0, where no screenshot can see it\"; exit 1 }",
+        "          \"ok pid=$($owner.Id) session=$($owner.SessionId) window=$($f[0])\"; exit 0",
+        "        }",
         "      }",
-        "    }",
+        "    } else { Start-Sleep -Milliseconds 250 }",
         "  }",
-        "  Start-Sleep -Milliseconds 250",
-        "}",
-        "$info = Get-ScheduledTaskInfo -TaskName $task",
-        "$why = ''",
-        "if ($info.LastTaskResult -eq 267011) { $why = ' -- nobody is logged on at the console, so an Interactive task cannot run' }",
-        "$procs = @(Get-Process -Name wish -ErrorAction SilentlyContinue | ForEach-Object { \"  wish pid=$($_.Id) session=$($_.SessionId) path=$($_.Path)\" })",
-        "if ($procs.Count -eq 0) { $procs = @('  no wish process') }",
-        "$seen = @(Get-WishWindows | ForEach-Object { \"  window $_\" })",
-        "if ($seen.Count -eq 0) { $seen = @('  no top-level window belongs to a wish process') }",
-        "Close-Probe",
-        f"\"fail no wish.exe window titled Wish after {int(wait)}s; lastResult=0x\" + ('{{0:X}}' -f $info.LastTaskResult) + $why",
-        "$procs",
-        "$seen",
-        "exit 1",
+        "  $info = Get-ScheduledTaskInfo -TaskName $task",
+        "  $why = ''",
+        "  if ($info.LastTaskResult -eq 267011) { $why = ' -- nobody is logged on at the console, so an Interactive task cannot run' }",
+        "  $procs = @(Get-Process -Name wish -ErrorAction SilentlyContinue | ForEach-Object { \"  wish pid=$($_.Id) session=$($_.SessionId) path=$($_.Path)\" })",
+        "  if ($procs.Count -eq 0) { $procs = @('  no wish process') }",
+        # Diagnostics only, after the budget: a fixed 5 s, not part of `wait`.
+        "  $seen = @(Get-WishWindows 5 | ForEach-Object { \"  window $_\" })",
+        "  if ($seen.Count -eq 0) { $seen = @('  no top-level window belongs to a wish process') }",
+        f"  \"fail no wish.exe window titled Wish after {int(wait)}s; lastResult=0x\" + ('{{0:X}}' -f $info.LastTaskResult) + $why",
+        "  $procs",
+        "  $seen",
+        "  exit 1",
+        "} finally { Close-Probe }",
     ])
 
 
@@ -372,12 +425,180 @@ def window_capture(out: str, holder: str) -> str:
     ])
 
 
+# -- clicking Wish through UI Automation -------------------------------------
+
+UI_BEGIN = "WISHUI-BEGIN"
+UI_END = "WISHUI-END"
+#: Seconds a name is searched for: a menu's items exist only once it is open.
+UI_WAIT = 4
+UI_SECONDS = 40.0
+
+
+def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, out: str) -> str:
+    """What the session 1 task runs: list the controls of this holder's Wish, or click some.
+
+    `action` is `controls` (one line per control: `Type|Name|AutomationId|enabled=B|state`,
+    optionally only `kind`) or `click` (each name in turn, so a menu is `File`,
+    `Preferences...`).  A name matches a control's Name exactly, else by prefix.  A
+    disabled control is never invoked: `Invoke` on one returns without an error and
+    does nothing.  Every top-level window of the process is searched, so an open menu
+    or dialog is found.  The answer is `ok` then the lines, or one `fail ...` line.
+    """
+    tmp = out + ".tmp"
+    names_ps = ", ".join(q(n) for n in names) or "@()"
+    return "\n".join([
+        "$ErrorActionPreference = 'Stop'",
+        f"$build = {q(build)}",
+        f"$names = @({names_ps})",
+        f"$kind = {q(kind or '')}",
+        "$lines = New-Object System.Collections.ArrayList",
+        "try {",
+        "  Add-Type -AssemblyName UIAutomationClient",
+        "  Add-Type -AssemblyName UIAutomationTypes",
+        "  $UIA = [System.Windows.Automation.AutomationElement]",
+        "  $W = 'System.Windows.Automation'",
+        "  $proc = Get-Process -Name wish -ErrorAction SilentlyContinue | "
+        "Where-Object { $_.Path -like \"$build\\*\" } | Select-Object -First 1",
+        "  if (-not $proc) { throw 'no wish.exe of this holder is running' }",
+        "  function Get-Controls {",
+        "    $mine = New-Object System.Windows.Automation.PropertyCondition($UIA::ProcessIdProperty, $proc.Id)",
+        "    $found = New-Object System.Collections.ArrayList",
+        "    foreach ($top in $UIA::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $mine)) {",
+        "      [void]$found.Add($top)",
+        "      foreach ($e in $top.FindAll([System.Windows.Automation.TreeScope]::Descendants, "
+        "[System.Windows.Automation.Condition]::TrueCondition)) { [void]$found.Add($e) }",
+        "    }",
+        "    return $found",
+        "  }",
+        "  function Get-Kind($e) { return ($e.Current.ControlType.ProgrammaticName -replace '^ControlType\\.', '') }",
+        "  function Get-State($e) {",
+        "    $o = $null",
+        "    if ($e.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$o)) { return 'selected=' + $o.Current.IsSelected }",
+        "    if ($e.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$o)) { return 'toggle=' + $o.Current.ToggleState }",
+        "    return ''",
+        "  }",
+        "  function Get-Line($e) { return ((Get-Kind $e) + '|' + $e.Current.Name + '|' + $e.Current.AutomationId + '|enabled=' + $e.Current.IsEnabled + '|' + (Get-State $e)) }",
+        # `Invoke` on an item that opens a modal dialog does not return until the dialog
+        # closes, which would hold this task until it is killed; so it runs on its own thread.
+        "  function Start-Async($pattern) {",
+        "    $ps = [PowerShell]::Create()",
+        "    [void]$ps.AddScript('param($p) $p.Invoke()').AddArgument($pattern)",
+        "    [void]$ps.BeginInvoke()",
+        "  }",
+        "  function Use-Control($e) {",
+        "    $o = $null",
+        # A menu opens by Expand; Invoke on a menu bar item does not show its popup.
+        "    if ((Get-Kind $e) -eq 'MenuItem' -and $e.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern, [ref]$o)) { $o.Expand(); return 'expanded' }",
+        "    if ($e.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$o)) { Start-Async $o; return 'invoked' }",
+        "    if ($e.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$o)) { $o.Select(); return 'selected' }",
+        "    if ($e.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$o)) { $o.Toggle(); return 'toggled' }",
+        "    if ($e.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern, [ref]$o)) { $o.Expand(); return 'expanded' }",
+        # A dialog has no button of its own in the tree to some builds; closing its window is the exit.
+        "    if ($e.TryGetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern, [ref]$o)) { $o.Close(); return 'closed' }",
+        "    throw 'the control offers no way to be clicked'",
+        "  }",
+        f"  if ({q(action)} -eq 'controls') {{",
+        "    foreach ($e in Get-Controls) {",
+        "      if ($kind -ne '' -and (Get-Kind $e) -ne $kind) { continue }",
+        "      [void]$lines.Add((Get-Line $e))",
+        "    }",
+        "  } else {",
+        "    if ($names.Count -eq 0) { throw 'click needs at least one name' }",
+        "    foreach ($name in $names) {",
+        f"      $until = (Get-Date).AddSeconds({UI_WAIT})",
+        "      $hit = @()",
+        "      while ($true) {",
+        "        $all = @(Get-Controls | Where-Object { $_.Current.Name -ne '' -and ($kind -eq '' -or (Get-Kind $_) -eq $kind) })",
+        "        $hit = @($all | Where-Object { $_.Current.Name -eq $name })",
+        "        if ($hit.Count -eq 0) { $hit = @($all | Where-Object { $_.Current.Name.StartsWith($name) }) }",
+        "        if ($hit.Count -gt 0 -or (Get-Date) -gt $until) { break }",
+        "        Start-Sleep -Milliseconds 200",
+        "      }",
+        "      if ($hit.Count -eq 0) { throw \"no control named $name\" }",
+        "      if ($hit.Count -gt 1) { throw \"$($hit.Count) controls match ${name}: \" + (($hit | ForEach-Object { Get-Line $_ }) -join ' ; ') }",
+        "      if (-not $hit[0].Current.IsEnabled) { throw \"$($hit[0].Current.Name) is disabled\" }",
+        "      [void]$lines.Add($name + ' -> ' + (Use-Control $hit[0]))",
+        "      Start-Sleep -Milliseconds 400",
+        "    }",
+        "  }",
+        "  $answer = @('ok') + $lines",
+        "} catch {",
+        "  $answer = @('fail ' + $_.Exception.Message)",
+        "}",
+        # ASCII only: the ssh reply is read as UTF-8, and a menu's "..." may be one character.
+        "$answer = @($answer | ForEach-Object { [regex]::Replace($_, '[^\\x20-\\x7e]', "
+        "{ param($m) '\\u' + ([int][char]$m.Value).ToString('x4') }) })",
+        f"[IO.File]::WriteAllLines({q(tmp)}, [string[]]$answer)",
+        f"Move-Item -Force {q(tmp)} {q(out)}",
+    ])
+
+
+def ui_script(token: str, holder: str, action: str, names: tuple[str, ...],
+              kind: str | None, timeout: float = UI_SECONDS) -> str:
+    """What the ssh session runs: do `ui_inner` in session 1 and print its answer between markers."""
+    if not re.fullmatch(r"[A-Za-z0-9]{1,32}", token):
+        raise WinwishError(f"not a usable token: {token!r}")
+    task = f"wish-ui-{token}"
+    out = rf"C:\Users\Public\{task}.txt"
+    file = rf"C:\Users\Public\{task}.ps1"
+    args = f"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File {file}"
+    return "\n".join([
+        "$ErrorActionPreference = 'Stop'",
+        f"$task = {q(task)}",
+        f"$out = {q(out)}",
+        "Remove-Item $out, \"$out.tmp\" -ErrorAction SilentlyContinue",
+        write_file(file, ui_inner(build_root(holder), action, names, kind, out)),
+        f"$a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument {q(args)}",
+        "$p = New-ScheduledTaskPrincipal -UserId \"$env:COMPUTERNAME\\$env:USERNAME\" -LogonType Interactive",
+        "$s = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 2) "
+        "-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries",
+        "Register-ScheduledTask -TaskName $task -Action $a -Principal $p -Settings $s -Force | Out-Null",
+        "try {",
+        "  Start-ScheduledTask -TaskName $task",
+        f"  $deadline = (Get-Date).AddSeconds({int(timeout)})",
+        "  while (-not (Test-Path $out) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 200 }",
+        "  if (-not (Test-Path $out)) { 'fail the Wish window did not answer in ' + " f"{int(timeout)}" " + 's'; exit 1 }",
+        f"  '{UI_BEGIN}'",
+        "  Get-Content -LiteralPath $out",
+        f"  '{UI_END}'",
+        "} finally {",
+        "  Unregister-ScheduledTask -TaskName $task -Confirm:$false -ErrorAction SilentlyContinue",
+        f"  Remove-Item $out, \"$out.tmp\", {q(file)} -ErrorAction SilentlyContinue",
+        "}",
+        "exit 0",
+    ])
+
+
+def ui_lines(text: str) -> list[str]:
+    """The lines between the markers of a `ui_script` reply; a `fail` line is an error."""
+    lines = [line.strip() for line in text.splitlines()]
+    try:
+        body = lines[lines.index(UI_BEGIN) + 1:lines.index(UI_END)]
+    except ValueError:
+        fail = next((line for line in lines if line.startswith("fail")), "")
+        raise WinwishError(fail or "the window answered with nothing: "
+                           + (text.strip()[:200] or "no output")) from None
+    if not body or body[0] != "ok":
+        raise WinwishError(body[0] if body else "the window answered with nothing")
+    return body[1:]
+
+
+def ui(guest: "Guest", holder: str, action: str, names: tuple[str, ...] = (),
+       kind: str | None = None) -> list[str]:
+    """List Wish's controls (`controls`) or click `names` in turn (`click`)."""
+    guest.holds_lane(holder)
+    script = ui_script(secrets.token_hex(6), holder, action, names, kind)
+    rc, text = guest.run(["winvm", "ps", script], UI_SECONDS + 20)
+    return ui_lines(text)
+
+
 # -- talking to the guest and to gh ------------------------------------------
 
 def _run(argv: list[str], timeout: float) -> tuple[int, str]:
     env = dict(os.environ, SSH_ASKPASS_REQUIRE="never")
     try:
         proc = subprocess.run(argv, capture_output=True, text=True, env=env,
+                              encoding="utf-8", errors="replace",
                               timeout=timeout, stdin=subprocess.DEVNULL)
     except FileNotFoundError as exc:
         raise WinwishError(f"{argv[0]} is not installed: {exc}") from None
@@ -512,10 +733,24 @@ def stage(guest: Guest, holder: str, zipped: pathlib.Path) -> str:
                     timeout=COPY_SECONDS)
 
 
-def start_wish(guest: Guest, holder: str, flag: bool = True) -> str:
+def probe_close_script(holder: str) -> str:
+    """Remove the holder's probe task; for a start that ended without reaching its own cleanup."""
+    return "\n".join([
+        f"Unregister-ScheduledTask -TaskName {q(probe_task_name(holder))} -Confirm:$false -ErrorAction SilentlyContinue",
+        "'ok'",
+    ])
+
+
+def start_wish(guest: Guest, holder: str, flag: bool = True, disks: tuple[str, ...] = (),
+               game: str | None = None, reseed: bool = False) -> str:
     guest.holds_lane(holder)
-    return guest.ps(start_script(holder, environment(flag, holder)),
-                    timeout=START_SECONDS + 30)
+    try:
+        return guest.ps(start_script(holder, environment(flag, holder), disks=disks,
+                                     game=game, reseed=reseed),
+                        timeout=START_SECONDS + 30)
+    except WinwishError:
+        _quietly(guest.ps, probe_close_script(holder))
+        raise
 
 
 def stop_wish(guest: Guest, holder: str) -> str:
@@ -534,12 +769,12 @@ def shot(guest: Guest, holder: str, window: str, out: pathlib.Path) -> int:
     capture = (lambda path: window_capture(path, holder)) if window == "wish" else None
     script = winvmguest.shot_script(secrets.token_hex(6), 20, capture=capture)
     rc, text = guest.run(["winvm", "ps", script], 40.0)
-    if rc:
-        raise WinwishError(f"the screenshot call failed: {text}")
+    # The exit code is not read: a PowerShell script whose last statement set `$?`
+    # false exits 1 with the whole PNG already printed, so only the PNG decides.
     try:
         data = winvmguest.decode_shot(text)
     except winvmguest.WinvmError as exc:
-        raise WinwishError(str(exc)) from None
+        raise WinwishError(f"no screenshot came back (winvm exit {rc}): {exc}") from None
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(data)
     if window == "winuae":
@@ -595,6 +830,8 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
     """
     drives = floppy_paths(args)
     options = floppy_options(len(drives))
+    if args.game and not GAME_KEY.match(args.game):
+        raise WinwishError(f"not a game key: {args.game!r}")
     if not _mute_proof(pathlib.Path(args.mute_proof)):
         raise WinwishError(f"{args.mute_proof} is not a fresh muted-endpoint proof; "
                            "run winuaemute.ps1 first")
@@ -611,7 +848,8 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
                                           options=options)
             started = True
             wish_tried = True
-            result["wish"] = start_wish(guest, args.holder, not args.no_flag)
+            result["wish"] = start_wish(guest, args.holder, not args.no_flag,
+                                        tuple(drives), args.game, reseed=True)
             done = True
         finally:
             if not done:
@@ -686,6 +924,8 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--df1", help="a staged ADF on the guest for DF1")
     p.add_argument("--df2", help="a staged ADF on the guest for DF2 (Pool of Radiance's save disk)")
     p.add_argument("--df3", help="a staged ADF on the guest for DF3; needs --df2")
+    p.add_argument("--game", help="a `game_folders` key such as pool-of-radiance: Wish's game "
+                   "folder for that title is set to copies of the mounted ADFs, so it draws the map")
     p.add_argument("--zip", help="use this zip rather than fetching")
     p.add_argument("--no-flag", action="store_true",
                    help=f"leave {FLAG} unset (the control)")
@@ -703,6 +943,16 @@ def _parser() -> argparse.ArgumentParser:
     holder(p)
     p.add_argument("--window", choices=("wish", "winuae", "desktop"), default="wish")
     p.add_argument("--out", required=True)
+
+    p = sub.add_parser("controls", help="list Wish's controls, from a session 1 task")
+    holder(p)
+    p.add_argument("--type", help="only this UI Automation type, such as RadioButton or MenuItem")
+
+    p = sub.add_parser("click", help="click Wish's controls by name, in order (a menu path is "
+                       "`File` `Preferences...`)")
+    holder(p)
+    p.add_argument("--type", help="only this UI Automation type")
+    p.add_argument("names", nargs="+")
 
     p = sub.add_parser("log", help="copy Wish's debug logs from the guest")
     holder(p)
@@ -732,6 +982,10 @@ def main(argv: list[str] | None = None,
         elif args.cmd == "shot":
             size = shot(guest, args.holder, args.window, pathlib.Path(args.out))
             print(f"{args.out} ({size} bytes)")
+        elif args.cmd == "controls":
+            print("\n".join(ui(guest, args.holder, "controls", (), args.type)))
+        elif args.cmd == "click":
+            print("\n".join(ui(guest, args.holder, "click", tuple(args.names), args.type)))
         elif args.cmd == "log":
             print("\n".join(collect_log(guest, args.holder, pathlib.Path(args.out))))
         elif args.cmd == "down":

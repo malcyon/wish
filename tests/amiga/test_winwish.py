@@ -310,6 +310,28 @@ def test_shot_decodes_the_png_and_writes_it(tmp_path):
     assert out.read_bytes() == png
 
 
+def test_shot_keeps_a_complete_png_whatever_the_exit_code_was(tmp_path):
+    png = winvmguest.PNG_SIGNATURE + b"data"
+    reply = "\n".join(["#< CLIXML", winvmguest.SHOT_BEGIN, base64.b64encode(png).decode(),
+                       winvmguest.SHOT_END])
+    run = FakeRun([(lambda a: a[1] == "ps", 1, reply)])
+    out = tmp_path / "wish.png"
+    assert winwish.shot(winwish.Guest(run), "h", "wish", out) == len(png)
+    assert out.read_bytes() == png
+
+
+def test_shot_fails_in_one_sentence_when_no_png_comes_back(tmp_path):
+    for rc, reply in ((1, "ssh: connection refused"), (0, "ok"),
+                      (1, f"{winvmguest.SHOT_BEGIN}\n{base64.b64encode(b'notapng').decode()}"
+                          f"\n{winvmguest.SHOT_END}")):
+        run = FakeRun([(lambda a: a[1] == "ps", rc, reply)])
+        out = tmp_path / "none.png"
+        with pytest.raises(winwish.WinwishError, match=rf"no screenshot came back \(winvm exit {rc}\)") as err:
+            winwish.shot(winwish.Guest(run), "h", "wish", out)
+        assert "\n" not in str(err.value)
+        assert not out.exists()
+
+
 def test_shot_reports_a_guest_that_returned_no_screenshot(tmp_path):
     run = FakeRun([(lambda a: a[1] == "ps", 0, "fail no screenshot after 20s")])
     with pytest.raises(winwish.WinwishError, match="no screenshot"):
@@ -613,7 +635,10 @@ def _every_script():
         "start": winwish.start_script("h", env),
         "start-control": winwish.start_script("h", winwish.environment(False, "h")),
         "task": winwish._task_body(env, winwish.build_root("h"), True),
-        "probe": winwish.window_probe(r"C:\\o.txt"),
+        "ui-controls": winwish.ui_inner(r"C:\\b", "controls", (), "RadioButton", r"C:\\o.txt"),
+        "ui-click": winwish.ui_inner(r"C:\\b", "click", ("File", "Preferences..."), None, r"C:\\o.txt"),
+        "ui-ssh": winwish.ui_script("abc", "h", "click", ("File",), None),
+        "probe": winwish.window_probe(r"C:\\o.txt", r"C:\\b"),
         "stop": winwish.stop_script("h"),
         "capture": winwish.window_capture(r"C:\o.png", "h"),
     }
@@ -622,7 +647,7 @@ def _every_script():
 @pytest.mark.parametrize("name", list(_every_script()))
 def test_no_generated_script_has_a_dollar_name_colon_in_a_double_quoted_string(name):
     strings = _double_quoted(_every_script()[name])
-    assert strings or name in ("mkdir", "task", "probe")
+    assert strings or name in ("mkdir", "task", "probe", "ui-controls")
     assert [bad for s in strings for bad in bad_references(s)] == []
 
 
@@ -658,7 +683,7 @@ def test_the_window_is_looked_for_by_a_task_in_session_one_not_over_ssh():
 
 
 def test_the_probe_lists_the_class_and_title_of_every_window_of_a_wish_process():
-    probe = winwish.window_probe(r"C:\o.txt")
+    probe = winwish.window_probe(r"C:\o.txt", r"C:\b")
     for call in ("EnumWindows", "GetWindowThreadProcessId", "IsWindowVisible",
                  "GetClassName", "GetWindowText"):
         assert call in probe
@@ -685,3 +710,208 @@ def test_a_failed_check_lists_the_processes_and_the_windows_it_found():
 
 def test_stopping_removes_the_probe_task_too():
     assert "Unregister-ScheduledTask -TaskName 'wish-probe-h'" in winwish.stop_script("h")
+
+
+# -- review of the window check -------------------------------------------------
+
+def test_the_probe_lists_only_windows_of_a_wish_under_this_holders_build():
+    probe = winwish.window_probe(r"C:\o.txt", r"C:\Amiga\wish\run-h\build")
+    assert "$script:build = 'C:\\Amiga\\wish\\run-h\\build'" in probe
+    assert 'Where-Object { $_.Path -like "$script:build\\*" }' in probe
+    start = _start()
+    assert r"C:\Amiga\wish\run-h\build" in start
+
+
+def test_the_start_script_always_removes_the_probe_task():
+    script = _start()
+    assert "} finally { Close-Probe }" in script
+    assert "Get-Process -Id ([int]$f[1]) -ErrorAction SilentlyContinue" in script
+    assert "if (-not $owner) { continue }" in script
+
+
+def test_a_start_that_fails_removes_the_probe_task_over_ssh_too():
+    run = FakeRun([START_FAILS])
+    with pytest.raises(winwish.WinwishError):
+        winwish.start_wish(winwish.Guest(run), "h")
+    last = run.calls[-1][2]
+    assert "Unregister-ScheduledTask -TaskName 'wish-probe-h'" in last
+    assert "Start-ScheduledTask" not in last
+
+
+def test_the_probe_is_started_only_when_the_task_is_ready():
+    script = _start()
+    ready = script.index("State -ne 'Ready'")
+    assert ready < script.index("Start-ScheduledTask -TaskName $probe")
+    assert "the window probe was still running" in script
+
+
+def test_the_probe_loop_never_runs_past_the_wait():
+    script = _start()
+    assert "$left = ($deadline - (Get-Date)).TotalSeconds" in script
+    assert "if ($left -lt 1) { break }" in script
+    assert "Get-WishWindows ([Math]::Min(10, $left))" in script
+
+
+def test_every_title_wish_shows_starts_with_wish():
+    root = pathlib.Path(winwish.__file__).parents[2] / "wish"
+    window = (root / "window.py").read_text()
+    assert 'getattr(self, "_editor_title", "Wish")' in window
+    for path in root.glob("*.py"):
+        text = path.read_text()
+        assert not re.search(r"\._retitle\([^)\s]", text), path
+        if path.name != "window.py":
+            assert "_editor_title" not in text, path
+
+
+# -- the game folder Wish is started with --------------------------------------
+
+def test_the_seeded_settings_name_the_guest_folder_and_wish_resolves_it(tmp_path, monkeypatch):
+    from automap import config, paths  # noqa: PLC0415
+    from goldbox import c64_port  # noqa: PLC0415
+    pool = c64_port.GAMES[0]
+    folder = winwish.disks_dir("h")
+    seeded = json.loads(winwish.settings_json(pool.key, folder))
+    assert seeded == {"diagnostics": True, "game_folders": {pool.key: folder}}
+    monkeypatch.setattr(config, "config_dir", lambda: tmp_path)
+    (tmp_path / config.FILE).write_text(winwish.settings_json(pool.key, folder), encoding="utf-8")
+    loaded = config.Settings.load()
+    assert loaded.diagnostics is True
+    where, source = paths.resolve_disks(game=pool, settings=loaded)
+    assert str(where) == folder and source == paths.GAME_PREFERENCE
+
+
+def test_without_a_game_the_settings_are_as_they_were():
+    assert json.loads(winwish.settings_json()) == {"diagnostics": True}
+
+
+def test_start_copies_the_adfs_and_writes_the_folder_when_asked():
+    disks = (r"C:\Amiga\Disks\a.adf", r"C:\Amiga\Disks\b.adf")
+    script = winwish.start_script("h", winwish.environment(True, "h"), disks=disks,
+                                  game="pool-of-radiance")
+    folder = winwish.disks_dir("h")
+    assert f"Copy-Item -LiteralPath 'C:\\Amiga\\Disks\\a.adf' -Destination '{folder}' -Force" in script
+    assert "Copy-Item -LiteralPath 'C:\\Amiga\\Disks\\b.adf'" in script
+    assert "pool-of-radiance" in script and "game_folders" in script
+    assert "if (-not (Test-Path -LiteralPath $settings))" not in script
+
+
+def test_a_plain_start_keeps_the_settings_an_earlier_up_wrote():
+    script = winwish.start_script("h", winwish.environment(True, "h"), reseed=False)
+    assert "if (-not (Test-Path -LiteralPath $settings)) { [IO.File]::WriteAllText($settings" in script
+    assert "Copy-Item" not in script
+
+
+def test_up_gives_the_game_and_the_mounted_adfs_to_the_start(tmp_path, monkeypatch):
+    run, lane = FakeRun(), FakeLane()
+    args = _args(tmp_path, monkeypatch, "--df1", "b.adf", "--game", "pool-of-radiance")
+    winwish.up(winwish.Guest(run), lane, args)
+    starts = [c[2] for c in run.calls if c[1] == "ps" and "Register-ScheduledTask -TaskName $task" in c[2]]
+    assert len(starts) == 1
+    assert "pool-of-radiance" in starts[0] and "b.adf" in starts[0]
+
+
+def test_a_game_key_that_is_not_one_is_refused_before_anything_runs(tmp_path, monkeypatch):
+    run, lane = FakeRun(), FakeLane()
+    args = _args(tmp_path, monkeypatch, "--game", "Pool; rm")
+    with pytest.raises(winwish.WinwishError, match="not a game key"):
+        winwish.up(winwish.Guest(run), lane, args)
+    assert run.calls == [] and lane.log == []
+
+
+# -- clicking Wish -----------------------------------------------------------------
+
+def _ui_reply(*lines):
+    return "\n".join(["#< CLIXML", winwish.UI_BEGIN, *lines, winwish.UI_END])
+
+
+def test_controls_returns_the_lines_after_ok():
+    run = FakeRun([(lambda a: a[1] == "ps" and "wish-ui-" in a[2], 1,
+                    _ui_reply("ok", "RadioButton|WinUAE (Amiga)||enabled=True|selected=False"))])
+    lines = winwish.ui(winwish.Guest(run), "h", "controls", (), "RadioButton")
+    assert lines == ["RadioButton|WinUAE (Amiga)||enabled=True|selected=False"]
+    assert run.calls[0][:3] == ["winvm", "lane", "--expect"]
+
+
+def test_a_failure_line_from_the_window_is_the_error():
+    run = FakeRun([(lambda a: a[1] == "ps", 0, _ui_reply("fail Heal party is disabled"))])
+    with pytest.raises(winwish.WinwishError, match="Heal party is disabled"):
+        winwish.ui(winwish.Guest(run), "h", "click", ("Heal party",))
+
+
+def test_no_answer_at_all_is_one_sentence():
+    run = FakeRun([(lambda a: a[1] == "ps", 1, "ssh: nope")])
+    with pytest.raises(winwish.WinwishError, match="answered with nothing"):
+        winwish.ui(winwish.Guest(run), "h", "controls")
+
+
+def test_the_click_script_checks_enabled_before_invoking_and_walks_every_window():
+    inner = winwish.ui_inner(r"C:\b", "click", ("File", "Preferences..."), None, r"C:\o.txt")
+    assert "if (-not $hit[0].Current.IsEnabled) { throw" in inner
+    assert inner.index("IsEnabled) { throw") < inner.index("Use-Control $hit[0]")
+    assert "$names = @('File', 'Preferences...')" in inner
+    assert "RootElement.FindAll([System.Windows.Automation.TreeScope]::Children" in inner
+    assert "InvokePattern" in inner and "SelectionItemPattern" in inner
+
+
+def test_the_ui_task_is_removed_whatever_happens():
+    script = winwish.ui_script("abc", "h", "controls", (), None)
+    assert script.index("} finally {") < script.index("Unregister-ScheduledTask -TaskName $task")
+    assert script.rstrip().endswith("exit 0")
+
+
+def test_the_cli_has_controls_and_click(monkeypatch, capsys):
+    run = FakeRun([(lambda a: a[1] == "ps", 0, _ui_reply("ok", "File -> invoked"))])
+    assert winwish.main(["click", "--holder", "h", "File"], winwish.Guest(run)) == 0
+    assert "File -> invoked" in capsys.readouterr().out
+
+
+# -- what Windows will run ---------------------------------------------------------
+
+LIMIT = 32767  # CreateProcess's command line limit; past it ssh says "exec request failed"
+
+
+def test_no_script_is_too_long_for_a_windows_command_line():
+    disks = (r"C:\Amiga\Disks\wish37-j37wfix-disk1.adf",) * 3
+    start = winwish.start_script("j37wfix", winwish.environment(True, "j37wfix"), disks=disks,
+                                 game="pool-of-radiance")
+    ui = winwish.ui_script("abcdef123456", "j37wfix", "click", ("File", "Preferences"), "MenuItem")
+    for script in (start, ui):
+        assert len(winvmguest.powershell_command(script)) < LIMIT - 4000
+
+
+def test_the_probe_and_ui_scripts_travel_as_files_not_as_nested_commands():
+    start = _start()
+    assert "-File C:\\Amiga\\wish\\run-h\\probe.ps1" in start
+    assert start.count("-EncodedCommand") == 1  # the task body only
+    ui = winwish.ui_script("abc", "h", "controls", (), None)
+    assert "-File C:\\Users\\Public\\wish-ui-abc.ps1" in ui
+    assert "-EncodedCommand" not in ui
+
+
+def test_write_file_round_trips_through_base64_with_a_bom():
+    statement = winwish.write_file(r"C:\x.ps1", "caf\u00e9 $x")
+    data = base64.b64decode(statement.split("FromBase64String('")[1].split("'")[0])
+    assert data == b"\xef\xbb\xbf" + "caf\u00e9 $x".encode("utf-8")
+
+
+def test_a_menu_opens_by_expanding_and_a_modal_item_is_invoked_off_thread():
+    inner = winwish.ui_inner(r"C:\b", "click", ("File",), None, r"C:\o.txt")
+    assert inner.index("ExpandCollapsePattern]::Pattern, [ref]$o)) { $o.Expand()") \
+        < inner.index("InvokePattern]::Pattern, [ref]$o)) { Start-Async $o")
+    assert "[PowerShell]::Create()" in inner and "BeginInvoke()" in inner
+    assert "WindowPattern]::Pattern, [ref]$o)) { $o.Close(); return 'closed' }" in inner
+
+
+def test_the_answer_is_ascii_whatever_a_control_is_called():
+    inner = winwish.ui_inner(r"C:\b", "controls", (), None, r"C:\o.txt")
+    assert "[^\\x20-\\x7e]" in inner and "x4" in inner
+
+
+def test_an_undecodable_byte_in_the_guest_reply_does_not_raise(monkeypatch):
+    import subprocess  # noqa: PLC0415
+
+    def fake(argv, **kwargs):
+        assert kwargs["errors"] == "replace"
+        return subprocess.CompletedProcess(argv, 0, "ok \ufffd", "")
+    monkeypatch.setattr(subprocess, "run", fake)
+    assert winwish._run(["winvm", "ps", "x"], 5)[1] == "ok \ufffd"
