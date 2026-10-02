@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import json
 import pathlib
+import re
 import sys
 
 import pytest
@@ -60,8 +61,9 @@ class FakeLane:
     def claim(self, holder, timeout):
         return self._do("claim")
 
-    def start(self, holder, *drives, timeout):
+    def start(self, holder, *drives, timeout, options=()):
         self.log.append("drives=" + ",".join(drives))
+        self.options = options
         return self._do("start")
 
     def stop(self, holder, timeout):
@@ -329,7 +331,7 @@ def test_log_copies_the_holders_folder_and_insists_on_a_log(tmp_path):
 
 # -- up and down --------------------------------------------------------------
 
-def _args(tmp_path, monkeypatch, **extra):
+def _args(tmp_path, monkeypatch, *extra):
     zipped = tmp_path / "wish-1.zip"
     zipped.write_bytes(b"PK")
     return winwish._parser().parse_args(
@@ -466,3 +468,87 @@ def test_a_zip_with_no_commit_note_says_so(tmp_path, capsys):
     zipped.write_bytes(b"PK")
     winwish.check_zip_commit(zipped, SHA)
     assert "no commit.txt" in capsys.readouterr().err
+
+
+def test_up_passes_a_third_and_fourth_drive_with_the_settings_they_need(tmp_path, monkeypatch):
+    lane = FakeLane()
+    args = _args(tmp_path, monkeypatch, "--df1", "b.adf", "--df2", "c.adf")
+    winwish.up(winwish.Guest(FakeRun()), lane, args)
+    assert "drives=" + r"C:\Amiga\Disks\a.adf,b.adf,c.adf" in lane.log
+    assert lane.options == ("nr_floppies=3", "floppy2type=0")
+    lane = FakeLane()
+    args = _args(tmp_path, monkeypatch, "--df1", "b.adf", "--df2", "c.adf", "--df3", "d.adf")
+    winwish.up(winwish.Guest(FakeRun()), lane, args)
+    assert lane.options == ("nr_floppies=4", "floppy2type=0", "floppy3type=0")
+
+
+def test_two_drives_or_fewer_add_no_settings(tmp_path, monkeypatch):
+    lane = FakeLane()
+    winwish.up(winwish.Guest(FakeRun()), lane, _args(tmp_path, monkeypatch, "--df1", "b.adf"))
+    assert lane.options == ()
+
+
+def test_a_drive_after_a_gap_is_refused_before_anything_starts(tmp_path, monkeypatch):
+    run, lane = FakeRun(), FakeLane()
+    args = _args(tmp_path, monkeypatch, "--df2", "c.adf")
+    with pytest.raises(winwish.WinwishError, match="without a gap"):
+        winwish.up(winwish.Guest(run), lane, args)
+    assert lane.log == ["claim", "release"]
+
+
+def test_the_drive_settings_become_dash_s_arguments():
+    from tools.amiga.winuaesession import WinGuest  # noqa: PLC0415
+    sent = []
+    guest = WinGuest()
+    guest._lane = lambda holder, command, timeout: sent.append(command) or "ok"
+    guest.start("h", "a.adf", "b.adf", "c.adf", timeout=1,
+                options=winwish.floppy_options(3))
+    assert "-s floppy2=c.adf" in sent[0]
+    assert "-s nr_floppies=3 -s floppy2type=0" in sent[0]
+
+
+# -- PowerShell reads `$name:` in a double-quoted string as a drive-qualified variable --
+
+def _double_quoted(script: str) -> list[str]:
+    """The double-quoted strings of `script`, skipping single-quoted ones and here-strings."""
+    found, i = [], 0
+    while i < len(script):
+        if script.startswith("@'", i):
+            i = script.index("\n'@", i) + 3
+        elif script[i] == "'":
+            i += 1
+            while not (script[i] == "'" and script[i + 1:i + 2] != "'"):
+                i += 2 if script[i] == "'" else 1
+            i += 1
+        elif script[i] == '"':
+            start, i = i + 1, i + 1
+            while script[i] != '"':
+                i += 2 if script[i] == "`" else 1
+            found.append(script[start:i])
+            i += 1
+        else:
+            i += 1
+    return found
+
+
+BAD_REFERENCE = re.compile(r"\$\w+:(?![A-Za-z0-9_?])")
+
+
+def _every_script():
+    env = winwish.environment(True, "h")
+    return {
+        "stage": winwish.stage_script("h", r"C:\z.zip", "a" * 64),
+        "mkdir": winwish.mkdir_script(r"C:\x"),
+        "start": winwish.start_script("h", env),
+        "start-control": winwish.start_script("h", winwish.environment(False, "h")),
+        "task": winwish._task_body(env, winwish.build_root("h"), True),
+        "stop": winwish.stop_script("h"),
+        "capture": winwish.window_capture(r"C:\o.png", "h"),
+    }
+
+
+@pytest.mark.parametrize("name", list(_every_script()))
+def test_no_generated_script_has_a_dollar_name_colon_in_a_double_quoted_string(name):
+    strings = _double_quoted(_every_script()[name])
+    assert strings or name in ("mkdir", "task")
+    assert [s for s in strings if BAD_REFERENCE.search(s)] == []

@@ -195,7 +195,7 @@ def start_script(holder: str, env: dict[str, str],
         "$all = @(Get-Process -Name wish -ErrorAction SilentlyContinue)",
         # A process whose path cannot be read might be ours; passing it would start a second.
         "$blind = @($all | Where-Object { -not $_.Path })",
-        "if ($blind.Count -gt 0) { \"fail cannot tell whether wish.exe pid=$($blind[0].Id) is running from $run: its path is unreadable\"; exit 1 }",
+        "if ($blind.Count -gt 0) { \"fail cannot tell whether wish.exe pid=$($blind[0].Id) is running from ${run}: its path is unreadable\"; exit 1 }",
         "$mine = @($all | Where-Object { $_.Path -like \"$run\\*\" })",
         "if ($mine.Count -gt 0) { \"fail wish.exe already running pid=$($mine[0].Id); stop it first\"; exit 1 }",
         "New-Item -ItemType Directory -Force -Path \"$run\\appdata\\wish\", \"$run\\local\" | Out-Null",
@@ -482,6 +482,27 @@ def collect_log(guest: Guest, holder: str, out: pathlib.Path) -> list[str]:
     return files
 
 
+def floppy_paths(args: argparse.Namespace) -> list[str]:
+    """The ADFs for DF0 upward; a drive may not be given without the one before it."""
+    given = [args.df0, args.df1, args.df2, args.df3]
+    count = max(n for n, path in enumerate(given) if path) + 1
+    if not all(given[:count]):
+        raise WinwishError("the drives must be given without a gap: "
+                           "--df1 needs --df0, --df2 needs --df1, --df3 needs --df2")
+    return given[:count]
+
+
+def floppy_options(count: int) -> tuple[str, ...]:
+    """The WinUAE settings a third or fourth drive needs; `goldbox-a500.uae` has two.
+
+    A drive past the template's `nr_floppies=2` is not present until the count is
+    raised, and its type is set to a 3.5 inch drive as `route_pool.py` does for DF2.
+    """
+    if count <= 2:
+        return ()
+    return (f"nr_floppies={count}", *(f"floppy{n}type=0" for n in range(2, count)))
+
+
 def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
     """Fetch, stage, claim the lane, start WinUAE, start Wish.
 
@@ -501,8 +522,9 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
         try:
             result["claim"] = lane.claim(args.holder, CALL_SECONDS)
             claimed = True
-            drives = [args.df0, args.df1] if args.df1 else [args.df0]
-            result["winuae"] = lane.start(args.holder, *drives, timeout=START_SECONDS + 30)
+            drives = floppy_paths(args)
+            result["winuae"] = lane.start(args.holder, *drives, timeout=START_SECONDS + 30,
+                                          options=floppy_options(len(drives)))
             started = True
             wish_tried = True
             result["wish"] = start_wish(guest, args.holder, not args.no_flag)
@@ -578,6 +600,8 @@ def _parser() -> argparse.ArgumentParser:
                    help="the JSON that winuaemute.ps1 printed, under five minutes old")
     p.add_argument("--df0", required=True, help="a staged ADF on the guest for DF0")
     p.add_argument("--df1", help="a staged ADF on the guest for DF1")
+    p.add_argument("--df2", help="a staged ADF on the guest for DF2 (Pool of Radiance's save disk)")
+    p.add_argument("--df3", help="a staged ADF on the guest for DF3; needs --df2")
     p.add_argument("--zip", help="use this zip rather than fetching")
     p.add_argument("--no-flag", action="store_true",
                    help=f"leave {FLAG} unset (the control)")
