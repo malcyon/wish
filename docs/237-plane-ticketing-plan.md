@@ -52,7 +52,9 @@ Use 8 GiB RAM as an initial planning allowance and budget disk for uploads plus
 local backup staging, then measure with normal media workloads running.
 
 Use a private backend network for stateful services and a frontend network
-shared with NPM and Plane's routing container. The latter replaces the bundled
+shared with NPM and Plane's routing container. Create the frontend network
+idempotently before either Compose project starts, and declare it external with
+the same explicit name in both projects. The routing container replaces the bundled
 proxy using the [Community routing guide](https://developers.plane.so/self-hosting/govern/reverse-proxy):
 web at `/`, administration at `/god-mode/`, sharing at `/spaces/`, collaboration
 at `/live/`, API/auth/static routes, and the configured upload bucket path.
@@ -87,7 +89,11 @@ without bypass flags. Add certificate-expiry monitoring.
 | `ansible/README.md`, `docs/219-the-agent-sandbox.md` | Document the additional LAN exception, identity, DNS, trust and recovery. |
 
 The filter is shared with `win11`, so the exception must include the Linux
-VM's source address. TCP 443 access permits **every HTTPS virtual host sharing
+VM's source address. The current filter does not enforce source anti-spoofing;
+add and test IP/MAC bindings at each guest's libvirt interface before treating
+the source address as guest identity. Include a Windows source-spoofing negative
+test. A dedicated filter attached only to agent-vm is an alternative if binding
+cannot be enforced. TCP 443 access permits **every HTTPS virtual host sharing
 that IP and listener**. The proposed initial deployment accepts that reachability
 while denying other ports. If isolation must distinguish Plane from other HTTPS
 apps, reserve a dedicated ingress IP and adjust NPM's wildcard bindings before
@@ -220,6 +226,7 @@ store API UUIDs separately from display identifiers.
 | `.claude/rules/commits.md` | Use Plane identifiers for new work; retain review, push and exact-SHA GitHub CI before manual closure. Disable integration-driven automatic closure. |
 | `.claude/rules/feature-flags.md`, `.claude/rules/conversions.md`, `.claude/rules/delegating.md` | Review tracker-specific references while preserving acceptance requirements. Check `.agents/rules/` links instead of creating duplicate rules. |
 | `.claude/skills/orchestrate/SKILL.md`, `.agents/skills/orchestrate/SKILL.md` | Switch queue discovery, priority ordering, filtered reads and blocked-work reconstruction together. |
+| `~/.cache/wish/orchestrator-queue.md` on each orchestrator machine | Back up and translate identifiers in place at cutover; preserve decisions, deferrals, experiment details, handoff facts and Do not schedule entries. This is runtime state, not a new repository file. |
 | `.claude/agents/{backlog-auditor,junior-dev,senior-analyst,changelog-writer}.md` and matching `.codex/agents/*.toml` | Update commands, tracker assumptions and citations in both definitions. |
 | `tools/github/issueread.py`, `tools/github/ghtrust.py`, new `tools/plane/` | Keep legacy reads; implement Plane filtering for lists, descriptions, comments, search, JSON and citations. |
 | `tools/wishagent.py` | Retire only active ticket writes after migration. Retain `push-token` and `git-credential` for GitHub repository access. |
