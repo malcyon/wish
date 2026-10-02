@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import pathlib
 from dataclasses import dataclass, field
 
@@ -288,6 +289,12 @@ class AutomapState:
                 / f"{self.area or 'unknown'}.json")
 
     def save_notes(self) -> None:
+        """Write the notes and the explored squares for the current area.
+
+        Written to a temporary file and moved into place, so a Wish that is
+        killed or crashes in the middle of a write leaves the previous file
+        whole rather than a truncated one that `load_notes` cannot read.
+        """
         migrate_flat_notes()
         path = self.notes_path()
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -295,7 +302,9 @@ class AutomapState:
             "notes": notemod.dump_notes(self.notes),
             "seen": sorted(f"{x},{y}" for x, y in self.exploration.seen),
         }
-        path.write_text(json.dumps(payload, indent=1), encoding="utf-8")
+        staged = path.with_name(path.name + ".tmp")
+        staged.write_text(json.dumps(payload, indent=1), encoding="utf-8")
+        os.replace(staged, path)
 
     def load_notes(self) -> None:
         migrate_flat_notes()
@@ -610,7 +619,7 @@ class Automapper:
                 # The party walked on from a held memory jump that survived
                 # polls unchanged, so it was a move inside this area and not
                 # a load still in progress.
-                self.state.exploration.visit(*self._pending, self.state.geo)
+                self._visit(*self._pending)
             elif fix.source == "memory" or self._pending != (fix.x, fix.y):
                 same = (self._pending == (fix.x, fix.y)
                         and self._pending_source == fix.source)
@@ -656,8 +665,26 @@ class Automapper:
         self.state.facing, self.state.source = fix.facing, fix.source
         self._started = True
         self._last = fix
-        self.state.exploration.visit(fix.x, fix.y, self.state.geo)
+        self._visit(fix.x, fix.y)
         return changed
+
+    def _visit(self, x: int, y: int) -> None:
+        """Record the party at `(x, y)`, and save at once if that saw new squares.
+
+        Saved here rather than only at a clean exit, because a Wish that
+        crashes or is killed never reaches its close and would lose every
+        square seen since the area was entered. A write happens only when the
+        explored set grows, so it is bounded by the squares in the area and
+        not by how long the party walks. No file is written before the area
+        is identified: `set_area` discards those squares in any case.
+        """
+        before = len(self.state.exploration)
+        self.state.exploration.visit(x, y, self.state.geo)
+        if self.state.area and len(self.state.exploration) > before:
+            try:
+                self.state.save_notes()
+            except OSError as exc:
+                _log.warning("could not save the explored squares: %s", exc)
 
     def _engine_square(self) -> tuple[int, int, int] | None:
         """The engine's own square, read once, or None when it has none to give."""
