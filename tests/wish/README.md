@@ -18,6 +18,7 @@ Tests for the application in `wish/`: the window, preferences, game folders, the
 | `test_packaging.py` | Checks the frozen build's spec, that it makes one executable with the right entry script, and how the subcommands and console streams behave. |
 | `test_paths.py` | Checks how a directory search settles on a title's disks and that the title reaches the automapper and its backend rather than being re-defaulted. |
 | `test_preferences.py` | Checks File > Preferences: the precedence of flag, setting and environment, the report of what it found, and remembered folders. |
+| `test_reopentitle.py` | Checks that a window opened over a game that is already running, with no save open, labels and stores the map under the title of the maps it loads, so a reopened Wish keeps Silver Blades' or Curse's place names and finds the squares already explored. |
 | `test_taskbaricon.py` | Checks that the window icon is the artist's committed PNG scaled down. |
 | `test_windowslayout.py` | Checks the window and dialog layout rules that only broke on Windows, with the screen, frame and style faked. |
 | `test_winuaebackend.py` | Checks that the WinUAE row appears only behind `WISH_EXPERIMENTAL_AMIGA_WINUAE`, that its probe lists pipes without opening one, and that a connection releases the pipe when the target closes or the connect fails. |
