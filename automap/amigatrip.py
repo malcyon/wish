@@ -603,7 +603,8 @@ def gate(target, row) -> bool:
 
 
 #: The kinds of write `arm` makes, in its order. The buffer kinds are put back
-#: and zeroed byte by byte; the rest only whole.
+#: and zeroed byte by byte; the rest while they read as ours, whole or as the
+#: prefix a write that failed part way left over the original.
 KINDS = ("square", "statements", "message", "entry", "trigger")
 _BYTEWISE = ("statements", "message")
 
@@ -691,8 +692,10 @@ def arm(target, row, p: Plan) -> Armed | None:
     the step entry, then the key, each checked before the next.
 
     None, with nothing left written, when the game is not at its world menu,
-    the plan goes nowhere new, or a write fails and every earlier one could be
-    put back. A failure that cannot be put back raises.
+    the plan goes nowhere new, or a write fails and everything it and the
+    earlier ones left could be put back. A failure that cannot be put back
+    raises. If the area changed while putting back (a half-linked message the
+    game took), the trip happened: the `Armed` is returned for `fired`.
     """
     row = row_for(row)
     if _base(target) is None or not gate(target, row):
@@ -713,10 +716,12 @@ def arm(target, row, p: Plan) -> Armed | None:
             target.write(address, data, verify=kind != "trigger")
         except (NotConnected, ValueError) as exc:
             _log.warning("amiga trip: the %s write at %#x failed (%s); "
-                         "putting back %d earlier writes", kind, address, exc,
-                         len(done))
-            _restore(target, done)
-            return None
+                         "putting it and %d earlier writes back", kind,
+                         address, exc, len(done))
+            # Part of it may have landed, so it is put back like the rest.
+            done.append(Written(address, was, data, kind))
+            armed = Armed(row, p, here, buffer, tuple(done))
+            return None if _put_back(target, armed) else armed
         done.append(Written(address, was, data, kind))
     return Armed(row, p, here, buffer, tuple(done))
 
@@ -741,9 +746,20 @@ def _runs(mask: list[bool]) -> list[tuple[int, int]]:
     return out
 
 
+def _ours(cur: bytes, w: Written) -> int:
+    """How many leading bytes of a word-kind record to put back: all of it
+    while it reads as written, the landed prefix while the rest still reads
+    as the original, and none once anything else has written there."""
+    n = 0
+    while n < len(cur) and cur[n] == w.data[n]:
+        n += 1
+    return n if cur[n:] == w.original[n:] else 0
+
+
 def _restore(target, records) -> int:
     """Put back, newest first, every record still holding what was written:
-    whole, or byte by byte for the buffer kinds. Returns the writes made."""
+    byte by byte for the buffer kinds, by `_ours` for the rest. Returns the
+    writes made."""
     records = list(records)[::-1]
     if not records:
         return 0
@@ -755,19 +771,35 @@ def _restore(target, records) -> int:
             for start, end in _runs(same):
                 target.write(w.address + start, w.original[start:end])
                 made += 1
-        elif cur == w.data and cur != w.original:
-            target.write(w.address, w.original)
-            made += 1
+        else:
+            n = _ours(cur, w)
+            if n and cur[:n] != w.original[:n]:
+                target.write(w.address, w.original[:n])
+                made += 1
     return made
 
 
-def disarm(target, armed: Armed) -> bool:
-    """Put back a trip that did not fire. False, with nothing written, if the
-    area has changed after all: the caller tidies instead."""
+def _put_back(target, armed: Armed) -> bool:
+    """Take the key back first, then check the area again before the rest.
+
+    The game runs the statements within a frame of taking the key, so a key
+    taken between the caller's look at the area and this one shows here as a
+    changed area. False then, with only the key's record touched.
+    """
+    keys = [w for w in armed.records if w.kind == "trigger"]
+    _restore(target, keys)
     if fired(target, armed):
         return False
-    _restore(target, armed.records)
+    _restore(target, [w for w in armed.records if w.kind != "trigger"])
     return True
+
+
+def disarm(target, armed: Armed) -> bool:
+    """Put back a trip that did not fire. False if the area has changed after
+    all, before or while putting back: the caller tidies instead."""
+    if fired(target, armed):
+        return False
+    return _put_back(target, armed)
 
 
 def tidy(target, armed: Armed, new_area: int | None,

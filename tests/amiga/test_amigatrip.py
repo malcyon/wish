@@ -20,17 +20,22 @@ POOL_ENTRY = 0xA000
 
 class FakeAmiga:
     """A flat memory with a data hunk at `BASE`, `read`, `read_blocks` and
-    `write(addr, data, verify)`. Every write is logged; `fail_on` names a
-    write kind's address that raises; `on_write` runs after each write."""
+    `write(addr, data, verify)`. Every write is logged; a write at `fail_at`
+    raises after storing its first `landed` bytes; `on_write` runs after each
+    write and `on_read` before each read."""
 
     def __init__(self):
         self.memory = bytearray(0x50000)
         self.data_base = BASE
         self.log: list[tuple[int, bytes, bool]] = []
         self.fail_at: int | None = None
+        self.landed = 0
         self.on_write = None
+        self.on_read = None
 
     def read(self, addr, length):
+        if self.on_read is not None:
+            self.on_read(addr, length)
         return bytes(self.memory[addr:addr + length])
 
     def read_blocks(self, blocks):
@@ -38,6 +43,8 @@ class FakeAmiga:
 
     def write(self, addr, data, verify=True):
         if addr == self.fail_at:
+            self.memory[addr:addr + self.landed] = data[:self.landed]
+            self.fail_at = None
             raise NotConnected("the emulator went away")
         self.memory[addr:addr + len(data)] = data
         self.log.append((addr, bytes(data), verify))
@@ -342,6 +349,44 @@ def test_a_failed_write_puts_back_what_was_already_written():
     assert len(m.log) == 2
 
 
+@pytest.mark.parametrize("key, kind, landed", [
+    ("pool-of-radiance", "trigger", 4),     # the link's head, not its tail
+    ("pool-of-radiance", "message", 20),
+    ("pools-of-darkness", "statements", 10),
+    ("curse-of-the-azure-bonds", "trigger", 1),
+])
+def test_a_write_that_fails_part_way_is_put_back_too(key, kind, landed):
+    m = machine(key, stale=key == "pools-of-darkness")
+    before = bytes(m.memory)
+    row = trip.ROWS[key]
+    p = trip.plan(3, (1, 1, 0))
+    _buffer, writes = trip._prepare(m, row, p)
+    m.fail_at = next(a for a, _d, k in writes if k == kind)
+    m.landed = landed
+    assert trip.arm(m, key, p) is None
+    assert bytes(m.memory) == before
+
+
+def test_a_half_linked_message_the_game_takes_is_a_trip_that_happened():
+    key = "pool-of-radiance"
+    m = machine(key)
+    row = trip.ROWS[key]
+    p = trip.plan(14, (4, 0, 2))
+    _buffer, writes = trip._prepare(m, row, p)
+    m.fail_at = next(a for a, _d, k in writes if k == "trigger")
+    m.landed = 4
+
+    def game_takes_it(addr, length):
+        # Before the link is put back, the game's GetMsg takes the message.
+        if m.fail_at is None and addr == PORT + trip.PORT_LIST:
+            m.at(row.area, b"\x0e")
+            m.poke(PORT + trip.PORT_LIST, trip.empty_list(PORT))
+    m.on_read = game_takes_it
+    armed = trip.arm(m, key, p)
+    assert armed is not None and trip.fired(m, armed) is True
+    assert m.read(BASE + row.step_entry, 2) != POOL_ENTRY.to_bytes(2, "big")
+
+
 def test_tier_two_writes_the_square_first():
     key = "curse-of-the-azure-bonds"
     row = dataclasses.replace(trip.ROWS[key], direct_confirmed=True)
@@ -400,6 +445,27 @@ def test_pools_message_taken_by_another_prompt_keeps_the_games_mark():
     assert m.read(message.address, trip.MESSAGE_SIZE) == bytes(8) + b"\x06" \
         + bytes(trip.MESSAGE_SIZE - 9)
     assert m.read(BASE + 0xAA, 2) == POOL_ENTRY.to_bytes(2, "big")
+
+
+def test_a_key_taken_while_putting_back_counts_as_a_trip():
+    """The game takes the key after `disarm` looked at the area: the trip
+    fires, and the step entry and statements are left for `tidy`."""
+    key = "pools-of-darkness"
+    m = machine(key, area=0x15, stale=True)
+    row = trip.ROWS[key]
+    armed = trip.arm(m, key, trip.plan(0x16, (5, 13, 0)))
+
+    def game_takes_the_key(addr, length):
+        # After disarm's first look at the area, as it reads the key back.
+        if addr == BASE + row.key_buffer:
+            m.at(row.key_buffer, b"\x00")
+            m.at(row.area, b"\x16")
+    m.on_read = game_takes_the_key
+    written = len(m.log)
+    assert trip.disarm(m, armed) is False
+    assert len(m.log) == written
+    statements = armed.records[0]
+    assert m.read(statements.address, 21) == statements.data
 
 
 def test_put_back_does_nothing_once_the_area_has_changed():
