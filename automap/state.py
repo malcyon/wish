@@ -237,6 +237,9 @@ class AutomapState:
     #: Square -> the notes on it, in the order they were made. A list because
     #: squares genuinely hold two things -- a fight and the treasure it guards.
     notes: dict[tuple[int, int], list[Note]] = field(default_factory=dict)
+    #: The notes file `migrate_flat_notes` last ran for. See `_migrate_once`.
+    _migrated: pathlib.Path | None = field(default=None, init=False,
+                                           repr=False, compare=False)
 
     @property
     def area_label(self) -> str:
@@ -288,27 +291,52 @@ class AutomapState:
         return (data_dir() / title_dir(self.title)
                 / f"{self.area or 'unknown'}.json")
 
+    def _migrate_once(self, path: pathlib.Path) -> None:
+        """Run `migrate_flat_notes` once for each notes file this state uses.
+
+        It globs the whole data directory, and `save_notes` now runs for every
+        newly seen square, so it runs again only when the area or the title
+        has changed. Running it before the first read or write of each file
+        is what keeps a flat file from being stranded: a migration never
+        overwrites a per-title file that already exists.
+        """
+        if self._migrated != path:
+            migrate_flat_notes()
+            self._migrated = path
+
     def save_notes(self) -> None:
         """Write the notes and the explored squares for the current area.
 
-        Written to a temporary file and moved into place, so a Wish that is
-        killed or crashes in the middle of a write leaves the previous file
-        whole rather than a truncated one that `load_notes` cannot read.
+        Written to a temporary file, flushed to the disk, and moved into
+        place, so a Wish that is killed or crashes in the middle of a write
+        leaves the previous file whole rather than a truncated one that
+        `load_notes` cannot read. A write that fails removes its temporary
+        file and raises.
         """
-        migrate_flat_notes()
         path = self.notes_path()
+        self._migrate_once(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "notes": notemod.dump_notes(self.notes),
             "seen": sorted(f"{x},{y}" for x, y in self.exploration.seen),
         }
         staged = path.with_name(path.name + ".tmp")
-        staged.write_text(json.dumps(payload, indent=1), encoding="utf-8")
-        os.replace(staged, path)
+        try:
+            with open(staged, "w", encoding="utf-8") as out:
+                out.write(json.dumps(payload, indent=1))
+                out.flush()
+                os.fsync(out.fileno())
+            os.replace(staged, path)
+        except BaseException:
+            try:
+                staged.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise
 
     def load_notes(self) -> None:
-        migrate_flat_notes()
         path = self.notes_path()
+        self._migrate_once(path)
         if not path.exists():
             return
         try:
@@ -424,6 +452,9 @@ class Automapper:
         #: `_running` and `_poll_outdoors` share one read.
         self._block: tuple[int, bytes, tuple[int, int] | None] | None = None
         self._outdoor_pending: tuple[int, int] | None = None
+        #: True from a failed save of the explored squares until one succeeds,
+        #: so the warning is logged once per run of failures. See `_visit`.
+        self._save_failing = False
         if area:
             self.set_area(area)
 
@@ -684,7 +715,15 @@ class Automapper:
             try:
                 self.state.save_notes()
             except OSError as exc:
-                _log.warning("could not save the explored squares: %s", exc)
+                # Once until a save succeeds again: a file held open by
+                # another program fails every square, and one line says it.
+                if not self._save_failing:
+                    _log.warning("Could not save the explored squares: %s", exc)
+                self._save_failing = True
+            else:
+                if self._save_failing:
+                    _log.info("The explored squares are being saved again")
+                self._save_failing = False
 
     def _engine_square(self) -> tuple[int, int, int] | None:
         """The engine's own square, read once, or None when it has none to give."""

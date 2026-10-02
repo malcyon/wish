@@ -11,12 +11,11 @@ and area, and checks the first window's squares are drawn.
 from __future__ import annotations
 
 import json
-import pathlib
 
 import pytest
 from gamedata import synthetic_geo
 
-from automap import c64
+from automap import c64, state
 from automap.area import RESIDENT_GEO
 from automap.state import Automapper
 from automap.target import Fix, MemoryTarget, ReplayTarget
@@ -122,9 +121,10 @@ def test_nothing_is_written_while_the_explored_set_does_not_grow():
     assert json.loads(path.read_text(encoding="utf-8"))["seen"] == ["2,2"]
 
 
-def test_a_write_that_fails_leaves_the_last_good_file():
-    """The file is replaced whole: a write that dies part-way leaves the
-    earlier file readable rather than a truncated one."""
+def test_a_write_that_fails_leaves_the_last_good_file(monkeypatch):
+    """The file is replaced whole: a write that dies after the temporary file
+    is written but before it is moved into place leaves the earlier file as
+    it was, and the temporary file is removed."""
     page, _root = open_window(amiga_walking((2, 2)), "GEO00", 1)
     path = page.state.notes_path()
     good = path.read_text(encoding="utf-8")
@@ -132,12 +132,74 @@ def test_a_write_that_fails_leaves_the_last_good_file():
     class Boom(Exception):
         pass
 
-    def half_written(self, text, encoding=None):
-        open(self, "w", encoding=encoding).write(text[: len(text) // 2])
+    def dies(_fd):
         raise Boom
 
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(pathlib.Path, "write_text", half_written)
-        with pytest.raises(Boom):
-            page.state.save_notes()
+    monkeypatch.setattr(state.os, "fsync", dies)
+    page.state.exploration.seen.add((15, 15))
+    with pytest.raises(Boom):
+        page.state.save_notes()
     assert path.read_text(encoding="utf-8") == good
+    assert not path.with_name(path.name + ".tmp").exists()
+
+
+def test_the_file_is_flushed_to_the_disk_before_it_replaces_the_old_one(
+        monkeypatch):
+    """Without `fsync` a power cut after the rename can leave an empty file
+    under the real name on some file systems."""
+    order = []
+    real_fsync, real_replace = state.os.fsync, state.os.replace
+    monkeypatch.setattr(state.os, "fsync",
+                        lambda fd: order.append("fsync") or real_fsync(fd))
+    monkeypatch.setattr(state.os, "replace",
+                        lambda a, b: order.append("replace") or real_replace(a, b))
+    open_window(amiga_walking((2, 2)), "GEO00", 1)
+    assert order == ["fsync", "replace"]
+
+
+def test_a_save_that_keeps_failing_is_logged_once_until_one_succeeds(
+        monkeypatch, caplog):
+    """A notes file another program holds open fails every newly seen
+    square on Windows. The log says so once, says when saving works again,
+    and leaves no temporary file behind."""
+    real_replace = state.os.replace
+    blocked = [True]
+
+    def replace(a, b):
+        if blocked[0]:
+            raise PermissionError(13, "The process cannot access the file")
+        return real_replace(a, b)
+
+    monkeypatch.setattr(state.os, "replace", replace)
+    caplog.set_level("INFO", logger="wish.automap.state")
+    # Each of these steps sees new squares on the synthetic map.
+    page, _root = open_window(
+        amiga_walking((2, 2), (2, 3), (2, 4), (2, 5), (2, 6)), "GEO00", 3)
+    path = page.state.notes_path()
+    assert not path.with_name(path.name + ".tmp").exists()
+    blocked[0] = False
+    page.tick()
+    blocked[0] = True
+    page.tick()
+
+    warned = [r.getMessage() for r in caplog.records
+              if r.name == "wish.automap.state"]
+    assert [m.split(":")[0] for m in warned] == [
+        "Could not save the explored squares",
+        "The explored squares are being saved again",
+        "Could not save the explored squares",
+    ]
+
+
+def test_the_flat_notes_migration_runs_once_per_area_not_once_per_square(
+        monkeypatch):
+    """`migrate_flat_notes` globs the whole data directory; saving each new
+    square must not run it again while the party stays in one area."""
+    calls = []
+    real = state.migrate_flat_notes
+    monkeypatch.setattr(state, "migrate_flat_notes",
+                        lambda *a: calls.append(a) or real(*a))
+    route = [(2, 2), (2, 3), (2, 4), (2, 5), (2, 6)]
+    page, _root = open_window(amiga_walking(*route), "GEO00", len(route))
+    assert len(page.state.exploration) > 40
+    assert len(calls) == 1
