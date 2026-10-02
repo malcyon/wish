@@ -676,8 +676,7 @@ def test_prepare_writes_the_places_and_leaves_every_registered_image_unchanged(
     before = {label: hashlib.sha256(data).hexdigest()
               for label, data in amigasaves.images()}
     specimen_before = staging.sha256(specimen)
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.setattr(scratch, "cache_dir", lambda *parts: tmp_path.joinpath(*parts))
     path = foundation.prepare(foundation.POOL, "registry-run")
     manifest = json.loads(path.read_text())
     assert manifest["title"] == "pool"
@@ -839,8 +838,7 @@ def test_curse_prepare_writes_the_places_and_leaves_every_registered_image_uncha
     before = {label: hashlib.sha256(data).hexdigest()
               for label, data in amigasaves.images()}
     specimen_before = staging.sha256(specimen)
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.setattr(scratch, "cache_dir", lambda *parts: tmp_path.joinpath(*parts))
     manifest = json.loads(foundation.prepare(foundation.CURSE, "registry-run").read_text())
     assert manifest["title"] == "curse"
     assert manifest["state_a"] == CURSE_START and manifest["expected_after"] == CURSE_LATER
@@ -860,8 +858,7 @@ def test_curse_prepare_threads_a_substitute_slot_through_to_the_manifest(
     from tests.amiga.test_amigastagingsubstitute import _curse_disk
 
     _curse_registered()
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.setattr(scratch, "cache_dir", lambda *parts: tmp_path.joinpath(*parts))
     substitute = _curse_disk(tmp_path, "substitute.adf", {"Z": ("REPLACEMENT",)})
     manifest = json.loads(foundation.prepare(
         foundation.CURSE, "substitute-run", substitute=substitute,
@@ -1110,8 +1107,7 @@ def test_darkness_prepare_writes_the_place_and_leaves_every_registered_image_unc
     _darkness_registered()
     before = {label: hashlib.sha256(data).hexdigest()
               for label, data in amigasaves.images()}
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.setattr(scratch, "cache_dir", lambda *parts: tmp_path.joinpath(*parts))
     manifest = json.loads(foundation.prepare(foundation.DARKNESS, "registry-run").read_text())
     assert manifest["title"] == "darkness"
     assert manifest["state_a"] == DARK_START and manifest["loaded_letter"] == "B"
