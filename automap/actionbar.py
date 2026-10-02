@@ -138,6 +138,9 @@ class ActionBar(QObject):
         #: Whether the actions were handed to us wholesale. A caller that
         #: passes its own means them, so a title change does not replace them.
         self._own_actions = actions is not None
+        #: Whether `set_actions` put another platform's actions in, which a
+        #: title change must not replace.
+        self._other_platform = False
         self.actions = tuple(actions if actions is not None
                              else engine.actions(game=game))
         enabled = getattr(settings, "clear_quickfight", False) if settings else False
@@ -169,24 +172,54 @@ class ActionBar(QObject):
         title change is a new set of actions rather than a setting on the old
         ones. The watcher goes with them, and keeps whether it was ticked --
         that is the player's choice and has nothing to do with which game.
+
+        Another platform's actions are left alone: they are chosen by the
+        machine, and `game` is a C64 descriptor.
         """
         if game is self.game:
             return
         self.game = game
+        if self._other_platform:
+            return
         if not self._own_actions:
-            self.actions = tuple(engine.actions(game=game))
-            for action in self.actions:
-                button = self.buttons.get(action.name)
-                if button is not None:
-                    try:
-                        button.clicked.disconnect()
-                    except (TypeError, RuntimeError):
-                        pass
-                    button.clicked.connect(
-                        lambda _checked=False, a=action: self.run(a))
+            self._wire(engine.actions(game=game))
         self.watcher = engine.QuickfightWatcher(
             engine.ClearQuickfight(game=game), enabled=self.watcher.enabled)
         self.refresh(self.target)
+
+    def _wire(self, actions) -> None:
+        """Make `actions` the ones the buttons run."""
+        self.actions = tuple(actions)
+        for action in self.actions:
+            button = self.buttons.get(action.name)
+            if button is not None:
+                try:
+                    button.clicked.disconnect()
+                except (TypeError, RuntimeError):
+                    pass
+                button.clicked.connect(
+                    lambda _checked=False, a=action: self.run(a))
+
+    def set_actions(self, actions=None, watcher=None) -> None:
+        """Run another platform's actions, or with None the C64's again.
+
+        `actions` come in the order of `BUTTON_NAMES` and carry the same names
+        as the C64 ones, so each lands on its own button. The caller attaches
+        the target next, which is what refreshes the buttons.
+        """
+        if actions is None:
+            if not self._other_platform:
+                return
+            self._other_platform = False
+            self._wire(engine.actions(game=self.game))
+            self.watcher = engine.QuickfightWatcher(
+                engine.ClearQuickfight(game=self.game),
+                enabled=self.watcher.enabled)
+            return
+        self._other_platform = True
+        self._wire(actions)
+        if watcher is not None:
+            self.watcher = watcher
 
     # -- the poll --------------------------------------------------------
 

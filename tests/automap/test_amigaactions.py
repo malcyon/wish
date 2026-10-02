@@ -57,10 +57,14 @@ ALL = frozenset({"heal", "store-spells", "restore-spells", "identify",
                  "clear-quickfight"})
 
 
-def make_row(confirmed=ALL, combat_legal=frozenset(),
+MEASURED = frozenset({"hp_max", "combat_value"})
+
+
+def make_row(confirmed=ALL, combat_legal=frozenset(), measured=MEASURED,
              title="Curse of the Azure Bonds", **spots):
     row = SimpleNamespace(
-        title=title, confirmed=confirmed, combat_legal=combat_legal, combat_value=2,
+        title=title, confirmed=confirmed, combat_legal=combat_legal,
+        measured=measured, combat_value=2,
         hp=Spot(offset=0x10, length=1, mask=0xFF),
         memorised=Spot(offset=0x20, length=4, mask=0xFF),
         quickfight=Spot(offset=0x30, length=1, mask=0x80),
@@ -405,3 +409,49 @@ def test_the_sentence_names_the_title_and_the_platform(key, title):
 def test_no_emulator_attached_still_says_so(store):
     for action in aa.actions(store, "pool-of-radiance"):
         assert action.legality(None).reason == "no emulator attached"
+
+
+# -- facts a row must have measured before an action writes on that title -------
+
+@pytest.mark.parametrize("key, title", [
+    ("pool-of-radiance", "Pool of Radiance"),
+    ("curse-of-the-azure-bonds", "Curse of the Azure Bonds"),
+    ("secret-of-the-silver-blades", "Secret of the Silver Blades"),
+    ("pools-of-darkness", "Pools of Darkness")])
+def test_heal_waits_for_the_titles_hp_max_to_be_measured(world, store, key, title):
+    world.row = make_row(title=title, measured=MEASURED - {"hp_max"})
+    verdict = acts(store, key)["heal"].legality(world.target)
+    assert not verdict and verdict.reason == aa.unsupported(title)
+    assert not acts(store, key)["heal"].apply(world.target).ok
+    world.row = make_row(title=title, measured=MEASURED)
+    assert acts(store, key)["heal"].legality(world.target)
+
+
+def test_a_row_with_no_measured_set_has_measured_nothing(world, store):
+    del world.row.measured
+    assert not acts(store)["heal"].legality(world.target)
+
+
+def test_hp_max_gates_heal_alone(world, store):
+    world.row = make_row(measured=frozenset({"combat_value"}))
+    assert not acts(store)["heal"].legality(world.target)
+    for name in ALL - {"heal"}:
+        assert acts(store)[name].legality(world.target), name
+
+
+@pytest.mark.parametrize("name", sorted(ALL))
+def test_curse_waits_for_its_fight_value_on_every_action(world, store, name):
+    world.row = make_row(measured=frozenset({"hp_max"}))
+    verdict = acts(store)[name].legality(world.target)
+    assert not verdict and verdict.reason == CURSE_TEXT
+    world.row = make_row(measured=MEASURED)
+    assert acts(store)[name].legality(world.target)
+
+
+@pytest.mark.parametrize("key", ["pool-of-radiance", "secret-of-the-silver-blades",
+                                 "pools-of-darkness"])
+def test_the_fight_value_is_asked_for_on_curse_only(world, store, key):
+    title = aa.amiga.MACHINES[key].title
+    world.row = make_row(title=title, measured=frozenset({"hp_max"}))
+    for name in ALL:
+        assert acts(store, key)[name].legality(world.target), name

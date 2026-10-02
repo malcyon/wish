@@ -5,11 +5,12 @@ Tests for the live automapper in `automap/`: its map model and geometry, the par
 | file | purpose |
 |---|---|
 | `test_actions.py` | Checks the live actions (healing, identifying, levelling, the trainer flags and re-entry) through the addresses they write to a `MemoryTarget`. |
-| `test_amigaactions.py` | Checks, against a fake party and a byte-array target, that the Amiga actions write at the record address plus the row's offset, honour the combat gate and `can_write`, keep spell lists apart from the C64's, and never reach a C64 address. |
+| `test_amigaactions.py` | Checks, against a fake party and a byte-array target, that the Amiga actions write at the record address plus the row's offset, honour the combat gate, `can_write` and the facts a row must list as measured, keep spell lists apart from the C64's, and never reach a C64 address. |
 | `test_amigafasttravel.py` | Checks, against a fake trip table and target, which Amiga trips are offered and which show the unsupported sentence, what happens when the area changes or does not, and that the C64 sentences are reused and no C64 address is read. |
 | `test_amigalocate.py` | Checks that one sweep of an Amiga's memory names which title is loaded and where, and that `AmigaTarget.locate` is that same search. |
 | `test_amigamaps.py` | Checks that the map loader reads an Amiga title's own maps out of a folder of disk images, names the title from the disk, leaves `disk_globs` alone and skips Pools of Darkness. |
-| `test_amigaunsupported.py` | Checks that an attached Amiga greys every Action, Fast Travel and Level up control with the unsupported sentence naming its title and platform, that no emulator still reads as such, and that a C64 target is unchanged. |
+| `test_amigaunsupported.py` | Checks that an attached Amiga greys Fast Travel, Level up and every unbuilt Action with the unsupported sentence naming its title and platform, that no emulator still reads as such, and that a C64 target is unchanged. |
+| `test_amigawindow.py` | Checks, through the real window over an Amiga target with made-up party records, that an Action is enabled only when its row confirms and measures it and the target can write, the mode reads and no fight is on, that the cards show the Amiga party, that Fast Travel and Level up stay greyed, and that switching between a C64 and an Amiga clears and restores the actions and cards. |
 | `test_automap.py` | Checks the automapper's map model, sight and wall geometry, party panel and notes against recorded machines built from the saved-game fixtures. |
 | `test_automapbanks.py` | Checks that the screen address, the bitmap test and the status line are read from the memory the processor sees during a load, and that a poll still costs one resume. |
 | `test_busguard.py` | Checks that `automap/busguard.py` reads `$DD00` before a tick, holds the tick off while the bus is busy and cannot hold it off for ever. |

@@ -13,9 +13,10 @@ and for every other Amiga title.
 `amigaparty` is imported when it is first needed, and its absence reads as an
 unbuilt title, so this module can be used before that one exists. Names taken
 from its row (`PartyRow`): `confirmed` and `combat_legal` (sets of action names),
-`combat_value`, and the field spots `hp`, `memorised`, `quickfight` and
-`hidden` (each `offset`, `length`, `mask`, or None). The party is iterable and
-its members are `AmigaMember`.
+`measured` (a set of fact names, empty when the row has none), `combat_value`,
+and the field spots `hp`, `memorised`, `quickfight` and `hidden` (each
+`offset`, `length`, `mask`, or None). The party is iterable and its members are
+`AmigaMember`.
 """
 
 from __future__ import annotations
@@ -34,6 +35,17 @@ def unsupported(title: str) -> str:
     approved `actions.UNSUPPORTED` sentence with the platform added."""
     return engine.UNSUPPORTED.format(title=f"{title} (Amiga)")
 
+
+#: Facts a title's row must list in `measured` before the action is enabled on
+#: it, besides being in `confirmed`. Heal writes a record's `hp_max` into its
+#: `hp`, and no title's `hp_max` offset has been read off a running game.
+#: A row with no `measured` has measured nothing.
+REQUIRES: dict[str, frozenset[str]] = {"heal": frozenset({"hp_max"})}
+
+#: Titles whose fight value comes from the code alone. The fight value is what
+#: refuses every action that is not combat-legal, so on these titles each
+#: action also needs `combat_value` in the row's `measured`.
+FIGHT_VALUE_FROM_CODE = frozenset({"curse-of-the-azure-bonds"})
 
 #: Spell lists are stored under this prefix plus the `amiga.MACHINES` key, so a
 #: list saved on the C64 is never restored into an Amiga record.
@@ -131,6 +143,8 @@ class _AmigaAction:
         row = _row(target, self.key)
         if row is None or self.name not in row.confirmed:
             return engine.Verdict(False, self.not_built)
+        if not self._measured(row):
+            return engine.Verdict(False, self.not_built)
         spot = getattr(row, self.WHOLE_BYTES, None) if self.WHOLE_BYTES else None
         if self.WHOLE_BYTES and (spot is None or not _whole_bytes(spot)):
             return engine.Verdict(False, self.not_built)
@@ -143,6 +157,13 @@ class _AmigaAction:
         if state == row.combat_value and self.name not in row.combat_legal:
             return engine.Verdict(False, f"{self.label} is refused during a fight")
         return engine.Verdict(True)
+
+    def _measured(self, row) -> bool:
+        """Whether the row lists every fact this action needs on this title."""
+        need = set(REQUIRES.get(self.name, ()))
+        if self.key in FIGHT_VALUE_FROM_CODE:
+            need.add("combat_value")
+        return need <= set(getattr(row, "measured", ()))
 
     #: The row field this action overwrites whole; a partial mask there is
     #: refused. Empty for the actions that clear bits.

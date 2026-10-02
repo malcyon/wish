@@ -55,7 +55,7 @@ from goldbox.world import (
 )
 from ui.iconpaint import draw_icon
 
-from . import actions, amigaactions, combat, live, rolls
+from . import actions, amiga, amigaactions, combat, live, rolls
 from . import notes as notemod
 from .actionbar import ActionBar, FastTravelBar
 from .area import NOT_OURS
@@ -199,6 +199,33 @@ def game_named(title: str | None):
     """The `Game` this title is, for the readers that need one."""
     from goldbox import c64_port
     return c64_port.by_title(title)
+
+
+def amiga_key(layout) -> str | None:
+    """The `amiga.MACHINES` key a target's layout is, None for any other."""
+    for key, machine in amiga.MACHINES.items():
+        if layout is machine or (layout is not None
+                                 and getattr(layout, "title", None)
+                                 == machine.title):
+            return key
+    return None
+
+
+def amiga_snapshot(party, state) -> live.Snapshot:
+    """What the cards draw for an Amiga party: the list's own order.
+
+    The record reader gives a name, hit points and the quickfight flag. Class,
+    level, experience, AC and THAC0 are not read on the Amiga, so they are
+    empty here and the card draws its own stand-ins for them. The square comes
+    from the map's state, as it does for the C64.
+    """
+    people = tuple(
+        live.Character(slot=m.slot, name=m.name, classes=(), level=0,
+                       armour_class=None, thac0=None, hp=m.hp, hp_max=m.hp_max,
+                       experience=0, quickfight=m.quickfight)
+        for m in party)
+    return live.Snapshot(characters=people, effects=(), x=state.x, y=state.y,
+                         facing=state.facing, clock_text="", area_file="")
 
 
 class MapCanvas(QWidget):
@@ -1036,6 +1063,9 @@ class AutomapBinding(QObject):
         #: `automap/busguard.py`.
         self.bus_guard = BusGuard()
         self.snapshot = None
+        #: The `amiga.MACHINES` key whose actions and cards the window shows,
+        #: None while it shows a C64's (or nothing).
+        self._amiga_key: str | None = None
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.tick)
         self._apply_title()
@@ -1173,7 +1203,8 @@ class AutomapBinding(QObject):
         self.fasttravel_bar.set_title(self.state.title, game)
         self.actions_bar.set_game(game)
         self.roster.set_levelling(
-            self._c64_title() and not actions.level_up_blockers(game=game))
+            self._amiga_key is None and self._c64_title()
+            and not actions.level_up_blockers(game=game))
 
     def _check_the_game(self) -> None:
         """The machine is not running the title the window is set up for.
@@ -1397,15 +1428,9 @@ class AutomapBinding(QObject):
         target = self.mapper.target
         amiga_title = getattr(getattr(target, "layout", None), "title", None)
         if not getattr(target, "c64_memory", True) and amiga_title:
-            # An Amiga is attached and none of these buttons is built for it:
-            # same disable as below, with the reason that is true.
-            reason = amigaactions.unsupported(amiga_title)
-            self.actions_bar.attach_unsupported(reason)
-            self.fasttravel_bar.attach_unsupported(reason)
-            self.roster.set_unsupported(reason)
-            self.roster.set_stale(True)
-            self._show_strip(self.snapshot)
+            self._refresh_amiga(target, amiga_title)
             return
+        self._leave_amiga()
         self.roster.clear_unsupported()
         if (self.mapper.title_check is NOT_OURS
                 or not getattr(target, "c64_memory", True)
@@ -1451,6 +1476,69 @@ class AutomapBinding(QObject):
         self._show_strip(snap)
         self.questlog.update_from(save0_bytes)
         self.show_strength(save0_bytes, roster_bytes)
+
+    def _refresh_amiga(self, target, title: str) -> None:
+        """The Amiga's half of `_refresh_roster`.
+
+        An Action button is enabled by `amigaactions` and nothing else, so the
+        gate is the one in that module. Fast Travel and Level up are not built
+        for the Amiga: they stay greyed with the approved sentence. The cards
+        come from `amigaparty.read_party`; the C64's readers are never called.
+        """
+        from . import amigaparty
+
+        reason = amigaactions.unsupported(title)
+        self.fasttravel_bar.attach_unsupported(reason)
+        self.roster.set_unsupported(reason)
+        self.roster.set_levelling(False)
+        key = amiga_key(target.layout)
+        if key is None or self.mapper.title_check is NOT_OURS:
+            # A layout with no actions, or a machine that is not running the
+            # title this window was set up for (#21): nothing may write.
+            self.actions_bar.attach_unsupported(reason)
+            self._show_amiga_party(None)
+            return
+        self._enter_amiga(key)
+        self.actions_bar.attach(target)
+        self.actions_bar.watch(target)
+        self._show_amiga_party(amigaparty.read_party(target))
+
+    def _enter_amiga(self, key: str) -> None:
+        """Run `key`'s actions, and drop whatever party another title left."""
+        if key == self._amiga_key:
+            return
+        self._amiga_key = key
+        self.roster.clear()
+        self.snapshot = None
+        acts = amigaactions.actions(None, key)
+        quickfight = acts[-1]
+        self.actions_bar.set_actions(
+            acts, amigaactions.AmigaQuickfightWatcher(
+                quickfight, enabled=self.actions_bar.watcher.enabled))
+
+    def _leave_amiga(self) -> None:
+        """Put the C64's actions, cards and Level up back after an Amiga."""
+        if self._amiga_key is None:
+            return
+        self._amiga_key = None
+        self.actions_bar.set_actions(None)
+        self.roster.clear()
+        self.snapshot = None
+        self.roster.set_levelling(
+            self._c64_title()
+            and not actions.level_up_blockers(game=game_named(self.state.title)))
+
+    def _show_amiga_party(self, party) -> None:
+        """Cards for the Amiga's party. None holds the last cards and says so,
+        or shows none when there is no earlier party."""
+        if party is None:
+            self.roster.set_stale(True)
+            self._show_strip(self.snapshot)
+            return
+        snap = amiga_snapshot(party, self.state)
+        self.snapshot = snap
+        self.roster.show_snapshot(snap)
+        self._show_strip(snap)
 
     def show_strength(self, save0_bytes: bytes, roster_bytes: bytes) -> None:
         """Recompute party strength and show it under the strip.

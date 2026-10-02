@@ -917,6 +917,13 @@ class RosterPanel(QObject):
         """
         self.set_message("not readable right now" if stale else "")
 
+    def clear(self) -> None:
+        """No card shows: another machine or title's party is not this one's."""
+        for card in self.cards:
+            if card.frame is not None:
+                card.frame.hide()
+        self.ask_for_room(0)
+
     def show_snapshot(self, snap) -> None:
         for i, who in enumerate(snap.characters):
             if i < len(self.cards):

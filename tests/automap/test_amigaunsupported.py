@@ -1,4 +1,4 @@
-"""An attached Amiga greys every Action button with the approved sentence."""
+"""An attached Amiga greys Fast Travel, Level up and any unbuilt Action with the approved sentence."""
 
 import os
 
@@ -71,18 +71,27 @@ def every_button(window):
 
 
 @pytest.mark.parametrize("key, title", sorted(TITLES.items()))
-def test_every_greyed_button_names_its_own_title(key, title):
+def test_fast_travel_and_level_up_name_their_own_title(key, title):
     window = ticked(window_on(FakeAmiga(memory(), amiga.MACHINES[key])))
     sentence = f"ERROR: Action unsupported on {title} (Amiga)."
-    buttons = every_button(window)
-    assert len(buttons) == 5 + 3 + 8
-    for button in buttons:
-        assert button.toolTip() == sentence
-        assert not button.isEnabled()
-        assert not button.isVisible() or button not in [
-            c.level_up for c in window.roster.cards]
-    assert window.actions_bar.target is None
+    ft = window.fasttravel_bar
+    controls = [ft.combo, ft.button, ft.back_button] + [
+        card.level_up for card in window.roster.cards]
+    assert len(controls) == 3 + 8
+    for control in controls:
+        assert control.toolTip() == sentence
+        assert not control.isEnabled()
+    assert all(not card.level_up.isVisible() for card in window.roster.cards)
     assert window.fasttravel_bar.target is None
+
+
+def test_a_title_with_nothing_confirmed_greys_every_action_with_its_sentence():
+    key, title = "pools-of-darkness", TITLES["pools-of-darkness"]
+    window = ticked(window_on(FakeAmiga(memory(), amiga.MACHINES[key])))
+    assert len(window.actions_bar.buttons) == 5
+    for button in window.actions_bar.buttons.values():
+        assert button.toolTip() == f"ERROR: Action unsupported on {title} (Amiga)."
+        assert not button.isEnabled()
 
 
 def test_no_emulator_attached_still_says_so():
@@ -150,7 +159,8 @@ def test_leaving_the_amiga_gives_all_three_controls_back_their_own_text(leave):
     # And attaching again greys them once more.
     window.mapper.target = FakeAmiga(memory(), amiga.MACHINES[key])
     window._refresh_roster()
-    assert window.actions_bar.unsupported
+    assert window.fasttravel_bar.unsupported
+    assert window.roster.unsupported
 
 
 def test_a_ready_character_cannot_be_levelled_once_an_amiga_attaches(monkeypatch):
