@@ -493,7 +493,16 @@ def test_a_drive_after_a_gap_is_refused_before_anything_starts(tmp_path, monkeyp
     args = _args(tmp_path, monkeypatch, "--df2", "c.adf")
     with pytest.raises(winwish.WinwishError, match="without a gap"):
         winwish.up(winwish.Guest(run), lane, args)
-    assert lane.log == ["claim", "release"]
+    assert lane.log == [] and run.calls == []
+
+
+def test_an_empty_df0_is_refused_in_one_sentence(tmp_path, monkeypatch):
+    run, lane = FakeRun(), FakeLane()
+    args = _args(tmp_path, monkeypatch)
+    args.df0 = ""
+    with pytest.raises(winwish.WinwishError, match="--df0 needs"):
+        winwish.up(winwish.Guest(run), lane, args)
+    assert lane.log == [] and run.calls == []
 
 
 def test_the_drive_settings_become_dash_s_arguments():
@@ -510,28 +519,90 @@ def test_the_drive_settings_become_dash_s_arguments():
 # -- PowerShell reads `$name:` in a double-quoted string as a drive-qualified variable --
 
 def _double_quoted(script: str) -> list[str]:
-    """The double-quoted strings of `script`, skipping single-quoted ones and here-strings."""
-    found, i = [], 0
+    """The literal text of each double-quoted string in `script`.
+
+    Single-quoted strings and here-strings are skipped. A `$(...)` inside a double-quoted
+    string is cut out of the outer string's text, and the double-quoted strings
+    inside it are returned as strings of their own. A backtick escapes the next character.
+    """
+    found: list[str] = []
+
+    def double(i: int) -> int:
+        """Read the string whose opening quote is at `i`; return the index after it."""
+        text, i = [], i + 1
+        while script[i] != '"':
+            if script[i] == "`":
+                text.append("  ")
+                i += 2
+            elif script.startswith("$(", i):
+                text.append(" ")
+                i = code(i + 2, ")")
+            else:
+                text.append(script[i])
+                i += 1
+        found.append("".join(text))
+        return i + 1
+
+    def code(i: int, closer: str) -> int:
+        """Skip PowerShell code up to the `closer` that ends it, reading strings in it."""
+        depth = 0
+        while True:
+            c = script[i]
+            if script.startswith("@'", i):
+                i = script.index("\n'@", i) + 3
+            elif c == "'":
+                i += 1
+                while not (script[i] == "'" and script[i + 1:i + 2] != "'"):
+                    i += 2 if script[i] == "'" else 1
+                i += 1
+            elif c == '"':
+                i = double(i)
+            elif c == "(" and closer == ")":
+                depth += 1
+                i += 1
+            elif c == closer and depth:
+                depth -= 1
+                i += 1
+            elif c == closer:
+                return i + 1
+            else:
+                i += 1
+
+    i = 0
     while i < len(script):
-        if script.startswith("@'", i):
-            i = script.index("\n'@", i) + 3
-        elif script[i] == "'":
-            i += 1
-            while not (script[i] == "'" and script[i + 1:i + 2] != "'"):
-                i += 2 if script[i] == "'" else 1
-            i += 1
-        elif script[i] == '"':
-            start, i = i + 1, i + 1
-            while script[i] != '"':
-                i += 2 if script[i] == "`" else 1
-            found.append(script[start:i])
-            i += 1
+        if script.startswith("@'", i) or script[i] in "'\"":
+            i = code_one(script, i, double)
         else:
             i += 1
     return found
 
 
-BAD_REFERENCE = re.compile(r"\$\w+:(?![A-Za-z0-9_?])")
+def code_one(script: str, i: int, double) -> int:
+    """Read one quoted item that starts at `i` and return the index after it."""
+    if script.startswith("@'", i):
+        return script.index("\n'@", i) + 3
+    if script[i] == '"':
+        return double(i)
+    i += 1
+    while not (script[i] == "'" and script[i + 1:i + 2] != "'"):
+        i += 2 if script[i] == "'" else 1
+    return i + 1
+
+
+#: Scope names PowerShell resolves as a variable scope or provider, so `$env:Name` is meant.
+SCOPES = ("env", "script", "global", "local", "private", "using")
+REFERENCE = re.compile(r"\$(\w+):")
+
+
+def bad_references(string: str) -> list[str]:
+    """Every `$name:` in a string's literal text where `name` is not a scope.
+
+    PowerShell reads `$name:rest` as the variable `rest` on drive `name`, so
+    `"$run:retry"` fails to find a drive. A `$` after a backtick is a literal dollar
+    sign and is blanked out before the search.
+    """
+    return [m.group(0) for m in REFERENCE.finditer(string.replace("`$", "  "))
+            if m.group(1).lower() not in SCOPES]
 
 
 def _every_script():
@@ -551,4 +622,21 @@ def _every_script():
 def test_no_generated_script_has_a_dollar_name_colon_in_a_double_quoted_string(name):
     strings = _double_quoted(_every_script()[name])
     assert strings or name in ("mkdir", "task")
-    assert [s for s in strings if BAD_REFERENCE.search(s)] == []
+    assert [bad for s in strings for bad in bad_references(s)] == []
+
+
+def test_the_scanner_catches_a_drive_reference_however_it_continues():
+    for text in ('"from $run: its"', '"$run:retry"', '"$run:\\x"', '"a $($x.Id) $run:"'):
+        found = [bad for s in _double_quoted(text) for bad in bad_references(s)]
+        assert found == ["$run:"], text
+
+
+def test_the_scanner_passes_what_powershell_accepts():
+    for text in ('"$env:USERNAME"', '"${run}:retry"', '"`$run: x"', "'$run: x'",
+                 '"$($x[\'a\'].Id): ok"', '"$script:n $using:v"'):
+        assert [bad for s in _double_quoted(text) for bad in bad_references(s)] == [], text
+
+
+def test_the_scanner_reads_a_string_nested_in_a_subexpression():
+    found = _double_quoted('"a $(Join-Path "$run:x" b) c"')
+    assert len(found) == 2 and bad_references(found[0]) == ["$run:"]

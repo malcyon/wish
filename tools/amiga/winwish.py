@@ -485,6 +485,8 @@ def collect_log(guest: Guest, holder: str, out: pathlib.Path) -> list[str]:
 def floppy_paths(args: argparse.Namespace) -> list[str]:
     """The ADFs for DF0 upward; a drive may not be given without the one before it."""
     given = [args.df0, args.df1, args.df2, args.df3]
+    if not args.df0:
+        raise WinwishError("--df0 needs the path of an ADF on the guest")
     count = max(n for n, path in enumerate(given) if path) + 1
     if not all(given[:count]):
         raise WinwishError("the drives must be given without a gap: "
@@ -510,6 +512,8 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
     error, Ctrl-C or SIGTERM -- stops Wish (if it was attempted), stops WinUAE and
     releases the lane, in that order.
     """
+    drives = floppy_paths(args)
+    options = floppy_options(len(drives))
     if not _mute_proof(pathlib.Path(args.mute_proof)):
         raise WinwishError(f"{args.mute_proof} is not a fresh muted-endpoint proof; "
                            "run winuaemute.ps1 first")
@@ -522,9 +526,8 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
         try:
             result["claim"] = lane.claim(args.holder, CALL_SECONDS)
             claimed = True
-            drives = floppy_paths(args)
             result["winuae"] = lane.start(args.holder, *drives, timeout=START_SECONDS + 30,
-                                          options=floppy_options(len(drives)))
+                                          options=options)
             started = True
             wish_tried = True
             result["wish"] = start_wish(guest, args.holder, not args.no_flag)
