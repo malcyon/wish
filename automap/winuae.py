@@ -128,7 +128,6 @@ class WinuaeLocalPipe:
     BACKOFF = 5.0
 
     #: `write_memory` exists and is checked by reading the range back.
-    #: `AmigaTarget` does not use it yet; stage T1 wires that.
     can_write = True
 
     def __init__(self, pipe: str = "WinUAE", directory=None, api=None,
@@ -323,7 +322,7 @@ class WinuaeLocalPipe:
                 pass
 
     def write_memory(self, addr: int, data: bytes,
-                     timeout: float | None = None) -> None:
+                     timeout: float | None = None, verify: bool = True) -> None:
         """Write `data` at `addr` with `W`, then read it back to confirm.
 
         The reply to `W` is a receipt of what the debugger parsed, not of what
@@ -336,6 +335,12 @@ class WinuaeLocalPipe:
         written, and the error says how many bytes were sent. A line whose
         reply timed out may still run later. A read-back that differs may
         mean the game has since changed the bytes, not that the write failed.
+
+        **`verify=False` skips the read-back, for a write the game consumes
+        within a frame**, such as a key buffer or a message link: the bytes
+        have changed again by the time they could be read, so a difference
+        proves nothing. The caller proves such a write another way, by the
+        effect it was meant to have. The receipts of `W` are still checked.
 
         Like `read_memory`, call it from one thread only, the window's: the
         handle and the reply stream have no lock.
@@ -358,6 +363,8 @@ class WinuaeLocalPipe:
                 _check_write_receipt(reply, addr + i, chunk)
             except PipeError as exc:
                 raise _partial(exc, i, len(data), "before this line") from exc
+        if not verify:
+            return
         try:
             held = self.read_memory(addr, len(data), self._left(end))
         except PipeError as exc:

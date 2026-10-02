@@ -476,12 +476,67 @@ def test_the_capability_is_not_the_pipe_s_capped_reader():
     assert hasattr(amiga.FsuaeGdb, "read_memory")
 
 
-def test_writing_says_the_build_has_no_write_packet():
-    guest = FakeAmiga()
+def test_a_target_write_goes_out_as_m_packets_never_w():
+    guest = FakeAmiga({0xC00000: bytes(100)})
+    guest.writable = True
     tgt = amiga.AmigaTarget(transport(guest), BLADES)
-    with pytest.raises(amiga.GuestError, match="no memory-write packet"):
-        tgt.write(0xC00000, b"\x01")
-    assert not any(body.startswith("W") for body in guest.received)
+    data = bytes(range(1, 101))
+    tgt.write(0xC00000, data)
+    sent = [b for b in guest.received if b[0] in "MW"]
+    # The server's buffer is 512 bytes and the helper forwards 64 at most.
+    assert sent == [f"Mc00000,40:{data[:64].hex()}",
+                    f"Mc00040,24:{data[64:].hex()}"]
+    assert guest.peek(0xC00000, 100) == data
+
+
+def test_a_write_the_emulator_does_not_acknowledge_raises_with_the_address():
+    for reply_mode in ("empty", "error"):
+        guest = FakeAmiga({0xC00000: bytes(8)})
+        gdb = transport(guest)
+        if reply_mode == "error":
+            guest.reply = lambda body: "E01" if body.startswith("M") else ""
+        tgt = amiga.AmigaTarget(gdb, BLADES)
+        with pytest.raises(amiga.GuestError, match="0xc00000"):
+            tgt.write(0xC00000, b"\x01")
+
+
+def test_a_write_outside_chip_and_slow_memory_sends_nothing():
+    guest = FakeAmiga()
+    guest.writable = True
+    tgt = amiga.AmigaTarget(transport(guest), BLADES)
+    before = list(guest.received)
+    for addr, size in ((0x700000, 1), (0xC7FFFF, 2), (0xC00000, 0)):
+        with pytest.raises(ValueError):
+            tgt.write(addr, bytes(size))
+    assert guest.received == before
+
+
+def test_a_write_is_the_same_whether_verified_or_not_over_fs_uae():
+    guest = FakeAmiga({0xC00000: bytes(4)})
+    guest.writable = True
+    tgt = amiga.AmigaTarget(transport(guest), BLADES)
+    tgt.write(0xC00000, b"\x01")
+    tgt.write(0xC00001, b"\x02", verify=False)
+    assert guest.received[-2:] == ["Mc00000,1:01", "Mc00001,1:02"]
+
+
+def test_can_write_is_the_transport_s_answer_else_whether_a_route_exists():
+    gdb = transport(FakeAmiga())
+    assert amiga.AmigaTarget(gdb, BLADES).can_write is True
+    gdb.can_write = False
+    assert amiga.AmigaTarget(gdb, BLADES).can_write is False
+
+    class Bare:
+        pass
+
+    class Console:
+        def batch(self, lines, fetch=()):
+            return "", {}
+
+    assert amiga.AmigaTarget(Bare(), BLADES).can_write is False
+    assert amiga.AmigaTarget(Console(), BLADES).can_write is True
+    with pytest.raises(amiga.GuestError, match="no way to write"):
+        amiga.AmigaTarget(Bare(), BLADES).write(0xC00000, b"\x01")
 
 
 def test_locate_finds_the_data_hunk_through_the_socket():
@@ -722,12 +777,17 @@ def test_session_poke_that_the_server_acknowledges_but_ignores_is_an_error(
     assert "read back" in row["error"]
 
 
-def test_poke_does_not_change_the_targets_rejection_of_writes(driven):
+def test_the_targets_write_and_the_sessions_poke_send_the_same_packet(
+        driven, tmp_path):
     guest, _ = driven
     guest.writable = True
     tgt = amiga.AmigaTarget(transport(guest), POD)
-    with pytest.raises(amiga.GuestError):
-        tgt.write(0xC20024, b"\x07")
+    tgt.write(0xC20024, b"\x07")
+    assert guest.received[-1] == "Mc20024,1:07"
+    assert guest.peek(0xC20024, 1) == b"\x07"
+    events, _ = run_session(tmp_path, ["locate", "poke 0xC20024 07"])
+    assert "error" not in events["poke"]
+    assert guest.received.count("Mc20024,1:07") == 2
 
 
 def test_swap_without_a_sequence_names_the_pending_measurement():

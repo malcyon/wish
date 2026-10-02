@@ -162,6 +162,28 @@ class TravelGrid:
 
 
 @dataclass(frozen=True)
+class WorldMap:
+    """Where a title keeps the state of its world map, which has no squares.
+
+    `script` is the data-hunk offset of the byte naming the area script in
+    the buffer; the script-change opcode sets it before the new script loads,
+    so it names the world map from the moment the party enters or leaves.
+    `variables` is the data-hunk offset of a pointer to the script variables:
+    the variable at C64 address `A` is the `u16be` at `[pointer] + 2 * A`.
+    `area`, `node` and `leg` are C64 addresses: the area id, which is written
+    only after the arriving script's entry returns, the place the party
+    stands at, and the place it is going to.
+    """
+
+    script: int
+    variables: int
+    areas: tuple[int, ...]
+    area: int = 0x4BF2
+    node: int = 0x4C9B
+    leg: int = 0x4C9C
+
+
+@dataclass(frozen=True)
 class AmigaMachine:
     """Where one title keeps the automapper's three inputs, as offsets.
 
@@ -200,6 +222,8 @@ class AmigaMachine:
     #: step routine at `0x2C9BA` keeps its cell at +0x25/+0x26 instead).
     overland_pointer: int | None = None
     overland_flag: int = 0x24
+    #: Curse only: the Dalelands map, travelled by menu.
+    world_map: WorldMap | None = None
     #: Pool of Radiance only: the anchor is in one hunk and the data in another.
     segments: Segments | None = None
     #: Pool of Radiance only: the square-engine travel grid.
@@ -255,7 +279,10 @@ MACHINES: dict[str, AmigaMachine] = {
         party_facing=0x3F62,
         width=2,
         geo_pointer=0x5EB6,
-        notes={"wall_ahead": 0x3F63, "square_attribute": 0x3F64},
+        world_map=WorldMap(script=0x5CE1, variables=0x3D00,
+                           areas=(0x50, 0x51)),
+        notes={"wall_ahead": 0x3F63, "square_attribute": 0x3F64,
+               "mode": 0x3D56},
     ),
     # The string is the spell-level name table, present once in this
     # executable and in neither `/Secret` nor `/Curse`. The party's square is
@@ -1655,11 +1682,10 @@ class FsuaeGdb:
     frame and stops nothing. `halts_machine` is False and `AmigaTarget` picks
     that up on its own.
 
-    **Read-only, and that is Wish's choice rather than a limit of the
-    emulator.** The installed `fs-uae-gdb` accepts an `M` memory write (checked
-    live on #37), but the product path only reads, so `AmigaTarget.write`
-    refuses over this transport instead of sending one. The developer harness's `poke` verb sends `M`
-    itself and reads the bytes back.
+    **Writes are `M` packets**, `write_memory` below. The installed
+    `fs-uae-gdb` accepts them, and the connection helper forwards one to 64
+    bytes inside chip or slow memory. The developer harness's `poke` verb sends
+    the same packet and reads the bytes back.
 
     **Four limits a caller has to design around**, all of them the fork's:
 
@@ -1697,6 +1723,14 @@ class FsuaeGdb:
     #: thread, so a paused emulator must cost a poll about a second and not
     #: twenty. The value is a choice, not a measurement of the slowest frame.
     POLL_TIMEOUT = 1.0
+
+    #: The most one `M` carries: the server `recv`s into a 512-byte buffer, and
+    #: the connection helper forwards no more than this.
+    MAX_WRITE = 64
+
+    #: Whether the other end takes an `M`. The window sets it False for a helper
+    #: whose greeting does not say it forwards writes.
+    can_write = True
 
     #: Reads up to this many bytes get `POLL_TIMEOUT`; longer ones, which are
     #: `locate_machines`' half-megabyte regions, get the full `TIMEOUT`,
@@ -1983,6 +2017,36 @@ class FsuaeGdb:
             raise FsuaeError(f"asked for {length} bytes at {addr:#x} and the "
                              f"emulator sent {len(data)}")
         return data
+
+    def write_memory(self, addr: int, data: bytes,
+                     timeout: float | None = None, verify: bool = True) -> None:
+        """Write `data` with `M` packets of at most `MAX_WRITE` bytes, each `OK`.
+
+        Data longer than `MAX_WRITE` goes out as several packets, one at a
+        time, since the server parses one packet per receive; a failure part
+        way leaves the earlier pieces written. Anything but `OK` raises
+        `GuestError` naming the address: `E01` for an address outside memory,
+        and the empty reply an older helper gives to an `M` it does not forward.
+
+        `verify` is accepted so a caller can treat both emulators alike, and
+        changes nothing here: the emulator's `OK` is the only receipt there is.
+        """
+        data = bytes(data)
+        if not data:
+            raise ValueError("A write of 0 bytes is not a write.")
+        if not any(base <= addr and addr + len(data) <= base + size
+                   for base, size in MEMORY):
+            raise ValueError(f"A write of {len(data)} bytes at {addr:#x} is "
+                             "outside chip and slow memory.")
+        for i in range(0, len(data), self.MAX_WRITE):
+            piece = data[i:i + self.MAX_WRITE]
+            reply = self.ask(f"M{addr + i:x},{len(piece):x}:{piece.hex()}",
+                             timeout)
+            if reply != "OK":
+                raise GuestError(
+                    f"the emulator answered {reply!r} to a write of "
+                    f"{len(piece)} bytes at {addr + i:#x}; {i} of {len(data)} "
+                    "bytes were written before it")
 
 
 def find_anchor(memory: bytes, base: int, anchor: bytes,
@@ -2282,6 +2346,8 @@ class AmigaTarget:
         #: Where the anchor was found. For a title without `segments` this is
         #: also the data hunk.
         self.anchor_base = anchor_base
+        #: The square bytes read while the world map was last up, or None.
+        self._world_square: bytes | None = None
         self._open = True
         # `getattr` rather than the attribute, because a test's fake transport
         # predates it and "assume it halts" is the answer that costs nothing
@@ -2290,30 +2356,48 @@ class AmigaTarget:
         if anchor_base is not None:
             self.data_base = data_base_for(self.read, layout, anchor_base)
 
+    @property
+    def can_write(self) -> bool:
+        """Whether `write` can reach the machine, as `amigaactions` asks.
+
+        The transport's own `can_write` where it has one, so a helper that
+        forwards no `M` can say so; otherwise whether either route exists.
+        """
+        own = getattr(self.debugger, "can_write", None)
+        if own is not None:
+            return bool(own)
+        return (getattr(self.debugger, "write_memory", None) is not None
+                or getattr(self.debugger, "batch", None) is not None)
+
     # -- Target ----------------------------------------------------------
 
     def read(self, addr: int, length: int) -> bytes:
         """One block, through `S` and back as base64."""
         return self.read_blocks([(addr, length)])[0]
 
-    def write(self, addr: int, data: bytes) -> None:
-        """`W <addr> <bytes>`, in hex, one command.
+    def write(self, addr: int, data: bytes, verify: bool = True) -> None:
+        """Write `data` into the running machine, by the transport's own route.
 
-        The debugger's own `W` takes a list of byte values; `docs/143` §7 has
-        the eight-byte proof. Split into lines of sixteen so a long write does
-        not become a console line nothing can type.
+        A transport with a `write_memory` (`FsuaeGdb` with an `M` packet,
+        `WinuaeLocalPipe` with `W` lines) is used first. One to 64 bytes per
+        call on WinUAE; `FsuaeGdb` splits longer data. Otherwise the console
+        route sends `W <addr> <bytes>` in hex, in lines of sixteen so a long
+        write does not become a console line nothing can type.
 
-        **A GDB-remote transport is refused here on purpose.** The patched
-        FS-UAE's server accepts an `M` packet, but Wish's product path only
-        reads a running Amiga, so this method never sends one.
+        **`verify=False` is for a write the game consumes within a frame**, such
+        as the key buffer or the message link: WinUAE's read-back would find
+        the bytes already changed. The caller proves that write another way, by
+        the effect it was meant to have. The default checks WinUAE's memory
+        after the write; FS-UAE has no read-back, only the emulator's `OK`.
         """
         self._require_open()
+        direct = getattr(self.debugger, "write_memory", None)
+        if direct is not None:
+            direct(addr, data, verify=verify)
+            return
         if getattr(self.debugger, "batch", None) is None:
             raise GuestError(
-                f"{type(self.debugger).__name__} only reads a running "
-                "Amiga: Wish's product path sends no "
-                "memory-write packet over it, by choice and not because the "
-                "emulator lacks one")
+                f"{type(self.debugger).__name__} has no way to write memory")
         lines = []
         for i in range(0, len(data), 16):
             chunk = data[i:i + 16]
@@ -2492,6 +2576,9 @@ class AmigaTarget:
         self._revalidate()
         if self._on_overland():
             return Fix(0, 0, None, "memory", None, world_map=True)
+        world = self._world_map_fix()
+        if world is not None:
+            return world
         grid = self.layout.travel_grid
         if grid is not None:
             # The four fixed-offset reads in one round trip; only the block
@@ -2588,6 +2675,43 @@ class AmigaTarget:
             return None
         return Fix(x, y, None, "memory", None, outdoors=True, window=window,
                    heading=facing if facing < 8 else None)
+
+    def _world_map_fix(self) -> Fix | None:
+        """A world-map fix while the party is on the title's world map.
+
+        The script byte is 0 at the party menu after a load, so the area id
+        stands in for it there. On leaving, the script byte changes seconds
+        before the arriving script puts the party on its square, and the
+        square bytes still hold the last one before the map; so the map lasts
+        while the area id still names it and the square is the one it had on
+        the map. A script that lands the party on that same square keeps the
+        map up until its entry returns and the area id changes.
+        """
+        world = self.layout.world_map
+        if world is None:
+            return None
+        square = self.layout.party_facing + 1 - self.layout.party_x
+        script, pointer, here = self.read_blocks([
+            (self._at(world.script), 1), (self._at(world.variables), 4),
+            (self._at(self.layout.party_x), square)])
+        base = int.from_bytes(pointer, "big")
+        span = 2 * (world.leg - world.node) + 2
+        if (base == 0 or not _in_memory(base + 2 * world.area, 2)
+                or not _in_memory(base + 2 * world.node, span)):
+            self._world_square = None
+            return None
+        area, places = self.read_blocks([(base + 2 * world.area, 2),
+                                         (base + 2 * world.node, span)])
+        area_id = int.from_bytes(area, "big")
+        current = script[0] or area_id
+        if current in world.areas:
+            self._world_square = here
+        elif area_id not in world.areas or here != self._world_square:
+            self._world_square = None
+            return None
+        return Fix(0, 0, None, "memory", None, world_map=True,
+                   world_node=int.from_bytes(places[:2], "big"),
+                   world_leg=int.from_bytes(places[-2:], "big"))
 
     def _on_overland(self) -> bool:
         """True when the title's overland flag is 1; a bad pointer is False."""

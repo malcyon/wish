@@ -47,6 +47,7 @@ Tests for the Amiga port: its filesystem, saved-game and character-record reader
 | `test_amigastaging.py` | Checks that `tools/amiga/staging.py` leaves a scratch Silver Blades boot ADF hides only its own save drawer or gains one slot file, preserves every file, and refuses unsafe output paths or replacement, using synthetic and registered disks. |
 | `test_amigaareascript.py` | Checks that `goldbox.amiga_savegame.area_script` looks an area up in block 0 of the Amiga Curse `ECL.GLB` and refuses a table that does not fit the file, using generated containers and the registered Curse disks. |
 | `test_amigatarget.py` | Checks `automap/amiga.py`'s WinUAE-backed `Target`, driven through a fake guest. |
+| `test_amigaworldmap.py` | Checks that Amiga Curse's Dalelands map turns the fix into a world-map fix with its node and destination, holds it while the party leaves, and gives the usual fix in a town, from states read on FS-UAE. |
 | `test_amigazerowords.py` | Checks that `tools/amiga/amigazerowords.py` runs without crashing against the player's specimens. |
 | `test_fsuaegdb.py` | Checks `automap.amiga.FsuaeGdb` against a fake socket that answers the way the patched FS-UAE's GDB server does. |
 | `test_fsuaegdbclick.py` | Checks that `fsuaegdb.py wish` lists the window's buttons, presses one with its answer and spell, and picks a drop-down entry, and that each reports a closed window, a disabled control or a bad argument in its own row. |

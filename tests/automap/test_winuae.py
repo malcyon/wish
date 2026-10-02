@@ -487,6 +487,35 @@ def test_a_write_that_reads_back_different_is_an_error(rig):
         pipe.write_memory(0x100, b"\xa5")
 
 
+def test_a_target_write_goes_through_the_pipe_and_is_read_back(rig):
+    pipe, api, *_ = rig
+    tgt = amiga.AmigaTarget(pipe, amiga.MACHINES["secret-of-the-silver-blades"])
+    assert tgt.can_write is True
+    tgt.write(0x100, b"\xa5\x5a")
+    assert api.written[0] == b"DBG W 100 a5 5a\0"
+    assert re.fullmatch(rb'DBG S "[^"]+" 100 2\0', api.written[1])
+    api.ignore_writes = True
+    with pytest.raises(amiga.PipeError, match="differs from the bytes written"):
+        tgt.write(0x100, b"\x01")
+
+
+def test_an_unverified_write_is_not_read_back_and_its_difference_is_no_error(rig):
+    pipe, api, *_ = rig
+    tgt = amiga.AmigaTarget(pipe, amiga.MACHINES["secret-of-the-silver-blades"])
+    api.ignore_writes = True            # as a game that has consumed the bytes
+    tgt.write(0x100, b"\xa5", verify=False)
+    assert api.written == [b"DBG W 100 a5\0"]
+
+
+def test_an_unverified_write_still_checks_the_receipt_and_the_bounds(rig):
+    pipe, api, *_ = rig
+    api.write_receipt = "Wrote 00 (0) at 100.B\n"
+    with pytest.raises(amiga.PipeError, match="receipt"):
+        pipe.write_memory(0x100, b"\xa5", verify=False)
+    with pytest.raises(ValueError):
+        pipe.write_memory(0xC80000, b"\x01", verify=False)
+
+
 def test_a_write_that_gets_no_answer_times_out_and_drops_the_handle(rig):
     pipe, api, *_ = rig
     api.silent = True
