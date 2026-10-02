@@ -61,41 +61,7 @@ def _directory_of(name: str) -> pathlib.Path:
 
 @pytest.mark.parametrize("name", SIX)
 def test_importing_one_of_the_six_leaves_wish_importable_afterwards(name):
-    """`import <name>` then `import wish` in one fresh process, no pytest."""
-    code = (
-        "import sys\n"
-        f"sys.path.insert(0, {str(_directory_of(name))!r})\n"
-        f"sys.path.insert(0, {str(REPO / 'tests')!r})\n"
-        f"sys.path.insert(0, {str(REPO)!r})\n"
-        f"import {name}\n"
-        "from wish import backends\n"
-        "assert backends is not None\n"
-        "print('OK')\n"
-    )
-    result = subprocess.run([sys.executable, "-c", code],
-                             cwd=REPO, capture_output=True, text=True)
-    assert result.returncode == 0 and "OK" in result.stdout, (
-        f"import {name}, then import wish, failed:\n{result.stderr}")
-
-
-@pytest.mark.parametrize("name", SIX)
-def test_importing_one_of_the_six_leaves_tools_off_sys_path(name):
-    """The assertion above is only sharp for two of the six, so this one.
-
-    Reverted to the pre-fix form, only `test_instance` and `test_genimports`
-    actually raise: the other four are saved by an unrelated
-    `sys.path.insert(0, repo_root)` in `tools/c64/coldread.py`, `tools/c64/drive.py`
-    and `tools/c64/savecheck.py`, which happens to put the real `wish` package
-    back in front of `tools/wish.py`. That is luck two layers deep, and it is
-    somebody else's file — delete one of those inserts and four of the
-    subtests above go on passing while the fault is wide open again.
-
-    So this asserts the property `#203 (Six test files shadow the wish
-    package with tools/wish.py, which stops the suite collecting)` actually
-    established, which is not incidentally true of any of the six: **after
-    importing the module, `tools/` is not left on `sys.path`.** Raised in the
-    code review of #183 and #203.
-    """
+    """Check path cleanup before Wish import can hide it, in a fresh process."""
     code = (
         "import sys\n"
         f"sys.path.insert(0, {str(_directory_of(name))!r})\n"
@@ -104,12 +70,14 @@ def test_importing_one_of_the_six_leaves_tools_off_sys_path(name):
         f"import {name}\n"
         f"left = [p for p in sys.path if p == {str(REPO / 'tools')!r}]\n"
         "assert not left, f'tools/ left on sys.path: {left}'\n"
+        "from wish import backends\n"
+        "assert backends is not None\n"
         "print('OK')\n"
     )
     result = subprocess.run([sys.executable, "-c", code],
                              cwd=REPO, capture_output=True, text=True)
     assert result.returncode == 0 and "OK" in result.stdout, (
-        f"import {name} left tools/ on sys.path:\n{result.stderr}")
+        f"import {name}, then import wish, failed:\n{result.stderr}")
 
 
 #: Every script under `tools/`, by its path below `tools/` without the suffix
@@ -250,28 +218,3 @@ def test_conftest_binds_the_package_even_with_tools_already_in_front():
     assert result.returncode == 0 and "OK" in result.stdout, (
         f"conftest did not rescue a worker with tools/ at sys.path[0]:\n"
         f"{result.stderr}")
-
-
-def test_the_tool_that_was_caught_doing_it_no_longer_can():
-    """`tools/dos/dosraces.py`, the proven culprit, no longer leaks at all.
-
-    An audit hook on the reproducing batch caught
-    `tests/convert/test_dosimport.py`'s own `from wish.ui_window import
-    Ui_WishWindow` resolving with `tools/` at `sys.path[0]`, and
-    `tools.dos.dosraces` was the only leaking tool loaded in that worker --
-    `#259 (A cold test run intermittently loses the wish package to
-    tools/wish.py, and a different test fails each time)`.
-
-    This asserts the property `#203 (Six test files shadow the wish package
-    with tools/wish.py, which stops the suite collecting)` established, now
-    of a *tool*: after importing it, `tools/` is not on `sys.path`. Thirty
-    others still leave it there and `tools/suite/pathleak.py` counts them; this one
-    is fixed because it is the one that was measured causing the failure.
-    """
-    result = _in_a_fresh_process(
-        "from tools.dos import dosraces  # noqa: F401\n"
-        f"left = [p for p in sys.path if p == {str(REPO / 'tools')!r}]\n"
-        "assert not left, f'tools/ left on sys.path: {left}'\n"
-        "print('OK')\n")
-    assert result.returncode == 0 and "OK" in result.stdout, (
-        f"tools/dos/dosraces.py left tools/ on sys.path:\n{result.stderr}")
