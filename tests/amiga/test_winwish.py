@@ -364,7 +364,7 @@ def test_up_stops_wish_then_winuae_then_releases_when_wish_does_not_start(tmp_pa
     run, lane = FakeRun([START_FAILS]), FakeLane()
     with pytest.raises(winwish.WinwishError):
         winwish.up(winwish.Guest(run), lane, args)
-    stops = [c for c in run.calls if c[1] == "ps" and "Unregister-ScheduledTask" in c[2]]
+    stops = [c for c in run.calls if c[1] == "ps" and "Stop-Process" in c[2]]
     assert len(stops) == 1 and "'wish-run-h'" in stops[0][2]
     assert lane.log[-2:] == ["stop", "release"]
 
@@ -381,7 +381,7 @@ def test_up_does_not_stop_wish_when_it_never_tried_to_start_it(tmp_path, monkeyp
     run, lane = FakeRun(), FakeLane(fail_on="start")
     with pytest.raises(RouteError):
         winwish.up(winwish.Guest(run), lane, _args(tmp_path, monkeypatch))
-    assert not [c for c in run.calls if c[1] == "ps" and "Unregister-ScheduledTask" in c[2]]
+    assert not [c for c in run.calls if c[1] == "ps" and "Stop-Process" in c[2]]
 
 
 def test_up_releases_the_claim_when_winuae_does_not_start(tmp_path, monkeypatch):
@@ -613,6 +613,7 @@ def _every_script():
         "start": winwish.start_script("h", env),
         "start-control": winwish.start_script("h", winwish.environment(False, "h")),
         "task": winwish._task_body(env, winwish.build_root("h"), True),
+        "probe": winwish.window_probe(r"C:\\o.txt"),
         "stop": winwish.stop_script("h"),
         "capture": winwish.window_capture(r"C:\o.png", "h"),
     }
@@ -621,7 +622,7 @@ def _every_script():
 @pytest.mark.parametrize("name", list(_every_script()))
 def test_no_generated_script_has_a_dollar_name_colon_in_a_double_quoted_string(name):
     strings = _double_quoted(_every_script()[name])
-    assert strings or name in ("mkdir", "task")
+    assert strings or name in ("mkdir", "task", "probe")
     assert [bad for s in strings for bad in bad_references(s)] == []
 
 
@@ -640,3 +641,47 @@ def test_the_scanner_passes_what_powershell_accepts():
 def test_the_scanner_reads_a_string_nested_in_a_subexpression():
     found = _double_quoted('"a $(Join-Path "$run:x" b) c"')
     assert len(found) == 2 and bad_references(found[0]) == ["$run:"]
+
+
+# -- the window check ----------------------------------------------------------
+
+def _start() -> str:
+    return winwish.start_script("h", winwish.environment(True, "h"))
+
+
+def test_the_window_is_looked_for_by_a_task_in_session_one_not_over_ssh():
+    script = _start()
+    assert "MainWindowHandle" not in script
+    assert "Register-ScheduledTask -TaskName $probe" in script
+    assert "Start-ScheduledTask -TaskName $probe" in script
+    assert "'wish-probe-h'" in script
+
+
+def test_the_probe_lists_the_class_and_title_of_every_window_of_a_wish_process():
+    probe = winwish.window_probe(r"C:\o.txt")
+    for call in ("EnumWindows", "GetWindowThreadProcessId", "IsWindowVisible",
+                 "GetClassName", "GetWindowText"):
+        assert call in probe
+    assert "Get-Process -Name wish" in probe
+    assert r"Move-Item -Force 'C:\o.txt.tmp' 'C:\o.txt'" in probe
+
+
+def test_the_check_wants_a_visible_window_titled_as_the_main_window_is():
+    script = _start()
+    assert "$f[2] -eq '1' -and $f[4] -like 'Wish*'" in script
+    # `WishWindow.setWindowTitle` and `_retitle`: "Wish", then " [logging]" with the log on.
+    ui = (pathlib.Path(winwish.__file__).parents[2] / "wish" / "ui_window.py").read_text()
+    assert 'WishWindow.setWindowTitle(_translate("WishWindow", "Wish"))' in ui
+
+
+def test_a_failed_check_lists_the_processes_and_the_windows_it_found():
+    script = _start()
+    assert 'wish pid=$($_.Id) session=$($_.SessionId) path=$($_.Path)' in script
+    assert '"  window $_"' in script
+    assert "no top-level window belongs to a wish process" in script
+    fail = script[script.index("fail no wish.exe window titled Wish"):]
+    assert fail.index("$procs") < fail.index("$seen") < fail.index("exit 1")
+
+
+def test_stopping_removes_the_probe_task_too():
+    assert "Unregister-ScheduledTask -TaskName 'wish-probe-h'" in winwish.stop_script("h")

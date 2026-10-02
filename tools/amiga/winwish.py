@@ -175,21 +175,74 @@ def _task_body(env: dict[str, str], build: str, flag: bool) -> str:
     return "\n".join(lines)
 
 
+def probe_task_name(holder: str) -> str:
+    """The session 1 task that lists Wish's windows; one per holder."""
+    task_name(holder)  # raises for a holder winuae.ps1 would not accept
+    return f"wish-probe-{holder}"
+
+
+def window_probe(out: str) -> str:
+    """What the probe task runs in session 1: one line per top-level window of a `wish` process.
+
+    Each line is `hwnd|pid|visible|class|title`.  `Get-Process`'s `MainWindowHandle`
+    only sees windows on the caller's own desktop, so a call made over ssh (session 0)
+    reads 0 for a window in session 1; only a process in session 1 can list them.
+    """
+    tmp = out + ".tmp"
+    return "\n".join([
+        "$ErrorActionPreference = 'Stop'",
+        "Add-Type -Namespace WishProbe -Name Win -MemberDefinition @'",
+        "public delegate bool EnumProc(IntPtr h, IntPtr l);",
+        "[DllImport(\"user32.dll\")] public static extern bool EnumWindows(EnumProc p, IntPtr l);",
+        "[DllImport(\"user32.dll\")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint p);",
+        "[DllImport(\"user32.dll\")] public static extern bool IsWindowVisible(IntPtr h);",
+        "[DllImport(\"user32.dll\", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n);",
+        "[DllImport(\"user32.dll\", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, System.Text.StringBuilder s, int n);",
+        "'@",
+        "$script:ids = @(Get-Process -Name wish -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })",
+        "$script:rows = New-Object System.Collections.ArrayList",
+        "$cb = [WishProbe.Win+EnumProc]{",
+        "  param($h, $l)",
+        "  $owner = [uint32]0",
+        "  [void][WishProbe.Win]::GetWindowThreadProcessId($h, [ref]$owner)",
+        "  if ($script:ids -contains [int]$owner) {",
+        "    $c = New-Object System.Text.StringBuilder 256",
+        "    $t = New-Object System.Text.StringBuilder 512",
+        "    [void][WishProbe.Win]::GetClassName($h, $c, 256)",
+        "    [void][WishProbe.Win]::GetWindowText($h, $t, 512)",
+        "    $v = if ([WishProbe.Win]::IsWindowVisible($h)) { 1 } else { 0 }",
+        "    [void]$script:rows.Add(($h.ToInt64().ToString() + '|' + $owner + '|' + $v + '|' + $c + '|' + $t))",
+        "  }",
+        "  return $true",
+        "}",
+        "[void][WishProbe.Win]::EnumWindows($cb, [IntPtr]::Zero)",
+        f"[IO.File]::WriteAllLines({q(tmp)}, [string[]]$script:rows)",
+        f"Move-Item -Force {q(tmp)} {q(out)}",
+    ])
+
+
 def start_script(holder: str, env: dict[str, str],
                  wait: int = START_SECONDS) -> str:
     """Seed the private settings, start `wish.exe` in session 1, wait for its window.
 
-    The reply is `ok pid=N session=S window=H` or one `fail ...` line.  Session 0 is a
-    failure: a window there is invisible to a screenshot.
+    The reply is `ok pid=N session=S window=H` or `fail ...`.  Session 0 is a
+    failure: a window there is invisible to a screenshot.  The window is looked for
+    by a task in session 1 (`window_probe`), because the ssh session cannot see it; a
+    failure lists every `wish` process and every window the probe found.
     """
     build, run = build_root(holder), run_dir(holder)
     body = winvmguest.encode_powershell(_task_body(env, build, FLAG in env))
     args = f"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand {body}"
+    probe_out = rf"{run}\windows.txt"
+    probe_body = winvmguest.encode_powershell(window_probe(probe_out))
+    probe_args = f"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand {probe_body}"
     return "\n".join([
         "$ErrorActionPreference = 'Stop'",
         f"$build = {q(build)}",
         f"$run = {q(run)}",
         f"$task = {q(task_name(holder))}",
+        f"$probe = {q(probe_task_name(holder))}",
+        f"$probeOut = {q(probe_out)}",
         "$exe = Get-ChildItem -LiteralPath $build -Recurse -Filter wish.exe | Select-Object -First 1",
         "if (-not $exe) { \"fail no wish.exe under $build; stage it first\"; exit 1 }",
         "$all = @(Get-Process -Name wish -ErrorAction SilentlyContinue)",
@@ -202,25 +255,52 @@ def start_script(holder: str, env: dict[str, str],
         # No byte-order mark: `Settings.load` reads UTF-8 strictly, and a BOM makes
         # json refuse the file, which falls back to defaults and no log.
         f"[IO.File]::WriteAllText(\"$run\\appdata\\wish\\automap.json\", {q(settings_json())}, (New-Object Text.UTF8Encoding $false))",
-        f"$a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument {q(args)}",
         "$p = New-ScheduledTaskPrincipal -UserId \"$env:COMPUTERNAME\\$env:USERNAME\" -LogonType Interactive",
         "$s = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries",
+        f"$a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument {q(args)}",
         "Register-ScheduledTask -TaskName $task -Action $a -Principal $p -Settings $s -Force | Out-Null",
+        f"$pa = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument {q(probe_args)}",
+        "Register-ScheduledTask -TaskName $probe -Action $pa -Principal $p -Settings $s -Force | Out-Null",
+        "function Get-WishWindows {",
+        "  Remove-Item -LiteralPath $probeOut -ErrorAction SilentlyContinue",
+        "  Start-ScheduledTask -TaskName $probe",
+        "  $until = (Get-Date).AddSeconds(10)",
+        "  while (-not (Test-Path -LiteralPath $probeOut) -and (Get-Date) -lt $until) { Start-Sleep -Milliseconds 200 }",
+        "  if (Test-Path -LiteralPath $probeOut) { return @(Get-Content -LiteralPath $probeOut) }",
+        "  return @('the window probe gave no answer in 10s')",
+        "}",
+        "function Close-Probe { Unregister-ScheduledTask -TaskName $probe -Confirm:$false -ErrorAction SilentlyContinue }",
         "Stop-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue",
         "Start-ScheduledTask -TaskName $task",
         f"$deadline = (Get-Date).AddSeconds({int(wait)})",
+        "$rows = @()",
         "while ((Get-Date) -lt $deadline) {",
-        "  $w = @(Get-Process -Name wish -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe.FullName -and $_.MainWindowHandle -ne 0 })",
+        "  $w = @(Get-Process -Name wish -ErrorAction SilentlyContinue | Where-Object { $_.Path -like \"$build\\*\" })",
         "  if ($w.Count -gt 0) {",
-        "    if ($w[0].SessionId -eq 0) { \"fail wish.exe pid=$($w[0].Id) is in session 0, where no screenshot can see it\"; exit 1 }",
-        "    \"ok pid=$($w[0].Id) session=$($w[0].SessionId) window=$($w[0].MainWindowHandle)\"; exit 0",
+        "    $rows = @(Get-WishWindows)",
+        "    foreach ($row in $rows) {",
+        "      $f = $row -split '\\|', 5",
+        "      if ($f.Count -eq 5 -and $f[2] -eq '1' -and $f[4] -like 'Wish*') {",
+        "        $owner = Get-Process -Id ([int]$f[1])",
+        "        Close-Probe",
+        "        if ($owner.SessionId -eq 0) { \"fail wish.exe pid=$($owner.Id) is in session 0, where no screenshot can see it\"; exit 1 }",
+        "        \"ok pid=$($owner.Id) session=$($owner.SessionId) window=$($f[0])\"; exit 0",
+        "      }",
+        "    }",
         "  }",
         "  Start-Sleep -Milliseconds 250",
         "}",
         "$info = Get-ScheduledTaskInfo -TaskName $task",
         "$why = ''",
         "if ($info.LastTaskResult -eq 267011) { $why = ' -- nobody is logged on at the console, so an Interactive task cannot run' }",
-        f"\"fail no wish.exe window after {int(wait)}s; lastResult=0x\" + ('{{0:X}}' -f $info.LastTaskResult) + $why",
+        "$procs = @(Get-Process -Name wish -ErrorAction SilentlyContinue | ForEach-Object { \"  wish pid=$($_.Id) session=$($_.SessionId) path=$($_.Path)\" })",
+        "if ($procs.Count -eq 0) { $procs = @('  no wish process') }",
+        "$seen = @(Get-WishWindows | ForEach-Object { \"  window $_\" })",
+        "if ($seen.Count -eq 0) { $seen = @('  no top-level window belongs to a wish process') }",
+        "Close-Probe",
+        f"\"fail no wish.exe window titled Wish after {int(wait)}s; lastResult=0x\" + ('{{0:X}}' -f $info.LastTaskResult) + $why",
+        "$procs",
+        "$seen",
         "exit 1",
     ])
 
@@ -238,6 +318,7 @@ def stop_script(holder: str) -> str:
         "$ErrorActionPreference = 'Stop'",
         f"$run = {q(run)}",
         f"$task = {q(task_name(holder))}",
+        f"Unregister-ScheduledTask -TaskName {q(probe_task_name(holder))} -Confirm:$false -ErrorAction SilentlyContinue",
         "Stop-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue",
         "for ($i = 0; $i -lt 40; $i++) {",
         "  $all = @(Get-Process -Name wish -ErrorAction SilentlyContinue)",
