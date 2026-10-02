@@ -29,11 +29,11 @@ from . import amiga
 _log = logging.getLogger("wish.automap.amigaactions")
 
 
-
 def unsupported(title: str) -> str:
     """What a greyed Action button reads while an Amiga title is attached: the
     approved `actions.UNSUPPORTED` sentence with the platform added."""
     return engine.UNSUPPORTED.format(title=f"{title} (Amiga)")
+
 
 #: Spell lists are stored under this prefix plus the `amiga.MACHINES` key, so a
 #: list saved on the C64 is never restored into an Amiga record.
@@ -126,7 +126,7 @@ class _AmigaAction:
 
     def legality(self, target) -> engine.Verdict:
         if target is None:
-            return engine.Verdict(False, "no emulator attached")
+            return engine.Verdict(False, engine.NO_EMULATOR)
         parties = _parties()
         row = _row(target, self.key)
         if row is None or self.name not in row.confirmed:

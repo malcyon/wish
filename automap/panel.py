@@ -548,6 +548,8 @@ class CharacterCard(QObject):
         if self.level_up is not None:
             self.level_up.clicked.connect(self._level_up_clicked)
             self.level_up.hide()
+            #: What the form gives it, put back when `set_unsupported` ends.
+            self.level_up_default_tip = self.level_up.toolTip()
 
         self.hp = child(root, Bar, f"card_{index}_hp")
         self.xp = [child(root, Bar, f"card_{index}_xp_{j}") for j in range(3)]
@@ -836,6 +838,7 @@ class RosterPanel(QObject):
         super().__init__(parent)
         self.root = root
         self.levelling = True
+        self.unsupported = False
         self.heading = child(root, QLabel, "automap_roster_heading")
         #: The column the cards scroll inside, and the column that holds it.
         self.scroll = child(root, QScrollArea, "automap_roster_scroll")
@@ -882,11 +885,24 @@ class RosterPanel(QObject):
             if not allowed and card.level_up is not None:
                 card.level_up.hide()
 
-    def set_level_up_tooltip(self, text: str) -> None:
-        """What every card's Level up button says; empty restores the default."""
+    def set_unsupported(self, reason: str) -> None:
+        """No card's Level up can act: hide it, grey it, and say why."""
+        self.unsupported = True
         for card in self.cards:
             if card.level_up is not None:
-                card.level_up.setToolTip(text)
+                card.level_up.hide()
+                card.level_up.setEnabled(False)
+                card.level_up.setToolTip(reason)
+
+    def clear_unsupported(self) -> None:
+        """Undo `set_unsupported`; a card shows its button again on its next snapshot."""
+        if not self.unsupported:
+            return
+        self.unsupported = False
+        for card in self.cards:
+            if card.level_up is not None:
+                card.level_up.setEnabled(True)
+                card.level_up.setToolTip(card.level_up_default_tip)
 
     def set_message(self, text: str) -> None:
         """No party to show. Says why rather than showing empty cards."""

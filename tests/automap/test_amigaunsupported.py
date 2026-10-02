@@ -29,9 +29,14 @@ class FakeAmiga(MemoryTarget):
         self.layout = layout
 
 
+_app = None
+
+
 def window_on(target):
+    global _app
     from PyQt6.QtWidgets import QApplication, QMainWindow
-    QApplication.instance() or QApplication([])
+    # Held: a `QApplication` with no Python reference can be collected.
+    _app = QApplication.instance() or QApplication([])
 
     from automap.window import AutomapBinding
     from wish.ui_window import Ui_WishWindow
@@ -73,8 +78,9 @@ def test_every_greyed_button_names_its_own_title(key, title):
     assert len(buttons) == 5 + 3 + 8
     for button in buttons:
         assert button.toolTip() == sentence
-        if button not in [c.level_up for c in window.roster.cards]:
-            assert not button.isEnabled()
+        assert not button.isEnabled()
+        assert not button.isVisible() or button not in [
+            c.level_up for c in window.roster.cards]
     assert window.actions_bar.target is None
     assert window.fasttravel_bar.target is None
 
@@ -82,9 +88,15 @@ def test_every_greyed_button_names_its_own_title(key, title):
 def test_no_emulator_attached_still_says_so():
     window = window_on(None)
     window.actions_bar.attach(None)
+    window.fasttravel_bar.attach(None)
     for button in window.actions_bar.buttons.values():
         assert button.toolTip() == "no emulator attached"
         assert not button.isEnabled()
+    ft = window.fasttravel_bar
+    assert "Amiga" not in ft.button.toolTip()
+    assert ft.unsupported is None and not ft.button.isEnabled()
+    for card in window.roster.cards:
+        assert card.level_up.toolTip() == card.level_up_default_tip
 
 
 def test_a_c64_target_is_unchanged():
@@ -94,3 +106,87 @@ def test_a_c64_target_is_unchanged():
     for button in window.actions_bar.buttons.values():
         assert "Amiga" not in button.toolTip()
         assert "unsupported" not in button.toolTip()
+
+
+def ready_character():
+    from automap import live
+    classes = tuple(live.ClassProgress(name, 8, 100_000, 0.5, 90_000)
+                    for name in ("magic-user", "cleric", "thief"))
+    return live.Character(slot=0, name="LADY KATHERINE", classes=classes,
+                          level=8, armour_class=-3, thac0=5, hp=41, hp_max=99,
+                          experience=100_000)
+
+
+def sentence_anywhere(window):
+    return [b.objectName() for b in every_button(window) if "Amiga" in b.toolTip()]
+
+
+def show_with_ancestors(widget, root):
+    while widget is not None and widget is not root:
+        widget.show()
+        widget = widget.parentWidget()
+
+
+@pytest.mark.parametrize("leave", ["c64", "wrong-game"])
+def test_leaving_the_amiga_gives_all_three_controls_back_their_own_text(leave):
+    key = "pool-of-radiance"
+    window = ticked(window_on(FakeAmiga(memory(), amiga.MACHINES[key])))
+    assert window.roster.unsupported
+    window.mapper.target = MemoryTarget(memory())
+    if leave == "wrong-game":
+        from automap.area import NOT_OURS
+        window.mapper.title_check = NOT_OURS
+    window._refresh_roster()
+    assert not sentence_anywhere(window)
+    assert window.actions_bar.unsupported is None
+    assert window.fasttravel_bar.unsupported is None
+    assert not window.roster.unsupported
+    for card in window.roster.cards:
+        assert card.level_up.isEnabled()
+        assert card.level_up.toolTip() == card.level_up_default_tip
+    if leave == "wrong-game":
+        for button in window.actions_bar.buttons.values():
+            assert button.toolTip() == "no emulator attached"
+    # And attaching again greys them once more.
+    window.mapper.target = FakeAmiga(memory(), amiga.MACHINES[key])
+    window._refresh_roster()
+    assert window.actions_bar.unsupported
+
+
+def test_a_ready_character_cannot_be_levelled_once_an_amiga_attaches(monkeypatch):
+    from automap import actions
+
+    window = ticked(window_on(MemoryTarget(memory())))
+    card = window.roster.cards[0]
+    card.show_character(ready_character())
+    show_with_ancestors(card.level_up, window.root)
+    assert card.level_up.isVisibleTo(window.root) and card.level_up.isEnabled()
+
+    window.mapper.target = FakeAmiga(memory(), amiga.MACHINES["pool-of-radiance"])
+    window._refresh_roster()
+    asked = []
+    window.roster.level_up_requested.connect(asked.append)
+    assert not card.level_up.isVisibleTo(window.root)
+    assert not card.level_up.isEnabled()
+    card.level_up.click()
+    assert asked == []
+
+    def forbidden(*_a, **_k):
+        raise AssertionError("C64 addresses were read off an Amiga")
+
+    monkeypatch.setattr(actions, "read_party", forbidden)
+    window._level_up(0)                 # the second guard
+
+
+def test_the_wrong_game_path_on_a_c64_is_unchanged():
+    from automap.area import NOT_OURS
+
+    window = window_on(MemoryTarget(memory()))
+    window.mapper.title_check = NOT_OURS
+    window._refresh_roster()
+    assert window.actions_bar.target is None
+    assert window.actions_bar.unsupported is None
+    assert window.fasttravel_bar.unsupported is None
+    assert not window.roster.unsupported
+    for button in window.actions_bar.buttons.values():
+        assert button.toolTip() == "no emulator attached"

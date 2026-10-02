@@ -1402,10 +1402,11 @@ class AutomapBinding(QObject):
             reason = amigaactions.unsupported(amiga_title)
             self.actions_bar.attach_unsupported(reason)
             self.fasttravel_bar.attach_unsupported(reason)
-            self.roster.set_level_up_tooltip(reason)
+            self.roster.set_unsupported(reason)
             self.roster.set_stale(True)
             self._show_strip(self.snapshot)
             return
+        self.roster.clear_unsupported()
         if (self.mapper.title_check is NOT_OURS
                 or not getattr(target, "c64_memory", True)
                 or not self._c64_title()):
@@ -1685,9 +1686,11 @@ class AutomapBinding(QObject):
         (`#415 (automap/window.py picks the level-up spell dialog's class the
         same wrong way plan would have, blocking Curse's trainer)`).
         """
+        target = self.mapper.target
+        if not getattr(target, "c64_memory", True):
+            return                  # these are C64 addresses; see `_refresh_roster`
         game = game_named(self.state.title)
         action = actions.LevelUp(game)
-        target = self.mapper.target
         party = actions.read_party(target, game)
         member = party.by_slot(slot) if party else None
         if member is None:

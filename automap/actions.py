@@ -119,6 +119,10 @@ UNSUPPORTED = "ERROR: Action unsupported on {title}."
 FASTTRAVEL_BUSY = "Fast travel cannot act right now."
 
 
+#: What a disabled button reads when no emulator is attached at all.
+NO_EMULATOR = "no emulator attached"
+
+
 def mode(target, game: c64_port.C64Container | None = None) -> int | None:
     """Which overlay is running, or None if that cannot be established.
 
@@ -358,7 +362,7 @@ class Action:
     def legality(self, target) -> Verdict:
         game = self.descriptor
         if target is None:
-            return Verdict(False, "no emulator attached")
+            return Verdict(False, NO_EMULATOR)
         machine = c64.machine_for(game)
         if machine.mode_flag is None:
             # No gate, so no writes. `mode` would answer None here and that
