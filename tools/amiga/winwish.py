@@ -38,6 +38,7 @@ import secrets
 import signal
 import subprocess
 import sys
+import tempfile
 from typing import Any, Callable
 
 if __package__ in (None, ""):
@@ -57,6 +58,9 @@ ARTIFACT = "frozen-windows"
 WORKFLOW = "release.yml"
 FLAG = "WISH_EXPERIMENTAL_AMIGA_WINUAE"
 HOLDER = winvmguest.HOLDER
+#: DF0 and DF1 hold a title's game disks; Wish reads its maps from those. DF2 and up
+#: are the save disk and extras, which the game writes and Wish never reads maps from.
+GAME_DISKS = 2
 GAME_KEY = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 SHA = re.compile(r"^[0-9a-fA-F]{7,40}$")
 #: Seconds for one guest call; a download or an unzip is the slow one.
@@ -274,13 +278,16 @@ def start_script(holder: str, env: dict[str, str], wait: int = START_SECONDS,
     body = winvmguest.encode_powershell(_task_body(env, build, FLAG in env))
     args = f"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand {body}"
     probe_out = rf"{run}\windows.txt"
-    copy_disks = [f"New-Item -ItemType Directory -Force -Path {q(disks_dir(holder))} | Out-Null",
-                  *(f"Copy-Item -LiteralPath {q(d)} -Destination {q(disks_dir(holder))} -Force"
-                    for d in disks)] if disks else []
+    folder = disks_dir(holder)
+    copy_disks = [f"New-Item -ItemType Directory -Force -Path {q(folder)} | Out-Null",
+                  # An earlier run's copies would otherwise stay in the folder Wish scans.
+                  f"Remove-Item -Path {q(folder + chr(92) + '*')} -Force -ErrorAction SilentlyContinue",
+                  *(f"Copy-Item -LiteralPath {q(d)} -Destination {q(rf'{folder}\df{n}-{pathlib.PureWindowsPath(d).name}')} -Force"
+                    for n, d in enumerate(disks))] if disks else []
     guard = "" if reseed else "if (-not (Test-Path -LiteralPath $settings)) { "
     tail = "" if reseed else " }"
     probe_file = rf"{run}\probe.ps1"
-    probe_args = f"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File {probe_file}"
+    probe_args = f'-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{probe_file}"'
     return "\n".join([
         "$ErrorActionPreference = 'Stop'",
         f"$build = {q(build)}",
@@ -431,42 +438,111 @@ UI_BEGIN = "WISHUI-BEGIN"
 UI_END = "WISHUI-END"
 #: Seconds a name is searched for: a menu's items exist only once it is open.
 UI_WAIT = 4
-UI_SECONDS = 40.0
 
 
-def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, out: str) -> str:
+#: At most this many names in one `click`: each may wait `UI_WAIT` seconds, and the
+#: task is stopped after two minutes.
+UI_MAX_NAMES = 8
+
+
+def ui_timeout(count: int) -> float:
+    """Seconds to wait for a `click` of `count` names: the wait per name plus a fixed start."""
+    return 20.0 + (UI_WAIT + 2) * max(1, count)
+
+
+#: Reads a window through MSAA (oleacc), which Qt answers while a modal dialog is up
+#: and its UI Automation provider reports no children.
+MSAA_CODE = r"""
+using System; using System.Runtime.InteropServices;
+public class WishOa {
+  [DllImport("oleacc.dll")] public static extern int AccessibleObjectFromWindow(IntPtr h, uint id, ref Guid riid, [MarshalAs(UnmanagedType.IUnknown)] out object acc);
+  [DllImport("oleacc.dll")] public static extern int AccessibleChildren([MarshalAs(UnmanagedType.IDispatch)] object p, int start, int n, [Out, MarshalAs(UnmanagedType.LPArray, ArraySubType=UnmanagedType.Struct)] object[] kids, out int got);
+}
+"""
+
+#: The walk itself is PowerShell on the COM object, because a C# `IAccessible` declaration
+#: read garbage child counts from Qt's objects where late binding read them correctly.
+MSAA_WALK = [
+    "  function Get-Msaa($hwnd) {",
+    "    $g = [Guid]'618736E0-3C3D-11CF-810C-00AA00389B71'; $root = $null",
+    "    [void][WishOa]::AccessibleObjectFromWindow([IntPtr]$hwnd, [uint32]4294967292, [ref]$g, [ref]$root)",
+    "    $rows = New-Object System.Collections.ArrayList",
+    "    if ($root) { Read-Msaa $root $rows 0 }",
+    "    return $rows",
+    "  }",
+    "  function Read-Msaa($parent, $rows, $depth) {",
+    "    if ($depth -gt 12 -or $rows.Count -gt 400) { return }",
+    "    $n = 0; try { $n = [int]$parent.accChildCount } catch { return }",
+    "    if ($n -le 0 -or $n -gt 500) { return }",
+    "    $kids = New-Object object[] $n; $got = 0",
+    "    try { [void][WishOa]::AccessibleChildren($parent, 0, $n, $kids, [ref]$got) } catch { return }",
+    "    for ($i = 0; $i -lt $got; $i++) {",
+    "      $k = $kids[$i]",
+    "      if ($k -is [int]) { $self = $parent; $id = $k } else { $self = $k; $id = 0 }",
+    "      $name = ''; $value = ''; $role = 0; $state = 0",
+    "      try { $name = [string]$self.accName($id) } catch {}",
+    "      try { $value = [string]$self.accValue($id) } catch {}",
+    "      try { $role = [int]$self.accRole($id) } catch {}",
+    "      try { $state = [int]$self.accState($id) } catch {}",
+    "      [void]$rows.Add([string]$role + '|' + ($name -replace '[\r\n]', ' ') + '|' + ($value -replace '[\r\n]', ' ') + '|' + $state)",
+    "      if ($id -eq 0) { Read-Msaa $self $rows ($depth + 1) }",
+    "    }",
+    "  }",
+]
+
+#: MSAA role numbers to the UI Automation type names `controls --type` takes.
+MSAA_ROLES = {9: "Window", 11: "MenuItem", 12: "MenuItem", 33: "ListItem", 34: "List",
+              37: "Text", 41: "Text", 42: "Edit", 43: "Button", 44: "CheckBox", 45: "RadioButton",
+              46: "ComboBox", 28: "Group", 22: "ToolBar", 60: "TabItem", 61: "Tab"}
+
+
+def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, out: str,
+             prefix: bool = False) -> str:
     """What the session 1 task runs: list the controls of this holder's Wish, or click some.
 
     `action` is `controls` (one line per control: `Type|Name|AutomationId|enabled=B|state`,
     optionally only `kind`) or `click` (each name in turn, so a menu is `File`,
-    `Preferences...`).  A name matches a control's Name exactly, else by prefix.  A
-    disabled control is never invoked: `Invoke` on one returns without an error and
-    does nothing.  Every top-level window of the process is searched, so an open menu
-    or dialog is found.  The answer is `ok` then the lines, or one `fail ...` line.
+    `Preferences`).  A name matches a control's Name exactly for the whole wait; with
+    `prefix`, a prefix match is tried once the wait has run out.  The line reports the
+    control's full name.  A disabled control is never invoked, because `Invoke` on one
+    returns without an error; but a control under a modal dialog can still read enabled,
+    so a click that the dialog swallows is not an error.  Every top-level window of
+    every `wish.exe` under `build` is searched, so an open menu or dialog is found.
+    UI Automation shows a modal dialog with no children; `controls` then reads that
+    window through MSAA, whose lines read `Type|Name|Value|state=N`.  The answer is
+    `ok` then the lines, or one `fail ...` line.
     """
     tmp = out + ".tmp"
     names_ps = ", ".join(q(n) for n in names) or "@()"
+    roles = "; ".join(f"{k} = {q(v)}" for k, v in MSAA_ROLES.items())
     return "\n".join([
         "$ErrorActionPreference = 'Stop'",
         f"$build = {q(build)}",
         f"$names = @({names_ps})",
         f"$kind = {q(kind or '')}",
+        f"$prefix = ${'true' if prefix else 'false'}",
+        f"$roles = @{{ {roles} }}",
         "$lines = New-Object System.Collections.ArrayList",
         "try {",
         "  Add-Type -AssemblyName UIAutomationClient",
         "  Add-Type -AssemblyName UIAutomationTypes",
+        "  Add-Type -TypeDefinition @'",
+        *MSAA_CODE.strip().splitlines(),
+        "'@",
+        *MSAA_WALK,
         "  $UIA = [System.Windows.Automation.AutomationElement]",
-        "  $W = 'System.Windows.Automation'",
-        "  $proc = Get-Process -Name wish -ErrorAction SilentlyContinue | "
-        "Where-Object { $_.Path -like \"$build\\*\" } | Select-Object -First 1",
-        "  if (-not $proc) { throw 'no wish.exe of this holder is running' }",
+        "  $procs = @(Get-Process -Name wish -ErrorAction SilentlyContinue | "
+        "Where-Object { $_.Path -like \"$build\\*\" })",
+        "  if ($procs.Count -eq 0) { throw 'no wish.exe of this holder is running' }",
         "  function Get-Controls {",
-        "    $mine = New-Object System.Windows.Automation.PropertyCondition($UIA::ProcessIdProperty, $proc.Id)",
         "    $found = New-Object System.Collections.ArrayList",
-        "    foreach ($top in $UIA::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $mine)) {",
-        "      [void]$found.Add($top)",
-        "      foreach ($e in $top.FindAll([System.Windows.Automation.TreeScope]::Descendants, "
+        "    foreach ($proc in $procs) {",
+        "      $mine = New-Object System.Windows.Automation.PropertyCondition($UIA::ProcessIdProperty, $proc.Id)",
+        "      foreach ($top in $UIA::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $mine)) {",
+        "        [void]$found.Add($top)",
+        "        foreach ($e in $top.FindAll([System.Windows.Automation.TreeScope]::Descendants, "
         "[System.Windows.Automation.Condition]::TrueCondition)) { [void]$found.Add($e) }",
+        "      }",
         "    }",
         "    return $found",
         "  }",
@@ -479,17 +555,25 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
         "  }",
         "  function Get-Line($e) { return ((Get-Kind $e) + '|' + $e.Current.Name + '|' + $e.Current.AutomationId + '|enabled=' + $e.Current.IsEnabled + '|' + (Get-State $e)) }",
         # `Invoke` on an item that opens a modal dialog does not return until the dialog
-        # closes, which would hold this task until it is killed; so it runs on its own thread.
+        # closes, which would hold this task until it was killed; so it runs on its own
+        # thread, and a call still running after a moment is reported rather than waited for.
         "  function Start-Async($pattern) {",
         "    $ps = [PowerShell]::Create()",
         "    [void]$ps.AddScript('param($p) $p.Invoke()').AddArgument($pattern)",
-        "    [void]$ps.BeginInvoke()",
+        "    $handle = $ps.BeginInvoke()",
+        "    Start-Sleep -Milliseconds 400",
+        "    if (-not $handle.IsCompleted) { return 'invoked (still running: modal?)' }",
+        "    try {",
+        "      [void]$ps.EndInvoke($handle)",
+        "      if ($ps.HadErrors) { throw ($ps.Streams.Error | Select-Object -First 1).ToString() }",
+        "    } finally { $ps.Dispose() }",
+        "    return 'invoked'",
         "  }",
         "  function Use-Control($e) {",
         "    $o = $null",
         # A menu opens by Expand; Invoke on a menu bar item does not show its popup.
         "    if ((Get-Kind $e) -eq 'MenuItem' -and $e.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern, [ref]$o)) { $o.Expand(); return 'expanded' }",
-        "    if ($e.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$o)) { Start-Async $o; return 'invoked' }",
+        "    if ($e.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$o)) { return (Start-Async $o) }",
         "    if ($e.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$o)) { $o.Select(); return 'selected' }",
         "    if ($e.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$o)) { $o.Toggle(); return 'toggled' }",
         "    if ($e.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern, [ref]$o)) { $o.Expand(); return 'expanded' }",
@@ -499,25 +583,35 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
         "  }",
         f"  if ({q(action)} -eq 'controls') {{",
         "    foreach ($e in Get-Controls) {",
-        "      if ($kind -ne '' -and (Get-Kind $e) -ne $kind) { continue }",
-        "      [void]$lines.Add((Get-Line $e))",
+        "      if ($kind -eq '' -or (Get-Kind $e) -eq $kind) { [void]$lines.Add((Get-Line $e)) }",
+        "      if ((Get-Kind $e) -eq 'Window' -and $e.Current.NativeWindowHandle -ne 0 -and "
+        "$e.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition).Count -eq 0) {",
+        "        foreach ($row in Get-Msaa $e.Current.NativeWindowHandle) {",
+        "          $f = $row -split '\\|', 4",
+        "          $type = $roles[[int]$f[0]]; if (-not $type) { $type = 'Role' + $f[0] }",
+        "          if ($kind -ne '' -and $type -ne $kind) { continue }",
+        "          $st = [int]$f[3]",
+        "          [void]$lines.Add($type + '|' + $f[1] + '|' + $f[2] + '|enabled=' + (($st -band 1) -eq 0) + '|checked=' + (($st -band 16) -ne 0) + ' (MSAA)')",
+        "        }",
+        "      }",
         "    }",
         "  } else {",
         "    if ($names.Count -eq 0) { throw 'click needs at least one name' }",
         "    foreach ($name in $names) {",
         f"      $until = (Get-Date).AddSeconds({UI_WAIT})",
         "      $hit = @()",
+        "      $expired = $false",
         "      while ($true) {",
         "        $all = @(Get-Controls | Where-Object { $_.Current.Name -ne '' -and ($kind -eq '' -or (Get-Kind $_) -eq $kind) })",
         "        $hit = @($all | Where-Object { $_.Current.Name -eq $name })",
-        "        if ($hit.Count -eq 0) { $hit = @($all | Where-Object { $_.Current.Name.StartsWith($name) }) }",
-        "        if ($hit.Count -gt 0 -or (Get-Date) -gt $until) { break }",
-        "        Start-Sleep -Milliseconds 200",
+        "        if ($hit.Count -eq 0 -and $expired -and $prefix) { $hit = @($all | Where-Object { $_.Current.Name.StartsWith($name) }) }",
+        "        if ($hit.Count -gt 0 -or $expired) { break }",
+        "        if ((Get-Date) -gt $until) { if ($prefix) { $expired = $true } else { break } } else { Start-Sleep -Milliseconds 200 }",
         "      }",
         "      if ($hit.Count -eq 0) { throw \"no control named $name\" }",
         "      if ($hit.Count -gt 1) { throw \"$($hit.Count) controls match ${name}: \" + (($hit | ForEach-Object { Get-Line $_ }) -join ' ; ') }",
         "      if (-not $hit[0].Current.IsEnabled) { throw \"$($hit[0].Current.Name) is disabled\" }",
-        "      [void]$lines.Add($name + ' -> ' + (Use-Control $hit[0]))",
+        "      [void]$lines.Add($hit[0].Current.Name + ' -> ' + (Use-Control $hit[0]))",
         "      Start-Sleep -Milliseconds 400",
         "    }",
         "  }",
@@ -530,24 +624,33 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
         "{ param($m) '\\u' + ([int][char]$m.Value).ToString('x4') }) })",
         f"[IO.File]::WriteAllLines({q(tmp)}, [string[]]$answer)",
         f"Move-Item -Force {q(tmp)} {q(out)}",
+        # A thread left in a blocked `Invoke` would keep this process, and the task, alive.
+        "[Environment]::Exit(0)",
     ])
 
 
-def ui_script(token: str, holder: str, action: str, names: tuple[str, ...],
-              kind: str | None, timeout: float = UI_SECONDS) -> str:
-    """What the ssh session runs: do `ui_inner` in session 1 and print its answer between markers."""
+def ui_file(token: str) -> str:
+    """Where a `ui_inner` script is put on the guest, for the task to run with `-File`."""
     if not re.fullmatch(r"[A-Za-z0-9]{1,32}", token):
         raise WinwishError(f"not a usable token: {token!r}")
+    return rf"C:\Users\Public\wish-ui-{token}.ps1"
+
+
+def ui_script(token: str, timeout: float) -> str:
+    """What the ssh session runs: run the put `ui_file` in session 1 and print its answer between markers.
+
+    The script itself is copied across with `winvm put` rather than carried in this
+    command, because a command line over 32,767 characters is refused.
+    """
     task = f"wish-ui-{token}"
     out = rf"C:\Users\Public\{task}.txt"
-    file = rf"C:\Users\Public\{task}.ps1"
-    args = f"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File {file}"
+    file = ui_file(token)
+    args = f'-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{file}"'
     return "\n".join([
         "$ErrorActionPreference = 'Stop'",
         f"$task = {q(task)}",
         f"$out = {q(out)}",
         "Remove-Item $out, \"$out.tmp\" -ErrorAction SilentlyContinue",
-        write_file(file, ui_inner(build_root(holder), action, names, kind, out)),
         f"$a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument {q(args)}",
         "$p = New-ScheduledTaskPrincipal -UserId \"$env:COMPUTERNAME\\$env:USERNAME\" -LogonType Interactive",
         "$s = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 2) "
@@ -562,6 +665,7 @@ def ui_script(token: str, holder: str, action: str, names: tuple[str, ...],
         "  Get-Content -LiteralPath $out",
         f"  '{UI_END}'",
         "} finally {",
+        "  Stop-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue",
         "  Unregister-ScheduledTask -TaskName $task -Confirm:$false -ErrorAction SilentlyContinue",
         f"  Remove-Item $out, \"$out.tmp\", {q(file)} -ErrorAction SilentlyContinue",
         "}",
@@ -584,11 +688,20 @@ def ui_lines(text: str) -> list[str]:
 
 
 def ui(guest: "Guest", holder: str, action: str, names: tuple[str, ...] = (),
-       kind: str | None = None) -> list[str]:
+       kind: str | None = None, prefix: bool = False) -> list[str]:
     """List Wish's controls (`controls`) or click `names` in turn (`click`)."""
+    if len(names) > UI_MAX_NAMES:
+        raise WinwishError(f"click at most {UI_MAX_NAMES} names at once, not {len(names)}")
     guest.holds_lane(holder)
-    script = ui_script(secrets.token_hex(6), holder, action, names, kind)
-    rc, text = guest.run(["winvm", "ps", script], UI_SECONDS + 20)
+    token = secrets.token_hex(6)
+    timeout = ui_timeout(len(names))
+    inner = ui_inner(build_root(holder), action, names, kind,
+                     rf"C:\Users\Public\wish-ui-{token}.txt", prefix)
+    with tempfile.TemporaryDirectory() as tmp:
+        local = pathlib.Path(tmp) / "ui.ps1"
+        local.write_bytes(b"\xef\xbb\xbf" + inner.encode("utf-8"))
+        guest.winvm("put", str(local), ui_file(token).replace("\\", "/"), timeout=CALL_SECONDS)
+    rc, text = guest.run(["winvm", "ps", ui_script(token, timeout)], timeout + 20)
     return ui_lines(text)
 
 
@@ -849,7 +962,7 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
             started = True
             wish_tried = True
             result["wish"] = start_wish(guest, args.holder, not args.no_flag,
-                                        tuple(drives), args.game, reseed=True)
+                                        tuple(drives[:GAME_DISKS]), args.game, reseed=True)
             done = True
         finally:
             if not done:
@@ -952,6 +1065,8 @@ def _parser() -> argparse.ArgumentParser:
                        "`File` `Preferences...`)")
     holder(p)
     p.add_argument("--type", help="only this UI Automation type")
+    p.add_argument("--prefix", action="store_true",
+                   help="when no control has exactly the name, accept one that starts with it")
     p.add_argument("names", nargs="+")
 
     p = sub.add_parser("log", help="copy Wish's debug logs from the guest")
@@ -985,7 +1100,7 @@ def main(argv: list[str] | None = None,
         elif args.cmd == "controls":
             print("\n".join(ui(guest, args.holder, "controls", (), args.type)))
         elif args.cmd == "click":
-            print("\n".join(ui(guest, args.holder, "click", tuple(args.names), args.type)))
+            print("\n".join(ui(guest, args.holder, "click", tuple(args.names), args.type, args.prefix)))
         elif args.cmd == "log":
             print("\n".join(collect_log(guest, args.holder, pathlib.Path(args.out))))
         elif args.cmd == "down":

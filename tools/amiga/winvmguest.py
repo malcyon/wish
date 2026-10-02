@@ -92,6 +92,8 @@ REFUSED = {
 SHOT_BEGIN = "WINVM-SHOT-BEGIN"
 SHOT_END = "WINVM-SHOT-END"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+PNG_IHDR = b"\x00\x00\x00\rIHDR"
+PNG_IEND = b"\x00\x00\x00\x00IEND\xaeB`\x82"
 
 #: A holder name as `winuae.ps1 claim` accepts one.
 HOLDER = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
@@ -274,6 +276,10 @@ def decode_shot(output: str) -> bytes:
         raise WinvmError(f"the screenshot's base64 does not decode: {exc}") from None
     if not data.startswith(PNG_SIGNATURE):
         raise WinvmError("the screenshot is not a PNG")
+    # A cut-off transfer still starts like a PNG; the first chunk must be IHDR and the
+    # last IEND.
+    if data[8:16] != PNG_IHDR or not data.endswith(PNG_IEND):
+        raise WinvmError("the screenshot is a truncated PNG")
     return data
 
 

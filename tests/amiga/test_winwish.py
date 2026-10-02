@@ -301,8 +301,13 @@ def test_stage_makes_the_folder_copies_and_unpacks_a_fresh_build_in_that_order(t
     assert zip_sha in script
 
 
+def _png() -> bytes:
+    return (winvmguest.PNG_SIGNATURE + winvmguest.PNG_IHDR + bytes(17) + b"data"
+            + winvmguest.PNG_IEND)
+
+
 def test_shot_decodes_the_png_and_writes_it(tmp_path):
-    png = winvmguest.PNG_SIGNATURE + b"data"
+    png = _png()
     reply = "\n".join([winvmguest.SHOT_BEGIN, base64.b64encode(png).decode(), winvmguest.SHOT_END])
     run = FakeRun([(lambda a: a[1] == "ps", 0, reply)])
     out = tmp_path / "s" / "wish.png"
@@ -311,7 +316,7 @@ def test_shot_decodes_the_png_and_writes_it(tmp_path):
 
 
 def test_shot_keeps_a_complete_png_whatever_the_exit_code_was(tmp_path):
-    png = winvmguest.PNG_SIGNATURE + b"data"
+    png = _png()
     reply = "\n".join(["#< CLIXML", winvmguest.SHOT_BEGIN, base64.b64encode(png).decode(),
                        winvmguest.SHOT_END])
     run = FakeRun([(lambda a: a[1] == "ps", 1, reply)])
@@ -637,7 +642,7 @@ def _every_script():
         "task": winwish._task_body(env, winwish.build_root("h"), True),
         "ui-controls": winwish.ui_inner(r"C:\\b", "controls", (), "RadioButton", r"C:\\o.txt"),
         "ui-click": winwish.ui_inner(r"C:\\b", "click", ("File", "Preferences..."), None, r"C:\\o.txt"),
-        "ui-ssh": winwish.ui_script("abc", "h", "click", ("File",), None),
+        "ui-ssh": winwish.ui_script("abc", 30),
         "probe": winwish.window_probe(r"C:\\o.txt", r"C:\\b"),
         "stop": winwish.stop_script("h"),
         "capture": winwish.window_capture(r"C:\o.png", "h"),
@@ -784,15 +789,28 @@ def test_without_a_game_the_settings_are_as_they_were():
     assert json.loads(winwish.settings_json()) == {"diagnostics": True}
 
 
-def test_start_copies_the_adfs_and_writes_the_folder_when_asked():
-    disks = (r"C:\Amiga\Disks\a.adf", r"C:\Amiga\Disks\b.adf")
+def test_start_copies_the_adfs_per_drive_and_writes_the_folder_when_asked():
+    disks = (r"C:\Amiga\Disks\disk.adf", r"C:\Amiga\Other\disk.adf")
     script = winwish.start_script("h", winwish.environment(True, "h"), disks=disks,
                                   game="pool-of-radiance")
     folder = winwish.disks_dir("h")
-    assert f"Copy-Item -LiteralPath 'C:\\Amiga\\Disks\\a.adf' -Destination '{folder}' -Force" in script
-    assert "Copy-Item -LiteralPath 'C:\\Amiga\\Disks\\b.adf'" in script
+    assert f"Remove-Item -Path '{folder}\\*' -Force" in script
+    assert (f"Copy-Item -LiteralPath 'C:\\Amiga\\Disks\\disk.adf' "
+            f"-Destination '{folder}\\df0-disk.adf' -Force") in script
+    assert (f"Copy-Item -LiteralPath 'C:\\Amiga\\Other\\disk.adf' "
+            f"-Destination '{folder}\\df1-disk.adf' -Force") in script
     assert "pool-of-radiance" in script and "game_folders" in script
     assert "if (-not (Test-Path -LiteralPath $settings))" not in script
+
+
+def test_only_the_game_disks_are_copied_not_the_save_disk(tmp_path, monkeypatch):
+    run, lane = FakeRun(), FakeLane()
+    args = _args(tmp_path, monkeypatch, "--df1", "b.adf", "--df2", "save.adf",
+                 "--game", "pool-of-radiance")
+    winwish.up(winwish.Guest(run), lane, args)
+    start = next(c[2] for c in run.calls if c[1] == "ps" and "Register-ScheduledTask -TaskName $task" in c[2])
+    assert "b.adf" in start and "save.adf" not in start
+    assert lane.log[1].count(",") == 2  # the save disk is still mounted in DF2
 
 
 def test_a_plain_start_keeps_the_settings_an_earlier_up_wrote():
@@ -854,7 +872,7 @@ def test_the_click_script_checks_enabled_before_invoking_and_walks_every_window(
 
 
 def test_the_ui_task_is_removed_whatever_happens():
-    script = winwish.ui_script("abc", "h", "controls", (), None)
+    script = winwish.ui_script("abc", 30)
     assert script.index("} finally {") < script.index("Unregister-ScheduledTask -TaskName $task")
     assert script.rstrip().endswith("exit 0")
 
@@ -871,21 +889,43 @@ LIMIT = 32767  # CreateProcess's command line limit; past it ssh says "exec requ
 
 
 def test_no_script_is_too_long_for_a_windows_command_line():
-    disks = (r"C:\Amiga\Disks\wish37-j37wfix-disk1.adf",) * 3
-    start = winwish.start_script("j37wfix", winwish.environment(True, "j37wfix"), disks=disks,
-                                 game="pool-of-radiance")
-    ui = winwish.ui_script("abcdef123456", "j37wfix", "click", ("File", "Preferences"), "MenuItem")
+    disks = (r"C:\Amiga\Disks\wish37-j37wfix-with-a-long-name-disk1.adf",) * 4
+    worst = "j37wfix-with-a-long-holder"[:32]
+    start = winwish.start_script(worst, winwish.environment(True, worst), disks=disks,
+                                 game="secret-of-the-silver-blades")
+    ui = winwish.ui_script("abcdef123456", 99)
     for script in (start, ui):
         assert len(winvmguest.powershell_command(script)) < LIMIT - 4000
 
 
 def test_the_probe_and_ui_scripts_travel_as_files_not_as_nested_commands():
     start = _start()
-    assert "-File C:\\Amiga\\wish\\run-h\\probe.ps1" in start
+    assert '-File "C:\\Amiga\\wish\\run-h\\probe.ps1"' in start
     assert start.count("-EncodedCommand") == 1  # the task body only
-    ui = winwish.ui_script("abc", "h", "controls", (), None)
-    assert "-File C:\\Users\\Public\\wish-ui-abc.ps1" in ui
+    ui = winwish.ui_script("abc", 30)
+    assert '-File "C:\\Users\\Public\\wish-ui-abc.ps1"' in ui
     assert "-EncodedCommand" not in ui
+
+
+def test_ui_puts_its_script_on_the_guest_before_running_it():
+    run = FakeRun([(lambda a: a[1] == "ps", 0, _ui_reply("ok"))])
+    winwish.ui(winwish.Guest(run), "h", "controls")
+    verbs = [c[1] for c in run.calls]
+    assert verbs == ["lane", "put", "ps"]
+    put = run.calls[1]
+    assert put[3].startswith("C:/Users/Public/wish-ui-") and put[3].endswith(".ps1")
+
+
+def test_more_names_than_the_limit_are_refused_before_anything_runs():
+    run = FakeRun()
+    with pytest.raises(winwish.WinwishError, match="at most"):
+        winwish.ui(winwish.Guest(run), "h", "click", tuple("abcdefghi"))
+    assert run.calls == []
+
+
+def test_the_wait_grows_with_the_number_of_names():
+    assert winwish.ui_timeout(1) < winwish.ui_timeout(2) < winwish.ui_timeout(winwish.UI_MAX_NAMES)
+    assert winwish.ui_timeout(winwish.UI_MAX_NAMES) < 120  # the task is stopped after two minutes
 
 
 def test_write_file_round_trips_through_base64_with_a_bom():
@@ -897,9 +937,53 @@ def test_write_file_round_trips_through_base64_with_a_bom():
 def test_a_menu_opens_by_expanding_and_a_modal_item_is_invoked_off_thread():
     inner = winwish.ui_inner(r"C:\b", "click", ("File",), None, r"C:\o.txt")
     assert inner.index("ExpandCollapsePattern]::Pattern, [ref]$o)) { $o.Expand()") \
-        < inner.index("InvokePattern]::Pattern, [ref]$o)) { Start-Async $o")
+        < inner.index("InvokePattern]::Pattern, [ref]$o)) { return (Start-Async $o) }")
     assert "[PowerShell]::Create()" in inner and "BeginInvoke()" in inner
     assert "WindowPattern]::Pattern, [ref]$o)) { $o.Close(); return 'closed' }" in inner
+
+
+def test_an_invoke_error_is_reported_and_a_running_one_is_named():
+    inner = winwish.ui_inner(r"C:\b", "click", ("File",), None, r"C:\o.txt")
+    assert "if (-not $handle.IsCompleted) { return 'invoked (still running: modal?)' }" in inner
+    assert "$ps.EndInvoke($handle)" in inner and "$ps.HadErrors" in inner
+    assert "} finally { $ps.Dispose() }" in inner
+
+
+def test_the_task_is_stopped_before_it_is_removed_and_the_inner_script_exits():
+    script = winwish.ui_script("abc", 30)
+    assert script.index("Stop-ScheduledTask -TaskName $task") \
+        < script.index("Unregister-ScheduledTask -TaskName $task")
+    inner = winwish.ui_inner(r"C:\b", "click", ("File",), None, r"C:\o.txt")
+    assert inner.rstrip().endswith("[Environment]::Exit(0)")
+    assert inner.index("Move-Item") < inner.index("[Environment]::Exit(0)")
+
+
+def test_names_match_exactly_for_the_whole_wait_and_a_prefix_only_when_asked():
+    plain = winwish.ui_inner(r"C:\b", "click", ("File",), None, r"C:\o.txt")
+    asked = winwish.ui_inner(r"C:\b", "click", ("File",), None, r"C:\o.txt", prefix=True)
+    assert "$prefix = $false" in plain and "$prefix = $true" in asked
+    assert "if ($hit.Count -eq 0 -and $expired -and $prefix)" in plain
+    assert "[void]$lines.Add($hit[0].Current.Name + ' -> '" in plain
+    assert "if ((Get-Date) -gt $until) { if ($prefix) { $expired = $true } else { break } }" in plain
+
+
+def test_every_wish_of_the_holder_is_searched_not_the_first():
+    inner = winwish.ui_inner(r"C:\b", "controls", (), None, r"C:\o.txt")
+    assert "foreach ($proc in $procs)" in inner
+    assert "$proc = Get-Process" not in inner
+
+
+def test_a_window_with_no_children_is_read_through_msaa():
+    inner = winwish.ui_inner(r"C:\b", "controls", (), "RadioButton", r"C:\o.txt")
+    assert "Get-Msaa $e.Current.NativeWindowHandle" in inner and "AccessibleObjectFromWindow" in inner
+    assert "$parent.accChildCount" in inner
+    assert "45 = 'RadioButton'" in inner
+    assert "(MSAA)" in inner
+
+
+def test_the_cli_takes_a_prefix_flag():
+    args = winwish._parser().parse_args(["click", "--holder", "h", "--prefix", "File"])
+    assert args.prefix is True
 
 
 def test_the_answer_is_ascii_whatever_a_control_is_called():

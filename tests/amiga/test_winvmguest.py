@@ -127,8 +127,21 @@ def test_a_token_that_could_break_the_script_is_refused(token):
         w.shot_script(token)
 
 
+def _png(body: bytes = b"") -> bytes:
+    """Signature, an IHDR chunk, `body` and an IEND chunk: the parts `decode_shot` checks."""
+    return w.PNG_SIGNATURE + w.PNG_IHDR + bytes(13 + 4) + body + w.PNG_IEND
+
+
+def test_a_truncated_png_is_refused():
+    whole = _png(b"x" * 100)
+    for cut in (whole[:-1], whole[:-12], w.PNG_SIGNATURE + b"pixels", whole[:20]):
+        b64 = base64.b64encode(cut).decode()
+        with pytest.raises(w.WinvmError, match="truncated PNG"):
+            w.decode_shot(f"{w.SHOT_BEGIN}\n{b64}\n{w.SHOT_END}\n")
+
+
 def test_the_png_is_read_back_from_between_the_markers():
-    png = w.PNG_SIGNATURE + bytes(range(200))
+    png = _png(bytes(range(200)))
     b64 = base64.encodebytes(png).decode()        # wrapped at 76, as PowerShell wraps
     out = f"noise\r\n{w.SHOT_BEGIN}\r\n{b64.replace(chr(10), chr(13) + chr(10))}{w.SHOT_END}\r\n"
     assert w.decode_shot(out) == png
@@ -147,7 +160,7 @@ def test_something_that_is_not_a_png_is_refused():
 
 
 def test_shot_writes_the_file_it_was_handed(monkeypatch, tmp_path):
-    png = w.PNG_SIGNATURE + b"pixels"
+    png = _png(b"pixels")
     seen = {}
 
     def _run(argv, **kwargs):
