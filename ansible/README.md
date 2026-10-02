@@ -30,6 +30,8 @@ The playbooks that build the agent sandbox on your own desktop (an isolated libv
 | `roles/agent-vm-guest/tasks/plane.yml` | Provisions optional Plane trust, private credentials, pinned dependencies and both clients' restricted MCP adapter. |
 | `roles/agent-vm-guest/files/plane-clients.py` | Registers the Wish Plane adapter while preserving unrelated Claude and Codex settings. |
 | `roles/agent-vm-guest/templates/wish-plane.sh.j2` | Launches the policy adapter with private configuration and system certificate trust. |
+| `roles/sandbox-network/files/service-spoof-test.py` | Captures a bounded Windows source-spoof attempt and its controls, with scheduled and immediate network cleanup. |
+| `roles/sandbox-network/tasks/isolation-test-spoof.yml` | Runs the optional host-controlled spoof test after service-exception configuration. |
 
 `agent-vm` and `windows-vm` both depend on `sandbox-network`, so neither defines a network of its own. `agent-vm-guest` is a role of its own because a dependency runs wherever its role does, and `sandbox-network` has no business running inside the guest.
 

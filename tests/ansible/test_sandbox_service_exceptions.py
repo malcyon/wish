@@ -22,7 +22,8 @@ def _validate(service, pinholes=()):
     tasks = yaml.safe_load((ROLE / 'tasks/main.yml').read_text())
     command = tasks[0]['ansible.builtin.command']['argv']
     data = {'services': [service], 'pinholes': pinholes,
-            'leases': {'agent-vm': {'ip': '10.77.0.10'}}}
+            'service_guest': 'agent-vm',
+            'leases': {'agent-vm': {'ip': '10.77.0.10'}, 'win11': {'ip': '10.77.0.11'}}}
     return subprocess.run([sys.executable, *command[1:]], input=json.dumps(data),
                           capture_output=True, text=True, timeout=5)
 
@@ -32,7 +33,7 @@ def test_scoped_http_permission_is_accepted():
 
 
 @pytest.mark.parametrize(('field', 'value'), [
-    ('source', '10.77.0.99'), ('destination', '999.1.1.1'),
+    ('source', '10.77.0.11'), ('source', '10.77.0.99'), ('destination', '999.1.1.1'),
     ('destination', '192.0.2.0/24'), ('protocol', 'udp'), ('port', 22),
     ('hostname', "plane.test'; true"), ('denied_tcp_ports', [22]),
     ('denied_tcp_ports', [22, 81, 3000, 80]), ('scheme', 'file'), ('port', 443),
@@ -130,3 +131,65 @@ def test_existing_domain_bindings_preserve_devices_and_need_no_second_update(tmp
         }
     domain_file.write_text('<domain><devices>' + changes[0]['xml'] + '</devices></domain>')
     assert prepare() == []
+
+
+@pytest.fixture
+def spoof_tool():
+    import runpy
+
+    return runpy.run_path(str(ROLE / 'files/service-spoof-test.py'))
+
+
+def _syn(source='10.77.0.10', source_port=45000, sequence=1234, mac='52:54:00:00:00:11'):
+    return {'source': source, 'destination': '192.0.2.20', 'source_port': source_port,
+            'destination_port': 80, 'sequence': sequence, 'mac': mac}
+
+
+def _assess(spoof_tool, tap, uplink):
+    return spoof_tool['assess'](tap, uplink, '10.77.0.10', '52:54:00:00:00:11',
+                                '192.0.2.20', 80, 45000, 45001)
+
+
+def test_spoof_gate_requires_emission_and_a_positive_uplink_control(spoof_tool):
+    control = _syn(source='192.0.2.1', source_port=45001, sequence=9000)
+    assert _assess(spoof_tool, [_syn()], [control]) == {
+        'uplink_control_syns': 1, 'windows_forged_syns': 1, 'escaped_syns': 0,
+    }
+    with pytest.raises(RuntimeError, match='No forged Windows SYN'):
+        _assess(spoof_tool, [], [control])
+    with pytest.raises(RuntimeError, match='positive SYN control'):
+        _assess(spoof_tool, [_syn()], [])
+
+
+def test_spoof_gate_detects_escape_even_when_nat_rewrites_source_and_port(spoof_tool):
+    control = _syn(source='192.0.2.1', source_port=45001, sequence=9000)
+    escaped = _syn(source='192.0.2.1', source_port=59000)
+    with pytest.raises(RuntimeError, match='ISOLATION BROKEN'):
+        _assess(spoof_tool, [_syn()], [control, escaped])
+
+
+def test_spoof_gate_does_not_count_another_guests_packet_as_windows_emission(spoof_tool):
+    control = _syn(source='192.0.2.1', source_port=45001, sequence=9000)
+    with pytest.raises(RuntimeError, match='No forged Windows SYN'):
+        _assess(spoof_tool, [_syn(mac='52:54:00:00:00:10')], [control])
+
+
+def test_spoof_capture_reads_generated_packets_and_rejects_truncation(spoof_tool, tmp_path):
+    import ipaddress
+    import struct
+
+    ethernet = bytes.fromhex('5254000000015254000000110800')
+    ip = bytearray(20)
+    ip[0], ip[9] = 0x45, 6
+    ip[12:16] = ipaddress.IPv4Address('10.77.0.10').packed
+    ip[16:20] = ipaddress.IPv4Address('192.0.2.20').packed
+    tcp = struct.pack('!HHIIBBHHH', 45000, 80, 1234, 0, 0x50, 2, 65535, 0, 0)
+    packet = ethernet + ip + tcp
+    header = struct.pack('<IHHIIII', 0xa1b2c3d4, 2, 4, 0, 0, 128, 1)
+    record = struct.pack('<IIII', 0, 0, len(packet), len(packet)) + packet
+    path = tmp_path / 'packets.pcap'
+    path.write_bytes(header + record)
+    assert spoof_tool['read_syns'](path) == [_syn()]
+    path.write_bytes(header + record[:-1])
+    with pytest.raises(RuntimeError, match='Truncated capture packet'):
+        spoof_tool['read_syns'](path)

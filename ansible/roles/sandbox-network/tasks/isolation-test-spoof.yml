@@ -1,0 +1,33 @@
+---
+- name: Require the Windows probe identity for the source-spoof experiment
+  ansible.builtin.set_fact:
+    sandbox_net_spoof_guest: "{{ sandbox_net_probe_guests | selectattr('domain', 'equalto', 'win11') | first }}"
+
+- name: Capture a Windows forged-source SYN and verify none leaves the host
+  ansible.builtin.script:
+    cmd: >-
+      service-spoof-test.py
+      --source {{ item.source | quote }}
+      --destination {{ item.destination | quote }}
+      --port {{ item.port | int }}
+      --windows-ip {{ sandbox_net_leases['win11'].ip | quote }}
+      --windows-mac {{ sandbox_net_leases['win11'].mac | quote }}
+      --windows-user {{ sandbox_net_spoof_guest.user | quote }}
+      --controller-user {{ agent_vm_operator | quote }}
+      --key {{ sandbox_net_spoof_guest.key | quote }}
+      --network {{ sandbox_net_name | quote }}
+      --filter-name {{ sandbox_net_filter_name | quote }}
+    executable: /usr/bin/python3
+  loop: "{{ sandbox_net_service_exceptions }}"
+  loop_control:
+    label: "{{ item.hostname }}"
+  become: true
+  changed_when: false
+  register: sandbox_net_spoof_results
+
+- name: Report the observed source-spoof evidence
+  ansible.builtin.debug:
+    msg: "{{ item.stdout | trim }}"
+  loop: "{{ sandbox_net_spoof_results.results }}"
+  loop_control:
+    label: "{{ item.item.hostname }}"

@@ -72,6 +72,12 @@ sandbox_net_pinholes: []
 # Entries contain source, destination, protocol (tcp), port, scheme, hostname and
 # denied_tcp_ports. The hostname is also resolved by libvirt DNS.
 sandbox_net_service_exceptions: []
+# Only this Linux domain can receive a service permission, even if an entry
+# accidentally uses another guest's lease address.
+sandbox_net_service_guest: agent-vm
+# Explicit experiment: adds a temporary Windows source alias and restores it.
+# A tap capture must prove transmission; an uplink capture must prove its drop.
+sandbox_net_run_spoof_test: false
 
 # --- Isolation test ---------------------------------------------------------
 # What a guest must reach, and what it must not.

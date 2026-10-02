@@ -53,7 +53,7 @@
       {% set _ = probes.append({'name': 'LAN ' ~ t.name ~ ' tcp/' ~ t.tcp_port, 'want': 1, 'cmd': tcp ~ tail}) %}
       {% endfor %}
       {% for service in sandbox_net_service_exceptions %}
-      {% set allowed = sandbox_net_leases[guest.domain].ip == service.source %}
+      {% set allowed = guest.os == 'linux' and guest.domain == sandbox_net_service_guest and sandbox_net_leases[guest.domain].ip == service.source %}
       {% set dns = ('powershell -NoProfile -Command "if ((Resolve-DnsName ' ~ service.hostname ~ ' -Type A -ErrorAction Stop).IPAddress -contains \'' ~ service.destination ~ '\') { exit 0 } else { exit 1 }"') if win
                    else ('getent ahostsv4 ' ~ service.hostname ~ ' | cut -d \' \' -f1 | grep -Fx ' ~ service.destination) %}
       {% set _ = probes.append({'name': 'Service DNS ' ~ service.hostname, 'want': 0, 'cmd': dns ~ tail}) %}

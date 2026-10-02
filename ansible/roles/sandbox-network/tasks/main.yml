@@ -17,7 +17,9 @@
                                     'hostname', 'scheme', 'denied_tcp_ports'}, 'Unexpected service fields'
             source = ipaddress.IPv4Address(service['source'])
             destination = ipaddress.IPv4Address(service['destination'])
-            assert str(source) in [entry['ip'] for entry in leases.values()], 'Unknown source'
+            assert data['service_guest'] != 'win11', 'Windows cannot receive service permissions'
+            assert str(source) == leases[data['service_guest']]['ip'], 'Service source must be the configured Linux guest'
+            assert all(entry['ip'] != str(source) for name, entry in leases.items() if name != data['service_guest']), 'Service source must not be shared with another guest'
             assert not destination.is_multicast and not destination.is_unspecified, 'Invalid destination'
             assert str(destination) not in data['pinholes'], 'Service destination has an all-port pinhole'
             assert service['scheme'] in ('http', 'https'), 'Unsupported service scheme'
@@ -28,7 +30,7 @@
             assert {22, 81, 3000} <= set(service['denied_tcp_ports']), 'Missing required isolation controls'
     stdin: >-
       {{ {'services': sandbox_net_service_exceptions, 'leases': sandbox_net_leases,
-          'pinholes': sandbox_net_pinholes} | to_json }}
+          'pinholes': sandbox_net_pinholes, 'service_guest': sandbox_net_service_guest} | to_json }}
   changed_when: false
   check_mode: false
 
@@ -54,6 +56,7 @@
       - libvirt-clients
       - xorriso         # builds the autounattend and cloud-init ISOs
       - dnsmasq-base    # DHCP and DNS for the NAT network
+      - tcpdump         # Proves emitted and blocked source-spoof packets
     state: present
     update_cache: true
     cache_valid_time: 3600

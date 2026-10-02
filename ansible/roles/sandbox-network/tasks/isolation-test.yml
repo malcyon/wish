@@ -7,7 +7,8 @@
 #   ansible-playbook -i ansible/inventory.yml ansible/sandbox-isolation-test.yml
 #
 # Every task that only reads is `check_mode: false`, so the test runs under
-# --check like the rest. Nothing here changes anything.
+# --check like the rest. The optional spoof experiment changes a temporary
+# Windows address and restores it; it does not run in check mode.
 
 # With no target there is nothing to check, and a test that checks nothing
 # passes.
@@ -100,6 +101,21 @@
   loop: "{{ sandbox_net_probe_guests | rejectattr('domain', 'in', sandbox_net_test_running.stdout_lines) | list }}"
   loop_control:
     label: "{{ item.domain }}"
+
+
+- name: Measure Windows forged-source traffic when explicitly requested
+  ansible.builtin.include_tasks: isolation-test-spoof.yml
+  when:
+    - sandbox_net_run_spoof_test | bool
+    - sandbox_net_service_exceptions | length > 0
+    - not ansible_check_mode
+
+- name: Report the forged-source gate when it was not run
+  ansible.builtin.debug:
+    msg: Windows forged-source isolation is NOT TESTED; enable sandbox_net_run_spoof_test for the bounded packet-capture experiment.
+  when:
+    - sandbox_net_service_exceptions | length > 0
+    - not (sandbox_net_run_spoof_test | bool) or ansible_check_mode
 
 # Run only once every guest above has reported its network assertions, so a
 # slow or stuck credential scan never holds those up. Only a guest whose entry
