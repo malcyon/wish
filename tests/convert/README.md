@@ -23,6 +23,7 @@ Tests for converting a character or a save between ports and titles: the neutral
 | `test_convertrun.py` | Checks that `tools/convert/convertrun.py` writes the bytes Save As prepared and reports why it stopped instead of writing. |
 | `test_saveasdrive.py` | Checks that `tools/convert/saveasdrive.py` can be re-run into one output folder and reports a real stop by its class name. |
 | `test_curseconvert.py` | Checks a DOS Curse of the Azure Bonds save converting to a C64 one, both the record and the container. |
+| `test_curseworldmap.py` | Checks that a Curse party saved on the world map reads as outdoors with no travel grid and converts between the C64, DOS and the Amiga through Save As, keeping its square, node and the words each engine writes there. |
 | `test_dosclasscode.py` | Checks that `goldbox.dos_codec.write` repairs a class code that contradicts the record's own classes. |
 | `test_dosconversionarea.py` | Checks that a conversion writes the area a C64 party stands in, including the areas whose script loads no map. |
 | `test_dosconvert.py` | Checks a DOS Pool of Radiance save converting to a C64 one field by field: no loss on the way in and every drop reported. |

@@ -166,7 +166,7 @@ def test_a_saved_party_in_a_later_area_stages_the_block_the_table_names(area):
     where = areas.area_in(area, state0.title)
     geo = areas.geo_number(where.geos[0]) if where.geos else state0.geo
     state = dataclasses.replace(state0, area=area, geo=geo,
-                                outdoors=where.outdoors)
+                                outdoors=where.saves_outdoors)
     party = [amiga_later.to_neutral_later(c) for c in source.characters]
     built, _report = amiga_savegame.new_savegame(state, party, "B", glb)
     landed = amiga_savegame.parse(built, amiga_savegame.CURSE)

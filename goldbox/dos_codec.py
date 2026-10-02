@@ -6839,6 +6839,19 @@ def apply_position(save0: bytearray, state: "world_state.WorldState"
                "had not set out (#301)")
         return ((PARTY_X, f"party x, {why}"), (PARTY_Y, f"party y, {why}"),
                 (PARTY_FACING, f"facing, {why}"))
+    if world_state.on_world_map(state):
+        # Curse's world map has no grid: the C64 keeps the square the party
+        # stood on and the travel pair at what they last held (#815).
+        save0[PARTY_X - SAVE0_BASE] = state.x
+        save0[PARTY_Y - SAVE0_BASE] = state.y
+        save0[PARTY_FACING - SAVE0_BASE] = state.facing
+        save0[dos_savegame.TRAVEL_X - SAVE0_BASE] = state.travel[0]
+        save0[dos_savegame.TRAVEL_Y - SAVE0_BASE] = state.travel[1]
+        why = "as the game keeps it on the world map, from the source save"
+        return ((PARTY_X, f"party x, {why}"), (PARTY_Y, f"party y, {why}"),
+                (PARTY_FACING, f"facing, {why}"),
+                (dos_savegame.TRAVEL_X, f"travel pair x, {why}"),
+                (dos_savegame.TRAVEL_Y, f"travel pair y, {why}"))
     if state.outdoors:
         save0[dos_savegame.TRAVEL_X - SAVE0_BASE] = state.travel[0]
         save0[dos_savegame.TRAVEL_Y - SAVE0_BASE] = state.travel[1]
@@ -7463,6 +7476,19 @@ def apply_file_cache(save0: bytearray, state: "world_state.WorldState",
     save0[at + CACHE_ANIMATE] = ANIMATE_RESIDENT | on
     save0[container.disk_hint] = where.disk
     save0[container.current_script] = there
+    if where.world_map:
+        # What the world-map scripts' `LOADFILES #127,#127,#127` leaves:
+        # no map, `$4BE6` = 0, and the slots it empties at `DUNGEON
+        # $2224`-`$223B` -- `GDRIVE`, `GEO`, `SECSET`, `WALLS` and the
+        # wallset pieces -- empty. Entry 4 reloads the world map's own files.
+        save0[container.current_geo] = world_state.WORLD_MAP_GEO
+        save0[container.indoors] = 0
+        return (f"loaded-files cache: $FF in all twenty-five, then slot 8 = "
+                f"{where.ecl} and slot 11 = ANIMATE00"
+                + (", each with bit 7 set" if on else "")
+                + f"; on the world map no GEO is resident, $49C5 = "
+                f"${world_state.WORLD_MAP_GEO:02X} as the world-map script "
+                f"writes it and $49E6 = 0")
     if state.outdoors:
         save0[at + CACHE_SQRDATA] = state.geo | on
         save0[container.current_geo] = state.geo   # $49C5 holds the SQRDATA
@@ -8031,10 +8057,16 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
                            f"holds here before the party sets out")
     for at, what in (
             (container.disk_hint, "the disk side the loader will ask for"),
-            (container.current_geo, "the SQRDATA number LOADFILES reloads" if
+            (container.current_geo,
+             "the world-map scripts' own LOADFILES #127: no map" if
+             world_state.on_world_map(state) else
+             "the SQRDATA number LOADFILES reloads" if
              state.outdoors else "the map LOADFILES reloads"),
             (container.current_script, "the script id"),
-            (container.indoors, "outdoors -- 0 boots into travel mode" if
+            (container.indoors,
+             "outdoors -- 0 is what the world-map scripts write" if
+             world_state.on_world_map(state) else
+             "outdoors -- 0 boots into travel mode" if
              state.outdoors else "indoors")):
         report.note(at, 1, f"{what}, from {origin}")
     if not state.set_out and not fresh:
@@ -8895,6 +8927,11 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
     always trusted `areas.area_in(area, game.title).outdoors` over the C64
     payload's own `$49E6` byte, and that is unchanged -- only where the
     reads come from moved.
+
+    **Curse's world map is outdoors with no travel grid** (#815): `$49E6` =
+    0, but `$49C5` is the source's own word (no load path reads it there),
+    the wallset is the source's own, the square is the one the party stood
+    on as the game keeps it, and the travel pair is copied as well.
     """
     game = c64_port.by_key(getattr(game, "key", game)) if game else \
         c64_port.POOL_OF_RADIANCE
@@ -8922,7 +8959,8 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
         if dax is None:
             dax = where.disk
         x, y, facing = state.x, state.y, state.facing
-        indoors = not where.outdoors
+        indoors = not where.saves_outdoors
+    world_map = world_state.on_world_map(state)
 
     # Outdoors the C64's own cache slots 15-17 read `$FF` -- the travel grid
     # loads no `WALLSET` on either port -- which would make the triple
@@ -8931,12 +8969,15 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
     # instead of the empty read, and `OUTDOOR_WALLSET` carries the evidence.
     # A party that has not set out holds the same triple, written by the
     # initialiser.
-    wallset = (state.wallset if indoors and not fresh
+    # On Curse's world map the engines keep whatever wallset was there
+    # before (the Amiga's own save holds the sewers'), and the C64 empties
+    # it; the source's own triple is what crosses.
+    wallset = (state.wallset if (indoors or world_map) and not fresh
                else dos_savegame.OUTDOOR_WALLSET)
     dos_savegame.move_to_area(savgam, area=area, dax=dax,
                           wallset=wallset, script=script,
-                          outdoors=not indoors and not fresh, geo=geo,
-                          container=dos_container)
+                          outdoors=not indoors and not fresh and not world_map,
+                          geo=geo, container=dos_container)
     if fresh:
         report.note(dos_container.head, dos_container.dax_bytes,
                     f"the disk number, {dax}, the party menu's own: no "
@@ -8952,6 +8993,9 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
                "zero: no map is resident before the party sets out"
                if fresh else
                "the resident GEO, the C64's own $49C5" if indoors else
+               "the source's own $49C5: no map is resident on the world map "
+               "and no port's load path reads this word while $49E6 = 0 "
+               "(#813, #815)" if world_map else
                "zero: the overland names no GEO, which is what an outdoor "
                "DOS save holds here in 10 of 10 -- and it is not the C64's "
                "own $49C5, which outdoors holds the SQRDATA number (#59)",
@@ -8969,6 +9013,9 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
         and not fresh
         else "the initialiser's wallset triple (0,$FFFF,$FFFF), which "
         "every shipped party that has not set out holds" if fresh
+        else "the source's own wallset triple: on the world map no port loads "
+        "one, DOS and the Amiga keep the last area's and the C64 empties it "
+        "(#815)" if world_map
         else "the overland wallset triple (0,$FFFF,$FFFF), which the "
         "engine writes for itself out there -- it replaced a seeded "
         "(1,5,9) three times of three, and no outdoor load reads it "
@@ -9001,14 +9048,24 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
                "indoors" if indoors else "outdoors -- 0 boots the engine "
                "into travel mode", dos_container)
 
-    if indoors:
+    if indoors or world_map:
         dos_savegame.put_position(savgam, x, y, facing, dos_container)
         report.note(dos_container.pos_x, 3,
                     f"the initialiser's square ({x},{y}) facing north, "
                     f"which is not the C64 save's own" if fresh else
                     f"the square ({x},{y}) facing {facing}, the C64's own "
-                    f"facing doubled")
-    else:
+                    f"facing doubled"
+                    + (", left as the game keeps it on the world map, which "
+                       "draws from the node and not from a square"
+                       if world_map else ""))
+    if world_map:
+        tx, ty = state.travel
+        dos_savegame.put_travel_square(savgam, tx, ty, dos_container)
+        _note_word(report, dos_savegame.TRAVEL_X, 2,
+                   f"the travel pair ({tx},{ty}), the source's own "
+                   f"$49C3/$49C4: Curse has no travel grid and keeps it at "
+                   f"what it last held", dos_container)
+    elif not indoors:
         tx, ty = state.travel
         dos_savegame.put_travel_square(savgam, tx, ty, dos_container)
         _note_word(report, dos_savegame.TRAVEL_X, 2,

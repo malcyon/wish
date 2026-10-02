@@ -39,8 +39,8 @@ import struct
 
 from . import areas, c64_save, dos_savegame
 
-__all__ = ["WorldState", "PodWorldState", "HEADER_ADDRESSES", "from_c64",
-           "from_dos", "from_amiga", "pod_from_dos"]
+__all__ = ["WorldState", "PodWorldState", "HEADER_ADDRESSES", "WORLD_MAP_GEO",
+           "from_c64", "from_dos", "from_amiga", "on_world_map", "pod_from_dos"]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -85,7 +85,8 @@ class WorldState:
     flags: "tuple[int, ...]"
     #: The per-script scratch, by address.
     scratch: "dict[int, int]"
-    #: Is the party on the travel grid rather than indoors?
+    #: Is the party outdoors -- `$49E6` = 0 -- rather than indoors?  On the
+    #: travel grid, or on Curse's world map, which has none (`on_world_map`).
     outdoors: bool
     #: The travel-grid square.  Meaningful only when `outdoors` is true --
     #: every writer leaves the destination's travel pair zero rather than
@@ -202,24 +203,30 @@ def _resolve_dos_place(savgam: bytes, container: "dos_savegame.DosContainer"):
     else:
         x, y, facing = dos_savegame.position(savgam, container)
 
-    savgam_outdoors = where.outdoors if fresh else dos_savegame.outdoors(savgam)
-    if savgam_outdoors != where.outdoors:
+    outdoors = where.saves_outdoors
+    savgam_outdoors = outdoors if fresh else dos_savegame.outdoors(savgam)
+    if savgam_outdoors != outdoors:
         raise _dos.DosRecordError(
             f"the save's own $49E6 says "
             f"{'outdoors' if savgam_outdoors else 'indoors'}, but script id "
             f"{where.id} ({where.name or where.ecl}) is marked "
-            f"{'outdoors' if where.outdoors else 'indoors'} in "
+            f"{'outdoors' if outdoors else 'indoors'} in "
             "goldbox/areas.py -- these two disagree and neither is trusted "
             "over the other")
 
-    if where.outdoors:
+    if where.world_map:
+        # No map is resident on Curse's world map, and no load path reads
+        # `$49C5` while `$49E6` = 0. DOS and the Amiga keep the last map
+        # there, so the word is kept as the save holds it.
+        geo = dos_savegame.geo_block(savgam)
+    elif where.outdoors:
         geo = _dos._sqrdata_number(where.sqrdata)
     elif fresh:
         geo = areas.geo_number(where.geo)
     else:
         geo = _dos._resident_geo(savgam, where, container.title)
 
-    return where.id, geo, x, y, facing, where.outdoors, fresh
+    return where.id, geo, x, y, facing, outdoors, fresh
 
 
 def is_pre_adventure_area(title: str, area: int) -> bool:
@@ -235,6 +242,21 @@ def is_pre_adventure_area(title: str, area: int) -> bool:
             and title in (areas.CURSE_OF_THE_AZURE_BONDS,
                           areas.SECRET_OF_THE_SILVER_BLADES)
             and areas.area_in(0, title) is None)
+
+
+#: `$49C5` on Curse's world map as the C64 writes it: the operand of the
+#: world-map scripts' `LOADFILES #127,#127,#127`. DOS and the Amiga skip that
+#: operand and keep the last map, and no port reads the word there.
+WORLD_MAP_GEO = 0x7F
+
+
+def on_world_map(state: "WorldState") -> bool:
+    """Whether the party stands on a world map with no travel grid --
+    Curse of the Azure Bonds' `$50` and `$51` (`areas.Area.world_map`)."""
+    if not state.set_out:
+        return False
+    where = areas.area_in(state.area, state.title)
+    return where is not None and where.world_map
 
 
 def has_not_set_out(state: "WorldState") -> bool:
@@ -324,7 +346,11 @@ def from_dos(savgam: bytes,
         area=area_id, geo=geo, x=x, y=y, facing=facing,
         clock=tuple(dos_savegame.word(savgam, dos_savegame.CLOCK + i, container)
                     for i in range(dos_savegame.CLOCK_DIGITS)),
-        wallset=dos_savegame.wall_triple(savgam),
+        # Curse and Silver Blades keep the triple in the square block, and
+        # their `$4AFA` words are zero (#253); Pool of Radiance keeps it in
+        # the variable array.
+        wallset=(dos_savegame.wall_block(savgam, container)[0]
+                 if container.unnamed else dos_savegame.wall_triple(savgam)),
         flags=tuple(dos_savegame.word(savgam, dos_savegame.FLAGS_FIRST + i,
                                       container)
                     for i in range(width)),

@@ -256,6 +256,14 @@ class Area:
     #: (`#427 (Fast Travel's dropdown names Curse's disks CURSE_2 rather than
     #: CURSE_B, which is not a disk the player has)`).
     lettered_side: bool = False
+    #: True for Curse of the Azure Bonds' two world-map scripts, `$50` and
+    #: `$51`: the party is outdoors there with no travel grid and no `GEO`.
+    #: Each script's entry 4 opens with `SAVE #0,[$4BE6]` and `LOADFILES
+    #: #127,#127,#127`, so every port saves `$49E6` = 0 here, and the map is
+    #: drawn by `GDRIVE02` from the node at `$4C9B` rather than from a square.
+    #: `outdoors` stays the travel grid's flag, which is what the fast-travel
+    #: and overland code reads it as; `saves_outdoors` is the save's own word.
+    world_map: bool = False
 
     @property
     def ecl(self) -> str:
@@ -276,7 +284,14 @@ class Area:
 
     @property
     def outdoors(self) -> bool:
+        """Whether this is a travel-grid window, with a `SQRDATA` of its own."""
         return self.sqrdata is not None
+
+    @property
+    def saves_outdoors(self) -> bool:
+        """Whether a save made here holds `$49E6` = 0: on the travel grid,
+        and on Curse's world map, which has no grid (`world_map`)."""
+        return self.outdoors or self.world_map
 
     def name_for(self, geo: str) -> str | None:
         """This area's name for one of its maps."""
@@ -607,7 +622,8 @@ AREAS_SILVER_BLADES: tuple[Area, ...] = (
 
 def _c(id: int, disk: int, geos: tuple[str, ...],
        arrival: Arrival | None = None, name: str | None = None,
-       confidence: Confidence = Confidence.UNKNOWN) -> Area:
+       confidence: Confidence = Confidence.UNKNOWN,
+       world_map: bool = False) -> Area:
     """One Curse row: id, disk side and the maps its script loads.
 
     `name` is `None` for one row -- `$1E`, which no forum table entry covers
@@ -627,7 +643,7 @@ def _c(id: int, disk: int, geos: tuple[str, ...],
     """
     return Area(id=id, name=name, disk=disk, geos=geos, arrival=arrival,
                 confidence=confidence, side_name="CURSE_{}",
-                lettered_side=True)
+                lettered_side=True, world_map=world_map)
 
 
 #: Curse of the Azure Bonds: twenty-five scripts, on six sides
@@ -746,8 +762,9 @@ AREAS_CURSE: tuple[Area, ...] = (
        confidence=C),
     _c(0x45, 6, ("GEO45",), Arrival(6, 10, 1),
        name="shared blocks: Hillsfar, Teshwave dungeons", confidence=P),
-    _c(0x50, 1, (), name="world map", confidence=C),
-    _c(0x51, 1, (), Arrival(0, 8, 3), name="world map", confidence=C),
+    _c(0x50, 1, (), name="world map", confidence=C, world_map=True),
+    _c(0x51, 1, (), Arrival(0, 8, 3), name="world map", confidence=C,
+       world_map=True),
 )
 
 #: Game title -> that title's areas.

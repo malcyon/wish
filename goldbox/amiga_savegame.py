@@ -662,9 +662,15 @@ def new_savegame(state: world_state.WorldState,
         wallset = dos_savegame.OUTDOOR_WALLSET
     else:
         square_x, square_y, square_facing = state.x, state.y, state.facing
-        modes = (GAME_MODE_OVERLAND if state.outdoors else
+        # Curse's world map is outdoors with no travel grid: the Amiga's own
+        # save there holds adventuring mode before camp, as indoors, and
+        # keeps the last area's wallset, so the source's own triple crosses
+        # (#815).
+        world_map = world_state.on_world_map(state)
+        overland = state.outdoors and not world_map
+        modes = (GAME_MODE_OVERLAND if overland else
                  GAME_MODE_ADVENTURING, GAME_MODE_CAMP)
-        wallset = (dos_savegame.OUTDOOR_WALLSET if state.outdoors
+        wallset = (dos_savegame.OUTDOOR_WALLSET if overland
                    else state.wallset)
     out += square_x.to_bytes(container.x_bytes, "big")
     out += square_y.to_bytes(container.x_bytes, "big")
@@ -695,10 +701,14 @@ def new_savegame(state: world_state.WorldState,
                     "the initialiser's wall blocks, numbered in order")
     else:
         report.note(container.first_mode_at, 1,
+                    "adventuring mode, which the Amiga's own world-map save "
+                    "holds" if world_map else
                     "overland or adventuring mode derived from the source position")
         report.note(container.mode_at, 1,
                     "camp mode, which is where a loaded save resumes")
         report.note(container.wallset_at, 12,
+                    "the source's own three wall blocks, numbered in order: "
+                    "no port loads a wallset on the world map" if world_map else
                     "three wall blocks copied from the source area and numbered in order")
     report.note(container.count_at, 2, "the number of converted characters")
     party_at = len(out)
