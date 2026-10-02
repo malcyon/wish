@@ -7,6 +7,7 @@ import json
 import os
 import pathlib
 import signal
+from functools import lru_cache
 
 import pytest
 
@@ -77,13 +78,39 @@ def make_title(**over):
     return route.AmigaTitle(**fields)
 
 
-def _adf(path, volume, slots=()):
+@lru_cache(maxsize=8)
+def _adf_baseline(volume, slots):
+    """Keep at most eight immutable synthetic images (6.875 MiB) per worker."""
     disk = AmigaDisk.blank(volume)
     disk.make_dir("/SAVE")
     for letter, raw in slots:
         disk.write_file(f"/SAVE/savgam{letter}.sav", raw)
-    disk.save(path)
+    return disk.to_bytes()
+
+
+def _adf(path, volume, slots=()):
+    # Each caller gets its own file; neither disks nor mutable buffers are shared.
+    path.write_bytes(_adf_baseline(volume, tuple(slots)))
     return {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+
+
+def test_synthetic_disks_keep_file_mutations_and_slot_variants_separate(tmp_path):
+    first = tmp_path / "first.adf"
+    second = tmp_path / "second.adf"
+    variant = tmp_path / "variant.adf"
+    slots = (("A", b"original party"),)
+    _adf(first, "BOOT", slots)
+    original = first.read_bytes()
+    disk = AmigaDisk.open(first)
+    disk.write_file("/SAVE/savgamA.sav", b"changed party")
+    disk.save(first)
+
+    _adf(second, "BOOT", slots)
+    _adf(variant, "BOOT", (("A", b"another party"),))
+    assert len(original) == 901120
+    assert second.read_bytes() == original
+    assert AmigaDisk.open(first).read_file("/SAVE/savgamA.sav") == b"changed party"
+    assert AmigaDisk.open(variant).read_file("/SAVE/savgamA.sav") == b"another party"
 
 
 def manifest_for(tmp_path, *, expected_after=None, extra_slot=None, loaded="A",
