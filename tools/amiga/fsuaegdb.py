@@ -694,6 +694,139 @@ def journal(args, adf: str = "") -> bool:
                                 args.settle))
 
 
+#: What a failing read or write of the switch raises; each costs a row.
+ENCOUNTER_ERRORS = (ValueError, StopIteration, OSError, TimeoutError,
+                    SystemExit, amiga.GuestError, amiga.FsuaeError)
+
+
+class Encounters:
+    """The `no_encounters` command, its save-key guard, and its restores.
+
+    `machine()` gives `(gdb, tgt, layout)`: the transport the switch reads and
+    writes through, a target whose data hunk is located, and the title's row.
+    `session` hands over its own connection; `wish` opens a client of the
+    connection helper the window uses (`helper_machine`).  Either way a write is
+    `poke_row`'s `M` with a read-back.
+
+    `every` is the fewest seconds between two re-applies on a heartbeat; the
+    one before a `key` always runs.  A re-apply is a few reads, each served in
+    one emulated frame, so a driver that beats many times a second sets it.
+    """
+
+    def __init__(self, note, machine, every: float = 0.0, clock=time.monotonic):
+        self.note = note
+        self.machine = machine
+        self.every = every
+        self.clock = clock
+        self.applied_at: float | None = None
+        self.switch: noencounters.EncounterSwitch | None = None
+
+    @property
+    def active(self) -> bool:
+        return self.switch is not None and self.switch.active
+
+    def refuse_key(self, keys: str, now: float) -> bool:
+        """Before a `key`: True (and an error row) for a save key while on,
+        otherwise apply the switch again and return False."""
+        if not self.active:
+            return False
+        if noencounters.is_save_key(keys):
+            error = ("no_encounters is on and a save carries the changed "
+                     "script: turn it off first")
+            print(f"           {error}")
+            self.note(event="key", keys=keys, at=now, error=error)
+            return True
+        self.reapply(now, force=True)
+        return False
+
+    def reapply(self, now: float, force: bool = False) -> None:
+        if not self.active:
+            return
+        clock = self.clock()
+        if (not force and self.applied_at is not None
+                and clock - self.applied_at < self.every):
+            return
+        self.applied_at = clock
+        try:
+            done = self.switch.apply()
+        except ENCOUNTER_ERRORS as exc:
+            self.note(event="no_encounters", at=now,
+                      error=f"{type(exc).__name__}: {exc}")
+            return
+        if done:
+            self.note(event="no_encounters", action="apply", at=now, rows=done)
+
+    def command(self, rest: str, now: float) -> None:
+        words = rest.split()
+        try:
+            if words == ["off"]:
+                self._off(now)
+                return
+            extra = set(words[1:])
+            if not words or words[0] != "on" or not extra <= {"speculative"}:
+                raise ValueError("no_encounters wants `on [speculative]` "
+                                 "or `off`")
+            if self.switch is not None:
+                # A second `on` starts from the game's own bytes, so the
+                # originals it keeps are never ones this switch wrote.
+                done = self.switch.off()
+                if self.switch.pending:
+                    raise ValueError("the earlier no_encounters did not "
+                                     "restore every row; `off` first")
+                self.switch = None
+                self.note(event="no_encounters", action="off", at=now,
+                          rows=done)
+            gdb, tgt, layout = self.machine()
+            key = next(k for k, v in amiga.MACHINES.items() if v is layout)
+            self.switch = noencounters.EncounterSwitch(
+                key, lambda spec: resolve_spec(tgt, spec),
+                gdb.read_memory,
+                lambda address, data: poke_row(
+                    gdb, tgt, f"{address:#x} {data.hex()}"),
+                speculative="speculative" in extra,
+                inside=lambda address, n: any(
+                    base <= address and address + n <= base + size
+                    for base, size in amiga.MEMORY))
+            done = self.switch.apply()
+            self.note(event="no_encounters", action="on", at=now,
+                      rows=done, held=[r.spec for r in self.switch.rows])
+        except ENCOUNTER_ERRORS as exc:
+            if self.switch is not None and not self.switch.pending:
+                self.switch = None
+            print(f"           {exc}")
+            self.note(event="no_encounters", at=now,
+                      error=f"{type(exc).__name__}: {exc}")
+
+    def _off(self, now: float) -> None:
+        switch = self.switch
+        done = [] if switch is None else switch.off()
+        # A switch that could not put every row back stays, off, so the next
+        # `off` and the end of the run retry it.
+        if switch is not None and switch.pending:
+            error = ("no_encounters off did not restore every row; the "
+                     "script is still changed")
+            print(f"           {error}")
+            self.note(event="no_encounters", action="off", at=now,
+                      rows=done, error=error)
+            return
+        self.switch = None
+        self.note(event="no_encounters", action="off", at=now, rows=done)
+
+    def close(self) -> None:
+        """At the end of a run: put every row back, since the emulator
+        outlives the driver and its script should be as the disk has it."""
+        if self.switch is None:
+            return
+        try:
+            done = self.switch.off()
+            self.note(event="no_encounters", action="end", rows=done,
+                      **({"error": "a row was not restored"}
+                         if self.switch.pending else {}))
+        except ENCOUNTER_ERRORS as exc:
+            self.note(event="no_encounters", action="end",
+                      error=f"{type(exc).__name__}: {exc}")
+
+
 def session(args) -> int:
     """Hold the one connection open and take commands from a file.
 
@@ -807,8 +940,7 @@ def session(args) -> int:
     was = mapstate._data_dir                            # noqa: SLF001
     mapstate._data_dir = lambda: out / "data"           # noqa: SLF001
     started = time.monotonic()
-    #: The no_encounters switch.
-    enc = {"switch": None}
+    enc = Encounters(note, lambda: (gdb, tgt, layout))
     try:
         once = None if untitled else poller(tgt, maps, layout, out, note)[1]
         window = None
@@ -819,83 +951,9 @@ def session(args) -> int:
              window=bool(args.window))
         swap = (swap_error, swap_log)
 
-        def reapply(now: float) -> None:
-            switch = enc["switch"]
-            if switch is None or not switch.active:
-                return
-            try:
-                done = switch.apply()
-            except (ValueError, OSError, TimeoutError, amiga.GuestError,
-                    amiga.FsuaeError) as exc:
-                note(event="no_encounters", at=now,
-                     error=f"{type(exc).__name__}: {exc}")
-                return
-            if done:
-                note(event="no_encounters", action="apply", at=now, rows=done)
-
-        def no_encounters(rest: str, now: float) -> None:
-            words = rest.split()
-            try:
-                if words == ["off"]:
-                    switch = enc["switch"]
-                    done = [] if switch is None else switch.off()
-                    # A switch that could not put every row back stays, off,
-                    # so the next `off` and the end of the session retry it.
-                    if switch is not None and switch.pending:
-                        error = ("no_encounters off did not restore every row; "
-                                 "the script is still changed")
-                        print(f"           {error}")
-                        note(event="no_encounters", action="off", at=now,
-                             rows=done, error=error)
-                        return
-                    enc["switch"] = None
-                    note(event="no_encounters", action="off", at=now, rows=done)
-                    return
-                extra = set(words[1:])
-                if (not words or words[0] != "on"
-                        or not extra <= {"speculative"}):
-                    raise ValueError("no_encounters wants `on [speculative]` "
-                                     "or `off`")
-                if enc["switch"] is not None:
-                    # A second `on` starts from the game's own bytes, so the
-                    # originals it keeps are never ones this switch wrote.
-                    done = enc["switch"].off()
-                    if enc["switch"].pending:
-                        raise ValueError("the earlier no_encounters did not "
-                                         "restore every row; `off` first")
-                    enc["switch"] = None
-                    note(event="no_encounters", action="off", at=now, rows=done)
-                key = next(k for k, v in amiga.MACHINES.items() if v is layout)
-                enc["switch"] = noencounters.EncounterSwitch(
-                    key, lambda spec: resolve_spec(tgt, spec),
-                    gdb.read_memory,
-                    lambda address, data: poke_row(
-                        gdb, tgt, f"{address:#x} {data.hex()}"),
-                    speculative="speculative" in extra,
-                    inside=lambda address, n: any(
-                        base <= address and address + n <= base + size
-                        for base, size in amiga.MEMORY))
-                done = enc["switch"].apply()
-                note(event="no_encounters", action="on", at=now,
-                     rows=done, held=[r.spec for r in enc["switch"].rows])
-            except (ValueError, StopIteration, OSError, TimeoutError,
-                    amiga.GuestError, amiga.FsuaeError) as exc:
-                if enc["switch"] is not None and not enc["switch"].pending:
-                    enc["switch"] = None
-                print(f"           {exc}")
-                note(event="no_encounters", at=now,
-                     error=f"{type(exc).__name__}: {exc}")
-
         def handle(word: str, rest: str, line: str, now: float) -> bool:
-            switch = enc["switch"]
-            if word == "key" and switch is not None and switch.active:
-                if noencounters.is_save_key(rest):
-                    error = ("no_encounters is on and a save carries the "
-                             "changed script: turn it off first")
-                    print(f"           {error}")
-                    note(event="key", keys=rest, at=now, error=error)
-                    return True
-                reapply(now)
+            if word == "key" and enc.refuse_key(rest, now):
+                return True
             return dispatch(word, rest, line, now)
 
         def dispatch(word: str, rest: str, line: str, now: float) -> bool:
@@ -920,7 +978,7 @@ def session(args) -> int:
                 print(f"           {row}")
                 note(event="poke", at=now, **row)
             elif word == "no_encounters":
-                no_encounters(rest, now)
+                enc.command(rest, now)
             elif word == "observe":
                 note(event="observe", at=now,
                      **observe(args, rest or str(now), tgt, maps, out,
@@ -966,7 +1024,7 @@ def session(args) -> int:
             vh = gdb.read_memory(VHPOSR, 2)
             note(event="beat", vhposr=vh.hex(),
                  at=round(time.monotonic() - started, 1))
-            reapply(round(time.monotonic() - started, 1))
+            enc.reapply(round(time.monotonic() - started, 1))
 
         def idle(seconds: float) -> None:
             # Short sleeps with the heartbeat between them, so a long wait does
@@ -980,14 +1038,7 @@ def session(args) -> int:
 
         run_commands(args, commands, started, note, handle, beat, time.sleep)
     finally:
-        if enc["switch"] is not None:
-            # The emulator outlives this connection, so leave its script as
-            # the disk has it.
-            try:
-                enc["switch"].off()
-            except (ValueError, OSError, TimeoutError, amiga.GuestError,
-                    amiga.FsuaeError):
-                pass
+        enc.close()
         mapstate._data_dir = was                        # noqa: SLF001
         log.close()
         gdb.close()
@@ -1091,12 +1142,17 @@ WISH_ENV = (*WISH_UNSET, WISH_FLAG, "XDG_CONFIG_HOME", "XDG_DATA_HOME",
 
 #: The session commands that read the emulator, which `wish` refuses: the
 #: window holds the only way to the game, and the point of the run is that
-#: nothing else does.
-WISH_REFUSED = ("peek", "poke", "locate", "fix", "dump", "poll", "time", "geo",
-                "no_encounters")
+#: nothing else does.  `no_encounters` is the exception: it goes through a
+#: client of the window's connection helper (`helper_machine`).
+WISH_REFUSED = ("peek", "poke", "locate", "fix", "dump", "poll", "time", "geo")
 
 #: How often the window's events run while a command waits.
 PUMP_STEP = 0.05
+
+#: The fewest seconds between two heartbeat re-applies of `no_encounters`
+#: under `wish`, whose loop beats every `PUMP_STEP`; `session` beats once a
+#: `--interval`, a second by default.
+WISH_REAPPLY_EVERY = 1.0
 
 
 def helper_row(port: int, runtime=None) -> dict:
@@ -1116,6 +1172,45 @@ def helper_row(port: int, runtime=None) -> dict:
             "alive": isinstance(pid, int) and alive(pid),
             "live": fsuaehelper.find(port, runtime) is not None,
             "sock": files.sock.exists()}
+
+
+def helper_machine(port: int, runtime=None):
+    """`(gdb, tgt, layout)` over a new client of the helper for `port`.
+
+    The helper holds the fork's one connection for the window and forwards a
+    client's `m` reads and `M` writes, so the driver's switch shares the
+    window's way to the game without a connection of its own.  One sweep of
+    memory finds the title and its data hunk, as the window's `connect()` does.
+    """
+    runtime = fsuaehelper.runtime_dir() if runtime is None else runtime
+    info = fsuaehelper.find(port, runtime)
+    if info is None:
+        raise amiga.FsuaeError(
+            f"no connection helper is running for port {port}; `await` the "
+            "window's connection first")
+    if not info.get("writes"):
+        raise amiga.FsuaeError(
+            f"the connection helper (pid {info.get('pid')}) forwards no "
+            "writes; it was started by an older Wish, so restart the emulator")
+    gdb = amiga.FsuaeGdb(
+        port=port, resume=False,
+        opener=lambda: fsuaehelper.PLATFORM.connect(
+            info, amiga.FsuaeGdb.CONNECT_TIMEOUT))
+    try:
+        found = amiga.locate_machines(gdb.read_memory, amiga.MACHINES.values(),
+                                      sweep_all=True)
+        if len(found) != 1 or len(next(iter(found.values()))) != 1:
+            raise amiga.FsuaeError(
+                "the switch needs one title at one place in memory; found "
+                + (", ".join(f"{t} at {', '.join(f'{b:#x}' for b in bases)}"
+                             for t, bases in sorted(found.items())) or "none"))
+        (title, (base,)), = found.items()
+        layout = next(m for m in amiga.MACHINES.values() if m.title == title)
+        tgt = amiga.AmigaTarget(gdb, layout, anchor_base=base)
+    except BaseException:
+        gdb.close()
+        raise
+    return gdb, tgt, layout
 
 
 def parse_disks_for(items: list[str] | None) -> dict[str, str]:
@@ -1140,11 +1235,14 @@ def parse_disks_for(items: list[str] | None) -> dict[str, str]:
 
 
 def open_wish(out: pathlib.Path):
-    """The real Wish window, offscreen, with the default `Session`.
+    """The real Wish window, offscreen, built as `wish/__main__.py` builds it.
 
     Settings are read from the run's private config directory, where `wish`
     wrote `game_folders`, so the window finds its maps through the same row
-    Preferences edits.
+    Preferences edits.  As a launch with no save does, the maps are loaded
+    from the resolved disk folder and their title handed to the window, and
+    the `Session` takes the preferred backend and interval from the settings
+    (`wish.window.run`).
     """
     from tools.gui import mapmarker
 
@@ -1152,10 +1250,23 @@ def open_wish(out: pathlib.Path):
     from PyQt6.QtWidgets import QApplication
 
     from automap.config import Settings
-    from wish.window import WishWindow
+    from automap.maps import load_maps_titled
+    from automap.paths import resolve_disks
+    from wish.backends import amiga_enabled, amiga_only_titles
+    from wish.session import Session
+    from wish.window import MAP_TAB, WishWindow
 
     app = QApplication.instance() or QApplication([])
-    window = WishWindow(None, settings=Settings.load())
+    settings = Settings.load()
+    where, _source = resolve_disks(flag=None, beside=None, game=None,
+                                   also=amiga_only_titles())
+    maps, game = load_maps_titled(str(where) if where else None, None,
+                                  amiga_only=amiga_enabled())
+    session = Session(preferred=getattr(settings, "backend", "") or None,
+                      interval_ms=settings.interval_ms or None)
+    window = WishWindow(None, None, maps=maps, settings=settings,
+                        session=session, tab=MAP_TAB,
+                        title=game.title if game else None)
     window.resize(1500, 950)
     window.show()
     app.processEvents()
@@ -1301,6 +1412,13 @@ def wish(args) -> int:
         reopen              close, then open
         quit
 
+        no_encounters on [speculative] | off
+                            as in `session`, through a client of the window's
+                            connection helper, which it opens on the first
+                            `on`; applied again on every pass and before every
+                            `key`, a save key refused while on, and every row
+                            put back at the end of the run
+
     `peek`, `poke`, `locate`, `fix`, `dump`, `poll`, `time` and `geo` are
     error rows: the window owns the only way to the game.  `--disks-for
     KEY=FOLDER` writes the title's folder where Preferences keeps it, in the
@@ -1329,6 +1447,31 @@ def wish(args) -> int:
     was_port = amiga.FSUAE_PORT
     run = WishRun(args, out)
     started = time.monotonic()
+    link: dict = {}
+
+    def machine():
+        held = link.get("machine")
+        if held is None or held[0].lost or held[0].sock is None:
+            link["machine"] = helper_machine(args.port)
+        return link["machine"]
+
+    enc = Encounters(note, machine, every=WISH_REAPPLY_EVERY)
+
+    def now() -> float:
+        return round(time.monotonic() - started, 1)
+
+    def idle(seconds: float) -> None:
+        # The window's events run throughout, to a deadline so a slow event
+        # pass does not lengthen the wait; while the switch is on it is
+        # applied again every `WISH_REAPPLY_EVERY`, as `session`'s heartbeat does.
+        end = time.monotonic() + seconds
+        while True:
+            left = max(end - time.monotonic(), 0.0)
+            run.pump(min(left, WISH_REAPPLY_EVERY) if enc.active else left)
+            if time.monotonic() >= end:
+                return
+            enc.reapply(now())
+
     try:
         for name in WISH_UNSET:
             os.environ.pop(name, None)
@@ -1358,15 +1501,19 @@ def wish(args) -> int:
              window=run.window is not None)
 
         def handle(word: str, rest: str, line: str, now: float) -> bool:
+            if word == "key" and enc.refuse_key(rest, now):
+                return True
             if word in WISH_REFUSED:
                 error = (f"`{word}` is refused: the window holds the only "
                          "way to the game, and `wish` opens no debugger "
                          "connection of its own")
                 print(f"           {error}")
                 note(event=word, at=now, error=error)
-            elif common_command(args, out, note, run.pump, swap, word, rest,
+            elif common_command(args, out, note, idle, swap, word, rest,
                                 now):
                 pass
+            elif word == "no_encounters":
+                enc.command(rest, now)
             elif word == "await":
                 row = run.wait_connected(float(rest or 10))
                 print(f"           {row}")
@@ -1387,9 +1534,12 @@ def wish(args) -> int:
                 return False
             return True
 
-        run_commands(args, commands, started, note, handle, lambda: None,
-                     run.pump)
+        run_commands(args, commands, started, note, handle,
+                     lambda: enc.reapply(now()), idle)
     finally:
+        enc.close()
+        if link.get("machine") is not None:
+            link["machine"][0].close()
         try:
             if run.window is not None:
                 run.close()

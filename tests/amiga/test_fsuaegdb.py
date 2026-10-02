@@ -2977,3 +2977,194 @@ def test_a_write_that_dies_midway_leaves_the_original_restorable():
     with pytest.raises(TimeoutError):
         switch.apply()
     assert switch.pending
+
+
+# no_encounters under `wish`, through a client of the window's helper
+
+_REAL_FSUAEGDB = amiga.FsuaeGdb
+
+
+@pytest.fixture
+def wish_scripted(scripted, wished, monkeypatch):
+    """`wish` over the scripted machine, reached only through the helper.
+
+    The helper's JSON is published and its socket is the fake machine, so the
+    driver's switch opens a client the way `wish.fsuae` does; nothing may open
+    the debugger port itself.
+    """
+    guest, _ = scripted
+    info = {"pid": os.getpid(), "port": 6531, "socket": "helper.sock",
+            "writes": True}
+    connects = []
+
+    def connect(found, timeout=None):
+        connects.append(found)
+        return guest
+    monkeypatch.setattr(fsuaegdb.fsuaehelper, "find",
+                        lambda port, rt, platform=None: info)
+    monkeypatch.setattr(fsuaegdb.fsuaehelper.PLATFORM, "connect", connect)
+
+    class ThroughHelper(_REAL_FSUAEGDB):
+        def __init__(self, **kw):
+            assert "opener" in kw, "the driver opened the debugger port"
+            super().__init__(**kw)
+    monkeypatch.setattr(fsuaegdb.amiga, "FsuaeGdb", ThroughHelper)
+    wished["guest"], wished["info"], wished["connects"] = guest, info, connects
+    return wished
+
+
+def encounter_rows(rows):
+    return [r for r in rows if r["event"] == "no_encounters"]
+
+
+def test_wish_no_encounters_is_not_refused_and_goes_through_the_helper(
+        wish_scripted, tmp_path):
+    guest = wish_scripted["guest"]
+    rows = run_wish(tmp_path, ["no_encounters on", "wait 0.3"])
+    assert "no_encounters" not in fsuaegdb.WISH_REFUSED
+    on = encounter_rows(rows)[0]
+    assert on["action"] == "on" and "error" not in on, on
+    assert wish_scripted["connects"] == [wish_scripted["info"]]
+    assert f"M{GATE_AT:x},1:09" in guest.received
+
+
+def test_wish_no_encounters_on_changes_the_roll_and_off_puts_it_back(
+        wish_scripted, tmp_path, monkeypatch):
+    guest = wish_scripted["guest"]
+    during = []
+    real = fsuaegdb.common_command
+
+    def watching(args, out, note, idle, swap, word, rest, now):
+        ran = real(args, out, note, idle, swap, word, rest, now)
+        if word == "wait":
+            during.append(gate_bytes(guest))
+        return ran
+    monkeypatch.setattr(fsuaegdb, "common_command", watching)
+    rows = run_wish(tmp_path, ["no_encounters on", "wait 0.3",
+                               "no_encounters off", "wait 0.3"])
+    assert during == [POD_PATCHED, POD_GATE]
+    assert [r["action"] for r in encounter_rows(rows)] == ["on", "off"]
+    assert [b for b in guest.received if b.startswith("M")] == [
+        f"M{GATE_AT:x},1:09", f"M{GATE_AT:x},1:08"]
+
+
+def test_wish_no_encounters_is_applied_again_before_a_key_after_a_reload(
+        wish_scripted, tmp_path, monkeypatch):
+    from tools.amiga import fsuaepor
+    guest = wish_scripted["guest"]
+    seen = []
+
+    def press(a):
+        seen.append(gate_bytes(guest))
+        reload_script(guest)
+    monkeypatch.setattr(fsuaepor, "keys", press)
+    run_wish(tmp_path, ["no_encounters on", "key a", "key a"])
+    assert seen == [POD_PATCHED, POD_PATCHED]
+
+
+def test_wish_refuses_a_save_key_while_the_switch_is_on(
+        wish_scripted, tmp_path):
+    rows = run_wish(tmp_path, ["no_encounters on", "key s"])
+    assert wish_scripted["keys"] == []
+    assert "save" in by_event(rows, "key")[0]["error"]
+
+
+def test_wish_puts_every_row_back_at_the_end_of_the_run(wish_scripted, tmp_path):
+    guest = wish_scripted["guest"]
+    rows = run_wish(tmp_path, ["no_encounters on"])
+    end = encounter_rows(rows)[-1]
+    assert end["action"] == "end" and "error" not in end, end
+    assert gate_bytes(guest) == POD_GATE
+    assert guest.closed
+
+
+def test_wish_no_encounters_without_a_helper_is_an_error_row(
+        wish_scripted, tmp_path, monkeypatch):
+    monkeypatch.setattr(fsuaegdb.fsuaehelper, "find",
+                        lambda port, rt, platform=None: None)
+    rows = run_wish(tmp_path, ["no_encounters on", "key a"])
+    assert "no connection helper" in encounter_rows(rows)[0]["error"]
+    assert wish_scripted["keys"] == [["a"]]
+
+
+def test_wish_no_encounters_through_a_helper_without_writes_is_an_error_row(
+        wish_scripted, tmp_path):
+    del wish_scripted["info"]["writes"]
+    rows = run_wish(tmp_path, ["no_encounters on"])
+    assert "forwards no writes" in encounter_rows(rows)[0]["error"]
+    assert wish_scripted["connects"] == []
+
+
+def test_a_heartbeat_reapply_waits_its_interval_but_a_key_does_not(monkeypatch):
+    applied = []
+    clock = [0.0]
+    enc = fsuaegdb.Encounters(lambda **row: None, None, every=1.0,
+                              clock=lambda: clock[0])
+    enc.switch = argparse.Namespace(active=True,
+                                    apply=lambda: applied.append(clock[0]) or [])
+    for at in (0.0, 0.3, 0.9, 1.0, 1.5):
+        clock[0] = at
+        enc.reapply(at)
+    assert applied == [0.0, 1.0]
+    clock[0] = 1.2
+    assert enc.refuse_key("a", 1.2) is False
+    assert applied == [0.0, 1.0, 1.2]
+
+
+def test_a_wish_wait_runs_to_its_deadline_however_long_an_event_pass_takes(
+        wished, tmp_path, monkeypatch):
+    clock = [0.0]
+    pumps = []
+
+    def slow_pump(self, seconds):
+        pumps.append(seconds)
+        clock[0] += seconds + 0.3            # every pass overshoots
+    monkeypatch.setattr(fsuaegdb.WishRun, "pump", slow_pump)
+    monkeypatch.setattr(fsuaegdb.time, "monotonic", lambda: clock[0])
+    rows = run_wish(tmp_path, ["wait 5"])
+    assert by_event(rows, "wait")[0]["seconds"] == 5.0
+    assert 5.0 in pumps                     # one pass for the whole wait
+    assert clock[0] < 5.0 + 2               # not five seconds plus overshoots
+
+
+def test_the_drivers_window_gets_the_maps_and_title_a_real_launch_would(
+        monkeypatch, tmp_path):
+    from automap import maps as automaps
+    from automap import paths as autopaths
+    from tools.gui import mapmarker
+    from wish import backends, window
+
+    folder = tmp_path / "disks"
+    loaded = {"GEO10": object()}
+    calls = {}
+
+    def resolve(**kw):
+        calls["resolve"] = kw
+        return folder, "preferences"
+
+    def load(where, game, amiga_only=False):
+        calls["load"] = (where, game, amiga_only)
+        return loaded, argparse.Namespace(title="Secret of the Silver Blades")
+
+    class Window:
+        def __init__(self, *args, **kw):
+            calls["window"] = (args, kw)
+
+        def resize(self, *a):
+            pass
+
+        def show(self):
+            pass
+    monkeypatch.setattr(mapmarker, "_offscreen", lambda: None)
+    monkeypatch.setattr(autopaths, "resolve_disks", resolve)
+    monkeypatch.setattr(automaps, "load_maps_titled", load)
+    monkeypatch.setattr(backends, "amiga_enabled", lambda: True)
+    monkeypatch.setattr(window, "WishWindow", Window)
+    fsuaegdb.open_wish(tmp_path)
+    args, kw = calls["window"]
+    assert args[:1] == (None,)
+    assert kw["maps"] is loaded
+    assert kw["title"] == "Secret of the Silver Blades"
+    assert kw["session"] is not None
+    assert calls["load"] == (str(folder), None, True)
+    assert calls["resolve"]["also"] == backends.amiga_only_titles()

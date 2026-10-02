@@ -1,9 +1,10 @@
-"""`automap.fsuaehelper`: one process holds the emulator's one connection and clients read through it.
+"""`automap.fsuaehelper`: one process holds the emulator's one connection and clients read and write through it.
 
 The fake fork follows the rules of the real one that matter here: it serves a
-single client, answers `m` from a table (`E01` for an unreadable range), says
-nothing to `vCont;c`, and when its client leaves it closes its listening socket
-for good. No emulator is needed, so no pool slot.
+single client, answers `m` from a table (`E01` for an unreadable range),
+answers `M` with `OK` and records it, says nothing to `vCont;c`, and when its
+client leaves it closes its listening socket for good. No emulator is needed,
+so no pool slot.
 """
 
 import os
@@ -128,6 +129,8 @@ class FakeFork:
             else:
                 conn.sendall(frame(memory_at(addr, length).hex()))
             self.event(self.replied, addr).set()
+        elif body.startswith("M"):
+            conn.sendall(frame("OK"))
 
 
 class Client:
@@ -263,10 +266,15 @@ def test_the_greeting_is_answered_from_the_cache_and_the_resume_is_swallowed(
 ALLOWED = re.compile(r"^(m[0-9a-f]{1,8},[0-9a-f]+|qSupported|vCont;c)$")
 
 
-@pytest.mark.parametrize("body", ["k", "D", "Mc00000,2:0102", "s", "S05",
+@pytest.mark.parametrize("body", ["k", "D", "s", "S05",
                                   "vCont;s", "vCont;t", "?", "g", "vKill",
-                                  "mc10000", "m,4", "mc10000,0", "m1ffffffff,4"])
-def test_only_the_three_allowed_packets_ever_reach_the_emulator(
+                                  "mc10000", "m,4", "mc10000,0", "m1ffffffff,4",
+                                  # Writes the helper does not forward.
+                                  "Mc00000,0:", "Mc00000,2:01",
+                                  "Mc00000,41:" + "00" * 0x41,
+                                  "M200000,2:0102", "Mc7ffff,2:0102",
+                                  "Mc00000,2:01zz", "Mc00000:0102"])
+def test_only_reads_and_bounded_writes_ever_reach_the_emulator(
         running, fork, body):
     client = Client(sock_path(running))
     client.send(body)
@@ -279,9 +287,9 @@ def test_the_client_socket_is_for_its_owner_alone(running):
     assert (sock_path(running).stat().st_mode & 0o777) == 0o600
 
 
-@pytest.mark.parametrize("body", ["k", "D", "Mc00000,2:0102", "s", "S05",
+@pytest.mark.parametrize("body", ["k", "D", "s", "S05",
                                   "vCont;s", "vCont;t", "\x03", "?", "g"])
-def test_anything_but_a_read_is_refused_and_never_reaches_the_emulator(
+def test_anything_but_a_read_or_a_write_is_refused_and_never_reaches_the_emulator(
         running, fork, body):
     client = Client(sock_path(running))
     if body == "\x03":
@@ -293,6 +301,34 @@ def test_anything_but_a_read_is_refused_and_never_reaches_the_emulator(
     assert all(not p.startswith(("k", "D", "M", "s", "S", "vCont;s", "vCont;t",
                                  "?", "g")) for p in fork.received[2:])
     assert "\x03" not in fork.received
+
+
+@pytest.mark.parametrize("body", [
+    "Mc00000,2:0102",                       # slow memory
+    "M100,1:ff",                            # chip memory
+    "Mc7fffe,2:abcd",                       # the last two bytes of slow memory
+    "M7ffc0,40:" + "5a" * 0x40,             # the most one write may carry
+])
+def test_a_write_inside_memory_is_forwarded_as_sent_and_its_ok_comes_back(
+        running, fork, body):
+    client = Client(sock_path(running))
+    assert client.ask(body) == "OK"
+    assert fork.received[-1] == body
+    assert client.ask("m10,4") == memory_at(0x10, 4).hex()
+
+
+def test_reads_and_writes_from_two_clients_each_get_their_own_reply(running, fork):
+    reader, writer = Client(sock_path(running)), Client(sock_path(running))
+    reader.send("m200,4")
+    writer.send("Mc00010,1:09")
+    assert writer.reply() == "OK"
+    assert reader.reply() == memory_at(0x200, 4).hex()
+    assert "Mc00010,1:09" in fork.received
+
+
+def test_the_published_json_says_the_helper_forwards_writes(running):
+    import json
+    assert json.loads(running.paths.json.read_text())["writes"] is True
 
 
 def test_a_read_is_relayed_byte_for_byte_and_so_is_a_rejection(running):

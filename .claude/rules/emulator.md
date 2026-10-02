@@ -117,7 +117,7 @@ for automapper and driver testing only, never for conversion acceptance or for
 a save that proves a conversion: the pokes are save-page bytes, so once any is
 written `save_game` raises unless `allow_suppressed=True` is passed. An area
 missing from the table is logged once as unsuppressed; add its gate to
-`ENCOUNTER_GATES` to cover it. Amiga: in an FS-UAE `session`, `no_encounters on` for walks through encounter areas, and `no_encounters off` before any save. A save key is refused while it is on, but that net is incomplete, so `off` is the rule. It is never used for conversion proof, and the `wish` subcommand refuses it.
+`ENCOUNTER_GATES` to cover it. Amiga: in an FS-UAE `session` or `wish` run, `no_encounters on` for walks through encounter areas, and `no_encounters off` before any save. Under `wish` it reads and writes through the window's connection helper. A save key is refused while it is on, but that net is incomplete, so `off` is the rule. It is never used for conversion proof.
 
 **Every emulator run that walks a party through areas with random encounters,
 or travels a world map, uses snapshots, plus `no_encounters` unless it proves a

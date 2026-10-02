@@ -10,9 +10,17 @@ that detached from the caller.
 **Not a byte pipe.** GDB-remote has no request ids and the fork serves one
 packet a frame, so a client's `k` would quit the player's game and two clients'
 replies would interleave. The helper parses each client's packets and forwards
-only `m` reads. `qSupported` is answered from the greeting taken at startup,
-`vCont;c` is swallowed (the game is already running), and anything else gets
-the empty reply GDB reads as "not supported".
+only `m` reads and `M` writes. `qSupported` is answered from the greeting taken
+at startup, `vCont;c` is swallowed (the game is already running), and anything
+else gets the empty reply GDB reads as "not supported".
+
+**A write is an `M` of one to `MAX_WRITE` bytes inside the machine's memory**,
+forwarded as it is and answered with the fork's own `OK` or error. It is the
+one write path for every client: Wish's own actions and the test driver's
+encounter switch alike. It has no compare: a client that must not overwrite
+something the game changed reads first, and the game may still change it
+between that read and the write. The socket is mode 0600 in a 0700 directory,
+so only processes of the same user can reach it, for writes as for reads.
 
 Only Linux is implemented, in `Posix`, which holds every operating-system
 dependency (socket kind, lock, runtime directory, process check) behind
@@ -49,6 +57,10 @@ SWEEP_CHUNK = 0x10000
 #: The most one `m` request may ask for; `locate_machines` reads half a megabyte.
 MAX_READ = 0x80000
 
+#: The most one forwarded `M` may write: the packet must fit the fork's
+#: 512-byte receive buffer, and the driver's pokes are a few bytes.
+MAX_WRITE = 64
+
 #: Exit codes. 0 is the emulator going away, which is how a helper normally ends.
 EXIT_PATH_TOO_LONG = 2
 EXIT_LOCKED = 3
@@ -65,6 +77,9 @@ _LISTEN = "0A"
 
 #: An Amiga address is 32 bits; a longer one is not a read of its memory.
 _READ = re.compile(r"^m([0-9a-fA-F]{1,8}),([0-9a-fA-F]+)$")
+
+#: `M<addr>,<length>:<hex bytes>`, a write.
+_WRITE = re.compile(r"^M([0-9a-fA-F]{1,8}),([0-9a-fA-F]{1,8}):([0-9a-fA-F]*)$")
 
 #: The first argument a frozen build is started with to become the helper; a
 #: frozen binary has no `-m`, so its entry point hands everything after this
@@ -266,8 +281,10 @@ class _Client:
     def __init__(self, sock):
         self.sock = sock
         self.buf = b""
-        #: The one outstanding `m` request, `(addr, length)`. A newer one replaces it.
-        self.pending: tuple[int, int] | None = None
+        #: The one outstanding request, `(packet, short)`, where `short` says
+        #: it waits `POLL_TIMEOUT` and not the full timeout. A newer one
+        #: replaces it.
+        self.pending: tuple[str, bool] | None = None
         self.closed = False
 
 
@@ -356,7 +373,7 @@ class Helper:
             info = {"version": 1, "pid": os.getpid(), "port": self.port,
                     "socket": self.platform.endpoint(self.paths),
                     "upstream_local_port": self.gdb.sock.getsockname()[1],
-                    "started": time.time()}
+                    "writes": True, "started": time.time()}
             with staged:
                 staged.write(json.dumps(info))
             os.replace(temp, self.paths.json)
@@ -462,25 +479,33 @@ class Helper:
         if match:
             addr, length = int(match[1], 16), int(match[2], 16)
             if 1 <= length <= MAX_READ:
-                # A client has one outstanding request; a newer one replaces it.
-                if client in self.queue:
-                    self.queue.remove(client)
-                client.pending = (addr, length)
-                self.queue.append(client)
+                self._queue(client, f"m{addr:x},{length:x}",
+                            length <= SWEEP_CHUNK)
                 return
+        match = _WRITE.match(body)
+        if match and _write_allowed(int(match[1], 16), int(match[2], 16),
+                                    match[3]):
+            self._queue(client, body, True)
+            return
         self._send(client, NOT_SUPPORTED)
+
+    def _queue(self, client: _Client, packet: str, short: bool) -> None:
+        # A client has one outstanding request; a newer one replaces it.
+        if client in self.queue:
+            self.queue.remove(client)
+        client.pending = (packet, short)
+        self.queue.append(client)
 
     def _serve(self, client: _Client) -> bool:
         """Run one client's request upstream. False once the emulator is gone."""
         if client.closed or client.pending is None:
             return True
-        addr, length = client.pending
+        packet, short = client.pending
         client.pending = None
         gdb = self.gdb
-        timeout = (min(gdb.POLL_TIMEOUT, gdb.timeout)
-                   if length <= SWEEP_CHUNK else gdb.timeout)
+        timeout = min(gdb.POLL_TIMEOUT, gdb.timeout) if short else gdb.timeout
         try:
-            reply = gdb.ask(f"m{addr:x},{length:x}", timeout)
+            reply = gdb.ask(packet, timeout)
         except amiga.FsuaeError:
             # No reply at all: a made-up one could read as "not memory".
             return not gdb.lost
@@ -506,6 +531,17 @@ class Helper:
             self.paths.json.unlink(missing_ok=True)
         if self._lock_fd is not None:
             self._lock_fd.close()
+
+
+def _write_allowed(addr: int, length: int, digits: str) -> bool:
+    """Is `M<addr>,<length>:<digits>` a write the helper may forward?
+
+    One to `MAX_WRITE` bytes, as many as the length says, all inside one of
+    the machine's memory regions.
+    """
+    return (1 <= length <= MAX_WRITE and len(digits) == 2 * length
+            and any(base <= addr and addr + length <= base + size
+                    for base, size in amiga.MEMORY))
 
 
 def find(port: int, runtime, platform=None) -> dict | None:
