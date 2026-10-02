@@ -11,34 +11,20 @@ here reads the program counter or a C64 container, and the parent's
 `__init__` (which would hand Pool of Radiance's container to Pools of Darkness)
 is not run.
 
-`amigatrip` is imported when first needed, like `amigaparty` in
-`automap/amigaactions.py`, so this module works before that one exists. Names
-taken from it:
-
-* `ROWS`: `amiga.MACHINES` key to a `TripRow`. A row has `confirmed` (bool) and
-  `differences`, a tuple of objects with `offered` (False until Donald decides)
-  and `covers(here, to, back) -> bool` for the Return landing, Tilverton,
-  leaving Pool's wilderness, Pool's doors and Pool's weaker check.
-* `gate(target, row)`: the menu is up and the party is idle.
-* `area_id(target, row)`, `square(target, row)`, `overland(target, row)`:
-  where the party is, as the parent's `Waypoint` wants them.
-* `free_tail(row, area, disks)`: 1 or 2 when a trip can be armed from `area`,
-  anything else when it cannot.
-* `plan(area, square, overland, tier)`, `arm(target, row, plan)` (an `Armed`,
-  or None when nothing was left written), `fired(target, armed)` (True once the
-  area has changed, None before), `disarm(target, armed)` and
-  `tidy(target, armed, new_area)`.
+The writes, the put-back and the tiers are `automap/amigatrip.py`'s. Here:
+which trips are offered, the `Waypoint` Return needs, the 3-second wait on the
+area byte, and what to say when it does not change.
 """
 
 from __future__ import annotations
 
-import importlib
 import logging
 import time
 from dataclasses import dataclass
 
 from . import actions as engine
 from . import amiga, amigaactions
+from . import amigatrip as trips
 
 _log = logging.getLogger("wish.automap.amigafasttravel")
 
@@ -47,24 +33,6 @@ _log = logging.getLogger("wish.automap.amigafasttravel")
 FIRE_SECONDS = 3.0
 
 NOT_HAPPENED = engine.FASTTRAVEL_FAILED
-
-_UNSET = object()
-_cached = _UNSET
-
-
-def _trips():
-    """`automap.amigatrip`, or None while it is not in the tree. The answer is
-    kept, the absent case included; any other import failure is raised."""
-    global _cached
-    if _cached is _UNSET:
-        try:
-            _cached = importlib.import_module("automap.amigatrip")
-        except ModuleNotFoundError as exc:
-            if exc.name != "automap.amigatrip":
-                raise
-            _cached = None
-    return _cached
-
 
 @dataclass
 class _Trip:
@@ -86,6 +54,7 @@ class AmigaFastTravel(engine.FastTravel):
     def __init__(self, key: str, disks=None):
         self.key = key
         self.disks = disks
+        self._lengths: dict[int, int] | None = None
         self.game = None
         self.addresses = None
         self.back: engine.Waypoint | None = None
@@ -104,6 +73,19 @@ class AmigaFastTravel(engine.FastTravel):
     def not_built(self) -> str:
         return amigaactions.unsupported(self.title)
 
+    def lengths(self, row) -> dict[int, int]:
+        """The scripts' lengths off the player's disks, read once: it opens
+        the images."""
+        if self._lengths is None:
+            try:
+                self._lengths = (trips.script_lengths(row, self.disks)
+                                 if self.disks is not None else {})
+            except (OSError, ValueError):
+                _log.warning("amiga fast travel: reading the disks failed",
+                             exc_info=True)
+                self._lengths = {}
+        return self._lengths
+
     def _row(self, id: int):
         return engine.area_by_id(id, self.title)
 
@@ -112,8 +94,7 @@ class AmigaFastTravel(engine.FastTravel):
     def legality(self, target, area=None, back: bool = False) -> engine.Verdict:
         if target is None:
             return engine.Verdict(False, engine.NO_EMULATOR)
-        trips = _trips()
-        row = None if trips is None else trips.ROWS.get(self.key)
+        row = trips.ROWS.get(self.key)
         if row is None or not row.confirmed:
             return engine.Verdict(False, self.not_built)
         if not getattr(amigaactions._unwrap(target), "can_write", False):
@@ -140,7 +121,7 @@ class AmigaFastTravel(engine.FastTravel):
                for d in row.differences):
             return engine.Verdict(False, self.not_built)
         if here is not None and trips.free_tail(
-                row, here, self.disks) not in (1, 2):
+                row, here, self.lengths(row)) not in (1, 2):
             return engine.Verdict(False, self.not_built)
         return engine.Verdict(True)
 
@@ -156,10 +137,19 @@ class AmigaFastTravel(engine.FastTravel):
                previous_back) -> engine.Outcome | None:
         """Arm the trip and wait on the area byte. None if it was armed.
         `previous_back` is what a trip that does not happen puts back."""
-        trips = _trips()
         row = trips.ROWS[self.key]
         here = trips.area_id(target, row)
-        tier = trips.free_tail(row, here, self.disks)
+        lengths = self.lengths(row)
+        # The destination decides whether a grid square or an area-file byte
+        # is written, so the actual trip is sized, then planned with its tier.
+        try:
+            tier = trips.free_tail(row, here, lengths,
+                                   trips.plan(to, arrival, overland))
+        except ValueError:
+            # The title has no target for a field this trip writes.
+            tier = 3
+        if tier not in (1, 2):
+            return engine.Outcome(False, self.not_built)
         plan = trips.plan(to, arrival, overland, tier)
         try:
             armed = trips.arm(target, row, plan)
@@ -175,7 +165,6 @@ class AmigaFastTravel(engine.FastTravel):
     def run(self, target, area=None, arrival=None, **kwargs) -> engine.Outcome:
         if self.trip is not None:
             return engine.Outcome(False, engine.FASTTRAVEL_BUSY)
-        trips = _trips()
         row = trips.ROWS[self.key]
         to = getattr(area, "id", area)
         arrival, overland = self._square_writes(area, arrival=arrival)
@@ -232,8 +221,7 @@ class AmigaFastTravel(engine.FastTravel):
         silently.
         """
         trip = self.trip
-        trips = _trips()
-        if trip is None or target is None or trips is None:
+        if trip is None or target is None:
             return None
         try:
             fired = trips.fired(target, trip.armed)
@@ -242,24 +230,32 @@ class AmigaFastTravel(engine.FastTravel):
                          exc_info=True)
             fired = None
         if fired:
-            self.trip = None
-            try:
-                trips.tidy(target, trip.armed, trips.area_id(target, trip.row))
-            except Exception:
-                _log.warning("amiga fast travel: tidying failed",
-                             exc_info=True)
+            self._arrived(target, trip)
             return None
         if time.monotonic() <= trip.deadline:
             return None
         _log.debug("amiga fast travel: area %d did not change to %d in time",
                    trip.from_area, trip.to)
         try:
-            trips.disarm(target, trip.armed)
+            put_back = trips.disarm(target, trip.armed)
         except Exception:
             # Still armed as far as Wish knows: keep the trip and try again
             # on the next poll instead of reporting a party that is safe.
             _log.warning("amiga fast travel: disarming failed", exc_info=True)
             return None
+        if not put_back:
+            # The area changed between the last look and the put-back.
+            self._arrived(target, trip)
+            return None
         self.trip = None
         self.back = trip.previous_back
         return engine.Outcome(False, NOT_HAPPENED)
+
+    def _arrived(self, target, trip: _Trip) -> None:
+        """The area changed: the trip happened, and what it left is tidied."""
+        self.trip = None
+        try:
+            trips.tidy(target, trip.armed, trips.area_id(target, trip.row),
+                       self.lengths(trip.row))
+        except Exception:
+            _log.warning("amiga fast travel: tidying failed", exc_info=True)
