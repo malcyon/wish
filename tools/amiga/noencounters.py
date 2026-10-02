@@ -12,7 +12,9 @@ The saved game carries the loaded script for Pool, Curse and Pools of Darkness,
 so `no_encounters off` comes before any save; it stays off until turned on again.
 
 The class does no I/O of its own: the driver hands it `resolve`, `read` and
-`write`, so it runs against a fake.
+`write`, so it runs against a fake, and a `journal` callback that is given
+every change still to be put back, before each write and after each restore,
+so a driver killed outright leaves a record a later run can repair from.
 """
 
 import dataclasses
@@ -89,6 +91,9 @@ ROWS = (
           "ECL02 roll at $8739: IF> EXIT"),
     _gate("secret-of-the-silver-blades", "*0x6956+0x859D", "dc6e4e48", PROBABLE,
           "ECL10 roll at $859D: IF> EXIT"),
+    _gate("secret-of-the-silver-blades", "*0x6956+0x89F6", "dc6e4e48", PROBABLE,
+          "The Ruins (area $20, disk 2 ECL block 3) roll at $89F6, reached on an "
+          "ordinary square when the [$4C1B] wait is 0: IF> 5 EXIT"),
     _gate("pools-of-darkness", "*0x6EA6+0x82EA", "e43dac29", PROBABLE,
           "GLB block 17 roll at $82EA: IF> EXIT"),
     _rest("pool-of-radiance", "*0x9C+0x5A6", "0000", SPECULATIVE,
@@ -121,7 +126,7 @@ class EncounterSwitch:
     """
 
     def __init__(self, title, resolve, read, write, speculative=False,
-                 inside=lambda address, n: True):
+                 inside=lambda address, n: True, journal=lambda rows: None):
         self.rows = [r for r in rows_for(title)
                      if speculative or r.grade != SPECULATIVE]
         if not self.rows:
@@ -135,7 +140,25 @@ class EncounterSwitch:
         self.held: dict[int, bytes] = {}
         #: Gate addresses whose statement did not match, already reported.
         self.refused: set[int] = set()
+        #: How many bytes each change covers: address -> span.
+        self.spans: dict[int, int] = {}
+        #: What each rest row holds: address -> the bytes written.
+        self.holding: dict[int, bytes] = {}
+        self.journal = journal
         self.active = True
+
+    def outstanding(self) -> list[dict]:
+        """Every change still to be put back, as `{address, original, changed}`."""
+        rows = [{"address": a, "original": o[:self.spans[a]].hex(),
+                 "changed": c[:self.spans[a]].hex()}
+                for a, (o, c) in self.patched.items()]
+        rows += [{"address": a, "original": o.hex(),
+                  "changed": self.holding[a].hex()}
+                 for a, o in self.held.items()]
+        return rows
+
+    def _record(self) -> None:
+        self.journal(self.outstanding())
 
     def _checked_write(self, address, original, ours) -> dict:
         """Write `ours`, read it back, and put `original` back if it is neither."""
@@ -173,12 +196,15 @@ class EncounterSwitch:
                 for offset, value in row.changes:
                     changed[offset] = value
                 span = max(offset for offset, _ in row.changes) + 1
-                # Recorded first: a transport error mid-write leaves the
-                # address restorable.
+                # Recorded first, here and in the journal: a transport error
+                # or a kill mid-write leaves the address restorable.
                 self.patched[address] = (now, bytes(changed))
+                self.spans[address] = span
+                self._record()
                 result = self._checked_write(address, now, bytes(changed[:span]))
                 if "error" in result:
                     del self.patched[address]
+                    self._record()
             else:
                 if not self.inside(address, len(row.new)):
                     if address not in self.refused:
@@ -192,6 +218,8 @@ class EncounterSwitch:
                     continue
                 # Whatever the game last wrote is what to put back.
                 self.held[address] = now
+                self.holding[address] = row.new
+                self._record()
                 result = self._checked_write(address, now, row.new)
             done.append({"row": row.spec, "grade": row.grade, **result})
         return done
@@ -214,11 +242,13 @@ class EncounterSwitch:
                     original, changed = self.patched[address]
                     if self.read(address, len(changed)) != changed:
                         del self.patched[address]
+                        self._record()
                         continue        # the script was reloaded already
                     span = max(offset for offset, _ in row.changes) + 1
                     result = self.write(address, original[:span])
                     if "error" not in result:
                         del self.patched[address]
+                        self._record()
                 else:
                     if (address not in self.held
                             or self.read(address, len(row.new)) != row.new):
@@ -226,6 +256,7 @@ class EncounterSwitch:
                     result = self.write(address, self.held[address])
                     if "error" not in result:
                         del self.held[address]
+                        self._record()
             except Exception as exc:
                 result = {"error": f"{type(exc).__name__}: {exc}"}
             done.append({"row": row.spec, "grade": row.grade, **result})

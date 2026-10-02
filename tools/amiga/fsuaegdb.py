@@ -53,6 +53,7 @@ with `xdotool` once it exists (`fit_window`).
 from __future__ import annotations
 
 import argparse
+import contextlib
 import dataclasses
 import hashlib
 import json
@@ -62,13 +63,16 @@ import re
 import signal
 import subprocess
 import sys
+import threading
 import time
+import traceback
 
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent.parent))
 
 from automap import amiga, fsuaehelper  # noqa: E402
 from tools.amiga import noencounters  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: The small-data base these titles are linked with, printed beside the hunk
 #: address.  `tools/amiga/amigatarget.py` has the same constant for the same reason:
@@ -670,6 +674,50 @@ def shot(display: str, path: pathlib.Path) -> None:
                    check=False)
 
 
+#: Where Silver Blades' `PLAY DEMO QUIT` bar is drawn, as a crop box on the
+#: 800x600 Xvfb root `launch` fits the window into, and a short SHA-256 of
+#: that crop's RGB bytes.  Measured on the bar of three boots; it matched none
+#: of the 711 other screenshots taken on #37.  A different window size moves it.
+PLAY_BAR_BOX = (59, 437, 340, 467)
+PLAY_BAR_DIGEST = "abb56028f27d"
+
+#: Seconds between screenshots while `play` waits, and how long it waits by
+#: default.  The bar comes up about 100 s after boot.
+PLAY_POLL = 1.0
+PLAY_LIMIT = 240.0
+
+
+def play_bar_up(image) -> bool:
+    """Whether a screenshot shows Silver Blades' `PLAY DEMO QUIT` bar."""
+    if image.size[0] < PLAY_BAR_BOX[2] or image.size[1] < PLAY_BAR_BOX[3]:
+        return False
+    crop = image.convert("RGB").crop(PLAY_BAR_BOX).tobytes()
+    return hashlib.sha256(crop).hexdigest()[:len(PLAY_BAR_DIGEST)] == PLAY_BAR_DIGEST
+
+
+def play(args, out: pathlib.Path, idle, limit: float) -> dict:
+    """Wait for the `PLAY` bar and press `p` the moment it shows.
+
+    The attract demo starts if no key comes soon after the bar, so a fixed
+    wait either comes too early or lets the demo start.  Returns a row with the
+    seconds waited; past `limit` the screen is saved as `no-play-bar.png` and
+    the row says so, with no key sent.
+    """
+    from tools.amiga import fsuaepor
+
+    began = time.monotonic()
+    while True:
+        if play_bar_up(fsuaepor.grab(args.display)):
+            held_key(args, "p", idle, args.seconds)
+            return {"seconds": round(time.monotonic() - began, 1)}
+        waited = time.monotonic() - began
+        if waited >= limit or STOP["why"]:
+            shot(args.display, out / "shots" / "no-play-bar.png")
+            return {"seconds": round(waited, 1),
+                    "error": f"no PLAY bar in {waited:.0f} s, so no key was sent"}
+        idle(PLAY_POLL)
+
+
 def journal(args, adf: str = "") -> bool:
     """Answer Silver Blades' journal prompt, with the game still running.
 
@@ -699,6 +747,87 @@ ENCOUNTER_ERRORS = (ValueError, StopIteration, OSError, TimeoutError,
                     SystemExit, amiga.GuestError, amiga.FsuaeError)
 
 
+#: Why the run should end before `quit` or `--seconds`, or None.  Set by
+#: `interruptible`'s handlers and read by the command loop and the waits.
+STOP: dict = {"why": None}
+
+
+@contextlib.contextmanager
+def interruptible(note):
+    """End the run through its own cleanup on SIGINT, SIGTERM or a crash.
+
+    The handlers only set `STOP`: an exception raised while Qt runs the
+    window's events (where a `KeyboardInterrupt` usually lands) makes PyQt
+    abort the process before any `finally`.  For the same reason an exception
+    that escapes into the event loop goes to a replacement `sys.excepthook`,
+    which PyQt calls instead of aborting; it is logged and stops the run.
+    """
+    STOP["why"] = None
+
+    def handler(signum, frame):
+        STOP["why"] = signal.Signals(signum).name
+
+    def hook(kind, value, tb):
+        STOP["why"] = f"{kind.__name__}: {value}"
+        text = "".join(traceback.format_exception(kind, value, tb))
+        print(text, file=sys.stderr, flush=True)
+        note(event="crash", error=STOP["why"], traceback=text[-4000:])
+
+    old = {}
+    if threading.current_thread() is threading.main_thread():
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            old[sig] = signal.signal(sig, handler)
+    old_hook, sys.excepthook = sys.excepthook, hook
+    try:
+        yield
+    finally:
+        sys.excepthook = old_hook
+        for sig, previous in old.items():
+            signal.signal(sig, previous)
+
+
+def encounter_journal(port: int) -> pathlib.Path:
+    """Where the switch records the changes it has made to the game on `port`.
+
+    Under `~/.cache/wish`, not the run's `--out`, so the next run against the
+    same emulator finds it whatever folder that run writes to.
+    """
+    return scratch.cache_dir("noencounters", f"fsuae-{port}.json")
+
+
+class Journal:
+    """The changes a switch has written and not yet put back, on disk.
+
+    Written before every change and after every restore, so a driver that is
+    killed outright leaves the originals behind for the next run's `repair`.
+    One file per emulator port: `{"title": KEY, "rows": [{address, original,
+    changed}]}`, bytes in hex.
+    """
+
+    def __init__(self, path: pathlib.Path):
+        self.path = pathlib.Path(path)
+
+    def load(self) -> tuple[str | None, list[dict]]:
+        try:
+            data = json.loads(self.path.read_text(encoding="utf-8"))
+            return data.get("title"), list(data.get("rows") or [])
+        except FileNotFoundError:
+            return None, []
+        except (OSError, ValueError, AttributeError):
+            # Unreadable: nothing to act on, and kept for a person to read.
+            return None, []
+
+    def save(self, title: str, rows: list[dict]) -> None:
+        if not rows:
+            self.path.unlink(missing_ok=True)
+            return
+        scratch.ensure(self.path.parent)
+        temp = self.path.with_suffix(".tmp")
+        temp.write_text(json.dumps({"title": title, "rows": rows}),
+                        encoding="utf-8")
+        os.replace(temp, self.path)
+
+
 class Encounters:
     """The `no_encounters` command, its save-key guard, and its restores.
 
@@ -713,30 +842,92 @@ class Encounters:
     one emulated frame, so a driver that beats many times a second sets it.
     """
 
-    def __init__(self, note, machine, every: float = 0.0, clock=time.monotonic):
+    #: Consecutive failed re-applies after which the switch is dropped.  Its
+    #: changes stay in the journal, so the next `on` or `off` puts them back.
+    FAILURES = 3
+
+    def __init__(self, note, machine, every: float = 0.0, clock=None,
+                 journal: Journal | None = None):
         self.note = note
         self.machine = machine
         self.every = every
-        self.clock = clock
+        self.clock = clock or (lambda: time.monotonic())
         self.applied_at: float | None = None
         self.switch: noencounters.EncounterSwitch | None = None
+        self.journal = journal
+        #: The `(gdb, tgt, layout)` the switch goes through, rebuilt by
+        #: `machine()` when its connection is lost.
+        self.current = None
+        self.failures = 0
+
+    def _live(self):
+        held = self.current
+        if held is None or held[0].lost or held[0].sock is None:
+            self.current = None
+            self.current = self.machine()
+        return self.current
+
+    def leftover(self) -> bool:
+        """Whether the journal names a change an earlier run did not put back."""
+        return self.journal is not None and bool(self.journal.load()[1])
+
+    def repair(self, now: float) -> list[dict]:
+        """Put back what the journal names, where memory still holds the change.
+
+        A row whose bytes read as the recorded change gets the recorded
+        original, read back.  A row whose bytes are anything else was put back
+        or reloaded since, so it is dropped.  A row whose restore fails stays in
+        the journal.  Raises `ValueError` when the journal is another title's.
+        """
+        if self.journal is None:
+            return []
+        title, rows = self.journal.load()
+        if not rows:
+            return []
+        gdb, tgt, layout = self._live()
+        key = next(k for k, v in amiga.MACHINES.items() if v is layout)
+        if title != key:
+            raise ValueError(f"the encounter journal {self.journal.path} is for "
+                             f"{title}, and {key} is running; read it and "
+                             "remove it by hand")
+        done, kept = [], []
+        for row in rows:
+            address = int(row["address"])
+            original = bytes.fromhex(row["original"])
+            changed = bytes.fromhex(row["changed"])
+            now_bytes = gdb.read_memory(address, len(changed))
+            if now_bytes != changed:
+                done.append({"address": address, "left": now_bytes.hex()})
+                continue
+            result = poke_row(gdb, tgt, f"{address:#x} {original.hex()}")
+            done.append({"address": address, "repaired": True, **result})
+            if "error" in result:
+                kept.append(row)
+        self.journal.save(key, kept)
+        self.note(event="no_encounters", action="repair", at=now, rows=done,
+                  **({"error": "a recorded change was not put back"}
+                     if kept else {}))
+        return done
 
     @property
     def active(self) -> bool:
         return self.switch is not None and self.switch.active
 
     def refuse_key(self, keys: str, now: float) -> bool:
-        """Before a `key`: True (and an error row) for a save key while on,
-        otherwise apply the switch again and return False."""
-        if not self.active:
-            return False
-        if noencounters.is_save_key(keys):
-            error = ("no_encounters is on and a save carries the changed "
-                     "script: turn it off first")
+        """Before a `key`: True (and an error row) for a save key while the
+        script may be changed -- the switch on, a row it failed to put back,
+        or an earlier run's change in the journal -- otherwise apply the
+        switch again and return False."""
+        switch = self.switch
+        changed = switch is not None and (switch.active or switch.pending)
+        if noencounters.is_save_key(keys) and (changed or self.leftover()):
+            error = ("no_encounters is on or did not restore every row, and "
+                     "a save carries the changed script: turn it off first")
             print(f"           {error}")
             self.note(event="key", keys=keys, at=now, error=error)
             return True
-        self.reapply(now, force=True)
+        if self.active:
+            self.reapply(now, force=True)
         return False
 
     def reapply(self, now: float, force: bool = False) -> None:
@@ -750,11 +941,35 @@ class Encounters:
         try:
             done = self.switch.apply()
         except ENCOUNTER_ERRORS as exc:
-            self.note(event="no_encounters", at=now,
-                      error=f"{type(exc).__name__}: {exc}")
+            # A lost connection is rebuilt by the next call through `_live`.
+            self.failures += 1
+            row = {"error": f"{type(exc).__name__}: {exc}"}
+            if self.failures >= self.FAILURES:
+                # Its changes are in the journal for the next `on` or `off`.
+                self.switch = None
+                self.failures = 0
+                row["dropped"] = (f"{self.FAILURES} re-applies failed in a "
+                                  "row; the switch is off, and `off` puts "
+                                  "back what it changed")
+            self.note(event="no_encounters", at=now, **row)
             return
+        self.failures = 0
         if done:
             self.note(event="no_encounters", action="apply", at=now, rows=done)
+
+    def repair_at_start(self, ready=lambda: True) -> None:
+        """At the start of a run, put back what a killed earlier run left.
+
+        `ready()` says whether the game can be reached yet; when it cannot, the
+        journal is kept and the first `on` or `off` repairs instead.
+        """
+        if not self.leftover() or not ready():
+            return
+        try:
+            self.repair(0.0)
+        except ENCOUNTER_ERRORS as exc:
+            self.note(event="no_encounters", action="repair", at=0.0,
+                      error=f"{type(exc).__name__}: {exc}")
 
     def command(self, rest: str, now: float) -> None:
         words = rest.split()
@@ -776,17 +991,28 @@ class Encounters:
                 self.switch = None
                 self.note(event="no_encounters", action="off", at=now,
                           rows=done)
-            gdb, tgt, layout = self.machine()
+            # An earlier run's change, left by a kill, is put back first, so
+            # this switch reads the game's own bytes and its journal starts
+            # empty.
+            self.repair(now)
+            if self.leftover():
+                raise ValueError("an earlier run's change could not be put "
+                                 "back; `off` to try again")
+            _, _, layout = self._live()
             key = next(k for k, v in amiga.MACHINES.items() if v is layout)
+            journal = self.journal
+            self.failures = 0
             self.switch = noencounters.EncounterSwitch(
-                key, lambda spec: resolve_spec(tgt, spec),
-                gdb.read_memory,
+                key, lambda spec: resolve_spec(self._live()[1], spec),
+                lambda address, n: self._live()[0].read_memory(address, n),
                 lambda address, data: poke_row(
-                    gdb, tgt, f"{address:#x} {data.hex()}"),
+                    *self._live()[:2], f"{address:#x} {data.hex()}"),
                 speculative="speculative" in extra,
                 inside=lambda address, n: any(
                     base <= address and address + n <= base + size
-                    for base, size in amiga.MEMORY))
+                    for base, size in amiga.MEMORY),
+                journal=(lambda rows: None) if journal is None else
+                (lambda rows: journal.save(key, rows)))
             done = self.switch.apply()
             self.note(event="no_encounters", action="on", at=now,
                       rows=done, held=[r.spec for r in self.switch.rows])
@@ -800,6 +1026,9 @@ class Encounters:
     def _off(self, now: float) -> None:
         switch = self.switch
         done = [] if switch is None else switch.off()
+        # What a killed earlier run left, which this switch never recorded.
+        if switch is None or not switch.pending:
+            self.repair(now)
         # A switch that could not put every row back stays, off, so the next
         # `off` and the end of the run retry it.
         if switch is not None and switch.pending:
@@ -881,6 +1110,9 @@ def session(args) -> int:
         poll [n]            n shipped-automapper polls, drawing each map
         time [n]            n timed reads at each of `PROBE_SIZES`
         journal [adf]       answer Silver Blades' journal prompt
+        play [seconds]      wait for Silver Blades' PLAY bar (240 s by default)
+                            and press `p` the moment it shows, before the
+                            attract demo starts; an error row if it never does
         quit
 
     `--title none` starts a session with no layout, for a title that has no
@@ -940,7 +1172,8 @@ def session(args) -> int:
     was = mapstate._data_dir                            # noqa: SLF001
     mapstate._data_dir = lambda: out / "data"           # noqa: SLF001
     started = time.monotonic()
-    enc = Encounters(note, lambda: (gdb, tgt, layout))
+    enc = Encounters(note, lambda: (gdb, tgt, layout),
+                     journal=Journal(encounter_journal(args.port)))
     try:
         once = None if untitled else poller(tgt, maps, layout, out, note)[1]
         window = None
@@ -1030,13 +1263,16 @@ def session(args) -> int:
             # Short sleeps with the heartbeat between them, so a long wait does
             # not leave the debugger connection unread.
             left = seconds
-            while left > 0:
+            while left > 0 and not STOP["why"]:
                 piece = min(left, max(args.interval, 0.1))
                 time.sleep(piece)
                 beat()
                 left -= piece
 
-        run_commands(args, commands, started, note, handle, beat, time.sleep)
+        with interruptible(note):
+            enc.repair_at_start(lambda: layout is not None)
+            run_commands(args, commands, started, note, handle, beat,
+                         time.sleep)
     finally:
         enc.close()
         mapstate._data_dir = was                        # noqa: SLF001
@@ -1081,6 +1317,10 @@ def common_command(args, out: pathlib.Path, note, idle, swap, word: str,
             note(event="swap", at=now, **row)
     elif word == "journal":
         note(event="journal", answered=journal(args, rest), at=now)
+    elif word == "play":
+        row = play(args, out, idle, float(rest or PLAY_LIMIT))
+        print(f"           {row}")
+        note(event="play", at=now, **row)
     else:
         return False
     return True
@@ -1099,6 +1339,8 @@ def run_commands(args, commands: pathlib.Path, started: float, note, handle,
     while time.monotonic() - started < args.seconds:
         lines = commands.read_text().splitlines()
         while read < len(lines):
+            if STOP["why"]:
+                break
             line = lines[read].strip()
             read += 1
             if not line or line.startswith("#"):
@@ -1119,6 +1361,11 @@ def run_commands(args, commands: pathlib.Path, started: float, note, handle,
                 print(f"           {exc}")
                 note(event=word, at=now,
                      error=f"{type(exc).__name__}: {exc}")
+        if STOP["why"]:
+            print(f"           stopping: {STOP['why']}", flush=True)
+            note(event="stopped", why=STOP["why"],
+                 at=round(time.monotonic() - started, 1))
+            return
         beat()
         idle(args.interval)
 
@@ -1309,7 +1556,7 @@ class WishRun:
         while True:
             if self.app is not None:
                 self.app.processEvents()
-            if time.monotonic() >= end:
+            if time.monotonic() >= end or STOP["why"]:
                 return
             time.sleep(PUMP_STEP)
 
@@ -1397,7 +1644,7 @@ def wish(args) -> int:
     keys through xdotool, as `session` does.
 
     Commands, one a line, appended to `--commands` while this runs:
-    `key`, `shot`, `still`, `wait`, `swap` and `journal` as in `session`
+    `key`, `shot`, `still`, `wait`, `swap`, `journal` and `play` as in `session`
     (`wait` keeps the window's events running), and
 
         await <seconds>     run the window until its session is connected
@@ -1452,10 +1699,14 @@ def wish(args) -> int:
     def machine():
         held = link.get("machine")
         if held is None or held[0].lost or held[0].sock is None:
+            if held is not None:
+                held[0].close()
+                link["machine"] = None
             link["machine"] = helper_machine(args.port)
         return link["machine"]
 
-    enc = Encounters(note, machine, every=WISH_REAPPLY_EVERY)
+    enc = Encounters(note, machine, every=WISH_REAPPLY_EVERY,
+                     journal=Journal(encounter_journal(args.port)))
 
     def now() -> float:
         return round(time.monotonic() - started, 1)
@@ -1468,7 +1719,7 @@ def wish(args) -> int:
         while True:
             left = max(end - time.monotonic(), 0.0)
             run.pump(min(left, WISH_REAPPLY_EVERY) if enc.active else left)
-            if time.monotonic() >= end:
+            if time.monotonic() >= end or STOP["why"]:
                 return
             enc.reapply(now())
 
@@ -1534,8 +1785,13 @@ def wish(args) -> int:
                 return False
             return True
 
-        run_commands(args, commands, started, note, handle,
-                     lambda: enc.reapply(now()), idle)
+        with interruptible(note):
+            # A helper already running means the game an earlier run changed
+            # may still be up; without one, the first `on` or `off` repairs.
+            enc.repair_at_start(lambda: fsuaehelper.find(
+                args.port, fsuaehelper.runtime_dir()) is not None)
+            run_commands(args, commands, started, note, handle,
+                         lambda: enc.reapply(now()), idle)
     finally:
         enc.close()
         if link.get("machine") is not None:

@@ -850,8 +850,17 @@ command `no_encounters on [speculative] | off`, in a `session` and in a `wish`
 run with the Wish window open; `tools/amiga/noencounters.py` has the rows. It
 turns the loaded area script's roll into a constant, applies it again after
 every reload, and puts every original byte back on `off` and at the end of the
-run. Under `wish` it reads and writes through the window's connection helper.
-Turn it off before any save, because the saved game carries the loaded script.
+run, including a run ended by SIGINT, SIGTERM or an exception in the window's
+event loop. Under `wish` it reads and writes through the window's connection
+helper. Each change is recorded in `~/.cache/wish/noencounters/fsuae-<port>.json`
+before it is written, so after a `kill -9` the next run against that emulator
+puts the byte back at its start, or at the first `on` or `off`. Turn it off
+before any save, because the saved game carries the loaded script; a save key is
+refused while a change may still be in the game.
+
+For Silver Blades, `play [seconds]` waits for the `PLAY DEMO QUIT` bar and
+presses `p` the moment it shows, before the attract demo starts. It matches a
+hash of the bar's crop on `launch`'s 800x600 screen, in `session` and `wish`.
 
 ## Character creation
 

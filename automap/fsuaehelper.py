@@ -15,7 +15,10 @@ at startup, `vCont;c` is swallowed (the game is already running), and anything
 else gets the empty reply GDB reads as "not supported".
 
 **A write is an `M` of one to `MAX_WRITE` bytes inside the machine's memory**,
-forwarded as it is and answered with the fork's own `OK` or error. It is the
+forwarded as it is and answered with the fork's own `OK` or error. A client
+waits for that reply before sending its next packet: a client has one
+outstanding request, and a newer one replaces a queued write, which is then
+dropped without a reply. It is the
 one write path for every client: Wish's own actions and the test driver's
 encounter switch alike. It has no compare: a client that must not overwrite
 something the game changed reads first, and the game may still change it
