@@ -278,6 +278,3 @@ wish/_version.py
 ansible/inventory.yml
 ansible/group_vars/all/vault.yml
 
-# [epiq]: local hydrated state is never committed
-.epiq/events/
-.epiq/log/
