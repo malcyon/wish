@@ -754,18 +754,38 @@ On the Amiga under WinUAE, `automap.amiga.WinuaePipe` has the same three calls,
 `discard_snapshot(name, holder)`, and `tools/amiga/amigadrive.py` has them as
 the commands `snapshot`, `restore` and `discard_snapshot`. Each runs a
 `winuae.ps1` verb that checks the lane claim and the pipe's server process
-first. A snapshot sends `CFG statefile_save x` and then
-`CFG statefile_path C:\Amiga\States\<holder>\<name>`, which writes the state
-to `<name>` inside that folder; `CFG statefile_save <name>` alone writes
-nothing. The verb waits up to 15 s for a file that starts `ASF ` and has
-stopped growing (about 0.5 MB, written in about 1 s). A restore sends
-`CFG statefile <file>` and waits 1.5 s, so the next key reaches the restored
-machine. No window, key or dialog is involved and the machine runs on.
+first.
+
+A snapshot reads Exec's idle and dispatch counts, sends
+`CFG statefile_save x` and then
+`CFG statefile_path C:\Amiga\States\<holder>\part~\<name>`, which writes the
+state to `<name>` in that folder; `CFG statefile_save <name>` alone writes
+nothing, and neither does a folder whose name has a dot in it. The
+verb waits up to 15 s for a file that starts `ASF ` and has stopped growing
+(about 0.5 MB, written in about 1 s), writes a `complete` marker
+holding its SHA-256 and the counts, and only then moves that folder to
+`C:\Amiga\States\<holder>\<name>`, replacing any older one. On a failure the
+temporary folder is removed and an older snapshot of that name is kept. A failure after
+`statefile_save x` was sent leaves that save pending in WinUAE, and the next
+`statefile_path` sent to the process completes it; the error says so.
+
+A restore refuses a snapshot with no marker or whose file does not hash as the
+marker says, sends `CFG statefile <file>`, and reads Exec's counts until they
+fall to between the snapshot's value and the value read just before the
+restore. Both counts only rise while the machine runs, so a lower reading is
+the proof the machine went back; if none comes within 5 s the restore fails.
+It then waits 0.5 s, so the next key reaches the restored machine. No window,
+key or dialog is involved and the machine runs on.
 
 The state holds each drive's image path, not the disk's contents, so a restore
 puts the recorded image back in each drive and an image written since the
-snapshot keeps that write. A game save after a restore therefore reaches the
-image file, and nothing refuses it. FS-UAE has no usable machine-state save in
+snapshot keeps that write. A game save made between a snapshot and its restore
+therefore stays on the disk image while memory goes back, and the disk and the
+game disagree; a run that saved in between treats that image as changed.
+Nothing refuses a save after a restore. `winuae.ps1 clean` removes
+`C:\Amiga\States`, so it deletes every holder's snapshots. A holder of `.`,
+or one holding `..` or ending in a dot, is refused, because Windows would
+resolve its folder to another one. FS-UAE has no usable machine-state save in
 this build, because its savestate crashes.
 
 ## Suppressing encounters
@@ -782,6 +802,14 @@ and some are story counters, so a run that proves a conversion leaves both off,
 and once any poke is written `save_game` raises unless `allow_suppressed=True`.
 The flag is sticky until a fresh boot, and a snapshot records it so a restore
 puts back the snapshot's value.
+
+On the Amiga under FS-UAE, `tools/amiga/fsuaegdb.py` has the same switch as the
+command `no_encounters on [speculative] | off`, in a `session` and in a `wish`
+run with the Wish window open; `tools/amiga/noencounters.py` has the rows. It
+turns the loaded area script's roll into a constant, applies it again after
+every reload, and puts every original byte back on `off` and at the end of the
+run. Under `wish` it reads and writes through the window's connection helper.
+Turn it off before any save, because the saved game carries the loaded script.
 
 ## Character creation
 

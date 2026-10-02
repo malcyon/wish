@@ -892,15 +892,29 @@ def snapshot_place(holder: str, name: str) -> tuple[str, str]:
 
     WinUAE names the file it writes after the last component of
     `statefile_path`, so each snapshot has a directory of its own named like it.
+    The guest writes into `_part_folder` and moves that to `<folder>` once the
+    state and its `complete` marker are in it. A holder of `.`, or one holding
+    `..` or ending in a dot, is refused, because Windows would resolve its
+    folder to another one.
     """
     holder = _floppy_holder(holder)
-    if ".." in holder:
-        raise ValueError(f"Holder {holder!r} is refused: it holds ..")
+    if holder == "." or ".." in holder or holder.endswith("."):
+        raise ValueError(f"Holder {holder!r} is refused: Windows would read it as "
+                         "another folder")
     if not isinstance(name, str) or not SNAPSHOT_NAME.fullmatch(name):
         raise ValueError(f"Snapshot name {name!r} is refused: it is not 1-32 "
                          "letters, digits, - and _")
     folder = f"{STATE_ROOT}\\{holder}\\{name}"
     return folder, f"{folder}\\{name}"
+
+
+def _part_folder(holder: str, name: str) -> str:
+    """Where the guest writes a snapshot before it replaces the old one.
+
+    The last component has no dot: WinUAE wrote no file for a folder named
+    `<name>.part`. `~` cannot be in a holder or a name, so it collides with neither.
+    """
+    return f"{STATE_ROOT}\\{holder}\\part~\\{name}"
 
 
 @dataclass
@@ -1288,26 +1302,40 @@ Write-Output '<<end>>'
                  token: str | None = None) -> StateReceipt:
         """Save the whole running machine under `name`, and prove the file was written.
 
-        The guest checks the lane claim and the pipe's server process, then
-        sends `CFG statefile_save x` and `CFG statefile_path <folder>`: the
-        first leaves a save pending, the second points it at
-        `<folder>\\<name>` and the save completes. `CFG statefile_save <name>`
-        alone writes nothing. The guest waits up to `STATE_WAIT_SECONDS` for a
-        file that starts `ASF ` and has stopped growing. A snapshot of the same
-        name is replaced. The machine runs on.
+        The guest checks the lane claim and the pipe's server process, reads
+        Exec's idle and dispatch counts, then sends `CFG statefile_save x` and
+        `CFG statefile_path <holder folder>\\part~\\<name>`: the first leaves a
+        save pending, the second points it at `part~\\<name>\\<name>` and the
+        save completes (a last component with a dot in it got no file). `CFG statefile_save <name>` alone writes nothing. The guest
+        waits up to `STATE_WAIT_SECONDS` for a file that starts `ASF ` and has
+        stopped growing, writes a `complete` marker with its hash
+        and the count, and only then replaces any older snapshot of the name.
+        On a failure the temporary folder is removed and the older snapshot is
+        kept. The machine runs on.
+
+        **A failure after `statefile_save x` was sent leaves that save pending
+        in WinUAE**, and the next `statefile_path` sent to the process completes
+        it; the error says so.
 
         The state holds each drive's image path and mechanics, not the disk's
-        contents, and `statefile_path` stays at this folder for the life of the
-        emulator process.
+        contents, and `statefile_path` stays at the temporary folder for the life
+        of the emulator process.
         """
         receipt = self._state_verb("snapshot", holder, name, token)
         folder, file = snapshot_place(holder, name)
         _judge_messages(receipt, [("save", "CFG statefile_save x"),
-                                  ("path", f"CFG statefile_path {folder}")])
+                                  ("path", "CFG statefile_path " + _part_folder(holder, name))])
         tags = receipt.tags
         if "appeared_ms" not in tags:
             raise SnapshotError(f"The state file {file} did not appear within "
-                                f"{STATE_WAIT_SECONDS:.0f} s", receipt.as_dict())
+                                f"{STATE_WAIT_SECONDS:.0f} s, and WinUAE still holds "
+                                "the pending state save", receipt.as_dict())
+        if tags.get("marker") != f"{folder}\\complete":
+            raise SnapshotError(f"The snapshot {file} has no completion marker",
+                                receipt.as_dict())
+        if not tags.get("count_snapshot", "").isdigit():
+            raise SnapshotError(f"The snapshot {file} recorded no Exec count to "
+                                "verify a restore against", receipt.as_dict())
         if tags.get("file") != file:
             raise SnapshotError(f"The guest watched {tags.get('file')!r}, not {file}",
                                 receipt.as_dict())
@@ -1320,17 +1348,38 @@ Write-Output '<<end>>'
 
     def restore(self, name: str, holder: str,
                 token: str | None = None) -> StateReceipt:
-        """Put the machine back as `snapshot(name)` left it.
+        """Put the machine back as `snapshot(name)` left it, and prove it went back.
 
-        The guest refuses a name with no `ASF ` file, sends
-        `CFG statefile <file>`, and waits `RestoreSettleMs` before it answers,
-        so a key pressed after this reaches the restored machine. Each drive
-        gets the image path the state recorded put back in it; an image written
-        since the snapshot keeps that write.
+        The guest refuses a snapshot with no `complete` marker or whose file
+        does not hash as the marker says. It reads Exec's idle and dispatch
+        counts, sends `CFG statefile <file>`, and reads them again until they
+        fall to between the snapshot's value and the value read before the
+        restore: both counts only rise while the machine runs, so only a
+        machine that went back reads lower. It then waits `RestoreSettleMs`, so
+        a key pressed after this reaches the restored machine.
+
+        Each drive gets the image path the state recorded put back in it, and an
+        image written since the snapshot keeps that write: a game save made
+        between the snapshot and the restore stays on the disk while memory goes
+        back, so the run must treat that image as changed.
         """
-        _folder, file = snapshot_place(holder, name)
+        folder, file = snapshot_place(holder, name)
         receipt = self._state_verb("restore", holder, name, token)
         _judge_messages(receipt, [("restore", f"CFG statefile {file}")])
+        tags = receipt.tags
+        if tags.get("marker") != f"{folder}\\complete":
+            raise SnapshotError(f"The snapshot {file} has no completion marker",
+                                receipt.as_dict())
+        try:
+            snap, before, after = (int(tags[k]) for k in
+                                   ("count_snapshot", "count_before", "count_after"))
+        except (KeyError, ValueError) as exc:
+            raise SnapshotError(f"The restore of {file} reported no Exec counts, so "
+                                "it was not verified", receipt.as_dict()) from exc
+        if not snap <= after < before:
+            raise SnapshotError(f"The machine was not seen to go back to {name}: "
+                                f"Exec's count read {after}, not between {snap} "
+                                f"and {before}", receipt.as_dict())
         return receipt
 
     def discard_snapshot(self, name: str, holder: str,

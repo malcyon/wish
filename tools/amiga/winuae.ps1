@@ -462,20 +462,31 @@ $fg = ([W]::GetForegroundWindow() -eq $h)
 # `CFG statefile_path <folder>` points it at `<folder>\<last component>`, where
 # WinUAE writes it within a couple of seconds. `CFG statefile_save <name>` alone
 # writes nothing: WinUAE joins the state folder and a full path into one bad
-# name. Each snapshot is `$StateRoot\<holder>\<name>\<name>`, replaced if it
-# exists, and is waited on until it starts `ASF ` and stops growing.
-# restore <name>: `CFG statefile <file>`, then a settle so the next key reaches
-# the restored machine. discard-snapshot <name>: removes the folder.
+# name. The state is written into `<holder>\part~\<name>`, whose last component
+# has no dot because WinUAE wrote no file for a folder named `<name>.part`; it is
+# waited on until it starts `ASF ` and stops growing, given a `complete` marker
+# there, and only then does that folder replace `$StateRoot\<holder>\<name>`.
+# On a failure the temporary folder is removed and an older snapshot of the name is kept. If the
+# file never appears, WinUAE still holds the pending save, and the next
+# `statefile_path` sent to it completes that save.
+# restore <name>: refused without the marker or with a file that does not hash
+# as the marker says; then `CFG statefile <file>`, and Exec's idle and dispatch
+# counts are read until they fall back to between the snapshot's value and the
+# value read just before the restore, which is the proof the machine went back.
+# discard-snapshot <name>: removes the folder.
 #
 # Output is the same as the floppy verbs': the verdict, the ownership tags,
-# `<<m>> <seq> <label> <ms> <base64>` for each message sent and `<<r>>` for its
-# reply, then `<<file>>`, `<<bytes>>`, `<<header>>` and `<<appeared_ms>>` for a
-# snapshot, and `<<end>>`.
+# `<<m>> <seq> <label> <ms> <base64>` for each CFG message sent and `<<r>>` for
+# its reply, then the snapshot's `<<file>>`, `<<bytes>>`, `<<header>>`,
+# `<<appeared_ms>>`, `<<sha256>>`, `<<marker>>` and `<<count_snapshot>>`, or the
+# restore's `<<marker>>`, `<<count_snapshot>>`, `<<count_before>>` and
+# `<<count_after>>`, and `<<end>>`.
 $StateRoot        = "$Root\States"
 $StateNamePattern = '^[A-Za-z0-9_-]{1,32}\z'
 $StateBoundMs     = 15000
 $StatePollMs      = 250
-$RestoreSettleMs  = 1500
+$RestoreBoundMs   = 5000
+$RestoreSettleMs  = 500
 
 # Length and first four bytes of a state file, read without locking WinUAE out; $null while it cannot be read.
 function Read-StateHead([string]$Path) {
@@ -496,15 +507,48 @@ function Send-Logged($Pipe, $Sw, $Tags, [int]$Seq, [string]$Label, [string]$Text
   $Tags.Add("<<r>> $Seq $Label $($Sw.ElapsedMilliseconds) $([Convert]::ToBase64String($bytes))") | Out-Null
 }
 
+# Big-endian bytes of the running Amiga's memory, through the debugger's `S` to a
+# file, which does not spend the `m` command's per-process line budget.
+function Read-AmigaBytes($Pipe, [uint64]$Address, [int]$Count) {
+  New-Item -ItemType Directory -Force -Path "$Root\dump" -ErrorAction Stop | Out-Null
+  $f = "$Root\dump\state-$Holder.bin"
+  Remove-Item -LiteralPath $f -ErrorAction SilentlyContinue
+  [void](Send-Pipe $Pipe ("DBG S $f {0:x} {1:x}" -f $Address, $Count))
+  if (-not (Test-Path -LiteralPath $f)) { throw "the debugger wrote no dump of $Count bytes at $('{0:x}' -f $Address)" }
+  $b = [IO.File]::ReadAllBytes($f)
+  Remove-Item -LiteralPath $f -ErrorAction SilentlyContinue
+  if ($b.Length -ne $Count) { throw "the debugger dumped $($b.Length) bytes, not $Count" }
+  ,$b
+}
+
+function BigEndian32([byte[]]$B, [int]$At) {
+  $w = New-Object byte[] 4
+  [Array]::Copy($B, $At, $w, 0, 4)
+  [Array]::Reverse($w)
+  [uint64][BitConverter]::ToUInt32($w, 0)
+}
+
+# Exec's IdleCount plus DispCount (`ExecBase + 0x118` and `+ 0x11C`): both only
+# rise while the machine runs, so the sum goes back only when the machine does.
+function Read-ExecCount($Pipe) {
+  $base = BigEndian32 (Read-AmigaBytes $Pipe 4 4) 0
+  if ($base -eq 0) { throw 'ExecBase is zero, so the machine has no Kickstart up' }
+  $b = Read-AmigaBytes $Pipe ($base + 0x118) 8
+  (BigEndian32 $b 0) + (BigEndian32 $b 4)
+}
+
 function Invoke-State([string]$Verb) {
   $deny = Get-LaneDenial
   if ($deny) { $deny; exit 1 }
-  if ($Holder.Contains('..') -or $Holder -cnotmatch '^[A-Za-z0-9._-]{1,64}\z') { 'fail -Holder is not a lane-safe name'; exit 1 }
+  if ($Holder -ceq '.' -or $Holder.Contains('..') -or $Holder.EndsWith('.') -or $Holder -cnotmatch '^[A-Za-z0-9._-]{1,64}\z') { 'fail -Holder is not a lane-safe name'; exit 1 }
   if ($Rest.Count -ne 1 -or $Rest[0] -cnotmatch $StateNamePattern) { "fail $Verb needs one snapshot name of 1-32 letters, digits, - and _"; exit 1 }
   $name = $Rest[0]
   $dir = "$StateRoot\$Holder\$name"
   $file = "$dir\$name"
+  $marker = "$dir\complete"
+  $part = "$StateRoot\$Holder\part~\$name"
   if ($Verb -eq 'discard-snapshot') {
+    Remove-Item -LiteralPath $part -Recurse -Force -ErrorAction SilentlyContinue
     if (-not (Test-Path -LiteralPath $dir)) { "ok nothing to discard for $name"; '<<end>>'; exit 0 }
     Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
     if (Test-Path -LiteralPath $dir) { "fail $dir survived removal"; exit 1 }
@@ -512,20 +556,25 @@ function Invoke-State([string]$Verb) {
     '<<end>>'
     exit 0
   }
+  $want = $null
   if ($Verb -eq 'restore') {
-    $h = Read-StateHead $file
-    if (-not $h -or $h.head -cne '41534620') { "fail there is no snapshot $name for $Holder"; exit 1 }
+    if (-not (Test-Path -LiteralPath $marker -PathType Leaf)) { "fail snapshot $name for $Holder has no completion marker"; exit 1 }
+    $want = Read-Kv $marker
+    if (-not (Test-Path -LiteralPath $file -PathType Leaf) -or
+        (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -cne $want['sha256'] -or
+        $want['count'] -cnotmatch '^[0-9]{1,20}\z') {
+      "fail snapshot $name for $Holder does not match its completion marker"; exit 1
+    }
   }
   $lane = Get-LaneEmulator
   if ($lane.err) { $lane.err; exit 1 }
-  if ($Verb -eq 'snapshot') {
-    if (Test-Path -LiteralPath $dir) { Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue }
-    if (Test-Path -LiteralPath $dir) { "fail the old snapshot at $dir could not be removed"; exit 1 }
-    New-Item -ItemType Directory -Force -Path $dir -ErrorAction Stop | Out-Null
-  }
   $tags = New-Object System.Collections.ArrayList
-  $pipe = $null; $open = $false; $verdict = $null
+  $pipe = $null; $open = $false; $verdict = $null; $pending = $false; $done = $false
   try {
+    if ($Verb -eq 'snapshot') {
+      if (Test-Path -LiteralPath $part) { Remove-Item -LiteralPath $part -Recurse -Force -ErrorAction Stop }
+      New-Item -ItemType Directory -Force -Path $part -ErrorAction Stop | Out-Null
+    }
     Add-Type -Namespace Wish -Name PipeInfo -MemberDefinition '[DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetNamedPipeServerProcessId(IntPtr Pipe, out uint ServerProcessId);'
     $sw = [Diagnostics.Stopwatch]::StartNew()
     $pipe = New-Object IO.Pipes.NamedPipeClientStream '.', 'WinUAE', 'InOut'
@@ -550,34 +599,66 @@ function Invoke-State([string]$Verb) {
       elseif ($again.proc.Id -ne $lane.proc.Id) { $verdict = "fail winuae64 pid=$($again.proc.Id) is not the pid=$($lane.proc.Id) this lane started" }
     }
     if (-not $verdict -and $Verb -eq 'restore') {
+      $snap = [uint64]$want['count']
+      $before = Read-ExecCount $pipe
+      $tags.Add("<<marker>> $marker") | Out-Null
+      $tags.Add("<<count_snapshot>> $snap") | Out-Null
+      $tags.Add("<<count_before>> $before") | Out-Null
       Send-Logged $pipe $sw $tags 0 'restore' "CFG statefile $file"
-      Start-Sleep -Milliseconds $RestoreSettleMs
-      $verdict = "ok restored $name pid=$($lane.proc.Id)"
+      $until = $sw.ElapsedMilliseconds + $RestoreBoundMs
+      $after = $null; $back = $false
+      while (-not $back -and $sw.ElapsedMilliseconds -lt $until) {
+        Start-Sleep -Milliseconds $StatePollMs
+        $after = Read-ExecCount $pipe
+        $back = ($after -ge $snap -and $after -lt $before)
+      }
+      $tags.Add("<<count_after>> $after") | Out-Null
+      if ($back) {
+        Start-Sleep -Milliseconds $RestoreSettleMs
+        $verdict = "ok restored $name pid=$($lane.proc.Id)"
+      } else {
+        $verdict = "fail the machine was not seen to go back to snapshot $name within $($RestoreBoundMs / 1000) s: Exec's count read $after, not between $snap and $before"
+      }
     }
     if (-not $verdict -and $Verb -eq 'snapshot') {
+      $count = Read-ExecCount $pipe
+      $partFile = "$part\$name"
+      $pending = $true
       Send-Logged $pipe $sw $tags 0 'save' 'CFG statefile_save x'
-      Send-Logged $pipe $sw $tags 1 'path' "CFG statefile_path $dir"
-      $tags.Add("<<file>> $file") | Out-Null
+      Send-Logged $pipe $sw $tags 1 'path' "CFG statefile_path $part"
       $until = $sw.ElapsedMilliseconds + $StateBoundMs
-      $last = $null
+      $last = $null; $h = $null
       while ($sw.ElapsedMilliseconds -lt $until) {
         Start-Sleep -Milliseconds $StatePollMs
-        $h = Read-StateHead $file
-        if ($h -and $h.len -gt 0 -and $h.head -ceq '41534620' -and $last -and $last.len -eq $h.len) {
-          $tags.Add("<<bytes>> $($h.len)") | Out-Null
-          $tags.Add("<<header>> $($h.head)") | Out-Null
-          $tags.Add("<<appeared_ms>> $($sw.ElapsedMilliseconds)") | Out-Null
-          $verdict = "ok snapshot $name bytes=$($h.len) pid=$($lane.proc.Id)"
-          break
-        }
+        $h = Read-StateHead $partFile
+        if ($h -and $h.len -gt 0 -and $h.head -ceq '41534620' -and $last -and $last.len -eq $h.len) { $pending = $false; break }
         $last = $h
       }
-      if (-not $verdict) { $verdict = "fail the state file $file did not appear within $($StateBoundMs / 1000) s" }
+      if ($pending) {
+        $verdict = "fail the state file $partFile did not appear within $($StateBoundMs / 1000) s, and WinUAE still holds the pending state save, which the next statefile_path completes"
+      } else {
+        $appeared = $sw.ElapsedMilliseconds
+        $sha = (Get-FileHash -LiteralPath $partFile -Algorithm SHA256).Hash
+        Write-Kv "$part\complete" @{ sha256 = $sha; count = "$count"; bytes = "$($h.len)" }
+        if (Test-Path -LiteralPath $dir) { Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction Stop }
+        Move-Item -LiteralPath $part -Destination $dir -ErrorAction Stop
+        $done = $true
+        $tags.Add("<<file>> $file") | Out-Null
+        $tags.Add("<<bytes>> $($h.len)") | Out-Null
+        $tags.Add("<<header>> $($h.head)") | Out-Null
+        $tags.Add("<<appeared_ms>> $appeared") | Out-Null
+        $tags.Add("<<sha256>> $sha") | Out-Null
+        $tags.Add("<<marker>> $marker") | Out-Null
+        $tags.Add("<<count_snapshot>> $count") | Out-Null
+        $verdict = "ok snapshot $name bytes=$($h.len) pid=$($lane.proc.Id)"
+      }
     }
   } catch {
     $verdict = "fail $($_.Exception.GetType().FullName): $($_.Exception.Message)"
+    if ($pending) { $verdict += '; WinUAE still holds the pending state save, which the next statefile_path completes' }
   } finally {
     if ($pipe) { $pipe.Dispose() }
+    if ($Verb -eq 'snapshot' -and -not $done) { Remove-Item -LiteralPath $part -Recurse -Force -ErrorAction SilentlyContinue }
   }
   if (-not $open) { $verdict; exit 1 }
   $verdict

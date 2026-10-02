@@ -897,7 +897,8 @@ def test_a_directory_the_guest_could_not_make_raises(monkeypatch):
 SNAP_DIR = f"C:\\Amiga\\States\\{HOLDER}\\before-walk"
 SNAP_FILE = f"{SNAP_DIR}\\before-walk"
 SAVE_MSG = "CFG statefile_save x"
-PATH_MSG = f"CFG statefile_path {SNAP_DIR}"
+PATH_MSG = f"CFG statefile_path C:\\Amiga\\States\\{HOLDER}\\part~\\before-walk"
+MARKER = f"{SNAP_DIR}\\complete"
 
 
 def b64(blob: bytes) -> str:
@@ -918,7 +919,7 @@ def state_output(status, messages, extra=(), tags=True):
 
 
 WRITTEN = (f"<<file>> {SNAP_FILE}", "<<bytes>> 511820", "<<header>> 41534620",
-           "<<appeared_ms>> 1400")
+           "<<appeared_ms>> 1400", f"<<marker>> {MARKER}", "<<count_snapshot>> 1000")
 
 
 def saved(messages=None, extra=WRITTEN, status="ok snapshot before-walk bytes=511820"):
@@ -967,23 +968,37 @@ def test_a_setter_reply_other_than_404_fails_the_snapshot():
 
 
 def test_a_state_file_that_never_appeared_is_the_guests_one_sentence():
-    out = saved(extra=(f"<<file>> {SNAP_FILE}",),
-                status=f"fail the state file {SNAP_FILE} did not appear within 15 s")
+    pending = ("the state file x did not appear within 15 s, and WinUAE still holds "
+               "the pending state save, which the next statefile_path completes")
+    out = saved(extra=(), status=f"fail {pending}")
     with pytest.raises(amiga.SnapshotError) as err:
         snap(LaneGuest(out))
-    assert str(err.value) == (f"The guest refused the snapshot: the state file "
-                              f"{SNAP_FILE} did not appear within 15 s")
+    assert str(err.value) == f"The guest refused the snapshot: {pending}"
     assert err.value.receipt["messages"][1]["text"] == PATH_MSG
 
 
-def test_an_ok_snapshot_with_no_file_seen_is_still_a_timeout():
-    with pytest.raises(amiga.SnapshotError, match="did not appear within 15 s"):
+def test_an_ok_snapshot_with_no_file_seen_is_a_timeout_that_names_the_pending_save():
+    with pytest.raises(amiga.SnapshotError,
+                       match="did not appear within 15 s, and WinUAE still holds "
+                             "the pending state save"):
         snap(LaneGuest(saved(extra=(f"<<file>> {SNAP_FILE}",))))
+
+
+def test_a_snapshot_with_no_completion_marker_is_an_error():
+    extra = tuple(t for t in WRITTEN if not t.startswith("<<marker>>"))
+    with pytest.raises(amiga.SnapshotError, match="has no completion marker"):
+        snap(LaneGuest(saved(extra=extra)))
+
+
+def test_a_snapshot_with_no_count_to_verify_against_is_an_error():
+    extra = tuple(t for t in WRITTEN if not t.startswith("<<count_snapshot>>"))
+    with pytest.raises(amiga.SnapshotError, match="no Exec count"):
+        snap(LaneGuest(saved(extra=extra)))
 
 
 def test_a_state_file_that_does_not_start_asf_is_an_error():
     extra = (f"<<file>> {SNAP_FILE}", "<<bytes>> 10", "<<header>> 00000000",
-             "<<appeared_ms>> 1400")
+             "<<appeared_ms>> 1400", f"<<marker>> {MARKER}", "<<count_snapshot>> 1000")
     with pytest.raises(amiga.SnapshotError, match="does not start with ASF"):
         snap(LaneGuest(saved(extra=extra)))
 
@@ -1009,24 +1024,61 @@ def test_a_snapshot_name_that_is_not_a_word_is_refused_before_anything_is_sent(n
     assert guest.calls == []
 
 
-def test_a_holder_that_climbs_is_refused_before_anything_is_sent():
+@pytest.mark.parametrize("holder", ["a..b", ".", "..", "abc."])
+def test_a_holder_windows_would_read_as_another_folder_is_refused(holder):
     guest = LaneGuest(saved())
-    with pytest.raises(ValueError, match="holds .."):
-        snap(guest, holder="a..b")
+    with pytest.raises(ValueError, match="another folder"):
+        snap(guest, holder=holder)
     assert guest.calls == []
 
 
+def restored(text=f"CFG statefile {SNAP_FILE}", counts=(1000, 9000, 1200), marker=True):
+    extra = [f"<<marker>> {MARKER}"] if marker else []
+    extra += [f"<<count_{k}>> {v}" for k, v in zip(("snapshot", "before", "after"), counts)
+              if v is not None]
+    return state_output("ok restored before-walk pid=4242",
+                        [(0, "restore", text, b"404\0")], extra)
+
+
+def restore(guest):
+    return amiga.WinuaePipe(runner=guest).restore("before-walk", HOLDER)
+
+
 def test_a_restore_sends_one_statefile_message_for_the_snapshots_file():
-    guest = LaneGuest(state_output("ok restored before-walk pid=4242", [
-        (0, "restore", f"CFG statefile {SNAP_FILE}", b"404\0")]))
-    receipt = amiga.WinuaePipe(runner=guest).restore("before-walk", HOLDER)
+    guest = LaneGuest(restored())
+    receipt = restore(guest)
     assert guest.calls[0][2].endswith(f"winuae.ps1 restore -Holder {HOLDER} before-walk")
     assert receipt.messages == {(0, "restore"): f"CFG statefile {SNAP_FILE}"}
 
 
+@pytest.mark.parametrize("after", [9000, 9500, 999])
+def test_a_restore_whose_count_did_not_go_back_to_the_snapshot_is_an_error(after):
+    """Exec's counts only rise while the machine runs; only a restored machine reads lower."""
+    with pytest.raises(amiga.SnapshotError,
+                       match=f"not seen to go back to before-walk: Exec's count read "
+                             f"{after}, not between 1000 and 9000"):
+        restore(LaneGuest(restored(counts=(1000, 9000, after))))
+
+
+def test_a_restore_that_reported_no_counts_is_unverified_and_an_error():
+    with pytest.raises(amiga.SnapshotError, match="was not verified"):
+        restore(LaneGuest(restored(counts=(1000, 9000, None))))
+
+
+def test_a_restore_of_a_snapshot_with_no_completion_marker_is_an_error():
+    with pytest.raises(amiga.SnapshotError, match="has no completion marker"):
+        restore(LaneGuest(restored(marker=False)))
+
+
+def test_the_guests_refusal_of_an_unmarked_snapshot_reaches_the_caller():
+    error = amiga.GuestError("winvm ssh failed: fail snapshot before-walk for "
+                             f"{HOLDER} has no completion marker")
+    with pytest.raises(amiga.SnapshotError, match="has no completion marker"):
+        restore(LaneGuest(error=error))
+
+
 def test_a_restore_of_another_file_is_an_error():
-    guest = LaneGuest(state_output("ok restored before-walk pid=4242", [
-        (0, "restore", "CFG statefile C:\\elsewhere", b"404\0")]))
+    guest = LaneGuest(restored(text="CFG statefile C:\\elsewhere"))
     with pytest.raises(amiga.SnapshotError, match="The guest sent"):
         amiga.WinuaePipe(runner=guest).restore("before-walk", HOLDER)
 
@@ -1071,6 +1123,9 @@ def test_the_lane_script_sends_the_pending_save_before_the_folder():
     script = (pathlib.Path(__file__).resolve().parents[2]
               / "tools" / "amiga" / "winuae.ps1").read_text()
     save = script.index("Send-Logged $pipe $sw $tags 0 'save' 'CFG statefile_save x'")
-    path = script.index("Send-Logged $pipe $sw $tags 1 'path' \"CFG statefile_path $dir\"")
-    poll = script.index("$h = Read-StateHead $file", path)
-    assert save < path < poll
+    path = script.index("Send-Logged $pipe $sw $tags 1 'path' \"CFG statefile_path $part\"")
+    poll = script.index("$h = Read-StateHead $partFile", path)
+    assert '$part = "$StateRoot\\$Holder\\part~\\$name"' in script
+    marker = script.index('Write-Kv "$part\\complete"', poll)
+    replace = script.index("Move-Item -LiteralPath $part -Destination $dir", marker)
+    assert save < path < poll < marker < replace
