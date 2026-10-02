@@ -2737,6 +2737,119 @@ because the space bar never does it. The experiment is a running game with a
 companion in the party: clear his `0x111` mid-fight and see whether the menu
 appears on his turn.
 
+### 1.23 The four Amiga trainers, read from the code (#37 (Automap the Amiga version, not just the C64))
+
+**A player who trains at an Amiga hall gets the DOS rule set, not the C64
+one.** On every Amiga title the trainer adds hit points instead of recomputing
+them, leaves the damage the character walked in with, and clamps experience
+before the YES/NO prompt. Pool, Curse and Silver Blades store THAC0 from
+their DOS tables, and no Amiga trainer writes `turn_class` or `attack_level`
+(every writer of either sits outside the trainer and its recompute). So `goldbox/levelup.py`, which
+copies the C64 trainers, does not describe an Amiga level-up. Every claim below
+is graded from a static read of the player's executables with
+`tools/amiga/amiga68k.py`. The live check, a record dumped before and after a
+training at the game's own hall, is stage R6l on the issue and has not run.
+
+| title | executable (sha256 prefix) | trainer | recompute it calls | hit points |
+|---|---|---|---|---|
+| Pool of Radiance | `/program` `b1cbbecc0188` | `0x18ED8` (hunk 10) | `0x3D682` | inline, die `0x1A86C`, bonus `0x1A51C` |
+| Curse | `/Curse` `8d4ceba86e4b` | `0x16910` | `0x38A52` | inline, die `0x16718`, bonus `0x16310` |
+| Silver Blades | `/Secret` `ba6c8b5ed94b` | `0xDF3E` | `0x3C802` | `0xB8C4`, bonus `0x17A1C` |
+| Pools of Darkness | `/Pools of Darkness` `a572e95a7bc0` | `0x3D106` | `0x3C238` | `0x24334` |
+
+Each trainer was found through the `pea` of its own `we only train conscious
+people` string. Each recompute is also called from that title's party-append
+routine (Pool `0x26EAE`, Curse `0x26E2C`, Pools of Darkness `0x27394`), so
+loading a save rewrites every derived field the recompute owns. CONFIRMED from
+the code for Pool, Curse and Pools of Darkness. For Silver Blades the append
+call was not looked for.
+
+#### Who may train
+
+| | Pool | Curse | Silver Blades | Pools of Darkness |
+|---|---|---|---|---|
+| status byte must be 0 | `+0x10E` | `+0x19A` | `+0x143` | `+0x05E` |
+| money | 1000 gp | 1000 gp, unless a free-training flag is set | **none** | **none** |
+| hall filter | the hall word at savegame `0xD51` | its low byte | its low byte | **none** |
+| classes raised per YES | every ready class the hall takes (one, in practice) | **one**: the ready class with the largest next threshold (`0x16C7E`), PROBABLE | every ready class the hall takes | every ready class, to level 40 |
+| thresholds | the C64's | C64 except ranger 2 = 2251, fighter 11 = 750001 | C64 except those two and paladin 15 = 2460001 | `levels.POOLS_OF_DARKNESS`, 234 of 234 |
+
+All four test experience with `>=` against the stored number, and a class at
+its ceiling has a threshold of `-1` or 0, which never qualifies. The race
+limits are hard-coded and **read in-force strength, and intelligence for an elf
+or half-elf magic-user**, where the C64 tables are fixed. Pool's elf fighter,
+for example, stops at 5, at 6 with STR 17, and at 7 with STR 18, against the
+C64's flat 7. Curse and Silver Blades do the same for their own race numbers.
+Silver Blades also stops an elf or gnome cleric at 7, and Pools of Darkness a
+gnome cleric. No
+Amiga title limits a half-orc, which the C64 Pool and Curse do (cleric 4,
+thief 8). The full tables are in the four comments on the issue. CONFIRMED from
+the code.
+
+**The experience clamp runs before the prompt, whether or not anything
+trains.** For a single-class character all four leave
+`min(experience, T(L+2) - 1)`, as `docs/194-the-dos-training-ladder.md`
+measured on DOS Pool of Radiance. For a multi-class character the candidates
+differ by title: Pool and Curse count only classes already at or past their
+two-up threshold, while Silver Blades counts every unblocked class. PROBABLE
+for the multi-class case.
+
+#### What a YES writes, against the C64
+
+| field | Amiga, every title | the C64 trainer |
+|---|---|---|
+| class level | `+1` | the same, but Curse raises every ready class |
+| `level` | raised to the highest class level | the same |
+| `thac0_base` | best of the DOS table over **every** class slot, level 0 included (Pools of Darkness through an effective-level routine, not read) | the C64 table. Curse's and Silver Blades' Amiga rows equal `levels.dos_thac0` row for row |
+| `attack_forms[0]` | Pool writes 2 or 3 outright for everyone; Curse, Silver Blades and Pools of Darkness only raise it (3, then 4) | Pool only raises it; Curse and Silver Blades write it outright |
+| saves | 20, then the best DOS table cell over held classes. Curse adds the DOS constitution steps on column 0 only. Pools of Darkness not read | the C64 mask rule, plus the racial step on columns 0, 2 and 4 in the later titles |
+| spell capacity | **stored** by Pool, Curse and Silver Blades, rebuilt from tables; Pools of Darkness not read | Pool stores it; Curse and Silver Blades never do |
+| cleric, paladin and ranger spells | granted whole, as on the C64 | the same |
+| magic-user spell | a forced menu when the magic-user level rose; in the later titles also whenever a ranger is above 8 | a menu when the magic-user level rose |
+| thief skills | Pool and Curse: level + race + **dexterity** on the first five, from the DOS rows (dexterity 10 reads `-19` for pick pockets); Silver Blades and Pools of Darkness not compared | Pool: level + race only. Curse: the AD&D dexterity rows (`-10` at 10, `+5` open locks at 16) |
+| `turn_class`, `attack_level` | **not written** | both written |
+| `levels_drained`, `hp_lost_to_drain` | per class raised: `hp_lost -= hp_lost / drained`, then `drained -= 1` (Pools of Darkness has neither field) | the count only |
+| `hp_rolled` | `+= max(1, die / classes)`, only once `level > former_level` in the later titles | the C64 rule, with a random round-up and no minimum in the later titles |
+| `hp_max` | **`+= (die + bonus) / classes`, at least 1** (Pool and Curse); `+= max(1, die / classes) + bonus / classes` (Silver Blades, Pools of Darkness) | recomputed from `hp_rolled` and the constitution bonus |
+| `hp_current` | **`new maximum - (old maximum - old current)`**; Pools of Darkness clamps at 0 | healed to the new maximum |
+
+The die is the C64's per class: one roll on Pool (`2*sides/3` minimum only
+at level 1, so never at a trainer; **no fighter minimum of 4**), two rolls
+keeping the higher on the later titles. Past each class's cap it is a fixed
+number; Curse's and Silver Blades' caps and fixed numbers match `levels.py`'s
+`roll_to` and `flat` entry for entry. The constitution bonus is AD&D's
+(3: -2; 4-6: -1; 15: +1; 16+: +2; a fighter group adds up to +5 from 17). Pool
+and Curse grant the fighter extra by `char_class`, Silver Blades and Pools of
+Darkness by the class being rolled. **Silver Blades rolls a die for every class
+the character holds, not only the trained one**: `0xB8E8` tests the trained
+mask for non-zero and never ANDs it with the class bit, where Pools of
+Darkness' `0x24374` does. PROBABLE. CONFIRMED from the code for the rest of
+this table, except where graded.
+
+#### Not established, and what would settle it
+
+* **The Curse and Silver Blades save rebuild reads one class slot past the
+  array.** After the slot loop the index is 8 (Curse, `0x38ECC`) or 7 (Silver
+  Blades, `0x3CC90`). The trailing compare then reads the former cleric level
+  against the sex byte, and lowers every save to a cell past the table (Curse
+  `0 0 0 1 0` for sex 0; Silver Blades `1 1 2 3 4`). SPECULATIVE in effect: none
+  of the 120 Curse and 144 Silver Blades records on this machine's Amiga disks
+  has a former cleric level. Dual-class a male human cleric 2 or above to fighter
+  in either game, save, and read the five save bytes. Those values confirm it;
+  the fighter row refutes it. This also bears on
+  `levels.SECRET_OF_THE_SILVER_BLADES.dos_save_trailing_slot`, which reads the
+  DOS compare as landing on the last real slot.
+* **Pools of Darkness' saves, capacity and thief skills** (`0x3C5AC`, `0x3BE7C`,
+  `0x3C7DE`) were not read. Neither was a second, unreferenced copy of its
+  trainer strings at `0x3790A`-`0x37B54`, which includes `not enough money.`
+* **Pools of Darkness' ready flag and trainer disagree on race limits.**
+  `0x1B500` reads the table `g1BA0` (gnome cleric 0) as well as the hard-coded
+  rules, and the trainer reads only the hard-coded ones (gnome cleric 7). So a
+  gnome cleric could train without the name ever showing ready. PROBABLE.
+* **Curse's one-class rule** and **Silver Blades' every-class die** each want
+  one multi-class training in R6l: a two-class character ready in both, with
+  the record dumped before and after.
+
 ## 2. The assumption to test first: can Amiga PoD read a C64 character?
 
 Donald flagged this himself and asked for it to be checked rather than
