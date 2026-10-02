@@ -38,7 +38,7 @@ from PyQt6.QtWidgets import (
 )
 
 from . import actions as engine
-from . import fasttravel
+from . import amigatrip, fasttravel
 from .area import ResidentGeo
 from .config import Settings
 from .panel import (
@@ -53,6 +53,7 @@ from .target import NotConnected
 #: it up when the log is on and its level swallows it when the log is off --
 #: and this module still imports nothing from `wish`.
 _log = logging.getLogger("wish.automap.fasttravel").info
+_warn = logging.getLogger("wish.automap.fasttravel").warning
 
 
 class _OnePoll:
@@ -594,7 +595,12 @@ class FastTravelBar(QObject):
     def use_amiga(self, action, title: str, game=None) -> None:
         """Offer an Amiga title's trips: `action` runs them, `title`'s areas
         fill the dropdown. Rows and verdicts are rebuilt on the next refresh."""
-        if not self._amiga:
+        if self._amiga:
+            self._drop_trip()
+        else:
+            # A two-hop trip the C64 action is waiting on must not be made
+            # after the C64 comes back.
+            self.fasttravel.cancel_pending()
             self._c64_fasttravel = self.fasttravel
             self._c64_title = (self.title, self.game)
         self._amiga = True
@@ -607,7 +613,7 @@ class FastTravelBar(QObject):
         """Put the C64 action and the window's title back."""
         if not self._amiga:
             return
-        self.fasttravel.cancel_pending()
+        self._drop_trip()
         self._amiga = False
         self.fasttravel = self._c64_fasttravel
         self._c64_fasttravel = None
@@ -739,11 +745,36 @@ class FastTravelBar(QObject):
 
     # -- the poll ----------------------------------------------------------
 
+    def _drop_trip(self) -> None:
+        """Forget the trip in flight, putting an Amiga's back first.
+
+        An armed Amiga trip has left statements and a key in the game, and
+        forgetting it would leave them there. The machine it was armed on is
+        still `self.target`: put it back if that can still be read, and say so
+        in the log if it cannot.
+        """
+        trip = getattr(self.fasttravel, "trip", None)
+        if trip is not None and self.target is not None:
+            try:
+                put_back = amigatrip.disarm(self.target, trip.armed)
+            except Exception:                           # noqa: BLE001
+                _warn("an armed Amiga trip was left in the game: the machine "
+                      "could not be read to put it back")
+            else:
+                if put_back:
+                    self.fasttravel.back = trip.previous_back
+                else:
+                    _log("an Amiga trip had already fired when it was dropped")
+        elif trip is not None:
+            _warn("an armed Amiga trip was left in the game: no machine to "
+                  "put it back on")
+        self.fasttravel.cancel_pending()
+
     def attach(self, target) -> None:
         if target is None:
             # The machine a two-hop trip started in is gone, so nothing may be
             # written into whatever is attached next.
-            self.fasttravel.cancel_pending()
+            self._drop_trip()
         self.target = target
         self.unsupported = None
         self.refresh()

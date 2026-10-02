@@ -360,3 +360,78 @@ def test_a_c64_window_is_unchanged(lengths):
     assert type(bar._idle_poll()) is actionbar._NotAskingThePC
     assert amigatrip.ROWS            # the Amiga table exists and was not used
     assert lengths == []
+
+
+# -- a trip dropped while it is armed ---------------------------------------------
+
+def armed(lengths):
+    window, target = attached(CURSE, GUILD, ticked=(SEWERS,))
+    before = bytes(target.ram)
+    pick(window, SEWERS)
+    window.fasttravel_bar.button.click()
+    assert window.fasttravel_bar.fasttravel.trip is not None
+    assert bytes(target.ram) != before
+    return window, target, before
+
+
+def test_a_wrong_game_while_a_trip_is_armed_puts_it_back(lengths):
+    from automap.area import NOT_OURS
+    window, target, before = armed(lengths)
+    window.mapper.title_check = NOT_OURS
+    window._refresh_roster()
+    bar = window.fasttravel_bar
+    assert bytes(target.ram) == before
+    assert bar.fasttravel.trip is None and bar.fasttravel.back is None
+    assert bar.unsupported
+
+
+def test_attaching_nothing_while_a_trip_is_armed_puts_it_back(lengths):
+    window, target, before = armed(lengths)
+    window.fasttravel_bar.attach(None)
+    assert bytes(target.ram) == before
+    assert window.fasttravel_bar.fasttravel.trip is None
+
+
+def test_leaving_the_amiga_while_a_trip_is_armed_puts_it_back(lengths):
+    window, target, before = armed(lengths)
+    window.mapper.target = MemoryTarget(c64_memory())
+    window._refresh_roster()
+    assert bytes(target.ram) == before
+
+
+def test_an_unreadable_machine_leaves_the_writes_and_says_so(lengths, caplog):
+    import logging
+    window, target, before = armed(lengths)
+    target.fail_at.add(BASE + trips.ROWS[CURSE].area)
+    with caplog.at_level(logging.WARNING, logger="wish.automap.fasttravel"):
+        window.fasttravel_bar.attach(None)
+    assert window.fasttravel_bar.fasttravel.trip is None
+    assert bytes(target.ram) != before
+    assert any("left in the game" in r.getMessage() for r in caplog.records)
+
+
+def test_a_trip_that_fired_is_not_put_back_when_dropped(lengths):
+    window, target, _ = armed(lengths)
+    tick_away(target, CURSE, SEWERS)
+    window.fasttravel_bar.attach(None)
+    assert window.fasttravel_bar.fasttravel.trip is None
+    assert target.ram[BASE - SLOW + trips.ROWS[CURSE].area] == SEWERS
+
+
+# -- the C64's two-hop trip does not survive a visit to the Amiga ----------------
+
+def test_a_c64_two_hop_trip_is_forgotten_when_an_amiga_attaches(lengths):
+    window = window_on(MemoryTarget(c64_memory()))
+    c64_action = window.fasttravel_bar.fasttravel
+    c64_action.pending = object()
+    amiga_target = FakeAmiga(c64_memory(), CURSE)
+    lay_party(amiga_target, CURSE, mode=trips.ROWS[CURSE].world_mode)
+    at_world_menu(amiga_target, CURSE, GUILD)
+    window.disks = "disks"
+    window.mapper.target = amiga_target
+    window._refresh_roster()
+    assert c64_action.pending is None
+    window.mapper.target = MemoryTarget(c64_memory())
+    window._refresh_roster()
+    assert window.fasttravel_bar.fasttravel is c64_action
+    assert c64_action.pending is None
