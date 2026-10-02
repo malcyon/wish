@@ -783,11 +783,10 @@ its gate is the mode and view bytes only.
 **Where the statements go.** The statements are 21 bytes, 27 with the
 area-file `SAVE`. No reachable statement in any Pool of Radiance (29),
 Curse (25) or Silver Blades (22) script names an address past its own end.
-That is CONFIRMED by walking every script on the player's disks. Pools of
-Darkness is unsettled, because its operand counts differ from Silver Blades'
-for opcodes `$0C`, `$21`, `$27`, `$2C` and `$37`. Seventeen scripts leave fewer
-than 21 free bytes: Pool 4, Curse 1, Silver Blades 4, Pools of Darkness 8.
-Two of those leave fewer than the 3 bytes of `NEWECL` alone.
+That is CONFIRMED by walking every script on the player's disks, and it holds
+for Pools of Darkness too, now that its scripts are walked with its own operand
+counts; the next section has the count, the free bytes per area and what the
+two scripts with 2 free bytes can use instead.
 
 **What the arriving script does.** It runs as it does for a walked exit, so
 it may place the party itself. On a Return in Curse and in Pools of Darkness
@@ -809,6 +808,137 @@ and 3 of 30 idle samples were in supervisor code, so it is not safe there.
 The three live runs, the static reading per title and the open design
 questions are the R5 comments on #37 (Automap the Amiga version, not just the
 C64).
+
+### Fast Travel's free bytes, init entries and gates, read from the code
+
+`tools/amiga/tripspace.py` computes each area's free bytes from the player's
+disks at run time; `tripspace.py refs TITLE` repeats the script walk. Static
+reads of `/program`, `/Curse` (`8d4ceba86e4b`), `/Secret` (`ba6c8b5ed94b`) and
+`/Pools of Darkness` (`a572e95a7bc0`, `6f8fee2dd8ea`, `7dfac2362807`).
+
+**Free bytes are `0x1E00` less the script's length on disk.** CONFIRMED from
+the loaders: Pool of Radiance (`0x9718`) copies an `ecl.dax` block from its
+third byte, so the length is the index's unpacked size less 2. Curse,
+Silver Blades and Pools of Darkness read the whole `ECL.GLB` block that block
+0's `(area, block)` table names (Curse `0x13C2C`; Silver Blades' `0x1722A` is
+the same routine). No loader caps the copy at `0x1E00`, and no script on the
+player's disks is longer. The tier counts below agree, area for area, with
+`automap/amigatrip.py`'s `script_lengths` (132 of 132):
+
+| Library on disk | Scripts | Not tier 1 | Fewer than 3 bytes free |
+|---|---|---|---|
+| Pool `ecl.dax` (`18266efce854`) | 29 | 1, 10, 20, 24, 28 (tier 3 once the 52-byte message is counted) | none; area 20 has exactly 3 |
+| Curse `ECL.GLB` (`d9529ba83f50`) | 25 | 16 (16 free) | none |
+| Silver Blades `ECL.GLB` (`8c247ad1e1ac`) | 22 | 32, 50, 65, 66 | none |
+| Pools of Darkness `ECL.GLB` (`becddc5926af`, four of the player's disk sets) | 56 | 16, 20, 32, 33, 37, 50, 52, 66 | 32 and 66 (2 each) |
+| Pools of Darkness `ECL.GLB` (`adb9afbd3eca`, the `[a]` set) | 56 | 20, 22, 69, 74, 81, 83 | none |
+
+The two Pools of Darkness libraries are different releases of the scripts, and
+the `[a]` set's executable is packed, so its operand counts were not read.
+
+**Pools of Darkness' operand counts are its skip switch's.** CONFIRMED: the
+routine a false `IF` calls to step over the next statement (`0x1182E`) is a
+switch with one case per opcode, each loading a fixed number of operands or a
+fixed number and then as many more as the last one says. Against Silver
+Blades' table, eleven opcodes differ: `$0C` 4, `$1D` 0, `$1F` 1, `$21` 2, `$22`
+0, `$23` 0, `$27` 4 then counted, `$29` 0, `$2C` 1, `$31` 2 then counted, `$37`
+2. Each agrees with the opcode's own handler; `$23` clears the text window and
+ends in the `EXIT` handler, so nothing runs after it. Walked with these counts,
+33,715 statements in 56 scripts decode with none undecodable and none naming
+the free tail; with Silver Blades' counts the same scripts give 547
+undecodable offsets and 9 tail references. The `[a]` library, walked with the
+same counts, gives 33,754 statements and none of either (PROBABLE for that
+release, whose own executable was not read).
+
+**Curse's and Silver Blades' skip switches step over six opcodes differently
+from their handlers**: one byte over `$15`, `ONGOTO`, `ONGOSUB` and
+`HORIZMENU`, one operand over `$34` and `$36`. No reachable `IF` in the 47
+scripts is followed by one of them, so no player meets it. Walked with the
+handlers' counts, Curse gives 14,183 statements and Silver Blades 15,321, with
+none undecodable and none naming the tail, which agrees with the walk made
+with the C64 tables. CONFIRMED.
+
+**The init entry is the room for the two scripts with 2 free bytes.**
+CONFIRMED from the code for Pools of Darkness: the init entry runs only in the
+loop after `NEWECL` loads a script (`0x20180`) and on the start and load path
+(`0x2028A`), which reloads the script from disk first (`0x10502`) whatever the
+saved game holds. In both scripts the init entry is `$8014`, its first
+statement is 6 bytes, and no statement reachable from the other four entries
+covers or names its first 3 bytes. So `NEWECL` written over `$8014`, with the
+step entry pointed there, runs only through Wish's redirect, and a trip that
+does not fire puts the 3 bytes back. Pool of Radiance (`0x2B216`, when
+`h32+0xBF` is set) and Curse (`0x20B0A`, when `g5856` is set) skip that reload
+and run the init entry over the buffer they already hold, so there a save made
+while an init patch is armed would run it on load. Neither needs the patch for
+`NEWECL`. Pool's five tier-3 areas have 67 to 288 bytes from their init entry
+that no statement from another entry covers, enough for the 52-byte message,
+with that risk; PROBABLE, because that count does not look for operands naming
+those bytes.
+
+**Pool of Radiance's world menu leaves its gadgets on the window.** The
+mechanism is CONFIRMED from the code and the marker is PROBABLE until read
+live: `displayInput` (`0x319FE`) adds one boolean gadget per menu
+word to the game window (`[h32+0x28]`) with `AddGadget` at position 0, and
+removes them all with `RemoveGadget` on each of its six ways out, so while the menu waits
+the window's `FirstGadget` (`+0x3E`) chain holds them. The gadgets are in the
+routine's stack frame, `0x2C` bytes each: `TopEdge` (`+0x06`) 192,
+`Height` (`+0x0A`) 8, `GadgetID` (`+0x26`) 1000 upwards, `LeftEdge` (`+0x04`)
+eight times the word's column and `Width` (`+0x08`) eight times its length plus
+2. The world menu (`0x2F39E`, view 1) has no prefix, so its six gadgets, head
+first, are IDs 1005 to 1000 at left 232, 176, 120, 80, 40, 0 and width 34, 50,
+50, 34, 34, 34. The 3D menu is waiting when the mode byte is 4, the view is 1
+and that chain is at the head of the list. To settle it: on FS-UAE at the
+3D menu, read `[[h32+0x28]+0x3E]` and walk `+0x00` six times, expecting those
+values; at a YES/NO prompt and at a "PRESS RETURN" text, expect another
+chain or none.
+
+**Every title sets the area byte before the new script loads.** CONFIRMED
+from the four `NEWECL` handlers: each stores the came-from word, then the new
+area id (Pool `h32+0x2F73`, Curse `g5ce1`, Silver Blades `g79c9`, Pools of
+Darkness `g7a0a`), then calls the loader, which shows "Loading" and opens the
+library, so any disk prompt comes later. A trip watched by its area byte is
+seen to fire before the player is asked for a disk.
+
+**The area-file byte decides which monsters and items load, not which script.**
+The loaders name `ECL%d` (Curse, Silver Blades) with the area-file byte, then
+look the area up in block 0 and, only if it is missing, look up 100 times the
+file number plus the area. CONFIRMED from the code. No `ECL.GLB` or `GEO.GLB`
+id on the player's disks is 100 or more, so a missing area-file write never
+loads the wrong script or map. Curse's `MONCHA.GLB` (16 ids), `MONITM.GLB`
+(10) and `MONSPC.GLB` (6), and Silver Blades' `ITEM.GLB` (5), do hold such
+ids, so the byte decides which of those the arriving area finds. The scripts
+set it in 25 Curse and 36 Silver Blades statements, and every value written
+just before a `NEWECL` with a fixed destination matches that destination's
+`disk` in `goldbox/areas.py` (12 of 12 and 11 of 11 destinations). So the `SAVE` is needed when the destination's disk differs
+from the byte's current value. PROBABLE: that the byte is `$7F12`, which the
+scripts write, and that the VM's `$7F12` reaches `g5858` (Curse) and `g5191`
+(Silver Blades) through the routine at Curse `0x13CCA` and Silver Blades
+`0x172C8`, which also keep the old value in `g5b61` and `g5192`. A tier-2
+direct write should set both. Pools of Darkness loads a fixed `ECL1` and has
+no such byte.
+
+**Silver Blades' gate is Curse's.** PROBABLE, from the code: at mode 4
+(`g525c`, dispatch at `0x2EDB2`) the world menu calls the horizontal menu at
+`0x2A736`, which sets the menu kind `g2384` to 1 and copies the menu text into
+`g4a5e`; `g2384` is 2 in the key wait at `0x29FFC`. The one-key buffer
+(`g4f6c` flag, `g4f6d` character) is filled and read by the same routine as
+Curse's `g3804`, address for address. FT-L1 reads it live.
+
+**Curse's opening in Tilverton has no "done" flag.** CONFIRMED from the
+script: area 1's init entry compares the came-from word `$4BF2` with 1 and
+exits if they are equal; otherwise it places the party at 7,13 N and runs the
+opening. No quest flag takes part. The C64's `ECL01` has the same test. No
+script sends a party to area 1 (0 of 47 `NEWECL` statements in Curse's 25
+scripts), so a party reaches area 1's init from another area only on a new
+game and on a trip. So every Fast Travel or Return into area 1 from another
+area replays the opening; PROBABLE on the C64, which FT-C1 runs. PROBABLE: a
+save made in area 1 holds `$4BF2` = 1, because the word takes the current
+area once the init entry returns, so loading it does not replay the opening.
+SPECULATIVE: writing the area byte `g5ce1` to 1 just before the key would make
+`NEWECL` store 1 as came-from and skip the opening. `g5ce1` has no VM setter,
+so a script `SAVE` cannot do it. To settle it: in FT-L1, arm a Curse trip from
+area 3 to area 1 with `g5ce1` = 1 written with the key, and check that no
+opening text appears and that the came-from word reads 1.
 
 ### What is not built
 
