@@ -28,9 +28,12 @@ from . import amiga
 
 _log = logging.getLogger("wish.automap.amigaactions")
 
-#: Shown while a title, a backend or an action is not built. Today's tooltip
-#: text, which stays until the sentence is chosen.
-NOT_BUILT = "no emulator attached"
+
+
+def unsupported(title: str) -> str:
+    """What a greyed Action button reads while an Amiga title is attached: the
+    approved `actions.UNSUPPORTED` sentence with the platform added."""
+    return engine.UNSUPPORTED.format(title=f"{title} (Amiga)")
 
 #: Spell lists are stored under this prefix plus the `amiga.MACHINES` key, so a
 #: list saved on the C64 is never restored into an Amiga record.
@@ -123,17 +126,17 @@ class _AmigaAction:
 
     def legality(self, target) -> engine.Verdict:
         if target is None:
-            return engine.Verdict(False, NOT_BUILT)
+            return engine.Verdict(False, "no emulator attached")
         parties = _parties()
         row = _row(target, self.key)
         if row is None or self.name not in row.confirmed:
-            return engine.Verdict(False, NOT_BUILT)
+            return engine.Verdict(False, self.not_built)
         spot = getattr(row, self.WHOLE_BYTES, None) if self.WHOLE_BYTES else None
         if self.WHOLE_BYTES and (spot is None or not _whole_bytes(spot)):
-            return engine.Verdict(False, NOT_BUILT)
+            return engine.Verdict(False, self.not_built)
         if (self.name != "store-spells"
                 and not getattr(_unwrap(target), "can_write", False)):
-            return engine.Verdict(False, NOT_BUILT)
+            return engine.Verdict(False, self.not_built)
         state = parties.mode(_unwrap(target))
         if state is None:
             return engine.Verdict(False, "the machine is not readable right now")
@@ -144,6 +147,10 @@ class _AmigaAction:
     #: The row field this action overwrites whole; a partial mask there is
     #: refused. Empty for the actions that clear bits.
     WHOLE_BYTES = ""
+
+    @property
+    def not_built(self) -> str:
+        return unsupported(amiga.MACHINES[self.key].title)
 
     def _party(self, target):
         parties = _parties()

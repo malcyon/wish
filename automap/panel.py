@@ -882,6 +882,12 @@ class RosterPanel(QObject):
             if not allowed and card.level_up is not None:
                 card.level_up.hide()
 
+    def set_level_up_tooltip(self, text: str) -> None:
+        """What every card's Level up button says; empty restores the default."""
+        for card in self.cards:
+            if card.level_up is not None:
+                card.level_up.setToolTip(text)
+
     def set_message(self, text: str) -> None:
         """No party to show. Says why rather than showing empty cards."""
         if self.heading is not None:

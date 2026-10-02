@@ -145,6 +145,9 @@ class ActionBar(QObject):
         self.last: engine.Outcome | None = None
         self.target = None          # what the window last attached
         self.disk = ""              # and which save it is, for SpellStore
+        #: The tooltip for every button while an Amiga title is attached and
+        #: these C64 actions have nothing to act on. None the rest of the time.
+        self.unsupported: str | None = None
 
         self.buttons: dict[str, ElidingButton] = {}
         for action, name in zip(self.actions, self.BUTTON_NAMES):
@@ -193,6 +196,11 @@ class ActionBar(QObject):
         With no target attached every verdict is False with a reason, so the
         buttons are disabled rather than merely inert.
         """
+        if self.unsupported is not None:
+            for button in self.buttons.values():
+                button.setEnabled(False)
+                button.setToolTip(self.unsupported)
+            return
         once = None if target is None else _OnePoll(target)
         for action in self.actions:
             verdict = action.legality(once)
@@ -252,7 +260,14 @@ class ActionBar(QObject):
         """
         self.target = target
         self.disk = disk
+        self.unsupported = None
         self.refresh(target)
+
+    def attach_unsupported(self, reason: str) -> None:
+        """Nothing to act on, and `reason` is why: every button greyed with it."""
+        self.target = None
+        self.unsupported = reason
+        self.refresh(None)
 
 
 #: How long to wait for an area change before saying it did not happen.
@@ -429,6 +444,8 @@ class FastTravelBar(QObject):
         self._own_areas = areas is not None
         self.rows = self.all_rows
         self.target = None
+        #: As `ActionBar.unsupported`.
+        self.unsupported: str | None = None
         self.last: engine.Outcome | None = None
         #: `(GEO names to watch for, when to give up)`, while a fasttravel is in
         #: flight. None the rest of the time, which is when the extra read
@@ -606,9 +623,16 @@ class FastTravelBar(QObject):
             # written into whatever is attached next.
             self.fasttravel.cancel_pending()
         self.target = target
+        self.unsupported = None
         self.refresh()
         self.check_arrival()
         self.check_second_hop()
+
+    def attach_unsupported(self, reason: str) -> None:
+        """Nothing to travel with, and `reason` is why."""
+        self.attach(None)
+        self.unsupported = reason
+        self.refresh()
 
     def check_second_hop(self) -> None:
         """Let a two-hop trip make its second hop, if the party has walked
@@ -689,6 +713,12 @@ class FastTravelBar(QObject):
         # gate and once for `FastTravel`'s, and each read hands the emulation
         # ~14.3 ms of extra emulated time (#152). The proxy also answers the
         # program counter as idle: see `_NotAskingThePC`.
+        if self.unsupported is not None:
+            for widget in (self.combo, self.button, self.back_button):
+                if widget is not None:
+                    widget.setEnabled(False)
+                    widget.setToolTip(self.unsupported)
+            return
         once = self._idle_poll()
         area = self.area()
         if self.combo is not None:

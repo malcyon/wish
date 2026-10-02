@@ -55,7 +55,7 @@ from goldbox.world import (
 )
 from ui.iconpaint import draw_icon
 
-from . import actions, combat, live, rolls
+from . import actions, amigaactions, combat, live, rolls
 from . import notes as notemod
 from .actionbar import ActionBar, FastTravelBar
 from .area import NOT_OURS
@@ -1395,6 +1395,17 @@ class AutomapBinding(QObject):
         """Re-read the party and redraw the cards. Called by the poll, and
         straight after a write that changes what a card shows."""
         target = self.mapper.target
+        amiga_title = getattr(getattr(target, "layout", None), "title", None)
+        if not getattr(target, "c64_memory", True) and amiga_title:
+            # An Amiga is attached and none of these buttons is built for it:
+            # same disable as below, with the reason that is true.
+            reason = amigaactions.unsupported(amiga_title)
+            self.actions_bar.attach_unsupported(reason)
+            self.fasttravel_bar.attach_unsupported(reason)
+            self.roster.set_level_up_tooltip(reason)
+            self.roster.set_stale(True)
+            self._show_strip(self.snapshot)
+            return
         if (self.mapper.title_check is NOT_OURS
                 or not getattr(target, "c64_memory", True)
                 or not self._c64_title()):

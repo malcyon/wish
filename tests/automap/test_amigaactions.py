@@ -10,6 +10,7 @@ from automap import actions as engine
 from automap import amigaactions as aa
 
 BASE = 0x1000
+CURSE_TEXT = "ERROR: Action unsupported on Curse of the Azure Bonds (Amiga)."
 
 
 class Spot(SimpleNamespace):
@@ -183,20 +184,20 @@ def test_the_row_can_mark_an_action_combat_legal(world, store):
 @pytest.mark.parametrize("name", sorted(ALL))
 def test_an_unconfirmed_action_is_not_built(world, store, name):
     world.row = make_row(confirmed=ALL - {name})
-    assert acts(store)[name].legality(world.target).reason == aa.NOT_BUILT
+    assert acts(store)[name].legality(world.target).reason == CURSE_TEXT
 
 
 @pytest.mark.parametrize("name", sorted(ALL))
 def test_a_title_with_no_row_is_not_built(world, store, name):
     world.row = None
     verdict = acts(store)[name].legality(world.target)
-    assert not verdict and verdict.reason == aa.NOT_BUILT
+    assert not verdict and verdict.reason == CURSE_TEXT
 
 
 def test_without_amigaparty_everything_is_not_built(monkeypatch, store):
     monkeypatch.setattr(aa, "_parties", lambda: None)
     for a in aa.actions(store, "pool-of-radiance"):
-        assert a.legality(Target()).reason == aa.NOT_BUILT
+        assert a.legality(Target()).reason == "ERROR: Action unsupported on Pool of Radiance (Amiga)."
 
 
 def test_a_target_that_cannot_write_disables_all_but_save_spells(world, store):
@@ -266,9 +267,9 @@ def test_heal_writes_a_wide_field_big_endian_and_never_past_the_ceiling(world, s
 def test_a_partial_mask_on_an_overwritten_field_is_refused(world, store):
     for field, name in (("hp", "heal"), ("memorised", "restore-spells")):
         world.row = make_row(**{field: Spot(offset=0x10, length=1, mask=0x0F)})
-        assert acts(store)[name].legality(world.target).reason == aa.NOT_BUILT
+        assert acts(store)[name].legality(world.target).reason == CURSE_TEXT
     world.row = make_row(hp=None)
-    assert acts(store)["heal"].legality(world.target).reason == aa.NOT_BUILT
+    assert acts(store)["heal"].legality(world.target).reason == CURSE_TEXT
 
 
 def test_restore_with_nothing_to_change_is_a_no_op(world, store):
@@ -305,7 +306,7 @@ def test_identify_skips_a_node_too_short_and_goes_on(world, store):
 def test_a_key_for_another_title_than_the_target_is_not_built(world, store):
     world.members = [Member("A", BASE, 3, 9, memorised=bytes(4))]
     for action in aa.actions(store, "secret-of-the-silver-blades"):
-        assert action.legality(world.target).reason == aa.NOT_BUILT
+        assert action.legality(world.target).reason == "ERROR: Action unsupported on Secret of the Silver Blades (Amiga)."
         action.run(world.target)
     assert world.target.mem[BASE + 0x10] == 0
     assert store.get("amiga/secret-of-the-silver-blades", "A") is None
@@ -387,4 +388,20 @@ def test_the_real_party_rows_have_what_the_actions_read(key):
     assert isinstance(row.combat_legal, frozenset)
     unconfirmed = [a for a in aa.actions(engine.SpellStore(), key)
                    if a.name not in row.confirmed]
-    assert all(a.legality(target).reason == aa.NOT_BUILT for a in unconfirmed)
+    assert all(a.legality(target).reason == aa.unsupported(aa.amiga.MACHINES[key].title) for a in unconfirmed)
+
+
+@pytest.mark.parametrize("key, title", [
+    ("pool-of-radiance", "Pool of Radiance"),
+    ("curse-of-the-azure-bonds", "Curse of the Azure Bonds"),
+    ("secret-of-the-silver-blades", "Secret of the Silver Blades"),
+    ("pools-of-darkness", "Pools of Darkness")])
+def test_the_sentence_names_the_title_and_the_platform(key, title):
+    assert aa.unsupported(title) == f"ERROR: Action unsupported on {title} (Amiga)."
+    for action in aa.actions(engine.SpellStore(), key):
+        assert action.legality(Target()).reason == aa.unsupported(title)
+
+
+def test_no_emulator_attached_still_says_so(store):
+    for action in aa.actions(store, "pool-of-radiance"):
+        assert action.legality(None).reason == "no emulator attached"
