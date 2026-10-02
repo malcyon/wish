@@ -2040,8 +2040,12 @@ class FsuaeGdb:
                              "outside chip and slow memory.")
         for i in range(0, len(data), self.MAX_WRITE):
             piece = data[i:i + self.MAX_WRITE]
-            reply = self.ask(f"M{addr + i:x},{len(piece):x}:{piece.hex()}",
-                             timeout)
+            try:
+                reply = self.ask(
+                    f"M{addr + i:x},{len(piece):x}:{piece.hex()}", timeout)
+            except FsuaeError as exc:
+                raise FsuaeError(f"{str(exc).rstrip('.')}; {i} of {len(data)} "
+                                 "bytes were written before it") from exc
             if reply != "OK":
                 raise GuestError(
                     f"the emulator answered {reply!r} to a write of "

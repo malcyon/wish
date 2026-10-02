@@ -500,6 +500,40 @@ def test_a_write_the_emulator_does_not_acknowledge_raises_with_the_address():
             tgt.write(0xC00000, b"\x01")
 
 
+def _second_packet_goes_wrong(guest, answer):
+    """Answer the first `M` normally and the second with `answer`."""
+    real = guest.reply
+    seen = []
+
+    def reply(body):
+        if body.startswith("M"):
+            seen.append(body)
+            if len(seen) == 2:
+                return answer
+        return real(body)
+
+    guest.reply = reply
+
+
+def test_an_error_on_the_second_packet_says_how_many_bytes_were_written():
+    guest = FakeAmiga({0xC00000: bytes(100)})
+    guest.writable = True
+    _second_packet_goes_wrong(guest, "E01")
+    gdb = transport(guest)
+    with pytest.raises(amiga.GuestError, match="64 of 100 bytes were written"):
+        gdb.write_memory(0xC00000, bytes(range(1, 101)))
+    assert guest.peek(0xC00000, 64) == bytes(range(1, 65))
+
+
+def test_a_timeout_on_the_second_packet_says_how_many_bytes_were_written():
+    guest = FakeAmiga({0xC00000: bytes(100)})
+    guest.writable = True
+    _second_packet_goes_wrong(guest, None)
+    gdb = transport(guest)
+    with pytest.raises(amiga.FsuaeError, match="64 of 100 bytes were written"):
+        gdb.write_memory(0xC00000, bytes(100), timeout=0.01)
+
+
 def test_a_write_outside_chip_and_slow_memory_sends_nothing():
     guest = FakeAmiga()
     guest.writable = True
