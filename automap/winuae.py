@@ -128,6 +128,7 @@ class WinuaeLocalPipe:
     BACKOFF = 5.0
 
     #: `write_memory` exists and is checked by reading the range back.
+    #: `AmigaTarget` does not use it yet; stage T1 wires that.
     can_write = True
 
     def __init__(self, pipe: str = "WinUAE", directory=None, api=None,
@@ -328,6 +329,16 @@ class WinuaeLocalPipe:
         The reply to `W` is a receipt of what the debugger parsed, not of what
         memory holds, so the read-back is the check. One to `MAX_WRITE` bytes
         inside chip or slow memory, the range the FS-UAE helper forwards.
+
+        `timeout` is the budget for the whole call, receipts and read-back
+        together. **The write is not atomic:** a range goes out as lines of
+        `WRITE_LINE` bytes, so a failure part-way leaves the earlier lines
+        written, and the error says how many bytes were sent. A line whose
+        reply timed out may still run later. A read-back that differs may
+        mean the game has since changed the bytes, not that the write failed.
+
+        Like `read_memory`, call it from one thread only, the window's: the
+        handle and the reply stream have no lock.
         """
         data = bytes(data)
         if not 1 <= len(data) <= MAX_WRITE:
@@ -337,16 +348,36 @@ class WinuaeLocalPipe:
                    for base, size in MEMORY):
             raise ValueError(f"A write of {len(data)} bytes at {addr:#x} is "
                              "outside chip and slow memory.")
-        wait = self.TIMEOUT if timeout is None else timeout
+        end = self._clock() + (self.TIMEOUT if timeout is None else timeout)
         for i in range(0, len(data), WRITE_LINE):
             chunk = data[i:i + WRITE_LINE]
-            reply = self._request(
-                f"DBG W {addr + i:x} " + " ".join(f"{b:02x}" for b in chunk),
-                wait)
-            _check_write_receipt(reply, addr + i, chunk)
-        if self.read_memory(addr, len(data), timeout) != data:
-            raise PipeError(f"WinUAE took the write at {addr:#x} but the "
-                            "memory reads back different.")
+            try:
+                reply = self._request(
+                    f"DBG W {addr + i:x} " + " ".join(f"{b:02x}" for b in chunk),
+                    self._left(end))
+                _check_write_receipt(reply, addr + i, chunk)
+            except PipeError as exc:
+                raise _partial(exc, i, len(data), "before this line") from exc
+        try:
+            held = self.read_memory(addr, len(data), self._left(end))
+        except PipeError as exc:
+            raise _partial(exc, len(data), len(data),
+                           "and not checked") from exc
+        if held != data:
+            raise PipeError(f"The memory at {addr:#x} differs from the bytes "
+                            "written when read back.")
+
+    def _left(self, end: float) -> float:
+        left = end - self._clock()
+        if left <= 0:
+            raise PipeTimeout("The time for the write ran out.")
+        return left
+
+
+def _partial(exc: PipeError, sent: int, total: int, how: str) -> PipeError:
+    """`exc` again, saying how much of the write had already been sent."""
+    text = f"{str(exc).rstrip('.')}; {sent} of {total} bytes were sent {how}."
+    return type(exc)(text) if type(exc) in (PipeError, PipeTimeout) else PipeError(text)
 
 
 def _check_write_receipt(reply: str, addr: int, chunk: bytes) -> None:

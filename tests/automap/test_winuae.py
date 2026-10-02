@@ -70,6 +70,9 @@ class FakeWinuae:
         self.receipt = None             # a canned reply instead of the real one
         self.memory = bytearray(MEMORY)
         self.write_receipt = None       # a canned reply to a `W`
+        self.write_receipts = []        # canned replies, one per `W`, first
+        self.silent_after = None        # go silent once this many messages are in
+        self.write_cost = 0.0           # clock time each WriteFile takes
         self.ignore_writes = False      # receipts come, memory stays as it was
         self.creates = self.closes = self.cancels = self.waits = 0
         self.modes = []
@@ -105,6 +108,9 @@ class FakeWinuae:
 
     def WriteFile(self, handle, data, overlapped=False):
         self.written.append(bytes(data))
+        self.clock.now += self.write_cost
+        if self.silent_after is not None and len(self.written) > self.silent_after:
+            self.silent = True
         if not self.silent:
             self.pending = self._answer(bytes(data))
         return Ov(self, (data, 0)), winuae.ERROR_IO_PENDING
@@ -146,8 +152,9 @@ class FakeWinuae:
             if not self.ignore_writes:
                 self.memory[addr + i] = value
             lines.append(f"Wrote {value:X} ({value}) at {addr + i:08X}.B\n")
-        reply = (self.write_receipt if self.write_receipt is not None
-                 else "".join(lines)).encode("latin-1") + b"\0"
+        canned = (self.write_receipts.pop(0) if self.write_receipts
+                  else self.write_receipt)
+        reply = (canned if canned is not None else "".join(lines)).encode("latin-1") + b"\0"
         return [(reply, 0)]
 
 
@@ -476,7 +483,7 @@ def test_a_reply_with_too_few_lines_is_an_error(rig):
 def test_a_write_that_reads_back_different_is_an_error(rig):
     pipe, api, *_ = rig
     api.ignore_writes = True
-    with pytest.raises(amiga.PipeError, match="reads back different"):
+    with pytest.raises(amiga.PipeError, match="differs from the bytes written"):
         pipe.write_memory(0x100, b"\xa5")
 
 
@@ -503,3 +510,68 @@ def test_the_ends_of_chip_and_slow_memory_are_accepted(rig):
     api.memory.extend(bytes(0x80000))
     pipe.write_memory(0x80000 - 64, bytes(64))
     assert sum(m.startswith(b"DBG W") for m in api.written) == 4
+
+
+def test_reordered_receipt_lines_are_an_error(rig):
+    pipe, api, *_ = rig
+    api.write_receipt = ("Wrote 5A (90) at 00000101.B\n"
+                         "Wrote A5 (165) at 00000100.B\n")
+    with pytest.raises(amiga.PipeError, match="not the byte sent"):
+        pipe.write_memory(0x100, b"\xa5\x5a")
+
+
+def test_too_many_receipt_lines_are_an_error(rig):
+    pipe, api, *_ = rig
+    api.write_receipt = ("Wrote A5 (165) at 00000100.B\n"
+                         "Wrote A5 (165) at 00000101.B\n")
+    with pytest.raises(amiga.PipeError, match="2 lines"):
+        pipe.write_memory(0x100, b"\xa5")
+
+
+def test_a_bad_receipt_on_the_second_line_says_how_much_was_sent(rig):
+    pipe, api, *_ = rig
+    api.write_receipts = [None, "Wrote 00 (0) at 00000110.B\n"]
+    with pytest.raises(amiga.PipeError, match="16 of 20 bytes were sent"):
+        pipe.write_memory(0x100, bytes(range(1, 21)))
+
+
+def test_a_timeout_on_the_second_line_says_how_much_was_sent(rig):
+    pipe, api, *_ = rig
+    api.silent_after = 1
+    with pytest.raises(amiga.PipeError, match="16 of 20 bytes were sent") as err:
+        pipe.write_memory(0x100, bytes(range(1, 21)))
+    assert err.value.timed_out
+
+
+def test_a_read_back_timeout_after_good_receipts_says_not_checked(rig):
+    pipe, api, *_ = rig
+    api.silent_after = 1
+    with pytest.raises(amiga.PipeError, match="3 of 3 bytes were sent and not "
+                                              "checked") as err:
+        pipe.write_memory(0x100, b"\x01\x02\x03")
+    assert err.value.timed_out
+    assert api.memory[0x100:0x103] == b"\x01\x02\x03"
+
+
+def test_the_timeout_is_one_budget_for_the_whole_write(rig):
+    pipe, api, *_ = rig
+    api.write_cost = 0.1
+    with pytest.raises(amiga.PipeError, match="and not checked") as err:
+        pipe.write_memory(0x100, bytes(40), timeout=0.25)
+    assert err.value.timed_out
+
+
+def test_a_negative_address_sends_nothing(rig):
+    pipe, api, *_ = rig
+    with pytest.raises(ValueError):
+        pipe.write_memory(-1, b"\x01")
+    assert api.written == []
+
+
+def test_the_end_of_slow_memory_is_written_and_read_back(rig):
+    pipe, api, *_ = rig
+    api.memory.extend(bytes(0xC80000 - len(api.memory)))
+    data = bytes(range(64))
+    pipe.write_memory(0xC80000 - 64, data)
+    assert api.memory[0xC80000 - 64:] == data
+    assert re.fullmatch(rb'DBG S "[^"]+" c7ffc0 40\0', api.written[-1])
