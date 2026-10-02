@@ -1255,3 +1255,11 @@
       - "Left for a person, once per rebuild of this guest:"
       - "1. ssh agent-vm, start `herdr` (or `tmux`), run `claude` -- it prints a URL; open it on the desktop and paste the code back."
       - "2. `codex login`, the same way."
+
+- name: Provision the optional Plane rehearsal clients
+  ansible.builtin.include_tasks:
+    file: plane.yml
+    apply:
+      tags: plane
+  when: agent_guest_plane_enabled | bool
+  tags: plane

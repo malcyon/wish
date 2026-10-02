@@ -1,0 +1,8 @@
+#!/bin/sh
+# Managed by Ansible. The adapter opens its private key file itself.
+set -eu
+export WISH_PLANE_CONFIG={{ (agent_guest_plane_dir ~ '/config.json') | quote }}
+export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+cd {{ agent_guest_wish_dir | quote }}
+exec {{ (agent_guest_plane_venv ~ '/bin/python') | quote }} -m tools.plane.mcp

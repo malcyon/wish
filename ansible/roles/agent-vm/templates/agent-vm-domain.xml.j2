@@ -110,7 +110,10 @@
       <mac address='{{ agent_vm_mac }}'/>
       <source network='{{ agent_vm_network_name }}'/>
       <model type='virtio'/>
-      <filterref filter='{{ sandbox_net_filter_name }}'/>
+      <filterref filter='{{ sandbox_net_filter_name }}'>
+        <parameter name='IP' value='{{ agent_vm_ip }}'/>
+        <parameter name='CTRL_IP_LEARNING' value='none'/>
+      </filterref>
     </interface>
 
     <channel type='unix'>

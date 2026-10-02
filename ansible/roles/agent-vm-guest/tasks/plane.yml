@@ -1,0 +1,124 @@
+---
+- name: Require explicit Plane deployment inputs
+  ansible.builtin.assert:
+    that:
+      - agent_guest_plane_base_url.startswith('http://') or agent_guest_plane_ca_src | length > 0
+      - agent_guest_plane_base_url.startswith('https://') or agent_guest_plane_allow_insecure_http | bool
+      - agent_guest_plane_base_url is match('^https?://[A-Za-z0-9.-]+(:[0-9]+)?$')
+      - agent_guest_plane_packages | reject('match', '^[A-Za-z0-9_-]+==[0-9]+\.[0-9]+\.[0-9]+$') | list | length == 0
+    fail_msg: Plane requires pinned packages and an HTTPS origin with a public CA, or explicit HTTP opt-in.
+
+- name: Reject private keys in the public trust certificate
+  ansible.builtin.assert:
+    that:
+      - "'BEGIN CERTIFICATE' in lookup('file', agent_guest_plane_ca_src)"
+      - "'PRIVATE KEY' not in lookup('file', agent_guest_plane_ca_src)"
+    fail_msg: The guest may receive only the public CA certificate.
+  no_log: true
+  when: agent_guest_plane_base_url.startswith('https://')
+
+- name: Create private Plane configuration and state directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0700"
+  loop:
+    - "{{ agent_guest_plane_dir }}"
+    - "{{ ansible_user_dir }}/.local/state/wish-plane"
+
+- name: Install the Plane public CA certificate
+  ansible.builtin.copy:
+    src: "{{ agent_guest_plane_ca_src }}"
+    dest: /usr/local/share/ca-certificates/wish-plane.crt
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  register: agent_guest_plane_ca
+  when: agent_guest_plane_base_url.startswith('https://')
+
+- name: Refresh system certificate trust
+  ansible.builtin.command: update-ca-certificates
+  become: true
+  when:
+    - agent_guest_plane_base_url.startswith('https://')
+    - agent_guest_plane_ca.changed
+  changed_when: true
+
+- name: Install the pinned Plane integration runtime
+  ansible.builtin.pip:
+    name: "{{ agent_guest_plane_packages }}"
+    virtualenv: "{{ agent_guest_plane_venv }}"
+    virtualenv_command: "{{ agent_guest_python }} -m venv"
+
+- name: Copy the dedicated Plane agent key
+  ansible.builtin.copy:
+    src: "{{ agent_guest_plane_src }}/api-key"
+    dest: "{{ agent_guest_plane_dir }}/api-key"
+    mode: "0600"
+  no_log: true
+
+- name: Install private Plane policy configuration with guest paths
+  ansible.builtin.copy:
+    dest: "{{ agent_guest_plane_dir }}/config.json"
+    mode: "0600"
+    content: >-
+      {{ lookup('file', agent_guest_plane_src ~ '/config.json') | from_json
+         | combine({'base_url': agent_guest_plane_base_url,
+                    'allow_insecure_http': agent_guest_plane_allow_insecure_http | bool,
+                    'token_file': agent_guest_plane_dir ~ '/api-key',
+                    'journal_file': ansible_user_dir ~ '/.local/state/wish-plane/writes.sqlite'})
+         | to_nice_json }}
+  no_log: true
+
+- name: Validate private policy and credentials before client registration
+  ansible.builtin.command:
+    argv:
+      - "{{ agent_guest_plane_venv }}/bin/python"
+      - -c
+      - "from tools.plane.policy import Settings; Settings.load().token()"
+    chdir: "{{ agent_guest_wish_dir }}"
+  environment:
+    WISH_PLANE_CONFIG: "{{ agent_guest_plane_dir }}/config.json"
+  no_log: true
+  changed_when: false
+
+- name: Check Plane access and HTTPS trust from the installed Python runtime
+  ansible.builtin.command:
+    argv:
+      - "{{ agent_guest_plane_venv }}/bin/python"
+      - -c
+      - >-
+        import ssl, sys, urllib.request;
+        urllib.request.urlopen(sys.argv[1],
+        context=ssl.create_default_context(), timeout=15).close()
+      - '{{ agent_guest_plane_base_url }}'
+  environment:
+    SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
+  changed_when: false
+
+- name: Install the secret-free Wish Plane launcher
+  ansible.builtin.template:
+    src: wish-plane.sh.j2
+    dest: "{{ agent_guest_plane_launcher }}"
+    mode: "0755"
+
+- name: Install the Plane client registration helper
+  ansible.builtin.copy:
+    src: plane-clients.py
+    dest: "{{ agent_guest_plane_dir }}/plane-clients.py"
+    mode: "0700"
+
+- name: Register only the Wish policy adapter in both clients
+  ansible.builtin.command:
+    argv:
+      - "{{ agent_guest_plane_venv }}/bin/python"
+      - "{{ agent_guest_plane_dir }}/plane-clients.py"
+      - --home
+      - "{{ ansible_user_dir }}"
+      - --launcher
+      - "{{ agent_guest_plane_launcher }}"
+      - --codex
+      - "{{ ansible_user_dir }}/.local/bin/codex"
+  register: agent_guest_plane_clients
+  changed_when: "'Plane clients changed' in agent_guest_plane_clients.stdout_lines"

@@ -5,6 +5,16 @@ can open an issue on it, and the agents that do most of the work here read
 issues. This page records what was built so that a stranger's sentence and the
 project's own rules cannot be mistaken for each other.
 
+## Plane preparation
+
+GitHub remains the authoritative work register. The Plane policy adapter and
+migration rehearsal tools are available under `tools/plane`; their configuration,
+trust checks and recovery state are described in
+[Plane operations](238-plane-operations.md). The new adapter uses stable Plane
+account IDs and protected original-author provenance for imported text. It does
+not replace this GitHub App, its filtered reader or public intake before live
+acceptance and a coordinated authority switch.
+
 ## Why the bot exists
 
 Before 2026-09-11 every issue and every comment on this tracker was authored by

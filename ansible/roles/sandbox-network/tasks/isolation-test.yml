@@ -58,6 +58,29 @@
   loop_control:
     label: "{{ item.item.name }}"
 
+- name: Control -- verify the service from the host
+  ansible.builtin.command:
+    argv: [curl, --fail, --silent, --show-error, --max-time, '10', --output, /dev/null,
+           --resolve, "{{ item.hostname }}:{{ item.port }}:{{ item.destination }}",
+           "{{ item.scheme }}://{{ item.hostname }}:{{ item.port }}/"]
+  loop: "{{ sandbox_net_service_exceptions }}"
+  changed_when: false
+  check_mode: false
+  become: false
+
+- name: Control -- verify every denied service port is listening from the host
+  ansible.builtin.command:
+    argv:
+      - timeout
+      - '3'
+      - bash
+      - -c
+      - "exec 3<>/dev/tcp/{{ item.0.destination }}/{{ item.1 }}"
+  loop: "{{ sandbox_net_service_exceptions | subelements('denied_tcp_ports') }}"
+  changed_when: false
+  check_mode: false
+  become: false
+
 - name: List running domains
   ansible.builtin.command: virsh -c qemu:///system list --name
   register: sandbox_net_test_running

@@ -11,6 +11,15 @@
        other DNS or DHCP server on this host's bridge, so nothing else wants :53
        or :67. Guests use the gateway below as their DNS server; dnsmasq
        forwards to the host's own resolver. -->
+{% if sandbox_net_service_exceptions %}
+  <dns>
+{% for service in sandbox_net_service_exceptions %}
+    <host ip='{{ service.destination }}'>
+      <hostname>{{ service.hostname }}</hostname>
+    </host>
+{% endfor %}
+  </dns>
+{% endif %}
   <ip address='{{ sandbox_net_gateway }}' netmask='{{ sandbox_net_netmask }}'>
     <dhcp>
       <range start='{{ sandbox_net_dhcp_start }}' end='{{ sandbox_net_dhcp_end }}'/>

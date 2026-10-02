@@ -68,6 +68,11 @@ sandbox_net_drops:
 # data connection at run time.
 sandbox_net_pinholes: []
 
+# Source-scoped services never grant access to other ports on that host.
+# Entries contain source, destination, protocol (tcp), port, scheme, hostname and
+# denied_tcp_ports. The hostname is also resolved by libvirt DNS.
+sandbox_net_service_exceptions: []
+
 # --- Isolation test ---------------------------------------------------------
 # What a guest must reach, and what it must not.
 sandbox_net_internet_url: https://api.github.com/

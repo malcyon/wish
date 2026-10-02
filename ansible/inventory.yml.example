@@ -69,6 +69,17 @@ all:
         sandbox_net_pinholes:
           - "CHANGE-ME-LAN-ADDRESS-OF-THE-C64-ULTIMATE"
 
+        # Plane HTTP only, from agent-vm. Never add its server to pinholes.
+        # Enable after fixed interface bindings and the LAN service are deployed.
+        sandbox_net_service_exceptions: []
+        #   - source: "{{ sandbox_net_leases['agent-vm'].ip }}"
+        #     destination: CHANGE-ME-PLANE-SERVER-IP
+        #     protocol: tcp
+        #     port: 80
+        #     scheme: http
+        #     hostname: CHANGE-ME-PLANE-HOSTNAME
+        #     denied_tcp_ports: [22, 81, 3000]
+
         # LAN hosts the isolation test tries to reach and must fail to, as its
         # controls: any machines on your LAN that answer a ping and accept a
         # connection on `tcp_port`.

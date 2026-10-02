@@ -3,6 +3,35 @@
 # roles depend on this one (their meta/main.yml), so it runs first in either
 # playbook and once per play.
 
+- name: Validate narrowly scoped service exceptions before changing networking
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import ipaddress, json, re, sys
+        data = json.load(sys.stdin)
+        leases = data['leases']
+        for service in data['services']:
+            assert set(service) == {'source', 'destination', 'protocol', 'port',
+                                    'hostname', 'scheme', 'denied_tcp_ports'}, 'Unexpected service fields'
+            source = ipaddress.IPv4Address(service['source'])
+            destination = ipaddress.IPv4Address(service['destination'])
+            assert str(source) in [entry['ip'] for entry in leases.values()], 'Unknown source'
+            assert not destination.is_multicast and not destination.is_unspecified, 'Invalid destination'
+            assert str(destination) not in data['pinholes'], 'Service destination has an all-port pinhole'
+            assert service['scheme'] in ('http', 'https'), 'Unsupported service scheme'
+            assert service['protocol'] == 'tcp' and service['port'] == {'http': 80, 'https': 443}[service['scheme']], 'Service port must match its scheme'
+            assert re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?', service['hostname']), 'Invalid hostname'
+            assert all(type(port) is int and 1 <= port <= 65535 and port != service['port']
+                       for port in service['denied_tcp_ports']), 'Invalid denied port'
+            assert {22, 81, 3000} <= set(service['denied_tcp_ports']), 'Missing required isolation controls'
+    stdin: >-
+      {{ {'services': sandbox_net_service_exceptions, 'leases': sandbox_net_leases,
+          'pinholes': sandbox_net_pinholes} | to_json }}
+  changed_when: false
+  check_mode: false
+
 - name: Check for /dev/kvm
   ansible.builtin.stat:
     path: /dev/kvm
@@ -188,6 +217,117 @@
       '{{ item }}' is not a single IPv4 address. A pinhole through the filter
       is one host, never a subnet.
   loop: "{{ sandbox_net_pinholes }}"
+
+- name: Prepare fixed identities for existing sandbox interfaces
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import json, subprocess, sys, xml.etree.ElementTree as ET
+        data = json.load(sys.stdin)
+        def virsh(*args):
+            return subprocess.check_output(['virsh', '-c', 'qemu:///system', *args],
+                                           text=True, timeout=10)
+        existing = virsh('list', '--all', '--name').splitlines()
+        running = virsh('list', '--name').splitlines()
+        changes = []
+        for domain, lease in data['leases'].items():
+            if domain not in existing:
+                continue
+            modes = [('config', '--inactive')] + ([('live', '')] if domain in running else [])
+            for mode, option in modes:
+                root = ET.fromstring(virsh('dumpxml', domain, *([option] if option else [])))
+                interfaces = [i for i in root.findall('./devices/interface')
+                              if i.find('source') is not None
+                              and i.find('source').get('network') == data['network']]
+                assert len(interfaces) == 1, 'Expected one sandbox interface: ' + domain
+                iface = interfaces[0]
+                assert iface.find('mac').get('address').lower() == lease['mac'].lower(), domain
+                ref = iface.find('filterref')
+                assert ref is not None and ref.get('filter') == data['filter'], domain
+                wanted = [('IP', lease['ip']), ('CTRL_IP_LEARNING', 'none')]
+                current = [(p.get('name'), p.get('value')) for p in ref.findall('parameter')
+                           if p.get('name') in ('IP', 'CTRL_IP_LEARNING')]
+                if sorted(current) == sorted(wanted):
+                    continue
+                for param in list(ref):
+                    if param.get('name') in ('IP', 'CTRL_IP_LEARNING'):
+                        ref.remove(param)
+                for name, value in wanted:
+                    ET.SubElement(ref, 'parameter', name=name, value=value)
+                changes.append(dict(domain=domain, mode=mode, xml=ET.tostring(iface, encoding='unicode')))
+        print(json.dumps(changes))
+    stdin: >-
+      {{ {'leases': sandbox_net_leases, 'network': sandbox_net_name,
+          'filter': sandbox_net_filter_name} | to_json }}
+  register: sandbox_net_identity_changes
+  changed_when: false
+  check_mode: false
+
+- name: Save updated interface definitions without changing other devices
+  ansible.builtin.copy:
+    content: "{{ item.xml }}"
+    dest: "{{ sandbox_net_state_dir }}/binding-{{ item.domain | hash('sha256') }}-{{ item.mode }}.xml"
+    owner: root
+    group: root
+    mode: "0600"
+  loop: "{{ sandbox_net_identity_changes.stdout | from_json }}"
+  loop_control:
+    label: "{{ item.domain }} {{ item.mode }}"
+
+- name: Bind existing guest interfaces in saved and running definitions
+  ansible.builtin.command:
+    argv:
+      - virsh
+      - -c
+      - qemu:///system
+      - update-device
+      - "{{ item.domain }}"
+      - "{{ sandbox_net_state_dir }}/binding-{{ item.domain | hash('sha256') }}-{{ item.mode }}.xml"
+      - "--{{ item.mode }}"
+  loop: "{{ sandbox_net_identity_changes.stdout | from_json }}"
+  loop_control:
+    label: "{{ item.domain }} {{ item.mode }}"
+  changed_when: true
+
+# A running guest needs the binding in its live XML as well as its next boot.
+# Fail before opening a service if either domain can learn a forged source.
+- name: Verify fixed interface identities before enabling service exceptions
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import json, subprocess, sys, xml.etree.ElementTree as ET
+        data = json.load(sys.stdin)
+        def virsh(*args):
+            return subprocess.check_output(['virsh', '-c', 'qemu:///system', *args],
+                                           text=True, timeout=10)
+        running = virsh('list', '--name').splitlines()
+        for domain, lease in data['leases'].items():
+            modes = [('--inactive',)] + ([()] if domain in running else [])
+            for mode in modes:
+                root = ET.fromstring(virsh('dumpxml', domain, *mode))
+                interfaces = root.findall('./devices/interface')
+                matching = [i for i in interfaces if i.find('source') is not None
+                            and i.find('source').get('network') == data['network']]
+                assert len(matching) == 1, 'Expected one sandbox interface: ' + domain
+                iface = matching[0]
+                assert iface.find('mac').get('address').lower() == lease['mac'].lower(), domain
+                ref = iface.find('filterref')
+                assert ref is not None and ref.get('filter') == data['filter'], domain
+                params = [(p.get('name'), p.get('value')) for p in ref.findall('parameter')]
+                assert [v for k, v in params if k == 'IP'] == [lease['ip']], 'Pin IP first: ' + domain
+                assert ('CTRL_IP_LEARNING', 'none') in params, 'Disable IP learning first: ' + domain
+    stdin: >-
+      {{ {'leases': sandbox_net_leases, 'network': sandbox_net_name,
+          'filter': sandbox_net_filter_name} | to_json }}
+  when:
+    - sandbox_net_service_exceptions | length > 0
+    - not ansible_check_mode
+  changed_when: false
+  check_mode: false
 
 - name: Render the filter {{ sandbox_net_filter_name }}
   ansible.builtin.template:

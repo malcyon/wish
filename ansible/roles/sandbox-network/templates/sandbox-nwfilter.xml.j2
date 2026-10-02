@@ -1,7 +1,20 @@
 {# Managed by Ansible — roles/sandbox-network #}
-<filter name='{{ sandbox_net_filter_name }}' chain='ipv4'>
+<filter name='{{ sandbox_net_filter_name }}' chain='root'>
   <!-- Derived from the name for the same reason as the network's. -->
   <uuid>{{ (sandbox_net_filter_name ~ '-agent-nwfilter') | to_uuid }}</uuid>
+  <!-- Interface MAC is supplied by libvirt; IP is pinned in domain XML.
+       These checks run before any LAN permission and reject impersonation. -->
+  <filterref filter='no-mac-spoofing'/>
+  <filterref filter='no-ip-spoofing'/>
+  <filterref filter='no-arp-spoofing'/>
+{% for service in sandbox_net_service_exceptions %}
+  <rule action='accept' direction='out' priority='45'>
+    <ip srcipaddr='{{ service.source }}' srcipmask='32'
+        dstipaddr='{{ service.destination }}' dstipmask='32'
+        protocol='{{ service.protocol }}' dstportstart='{{ service.port }}'
+        dstportend='{{ service.port }}'/>
+  </rule>
+{% endfor %}
   <!-- Evaluated as a packet leaves the guest's NIC, before Docker's or
        libvirt's own rules in the host's forwarding chain, and stored with
        libvirt's configuration. Lower priority runs first, and a packet that

@@ -1,6 +1,6 @@
 # The agent sandbox
 
-Why the coding agents run in two virtual machines that cannot reach the home network, how the network and its filter are built, what the guests are given and what they are refused, and what was found while building them. `ansible/README.md` is how to build and use it; this is the reasoning. Each figure below was read off a running machine unless it is labelled estimated or derived, and the commands that took them are at the end.
+Why the coding agents run in two virtual machines with restricted home-network access, how the network and its filter are built, what the guests are given and what they are refused, and what was found while building them. `ansible/README.md` is how to build and use it; this is the reasoning. Each figure below was read off a running machine unless it is labelled estimated or derived, and the commands that took them are at the end.
 
 ## Why
 
@@ -126,6 +126,30 @@ Everything else, the internet through libvirt's own NAT, keeps working, because 
 **The deny is one-directional, deliberately.** The operator reaches in from the desktop by ssh to the guest's `10.77.0.x` address, and the replies go back to `10.77.0.1`, which the `in` rule lets through. Reaching in from any other machine on the LAN would need the replies to cross the filter and is not supported; go through the desktop.
 
 **The Windows guest is on this network too.** On a network of its own with libvirt's default NAT and no filter it could reach the home LAN, and a Windows guest on the LAN's side is a way in. It is built from scratch on `sandbox`: `win11` is at `10.77.0.11`, with gateway and DNS at `10.77.0.1` (`winvm_dns_server`), all written by `autounattend.xml`. Its golden image, promoted once after the install, is the baseline; `winvm promote` and `winvm revert` touch only the disk and the varstore, never the domain, so the network, the filter and the vCPU count survive both. Both guests autostart with the host, and the guest's own `winvm` refuses the commands that start, stop or revert Windows: they drive it over ssh once it is up. That block is `tools/amiga/winvmguest.py`'s own convenience, not a boundary the key enforces -- see "What the guest's `winvm` does, and what it refuses" below.
+
+### Optional Plane service access
+
+The role now supports `sandbox_net_service_exceptions`: one guest source,
+server address, protocol, port and DNS hostname per entry. Donald selected
+`http://plane.morton.lan`, so its intended entry permits `10.77.0.10` to
+`192.168.1.182` TCP `80`. This replaces an absolute LAN-isolation claim with
+an explicit service exception. Defaults leave the list empty; the earlier XML
+above illustrates the base rules, not the complete generated filter.
+
+The generated filter uses the root chain and references libvirt's MAC, IP and
+ARP anti-spoofing filters. Domain interfaces supply fixed IP parameters so a
+Windows packet claiming the Linux address cannot gain its service permission.
+These declarations need live validation, including a Windows source-spoofing
+negative check, before source address can count as guest identity.
+
+The service hostname is added to libvirt DNS; guests still query `10.77.0.1`.
+The exception permits all HTTP virtual hosts on that server listener and does
+not inspect the hostname. Other server ports and Windows access must fail in
+the isolation checks. A declared rule or unavailable probe is not evidence
+that these checks passed. The server must never enter the all-port pinhole
+list. [Plane operations](238-plane-operations.md) describes the optional
+private agent identity and both-client registration; no backup or NPM
+administrator credentials enter the guest.
 
 ### Prove it, every time the filter changes
 

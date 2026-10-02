@@ -401,3 +401,47 @@ def test_both_harnesses_payload_formats(tool_input, expected, monkeypatch):
     monkeypatch.setattr(sys, "stdin", io.StringIO(
         json.dumps({"tool_name": "Bash", "tool_input": tool_input})))
     assert mod.main() == expected
+
+
+@pytest.mark.parametrize("command", [
+    "curl https://plane.morton.lan/api/v1/workspaces/wish/projects/p/issues/ -X POST",
+    "wget --method=PATCH https://plane.morton.lan/api/v1/workspaces/wish/projects/p/work-items/i/",
+    "curl -d '{}' https://plane.morton.lan/api/workspaces/wish/projects/p/issues/",
+    "bash -c 'curl -XDELETE https://plane.morton.lan/api/v1/workspaces/wish/projects/p/issues/i/'",
+    "uvx plane-mcp-server stdio",
+    "uvx plane-mcp-server@1.0.0 stdio",
+    "/opt/plane/bin/plane-mcp-server stdio",
+])
+def test_raw_plane_transport_is_blocked(command, monkeypatch, capsys):
+    assert run(command, monkeypatch=monkeypatch) == 2
+    assert "tools/plane/" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("command", [
+    ".venv/bin/python tools/plane/planeread.py WISH-1 --cite",
+    ".venv/bin/python tools/plane/planeagent.py comment WISH-1 --body-file /tmp/body",
+    ".venv/bin/python -m tools.plane.mcp",
+    "curl https://plane.morton.lan/",
+    "curl https://example.org/api/issues/",
+    "rg 'plane-mcp-server stdio' docs/",
+    "rg 'plane-mcp-server' docs/",
+    "cat <<'EOF'\nplane-mcp-server stdio\nEOF",
+])
+def test_plane_policy_tools_and_non_ticket_commands_are_allowed(command, monkeypatch):
+    assert run(command, monkeypatch=monkeypatch) == 0
+
+
+@pytest.mark.parametrize("command", [
+    "curl https://plane.morton.lan/api/v1/workspaces/wish/projects/p/issues/",
+    "wget -qO- https://plane.morton.lan/api/workspaces/wish/projects/p/issues/",
+    "curl --url=https://plane.morton.lan/api/v1/workspaces/wish/projects/p/work-items/",
+    "curl https://other.example/api/v1/workspaces/wish/projects/p/issues/",
+    "sh <<'EOF'\ncurl https://plane.morton.lan/api/v1/workspaces/wish/projects/p/issues/\nEOF",
+])
+def test_raw_plane_reads_are_filtered(command, monkeypatch):
+    assert run(command, monkeypatch=monkeypatch) == 2
+
+
+def test_variable_plane_url_is_a_known_limit(monkeypatch):
+    """The tripwire does not evaluate variables or replace the policy adapter."""
+    assert run('curl "$PLANE_BASE_URL/$TICKET_ROUTE"', monkeypatch=monkeypatch) == 0

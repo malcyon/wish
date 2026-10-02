@@ -7,6 +7,8 @@ The test suite, one directory per game or job the way `tools/` is, with the shar
 | directory | what is in it |
 |---|---|
 | [amiga](amiga/README.md) | Tests for the Amiga port: its filesystem, saved-game and character-record readers and writers, the tools under `tools/amiga/`, and the emulator routes in `automap/amiga.py`. |
+| [ansible](ansible/README.md) | Tests for guest provisioning, mount safety, service exceptions and isolation checks. |
+| [plane](plane/README.md) | Tests for Plane trust filtering, write protection, pagination and migration provenance. |
 | [areas](areas/README.md) | Tests for areas, maps and travel: the area tables, the map geometry and world map, Fast Travel, and the tools under `tools/areas/`. |
 | [automap](automap/README.md) | Tests for the live automapper in `automap/`: its map model and geometry, the party and combat views, the combat log, the panels and the live actions, run against a `MemoryTarget` with no emulator. |
 | [c64](c64/README.md) | Tests for the C64 side: the driven-session code under `tools/c64/`, the memory map and screen readers, and the checks that read a C64 save. |

@@ -1,11 +1,16 @@
 # Plane ticket tracking on the media server
 
 Donald and the agents need one ticket queue available from the LAN and from
-`agent-vm`. Deploy Plane at `https://plane.morton.lan`, with service and backup
+`agent-vm`. Deploy Plane at `http://plane.morton.lan`, with service and backup
 IaC in `/home/donald/src/jellyfin-stack` and VM access IaC in
 `/home/donald/src/wish`. This plan uses repository inspection and vendor
 documentation checked on 2026-10-02. Deployment, live migration and activation
 of the proposed rules remain implementation work.
+
+Donald revised the deployment on 2026-10-02: use HTTP on the LAN without a
+certificate, disable Plane email, and let him configure NPM manually. He has
+confirmed the NPM configuration is complete; backend route verification remains
+an implementation gate.
 
 ## Recommended design
 
@@ -13,7 +18,7 @@ of the proposed rules remain implementation work.
 |---|---|---|
 | Edition | Community Edition, pinned to a tested release and image digests. | The [edition guide](https://developers.plane.so/self-hosting/editions-and-versions) identifies Community as AGPL. Verify required ticket operations against the chosen release before migration. |
 | Host | A separate Compose project on media-server, currently `192.168.1.182`. | `jellyfin-stack/ansible/inventory.yml` and `ansible/group_vars/media_servers/vars.yml`. |
-| Ingress | Existing Nginx Proxy Manager (NPM), forwarding HTTPS to a Plane routing container. | Main Compose already assigns NPM ports 80, 81 and 443. |
+| Ingress | Existing Nginx Proxy Manager (NPM), forwarding HTTP to a Plane routing container. | Main Compose already assigns NPM ports 80, 81 and 443. |
 | DNS | An Ansible-managed Pi-hole record for `plane.morton.lan`. | The media role already preserves and extends Pi-hole `dns.hosts` for Grafana. |
 | Agents | Plane's official local MCP implementation behind a Wish policy adapter, configured in both clients. | Local stdio supports a private instance; ticket text still needs Wish's filtering. |
 | Backup | A daily media-server systemd job creates an encrypted restic snapshot in OneDrive. | Proposed configurable destination: `Backups/Plane/media-server`. |
@@ -39,8 +44,8 @@ implementation targets.
 | `ansible/group_vars/media_servers/vars.yml` | Declare domain, versions, networks, state paths and backup settings; use the existing ignored Vault file for secrets. |
 | `docker-compose.yml` | Attach NPM to a dedicated Plane frontend network, with deployment scoped to avoid recreating unrelated services. |
 | `ansible/roles/media-server/tasks/media.yml` | Extend existing Pi-hole record reconciliation without replacing unrelated entries. |
-| `ansible/roles/media-server/tasks/plane-proxy.yml` | Provision certificate and proxy host idempotently using the authenticated NPM API after verifying its installed version. Do not modify NPM's database or generated files. |
-| `homepage/services.yaml` | Add `Plane` under Apps, with `href: https://plane.morton.lan` and description `Ticket tracking`. A credential-bearing widget is unnecessary. |
+| `ansible/roles/media-server/tasks/plane-proxy.yml` | Verify the manually configured proxy route; keep API management optional and disabled. Do not modify NPM's database or generated files. |
+| `homepage/services.yaml` | Add `Plane` under Apps, with `href: http://plane.morton.lan` and description `Ticket tracking`. A credential-bearing widget is unnecessary. |
 | `.gitignore`, `ansible/README.md` | Ignore state, secrets and backup staging; document installation, renewal, upgrades and recovery. |
 
 Retain the release's web, administration, collaboration, API, worker, scheduler
@@ -58,34 +63,33 @@ the same explicit name in both projects. The routing container replaces the bund
 proxy using the [Community routing guide](https://developers.plane.so/self-hosting/govern/reverse-proxy):
 web at `/`, administration at `/god-mode/`, sharing at `/spaces/`, collaboration
 at `/live/`, API/auth/static routes, and the configured upload bucket path.
-Preserve WebSocket upgrades, original host, forwarded HTTPS scheme and upload
+Preserve WebSocket upgrades, original host, forwarded HTTP scheme and upload
 limits across both proxies. Publish no database, cache, queue, MinIO console
 or individual application ports. Confirm routes against the selected release.
 
-Set `WEB_URL` and `CORS_ALLOWED_ORIGINS` to `https://plane.morton.lan`, plus any
+Set `WEB_URL` and `CORS_ALLOWED_ORIGINS` to `http://plane.morton.lan`, plus any
 additional external URL or CSRF settings that release requires. Test redirects,
-login, live updates and attachment URLs through NPM. Configure SMTP and test
-invitations and account recovery before cutover. Disable open registration and
-public project sharing for the private Wish workspace.
+login, live updates and attachment URLs through NPM. Donald requested on
+2026-10-02 that Plane send no email: leave SMTP disabled, provision accounts
+through the administrator, and document and test manual account recovery before
+cutover. Disable open registration and public project sharing for the private
+Wish workspace.
 
-Tracked Homepage LAN links currently use HTTP; no managed internal CA was found.
-Inspect live NPM certificate state first. Reuse an appropriate internal CA if
-available, otherwise establish one with its private key outside Git and the
-VM. Issue and renew a certificate for `plane.morton.lan`, deploy it to NPM,
-and install public CA trust in Donald's host/browser and the guest. Test the
-MCP Python runtime's trust independently. Certificate verification must succeed
-without bypass flags. Add certificate-expiry monitoring.
+Use HTTP without certificate provisioning or client CA installation, as Donald
+requested. The policy adapter requires explicit `allow_insecure_http: true` for
+this instance; HTTPS remains its default for other configurations. Verify the
+actual HTTP route through NPM from the host and guest.
 
 ## Guest access and agent integration
 
 | Wish path | Change |
 |---|---|
 | `ansible/roles/sandbox-network/defaults/main.yml` | Add service exceptions containing source, destination, protocol and port. |
-| `ansible/roles/sandbox-network/templates/sandbox-nwfilter.xml.j2` | Permit `10.77.0.10` to reach `192.168.1.182` TCP 443 before the private-network drop. |
+| `ansible/roles/sandbox-network/templates/sandbox-nwfilter.xml.j2` | Permit `10.77.0.10` to reach `192.168.1.182` TCP 80 before the private-network drop. |
 | `ansible/roles/sandbox-network/tasks/main.yml` | Validate exceptions and apply through the existing libvirt mechanism. |
 | `ansible/inventory.yml.example` and private inventory | Configure the exception without putting media-server in the all-port `sandbox_net_pinholes` list. |
 | `ansible/roles/sandbox-network/tasks/isolation-test-guest.yml` | Add positive Plane checks and negative checks for other server ports and the Windows guest. |
-| `ansible/roles/agent-vm-guest/defaults/main.yml`, `tasks/main.yml`, `tasks/codex.yml`, `templates/` | Provision public CA trust, pinned integration dependencies, credential loading and both clients' configuration; preserve unrelated settings. |
+| `ansible/roles/agent-vm-guest/defaults/main.yml`, `tasks/main.yml`, `tasks/codex.yml`, `templates/` | Provision pinned integration dependencies, credential loading and both clients' configuration with explicit HTTP opt-in; preserve unrelated settings. |
 | `ansible/README.md`, `docs/219-the-agent-sandbox.md` | Document the additional LAN exception, identity, DNS, trust and recovery. |
 
 The filter is shared with `win11`, so the exception must include the Linux
@@ -93,9 +97,9 @@ VM's source address. The current filter does not enforce source anti-spoofing;
 add and test IP/MAC bindings at each guest's libvirt interface before treating
 the source address as guest identity. Include a Windows source-spoofing negative
 test. A dedicated filter attached only to agent-vm is an alternative if binding
-cannot be enforced. TCP 443 access permits **every HTTPS virtual host sharing
+cannot be enforced. TCP 80 access permits **every HTTP virtual host sharing
 that IP and listener**. The proposed initial deployment accepts that reachability
-while denying other ports. If isolation must distinguish Plane from other HTTPS
+while denying other ports. If isolation must distinguish Plane from other HTTP
 apps, reserve a dedicated ingress IP and adjust NPM's wildcard bindings before
 rollout. An IP/port filter does not check HTTP Host or TLS SNI.
 
@@ -207,7 +211,7 @@ and Plane versions, with notifications disabled and no production DNS. Restore
 configuration, secrets, database and objects together. Verify login, counts,
 comments, provenance and attachment downloads. The first drill must use remotely
 retrieved data and independently recovered credentials, not staging files. Include
-host-loss recovery for DNS, proxy certificate and client trust. Record downtime
+host-loss recovery for DNS and proxy configuration. Record downtime
 and restoration duration. The [Plane backup reference](https://developers.plane.so/self-hosting/manage/backup-restore)
 identifies database, uploads and configuration as recovery inputs; adapt the
 procedure to the pinned Community release rather than using Commercial-only
@@ -252,8 +256,8 @@ replace original authorship.
 
 | Stage | Exit evidence |
 |---|---|
-| 1. Preflight | Record host capacity, versions, live NPM/TLS state, DNS, SMTP and OneDrive account/folder. Prove required Community API/MCP operations in a disposable project. |
-| 2. Infrastructure | Ansible rerun is idempotent; services/migrations succeed; Homepage opens Plane; trusted HTTPS login, WebSockets and attachments work. |
+| 1. Preflight | Record host capacity, versions, live NPM state, DNS, disabled email and OneDrive account/folder. Prove required Community API/MCP operations in a disposable project. |
+| 2. Infrastructure | Ansible rerun is idempotent; services/migrations succeed; Homepage opens Plane; HTTP login, WebSockets and attachments work. |
 | 3. Isolation and clients | Both clients reach Plane from agent-vm. Media SSH, NPM81, Homepage3000 and unrelated LAN targets stay denied. Win11 gains no exception. Use reachable host-side controls so a stopped service cannot masquerade as isolation. |
 | 4. Backup | The scheduled media-server job creates a verified OneDrive snapshot; failure alerts work; independent restore meets measured recovery targets. |
 | 5. Migration rehearsal | Export source metadata/history privately, map GitHub IDs to Plane UUIDs/URLs and import a representative subset. Preserve source authors, timestamps, trust, attachments, dependencies and acceptance evidence. |
