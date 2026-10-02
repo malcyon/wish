@@ -864,6 +864,18 @@ presses `p` the moment it shows, before the attract demo starts, and
 the loaded party menu is up, however long a load takes. Each matches a hash of
 a crop of `launch`'s 800x600 screen, in `session` and `wish`.
 
+Under `wish` the Action buttons and the Fast Travel drop-down are driven
+through the window itself (`tools/gui/windowbuttons.py`), so a click runs the
+game's own handlers and its real dialogs. `buttons` logs every button's object
+name, text, enabled state, tooltip and visibility. `click NAME [yes|no [spell]]`
+presses one and answers every dialog it raises: `no` unless `yes`, and `spell`
+(which may hold spaces) is the entry picked in a choice dialog, none cancelling
+it. `select COMBO ITEM` picks the entry whose text is ITEM, as in `select
+ft_combo New Phlan`. Each result row holds the dialogs seen, the Messages
+panel's new lines and the buttons afterwards. A missing, disabled or hidden
+control, an unknown item and a dialog still open after 10 seconds are an
+`error` in the row, and the control is left as it was.
+
 ## Character creation
 
 Menus can be driven: **race → gender → roll stats → class → alignment → name**,

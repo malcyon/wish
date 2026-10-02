@@ -162,3 +162,43 @@ def click(window, name: str, answer: str | None = None,
     result["messages"] = _new_lines(window, before)
     result["buttons"] = rows(window)
     return result
+
+
+def _combos(window) -> list:
+    return [c for c in (window.fasttravel_bar.combo,) if c is not None]
+
+
+def select(window, name: str, item: str) -> dict:
+    """Pick the entry whose text is `item` in the drop-down called `name`.
+
+    The change goes through `setCurrentIndex`, so the window's own handlers run
+    as they would for a player's pick. A missing combo, a disabled or hidden
+    one and an item it does not list are not changed and the result carries an
+    `error`; an item that is listed twice is an error too, not the first of
+    them. The result also holds the items, the item now showing, the Messages
+    panel's new lines and the button rows afterwards.
+    """
+    target = next((c for c in _combos(window) if c.objectName() == name), None)
+    result: dict = {"name": name, "item": item, "error": None, "items": [],
+                    "current": None, "messages": []}
+    if target is None:
+        result["error"] = "no such combo"
+    else:
+        result["items"] = [target.itemText(i) for i in range(target.count())]
+        if not target.isEnabled():
+            result["error"] = "combo is disabled"
+        elif not target.isVisibleTo(window.root):
+            result["error"] = "combo is hidden"
+        elif result["items"].count(item) == 0:
+            result["error"] = "no such item"
+        elif result["items"].count(item) > 1:
+            result["error"] = "more than one such item"
+    if target is not None:
+        result["current"] = target.currentText()
+    if not result["error"]:
+        before = _messages(window)
+        target.setCurrentIndex(result["items"].index(item))
+        result["current"] = target.currentText()
+        result["messages"] = _new_lines(window, before)
+    result["buttons"] = rows(window)
+    return result

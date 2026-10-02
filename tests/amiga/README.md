@@ -49,6 +49,7 @@ Tests for the Amiga port: its filesystem, saved-game and character-record reader
 | `test_amigatarget.py` | Checks `automap/amiga.py`'s WinUAE-backed `Target`, driven through a fake guest. |
 | `test_amigazerowords.py` | Checks that `tools/amiga/amigazerowords.py` runs without crashing against the player's specimens. |
 | `test_fsuaegdb.py` | Checks `automap.amiga.FsuaeGdb` against a fake socket that answers the way the patched FS-UAE's GDB server does. |
+| `test_fsuaegdbclick.py` | Checks that `fsuaegdb.py wish` lists the window's buttons, presses one with its answer and spell, and picks a drop-down entry, and that each reports a closed window, a disabled control or a bad argument in its own row. |
 | `test_guardmaps.py` | Checks crop ownership, cross-title collisions and guard-map commands on synthetic screenshots, including atomic replacement failure cleanup. |
 | `test_installfsuae.py` | Checks that `tools/amiga/installfsuae.py` refuses a tarball with the wrong digest, a member that escapes or a non-https download, unpacks only `package/bin/fs-uae/`, never deletes what `--into` already holds, and does nothing on a second run, on tarballs built here with no network. |
 | `test_m68dis.py` | Checks the 68000 disassembler on hand-assembled encodings, including a word that is not an instruction. |

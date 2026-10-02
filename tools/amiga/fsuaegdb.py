@@ -1798,6 +1798,39 @@ class WishRun:
             row["error"] = f"not connected after {seconds:g} s"
         return row
 
+    def _open_window(self):
+        if self.window is None:
+            raise ValueError("no window is open")
+        return self.window
+
+    def buttons(self) -> list[dict]:
+        """Every button the player can press, as `windowbuttons.rows` lists them."""
+        from tools.gui import windowbuttons
+
+        return windowbuttons.rows(self._open_window())
+
+    def click(self, rest: str) -> dict:
+        """`NAME [yes|no] [spell]`: press a button and answer its dialogs."""
+        from tools.gui import windowbuttons
+
+        parts = rest.split(None, 2)
+        if not parts:
+            raise ValueError("click wants NAME [yes|no] [spell]")
+        if len(parts) > 1 and parts[1].lower() not in ("yes", "no"):
+            raise ValueError("click's answer is yes or no, then the spell")
+        answer = parts[1].lower() if len(parts) > 1 else None
+        spell = parts[2] if len(parts) > 2 else None
+        return windowbuttons.click(self._open_window(), parts[0], answer, spell)
+
+    def select(self, rest: str) -> dict:
+        """`COMBO ITEM`: pick a drop-down entry by its text."""
+        from tools.gui import windowbuttons
+
+        parts = rest.split(None, 1)
+        if len(parts) != 2:
+            raise ValueError("select wants COMBO ITEM")
+        return windowbuttons.select(self._open_window(), parts[0], parts[1])
+
     def observe(self, name: str) -> dict:
         """The game screen, the helper, and what the window shows, as one row.
 
@@ -1874,6 +1907,17 @@ def wish(args) -> int:
                             the window's reading, status line and the helper's
                             JSON with whether its pid lives
         helper              the helper's JSON and whether its pid lives
+        buttons             every Action, Fast Travel and Level up button with
+                            its object name, text, enabled state, tooltip and
+                            visibility
+        click NAME [yes|no [spell]]
+                            press the button called NAME as the player would,
+                            answering each dialog it raises (`no` unless
+                            `yes`; `spell` picks that entry in a choice
+                            dialog, none cancels it); a disabled or hidden
+                            button is reported and left alone
+        select COMBO ITEM   pick the entry of that text in a drop-down, such as
+                            `ft_combo`, the Fast Travel destinations
         close               close the window, as quitting Wish does; the
                             helper and the emulator carry on
         open                a new window, as starting Wish again does
@@ -1996,6 +2040,12 @@ def wish(args) -> int:
                 row = helper_row(args.port)
                 print(f"           {row}")
                 note(event="helper", at=now, **row)
+            elif word == "buttons":
+                note(event="buttons", at=now, buttons=run.buttons())
+            elif word in ("click", "select"):
+                row = getattr(run, word)(rest)
+                print(f"           {row['error'] or 'ok'}")
+                note(event=word, at=now, **row)
             elif word in ("close", "open", "reopen"):
                 if word != "open":
                     run.close()
