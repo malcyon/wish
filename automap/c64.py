@@ -131,10 +131,11 @@ VIEW_COLOUR = 0x7EDB
 #: turn: `$4CFD` x, `$4CFE` y, `$4CFF` turn with the save image at `$4B00`.
 #: The status line (`DUNGEON` `$0A23`) prints `$4CFD`,`$4CFE` in place of
 #: `$C04B`,`$C04C` whenever `$4CFD` is below `$80`, and (`$09F9`) prints the
-#: facing as `$C04D` plus `$4CFF`, mod 4. The Ruins' script, `ECL20`, keeps
-#: the pair in a frame of its own, moved and turned against the map, so the
-#: line names a square the party is not on. Curse and Pool of Radiance print
-#: the engine's square; in Curse these bytes are unrelated script variables.
+#: facing as `$C04D` plus `$4CFF`, mod 4, whatever `$4CFD` holds. An area
+#: script can keep the pair in a frame of its own, moved and turned against
+#: the map, and then the line names a square the party is not on. Curse and
+#: Pool of Radiance print the engine's square and facing; in Curse these
+#: bytes are unrelated script variables.
 PRINTED_FRAME_OFFSET = 0x1FD
 PRINTED_FRAME_BYTES = 3
 #: `$4CFD` at or above this: the line prints the engine's own square.
