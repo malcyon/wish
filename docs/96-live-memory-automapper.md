@@ -668,8 +668,8 @@ of monster); Curse has not been seen in a fight.
 | Title | Byte | Values read | In a fight |
 |---|---|---|---|
 | Pool of Radiance | `h32+0xBA` | 3 on the travel grid | 5 |
-| Curse | `g3d56` | 0 at the party menu, 4 walking | not reached; 5 from the code (PROBABLE) |
-| Silver Blades | `g525c` | 0 at the party menu, 2 at the journal prompt, 4 walking | 5 (the demo's fight) |
+| Curse | `g3d56` | 0 at the party menu, 4 walking, 3 on the world map | not reached; 5 from the code (PROBABLE) |
+| Silver Blades | `g525c` | 0 at the party menu, 2 at the journal prompt, 4 walking | 5 (the demo's fight, and griffons and a hill giant met by walking) |
 | Pools of Darkness | `g5b12` | 0 at the party menu, 2 once loaded, 4 after a fight | 5 |
 
 **After a Pools of Darkness fight, while `INSERT DISK 1` is up, the list head
@@ -678,18 +678,24 @@ every action stays off there.
 
 **Which writes are proven.** A row's `confirmed` set names an action only when
 its field was written, seen on the game's own screen and kept across a game
-step. Measured on one boot per title with the `session` driver's `poke`
-(#37 (Automap the Amiga version, not just the C64), the R2 and R3 comments):
+step. Its `measured` set names the facts the Action gate asks for besides:
+`hp_max`, the maximum seen on the sheet and kept across a step, which Heal
+needs, and `combat_value`, the mode byte read in a fight, which every action
+on Curse needs because Curse's fight value is otherwise from the code.
+Measured with the `session` driver's `poke` (#37 (Automap the Amiga version,
+not just the C64), the R2, R3 and gap-run comments):
 
-| Title | `confirmed` | Measured but not confirmed |
-|---|---|---|
-| Pool of Radiance | heal (`0x11D`), store and restore spells (`0x17`, 21 bytes) | identify: item `+0x35` mask 7 hid and showed the name on screen, not checked over a step; quickfight `0x111`: QUICK sets it and the game's key clears it, but no write of ours was made and a companion is untested |
-| Curse | heal (`0x1A9`) | spells (`0x1E`, 84 bytes): on screen, then after a step in memory only; identify (`+0x36` mask 7; `+0x35` did nothing): on screen, not over a step |
-| Silver Blades | heal (`0x152`) | spells: writes never showed in Cast; items: none in the save |
-| Pools of Darkness | none | hit points `0x191`: in memory only; spells and items not reached |
+| Title | `confirmed` | `measured` | Measured but not confirmed |
+|---|---|---|---|
+| Pool of Radiance | heal (`0x11D`), store and restore spells (`0x17`, 21 bytes), identify (item `+0x35`, mask 7; `+0x36` and `+0x37` did nothing) | `combat_value` | quickfight `0x111`: QUICK sets it, but writing 0 did not bring the character's turn menu back in a fight; `hp_max`: the sheet shows no maximum |
+| Curse | heal (`0x1A9`), spells (`0x1E`, 84 bytes), identify (`+0x36`, mask 7; `+0x35` did nothing) | `hp_max` (`0x78`) | the fight value: no fight reached in three boots |
+| Silver Blades | heal (`0x152`), spells (`0x1E`, 75 bytes), identify (`+0x36`, mask 7) | `combat_value` | `hp_max` (`0x70`): seen on the sheet, not read again after a step |
+| Pools of Darkness | heal (`0x191`), spells (`0xCC`, 141 bytes), identify (`+0x36`, mask 7) | `hp_max` (`0x81`), `combat_value` | quickfight `0x185`: never written |
 
-Curse's heal rests on a fight value read from the code, so whether the fight
-gate holds there is PROBABLE until a Curse fight is read.
+So with a writable emulator and no fight, a player would see Heal enabled on
+Pools of Darkness only, Save spells, Restore spells and Identify on Pool of
+Radiance, Silver Blades and Pools of Darkness, Quickfight off on none, and
+nothing on Curse until a Curse fight is read.
 
 **Pool of Radiance's record block is one byte short.** Its loader allocates
 `malloc(0x11F)` (the size word before every record reads `0x123`, which is

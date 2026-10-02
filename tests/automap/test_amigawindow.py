@@ -164,7 +164,7 @@ def card_names(window):
 
 def test_a_confirmed_action_is_enabled_when_every_condition_holds(measured):
     window, _ = attached(POOL)
-    assert enabled(window) == {"heal", "store-spells", "restore-spells"}
+    assert enabled(window) == {"heal", "store-spells", "restore-spells", "identify"}
     for action in window.actions_bar.actions:
         if action.name in enabled(window):
             assert button(window, action.name).toolTip() == action.description
@@ -191,7 +191,6 @@ def test_each_failing_condition_greys_the_button_with_its_reason(measured):
 
     # An action the title's row does not confirm.
     window, _ = attached(POOL)
-    assert states(window)["identify"] == (False, sentence(POOL))
     assert states(window)["clear-quickfight"] == (False, sentence(POOL))
 
 
@@ -218,19 +217,20 @@ def test_the_gate_follows_the_game_from_one_poll_to_the_next(measured):
     assert enabled(window) == {"store-spells"}
 
 
-def test_with_the_rows_as_committed_heal_is_greyed_on_every_title():
-    """No title's `hp_max` has been measured on a running game, and Curse's
-    fight value is from the code alone."""
-    for key in TITLES:
+def test_with_the_rows_as_committed_heal_needs_a_measured_maximum():
+    """Heal needs `hp_max` measured (only Pools of Darkness and Curse have
+    it), and Curse's fight value is from the code alone, so Curse has none."""
+    expected = {
+        POOL: {"store-spells", "restore-spells", "identify"},
+        CURSE: set(),
+        SILVER: {"store-spells", "restore-spells", "identify"},
+        POOLS_OF_DARKNESS: {"heal", "store-spells", "restore-spells", "identify"},
+    }
+    for key, want in expected.items():
         window, _ = attached(key)
-        assert "heal" not in enabled(window), key
-        assert states(window)["heal"] == (False, sentence(key)), key
-    window, _ = attached(POOL)
-    assert enabled(window) == {"store-spells", "restore-spells"}
-    for key in (CURSE, SILVER, POOLS_OF_DARKNESS):
-        window, _ = attached(key)
-        assert enabled(window) == set(), key
-        assert all(tip == sentence(key) for _, tip in states(window).values())
+        assert enabled(window) == want, key
+        for name, (on, tip) in states(window).items():
+            assert on or tip == sentence(key), (key, name)
 
 
 def test_curse_needs_its_fight_value_measured_even_with_hp_max(monkeypatch):
@@ -242,7 +242,7 @@ def test_curse_needs_its_fight_value_measured_even_with_hp_max(monkeypatch):
     monkeypatch.setitem(amigaparty.ROWS, CURSE, SimpleNamespace(
         **{**vars(row), "measured": MEASURED}))
     window._refresh_roster()
-    assert enabled(window) == {"heal"}
+    assert enabled(window) == {"heal", "store-spells", "restore-spells", "identify"}
 
 
 def test_a_click_writes_to_the_amiga_party_and_says_so(measured):
@@ -398,7 +398,7 @@ def test_switching_between_two_amiga_titles_drops_the_first_party(measured):
     lay_party(other, CURSE, [(b"EDRIC", 9, 9)])
     window._refresh_roster()
     assert card_names(window) == ["EDRIC"]
-    assert enabled(window) == {"heal"}
+    assert enabled(window) == {"heal", "store-spells", "restore-spells", "identify"}
     assert all(a.key == CURSE for a in window.actions_bar.actions)
 
 
@@ -435,6 +435,6 @@ def test_a_refresh_reads_the_mode_byte_once_however_many_actions_ask(measured):
     target.ram_reads.clear()
     window.actions_bar.refresh(target)
     assert [r for r in target.ram_reads if r[0] == mode_at] == [(mode_at, 1)]
-    # The control: three of Pool's actions are confirmed and reach the mode.
+    # The control: several of Pool's actions are confirmed and reach the mode.
     assert len(window.actions_bar.actions) == 5
-    assert len(amigaparty.ROWS[POOL].confirmed) == 3
+    assert len(amigaparty.ROWS[POOL].confirmed) > 1

@@ -120,6 +120,10 @@ class PartyRow:
     #: Action names whose field was written, seen on the game's own screen and
     #: kept across a game step; each row says what was measured.
     confirmed: frozenset[str] = frozenset()
+    #: Facts read off a running game that an action's gate asks for:
+    #: `hp_max` (the maximum seen on the sheet and kept across a step) and
+    #: `combat_value` (the mode byte read in a fight).
+    measured: frozenset[str] = frozenset()
     #: Action names proven safe during a fight.
     combat_legal: frozenset[str] = frozenset()
 
@@ -216,19 +220,20 @@ ROWS: dict[str, PartyRow] = {
         # 0x11D: written, seen on the sheet and the list, kept over eight
         # steps and into a fight. CONFIRMED.
         hp=Spot(amiga_por.amiga_por_offset(0x11B)),
-        # 0x032: codec only; every member read was at full hit points.
+        # 0x032: codec only. The sheet shows no maximum, and no heal was run
+        # to see it stop there, so `hp_max` is not measured.
         hp_max=Spot(amiga_por.amiga_por_offset(0x032)),
         # 0x17, 21 bytes: written, listed by Cast, kept over a step. CONFIRMED.
         memorised=Spot(amiga_por.amiga_por_offset(0x017), 21),
-        # Item +0x35, mask 7: a long sword's name hid and came back on
-        # screen (+0x36, +0x37 did nothing); not checked over a step, so
-        # PROBABLE and not confirmed.
+        # Item +0x35, mask 7: a long sword's name hid on screen, stayed hidden
+        # over a step and came back when 0 was written (+0x36, +0x37 did
+        # nothing). CONFIRMED.
         hidden=Spot(amiga_por.amiga_por_item_offset(0x035), 1, 0x07),
-        # 0x111: QUICK set it to 1 and the game's own key cleared it, both
-        # CONFIRMED live; no write of ours was made and a companion's case
-        # is untested, so not confirmed.
+        # 0x111: QUICK sets it to 1 (CONFIRMED), but writing 0 did not give
+        # the character's turn menu back in a fight, so not confirmed.
         quickfight=Spot(amiga_por.AMIGA_POR_QUICKFIGHT),
-        confirmed=frozenset({"heal", "store-spells", "restore-spells"})),
+        confirmed=frozenset({"heal", "store-spells", "restore-spells", "identify"}),
+        measured=frozenset({"combat_value"})),
     # `/Curse`: save 0x26AF8 walks `g3cf8` through +0x18E; writer 0x260C4
     # writes 0x1AC, items (0x42) from +0x152, effects (10) from +0xF2;
     # reader 0x25056 clears +0x18E and +0x192; 0x1A45C rebuilds the
@@ -242,12 +247,16 @@ ROWS: dict[str, PartyRow] = {
         # 0 at the party menu, 4 walking: CONFIRMED live. The fight value 5
         # is from the code only (PROBABLE); no fight was reached.
         mode=0x3D56, combat_value=5,
-        # hp 0x1A9: written, seen, kept over a step (CONFIRMED). Memorised
-        # 0x1E, 84 bytes: seen on screen, but after a step only in memory, so
-        # not confirmed. Item hidden +0x36 mask 7: seen on screen (+0x35 did
-        # nothing), not checked over a step, so not confirmed.
+        # hp 0x1A9: written, seen, kept over a step. Memorised 0x1E, 84
+        # bytes: Cast listed the written spell, again after two steps. Item
+        # hidden +0x36 mask 7 (+0x35 did nothing): hid on screen, still hidden
+        # after a step, shown again when 0 was written. hp_max 0x78: the
+        # sheet read the written maximum and the list kept the current value
+        # over 14 steps. All CONFIRMED. The fight value is not, so every
+        # action stays off on this title until a fight is read.
         **_later(amiga_port.CURSE_DELTAS, 0x19D),
-        confirmed=frozenset({"heal"})),
+        confirmed=frozenset({"heal", "store-spells", "restore-spells", "identify"}),
+        measured=frozenset({"hp_max"})),
     # `/Secret`: save 0x27C10 walks `g5168` through +0x13A; writer 0x2713C
     # writes 0x154, items (0x46) from +0xFE, effects (10) from +0x96;
     # reader 0x268C0 clears +0x13A and +0x13E.
@@ -258,13 +267,18 @@ ROWS: dict[str, PartyRow] = {
         effects=Chain(head=0x96, link=0x06, size=0x0A),
         pointers=(0x096, *_longwords(0xFE, 14), 0x13A, 0x13E),
         # 0 at the party menu, 2 at the journal prompt, 4 walking, 5 in the
-        # demo's fight: CONFIRMED live; no fight reached by walking.
+        # demo's fight and in a fight met by walking (griffons at slot byte
+        # 8, a hill giant at 9): CONFIRMED live.
         mode=0x525C, combat_value=5,
-        # hp 0x152: written, seen, kept over a step (CONFIRMED). Memorised:
-        # writes never showed in Cast (a paladin, perhaps not eligible), so
-        # NOT confirmed. Item bits: no item in the save, untested.
+        # hp 0x152: written, seen, kept over a step. Memorised 0x1E, 75
+        # bytes: Cast listed the written spell, again after a step. Item
+        # hidden +0x36 mask 7: hid on screen, still hidden after a step, shown
+        # again when 0 was written. All CONFIRMED. hp_max 0x70: the sheet read
+        # the written maximum, but it was not read again after a step, so it
+        # is not measured.
         **_later(amiga_port.SILVER_BLADES_DELTAS, 0x146),
-        confirmed=frozenset({"heal"})),
+        confirmed=frozenset({"heal", "store-spells", "restore-spells", "identify"}),
+        measured=frozenset({"combat_value"})),
     # `/Pools of Darkness`: save 0x270E0 walks `g57a4` through +0x00, at most
     # eight; writer 0x26338 writes 0x194 with the item count put in +0x08 for
     # the write, effects (10) from +0x04 and twenty bytes of each item node
@@ -282,16 +296,21 @@ ROWS: dict[str, PartyRow] = {
         # gives None there and every action stays off, which is safe.
         mode=0x5B12, combat_value=5,
         name=amiga_pod.NAME,
-        # hp 0x191: written mid-fight and read back in memory only, never
-        # on screen or over a step, so not confirmed. Memorised and item
-        # bits were not reached. Nothing is confirmed on this title.
+        # hp 0x191 and hp_max 0x81: written, seen on the list and the sheet,
+        # kept over a step. Memorised 0xCC, 141 bytes: a cleared spell left
+        # Cast's list, still gone after a step. Item hidden +0x36 mask 7: hid
+        # on screen, still hidden after a step, shown again when 0 was
+        # written. All CONFIRMED.
         hp=Spot(amiga_pod.HP_CURRENT),
         hp_max=Spot(amiga_pod.HP_MAX),
         memorised=Spot(amiga_pod.SPELLS_MEMORISED,
                        amiga_pod.SPELLS_MEMORISED_LENGTH),
         hidden=Spot(amiga_pod.ITEM_NODE_BASE + amiga_pod._item_offset(0x035),
                     1, 0x07),
-        quickfight=Spot(amiga_pod.QUICKFIGHT)),
+        # 0x185: read 1 on a party the computer was playing; never written.
+        quickfight=Spot(amiga_pod.QUICKFIGHT),
+        confirmed=frozenset({"heal", "store-spells", "restore-spells", "identify"}),
+        measured=frozenset({"hp_max", "combat_value"})),
 }
 
 

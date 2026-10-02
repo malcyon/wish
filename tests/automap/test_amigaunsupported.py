@@ -90,8 +90,15 @@ def test_a_title_whose_trip_is_not_confirmed_greys_all_of_fast_travel():
     assert ft.target is None
 
 
-def test_a_title_with_nothing_confirmed_greys_every_action_with_its_sentence():
+def test_a_title_with_nothing_confirmed_greys_every_action_with_its_sentence(
+        monkeypatch):
+    from types import SimpleNamespace
+
+    from automap import amigaparty
     key, title = "pools-of-darkness", TITLES["pools-of-darkness"]
+    row = amigaparty.ROWS[key]
+    monkeypatch.setitem(amigaparty.ROWS, key, SimpleNamespace(
+        **{**vars(row), "confirmed": frozenset()}))
     window = ticked(window_on(FakeAmiga(memory(), amiga.MACHINES[key])))
     assert len(window.actions_bar.buttons) == 5
     for button in window.actions_bar.buttons.values():

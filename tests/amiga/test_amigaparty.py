@@ -228,13 +228,28 @@ def test_there_is_one_row_per_title_the_automapper_knows():
         assert row.title == amiga.MACHINES[key].title
 
 
+FOUR = {"heal", "store-spells", "restore-spells", "identify"}
+
+
 def test_only_the_writes_seen_on_screen_and_kept_over_a_step_are_confirmed():
-    # The R2 and R3 measurements in docs/96, "Which writes are proven".
+    # The R2, R3 and gap-run measurements in docs/96, "Which writes are proven".
     assert {k: r.confirmed for k, r in ap.ROWS.items()} == {
-        "pool-of-radiance": {"heal", "store-spells", "restore-spells"},
-        "curse-of-the-azure-bonds": {"heal"},
-        "secret-of-the-silver-blades": {"heal"},
-        "pools-of-darkness": set(),
+        "pool-of-radiance": FOUR,
+        "curse-of-the-azure-bonds": FOUR,
+        "secret-of-the-silver-blades": FOUR,
+        "pools-of-darkness": FOUR,
+    }
+
+
+def test_the_measured_facts_are_the_ones_read_off_a_running_game():
+    # hp_max: seen on the sheet and kept over a step; combat_value: the mode
+    # byte read in a fight. Curse has no fight read; Pool's sheet shows no
+    # maximum; Silver Blades' maximum was not re-read after a step.
+    assert {k: r.measured for k, r in ap.ROWS.items()} == {
+        "pool-of-radiance": {"combat_value"},
+        "curse-of-the-azure-bonds": {"hp_max"},
+        "secret-of-the-silver-blades": {"combat_value"},
+        "pools-of-darkness": {"hp_max", "combat_value"},
     }
 
 
@@ -245,14 +260,25 @@ def test_no_action_is_proven_safe_in_a_fight():
 
 
 def test_the_confirmed_fields_are_the_measured_offsets():
-    measured = {"pool-of-radiance": (0x11D, (0x17, 21)),
-                "curse-of-the-azure-bonds": (0x1A9, None),
-                "secret-of-the-silver-blades": (0x152, None)}
-    for key, (hp, memorised) in measured.items():
+    measured = {
+        "pool-of-radiance": dict(hp=(0x11D, 1, 0xFF), memorised=(0x17, 21),
+                                 hidden=(0x35, 1, 0x07)),
+        "curse-of-the-azure-bonds": dict(
+            hp=(0x1A9, 1, 0xFF), hp_max=(0x78, 1, 0xFF), memorised=(0x1E, 84),
+            hidden=(0x36, 1, 0x07)),
+        "secret-of-the-silver-blades": dict(
+            hp=(0x152, 1, 0xFF), hp_max=(0x70, 1, 0xFF), memorised=(0x1E, 75),
+            hidden=(0x36, 1, 0x07)),
+        "pools-of-darkness": dict(
+            hp=(0x191, 1, 0xFF), hp_max=(0x81, 1, 0xFF),
+            memorised=(0xCC, 141), hidden=(0x36, 1, 0x07)),
+    }
+    for key, fields in measured.items():
         row = ap.ROWS[key]
-        assert (row.hp.offset, row.hp.length, row.hp.mask) == (hp, 1, 0xFF)
-        if memorised:
-            assert (row.memorised.offset, row.memorised.length) == memorised
+        for name, want in fields.items():
+            spot = getattr(row, name)
+            assert (spot.offset, spot.length, spot.mask)[:len(want)] == want, (
+                key, name)
     modes = {k: r.mode for k, r in ap.ROWS.items()}
     assert modes == {"pool-of-radiance": 0xBA,
                      "curse-of-the-azure-bonds": 0x3D56,
