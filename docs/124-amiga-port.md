@@ -2701,19 +2701,26 @@ a name. CONFIRMED from `/program`'s code (one executable on all three Pool
 disk 1 images, SHA-1 prefix `469ab41820`); not yet watched in the running game,
 where choosing QUICK for one character should move this byte and no other.
 
-`tools/amiga/amigarecordrefs.py` finds 18 sites at displacement `0x111`; the
-14 below were read in `tools/amiga/amiga68k.py disasm`, and the other four
-(`0x009D6A`, `0x00BD42`, `0x00DB26`, `0x01C198`) are reads nobody has followed. File offsets into `/program`:
+`tools/amiga/amigarecordrefs.py` finds 18 sites at displacement `0x111`. The
+14 in the table were read in `tools/amiga/amiga68k.py disasm`; the other four
+(`0x009D6A`, `0x00BD42`, `0x00DB26`, `0x01C198`) are reads nobody has followed.
+File offsets into `/program`:
 
-| where | what it does | what it says |
+| site | what it does | what it says |
 |---|---|---|
-| `0x0053DE` | `move.b #$1, $111(a3)`, then clears the combat target if it is on the character's own side (`0x110`) | the QUICK handler |
-| `0x004822` | combat menu dispatch: key `$51` (`Q`) calls `0x0053DE`, then `0x002F42` | the menu's Quick (string "Quick" at `0x8C66`, beside Move, View, Aim, Use, Cast, Turn, Done) |
-| `0x0048DA` | key `$E6` calls `0x0053DE` for every member of the list at `h32+0xAEE` | quickfight for the whole party |
+| `0x0053EE` | `move.b #$1, $111(a3)` in the routine at `0x0053DE`, which then clears the combat target if it is on the character's own side (`0x110`) | the QUICK handler |
 | `0x004686` | at a turn's start, `tst.b $111(a3)`: set calls `0x002F42`, clear calls the player menu at `0x0046EC` | `0x002F42` is the computer's turn |
 | `0x0048AC`, `0x003DFC` | key `$20` (space) clears `0x111` on each member whose control byte `0x085` is below `0x80` | the game never takes quickfight off a companion |
-| `0x00A02C`-`0x00A072` | a value 0, `0x80` or `0x81` becomes quickfight 0/1/1 with side `0x110` 0/0/1 | the C64's packed byte, bit 7 quickfight and bit 0 side |
+| `0x003E06` | `tst.b $111(a3)` on the routine's own character just after the `0x003DFC` space-bar loop; set branches past what follows | read, not followed further |
+| `0x01BECA` | `tst.b $111(a2)`, reached only when the mode byte `h32+0xBA` is 5 (combat); set branches past what follows | read, not followed further |
+| `0x01C246` | `move.b $111(a0), d1` on the record at `h32+0xAEA`, pushed as an argument to a call | read, not followed further |
+| `0x00A02C`, `0x00A04E`, `0x00A072` | a value 0, `0x80` or `0x81` becomes quickfight 0/1/1 with side `0x110` 0/0/1 | the C64's packed byte, bit 7 quickfight and bit 0 side |
 | `0x00B18E`, `0x01028A`, `0x010916`, `0x03866C` | set 1 when a record is built or a character changes side | joining companions and take-overs fight under the computer |
+
+Two callers of `0x0053DE` tie it to the menu; neither touches `0x111` itself.
+At `0x004822` the combat menu's key `$51` (`Q`) calls it and then `0x002F42`
+(string "Quick" at `0x8C66`, beside Move, View, Aim, Use, Cast, Turn, Done).
+At `0x0048DA` key `$E6` calls it for every member of the list at `h32+0xAEE`.
 
 The same walks give `0x106` as the record's next pointer and `0x10A` as a
 pointer to its combat data, both in DOS's `heap_104` window, and `0x10E` as the
