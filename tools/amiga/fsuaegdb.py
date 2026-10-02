@@ -674,48 +674,111 @@ def shot(display: str, path: pathlib.Path) -> None:
                    check=False)
 
 
-#: Where Silver Blades' `PLAY DEMO QUIT` bar is drawn, as a crop box on the
-#: 800x600 Xvfb root `launch` fits the window into, and a short SHA-256 of
-#: that crop's RGB bytes.  Measured on the bar of three boots; it matched none
-#: of the 711 other screenshots taken on #37.  A different window size moves it.
-PLAY_BAR_BOX = (59, 437, 340, 467)
-PLAY_BAR_DIGEST = "abb56028f27d"
+#: Silver Blades screens a driver waits for, by name: a crop box on the
+#: 800x600 Xvfb root `launch` fits the window into, the size the crop is
+#: shrunk to in grey levels, and that shrunk crop of the real screen in hex --
+#: a few dozen averaged values, not a picture.  A grab matches when some
+#: placement of the box within `SCREEN_SHIFT` pixels comes within
+#: `SCREEN_DISTANCE` grey levels of it on average.
+#:
+#: * `play`: the `PLAY DEMO QUIT` bar.  Every placement within two pixels
+#:   matches it; the nearest other screen of the 646 taken on #37 (the party
+#:   menu) is 8.8 away.
+#: * `load`: the words `LOAD WHICH` of the saved-game picker.  The save
+#:   picker, which differs only in that word, is 10.6 away.
+#: * `party`: the party menu with `BEGIN ADVENTURING` lit, which it is once a
+#:   saved game has loaded; greyed, before a load, it is 25.6 away.
+SCREENS = {
+    "play": ((59, 437, 340, 467), (24, 3),
+             "5f8d818ba38075628e8470857d887d698c7c8a91946a5d6c85a7c49d96a895"
+             "6dc69b978c99a8849ca795bca7c7b54fa46c867c7278908b58756f6f6f897b70"
+             "64829374867f795686"),
+    "load": ((70, 440, 180, 465), (28, 6),
+             "284c4c4a45454545494c4c4c4c48474545484c4c4c4c49454545464c4f6c68aa"
+             "aaa8716982aaaa8655977e517495aaaaaaaa965494a3638e4a855faaaa7461a6"
+             "9b827c594994994caa79a4aaaaaaaa53849772aa49835e9d7a8d5497889244a2"
+             "5295974ca65da3aaaaaaa953505d5da8497d777799aa9977988e8f9688aa8777"
+             "778faaaaaaaa97779ea3968f625d727254315d725e251a5d616a685e5252470a"
+             "5272727272725a2d"),
+    "party": ((405, 410, 730, 432), (16, 2),
+              "86839eaba5c0859a8fa2878b9d9993b98e9eadc4a9d29ab6a1a2cca3bdada2e6"),
+}
 
-#: Seconds between screenshots while `play` waits, and how long it waits by
-#: default.  The bar comes up about 100 s after boot.
-PLAY_POLL = 1.0
-PLAY_LIMIT = 240.0
+#: How far the box may sit from where it was measured, in pixels, and the
+#: mean grey-level difference that still counts as the screen.  Every crop
+#: within two pixels of the bar matches it exactly; three percent brighter or
+#: darker costs about 4.5.
+SCREEN_SHIFT = 2
+SCREEN_DISTANCE = 5.0
+
+#: Seconds between screenshots while a screen is waited for, and how long the
+#: wait lasts by default.  The `PLAY` bar comes up about 100 s after boot.
+SCREEN_POLL = 1.0
+SCREEN_LIMIT = 240.0
 
 
-def play_bar_up(image) -> bool:
-    """Whether a screenshot shows Silver Blades' `PLAY DEMO QUIT` bar."""
-    if image.size[0] < PLAY_BAR_BOX[2] or image.size[1] < PLAY_BAR_BOX[3]:
-        return False
-    crop = image.convert("RGB").crop(PLAY_BAR_BOX).tobytes()
-    return hashlib.sha256(crop).hexdigest()[:len(PLAY_BAR_DIGEST)] == PLAY_BAR_DIGEST
+def screen_distance(image, name: str) -> float | None:
+    """How far a grab is from screen `name` at its nearest placement, or None
+    for a grab that is not `launch`'s 800x600 screen."""
+    from PIL import Image
+
+    if image.size != SCREEN:
+        return None
+    (left, top, right, bottom), size, ref = SCREENS[name]
+    want = bytes.fromhex(ref)
+    grey = image.convert("L")
+    best = None
+    for dx in range(-SCREEN_SHIFT, SCREEN_SHIFT + 1):
+        for dy in range(-SCREEN_SHIFT, SCREEN_SHIFT + 1):
+            got = grey.crop((left + dx, top + dy, right + dx, bottom + dy)
+                            ).resize(size, Image.BOX).tobytes()
+            far = sum(abs(a - b) for a, b in zip(got, want)) / len(want)
+            best = far if best is None else min(best, far)
+    return best
+
+
+def screen_up(image, name: str) -> bool:
+    """Whether a grab shows screen `name` (see `SCREENS`)."""
+    far = screen_distance(image, name)
+    return far is not None and far <= SCREEN_DISTANCE
+
+
+def wait_for_screen(args, out: pathlib.Path, idle, name: str,
+                    limit: float) -> dict:
+    """Wait until `name` shows; a row with the seconds waited.
+
+    Past `limit` the screen is saved as `no-<name>.png` and the row carries an
+    error, so the caller sends no key into the wrong screen.
+    """
+    from tools.amiga import fsuaepor
+
+    if name not in SCREENS:
+        raise ValueError(f"no screen called {name!r}; known: "
+                         f"{', '.join(sorted(SCREENS))}")
+    began = time.monotonic()
+    while True:
+        if screen_up(fsuaepor.grab(args.display), name):
+            return {"screen": name,
+                    "seconds": round(time.monotonic() - began, 1)}
+        waited = time.monotonic() - began
+        if waited >= limit or STOP["why"]:
+            shot(args.display, out / "shots" / f"no-{name}.png")
+            return {"screen": name, "seconds": round(waited, 1),
+                    "error": f"no {name} screen in {waited:.0f} s, so no "
+                             "key was sent"}
+        idle(SCREEN_POLL)
 
 
 def play(args, out: pathlib.Path, idle, limit: float) -> dict:
     """Wait for the `PLAY` bar and press `p` the moment it shows.
 
     The attract demo starts if no key comes soon after the bar, so a fixed
-    wait either comes too early or lets the demo start.  Returns a row with the
-    seconds waited; past `limit` the screen is saved as `no-play-bar.png` and
-    the row says so, with no key sent.
+    wait either comes too early or lets the demo start.
     """
-    from tools.amiga import fsuaepor
-
-    began = time.monotonic()
-    while True:
-        if play_bar_up(fsuaepor.grab(args.display)):
-            held_key(args, "p", idle, args.seconds)
-            return {"seconds": round(time.monotonic() - began, 1)}
-        waited = time.monotonic() - began
-        if waited >= limit or STOP["why"]:
-            shot(args.display, out / "shots" / "no-play-bar.png")
-            return {"seconds": round(waited, 1),
-                    "error": f"no PLAY bar in {waited:.0f} s, so no key was sent"}
-        idle(PLAY_POLL)
+    row = wait_for_screen(args, out, idle, "play", limit)
+    if "error" not in row:
+        held_key(args, "p", idle, args.seconds)
+    return row
 
 
 def journal(args, adf: str = "") -> bool:
@@ -756,7 +819,9 @@ STOP: dict = {"why": None}
 def interruptible(note):
     """End the run through its own cleanup on SIGINT, SIGTERM or a crash.
 
-    The handlers only set `STOP`: an exception raised while Qt runs the
+    The handlers only set `STOP`, and they stay installed until the block
+    ends, so the caller puts its cleanup inside it: a second signal while the
+    switch is being put back is absorbed too.  An exception raised while Qt runs the
     window's events (where a `KeyboardInterrupt` usually lands) makes PyQt
     abort the process before any `finally`.  For the same reason an exception
     that escapes into the event loop goes to a replacement `sys.excepthook`,
@@ -795,37 +860,80 @@ def encounter_journal(port: int) -> pathlib.Path:
     return scratch.cache_dir("noencounters", f"fsuae-{port}.json")
 
 
+class JournalError(ValueError):
+    """The encounter journal exists and cannot be read."""
+
+
+def driver_alive(pid: int) -> bool:
+    """Whether `pid` is a running `fsuaegdb.py`, so its changes are its own.
+
+    A pid that is alive but runs something else was reused, and counts as gone.
+    Where `/proc` cannot say, a live pid counts as a driver.
+    """
+    if not alive(pid):
+        return False
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as handle:
+            return b"fsuaegdb" in handle.read()
+    except OSError:
+        return True
+
+
 class Journal:
-    """The changes a switch has written and not yet put back, on disk.
+    """The changes switches have written and not yet put back, on disk.
 
     Written before every change and after every restore, so a driver that is
-    killed outright leaves the originals behind for the next run's `repair`.
-    One file per emulator port: `{"title": KEY, "rows": [{address, original,
-    changed}]}`, bytes in hex.
+    killed outright leaves the originals behind for a later run's `repair`.
+    One file per emulator port, `{"rows": [...]}`; each row is one change, as
+    `EncounterSwitch.outstanding` gives it, plus the `title` it was made in and
+    the `owner` pid of the driver that made it.  A driver rewrites only its
+    own rows, so two drivers on one port do not erase each other's.
     """
 
-    def __init__(self, path: pathlib.Path):
+    def __init__(self, path: pathlib.Path, pid: int | None = None):
         self.path = pathlib.Path(path)
+        self.pid = os.getpid() if pid is None else pid
 
-    def load(self) -> tuple[str | None, list[dict]]:
+    def load(self) -> list[dict]:
+        """Every row, or `JournalError` when the file is there and unreadable."""
         try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-            return data.get("title"), list(data.get("rows") or [])
+            text = self.path.read_text(encoding="utf-8")
         except FileNotFoundError:
-            return None, []
-        except (OSError, ValueError, AttributeError):
-            # Unreadable: nothing to act on, and kept for a person to read.
-            return None, []
+            return []
+        except OSError as exc:
+            raise JournalError(self._unreadable(exc)) from exc
+        try:
+            rows = json.loads(text)["rows"]
+            if not isinstance(rows, list) or not all(
+                    isinstance(row, dict) for row in rows):
+                raise ValueError("its rows are not a list of records")
+        except (ValueError, KeyError, TypeError) as exc:
+            raise JournalError(self._unreadable(exc)) from exc
+        return rows
 
-    def save(self, title: str, rows: list[dict]) -> None:
+    def _unreadable(self, exc) -> str:
+        return (f"the encounter journal {self.path} cannot be read ({exc}), so "
+                "a change may still be in the game: check the game, then "
+                "delete the file")
+
+    def _write(self, rows: list[dict]) -> None:
         if not rows:
             self.path.unlink(missing_ok=True)
             return
         scratch.ensure(self.path.parent)
-        temp = self.path.with_suffix(".tmp")
-        temp.write_text(json.dumps({"title": title, "rows": rows}),
-                        encoding="utf-8")
+        temp = self.path.with_suffix(f".{self.pid}.tmp")
+        temp.write_text(json.dumps({"rows": rows}), encoding="utf-8")
         os.replace(temp, self.path)
+
+    def save_mine(self, title: str, rows: list[dict]) -> None:
+        """Replace this driver's rows with `rows`, keeping everybody else's."""
+        others = [r for r in self.load() if r.get("owner") != self.pid]
+        self._write(others + [{**r, "title": title, "owner": self.pid}
+                              for r in rows])
+
+    def drop(self, handled: list[dict]) -> None:
+        """Remove `handled` rows, keeping any written since they were read."""
+        self._write([r for r in self.load() if r not in handled])
 
 
 class Encounters:
@@ -859,6 +967,10 @@ class Encounters:
         #: `machine()` when its connection is lost.
         self.current = None
         self.failures = 0
+        #: The running title's `MACHINES` key, once a connection has said.
+        self.title: str | None = None
+        #: Whether another title's journal rows have been reported.
+        self.foreign_reported = False
 
     def _live(self):
         held = self.current
@@ -867,47 +979,116 @@ class Encounters:
             self.current = self.machine()
         return self.current
 
+    def _title_of(self, layout) -> str:
+        self.title = next(k for k, v in amiga.MACHINES.items() if v is layout)
+        return self.title
+
+    def outstanding(self) -> list[dict]:
+        """Journal rows that may still be in this game: this title's (every
+        title's while it is not known yet), other than this driver's own while
+        its switch tracks them.  Raises `JournalError` for an unreadable file."""
+        if self.journal is None:
+            return []
+        mine = self.switch is not None and (self.switch.active
+                                            or self.switch.pending)
+        return [r for r in self.journal.load()
+                if (self.title is None or r.get("title") == self.title)
+                and not (mine and r.get("owner") == self.journal.pid)]
+
     def leftover(self) -> bool:
-        """Whether the journal names a change an earlier run did not put back."""
-        return self.journal is not None and bool(self.journal.load()[1])
+        """Whether a change may be in the game that no switch here tracks.
+
+        True for an unreadable journal, which says nothing about the game.
+        """
+        try:
+            return bool(self.outstanding())
+        except JournalError:
+            return True
 
     def repair(self, now: float) -> list[dict]:
-        """Put back what the journal names, where memory still holds the change.
+        """Put back what the journal names, where it is certainly still there.
 
-        A row whose bytes read as the recorded change gets the recorded
-        original, read back.  A row whose bytes are anything else was put back
-        or reloaded since, so it is dropped.  A row whose restore fails stays in
-        the journal.  Raises `ValueError` when the journal is another title's.
+        For each of this title's rows that no live driver owns: a gate is
+        written only when its bytes still read as the recorded change and the
+        statement with the original put back hashes to the recorded digest; a
+        rest row only when its bytes read as the change and its spec still
+        resolves to its address.  Anything else was reloaded or restored
+        since, and is dropped without a write.  A row whose restore fails, or
+        that cannot be read, stays.  Another title's rows are reported once
+        and left alone.  Raises `JournalError` for an unreadable file.
         """
         if self.journal is None:
             return []
-        title, rows = self.journal.load()
+        rows = self.journal.load()
         if not rows:
             return []
         gdb, tgt, layout = self._live()
-        key = next(k for k, v in amiga.MACHINES.items() if v is layout)
-        if title != key:
-            raise ValueError(f"the encounter journal {self.journal.path} is for "
-                             f"{title}, and {key} is running; read it and "
-                             "remove it by hand")
-        done, kept = [], []
+        key = self._title_of(layout)
+        foreign = sorted({str(r.get("title")) for r in rows
+                          if r.get("title") != key})
+        if foreign and not self.foreign_reported:
+            self.foreign_reported = True
+            self.note(event="no_encounters", action="repair", at=now,
+                      foreign=foreign,
+                      note=(f"the journal {self.journal.path} also names "
+                            f"changes to {', '.join(foreign)}, which is not "
+                            f"running here ({key} is), so they cannot be in "
+                            "this game; they are left alone and do not block "
+                            "a save. Delete the file to clear them once no "
+                            "driver runs on this port"))
+        done, handled = [], []
         for row in rows:
-            address = int(row["address"])
-            original = bytes.fromhex(row["original"])
-            changed = bytes.fromhex(row["changed"])
+            if row.get("title") != key:
+                continue
+            owner = row.get("owner")
+            if owner == self.journal.pid and self.active:
+                continue
+            if (owner not in (None, self.journal.pid)
+                    and driver_alive(int(owner))):
+                done.append({"address": row.get("address"),
+                             "skipped": f"driver pid {owner} is running"})
+                continue
+            try:
+                result = self._repair_row(gdb, tgt, row)
+            except (*ENCOUNTER_ERRORS, KeyError, TypeError) as exc:
+                done.append({"row": row, "error": f"{type(exc).__name__}: "
+                                                  f"{exc}"})
+                continue
+            done.append(result)
+            if "error" not in result:
+                handled.append(row)
+        self.journal.drop(handled)
+        failed = [r for r in done if "error" in r]
+        if done:
+            self.note(event="no_encounters", action="repair", at=now,
+                      rows=done, **({"error": "a recorded change was not put "
+                                              "back"} if failed else {}))
+        return done
+
+    @staticmethod
+    def _repair_row(gdb, tgt, row: dict) -> dict:
+        address = int(row["address"])
+        original = bytes.fromhex(row["original"])
+        changed = bytes.fromhex(row["changed"])
+        if len(original) != len(changed) or not changed:
+            raise ValueError("its original and changed bytes differ in length")
+        if row.get("kind", noencounters.GATE) == noencounters.GATE:
+            statement = gdb.read_memory(address, noencounters.STATEMENT)
+            if statement[:len(changed)] != changed:
+                return {"address": address, "left": statement.hex()}
+            restored = original + statement[len(original):]
+            if noencounters.digest(restored) != row["digest"]:
+                return {"address": address, "left": statement.hex(),
+                        "why": "another statement is there now"}
+        else:
             now_bytes = gdb.read_memory(address, len(changed))
             if now_bytes != changed:
-                done.append({"address": address, "left": now_bytes.hex()})
-                continue
-            result = poke_row(gdb, tgt, f"{address:#x} {original.hex()}")
-            done.append({"address": address, "repaired": True, **result})
-            if "error" in result:
-                kept.append(row)
-        self.journal.save(key, kept)
-        self.note(event="no_encounters", action="repair", at=now, rows=done,
-                  **({"error": "a recorded change was not put back"}
-                     if kept else {}))
-        return done
+                return {"address": address, "left": now_bytes.hex()}
+            if resolve_spec(tgt, row["spec"]) != address:
+                return {"address": address, "left": now_bytes.hex(),
+                        "why": f"{row['spec']} no longer points here"}
+        return {"address": address, "repaired": True,
+                **poke_row(gdb, tgt, f"{address:#x} {original.hex()}")}
 
     @property
     def active(self) -> bool:
@@ -921,8 +1102,13 @@ class Encounters:
         switch = self.switch
         changed = switch is not None and (switch.active or switch.pending)
         if noencounters.is_save_key(keys) and (changed or self.leftover()):
-            error = ("no_encounters is on or did not restore every row, and "
-                     "a save carries the changed script: turn it off first")
+            try:
+                self.outstanding()
+                error = ("no_encounters is on or a change it made is still in "
+                         "the game, and a save carries the changed script: "
+                         "turn it off first")
+            except JournalError as exc:
+                error = str(exc)
             print(f"           {error}")
             self.note(event="key", keys=keys, at=now, error=error)
             return True
@@ -995,11 +1181,15 @@ class Encounters:
             # this switch reads the game's own bytes and its journal starts
             # empty.
             self.repair(now)
-            if self.leftover():
-                raise ValueError("an earlier run's change could not be put "
-                                 "back; `off` to try again")
             _, _, layout = self._live()
-            key = next(k for k, v in amiga.MACHINES.items() if v is layout)
+            key = self._title_of(layout)
+            left = self.outstanding()
+            if left:
+                owners = sorted({str(r.get("owner")) for r in left})
+                raise ValueError(
+                    "a change recorded by driver pid "
+                    f"{', '.join(owners)} is still in the game and was not "
+                    "put back; `off` tries again once that driver has ended")
             journal = self.journal
             self.failures = 0
             self.switch = noencounters.EncounterSwitch(
@@ -1012,7 +1202,7 @@ class Encounters:
                     base <= address and address + n <= base + size
                     for base, size in amiga.MEMORY),
                 journal=(lambda rows: None) if journal is None else
-                (lambda rows: journal.save(key, rows)))
+                (lambda rows: journal.save_mine(key, rows)))
             done = self.switch.apply()
             self.note(event="no_encounters", action="on", at=now,
                       rows=done, held=[r.spec for r in self.switch.rows])
@@ -1026,9 +1216,6 @@ class Encounters:
     def _off(self, now: float) -> None:
         switch = self.switch
         done = [] if switch is None else switch.off()
-        # What a killed earlier run left, which this switch never recorded.
-        if switch is None or not switch.pending:
-            self.repair(now)
         # A switch that could not put every row back stays, off, so the next
         # `off` and the end of the run retry it.
         if switch is not None and switch.pending:
@@ -1040,20 +1227,36 @@ class Encounters:
             return
         self.switch = None
         self.note(event="no_encounters", action="off", at=now, rows=done)
+        # What a killed run left, which this switch never recorded.  Its own
+        # row is written, so a failure here costs only the repair.
+        self._repair_noted(now)
+
+    def _repair_noted(self, now: float) -> None:
+        try:
+            self.repair(now)
+        except ENCOUNTER_ERRORS as exc:
+            print(f"           {exc}")
+            self.note(event="no_encounters", action="repair", at=now,
+                      error=f"{type(exc).__name__}: {exc}")
 
     def close(self) -> None:
         """At the end of a run: put every row back, since the emulator
-        outlives the driver and its script should be as the disk has it."""
-        if self.switch is None:
-            return
-        try:
-            done = self.switch.off()
-            self.note(event="no_encounters", action="end", rows=done,
-                      **({"error": "a row was not restored"}
-                         if self.switch.pending else {}))
-        except ENCOUNTER_ERRORS as exc:
-            self.note(event="no_encounters", action="end",
-                      error=f"{type(exc).__name__}: {exc}")
+        outlives the driver and its script should be as the disk has it.
+        A change the journal still names -- a switch dropped after failing,
+        or an earlier run's -- is repaired too."""
+        if self.switch is not None:
+            try:
+                done = self.switch.off()
+                self.note(event="no_encounters", action="end", rows=done,
+                          **({"error": "a row was not restored"}
+                             if self.switch.pending else {}))
+                if not self.switch.pending:
+                    self.switch = None
+            except ENCOUNTER_ERRORS as exc:
+                self.note(event="no_encounters", action="end",
+                          error=f"{type(exc).__name__}: {exc}")
+        if self.leftover():
+            self._repair_noted(0.0)
 
 
 def session(args) -> int:
@@ -1113,6 +1316,12 @@ def session(args) -> int:
         play [seconds]      wait for Silver Blades' PLAY bar (240 s by default)
                             and press `p` the moment it shows, before the
                             attract demo starts; an error row if it never does
+        until <screen> [seconds]
+                            wait until a Silver Blades screen shows (`load`,
+                            the saved-game picker; `party`, the party menu
+                            once a game has loaded; `play`), 240 s by default,
+                            so the next key is not lost to a slow load; an
+                            error row if it never does
         quit
 
     `--title none` starts a session with no layout, for a title that has no
@@ -1269,10 +1478,15 @@ def session(args) -> int:
                 beat()
                 left -= piece
 
+        # The handlers stay until the switch is put back, so a second
+        # signal during the cleanup cannot cut it short.
         with interruptible(note):
-            enc.repair_at_start(lambda: layout is not None)
-            run_commands(args, commands, started, note, handle, beat,
-                         time.sleep)
+            try:
+                enc.repair_at_start(lambda: layout is not None)
+                run_commands(args, commands, started, note, handle, beat,
+                             time.sleep)
+            finally:
+                enc.close()
     finally:
         enc.close()
         mapstate._data_dir = was                        # noqa: SLF001
@@ -1318,9 +1532,15 @@ def common_command(args, out: pathlib.Path, note, idle, swap, word: str,
     elif word == "journal":
         note(event="journal", answered=journal(args, rest), at=now)
     elif word == "play":
-        row = play(args, out, idle, float(rest or PLAY_LIMIT))
+        row = play(args, out, idle, float(rest or SCREEN_LIMIT))
         print(f"           {row}")
         note(event="play", at=now, **row)
+    elif word == "until":
+        name, _, seconds = rest.partition(" ")
+        row = wait_for_screen(args, out, idle, name,
+                              float(seconds or SCREEN_LIMIT))
+        print(f"           {row}")
+        note(event="until", at=now, **row)
     else:
         return False
     return True
@@ -1644,7 +1864,8 @@ def wish(args) -> int:
     keys through xdotool, as `session` does.
 
     Commands, one a line, appended to `--commands` while this runs:
-    `key`, `shot`, `still`, `wait`, `swap`, `journal` and `play` as in `session`
+    `key`, `shot`, `still`, `wait`, `swap`, `journal`, `play` and `until` as in
+    `session`
     (`wait` keeps the window's events running), and
 
         await <seconds>     run the window until its session is connected
@@ -1785,13 +2006,19 @@ def wish(args) -> int:
                 return False
             return True
 
+        # The handlers stay until the switch is put back, so a second
+        # signal during the cleanup cannot cut it short.
         with interruptible(note):
-            # A helper already running means the game an earlier run changed
-            # may still be up; without one, the first `on` or `off` repairs.
-            enc.repair_at_start(lambda: fsuaehelper.find(
-                args.port, fsuaehelper.runtime_dir()) is not None)
-            run_commands(args, commands, started, note, handle,
-                         lambda: enc.reapply(now()), idle)
+            try:
+                # A helper already running means the game an earlier run
+                # changed may still be up; without one, the first `on` or
+                # `off` repairs.
+                enc.repair_at_start(lambda: fsuaehelper.find(
+                    args.port, fsuaehelper.runtime_dir()) is not None)
+                run_commands(args, commands, started, note, handle,
+                             lambda: enc.reapply(now()), idle)
+            finally:
+                enc.close()
     finally:
         enc.close()
         if link.get("machine") is not None:

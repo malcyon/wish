@@ -3186,13 +3186,25 @@ def journal_rows(path):
     return json.loads(path.read_text())["rows"] if path.exists() else []
 
 
-def leave_a_change(guest, path, title="pools-of-darkness"):
+#: A pid no process has, for a driver that was killed.
+DEAD_PID = 2 ** 22 + 1
+
+
+def journal_row(title="pools-of-darkness", owner=DEAD_PID, **extra):
+    from tools.amiga import noencounters
+    return {"kind": "gate", "spec": "*0x6EA6+0x82EA", "address": GATE_AT,
+            "digest": noencounters.digest(POD_GATE), "original": "08",
+            "changed": "09", "title": title, "owner": owner, **extra}
+
+
+def leave_a_change(guest, path, title="pools-of-darkness", owner=DEAD_PID,
+                   rows=None):
     """What a driver killed outright leaves: the byte changed, the journal written."""
     guest.memory[SCRIPT] = (guest.memory[SCRIPT][:0x82EA] + POD_PATCHED
                             + guest.memory[SCRIPT][0x82F0:])
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"title": title, "rows": [
-        {"address": GATE_AT, "original": "08", "changed": "09"}]}))
+    path.write_text(json.dumps({"rows": rows if rows is not None else
+                                [journal_row(title, owner)]}))
 
 
 def signal_on_key(monkeypatch, guest, keys, signum=None, after=None):
@@ -3274,7 +3286,7 @@ def test_the_journal_names_a_change_before_it_is_written(
     monkeypatch.setattr(fsuaegdb, "poke_row", watching)
     run_session(tmp_path, ["locate", "no_encounters on", "no_encounters off"])
     assert seen[0] == (f"{GATE_AT:#x} 09", [
-        {"address": GATE_AT, "original": "08", "changed": "09"}])
+        journal_row(owner=os.getpid(), spec="*0x6EA6+0x82EA")])
     assert journal_rows(private_journal) == []
 
 
@@ -3323,14 +3335,117 @@ def test_a_journal_row_the_game_has_since_reloaded_is_dropped_untouched(
     assert journal_rows(private_journal) == []
 
 
-def test_another_titles_journal_is_left_alone_and_reported(
+def test_another_titles_journal_is_reported_once_and_blocks_no_save(
+        scripted, tmp_path, monkeypatch, private_journal):
+    guest, log = scripted
+    leave_a_change(guest, private_journal, title="pool-of-radiance")
+    seen = on_each_key(monkeypatch, guest, log)
+    _, rows = run_session(tmp_path, ["locate", "no_encounters off", "key s",
+                                     "no_encounters off"])
+    foreign = [r for r in encounter_rows(rows) if "foreign" in r]
+    assert len(foreign) == 1
+    assert "Delete the file" in foreign[0]["note"]
+    assert [r.get("action") for r in encounter_rows(rows)].count("off") == 2
+    assert seen == [POD_PATCHED]            # the save key went through
+    assert not any(b.startswith("M") for b in guest.received)
+    assert journal_rows(private_journal)    # left for a person to delete
+
+
+def test_a_stale_journal_row_whose_statement_differs_is_not_written(
+        scripted, tmp_path, private_journal):
+    """The byte reads as the change, but the rest of the statement is not the
+    one that was changed: the journal is older than the script now loaded."""
+    guest, _ = scripted
+    leave_a_change(guest, private_journal)
+    other = POD_PATCHED[:5] + b"\x77"
+    guest.memory[SCRIPT] = (guest.memory[SCRIPT][:0x82EA] + other
+                            + guest.memory[SCRIPT][0x82F0:])
+    _, rows = run_session(tmp_path, ["wait 0.1"])
+    assert not any(b.startswith("M") for b in guest.received)
+    assert gate_bytes(guest) == other
+    assert "another statement" in encounter_rows(rows)[0]["rows"][0]["why"]
+
+
+def test_a_live_drivers_change_is_never_repaired_by_another(
+        scripted, tmp_path, monkeypatch, private_journal):
+    guest, _ = scripted
+    leave_a_change(guest, private_journal, owner=4242)
+    monkeypatch.setattr(fsuaegdb, "driver_alive", lambda pid: pid == 4242)
+    _, rows = run_session(tmp_path, ["locate", "no_encounters on",
+                                     "no_encounters off"])
+    assert not any(b.startswith("M") for b in guest.received)
+    assert gate_bytes(guest) == POD_PATCHED
+    assert "4242" in [r for r in encounter_rows(rows) if "error" in r][0]["error"]
+    assert journal_rows(private_journal)[0]["owner"] == 4242
+
+
+def test_a_driver_rewrites_only_its_own_journal_rows(tmp_path):
+    path = tmp_path / "j.json"
+    first = fsuaegdb.Journal(path, pid=1)
+    second = fsuaegdb.Journal(path, pid=2)
+    first.save_mine("pools-of-darkness", [{"address": 1}])
+    second.save_mine("pools-of-darkness", [{"address": 2}])
+    second.save_mine("pools-of-darkness", [])
+    assert [r["owner"] for r in first.load()] == [1]
+
+
+def test_a_second_signal_while_the_switch_is_put_back_still_restores_it(
+        scripted, tmp_path, monkeypatch, private_journal):
+    import signal as signals
+    guest, _ = scripted
+    keys = []
+    signal_on_key(monkeypatch, guest, keys, signals.SIGTERM)
+    real = fsuaegdb.poke_row
+
+    def restoring(gdb, tgt, rest):
+        if rest.endswith(" 08"):            # the cleanup's write
+            signals.getsignal(signals.SIGTERM)(signals.SIGTERM, None)
+        return real(gdb, tgt, rest)
+    monkeypatch.setattr(fsuaegdb, "poke_row", restoring)
+    run_session(tmp_path, ["locate", "no_encounters on", "key a", "key b"])
+    assert gate_bytes(guest) == POD_GATE
+    assert journal_rows(private_journal) == []
+
+
+def test_a_switch_dropped_after_failing_is_put_back_at_the_end_without_off(
+        scripted, tmp_path, monkeypatch, private_journal):
+    guest, _ = scripted
+    real_cc = fsuaegdb.common_command
+
+    def watching(args, out, note, idle, swap, word, rest, now):
+        if word == "wait" and rest == "0.5":
+            guest.unreadable = {GATE_AT}
+        if word == "wait" and rest == "0.3":
+            guest.unreadable = set()
+        return real_cc(args, out, note, idle, swap, word, rest, now)
+    monkeypatch.setattr(fsuaegdb, "common_command", watching)
+    _, rows = run_session(tmp_path, ["locate", "no_encounters on", "wait 0.5",
+                                     "wait 0.3"], interval=0.1)
+    assert [r for r in encounter_rows(rows) if "dropped" in r]
+    assert gate_bytes(guest) == POD_GATE
+    assert journal_rows(private_journal) == []
+
+
+def test_an_unreadable_journal_blocks_a_save_and_names_itself(
+        scripted, tmp_path, monkeypatch, private_journal):
+    guest, log = scripted
+    private_journal.parent.mkdir(parents=True)
+    private_journal.write_text("{not json")
+    seen = on_each_key(monkeypatch, guest, log)
+    events, _ = run_session(tmp_path, ["locate", "key s"])
+    assert seen == []
+    assert str(private_journal) in events["key"]["error"]
+
+
+def test_a_malformed_journal_row_is_an_error_row_and_is_kept(
         scripted, tmp_path, private_journal):
     guest, _ = scripted
-    leave_a_change(guest, private_journal, title="pool-of-radiance")
+    row = journal_row()
+    del row["changed"]
+    leave_a_change(guest, private_journal, rows=[row])
     _, rows = run_session(tmp_path, ["wait 0.1"])
-    assert "pool-of-radiance" in encounter_rows(rows)[0]["error"]
-    assert gate_bytes(guest) == POD_PATCHED
-    assert journal_rows(private_journal)
+    assert "KeyError" in encounter_rows(rows)[0]["rows"][0]["error"]
+    assert journal_rows(private_journal) == [row]
 
 
 def test_a_wish_start_with_a_live_helper_repairs_what_a_killed_run_left(
@@ -3477,20 +3592,28 @@ def test_silver_blades_the_ruins_roll_is_changed_where_the_towns_is_not_loaded(
 
 # play: Silver Blades' PLAY bar
 
-def _screens(monkeypatch, bar_from: int | None):
-    """Grabs that show the bar from the `bar_from`th one on (never if None);
-    the table's digest is swapped for the made-up bar's, so no game picture
-    is in the test."""
-    import hashlib as hashes
-
+def made_up_screen(monkeypatch, name: str):
+    """A plain 800x600 screen and the same with white blocks in `name`'s box,
+    and the table's reference for `name` taken from the second."""
     from PIL import Image, ImageDraw
-
-    from tools.amiga import fsuaepor
     plain = Image.new("RGB", (800, 600), (0, 0, 80))
-    bar = plain.copy()
-    ImageDraw.Draw(bar).rectangle((70, 445, 140, 460), fill=(255, 255, 255))
-    monkeypatch.setattr(fsuaegdb, "PLAY_BAR_DIGEST", hashes.sha256(
-        bar.crop(fsuaegdb.PLAY_BAR_BOX).tobytes()).hexdigest()[:12])
+    shown = plain.copy()
+    box, size, _ = fsuaegdb.SCREENS[name]
+    draw = ImageDraw.Draw(shown)
+    for left in range(box[0] + 8, box[2] - 20, 40):
+        draw.rectangle((left, box[1] + 4, left + 18, box[3] - 4),
+                       fill=(255, 255, 255))
+    ref = shown.convert("L").crop(box).resize(size, Image.BOX).tobytes().hex()
+    monkeypatch.setitem(fsuaegdb.SCREENS, name, (box, size, ref))
+    return plain, shown
+
+
+def _screens(monkeypatch, bar_from: int | None, name: str = "play"):
+    """Grabs that show screen `name` from the `bar_from`th one on (never if
+    None); the table's reference is swapped for the made-up screen's, so no
+    game picture is in the test."""
+    from tools.amiga import fsuaepor
+    plain, bar = made_up_screen(monkeypatch, name)
     grabs = []
 
     def grab(display):
@@ -3515,8 +3638,8 @@ def test_play_without_the_bar_sends_no_key_and_says_so(driven, tmp_path,
     _screens(monkeypatch, bar_from=None)
     events, _ = run_session(tmp_path, ["play 0.3"])
     assert log["keys"] == []
-    assert events["play"]["error"].startswith("no PLAY bar in")
-    assert "no-play-bar.png" in log["shots"]
+    assert events["play"]["error"].startswith("no play screen in")
+    assert "no-play.png" in log["shots"]
 
 
 def test_play_works_under_wish_too(wished, tmp_path, monkeypatch):
@@ -3530,5 +3653,82 @@ def test_the_play_bar_test_is_false_on_a_screen_too_small_or_different(
         monkeypatch):
     from PIL import Image
     _screens(monkeypatch, bar_from=None)
-    assert not fsuaegdb.play_bar_up(Image.new("RGB", (320, 200)))
-    assert not fsuaegdb.play_bar_up(Image.new("RGB", (800, 600)))
+    assert not fsuaegdb.screen_up(Image.new("RGB", (320, 200)), "play")
+    assert not fsuaegdb.screen_up(Image.new("RGB", (800, 600)), "play")
+
+
+def test_a_screen_two_pixels_off_or_a_little_darker_still_matches(monkeypatch):
+    from PIL import Image, ImageEnhance
+    _, shown = made_up_screen(monkeypatch, "play")
+    moved = shown.transform(shown.size, Image.AFFINE, (1, 0, 2, 0, 1, -2))
+    darker = ImageEnhance.Brightness(shown).enhance(0.98)
+    assert fsuaegdb.screen_up(moved, "play")
+    assert fsuaegdb.screen_up(darker, "play")
+
+
+def test_a_grab_of_another_size_is_never_a_match(monkeypatch):
+    _, shown = made_up_screen(monkeypatch, "play")
+    assert fsuaegdb.screen_distance(shown.crop((0, 0, 720, 568)), "play") is None
+    assert fsuaegdb.screen_distance(shown.resize((801, 600)), "play") is None
+
+
+@pytest.mark.parametrize("name", ["load", "party"])
+def test_until_holds_the_next_key_until_the_screen_shows(
+        driven, tmp_path, monkeypatch, name):
+    """A slow load: the key after `until` goes only once the screen is up."""
+    _, log = driven
+    grabs = _screens(monkeypatch, bar_from=4, name=name)
+    from tools.amiga import fsuaepor
+    pressed_after = []
+    monkeypatch.setattr(fsuaepor, "keys", lambda a: pressed_after.append(
+        (a.key, len(grabs))))
+    events, _ = run_session(tmp_path, [f"until {name} 30", "key b"])
+    assert events["until"]["screen"] == name and "error" not in events["until"]
+    assert pressed_after == [(["b"], 4)]
+
+
+def test_until_a_screen_that_never_shows_is_an_error_row_with_a_picture(
+        driven, tmp_path, monkeypatch):
+    _, log = driven
+    _screens(monkeypatch, bar_from=None, name="party")
+    events, _ = run_session(tmp_path, ["until party 0.3"])
+    assert events["until"]["error"].startswith("no party screen in")
+    assert "no-party.png" in log["shots"]
+
+
+def test_until_an_unknown_screen_names_the_known_ones(driven, tmp_path):
+    events, _ = run_session(tmp_path, ["until menu"])
+    assert "load, party, play" in events["until"]["error"]
+
+
+def test_until_works_under_wish_too(wished, tmp_path, monkeypatch):
+    _screens(monkeypatch, bar_from=2, name="load")
+    rows = run_wish(tmp_path, ["until load 30"])
+    assert "error" not in by_event(rows, "until")[0]
+
+
+def test_ctrl_c_inside_a_qt_callback_ends_the_run_and_puts_the_row_back(
+        wish_scripted, tmp_path, monkeypatch):
+    """#812: a SIGINT that lands while Qt runs a slot used to make PyQt abort
+    the process before any cleanup; now it only stops the run."""
+    import signal as signals
+    import time as clock
+
+    from PyQt6.QtCore import QTimer
+    from PyQt6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
+    guest = wish_scripted["guest"]
+    fired = []
+
+    def process_events(self):
+        if not fired and gate_bytes(guest) == POD_PATCHED:
+            fired.append(True)
+            QTimer.singleShot(0, lambda: os.kill(os.getpid(), signals.SIGINT))
+            deadline = clock.monotonic() + 2
+            while not fsuaegdb.STOP["why"] and clock.monotonic() < deadline:
+                app.processEvents()
+    monkeypatch.setattr(FakeApp, "processEvents", process_events)
+    rows = run_wish(tmp_path, ["no_encounters on", "wait 5", "key a"])
+    assert by_event(rows, "stopped")[0]["why"] == "SIGINT"
+    assert wish_scripted["keys"] == []
+    assert gate_bytes(guest) == POD_GATE

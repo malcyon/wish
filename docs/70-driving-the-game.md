@@ -859,8 +859,10 @@ before any save, because the saved game carries the loaded script; a save key is
 refused while a change may still be in the game.
 
 For Silver Blades, `play [seconds]` waits for the `PLAY DEMO QUIT` bar and
-presses `p` the moment it shows, before the attract demo starts. It matches a
-hash of the bar's crop on `launch`'s 800x600 screen, in `session` and `wish`.
+presses `p` the moment it shows, before the attract demo starts, and
+`until load` or `until party` holds the next key until the saved-game picker or
+the loaded party menu is up, however long a load takes. Each matches a hash of
+a crop of `launch`'s 800x600 screen, in `session` and `wish`.
 
 ## Character creation
 

@@ -95,7 +95,9 @@ ROWS = (
           "The Ruins (area $20, disk 2 ECL block 3) roll at $89F6, reached on an "
           "ordinary square when the [$4C1B] wait is 0: IF> 5 EXIT"),
     _gate("pools-of-darkness", "*0x6EA6+0x82EA", "e43dac29", PROBABLE,
-          "GLB block 17 roll at $82EA: IF> EXIT"),
+          "GLB block 17 roll at $82EA, reached from the step entry on an "
+          "ordinary square: IF> 5 EXIT, else a fight; decoded with Pools of "
+          "Darkness' own operand counts"),
     _rest("pool-of-radiance", "*0x9C+0x5A6", "0000", SPECULATIVE,
           "$6DD3 chance word, confirmed on DOS, not run on the Amiga"),
     _rest("curse-of-the-azure-bonds", "*0x3DBE+0xFDA6", "0000", SPECULATIVE,
@@ -144,16 +146,22 @@ class EncounterSwitch:
         self.spans: dict[int, int] = {}
         #: What each rest row holds: address -> the bytes written.
         self.holding: dict[int, bytes] = {}
+        #: The row each changed address belongs to, for the journal.
+        self.row_at: dict[int, Row] = {}
         self.journal = journal
         self.active = True
 
     def outstanding(self) -> list[dict]:
-        """Every change still to be put back, as `{address, original, changed}`."""
-        rows = [{"address": a, "original": o[:self.spans[a]].hex(),
+        """Every change still to be put back: `kind`, `spec`, `address`,
+        `original` and `changed` bytes in hex, and for a gate the `digest` its
+        whole statement had, so a later repair can check it is the same one."""
+        rows = [{"kind": GATE, "spec": self.row_at[a].spec, "address": a,
+                 "digest": self.row_at[a].digest,
+                 "original": o[:self.spans[a]].hex(),
                  "changed": c[:self.spans[a]].hex()}
                 for a, (o, c) in self.patched.items()]
-        rows += [{"address": a, "original": o.hex(),
-                  "changed": self.holding[a].hex()}
+        rows += [{"kind": REST, "spec": self.row_at[a].spec, "address": a,
+                  "original": o.hex(), "changed": self.holding[a].hex()}
                  for a, o in self.held.items()]
         return rows
 
@@ -200,6 +208,7 @@ class EncounterSwitch:
                 # or a kill mid-write leaves the address restorable.
                 self.patched[address] = (now, bytes(changed))
                 self.spans[address] = span
+                self.row_at[address] = row
                 self._record()
                 result = self._checked_write(address, now, bytes(changed[:span]))
                 if "error" in result:
@@ -219,6 +228,7 @@ class EncounterSwitch:
                 # Whatever the game last wrote is what to put back.
                 self.held[address] = now
                 self.holding[address] = row.new
+                self.row_at[address] = row
                 self._record()
                 result = self._checked_write(address, now, row.new)
             done.append({"row": row.spec, "grade": row.grade, **result})
@@ -268,6 +278,8 @@ class EncounterSwitch:
         return bool(self.patched or self.held)
 
     def off(self) -> list[dict]:
+        """`release`, and the switch stays off.  The `write` it was given must
+        read its bytes back, so a row counts as restored only when it is."""
         done = self.release()
         self.active = False
         return done
