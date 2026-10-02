@@ -3180,7 +3180,7 @@ def test_the_drivers_window_gets_the_maps_and_title_a_real_launch_would(
     assert calls["resolve"]["also"] == backends.amiga_only_titles()
 
 
-# #812: interrupted runs, the journal, and a dead helper connection
+# Interrupted runs, the journal, and a dead helper connection
 
 def journal_rows(path):
     return json.loads(path.read_text())["rows"] if path.exists() else []
@@ -3593,7 +3593,7 @@ def test_silver_blades_the_ruins_roll_is_changed_where_the_towns_is_not_loaded(
 # play: Silver Blades' PLAY bar
 
 def made_up_screen(monkeypatch, name: str):
-    """A plain 800x600 screen and the same with white blocks in `name`'s box,
+    """An empty 800x600 screen and the same with white blocks in `name`'s box,
     and the table's reference for `name` taken from the second."""
     from PIL import Image, ImageDraw
     plain = Image.new("RGB", (800, 600), (0, 0, 80))
@@ -3709,7 +3709,7 @@ def test_until_works_under_wish_too(wished, tmp_path, monkeypatch):
 
 def test_ctrl_c_inside_a_qt_callback_ends_the_run_and_puts_the_row_back(
         wish_scripted, tmp_path, monkeypatch):
-    """#812: a SIGINT that lands while Qt runs a slot used to make PyQt abort
+    """A SIGINT that lands while Qt runs a slot used to make PyQt abort
     the process before any cleanup; now it only stops the run."""
     import signal as signals
     import time as clock
@@ -3732,3 +3732,68 @@ def test_ctrl_c_inside_a_qt_callback_ends_the_run_and_puts_the_row_back(
     assert by_event(rows, "stopped")[0]["why"] == "SIGINT"
     assert wish_scripted["keys"] == []
     assert gate_bytes(guest) == POD_GATE
+
+
+def _proc_with(tmp_path, pid, *args):
+    proc = tmp_path / "proc"
+    (proc / str(pid)).mkdir(parents=True)
+    (proc / str(pid) / "cmdline").write_bytes(
+        b"\0".join(a.encode() for a in args) + b"\0")
+    return str(proc)
+
+
+def test_a_dead_pid_is_no_driver(monkeypatch, tmp_path):
+    monkeypatch.setattr(fsuaegdb, "alive", lambda pid: False)
+    proc = _proc_with(tmp_path, 77, "python", "tools/amiga/fsuaegdb.py", "wish")
+    assert not fsuaegdb.driver_alive(77, proc)
+
+
+@pytest.mark.parametrize("args", [
+    ("python", "/srv/wish/tools/amiga/fsuaegdb.py", "--port", "6520", "wish"),
+    ("python", "-m", "tools.amiga.fsuaegdb", "session"),
+])
+def test_a_live_driver_is_recognised_by_its_script(monkeypatch, tmp_path, args):
+    monkeypatch.setattr(fsuaegdb, "alive", lambda pid: True)
+    assert fsuaegdb.driver_alive(77, _proc_with(tmp_path, 77, *args))
+
+
+@pytest.mark.parametrize("args", [
+    ("vim", "notes-on-fsuaegdb.txt"),
+    ("python", "tools/amiga/fsuaegdb.pyc"),
+    ("grep", "-r", "fsuaegdb", "tools"),
+])
+def test_a_reused_pid_that_only_mentions_the_driver_is_no_driver(
+        monkeypatch, tmp_path, args):
+    monkeypatch.setattr(fsuaegdb, "alive", lambda pid: True)
+    assert not fsuaegdb.driver_alive(77, _proc_with(tmp_path, 77, *args))
+
+
+def test_a_live_pid_whose_proc_cannot_be_read_counts_as_a_driver(
+        monkeypatch, tmp_path):
+    monkeypatch.setattr(fsuaegdb, "alive", lambda pid: True)
+    assert fsuaegdb.driver_alive(77, str(tmp_path / "no-proc"))
+
+
+def test_a_row_with_a_bad_owner_is_an_error_and_the_others_are_repaired(
+        scripted, tmp_path, private_journal):
+    guest, _ = scripted
+    bad = journal_row(owner="not a pid", address=0xC20000)
+    leave_a_change(guest, private_journal, rows=[bad, journal_row()])
+    _, rows = run_session(tmp_path, ["wait 0.1"])
+    repair = encounter_rows(rows)[0]["rows"]
+    assert "ValueError" in repair[0]["error"]
+    assert repair[1]["repaired"] is True
+    assert gate_bytes(guest) == POD_GATE
+    assert journal_rows(private_journal) == [bad]
+
+
+def test_a_repair_failure_is_printed_once_however_often_close_runs(
+        capsys, tmp_path):
+    rows = []
+    enc = fsuaegdb.Encounters(lambda **row: rows.append(row), None,
+                              journal=fsuaegdb.Journal(tmp_path / "j.json"))
+    (tmp_path / "j.json").write_text("{broken")
+    enc.close()
+    enc.close()
+    assert len([r for r in rows if "error" in r]) == 1
+    assert capsys.readouterr().out.count("cannot be read") == 1

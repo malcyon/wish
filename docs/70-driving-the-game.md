@@ -861,8 +861,11 @@ refused while a change may still be in the game.
 For Silver Blades, `play [seconds]` waits for the `PLAY DEMO QUIT` bar and
 presses `p` the moment it shows, before the attract demo starts, and
 `until load` or `until party` holds the next key until the saved-game picker or
-the loaded party menu is up, however long a load takes. Each matches a hash of
-a crop of `launch`'s 800x600 screen, in `session` and `wish`.
+the loaded party menu is up, however long a load takes. Each compares a
+shrunk grey-level copy of a crop of `launch`'s 800x600 screen with a stored one,
+at any placement within two pixels, and accepts it under a distance threshold;
+`SCREENS` in `tools/amiga/fsuaegdb.py` has the boxes and the measured margins.
+This works in `session` and `wish`.
 
 Under `wish` the Action buttons and the Fast Travel drop-down are driven
 through the window itself (`tools/gui/windowbuttons.py`), so a click runs the

@@ -682,7 +682,7 @@ def shot(display: str, path: pathlib.Path) -> None:
 #: `SCREEN_DISTANCE` grey levels of it on average.
 #:
 #: * `play`: the `PLAY DEMO QUIT` bar.  Every placement within two pixels
-#:   matches it; the nearest other screen of the 646 taken on #37 (the party
+#:   matches it; the nearest other screen of 646 measured (the party
 #:   menu) is 8.8 away.
 #: * `load`: the words `LOAD WHICH` of the saved-game picker.  The save
 #:   picker, which differs only in that word, is 10.6 away.
@@ -864,19 +864,24 @@ class JournalError(ValueError):
     """The encounter journal exists and cannot be read."""
 
 
-def driver_alive(pid: int) -> bool:
+def driver_alive(pid: int, proc: str = "/proc") -> bool:
     """Whether `pid` is a running `fsuaegdb.py`, so its changes are its own.
 
-    A pid that is alive but runs something else was reused, and counts as gone.
-    Where `/proc` cannot say, a live pid counts as a driver.
+    A driver is a process with an argument whose last path element is
+    `fsuaegdb.py`, or the module `tools.amiga.fsuaegdb`.  A pid that is alive
+    but runs something else was reused, and counts as gone.  Where `proc`
+    cannot be read, a live pid counts as a driver.
     """
     if not alive(pid):
         return False
     try:
-        with open(f"/proc/{pid}/cmdline", "rb") as handle:
-            return b"fsuaegdb" in handle.read()
+        with open(os.path.join(proc, str(pid), "cmdline"), "rb") as handle:
+            args = handle.read().decode("utf-8", "replace").split("\0")
     except OSError:
         return True
+    return any(arg == "tools.amiga.fsuaegdb"
+               or arg.replace("\\", "/").rsplit("/", 1)[-1] == "fsuaegdb.py"
+               for arg in args)
 
 
 class Journal:
@@ -971,6 +976,8 @@ class Encounters:
         self.title: str | None = None
         #: Whether another title's journal rows have been reported.
         self.foreign_reported = False
+        #: The last repair failure printed, so a repeat is not printed again.
+        self.repair_error: str | None = None
 
     def _live(self):
         held = self.current
@@ -1043,12 +1050,12 @@ class Encounters:
             owner = row.get("owner")
             if owner == self.journal.pid and self.active:
                 continue
-            if (owner not in (None, self.journal.pid)
-                    and driver_alive(int(owner))):
-                done.append({"address": row.get("address"),
-                             "skipped": f"driver pid {owner} is running"})
-                continue
             try:
+                if (owner not in (None, self.journal.pid)
+                        and driver_alive(int(owner))):
+                    done.append({"address": row.get("address"),
+                                 "skipped": f"driver pid {owner} is running"})
+                    continue
                 result = self._repair_row(gdb, tgt, row)
             except (*ENCOUNTER_ERRORS, KeyError, TypeError) as exc:
                 done.append({"row": row, "error": f"{type(exc).__name__}: "
@@ -1232,12 +1239,20 @@ class Encounters:
         self._repair_noted(now)
 
     def _repair_noted(self, now: float) -> None:
+        """`repair`, with a failure printed and logged once, not again each
+        time the same failure repeats (`close` may run twice)."""
         try:
             self.repair(now)
         except ENCOUNTER_ERRORS as exc:
+            error = f"{type(exc).__name__}: {exc}"
+            if error == self.repair_error:
+                return
+            self.repair_error = error
             print(f"           {exc}")
             self.note(event="no_encounters", action="repair", at=now,
-                      error=f"{type(exc).__name__}: {exc}")
+                      error=error)
+        else:
+            self.repair_error = None
 
     def close(self) -> None:
         """At the end of a run: put every row back, since the emulator
