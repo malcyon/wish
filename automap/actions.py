@@ -424,7 +424,7 @@ class HealParty(Action):
 
     name = "heal"
     label = "Heal party"
-    description = "Set current hit points to maximum for every concious character."
+    description = "Set current hit points to maximum for every conscious character."
 
     def run(self, target, **kwargs) -> Outcome:
         party = read_party(target, self.game)
