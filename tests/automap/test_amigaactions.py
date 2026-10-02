@@ -1,6 +1,7 @@
 """The Amiga Action buttons, against a fake party and a bytearray target."""
 
 import importlib
+import logging
 from types import SimpleNamespace
 
 import pytest
@@ -327,6 +328,15 @@ def fresh_import(monkeypatch):
     return monkeypatch
 
 
+def _hear(monkeypatch, caplog):
+    """Attach `caplog`'s handler to the module's own logger: once any test has
+    installed `wish/debuglog.py`, the `wish` logger no longer propagates to the
+    root, where `caplog` listens."""
+    monkeypatch.setattr(aa._log, "handlers", [caplog.handler])
+    monkeypatch.setattr(aa._log, "propagate", False)
+    caplog.set_level(logging.WARNING, logger=aa._log.name)
+
+
 def test_a_missing_amigaparty_is_none_and_is_looked_for_once(fresh_import):
     calls = []
 
@@ -344,6 +354,7 @@ def test_a_module_not_found_for_another_module_is_raised(fresh_import, caplog):
         raise ModuleNotFoundError(name="elsewhere")
 
     fresh_import.setattr(importlib, "import_module", fail)
+    _hear(fresh_import, caplog)
     for _ in range(2):
         with pytest.raises(ModuleNotFoundError):
             aa._parties()
@@ -355,7 +366,25 @@ def test_an_import_error_is_raised_and_logged_once(fresh_import, caplog):
         raise ImportError("cannot import name")
 
     fresh_import.setattr(importlib, "import_module", fail)
+    _hear(fresh_import, caplog)
     for _ in range(2):
         with pytest.raises(ImportError):
             aa._parties()
     assert len(caplog.records) == 1
+
+
+@pytest.mark.parametrize("key", sorted(aa.amiga.MACHINES))
+def test_the_real_party_rows_have_what_the_actions_read(key):
+    from automap import amigaparty
+
+    target = SimpleNamespace(layout=aa.amiga.MACHINES[key])
+    row = aa._row(target, key)
+    assert row is amigaparty.ROWS[key]
+    for field in ("hp", "memorised", "hidden"):
+        assert aa._whole_bytes(getattr(row, field)) or field == "hidden"
+    assert row.combat_value is not None
+    assert isinstance(row.confirmed, frozenset)
+    assert isinstance(row.combat_legal, frozenset)
+    unconfirmed = [a for a in aa.actions(engine.SpellStore(), key)
+                   if a.name not in row.confirmed]
+    assert all(a.legality(target).reason == aa.NOT_BUILT for a in unconfirmed)

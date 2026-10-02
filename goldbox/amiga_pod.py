@@ -13,7 +13,7 @@ put the prediction on screen. `docs/124-amiga-port.md` has the runs.
 
 Three things make that possible at all, all measured rather than assumed:
 Amiga PoD applies **no length check and no signature check** to a `.pc`; the
-`0x00`-`0x5F` longwords that a genuine file fills with Amiga heap addresses
+`0x00`-`0x43` longwords that a genuine file fills with Amiga heap addresses
 are don't-care on load; and a record whose item region is zero loads and
 joins the party.
 
@@ -1358,7 +1358,7 @@ class PodWriter:
     """Build a `Save/NAME.pc` Amiga Pools of Darkness will load.
 
     Every field the record is decoded for is written. What is left zero is the
-    heap pointers at 0x00-0x5F, which the loader overwrites, and the derived
+    heap pointers at 0x00-0x43, which the loader overwrites, and the derived
     block the game recomputes on load (:data:`DERIVED`). The combat icon at
     0x0BB-0x0BD and 0x0BF-0x0C4 is not taken from the source at all: it is
     what the engine's own creation routine would have given this character
