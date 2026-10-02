@@ -773,7 +773,11 @@ snapshot of that name, and the snapshot fails with one sentence if a process
 still holds a file in it. A failure after `statefile_save x` was sent leaves
 that save pending in WinUAE, and the next `statefile_path` sent to the process
 completes it; the error says so. `~` cannot be in a holder or a name, so no
-snapshot shares a path with the marker, the working folder or the backup.
+snapshot shares a path with the marker, the working folder or the backup. A snapshot made before
+the marker was named `complete~` reads as having no marker, so a restore of it
+fails; take it again. If the marker cannot be written the old snapshot is
+kept, and if moving the old folder back after a failed replacement also fails,
+the error names `<name>~old`, where the old snapshot then is.
 
 A restore refuses a snapshot with no marker or whose file does not hash as the
 marker says, reads Exec's counts, sends `CFG statefile <file>`, and reads them
@@ -820,6 +824,11 @@ holding `..` or ending in a dot, and a Windows device name (`CON`, `PRN`, `AUX`,
 as a holder or a name, are refused, because Windows would resolve the folder to
 something else. FS-UAE has no usable machine-state save in this build, because
 its savestate crashes.
+
+There is no `pwsh` on the Linux side, so the PowerShell half of these verbs has
+no executable test here: `tests/amiga/test_winuaeps1.py` and the pipe tests
+check its text and what Python makes of its output, and the live runs recorded
+on the issue are the only proof that it behaves.
 
 ## Suppressing encounters
 

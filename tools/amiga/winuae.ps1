@@ -168,7 +168,7 @@ function Read-Kv([string]$Path) {
 }
 
 function Write-Kv([string]$Path, [hashtable]$H) {
-  ($H.Keys | Sort-Object | ForEach-Object { "$_=$($H[$_])" }) | Set-Content -Path $Path -Encoding ASCII
+  ($H.Keys | Sort-Object | ForEach-Object { "$_=$($H[$_])" }) | Set-Content -Path $Path -Encoding ASCII -ErrorAction Stop
 }
 
 function Boot-Stamp { (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToString('o') }
@@ -562,7 +562,11 @@ function Replace-StateFolder([string]$Part, [string]$Dir, [string]$Backup) {
   if ($had) { Move-Item -LiteralPath $Dir -Destination $Backup -ErrorAction Stop }
   try { Move-Item -LiteralPath $Part -Destination $Dir -ErrorAction Stop }
   catch {
-    if ($had) { Move-Item -LiteralPath $Backup -Destination $Dir -ErrorAction SilentlyContinue }
+    $why = $_.Exception.Message
+    if ($had) {
+      try { Move-Item -LiteralPath $Backup -Destination $Dir -ErrorAction Stop }
+      catch { throw "the new snapshot could not be moved in ($why), and the old one could not be moved back, so it is in $Backup" }
+    }
     throw
   }
   if ($had) { Remove-Item -LiteralPath $Backup -Recurse -Force -ErrorAction SilentlyContinue }
@@ -681,6 +685,7 @@ function Invoke-State([string]$Verb) {
         $appeared = $sw.ElapsedMilliseconds
         $sha = (Get-FileHash -LiteralPath $partFile -Algorithm SHA256).Hash
         Write-Kv "$part\complete~" @{ sha256 = $sha; count = "$count"; bytes = "$($h.len)" }
+        if (-not (Test-Path -LiteralPath "$part\complete~" -PathType Leaf)) { throw "the completion marker $part\complete~ was not written" }
         Replace-StateFolder $part $dir $backup
         $done = $true
         $tags.Add("<<file>> $file") | Out-Null
