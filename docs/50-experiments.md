@@ -7838,3 +7838,77 @@ to check against, which is `#516 (Generate boundary characters and check
 every writer's field widths, since no real save reaches a limit and the
 corpus cannot find a wrong one)`'s own step 3, left to a `reverse-engineering`
 agent.
+
+## Curse's world map on the Amiga
+
+The question, for `#37 (Automap the Amiga version, not just the C64)`: where
+does Amiga Curse keep the state the C64 automapper reads on the Dalelands map
+(`$4BF2`, `$4BE6`, `$4C9B`, `$4C9C`, and the arrival bytes `$7F1B`/`$7EDB`),
+and can a party be got there to measure it? The answer is in
+[`96-live-memory-automapper.md`](96-live-memory-automapper.md), "Curse's world
+map"; this is how it was found.
+
+**Reading first.** The VM's address classifier in `/Curse` (`0xc664`) has
+DOS's five ranges. Its setter (`0xceac`) and getter (`0xd09c`) index type 0
+(`$4B00`-`$4EFF`) as `u16be` at `[g3d00] + 2 * address`, and `0x1d460` stores
+the allocation minus `$9600`, so every C64 save-page address the C64 reader
+uses has a fixed offset behind one pointer. The setter turns a write to
+`$4BE6` into a mode change (`g3d56` = 3 for 0, 4 for 1), as DOS's
+`vm_SetMemoryValue` does. The script-change handler (`0x1e50c`) writes the old
+`g5ce1` into `$4BF2`, then sets `g5ce1` to the new id and loads `ECL%d`; the
+main loop writes `g5ce1` into `$4BF2` only after the entries return. So
+`g5ce1` is the C64's `$7F1B` without the bit-7 business, and `$4BF2` lags
+exactly as it does on the C64.
+
+**Getting there.** Every Amiga Curse save we hold is in area 0 or 1 (87
+slots), and area 1's only exit is a story `NEWECL` to area 2. The run loaded the
+disk's own slot A, set `$4C2A` = 1 at `[g3d00] + 0x9854`, and poked 21 bytes
+into the resident script at area 1's step entry `$8137` (`[g5006] + 0x8137`):
+three `SAVE`s placing the party at 0,0 south and a `NEWECL` to area 3. The resident
+script's first bytes matched the C64 `ECL01` before the poke. One step ran it;
+the sewer introduction appeared; a step off the north edge at x = 0 brought
+the sealed-gate question that the sewer script asks only when `$4C2A` = 1,
+which confirms that address; `YES` put up the Dalelands picture.
+
+**What moved.** About 1.3 s after `YES`, `g5ce1` read `$50` with `$4BF2` still
+3; a second later `g3d56` = 3 and `$4BE6` = 0; `$4BF2` became `$50` at 4.5 s.
+`JOURNEY ON` and choosing Shadowdale set `$4C9C` = 1; `TRAIL` set `$4C9B` = 1
+and the legs counter `$4CA3` = 1. Camp gave mode 2 with `g5ce1` still `$50`.
+On the way out (`SEARCH AREA` at Tilverton, with `$4C5B` = 1 staged), `g5ce1`
+= 3, mode 4 and `$4BE6` = 1 came within a second of Return, `$4BF2` stayed
+`$50` until the sewer introduction was dismissed, and the square kept the map's
+0,15 N for 4 s in one exit and over 6 s in the other before becoming 0,0 S.
+
+**The negative result.** No byte of the 26,428-byte data hunk marks the moment
+the arriving script places the party. Twelve dumps across the second exit
+(the map, the found-entrance message, eight within 0.6 s of Return, the
+loading wait with the 3D window black, the introduction) leave only the
+script's entry vectors `g584c`-`g5855`, `g5830`, `g5839` and the loader's
+destination pointer `g2ffe` changing between the stale window and the arrival,
+and all of them change when the script finishes loading, before its entry sets
+the square. `g5830` is the "a picture is up" flag the `PICTURE` handler sets
+and the script load clears; `g5839` is cleared at the end of the `PICTURE`
+handler. No code addresses the word that would hold `$7EDB`.
+
+**So the rule compares the square.** The map lasts while `g5ce1` (the area id
+when `g5ce1` is 0, which is the party menu after a load) names it, and then
+while the area id still names it and the square bytes are those read on the
+map. Prototyped in `AmigaTarget.fix` and run live in a third boot: a world-map
+fix at the party menu after loading the map save and through a journey (node
+and destination read 0,0, then 0,1, then 1,1); on `SEARCH AREA` five more
+world-map fixes while the square was stale, then `0,0 S` on the first poll
+after it changed, with the tab on `GEO03` at that square and the area id still
+`$50`; on re-entry a world-map fix 1.3 s after `YES`. The one case it cannot
+tell is an arriving script that places the party exactly where the map left
+it: the map then stays until the area id changes, which costs the player the
+seconds the entry message is up.
+
+**The save.** Made in camp on the map at Tilverton, slot F of a copy of disk
+A; loading it on a later boot comes straight back to the map (`g5ce1` 0 and
+mode 0 at the party menu, `$50` and 3 from `BEGIN ADVENTURING`). It carries the
+staged `$4C2A` = 1. Wish cannot read it yet:
+`#815 (A Curse party saved on the world map on the Amiga or DOS cannot be
+converted, because Wish marks the world map indoors)`. The script it holds is
+`ECL.GLB` block 23, which settles that the engine finds a script through block
+0's table: `#813 (Converting a Curse party in any area past the sewers and the
+hideout to the Amiga stages the wrong area script or fails)`.

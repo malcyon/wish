@@ -696,6 +696,42 @@ gate holds there is PROBABLE until a Curse fight is read.
 `0x11F` plus the 4-byte word) and then reads `0x120` into it; the last byte
 lands in the allocator's rounding. PROBABLE, from `0x24DC` and 12 records.
 
+### Curse's world map
+
+**Curse's Dalelands map is read from three engine values, all behind the data
+hunk.** The script variables the C64 keeps at `$4Bxx`-`$4Exx` are `u16be` words
+at `[g3d00] + 2 * address` (the VM's setter `0xceac` and getter `0xd09c`; the
+pointer is the allocation minus `$9600`). CONFIRMED from `/Curse` and on
+FS-UAE (three boots: the party entered the map three times, left it three
+times, and a save made on it was loaded twice).
+
+| What | Amiga | C64 counterpart | Values |
+|---|---|---|---|
+| Script in the buffer | `g5ce1`, byte | `$7F1B` | `$50`/`$51` on the map; set by the script-change opcode (`0x1e50c`) before the new script loads; 0 at the party menu after a load |
+| Area id | `[g3d00] + 0x97E4` | `$4BF2` | lags: the departing id until the arriving script's entry returns |
+| Indoors flag | `[g3d00] + 0x97CC` | `$4BE6` | 0 on the map |
+| Place the party stands at | `[g3d00] + 0x9936` | `$4C9B` | 0 Tilverton, 1 Shadowdale, as the C64 |
+| Place it is going to | `[g3d00] + 0x9938` | `$4C9C` | set when a destination is chosen |
+| Game mode | `g3d56`, byte | -- | 3 on the map, 2 in camp there, 4 in a town |
+
+**The square is not overwritten on the map**, unlike the C64's `$C04B`: it keeps
+the last town square throughout, and on the way out it keeps it for 4 to 6
+seconds after `g5ce1` names the town, until the arriving script's own `SAVE`s
+place the party. No data-hunk byte marks that moment (twelve dumps of the hunk
+across an exit), and the C64's view-drawn byte `$7EDB` has no Amiga
+counterpart. So the reading that matches the game is: the map is up while
+`g5ce1` (or, when it is 0, the area id) is `$50`/`$51`, and after that while
+the area id is still `$50`/`$51` and the square still holds the bytes it held
+on the map. A prototype of that rule in `AmigaTarget.fix` gave a world-map fix
+from 1 s after `YES` on entry, held it through the stale square on exit, and
+gave the sewer's `0,0 S` on the first poll after the script placed the party,
+with the tab on `GEO03` at that square. The live run is in
+[`50-experiments.md`](50-experiments.md), "Curse's world map on the Amiga".
+
+**`ECL.GLB` block numbers are not area ids.** Block 0 is a table of 25
+(area id, block) word pairs; area `$50` is block 23 and `$51` block 24. The
+engine loads through it: a save made on the map holds block 23 byte for byte.
+
 ### Fast Travel and Return without the program counter
 
 **An Amiga trip needs only memory writes.** The C64's Fast Travel ends by
