@@ -2691,6 +2691,45 @@ custody; what would name the byte is a differential in the running game, a
 character saved before and after whatever sets it, and nobody knows what that
 is. The conversion no longer has to know.
 
+### 1.22 Amiga Pool of Radiance's quickfight byte is `0x111` (#37 (Automap the Amiga version, not just the C64))
+
+**Quickfight is record `0x111`, one byte, 1 while the computer plays the
+character's turns and 0 otherwise** (`goldbox.amiga_por.AMIGA_POR_QUICKFIGHT`).
+It is DOS `0x10F`, the fourth byte of `field_10c_10f`, under the `+2` shift, so
+the reader and writer already converted it through the DOS table before it had
+a name. CONFIRMED from `/program`'s code (one executable on all three Pool
+disk 1 images, SHA-1 prefix `469ab41820`); not yet watched in the running game,
+where choosing QUICK for one character should move this byte and no other.
+
+`tools/amiga/amigarecordrefs.py` finds 18 sites at displacement `0x111`; the
+14 below were read in `tools/amiga/amiga68k.py disasm`, and the other four
+(`0x009D6A`, `0x00BD42`, `0x00DB26`, `0x01C198`) are reads nobody has followed. File offsets into `/program`:
+
+| where | what it does | what it says |
+|---|---|---|
+| `0x0053DE` | `move.b #$1, $111(a3)`, then clears the combat target if it is on the character's own side (`0x110`) | the QUICK handler |
+| `0x004822` | combat menu dispatch: key `$51` (`Q`) calls `0x0053DE`, then `0x002F42` | the menu's Quick (string "Quick" at `0x8C66`, beside Move, View, Aim, Use, Cast, Turn, Done) |
+| `0x0048DA` | key `$E6` calls `0x0053DE` for every member of the list at `h32+0xAEE` | quickfight for the whole party |
+| `0x004686` | at a turn's start, `tst.b $111(a3)`: set calls `0x002F42`, clear calls the player menu at `0x0046EC` | `0x002F42` is the computer's turn |
+| `0x0048AC`, `0x003DFC` | key `$20` (space) clears `0x111` on each member whose control byte `0x085` is below `0x80` | the game never takes quickfight off a companion |
+| `0x00A02C`-`0x00A072` | a value 0, `0x80` or `0x81` becomes quickfight 0/1/1 with side `0x110` 0/0/1 | the C64's packed byte, bit 7 quickfight and bit 0 side |
+| `0x00B18E`, `0x01028A`, `0x010916`, `0x03866C` | set 1 when a record is built or a character changes side | joining companions and take-overs fight under the computer |
+
+The same walks give `0x106` as the record's next pointer and `0x10A` as a
+pointer to its combat data, both in DOS's `heap_104` window, and `0x10E` as the
+status, compared with 5 (dying) and set to 4 (unconscious) by the bandage
+routine at `0x00522E`. That is the heap record using the file record's
+offsets, which a live read of the party list still has to show.
+
+Across the 52 distinct Pool records in the saves we have, `0x111` is 0 in 51
+and 1 in one: `GENHEERIS.cha`, a companion with `0xB2` at `0x085`, which is the
+value `0x00B196` writes as a companion joins.
+
+Not established: whether clearing a companion's byte hands him to the player,
+because the space bar never does it. The experiment is a running game with a
+companion in the party: clear his `0x111` mid-fight and see whether the menu
+appears on his turn.
+
 ## 2. The assumption to test first: can Amiga PoD read a C64 character?
 
 Donald flagged this himself and asked for it to be checked rather than

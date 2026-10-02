@@ -632,6 +632,16 @@ def describe_unconverted_effect(node: bytes) -> str:
 #: The Amiga offset of the `u32be` experience total.
 AMIGA_POR_EXPERIENCE = 0x0AE
 
+#: The quickfight flag: one byte, 1 while the computer plays the character's
+#: turns and 0 otherwise.  DOS `0x10F` (`field_10c_10f[3]`) under the `+2`
+#: shift, so the reader and writer already convert it through the DOS table.
+#: CONFIRMED from `/program`'s combat code, not yet in the running game: the
+#: combat menu's `Q` key sets it, each turn starts by testing it, the space bar
+#: clears it for every member whose control byte `0x085` is below `0x80`, and
+#: the script accessor stores `0x80`/`0x81` as quickfight 1 with side `0x110`
+#: 0/1 -- the C64's packed byte.  `docs/124-amiga-port.md` §1.22 has the sites.
+AMIGA_POR_QUICKFIGHT = 0x111
+
 #: Amiga record bytes with no DOS source: the three insertions and the live
 #: heap pointer.  The round-trip test masks **this list** plus `goldbox.dos_codec`'s own
 #: `WRITE_UNSOURCED`, `WRITE_CONSTANTS` and computed fields, rather than

@@ -34,6 +34,7 @@ Tests for the Amiga port: its filesystem, saved-game and character-record reader
 | `test_amiganodefields.py` | Checks `tools/amiga/amiganodefields.py` reports each effect-node byte the two later executables name and the byte nothing reaches. |
 | `test_amigapipe.py` | Checks `automap.amiga.WinuaePipe` against a fake that answers the way the real guest was measured answering. |
 | `test_amigapool.py` | Checks `AmigaTarget.fix` on Pool of Radiance's travel grid over synthetic memory built from the row's own fields, and the automapper following it. |
+| `test_amigaporquickfight.py` | Pins Amiga Pool of Radiance's quickfight byte at record `0x111`, DOS `0x10F` under the shift map, through the reader and writer on records built here. |
 | `test_amigaporsavegame.py` | Checks that the Amiga Pool of Radiance saved game is built from the source save, from the player's disks and specimens. |
 | `test_amigaporsavegameboundaries.py` | Checks the Amiga Pool of Radiance container's region boundaries against every saved game on the machine. |
 | `test_amigaporspacewarning.py` | Checks that `write_por` warns a player when a character's name will lose its space on the Amiga's first save. |
