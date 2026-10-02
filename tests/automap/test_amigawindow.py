@@ -58,15 +58,21 @@ class FakeAmiga(MemoryTarget):
         self.ram = bytearray(0x80000)
         self.writes = []
         self.fail_at = set()
+        #: Every read of Amiga memory, `(address, length)`, in order.
+        self.ram_reads = []
 
     def read(self, addr, length):
         if addr in self.fail_at:
             raise amiga.NotConnected("the emulator did not answer")
         if SLOW <= addr and addr + length <= SLOW + len(self.ram):
+            self.ram_reads.append((addr, length))
             return bytes(self.ram[addr - SLOW:addr - SLOW + length])
         return super().read(addr, length)
 
-    def write(self, addr, data):
+    def read_blocks(self, blocks):
+        return [self.read(addr, length) for addr, length in blocks]
+
+    def write(self, addr, data, verify=True):
         self.writes.append((addr, bytes(data)))
         self.ram[addr - SLOW:addr - SLOW + len(data)] = data
 
@@ -318,7 +324,7 @@ def test_a_quickfight_flag_shows_on_the_card(measured):
     assert window.roster.cards[0].quickfight.toolTip() == ""
 
 
-# -- Fast Travel and Level up stay greyed ---------------------------------------
+# -- Level up stays greyed ---------------------------------------------------
 
 def ready_character():
     classes = tuple(live.ClassProgress(name, 8, 100_000, 0.5, 90_000)
@@ -326,16 +332,6 @@ def ready_character():
     return live.Character(slot=0, name="LADY KATHERINE", classes=classes,
                           level=8, armour_class=-3, thac0=5, hp=41, hp_max=99,
                           experience=100_000)
-
-
-@pytest.mark.parametrize("key", sorted(TITLES))
-def test_fast_travel_stays_greyed_with_the_approved_sentence(measured, key):
-    window, target = attached(key)
-    bar = window.fasttravel_bar
-    for widget in (bar.combo, bar.button, bar.back_button):
-        assert not widget.isEnabled()
-        assert widget.toolTip() == sentence(key)
-    assert bar.target is None
 
 
 @pytest.mark.parametrize("key", sorted(TITLES))
@@ -431,3 +427,14 @@ def test_a_c64_window_is_unchanged(monkeypatch):
     assert type(window.actions_bar.actions[0]) is engine.HealParty
     assert window._amiga_key is None
     assert card_names(window) == []
+
+
+def test_a_refresh_reads_the_mode_byte_once_however_many_actions_ask(measured):
+    window, target = attached(POOL)
+    mode_at = BASE + amigaparty.ROWS[POOL].mode
+    target.ram_reads.clear()
+    window.actions_bar.refresh(target)
+    assert [r for r in target.ram_reads if r[0] == mode_at] == [(mode_at, 1)]
+    # The control: three of Pool's actions are confirmed and reach the mode.
+    assert len(window.actions_bar.actions) == 5
+    assert len(amigaparty.ROWS[POOL].confirmed) == 3

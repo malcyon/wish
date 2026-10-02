@@ -45,6 +45,7 @@ from .panel import (
     ElidingButton,
     ElidingComboBox,
 )
+from .target import NotConnected
 
 #: Which map was found at `$0400`, and which was not, goes here rather than on
 #: the face of the window: it is the evidence a bug report needs and nothing a
@@ -96,6 +97,46 @@ class _NotAskingThePC(_OnePoll):
 
     def pc(self) -> int:
         return fasttravel.POOL_OF_RADIANCE.key_wait[0]
+
+
+class _AmigaPoll:
+    """One refresh's reads of an Amiga, each block once; everything else is the
+    target's own.
+
+    The trip table's gate and area reads go through `read` and `read_blocks`,
+    and the combo asks about every listed area, so without this the same few
+    blocks would cross the connection once per area. It has no program counter
+    to answer for: an Amiga trip never reads one. Nothing that writes is handed
+    one of these.
+    """
+
+    def __init__(self, target):
+        self._target = target
+        self._seen: dict[tuple[int, int], bytes] = {}
+
+    def __getattr__(self, name):
+        return getattr(self._target, name)
+
+    @property
+    def target(self):
+        """Itself: the Amiga actions unwrap a `.target` to reach `layout` and
+        `data_base`, and unwrapping this would skip the cache. Those are
+        forwarded."""
+        return self
+
+    def read(self, addr: int, length: int) -> bytes:
+        key = (addr, length)
+        if key not in self._seen:
+            self._seen[key] = bytes(self._target.read(addr, length))
+        return self._seen[key]
+
+    def read_blocks(self, blocks) -> list[bytes]:
+        blocks = [tuple(b) for b in blocks]
+        missing = [b for b in dict.fromkeys(blocks) if b not in self._seen]
+        if missing:
+            for block, data in zip(missing, self._target.read_blocks(missing)):
+                self._seen[block] = bytes(data)
+        return [self._seen[b] for b in blocks]
 
 
 def in_key_wait(pc: int) -> bool:
@@ -234,7 +275,12 @@ class ActionBar(QObject):
                 button.setEnabled(False)
                 button.setToolTip(self.unsupported)
             return
-        once = None if target is None else _OnePoll(target)
+        once = None
+        if target is not None:
+            # Six actions asking `legality` is six reads of the mode byte, and
+            # under WinUAE's console each one is a round trip.
+            once = (_AmigaPoll(target) if self._other_platform
+                    else _OnePoll(target))
         for action in self.actions:
             verdict = action.legality(once)
             button = self.buttons.get(action.name)
@@ -451,6 +497,11 @@ class FastTravelBar(QObject):
         super().__init__(parent)
         self.root = root
         self.say = say or (lambda text, detail="", alarm=False: None)
+        #: Whether `use_amiga` put an Amiga title's trips in, and what it
+        #: displaced: the C64 action, and the title and game the window set.
+        self._amiga = False
+        self._c64_fasttravel = None
+        self._c64_title: tuple = (title, game)
         self.fasttravel = fasttravel or engine.FastTravel()
         #: `{GEO name: Geo}`, for choosing a square in an area whose arrival
         #: square nobody has harvested. The window hands its own maps over.
@@ -507,6 +558,12 @@ class FastTravelBar(QObject):
 
     def _rows_for_title(self) -> tuple:
         """This title's areas, which is nothing for every title but one."""
+        if self._amiga:
+            # An Amiga trip writes an area id into the 68000's own script, so
+            # the C64's "are the writes known" gate has nothing to say; the
+            # trip table decides which trips are offered.
+            from goldbox import areas
+            return areas.areas_for_title(self.title)
         if self.title is None:
             return engine.area_rows()
         return engine.area_rows(self.title)
@@ -515,16 +572,48 @@ class FastTravelBar(QObject):
         """The session is this title now. Rebuilds the dropdown.
 
         The window calls it when the disks change, which is the one place the
-        title can change while the row is on the screen.
+        title can change while the row is on the screen. While an Amiga is
+        attached the row is that machine's title, not the window's: the
+        window's is kept for when the C64 comes back.
         """
+        if self._amiga:
+            self._c64_title = (title, game)
+            return
         if (title, game) == (self.title, self.game):
             return
         self.title, self.game = title, game
+        self._rebuild_rows()
+
+    def _rebuild_rows(self) -> None:
         if not self._own_areas:
             self.all_rows = self._sorted(
                 r for r in self._rows_for_title()
                 if getattr(r, "fasttravelable", True))
         self.repopulate()
+
+    def use_amiga(self, action, title: str, game=None) -> None:
+        """Offer an Amiga title's trips: `action` runs them, `title`'s areas
+        fill the dropdown. Rows and verdicts are rebuilt on the next refresh."""
+        if not self._amiga:
+            self._c64_fasttravel = self.fasttravel
+            self._c64_title = (self.title, self.game)
+        self._amiga = True
+        self.fasttravel = action
+        self.title, self.game = title, game
+        self._pending = None
+        self._rebuild_rows()
+
+    def use_c64(self) -> None:
+        """Put the C64 action and the window's title back."""
+        if not self._amiga:
+            return
+        self.fasttravel.cancel_pending()
+        self._amiga = False
+        self.fasttravel = self._c64_fasttravel
+        self._c64_fasttravel = None
+        self.title, self.game = self._c64_title
+        self._pending = None
+        self._rebuild_rows()
 
     @property
     def has_areas(self) -> bool:
@@ -676,8 +765,11 @@ class FastTravelBar(QObject):
         the real target as well.
         """
         pending = self.fasttravel.pending
+        trip = getattr(self.fasttravel, "trip", None)
         outcome = self.fasttravel.continue_pending(self.target)
         if outcome is None:
+            if trip is not None and self.fasttravel.trip is None:
+                self.refresh()      # an Amiga trip arrived: it can go again
             return
         if outcome.ok and pending is not None:
             self._expect(pending.area)
@@ -718,7 +810,12 @@ class FastTravelBar(QObject):
         return None
 
     def _expect(self, area) -> None:
-        """Start watching for the map this fasttravel should bring up."""
+        """Start watching for the map this fasttravel should bring up.
+
+        Not on an Amiga: `$0400` is a C64 address, and its trip is finished by
+        the area byte."""
+        if self._amiga:
+            return
         geos = tuple(getattr(area, "geos", ()) or ())
         self._pending = ((geos, time.monotonic() + VERIFY_SECONDS)
                          if geos and self.maps else None)
@@ -740,6 +837,30 @@ class FastTravelBar(QObject):
         return engine.Action.legality(self.fasttravel,
                                       self.target if target is None else target)
 
+    def _asked(self, call, *args) -> engine.Verdict:
+        """A verdict from an Amiga trip, which reads the machine as it goes:
+        a read that fails is the machine not being readable, and nothing more."""
+        try:
+            return call(*args)
+        except NotConnected:
+            return engine.Verdict(False, self.LOST_WHILE_WAITING)
+
+    def _any_offered(self, once, selected) -> engine.Verdict:
+        """Whether some listed trip is offered, for the dropdown on an Amiga.
+
+        A selected trip that is held must not lock the player out of picking
+        another, so the dropdown is open while any area is offered. When none
+        is, it answers with the reason for the selected one.
+        """
+        reason = None
+        for row in self.rows:
+            verdict = self._asked(self.fasttravel.legality, once, row)
+            if verdict:
+                return verdict
+            if row is selected or reason is None:
+                reason = verdict
+        return reason
+
     def refresh(self) -> None:
         # The reads of one poll, shared by the whole row -- `$6E11` was being read
         # three times a refresh, once for the dropdown, once for `Action`'s own
@@ -756,7 +877,8 @@ class FastTravelBar(QObject):
         area = self.area()
         if self.combo is not None:
             if self.rows:
-                gate = self.combat_verdict(once)
+                gate = (self._any_offered(once, area) if self._amiga
+                        else self.combat_verdict(once))
                 self.combo.setEnabled(gate.ok)
                 self.combo.setToolTip(gate.reason)
             else:
@@ -775,14 +897,14 @@ class FastTravelBar(QObject):
                     f"and Pool of Radiance's disk numbers and area ids would be "
                     f"the wrong thing to write here.")
             else:
-                verdict = self.fasttravel.legality(once, area)
+                verdict = self._asked(self.fasttravel.legality, once, area)
                 self.button.setEnabled(verdict.ok)
                 # `DANGER` when it is enabled, the rejection when it is not: the
                 # warning is about making a trip, and a disabled button is not
                 # about to make one.
                 self.button.setToolTip(verdict.reason or DANGER)
         if self.back_button is not None:
-            back = self.fasttravel.back_verdict(once)
+            back = self._asked(self.fasttravel.back_verdict, once)
             self.back_button.setEnabled(back.ok)
             self.back_button.setToolTip(
                 back.reason or "return to the area the last trip started in")
@@ -860,7 +982,10 @@ class FastTravelBar(QObject):
     def _idle_poll(self):
         """The target `refresh` asks its questions of, or None with nothing
         attached."""
-        return None if self.target is None else _NotAskingThePC(self.target)
+        if self.target is None:
+            return None
+        return (_AmigaPoll(self.target) if self._amiga
+                else _NotAskingThePC(self.target))
 
     def _ready(self, verdict: engine.Verdict) -> engine.Verdict:
         """The durable rejections first, then the wait for a quiet machine.
@@ -869,15 +994,16 @@ class FastTravelBar(QObject):
         area the party is already in -- does not deserve two seconds of waiting,
         and it is the same verdict the button was showing.
         """
-        if not verdict:
-            return verdict
+        if not verdict or self._amiga:
+            return verdict          # an Amiga trip waits on nothing but its gate
         return self.wait_for_key_wait()
 
     def run(self) -> engine.Outcome | None:
         area = self.area()
         if area is None:
             return None
-        ready = self._ready(self.fasttravel.legality(self._idle_poll(), area))
+        ready = self._ready(self._asked(self.fasttravel.legality,
+                                        self._idle_poll(), area))
         if not ready:
             outcome = engine.Outcome(False, ready.reason)
             self._report("fast travel", outcome)
@@ -891,8 +1017,9 @@ class FastTravelBar(QObject):
 
     def run_back(self) -> engine.Outcome | None:
         going = engine.area_by_id(self.fasttravel.back.area) \
-            if self.fasttravel.back is not None else None
-        ready = self._ready(self.fasttravel.back_verdict(self._idle_poll()))
+            if self.fasttravel.back is not None and not self._amiga else None
+        ready = self._ready(self._asked(self.fasttravel.back_verdict,
+                                        self._idle_poll()))
         if not ready:
             outcome = engine.Outcome(False, ready.reason)
             self._report("travel back", outcome)

@@ -71,18 +71,23 @@ def every_button(window):
 
 
 @pytest.mark.parametrize("key, title", sorted(TITLES.items()))
-def test_fast_travel_and_level_up_name_their_own_title(key, title):
+def test_level_up_names_its_own_title_on_every_card(key, title):
     window = ticked(window_on(FakeAmiga(memory(), amiga.MACHINES[key])))
     sentence = f"ERROR: Action unsupported on {title} (Amiga)."
+    assert len(window.roster.cards) == 8
+    for card in window.roster.cards:
+        assert card.level_up.toolTip() == sentence
+        assert not card.level_up.isEnabled() and not card.level_up.isVisible()
+
+
+def test_a_title_whose_trip_is_not_confirmed_greys_all_of_fast_travel():
+    key, title = "secret-of-the-silver-blades", TITLES["secret-of-the-silver-blades"]
+    window = ticked(window_on(FakeAmiga(memory(), amiga.MACHINES[key])))
     ft = window.fasttravel_bar
-    controls = [ft.combo, ft.button, ft.back_button] + [
-        card.level_up for card in window.roster.cards]
-    assert len(controls) == 3 + 8
-    for control in controls:
-        assert control.toolTip() == sentence
+    for control in (ft.combo, ft.button, ft.back_button):
+        assert control.toolTip() == f"ERROR: Action unsupported on {title} (Amiga)."
         assert not control.isEnabled()
-    assert all(not card.level_up.isVisible() for card in window.roster.cards)
-    assert window.fasttravel_bar.target is None
+    assert ft.target is None
 
 
 def test_a_title_with_nothing_confirmed_greys_every_action_with_its_sentence():
@@ -159,8 +164,12 @@ def test_leaving_the_amiga_gives_all_three_controls_back_their_own_text(leave):
     # And attaching again greys them once more.
     window.mapper.target = FakeAmiga(memory(), amiga.MACHINES[key])
     window._refresh_roster()
-    assert window.fasttravel_bar.unsupported
     assert window.roster.unsupported
+    if leave == "wrong-game":
+        assert window.actions_bar.unsupported
+        assert window.fasttravel_bar.unsupported
+    else:
+        assert window._amiga_key == key
 
 
 def test_a_ready_character_cannot_be_levelled_once_an_amiga_attaches(monkeypatch):

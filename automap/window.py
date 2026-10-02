@@ -55,7 +55,16 @@ from goldbox.world import (
 )
 from ui.iconpaint import draw_icon
 
-from . import actions, amiga, amigaactions, combat, live, rolls
+from . import (
+    actions,
+    amiga,
+    amigaactions,
+    amigafasttravel,
+    amigatrip,
+    combat,
+    live,
+    rolls,
+)
 from . import notes as notemod
 from .actionbar import ActionBar, FastTravelBar
 from .area import NOT_OURS
@@ -1066,6 +1075,8 @@ class AutomapBinding(QObject):
         #: The `amiga.MACHINES` key whose actions and cards the window shows,
         #: None while it shows a C64's (or nothing).
         self._amiga_key: str | None = None
+        #: `(key, disks)` the Fast Travel row was built for, None off the Amiga.
+        self._travel_for: tuple | None = None
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.tick)
         self._apply_title()
@@ -1488,7 +1499,6 @@ class AutomapBinding(QObject):
         from . import amigaparty
 
         reason = amigaactions.unsupported(title)
-        self.fasttravel_bar.attach_unsupported(reason)
         self.roster.set_unsupported(reason)
         self.roster.set_levelling(False)
         key = amiga_key(target.layout)
@@ -1496,11 +1506,19 @@ class AutomapBinding(QObject):
             # A layout with no actions, or a machine that is not running the
             # title this window was set up for (#21): nothing may write.
             self.actions_bar.attach_unsupported(reason)
+            self.fasttravel_bar.attach_unsupported(reason)
             self._show_amiga_party(None)
             return
         self._enter_amiga(key)
+        self._enter_travel(key)
         self.actions_bar.attach(target)
         self.actions_bar.watch(target)
+        trip = amigatrip.ROWS.get(key)
+        if trip is None or not trip.confirmed:
+            # Nobody has measured this title's trip: same sentence as ever.
+            self.fasttravel_bar.attach_unsupported(reason)
+        else:
+            self.fasttravel_bar.attach(target)
         self._show_amiga_party(amigaparty.read_party(target))
 
     def _enter_amiga(self, key: str) -> None:
@@ -1516,12 +1534,24 @@ class AutomapBinding(QObject):
             acts, amigaactions.AmigaQuickfightWatcher(
                 quickfight, enabled=self.actions_bar.watcher.enabled))
 
+    def _enter_travel(self, key: str) -> None:
+        """The Fast Travel row for `key`, built over the window's disks."""
+        if (key, self.disks) == self._travel_for:
+            return
+        self._travel_for = (key, self.disks)
+        title = amiga.MACHINES[key].title
+        self.fasttravel_bar.use_amiga(
+            amigafasttravel.AmigaFastTravel(key, self.disks), title,
+            game_named(title))
+
     def _leave_amiga(self) -> None:
         """Put the C64's actions, cards and Level up back after an Amiga."""
         if self._amiga_key is None:
             return
         self._amiga_key = None
+        self._travel_for = None
         self.actions_bar.set_actions(None)
+        self.fasttravel_bar.use_c64()
         self.roster.clear()
         self.snapshot = None
         self.roster.set_levelling(
