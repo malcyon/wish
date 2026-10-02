@@ -275,3 +275,64 @@ def test_a_reopened_window_over_a_running_c64_title_maps_that_title(
     finally:
         win.close()
 
+
+
+# --- the paths the folder's title leaves alone --------------------------------
+
+def test_an_open_save_names_the_title_over_the_folder(
+        app, tmp_path, monkeypatch, amiga_on):
+    """A save is the player's choice: a Curse save open beside Silver Blades'
+    folder labels the map Curse, not Silver Blades."""
+    from gamedata import synthetic_save
+
+    from wish.session import Session
+    from wish.window import WishWindow
+    nowhere(tmp_path, monkeypatch)
+    folder = amiga_folder(tmp_path / "disks", SILVER, walled_geo())
+    settings = Settings(game_folders={SILVER.key: str(folder)})
+    save = synthetic_save(tmp_path, game=CURSE)
+
+    win = WishWindow(str(save), settings=settings,
+                     session=Session(find=lambda pref=None: None))
+    try:
+        assert win.editor.party is not None
+        assert win.editor.party.game.title == CURSE.title
+        assert win.map.state.title == CURSE.title
+    finally:
+        win.close()
+
+
+def test_with_no_folder_set_the_window_is_pool_of_radiance(
+        app, tmp_path, monkeypatch, amiga_on):
+    """No save, no folder, no disks anywhere: the default title, as before."""
+    nowhere(tmp_path, monkeypatch)
+    win = window(app, Settings())
+    try:
+        assert win.disks is None
+        assert win.map.state.title == POOL.title
+    finally:
+        win.close()
+
+
+def test_with_two_folders_set_the_first_in_games_order_names_the_title(
+        app, tmp_path, monkeypatch, amiga_on):
+    """Silver Blades' and Curse's folders both set: Curse comes first in
+    `c64_port.GAMES`, so its folder and title answer, and `reload_disks`
+    agrees with the window it was built in."""
+    nowhere(tmp_path, monkeypatch)
+    silver = amiga_folder(tmp_path / "silver", SILVER, walled_geo(art=5))
+    curse = amiga_folder(tmp_path / "curse", CURSE, walled_geo(art=3))
+    assert ([g.key for g in c64_port.GAMES].index(CURSE.key)
+            < [g.key for g in c64_port.GAMES].index(SILVER.key))
+    settings = Settings(game_folders={SILVER.key: str(silver),
+                                      CURSE.key: str(curse)})
+
+    win = window(app, settings)
+    try:
+        assert str(win.disks) == str(curse)
+        assert win.map.state.title == CURSE.title
+        win.reload_disks()
+        assert str(win.disks) == str(curse)
+        assert win.map.state.title == CURSE.title
+    finally:
+        win.close()
