@@ -109,6 +109,7 @@ def test_return_arms_the_recorded_square(world):
     t = travel()
     t.apply(Target(), area(7, arrival=(1, 2, 0)))
     world.here = 7
+    t.continue_pending(Target())
     out = t.apply_back(Target())
     assert out.ok and out.message == "travelled back to Tilverton"
     assert ("arm", 3, (4, 5, 2), 1) in world.log
@@ -136,6 +137,7 @@ def test_return_held_for_its_own_difference_only(world):
     t = travel()
     assert t.apply(Target(), area(7)).ok
     world.here = 7
+    t.continue_pending(Target())
     out = t.apply_back(Target())
     assert not out.ok and out.message == UNSUPPORTED
 
@@ -202,7 +204,9 @@ def test_a_failed_return_keeps_the_waypoint(world, monkeypatch):
     monkeypatch.setattr(aft.time, "monotonic", lambda: now[0])
     t = travel()
     t.apply(Target(), area(7))
-    world.here, world.fires = 7, False
+    world.here = 7
+    t.continue_pending(Target())
+    world.fires = False
     t.apply_back(Target())
     now[0] += 10
     t.continue_pending(Target())
@@ -215,3 +219,119 @@ def test_no_c64_container_is_built():
     assert t.not_built == amigaactions.unsupported(
         "Curse of the Azure Bonds")
     assert (t.name, t.label) == ("fasttravel", "Fast Travel")
+
+
+def test_an_unreadable_area_is_unsupported_and_never_armed(world):
+    world.here = None
+    t = travel()
+    assert t.legality(Target(), area(7)).reason == UNSUPPORTED
+    assert t.apply(Target(), area(7)).message == UNSUPPORTED
+    assert not [e for e in world.log if e[0] == "arm"]
+
+
+def test_return_is_recognised_by_a_waypoints_area(world):
+    """`Waypoint.area`, with no `id`, is what Return is held on."""
+    world.here = 7
+    world.row.differences = (Difference({(7, 3)}, back=True),)
+    t = travel()
+    t.back = engine.Waypoint(3, None, (1, 1, 0))
+    t._row = lambda id: None
+    assert t.back_verdict(Target()).reason == UNSUPPORTED
+    world.row.differences = ()
+    assert t.back_verdict(Target()).ok
+
+
+def test_the_waypoint_fallback_reads_area_when_there_is_no_id(world):
+    world.here = 3
+    t = travel()
+    assert t.legality(Target(), SimpleNamespace(area=3)).reason == (
+        "the party is already in that area")
+
+
+def test_a_pending_trip_holds_every_other_trip(world):
+    t = travel()
+    assert t.apply(Target(), area(7)).ok
+    armed = [e for e in world.log if e[0] == "arm"]
+    for out in (t.apply(Target(), area(8)), t.run(Target(), area(8)),
+                t.apply_back(Target())):
+        assert not out.ok and out.message == engine.FASTTRAVEL_BUSY
+    assert t.legality(Target(), area(8)).reason == engine.FASTTRAVEL_BUSY
+    assert [e for e in world.log if e[0] == "arm"] == armed
+    world.here = 7
+    t.continue_pending(Target())
+    world.here = 7
+    assert t.apply(Target(), area(8)).ok
+
+
+def test_a_raising_disarm_keeps_the_trip_and_logs_a_warning(world, monkeypatch,
+                                                          caplog):
+    now = [100.0]
+    monkeypatch.setattr(aft.time, "monotonic", lambda: now[0])
+    world.fires = False
+    t = travel()
+    t.apply(Target(), area(7))
+    before = t.back
+
+    def boom(target, armed):
+        raise OSError("write failed")
+
+    world.disarm = boom
+    now[0] += aft.FIRE_SECONDS + 1
+    with caplog.at_level("WARNING", logger="wish.automap.amigafasttravel"):
+        assert t.continue_pending(Target()) is None
+    assert t.trip is not None and t.back is before
+    assert any(r.levelname == "WARNING" for r in caplog.records)
+    del world.disarm
+    out = t.continue_pending(Target())
+    assert out.message == aft.NOT_HAPPENED and t.trip is None
+
+
+def test_a_write_error_while_arming_reports_the_failure(world, caplog):
+    def boom(target, row, plan):
+        raise OSError("write failed")
+
+    world.arm = boom
+    t = travel()
+    with caplog.at_level("WARNING", logger="wish.automap.amigafasttravel"):
+        out = t.apply(Target(), area(7))
+    assert not out.ok and out.message == aft.NOT_HAPPENED
+    assert t.trip is None and t.back is None
+    assert any(r.levelname == "WARNING" for r in caplog.records)
+
+
+def test_arm_returning_nothing_reports_the_failure(world):
+    world.arm = lambda target, row, plan: None
+    out = travel().apply(Target(), area(7))
+    assert not out.ok and out.message == aft.NOT_HAPPENED
+
+
+def test_an_error_reading_the_area_waits_for_the_deadline(world, monkeypatch):
+    now = [100.0]
+    monkeypatch.setattr(aft.time, "monotonic", lambda: now[0])
+
+    def boom(target, armed):
+        raise OSError("read failed")
+
+    world.fired = boom
+    t = travel()
+    t.apply(Target(), area(7))
+    assert t.continue_pending(Target()) is None
+    now[0] += aft.FIRE_SECONDS + 1
+    assert t.continue_pending(Target()).message == aft.NOT_HAPPENED
+    assert ("disarm",) in world.log
+
+
+def test_an_error_while_tidying_still_ends_the_trip(world):
+    def boom(target, armed, new_area):
+        raise OSError("write failed")
+
+    world.tidy = boom
+    t = travel()
+    t.apply(Target(), area(7))
+    world.here = 7
+    assert t.continue_pending(Target()) is None
+    assert t.trip is None
+
+
+def test_the_failure_sentence_is_the_shared_constant():
+    assert aft.NOT_HAPPENED is engine.FASTTRAVEL_FAILED

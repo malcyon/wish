@@ -118,6 +118,11 @@ UNSUPPORTED = "ERROR: Action unsupported on {title}."
 #: not split it again without asking him.**
 FASTTRAVEL_BUSY = "Fast travel cannot act right now."
 
+#: What a Fast Travel that could not start says, once the party is known to be
+#: where it began.
+FASTTRAVEL_FAILED = ("ERROR: Unable to Fast Travel. The party is back where "
+                     "it started.")
+
 
 #: What a disabled button reads when no emulator is attached at all.
 NO_EMULATOR = "no emulator attached"
@@ -2035,8 +2040,7 @@ class FastTravel(Action):
                 target.write(addr.live_square,
                              bytes(v & 0xFF for v in was.square))
             return Outcome(False,
-                           "ERROR: Unable to Fast Travel. The party is back "
-                           "where it started.",
+                           FASTTRAVEL_FAILED,
                            ())
         self.back = was
         name = getattr(area, "name", None) or "this area"

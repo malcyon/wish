@@ -46,11 +46,7 @@ _log = logging.getLogger("wish.automap.amigafasttravel")
 #: within 1.2 s.
 FIRE_SECONDS = 3.0
 
-#: What a trip that did not happen says; the C64 says it when a walk-out cannot
-#: start (`FastTravel._run_via_exit`), and it is true here too, because the
-#: failed trip is put back before this is returned.
-NOT_HAPPENED = ("ERROR: Unable to Fast Travel. The party is back where it "
-                "started.")
+NOT_HAPPENED = engine.FASTTRAVEL_FAILED
 
 _UNSET = object()
 _cached = _UNSET
@@ -124,13 +120,21 @@ class AmigaFastTravel(engine.FastTravel):
             return engine.Verdict(False, self.not_built)
         if not trips.gate(target, row):
             return engine.Verdict(False, engine.FASTTRAVEL_BUSY)
+        if self.trip is not None:
+            # A second trip would be armed over the first one's statements
+            # before the area byte has said whether the first fired.
+            return engine.Verdict(False, engine.FASTTRAVEL_BUSY)
         if area is None:
             return engine.Verdict(False, "choose an area")
         if not getattr(area, "fasttravelable", True):
             return engine.Verdict(False, self.ATTRACT_TRAP)
         here = trips.area_id(target, row)
+        if here is None:
+            return engine.Verdict(False, self.not_built)
         to = getattr(area, "id", None)
-        if here is not None and here == to:
+        if to is None:
+            to = getattr(area, "area", None)
+        if here == to:
             return engine.Verdict(False, "the party is already in that area")
         if any(d.covers(here, to, back) and not d.offered
                for d in row.differences):
@@ -157,7 +161,11 @@ class AmigaFastTravel(engine.FastTravel):
         here = trips.area_id(target, row)
         tier = trips.free_tail(row, here, self.disks)
         plan = trips.plan(to, arrival, overland, tier)
-        armed = trips.arm(target, row, plan)
+        try:
+            armed = trips.arm(target, row, plan)
+        except Exception:
+            _log.warning("amiga fast travel: arming failed", exc_info=True)
+            armed = None
         if armed is None:
             return engine.Outcome(False, NOT_HAPPENED)
         self.trip = _Trip(armed, row, here, to, name,
@@ -165,7 +173,8 @@ class AmigaFastTravel(engine.FastTravel):
         return None
 
     def run(self, target, area=None, arrival=None, **kwargs) -> engine.Outcome:
-        self.trip = None
+        if self.trip is not None:
+            return engine.Outcome(False, engine.FASTTRAVEL_BUSY)
         trips = _trips()
         row = trips.ROWS[self.key]
         to = getattr(area, "id", area)
@@ -202,7 +211,6 @@ class AmigaFastTravel(engine.FastTravel):
         arrival, overland = self._square_writes(
             area or was, arrival=was.square, overland=was.overland)
         name = getattr(area, "name", None) or f"area {was.area}"
-        self.trip = None
         failed = self._start(target, was.area, name, arrival, overland, was)
         if failed is not None:
             return failed
@@ -227,15 +235,31 @@ class AmigaFastTravel(engine.FastTravel):
         trips = _trips()
         if trip is None or target is None or trips is None:
             return None
-        if trips.fired(target, trip.armed):
+        try:
+            fired = trips.fired(target, trip.armed)
+        except Exception:
+            _log.warning("amiga fast travel: reading the area failed",
+                         exc_info=True)
+            fired = None
+        if fired:
             self.trip = None
-            trips.tidy(target, trip.armed, trips.area_id(target, trip.row))
+            try:
+                trips.tidy(target, trip.armed, trips.area_id(target, trip.row))
+            except Exception:
+                _log.warning("amiga fast travel: tidying failed",
+                             exc_info=True)
             return None
         if time.monotonic() <= trip.deadline:
             return None
         _log.debug("amiga fast travel: area %d did not change to %d in time",
                    trip.from_area, trip.to)
+        try:
+            trips.disarm(target, trip.armed)
+        except Exception:
+            # Still armed as far as Wish knows: keep the trip and try again
+            # on the next poll instead of reporting a party that is safe.
+            _log.warning("amiga fast travel: disarming failed", exc_info=True)
+            return None
         self.trip = None
-        trips.disarm(target, trip.armed)
         self.back = trip.previous_back
         return engine.Outcome(False, NOT_HAPPENED)
