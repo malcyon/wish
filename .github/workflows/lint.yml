@@ -2,10 +2,16 @@ name: lint
 
 on:
   push:
+    branches: ["**"]
   pull_request:
+
+concurrency:
+  group: lint-${{ github.event_name }}-${{ github.ref_type == 'branch' && github.ref != 'refs/heads/main' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.ref_type == 'branch' && github.ref != 'refs/heads/main' }}
 
 jobs:
   ruff:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
 
     steps:

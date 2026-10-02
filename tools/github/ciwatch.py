@@ -18,8 +18,6 @@ WORKFLOWS = {
     ".github/workflows/test.yml": (
         "generated files match their sources",
         "pytest (ubuntu-latest, py3.12)",
-        "pytest (ubuntu-latest, py3.13)",
-        "pytest (windows-latest, py3.12)",
         "pytest (windows-latest, py3.13)",
     ),
 }

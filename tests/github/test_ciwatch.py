@@ -72,7 +72,11 @@ def test_complete_exact_push_passes():
     assert report["verdict"] == "success"
     assert report["missing_workflows"] == []
     assert report["missing_jobs"] == {}
-    assert len(report["workflows"][".github/workflows/test.yml"]["jobs"]) == 5
+    assert set(report["workflows"][".github/workflows/test.yml"]["jobs"]) == {
+        "generated files match their sources",
+        "pytest (ubuntu-latest, py3.12)",
+        "pytest (windows-latest, py3.13)",
+    }
     assert all("head_sha=" + SHA in endpoint for endpoint, _ in transport.calls
                if "/actions/runs?" in endpoint)
 
@@ -199,7 +203,7 @@ def test_paginates_runs_and_jobs():
             run(".github/workflows/test.yml", 20)]
     transport = Transport(runs=runs, page_size=1)
     assert check(transport)["verdict"] == "success"
-    assert len(transport.calls) == 8
+    assert len(transport.calls) == 6
 
 
 def test_cli_rejects_short_sha_and_prints_compact_json(monkeypatch, capsys):

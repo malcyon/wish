@@ -2,23 +2,35 @@ name: test
 
 on:
   push:
+    branches: ["**"]
   pull_request:
-  # So the Windows leg can be re-run on demand without an empty commit.
+  schedule:
+    - cron: "17 6 * * 1"
+  # Manual and reusable runs cover every supported combination.
   workflow_dispatch:
   # release.yml calls this before it builds anything: a red suite must stop a
   # tag, and duplicating the matrix there would be a second thing to keep in
   # step with this one.
   workflow_call:
+    inputs:
+      full-matrix:
+        type: boolean
+        default: true
+
+# Main and called release runs have unique groups so every commit can finish.
+concurrency:
+  group: test-${{ github.workflow }}-${{ github.event_name }}-${{ github.workflow == 'test' && (github.event_name == 'push' || github.event_name == 'pull_request') && github.ref_type == 'branch' && github.ref != 'refs/heads/main' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.workflow == 'test' && (github.event_name == 'push' || github.event_name == 'pull_request') && github.ref_type == 'branch' && github.ref != 'refs/heads/main' }}
 
 jobs:
   pytest:
     name: pytest (${{ matrix.os }}, py${{ matrix.python }})
+    needs: generated
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        python: ["3.12", "3.13"]
+        include: ${{ fromJSON((inputs.full-matrix || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '[{"os":"ubuntu-latest","python":"3.12"},{"os":"ubuntu-latest","python":"3.13"},{"os":"windows-latest","python":"3.12"},{"os":"windows-latest","python":"3.13"}]' || '[{"os":"ubuntu-latest","python":"3.12"},{"os":"windows-latest","python":"3.13"}]') }}
 
     steps:
       - uses: actions/checkout@v5
@@ -41,16 +53,29 @@ jobs:
             libegl1 libgl1 libxkbcommon-x11-0 libdbus-1-3 libglib2.0-0
 
       - run: python -m pip install --upgrade pip
-      - run: pip install -e ".[dev,gui]"
+      - run: pip install -e ".[dev,gui]" psutil
 
       - name: pytest
-        # Around thirty tests need the player's game disks, which are
-        # deliberately not in this repository. They skip; that is expected.
+        # Disk-backed tests skip without the player's private game disks.
+        # Push/PR runs omit checks already passed in the prerequisite job.
         env:
           QT_QPA_PLATFORM: offscreen
-        run: pytest -q
+        run: >-
+          python tools/suite/ci_measure.py --output "${{ runner.temp }}/ci-profile" --
+          -q ${{ !(inputs.full-matrix || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '--ignore=tests/generate/test_generated.py' || '' }}
+
+      - name: Test timings and resource measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-profile-${{ matrix.os }}-py${{ matrix.python }}
+          path: ${{ runner.temp }}/ci-profile/
+          retention-days: 14
+          if-no-files-found: error
 
   generated:
+    # Same-repository branches are tested by push; fork PRs need this run.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     name: generated files match their sources
     runs-on: ubuntu-latest
 
@@ -72,13 +97,9 @@ jobs:
 
       - run: pip install -e ".[dev,gui]"
 
-      - name: the compiled forms match their .ui files
+      - name: Repository policy and generated files
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python tools/generate/genui.py --check
-
-      - name: the generated docs match the code
-        run: |
-          python tools/generate/gendocs.py
-          python tools/generate/genmemory.py
-          git diff --exit-code -- docs/
+        run: >-
+          pytest -q -n0 tests/suite/test_repository_contents.py
+          tests/suite/test_toolpaths.py tests/generate/test_generated.py

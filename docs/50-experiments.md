@@ -7938,8 +7938,8 @@ so these totals cannot separate missing game disks from platform skips.
 All five jobs restored pip caches. Dependency installation took eight or nine
 seconds on Linux and 26 or 31 seconds on Windows. Linux system libraries took
 eleven or twelve seconds in the test jobs; checkout took three seconds on
-Linux and eight or fourteen seconds on Windows. No test artifacts are
-uploaded. Cache improvements cannot recover the minutes spent inside pytest.
+Linux and eight or fourteen seconds on Windows. That baseline uploaded no test
+artifacts. Cache improvements cannot recover the minutes spent inside pytest.
 
 Earlier successful
 [Run 36959839695](https://github.com/malcyon/wish/actions/runs/36959839695)
@@ -7951,15 +7951,15 @@ test per leg. The workflow sets `fail-fast: false`.
 
 ### Measurement limits
 
-The workflow runs `pytest -q`, inheriting `-n auto --dist loadgroup` from
-`pyproject.toml`. It records neither durations nor JUnit XML. Consequently,
+The baseline workflow ran `pytest -q`, inheriting `-n auto --dist loadgroup`
+from `pyproject.toml`. It recorded neither durations nor JUnit XML. Consequently,
 the logs cannot rank slow tests, separate collection from fixtures or establish
 peak memory. First progress appeared roughly a minute after pytest started;
 that is not a collection measurement because buffering and worker startup
 also contribute.
 
-The next CI measurement should record `--durations=50` and per-job JUnit XML,
-with skip reporting sufficient to classify missing-data cases. Sum durations
+The implemented first stage records `--durations=50` and per-job JUnit XML,
+including skipped cases. Sum durations
 by test file and compare worker completion times. Measure collection, process
 count and peak memory separately before changing worker counts. Use bounded
 runs of slow files for comparisons, rather than repeated full suites on the
@@ -7994,7 +7994,7 @@ Literal sleeps are not a runtime estimate: the 120-second child sleeps in
 terminate and wait for immediately. Import isolation also has a purpose:
 running every tool in one interpreter could hide import-order defects.
 
-### Workflow options
+### Workflow options considered
 
 | Option | Expected effect | Cost or limitation |
 |---|---|---|
@@ -8004,11 +8004,12 @@ running every tool in one interpreter could hide import-order defects.
 | Split suites into balanced jobs | Can shorten waiting through additional parallel execution | Adds setup and collection; it does not necessarily save resources |
 | Adjust workers using CPU and memory measurements | Can help contention or idle CPUs | Parallelism already exists; more workers may make it slower |
 | Narrow validation for documentation-only changes | Can avoid four complete suites for smaller changes | Preserve repository-content and path checks: the sampled failure was a stale path citation |
-| Cancel superseded branch runs and avoid duplicate push/PR runs | Reduces obsolete or duplicated work | Both triggers exist and no concurrency cancellation is configured; sampled runs were pushes, so no duplicate saving was measured |
+| Cancel superseded branch runs and avoid duplicate push/PR runs | Reduces obsolete or duplicated work | The baseline had both triggers and no concurrency cancellation; sampled runs were pushes, so no duplicate saving was measured |
 | Tune caching or checkout | Can save setup seconds | Pip caches already hit; only about 5% of aggregate test-job elapsed time is outside pytest |
 
-Matrix reduction or selective full-suite execution would change the standing
-full-suite gate and needs Donald's decision before implementation.
+Donald subsequently approved implementation, including the smaller routine
+matrix. The table preserves the estimates and tradeoffs considered before that
+decision; it is not a report of measured improvements.
 Keep coverage on both Linux and Windows because filesystem and Qt behavior
 differ. Reducing Python-version coverage changes when compatibility failures
 are detected; it does not show those tests are redundant. Keep the full
@@ -8016,7 +8017,45 @@ supported matrix for releases. Preserve `emulator-pool`, `icon-tables` and
 `conftest-guard-probe` grouping when sharding, because these groups protect
 shared state from concurrent tests.
 
-This analysis implements no optimization or test deletion. Test count alone
-does not establish unnecessary coverage. Review expensive families for
+Test count alone does not establish unnecessary coverage. Review expensive families for
 distinct player outcomes, boundaries and demonstrated regressions before
 reducing parameter combinations or replacing integration checks.
+
+### Approved first stage
+
+The first implementation keeps Ubuntu/Python 3.12 and Windows/Python 3.13 on
+routine pushes and fork pull requests, with all four combinations weekly,
+manually and for releases. A prerequisite repository-policy/generated-files
+job checks repository contents, tool-path citations, forms and the documents
+from `gendocs.py`, `genmemory.py` and `genlevels.py`. Routine matrix jobs omit
+the generated-test module after that gate passes; full-matrix runs retain it.
+Superseded feature-branch runs can be cancelled, while main and called release
+runs are preserved. Same-repository pull requests rely on push validation;
+tag pushes no longer start an extra standalone test or lint run beside the
+release workflow.
+
+The new measurement wrapper and opt-in pytest plugin record durations, JUnit,
+per-worker collection time, per-file setup/call/teardown costs, actual selected
+workers and CPU counts. Fourteen-day artifacts include one-second samples of
+process-tree RSS, process count and CPU time. RSS counts shared pages more than
+once and can miss between-sample peaks. Short-lived processes may be missed;
+CPU time is a sampled lower bound, and the wrapper's own resources are excluded.
+Main-process test reports already include worker reports and must not be added
+to the worker totals again.
+
+The tool-test refactor parses source once, indexes functions and combines
+duplicate child-interpreter assertions while retaining process isolation.
+Its focused validation passed **506 tests**. A local comparison using the
+actual source changed analysis time from **5.829 to 3.354 seconds**; that is a
+local file-family result, not a forecast of whole-CI elapsed time. A separate
+private-input test repair passed **510 tests** in its focused validation.
+
+Synthetic Amiga image construction now caches at most eight immutable
+baselines per worker, retaining up to **6.875 MiB** of image bytes. Each caller
+still writes a fresh mutable disk file. This trades retained memory for less
+repeated image construction; it does not demonstrate lower peak memory or
+remove disk writes. Real disk geometry and isolation checks remain.
+
+Balanced shards and narrower documentation-only validation remain under
+implementation pending the measured CI run. No whole-CI time, CPU or memory
+saving is claimed before that run supplies comparable evidence.
