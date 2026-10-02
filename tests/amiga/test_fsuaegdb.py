@@ -3801,6 +3801,10 @@ def test_until_works_under_wish_too(wished, tmp_path, monkeypatch):
     assert "error" not in by_event(rows, "until")[0]
 
 
+# `os.kill(pid, SIGINT)` on Windows is `TerminateProcess`: no handler runs, so
+# signalling itself kills the pytest worker and the Windows job never reports.
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="SIGINT from os.kill has no handler on Windows")
 def test_ctrl_c_inside_a_qt_callback_ends_the_run_and_puts_the_row_back(
         wish_scripted, tmp_path, monkeypatch):
     """A SIGINT that lands while Qt runs a slot used to make PyQt abort
