@@ -139,8 +139,10 @@ def test_the_spell_dialog_is_answered_with_the_chosen_label(window):
 
 def test_the_real_window_lists_its_buttons_and_does_not_click_a_greyed_one(
         tmp_path, monkeypatch):
-    """`AutomapBinding` has the attributes `rows` and `click` read; an Amiga
-    target leaves every Action button disabled."""
+    """`AutomapBinding` has the attributes `rows` and `click` read, and a
+    target that is not a C64 leaves every Action button disabled. This proves
+    the real window's structure and the greyed-button path; it does not run an
+    Amiga action, which `tests/automap/test_amigaactions.py` covers."""
     from gamedata import synthetic_geo
 
     from automap import c64
@@ -168,3 +170,60 @@ def test_the_real_window_lists_its_buttons_and_does_not_click_a_greyed_one(
     rows = windowbuttons.rows(binding)
     assert named(rows, "action_heal")["enabled"] is False
     assert windowbuttons.click(binding, "action_heal")["error"] == "button is disabled"
+
+
+def test_every_dialog_a_click_raises_is_answered(window):
+    asked = []
+
+    def two_questions(_checked=False):
+        for text in ("First?", "Second?"):
+            asked.append(window.actions_bar.ask(text))
+
+    window.actions_bar.buttons["heal"].clicked.connect(two_questions)
+    out = windowbuttons.click(window, "action_heal", answer="yes")
+    assert [d["text"] for d in out["dialogs"]] == ["First?", "Second?"]
+    assert asked == [True, True]
+
+
+def test_a_box_with_only_ok_is_closed_not_an_exception(window):
+    from PyQt6.QtWidgets import QMessageBox
+
+    window.actions_bar.buttons["heal"].clicked.connect(
+        lambda _c=False: QMessageBox.information(window.root, "wish", "Done."))
+    out = windowbuttons.click(window, "action_heal")
+    assert out["error"] is None
+    assert out["dialog"] == {"kind": "message", "text": "Done."}
+
+
+def _click_with(window, answerer, deadline):
+    from PyQt6.QtWidgets import QColorDialog
+
+    seen = []
+    window.actions_bar.buttons["heal"].clicked.connect(
+        lambda _c=False: seen.append(QColorDialog.getColor()))
+    original = windowbuttons._Answerer
+    windowbuttons._Answerer = answerer
+    try:
+        out = windowbuttons.click(window, "action_heal", deadline=deadline)
+    finally:
+        windowbuttons._Answerer = original
+    assert len(seen) == 1                 # the dialog returned: it was closed
+    return out
+
+
+def test_an_answer_that_raises_closes_the_dialog_and_reports_it(window):
+    class Raises(windowbuttons._Answerer):
+        def _answer(self, modal):
+            raise RuntimeError("cannot")
+
+    out = _click_with(window, Raises, deadline=5)
+    assert out["error"].startswith("could not answer a dialog")
+
+
+def test_a_dialog_left_open_is_rejected_at_the_deadline(window):
+    class Leaves(windowbuttons._Answerer):
+        def _answer(self, modal):
+            return {"kind": "left open", "text": ""}
+
+    out = _click_with(window, Leaves, deadline=0.05)
+    assert out["error"] == "a dialog was still open at the deadline"

@@ -1,5 +1,6 @@
 """The Amiga Action buttons, against a fake party and a bytearray target."""
 
+import importlib
 from types import SimpleNamespace
 
 import pytest
@@ -54,13 +55,17 @@ ALL = frozenset({"heal", "store-spells", "restore-spells", "identify",
                  "clear-quickfight"})
 
 
-def make_row(confirmed=ALL, combat_legal=frozenset()):
-    return SimpleNamespace(
-        confirmed=confirmed, combat_legal=combat_legal, combat_value=2,
+def make_row(confirmed=ALL, combat_legal=frozenset(),
+             title="Curse of the Azure Bonds", **spots):
+    row = SimpleNamespace(
+        title=title, confirmed=confirmed, combat_legal=combat_legal, combat_value=2,
         hp=Spot(offset=0x10, length=1, mask=0xFF),
         memorised=Spot(offset=0x20, length=4, mask=0xFF),
         quickfight=Spot(offset=0x30, length=1, mask=0x80),
         hidden=Spot(offset=6, length=1, mask=0x07))
+    for field, spot in spots.items():
+        setattr(row, field, spot)
+    return row
 
 
 @pytest.fixture
@@ -213,6 +218,7 @@ def test_an_unreadable_mode_refuses(world, store):
 def test_pools_of_darkness_never_gets_c64_addresses(world, store):
     # `machine_for` and `read_party` in the engine raise (the fixture), and
     # None there would mean Pool of Radiance.
+    world.row = make_row(title="Pools of Darkness")
     world.members = [Member("A", BASE, 3, 9)]
     for action in aa.actions(store, "pools-of-darkness"):
         assert action.game is None
@@ -242,3 +248,114 @@ def test_a_disabled_watcher_never_fires(world, store):
     for mode in (2, 0):
         world.mode = mode
         assert watcher.poll(world.target) is None
+
+
+def test_heal_writes_a_wide_field_big_endian_and_never_past_the_ceiling(world, store):
+    world.row = make_row(hp=Spot(offset=0x10, length=2, mask=0xFFFF))
+    world.members = [Member("A", BASE, 3, 300)]
+    out = acts(store)["heal"].apply(world.target)
+    assert out.writes == ((BASE + 0x10, (300).to_bytes(2, "big")),)
+    # A maximum above what two bytes hold is clamped to the ceiling.
+    world.members = [Member("A", BASE, 3, 70000)]
+    out = acts(store)["heal"].apply(world.target)
+    assert out.writes == ((BASE + 0x10, b"\xff\xff"),)
+    assert out.notes == ()
+
+
+def test_a_partial_mask_on_an_overwritten_field_is_refused(world, store):
+    for field, name in (("hp", "heal"), ("memorised", "restore-spells")):
+        world.row = make_row(**{field: Spot(offset=0x10, length=1, mask=0x0F)})
+        assert acts(store)[name].legality(world.target).reason == aa.NOT_BUILT
+    world.row = make_row(hp=None)
+    assert acts(store)["heal"].legality(world.target).reason == aa.NOT_BUILT
+
+
+def test_restore_with_nothing_to_change_is_a_no_op(world, store):
+    store.put("amiga/curse-of-the-azure-bonds", "A", b"\x01\x02")
+    world.members = [Member("A", BASE, 5, 9, memorised=b"\x01\x02\x00\x00")]
+    out = acts(store)["restore-spells"].apply(world.target)
+    assert out.ok and out.writes == ()
+    assert out.message == "Spellcasters have already memorized their spells."
+
+
+def test_restore_skips_a_list_longer_than_the_record_without_a_note(world, store):
+    store.put("amiga/curse-of-the-azure-bonds", "A", bytes(9))
+    world.members = [Member("A", BASE, 5, 9, memorised=bytes(4))]
+    out = acts(store)["restore-spells"].apply(world.target)
+    assert out.writes == () and out.notes == ()
+
+
+def test_identify_with_nothing_hidden_says_so(world, store):
+    clean = bytes(16)
+    world.members = [Member("A", BASE, 5, 9, nodes=((0x300, clean),))]
+    out = acts(store)["identify"].apply(world.target)
+    assert out.ok and out.writes == () and out.message == "No items to identify."
+
+
+def test_identify_skips_a_node_too_short_and_goes_on(world, store):
+    good = bytearray(16)
+    good[6] = 0x01
+    world.members = [Member("A", BASE, 5, 9,
+                            nodes=((0x300, b"\x00\x00"), (0x320, bytes(good))))]
+    out = acts(store)["identify"].apply(world.target)
+    assert out.writes == ((0x326, b"\x00"),)
+
+
+def test_a_key_for_another_title_than_the_target_is_not_built(world, store):
+    world.members = [Member("A", BASE, 3, 9, memorised=bytes(4))]
+    for action in aa.actions(store, "secret-of-the-silver-blades"):
+        assert action.legality(world.target).reason == aa.NOT_BUILT
+        action.run(world.target)
+    assert world.target.mem[BASE + 0x10] == 0
+    assert store.get("amiga/secret-of-the-silver-blades", "A") is None
+
+
+def test_mode_is_read_through_the_unwrapped_target(world, store, monkeypatch):
+    seen = []
+    fake = aa._parties()
+    monkeypatch.setattr(aa, "_parties", lambda: SimpleNamespace(
+        row_for=fake.row_for, read_party=fake.read_party,
+        mode=lambda t: seen.append(t) or 0))
+    assert acts(store)["heal"].legality(Forward(world.target))
+    assert seen == [world.target]
+
+
+@pytest.fixture
+def fresh_import(monkeypatch):
+    monkeypatch.setattr(aa, "_cached", aa._UNSET)
+    monkeypatch.setattr(aa, "_logged", False)
+    return monkeypatch
+
+
+def test_a_missing_amigaparty_is_none_and_is_looked_for_once(fresh_import):
+    calls = []
+
+    def fail(name):
+        calls.append(name)
+        raise ModuleNotFoundError(name=name)
+
+    fresh_import.setattr(importlib, "import_module", fail)
+    assert aa._parties() is None and aa._parties() is None
+    assert calls == ["automap.amigaparty"]
+
+
+def test_a_module_not_found_for_another_module_is_raised(fresh_import, caplog):
+    def fail(name):
+        raise ModuleNotFoundError(name="elsewhere")
+
+    fresh_import.setattr(importlib, "import_module", fail)
+    for _ in range(2):
+        with pytest.raises(ModuleNotFoundError):
+            aa._parties()
+    assert len(caplog.records) == 1
+
+
+def test_an_import_error_is_raised_and_logged_once(fresh_import, caplog):
+    def fail(name):
+        raise ImportError("cannot import name")
+
+    fresh_import.setattr(importlib, "import_module", fail)
+    for _ in range(2):
+        with pytest.raises(ImportError):
+            aa._parties()
+    assert len(caplog.records) == 1

@@ -21,8 +21,12 @@ its members are `AmigaMember`.
 from __future__ import annotations
 
 import importlib
+import logging
 
 from . import actions as engine
+from . import amiga
+
+_log = logging.getLogger("wish.automap.amigaactions")
 
 #: Shown while a title, a backend or an action is not built. Today's tooltip
 #: text, which stays until the sentence is chosen.
@@ -33,21 +37,62 @@ NOT_BUILT = "no emulator attached"
 STORE_PREFIX = "amiga/"
 
 
+_UNSET = object()
+_cached = _UNSET
+_logged = False
+
+
 def _parties():
-    """`automap.amigaparty`, or None while it is not in the tree."""
+    """`automap.amigaparty`, or None while it is not in the tree.
+
+    The answer is kept, the absent case included: this runs on every poll, and
+    a failed import is not retried each time. Any other import failure is a
+    fault in the module and is raised, with one log line.
+    """
+    global _cached
+    if _cached is not _UNSET:
+        return _cached
     try:
-        return importlib.import_module("automap.amigaparty")
+        _cached = importlib.import_module("automap.amigaparty")
     except ModuleNotFoundError as exc:
         if exc.name != "automap.amigaparty":
+            _log_once(exc)
             raise
-        return None
+        _cached = None
+    except ImportError as exc:
+        _log_once(exc)
+        raise
+    return _cached
 
 
-def _row(target):
+def _log_once(exc: ImportError) -> None:
+    global _logged
+    if not _logged:
+        _logged = True
+        _log.warning("automap.amigaparty could not be imported: %s", exc)
+
+
+def _row(target, key: str):
+    """The target's party row, only if it is the title `key` names.
+
+    The spell store is keyed by `key` and the writes follow the row, so a key
+    for one title with a target running another would store one title's list
+    under the other's name.
+    """
     parties = _parties()
     if parties is None or target is None:
         return None
-    return parties.row_for(_unwrap(target))
+    row = parties.row_for(_unwrap(target))
+    machine = amiga.MACHINES.get(key)
+    if row is None or machine is None or getattr(row, "title", None) != machine.title:
+        return None
+    return row
+
+
+def _whole_bytes(spot) -> bool:
+    """A mask that covers every byte it is applied to, written as one byte's
+    `0xFF` or as the full-width value. The writes replace whole bytes."""
+    return spot.mask in (0xFF, (1 << (8 * spot.length)) - 1)
 
 
 def _unwrap(target):
@@ -80,30 +125,41 @@ class _AmigaAction:
         if target is None:
             return engine.Verdict(False, NOT_BUILT)
         parties = _parties()
-        row = _row(target)
+        row = _row(target, self.key)
         if row is None or self.name not in row.confirmed:
+            return engine.Verdict(False, NOT_BUILT)
+        spot = getattr(row, self.WHOLE_BYTES, None) if self.WHOLE_BYTES else None
+        if self.WHOLE_BYTES and (spot is None or not _whole_bytes(spot)):
             return engine.Verdict(False, NOT_BUILT)
         if (self.name != "store-spells"
                 and not getattr(_unwrap(target), "can_write", False)):
             return engine.Verdict(False, NOT_BUILT)
-        state = parties.mode(target)
+        state = parties.mode(_unwrap(target))
         if state is None:
             return engine.Verdict(False, "the machine is not readable right now")
         if state == row.combat_value and self.name not in row.combat_legal:
             return engine.Verdict(False, f"{self.label} is refused during a fight")
         return engine.Verdict(True)
 
+    #: The row field this action overwrites whole; a partial mask there is
+    #: refused. Empty for the actions that clear bits.
+    WHOLE_BYTES = ""
+
     def _party(self, target):
         parties = _parties()
-        return None if parties is None else parties.read_party(_unwrap(target))
+        if parties is None or _row(target, self.key) is None:
+            return None
+        return parties.read_party(_unwrap(target))
 
     def _spot(self, target, field: str):
-        row = _row(target)
+        row = _row(target, self.key)
         return None if row is None else getattr(row, field, None)
 
 
 class AmigaHealParty(_AmigaAction, engine.HealParty):
     """Current hit points to maximum for everyone standing."""
+
+    WHOLE_BYTES = "hp"
 
     def run(self, target, **kwargs) -> engine.Outcome:
         party = self._party(target)
@@ -118,9 +174,6 @@ class AmigaHealParty(_AmigaAction, engine.HealParty):
                              f"dying is not a hit point count")
                 continue
             goal = min(m.hp_max, ceiling)
-            if m.hp_max > ceiling:
-                notes.append(f"{m.name} has {m.hp_max} maximum hit points and "
-                             f"the roster byte holds {ceiling}")
             if m.hp >= goal:
                 continue
             writes.append((m.address + spot.offset,
@@ -149,6 +202,8 @@ class AmigaStoreSpells(_AmigaAction, engine.StoreSpells):
 class AmigaRestoreSpells(_AmigaAction, engine.RestoreSpells):
     """Write the stored raw span back where this title keeps it."""
 
+    WHOLE_BYTES = "memorised"
+
     def run(self, target, disk: str = "", **kwargs) -> engine.Outcome:
         party = self._party(target)
         spot = self._spot(target, "memorised")
@@ -161,9 +216,6 @@ class AmigaRestoreSpells(_AmigaAction, engine.RestoreSpells):
                 notes.append(f"nothing stored for {m.name}")
                 continue
             if len(raw) > spot.length:
-                notes.append(f"the stored list for {m.name} is {len(raw)} "
-                             f"bytes, more than the {spot.length} this title's "
-                             f"record holds")
                 continue
             if raw == m.memorised()[:len(raw)]:
                 continue
@@ -187,6 +239,8 @@ class AmigaIdentifyItems(_AmigaAction, engine.IdentifyItems):
         writes = []
         for m in party:
             for address, node in m.items():
+                if len(node) <= spot.offset:
+                    continue
                 flags = node[spot.offset]
                 if flags & spot.mask:
                     writes.append((address + spot.offset,
@@ -235,8 +289,8 @@ class AmigaQuickfightWatcher(engine.QuickfightWatcher):
 
     def poll(self, target) -> engine.Outcome | None:
         parties = _parties()
-        row = _row(target)
-        now = None if parties is None or row is None else parties.mode(target)
+        row = _row(target, self.action.key)
+        now = None if parties is None or row is None else parties.mode(_unwrap(target))
         was, self.was = self.was, now
         combat = None if row is None else row.combat_value
         if not self.enabled or was != combat or now == combat or now is None:
