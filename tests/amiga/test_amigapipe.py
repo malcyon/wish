@@ -898,7 +898,7 @@ SNAP_DIR = f"C:\\Amiga\\States\\{HOLDER}\\before-walk"
 SNAP_FILE = f"{SNAP_DIR}\\before-walk"
 SAVE_MSG = "CFG statefile_save x"
 PATH_MSG = f"CFG statefile_path C:\\Amiga\\States\\{HOLDER}\\part~\\before-walk"
-MARKER = f"{SNAP_DIR}\\complete"
+MARKER = f"{SNAP_DIR}\\complete~"
 
 
 def b64(blob: bytes) -> str:
@@ -1070,7 +1070,7 @@ def test_a_restore_of_a_snapshot_with_no_completion_marker_is_an_error():
         restore(LaneGuest(restored(marker=False)))
 
 
-def test_the_guests_refusal_of_an_unmarked_snapshot_reaches_the_caller():
+def test_the_guest_turning_down_an_unmarked_snapshot_reaches_the_caller():
     error = amiga.GuestError("winvm ssh failed: fail snapshot before-walk for "
                              f"{HOLDER} has no completion marker")
     with pytest.raises(amiga.SnapshotError, match="has no completion marker"):
@@ -1126,6 +1126,110 @@ def test_the_lane_script_sends_the_pending_save_before_the_folder():
     path = script.index("Send-Logged $pipe $sw $tags 1 'path' \"CFG statefile_path $part\"")
     poll = script.index("$h = Read-StateHead $partFile", path)
     assert '$part = "$StateRoot\\$Holder\\part~\\$name"' in script
-    marker = script.index('Write-Kv "$part\\complete"', poll)
-    replace = script.index("Move-Item -LiteralPath $part -Destination $dir", marker)
+    marker = script.index('Write-Kv "$part\\complete~"', poll)
+    replace = script.index("Replace-StateFolder $part $dir $backup", marker)
     assert save < path < poll < marker < replace
+
+
+@pytest.mark.parametrize("holder", ["CON", "con", "Nul", "PRN", "AUX", "COM1", "com9",
+                                    "LPT1", "lpt9", "CON.x", "nul.anything"])
+def test_a_holder_that_is_a_windows_device_name_is_refused_before_anything_is_sent(holder):
+    guest = LaneGuest(saved())
+    with pytest.raises(ValueError, match="Windows device name"):
+        snap(guest, holder=holder)
+    assert guest.calls == []
+
+
+@pytest.mark.parametrize("name", ["CON", "con", "aux", "Com3", "LPT2", "nul"])
+def test_a_snapshot_name_that_is_a_windows_device_name_is_refused(name):
+    guest = LaneGuest(saved())
+    with pytest.raises(ValueError, match="Windows device name"):
+        snap(guest, name=name)
+    assert guest.calls == []
+
+
+@pytest.mark.parametrize("name", ["COM", "COM10", "LPT0", "console", "CONx"])
+def test_a_name_that_only_looks_like_a_device_is_allowed(name):
+    folder, file = amiga.snapshot_place(HOLDER, name)
+    assert file == f"{folder}\\{name}"
+
+
+def test_a_snapshot_called_complete_does_not_share_its_path_with_the_marker():
+    folder, file = amiga.snapshot_place(HOLDER, "complete")
+    assert f"{folder}\\{amiga.STATE_MARKER}" != file
+    assert not amiga.SNAPSHOT_NAME.fullmatch(amiga.STATE_MARKER)
+
+
+# -- the guest script's own order, read from the copy that is deployed ---------
+
+PS1 = (pathlib.Path(__file__).resolve().parents[2] / "tools" / "amiga" / "winuae.ps1").read_text()
+STATE = PS1[PS1.index("# -- `snapshot`, `restore` and `discard-snapshot`"):
+            PS1.index("# -- `drives` and `insert`")]
+
+
+def _body(function: str) -> str:
+    start = STATE.index(f"function {function}")
+    return STATE[start:STATE.index("\n}\n", start)]
+
+
+def test_the_lane_script_marks_with_a_name_no_snapshot_can_have():
+    assert '$marker = "$dir\\complete~"' in STATE
+    assert 'Write-Kv "$part\\complete~"' in STATE
+
+
+def test_a_replacement_moves_the_old_folder_aside_before_the_new_one_moves_in():
+    body = _body("Replace-StateFolder")
+    aside = body.index("Move-Item -LiteralPath $Dir -Destination $Backup")
+    move_in = body.index("Move-Item -LiteralPath $Part -Destination $Dir")
+    put_back = body.index("Move-Item -LiteralPath $Backup -Destination $Dir")
+    rethrow = body.index("throw", put_back)
+    delete = body.index("Remove-Item -LiteralPath $Backup")
+    assert aside < move_in < put_back < rethrow < delete
+    assert "Remove-Item -LiteralPath $Dir" not in body
+
+
+def test_a_snapshot_is_moved_in_only_through_the_replacement():
+    body = _body("Invoke-State")
+    assert "Replace-StateFolder $part $dir $backup" in body
+    assert "Remove-Item -LiteralPath $dir -Recurse" not in body.split("'discard-snapshot'")[1].split("exit 0\n  }")[1]
+
+
+def test_a_backup_left_by_a_crash_is_put_back_before_any_verb_looks():
+    body = _body("Invoke-State")
+    assert body.index("Repair-StateBackup $dir $backup") < body.index("if ($Verb -eq 'discard-snapshot')")
+    repair = _body("Repair-StateBackup")
+    assert "Move-Item -LiteralPath $Backup -Destination $Dir" in repair
+
+
+def test_a_leftover_working_folder_is_cleared_before_the_pipe_opens_or_named():
+    body = _body("Invoke-State")
+    clear = body.index("Remove-Item -LiteralPath $part -Recurse -Force -ErrorAction SilentlyContinue\n    if (Test-Path -LiteralPath $part)")
+    held = body.index("could not be removed, so a process still holds a file in it")
+    make = body.index("New-Item -ItemType Directory -Force -Path $part")
+    opened = body.index("New-Object IO.Pipes.NamedPipeClientStream")
+    assert clear < held < make < opened
+
+
+def test_a_failed_snapshot_removes_its_working_folder():
+    body = _body("Invoke-State")
+    final = body[body.rindex("} finally {"):]
+    assert "if ($Verb -eq 'snapshot' -and -not $done) { Remove-Item -LiteralPath $part -Recurse" in final
+    assert body.index("$done = $true") > body.index("Replace-StateFolder $part $dir $backup")
+
+
+def test_a_restore_reads_the_count_then_sends_then_polls():
+    body = _body("Invoke-State")
+    restore = body[body.index("if (-not $verdict -and $Verb -eq 'restore')"):
+                   body.index("if (-not $verdict -and $Verb -eq 'snapshot')")]
+    before = restore.index("$before = Read-ExecCount $pipe")
+    sent = restore.index("Send-Logged $pipe $sw $tags 0 'restore' \"CFG statefile $file\"")
+    loop = restore.index("while (-not $back")
+    polled = restore.index("try { $after = Read-ExecCount $pipe", loop)
+    assert before < sent < loop < polled
+
+
+def test_one_bad_read_in_the_restore_poll_does_not_end_it():
+    body = _body("Invoke-State")
+    loop = body[body.index("while (-not $back"):body.index("if ($back)")]
+    assert "catch { $readError = $_.Exception.Message }" in loop
+    assert "the last error was: $readError" in body

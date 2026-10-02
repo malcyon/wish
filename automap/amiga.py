@@ -869,6 +869,14 @@ STATE_ROOT = GUEST_ROOT + r"\States"
 #: A snapshot name becomes a directory and a file name, so it is a word.
 SNAPSHOT_NAME = re.compile(r"[A-Za-z0-9_-]{1,32}")
 
+#: A Windows device name, in any case and with any extension: a path through one
+#: opens the device rather than a file or folder.
+WINDOWS_DEVICE = re.compile(r"(?i)(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?")
+
+#: The completion marker's name; `~` cannot be in a snapshot name, so no snapshot
+#: shares its path.
+STATE_MARKER = "complete~"
+
 #: How long the guest waits for WinUAE to write a state file; one took 1.3 s.
 STATE_WAIT_SECONDS = 15.0
 
@@ -893,17 +901,22 @@ def snapshot_place(holder: str, name: str) -> tuple[str, str]:
     WinUAE names the file it writes after the last component of
     `statefile_path`, so each snapshot has a directory of its own named like it.
     The guest writes into `_part_folder` and moves that to `<folder>` once the
-    state and its `complete` marker are in it. A holder of `.`, or one holding
+    state and its `complete~` marker are in it. A holder of `.`, or one holding
     `..` or ending in a dot, is refused, because Windows would resolve its
-    folder to another one.
+    folder to another one, and so is a Windows device name (`CON`, `NUL`,
+    `COM1` and the rest, in any case) as a holder or a name.
     """
     holder = _floppy_holder(holder)
     if holder == "." or ".." in holder or holder.endswith("."):
         raise ValueError(f"Holder {holder!r} is refused: Windows would read it as "
                          "another folder")
+    if WINDOWS_DEVICE.fullmatch(holder):
+        raise ValueError(f"Holder {holder!r} is refused: it is a Windows device name")
     if not isinstance(name, str) or not SNAPSHOT_NAME.fullmatch(name):
         raise ValueError(f"Snapshot name {name!r} is refused: it is not 1-32 "
                          "letters, digits, - and _")
+    if WINDOWS_DEVICE.fullmatch(name):
+        raise ValueError(f"Snapshot name {name!r} is refused: it is a Windows device name")
     folder = f"{STATE_ROOT}\\{holder}\\{name}"
     return folder, f"{folder}\\{name}"
 
@@ -1308,8 +1321,10 @@ Write-Output '<<end>>'
         save pending, the second points it at `part~\\<name>\\<name>` and the
         save completes (a last component with a dot in it got no file). `CFG statefile_save <name>` alone writes nothing. The guest
         waits up to `STATE_WAIT_SECONDS` for a file that starts `ASF ` and has
-        stopped growing, writes a `complete` marker with its hash
-        and the count, and only then replaces any older snapshot of the name.
+        stopped growing, writes a `complete~` marker with its hash
+        and the count, and only then replaces any older snapshot of the name: the old folder
+        is renamed to a backup, the new one moved in, and the backup deleted, or
+        renamed back if the move fails.
         On a failure the temporary folder is removed and the older snapshot is
         kept. The machine runs on.
 
@@ -1330,7 +1345,7 @@ Write-Output '<<end>>'
             raise SnapshotError(f"The state file {file} did not appear within "
                                 f"{STATE_WAIT_SECONDS:.0f} s, and WinUAE still holds "
                                 "the pending state save", receipt.as_dict())
-        if tags.get("marker") != f"{folder}\\complete":
+        if tags.get("marker") != f"{folder}\\{STATE_MARKER}":
             raise SnapshotError(f"The snapshot {file} has no completion marker",
                                 receipt.as_dict())
         if not tags.get("count_snapshot", "").isdigit():
@@ -1350,13 +1365,22 @@ Write-Output '<<end>>'
                 token: str | None = None) -> StateReceipt:
         """Put the machine back as `snapshot(name)` left it, and prove it went back.
 
-        The guest refuses a snapshot with no `complete` marker or whose file
+        The guest refuses a snapshot with no `complete~` marker or whose file
         does not hash as the marker says. It reads Exec's idle and dispatch
         counts, sends `CFG statefile <file>`, and reads them again until they
         fall to between the snapshot's value and the value read before the
         restore: both counts only rise while the machine runs, so only a
-        machine that went back reads lower. It then waits `RestoreSettleMs`, so
-        a key pressed after this reaches the restored machine.
+        machine that went back reads lower. A read that fails during the 5 s
+        counts as not back yet, and the error names the last one. It then waits
+        `RestoreSettleMs`, so a key pressed after this reaches the restored
+        machine.
+
+        The proof fails safe when the counts do not move (a machine stopped in
+        the debugger, or a program that stops Exec switching tasks), and it
+        cannot tell a restore from a reset: a snapshot taken in the first
+        seconds after a boot has a count so small that a reset during the
+        restore could pass it. `docs/70-driving-the-game.md` has the
+        measurements.
 
         Each drive gets the image path the state recorded put back in it, and an
         image written since the snapshot keeps that write: a game save made
@@ -1367,7 +1391,7 @@ Write-Output '<<end>>'
         receipt = self._state_verb("restore", holder, name, token)
         _judge_messages(receipt, [("restore", f"CFG statefile {file}")])
         tags = receipt.tags
-        if tags.get("marker") != f"{folder}\\complete":
+        if tags.get("marker") != f"{folder}\\{STATE_MARKER}":
             raise SnapshotError(f"The snapshot {file} has no completion marker",
                                 receipt.as_dict())
         try:

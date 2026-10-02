@@ -464,8 +464,10 @@ $fg = ([W]::GetForegroundWindow() -eq $h)
 # writes nothing: WinUAE joins the state folder and a full path into one bad
 # name. The state is written into `<holder>\part~\<name>`, whose last component
 # has no dot because WinUAE wrote no file for a folder named `<name>.part`; it is
-# waited on until it starts `ASF ` and stops growing, given a `complete` marker
-# there, and only then does that folder replace `$StateRoot\<holder>\<name>`.
+# waited on until it starts `ASF ` and stops growing, given a `complete~` marker
+# there, and only then does that folder replace `$StateRoot\<holder>\<name>`:
+# the old folder is renamed `<name>~old`, the new one moved in, and the backup
+# deleted, or renamed back if the move fails.
 # On a failure the temporary folder is removed and an older snapshot of the name is kept. If the
 # file never appears, WinUAE still holds the pending save, and the next
 # `statefile_path` sent to it completes that save.
@@ -537,16 +539,49 @@ function Read-ExecCount($Pipe) {
   (BigEndian32 $b 0) + (BigEndian32 $b 4)
 }
 
+# A Windows device name, which opens the device rather than a file or folder:
+# `CON`, `PRN`, `AUX`, `NUL`, `COM1`-`COM9` and `LPT1`-`LPT9`, in any case and with
+# any extension after a dot.
+function Test-DeviceName([string]$Text) {
+  $Text -imatch '^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\..*)?\z'
+}
+
+# A crash between the two moves of a replacement leaves the old snapshot in
+# `<name>~old` and nothing in `<name>`; put it back before anything else looks.
+function Repair-StateBackup([string]$Dir, [string]$Backup) {
+  if (-not (Test-Path -LiteralPath $Backup)) { return }
+  if (Test-Path -LiteralPath $Dir) { Remove-Item -LiteralPath $Backup -Recurse -Force -ErrorAction Stop }
+  else { Move-Item -LiteralPath $Backup -Destination $Dir -ErrorAction Stop }
+}
+
+# Replace `$Dir` with `$Part` without a moment where both are lost: the old folder
+# becomes `$Backup`, the new one moves in, and only then is the backup deleted.
+# If the move in fails, the backup is renamed back and the error is thrown on.
+function Replace-StateFolder([string]$Part, [string]$Dir, [string]$Backup) {
+  $had = Test-Path -LiteralPath $Dir
+  if ($had) { Move-Item -LiteralPath $Dir -Destination $Backup -ErrorAction Stop }
+  try { Move-Item -LiteralPath $Part -Destination $Dir -ErrorAction Stop }
+  catch {
+    if ($had) { Move-Item -LiteralPath $Backup -Destination $Dir -ErrorAction SilentlyContinue }
+    throw
+  }
+  if ($had) { Remove-Item -LiteralPath $Backup -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
 function Invoke-State([string]$Verb) {
   $deny = Get-LaneDenial
   if ($deny) { $deny; exit 1 }
-  if ($Holder -ceq '.' -or $Holder.Contains('..') -or $Holder.EndsWith('.') -or $Holder -cnotmatch '^[A-Za-z0-9._-]{1,64}\z') { 'fail -Holder is not a lane-safe name'; exit 1 }
-  if ($Rest.Count -ne 1 -or $Rest[0] -cnotmatch $StateNamePattern) { "fail $Verb needs one snapshot name of 1-32 letters, digits, - and _"; exit 1 }
+  if ($Holder -ceq '.' -or $Holder.Contains('..') -or $Holder.EndsWith('.') -or (Test-DeviceName $Holder) -or $Holder -cnotmatch '^[A-Za-z0-9._-]{1,64}\z') { 'fail -Holder is not a lane-safe name'; exit 1 }
+  if ($Rest.Count -ne 1 -or $Rest[0] -cnotmatch $StateNamePattern -or (Test-DeviceName $Rest[0])) { "fail $Verb needs one snapshot name of 1-32 letters, digits, - and _ that is not a Windows device name"; exit 1 }
   $name = $Rest[0]
   $dir = "$StateRoot\$Holder\$name"
   $file = "$dir\$name"
-  $marker = "$dir\complete"
+  # `~` cannot be in a name, so neither the marker nor the two working folders can be a snapshot's own path.
+  $marker = "$dir\complete~"
   $part = "$StateRoot\$Holder\part~\$name"
+  $backup = "$dir~old"
+  try { Repair-StateBackup $dir $backup }
+  catch { "fail the backup $backup of snapshot $name could not be put back: $($_.Exception.Message)"; exit 1 }
   if ($Verb -eq 'discard-snapshot') {
     Remove-Item -LiteralPath $part -Recurse -Force -ErrorAction SilentlyContinue
     if (-not (Test-Path -LiteralPath $dir)) { "ok nothing to discard for $name"; '<<end>>'; exit 0 }
@@ -568,13 +603,15 @@ function Invoke-State([string]$Verb) {
   }
   $lane = Get-LaneEmulator
   if ($lane.err) { $lane.err; exit 1 }
+  if ($Verb -eq 'snapshot') {
+    # A crash can leave a working folder behind; it is cleared before anything is sent.
+    Remove-Item -LiteralPath $part -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $part) { "fail the leftover $part could not be removed, so a process still holds a file in it"; exit 1 }
+    New-Item -ItemType Directory -Force -Path $part -ErrorAction Stop | Out-Null
+  }
   $tags = New-Object System.Collections.ArrayList
   $pipe = $null; $open = $false; $verdict = $null; $pending = $false; $done = $false
   try {
-    if ($Verb -eq 'snapshot') {
-      if (Test-Path -LiteralPath $part) { Remove-Item -LiteralPath $part -Recurse -Force -ErrorAction Stop }
-      New-Item -ItemType Directory -Force -Path $part -ErrorAction Stop | Out-Null
-    }
     Add-Type -Namespace Wish -Name PipeInfo -MemberDefinition '[DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetNamedPipeServerProcessId(IntPtr Pipe, out uint ServerProcessId);'
     $sw = [Diagnostics.Stopwatch]::StartNew()
     $pipe = New-Object IO.Pipes.NamedPipeClientStream '.', 'WinUAE', 'InOut'
@@ -606,18 +643,22 @@ function Invoke-State([string]$Verb) {
       $tags.Add("<<count_before>> $before") | Out-Null
       Send-Logged $pipe $sw $tags 0 'restore' "CFG statefile $file"
       $until = $sw.ElapsedMilliseconds + $RestoreBoundMs
-      $after = $null; $back = $false
+      $after = $null; $back = $false; $readError = $null
       while (-not $back -and $sw.ElapsedMilliseconds -lt $until) {
         Start-Sleep -Milliseconds $StatePollMs
-        $after = Read-ExecCount $pipe
-        $back = ($after -ge $snap -and $after -lt $before)
+        # A read can fail while the state is being loaded; that is "not back yet".
+        try { $after = Read-ExecCount $pipe; $back = ($after -ge $snap -and $after -lt $before) }
+        catch { $readError = $_.Exception.Message }
       }
-      $tags.Add("<<count_after>> $after") | Out-Null
+      if ($null -ne $after) { $tags.Add("<<count_after>> $after") | Out-Null }
       if ($back) {
         Start-Sleep -Milliseconds $RestoreSettleMs
         $verdict = "ok restored $name pid=$($lane.proc.Id)"
+      } elseif ($null -eq $after) {
+        $verdict = "fail the machine was not seen to go back to snapshot $name within $($RestoreBoundMs / 1000) s, because no read of Exec's count succeeded; the last error was: $readError"
       } else {
-        $verdict = "fail the machine was not seen to go back to snapshot $name within $($RestoreBoundMs / 1000) s: Exec's count read $after, not between $snap and $before"
+        $tail = if ($readError) { "; the last read error was: $readError" } else { '' }
+        $verdict = "fail the machine was not seen to go back to snapshot $name within $($RestoreBoundMs / 1000) s: Exec's count read $after, not between $snap and $before$tail"
       }
     }
     if (-not $verdict -and $Verb -eq 'snapshot') {
@@ -639,9 +680,8 @@ function Invoke-State([string]$Verb) {
       } else {
         $appeared = $sw.ElapsedMilliseconds
         $sha = (Get-FileHash -LiteralPath $partFile -Algorithm SHA256).Hash
-        Write-Kv "$part\complete" @{ sha256 = $sha; count = "$count"; bytes = "$($h.len)" }
-        if (Test-Path -LiteralPath $dir) { Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction Stop }
-        Move-Item -LiteralPath $part -Destination $dir -ErrorAction Stop
+        Write-Kv "$part\complete~" @{ sha256 = $sha; count = "$count"; bytes = "$($h.len)" }
+        Replace-StateFolder $part $dir $backup
         $done = $true
         $tags.Add("<<file>> $file") | Out-Null
         $tags.Add("<<bytes>> $($h.len)") | Out-Null

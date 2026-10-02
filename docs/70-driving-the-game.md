@@ -760,22 +760,53 @@ A snapshot reads Exec's idle and dispatch counts, sends
 `CFG statefile_save x` and then
 `CFG statefile_path C:\Amiga\States\<holder>\part~\<name>`, which writes the
 state to `<name>` in that folder; `CFG statefile_save <name>` alone writes
-nothing, and neither does a folder whose name has a dot in it. The
-verb waits up to 15 s for a file that starts `ASF ` and has stopped growing
-(about 0.5 MB, written in about 1 s), writes a `complete` marker
-holding its SHA-256 and the counts, and only then moves that folder to
-`C:\Amiga\States\<holder>\<name>`, replacing any older one. On a failure the
-temporary folder is removed and an older snapshot of that name is kept. A failure after
-`statefile_save x` was sent leaves that save pending in WinUAE, and the next
-`statefile_path` sent to the process completes it; the error says so.
+nothing, and neither does a folder whose name has a dot in it. The verb waits
+up to 15 s for a file that starts `ASF ` and has stopped growing (0.3 to 0.5 MB,
+written in about 1 s) and writes a `complete~` marker beside it holding its
+SHA-256 and the counts. It then replaces `C:\Amiga\States\<holder>\<name>`
+in three steps: the old folder is renamed `<name>~old`, the new one is moved
+in, and the backup is deleted, or renamed back if the move fails. A backup left
+by a crash between those steps is put back by the next verb that names the
+snapshot. On a failure the working folder is removed and an older snapshot of
+that name is kept. A working folder left by a crash is cleared before the next
+snapshot of that name, and the snapshot fails with one sentence if a process
+still holds a file in it. A failure after `statefile_save x` was sent leaves
+that save pending in WinUAE, and the next `statefile_path` sent to the process
+completes it; the error says so. `~` cannot be in a holder or a name, so no
+snapshot shares a path with the marker, the working folder or the backup.
 
 A restore refuses a snapshot with no marker or whose file does not hash as the
-marker says, sends `CFG statefile <file>`, and reads Exec's counts until they
-fall to between the snapshot's value and the value read just before the
-restore. Both counts only rise while the machine runs, so a lower reading is
-the proof the machine went back; if none comes within 5 s the restore fails.
-It then waits 0.5 s, so the next key reaches the restored machine. No window,
-key or dialog is involved and the machine runs on.
+marker says, reads Exec's counts, sends `CFG statefile <file>`, and reads them
+again every 250 ms until they fall to between the snapshot's value and the
+value read just before the restore. A read that fails during that time counts
+as not back yet; if no reading falls within 5 s the restore fails, naming the
+last reading and the last read error. It then waits 0.5 s, so the next key
+reaches the restored machine. No window, key or dialog is involved and the
+machine runs on.
+
+**What the count proves, and where it does not apply.** Exec's IdleCount and
+DispCount only rise while the machine runs, so a reading below the one taken
+just before the restore means the machine went back, and a reading at or above
+the snapshot's means it went back no further than the snapshot. Measured on
+both titles under WinUAE 6.0.3, with the sum rising across every sample:
+
+| Title | Screens sampled | Rise |
+|---|---|---|
+| Pool of Radiance | loader, credits, main menu, 3D view idle, 3D view while walking | about 35 a second; IdleCount stood still on every screen but the walk, DispCount carried it |
+| Curse of the Azure Bonds | title, code-wheel prompt, party menu, 3D view idle, 3D view while walking | about 200 a second |
+
+Combat was not reached in either title, so it is unmeasured. A snapshot
+followed at once by a restore (about 3 s apart, the least the verbs allow) still
+passed on both titles, with the restored count about 10 to 50 above the
+snapshot's and 100 to 4,000 below the reading before. The proof does not apply,
+and the restore fails rather than passing, when the counts do not move: a
+machine stopped in WinUAE's debugger, or a program that stops Exec switching
+tasks. It cannot tell a restore from a reset: a machine that was reset after the
+snapshot reads low counts, so a restore attempted while its count is still
+below the snapshot's fails, and a snapshot taken in the first seconds after a
+boot has a count so small that a reset during the restore's 5 s could pass it.
+It also says the machine went back to some moment after the snapshot was
+requested, not that every byte matches the state file.
 
 The state holds each drive's image path, not the disk's contents, so a restore
 puts the recorded image back in each drive and an image written since the
@@ -783,10 +814,12 @@ snapshot keeps that write. A game save made between a snapshot and its restore
 therefore stays on the disk image while memory goes back, and the disk and the
 game disagree; a run that saved in between treats that image as changed.
 Nothing refuses a save after a restore. `winuae.ps1 clean` removes
-`C:\Amiga\States`, so it deletes every holder's snapshots. A holder of `.`,
-or one holding `..` or ending in a dot, is refused, because Windows would
-resolve its folder to another one. FS-UAE has no usable machine-state save in
-this build, because its savestate crashes.
+`C:\Amiga\States`, so it deletes every holder's snapshots. A holder of `.`, one
+holding `..` or ending in a dot, and a Windows device name (`CON`, `PRN`, `AUX`,
+`NUL`, `COM1` to `COM9`, `LPT1` to `LPT9`, in any case and with any extension)
+as a holder or a name, are refused, because Windows would resolve the folder to
+something else. FS-UAE has no usable machine-state save in this build, because
+its savestate crashes.
 
 ## Suppressing encounters
 
