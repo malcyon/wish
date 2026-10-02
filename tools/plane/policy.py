@@ -119,7 +119,7 @@ class Policy:
         updater = record.get('updated_by')
         if isinstance(updater, dict):
             updater = updater.get('id')
-        return author in self.settings.trusted and (updater is None or updater in self.settings.trusted)
+        return author in self.settings.trusted and updater in self.settings.trusted
 
     def filtered(self, record, comment=False):
         trusted = self.trusted(record)

@@ -25,7 +25,7 @@ def settings(tmp_path, **overrides):
 
 
 def record(**overrides):
-    result = dict(id=ITEM, sequence_id=1, created_by=AGENT, name='Ticket',
+    result = dict(id=ITEM, sequence_id=1, created_by=AGENT, updated_by=AGENT, name='Ticket',
                   description_html='<p>Evidence</p>', state=STATE, labels=[], priority='high')
     result.update(overrides)
     return result
@@ -187,7 +187,7 @@ def test_update_requires_explanation_before_mutating(tmp_path):
         if path == 'users/me':
             return {'id': AGENT}
         if path.endswith('/labels'):
-            return []
+            return {'results': [], 'next_page_results': False}
         return record()
     with pytest.raises(PlaneError, match='Nonempty'):
         Client(settings(tmp_path), Fake(handle)).update('edit', ITEM, {'priority': 'low'}, '')
@@ -199,7 +199,7 @@ def test_correction_comment_is_after_patch_and_state_is_read_back(tmp_path):
         if path == 'users/me':
             return {'id': AGENT}
         if path.endswith('/labels'):
-            return []
+            return {'results': [], 'next_page_results': False}
         if path.endswith('/comments'):
             if method == 'POST':
                 assert current['priority'] == 'low'
@@ -219,9 +219,9 @@ def test_state_change_with_wrong_readback_is_not_reported_complete(tmp_path):
         if path == 'users/me':
             return {'id': AGENT}
         if path.endswith('/labels'):
-            return []
+            return {'results': [], 'next_page_results': False}
         if path.endswith('/states'):
-            return [{'id': OUTSIDE, 'name': 'Done', 'group': 'completed'}]
+            return {'results': [{'id': OUTSIDE, 'name': 'Done', 'group': 'completed'}], 'next_page_results': False}
         if path.endswith('/comments'):
             if method == 'POST':
                 return {'id': OUTSIDE, 'created_by': AGENT, **data}
@@ -302,3 +302,62 @@ def test_http_requires_explicit_boolean_authorization(tmp_path):
     assert settings(tmp_path, base_url='http://plane.example', allow_insecure_http=True).base_url == 'http://plane.example'
     with pytest.raises(PlaneError):
         settings(tmp_path, base_url='http://user:secret@plane.example', allow_insecure_http=True)
+
+
+@pytest.mark.parametrize('timestamps', [{}, {'created_at': '2026-01-01T00:00:00Z', 'updated_at': '2026-01-02T00:00:00Z'}])
+def test_missing_editor_identity_withholds_current_text(tmp_path, timestamps):
+    result = Policy(settings(tmp_path)).filtered(record(updated_by=None, name='SECRET', **timestamps))
+    assert 'SECRET' not in json.dumps(result)
+
+
+def test_body_correction_ignored_by_server_posts_no_success_comment(tmp_path):
+    def handle(method, path, data, params):
+        if path == 'users/me':
+            return {'id': AGENT}
+        if path.endswith('/labels'):
+            return {'results': [], 'next_page_results': False}
+        if path.endswith('/comments'):
+            if method == 'POST':
+                pytest.fail('Explanation posted before correction was verified')
+            return {'results': [], 'next_page_results': False}
+        return record()
+    with pytest.raises(PlaneError, match='readback'):
+        Client(settings(tmp_path), Fake(handle)).update('correct', ITEM, {'description_html': 'Changed text'}, 'Corrected factual error')
+
+
+@pytest.mark.parametrize('resource', ['work-items', 'labels', 'states', f'work-items/{ITEM}/comments'])
+def test_bare_list_does_not_prove_complete_pagination(tmp_path, resource):
+    client = Client(settings(tmp_path), Fake(lambda *args: []))
+    with pytest.raises(PlaneError, match='paginated'):
+        list(client.pages(f'{client.prefix}/{resource}'))
+
+
+def test_reordered_labels_and_normalized_html_confirm_before_explanation(tmp_path):
+    current = record()
+    explained = []
+    def handle(method, path, data, params):
+        if path == 'users/me':
+            return {'id': AGENT}
+        if path.endswith('/labels'):
+            return {'results': [{'id': LABEL, 'name': 'bug'}, {'id': OUTSIDE, 'name': 'AI'}], 'next_page_results': False}
+        if path.endswith('/comments'):
+            if method == 'POST':
+                explained.append(True)
+                return {'id': IMPORTER, 'created_by': AGENT, 'updated_by': AGENT, **data}
+            return {'results': [], 'next_page_results': False}
+        if method == 'PATCH':
+            current.update(data)
+            current['labels'].reverse()
+            current['description_html'] = current['description_html'].replace('<br>', '<br />').replace('&amp;', '&#38;')
+        return dict(current)
+    result = Client(settings(tmp_path), Fake(handle)).update('correct', ITEM,
+        {'labels': [LABEL, OUTSIDE], 'description_html': 'First & second\nThird'}, 'Corrected the recorded facts')
+    assert set(result['labels']) == {LABEL, OUTSIDE}
+    assert '&#38;' in result['description_html']
+    assert explained == [True]
+
+
+def test_edited_html_markup_does_not_count_as_equivalent_text():
+    from tools.plane.client import confirm_changes
+    with pytest.raises(PlaneError, match='readback'):
+        confirm_changes({'description_html': '<p>Text<script>Changed</script></p>'}, {'description_html': '<p>Text</p>'})

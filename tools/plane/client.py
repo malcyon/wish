@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import time
+from html.parser import HTMLParser
 from importlib.metadata import version
 
 from tools.plane.policy import Journal, PlaneError, Policy, Settings, paragraph, uuid
@@ -59,9 +60,6 @@ class Client:
         seen = set()
         while True:
             response = self.transport.request('GET', path, params={'per_page': 100, **({'cursor': cursor} if cursor else {})})
-            if isinstance(response, list):
-                yield from response
-                return
             if not isinstance(response, dict) or not isinstance(response.get('results'), list):
                 raise PlaneError("Plane returned an invalid paginated response")
             yield from response['results']
@@ -180,11 +178,10 @@ class Client:
         if 'description_html' in payload:
             payload['description_html'] = paragraph(payload['description_html'])
         self.write(operation_id + ':edit', 'PATCH', f'{self.items}/{uuid(record["id"])}', payload)
+        confirm_changes(self.raw(record['id']), payload)
         self.comment(operation_id + ':explanation', record['id'], explanation)
         current = self.read(record['id'])
-        for field in ('priority', 'state', 'labels', 'name'):
-            if field in payload and current.get(field) != payload[field]:
-                raise PlaneError("Plane state readback did not confirm the requested change")
+        confirm_changes(current, payload)
         return current
 
 
@@ -192,3 +189,49 @@ def clean_metadata(row, key):
     """Expose metadata as scrubbed evidence without returning arbitrary nested fields."""
     from tools.plane.policy import clean
     return uuid(row[key]) if key == 'id' else clean(row.get(key))
+
+
+class HTMLContent(HTMLParser):
+    """Compare encoded body content while accepting equivalent entity and void-tag spelling."""
+
+    def __init__(self, value):
+        super().__init__(convert_charrefs=True)
+        self.events = []
+        self.feed(value)
+        self.close()
+
+    def handle_starttag(self, tag, attrs):
+        self.events.append(('start', tag, tuple(sorted(attrs))))
+
+    def handle_startendtag(self, tag, attrs):
+        self.handle_starttag(tag, attrs)
+        if tag not in {'br', 'hr', 'img', 'input', 'meta', 'link', 'area', 'base', 'col', 'embed', 'param', 'source', 'track', 'wbr'}:
+            self.handle_endtag(tag)
+
+    def handle_endtag(self, tag):
+        self.events.append(('end', tag))
+
+    def handle_data(self, data):
+        if self.events and self.events[-1][0] == 'data':
+            self.events[-1] = ('data', self.events[-1][1] + data)
+        else:
+            self.events.append(('data', data))
+
+    def handle_comment(self, data):
+        self.events.append(('comment', data))
+
+
+def confirm_changes(record, payload):
+    """Require server readback of every changed field before reporting success."""
+    for field, expected in payload.items():
+        actual = record.get(field)
+        if field == 'description_html':
+            matches = isinstance(actual, str) and HTMLContent(actual).events == HTMLContent(expected).events
+        elif field == 'labels':
+            matches = isinstance(actual, list) and {uuid(v['id'] if isinstance(v, dict) else v) for v in actual} == {uuid(v) for v in expected}
+        elif field == 'state':
+            matches = uuid(actual['id'] if isinstance(actual, dict) else actual) == uuid(expected)
+        else:
+            matches = actual == expected
+        if not matches:
+            raise PlaneError('Plane state readback did not confirm the requested change')

@@ -123,3 +123,34 @@ def test_http_is_explicit_and_does_not_require_a_certificate():
     for task in certificate_tasks:
         conditions = task['when'] if isinstance(task['when'], list) else [task['when']]
         assert "agent_guest_plane_base_url.startswith('https://')" in conditions
+
+
+@pytest.mark.parametrize('existing', [False, True])
+@pytest.mark.parametrize('failure', ['command', 'timeout', 'invalid_toml'])
+def test_failed_codex_registration_restores_file_and_permissions(tmp_path, monkeypatch, existing, failure):
+    codex = tmp_path / '.codex/config.toml'
+    codex.parent.mkdir()
+    original = b'# Keep line endings\r\nmodel="chosen"\r\n'
+    if existing:
+        codex.write_bytes(original)
+        codex.chmod(0o640)
+    claude = tmp_path / '.claude.json'
+    claude.write_text('{"theme":"dark"}')
+
+    def run(*args, **kwargs):
+        codex.write_text('[')
+        codex.chmod(0o600)
+        if failure == 'command':
+            raise clients.subprocess.CalledProcessError(1, args[0])
+        if failure == 'timeout':
+            raise clients.subprocess.TimeoutExpired(args[0], 30)
+
+    monkeypatch.setattr(clients.subprocess, 'run', run)
+    with pytest.raises((ValueError, clients.subprocess.SubprocessError)):
+        clients.register(tmp_path, '/bin/wish-plane', '/bin/codex')
+    if existing:
+        assert codex.read_bytes() == original
+        assert codex.stat().st_mode & 0o777 == 0o640
+    else:
+        assert not codex.exists()
+    assert claude.read_text() == '{"theme":"dark"}'
