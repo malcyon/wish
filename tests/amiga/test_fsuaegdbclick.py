@@ -67,10 +67,13 @@ def items(window):
     return [combo.itemText(i) for i in range(combo.count())]
 
 
-def test_select_picks_the_entry_by_its_text(window):
+def test_select_picks_the_entry_by_its_text(window, monkeypatch):
     names = items(window)
     assert len(names) > 1
+    refreshed = []
+    monkeypatch.setattr(window.fasttravel_bar, "refresh", lambda *a: refreshed.append(a))
     result = windowbuttons.select(window, "ft_combo", names[1])
+    assert refreshed, "the window's own handler for a changed pick did not run"
     assert result["error"] is None
     assert result["current"] == names[1]
     assert window.fasttravel_bar.combo.currentIndex() == 1
@@ -91,6 +94,16 @@ def test_select_leaves_a_disabled_combo_alone(window):
     result = windowbuttons.select(window, "ft_combo", items(window)[1])
     assert result["error"] == "combo is disabled"
     assert window.fasttravel_bar.combo.currentIndex() == 0
+
+
+def test_select_leaves_a_hidden_combo_alone(window, monkeypatch):
+    refreshed = []
+    monkeypatch.setattr(window.fasttravel_bar, "refresh", lambda *a: refreshed.append(a))
+    window.fasttravel_bar.combo.hide()
+    result = windowbuttons.select(window, "ft_combo", items(window)[1])
+    assert result["error"] == "combo is hidden"
+    assert window.fasttravel_bar.combo.currentIndex() == 0
+    assert refreshed == []
 
 
 def test_wish_buttons_logs_every_button_row(real, tmp_path):

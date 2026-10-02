@@ -794,7 +794,7 @@ def test_start_copies_the_adfs_per_drive_and_writes_the_folder_when_asked():
     script = winwish.start_script("h", winwish.environment(True, "h"), disks=disks,
                                   game="pool-of-radiance")
     folder = winwish.disks_dir("h")
-    assert f"Remove-Item -Path '{folder}\\*' -Force" in script
+    assert f"Remove-Item -Path '{folder}\\*' -Recurse -Force" in script
     assert (f"Copy-Item -LiteralPath 'C:\\Amiga\\Disks\\disk.adf' "
             f"-Destination '{folder}\\df0-disk.adf' -Force") in script
     assert (f"Copy-Item -LiteralPath 'C:\\Amiga\\Other\\disk.adf' "
@@ -977,8 +977,7 @@ def test_a_window_with_no_children_is_read_through_msaa():
     inner = winwish.ui_inner(r"C:\b", "controls", (), "RadioButton", r"C:\o.txt")
     assert "Get-Msaa $e.Current.NativeWindowHandle" in inner and "AccessibleObjectFromWindow" in inner
     assert "$parent.accChildCount" in inner
-    assert "45 = 'RadioButton'" in inner
-    assert "(MSAA)" in inner
+    assert "MSAA|" in inner
 
 
 def test_the_cli_takes_a_prefix_flag():
@@ -999,3 +998,65 @@ def test_an_undecodable_byte_in_the_guest_reply_does_not_raise(monkeypatch):
         return subprocess.CompletedProcess(argv, 0, "ok \ufffd", "")
     monkeypatch.setattr(subprocess, "run", fake)
     assert winwish._run(["winvm", "ps", "x"], 5)[1] == "ok \ufffd"
+
+
+# -- the MSAA rows, parsed here ------------------------------------------------------
+
+@pytest.mark.parametrize("role, kind", [
+    (9, "Window"), (11, "Menu"), (12, "MenuItem"), (20, "Group"), (22, "ToolBar"), (28, "Row"),
+    (33, "List"), (34, "ListItem"), (37, "TabItem"), (41, "Text"), (42, "Edit"), (43, "Button"),
+    (44, "CheckBox"), (45, "RadioButton"), (46, "ComboBox"), (47, "ComboBox"), (60, "Tab")])
+def test_the_msaa_role_numbers_are_the_role_system_constants(role, kind):
+    assert winwish.msaa_line(f"{role}|n||0")[0] == kind
+
+
+def test_an_msaa_row_becomes_a_controls_line():
+    assert winwish.msaa_line("45|WinUAE (Amiga)||16") == (
+        "RadioButton", "RadioButton|WinUAE (Amiga)||enabled=True|checked=True (MSAA)")
+    assert winwish.msaa_line("43|Close||1")[1].endswith("enabled=False|checked=False (MSAA)")
+    assert winwish.msaa_line("999|x||0")[0] == "Role999"
+    assert winwish.msaa_line("-1|||0") == ("", "...truncated")
+
+
+def test_a_bar_in_a_name_survives_the_escape():
+    assert winwish.msaa_line("41|a\\u007cb|c\\u007cd|0")[1] == "Text|a|b|c|d|enabled=True|checked=False (MSAA)"
+
+
+def test_the_type_filter_applies_to_msaa_rows_here_and_keeps_the_truncation_marker():
+    reply = _ui_reply("ok", "Window|Preferences||enabled=True|", "MSAA|45|A||16", "MSAA|43|B||0",
+                      "MSAA|-1|||0")
+    assert winwish.ui_lines(reply, "RadioButton") == [
+        "Window|Preferences||enabled=True|", "RadioButton|A||enabled=True|checked=True (MSAA)",
+        "...truncated"]
+    assert len(winwish.ui_lines(reply)) == 4
+
+
+def test_the_walk_caps_its_count_and_says_when_it_stopped_early():
+    inner = winwish.ui_inner(r"C:\b", "controls", (), None, r"C:\o.txt")
+    assert "$got = [Math]::Min($got, $n)" in inner
+    assert "$script:cut = $true" in inner and "[void]$rows.Add('-1|||0')" in inner
+    assert inner.count("$script:cut = $true") >= 4  # depth or rows, count throws, too many, children throws
+    assert "-replace '\\|', '\\u007c'" in inner
+    assert "$roles" not in inner
+
+
+def test_controls_gets_a_longer_base_timeout_than_a_click():
+    assert winwish.ui_timeout(0, "controls") > winwish.ui_timeout(1, "click")
+    assert winwish.ui_timeout(0, "controls") < 120
+
+
+def test_the_put_script_is_removed_when_the_call_fails():
+    run = FakeRun([(lambda a: a[1] == "ps" and "wish-ui-" in a[2] and "Register" in a[2], 1, "boom")])
+    with pytest.raises(winwish.WinwishError):
+        winwish.ui(winwish.Guest(run), "h", "controls")
+    last = run.calls[-1]
+    assert last[1] == "ps" and "Remove-Item -LiteralPath 'C:\\Users\\Public\\wish-ui-" in last[2]
+    ok = FakeRun([(lambda a: a[1] == "ps", 0, _ui_reply("ok"))])
+    winwish.ui(winwish.Guest(ok), "h", "controls")
+    assert [c[1] for c in ok.calls] == ["lane", "put", "ps"]
+
+
+def test_the_seeded_disk_folder_is_cleared_recursively():
+    script = winwish.start_script("h", winwish.environment(True, "h"), disks=("a.adf",),
+                                  game="pool-of-radiance")
+    assert "-Recurse -Force -ErrorAction SilentlyContinue" in script.split("Copy-Item")[0].split("Remove-Item -Path")[1]

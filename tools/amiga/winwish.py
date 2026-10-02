@@ -281,7 +281,7 @@ def start_script(holder: str, env: dict[str, str], wait: int = START_SECONDS,
     folder = disks_dir(holder)
     copy_disks = [f"New-Item -ItemType Directory -Force -Path {q(folder)} | Out-Null",
                   # An earlier run's copies would otherwise stay in the folder Wish scans.
-                  f"Remove-Item -Path {q(folder + chr(92) + '*')} -Force -ErrorAction SilentlyContinue",
+                  f"Remove-Item -Path {q(folder + chr(92) + '*')} -Recurse -Force -ErrorAction SilentlyContinue",
                   *(f"Copy-Item -LiteralPath {q(d)} -Destination {q(rf'{folder}\df{n}-{pathlib.PureWindowsPath(d).name}')} -Force"
                     for n, d in enumerate(disks))] if disks else []
     guard = "" if reseed else "if (-not (Test-Path -LiteralPath $settings)) { "
@@ -445,13 +445,21 @@ UI_WAIT = 4
 UI_MAX_NAMES = 8
 
 
-def ui_timeout(count: int) -> float:
-    """Seconds to wait for a `click` of `count` names: the wait per name plus a fixed start."""
+def ui_timeout(count: int, action: str = "click") -> float:
+    """Seconds to wait for a `click` of `count` names: the wait per name plus a fixed start.
+
+    `controls` starts slower, because it compiles the MSAA helper and walks each dialog.
+    """
+    if action == "controls":
+        return 50.0
     return 20.0 + (UI_WAIT + 2) * max(1, count)
 
 
 #: Reads a window through MSAA (oleacc), which Qt answers while a modal dialog is up
 #: and its UI Automation provider reports no children.
+#: The role of the row that says the walk stopped early.
+MSAA_TRUNCATED = -1
+
 MSAA_CODE = r"""
 using System; using System.Runtime.InteropServices;
 public class WishOa {
@@ -464,18 +472,22 @@ public class WishOa {
 #: read garbage child counts from Qt's objects where late binding read them correctly.
 MSAA_WALK = [
     "  function Get-Msaa($hwnd) {",
+    "    $script:cut = $false",
     "    $g = [Guid]'618736E0-3C3D-11CF-810C-00AA00389B71'; $root = $null",
     "    [void][WishOa]::AccessibleObjectFromWindow([IntPtr]$hwnd, [uint32]4294967292, [ref]$g, [ref]$root)",
     "    $rows = New-Object System.Collections.ArrayList",
     "    if ($root) { Read-Msaa $root $rows 0 }",
+    f"    if ($script:cut) {{ [void]$rows.Add('{MSAA_TRUNCATED}|||0') }}",
     "    return $rows",
     "  }",
     "  function Read-Msaa($parent, $rows, $depth) {",
-    "    if ($depth -gt 12 -or $rows.Count -gt 400) { return }",
-    "    $n = 0; try { $n = [int]$parent.accChildCount } catch { return }",
-    "    if ($n -le 0 -or $n -gt 500) { return }",
+    "    if ($depth -gt 12 -or $rows.Count -gt 400) { $script:cut = $true; return }",
+    "    $n = 0; try { $n = [int]$parent.accChildCount } catch { $script:cut = $true; return }",
+    "    if ($n -le 0) { return }",
+    "    if ($n -gt 500) { $script:cut = $true; return }",
     "    $kids = New-Object object[] $n; $got = 0",
-    "    try { [void][WishOa]::AccessibleChildren($parent, 0, $n, $kids, [ref]$got) } catch { return }",
+    "    try { [void][WishOa]::AccessibleChildren($parent, 0, $n, $kids, [ref]$got) } catch { $script:cut = $true; return }",
+    "    $got = [Math]::Min($got, $n)",
     "    for ($i = 0; $i -lt $got; $i++) {",
     "      $k = $kids[$i]",
     "      if ($k -is [int]) { $self = $parent; $id = $k } else { $self = $k; $id = 0 }",
@@ -484,16 +496,33 @@ MSAA_WALK = [
     "      try { $value = [string]$self.accValue($id) } catch {}",
     "      try { $role = [int]$self.accRole($id) } catch {}",
     "      try { $state = [int]$self.accState($id) } catch {}",
-    "      [void]$rows.Add([string]$role + '|' + ($name -replace '[\r\n]', ' ') + '|' + ($value -replace '[\r\n]', ' ') + '|' + $state)",
+    "      [void]$rows.Add([string]$role + '|' + ($name -replace '[\r\n]', ' ' -replace '\\|', '\\u007c') + '|' + ($value -replace '[\r\n]', ' ' -replace '\\|', '\\u007c') + '|' + $state)",
     "      if ($id -eq 0) { Read-Msaa $self $rows ($depth + 1) }",
     "    }",
     "  }",
 ]
 
-#: MSAA role numbers to the UI Automation type names `controls --type` takes.
-MSAA_ROLES = {9: "Window", 11: "MenuItem", 12: "MenuItem", 33: "ListItem", 34: "List",
-              37: "Text", 41: "Text", 42: "Edit", 43: "Button", 44: "CheckBox", 45: "RadioButton",
-              46: "ComboBox", 28: "Group", 22: "ToolBar", 60: "TabItem", 61: "Tab"}
+#: MSAA `ROLE_SYSTEM_*` numbers (oleacc.h) to the UI Automation type names `controls --type` takes.
+MSAA_ROLES = {9: "Window", 11: "Menu", 12: "MenuItem", 20: "Group", 22: "ToolBar", 28: "Row",
+              33: "List", 34: "ListItem", 37: "TabItem", 41: "Text", 42: "Edit", 43: "Button",
+              44: "CheckBox", 45: "RadioButton", 46: "ComboBox", 47: "ComboBox", 60: "Tab"}
+
+
+def msaa_line(row: str) -> tuple[str, str]:
+    """A `role|name|value|state` row from the MSAA walk as (type, `controls` line).
+
+    A `|` in a name or value arrives as `\\u007c`.  State bit 1 is unavailable (disabled)
+    and bit 16 is checked.  An unknown role reads `Role<n>`; the truncation row
+    reads `...truncated`.
+    """
+    role, name, value, state = (row.split("|") + ["", "", "", "0"])[:4]
+    if int(role) == MSAA_TRUNCATED:
+        return "", "...truncated"
+    kind = MSAA_ROLES.get(int(role), f"Role{role}")
+    name, value = (x.replace("\\u007c", "|") for x in (name, value))
+    bits = int(state or 0)
+    return kind, f"{kind}|{name}|{value}|enabled={not bits & 1}|checked={bool(bits & 16)} (MSAA)"
+
 
 
 def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, out: str,
@@ -514,14 +543,12 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
     """
     tmp = out + ".tmp"
     names_ps = ", ".join(q(n) for n in names) or "@()"
-    roles = "; ".join(f"{k} = {q(v)}" for k, v in MSAA_ROLES.items())
     return "\n".join([
         "$ErrorActionPreference = 'Stop'",
         f"$build = {q(build)}",
         f"$names = @({names_ps})",
         f"$kind = {q(kind or '')}",
         f"$prefix = ${'true' if prefix else 'false'}",
-        f"$roles = @{{ {roles} }}",
         "$lines = New-Object System.Collections.ArrayList",
         "try {",
         "  Add-Type -AssemblyName UIAutomationClient",
@@ -587,11 +614,7 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
         "      if ((Get-Kind $e) -eq 'Window' -and $e.Current.NativeWindowHandle -ne 0 -and "
         "$e.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition).Count -eq 0) {",
         "        foreach ($row in Get-Msaa $e.Current.NativeWindowHandle) {",
-        "          $f = $row -split '\\|', 4",
-        "          $type = $roles[[int]$f[0]]; if (-not $type) { $type = 'Role' + $f[0] }",
-        "          if ($kind -ne '' -and $type -ne $kind) { continue }",
-        "          $st = [int]$f[3]",
-        "          [void]$lines.Add($type + '|' + $f[1] + '|' + $f[2] + '|enabled=' + (($st -band 1) -eq 0) + '|checked=' + (($st -band 16) -ne 0) + ' (MSAA)')",
+        "          [void]$lines.Add('MSAA|' + $row)",
         "        }",
         "      }",
         "    }",
@@ -673,7 +696,7 @@ def ui_script(token: str, timeout: float) -> str:
     ])
 
 
-def ui_lines(text: str) -> list[str]:
+def ui_lines(text: str, kind: str | None = None) -> list[str]:
     """The lines between the markers of a `ui_script` reply; a `fail` line is an error."""
     lines = [line.strip() for line in text.splitlines()]
     try:
@@ -684,7 +707,15 @@ def ui_lines(text: str) -> list[str]:
                            + (text.strip()[:200] or "no output")) from None
     if not body or body[0] != "ok":
         raise WinwishError(body[0] if body else "the window answered with nothing")
-    return body[1:]
+    lines = []
+    for line in body[1:]:
+        if not line.startswith("MSAA|"):
+            lines.append(line)
+            continue
+        found, text = msaa_line(line[len("MSAA|"):])
+        if not kind or not found or found == kind:
+            lines.append(text)
+    return lines
 
 
 def ui(guest: "Guest", holder: str, action: str, names: tuple[str, ...] = (),
@@ -694,15 +725,25 @@ def ui(guest: "Guest", holder: str, action: str, names: tuple[str, ...] = (),
         raise WinwishError(f"click at most {UI_MAX_NAMES} names at once, not {len(names)}")
     guest.holds_lane(holder)
     token = secrets.token_hex(6)
-    timeout = ui_timeout(len(names))
+    timeout = ui_timeout(len(names), action)
     inner = ui_inner(build_root(holder), action, names, kind,
                      rf"C:\Users\Public\wish-ui-{token}.txt", prefix)
-    with tempfile.TemporaryDirectory() as tmp:
-        local = pathlib.Path(tmp) / "ui.ps1"
-        local.write_bytes(b"\xef\xbb\xbf" + inner.encode("utf-8"))
-        guest.winvm("put", str(local), ui_file(token).replace("\\", "/"), timeout=CALL_SECONDS)
-    rc, text = guest.run(["winvm", "ps", ui_script(token, timeout)], timeout + 20)
-    return ui_lines(text)
+    answered = False
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            local = pathlib.Path(tmp) / "ui.ps1"
+            local.write_bytes(b"\xef\xbb\xbf" + inner.encode("utf-8"))
+            guest.winvm("put", str(local), ui_file(token).replace("\\", "/"), timeout=CALL_SECONDS)
+        rc, text = guest.run(["winvm", "ps", ui_script(token, timeout)], timeout + 20)
+        lines = ui_lines(text, kind)
+        answered = True
+        return lines
+    finally:
+        if not answered:
+            # The ssh script removes the file itself when it runs; this covers a put that
+            # landed and a script that never did.
+            _quietly(guest.ps, "Remove-Item -LiteralPath "
+                     f"{q(ui_file(token))} -Force -ErrorAction SilentlyContinue\n'ok'")
 
 
 # -- talking to the guest and to gh ------------------------------------------
