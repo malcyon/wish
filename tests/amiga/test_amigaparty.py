@@ -16,24 +16,43 @@ from automap import amiga
 from automap import amigaparty as ap
 from goldbox import amiga_pod, amiga_por, amiga_port
 
+CHIP = 0x000000
 SLOW = 0xC00000
 BASE = 0xC10000          # the data hunk
 HEAP = 0xC20000
 
 
 class Memory:
-    """Slow memory as a bytearray, read the way a transport reads it."""
+    """Chip and slow memory as bytearrays, read the way a transport reads them.
+
+    `reads` counts single reads and `trips` counts `read_blocks` calls, each
+    of which stands for one round trip to the emulator.
+    """
 
     def __init__(self):
-        self.mem = bytearray(0x80000)
+        self.regions = {CHIP: bytearray(0x80000), SLOW: bytearray(0x80000)}
+        self.reads = self.trips = 0
+
+    def _where(self, addr: int, length: int):
+        for base, mem in self.regions.items():
+            if base <= addr and addr + length <= base + len(mem):
+                return mem, addr - base
+        raise amiga.GuestError(f"no memory at {addr:#x}+{length:#x}")
 
     def read(self, addr: int, length: int) -> bytes:
-        if not (SLOW <= addr and addr + length <= SLOW + len(self.mem)):
-            raise amiga.GuestError(f"no memory at {addr:#x}")
-        return bytes(self.mem[addr - SLOW:addr - SLOW + length])
+        self.reads += 1
+        mem, at = self._where(addr, length)
+        return bytes(mem[at:at + length])
+
+    def read_blocks(self, blocks) -> list[bytes]:
+        self.trips += 1
+        out = [self.read(addr, length) for addr, length in blocks]
+        self.reads -= len(blocks)
+        return out
 
     def put(self, addr: int, data: bytes) -> None:
-        self.mem[addr - SLOW:addr - SLOW + len(data)] = data
+        mem, at = self._where(addr, len(data))
+        mem[at:at + len(data)] = data
 
     def long(self, addr: int, value: int) -> None:
         self.put(addr, value.to_bytes(4, "big"))
@@ -48,14 +67,14 @@ def record(row: ap.PartyRow, name: bytes, hp: int, hp_max: int) -> bytearray:
 
 
 def lay_party(mem: Memory, row: ap.PartyRow, people, items=(), effects=(),
-              slots=None):
+              slots=None, heap=HEAP):
     """Records at HEAP, 0x400 apart, linked in order; returns their addresses.
 
     `items[i]` and `effects[i]` are how many nodes member `i` holds, and
     `slots[i]` its slot byte (its index when not given).
     """
-    addrs = [HEAP + 0x400 * i for i in range(len(people))]
-    node_at = HEAP + 0x20000
+    addrs = [heap + 0x400 * i for i in range(len(people))]
+    node_at = heap + 0x20000
     for i, (address, (name, hp, hp_max)) in enumerate(zip(addrs, people)):
         raw = record(row, name, hp, hp_max)
         raw[row.slot] = i if slots is None else slots[i]
@@ -281,3 +300,114 @@ def test_a_members_spans_are_read_at_the_rows_spots():
     assert party[1].memorised()[:6] == bytes([1, 2, 3, 4, 5, 0])
     assert len(party[1].memorised()) == row.memorised.length
     assert [m.quickfight for m in party] == [False, True, False]
+
+
+def test_a_monster_with_a_bad_item_pointer_does_not_spoil_the_party():
+    mem = Memory()
+    key = "curse-of-the-azure-bonds"
+    row = ap.ROWS[key]
+    addrs = lay_party(mem, row, THREE + [(b"TROLL", 30, 30)],
+                      slots=[0, 1, 2, 8])
+    mem.long(addrs[3] + row.items.head, 0x00F00001)
+    mem.long(addrs[3] + row.effects.head, addrs[3])
+    records = ap.walk(mem.read, row, BASE)
+    assert records[3].items() == () and records[3].effects() == ()
+    assert [m.name for m in ap.read_party(target_for(key, mem))] == [
+        "ALDRIC", "BRYNNA", "COSIMO"]
+
+
+def test_a_members_bad_item_pointer_still_spoils_the_party():
+    mem = Memory()
+    key = "curse-of-the-azure-bonds"
+    row = ap.ROWS[key]
+    addrs = lay_party(mem, row, THREE)
+    mem.long(addrs[1] + row.items.head, 0x00F00000)
+    with pytest.raises(ap.PartyError, match="member 2's item list"):
+        ap.walk(mem.read, row, BASE)
+    assert ap.read_party(target_for(key, mem)) is None
+
+
+def test_the_lists_are_read_a_level_at_a_time():
+    mem = Memory()
+    key = "secret-of-the-silver-blades"
+    row = ap.ROWS[key]
+    lay_party(mem, row, THREE, items=(2, 0, 3), effects=(1, 2, 0))
+    party = ap.walk(mem, row, BASE)
+    # the head, one per record, then one per level of the deepest list (3)
+    assert mem.trips == 1 + 3 + 3 and mem.reads == 0
+    single = Memory()
+    lay_party(single, row, THREE, items=(2, 0, 3), effects=(1, 2, 0))
+    alone = SimpleNamespace(read=single.read)
+    assert ap.walk(alone, row, BASE) == party
+    assert single.reads == 1 + 3 + 8 and single.trips == 0
+
+
+def test_read_party_batches_through_a_targets_read_blocks():
+    mem = Memory()
+    key = "pool-of-radiance"
+    lay_party(mem, ap.ROWS[key], THREE, items=(1, 1, 1))
+    tgt = SimpleNamespace(layout=amiga.MACHINES[key], data_base=BASE,
+                          read=mem.read, read_blocks=mem.read_blocks)
+    assert len(ap.read_party(tgt)) == 3
+    assert mem.trips == 1 + 3 + 1 and mem.reads == 0
+
+
+@pytest.mark.parametrize("members", [3, 8])
+def test_the_party_is_exactly_the_members_before_twenty_monsters(members):
+    mem = Memory()
+    key = "secret-of-the-silver-blades"
+    people = [(b"HERO%d" % i, 5, 5) for i in range(members)]
+    lay_party(mem, ap.ROWS[key], people + [(b"ORC", 6, 6)] * 20,
+              slots=list(range(members)) + [8] * 20)
+    party = ap.read_party(target_for(key, mem))
+    assert [m.name for m in party] == [f"HERO{i}" for i in range(members)]
+    assert len(ap.walk(mem.read, ap.ROWS[key], BASE)) == members + 20
+
+
+def test_an_item_list_that_never_ends_is_refused():
+    mem = Memory()
+    row = ap.ROWS["pools-of-darkness"]
+    lay_party(mem, row, THREE, items=(ap.MAX_NODES + 1, 0, 0))
+    with pytest.raises(ap.PartyError,
+                       match=f"item list has not ended after {ap.MAX_NODES}"):
+        ap.walk(mem.read, row, BASE)
+    mem2 = Memory()
+    lay_party(mem2, row, THREE, items=(ap.MAX_NODES, 0, 0))
+    assert len(ap.walk(mem2.read, row, BASE)[0].items()) == ap.MAX_NODES
+
+
+def test_a_record_that_runs_past_the_end_of_memory_is_refused():
+    mem = Memory()
+    row = ap.ROWS["curse-of-the-azure-bonds"]
+    lay_party(mem, row, THREE)
+    straddle = SLOW + 0x80000 - 0x10
+    mem.long(BASE + row.head, straddle)
+    with pytest.raises(ap.PartyError, match="outside the Amiga's memory"):
+        ap.walk(mem.read, row, BASE)
+    chip_end = CHIP + 0x80000 - row.record_size + 2
+    mem.long(BASE + row.head, chip_end)
+    with pytest.raises(ap.PartyError, match="outside the Amiga's memory"):
+        ap.walk(mem.read, row, BASE)
+
+
+def test_records_in_chip_memory_are_walked():
+    # Pool of Radiance's records are in chip memory under Kickstart 2.04.
+    mem = Memory()
+    key = "pool-of-radiance"
+    addrs = lay_party(mem, ap.ROWS[key], THREE, items=(2, 1, 0),
+                      heap=0x04E800)
+    assert addrs[0] < 0x80000
+    party = ap.read_party(target_for(key, mem))
+    assert [m.address for m in party] == addrs
+    assert [len(m.items()) for m in party] == [2, 1, 0]
+
+
+@pytest.mark.parametrize("people,slots", [
+    ([(b"   ", 1, 1)] + THREE[1:], None),               # a blank name
+    (THREE, [0, 1, 1]),                                 # two in one slot
+])
+def test_read_party_is_none_for_a_blank_name_or_a_shared_slot(people, slots):
+    mem = Memory()
+    key = "curse-of-the-azure-bonds"
+    lay_party(mem, ap.ROWS[key], people, slots=slots)
+    assert ap.read_party(target_for(key, mem)) is None

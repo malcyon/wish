@@ -28,7 +28,7 @@ so no Action button is offered on the strength of this module alone.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from goldbox import amiga_pod, amiga_por, amiga_port
 
@@ -270,56 +270,107 @@ def _check_pointer(address: int, length: int, what: str) -> None:
                          f"memory")
 
 
-def chain(read, first: int, link: int, size: int, what: str,
+def _batch(source):
+    """`blocks -> [bytes]` over a target or a plain `read(addr, length)`.
+
+    A source with `read_blocks` is asked for every block of one level in a
+    single call, which on WinUAE is one round trip rather than one per node.
+    """
+    many = getattr(source, "read_blocks", None)
+    if many is not None:
+        return lambda want: [bytes(b) for b in many(want)]
+    read = getattr(source, "read", source)
+    return lambda want: [bytes(read(a, n)) for a, n in want]
+
+
+@dataclass
+class _Chain:
+    what: str
+    link: int
+    size: int
+    limit: int
+    next: int
+    nodes: list = field(default_factory=list)
+    seen: set = field(default_factory=set)
+
+
+def _follow(batch, chains: list[_Chain]) -> None:
+    """Walk every chain at once, one batched read per level.
+
+    Raises `PartyError` on a stray, odd or repeated pointer, or on a chain
+    longer than its limit, before anything at that address is read.
+    """
+    while True:
+        level = [c for c in chains if c.next]
+        if not level:
+            return
+        for c in level:
+            if len(c.nodes) == c.limit:
+                raise PartyError(f"{c.what} has not ended after {c.limit} "
+                                 f"nodes")
+            if c.next in c.seen:
+                raise PartyError(f"{c.what} comes back to {c.next:#x}")
+            _check_pointer(c.next, c.size, f"{c.what} node {len(c.nodes) + 1}")
+            c.seen.add(c.next)
+        for c, raw in zip(level, batch([(c.next, c.size) for c in level])):
+            c.nodes.append(Node(c.next, raw))
+            c.next = _u32(raw, c.link)
+
+
+def chain(source, first: int, link: int, size: int, what: str,
           limit: int = MAX_NODES) -> tuple[Node, ...]:
     """Every node of one list from its first address, in list order.
 
-    `read(addr, length)` returns bytes. Raises `PartyError` on a stray, odd or
-    repeated pointer, or on a list longer than `limit`.
+    `source` is a target or a `read(addr, length)` callable. Raises
+    `PartyError` on a stray, odd or repeated pointer, or on a list longer
+    than `limit`.
     """
-    out: list[Node] = []
-    seen: set[int] = set()
-    address = first
-    while address:
-        if len(out) == limit:
-            raise PartyError(f"{what} has not ended after {limit} nodes")
-        if address in seen:
-            raise PartyError(f"{what} comes back to {address:#x}")
-        _check_pointer(address, size, f"{what} node {len(out) + 1}")
-        seen.add(address)
-        raw = bytes(read(address, size))
-        out.append(Node(address, raw))
-        address = _u32(raw, link)
-    return tuple(out)
+    one = _Chain(what, link, size, limit, first)
+    _follow(_batch(source), [one])
+    return tuple(one.nodes)
 
 
-def walk(read, row: PartyRow, data_base: int) -> tuple[AmigaMember, ...]:
+def walk(source, row: PartyRow, data_base: int) -> tuple[AmigaMember, ...]:
     """Every record on the list, in list order, from a running Amiga or a dump.
 
     That is the party, and in a fight the monsters after it (`in_party`
-    False). An empty list (the head is NULL, as before a game is loaded) is
-    an empty tuple. Raises `PartyError` when a list does not read as one.
+    False), which are returned as bare records: their item and effect lists
+    are not followed, so a monster cannot make the party unreadable. The
+    members' lists are read a level at a time, so the reads cost one per
+    record plus the depth of the deepest list. An empty list (the head is
+    NULL, as before a game is loaded) is an empty tuple. Raises `PartyError`
+    when a member's list does not read as one.
     """
-    head = _u32(bytes(read(data_base + row.head, 4)))
-    records = chain(read, head, row.next_offset, row.record_size,
-                    f"{row.title}'s party list", MAX_RECORDS)
+    batch = _batch(source)
+    head = _u32(batch([(data_base + row.head, 4)])[0])
+    records = _Chain(f"{row.title}'s party list", row.next_offset,
+                     row.record_size, MAX_RECORDS, head)
+    _follow(batch, [records])
+    lists = {}
+    for index, node in enumerate(records.nodes):
+        if node.raw[row.slot] < MAX_MEMBERS:
+            whose = f"member {index + 1}'s"
+            lists[index] = (
+                _Chain(f"{whose} item list", row.items.link, row.items.size,
+                       MAX_NODES, _u32(node.raw, row.items.head)),
+                _Chain(f"{whose} effect list", row.effects.link,
+                       row.effects.size, MAX_NODES,
+                       _u32(node.raw, row.effects.head)))
+    _follow(batch, [c for pair in lists.values() for c in pair])
     out = []
-    for index, node in enumerate(records):
-        whose = f"member {index + 1}'s"
-        items = chain(read, _u32(node.raw, row.items.head), row.items.link,
-                      row.items.size, f"{whose} item list")
-        effects = chain(read, _u32(node.raw, row.effects.head),
-                        row.effects.link, row.effects.size,
-                        f"{whose} effect list")
-        out.append(AmigaMember(row, index, node.address, node.raw, items,
-                               effects))
+    for index, node in enumerate(records.nodes):
+        items, effects = lists.get(index, (None, None))
+        out.append(AmigaMember(
+            row, index, node.address, node.raw,
+            () if items is None else tuple(items.nodes),
+            () if effects is None else tuple(effects.nodes)))
     return tuple(out)
 
 
 def plausible(member: AmigaMember) -> bool:
     """Whether a member reads as a character rather than as other bytes."""
     name = member.name
-    return (bool(name) and all(" " <= c <= "~" for c in name)
+    return (bool(name.strip()) and all(" " <= c <= "~" for c in name)
             and member.hp <= member.hp_max)
 
 
@@ -362,7 +413,9 @@ def mode(target) -> int | None:
 def read_party(target) -> tuple[AmigaMember, ...] | None:
     """The party members, or None when there is none to read or it does not decode.
 
-    Monsters on the list in a fight are left out.
+    Monsters on the list in a fight are left out. Two members in one slot,
+    a blank or unprintable name, or more hit points than the maximum is not
+    a party.
 
     None is ordinary at the title screen, mid-load or before `locate`: the
     list is empty or half built, and a half-built record is not a character.
@@ -373,11 +426,12 @@ def read_party(target) -> tuple[AmigaMember, ...] | None:
     if row is None or base is None:
         return None
     try:
-        records = walk(tgt.read, row, base)
+        records = walk(tgt, row, base)
     except amiga.NotConnected:
         return None
     party = tuple(m for m in records if m.in_party)
     if (not party or len(party) > MAX_MEMBERS
+            or len({m.slot for m in party}) != len(party)
             or not all(plausible(m) for m in party)):
         return None
     return party

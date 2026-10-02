@@ -591,14 +591,23 @@ node offsets. CONFIRMED from the code, and live on two boots per title.
 | Pool of Radiance | `h32+0xAEE` | `h32+0xAEA` | `+0x106` | `0x120` | `+0xCA`, `0x41`, `+0x2A` | `+0x80`, 10, `+0x06` | `+0xC1` |
 | Curse | `g3cf8` | `g3cfc` | `+0x18E` | `0x1AC` | `+0x152`, `0x42`, `+0x2A` | `+0xF2`, 10, `+0x06` | `+0x147` |
 | Silver Blades | `g5168` | `g516c` | `+0x13A` | `0x154` | `+0xFE`, `0x46`, `+0x2A` | `+0x96`, 10, `+0x06` | `+0xF1` |
-| Pools of Darkness | `g57a4` | `g57a8` | `+0x00` | `0x194` | `+0x08`, `0x42`, `+0x2A` | `+0x04`, 10, `+0x06` | `+0xBD` |
+| Pools of Darkness | `g57a4` | `g57a8` | `+0x00` | `0x194` | `+0x08`, `0x42`, `+0x2A` † | `+0x04`, 10, `+0x06` | `+0xBD` |
+| **Grade** | CONFIRMED: code and both boots | CONFIRMED: code; read equal to the head after every load | CONFIRMED: code and both boots | CONFIRMED: the writers and the loaders' reads, and records equal to the file | CONFIRMED for Pool of Radiance and Curse (code and both boots); † for Silver Blades and Pools of Darkness | CONFIRMED: code and both boots; Silver Blades' from 10 nodes | CONFIRMED: code, and 0-5 on every member |
+
+† Measured from dumps only. Silver Blades' item list is read from its writer
+and reader, but neither save had items, so the only live nodes are the demo
+party's two long swords. Pools of Darkness' head at `+0x08` is from its writer;
+its loader was not read, and the node size `0x42` and the link `+0x2A` come
+from the dumps (174 nodes, 0x46 apart, each a NULL-terminated chain whose
+twenty bytes at `+0x2E` equal the file).
 
 The routines, as file offsets into each executable (`tools/amiga/amiga68k.py`):
 Pool of Radiance's save `0x27750`, record writer `0x2646C`, reader `0x267CE`,
 append `0x26EAE`; Curse's save `0x26AF8`, writer `0x260C4`, reader `0x25056`,
 append `0x26E2C`; Silver Blades' save `0x27C10`, writer `0x2713C`, reader
 `0x268C0`, append `0x27F18`; Pools of Darkness' save `0x270E0` (it stops at
-eight), writer `0x26338`, append `0x27394`. Each save routine is the same loop:
+eight), writer `0x26338`, append `0x27394`; its loader was not read. Each
+save routine is the same loop:
 
     movea.l  -$4306(a4), a2     ; g3cf8, the head (Curse)
     move.l   a2, d0
@@ -626,7 +635,8 @@ compared with the file it came from:
 | Pool of Radiance, `poolgame` slot B | 2 | 6, 6 | 0 of 12 | 34 of 34 | 12 of 12 |
 | Curse, `CurseA` slot A | 2 | 4, 4 | 0 of 8 | 18 of 18 | 18 of 18 |
 | Silver Blades, `Secret 1` slots B, A | 2 | 6, 6 | 0 of 12 | none in either save | 10 of 10 |
-| Pools of Darkness, `POD 3` slots B, D | 2 | 6, 6 | 0 of 12 | 174 of 174 (the 20 bytes at `+0x2E`) | 62 of 62 |
+| Pools of Darkness, `POD 3` slots B, D | 2 | 6, 6 | 0 of 12 | 174 of 174 (the 20 bytes at `+0x2E`) † | 62 of 62 |
+| **Grade** | | | CONFIRMED: 44 records, two independent boots per title | CONFIRMED for Pool of Radiance and Curse; † from dumps only for Pools of Darkness, and none measured for Silver Blades | CONFIRMED |
 
 The two boots per title are independent: the first ran Kickstart 1.3 and the
 second Kickstart 2.04, which moved every data hunk (Pool of Radiance
@@ -646,7 +656,9 @@ through `+0xFE` and `+0x2A`).
 the walk from `g5168` found the three party members and then two Ancient
 Dragons, each a full record with slot byte 8, and a dragon's hit points fell
 between two dumps. So a walk must allow more than eight records and a reader
-keeps only slot bytes 0-7; `amigaparty.read_party` does both. CONFIRMED on
+keeps only slot bytes 0-7; `amigaparty.walk` returns a monster as a bare
+record without following its item or effect lists, so a stray pointer in a
+monster cannot hide the party, and `read_party` drops it. CONFIRMED on
 Silver Blades (one fight, two dumps); PROBABLE on the other three, which use
 the same append routine.
 
