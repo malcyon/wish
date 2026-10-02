@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import ast
 import pathlib
+from dataclasses import dataclass
 
 import pytest
 
@@ -107,14 +108,6 @@ def _main_block(tree: ast.Module) -> ast.If | None:
     return None
 
 
-def _function_named(tree: ast.Module, name: str):
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) \
-                and node.name == name:
-            return node
-    return None
-
-
 def _entry_candidates(tree: ast.Module, block: ast.If) -> list[ast.AST]:
     """The `__main__` block, plus every function it calls directly.
 
@@ -123,54 +116,45 @@ def _entry_candidates(tree: ast.Module, block: ast.If) -> list[ast.AST]:
     already-parsed result -- `run(args)`, never `run(argv)` -- so a dangerous
     call reachable from `--help` is always in one of these two places.
     """
+    functions = {}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            # Preserve the first match in the breadth-first traversal.
+            functions.setdefault(node.name, node)
     candidates: list[ast.AST] = [block]
     called = {_dotted(call.func).rsplit(".", 1)[-1] for call in _calls(block)}
     for name in called:
-        func = _function_named(tree, name)
+        func = functions.get(name)
         if func is not None:
             candidates.append(func)
     return candidates
 
 
-def _has_main_block(name: str) -> bool:
-    """Does the script have an `if __name__ == "__main__":` block?
+@dataclass(frozen=True)
+class Analysis:
+    """A script's classification and failure text, without its source or AST."""
 
-    A file that cannot be read or parsed counts as having one, so it stays in
-    `RUNNABLE` and fails its own case rather than every case at collection."""
-    try:
-        tree = ast.parse((TOOLS_DIR / f"{name}.py").read_text(encoding="utf-8"),
-                         filename=f"{name}.py")
-    except (SyntaxError, UnicodeDecodeError, OSError):
-        return True
-    return _main_block(tree) is not None
+    runnable: bool
+    dangerous: tuple[str, ...]
+    reason: str | None
 
-
-#: The scripts that can be run directly, which is the only kind `--help` can
-#: be handed to: the ones with an `if __name__ == "__main__":` block.
-RUNNABLE = tuple(name for name in TOOLS if _has_main_block(name))
+    @property
+    def guarded(self) -> bool:
+        return bool(self.dangerous) or self.reason is not None
 
 
-def _entry_dangerous(source: str, filename: str = "<source>") -> list[str]:
-    """The dangerous calls in a script's `__main__` block or in a function that
-    block calls directly, or `[]` when it has no `__main__` block."""
+def _analyze_source(source: str, filename: str) -> Analysis:
     tree = ast.parse(source, filename=filename)
     block = _main_block(tree)
     if block is None:
-        return []
-    return [d for c in _entry_candidates(tree, block)
-            for d in _dangerous_calls(c)]
-
-
-def _unguarded_reason(source: str, filename: str) -> str | None:
-    """Why `--help` could reach a dangerous call in this script unguarded, or
-    `None` when it cannot: the call is absent, or argparse's `parse_args`
-    is called before it."""
-    tree = ast.parse(source, filename=filename)
-    block = _main_block(tree)
-    assert block is not None, filename
-
+        return Analysis(False, (), None)
     candidates = _entry_candidates(tree, block)
     dangerous = [d for c in candidates for d in _dangerous_calls(c)]
+    reason = _reason_for_candidates(candidates, dangerous, filename)
+    return Analysis(True, tuple(dangerous), reason)
+
+
+def _reason_for_candidates(candidates, dangerous, filename) -> str | None:
     if not dangerous:
         return None
 
@@ -191,31 +175,23 @@ def _unguarded_reason(source: str, filename: str) -> str | None:
     return None
 
 
-def _guarded(name: str) -> bool:
-    """Does the script have a dangerous call for `--help` to reach?
-
-    A file that cannot be read or parsed counts as having one, so it stays in
-    the sweep and fails its own case rather than every case at collection."""
+def _analyze_file(path: pathlib.Path) -> Analysis:
+    """Keep an unreadable or malformed script in its own failing test case."""
     try:
-        return bool(_entry_dangerous(
-            (TOOLS_DIR / f"{name}.py").read_text(encoding="utf-8"),
-            f"{name}.py"))
-    except (SyntaxError, UnicodeDecodeError, OSError):
-        return True
+        return _analyze_source(path.read_text(encoding="utf-8"), str(path))
+    except (SyntaxError, UnicodeDecodeError, OSError) as exc:
+        # Store only text: an exception traceback would retain source and ASTs.
+        return Analysis(True, (), f"{path}: {type(exc).__name__}: {exc}")
 
 
-#: The runnable scripts that have a dangerous call in their entry point --
-#: the only ones the sweep below has anything to say about. Computed from each
-#: tool's own source at collection, so a tool that gains a `claim` or a
-#: `QApplication` joins the sweep without anybody listing it.
-GUARDED = tuple(name for name in RUNNABLE if _guarded(name))
+ANALYSES = {name: _analyze_file(TOOLS_DIR / f"{name}.py") for name in TOOLS}
+RUNNABLE = tuple(name for name, result in ANALYSES.items() if result.runnable)
+GUARDED = tuple(name for name in RUNNABLE if ANALYSES[name].guarded)
 
 
 @pytest.mark.parametrize("name", GUARDED)
 def test_help_cannot_reach_a_dangerous_call_unguarded(name):
-    reason = _unguarded_reason(
-        (TOOLS_DIR / f"{name}.py").read_text(encoding="utf-8"),
-        f"tools/{name}.py")
+    reason = ANALYSES[name].reason
     assert reason is None, reason
 
 
@@ -239,15 +215,48 @@ if __name__ == "__main__":
 
 
 def test_the_filter_classifies_a_session_with_no_parser_as_dangerous():
-    assert _entry_dangerous(_UNGUARDED_SOURCE) == ["Session"]
-    reason = _unguarded_reason(_UNGUARDED_SOURCE, "synthetic_script.py")
+    result = _analyze_source(_UNGUARDED_SOURCE, "synthetic_script.py")
+    assert result.dangerous == ("Session",)
+    reason = result.reason
     assert reason is not None
     assert "sys.argv" in reason
 
 
 def test_the_filter_leaves_a_script_with_no_dangerous_call_out():
-    assert _entry_dangerous(_NO_DANGEROUS_CALL_SOURCE) == []
-    assert _unguarded_reason(_NO_DANGEROUS_CALL_SOURCE, "synthetic_script.py") is None
+    result = _analyze_source(_NO_DANGEROUS_CALL_SOURCE, "synthetic_script.py")
+    assert result.dangerous == ()
+    assert result.reason is None
+
+
+@pytest.mark.parametrize("content, error", [
+    (b"def broken(:", "SyntaxError"),
+    (b"\xff", "UnicodeDecodeError"),
+    (None, "FileNotFoundError"),
+])
+def test_an_unreadable_script_fails_its_own_case(tmp_path, monkeypatch, content, error):
+    path = tmp_path / "broken.py"
+    if content is not None:
+        path.write_bytes(content)
+    result = _analyze_file(path)
+    assert result.runnable and result.guarded
+    monkeypatch.setitem(ANALYSES, "broken", result)
+    with pytest.raises(AssertionError, match=error):
+        test_help_cannot_reach_a_dangerous_call_unguarded("broken")
+
+
+def test_a_module_without_an_entry_point_is_not_runnable():
+    result = _analyze_source("def run():\n    return Session()\n", "library.py")
+    assert not result.runnable
+    assert not result.guarded
+
+
+def test_duplicate_function_names_keep_the_first_breadth_first_match():
+    source = _UNGUARDED_SOURCE.replace(
+        'if __name__ == "__main__":',
+        'def run():\n    return 1\n\nif __name__ == "__main__":')
+    result = _analyze_source(source, "duplicate.py")
+    assert result.dangerous == ("Session",)
+    assert result.reason is not None
 
 
 def test_the_family_named_in_403_is_covered():
