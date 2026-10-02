@@ -34,6 +34,9 @@ class Machine:
     def __init__(self):
         self.memory = bytearray(0x50000)
         self.fail_write = False
+        #: An address whose write raises, and what runs after any later write.
+        self.fail_at = None
+        self.on_write = None
 
     def read(self, addr, length):
         return bytes(self.memory[addr:addr + length])
@@ -42,9 +45,11 @@ class Machine:
         return [self.read(a, n) for a, n in blocks]
 
     def write(self, addr, data, verify=True):
-        if self.fail_write:
+        if self.fail_write or addr == self.fail_at:
             raise NotConnected("the emulator went away")
         self.memory[addr:addr + len(data)] = data
+        if self.on_write is not None:
+            self.on_write(addr, bytes(data))
 
     def at(self, offset, data):
         self.memory[BASE + offset:BASE + offset + len(data)] = data
@@ -366,3 +371,42 @@ def test_an_error_while_tidying_still_ends_the_trip(disks, monkeypatch):
     t.apply(m, area(7))
     assert finish(t, m, CURSE, 7) is None
     assert t.trip is None
+
+
+def test_a_trip_the_game_took_during_a_failed_arm_is_in_progress(disks):
+    """The key write fails; while the earlier writes are put back the game
+    changes area. `arm` returns the `Armed` and the trip is pending, not
+    failed."""
+    row = trips.ROWS[CURSE]
+    m = machine(CURSE)
+    m.fail_at = BASE + row.key_buffer
+
+    def game_takes_it(addr, data):
+        m.memory[BASE + row.area] = 7
+
+    m.on_write = game_takes_it
+    t = travel()
+    out = t.apply(m, area(7, arrival=(1, 2, 0)))
+    assert out.ok and out.message == "Traveling to Shadowdale."
+    assert t.trip is not None and t.back is not None
+    assert t.continue_pending(m) is None and t.trip is None
+    assert t.back is not None
+
+
+@pytest.mark.parametrize("key", [CURSE, POD])
+def test_a_disarm_that_finds_the_area_changed_tidies(disks, monkeypatch, key):
+    """`disarm` False means the trip happened: tidy runs and nothing is
+    reported or restored."""
+    now = [100.0]
+    monkeypatch.setattr(aft.time, "monotonic", lambda: now[0])
+    m = machine(key, area=0x15 if key == POD else 5)
+    t = travel(key)
+    assert t.apply(m, area(0x30, arrival=(1, 1, 0))).ok
+    tidied = []
+    monkeypatch.setattr(trips, "fired", lambda target, armed: None)
+    monkeypatch.setattr(trips, "disarm", lambda target, armed: False)
+    monkeypatch.setattr(trips, "tidy", lambda *a: tidied.append(a) or 0)
+    before = t.back
+    now[0] += aft.FIRE_SECONDS + 1
+    assert t.continue_pending(m) is None
+    assert len(tidied) == 1 and t.trip is None and t.back is before
