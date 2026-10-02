@@ -245,6 +245,9 @@ def _open_transport(wanted: int, port, opener, clock, starter) -> amiga.FsuaeGdb
             port=wanted, timeout=short,
             opener=lambda: fsuaehelper.PLATFORM.connect(info, short))
         gdb.timeout = amiga.FsuaeGdb.TIMEOUT    # the sweep's reads need it
+        # A helper that publishes no `writes` is an older one: it answers an
+        # `M` with nothing, so the Action buttons must stay grey.
+        gdb.can_write = info.get("writes") is True
         return gdb
     if listening(wanted):
         _ensure_helper(wanted, clock, starter)

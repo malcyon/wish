@@ -728,6 +728,24 @@ def test_the_helper_is_connected_and_greeted_with_the_short_timeout_then_reads_w
     assert fsuae._transport.timeout == amiga.FsuaeGdb.TIMEOUT
 
 
+@pytest.mark.parametrize("info, expected", [
+    ({"socket": "x", "writes": True}, True),
+    ({"socket": "x", "writes": False}, False),
+    ({"socket": "x"}, False)])
+def test_a_helper_connection_can_write_only_when_the_helper_says_it_forwards_writes(
+        helperless, monkeypatch, info, expected):
+    from automap import fsuaehelper
+
+    sock = FakeSocket(loaded(BLADES))
+    monkeypatch.setattr(fsuaehelper, "find",
+                        lambda port, runtime, platform=None: info)
+    monkeypatch.setattr(fsuaehelper.PLATFORM, "connect",
+                        lambda info, timeout=None: sock)
+    target = fsuae.connect(port=2345, clock=Clock())
+    assert fsuae._transport.can_write is expected
+    assert target.can_write is expected
+
+
 def test_a_helper_whose_socket_will_not_take_the_connection_is_a_not_connected(
         helperless, monkeypatch):
     from automap import fsuaehelper
