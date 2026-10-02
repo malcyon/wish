@@ -505,6 +505,13 @@
         chdir: "{{ agent_guest_wish_dir }}"
         creates: "{{ agent_guest_wish_dir }}/.venv/bin/ruff"
 
+    - name: Install numpy into .venv for the private screen reader
+      tags: numpy
+      ansible.builtin.command: .venv/bin/pip install numpy
+      args:
+        chdir: "{{ agent_guest_wish_dir }}"
+        creates: "{{ agent_guest_wish_dir }}/.venv/lib/python*/site-packages/numpy"
+
 # --- Patched FS-UAE --------------------------------------------------------
 
 - name: FS-UAE with the remote debugger
