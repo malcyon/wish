@@ -32,6 +32,7 @@ Tests for the Amiga port: its filesystem, saved-game and character-record reader
 | `test_amigalaterwrite.py` | Checks that the Amiga Curse and Silver Blades writer is the inverse of the reader, by round trip and against the engine's own re-saves. |
 | `test_amiganamespaces.py` | Pins where `tools/amiga/amiganamespaces.py` finds each Amiga title's name-stripping routine and whether it reaches a record, checks its Pool of Radiance model against the names the running game saved, and checks every engine resave on the disks against the model. |
 | `test_amiganodefields.py` | Checks `tools/amiga/amiganodefields.py` reports each effect-node byte the two later executables name and the byte nothing reaches. |
+| `test_amigaparty.py` | Checks `automap/amigaparty.py` walks each title's party list and its item and effect lists in synthetic memory, keeps a fight's monsters out of the party, and stops on a looping, odd, stray or endless list. |
 | `test_amigapipe.py` | Checks `automap.amiga.WinuaePipe` against a fake that answers the way the real guest was measured answering. |
 | `test_amigapool.py` | Checks `AmigaTarget.fix` on Pool of Radiance's travel grid over synthetic memory built from the row's own fields, and the automapper following it. |
 | `test_amigaporquickfight.py` | Pins Amiga Pool of Radiance's quickfight byte at record `0x111`, DOS `0x10F` under the shift map, through the reader and writer on records built here. |

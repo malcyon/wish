@@ -1,0 +1,283 @@
+"""`automap/amigaparty.py`: walking an Amiga title's party list in synthetic memory.
+
+Every byte here is made up: records carry an invented name and hit points at
+the row's own offsets, and the lists are linked at the row's own link offsets.
+Whether those offsets are the game's is a measurement on a running Amiga, in
+`docs/96-live-memory-automapper.md`; these tests check the walk and its guards.
+"""
+
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+import pytest
+
+from automap import amiga
+from automap import amigaparty as ap
+from goldbox import amiga_pod, amiga_por, amiga_port
+
+SLOW = 0xC00000
+BASE = 0xC10000          # the data hunk
+HEAP = 0xC20000
+
+
+class Memory:
+    """Slow memory as a bytearray, read the way a transport reads it."""
+
+    def __init__(self):
+        self.mem = bytearray(0x80000)
+
+    def read(self, addr: int, length: int) -> bytes:
+        if not (SLOW <= addr and addr + length <= SLOW + len(self.mem)):
+            raise amiga.GuestError(f"no memory at {addr:#x}")
+        return bytes(self.mem[addr - SLOW:addr - SLOW + length])
+
+    def put(self, addr: int, data: bytes) -> None:
+        self.mem[addr - SLOW:addr - SLOW + len(data)] = data
+
+    def long(self, addr: int, value: int) -> None:
+        self.put(addr, value.to_bytes(4, "big"))
+
+
+def record(row: ap.PartyRow, name: bytes, hp: int, hp_max: int) -> bytearray:
+    raw = bytearray(row.record_size)
+    raw[row.name:row.name + len(name)] = name
+    raw[row.hp.offset] = hp
+    raw[row.hp_max.offset] = hp_max
+    return raw
+
+
+def lay_party(mem: Memory, row: ap.PartyRow, people, items=(), effects=(),
+              slots=None):
+    """Records at HEAP, 0x400 apart, linked in order; returns their addresses.
+
+    `items[i]` and `effects[i]` are how many nodes member `i` holds, and
+    `slots[i]` its slot byte (its index when not given).
+    """
+    addrs = [HEAP + 0x400 * i for i in range(len(people))]
+    node_at = HEAP + 0x20000
+    for i, (address, (name, hp, hp_max)) in enumerate(zip(addrs, people)):
+        raw = record(row, name, hp, hp_max)
+        raw[row.slot] = i if slots is None else slots[i]
+        following = addrs[i + 1] if i + 1 < len(addrs) else 0
+        raw[row.next_offset:row.next_offset + 4] = following.to_bytes(4, "big")
+        for chain, count in ((row.items, items[i] if items else 0),
+                             (row.effects, effects[i] if effects else 0)):
+            nodes = [node_at + 0x80 * n for n in range(count)]
+            node_at += 0x80 * count
+            first = nodes[0] if nodes else 0
+            raw[chain.head:chain.head + 4] = first.to_bytes(4, "big")
+            for n, at in enumerate(nodes):
+                body = bytearray(chain.size)
+                body[0] = 0xA0 + n
+                nxt = nodes[n + 1] if n + 1 < len(nodes) else 0
+                body[chain.link:chain.link + 4] = nxt.to_bytes(4, "big")
+                mem.put(at, bytes(body))
+        mem.put(address, bytes(raw))
+    mem.long(BASE + row.head, addrs[0] if addrs else 0)
+    return addrs
+
+
+THREE = [(b"ALDRIC", 12, 20), (b"BRYNNA", 7, 7), (b"COSIMO", 0, 9)]
+
+
+@pytest.mark.parametrize("key", sorted(ap.ROWS))
+def test_a_party_is_walked_in_list_order_on_every_title(key):
+    row, mem = ap.ROWS[key], Memory()
+    addrs = lay_party(mem, row, THREE, items=(2, 0, 3), effects=(1, 2, 0))
+    party = ap.walk(mem.read, row, BASE)
+    assert [m.address for m in party] == addrs
+    assert [(m.name, m.hp, m.hp_max) for m in party] == [
+        ("ALDRIC", 12, 20), ("BRYNNA", 7, 7), ("COSIMO", 0, 9)]
+    assert [len(m.items()) for m in party] == [2, 0, 3]
+    assert [len(m.effects()) for m in party] == [1, 2, 0]
+    assert [node[0] for _, node in party[2].items()] == [0xA0, 0xA1, 0xA2]
+    assert all(len(node) == row.items.size for _, node in party[0].items())
+
+
+def test_pools_of_darkness_links_through_the_records_first_longword():
+    row = ap.ROWS["pools-of-darkness"]
+    assert row.next_offset == 0
+    mem = Memory()
+    addrs = lay_party(mem, row, THREE)
+    assert int.from_bytes(mem.read(addrs[0], 4), "big") == addrs[1]
+    assert [m.name for m in ap.walk(mem.read, row, BASE)] == [
+        "ALDRIC", "BRYNNA", "COSIMO"]
+
+
+def test_an_empty_list_is_an_empty_party():
+    row, mem = ap.ROWS["curse-of-the-azure-bonds"], Memory()
+    assert ap.walk(mem.read, row, BASE) == ()
+
+
+def test_a_list_that_comes_back_on_itself_is_refused():
+    row, mem = ap.ROWS["secret-of-the-silver-blades"], Memory()
+    addrs = lay_party(mem, row, THREE)
+    mem.long(addrs[2] + row.next_offset, addrs[0])
+    with pytest.raises(ap.PartyError, match="comes back to"):
+        ap.walk(mem.read, row, BASE)
+
+
+def test_an_odd_pointer_is_refused():
+    row, mem = ap.ROWS["pool-of-radiance"], Memory()
+    addrs = lay_party(mem, row, THREE)
+    mem.long(addrs[0] + row.next_offset, addrs[1] + 1)
+    with pytest.raises(ap.PartyError, match="odd address"):
+        ap.walk(mem.read, row, BASE)
+
+
+def test_a_pointer_outside_memory_is_refused_before_it_is_read():
+    row, mem = ap.ROWS["pool-of-radiance"], Memory()
+    lay_party(mem, row, THREE)
+    mem.long(BASE + row.head, 0x00F00000)
+    with pytest.raises(ap.PartyError, match="outside the Amiga's memory"):
+        ap.walk(mem.read, row, BASE)
+
+
+def test_a_list_that_never_ends_is_refused():
+    row, mem = ap.ROWS["curse-of-the-azure-bonds"], Memory()
+    lay_party(mem, row, [(b"X%d" % i, 1, 1) for i in range(ap.MAX_RECORDS + 1)],
+              slots=[8] * (ap.MAX_RECORDS + 1))
+    with pytest.raises(ap.PartyError, match="not ended after 64"):
+        ap.walk(mem.read, row, BASE)
+
+
+def test_in_a_fight_the_monsters_after_the_party_are_not_members():
+    mem = Memory()
+    key = "secret-of-the-silver-blades"
+    row = ap.ROWS[key]
+    lay_party(mem, row, THREE + [(b"DRAGON", 88, 88)] * 2,
+              slots=[0, 1, 2, 8, 8])
+    records = ap.walk(mem.read, row, BASE)
+    assert [m.in_party for m in records] == [True] * 3 + [False] * 2
+    assert [m.name for m in ap.read_party(target_for(key, mem))] == [
+        "ALDRIC", "BRYNNA", "COSIMO"]
+
+
+def test_more_than_eight_members_is_not_a_party():
+    mem = Memory()
+    key = "curse-of-the-azure-bonds"
+    lay_party(mem, ap.ROWS[key], [(b"X%d" % i, 1, 1) for i in range(9)],
+              slots=[i % 8 for i in range(9)])
+    assert ap.read_party(target_for(key, mem)) is None
+
+
+def test_an_item_chain_that_loops_is_refused():
+    row, mem = ap.ROWS["curse-of-the-azure-bonds"], Memory()
+    lay_party(mem, row, THREE, items=(2, 0, 0))
+    party = ap.walk(mem.read, row, BASE)
+    first, second = (a for a, _ in party[0].items())
+    mem.long(second + row.items.link, first)
+    with pytest.raises(ap.PartyError, match="item list comes back"):
+        ap.walk(mem.read, row, BASE)
+
+
+def test_comparable_blanks_the_pointers_and_nothing_else():
+    row = ap.ROWS["curse-of-the-azure-bonds"]
+    raw = bytes(range(256)) * 2
+    blank = ap.comparable(raw, row)
+    assert len(blank) == row.record_size
+    pointer_bytes = {p + i for p in row.pointers for i in range(4)}
+    for at in range(row.record_size):
+        assert blank[at] == (0 if at in pointer_bytes else raw[at])
+
+
+@pytest.mark.parametrize("key", sorted(ap.ROWS))
+def test_every_pointer_named_in_a_row_is_a_longword_inside_the_record(key):
+    row = ap.ROWS[key]
+    for at in (row.next_offset, row.items.head, row.effects.head):
+        assert at in row.pointers
+    assert all(p % 2 == 0 and p + 4 <= row.record_size for p in row.pointers)
+    for spot in (row.hp, row.hp_max, row.memorised, row.quickfight):
+        assert all(not (p <= spot.offset < p + 4) for p in row.pointers)
+
+
+def test_the_record_sizes_are_the_codecs_record_sizes():
+    sizes = {k: r.record_size for k, r in ap.ROWS.items()}
+    assert sizes == {
+        "pool-of-radiance": amiga_por.AMIGA_POR_RECORD_SIZE,
+        "curse-of-the-azure-bonds": amiga_port.CURSE_DELTAS.record_size,
+        "secret-of-the-silver-blades":
+            amiga_port.SILVER_BLADES_DELTAS.record_size,
+        "pools-of-darkness": amiga_pod.RECORD_BYTES,
+    }
+
+
+def test_there_is_one_row_per_title_the_automapper_knows():
+    assert set(ap.ROWS) == set(amiga.MACHINES)
+    for key, row in ap.ROWS.items():
+        assert row.title == amiga.MACHINES[key].title
+
+
+def test_no_write_is_confirmed_yet():
+    for row in ap.ROWS.values():
+        assert row.confirmed == frozenset()
+        assert row.combat_legal == frozenset()
+
+
+def target_for(key: str, mem: Memory, data_base=BASE):
+    return SimpleNamespace(layout=amiga.MACHINES[key], data_base=data_base,
+                           read=mem.read)
+
+
+def test_row_for_finds_the_title_through_a_forwarding_wrapper():
+    mem = Memory()
+    tgt = target_for("secret-of-the-silver-blades", mem)
+    assert ap.row_for(tgt) is ap.ROWS["secret-of-the-silver-blades"]
+    assert ap.row_for(SimpleNamespace(target=tgt, read=mem.read)) is (
+        ap.ROWS["secret-of-the-silver-blades"])
+    assert ap.row_for(SimpleNamespace(layout=None)) is None
+    assert ap.row_for(None) is None
+
+
+def test_mode_reads_the_rows_byte_and_is_none_before_locate():
+    mem = Memory()
+    row = ap.ROWS["pools-of-darkness"]
+    mem.put(BASE + row.mode, b"\x05")
+    assert ap.mode(target_for("pools-of-darkness", mem)) == 5
+    assert ap.mode(target_for("pools-of-darkness", mem, None)) is None
+
+
+def test_read_party_returns_the_members_or_none():
+    mem = Memory()
+    key = "curse-of-the-azure-bonds"
+    tgt = target_for(key, mem)
+    assert ap.read_party(tgt) is None                # nothing loaded yet
+    lay_party(mem, ap.ROWS[key], THREE)
+    assert [m.name for m in ap.read_party(tgt)] == ["ALDRIC", "BRYNNA",
+                                                    "COSIMO"]
+    assert ap.read_party(target_for(key, mem, None)) is None
+
+
+@pytest.mark.parametrize("people", [
+    [(b"ALDRIC", 30, 20)],                           # more hp than maximum
+    [(b"\x01\x02", 1, 1)],                           # not a name
+    [(b"", 1, 1)],                                   # no name
+])
+def test_read_party_is_none_for_a_record_that_is_not_a_character(people):
+    mem = Memory()
+    key = "pool-of-radiance"
+    lay_party(mem, ap.ROWS[key], people)
+    assert ap.read_party(target_for(key, mem)) is None
+
+
+def test_read_party_is_none_rather_than_raising_on_a_broken_list():
+    mem = Memory()
+    key = "pool-of-radiance"
+    row = ap.ROWS[key]
+    addrs = lay_party(mem, row, THREE)
+    mem.long(addrs[1] + row.next_offset, addrs[0])
+    assert ap.read_party(target_for(key, mem)) is None
+
+
+def test_a_members_spans_are_read_at_the_rows_spots():
+    mem = Memory()
+    key = "secret-of-the-silver-blades"
+    row = ap.ROWS[key]
+    addrs = lay_party(mem, row, THREE)
+    mem.put(addrs[1] + row.memorised.offset, bytes(range(1, 6)))
+    mem.put(addrs[1] + row.quickfight.offset, b"\x01")
+    party = ap.walk(mem.read, row, BASE)
+    assert party[1].memorised()[:6] == bytes([1, 2, 3, 4, 5, 0])
+    assert len(party[1].memorised()) == row.memorised.length
+    assert [m.quickfight for m in party] == [False, True, False]

@@ -401,8 +401,8 @@ drawn on Pool of Radiance's travel grid:
 ## A third machine: the Amiga
 
 The Gold Box titles shipped on the Amiga too, and the automapper has a layout
-row for three of them -- Silver Blades, Curse and Pools of Darkness:
-`automap/amiga.py` is a `Target` over an Amiga emulator's own debugger.
+row for all four: `automap/amiga.py` is a `Target` over an Amiga emulator's
+own debugger.
 `docs/143-winuae-debugger.md` is the WinUAE transport, and the ticket is
 `#37 (Automap the Amiga version, not just the C64)`.
 
@@ -413,8 +413,9 @@ the resident `GEO` block. Silver Blades stores them as bytes and Curse as
 words. Pools of Darkness' row also carries an overland pointer and flag: while
 the flag is 1 the party is on its 38-by-15 overland, where the square bytes
 keep the last indoor square, so `AmigaTarget.fix` answers a world-map fix and
-the tab is blank rather than showing that stale square. Pool of Radiance has no
-row (below).
+the tab is blank rather than showing that stale square. Pool of Radiance's row
+is below, under "What is not built"; this paragraph said it had none before
+that row was added.
 
 **Three transports, one `AmigaTarget`.** The target owns the Amiga's memory map
 and the transport decides how a read reaches it:
@@ -440,8 +441,9 @@ while a shop menu was up. `automap/target.py`, `automap/live.py`,
 `automap/state.py`, `automap/render.py` and `goldbox/geo.py` were untouched by
 any of it. Amiga Pools of Darkness, on a patched FS-UAE: the tab named the area,
 the marker moved with the party indoors (1,2 east, then 2,2 east on `GEO21`), and
-the tab went blank on the overland. Curse's row has been checked against its
-executable only, and no Curse machine has been located while running.
+the tab went blank on the overland. Curse's row was located on a running
+machine on two boots for "The party in memory" below; its map has not been
+followed live.
 
 ### What the shared code had to learn, and it is one method
 
@@ -571,6 +573,93 @@ of a sweep and the helper handshake, because a poll runs on the window's own
 thread; the transport's own twenty seconds is for reads made off it. Each `connect()` re-reads the cached title's anchor at its base and, when
 it is gone, forgets the title and sweeps again without closing the socket; a
 different port gets a new transport.
+
+### The party in memory
+
+**Each Amiga title keeps its party as a singly linked list of heap records**,
+not at fixed addresses, and `automap/amigaparty.py` walks it. A data-hunk
+global holds the first record's address; each record holds the next one's at a
+fixed offset; the last link is NULL. Each record also heads two lists of the
+same kind, its items and its running effects. Every offset was read from the
+title's save routine (which walks the list to write it) and its loader, then
+measured on FS-UAE. `head` and `current` are offsets into the data hunk
+`AmigaTarget.locate` returns (`h32` on Pool of Radiance); the rest are record or
+node offsets. CONFIRMED from the code, and live on two boots per title.
+
+| Title | Head | Current | Record `next` | Record | Items: head, node, `next` | Effects: head, node, `next` | Slot byte |
+|---|---|---|---|---|---|---|---|
+| Pool of Radiance | `h32+0xAEE` | `h32+0xAEA` | `+0x106` | `0x120` | `+0xCA`, `0x41`, `+0x2A` | `+0x80`, 10, `+0x06` | `+0xC1` |
+| Curse | `g3cf8` | `g3cfc` | `+0x18E` | `0x1AC` | `+0x152`, `0x42`, `+0x2A` | `+0xF2`, 10, `+0x06` | `+0x147` |
+| Silver Blades | `g5168` | `g516c` | `+0x13A` | `0x154` | `+0xFE`, `0x46`, `+0x2A` | `+0x96`, 10, `+0x06` | `+0xF1` |
+| Pools of Darkness | `g57a4` | `g57a8` | `+0x00` | `0x194` | `+0x08`, `0x42`, `+0x2A` | `+0x04`, 10, `+0x06` | `+0xBD` |
+
+The routines, as file offsets into each executable (`tools/amiga/amiga68k.py`):
+Pool of Radiance's save `0x27750`, record writer `0x2646C`, reader `0x267CE`,
+append `0x26EAE`; Curse's save `0x26AF8`, writer `0x260C4`, reader `0x25056`,
+append `0x26E2C`; Silver Blades' save `0x27C10`, writer `0x2713C`, reader
+`0x268C0`, append `0x27F18`; Pools of Darkness' save `0x270E0` (it stops at
+eight), writer `0x26338`, append `0x27394`. Each save routine is the same loop:
+
+    movea.l  -$4306(a4), a2     ; g3cf8, the head (Curse)
+    move.l   a2, d0
+    beq.b    done               ; NULL ends the list
+    ...                         ; write the record at a2
+    movea.l  $18e(a2), a2       ; the record's next
+    bra.b    loop
+
+**A live record is the saved record, byte for byte, except for its pointer
+longwords.** Each writer writes the record straight out of its heap block
+(`write(fd, record, 0x1AC)`; Pool of Radiance `fwrite(record, 1, 0x120, fp)`),
+and each loader reads the file into a fresh block and then rewrites the
+pointers: Pool of Radiance clears `+0x106`, `+0xCA`, `+0x80` and `+0x10A`;
+Curse clears `+0x18E` and `+0x192` and `0x1A45C` rebuilds the thirteen
+readied-item pointers at `+0x156`; Silver Blades clears `+0x13A` and `+0x13E`.
+So a file holds whatever heap addresses the party had when it was saved.
+Pools of Darkness' writer puts the **item count** into `+0x08` for the write
+and the pointer back after, so that longword is a count in the file and a
+pointer in memory; its `+0x0C`-`+0x3F` are thirteen readied-item pointers.
+Measured right after the game's own LOAD, memory dumped whole and each record
+compared with the file it came from:
+
+| Title, save | Boots | Records | Record bytes differing outside the pointers | Item nodes equal outside `next` | Effect nodes equal outside `next` |
+|---|---|---|---|---|---|
+| Pool of Radiance, `poolgame` slot B | 2 | 6, 6 | 0 of 12 | 34 of 34 | 12 of 12 |
+| Curse, `CurseA` slot A | 2 | 4, 4 | 0 of 8 | 18 of 18 | 18 of 18 |
+| Silver Blades, `Secret 1` slots B, A | 2 | 6, 6 | 0 of 12 | none in either save | 10 of 10 |
+| Pools of Darkness, `POD 3` slots B, D | 2 | 6, 6 | 0 of 12 | 174 of 174 (the 20 bytes at `+0x2E`) | 62 of 62 |
+
+The two boots per title are independent: the first ran Kickstart 1.3 and the
+second Kickstart 2.04, which moved every data hunk (Pool of Radiance
+`0xC4E298` to `0xC5BAF8`, Curse `0xC4E238` to `0xC5D7B0`, Silver Blades
+`0xC56BF8` to `0xC638E0`, Pools of Darkness `0xC57B18` to `0xC647C8`) and put
+Pool of Radiance's records in chip memory (`0x4E844`). Two Kickstart 1.3 boots
+of the same disks gave the same addresses to the byte, so a repeat boot tests
+nothing. Names and current hit points read through the codec offsets matched
+the game's own party list in 32 of 32 rows (16 members of Pool of Radiance,
+Curse and Silver Blades, each on both boots); every member was at full hit
+points, so the maximum is not told apart from the current value, and Pools of
+Darkness' list was not on screen when it was dumped.
+Silver Blades' only items were in the demo party (two long swords, read
+through `+0xFE` and `+0x2A`).
+
+**In a fight the monsters join the same list.** In Silver Blades' demo fight
+the walk from `g5168` found the three party members and then two Ancient
+Dragons, each a full record with slot byte 8, and a dragon's hit points fell
+between two dumps. So a walk must allow more than eight records and a reader
+keeps only slot bytes 0-7; `amigaparty.read_party` does both. CONFIRMED on
+Silver Blades (one fight, two dumps); PROBABLE on the other three, which use
+the same append routine.
+
+**The mode byte.** Silver Blades' `g525c` read 5 in the demo fight, 4 while
+the demo party walked and 0 at the party menu. Curse's `g3d56` read 0 at the
+party menu before and after a load; Pools of Darkness' `g5b12` read 0 at the
+party menu and 2 once loaded; Pool of Radiance's `h32+0xBA` read 3 on the
+travel grid. A fight has been read only on Silver Blades.
+
+**Pool of Radiance's record block is one byte short.** Its loader allocates
+`malloc(0x11F)` (the size word before every record reads `0x123`, which is
+`0x11F` plus the 4-byte word) and then reads `0x120` into it; the last byte
+lands in the allocator's rounding. PROBABLE, from `0x24DC` and 12 records.
 
 ### What is not built
 
