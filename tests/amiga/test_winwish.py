@@ -759,10 +759,10 @@ def test_the_probe_loop_never_runs_past_the_wait():
 
 def test_every_title_wish_shows_starts_with_wish():
     root = pathlib.Path(winwish.__file__).parents[2] / "wish"
-    window = (root / "window.py").read_text()
+    window = (root / "window.py").read_text(encoding="utf-8")
     assert 'getattr(self, "_editor_title", "Wish")' in window
     for path in root.glob("*.py"):
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
         assert not re.search(r"\._retitle\([^)\s]", text), path
         if path.name != "window.py":
             assert "_editor_title" not in text, path
