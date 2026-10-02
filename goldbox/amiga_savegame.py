@@ -509,22 +509,24 @@ def area_script(ecl_glb: bytes, area: int) -> bytes:
     if len(table) < 2:
         raise AmigaSaveError("ECL.GLB block 0 has no area table")
     count = int.from_bytes(table[:2], "big")
-    if len(table) != 2 + 4 * count:
+    if len(table) < 2 + 4 * count:
         raise AmigaSaveError(
             f"ECL.GLB block 0 is {len(table)} bytes but its area table "
             f"counts {count} entries")
-    found = None
-    for i in range(count):
-        entry_area, block = struct.unpack_from(">HH", table, 2 + 4 * i)
-        if not 1 <= block < len(blocks):
-            raise AmigaSaveError(
-                f"ECL.GLB maps area {entry_area} to block {block}, but the "
-                f"file has {len(blocks)} blocks")
-        if entry_area == area and found is None:
-            found = block
-    if found is None:
+    named = [block for entry_area, block in
+             struct.iter_unpack(">HH", table[2:2 + 4 * count])
+             if entry_area == area]
+    if not named:
         raise AmigaSaveError(f"ECL.GLB has no script for area {area}")
-    return blocks[found]
+    if len(named) > 1:
+        raise AmigaSaveError(
+            f"ECL.GLB names area {area} {len(named)} times, in blocks "
+            f"{', '.join(map(str, named))}")
+    if not 1 <= named[0] < len(blocks):
+        raise AmigaSaveError(
+            f"ECL.GLB maps area {area} to block {named[0]}, but the file "
+            f"has {len(blocks)} blocks")
+    return blocks[named[0]]
 
 
 @dataclasses.dataclass
