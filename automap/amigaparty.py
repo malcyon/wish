@@ -22,8 +22,8 @@ where memory keeps the item-list head.
 
 Everything here reads; nothing writes. `row_for`, `mode` and `read_party` take
 a target the way `automap/amigaactions.py` calls them. A row's `confirmed` set
-stays empty until a write to each field has been proven in the running game,
-so no Action button is offered on the strength of this module alone.
+names only the actions whose field was written, seen on the game's own screen
+and kept across a game step; each row's comments grade every value.
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ from . import amiga
 MAX_MEMBERS = 8
 
 #: During a fight the same list holds the monsters after the party, with
-#: slot byte 8, so the list can be longer than a party; a walk that has not
+#: slot bytes 8 and up, so the list can be longer than a party; a walk that has not
 #: reached NULL after this many records is not reading the list.
 MAX_RECORDS = 64
 
@@ -117,7 +117,8 @@ class PartyRow:
     hidden: Spot
     quickfight: Spot | None
     combat_value: int = 5
-    #: Action names whose writes have been proven in the running game.
+    #: Action names whose field was written, seen on the game's own screen and
+    #: kept across a game step; each row says what was measured.
     confirmed: frozenset[str] = frozenset()
     #: Action names proven safe during a fight.
     combat_legal: frozenset[str] = frozenset()
@@ -208,12 +209,26 @@ ROWS: dict[str, PartyRow] = {
         next_offset=0x106, record_size=0x120, slot=0xC1,
         items=Chain(head=0xCA, link=0x2A, size=0x41),
         effects=Chain(head=0x80, link=0x06, size=0x0A),
-        pointers=(0x080, 0x0CA, 0x106, 0x10A), mode=0xBA,
-        name=0, hp=Spot(amiga_por.amiga_por_offset(0x11B)),
+        pointers=(0x080, 0x0CA, 0x106, 0x10A),
+        # 3 on the travel grid, 5 in a fight: CONFIRMED live.
+        mode=0xBA, combat_value=5,
+        name=0,
+        # 0x11D: written, seen on the sheet and the list, kept over eight
+        # steps and into a fight. CONFIRMED.
+        hp=Spot(amiga_por.amiga_por_offset(0x11B)),
+        # 0x032: codec only; every member read was at full hit points.
         hp_max=Spot(amiga_por.amiga_por_offset(0x032)),
+        # 0x17, 21 bytes: written, listed by Cast, kept over a step. CONFIRMED.
         memorised=Spot(amiga_por.amiga_por_offset(0x017), 21),
+        # Item +0x35, mask 7: a long sword's name hid and came back on
+        # screen (+0x36, +0x37 did nothing); not checked over a step, so
+        # PROBABLE and not confirmed.
         hidden=Spot(amiga_por.amiga_por_item_offset(0x035), 1, 0x07),
-        quickfight=Spot(amiga_por.AMIGA_POR_QUICKFIGHT)),
+        # 0x111: QUICK set it to 1 and the game's own key cleared it, both
+        # CONFIRMED live; no write of ours was made and a companion's case
+        # is untested, so not confirmed.
+        quickfight=Spot(amiga_por.AMIGA_POR_QUICKFIGHT),
+        confirmed=frozenset({"heal", "store-spells", "restore-spells"})),
     # `/Curse`: save 0x26AF8 walks `g3cf8` through +0x18E; writer 0x260C4
     # writes 0x1AC, items (0x42) from +0x152, effects (10) from +0xF2;
     # reader 0x25056 clears +0x18E and +0x192; 0x1A45C rebuilds the
@@ -224,7 +239,15 @@ ROWS: dict[str, PartyRow] = {
         items=Chain(head=0x152, link=0x2A, size=0x42),
         effects=Chain(head=0xF2, link=0x06, size=0x0A),
         pointers=(0x0F2, *_longwords(0x152, 14), 0x18E, 0x192),
-        mode=0x3D56, **_later(amiga_port.CURSE_DELTAS, 0x19D)),
+        # 0 at the party menu, 4 walking: CONFIRMED live. The fight value 5
+        # is from the code only (PROBABLE); no fight was reached.
+        mode=0x3D56, combat_value=5,
+        # hp 0x1A9: written, seen, kept over a step (CONFIRMED). Memorised
+        # 0x1E, 84 bytes: seen on screen, but after a step only in memory, so
+        # not confirmed. Item hidden +0x36 mask 7: seen on screen (+0x35 did
+        # nothing), not checked over a step, so not confirmed.
+        **_later(amiga_port.CURSE_DELTAS, 0x19D),
+        confirmed=frozenset({"heal"})),
     # `/Secret`: save 0x27C10 walks `g5168` through +0x13A; writer 0x2713C
     # writes 0x154, items (0x46) from +0xFE, effects (10) from +0x96;
     # reader 0x268C0 clears +0x13A and +0x13E.
@@ -234,7 +257,14 @@ ROWS: dict[str, PartyRow] = {
         items=Chain(head=0xFE, link=0x2A, size=0x46),
         effects=Chain(head=0x96, link=0x06, size=0x0A),
         pointers=(0x096, *_longwords(0xFE, 14), 0x13A, 0x13E),
-        mode=0x525C, **_later(amiga_port.SILVER_BLADES_DELTAS, 0x146)),
+        # 0 at the party menu, 2 at the journal prompt, 4 walking, 5 in the
+        # demo's fight: CONFIRMED live; no fight reached by walking.
+        mode=0x525C, combat_value=5,
+        # hp 0x152: written, seen, kept over a step (CONFIRMED). Memorised:
+        # writes never showed in Cast (a paladin, perhaps not eligible), so
+        # NOT confirmed. Item bits: no item in the save, untested.
+        **_later(amiga_port.SILVER_BLADES_DELTAS, 0x146),
+        confirmed=frozenset({"heal"})),
     # `/Pools of Darkness`: save 0x270E0 walks `g57a4` through +0x00, at most
     # eight; writer 0x26338 writes 0x194 with the item count put in +0x08 for
     # the write, effects (10) from +0x04 and twenty bytes of each item node
@@ -245,8 +275,17 @@ ROWS: dict[str, PartyRow] = {
         next_offset=0x00, record_size=0x194, slot=0xBD,
         items=Chain(head=0x08, link=0x2A, size=0x42),
         effects=Chain(head=0x04, link=0x06, size=0x0A),
-        pointers=(0x00, 0x04, 0x08, *_longwords(0x0C, 13)), mode=0x5B12,
-        name=amiga_pod.NAME, hp=Spot(amiga_pod.HP_CURRENT),
+        pointers=(0x00, 0x04, 0x08, *_longwords(0x0C, 13)),
+        # 0 at the party menu, 2 once loaded, 4 after a fight, 5 in a fight:
+        # CONFIRMED live. After a fight, while `INSERT DISK 1` is up, the
+        # head reads NULL with the records still in memory, so `read_party`
+        # gives None there and every action stays off, which is safe.
+        mode=0x5B12, combat_value=5,
+        name=amiga_pod.NAME,
+        # hp 0x191: written mid-fight and read back in memory only, never
+        # on screen or over a step, so not confirmed. Memorised and item
+        # bits were not reached. Nothing is confirmed on this title.
+        hp=Spot(amiga_pod.HP_CURRENT),
         hp_max=Spot(amiga_pod.HP_MAX),
         memorised=Spot(amiga_pod.SPELLS_MEMORISED,
                        amiga_pod.SPELLS_MEMORISED_LENGTH),

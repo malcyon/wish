@@ -228,10 +228,36 @@ def test_there_is_one_row_per_title_the_automapper_knows():
         assert row.title == amiga.MACHINES[key].title
 
 
-def test_no_write_is_confirmed_yet():
+def test_only_the_writes_seen_on_screen_and_kept_over_a_step_are_confirmed():
+    # The R2 and R3 measurements in docs/96, "Which writes are proven".
+    assert {k: r.confirmed for k, r in ap.ROWS.items()} == {
+        "pool-of-radiance": {"heal", "store-spells", "restore-spells"},
+        "curse-of-the-azure-bonds": {"heal"},
+        "secret-of-the-silver-blades": {"heal"},
+        "pools-of-darkness": set(),
+    }
+
+
+def test_no_action_is_proven_safe_in_a_fight():
     for row in ap.ROWS.values():
-        assert row.confirmed == frozenset()
         assert row.combat_legal == frozenset()
+        assert row.combat_value == 5
+
+
+def test_the_confirmed_fields_are_the_measured_offsets():
+    measured = {"pool-of-radiance": (0x11D, (0x17, 21)),
+                "curse-of-the-azure-bonds": (0x1A9, None),
+                "secret-of-the-silver-blades": (0x152, None)}
+    for key, (hp, memorised) in measured.items():
+        row = ap.ROWS[key]
+        assert (row.hp.offset, row.hp.length, row.hp.mask) == (hp, 1, 0xFF)
+        if memorised:
+            assert (row.memorised.offset, row.memorised.length) == memorised
+    modes = {k: r.mode for k, r in ap.ROWS.items()}
+    assert modes == {"pool-of-radiance": 0xBA,
+                     "curse-of-the-azure-bonds": 0x3D56,
+                     "secret-of-the-silver-blades": 0x525C,
+                     "pools-of-darkness": 0x5B12}
 
 
 def target_for(key: str, mem: Memory, data_base=BASE):

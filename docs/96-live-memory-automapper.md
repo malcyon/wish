@@ -659,19 +659,120 @@ between two dumps. So a walk must allow more than eight records and a reader
 keeps only slot bytes 0-7; `amigaparty.walk` returns a monster as a bare
 record without following its item or effect lists, so a stray pointer in a
 monster cannot hide the party, and `read_party` drops it. CONFIRMED on
-Silver Blades (one fight, two dumps); PROBABLE on the other three, which use
-the same append routine.
+Silver Blades (the demo fight), Pool of Radiance (three kobolds, slot byte 8)
+and Pools of Darkness (23 monsters with slot bytes 8 to 11, one byte per kind
+of monster); Curse has not been seen in a fight.
 
-**The mode byte.** Silver Blades' `g525c` read 5 in the demo fight, 4 while
-the demo party walked and 0 at the party menu. Curse's `g3d56` read 0 at the
-party menu before and after a load; Pools of Darkness' `g5b12` read 0 at the
-party menu and 2 once loaded; Pool of Radiance's `h32+0xBA` read 3 on the
-travel grid. A fight has been read only on Silver Blades.
+**The mode byte**, CONFIRMED live where a value is given:
+
+| Title | Byte | Values read | In a fight |
+|---|---|---|---|
+| Pool of Radiance | `h32+0xBA` | 3 on the travel grid | 5 |
+| Curse | `g3d56` | 0 at the party menu, 4 walking | not reached; 5 from the code (PROBABLE) |
+| Silver Blades | `g525c` | 0 at the party menu, 2 at the journal prompt, 4 walking | 5 (the demo's fight) |
+| Pools of Darkness | `g5b12` | 0 at the party menu, 2 once loaded, 4 after a fight | 5 |
+
+**After a Pools of Darkness fight, while `INSERT DISK 1` is up, the list head
+reads NULL** with the records still in memory, so `read_party` gives None and
+every action stays off there.
+
+**Which writes are proven.** A row's `confirmed` set names an action only when
+its field was written, seen on the game's own screen and kept across a game
+step. Measured on one boot per title with the `session` driver's `poke`
+(#37 (Automap the Amiga version, not just the C64), the R2 and R3 comments):
+
+| Title | `confirmed` | Measured but not confirmed |
+|---|---|---|
+| Pool of Radiance | heal (`0x11D`), store and restore spells (`0x17`, 21 bytes) | identify: item `+0x35` mask 7 hid and showed the name on screen, not checked over a step; quickfight `0x111`: QUICK sets it and the game's key clears it, but no write of ours was made and a companion is untested |
+| Curse | heal (`0x1A9`) | spells (`0x1E`, 84 bytes): on screen, then after a step in memory only; identify (`+0x36` mask 7; `+0x35` did nothing): on screen, not over a step |
+| Silver Blades | heal (`0x152`) | spells: writes never showed in Cast; items: none in the save |
+| Pools of Darkness | none | hit points `0x191`: in memory only; spells and items not reached |
+
+Curse's heal rests on a fight value read from the code, so whether the fight
+gate holds there is PROBABLE until a Curse fight is read.
 
 **Pool of Radiance's record block is one byte short.** Its loader allocates
 `malloc(0x11F)` (the size word before every record reads `0x123`, which is
 `0x11F` plus the 4-byte word) and then reads `0x120` into it; the last byte
 lands in the allocator's rounding. PROBABLE, from `0x24DC` and 12 records.
+
+### Fast Travel and Return without the program counter
+
+**An Amiga trip needs only memory writes.** The C64's Fast Travel ends by
+setting the PC to `NEWECL`'s tail. The Amiga engine is the DOS one, where
+`NEWECL` (opcode `$20` in all four dispatch tables) loads the new script and
+raises a flag the main loop acts on. So Wish can write a few of the game's own
+statements (`SAVE` x, y, facing, then `NEWECL area`) into bytes past the end of
+the loaded script, point the step entry at them, and deliver one key. The
+game's interpreter then makes the area change, with its own loader, disk
+prompt, came-from byte and arriving script. Measured under `fs-uae-gdb` in
+three titles: Curse (2 trips), Pool of Radiance (4) and Pools of Darkness (3).
+Each started within one frame of the key, and the party walked afterwards.
+Silver Blades was read from its code and not run.
+
+The step entry is the word the main loop passes to the interpreter once a
+forward key leaves the 3D menu, before the step is taken. Only `vm_init_ecl`
+writes it, so the next script load also clears a redirect.
+
+| | Pool of Radiance | Curse | Silver Blades | Pools of Darkness |
+|---|---|---|---|---|
+| `NEWECL` handler / `vm_init_ecl` (file offsets) | `0x286E6` / `0x954E` | `0x1E50C` / `0xC190` | `0x1E7E0` / `0xFE3A` | `0x1E828` / `0x103E2` |
+| step entry word | `h32+0xAA` | `g584c` | `g732e` | `g72c6` |
+| script buffer, `0x1E00` bytes | `[h32+0xA4]`; ECL address `A` at `+(A-$9900)` | `[g5006]+A` | `[g6956]+A` | `[g6ea6]+A` |
+| cleared before a load | yes (`0x9718`) | yes (`0xC31A`) | no (`0xFF8E`) | no (`0x10502`); stale bytes seen live |
+| area id | `h32+0x2F73` | `g5ce1` | `g79c9` | `g7a0a` |
+| `SAVE` targets for the square | `$C04B`, `$C04C`, `$C04D` (facing 0-3) | same | same | variables `$34`, `$35`, `$11` |
+| one-key buffer (flag, character) | none | `g3804`, `g3805` | `g4f6c`, `g4f6d` | `g5742`, `g5743` |
+| menu kind / menu text | none (the menu is in locals) | `g1c24` / `g3342` | `g2384` / `g4a5e` | `g235e` / `g4f34` |
+| **Grade** | CONFIRMED: code and 4 trips | CONFIRMED: code and 2 trips | PROBABLE: code only | CONFIRMED: code and 3 trips |
+
+**The key.** In Curse, Silver Blades and Pools of Darkness, writing `01 b8`
+(pending, keypad 8) to the one-key buffer is read as a forward key. Pool of
+Radiance's menu reads IntuiMessages itself, so the key there is a 52-byte
+RAWKEY message (class `0x400`, code `0x08`, no reply port) placed in the
+free buffer tail and linked onto the list of the game window's `UserPort`
+(`[[h32+0x28]+0x56]`). The game's `ReplyMsg` marks it `NT_FREEMSG` and takes
+the key. CONFIRMED live, 3 of 3. WinUAE's pipe also accepts
+`EVT KEY_RAW_DOWN`/`KEY_RAW_UP`, which presses an emulated key without focus.
+That is SPECULATIVE, read from its source and not sent.
+
+**The gate.** In Curse and Pools of Darkness the 3D menu is waiting when the
+menu kind reads 1, the menu text reads the world menu, the mode byte reads 4
+and the key buffer is empty. At a "PRESS RETURN" text the kind read 2: 4 of 4
+reads in Curse, 2 of 2 in Pools of Darkness. A key sent at the wrong prompt
+was read and ignored at a "PRESS RETURN" text (Curse) and at a YES/NO menu
+(Pool of Radiance), one sample each. Pool of Radiance has no menu global, so
+its gate is the mode and view bytes only.
+
+**Where the statements go.** The statements are 21 bytes, 27 with the
+area-file `SAVE`. No reachable statement in any Pool of Radiance (29),
+Curse (25) or Silver Blades (22) script names an address past its own end.
+That is CONFIRMED by walking every script on the player's disks. Pools of
+Darkness is unsettled, because its operand counts differ from Silver Blades'
+for opcodes `$0C`, `$21`, `$27`, `$2C` and `$37`. Seventeen scripts leave fewer
+than 21 free bytes: Pool 4, Curse 1, Silver Blades 4, Pools of Darkness 8.
+Two of those leave fewer than the 3 bytes of `NEWECL` alone.
+
+**What the arriving script does.** It runs as it does for a walked exit, so
+it may place the party itself. On a Return in Curse and in Pools of Darkness
+it moved the party to its own arrival square, over the statements. Arriving in
+Curse's Tilverton from the sewers replayed the game's opening ("all your gear
+is gone"). The C64 trip runs the same scripts. In Pool of Radiance a trip out
+of the wilderness grid into New Phlan worked, where the C64 refuses it. It
+left fragments of the wilderness picture around the 3D frame. A trip onto the
+grid needs `$49C3`/`$49C4` written, as on the C64.
+
+**Setting the program counter is possible but not needed.** `fs-uae-gdb`'s
+`P` packet cannot write PC or SR, and its A-register case writes past the
+register file (`0x72E3D5`). It has no `G` handler. Its `qRcmd` `console r PC
+<hex>` works on a machine halted by the `0x03` break: measured once, with the
+machine resumed by `vCont;c`. The server sends no reply to a console command
+with no output. WinUAE's `DBG r PC <hex>` reaches `m68k_setpc` with no halt,
+and 3 of 30 idle samples were in supervisor code, so it is not safe there.
+
+The three live runs, the static reading per title and the open design
+questions are the R5 comments on #37 (Automap the Amiga version, not just the
+C64).
 
 ### What is not built
 
