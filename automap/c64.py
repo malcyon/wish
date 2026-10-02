@@ -127,6 +127,19 @@ WORLD_NODE_OFFSET = 0x19B
 SCRIPT_FILE_SLOT = 0x7F1B
 VIEW_COLOUR = 0x7EDB
 
+#: Payload offset of Silver Blades' printed coordinate pair and its facing
+#: turn: `$4CFD` x, `$4CFE` y, `$4CFF` turn with the save image at `$4B00`.
+#: The status line (`DUNGEON` `$0A23`) prints `$4CFD`,`$4CFE` in place of
+#: `$C04B`,`$C04C` whenever `$4CFD` is below `$80`, and (`$09F9`) prints the
+#: facing as `$C04D` plus `$4CFF`, mod 4. The Ruins' script, `ECL20`, keeps
+#: the pair in a frame of its own, moved and turned against the map, so the
+#: line names a square the party is not on. Curse and Pool of Radiance print
+#: the engine's square; in Curse these bytes are unrelated script variables.
+PRINTED_FRAME_OFFSET = 0x1FD
+PRINTED_FRAME_BYTES = 3
+#: `$4CFD` at or above this: the line prints the engine's own square.
+PRINTED_FRAME_OFF = 0x80
+
 
 @dataclass(frozen=True)
 class C64Machine:
@@ -162,6 +175,9 @@ class C64Machine:
 
     live_position: int | None = None
     mode_flag: int | None = None
+    #: Live address of the printed pair and turn (`PRINTED_FRAME_OFFSET`), or
+    #: None for a title whose status line always prints the engine's square.
+    printed_frame: int | None = None
 
     # -- the save image, live ---------------------------------------------
     @property
@@ -300,7 +316,8 @@ class C64Machine:
 
 
 def _machine(game: c64_save.C64Container, *, live_position: int | None = None,
-             mode_flag: int | None = None) -> C64Machine:
+             mode_flag: int | None = None,
+             printed_frame: bool = False) -> C64Machine:
     """One row, taking its disk geometry from the `C64Container` it belongs to.
 
     Read rather than retyped, so this stage moves the two live addresses and
@@ -320,6 +337,8 @@ def _machine(game: c64_save.C64Container, *, live_position: int | None = None,
         roster_offset=game.roster_offset,
         live_position=live_position,
         mode_flag=mode_flag,
+        printed_frame=(game.save_load_address + PRINTED_FRAME_OFFSET
+                       if printed_frame else None),
     )
 
 
@@ -339,7 +358,8 @@ MACHINES: dict[str, C64Machine] = {
         live_position=LIVE_POSITION_GOLDBOX, mode_flag=MODE_FLAG_LATER),
     "secret-of-the-silver-blades": _machine(
         c64_port.SECRET_OF_THE_SILVER_BLADES,
-        live_position=LIVE_POSITION_GOLDBOX, mode_flag=MODE_FLAG_LATER),
+        live_position=LIVE_POSITION_GOLDBOX, mode_flag=MODE_FLAG_LATER,
+        printed_frame=True),
     "champions-of-krynn": _machine(c64_port.CHAMPIONS_OF_KRYNN),
     "death-knights-of-krynn": _machine(c64_port.DEATH_KNIGHTS_OF_KRYNN),
     "gateway-to-the-savage-frontier": _machine(

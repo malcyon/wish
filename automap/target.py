@@ -38,7 +38,12 @@ from typing import Protocol
 
 from goldbox import c64_port
 
-from .c64 import WORLD_MAP_SCRIPT_SPAN, machine_for
+from .c64 import (
+    PRINTED_FRAME_BYTES,
+    PRINTED_FRAME_OFF,
+    WORLD_MAP_SCRIPT_SPAN,
+    machine_for,
+)
 from .screen import SCREEN_COLS, Banks, codes_to_text, is_bitmap, screen_address
 from .vice import Monitor, MonitorError, banked, monitor_address
 
@@ -230,8 +235,18 @@ def party_fix(read, game: c64_port.C64Container | None = None, banks=None) -> Fi
     own bytes -- `$C04B`, `$49C0`, the clock -- are RAM under every banking a
     C64 has, so nothing about them changes. With no `banks` the whole thing
     reads through `read`, which is what it did before `#421`.
+
+    **Where the line prints another frame, the engine's triple is read
+    instead** (`C64Machine.printed_frame`): Silver Blades' Ruins print a
+    coordinate pair and facing the area script keeps moved and turned against
+    the map. No fixed offset converts one to the other, so the line is
+    trusted only where it prints the engine's own square and facing. The
+    answer is a memory fix, not a status fix with memory's square: the line
+    and `$C04B` change at different moments, and a mixed reading could let
+    `Automapper._refused` take a step for a bump.
     """
     game = game or c64_port.DEFAULT
+    machine = machine_for(game)
     banks = Banks.of(read if banks is None else banks)
     if is_bitmap(banks):
         return None
@@ -239,6 +254,8 @@ def party_fix(read, game: c64_port.C64Container | None = None, banks=None) -> Fi
     row = banks.ram(base + STATUS_ROW * SCREEN_COLS, SCREEN_COLS)
     text = codes_to_text(row)
     m = RE_STATUS.search(text)
+    if m and _prints_another_frame(read, machine):
+        return _engine_fix(read, machine)
     if m:
         facing = FACING_LETTERS[m.group(1)]
         x, y = int(m.group(4)), int(m.group(5))
@@ -251,7 +268,6 @@ def party_fix(read, game: c64_port.C64Container | None = None, banks=None) -> Fi
         if _plausible_outdoors(x, y):
             clock = int(m.group(1)) * 60 + int(m.group(2))
             return Fix(x, y, None, "status", clock, outdoors=True)
-    machine = machine_for(game)
     if machine.indoors_flag_base is not None:
         indoors = read(machine.indoors_flag_base, 1)[0] != 0
         if not indoors:
@@ -283,6 +299,24 @@ def party_fix(read, game: c64_port.C64Container | None = None, banks=None) -> Fi
                 node = read(machine.world_node_base, 2)
                 return Fix(0, 0, None, "memory", None, world_map=True,
                            world_node=node[0], world_leg=node[1])
+    return _engine_fix(read, machine)
+
+
+def _prints_another_frame(read, machine) -> bool:
+    """Does the status line print a square or facing that is not the engine's?
+
+    The game's own test, `DUNGEON` `$0A23`-`$0A29`: a printed x below `$80`
+    replaces the engine square, and a non-zero turn rotates the facing.
+    """
+    if machine.printed_frame is None:
+        return False
+    x, _, turn = read(machine.printed_frame,
+                      PRINTED_FRAME_BYTES)[:PRINTED_FRAME_BYTES]
+    return x < PRINTED_FRAME_OFF or turn % 4 != 0
+
+
+def _engine_fix(read, machine) -> Fix | None:
+    """The engine's live triple and the shown clock, or None."""
     if machine.live_position is None:
         return None
     x, y, facing = read(machine.live_position,
