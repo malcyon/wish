@@ -32,7 +32,7 @@ import sys
 import time
 
 from . import paths
-from .amiga import PipeError, _check_commands
+from .amiga import MEMORY, PipeError, _check_commands
 
 #: Win32 values `_winapi` also exports; kept here so a fake `api` needs only the
 #: calls. A Windows-only test checks them against `_winapi`.
@@ -68,6 +68,14 @@ _NAME = re.compile(r"WinUAE(?:_(\d+))?")
 _RECEIPT = re.compile(
     r"Wrote ([0-9A-Fa-f]{8}) - ([0-9A-Fa-f]{8}) \((\d+) bytes\) to '(.*)'\.?",
     re.S)
+_BYTE_RECEIPT = re.compile(
+    r"Wrote ([0-9A-Fa-f]{1,2}) \((\d+)\) at ([0-9A-Fa-f]{8})\.B")
+
+#: The most one `write_memory` call takes, as the FS-UAE helper's limit is.
+MAX_WRITE = 64
+
+#: Bytes on one `W` line, as `AmigaTarget.write` splits them for the console.
+WRITE_LINE = 16
 
 
 def winuae_pipes(listdir=os.listdir) -> list[str]:
@@ -118,6 +126,9 @@ class WinuaeLocalPipe:
 
     #: No new attempt for this long after a request timed out.
     BACKOFF = 5.0
+
+    #: `write_memory` exists and is checked by reading the range back.
+    can_write = True
 
     def __init__(self, pipe: str = "WinUAE", directory=None, api=None,
                  clock=time.monotonic, sleep=time.sleep):
@@ -309,6 +320,47 @@ class WinuaeLocalPipe:
                 target.unlink()
             except OSError:
                 pass
+
+    def write_memory(self, addr: int, data: bytes,
+                     timeout: float | None = None) -> None:
+        """Write `data` at `addr` with `W`, then read it back to confirm.
+
+        The reply to `W` is a receipt of what the debugger parsed, not of what
+        memory holds, so the read-back is the check. One to `MAX_WRITE` bytes
+        inside chip or slow memory, the range the FS-UAE helper forwards.
+        """
+        data = bytes(data)
+        if not 1 <= len(data) <= MAX_WRITE:
+            raise ValueError(f"A write of {len(data)} bytes is not between 1 "
+                             f"and {MAX_WRITE}.")
+        if not any(base <= addr and addr + len(data) <= base + size
+                   for base, size in MEMORY):
+            raise ValueError(f"A write of {len(data)} bytes at {addr:#x} is "
+                             "outside chip and slow memory.")
+        wait = self.TIMEOUT if timeout is None else timeout
+        for i in range(0, len(data), WRITE_LINE):
+            chunk = data[i:i + WRITE_LINE]
+            reply = self._request(
+                f"DBG W {addr + i:x} " + " ".join(f"{b:02x}" for b in chunk),
+                wait)
+            _check_write_receipt(reply, addr + i, chunk)
+        if self.read_memory(addr, len(data), timeout) != data:
+            raise PipeError(f"WinUAE took the write at {addr:#x} but the "
+                            "memory reads back different.")
+
+
+def _check_write_receipt(reply: str, addr: int, chunk: bytes) -> None:
+    """One `Wrote <hex> (<dec>) at <address>.B` line per byte, as sent."""
+    lines = [line.strip() for line in reply.splitlines() if line.strip()]
+    if len(lines) != len(chunk):
+        raise PipeError(f"WinUAE answered {len(lines)} lines to a write of "
+                        f"{len(chunk)} bytes at {addr:#x}.")
+    for i, (line, byte) in enumerate(zip(lines, chunk)):
+        match = _BYTE_RECEIPT.fullmatch(line)
+        if (match is None or int(match[1], 16) != byte
+                or int(match[2]) != byte or int(match[3], 16) != addr + i):
+            raise PipeError(f"WinUAE's receipt for the byte at {addr + i:#x} "
+                            "is not the byte sent.")
 
 
 def _without(reply: str, path: str) -> str:

@@ -68,6 +68,9 @@ class FakeWinuae:
         self.chunk = None               # split every reply into pieces this big
         self.drop_nul = False
         self.receipt = None             # a canned reply instead of the real one
+        self.memory = bytearray(MEMORY)
+        self.write_receipt = None       # a canned reply to a `W`
+        self.ignore_writes = False      # receipts come, memory stays as it was
         self.creates = self.closes = self.cancels = self.waits = 0
         self.modes = []
         self.written: list[bytes] = []
@@ -118,12 +121,14 @@ class FakeWinuae:
     def _answer(self, message: bytes) -> list[tuple[bytes, int]]:
         text = message[3:] if message.startswith(winuae.UTF8_BOM) else message
         text = text.rstrip(b"\0").decode("utf-8")
+        if text.startswith("DBG W "):
+            return self._answer_write(text)
         match = re.fullmatch(r'DBG S "(.*)" ([0-9a-f]+) ([0-9a-f]+)', text)
         assert match, text
         path, addr, length = match.group(1), int(match.group(2), 16), \
             int(match.group(3), 16)
         with open(path, "wb") as out:
-            out.write(MEMORY[addr:addr + length])
+            out.write(self.memory[addr:addr + length])
         reply = (self.receipt.replace("{path}", path) if self.receipt is not None else
                  f"Wrote {addr:08X} - {addr + length - 1:08X} "
                  f"({length} bytes) to '{path}'.").encode("utf-8")
@@ -132,6 +137,18 @@ class FakeWinuae:
         pieces = [reply[i:i + size] for i in range(0, len(reply), size)]
         return [(piece, winuae.ERROR_MORE_DATA if i < len(pieces) - 1 else 0)
                 for i, piece in enumerate(pieces)]
+
+    def _answer_write(self, text: str) -> list[tuple[bytes, int]]:
+        words = text.split()[2:]
+        addr, values = int(words[0], 16), [int(w, 16) for w in words[1:]]
+        lines = []
+        for i, value in enumerate(values):
+            if not self.ignore_writes:
+                self.memory[addr + i] = value
+            lines.append(f"Wrote {value:X} ({value}) at {addr + i:08X}.B\n")
+        reply = (self.write_receipt if self.write_receipt is not None
+                 else "".join(lines)).encode("latin-1") + b"\0"
+        return [(reply, 0)]
 
 
 @pytest.fixture
@@ -413,3 +430,76 @@ def test_a_real_message_pipe_answers_two_clients_in_turn(tmp_path):
         thread.join(timeout=60)
         _winapi.CloseHandle(server)
     assert len(requests) == 4
+
+
+# -- writing ---------------------------------------------------------------
+
+
+def test_a_write_is_one_w_line_of_hex_bytes_and_is_read_back(rig):
+    pipe, api, *_ = rig
+    pipe.write_memory(0x100, bytes([0xA5, 0x5A, 0x00]))
+    assert api.written[0] == b"DBG W 100 a5 5a 00\0"
+    assert re.fullmatch(rb'DBG S "[^"]+" 100 3\0', api.written[1])
+    assert api.memory[0x100:0x103] == bytes([0xA5, 0x5A, 0x00])
+    assert pipe.can_write is True
+
+
+def test_a_long_write_goes_sixteen_bytes_a_line(rig):
+    pipe, api, *_ = rig
+    pipe.write_memory(0x200, bytes(range(40)))
+    lines = [m for m in api.written if m.startswith(b"DBG W")]
+    assert [m.split()[2] for m in lines] == [b"200", b"210", b"220"]
+    assert api.memory[0x200:0x228] == bytes(range(40))
+
+
+def test_a_receipt_for_another_byte_is_an_error(rig):
+    pipe, api, *_ = rig
+    api.write_receipt = "Wrote A4 (164) at 00000100.B\n"
+    with pytest.raises(amiga.PipeError, match="not the byte sent"):
+        pipe.write_memory(0x100, b"\xa5")
+
+
+def test_a_receipt_for_another_address_is_an_error(rig):
+    pipe, api, *_ = rig
+    api.write_receipt = "Wrote A5 (165) at 00000101.B\n"
+    with pytest.raises(amiga.PipeError, match="not the byte sent"):
+        pipe.write_memory(0x100, b"\xa5")
+
+
+def test_a_reply_with_too_few_lines_is_an_error(rig):
+    pipe, api, *_ = rig
+    api.write_receipt = "Wrote A5 (165) at 00000100.B\n"
+    with pytest.raises(amiga.PipeError, match="1 lines"):
+        pipe.write_memory(0x100, b"\xa5\x5a")
+
+
+def test_a_write_that_reads_back_different_is_an_error(rig):
+    pipe, api, *_ = rig
+    api.ignore_writes = True
+    with pytest.raises(amiga.PipeError, match="reads back different"):
+        pipe.write_memory(0x100, b"\xa5")
+
+
+def test_a_write_that_gets_no_answer_times_out_and_drops_the_handle(rig):
+    pipe, api, *_ = rig
+    api.silent = True
+    with pytest.raises(amiga.PipeError, match="prompt"):
+        pipe.write_memory(0x100, b"\x01")
+    assert api.cancels == 1 and api.closes == 1 and pipe.lost
+
+
+@pytest.mark.parametrize("addr, size", [
+    (0x100, 0), (0x100, 65), (0x80000 - 1, 2), (0x80000, 1),
+    (0xBFFFFF, 1), (0xC80000, 1), (0x1000000, 1), (0xC7FFFF, 2)])
+def test_a_write_outside_the_bounds_sends_nothing(rig, addr, size):
+    pipe, api, *_ = rig
+    with pytest.raises(ValueError):
+        pipe.write_memory(addr, bytes(size))
+    assert api.written == []
+
+
+def test_the_ends_of_chip_and_slow_memory_are_accepted(rig):
+    pipe, api, *_ = rig
+    api.memory.extend(bytes(0x80000))
+    pipe.write_memory(0x80000 - 64, bytes(64))
+    assert sum(m.startswith(b"DBG W") for m in api.written) == 4
