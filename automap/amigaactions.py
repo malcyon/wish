@@ -38,8 +38,8 @@ def unsupported(title: str) -> str:
 
 #: Facts a title's row must list in `measured` before the action is enabled on
 #: it, besides being in `confirmed`. Heal writes a record's `hp_max` into its
-#: `hp`, and no title's `hp_max` offset has been read off a running game.
-#: A row with no `measured` has measured nothing.
+#: `hp`, so a title needs its `hp_max` offset read off a running game, on the
+#: sheet and again after a step. A row with no `measured` has measured nothing.
 REQUIRES: dict[str, frozenset[str]] = {"heal": frozenset({"hp_max"})}
 
 #: Titles whose fight value comes from the code alone. The fight value is what

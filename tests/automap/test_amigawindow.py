@@ -218,8 +218,8 @@ def test_the_gate_follows_the_game_from_one_poll_to_the_next(measured):
 
 
 def test_with_the_rows_as_committed_heal_needs_a_measured_maximum():
-    """Heal needs `hp_max` measured (only Pools of Darkness and Curse have
-    it), and Curse's fight value is from the code alone, so Curse has none."""
+    """Heal needs `hp_max` measured (only Pools of Darkness has it), and
+    Curse's fight value is from the code alone, so Curse has none."""
     expected = {
         POOL: {"store-spells", "restore-spells", "identify"},
         CURSE: set(),

@@ -244,10 +244,11 @@ def test_only_the_writes_seen_on_screen_and_kept_over_a_step_are_confirmed():
 def test_the_measured_facts_are_the_ones_read_off_a_running_game():
     # hp_max: seen on the sheet and kept over a step; combat_value: the mode
     # byte read in a fight. Curse has no fight read; Pool's sheet shows no
-    # maximum; Silver Blades' maximum was not re-read after a step.
+    # maximum; Curse's and Silver Blades' maxima were not re-read after a
+    # step.
     assert {k: r.measured for k, r in ap.ROWS.items()} == {
         "pool-of-radiance": {"combat_value"},
-        "curse-of-the-azure-bonds": {"hp_max"},
+        "curse-of-the-azure-bonds": set(),
         "secret-of-the-silver-blades": {"combat_value"},
         "pools-of-darkness": {"hp_max", "combat_value"},
     }

@@ -688,7 +688,7 @@ not just the C64), the R2, R3 and gap-run comments):
 | Title | `confirmed` | `measured` | Measured but not confirmed |
 |---|---|---|---|
 | Pool of Radiance | heal (`0x11D`), store and restore spells (`0x17`, 21 bytes), identify (item `+0x35`, mask 7; `+0x36` and `+0x37` did nothing) | `combat_value` | quickfight `0x111`: QUICK sets it, but writing 0 did not bring the character's turn menu back in a fight; `hp_max`: the sheet shows no maximum |
-| Curse | heal (`0x1A9`), spells (`0x1E`, 84 bytes), identify (`+0x36`, mask 7; `+0x35` did nothing) | `hp_max` (`0x78`) | the fight value: no fight reached in three boots |
+| Curse | heal (`0x1A9`), spells (`0x1E`, 84 bytes), identify (`+0x36`, mask 7; `+0x35` did nothing) | none | the fight value: no fight reached in three boots; `hp_max` (`0x78`): seen on the sheet, not read again after a step |
 | Silver Blades | heal (`0x152`), spells (`0x1E`, 75 bytes), identify (`+0x36`, mask 7) | `combat_value` | `hp_max` (`0x70`): seen on the sheet, not read again after a step |
 | Pools of Darkness | heal (`0x191`), spells (`0xCC`, 141 bytes), identify (`+0x36`, mask 7) | `hp_max` (`0x81`), `combat_value` | quickfight `0x185`: never written |
 

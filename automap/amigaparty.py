@@ -250,13 +250,13 @@ ROWS: dict[str, PartyRow] = {
         # hp 0x1A9: written, seen, kept over a step. Memorised 0x1E, 84
         # bytes: Cast listed the written spell, again after two steps. Item
         # hidden +0x36 mask 7 (+0x35 did nothing): hid on screen, still hidden
-        # after a step, shown again when 0 was written. hp_max 0x78: the
-        # sheet read the written maximum and the list kept the current value
-        # over 14 steps. All CONFIRMED. The fight value is not, so every
-        # action stays off on this title until a fight is read.
+        # after a step, shown again when 0 was written. All CONFIRMED.
+        # hp_max 0x78: the sheet read the written maximum, but the sheet was
+        # not read again after a step, so it is not measured. The fight value
+        # is not measured either, so every action stays off on this title.
         **_later(amiga_port.CURSE_DELTAS, 0x19D),
         confirmed=frozenset({"heal", "store-spells", "restore-spells", "identify"}),
-        measured=frozenset({"hp_max"})),
+        measured=frozenset()),
     # `/Secret`: save 0x27C10 walks `g5168` through +0x13A; writer 0x2713C
     # writes 0x154, items (0x46) from +0xFE, effects (10) from +0x96;
     # reader 0x268C0 clears +0x13A and +0x13E.
