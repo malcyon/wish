@@ -496,11 +496,35 @@ def _glib_blocks(data: bytes, name: str = "ECL.GLB") -> tuple[bytes, ...]:
 
 
 def area_script(ecl_glb: bytes, area: int) -> bytes:
+    """The block of the Amiga ``ECL.GLB`` that holds an area's script.
+
+    Block 0 is not a script but a table: a ``u16be`` count, then that many
+    ``u16be`` pairs of (area id, block number).  A table that does not fit
+    the file is an error, never a reason to index by area.
+    """
     blocks = _glib_blocks(ecl_glb)
-    if not 0 <= area < len(blocks):
+    if not blocks:
+        raise AmigaSaveError("ECL.GLB has no blocks")
+    table = blocks[0]
+    if len(table) < 2:
+        raise AmigaSaveError("ECL.GLB block 0 has no area table")
+    count = int.from_bytes(table[:2], "big")
+    if len(table) != 2 + 4 * count:
         raise AmigaSaveError(
-            f"ECL.GLB has {len(blocks)} blocks and no area {area}")
-    return blocks[area]
+            f"ECL.GLB block 0 is {len(table)} bytes but its area table "
+            f"counts {count} entries")
+    found = None
+    for i in range(count):
+        entry_area, block = struct.unpack_from(">HH", table, 2 + 4 * i)
+        if not 1 <= block < len(blocks):
+            raise AmigaSaveError(
+                f"ECL.GLB maps area {entry_area} to block {block}, but the "
+                f"file has {len(blocks)} blocks")
+        if entry_area == area and found is None:
+            found = block
+    if found is None:
+        raise AmigaSaveError(f"ECL.GLB has no script for area {area}")
+    return blocks[found]
 
 
 @dataclasses.dataclass

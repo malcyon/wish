@@ -45,6 +45,7 @@ Tests for the Amiga port: its filesystem, saved-game and character-record reader
 | `test_amigashots.py` | Checks that `tools/amiga/amigashots.py` finds the emulator's screen inside a grab of the whole guest desktop, on desktops built here. |
 | `test_amigasplit.py` | Checks that the Amiga codec is one module per title and that no title module reaches another at import time. |
 | `test_amigastaging.py` | Checks that `tools/amiga/staging.py` leaves a scratch Silver Blades boot ADF hides only its own save drawer or gains one slot file, preserves every file, and refuses unsafe output paths or replacement, using synthetic and registered disks. |
+| `test_amigaareascript.py` | Checks that `goldbox.amiga_savegame.area_script` looks an area up in block 0 of the Amiga Curse `ECL.GLB` and refuses a table that does not fit the file, using generated containers and the registered Curse disks. |
 | `test_amigatarget.py` | Checks `automap/amiga.py`'s WinUAE-backed `Target`, driven through a fake guest. |
 | `test_amigazerowords.py` | Checks that `tools/amiga/amigazerowords.py` runs without crashing against the player's specimens. |
 | `test_fsuaegdb.py` | Checks `automap.amiga.FsuaeGdb` against a fake socket that answers the way the patched FS-UAE's GDB server does. |
@@ -56,5 +57,6 @@ Tests for the Amiga port: its filesystem, saved-game and character-record reader
 | `test_podsavegame.py` | Checks the Amiga Pools of Darkness saved-game map: a container built here round-trips, every slot on the player's disks parses and rebuilds byte for byte, the square block is DOS's field order with one more byte, DOS's own strides fail on the same files, and the tool reads through `goldbox/amiga_savegame.py`'s container map. |
 | `test_porslot.py` | Checks that `tools/amiga/porslot.py` reads an Amiga save slot straight off the disk, from the player's own image. |
 | `test_savegamelosses.py` | Checks that a character's name cut to fit an Amiga Curse or Silver Blades save reaches the save-level report's `losses`, so `editor.saveplan` refuses the save rather than cutting the name silently. |
+| `test_winuaeps1.py` | Checks `tools/amiga/winuae.ps1`'s snapshot verbs from the script's text: the device-name pattern matches Python's, a failed marker write stops before the old snapshot is replaced, and a failed move back names the backup folder. |
 | `test_winvmguest.py` | Checks `tools/amiga/winvmguest.py`'s ssh and scp command lines and the options none may lose, the PowerShell it encodes, the screenshot and the WinUAE lane read back from Windows' output, and the lifecycle commands it refuses, without a Windows guest. |
 | `test_winvmsettle.py` | Checks when `tools/amiga/winvmsettle.py` decides a guest screen has settled, what it keeps when it never does, and what it says with no screen. |
