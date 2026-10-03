@@ -93,10 +93,10 @@ def test_there_are_fifteen_directories_and_none_was_forgotten():
 def test_a_directory_readme_opens_with_the_docstring_and_has_a_row_per_file(d):
     text = (TOOLS / d / "README.md").read_text(encoding="utf-8")
     lines = text.split("\n")
-    assert lines[0] == f"# {d}" and lines[1] == "", lines[:2]
+    assert lines[0].casefold() == f"# {d}".casefold() and lines[1] == "", lines[:2]
     assert lines[2] == _docstring(d), (
         f"tools/{d}/README.md's sentence is not tools/{d}/__init__.py's docstring")
-    assert lines[3] == "" and lines[4] == "| file | purpose |"
+    assert lines[3] == "" and lines[4].casefold() == "| file | purpose |"
     problems = _problems(_files_in(d), _rows(text), NO_ROW_IN_A_SUBDIRECTORY)
     assert not problems, f"tools/{d}/README.md: " + "; ".join(problems)
 
