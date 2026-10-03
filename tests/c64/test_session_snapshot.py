@@ -47,6 +47,7 @@ class Fake(S.Session):
 
     def __init__(self, tmp_path, legs=()):
         self.here = str(tmp_path)
+        self.display = ":99"
         self.attached = str(tmp_path / "SIDE1.D64")
         self.text = TextStub()
         self._restored_unattached = False
@@ -104,6 +105,49 @@ def no_sleep(monkeypatch):
     monkeypatch.setattr(S.time, "sleep", SLEPT.append)
 
 
+class FakeX:
+    """The nested display as `xdotool` sees it: the VICE window, and the
+    error dialogs `undumps` says each undump puts up (VICE 3.10 with sound
+    off).  A Return closes the newest dialog, as a modal grab makes it."""
+
+    def __init__(self, wire, dialogs_per_undump=0):
+        self.wire = wire
+        self.per_undump = dialogs_per_undump
+        self.seen_undumps = 0
+        self.dialogs = []
+        self.returns = []
+        self.next_id = 100
+
+    def catch_up(self):
+        """Put up the dialogs of every undump since the last look."""
+        undumps = sum(1 for cmd, _ in self.wire if cmd == S.CMD_UNDUMP)
+        while self.seen_undumps < undumps:
+            self.seen_undumps += 1
+            for _ in range(self.per_undump):
+                self.next_id += 1
+                self.dialogs.append(str(self.next_id))
+
+    def __call__(self, display, *args):
+        self.catch_up()
+        if args[0] == "search":
+            return " ".join(["1"] + self.dialogs)
+        if args[0] == "getwindowname":
+            return "VICE Error" if args[1] in self.dialogs else "VICE (C64SC)"
+        if args[:2] == ("key", "Return"):
+            self.returns.append(len(self.wire))
+            if self.dialogs:
+                self.dialogs.pop()
+        return ""
+
+
+@pytest.fixture(autouse=True)
+def no_dialogs(monkeypatch):
+    """No test reaches a real display; one with dialogs sets its own."""
+    monkeypatch.setattr(S, "_xdo", lambda display, *args: (
+        "1" if args[0] == "search" else
+        "VICE (C64SC)" if args[0] == "getwindowname" else ""))
+
+
 def test_snapshot_dumps_machine_and_drive_under_the_run_directory(tmp_path):
     s = Fake(tmp_path)
     path = s.snapshot("before-leg")
@@ -131,6 +175,57 @@ def test_restore_undumps_the_file_and_puts_the_attached_disk_back(tmp_path):
     assert body[1:1 + body[0]].decode() == s.snapshot_path("a")
     assert s.attaches == [str(tmp_path / "SIDE1.D64")]
     assert s.attached == str(tmp_path / "SIDE1.D64")
+
+
+def test_restore_closes_the_error_dialog_vice_puts_up_after_an_undump(
+        tmp_path, monkeypatch):
+    s = Fake(tmp_path)
+    x = FakeX(s.wire, dialogs_per_undump=1)
+    monkeypatch.setattr(S, "_xdo", x)
+    s.snapshot("a")
+    s.restore("a")
+    assert x.dialogs == [], "the dialog that grabs the keyboard is still up"
+    assert len(x.returns) == 1
+    assert any("closed 1 VICE error dialog" in line for line in s.lines)
+
+
+def test_restore_with_no_dialog_sends_no_key(tmp_path, monkeypatch):
+    s = Fake(tmp_path)
+    x = FakeX(s.wire, dialogs_per_undump=0)
+    monkeypatch.setattr(S, "_xdo", x)
+    s.snapshot("a")
+    s.restore("a")
+    assert x.returns == []
+
+
+def test_a_restore_whose_dialog_keeps_coming_back_raises(tmp_path, monkeypatch):
+    s = Fake(tmp_path)
+    x = FakeX(s.wire)
+    x.dialogs = ["7"]
+    monkeypatch.setattr(S, "_xdo", lambda d, *a: (
+        x.returns.append(1) or "") if a[:2] == ("key", "Return")
+        else x(d, *a))
+    s.snapshot("a")
+    with pytest.raises(RuntimeError, match="no key would reach the game"):
+        s.restore("a")
+    assert len(x.returns) == S.Session.RESTORE_DIALOG_MAX + 1
+
+
+def test_the_retried_leg_is_walked_with_the_dialog_closed(tmp_path, monkeypatch):
+    s = Fake(tmp_path, legs=["I"])
+    x = FakeX(s.wire, dialogs_per_undump=1)
+    monkeypatch.setattr(S, "_xdo", x)
+    up_when_walked = []
+    walk = s.walk_one
+
+    def walk_one(move, hold=0.15, gap=0.30, encounters=False):
+        x.catch_up()
+        up_when_walked.append(list(x.dialogs))
+        return walk(move, hold, gap, encounters=encounters)
+
+    s.walk_one = walk_one
+    assert s.walk_with_retry("i") is True
+    assert up_when_walked == [[], []]
 
 
 def test_restore_of_a_name_never_saved_says_so_and_sends_nothing(tmp_path):

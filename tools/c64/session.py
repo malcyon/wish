@@ -25,6 +25,7 @@ import argparse
 import contextlib
 import inspect
 import io
+import math
 import os
 import pathlib
 import re
@@ -878,12 +879,18 @@ def dismiss_error_dialog(display: str, settle: float = 0.5) -> bool:
     when no such window exists, because a Return sent into the game is an
     answer to something.
     """
-    for w in _xdo(display, "search", "--onlyvisible", "--name", ".").split():
-        if "Error" in _xdo(display, "getwindowname", w):
-            _xdo(display, "key", "Return")
-            time.sleep(settle)
-            return True
+    # One caller at a time: a whole-run watcher thread and `restore` can look
+    # at the same dialog, and the second Return would land in the game.
+    with _DIALOG_LOCK:
+        for w in _xdo(display, "search", "--onlyvisible", "--name", ".").split():
+            if "Error" in _xdo(display, "getwindowname", w):
+                _xdo(display, "key", "Return")
+                time.sleep(settle)
+                return True
     return False
+
+
+_DIALOG_LOCK = threading.Lock()
 
 
 def dismiss_dialogs(display: str, stop, interval: float = 1.5,
@@ -1261,6 +1268,14 @@ class Session:
     #: same leg and meets the same encounter.
     RETRY_SETTLE = 0.7
 
+    #: Seconds after an undump within which `restore` looks for VICE's error
+    #: dialog.  Measured on VICE 3.10 with `+sound`: up within a second of the
+    #: machine resuming, every time.
+    RESTORE_DIALOG_WAIT = 2.5
+
+    #: Error dialogs `restore` closes before it gives up on the keyboard.
+    RESTORE_DIALOG_MAX = 4
+
     #: A snapshot's path goes on the wire behind a one-byte length.
     SNAPSHOT_PATH_MAX = 255
 
@@ -1330,7 +1345,8 @@ class Session:
 
         Raises `FileNotFoundError` for a name never saved and `MonitorError`
         if VICE refuses the file.  The machine runs on from the snapshot's
-        instant when this returns.
+        instant when this returns, with VICE's error dialog closed
+        (`_close_restore_dialogs`), so keys reach the game again.
 
         **The disk recorded at the snapshot is always attached again**, so the
         drive and its host file agree.  That resets the drive; a load in
@@ -1344,6 +1360,7 @@ class Session:
         wire = path.encode()
         with self.mon(self.SNAPSHOT_TIMEOUT) as m:
             m.command(CMD_UNDUMP, struct.pack("<B", len(wire)) + wire)
+        resumed = time.monotonic()
         try:
             with open(self._attached_record(name)) as f:
                 was = f.read().strip()
@@ -1360,7 +1377,45 @@ class Session:
                 self._pokes_written = f.read().strip() == "1"
         except OSError:
             self._pokes_written = False
+        self._close_restore_dialogs(resumed)
         self.log(f"  restored {name}")
+
+    def _close_restore_dialogs(self, resumed: float) -> None:
+        """Close the error dialog VICE puts up after an undump.
+
+        VICE 3.10 running silent (`+sound`, the pool's headless launch) cannot
+        bring the SID's sound state back and says so in a modal dialog --
+        `Sound: initialization failed for device 'pulse'`, or `Sound: Cannot
+        initialize SID engine` with `-sounddev dummy` -- about a second after
+        the machine resumes.  A modal GTK dialog grabs the keyboard
+        (`dismiss_error_dialog`), so until it closes every key the driver
+        sends goes to it and the game sees none.  Looks until
+        `RESTORE_DIALOG_WAIT` seconds after `resumed` and closes each one
+        found; raises `RuntimeError` when one is still coming back after
+        `RESTORE_DIALOG_MAX` closes.
+        """
+        # Counted, not timed, so the looks end however long each one takes.
+        waited = time.monotonic() - resumed
+        looks = 1 + max(0, math.ceil((self.RESTORE_DIALOG_WAIT - waited)
+                                     / self.DIALOG_SETTLE))
+        closed = 0
+        while True:
+            looks -= 1
+            if dismiss_error_dialog(str(self.display), self.DIALOG_SETTLE):
+                closed += 1
+                if closed > self.RESTORE_DIALOG_MAX:
+                    raise RuntimeError(
+                        f"VICE's error dialog came back after each of "
+                        f"{self.RESTORE_DIALOG_MAX} closes following the "
+                        f"restore, so no key would reach the game")
+                continue
+            if closed:
+                self.log(f"  closed {closed} VICE error dialog(s) after the "
+                         f"restore")
+                return
+            if looks <= 0:
+                return
+            time.sleep(self.DIALOG_SETTLE)
 
     def walk_with_retry(self, moves: str, retries: int = 3,
                         name: str = "walk-retry", hold=0.15, gap=0.30,
