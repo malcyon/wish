@@ -12130,8 +12130,12 @@ def test_scribe_refuses_a_paged_list_without_the_spell_on_its_first_page(tmp_pat
 
 
 def test_scribe_addresses_of_each_title():
+    curse = (0x7C00, 0xA945, 0x7E7B, 0x7F36, 0x7FFC)
     assert {k: dataclasses.astuple(v) for k, v in A.SCRIBE_ADDRESSES.items()} == {
-        k: dataclasses.astuple(v)[:5] for k, v in SCRIBE_MEMORY.items()}
+        "pool-of-radiance": (0x6B00, 0x2939, 0x6D7B, 0x6E36, 0x6EFC),
+        "curse-of-the-azure-bonds": curse,
+        "secret-of-the-silver-blades": curse,
+    }
 
 
 def test_a_scribe_pending_is_dropped_by_any_step_but_rest(tmp_path, monkeypatch):

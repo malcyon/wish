@@ -326,6 +326,9 @@ class ScribeAddresses:
     selected: int
 
 
+# Each title's addresses come from its `CAMP` overlay: Pool `$0F1D`
+# (`LDX $6D7B / LDA $6E36,X / STA $6EFC`), Curse `$0E61` and Silver Blades
+# `$0E1E` (the same loads at `$7E7B`, `$7F36`, `$7FFC`).
 SCRIBE_ADDRESSES = {
     "pool-of-radiance": ScribeAddresses(0x6B00, 0x2939, 0x6D7B, 0x6E36, 0x6EFC),
     "curse-of-the-azure-bonds": ScribeAddresses(0x7C00, 0xA945,
@@ -3549,7 +3552,7 @@ class PoolRun:
                                      ROSTER_SLOT_INDEX + 1))
                 if block[ROSTER_SLOT_INDEX] < PARTY_SLOTS:
                     name = bytes(m.read(box.slot_area_base
-                                        + block[ROSTER_SLOT_INDEX] * 0x100, 15))
+                                        + block[ROSTER_SLOT_INDEX] * box.slot_stride, 15))
             at = block[ROSTER_SCRIBE_QUEUE_AT]
             inside = at + max(count, block[ROSTER_SCRIBE_QUEUE_COUNT]) \
                 <= SCRIBE_QUEUE_LENGTH
