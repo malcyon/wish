@@ -7998,8 +7998,7 @@ imbalance. Those shares are not elapsed-time predictions: even half the
 aggregate totals, 1,369.6 s and 1,593.2 s, are above the unsharded pytest wall
 times of 749.8 s and 864.2 s. The profile justifies a bounded sharding trial
 because it exposes substantial parallel work; it does not establish a wall-time
-gain or a decrease in total runner work. The next successful sharded run must
-supply the before-and-after measurement.
+gain or a decrease in total runner work.
 
 Sampled CPU is a lower bound and can miss short-lived processes. RSS sums
 process-tree readings, counts shared pages repeatedly and can miss peaks
@@ -8099,25 +8098,75 @@ after it.
 Five collection-only runs with `-n0` ran locally on Linux against the isolated
 intended-outgoing Git snapshot, without `gamedisks.yaml`, and used the same
 generated-test exclusion. The Ubuntu and Windows labels below identify weight
-plans; neither indicates Windows execution. The snapshot layered the intended
-CI edits over settled source SHA `9204b7d059aa937841f4ea92eeaba69c1263b7dc`;
-those CI edits were not yet committed. The inventory included the new tracked
-test files. All three literal xdist groups—`emulator-pool`, `icon-tables` and
-`conftest-guard-probe`—stayed together. Each pair of shards had an exact union
-with the baseline node IDs and zero overlap. There were no collection errors
-or module skips; tests requiring private game data still skip at runtime on
-CI. Recorded hashes for all 538 files remained unchanged after the runs.
+plans; neither indicates Windows execution. The snapshot was based on parent
+commit `59d75919`, layered the outgoing CI bytes later committed as `b494d204`,
+and matched all fourteen staged file blobs verified for the snapshot. The
+inventory included the new tracked test files. The three literal xdist groups—
+`emulator-pool`, `icon-tables` and `conftest-guard-probe`—stayed together. Each
+pair of shards had an exact union with the baseline node IDs and zero overlap. There were no
+collection errors or module skips; tests requiring private game data still
+skip at runtime on CI. Recorded hashes for all 538 files remained unchanged
+after the runs.
 
 | Collection run | Weight plan | Node IDs | Tracked test files | Elapsed |
 |---|---|---:|---:|---:|
-| Baseline | None | 21,010 | 490 | 53.22 s |
-| Shard 1 | Ubuntu/Python 3.12 | 10,187 | 243 | 6.21 s |
-| Shard 2 | Ubuntu/Python 3.12 | 10,823 | 247 | 10.93 s |
-| Shard 1 | Windows/Python 3.13 | 12,686 | 246 | 7.46 s |
-| Shard 2 | Windows/Python 3.13 | 8,324 | 244 | 9.76 s |
+| Baseline | None | 21,010 | 490 | 45.85 s |
+| Shard 1 | Ubuntu/Python 3.12 | 10,187 | 243 | 5.86 s |
+| Shard 2 | Ubuntu/Python 3.12 | 10,823 | 247 | 9.69 s |
+| Shard 1 | Windows/Python 3.13 | 12,686 | 246 | 6.80 s |
+| Shard 2 | Windows/Python 3.13 | 8,324 | 244 | 9.77 s |
 
 Shard collections ran sequentially with warm caches, but cache conditions
 differed. These elapsed times do not establish a performance saving.
+
+### First sharded CI run
+
+[Run 37089809853](https://github.com/malcyon/wish/actions/runs/37089809853)
+passed on commit `b494d204`. Its creation at 02:26:18Z and completion at
+02:35:56Z use the same clock basis as unsharded
+[Run 37084069219](https://github.com/malcyon/wish/actions/runs/37084069219),
+which ran commit `ce24228cc9cbff3edb7b80fc2a8c97c7d99aa0c3` from 00:55:35Z to
+01:11:51Z.
+
+| Measure | Unsharded reference | Sharded run |
+|---|---:|---:|
+| Workflow elapsed | 16:16 | 9:38 |
+| Longest Ubuntu pytest wrapper | 749.8 s | 358.9 s (52.1% lower) |
+| Longest Windows pytest wrapper | 864.2 s | 459.3 s (46.9% lower) |
+| Aggregate test-job elapsed | 28:20 | 28:30 |
+| Generated prerequisite elapsed | 53 s | 60 s |
+| Required job elapsed, excluding lint | 29:13 | 29:30 |
+
+The end-to-end wait fell by 6:38, while aggregate required job time rose by
+17 seconds, about 1.0%. The four shard jobs took 6:32 and 5:00 on Ubuntu, and
+8:33 and 8:25 on Windows. Worker collection ranged from 27.1 to 33.5 seconds
+on Ubuntu and 34.0 to 35.2 seconds on Windows, compared with 47.36–47.51 and
+44.64–45.15 seconds in the unsharded profile. This successful run supports
+keeping the routine shards while more results accumulate; one run does not
+establish that sharding caused the full wait reduction.
+
+Both runs passed every selected test and had no JUnit errors or failures. The
+sharded run collected 21,010 unique tests on each platform, 116 more per
+platform than the 20,894-test reference. Results were:
+
+| Platform | Unsharded passed | Unsharded skipped | Sharded passed | Sharded skipped |
+|---|---:|---:|---:|---:|
+| Ubuntu, Python 3.12 | 17,911 | 2,983 | 18,027 | 2,983 |
+| Windows, Python 3.13 | 17,655 | 3,239 | 17,763 | 3,247 |
+
+Windows' eight additional skips are the `tests/plane/test_migrate.py` cases
+whose reason is “Migration storage requires POSIX ownership and private file
+modes.” No skips were removed or broadened; Linux's skip count stayed the same.
+
+Sampled CPU summed to 5,087.95 seconds in the reference and 4,557.0 seconds
+in the sharded run. The Linux total fell from 2,544.15 to 1,938.3 seconds; the
+Windows total rose from 2,543.80 to 2,618.7 seconds. These are sampled lower
+bounds from one run with a changed test inventory and separate runner jobs;
+they do not establish a causal CPU saving. The highest sampled RSS among the
+two individual shard jobs was 3,162,099,712 bytes on Ubuntu and 2,257,612,800
+bytes on Windows. Because the two shard jobs can overlap and RSS counts shared
+pages repeatedly, these per-job peaks do not establish lower aggregate memory
+use.
 
 The tool-test refactor parses source once, indexes functions and combines
 duplicate child-interpreter assertions while retaining process isolation.
