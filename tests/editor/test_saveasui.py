@@ -1126,14 +1126,16 @@ def game_folder(where, key):
     return folder
 
 
-def dos_save_as(app, tmp_path, monkeypatch, key):
+def dos_save_as(app, tmp_path, monkeypatch, key, game_folders=None):
     """Save As to DOS opened on a synthetic C64 save of title `key`, with the
     save's own game disks answering as Preferences would, so the DOS game
-    folder is the only thing left to choose."""
+    folder is the only thing left to choose. `game_folders` is what
+    Preferences holds per title."""
     from goldbox import c64_port
 
     path = synthetic_save(tmp_path, game=c64_port.by_key(key))
-    binding = EditorBinding(make_root(), str(path))
+    binding = EditorBinding(make_root(), str(path),
+                            game_folders=game_folders)
     monkeypatch.setattr(binding, "game_files_for", lambda _game: object())
     binding.begin_save_as("dos")
     return binding
@@ -1222,3 +1224,138 @@ def test_the_sentence_holds_save_as_when_a_game_disk_is_also_missing(
     assert wrong_folder_text(binding) is not None
     assert not binding._child("box_dos_folder").isHidden()
     assert not binding._child("button_destination_save_as").isEnabled()
+
+
+# ---------------------------------------------------------------------------
+# The DOS game folder filled from Preferences
+# ---------------------------------------------------------------------------
+
+SILVER = "secret-of-the-silver-blades"
+POOL = "pool-of-radiance"
+
+
+def folder_field(binding):
+    return binding._child("destination_dos_folder")
+
+
+def test_a_preferences_folder_holding_the_titles_dos_files_fills_the_field(
+        app, tmp_path, monkeypatch):
+    folder = game_folder(tmp_path, SILVER)
+    binding = dos_save_as(app, tmp_path, monkeypatch, SILVER,
+                          game_folders={SILVER: str(folder)})
+    assert folder_field(binding).text() == str(folder)
+    assert wrong_folder_text(binding) is None
+    assert binding._child("button_destination_save_as").isEnabled()
+
+
+def test_a_preferences_folder_of_disk_images_leaves_the_field_empty(
+        app, tmp_path, monkeypatch):
+    folder = tmp_path / "images"
+    folder.mkdir()
+    (folder / "SECRET1.D64").write_bytes(b"")
+    (folder / "SECRET2.D64").write_bytes(b"")
+    binding = dos_save_as(app, tmp_path, monkeypatch, SILVER,
+                          game_folders={SILVER: str(folder)})
+    assert folder_field(binding).text() == ""
+    assert not binding._child("box_dos_folder").isHidden()
+    assert not binding._child("button_destination_save_as").isEnabled()
+
+
+def test_a_folder_of_disk_images_named_for_the_title_is_not_filled(
+        app, tmp_path, monkeypatch):
+    """The folder is called what the archives call the DOS folder, and holds
+    only disk images; its name alone does not make it a DOS game folder."""
+    folder = tmp_path / "SECRET"
+    folder.mkdir()
+    (folder / "SECRET1.D64").write_bytes(b"")
+    binding = dos_save_as(app, tmp_path, monkeypatch, SILVER,
+                          game_folders={SILVER: str(folder)})
+    assert folder_field(binding).text() == ""
+
+
+def test_no_stored_folder_leaves_the_field_empty(app, tmp_path, monkeypatch):
+    for stored in (None, {}, {SILVER: ""}, {SILVER: "   "},
+                   {SILVER: str(tmp_path / "missing")}):
+        binding = dos_save_as(app, tmp_path, monkeypatch, SILVER,
+                              game_folders=stored)
+        assert folder_field(binding).text() == ""
+        assert not binding._child("button_destination_save_as").isEnabled()
+
+
+def test_another_titles_stored_folder_is_not_used(app, tmp_path, monkeypatch):
+    pool = game_folder(tmp_path, POOL)
+    # Silver Blades' own entry holds Pool of Radiance's DOS files.
+    binding = dos_save_as(app, tmp_path, monkeypatch, SILVER,
+                          game_folders={SILVER: str(pool)})
+    assert folder_field(binding).text() == ""
+    assert wrong_folder_text(binding) is None
+    # Only Pool of Radiance has an entry, and it is the other title's.
+    binding = dos_save_as(app, tmp_path, monkeypatch, SILVER,
+                          game_folders={POOL: str(pool)})
+    assert folder_field(binding).text() == ""
+
+
+def test_replacing_a_filled_folder_with_another_titles_names_it_and_holds_save_as(
+        app, tmp_path, monkeypatch):
+    own = game_folder(tmp_path, SILVER)
+    binding = dos_save_as(app, tmp_path, monkeypatch, SILVER,
+                          game_folders={SILVER: str(own)})
+    assert binding._child("button_destination_save_as").isEnabled()
+    folder_field(binding).setText(str(game_folder(tmp_path, POOL)))
+    assert not binding._child("button_destination_save_as").isEnabled()
+    assert not binding._child("box_dos_folder").isHidden()
+    assert wrong_folder_text(binding) == (
+        "This folder is for Pool of Radiance. "
+        "Choose the Secret of the Silver Blades DOS game folder.")
+
+
+def test_a_save_as_that_reads_no_dos_folder_fills_nothing(
+        app, tmp_path, monkeypatch):
+    """Native C64 Save As reads no DOS folder, so nothing is filled."""
+    binding = dos_save_as(app, tmp_path, monkeypatch, SILVER,
+                          game_folders={SILVER: str(game_folder(tmp_path,
+                                                                SILVER))})
+    binding.begin_save_as("c64")
+    assert folder_field(binding).text() == ""
+
+
+def test_a_folder_filled_from_preferences_keeps_its_row_whatever_is_typed(
+        app, tmp_path, monkeypatch):
+    own = game_folder(tmp_path, SILVER)
+    other = tmp_path / "other-silver"
+    other.mkdir()
+    for name in FOLDER_FILES[SILVER]:
+        (other / name).write_bytes(b"")
+    binding = dos_save_as(app, tmp_path, monkeypatch, SILVER,
+                          game_folders={SILVER: str(own)})
+    field = folder_field(binding)
+    assert not binding._child("box_dos_folder").isHidden()
+    assert field.isEnabled() and not field.isReadOnly()
+    field.setText(str(other))
+    assert not binding._child("box_dos_folder").isHidden()
+    assert binding._child("button_destination_save_as").isEnabled()
+    field.setText("")
+    assert not binding._child("box_dos_folder").isHidden()
+    assert not binding._child("button_destination_save_as").isEnabled()
+
+
+def test_the_row_of_a_filled_folder_is_hidden_again_when_save_as_is_reopened(
+        app, tmp_path, monkeypatch):
+    """Reopened for a title with nothing in Preferences, the row follows the
+    usual rule again; cancelling forgets the fill too."""
+    own = game_folder(tmp_path, SILVER)
+    binding = dos_save_as(app, tmp_path, monkeypatch, SILVER,
+                          game_folders={SILVER: str(own)})
+    binding.cancel_save_as()
+    assert not binding._dos_folder_filled
+    binding.game_folders = {}
+    binding.begin_save_as("dos")
+    folder_field(binding).setText(str(own))
+    assert binding._child("box_dos_folder").isHidden()
+
+
+def test_a_typed_matching_folder_still_hides_the_row_as_before(
+        app, tmp_path, monkeypatch):
+    binding = dos_save_as(app, tmp_path, monkeypatch, SILVER)
+    folder_field(binding).setText(str(game_folder(tmp_path, SILVER)))
+    assert binding._child("box_dos_folder").isHidden()

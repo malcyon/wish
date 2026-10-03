@@ -918,6 +918,9 @@ class EditorBinding(QObject):
         #: `begin_save_as` and read by `confirm_save_as` and `cancel_save_as`.
         self._save_as_source = None
         self._save_as_port: str | None = None
+        #: Whether this Save As filled the DOS game folder from Preferences,
+        #: which keeps its row on screen for the player to change.
+        self._dos_folder_filled = False
         #: What the player chose to leave behind for the Save As in progress,
         #: and the packs it was chosen against -- `(leave, packs)`, see
         #: `_packs_of`. Read only by a stale plan's re-preparation.
@@ -2619,6 +2622,7 @@ class EditorBinding(QObject):
         field.setText(str(path))
         self._show_destination_slot(source, port)
         self._clear_destination_asset_fields()
+        self._fill_dos_folder_from_preferences(source, port)
         self._resolve_destination_assets()
         section.setVisible(True)
         field.setFocus()
@@ -2626,6 +2630,19 @@ class EditorBinding(QObject):
         name = pathlib.Path(text).name
         start = len(text) - len(name)
         field.setSelection(start, len(pathlib.Path(text).stem))
+
+    def _fill_dos_folder_from_preferences(self, source, port: str) -> None:
+        """Put the DOS game folder Preferences holds for the save's title in
+        its row when that folder holds the title's DOS files; otherwise leave
+        the row as it is."""
+        field = self._child("destination_dos_folder")
+        if field is None:
+            return
+        stored = (self.game_folders.get(source.key, "") or "").strip()
+        folder = saveplan.stored_dos_folder(source, port, stored)
+        if folder is not None:
+            self._dos_folder_filled = True
+            field.setText(folder)
 
     def _suggest_destination_path(self, source, port: str) -> pathlib.Path:
         """Beside the save being edited (decision 5), named for the title
@@ -2671,6 +2688,7 @@ class EditorBinding(QObject):
             box = self._child(name)
             if box is not None:
                 box.setVisible(False)
+        self._dos_folder_filled = False
         self._show_wrong_dos_folder(None)
 
     def _destination_manual_assets(self) -> dict[str, str]:
@@ -2741,12 +2759,14 @@ class EditorBinding(QObject):
     def _show_asset_rows(self, missing, wrong=None) -> None:
         """Show a row for each asset still missing, and keep the DOS game
         folder row, with its sentence, for a folder that is another
-        title's; Save As stays off for either."""
+        title's, and for a folder filled in from Preferences; Save As stays
+        off for the first two."""
         self._show_wrong_dos_folder(wrong)
         rows = {
             "box_c64_disks": saveplan.DESTINATION_DISKS in missing,
             "box_dos_folder": (saveplan.DOS_GAME_FOLDER in missing
-                               or wrong is not None),
+                               or wrong is not None
+                               or self._dos_folder_filled),
             "box_amiga_disk": saveplan.AMIGA_GAME_DISK in missing,
             "box_amiga_disk_one": saveplan.AMIGA_DISK_ONE in missing,
         }
@@ -2873,6 +2893,7 @@ class EditorBinding(QObject):
             section.setVisible(False)
         self._save_as_source = None
         self._save_as_port = None
+        self._dos_folder_filled = False
 
     def confirm_save_as(self) -> None:
         """The Save As button: check the name, refuse an alias, confirm a

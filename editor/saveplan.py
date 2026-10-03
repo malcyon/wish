@@ -454,6 +454,35 @@ def wrong_dos_folder(source: Any, port: str,
     return held, source.key
 
 
+def holds_dos_files(folder: "str | pathlib.Path", key: str) -> bool:
+    """Whether `folder` holds title `key`'s own DOS game files.
+
+    Its launcher beside its configuration file, as `titles.DOS_FOLDER_FILES`
+    names them, and `titles.dos_folder_title` agrees; a folder recognised
+    only by its name, such as one of disk images, does not hold them.
+    """
+    files = titles.DOS_FOLDER_FILES.get(key)
+    if files is None or titles.dos_folder_title(folder) != key:
+        return False
+    try:
+        held = {path.name.upper()
+                for path in pathlib.Path(folder).expanduser().iterdir()}
+    except OSError:
+        return False
+    return files[0] in held and files[1] in held
+
+
+def stored_dos_folder(source: Any, port: str,
+                      folder: "str | pathlib.Path | None") -> "str | None":
+    """`folder` when the route reads a DOS game folder and `folder` holds the
+    save's own title's DOS files, else `None`."""
+    if (not folder or port != "dos"
+            or DOS_GAME_FOLDER not in requirements(source, port)
+            or not holds_dos_files(folder, source.key)):
+        return None
+    return str(folder)
+
+
 def check_dos_folder(source: Any, port: str, assets: "Assets") -> None:
     """Raise `WrongGameFolder` when a DOS destination's game folder is
     another title's.
