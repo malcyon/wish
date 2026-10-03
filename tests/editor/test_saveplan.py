@@ -1252,7 +1252,9 @@ def test_a_feebleminded_dos_character_is_expected_at_the_c64s_feeblemind_scores(
 def _charmed_pool_neutral(share, control=0xB3, charmed=True):
     from goldbox import neutral
 
-    char = neutral.NeutralCharacter("DOS", source="built here")
+    char = neutral.NeutralCharacter("DOS", source="built here",
+                                    game=c64_port.POOL_OF_RADIANCE)
+    char.set("treasure_share", share, "built here")
     char.set("npc", control >= 0x80, "built here")
     char.set("npc_control_byte", control, "built here")
     if charmed:
@@ -1322,3 +1324,44 @@ def test_a_dos_pool_party_with_a_charmed_character_saves_as_c64(tmp_path):
         pytest.skip("needs Pool of Radiance's own C64 disks")
     saveplan.prepare_save_as(party, "c64", tmp_path / "out" / "out.d64",
                              assets)
+
+
+def _written_charm_fields(char, free_slot=True):
+    from goldbox import effects
+
+    payload = bytearray(0x2000)
+    if not free_slot:
+        for slot in range(effects.EFFECT_SLOTS):
+            effects.write_effect(payload, slot, 1, 0, 1, 0)
+    record, _ = c64_codec.write(char, payload=payload, party_slot=2)
+    return {"flags_0b8": record.get("flags_0b8"),
+            "treasure_share": record.get("treasure_share")}
+
+
+@pytest.mark.parametrize("share", [0, 1, 3])
+def test_the_charmed_expectation_equals_what_the_writer_writes(share):
+    char = _charmed_pool_neutral(share)
+    expected = c64_codec.charmed_pool_player_fields(char)
+    written = _written_charm_fields(char)
+    assert {k: written[k] for k in expected} == expected
+    assert written["flags_0b8"] == expected["flags_0b8"]
+    if share == 3:
+        assert expected == {"flags_0b8": 0}
+
+
+@pytest.mark.parametrize("share", [0, 1, 3])
+def test_a_charm_with_no_free_slot_is_expected_as_the_writer_writes_it(share):
+    char = _charmed_pool_neutral(share)
+    expected = c64_codec.charmed_pool_player_fields(
+        char, charm_row_written=False)
+    written = _written_charm_fields(char, free_slot=False)
+    assert expected["flags_0b8"] == 0xB3
+    assert {k: written[k] for k in expected} == expected
+
+
+def test_a_companion_with_another_control_byte_is_not_a_charmed_player():
+    char = _charmed_pool_neutral(1, control=0x90)
+    assert c64_codec.charmed_pool_player_fields(char) == {}
+    destination = _destination("c64", c64_port.POOL_OF_RADIANCE)
+    assert saveplan.charmed_pool_fields(
+        _charmed_sheet(1), char, "dos", destination) == {}

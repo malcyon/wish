@@ -1297,34 +1297,23 @@ def charmed_pool_fields(record: CharacterRecord, neutral: NeutralCharacter,
     should be read back holding from a C64 save.
 
     The sheet record is built without the save's effect arrays, so it still
-    holds DOS's taken-over control byte in `flags_0b8`. The writer, once it
-    converts the charm row, keeps the charm in the row and record `0x10C`
-    instead: a share of 0 or 1 is the ability-altered flag and goes to
-    `flags_0b8` bit 0 with the share byte at 0, and any other share leaves
-    `flags_0b8` at 0. The charm test is the writer's own, `pool_charm_row`
-    over the granted and running nodes. `{}` for any other character or route.
+    holds DOS's taken-over control byte in `flags_0b8`. The writer's own
+    decision, `c64_codec.charmed_pool_player_fields`, gives both bytes from
+    the sheet's share, assuming the charm row found a free slot: a save whose
+    shared effect arrays are full carries a loss line for it and is refused.
+    `{}` for any other character or route.
     """
-    title_key = getattr(destination.title, "key", destination.title)
     if (destination.native or destination.port != "c64"
             or source_port != "dos"
-            or title_key != dos_codec.POOL_OF_RADIANCE.key
-            or neutral.get("status") == "animated"):
+            or not _is_pool(destination)):
         return {}
-    if neutral.get("npc") and (
-            neutral.get("npc_control_byte") != c64_codec.DOS_PC_TAKEN_OVER):
-        return {}
-    nodes = [bytes(n) for n in neutral.get("granted_effects") or ()]
-    running = neutral.get("running_effects")
-    if isinstance(running, (list, tuple)):
-        nodes += [bytes(r) for r in running
-                  if len(bytes(r)) == effects.RUNNING_EFFECT_SIZE]
-    if not any(isinstance(effects.pool_charm_row(title_key, n), tuple)
-               for n in nodes):
-        return {}
-    share = int(record.get("treasure_share"))
-    if share in (0, 1):
-        return {"flags_0b8": share, "treasure_share": 0}
-    return {"flags_0b8": 0}
+    return c64_codec.charmed_pool_player_fields(
+        neutral, int(record.get("treasure_share")))
+
+
+def _is_pool(destination: "Destination") -> bool:
+    return (getattr(destination.title, "key", destination.title)
+            == dos_codec.POOL_OF_RADIANCE.key)
 
 
 def source_neutral(member: Any, snapshot: Any, title: Any) -> NeutralCharacter:
@@ -1871,7 +1860,7 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
             for name, score in scores.items():
                 record.set(name, score)
     if (destination.port == "c64" and not destination.native
-            and source.port == "dos"):
+            and source.port == "dos" and _is_pool(destination)):
         # A charmed Pool player character's two bytes are the writer's, not
         # the sheet's, or `compare` calls the charm's own conversion a loss.
         for member, record in zip(party.members, expected):

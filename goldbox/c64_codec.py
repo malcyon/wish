@@ -980,6 +980,72 @@ def engine_grants_restoration(levels, experience_award) -> bool:
             and int(experience_award or 0) & 0xFF != 0)
 
 
+def pool_ability_flag(share: int) -> int | None:
+    """The ability-altered flag a Pool of Radiance player character's share
+    byte holds, or `None` for a share that is a real share.
+
+    A player character's 0 or 1 is that flag; it goes to `0x0B8` bit 0 and the
+    share byte is written as 0.
+    """
+    return share if share in (0, 1) else None
+
+
+def _pool_charm_nodes(char: NeutralCharacter) -> list[bytes]:
+    """The granted and running effect nodes the writer looks for a charm in."""
+    granted = char.get("granted_effects")
+    running = char.get("running_effects")
+    nodes = [bytes(n) for n in (granted or ())]
+    if isinstance(running, (list, tuple)):
+        nodes += [bytes(r) for r in running
+                  if len(bytes(r)) == effects.RUNNING_EFFECT_SIZE]
+    return nodes
+
+
+def pool_charmed_player(char: NeutralCharacter) -> bool:
+    """Whether the writer treats `char` as a Pool player character the engine
+    has taken over by its charm, once it has a payload to write the row into.
+
+    A charm node the writer converts, on a character who is not a companion
+    or whom DOS drives with its taken-over control byte.
+    """
+    deltas = deltas_for(char.game)
+    if deltas is not POOL_OF_RADIANCE_RECORD:
+        return False
+    if char.get("npc") and char.get("npc_control_byte") != DOS_PC_TAKEN_OVER:
+        return False
+    return any(isinstance(effects.pool_charm_row(deltas.key, n), tuple)
+               for n in _pool_charm_nodes(char))
+
+
+def charmed_pool_player_fields(char: NeutralCharacter, share: int | None = None,
+                               *, charm_row_written: bool = True
+                               ) -> dict[str, int]:
+    """The `flags_0b8` and `treasure_share` the writer gives a charmed Pool
+    player character, or `{}` when `char` is not one.
+
+    `share` defaults to the character's own. `charm_row_written` is False when
+    the shared effect arrays had no free slot, and the writer then takes the
+    companion arm for `0x0B8`. A share of 0 or 1 is written as 0 and its value
+    goes to `0x0B8` bit 0, a zombie's `$FE` included.
+    """
+    if not pool_charmed_player(char):
+        return {}
+    if share is None:
+        share = char.get("treasure_share")
+        if share is None:
+            return {}
+    flag = pool_ability_flag(int(share))
+    out = {"treasure_share": 0} if flag is not None else {}
+    npc = bool(char.get("npc"))
+    if npc and char.get("status") == "animated":
+        out["flags_0b8"] = 0xFE | (flag or 0)
+    elif npc and not charm_row_written:
+        out["flags_0b8"] = int(char.get("npc_control_byte")) & 0xFF
+    else:
+        out["flags_0b8"] = flag or 0
+    return out
+
+
 def write(char: NeutralCharacter, icon: bytes | None = None, *,
           payload: bytearray | None = None, party_slot: int | None = None,
           clock_minutes: int | None = None,
@@ -1152,11 +1218,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     later_title = deltas.key in effects.LATER_CAST_FLAGS
     charm_nodes: list[bytes] = []
     if deltas is POOL_OF_RADIANCE_RECORD or later_title:
-        charm_nodes = [bytes(n) for n in
-                       (granted.value if granted is not None else ())]
-        if running is not None and isinstance(running.value, (list, tuple)):
-            charm_nodes += [bytes(r) for r in running.value
-                            if len(bytes(r)) == effects.RUNNING_EFFECT_SIZE]
+        charm_nodes = _pool_charm_nodes(char)
 
     def charm_row_of(node: bytes):
         if later_title:
@@ -1166,9 +1228,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     charm_accepted = bool(
         payload is not None
         and any(isinstance(charm_row_of(n), tuple) for n in charm_nodes))
-    pool_charmed = bool(
-        charm_accepted and not later_title
-        and (not is_npc or control_value == DOS_PC_TAKEN_OVER))
+    pool_charmed = bool(payload is not None and pool_charmed_player(char))
     # The same two predicates for Curse and Silver Blades, where the player
     # character is written by the `taken_over` arm (0x0B8 = 0) and a
     # companion keeps his own byte.
@@ -1303,7 +1363,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     modify_flag = None
     if (share is not None
             and not (is_npc and not (pool_charmed or pool_zombie_pc))
-            and int(share.value) in (0, 1)
+            and pool_ability_flag(int(share.value)) is not None
             and deltas is POOL_OF_RADIANCE_RECORD):
         modify_flag = share
         rec.set("treasure_share", 0x00)
