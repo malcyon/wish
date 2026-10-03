@@ -19,15 +19,22 @@ clock = measure.clock  # the fixture that replaces the driver's time and sleep
 
 
 class FakePipe:
-    def __init__(self):
+    """A pipe that, like WinUAE, takes the screen back to what it showed at the snapshot."""
+
+    def __init__(self, guest=None):
         self.calls = []
+        self.guest, self.presses = guest, {}
 
     def snapshot(self, name, holder, token=None):
         self.calls.append(("snapshot", name, holder))
+        if self.guest:
+            self.presses[name] = self.guest.presses
         return f"snapshot {name}"
 
     def restore(self, name, holder, token=None):
         self.calls.append(("restore", name, holder))
+        if self.guest:
+            self.guest.presses = self.presses[name]
         return f"restore {name}"
 
 
@@ -85,11 +92,11 @@ def test_camp_machine_steps_are_not_route_steps_and_mark_their_place():
     tokens = ("snapshot a", "view 1", "heal", "restore a")
     base = route_silver_blades.published_title("A")
     title = route_camp.camp_title(base, tokens, 6, name="ssb")
-    plain = route_camp.camp_title(base, ("view 1", "heal"), 6, name="ssb")
-    assert title.route == plain.route
+    bare = route_camp.camp_title(base, ("view 1", "heal"), 6, name="ssb")
+    assert title.route == bare.route
     at = base.route.index(route_camp.CAMP_SAVE_STEP)
     assert route_camp.camp_marks(title, tokens, 6, name="ssb") == {
-        at: (("snapshot", "a"),), at + len(plain.route) - len(base.route): (("restore", "a"),)}
+        at: (("snapshot", "a"),), at + len(bare.route) - len(base.route): (("restore", "a"),)}
 
 
 def test_a_camp_run_snapshots_and_restores_around_a_camp_step(tmp_path, clock, monkeypatch, pipe):
@@ -100,3 +107,48 @@ def test_a_camp_run_snapshots_and_restores_around_a_camp_step(tmp_path, clock, m
     keys = camp._keys(guest)
     view = keys.index("V", keys.index("E") + 1)
     assert view > 0
+
+
+def test_a_rest_a_restore_undid_is_not_counted_in_the_clock():
+    rested = route_camp.rest_minutes
+    assert rested(("snapshot a", "rest 1h", "restore a")) == 0
+    assert rested(("rest 30m", "snapshot a", "rest 1h", "restore a", "rest 5m")) == 35
+    assert rested(("rest 1h", "snapshot a", "rest 1h", "restore A")) == 60
+
+
+def test_the_users_snapshot_name_keeps_its_case_and_matches_without_it():
+    tokens = route_camp.parse_steps("Snapshot Leg;VIEW;restore leg")
+    assert tokens == ("snapshot Leg", "view", "restore leg")
+
+
+def test_a_mark_before_the_first_step_is_refused_before_the_claim(tmp_path, clock, readings, pipe):  # noqa: F811
+    with pytest.raises(RouteError, match="before the first route step"):
+        _accept(tmp_path, clock, marks={0: (("snapshot", "walk"),)})
+    assert pipe.calls == []
+
+
+def test_a_restore_puts_back_the_screen_and_the_world_crop_the_run_remembers(
+        tmp_path, clock, readings, monkeypatch):  # noqa: F811
+    from tests.amiga.test_amigaacceptance_accept import AcceptGuest
+    guest = AcceptGuest(clock)
+    fake = FakePipe(guest)
+    monkeypatch.setattr(acceptance, "snapshot_pipe", lambda: fake)
+    # Snapshot after the journal answer, restore after the first move, then the second move.
+    _, result = _accept(tmp_path, clock, guest=guest,
+                        marks={11: (("snapshot", "walk"),), 12: (("restore", "walk"),)})
+    assert result["error"] == ""
+    # The restored screen is waited for before the next key.
+    assert any(c[0] in ("grab", "capture") and "restored-world" in c[1] for c in guest.calls)
+    moves = [e for e in result["events"] if "crop_changed" in e]
+    # The second move leaves the crop the snapshot showed, and the run must know it changed.
+    assert moves[1]["crop_changed"] is True
+
+
+def test_a_restore_puts_back_the_camp_sheets_and_the_last_rest_marker(
+        tmp_path, clock, monkeypatch, pipe):  # noqa: F811
+    steps = ("snapshot s", "rest 60m", "view 1", "restore s", "view 1")
+    _, result = _camp_run(tmp_path, clock, monkeypatch, steps=steps)
+    assert result["error"] == ""
+    # Only the sheet after the restore counts, and the undone rest left no marker.
+    assert len(result["camp_sheets"]) == 1
+    assert "sheets_before_last_rest" not in result

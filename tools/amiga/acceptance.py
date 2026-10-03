@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import copy
 import functools
 import hashlib
 import importlib.util
@@ -301,17 +302,21 @@ def check_marks(marks: Mapping[int, tuple[tuple[str, str], ...]], steps: Any) ->
     taken: dict[str, bool] = {}
     if any(not 0 <= index <= len(steps) for index in marks):
         raise RouteError("a snapshot or restore step falls outside the route")
+    if marks.get(0):
+        raise RouteError("a snapshot or restore step cannot come before the first route step: "
+                         "no screen has been reached to put back")
     for index in range(len(steps) + 1):
-        for verb, name in marks.get(index, ()):
+        for verb, called in marks.get(index, ()):
+            name = called.lower()
             if verb == "snapshot":
                 taken[name] = False
             elif verb != "restore":
                 raise RouteError(f"{verb!r} is not a snapshot or restore step")
             elif name not in taken:
-                raise RouteError(f"restore {name}: no snapshot {name!r} was taken before it")
+                raise RouteError(f"restore {called}: no snapshot {called!r} was taken before it")
             elif taken[name]:
                 raise RouteError(
-                    f"restore {name}: a game save came between its snapshot and it, and a "
+                    f"restore {called}: a game save came between its snapshot and it, and a "
                     f"restore puts the machine back while the save stays on the disk image, "
                     f"so the run would no longer be one consistent game")
         if index < len(steps) and steps[index][2] == "write":
@@ -1192,7 +1197,11 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     so a bad encounter costs one leg and not the run. An index equal to the route's length fires
     after the last step. A restore with no snapshot before it, or with a game save between the
     two, is refused before the claim, since the save stays on the disk image while memory goes
-    back. A `--camp` list's `snapshot NAME` and `restore NAME` steps become marks.
+    back. A restore puts the run's own record of camp sheets, effects lists and JOIN results back
+    as the snapshot found it, and waits for the screen the snapshot was taken on before the next
+    key goes out; a snapshot is therefore refused at index 0, where no screen has been reached.
+    Names match without regard to case, as the guest's files do. A `--camp` list's `snapshot
+    NAME` and `restore NAME` steps become marks.
 
     `preserve_specimen` registers the fetched save disk of a run that succeeded by its own
     verdict, before `--expect` is judged, so a run that later fails `--expect` still leaves its
@@ -1456,20 +1465,39 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         if measure or reload:
             raise RouteError("snapshot and restore steps belong to an accept run")
         check_marks(marks, steps)
+    previous_state = previous_world = ""
     pipe = None
+    #: What the run had seen when each snapshot was taken, put back by its restore: the machine
+    #: goes back, the run's own record of it must too.
+    seen: dict[str, dict[str, Any]] = {}
+    memory = ("camp_sheets", "camp_displays", "camp_joins", "sheets_before_last_rest")
 
     def machine_step(verb: str, name: str, n: int) -> None:
-        """Save the machine under `name`, or put it back as that left it."""
-        nonlocal pipe
+        """Save the machine under `name`, or put it back as that left it and on its screen."""
+        nonlocal pipe, previous_state, previous_world
         if pipe is None:
             pipe = snapshot_pipe()
         receipt = getattr(pipe, verb)(name, holder)
+        key = name.lower()
+        if verb == "snapshot":
+            seen[key] = {"state": previous_state, "world": previous_world,
+                         "result": {k: copy.deepcopy(result[k]) for k in memory if k in result}}
+        else:
+            was = seen[key]
+            previous_state, previous_world = was["state"], was["world"]
+            for field in memory:
+                result.pop(field, None)
+            result.update(copy.deepcopy(was["result"]))
         result["events"].append({verb: name, "step": n})
         fields = {"name": name, "step": n, "receipt": str(receipt)}
         if verb == "restore":
             fields["disk_image"] = ("a game save made in between would stay on the disk image "
                                     "while memory went back; none was made")
         log(verb, **fields)
+        if verb == "restore" and previous_state:
+            # The next key goes out on the screen the snapshot was taken on, not on a guess.
+            reach(previous_state, f"{n:02d}-restored-{previous_state}", 0,
+                  strict=not accept or previous_state in strict_states)
 
     title_limit = title.title_limit if title else TITLE_LIMIT
     boot_span = title.boot_span if title else MEASURE_TITLE_SPAN

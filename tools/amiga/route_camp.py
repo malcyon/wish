@@ -396,9 +396,17 @@ def _lines_text(lines: tuple[int, ...]) -> str:
     return "lines " + ", ".join(map(str, lines[:-1])) + f" and {lines[-1]}"
 
 
+def _normal_token(part: str) -> str:
+    """One step in lower case, except a snapshot's name, whose case the user chose."""
+    words = part.split()
+    if words[0].lower() in MACHINE_VERBS:
+        return " ".join([words[0].lower(), *words[1:]])
+    return " ".join(words).lower()
+
+
 def parse_steps(text: str, name: str = "ssb") -> tuple[str, ...]:
     """Read `view;heal;rest 1h` into tokens for title `name`, each checked by `validate_steps`."""
-    tokens = tuple(" ".join(part.split()).lower() for part in text.split(";") if part.strip())
+    tokens = tuple(_normal_token(part) for part in text.split(";") if part.strip())
     validate_steps(tokens, name=name)
     return tokens
 
@@ -454,8 +462,8 @@ def _validate_machine_steps(tokens: tuple[str, ...]) -> None:
             raise RouteError(f"camp step {token!r} is not {words[0]} NAME: a snapshot name is "
                              f"letters, digits, - and _, up to 32")
         if words[0] == "snapshot":
-            taken.add(words[1])
-        elif words[1] not in taken:
+            taken.add(words[1].lower())
+        elif words[1].lower() not in taken:
             raise RouteError(f"{token!r}: no snapshot {words[1]!r} was taken before it")
 
 
@@ -587,8 +595,17 @@ def normalise(tokens: tuple[str, ...]) -> tuple[str, ...]:
 
 
 def rest_minutes(tokens: tuple[str, ...]) -> int:
-    """The minutes every `rest` in the list adds to the clock."""
-    return sum(parse_duration(t.split()[1]) for t in tokens if t.startswith("rest "))
+    """The minutes the clock ends up advanced: every `rest`, less any a `restore` undid."""
+    total, at_snapshot = 0, {}
+    for token in tokens:
+        words = token.split()
+        if words[0] == "rest":
+            total += parse_duration(words[1])
+        elif words[0] == "snapshot" and len(words) == 2:
+            at_snapshot[words[1].lower()] = total
+        elif words[0] == "restore" and len(words) == 2:
+            total = at_snapshot.get(words[1].lower(), total)
+    return total
 
 
 def _moves(line: int, name: str, party_size: int | None, state: str) -> tuple[list, list]:
