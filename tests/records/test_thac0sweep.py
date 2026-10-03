@@ -54,6 +54,11 @@ CURSE_EXCEPTIONS = {
     # DOS Curse's resave of that same slot D (`#758`), byte-identical to the
     # foundation-walked `CHRDATD2.SAV` above, so the same fold applies.
     "WISH-SPEC-dos-curse-758-staged-turn-row-resave/CHRDATD2.SAV": 16,
+    # DOS Curse's resave of the 408 specimen's slot J to slot A, after a
+    # Strength cast in camp. Slot 1 is MATHEW, whose former paladin level 5
+    # folds in as in `CHRDATJ1.SAV` above; his THAC0 byte is unchanged. The
+    # staged memorised spell and the Strength node on MARK do not touch it.
+    "WISH-SPEC-curse-wish8-strength-leftover-dos-resave/CHRDATA1.SAV": 16,
 }
 
 
