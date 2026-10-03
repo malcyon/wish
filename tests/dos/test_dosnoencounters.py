@@ -66,7 +66,7 @@ def switch(words, title=N.POOL, area=SLUMS, events=None, lines=None):
     events = [] if events is None else events
     enc = N.NoEncounters.__new__(N.NoEncounters)
     enc.live = FakeLive(words, events)
-    enc.live.area = lambda: area
+    enc.live.area = area if callable(area) else (lambda: area)
     enc.switch = N.EncounterSwitch(title, enc.live.peek, enc.live.poke,
                                    enc.live.area,
                                    (lines if lines is not None else []).append)
@@ -81,19 +81,49 @@ def pool(enc, events, on_key=lambda key: None):
     return por
 
 
-def test_on_writes_the_gate_before_every_move_key_even_after_the_game_changes_it():
+def test_on_reads_the_area_before_every_move_key_and_writes_a_gate_on_entering_it():
     words = {GATE: 4}
-    enc, events = switch(words)
+    where = [0x00]               # New Phlan, which has no gate
+    enc, events = switch(words, area=lambda: where[0])
 
     def game(key):
-        words[GATE] = 3          # the script lowers the counter on a step
+        where[0] = SLUMS         # the step walks into the Slums
 
     por = pool(enc, events, game)
     enc.on()
     por.step()
     por.turn_right()
-    assert events == ["halt", ("poke", GATE, 15), "run", ("key", "Up"),
+    assert events == ["halt", "run", ("key", "Up"),
                       "halt", ("poke", GATE, 15), "run", ("key", "Right")]
+
+
+def test_a_value_the_game_changes_while_held_is_kept_and_no_longer_forced():
+    alarm = 0x4A64
+    words = {alarm: 0}
+    lines = []
+    enc, events = switch(words, area=0x04, lines=lines)
+    por = pool(enc, events)
+    enc.on()
+    por.step()                   # the gate already reads 0: nothing written
+    words[alarm] = 1             # the script raises the alarm
+    por.step()
+    por.step()
+    assert [e for e in events if isinstance(e, tuple) and e[0] == "poke"] == []
+    assert words[alarm] == 1
+    assert enc.switch.yielded == {alarm}
+    assert lines == ["the game changed $4A64 to 1 while no_encounters held it; "
+                     "that value is kept and the gate is no longer forced"]
+    assert enc.off()[0]["action"] == "already original"
+    assert words[alarm] == 1
+
+
+def test_moves_in_an_area_with_no_gate_are_counted():
+    enc, events = switch({GATE: 4}, area=0x00)
+    por = pool(enc, events)
+    enc.on()
+    por.step()
+    por.turn_left()
+    assert enc.switch.unsuppressed_moves == 2
 
 
 def test_nothing_is_written_until_the_switch_is_on():
@@ -288,6 +318,53 @@ def test_the_data_segment_is_found_from_the_pointer_in_a_memory_image():
     memory = machine(saved_block())
     pointer = N.ENGINE[N.POOL].pointer
     assert N.find_data_segments(bytes(memory), BASE, pointer) == [DS]
+
+
+class Failing(StubX):
+    """A stub whose `regs`, `read` or `attach` fails once halted."""
+
+    def __init__(self, memory, halts, fail):
+        super().__init__(memory, halts)
+        self.fail = fail
+
+    def attach(self):
+        super().attach()
+        return self.fail != "attach"
+
+    def regs(self, *names):
+        if self.fail == "regs":
+            raise N.dosboxx.NotHalted("EV answered nothing")
+        return super().regs(*names)
+
+    def read(self, at, n):
+        if self.fail == "read":
+            raise N.dosboxx.NotHalted("MEMDUMPBIN answered nothing")
+        return super().read(at, n)
+
+
+@pytest.mark.parametrize("fail", ["attach", "regs", "read"])
+def test_an_error_after_the_halt_runs_the_machine_again(fail):
+    x = Failing(machine(saved_block()), [DS], fail)
+    with pytest.raises((N.SwitchError, N.dosboxx.NotHalted)):
+        N.LiveVariables(x, N.POOL).__enter__()
+    assert x.calls == ["attach", "run"]
+
+
+def test_zero_filled_memory_is_not_a_variable_block():
+    x = StubX(machine(bytes(2 * N.BLOCK_WORDS)), [DS] * N.DS_TRIES)
+    with pytest.raises(N.SwitchError, match="all zeros"):
+        N.LiveVariables(x, N.POOL).__enter__()
+
+
+def test_a_title_whose_offsets_were_never_read_live_needs_the_opt_in_and_the_save():
+    assert N.ENGINE[N.SILVER].grade != N.CONFIRMED
+    x = StubX(bytearray(0x100000), [DS])
+    with pytest.raises(N.SwitchError, match="speculative=True"):
+        N.LiveVariables(x, N.SILVER, b"\x01" + saved_block())
+    with pytest.raises(N.SwitchError, match="loaded save"):
+        N.LiveVariables(x, N.SILVER, speculative=True)
+    N.LiveVariables(x, N.SILVER, b"\x01" + saved_block(), speculative=True)
+    assert x.calls == []
 
 
 def test_suppressed_pool_is_the_ordinary_driver():

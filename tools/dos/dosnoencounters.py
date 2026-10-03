@@ -19,9 +19,12 @@ A DOS variable is one 16-bit word per script address from the title's
 The array's own `$49F2` word is not the area: it holds the area the party
 came from, and read 0 in the Slums after one step.
 
-`on` arms the switch and touches nothing until the next move.  `off` puts back
-each original value whose word still holds what the switch wrote, keeps any
-value the game has changed since, and leaves the switch off.  A game save is
+`on` arms the switch and touches nothing until the next move.  A gate word the
+game changes while the switch holds it keeps the game's value and is not
+forced again until the next `on`.  `off` puts back each original value whose
+word still holds what the switch wrote, keeps any value the game has changed
+since, and leaves the switch off.  A title whose `ENGINE` row is not CONFIRMED
+is used only with `speculative=True` and the loaded save.  A game save is
 stopped while the switch is on or a written value is still outstanding,
 because the gates are saved variables and some are story counters.  The
 written values live only in the emulator's memory, so ending the emulator ends
@@ -197,10 +200,16 @@ class EncounterSwitch:
         self.active = False
         #: address -> (value before the first write, value written)
         self.held: dict[int, tuple[int, int]] = {}
+        #: Gate words the game changed while held; not forced again until
+        #: the next `on`.
+        self.yielded: set[int] = set()
+        #: Moves made in an area with no known gate.
+        self.unsuppressed_moves = 0
         self._unsuppressed: set[int] = set()
 
     def on(self) -> None:
         self.active = True
+        self.yielded = set()
 
     @property
     def pending(self) -> bool:
@@ -228,6 +237,7 @@ class EncounterSwitch:
         area = self.area()
         gate = GATES.get((self.title, area))
         if gate is None:
+            self.unsuppressed_moves += 1
             if area not in self._unsuppressed:
                 self._unsuppressed.add(area)
                 self.log(f"encounters are not suppressed in area ${area:02X}: "
@@ -235,11 +245,22 @@ class EncounterSwitch:
             return []
         done = []
         for address, value in gate.pokes:
+            if address in self.yielded:
+                continue
             now = self.peek(address)
             if address not in self.held:
                 self.held[address] = (now, value)
-            elif self.held[address][1] != value:
-                self.held[address] = (self.held[address][0], value)
+            elif now != self.held[address][1]:
+                # The game wrote this word since the switch did: its value
+                # is the one to keep, so the gate is no longer forced.
+                self.held[address] = (now, now)
+                self.yielded.add(address)
+                self.log(f"the game changed ${address:04X} to {now} while "
+                         "no_encounters held it; that value is kept and the "
+                         "gate is no longer forced")
+                done.append({"area": area, "address": f"${address:04X}",
+                             "was": now, "yielded": True})
+                continue
             if now == value:
                 continue
             self._put(address, value)
@@ -281,10 +302,22 @@ class LiveVariables:
     `DS_TRIES` times in all.
     """
 
-    def __init__(self, session, title: str, save: bytes | None = None):
+    def __init__(self, session, title: str, save: bytes | None = None,
+                 speculative: bool = False):
         self.s = session
         self.title = title
         self.engine = ENGINE[title]
+        if self.engine.grade != CONFIRMED:
+            if not speculative:
+                raise SwitchError(
+                    f"The {title} data-segment offsets have not been read in a "
+                    "running game, so the switch needs speculative=True to "
+                    "use them.")
+            if save is None:
+                raise SwitchError(
+                    f"The {title} data-segment offsets have not been read in a "
+                    "running game, so the switch needs the loaded save to "
+                    "check the variable block against.")
         off = CONTAINERS[title].var_offset
         self.saved = save[off:off + 2 * BLOCK_WORDS] if save else None
         self.ds: int | None = None
@@ -297,10 +330,16 @@ class LiveVariables:
         tried = []
         for _ in range(DS_TRIES):
             # The machine always runs between moves, so no probe comes first.
-            if not self.s.attach():
-                raise SwitchError("the debugger did not halt the machine")
-            ds = self.ds if self.ds is not None else self.s.regs("DS")["DS"]
-            why = self._read(ds)
+            # Any way out of this body but a return runs the machine again,
+            # so an error never leaves the game halted in the debugger.
+            try:
+                if not self.s.attach():
+                    raise SwitchError("The debugger did not halt the machine.")
+                ds = self.ds if self.ds is not None else self.s.regs("DS")["DS"]
+                why = self._read(ds)
+            except BaseException:
+                self.s.run()
+                raise
             if why is None:
                 if self.ds is None:
                     self.found = {"ds": f"{ds:04X}", "base": f"{self.base:#x}",
@@ -327,6 +366,8 @@ class LiveVariables:
         self.base = base
         self.block = self.s.read(base, 2 * BLOCK_WORDS)
         why = self.check()
+        if why is None and not any(self.block):
+            why = "the variable block is all zeros"
         if why is None and self.saved is not None:
             same = sum(a == b for a, b in zip(self.block, self.saved))
             if same < MATCH_FRACTION * len(self.saved):
@@ -381,11 +422,13 @@ def find_data_segments(image: bytes, base: int, pointer: int) -> list[int]:
 class NoEncounters:
     """What a driver holds: the switch over a running game's variables.
     `save` is the loaded saved game's bytes, which `LiveVariables` checks the
-    live block against; without it the clock check alone decides."""
+    live block against; without it only a title whose `ENGINE` row is
+    CONFIRMED is accepted, and the clock check decides.  `speculative` allows
+    a title whose row is not, which then needs `save`."""
 
     def __init__(self, session, title: str, save: bytes | None = None,
-                 log: Callable[[str], None] = print):
-        self.live = LiveVariables(session, title, save)
+                 log: Callable[[str], None] = print, speculative: bool = False):
+        self.live = LiveVariables(session, title, save, speculative)
         self.switch = EncounterSwitch(title, self.live.peek, self.live.poke,
                                       self.live.area, log)
         self.writes: list[dict] = []
@@ -569,7 +612,8 @@ def explore_walk(por: dosbox.PoolOfRadiance, steps: int, shot,
 
 
 def live(title: str, folder: Path, steps: int, out: Path,
-         source: str | None = None, stage: list[tuple[int, int]] = ()) -> dict:
+         source: str | None = None, stage: list[tuple[int, int]] = (),
+         speculative: bool = False) -> dict:
     """One boot: load, snapshot, a walk with the switch on, `off`, restore the
     snapshot, and a control walk with it off.  Evidence goes under `out`."""
     from tools.dos import dossnapshot, staging
@@ -603,7 +647,8 @@ def live(title: str, folder: Path, steps: int, out: Path,
             report["gate"] = dataclasses.asdict(gate) if gate else None
             addresses = [a for a, _ in gate.pokes] if gate else []
             lines: list[str] = []
-            enc = NoEncounters(s, title, save, log=lines.append)
+            enc = NoEncounters(s, title, save, log=lines.append,
+                               speculative=speculative)
             por = SuppressedPool(s, enc)
 
             def gates_now() -> dict:
@@ -659,6 +704,8 @@ def live(title: str, folder: Path, steps: int, out: Path,
             report["on_writes"] = enc.writes
             report["on_areas"] = {f"${a:02X}": n for a, n in enc.areas.items()}
             report["unsuppressed"] = lines
+            report["on_unsuppressed_moves"] = enc.switch.unsuppressed_moves
+            report["on_yielded"] = sorted(f"${a:04X}" for a in enc.switch.yielded)
             shot("on-end")
             checkpoint()
             report["on_end"] = gates_now()
@@ -695,6 +742,9 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--stage-var", action="append", default=[],
                      metavar="ADDRESS=VALUE", help="a script word written into "
                      "the save before the boot, hex address and decimal value")
+    run.add_argument("--speculative", action="store_true",
+                     help="use a title whose data-segment offsets have not "
+                     "been read in a running game")
     run.add_argument("--out", type=Path, help="evidence directory (default "
                      "~/.cache/wish/noencounters/dos-<title>)")
     args = ap.parse_args(argv)
@@ -711,7 +761,7 @@ def main(argv: list[str] | None = None) -> int:
         stage.append((int(address, 16), int(value)))
     out = args.out or scratch.cache_dir("noencounters", f"dos-{args.title}")
     report = live(args.title, args.folder, args.steps, out,
-                  args.from_slot, stage)
+                  args.from_slot, stage, args.speculative)
     print(json.dumps(report, indent=1, default=str))
     return 0
 
