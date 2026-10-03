@@ -874,34 +874,35 @@ def test_edit_comment_fails_when_the_readback_differs(tmp_path):
         client.edit_comment(ITEM, COMMENT, MARKDOWN)
 
 
-def importer_editor(tmp_path, **kw):
-    client, fake = comment_editor(tmp_path, **kw)
-    client.settings.importer = IMPORTER
-    return client, fake
-
-
 def test_edit_comment_edits_an_importer_comment_and_keeps_its_author(tmp_path):
-    client, fake = importer_editor(tmp_path, author=IMPORTER)
+    client, fake = comment_editor(tmp_path, author=IMPORTER_ACCOUNT)
     result = client.edit_comment(ITEM, COMMENT, MARKDOWN)
     assert [c[0] for c in fake.calls].count('PATCH') == 1
-    assert result['author_id'] == IMPORTER
+    assert result['author_id'] == IMPORTER_ACCOUNT
 
 
-def test_importer_account_defaults_to_the_named_constant(tmp_path):
-    assert settings(tmp_path).importer == IMPORTER_ACCOUNT
-    assert settings(tmp_path, importer_account_id=IMPORTER).importer == IMPORTER
+def test_edit_comment_edits_an_agent_comment_through_the_same_client(tmp_path):
+    client, fake = comment_editor(tmp_path, author=AGENT)
+    assert client.edit_comment(ITEM, COMMENT, MARKDOWN)['author_id'] == AGENT
+    assert [c[0] for c in fake.calls].count('PATCH') == 1
+
+
+def test_the_editable_authors_are_exactly_the_agent_and_the_importer(tmp_path):
+    configured = settings(tmp_path, importer_account_id=OUTSIDE)
+    assert configured.importer == IMPORTER_ACCOUNT
+    assert {configured.agent, configured.importer} == {AGENT, IMPORTER_ACCOUNT}
 
 
 @pytest.mark.parametrize('author', [OUTSIDE, '12345678-1234-4234-8234-123456789abc', None])
 def test_edit_comment_refuses_any_other_author_without_patching(tmp_path, author):
-    client, fake = importer_editor(tmp_path, author=author)
+    client, fake = comment_editor(tmp_path, author=author)
     with pytest.raises(PlaneError, match='agent or the importer'):
         client.edit_comment(ITEM, COMMENT, MARKDOWN)
     assert not [c for c in fake.calls if c[0] == 'PATCH']
 
 
 def test_edit_comment_fails_when_the_patch_result_changes_the_author(tmp_path):
-    client, fake = importer_editor(tmp_path, author=IMPORTER)
+    client, fake = comment_editor(tmp_path, author=IMPORTER_ACCOUNT)
     inner = fake.handler
 
     def handle(method, path, data, params):
@@ -913,12 +914,15 @@ def test_edit_comment_fails_when_the_patch_result_changes_the_author(tmp_path):
 
 
 def test_edit_comment_fails_when_the_readback_changes_the_author(tmp_path):
-    client, fake = importer_editor(tmp_path, author=IMPORTER)
+    client, fake = comment_editor(tmp_path, author=IMPORTER_ACCOUNT)
     inner = fake.handler
+    patched = []
 
     def handle(method, path, data, params):
         result = inner(method, path, data, params)
-        return {**result, 'created_by': AGENT} if method == 'GET' and len(fake.calls) > 2 else result
+        if method == 'PATCH':
+            patched.append(True)
+        return {**result, 'created_by': AGENT} if method == 'GET' and patched else result
     fake.handler = handle
     with pytest.raises(PlaneError, match='authorship changed'):
         client.edit_comment(ITEM, COMMENT, MARKDOWN)
