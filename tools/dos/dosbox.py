@@ -130,9 +130,9 @@ class WrongCaster(TimeoutError):
 
 @dataclass(frozen=True)
 class SpellList:
-    """Pool's camp spell list read as text: its title, its bar, and each
+    """A camp spell list read as text: its title, its bar, and each
     memorised spell's list row (from 0, as `Screen.highlight_row` counts)
-    with its name."""
+    with its name; copies drawn as one counted row share that row."""
 
     head: str
     bar: str
@@ -1518,6 +1518,13 @@ class PoolOfRadiance:
     #     of Slow Poison (`667/aed7e96fc4-sp1-list`).
     #   LOSE_IT_BAR: the screen after casting the list's last row, a
     #     combat-only spell; not yet exercised by `cast`.
+    # Curse and Silver Blades draw MAGIC_BAR, SPELL_LIST_BAR and TARGET_BAR
+    # with these same digests under DOSBox-X (`274/6e6a1b0e90-curse-cast` and
+    # `274/6e6a1b0e90-ssb-cast`, three casts each); their camp bars differ,
+    # so their caller passes its own.  Both draw a spell memorised more than
+    # once as one row, `STRENGTH (2)`, pick the target with `S`, go back to
+    # the Magic bar after the caster's last spell, and open nothing on `CAST`
+    # there with nothing memorised.
     CAMP_BAR = "e229a5f1da0130ed"
     MAGIC_BAR = "062aa229ea7afd11"
     SPELL_LIST_BAR = "756a9b74819cebd5"
@@ -1537,7 +1544,9 @@ class PoolOfRadiance:
 
     def cast(self, spell: str, target: int | None = None, *,
              read: Callable[[Screen], SpellList], party_size: int = 6,
-             caster: str | None = None, shot=None, timeout: float = 60.0) -> dict:
+             caster: str | None = None, shot=None, timeout: float = 60.0,
+             camp_bar: str | None = None, list_down: str = LIST_DOWN,
+             target_next: str = LIST_DOWN, select: str = "Return") -> dict:
         """Cast `spell` from camp for the member the roster highlights, on
         roster line `target` when the game asks for one, and return to camp.
 
@@ -1560,6 +1569,11 @@ class PoolOfRadiance:
         still held would open the list, which then must not hold it
         (`confirmed: "reopened"`).  `shot(label)` is called at each screen
         reached.
+
+        The keys are Pool's unless given: `camp_bar` is the camp bar's
+        signature (`CAMP_BAR`), `list_down` moves the list's highlight,
+        `target_next` the target roster's, and `select` picks the target.
+        Curse and Silver Blades draw the same Magic, list and target bars.
         """
         from tools.dos.screens import bar_signature, roster_line
 
@@ -1567,6 +1581,7 @@ class PoolOfRadiance:
             raise ValueError(f"target line {target} is not in a party of {party_size}")
         snap = shot or (lambda label: None)
         rect = self.SPELL_LIST
+        camp = camp_bar or self.CAMP_BAR
 
         def bar(sc: Screen) -> str:
             return bar_signature(sc)
@@ -1618,9 +1633,9 @@ class PoolOfRadiance:
             got = read(sc)
             return None if unread(got) else [n for _, n in got.spells].count(spell)
 
-        if bar(self.s.capture()) != self.CAMP_BAR:
+        if bar(self.s.capture()) != camp:
             raise TimeoutError("cast starts at the camp bar, which is not showing")
-        press_for("m", self.MAGIC_BAR, self.CAMP_BAR, "MAGIC")
+        press_for("m", self.MAGIC_BAR, camp, "MAGIC")
         shots = [snap("cast-magic")]
         listed = open_list("CAST")
         shots.append(snap("cast-list"))
@@ -1637,10 +1652,10 @@ class PoolOfRadiance:
             if here is None:
                 raise TimeoutError("the spell list shows no highlighted row")
             if presses > len(rows) or stuck >= 2:
-                raise TimeoutError(f"{presses} presses of {LIST_DOWN} never "
+                raise TimeoutError(f"{presses} presses of {list_down} never "
                                    f"reached {spell}")
             was = here
-            self.s.key(LIST_DOWN)
+            self.s.key(list_down)
             presses += 1
             self.s.wait_for(lambda sc: sc.highlight_row(rect) != was, 5.0)
             screen = self.s.capture()
@@ -1703,10 +1718,10 @@ class PoolOfRadiance:
                 if here is None:
                     raise TimeoutError("the target roster shows no highlighted line")
                 if target_presses > 2 * party_size or stuck >= 2:
-                    raise TimeoutError(f"{LIST_DOWN} never brought the target "
+                    raise TimeoutError(f"{target_next} never brought the target "
                                        f"highlight to line {target}")
                 was = here
-                self.s.key(LIST_DOWN)
+                self.s.key(target_next)
                 target_presses += 1
                 self.s.wait_for(lambda sc, was=was: roster_line(sc, "camp", party_size)
                                 != was, 5.0)
@@ -1717,7 +1732,7 @@ class PoolOfRadiance:
             still(self.s.capture(), self.TARGET_BAR, "target roster")
             picked = here
             shots.append(snap("cast-target"))
-            self.s.key("Return")
+            self.s.key(select)
             settle_on("cast")
         # The Bless message window covers the row, so one frame with a row
         # fewer proves nothing: believed only when two captures a second
@@ -1780,9 +1795,9 @@ class PoolOfRadiance:
             if bar(self.s.capture()) != self.MAGIC_BAR:
                 break
             self.s.key("e")
-            if self.s.wait_for(lambda sc: bar(sc) == self.CAMP_BAR, 15.0):
+            if self.s.wait_for(lambda sc: bar(sc) == camp, 15.0):
                 break
-        if not self.s.wait_for(lambda sc: bar(sc) == self.CAMP_BAR, 15.0):
+        if not self.s.wait_for(lambda sc: bar(sc) == camp, 15.0):
             raise TimeoutError("the camp bar did not come back after EXIT")
         got = {"spell": spell, "target": picked, "asked_target": asked,
                "listed": before, "rows_before": have, "rows_after": after,

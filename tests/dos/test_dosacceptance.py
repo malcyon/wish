@@ -1204,6 +1204,157 @@ def test_pool_cast_with_rows_left_is_never_believed_through_the_magic_bar(
         d.cast(2, "BLESS")
 
 
+# -- a camp cast in Curse and Silver Blades ------------------------------------
+
+#: The keys each later title's camp cast takes, written out here rather than
+#: taken from the driver: the roster's and the spell list's move key, and
+#: `SELECT` at the target prompt.
+_LATER_CAST_KEYS = {"curse": ("End", "End", "s"), "ssb": ("Down", "Down", "s")}
+#: Strength twice between a first- and a third-level spell, so the list opens
+#: on another row and has to be walked to it.
+_LATER_CAST_ROWS = [("level", "1ST LEVEL"), ("spell", "SHIELD"), ("level", "2ND LEVEL"),
+                    ("spell", "STRENGTH"), ("spell", "STRENGTH"), ("level", "3RD LEVEL"),
+                    ("spell", "HASTE")]
+
+
+class CastLater(CastPool):
+    """Curse's and Silver Blades' camp `MAGIC > CAST`, as WISH-8's hand casts
+    showed them: Pool's screens and bars but for the camp bar, copies of one
+    spell drawn as one row `STRENGTH (2)`, the title's own roster and list
+    keys, and `S` picking the target, where `Return` leaves the prompt for the
+    list without casting.  Casting the last memorised spell goes back to the
+    Magic bar, where `CAST` opens nothing."""
+
+    EMPTY_TO_MAGIC = True
+    TARGETED = CastPool.TARGETED | {"STRENGTH"}
+
+    def __init__(self, tmp, title: str, **kw):
+        super().__init__(tmp, **kw)
+        self.title = title
+        self.roster_key, self.list_key, self.select = _LATER_CAST_KEYS[title]
+        self.BAR_TEXT = {**CastPool.BAR_TEXT,
+                         "camp": {"curse": "CAMP:SAVE VIEW MAGIC REST ALTER FIX EXIT",
+                                  "ssb": "SAVE VIEW MAGIC REST ALTER FIX EXIT"}[title]}
+
+    def groups(self) -> list[tuple[str, str, list[int]]]:
+        """The rows as drawn: a heading, or a spell with the copies it stands for."""
+        out: list[tuple[str, str, list[int]]] = []
+        for i, (kind, text) in enumerate(self.rows):
+            if kind == "spell" and out and out[-1][:2] == ("spell", text):
+                out[-1][2].append(i)
+            else:
+                out.append((kind, text, [i]))
+        return out
+
+    def spell_rows(self) -> list[int]:
+        return [ix[0] for kind, _, ix in self.groups() if kind == "spell"]
+
+    def key(self, k, gap=0.0):
+        mode = self.mode
+        if mode in ("camp", "target") and k == self.roster_key:
+            super().key("End")
+        elif mode == "list" and k == self.list_key:
+            super().key("End")
+        elif mode == "target" and k == self.select:
+            super().key("Return")
+        elif k in ("End", "Return") and mode in ("camp", "target", "list"):
+            if mode == "target" and k == "Return":
+                self.mode = "list"
+            self.keys.append(k)
+            return
+        else:
+            super().key(k, gap)
+            return
+        self.keys[-1] = k
+
+    def _list_frame(self, highlight: bool, hide: str | None = None) -> dosbox.Screen:
+        px = self._frame("list")
+        _text(px, 1, 1, f"{_CAST_NAMES[self.line - 1]}'S SPELLS IN MEMORY")
+        for row, (kind, text, ix) in enumerate(self.groups()):
+            y = da.SCRIBE_LIST[1] // 8 + row
+            if kind == "level":
+                _text(px, y, 1, text, _CAST_HEAD)
+            else:
+                shown = text if len(ix) == 1 else f"{text} ({len(ix)})"
+                _text(px, y, 3, shown, _WHITE if highlight and self.hl in ix
+                      else _CAST_LIST_GREEN)
+        return dosbox.Screen(W, H, bytes(px))
+
+
+def _later_cast_camp(tmp_path, title, **kw) -> tuple[CastLater, da.Driver]:
+    (tmp_path / "game").mkdir()
+    game = CastLater(tmp_path / "game", title, keys=TITLE_KEYS[title], **kw)
+    d = da.Driver(game, lambda **k: None, "A", title)
+    d.camp()
+    return game, d
+
+
+@pytest.mark.parametrize("title", ["curse", "ssb"])
+def test_the_cast_step_parses_and_is_taken_in_camp_in_curse_and_silver_blades(title):
+    step = da.parse_step("cast 6 strength 2")
+    assert (step.kind, step.line, step.name, step.row) == ("cast", 6, "STRENGTH", 2)
+    da.validate_steps(_steps("load", "begin", "camp", "snapshot c0", "cast 6 STRENGTH 2",
+                             "cast 6 STRENGTH 3", "save B", "read"), title)
+    with pytest.raises(ValueError, match="cast needs camp first"):
+        da.validate_steps(_steps("load", "begin", "cast 6 STRENGTH 2"), title)
+
+
+def test_the_cast_step_is_refused_in_pools_of_darkness():
+    with pytest.raises(ValueError, match="cast is driven in curse, pool, ssb only"):
+        da.validate_steps(_steps("load", "begin", "camp", "cast 6 STRENGTH 2"),
+                          "darkness")
+
+
+@pytest.mark.parametrize("title", ["curse", "ssb"])
+def test_later_cast_walks_the_counted_row_picks_the_target_with_select(
+        tmp_path, _cast_measured, title):
+    roster, down, select = _LATER_CAST_KEYS[title]
+    game, d = _later_cast_camp(tmp_path, title, rows=_LATER_CAST_ROWS)
+    got = d.cast(6, "STRENGTH", 2)
+    # Line 1 to 6 on the roster; the list opens on HASTE, its last row, and
+    # wraps to SHIELD then STRENGTH; the target prompt opens on the caster
+    # (6) and wraps to 2; SELECT casts; EXIT twice to camp.
+    assert game.keys == ["e", *[roster] * 5, "m", "c", down, down, "c", roster, roster,
+                         select, "e", "e"]
+    assert game.cast == [("STRENGTH", 2)]
+    assert got["listed"] == ["SHIELD", "STRENGTH", "STRENGTH", "HASTE"]
+    assert got["rows_before"] == 2 and got["rows_after"] == 1
+    assert got["name"] == "WISHHEL" and got["target"] == 2 and got["asked_target"]
+    assert "confirmed" not in got and game.mode == "camp" and d.where == "camp"
+    d.save("B")
+    assert game.save_file("B").is_file()
+
+
+@pytest.mark.parametrize("title", ["curse", "ssb"])
+def test_later_cast_of_the_last_copy_is_checked_by_cast_again_at_the_magic_bar(
+        tmp_path, _cast_measured, title):
+    roster, _, select = _LATER_CAST_KEYS[title]
+    game, d = _later_cast_camp(tmp_path, title, rows=_cast_rows("STRENGTH",
+                                                                level="2ND LEVEL"))
+    got = d.cast(1, "STRENGTH", 3)
+    assert game.keys == ["e", "m", "c", "c", roster, roster, select, "c", "c", "e"]
+    assert got["confirmed"] == "memory-empty" and got["rows_after"] == 0
+    assert game.cast == [("STRENGTH", 3)] and game.mode == "camp"
+
+
+def test_later_cast_with_pools_return_never_casts(tmp_path, _cast_measured, monkeypatch):
+    # Pool's `Return` at the prompt leaves it in Curse's fake: the step must
+    # send `S`, and with `Return` it stops rather than believing a cast.
+    monkeypatch.setitem(da.CAST_SELECT, "curse", "Return")
+    game, d = _later_cast_camp(tmp_path, "curse", rows=_LATER_CAST_ROWS)
+    with pytest.raises(da.StepFailed, match="never came back one STRENGTH shorter"):
+        d.cast(6, "STRENGTH", 2)
+    assert game.cast == [] and not game.save_file("B").exists()
+
+
+def test_a_counted_row_reads_as_that_many_copies_on_one_row(tmp_path):
+    game = CastLater(tmp_path, "ssb", rows=_LATER_CAST_ROWS)
+    game.mode = "list"
+    got = da.cast_list(game._list_frame(highlight=True), _FONT)
+    assert got.head == "WISHFTR'S SPELLS IN MEMORY"
+    assert got.spells == ((1, "SHIELD"), (3, "STRENGTH"), (3, "STRENGTH"), (5, "HASTE"))
+
+
 def test_the_measured_cast_screens_read_as_text():
     """`667/aed7e96fc4-sp1-list`: WISHCLE's list holding Slow Poison alone,
     read with Pool's own font, and the target prompt it opened."""
@@ -1221,6 +1372,40 @@ def test_the_measured_cast_screens_read_as_text():
     target = _capture("aed7e96fc4-sp1-list", "009-sp-target", "667")
     assert screens.bar_signature(target) == dosbox.PoolOfRadiance.TARGET_BAR
     assert da.cast_list(target, font).bar == "CAST SPELL ON WHOM SELECT EXIT"
+
+
+@pytest.mark.parametrize("stem,run,caster", [
+    ("CURSE", "6e6a1b0e90-curse-cast", "PHILIPPE"),
+    ("SECRET", "6e6a1b0e90-ssb-cast", "MORGAINE"),
+])
+def test_the_measured_later_cast_screens_read_as_text(stem, run, caster):
+    """The `cast` step's live runs in Curse and Silver Blades under DOSBox-X:
+    Pool's Magic, list and target bars, the list opening on its last row with
+    Strength memorised twice drawn as one counted row, and one copy fewer
+    after the first cast."""
+    try:
+        font = da.load_font(dosbox.find_game(stem))
+    except FileNotFoundError:
+        pytest.skip("needs the DOS archives ($FR_ARCHIVES)")
+    game = dosbox.PoolOfRadiance
+    shot = {"CURSE": ("007-cast-magic", "008-cast-list", "009-cast-spell",
+                      "010-cast-target", "011-cast-done"),
+            "SECRET": ("008-cast-magic", "009-cast-list", "010-cast-spell",
+                       "011-cast-target", "012-cast-done")}[stem]
+    magic, listed, spell, target, done = (_capture(run, n, "274", size="50%")
+                                          for n in shot)
+    assert screens.bar_signature(magic) == game.MAGIC_BAR
+    got = da.cast_list(listed, font)
+    assert screens.bar_signature(listed) == game.SPELL_LIST_BAR
+    assert got.head == f"{caster}'S SPELLS IN MEMORY"
+    assert got.spells == ((1, "READ MAGIC"), (3, "STRENGTH"), (3, "STRENGTH"),
+                          (5, "HASTE"))
+    assert listed.highlight_row(game.SPELL_LIST) == 5
+    assert spell.highlight_row(game.SPELL_LIST) == 3
+    assert screens.bar_signature(target) == game.TARGET_BAR
+    assert da.cast_list(target, font).bar == "CAST SPELL ON WHOM SELECT EXIT"
+    assert da.cast_list(done, font).spells == ((1, "READ MAGIC"), (3, "STRENGTH"),
+                                               (5, "HASTE"))
 
 
 def test_the_measured_magic_bar_screen_has_picture_in_the_spell_list_region():
@@ -1295,7 +1480,8 @@ def test_pool_cast_steps_parse_and_a_bad_one_is_refused():
 @pytest.mark.parametrize("title,steps,why", [
     ("pool", ("load", "camp", "cast 2 BLESS", "cast 2 BLESS", "save D", "read"), None),
     ("pool", ("load", "cast 2 BLESS"), "cast needs camp first"),
-    ("curse", ("load", "begin", "camp", "cast 2 BLESS"), "pool only"),
+    ("curse", ("load", "begin", "camp", "cast 2 BLESS", "save D", "read"), None),
+    ("darkness", ("load", "begin", "camp", "cast 2 BLESS"), "curse, pool, ssb only"),
 ])
 def test_pool_cast_step_orders(title, steps, why):
     if why is None:

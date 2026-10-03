@@ -68,7 +68,7 @@ a source whose title does not match `--title`:
 | `items N` | Pool, in camp: member N's `ITEMS` list, first screen only, from `End` to the line, `v`, `i`, and `Escape` twice back to camp; refuses a sheet with no `ITEMS`; records `rows` and `marked`, the rows (from 1) drawn with the Detect Magic `* ` |
 | `sheet N` | Pool: member N's sheet from the map (`End` to the line, `v`, `Escape`); the sheet is taken on a measured `POOL_SHEET_BARS` bar or, for any class's bar, on its words read as `POOL_SHEET_BAR_TEXT`; needs either measured map bar of `POOL_MAP_BARS` back |
 | `display` | Pool, Curse and Silver Blades, in camp: `MAGIC`, `DISPLAY`, every page of the list of spells in effect read as text with the title's own font (`load_font`), turning with `n` while the bar is ` NEXT EXIT`; `members` is each member's name and the effect names under it, and the list must name every member (Pool's page also six name rows); `Return` or `e` back to the Magic bar (`DISPLAY_LEAVE`) and `e` to camp |
-| `cast N SPELL [T]` | Pool, in camp: roster line N highlighted with `End`, `MAGIC`, `CAST`; the caster's spell list read as text with the title's font (`load_font`), its title checked against line N's name, every row required to read, and SPELL (any memorised spell, as the list spells it; a hyphen reads as a space) required on it; the highlight moved with `End` to SPELL's row, reading it after each press, and `CAST`.  A spell that asks `CAST SPELL ON WHOM` gets T picked with `End` and `Return`; one that asks with no T given stops with nothing more pressed, a target prompt on any other bar stops naming it, and a spell that goes off without asking when T was given fails the step after the cast.  The cast is believed only when the list comes back one SPELL row shorter, or, for the caster's only row, when the Magic bar comes back and `CAST` pressed there twice opens nothing, which is what it does with nothing memorised (a list that does open must not hold SPELL); `EXIT` twice to camp.  Any other screen stops the run with nothing more pressed, `LOSE IT` included |
+| `cast N SPELL [T]` | Pool, Curse and Silver Blades, in camp: roster line N highlighted (`End` in Pool and Curse, `Down` in Silver Blades), `MAGIC`, `CAST`; the caster's spell list read as text with the title's font (`load_font`), its title checked against line N's name, every row required to read, and SPELL (any memorised spell, as the list spells it; a hyphen reads as a space) required on it, a Curse or Silver Blades row `STRENGTH (2)` counting as two copies (`CAST_COUNT`); the highlight moved with `CAST_LIST_DOWN` (`End`, Silver Blades `Down`) to SPELL's row, reading it after each press, and `CAST`.  A spell that asks `CAST SPELL ON WHOM` gets T picked with the roster's key and `SELECT` (`Return` in Pool, `S` in the other two, `CAST_SELECT`); one that asks with no T given stops with nothing more pressed, a target prompt on any other bar stops naming it, and a spell that goes off without asking when T was given fails the step after the cast.  The cast is believed only when the list comes back holding one SPELL fewer, or, for the caster's only row, when the Magic bar comes back and `CAST` pressed there twice opens nothing, which is what it does with nothing memorised (a list that does open must not hold SPELL); `EXIT` twice to camp.  Any other screen stops the run with nothing more pressed, `LOSE IT` included |
 | `scribe N SPELL` | Pool, Curse and Silver Blades, in camp: roster line N highlighted (`End` in Pool and Curse, `Down` in Silver Blades), `MAGIC`, `SCRIBE`; the scroll list read as text with the title's font (`load_font`), its title checked against line N's name, and SPELL (several words; a hyphen reads as a space) required on it without the `*` of a spell being scribed; the highlight walked onto SPELL's row with `SCRIBE_LIST_DOWN`, reading it after each press, and `SCRIBE` believed only when that row redraws as `*SPELL`.  Each `SCRIBE` is sent only while the row is highlighted and unmarked, the second only when no text row changed after the first, while it was awaited or on a reading taken after; a changed text row without the mark is the game refusing, and the step fails with the words it drew, while a change outside the text (the camp picture, Silver Blades' pointer) is not one.  A rejection drawn and gone between two readings is not seen, so two presses with neither a mark nor a change fail saying it may have been one.  Then the list's `EXIT`, the chosen spells read (SPELL must be listed `*`), their `EXIT`, `YES` at `SCRIBE THESE SPELLS?` and the Magic bar's `EXIT`, each pressed only at the screen it belongs to.  The party stays camped, so a camp `save` keeps the scribe pending and a `rest` finishes it; that rest's `scribe_pending` says a scribe was pending when it began, which any step outside `SCRIBE_KEEPS` forgets.  Driven in Pool of Radiance; Silver Blades' screens and keys are the hand-driven run's, and Curse's are its strings only |
 | `rest 5m`, `rest 1h30m`, `rest 8d` | camp `REST`, the rest time zeroed and set by key, then rested; minutes in fives; Pool's `GO STAY` random event at the end is answered `GO` (see below); in Curse a message over the continue bar that ends the rest (Tilverton's Royal Guards) gets `Return`, the map bar is required, and the party camps again, logged as `ended_by_message` |
 | `save X` | in camp, camp `SAVE` to slot X and decline the quit; at the party menu, `SAVE CURRENT GAME`; believed when `SAVGAMX.DAT` changes |
@@ -324,6 +324,21 @@ FONT_GLYPHS = 0x40
 POINTER_INK = b"\xff\xff\xff"
 #: The titles whose camp `MAGIC > SCRIBE` the `scribe` step drives.
 SCRIBE_TITLES = frozenset({"pool", "curse", "ssb"})
+#: The titles whose camp `MAGIC > CAST` the `cast` step drives.
+CAST_TITLES = frozenset({"pool", "curse", "ssb"})
+#: A camp spell-list row holding several copies of one spell: Curse and
+#: Silver Blades draw `STRENGTH (2)` where Pool draws two `STRENGTH` rows, the
+#: count falling by one a cast (`274/6e6a1b0e90-curse-cast` and
+#: `274/6e6a1b0e90-ssb-cast`, under DOSBox-X).
+CAST_COUNT = re.compile(r"(.*\S) \((\d+)\)")
+#: The key that moves the camp spell list's highlight a spell on, wrapping.
+#: Pool's `End` (`dosbox.LIST_DOWN`); Curse's `End` and Silver Blades' `Down`,
+#: measured in those two runs, where each list opened on its last row and two
+#: presses wrapped through the first to the spell.
+CAST_LIST_DOWN = {"pool": dosbox.LIST_DOWN, "curse": dosbox.LIST_DOWN, "ssb": "Down"}
+#: `SELECT` at `CAST SPELL ON WHOM SELECT EXIT`: Pool's is `Return`; Curse
+#: and Silver Blades take `S` (three casts in each of those runs).
+CAST_SELECT = {"pool": "Return", "curse": "s", "ssb": "s"}
 #: `SCRIBE` on the Magic bar and on the scroll list's `CHOOSE SPELL: SCRIBE
 #: EXIT`, `EXIT` on the list and on the chosen spells, and `YES` at `SCRIBE
 #: THESE SPELLS? YES NO`: each word's capital, measured in Silver Blades and
@@ -954,13 +969,23 @@ def scribe_screen(screen: dosbox.Screen, font: dict[bytes, str]) -> str | None:
 
 
 def cast_list(screen: dosbox.Screen, font: dict[bytes, str]) -> dosbox.SpellList:
-    """Pool's camp spell list (`<NAME>'S SPELLS IN MEMORY`) read as text: the
-    same rows as the scroll list (`scribe_entries`), each name as `spell_key`
-    spells it."""
+    """A camp spell list (`<NAME>'S SPELLS IN MEMORY`) read as text: the same
+    rows as the scroll list (`scribe_entries`), each name as `spell_key`
+    spells it.  A row Curse or Silver Blades draws as `STRENGTH (2)` is two
+    copies of `STRENGTH` on that row (`CAST_COUNT`); Pool draws each copy as
+    its own row."""
+    spells = []
+    for e in scribe_entries(screen, font):
+        name = spell_key(e["spell"])
+        counted = CAST_COUNT.fullmatch(name)
+        if counted and int(counted[2]) > 0:
+            spells += [(e["row"], counted[1])] * int(counted[2])
+        else:
+            spells.append((e["row"], name))
     return dosbox.SpellList(
         head=text_row(screen, SCRIBE_HEAD_ROW, font, DISPLAY_COLUMNS).strip(),
         bar=text_row(screen, BAR_ROW, font).strip(),
-        spells=tuple((e["row"], spell_key(e["spell"])) for e in scribe_entries(screen, font)))
+        spells=tuple(spells))
 
 
 def roster_text(screen: dosbox.Screen, line: int, font: dict[bytes, str]) -> str:
@@ -2190,8 +2215,9 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
             if where != "camp":
                 raise ValueError(f"scribe needs camp first: {step.text!r}")
         elif k == "cast":
-            if title != "pool":
-                raise ValueError(f"cast is driven in pool only, not {title}")
+            if title not in CAST_TITLES:
+                raise ValueError(f"cast is driven in "
+                                 f"{', '.join(sorted(CAST_TITLES))} only, not {title}")
             if where != "camp":
                 raise ValueError(f"cast needs camp first: {step.text!r}")
         elif k == "save":
@@ -5869,23 +5895,30 @@ class Driver:
                 "back_in_camp": True}
 
     def cast(self, line: int, spell: str, target: int | None = None) -> dict:
-        """Roster line `line` casts `spell` in Pool's camp, on roster line
-        `target` when the game asks for one, and the party is back in camp.
+        """Roster line `line` casts `spell` in camp, on roster line `target`
+        when the game asks for one, and the party is back in camp.
 
-        The screens are `dosbox.PoolOfRadiance.cast`'s, with the spell list
-        read as text with the title's font (`cast_list`); any screen it does
-        not know stops the run with a `lost-cast-*` shot and nothing more
-        pressed.
+        The screens are `dosbox.PoolOfRadiance.cast`'s, which Curse and Silver
+        Blades share but for the camp bar (the one `camp` recorded), with the
+        spell list read as text with the title's font (`cast_list`) and each
+        title's keys (`CAMP_ROSTER_NEXT`, `CAST_LIST_DOWN`, `CAST_SELECT`);
+        any screen it does not know stops the run with a `lost-cast-*` shot
+        and nothing more pressed.
         """
-        if self.title.key != "pool" or self.camp_sig is None:
-            raise StepFailed("cast needs Pool camp first")
+        key = self.title.key
+        if key not in CAST_TITLES:
+            raise StepFailed(f"cast is driven in {', '.join(sorted(CAST_TITLES))} "
+                             f"only, not {key}")
+        if self.camp_sig is None:
+            raise StepFailed("cast needs camp first")
         if target and not 1 <= target <= self.party_size:
             raise StepFailed(f"cast target line {target} is not in a party of "
                              f"{self.party_size}; nothing is pressed")
         font = self.display_font()
         self.ensure_camp()
         label = f"cast-{line}"
-        moved = self.pick_line(line, "camp", f"{label}-select", POOL_ROSTER_NEXT)
+        roster_next = CAMP_ROSTER_NEXT.get(key, POOL_ROSTER_NEXT)
+        moved = self.pick_line(line, "camp", f"{label}-select", roster_next)
         name = roster_text(self.s.capture(), line, font)
         self.shot(f"{label}-line")
         if not name or "?" in name:
@@ -5893,7 +5926,9 @@ class Driver:
         try:
             got = self.game.cast(spell_key(spell), target or None,
                                  read=lambda sc: cast_list(sc, font),
-                                 party_size=self.party_size, caster=name, shot=self.shot)
+                                 party_size=self.party_size, caster=name, shot=self.shot,
+                                 camp_bar=self.camp_sig, list_down=CAST_LIST_DOWN[key],
+                                 target_next=roster_next, select=CAST_SELECT[key])
         except dosbox.WrongCaster as e:
             raise self.fail(label, f"roster line {line}'s list: {e}") from None
         except TimeoutError as e:
