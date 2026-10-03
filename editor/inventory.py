@@ -66,6 +66,9 @@ class Inventory:
     must reach the disk byte for byte as it left it.
     """
 
+    # True only for a DOS Pool character, set by `from_blocks`.
+    type_zero_is_an_item = False
+
     def __init__(self, payload: bytes, slot: int,
                  names: dict[int, str] | None = None):
         self.slot = slot
@@ -78,9 +81,14 @@ class Inventory:
 
     @classmethod
     def from_blocks(cls, raws: Sequence[bytes],
-                    names: dict[int, str] | None = None) -> "Inventory":
+                    names: dict[int, str] | None = None,
+                    type_zero_is_an_item: bool = False) -> "Inventory":
         """The sixteen slots from item blocks already in hand, for a party
         opened from a DOS or an Amiga save.
+
+        `type_zero_is_an_item` is for a DOS Pool character: the engine can
+        build a real item whose type byte is 0, and `add` and `delete` must
+        keep it rather than treat it as the C64's zeroed stale slot.
 
         Those saves keep no `SAVEDGAME0` payload for `__init__` to slice, so
         the blocks come from the converted character instead. `slot` and
@@ -97,6 +105,7 @@ class Inventory:
         self.slot = None
         self.names = names
         self.base = None
+        self.type_zero_is_an_item = type_zero_is_an_item
         self._hold([bytes(r) for r in raws])
         return self
 
@@ -121,6 +130,16 @@ class Inventory:
 
     def is_empty(self, n: int) -> bool:
         return self.item(n).is_empty
+
+    def holds(self, n: int) -> bool:
+        """Whether slot `n` must survive an add or a delete.
+
+        Normally that is a nonzero type byte. Where type 0 is a real item, any
+        nonzero byte in the slot counts.
+        """
+        if self.type_zero_is_an_item:
+            return any(self.raws[n])
+        return not self.is_empty(n)
 
     @property
     def used(self) -> int:
@@ -180,7 +199,7 @@ class Inventory:
     def add(self, raw: bytes) -> int | None:
         """Put an item in the first free slot. None when all sixteen are full."""
         for n in range(len(self)):
-            if self.is_empty(n):
+            if not self.holds(n):
                 self.set_raw(n, raw)
                 return n
         return None
@@ -188,7 +207,7 @@ class Inventory:
     def delete(self, n: int) -> None:
         """Remove one item and close the gap, keeping the list a dense prefix."""
         kept = [r for i, r in enumerate(self.raws)
-                if i != n and not Item(r).is_empty]
+                if i != n and self.holds(i)]
         self.raws = kept + [EMPTY] * (len(self) - len(kept))
 
     # -- writing back -----------------------------------------------------
