@@ -28,6 +28,10 @@ def never_connected(exc):
         isinstance(getattr(arg, 'reason', None), NewConnectionError) for arg in exc.args)
 
 
+class ExplanationMissing(PlaneError):
+    """A change was applied but its explanation comment was not confirmed."""
+
+
 CREATE_STATES = ('Backlog', 'Queue', 'In Progress')
 CREATE_STATE_EXPLANATION = {'Queue': 'Filed and scheduled', 'In Progress': 'Filed and started'}
 
@@ -194,14 +198,23 @@ class Client:
             raise PlaneError("A bug, enhancement or question label is required")
         result = self.write(f'the ticket titled {title!r}', 'POST', self.items, {'name': title, 'description_html': paragraph(body), 'priority': priority, 'labels': labels})
         if result['author_id'] != self.settings.agent:
-            raise PlaneError("Created ticket authorship did not match the agent account; read the ticket back")
-        confirm_changes(self.raw(result['id']), {'priority': priority, 'labels': labels})
+            raise PlaneError(f"Ticket {result['identifier']} was created, but its authorship did not match the agent account; read the ticket back")
+        try:
+            confirm_changes(self.raw(result['id']), {'priority': priority, 'labels': labels})
+        except PlaneError as exc:
+            raise PlaneError(f"Ticket {result['identifier']} was created, but {exc}; read the ticket back") from exc
         if target is None:
             return result
         try:
             moved = self.update(result['id'], {'state': target}, CREATE_STATE_EXPLANATION[state])
-        except PlaneError as exc:
+        except ExplanationMissing as exc:
+            raise PlaneError(f"Ticket {result['identifier']} was created and moved to {state}, but its explanation comment was not confirmed; read it back") from exc
+        except (PlaneNotSent, PlaneHttpError) as exc:
             raise PlaneError(f"Ticket {result['identifier']} was created and is in Backlog; it should be in {state}: {exc}") from exc
+        except PlaneOutcomeUnknown as exc:
+            raise PlaneOutcomeUnknown(f"{result['identifier']} was created; its state is unknown; read it back") from exc
+        except PlaneError as exc:
+            raise PlaneError(f"Ticket {result['identifier']} was created; its state is unconfirmed ({exc}); read it back") from exc
         return {**result, 'state': moved['state'], 'state_name': state}
 
     def comment(self, identifier, body):
@@ -232,8 +245,8 @@ class Client:
         confirm_changes(self.raw(record['id']), payload)
         try:
             explained = self.comment(identifier, explanation)
-        except (PlaneNotSent, PlaneHttpError) as exc:
-            raise PlaneError(f"The change to {identifier} was applied but its explanation comment was not; post the comment alone") from exc
+        except (PlaneNotSent, PlaneHttpError, PlaneOutcomeUnknown) as exc:
+            raise ExplanationMissing(f"The change to {identifier} was applied but its explanation comment was not confirmed; read the ticket back and post the comment alone") from exc
         current = self.raw(record['id'])
         confirm_changes(current, payload)
         return {**self.policy.compact(current), 'comment_id': explained['id']}

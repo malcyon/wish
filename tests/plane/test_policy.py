@@ -5,7 +5,7 @@ import os
 import pytest
 
 from tools.plane.client import Client
-from tools.plane.policy import PlaneError, Policy, Settings
+from tools.plane.policy import PlaneError, PlaneHttpError, Policy, Settings
 
 AGENT = '00000000-0000-0000-0000-000000000001'
 OUTSIDE = '00000000-0000-0000-0000-000000000002'
@@ -695,7 +695,7 @@ def state_client(tmp_path, fail_patch=False):
                 return {'id': OUTSIDE, 'created_by': AGENT, 'updated_by': AGENT, **data}
             return {'results': [], 'next_page_results': False}
         if method == 'PATCH' and fail_patch:
-            raise PlaneError('Plane returned HTTP 400')
+            raise PlaneHttpError('Plane returned HTTP 400', 400)
         if method in {'POST', 'PATCH'}:
             current.update(data)
         if method == 'GET' and not path.endswith(ITEM):
@@ -782,3 +782,47 @@ def test_read_states_prints_one_line_per_ticket_and_fails_on_a_missing_one(tmp_p
     captured = capsys.readouterr()
     assert captured.out == 'WISH-1\tBacklog\n'
     assert 'WISH-99' in captured.err
+
+
+def test_unknown_outcome_during_the_move_says_the_state_is_unknown(tmp_path):
+    from tools.plane.policy import PlaneOutcomeUnknown
+    client, _, fake = state_client(tmp_path)
+    original = fake.handler
+
+    def handle(method, path, data, params):
+        if method == 'PATCH':
+            raise PlaneOutcomeUnknown('Plane returned HTTP 502')
+        return original(method, path, data, params)
+    fake.handler = handle
+    with pytest.raises(PlaneOutcomeUnknown, match=r'WISH-1 was created; its state is unknown; read it back'):
+        client.create('Ticket', 'Evidence', 'high', [LABEL], 'Queue')
+
+
+def test_comment_only_failure_says_the_state_was_applied(tmp_path):
+    from tools.plane.policy import PlaneHttpError
+    client, current, fake = state_client(tmp_path)
+    original = fake.handler
+
+    def handle(method, path, data, params):
+        if method == 'POST' and path.endswith('/comments'):
+            raise PlaneHttpError('Plane returned HTTP 400', 400)
+        return original(method, path, data, params)
+    fake.handler = handle
+    with pytest.raises(PlaneError, match=r'WISH-1 was created and moved to Queue, but its explanation comment') as info:
+        client.create('Ticket', 'Evidence', 'high', [LABEL], 'Queue')
+    assert 'in Backlog' not in str(info.value)
+    assert current['state'] == QUEUE_STATE
+
+
+def test_failure_after_the_post_names_the_new_ticket(tmp_path):
+    client, current, fake = state_client(tmp_path)
+    original = fake.handler
+
+    def handle(method, path, data, params):
+        result = original(method, path, data, params)
+        if method == 'GET' and path.endswith(ITEM):
+            result = {**result, 'priority': 'low'}
+        return result
+    fake.handler = handle
+    with pytest.raises(PlaneError, match=r'Ticket WISH-1 was created, but'):
+        client.create('Ticket', 'Evidence', 'high', [LABEL])
