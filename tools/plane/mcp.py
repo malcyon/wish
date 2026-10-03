@@ -48,6 +48,11 @@ def build_server(client=None):
         return client.comment(identifier, body)
 
     @server.tool()
+    def edit_comment(identifier: str, comment_id: str, body: str) -> dict:
+        """Replace the Markdown body of one of the agent's own comments on a project ticket."""
+        return client.edit_comment(identifier, comment_id, body)
+
+    @server.tool()
     def update_ticket(identifier: str, changes: dict, explanation: str) -> dict:
         """Apply metadata or factual corrections and post their explanation."""
         return client.update(identifier, changes, explanation)

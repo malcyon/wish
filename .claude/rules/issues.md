@@ -47,11 +47,12 @@ GitHub work.
 ## Write as the dedicated agent
 
 Use the project-scoped `wish-plane` MCP or `tools/plane/planeagent.py`, never raw
-vendor writes. The CLI has create, comment and update commands; it has no close or reopen command.
+vendor writes. The CLI has create, comment, edit-comment and update commands; it has no close or reopen command.
 
 ```sh
 "$PLANE_PYTHON" tools/plane/planeagent.py create --title TITLE --body-file BODY_FILE --priority high --label TYPE_LABEL_UUID
 "$PLANE_PYTHON" tools/plane/planeagent.py comment WISH-N --body-file COMMENT_FILE
+"$PLANE_PYTHON" tools/plane/planeagent.py edit-comment WISH-N --comment-id COMMENT_UUID --body-file COMMENT_FILE
 "$PLANE_PYTHON" tools/plane/planeagent.py update WISH-N --changes-file CHANGES_FILE --explanation-file EXPLANATION_FILE
 ```
 

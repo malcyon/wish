@@ -24,6 +24,10 @@ def main(argv=None):
     comment = commands.add_parser('comment')
     comment.add_argument('identifier')
     comment.add_argument('--body-file', type=Path, required=True)
+    edit = commands.add_parser('edit-comment')
+    edit.add_argument('identifier')
+    edit.add_argument('--comment-id', required=True)
+    edit.add_argument('--body-file', type=Path, required=True)
     update = commands.add_parser('update')
     update.add_argument('identifier')
     update.add_argument('--changes-file', type=Path, required=True)
@@ -36,6 +40,8 @@ def main(argv=None):
             result = client.create(args.title, args.body_file.read_text(), args.priority, args.label, **extra)
         elif args.command == 'comment':
             result = client.comment(args.identifier, args.body_file.read_text())
+        elif args.command == 'edit-comment':
+            result = client.edit_comment(args.identifier, args.comment_id, args.body_file.read_text())
         else:
             result = client.update(args.identifier, json.loads(args.changes_file.read_text()), args.explanation_file.read_text())
         print(json.dumps(result, indent=2))

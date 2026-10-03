@@ -826,3 +826,49 @@ def test_failure_after_the_post_names_the_new_ticket(tmp_path):
     fake.handler = handle
     with pytest.raises(PlaneError, match=r'Ticket WISH-1 was created, but'):
         client.create('Ticket', 'Evidence', 'high', [LABEL])
+
+
+MARKDOWN = '## Heading\n\n- one\n- two\n\n| a | b |\n|---|---|\n| 1 | 2 |\n'
+COMMENT = '00000000-0000-0000-0000-000000000008'
+
+
+def comment_editor(tmp_path, stored=None, author=AGENT):
+    """A fake whose comment endpoint stores what it is sent, unless `stored` overrides the readback."""
+    state = {'html': '<p>old</p>'}
+
+    def handle(method, path, data, params):
+        if path == 'users/me':
+            return {'id': AGENT}
+        if path.endswith(f'/comments/{COMMENT}'):
+            if method == 'PATCH':
+                state['html'] = data['comment_html']
+            html = stored if stored is not None and method == 'GET' and state['html'] != '<p>old</p>' else state['html']
+            return {'id': COMMENT, 'created_by': author, 'comment_html': html, 'created_at': 'now'}
+        return record()
+    fake = Fake(handle)
+    return Client(settings(tmp_path), fake), fake
+
+
+def test_edit_comment_renders_markdown_and_patches_the_comment_endpoint(tmp_path):
+    client, fake = comment_editor(tmp_path)
+    result = client.edit_comment(ITEM, COMMENT, MARKDOWN)
+    patches = [c for c in fake.calls if c[0] == 'PATCH']
+    assert len(patches) == 1
+    assert patches[0][1].endswith(f'/work-items/{ITEM}/comments/{COMMENT}') or patches[0][1].endswith(f'/{ITEM}/comments/{COMMENT}')
+    html = patches[0][2]['comment_html']
+    assert set(patches[0][2]) == {'comment_html'}
+    assert '<h2>Heading</h2>' in html and '<li>one</li>' in html and '<table>' in html and '##' not in html
+    assert result == {'id': COMMENT, 'author_id': AGENT, 'created_at': 'now'}
+
+
+def test_edit_comment_fails_when_the_readback_differs(tmp_path):
+    client, _ = comment_editor(tmp_path, stored='<p>## Heading</p>')
+    with pytest.raises(PlaneError, match='readback did not confirm'):
+        client.edit_comment(ITEM, COMMENT, MARKDOWN)
+
+
+def test_edit_comment_refuses_a_comment_by_another_author(tmp_path):
+    client, fake = comment_editor(tmp_path, author=OUTSIDE)
+    with pytest.raises(PlaneError, match='written by the agent'):
+        client.edit_comment(ITEM, COMMENT, MARKDOWN)
+    assert not [c for c in fake.calls if c[0] == 'PATCH']

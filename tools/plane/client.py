@@ -155,7 +155,8 @@ class Client:
 
     def summarise(self, path, record):
         """Reduce a written record to its compact form, by whether the path names a comment."""
-        return self.policy.compact_comment(record) if path.endswith('/comments') else self.policy.compact(record)
+        parts = path.split('/')
+        return self.policy.compact_comment(record) if 'comments' in parts[-2:] else self.policy.compact(record)
 
     def write(self, target, method, path, payload):
         """Send one request and return its compact result; an unknown outcome names `target` to read back."""
@@ -222,6 +223,22 @@ class Client:
         result = self.write(identifier, 'POST', f'{self.items}/{uuid(record["id"])}/comments', {'comment_html': paragraph(body)})
         if result['author_id'] != self.settings.agent:
             raise PlaneError("Comment authorship did not match the agent account; read the ticket back")
+        return result
+
+    def edit_comment(self, identifier, comment_id, body):
+        """Replace the body of one of the agent's own comments with rendered Markdown and confirm it by readback."""
+        record = self.writable(identifier)
+        path = f'{self.items}/{uuid(record["id"])}/comments/{uuid(comment_id)}'
+        html = paragraph(body)
+        if self.policy.author(self.transport.request('GET', path)) != self.settings.agent:
+            raise PlaneError("Only a comment written by the agent account can be edited")
+        result = self.write(identifier, 'PATCH', path, {'comment_html': html})
+        if result['author_id'] != self.settings.agent:
+            raise PlaneError("Comment authorship did not match the agent account; read the ticket back")
+        try:
+            confirm_changes(self.transport.request('GET', path), {'comment_html': html})
+        except PlaneError as exc:
+            raise PlaneError("Plane comment readback did not confirm the requested change; read the ticket back") from exc
         return result
 
     def update(self, identifier, changes, explanation):
@@ -336,7 +353,7 @@ def confirm_changes(record, payload):
     """Require server readback of every changed field before reporting success."""
     for field, expected in payload.items():
         actual = record.get(field)
-        if field == 'description_html':
+        if field in ('description_html', 'comment_html'):
             matches = isinstance(actual, str) and comparable_events(actual) == comparable_events(expected)
         elif field == 'labels':
             matches = isinstance(actual, list) and {uuid(v['id'] if isinstance(v, dict) else v) for v in actual} == {uuid(v) for v in expected}
