@@ -2050,8 +2050,8 @@ def _later_strength_sources(title_key: str, nodes: "Iterable[RunningEffect]",
 def later_strength_items(title_key: str,
                          inventory: "Iterable[bytes]") -> list[bytes]:
     """The readied items among the first sixteen whose power is one the C64's
-    strength recalculation reads, highest slot first (the order of its scan,
-    Curse `ECL65 $9761`)."""
+    strength recalculation reads, in the order of `inventory`, which is the
+    C64's scan order: slot 15 first (Curse `ECL65 $9761`)."""
     powers = frozenset().union(*LATER_STRENGTH_ITEM_POWERS[title_key].values())
     found = []
     for item in list(inventory)[:_STRENGTH_ITEM_SLOTS]:
@@ -2059,7 +2059,6 @@ def later_strength_items(title_key: str,
         if len(item) >= 16 and item[0] and item[6] & _ITEM_READIED \
                 and item[15] in powers:
             found.append(item)
-    found.reverse()
     return found
 
 
@@ -2074,7 +2073,7 @@ def _first_row(rows: "Iterable[tuple[int, int]]", ids: "Iterable[int]"
 
 
 def c64_later_strength_rebuild(
-        title_key: str, permanent: tuple[int, int], drain: int,
+        title_key: str, permanent: tuple[int, int],
         rows: "Iterable[tuple[int, int]]",
         items: "Iterable[bytes]") -> tuple[int, int]:
     """The score the C64's Strength recalculation (Curse `ECL65 $9160`,
@@ -2082,22 +2081,30 @@ def c64_later_strength_rebuild(
 
     `rows` are the running `(id, magnitude)` pairs in write order, `items` the
     readied items `later_strength_items` found. The recalculation starts from
-    the permanent score less the drain, climbs by the first Strength row only,
-    then merges (keeps the higher of) the table entry a girdle, the first
-    Enlarge row and the first Giant Strength row each pick.
+    the permanent score, climbs by the first Strength row only, then merges
+    (keeps the higher of) the table entry the first girdle of each power, the
+    first Enlarge row and the first Giant Strength row each pick. The C64's
+    drain term (`ECL65 $9160`-`$916D`) is not converted: converted records
+    hold 0 at `0x0FF`.
     """
     rows = list(rows)
     powers = LATER_STRENGTH_ITEM_POWERS[title_key]
     items = [bytes(i) for i in items]
     strength, percentile = permanent
-    strength -= drain
     if strength < 18 and any(i[15] in powers["plus_one"] for i in items):
         strength += 1
     magnitude = _first_row(rows, (38,))
     if magnitude is not None:
         strength, percentile = raise_strength(
             strength, percentile, later_ability_bonus(magnitude))
-    indices = [(i[14] & 7) + 5 for i in items if i[15] in powers["girdle"]]
+    # Each power is its own scan that stops at the first readied item it
+    # finds, slot 15 down (Curse `$91BA`-`$91C7` for `$85`; Silver Blades
+    # `$968C`-`$9693` runs the same scan for `$83` and then `$85`).
+    indices = []
+    for power in sorted(powers["girdle"]):
+        first = next((i for i in items if i[15] == power), None)
+        if first is not None:
+            indices.append((first[14] & 7) + 5)
     magnitude = _first_row(rows, (12,))
     if magnitude is not None:
         if magnitude & 0x0F == 0:
@@ -2155,7 +2162,7 @@ def c64_later_strength_in_force(
         if tuple(in_force) not in dos_later_strength_states(
                 tuple(permanent), running[0].data, warrior):
             return None
-    return c64_later_strength_rebuild(title_key, tuple(permanent), 0, rows,
+    return c64_later_strength_rebuild(title_key, tuple(permanent), rows,
                                       items)
 
 
@@ -2181,7 +2188,7 @@ def dos_later_strength_in_force(
     if rows is None:
         return None
     if tuple(in_force) != c64_later_strength_rebuild(
-            title_key, tuple(permanent), 0, rows, ()):
+            title_key, tuple(permanent), rows, ()):
         return None
     score = dos_later_strength(tuple(permanent), tuple(permanent),
                                first.data, warrior)

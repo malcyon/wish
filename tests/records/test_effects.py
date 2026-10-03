@@ -2637,18 +2637,12 @@ def _item(power, n=0, *, readied=True, kind=1):
     return bytes(item)
 
 
-def _rebuild(permanent, rows=(), items=(), *, drain=0, key=_C):
-    return effects.c64_later_strength_rebuild(key, permanent, drain, rows,
-                                              items)
+def _rebuild(permanent, rows=(), items=(), *, key=_C):
+    return effects.c64_later_strength_rebuild(key, permanent, rows, items)
 
 
 def _strength_row(bonus):
     return 38, effects.later_ability_magnitude(bonus, 0)
-
-
-def test_the_rebuild_subtracts_the_drain_from_the_permanent_score():
-    assert _rebuild((17, 0), drain=2) == (15, 0)
-    assert _rebuild((17, 0), [_strength_row(3)], drain=2) == (18, 0)
 
 
 def test_curse_adds_one_for_a_plus_one_item_below_eighteen_only():
@@ -2672,6 +2666,16 @@ def test_a_girdle_picks_the_table_entry_its_low_bits_index():
     assert _rebuild((10, 0), items=[_item(0x83, 0)]) == (10, 0)
 
 
+def test_only_the_first_girdle_of_a_power_counts():
+    """Each C64 scan stops at the first readied item of its power, so Curse
+    takes one `0x85` and Silver Blades one `0x83` and one `0x85`."""
+    first, second = _item(0x85, 0), _item(0x85, 3)
+    assert _rebuild((10, 0), items=[first, second]) == (18, 100)
+    assert _rebuild((10, 0), items=[second, first]) == (21, 0)
+    both = [_item(0x83, 0), _item(0x85, 3)]
+    assert _rebuild((10, 0), items=both, key=_SSB) == (21, 0)
+
+
 def test_enlarge_is_capped_at_level_ten_and_keeps_the_higher_score():
     flag = effects.MAGNITUDE_RESTORE_FLAG
     assert _rebuild((10, 0), [(12, flag | 3)]) == (18, 51)
@@ -2688,16 +2692,16 @@ def test_giant_strengths_nibble_three_gives_twenty_one(key):
 
 
 def test_curse_lowers_the_score_to_three_for_the_cap_item():
-    assert _rebuild((18, 50), items=[_item(0x8D)]) == (3, 50)
+    assert _rebuild((18, 50), items=[_item(0x8D)])[0] == 3
     assert _rebuild((18, 50), items=[_item(0x8D)], key=_SSB) == (18, 50)
 
 
-def test_the_readied_strength_items_come_highest_slot_first():
+def test_the_readied_strength_items_keep_the_inventory_order():
     girdle, plus, idle = _item(0x85, 1), _item(0x88), _item(0x85, 2, readied=False)
     other = _item(0x10)
     got = effects.later_strength_items(
         _C, [girdle, other, idle, _item(0x85, kind=0), plus])
-    assert got == [plus, girdle]
+    assert got == [girdle, plus]
     assert effects.later_strength_items(
         _C, [bytes(16)] * 16 + [girdle]) == []
 
