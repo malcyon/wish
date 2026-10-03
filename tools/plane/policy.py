@@ -154,6 +154,7 @@ class Policy:
 _DELIMITER_ROW = re.compile(r'^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$')
 _FENCE = re.compile(r'^\s{0,3}(`{3,}|~{3,})')
 _QUOTE = re.compile(r'^(?:\s{0,3}>[ ]?)*')
+_LIST_MARKER = re.compile(r'^( {0,3})([-+*]|\d{1,9}[.)])( +|$)')
 _CODE_SPAN = re.compile(r'(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)')
 
 
@@ -175,32 +176,42 @@ def _escape_code_pipes(line):
     return _CODE_SPAN.sub(fix, line)
 
 
+def _expand_leading(text):
+    """Turn the leading whitespace into spaces so columns can be counted by characters."""
+    stripped = text.lstrip(' \t')
+    return text[:len(text) - len(stripped)].expandtabs(4) + stripped
+
+
 def _protect_table_code(text):
     """Escape pipes inside code spans on table rows; fenced blocks and other text are untouched."""
     lines = text.split('\n')
+    parts = {}
     fence = None
     block = []
+    stack = []
+    stack_depth = 0
+    serial = 0
+    previous_blank = True
 
     def flush():
         # A table starts at the header line above its delimiter row and runs while rows hold a pipe;
         # prose above the header and text after the table keep their pipes.
         position = 1
         while position < len(block):
-            delimiter_prefix, delimiter = _split_quote(lines[block[position]])
-            header_prefix, header = _split_quote(lines[block[position - 1]])
-            depth = delimiter_prefix.count('>')
+            delimiter_head, delimiter, delimiter_key = parts[block[position]]
+            header_head, header, header_key = parts[block[position - 1]]
             if (
                 '|' in delimiter and '|' in header and _DELIMITER_ROW.match(delimiter)
-                and header_prefix.count('>') == depth
+                and header_key == delimiter_key
                 and _indent(delimiter) <= 3 and _indent(header) <= 3
             ):
                 end = position - 1
                 while end < len(block):
-                    prefix, rest = _split_quote(lines[block[end]])
-                    # A line outside the quote (or in a deeper one) is not a row of this table.
-                    if '|' not in rest or prefix.count('>') != depth:
+                    head, rest, key = parts[block[end]]
+                    # A line outside the quote or list item (or in a deeper one) is not a row of this table.
+                    if '|' not in rest or key != delimiter_key:
                         break
-                    lines[block[end]] = prefix + _escape_code_pipes(rest)
+                    lines[block[end]] = head + _escape_code_pipes(rest)
                     end += 1
                 position = end + 1
             else:
@@ -208,22 +219,55 @@ def _protect_table_code(text):
         block.clear()
 
     for index, line in enumerate(lines):
-        prefix, rest = _split_quote(line)
-        depth = prefix.count('>')
-        marker = _FENCE.match(rest)
-        if fence is not None:
-            if depth >= fence[1]:
-                if marker and marker.group(1)[0] == fence[0][0] and len(marker.group(1)) >= len(fence[0]):
-                    fence = None
+        quote, rest = _split_quote(line)
+        depth = quote.count('>')
+        rest = _expand_leading(rest)
+        if not rest.strip():
+            if fence is not None and depth >= fence[1]:
                 continue
             fence = None
+            flush()
+            previous_blank = True
+            continue
+        indent = _indent(rest)
+        if fence is not None and depth >= fence[1] and indent >= fence[2]:
+            inner = rest[fence[2]:]
+            marker = _FENCE.match(inner)
+            if marker and marker.group(1)[0] == fence[0][0] and len(marker.group(1)) >= len(fence[0]):
+                fence = None
+            previous_blank = False
+            continue
+        fence = None
+        if depth != stack_depth:
+            stack, stack_depth = [], depth
+        lazy = False
+        while stack and indent < stack[-1][0]:
+            if not previous_blank and not _LIST_MARKER.match(rest.lstrip()):
+                lazy = True
+                break
+            stack.pop()
+        base = stack[-1][0] if stack else 0
+        if lazy:
+            head, content, key = quote, rest, (depth, 'lazy')
+        else:
+            item = _LIST_MARKER.match(rest[base:]) if indent - base <= 3 else None
+            if item:
+                spaces = len(item.group(3))
+                width = item.end(2) + (spaces if 1 <= spaces <= 4 else 1)
+                serial += 1
+                stack.append((base + width, serial))
+                head, content = quote + rest[:base + width], rest[base + width:]
+            else:
+                head, content = quote + rest[:base], rest[base:]
+            key = (depth, stack[-1][1] if stack else 0)
+        parts[index] = (head, content, key)
+        marker = _FENCE.match(content)
         if marker:
             flush()
-            fence = (marker.group(1), depth)
-        elif line.strip():
-            block.append(index)
+            fence = (marker.group(1), depth, 0 if lazy or not stack else stack[-1][0])
         else:
-            flush()
+            block.append(index)
+        previous_blank = False
     flush()
     return '\n'.join(lines)
 

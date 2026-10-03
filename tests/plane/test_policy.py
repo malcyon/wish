@@ -1043,3 +1043,45 @@ def test_table_nested_in_two_blockquotes_keeps_a_code_cell_whole():
     out = paragraph('> > | a | b |\n> > |---|---|\n> > | `x|y` | z |')
     assert out.count('<td>') == 2
     assert '<td><code>x|y</code></td>' in out
+
+
+@pytest.mark.parametrize('source', [
+    '- item\n\n  | a | b |\n  |---|---|\n  | `x|y` | z |',
+    '1. item\n   | a | b |\n   |---|---|\n   | `x|y` | z |',
+    '-   item\n\n    | a | b |\n    |---|---|\n    | `x|y` | z |',
+    '> - item\n>\n>   | a | b |\n>   |---|---|\n>   | `x|y` | z |',
+    '- | a | b |\n  |---|---|\n  | `x|y` | z |',
+    '- outer\n\n  - inner\n\n    | a | b |\n    |---|---|\n    | `x|y` | z |',
+])
+def test_table_inside_a_list_item_keeps_a_code_cell_whole(source):
+    from tools.plane.policy import paragraph
+    out = paragraph(source)
+    assert out.count('<td>') == 2 and '\\' not in out
+    assert '<td><code>x|y</code></td>' in out
+
+
+def test_indented_code_in_a_list_item_keeps_its_source_text():
+    from tools.plane.policy import paragraph
+    out = paragraph('- item\n\n      | a | b |\n      |---|---|\n      | `x|y` | z |')
+    assert '\\' not in out and '<td>' not in out
+    assert '| `x|y` | z |' in out and '<pre><code>' in out
+
+
+def test_fenced_code_in_a_list_item_keeps_its_source_text():
+    from tools.plane.policy import paragraph
+    out = paragraph('- item\n\n  ```\n  | a | b |\n  |---|---|\n  | `x|y` | z |\n  ```')
+    assert '\\' not in out and '<td>' not in out
+    assert '| `x|y` | z |' in out
+
+
+def test_table_after_a_list_item_is_still_escaped_and_prose_is_not():
+    from tools.plane.policy import paragraph
+    out = paragraph('- item `a|b`\n\n| a | b |\n|---|---|\n| `x|y` | z |')
+    assert '<li>item <code>a|b</code></li>' in out
+    assert '<td><code>x|y</code></td>' in out and '\\' not in out
+
+
+def test_lazy_line_after_a_list_item_gets_no_backslash():
+    from tools.plane.policy import paragraph
+    out = paragraph('- item\n| `m|n` | q |')
+    assert '\\' not in out
