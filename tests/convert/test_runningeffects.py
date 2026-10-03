@@ -854,6 +854,60 @@ def test_a_game_written_pool_flight_save_converts_to_dos_and_the_amiga(
         assert plan.report.dropped == [] and saveplan.losses(plan.report) == []
 
 
+def test_a_game_written_pool_camp_bless_after_enlarge_converts_to_dos_and_the_amiga(
+        tmp_path):
+    """Pool's camp Bless cast after an Enlarge in the same visit stores
+    Enlarge's leftover `$80` as its magnitude on all six members; both ports
+    keep that byte and nothing is dropped."""
+    from test_convertmatrix import _c64_specimen
+
+    from editor import convert, roster, saveplan
+    from goldbox.amiga_adf import AmigaDisk
+    from tools.convert import convertdrops
+    from tools.dos import dosbox
+
+    disk = _c64_specimen("por-wish7-camp-enlarge-then-bless")
+    if disk is None:
+        pytest.skip("needs the por-wish7-camp-enlarge-then-bless specimen")
+    try:
+        game_dir = dosbox.find_game("POOLRAD")
+    except FileNotFoundError:
+        pytest.skip("needs the DOS Pool of Radiance archives ($FR_ARCHIVES)")
+    amiga = convertdrops.amiga_game_disks(tmp_path).get(POOL_OF_RADIANCE.key)
+    if amiga is None:
+        pytest.skip("needs Pool of Radiance's own Amiga game disk")
+    party = roster.Party(str(disk))
+    source = party.source or convert.Source.detect(party.path)
+    try:
+        dos_assets = saveplan.resolve_assets(
+            source, "dos", game_files=convertdrops.game_files,
+            dos_folder=game_dir)
+        amiga_assets = saveplan.resolve_assets(
+            source, "amiga", game_files=convertdrops.game_files,
+            amiga_disk=amiga)
+    except saveplan.MissingAssets:
+        pytest.skip("needs Pool of Radiance's own C64 disks")
+    stale_bless = bytes((1, 6, 0, 0x80, 0))
+    plan = saveplan.prepare_save_as(party, "dos", tmp_path / "dos", dos_assets)
+    assert plan.report.dropped == [] and saveplan.losses(plan.report) == []
+    spcs = [data for name, data in plan.files.items()
+            if name.startswith("CHRDATA") and name.endswith(".SPC")]
+    assert len(spcs) == 6
+    assert all(spc.count(stale_bless) == 1 for spc in spcs)
+    assert sum(spc.count(bytes((12, 20, 0, 1, 1))) for spc in spcs) == 1
+    plan = saveplan.prepare_save_as(party, "amiga", tmp_path / "out.adf",
+                                    amiga_assets)
+    assert plan.report.dropped == [] and saveplan.losses(plan.report) == []
+    (image,) = plan.files
+    written = AmigaDisk(bytearray(plan.files[image]))
+    drawer = amiga_savegame.por_save_drawer(written)
+    chars = amiga_savegame.read_por_characters(written, "A", drawer)
+    assert len(chars) == 6
+    for char in chars:
+        running = amiga_por.to_neutral(char).get("running_effects")
+        assert stale_bless in [bytes(r)[:5] for r in running]
+
+
 # --- Save As Amiga keeps a running C64 spell ------------------------------------
 
 #: title, C64 game constant, the first character's name, and the C64
@@ -4269,3 +4323,17 @@ def test_save_as_c64_writes_the_gauntlets_alone_and_is_not_blocked(
     _game, chars = _c64_party(disk)
     (char,) = [c for c in chars if c.get("name") == target]
     assert (char.get("strength"), char.get("exceptional_strength")) == (18, 0)
+
+
+def test_a_pool_camp_bless_row_with_a_leftover_override_reaches_dos_whole():
+    """The disk-free half of the camp Bless specimen test: a Pool row with
+    id 1 and magnitude `$80` converts to `01 06 00 80 00` with no dropped line."""
+    payload = _synthetic_c64_party_payload(
+        POOL_OF_RADIANCE, 1,
+        (1, 0, effects.closest_duration(6, 0), 0x80))
+    party, _ = dos_codec.c64_party(bytes(payload), None, game=POOL_OF_RADIANCE)
+    assert len(party) == 1
+    for char in party:
+        assert [bytes(r) for r in char.get("running_effects")] == \
+            [bytes((1, 6, 0, 0x80, 0)) + NULL]
+        assert not [d for d in char.dropped if "effect 1" in d]

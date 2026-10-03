@@ -1090,7 +1090,6 @@ def test_a_pool_caster_level_bless_becomes_id_and_level():
 @pytest.mark.parametrize("title, node", [
     ("pool-of-radiance", effects.RunningEffect(1, 2, 1, 1)),
     ("pool-of-radiance", effects.RunningEffect(1, 2, 0, 0)),
-    ("pool-of-radiance", effects.RunningEffect(1, 2, 0x80, 0)),
     ("pool-of-radiance", effects.RunningEffect(13, 2, 1, 0)),
     ("pool-of-radiance", effects.RunningEffect(49, 2, 1, 0)),
     ("curse-of-the-azure-bonds", effects.RunningEffect(49, 2, 1, 0)),
@@ -1592,12 +1591,51 @@ def test_dos_record_converts_the_later_titles_own_ids():
         effects.Unconverted)
 
 
-@pytest.mark.parametrize("eid,magnitude", [(13, 1), (49, 1), (1, 0),
-                                           (1, 0x80)])
+@pytest.mark.parametrize("eid,magnitude", [(13, 1), (49, 1), (1, 0)])
 def test_dos_record_refuses_what_has_no_rule(eid, magnitude):
     row = effects.Effect(63, eid, 0, 0x02, magnitude)
     assert isinstance(effects.dos_record("pool-of-radiance", row, 0),
                       effects.Unconverted)
+
+
+@pytest.mark.parametrize("title, eid", [
+    ("curse-of-the-azure-bonds", 1),
+    ("secret-of-the-silver-blades", 1),
+    ("pool-of-radiance", 2)])
+def test_dos_record_refuses_a_magnitude_with_bit_7_where_only_a_level_goes(
+        title, eid):
+    """Only Pool's generic camp ids keep a leftover override byte."""
+    row = effects.Effect(63, eid, 0, 0x02, 0x80)
+    assert isinstance(effects.dos_record(title, row, 0), effects.Unconverted)
+    assert isinstance(effects.c64_row(title, effects.RunningEffect(
+        eid, 2, 0x80, 0)), effects.Unconverted)
+
+
+@pytest.mark.parametrize("magnitude", [0x80, 0x8F, 0xF4, 0xFF, 0x12])
+@pytest.mark.parametrize("eid", sorted(effects.POOL_CASTER_LEVEL_IDS - {25}))
+def test_a_pool_camp_row_with_a_leftover_override_keeps_its_byte(
+        eid, magnitude):
+    row = effects.Effect(63, eid, 0, 0x02, magnitude)
+    node = effects.dos_record("pool-of-radiance", row, 0)
+    assert node == effects.RunningEffect(eid, node.minutes, magnitude, 0)
+    assert effects.c64_row("pool-of-radiance", node) == (eid, magnitude)
+
+
+@pytest.mark.parametrize("magnitude", [0x80, 0x8F, 0xFE])
+def test_a_pool_invisibility_with_a_leftover_override_keeps_its_byte(
+        magnitude):
+    row = effects.Effect(63, 25, 0, 0, magnitude)
+    record = effects.never_expiring_spell_record("pool-of-radiance", row)
+    assert record[:5] == bytes((25, 0, 0, magnitude, 0))
+    assert effects.never_expiring_spell_row(
+        "pool-of-radiance", record) == (25, magnitude)
+
+
+def test_a_pool_invisibility_of_0xff_stays_the_trait_slot_form():
+    row = effects.Effect(63, 25, 0, 0, 0xFF)
+    assert effects.never_expiring_spell_record("pool-of-radiance", row) is None
+    assert effects.never_expiring_spell_row(
+        "pool-of-radiance", bytes((25, 0, 0, 0xFF, 0))) is None
 
 
 @pytest.mark.parametrize("byte", [0xEE, 0xFF])

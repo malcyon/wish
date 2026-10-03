@@ -315,6 +315,10 @@ class RunningEffect:
 #: The Pool of Radiance effect ids whose ordinary cast stores the caster's level
 #: as the DOS data byte and as the C64 magnitude
 #: (`docs/226-the-c64-running-effect-crosswalk.md`).
+#: Pool's camp writer can also store a leftover override (`SPELLE04 $A825`,
+#: never cleared within a camp visit) as the magnitude, so these ids convert any
+#: byte from 1 to 0xFF whole: only Dispel Magic (low nibble, `$FF` skipped;
+#: `SPELLE04 $AA5B`) and the bit-7 expiry dispatch (`CAMP $131F`) read it.
 POOL_CASTER_LEVEL_IDS = frozenset(
     {1, 5, 8, 9, 10, 16, 17, 19, 20, 24, 25, 37, 41, 45, 46})
 
@@ -938,6 +942,14 @@ def enlarge_capped(title_key: str, node: RunningEffect) -> bool:
             and node.flag == LATER_CAST_FLAGS[_BLADES][12])
 
 
+def _caster_level_max(title_key: str, effect_id: int) -> int:
+    """The largest magnitude a caster-level id converts: Pool's generic camp
+    ids keep a leftover override byte whole, every other id a level."""
+    if title_key == "pool-of-radiance" and effect_id in POOL_CASTER_LEVEL_IDS:
+        return 0xFF
+    return 0x7F
+
+
 def c64_row(title_key: str, node: RunningEffect, *,
             strength_nodes: int = 1,
             slow_poison_quiet: bool = False) -> tuple[int, int] | Unconverted:
@@ -959,7 +971,7 @@ def c64_row(title_key: str, node: RunningEffect, *,
         return _value_row(title_key, node, strength_nodes)
     if node.flag != 0:
         return Unconverted("a flag byte other than 0 on a caster-level effect")
-    if not 1 <= node.data <= 0x7F:
+    if not 1 <= node.data <= _caster_level_max(title_key, node.id):
         return Unconverted("a data byte that is not a caster level")
     return node.id, node.data
 
@@ -1028,7 +1040,7 @@ def dos_record(title_key: str, row: "Effect",
         if isinstance(made, Unconverted):
             return made
         return RunningEffect(row.id, minutes, *made)
-    if not 1 <= row.magnitude <= 0x7F:
+    if not 1 <= row.magnitude <= _caster_level_max(title_key, row.id):
         return Unconverted("a magnitude that is not a caster level")
     return RunningEffect(row.id, minutes, row.magnitude, 0)
 
@@ -1319,6 +1331,15 @@ def c64_feeblemind_scores(title_key: str, permanent) -> dict[str, int]:
     return scores
 
 
+def _never_expiring_max(title_key: str, effect_id: int) -> int:
+    """The largest DOS data byte a never-expiring spell record converts. Pool's
+    Invisibility keeps a leftover camp override up to 0xFE; `FF 00` stays the
+    trait-slot form."""
+    if title_key == "pool-of-radiance" and effect_id == 25:
+        return 0xFE
+    return 0x7F
+
+
 def never_expiring_spell_row(title_key: str,
                              node: bytes) -> tuple[int, int] | None:
     """The C64 `(id, magnitude)` for a DOS granted record a spell wrote, or `None`.
@@ -1329,7 +1350,7 @@ def never_expiring_spell_row(title_key: str,
     """
     if (node[0] in NEVER_EXPIRING_SPELL_IDS.get(title_key, ())
             and node[1] == 0 and node[2] == 0
-            and 1 <= node[3] <= 0x7F
+            and 1 <= node[3] <= _never_expiring_max(title_key, node[0])
             and node[4] == NEVER_EXPIRING_SPELL_FLAGS.get(node[0], 0)):
         return node[0], node[3] | NEVER_EXPIRING_C64_BITS.get(node[0], 0) << 7
     return None
@@ -1346,14 +1367,23 @@ def feebleminded(title_key: str, granted) -> bool:
     return False
 
 
+def _pool_stale_invisibility(title_key: str, row: "Effect") -> bool:
+    """Whether `row` is Pool's Invisibility holding a leftover camp override."""
+    return (title_key == "pool-of-radiance" and row.id == 25
+            and 0x80 <= row.magnitude <= 0xFE)
+
+
 def never_expiring_spell_record(title_key: str, row: "Effect") -> bytes | None:
     """The DOS granted record for a duration-0 row of a spell id, or `None`."""
     if (row.duration == 0
             and row.id in NEVER_EXPIRING_SPELL_IDS.get(title_key, ())
-            and row.magnitude & 0x7F
-            and row.magnitude >> 7
-            == NEVER_EXPIRING_C64_BITS.get(row.id, 0)):
-        return bytes((row.id, 0, 0, row.magnitude & 0x7F,
+            and (_pool_stale_invisibility(title_key, row)
+                 or (row.magnitude & 0x7F
+                     and row.magnitude >> 7
+                     == NEVER_EXPIRING_C64_BITS.get(row.id, 0)))):
+        data = (row.magnitude if _pool_stale_invisibility(title_key, row)
+                else row.magnitude & 0x7F)
+        return bytes((row.id, 0, 0, data,
                       NEVER_EXPIRING_SPELL_FLAGS.get(row.id, 0))
                      ) + _RUNNING_EFFECT_NEXT
     return None
