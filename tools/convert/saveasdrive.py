@@ -48,9 +48,10 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
     """Open `source`, Save As it to `port` under `folder`, and say what landed.
 
     `window` is an `EditorBinding`, whose `game_files_for` finds the game data
-    a route needs. The report carries `written` (paths), `slot`, `losses` and
-    `dropped` from the conversion's accounting, or `refused` -- the exception's
-    class and text -- when Save As refused or failed.
+    a route needs. The report carries `written` (paths), `slot`, `losses`,
+    `dropped` and `left_behind` from the conversion's accounting, or
+    `refused` -- the exception's class and text -- when Save As refused or
+    failed.
 
     `source_slot` names which of a DOS folder's or an Amiga disk's several
     saved games to read, the same letter `editor.convert.Source.detect`
@@ -97,6 +98,8 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
             **({"leave_effects": leave_effects} if leave_effects else {}))
         report["losses"] = saveplan.losses(plan.report) if plan.report else []
         report["dropped"] = list(getattr(plan.report, "dropped", []) or [])
+        report["left_behind"] = list(
+            getattr(plan.report, "left_behind", []) or [])
         published = saveplan.publish(plan, party, assets=assets)
     except Exception as exc:
         if isinstance(exc, saveplan.NamesDoNotFit):

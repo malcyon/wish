@@ -133,3 +133,4 @@ def test_leave_chooses_the_item_an_over_limit_pack_leaves_behind(
     assert report["written"]
     (left,) = prepared[0].report.left_behind
     assert "left behind" in left
+    assert report["left_behind"] == list(prepared[-1].report.left_behind)
