@@ -618,3 +618,20 @@ def test_the_title_description_imports_without_the_runners():
     done = subprocess.run([sys.executable, "-c", program],
                           cwd=pathlib.Path(__file__).resolve().parents[2])
     assert done.returncode == 0
+
+
+@pytest.mark.parametrize("name", ["pool", "curse"])
+@pytest.mark.parametrize("issue, folder", [("666", "666"), (None, acceptance.ISSUE)])
+def test_prepare_files_a_substituted_run_under_the_issue_given(
+        name, issue, folder, tmp_path, monkeypatch):
+    monkeypatch.setattr(acceptance.scratch, "cache_dir",
+                        lambda *parts: tmp_path.joinpath(*parts))
+
+    def stub(run, specimen, **kw):
+        run.mkdir(parents=True)
+        return {"run": str(run)}
+
+    monkeypatch.setitem(acceptance._PREPARE, name, stub)
+    path = acceptance.prepare(acceptance.TITLES[name], "run1", substitute=tmp_path / "d.adf",
+                              issue=issue)
+    assert path == tmp_path / "acceptance" / folder / "run1" / "prepare.json"

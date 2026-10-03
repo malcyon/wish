@@ -2077,7 +2077,7 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
     file, and the specimen's own pin, are unaffected.
     `camp` (a title in `CAMP_TITLES` only) is a list of camp steps
     (`route_camp.validate_steps`) the accept route drives between camping and
-    the camp save, kept in the manifest; `issue` (the same titles) puts the run
+    the camp save, kept in the manifest. `issue`, on any title, puts the run
     folder under that issue's number rather than this module's.
     """
     if not HOLDER.fullmatch(run_id):
@@ -2091,8 +2091,8 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
         raise RouteError(f"{name} takes no disk 3 hash or accept summary")
     if substitute is not None and name not in _SUBSTITUTABLE:
         raise RouteError(f"{name} takes no substitute slot")
-    if (camp or issue is not None) and name not in CAMP_TITLES:
-        raise RouteError(f"{name} takes camp steps and an issue only on a published prepare")
+    if camp and name not in CAMP_TITLES:
+        raise RouteError(f"{name} takes camp steps only on a published prepare")
     if issue is not None and not re.fullmatch(r"\d+", issue):
         raise RouteError("the issue is a number")
     if camp:
@@ -2719,8 +2719,6 @@ def main(argv: list[str] | None = None) -> int:
             elif (args.source is not None or args.staged_from is not None
                   or args.save_count is not None):
                 raise RouteError("--source, --staged-from and --save-count require --title ssb")
-            elif args.issue is not None and args.title not in CAMP_TITLES:
-                raise RouteError("--issue requires --title ssb or darkness")
         elif not silver_blades and args.attempt is None:
             raise RouteError("--attempt is required for this title")
         if (args.command == "measure" and not silver_blades

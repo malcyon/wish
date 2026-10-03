@@ -887,13 +887,12 @@ def test_camp_steps_in_a_manifest_that_is_not_a_darkness_accept_are_refused(
         _dark_camp_run(tmp_path, clock, manifest_title=manifest_title, accept=accept)
 
 
-def test_only_darkness_prepares_camp_steps_or_an_issue_outside_a_published_prepare(
+def test_only_darkness_prepares_camp_steps_outside_a_published_prepare(
         tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
-    for kw in ({"camp": ("view",)}, {"issue": "628"}):
-        with pytest.raises(RouteError, match="only on a published prepare"):
-            foundation.prepare(foundation.CURSE, "camp-run", **kw)
+    with pytest.raises(RouteError, match="only on a published prepare"):
+        foundation.prepare(foundation.CURSE, "camp-run", camp=("view",))
     with pytest.raises(RouteError, match="sheets for line 1 only"):
         foundation.prepare(foundation.DARKNESS, "camp-run", camp=("view 2",))
     with pytest.raises(RouteError, match="is a number"):
@@ -926,8 +925,12 @@ def test_the_cli_takes_camp_steps_and_an_issue_for_a_darkness_prepare(capsys, mo
     assert seen["title"] is foundation.DARKNESS
     assert seen["camp"] == DARK_CAMP and seen["issue"] == "628"
     assert foundation.main(["prepare", "--title", "curse", "--run-id", "x",
-                            "--issue", "628"]) == 2
-    assert "--issue requires --title ssb or darkness" in capsys.readouterr().err
+                            "--camp", "view"]) == 2
+    assert "--camp requires --published-disk-one or --title darkness" in capsys.readouterr().err
+    seen.clear()
+    assert foundation.main(["prepare", "--title", "curse", "--run-id", "x",
+                            "--issue", "628"]) == 0
+    assert seen["title"] is foundation.CURSE and seen["issue"] == "628"
 
 
 def test_a_darkness_prepare_the_party_refuses_leaves_no_run_folder_so_a_retry_can_run(
