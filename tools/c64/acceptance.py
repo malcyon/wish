@@ -59,7 +59,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `camp-list [WHO]` | `ENCAMP > MAGIC > DISPLAY`, then each name the game offers (or WHO alone, which may be `THE WHOLE PARTY`): the spells it lists as in effect, page by page. Curse first shows the list of the member under the panel highlight and asks on whom only after its last page; that list is logged as `camp-list-highlighted` and the whom menu is then read the same way |
 | `items WHO`, `view WHO` | `VIEW` and the ITEMS list, or the sheet alone, as text, with each item's Detect Magic mark; on Curse and Silver Blades it then leaves through the list's `EXIT`, the sheet's `EXIT` and the camp's `EXIT`, so the next step starts in the world |
 | `rest 5m`, `rest 8h`, `rest 1h30m` | camp `REST` for exactly that long (`tools/c64/route_pool.py`'s rest); straight after a `scribe` it rests in the camp the scribe left open, since every camp exit cancels the scribe queue, and adds `stayed_in_camp`; a city-watch `GO STAY` event that ends it is answered `GO`, logged as `random_event`, and the result's `rest_completed` says whether the clock ran the full time.  A rest the area's check interrupted (`$6DD3` = `$FF`, or `CAMP` already gone) waits for the prompt the area puts up sending no key apart from disk-swap answers, answers it, and adds `ended: "interrupted"`, `interrupted`, `bar`, `prompts` and `watch_seen`, which only an interrupted rest carries.  Whenever a watch was answered, interrupted or not, the result has `state_cleared` (the bytes `GO` clears).  A fight fails the step at once, and any other prompt fails it naming row 24.  A Curse or Silver Blades rest the game stopped (`rest_later`'s `interrupted`) answers each `PRESS ... TO CONTINUE` page with Return, keeps its text, and adds `ended: "interrupted"`, `interrupted`, `bar`, `prompts` and `text`; a fight after the event fails the step at once naming the event's text |
-| `walk MOVES` | I forward, J left, K right, M turns about and tries the edge behind the original facing -- one square back keeping that facing where the edge carries no wall art, or held turned about where it does -- each judged by `position()` before and after (Pool's status line holds the clock, and a Pool area whose line shows no square, such as area 7, is judged by the live triple too; Curse's and Silver Blades' lags a step, so they are judged by the live triple `$C04B`-`$C04D`, and their one retry too): `blocked` when a forward move left x,y alone, a turn (`J`/`K`) must leave the square and change the facing by its amount, and `M` must leave the square either where it started or one square behind, facing either as it started or exactly reversed; a move that brings up a disk prompt, or lands anywhere else, fails the walk |
+| `walk MOVES` | I forward, J left, K right, M turns about and tries the edge behind the original facing -- one square back keeping that facing where the edge carries no wall art, or held turned about where it does -- each judged by `position()` before and after (Pool's status line holds the clock, and a Pool area whose line shows no square, such as area 7, is judged by the live triple too; Curse's and Silver Blades' lags a step, so they are judged by the live triple `$C04B`-`$C04D`, and their one retry too): `blocked` when a forward move left x,y alone, a turn (`J`/`K`) must leave the square and change the facing by its amount, and `M` must leave the square either where it started or one square behind, facing either as it started or exactly reversed; a move that brings up a disk prompt, or lands anywhere else, fails the walk. Pool's travel grid takes the digits 1-8 instead, alone in the route (1 north, then clockwise to 8 north-west), each pressed once and judged by the travel pair `$49C3`/`$49C4` with the area `$49F2`, never by the lagging status line: a pair left alone is `blocked`, a pair moved by anything but the digit's compass step fails the walk unless the window (area) changed, and digits fail at once when the party is not on the travel grid; the result has `outdoors`, `area` and `position` `[x, y, None]` |
 | `snapshot NAME`, `restore NAME` | `snapshot` saves the whole machine, drive and disk included, under NAME (letters, digits, `-`, `_`); `restore` puts it back, attaches the drive's disk again so a later `save` works, and waits for the world bar. A `restore` needs an earlier `snapshot` of that name and no `save` before it, since the save stays on the disk image while memory goes back; the parser stops the run otherwise. Each is recorded in the run log and as a result in `summary.json`. `--walk-retry N` makes every `walk` step go through `Session.walk_with_retry`: after an encounter it restores and walks again, up to N more times, judged by its start and end squares only (the result adds `retries`); the step fails with the machine restored when every attempt met one. A `restore` also undoes the forward moves of the `walk` steps since its `snapshot`, so the `save` check that the party moved counts only the moves still standing |
 | `fight [SECONDS]` | walk until a fight starts, then fight it with `Session.melee_turn` for at most SECONDS (120); a fight still going when SECONDS end, or one the party loses, fails the step (the run cannot continue from it), and the checkpoint counts read at that point are kept as `lost_reading` in the summary. Pool repeats `--walk`; Curse walks to Tilverton's tavern and punches the barkeep; Silver Blades sets the wandering roll's fight gate `$4C2D` to 1, walks `GEO10` toward 12,0 and 12,15 in turn (at most `--walk-steps` moves), sends each key only once the move bar is up and the engine idles in its key wait, sends none from `COM.PREP` until the first command bar, and puts `$4C2D` back after the fight (`wander_gate` in the result); a party wiped back to the party menu fails the step at once |
 | `cast CASTER:SPELL>TARGET` | Curse: `ENCAMP > MAGIC > CAST`, the one spell named, on TARGET; the target's row of the cured id before and after (`CURE BLINDNESS`) |
@@ -73,7 +73,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `walk-flee MOVES[/NO]` | Pool only: `walk-fight`, but an encounter menu is answered FLEE; each flee is recorded in `flees` as `escaped` (the world bar or the move prompt `I,J,K,M, RETURN OR BUTTON` came back) or with the `fight` that opened, which is fought out; a move that escaped a flee is judged only for a readable facing, a caught one as `walk-fight` judges; a flee that ends in neither is a failure after `FIGHT_OPENS_SECONDS` |
 | `warp AREA` | Pool only: fast-travel the loaded party into area AREA (the writes and jump of `automap.actions.FastTravel`, no arrival square), wait for the key-wait loop, and fail unless the live facing byte `$C04D` is the one the area's arrival script sets (area 10: 1, east); returns the writes and the triple `$C04B`-`$C04D` |
 | `peek ADDR N` | N bytes of memory, ADDR in hex |
-| `save` | the game's own `ENCAMP > SAVE`; the disk copied out once closed and decoded, with the place through `world_state.from_c64` against the staged one (`place_changed`, `facing_changed`); Curse and Silver Blades record row 18, row 24, every key and every attach with their times as `save-watch`, `save-key` and `save-attach` events, and a `SAVE GAME` bar that never comes is watched on to the camp bar, the disk copied to `lost-saved.D64`, then lost |
+| `save` | the game's own `ENCAMP > SAVE`; the disk copied out once closed and decoded, with the place through `world_state.from_c64` against the staged one (`place_changed`, `facing_changed`), the square being the travel pair when the save stands on the travel grid; Curse and Silver Blades record row 18, row 24, every key and every attach with their times as `save-watch`, `save-key` and `save-attach` events, and a `SAVE GAME` bar that never comes is watched on to the camp bar, the disk copied to `lost-saved.D64`, then lost |
 
 WHO is a name as the party panel draws it, or a number counting from 1 at
 the top of the panel.  After every step in the world all live effect rows,
@@ -654,6 +654,17 @@ LOOK_SECONDS = 2.0
 #: one, where there is).
 TURNS = {"I": 0, "J": -1, "K": 1, "M": None}
 
+#: The travel grid's moves, Pool of Radiance only: a compass digit and the
+#: change it makes to the travel pair `$49C3`/`$49C4`, clockwise from `1`
+#: north (`Session.COMPASS`, measured by writing the pair, pressing one digit
+#: and reading the square back).
+COMPASS = S.COMPASS
+
+#: The running area, the save page's `current_script` (`$49F2` on the C64):
+#: on the travel grid the window the travel pair is local to.
+_POOL_BOX = c64_save.CONTAINERS["pool-of-radiance"]
+AREA_AT = _POOL_BOX.save_load_address + _POOL_BOX.current_script
+
 
 #: Pool's city-watch random event ends a camp rest with these two words on
 #: row 24; the first is the answer, as the DOS driver's `WATCH_GO`.
@@ -708,12 +719,21 @@ def parse_peek(arg: str) -> tuple[int, int]:
     return addr, n
 
 
+def outdoor_route(route: str) -> bool:
+    """Whether a parsed route is travel-grid digits rather than dungeon letters."""
+    return bool(route) and all(c in COMPASS for c in route)
+
+
 def parse_walk(arg: str) -> str:
-    """`I`, `K`, `IIK`: the moves in order, upper-cased."""
+    """`I`, `K`, `IIK` in a dungeon, or the travel grid's compass digits
+    (`22`, `13`): the moves in order, upper-cased.  One route is one kind."""
     route = arg.strip().upper()
+    if outdoor_route(route):
+        return route
     if not route or any(c not in TURNS for c in route):
         raise ValueError(f"walk {arg!r}: the moves are I forward, J left, "
-                         f"K right, M about-turn")
+                         f"K right, M about-turn, or on the travel grid "
+                         f"the digits 1-8 alone")
     return route
 
 
@@ -736,6 +756,9 @@ def parse_walk_fight(arg: str) -> tuple[str, str | None]:
     square may be given.  NO is the only answer the step will press."""
     keys, sep, answer = arg.strip().partition("/")
     route = parse_walk(keys)
+    if outdoor_route(route):
+        raise ValueError(f"walk-fight {arg!r}: the travel grid's digits are "
+                         f"for `walk` only")
     if sep and answer.strip().upper() != "NO":
         raise ValueError(f"walk-fight {arg!r}: the only answer after / is NO")
     return route, "NO" if sep else None
@@ -1385,10 +1408,22 @@ def _record_sha256(records: list[bytes]) -> list[str]:
 
 def place_of(payload: bytes, game) -> dict:
     """The area, the square and the facing (0 to 3) a save payload holds,
-    through the reader every conversion uses."""
+    through the reader every conversion uses; with `outdoors` and the
+    travel pair `travel` too when the party stands on the travel grid."""
     state = world_state.from_c64(bytes(payload), game)
-    return {"area": state.area, "x": state.x, "y": state.y,
-            "facing": state.facing}
+    place = {"area": state.area, "x": state.x, "y": state.y,
+             "facing": state.facing}
+    if state.outdoors:
+        place.update(outdoors=True, travel=list(state.travel))
+    return place
+
+
+def saved_square(place: dict) -> list[int]:
+    """The square a place stands on: the travel pair on the travel grid,
+    where x and y are the frozen square the party left the dungeon from."""
+    if place.get("outdoors"):
+        return list(place["travel"])
+    return [place["x"], place["y"]]
 
 
 def place_verdict(before: dict | None, after: dict) -> dict:
@@ -1396,14 +1431,17 @@ def place_verdict(before: dict | None, after: dict) -> dict:
 
     `place_changed` is the square and the area only: a turn changes the
     facing and leaves the party where it stood, and that is the control a
-    walk is judged against.
+    walk is judged against.  On the travel grid the square is the travel
+    pair (`saved_square`).
     """
     if before is None:
         return {"place_before": None, "place_after": after,
                 "place_changed": None, "facing_changed": None}
     return {"place_before": before, "place_after": after,
-            "place_changed": (before["area"], before["x"], before["y"])
-            != (after["area"], after["x"], after["y"]),
+            "place_changed": (before["area"], bool(before.get("outdoors")),
+                              saved_square(before))
+            != (after["area"], bool(after.get("outdoors")),
+                saved_square(after)),
             "facing_changed": before["facing"] != after["facing"]}
 
 
@@ -4634,11 +4672,23 @@ class PoolRun:
         are identical, since text that `MOVE` put up changes the whole move's
         screen without the key having been read.  Each `move` record keeps
         the text rows the game showed at the key and whether a key was sent.
+
+        A route of digits is a travel-grid walk (`_walk_outdoors`), and fails
+        at once unless the party stands on the travel grid.
         """
         route = parse_walk(arg)
         # `Session.walk_one` stops waiting for the sub-bar at the run's deadline.
         self.sess.walk_expired = self.spent
         try:
+            if outdoor_route(route):
+                if self.sess.indoors() is not False:
+                    raise self.fail(
+                        "walk", f"walk {route}: the digits 1-8 move a party "
+                                f"on the travel grid, and this party is not "
+                                f"on it")
+                if self.walk_retry:
+                    return self._walk_outdoors_retrying(route)
+                return self._walk_outdoors(route)
             if self.walk_retry:
                 return self._walk_retrying(route)
             return self._walk(route)
@@ -4778,6 +4828,157 @@ class PoolRun:
                 "asked_forward": forward, "squares_moved": moved,
                 "back_moved": 0, "blocked": blocked, "expected_facing": expected,
                 "retries": retries}
+
+    def travel_place(self) -> list:
+        """`[x, y, area]` on the travel grid: the pair `$49C3`/`$49C4`, which
+        is local to the window `area` names, read with the indoors flag in
+        one monitor block.  The status line lags a step out there, so it is
+        never read for this.  Fails the walk when the party is not on the
+        grid: a step that entered a town or a dungeon left it."""
+        try:
+            with self.sess.mon(5) as m:
+                inside = m.read(S.INDOORS_AT, 1)[0]
+                x, y = m.read(S.TRAVEL_XY, 2)
+                area = m.read(AREA_AT, 1)[0]
+        except (OSError, S.MonitorError) as e:
+            raise self.fail("walk", f"could not read the travel square: {e}") from e
+        if inside:
+            raise self.fail("walk", f"the party left the travel grid for "
+                                    f"area {area}: an exit, not a step")
+        return [x, y, area]
+
+    @staticmethod
+    def _outdoor_step(before: list, after: list, move: str) -> str | None:
+        """None when AFTER is BEFORE or one square along MOVE's compass
+        direction, else what it was.  A window change (another area) is
+        accepted as a step, since the pair is local to each window."""
+        if after == before or after[2] != before[2]:
+            return None
+        dx, dy = COMPASS[move]
+        if after[:2] == [before[0] + dx, before[1] + dy]:
+            return None
+        return (f"moved from {before[:2]} to {after[:2]}, not one square "
+                f"along {move} ({dx},{dy}): an exit or a teleport")
+
+    def _walk_outdoors(self, route: str) -> dict:
+        """`walk` on the travel grid: each digit pressed once
+        (`Session.walk_outdoors`), judged by the travel pair before and
+        after.  A move that leaves the pair alone is blocked; one that changes
+        it by anything but its compass step fails the walk."""
+        self.leave_arrival(f"walk {route}")
+        if not self.to_world():
+            raise self.fail("world", "the world bar never came back")
+        start = self.travel_place()
+        moves = []
+        last = None
+        for n, move in enumerate(route):
+            self.budget(1, f"walk {route}")
+            self.refuse_prompt(route, last, "was up before the next move")
+            before = self.travel_place()
+            last = (n, move, before)
+            moved = self.sess.walk_one(move, tries=1, answer_prompts=False)
+            refused = getattr(self.sess, "walk_refused", None)
+            if refused:
+                row = self.bar().strip()
+                self.log.emit("move", move=move, n=n, before=before,
+                              after=None, resent=False, row24=row, text=None,
+                              keyed=False)
+                if S.ENCOUNTER_FIGHT in row:
+                    # The previous step's encounter took the bar the digit
+                    # needed; `--walk-retry` is what rolls one back.
+                    raise self.fail("walk", f"walk {route}: an encounter "
+                                            f"began before move {n} ({move}) "
+                                            f"from {before[:2]}: {row}")
+                raise self.fail("walk", f"walk {route}: {refused}")
+            look_until = self.clock() + LOOK_SECONDS
+            while True:
+                self.budget(1, f"walk {route}")
+                self.refuse_prompt(route, last, "ran the square's event")
+                if self.clock() >= look_until:
+                    break
+                time.sleep(0.3)
+            stopped = self.sess.walk_stop(wait=12.0)
+            if stopped is not None:
+                self.log.emit("move", move=move, n=n, before=before,
+                              after=None, resent=False,
+                              row24=self.bar().strip(), text=None, keyed=True,
+                              stop_screen=[r.strip() for r in stopped])
+                raise self.fail(
+                    "walk", f"walk {route}: move {n} ({move}) from {before} "
+                            f"ended on a screen a walk does not answer: "
+                            f"{stopped[24].strip()}")
+            after = self.travel_place()
+            self.log.emit("move", move=move, n=n, before=before, after=after,
+                          resent=False, row24=self.bar().strip(), text=None,
+                          keyed=True)
+            wrong = self._outdoor_step(before, after, move)
+            if wrong:
+                raise self.fail("walk", f"walk {route}: move {n} {wrong}")
+            moves.append({"move": move, "before": before, "after": after,
+                          "blocked": after == before, "moved": after != before,
+                          "status_moved": moved, "resent": False})
+        self.refuse_prompt(route, last, "ran the square's event")
+        end = self.travel_place()
+        self.capture(f"walked-{route}")
+        return self._outdoor_result(route, start, end, moves,
+                                    [i for i, m in enumerate(moves)
+                                     if m["blocked"]])
+
+    @staticmethod
+    def _outdoor_result(route, start, end, moves, blocked, **extra) -> dict:
+        """A travel-grid walk's result in `walk`'s own keys: `position` is
+        `[x, y, None]` (no facing out there) and `area` the window."""
+        return {"route": route, "outdoors": True,
+                "start": [start[0], start[1], None], "start_area": start[2],
+                "position": [end[0], end[1], None], "area": end[2],
+                "moves": moves, "asked_forward": len(route),
+                "squares_moved": len(route) - len(blocked), "back_moved": 0,
+                "blocked": blocked, "expected_facing": None, **extra}
+
+    def _walk_outdoors_retrying(self, route: str) -> dict:
+        """`_walk_retrying` on the travel grid, judged by the start and end
+        travel squares.  Ending where every step lands means none was
+        blocked; otherwise the largest set of steps that reaches the end is
+        taken as the ones that moved and the rest are `blocked`, and an end no
+        set of steps reaches fails as an exit or a teleport.  A window change
+        counts as having moved, with the steps unjudged."""
+        self.leave_arrival(f"walk {route}")
+        if not self.to_world():
+            raise self.fail("world", "the world bar never came back")
+        start = self.travel_place()
+        walked = self.sess.walk_with_retry(route, self.walk_retry)
+        retries = self.sess.walk_retries
+        if retries:
+            self.log.emit("restore", name="walk-retry", retries=retries)
+            # Safe for the reason `_walk_retrying` gives.
+            self.reattach()
+        if not walked:
+            raise self.fail("walk", f"walk {route}: {self.sess.walk_refused}")
+        end = self.travel_place()
+        self.capture(f"walked-{route}")
+        if end == start:
+            raise self.fail("walk", f"walk {route}: no move left the travel "
+                                    f"square {start[:2]}")
+        if end[2] != start[2]:
+            return self._outdoor_result(route, start, end, [], [],
+                                        retries=retries, window_changed=True)
+        # Each displacement some set of the steps makes, with the largest
+        # such set of step indexes.
+        reach: dict[tuple[int, int], tuple[int, ...]] = {(0, 0): ()}
+        for i, move in enumerate(route):
+            dx, dy = COMPASS[move]
+            for (x, y), used in list(reach.items()):
+                key, more = (x + dx, y + dy), used + (i,)
+                if key not in reach or len(reach[key]) < len(more):
+                    reach[key] = more
+        used = reach.get((end[0] - start[0], end[1] - start[1]))
+        if used is None:
+            raise self.fail("walk", f"walk {route}: went from {start[:2]} to "
+                                    f"{end[:2]}, which no set of its steps "
+                                    f"reaches: an exit or a teleport")
+        blocked = [i for i in range(len(route)) if i not in used]
+        return self._outdoor_result(route, start, end, [], blocked,
+                                    retries=retries)
 
     def reattach(self) -> None:
         """Attach the disk the drive already holds, on purpose.
@@ -6985,13 +7186,14 @@ def validate_walks(results: list[dict]) -> None:
     # though the party walked; it passes when the screen saw squares change
     # and the game-written save agrees with the last reading.
     seen_end = walks[-1][1]["position"][:2]
+    saved_at = saved_square(got["place_after"])
     returned = (sum(r.get("squares_moved", 0) for _, r in walks) > 0
-                and seen_end == [got["place_after"]["x"], got["place_after"]["y"]])
+                and seen_end == saved_at)
     if asked and not got["place_changed"] and not returned:
         blocked = [b for _, r in walks for b in r["blocked"]]
         raise StepFailed(f"did not move: {asked} forward move(s) asked, the saved "
-                         f"square is still {got['place_after']['x']},"
-                         f"{got['place_after']['y']} (blocked at moves {blocked})")
+                         f"square is still {saved_at[0]},{saved_at[1]} "
+                         f"(blocked at moves {blocked})")
     # `M` is a step back where nothing stops it, so a save that differs after
     # one that moved is a move and not a turn (`_judge_about_turn`).
     back = sum(r.get("back_moved", 0) for _, r in walks)
@@ -7002,7 +7204,16 @@ def validate_walks(results: list[dict]) -> None:
         return
     seen = walks[-1][1]["position"]
     after = got["place_after"]
-    if seen[2] is None:
+    if walks[-1][1].get("outdoors"):
+        # A travel-grid walk ends on the travel pair, in its window.
+        if not after.get("outdoors") or seen[:2] != saved_at or (
+                walks[-1][1].get("area") not in (None, after["area"])):
+            raise StepFailed(
+                f"the travel grid showed {seen[:2]} in area "
+                f"{walks[-1][1].get('area')}, the game-written save holds "
+                f"{saved_at} in area {after['area']}"
+                f"{'' if after.get('outdoors') else ', indoors'}")
+    elif seen[2] is None:
         if seen[:2] != [after["x"], after["y"]]:
             raise StepFailed(f"the screen showed {seen[:2]}, the game-written save "
                              f"holds {[after['x'], after['y']]}")

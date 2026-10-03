@@ -13004,3 +13004,185 @@ def test_a_run_records_each_snapshot_and_restore(tmp_path, monkeypatch):
     assert rc == 0
     assert [(r["verb"], r["name"]) for r in summary["results"][1:]] == [
         ("snapshot", "a"), ("restore", "a")]
+
+
+# --- walking the travel grid -------------------------------------------------------
+
+class _TravelMonitor:
+    """The three reads `PoolRun.travel_place` makes, off the fake's memory."""
+
+    def __init__(self, sess):
+        self.sess = sess
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self, addr, n):
+        self.sess.reads.append(addr)
+        mem = {A.S.INDOORS_AT: [self.sess.inside],
+               A.S.TRAVEL_XY: [self.sess.x, self.sess.y],
+               A.AREA_AT: [self.sess.area]}
+        return bytes(mem[addr][:n])
+
+
+class OutdoorSession(WalkSession):
+    """A party on the travel grid: each digit moves the travel pair by its
+    compass step unless the square there is in `blocked`, and `teleport`
+    sends the next step somewhere else."""
+
+    def __init__(self, x=8, y=27, area=26, blocked=(), inside=0):
+        super().__init__(x=x, y=y, facing=0)
+        self.area, self.inside = area, inside
+        self.blocked = set(blocked)
+        self.teleport = None
+        self.reads = []
+        self.walk_retries = 0
+        self.calls = []
+
+    def indoors(self):
+        return self.inside != 0
+
+    def mon(self, timeout=5.0):
+        return _TravelMonitor(self)
+
+    def position(self):
+        raise AssertionError("a travel-grid walk must not read the status line")
+
+    def walk_one(self, move, *a, **k):
+        self.pressed.append(move)
+        self.walk_refused = None
+        if move not in A.S.COMPASS:
+            self.walk_refused = "the driver pressed nothing"
+            return False
+        dx, dy = A.S.COMPASS[move]
+        to = (self.x + dx, self.y + dy)
+        if self.teleport is not None:
+            to, self.teleport = self.teleport, None
+        if to in self.blocked:
+            return False
+        self.x, self.y = to
+        return True
+
+    def walk_with_retry(self, moves, retries=3):
+        self.calls.append(("walk_with_retry", moves, retries))
+        for ch in moves:
+            self.walk_one(ch)
+        return True
+
+
+def test_walk_22_outdoors_presses_the_digits_and_moves_the_travel_pair(
+        tmp_path, monkeypatch):
+    sess = OutdoorSession()
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    got = run.walk("22")
+    log.close()
+    assert sess.pressed == ["2", "2"]
+    # `2` is north-east: x up one, y down one, each press.
+    assert got["start"] == [8, 27, None] and got["position"] == [10, 25, None]
+    assert got["outdoors"] is True and got["area"] == 26
+    assert got["squares_moved"] == 2 and got["blocked"] == []
+    assert got["asked_forward"] == 2
+    assert A.S.TRAVEL_XY in sess.reads
+
+
+def test_an_outdoor_step_into_a_blocked_square_is_recorded_blocked(
+        tmp_path, monkeypatch):
+    sess = OutdoorSession(blocked={(9, 26)})
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    got = run.walk("23")
+    log.close()
+    assert sess.pressed == ["2", "3"]
+    assert got["blocked"] == [0] and got["position"] == [9, 27, None]
+
+
+def test_an_outdoor_step_that_lands_off_its_compass_square_fails_the_walk(
+        tmp_path, monkeypatch):
+    sess = OutdoorSession()
+    sess.teleport = (12, 20)
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    with pytest.raises(A.StepFailed, match="not one square along 2"):
+        run.walk("2")
+    log.close()
+
+
+def test_digits_in_a_dungeon_fail_the_walk_and_press_nothing(tmp_path, monkeypatch):
+    sess = OutdoorSession(inside=1)
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    with pytest.raises(A.StepFailed, match="not on it"):
+        run.walk("22")
+    log.close()
+    assert sess.pressed == []
+
+
+def test_a_retried_outdoor_walk_is_judged_by_its_travel_squares(tmp_path, monkeypatch):
+    sess = OutdoorSession(blocked={(10, 25)})
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    run.walk_retry = 2
+    got = run.walk("223")
+    log.close()
+    assert sess.calls == [("walk_with_retry", "223", 2)]
+    assert got["position"] == [10, 26, None]
+    assert got["squares_moved"] == 2 and got["blocked"] == [1]
+
+
+@pytest.mark.parametrize("arg", ["9", "2I", "0"])
+def test_a_walk_that_mixes_digits_or_names_no_compass_digit_is_refused(arg):
+    with pytest.raises(ValueError):
+        A.parse_steps(["load", f"walk {arg}"])
+
+
+def test_the_parser_takes_travel_grid_digits_for_walk_but_not_walk_fight():
+    assert A.parse_steps(["load", "walk 18"])[1].arg == "18"
+    with pytest.raises(ValueError, match="for `walk` only"):
+        A.parse_steps(["load", "walk-fight 22"])
+
+
+OUT = {"area": 26, "x": 15, "y": 4, "facing": 0, "outdoors": True,
+       "travel": [8, 27]}
+
+
+def _walked_outdoors(route, position, blocked=(), area=26):
+    return {"verb": "walk", "route": route, "outdoors": True, "area": area,
+            "asked_forward": len(route),
+            "squares_moved": len(route) - len(blocked),
+            "position": position, "blocked": list(blocked)}
+
+
+def test_the_save_check_counts_outdoor_moves_against_the_travel_pair():
+    moved = {**OUT, "travel": [10, 25]}
+    verdict = A.place_verdict(OUT, moved)
+    # x and y freeze on the travel grid, so only the travel pair moved.
+    assert verdict["place_changed"] is True
+    A.validate_walks([_walked_outdoors("22", [10, 25, None]), _saved(OUT, moved)])
+
+
+def test_an_outdoor_walk_whose_saved_travel_pair_did_not_move_is_lost():
+    with pytest.raises(A.StepFailed, match="did not move: 2 forward.*8,27"):
+        A.validate_walks([_walked_outdoors("22", [8, 27, None], blocked=[0, 1]),
+                          _saved(OUT, OUT)])
+
+
+def test_an_outdoor_save_on_another_travel_square_than_the_walk_ended_fails():
+    with pytest.raises(A.StepFailed, match="the travel grid showed"):
+        A.validate_walks([_walked_outdoors("22", [10, 25, None]),
+                          _saved(OUT, {**OUT, "travel": [9, 26]})])
+
+
+def test_an_encounter_menu_that_takes_the_next_outdoor_move_is_named(
+        tmp_path, monkeypatch):
+    class Ambushed(OutdoorSession):
+        def walk_one(self, move, *a, **k):
+            if len(self.pressed) == 1:
+                self.screens["world"] = _window({}, "COMBAT WAIT FLEE PARLAY")
+                self.walk_refused = "the driver pressed nothing"
+                return False
+            return super().walk_one(move, *a, **k)
+
+    sess = Ambushed()
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    with pytest.raises(A.StepFailed, match="an encounter began before move 1"):
+        run.walk("75")
+    log.close()
