@@ -162,6 +162,28 @@ def test_a_forced_restore_rolls_a_clean_leg_back_once_and_walks_it_again(tmp_pat
     assert s.restores == 1 and s.walk_retries == 1
 
 
+def test_a_forced_attempt_then_a_real_encounter_then_a_clean_walk(tmp_path):
+    s = Fake(tmp_path)
+    real = s.walk_one
+
+    def second_attempt_meets_a_fight(move, hold=0.15, gap=0.30, encounters=False):
+        real(move, hold, gap, encounters=encounters)
+        s.walk_encounter_started = len(s.walked) == 2
+        return True
+
+    s.walk_one = second_attempt_meets_a_fight
+    assert s.walk_with_retry("i", force_restores=1) is True
+    assert s.walked == ["I", "I", "I"]
+    assert s.restores == 2 and s.walk_retries == 2
+
+
+def test_more_forced_restores_than_retries_is_rejected(tmp_path):
+    s = Fake(tmp_path, legs=[])
+    with pytest.raises(ValueError, match="force_restores 3 is more than retries 2"):
+        s.walk_with_retry("i", retries=2, force_restores=3)
+    assert s.walked == [] and s.restores == 0
+
+
 def test_combat_after_a_move_is_an_encounter_too(tmp_path):
     s = Fake(tmp_path)
     flips = iter([False, True, False, False, False])

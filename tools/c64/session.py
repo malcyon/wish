@@ -1385,8 +1385,14 @@ class Session:
 
         `force_restores` makes the first that many attempts roll back even
         when no encounter began, so a live run can exercise the restore path;
-        each takes one of the `retries`.
+        each takes one of the `retries`, so `force_restores` more than
+        `retries` raises `ValueError`: no attempt would be left to walk the
+        leg for real.
         """
+        if force_restores > retries:
+            raise ValueError(f"force_restores {force_restores} is more than "
+                             f"retries {retries}, so no attempt would walk "
+                             f"the leg unforced")
         self.walk_retries = 0
         if self.in_combat():
             self.walk_refused = ("the game is already in combat, so there is "
