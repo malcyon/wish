@@ -1330,8 +1330,9 @@ which needs its own read; a Giant Strength magnitude (Curse id 146, Silver Blade
 two ageing routes the camp formula does not describe.
 
 Haste (39) converts both ways in all three titles by copying the byte for data
-`0x01`-`0x1F` with flag 0: both ports keep the level in the low nibble and the
-already-aged mark in bit 4 and set nothing else. Curse's and
+`0x00`-`0x1F` with flag 0: both ports keep the level in the low nibble, which
+Dispel Magic reads as the caster's level and a combat cast sets to
+`(2 x level) & $0F`, and the already-aged mark in bit 4, and set nothing else. Curse's and
 Silver Blades' id 25 converts by the caster-level rule for data `0x01`-`0x7F`.
 Silence 15' Radius (21), Ray of Enfeeblement (29) and Bestow Curse (36) convert
 by the caster-level rule in all three titles; the camp-row derivations above
@@ -1525,7 +1526,8 @@ the bit 7 each C64 cast writes, apart from the DOS flag.
 | Pool's stale `$2879` | **CONFIRMED writer mechanism:** a nonzero override reaches the generic camp row. A two-cast game run must establish whether one cast leaves it for the next. |
 | The Giant Strength id (Curse 146, Silver Blades 113) other than `$BC` | **CONFIRMED unwritten:** the Giant Strength cast writes only the fixed `$BC`, in camp (`ECL65 $83C2`) and in combat (`COMBAT $1EEA`). |
 | Slowed outside level 1–15 or 63 minutes | **PROBABLE:** the duration is 3 plus the level in minutes, and the level runs 1–15. |
-| Haste outside `$01`–`$1F` | **UNRESOLVED:** an item cast of spell 57 in a fight may reach a doubled level that makes the magnitude 0, which the guard refuses. |
+| Haste `$00`–`$1F` | **CONFIRMED written and converted:** a level-8 combat cast writes 0 (Curse `COMBAT $0FAE`–`$0FB3`, `$11CD`–`$11D0`; Silver Blades `COMBAT $1EE4`), levels 9–11 write 2, 4 and 6, and an item cast writes `$0C` (`COMBAT $08A1`, Silver Blades `$08A5`). Each converts as DOS data equal to the magnitude, flag 0. Only two things read the byte: the attack handler tests bit 4 (Curse `COMBAT $2207`–`$2215`, `GAME.OVR:0x10A95`–`0x10AD5`), and Dispel Magic reads the low nibble as the caster's level (`COMBAT $18E0`–`$190B`, `GAME.OVR:0x3120B`–`0x31268`). |
+| Haste above `$1F` | **CONFIRMED unwritten:** the camp maximum is level 15 `\| $10` = `$1F` and the combat maximum is `$0E`. |
 
 Combat rows are nine bytes: the fixed minutes at `+1`, the minutes per level
 at `+2`, the id at `+5` and the handler at `+7`. **CONFIRMED** the later

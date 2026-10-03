@@ -1463,7 +1463,7 @@ def test_a_later_title_invisible_node_becomes_id_and_level(title):
 
 
 @pytest.mark.parametrize("title", _ALL)
-@pytest.mark.parametrize("data", [0x01, 0x0C, 0x10, 0x1C, 0x1F])
+@pytest.mark.parametrize("data", [0x00, 0x01, 0x0C, 0x10, 0x1C, 0x1F])
 def test_a_haste_node_is_copied_to_the_magnitude_and_back(title, data):
     assert effects.c64_row(title, effects.RunningEffect(39, 6, data, 0)) \
         == (39, data)
@@ -1476,10 +1476,9 @@ def test_a_haste_node_is_copied_to_the_magnitude_and_back(title, data):
 def test_a_haste_byte_no_engine_writes_stays_unconverted(title):
     for node in (effects.RunningEffect(39, 6, 0x20, 0),
                  effects.RunningEffect(39, 6, 0x0C, 1),
-                 effects.RunningEffect(39, 6, 0x80, 0),
-                 effects.RunningEffect(39, 6, 0, 0)):
+                 effects.RunningEffect(39, 6, 0x80, 0)):
         assert isinstance(effects.c64_row(title, node), effects.Unconverted)
-    for magnitude in (0, 0x20, 0x90):
+    for magnitude in (0x20, 0x90):
         row = effects.Effect(63, 39, 0, 0x06, magnitude)
         assert isinstance(effects.dos_record(title, row, 0),
                           effects.Unconverted)

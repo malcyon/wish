@@ -1287,6 +1287,34 @@ def test_a_party_wide_prayer_row_gives_each_member_one_node_and_no_one_else(
         assert not [d for d in char.dropped if "effect 49" in d]
 
 
+@pytest.mark.parametrize("magnitude", [0x00, 0x02, 0x04, 0x06])
+@pytest.mark.parametrize("deltas", list(amiga_port.AMIGA_DELTAS),
+                         ids=lambda s: s.key)
+def test_a_level_8_haste_row_reaches_dos_and_the_amiga(deltas, magnitude):
+    """A level-8 combat cast writes Haste magnitude 0 and levels 9-11 write
+    2, 4 and 6; each converts as DOS data equal to the magnitude."""
+    game = c64_port.by_key(deltas.key)
+    payload = _synthetic_c64_party_payload(
+        game, 1, (39, 0, effects.closest_duration(5, 0), magnitude))
+    party, _ = dos_codec.c64_party(bytes(payload), None, game=game)
+    (member,) = party
+    assert [bytes(r) for r in member.get("running_effects")] == \
+        [bytes((39, 5, 0, magnitude, 0)) + NULL]
+    assert not [d for d in member.dropped if "effect 39" in d]
+
+    _rec, _itm, spc, _ = dos_codec.write(member, deltas=deltas.dos)
+    nodes = [spc[i:i + 9] for i in range(0, len(spc), 9)]
+    assert [bytes(n[:5]) for n in nodes if n[0] == 39] == \
+        [bytes((39, 5, 0, magnitude, 0))]
+
+    built, _rep = amiga_later.write_later(member)
+    assert [(n[0], n[4]) for n in built.effects if n[0] == 39] == [
+        (39, magnitude)]
+    back = amiga_later.to_neutral_later(built)
+    assert [bytes(r)[:5] for r in back.get("running_effects")] == \
+        [bytes((39, 5, 0, magnitude, 0))]
+
+
 @pytest.mark.parametrize("game", _PARTY_TITLES, ids=lambda g: g.key)
 def test_prayer_is_written_as_one_row_owned_by_the_whole_party(game):
     payload = bytearray(0x1C00)

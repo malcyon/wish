@@ -441,11 +441,13 @@ _CLOUD_CASTER_INERT = 0x7F
 #: characters carry none to convert (`docs/226`).
 CHARM_ID = 11
 
-#: Haste. Both ports keep the caster's level in the low nibble and the "has
-#: already aged" mark in bit 4, and nothing else: the C64 camp cast writes
-#: `level | $10`, its combat cast `level & $0F`, and DOS writes the level with
-#: flag 0 and sets bit 4 the first time a fight asks for the attacks. The byte
-#: is copied both ways.
+#: Haste. Both ports read only bit 4 (the "has already aged" mark, tested by
+#: the attack handler at C64 Curse `COMBAT $2207` and DOS Curse `GAME.OVR:0x10A95`)
+#: and the low nibble, which Dispel Magic reads as the caster's level (C64 Curse
+#: `COMBAT $18E0`, DOS Curse `GAME.OVR:0x3120B`). The C64 camp cast writes
+#: `level | $10`, its combat cast `(2 x level) & $0F`, so a level-8 caster writes
+#: 0 (`COMBAT $0FAE`), and DOS writes flag 0 and sets bit 4 the first time a
+#: fight asks for the attacks. The byte is copied both ways, 0 included.
 HASTE_ID = 39
 
 #: The largest Haste data byte: the level in the low nibble and the aged mark in
@@ -811,7 +813,7 @@ def _own_rule_row(title_key: str, node: RunningEffect,
                                 or title_key == "pool-of-radiance"):
         if node.flag != 0:
             return Unconverted("a flag byte other than 0 on Haste")
-        if not 1 <= node.data <= HASTE_MAX_DATA:
+        if not 0 <= node.data <= HASTE_MAX_DATA:
             return Unconverted("a Haste data byte no DOS engine writes")
         return node.id, node.data
     if node.id == SLOWED_ID and _slowed_title(title_key):
@@ -864,7 +866,7 @@ def _own_rule_node(title_key: str, effect_id: int,
     its inverse, or `None` for another id."""
     if effect_id == HASTE_ID and (title_key in LATER_CAST_FLAGS
                                   or title_key == "pool-of-radiance"):
-        if not 1 <= m <= HASTE_MAX_DATA:
+        if not 0 <= m <= HASTE_MAX_DATA:
             return Unconverted("a Haste magnitude no C64 cast writes")
         return m, 0
     if effect_id == SLOWED_ID and _slowed_title(title_key):
