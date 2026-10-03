@@ -10401,3 +10401,120 @@ def test_the_trade_prompt_is_known_by_its_bar_and_draws_the_party_roster(shot, l
     screen = _capture("cbea7c9243-dosjoin", shot, issue="432")
     assert screens.bar_signature(screen) == da.SSB_TRADE_BAR
     assert screens.roster_line(screen, "party", 6) == line
+
+
+# -- snapshot and restore steps --------------------------------------------------
+
+
+def test_snapshot_and_restore_steps_parse_and_name_a_snapshot():
+    got = _steps("snapshot leg-1", "restore leg-1")
+    assert [(s.kind, s.name) for s in got] == [("snapshot", "leg-1"), ("restore", "leg-1")]
+    for bad in ("snapshot", "restore a b", "snapshot a/b", "snapshot "):
+        with pytest.raises(ValueError):
+            da.parse_step(bad)
+
+
+def test_a_restore_needs_its_snapshot_and_no_save_between():
+    da.validate_steps(_steps("load", "snapshot a", "walk I", "restore a",
+                             "camp", "save D"), "pool")
+    with pytest.raises(ValueError, match="no snapshot 'a'"):
+        da.validate_steps(_steps("load", "restore a"), "pool")
+    with pytest.raises(ValueError, match="a save came between"):
+        da.validate_steps(_steps("load", "snapshot a", "camp", "save D", "restore a"),
+                          "pool")
+    # A snapshot taken after the save is clean again.
+    da.validate_steps(_steps("load", "camp", "save D", "snapshot a", "restore a"),
+                      "pool")
+    with pytest.raises(ValueError, match="load first"):
+        da.validate_steps(_steps("snapshot a"), "pool")
+
+
+class _SnapSession(_Session):
+    def __init__(self, tmp_path, log, changed=()):
+        super().__init__(tmp_path, log)
+        self.changed = list(changed)
+
+    def snapshot(self, name):
+        self.log.append(f"snapshot {name}")
+        return self.dir / f"{name}.sav"
+
+    def restore(self, name):
+        self.log.append(f"restore {name}")
+        return self.changed
+
+    def settle(self, *a, **k):
+        self.log.append("settle")
+
+
+def _snap_driver(tmp_path, session):
+    notes: list[dict] = []
+    d = da.Driver(session, lambda **kw: notes.append(kw), "A", "pool")
+    return d, notes
+
+
+def test_the_driver_snapshots_and_restores_by_name_and_logs_the_changed_saves(tmp_path):
+    log: list[str] = []
+    d, notes = _snap_driver(tmp_path, _SnapSession(tmp_path, log, ["SAVGAMD.DAT"]))
+    d.where = "map"
+    first = d.snapshot("leg")
+    d.where = "camp"
+    second = d.restore("leg")
+    assert log == ["snapshot leg", "restore leg", "settle"]
+    assert d.where == "map"
+    assert first["name"] == "leg" and second["changed_saves"] == ["SAVGAMD.DAT"]
+    assert [(n["event"], n["name"]) for n in notes] == [("snapshot", "leg"),
+                                                         ("restore", "leg")]
+    assert notes[1]["changed_saves"] == ["SAVGAMD.DAT"]
+
+
+def test_plain_dosbox_stops_a_snapshot_step_with_a_message(tmp_path):
+    d, _ = _snap_driver(tmp_path, _Session(tmp_path, []))
+    with pytest.raises(da.StepFailed, match="needs DOSBox-X"):
+        d.snapshot("leg")
+    with pytest.raises(da.StepFailed, match="needs DOSBox-X"):
+        d.restore("leg")
+
+
+def test_a_snapshot_run_boots_snapshot_session_and_records_each_step(monkeypatch,
+                                                                    tmp_path):
+    _fake_run(monkeypatch, tmp_path)
+    x_log: list[str] = []
+    monkeypatch.setattr(da.dosboxx, "claim", lambda note="": _Slot(x_log))
+    monkeypatch.setattr(da.dossnapshot, "SnapshotSession",
+                        lambda slot, game: _SnapSession(tmp_path, x_log, ["SAVGAMD.DAT"]))
+
+    class Snap:
+        where = "boot"
+        events: list = []
+
+        def __init__(self, session, note, letter, *a, **k):
+            self.s, self.note = session, note
+
+        def step_begins(self, kind):
+            pass
+
+        def journal(self, label):
+            return False
+
+        def yes_no(self, label):
+            return 0
+
+        def press_continue(self, label):
+            return 0
+
+        def load(self):
+            return {}
+
+        def snapshot(self, name):
+            return {"name": name, "path": str(self.s.snapshot(name))}
+
+        def restore(self, name):
+            return {"name": name, "changed_saves": self.s.restore(name)}
+
+    monkeypatch.setattr(da, "Driver", Snap)
+    args = _run_args(tmp_path, ["load", "snapshot s", "restore s"])
+    assert da.run(args) == 0
+    assert x_log[:2] == ["snapshot s", "restore s"]
+    summary = json.loads((tmp_path / "out" / "summary.json").read_text())
+    assert [r["step"] for r in summary["results"]] == ["load", "snapshot s", "restore s"]
+    assert summary["results"][2]["changed_saves"] == ["SAVGAMD.DAT"]

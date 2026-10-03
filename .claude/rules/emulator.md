@@ -107,7 +107,11 @@ calls. The state records each drive's image path, not its contents, so a game
 save made between a snapshot and its restore stays on the disk image while
 memory goes back; a run that saved in between treats that image as changed.
 FS-UAE has no usable machine-state save in this build, because its savestate
-crashes.
+crashes. DOS: the acceptance driver's `snapshot NAME` and `restore NAME` steps use
+`tools/dos/dossnapshot.py`'s `SnapshotSession`, which works on DOSBox-X only,
+because DOSBox 0.74 has no save states and the driver stops the run there; a
+restore lists the `SAVE` files changed since the snapshot, since a game save
+stays on disk.
 
 **Suppress random encounters with `Session.no_encounters = True`, unless the
 run proves a conversion or must meet encounters.** C64 drivers: it writes the

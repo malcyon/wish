@@ -74,6 +74,7 @@ a source whose title does not match `--title`:
 | `save X` | in camp, camp `SAVE` to slot X and decline the quit; at the party menu, `SAVE CURRENT GAME`; believed when `SAVGAMX.DAT` changes |
 | `train N` | Curse: roster line N (from 1), `TRAIN CHARACTER`, `YES`, and `LEARN` for any spell the level brings, back to the party menu |
 | `shot NAME` | one PNG and the screen digests, nothing pressed |
+| `snapshot NAME`, `restore NAME` | DOSBox-X only (`dossnapshot.SnapshotSession`; a run with either step boots it): `snapshot` saves the whole machine under NAME (letters, digits, `-`, `_`); `restore` puts it back and settles, and the `SAVE` files changed since the snapshot are logged and recorded as `changed_saves`, because a game save stays on disk.  A `restore` needs an earlier `snapshot` of that name and no `save` between them; the run stops before boot otherwise.  Each is in `run.jsonl` and `summary.json`.  Random encounters stay on |
 | `press KEY` | one X keysym (`Down`, `Return`, `t`), then a settle and a PNG; capture only, so only `press`, `shot` and `read` may come after it |
 | `walk MI`, `walk I`, `walk 1` | Pool and Curse (`MI`): turn right twice at the map bar and step one square.  Pool (`I`): step one square forward without turning.  Silver Blades and Pools of Darkness (`1`): press MOVE, step one square turning right past a wall, and leave move mode (`e` in Silver Blades, `Escape` in Pools of Darkness) back to the map bar.  A step is believed only when the `x,y` on the status line changes (never the clock beside it), a blank line is never the starting reading, and a run with a walk fails unless `read` shows the last saved slot's place differs from the installed one |
 | `turn N` | N from 1 to 4: the walk's control.  Silver Blades and Pools of Darkness press MOVE first and leave move mode after; N `Right` presses, each reading the `x,y` square, which a turn must leave alone (`lost-walk-turn`); the party stays on the map for `camp`, `save D` and `read`.  A run with `turn` and no `walk` fails unless `read` shows the saved place unchanged ("did not move") |
@@ -221,6 +222,7 @@ from tools.dos import (  # noqa: E402
     dosboxx,
     dosfightwatch,
     dospod,
+    dossnapshot,
     route_silver_blades,
     unexepack,
 )
@@ -1918,7 +1920,8 @@ STEP_HELP = ("load, begin, 'walk MI', 'walk I', 'walk 1', 'turn 4', camp, leave,
              "'train 1', 'change 2 FIGHTER', 'sheet 1', 'heal 1', 'cure 1', 'items 1', "
              "'halve 1 1', 'join 4 15', 'trade 1 2 3', 'view 1', 'memorize 5', 'cast 2 BLESS', "
              "'cast 2 RESIST-COLD 4', 'scribe 5 PROTECTION FROM GOOD', 'shot NAME', "
-             "'press KEY', 'fight', 'fight 900', 'prayer-watch 49', 'add ARRONEL', read")
+             "'press KEY', 'fight', 'fight 900', 'prayer-watch 49', 'add ARRONEL', "
+             "'snapshot NAME', 'restore NAME', read")
 #: The class names `change N CLASS` takes: Curse's own (`START.EXE` data
 #: 0x0CB8), upper case.
 CHANGE_CLASSES = ("CLERIC", "DRUID", "FIGHTER", "PALADIN", "RANGER", "MAGIC-USER",
@@ -1987,6 +1990,10 @@ def parse_step(text: str) -> Step:
         return Step(kind, text, line=int(words[1]))
     if kind == "shot" and len(words) == 2 and re.fullmatch(r"[\w-]+", words[1]):
         return Step(kind, text, name=words[1])
+    if kind in ("snapshot", "restore") and len(words) == 2:
+        if not dossnapshot.SNAPSHOT_NAME.match(words[1]):
+            raise ValueError(f"{text!r}: a snapshot name is letters, digits, - and _")
+        return Step(kind, text, name=words[1])
     if kind == "fight" and (len(words) == 1 or (
             len(words) == 2 and re.fullmatch(r"[1-9]\d*", words[1]))):
         return Step(kind, text, seconds=int(words[1]) if len(words) == 2 else 0)
@@ -2019,6 +2026,10 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
     t = TITLES[title]
     where = "boot"
     last = None
+    #: Each snapshot taken so far, by name: whether a `save` has come since.
+    taken: dict[str, bool] = {}
+    #: Where the party was at each snapshot, which a restore returns it to.
+    places: dict[str, str] = {}
     for step in steps:
         k = step.kind
         if k in ("shot", "read"):
@@ -2152,6 +2163,20 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
         elif k == "save":
             if where not in ("camp", "party"):
                 raise ValueError(f"save needs camp first: {step.text!r}")
+            taken = dict.fromkeys(taken, True)
+        elif k == "snapshot":
+            taken[step.name] = False
+            places[step.name] = where
+        elif k == "restore":
+            if step.name not in taken:
+                raise ValueError(f"{step.text!r}: no snapshot {step.name!r} "
+                                 "was taken before it")
+            if taken[step.name]:
+                raise ValueError(
+                    f"{step.text!r}: a save came between its snapshot and it, and a "
+                    "restore puts the machine back while the game's save stays on "
+                    "disk, so the run would no longer be one consistent game")
+            where = places[step.name]
         elif k == "fight":
             if title not in FIGHT_TITLES:
                 raise ValueError(f"fight is driven in "
@@ -3020,6 +3045,8 @@ class Driver:
         self.scribing = False
         #: When the driver was made, which is when the boot was over.
         self.began = time.time()
+        #: What `snapshot` recorded of the driver's own place, by name.
+        self._places: dict[str, tuple] = {}
 
     # -- evidence ----------------------------------------------------------
 
@@ -5994,6 +6021,33 @@ class Driver:
                           "chosen": chosen_shot, "confirm": confirm,
                           "back_magic": back_magic, "camp": self.shot(f"{label}-back")}}
 
+    def snapshot(self, name: str) -> dict:
+        """Save the whole machine under `name`; DOSBox-X only."""
+        self.need_snapshots("snapshot")
+        path = self.s.snapshot(name)
+        self._places[name] = (self.where, self.line, self.left_camp, self.scribing)
+        self.note(event="snapshot", name=name, path=str(path))
+        return {"name": name, "path": str(path)}
+
+    def restore(self, name: str) -> dict:
+        """Put the machine back as `snapshot NAME` left it.
+
+        The game's `SAVE` files stay as they are, so the files changed since
+        the snapshot are logged and returned; the driver's idea of where the
+        party is goes back with the machine.
+        """
+        self.need_snapshots("restore")
+        changed = self.s.restore(name)
+        self.s.settle()
+        if name in self._places:
+            self.where, self.line, self.left_camp, self.scribing = self._places[name]
+        self.note(event="restore", name=name, changed_saves=changed)
+        return {"name": name, "changed_saves": changed}
+
+    def need_snapshots(self, verb: str) -> None:
+        if not hasattr(self.s, "snapshot"):
+            raise StepFailed(f"{verb} needs DOSBox-X: DOSBox 0.74 has no save states")
+
     def save(self, letter: str) -> dict:
         if self.where == "party":
             return self.party_save(letter)
@@ -6298,17 +6352,21 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
         # boots DOSBox-X from that pool, whose captures `XSession` halves back
         # to DOSBox 0.74's 320x200.
         debugger = any(s.kind in ("fight", "prayer-watch") for s in steps)
+        # `snapshot` and `restore` are DOSBox-X save states, so such a run boots
+        # `SnapshotSession` too.
+        snapshots = any(s.kind in ("snapshot", "restore") for s in steps)
         with deferred_sigterm():
-            slot = (dosboxx.claim if debugger else dosbox.claim)(args.note)
+            slot = (dosboxx.claim if debugger or snapshots else dosbox.claim)(args.note)
             stack.callback(slot.release)
         # `START.EXE` is `Session`'s own default, so only another launcher
         # is named.
-        if debugger:
-            if getattr(args, "intervene", False):
-                session = dosboxx.XSession(
+        if debugger or snapshots:
+            x_class = dossnapshot.SnapshotSession if snapshots else dosboxx.XSession
+            if debugger and getattr(args, "intervene", False):
+                session = x_class(
                     slot, game, exe=f"START.EXE {CHEAT_ARGS[args.title]}")
             else:
-                session = dosboxx.XSession(slot, game)
+                session = x_class(slot, game)
         else:
             session = (dosbox.Session(slot, game) if title.exe == "START.EXE"
                        else dosbox.Session(slot, game, exe=title.exe))
@@ -6429,6 +6487,10 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                     r = d.prayer_watch(step.node)
                 elif step.kind == "press":
                     r = d.press(step.key)
+                elif step.kind == "snapshot":
+                    r = d.snapshot(step.name)
+                elif step.kind == "restore":
+                    r = d.restore(step.name)
                 else:
                     r = read_step(session.save_dir, out, letter, saved, steps, expects,
                                   [parse_var(v) for v in getattr(args, "stage_var", []) or []],
