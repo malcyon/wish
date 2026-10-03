@@ -34,7 +34,7 @@ dependencies = ["pyyaml>=6.0"]
 # contradict this.
 #
 # `ruff` is the linter that `tools/suite/suiterun.py` and the lint workflow run.
-dev = ["pytest>=8.0", "pytest-xdist>=3.5", "pyjwt[crypto]",
+dev = ["pytest>=8.0", "pytest-xdist>=3.5", "pyjwt[crypto]", "mcp==1.28.1",
        "capstone", "pillow", "ruff", "markdown-it-py==3.0.0"]
 # Migration renders public Markdown with raw HTML disabled.
 plane = ["plane-sdk==0.3.1", "markdown-it-py==3.0.0"]
