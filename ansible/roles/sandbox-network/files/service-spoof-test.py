@@ -252,7 +252,7 @@ def main():
                 recovery = r"$p=Join-Path $env:ProgramData 'WishServiceSpoof-__TOKEN__\rollback.ps1'; if (Test-Path $p) { & $p }"
                 try:
                     run(ssh_command(args, recovery.replace('__TOKEN__', token).replace('__SOURCE__', args.source)), timeout=15)
-                except subprocess.SubprocessError as error:
+                except (RuntimeError, subprocess.SubprocessError) as error:
                     raise RuntimeError('Immediate rollback could not be verified; inspect the Windows rollback task and source alias before continuing') from error
                 raise
         finally:

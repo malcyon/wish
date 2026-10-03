@@ -212,6 +212,62 @@ def test_spoof_command_failure_reports_stderr_without_encoded_payload(spoof_tool
     assert str(caught.value) == 'Command failed (1): Rollback script execution is disabled'
 
 
+@pytest.mark.parametrize('rollback_error', [RuntimeError('Rollback failed'),
+                                           subprocess.TimeoutExpired('ssh', 15)])
+def test_spoof_failed_rollback_preserves_inspection_instruction(spoof_tool, monkeypatch, rollback_error):
+    from types import SimpleNamespace
+
+    args = ['probe', '--source', '10.77.0.10', '--destination', '192.0.2.20', '--port', '80',
+            '--windows-ip', '10.77.0.11', '--windows-mac', '52:54:00:00:00:11',
+            '--windows-user', 'donald', '--controller-user', 'donald',
+            '--network', 'sandbox', '--filter-name', 'no-lan']
+    interface = '''<domain><devices><interface><source network="sandbox"/>
+        <mac address="52:54:00:00:00:11"/><target dev="vnet1"/>
+        <filterref filter="no-lan"><parameter name="IP" value="10.77.0.11"/>
+        <parameter name="CTRL_IP_LEARNING" value="none"/></filterref>
+        </interface></devices></domain>'''
+    filters = '<filter>' + ''.join(f'<filterref filter="{name}"/>' for name in
+                                   ('no-ip-spoofing', 'no-mac-spoofing', 'no-arp-spoofing')) + '</filter>'
+    ssh_calls = []
+
+    def run(argv, **kwargs):
+        if argv[0] == 'virsh':
+            if 'list' in argv:
+                return 'win11\n'
+            return interface if 'dumpxml' in argv else filters
+        if argv[0] == 'ip':
+            return '[{"dev": "eth0"}]'
+        ssh_calls.append(argv)
+        if len(ssh_calls) == 1:
+            raise RuntimeError('Probe failed')
+        raise rollback_error
+
+    class Socket:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def bind(self, address):
+            pass
+
+        def getsockname(self):
+            return ('192.0.2.1', 45000)
+
+    monkeypatch.setattr(sys, 'argv', args)
+    monkeypatch.setattr(spoof_tool['os'], 'geteuid', lambda: 0)
+    monkeypatch.setattr(spoof_tool['socket'], 'socket', lambda: Socket())
+    monkeypatch.setattr(spoof_tool['socket'], 'create_connection', lambda *a, **k: Socket())
+    monkeypatch.setitem(spoof_tool['main'].__globals__, 'run', run)
+    monkeypatch.setitem(spoof_tool['main'].__globals__, 'Capture',
+                        lambda *a: SimpleNamespace(stop=lambda: None))
+    with pytest.raises(RuntimeError, match='Immediate rollback could not be verified; inspect the Windows') as caught:
+        spoof_tool['main']()
+    assert caught.value.__cause__ is rollback_error
+    assert len(ssh_calls) == 2
+
+
 def _syn(source='10.77.0.10', source_port=45000, sequence=1234, mac='52:54:00:00:00:11'):
     return {'source': source, 'destination': '192.0.2.20', 'source_port': source_port,
             'destination_port': 80, 'sequence': sequence, 'mac': mac}
