@@ -1,15 +1,6 @@
 {
   "hooks": {
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/issue-titles-context.py"
-          }
-        ]
-      }
-    ],
+    "SessionStart": [],
     "PreToolUse": [
       {
         "matcher": "Bash",

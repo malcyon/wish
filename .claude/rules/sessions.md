@@ -74,17 +74,16 @@ line in `docs/`, a row in a README. Name anything that does not, and write it
 down before the session ends. Calibrations are the ones that get lost -- "+6pt
 here measures like Windows' base font" outlives the fix it enabled.
 
-**A fresh session reads, in this order:** `CLAUDE.md`, `INDEX.md`, then
-`gh issue list`. For any issue it is about to work,
-`tools/github/issueread.py N` -- because the description is never rewritten
-here, so every correction lives in the comments. **Not `gh issue view N
---comments`**, which a `PreToolUse` hook refuses: this tracker is public,
-that command prints every comment's body verbatim, and the reader withholds
-the text of anyone who is not Donald or the bot while still naming who wrote
-it. `.claude/rules/issues.md` has why.
+**A fresh session reads, in this order:** `CLAUDE.md`, `INDEX.md`, then the
+project-scoped Plane list with `tools/plane/planeread.py --list` and live metadata.
+Read each ticket and comments with `tools/plane/planeread.py WISH-N --json`;
+corrections remain in comments. Use GitHub issue readers only when Donald
+explicitly requests GitHub. `.claude/rules/issues.md` defines project scope, native
+priority and the four named states.
 
 **The test of whether a session was recorded properly** is whether the next one
-can answer "what should we work on" from the repository alone. If it cannot,
+can answer "what should we work on" from the repository rules and project-scoped
+live Plane state. If it cannot,
 the gap is the thing to fix, and it is a documentation bug rather than a reason
 to keep a session alive.
 

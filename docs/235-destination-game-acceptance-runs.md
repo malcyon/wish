@@ -57,8 +57,11 @@ acceptance evidence.
    agent VM, so nothing goes there.
 
 The comment that closes the ticket names the SHA, the CI run id, the command
-line, the evidence path and the reading, and the issue is then closed by hand
-after `gh issue view N --json state`.
+line, the evidence path and the reading. After acceptance and exact-SHA CI,
+use an explained project-scoped Plane update to Completed and verify its state UUID
+with `planeread --json` and live metadata. This replaces the earlier GitHub
+closure command because Donald made Plane the default register. A disabled
+update is reported as an unavailable transition; the ticket remains unfinished.
 
 ## 2. What each platform can read today
 

@@ -46,7 +46,7 @@ on into Donald's costs more than that.
 
 ## How to work
 
-**Read the issue with `tools/github/issueread.py N`**, and read every comment to the
+**Read the issue with `tools/plane/planeread.py WISH-N --json`**, and read every comment to the
 end. The description is never rewritten here, so every correction lives in
 the comments, and the last one usually changes the plan.
 
@@ -69,7 +69,7 @@ it. If the answer is "delete it", say so.
 
 ## The plan
 
-Post it as a comment on the issue with `tools/wishagent.py comment N`, not
+Post it as a comment on the issue with `tools/plane/planeagent.py --operation-id OPERATION_ID comment WISH-N`, not
 only in your report. It has these parts, in this order, and each is short:
 
 1. **The situation.** What a player does and what they see, one paragraph,
@@ -101,7 +101,7 @@ only in your report. It has these parts, in this order, and each is short:
 7. **What you could not confirm**, and what would settle it. A plan that
    hides its doubt sends a builder into a wall.
 
-Cite every issue you mention as `#N (title)`. Write the comment in normal
+Cite every issue you mention as `WISH-N (title)` from project-scoped `planeread --cite`. Write the comment in normal
 prose; the terminal register does not leave the session.
 
 ## What you do not do
@@ -110,8 +110,10 @@ You do not edit source, `.ui` files or docs, and you do not change labels or
 priorities. You do not write a sentence a player will read. If a finding
 belongs to a different issue, comment there too and say on this one that you
 did. A bug you find that nobody has filed gets an issue through
-`tools/wishagent.py create`, with one `Priority:` label, guessed if need be
-and said so.
+`tools/plane/planeagent.py --operation-id OPERATION_ID create`, with native
+priority and a type label UUID from live project metadata. Never recreate priority
+labels. Explain any proposed priority. GitHub issue tools require Donald's
+explicit GitHub request; unavailable Plane writes are reported, not bypassed.
 
 ## Uncertainty Flagging
 

@@ -123,7 +123,9 @@ disk 1 and not disk 2. Game assets remain read-only inputs, never save templates
 ## Dropped fields are high-priority defects
 
 Donald's instruction for this design is explicit: **every dropped field is a
-serious bug with `Priority: High`; it is not a supported conversion outcome.**
+serious bug with native high priority; it is not a supported conversion outcome.**
+The native field replaces the earlier priority-label instruction because Donald
+selected Plane priority as the only priority system. Do not recreate that label.
 
 * There is no dropped-fields panel, warning list, loss acknowledgement,
   "save anyway" option, or "no conversion warnings" success line.
@@ -133,7 +135,7 @@ serious bug with `Priority: High`; it is not a supported conversion outcome.**
 * Check both `report.dropped` and lossy entries in `report.losses`, including
   name truncation. Retire `dosimport.name_warnings` as a player-consent path;
   a loss does not become acceptable by being classified outside the drop list.
-* Every detected drop gets a bug issue with `Priority: High`, or the existing
+* Every detected drop gets a bug ticket with native high priority, or the existing
   issue is updated to that priority with its evidence. Fix the conversion;
   documenting the defect, hiding a control or accepting a test failure does
   not complete the work.

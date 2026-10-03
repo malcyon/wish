@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read or cite Plane tickets through Wish's filtering policy."""
+"""Read or cite tickets from the configured private Plane project."""
 import argparse
 import json
 import sys

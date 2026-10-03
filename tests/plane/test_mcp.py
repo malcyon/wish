@@ -1,4 +1,4 @@
-"""Check exported MCP read permissions and the policy behind exposed tools."""
+"""Check exported MCP read permissions and project-scoped access."""
 import asyncio
 
 import pytest
@@ -45,8 +45,8 @@ class Transport:
 def adapter(tmp_path):
     settings = Settings(dict(base_url='https://plane.example', workspace_slug='wish',
                              project_id=PROJECT, agent_account_id=AGENT,
-                             trusted_account_ids=[AGENT], token_file=str(tmp_path / 'token'),
-                             journal_file=str(tmp_path / 'journal.sqlite'), writes_enabled=False))
+                             token_file=str(tmp_path / 'token'), journal_file=str(tmp_path / 'journal.sqlite'),
+                             writes_enabled=False))
     transport = Transport()
     return build_server(Client(settings, transport)), transport
 
@@ -63,13 +63,15 @@ def test_exported_mcp_reads_are_read_only_without_granting_write_tools(adapter):
 
 
 @pytest.mark.parametrize('name', sorted(READ_TOOLS))
-def test_mcp_read_calls_preserve_filtering_and_send_only_get_requests(adapter, name):
+def test_mcp_read_calls_expose_private_project_text_and_send_only_get_requests(adapter, name):
     server, transport = adapter
     arguments = {'identifier': 'WISH-1'} if name in {'read_ticket', 'cite_ticket'} else {}
     response = asyncio.run(server.call_tool(name, arguments))
-    assert 'SECRET' not in str(response)
     if name != 'project_metadata':
-        assert 'Withheld' in str(response)
+        assert 'SECRET TITLE' in str(response)
+    if name == 'read_ticket':
+        assert 'SECRET BODY' in str(response)
+        assert 'SECRET COMMENT' in str(response)
     assert transport.calls
     assert all(method == 'GET' for method, _ in transport.calls)
 

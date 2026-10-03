@@ -17,6 +17,14 @@ files, exactly as you do.** What it does not get until it touches a matching fil
 `paths:`-scoped ones -- so a brief only needs to name one of those, when the
 agent's work will not itself touch a file that loads it.
 
+## Work register
+
+Plane is the default tracker under `AGENTS.md` and `.claude/rules/issues.md`.
+Use project-scoped `planeread`, `planeagent` or `wish-plane` MCP operations, native
+priority and the four named states. GitHub issue tools are used only when
+Donald explicitly requests GitHub work; repository PRs and CI remain on GitHub.
+Do not use a disabled Plane update as permission to switch trackers.
+
 ## Documentation and comments carry no history
 
 A README is a lookup table: one row per file saying what it is for, in one

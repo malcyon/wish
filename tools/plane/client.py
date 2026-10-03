@@ -42,7 +42,7 @@ class Transport:
 
 
 class Client:
-    """Provide paginated filtered reads and a small set of journaled ticket writes."""
+    """Provide paginated project reads and a small set of journaled ticket writes."""
 
     def __init__(self, settings, transport=None):
         self.settings = settings
@@ -120,15 +120,6 @@ class Client:
         if identifier is None:
             return None
         record = self.raw(identifier)
-        provenance = self.settings.provenance.get(str(record['id']))
-        if provenance and provenance.get('human_thread') is True:
-            raise PlaneError('Agent writes to imported human threads are blocked')
-        if self.policy.author(record) in self.settings.importers and provenance is None:
-            raise PlaneError('Imported ticket requires protected provenance before writes')
-        labels = {uuid(v['id'] if isinstance(v, dict) else v) for v in record.get('labels', [])}
-        human = {uuid(v['id']) for v in self.pages(f'{self.prefix}/labels') if str(v.get('name', '')).casefold() == 'human'}
-        if labels & human:
-            raise PlaneError("Agent writes to human threads are blocked")
         return record
 
     def write(self, operation_id, method, path, payload):
@@ -137,12 +128,12 @@ class Client:
 
     def create(self, operation_id, title, body, priority, labels):
         self.writable()
-        if priority not in {'high', 'medium', 'low', 'none'}:
-            raise PlaneError("Choose a priority: high, medium, low or none")
+        if priority not in {'urgent', 'high', 'medium', 'low', 'none'}:
+            raise PlaneError("Choose a priority: urgent, high, medium, low or none")
         if not isinstance(title, str) or not title.strip():
             raise PlaneError("A title is required")
         allowed = {uuid(v['id']): str(v.get('name', '')) for v in self.pages(f'{self.prefix}/labels')}
-        labels = priority_labels(priority, labels, allowed, explicit=True)
+        labels = project_labels(labels, allowed)
         if not any(allowed[v] in {'bug', 'enhancement', 'question'} for v in labels):
             raise PlaneError("A bug, enhancement or question label is required")
         record = self.write(operation_id, 'POST', self.items, {'name': title, 'description_html': paragraph(body), 'priority': priority, 'labels': labels})
@@ -164,19 +155,16 @@ class Client:
         if not changes or set(changes) - {'name', 'description_html', 'priority', 'labels', 'state'}:
             raise PlaneError("Only title, body, priority, labels and state changes are allowed")
         paragraph(explanation)
-        if 'priority' in changes and changes['priority'] not in {'high', 'medium', 'low', 'none'}:
-            raise PlaneError("Choose a priority: high, medium, low or none")
+        if 'priority' in changes and changes['priority'] not in {'urgent', 'high', 'medium', 'low', 'none'}:
+            raise PlaneError("Choose a priority: urgent, high, medium, low or none")
         if 'state' in changes:
             states = {uuid(s['id']) for s in self.pages(f'{self.prefix}/states')}
             if uuid(changes['state']) not in states:
                 raise PlaneError("State must belong to this project")
         payload = dict(changes)
-        if 'priority' in changes or 'labels' in changes:
+        if 'labels' in changes:
             allowed = {uuid(v['id']): str(v.get('name', '')) for v in self.pages(f'{self.prefix}/labels')}
-            priority = changes.get('priority', record.get('priority'))
-            labels = changes.get('labels', [v['id'] if isinstance(v, dict) else v for v in record.get('labels', [])])
-            payload['labels'] = priority_labels(priority, labels, allowed, explicit='labels' in changes)
-            payload['priority'] = priority
+            payload['labels'] = project_labels(changes['labels'], allowed)
         if 'description_html' in payload:
             payload['description_html'] = paragraph(payload['description_html'])
         self.write(operation_id + ':edit', 'PATCH', f'{self.items}/{uuid(record["id"])}', payload)
@@ -187,25 +175,14 @@ class Client:
         return current
 
 
-def priority_labels(priority, labels, allowed, *, explicit):
-    """Keep the native priority and its project label consistent without discarding other labels."""
-    names = {'Priority: High': 'high', 'Priority: Medium': 'medium', 'Priority: Low': 'low'}
-    if priority not in {'high', 'medium', 'low', 'none', 'urgent'}:
-        raise PlaneError('The current native priority is invalid')
+def project_labels(labels, allowed):
+    """Validate project labels without changing any other ticket field."""
     if not isinstance(labels, list):
         raise PlaneError('Labels must be a list of project label UUIDs')
     labels = list(dict.fromkeys(uuid(value) for value in labels))
     if any(value not in allowed or allowed[value].casefold() == 'human' for value in labels):
         raise PlaneError('Labels must belong to this project and cannot grant human origin')
-    if any(allowed[value].startswith('Priority:') and allowed[value] not in names for value in labels):
-        raise PlaneError('Only High, Medium and Low Priority labels are supported')
-    provided = [value for value in labels if allowed[value] in names]
-    if explicit and (len(provided) > 1 or any(names[allowed[value]] != priority for value in provided)):
-        raise PlaneError('Priority labels must match the native priority; choose one matching label or omit it')
-    matching = [value for value, name in allowed.items() if names.get(name) == priority]
-    if len(matching) > 1:
-        raise PlaneError('The project has duplicate labels for the native priority')
-    return [value for value in labels if allowed[value] not in names] + matching
+    return labels
 
 
 def clean_metadata(row, key):

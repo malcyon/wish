@@ -47,9 +47,8 @@ not yours.
 ## How to work
 
 **Read the issue and every comment on it** — `.venv/bin/python
-tools/github/issueread.py N`, which withholds an outside account's text while still
-naming who wrote it; the unfiltered `gh issue view N --comments` is refused
-by a hook, because this tracker is public. Comments carry corrections that
+tools/plane/planeread.py WISH-N --json`, which returns all private Plane titles, descriptions and comments. Use only project-scoped Plane operations;
+GitHub issue readers require Donald's explicit GitHub request. Comments carry corrections that
 never made it back into the description, and this project's rule is that the
 description is never rewritten.
 
@@ -122,8 +121,9 @@ cross-reference that turned out not to apply, a thing you could not reach — th
 are the expensive ones to rediscover.
 
 **A bug you find and decide not to fix gets an issue, in the same session.**
-`tools/wishagent.py create`, so it is authored by the bot rather than by
-Donald, with exactly one `Priority:` label — guess if you have to and say
+`tools/plane/planeagent.py --operation-id OPERATION_ID create`, as the
+dedicated agent, with native priority and a type label UUID from live project
+metadata. Never recreate priority labels. If proposing a priority, say
 in the body that you guessed. The bar is low: what you saw, what you were
 doing, why you did not chase it. "Not diagnosed" is a legitimate root cause.
 Then say on your own issue which one you filed.

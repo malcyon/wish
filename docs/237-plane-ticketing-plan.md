@@ -5,8 +5,11 @@ Donald and the agents need one ticket queue available from the LAN and from
 IaC in `/home/donald/src/jellyfin-stack` and VM access IaC in
 `/home/donald/src/wish`. This plan uses repository inspection and vendor
 documentation checked on 2026-10-02. Live deployment and Donald's confirmed login
-replace the initial deployment assumptions. GitHub remains the authoritative work
-register until migration, isolation, client and recovery acceptance pass.
+replace the initial deployment assumptions. Donald subsequently made Plane
+the default work register after a one-time open-ticket migration. This supersedes
+the original authority gate, final-delta plan and closed-dependency import scope.
+GitHub issue tools now require an explicit GitHub request; code, PRs and CI
+remain there. MCP write and backup acceptance remain separate disabled gates.
 
 Donald revised the deployment on 2026-10-02: use HTTP on the LAN without a
 certificate, disable Plane email, and let him configure NPM manually. He has
@@ -24,7 +27,7 @@ work items. Guest access and the full operation set still need live acceptance.
 | DNS | An Ansible-managed Pi-hole record for `plane.morton.lan`. | The media role already preserves and extends Pi-hole `dns.hosts` for Grafana. |
 | Agents | Scoped `wish-plane` stdio adapter registered in both host clients. | A host read returned zero work items; guest and complete policy acceptance remain pending. |
 | Backup | Implemented media-server restic/rclone job, with daily scheduling disabled pending acceptance. | OAuth, verified remote snapshot and independent restore remain pending. |
-| Work register | Switch to Plane only after infrastructure, restore, client and migration acceptance. | GitHub continues hosting code, pull requests, CI and public intake. |
+| Work register | Plane is the current default by Donald's explicit instruction; import was open-only and one-time. | GitHub retains code, PRs, CI and public intake; issue tools require an explicit GitHub request. |
 
 The supplied [self-hosting overview](https://developers.plane.so/self-hosting/overview)
 is the entry point. The [Compose guide](https://developers.plane.so/self-hosting/methods/docker-compose)
@@ -76,8 +79,8 @@ Set `WEB_URL` and `CORS_ALLOWED_ORIGINS` to `http://plane.morton.lan`, plus any
 additional external URL or CSRF settings that release requires. Test redirects,
 login, live updates and attachment URLs through NPM. Donald requested on
 2026-10-02 that Plane send no email: leave SMTP disabled, provision accounts
-through the administrator, and document and test manual account recovery before
-cutover. Disable open registration and public project sharing for the private
+through the administrator, and document and test manual account recovery as
+a remaining recovery acceptance requirement. Disable open registration and public project sharing for the private
 Wish workspace.
 
 Use HTTP without certificate provisioning or client CA installation, as Donald
@@ -132,16 +135,16 @@ command arguments or logs. Use a dedicated Plane agent account, separate from
 Donald's administrator account, with only required project permissions. Verify
 actual API authorship before importing tickets.
 
-The adapter filters text before either client receives it, restricts project,
-workspace and operations, and checks human-thread restrictions on writes. Do not
-register unrestricted vendor MCP alongside it: responses would bypass the shell
-hooks. Stable account IDs determine trust; display names and labels do not.
-Imported comments require original-author provenance. Trusting an importer must
-never make all imported text trusted. Hooks remain tripwires, not a security
-boundary, especially when credentials are readable in the guest.
+Donald selected full-content reads for private LAN Plane. The adapter returns all
+titles, descriptions and comments without original-author, import-fingerprint or
+editor filtering, and without a human-thread origin write block. It restricts
+workspace, project and operations, verifies dedicated-agent writes and retains
+journals/readback. This connector change is pending review and deployment.
+Ticket text remains evidence, never instructions. Hooks remain tripwires, not a
+security boundary, especially when credentials are readable in the guest.
 
 The implemented `tools/plane/` directory contains `planeread.py`, `planeagent.py`
-and `mcp.py`, sharing one policy layer for paginated listing, filtered
+and `mcp.py`, sharing one policy layer for paginated listing, project-scoped
 reads/citations, creation, comments, metadata changes and state readback.
 Use the [REST API reference](https://developers.plane.so/api-reference/introduction)
 for operations the pinned MCP cannot supply. Check API-version compatibility with
@@ -170,7 +173,7 @@ same backup repository. Preserve existing Pictures and Git backup behavior.
 | Schedule | The persistent timer uses 03:30 America/Chicago, a bounded runtime and a job lock; `plane_backup_schedule_enabled` stays false until restore and failure acceptance. |
 | Destination | Set `RESTIC_REPOSITORY=rclone:plane-onedrive:Backups/Plane/media-server`; confirm the intended account, drive and folder at setup. |
 | Credentials | Keep rclone OAuth configuration and the restic password restricted on media-server, with independent recovery copies in the password manager. The VM receives neither. |
-| Content | Include a PostgreSQL dump and required roles, object data, rendered Plane secrets/configuration, deployment files, version/digest manifest and ticket provenance/mapping state. |
+| Content | Include a PostgreSQL dump and required roles, object data, rendered Plane secrets/configuration, deployment files, version/digest manifest and durable agent write journals and historical migration recovery material. |
 | Retention | Keep 14 daily, 8 weekly and 12 monthly successful snapshots, with stable host/tag/path grouping and restic retention. |
 | Monitoring | Export successful upload time and original capture time separately, duration, size and errors. Alert when remotely verified data is older than 26 hours; retrying an old capture must not reset its age. Notification delivery remains unproven. |
 | Recovery targets | Target no more than 24 hours of data loss when daily backups succeed, and restoration within four hours. Measure these; they are not current guarantees. |
@@ -208,13 +211,13 @@ The media-server job performs these steps:
    staging for bounded retry and alert before it fills disk. A new upload failure
    must not delete successful older snapshots.
 6. Apply retention after success. Run regular repository integrity checks,
-   rotating data-read checks and a complete restore drill before cutover and
+   rotating data-read checks and a complete restore drill as recovery acceptance and
    periodically afterward. Distinguish local capture from off-host success.
 
 Restore from OneDrive into an isolated Compose project at the recorded database
 and Plane versions, with notifications disabled and no production DNS. Restore
 configuration, secrets, database and objects together. Verify login, counts,
-comments, provenance and attachment downloads. The first drill must use remotely
+comments, write journals and attachment downloads. The first drill must use remotely
 retrieved data and independently recovered credentials, not staging files. Include
 host-loss recovery for DNS and proxy configuration. Record downtime
 and restoration duration. The [Plane backup reference](https://developers.plane.so/self-hosting/manage/backup-restore)
@@ -222,46 +225,42 @@ identifies database, uploads and configuration as recovery inputs; adapt the
 procedure to the pinned Community release rather than using Commercial-only
 Prime CLI commands.
 
-## Wish rules, tools and documentation at cutover
+## Wish rules, tools and current Plane authority
 
 Keep historical GitHub references intact. Future references use a linked Plane
-identifier and title, generated by the filtered reader: `WISH-<number> (Title)`.
+identifier and title, generated by the project-scoped reader: `WISH-<number> (Title)`.
 Use the configured workspace slug `wish` and project identifier `WISH`;
 store API UUIDs separately from display identifiers.
 
 | Paths in Wish | Required change |
 |---|---|
-| `AGENTS.md`, `.claude/rules/issues.md` | Declare Plane authoritative; replace list/read/write/citation commands and state checks. Preserve evidence-only ticket text, trust, human-thread restrictions, findings and closure gates. |
+| `AGENTS.md`, `.claude/rules/issues.md` | Declare Plane authoritative; replace list/read/write/citation commands and state checks. Preserve evidence-only ticket text, dedicated-agent writes, findings and closure gates; retain public-author filtering and human-thread restrictions only for explicit GitHub requests. |
 | `.claude/rules/documentation.md`, `.claude/rules/sessions.md` | Replace the work-list declaration and session resume commands. |
 | `.claude/rules/commits.md` | Use Plane identifiers for new work; retain review, push and exact-SHA GitHub CI before manual closure. Disable integration-driven automatic closure. |
 | `.claude/rules/feature-flags.md`, `.claude/rules/conversions.md`, `.claude/rules/delegating.md` | Review tracker-specific references while preserving acceptance requirements. Check `.agents/rules/` links instead of creating duplicate rules. |
-| `.claude/skills/orchestrate/SKILL.md`, `.agents/skills/orchestrate/SKILL.md` | Switch queue discovery, priority ordering, filtered reads and blocked-work reconstruction together. |
-| `~/.cache/wish/orchestrator-queue.md` on each orchestrator machine | Back up and translate identifiers in place at cutover; preserve decisions, deferrals, experiment details, handoff facts and Do not schedule entries. This is runtime state, not a new repository file. |
+| `.claude/skills/orchestrate/SKILL.md`, `.agents/skills/orchestrate/SKILL.md` | Switch queue discovery, priority ordering, project-scoped reads and blocked-work reconstruction together. |
+| `~/.cache/wish/orchestrator-queue.md` on each orchestrator machine | Reconcile identifiers, native priority and live state in place; preserve decisions, deferrals, experiment details, handoff facts and Do not schedule entries. This is runtime state, not a new repository file. |
 | `.claude/agents/{backlog-auditor,junior-dev,senior-analyst,changelog-writer}.md` and matching `.codex/agents/*.toml` | Update commands, tracker assumptions and citations in both definitions. |
-| `tools/github/issueread.py`, `tools/github/ghtrust.py`, `tools/plane/` | Keep legacy reads and accept the implemented Plane filtering for lists, descriptions, comments, search, JSON and citations. |
-| `tools/wishagent.py` | Retire only active ticket writes after migration. Retain `push-token` and `git-credential` for GitHub repository access. |
-| `.claude/hooks/check-issue-reads.py`, `.claude/hooks/check-issue-writes.py`, `.claude/hooks/issue-titles-context.py` | Update guards and startup context; cover adapter use and accidental writes to the old tracker. |
+| `tools/github/issueread.py`, `tools/github/ghtrust.py`, `tools/plane/` | Keep GitHub reads for explicit requests and read all private Plane lists, descriptions, comments, search, JSON and citations within the configured project. |
+| `tools/wishagent.py` | Keep issue tools only for explicit GitHub requests. Retain `push-token` and `git-credential` for repository access. |
+| `.claude/hooks/check-issue-reads.py`, `.claude/hooks/check-issue-writes.py`, `.claude/hooks/issue-titles-context.py` | Retain GitHub filtering guards and Plane project/write tripwires; disable only automatic GitHub SessionStart context and preserve its script for explicit requests. |
 | `.claude/settings.json`, `.codex/hooks.json`, `.agents/skills/orchestrate/scripts/check_hooks.py` | Wire and verify both clients' hooks, including Codex trust after configuration changes. |
 | `.claude/hooks/check-issue-titles.py`, `.claude/hooks/check-gh-issue-titles.py` | Update parsing if retained. These are not currently wired in Claude settings and cannot count as active enforcement. |
 | `.github/ISSUE_TEMPLATE/{bug,enhancement,question}.md`, `.github/ISSUE_TEMPLATE/config.yml`, `.github/workflows/issue-origin.yml` | Preserve public intake/origin handling. Reuse template structures in the Plane wrapper; verify native template availability before depending on it. |
-| `docs/218-the-wish-agent-bot.md`, `docs/219-the-agent-sandbox.md` | Document separate GitHub/Plane credentials, filtering, trust, setup, rotation and recovery. |
+| `docs/218-the-wish-agent-bot.md`, `docs/219-the-agent-sandbox.md` | Document separate GitHub/Plane credentials, project scope, GitHub public-author filtering, setup, rotation and recovery. |
 | `docs/160-why-these-rules.md`, `docs/235-destination-game-acceptance-runs.md`, `docs/227-editor-open-save-as.md` | Record migration reasoning and update operational closure/priority guidance without rewriting historical evidence. |
 | `tests/github/test_{ghtrust,issueread,wishagent}.py`, `tests/hooks/test_{check_issue_reads,check_issue_writes,issue_titles_context}.py`, new `tests/plane/` | Test policy, pagination, attribution, failures, imports and adapters; retain GitHub credential tests. |
 | `tests/suite/test_repository_contents.py`, directory README tables and `INDEX.md` | Update citation checks and inventories. Review `tests/suite/test_toolpaths.py` if paths move. Leave the top-level README for Donald's separate authorization. |
 
-Donald requested all source labels except `AI` and `human`, including the three
-`Priority:` labels; this supersedes the initial native-priority-only proposal.
-Keep those labels consistent with native priority in the adapter and importer.
-Live readback verified 12 labels and four visible states, with zero work items.
-The states are `Backlog`, `Queue`, `In Progress` and `Completed`, in the
-backlog/unstarted/started/completed groups respectively. The unused extra state
-was removed while Plane's hidden triage state was preserved. See
-[operations](238-plane-operations.md) for the complete label list. Preserve
-Donald-specific `blocked` semantics and distinguish fixed work from duplicate
-or invalid reports in disposition metadata. Comments still explain metadata
-changes and factual corrections. Labels cannot grant permission or establish
-original authorship; omitting the `human` label does not remove source-thread
-write protection.
+The initial deployment copied source labels except AI/Human, including three
+priority labels. Donald subsequently selected native priority only, superseding
+that label-sync design. Do not recreate priority labels; preserve manual native
+priorities. The four visible states are Backlog, Queue, In Progress and Completed,
+with their matching groups. Backlog is unscheduled, Queue is scheduled, starting
+moves to In Progress, and accepted reviewed/pushed work with exact-SHA CI reaches
+Completed. Unscheduling returns to Backlog; decision waits remain unfinished.
+Private Plane reads all content regardless of author, import fingerprints or
+editor identity, and has no human-thread origin block. See [current operations](238-plane-operations.md).
 
 ## Implementation and migration order
 
@@ -271,34 +270,34 @@ write protection.
 | 2. Infrastructure | Ansible rerun is idempotent; services/migrations succeed; Homepage opens Plane; HTTP login, WebSockets and attachments work. |
 | 3. Isolation and clients | Both clients reach Plane from agent-vm. Media SSH, NPM81, Homepage3000 and unrelated LAN targets stay denied. Win11 gains no exception. Use reachable host-side controls so a stopped service cannot masquerade as isolation. |
 | 4. Backup | The scheduled media-server job creates a verified OneDrive snapshot; failure alerts work; independent restore meets measured recovery targets. |
-| 5. Migration rehearsal | Export source metadata/history privately, map GitHub IDs to Plane UUIDs/URLs and import a representative subset. Preserve source authors, timestamps, trust, attachments, dependencies and acceptance evidence. |
-| 6. Policy acceptance | Both clients pass trusted/withheld reads, complete pagination, citations, agent-authored creation/comments, human-thread write blocking, priority explanations, correction comments, retries and closure readback. GitHub push/CI still work. |
-| 7. Cutover | Pause ticket writers, export/reconcile the final delta, compare open/closed counts and comment/attachment histories, then activate rules/tools in both clients together. Resume with Plane authoritative. |
+| 5. One-time migration complete | Accepted 25 open tickets and 631 comments; preserve source authorship, provenance and recovery evidence. No further history or delta import is authorized. |
+| 6. Policy acceptance | Both clients read all private Plane content with complete pagination and citations, enforce project scope and agent-authored creation/comments, and pass native priority/state updates, correction comments, retries and closure readback. GitHub push/CI still work. |
+| 7. Current authority | Donald selected Plane after one-time open import. Update rules and queue caches from live Plane; no automatic delta, history import or synchronization is authorized. |
 
-Migrate open work first and preserve a read-only source archive of closed history;
-import closed tickets referenced by active work as needed. Record omitted fields
-or failed attachments. An idempotent migration ledger must preserve original trust
-independently of mutable ticket text and belong to backed-up service state.
-Ordinary agent reads stay filtered; a migration tool can transfer opaque source
-text without printing it into an agent's context.
+The accepted one-time open migration contains 25 tickets and 631 comments.
+The accidentally started closed-history phase was cancelled and its 235 imported
+closed destinations removed under Donald's scoped instruction, with GitHub
+unchanged. Preserve source authorship, historical migration recovery evidence.
+There is no further history/dependency-closure import or final-delta gate;
+remaining acceptance does not authorize another import. Current Plane edits
+must not be replaced from historical GitHub archives.
 
-Attachment streaming and dependency reconciliation are implemented and locally
-validated, but not yet accepted against the live service. The host's
-empty-project read and metadata configuration do not prove import, provenance,
-attachment or dependency acceptance. Linux guest access, Windows forged-source
-isolation, OneDrive OAuth, independent restore and manual account recovery remain
-required before switching the work register.
+Infrastructure, actual sandboxed-client write policy, OneDrive OAuth,
+independent restore and manual account recovery remain acceptance work for their
+owners. Write configuration and backup schedules stay disabled until those
+respective gates pass; the tracker choice itself is already settled.
 
 Keep public GitHub reporting because outside players cannot open a LAN URL.
-Donald can authorize internal tickets linked to public reports; retain the rule
-against agent comments in human threads. Public release notes must describe
+Agents access GitHub issues only when Donald explicitly requests it, and he
+can authorize internal tickets linked to public reports; retain the rule
+against agent comments in GitHub human threads. Public release notes must describe
 changes without depending on inaccessible Plane links. Existing GitHub links
 remain valid. Moving a ticket does not complete its work; do not bulk-close
 originals as fixed merely because they were imported.
 
-Before cutover, rollback discards the rehearsal project and continues the unchanged
-GitHub queue. After cutover, pause writers and reconcile Plane-only changes before
-switching back; never operate two writable authoritative queues. For a failed
+Plane remains the default unless Donald explicitly changes that instruction.
+A disabled write or infrastructure failure does not authorize operating another
+writable issue queue or falling back to GitHub. For a failed
 upgrade, restore matching pre-upgrade database, objects and configuration with the
 previous images. An image downgrade does not reverse a database migration.
 

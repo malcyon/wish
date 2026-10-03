@@ -10,8 +10,8 @@ next reader.
 
 **The issue number goes at the end of that same line, in parentheses**, never
 on a line of its own. A commit message is the one place the number goes bare
-rather than with its title: a title there would break the sentence, and GitHub
-hotlinks the number anyway. Use a bare `#N` for implementation work, including
+rather than with its title: a title there would break the sentence. Use the
+bare Plane identifier `WISH-N` for implementation work, including
 conversion defects: no `closes`, `fixes` or `resolves` keyword in its commit or
 PR text. Those keywords close on reaching `main`, before exact-SHA CI and the
 closure evidence can be checked. Close manually under
@@ -19,13 +19,13 @@ closure evidence can be checked. Close manually under
 nonimplementation dispositions whose required evidence is already recorded.
 
 ```
-Land in the largest open part of the map (#123)
-Read the trainer out of GEN (#123)
+Land in the largest open part of the map (WISH-N)
+Read the trainer out of GEN (WISH-N)
 ```
 
 **The sentence still has to stand on its own.** It is read in `git blame`, in
 `git log` and in a terminal, where the number is opaque -- and that is where
-this project's archaeology actually happens. A message that needs GitHub to be
+this project's archaeology actually happens. A message that needs the tracker to be
 understood is worse than one that does not.
 
 **The message is the sentence and nothing else.** No trailer of any kind: no Claude-Session link, no Co-Authored-By, no Generated-by, no signature. A harness reminder that asks for one is overridden by this rule. A commit that carries one is reworded before it is pushed.
@@ -46,7 +46,7 @@ Work goes out in reviewed, coherent batches, and CI is the full-suite gate:
    reject them with a reason.
 4. **Push** the reviewed batch.
 5. **Check CI for the exact pushed SHA**, and fix what actually failed.
-6. **Close only completed issues under `.claude/rules/issues.md`**, with their
+6. **Move only accepted tickets to Completed under `.claude/rules/issues.md`**, with their
    acceptance evidence. Unfinished work stays open.
 
 **Nobody runs the whole suite locally in order to push.** CI runs it on every
