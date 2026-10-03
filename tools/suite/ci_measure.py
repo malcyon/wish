@@ -57,7 +57,7 @@ def stop_tree(psutil, process):
     try:
         processes = process.children(recursive=True) + [process]
     except psutil.Error:
-        return
+        processes = [process]
     for child in processes:
         try:
             child.terminate()
@@ -69,6 +69,27 @@ def stop_tree(psutil, process):
             child.kill()
         except psutil.Error:
             pass
+
+
+def stop_child(psutil, child):
+    """Bound cleanup even when process inspection or termination is denied."""
+    try:
+        stop_tree(psutil, psutil.Process(child.pid))
+    except psutil.Error:
+        pass
+    try:
+        child.wait(timeout=3)
+        return True
+    except subprocess.TimeoutExpired:
+        try:
+            child.kill()
+        except OSError:
+            pass
+    try:
+        child.wait(timeout=3)
+        return True
+    except subprocess.TimeoutExpired:
+        return False
 
 
 def main(argv=None):
@@ -98,6 +119,7 @@ def main(argv=None):
     child = None
     samples = None
     exit_code = 1
+    cleanup_complete = True
     try:
         child = subprocess.Popen(command, env=env)
         process = psutil.Process(child.pid)
@@ -105,8 +127,6 @@ def main(argv=None):
         while child.poll() is None:
             samples.take()
             if interrupted:
-                stop_tree(psutil, process)
-                child.wait()
                 break
             try:
                 child.wait(timeout=1)
@@ -115,14 +135,14 @@ def main(argv=None):
         exit_code = 128 + interrupted[0] if interrupted else child.returncode
     finally:
         if child is not None and child.poll() is None:
-            stop_tree(psutil, psutil.Process(child.pid))
-            child.wait()
+            cleanup_complete = stop_child(psutil, child)
         for sig, handler in previous.items():
             signal.signal(sig, handler)
         data = {
             "schema_version": 1,
             "command": command,
             "exit_code": exit_code,
+            "cleanup_complete": cleanup_complete,
             "wall_seconds": time.perf_counter() - started,
             "logical_cpus": os.cpu_count(),
             "physical_cpus": psutil.cpu_count(logical=False),
@@ -138,6 +158,8 @@ def main(argv=None):
         }
         (output / "resources.json").write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
         print(f"CI profile: {output}", flush=True)
+        if not cleanup_complete:
+            print("CI profile: Child process did not exit after bounded cleanup.", file=sys.stderr)
     return exit_code if exit_code >= 0 else 128 - exit_code
 
 

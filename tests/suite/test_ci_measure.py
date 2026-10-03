@@ -141,3 +141,83 @@ def test_stop_tree_kills_descendants_that_ignore_termination():
     ci_measure.stop_tree(psutil, parent)
     assert events == [("descendant", "terminate"), ("parent", "terminate"),
                       ("descendant", "kill")]
+
+
+def test_stop_tree_still_terminates_parent_when_children_are_inaccessible():
+    events = []
+
+    class AccessDenied(RuntimeError):
+        pass
+
+    class Process:
+        def children(self, recursive):
+            raise AccessDenied()
+
+        def terminate(self):
+            events.append("terminate")
+
+    parent = Process()
+    psutil = SimpleNamespace(
+        Error=RuntimeError, AccessDenied=AccessDenied,
+        wait_procs=lambda processes, timeout: (processes, []),
+    )
+    ci_measure.stop_tree(psutil, parent)
+    assert events == ["terminate"]
+
+
+@pytest.mark.parametrize("signum", [ci_measure.signal.SIGTERM, ci_measure.signal.SIGINT])
+def test_cancellation_bounds_wait_even_when_process_remains_alive(tmp_path, monkeypatch, signum):
+    events = []
+    handlers = {}
+
+    class AccessDenied(RuntimeError):
+        pass
+
+    class Process:
+        def children(self, recursive):
+            raise AccessDenied()
+
+        def terminate(self):
+            events.append("terminate")
+            raise AccessDenied()
+
+        def kill(self):
+            raise AccessDenied()
+
+    class Child:
+        pid = 123
+        returncode = None
+
+        def poll(self):
+            return None
+
+        def wait(self, timeout=None):
+            assert timeout is not None, "Cancellation attempted an unbounded wait"
+            events.append("wait")
+            raise subprocess.TimeoutExpired("pytest", timeout)
+
+        def kill(self):
+            events.append("kill")
+
+    def install_signal(sig, handler):
+        previous = handlers.get(sig)
+        handlers[sig] = handler
+        return previous
+
+    def sample(self):
+        handlers[signum](signum, None)
+
+    monkeypatch.setattr(ci_measure.signal, "signal", install_signal)
+    monkeypatch.setattr(ci_measure.Samples, "take", sample)
+    monkeypatch.setattr(ci_measure.subprocess, "Popen", lambda *args, **kwargs: Child())
+    monkeypatch.setitem(sys.modules, "psutil", SimpleNamespace(
+        Error=RuntimeError, AccessDenied=AccessDenied, Process=lambda pid: Process(),
+        wait_procs=lambda processes, timeout: ([], processes), cpu_count=lambda logical: 4,
+    ))
+    assert ci_measure.main(["--output", str(tmp_path)]) == 128 + signum
+    assert "terminate" in events
+    assert "kill" in events
+    assert events.count("wait") <= 2
+    report = json.loads((tmp_path / "resources.json").read_text())
+    assert report["exit_code"] == 128 + signum
+    assert report["cleanup_complete"] is False
