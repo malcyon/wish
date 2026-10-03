@@ -6956,17 +6956,21 @@ def validate_walks(results: list[dict]) -> None:
     moved the party since.  The screen's answer alone is never enough: the
     status line holds the clock.
     """
-    # A restore undoes the walks made since its snapshot, so they no longer
-    # count toward the moves the saved square must show.
+    # A restore puts back the walks and fights as the snapshot held them, so
+    # what it undid counts toward neither the moves the saved square must
+    # show nor the fights that moved the party.
     walks: list[tuple[int, dict]] = []
-    marks: dict[str, int] = {}
+    fights: list[int] = []
+    marks: dict[str, tuple[list, list]] = {}
     for i, r in enumerate(results):
         if r["verb"] == "walk":
             walks.append((i, r))
+        elif r["verb"] == "fight":
+            fights.append(i)
         elif r["verb"] == "snapshot":
-            marks[r["name"]] = len(walks)
+            marks[r["name"]] = (list(walks), list(fights))
         elif r["verb"] == "restore" and r.get("name") in marks:
-            del walks[marks[r["name"]]:]
+            walks[:], fights[:] = marks[r["name"]]
     if not walks:
         return
     last = walks[-1][0]
@@ -6994,7 +6998,7 @@ def validate_walks(results: list[dict]) -> None:
     if not asked and not back and got["place_changed"]:
         raise StepFailed("only turns were asked and the saved square changed from "
                          f"{got['place_before']} to {got['place_after']}")
-    if any(r["verb"] == "fight" for r in results[last + 1:]):
+    if any(i > last for i in fights):
         return
     seen = walks[-1][1]["position"]
     after = got["place_after"]

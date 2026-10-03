@@ -5423,6 +5423,32 @@ def test_a_walk_with_no_restore_still_fails_when_the_party_did_not_move():
         A.validate_walks(results)
 
 
+def test_nested_snapshots_restore_each_to_its_own_walks():
+    w1 = _walked("I", True, [5, 4, 0])
+    w2 = _walked("I", True, [5, 3, 0])
+    w3 = _walked("I", False, [5, 5, 0], blocked=[0])
+    results = [w1, _snap("snapshot", "a"), w2, _snap("snapshot", "b"),
+               _snap("restore", "a"), w3, _snap("restore", "b"), _saved(P, P)]
+    # `a` was taken after w1 and `b` after w2, so restoring `b` last leaves
+    # w1 and w2 and drops w3; the saved square did not move after two forward
+    # moves seen moving.
+    with pytest.raises(A.StepFailed, match="did not move: 2 forward"):
+        A.validate_walks(results)
+
+
+def test_a_fight_a_restore_undid_does_not_skip_the_position_check():
+    results = [_walked("I", True, [5, 4, 0]), _snap("snapshot"),
+               {"verb": "fight"}, _snap("restore"), _saved(P, {**P, "y": 3})]
+    with pytest.raises(A.StepFailed, match="the screen showed"):
+        A.validate_walks(results)
+
+
+def test_a_fight_a_restore_kept_still_skips_the_position_check():
+    results = [_walked("I", True, [5, 4, 0]), {"verb": "fight"},
+               _saved(P, {**P, "y": 3})]
+    A.validate_walks(results)
+
+
 class _WalkedPool(_Pool):
     def walk(self, arg):
         return _walked("I", False, [5, 5, 0], blocked=[0])
