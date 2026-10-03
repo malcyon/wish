@@ -1103,3 +1103,122 @@ def test_the_name_window_never_opens_for_names_that_show_as_typed(
     assert run.said == []
     assert run.asked == []
     assert len(run.published) == 1
+
+
+# ---------------------------------------------------------------------------
+# A DOS game folder that is another title's
+# ---------------------------------------------------------------------------
+
+#: A title's DOS game folder is recognised by its launcher beside its own
+#: configuration file (`goldbox.titles.DOS_FOLDER_FILES`).
+FOLDER_FILES = {
+    "pool-of-radiance": ("START.EXE", "POOL.CFG"),
+    "curse-of-the-azure-bonds": ("START.EXE", "CURSE.CFG"),
+    "secret-of-the-silver-blades": ("START.EXE", "BLADES.CFG"),
+}
+
+
+def game_folder(where, key):
+    folder = pathlib.Path(where) / f"folder-{key}"
+    folder.mkdir()
+    for name in FOLDER_FILES[key]:
+        (folder / name).write_bytes(b"")
+    return folder
+
+
+def dos_save_as(app, tmp_path, monkeypatch, key):
+    """Save As to DOS opened on a synthetic C64 save of title `key`, with the
+    save's own game disks answering as Preferences would, so the DOS game
+    folder is the only thing left to choose."""
+    from goldbox import c64_port
+
+    path = synthetic_save(tmp_path, game=c64_port.by_key(key))
+    binding = EditorBinding(make_root(), str(path))
+    monkeypatch.setattr(binding, "game_files_for", lambda _game: object())
+    binding.begin_save_as("dos")
+    return binding
+
+
+def wrong_folder_text(binding):
+    label = binding._child("label_dos_folder_wrong")
+    return None if label.isHidden() else label.text()
+
+
+def test_another_titles_folder_is_named_at_its_row_and_holds_save_as(
+        app, tmp_path, monkeypatch):
+    binding = dos_save_as(app, tmp_path, monkeypatch,
+                          "secret-of-the-silver-blades")
+    binding._child("destination_dos_folder").setText(
+        str(game_folder(tmp_path, "pool-of-radiance")))
+    assert not binding._child("button_destination_save_as").isEnabled()
+    assert not binding._child("box_dos_folder").isHidden()
+    assert wrong_folder_text(binding) == (
+        "This folder is for Pool of Radiance. "
+        "Choose the Secret of the Silver Blades DOS game folder.")
+
+
+def test_the_sentence_names_both_titles_by_their_own_names(
+        app, tmp_path, monkeypatch):
+    binding = dos_save_as(app, tmp_path, monkeypatch, "pool-of-radiance")
+    binding._child("destination_dos_folder").setText(
+        str(game_folder(tmp_path, "curse-of-the-azure-bonds")))
+    assert wrong_folder_text(binding) == (
+        "This folder is for Curse of the Azure Bonds. "
+        "Choose the Pool of Radiance DOS game folder.")
+
+
+def test_choosing_the_matching_folder_clears_the_sentence_and_frees_save_as(
+        app, tmp_path, monkeypatch):
+    binding = dos_save_as(app, tmp_path, monkeypatch,
+                          "secret-of-the-silver-blades")
+    field = binding._child("destination_dos_folder")
+    field.setText(str(game_folder(tmp_path, "pool-of-radiance")))
+    assert not binding._child("button_destination_save_as").isEnabled()
+    field.setText(str(game_folder(tmp_path, "secret-of-the-silver-blades")))
+    assert wrong_folder_text(binding) is None
+    assert binding._child("label_dos_folder_wrong").text() == ""
+    assert binding._child("button_destination_save_as").isEnabled()
+
+
+def test_a_folder_that_names_no_title_shows_no_sentence(
+        app, tmp_path, monkeypatch):
+    binding = dos_save_as(app, tmp_path, monkeypatch,
+                          "secret-of-the-silver-blades")
+    somewhere = tmp_path / "somewhere"
+    somewhere.mkdir()
+    binding._child("destination_dos_folder").setText(str(somewhere))
+    assert wrong_folder_text(binding) is None
+    assert binding._child("button_destination_save_as").isEnabled()
+
+
+def test_an_empty_folder_field_shows_the_row_and_no_sentence(
+        app, tmp_path, monkeypatch):
+    binding = dos_save_as(app, tmp_path, monkeypatch,
+                          "secret-of-the-silver-blades")
+    assert not binding._child("box_dos_folder").isHidden()
+    assert wrong_folder_text(binding) is None
+    assert not binding._child("button_destination_save_as").isEnabled()
+
+
+def test_the_sentence_is_gone_when_save_as_is_opened_again(
+        app, tmp_path, monkeypatch):
+    binding = dos_save_as(app, tmp_path, monkeypatch,
+                          "secret-of-the-silver-blades")
+    binding._child("destination_dos_folder").setText(
+        str(game_folder(tmp_path, "pool-of-radiance")))
+    binding.begin_save_as("dos")
+    assert wrong_folder_text(binding) is None
+    assert binding._child("destination_dos_folder").text() == ""
+
+
+def test_the_sentence_holds_save_as_when_a_game_disk_is_also_missing(
+        app, tmp_path, monkeypatch):
+    """The folder is wrong whether or not the save's own disks answer."""
+    binding = dos_save_as(app, tmp_path, monkeypatch,
+                          "secret-of-the-silver-blades")
+    monkeypatch.setattr(binding, "game_files_for", lambda _game: None)
+    binding._child("destination_dos_folder").setText(
+        str(game_folder(tmp_path, "pool-of-radiance")))
+    assert wrong_folder_text(binding) is not None
+    assert not binding._child("box_dos_folder").isHidden()
+    assert not binding._child("button_destination_save_as").isEnabled()

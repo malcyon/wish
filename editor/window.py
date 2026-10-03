@@ -163,6 +163,10 @@ CANNOT_SAVE_TITLE = "Cannot save"
 #: and both values go to the debug log only (`saveplan.validate` already
 #: logs them).
 LOSS_REFUSED = "The save could not be converted."
+#: Shown at the DOS game folder row when the folder chosen is another title's;
+#: the two names are the titles' own (`goldbox.titles.Title.title`).
+WRONG_DOS_FOLDER = ("This folder is for {folder}. "
+                    "Choose the {save} DOS game folder.")
 #: C4.
 TARGET_NOT_EMPTY = "You must choose an empty folder or type a new folder name."
 #: C5.
@@ -2667,6 +2671,7 @@ class EditorBinding(QObject):
             box = self._child(name)
             if box is not None:
                 box.setVisible(False)
+        self._show_wrong_dos_folder(None)
 
     def _destination_manual_assets(self) -> dict[str, str]:
         """What the player has typed or browsed into the asset rows.
@@ -2701,6 +2706,8 @@ class EditorBinding(QObject):
         if source is None or port is None:
             return None
         manual = self._destination_manual_assets()
+        wrong = saveplan.wrong_dos_folder(
+            source, port, manual.get(saveplan.DOS_GAME_FOLDER))
         try:
             assets = saveplan.resolve_assets(
                 source, port, game_files=self.game_files_for,
@@ -2709,18 +2716,37 @@ class EditorBinding(QObject):
                 amiga_disk=manual.get(saveplan.AMIGA_GAME_DISK),
                 amiga_disk_one=manual.get(saveplan.AMIGA_DISK_ONE))
         except saveplan.MissingAssets as exc:
-            self._show_asset_rows(exc.missing)
+            self._show_asset_rows(exc.missing, wrong)
             return None
-        self._show_asset_rows(())
+        self._show_asset_rows((), wrong)
         path = self._child("destination_path")
         self._set_save_as_button_enabled(
-            bool(path is not None and path.text().strip()))
+            bool(path is not None and path.text().strip()) and wrong is None)
         return assets
 
-    def _show_asset_rows(self, missing) -> None:
+    def _show_wrong_dos_folder(self, wrong: "tuple[str, str] | None") -> None:
+        """The sentence at the DOS game folder row for another title's
+        folder, or nothing when `wrong` is `None`."""
+        label = self._child("label_dos_folder_wrong")
+        if label is None:
+            return
+        if wrong is None:
+            label.clear()
+            label.setVisible(False)
+            return
+        folder, save = (titles.by_key(key).title for key in wrong)
+        label.setText(WRONG_DOS_FOLDER.format(folder=folder, save=save))
+        label.setVisible(True)
+
+    def _show_asset_rows(self, missing, wrong=None) -> None:
+        """Show a row for each asset still missing, and keep the DOS game
+        folder row, with its sentence, for a folder that is another
+        title's; Save As stays off for either."""
+        self._show_wrong_dos_folder(wrong)
         rows = {
             "box_c64_disks": saveplan.DESTINATION_DISKS in missing,
-            "box_dos_folder": saveplan.DOS_GAME_FOLDER in missing,
+            "box_dos_folder": (saveplan.DOS_GAME_FOLDER in missing
+                               or wrong is not None),
             "box_amiga_disk": saveplan.AMIGA_GAME_DISK in missing,
             "box_amiga_disk_one": saveplan.AMIGA_DISK_ONE in missing,
         }
@@ -2731,7 +2757,7 @@ class EditorBinding(QObject):
         # `missing` may hold `SOURCE_DISKS`, which shows no row of its own
         # (above) -- Save As stays off for that too, not only for what a row
         # here could still fix.
-        self._set_save_as_button_enabled(not missing)
+        self._set_save_as_button_enabled(not missing and wrong is None)
 
     def _set_save_as_button_enabled(self, enabled: bool) -> None:
         button = self._child("button_destination_save_as")

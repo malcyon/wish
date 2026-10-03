@@ -1671,25 +1671,45 @@
            </item>
            <item>
             <widget class="QWidget" name="box_dos_folder">
-             <layout class="QHBoxLayout" name="row_dos_folder">
+             <layout class="QVBoxLayout" name="layout_dos_folder">
               <property name="leftMargin"><number>0</number></property>
               <property name="topMargin"><number>0</number></property>
               <property name="rightMargin"><number>0</number></property>
               <property name="bottomMargin"><number>0</number></property>
               <item>
-               <widget class="QLabel" name="label_dos_folder_caption">
-                <property name="text">
-                 <string>DOS game folder</string>
+               <layout class="QHBoxLayout" name="row_dos_folder">
+                <item>
+                 <widget class="QLabel" name="label_dos_folder_caption">
+                  <property name="text">
+                   <string>DOS game folder</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QLineEdit" name="destination_dos_folder"/>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="button_dos_folder_browse">
+                  <property name="text">
+                   <string>Browse…</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+              <item>
+               <widget class="QLabel" name="label_dos_folder_wrong">
+                <property name="visible">
+                 <bool>false</bool>
                 </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QLineEdit" name="destination_dos_folder"/>
-              </item>
-              <item>
-               <widget class="QPushButton" name="button_dos_folder_browse">
                 <property name="text">
-                 <string>Browse…</string>
+                 <string/>
+                </property>
+                <property name="textFormat">
+                 <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                 <bool>true</bool>
                 </property>
                </widget>
               </item>

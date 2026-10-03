@@ -436,6 +436,24 @@ class WrongGameFolder(DroppedFields):
         self.lost = []
 
 
+def wrong_dos_folder(source: Any, port: str,
+                     folder: "str | pathlib.Path | None"
+                     ) -> "tuple[str, str] | None":
+    """The title keys `(folder's, save's)` when `folder` is another title's
+    DOS game folder, else `None`.
+
+    A folder whose title cannot be recognised answers `None`, as does any
+    route that reads no DOS game folder.
+    """
+    if not folder or port != "dos" or DOS_GAME_FOLDER not in requirements(
+            source, port):
+        return None
+    held = titles.dos_folder_title(folder)
+    if held is None or held == source.key:
+        return None
+    return held, source.key
+
+
 def check_dos_folder(source: Any, port: str, assets: "Assets") -> None:
     """Raise `WrongGameFolder` when a DOS destination's game folder is
     another title's.
@@ -443,13 +461,9 @@ def check_dos_folder(source: Any, port: str, assets: "Assets") -> None:
     A folder whose title cannot be recognised passes, as does any route that
     reads no DOS game folder.
     """
-    folder = assets.dos_folder
-    if folder is None or port != "dos" or DOS_GAME_FOLDER not in requirements(
-            source, port):
-        return
-    held = titles.dos_folder_title(folder)
-    if held is not None and held != source.key:
-        raise WrongGameFolder(folder, held, source.key)
+    wrong = wrong_dos_folder(source, port, assets.dos_folder)
+    if wrong is not None:
+        raise WrongGameFolder(assets.dos_folder, *wrong)
 
 
 class StalePlan(SaveAsError):
