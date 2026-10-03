@@ -1518,10 +1518,12 @@ the bit 7 each C64 cast writes, apart from the DOS flag.
 | Case | Sweep evidence and limit |
 |---|---|
 | Curse id 13 | **CONFIRMED combat path:** `COMBAT $1F40` sets id 13 and `$1F50` calls the row writer with a roll and bit 7. Cleanup does not strip 13. Survival of its target to save is unmeasured. |
-| Later 12, 14, 38 without bit 7; Mirror Image above 4 | **CONFIRMED unwritten:** Curse `COMBAT $172A` and Silver Blades `$1AA5` set bit 7 on a combat Enlarge, no combat row writes 14 or 38, and Mirror Image rolls 1d4 (Curse `$184F` through `$2F6A`, Silver Blades `$1BFE`). |
-| Pool Mirror Image with bit 7 | **CONFIRMED unwritten:** the camp cast (`SPELLE04 $A96B`) and the combat cast (`SPELLE00 $AAC9`) both roll 1d4. |
+| Later 12 without bit 7 | **CONFIRMED unwritten:** the combat Enlarge handler (Curse `COMBAT $172A`, Silver Blades `$1AA5`) sets bit 7 on the row it writes. |
+| Later 14, 38 | **CONFIRMED unwritten:** the combat spell table has no row whose id is 14 or 38, so no combat cast writes them. |
+| Later Mirror Image above 4 | **CONFIRMED unwritten:** the Mirror Image cast (Curse `COMBAT $184F` through `$2F6A`, Silver Blades `COMBAT $1BFE`) stores a `1d4` roll as the count, as at line 1233. |
+| Pool Mirror Image with bit 7 | **CONFIRMED unwritten:** the Mirror Image cast stores a `1d4` roll as the count, in camp (`SPELLE04 $A96B`) and in combat (`SPELLE00 $AAC9`), as at line 1233. |
 | Pool's stale `$2879` | **CONFIRMED writer mechanism:** a nonzero override reaches the generic camp row. A two-cast game run must establish whether one cast leaves it for the next. |
-| The Giant Strength id (Curse 146, Silver Blades 113) other than `$BC` | **CONFIRMED unwritten:** the camp cast (`ECL65 $83C2`) and the combat cast (`COMBAT $1EEA`) write only `$BC`. |
+| The Giant Strength id (Curse 146, Silver Blades 113) other than `$BC` | **CONFIRMED unwritten:** the Giant Strength cast writes only the fixed `$BC`, in camp (`ECL65 $83C2`) and in combat (`COMBAT $1EEA`). |
 | Slowed outside level 1–15 or 63 minutes | **PROBABLE:** the duration is 3 plus the level in minutes, and the level runs 1–15. |
 | Haste outside `$01`–`$1F` | **UNRESOLVED:** an item cast of spell 57 in a fight may reach a doubled level that makes the magnitude 0, which the guard refuses. |
 
