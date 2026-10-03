@@ -99,6 +99,9 @@ byte for each. The ids the plan named, all CONFIRMED:
 | 5 Detect Magic | `0x11DF6`, empty | `0x129B8`, empty | `0x145CA`, reads nothing |
 | 45 Protection from Evil, 10' Radius | `0xEFD2`, the attacker only | `0x1010B` | `0x110DE` |
 | 8 Protection from Evil | the same handler as 45 | the same as 45 | the same as 45 |
+| 9, 46 Protection from Good | `0xF007`, the attacker only; writes only the globals `[0x6816]` and `[0x6822]` | -- | -- |
+| 16 Read Magic | `0xF2A2`, empty | -- | -- |
+| 17 Shield | `0xF2A9`, writes the record's current armour class (`0x111`) to at least `0x39` | -- | -- |
 | 61 | `0x100EB`, never the node | -- | -- |
 | 89 displacement | `0x110EB` reads **and writes** byte 3 | reads 3 | reads 3 |
 | 7, 95 (Silver Blades gnome, elf) | -- | -- | nothing read |

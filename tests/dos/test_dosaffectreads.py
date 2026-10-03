@@ -643,6 +643,45 @@ def test_pool_bless_handler_reads_nothing_from_its_node():
     assert {m for _, m, _ in reads.handler_uses(eng, 89).access} >= {"r", "w"}
 
 
+def _memory_writes(eng, addr):
+    """The destination operand of every instruction in a handler that stores
+    to memory, as text."""
+    out = []
+    for ins in reads.body(eng.ovr, addr):
+        if ins.mnemonic in ("mov", "add", "sub", "inc", "dec", "and", "or"):
+            dest = ins.op_str.split(",")[0]
+            if "[" in dest:
+                out.append(dest)
+    return out
+
+
+def test_pool_read_magic_and_protection_handlers_leave_nothing_and_shield_writes_the_record():
+    """What DOS Pool runs when these ids' nodes are removed: Read Magic (16)
+    runs an empty handler, Protection from Evil and Good (8, 45, 9, 46) touch
+    only per-attack globals, and Shield (17) writes the character record's
+    current armour class.  So a DOS node for 16 or the protections leaves no
+    effect behind, which is why the C64's expiry call on a stale row has no
+    DOS counterpart (`docs/226-the-c64-running-effect-crosswalk.md`)."""
+    eng = _title("pool")
+    assert eng.handlers[16] == ("GAME.OVR", 0xF2A2)
+    text = [f"{i.mnemonic} {i.op_str}" for i in reads.body(eng.ovr, 0xF2A2)]
+    assert text == ["push bp", "mov bp, sp", "pop bp", "retf 0xa"]
+
+    assert eng.handlers[8] == eng.handlers[45] == ("GAME.OVR", 0xEFD2)
+    assert eng.handlers[9] == eng.handlers[46] == ("GAME.OVR", 0xF007)
+    for addr in (0xEFD2, 0xF007):
+        writes = _memory_writes(eng, addr)
+        assert writes, hex(addr)
+        assert set(writes) <= {"byte ptr [0x6816]", "byte ptr [0x6822]"}
+        assert not [w for w in writes if "es:" in w]
+
+    assert eng.handlers[17] == ("GAME.OVR", 0xF2A9)
+    shield = [f"{i.mnemonic} {i.op_str}" for i in reads.body(eng.ovr, 0xF2A9)]
+    assert "mov byte ptr es:[di + 0x111], 0x39" in shield
+    # Negative control: the check for a write through `es:` finds Shield's.
+    assert [w for w in _memory_writes(eng, 0xF2A9) if "es:" in w]
+
+
 def test_no_pool_monster_memorises_or_carries_dispel_magic():
     """A monster casts from its record's memorised list (0x017, 21 bytes,
     read by the combat choice at `0xB105`) or through a readied item's effect

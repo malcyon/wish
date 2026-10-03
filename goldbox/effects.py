@@ -318,7 +318,12 @@ class RunningEffect:
 #: Pool's camp writer can also store a leftover override (`SPELLE04 $A825`,
 #: never cleared within a camp visit) as the magnitude, so these ids convert any
 #: byte from 1 to 0xFF whole: only Dispel Magic (low nibble, `$FF` skipped;
-#: `SPELLE04 $AA5B`) and the bit-7 expiry dispatch (`CAMP $131F`) read it.
+#: `SPELLE04 $AA5B`) and the bit-7 expiry dispatch read it. In camp (`CAMP
+#: $131F`) that dispatch has no handler for these ids; in a fight (`SQRPACI01
+#: $07E4`) it runs the id's handler once. DOS's handlers for 16, 8, 9, 45 and 46
+#: leave nothing behind and its flag-0 node runs none at expiry
+#: (`docs/226-the-c64-running-effect-crosswalk.md`), so the byte is converted
+#: whole and that one C64 call is not reproduced.
 POOL_CASTER_LEVEL_IDS = frozenset(
     {1, 5, 8, 9, 10, 16, 17, 19, 20, 24, 25, 37, 41, 45, 46})
 
