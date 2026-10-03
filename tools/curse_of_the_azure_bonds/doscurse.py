@@ -26,6 +26,7 @@ Commands, one per line, blank lines and `#` comments ignored:
 |---|---|
 | `key Return` | one or more X keysyms, pressed in order |
 | `type WORD` | `xdotool type`, for a name or a number |
+| `wheel 4` | answer the code-wheel prompt, given the box number it prints; logs `answered` or why not |
 | `sleep 2` | wait, when the game is drawing something long |
 | `settle` | wait for two identical frames, then shoot |
 | `shot name` | screenshot to `shots/NNN-name.png` and `-big.png` |
@@ -66,6 +67,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
+from tools.curse_of_the_azure_bonds import cursewheel  # noqa: E402
 from tools.dos import dosbox  # noqa: E402
 from tools.dos.dosbox import BAR, Screen, Session, claim, find_game  # noqa: E402
 from tools.registry import scratch  # noqa: E402
@@ -187,6 +189,27 @@ class Console:
         self.say(f"  frame={screen.digest()} bar.ink={screen.ink(BAR)} "
                  f"bar.glyphs={screen.glyphs(BAR)}")
 
+    def wheel(self, box: int) -> None:
+        """Read the code-wheel prompt off the screen and type its answer.
+
+        The box number is the one thing `cursewheel` cannot read, so the
+        caller gives it.  Nothing about the challenge or the answer is logged,
+        and the screenshot it was read from is deleted.
+        """
+        shot = self.s.shot("wheel")
+        try:
+            got = cursewheel.identify(shot)
+        finally:
+            shot.unlink(missing_ok=True)
+        if min(got["espruar_ink"], got["dethek_ink"]) < 40:
+            raise RuntimeError("no code-wheel challenge on screen")
+        if got["path"] is None:
+            raise RuntimeError("the challenge's path could not be read")
+        _, character = cursewheel.answer(
+            box, got["espruar"][0][1], got["dethek"][0][1], got["path"])
+        self.s.key(character, "Return")
+        self.say("  answered")
+
     # -- commands -------------------------------------------------------
 
     def do(self, line: str) -> bool:
@@ -200,6 +223,15 @@ class Console:
             subprocess.run(["xdotool", "type", "--clearmodifiers", "--window",
                             self.s.window, rest],
                            env=self.s.env(), check=True, capture_output=True)
+        elif word == "wheel":
+            try:
+                box = int(rest)
+            except ValueError:
+                raise RuntimeError("wheel needs the box number, 1 to 6") from None
+            if not 1 <= box <= 6:
+                raise RuntimeError("wheel needs the box number, 1 to 6")
+            self.wheel(box)
+            return True
         elif word == "sleep":
             time.sleep(float(rest or 1))
         elif word == "settle":
