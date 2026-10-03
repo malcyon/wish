@@ -80,7 +80,7 @@ jobs:
 
       - name: pytest
         # Disk-backed tests skip without the player's private game disks.
-        # Push/PR runs omit checks already passed in the prerequisite job.
+        # Push/PR runs omit generated checks covered by the separate required job.
         env:
           QT_QPA_PLATFORM: offscreen
           WISH_CI_PRIOR_FAILURES_JSON: ${{ vars.WISH_CI_PRIOR_FAILURES_JSON }}
@@ -93,7 +93,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ci-profile-${{ matrix.os }}-py${{ matrix.python }}${{ matrix.artifact_suffix }}
+          name: ci-profile-${{ matrix.os }}-py${{ matrix.python }}${{ matrix.artifact_suffix }}-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/ci-profile/
           retention-days: 14
           if-no-files-found: error

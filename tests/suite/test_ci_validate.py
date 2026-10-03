@@ -16,6 +16,10 @@ def test_snapshot_keeps_git_inventory_and_parent_history(tmp_path):
     parent = ci_validate.git("rev-parse", "HEAD").decode().strip()
     ci_validate.extract_tree(tree, tmp_path)
     ci_validate.install_git_inventory(tree, parent, tmp_path)
+    alternate = tmp_path / ".git/objects/info/alternates"
+    git_dir = ci_validate.git("rev-parse", "--absolute-git-dir").decode().strip()
+    assert alternate.read_bytes() == (str(Path(git_dir) / "objects").encode("utf-8")
+                                      + b"\n")
     actual = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"],
                                      cwd=tmp_path).decode().strip()
     assert actual == tree

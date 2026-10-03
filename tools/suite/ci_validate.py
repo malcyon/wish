@@ -107,7 +107,7 @@ def install_git_inventory(tree: str, parent: str, destination: Path,
                        cwd=destination, check=True)
     alternate = destination / ".git/objects/info/alternates"
     alternate.parent.mkdir(parents=True, exist_ok=True)
-    alternate.write_text(str(original_git / "objects") + "\n", encoding="utf-8")
+    alternate.write_bytes(str(original_git / "objects").encode("utf-8") + b"\n")
     commit = subprocess.check_output(["git", "-c", "user.name=Wish validation",
                                       "-c", "user.email=validation@example.invalid",
                                       "commit-tree", tree, "-p", parent,
