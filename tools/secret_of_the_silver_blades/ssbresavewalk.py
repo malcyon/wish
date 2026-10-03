@@ -26,6 +26,10 @@ and, when the engine's own save succeeds, `resave-SSBC.D64`.
 `--force-restore` is a diagnostic for live checks of the restore path: the
 walk rolls back once and walks again; `walk_restores` in `summary.json` and
 the `walk` log line then read 1.
+
+Exits 0 only when the walk moved the party, the engine's save wrote it back
+and, under `--force-restore`, the walk was rolled back; otherwise the log's
+last line says which of those did not happen and the exit status is 1.
 """
 import argparse
 import json
@@ -98,6 +102,22 @@ def walk_square(sess, move: str = "I",
     if restores:
         sess.attach(sess.save_disk)
     return sess.square() != before, restores
+
+
+def shortfall(moved: bool, restores: int, resaved: bool,
+              force_restore: bool) -> str | None:
+    """What the run did not do, as a sentence, or None when it did it all:
+    the walk moved the party, the engine wrote the party back, and under
+    `force_restore` the walk was rolled back once."""
+    missed = []
+    if force_restore and restores < 1:
+        missed.append("the walk was not rolled back though --force-restore "
+                      "asked for it")
+    if not moved:
+        missed.append("the walk did not move the party")
+    if not resaved:
+        missed.append("ENCAMP > SAVE did not write the party back")
+    return "; ".join(missed) + "." if missed else None
 
 
 def main(argv=None) -> int:
@@ -199,6 +219,10 @@ def main(argv=None) -> int:
             "resave_ok": ok,
         }
         (out / "summary.json").write_text(json.dumps(result, indent=2))
+        missed = shortfall(moved, restores, ok, args.force_restore)
+        if missed:
+            log.say(f"FAILED: {missed}")
+            return 1
         log.say("SUCCESS")
         return 0
     except Exception as exc:

@@ -95,3 +95,108 @@ def test_the_force_restore_option_is_off_by_default():
     ssbresavewalk.walk_square(sess, "I")
     assert sess.restores == 0
     assert not getattr(sess, "asked_forced", 0)
+
+
+class _Kbd:
+    def screenshot(self, path, **kw):
+        return True
+
+
+class _RunSession:
+    """Enough of `SSBSession` for `main` to run past the walk to the resave."""
+
+    save_disk = "/slot/SIDE0.D64"
+    game = None
+
+    def __init__(self, resaved):
+        self.resaved = resaved
+        self.kbd = _Kbd()
+
+    def boot(self):
+        return True
+
+    def settle(self, seconds=6.0):
+        pass
+
+    def status(self):
+        return None
+
+    def square(self):
+        return (3, 3)
+
+    def save_game(self):
+        return self.resaved
+
+    def close(self):
+        pass
+
+
+class _Slot:
+    n, display = 9, ":99"
+
+    def release(self):
+        pass
+
+
+def _run_main(monkeypatch, tmp_path, *, resaved, moved=True, restores=1,
+              force=True):
+    sess = _RunSession(resaved)
+    w = ssbresavewalk
+    # `main` sets these for the emulator; monkeypatch puts them back after.
+    for name in ("QT_QPA_PLATFORM", "GDK_BACKEND", "POR_HEADLESS"):
+        monkeypatch.setenv(name, "x")
+    for name in ("WAYLAND_DISPLAY", "XDG_SESSION_TYPE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(w.S, "claim_slot", lambda *a, **k: _Slot())
+    monkeypatch.setattr(w.S, "copy_closed_disk", lambda *a, **k: None)
+    monkeypatch.setattr(w.ssbsession, "stage", lambda *a, **k: "boot.d64")
+    monkeypatch.setattr(w.ssbsession, "SSBSession", lambda *a, **k: sess)
+    monkeypatch.setattr(w.ssbsession, "load_party", lambda s: True)
+    monkeypatch.setattr(w.ssbsession, "Addresses", lambda *a: None)
+    monkeypatch.setattr(w, "arrive", lambda *a, **k: "world")
+    monkeypatch.setattr(w, "panel", lambda s: ([], []))
+    monkeypatch.setattr(w, "sheet_workaround", lambda *a: ["sheet"])
+    monkeypatch.setattr(w, "walk_square",
+                        lambda s, move, force_restore=False: (moved, restores))
+    monkeypatch.setattr(w, "walk_step_routed", lambda *a: "world")
+    out = tmp_path / "out"
+    argv = ["--disks", str(tmp_path), "--produced", str(tmp_path / "p.D64"),
+            "--out", str(out)] + (["--force-restore"] if force else [])
+    return w.main(argv), out
+
+
+def test_a_resave_that_wrote_nothing_fails_the_run_and_says_so(
+        monkeypatch, tmp_path, capsys):
+    code, out = _run_main(monkeypatch, tmp_path, resaved=False)
+    printed = capsys.readouterr().out
+    assert code == 1
+    assert "FAILED: ENCAMP > SAVE did not write the party back." in printed
+    assert "SUCCESS" not in printed
+    assert '"resave_ok": false' in (out / "summary.json").read_text()
+
+
+def test_a_walk_that_did_not_move_the_party_fails_the_run(
+        monkeypatch, tmp_path, capsys):
+    code, _ = _run_main(monkeypatch, tmp_path, resaved=True, moved=False)
+    assert code == 1
+    assert "FAILED: the walk did not move the party." in capsys.readouterr().out
+
+
+def test_a_forced_run_with_no_restore_fails_the_run(
+        monkeypatch, tmp_path, capsys):
+    code, _ = _run_main(monkeypatch, tmp_path, resaved=True, restores=0)
+    assert code == 1
+    assert "not rolled back though --force-restore" in capsys.readouterr().out
+
+
+def test_a_run_that_walked_restored_and_resaved_succeeds(
+        monkeypatch, tmp_path, capsys):
+    code, _ = _run_main(monkeypatch, tmp_path, resaved=True)
+    assert code == 0
+    assert "SUCCESS" in capsys.readouterr().out
+
+
+def test_an_unforced_run_needs_no_restore(monkeypatch, tmp_path):
+    code, _ = _run_main(monkeypatch, tmp_path, resaved=True, restores=0,
+                        force=False)
+    assert code == 0
