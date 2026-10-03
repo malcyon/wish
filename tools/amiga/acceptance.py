@@ -1496,8 +1496,12 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         log(verb, **fields)
         if verb == "restore" and previous_state:
             # The next key goes out on the screen the snapshot was taken on, not on a guess.
-            reach(previous_state, f"{n:02d}-restored-{previous_state}", 0,
-                  strict=not accept or previous_state in strict_states)
+            # Strict wherever the state has a guard: a restore that landed on another screen
+            # must stop the run, not be settled and typed into.
+            try:
+                reach(previous_state, f"{n:02d}-{previous_state}-after-restore", 0, strict=True)
+            except RouteError as exc:
+                raise RouteError(f"after restoring {name}: {exc}") from exc
 
     title_limit = title.title_limit if title else TITLE_LIMIT
     boot_span = title.boot_span if title else MEASURE_TITLE_SPAN

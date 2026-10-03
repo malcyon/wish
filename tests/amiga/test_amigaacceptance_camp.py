@@ -493,7 +493,7 @@ FAKE_TITLES = {
 
 
 def _camp_run(tmp_path, clock, monkeypatch, *, guard_states=CAMP_STATES, identity=None,
-              clock_f="05:22", steps=STEPS, bar=True, name="ssb", spent=False):
+              clock_f="05:22", steps=STEPS, bar=True, name="ssb", spent=False, on_also=None):
     published, reader, files, adf, letter, port, ext = FAKE_TITLES[name]
 
     def read_slot(disk, slot):
@@ -524,7 +524,8 @@ def _camp_run(tmp_path, clock, monkeypatch, *, guard_states=CAMP_STATES, identit
         return bar and MapGuard().shown(p).startswith("camp_sheet")
 
     on = {"camp_sheet_heal": lambda p: not guest.healed and sheet(p),
-          "camp_sheet_spent": lambda p: guest.healed and sheet(p)}
+          "camp_sheet_spent": lambda p: guest.healed and sheet(p),
+          **(on_also or {})}
     guard = MapGuard(states=(*MapGuard.ALL, *guard_states), on=on)
     monkeypatch.setattr(foundation, "_published_manifest", lambda *_: (manifest, title))
     result = foundation.run_recon(

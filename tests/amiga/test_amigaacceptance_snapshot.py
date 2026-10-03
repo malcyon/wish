@@ -138,7 +138,7 @@ def test_a_restore_puts_back_the_screen_and_the_world_crop_the_run_remembers(
                         marks={11: (("snapshot", "walk"),), 12: (("restore", "walk"),)})
     assert result["error"] == ""
     # The restored screen is waited for before the next key.
-    assert any(c[0] in ("grab", "capture") and "restored-world" in c[1] for c in guest.calls)
+    assert any(c[0] in ("grab", "capture") and "world-after-restore" in c[1] for c in guest.calls)
     moves = [e for e in result["events"] if "crop_changed" in e]
     # The second move leaves the crop the snapshot showed, and the run must know it changed.
     assert moves[1]["crop_changed"] is True
@@ -152,3 +152,16 @@ def test_a_restore_puts_back_the_camp_sheets_and_the_last_rest_marker(
     # Only the sheet after the restore counts, and the undone rest left no marker.
     assert len(result["camp_sheets"]) == 1
     assert "sheets_before_last_rest" not in result
+
+
+def test_a_restore_that_lands_on_another_camp_screen_stops_the_run(
+        tmp_path, clock, monkeypatch, pipe):  # noqa: F811
+    # The camp bar is not a strict state, so only the restore's own wait can stop this.
+    restored = []
+    original = pipe.restore
+    pipe.restore = lambda *a, **k: (restored.append(1), original(*a, **k))[1]
+    steps = ("snapshot s", "view 1", "restore s", *STEPS)
+    _, result = _camp_run(tmp_path, clock, monkeypatch, steps=steps,
+                          on_also={"camp": lambda p: not restored})
+    assert "after restoring s" in result["error"] and "camp screen was not recognized" in result["error"]
+    assert result["success"] is False
