@@ -289,6 +289,35 @@ def _reader_index(before: list[str], after: list[str]) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
+def snapshot_pipe() -> Any:
+    """The WinUAE pipe a `snapshot` or `restore` step goes through."""
+    from automap import amiga  # noqa: PLC0415
+
+    return amiga.WinuaePipe()
+
+
+def check_marks(marks: Mapping[int, tuple[tuple[str, str], ...]], steps: Any) -> None:
+    """Refuse machine steps that cannot run: a restore before its snapshot, one after a save, one off the route."""
+    taken: dict[str, bool] = {}
+    if any(not 0 <= index <= len(steps) for index in marks):
+        raise RouteError("a snapshot or restore step falls outside the route")
+    for index in range(len(steps) + 1):
+        for verb, name in marks.get(index, ()):
+            if verb == "snapshot":
+                taken[name] = False
+            elif verb != "restore":
+                raise RouteError(f"{verb!r} is not a snapshot or restore step")
+            elif name not in taken:
+                raise RouteError(f"restore {name}: no snapshot {name!r} was taken before it")
+            elif taken[name]:
+                raise RouteError(
+                    f"restore {name}: a game save came between its snapshot and it, and a "
+                    f"restore puts the machine back while the save stays on the disk image, "
+                    f"so the run would no longer be one consistent game")
+        if index < len(steps) and steps[index][2] == "write":
+            taken = dict.fromkeys(taken, True)
+
+
 def _step_wait(min_waits: dict[str, float], state: str, kind: str) -> float:
     return min_waits.get(state, POST_WRITE_WAIT if kind == "write" else 0)
 
@@ -1129,7 +1158,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
               diagnose: bool = False, boot_limit: float = 300,
               rulebook_draws: int | None = None, target: Any = None,
               lane_check: Callable[[], Any] | None = None,
-              rulebook_records: list[int] | None = None) -> dict[str, Any]:
+              rulebook_records: list[int] | None = None,
+              marks: Mapping[int, tuple[tuple[str, str], ...]] | None = None) -> dict[str, Any]:
     """Walk the route, stopping at the first unrecognised state, and fetch both disks.
 
     A guarded state is found by polling single grabs until its static box
@@ -1156,6 +1186,13 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     stages each before its camp save, and after the answer its `drawn` is logged beside the
     reader's kept-capture index; a draw that is not the staged record, no single kept capture,
     or a reader index other than the helper's `reader_index` for `drawn`, fails the run.
+
+    `marks` maps a route index to the machine steps that fire before that step: `("snapshot",
+    NAME)` saves the whole machine through the WinUAE pipe and `("restore", NAME)` puts it back,
+    so a bad encounter costs one leg and not the run. An index equal to the route's length fires
+    after the last step. A restore with no snapshot before it, or with a game save between the
+    two, is refused before the claim, since the save stays on the disk image while memory goes
+    back. A `--camp` list's `snapshot NAME` and `restore NAME` steps become marks.
 
     `preserve_specimen` registers the fetched save disk of a run that succeeded by its own
     verdict, before `--expect` is judged, so a run that later fails `--expect` still leaves its
@@ -1409,6 +1446,31 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             *((k, s, "key") for k, s in route), (write_keys[0], "loaded_menu", "write"))
         strict_states = {"title", *(s for _, s in ROUTE)}
         table = SILVER_BLADES_INTERSTITIALS
+    marks = {**(marks or {})}
+    if title is not None and "camp" in manifest and accept:
+        for index, pairs in route_camp.camp_marks(
+                title, tuple(manifest["camp"]), len(manifest["names_a"]),
+                name=manifest["title"]).items():
+            marks[index] = (*pairs, *marks.get(index, ()))
+    if marks:
+        if measure or reload:
+            raise RouteError("snapshot and restore steps belong to an accept run")
+        check_marks(marks, steps)
+    pipe = None
+
+    def machine_step(verb: str, name: str, n: int) -> None:
+        """Save the machine under `name`, or put it back as that left it."""
+        nonlocal pipe
+        if pipe is None:
+            pipe = snapshot_pipe()
+        receipt = getattr(pipe, verb)(name, holder)
+        result["events"].append({verb: name, "step": n})
+        fields = {"name": name, "step": n, "receipt": str(receipt)}
+        if verb == "restore":
+            fields["disk_image"] = ("a game save made in between would stay on the disk image "
+                                    "while memory went back; none was made")
+        log(verb, **fields)
+
     title_limit = title.title_limit if title else TITLE_LIMIT
     boot_span = title.boot_span if title else MEASURE_TITLE_SPAN
     if counter is not None:
@@ -1900,6 +1962,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             previous_world = ""
             previous_state = ""
             for n, (key, state, kind) in enumerate(steps, 1):
+                for verb, mark_name in marks.get(n - 1, ()):
+                    machine_step(verb, mark_name, n)
                 if n == 1 and skip_first:
                     result["events"].append({"skipped": key, "step": n})
                     continue
@@ -1949,6 +2013,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     previous_world = digest
                     if counter is not None:
                         counter.locate()
+            for verb, mark_name in marks.get(len(steps), ()):
+                machine_step(verb, mark_name, len(steps) + 1)
             if counter is not None:
                 rulebook_draws_after_route()
             if reload:

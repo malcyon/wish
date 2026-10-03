@@ -177,6 +177,7 @@ from __future__ import annotations
 import dataclasses
 import re
 
+from automap.amiga import SNAPSHOT_NAME
 from tools.amiga.route import AmigaTitle
 from tools.amiga.winuaesession import RouteError
 
@@ -418,9 +419,52 @@ def _join_place(words: list[str]) -> tuple[int, int] | None:
     return int(words[1]), int(words[2])
 
 
+#: The steps that act on the machine and not on the game: `snapshot NAME` saves it, `restore NAME`
+#: puts it back. They are not route steps, so a title's route never holds one.
+MACHINE_VERBS = ("snapshot", "restore")
+
+
+def is_machine_step(token: str) -> bool:
+    """Whether `token` is a `snapshot NAME` or `restore NAME` step."""
+    return token.split()[0] in MACHINE_VERBS if token.split() else False
+
+
+def split_machine_steps(tokens: tuple[str, ...]) -> tuple[tuple[str, ...], tuple[tuple[int, str, str], ...]]:
+    """The game's camp steps, and where each machine step goes among them.
+
+    Each mark is `(n, verb, name)`: it fires after the first `n` of the returned camp steps.
+    """
+    game: list[str] = []
+    marks: list[tuple[int, str, str]] = []
+    for token in tokens:
+        if is_machine_step(token):
+            verb, _, arg = token.partition(" ")
+            marks.append((len(game), verb, arg))
+        else:
+            game.append(token)
+    return tuple(game), tuple(marks)
+
+
+def _validate_machine_steps(tokens: tuple[str, ...]) -> None:
+    """Refuse a snapshot name the lane cannot keep, or a restore with no snapshot before it."""
+    taken: set[str] = set()
+    for token in tokens:
+        words = token.split()
+        if len(words) != 2 or not SNAPSHOT_NAME.fullmatch(words[1]):
+            raise RouteError(f"camp step {token!r} is not {words[0]} NAME: a snapshot name is "
+                             f"letters, digits, - and _, up to 32")
+        if words[0] == "snapshot":
+            taken.add(words[1])
+        elif words[1] not in taken:
+            raise RouteError(f"{token!r}: no snapshot {words[1]!r} was taken before it")
+
+
 def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
                    name: str = "ssb") -> None:
     """Refuse a camp step list the route cannot drive for title `name`.
+
+    `snapshot NAME` and `restore NAME` save the machine and put it back; the other steps are
+    judged without them.
 
     `view` or `view N` shows the sheet of party line N (1 when left out; only
     the lines in `SHEET_LINES` have a guard rule), `heal` or `heal N` has
@@ -435,6 +479,8 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
     (only for a title in `JOIN_TITLES`).
     """
     view_lines, heal_lines = sheet_lines(name)
+    _validate_machine_steps(tuple(t for t in tokens if is_machine_step(t)))
+    tokens, _ = split_machine_steps(tokens)
     if not tokens:
         raise RouteError("the camp step list is empty")
     if name in ITEMS_ONLY:
@@ -631,6 +677,7 @@ def camp_title(title: AmigaTitle, tokens: tuple[str, ...], party_size: int = PAR
     loaded from slot D) becomes a simple key on the rest menu only.
     """
     validate_steps(tokens, party_size, name=name)
+    tokens, _ = split_machine_steps(tokens)
     route = list(title.route)
     try:
         at = route.index(CAMP_SAVE_STEP)
@@ -654,3 +701,20 @@ def camp_title(title: AmigaTitle, tokens: tuple[str, ...], party_size: int = PAR
     return dataclasses.replace(
         title, route=tuple(route), plain_keys=simple, strict=frozenset(strict),
         min_waits={**title.min_waits, **MIN_WAITS, **waits}, wait_limits=limits)
+
+
+def camp_marks(title: AmigaTitle, tokens: tuple[str, ...], party_size: int = PARTY_MAX, *,
+               name: str) -> dict[int, tuple[tuple[str, str], ...]]:
+    """Where the machine steps among `tokens` fire in the route `camp_title` built.
+
+    `title` is that result. The key is a route index and the machine steps fire before that
+    step runs; an index equal to the route's length fires after the last one.
+    """
+    validate_steps(tokens, party_size, name=name)
+    game, marks = split_machine_steps(tokens)
+    at = list(title.route).index(CAMP_SAVE_STEP) - len(steps_for(game, name, party_size))
+    out: dict[int, list[tuple[str, str]]] = {}
+    for after, verb, arg in marks:
+        index = at + len(steps_for(game[:after], name, party_size))
+        out.setdefault(index, []).append((verb, arg))
+    return {index: tuple(pairs) for index, pairs in out.items()}
