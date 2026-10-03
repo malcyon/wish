@@ -114,7 +114,8 @@ off at its end, where the gates are put back and read back
 itself while it was held, fails the step and nothing is saved.  `summary.json`
 gets `no_encounters: true`, `encounter_gates` (each restore: when, and per
 address the original, the value written, the value found, the action and
-whether it verified) and `encounter_gates_verified`.  Such a run proves
+whether it verified) and `encounter_gates_verified` (None when no gate was
+written).  Such a run proves
 movement and saving, not combat.
 
 `--compare A B` reads two runs' `summary.json` and lists the item rows and
@@ -7681,8 +7682,11 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                 pool.capture("lost-error")
     finally:
         if summary.get("no_encounters"):
-            summary["encounter_gates_verified"] = all(
-                r["verified"] for r in summary["encounter_gates"])
+            reports = summary["encounter_gates"]
+            # None: no gate was ever held, so there was nothing to verify.
+            summary["encounter_gates_verified"] = (
+                False if not all(r["verified"] for r in reports)
+                else True if any(r["gates"] for r in reports) else None)
         if pool is not None and getattr(pool, "read_ats", ()):
             summary["read_at"] = pool.release_read_at()
         if temple_mode and pool is not None:

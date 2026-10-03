@@ -386,3 +386,40 @@ def test_a_snapshot_keeps_the_originals_a_restore_needs(tmp_path):
     s.restore("held")
     assert s._pokes_written is True
     assert s._gates_held[0x4C02]["original"] == 3
+
+
+def test_a_new_script_that_kept_the_poked_byte_is_not_verified():
+    s, roll = _travel()
+    zero = roll + S.POOL_TRAVEL_ROLL_ZERO
+    s.suppress_encounters()
+    s.mem[roll] = 0x55          # another script over the guard, not the poke
+    assert s.mem[zero] == 0xFF
+    s.events.clear()
+    with pytest.raises(S.GateRestoreError, match="still holds the poke 255"):
+        s.restore_encounter_gates()
+    assert pokes(s) == []
+    with pytest.raises(RuntimeError, match="pokes"):
+        s._refuse_save()
+
+
+def test_a_poke_left_in_memory_is_never_recorded_as_the_original():
+    s, roll = _travel()
+    zero = roll + S.POOL_TRAVEL_ROLL_ZERO
+    s.mem[zero] = 0xFF          # left by a hold whose record is gone
+    s.suppress_encounters()
+    assert s._gates_held[zero]["original"] == 0
+    s.restore_encounter_gates()
+    assert s.mem[zero] == 0
+
+
+def test_the_driving_guide_and_the_rule_give_the_same_save_condition():
+    import pathlib
+    repo = pathlib.Path(__file__).resolve().parents[2]
+    guide = (repo / "docs/70-driving-the-game.md").read_text(encoding="utf-8")
+    section = guide.split("## Suppressing encounters", 1)[1].split("\n## ", 1)[0]
+    rule = (repo / ".claude/rules/emulator.md").read_text(encoding="utf-8")
+    for text in (" ".join(section.split()), " ".join(rule.split())):
+        assert "restore_encounter_gates()" in text
+        assert "tools/c64/acceptance.py --no-encounters" in text
+        assert "proves movement and saving, not combat" in text
+        assert "leaves both off" not in text

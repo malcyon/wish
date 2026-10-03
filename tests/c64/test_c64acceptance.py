@@ -13555,7 +13555,7 @@ def test_an_opted_in_run_records_the_switch_and_its_restores(tmp_path, monkeypat
     assert summary["no_encounters"] is True
     assert summary["encounter_gates"] == [{"when": "before save", "gates": [],
                                            "verified": True}]
-    assert summary["encounter_gates_verified"] is True
+    assert summary["encounter_gates_verified"] is None
 
 
 def test_a_run_without_the_opt_in_records_no_switch(tmp_path, monkeypatch):
@@ -13563,3 +13563,43 @@ def test_a_run_without_the_opt_in_records_no_switch(tmp_path, monkeypatch):
     assert rc == 0
     assert not {"no_encounters", "encounter_gates",
                 "encounter_gates_verified"} & set(summary)
+
+
+def test_an_opted_in_run_that_held_no_gate_records_nothing_verified(
+        tmp_path, monkeypatch):
+    class Quiet(_Pool):
+        def save(self, staged):
+            self.gate_reports.append({"when": "before save", "gates": [],
+                                      "verified": True})
+            return {}
+
+    real_run = A.run
+
+    def run_with(args, *a, **k):
+        args.no_encounters = True
+        return real_run(args, *a, **k)
+
+    monkeypatch.setattr(A, "run", run_with)
+    rc, slot, out = _drive(tmp_path, monkeypatch, ["load", "save"], pool=Quiet)
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert rc == 0 and summary["encounter_gates_verified"] is None
+
+
+def test_an_opted_in_run_records_a_verified_gate_as_verified(tmp_path, monkeypatch):
+    class Held(_Pool):
+        def save(self, staged):
+            self.gate_reports.append({"when": "before save", "verified": True,
+                                      "gates": [{"address": "$A0F8",
+                                                 "verified": True}]})
+            return {}
+
+    real_run = A.run
+
+    def run_with(args, *a, **k):
+        args.no_encounters = True
+        return real_run(args, *a, **k)
+
+    monkeypatch.setattr(A, "run", run_with)
+    rc, slot, out = _drive(tmp_path, monkeypatch, ["load", "save"], pool=Held)
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert summary["encounter_gates_verified"] is True

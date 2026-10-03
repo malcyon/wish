@@ -839,11 +839,19 @@ area script only). `skip_world_map_ambushes = True` sets Curse's world-map
 once-flags so its fixed ambushes are skipped. An area missing from the table is
 logged once as unsuppressed; adding a row is how to cover it.
 
-This is for automapper and driver testing only. The pokes are save-page bytes
-and some are story counters, so a run that proves a conversion leaves both off,
-and once any poke is written `save_game` raises unless `allow_suppressed=True`.
-The flag is sticky until a fresh boot, and a snapshot records it so a restore
-puts back the snapshot's value.
+Each address's value before its first write is recorded. Once any gate is
+written `save_game` raises until `restore_encounter_gates()` has turned both
+switches off, written every original back and read each one back equal; a gate
+that reads back wrong, or one the game wrote itself while it was held, raises
+and the save stays blocked. `allow_suppressed=True` saves anyway and is for
+automapper and driver testing only. A walking conversion proof may switch
+encounters off only through `tools/c64/acceptance.py --no-encounters`, which
+turns the switch on for each `walk` step and restores and verifies the gates at
+its end and before every save, recording them in `summary.json`; such a run
+proves movement and saving, not combat. A proof no longer has to leave both
+switches off, because no save can run while a poke is still in memory. The block lasts until a verified
+restore or a fresh boot, and a snapshot records it with the originals, so a
+restore puts back the snapshot's values.
 
 On the Amiga under FS-UAE, `tools/amiga/fsuaegdb.py` has the same switch as the
 command `no_encounters on [speculative] | off`, in a `session` and in a `wish`

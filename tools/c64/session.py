@@ -2921,7 +2921,8 @@ class Session:
         try:
             with self.mon(5) as mon:
                 area = mon.read(area_byte.addr, 1)[0]
-                pokes: list[tuple[int, int, str | None]] = []
+                # (address, value, guard, the script's own byte there)
+                pokes: list[tuple[int, int, str | None, int | None]] = []
                 if self.no_encounters:
                     gate = ENCOUNTER_GATES.get((key, area))
                     guard = None
@@ -2935,17 +2936,23 @@ class Session:
                                      f"${area:02X}: its script is not at "
                                      f"${at:04X} ({found.hex(' ')})")
                             gate = None
-                    pokes += ([(a, v, guard) for a, v in gate.pokes]
-                              if gate else [])
+                    pokes += ([(a, v, guard,
+                                None if guard is None
+                                else gate.guard[1][a - gate.guard[0]])
+                               for a, v in gate.pokes] if gate else [])
                 if self.skip_world_map_ambushes and area == WORLD_MAP_AREA \
                         and key == G.CURSE_OF_THE_AZURE_BONDS.key:
-                    pokes += [(a, v, None) for a, v in WORLD_MAP_AMBUSH_SKIPS]
-                for addr, value, guard in pokes:
+                    pokes += [(a, v, None, None) for a, v in WORLD_MAP_AMBUSH_SKIPS]
+                for addr, value, guard, own in pokes:
                     now = mon.read(addr, 1)[0]
                     held = self._gates_held.get(addr)
                     if held is None:
+                        # A script gate's original is the script's own byte,
+                        # never a poke an earlier hold left in memory.
                         self._gates_held[addr] = {
-                            "area": area, "original": now, "written": value,
+                            "area": area,
+                            "original": now if own is None else own,
+                            "written": value,
                             "guard": guard, "game_changed": None}
                     elif now not in (held["written"], held["original"]):
                         held["game_changed"] = now
@@ -3006,8 +3013,9 @@ class Session:
         written here), `action` and `verified`.  The `action` is `restored`
         (the poke was there and the original reads back), `already original`,
         `script replaced` (a script gate whose guard bytes are gone: the area
-        loaded another script there, so nothing of the poke is left and
-        nothing is written), or `changed by the game` (the game wrote a value
+        loaded another script there and nothing is written; unverified when
+        the poked byte still holds the poke and not the original, since that
+        may be the poke left behind), or `changed by the game` (the game wrote a value
         that is neither, then or earlier, so its own value is lost or depends
         on the poke: unverified, nothing is written).  Raises
         `GateRestoreError` naming the first unverified address, with every
@@ -3037,8 +3045,15 @@ class Session:
                         found = bytes(mon.read(at, len(want)))
                         if not guard_holds(found, (at, want),
                                            ((addr, h["written"]),)):
-                            row.update(now=found[addr - at], read_back=None,
-                                       action="script replaced", verified=True)
+                            # Another script is there.  A byte still equal
+                            # to the poke may be the poke the load missed,
+                            # and writing into that script is no answer.
+                            left = found[addr - at]
+                            poke_left = (left == h["written"]
+                                         and left != h["original"])
+                            row.update(now=left, read_back=left,
+                                       action="script replaced",
+                                       verified=not poke_left)
                             rows.append(row)
                             continue
                     now = mon.read(addr, 1)[0]
@@ -3073,6 +3088,9 @@ class Session:
             why = (f"the game wrote {r['game_changed']} there while the switch "
                    f"held it at {r['written']}, so its own value is not known"
                    if r["action"] == "changed by the game" else
+                   f"another script is loaded over it and the byte still holds "
+                   f"the poke {r['written']}"
+                   if r["action"] == "script replaced" else
                    f"it read back {r['read_back']} after {r['original']} was "
                    f"written")
             raise GateRestoreError(
