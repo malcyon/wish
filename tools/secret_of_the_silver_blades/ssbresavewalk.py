@@ -72,6 +72,25 @@ def sheet_workaround(sess, index: int, tag: str, log: Log,
     return lines
 
 
+def walk_square(sess, move: str = "I") -> tuple[bool, int]:
+    """Walk one square from a snapshot; `(moved, restores)`.
+
+    A fight on the square restores the machine and walks again.  When every
+    attempt met one the machine is back at the start of the leg and this
+    raises with the reason.  After a restore the drive holds the snapshot's
+    copy of the save disk, so the disk is attached again before the
+    engine's own save.
+    """
+    before = sess.square()
+    if not sess.walk_with_retry(move):
+        raise RuntimeError(f"walk {move} met an encounter every time: "
+                           f"{sess.walk_refused}")
+    restores = sess.walk_retries
+    if restores:
+        sess.attach(sess.save_disk)
+    return sess.square() != before, restores
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(
         description=__doc__,
@@ -136,11 +155,11 @@ def main(argv=None) -> int:
         # Walk one square.
         before = sess.status()
         before_sq = sess.square()
-        moved = sess.walk_one("I")
+        moved, restores = walk_square(sess, "I")
         routed = walk_step_routed(sess, log, "NO")
         after = sess.status()
         after_sq = sess.square()
-        log.emit("walk", moved=moved, routed=routed,
+        log.emit("walk", moved=moved, routed=routed, restores=restores,
                  before=str(before), after=str(after),
                  before_square=before_sq, after_square=after_sq)
         log.say(f"walk I: moved={moved} routed={routed} "
@@ -162,6 +181,7 @@ def main(argv=None) -> int:
             "arrived_status": str(where), "arrived_panel": rows,
             "arrived_named": named, "sheet_lines": lines,
             "walk_moved": moved, "walk_routed": routed,
+            "walk_restores": restores,
             "before_status": str(before), "after_status": str(after),
             "before_square": before_sq, "after_square": after_sq,
             "resave_ok": ok,
