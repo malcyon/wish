@@ -1363,7 +1363,8 @@ class Session:
         self.log(f"  restored {name}")
 
     def walk_with_retry(self, moves: str, retries: int = 3,
-                        name: str = "walk-retry", hold=0.15, gap=0.30) -> bool:
+                        name: str = "walk-retry", hold=0.15, gap=0.30,
+                        force_restores: int = 0) -> bool:
         """Walk `moves` from a snapshot; if an encounter starts, roll back and
         walk them again, up to `retries` more times.
 
@@ -1381,6 +1382,10 @@ class Session:
         encounter menu or other screen it does not answer, or the game's mode
         byte reading COMBAT afterwards -- after each move, and once more after
         the last.
+
+        `force_restores` makes the first that many attempts roll back even
+        when no encounter began, so a live run can exercise the restore path;
+        each takes one of the `retries`.
         """
         self.walk_retries = 0
         if self.in_combat():
@@ -1391,6 +1396,8 @@ class Session:
         try:
             for attempt in range(retries + 1):
                 met = self._walk_leg(moves, hold, gap)
+                if met is None and attempt < force_restores:
+                    met = "a restore asked for by force_restores"
                 if met is None:
                     self.discard_snapshot(name)
                     return True

@@ -21,7 +21,11 @@ pool slot. `--out` receives the screenshots, `ssbcheck.jsonl`, `summary.json`
 and, when the engine's own save succeeds, `resave-SSBC.D64`.
 
     .venv/bin/python -m tools.secret_of_the_silver_blades.ssbresavewalk --disks path/to/ssb-disks \\
-        --produced path/to/SSBC.D64 --out DIR
+        --produced path/to/SSBC.D64 --out DIR [--force-restore]
+
+`--force-restore` is a diagnostic for live checks of the restore path: the
+walk rolls back once and walks again; `walk_restores` in `summary.json` and
+the `walk` log line then read 1.
 """
 import argparse
 import json
@@ -72,17 +76,23 @@ def sheet_workaround(sess, index: int, tag: str, log: Log,
     return lines
 
 
-def walk_square(sess, move: str = "I") -> tuple[bool, int]:
+def walk_square(sess, move: str = "I",
+                force_restore: bool = False) -> tuple[bool, int]:
     """Walk one square from a snapshot; `(moved, restores)`.
 
     A fight on the square restores the machine and walks again.  When every
     attempt met one the machine is back at the start of the leg and this
     raises with the reason.  After a restore the drive holds the snapshot's
     copy of the save disk, so the disk is attached again before the
-    engine's own save.
+    engine's own save.  `force_restore` rolls the first attempt back though
+    no fight began, to exercise the restore path.
     """
     before = sess.square()
-    if not sess.walk_with_retry(move):
+    if force_restore:
+        walked = sess.walk_with_retry(move, force_restores=1)
+    else:
+        walked = sess.walk_with_retry(move)
+    if not walked:
         raise RuntimeError(f"walk {move} stopped: {sess.walk_refused}")
     restores = sess.walk_retries
     if restores:
@@ -100,6 +110,9 @@ def main(argv=None) -> int:
                     help="the converted save disk to load")
     ap.add_argument("--out", required=True, type=pathlib.Path,
                     help="folder for screenshots, the log and the resave")
+    ap.add_argument("--force-restore", action="store_true",
+                    help="roll the first attempt of the walk back and walk it "
+                         "again, to check the restore path live")
     args = ap.parse_args(argv)
 
     os.environ.pop("WAYLAND_DISPLAY", None)
@@ -154,7 +167,7 @@ def main(argv=None) -> int:
         # Walk one square.
         before = sess.status()
         before_sq = sess.square()
-        moved, restores = walk_square(sess, "I")
+        moved, restores = walk_square(sess, "I", args.force_restore)
         routed = walk_step_routed(sess, log, "NO")
         after = sess.status()
         after_sq = sess.square()

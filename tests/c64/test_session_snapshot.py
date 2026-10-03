@@ -155,6 +155,13 @@ def test_an_encounter_restores_and_walks_the_leg_again(tmp_path):
     assert any("restoring" in line for line in s.lines)
 
 
+def test_a_forced_restore_rolls_a_clean_leg_back_once_and_walks_it_again(tmp_path):
+    s = Fake(tmp_path, legs=[])
+    assert s.walk_with_retry("ii", force_restores=1) is True
+    assert s.walked == ["I", "I", "I", "I"]
+    assert s.restores == 1 and s.walk_retries == 1
+
+
 def test_combat_after_a_move_is_an_encounter_too(tmp_path):
     s = Fake(tmp_path)
     flips = iter([False, True, False, False, False])

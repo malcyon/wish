@@ -28,8 +28,10 @@ class FakeSession:
         self.attached.append(path)
         self.events.append("attach")
 
-    def walk_with_retry(self, moves, retries=3):
+    def walk_with_retry(self, moves, retries=3, force_restores=0):
         self.walk_retries = 0
+        self.asked_forced = force_restores
+        self.fights = max(self.fights, force_restores)
         self.events.append("walk")
         if self.in_combat:
             self.walk_refused = "the game is already in combat"
@@ -78,3 +80,18 @@ def test_a_walk_begun_in_combat_reports_that_and_attaches_nothing():
         ssbresavewalk.walk_square(sess, "I")
     assert "every time" not in str(e.value)
     assert sess.attached == []
+
+
+def test_a_forced_restore_restores_once_and_walks_the_leg_again():
+    sess = FakeSession(fights=0)
+    moved, restores = ssbresavewalk.walk_square(sess, "I", force_restore=True)
+    assert (moved, restores) == (True, 1)
+    assert sess.asked_forced == 1
+    assert sess.attached == [sess.save_disk]
+
+
+def test_the_force_restore_option_is_off_by_default():
+    sess = FakeSession(fights=0)
+    ssbresavewalk.walk_square(sess, "I")
+    assert sess.restores == 0
+    assert not getattr(sess, "asked_forced", 0)
