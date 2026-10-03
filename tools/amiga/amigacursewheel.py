@@ -93,12 +93,11 @@ def _to_reader_scale(path: pathlib.Path, screen=None):
     """The screenshot at a scale the private repository's reader can fit.
 
     Only the width is enlarged.  The reader searches the column pitch alone
-    and measures the row pitch off the rune tile, so the height never needed
-    it -- and enlarging it breaks the tile apart: the reader finds a tile as a
-    run of rows holding its green, ending at a gap of four captured rows, and
-    a rune that crosses the whole tile on one Amiga row leaves a gap of two
-    rows at 2.0 and four once doubled.  The top tile then reads as half a
-    tile, at half its row pitch, and matches no rune.
+    and measures the row pitch off the rune tile, so the height needs no
+    enlarging, and it must keep its captured rows: the reader finds a tile as
+    a run of rows holding its green and ends the tile at a gap of four
+    captured rows.  A rune that crosses its whole tile on one Amiga row leaves
+    a gap of two rows at 2.0, which stays inside one tile only at that height.
     """
     import numpy as np  # noqa: PLC0415
     from PIL import Image  # noqa: PLC0415

@@ -5,7 +5,7 @@ and it is the point of these tests.  What is asserted is the part that had to
 be worked out here: the whole-number rescale that makes a `winvm shot` of
 WinUAE's window readable by a reader written against FS-UAE, and that a
 machine with no such repository is told so rather than crashing.  One test
-hands the separate repository's tile finder a picture of plain green blocks,
+hands the separate repository's tile finder a picture of green blocks only,
 and skips where that repository is not on the machine.
 """
 
@@ -118,9 +118,9 @@ def test_the_narrowest_column_pitch_sets_the_factor(tmp_path):
 
 
 def test_a_tile_crossed_by_its_rune_is_still_one_tile_after_scaling(tmp_path):
-    # A rune that crosses its whole tile on one Amiga row leaves two captured
-    # rows without green at 2.0.  Doubled rows made that four, the finder
-    # split the tile there, and the top tile came back at half its row pitch.
+    # The finder ends a tile at a gap of four captured rows without green, and
+    # a rune that crosses its whole tile on one Amiga row leaves two at 2.0,
+    # so the tile stays whole only while the rows are left as captured.
     if not (amigacursewheel.wheel_repo() / "coab" / "analysis").is_dir():
         pytest.skip("the separate code-wheel repository is not on this machine")
     screen = amigacursewheel._wheel_modules()[0]
