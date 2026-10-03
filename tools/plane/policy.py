@@ -55,9 +55,6 @@ class Settings:
             raise PlaneError("Invalid workspace or project identifier")
         self.project = uuid(data['project_id'])
         self.agent = uuid(data['agent_account_id'])
-        self.trusted = set(data.get('trusted_account_ids', []))
-        self.importers = set(data.get('importer_account_ids', []))
-        self.source_trusted = set(data.get('source_trusted_account_ids', []))
         self.token_file = Path(data['token_file'])
         self.journal_file = Path(data['journal_file'])
         self.writes_enabled = data.get('writes_enabled') is True

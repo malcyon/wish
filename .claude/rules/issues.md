@@ -7,16 +7,32 @@ fallback to GitHub. Repository PRs and exact-SHA CI remain on GitHub.
 
 ## Read and cite
 
-Use `.venv/bin/python tools/plane/planeread.py --list` for the paginated project
+Prefer the registered `wish-plane` MCP. For CLI access from the repository root,
+use the deployment-managed runtime and private configuration on host or guest:
+
+```sh
+export WISH_PLANE_CONFIG="$HOME/.config/wish-plane/config.json"
+PLANE_PYTHON="$HOME/.local/share/wish-plane/venv/bin/python"
+"$PLANE_PYTHON" tools/plane/planeread.py --list
+"$PLANE_PYTHON" tools/plane/planeread.py --metadata
+"$PLANE_PYTHON" tools/plane/planeread.py WISH-N --json
+"$PLANE_PYTHON" tools/plane/planeread.py WISH-N --cite
+```
+
+`HOME` selects the configured host or guest account; do not change it. The shared
+Wish `.venv` is not the deployed Plane environment. These paths contain no token;
+the private configuration names the owner-only credential file.
+
+Use `"$PLANE_PYTHON" tools/plane/planeread.py --list` for the paginated project
 list and `--metadata` for state and label UUIDs. The list includes every state;
 filter its returned state UUIDs using metadata and its native priority field.
 There are no `--state` or `--priority` list flags. Read a ticket and all comments
-with `tools/plane/planeread.py WISH-N --json`; use `--search TEXT` for project
+with `"$PLANE_PYTHON" tools/plane/planeread.py WISH-N --json`; use `--search TEXT` for project
 search. Read all private Plane titles, descriptions and comments; author identity,
 import fingerprints and editor identity do not gate reads.
 
 Cite every Plane ticket as `WISH-N (the ticket's own title)`, obtained with
-`tools/plane/planeread.py WISH-N --cite`.
+`"$PLANE_PYTHON" tools/plane/planeread.py WISH-N --cite`.
 Do not fill missing titles from GitHub. Code, commit messages and ticket bodies
 may use the identifier without its title; historical references are not a
 reason to create new tickets or rewrite old bodies.
@@ -35,9 +51,9 @@ vendor writes. The CLI has create, comment and update commands, with a global
 stable `--operation-id`; it has no close or reopen command.
 
 ```sh
-.venv/bin/python tools/plane/planeagent.py --operation-id OPERATION_ID create --title TITLE --body-file BODY_FILE --priority high --label TYPE_LABEL_UUID
-.venv/bin/python tools/plane/planeagent.py --operation-id OPERATION_ID comment WISH-N --body-file COMMENT_FILE
-.venv/bin/python tools/plane/planeagent.py --operation-id OPERATION_ID update WISH-N --changes-file CHANGES_FILE --explanation-file EXPLANATION_FILE
+"$PLANE_PYTHON" tools/plane/planeagent.py --operation-id OPERATION_ID create --title TITLE --body-file BODY_FILE --priority high --label TYPE_LABEL_UUID
+"$PLANE_PYTHON" tools/plane/planeagent.py --operation-id OPERATION_ID comment WISH-N --body-file COMMENT_FILE
+"$PLANE_PYTHON" tools/plane/planeagent.py --operation-id OPERATION_ID update WISH-N --changes-file CHANGES_FILE --explanation-file EXPLANATION_FILE
 ```
 
 Resolve label and state UUIDs from live project metadata, not cached guesses.

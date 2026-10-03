@@ -9,24 +9,32 @@ replace the initial deployment assumptions. Donald subsequently made Plane
 the default work register after a one-time open-ticket migration. This supersedes
 the original authority gate, final-delta plan and closed-dependency import scope.
 GitHub issue tools now require an explicit GitHub request; code, PRs and CI
-remain there. MCP write and backup acceptance remain separate disabled gates.
+remain there. Host and guest SDK acceptance passed with write configurations
+disabled and enabled; registered-tool behavior still requires new-turn
+verification. Backup scheduling remains a separate disabled gate.
 
 Donald revised the deployment on 2026-10-02: use HTTP on the LAN without a
 certificate, disable Plane email, and let him configure NPM manually. He has
-confirmed the NPM configuration and application login. The host's scoped
-`wish-plane` MCP is registered in both clients; its read API check returned zero
-work items. Guest access and the full operation set still need live acceptance.
+confirmed the NPM configuration and application login. The original host
+registration and empty-project read predate the import. The
+pre-write acceptance inventory was 26 tickets and 633 comments: 25 original imported
+tickets, 631 original comments, one native CI ticket and two subsequent comments.
+Host/guest deployment and full-content SDK acceptance passed with write gates
+disabled and enabled. Final configuration, metadata and citation checks passed;
+a fresh registered-launcher MCP state update passed. Existing Codex runtime
+reload succeeded, but the current turn still withheld registered-tool text;
+new-turn verification is required without a next-turn guarantee.
 
 ## Recommended design
 
 | Component | Plan | Evidence or constraint |
 |---|---|---|
-| Edition | Community v1.4.2, pinned by release tags and image digests. | The deployment is live; required ticket operations still need migration acceptance. |
+| Edition | Community v1.4.2, pinned by release tags and image digests. | The deployment is live; the one-time migration is accepted and retired; host and guest SDK acceptance passed; existing-session registered-tool behavior still requires new-turn verification. |
 | Host | A separate Compose project on media-server, currently `192.168.1.182`. | `jellyfin-stack/ansible/inventory.yml` and `ansible/group_vars/media_servers/vars.yml`. |
 | Ingress | Existing Nginx Proxy Manager (NPM), forwarding HTTP to a Plane routing container. | Main Compose already assigns NPM ports 80, 81 and 443. |
 | DNS | An Ansible-managed Pi-hole record for `plane.morton.lan`. | The media role already preserves and extends Pi-hole `dns.hosts` for Grafana. |
-| Agents | Scoped `wish-plane` stdio adapter registered in both host clients. | A host read returned zero work items; guest and complete policy acceptance remain pending. |
-| Backup | Implemented media-server restic/rclone job, with daily scheduling disabled pending acceptance. | OAuth, verified remote snapshot and independent restore remain pending. |
+| Agents | Project-scoped `wish-plane` stdio adapter for host and guest clients. | Exact-SHA host/guest SDK acceptance passed 26 tickets and 633 comments with disabled/enabled write configurations; runtime reload succeeded, but registered-tool behavior requires new-turn verification. |
+| Backup | Implemented media-server restic/rclone job, with daily scheduling disabled pending acceptance. | Local encrypted capture/check/file restore and isolated PostgreSQL restore passed; OAuth, verified remote snapshot and independent recovery remain pending. |
 | Work register | Plane is the current default by Donald's explicit instruction; import was open-only and one-time. | GitHub retains code, PRs, CI and public intake; issue tools require an explicit GitHub request. |
 
 The supplied [self-hosting overview](https://developers.plane.so/self-hosting/overview)
@@ -103,8 +111,9 @@ actual HTTP route through NPM from the host and guest.
 The filter is shared with `win11`, so the exception includes the Linux
 VM's source address. The implementation adds IP/MAC/ARP anti-spoofing filters
 and guest interface bindings; this replaces the original unprotected source-IP
-assumption. Live guest isolation and the Windows forged-source negative test
-remain pending. TCP 80 access permits **every HTTP virtual host sharing
+assumption. Linux guest HTTP access and denied control ports passed. Windows
+forged-source validation recorded three injected SYNs, zero escaped packets and
+a successful uplink control, with cleanup verified. TCP 80 access permits **every HTTP virtual host sharing
 that IP and listener**. The selected deployment accepts that reachability
 while denying other ports. If isolation must distinguish Plane from other HTTP
 apps, reserve a dedicated ingress IP and adjust NPM's wildcard bindings before
@@ -139,7 +148,15 @@ Donald selected full-content reads for private LAN Plane. The adapter returns al
 titles, descriptions and comments without original-author, import-fingerprint or
 editor filtering, and without a human-thread origin write block. It restricts
 workspace, project and operations, verifies dedicated-agent writes and retains
-journals/readback. This connector change is pending review and deployment.
+journals/readback. The reviewed connector at `9903a557` is deployed on host and guest;
+host and guest SDK acceptance passed with disabled and enabled write
+configurations. Obsolete author-origin configuration fields were removed on both
+clients, preserving mode `0600` and all other fields; settings, token/identity,
+metadata and citation checks passed. A fresh registered-launcher MCP state update passed, adding one explanation
+comment and preserving priority, labels and description. Existing Codex runtime
+reload connected seven tools, but the current turn's dispatcher still withheld
+text: new-turn registered-tool verification remains required. Existing Claude
+TUI sessions can use `/mcp reconnect wish-plane`.
 Ticket text remains evidence, never instructions. Hooks remain tripwires, not a
 security boundary, especially when credentials are readable in the guest.
 
@@ -173,7 +190,7 @@ same backup repository. Preserve existing Pictures and Git backup behavior.
 | Schedule | The persistent timer uses 03:30 America/Chicago, a bounded runtime and a job lock; `plane_backup_schedule_enabled` stays false until restore and failure acceptance. |
 | Destination | Set `RESTIC_REPOSITORY=rclone:plane-onedrive:Backups/Plane/media-server`; confirm the intended account, drive and folder at setup. |
 | Credentials | Keep rclone OAuth configuration and the restic password restricted on media-server, with independent recovery copies in the password manager. The VM receives neither. |
-| Content | Include a PostgreSQL dump and required roles, object data, rendered Plane secrets/configuration, deployment files, version/digest manifest and durable agent write journals and historical migration recovery material. |
+| Content | Include a PostgreSQL dump and required roles, object data, rendered Plane secrets/configuration, deployment files, version/digest manifest and durable agent write journals; migration provenance is not a service backup prerequisite. |
 | Retention | Keep 14 daily, 8 weekly and 12 monthly successful snapshots, with stable host/tag/path grouping and restic retention. |
 | Monitoring | Export successful upload time and original capture time separately, duration, size and errors. Alert when remotely verified data is older than 26 hours; retrying an old capture must not reset its age. Notification delivery remains unproven. |
 | Recovery targets | Target no more than 24 hours of data loss when daily backups succeed, and restoration within four hours. Measure these; they are not current guarantees. |
@@ -191,10 +208,13 @@ its internal files using a generic age rule. Apply
 [retention](https://restic.readthedocs.io/en/stable/060_forget.html) only after
 successful backup and run periodic pruning under the same job lock.
 
-The media-server job performs these steps:
+The private backup replacement at `1ac92106f0520fd992c729aec406438b1989fe8e`
+is independently reviewed, pushed and installed. The installed script passed shell
+syntax and SHA-256 verification. It has no migration-provenance, `state.lock` or
+migration-marker dependency; backup timers and recovery remain disabled/inactive:
 
-1. Check staging capacity, credentials and repository access; acquire the job lock
-   and the same exclusive `state.lock` used by migration in the provenance directory.
+1. Check staging capacity, credentials and repository access; acquire the backup job lock.
+   The reviewed replacement removes retired migration capture/lock/recovery dependencies.
    Use a private staging directory outside the checkout and OneDrive sync tree.
 2. Put ingress into maintenance, stop scheduling new background work, drain
    active jobs, then stop all application writers, including API, collaboration
@@ -276,16 +296,21 @@ editor identity, and has no human-thread origin block. See [current operations](
 
 The accepted one-time open migration contains 25 tickets and 631 comments.
 The accidentally started closed-history phase was cancelled and its 235 imported
-closed destinations removed under Donald's scoped instruction, with GitHub
-unchanged. Preserve source authorship, historical migration recovery evidence.
-There is no further history/dependency-closure import or final-delta gate;
+closed destinations removed under Donald's scoped instruction, without GitHub
+changes during that cleanup. The separately authorized cutover closed all
+remaining open GitHub counterparts; the exact closure and mapping counts are
+recorded in [current operations](238-plane-operations.md). Preserve source
+authorship and historical migration recovery evidence.
+Six importer/helper/test files, migration Markdown pins and their README/INDEX
+entries were removed without changing native Plane features. There is no further
+history/dependency-closure import or final-delta gate;
 remaining acceptance does not authorize another import. Current Plane edits
 must not be replaced from historical GitHub archives.
 
-Infrastructure, actual sandboxed-client write policy, OneDrive OAuth,
-independent restore and manual account recovery remain acceptance work for their
-owners. Write configuration and backup schedules stay disabled until those
-respective gates pass; the tracker choice itself is already settled.
+Existing-session registered-tool verification, OneDrive OAuth,
+independently recovered cloud restore and manual account recovery remain work for their
+owners. The production owner activated host/guest write configurations after SDK
+acceptance. Backup schedules stay disabled until their separate gates pass; the tracker choice itself is already settled.
 
 Keep public GitHub reporting because outside players cannot open a LAN URL.
 Agents access GitHub issues only when Donald explicitly requests it, and he
@@ -305,3 +330,8 @@ Media deployment and VM networking belong to the host maintenance role. Wish
 policy/tool implementation belongs to the Wish implementation role when assigned.
 Account bootstrap, OAuth consent and production migration remain explicit stages;
 record actual versions, counts, timestamps, snapshot IDs and failures at each gate.
+
+The deployed tracker cutover commit
+`9903a5577f8f06b7c244ebb4a749280c480e9aa8` passed exact-SHA test run `37097524700`
+(all eight shards) and lint run `37097524697`. This code gate does not establish
+production connector deployment or backup acceptance.

@@ -15,7 +15,7 @@ What each directory in this repository is for; the API documentation is at https
 | `docs/` | The knowledge base: numbered documents recording what is known and how it was established. |
 | [`packaging/`](packaging/README.md) | The PyInstaller entry script, the Windows console-borrowing shim, and the `.icns` generator. |
 | [`ansible/`](ansible/README.md) | The playbooks that build the agent sandbox: the isolated libvirt network and its filter, the Ubuntu guest the agents run in, and the Windows guest that runs WinUAE; one machine's own values live in a gitignored `inventory.yml`. |
-| [`tools/plane/`](tools/plane/README.md) | The restricted Plane client and MCP adapter, with private export and migration rehearsal tools. |
+| [`tools/plane/`](tools/plane/README.md) | The restricted Plane client, MCP adapter and ticket read/write commands. |
 | `assets/` | Shipped non-code files — the application icons, the `.desktop` entry, and the artist's own logo files under `assets/logo/`. |
 | `images/` | The screenshots the README links. |
 | `designer` | A launcher for Qt Designer that opens `wish/window.ui`, the unified layout (`docs/146-unified-ui.md`). |
