@@ -15,10 +15,28 @@ The class does no I/O of its own: the driver hands it `resolve`, `read` and
 `write`, so it runs against a fake, and a `journal` callback that is given
 every change still to be put back, before each write and after each restore,
 so a driver killed outright leaves a record a later run can repair from.
+
+`WinuaeEncounters` is the same switch under WinUAE, through the debugger pipe,
+and `main` is its command line:
+
+    tools/amiga/noencounters.py --holder H --title pool-of-radiance on
+    tools/amiga/noencounters.py --holder H keys NP8 NP8 NP2
+    tools/amiga/noencounters.py --holder H off
 """
 
 import dataclasses
 import hashlib
+import json
+import os
+import pathlib
+import re
+import sys
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+
+from automap import amiga  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: How sure a row is.  CONFIRMED has been run live; PROBABLE was read from the
 #: script or the engine and matches a confirmed case; SPECULATIVE is an address
@@ -272,6 +290,52 @@ class EncounterSwitch:
             done.append({"row": row.spec, "grade": row.grade, **result})
         return done
 
+    def adopt(self, rows: list[dict]) -> list[dict]:
+        """Take over changes an earlier process recorded, where the bytes are
+        still that change; give back every row it did not take.
+
+        A row is taken when its spec is one of this switch's rows of the same
+        kind and still resolves to its address, and the bytes there read as the
+        recorded change (for a gate, with the original put back, as the
+        recorded statement).  A row given back is either gone already, put
+        back by a reload, or for `restore_row` to judge.
+        """
+        left = []
+        by_spec = {row.spec: row for row in self.rows}
+        for entry in rows:
+            row = by_spec.get(entry.get("spec"))
+            try:
+                address = int(entry["address"])
+                original = bytes.fromhex(entry["original"])
+                changed = bytes.fromhex(entry["changed"])
+            except (KeyError, TypeError, ValueError):
+                left.append(entry)
+                continue
+            if (row is None or row.kind != entry.get("kind", GATE)
+                    or len(original) != len(changed) or not changed
+                    or self.resolve(row.spec) != address):
+                left.append(entry)
+                continue
+            if row.kind == GATE:
+                span = max(offset for offset, _ in row.changes) + 1
+                now = self.read(address, STATEMENT)
+                if (span != len(changed) or now[:span] != changed
+                        or entry.get("digest") != row.digest
+                        or digest(original + now[span:]) != row.digest):
+                    left.append(entry)
+                    continue
+                self.patched[address] = (original + now[span:], now)
+                self.spans[address] = span
+            else:
+                if changed != row.new or self.read(address, len(changed)) != changed:
+                    left.append(entry)
+                    continue
+                self.held[address] = original
+                self.holding[address] = changed
+            self.row_at[address] = row
+        self._record()
+        return left
+
     @property
     def pending(self) -> bool:
         """Whether a changed byte is still waiting to be put back."""
@@ -295,3 +359,506 @@ SAVE_KEYS = frozenset("sS")
 
 def is_save_key(keys: str) -> bool:
     return any(k in SAVE_KEYS for k in keys.split())
+
+
+# -- WinUAE ---------------------------------------------------------------
+#
+# Under WinUAE the switch reads and writes through the debugger pipe
+# (`automap.amiga.WinuaePipe`), with `S` dumps and `W` lines inside an
+# `AmigaTarget`, and it lives across processes: `amigadrive.py` presses a key a
+# call, so `on` leaves the switch on and every later `keys` takes it over from
+# the state file until `off`.
+
+#: A row's spec: `*POINTER+OFFSET` reads the big-endian pointer at the
+#: data-hunk offset POINTER and adds OFFSET; `+OFFSET` is a data-hunk offset.
+SPEC = re.compile(r"^(?:\+(?P<at>\w+)|\*(?P<ptr>\w+)\+(?P<off>\w+))$")
+
+#: What a failed read, write or key press under WinUAE raises.
+WINUAE_ERRORS = (ValueError, OSError, TimeoutError, SystemExit, amiga.GuestError)
+
+
+def parse_spec(spec: str) -> tuple[int | None, int]:
+    """`(pointer offset or None, offset)` for a row's spec."""
+    found = SPEC.match(spec.strip())
+    if found is None:
+        raise ValueError(f"{spec!r} is neither +OFFSET nor *POINTER+OFFSET")
+    if found["at"] is not None:
+        return None, int(found["at"], 0)
+    return int(found["ptr"], 0), int(found["off"], 0)
+
+
+def inside_memory(address: int, n: int) -> bool:
+    return any(base <= address and address + n <= base + size
+               for base, size in amiga.MEMORY)
+
+
+def restore_row(read, write, resolve, row: dict) -> dict:
+    """Put one recorded change back where it is certainly still there.
+
+    A gate is written only when its bytes read as the recorded change and the
+    statement with the original put back hashes to the recorded digest; a rest
+    row only when its bytes read as the change and its spec still resolves to
+    its address.  Anything else was reloaded or restored since and is left,
+    with no write.  A result with an `error` key was not put back.
+    """
+    address = int(row["address"])
+    original = bytes.fromhex(row["original"])
+    changed = bytes.fromhex(row["changed"])
+    if len(original) != len(changed) or not changed:
+        raise ValueError("its original and changed bytes differ in length")
+    if row.get("kind", GATE) == GATE:
+        statement = read(address, STATEMENT)
+        if statement[:len(changed)] != changed:
+            return {"address": address, "left": statement.hex()}
+        if digest(original + statement[len(original):]) != row.get("digest"):
+            return {"address": address, "left": statement.hex(),
+                    "why": "another statement is there now"}
+    else:
+        now = read(address, len(changed))
+        if now != changed:
+            return {"address": address, "left": now.hex()}
+        if resolve(row["spec"]) != address:
+            return {"address": address, "left": now.hex(),
+                    "why": f"{row['spec']} no longer points here"}
+    result = write(address, original)
+    if "error" not in result and read(address, len(original)) != original:
+        result = {**result, "error": "the original did not read back"}
+    return {"address": address, "repaired": "error" not in result, **result}
+
+
+def winuae_state_path() -> pathlib.Path:
+    """Where the WinUAE switch keeps its state: one file, because the guest
+    runs one WinUAE and every run against it must find what an earlier one left."""
+    return scratch.cache_dir("noencounters", "winuae.json")
+
+
+class StateError(ValueError):
+    """The WinUAE state file exists and cannot be read."""
+
+
+class WinuaeState:
+    """The WinUAE switch's record on disk.
+
+    `on`, the `title` and `speculative` choice it was turned on with, the
+    `anchor_base` and `data_base` where that title was last found, and `rows`:
+    every change still to be put back, as `EncounterSwitch.outstanding` gives
+    it plus its `title`.  Rewritten before every change and after every
+    restore, so a process killed outright leaves the originals for the next.
+    """
+
+    EMPTY = {"on": False, "title": None, "speculative": False,
+             "anchor_base": None, "data_base": None, "rows": []}
+
+    def __init__(self, path: pathlib.Path | None = None):
+        self.path = pathlib.Path(path) if path is not None else winuae_state_path()
+
+    def load(self) -> dict:
+        try:
+            text = self.path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return dict(self.EMPTY, rows=[])
+        except OSError as exc:
+            raise StateError(self._unreadable(exc)) from exc
+        try:
+            state = json.loads(text)
+            if not isinstance(state, dict):
+                raise ValueError("it is not a record")
+            state = {**self.EMPTY, **state}
+            rows = state["rows"]
+            if not isinstance(rows, list) or not all(isinstance(r, dict) for r in rows):
+                raise ValueError("its rows are not a list of records")
+            if not isinstance(state["on"], bool):
+                raise ValueError("`on` is not true or false")
+        except (ValueError, TypeError) as exc:
+            raise StateError(self._unreadable(exc)) from exc
+        return state
+
+    def _unreadable(self, exc) -> str:
+        return (f"the encounter state {self.path} cannot be read ({exc}), so a "
+                "change may still be in the game: check the game, then delete "
+                "the file")
+
+    def save(self, state: dict) -> None:
+        scratch.ensure(self.path.parent)
+        temp = self.path.with_suffix(f".{os.getpid()}.tmp")
+        temp.write_text(json.dumps(state), encoding="utf-8")
+        os.replace(temp, self.path)
+
+
+class PipeMemory:
+    """The switch's `resolve`, `read` and `write` over an `AmigaTarget` on
+    WinUAE's pipe, with each pass's reads gathered into one round trip.
+
+    `prefetch(rows)` reads, in one batch, every pointer the rows go through and
+    each row's bytes at the address that pointer gave last time; a pointer that
+    moved costs a second batch.  Reads are served from what was fetched where
+    it covers them; a write drops every fetched block it overlaps, so its
+    read-back goes to the machine.  `clear()` ends the pass.
+    """
+
+    def __init__(self, target):
+        self.target = target
+        self.blocks: dict[tuple[int, int], bytes] = {}
+        #: The value each pointer offset held when last read.
+        self.pointers: dict[int, int] = {}
+        #: Pointer offsets read in this pass.
+        self.fresh: set[int] = set()
+
+    def _row_length(self, row: Row) -> int:
+        return STATEMENT if row.kind == GATE else len(row.new)
+
+    def _address(self, row: Row, pointers: dict[int, int]) -> int | None:
+        pointer, offset = parse_spec(row.spec)
+        if pointer is None:
+            return self.target.data_base + offset
+        value = pointers.get(pointer)
+        return None if not value else value + offset
+
+    def fetch(self, blocks: list[tuple[int, int]]) -> None:
+        """Read `blocks` in one round trip and keep them for this pass."""
+        blocks = [b for b in dict.fromkeys(blocks) if inside_memory(*b)]
+        if blocks:
+            self.blocks.update(zip(blocks, self.target.read_blocks(blocks), strict=True))
+
+    def prefetch(self, rows: list[Row]) -> None:
+        pointers = sorted({p for p, _ in (parse_spec(r.spec) for r in rows)
+                           if p is not None})
+        heads = [(self.target.data_base + p, 4) for p in pointers]
+        guesses = [(a, self._row_length(r)) for r in rows
+                   if (a := self._address(r, self.pointers)) is not None]
+        self.fetch(heads + guesses)
+        before = dict(self.pointers)
+        for p, head in zip(pointers, heads, strict=True):
+            if head in self.blocks:
+                self.pointers[p] = int.from_bytes(self.blocks[head], "big")
+                self.fresh.add(p)
+        moved = [r for r in rows if self._address(r, self.pointers)
+                 != self._address(r, before)]
+        self.fetch([(a, self._row_length(r)) for r in moved
+                    if (a := self._address(r, self.pointers)) is not None])
+
+    def clear(self) -> None:
+        self.blocks.clear()
+        self.fresh.clear()
+
+    def resolve(self, spec: str) -> int | None:
+        pointer, offset = parse_spec(spec)
+        if pointer is None:
+            return self.target.data_base + offset
+        if pointer not in self.fresh:
+            self.pointers[pointer] = int.from_bytes(
+                self.read(self.target.data_base + pointer, 4), "big")
+            self.fresh.add(pointer)
+        value = self.pointers[pointer]
+        return None if value == 0 else value + offset
+
+    def read(self, address: int, n: int) -> bytes:
+        for (start, length), blob in self.blocks.items():
+            if start <= address and address + n <= start + length:
+                return blob[address - start:address - start + n]
+        return self.target.read(address, n)
+
+    def write(self, address: int, data: bytes) -> dict:
+        end = address + len(data)
+        for start, length in list(self.blocks):
+            if start < end and address < start + length:
+                del self.blocks[(start, length)]
+        try:
+            self.target.write(address, bytes(data))
+        except WINUAE_ERRORS as exc:
+            return {"address": address, "error": f"{type(exc).__name__}: {exc}"}
+        return {"address": address, "new": bytes(data).hex()}
+
+
+class WinuaeEncounters:
+    """`no_encounters` for a game under WinUAE: `on`, `off`, and `keys`.
+
+    `target` is an `AmigaTarget` over `WinuaePipe` for `title`'s layout, not yet
+    located; `lane_check()` proves this run holds the lane and runs once,
+    before the first read; `press(name)` presses one `amigadrive` key.
+    `state` is the `WinuaeState`.
+
+    `on` puts back whatever an earlier run left, then changes every loaded row
+    and records the switch as on.  `keys` presses keys, refusing the whole line
+    when one is a save key while the switch is on or a change may be in the
+    game, and while the switch is on takes it over and applies it again before
+    each key.  `off` puts every recorded change back.  The switch stays on
+    across processes until `off`, so an interrupted `keys` leaves it on and
+    recorded; an interrupted `on` or `off` leaves every change recorded, and
+    the next command takes it over or puts it back.
+    """
+
+    def __init__(self, title: str, target, *, state: WinuaeState | None = None,
+                 lane_check=lambda: None, press=lambda name: None):
+        if not rows_for(title):
+            raise ValueError(f"no encounter rows for {title!r}")
+        self.title = title
+        self.target = target
+        self.state = state or WinuaeState()
+        self.lane_check = lane_check
+        self.press = press
+        self.memory = PipeMemory(target)
+        self.switch: EncounterSwitch | None = None
+        self.checked = False
+        #: Rows of another title, kept in the file and left alone.
+        self.foreign: list[dict] = []
+        #: This title's rows that could not be put back, still recorded.
+        self.stuck: list[dict] = []
+        self.speculative = False
+        #: `(anchor_base, data_base)` as the state file last had them.
+        self.bases: tuple[int | None, int | None] = (None, None)
+
+    def _load(self) -> dict:
+        saved = self.state.load()
+        if saved.get("title") == self.title:
+            self.bases = (saved.get("anchor_base"), saved.get("data_base"))
+        return saved
+
+    # -- the state file --------------------------------------------------
+
+    def _save(self, on: bool, rows: list[dict]) -> None:
+        located = self.target.data_base is not None
+        self.state.save({
+            "on": on, "title": self.title, "speculative": self.speculative,
+            "anchor_base": self.target.anchor_base if located else self.bases[0],
+            "data_base": self.target.data_base if located else self.bases[1],
+            "rows": self.foreign + [{**r, "title": self.title} for r in rows + self.stuck]})
+
+    def _journal(self, rows: list[dict]) -> None:
+        self._save(True, rows)
+
+    # -- reaching the game -----------------------------------------------
+
+    def _ready(self, saved: dict) -> None:
+        """Check the lane, and find the game: where `saved` says if its anchor
+        is still there, otherwise by a sweep."""
+        if not self.checked:
+            self.lane_check()
+            self.checked = True
+        if self.target.data_base is not None:
+            return
+        layout = self.target.layout
+        anchor, data = saved.get("anchor_base"), saved.get("data_base")
+        if saved.get("title") == self.title and isinstance(anchor, int) \
+                and isinstance(data, int):
+            at = anchor + layout.anchor_offset
+            blocks = [(at, len(layout.anchor)), (anchor - 8, 4), (anchor - 4, 4),
+                      (data - 8, 4)]
+            self.memory.fetch(blocks)
+            try:
+                if (self.memory.read(at, len(layout.anchor)) == layout.anchor
+                        and amiga.data_base_for(self.memory.read, layout,
+                                                anchor) == data):
+                    self.target.anchor_base, self.target.data_base = anchor, data
+                    return
+            except amiga.PipeError:
+                raise
+            except amiga.GuestError:
+                pass    # moved: a new boot, found again below
+            finally:
+                self.memory.clear()
+        self.target.locate()
+
+    def _split(self, saved: dict) -> list[dict]:
+        """This title's recorded rows; the others are kept as `foreign`."""
+        self.foreign = [r for r in saved["rows"] if r.get("title") != self.title]
+        return [r for r in saved["rows"] if r.get("title") == self.title]
+
+    def _new_switch(self) -> EncounterSwitch:
+        return EncounterSwitch(
+            self.title, self.memory.resolve, self.memory.read, self.memory.write,
+            speculative=self.speculative, inside=inside_memory,
+            journal=self._journal)
+
+    def _restore(self, rows: list[dict]) -> list[dict]:
+        """`restore_row` for each row; the rows that failed stay in `stuck`."""
+        self.memory.fetch([(int(r["address"]),
+                            STATEMENT if r.get("kind", GATE) == GATE
+                            else len(bytes.fromhex(r["changed"])))
+                           for r in rows if isinstance(r.get("address"), int)
+                           and isinstance(r.get("changed"), str)])
+        done, self.stuck = [], []
+        try:
+            for row in rows:
+                try:
+                    result = restore_row(self.memory.read, self.memory.write,
+                                         self.memory.resolve, row)
+                except (*WINUAE_ERRORS, KeyError, TypeError) as exc:
+                    result = {"row": row, "error": f"{type(exc).__name__}: {exc}"}
+                if "error" in result:
+                    self.stuck.append(row)
+                done.append(result)
+        finally:
+            self.memory.clear()
+        return done
+
+    def _take_over(self, saved: dict) -> list[dict]:
+        """Build the switch from a state that is on, adopting its rows; the
+        rows it cannot adopt are put back."""
+        self.speculative = bool(saved.get("speculative"))
+        self.switch = self._new_switch()
+        self.memory.prefetch(self.switch.rows)
+        try:
+            left = self.switch.adopt(self._split(saved))
+        finally:
+            self.memory.clear()
+        done = self._restore(left) if left else []
+        self._save(True, self.switch.outstanding())
+        return done
+
+    def _apply(self) -> list[dict]:
+        self.memory.prefetch(self.switch.rows)
+        try:
+            return self.switch.apply()
+        finally:
+            self.memory.clear()
+
+    # -- the commands ----------------------------------------------------
+
+    def on(self, speculative: bool = False) -> dict:
+        """Put back what an earlier run left, change every loaded row, and
+        record the switch as on."""
+        saved = self._load()
+        if saved.get("title") not in (None, self.title) and saved["on"]:
+            raise ValueError(f"no_encounters is on for {saved['title']}; "
+                             "`off` first")
+        self._ready(saved)
+        repaired = self._restore(self._split(saved))
+        if self.stuck:
+            self._save(False, [])
+            raise ValueError("a recorded change is still in the game and was "
+                             "not put back; `off` tries again")
+        self.speculative = speculative
+        self.switch = self._new_switch()
+        self._save(True, [])
+        try:
+            done = self._apply()
+        except WINUAE_ERRORS:
+            # Whatever did not go back stays recorded, so a save is refused
+            # and the next `on` or `off` tries again.
+            self.switch.off()
+            self._save(False, self.switch.outstanding())
+            self.switch = None
+            raise
+        return {"action": "on", "repaired": repaired, "rows": done,
+                "held": [r.spec for r in self.switch.rows]}
+
+    def off(self) -> dict:
+        """Put every recorded change back and record the switch as off."""
+        saved = self._load()
+        if saved.get("title") not in (None, self.title):
+            raise ValueError(f"the state is for {saved['title']}, not "
+                             f"{self.title}")
+        own = self._split(saved)
+        if self.switch is not None:
+            own = self.switch.outstanding()
+            self.switch = None
+        if not own:
+            self._save(False, [])
+            return {"action": "off", "rows": []}
+        self._ready(saved)
+        done = self._restore(own)
+        self._save(False, [])
+        result = {"action": "off", "rows": done}
+        if self.stuck:
+            result["error"] = ("no_encounters off did not restore every row; "
+                               "the script is still changed")
+        return result
+
+    def keys(self, names: list[str]) -> dict:
+        """Press `names` in order, applying the switch again before each while it
+        is on; refuse the whole line, pressing nothing, when one is a save key
+        while the switch is on or a change may still be in the game."""
+        try:
+            saved = self._load()
+        except StateError as exc:
+            if is_save_key(" ".join(names)):
+                return {"action": "keys", "refused": str(exc), "pressed": []}
+            raise
+        own = [r for r in saved["rows"] if r.get("title") == self.title]
+        if is_save_key(" ".join(names)) and (saved["on"] or own):
+            return {"action": "keys", "pressed": [],
+                    "refused": ("no_encounters is on or a change it made is "
+                                "still in the game, and a save carries the "
+                                "changed script: turn it off first")}
+        if saved["on"] and saved.get("title") != self.title:
+            raise ValueError(f"no_encounters is on for {saved['title']}, not "
+                             f"{self.title}")
+        result = {"action": "keys", "pressed": [], "applied": []}
+        if saved["on"] and self.switch is None:
+            self._ready(saved)
+            result["repaired"] = self._take_over(saved)
+        for name in names:
+            if self.switch is not None:
+                done = self._apply()
+                if done:
+                    result["applied"].append({"before": name, "rows": done})
+            self.press(name)
+            result["pressed"].append(name)
+        return result
+
+
+def main(argv: list[str] | None = None) -> int:
+    """`no_encounters` against WinUAE, from Linux through `winvm`."""
+    import argparse  # noqa: PLC0415
+
+    parser = argparse.ArgumentParser(
+        description="Switch an Amiga Gold Box title's random encounters off and "
+                    "on under WinUAE, and press keys while it is off.  Never for "
+                    "conversion proof; `off` before any save.")
+    parser.add_argument("--holder", help="the winuae.ps1 lane claim this run holds")
+    parser.add_argument("--title", choices=sorted(amiga.MACHINES),
+                        help="the running title (for keys and off, the state's)")
+    parser.add_argument("--settle", type=float, default=1.5,
+                        help="seconds to wait after each key (default 1.5)")
+    sub = parser.add_subparsers(dest="command", required=True)
+    on = sub.add_parser("on", help="change every loaded roll, and keep it changed")
+    on.add_argument("--speculative", action="store_true",
+                    help="hold the SPECULATIVE rest rows too")
+    sub.add_parser("off", help="put every changed byte back")
+    keys = sub.add_parser("keys", help="press amigadrive keys, applying the switch "
+                                       "before each while it is on")
+    keys.add_argument("names", nargs="+")
+    sub.add_parser("status", help="print the state file")
+    args = parser.parse_args(argv)
+
+    state = WinuaeState()
+    try:
+        saved = state.load()
+    except StateError as exc:
+        if args.command != "keys":
+            print(json.dumps({"action": args.command, "error": str(exc)}))
+            return 1
+        saved = dict(WinuaeState.EMPTY)
+    if args.command == "status":
+        print(json.dumps(saved, indent=1))
+        return 0
+    title = args.title or saved.get("title")
+    if title is None:
+        parser.error("--title is needed: the state names no title")
+    if args.holder is None:
+        parser.error("--holder is needed")
+    from tools.amiga import amigadrive  # noqa: PLC0415
+
+    pipe = amiga.WinuaePipe()
+    enc = WinuaeEncounters(
+        title, amiga.AmigaTarget(pipe, amiga.MACHINES[title]), state=state,
+        lane_check=lambda: pipe.drives(args.holder),
+        press=lambda name: amigadrive.press(args.holder, name, args.settle))
+    try:
+        if args.command == "on":
+            result = enc.on(args.speculative)
+        elif args.command == "off":
+            result = enc.off()
+        else:
+            result = enc.keys(args.names)
+    except WINUAE_ERRORS as exc:
+        print(json.dumps({"action": args.command,
+                          "error": f"{type(exc).__name__}: {exc}"}))
+        return 1
+    print(json.dumps(result))
+    return 1 if "error" in result or "refused" in result else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
