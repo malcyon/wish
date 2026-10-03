@@ -2014,18 +2014,17 @@ class PoolRun:
         return self.wait_rows(lambda r: CAMP_BAR in r[24], 60) is not None
 
     def panel_index(self, who: str) -> int:
-        """Which panel row WHO is: a number counts from 1, a name is matched
-        as the panel draws it."""
+        """Which panel row WHO is: a number counts from 1, a name must equal
+        one row's name column as the panel draws it."""
         if who.isdigit():
             return int(who) - 1
         s = self.sess.screen()
-        names = [] if s is None else [
-            s.row(r)[S.PARTY_COLUMN:].upper() for r in self.sess.stable_party_rows()]
-        wanted = (who.upper(), screens.as_drawn(who).upper())
-        for i, text in enumerate(names):
-            if any(text.startswith(w) for w in wanted):
-                return i
-        raise self.fail("panel", f"{who} is not on the party panel: {names}")
+        rows = [] if s is None else self.sess.stable_party_rows()
+        names, width = route_pool.panel_names(s, rows) if rows else ([], 0)
+        try:
+            return route_pool.pick_panel_row(names, width, who)
+        except route_pool.PanelError as e:
+            raise self.fail("panel", str(e)) from None
 
     # -- readings after every step ---------------------------------------------
     def reading(self) -> dict:

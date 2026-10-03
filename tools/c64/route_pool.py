@@ -13,6 +13,7 @@ import os
 import time
 
 from goldbox import c64_port, effects
+from tools.c64 import screens
 from tools.c64 import session as S
 from tools.c64.runlog import Log
 
@@ -75,21 +76,61 @@ def wait_sheet_bar(sess: S.Session, timeout: float) -> bool:
         time.sleep(0.35)
     return False
 
+class PanelError(LookupError):
+    """A party line that cannot be chosen: absent, out of range or ambiguous."""
+
+def panel_names(s, rows: list[int]) -> tuple[list[str], int]:
+    """The name column of each panel row, and that column's width.
+
+    The column runs from `PARTY_COLUMN` to where the `AC` heading starts, so
+    the stat columns after it are never part of a name.
+    """
+    # Without a heading to bound it the column is the rest of the line.
+    width = len(s.row(0)) - S.PARTY_COLUMN
+    for r in S.PARTY_ROWS:
+        if S.PARTY_HEADER in s.row(r)[S.PARTY_COLUMN:]:
+            width = s.row(r)[S.PARTY_COLUMN:].index(S.PARTY_HEADER)
+            break
+    return [s.row(r)[S.PARTY_COLUMN:S.PARTY_COLUMN + width].strip()
+            for r in rows], width
+
+def pick_panel_row(names: list[str], width: int, who: str) -> int:
+    """Which panel row the name `who` is, 0 first: it must equal one row's
+    name column.
+
+    The panel cuts a name that does not fit, so a column that fills its width
+    also matches the start of a longer name.
+    """
+    who = who.strip()
+    wanted = {who.upper(), screens.as_drawn(who).upper()}
+    hits = [i for i, field in enumerate(n.upper() for n in names)
+            if field in wanted or (field and len(field) >= width - 1
+                                   and any(w.startswith(field) for w in wanted))]
+    if not hits:
+        raise PanelError(f"{who} is not on the party panel: {names}.")
+    if len(hits) > 1:
+        raise PanelError(f"{who} matches more than one party line "
+                         f"({', '.join(names[i] for i in hits)}); "
+                         "ask for it by line number.")
+    return hits[0]
+
 def panel_index(sess: S.Session, name: str) -> int | None:
-    """Which row of the world panel names this character, 0 first.
+    """Which row of the world panel names this character, 0 first, or None
+    when the panel cannot be read.  A number counts party lines from 1.
 
     **The panel is in marching order, not save-slot order.** `PORSAVE13`
     keeps MALCYON in slot 0 and lists BRUTUS first, so `select_party(0)` put
     the highlight on BRUTUS and VIEW showed his sheet -- twice, before this
-    was read off the screen instead of assumed.
+    was read off the screen instead of assumed.  Raises `PanelError` when the
+    name is absent or ambiguous.
     """
+    if name.strip().isdigit():
+        return int(name) - 1
     s = sess.screen()
     if s is None:
         return None
-    for i, r in enumerate(sess.party_rows(s)):
-        if name in s.row(r)[S.PARTY_COLUMN:]:
-            return i
-    return None
+    names, width = panel_names(s, sess.party_rows(s))
+    return pick_panel_row(names, width, name)
 
 def open_items(sess: S.Session, log: Log, name: str, label: str,
                tag: str) -> bool:
@@ -101,7 +142,11 @@ def open_items(sess: S.Session, log: Log, name: str, label: str,
     and clears it at `$0862` on leaving. Five runs pressed READY on the
     world's VIEW and the message flashed too briefly for a screen read.
     """
-    at = panel_index(sess, name)
+    try:
+        at = panel_index(sess, name)
+    except PanelError as e:
+        log.say(f"  {e}")
+        at = None
     if at is None:
         log.say(f"  {name} is not on the party panel")
         log.emit("screen", tag=f"{tag}-panel", rows=sheet_rows(sess))
