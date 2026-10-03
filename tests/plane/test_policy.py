@@ -671,3 +671,114 @@ def test_never_connected_classifies_real_requests_exceptions():
     assert never_connected(requests.ConnectTimeout())
     assert not never_connected(requests.ReadTimeout())
     assert not never_connected(requests.ConnectionError('Connection aborted'))
+
+
+QUEUE_STATE = '00000000-0000-0000-0000-0000000000a1'
+PROGRESS_STATE = '00000000-0000-0000-0000-0000000000a2'
+STATES = [{'id': STATE, 'name': 'Backlog', 'group': 'backlog'},
+          {'id': QUEUE_STATE, 'name': 'Queue', 'group': 'unstarted'},
+          {'id': PROGRESS_STATE, 'name': 'In Progress', 'group': 'started'}]
+
+
+def state_client(tmp_path, fail_patch=False):
+    current = record(labels=[LABEL])
+
+    def handle(method, path, data, params):
+        if path == 'users/me':
+            return {'id': AGENT}
+        if path.endswith('/labels'):
+            return {'results': [{'id': LABEL, 'name': 'bug'}], 'next_page_results': False}
+        if path.endswith('/states'):
+            return {'results': STATES, 'next_page_results': False}
+        if path.endswith('/comments'):
+            if method == 'POST':
+                return {'id': OUTSIDE, 'created_by': AGENT, 'updated_by': AGENT, **data}
+            return {'results': [], 'next_page_results': False}
+        if method == 'PATCH' and fail_patch:
+            raise PlaneError('Plane returned HTTP 400')
+        if method in {'POST', 'PATCH'}:
+            current.update(data)
+        if method == 'GET' and not path.endswith(ITEM):
+            return {'results': [dict(current)], 'next_page_results': False}
+        return dict(current)
+    fake = Fake(handle)
+    client = Client(settings(tmp_path), fake)
+    client.write = lambda target, method, path, payload: client.summarise(path, fake.request(method, path, payload))
+    return client, current, fake
+
+
+def test_create_with_state_moves_the_ticket_and_confirms_the_readback(tmp_path):
+    client, current, fake = state_client(tmp_path)
+    result = client.create('Ticket', 'Evidence', 'high', [LABEL], 'In Progress')
+    assert current['state'] == PROGRESS_STATE
+    assert result['state'] == PROGRESS_STATE
+    assert result['state_name'] == 'In Progress'
+    assert [c[0] for c in fake.calls if c[0] != 'GET'] == ['POST', 'PATCH', 'POST']
+    assert [c[2]['comment_html'] for c in fake.calls if c[0] == 'POST' and c[1].endswith('/comments')] == ['<p>Filed and started</p>']
+
+
+def test_create_in_queue_explains_that_it_was_scheduled(tmp_path):
+    client, _, fake = state_client(tmp_path)
+    client.create('Ticket', 'Evidence', 'high', [LABEL], 'Queue')
+    assert [c[2]['comment_html'] for c in fake.calls if c[0] == 'POST' and c[1].endswith('/comments')] == ['<p>Filed and scheduled</p>']
+
+
+def test_create_in_backlog_makes_no_state_change(tmp_path):
+    client, _, fake = state_client(tmp_path)
+    client.create('Ticket', 'Evidence', 'high', [LABEL])
+    assert [c[0] for c in fake.calls if c[0] != 'GET'] == ['POST']
+
+
+def test_failed_move_names_the_ticket_in_backlog_and_the_wanted_state(tmp_path):
+    client, _, _ = state_client(tmp_path, fail_patch=True)
+    with pytest.raises(PlaneError, match=r'WISH-1 was created and is in Backlog; it should be in Queue'):
+        client.create('Ticket', 'Evidence', 'high', [LABEL], 'Queue')
+
+
+@pytest.mark.parametrize('name', ['queue', 'Done', 'In progress'])
+def test_unknown_state_name_is_refused_before_anything_is_sent(tmp_path, name):
+    client, _, fake = state_client(tmp_path)
+    with pytest.raises(PlaneError, match='Choose a state'):
+        client.create('Ticket', 'Evidence', 'high', [LABEL], name)
+    assert not [c for c in fake.calls if c[0] != 'GET']
+
+
+def test_state_missing_from_project_metadata_is_refused_before_anything_is_sent(tmp_path):
+    client, _, fake = state_client(tmp_path)
+    original = fake.handler
+    fake.handler = lambda m, p, d, q: ({'results': STATES[:1], 'next_page_results': False} if p.endswith('/states') else original(m, p, d, q))
+    with pytest.raises(PlaneError, match='no state named'):
+        client.create('Ticket', 'Evidence', 'high', [LABEL], 'Queue')
+    assert not [c for c in fake.calls if c[0] != 'GET']
+
+
+def test_agent_cli_passes_state_only_when_asked(tmp_path, monkeypatch):
+    from tools.plane import planeagent
+    body = tmp_path / 'body.txt'
+    body.write_text('Evidence')
+    calls = []
+
+    class StubClient:
+        def create(self, *args, **kwargs):
+            calls.append((args, kwargs))
+            return {'id': ITEM}
+
+    monkeypatch.setattr(planeagent.Client, 'load', lambda: StubClient())
+    base = ['create', '--title', 'T', '--body-file', str(body), '--priority', 'low', '--label', LABEL]
+    assert planeagent.main(base) == 0
+    assert planeagent.main(base + ['--state', 'Queue']) == 0
+    assert calls == [(('T', 'Evidence', 'low', [LABEL]), {}), (('T', 'Evidence', 'low', [LABEL]), {'state': 'Queue'})]
+    with pytest.raises(SystemExit):
+        planeagent.main(base + ['--state', 'Done'])
+
+
+def test_read_states_prints_one_line_per_ticket_and_fails_on_a_missing_one(tmp_path, monkeypatch, capsys):
+    from tools.plane import planeread
+    client, _, _ = state_client(tmp_path)
+    monkeypatch.setattr(planeread.Client, 'load', lambda: client)
+    assert planeread.main(['--states', 'WISH-1']) == 0
+    assert capsys.readouterr().out == 'WISH-1\tBacklog\n'
+    assert planeread.main(['--states', 'WISH-1', 'WISH-99']) == 1
+    captured = capsys.readouterr()
+    assert captured.out == 'WISH-1\tBacklog\n'
+    assert 'WISH-99' in captured.err

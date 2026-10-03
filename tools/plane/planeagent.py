@@ -8,7 +8,7 @@ from pathlib import Path
 if __package__ in (None, ''):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from tools.plane.client import Client
+from tools.plane.client import CREATE_STATES, Client
 from tools.plane.policy import PlaneError
 
 
@@ -20,6 +20,7 @@ def main(argv=None):
     create.add_argument('--body-file', type=Path, required=True)
     create.add_argument('--priority', choices=['urgent', 'high', 'medium', 'low', 'none'], required=True)
     create.add_argument('--label', action='append', required=True)
+    create.add_argument('--state', choices=CREATE_STATES, default='Backlog')
     comment = commands.add_parser('comment')
     comment.add_argument('identifier')
     comment.add_argument('--body-file', type=Path, required=True)
@@ -31,7 +32,8 @@ def main(argv=None):
     try:
         client = Client.load()
         if args.command == 'create':
-            result = client.create(args.title, args.body_file.read_text(), args.priority, args.label)
+            extra = {} if args.state == 'Backlog' else {'state': args.state}
+            result = client.create(args.title, args.body_file.read_text(), args.priority, args.label, **extra)
         elif args.command == 'comment':
             result = client.comment(args.identifier, args.body_file.read_text())
         else:

@@ -38,9 +38,9 @@ def build_server(client=None):
         return client.metadata()
 
     @server.tool()
-    def create_ticket(title: str, body: str, priority: str, labels: list[str]) -> dict:
-        """Create an agent ticket with one priority."""
-        return client.create(title, body, priority, labels)
+    def create_ticket(title: str, body: str, priority: str, labels: list[str], state: str = 'Backlog') -> dict:
+        """Create an agent ticket with one priority, in Backlog, Queue or In Progress."""
+        return client.create(title, body, priority, labels, state)
 
     @server.tool()
     def comment_ticket(identifier: str, body: str) -> dict:

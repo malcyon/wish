@@ -20,9 +20,18 @@ def main(argv=None):
     parser.add_argument('--cite', action='store_true')
     parser.add_argument('--json', action='store_true')
     parser.add_argument('--metadata', action='store_true')
+    parser.add_argument('--states', nargs='+', metavar='ID')
     args = parser.parse_args(argv)
     try:
         client = Client.load()
+        if args.states:
+            rows, missing = client.states(args.states)
+            for identifier, name in rows:
+                print(f'{identifier}\t{name}')
+            if missing:
+                print('Plane ticket was not found: ' + ', '.join(missing), file=sys.stderr)
+                return 1
+            return 0
         if args.metadata:
             result = client.metadata()
         elif args.list or args.search is not None:

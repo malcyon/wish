@@ -28,6 +28,10 @@ def never_connected(exc):
         isinstance(getattr(arg, 'reason', None), NewConnectionError) for arg in exc.args)
 
 
+CREATE_STATES = ('Backlog', 'Queue', 'In Progress')
+CREATE_STATE_EXPLANATION = {'Queue': 'Filed and scheduled', 'In Progress': 'Filed and started'}
+
+
 class Transport:
     """Use Plane's vendor session with bounded requests and no automatic write retries."""
 
@@ -157,8 +161,29 @@ class Client:
             raise PlaneOutcomeUnknown(
                 f"{exc}. Read {target} back and check whether the write is there before retrying.") from exc
 
-    def create(self, title, body, priority, labels):
+    def state_ids(self, names):
+        """Map each exact state name to its live project UUID, refusing a name the project lacks."""
+        live = {str(s.get('name')): uuid(s['id']) for s in self.pages(f'{self.prefix}/states')}
+        missing = [n for n in names if n not in live]
+        if missing:
+            raise PlaneError(f"The project has no state named {missing[0]!r}")
+        return {n: live[n] for n in names}
+
+    def states(self, identifiers):
+        """Return (identifier, state name) rows read live, and the identifiers that were not found."""
+        names = {uuid(s['id']): str(s.get('name')) for s in self.pages(f'{self.prefix}/states')}
+        found = {}
+        for record in self.pages(self.items):
+            state = record.get('state')
+            found[f'{self.settings.identifier}-{record.get("sequence_id")}'] = uuid(state['id'] if isinstance(state, dict) else state)
+        rows = [(i, names.get(found[i], found[i])) for i in identifiers if i in found]
+        return rows, [i for i in identifiers if i not in found]
+
+    def create(self, title, body, priority, labels, state='Backlog'):
         self.writable()
+        if state not in CREATE_STATES:
+            raise PlaneError("Choose a state: Backlog, Queue or In Progress")
+        target = self.state_ids([state])[state] if state != 'Backlog' else None
         if priority not in {'urgent', 'high', 'medium', 'low', 'none'}:
             raise PlaneError("Choose a priority: urgent, high, medium, low or none")
         if not isinstance(title, str) or not title.strip():
@@ -171,7 +196,13 @@ class Client:
         if result['author_id'] != self.settings.agent:
             raise PlaneError("Created ticket authorship did not match the agent account; read the ticket back")
         confirm_changes(self.raw(result['id']), {'priority': priority, 'labels': labels})
-        return result
+        if target is None:
+            return result
+        try:
+            moved = self.update(result['id'], {'state': target}, CREATE_STATE_EXPLANATION[state])
+        except PlaneError as exc:
+            raise PlaneError(f"Ticket {result['identifier']} was created and is in Backlog; it should be in {state}: {exc}") from exc
+        return {**result, 'state': moved['state'], 'state_name': state}
 
     def comment(self, identifier, body):
         record = self.writable(identifier)
