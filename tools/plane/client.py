@@ -258,12 +258,27 @@ class HTMLContent(HTMLParser):
         self.events.append(('comment', data))
 
 
+def comparable_events(html):
+    """Events of html without Plane's outer div wrapper or whitespace-only differences."""
+    events = []
+    for event in HTMLContent(html).events:
+        if event[0] == 'data':
+            text = ' '.join(event[1].split())
+            if not text:
+                continue
+            event = ('data', text)
+        events.append(event)
+    if len(events) > 1 and events[0] == ('start', 'div', ()) and events[-1] == ('end', 'div'):
+        events = events[1:-1]
+    return events
+
+
 def confirm_changes(record, payload):
     """Require server readback of every changed field before reporting success."""
     for field, expected in payload.items():
         actual = record.get(field)
         if field == 'description_html':
-            matches = isinstance(actual, str) and HTMLContent(actual).events == HTMLContent(expected).events
+            matches = isinstance(actual, str) and comparable_events(actual) == comparable_events(expected)
         elif field == 'labels':
             matches = isinstance(actual, list) and {uuid(v['id'] if isinstance(v, dict) else v) for v in actual} == {uuid(v) for v in expected}
         elif field == 'state':

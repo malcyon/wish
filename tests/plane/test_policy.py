@@ -364,6 +364,18 @@ def test_edited_html_markup_does_not_count_as_equivalent_text():
         confirm_changes({'description_html': '<p>Text<script>Changed</script></p>'}, {'description_html': '<p>Text</p>'})
 
 
+def test_div_wrapped_and_whitespace_normalized_description_confirms():
+    from tools.plane.client import confirm_changes
+    confirm_changes({'description_html': '<div>\n<p>First  text</p>\n<p>Second</p>\n</div>'},
+                    {'description_html': '<p>First text</p><p>Second</p>'})
+
+
+def test_div_wrapped_different_description_does_not_confirm():
+    from tools.plane.client import confirm_changes
+    with pytest.raises(PlaneError, match='readback'):
+        confirm_changes({'description_html': '<div><p>Other</p></div>'}, {'description_html': '<p>Text</p>'})
+
+
 SECOND_LABEL = '00000000-0000-0000-0000-000000000009'
 HUMAN_LABEL = '00000000-0000-0000-0000-00000000000a'
 AI_LABEL = '00000000-0000-0000-0000-00000000000b'
