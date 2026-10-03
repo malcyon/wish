@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import html
 import json
 import os
 import re
@@ -15,6 +14,8 @@ import sys
 import tempfile
 from contextlib import contextmanager
 from datetime import UTC, datetime
+from functools import lru_cache
+from importlib.metadata import version
 from pathlib import Path
 from typing import Callable
 from uuid import UUID
@@ -33,6 +34,29 @@ class MigrationError(Exception):
 
 def digest(value: object) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=True).encode()).hexdigest()
+
+
+
+@lru_cache(maxsize=1)
+def markdown_renderer():
+    """Load the pinned renderer with raw HTML disabled for public source text."""
+    if version("markdown-it-py") != "3.0.0":
+        raise MigrationError("Install the pinned markdown-it-py==3.0.0 migration dependency")
+    from markdown_it import MarkdownIt
+
+    renderer = MarkdownIt("js-default")
+
+    def link_open(self, tokens, index, options, env):
+        tokens[index].attrSet("rel", "noopener noreferrer")
+        return self.renderToken(tokens, index, options, env)
+
+    renderer.add_render_rule("link_open", link_open)
+    return renderer
+
+
+def render_markdown(source: str) -> str:
+    """Render safe headings, lists, links, code and tables inside one HTML root."""
+    return "<div>" + markdown_renderer().render(source) + "</div>"
 
 
 def private_directory(path: Path) -> Path:
@@ -278,11 +302,15 @@ class Ledger:
         """Publish confirmed source identities with an exact imported-text digest."""
         output = Path(self.db.execute("PRAGMA database_list").fetchone()[2]).parent / "provenance.json"
         entries = {}
-        for plane_id, author_id, payload, human_thread in self.db.execute(
-            "SELECT o.plane_id,o.author_id,o.payload,g.human_thread FROM objects o "
+        for plane_id, author_id, readback, human_thread, kind in self.db.execute(
+            "SELECT o.plane_id,o.author_id,d.record,g.human_thread,o.kind FROM objects o "
+            "JOIN destinations d ON d.plane_id=o.plane_id "
             "LEFT JOIN origins g ON g.source_key=COALESCE(o.parent_key,o.source_key) WHERE o.status='complete'"
         ):
-            record = json.loads(payload)
+            record = json.loads(readback)
+            required = ("name", "description_html") if kind == "issue" else ("comment_html",)
+            if any(not isinstance(record.get(field), str) for field in required):
+                continue
             fields = {field: record.get(field) for field in ("name", "description_html", "comment_html")}
             entries[plane_id] = {
                 "original_account_id": f"github:{author_id}" if author_id else None,
@@ -404,7 +432,7 @@ def prepare(snapshot: dict, ledger: Ledger, trusted_ids: frozenset[str],
                 raise MigrationError("Explicit destination state mapping is missing")
             key = f"github:{repository}:issue:{issue['id']}"
             body = issue.get("body") or ""
-            payload = {"name": issue["title"], "description_html": f"<pre>{html.escape(body)}</pre>",
+            payload = {"name": issue["title"], "description_html": render_markdown(body),
                        "priority": priority, "state": states[state_key]}
             payload["labels"] = [labels_map[name] for name in labels if name.casefold() not in EXCLUDED_LABELS]
             ledger.record(key, "issue", issue, payload, trusted_ids, reconcile=reconcile)
@@ -424,7 +452,7 @@ def prepare(snapshot: dict, ledger: Ledger, trusted_ids: frozenset[str],
                 comment_key = f"github:{repository}:comment:{comment['id']}"
                 comment_body = comment.get("body") or ""
                 ledger.record(comment_key, "comment", comment,
-                              {"comment_html": f"<pre>{html.escape(comment_body)}</pre>"}, trusted_ids, key, reconcile=reconcile)
+                              {"comment_html": render_markdown(comment_body)}, trusted_ids, key, reconcile=reconcile)
                 attachments.note_sources(ledger.db, key, comment_key, comment)
                 body += "\n" + comment_body
             attachments.plan(ledger.db, key, attachments.discover(body))
@@ -442,7 +470,7 @@ def prepare(snapshot: dict, ledger: Ledger, trusted_ids: frozenset[str],
 def migration_writer(project_id: str, settings=None, transport=None, labels_map=None,
                      production=False, state_definitions=None):
     """Bind writes to a separately authorized project mode and importer account."""
-    from tools.plane.client import Client, Transport
+    from tools.plane.client import Client, HTMLContent, Transport
     from tools.plane.policy import PlaneError, Settings, private_json, uuid
 
     config = None
@@ -486,6 +514,12 @@ def migration_writer(project_id: str, settings=None, transport=None, labels_map=
             if state.get("name") != name or state.get("group") != STATE_GROUPS[name]:
                 raise MigrationError("Destination state IDs do not match the authorized names and workflow groups")
 
+    def same_content(field, actual, expected):
+        if field in {"description_html", "comment_html"}:
+            return (isinstance(actual, str) and isinstance(expected, str)
+                    and HTMLContent(actual).events == HTMLContent(expected).events)
+        return actual == expected
+
     def create(kind, payload, parent_id, destination=None, old_payload=None):
         try:
             path = items if kind == "issue" else f"{items}/{uuid(parent_id)}/comments"
@@ -498,7 +532,7 @@ def migration_writer(project_id: str, settings=None, transport=None, labels_map=
                     if field == "labels" and isinstance(actual, list):
                         actual = sorted(value.get("id") if isinstance(value, dict) else value for value in actual)
                         expected = sorted(expected)
-                    if actual != expected:
+                    if not same_content(field, actual, expected):
                         raise MigrationError("Destination changed independently; delta update blocked")
                 result = transport.request("PATCH", f"{path}/{uuid(destination)}", data=payload)
             else:
@@ -518,7 +552,7 @@ def migration_writer(project_id: str, settings=None, transport=None, labels_map=
                 if field == "labels" and isinstance(actual, list):
                     actual = sorted(value.get("id") if isinstance(value, dict) else value for value in actual)
                     expected = sorted(expected)
-                if actual != expected:
+                if not same_content(field, actual, expected):
                     raise MigrationError("Imported content did not match its private source")
             issue_id = record_id if kind == "issue" else parent_id
             readback["_migration_url"] = f"{settings.base_url}/{settings.workspace}/projects/{project_id}/issues/{issue_id}"

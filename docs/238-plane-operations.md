@@ -36,7 +36,7 @@ live password-change-and-login test before cutover.
 ## Verified host setup and project metadata
 
 The scoped `wish-plane` MCP is registered in both host clients, Claude Code
-and Codex. A host read through the scoped API returned zero work items. This
+and Codex. The initial host read through the scoped API returned zero work items. This
 checks the configured origin and project; it does not establish guest access,
 both clients' complete tool behavior or write acceptance.
 
@@ -159,6 +159,36 @@ with mode `0700`; source text is not printed. Use
 `python -m tools.plane.migrate rehearse --help` for the explicit issue subset,
 rehearsal-project UUID, state UUIDs, label map and trusted source IDs.
 Rehearsal writes require `--allow-writes`.
+
+
+The migration runtime installs `plane-sdk==0.3.1` and
+`markdown-it-py==3.0.0`, available through the project's `plane` extra.
+The importer renders descriptions and comments as Markdown rather than showing
+literal Markdown inside a code block. This corrects the first production
+attempt, which created one issue before its readback stopped on HTML entity
+normalization. The original Markdown, authorship and timestamps remain in the
+private source and ledger. The renderer uses `js-default`: headings, lists,
+links, fenced code, tables and strikethrough are supported; raw HTML is escaped
+and unsafe link schemes do not become executable links. Task-list markers
+remain list text rather than interactive checkboxes. Generated links receive
+`rel="noopener noreferrer"`, and one containing `div` prevents Plane from adding
+a different root around multiple blocks. Read-only checks against the live
+v1.4.2 HTML validator preserved representative rendered content.
+
+Readback compares HTML structure and decoded text while retaining the exact
+returned HTML for the provenance digest. Changed text, tags or attributes stop
+the importer. A confirmed existing issue must be reconciled into the ledger
+before rerunning with `--reconcile-delta` to change its rendering in place;
+never repost a pending write. Explicit delta reconciliation retains previous
+payloads and rechecks old destination content before updating it.
+
+The current service host cannot resolve `plane.morton.lan`. Its private import
+runner uses an exact-host resolver for that name to `192.168.1.182`, preserving
+the configured origin and HTTP Host header. This exception is recorded in
+`/var/lib/plane-provenance/importer-network.json`; it changes neither system DNS
+nor other destinations. All importer HTTP requests share a minimum 1.25-second
+interval because the live REST throttle is 60 requests per minute per API key.
+The token's separate `allowed_rate_limit` field does not control that throttle.
 
 The private `migration.sqlite3` records source objects, mappings, write intent
 and outcomes. Confirmed imports produce `provenance.json`. Preserve both with

@@ -35,7 +35,9 @@ dependencies = ["pyyaml>=6.0"]
 #
 # `ruff` is the linter that `tools/suite/suiterun.py` and the lint workflow run.
 dev = ["pytest>=8.0", "pytest-xdist>=3.5", "pyjwt[crypto]",
-       "capstone", "pillow", "ruff"]
+       "capstone", "pillow", "ruff", "markdown-it-py==3.0.0"]
+# Migration renders public Markdown with raw HTML disabled.
+plane = ["plane-sdk==0.3.1", "markdown-it-py==3.0.0"]
 gui = ["PyQt6>=6.6"]
 # The live automapper reads a running VICE; it needs the GUI extra.
 automap = ["PyQt6>=6.6"]

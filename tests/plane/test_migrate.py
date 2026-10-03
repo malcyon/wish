@@ -211,13 +211,14 @@ def test_provenance_only_contains_confirmed_ids_and_exact_text(ledger, tmp_path)
 
     plan(ledger)
     assert json.loads(ledger.write_provenance().read_text()) == {}
-    ledger.import_pending(lambda kind, *args: {
+    ledger.import_pending(lambda kind, payload, *args: {
+        **payload,
         "id": "00000000-0000-0000-0000-000000000001" if kind == "issue" else "00000000-0000-0000-0000-000000000002",
     })
     entries = json.loads((tmp_path / "private" / "provenance.json").read_text())
     entry = entries["00000000-0000-0000-0000-000000000001"]
     assert entry["original_account_id"] == "github:99"
-    fields = {"name": "Outside title", "description_html": "<pre>Original evidence</pre>", "comment_html": None}
+    fields = {"name": "Outside title", "description_html": "<div><p>Original evidence</p>\n</div>", "comment_html": None}
     assert entry["text_sha256"] == hashlib.sha256(json.dumps(fields, sort_keys=True).encode()).hexdigest()
 
 
@@ -284,7 +285,8 @@ def test_cli_dry_run_prints_counts_only(tmp_path, capsys):
 
 def test_public_origin_is_preserved_without_source_label(ledger):
     plan(ledger)
-    ledger.import_pending(lambda kind, *args: {
+    ledger.import_pending(lambda kind, payload, *args: {
+        **payload,
         "id": "00000000-0000-0000-0000-000000000001" if kind == "issue" else "00000000-0000-0000-0000-000000000002",
     })
     entries = json.loads(ledger.write_provenance().read_text())
@@ -316,8 +318,8 @@ def test_delta_preserves_old_source_and_updates_existing_destination(ledger):
         return {"id": destination}
 
     ledger.import_pending(lambda *args: pytest.fail("Existing item was duplicated"), update)
-    assert updates[0][0]["description_html"] == "<pre>Corrected evidence</pre>"
-    assert updates[0][1]["description_html"] == "<pre>Original evidence</pre>"
+    assert updates[0][0]["description_html"] == "<div><p>Corrected evidence</p>\n</div>"
+    assert updates[0][1]["description_html"] == "<div><p>Original evidence</p>\n</div>"
     assert ledger.summary()["objects"] == {"complete": 2}
 
 
@@ -571,3 +573,97 @@ def test_migration_marker_rejects_symlink(tmp_path):
         with migration_marker(directory, True):
             pytest.fail("Symlink marker accepted")
     assert target.read_text() == "Keep"
+
+
+def test_normalized_import_keeps_exact_remote_provenance_and_original_source(ledger):
+    import hashlib
+    from types import SimpleNamespace
+
+    from tools.plane.migrate import migration_writer
+
+    source = snapshot()
+    body = 'A "quoted" value and an apostrophe\'s value'
+    source["records"][0]["issue"]["body"] = body
+    source["records"][0]["comments"][0]["body"] = body
+    plan(ledger, source)
+    project = "00000000-0000-0000-0000-000000000010"
+    importer = "00000000-0000-0000-0000-000000000011"
+    settings = SimpleNamespace(project=project, writes_enabled=True, importers={importer},
+                               workspace="wish", resource="work-items", base_url="https://example.test")
+
+    class NormalizingTransport:
+        def __init__(self):
+            self.records = {}
+
+        def request(self, method, path, data=None):
+            if path == "users/me":
+                return {"id": importer}
+            if method == "POST":
+                identifier = f"00000000-0000-0000-0000-{len(self.records) + 1:012d}"
+                record = {**data, "id": identifier, "created_by": importer, "project": project}
+                for field in ("description_html", "comment_html"):
+                    if field in record:
+                        record[field] = record[field].replace("&quot;", '"').replace("&#x27;", "'")
+                self.records[identifier] = record
+                return record
+            return self.records[path.rsplit("/", 1)[-1]]
+
+    transport = NormalizingTransport()
+    ledger.import_pending(migration_writer(project, settings, transport))
+    entries = json.loads(ledger.write_provenance().read_text())
+    assert len(entries) == 2
+    for identifier, record in transport.records.items():
+        fields = {key: record.get(key) for key in ("name", "description_html", "comment_html")}
+        assert entries[identifier]["text_sha256"] == hashlib.sha256(json.dumps(fields, sort_keys=True).encode()).hexdigest()
+    original = json.loads(ledger.db.execute("SELECT source FROM objects WHERE kind='issue'").fetchone()[0])
+    assert original["body"] == body
+    assert ledger.summary()["objects"] == {"complete": 2}
+
+
+@pytest.mark.parametrize("changed", ['<pre>Changed</pre>', '<p>A "quoted" value</p>', '<pre class="added">A "quoted" value</pre>'])
+def test_normalized_import_rejects_changed_text_or_markup(changed):
+    from types import SimpleNamespace
+
+    from tools.plane.migrate import migration_writer
+
+    project = "00000000-0000-0000-0000-000000000010"
+    importer = "00000000-0000-0000-0000-000000000011"
+    settings = SimpleNamespace(project=project, writes_enabled=True, importers={importer},
+                               workspace="wish", resource="work-items", base_url="https://example.test")
+
+    class ChangedTransport:
+        def request(self, method, path, data=None):
+            if path == "users/me":
+                return {"id": importer}
+            return {"id": project, "created_by": importer, "description_html": changed}
+
+    writer = migration_writer(project, settings, ChangedTransport())
+    with pytest.raises(MigrationError, match="content"):
+        writer("issue", {"description_html": '<pre>A &quot;quoted&quot; value</pre>'}, None)
+
+
+def test_markdown_descriptions_and_comments_preserve_source_and_rich_blocks(ledger):
+    body = '# Heading\n\n- List item\n\n[Link](https://example.test)\n\n```python\nprint("Safe")\n```\n\n| One | Two |\n| --- | --- |\n| A | B |\n\n~~Removed~~'
+    source = snapshot()
+    source["records"][0]["issue"]["body"] = body
+    source["records"][0]["comments"][0]["body"] = body
+    plan(ledger, source)
+    for kind, raw, payload in ledger.db.execute("SELECT kind,source,payload FROM objects"):
+        assert json.loads(raw)["body"] == body
+        rendered = json.loads(payload)["description_html" if kind == "issue" else "comment_html"]
+        assert "<h1>Heading</h1>" in rendered
+        assert "<li>List item</li>" in rendered
+        assert '<a href="https://example.test" rel="noopener noreferrer">Link</a>' in rendered
+        assert '<pre><code class="language-python">' in rendered
+        assert "<table>" in rendered and "<th>One</th>" in rendered and "<td>A</td>" in rendered
+        assert "<s>Removed</s>" in rendered
+        assert rendered.startswith("<div>") and rendered.endswith("</div>")
+
+
+def test_markdown_source_html_and_unsafe_links_are_not_executable():
+    from tools.plane.migrate import render_markdown
+
+    rendered = render_markdown('<script>alert(1)</script>\n\n<img src=x onerror="alert(1)">\n\n[Unsafe](javascript:alert(1))')
+    assert "<script" not in rendered and "<img" not in rendered
+    assert 'href="javascript:' not in rendered
+    assert "&lt;script&gt;" in rendered and "&lt;img" in rendered
