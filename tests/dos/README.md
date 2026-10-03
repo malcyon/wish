@@ -23,6 +23,7 @@ Tests for the DOS port: the DOS saved game and character record, the DOS record 
 | `test_dosladder.py` | Checks the training-hall routing of `tools/dos/dosladder.py` against the player's `GEO00`, and the records its trainer wrote. |
 | `test_doslatercontainer.py` | Checks the Curse and Silver Blades `SAVGAM<slot>.DAT` container built from nothing, on synthetic buffers and on converted C64 specimens. |
 | `test_doslatertitles.py` | Checks the DOS record writer for each later title: the field tables, record widths, item and effect files, and the fields only those titles have. |
+| `test_dosnoencounters.py` | Checks on fakes that `tools/dos/dosnoencounters.py` writes the gate before every move key once on and not before, that `off` restores the original and keeps a value the game changed, that a save is stopped while on or outstanding, that the live block is found from the save and written as a word, and that every DOS gate writes what the C64 gate writes. |
 | `test_dosoutdoor.py` | Checks the four fields `tools/dos/dosoutdoor.py` plants so an indoor saved game loads onto a travel window. |
 | `test_dosoutdoorprobe.py` | Checks the route grammar and the seed `tools/dos/dosoutdoorprobe.py` plants before DOSBox runs. |
 | `test_dosoutdoorwrite.py` | Checks that the DOS writer places a party on the travel grid with each window's own container and the engine's outdoor wallset. |
