@@ -10230,7 +10230,7 @@ def _watch_rest(tmp_path, monkeypatch, *, end="event", before=(0, 3, 0, 0, 0, 0)
     sess.squares = list(squares)
     sess.later = dict(later or {})
 
-    def fake_rest(s, log, minutes, hours, cp):
+    def fake_rest(s, log, minutes, hours, cp, quiet=False):
         s.state = end
         got = {"before": {"clock": list(before)}, "after": {"clock": list(after)}}
         if marker is not None:
@@ -10506,14 +10506,16 @@ def _later_rest(tmp_path, monkeypatch, *, end, later=None, moves=None,
     sess = _LaterRestSession(screens, table, "world")
     sess.later = dict(later or {})
 
-    def fake_rest(s, log, minutes, hours, cp):
-        s.state = end
+    def fake_rest(s, log, minutes, hours, cp, quiet=False):
+        s.state, s.quiet = end, quiet
         rows = screens[end]
         got = {"before": {"clock": [0, 7, 2, 5, 0, 0]},
                "after": {"clock": [0, 7, 2, 13, 0, 0]},
                "ended": ended, "interrupted": ended == "interrupted",
                "rest_left": [0, 2, 0] if ended == "interrupted" else [0, 0, 0],
                "bar": rows[24].rstrip(), "rest_interrupt": [96, 30]}
+        if quiet:
+            got["rest_interrupt_suppressed"] = True
         if ended == "interrupted" and with_text:
             got["text"] = [r.strip("$%& ") for r in rows[17:23]
                            if r.strip("$%& ")]
@@ -10657,6 +10659,24 @@ def test_a_later_rest_that_completes_is_unchanged(tmp_path, monkeypatch):
     assert set(got) == {"asked", "before_clock", "after_clock",
                         "elapsed_minutes", "rest_completed", "events",
                         "position_before", "position_after"}
+
+
+@pytest.mark.parametrize("no_encounters", [False, True])
+def test_a_rest_under_no_encounters_holds_the_area_rest_interruption_off(
+        tmp_path, monkeypatch, no_encounters):
+    """`--no-encounters` turns the session's switch on for walks alone, so the
+    rest step asks `route_pool.rest` for a quiet rest itself: without it a
+    Curse rest in Tilverton's streets ends after five minutes with ROYAL
+    GUARDS TELL YOU TO MOVE ALONG.  A run without the option rests as the
+    game would and reports nothing extra."""
+    run, log, sess = _later_rest(tmp_path, monkeypatch, end="camp",
+                                 ended="completed")
+    run.no_encounters = no_encounters
+    got = run.rest("8h")
+    log.close()
+    assert sess.quiet is no_encounters
+    assert got.get("rest_interrupt_suppressed", False) is no_encounters
+    assert sess.sent == [("bar", "ENCAMP"), ("bar", "EXIT")]
 
 
 _LEAVE_STEPS = [["load", "temple-probe BRUTUS RAISE POOL", "save"],
@@ -12077,7 +12097,7 @@ def test_scroll_owner_reads_the_list_title():
 def _camp_rest(tmp_path, monkeypatch, scribing):
     seen = {}
 
-    def fake_rest(s, log, minutes, hours, cp):
+    def fake_rest(s, log, minutes, hours, cp, quiet=False):
         seen["state"], seen["sent"] = s.state, list(s.sent)
         return {"before": {"clock": [0, 0, 0, 4, 0, 0]},
                 "after": {"clock": [0, 0, 0, 12, 0, 0]}}

@@ -456,7 +456,9 @@ LATER_REST_TIME = {
 LATER_REST_BAR = "SUBTRACT"
 
 #: The area's rest-interruption interval and chance, read by Curse `CAMP
-#: $1F76` and Silver Blades `CAMP $1D73`; logged, never written.
+#: $1F76` and Silver Blades `CAMP $1D73`: an interval of 0 skips the check
+#: on every pass.  Read here; only `Session.suppress_rest_interruption`
+#: writes it.
 REST_INTERRUPT = 0x7ED2
 
 #: How many one-second reads in a row a later-title rest may show no movement
@@ -504,7 +506,8 @@ def live_records(m) -> dict[int, list[int]]:
             out[slot] = [rec[REC_STR], rec[REC_STR_PCT], rec[REC_CHA]]
     return out
 
-def rest(sess, log, minutes: int, hours: int, cp: dict) -> dict:
+def rest(sess, log, minutes: int, hours: int, cp: dict,
+         quiet: bool = False) -> dict:
     """`REST` for *minutes* minutes and *hours* hours, sampled either side.
 
     The rest length is written into `CAMP`'s own rest-time field rather than
@@ -521,10 +524,17 @@ def rest(sess, log, minutes: int, hours: int, cp: dict) -> dict:
     `camp_resident`; an uninterrupted one returns none of them.
 
     A Curse or Silver Blades session (`sess.game`) goes to `rest_later`.
+
+    *quiet* zeroes the area's rest interruption for this rest whether or not
+    the session's `no_encounters` is on (`Session.suppress_rest_interruption`
+    with `force`), so a check such as Tilverton's guards, which ends every
+    rest after its first pass, does not run; the result then says so in
+    `rest_interrupt_suppressed`.
     """
     game = getattr(sess, "game", c64_port.POOL_OF_RADIANCE)
     if game.key in LATER_REST_TIME:
-        return rest_later(sess, log, minutes, hours, cp, LATER_REST_TIME[game.key])
+        return rest_later(sess, log, minutes, hours, cp,
+                          LATER_REST_TIME[game.key], quiet=quiet)
     if not sess.select_bar("REST"):
         log.say("  REST was not on the camp bar")
         return {"failed": "no REST on the camp bar"}
@@ -534,7 +544,7 @@ def rest(sess, log, minutes: int, hours: int, cp: dict) -> dict:
     with sess.mon(10) as m:
         before = sample(m)
         m.write(REST_TIME, bytes((minutes, hours, 0)))
-        sess.suppress_rest_interruption(m)
+        sess.suppress_rest_interruption(m, force=quiet)
         staged = tuple(m.read(REST_TIME, 3))
         m.resume()
     if staged != (minutes, hours, 0):
@@ -564,6 +574,8 @@ def rest(sess, log, minutes: int, hours: int, cp: dict) -> dict:
             f"{after['duration'][:6]}")
     log.say(f"    ids {after['id'][:6]}  counts {counts}")
     got = {"before": before, "after": after, "records": records, **counts}
+    if quiet:
+        got["rest_interrupt_suppressed"] = True
     if marker == REST_INTERRUPTED or not in_camp:
         s = sess.screen()
         bar = "" if s is None else s.row(24).rstrip()
@@ -576,7 +588,7 @@ def rest(sess, log, minutes: int, hours: int, cp: dict) -> dict:
 
 
 def rest_later(sess, log, minutes: int, hours: int, cp: dict,
-               field: int) -> dict:
+               field: int, quiet: bool = False) -> dict:
     """Curse's or Silver Blades' `REST`, the same way `rest` drives Pool's.
 
     The camp's `REST` puts up `REST TIME :  0 DAYS  0 HRS  0 MINS` over
@@ -601,7 +613,10 @@ def rest_later(sess, log, minutes: int, hours: int, cp: dict,
 
     `interrupted` is true for the second alone; `rest_left` is the field and
     `bar` row 24 when the wait stopped, and `still_reads` names the stillness
-    threshold when that is what stopped it.  An interrupted rest also returns
+    threshold when that is what stopped it.  `rest_interrupt` is the area's
+    interval and chance (`REST_INTERRUPT`) as found before anything was
+    written, and *quiet* zeroes the interval as `rest` describes.  An
+    interrupted rest also returns
     `text`, the message rows 17-22 without their frame: a scripted event's
     words, such as Silver Blades' THE BLACK CIRCLE SENDS MONSTERS AGAINST
     THE TOWN over `PRESS BUTTON OR RETURN TO CONTINUE.`, before the fight
@@ -625,7 +640,7 @@ def rest_later(sess, log, minutes: int, hours: int, cp: dict,
         before = sample(m, LATER_LOAD)
         interrupt = list(m.read(REST_INTERRUPT, 2))
         m.write(field, bytes(want))
-        sess.suppress_rest_interruption(m)
+        sess.suppress_rest_interruption(m, force=quiet)
         staged = tuple(m.read(field, 3))
         m.resume()
     if staged != want:
@@ -665,6 +680,8 @@ def rest_later(sess, log, minutes: int, hours: int, cp: dict,
         shown = bar.strip()
         ended = ("stalled" if not shown or LATER_REST_BAR in shown
                  else "interrupted")
+    if quiet:
+        extra["rest_interrupt_suppressed"] = True
     if ended == "interrupted" and s is not None:
         extra["text"] = [t for t in (s.row(r).strip("$%& ")
                                      for r in range(17, 23)) if t]

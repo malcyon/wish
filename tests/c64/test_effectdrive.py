@@ -12,6 +12,7 @@ import pytest
 
 from goldbox import c64_port, effects
 from tools.c64 import route_pool as E
+from tools.c64 import session as S
 
 
 class FakeMemory:
@@ -102,8 +103,10 @@ class RestingSession:
         #: Rows the stopping screen draws above `stop_bar`, by row number.
         self.stop_text: dict[int, str] = {}
 
-    def suppress_rest_interruption(self, mon):
+    def suppress_rest_interruption(self, mon, force: bool = False):
         """The real session's, with `no_encounters` off."""
+        if force:
+            mon.write(S.REST_INTERRUPT_BYTE[self.game.key], b"\0")
 
     def _select(self, label: str, **_) -> bool:
         self.pressed.append(label)
@@ -189,9 +192,29 @@ def _clock_minutes(clock: list[int]) -> int:
     return (day * 24 + hour) * 60 + tens * 10 + units
 
 
-def _rest(monkeypatch, sess, minutes: int, hours: int) -> dict:
+def _rest(monkeypatch, sess, minutes: int, hours: int,
+          quiet: bool = False) -> dict:
     monkeypatch.setattr(E.time, "sleep", lambda _: None)
-    return E.rest(sess, RestLog(), minutes, hours, {"sweep": 7})
+    return E.rest(sess, RestLog(), minutes, hours, {"sweep": 7}, quiet=quiet)
+
+
+class TilvertonSession(LaterPressSession):
+    """Curse in Tilverton's streets: camping leaves `$7ED2`/`$7ED3` at 1 and
+    100, so `CAMP $1F76` checks on the first pass and always interrupts,
+    unless the interval reads 0 by then."""
+
+    GUARDS = "PRESS BUTTON OR RETURN TO CONTINUE."
+
+    def __init__(self):
+        super().__init__(c64_port.CURSE_OF_THE_AZURE_BONDS, 0x2C1B,
+                         E.LATER_LOAD, LATER_REST_ROW, stop_bar=self.GUARDS)
+        self.m.write(E.REST_INTERRUPT, bytes((1, 100)))
+        self.stop_text = {17: ">ROYAL GUARDS TELL YOU TO MOVE ALONG.  <"}
+
+    def _pass(self) -> None:
+        super()._pass()
+        if self.resting and self.passes and self.m.read(E.REST_INTERRUPT, 1)[0]:
+            self.stop_after = self.passes
 
 
 def test_a_silver_blades_rest_writes_its_own_field_and_runs_ten_hours(monkeypatch):
@@ -391,3 +414,24 @@ def test_a_pool_rest_refuses_the_later_titles_bar(monkeypatch):
     sess = RestingSession(c64_port.POOL_OF_RADIANCE, E.REST_TIME,
                           E.SAVE0_LOAD, LATER_REST_ROW)
     assert _rest(monkeypatch, sess, 0, 1) == {"failed": "no rest-time bar"}
+
+
+@pytest.mark.parametrize("quiet", [False, True])
+def test_a_curse_rest_in_tilverton_runs_its_time_only_when_quiet(
+        monkeypatch, quiet):
+    """The guards end a Curse rest in Tilverton's streets after five minutes
+    unless the area's interval is zeroed; *quiet* zeroes it whatever the
+    session's `no_encounters` says, and the result says so."""
+    sess = TilvertonSession()
+    got = _rest(monkeypatch, sess, 10, 6, quiet=quiet)
+    elapsed = _clock_minutes(got["after"]["clock"]) - _clock_minutes(
+        got["before"]["clock"])
+    assert got["rest_interrupt"] == [1, 100]
+    if quiet:
+        assert got["ended"] == "completed" and elapsed == 370
+        assert got["rest_interrupt_suppressed"] is True
+        assert sess.m.read(E.REST_INTERRUPT, 2) == bytes((0, 100))
+    else:
+        assert got["ended"] == "interrupted" and elapsed == 5
+        assert "ROYAL GUARDS TELL YOU TO MOVE ALONG." in got["text"][0]
+        assert "rest_interrupt_suppressed" not in got

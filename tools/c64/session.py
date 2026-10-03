@@ -230,7 +230,9 @@ AREA_BYTE = {
 
 #: Where each title's rest interruption is held (outside the saved page);
 #: written to 0 after ENCAMP so `CAMP` skips its roll on every pass.  CONFIRMED
-#: for Pool of Radiance (`docs/207`), PROBABLE for the others (same instructions).
+#: for Pool of Radiance (`docs/207`) and Curse (`CAMP $1F76` `LDA $7ED2 / BEQ`,
+#: and a Tilverton street rest completed with it zeroed), PROBABLE for Silver
+#: Blades (same instructions at `CAMP $1D73`).
 REST_INTERRUPT_BYTE = {
     G.POOL_OF_RADIANCE.key: 0x6DD2,
     G.CURSE_OF_THE_AZURE_BONDS.key: 0x7ED2,
@@ -2973,12 +2975,14 @@ class Session:
                 self.log(f"  encounters are not suppressed in area ${area:02X}: "
                          f"no gate is known for it")
 
-    def suppress_rest_interruption(self, mon) -> None:
+    def suppress_rest_interruption(self, mon, force: bool = False) -> None:
         """Zero the rest-interruption byte through an open monitor
-        connection; a no-op unless `no_encounters` is set.  Call it after
-        ENCAMP, in the connection that stages the rest time.
+        connection; a no-op unless `no_encounters` or `force` is set.  Call
+        it after ENCAMP, in the connection that stages the rest time.
+        `force` is how a driver that holds `no_encounters` off between walks
+        (`acceptance.py --no-encounters`) asks for it on one rest.
         """
-        if self.no_encounters:
+        if self.no_encounters or force:
             mon.write(self._title_entry(REST_INTERRUPT_BYTE, "rest byte"),
                       b"\x00")
 
