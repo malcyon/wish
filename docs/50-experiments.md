@@ -8202,8 +8202,55 @@ branch-push run.
 This architecture preserves the complete routine platform test selection and
 the full compatibility matrix at release time. It changes when independent
 checks can start and how routine tests divide across runners; the first sharded
-run above measures only the earlier two-shard design. No timing claim for this
-second pass follows from that run.
+run above measures only the earlier two-shard design. The first two four-shard
+push trials finished in under five minutes, but each had a failed Windows
+snapshot-validation shard; neither counts as a successful performance sample.
+
+Coverage was reconciled by node ID, not only by totals. The first sharded run
+selected 21,010 IDs per platform. The later parent inventory had 21,016, adding
+six IDs from `tests/plane/test_mcp.py`. Commit
+`07cb6459ff12e169b93a91fabb7eb116f7d0a924` added 53 IDs and removed one
+relative to that parent: the effects test replaced one node with eight range
+cases and a union guard; the watcher added four, `ci_measure` thirteen,
+`ci_shard` seventeen, `ci_validate` eight, staging one, and tool-shadowing one.
+Commit `1812a519ddfe5ce29e77ad43adcdd254d02fabb0` added three tests and removed
+none: two cover accepting one complete modern profile and rejecting one
+profile from a four-shard run, and one requires explicit targets for a root
+`tests/conftest.py` change. The exact-green commit
+`cb5a8fff4af03ffcecbfbb61e4af38266da110e0` selected 21,071 IDs.
+
+Between `cb5a8fff4af03ffcecbfbb61e4af38266da110e0` and
+`9903a5577f8f06b7c244ebb4a749280c480e9aa8`, an independent Plane change added
+21 test IDs, bringing the inventory to 21,092 across 492 selected test files.
+The weights-only commit `9d99a7691748f091d86e889c0a757c90e7758bd5`, built on
+`9903a5577f8f06b7c244ebb4a749280c480e9aa8`, imported fresh weights for that
+inventory; it did not add those test IDs.
+The subsequent tool retirement at `b3fb5340ec9744ad7dfa7f9e6999568a9ec60af1`
+removed 74 IDs and three tracked test files: 71 Plane importer tests and three
+tool-shadowing parameters for the retired importer. It leaves 21,018 IDs across
+489 tracked test files, with the application-test IDs unchanged. The Ubuntu
+and Windows four-shard plans still have complete, disjoint unions and keep all
+five runtime groups together. The Windows-weight plan was collected on Linux;
+it proves assignment coverage, not Windows execution.
+
+| `cb5a8fff4af03ffcecbfbb61e4af38266da110e0` plan | Shard 1 | Shard 2 | Shard 3 | Shard 4 | Total |
+|---|---:|---:|---:|---:|---:|
+| Ubuntu/Python 3.12 | 5,576 | 5,206 | 4,193 | 6,096 | 21,071 |
+| Windows/Python 3.13 weights | 5,598 | 4,293 | 5,778 | 5,402 | 21,071 |
+
+These collection plans had disjoint shard IDs and complete unions. The Windows
+weights row is a plan collected on Linux; only hosted Windows jobs establish
+Windows execution. At `cb5a8fff4af03ffcecbfbb61e4af38266da110e0`, the plans
+contained 21,071 IDs. The inventory contained 493 tracked test files, with 492
+selected after excluding the generated-test module. Five runtime groups stayed
+together: `ci-priority`,
+`conftest-guard-probe`, `emulator-pool`, `icon-tables` and
+`staging_current_tree`.
+
+The effects partition covers all 127 × 127 × 2 = 32,258 combinations. Eight
+range cases partition the domain, and a union guard checks that every
+combination appears exactly once. The collection proofs show coverage and
+disjoint assignment; they do not measure hosted runtime.
 
 The shard count is configurable, and the weighted planner keeps each test file
 and each transitive literal `xdist_group` together. Weight records name their
@@ -8213,6 +8260,8 @@ run, SHA, attempt, JUnit inventory and selected files agree; duplicate files,
 failed profiles and mixed provenance stop the import. The routine workflow
 uses four shards per platform. The two-shard compatibility setting is for
 workflows that also have the route gate; the watcher expects four by default.
+Uploaded profile names include the workflow attempt, so a rerun cannot be
+confused with a prior attempt; weight import also checks attempt provenance.
 
 The route watcher reports each completed failed job once, then keeps polling
 until every expected shard and the route, generated and lint gates finish. A
@@ -8269,8 +8318,176 @@ skips in 1.65 seconds total.
 A separate fixture profile collected 1,472 items with six workers and every
 worker exited successfully, but the controller failed while flushing its
 temporary report because `json.dumps()` received an unexpected `flush` keyword
-argument. It is not a passing test run. Its worker-summed costs were 0.762 seconds for `tmp_path`,
+argument. It is not a passing test run. Its worker-summed costs were 0.762
+seconds for `tmp_path`,
 0.121 seconds for configuration isolation and 2.243 seconds for per-test
 garbage collection. Those diagnostic totals support keeping the existing
 fixture protections; they do not measure a complete suite or justify changing
 the global fixtures.
+
+The global configuration isolation and per-test garbage collection stayed in
+place. Two independent review findings changed the validation safeguards. The
+weight importer initially accepted one modern shard profile from an incomplete
+four-shard run; it now requires the full modern shard set while retaining
+valid single-profile legacy imports. Snapshot validation also rejected a root
+`tests/conftest.py` change without explicit affected-test targets and disallows
+using `conftest.py` itself as a target. Follow-up review found no further
+findings.
+
+Two initial full-code pushes exposed Windows newline conversion in snapshot
+validation:
+
+| Run | Created to last required test job | Outcome |
+|---|---:|---|
+| [37095728769](https://github.com/malcyon/wish/actions/runs/37095728769) | 4:41 (2026-10-03 04:11:48–04:16:29Z) | One Windows shard failed the snapshot-history check; the other seven shards, route, generated check and lint passed. |
+| [37096156711](https://github.com/malcyon/wish/actions/runs/37096156711) | 4:37 (2026-10-03 04:19:29–04:24:06Z) | One Windows shard again failed snapshot history; the other seven shards and required gates passed. |
+
+Neither run is a successful performance sample. In the first, Windows wrote
+the Git objects `alternates` path with CRLF, which Git interpreted as part of
+the path. Writing those bytes explicitly with LF fixed that case. The next run
+found that Windows `core.autocrlf` changed `git archive` output from the staged
+canonical bytes. Snapshot extraction now disables newline conversion for the
+archive, and a local regression test enables `core.autocrlf` while checking
+that the extracted tree matches the staged Git tree. The final performance
+comparison counts only full-code runs that pass every required job. These two
+failed attempts do not count toward it, and neither establishes the target.
+
+The later snapshot `b3fb5340ec9744ad7dfa7f9e6999568a9ec60af1` also failed a
+`test_toolreadmes.py` check on Ubuntu shard 3 and Windows shard 4: the generated
+heading was `# Plane` while the check expected `# plane`. Commit
+`3e5645468e3fc75267b0542e057721b0a5968d25` makes the heading comparison
+case-insensitive and updates two stale Plane README purpose lines. It changes
+no test IDs. The corrected commit then passed full CI in the first two same-SHA
+attempts below.
+
+### First exact-green four-shard run
+
+After a push, the first exact-green four-shard run completed all required
+testing in 5:10. Run [37096677103](https://github.com/malcyon/wish/actions/runs/37096677103)
+tested SHA `cb5a8fff4af03ffcecbfbb61e4af38266da110e0`; lint passed separately in
+[run 37096677164](https://github.com/malcyon/wish/actions/runs/37096677164).
+The test workflow started at 04:28:49Z and its last required job finished at
+04:33:59Z on 2026-10-03. The route job took 5 seconds and generated validation
+took 66 seconds. Route classification finished before the shard jobs started;
+generated validation overlapped with the shards.
+
+| Platform and shard | Test IDs | Passed | Skipped | Job span | Pytest step | Wrapper |
+|---|---:|---:|---:|---:|---:|---:|
+| Ubuntu, Python 3.12, 1/4 | 5,576 | 4,887 | 689 | 151 s | 115 s | 111.46 s |
+| Ubuntu, Python 3.12, 2/4 | 5,206 | 4,550 | 656 | 100 s | 72 s | 69.64 s |
+| Ubuntu, Python 3.12, 3/4 | 4,193 | 3,519 | 674 | 196 s | 160 s | 155.18 s |
+| Ubuntu, Python 3.12, 4/4 | 6,096 | 5,132 | 964 | 180 s | 142 s | 138.72 s |
+| Windows, Python 3.13, 1/4 | 5,598 | 4,876 | 722 | 239 s | 176 s | 170.89 s |
+| Windows, Python 3.13, 2/4 | 4,293 | 3,593 | 700 | 244 s | 175 s | 169.12 s |
+| Windows, Python 3.13, 3/4 | 5,778 | 4,713 | 1,065 | 295 s | 219 s | 213.53 s |
+| Windows, Python 3.13, 4/4 | 5,402 | 4,642 | 760 | 256 s | 192 s | 186.31 s |
+
+Every shard passed with no JUnit failures or errors. Each platform collected
+21,071 tests: 18,088 passed and 2,983 skipped on Ubuntu; 17,824 passed and
+3,247 skipped on Windows. Those skip totals match the earlier two-shard run;
+the Windows total includes eight `tests/plane/test_migrate.py` cases requiring
+POSIX ownership and private file modes. Worker collection times ranged from
+9.76 to 22.87 seconds.
+
+The required test-workflow jobs used 1,732 seconds in aggregate: 5 for route,
+66 for generated validation and 1,661 across the eight shard jobs. The separate
+lint run took 10 seconds from job start to completion. Queue-inclusive time is
+workflow creation through the last required test job, so the slowest Windows
+shard set the 5:10 endpoint: its job span was 4:55 and its pytest step 3:39.
+
+The four shard wrappers sampled 1,424.41 CPU seconds on Ubuntu and 2,113.75 on
+Windows. The highest sampled per-shard process-tree RSS was 2,054,004,736 bytes
+on Ubuntu and 2,049,232,896 bytes on Windows. CPU is a sampled lower bound;
+one-second RSS sampling misses peaks and counts shared pages more than once.
+These are per-job peaks, not simultaneous platform totals, and do not establish
+lower aggregate memory use.
+
+The earlier two-shard successful run took 9:38 and used 1,770 seconds (29:30)
+of required test-workflow job time. Every one of its four shard jobs logged a
+setup-python pip cache hit and successful restore. All eight shard jobs in
+`cb5a8fff4af03ffcecbfbb61e4af38266da110e0` logged the same cache hit and
+restore; no misses appeared in either run. This establishes warm pip caches
+for those jobs, not a general cache condition for future runs. This four-shard
+run took 5:10 and used 1,732 seconds (28:52); the wall wait fell 4:28 and
+aggregate job time fell 38 seconds. Its added test IDs, different shard count
+and early validation overlap prevent attributing those differences to one
+change. The original goal was every routine run under five minutes and a
+three-run median at or below 4:49. At that point, the first green run missed
+the per-run limit by ten seconds and no median was established. Donald accepted
+that result and chose to keep four shards; no six-shard trial is planned.
+
+After this successful run, shard weights were refreshed from 492 measured test
+files per platform in `9d99a7691748f091d86e889c0a757c90e7758bd5`, using run
+37096677103 and its exact SHA above. Under the old plan, summed main-report
+file durations by shard were 367.937, 223.892, 495.512 and 450.763 seconds on Ubuntu, and
+572.993, 567.026, 741.164 and 606.029 seconds on Windows. The updated plan
+estimates 384.526 seconds per Ubuntu shard and 621.803 per Windows shard.
+These are sums of measured file costs used for assignment, not elapsed-time
+predictions. Main reports already include worker file costs; the worker values
+must not be added again. The profile artifacts identify the workflow attempt,
+run and SHA, and the imported weight records retain their source-run provenance.
+
+### Repeat runs on the corrected inventory
+
+The corrected commit `3e5645468e3fc75267b0542e057721b0a5968d25` passed three
+full four-shard attempts with 21,018 test IDs on each platform. All attempts
+covered every shard, route and generated validation; the separate lint run
+[37100321628](https://github.com/malcyon/wish/actions/runs/37100321628) passed
+for the same SHA. The first attempt used workflow creation as its clock start.
+For reruns, the recorded request time immediately before `gh run rerun` is the
+start; API `created_at` remains the original attempt's time, while
+`run_started_at` leaves out queue time. These elapsed values include time
+waiting for runner allocation.
+
+| Test run attempt | Clock start | Last required test job | Elapsed | Required job time, excluding lint |
+|---|---|---|---:|---:|
+| [37100321668, attempt 1](https://github.com/malcyon/wish/actions/runs/37100321668/attempts/1) | Created 05:35:38Z | 05:40:03Z | 265 s (4:25) | 1,741 s (29:01) |
+| [37100321668, attempt 2](https://github.com/malcyon/wish/actions/runs/37100321668/attempts/2) | Requested 05:41:59.634Z | 05:46:49Z | 289.366 s (4:49.366) | 1,723 s (28:43) |
+| [37100321668, attempt 3](https://github.com/malcyon/wish/actions/runs/37100321668/attempts/3) | Requested 05:47:36.077Z | 05:52:17Z | 280.923 s (4:40.923) | 1,695 s (28:15) |
+
+All three attempts passed with no JUnit failures or errors. Each platform
+selected 21,018 IDs per attempt: Ubuntu had 18,035 passed and 2,983 skipped;
+Windows had 17,813 passed and 3,205 skipped. The Windows skip total is 42
+lower than the preceding 21,071-ID run because the retired Plane migration and
+locking tests no longer run. Attempt 1's route and generated jobs took 6 and
+56 seconds; attempt 2's took 7 and 45 seconds; attempt 3's took 6 and 59
+seconds. The shard jobs account for 1,679, 1,671 and 1,630 seconds. Lint is
+separate; its job span was 10 seconds.
+
+| Platform and shard | Attempt 1 job / pytest / wrapper (s) | Attempt 2 job / pytest / wrapper (s) | Attempt 3 job / pytest / wrapper (s) |
+|---|---:|---:|---:|
+| Ubuntu, Python 3.12, 1/4 | 187 / 157 / 152.71 | 114 / 81 / 78.37 | 182 / 143 / 137.72 |
+| Ubuntu, Python 3.12, 2/4 | 173 / 139 / 133.44 | 149 / 110 / 106.92 | 123 / 88 / 85.62 |
+| Ubuntu, Python 3.12, 3/4 | 196 / 158 / 152.49 | 198 / 168 / 163.78 | 136 / 103 / 100.83 |
+| Ubuntu, Python 3.12, 4/4 | 206 / 167 / 162.42 | 209 / 167 / 161.88 | 215 / 172 / 167.27 |
+| Windows, Python 3.13, 1/4 | 186 / 133 / 128.70 | 274 / 193 / 187.26 | 260 / 199 / 193.58 |
+| Windows, Python 3.13, 2/4 | 251 / 193 / 188.12 | 260 / 193 / 187.81 | 223 / 157 / 151.98 |
+| Windows, Python 3.13, 3/4 | 250 / 181 / 175.10 | 242 / 183 / 177.22 | 223 / 151 / 145.43 |
+| Windows, Python 3.13, 4/4 | 230 / 173 / 168.00 | 225 / 164 / 159.50 | 268 / 205 / 198.59 |
+
+Each triplet gives the job span, pytest step and wrapper wall time. Platform
+wrapper totals were 601.059 seconds on Ubuntu and 659.923 on Windows in
+attempt 1; 510.945 and 711.786 in attempt 2; and 491.434 and 689.576 in attempt
+3. Sampled CPU lower bounds were 1,922.83 and 1,873.938 seconds in attempt 1,
+1,539.85 and 2,070.922 in attempt 2, and 1,521.75 and 1,756.984 in attempt 3.
+Across the three attempts, the largest sampled per-shard process-tree RSS was
+2,113,519,616 bytes on Ubuntu and 2,120,585,216 on Windows. The CPU sums were
+3,796.768, 3,610.772 and 3,278.734 seconds, compared with the earlier
+two-shard run's 4,557-second sampled lower bound. These are independent
+per-job samples, not simultaneous platform totals; CPU is a sampled lower bound
+and RSS sampling can miss peaks and counts shared pages repeatedly.
+
+Worker collection reports ranged from 10.10 to 24.25 seconds in attempt 1,
+8.04 to 24.63 seconds in attempt 2, and 10.50 to 25.48 seconds in attempt 3.
+The median elapsed time was 280.923 seconds (4:40.923), compared with the
+baseline's 578 seconds (9:38), a 51.4% reduction. All three attempts finished
+under five minutes, and the median is under the 4:49 target. This meets both
+timing goals for these three exact-SHA samples. It does not guarantee future
+runs will meet them: runner queues and each attempt's route, generated checks
+and environment setup add time before pytest finishes.
+
+The earlier two-shard run used four test jobs with four workers each; the
+current routine matrix uses eight test jobs with four workers each. The
+successful timings come with more concurrent runners and repeated setup across
+those jobs. Aggregate test-job time fell from 1,770 seconds in the baseline to
+1,695–1,741 seconds across the three runs; these job sums do not include lint.
