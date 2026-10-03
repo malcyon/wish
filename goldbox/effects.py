@@ -492,7 +492,7 @@ _FIGHT_ONLY = ("no rule yet, and none is needed: {writer}, only in a fight. "
                "The end-of-fight sweep {sweep} removes it from every "
                "combatant with a nonzero status before the fight's only exit "
                "{exit}, so the C64 never saves one")
-_CURSE_SWEEP = ("COMBAT `$124F` (list `$1273`), run from COMBAT2 `$F96A`")
+_CURSE_SWEEP = "COMBAT `$124F` (list `$1273`), run from COMBAT2 `$F96A`"
 _CURSE_EXIT = "COMBAT2 `$F976` (program 5)"
 _NO_C64_WRITER_128 = ("no rule yet, and none is needed: no C64 writer makes "
                       "an id-128 row. No combat row or immediate writes it, "

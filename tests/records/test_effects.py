@@ -3006,3 +3006,9 @@ def test_ids_no_c64_save_holds_say_where_they_are_written_and_removed(
     assert got.reason.startswith("no rule yet, and none is needed")
     for word in words:
         assert word in got.reason
+
+
+@pytest.mark.parametrize("title, eid", [(_C, 68), (_P, 32)])
+def test_an_id_outside_the_unsaved_set_keeps_the_generic_reason(title, eid):
+    got = effects.dos_record(title, effects.Effect(0, eid, 0, 1, 1), 0)
+    assert got == effects.Unconverted("no rule yet for this id in this title")

@@ -1465,8 +1465,9 @@ select ids 13, 58 and 144 for its writer. The two-entry id tables at Curse
 `COMBAT $2197` and Silver Blades `$26E8` select 27/137 and 27/107 for
 their generic writers, with duration 1. The triggers are the engulf routine
 `$1F13` (monster trait 57), the grab routine `$25A5` (trait 96) and
-Confusion's outcome. Every row they write is removed by the end-of-fight sweep
-(`$124F` in Curse, `$1242` in Silver Blades), so no save holds one. Whether a
+Confusion's outcome. The end-of-fight sweep (`$124F` in Curse, `$1242` in
+Silver Blades) removes Curse 13, 58, 137 and 144, and the engulfer's 139 row
+with 13, so no save holds one of them. Whether a
 monster carrying trait 57 or 96 meets the party was not traced to a monster
 record.
 
