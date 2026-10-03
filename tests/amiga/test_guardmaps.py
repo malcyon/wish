@@ -148,6 +148,23 @@ def test_committed_maps_cover_guarded_routes():
     assert required <= spec['guards'].keys()
 
 
+def test_silver_blades_map_guards_line_one_items_and_join_steps_and_their_messages():
+    from tools.amiga import route_camp, route_silver_blades
+
+    spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, 'ssb')
+    steps = route_camp.steps_for(('items 1', 'join 1 2', 'join 1 1'), 'ssb')
+    states = {state for _, state, _ in steps}
+    states |= {route_camp.joined_after(state) for state in states if route_camp.is_join(state)}
+    assert {'camp_sheet_items', 'camp_items', 'camp_items_row2', 'camp_join',
+            'camp_joined'} <= states
+    assert states <= spec['guards'].keys()
+    assert {*route_camp.JOIN_MESSAGES, route_silver_blades.LOAD_MESSAGE} <= spec['guards'].keys()
+    # The list states share the list header with the party menu's list, so each lists the others.
+    lists = {'items', 'camp_items', 'camp_items_row2', 'camp_join', 'camp_joined'}
+    for state in lists:
+        assert lists - {state} <= set(spec['guards'][state]['also'])
+
+
 def _interstitial_screens(title):
     from tools.amiga import route_silver_blades
     from tools.amiga.route_curse import CURSE
