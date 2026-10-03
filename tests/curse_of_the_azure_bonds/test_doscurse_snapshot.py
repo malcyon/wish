@@ -62,7 +62,7 @@ def test_snapshot_and_restore_pass_the_name(tmp_path, monkeypatch):
     assert s.calls == [("snapshot", "wm"), ("restore", "wm")]
     assert s.settled == 1
     log = _log(tmp_path)
-    assert "snapshot wm -> /snapshots/wm.sav" in log
+    assert f"snapshot wm -> {pathlib.Path('/snapshots') / 'wm.sav'}" in log
     assert "restored wm" in log
     assert "no SAVE file changed since the snapshot" in log
 

@@ -1,4 +1,6 @@
 """The Silver Blades resave walk takes its step from a snapshot and retries."""
+import pathlib
+
 import pytest
 
 from tools.secret_of_the_silver_blades import ssbresavewalk
@@ -102,7 +104,7 @@ class _Kbd:
         self.shots = []
 
     def screenshot(self, path, **kw):
-        self.shots.append(path.rsplit("/", 1)[-1])
+        self.shots.append(pathlib.Path(path).name)
         return True
 
 
