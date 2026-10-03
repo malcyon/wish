@@ -6,6 +6,9 @@ Scripts that run and check the test suite: the on-request whole-suite diagnostic
 |---|---|
 | `ci_measure.py` | Runs pytest with timing artifacts and one-second process-tree RSS/CPU sampling; requires the optional `psutil` package and preserves the automatic worker count. |
 | `ci_profile.py` | Opt-in pytest plugin recording collection time, selected workers and per-file setup, call and teardown durations in separate worker reports. |
+| `ci_route.py` | Routes verified docs-only pushes to narrow validation and sends uncertain or other events through full CI. |
+| `ci_shard.py` | Plans weighted, indivisible test-file shards while keeping transitive xdist groups together. |
+| `ci_weights.json` | Generated per-platform test-file weights and provenance from successful CI profiles, used by routine shards. |
 | `conftestflake_analyze.py` | Summarises the logs `conftestflake_probe.py` writes: merges every worker's CREATE and DELETE events for the two probe files `tests/suite/test_conftest_state_guard.py` writes and removes, and says whether and for how long their lifetimes overlapped. |
 | `conftestflake_force_group.py` | Diagnostic pytest plugin that applies `xdist_group` to both tests in `tests/suite/test_conftest_state_guard.py` at collection time, without editing that file, to check whether grouping puts them on one `-n auto` worker. Runs `tryfirst` so it precedes xdist's own hook. |
 | `conftestflake_probe.py` | Diagnostic pytest plugin that logs the timestamp and worker id of every appearance and disappearance of the throwaway probe files `tests/suite/test_conftest_state_guard.py` writes, without changing that file. `conftestflake_analyze.py` reads its log. |

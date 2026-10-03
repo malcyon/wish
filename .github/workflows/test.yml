@@ -24,13 +24,14 @@ concurrency:
 
 jobs:
   pytest:
-    name: pytest (${{ matrix.os }}, py${{ matrix.python }})
+    name: pytest (${{ matrix.os }}, py${{ matrix.python }}${{ matrix.shard_label }})
     needs: generated
+    if: needs.generated.outputs.route == 'full'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON((inputs.full-matrix || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '[{"os":"ubuntu-latest","python":"3.12"},{"os":"ubuntu-latest","python":"3.13"},{"os":"windows-latest","python":"3.12"},{"os":"windows-latest","python":"3.13"}]' || '[{"os":"ubuntu-latest","python":"3.12"},{"os":"windows-latest","python":"3.13"}]') }}
+        include: ${{ fromJSON((inputs.full-matrix || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '[{"os":"ubuntu-latest","python":"3.12"},{"os":"ubuntu-latest","python":"3.13"},{"os":"windows-latest","python":"3.12"},{"os":"windows-latest","python":"3.13"}]' || '[{"os":"ubuntu-latest","python":"3.12","sharded":true,"shard_index":0,"shard_label":", shard 1/2","artifact_suffix":"-shard-1"},{"os":"ubuntu-latest","python":"3.12","sharded":true,"shard_index":1,"shard_label":", shard 2/2","artifact_suffix":"-shard-2"},{"os":"windows-latest","python":"3.13","sharded":true,"shard_index":0,"shard_label":", shard 1/2","artifact_suffix":"-shard-1"},{"os":"windows-latest","python":"3.13","sharded":true,"shard_index":1,"shard_label":", shard 2/2","artifact_suffix":"-shard-2"}]') }}
 
     steps:
       - uses: actions/checkout@v5
@@ -61,14 +62,15 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: >-
-          python tools/suite/ci_measure.py --output "${{ runner.temp }}/ci-profile" --
+          python tools/suite/ci_measure.py --output "${{ runner.temp }}/ci-profile"
+          ${{ matrix.sharded && format('--shard-index {0} --weights tools/suite/ci_weights.json --weight-key {1}-py{2}', matrix.shard_index, matrix.os, matrix.python) || '' }} --
           -q ${{ !(inputs.full-matrix || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '--ignore=tests/generate/test_generated.py' || '' }}
 
       - name: Test timings and resource measurements
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ci-profile-${{ matrix.os }}-py${{ matrix.python }}
+          name: ci-profile-${{ matrix.os }}-py${{ matrix.python }}${{ matrix.artifact_suffix }}
           path: ${{ runner.temp }}/ci-profile/
           retention-days: 14
           if-no-files-found: error
@@ -78,6 +80,8 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     name: generated files match their sources
     runs-on: ubuntu-latest
+    outputs:
+      route: ${{ steps.route.outputs.route }}
 
     steps:
       - uses: actions/checkout@v5
@@ -88,6 +92,15 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+
+      - name: Classify the complete push
+        id: route
+        shell: bash
+        run: |
+          python tools/suite/ci_route.py ${{ (inputs.full-matrix || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '--force-full' || '' }} > "$RUNNER_TEMP/ci-route.json"
+          cat "$RUNNER_TEMP/ci-route.json"
+          route=$(python -c 'import json, os; print(json.load(open(os.path.join(os.environ["RUNNER_TEMP"], "ci-route.json")))["route"])')
+          echo "route=$route" >> "$GITHUB_OUTPUT"
 
       - name: Qt's system libraries
         run: |
@@ -103,3 +116,28 @@ jobs:
         run: >-
           pytest -q -n0 tests/suite/test_repository_contents.py
           tests/suite/test_toolpaths.py tests/generate/test_generated.py
+
+      - name: Documentation references and recorded boot timing
+        if: steps.route.outputs.route == 'docs'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: >-
+          pytest -q -n0 tests/suite/test_toolreadmes.py
+          tests/generate/test_genimports.py
+          tests/c64/test_session_boot.py::test_the_play_game_wait_covers_the_measured_stock_boot_twice_over
+
+  documentation:
+    name: documentation-only validation
+    needs: generated
+    if: needs.generated.outputs.route == 'docs'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Verify the docs route at this commit
+        run: python tools/suite/ci_route.py --require-docs

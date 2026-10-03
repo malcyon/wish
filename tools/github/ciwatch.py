@@ -13,13 +13,18 @@ import time
 from urllib.parse import urlencode
 
 DEFAULT_REPO = "malcyon/wish"
+GENERATED_JOB = "generated files match their sources"
+# A code route is complete only after every routine shard succeeds.
+CODE_JOBS = (
+    "pytest (ubuntu-latest, py3.12, shard 1/2)",
+    "pytest (ubuntu-latest, py3.12, shard 2/2)",
+    "pytest (windows-latest, py3.13, shard 1/2)",
+    "pytest (windows-latest, py3.13, shard 2/2)",
+)
+DOCS_JOB = "documentation-only validation"
 WORKFLOWS = {
     ".github/workflows/lint.yml": ("ruff",),
-    ".github/workflows/test.yml": (
-        "generated files match their sources",
-        "pytest (ubuntu-latest, py3.12)",
-        "pytest (windows-latest, py3.13)",
-    ),
+    ".github/workflows/test.yml": (GENERATED_JOB, *CODE_JOBS, DOCS_JOB),
 }
 PAGE_SIZE = 100
 MAX_PAGES = 100
@@ -80,6 +85,28 @@ def _summary(record: dict) -> dict:
             ("id", "html_url", "status", "conclusion")}
 
 
+def _job_state(job: dict | None) -> str:
+    """Classify one job without treating an inactive route as a failure."""
+    if job is None:
+        return "missing"
+    status, conclusion = job.get("status"), job.get("conclusion")
+    if status in ACTIVE_STATUSES:
+        return "pending"
+    if status != "completed":
+        return "failure"
+    if conclusion == "success":
+        return "success"
+    if conclusion == "skipped":
+        return "skipped"
+    if conclusion in (None, ""):
+        return "pending"
+    return "failure"
+
+
+def _is_pytest_job(name) -> bool:
+    return isinstance(name, str) and name.startswith("pytest")
+
+
 def inspect(sha: str, repo: str, transport, deadline: float,
             clock=time.monotonic) -> dict:
     """Return one complete snapshot; no missing or stale result can pass."""
@@ -128,7 +155,9 @@ def inspect(sha: str, repo: str, transport, deadline: float,
         matched = {}
         for job in jobs:
             name = job.get("name")
-            if name not in expected:
+            pytest_route_job = (path == ".github/workflows/test.yml" and
+                                _is_pytest_job(name))
+            if name not in expected and not pytest_route_job:
                 continue
             if name in matched:
                 raise CIWatchError(f"Duplicate latest job: {name}")
@@ -136,24 +165,73 @@ def inspect(sha: str, repo: str, transport, deadline: float,
                 raise CIWatchError(f"Required job has no numeric ID: {name}")
             if job.get("run_id") != run["id"]:
                 raise CIWatchError(f"Required job belongs to another run: {name}")
+            job_attempt = job.get("run_attempt")
+            if job_attempt is not None and job_attempt != run["run_attempt"]:
+                raise CIWatchError(f"Required job belongs to a stale run attempt: {name}")
             matched[name] = job
             entry["jobs"][name] = _summary(job)
-            if (job.get("status") == "completed" and
-                    job.get("conclusion") not in (None, "", "success")):
+            if _job_state(job) == "failure":
                 failed = True
-            elif job.get("status") not in ACTIVE_STATUSES | {"completed"}:
+
+        if path == ".github/workflows/test.yml":
+            generated_state = _job_state(matched.get(GENERATED_JOB))
+            code_states = [_job_state(matched.get(name)) for name in CODE_JOBS]
+            docs_state = _job_state(matched.get(DOCS_JOB))
+            pytest_jobs = {name: job for name, job in matched.items()
+                           if _is_pytest_job(name)}
+            extra_pytest_names = set(pytest_jobs) - set(CODE_JOBS)
+            extra_pytest_states = {
+                name: _job_state(job) for name, job in pytest_jobs.items()
+                if name not in CODE_JOBS
+            }
+
+            code_route = (generated_state == "success" and
+                          all(state == "success" for state in code_states) and
+                          docs_state == "skipped" and
+                          not extra_pytest_names)
+            docs_route = (generated_state == "success" and
+                          docs_state == "success" and
+                          all(_job_state(job) == "skipped"
+                              for job in pytest_jobs.values()))
+            if (generated_state == "success" and docs_state == "success" and
+                    any(_job_state(job) != "skipped"
+                        for job in pytest_jobs.values())):
                 failed = True
-        missing = [name for name in expected if name not in matched]
-        if missing:
-            report["missing_jobs"][path] = missing
+            if code_route == docs_route:
+                # Neither route has enough evidence yet, or terminal jobs
+                # describe a contradictory/incomplete route.
+                route_states = [generated_state, *code_states, docs_state,
+                                *extra_pytest_states.values()]
+                if "failure" in route_states:
+                    failed = True
+                elif all(state in {"success", "skipped"} for state in route_states):
+                    failed = True
+            elif code_route or docs_route:
+                entry["accepted_route"] = "code" if code_route else "docs"
+            missing = [name for name in expected if name not in matched]
+            if entry.get("accepted_route") == "docs":
+                missing = [name for name in missing if name not in CODE_JOBS]
+            if missing:
+                report["missing_jobs"][path] = missing
+        else:
+            missing = [name for name in expected if name not in matched]
+            if missing:
+                report["missing_jobs"][path] = missing
+            if any(_job_state(matched.get(name)) == "skipped" for name in expected):
+                failed = True
 
     if failed:
         report["verdict"] = "failure"
     elif not report["missing_workflows"] and not report["missing_jobs"] and all(
             entry["status"] == "completed" and entry["conclusion"] == "success"
-            and all(job["status"] == "completed" and job["conclusion"] == "success"
-                    for job in entry["jobs"].values())
-            for entry in report["workflows"].values()):
+            and all(_job_state(job) == "success" for job in entry["jobs"].values()
+                    if path == ".github/workflows/lint.yml")
+            and (path != ".github/workflows/test.yml" or
+                 all(_job_state(job) in {"success", "skipped"}
+                     for job in entry["jobs"].values()))
+            and (path != ".github/workflows/test.yml" or
+                 entry.get("accepted_route") in {"code", "docs"})
+            for path, entry in report["workflows"].items()):
         report["verdict"] = "success"
     return report
 

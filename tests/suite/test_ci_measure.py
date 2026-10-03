@@ -1,5 +1,6 @@
 """Check opt-in profiling preserves pytest outcomes and accounts for worker costs."""
 
+import argparse
 import json
 import os
 import subprocess
@@ -221,3 +222,134 @@ def test_cancellation_bounds_wait_even_when_process_remains_alive(tmp_path, monk
     report = json.loads((tmp_path / "resources.json").read_text())
     assert report["exit_code"] == 128 + signum
     assert report["cleanup_complete"] is False
+
+
+def test_wrapper_plans_shard_once_and_records_selected_weight_provenance(tmp_path, monkeypatch):
+    from tools.suite import ci_shard
+
+    files = ("tests/test_a.py", "tests/test_b.py")
+    weights = {files[0]: 3, files[1]: 2}
+    sha = "abcde12345" * 4
+    weight_path = tmp_path / "weights.json"
+    weight_path.write_text(json.dumps({
+        "version": 1, "platforms": {"linux": {
+            "weights": weights, "source_sha": sha, "run_id": 123,
+        }},
+    }))
+    calls = []
+
+    def plan(root, inventory, measured):
+        calls.append((inventory, measured))
+        return {"version": 1, "files": list(files), "shards": [[files[0]], [files[1]]],
+                "seconds": [3, 2], "groups": {}}
+
+    monkeypatch.setattr(ci_shard, "inventory", lambda root: (*files, "tests/generate/test_generated.py"))
+    monkeypatch.setattr(ci_shard, "make_plan", plan)
+    seen = {}
+
+    def start(command, env):
+        seen["command"] = command
+        return SimpleNamespace(pid=123, returncode=0, poll=lambda: 0)
+
+    monkeypatch.setattr(ci_measure.subprocess, "Popen", start)
+    monkeypatch.setitem(sys.modules, "psutil", SimpleNamespace(
+        Process=lambda pid: object(), cpu_count=lambda logical: 4,
+    ))
+    output = tmp_path / "output"
+    assert ci_measure.main([
+        "--output", str(output), "--shard-index", "1", "--weights", str(weight_path),
+        "--weight-key", "linux", "--", "-n", "2",
+    ]) == 0
+    assert calls == [(files, weights)]
+    command = seen["command"]
+    assert command[command.index("--ci-shard-index") + 1] == "1"
+    path = Path(next(option.partition("=")[2] for option in command
+                     if option.startswith("--ci-shard-plan=")))
+    assert path.is_absolute()
+    assert json.loads(path.read_text())["shards"] == [[files[0]], [files[1]]]
+    report = json.loads((output / "resources.json").read_text())
+    assert report["shard"]["source_sha"] == sha
+    assert report["shard"]["run_id"] == 123
+    assert report["shard"]["selected_files"] == [files[1]]
+    assert report["shard"]["estimated_seconds"] == 2
+    assert report["shard"]["unmeasured_files"] == []
+    assert report["shard"]["excluded_files"] == ["tests/generate/test_generated.py"]
+    assert "--ignore=tests/generate/test_generated.py" in command
+
+
+def test_external_shard_plan_keeps_pytest_testpaths(tmp_path, monkeypatch):
+    from tools.suite import ci_shard
+
+    project = tmp_path / "project"
+    (project / "tests").mkdir(parents=True)
+    (project / "livetests").mkdir()
+    (project / "pyproject.toml").write_text(
+        "[tool.pytest.ini_options]\ntestpaths = ['tests']\n", encoding="utf-8")
+    (project / "tests" / "test_selected.py").write_text("def test_selected(): pass\n")
+    (project / "tests" / "test_unselected.py").write_text("def test_unselected(): pass\n")
+    (project / "livetests" / "test_emulator.py").write_text(
+        "raise RuntimeError('livetests was imported')\n", encoding="utf-8")
+    weights = tmp_path / "weights.json"
+    weights.write_text(json.dumps({
+        "version": 1,
+        "platforms": {"linux": {
+            "weights": {"tests/test_selected.py": 1},
+            "source_sha": "a" * 40,
+            "run_id": 123,
+        }},
+    }), encoding="utf-8")
+    monkeypatch.setattr(ci_shard, "inventory", lambda root: (
+        "tests/test_selected.py", "tests/test_unselected.py"))
+    monkeypatch.setattr(ci_shard, "make_plan", lambda root, files, measured: {
+        "version": 1,
+        "files": ["tests/test_selected.py", "tests/test_unselected.py"],
+        "shards": [["tests/test_selected.py"], ["tests/test_unselected.py"]],
+        "seconds": [1, 1],
+        "groups": {},
+    })
+    args = SimpleNamespace(shard_index=0, weights=weights, weight_key="linux")
+    shard_options, _ = ci_measure.shard_arguments(
+        argparse.ArgumentParser(), args, tmp_path / "outside-output")
+    env = os.environ.copy()
+    repository = str(Path(__file__).resolve().parents[2])
+    env["PYTHONPATH"] = os.pathsep.join(filter(None, [repository, env.get("PYTHONPATH")]))
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", *shard_options, "--collect-only", "-q"],
+        cwd=project, env=env, capture_output=True, text=True, timeout=600)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "tests/test_selected.py" in result.stdout
+    assert "livetests/test_emulator.py" not in result.stdout
+
+
+@pytest.mark.parametrize("options", [
+    ["--shard-index", "0"], ["--weight-key", "linux"],
+    ["--weights", "missing.json"], ["--shard-index", "2"],
+])
+def test_incomplete_shard_options_stop_before_pytest(tmp_path, monkeypatch, options):
+    monkeypatch.setattr(ci_measure.subprocess, "Popen", lambda *a, **kw: pytest.fail("Started pytest"))
+    with pytest.raises(SystemExit) as stopped:
+        ci_measure.main(["--output", str(tmp_path), *options])
+    assert stopped.value.code == 2
+
+
+@pytest.mark.parametrize("change", [
+    {"version": 2}, {"platforms": []}, {"platforms": {}},
+    {"weights": []}, {"weights": {"tests/test_a.py": -1}},
+    {"weights": {"tests/test_a.py": float("nan")}},
+    {"source_sha": "abc"}, {"run_id": True}, {"run_id": 0},
+])
+def test_invalid_weight_data_stops_before_pytest(tmp_path, monkeypatch, change):
+    from tools.suite import ci_shard
+
+    selected = {"weights": {}, "source_sha": "a" * 40, "run_id": "123"}
+    data = {"version": 1, "platforms": {"linux": selected}}
+    for key, value in change.items():
+        (data if key in ("version", "platforms") else selected)[key] = value
+    weight_path = tmp_path / "weights.json"
+    weight_path.write_text(json.dumps(data))
+    monkeypatch.setattr(ci_shard, "inventory", lambda root: ())
+    monkeypatch.setattr(ci_measure.subprocess, "Popen", lambda *a, **kw: pytest.fail("Started pytest"))
+    with pytest.raises(SystemExit) as stopped:
+        ci_measure.main(["--output", str(tmp_path), "--shard-index", "0",
+                         "--weights", str(weight_path), "--weight-key", "linux"])
+    assert stopped.value.code == 2

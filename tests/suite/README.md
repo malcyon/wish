@@ -5,6 +5,8 @@ Tests for the suite's own tooling under `tools/suite/` and the guards that keep 
 | file | purpose |
 |---|---|
 | `test_ci_measure.py` | Checks profiling preserves worker selection, sampled accounting, test failures and per-file timing reports in serial and distributed runs. |
+| `test_ci_route.py` | Checks docs-only routing requires a verified ordinary push whose complete changed-path set is Markdown under `docs/`. |
+| `test_ci_shard.py` | Checks weighted shard planning preserves atomic files and transitive xdist groups, and assigns unseen files a median weight. |
 | `test_conftest_state_guard.py` | Checks that `tests/conftest.py`'s guard against a module rebinding `automap.state._data_dir` at import time fails a real child `pytest` run and leaves a monkeypatched rebind alone. |
 | `test_gamedata.py` | Checks that `tests/gamedata.py` finds Curse's disks through the registry alone, skips where there is no registry and fails where a machine's own registry cannot say where a title's disks are. |
 | `test_gc_freeze.py` | Checks that an imported test module is out of the per-test garbage collection while an object built during a test is still in it. |

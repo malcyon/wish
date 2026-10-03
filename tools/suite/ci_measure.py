@@ -92,14 +92,71 @@ def stop_child(psutil, child):
         return False
 
 
+def shard_arguments(parser, args, output):
+    """Validate measured weights and compute one plan before starting pytest."""
+    supplied = (args.shard_index is not None, args.weights is not None,
+                args.weight_key is not None)
+    if not any(supplied):
+        return [], None
+    if not all(supplied):
+        parser.error("--shard-index, --weights and --weight-key are required together")
+    if __package__ in (None, ""):
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from tools.suite import ci_shard
+
+    try:
+        data = json.loads(args.weights.read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or type(data.get("version")) is not int or data["version"] != 1:
+            raise ValueError("Unsupported weight file version")
+        platforms = data.get("platforms")
+        if not isinstance(platforms, dict) or args.weight_key not in platforms:
+            raise ValueError(f"Missing platform weights: {args.weight_key}")
+        selected = platforms[args.weight_key]
+        if not isinstance(selected, dict) or not isinstance(selected.get("weights"), dict):
+            raise ValueError("Platform weights must be a mapping")
+        sha = selected.get("source_sha")
+        run_id = selected.get("run_id")
+        if not isinstance(sha, str) or len(sha) != 40 or any(c not in "0123456789abcdefABCDEF" for c in sha):
+            raise ValueError("Weight source SHA must contain 40 hexadecimal digits")
+        if isinstance(run_id, bool) or not isinstance(run_id, (int, str)) or not str(run_id).isdigit() or int(run_id) <= 0:
+            raise ValueError("Invalid weight source run ID")
+        root = Path(__file__).resolve().parents[2]
+        excluded = "tests/generate/test_generated.py"
+        files = tuple(name for name in ci_shard.inventory(root) if name != excluded)
+        plan = ci_shard.make_plan(root, files, selected["weights"])
+    except (OSError, ValueError, TypeError, subprocess.CalledProcessError) as error:
+        parser.error(f"Invalid shard configuration: {error}")
+    output.mkdir(parents=True, exist_ok=True)
+    path = output / "shard-plan.json"
+    ci_shard.write_plan(path, plan)
+    metadata = {
+        "index": args.shard_index,
+        "weight_key": args.weight_key,
+        "weights_path": str(args.weights.resolve()),
+        "source_sha": sha,
+        "run_id": run_id,
+        "selected_files": plan["shards"][args.shard_index],
+        "unmeasured_files": sorted(set(files) - selected["weights"].keys()),
+        "excluded_files": [excluded],
+        "estimated_seconds": plan["seconds"][args.shard_index],
+        "plan_path": str(path),
+    }
+    return ["-p", "tools.suite.ci_shard", f"--ci-shard-plan={path}",
+            "--ci-shard-index", str(args.shard_index), f"--ignore={excluded}"], metadata
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--shard-index", type=int, choices=(0, 1))
+    parser.add_argument("--weights", type=Path)
+    parser.add_argument("--weight-key")
     parser.add_argument("pytest_args", nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
+    output = args.output.resolve()
+    shard_options, shard = shard_arguments(parser, args, output)
     import psutil
 
-    output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
     env.setdefault("PYTEST_XDIST_AUTO_NUM_WORKERS", str(automatic_workers()))
@@ -108,7 +165,7 @@ def main(argv=None):
     if pytest_args[:1] == ["--"]:
         pytest_args = pytest_args[1:]
     command = [sys.executable, "-m", "pytest", "-p", "tools.suite.ci_profile",
-               "--durations=50", f"--junitxml={output / 'junit.xml'}", *pytest_args]
+               "--durations=50", f"--junitxml={output / 'junit.xml'}", *shard_options, *pytest_args]
     started = time.perf_counter()
     interrupted = []
 
@@ -143,6 +200,7 @@ def main(argv=None):
             "command": command,
             "exit_code": exit_code,
             "cleanup_complete": cleanup_complete,
+            "shard": shard,
             "wall_seconds": time.perf_counter() - started,
             "logical_cpus": os.cpu_count(),
             "physical_cpus": psutil.cpu_count(logical=False),

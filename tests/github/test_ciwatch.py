@@ -33,7 +33,10 @@ class Transport:
             run(".github/workflows/test.yml", 20),
         ]
         self.jobs = jobs if jobs is not None else {
-            item["id"]: [job(name, item["id"], item["id"] * 10 + offset)
+            item["id"]: [job(
+                name, item["id"], item["id"] * 10 + offset,
+                status="completed",
+                conclusion="skipped" if name == ciwatch.DOCS_JOB else "success")
                          for offset, name in enumerate(
                              ciwatch.WORKFLOWS.get(item["path"], ())) ]
             for item in self.runs
@@ -74,9 +77,10 @@ def test_complete_exact_push_passes():
     assert report["missing_jobs"] == {}
     assert set(report["workflows"][".github/workflows/test.yml"]["jobs"]) == {
         "generated files match their sources",
-        "pytest (ubuntu-latest, py3.12)",
-        "pytest (windows-latest, py3.13)",
+        *ciwatch.CODE_JOBS,
+        ciwatch.DOCS_JOB,
     }
+    assert report["workflows"][".github/workflows/test.yml"]["accepted_route"] == "code"
     assert all("head_sha=" + SHA in endpoint for endpoint, _ in transport.calls
                if "/actions/runs?" in endpoint)
 
@@ -89,7 +93,7 @@ def test_missing_workflow_and_completed_missing_job_wait():
     report = check(transport)
     assert report["verdict"] == "pending"
     assert report["missing_jobs"][".github/workflows/test.yml"] == [
-        "pytest (windows-latest, py3.13)"]
+        ciwatch.DOCS_JOB]
 
 
 def test_wrong_sha_event_and_branch_cannot_satisfy_workflow():
@@ -134,6 +138,12 @@ def test_cancelled_and_skipped_conclusions_fail():
         assert check(transport)["verdict"] == "failure"
 
 
+def test_skipped_lint_job_cannot_pass():
+    transport = Transport()
+    transport.jobs[10][0]["conclusion"] = "skipped"
+    assert check(transport)["verdict"] == "failure"
+
+
 def test_empty_conclusions_wait_for_a_definitive_result():
     for conclusion in (None, ""):
         transport = Transport()
@@ -174,7 +184,7 @@ def test_missing_job_times_out_without_claiming_success():
                           clock=lambda: now[0], sleep=sleep)
     assert report["verdict"] == "timeout"
     assert report["missing_jobs"][".github/workflows/test.yml"] == [
-        "pytest (windows-latest, py3.13)"]
+        ciwatch.DOCS_JOB]
 
 
 def test_timeout_and_api_error_are_bounded():
@@ -203,7 +213,7 @@ def test_paginates_runs_and_jobs():
             run(".github/workflows/test.yml", 20)]
     transport = Transport(runs=runs, page_size=1)
     assert check(transport)["verdict"] == "success"
-    assert len(transport.calls) == 6
+    assert len(transport.calls) == 9
 
 
 def test_cli_rejects_short_sha_and_prints_compact_json(monkeypatch, capsys):
@@ -231,3 +241,122 @@ def test_gh_transport_uses_get_and_a_per_command_timeout(monkeypatch):
     assert captured["command"] == [
         "gh", "api", "--method", "GET", "/repos/malcyon/wish/actions/runs"]
     assert captured["kwargs"]["timeout"] == 12
+
+
+def test_documentation_route_requires_generated_and_docs_attestation():
+    transport = Transport()
+    for item in transport.jobs[20]:
+        if item["name"] in ciwatch.CODE_JOBS:
+            item["conclusion"] = "skipped"
+    docs = next(item for item in transport.jobs[20]
+                if item["name"] == ciwatch.DOCS_JOB)
+    docs["conclusion"] = "success"
+
+    report = check(transport)
+    assert report["verdict"] == "success"
+    assert report["workflows"][".github/workflows/test.yml"][
+        "accepted_route"] == "docs"
+
+    transport.jobs[20].remove(docs)
+    report = check(transport)
+    assert report["verdict"] != "success"
+    assert report["missing_jobs"][".github/workflows/test.yml"] == [
+        ciwatch.DOCS_JOB]
+
+
+def test_docs_route_accepts_unexpanded_or_absent_pytest_jobs():
+    transport = Transport()
+    generated = next(item for item in transport.jobs[20]
+                     if item["name"] == ciwatch.GENERATED_JOB)
+    docs = next(item for item in transport.jobs[20]
+                if item["name"] == ciwatch.DOCS_JOB)
+    transport.jobs[20] = [generated, docs]
+    docs["conclusion"] = "success"
+    report = check(transport)
+    assert report["verdict"] == "success"
+    assert report["missing_jobs"] == {}
+
+    transport.jobs[20] = [generated, docs, job(
+        "pytest (, py)", 20, 210, conclusion="skipped")]
+    report = check(transport)
+    assert report["verdict"] == "success"
+    assert report["missing_jobs"] == {}
+
+    transport.jobs[20] = [generated, docs, job(
+        "pytest", 20, 209, conclusion="skipped")]
+    report = check(transport)
+    assert report["verdict"] == "success"
+    assert report["missing_jobs"] == {}
+
+
+def test_docs_route_rejects_skipped_code_jobs_without_attestation():
+    transport = Transport()
+    for item in transport.jobs[20]:
+        if item["name"] in ciwatch.CODE_JOBS:
+            item["conclusion"] = "skipped"
+    docs = next(item for item in transport.jobs[20]
+                if item["name"] == ciwatch.DOCS_JOB)
+    docs["conclusion"] = "skipped"
+    assert check(transport)["verdict"] == "failure"
+
+
+def test_skipped_pytest_jobs_wait_for_a_successful_docs_attestation():
+    transport = Transport()
+    for item in transport.jobs[20]:
+        if item["name"] in ciwatch.CODE_JOBS:
+            item["conclusion"] = "skipped"
+    docs = next(item for item in transport.jobs[20]
+                if item["name"] == ciwatch.DOCS_JOB)
+    docs["status"] = "in_progress"
+    docs["conclusion"] = None
+    assert check(transport)["verdict"] == "pending"
+
+    docs["status"] = "completed"
+    docs["conclusion"] = "failure"
+    assert check(transport)["verdict"] == "failure"
+
+
+def test_active_code_and_docs_routes_are_contradictory():
+    transport = Transport()
+    docs = next(item for item in transport.jobs[20]
+                if item["name"] == ciwatch.DOCS_JOB)
+    docs["conclusion"] = "success"
+    assert check(transport)["verdict"] == "failure"
+
+
+def test_docs_attestation_rejects_active_or_non_skipped_pytest_jobs():
+    for status, conclusion in (("in_progress", None),
+                               ("completed", "success"),
+                               ("completed", "failure"),
+                               ("completed", "cancelled")):
+        transport = Transport()
+        generated = next(item for item in transport.jobs[20]
+                         if item["name"] == ciwatch.GENERATED_JOB)
+        docs = next(item for item in transport.jobs[20]
+                    if item["name"] == ciwatch.DOCS_JOB)
+        docs["conclusion"] = "success"
+        transport.jobs[20] = [generated, docs, job(
+            "pytest (, py)", 20, 209, status=status, conclusion=conclusion)]
+        assert check(transport)["verdict"] == "failure"
+
+
+def test_missing_or_skipped_required_code_jobs_cannot_pass():
+    transport = Transport()
+    transport.jobs[20] = [item for item in transport.jobs[20]
+                          if item["name"] != ciwatch.CODE_JOBS[0]]
+    assert check(transport)["verdict"] != "success"
+
+    transport = Transport()
+    shard = next(item for item in transport.jobs[20]
+                 if item["name"] == ciwatch.CODE_JOBS[0])
+    shard["conclusion"] = "skipped"
+    assert check(transport)["verdict"] == "failure"
+
+
+def test_job_from_an_older_attempt_is_rejected():
+    transport = Transport()
+    transport.runs[1]["run_attempt"] = 2
+    transport.jobs[20][0]["run_attempt"] = 1
+    report = ciwatch.watch(SHA, transport=transport)
+    assert report["verdict"] == "error"
+    assert "stale run attempt" in report["error"]

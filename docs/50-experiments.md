@@ -7958,12 +7958,54 @@ peak memory. First progress appeared roughly a minute after pytest started;
 that is not a collection measurement because buffering and worker startup
 also contribute.
 
-The implemented first stage records `--durations=50` and per-job JUnit XML,
-including skipped cases. Sum durations
-by test file and compare worker completion times. Measure collection, process
-count and peak memory separately before changing worker counts. Use bounded
-runs of slow files for comparisons, rather than repeated full suites on the
-shared development machine.
+The first stage added `--durations=50` and per-job JUnit XML, including skipped
+cases. The successful reference profile below adds collection, per-file costs,
+worker count, sampled CPU and process-tree RSS so shard balance and resource
+limits can be assessed without repeating full suites on the shared development
+machine.
+
+### Successful unsharded reference profile
+
+The successful unsharded reference is
+[Run 37084069219](https://github.com/malcyon/wish/actions/runs/37084069219),
+commit `ce24228cc9cbff3edb7b80fc2a8c97c7d99aa0c3`. GitHub reports 16:16 from
+run creation at 00:55:35Z to completion at 01:11:51Z. The two test jobs used
+28:20 combined elapsed time; adding the 53-second generated prerequisite gives
+29:13 across required test-workflow jobs, excluding lint. The profile reports:
+
+| Platform | Job elapsed | Pytest wall | Workers and collection | Main-only aggregate file durations | Sampled CPU | Peak summed process-tree RSS |
+|---|---:|---:|---|---:|---:|---:|
+| Ubuntu, Python 3.12 | 13:03 | 749.8 s | 4; mean 47.4 s, range 47.36–47.51 s | 2,739.2 s | 2,544.15 s | 4,670,767,104 bytes (4.35 GiB) |
+| Windows, Python 3.13 | 15:17 | 864.2 s | 4; mean 44.9 s, range 44.64–45.15 s | 3,186.5 s | 2,543.796875 s | 3,321,651,200 bytes (3.09 GiB) |
+
+Each platform collected 20,894 tests across 488 profiled files. The largest
+file costs were `tests/records/test_effects.py` (233–253 s),
+`tests/suite/test_staging_sweep.py` (183–215 s) and
+`tests/suite/test_toolshadowing.py` (120–133 s). The `tests/records/` directory
+total was 612 s on Ubuntu and 581 s on Windows; total suite durations were
+465 s and 552 s respectively. Per-file costs come from each main process's
+aggregate report, which already includes worker reports; adding worker values
+again would double count them.
+
+Per-platform shard weights come from these successful profiles. Each file is
+atomic, transitive `xdist_group` members stay together, and new files receive
+the median positive measured weight.
+
+The per-platform aggregate file durations are 2,739.2 s and 3,186.5 s. Each
+shard gets half of those totals and four workers, giving idealized shares of
+342.4 s and 398.3 s per shard, excluding collection, setup, scheduling and
+imbalance. Those shares are not elapsed-time predictions: even half the
+aggregate totals, 1,369.6 s and 1,593.2 s, are above the unsharded pytest wall
+times of 749.8 s and 864.2 s. The profile justifies a bounded sharding trial
+because it exposes substantial parallel work; it does not establish a wall-time
+gain or a decrease in total runner work. The next successful sharded run must
+supply the before-and-after measurement.
+
+Sampled CPU is a lower bound and can miss short-lived processes. RSS sums
+process-tree readings, counts shared pages repeatedly and can miss peaks
+between one-second samples; it is not unique machine memory. The wrapper's own
+resources are excluded. These CPU samples and RSS peaks do not establish
+resource savings.
 
 ### Repeated work found in the tests
 
@@ -8021,27 +8063,61 @@ Test count alone does not establish unnecessary coverage. Review expensive famil
 distinct player outcomes, boundaries and demonstrated regressions before
 reducing parameter combinations or replacing integration checks.
 
-### Approved first stage
+### Implemented workflow and first-stage changes
 
-The first implementation keeps Ubuntu/Python 3.12 and Windows/Python 3.13 on
-routine pushes and fork pull requests, with all four combinations weekly,
-manually and for releases. A prerequisite repository-policy/generated-files
-job checks repository contents, tool-path citations, forms and the documents
-from `gendocs.py`, `genmemory.py` and `genlevels.py`. Routine matrix jobs omit
-the generated-test module after that gate passes; full-matrix runs retain it.
-Superseded feature-branch runs can be cancelled, while main and called release
-runs are preserved. Same-repository pull requests rely on push validation;
-tag pushes no longer start an extra standalone test or lint run beside the
-release workflow.
+Routine branch pushes and fork pull requests use two weighted shards on
+Ubuntu/Python 3.12 and Windows/Python 3.13. Weekly, manual and release runs
+cover all four platform/Python combinations without sharding. The generated
+prerequisite checks repository contents, tool paths and generated files; routine
+jobs omit the generated-test module after that gate passes. Superseded feature
+runs can be cancelled while main and called release runs are preserved.
+Same-repository pull requests rely on branch-push validation, and tag pushes do
+not start an extra standalone test or lint run beside the release workflow.
 
-The new measurement wrapper and opt-in pytest plugin record durations, JUnit,
-per-worker collection time, per-file setup/call/teardown costs, actual selected
-workers and CPU counts. Fourteen-day artifacts include one-second samples of
-process-tree RSS, process count and CPU time. RSS counts shared pages more than
-once and can miss between-sample peaks. Short-lived processes may be missed;
-CPU time is a sampled lower bound, and the wrapper's own resources are excluded.
-Main-process test reports already include worker reports and must not be added
-to the worker totals again.
+The verified docs-only route applies to ordinary pushes whose complete commit
+and merge-parent history changes only Markdown under `docs/`. Missing or
+uncertain history routes to full CI. Docs runs retain the generated
+prerequisite and add README, generated-import and measured-boot checks, plus a
+separate exact-commit documentation attestation.
+
+The measurement wrapper and opt-in pytest plugin record durations, JUnit,
+per-worker collection time, per-file setup/call/teardown costs, selected
+workers and CPU counts. Fourteen-day artifacts include process-tree RSS,
+process count and CPU samples. The wrapper excludes its own resources; its
+reports and sampling limits are described in the
+[successful unsharded reference profile](#successful-unsharded-reference-profile).
+
+Snapshot collection exposed a pytest parsing issue in the optional shard-plan
+argument. Passing `--ci-shard-plan PATH` as separate tokens changed pytest's
+inferred root, collected `livetests` and produced 46 `conftest` import errors.
+A small synthetic reproduction exited 4 after collecting tests outside the
+project test paths; passing `--ci-shard-plan=PATH` exited 0 and selected the
+intended tests. Setting `--rootdir` alone did not fix collection. The wrapper
+now uses the equals form, and the regression exits 4 before that fix and 0
+after it.
+
+Five collection-only runs with `-n0` ran locally on Linux against the isolated
+intended-outgoing Git snapshot, without `gamedisks.yaml`, and used the same
+generated-test exclusion. The Ubuntu and Windows labels below identify weight
+plans; neither indicates Windows execution. The snapshot layered the intended
+CI edits over settled source SHA `9204b7d059aa937841f4ea92eeaba69c1263b7dc`;
+those CI edits were not yet committed. The inventory included the new tracked
+test files. All three literal xdist groups—`emulator-pool`, `icon-tables` and
+`conftest-guard-probe`—stayed together. Each pair of shards had an exact union
+with the baseline node IDs and zero overlap. There were no collection errors
+or module skips; tests requiring private game data still skip at runtime on
+CI. Recorded hashes for all 538 files remained unchanged after the runs.
+
+| Collection run | Weight plan | Node IDs | Tracked test files | Elapsed |
+|---|---|---:|---:|---:|
+| Baseline | None | 21,010 | 490 | 53.22 s |
+| Shard 1 | Ubuntu/Python 3.12 | 10,187 | 243 | 6.21 s |
+| Shard 2 | Ubuntu/Python 3.12 | 10,823 | 247 | 10.93 s |
+| Shard 1 | Windows/Python 3.13 | 12,686 | 246 | 7.46 s |
+| Shard 2 | Windows/Python 3.13 | 8,324 | 244 | 9.76 s |
+
+Shard collections ran sequentially with warm caches, but cache conditions
+differed. These elapsed times do not establish a performance saving.
 
 The tool-test refactor parses source once, indexes functions and combines
 duplicate child-interpreter assertions while retaining process isolation.
@@ -8055,7 +8131,3 @@ baselines per worker, retaining up to **6.875 MiB** of image bytes. Each caller
 still writes a fresh mutable disk file. This trades retained memory for less
 repeated image construction; it does not demonstrate lower peak memory or
 remove disk writes. Real disk geometry and isolation checks remain.
-
-Balanced shards and narrower documentation-only validation remain under
-implementation pending the measured CI run. No whole-CI time, CPU or memory
-saving is claimed before that run supplies comparable evidence.
