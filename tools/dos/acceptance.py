@@ -74,7 +74,7 @@ a source whose title does not match `--title`:
 | `save X` | in camp, camp `SAVE` to slot X and decline the quit; at the party menu, `SAVE CURRENT GAME`; believed when `SAVGAMX.DAT` changes |
 | `train N` | Curse: roster line N (from 1), `TRAIN CHARACTER`, `YES`, and `LEARN` for any spell the level brings, back to the party menu |
 | `shot NAME` | one PNG and the screen digests, nothing pressed |
-| `snapshot NAME`, `restore NAME` | DOSBox-X only (`dossnapshot.SnapshotSession`; a run with either step boots it): `snapshot` saves the whole machine under NAME (letters, digits, `-`, `_`); `restore` puts it back and settles, and the `SAVE` files changed since the snapshot are logged and recorded as `changed_saves`, because a game save stays on disk.  A `restore` needs an earlier `snapshot` of that name and no `save` between them; the run stops before boot otherwise.  Each is in `run.jsonl` and `summary.json`.  Random encounters stay on |
+| `snapshot NAME`, `restore NAME` | DOSBox-X only (`dossnapshot.SnapshotSession`; a run with either step boots it): `snapshot` saves the whole machine under NAME (letters, digits, `-`, `_`); `restore` puts it back and settles, and the `SAVE` files changed since the snapshot are logged and recorded as `changed_saves`, because a game save stays on disk.  A `restore` needs an earlier `snapshot` of that name and no `save` between them; the run stops before boot otherwise.  Each is in `run.jsonl` and `summary.json`.  Random encounters stay on, except under `--no-encounters`, where a `restore` clears the values the switch wrote and re-arms it |
 | `press KEY` | one X keysym (`Down`, `Return`, `t`), then a settle and a PNG; capture only, so only `press`, `shot` and `read` may come after it |
 | `walk MI`, `walk I`, `walk 1` | Pool and Curse (`MI`): turn right twice at the map bar and step one square.  Pool (`I`): step one square forward without turning.  Silver Blades and Pools of Darkness (`1`): press MOVE, step one square turning right past a wall, and leave move mode (`e` in Silver Blades, `Escape` in Pools of Darkness) back to the map bar.  In Pool and Curse a `PRESS <ENTER>/<RETURN> TO CONTINUE` story box the step lands on is answered with `Return`, `WALK_CONTINUE_ROUNDS` boxes at most, each logged as `press_continue`; combat or any other screen still stops the walk.  A step is believed only when the `x,y` on the status line changes (never the clock beside it), a blank line is never the starting reading, and a run with a walk fails unless `read` shows the last saved slot's place differs from the installed one |
 | `turn N` | N from 1 to 4: the walk's control.  Silver Blades and Pools of Darkness press MOVE first and leave move mode after; N `Right` presses, each reading the `x,y` square, which a turn must leave alone (`lost-walk-turn`); the party stays on the map for `camp`, `save D` and `read`.  A run with `turn` and no `walk` fails unless `read` shows the saved place unchanged ("did not move") |
@@ -6119,6 +6119,10 @@ class Driver:
         self.need_snapshots("restore")
         changed = self.s.restore(name)
         self.s.settle()
+        if self.encounters is not None:
+            # The machine holds the original gate values again.
+            self.encounters.reset()
+            self.note(event="no-encounters-reset", name=name)
         if name in self._places:
             for attr, value in self._places[name].items():
                 setattr(self, attr, dict(value) if isinstance(value, dict) else value)
@@ -6139,12 +6143,16 @@ class Driver:
         if not hasattr(self.s, "snapshot"):
             raise StepFailed(f"{verb} needs DOSBox-X: DOSBox 0.74 has no save states")
 
-    def save(self, letter: str) -> dict:
+    def _check_save(self) -> None:
+        """Stop the run while `--no-encounters` could have changed the save."""
         if self.encounters is not None:
             try:
                 self.encounters.check_save()
             except dosnoencounters.SaveBlocked as e:
                 raise StepFailed(f"save stopped: {e}") from e
+
+    def save(self, letter: str) -> dict:
+        self._check_save()
         if self.where == "party":
             return self.party_save(letter)
         if self.camp_sig is None:
@@ -6200,6 +6208,8 @@ class Driver:
 
     def press(self, key: str) -> dict:
         """One key, pressed blind for a capture: the PNG is the reading."""
+        if key.lower() in (CAMP_SAVE, PARTY_SAVE):
+            self._check_save()
         self.s.key(key)
         self.s.settle(quiet=0.8, timeout=30.0)
         self.where = "pressed"
@@ -6514,12 +6524,14 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
             summary["installed"] = took
             summary["staged"] = staged
             note(event="staged", **took, stages=staged)
-            session.boot(fresh=False)
-            size = sum(1 for f in took.get("files", []) if f.endswith(".SAV")) or 6
             encounters = None
             if no_encounters:
                 installed_save = (session.save_dir
                                   / f"SAVGAM{letter}{title.suffix}")
+                if args.title == "ssb" and not installed_save.is_file():
+                    raise ValueError("--no-encounters on Silver Blades checks "
+                                     "the live variables against the "
+                                     "installed save, and none is installed")
                 encounters = dosnoencounters.NoEncounters(
                     session, NO_ENCOUNTER_TITLES[args.title],
                     installed_save.read_bytes() if installed_save.is_file()
@@ -6528,6 +6540,8 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                     speculative=bool(getattr(args, "speculative_encounters",
                                              False)))
                 encounters.on()
+            session.boot(fresh=False)
+            size = sum(1 for f in took.get("files", []) if f.endswith(".SAV")) or 6
             d = Driver(session, note, letter, args.title, party_size=size,
                        deadline=deadline, encounters=encounters)
             if getattr(args, "first_bar_key", None) is not None:
@@ -7158,6 +7172,11 @@ def main(argv: list[str] | None = None) -> int:
                                  "fight step")
         if args.speculative_encounters and not args.no_encounters:
             raise ValueError("--speculative-encounters goes with --no-encounters")
+        if args.no_encounters and args.title == "ssb" \
+                and not args.speculative_encounters:
+            raise ValueError("--no-encounters on Silver Blades needs "
+                             "--speculative-encounters: its offsets were not "
+                             "read in a running game")
         if args.no_encounters and args.title not in NO_ENCOUNTER_TITLES:
             raise ValueError(f"--no-encounters is for "
                              f"{', '.join(sorted(NO_ENCOUNTER_TITLES))} only, "

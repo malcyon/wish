@@ -438,6 +438,13 @@ class NoEncounters:
     def on(self) -> None:
         self.switch.on()
 
+    def reset(self) -> None:
+        """Forget what was written and re-arm.  For a restored machine, whose
+        memory holds the originals again: a gate word read back as its original
+        would otherwise look like a change by the game."""
+        self.switch.held.clear()
+        self.switch.on()
+
     def before_move(self) -> list[dict]:
         """Write the gate; a no-op while the switch is off."""
         if not self.switch.active:

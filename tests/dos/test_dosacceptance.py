@@ -10803,3 +10803,87 @@ def test_the_flag_goes_with_a_title_that_has_a_switch_and_into_the_summary(
     assert made == [("pool-of-radiance", None, False), "on"]
     summary = json.loads((tmp_path / "out" / "summary.json").read_text())
     assert summary["no_encounters"] is True
+
+
+def _real_switch(words, area=0x14):
+    """A real `NoEncounters` over a dict of script words, standing in for the
+    live variable array."""
+    class Live:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def peek(self, address):
+            return words.get(address, 0)
+
+        def poke(self, address, value):
+            words[address] = value
+
+        def area(self):
+            return area
+
+    enc = da.dosnoencounters.NoEncounters.__new__(da.dosnoencounters.NoEncounters)
+    enc.live = Live()
+    enc.switch = da.dosnoencounters.EncounterSwitch(
+        da.dosnoencounters.POOL, enc.live.peek, enc.live.poke, enc.live.area,
+        lambda line: None)
+    enc.writes, enc.areas = [], {}
+    return enc
+
+
+def test_a_restore_re_arms_the_switch_so_the_next_walk_still_forces_the_gate(
+        tmp_path, monkeypatch):
+    gate = 0x4A80
+    words = {gate: 4}
+    log: list[str] = []
+
+    class Session(_SnapSession):
+        def restore(self, name):
+            words[gate] = 4            # the machine holds the original again
+            return super().restore(name)
+
+    monkeypatch.setattr(dosbox.PoolOfRadiance, "move",
+                        lambda self, key, timeout=20.0: True)
+    enc = _real_switch(words)
+    enc.on()
+    notes: list[dict] = []
+    d = da.Driver(Session(tmp_path, log), lambda **kw: notes.append(kw), "A",
+                  "pool", encounters=enc)
+    d.game.step()                       # walk: the gate is written
+    assert words[gate] == 15
+    d.snapshot("leg")
+    d.restore("leg")
+    assert words[gate] == 4
+    d.game.step()                       # walk again: forced again, not yielded
+    assert words[gate] == 15
+    assert enc.switch.yielded == set()
+    assert any(n["event"] == "no-encounters-reset" for n in notes)
+
+
+@pytest.mark.parametrize("key", ["s", "S"])
+def test_press_refuses_a_save_key_while_the_switch_is_on(tmp_path, key):
+    events: list = []
+    game = FakePool(tmp_path)
+    d = da.Driver(game, lambda **k: None, "A", "pool",
+                  encounters=FakeEncounters(events, blocked=True))
+    with pytest.raises(da.StepFailed, match="save stopped"):
+        d.press(key)
+    assert events == ["check_save"] and game.keys == []
+
+
+def test_press_of_another_key_is_not_stopped(tmp_path):
+    events: list = []
+    game = FakePool(tmp_path)
+    d = da.Driver(game, lambda **k: None, "A", "pool",
+                  encounters=FakeEncounters(events, blocked=True))
+    d.press("Down")
+    assert events == [] and game.keys == ["Down"]
+
+
+def test_silver_blades_needs_the_speculative_flag_and_an_installed_save(capsys):
+    with pytest.raises(SystemExit):
+        da.main(["--title", "ssb", "--save", ".", "--steps", "load",
+                 "--no-encounters"])
+    assert "--speculative-encounters" in capsys.readouterr().err
