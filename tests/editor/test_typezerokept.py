@@ -83,3 +83,26 @@ def test_deleting_an_item_keeps_the_type_zero_item(app, tmp_path, name):
     reread = Party(str(path)).members[index].inventory
     assert _type_zero_blocks(reread) == kept
     assert _itm(path, index).stat().st_size == before - RECORD
+
+
+def test_an_amiga_pool_member_keeps_a_type_zero_block_on_add_and_delete():
+    from editor.roster import _ITEMS_AT, Party
+    from goldbox import c64_port
+    from goldbox.record import CharacterRecord
+
+    type_zero = bytes([0, 0, 0, 0, 0, 0, 6]) + bytes(9)
+    live = bytes([1, 0, 0, 9]) + bytes(12)
+    raw = bytearray(CharacterRecord.blank().to_bytes())
+    raw[_ITEMS_AT:_ITEMS_AT + 48] = live + type_zero + live
+    record = CharacterRecord.from_bytes(bytes(raw))
+
+    party = Party.__new__(Party)
+    party.members, party.port = [], "amiga"
+    party.game = c64_port.POOL_OF_RADIANCE
+    party._append_converted(1, record, None, {})
+    inventory = party.members[0].inventory
+
+    assert inventory.add(live) == 3
+    assert inventory.raws[1] == type_zero
+    inventory.delete(0)
+    assert type_zero in inventory.raws

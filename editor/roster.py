@@ -467,7 +467,7 @@ class Party:
             inventory=Inventory.from_blocks(
                 [raw[_ITEMS_AT + n * ITEM_SIZE:_ITEMS_AT + (n + 1) * ITEM_SIZE]
                  for n in range(ITEMS_PER_CHARACTER)],
-                type_zero_is_an_item=(self.port == "dos" and self.game.key
+                type_zero_is_an_item=(self.game.key
                                       == c64_port.POOL_OF_RADIANCE.key)),
             record_original=raw, game=self.game, native=native,
             condition=(neutral.get("status"), neutral.get("active")),
