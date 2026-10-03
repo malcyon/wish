@@ -106,9 +106,9 @@ def test_existing_human_label_does_not_block_agent_comment(tmp_path):
         return record(labels=[{'id': LABEL, 'name': 'human'}])
     fake = Fake(handle)
     client = Client(settings(tmp_path), fake)
-    client.write = lambda operation_id, method, path, payload: fake.request(method, path, payload)
+    client.write = lambda operation_id, method, path, payload: client.summarise(path, fake.request(method, path, payload))
     result = client.comment('test', ITEM, 'A comment')
-    assert result['comment_html'] == '<p>A comment</p>'
+    assert result['id'] == OUTSIDE and 'comment_html' not in result
     assert [call[0] for call in fake.calls] == ['GET', 'GET', 'POST']
 
 
@@ -240,8 +240,8 @@ def test_project_ticket_comments_do_not_depend_on_creator_origin(tmp_path, creat
         return record(created_by=creator, labels=[])
     fake = Fake(handle)
     client = Client(settings(tmp_path), fake)
-    client.write = lambda operation_id, method, path, payload: fake.request(method, path, payload)
-    assert client.comment('comment', ITEM, 'Text')['comment_html'] == '<p>Text</p>'
+    client.write = lambda operation_id, method, path, payload: client.summarise(path, fake.request(method, path, payload))
+    assert client.comment('comment', ITEM, 'Text')['id'] == OUTSIDE
     assert [call[0] for call in fake.calls] == ['GET', 'GET', 'POST']
 
 
@@ -379,7 +379,7 @@ def test_reordered_labels_and_normalized_html_confirm_before_explanation(tmp_pat
     result = Client(settings(tmp_path), Fake(handle)).update('correct', ITEM,
         {'labels': [LABEL, OUTSIDE], 'description_html': 'First & second\nThird'}, 'Corrected the recorded facts')
     assert set(result['labels']) == {LABEL, OUTSIDE}
-    assert '&#38;' in result['description_html']
+    assert 'description_html' not in result and 'comments' not in result
     assert explained == [True]
 
 
@@ -418,7 +418,7 @@ def priority_client(tmp_path):
     fake = Fake(handle)
     client = Client(settings(tmp_path), fake)
     # This fixture tests request policy without requiring POSIX journal storage.
-    client.write = lambda operation_id, method, path, payload: fake.request(method, path, payload)
+    client.write = lambda operation_id, method, path, payload: client.summarise(path, fake.request(method, path, payload))
     return client, current, labels, fake
 
 
@@ -519,8 +519,149 @@ def test_native_priority_readback_precedes_explanation_comment(priority_client):
     client, _, _, fake = priority_client
     def ignore_priority_change(operation_id, method, path, payload):
         if method == 'PATCH':
-            return fake.request(method, path, {key: value for key, value in payload.items() if key != 'priority'})
+            return client.summarise(path, fake.request(method, path, {key: value for key, value in payload.items() if key != 'priority'}))
         pytest.fail('Explanation sent without confirming the native priority')
     client.write = ignore_priority_change
     with pytest.raises(PlaneError, match='readback'):
         client.update('priority', ITEM, {'priority': 'low'}, 'Priority is now Low')
+
+
+def test_markdown_renders_to_matching_tags():
+    from tools.plane.policy import paragraph
+    out = paragraph('## Heading\n\n- one\n- two\n\n**bold** and `code`\n\n```\nfenced\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |')
+    for tag in ('<h2>Heading</h2>', '<ul>', '<li>one</li>', '<strong>bold</strong>', '<code>code</code>',
+                '<pre><code>fenced', '<table>', '<th>a</th>', '<td>2</td>'):
+        assert tag in out
+
+
+def test_plain_text_is_paragraphs_and_html_is_escaped():
+    from tools.plane.policy import paragraph
+    assert paragraph('First\nsecond\n\nThird') == '<p>First<br />\nsecond</p>\n<p>Third</p>'
+    out = paragraph('<script>alert(1)</script> and <b>x</b>')
+    assert '<script>' not in out and '<b>' not in out and '&lt;script&gt;' in out
+
+
+def test_unsafe_link_schemes_are_not_rendered_as_links():
+    from tools.plane.policy import paragraph
+    assert '<a ' not in paragraph('[x](javascript:alert(1))')
+    assert '<a href="https://example.com">x</a>' in paragraph('[x](https://example.com)')
+
+
+@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
+def test_journal_waits_for_a_writer_holding_the_lock(tmp_path):
+    import sqlite3
+    import threading
+    import time
+    journal = Journal(tmp_path / 'writes.sqlite')
+    held = threading.Event()
+
+    def hold():
+        db = sqlite3.connect(journal.path, isolation_level=None)
+        db.execute('BEGIN IMMEDIATE')
+        held.set()
+        time.sleep(2)
+        db.execute('COMMIT')
+        db.close()
+    thread = threading.Thread(target=hold)
+    thread.start()
+    held.wait()
+    assert journal.run('waits', {'p': 1}, lambda: {'id': ITEM}) == {'id': ITEM}
+    thread.join()
+
+
+@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
+def test_journal_files_are_private_and_wal(tmp_path):
+    import sqlite3
+    journal = Journal(tmp_path / 'writes.sqlite')
+    journal.run('k', {'p': 1}, lambda: {'id': ITEM})
+    assert sqlite3.connect(journal.path).execute('PRAGMA journal_mode').fetchone()[0] == 'wal'
+    for path in tmp_path.glob('writes.sqlite*'):
+        assert not path.stat().st_mode & 0o077
+
+
+@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
+def test_error_response_leaves_key_retryable_but_read_timeout_stays_pending(tmp_path):
+    from tools.plane.policy import PlaneHttpError, PlaneNotSent
+    journal = Journal(tmp_path / 'writes.sqlite')
+
+    def limited():
+        raise PlaneHttpError('Plane rate limit reached', 429)
+    with pytest.raises(PlaneHttpError):
+        journal.run('retry', {'p': 1}, limited)
+    assert journal.run('retry', {'p': 1}, lambda: {'id': ITEM}) == {'id': ITEM}
+
+    def refused():
+        raise PlaneNotSent('unreachable')
+    with pytest.raises(PlaneNotSent):
+        journal.run('down', {'p': 2}, refused)
+    assert journal.run('down', {'p': 2}, lambda: {'id': 'x'}) == {'id': 'x'}
+
+    def timed_out():
+        raise PlaneError('Plane request failed; write outcomes require reconciliation')
+    with pytest.raises(PlaneError):
+        journal.run('slow', {'p': 3}, timed_out)
+    with pytest.raises(PlaneError, match='uncertain'):
+        journal.run('slow', {'p': 3}, lambda: pytest.fail('Duplicate write'))
+
+
+@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
+def test_reconcile_marks_present_comment_done_and_absent_comment_unsent(tmp_path):
+    present = {'on': True}
+
+    def handle(method, path, data, params):
+        if method == 'POST':
+            raise PlaneError('Plane request failed; write outcomes require reconciliation')
+        if path == 'users/me':
+            return {'id': AGENT}
+        if path.endswith('/comments'):
+            rows = [{'id': OUTSIDE, 'created_by': AGENT, 'comment_html': '<p>Text</p>'}] if present['on'] else []
+            return {'results': rows, 'next_page_results': False}
+        return record()
+    fake = Fake(handle)
+    client = Client(settings(tmp_path), fake)
+    for key in ('present', 'absent'):
+        with pytest.raises(PlaneError):
+            client.comment(key, ITEM, 'Text' if key == 'present' else 'Other')
+    assert client.reconcile('present')['status'] == 'done'
+    assert client.reconcile('present')['result']['id'] == OUTSIDE
+    present['on'] = False
+    assert client.reconcile('absent') == {'operation_id': 'absent', 'status': 'unsent', 'result': None}
+    assert not [c for c in fake.calls if c[0] == 'POST' and c[1].endswith('/comments')][2:]
+
+
+@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
+def test_reconcile_leaves_an_old_row_without_a_stored_request_unchanged(tmp_path):
+    import sqlite3
+    path = tmp_path / 'writes.sqlite'
+    db = sqlite3.connect(path)
+    db.execute('CREATE TABLE writes (key TEXT PRIMARY KEY, fingerprint TEXT UNIQUE, status TEXT, result TEXT)')
+    db.execute("INSERT INTO writes VALUES ('old','f','pending',NULL)")
+    db.commit()
+    db.close()
+    path.chmod(0o600)
+    journal = Journal(path)
+    with pytest.raises(PlaneError, match='cannot be decided'):
+        journal.reconcile('old', lambda request: pytest.fail('Read'))
+    assert sqlite3.connect(path).execute("SELECT status FROM writes WHERE key='old'").fetchone() == ('pending',)
+
+
+@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
+def test_write_results_are_compact(tmp_path):
+    current = record()
+
+    def handle(method, path, data, params):
+        if path == 'users/me':
+            return {'id': AGENT}
+        if path.endswith('/labels'):
+            return {'results': [], 'next_page_results': False}
+        if path.endswith('/comments'):
+            if method == 'POST':
+                return {'id': OUTSIDE, 'created_by': AGENT, **data}
+            return {'results': [], 'next_page_results': False}
+        if method == 'PATCH':
+            current.update(data)
+        return dict(current)
+    client = Client(settings(tmp_path), Fake(handle))
+    for result in (client.update('compact', ITEM, {'priority': 'low'}, 'Changed'), client.comment('c', ITEM, 'Text')):
+        assert 'comments' not in result and 'description_html' not in result and 'comment_html' not in result
+    assert client.update('compact', ITEM, {'priority': 'low'}, 'Changed')['comment_id'] == OUTSIDE

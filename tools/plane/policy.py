@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 import hashlib
-import html
 import json
 import os
 import re
 import sqlite3
 import stat
 import unicodedata
+from contextlib import contextmanager
 from pathlib import Path
 from urllib.parse import urlsplit
 from uuid import UUID
@@ -16,6 +16,18 @@ from uuid import UUID
 
 class PlaneError(Exception):
     """A Plane operation could not be completed safely."""
+
+
+class PlaneHttpError(PlaneError):
+    """Plane answered with an error status, so the request was not applied."""
+
+    def __init__(self, message, status):
+        super().__init__(message)
+        self.status = status
+
+
+class PlaneNotSent(PlaneError):
+    """The request never reached Plane, for example a refused connection or a failed name lookup."""
 
 
 def uuid(value):
@@ -118,6 +130,16 @@ class Policy:
             out['url'] = f'{self.settings.base_url}/{self.settings.workspace}/projects/{self.settings.project}/issues/{out["id"]}'
         return out
 
+    def compact(self, record):
+        """Summarise a written ticket without its description or comments."""
+        full = self.filtered(record)
+        return {k: full[k] for k in ('id', 'identifier', 'name', 'state', 'priority', 'labels', 'author_id')}
+
+    def compact_comment(self, record):
+        """Summarise a written comment without its body."""
+        full = self.filtered(record, comment=True)
+        return {k: full[k] for k in ('id', 'author_id', 'created_at')}
+
     def citation(self, filtered):
         title = ' '.join(filtered['name'].split())
         title = re.sub(r'([\\\[\]()`*_<>])', r'\\\1', title)
@@ -127,6 +149,9 @@ class Policy:
 class Journal:
     """Reserve each logical write before sending it and never replay uncertain writes."""
 
+    # A busy writer is waited for rather than failed, because several agents share one journal.
+    BUSY_SECONDS = 60
+
     def __init__(self, path):
         path = Path(path)
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -135,31 +160,80 @@ class Journal:
         if path.stat().st_mode & 0o077:
             raise PlaneError("Write journal must have mode 0600")
         self.path = path
-        with sqlite3.connect(path) as db:
+        with self._db() as db:
+            db.execute('PRAGMA journal_mode=WAL')
             db.execute('CREATE TABLE IF NOT EXISTS writes (key TEXT PRIMARY KEY, fingerprint TEXT UNIQUE, status TEXT, result TEXT)')
+            if 'request' not in {row[1] for row in db.execute('PRAGMA table_info(writes)')}:
+                db.execute('ALTER TABLE writes ADD COLUMN request TEXT')
+        for suffix in ('-wal', '-shm'):
+            side = Path(str(path) + suffix)
+            if side.exists() and side.stat().st_mode & 0o077:
+                raise PlaneError("Write journal side files must have mode 0600")
+
+    @contextmanager
+    def _db(self):
+        db = sqlite3.connect(self.path, timeout=self.BUSY_SECONDS)
+        try:
+            with db:
+                yield db
+        finally:
+            db.close()
 
     def run(self, key, request, send):
         if not isinstance(key, str) or not re.fullmatch(r'[a-zA-Z0-9_.:-]{1,160}', key):
             raise PlaneError("A stable operation ID is required")
         fingerprint = hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()
-        with sqlite3.connect(self.path) as db:
+        with self._db() as db:
             db.execute('BEGIN IMMEDIATE')
-            prior = db.execute('SELECT fingerprint,status,result FROM writes WHERE key=? OR fingerprint=?', (key, fingerprint)).fetchone()
+            prior = db.execute('SELECT fingerprint,status,result,key FROM writes WHERE key=? OR fingerprint=?', (key, fingerprint)).fetchone()
             if prior:
                 if prior[0] != fingerprint:
                     raise PlaneError("Operation ID was already used for a different write")
                 if prior[1] == 'done':
                     return json.loads(prior[2])
-                raise PlaneError("Write outcome is uncertain; reconcile the durable journal before another attempt")
-            db.execute('INSERT INTO writes VALUES (?,?,?,NULL)', (key, fingerprint, 'pending'))
-        result = send()
-        with sqlite3.connect(self.path) as db:
-            db.execute('UPDATE writes SET status=?,result=? WHERE key=?', ('done', json.dumps(result), key))
+                if prior[1] != 'unsent':
+                    raise PlaneError("Write outcome is uncertain; reconcile the durable journal before another attempt")
+                key = prior[3]
+                db.execute('UPDATE writes SET status=? WHERE key=?', ('pending', key))
+            else:
+                db.execute('INSERT INTO writes (key,fingerprint,status,result,request) VALUES (?,?,?,NULL,?)',
+                           (key, fingerprint, 'pending', json.dumps(request)))
+        try:
+            result = send()
+        except (PlaneHttpError, PlaneNotSent):
+            self._finish(key, 'unsent', None)
+            raise
+        self._finish(key, 'done', result)
         return result
+
+    def _finish(self, key, status, result):
+        with self._db() as db:
+            db.execute('UPDATE writes SET status=?,result=? WHERE key=? AND status=?',
+                       (status, None if result is None else json.dumps(result), key, 'pending'))
+
+    def reconcile(self, key, decide):
+        """Settle a pending key from `decide(request)`, which returns the result if the write is present and None if it is not."""
+        with self._db() as db:
+            row = db.execute('SELECT status,result,request FROM writes WHERE key=?', (key,)).fetchone()
+        if row is None:
+            raise PlaneError("No journal entry has this operation ID")
+        status, result, request = row
+        if status != 'pending':
+            return {'operation_id': key, 'status': status, 'result': json.loads(result) if result else None}
+        if request is None:
+            raise PlaneError("This journal entry predates stored requests, so it cannot be decided; it is unchanged")
+        found = decide(json.loads(request))
+        if found is None:
+            self._finish(key, 'unsent', None)
+            return {'operation_id': key, 'status': 'unsent', 'result': None}
+        self._finish(key, 'done', found)
+        return {'operation_id': key, 'status': 'done', 'result': found}
 
 
 def paragraph(text):
-    """Encode supplied prose as HTML without permitting embedded markup."""
+    """Render supplied Markdown as HTML; raw HTML stays escaped and unsafe link schemes are not linked."""
     if not isinstance(text, str) or not text.strip():
         raise PlaneError("Nonempty text is required")
-    return '<p>' + html.escape(text).replace('\n', '<br>') + '</p>'
+    from markdown_it import MarkdownIt
+    renderer = MarkdownIt('commonmark', {'html': False, 'breaks': True}).enable('table')
+    return renderer.render(text).strip()

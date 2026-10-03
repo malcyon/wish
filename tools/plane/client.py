@@ -6,7 +6,26 @@ import time
 from html.parser import HTMLParser
 from importlib.metadata import version
 
-from tools.plane.policy import Journal, PlaneError, Policy, Settings, paragraph, uuid
+from tools.plane.policy import (
+    Journal,
+    PlaneError,
+    PlaneHttpError,
+    PlaneNotSent,
+    Policy,
+    Settings,
+    paragraph,
+    uuid,
+)
+
+
+def never_connected(exc):
+    """Tell a failure before any byte was sent from one that may have followed the request."""
+    import requests
+    from urllib3.exceptions import NewConnectionError
+    if isinstance(exc, requests.ConnectTimeout):
+        return True
+    return isinstance(exc, requests.ConnectionError) and any(
+        isinstance(getattr(arg, 'reason', None), NewConnectionError) for arg in exc.args)
 
 
 class Transport:
@@ -25,15 +44,17 @@ class Transport:
             try:
                 response = self.resource.session.request(method, self.resource._build_url(path), headers=self.resource._headers(), json=data, params=params, timeout=30, allow_redirects=False)
             except requests.RequestException as exc:
+                if never_connected(exc):
+                    raise PlaneNotSent("Plane could not be reached; the write was not sent") from exc
                 raise PlaneError("Plane request failed; write outcomes require reconciliation") from exc
             if response.status_code == 429:
                 delay = response.headers.get('Retry-After', '')
                 if method == 'GET' and attempt < 2 and delay.isdigit() and int(delay) <= 30:
                     time.sleep(int(delay))
                     continue
-                raise PlaneError("Plane rate limit reached; wait for Retry-After before retrying reads")
+                raise PlaneHttpError("Plane rate limit reached; wait for Retry-After before retrying reads", 429)
             if not 200 <= response.status_code < 300:
-                raise PlaneError(f'Plane returned HTTP {response.status_code}')
+                raise PlaneHttpError(f'Plane returned HTTP {response.status_code}', response.status_code)
             try:
                 return response.json()
             except (ValueError, json.JSONDecodeError) as exc:
@@ -122,9 +143,35 @@ class Client:
         record = self.raw(identifier)
         return record
 
+    def summarise(self, path, record):
+        """Reduce a written record to its compact form, by whether the path names a comment."""
+        return self.policy.compact_comment(record) if path.endswith('/comments') else self.policy.compact(record)
+
     def write(self, operation_id, method, path, payload):
+        """Journal one request and return its compact result."""
         request = {'base_url': self.settings.base_url, 'method': method, 'path': path, 'payload': payload}
-        return Journal(self.settings.journal_file).run(operation_id, request, lambda: self.transport.request(method, path, payload))
+        return Journal(self.settings.journal_file).run(
+            operation_id, request, lambda: self.summarise(path, self.transport.request(method, path, payload)))
+
+    def reconcile(self, operation_id):
+        """Settle a pending journal key by reading Plane; never sends the write."""
+        def decide(request):
+            method, path, payload = request['method'], request['path'], request['payload']
+            if method == 'POST' and path.endswith('/comments'):
+                wanted = HTMLContent(payload['comment_html']).events
+                for row in self.pages(path):
+                    if self.policy.author(row) == self.settings.agent and HTMLContent(row.get('comment_html') or '').events == wanted:
+                        return self.policy.compact_comment(row)
+                return None
+            if method == 'PATCH':
+                record = self.transport.request('GET', path)
+                try:
+                    confirm_changes(record, payload)
+                except PlaneError:
+                    return None
+                return self.policy.compact(record)
+            raise PlaneError("Only comment and update writes can be reconciled")
+        return Journal(self.settings.journal_file).reconcile(operation_id, decide)
 
     def create(self, operation_id, title, body, priority, labels):
         self.writable()
@@ -136,19 +183,18 @@ class Client:
         labels = project_labels(labels, allowed)
         if not any(allowed[v] in {'bug', 'enhancement', 'question'} for v in labels):
             raise PlaneError("A bug, enhancement or question label is required")
-        record = self.write(operation_id, 'POST', self.items, {'name': title, 'description_html': paragraph(body), 'priority': priority, 'labels': labels})
-        if self.policy.author(record) != self.settings.agent:
+        result = self.write(operation_id, 'POST', self.items, {'name': title, 'description_html': paragraph(body), 'priority': priority, 'labels': labels})
+        if result['author_id'] != self.settings.agent:
             raise PlaneError("Created ticket authorship did not match the agent account; reconcile journal")
-        current = self.read(record['id'])
-        confirm_changes(current, {'priority': priority, 'labels': labels})
-        return current
+        confirm_changes(self.raw(result['id']), {'priority': priority, 'labels': labels})
+        return result
 
     def comment(self, operation_id, identifier, body):
         record = self.writable(identifier)
         result = self.write(operation_id, 'POST', f'{self.items}/{uuid(record["id"])}/comments', {'comment_html': paragraph(body)})
-        if self.policy.author(result) != self.settings.agent:
+        if result['author_id'] != self.settings.agent:
             raise PlaneError("Comment authorship did not match the agent account; reconcile journal")
-        return self.policy.filtered(result, comment=True)
+        return result
 
     def update(self, operation_id, identifier, changes, explanation):
         record = self.writable(identifier)
@@ -169,10 +215,10 @@ class Client:
             payload['description_html'] = paragraph(payload['description_html'])
         self.write(operation_id + ':edit', 'PATCH', f'{self.items}/{uuid(record["id"])}', payload)
         confirm_changes(self.raw(record['id']), payload)
-        self.comment(operation_id + ':explanation', record['id'], explanation)
-        current = self.read(record['id'])
+        explained = self.comment(operation_id + ':explanation', record['id'], explanation)
+        current = self.raw(record['id'])
         confirm_changes(current, payload)
-        return current
+        return {**self.policy.compact(current), 'comment_id': explained['id']}
 
 
 def project_labels(labels, allowed, *, existing=()):

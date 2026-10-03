@@ -14,7 +14,7 @@ PROJECT = '00000000-0000-0000-0000-000000000003'
 ITEM = '00000000-0000-0000-0000-000000000004'
 STATE = '00000000-0000-0000-0000-000000000005'
 READ_TOOLS = {'list_tickets', 'read_ticket', 'cite_ticket', 'project_metadata'}
-WRITE_TOOLS = {'create_ticket', 'comment_ticket', 'update_ticket'}
+WRITE_TOOLS = {'create_ticket', 'comment_ticket', 'update_ticket', 'reconcile_write'}
 
 
 class Transport:

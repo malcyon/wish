@@ -28,6 +28,7 @@ def main(argv=None):
     update.add_argument('identifier')
     update.add_argument('--changes-file', type=Path, required=True)
     update.add_argument('--explanation-file', type=Path, required=True)
+    commands.add_parser('reconcile')
     args = parser.parse_args(argv)
     try:
         client = Client.load()
@@ -35,6 +36,8 @@ def main(argv=None):
             result = client.create(args.operation_id, args.title, args.body_file.read_text(), args.priority, args.label)
         elif args.command == 'comment':
             result = client.comment(args.operation_id, args.identifier, args.body_file.read_text())
+        elif args.command == 'reconcile':
+            result = client.reconcile(args.operation_id)
         else:
             result = client.update(args.operation_id, args.identifier, json.loads(args.changes_file.read_text()), args.explanation_file.read_text())
         print(json.dumps(result, indent=2))

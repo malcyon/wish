@@ -52,6 +52,11 @@ def build_server(client=None):
         """Apply metadata or factual corrections and post their explanation."""
         return client.update(operation_id, identifier, changes, explanation)
 
+    @server.tool()
+    def reconcile_write(operation_id: str) -> dict:
+        """Settle a pending write by reading the ticket; it never sends the write."""
+        return client.reconcile(operation_id)
+
     return server
 
 
