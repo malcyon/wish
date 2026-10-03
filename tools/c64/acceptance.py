@@ -2016,13 +2016,13 @@ class PoolRun:
     def panel_index(self, who: str) -> int:
         """Which panel row WHO is: a number counts from 1, a name must equal
         one row's name column as the panel draws it."""
-        if who.isdigit():
-            return int(who) - 1
         s = self.sess.screen()
         rows = [] if s is None else self.sess.stable_party_rows()
-        names, width = route_pool.panel_names(s, rows) if rows else ([], 0)
         try:
-            return route_pool.pick_panel_row(names, width, who)
+            if route_pool.is_line_number(who):
+                return route_pool.line_number(who, len(rows) if s else None)
+            return route_pool.pick_panel_row(
+                *route_pool.panel_names(s, rows) if s else ([], 0), who)
         except route_pool.PanelError as e:
             raise self.fail("panel", str(e)) from None
 

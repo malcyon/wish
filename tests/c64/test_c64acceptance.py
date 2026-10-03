@@ -1591,6 +1591,13 @@ def test_porsave13_holds_no_magic_item_so_a_run_must_stage_one(tmp_path):
 
 # --- the screens ---------------------------------------------------------------
 
+#: The world screen's party panel, text from column 1 so the names start at
+#: `PARTY_COLUMN`.
+PARTY_PANEL = {2: " " * 16 + "NAME            AC HP",
+               4: " " * 16 + "BAKSHI          5  31",
+               5: " " * 16 + "LADY KATHERINE  2  22"}
+
+
 def _window(lines: dict[int, str], bar: str = "") -> list[str]:
     """A 25-row screen in the frame the Pool capture shows: `@[[..[@` top and
     bottom, `$` down both sides, text from column 1, and the bar on row 24."""
@@ -1759,6 +1766,12 @@ class FakeSession:
 
     def settle(self, seconds=0):
         pass
+
+    def party_rows(self, s=None):
+        return A.S.Session.party_rows(self, s or self.screen())
+
+    def stable_party_rows(self):
+        return self.party_rows()
 
     def select_bar(self, label, row=24, timeout=0):
         return self._go(("bar", label))
@@ -2573,7 +2586,7 @@ def test_curse_camp_list_fails_when_display_puts_up_neither_screen(tmp_path, mon
 
 def test_items_reads_the_list_of_the_member_asked_for_and_leaves_it(tmp_path):
     screens = {
-        "world": _window({}, WORLD_BAR),
+        "world": _window(PARTY_PANEL, WORLD_BAR),
         "sheet": _window({1: "LADY KATHERINE"}, "VIEW:ITEMS SPELLS TRADE DROP EXIT"),
         "items": _window({**PROBE4, 1: "LADY KATHERINE", 6: " YES 13 *DART"},
                          "READY TRADE DROP EXIT"),
@@ -2600,7 +2613,7 @@ def test_open_sheet_answers_a_portrait_disk_prompt_with_side_3_not_the_side_it_n
     on it -- so answering as asked loops forever. `open_sheet` must attach
     `SIDE3.D64` instead, and must not call `handle_prompt` for that prompt."""
     screens = {
-        "world": _window({}, WORLD_BAR),
+        "world": _window(PARTY_PANEL, WORLD_BAR),
         "prompt": _window({}, "INSERT SIDE # 2, AND PRESS ANY KEY."),
         "sheet": _window({1: "BAKSHI"}, "VIEW:ITEMS SPELLS TRADE DROP EXIT"),
     }

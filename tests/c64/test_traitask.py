@@ -29,7 +29,7 @@ class FakeScreen:
 
     def row(self, r: int) -> str:
         if r == 0:
-            return " " * S.PARTY_COLUMN + CHARACTER
+            return " " * S.PARTY_COLUMN + f"{CHARACTER:<16}AC HP"
         if r == 1:
             return CHARACTER
         if r == 24:

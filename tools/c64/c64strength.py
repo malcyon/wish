@@ -61,6 +61,7 @@ from goldbox import dos_codec  # noqa: E402
 from goldbox.c64_port import POOL_OF_RADIANCE as GAME  # noqa: E402
 from goldbox.d64 import D64, attach_load_address, split_load_address  # noqa: E402
 from goldbox.layout import NAME_SIZE  # noqa: E402
+from tools.c64 import route_pool  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
@@ -251,10 +252,7 @@ class Run:
 
     def view_in_world(self, name: str) -> dict:
         """The same sheet, off the world screen's party panel."""
-        s = self.sess.screen()
-        rows = self.sess.party_rows(s)
-        index = next((i for i, r in enumerate(rows)
-                      if s is not None and name in s.row(r)), None)
+        index = route_pool.panel_index(self.sess, name)
         before = self.gate_count(f"world-before-{name}")
         self.shots += 1
         shot = self.out / f"{self.shots:02d}-world-sheet-{name}.png"

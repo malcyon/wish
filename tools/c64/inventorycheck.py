@@ -70,7 +70,7 @@ sys.path.insert(0, str(ROOT))
 from goldbox import c64_port, c64_save  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from goldbox.items import ITEM_SIZE, ITEMS_PER_CHARACTER  # noqa: E402
-from tools.c64.screens import as_drawn, item_list  # noqa: E402
+from tools.c64.screens import item_list  # noqa: E402
 
 # --- reading the save from outside the editor --------------------------------
 
@@ -312,17 +312,13 @@ def open_items(sess, r: Run, who: str) -> list[str] | None:
     if s is None:
         r.log("panel", ok=False, why="the screen is a bitmap")
         return None
-    from tools.c64 import session as por
-    wanted = (who.upper(), as_drawn(who).upper())
-    at = None
-    for i, row in enumerate(sess.party_rows(s)):
-        drawn = s.row(row)[por.PARTY_COLUMN:].upper()
-        if any(w in drawn for w in wanted):
-            at = i
-            break
-    if at is None:
-        r.log("panel", ok=False, why=f"{who} is not on the party panel",
-              rows=[s.row(row).rstrip() for row in sess.party_rows(s)])
+    from tools.c64 import route_pool
+    rows = sess.party_rows(s)
+    try:
+        at = route_pool.pick_panel_row(*route_pool.panel_names(s, rows), who)
+    except route_pool.PanelError as e:
+        r.log("panel", ok=False, why=str(e),
+              rows=[s.row(row).rstrip() for row in rows])
         return None
     r.log("panel", ok=True, index=at)
     if not sess.select_party(at):
