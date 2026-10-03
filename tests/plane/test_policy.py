@@ -376,6 +376,21 @@ def test_div_wrapped_different_description_does_not_confirm():
         confirm_changes({'description_html': '<div><p>Other</p></div>'}, {'description_html': '<p>Text</p>'})
 
 
+def test_whitespace_inside_preformatted_text_must_match():
+    from tools.plane.client import confirm_changes
+    with pytest.raises(PlaneError, match='readback'):
+        confirm_changes({'description_html': '<pre>a  b</pre>'}, {'description_html': '<pre>a b</pre>'})
+    with pytest.raises(PlaneError, match='readback'):
+        confirm_changes({'description_html': '<p><code>a\nb</code></p>'}, {'description_html': '<p><code>a b</code></p>'})
+
+
+def test_inline_spacing_must_match():
+    from tools.plane.client import confirm_changes
+    with pytest.raises(PlaneError, match='readback'):
+        confirm_changes({'description_html': '<p>foo<b>bar</b></p>'}, {'description_html': '<p>foo <b>bar</b></p>'})
+    confirm_changes({'description_html': '<p>foo  <b>bar</b></p>'}, {'description_html': '<p>foo <b>bar</b></p>'})
+
+
 SECOND_LABEL = '00000000-0000-0000-0000-000000000009'
 HUMAN_LABEL = '00000000-0000-0000-0000-00000000000a'
 AI_LABEL = '00000000-0000-0000-0000-00000000000b'

@@ -258,16 +258,31 @@ class HTMLContent(HTMLParser):
         self.events.append(('comment', data))
 
 
+BLOCK_TAGS = {'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'pre', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
+              'blockquote', 'div', 'hr'}
+VERBATIM_TAGS = {'pre', 'code', 'textarea'}
+
+
 def comparable_events(html):
-    """Events of html without Plane's outer div wrapper or whitespace-only differences."""
+    """Events of html without Plane's outer div wrapper or whitespace-only differences.
+
+    Whitespace runs collapse to one space except inside pre, code and textarea; a whitespace-only
+    node is dropped only between block-level tags, so inline spacing still counts.
+    """
     events = []
+    verbatim = 0
     for event in HTMLContent(html).events:
-        if event[0] == 'data':
-            text = ' '.join(event[1].split())
-            if not text:
-                continue
-            event = ('data', text)
+        if event[0] in ('start', 'end') and event[1] in VERBATIM_TAGS:
+            verbatim += 1 if event[0] == 'start' else -1
+        elif event[0] == 'data' and verbatim <= 0:
+            event = ('data', ' '.join(event[1].split()).join(
+                (' ' if event[1][:1].isspace() else '', ' ' if event[1][-1:].isspace() else '')) if event[1].strip() else ' ')
         events.append(event)
+
+    def block(event):
+        return event is None or (event[0] in ('start', 'end') and event[1] in BLOCK_TAGS)
+    events = [e for i, e in enumerate(events)
+              if not (e == ('data', ' ') and block(events[i - 1] if i else None) and block(events[i + 1] if i + 1 < len(events) else None))]
     if len(events) > 1 and events[0] == ('start', 'div', ()) and events[-1] == ('end', 'div'):
         events = events[1:-1]
     return events
