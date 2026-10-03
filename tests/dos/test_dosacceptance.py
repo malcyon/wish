@@ -10202,3 +10202,202 @@ def test_pool_begin_after_a_load_onto_the_map_presses_nothing(tmp_path, monkeypa
     with pytest.raises(da.StepFailed, match="this load put the party on the map"):
         d.begin()
     assert game.keys == []
+
+
+# -- Silver Blades' ITEMS at the party menu: `join` and `trade` -----------------
+
+
+class FakeSsbItems(FakeCurseMenu):
+    """Silver Blades' party menu, `PICK CHARACTER`, the sheet and its `ITEMS`,
+    as the hand-driven run `cbea7c9243-dosjoin` of WISH-4 met them: `i` opens
+    the list on row 1 with every row drawn `NO` and its name; `Down` moves the
+    highlight; `j` joins the row with the next one of the same name; `t` asks
+    `TRADE WITH WHOM?` over the roster with the trader highlighted, where
+    `Down` moves and `s` gives the item away and brings the list back; `e`
+    leaves the list for the sheet.  `dead_trade` makes `t` do nothing."""
+
+    BARS = {**FakeCurseMenu.BARS, "items": b"\x2b\x2c", "whom": b"\x3d\x3f\x41"}
+
+    def __init__(self, tmp, lists, dead_trade=False):
+        super().__init__(tmp)
+        self.lists, self.dead_trade = lists, dead_trade
+        self.item_row, self.whom = 0, 1
+
+    def key(self, k, gap=0.0):
+        m = self.mode
+        if m == "sheet" and k == "i":
+            self.keys.append(k)
+            self.mode, self.item_row = "items", 0
+        elif m == "items":
+            self.keys.append(k)
+            rows = self.lists[self.line]
+            if k == "Down":
+                self.item_row = min(self.item_row + 1, len(rows) - 1)
+            elif k == "j":
+                at = self.item_row
+                other = next((i for i in range(at + 1, len(rows))
+                              if rows[i] == rows[at]), None)
+                if other is not None:
+                    rows[at] = "JOINED " + rows[at]
+                    del rows[other]
+            elif k == "t" and not self.dead_trade:
+                self.mode, self.whom = "whom", self.line
+            elif k == "e":
+                self.mode = "sheet"
+        elif m == "whom":
+            self.keys.append(k)
+            if k == "Down":
+                self.whom = self.whom % self.size + 1
+            elif k == "s":
+                self.lists[self.whom].append(self.lists[self.line].pop(self.item_row))
+                self.mode, self.item_row = "items", 0
+        else:
+            super().key(k, gap)
+
+    def capture(self):
+        if self.mode == "whom":
+            return _with_roster(_screen(self.BARS["whom"], bytes((self.whom,))),
+                                "party", self.size, self.whom)
+        if self.mode != "items":
+            return super().capture()
+        px = bytearray(_screen(self.BARS["items"], b"").px)
+        for k, name in enumerate(self.lists[self.line]):
+            row = da.ITEM_TEXT_ROW + k
+            _draw(px, _FONT_BLOCK, row, 2, "NO", _EFFECT_INK)
+            _draw(px, _FONT_BLOCK, row, 7, name, _EFFECT_INK)
+            if k == self.item_row:
+                for dx in range(16, 16 + 200):
+                    at = ((row * 8 + 5) * W + dx) * 3
+                    px[at:at + 3] = da.POINTER_INK
+        return dosbox.Screen(W, H, bytes(px))
+
+
+@pytest.fixture
+def ssb_trade_bar(monkeypatch):
+    """The fake's `TRADE WITH WHOM?` bar stands in for the measured one."""
+    monkeypatch.setattr(da, "SSB_TRADE_BAR", screens.bar_signature(
+        _screen(FakeSsbItems.BARS["whom"], b"")))
+
+
+def _ssb_items_driver(tmp_path, **kw):
+    lists = {1: ["ARROWS", "ARROWS", "QUARTER STAFF"],
+             2: ["DARTS"] * 3 + ["MAGE SCROLL", "MAGE SCROLL"],
+             3: [], 4: [], 5: [], 6: []}
+    game = FakeSsbItems(tmp_path, lists, **kw)
+    game.mode = "party"
+    asked = []
+
+    class Ssb:
+        def menu(self, row, label):
+            asked.append(row)
+            game.mode = "pick"
+
+        def wait_bar(self, want, timeout=45.0):
+            asked.append(want)
+            return game.capture()
+
+    d = da.Driver(game, lambda **k: None, "A", "ssb", party_size=game.size)
+    d._ssb, d._font = Ssb(), _FONT
+    d.where = "party"
+    d.party_sig = screens.bar_signature(game.capture())
+    return game, d, asked
+
+
+def test_the_trade_step_parses_with_a_line_a_row_and_a_member():
+    got = da.parse_step("trade 1 3 2")
+    assert (got.kind, got.line, got.row, got.to) == ("trade", 1, 3, 2)
+    for bad, why in (("trade 1 3 1", "trade with itself"), ("trade 1 19 2", "rows 1 to"),
+                     ("trade 9 1 2", "not a step"), ("trade 1 1", "not a step"),
+                     ("trade 1 1 9", "not a step")):
+        with pytest.raises(ValueError, match=why):
+            da.parse_step(bad)
+
+
+def test_silver_blades_joins_and_trades_at_the_party_menu_and_saves_there():
+    da.validate_steps(_steps("load", "join 2 4", "trade 1 3 2", "view 2", "save B",
+                             "read"), "ssb")
+    with pytest.raises(ValueError, match="join needs the party menu"):
+        da.validate_steps(_steps("load", "begin", "camp", "join 2 4"), "ssb")
+    with pytest.raises(ValueError, match="trade needs the party menu"):
+        da.validate_steps(_steps("load", "begin", "trade 1 3 2"), "ssb")
+
+
+@pytest.mark.parametrize("title,steps,why", [
+    ("pool", ("load", "camp", "join 1 1"), "join is driven in darkness, ssb only"),
+    ("curse", ("load", "join 1 1"), "join is driven in darkness, ssb only"),
+    ("darkness", ("load", "begin", "camp", "trade 1 1 2"), "trade is driven in ssb only"),
+    ("ssb", ("load", "halve 1 1"), "halve is driven in darkness only"),
+])
+def test_join_and_trade_are_refused_where_they_are_not_driven(title, steps, why):
+    with pytest.raises(ValueError, match=why):
+        da.validate_steps(_steps(*steps), title)
+
+
+def test_silver_blades_join_reads_the_rows_as_text_and_ends_at_the_party_menu(tmp_path):
+    game, d, asked = _ssb_items_driver(tmp_path)
+    got = d.join(2, 4)
+    assert asked == [route_silver_blades.MENU_AFTER["view"], "pick_character"]
+    assert game.keys == ["Down", "s", "i"] + ["Down"] * 3 + ["j", "e", "e"]
+    assert (got["rows_before"], got["rows_after"]) == (5, 4)
+    assert got["highlight_before"] == got["highlight_after"] == 3
+    assert got["texts_before"] == ["NO DARTS"] * 3 + ["NO MAGE SCROLL"] * 2
+    assert got["texts_after"] == ["NO DARTS"] * 3 + ["NO JOINED MAGE SCROLL"]
+    assert game.mode == "party" and d.where == "party"
+
+
+def test_silver_blades_trade_gives_the_row_to_the_member_picked(tmp_path, ssb_trade_bar):
+    game, d, _ = _ssb_items_driver(tmp_path)
+    got = d.trade(1, 3, 2)
+    assert game.keys == ["s", "i", "Down", "Down", "t", "Down", "s", "e", "e"]
+    assert game.lists[1] == ["ARROWS", "ARROWS"]
+    assert game.lists[2][-1] == "QUARTER STAFF"
+    assert (got["rows_before"], got["rows_after"], got["to"]) == (3, 2, 2)
+    assert got["texts_after"] == ["NO ARROWS", "NO ARROWS"]
+    assert got["whom_presses"] == 1 and game.mode == "party"
+
+
+def test_a_trade_that_asks_nothing_stops_before_any_select(tmp_path, ssb_trade_bar):
+    game, d, _ = _ssb_items_driver(tmp_path, dead_trade=True)
+    with pytest.raises(da.StepFailed, match="did not ask TRADE WITH WHOM"):
+        d.trade(1, 1, 2)
+    assert game.keys[-1] == "t" and game.mode == "items"
+
+
+def test_join_off_the_party_menu_is_refused_before_a_key(tmp_path):
+    game, d, _ = _ssb_items_driver(tmp_path)
+    d.where = "map"
+    with pytest.raises(da.StepFailed, match="party menu"):
+        d.join(2, 4)
+    assert game.keys == []
+
+
+@pytest.mark.parametrize("shot,rows,highlight,last", [
+    ("035-control-before-join", 3, 0, "NO QUARTER STAFF"),
+    ("039-control-after-join", 2, 0, "NO QUARTER STAFF"),
+    ("080-scroll-before-join", 16, 14, "NO MAGE SCROLL"),
+    ("084-scroll-after-join", 15, 14, "NO BUNDLE OF 2 SCROLLS"),
+    ("131-last", 1, 0, "NO 20 ARROWS"),
+    ("149-paine-16-heads-after-trade", 16, 0, "NO QUARTER STAFF"),
+])
+def test_the_dosjoin_items_lists_read_as_rows_and_text(shot, rows, highlight, last):
+    """The hand-driven run of WISH-4: Guy's two stacks of ten arrows joined
+    into one, PAINE's two mage scrolls into a bundle, and Guy's staff traded
+    to PAINE, which made her sixteen rows."""
+    from tools.dos import dosbox as real
+    screen = _capture("cbea7c9243-dosjoin", shot, issue="432")
+    try:
+        font = da.load_font(real.find_game("SECRET"))
+    except (FileNotFoundError, OSError):
+        pytest.skip("needs the DOS Silver Blades archive for its font")
+    assert screens.item_rows(screen) == rows
+    assert screens.item_highlight(screen) == highlight
+    texts = [" ".join(da.text_row(screen, da.ITEM_TEXT_ROW + k, font,
+                                  da.DISPLAY_COLUMNS).split()) for k in range(rows)]
+    assert texts[-1] == last
+
+
+@pytest.mark.parametrize("shot,line", [("125-last", 1), ("128-last", 2)])
+def test_the_trade_prompt_is_known_by_its_bar_and_draws_the_party_roster(shot, line):
+    screen = _capture("cbea7c9243-dosjoin", shot, issue="432")
+    assert screens.bar_signature(screen) == da.SSB_TRADE_BAR
+    assert screens.roster_line(screen, "party", 6) == line

@@ -60,7 +60,8 @@ a source whose title does not match `--title`:
 | `heal N` | the same three, in camp: line N's sheet, `HEAL` (`LAY` in Pools of Darkness), `SELECT` at `HEAL WHOM?` on the member it opens on, and the sheet required back without the word; back to camp |
 | `cure N` | Curse, in camp: line N's sheet, `CURE`, `SELECT` at `CURE WHOM?`, `YES` to `CURE ANYWAY` if asked, the sheet required back; back to camp |
 | `change N CLASS` | Curse, at the party menu with the hall open (`--hall`): line N, `HUMAN CHANGE CLASSES`, the class list's row for CLASS as the engine's own test orders them (`class_choices`), checked against the rows the highlight reaches, `SELECT`, back to the party menu |
-| `halve N I`, `join N I` | Pools of Darkness, in camp: member N's `ITEMS`, the highlight moved to row I (from 1, at most 18) with `Down`, `h` or `j` pressed once, and the rows counted before and after; `halve` must add a row and keep the highlight or the run stops before any save, `join` only records; back to camp |
+| `halve N I`, `join N I` | Pools of Darkness, in camp: member N's `ITEMS`, the highlight moved to row I (from 1, at most 18) with `Down`, `h` or `j` pressed once, and the rows counted before and after; `halve` must add a row and keep the highlight or the run stops before any save, `join` only records; back to camp.  Silver Blades' `join N I`, at the party menu before `begin`: `VIEW CHARACTER`, line N at `PICK CHARACTER` with `Down`, `SELECT`, the sheet checked by its name, `ITEMS`, row I highlighted, `j` once, the rows counted and read as text before and after, and `Exit` back to the party menu; it only records |
+| `trade N I M` | Silver Blades, at the party menu before `begin`: line N's `ITEMS` as `join` opens it, row I highlighted, `TRADE`, line M picked at `TRADE WITH WHOM?` with `Down` and `SELECT`, and the list required back; N's rows and M's name are recorded, and nothing checks that the item moved |
 | `memorize N` | Pools of Darkness, in camp: roster line N highlighted with `Down`, `MAGIC`, `MEMORIZE`; the grimoire's title checked against line N's name; every page shot and its eleven rows read, turning with `NEXT` until the bar stops offering it; `lists_126` says whether a page draws `MONSTER SUMMONING`, spell id 126; `EXIT` to the Magic bar and to camp.  Nothing is memorized |
 | `add NAME` | Pool, first or after another `add`, with no `load`: the party menu (title screens pressed past as `load` does), `ADD CHARACTER TO PARTY` (`a`), the highlight walked with `End` onto the row reading NAME (several words, as `CHARLIST.TXT` lists it), `Return`, believed only when the row redraws as `* NAME`, then `EXIT` (`e`), and NAME required on the party menu's roster.  Each screen is read as text with the title's font before its key and an unknown one stops the run with nothing more pressed; a list longer than one screen is not paged.  Before the boot the save folder is emptied and every exported character of the title's own `SAVE` folder (`.CHA`, `.ITM`, `.SPC`) and its `CHARLIST.TXT` are staged into it, and a NAME that `CHARLIST.TXT` does not list is refused.  A run that begins with `add` takes no `--save`, and then no staging option, `--expect` or `read`; `view N` and `save X` may follow |
 | `view N` | At the party menu, before `begin`.  Pool, after `add`: `End` to line N, `VIEW CHARACTER` (`v`), the sheet read as text (its name row must read line N's name, `encumbrance` is the figure it draws), `ITEMS` when the sheet offers it, the list's title `<NAME>'S ITEMS` checked and each row read as `ready`, `marked` and `name`, and `Escape` twice back.  Pools of Darkness and Silver Blades: `VIEW CHARACTER`, line N at `PICK CHARACTER` with `Down`, `SELECT`.  Curse: `End` to line N on the party menu, then `v`.  The sheet is checked by its name as above (never by a bar); a sheet that draws `(NPC)` two cells after the name (a control byte above 0x7F) is the member's too, read with the title's font, and the result's `header` names it.  `EXIT` returns to the party menu, and only Pools of Darkness pages `ITEMS` |
@@ -601,6 +602,22 @@ ITEM_NEXT_ROW = "Down"
 #: Not measured: a stack of 1, a full list, a list of 18 rows.
 ITEM_HALVE = "h"
 ITEM_JOIN = "j"
+#: Silver Blades' `ITEMS` bar is `READY TRADE DROP [HALVE] JOIN EXIT`; `t`
+#: opened `TRADE WITH WHOM?` in the hand-driven run `cbea7c9243-dosjoin` of
+#: WISH-4, and `j` joined two stacks of arrows and two mage scrolls there.
+ITEM_TRADE = "t"
+#: That prompt's bar, `TRADE WITH WHOM? SELECT EXIT`, by `bar_signature`: the
+#: same on its 2 captures (shots 125 and 128 of that run).  It draws the
+#: party-menu roster with the trader's line highlighted; `Down` moved the
+#: highlight a line on, and `s` gave the item to the highlighted member and
+#: brought the trader's list back without the item.
+SSB_TRADE_BAR = "c4590a78b4fc9cbd"
+#: Where each title's `join` runs: Pools of Darkness in camp, Silver Blades
+#: at the party menu, as the dosjoin run did it.
+JOIN_WHERE = {"darkness": "camp", "ssb": "party"}
+#: The `ITEMS` list's first text row: its rows start at y = 40
+#: (`screens.ITEM_LIST_RECT`), eight pixels a row.
+ITEM_TEXT_ROW = 40 // CELL
 
 #: Pools of Darkness' roster selector (`GAME.OVR` 0x2680C, far entry `AA:4D`)
 #: moves the current character to the next member on scancode 0x50 and to
@@ -1869,6 +1886,7 @@ class Step:
     row: int = 0
     seconds: int = 0
     node: int = 0
+    to: int = 0
 
 
 _DURATION = re.compile(r"^(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?$")
@@ -1899,7 +1917,7 @@ def rest_presses(minutes: int) -> tuple[int, int, int]:
 STEP_HELP = ("load, begin, 'walk MI', 'walk I', 'walk 1', 'turn 4', camp, leave, display, "
              "'rest 5m', 'save D', "
              "'train 1', 'change 2 FIGHTER', 'sheet 1', 'heal 1', 'cure 1', 'items 1', "
-             "'halve 1 1', 'join 4 15', 'view 1', 'memorize 5', 'cast 2 BLESS', "
+             "'halve 1 1', 'join 4 15', 'trade 1 2 3', 'view 1', 'memorize 5', 'cast 2 BLESS', "
              "'cast 2 RESIST-COLD 4', 'scribe 5 PROTECTION FROM GOOD', 'shot NAME', "
              "'press KEY', 'fight', 'fight 900', 'prayer-watch 49', 'add ARRONEL', read")
 #: The class names `change N CLASS` takes: Curse's own (`START.EXE` data
@@ -1952,6 +1970,17 @@ def parse_step(text: str) -> Step:
                              f"{ITEM_ROWS} and the rows past them need Next, which "
                              "is not driven here")
         return Step(kind, text, line=int(words[1]), row=row)
+    if kind == "trade" and len(words) == 4 and re.fullmatch(
+            r"[1-8]", words[1]) and re.fullmatch(r"\d+", words[2]) and re.fullmatch(
+            r"[1-8]", words[3]):
+        row, to = int(words[2]), int(words[3])
+        if not 1 <= row <= ITEM_ROWS:
+            raise ValueError(f"trade row {row} is refused: the list shows rows 1 to "
+                             f"{ITEM_ROWS}")
+        if to == int(words[1]):
+            raise ValueError(f"trade {text!r} is refused: line {to} would trade "
+                             "with itself")
+        return Step(kind, text, line=int(words[1]), row=row, to=to)
     if kind == "walk" and len(words) == 2 and any(
             words[1].upper() in routes for routes in WALKS.values()):
         return Step(kind, text, key=words[1].upper())
@@ -2071,6 +2100,15 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
         elif k == "items" and title == "pool":
             if where != "camp":
                 raise ValueError(f"items needs camp first: {step.text!r}")
+        elif k in ("join", "trade") and title == "ssb":
+            if where != "party":
+                raise ValueError(f"{k} needs the party menu, before begin: "
+                                 f"{step.text!r}")
+        elif k == "trade":
+            raise ValueError(f"trade is driven in ssb only, not {title}")
+        elif k == "join" and title not in JOIN_WHERE:
+            raise ValueError(f"join is driven in {', '.join(sorted(JOIN_WHERE))} "
+                             f"only, not {title}")
         elif k in ("items", "halve", "join", "memorize"):
             if title != "darkness":
                 raise ValueError(f"{k} is driven in darkness only, not {title}")
@@ -4988,22 +5026,28 @@ class Driver:
         then `s`, both answered in three foundation boots; `Return` also opens
         the sheet, unmeasured.  The sheet is judged by its name: its bar is not
         in `route_silver_blades.BARS`, so nothing here waits for a sheet bar."""
-        self.ssb.menu(self.ssb_rows["view"], f"view-{line}")
+        got = self._ssb_sheet(line, "view")
+        self.back_to_party(f"view-{line}-back")
+        self.shot(f"view-{line}-back")
+        return {**got, "pages": []}
+
+    def _ssb_sheet(self, line: int, verb: str) -> dict:
+        """Silver Blades' party menu to roster line `line`'s sheet, as `view`
+        opens it, leaving the sheet showing; shots and failures are labelled
+        by `verb`."""
+        self.ssb.menu(self.ssb_rows["view"], f"{verb}-{line}")
         self.ssb.wait_bar("pick_character", 20.0)
         pick = self.shot(f"pick-{line}")
         moved = self.pick_line(line, "party", f"pick-{line}-select", POD_ROSTER_NEXT)
         roster = self.s.capture()
         want, name = roster_name(roster, "party", line), name_cells(roster, "party", line)
-        self.shot(f"view-line-{line}")
+        self.shot(f"{verb}-line-{line}")
         if not self.press_screen_changes(POD_PICK, tries=2, wait=15.0):
-            raise self.fail(f"view-{line}", "SELECT at PICK CHARACTER changed nothing")
+            raise self.fail(f"{verb}-{line}", "SELECT at PICK CHARACTER changed nothing")
         screen = self.s.settle(quiet=0.8, timeout=30.0)
-        checked = self.check_sheet(screen, line, want, f"view-{line}-name", name=name)
-        sheet = self.shot(f"view-{line}-sheet")
-        self.back_to_party(f"view-{line}-back")
-        self.shot(f"view-{line}-back")
-        return {"line": line, "pick": pick, **moved, "sheet": sheet, **checked,
-                "pages": []}
+        checked = self.check_sheet(screen, line, want, f"{verb}-{line}-name", name=name)
+        sheet = self.shot(f"{verb}-{line}-sheet")
+        return {"line": line, "pick": pick, **moved, "sheet": sheet, **checked}
 
     def _view_pod(self, line: int) -> dict:
         """Pools of Darkness: `View Character`, `PICK CHARACTER` over the roster
@@ -5313,9 +5357,87 @@ class Driver:
 
         Measured: JOIN acts at once with no prompt, and the row counts before
         and after.  Not measured: which row JOIN merges the item with, so this
-        does not check the pair; the live run records it.
+        does not check the pair; the live run records it.  Silver Blades'
+        is driven from the party menu (`_ssb_item_command`).
         """
+        if self.title.key == "ssb":
+            return self._ssb_item_command(line, row, ITEM_JOIN, "join")
         return self._item_command(line, row, ITEM_JOIN, "join", grow=0)
+
+    def trade(self, line: int, row: int, to: int) -> dict:
+        """Silver Blades: `TRADE` member `line`'s item `row` to line `to`."""
+        if self.title.key != "ssb":
+            raise StepFailed("trade is driven in Silver Blades only")
+        return self._ssb_item_command(line, row, ITEM_TRADE, "trade", to=to)
+
+    def item_texts(self, screen) -> list[str]:
+        """The `ITEMS` rows on `screen` as text, read with the title's font,
+        runs of spaces as one: `NO 20 ARROWS`, `NO BUNDLE OF 2 SCROLLS`."""
+        font = self.display_font()
+        return [" ".join(text_row(screen, ITEM_TEXT_ROW + k, font,
+                                  DISPLAY_COLUMNS).split())
+                for k in range(item_rows(screen) or 0)]
+
+    def _ssb_item_command(self, line: int, row: int, key: str, verb: str,
+                          to: int | None = None) -> dict:
+        """Silver Blades' party menu: line `line`'s `ITEMS`, row `row`
+        highlighted, `key` pressed once, the rows counted and read before and
+        after, and `Exit` back to the party menu.
+
+        `TRADE` (`to`) picks line `to` at `TRADE WITH WHOM?` (`SSB_TRADE_BAR`)
+        with `Down`, reading the highlight after each press, and `SELECT`;
+        the trader's list must come back, and any other screen stops the run
+        with nothing more pressed.  Neither verb judges what the game did:
+        that is what the run records.
+        """
+        if self.where != "party":
+            raise StepFailed(f"{verb} needs Silver Blades' party menu, before begin")
+        label = f"{verb}-{line}-{row}" + (f"-{to}" if to else "")
+        got = self._ssb_sheet(line, verb)
+        if not self.press_screen_changes(SHEET_ITEMS, tries=1, wait=15.0):
+            raise self.fail(label, "ITEMS changed nothing on the sheet (the sheet "
+                            "offers ITEMS only to a character carrying something)")
+        if not self.s.wait_for(on_items_list, 15.0):
+            raise self.fail(label, "ITEMS did not open the list")
+        self.s.settle(quiet=0.8, timeout=30.0)
+        moved = self.pick_item(row, f"{label}-select")
+        screen = self.s.capture()
+        before = {"rows_before": item_rows(screen),
+                  "highlight_before": item_highlight(screen),
+                  "texts_before": self.item_texts(screen),
+                  "before": self.shot(f"{label}-before")}
+        self.s.key(key)
+        traded = {}
+        if to is not None:
+            traded = self._trade_to(to, label)
+        if not self.s.wait_for(on_items_list, 15.0):
+            raise self.fail(f"{label}-after", "the ITEMS list did not come back")
+        screen = self.s.settle(quiet=0.8, timeout=30.0)
+        if not on_items_list(screen):
+            raise self.fail(f"{label}-after", "the ITEMS list did not stay")
+        after = {"rows_after": item_rows(screen),
+                 "highlight_after": item_highlight(screen),
+                 "texts_after": self.item_texts(screen),
+                 "after": self.shot(f"{label}-after")}
+        self.back_to_party(f"{label}-back")
+        self.note(event=verb, line=line, row=row, to=to,
+                  texts_before=before["texts_before"], texts_after=after["texts_after"])
+        return {**got, "row": row, "presses": moved["presses"], **before, **after,
+                **traded}
+
+    def _trade_to(self, to: int, label: str) -> dict:
+        """At `TRADE WITH WHOM?`: line `to` highlighted and `SELECT`."""
+        if not self.s.wait_for(lambda sc: bar_signature(sc) == SSB_TRADE_BAR, 15.0):
+            screen = self.s.capture()
+            raise self.fail(f"{label}-whom", "TRADE did not ask TRADE WITH WHOM?; the "
+                            f"bar reads {text_row(screen, BAR_ROW, self.display_font())!r}")
+        screen = self.s.settle(quiet=0.8, timeout=30.0)
+        names = party_roster(screen, self.display_font())
+        moved = self.pick_line(to, "party", f"{label}-whom", POD_ROSTER_NEXT)
+        whom = self.shot(f"{label}-whom")
+        self.s.key(PICK_SELECT)
+        return {"to": to, "to_name": names[to - 1] if to <= len(names) else None,
+                "whom": whom, "whom_presses": moved["presses"]}
 
     def memorize(self, line: int) -> dict:
         """Roster line `line`'s grimoire from camp, every page shot and read,
@@ -6291,6 +6413,8 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                     r = d.halve(step.line, step.row)
                 elif step.kind == "join":
                     r = d.join(step.line, step.row)
+                elif step.kind == "trade":
+                    r = d.trade(step.line, step.row, step.to)
                 elif step.kind == "view":
                     r = d.view(step.line)
                 elif step.kind == "add":

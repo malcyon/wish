@@ -35,21 +35,31 @@ a build spells `p := q^.next` differs between them -- Silver Blades emits
 `les`, Curse and Pool of Radiance two word moves -- so a count of `les` is a
 count of one compiler's habit as much as of a field.
 
-Nothing here writes anything; the player's files are opened read only.
+`stage` writes a copy of one Silver Blades slot whose members carry the
+joined and loose scrolls asked for, for a DOSBox run to load:
+
+    tools/dos/dosscrollbundle.py stage --slot A --out DIR \\
+        --pack 2=j10*12,s*2,staff --pack 1=s*3 --pack 3=s*2
+
+Only `stage` writes, and only into `--out`; the player's files are opened
+read only.
 """
 
 from __future__ import annotations
 
 import argparse
 import collections
+import json
 import pathlib
+import re
 import sys
 
 TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import dos_port  # noqa: E402
+from goldbox import dos_codec, dos_port  # noqa: E402
+from goldbox.neutral import ScrollBundle  # noqa: E402
 from tools.dos import dosbox, dosfieldrefs  # noqa: E402
 
 #: The item type whose `0x03F` pointer is a chain: a bundle of scrolls.  The
@@ -170,6 +180,190 @@ def default_roots() -> list[pathlib.Path]:
 
 
 # --------------------------------------------------------------------------
+# Staging a pack
+# --------------------------------------------------------------------------
+
+#: The items `stage` composes, as the sixteen bytes of the neutral inventory
+#: (`dos_codec.item_to_c64`): type, three name ids, plus, plus save, readied
+#: and hidden, cursed, weight, quantity, value, then three bytes that are a
+#: scroll's spell ids.  Each is the item the hand-driven run `cbea7c9243-dosjoin`
+#: staged into the archives' slot A party and the engine loaded, drew, joined,
+#: traded and wrote back in its resaves B, C and D: the scroll is an
+#: unidentified `MAGE SCROLL` (hidden 4) of weight 10 and value 3000, which
+#: JOIN made into `Bundle of 2 Scrolls`.
+SCROLL = bytes((0x27, 0x66, 0x27, 0x28, 2, 0, 4, 0, 10, 0, 0)) + (3000).to_bytes(2, "little")
+ORDINARY = {
+    "staff": bytes((0x0F, 0, 0, 0x0F, 0, 0, 0, 0, 50, 0, 0, 10, 0, 0, 0, 0)),
+    "darts": bytes((0x05, 0, 0, 0x05, 0, 0, 0, 0, 5, 0, 4, 0, 0, 0, 0, 0)),
+    "arrows": bytes((0x1E, 0, 0, 0x1E, 0, 0, 0, 0, 3, 0, 10, 0, 0, 0, 0, 0)),
+}
+#: The head items a member may hold: the Silver Blades `ITEMS` list never drew
+#: more than 16 in the dosjoin run, whose TRADE onto a member of 15 made 16,
+#: and the Amiga port's limit is 16 (`/Secret` `0x24B50`).  A pack of 17 is
+#: a state only an editor makes, so `stage` refuses one.
+MOST_HEADS = 16
+#: The most scrolls `stage` puts in one joined scroll.  `GAME.OVR` holds
+#: `Bundles are limited to <n> scrolls.`, the number filled in at run time
+#: and not yet read; ten is what the specimens of WISH-4's plan hold, and is
+#: PROBABLE until a JOIN onto a joined scroll of ten is seen.
+MOST_JOINED = 10
+#: Silver Blades' spell table: `START.EXE` `DS:449D`, sixteen bytes an id,
+#: byte 0 the class, 3 being magic-user, and byte 1 the level
+#: (`tools/dos/dosspellslots.py --game SECRET sweep --verbose`).  Id 109 is a
+#: magic-user spell of level 0, which no scroll is known to carry, so a staged
+#: scroll takes only levels 1 to 9: 53 ids.
+SPELL_TABLE, MAGIC_USER, SPELL_IDS = 0x449D, 3, range(1, 118)
+
+_TOKEN = re.compile(r"(j(\d+)|s|[a-z]+)(?:\*(\d+))?")
+
+
+def parse_pack(text: str) -> list[tuple[str, int]]:
+    """A pack spec, comma separated, into `(kind, n)` in pack order.
+
+    `jK` is a joined scroll of K scrolls, `s` a loose mage scroll, and a name
+    of `ORDINARY` that item; `*N` repeats a token N times.
+    `j10*12,s*2,staff` is twelve joined scrolls of ten, two loose scrolls
+    and a quarter staff.
+    """
+    out: list[tuple[str, int]] = []
+    for token in (t.strip() for t in text.split(",")):
+        m = _TOKEN.fullmatch(token.lower())
+        if m is None:
+            raise ValueError(f"not a pack item: {token!r} (jK, s, or one of "
+                             f"{', '.join(ORDINARY)}, each with an optional *N)")
+        times = int(m.group(3) or 1)
+        if m.group(2) is not None:
+            k = int(m.group(2))
+            if not 2 <= k <= MOST_JOINED:
+                raise ValueError(f"a joined scroll holds 2 to {MOST_JOINED} "
+                                 f"scrolls, not {k}")
+            unit = ("joined", k)
+        elif m.group(1) == "s":
+            unit = ("scroll", 1)
+        elif m.group(1) in ORDINARY:
+            unit = (m.group(1), 1)
+        else:
+            raise ValueError(f"no item called {m.group(1)!r}: "
+                             f"{', '.join(ORDINARY)}")
+        if times < 1:
+            raise ValueError(f"{token!r} repeats nothing")
+        out += [unit] * times
+    if len(out) > MOST_HEADS:
+        raise ValueError(f"{len(out)} items; a member holds at most {MOST_HEADS}")
+    return out
+
+
+def scroll_spells(k: int, ids: list[int]) -> bytes:
+    """The three spell ids of the party's `k`th staged scroll, from 0.
+
+    The first two are `ids[k % n]` and `ids[k // n]`, so no two of the
+    party's scrolls carry the same three while `k < n * n`; the third is
+    another id so that each scroll holds three spells, as the dosjoin run's
+    did.
+    """
+    n = len(ids)
+    if k >= n * n:
+        raise ValueError(f"scroll {k}: {n} ids tell at most {n * n} scrolls apart")
+    return bytes((ids[k % n], ids[k // n], ids[(k + n // 2) % n]))
+
+
+def joined_head(scrolls: list[bytes]) -> bytes:
+    """The sixteen bytes JOIN makes for `scrolls`, as resave C of the dosjoin
+    run holds it: type 0x49, names 0x27, the count and 0x4D, the scrolls'
+    plus, weight and quantity the count, value their sum, no spells.  The
+    weight of a joined scroll of more than two is PROBABLE."""
+    k = len(scrolls)
+    value = sum(int.from_bytes(s[11:13], "little") for s in scrolls)
+    return (bytes((dos_codec.SCROLL_BUNDLE_TYPE, 0x27, k, 0x4D, scrolls[0][4],
+                   0, 0, 0)) + k.to_bytes(2, "little") + bytes((k,))
+            + min(value, 0xFFFF).to_bytes(2, "little") + bytes(3))
+
+
+def compose_pack(units: list[tuple[str, int]], ids: list[int], first: int
+                 ) -> tuple[list[bytes], tuple[ScrollBundle, ...], int]:
+    """The neutral `inventory` and `scroll_bundles` for `units`, numbering
+    scrolls from `first`; returns the next number too."""
+    inventory: list[bytes] = []
+    bundles: list[ScrollBundle] = []
+    k = first
+    for kind, n in units:
+        if kind in ORDINARY:
+            inventory.append(ORDINARY[kind])
+            continue
+        scrolls = []
+        for _ in range(n):
+            scrolls.append(SCROLL + scroll_spells(k, ids))
+            k += 1
+        if kind == "joined":
+            bundles.append(ScrollBundle(len(inventory), n, joined_head(scrolls)))
+        inventory += scrolls
+    return inventory, tuple(bundles), k
+
+
+def mage_spell_ids(game: pathlib.Path) -> list[int]:
+    """Silver Blades' magic-user spell ids, read from its own spell table."""
+    from tools.dos import dosspellslots
+    image = dosspellslots.image_of(game, "START.EXE")
+    base = dosspellslots.data_segment(image) * 16 + SPELL_TABLE
+    return [i for i in SPELL_IDS if image[base + 16 * i] == MAGIC_USER
+            and 1 <= image[base + 16 * i + 1] <= 9]
+
+
+def stage(save: pathlib.Path, slot: str, packs: dict[int, list[tuple[str, int]]],
+          out: pathlib.Path, ids: list[int]) -> dict:
+    """Copy slot `slot` of `save` into `out`, roster line N holding `packs[N]`.
+
+    Each staged member is read, its pack replaced on the neutral record and
+    written by `dos_codec.write`; the item file, `item_count` and
+    `encumbrance` are taken from what it writes, and every other byte of the
+    record is the slot's own.  Roster line N is the Nth `CHRDAT<slot><n>`
+    file, which is the order the dosjoin run's party menu drew.
+    """
+    slot = slot.upper()
+    deltas = dos_port.SECRET_OF_THE_SILVER_BLADES
+    party = dos_codec.read_party(save, slot)
+    if any(c.deltas != deltas for c in party):
+        raise ValueError(f"slot {slot} of {save} is not a Silver Blades party")
+    for line in packs:
+        if not 1 <= line <= len(party):
+            raise ValueError(f"line {line} is not in a party of {len(party)}")
+    out.mkdir(parents=True, exist_ok=True)
+    if any(out.iterdir()):
+        raise ValueError(f"{out} is not empty")
+    for p in sorted(save.iterdir()):
+        name = p.name.upper()
+        if name == f"SAVGAM{slot}.DAT" or name.startswith(f"CHRDAT{slot}"):
+            (out / name).write_bytes(p.read_bytes())
+    fields = dos_port.FIELDS_BY_NAME_FOR[deltas.key]
+    taken = [fields["item_count"], fields["encumbrance"]]
+    k, report = 0, {"slot": slot, "from": str(save), "lines": {}}
+    for line in sorted(packs):
+        char = party[line - 1]
+        inventory, bundles, k_next = compose_pack(packs[line], ids, k)
+        neutral = dos_codec.to_neutral(char)
+        neutral.set("inventory", inventory, "staged by dosscrollbundle.py stage")
+        neutral.set("scroll_bundles", bundles, "staged by dosscrollbundle.py stage")
+        record, itm, _spc, _rep = dos_codec.write(neutral, deltas=deltas)
+        path = pathlib.Path(char.source)
+        rec = bytearray(path.read_bytes())
+        changed = []
+        for f in taken:
+            span = slice(f.offset, f.offset + f.size)
+            if rec[span] != record[span]:
+                changed.append(f"{f.name} {rec[span].hex()}->{record[span].hex()}")
+            rec[span] = record[span]
+        (out / path.name.upper()).write_bytes(bytes(rec))
+        (out / path.with_suffix(deltas.item_suffix).name.upper()).write_bytes(itm)
+        report["lines"][line] = {
+            "file": path.name.upper(), "name": char.name.strip(),
+            "items": len(packs[line]), "records": len(itm) // deltas.item_size,
+            "scrolls": k_next - k, "first_scroll": k, "changed": changed,
+            "joined": [b.count for b in bundles]}
+        k = k_next
+    return report
+
+
+# --------------------------------------------------------------------------
 # Commands
 # --------------------------------------------------------------------------
 
@@ -259,16 +453,49 @@ def cmd_sweep(args) -> int:
     return 0
 
 
+def parse_packs(texts: list[str]) -> dict[int, list[tuple[str, int]]]:
+    """`--pack N=SPEC` values into roster line -> pack."""
+    packs: dict[int, list[tuple[str, int]]] = {}
+    for text in texts:
+        line, sep, spec = text.partition("=")
+        if not sep or not re.fullmatch(r"[1-8]", line.strip()):
+            raise ValueError(f"--pack {text!r}: say N=SPEC, N a roster line 1 to 8")
+        if int(line) in packs:
+            raise ValueError(f"--pack names line {line} twice")
+        packs[int(line)] = parse_pack(spec)
+    return packs
+
+
+def cmd_stage(args) -> int:
+    if not args.out or not args.pack:
+        print("stage needs --out and at least one --pack")
+        return 2
+    game = dosbox.find_game("SECRET")
+    save = pathlib.Path(args.save_from) if args.save_from else game / "SAVE"
+    report = stage(save, args.slot, parse_packs(args.pack), pathlib.Path(args.out),
+                   mage_spell_ids(game))
+    print(json.dumps(report, indent=1))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("cmd", choices=("sites", "sweep", "read"))
+    ap.add_argument("cmd", choices=("sites", "sweep", "read", "stage"))
     ap.add_argument("roots", nargs="*",
                     help="sweep: directories to sweep; read: record files")
     ap.add_argument("--game", default=None,
                     help="sites: one game directory stem instead of all six")
+    ap.add_argument("--from", dest="save_from", default=None,
+                    help="stage: the save folder (default the archives' "
+                         "Silver Blades SAVE)")
+    ap.add_argument("--slot", default="A", help="stage: the slot letter")
+    ap.add_argument("--out", default=None, help="stage: an empty folder to write")
+    ap.add_argument("--pack", action="append", default=[],
+                    help="stage: N=SPEC, roster line N's whole pack "
+                         "(jK, s, staff, darts, arrows, each with *N)")
     args = ap.parse_args(argv)
-    return {"sites": cmd_sites, "sweep": cmd_sweep,
-            "read": cmd_read}[args.cmd](args)
+    return {"sites": cmd_sites, "sweep": cmd_sweep, "read": cmd_read,
+            "stage": cmd_stage}[args.cmd](args)
 
 
 if __name__ == "__main__":

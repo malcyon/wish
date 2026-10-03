@@ -172,3 +172,140 @@ def test_only_silver_blades_ever_writes_the_bundle_type_into_an_item():
     assert _overlay("SECRET").count(store) == 1
     for stem in ("POOLRAD", "CURSE", "GATEWAY", "DARKNESS", "TREASURE"):
         assert _overlay(stem).count(store) == 0, stem
+
+
+# --- stage: a slot whose members carry the joined scrolls asked for ----------
+
+#: Seven spell ids are enough to tell 49 staged scrolls apart.
+IDS = [9, 10, 11, 12, 13, 14, 15]
+
+
+def _slot(tmp_path: pathlib.Path, members: int = 3) -> pathlib.Path:
+    """A Silver Blades slot A of composed records with empty packs: each
+    record is this project's own writer's, from a filled neutral character."""
+    from support.neutralrecords import _filled
+
+    from goldbox import c64_port, dos_codec, dos_port
+    record, _itm, _spc, _rep = dos_codec.write(
+        _filled(c64_port.SECRET_OF_THE_SILVER_BLADES),
+        deltas=dos_port.SECRET_OF_THE_SILVER_BLADES)
+    save = tmp_path / "save"
+    save.mkdir()
+    (save / "SAVGAMA.DAT").write_bytes(bytes(5469))
+    count = dos_port.FIELDS_BY_NAME_FOR[
+        dos_port.SECRET_OF_THE_SILVER_BLADES.key]["item_count"].offset
+    for n in range(1, members + 1):
+        out = bytearray(record)
+        out[count] = 0          # an empty pack, as the archives' slot A holds
+        out[0x0B0] = n          # a byte the stage must not touch
+        (save / f"CHRDATA{n}.SAV").write_bytes(bytes(out))
+    return save
+
+
+def _staged(tmp_path):
+    save = _slot(tmp_path)
+    packs = {2: sb.parse_pack("j10*2,s*2,staff"), 1: sb.parse_pack("s*3")}
+    out = tmp_path / "out"
+    report = sb.stage(save, "A", packs, out, IDS)
+    return save, out, report
+
+
+def test_the_staged_file_walks_back_as_the_bundles_asked_for(tmp_path):
+    _save, out, _report = _staged(tmp_path)
+    items = (out / "CHRDATA2.STF").read_bytes()
+    entries = sb.walk(items, STRIDE)
+    assert [e["type"] for e in entries] == [sb.SCROLL_BUNDLE] * 2 + [0x27] * 2 + [0x0F]
+    assert [len(e["subnodes"]) for e in entries] == [10, 10, 0, 0, 0]
+    assert sb.item_count((out / "CHRDATA2.SAV").read_bytes()) == 5
+    assert sb.item_count((out / "CHRDATA1.SAV").read_bytes()) == 3
+    assert [e["subnodes"] for e in sb.walk((out / "CHRDATA1.STF").read_bytes(),
+                                           STRIDE)] == [[], [], []]
+
+
+def test_every_staged_scroll_in_the_party_carries_its_own_three_spells(tmp_path):
+    _save, out, report = _staged(tmp_path)
+    seen = []
+    for n in (1, 2):
+        items = (out / f"CHRDATA{n}.STF").read_bytes()
+        for entry in sb.walk(items, STRIDE):
+            for index in entry["subnodes"] or [entry["index"]]:
+                node = items[index * STRIDE:(index + 1) * STRIDE]
+                if node[0x2E] == 0x27:
+                    seen.append(tuple(node[0x3C:0x3F]))
+    assert len(seen) == 3 + 22 == len(set(seen))
+    assert all(set(s) <= set(IDS) for s in seen)
+    assert report["lines"][1]["first_scroll"] == 0
+    assert report["lines"][2]["first_scroll"] == 3
+
+
+def test_the_head_is_the_one_join_makes(tmp_path):
+    """Type 0x49, names 0x27, the count and 0x4D, weight and quantity the
+    count, value the scrolls' sum, and no spells of its own."""
+    _save, out, _report = _staged(tmp_path)
+    head = (out / "CHRDATA2.STF").read_bytes()[:STRIDE]
+    assert head[0x2E:0x32] == bytes((0x49, 0x27, 10, 0x4D))
+    assert int.from_bytes(head[0x37:0x39], "little") == 10 and head[0x39] == 10
+    assert int.from_bytes(head[0x3A:0x3C], "little") == 10 * 3000
+    assert head[0x3C:0x3F] == bytes(3)
+
+
+def test_only_the_pack_count_and_weight_change_in_the_record(tmp_path):
+    from goldbox import dos_port
+    fields = dos_port.FIELDS_BY_NAME_FOR[dos_port.SECRET_OF_THE_SILVER_BLADES.key]
+    save, out, _report = _staged(tmp_path)
+    allowed = set()
+    for name in ("item_count", "encumbrance"):
+        f = fields[name]
+        allowed |= set(range(f.offset, f.offset + f.size))
+    for n in (1, 2, 3):
+        before = (save / f"CHRDATA{n}.SAV").read_bytes()
+        after = (out / f"CHRDATA{n}.SAV").read_bytes()
+        assert len(after) == len(before)
+        assert {i for i in range(len(before)) if before[i] != after[i]} <= allowed
+    enc = fields["encumbrance"]
+    staff = sb.stage(save, "A", {2: sb.parse_pack("staff")}, tmp_path / "staff", IDS)
+    assert staff["lines"][2]["joined"] == []
+
+    def weight(folder):
+        rec = (folder / "CHRDATA2.SAV").read_bytes()
+        return int.from_bytes(rec[enc.offset:enc.offset + enc.size], "little")
+    # The same money either way, so the difference is the pack: each joined
+    # scroll's head weighs 10 x quantity 10, the loose scrolls 10 each.
+    assert weight(out) - weight(tmp_path / "staff") == 2 * 10 * 10 + 2 * 10
+    assert (out / "SAVGAMA.DAT").read_bytes() == (save / "SAVGAMA.DAT").read_bytes()
+    assert not (out / "CHRDATA3.STF").exists()
+    assert sorted(p.name for p in save.iterdir()) == [
+        "CHRDATA1.SAV", "CHRDATA2.SAV", "CHRDATA3.SAV", "SAVGAMA.DAT"]
+
+
+@pytest.mark.parametrize("spec,why", [
+    ("j11", "2 to 10"), ("j1", "2 to 10"), ("s*17", "at most 16"),
+    ("j10*12,s*4,staff", "at most 16"), ("wand", "no item called"),
+    ("s*0", "repeats nothing"), ("x!", "not a pack item"),
+])
+def test_a_pack_the_game_never_holds_is_refused(spec, why):
+    with pytest.raises(ValueError, match=why):
+        sb.parse_pack(spec)
+
+
+def test_a_line_outside_the_party_and_a_used_folder_are_refused(tmp_path):
+    save = _slot(tmp_path)
+    with pytest.raises(ValueError, match="line 4 is not in a party of 3"):
+        sb.stage(save, "A", {4: [("scroll", 1)]}, tmp_path / "a", IDS)
+    used = tmp_path / "used"
+    used.mkdir()
+    (used / "x").write_bytes(b"")
+    with pytest.raises(ValueError, match="not empty"):
+        sb.stage(save, "A", {1: [("scroll", 1)]}, used, IDS)
+
+
+def test_the_staged_scrolls_take_only_levelled_magic_user_ids():
+    from tools.dos import dosbox
+    try:
+        game = dosbox.find_game("SECRET")
+    except FileNotFoundError:
+        pytest.skip("needs the DOS Silver Blades archive")
+    ids = sb.mage_spell_ids(game)
+    # The dosjoin run's two staged scrolls carried 112, 115, 91 and 82, 83, 88.
+    assert len(ids) == 53 and {82, 83, 88, 91, 112, 115} <= set(ids)
+    assert 109 not in ids and 1 not in ids
