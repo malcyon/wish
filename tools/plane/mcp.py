@@ -38,24 +38,19 @@ def build_server(client=None):
         return client.metadata()
 
     @server.tool()
-    def create_ticket(operation_id: str, title: str, body: str, priority: str, labels: list[str]) -> dict:
-        """Create an agent ticket with one priority and stable retry identity."""
-        return client.create(operation_id, title, body, priority, labels)
+    def create_ticket(title: str, body: str, priority: str, labels: list[str]) -> dict:
+        """Create an agent ticket with one priority."""
+        return client.create(title, body, priority, labels)
 
     @server.tool()
-    def comment_ticket(operation_id: str, identifier: str, body: str) -> dict:
+    def comment_ticket(identifier: str, body: str) -> dict:
         """Comment on a project ticket as the agent."""
-        return client.comment(operation_id, identifier, body)
+        return client.comment(identifier, body)
 
     @server.tool()
-    def update_ticket(operation_id: str, identifier: str, changes: dict, explanation: str) -> dict:
+    def update_ticket(identifier: str, changes: dict, explanation: str) -> dict:
         """Apply metadata or factual corrections and post their explanation."""
-        return client.update(operation_id, identifier, changes, explanation)
-
-    @server.tool()
-    def reconcile_write(operation_id: str) -> dict:
-        """Settle a pending write by reading the ticket; it never sends the write."""
-        return client.reconcile(operation_id)
+        return client.update(identifier, changes, explanation)
 
     return server
 

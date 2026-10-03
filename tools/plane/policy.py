@@ -1,15 +1,11 @@
 """Project Plane records and constrain ticket writes to the configured project."""
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
-import sqlite3
 import stat
-import time
 import unicodedata
-from contextlib import contextmanager
 from pathlib import Path
 from urllib.parse import urlsplit
 from uuid import UUID
@@ -29,6 +25,10 @@ class PlaneHttpError(PlaneError):
 
 class PlaneNotSent(PlaneError):
     """The request never reached Plane, for example a refused connection or a failed name lookup."""
+
+
+class PlaneOutcomeUnknown(PlaneError):
+    """Plane may or may not have applied the write, as after a 5xx, a redirect or a read timeout."""
 
 
 def uuid(value):
@@ -69,7 +69,6 @@ class Settings:
         self.project = uuid(data['project_id'])
         self.agent = uuid(data['agent_account_id'])
         self.token_file = Path(data['token_file'])
-        self.journal_file = Path(data['journal_file'])
         self.writes_enabled = data.get('writes_enabled') is True
         self.resource = data.get('resource', 'work-items')
         if self.resource not in {'work-items', 'issues'}:
@@ -145,116 +144,6 @@ class Policy:
         title = ' '.join(filtered['name'].split())
         title = re.sub(r'([\\\[\]()`*_<>])', r'\\\1', title)
         return f'[{filtered["identifier"]} ({title})]({filtered["url"]})'
-
-
-class Journal:
-    """Reserve each logical write before sending it and never replay uncertain writes."""
-
-    # A busy writer is waited for rather than failed, because several agents share one journal.
-    BUSY_SECONDS = 60
-
-    # A write reserved more recently than this may still be in flight, so its outcome is not yet decidable.
-    SETTLE_SECONDS = 300
-
-    def __init__(self, path):
-        path = Path(path)
-        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
-        os.close(fd)
-        if path.stat().st_mode & 0o077:
-            raise PlaneError("Write journal must have mode 0600")
-        self.path = path
-        with self._db() as db:
-            db.execute('PRAGMA journal_mode=WAL')
-        with self._db() as db:
-            # The write lock makes the column check and the ALTER atomic across processes starting together.
-            db.execute('BEGIN IMMEDIATE')
-            db.execute('CREATE TABLE IF NOT EXISTS writes (key TEXT PRIMARY KEY, fingerprint TEXT UNIQUE, status TEXT, result TEXT)')
-            have = {row[1] for row in db.execute('PRAGMA table_info(writes)')}
-            for column, kind in (('request', 'TEXT'), ('reserved_at', 'REAL')):
-                if column not in have:
-                    db.execute(f'ALTER TABLE writes ADD COLUMN {column} {kind}')
-        for suffix in ('-wal', '-shm'):
-            side = Path(str(path) + suffix)
-            if side.exists() and side.stat().st_mode & 0o077:
-                raise PlaneError("Write journal side files must have mode 0600")
-
-    @contextmanager
-    def _db(self):
-        db = sqlite3.connect(self.path, timeout=self.BUSY_SECONDS)
-        try:
-            with db:
-                yield db
-        finally:
-            db.close()
-
-    def run(self, key, request, send):
-        if not isinstance(key, str) or not re.fullmatch(r'[a-zA-Z0-9_.:-]{1,160}', key):
-            raise PlaneError("A stable operation ID is required")
-        fingerprint = hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()
-        with self._db() as db:
-            db.execute('BEGIN IMMEDIATE')
-            prior = db.execute('SELECT fingerprint,status,result,key FROM writes WHERE key=? OR fingerprint=?', (key, fingerprint)).fetchone()
-            if prior:
-                if prior[0] != fingerprint:
-                    raise PlaneError("Operation ID was already used for a different write")
-                if prior[1] == 'done':
-                    return json.loads(prior[2])
-                if prior[1] != 'unsent':
-                    raise PlaneError("Write outcome is uncertain; reconcile the durable journal before another attempt")
-                key = prior[3]
-                db.execute('UPDATE writes SET status=?,reserved_at=? WHERE key=?', ('pending', time.time(), key))
-            else:
-                db.execute('INSERT INTO writes (key,fingerprint,status,result,request,reserved_at) VALUES (?,?,?,NULL,?,?)',
-                           (key, fingerprint, 'pending', json.dumps(request), time.time()))
-        try:
-            result = send()
-        except (PlaneHttpError, PlaneNotSent):
-            self._finish(key, 'unsent', None)
-            raise
-        self._finish(key, 'done', result)
-        return result
-
-    def _finish(self, key, status, result):
-        with self._db() as db:
-            db.execute('UPDATE writes SET status=?,result=? WHERE key=? AND status=?',
-                       (status, None if result is None else json.dumps(result), key, 'pending'))
-
-    def settle(self, key, status, evidence):
-        """Record a known outcome for one pending key, keeping the evidence in its result."""
-        if status not in {'done', 'unsent'}:
-            raise PlaneError("A pending write settles as done or unsent")
-        if not isinstance(evidence, str) or not evidence.strip():
-            raise PlaneError("Evidence text is required")
-        with self._db() as db:
-            db.execute('BEGIN IMMEDIATE')
-            row = db.execute('SELECT status FROM writes WHERE key=?', (key,)).fetchone()
-            if row is None:
-                raise PlaneError("No journal entry has this operation ID")
-            if row[0] != 'pending':
-                raise PlaneError(f"Only a pending entry can be settled; this one is {row[0]}")
-            db.execute('UPDATE writes SET status=?,result=? WHERE key=?', (status, json.dumps({'evidence': evidence}), key))
-        return {'operation_id': key, 'status': status, 'result': {'evidence': evidence}}
-
-    def reconcile(self, key, decide):
-        """Settle a pending key from `decide(request, reserved_at)`, which returns the result if the write is present and None if it is not."""
-        with self._db() as db:
-            row = db.execute('SELECT status,result,request,reserved_at FROM writes WHERE key=?', (key,)).fetchone()
-        if row is None:
-            raise PlaneError("No journal entry has this operation ID")
-        status, result, request, reserved_at = row
-        if status != 'pending':
-            return {'operation_id': key, 'status': status, 'result': json.loads(result) if result else None}
-        if request is None or reserved_at is None:
-            raise PlaneError("This journal entry predates stored requests, so it cannot be decided; it is unchanged")
-        if time.time() - reserved_at < self.SETTLE_SECONDS:
-            raise PlaneError("This write was reserved less than 5 minutes ago and may still be in flight; reconcile it later")
-        found = decide(json.loads(request), reserved_at)
-        if found is None:
-            self._finish(key, 'unsent', None)
-            return {'operation_id': key, 'status': 'unsent', 'result': None}
-        self._finish(key, 'done', found)
-        return {'operation_id': key, 'status': 'done', 'result': found}
 
 
 def paragraph(text):

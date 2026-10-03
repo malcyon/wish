@@ -14,7 +14,7 @@ PROJECT = '00000000-0000-0000-0000-000000000003'
 ITEM = '00000000-0000-0000-0000-000000000004'
 STATE = '00000000-0000-0000-0000-000000000005'
 READ_TOOLS = {'list_tickets', 'read_ticket', 'cite_ticket', 'project_metadata'}
-WRITE_TOOLS = {'create_ticket', 'comment_ticket', 'update_ticket', 'reconcile_write'}
+WRITE_TOOLS = {'create_ticket', 'comment_ticket', 'update_ticket'}
 
 
 class Transport:
@@ -45,7 +45,7 @@ class Transport:
 def adapter(tmp_path):
     settings = Settings(dict(base_url='https://plane.example', workspace_slug='wish',
                              project_id=PROJECT, agent_account_id=AGENT,
-                             token_file=str(tmp_path / 'token'), journal_file=str(tmp_path / 'journal.sqlite'),
+                             token_file=str(tmp_path / 'token'),
                              writes_enabled=False))
     transport = Transport()
     return build_server(Client(settings, transport)), transport
@@ -79,7 +79,6 @@ def test_mcp_read_calls_expose_private_project_text_and_send_only_get_requests(a
 def test_mcp_create_stops_at_disabled_write_guard_without_sending_a_request(adapter):
     server, transport = adapter
     with pytest.raises(ToolError, match='Plane writes are disabled pending deployment acceptance'):
-        asyncio.run(server.call_tool('create_ticket', dict(operation_id='disabled-probe',
-                                                         title='Ticket', body='Body',
+        asyncio.run(server.call_tool('create_ticket', dict(title='Ticket', body='Body',
                                                          priority='high', labels=[])))
     assert transport.calls == []

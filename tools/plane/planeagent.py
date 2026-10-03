@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Write Plane tickets as the dedicated agent with durable operation IDs."""
+"""Write Plane tickets as the dedicated agent."""
 import argparse
 import json
 import sys
@@ -9,12 +9,11 @@ if __package__ in (None, ''):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from tools.plane.client import Client
-from tools.plane.policy import Journal, PlaneError, Settings
+from tools.plane.policy import PlaneError
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--operation-id', required=True)
     commands = parser.add_subparsers(dest='command', required=True)
     create = commands.add_parser('create')
     create.add_argument('--title', required=True)
@@ -28,24 +27,15 @@ def main(argv=None):
     update.add_argument('identifier')
     update.add_argument('--changes-file', type=Path, required=True)
     update.add_argument('--explanation-file', type=Path, required=True)
-    commands.add_parser('reconcile')
-    settle = commands.add_parser('settle')
-    settle.add_argument('status', choices=['done', 'unsent'])
-    settle.add_argument('--evidence', required=True)
     args = parser.parse_args(argv)
     try:
-        if args.command == 'settle':
-            print(json.dumps(Journal(Settings.load().journal_file).settle(args.operation_id, args.status, args.evidence), indent=2))
-            return 0
         client = Client.load()
         if args.command == 'create':
-            result = client.create(args.operation_id, args.title, args.body_file.read_text(), args.priority, args.label)
+            result = client.create(args.title, args.body_file.read_text(), args.priority, args.label)
         elif args.command == 'comment':
-            result = client.comment(args.operation_id, args.identifier, args.body_file.read_text())
-        elif args.command == 'reconcile':
-            result = client.reconcile(args.operation_id)
+            result = client.comment(args.identifier, args.body_file.read_text())
         else:
-            result = client.update(args.operation_id, args.identifier, json.loads(args.changes_file.read_text()), args.explanation_file.read_text())
+            result = client.update(args.identifier, json.loads(args.changes_file.read_text()), args.explanation_file.read_text())
         print(json.dumps(result, indent=2))
         return 0
     except (PlaneError, OSError, ValueError, KeyError) as exc:

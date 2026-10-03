@@ -5,7 +5,7 @@ import os
 import pytest
 
 from tools.plane.client import Client
-from tools.plane.policy import Journal, PlaneError, Policy, Settings
+from tools.plane.policy import PlaneError, Policy, Settings
 
 AGENT = '00000000-0000-0000-0000-000000000001'
 OUTSIDE = '00000000-0000-0000-0000-000000000002'
@@ -19,7 +19,7 @@ LABEL = '00000000-0000-0000-0000-000000000007'
 def settings(tmp_path, **overrides):
     data = dict(base_url='https://plane.example', workspace_slug='wish', project_id=PROJECT,
                 agent_account_id=AGENT, token_file=str(tmp_path / 'token'),
-                journal_file=str(tmp_path / 'journal.sqlite'), writes_enabled=True)
+                writes_enabled=True)
     data.update(overrides)
     return Settings(data)
 
@@ -106,8 +106,8 @@ def test_existing_human_label_does_not_block_agent_comment(tmp_path):
         return record(labels=[{'id': LABEL, 'name': 'human'}])
     fake = Fake(handle)
     client = Client(settings(tmp_path), fake)
-    client.write = lambda operation_id, method, path, payload: client.summarise(path, fake.request(method, path, payload))
-    result = client.comment('test', ITEM, 'A comment')
+    client.write = lambda target, method, path, payload: client.summarise(path, fake.request(method, path, payload))
+    result = client.comment(ITEM, 'A comment')
     assert result['id'] == OUTSIDE and 'comment_html' not in result
     assert [call[0] for call in fake.calls] == ['GET', 'GET', 'POST']
 
@@ -115,35 +115,14 @@ def test_existing_human_label_does_not_block_agent_comment(tmp_path):
 def test_disabled_writes_make_no_network_calls(tmp_path):
     fake = Fake(lambda *args: pytest.fail('Network used'))
     with pytest.raises(PlaneError, match='disabled'):
-        Client(settings(tmp_path, writes_enabled=False), fake).comment('test', ITEM, 'Text')
+        Client(settings(tmp_path, writes_enabled=False), fake).comment(ITEM, 'Text')
 
 
 def test_wrong_account_cannot_write(tmp_path):
     fake = Fake(lambda *args: {'id': OUTSIDE})
     with pytest.raises(PlaneError, match='credential'):
-        Client(settings(tmp_path), fake).comment('test', ITEM, 'Text')
+        Client(settings(tmp_path), fake).comment(ITEM, 'Text')
     assert len(fake.calls) == 1
-
-
-@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
-def test_timeout_prevents_duplicates_across_process_restart_and_new_id(tmp_path):
-    path = tmp_path / 'writes.sqlite'
-    def timeout():
-        raise TimeoutError('Server might have accepted it')
-    with pytest.raises(TimeoutError):
-        Journal(path).run('original', {'payload': 'Text'}, timeout)
-    for key in ['original', 'different']:
-        with pytest.raises(PlaneError, match='uncertain'):
-            Journal(path).run(key, {'payload': 'Text'}, lambda: pytest.fail('Duplicate write'))
-
-
-@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
-def test_completed_writes_reuse_result_and_reject_changed_payload(tmp_path):
-    journal = Journal(tmp_path / 'writes.sqlite')
-    assert journal.run('write', {'body': 'Text'}, lambda: {'id': ITEM}) == {'id': ITEM}
-    assert journal.run('write', {'body': 'Text'}, lambda: pytest.fail('Duplicate')) == {'id': ITEM}
-    with pytest.raises(PlaneError, match='different write'):
-        journal.run('write', {'body': 'Changed'}, lambda: pytest.fail('Reused key'))
 
 
 @pytest.mark.parametrize('base_url', ['http://plane.example', 'https://u:p@plane.example', 'https://plane.example/api', 'https://plane.example?secret=x'])
@@ -187,10 +166,9 @@ def test_update_requires_explanation_before_mutating(tmp_path):
             return {'results': [], 'next_page_results': False}
         return record()
     with pytest.raises(PlaneError, match='Nonempty'):
-        Client(settings(tmp_path), Fake(handle)).update('edit', ITEM, {'priority': 'low'}, '')
+        Client(settings(tmp_path), Fake(handle)).update(ITEM, {'priority': 'low'}, '')
 
 
-@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
 def test_correction_comment_is_after_patch_and_state_is_read_back(tmp_path):
     current = record()
     def handle(method, path, data, params):
@@ -207,12 +185,11 @@ def test_correction_comment_is_after_patch_and_state_is_read_back(tmp_path):
             current.update(data)
         return dict(current)
     fake = Fake(handle)
-    result = Client(settings(tmp_path), fake).update('edit', ITEM, {'priority': 'low'}, 'Evidence changed')
+    result = Client(settings(tmp_path), fake).update(ITEM, {'priority': 'low'}, 'Evidence changed')
     assert result['priority'] == 'low'
     assert [c[0] for c in fake.calls if c[0] != 'GET'] == ['PATCH', 'POST']
 
 
-@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
 def test_state_change_with_wrong_readback_is_not_reported_complete(tmp_path):
     def handle(method, path, data, params):
         if path == 'users/me':
@@ -227,7 +204,7 @@ def test_state_change_with_wrong_readback_is_not_reported_complete(tmp_path):
             return {'results': [], 'next_page_results': False}
         return record()
     with pytest.raises(PlaneError, match='readback'):
-        Client(settings(tmp_path), Fake(handle)).update('close', ITEM, {'state': OUTSIDE}, 'Evidence and CI recorded')
+        Client(settings(tmp_path), Fake(handle)).update(ITEM, {'state': OUTSIDE}, 'Evidence and CI recorded')
 
 
 @pytest.mark.parametrize('creator', [AGENT, IMPORTER, OUTSIDE])
@@ -240,8 +217,8 @@ def test_project_ticket_comments_do_not_depend_on_creator_origin(tmp_path, creat
         return record(created_by=creator, labels=[])
     fake = Fake(handle)
     client = Client(settings(tmp_path), fake)
-    client.write = lambda operation_id, method, path, payload: client.summarise(path, fake.request(method, path, payload))
-    assert client.comment('comment', ITEM, 'Text')['id'] == OUTSIDE
+    client.write = lambda target, method, path, payload: client.summarise(path, fake.request(method, path, payload))
+    assert client.comment(ITEM, 'Text')['id'] == OUTSIDE
     assert [call[0] for call in fake.calls] == ['GET', 'GET', 'POST']
 
 
@@ -252,7 +229,7 @@ def test_ticket_outside_configured_project_is_not_read_or_written(tmp_path):
     with pytest.raises(PlaneError, match='outside the requested project'):
         client.read(ITEM)
     with pytest.raises(PlaneError, match='outside the requested project'):
-        client.comment('comment', ITEM, 'Text')
+        client.comment(ITEM, 'Text')
     assert all(method == 'GET' for method, *_ in fake.calls)
 
 
@@ -334,7 +311,6 @@ def test_private_comment_text_is_visible_regardless_of_creator_or_editor(tmp_pat
     assert result['comment_html'] == 'Visible comment'
 
 
-@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
 def test_body_correction_ignored_by_server_posts_no_success_comment(tmp_path):
     def handle(method, path, data, params):
         if path == 'users/me':
@@ -347,7 +323,7 @@ def test_body_correction_ignored_by_server_posts_no_success_comment(tmp_path):
             return {'results': [], 'next_page_results': False}
         return record()
     with pytest.raises(PlaneError, match='readback'):
-        Client(settings(tmp_path), Fake(handle)).update('correct', ITEM, {'description_html': 'Changed text'}, 'Corrected factual error')
+        Client(settings(tmp_path), Fake(handle)).update(ITEM, {'description_html': 'Changed text'}, 'Corrected factual error')
 
 
 @pytest.mark.parametrize('resource', ['work-items', 'labels', 'states', f'work-items/{ITEM}/comments'])
@@ -357,7 +333,6 @@ def test_bare_list_does_not_prove_complete_pagination(tmp_path, resource):
         list(client.pages(f'{client.prefix}/{resource}'))
 
 
-@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
 def test_reordered_labels_and_normalized_html_confirm_before_explanation(tmp_path):
     current = record()
     explained = []
@@ -376,7 +351,7 @@ def test_reordered_labels_and_normalized_html_confirm_before_explanation(tmp_pat
             current['labels'].reverse()
             current['description_html'] = current['description_html'].replace('<br>', '<br />').replace('&amp;', '&#38;')
         return dict(current)
-    result = Client(settings(tmp_path), Fake(handle)).update('correct', ITEM,
+    result = Client(settings(tmp_path), Fake(handle)).update(ITEM,
         {'labels': [LABEL, OUTSIDE], 'description_html': 'First & second\nThird'}, 'Corrected the recorded facts')
     assert set(result['labels']) == {LABEL, OUTSIDE}
     assert 'description_html' not in result and 'comments' not in result
@@ -417,15 +392,14 @@ def priority_client(tmp_path):
         return dict(current)
     fake = Fake(handle)
     client = Client(settings(tmp_path), fake)
-    # This fixture tests request policy without requiring POSIX journal storage.
-    client.write = lambda operation_id, method, path, payload: client.summarise(path, fake.request(method, path, payload))
+    client.write = lambda target, method, path, payload: client.summarise(path, fake.request(method, path, payload))
     return client, current, labels, fake
 
 
 @pytest.mark.parametrize('priority', ['urgent', 'high', 'medium', 'low', 'none'])
 def test_create_uses_native_priority_and_only_supplied_labels(priority_client, priority):
     client, _, _, fake = priority_client
-    result = client.create('create', 'Ticket', 'Evidence', priority, [LABEL])
+    result = client.create('Ticket', 'Evidence', priority, [LABEL])
     assert result['priority'] == priority
     assert result['labels'] == [LABEL]
     assert next(call[2] for call in fake.calls if call[0] == 'POST')['labels'] == [LABEL]
@@ -443,16 +417,16 @@ def test_agent_cli_accepts_urgent_priority(tmp_path, monkeypatch, capsys):
             return {'id': ITEM}
 
     monkeypatch.setattr(planeagent.Client, 'load', lambda: StubClient())
-    assert planeagent.main(['--operation-id', 'urgent-create', 'create', '--title', 'Ticket',
+    assert planeagent.main(['create', '--title', 'Ticket',
                             '--body-file', str(body), '--priority', 'urgent', '--label', LABEL]) == 0
-    assert calls == [('urgent-create', 'Ticket', 'Evidence', 'urgent', [LABEL])]
+    assert calls == [('Ticket', 'Evidence', 'urgent', [LABEL])]
     assert json.loads(capsys.readouterr().out) == {'id': ITEM}
 
 
 @pytest.mark.parametrize('priority', ['urgent', 'high', 'medium', 'low', 'none'])
 def test_native_priority_only_update_omits_labels(priority_client, priority):
     client, _, _, fake = priority_client
-    result = client.update('priority', ITEM, {'priority': priority}, 'Priority changed')
+    result = client.update(ITEM, {'priority': priority}, 'Priority changed')
     assert result['priority'] == priority
     assert result['labels'] == [LABEL, SECOND_LABEL]
     assert next(call[2] for call in fake.calls if call[0] == 'PATCH') == {'priority': priority}
@@ -460,7 +434,7 @@ def test_native_priority_only_update_omits_labels(priority_client, priority):
 
 def test_label_only_change_preserves_native_priority(priority_client):
     client, _, _, fake = priority_client
-    result = client.update('labels', ITEM, {'labels': [LABEL]}, 'Remove the extra label')
+    result = client.update(ITEM, {'labels': [LABEL]}, 'Remove the extra label')
     assert result['priority'] == 'high'
     assert result['labels'] == [LABEL]
     assert next(call[2] for call in fake.calls if call[0] == 'PATCH') == {'labels': [LABEL]}
@@ -474,7 +448,7 @@ def test_label_only_change_preserves_native_priority(priority_client):
 def test_create_rejects_missing_type_or_invalid_labels(priority_client, labels, error):
     client, _, _, fake = priority_client
     with pytest.raises(PlaneError, match=error):
-        client.create('create', 'Ticket', 'Evidence', 'low', labels)
+        client.create('Ticket', 'Evidence', 'low', labels)
     assert all(call[0] == 'GET' for call in fake.calls)
 
 
@@ -485,7 +459,7 @@ def test_create_rejects_missing_type_or_invalid_labels(priority_client, labels, 
 def test_update_rejects_invalid_labels_before_write(priority_client, labels, error):
     client, _, _, fake = priority_client
     with pytest.raises(PlaneError, match=error):
-        client.update('labels', ITEM, {'labels': labels}, 'Change labels')
+        client.update(ITEM, {'labels': labels}, 'Change labels')
     assert all(call[0] == 'GET' for call in fake.calls)
 
 
@@ -493,7 +467,7 @@ def test_update_rejects_invalid_labels_before_write(priority_client, labels, err
 def test_create_rejects_new_reserved_label_before_write(priority_client, reserved):
     client, _, _, fake = priority_client
     with pytest.raises(PlaneError, match='Reserved'):
-        client.create('create', 'Ticket', 'Evidence', 'low', [LABEL, reserved])
+        client.create('Ticket', 'Evidence', 'low', [LABEL, reserved])
     assert all(call[0] == 'GET' for call in fake.calls)
 
 
@@ -501,7 +475,7 @@ def test_create_rejects_new_reserved_label_before_write(priority_client, reserve
 def test_update_rejects_new_reserved_label_before_write(priority_client, reserved):
     client, _, _, fake = priority_client
     with pytest.raises(PlaneError, match='Reserved'):
-        client.update('labels', ITEM, {'labels': [LABEL, SECOND_LABEL, reserved]}, 'Change labels')
+        client.update(ITEM, {'labels': [LABEL, SECOND_LABEL, reserved]}, 'Change labels')
     assert all(call[0] == 'GET' for call in fake.calls)
 
 
@@ -509,7 +483,7 @@ def test_update_rejects_new_reserved_label_before_write(priority_client, reserve
 def test_update_preserves_existing_reserved_and_adds_ordinary_label(priority_client, reserved):
     client, current, _, fake = priority_client
     current['labels'] = [LABEL, {'id': reserved}]
-    result = client.update('labels', ITEM, {'labels': [LABEL, reserved, SECOND_LABEL]}, 'Add a project label')
+    result = client.update(ITEM, {'labels': [LABEL, reserved, SECOND_LABEL]}, 'Add a project label')
     assert result['priority'] == 'high'
     assert result['labels'] == [LABEL, reserved, SECOND_LABEL]
     assert next(call[2] for call in fake.calls if call[0] == 'PATCH') == {'labels': [LABEL, reserved, SECOND_LABEL]}
@@ -517,13 +491,13 @@ def test_update_preserves_existing_reserved_and_adds_ordinary_label(priority_cli
 
 def test_native_priority_readback_precedes_explanation_comment(priority_client):
     client, _, _, fake = priority_client
-    def ignore_priority_change(operation_id, method, path, payload):
+    def ignore_priority_change(target, method, path, payload):
         if method == 'PATCH':
             return client.summarise(path, fake.request(method, path, {key: value for key, value in payload.items() if key != 'priority'}))
         pytest.fail('Explanation sent without confirming the native priority')
     client.write = ignore_priority_change
     with pytest.raises(PlaneError, match='readback'):
-        client.update('priority', ITEM, {'priority': 'low'}, 'Priority is now Low')
+        client.update(ITEM, {'priority': 'low'}, 'Priority is now Low')
 
 
 def test_markdown_renders_to_matching_tags():
@@ -547,190 +521,6 @@ def test_unsafe_link_schemes_are_not_rendered_as_links():
     assert '<a href="https://example.com">x</a>' in paragraph('[x](https://example.com)')
 
 
-@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
-def test_journal_waits_for_a_writer_holding_the_lock(tmp_path):
-    import sqlite3
-    import threading
-    import time
-    journal = Journal(tmp_path / 'writes.sqlite')
-    held = threading.Event()
-
-    def hold():
-        db = sqlite3.connect(journal.path, isolation_level=None)
-        db.execute('BEGIN IMMEDIATE')
-        held.set()
-        time.sleep(7)
-        db.execute('COMMIT')
-        db.close()
-    thread = threading.Thread(target=hold)
-    thread.start()
-    held.wait()
-    assert journal.run('waits', {'p': 1}, lambda: {'id': ITEM}) == {'id': ITEM}
-    thread.join()
-
-
-@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
-def test_journal_files_are_private_and_wal(tmp_path):
-    import sqlite3
-    journal = Journal(tmp_path / 'writes.sqlite')
-    journal.run('k', {'p': 1}, lambda: {'id': ITEM})
-    assert sqlite3.connect(journal.path).execute('PRAGMA journal_mode').fetchone()[0] == 'wal'
-    for path in tmp_path.glob('writes.sqlite*'):
-        assert not path.stat().st_mode & 0o077
-
-
-@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
-def test_error_response_leaves_key_retryable_but_read_timeout_stays_pending(tmp_path):
-    from tools.plane.policy import PlaneHttpError, PlaneNotSent
-    journal = Journal(tmp_path / 'writes.sqlite')
-
-    def limited():
-        raise PlaneHttpError('Plane rate limit reached', 429)
-    with pytest.raises(PlaneHttpError):
-        journal.run('retry', {'p': 1}, limited)
-    assert journal.run('retry', {'p': 1}, lambda: {'id': ITEM}) == {'id': ITEM}
-
-    def refused():
-        raise PlaneNotSent('unreachable')
-    with pytest.raises(PlaneNotSent):
-        journal.run('down', {'p': 2}, refused)
-    assert journal.run('down', {'p': 2}, lambda: {'id': 'x'}) == {'id': 'x'}
-
-    def timed_out():
-        raise PlaneError('Plane request failed; write outcomes require reconciliation')
-    with pytest.raises(PlaneError):
-        journal.run('slow', {'p': 3}, timed_out)
-    with pytest.raises(PlaneError, match='uncertain'):
-        journal.run('slow', {'p': 3}, lambda: pytest.fail('Duplicate write'))
-
-
-def age_reservation(tmp_path, key, reserved_at=1_000_000.0):
-    import sqlite3
-    db = sqlite3.connect(tmp_path / 'journal.sqlite')
-    db.execute('UPDATE writes SET reserved_at=? WHERE key=?', (reserved_at, key))
-    db.commit()
-    db.close()
-
-
-def lost_write_client(tmp_path, rows, patched=None):
-    """A client whose writes all time out, over a server holding `rows` as comments or tickets."""
-    def handle(method, path, data, params):
-        if method in {'POST', 'PATCH'}:
-            raise PlaneError('Plane request failed; write outcomes require reconciliation')
-        if path == 'users/me':
-            return {'id': AGENT}
-        if path.endswith('/comments') or path.endswith('/work-items'):
-            return {'results': rows, 'next_page_results': False}
-        return patched or record()
-    return Client(settings(tmp_path), Fake(handle))
-
-
-NEW, OLD = '2026-01-01T00:00:00Z', '1970-01-01T00:00:00Z'
-
-
-@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
-def test_reconcile_matches_only_agent_comments_created_after_the_reservation(tmp_path):
-    rows = [{'id': IMPORTER, 'created_by': AGENT, 'comment_html': '<p>Text</p>', 'created_at': OLD},
-            {'id': ITEM, 'created_by': OUTSIDE, 'comment_html': '<p>Text</p>', 'created_at': NEW}]
-    client = lost_write_client(tmp_path, rows)
-    with pytest.raises(PlaneError):
-        client.comment('lost', ITEM, 'Text')
-    age_reservation(tmp_path, 'lost')
-    assert client.reconcile('lost') == {'operation_id': 'lost', 'status': 'unsent', 'result': None}
-    with pytest.raises(PlaneError):
-        client.comment('lost2', ITEM, 'Later')
-    age_reservation(tmp_path, 'lost2')
-    rows.append({'id': OUTSIDE, 'created_by': AGENT, 'comment_html': '<p>Later</p>', 'created_at': NEW})
-    done = client.reconcile('lost2')
-    assert done['status'] == 'done' and done['result']['id'] == OUTSIDE
-
-
-@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
-def test_reconcile_refuses_a_key_reserved_within_five_minutes(tmp_path):
-    client = lost_write_client(tmp_path, [])
-    with pytest.raises(PlaneError):
-        client.comment('fresh', ITEM, 'Text')
-    with pytest.raises(PlaneError, match='less than 5 minutes'):
-        client.reconcile('fresh')
-
-
-@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
-def test_reconcile_update_needs_the_ticket_changed_after_the_reservation(tmp_path):
-    client = lost_write_client(tmp_path, [], patched=record(priority='low', updated_at=OLD))
-    with pytest.raises(PlaneError):
-        client.update('edit', ITEM, {'priority': 'low'}, 'Changed')
-    age_reservation(tmp_path, 'edit:edit')
-    assert client.reconcile('edit:edit')['status'] == 'unsent'
-    client = lost_write_client(tmp_path, [], patched=record(priority='medium', updated_at=NEW))
-    with pytest.raises(PlaneError):
-        client.update('edit2', ITEM, {'priority': 'medium'}, 'Changed')
-    age_reservation(tmp_path, 'edit2:edit')
-    assert client.reconcile('edit2:edit')['status'] == 'done'
-
-
-@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
-def test_reconcile_create_finds_the_agent_ticket_with_the_title(tmp_path):
-    rows = [record(created_at=OLD, name='Ticket')]
-    client = lost_write_client(tmp_path, rows)
-    client.writable = lambda identifier=None: None
-    client.pages = lambda path: iter(rows if path == client.items else [{'id': LABEL, 'name': 'bug'}])
-    with pytest.raises(PlaneError):
-        client.create('made', 'Ticket', 'Body', 'low', [LABEL])
-    age_reservation(tmp_path, 'made')
-    assert client.reconcile('made')['status'] == 'unsent'
-    with pytest.raises(PlaneError):
-        client.create('made2', 'Ticket', 'Body2', 'low', [LABEL])
-    age_reservation(tmp_path, 'made2')
-    rows.append(record(id=OUTSIDE, sequence_id=2, created_at=NEW, name='Ticket'))
-    done = client.reconcile('made2')
-    assert done['status'] == 'done' and done['result']['id'] == OUTSIDE
-
-
-@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
-def test_server_error_and_redirect_statuses_leave_the_key_pending(tmp_path, monkeypatch):
-    import requests
-
-    from tools.plane import client as client_module
-
-    class Response:
-        def __init__(self, status):
-            self.status_code = status
-            self.headers = {}
-
-    transport = object.__new__(client_module.Transport)
-    transport.resource = type('R', (), {'session': type('S', (), {'request': lambda self, *a, **k: Response(status[0])})(),
-                                        '_build_url': lambda self, p: p, '_headers': lambda self: {}})()
-    assert requests
-    journal = Journal(tmp_path / 'writes.sqlite')
-    for status_code, key in ((503, 'five'), (302, 'three')):
-        status = [status_code]
-        with pytest.raises(PlaneError):
-            journal.run(key, {'p': key}, lambda: transport.request('POST', 'x', {}))
-        with pytest.raises(PlaneError, match='uncertain'):
-            journal.run(key, {'p': key}, lambda: pytest.fail('Duplicate write'))
-    status = [404]
-    with pytest.raises(PlaneError):
-        journal.run('four', {'p': 'four'}, lambda: transport.request('POST', 'x', {}))
-    assert journal.run('four', {'p': 'four'}, lambda: {'id': ITEM}) == {'id': ITEM}
-
-
-@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
-def test_reconcile_leaves_an_old_row_without_a_stored_request_unchanged(tmp_path):
-    import sqlite3
-    path = tmp_path / 'writes.sqlite'
-    db = sqlite3.connect(path)
-    db.execute('CREATE TABLE writes (key TEXT PRIMARY KEY, fingerprint TEXT UNIQUE, status TEXT, result TEXT)')
-    db.execute("INSERT INTO writes VALUES ('old','f','pending',NULL)")
-    db.commit()
-    db.close()
-    path.chmod(0o600)
-    journal = Journal(path)
-    with pytest.raises(PlaneError, match='cannot be decided'):
-        journal.reconcile('old', lambda request: pytest.fail('Read'))
-    assert sqlite3.connect(path).execute("SELECT status FROM writes WHERE key='old'").fetchone() == ('pending',)
-
-
-@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
 def test_write_results_are_compact(tmp_path):
     current = record()
 
@@ -747,38 +537,78 @@ def test_write_results_are_compact(tmp_path):
             current.update(data)
         return dict(current)
     client = Client(settings(tmp_path), Fake(handle))
-    for result in (client.update('compact', ITEM, {'priority': 'low'}, 'Changed'), client.comment('c', ITEM, 'Text')):
+    for result in (client.update(ITEM, {'priority': 'low'}, 'Changed'), client.comment(ITEM, 'Text')):
         assert 'comments' not in result and 'description_html' not in result and 'comment_html' not in result
-    assert client.update('compact', ITEM, {'priority': 'low'}, 'Changed')['comment_id'] == OUTSIDE
+    assert client.update(ITEM, {'priority': 'low'}, 'Changed')['comment_id'] == OUTSIDE
 
 
-@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
-def test_reconcile_tolerates_a_server_clock_behind_the_reservation(tmp_path):
-    from datetime import datetime
-    reserved = datetime.fromisoformat('2026-01-01T00:10:00+00:00').timestamp()
-    behind = '2026-01-01T00:08:30Z'
-    rows = [{'id': OUTSIDE, 'created_by': AGENT, 'comment_html': '<p>Text</p>', 'created_at': behind}]
-    client = lost_write_client(tmp_path, rows)
-    with pytest.raises(PlaneError):
-        client.comment('skew', ITEM, 'Text')
-    age_reservation(tmp_path, 'skew', reserved)
-    assert client.reconcile('skew')['status'] == 'done'
 
 
-@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
-def test_settle_edits_only_a_pending_row_and_records_evidence(tmp_path):
+def real_transport(monkeypatch, status, headers=None, error=None):
+    import sys
+    from types import SimpleNamespace
+
+    from tools.plane.client import Transport
+    monkeypatch.setitem(sys.modules, 'requests', SimpleNamespace(
+        RequestException=OSError, ConnectTimeout=type('ConnectTimeout', (OSError,), {}),
+        ConnectionError=type('ConnectionError', (OSError,), {})))
+    calls = []
+
+    def request(*args, **kwargs):
+        calls.append(kwargs)
+        if error:
+            raise error
+        return SimpleNamespace(status_code=status, headers=headers or {}, json=lambda: {})
+    transport = object.__new__(Transport)
+    transport.resource = SimpleNamespace(session=SimpleNamespace(request=request),
+                                         _build_url=lambda p: 'https://plane.example/' + p,
+                                         _headers=lambda: {})
+    return transport, calls
+
+
+def test_a_write_sends_once_and_returns_the_compact_result(tmp_path):
+    def handle(method, path, data, params):
+        if path == 'users/me':
+            return {'id': AGENT}
+        if method == 'POST':
+            return {'id': OUTSIDE, 'created_by': AGENT, 'comment_html': data['comment_html']}
+        return record()
+    fake = Fake(handle)
+    result = Client(settings(tmp_path), fake).comment(ITEM, 'Text')
+    assert result == {'id': OUTSIDE, 'author_id': AGENT, 'created_at': ''}
+    assert [call[0] for call in fake.calls].count('POST') == 1
+
+
+@pytest.mark.parametrize('status', [400, 404, 429])
+def test_a_4xx_is_not_applied_and_safe_to_retry(monkeypatch, status):
+    from tools.plane.policy import PlaneHttpError, PlaneOutcomeUnknown
+    transport, calls = real_transport(monkeypatch, status)
+    with pytest.raises(PlaneHttpError) as failure:
+        transport.request('POST', 'x', {})
+    assert not isinstance(failure.value, PlaneOutcomeUnknown) and failure.value.status == status
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize('status,error', [(500, None), (502, None), (302, None), (200, 'timeout')])
+def test_5xx_3xx_and_read_timeout_name_the_ticket_to_read_back(monkeypatch, tmp_path, status, error):
+    from tools.plane.policy import PlaneOutcomeUnknown
+    transport, _ = real_transport(monkeypatch, status, error=OSError('Read timed out') if error else None)
+    client = Client(settings(tmp_path), transport)
+    with pytest.raises(PlaneOutcomeUnknown, match=r'Read WISH-7 back and check whether the write is there before retrying'):
+        client.write('WISH-7', 'POST', 'x/comments', {})
+
+
+def test_no_code_path_opens_a_sqlite_file(tmp_path, monkeypatch):
     import sqlite3
-    journal = Journal(tmp_path / 'writes.sqlite')
-    for key in ('a', 'b', 'c'):
-        with pytest.raises(PlaneError):
-            journal.run(key, {'p': key}, lambda: (_ for _ in ()).throw(PlaneError('timed out')))
-    assert journal.settle('a', 'done', 'Comment seen on the ticket')['status'] == 'done'
-    assert journal.settle('b', 'unsent', 'No such comment')['status'] == 'unsent'
-    with pytest.raises(PlaneError, match='pending'):
-        journal.settle('a', 'unsent', 'Again')
-    with pytest.raises(PlaneError, match='Evidence'):
-        journal.settle('c', 'done', ' ')
-    rows = dict((k, (s, r)) for k, s, r in sqlite3.connect(journal.path).execute('SELECT key,status,result FROM writes'))
-    assert rows['a'] == ('done', '{"evidence": "Comment seen on the ticket"}')
-    assert rows['c'] == ('pending', None)
-    assert journal.run('b', {'p': 'b'}, lambda: {'id': ITEM}) == {'id': ITEM}
+
+    def refuse(*args, **kwargs):
+        raise AssertionError('sqlite opened')
+    monkeypatch.setattr(sqlite3, 'connect', refuse)
+    fake = Fake(lambda method, path, data, params: {'id': AGENT} if path == 'users/me' else
+                {'id': OUTSIDE, 'created_by': AGENT, 'comment_html': ''} if method == 'POST' else record())
+    Client(settings(tmp_path), fake).comment(ITEM, 'Text')
+    assert not list(tmp_path.glob('*.sqlite*'))
+
+
+def test_a_configuration_that_still_names_a_journal_file_loads(tmp_path):
+    assert settings(tmp_path, journal_file=str(tmp_path / 'writes.sqlite')).project == PROJECT
