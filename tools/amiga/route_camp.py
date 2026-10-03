@@ -1,4 +1,4 @@
-"""Camp steps for an Amiga route: view a member's sheet, lay on hands, rest, and show the effects list.
+"""Camp steps for an Amiga route: view a member's sheet, lay on hands, rest, show the effects list, and show a member's items.
 
 A published route (`route_silver_blades.published_title` or
 `route_curse.published_title`) walks two squares, camps and saves, and
@@ -101,6 +101,36 @@ and the same kind of picker, with `Lay` where the other two say `Heal`:
   `$89 $85 $84 $83 $86 $80 $82 $87 $88 $81`. The camp highlight's own keys
   are not read, so only line 1, where neither the highlight nor the picker
   moves, is driven.
+
+Pool of Radiance's `/program` (file offsets; one build on every disk-one image)
+takes only `items N`, which shows the item list of the member on line N:
+
+* **The camp bar** is `Save View Magic Rest Alter Exit` (`008DD1`), read by
+  the camp loop at `007B2E` through the menu routine `0319FE`. That routine's
+  key matcher (`0323F8`) returns a digit `1` to `9` with a flag set, RETURN,
+  ESC as 0, or a letter on the bar. The keypad gives those digits: the raw-key
+  table at `0347C1` turns keypad 1 to 9 into `1` to `9`.
+* **The camp highlight** is the member pointer at hunk 32 + `0x0AEA`; the
+  party list starts at hunk 32 + `0x0AEE` and each record's next pointer is at
+  `+0x106`. On a flagged digit the camp loop calls `01CBD4`, where `1` moves
+  to the next member and from the last wraps to the first, `7` moves to the
+  previous one and from the first wraps to the last, and any other digit goes
+  to the first member. So NP1 and NP7 move it, as in Curse. Camp entry
+  (`007A9E`) does not reset it.
+* **`V`** runs the sheet routine `01B47C` for the highlighted member. Its bar
+  is built from `Items` (only while the record's item list at `+0xCA` is not
+  empty), `Spells`, `Trade`, `Drop`, `Rename` and `Exit` (`01E712`-`01E738`),
+  read with no highlight keys. `I` runs the item routine `01B7F4` and `E`
+  returns to the camp bar.
+* **The item routine** lists every node of the chain at `+0xCA` (next
+  pointer `+0x2A`) under the heading `Items` (`01E7D4`) through the list
+  viewer called at `01BADC`, with a bar of `Ready`, `Use`, `Trade`, `Drop`,
+  `Halve`, `Join`, `Sell` and `Id` (`01E7A2`-`01E7D0`). It loops until the
+  key is `E` or ESC (`01B82A`), and the sheet routine then redraws the sheet
+  (`01B6E8`) and reads its bar again.
+
+`items N` reads no record byte: whether the rows on screen are the member's
+own is the identity rule cut for the run's party, as for a sheet.
 """
 
 from __future__ import annotations
@@ -113,6 +143,7 @@ from tools.amiga.winuaesession import RouteError
 
 VIEW = "V"
 SHEET_EXIT = "E"
+ITEMS = "I"
 #: The sheet's key for the heal routine, per title: `Heal` in Silver Blades and Curse, `Lay` in
 #: Pools of Darkness.
 HEAL_KEYS = {"ssb": "H", "curse": "H", "darkness": "L"}
@@ -125,7 +156,8 @@ REST_ADD, REST_SUBTRACT, REST_GO = "A", "S", "R"
 #: member, per title: Silver Blades takes `$84`/`$88` (NP2, NP8; measured), Curse only
 #: `$85`/`$87` (NP1, NP7; read from `0237CA` and `01BF8E`). Pools of Darkness' picker takes
 #: `$84`/`$88` (`01B084`); its camp highlight is not read, and no line it drives moves either.
-MEMBER_KEYS = {"ssb": ("NP2", "NP8"), "curse": ("NP1", "NP7"), "darkness": ("NP2", "NP8")}
+MEMBER_KEYS = {"ssb": ("NP2", "NP8"), "curse": ("NP1", "NP7"), "darkness": ("NP2", "NP8"),
+               "pool": ("NP1", "NP7")}
 REST_STEP = 5
 REST_DAYS_MAX = 29
 #: The most members a Gold Box party holds.
@@ -141,9 +173,12 @@ HEAL_LINES = {"ssb": (1,), "curse": (6,), "darkness": (1,)}
 #: The titles whose magic menu and effects list have been read, so `display` may name them.
 DISPLAY_TITLES = frozenset({"curse"})
 #: The titles whose camp highlight and HEAL picker are read to wrap from the first member to
-#: the last and back (Curse `0237CA` and `01BF56`-`01BF8A`), so a later line may be reached
-#: backwards.
-WRAPS = frozenset({"curse"})
+#: the last and back (Curse `0237CA` and `01BF56`-`01BF8A`, Pool of Radiance's highlight
+#: `01CBD4`), so a later line may be reached backwards.
+WRAPS = frozenset({"curse", "pool"})
+#: The titles whose sheet and item routine have been read, so `items N` may name them; their
+#: other camp steps are not built.
+ITEMS_TITLES = frozenset({"pool"})
 
 CAMP = "camp"
 SHEET = "camp_sheet"
@@ -155,11 +190,14 @@ REST_MENU = "rest_menu"
 #: The magic menu reached from the camp bar, and the effects list its `Display` shows.
 MAGIC_MENU = "camp_magic"
 DISPLAY = "camp_display"
+#: The item list a sheet's `Items` shows, for party line 1; `items_state` names the others.
+ITEMS_LIST = "camp_items"
 #: The camp save the published route presses next, which the camp steps go before.
 CAMP_SAVE_STEP = ("S", "camp_save_picker", "key")
 
 MIN_WAITS = {SHEET: 10.0, SHEET_HEAL: 10.0, SHEET_SPENT: 15.0, HEAL_WHOM: 10.0,
-             REST_MENU: 5.0, MAGIC_MENU: 5.0, DISPLAY: 10.0}
+             REST_MENU: 5.0, MAGIC_MENU: 5.0, DISPLAY: 10.0, ITEMS_LIST: 10.0,
+             **{f"{ITEMS_LIST}_{n}": 10.0 for n in range(2, PARTY_MAX + 1)}}
 #: Seconds the camp bar may take to come back after a rest, beyond the game's own pace.
 REST_LIMIT = 900.0
 #: A rest this long or longer can land on the clock a run with no rest would show.
@@ -171,6 +209,16 @@ _DURATION = re.compile(r"(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?")
 def sheet_state(line: int) -> str:
     """The camp sheet state for party line `line`, counted from 1: each line has its own identity rule."""
     return SHEET if line == 1 else f"{SHEET}_{line}"
+
+
+def items_state(line: int) -> str:
+    """The camp item list state for party line `line`, counted from 1: each line has its own identity rule."""
+    return ITEMS_LIST if line == 1 else f"{ITEMS_LIST}_{line}"
+
+
+def is_items(state: str) -> bool:
+    """Whether `state` is a camp item list, whose rows are read by its identity rule."""
+    return state == ITEMS_LIST or re.fullmatch(rf"{ITEMS_LIST}_[2-9]", state) is not None
 
 
 def is_sheet(state: str) -> bool:
@@ -208,12 +256,14 @@ def rest_presses(minutes: int) -> tuple[int, int, int]:
 
 
 def sheet_lines(name: str) -> tuple[tuple[int, ...], tuple[int, ...]]:
-    """The party lines `view N` and `heal N` may name for title `name`."""
+    """The party lines `view N` and `heal N` may name for title `name`; none for a title in `ITEMS_TITLES`."""
+    if name in ITEMS_TITLES:
+        return (), ()
     try:
         return SHEET_LINES[name], HEAL_LINES[name]
     except KeyError:
-        raise RouteError("camp steps are built for Silver Blades, Curse and Pools of Darkness "
-                         "only") from None
+        raise RouteError("camp steps are built for Silver Blades, Curse, Pools of Darkness "
+                         "and Pool of Radiance only") from None
 
 
 def _lines_text(lines: tuple[int, ...]) -> str:
@@ -232,8 +282,8 @@ def parse_steps(text: str, name: str = "ssb") -> tuple[str, ...]:
 
 
 def _step_line(words: list[str]) -> int | None:
-    """The party line a `view` or `heal` token names (1 when left out), or None for another token."""
-    if words[0] not in ("view", "heal") or len(words) > 2:
+    """The party line a `view`, `heal` or `items` token names (1 when left out), or None for another token."""
+    if words[0] not in ("view", "heal", "items") or len(words) > 2:
         return None
     if len(words) == 1:
         return 1
@@ -251,10 +301,15 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
     `rest DURATION` rests that long, and `display` shows the effects list (only
     for a title in `DISPLAY_TITLES`). A `heal` whose sheet does not offer HEAL
     fails the run at that sheet, since its guard is the bar with the word on it.
+    `items` or `items N` shows the item list of party line N (1 when left out),
+    and is the only step a title in `ITEMS_TITLES` takes.
     """
     view_lines, heal_lines = sheet_lines(name)
     if not tokens:
         raise RouteError("the camp step list is empty")
+    if name in ITEMS_TITLES:
+        _validate_items(tokens, party_size)
+        return
     healed = False
     for token in tokens:
         if token.split()[0] == "heal":
@@ -266,6 +321,8 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
             healed = False
     for token in tokens:
         words = token.split()
+        if words[0] == "items":
+            raise RouteError(f"{token!r}: the item list is built for Pool of Radiance only")
         line = _step_line(words)
         if line is not None:
             lines = tuple(n for n in (view_lines if words[0] == "view" else heal_lines)
@@ -295,13 +352,28 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
                 f"a sheet to show it")
 
 
+def _validate_items(tokens: tuple[str, ...], party_size: int) -> None:
+    """Refuse any step but `items` or `items N` for a line the party has."""
+    for token in tokens:
+        words = token.split()
+        line = _step_line(words)
+        if words[0] != "items" or line is None:
+            raise RouteError(f"camp step {token!r} is not items or items N: the camp route "
+                             f"is built for the item list only on Pool of Radiance")
+        if not 1 <= line <= min(party_size, PARTY_MAX):
+            raise RouteError(f"{token!r}: the party has lines 1 to "
+                             f"{min(party_size, PARTY_MAX)} only")
+
+
 def normalise(tokens: tuple[str, ...]) -> tuple[str, ...]:
-    """`view` as `view 1`, `heal 1` as `heal`, and a rest time as its minutes, so two spellings build one route."""
+    """`view` as `view 1`, `items` as `items 1`, `heal 1` as `heal`, and a rest time as its minutes, so two spellings build one route."""
     out = []
     for token in tokens:
         words = token.split()
         if words == ["view"]:
             out.append("view 1")
+        elif words == ["items"]:
+            out.append("items 1")
         elif words == ["heal", "1"]:
             out.append("heal")
         elif words[0] == "rest":
@@ -355,6 +427,13 @@ def steps_for(tokens: tuple[str, ...], name: str = "ssb", party_size: int | None
             # The picker starts on the first member, so it moves as far as the camp highlight did.
             steps += _moves(line, name, party_size, HEAL_WHOM)[0]
             steps += [(HEAL_SELECT, SHEET_SPENT, "key"), (SHEET_EXIT, CAMP, "key")]
+            steps += back
+        elif words[0] == "items":
+            line = int(words[1])
+            there, back = _moves(line, name, party_size, CAMP)
+            steps += there
+            steps += [(VIEW, sheet_state(line), "key"), (ITEMS, items_state(line), "key"),
+                      (SHEET_EXIT, sheet_state(line), "key"), (SHEET_EXIT, CAMP, "key")]
             steps += back
         elif words[0] == "display":
             steps += [(CAMP_MAGIC, MAGIC_MENU, "key"), (MAGIC_DISPLAY, DISPLAY, "key"),

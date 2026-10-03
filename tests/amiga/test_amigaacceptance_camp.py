@@ -136,7 +136,9 @@ def test_curse_camp_steps_reach_the_paladin_on_line_6():
 
 
 def test_a_title_without_camp_steps_is_refused():
-    with pytest.raises(RouteError, match="Silver Blades, Curse and Pools of Darkness only"):
+    with pytest.raises(RouteError, match="Pools of Darkness and Pool of Radiance only"):
+        route_camp.parse_steps("view", "darkness-unstarted")
+    with pytest.raises(RouteError, match="item list only on Pool of Radiance"):
         route_camp.parse_steps("view", "pool")
 
 
@@ -363,7 +365,7 @@ def test_the_manifest_s_camp_steps_rebuild_the_route_for_either_title_and_no_oth
     curse = route_curse.published_title("D")
     title = foundation._camp_title("curse", curse, list(CURSE_STEPS), CURSE_NAMES)
     assert title.route == route_camp.camp_title(curse, CURSE_STEPS, 6, name="curse").route
-    with pytest.raises(RouteError, match="Silver Blades, Curse and Pools of Darkness only"):
+    with pytest.raises(RouteError, match="item list only on Pool of Radiance"):
         foundation._camp_title("pool", base, list(STEPS), NAMES)
     with pytest.raises(RouteError, match="lines 1 to 6 only"):
         foundation._camp_title("curse", curse, ["view 7"], CURSE_NAMES)
@@ -397,7 +399,7 @@ def test_the_cli_reads_camp_steps_for_the_prepare_s_own_title(capsys):
     with pytest.raises(SystemExit):
         foundation.main(["prepare", "--title", "pool", "--run-id", "x",
                          "--published-disk-one", "--camp", "view"])
-    assert "Silver Blades, Curse and Pools of Darkness only" in capsys.readouterr().err
+    assert "item list only on Pool of Radiance" in capsys.readouterr().err
 
 
 CAMP_STATES = ("camp_sheet", "camp_sheet_heal", "camp_sheet_spent", "heal_whom", "rest_menu")
