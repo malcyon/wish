@@ -13228,25 +13228,54 @@ def test_digits_in_a_dungeon_fail_the_walk_and_press_nothing(tmp_path, monkeypat
 
 
 def test_a_retried_outdoor_walk_is_judged_by_its_travel_squares(tmp_path, monkeypatch):
+    sess = OutdoorSession(blocked={(9, 26)})
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    run.walk_retry = 2
+    got = run.walk("23")
+    log.close()
+    assert sess.calls == [("walk_with_retry", "23", 2)]
+    # Only the `3` alone reaches (9,27) from (8,27).
+    assert got["position"] == [9, 27, None]
+    assert got["squares_moved"] == 1 and got["blocked"] == [0]
+    assert "steps_unjudged" not in got
+
+
+def test_a_retried_outdoor_walk_that_two_sets_of_steps_explain_is_unjudged(
+        tmp_path, monkeypatch):
     sess = OutdoorSession(blocked={(10, 25)})
     run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
     run.walk_retry = 2
     got = run.walk("223")
     log.close()
-    assert sess.calls == [("walk_with_retry", "223", 2)]
+    # Either `2` could be the one that stopped.
     assert got["position"] == [10, 26, None]
-    assert got["squares_moved"] == 2 and got["blocked"] == [1]
+    assert got["steps_unjudged"] is True
+    assert got["squares_moved"] == 0 and got["blocked"] == []
 
 
-def test_a_retried_outdoor_walk_that_ends_where_it_began_is_all_blocked(
+def test_a_retried_outdoor_round_trip_is_unjudged_and_claims_no_wall(
         tmp_path, monkeypatch):
-    sess = OutdoorSession(blocked={(9, 26), (9, 27)})
+    sess = OutdoorSession()
     run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
     run.walk_retry = 1
-    got = run.walk("23")
+    got = run.walk("37")
     log.close()
-    assert got["blocked"] == [0, 1] and got["squares_moved"] == 0
+    assert sess.pressed == ["3", "7"]
     assert got["position"] == [8, 27, None]
+    assert got["steps_unjudged"] is True
+    assert got["squares_moved"] == 0 and got["blocked"] == []
+
+
+def test_a_retried_outdoor_walk_every_step_of_which_stopped_is_all_blocked(
+        tmp_path, monkeypatch):
+    sess = OutdoorSession(blocked={(9, 26)})
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    run.walk_retry = 1
+    got = run.walk("22")
+    log.close()
+    # No set of `2`s but the empty one comes back to the start.
+    assert got["blocked"] == [0, 1] and got["squares_moved"] == 0
+    assert "steps_unjudged" not in got
 
 
 def test_a_retried_outdoor_walk_into_another_window_counts_no_step(

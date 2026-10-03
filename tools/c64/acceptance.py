@@ -5051,13 +5051,14 @@ class PoolRun:
         displacement is checked**, from the start and end travel squares:
         `Session.walk_with_retry` moves the party and keeps no step's square.
 
-        An end on the start square is every step `blocked`, as
-        `_walk_outdoors` records it.  Otherwise the largest set of steps that
-        reaches the end is taken as the ones that moved and the rest are
-        `blocked`, and an end no set of steps reaches fails as an exit or a
-        teleport.  A change of window is recorded as `window_changed` with
-        the steps unjudged and none counted in `squares_moved`, since no
-        step's own crossing was seen."""
+        The end is matched against every set of steps whose compass steps
+        add up to it.  Exactly one set: those steps moved and the rest are
+        `blocked`.  More than one -- a round trip such as `37` ends where
+        every step blocked would, and `223` with one `2` stopped does not say
+        which -- records `steps_unjudged`, `blocked` empty and
+        `squares_moved` 0, claiming no wall.  None fails as an exit or a
+        teleport.  A change of window is recorded the same unjudged way, with
+        `window_changed`, since no step's own crossing was seen."""
         self.leave_arrival(f"walk {route}")
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
@@ -5072,29 +5073,28 @@ class PoolRun:
             raise self.fail("walk", f"walk {route}: {self.sess.walk_refused}")
         end = self.travel_place()
         self.capture(f"walked-{route}")
-        if end == start:
-            return self._outdoor_result(route, start, end, [],
-                                        list(range(len(route))),
-                                        retries=retries)
         if end[2] != start[2]:
             return self._outdoor_result(route, start, end, [], [],
                                         squares_moved=0, retries=retries,
                                         window_changed=True,
                                         steps_unjudged=True)
-        # Each displacement some set of the steps makes, with the largest
-        # such set of step indexes.
-        reach: dict[tuple[int, int], tuple[int, ...]] = {(0, 0): ()}
+        # Every set of step indexes, by the displacement it makes.
+        reach: dict[tuple[int, int], set[tuple[int, ...]]] = {(0, 0): {()}}
         for i, move in enumerate(route):
             dx, dy = COMPASS[move]
-            for (x, y), used in list(reach.items()):
-                key, more = (x + dx, y + dy), used + (i,)
-                if key not in reach or len(reach[key]) < len(more):
-                    reach[key] = more
-        used = reach.get((end[0] - start[0], end[1] - start[1]))
-        if used is None:
+            for (x, y), sets in list(reach.items()):
+                reach.setdefault((x + dx, y + dy), set()).update(
+                    used + (i,) for used in list(sets))
+        found = reach.get((end[0] - start[0], end[1] - start[1]))
+        if not found:
             raise self.fail("walk", f"walk {route}: went from {start[:2]} to "
                                     f"{end[:2]}, which no set of its steps "
                                     f"reaches: an exit or a teleport")
+        if len(found) > 1:
+            return self._outdoor_result(route, start, end, [], [],
+                                        squares_moved=0, retries=retries,
+                                        steps_unjudged=True)
+        (used,) = found
         blocked = [i for i in range(len(route)) if i not in used]
         return self._outdoor_result(route, start, end, [], blocked,
                                     retries=retries)
