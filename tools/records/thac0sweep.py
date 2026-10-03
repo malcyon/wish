@@ -32,7 +32,9 @@ slots keeping the best row; the C64 skips a class the character has no level
 in, because entry 0 of each of its rows is `$00`, and the DOS loop that runs
 when a party is loaded does not skip it, so an empty slot reads an entry 0 of
 39 or 40. That puts a minimum of THAC0 20 under every DOS record -- see
-`dos_engine_thac0` and `docs/224-the-dos-thac0-lower-limit.md`. No strength, no
+`dos_engine_thac0` and `docs/224-the-dos-thac0-lower-limit.md`.  DOS also folds
+in a former class whose level is below the current one, as
+`docs/209-the-regained-dual-class-on-dos.md` describes. No strength, no
 weapon and no clamp enter either.
 
 Nothing here writes anything, and no table it prints is committed.

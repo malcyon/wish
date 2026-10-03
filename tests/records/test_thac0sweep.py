@@ -48,8 +48,8 @@ def _rows(title: str) -> dict[str, list[int]]:
 
 
 def _records(title: str) -> list[tuple]:
-    if gamedata.specimen_root() is None and not dosbox.ARCHIVES.is_dir():
-        pytest.skip("needs the specimen tree or the DOS archives")
+    if gamedata.specimen_root() is None:
+        pytest.skip("needs the specimen tree; the exceptions name specimens")
     return list(thac0sweep.dos_records(title, former=True))
 
 
