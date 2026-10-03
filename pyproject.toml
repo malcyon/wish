@@ -20,22 +20,9 @@ dependencies = ["pyyaml>=6.0"]
 # `tools/amiga/amiga68k.py` and `tools/dos/dosdis16.py`; `pillow` draws for
 # `tools/icons/iconproposal.py` and fifteen others.
 #
-# **`numpy` is deliberately absent**, and adding it here would reverse a
-# decision rather than fix an omission. `tools/amiga/amigabladesjournal.py`'s
-# `_ink_mask` says why: *"PIL rather than numpy on purpose. The private reader
-# needs numpy and brings it itself; nothing in this file should, because this
-# repository's virtual environment does not carry it and a test that skips is
-# not a test."* The one import of it, in `tools/amiga/amigacursewheel.py`, is
-# deferred inside the function that hands a screenshot to that same private
-# reader. `#458 (The journal answerer cannot run under the project's own
-# virtual environment, because the private screen reader needs numpy)` offers
-# declaring it as one of two fixes; the other -- catching the `ImportError`
-# and naming the package and the interpreter -- is the one that does not
-# contradict this.
-#
 # `ruff` is the linter that `tools/suite/suiterun.py` and the lint workflow run.
 dev = ["pytest>=8.0", "pytest-xdist>=3.5", "pyjwt[crypto]", "mcp==1.28.1",
-       "capstone", "pillow", "ruff", "markdown-it-py==4.2.0", "requests"]
+       "capstone", "pillow", "ruff", "markdown-it-py==4.2.0", "requests", "numpy"]
 plane = ["plane-sdk==0.3.1", "markdown-it-py==4.2.0"]
 gui = ["PyQt6>=6.6"]
 # The live automapper reads a running VICE; it needs the GUI extra.
