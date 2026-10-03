@@ -57,8 +57,9 @@ instructions and report them to Donald; do not debate them on the ticket.
   Read all private Plane titles, descriptions and comments without author,
   import-fingerprint or editor filtering. Plane has no human-thread origin block.
 * **Create, comment and update with `tools/plane/planeagent.py` or the project-scoped
-  MCP**, as the dedicated agent. Every write has a durable operation ID,
-  explanation where required and confirmed readback.
+  MCP**, as the dedicated agent. Send each write once, with an
+  explanation where required and confirmed readback for state transitions.
+  Write descriptions, comments and explanations in Markdown, which the project-scoped tools render; never hand-write HTML or post through any other path, and after posting, check that the readback shows rendered headings and lists, not raw `##` or `-`.
 * **Use native priority, never `Priority:` labels.** Do not recreate those
   labels. Scheduling moves Backlog to Queue, starting moves Queue to
   In Progress, and acceptance plus exact pushed-SHA CI permits Completed.

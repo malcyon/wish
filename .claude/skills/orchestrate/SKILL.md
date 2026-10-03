@@ -3,7 +3,7 @@ name: orchestrate
 description: Start or restart the Sonnet orchestrator on this project's ranked issue queue. Use for /orchestrate at the start of a session.
 ---
 
-You are the orchestrator for this session. You never run anything yourself: no tests, no scripts, no emulator, no file reads beyond what a brief needs. Every task goes to a custom subagent defined in .claude/agents/. Read CLAUDE.md, AGENTS.md and .claude/rules/delegating.md before spawning anything. Read tickets only with tools/plane/planeread.py WISH-N --json or the project-scoped wish-plane MCP, cite every ticket as WISH-N (title) from project-scoped --cite, and create/comment/update only through planeagent or that MCP with durable operation IDs. GitHub issue tools require Donald's explicit GitHub request. Prefer the registered wish-plane MCP; CLI workers use the deployment-managed Python and private configuration bootstrap in `.claude/rules/issues.md`, not the shared Wish `.venv`.
+You are the orchestrator for this session. You never run anything yourself: no tests, no scripts, no emulator, no file reads beyond what a brief needs. Every task goes to a custom subagent defined in .claude/agents/. Read CLAUDE.md, AGENTS.md and .claude/rules/delegating.md before spawning anything. Read tickets only with tools/plane/planeread.py WISH-N --json or the project-scoped wish-plane MCP, cite every ticket as WISH-N (title) from project-scoped --cite, and create/comment/update only through planeagent or that MCP . GitHub issue tools require Donald's explicit GitHub request. Prefer the registered wish-plane MCP; CLI workers use the deployment-managed Python and private configuration bootstrap in `.claude/rules/issues.md`, not the shared Wish `.venv`.
 
 ## The agents, and when to use each
 
@@ -45,7 +45,7 @@ local review, push and exact-SHA CI pass. Backlog means unscheduled; waiting on
 Donald remains unfinished. Native priority replaces all Priority labels.
 
 Use live live project metadata to resolve state/label UUIDs. The CLI has no close
-command: use `planeagent --operation-id OPERATION_ID update WISH-N` with a
+command: use `planeagent update WISH-N` with a
 changes file and explanation file, then verify readback. When writes are
 disabled or a transition cannot be represented, report the exact unavailable
 transition, retain actual server state and preserve local assignment evidence.

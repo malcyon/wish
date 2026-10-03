@@ -582,6 +582,14 @@ The backup is a restore of last resort, not a filing system.
 `--limit 30`, so counting the backlog with it answered "30 open" against a real
 44, and the number looked plausible enough not to question.
 
+**The Plane write journal caused failures and prevented no duplicates.** Every
+write had to carry a durable operation ID recorded in a local SQLite journal.
+The journal produced lock failures and left writes stuck as pending, and it
+never stopped a duplicate from reaching a ticket. Donald ruled that it should
+go. A write is now sent once. A 4xx response means it was not applied, so it may
+be retried, and after an unknown outcome the ticket is read back to see whether
+the write landed.
+
 **An agent destroyed Donald's curation by "fixing" it.** An agent had asked for
 `enhancement`, Donald had set `question`, the mismatch was reported as a fault,
 and the assistant changed the label back. He curates labels and priorities by

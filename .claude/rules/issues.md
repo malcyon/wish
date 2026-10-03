@@ -47,21 +47,24 @@ GitHub work.
 ## Write as the dedicated agent
 
 Use the project-scoped `wish-plane` MCP or `tools/plane/planeagent.py`, never raw
-vendor writes. The CLI has create, comment and update commands, with a global
-stable `--operation-id`; it has no close or reopen command.
+vendor writes. The CLI has create, comment and update commands; it has no close or reopen command.
 
 ```sh
-"$PLANE_PYTHON" tools/plane/planeagent.py --operation-id OPERATION_ID create --title TITLE --body-file BODY_FILE --priority high --label TYPE_LABEL_UUID
-"$PLANE_PYTHON" tools/plane/planeagent.py --operation-id OPERATION_ID comment WISH-N --body-file COMMENT_FILE
-"$PLANE_PYTHON" tools/plane/planeagent.py --operation-id OPERATION_ID update WISH-N --changes-file CHANGES_FILE --explanation-file EXPLANATION_FILE
+"$PLANE_PYTHON" tools/plane/planeagent.py create --title TITLE --body-file BODY_FILE --priority high --label TYPE_LABEL_UUID
+"$PLANE_PYTHON" tools/plane/planeagent.py comment WISH-N --body-file COMMENT_FILE
+"$PLANE_PYTHON" tools/plane/planeagent.py update WISH-N --changes-file CHANGES_FILE --explanation-file EXPLANATION_FILE
 ```
 
 Resolve label and state UUIDs from live project metadata, not cached guesses.
 A changes file may set `state`, `priority`, `labels`, `name` or
-`description_html`; state is the target UUID. Updates require an explanation
-and confirmed readback. Repeat the same operation ID only through the journal's
-recorded-result handling; an ambiguous result requires reconciliation, not a
-new ID or blind retry. Preserve other agents' assignments and manual edits.
+`description_html`; state is the target UUID. The `description_html` value is
+written in Markdown and the tool renders it; the field keeps its API name. Updates require an explanation
+and confirmed readback. Send a write once. A 4xx response means it was not
+applied, so it may be retried. After an unknown outcome (a 5xx, a redirect or a
+timeout), read the ticket back and check whether the write is there before
+retrying. Preserve other agents' assignments and manual edits.
+
+Write descriptions, comments and explanations in Markdown, which the project-scoped tools render; never hand-write HTML or post through any other path, and after posting, check that the readback shows rendered headings and lists, not raw `##` or `-`.
 
 **Reply, never rewrite.** Findings go in comments. Correct a factual error in
 a description only with an explanation of the correction; progress does not

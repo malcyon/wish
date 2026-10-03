@@ -123,7 +123,7 @@ does not satisfy them.
 ## Policy configuration and commands
 
 `WISH_PLANE_CONFIG` names an owner-controlled JSON file. The guest role writes
-it with mode `0600` and supplies the guest token and write-journal paths.
+it with mode `0600` and supplies the guest token path.
 Provision these fields using account and project UUIDs read from the deployed
 instance:
 
@@ -132,7 +132,6 @@ instance:
 | `base_url`, `workspace_slug`, `project_id`, `project_identifier` | Approved origin, workspace and project; the display identifier defaults to `WISH`. |
 | `agent_account_id` | Dedicated agent identity, using its stable UUID. |
 | `token_file` | Owner-only API key file, mode `0600`. |
-| `journal_file` | Durable local SQLite write journal, mode `0600`. |
 | `resource` | API resource, `work-items` by default or `issues`; confirm against the deployed release. |
 | `allow_insecure_http` | Set explicitly to true for the chosen HTTP origin; HTTPS remains the default requirement. |
 | `writes_enabled` | Defaults to false; enable only for an explicitly accepted target. |
@@ -192,11 +191,9 @@ writes and checks returned authorship for creation and comments. Updates require
 an explanation and confirmed readback. This change does not overwrite current
 Plane descriptions or Donald's manual edits.
 
-Every write needs a stable `--operation-id`. The journal records intent before
-sending and returns a recorded successful result for repeat requests. An
-uncertain result stops further attempts: inspect the remote result and journal
-before reconciling it. Do not delete the journal or invent another operation
-ID to retry. There is no automated reconciliation command. These are policy
+Send each write once. A 4xx response means it was not applied, so it may be
+retried. After an unknown outcome (a 5xx, a redirect or a timeout), read the
+ticket back and check whether the write is there before retrying. These are policy
 checks for cooperating tools; a guest account able to read the API key can
 call the API outside the adapter.
 

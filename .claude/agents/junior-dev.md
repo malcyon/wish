@@ -126,7 +126,7 @@ cross-reference that turned out not to apply, a thing you could not reach — th
 are the expensive ones to rediscover.
 
 **A bug you find and decide not to fix gets an issue, in the same session.**
-`tools/plane/planeagent.py --operation-id OPERATION_ID create`, as the
+`tools/plane/planeagent.py create`, as the
 dedicated agent, with native priority and a type label UUID from live project
 metadata. Never recreate priority labels. If proposing a priority, say
 in the body that you guessed. The bar is low: what you saw, what you were

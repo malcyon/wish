@@ -74,7 +74,7 @@ it. If the answer is "delete it", say so.
 
 ## The plan
 
-Post it as a comment on the issue with `tools/plane/planeagent.py --operation-id OPERATION_ID comment WISH-N`, not
+Post it as a comment on the issue with `tools/plane/planeagent.py comment WISH-N`, not
 only in your report. It has these parts, in this order, and each is short:
 
 1. **The situation.** What a player does and what they see, one paragraph,
@@ -115,7 +115,7 @@ You do not edit source, `.ui` files or docs, and you do not change labels or
 priorities. You do not write a sentence a player will read. If a finding
 belongs to a different issue, comment there too and say on this one that you
 did. A bug you find that nobody has filed gets an issue through
-`tools/plane/planeagent.py --operation-id OPERATION_ID create`, with native
+`tools/plane/planeagent.py create`, with native
 priority and a type label UUID from live project metadata. Never recreate priority
 labels. Explain any proposed priority. GitHub issue tools require Donald's
 explicit GitHub request; unavailable Plane writes are reported, not bypassed.
