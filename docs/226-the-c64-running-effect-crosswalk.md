@@ -316,7 +316,7 @@ until a 1 comes up and reading the sheet settles it. Encoding a strength of 1
 gives the same 101, which is the one collision in the byte.
 
 **A running Strength converts with its roll, at the destination's own score.**
-Data 101 to 108 converts both ways, a roll of 1 included. The score in force is
+Data 101 to 108 converts both ways, a roll of 1 included. The byte a DOS cast leaves on a target whose only classes are paladin or ranger (`0x02` in Curse, `0xFC` in Silver Blades) converts as a roll of 8, the most a C64 row holds, with the node's duration and low nibble, and returns as 108. The score in force is
 not copied: a DOS source arrives on the C64 at
 `effects.raise_strength(permanent, roll)`, the score the C64's recompute gives
 and never changes; a C64 source arrives on DOS or the Amiga at

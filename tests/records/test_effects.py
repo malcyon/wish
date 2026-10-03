@@ -2615,6 +2615,11 @@ def test_the_native_strength_helpers_return_none_when_the_score_is_not_explained
         _C, perm, (19, 0), [node], [], warrior) is None
     assert effects.c64_later_strength_in_force(
         _C, perm, (18, 0), [_RE(38, 10, 109, 1)], [], warrior) is None
+    # The byte a pure paladin's or ranger's cast leaves gives the top roll.
+    assert effects.c64_later_strength_in_force(
+        _C, (18, 53), (18, 100), [_RE(38, 10, 0x02, 1)], [], True) == (18, 100)
+    assert effects.c64_later_strength_in_force(
+        _C, (17, 0), (18, 100), [_RE(38, 10, 0x02, 1)], [], True) == (18, 70)
     assert effects.dos_later_strength_in_force(
         _C, perm, want, [node], [], warrior) == (18, 0)
     assert effects.dos_later_strength_in_force(
@@ -2624,6 +2629,18 @@ def test_the_native_strength_helpers_return_none_when_the_score_is_not_explained
         _C, perm, (16, 0), [node], [], warrior) is None
     assert effects.dos_later_strength_in_force(
         _C, perm, want, [_RE(38, 10, 103, 0)], [], warrior) is None
+
+
+def test_a_strength_leftover_byte_is_the_top_roll_in_its_own_title_only():
+    assert effects.c64_row(_C, _RE(38, 360, 0x02, 1)) == (38, 0xF2)
+    assert effects.c64_row(_S, _RE(38, 360, 0xFC, 1)) == (38, 0xFC)
+    assert [effects.later_strength_roll(_C, 100 + r) for r in range(1, 9)] \
+        == list(range(1, 9))
+    assert effects.later_strength_roll(_C, 0x02) == 8
+    assert effects.later_strength_roll(_S, 0xFC) == 8
+    for title, data in ((_C, 109), (_C, 0x00), (_S, 0x02), (_C, 0xFC),
+                        (_S, 100)):
+        assert effects.later_strength_roll(title, data) is None
 
 
 # --- the C64's own strength rebuild --------------------------------------------

@@ -698,10 +698,11 @@ def _value_row(title_key: str, node: RunningEffect,
         return node.id, value | MAGNITUDE_RESTORE_FLAG if flag else value
     if title_key in LATER_CAST_FLAGS and node.id in LATER_VALUE_IDS:
         if node.id == 38:
-            if not 101 <= data <= 108:
+            roll = later_strength_roll(title_key, data)
+            if roll is None:
                 return Unconverted("a data byte no DOS engine writes for "
                                    "Strength")
-            return node.id, later_ability_magnitude(data - 100, data & 0x0F)
+            return node.id, later_ability_magnitude(roll, data & 0x0F)
         if node.id == 14:
             if not 1 <= data <= 8:
                 return Unconverted("a data byte no DOS engine writes for "
@@ -1957,6 +1958,35 @@ LATER_STRENGTH_SOURCE_IDS: dict[str, frozenset[int]] = {
     "curse-of-the-azure-bonds": frozenset({12, 38, 146}),
     "secret-of-the-silver-blades": frozenset({12, 38, 113}),
 }
+
+#: The data byte a DOS cast of Strength leaves on a target whose only classes
+#: are paladin or ranger, in each later title. The cast never rolls for such a
+#: target and stores the low byte of the dispatcher's saved frame pointer plus
+#: 100 (Curse `GAME.OVR:0x30CC5`; Silver Blades `0x2F52B`). The C64 climbs at
+#: most 8 steps for one Strength row (`ECL65 $9797`), so the byte converts as
+#: the C64's top roll.
+LATER_STRENGTH_LEFTOVER_DATA: dict[str, frozenset[int]] = {
+    "curse-of-the-azure-bonds": frozenset({0x02}),
+    "secret-of-the-silver-blades": frozenset({0xFC}),
+}
+
+#: The roll a C64 Strength row can hold at most.
+LATER_STRENGTH_TOP_ROLL = 8
+
+
+def later_strength_roll(title_key: str, data: int) -> int | None:
+    """The C64 roll a later title's Strength node of `data` converts as.
+
+    A cast's own `100 + roll` gives the roll; the byte a paladin or ranger
+    cast leaves (`LATER_STRENGTH_LEFTOVER_DATA`) gives the C64's top roll.
+    `None` for any other byte, which no DOS engine writes for Strength.
+    """
+    if 101 <= data <= 108:
+        return data - 100
+    if data in LATER_STRENGTH_LEFTOVER_DATA.get(title_key, ()):
+        return LATER_STRENGTH_TOP_ROLL
+    return None
+
 
 #: The powers (`item[15]`) of a readied item the C64's Strength recalculation
 #: reads: a girdle merges the table entry its `item[14] & 7` picks; Curse's

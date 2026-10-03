@@ -3841,12 +3841,12 @@ _NODE_101 = bytes((38, 10, 0, 101, 1))
 
 
 def _strength_character(port, game, roll, permanent, in_force, levels,
-                        *extra_nodes):
+                        *extra_nodes, data=None):
     char = neutral.NeutralCharacter(port, source="built here", game=game)
     char.set("name", "STRONG", "built here")
     char.set("running_effects",
-             [bytes((38, 10, 0, 100 + roll, 1)) + NULL]
-             + [n + NULL for n in extra_nodes], "built here")
+             [bytes((38, 10, 0, 100 + roll if data is None else data, 1))
+              + NULL] + [n + NULL for n in extra_nodes], "built here")
     char.set("strength", in_force[0], "built here")
     char.set("exceptional_strength", in_force[1], "built here")
     char.set("abilities_second",
@@ -3895,6 +3895,40 @@ def test_a_dos_running_strength_arrives_at_the_c64s_own_score(
     c64_codec.write(char, payload=payload, party_slot=2, clock_minutes=0)
     assert [r[3] for r in _rows(payload).values() if r[0] == 38] == [
         effects.later_ability_magnitude(roll, (100 + roll) & 0x0F)]
+
+
+@pytest.mark.parametrize("key, data", [(_CURSE_KEY, 0x02), (_SSB_KEY, 0xFC)])
+@pytest.mark.parametrize("permanent, in_force, levels, c64_score", [
+    ((18, 53), (18, 100), {"paladin": 5}, (18, 100)),
+    ((18, 88), (18, 88), {"ranger": 11}, (18, 100)),
+    ((17, 0), (18, 100), {"paladin": 5}, (18, 70)),
+])
+def test_a_curse_leftover_strength_node_converts_at_the_c64s_top_roll_and_back(
+        key, data, permanent, in_force, levels, c64_score):
+    game = c64_port.by_key(key)
+    char = _strength_character("DOS", game, 8, permanent, in_force, levels,
+                               data=data)
+    payload = bytearray(0x1C00)
+    rec, rep = c64_codec.write(char, payload=payload, party_slot=2,
+                               clock_minutes=0)
+    assert not [d for d in rep.dropped if "trength" in str(d)]
+    assert not [d for d in rep.losses if "trength" in str(d)]
+    rows = [r for r in _rows(payload).values() if r[0] == 38]
+    # The top roll's climb nibble, with the node's own low nibble kept.
+    assert [r[3] for r in rows] == [0xF0 | (data & 0x0F)]
+    assert [r[2] for r in rows] == [effects.closest_duration(10, 0)]
+    assert (rec.get("strength"), rec.get("exceptional_strength")) == c64_score
+    assert rec.get("strength_index") == c64_codec.strength_index(*c64_score)
+    assert (rec.get_raw("abilities_second")[0],
+            rec.get_raw("abilities_second")[6]) == permanent
+    # Back to DOS, the node is the C64's own roll of 8, at the DOS score.
+    row = effects.Effect(63, 38, 0, rows[0][2], rows[0][3])
+    node = effects.dos_record(game.key, row, 0)
+    assert (node.id, node.data, node.flag) == (38, 108, 1)
+    back = _strength_character("C64", game, 8, permanent, c64_score, levels)
+    score, kept, _rep = _dos_strength(back)
+    assert kept == permanent
+    assert score == c64_score
 
 
 def test_the_c64_strength_score_reaches_the_hit_step_and_the_report():
