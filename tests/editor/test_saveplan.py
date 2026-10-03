@@ -1247,3 +1247,78 @@ def test_a_feebleminded_dos_character_is_expected_at_the_c64s_feeblemind_scores(
         record, _dos_feebleminded_neutral(), "dos",
         _destination("c64", title))
     assert scores == expected
+
+
+def _charmed_pool_neutral(share, control=0xB3, charmed=True):
+    from goldbox import neutral
+
+    char = neutral.NeutralCharacter("DOS", source="built here")
+    char.set("npc", control >= 0x80, "built here")
+    char.set("npc_control_byte", control, "built here")
+    if charmed:
+        char.set("granted_effects",
+                 [bytes.fromhex("0B 00 00 21 01") + dos_codec.EFFECT_NEXT_NULL],
+                 "built here")
+    return char
+
+
+def _charmed_sheet(share):
+    record = CharacterRecord.blank()
+    record.set("flags_0b8", 0xB3)
+    record.set("treasure_share", share)
+    return record
+
+
+@pytest.mark.parametrize("share, flags, written_share",
+                         [(1, 1, 0), (0, 0, 0)])
+def test_a_charmed_pool_player_character_is_expected_as_the_writer_writes_him(
+        share, flags, written_share):
+    destination = _destination("c64", c64_port.POOL_OF_RADIANCE)
+    sheet = _charmed_sheet(share)
+    fields = saveplan.charmed_pool_fields(
+        sheet, _charmed_pool_neutral(share), "dos", destination)
+    assert fields == {"flags_0b8": flags, "treasure_share": written_share}
+    for name, value in fields.items():
+        sheet.set(name, value)
+    written = _charmed_sheet(written_share)
+    written.set("flags_0b8", flags)
+    assert [line for line in saveplan.compare(
+        [sheet], [written], destination, source_port="dos")
+        if line.split(":")[0] in ("flags_0b8", "treasure_share")] == []
+
+
+def test_a_character_who_is_not_charmed_keeps_his_flags_0b8_mismatch():
+    destination = _destination("c64", c64_port.POOL_OF_RADIANCE)
+    sheet = _charmed_sheet(1)
+    for neutral_char, port, where in [
+            (_charmed_pool_neutral(1, charmed=False), "dos", destination),
+            (_charmed_pool_neutral(1), "c64", destination),
+            (_charmed_pool_neutral(1), "dos",
+             _destination("c64", c64_port.CURSE_OF_THE_AZURE_BONDS))]:
+        assert saveplan.charmed_pool_fields(
+            sheet, neutral_char, port, where) == {}
+    written = _charmed_sheet(1)
+    written.set("flags_0b8", 1)
+    assert any("flags_0b8: 179 arrived as 1" in line for line in
+               saveplan.compare([sheet], [written], destination,
+                                source_port="dos"))
+
+
+def test_a_dos_pool_party_with_a_charmed_character_saves_as_c64(tmp_path):
+    from tools.convert import convertdrops
+    from tools.registry import specimens
+    spec = next((entry["_files"][0].parent
+                 for entry in specimens.list_specimens()
+                 if entry.get("name") ==
+                 "pool-8-friends-mirror-prayer-charm-dos-engine-save"), None)
+    if spec is None:
+        pytest.skip("needs the charmed Pool of Radiance DOS specimen")
+    party = Party(str(spec))
+    source = convert.Source.detect(party.path)
+    try:
+        assets = saveplan.resolve_assets(
+            source, "c64", game_files=convertdrops.game_files)
+    except (saveplan.MissingAssets, FileNotFoundError):
+        pytest.skip("needs Pool of Radiance's own C64 disks")
+    saveplan.prepare_save_as(party, "c64", tmp_path / "out" / "out.d64",
+                             assets)
