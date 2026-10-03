@@ -220,6 +220,22 @@ class Journal:
             db.execute('UPDATE writes SET status=?,result=? WHERE key=? AND status=?',
                        (status, None if result is None else json.dumps(result), key, 'pending'))
 
+    def settle(self, key, status, evidence):
+        """Record a known outcome for one pending key, keeping the evidence in its result."""
+        if status not in {'done', 'unsent'}:
+            raise PlaneError("A pending write settles as done or unsent")
+        if not isinstance(evidence, str) or not evidence.strip():
+            raise PlaneError("Evidence text is required")
+        with self._db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT status FROM writes WHERE key=?', (key,)).fetchone()
+            if row is None:
+                raise PlaneError("No journal entry has this operation ID")
+            if row[0] != 'pending':
+                raise PlaneError(f"Only a pending entry can be settled; this one is {row[0]}")
+            db.execute('UPDATE writes SET status=?,result=? WHERE key=?', (status, json.dumps({'evidence': evidence}), key))
+        return {'operation_id': key, 'status': status, 'result': {'evidence': evidence}}
+
     def reconcile(self, key, decide):
         """Settle a pending key from `decide(request, reserved_at)`, which returns the result if the write is present and None if it is not."""
         with self._db() as db:

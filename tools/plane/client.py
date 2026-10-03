@@ -156,12 +156,15 @@ class Client:
         return Journal(self.settings.journal_file).run(
             operation_id, request, lambda: self.summarise(path, self.transport.request(method, path, payload)))
 
+    # Plane stamps rows with its own clock, which may run behind the one that stamped the reservation.
+    CLOCK_SKEW_SECONDS = 120
+
     def reconcile(self, operation_id):
         """Settle a pending journal key by reading Plane; never sends the write."""
         def after(row, reserved_at):
             created = row.get('created_at')
             try:
-                return bool(created) and datetime.fromisoformat(created).timestamp() >= reserved_at
+                return bool(created) and datetime.fromisoformat(created).timestamp() >= reserved_at - self.CLOCK_SKEW_SECONDS
             except ValueError:
                 return False
 

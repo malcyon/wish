@@ -9,7 +9,7 @@ if __package__ in (None, ''):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from tools.plane.client import Client
-from tools.plane.policy import PlaneError
+from tools.plane.policy import Journal, PlaneError, Settings
 
 
 def main(argv=None):
@@ -29,8 +29,14 @@ def main(argv=None):
     update.add_argument('--changes-file', type=Path, required=True)
     update.add_argument('--explanation-file', type=Path, required=True)
     commands.add_parser('reconcile')
+    settle = commands.add_parser('settle')
+    settle.add_argument('status', choices=['done', 'unsent'])
+    settle.add_argument('--evidence', required=True)
     args = parser.parse_args(argv)
     try:
+        if args.command == 'settle':
+            print(json.dumps(Journal(Settings.load().journal_file).settle(args.operation_id, args.status, args.evidence), indent=2))
+            return 0
         client = Client.load()
         if args.command == 'create':
             result = client.create(args.operation_id, args.title, args.body_file.read_text(), args.priority, args.label)

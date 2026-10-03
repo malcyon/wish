@@ -750,3 +750,35 @@ def test_write_results_are_compact(tmp_path):
     for result in (client.update('compact', ITEM, {'priority': 'low'}, 'Changed'), client.comment('c', ITEM, 'Text')):
         assert 'comments' not in result and 'description_html' not in result and 'comment_html' not in result
     assert client.update('compact', ITEM, {'priority': 'low'}, 'Changed')['comment_id'] == OUTSIDE
+
+
+@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
+def test_reconcile_tolerates_a_server_clock_behind_the_reservation(tmp_path):
+    from datetime import datetime
+    reserved = datetime.fromisoformat('2026-01-01T00:10:00+00:00').timestamp()
+    behind = '2026-01-01T00:08:30Z'
+    rows = [{'id': OUTSIDE, 'created_by': AGENT, 'comment_html': '<p>Text</p>', 'created_at': behind}]
+    client = lost_write_client(tmp_path, rows)
+    with pytest.raises(PlaneError):
+        client.comment('skew', ITEM, 'Text')
+    age_reservation(tmp_path, 'skew', reserved)
+    assert client.reconcile('skew')['status'] == 'done'
+
+
+@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
+def test_settle_edits_only_a_pending_row_and_records_evidence(tmp_path):
+    import sqlite3
+    journal = Journal(tmp_path / 'writes.sqlite')
+    for key in ('a', 'b', 'c'):
+        with pytest.raises(PlaneError):
+            journal.run(key, {'p': key}, lambda: (_ for _ in ()).throw(PlaneError('timed out')))
+    assert journal.settle('a', 'done', 'Comment seen on the ticket')['status'] == 'done'
+    assert journal.settle('b', 'unsent', 'No such comment')['status'] == 'unsent'
+    with pytest.raises(PlaneError, match='pending'):
+        journal.settle('a', 'unsent', 'Again')
+    with pytest.raises(PlaneError, match='Evidence'):
+        journal.settle('c', 'done', ' ')
+    rows = dict((k, (s, r)) for k, s, r in sqlite3.connect(journal.path).execute('SELECT key,status,result FROM writes'))
+    assert rows['a'] == ('done', '{"evidence": "Comment seen on the ticket"}')
+    assert rows['c'] == ('pending', None)
+    assert journal.run('b', {'p': 'b'}, lambda: {'id': ITEM}) == {'id': ITEM}
