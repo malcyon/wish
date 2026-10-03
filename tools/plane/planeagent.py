@@ -19,7 +19,7 @@ def main(argv=None):
     create = commands.add_parser('create')
     create.add_argument('--title', required=True)
     create.add_argument('--body-file', type=Path, required=True)
-    create.add_argument('--priority', choices=['high', 'medium', 'low'], required=True)
+    create.add_argument('--priority', choices=['high', 'medium', 'low', 'none'], required=True)
     create.add_argument('--label', action='append', required=True)
     comment = commands.add_parser('comment')
     comment.add_argument('identifier')

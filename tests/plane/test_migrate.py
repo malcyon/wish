@@ -3,6 +3,7 @@ import json
 import os
 import sqlite3
 import subprocess
+import sys
 
 import pytest
 
@@ -14,7 +15,6 @@ from tools.plane.migrate import (
     prepare,
     private_directory,
 )
-
 
 _PRIVATE_STORAGE_TESTS = {
     "test_scope_cannot_be_reused_for_another_project",
@@ -35,7 +35,7 @@ def require_private_storage_permissions(request):
         pytest.skip("Migration storage requires POSIX ownership and private file modes")
 
 def snapshot():
-    return {"version": 1, "repository": "owner/repo", "records": [{
+    return {"version": 2, "repository": "owner/repo", "records": [{
         "issue": {"id": 55, "number": 3, "title": "Outside title", "body": "Original evidence",
                   "user": {"id": 99, "login": "Trusted display name"}, "state": "open",
                   "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-02T00:00:00Z",
@@ -43,6 +43,7 @@ def snapshot():
         "comments": [{"id": 66, "body": "https://github.com/user-attachments/assets/example",
                       "user": {"id": 42}, "created_at": "2026-01-03T00:00:00Z"}],
         "timeline": [{"event": "cross-referenced", "source": {"issue": {"number": 4}}}],
+        "blocked_by": [],
     }]}
 
 
@@ -54,12 +55,12 @@ def ledger(tmp_path):
 
 
 def plan(ledger, source=None, trusted=frozenset({"42"})):
-    return prepare(source or snapshot(), ledger, trusted, {3}, {"open": "state-open"}, {"question": "question-id", "human": "human-id"})
+    return prepare(source or snapshot(), ledger, trusted, {3}, {"open": "state-open"}, {"question": "question-id", "Priority: High": "high-id", "Priority: Low": "low-id"})
 
 
 def test_rehearsal_keeps_authorship_and_records_gaps(ledger):
     summary = plan(ledger)
-    assert summary == {"objects": {"planned": 2}, "outcomes": {"attachment:not_copied": 1, "label:mapped": 2, "timeline:not_reconciled": 1}}
+    assert summary == {"objects": {"planned": 2}, "attachments": {"planned": 1}, "relations": {}, "outcomes": {"dependencies:preserved": 1, "label:mapped": 2, "timeline:preserved": 1}}
     calls = []
 
     def create(kind, payload, parent):
@@ -128,10 +129,12 @@ def test_export_has_all_comments_and_events_without_printing(tmp_path, capsys):
             return source["comments"]
         if "/timeline?" in endpoint:
             return source["timeline"]
+        if "/dependencies/blocked_by?" in endpoint:
+            return source["blocked_by"]
         return [source["issue"], {"pull_request": {}, "number": 9}]
 
     path = export_source(tmp_path / "private", "owner/repo", fetch)
-    assert len(endpoints) == 3
+    assert len(endpoints) == 4
     assert json.loads(path.read_text())["records"] == [source]
     assert path.stat().st_mode & 0o777 == 0o600
     assert capsys.readouterr() == ("", "")
@@ -139,9 +142,9 @@ def test_export_has_all_comments_and_events_without_printing(tmp_path, capsys):
 
 def test_export_pagination_and_errors_are_opaque(monkeypatch):
     def run(command, **kwargs):
-        assert "--paginate" in command and "--slurp" in command
+        assert "--paginate" in command and "--slurp" not in command
         assert kwargs["capture_output"] is True
-        return subprocess.CompletedProcess(command, 0, '[[{"id": 1}], [{"id": 2}]]')
+        return subprocess.CompletedProcess(command, 0, '[ {"id": 1}]\n[{"id": 2}]\n[]')
 
     monkeypatch.setattr(subprocess, "run", run)
     assert github_pages("repos/owner/repo/issues") == [{"id": 1}, {"id": 2}]
@@ -221,7 +224,7 @@ def test_provenance_only_contains_confirmed_ids_and_exact_text(ledger, tmp_path)
 def test_rehearsal_requires_importer_and_checks_readback():
     from types import SimpleNamespace
 
-    from tools.plane.migrate import rehearsal_writer
+    from tools.plane.migrate import migration_writer
 
     project = "00000000-0000-0000-0000-000000000001"
     importer = "00000000-0000-0000-0000-000000000002"
@@ -246,7 +249,7 @@ def test_rehearsal_requires_importer_and_checks_readback():
                     **({"name": "Changed"} if self.changed else {})}
 
     transport = Transport()
-    create = rehearsal_writer(project, settings, transport)
+    create = migration_writer(project, settings, transport)
     result = create("issue", {"name": "Preserved"}, None)
     assert result["_migration_url"].startswith("https://example.test/wish/projects/")
     transport.changed = True
@@ -254,7 +257,7 @@ def test_rehearsal_requires_importer_and_checks_readback():
         create("issue", {"name": "Preserved"}, None)
     transport.author = project
     with pytest.raises(MigrationError, match="importer"):
-        rehearsal_writer(project, settings, transport)
+        migration_writer(project, settings, transport)
     assert transport.calls[-1] == ("GET", "users/me")
 
 
@@ -265,7 +268,7 @@ def test_cli_dry_run_prints_counts_only(tmp_path, capsys):
     source.write_text(json.dumps(snapshot()))
     source.chmod(0o600)
     mapping = tmp_path / "labels.json"
-    mapping.write_text(json.dumps({"question": "00000000-0000-0000-0000-000000000003", "human": "00000000-0000-0000-0000-000000000004"}))
+    mapping.write_text(json.dumps({"question": "00000000-0000-0000-0000-000000000003", "Priority: High": "00000000-0000-0000-0000-000000000004"}))
     args = ["rehearse", "--label-map-file", str(mapping), "--snapshot", str(source), "--directory", str(tmp_path / "private"),
             "--rehearsal-project", "00000000-0000-0000-0000-000000000001", "--issue", "3",
             "--state-open", "00000000-0000-0000-0000-000000000002"]
@@ -287,7 +290,7 @@ def test_public_origin_is_preserved_without_source_label(ledger):
     entries = json.loads(ledger.write_provenance().read_text())
     assert all(entry["human_thread"] is True for entry in entries.values())
     issue_payload = json.loads(ledger.db.execute("SELECT payload FROM objects WHERE kind='issue'").fetchone()[0])
-    assert "human-id" in issue_payload["labels"]
+    assert issue_payload["labels"] == ["high-id", "question-id"]
 
 
 def test_delta_preserves_old_source_and_updates_existing_destination(ledger):
@@ -299,7 +302,7 @@ def test_delta_preserves_old_source_and_updates_existing_destination(ledger):
     source["records"][0]["issue"]["body"] = "Corrected evidence"
     source["records"][0]["issue"]["updated_at"] = "2026-01-04T00:00:00Z"
     prepare(source, ledger, frozenset({"42"}), {3}, {"open": "state-open"},
-            {"human": "human-id", "question": "question-id"}, reconcile=True)
+            {"Priority: High": "high-id", "question": "question-id"}, reconcile=True)
     assert ledger.summary()["objects"] == {"complete": 1, "planned_update": 1}
     assert "00000000-0000-0000-0000-000000000001" not in json.loads(ledger.write_provenance().read_text())
     revisions = ledger.db.execute("SELECT source FROM revisions").fetchall()
@@ -323,7 +326,248 @@ def test_delta_accepts_appended_comments_but_blocks_deleted_history(ledger):
     source = snapshot()
     source["records"][0]["comments"].append({"id": 67, "body": "New evidence", "user": {"id": 42}})
     prepare(source, ledger, frozenset({"42"}), {3}, {"open": "state-open"},
-            {"human": "human-id", "question": "question-id"}, reconcile=True)
+            {"Priority: High": "high-id", "question": "question-id"}, reconcile=True)
     assert ledger.summary()["objects"] == {"planned": 3}
     with pytest.raises(MigrationError, match="deleted"):
         plan(ledger)
+
+
+def test_service_state_lock_excludes_backup_and_keeps_the_same_file(tmp_path):
+    import sys
+
+    from tools.plane.migrate import operation_lock
+
+    if sys.platform != "linux":
+        pytest.skip("Service-side import locking requires Linux")
+    directory = tmp_path / "private"
+    directory.mkdir(mode=0o700)
+    lock = directory / "state.lock"
+    with operation_lock(lock):
+        inode = lock.stat().st_ino
+        with pytest.raises(MigrationError, match="holds"):
+            with operation_lock(lock):
+                pytest.fail("Concurrent backup/import entered the protected operation")
+    assert lock.stat().st_ino == inode
+    with operation_lock(lock):
+        assert lock.stat().st_ino == inode
+
+
+def test_service_state_lock_does_not_follow_a_symlink(tmp_path):
+    import sys
+
+    from tools.plane.migrate import operation_lock
+
+    if sys.platform != "linux":
+        pytest.skip("Service-side import locking requires Linux")
+    directory = tmp_path / "private"
+    directory.mkdir(mode=0o700)
+    target = tmp_path / "unrelated"
+    target.write_text("Preserve")
+    lock = directory / "state.lock"
+    lock.symlink_to(target)
+    with pytest.raises(OSError):
+        with operation_lock(lock):
+            pytest.fail("Followed a lock symlink")
+    assert target.read_text() == "Preserve"
+
+
+def test_attachment_reference_keeps_original_comment_author_and_time(ledger):
+    plan(ledger)
+    origin, author, created = ledger.db.execute("SELECT origin_key,original_author_id,created_at FROM attachment_sources").fetchone()
+    assert origin == "github:owner/repo:comment:66"
+    assert author == "github:42"
+    assert created == "2026-01-03T00:00:00Z"
+
+
+def test_ledger_cannot_be_reused_on_another_service(ledger):
+    from types import SimpleNamespace
+
+    settings = SimpleNamespace(base_url="http://plane.internal", workspace="wish", project="disposable-project")
+    ledger.bind_service(settings)
+    ledger.bind_service(settings)
+    settings.base_url = "http://other.internal"
+    with pytest.raises(MigrationError, match="different Plane service"):
+        ledger.bind_service(settings)
+
+
+def test_import_excludes_origin_labels_but_keeps_priority_label_and_human_provenance(ledger):
+    source = snapshot()
+    source["records"][0]["issue"]["labels"].extend([{"name": "AI"}, {"name": "HuMaN"}])
+    plan(ledger, source, trusted=frozenset({"42", "99"}))
+    payload = json.loads(ledger.db.execute("SELECT payload FROM objects WHERE kind='issue'").fetchone()[0])
+    assert payload["labels"] == ["high-id", "question-id"]
+    assert payload["priority"] == "high"
+    assert ledger.db.execute("SELECT human_thread FROM origins").fetchone()[0] == 1
+    assert ledger.summary()["outcomes"]["label:excluded"] == 2
+    original = json.loads(ledger.db.execute("SELECT source FROM objects WHERE kind='issue'").fetchone()[0])
+    assert {label["name"] for label in original["labels"]} == {"Priority: High", "question", "AI", "HuMaN"}
+
+
+def test_excluded_origin_labels_cannot_be_mapped_into_plane(ledger):
+    with pytest.raises(MigrationError, match="must not be recreated"):
+        prepare(snapshot(), ledger, frozenset({"42"}), {3}, {"open": "open"},
+                {"question": "question-id", "Priority: High": "high-id", "human": "human-id"})
+    assert ledger.summary()["objects"] == {}
+
+
+def test_closed_not_planned_keeps_reason_while_mapping_to_completed(ledger):
+    source = snapshot()
+    issue = source["records"][0]["issue"]
+    issue.update(state="closed", state_reason="not_planned")
+    prepare(source, ledger, frozenset({"42"}), {3}, {"cancelled": "completed-state"},
+            {"question": "question-id", "Priority: High": "high-id"})
+    payload, preserved = ledger.db.execute("SELECT payload,source FROM objects WHERE kind='issue'").fetchone()
+    assert json.loads(payload)["state"] == "completed-state"
+    assert json.loads(preserved)["state_reason"] == "not_planned"
+
+
+def test_missing_priority_requires_explicit_recorded_fallback(ledger):
+    source = snapshot()
+    source["records"][0]["issue"]["labels"] = [{"name": "question"}]
+    prepare(source, ledger, frozenset({"42"}), {3}, {"open": "open"},
+            {"question": "question-id"}, default_priority="medium")
+    payload = json.loads(ledger.db.execute("SELECT payload FROM objects WHERE kind='issue'").fetchone()[0])
+    assert payload["priority"] == "medium"
+    assert payload["labels"] == ["question-id"]
+    assert ledger.summary()["outcomes"]["priority:explicit_fallback"] == 1
+
+
+def test_open_scope_adds_closed_dependency_chain_before_unrelated_history():
+    import copy
+
+    from tools.plane.migrate import select_issues
+
+    source = snapshot()
+    first = source["records"][0]
+    dependency = copy.deepcopy(first)
+    dependency["issue"].update(id=56, number=4, state="closed")
+    history = copy.deepcopy(first)
+    history["issue"].update(id=57, number=5, state="closed")
+    first["blocked_by"] = [{"id": 56}]
+    source["records"].extend([dependency, history])
+    assert select_issues(source, "open", []) == {3, 4}
+    assert select_issues(source, "history", []) == {4, 5}
+    assert select_issues(source, "all", []) == {3, 4, 5}
+    assert select_issues(source, "selected", [3]) == {3, 4}
+
+
+def test_production_writer_requires_separate_explicit_configuration(tmp_path, monkeypatch):
+    from tools.plane.migrate import migration_writer
+
+    project = "00000000-0000-0000-0000-000000000001"
+    agent = "00000000-0000-0000-0000-000000000002"
+    importer = "00000000-0000-0000-0000-000000000003"
+    config = {"base_url": "http://plane.internal", "allow_insecure_http": True,
+              "workspace_slug": "wish", "project_id": project, "import_project_id": project,
+              "agent_account_id": agent, "trusted_account_ids": [agent], "importer_account_ids": [importer],
+              "token_file": str(tmp_path / "token"), "journal_file": str(tmp_path / "journal"), "writes_enabled": True}
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(config))
+    path.chmod(0o600)
+    monkeypatch.setenv("WISH_PLANE_CONFIG", str(path))
+    with pytest.raises(MigrationError, match="import_enabled"):
+        migration_writer(project, production=True)
+    with pytest.raises(MigrationError, match="project mode"):
+        migration_writer(project)
+    config.update(import_enabled=True, rehearsal_project_id=project)
+    path.write_text(json.dumps(config))
+    with pytest.raises(MigrationError, match="must be distinct"):
+        migration_writer(project, production=True)
+
+
+def test_production_dry_run_does_not_write_without_allow_import(tmp_path, monkeypatch, capsys):
+    import tools.plane.migrate as migrate
+
+    project = "00000000-0000-0000-0000-000000000001"
+    source = tmp_path / "source.json"
+    source.write_text(json.dumps(snapshot()))
+    source.chmod(0o600)
+    states = tmp_path / "states.json"
+    states.write_text(json.dumps({name: f"00000000-0000-0000-0000-00000000000{index}" for index, name in enumerate(migrate.STATE_GROUPS, 2)}))
+    labels = tmp_path / "labels.json"
+    labels.write_text(json.dumps({"Priority: High": "00000000-0000-0000-0000-000000000006", "question": "00000000-0000-0000-0000-000000000007"}))
+    monkeypatch.setattr(migrate, "migration_writer", lambda *args, **kwargs: pytest.fail("Dry run attempted a live writer"))
+    args = ["import", "--directory", str(tmp_path / "private"), "--snapshot", str(source), "--project", project,
+            "--scope", "open", "--state-map-file", str(states), "--label-map-file", str(labels)]
+    assert migrate.main(args) == 0
+    output = capsys.readouterr()
+    assert "Migration counts" in output.out and "Outside" not in output.out
+    ledger = Ledger(tmp_path / "private", project)
+    try:
+        payload = json.loads(ledger.db.execute("SELECT payload FROM objects WHERE kind='issue'").fetchone()[0])
+        assert payload["state"] == "00000000-0000-0000-0000-000000000002"
+    finally:
+        ledger.close()
+
+
+def test_issue_import_order_keeps_open_work_before_closed_history(ledger):
+    with ledger.db:
+        ledger.record("closed", "issue", {"state": "closed", "created_at": "2000-01-01"}, {}, frozenset())
+        ledger.record("open", "issue", {"state": "open", "created_at": "2026-01-01"}, {}, frozenset())
+    seen = []
+
+    def create(kind, payload, parent):
+        current = ledger.db.execute("SELECT source_key FROM objects WHERE status='pending'").fetchone()[0]
+        seen.append(current)
+        return {"id": f"00000000-0000-0000-0000-{len(seen):012d}"}
+
+    ledger.import_pending(create)
+    assert seen == ["open", "closed"]
+
+
+def test_live_state_mapping_checks_names_and_workflow_groups_before_writes():
+    from types import SimpleNamespace
+
+    from tools.plane.migrate import STATE_GROUPS, migration_writer
+
+    project = "00000000-0000-0000-0000-000000000001"
+    importer = "00000000-0000-0000-0000-000000000002"
+    settings = SimpleNamespace(project=project, workspace="wish", resource="work-items", writes_enabled=True,
+                               importers={importer}, base_url="http://plane.internal")
+    definitions = {name: f"00000000-0000-0000-0000-00000000000{index}" for index, name in enumerate(STATE_GROUPS, 3)}
+
+    class Transport:
+        def request(self, method, path, data=None, params=None):
+            assert method == "GET"
+            if path == "users/me":
+                return {"id": importer}
+            return {"results": [{"id": identifier, "name": name, "group": "unstarted" if name == "Backlog" else STATE_GROUPS[name]}
+                                for name, identifier in definitions.items()], "next_page_results": False}
+
+    with pytest.raises(MigrationError, match="workflow groups"):
+        migration_writer(project, settings, Transport(), production=True, state_definitions=definitions)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Service-side import locking requires Linux")
+@pytest.mark.parametrize("exception", [RuntimeError, KeyboardInterrupt])
+def test_interrupted_migration_blocks_backup_until_success(tmp_path, exception):
+    from tools.plane.migrate import migration_marker, operation_lock
+
+    directory = private_directory(tmp_path / "private")
+    marker = directory / ".migration-in-progress"
+    with operation_lock(directory / "state.lock"):
+        with pytest.raises(exception):
+            with migration_marker(directory, True):
+                assert marker.stat().st_mode & 0o777 == 0o600
+                raise exception("Interrupted")
+    assert marker.exists()
+    with operation_lock(directory / "state.lock"), migration_marker(directory, False):
+        pass
+    assert marker.exists(), "A dry run must not certify an interrupted import"
+    with operation_lock(directory / "state.lock"), migration_marker(directory, True):
+        assert marker.exists()
+    assert not marker.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="Migration markers require POSIX file permissions")
+def test_migration_marker_rejects_symlink(tmp_path):
+    from tools.plane.migrate import migration_marker
+
+    directory = private_directory(tmp_path / "private")
+    target = tmp_path / "target"
+    target.write_text("Keep")
+    (directory / ".migration-in-progress").symlink_to(target)
+    with pytest.raises(OSError):
+        with migration_marker(directory, True):
+            pytest.fail("Symlink marker accepted")
+    assert target.read_text() == "Keep"

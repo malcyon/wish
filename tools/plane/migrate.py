@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export GitHub history privately and rehearse imports with durable provenance."""
+"""Export GitHub history privately and import tickets with durable provenance."""
 from __future__ import annotations
 
 import argparse
@@ -13,6 +13,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Callable
@@ -20,6 +21,10 @@ from uuid import UUID
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+
+EXCLUDED_LABELS = frozenset({"ai", "human"})
+STATE_GROUPS = {"Backlog": "backlog", "Queue": "unstarted", "In Progress": "started", "Completed": "completed"}
 
 
 class MigrationError(Exception):
@@ -43,17 +48,78 @@ def private_directory(path: Path) -> Path:
     return path
 
 
+@contextmanager
+def operation_lock(path: Path):
+    """Exclude concurrent imports and backups sharing this service-side lock file."""
+    if sys.platform != "linux":
+        raise MigrationError("Migration writes require the Linux service-side backup lock")
+    import fcntl
+
+    private_directory(path.parent)
+    descriptor = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    try:
+        info = os.fstat(descriptor)
+        if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600 or not stat.S_ISREG(info.st_mode):
+            raise MigrationError("Migration lock must be an owner-only regular file")
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise MigrationError("Another migration or backup holds the service-state lock") from error
+        yield
+    finally:
+        os.close(descriptor)
+
+
+def sync_directory(directory: Path):
+    """Make marker creation and removal durable before releasing the backup lock."""
+    descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+@contextmanager
+def migration_marker(directory: Path, enabled: bool):
+    """Keep backups blocked after an interrupted write until a successful resume."""
+    if not enabled:
+        yield
+        return
+    directory = private_directory(directory)
+    marker = directory / ".migration-in-progress"
+    descriptor = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    try:
+        info = os.fstat(descriptor)
+        if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600 or not stat.S_ISREG(info.st_mode):
+            raise MigrationError("Migration marker must be an owner-only regular file")
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    sync_directory(directory)
+    yield
+    marker.unlink()
+    sync_directory(directory)
+
+
 def github_pages(endpoint: str) -> list[dict]:
     """Capture all API pages without exposing GitHub text on either output stream."""
     try:
         result = subprocess.run(
-            ["gh", "api", "--method", "GET", "--paginate", "--slurp", endpoint],
+            ["gh", "api", "--method", "GET", "--paginate", endpoint],
             capture_output=True, text=True, timeout=300, check=True,
         )
-        pages = json.loads(result.stdout)
-        if not isinstance(pages, list) or any(not isinstance(page, list) for page in pages):
+        decoder = json.JSONDecoder()
+        remaining = result.stdout.lstrip()
+        items = []
+        if not remaining:
             raise ValueError
-        return [item for page in pages for item in page]
+        while remaining:
+            page, end = decoder.raw_decode(remaining)
+            if not isinstance(page, list) or any(not isinstance(item, dict) for item in page):
+                raise ValueError
+            items.extend(page)
+            remaining = remaining[end:].lstrip()
+        return items
     except (subprocess.SubprocessError, OSError, ValueError) as from_error:
         raise MigrationError("GitHub export failed; source output withheld") from from_error
 
@@ -74,11 +140,11 @@ def export_source(directory: Path, repository: str, fetch: Callable = github_pag
         prefix = f"repos/{repository}/issues/{number}"
         records.append({"issue": issue,
                         "comments": fetch(f"{prefix}/comments?per_page=100"),
-                        "timeline": fetch(f"{prefix}/timeline?per_page=100")})
-    snapshot = {"version": 1, "repository": repository,
+                        "timeline": fetch(f"{prefix}/timeline?per_page=100"),
+                        "blocked_by": fetch(f"{prefix}/dependencies/blocked_by?per_page=100")})
+    snapshot = {"version": 2, "repository": repository,
                 "exported_at": datetime.now(UTC).isoformat(), "records": records,
                 "limitations": ["Attachment bytes have not been downloaded",
-                                "Timeline relations require dependency reconciliation",
                                 "Concurrent source writes require a final delta export"]}
     output = directory / f"github-{digest(snapshot)}.json"
     fd = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -109,6 +175,8 @@ class Ledger:
         self.db.execute("PRAGMA synchronous=FULL")
         self.db.executescript("""
             CREATE TABLE IF NOT EXISTS scope (project TEXT PRIMARY KEY);
+            CREATE TABLE IF NOT EXISTS service_scope (origin TEXT, workspace TEXT, project TEXT);
+            CREATE TABLE IF NOT EXISTS run_mode (mode TEXT PRIMARY KEY);
             CREATE TABLE IF NOT EXISTS objects (
                 source_key TEXT PRIMARY KEY, kind TEXT NOT NULL,
                 source TEXT NOT NULL, source_digest TEXT NOT NULL,
@@ -135,14 +203,34 @@ class Ledger:
                 UNIQUE(source_key, kind, detail)
             );
         """)
+        from tools.plane import attachments, relations
+        attachments.initialize(self.db)
+        relations.initialize(self.db)
         self.db.execute("BEGIN IMMEDIATE")
         scopes = self.db.execute("SELECT project FROM scope").fetchall()
         if scopes and scopes != [(project_id,)]:
             self.db.close()
-            raise MigrationError("Ledger belongs to a different rehearsal project")
+            raise MigrationError("Ledger belongs to a different Plane project")
         self.db.execute("INSERT OR IGNORE INTO scope VALUES (?)", (project_id,))
         self.db.commit()
         self.project_id = project_id
+
+    def bind_service(self, settings, production=False):
+        """Keep a migration ledger tied to the exact origin, workspace and project."""
+        expected = (settings.base_url, settings.workspace, settings.project)
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            existing = self.db.execute("SELECT origin,workspace,project FROM service_scope").fetchall()
+            if existing and existing != [expected]:
+                raise MigrationError("Ledger belongs to a different Plane service or workspace")
+            if not existing:
+                self.db.execute("INSERT INTO service_scope VALUES (?,?,?)", expected)
+            mode = "production" if production else "rehearsal"
+            modes = self.db.execute("SELECT mode FROM run_mode").fetchall()
+            if modes and modes != [(mode,)]:
+                raise MigrationError("Production and rehearsal require separate ledgers")
+            if not modes:
+                self.db.execute("INSERT INTO run_mode VALUES (?)", (mode,))
 
     def close(self):
         self.db.close()
@@ -220,7 +308,9 @@ class Ledger:
 
     def summary(self) -> dict:
         """Return counts only, never source content or attachment URLs."""
+        from tools.plane import attachments, relations
         return {"objects": dict(self.db.execute("SELECT status,count(*) FROM objects GROUP BY status")),
+                "attachments": attachments.counts(self.db), "relations": relations.counts(self.db),
                 "outcomes": dict(self.db.execute("SELECT kind || \":\" || status,count(*) FROM outcomes GROUP BY kind,status"))}
 
     def import_pending(self, create: Callable[[str, dict, str | None], dict], update: Callable | None = None):
@@ -229,7 +319,8 @@ class Ledger:
             raise MigrationError("Unconfirmed write requires remote reconciliation; retry blocked")
         rows = self.db.execute(
             "SELECT source_key,kind,payload,parent_key,status,plane_id FROM objects "
-            "WHERE status IN ('planned','planned_update') ORDER BY CASE kind WHEN 'issue' THEN 0 ELSE 1 END, source_key"
+            "WHERE status IN ('planned','planned_update') ORDER BY CASE kind WHEN 'issue' THEN 0 ELSE 1 END, "
+            "CASE json_extract(source,'$.state') WHEN 'open' THEN 0 ELSE 1 END, created_at, source_key"
         ).fetchall()
         for key, kind, payload, parent, status, destination in rows:
             if status == "planned_update" and update is None:
@@ -270,12 +361,18 @@ class Ledger:
 
 def prepare(snapshot: dict, ledger: Ledger, trusted_ids: frozenset[str],
             issue_numbers: set[int], states: dict[str, str],
-            labels_map: dict[str, str] | None = None, reconcile: bool = False) -> dict:
+            labels_map: dict[str, str] | None = None, reconcile: bool = False,
+            default_priority: str | None = None) -> dict:
     """Plan an explicitly selected subset without printing original ticket text."""
-    if snapshot.get("version") != 1 or not issue_numbers:
+    if snapshot.get("version") not in {1, 2} or not issue_numbers:
         raise MigrationError("A versioned export and explicit issue subset are required")
+    from tools.plane import attachments, relations
     repository = snapshot["repository"]
     labels_map = labels_map or {}
+    if any(name.casefold() in EXCLUDED_LABELS for name in labels_map):
+        raise MigrationError("AI and human labels must not be recreated in Plane")
+    if default_priority not in {None, "none", "high", "medium", "low"}:
+        raise MigrationError("Invalid explicit fallback priority")
     found = set()
     with ledger.db:
         ledger.db.execute("BEGIN IMMEDIATE")
@@ -287,15 +384,17 @@ def prepare(snapshot: dict, ledger: Ledger, trusted_ids: frozenset[str],
             found.add(number)
             labels = [label["name"] for label in issue.get("labels", [])]
             priorities = [name.removeprefix("Priority: ").lower() for name in labels if name.startswith("Priority: ")]
-            if len(priorities) != 1 or priorities[0] not in {"high", "medium", "low"}:
-                raise MigrationError("Selected issue needs exactly one supported priority")
+            if not priorities and default_priority is not None:
+                priority = default_priority
+            elif len(priorities) == 1 and priorities[0] in {"high", "medium", "low"}:
+                priority = priorities[0]
+            else:
+                raise MigrationError("Selected issue needs one supported priority or an explicit fallback for a missing priority")
             author_id = (issue.get("user") or {}).get("id")
-            human_thread = "human" in labels or str(author_id) not in trusted_ids
-            if human_thread and "human" not in labels:
-                labels.append("human")
-            required_labels = {label for label in labels if not label.startswith("Priority: ")}
+            human_thread = any(label.casefold() == "human" for label in labels) or str(author_id) not in trusted_ids
+            required_labels = {label for label in labels if label.casefold() not in EXCLUDED_LABELS}
             if not required_labels.issubset(labels_map):
-                raise MigrationError("Every source label and origin restriction requires an explicit destination mapping")
+                raise MigrationError("Every source label except AI and human requires an explicit destination mapping")
             state = issue.get("state")
             reason = issue.get("state_reason")
             if state not in {"open", "closed"} or reason not in {None, "completed", "not_planned", "reopened"}:
@@ -306,15 +405,17 @@ def prepare(snapshot: dict, ledger: Ledger, trusted_ids: frozenset[str],
             key = f"github:{repository}:issue:{issue['id']}"
             body = issue.get("body") or ""
             payload = {"name": issue["title"], "description_html": f"<pre>{html.escape(body)}</pre>",
-                       "priority": priorities[0], "state": states[state_key]}
-            payload["labels"] = [labels_map[name] for name in labels if name in labels_map and not name.startswith("Priority: ")]
+                       "priority": priority, "state": states[state_key]}
+            payload["labels"] = [labels_map[name] for name in labels if name.casefold() not in EXCLUDED_LABELS]
             ledger.record(key, "issue", issue, payload, trusted_ids, reconcile=reconcile)
+            attachments.note_sources(ledger.db, key, key, issue)
             ledger.db.execute("INSERT INTO origins VALUES (?,?) ON CONFLICT(source_key) DO UPDATE SET human_thread=MAX(origins.human_thread,excluded.human_thread)",
                               (key, int(human_thread)))
             for label in labels:
-                if not label.startswith("Priority: "):
-                    ledger.db.execute("INSERT OR IGNORE INTO outcomes VALUES (?,?,?,?)",
-                                      (key, "label", label, "mapped" if label in labels_map else "not_mapped"))
+                ledger.db.execute("INSERT OR IGNORE INTO outcomes VALUES (?,?,?,?)",
+                                  (key, "label", label, "excluded" if label.casefold() in EXCLUDED_LABELS else "mapped"))
+            if not priorities:
+                ledger.db.execute("INSERT OR IGNORE INTO outcomes VALUES (?,?,?,?)", (key, "priority", priority, "explicit_fallback"))
             source_comments = {f"github:{repository}:comment:{comment['id']}" for comment in record["comments"]}
             previous_comments = {row[0] for row in ledger.db.execute("SELECT source_key FROM objects WHERE parent_key=?", (key,))}
             if previous_comments - source_comments:
@@ -324,42 +425,66 @@ def prepare(snapshot: dict, ledger: Ledger, trusted_ids: frozenset[str],
                 comment_body = comment.get("body") or ""
                 ledger.record(comment_key, "comment", comment,
                               {"comment_html": f"<pre>{html.escape(comment_body)}</pre>"}, trusted_ids, key, reconcile=reconcile)
+                attachments.note_sources(ledger.db, key, comment_key, comment)
                 body += "\n" + comment_body
-            for url in re.findall(r"https://(?:github\.com/user-attachments/|user-images\.githubusercontent\.com/)[^\s<>\)\]]+", body):
-                ledger.db.execute("INSERT OR IGNORE INTO outcomes VALUES (?,?,?,?)",
-                                  (key, "attachment", url, "not_copied"))
+            attachments.plan(ledger.db, key, attachments.discover(body))
+            ledger.db.execute("DELETE FROM outcomes WHERE source_key=? AND kind='attachment'", (key,))
+            if snapshot["version"] == 2:
+                relations.plan(ledger.db, key, record["blocked_by"], repository)
+                relations.archive_dependency_metadata(ledger.db, key, record["blocked_by"])
             ledger.db.execute("INSERT OR IGNORE INTO outcomes VALUES (?,?,?,?)",
-                              (key, "timeline", json.dumps(record["timeline"], sort_keys=True), "not_reconciled"))
+                              (key, "timeline", json.dumps(record["timeline"], sort_keys=True), "preserved"))
         if found != issue_numbers:
             raise MigrationError("Selected issue is absent from the export")
     return ledger.summary()
 
 
-def rehearsal_writer(project_id: str, settings=None, transport=None, labels_map=None):
-    """Bind writes to an explicitly configured disposable project and importer account."""
+def migration_writer(project_id: str, settings=None, transport=None, labels_map=None,
+                     production=False, state_definitions=None):
+    """Bind writes to a separately authorized project mode and importer account."""
     from tools.plane.client import Client, Transport
     from tools.plane.policy import PlaneError, Settings, private_json, uuid
 
+    config = None
     if settings is None:
         config = private_json(os.environ["WISH_PLANE_CONFIG"])
-        if config.get("rehearsal_project_id") != project_id:
-            raise MigrationError("Configuration must explicitly identify the rehearsal project")
+        scope_key = "import_project_id" if production else "rehearsal_project_id"
+        if config.get(scope_key) != project_id:
+            raise MigrationError("Configuration must explicitly identify the selected import project mode")
+        if production and config.get("import_enabled") is not True:
+            raise MigrationError("Production imports require explicit import_enabled configuration")
+        other_key = "rehearsal_project_id" if production else "import_project_id"
+        if config.get(other_key) == project_id:
+            raise MigrationError("Production and rehearsal projects must be distinct")
         settings = Settings(config)
+    if settings.resource != "work-items":
+        raise MigrationError("Migration requires the pinned work-items API for dependencies and attachments")
     if settings.project != project_id or not settings.writes_enabled or not settings.importers:
-        raise MigrationError("Rehearsal scope, writes and importer identities must be configured")
+        raise MigrationError("Migration scope, writes and importer identities must be configured")
     transport = transport or Transport(settings)
     try:
         identity = uuid(transport.request("GET", "users/me")["id"])
         if identity not in settings.importers:
-            raise MigrationError("Rehearsal token must belong to a configured importer")
+            raise MigrationError("Migration token must belong to a configured importer")
     except (PlaneError, KeyError, TypeError) as error:
         raise MigrationError("Importer identity could not be verified") from error
     items = f"workspaces/{settings.workspace}/projects/{settings.project}/{settings.resource}"
+    client = Client(settings, transport)
     if labels_map is not None:
-        client = Client(settings, transport)
+        if any(name.casefold() in EXCLUDED_LABELS for name in labels_map):
+            raise MigrationError("AI and human labels must not be recreated in Plane")
         live_labels = {record["id"]: record["name"] for record in client.pages(f"{client.prefix}/labels")}
         if any(live_labels.get(value) != name for name, value in labels_map.items()):
             raise MigrationError("Destination label IDs do not match their required source meanings")
+
+    if state_definitions is not None:
+        if set(state_definitions) != set(STATE_GROUPS):
+            raise MigrationError("State mapping must contain exactly Backlog, Queue, In Progress and Completed")
+        live_states = {record["id"]: record for record in client.pages(f"{client.prefix}/states")}
+        for name, identifier in state_definitions.items():
+            state = live_states.get(identifier, {})
+            if state.get("name") != name or state.get("group") != STATE_GROUPS[name]:
+                raise MigrationError("Destination state IDs do not match the authorized names and workflow groups")
 
     def create(kind, payload, parent_id, destination=None, old_payload=None):
         try:
@@ -399,57 +524,137 @@ def rehearsal_writer(project_id: str, settings=None, transport=None, labels_map=
             readback["_migration_url"] = f"{settings.base_url}/{settings.workspace}/projects/{project_id}/issues/{issue_id}"
             return readback
         except (PlaneError, KeyError, TypeError, ValueError) as error:
-            raise MigrationError("Rehearsal write or readback failed") from error
+            raise MigrationError("Migration write or readback failed") from error
 
+    create.settings = settings
+    create.transport = transport
+    create.config = config
     return create
 
 
+def select_issues(snapshot, scope, explicit):
+    """Select open work before history and include its native dependency closure."""
+    records = snapshot["records"]
+    by_number = {record["issue"]["number"]: record for record in records}
+    by_id = {record["issue"]["id"]: record for record in records}
+    if len(by_number) != len(records) or len(by_id) != len(records):
+        raise MigrationError("Source export contains duplicate issue identities")
+    if scope == "selected":
+        if not explicit:
+            raise MigrationError("Selected scope requires explicit issue numbers")
+        selected = set(explicit)
+    else:
+        if explicit:
+            raise MigrationError("Explicit issue numbers require selected scope")
+        selected = {number for number, record in by_number.items() if scope == "all" or
+                    (scope == "open" and record["issue"]["state"] == "open") or
+                    (scope == "history" and record["issue"]["state"] == "closed")}
+    if selected - by_number.keys():
+        raise MigrationError("Selected issue is absent from the export")
+    pending = list(selected)
+    while pending:
+        number = pending.pop()
+        for dependency in by_number[number].get("blocked_by", []):
+            expected_repo = f"https://api.github.com/repos/{snapshot['repository']}"
+            if dependency.get("repository_url", expected_repo) != expected_repo:
+                raise MigrationError("A dependency belongs to another repository and requires an explicit source export")
+            target = by_id.get(dependency["id"])
+            if target is None:
+                raise MigrationError("A dependency is missing from the full source export")
+            target_number = target["issue"]["number"]
+            if target_number not in selected:
+                selected.add(target_number)
+                pending.append(target_number)
+    return selected
+
+
 def main(argv=None) -> int:
+    from tools.plane.policy import PlaneError
+
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     export = sub.add_parser("export")
     export.add_argument("--directory", type=Path, required=True)
     export.add_argument("--repository", required=True)
-    rehearsal = sub.add_parser("rehearse")
-    rehearsal.add_argument("--directory", type=Path, required=True)
-    rehearsal.add_argument("--snapshot", type=Path, required=True)
-    rehearsal.add_argument("--rehearsal-project", required=True)
-    rehearsal.add_argument("--issue", type=int, action="append", required=True)
-    rehearsal.add_argument("--trusted-github-id", type=int, action="append", default=[])
-    rehearsal.add_argument("--state-open", required=True)
-    rehearsal.add_argument("--state-completed")
-    rehearsal.add_argument("--state-cancelled")
-    rehearsal.add_argument("--label-map-file", type=Path)
-    rehearsal.add_argument("--allow-writes", action="store_true")
-    rehearsal.add_argument("--reconcile-delta", action="store_true")
+    for command in ("rehearse", "import"):
+        run = sub.add_parser(command)
+        run.add_argument("--directory", type=Path, required=True)
+        run.add_argument("--snapshot", type=Path, required=True)
+        run.add_argument("--rehearsal-project" if command == "rehearse" else "--project", required=True)
+        run.add_argument("--scope", choices=("selected", "open", "history", "all"), default="selected", required=command == "import")
+        run.add_argument("--issue", type=int, action="append", default=[])
+        run.add_argument("--trusted-github-id", type=int, action="append", default=[])
+        run.add_argument("--state-map-file", type=Path, required=command == "import")
+        run.add_argument("--open-state", choices=("Backlog", "Queue", "In Progress"), default="Backlog")
+        run.add_argument("--state-open")
+        run.add_argument("--state-completed")
+        run.add_argument("--state-cancelled")
+        run.add_argument("--label-map-file", type=Path, required=command == "import")
+        run.add_argument("--default-priority", choices=("none", "high", "medium", "low"))
+        run.add_argument("--allow-writes" if command == "rehearse" else "--allow-import", action="store_true")
+        run.add_argument("--reconcile-delta", action="store_true")
+        run.add_argument("--lock-file", type=Path)
     args = parser.parse_args(argv)
     try:
         if args.command == "export":
             export_source(args.directory, args.repository)
             print("Export complete; private source text withheld")
             return 0
+        production = args.command == "import"
+        allow_writes = args.allow_import if production else args.allow_writes
         info = args.snapshot.stat()
         if info.st_uid != os.getuid() or info.st_mode & 0o077 or not stat.S_ISREG(info.st_mode):
             raise MigrationError("Export must be a private file owned by this account")
-        project = str(UUID(args.rehearsal_project))
-        states = {key: str(UUID(value)) for key, value in {
-            "open": args.state_open, "completed": args.state_completed,
-            "cancelled": args.state_cancelled,
-        }.items() if value}
+        project = str(UUID(args.project if production else args.rehearsal_project))
+        definitions = None
+        if args.state_map_file:
+            if any((args.state_open, args.state_completed, args.state_cancelled)):
+                raise MigrationError("Use either the named state map or individual state IDs")
+            definitions = {name: str(UUID(value)) for name, value in json.loads(args.state_map_file.read_text()).items()}
+            if set(definitions) != set(STATE_GROUPS):
+                raise MigrationError("State mapping must contain exactly the four authorized states")
+            states = {"open": definitions[args.open_state], "completed": definitions["Completed"], "cancelled": definitions["Completed"]}
+        else:
+            states = {key: str(UUID(value)) for key, value in {
+                "open": args.state_open, "completed": args.state_completed, "cancelled": args.state_cancelled,
+            }.items() if value}
         labels_map = json.loads(args.label_map_file.read_text()) if args.label_map_file else {}
         labels_map = {name: str(UUID(value)) for name, value in labels_map.items()}
-        ledger = Ledger(args.directory, project)
-        try:
-            prepare(json.loads(args.snapshot.read_text()), ledger,
-                    frozenset(str(value) for value in args.trusted_github_id), set(args.issue), states, labels_map, reconcile=args.reconcile_delta)
-            if args.allow_writes:
-                writer = rehearsal_writer(project, labels_map=labels_map)
-                ledger.import_pending(writer, update=writer)
-            ledger.write_provenance()
-            print("Rehearsal counts: " + json.dumps(ledger.summary(), sort_keys=True))
-        finally:
-            ledger.close()
+        source = json.loads(args.snapshot.read_text())
+        if allow_writes and source.get("version") != 2:
+            raise MigrationError("Live migration requires a fresh export containing native dependencies")
+        selected = select_issues(source, args.scope, args.issue)
+        if not selected:
+            print("Migration counts: No source issues in the requested scope")
+            return 0
+        lock_file = args.lock_file or args.directory / "state.lock"
+        if lock_file.absolute() != (args.directory / "state.lock").absolute():
+            raise MigrationError("Migration and backup must share the state directory lock")
+        with operation_lock(lock_file), migration_marker(args.directory, allow_writes):
+            ledger = Ledger(args.directory, project)
+            try:
+                prepare(source, ledger, frozenset(str(value) for value in args.trusted_github_id),
+                        selected, states, labels_map, reconcile=args.reconcile_delta,
+                        default_priority=args.default_priority)
+                if allow_writes:
+                    writer = migration_writer(project, labels_map=labels_map, production=production,
+                                              state_definitions=definitions)
+                    settings, config = writer.settings, writer.config
+                    if not {f"github:{value}" for value in args.trusted_github_id}.issubset(settings.source_trusted):
+                        raise MigrationError("Migration source trust exceeds the configured source allowlist")
+                    ledger.bind_service(settings, production=production)
+                    ledger.import_pending(writer, update=writer)
+                    from tools.plane import attachments, relations
+                    attachments.transfer_all(ledger, attachments.Transfer(settings, config))
+                    relations.reconcile(ledger, writer.transport, settings)
+                ledger.write_provenance()
+                print("Migration counts: " + json.dumps(ledger.summary(), sort_keys=True))
+            finally:
+                ledger.close()
         return 0
+    except (MigrationError, PlaneError) as error:
+        print(f"Migration stopped: {error}", file=sys.stderr)
+        return 1
     except Exception:
         print("Migration failed; source output withheld", file=sys.stderr)
         return 1

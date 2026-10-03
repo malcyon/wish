@@ -137,20 +137,20 @@ class Client:
 
     def create(self, operation_id, title, body, priority, labels):
         self.writable()
-        if priority not in {'high', 'medium', 'low'}:
-            raise PlaneError("Choose exactly one priority: high, medium or low")
+        if priority not in {'high', 'medium', 'low', 'none'}:
+            raise PlaneError("Choose a priority: high, medium, low or none")
         if not isinstance(title, str) or not title.strip():
             raise PlaneError("A title is required")
-        labels = [uuid(v) for v in labels]
-        allowed = {uuid(v['id']): v.get('name') for v in self.pages(f'{self.prefix}/labels')}
-        if any(v not in allowed or str(allowed[v]).casefold() == 'human' or str(allowed[v]).startswith('Priority:') for v in labels):
-            raise PlaneError("Labels must belong to this project and cannot grant human origin or duplicate priority")
+        allowed = {uuid(v['id']): str(v.get('name', '')) for v in self.pages(f'{self.prefix}/labels')}
+        labels = priority_labels(priority, labels, allowed, explicit=True)
         if not any(allowed[v] in {'bug', 'enhancement', 'question'} for v in labels):
             raise PlaneError("A bug, enhancement or question label is required")
         record = self.write(operation_id, 'POST', self.items, {'name': title, 'description_html': paragraph(body), 'priority': priority, 'labels': labels})
         if self.policy.author(record) != self.settings.agent:
             raise PlaneError("Created ticket authorship did not match the agent account; reconcile journal")
-        return self.read(record['id'])
+        current = self.read(record['id'])
+        confirm_changes(current, {'priority': priority, 'labels': labels})
+        return current
 
     def comment(self, operation_id, identifier, body):
         record = self.writable(identifier)
@@ -164,17 +164,19 @@ class Client:
         if not changes or set(changes) - {'name', 'description_html', 'priority', 'labels', 'state'}:
             raise PlaneError("Only title, body, priority, labels and state changes are allowed")
         paragraph(explanation)
-        if 'priority' in changes and changes['priority'] not in {'high', 'medium', 'low'}:
-            raise PlaneError("Choose exactly one priority: high, medium or low")
+        if 'priority' in changes and changes['priority'] not in {'high', 'medium', 'low', 'none'}:
+            raise PlaneError("Choose a priority: high, medium, low or none")
         if 'state' in changes:
             states = {uuid(s['id']) for s in self.pages(f'{self.prefix}/states')}
             if uuid(changes['state']) not in states:
                 raise PlaneError("State must belong to this project")
-        if 'labels' in changes:
-            allowed = {uuid(v['id']): str(v.get('name', '')) for v in self.pages(f'{self.prefix}/labels')}
-            if any(uuid(v) not in allowed or allowed[uuid(v)].casefold() == 'human' or allowed[uuid(v)].startswith('Priority:') for v in changes['labels']):
-                raise PlaneError("Invalid project label change")
         payload = dict(changes)
+        if 'priority' in changes or 'labels' in changes:
+            allowed = {uuid(v['id']): str(v.get('name', '')) for v in self.pages(f'{self.prefix}/labels')}
+            priority = changes.get('priority', record.get('priority'))
+            labels = changes.get('labels', [v['id'] if isinstance(v, dict) else v for v in record.get('labels', [])])
+            payload['labels'] = priority_labels(priority, labels, allowed, explicit='labels' in changes)
+            payload['priority'] = priority
         if 'description_html' in payload:
             payload['description_html'] = paragraph(payload['description_html'])
         self.write(operation_id + ':edit', 'PATCH', f'{self.items}/{uuid(record["id"])}', payload)
@@ -183,6 +185,27 @@ class Client:
         current = self.read(record['id'])
         confirm_changes(current, payload)
         return current
+
+
+def priority_labels(priority, labels, allowed, *, explicit):
+    """Keep the native priority and its project label consistent without discarding other labels."""
+    names = {'Priority: High': 'high', 'Priority: Medium': 'medium', 'Priority: Low': 'low'}
+    if priority not in {'high', 'medium', 'low', 'none', 'urgent'}:
+        raise PlaneError('The current native priority is invalid')
+    if not isinstance(labels, list):
+        raise PlaneError('Labels must be a list of project label UUIDs')
+    labels = list(dict.fromkeys(uuid(value) for value in labels))
+    if any(value not in allowed or allowed[value].casefold() == 'human' for value in labels):
+        raise PlaneError('Labels must belong to this project and cannot grant human origin')
+    if any(allowed[value].startswith('Priority:') and allowed[value] not in names for value in labels):
+        raise PlaneError('Only High, Medium and Low Priority labels are supported')
+    provided = [value for value in labels if allowed[value] in names]
+    if explicit and (len(provided) > 1 or any(names[allowed[value]] != priority for value in provided)):
+        raise PlaneError('Priority labels must match the native priority; choose one matching label or omit it')
+    matching = [value for value, name in allowed.items() if names.get(name) == priority]
+    if len(matching) > 1:
+        raise PlaneError('The project has duplicate labels for the native priority')
+    return [value for value in labels if allowed[value] not in names] + matching
 
 
 def clean_metadata(row, key):

@@ -1,27 +1,29 @@
 # Plane ticket tracking on the media server
 
 Donald and the agents need one ticket queue available from the LAN and from
-`agent-vm`. Deploy Plane at `http://plane.morton.lan`, with service and backup
+`agent-vm`. Plane Community v1.4.2 is deployed at `http://plane.morton.lan`, with service and backup
 IaC in `/home/donald/src/jellyfin-stack` and VM access IaC in
 `/home/donald/src/wish`. This plan uses repository inspection and vendor
-documentation checked on 2026-10-02. Deployment, live migration and activation
-of the proposed rules remain implementation work.
+documentation checked on 2026-10-02. Live deployment and Donald's confirmed login
+replace the initial deployment assumptions. GitHub remains the authoritative work
+register until migration, isolation, client and recovery acceptance pass.
 
 Donald revised the deployment on 2026-10-02: use HTTP on the LAN without a
 certificate, disable Plane email, and let him configure NPM manually. He has
-confirmed the NPM configuration is complete; backend route verification remains
-an implementation gate.
+confirmed the NPM configuration and application login. The host's scoped
+`wish-plane` MCP is registered in both clients; its read API check returned zero
+work items. Guest access and the full operation set still need live acceptance.
 
 ## Recommended design
 
 | Component | Plan | Evidence or constraint |
 |---|---|---|
-| Edition | Community Edition, pinned to a tested release and image digests. | The [edition guide](https://developers.plane.so/self-hosting/editions-and-versions) identifies Community as AGPL. Verify required ticket operations against the chosen release before migration. |
+| Edition | Community v1.4.2, pinned by release tags and image digests. | The deployment is live; required ticket operations still need migration acceptance. |
 | Host | A separate Compose project on media-server, currently `192.168.1.182`. | `jellyfin-stack/ansible/inventory.yml` and `ansible/group_vars/media_servers/vars.yml`. |
 | Ingress | Existing Nginx Proxy Manager (NPM), forwarding HTTP to a Plane routing container. | Main Compose already assigns NPM ports 80, 81 and 443. |
 | DNS | An Ansible-managed Pi-hole record for `plane.morton.lan`. | The media role already preserves and extends Pi-hole `dns.hosts` for Grafana. |
-| Agents | Plane's official local MCP implementation behind a Wish policy adapter, configured in both clients. | Local stdio supports a private instance; ticket text still needs Wish's filtering. |
-| Backup | A daily media-server systemd job creates an encrypted restic snapshot in OneDrive. | Proposed configurable destination: `Backups/Plane/media-server`. |
+| Agents | Scoped `wish-plane` stdio adapter registered in both host clients. | A host read returned zero work items; guest and complete policy acceptance remain pending. |
+| Backup | Implemented media-server restic/rclone job, with daily scheduling disabled pending acceptance. | OAuth, verified remote snapshot and independent restore remain pending. |
 | Work register | Switch to Plane only after infrastructure, restore, client and migration acceptance. | GitHub continues hosting code, pull requests, CI and public intake. |
 
 The supplied [self-hosting overview](https://developers.plane.so/self-hosting/overview)
@@ -33,8 +35,8 @@ Provisioning must not depend on an interactive download of an unpinned latest sc
 
 ## Media-server IaC
 
-Paths in this section are relative to `jellyfin-stack`. New paths are proposed
-implementation targets.
+Paths in this section are relative to `jellyfin-stack`; the deployment files are
+implemented. The table records their responsibilities and remaining acceptance.
 
 | Path | Change |
 |---|---|
@@ -44,28 +46,31 @@ implementation targets.
 | `ansible/group_vars/media_servers/vars.yml` | Declare domain, versions, networks, state paths and backup settings; use the existing ignored Vault file for secrets. |
 | `docker-compose.yml` | Attach NPM to a dedicated Plane frontend network, with deployment scoped to avoid recreating unrelated services. |
 | `ansible/roles/media-server/tasks/media.yml` | Extend existing Pi-hole record reconciliation without replacing unrelated entries. |
-| `ansible/roles/media-server/tasks/plane-proxy.yml` | Verify the manually configured proxy route; keep API management optional and disabled. Do not modify NPM's database or generated files. |
+| `ansible/roles/media-server/tasks/plane-proxy.yml` | Verify Donald's manually configured proxy route without modifying NPM's database or generated files. |
 | `homepage/services.yaml` | Add `Plane` under Apps, with `href: http://plane.morton.lan` and description `Ticket tracking`. A credential-bearing widget is unnecessary. |
-| `.gitignore`, `ansible/README.md` | Ignore state, secrets and backup staging; document installation, renewal, upgrades and recovery. |
+| `.gitignore`, `ansible/README.md` | Ignore state, secrets and backup staging; document installation, upgrades and recovery. |
 
 Retain the release's web, administration, collaboration, API, worker, scheduler
 and migrator services. Give Plane its own database and storage. The
 [architecture reference](https://developers.plane.so/self-hosting/plane-architecture)
-describes PostgreSQL, Redis/Valkey, RabbitMQ and MinIO/S3 dependencies. Measure
-available RAM, CPU and disk before deployment; live capacity was not inspected.
-Use 8 GiB RAM as an initial planning allowance and budget disk for uploads plus
-local backup staging, then measure with normal media workloads running.
+describes PostgreSQL, Redis/Valkey, RabbitMQ and MinIO/S3 dependencies. Live
+preflight measured eight CPUs, 23 GiB RAM with 17.5 GiB available, 43 GiB free
+on the root filesystem and 6 TiB free on the media volume. These measurements
+replace the unverified capacity assumption. Reserve capacity for uploads and
+backup staging, and measure resource use with normal media workloads running.
 
 Use a private backend network for stateful services and a frontend network
 shared with NPM and Plane's routing container. Create the frontend network
 idempotently before either Compose project starts, and declare it external with
 the same explicit name in both projects. The routing container replaces the bundled
 proxy using the [Community routing guide](https://developers.plane.so/self-hosting/govern/reverse-proxy):
-web at `/`, administration at `/god-mode/`, sharing at `/spaces/`, collaboration
+web at `/`, administration at `/god-mode/`, collaboration
 at `/live/`, API/auth/static routes, and the configured upload bucket path.
 Preserve WebSocket upgrades, original host, forwarded HTTP scheme and upload
 limits across both proxies. Publish no database, cache, queue, MinIO console
-or individual application ports. Confirm routes against the selected release.
+or individual application ports. Public sharing routes, including `/spaces/`,
+are disabled for the private workspace. Complete live WebSocket and attachment
+acceptance against the selected release.
 
 Set `WEB_URL` and `CORS_ALLOWED_ORIGINS` to `http://plane.morton.lan`, plus any
 additional external URL or CSRF settings that release requires. Test redirects,
@@ -92,13 +97,12 @@ actual HTTP route through NPM from the host and guest.
 | `ansible/roles/agent-vm-guest/defaults/main.yml`, `tasks/main.yml`, `tasks/codex.yml`, `templates/` | Provision pinned integration dependencies, credential loading and both clients' configuration with explicit HTTP opt-in; preserve unrelated settings. |
 | `ansible/README.md`, `docs/219-the-agent-sandbox.md` | Document the additional LAN exception, identity, DNS, trust and recovery. |
 
-The filter is shared with `win11`, so the exception must include the Linux
-VM's source address. The current filter does not enforce source anti-spoofing;
-add and test IP/MAC bindings at each guest's libvirt interface before treating
-the source address as guest identity. Include a Windows source-spoofing negative
-test. A dedicated filter attached only to agent-vm is an alternative if binding
-cannot be enforced. TCP 80 access permits **every HTTP virtual host sharing
-that IP and listener**. The proposed initial deployment accepts that reachability
+The filter is shared with `win11`, so the exception includes the Linux
+VM's source address. The implementation adds IP/MAC/ARP anti-spoofing filters
+and guest interface bindings; this replaces the original unprotected source-IP
+assumption. Live guest isolation and the Windows forged-source negative test
+remain pending. TCP 80 access permits **every HTTP virtual host sharing
+that IP and listener**. The selected deployment accepts that reachability
 while denying other ports. If isolation must distinguish Plane from other HTTP
 apps, reserve a dedicated ingress IP and adjust NPM's wildcard bindings before
 rollout. An IP/port filter does not check HTTP Host or TLS SNI.
@@ -118,8 +122,9 @@ package during provisioning. The [vendor implementation](https://github.com/make
 is the preferred integration; the deployment CLI should not be assumed to be
 a ticket-management CLI.
 
-Register a proposed `wish-plane` stdio adapter in Claude Code's MCP configuration
-and Codex's `[mcp_servers.wish-plane]` configuration. The
+The host's `wish-plane` stdio adapter is registered in Claude Code's MCP
+configuration and Codex's `[mcp_servers.wish-plane]` configuration. Guest
+provisioning implements the corresponding registration. The
 [Codex MCP reference](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)
 supports command, arguments and environment-variable forwarding. Use a secret-free
 launcher with private credential files; do not put tokens in tracked JSON/TOML,
@@ -135,10 +140,9 @@ Imported comments require original-author provenance. Trusting an importer must
 never make all imported text trusted. Hooks remain tripwires, not a security
 boundary, especially when credentials are readable in the guest.
 
-Propose a new `plane` directory under `tools/` containing `planeread.py`,
-`planeagent.py` and `mcp.py`, sharing one policy layer. These are planned names,
-not references to committed tools. Provide complete paginated listing,
-filtered reads/citations, creation, comments, metadata changes and state readback.
+The implemented `tools/plane/` directory contains `planeread.py`, `planeagent.py`
+and `mcp.py`, sharing one policy layer for paginated listing, filtered
+reads/citations, creation, comments, metadata changes and state readback.
 Use the [REST API reference](https://developers.plane.so/api-reference/introduction)
 for operations the pinned MCP cannot supply. Check API-version compatibility with
 Community, respect rate-limit responses, and prevent duplicate writes after
@@ -151,7 +155,7 @@ The existing media-server OneDrive container binds `/mnt/media/onedrive` as its
 local sync directory. `ansible/roles/media-server/tasks/media.yml` configures an
 allowlist containing only `/Pictures/*` and `/wish-backups/*`, and seeds its
 refresh token without overwriting later token rotation. The existing Git backup
-runs at 03:15 and uses `ansible/templates/wish-repository-backup.sh.j2`. It does
+runs at 03:15 UTC and uses `ansible/templates/wish-repository-backup.sh.j2`. It does
 not cover Plane, and its local completion does not prove cloud upload.
 
 Use direct restic-over-rclone upload for Plane. This requires new rclone
@@ -160,15 +164,15 @@ encrypted incremental snapshots. Keep `Backups/Plane` outside the existing sync
 client's allowlist and local sync directory, so two clients never manage the
 same backup repository. Preserve existing Pictures and Git backup behavior.
 
-| Item | Proposed implementation |
+| Item | Implementation and acceptance |
 |---|---|
-| IaC files | In jellyfin-stack, add `ansible/templates/plane-backup.sh.j2`, `plane-backup.service.j2`, `plane-backup.timer.j2`, and backup tasks in the Plane role. |
-| Schedule | Run on media-server daily at 03:30 America/Chicago, using a persistent systemd timer, bounded runtime and a single-job lock. Check workload overlap before fixing the final time. |
+| IaC files | Jellyfin-stack contains the backup script, service, timer, recovery and notification units, and tasks in the Plane role. |
+| Schedule | The persistent timer uses 03:30 America/Chicago, a bounded runtime and a job lock; `plane_backup_schedule_enabled` stays false until restore and failure acceptance. |
 | Destination | Set `RESTIC_REPOSITORY=rclone:plane-onedrive:Backups/Plane/media-server`; confirm the intended account, drive and folder at setup. |
 | Credentials | Keep rclone OAuth configuration and the restic password restricted on media-server, with independent recovery copies in the password manager. The VM receives neither. |
 | Content | Include a PostgreSQL dump and required roles, object data, rendered Plane secrets/configuration, deployment files, version/digest manifest and ticket provenance/mapping state. |
 | Retention | Keep 14 daily, 8 weekly and 12 monthly successful snapshots, with stable host/tag/path grouping and restic retention. |
-| Monitoring | Export last successful remote snapshot time, duration, size and errors to the media monitoring stack. Alert on failure or success older than 26 hours; prove notification delivery. |
+| Monitoring | Export successful upload time and original capture time separately, duration, size and errors. Alert when remotely verified data is older than 26 hours; retrying an old capture must not reset its age. Notification delivery remains unproven. |
 | Recovery targets | Target no more than 24 hours of data loss when daily backups succeed, and restoration within four hours. Measure these; they are not current guarantees. |
 
 Use [rclone's OneDrive backend](https://rclone.org/onedrive/) for authentication
@@ -186,7 +190,8 @@ successful backup and run periodic pruning under the same job lock.
 
 The media-server job performs these steps:
 
-1. Check staging capacity, credentials and repository access; acquire the lock.
+1. Check staging capacity, credentials and repository access; acquire the job lock
+   and the same exclusive `state.lock` used by migration in the provenance directory.
    Use a private staging directory outside the checkout and OneDrive sync tree.
 2. Put ingress into maintenance, stop scheduling new background work, drain
    active jobs, then stop all application writers, including API, collaboration
@@ -221,7 +226,7 @@ Prime CLI commands.
 
 Keep historical GitHub references intact. Future references use a linked Plane
 identifier and title, generated by the filtered reader: `WISH-<number> (Title)`.
-Use workspace slug `wish` and project identifier `WISH` as proposed defaults;
+Use the configured workspace slug `wish` and project identifier `WISH`;
 store API UUIDs separately from display identifiers.
 
 | Paths in Wish | Required change |
@@ -233,7 +238,7 @@ store API UUIDs separately from display identifiers.
 | `.claude/skills/orchestrate/SKILL.md`, `.agents/skills/orchestrate/SKILL.md` | Switch queue discovery, priority ordering, filtered reads and blocked-work reconstruction together. |
 | `~/.cache/wish/orchestrator-queue.md` on each orchestrator machine | Back up and translate identifiers in place at cutover; preserve decisions, deferrals, experiment details, handoff facts and Do not schedule entries. This is runtime state, not a new repository file. |
 | `.claude/agents/{backlog-auditor,junior-dev,senior-analyst,changelog-writer}.md` and matching `.codex/agents/*.toml` | Update commands, tracker assumptions and citations in both definitions. |
-| `tools/github/issueread.py`, `tools/github/ghtrust.py`, proposed `plane` directory under `tools/` | Keep legacy reads; implement Plane filtering for lists, descriptions, comments, search, JSON and citations. |
+| `tools/github/issueread.py`, `tools/github/ghtrust.py`, `tools/plane/` | Keep legacy reads and accept the implemented Plane filtering for lists, descriptions, comments, search, JSON and citations. |
 | `tools/wishagent.py` | Retire only active ticket writes after migration. Retain `push-token` and `git-credential` for GitHub repository access. |
 | `.claude/hooks/check-issue-reads.py`, `.claude/hooks/check-issue-writes.py`, `.claude/hooks/issue-titles-context.py` | Update guards and startup context; cover adapter use and accidental writes to the old tracker. |
 | `.claude/settings.json`, `.codex/hooks.json`, `.agents/skills/orchestrate/scripts/check_hooks.py` | Wire and verify both clients' hooks, including Codex trust after configuration changes. |
@@ -244,13 +249,19 @@ store API UUIDs separately from display identifiers.
 | `tests/github/test_{ghtrust,issueread,wishagent}.py`, `tests/hooks/test_{check_issue_reads,check_issue_writes,issue_titles_context}.py`, new `tests/plane/` | Test policy, pagination, attribution, failures, imports and adapters; retain GitHub credential tests. |
 | `tests/suite/test_repository_contents.py`, directory README tables and `INDEX.md` | Update citation checks and inventories. Review `tests/suite/test_toolpaths.py` if paths move. Leave the top-level README for Donald's separate authorization. |
 
-Map High/Medium/Low to corresponding native Plane priorities and require exactly
-one; avoid a competing priority label. Preserve `bug`, `enhancement`, `question`,
-origin labels and Donald-specific `blocked` semantics. Map workflow states using
-the chosen release's backlog/unstarted/started/completed/cancelled groups;
-distinguish fixed work from duplicate or invalid reports. Keep comments explaining
-metadata changes and factual corrections. Labels cannot grant permission or
-replace original authorship.
+Donald requested all source labels except `AI` and `human`, including the three
+`Priority:` labels; this supersedes the initial native-priority-only proposal.
+Keep those labels consistent with native priority in the adapter and importer.
+Live readback verified 12 labels and four visible states, with zero work items.
+The states are `Backlog`, `Queue`, `In Progress` and `Completed`, in the
+backlog/unstarted/started/completed groups respectively. The unused extra state
+was removed while Plane's hidden triage state was preserved. See
+[operations](238-plane-operations.md) for the complete label list. Preserve
+Donald-specific `blocked` semantics and distinguish fixed work from duplicate
+or invalid reports in disposition metadata. Comments still explain metadata
+changes and factual corrections. Labels cannot grant permission or establish
+original authorship; omitting the `human` label does not remove source-thread
+write protection.
 
 ## Implementation and migration order
 
@@ -270,6 +281,13 @@ or failed attachments. An idempotent migration ledger must preserve original tru
 independently of mutable ticket text and belong to backed-up service state.
 Ordinary agent reads stay filtered; a migration tool can transfer opaque source
 text without printing it into an agent's context.
+
+Attachment streaming and dependency reconciliation are implemented and locally
+validated, but not yet accepted against the live service. The host's
+empty-project read and metadata configuration do not prove import, provenance,
+attachment or dependency acceptance. Linux guest access, Windows forged-source
+isolation, OneDrive OAuth, independent restore and manual account recovery remain
+required before switching the work register.
 
 Keep public GitHub reporting because outside players cannot open a LAN URL.
 Donald can authorize internal tickets linked to public reports; retain the rule

@@ -369,3 +369,106 @@ def test_edited_html_markup_does_not_count_as_equivalent_text():
     from tools.plane.client import confirm_changes
     with pytest.raises(PlaneError, match='readback'):
         confirm_changes({'description_html': '<p>Text<script>Changed</script></p>'}, {'description_html': '<p>Text</p>'})
+
+
+HIGH_LABEL = '00000000-0000-0000-0000-000000000009'
+MEDIUM_LABEL = '00000000-0000-0000-0000-00000000000a'
+LOW_LABEL = '00000000-0000-0000-0000-00000000000b'
+
+
+@pytest.fixture
+def priority_client(tmp_path):
+    current = record(labels=[LABEL, HIGH_LABEL])
+    labels = [{'id': LABEL, 'name': 'bug'}, {'id': HIGH_LABEL, 'name': 'Priority: High'},
+              {'id': MEDIUM_LABEL, 'name': 'Priority: Medium'}, {'id': LOW_LABEL, 'name': 'Priority: Low'}]
+    def handle(method, path, data, params):
+        if path == 'users/me':
+            return {'id': AGENT}
+        if path.endswith('/labels'):
+            if params.get('cursor'):
+                return {'results': labels[1:], 'next_page_results': False}
+            return {'results': labels[:1], 'next_page_results': True, 'next_cursor': 'priorities'}
+        if path.endswith('/comments'):
+            if method == 'POST':
+                return {'id': OUTSIDE, 'created_by': AGENT, 'updated_by': AGENT, **data}
+            return {'results': [], 'next_page_results': False}
+        if method in {'POST', 'PATCH'}:
+            current.update(data)
+        return dict(current)
+    fake = Fake(handle)
+    client = Client(settings(tmp_path), fake)
+    # This fixture tests request policy without requiring POSIX journal storage.
+    client.write = lambda operation_id, method, path, payload: fake.request(method, path, payload)
+    return client, current, labels, fake
+
+
+@pytest.mark.parametrize('supplied', [[LABEL], [LABEL, HIGH_LABEL]])
+def test_create_keeps_native_priority_and_matching_label_together(priority_client, supplied):
+    client, _, _, _ = priority_client
+    result = client.create('create', 'Ticket', 'Evidence', 'high', supplied)
+    assert result['priority'] == 'high'
+    assert set(result['labels']) == {LABEL, HIGH_LABEL}
+
+
+def test_priority_change_replaces_old_label_preserving_ordinary_labels(priority_client):
+    client, _, _, _ = priority_client
+    result = client.update('priority', ITEM, {'priority': 'low'}, 'The defect no longer blocks work')
+    assert result['priority'] == 'low'
+    assert set(result['labels']) == {LABEL, LOW_LABEL}
+
+
+@pytest.mark.parametrize('create', [False, True])
+def test_native_none_has_no_priority_label(priority_client, create):
+    client, _, _, _ = priority_client
+    if create:
+        result = client.create('create', 'Ticket', 'Evidence', 'none', [LABEL])
+    else:
+        result = client.update('priority', ITEM, {'priority': 'none'}, 'No priority is assigned')
+    assert result['priority'] == 'none'
+    assert result['labels'] == [LABEL]
+
+
+@pytest.mark.parametrize('changes', [
+    {'priority': 'low', 'labels': [LABEL, HIGH_LABEL]},
+    {'priority': 'none', 'labels': [LABEL, HIGH_LABEL]},
+    {'labels': [LABEL, LOW_LABEL]},
+    {'labels': [LABEL, HIGH_LABEL, LOW_LABEL]},
+])
+def test_explicit_incompatible_priority_choices_fail_before_any_write(priority_client, changes):
+    client, _, _, fake = priority_client
+    with pytest.raises(PlaneError, match='Priority labels must match'):
+        client.update('priority', ITEM, changes, 'Explanation')
+    assert all(call[0] == 'GET' for call in fake.calls)
+
+
+def test_label_only_change_keeps_matching_native_priority(priority_client):
+    client, _, _, _ = priority_client
+    result = client.update('labels', ITEM, {'labels': [LABEL, HIGH_LABEL]}, 'Preserve priority while updating labels')
+    assert result['priority'] == 'high'
+    assert set(result['labels']) == {LABEL, HIGH_LABEL}
+
+
+def test_project_without_matching_priority_label_keeps_native_priority(priority_client):
+    client, _, labels, _ = priority_client
+    labels[:] = [labels[0]]
+    result = client.update('priority', ITEM, {'priority': 'medium', 'labels': [LABEL]}, 'The project has no priority labels')
+    assert result['priority'] == 'medium'
+    assert result['labels'] == [LABEL]
+
+
+def test_create_rejects_conflicting_supplied_priority_label(priority_client):
+    client, _, _, fake = priority_client
+    with pytest.raises(PlaneError, match='Priority labels must match'):
+        client.create('create', 'Ticket', 'Evidence', 'low', [LABEL, HIGH_LABEL])
+    assert all(call[0] == 'GET' for call in fake.calls)
+
+
+def test_priority_label_readback_precedes_explanation_comment(priority_client):
+    client, _, _, fake = priority_client
+    def ignore_label_change(operation_id, method, path, payload):
+        if method == 'PATCH':
+            return fake.request(method, path, {key: value for key, value in payload.items() if key != 'labels'})
+        pytest.fail('Explanation sent without confirming the new priority label')
+    client.write = ignore_label_change
+    with pytest.raises(PlaneError, match='readback'):
+        client.update('priority', ITEM, {'priority': 'low'}, 'Priority and label are now Low')

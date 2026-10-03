@@ -1,9 +1,10 @@
-# Plane preparation and operations
+# Plane operations and acceptance
 
-Donald and the agents continue using GitHub as the work register while Plane
-is prepared at `http://plane.morton.lan`. The tools and guest provisioning
-below implement parts of [the deployment plan](237-plane-ticketing-plan.md);
-they do not establish live deployment, migration or recovery acceptance.
+Donald can log into Plane Community v1.4.2 at `http://plane.morton.lan`.
+His confirmed login and the host's successful scoped API read establish live
+deployment, replacing the initial preparation-only status. GitHub remains the
+authoritative work register until the remaining
+[deployment-plan acceptance gates](237-plane-ticketing-plan.md) pass.
 
 ## Service and ingress
 
@@ -18,16 +19,59 @@ Donald confirmed the manual NPM proxy configuration. Its domain is
 WebSocket support enabled and Custom Locations empty. Custom Nginx Configuration
 contains `client_max_body_size 20m;` and `proxy_read_timeout 3600s;` on separate
 lines. Donald selected HTTP, so this deployment needs no certificate, Force SSL,
-CA trust or renewal. This confirmation does not establish application acceptance.
+CA trust or renewal. Donald has also confirmed application login; WebSockets,
+attachment behavior and manual recovery still need acceptance.
 
-The private deployment pins Community v1.4.2 release tags; record pulled image
-digests during live acceptance. Run its Plane tag from the host controller:
+The private deployment pins Community v1.4.2 release tags and image digests.
+Live preflight measured eight CPUs, 23 GiB RAM with 17.5 GiB available, 43 GiB
+free on the root filesystem and 6 TiB free on the media volume. Run its Plane
+tag from the host controller:
 `ansible-playbook -i ansible/inventory.yml ansible/playbook.yml --tags plane`.
 For manual password recovery, run `docker compose --env-file plane.env -f
 compose.yml -p plane exec api python manage.py changepassword EMAIL` from the
 private Plane directory on media-server, then verify login. The password is
-prompted rather than passed in arguments. Account creation and membership still
-need live verification.
+prompted rather than passed in arguments. The recovery command still needs a
+live password-change-and-login test before cutover.
+
+## Verified host setup and project metadata
+
+The scoped `wish-plane` MCP is registered in both host clients, Claude Code
+and Codex. A host read through the scoped API returned zero work items. This
+checks the configured origin and project; it does not establish guest access,
+both clients' complete tool behavior or write acceptance.
+
+Live readback verified the four requested visible states:
+
+| State | Plane group |
+|---|---|
+| Backlog | `backlog` |
+| Queue | `unstarted` |
+| In Progress | `started` |
+| Completed | `completed` |
+
+The unused extra visible state was removed and Plane's hidden triage state
+preserved. Donald requested every source label except `AI` and `human`, so the
+12 verified labels are:
+
+| Label | Purpose |
+|---|---|
+| `blocked` | Preserves Donald-specific blocked-work semantics. |
+| `bug` | Identifies a defect report. |
+| `documentation` | Identifies documentation work. |
+| `duplicate` | Records duplicate disposition. |
+| `enhancement` | Identifies requested behavior or capability. |
+| `Priority: High` | Preserves source priority alongside native high priority. |
+| `Priority: Low` | Preserves source priority alongside native low priority. |
+| `Priority: Medium` | Preserves source priority alongside native medium priority. |
+| `question` | Identifies a question. |
+| `reverse-engineering` | Identifies investigation of game internals. |
+| `Review requirements` | Identifies requirements awaiting review. |
+| `wontfix` | Records work declined for implementation. |
+
+This explicit request replaces the plan's earlier native-priority-only choice.
+The adapter and importer must keep priority labels consistent with native
+priority. Source authorship and human-thread restrictions remain protected
+metadata; the omitted labels cannot grant trust or write permission.
 
 ## Guest provisioning
 
@@ -54,7 +98,9 @@ The role installs `plane-mcp-server==0.3.3` and `plane-sdk==0.3.1` in a dedicate
 virtual environment, validates the private configuration and registers only `wish-plane` in Claude Code and Codex.
 HTTPS remains an optional mode with CA verification. Existing unrelated
 client settings are preserved. Successful provisioning does not prove access
-from an actual sandboxed client process; that remains a separate live check.
+from an actual sandboxed client process. Linux guest access, responding-host
+negative controls, and Windows forged-source isolation remain separate pending
+live checks; host registration does not satisfy them.
 
 ## Policy configuration and commands
 
@@ -118,21 +164,37 @@ The private `migration.sqlite3` records source objects, mappings, write intent
 and outcomes. Confirmed imports produce `provenance.json`. Preserve both with
 the immutable export and adapter write journal; restoring the database alone
 would lose the filtering and duplicate-write evidence. Unconfirmed migration
-writes stop until remote reconciliation. The export records attachment URLs,
-not attachment bytes; dependency reconciliation and a final source delta also
-remain necessary. Rehearsal completion does not make these omissions a
-completed migration.
+writes stop until remote reconciliation. The source export records attachment
+URLs; attachment streaming and native dependency reconciliation are implemented
+and locally validated, but not yet accepted against the live service. These
+additions replace the initial URL-only migration design, but neither code nor
+local tests prove transfer of real attachments or dependencies. A representative
+live rehearsal and final source delta remain necessary.
+
+The importer and backup coordinate through the same exclusive Linux lock at
+`plane_provenance_dir/state.lock`, held through writes and provenance publication
+or through the complete backup capture. Run the importer on media-server using
+the protected service-side ledger directory after copying source exports
+privately; a lock on the guest's separate filesystem does not coordinate backup.
+Configure the actual ledger directory and require both `migration.sqlite3` and
+`provenance.json` in backups before migration or cutover.
 
 The private media deployment supplies `plane-backup.service` and
 `plane-backup.timer`, plus `/usr/local/sbin/plane-backup-alert test` for a
 notification check. The timer stays disabled until restore and failure checks
-pass. Its destination is
+pass. `plane_backup_enabled` installs the tools; the separate
+`plane_backup_schedule_enabled` defaults to false. OneDrive OAuth, a verified
+remote snapshot, notification delivery and independent restore are still pending.
+Its destination is
 `rclone:plane-onedrive:Backups/Plane/media-server`; root-only password and OAuth
 files live under `/etc/plane-backup`. The VM receives neither. The job preserves
 its interrupted-service journal and retries a completed failed-upload capture
 before taking another. After interrupted capture, `plane-backup recover`
-restores the recorded service state. See the private deployment's
-`plane/backup.md` for the full restore procedure and required credentials.
+restores the recorded service state and retains maintenance until its bounded
+health wait succeeds. Upload time and original capture time are monitored
+separately, so retrying an old capture cannot conceal stale remote data. See the
+private deployment's `plane/backup.md` for the full restore procedure and required
+credentials.
 
 Service recovery must retrieve the encrypted backup from OneDrive into an
 isolated instance with email disabled, using independently recovered secrets.
