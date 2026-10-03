@@ -11,9 +11,15 @@ import pytest
 from tools.suite import ci_validate
 
 
-def test_snapshot_keeps_git_inventory_and_parent_history(tmp_path):
+def test_snapshot_keeps_git_inventory_and_parent_history(tmp_path, monkeypatch):
     tree = ci_validate.git("rev-parse", "HEAD^{tree}").decode().strip()
     parent = ci_validate.git("rev-parse", "HEAD").decode().strip()
+    original_git = ci_validate.git
+
+    def windows_checkout_git(*args):
+        return original_git("-c", "core.autocrlf=true", *args)
+
+    monkeypatch.setattr(ci_validate, "git", windows_checkout_git)
     ci_validate.extract_tree(tree, tmp_path)
     ci_validate.install_git_inventory(tree, parent, tmp_path)
     alternate = tmp_path / ".git/objects/info/alternates"

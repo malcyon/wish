@@ -66,7 +66,8 @@ def extract_tree(tree: str, destination: Path,
     """Read only tracked index bytes, rejecting private or escaping entries."""
     if create_symlinks is None:
         create_symlinks = checkout_symlinks(destination)
-    archive = git("archive", "--format=tar", tree)
+    archive = git("-c", "core.autocrlf=false", "-c", "core.eol=lf",
+                  "archive", "--format=tar", tree)
     with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
         for member in tar:
             parts = PurePosixPath(member.name).parts
