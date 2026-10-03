@@ -176,12 +176,13 @@ def test_off_puts_every_original_back(title, state):
     assert saved["on"] is False and saved["rows"] == []
 
 
-def test_a_save_key_is_refused_while_the_switch_is_on(state):
+@pytest.mark.parametrize("save", ["S", "s"])
+def test_a_save_key_is_refused_while_the_switch_is_on(state, save):
     pipe = FakePipe()
     build(pipe, "pool-of-radiance")
     switch(pipe, "pool-of-radiance", state).on()
     presses = []
-    result = switch(pipe, "pool-of-radiance", state, presses).keys(["E", "S", "C"])
+    result = switch(pipe, "pool-of-radiance", state, presses).keys(["E", save, "C"])
     assert "turn it off first" in result["refused"]
     assert presses == []
     switch(pipe, "pool-of-radiance", state).off()
@@ -271,3 +272,70 @@ def test_a_move_with_the_switch_on_costs_one_round_trip(state):
     pipe.batches.clear()
     held.keys(["NP8"])
     assert len(pipe.batches) == 1 and pipe.writes() == []
+
+
+def _left_recorded(pipe, state):
+    """Pool switched on, then an `off` whose writes fail: off, rows still recorded."""
+    build(pipe, "pool-of-radiance")
+    switch(pipe, "pool-of-radiance", state).on()
+    failing = switch(pipe, "pool-of-radiance", state)
+    failing.memory.write = lambda address, data: {"error": "OSError: lost"}
+    failing.off()
+
+
+def test_off_without_the_lane_changes_nothing(state):
+    """A process that does not hold the lane cannot turn the holder's switch off,
+    with or without recorded rows."""
+    pipe = FakePipe()
+    build(pipe, "pool-of-radiance")
+    switch(pipe, "pool-of-radiance", state).on()
+    held = json.loads(state.path.read_text())
+    for rows in (held["rows"], []):
+        state.save({**held, "rows": rows})
+        before = state.path.read_text()
+        intruder = switch(pipe, "pool-of-radiance", state)
+
+        def refuse():
+            raise amiga.GuestError("fail the lane is claimed by wish266")
+        intruder.lane_check = refuse
+        with pytest.raises(amiga.GuestError):
+            intruder.off()
+        assert state.path.read_text() == before
+
+
+def test_on_for_another_title_is_refused_while_a_change_is_recorded(state):
+    pipe = FakePipe()
+    _left_recorded(pipe, state)
+    with pytest.raises(ValueError, match="pool-of-radiance off"):
+        switch(pipe, "secret-of-the-silver-blades", state).on()
+    presses = []
+    result = switch(pipe, "secret-of-the-silver-blades", state, presses).keys(["s"])
+    assert "pool-of-radiance" in result["refused"] and presses == []
+
+
+def test_a_key_that_cannot_be_pressed_reports_the_keys_that_went_in(state):
+    pipe = FakePipe()
+    build(pipe, "pool-of-radiance")
+    switch(pipe, "pool-of-radiance", state).on()
+    pressed = []
+
+    def press(name):
+        if pressed:
+            raise SystemExit(f"Key {name} was not pressed: fail")
+        pressed.append(name)
+    held = switch(pipe, "pool-of-radiance", state)
+    held.press = press
+    result = held.keys(["NP8", "NP4", "NP6"])
+    assert result["pressed"] == ["NP8"]
+    assert "NP4 was not pressed" in result["error"]
+
+
+def test_a_failed_save_leaves_no_temporary_file(state, monkeypatch):
+    state.save({"on": False, "rows": []})
+    def broken(src, dst):
+        raise OSError("disk full")
+    monkeypatch.setattr(ne.os, "replace", broken)
+    with pytest.raises(OSError):
+        state.save({"on": True, "rows": []})
+    assert sorted(p.name for p in state.path.parent.iterdir()) == ["winuae.json"]
+    assert json.loads(state.path.read_text())["on"] is False

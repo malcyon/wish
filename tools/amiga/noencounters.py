@@ -479,10 +479,16 @@ class WinuaeState:
                 "the file")
 
     def save(self, state: dict) -> None:
+        """Replace the file whole.  One name for the temporary copy, because the
+        WinUAE lane lets one writer run at a time: a copy a killed save left is
+        overwritten by the next one, and a failed save removes its own."""
         scratch.ensure(self.path.parent)
-        temp = self.path.with_suffix(f".{os.getpid()}.tmp")
-        temp.write_text(json.dumps(state), encoding="utf-8")
-        os.replace(temp, self.path)
+        temp = self.path.with_name(self.path.name + ".tmp")
+        try:
+            temp.write_text(json.dumps(state), encoding="utf-8")
+            os.replace(temp, self.path)
+        finally:
+            temp.unlink(missing_ok=True)
 
 
 class PipeMemory:
@@ -629,12 +635,16 @@ class WinuaeEncounters:
 
     # -- reaching the game -----------------------------------------------
 
-    def _ready(self, saved: dict) -> None:
-        """Check the lane, and find the game: where `saved` says if its anchor
-        is still there, otherwise by a sweep."""
+    def _lane(self) -> None:
+        """Prove this run holds the lane, once, before its first read or write."""
         if not self.checked:
             self.lane_check()
             self.checked = True
+
+    def _ready(self, saved: dict) -> None:
+        """Check the lane, and find the game: where `saved` says if its anchor
+        is still there, otherwise by a sweep."""
+        self._lane()
         if self.target.data_base is not None:
             return
         layout = self.target.layout
@@ -722,6 +732,14 @@ class WinuaeEncounters:
         if saved.get("title") not in (None, self.title) and saved["on"]:
             raise ValueError(f"no_encounters is on for {saved['title']}; "
                              "`off` first")
+        others = sorted({str(r.get("title")) for r in saved["rows"]
+                         if r.get("title") != self.title})
+        if others:
+            raise ValueError(
+                f"{self.state.path} still records changes to {', '.join(others)}, "
+                "which this switch cannot put back: run `noencounters.py --holder "
+                f"H --title {others[0]} off` with that game running, or delete the "
+                "file once it is not")
         self._ready(saved)
         repaired = self._restore(self._split(saved))
         if self.stuck:
@@ -746,13 +764,14 @@ class WinuaeEncounters:
     def off(self) -> dict:
         """Put every recorded change back and record the switch as off."""
         saved = self._load()
-        if saved.get("title") not in (None, self.title):
-            raise ValueError(f"the state is for {saved['title']}, not "
+        if saved["on"] and saved.get("title") != self.title:
+            raise ValueError(f"no_encounters is on for {saved['title']}, not "
                              f"{self.title}")
         own = self._split(saved)
         if self.switch is not None:
             own = self.switch.outstanding()
             self.switch = None
+        self._lane()
         if not own:
             self._save(False, [])
             return {"action": "off", "rows": []}
@@ -768,33 +787,41 @@ class WinuaeEncounters:
     def keys(self, names: list[str]) -> dict:
         """Press `names` in order, applying the switch again before each while it
         is on; refuse the whole line, pressing nothing, when one is a save key
-        while the switch is on or a change may still be in the game."""
+        while the switch is on or a change of any title may still be in the
+        game.  A key that cannot be pressed ends the line: the result's `error`
+        says why and `pressed` holds the keys that went in."""
         try:
             saved = self._load()
         except StateError as exc:
             if is_save_key(" ".join(names)):
                 return {"action": "keys", "refused": str(exc), "pressed": []}
             raise
-        own = [r for r in saved["rows"] if r.get("title") == self.title]
-        if is_save_key(" ".join(names)) and (saved["on"] or own):
+        if is_save_key(" ".join(names)) and (saved["on"] or saved["rows"]):
+            titles = sorted({str(r.get("title")) for r in saved["rows"]}
+                            | ({str(saved.get("title"))} if saved["on"] else set()))
             return {"action": "keys", "pressed": [],
                     "refused": ("no_encounters is on or a change it made is "
-                                "still in the game, and a save carries the "
-                                "changed script: turn it off first")}
+                                f"still in the game ({', '.join(titles)}), and a "
+                                "save carries the changed script: turn it off "
+                                "first")}
         if saved["on"] and saved.get("title") != self.title:
             raise ValueError(f"no_encounters is on for {saved['title']}, not "
                              f"{self.title}")
         result = {"action": "keys", "pressed": [], "applied": []}
-        if saved["on"] and self.switch is None:
-            self._ready(saved)
-            result["repaired"] = self._take_over(saved)
-        for name in names:
-            if self.switch is not None:
-                done = self._apply()
-                if done:
-                    result["applied"].append({"before": name, "rows": done})
-            self.press(name)
-            result["pressed"].append(name)
+        try:
+            if saved["on"] and self.switch is None:
+                self._ready(saved)
+                result["repaired"] = self._take_over(saved)
+            for name in names:
+                if self.switch is not None:
+                    done = self._apply()
+                    if done:
+                        result["applied"].append({"before": name, "rows": done})
+                self.press(name)
+                result["pressed"].append(name)
+        except WINUAE_ERRORS as exc:
+            # The keys already pressed are in the game; the caller needs them.
+            result["error"] = f"{type(exc).__name__}: {exc}"
         return result
 
 
