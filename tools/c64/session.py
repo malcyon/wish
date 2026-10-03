@@ -25,6 +25,7 @@ import argparse
 import contextlib
 import inspect
 import io
+import json
 import math
 import os
 import pathlib
@@ -162,12 +163,49 @@ class EncounterGate(NamedTuple):
 
     `grade` is CONFIRMED (seen live against a control) or PROBABLE (read from
     the area script's bytecode only); `source` says where the gate was read.
-    `pokes` are save-page bytes, so a game save written afterwards keeps them.
+    Without a `guard`, `pokes` are save-page bytes, so a game save written
+    afterwards keeps them.  With one, they are bytes of the area script in
+    memory, which no save holds: `guard` is `(address, bytes)`, the script's
+    own bytes there, and the pokes are written only while memory matches them
+    (a poked byte may already hold its poke), so another script loaded at the
+    same address is never written.
     """
 
     grade: str
     source: str
     pokes: tuple[tuple[int, int], ...]
+    guard: tuple[int, bytes] | None = None
+
+
+class GateRestoreError(RuntimeError):
+    """`restore_encounter_gates` could not put back and verify every gate
+    value; `rows` says what it found at each address."""
+
+    def __init__(self, message: str, rows: list[dict]):
+        super().__init__(message)
+        self.rows = rows
+
+
+def guard_holds(found: bytes, gate_guard: tuple[int, bytes],
+                pokes: tuple[tuple[int, int], ...]) -> bool:
+    """Whether FOUND, read at the guard's address, is the guarded script: its
+    bytes, each poked byte allowed to hold either its own byte or its poke."""
+    at, want = gate_guard
+    if len(found) != len(want):
+        return False
+    poked = {addr - at: value for addr, value in pokes}
+    return all(got == byte or poked.get(i) == got
+               for i, (got, byte) in enumerate(zip(found, want)))
+
+
+#: Pool of Radiance's travel-grid encounter check, the same 19 bytes in
+#: `ECL19`, `ECL1A` and `ECL1B`: `RANDOM #19, =[$6E79]`, `SAVE #0, =[$4A15]`,
+#: `COMPARE [$6E79], #0`, `IF<>`.  Byte 17 is the compare's `#0`.
+POOL_TRAVEL_ROLL = bytes.fromhex("080013 01796e 090000 01154a 03 01796e 0000 17"
+                                 .replace(" ", ""))
+POOL_TRAVEL_ROLL_ZERO = 17
+#: Where each travel-grid window's script holds that check.
+POOL_TRAVEL_ROLLS = {0x19: 0xA0B3, 0x1A: 0xA0E7, 0x1B: 0x9EA8}
 
 
 class AreaByte(NamedTuple):
@@ -237,6 +275,16 @@ ENCOUNTER_GATES: dict[tuple[str, int], EncounterGate] = {
         f"ECL{area:02X}: the alarm $4A64 >= 1 gates the step roll; bytecode, "
         "plus a 150-move area-9 walk with 0 encounters at $4A64 = 0",
         ((0x4A64, 0),)) for area in (0x04, 0x05, 0x06, 0x09)},
+    **{(G.POOL_OF_RADIANCE.key, area): EncounterGate(
+        "CONFIRMED" if area == 0x1A else "PROBABLE",
+        f"travel grid ECL{area:02X}: no variable gates its RANDOM #19 at "
+        f"${roll:04X}, so the compare's #0 becomes #255, which a roll of 0 "
+        f"to 19 never equals; the generator still draws.  "
+        + ("Live: a roll of 0, which started an encounter from the same "
+           "generator state every time unpoked, walked on"
+           if area == 0x1A else "Bytecode only"),
+        ((roll + POOL_TRAVEL_ROLL_ZERO, 0xFF),), (roll, POOL_TRAVEL_ROLL))
+       for area, roll in POOL_TRAVEL_ROLLS.items()},
 }
 
 #: Curse's fixed world-map ambushes: each leg's arm skips its fight when its
@@ -996,22 +1044,32 @@ class Session:
     #: party across the world, which is not a step.
     outdoor_boat: str | None = None
 
-    #: For automapper and driver testing only, never conversion proof: before
-    #: every move key, write the running area's `ENCOUNTER_GATES` pokes so no
-    #: wandering encounter starts, and zero the rest interruption in the
-    #: camp's rest.  The pokes are save-page bytes and some are story counters,
-    #: so `save_game` raises while this is on unless it is passed
-    #: `allow_suppressed=True`.
+    #: Before every move key, write the running area's `ENCOUNTER_GATES` pokes
+    #: so no wandering encounter starts, and zero the rest interruption in the
+    #: camp's rest.  Each address's value before the first write is recorded,
+    #: and `save_game` raises once anything was written until
+    #: `restore_encounter_gates` has put every one back and read it back, or
+    #: unless it is passed `allow_suppressed=True` (automapper and driver
+    #: testing only, never conversion proof).
     no_encounters = False
 
     #: Opt-in, works without `no_encounters`: set Curse's world-map once-flags
     #: so the fixed ambushes are skipped.  Changes story state.
     skip_world_map_ambushes = False
 
-    #: True once any poke was written to the save page; sticky, so turning the
-    #: options off does not make a save safe.  Cleared by a fresh boot, and a
-    #: snapshot records it so a restore puts back the snapshot's value.
+    #: True once any gate poke was written; turning the options off does not
+    #: clear it, only a fresh boot or a `restore_encounter_gates` that verified
+    #: every value.  A snapshot records it so a restore puts back the
+    #: snapshot's value.
     _pokes_written = False
+
+    #: Every address a gate poke went to since the last verified restore:
+    #: `{address: {"area", "original", "written", "guard", "game_changed"}}`,
+    #: `original` being the value before the first write, `guard` the script
+    #: bytes (hex, with their address) a script gate was written under, and
+    #: `game_changed` the value the game wrote there itself, when it wrote
+    #: one that is neither.  None until the first poke; a snapshot records it.
+    _gates_held: dict | None = None
 
     #: True after a snapshot restore until `attach` runs; a class default so a
     #: `Session` built without `__init__` still passes `_refuse_save`.
@@ -1344,6 +1402,10 @@ class Session:
         """The sidecar that remembers which disk was in the drive."""
         return self.snapshot_path(name) + ".attached"
 
+    def _gates_record(self, name: str) -> str:
+        """The sidecar that remembers the gate values held and their originals."""
+        return self.snapshot_path(name) + ".gates"
+
     def snapshot(self, name: str) -> str:
         """Save the whole machine -- memory, CPU, chips **and the 1541 with its
         disk image** -- under `name`, and return the file.
@@ -1367,13 +1429,15 @@ class Session:
             f.write(str(self.attached))
         with open(self._pokes_record(name), "w") as f:
             f.write("1" if self._pokes_written else "0")
+        with open(self._gates_record(name), "w") as f:
+            json.dump({str(a): h for a, h in (self._gates_held or {}).items()}, f)
         self.log(f"  snapshot {name}")
         return path
 
     def discard_snapshot(self, name: str) -> None:
         """Delete a snapshot and its record of the attached disk."""
         for path in (self.snapshot_path(name), self._attached_record(name),
-                     self._pokes_record(name)):
+                     self._pokes_record(name), self._gates_record(name)):
             with contextlib.suppress(FileNotFoundError):
                 os.remove(path)
 
@@ -1416,6 +1480,13 @@ class Session:
                 self._pokes_written = f.read().strip() == "1"
         except OSError:
             self._pokes_written = False
+        # Without the record the originals are unknown, so a restore of
+        # gates written before the snapshot fails rather than guessing.
+        try:
+            with open(self._gates_record(name)) as f:
+                self._gates_held = {int(a): h for a, h in json.load(f).items()}
+        except (OSError, ValueError):
+            self._gates_held = None
         self._close_restore_dialogs(resumed)
         self.log(f"  restored {name}")
 
@@ -2301,6 +2372,7 @@ class Session:
     def boot(self) -> bool:
         self.boot_failure = None
         self._pokes_written = False
+        self._gates_held = None
         self.launch()
         with self.watching_dialogs():
             return self._boot()
@@ -2833,30 +2905,60 @@ class Session:
         of the two options is on.  Called just before each direction key.
 
         Anything written sets `_pokes_written`, which `_refuse_save` reads.
+        Each address's value before its first write is kept in `_gates_held`
+        for `restore_encounter_gates`; a value the game wrote there itself
+        between two writes, neither the original nor the poke, is kept as
+        `game_changed`, because the next write overwrites it.  A script gate
+        whose guard bytes are not in memory writes nothing.
         """
         if not (self.no_encounters or self.skip_world_map_ambushes):
             return
         key = self.game.key
         area_byte = self._title_entry(AREA_BYTE, "area byte")
         gate = None
+        if self._gates_held is None:
+            self._gates_held = {}
         try:
             with self.mon(5) as mon:
                 area = mon.read(area_byte.addr, 1)[0]
-                pokes = []
+                pokes: list[tuple[int, int, str | None]] = []
                 if self.no_encounters:
                     gate = ENCOUNTER_GATES.get((key, area))
-                    pokes += list(gate.pokes) if gate else []
+                    guard = None
+                    if gate is not None and gate.guard is not None:
+                        at, want = gate.guard
+                        found = bytes(mon.read(at, len(want)))
+                        if guard_holds(found, gate.guard, gate.pokes):
+                            guard = f"{at:04X}:{want.hex()}"
+                        else:
+                            self.log(f"  encounters are not suppressed in area "
+                                     f"${area:02X}: its script is not at "
+                                     f"${at:04X} ({found.hex(' ')})")
+                            gate = None
+                    pokes += ([(a, v, guard) for a, v in gate.pokes]
+                              if gate else [])
                 if self.skip_world_map_ambushes and area == WORLD_MAP_AREA \
                         and key == G.CURSE_OF_THE_AZURE_BONDS.key:
-                    pokes += WORLD_MAP_AMBUSH_SKIPS
-                for addr, value in pokes:
+                    pokes += [(a, v, None) for a, v in WORLD_MAP_AMBUSH_SKIPS]
+                for addr, value, guard in pokes:
+                    now = mon.read(addr, 1)[0]
+                    held = self._gates_held.get(addr)
+                    if held is None:
+                        self._gates_held[addr] = {
+                            "area": area, "original": now, "written": value,
+                            "guard": guard, "game_changed": None}
+                    elif now not in (held["written"], held["original"]):
+                        held["game_changed"] = now
+                        self.log(f"  the game wrote {now} to ${addr:04X} while "
+                                 f"the encounter switch held it at "
+                                 f"{held['written']}")
                     mon.write(addr, bytes((value,)))
                     self._pokes_written = True
                 mon.resume()
         except (OSError, MonitorError) as e:
             self.log(f"  encounter pokes not written, monitor unreadable: {e}")
             return
-        if self.no_encounters and gate is None:
+        if self.no_encounters and ENCOUNTER_GATES.get((key, area)) is None:
             if self._unsuppressed_logged is None:
                 self._unsuppressed_logged = set()
             if (key, area) not in self._unsuppressed_logged:
@@ -2892,7 +2994,94 @@ class Session:
             raise RuntimeError(
                 "no_encounters or skip_world_map_ambushes has written pokes: they are save-page bytes and some "
                 "are story counters, so a game save now would carry them.  "
-                "Pass allow_suppressed=True to save anyway")
+                "restore_encounter_gates() puts them back and verifies them; "
+                "allow_suppressed=True saves anyway")
+
+    def restore_encounter_gates(self) -> list[dict]:
+        """Turn `no_encounters` and `skip_world_map_ambushes` off, put back
+        every gate value written since the last verified restore, read each
+        back, and lift `save_game`'s block once every one is verified.
+
+        One row per address: `original`, `written`, `now` (before anything is
+        written here), `action` and `verified`.  The `action` is `restored`
+        (the poke was there and the original reads back), `already original`,
+        `script replaced` (a script gate whose guard bytes are gone: the area
+        loaded another script there, so nothing of the poke is left and
+        nothing is written), or `changed by the game` (the game wrote a value
+        that is neither, then or earlier, so its own value is lost or depends
+        on the poke: unverified, nothing is written).  Raises
+        `GateRestoreError` naming the first unverified address, with every
+        row; the unverified addresses stay held and the save stays blocked.
+        A write recorded with no originals (a snapshot taken without them)
+        raises too.
+        """
+        self.no_encounters = False
+        self.skip_world_map_ambushes = False
+        held = self._gates_held or {}
+        if not held:
+            if self._pokes_written:
+                raise GateRestoreError(
+                    "A gate value was written but its original was not "
+                    "recorded, so it cannot be put back and the game is not "
+                    "saved.", [])
+            return []
+        rows: list[dict] = []
+        try:
+            with self.mon(5) as mon:
+                for addr, h in sorted(held.items()):
+                    row = {"address": f"${addr:04X}", "area": f"${h['area']:02X}",
+                           "original": h["original"], "written": h["written"]}
+                    if h.get("guard"):
+                        at, want = h["guard"].split(":")
+                        at, want = int(at, 16), bytes.fromhex(want)
+                        found = bytes(mon.read(at, len(want)))
+                        if not guard_holds(found, (at, want),
+                                           ((addr, h["written"]),)):
+                            row.update(now=found[addr - at], read_back=None,
+                                       action="script replaced", verified=True)
+                            rows.append(row)
+                            continue
+                    now = mon.read(addr, 1)[0]
+                    row["now"] = now
+                    changed = h.get("game_changed")
+                    if changed is None and now not in (h["written"],
+                                                       h["original"]):
+                        changed = now
+                    if changed is not None:
+                        row.update(game_changed=changed, read_back=now,
+                                   action="changed by the game", verified=False)
+                    elif now == h["original"]:
+                        row.update(action="already original", read_back=now,
+                                   verified=True)
+                    else:
+                        mon.write(addr, bytes((h["original"],)))
+                        back = mon.read(addr, 1)[0]
+                        row.update(action="restored", read_back=back,
+                                   verified=back == h["original"])
+                    rows.append(row)
+                mon.resume()
+        except (OSError, MonitorError) as e:
+            raise GateRestoreError(
+                f"The encounter gates could not be read back ({e}), so the "
+                f"game is not saved.", rows) from e
+        for row in rows:
+            if row["verified"]:
+                del held[int(row["address"][1:], 16)]
+        bad = [r for r in rows if not r["verified"]]
+        if bad:
+            r = bad[0]
+            why = (f"the game wrote {r['game_changed']} there while the switch "
+                   f"held it at {r['written']}, so its own value is not known"
+                   if r["action"] == "changed by the game" else
+                   f"it read back {r['read_back']} after {r['original']} was "
+                   f"written")
+            raise GateRestoreError(
+                f"Encounter gate {r['address']} was not restored to "
+                f"{r['original']}: {why}.  The game is not saved.", rows)
+        self._pokes_written = False
+        self.log("  encounter gates restored and verified: "
+                 + ", ".join(f"{r['address']} {r['action']}" for r in rows))
+        return rows
 
     def walk_one(self, move: str, hold=0.15, gap=0.30, tries: int = 4,
                  answer_prompts: bool = True, encounters: bool = False) -> bool:
@@ -3390,6 +3579,8 @@ class Session:
                          f"pressed")
                 return False
             if word_column(row, "MOVE") >= 0 and time.time() - took_move > 4.0:
+                # Taking MOVE runs the area's encounter check once.
+                self.suppress_encounters()
                 if self.select_bar("MOVE", timeout=10):
                     took_move = time.time()
                     time.sleep(0.6)

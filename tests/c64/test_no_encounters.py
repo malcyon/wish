@@ -256,3 +256,133 @@ def test_curse_save_is_refused_after_a_restore():
     s._restored_unattached = True
     with pytest.raises(RuntimeError, match="snapshot was restored"):
         curserun.CurseSession.save_game(s)
+
+
+# -- putting the gates back before a save ---------------------------------------
+
+
+class Sticky(FakeMon):
+    """A monitor whose writes to `stuck` addresses are lost."""
+
+    def __init__(self, mem, log, stuck):
+        super().__init__(mem, log)
+        self.stuck = stuck
+
+    def write(self, addr, data, **kw):
+        if addr in self.stuck:
+            self.log.append(("poke", addr, data[0]))
+            return
+        super().write(addr, data, **kw)
+
+
+def test_restore_puts_back_every_original_reads_it_back_and_lifts_the_block():
+    s = Fake(0x03)
+    s.mem.update({0x4C02: 3, 0x4C2A: 0})
+    s.suppress_encounters()
+    s.suppress_encounters()
+    assert (s.mem[0x4C02], s.mem[0x4C2A]) == (8, 1)
+    with pytest.raises(RuntimeError, match="pokes"):
+        s._refuse_save()
+    rows = s.restore_encounter_gates()
+    assert (s.mem[0x4C02], s.mem[0x4C2A]) == (3, 0)
+    assert [(r["address"], r["original"], r["written"], r["action"],
+             r["read_back"], r["verified"]) for r in rows] == [
+        ("$4C02", 3, 8, "restored", 3, True),
+        ("$4C2A", 0, 1, "restored", 0, True)]
+    assert s.no_encounters is False
+    s._refuse_save()  # verified: the save may run
+    assert s.restore_encounter_gates() == []
+
+
+def test_a_gate_that_reads_back_wrong_raises_and_the_save_stays_blocked():
+    s = Fake(0x03)
+    s.mem.update({0x4C02: 3, 0x4C2A: 0})
+    s.suppress_encounters()
+    s.mon = lambda timeout=5.0: Sticky(s.mem, s.events, {0x4C02})
+    with pytest.raises(S.GateRestoreError, match=r"\$4C02 was not restored to 3") as e:
+        s.restore_encounter_gates()
+    bad = [r for r in e.value.rows if not r["verified"]]
+    assert [(r["address"], r["read_back"]) for r in bad] == [("$4C02", 8)]
+    with pytest.raises(RuntimeError, match="pokes"):
+        S.Session.save_game(s)
+    assert list(s._gates_held) == [0x4C02]
+
+
+def test_a_value_the_game_wrote_while_held_is_not_overwritten_by_a_guess():
+    s = Fake(0x03)
+    s.mem.update({0x4C02: 3, 0x4C2A: 0})
+    s.suppress_encounters()
+    s.mem[0x4C02] = 5           # the game's own write
+    s.suppress_encounters()     # forced back to 8; 5 is lost
+    assert s.mem[0x4C02] == 8
+    s.events.clear()
+    with pytest.raises(S.GateRestoreError, match="the game wrote 5"):
+        s.restore_encounter_gates()
+    assert (0x4C02, 3) not in pokes(s)
+    with pytest.raises(RuntimeError, match="pokes"):
+        s._refuse_save()
+
+
+def test_a_write_with_no_recorded_original_cannot_be_restored():
+    s = Fake(0x03)
+    s._pokes_written = True
+    with pytest.raises(S.GateRestoreError, match="not recorded"):
+        s.restore_encounter_gates()
+
+
+def _travel(area=0x1A, script=None):
+    class T(Fake):
+        game = G.POOL_OF_RADIANCE
+    s = T(area)
+    roll = S.POOL_TRAVEL_ROLLS[area]
+    for i, b in enumerate(S.POOL_TRAVEL_ROLL if script is None else script):
+        s.mem[roll + i] = b
+    return s, roll
+
+
+@pytest.mark.parametrize("area", (0x19, 0x1A, 0x1B))
+def test_the_travel_grid_check_compares_against_a_value_no_roll_returns(area):
+    s, roll = _travel(area)
+    zero = roll + S.POOL_TRAVEL_ROLL_ZERO
+    assert s.mem[zero] == 0
+    s.suppress_encounters()
+    s.suppress_encounters()      # already poked: the guard still holds
+    assert pokes(s) == [(zero, 0xFF), (zero, 0xFF)]
+    rows = s.restore_encounter_gates()
+    assert s.mem[zero] == 0
+    assert rows[0]["action"] == "restored" and rows[0]["verified"]
+
+
+def test_a_travel_gate_writes_nothing_over_another_script():
+    other = bytes(len(S.POOL_TRAVEL_ROLL))
+    s, roll = _travel(script=other)
+    s.suppress_encounters()
+    assert pokes(s) == []
+    assert any("not suppressed" in line for line in s.lines)
+    s._refuse_save()
+
+
+def test_a_script_the_area_reloaded_over_the_poke_is_left_alone():
+    s, roll = _travel()
+    s.suppress_encounters()
+    for i in range(len(S.POOL_TRAVEL_ROLL)):
+        s.mem[roll + i] = 0x55      # another window's script
+    s.events.clear()
+    rows = s.restore_encounter_gates()
+    assert pokes(s) == []
+    assert rows[0]["action"] == "script replaced" and rows[0]["verified"]
+    s._refuse_save()
+
+
+def test_a_snapshot_keeps_the_originals_a_restore_needs(tmp_path):
+    from test_session_snapshot import Fake as SnapFake
+
+    s = SnapFake(tmp_path)
+    s._pokes_written = True
+    s._gates_held = {0x4C02: {"area": 3, "original": 3, "written": 8,
+                              "guard": None, "game_changed": None}}
+    s.snapshot("held")
+    s._pokes_written, s._gates_held = False, None
+    s.restore("held")
+    assert s._pokes_written is True
+    assert s._gates_held[0x4C02]["original"] == 3

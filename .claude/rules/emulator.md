@@ -118,18 +118,25 @@ the machine, the restore logging the `SAVE` files changed since the snapshot,
 which stay on disk.
 
 **Suppress random encounters with `Session.no_encounters = True`, unless the
-run proves a conversion or must meet encounters.** C64 drivers: it writes the
-running area's gate from `ENCOUNTER_GATES` before every move key, and
-`skip_world_map_ambushes = True` skips Curse's fixed world-map fights. Both are
-for automapper and driver testing only, never for conversion acceptance or for
-a save that proves a conversion: the pokes are save-page bytes, so once any is
-written `save_game` raises unless `allow_suppressed=True` is passed. An area
-missing from the table is logged once as unsuppressed; add its gate to
-`ENCOUNTER_GATES` to cover it. Amiga: in an FS-UAE `session` or `wish` run, `no_encounters on` for walks through encounter areas, and `no_encounters off` before any save. Under `wish` it reads and writes through the window's connection helper. An interrupted run puts the bytes back as it ends, and after a `kill -9` the next run against that emulator repairs them from the journal in `~/.cache/wish/noencounters/`. A save key is refused while a change may be in the game, but that net is incomplete, so `off` is the rule. Under WinUAE, `tools/amiga/noencounters.py --holder H --title T on` turns it on, its `keys` replaces `amigadrive.py keys` while it is on, and its `off` comes before any save; it stays on across commands, writes through `WinuaePipe`, and records the originals in `~/.cache/wish/noencounters/winuae.json`, from which the next command takes over or repairs what a killed one left. It is never used for conversion proof. DOS: on DOSBox-X, `tools/dos/dosnoencounters.py`'s `NoEncounters(session, title, save)` writes the running area's gate from its `GATES` through the debugger before every move key once `on()` is called (`SuppressedPool` is `PoolOfRadiance` with that done), `off()` puts back each value the game has not changed since, and a save raises `SaveBlocked` while it is on or a value is outstanding; `tools/dos/acceptance.py --no-encounters` wires it in (`--speculative-encounters` for Silver Blades), stops its `save` step while it is on, records `no_encounters: true` in `summary.json`, and is never used for a run that proves a conversion; Silver Blades needs `speculative=True` and the save, because its offsets were not read in a running game; DOSBox 0.74 has no debugger and cannot use it. For Silver Blades, `play` waits for the PLAY bar and presses `p` before the attract demo starts, and `until load` or `until party` waits for a load instead of a fixed `wait`.
+run must meet encounters.** C64 drivers: it writes the running area's gate
+from `ENCOUNTER_GATES` before every move key, recording each address's
+original value, and `skip_world_map_ambushes = True` skips Curse's fixed
+world-map fights. Once any gate is written `save_game` raises until
+`restore_encounter_gates()` has turned both off, written every original back
+and read each one back equal; a gate that reads back wrong, or one the game
+wrote itself while it was held, raises and the save stays blocked.
+`allow_suppressed=True` saves anyway and is for automapper and driver testing
+only. A walking conversion proof may switch encounters off only through
+`tools/c64/acceptance.py --no-encounters`, which turns the switch on for each
+`walk` step and restores and verifies the gates at its end and before every
+save, recording them in `summary.json`; such a run proves movement and saving,
+not combat. An area missing from the table is logged once as unsuppressed; add
+its gate to `ENCOUNTER_GATES` to cover it. Amiga: in an FS-UAE `session` or `wish` run, `no_encounters on` for walks through encounter areas, and `no_encounters off` before any save. Under `wish` it reads and writes through the window's connection helper. An interrupted run puts the bytes back as it ends, and after a `kill -9` the next run against that emulator repairs them from the journal in `~/.cache/wish/noencounters/`. A save key is refused while a change may be in the game, but that net is incomplete, so `off` is the rule. Under WinUAE, `tools/amiga/noencounters.py --holder H --title T on` turns it on, its `keys` replaces `amigadrive.py keys` while it is on, and its `off` comes before any save; it stays on across commands, writes through `WinuaePipe`, and records the originals in `~/.cache/wish/noencounters/winuae.json`, from which the next command takes over or repairs what a killed one left. It is never used for conversion proof. DOS: on DOSBox-X, `tools/dos/dosnoencounters.py`'s `NoEncounters(session, title, save)` writes the running area's gate from its `GATES` through the debugger before every move key once `on()` is called (`SuppressedPool` is `PoolOfRadiance` with that done), `off()` puts back each value the game has not changed since, and a save raises `SaveBlocked` while it is on or a value is outstanding; `tools/dos/acceptance.py --no-encounters` wires it in (`--speculative-encounters` for Silver Blades), stops its `save` step while it is on, records `no_encounters: true` in `summary.json`, and is never used for a run that proves a conversion; Silver Blades needs `speculative=True` and the save, because its offsets were not read in a running game; DOSBox 0.74 has no debugger and cannot use it. For Silver Blades, `play` waits for the PLAY bar and presses `p` before the attract demo starts, and `until load` or `until party` waits for a load instead of a fixed `wait`.
 
 **Every emulator run that walks a party through areas with random encounters,
-or travels a world map, uses snapshots, plus `no_encounters` unless it proves a
-conversion or must meet encounters.** A brief for an `emulator-runner` says
+or travels a world map, uses snapshots, plus `no_encounters` unless it must
+meet encounters or proves a conversion on a platform whose switch cannot
+restore and verify its gates before a save.** A brief for an `emulator-runner` says
 which of the two it wants.
 
 **A new tool that needs the player's disks reads `$POR_DISKS`, then

@@ -13381,3 +13381,185 @@ def test_an_encounter_menu_that_takes_the_next_outdoor_move_is_named(
     with pytest.raises(A.StepFailed, match="an encounter began before move 1"):
         run.walk("75")
     log.close()
+
+
+# -- `--no-encounters`: walks switched, gates put back before a save -------------
+
+
+class _GateOutdoor(OutdoorSession):
+    """A travel-grid party whose session keeps the encounter switch: each
+    digit records whether the switch was on, and the restore is the real
+    `Session` method over `mem`, a gate held at `$4C02`."""
+
+    def __init__(self, stuck=False):
+        super().__init__()
+        self.no_encounters = False
+        self.skip_world_map_ambushes = False
+        self._pokes_written = False
+        self._gates_held = None
+        self._restored_unattached = False
+        self.switch_at_digit = []
+        self.order = []
+        self.gate_mem = {0x4C02: 3}
+        self.stuck = stuck
+
+    def suppress_encounters(self):
+        if self.no_encounters:
+            self.order.append("poke")
+            if self._gates_held is None:
+                self._gates_held = {0x4C02: {"area": 3, "original": 3, "written": 8,
+                                             "guard": None, "game_changed": None}}
+            self.gate_mem[0x4C02] = 8
+            self._pokes_written = True
+
+    def step(self, move):
+        self.switch_at_digit.append(self.no_encounters)
+        return super().step(move)
+
+    def mon(self, timeout=5.0):
+        session = self
+
+        class M:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read(self, addr, n, **kw):
+                if addr in session.gate_mem:
+                    return bytes([session.gate_mem[addr]])
+                return _TravelMonitor(session).read(addr, n)
+
+            def write(self, addr, data, **kw):
+                session.order.append(("write", addr, data[0]))
+                if not session.stuck:
+                    session.gate_mem[addr] = data[0]
+
+            def resume(self):
+                pass
+        return M()
+
+    def restore_encounter_gates(self):
+        self.order.append("restore")
+        return A.S.Session.restore_encounter_gates(self)
+
+    def _refuse_save(self, allow_suppressed=False):
+        return A.S.Session._refuse_save(self, allow_suppressed)
+
+    def log(self, *a):
+        pass
+
+    def save_game(self, *a, **k):
+        self._refuse_save()
+        self.order.append("save_game")
+        return True
+
+
+def _gate_run(tmp_path, monkeypatch, sess, opted=True):
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    if opted:
+        run.no_encounters = True
+        run.gate_reports = []
+    run.to_world = lambda *a, **k: True
+    run.capture = lambda *a, **k: []
+    run.wait_rows = lambda ok, *a, **k: _window({}, A.CAMP_BAR)
+    monkeypatch.setattr(A.S, "copy_closed_disk", lambda *a, **k: None)
+    monkeypatch.setattr(A, "decode_save", lambda kept, staged: {"decoded": True})
+    sess.save_disk = str(tmp_path / "SIDE0.D64")
+    return run, log
+
+
+def test_the_opt_in_turns_the_switch_on_for_a_walk_and_off_after_it(
+        tmp_path, monkeypatch):
+    sess = _GateOutdoor()
+    run, log = _gate_run(tmp_path, monkeypatch, sess)
+    got = run.walk("22")
+    log.close()
+    assert sess.switch_at_digit == [True, True]
+    assert sess.no_encounters is False
+    assert sess.order[0] == "poke" and "restore" in sess.order
+    report = got["encounter_gates"]
+    assert report["verified"] is True and report["when"] == "walk 22"
+    assert report["gates"][0]["action"] == "restored"
+    assert sess.gate_mem[0x4C02] == 3 and sess._pokes_written is False
+
+
+def test_a_save_in_an_opted_in_run_restores_and_verifies_before_save_game(
+        tmp_path, monkeypatch):
+    sess = _GateOutdoor()
+    run, log = _gate_run(tmp_path, monkeypatch, sess)
+    # A gate left held, as a snapshot restore after the walk would leave it.
+    sess.no_encounters = True
+    sess.suppress_encounters()
+    sess.no_encounters = True
+    got = run.save({})
+    log.close()
+    assert sess.order == ["poke", "restore", ("write", 0x4C02, 3), "save_game"]
+    assert sess.no_encounters is False
+    assert run.gate_reports[-1]["when"] == "before save"
+    assert run.gate_reports[-1]["verified"] is True
+    assert got["decoded"] is True
+
+
+def test_a_gate_that_reads_back_wrong_stops_the_run_without_saving(
+        tmp_path, monkeypatch):
+    sess = _GateOutdoor(stuck=True)
+    run, log = _gate_run(tmp_path, monkeypatch, sess)
+    sess.no_encounters = True
+    sess.suppress_encounters()
+    with pytest.raises(A.StepFailed, match=r"\$4C02 was not restored to 3"):
+        run.save({})
+    log.close()
+    assert "save_game" not in sess.order
+    assert run.gate_reports[-1]["verified"] is False
+    events = [json.loads(line) for line in
+              (tmp_path / "run.jsonl").read_text().splitlines()]
+    assert any(e.get("kind") == "encounter-gates" and e.get("verified") is False
+               for e in events)
+
+
+def test_without_the_opt_in_a_walk_and_a_save_touch_no_gate(tmp_path, monkeypatch):
+    sess = _GateOutdoor()
+    run, log = _gate_run(tmp_path, monkeypatch, sess, opted=False)
+    got = run.walk("22")
+    run.save({})
+    log.close()
+    assert sess.switch_at_digit == [False, False]
+    assert sess.order == ["save_game"]
+    assert "encounter_gates" not in got and run.gate_reports is None
+
+
+def _gate_drive(tmp_path, monkeypatch, opted):
+    class Saving(_Pool):
+        def save(self, staged):
+            if getattr(self, "no_encounters", False):
+                self.gate_reports.append({"when": "before save", "gates": [],
+                                          "verified": True})
+            return {}
+
+    real_run = A.run
+
+    def run_with(args, *a, **k):
+        args.no_encounters = opted
+        return real_run(args, *a, **k)
+
+    monkeypatch.setattr(A, "run", run_with)
+    rc, slot, out = _drive(tmp_path, monkeypatch, ["load", "save"], pool=Saving)
+    return rc, json.loads((out / "summary.json").read_text(encoding="utf-8"))
+
+
+def test_an_opted_in_run_records_the_switch_and_its_restores(tmp_path, monkeypatch):
+    rc, summary = _gate_drive(tmp_path, monkeypatch, True)
+    assert rc == 0
+    assert summary["no_encounters"] is True
+    assert summary["encounter_gates"] == [{"when": "before save", "gates": [],
+                                           "verified": True}]
+    assert summary["encounter_gates_verified"] is True
+
+
+def test_a_run_without_the_opt_in_records_no_switch(tmp_path, monkeypatch):
+    rc, summary = _gate_drive(tmp_path, monkeypatch, False)
+    assert rc == 0
+    assert not {"no_encounters", "encounter_gates",
+                "encounter_gates_verified"} & set(summary)

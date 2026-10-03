@@ -107,6 +107,16 @@ alone did not, and the saved square and facing are the ones the screen showed.
 Every wait ends at the run's own deadline (`--max-seconds`), with the screen
 kept; only the boot and load, inside `Session`, cannot be cut short.
 
+`--no-encounters` turns `Session.no_encounters` on for each `walk` step and
+off at its end, where the gates are put back and read back
+(`Session.restore_encounter_gates`), and again before every `save` and
+`remove`.  A gate that does not read back its original, or one the game wrote
+itself while it was held, fails the step and nothing is saved.  `summary.json`
+gets `no_encounters: true`, `encounter_gates` (each restore: when, and per
+address the original, the value written, the value found, the action and
+whether it verified) and `encounter_gates_verified`.  Such a run proves
+movement and saving, not combat.
+
 `--compare A B` reads two runs' `summary.json` and lists the item rows and
 camp lists that differ, saying whether an item row differs only by the mark.
 
@@ -1812,6 +1822,12 @@ class PoolRun:
     #: after an encounter; 0 walks it once, as before.  `--walk-retry` sets it.
     walk_retry = 0
 
+    #: `--no-encounters`: `Session.no_encounters` is on for each `walk` step
+    #: only, and the gates are put back and verified at its end and before
+    #: every game save (`restore_gates`), whose reports `gate_reports` keeps.
+    no_encounters = False
+    gate_reports: list | None = None
+
     #: Whether `walk-fight` asks `walk_one` to detect an encounter the move
     #: started.  Pool of Radiance only: the 12 s silent load and the mode-4
     #: preparation were measured there, and Curse and Silver Blades read their
@@ -2164,6 +2180,7 @@ class PoolRun:
         """`REMOVE CHARACTER FROM PARTY`, WHO, `EXIT`, then the disk."""
         if not self.at_menu:
             raise self.fail("remove", "remove runs on the party menu, straight after load")
+        self.gates_before_save("remove")
         self.removes += 1
         tag = f"remove-{self.removes}"
         if not self.sess.select_row(REMOVE_ROW, timeout=self.budget(30, REMOVE_ROW)):
@@ -4691,6 +4708,54 @@ class PoolRun:
         at once unless the party stands on the travel grid.
         """
         route = parse_walk(arg)
+        if not self.no_encounters:
+            return self._walk_step(route)
+        self.sess.no_encounters = True
+        try:
+            # Before any key: taking MOVE runs the area's check once.
+            self.sess.suppress_encounters()
+            got = self._walk_step(route)
+        except BaseException:
+            try:
+                self.restore_gates(f"walk {route}")
+            except StepFailed as e:
+                self.log.emit("encounter-gates-unrestored", why=str(e))
+            raise
+        finally:
+            self.sess.no_encounters = False
+        got["encounter_gates"] = self.restore_gates(f"walk {route}")
+        return got
+
+    def restore_gates(self, when: str) -> dict:
+        """`Session.restore_encounter_gates`, recorded in `gate_reports` and
+        the run log; a gate it cannot put back and verify fails the step."""
+        if self.gate_reports is None:
+            self.gate_reports = []
+        try:
+            rows = self.sess.restore_encounter_gates()
+        except S.GateRestoreError as e:
+            report = {"when": when, "gates": e.rows, "verified": False,
+                      "error": str(e)}
+            self.gate_reports.append(report)
+            self.log.emit("encounter-gates", **report)
+            raise self.fail("encounter-gates", str(e)) from e
+        report = {"when": when, "gates": rows, "verified": True}
+        self.gate_reports.append(report)
+        self.log.emit("encounter-gates", **report)
+        return report
+
+    def gates_before_save(self, what: str) -> None:
+        """Under `--no-encounters`, put back and verify every gate, then let
+        the session's own save block decide, before any game write."""
+        if not self.no_encounters:
+            return
+        self.restore_gates(f"before {what}")
+        try:
+            self.sess._refuse_save()
+        except RuntimeError as e:
+            raise self.fail(what, str(e)) from e
+
+    def _walk_step(self, route: str) -> dict:
         # `Session.walk_one` stops waiting for the sub-bar at the run's deadline.
         self.sess.walk_expired = self.spent
         try:
@@ -5951,6 +6016,7 @@ class PoolRun:
     def save(self, staged: dict) -> dict:
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
+        self.gates_before_save("save")
         back = self.write_save()
         if SAVE_ERROR in back[24]:
             raise self.fail("save", f"the game could not save: {back[24].strip()}")
@@ -7487,6 +7553,11 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
         if hasattr(args, "walk_fight_seconds"):
             pool.walk_fight_seconds = args.walk_fight_seconds
         pool.walk_retry = getattr(args, "walk_retry", 0)
+        if getattr(args, "no_encounters", False):
+            pool.no_encounters = True
+            pool.gate_reports = []
+            summary["no_encounters"] = True
+            summary["encounter_gates"] = pool.gate_reports
         pool.read_ats = tuple(parse_read_at(getattr(args, "read_at", [])))
         if temple_mode:
             pool.temple_input_deadline = deadline - 100
@@ -7609,6 +7680,9 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             with contextlib.suppress(Exception):
                 pool.capture("lost-error")
     finally:
+        if summary.get("no_encounters"):
+            summary["encounter_gates_verified"] = all(
+                r["verified"] for r in summary["encounter_gates"])
         if pool is not None and getattr(pool, "read_ats", ()):
             summary["read_at"] = pool.release_read_at()
         if temple_mode and pool is not None:
@@ -7788,6 +7862,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--walk-retry", type=int, default=0, metavar="N",
                     help="a `walk` step that meets an encounter rolls back to "
                          "a snapshot and walks again, up to N more times")
+    ap.add_argument("--no-encounters", action="store_true",
+                    help="switch wandering encounters off for each `walk` step, "
+                         "and put back and verify the gates before every save")
     ap.add_argument("--walk-fight-seconds", type=float, default=PoolRun.walk_fight_seconds,
                     help="the budget for each fight a walk-fight or walk-flee "
                          "step fights")
