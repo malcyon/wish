@@ -202,11 +202,16 @@ def _worktree_paths(porcelain: str) -> set[pathlib.Path]:
 
 
 def test_worktree_is_created_at_head_and_removed_after(tmp_path):
-    """Checks this one worktree's path, not the whole registry -- several
-    tests here add their own worktree to the same repository, and under
-    `pytest`'s parallel workers a snapshot of the whole list races another
-    test's add or remove."""
-    repo = classdiagram.REPO
+    """Runs in a repository of its own: the other tests here add and remove
+    worktrees in the real one, and `git worktree list` there can exit 128
+    when it reads a registry entry another worker is deleting."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "AGENTS.md").write_text("x")
+    for args in (["init", "-q"], ["add", "AGENTS.md"],
+                 ["-c", "user.name=t", "-c", "user.email=t@example.invalid",
+                  "commit", "-q", "-m", "x"]):
+        subprocess.run(["git", *args], cwd=repo, check=True)
 
     wt = classdiagram.add_worktree(repo)
     try:
