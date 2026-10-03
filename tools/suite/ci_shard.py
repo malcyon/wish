@@ -338,7 +338,7 @@ def combined_profile_weights(paths: list[Path], source_sha: str, run_id: str,
         if overlap:
             raise ValueError(f'Duplicate profile file: {sorted(overlap)[0]}')
         weights.update(report)
-    if len(paths) > 1:
+    if plans:
         if (indexes != set(range(len(plans[0]['shards'])))
                 or any(plan != plans[0] for plan in plans[1:])
                 or len(provenance) != 1 or len(attempts) != 1):

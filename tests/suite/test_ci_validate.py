@@ -53,6 +53,15 @@ def test_changed_test_directories_collect_with_repository_guards():
     assert "tests/records/conftest.py" not in run
 
 
+def test_root_conftest_change_requires_explicit_affected_tests():
+    with pytest.raises(ValueError, match="supply affected --test targets"):
+        ci_validate.checked_paths(["tests/conftest.py"], [])
+    targets = ["tests/suite/test_ci_validate.py", "tests/records/test_effects.py"]
+    collect, run = ci_validate.checked_paths(["tests/conftest.py"], targets)
+    assert {"tests/suite", "tests/records", *ci_validate.GUARDS} <= set(collect)
+    assert set(targets + list(ci_validate.GUARDS)) == set(run)
+
+
 def test_prior_failure_order_keeps_stale_ids_and_remaining_items(pytestconfig, tmp_path):
     conftest = next(plugin for plugin in pytestconfig.pluginmanager.get_plugins()
                     if getattr(plugin, "__file__", None) == str(

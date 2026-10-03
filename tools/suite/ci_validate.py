@@ -122,6 +122,8 @@ def install_git_inventory(tree: str, parent: str, destination: Path,
 
 def checked_paths(changed: list[str], requested: list[str]) -> tuple[list[str], list[str]]:
     """Collect changed test directories and run selected tests with guards."""
+    if "tests/conftest.py" in changed and not requested:
+        raise ValueError("tests/conftest.py changed: supply affected --test targets")
     changed_tests = [name for name in changed if name.startswith("tests/")
                      and name.endswith(".py") and not name.endswith("/conftest.py")
                      and name != GENERATED]
@@ -163,7 +165,8 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("No staged changes to validate")
         for name in args.test:
             path = PurePosixPath(name.split("::", 1)[0])
-            if path.is_absolute() or ".." in path.parts or not name.startswith("tests/"):
+            if (path.is_absolute() or ".." in path.parts or
+                    not name.startswith("tests/") or path.name == "conftest.py"):
                 raise ValueError(f"Invalid focused test path: {name}")
         if any(name.endswith(".py") and not name.startswith("tests/")
                for name in changed) and not args.test:

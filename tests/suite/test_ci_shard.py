@@ -333,7 +333,7 @@ def test_weights_cli_rejects_incomplete_resource_report(tmp_path, change):
     assert not output.exists()
 
 
-def profile_bundle(tmp_path, index, *, files=None, run_attempt='1'):
+def profile_bundle(tmp_path, index, *, files=None, run_attempt='1', shard_count=2):
     source = tmp_path / f'shard-{index}'
     source.mkdir()
     names = files or (f'tests/test_{index}.py',)
@@ -355,9 +355,9 @@ def profile_bundle(tmp_path, index, *, files=None, run_attempt='1'):
     }))
     (source / 'shard-plan.json').write_text(json.dumps({
         'version': 1,
-        'files': ['tests/test_0.py', 'tests/test_1.py'],
-        'shards': [['tests/test_0.py'], ['tests/test_1.py']],
-        'seconds': [1, 1], 'groups': {},
+        'files': [f'tests/test_{i}.py' for i in range(shard_count)],
+        'shards': [[f'tests/test_{i}.py'] for i in range(shard_count)],
+        'seconds': [1] * shard_count, 'groups': {},
     }))
     return source / 'pytest-main.json'
 
@@ -383,6 +383,23 @@ def test_single_new_profile_rejects_incomplete_run(tmp_path):
         combined_profile_weights([path], 'a' * 40, '123', 'linux')
 
 
+def test_one_report_from_four_shard_run_is_incomplete(tmp_path):
+    from tools.suite.ci_shard import combined_profile_weights
+
+    path = profile_bundle(tmp_path, 2, shard_count=4)
+    with pytest.raises(ValueError, match='Incomplete or inconsistent shard profile set'):
+        combined_profile_weights([path], 'a' * 40, '123', 'linux')
+
+
+def test_complete_one_shard_modern_run_is_accepted(tmp_path):
+    from tools.suite.ci_shard import combined_profile_weights
+
+    path = profile_bundle(tmp_path, 0, shard_count=1)
+    assert combined_profile_weights([path], 'a' * 40, '123', 'linux') == {
+        'tests/test_0.py': 3.5,
+    }
+
+
 @pytest.mark.parametrize('mutation', [
     'duplicate_file', 'missing_shard', 'wrong_sha', 'wrong_attempt',
     'wrong_selected', 'unsafe_path', 'failed_resource',
@@ -393,8 +410,6 @@ def test_multi_profile_import_rejects_inconsistent_reports(tmp_path, mutation):
     paths = [profile_bundle(tmp_path, index) for index in range(2)]
     if mutation == 'missing_shard':
         paths.pop()
-        # A single profile retains the compatible single-report import path.
-        paths.append(paths[0])
     else:
         target = paths[1]
         if mutation in ('duplicate_file', 'unsafe_path'):
