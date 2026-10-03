@@ -1453,11 +1453,20 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 state, f"{state} shows a party other than the prepared party"))
 
     def observe(state: str, name: str, crop: pathlib.Path) -> None:
-        """Record whether a camp sheet's bar offers HEAL, and whether a sheet's or effects list's identity was checked."""
+        """Record a camp screen: whether a sheet offers HEAL, and whose identity rule was checked.
+
+        Sheets, effects lists and item lists each record whether the identity
+        map held a rule for their state.
+        """
         if route_camp.is_display(state):
             entry = {"state": state, "shot": name, "identity_checked": _has_rule(identity, state)}
             result.setdefault("camp_displays", []).append(entry)
             log("camp_display", **entry)
+            return
+        if route_camp.is_items(state):
+            entry = {"state": state, "shot": name, "identity_checked": _has_rule(identity, state)}
+            result.setdefault("camp_item_lists", []).append(entry)
+            log("camp_item_list", **entry)
             return
         if not route_camp.is_sheet(state):
             return

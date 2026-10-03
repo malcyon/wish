@@ -1,4 +1,4 @@
-"""Camp steps for an Amiga route: view a member's sheet, lay on hands, rest, show the effects list, and show a member's items.
+"""Camp steps for an Amiga route: sheets, laying on hands, rests, effects lists and item lists.
 
 A published route (`route_silver_blades.published_title` or
 `route_curse.published_title`) walks two squares, camps and saves, and
@@ -121,7 +121,9 @@ takes only `items N`, which shows the item list of the member on line N:
   is built from `Items` (only while the record's item list at `+0xCA` is not
   empty), `Spells`, `Trade`, `Drop`, `Rename` and `Exit` (`01E712`-`01E738`),
   read with no highlight keys. `I` runs the item routine `01B7F4` and `E`
-  returns to the camp bar.
+  returns to the camp bar. Only a sheet whose bar shows `Items` may take `I`,
+  so the sheet `V` reaches is its own guarded state, whose rule is the bar
+  with that word on it: a member with no items stops the run there.
 * **The item routine** lists every node of the chain at `+0xCA` (next
   pointer `+0x2A`) under the heading `Items` (`01E7D4`) through the list
   viewer called at `01BADC`, with a bar of `Ready`, `Use`, `Trade`, `Drop`,
@@ -130,7 +132,9 @@ takes only `items N`, which shows the item list of the member on line N:
   (`01B6E8`) and reads its bar again.
 
 `items N` reads no record byte: whether the rows on screen are the member's
-own is the identity rule cut for the run's party, as for a sheet.
+own is the identity rule cut for the run's party, as for a sheet. Every camp
+state an `items` step waits for is strict, so a screen its guard does not
+recognise stops the run before the next key.
 """
 
 from __future__ import annotations
@@ -192,12 +196,16 @@ MAGIC_MENU = "camp_magic"
 DISPLAY = "camp_display"
 #: The item list a sheet's `Items` shows, for party line 1; `items_state` names the others.
 ITEMS_LIST = "camp_items"
+#: The sheet whose bar offers `Items`, for party line 1; `items_sheet_state` names the others.
+ITEMS_SHEET = "camp_sheet_items"
 #: The camp save the published route presses next, which the camp steps go before.
 CAMP_SAVE_STEP = ("S", "camp_save_picker", "key")
 
 MIN_WAITS = {SHEET: 10.0, SHEET_HEAL: 10.0, SHEET_SPENT: 15.0, HEAL_WHOM: 10.0,
              REST_MENU: 5.0, MAGIC_MENU: 5.0, DISPLAY: 10.0, ITEMS_LIST: 10.0,
-             **{f"{ITEMS_LIST}_{n}": 10.0 for n in range(2, PARTY_MAX + 1)}}
+             ITEMS_SHEET: 10.0,
+             **{f"{state}_{n}": 10.0 for state in (ITEMS_LIST, ITEMS_SHEET)
+                for n in range(2, PARTY_MAX + 1)}}
 #: Seconds the camp bar may take to come back after a rest, beyond the game's own pace.
 REST_LIMIT = 900.0
 #: A rest this long or longer can land on the clock a run with no rest would show.
@@ -207,12 +215,17 @@ _DURATION = re.compile(r"(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?")
 
 
 def sheet_state(line: int) -> str:
-    """The camp sheet state for party line `line`, counted from 1: each line has its own identity rule."""
+    """The camp sheet state for party line `line`, counted from 1, with its own identity rule."""
     return SHEET if line == 1 else f"{SHEET}_{line}"
 
 
+def items_sheet_state(line: int) -> str:
+    """The sheet offering `Items` for party line `line`, counted from 1, with its own identity rule."""
+    return ITEMS_SHEET if line == 1 else f"{ITEMS_SHEET}_{line}"
+
+
 def items_state(line: int) -> str:
-    """The camp item list state for party line `line`, counted from 1: each line has its own identity rule."""
+    """The camp item list state for party line `line`, counted from 1, with its own identity rule."""
     return ITEMS_LIST if line == 1 else f"{ITEMS_LIST}_{line}"
 
 
@@ -233,7 +246,7 @@ def is_display(state: str) -> bool:
 
 
 def parse_duration(text: str) -> int:
-    """Minutes in `1d2h30m`, `90m` or `8h`; a rest must be a positive multiple of five under 30 days."""
+    """Minutes in `1d2h30m`, `90m` or `8h`: a positive multiple of five under 30 days."""
     m = _DURATION.fullmatch(text)
     if not text or not m or not any(m.groups()):
         raise RouteError(f"rest time {text!r} is not like 1d2h30m")
@@ -256,7 +269,7 @@ def rest_presses(minutes: int) -> tuple[int, int, int]:
 
 
 def sheet_lines(name: str) -> tuple[tuple[int, ...], tuple[int, ...]]:
-    """The party lines `view N` and `heal N` may name for title `name`; none for a title in `ITEMS_TITLES`."""
+    """The party lines `view N` and `heal N` may name for title `name`; none in `ITEMS_TITLES`."""
     if name in ITEMS_TITLES:
         return (), ()
     try:
@@ -282,7 +295,7 @@ def parse_steps(text: str, name: str = "ssb") -> tuple[str, ...]:
 
 
 def _step_line(words: list[str]) -> int | None:
-    """The party line a `view`, `heal` or `items` token names (1 when left out), or None for another token."""
+    """The party line a `view`, `heal` or `items` token names (1 when left out), else None."""
     if words[0] not in ("view", "heal", "items") or len(words) > 2:
         return None
     if len(words) == 1:
@@ -366,7 +379,11 @@ def _validate_items(tokens: tuple[str, ...], party_size: int) -> None:
 
 
 def normalise(tokens: tuple[str, ...]) -> tuple[str, ...]:
-    """`view` as `view 1`, `items` as `items 1`, `heal 1` as `heal`, and a rest time as its minutes, so two spellings build one route."""
+    """Each step in one spelling, so two spellings build one route.
+
+    `view` becomes `view 1`, `items` becomes `items 1`, `heal 1` becomes
+    `heal`, and a rest time becomes its minutes.
+    """
     out = []
     for token in tokens:
         words = token.split()
@@ -405,7 +422,7 @@ def _moves(line: int, name: str, party_size: int | None, state: str) -> tuple[li
 
 def steps_for(tokens: tuple[str, ...], name: str = "ssb", party_size: int | None = None
               ) -> tuple[tuple[str, str, str], ...]:
-    """The route steps for title `name`, from the camp bar back to the camp bar, for each token in order.
+    """The route steps for title `name`, from the camp bar back to it, for each token in order.
 
     `party_size` lets a title whose highlight wraps reach a later line backwards;
     without it the highlight moves forward only.
@@ -432,8 +449,9 @@ def steps_for(tokens: tuple[str, ...], name: str = "ssb", party_size: int | None
             line = int(words[1])
             there, back = _moves(line, name, party_size, CAMP)
             steps += there
-            steps += [(VIEW, sheet_state(line), "key"), (ITEMS, items_state(line), "key"),
-                      (SHEET_EXIT, sheet_state(line), "key"), (SHEET_EXIT, CAMP, "key")]
+            steps += [(VIEW, items_sheet_state(line), "key"),
+                      (ITEMS, items_state(line), "key"),
+                      (SHEET_EXIT, items_sheet_state(line), "key"), (SHEET_EXIT, CAMP, "key")]
             steps += back
         elif words[0] == "display":
             steps += [(CAMP_MAGIC, MAGIC_MENU, "key"), (MAGIC_DISPLAY, DISPLAY, "key"),
@@ -456,7 +474,9 @@ def camp_title(title: AmigaTitle, tokens: tuple[str, ...], party_size: int = PAR
 
     The camp states are not strict: a screen the guard map lacks is settled and
     marks the run as measuring, so one boot can capture them all, and the camp
-    save's own strict picker still stops the run before any write. A kept slot
+    save's own strict picker still stops the run before any write. For a title in
+    `ITEMS_TITLES` they are strict instead, the camp bar included, so every key
+    of an `items` step goes out on a screen its guard recognised. A kept slot
     letter the rest menu uses as a key (`A`, for a source loaded from slot D)
     becomes a simple key on the rest menu only.
     """
@@ -476,6 +496,9 @@ def camp_title(title: AmigaTitle, tokens: tuple[str, ...], party_size: int = PAR
     limits = dict(title.wait_limits)
     if rest_minutes(tokens):
         limits[CAMP] = max(limits.get(CAMP, 0.0), REST_LIMIT)
+    strict = title.strict
+    if name in ITEMS_TITLES:
+        strict = strict | {CAMP} | {state for _, state, _ in added}
     return dataclasses.replace(
-        title, route=tuple(route), plain_keys=simple,
+        title, route=tuple(route), plain_keys=simple, strict=frozenset(strict),
         min_waits={**title.min_waits, **MIN_WAITS}, wait_limits=limits)
