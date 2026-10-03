@@ -1453,6 +1453,97 @@ def test_pool_sheet_opens_an_npcs_sheet_with_the_measured_bar(tmp_path, monkeypa
     assert got["sheet_bar"] == "90b53c9e64947226" and game.mode == "map"
 
 
+class WordSheetPool(FakePool):
+    """Pool's map and one member's sheet, whose bar is drawn as `words` in the
+    stand-in font, so the driver can read it as text."""
+
+    def __init__(self, tmp, words, **kw):
+        super().__init__(tmp, **kw)
+        self.words, self.line = words, 1
+
+    def key(self, k, gap=0.0):
+        self.keys.append(k)
+        if self.mode == "map" and k == "v":
+            self.mode = "sheet"
+        elif self.mode == "sheet" and k == "Escape":
+            self.mode = "map"
+
+    def capture(self):
+        if self.mode != "sheet":
+            return _with_roster(super().capture(), "camp", 6, self.line)
+        px = bytearray(_screen(b"", b"").px)
+        _draw(px, _FONT_BLOCK, da.BAR_ROW, 0, self.words, _WHITE)
+        return _with_roster(dosbox.Screen(W, H, bytes(px)), "camp", 6, 0, sheet=self.line)
+
+
+@pytest.mark.parametrize("words,opens", [
+    # MALCYON, a magic-user carrying nothing (WISH-22 route 6).
+    ("VIEW:SPELLS TRADE DROP EXIT", True),
+    # A bar of a class with no measured digest, words the game might add.
+    ("VIEW:ITEMS SPELLS TRADE DROP CURE EXIT", True),
+    ("VIEW:EXIT", True),
+    # The treasure bar opens VIEW too, with no colon.
+    ("VIEW TAKE POOL SHARE EXIT", False),
+    ("AREA CAST VIEW ENCAMP SEARCH LOOK", False),
+])
+def test_a_pool_sheet_of_any_class_opens_by_its_words(tmp_path, monkeypatch, words, opens):
+    monkeypatch.setattr(da, "POOL_MAP_BARS",
+                        {"town": screens.bar_signature(_screen(FakePool.BARS["map"], b""))})
+    game = WordSheetPool(tmp_path, words)
+    d = da.Driver(game, lambda **k: None, "A")
+    d._font = _FONT
+    d.where = "map"
+    game.mode = "sheet"
+    assert screens.bar_signature(game.capture()) not in da.POOL_SHEET_BARS.values()
+    game.mode = "map"
+    if not opens:
+        with pytest.raises(da.StepFailed, match="VIEW did not open the sheet bar"):
+            d.sheet(1)
+        return
+    got = d.sheet(1)
+    assert game.keys == ["v", "Escape"] and game.mode == "map"
+    assert got["line"] == 1
+
+
+@pytest.mark.parametrize("words,offered", [
+    ("VIEW:SPELLS TRADE DROP EXIT", False),
+    ("VIEW:TRADE DROP EXIT", False),
+    ("VIEW:ITEMS SPELLS TRADE DROP EXIT", True),
+    ("VIEW:ITEMS EXIT", True),
+])
+def test_a_pool_sheet_offers_items_by_its_words_when_unmeasured(tmp_path, words, offered):
+    game = WordSheetPool(tmp_path, words)
+    d = da.Driver(game, lambda **k: None, "A")
+    d._font = _FONT
+    game.mode = "sheet"
+    assert d.on_pool_sheet(game.capture())
+    assert d.pool_sheet_offers_items(game.capture()) is offered
+
+
+@pytest.mark.parametrize("key,offered", [(k, k not in da.POOL_SHEET_NO_ITEMS)
+                                         for k in da.POOL_SHEET_BARS])
+def test_a_measured_pool_sheet_bar_offers_items_by_its_entry(tmp_path, monkeypatch, key,
+                                                              offered):
+    d = da.Driver(FakePool(tmp_path), lambda **k: None, "A")
+    monkeypatch.setattr(da, "bar_signature", lambda sc: da.POOL_SHEET_BARS[key])
+    assert d.on_pool_sheet(None)
+    assert d.pool_sheet_offers_items(None) is offered
+
+
+def test_the_captured_magic_user_sheet_bar_is_measured_and_reads_as_a_sheet():
+    """MALCYON's sheet (WISH-22 route 6), which a `sheet` step stopped at
+    before any class's bar was taken by its words."""
+    screen = _capture("dos-6", "003-lost-sheet-1-open", "22", ("boot1",), size="320x200!")
+    assert screens.bar_signature(screen) == da.POOL_SHEET_BARS["caster_no_items"]
+    try:
+        font = da.load_font(da.TITLES["pool"].find_game())
+    except FileNotFoundError:
+        pytest.skip("needs the DOS archives ($FR_ARCHIVES)")
+    text = da.text_row(screen, da.BAR_ROW, font).strip()
+    assert text == "VIEW:SPELLS TRADE DROP EXIT"
+    assert da.POOL_SHEET_BAR_TEXT.fullmatch(text)
+
+
 def test_pool_sheet_bars_include_the_npc_entries():
     """The measured digests of an NPC's `VIEW:ITEMS EXIT` bar and an NPC
     caster's `VIEW:ITEMS SPELLS EXIT` bar are in `POOL_SHEET_BARS`."""
@@ -2276,6 +2367,97 @@ def test_a_clock_tick_on_a_turn_is_not_a_changed_square(tmp_path):
     game, d = _pool_walker(tmp_path, tick_on_turn=True)
     got = d.walk("MI")
     assert got["square_before"] != got["square_after"]
+
+
+class StoryMap(PoolMap):
+    """A `PoolMap` whose step can land on `boxes` chained `PRESS
+    <ENTER>/<RETURN> TO CONTINUE` story boxes, each left with `Return`; after
+    the last one the screen is `then` (the map, or a fight)."""
+
+    BARS = {**PoolMap.BARS, "story": b"\x3c\x5b\x7e"}
+
+    def __init__(self, tmp, boxes=1, then="map", **kw):
+        super().__init__(tmp, **kw)
+        self.boxes, self.then = boxes, then
+
+    def key(self, k, gap=0.0):
+        if self.mode == "story":
+            self.keys.append(k)
+            if k == "Return":
+                self.boxes -= 1
+                if not self.boxes:
+                    self.mode = self.then
+            return
+        super().key(k, gap)
+
+
+def _story_walker(tmp_path, monkeypatch, title, boxes=1, then="map"):
+    game = StoryMap(tmp_path, boxes=boxes, then=then)
+    d = da.Driver(game, lambda **k: None, "A", title)
+    d.where = "map"
+    d.world_ink = game.capture().ink(dosbox.BAR)
+    d.world_sig = screens.bar_signature(game.capture())
+    d.game = PoolMovement(game)
+    real = d.game.step
+
+    def step():
+        # The step moves the party and the box covers the bar, so the map
+        # bar `move` waits for never comes back: False, as the game gives.
+        real()
+        game.mode = "story" if game.boxes else game.then
+        return game.mode == "map"
+
+    d.game.step = step
+    monkeypatch.setattr(da, "WALK_CONTINUE_BARS", {
+        title: _screen(StoryMap.BARS["story"], b"").glyphs(dosbox.BAR)})
+    return game, d
+
+
+@pytest.mark.parametrize("title", ["pool", "curse"])
+@pytest.mark.parametrize("boxes", [1, 3])
+def test_a_walk_step_onto_a_story_box_answers_it_and_carries_on(tmp_path, monkeypatch,
+                                                               title, boxes):
+    game, d = _story_walker(tmp_path, monkeypatch, title, boxes=boxes)
+    got = d.walk("MI")
+    assert d.game.keys == ["Right", "Right", "Up"]
+    assert game.keys == ["Return"] * boxes and game.mode == "map"
+    assert got["square_before"] != got["square_after"]
+    assert [(e["kind"], e["step"]) for e in d.events] == [("press_continue", "walk-step")] * boxes
+    assert d.where == "map"
+
+
+def test_a_story_box_that_leads_into_a_fight_still_stops_the_walk(tmp_path, monkeypatch):
+    game, d = _story_walker(tmp_path, monkeypatch, "curse", then="fight")
+    with pytest.raises(da.StepFailed, match="map bar did not return after the step"):
+        d.walk("MI")
+    assert game.keys == ["Return"] and game.mode == "fight"
+
+
+def test_a_step_straight_into_a_fight_presses_nothing(tmp_path, monkeypatch):
+    game, d = _story_walker(tmp_path, monkeypatch, "curse", boxes=0, then="fight")
+    with pytest.raises(da.StepFailed, match="map bar did not return after the step"):
+        d.walk("MI")
+    assert game.keys == []
+
+
+def test_story_boxes_past_the_bound_stop_the_walk(tmp_path, monkeypatch):
+    game, d = _story_walker(tmp_path, monkeypatch, "curse",
+                            boxes=da.WALK_CONTINUE_ROUNDS + 1)
+    with pytest.raises(da.StepFailed, match="still showing after 5 were answered"):
+        d.walk("MI")
+    assert game.keys == ["Return"] * da.WALK_CONTINUE_ROUNDS
+
+
+def test_the_walk_story_bars_are_the_titles_measured_continue_bars():
+    assert da.WALK_CONTINUE_BARS == {"pool": da.POOL_CONTINUE_BAR,
+                                     "curse": da.CURSE_CONTINUE_BAR}
+
+
+def test_the_captured_gharri_story_box_is_the_curse_walk_story_bar():
+    """Route 12's step from 3,14 onto 2,14 in Curse's town, whose box the
+    walk stopped at before it answered story boxes."""
+    screen = _capture("dos-12", "011-lost-walk-step", "22", ("boot1",), size="320x200!")
+    assert screen.glyphs(dosbox.BAR) == da.WALK_CONTINUE_BARS["curse"]
 
 
 def test_a_square_that_changes_on_a_pool_turn_stops_the_walk(tmp_path):
@@ -4442,7 +4624,7 @@ def test_the_name_signature_is_blind_to_the_highlight_colour():
 
 
 def _capture(run: str, name: str, issue: str = "650",
-             sub: tuple[str, ...] = ()) -> dosbox.Screen:
+             sub: tuple[str, ...] = (), size: str | None = None) -> dosbox.Screen:
     import shutil
     import subprocess
 
@@ -4450,7 +4632,8 @@ def _capture(run: str, name: str, issue: str = "650",
     shot = cache_dir("acceptance", issue, run, *sub, "shots", f"{name}.png")
     if not shot.exists() or shutil.which("convert") is None:
         pytest.skip(f"the captured screen {run}/{name} is not on this machine")
-    ppm = subprocess.run(["convert", str(shot), "-depth", "8", "ppm:-"],
+    resize = ["-sample", size] if size else []
+    ppm = subprocess.run(["convert", str(shot), *resize, "-depth", "8", "ppm:-"],
                          check=True, capture_output=True).stdout
     return dosbox.Screen.from_ppm(ppm)
 

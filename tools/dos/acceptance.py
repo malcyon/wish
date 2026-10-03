@@ -66,7 +66,7 @@ a source whose title does not match `--title`:
 | `add NAME` | Pool, first or after another `add`, with no `load`: the party menu (title screens pressed past as `load` does), `ADD CHARACTER TO PARTY` (`a`), the highlight walked with `End` onto the row reading NAME (several words, as `CHARLIST.TXT` lists it), `Return`, believed only when the row redraws as `* NAME`, then `EXIT` (`e`), and NAME required on the party menu's roster.  Each screen is read as text with the title's font before its key and an unknown one stops the run with nothing more pressed; a list longer than one screen is not paged.  Before the boot the save folder is emptied and every exported character of the title's own `SAVE` folder (`.CHA`, `.ITM`, `.SPC`) and its `CHARLIST.TXT` are staged into it, and a NAME that `CHARLIST.TXT` does not list is refused.  A run that begins with `add` takes no `--save`, and then no staging option, `--expect` or `read`; `view N` and `save X` may follow |
 | `view N` | At the party menu, before `begin`.  Pool, after `add`: `End` to line N, `VIEW CHARACTER` (`v`), the sheet read as text (its name row must read line N's name, `encumbrance` is the figure it draws), `ITEMS` when the sheet offers it, the list's title `<NAME>'S ITEMS` checked and each row read as `ready`, `marked` and `name`, and `Escape` twice back.  Pools of Darkness and Silver Blades: `VIEW CHARACTER`, line N at `PICK CHARACTER` with `Down`, `SELECT`.  Curse: `End` to line N on the party menu, then `v`.  The sheet is checked by its name as above (never by a bar); a sheet that draws `(NPC)` two cells after the name (a control byte above 0x7F) is the member's too, read with the title's font, and the result's `header` names it.  `EXIT` returns to the party menu, and only Pools of Darkness pages `ITEMS` |
 | `items N` | Pool, in camp: member N's `ITEMS` list, first screen only, from `End` to the line, `v`, `i`, and `Escape` twice back to camp; refuses a sheet with no `ITEMS`; records `rows` and `marked`, the rows (from 1) drawn with the Detect Magic `* ` |
-| `sheet N` | Pool: member N's sheet from the map (`End` to the line, `v`, `Escape`); needs either measured map bar of `POOL_MAP_BARS` back |
+| `sheet N` | Pool: member N's sheet from the map (`End` to the line, `v`, `Escape`); the sheet is taken on a measured `POOL_SHEET_BARS` bar or, for any class's bar, on its words read as `POOL_SHEET_BAR_TEXT`; needs either measured map bar of `POOL_MAP_BARS` back |
 | `display` | Pool, Curse and Silver Blades, in camp: `MAGIC`, `DISPLAY`, every page of the list of spells in effect read as text with the title's own font (`load_font`), turning with `n` while the bar is ` NEXT EXIT`; `members` is each member's name and the effect names under it, and the list must name every member (Pool's page also six name rows); `Return` or `e` back to the Magic bar (`DISPLAY_LEAVE`) and `e` to camp |
 | `cast N SPELL [T]` | Pool, in camp: roster line N highlighted with `End`, `MAGIC`, `CAST`; the caster's spell list read as text with the title's font (`load_font`), its title checked against line N's name, every row required to read, and SPELL (any memorised spell, as the list spells it; a hyphen reads as a space) required on it; the highlight moved with `End` to SPELL's row, reading it after each press, and `CAST`.  A spell that asks `CAST SPELL ON WHOM` gets T picked with `End` and `Return`; one that asks with no T given stops with nothing more pressed, a target prompt on any other bar stops naming it, and a spell that goes off without asking when T was given fails the step after the cast.  The cast is believed only when the list comes back one SPELL row shorter, or, for the caster's only row, when the Magic bar comes back and `CAST` pressed there twice opens nothing, which is what it does with nothing memorised (a list that does open must not hold SPELL); `EXIT` twice to camp.  Any other screen stops the run with nothing more pressed, `LOSE IT` included |
 | `scribe N SPELL` | Pool, Curse and Silver Blades, in camp: roster line N highlighted (`End` in Pool and Curse, `Down` in Silver Blades), `MAGIC`, `SCRIBE`; the scroll list read as text with the title's font (`load_font`), its title checked against line N's name, and SPELL (several words; a hyphen reads as a space) required on it without the `*` of a spell being scribed; the highlight walked onto SPELL's row with `SCRIBE_LIST_DOWN`, reading it after each press, and `SCRIBE` believed only when that row redraws as `*SPELL`.  Each `SCRIBE` is sent only while the row is highlighted and unmarked, the second only when no text row changed after the first, while it was awaited or on a reading taken after; a changed text row without the mark is the game refusing, and the step fails with the words it drew, while a change outside the text (the camp picture, Silver Blades' pointer) is not one.  A rejection drawn and gone between two readings is not seen, so two presses with neither a mark nor a change fail saying it may have been one.  Then the list's `EXIT`, the chosen spells read (SPELL must be listed `*`), their `EXIT`, `YES` at `SCRIBE THESE SPELLS?` and the Magic bar's `EXIT`, each pressed only at the screen it belongs to.  The party stays camped, so a camp `save` keeps the scribe pending and a `rest` finishes it; that rest's `scribe_pending` says a scribe was pending when it began, which any step outside `SCRIBE_KEEPS` forgets.  Driven in Pool of Radiance; Silver Blades' screens and keys are the hand-driven run's, and Curse's are its strings only |
@@ -76,7 +76,7 @@ a source whose title does not match `--title`:
 | `shot NAME` | one PNG and the screen digests, nothing pressed |
 | `snapshot NAME`, `restore NAME` | DOSBox-X only (`dossnapshot.SnapshotSession`; a run with either step boots it): `snapshot` saves the whole machine under NAME (letters, digits, `-`, `_`); `restore` puts it back and settles, and the `SAVE` files changed since the snapshot are logged and recorded as `changed_saves`, because a game save stays on disk.  A `restore` needs an earlier `snapshot` of that name and no `save` between them; the run stops before boot otherwise.  Each is in `run.jsonl` and `summary.json`.  Random encounters stay on |
 | `press KEY` | one X keysym (`Down`, `Return`, `t`), then a settle and a PNG; capture only, so only `press`, `shot` and `read` may come after it |
-| `walk MI`, `walk I`, `walk 1` | Pool and Curse (`MI`): turn right twice at the map bar and step one square.  Pool (`I`): step one square forward without turning.  Silver Blades and Pools of Darkness (`1`): press MOVE, step one square turning right past a wall, and leave move mode (`e` in Silver Blades, `Escape` in Pools of Darkness) back to the map bar.  A step is believed only when the `x,y` on the status line changes (never the clock beside it), a blank line is never the starting reading, and a run with a walk fails unless `read` shows the last saved slot's place differs from the installed one |
+| `walk MI`, `walk I`, `walk 1` | Pool and Curse (`MI`): turn right twice at the map bar and step one square.  Pool (`I`): step one square forward without turning.  Silver Blades and Pools of Darkness (`1`): press MOVE, step one square turning right past a wall, and leave move mode (`e` in Silver Blades, `Escape` in Pools of Darkness) back to the map bar.  In Pool and Curse a `PRESS <ENTER>/<RETURN> TO CONTINUE` story box the step lands on is answered with `Return`, `WALK_CONTINUE_ROUNDS` boxes at most, each logged as `press_continue`; combat or any other screen still stops the walk.  A step is believed only when the `x,y` on the status line changes (never the clock beside it), a blank line is never the starting reading, and a run with a walk fails unless `read` shows the last saved slot's place differs from the installed one |
 | `turn N` | N from 1 to 4: the walk's control.  Silver Blades and Pools of Darkness press MOVE first and leave move mode after; N `Right` presses, each reading the `x,y` square, which a turn must leave alone (`lost-walk-turn`); the party stays on the map for `camp`, `save D` and `read`.  A run with `turn` and no `walk` fails unless `read` shows the saved place unchanged ("did not move") |
 | `fight`, `fight 900` | Curse and Silver Blades, from the map: walk (Silver Blades in move mode) preferring squares not yet stood on (`Explorer`) until a fight starts, answer each bar by `FIGHT_KEYS` (`COMBAT`, `QUICK`, `EXIT` at the treasure and at a locked door, which the walk then marks walled, `NO` at `YES NO`, `Return` to continue), and end on the map once its bar has held `FIGHT_SETTLED` seconds; the number bounds walk and fight, in seconds (`FIGHT_SECONDS`).  At each command bar the debugger names who acts (`bar` in `run.jsonl`); at the first it logs `placement`, every combatant's square, side, quickfight and control (`COMBAT_LAYOUTS`), and `--first-bar-key KEY` is pressed there once instead of `QUICK`, the next bar logging every record again as `after-first-bar-key`.  A Silver Blades fight in area 16 is refused unless the gate `$4C2D` is 1, since a successful wandering roll there is a compliment: add `--stage-var 4C2D=1`.  With `--intervene` (Silver Blades only) the game starts as `START.EXE X Gem` (`CHEAT_ARGS`) and Alt+X, the game's own end-the-fight key, is pressed once at the bar after the first-bar key, or at the first bar without one; a command bar coming back stops the run (`fight-intervene`).  The defeat screen (`PARTY_DESTROYED`) stops it at once (`fight-destroyed`).  A second `fight` in the boot follows `camp`, `save X` and `leave`, or another `fight`; the first-bar key and Alt+X are the first fight's only, each result names its fight by number, and every later fight presses `SPACE` once at its first combat screen (`HAND_BACK`: a command bar, or a blank or unclassified bar once combat has begun -- the encounter menu answered, the placement read, or the combat window changed from what the last fight left and reading as a fight, probed at most every `COMBAT_PROBE_SECONDS`), because `QUICK` survives into the next fight, logging every combatant's quickfight just before it (`before-hand-back`) and recording `handed_back`, `handed_back_to` and `before_hand_back`.  A run with a `fight` boots DOSBox-X (`dosboxx.XSession`) rather than DOSBox 0.74 |
 | `prayer-watch 49`, `prayer-watch 35` | Pool (35 and 49), Curse and Silver Blades (49), from the map, `load` first, with each title's addresses (`dosfightwatch.PRAYER_LAYOUTS`).  Pool walks to an encounter (`walk_to_encounter`) and arms at the encounter menu; Curse and Silver Blades walk as `fight` does (Silver Blades' area 16 needs `--stage-var 4C2D=1` here too) and arm at the first command bar, once `placement` is logged and `QUICK` pressed there.  At that point it reads every member's effect nodes and Prayer's handler table, breaks on the id-49 stub (and Pool's id-35 stub) and the attack roll's stub (Pool's `08D2:003E`, the table's segment less the Prayer unit plus the attack unit), arm the list-10 call and its return at the segment that stub's far jump names, re-arming when a stub hit shows a new one, arm the handler, bonus test, +1 helper and penalty at the overlay segment the stub's far jump names once it loads, answer each bar (Pool by `COMBAT_KEYS`, Curse and Silver Blades by `FIGHT_KEYS`), and log each halt as `prayer-halt`: registers, 16 bytes at `SS:SP`, the four-frame `BP` chain, combatant name and side, the node's five bytes and the two roll bytes the +1 helper raises (Pool's `DS:0x6816` and `DS:0x6822`).  A party attack is a list-10 call halt with a side-0 attacker, closed by that attacker's next return halt.  For id 49 the step stops after one party attack whose own helper or penalty halt fell inside it, and in Curse and Silver Blades only once a monster's attack has also reached the penalty (`monster_penalties`), which a conclusive run there needs (only a list-10 penalty, an attack, counts as a monster's attack; a saving-throw penalty, list 12, does not; and a later round replaces an ally's round until a member carrying the node has completed one); for id 35 three completed pairs with no Prayer stub halt inside them are a conclusive result, and the step stops after the third.  It also stops when the map has held `FIGHT_SETTLED` seconds, at the defeat screen (Curse and Silver Blades), or after `PRAYER_FIGHT_SECONDS`; the step fails if the menu or first command bar came more than `PRAYER_BOOT_SECONDS` after the driver was made (Pool's walk is bounded by its 40 steps, the other two's by `FIGHT_SECONDS`, and both by the run's `--deadline`).  The result is `conclusive: False`, and the run exits 2 with `inconclusive` in `summary.json` rather than `lost` or `completed`, when no member carried the node at the menu or at the stop, an armed or halted routine's code did not match `GAME.OVR`, the stop-time party was not read, or, for id 49, no party attack armed at the stubs ran its helper or penalty (the first call loads the overlay before its routines are armed, so a round needs a later attack).  Only `shot`, `press` and `read` may follow |
@@ -374,14 +374,22 @@ POOL_MAP_BARS: dict[str, str] = {"town": "809e2e1cc9504b5b",
 #: sheet offers no TRADE or DROP: `npc_items` is `VIEW:ITEMS EXIT` (an NPC
 #: fighter, several captures across DOSBox runs of the pooled `dosbox.conf`
 #: on the town map) and `npc_caster` is `VIEW:ITEMS SPELLS EXIT` (an NPC
-#: magic-user, one capture).  A caster carrying nothing
-#: (`VIEW:SPELLS TRADE DROP EXIT`, presumably) is not measured and would
-#: still stop a `sheet` step.
+#: magic-user, one capture).  `caster_no_items` is `VIEW:SPELLS TRADE DROP
+#: EXIT`, a magic-user carrying nothing (MALCYON, one capture).  A bar not
+#: measured here is still a sheet's when its words, read with the title's
+#: font, are `POOL_SHEET_BAR_TEXT` (`Driver.on_pool_sheet`), so a class whose
+#: bar has no digest here does not stop a `sheet` or `items` step.
 POOL_SHEET_BARS: dict[str, str] = {"no_items": "33ad531ed78cfa70",
                                    "items": "95afa0d95cd09ab7",
                                    "caster": "49958cda77bfdd82",
+                                   "caster_no_items": "84c7653e93c251c1",
                                    "npc_caster": "740a10d0bc93a12a",
                                    "npc_items": "90b53c9e64947226"}
+#: The `POOL_SHEET_BARS` entries whose bar offers no `ITEMS`.
+POOL_SHEET_NO_ITEMS = ("no_items", "caster_no_items")
+#: Every Pool sheet bar read as text: `VIEW:`, the class's own words, `EXIT`.
+#: All six measured bars read this way with the title's font.
+POOL_SHEET_BAR_TEXT = re.compile(r"VIEW:(?:\S.* )?EXIT")
 POOL_ROSTER_NEXT = "End"
 #: Where Pool's `ITEMS` list draws the Detect Magic mark, `* ` between the
 #: READY column and the name: text column 7 (x 56) of each row, from y 40, one
@@ -554,6 +562,15 @@ POOL_CONTINUE_BAR = next(digest for width, digest, label in dosbox.PoolOfRadianc
 #: How many continue screens `press_continue_screens` answers for Curse's
 #: BEGIN and rest before it gives up.
 CONTINUE_ROUNDS = 3
+#: The `PRESS <ENTER>/<RETURN> TO CONTINUE` story box a `walk` step can land
+#: on, by title: Curse shows one at 2,14 in the town (`GHARRI WAS SEEN JUST
+#: OUTSIDE OF TOWN`), over `CURSE_CONTINUE_BAR`.  The box offers nothing but
+#: `Return`, and whatever follows it is judged as the step's own screen.
+WALK_CONTINUE_BARS: dict[str, str] = {"pool": POOL_CONTINUE_BAR,
+                                      "curse": CURSE_CONTINUE_BAR}
+#: How many chained story boxes a `walk` step answers before it gives up.
+#: Not measured past one box; the bound only keeps a stuck screen from looping.
+WALK_CONTINUE_ROUNDS = 5
 #: How many Pool's load answers before it gives up.  A party that has never
 #: taken Rolf's opening tour (clock zero at area 0, 15,1, as any party made in
 #: the Amiga or C64 game is) loads into the whole tour: eight chained screens,
@@ -3370,7 +3387,7 @@ class Driver:
     def press_continue_screens(self, screen, bar, label, rounds=None):
         """Return past `bar`'s `PRESS <ENTER>/<RETURN> TO CONTINUE` screens, one
         at a time, at most `rounds` (default `CONTINUE_ROUNDS`), shared by
-        Curse's BEGIN and Pool's load.
+        Curse's BEGIN, Pool's load and a `walk` step.
 
         Nothing is pressed when `bar` is not showing, so a screen that has
         already advanced is untouched.  Each Return pressed is recorded in
@@ -3699,6 +3716,18 @@ class Driver:
                         "status": status, "square": square})
         return status, square
 
+    def press_walk_stories(self, label: str) -> dosbox.Screen:
+        """Return past the title's `WALK_CONTINUE_BARS` story boxes a step
+        landed on, `WALK_CONTINUE_ROUNDS` at most, each logged as
+        `press_continue`; returns the settled screen after them.  Nothing is
+        pressed on any other screen, so combat or an unknown screen is left
+        for the caller to stop at."""
+        screen = self.s.settle(quiet=0.6, timeout=30.0)
+        bar = WALK_CONTINUE_BARS.get(self.title.key)
+        if bar is None:
+            return screen
+        return self.press_continue_screens(screen, bar, label, WALK_CONTINUE_ROUNDS)
+
     def walk(self, route: str) -> dict:
         """From the loaded Pool or Curse map, turn around and step one square.
 
@@ -3706,6 +3735,8 @@ class Driver:
         the clock on the same line ticks on a wall's bump, and a line drawn
         for the first time differs from a blank one, so the whole strip says
         nothing about a step.  A blank line is never the starting reading.
+        A story box the step lands on is answered with `Return`
+        (`press_walk_stories`) before the map bar is looked for.
         """
         if self.title.key in MOVE_KEYS and self.where == "map" and route == "1":
             return self._walk_one()
@@ -3732,7 +3763,9 @@ class Driver:
             if square != origin:
                 raise self.fail(f"walk-turn-{n}", "the square changed on a turn "
                                 "(or the status line went blank)")
-        if not self.game.step():
+        stepped = self.game.step()
+        screen = self.press_walk_stories("walk-step")
+        if not stepped and not self.on_world(screen):
             raise self.fail("walk-step", "the map bar did not return after the "
                             "step (combat or an unknown screen)")
         after, square = record("walk-step")
@@ -5123,6 +5156,32 @@ class Driver:
             raise self.fail(label, f"the camp bar never came back after "
                             f"{tries} presses of Exit")
 
+    def pool_sheet_words(self, screen) -> str | None:
+        """Pool's sheet bar on `screen` read with the title's font, when it
+        reads as `POOL_SHEET_BAR_TEXT`; None for any other bar, or when the
+        font cannot be read."""
+        try:
+            font = self.display_font()
+        except StepFailed:
+            return None
+        text = text_row(screen, BAR_ROW, font).strip()
+        return text if POOL_SHEET_BAR_TEXT.fullmatch(text) else None
+
+    def on_pool_sheet(self, screen) -> bool:
+        """Whether `screen` shows a Pool sheet bar: a measured
+        `POOL_SHEET_BARS` digest, or any class's bar by its words."""
+        return (bar_signature(screen) in POOL_SHEET_BARS.values()
+                or self.pool_sheet_words(screen) is not None)
+
+    def pool_sheet_offers_items(self, screen) -> bool:
+        """Whether Pool's sheet bar on `screen` offers `ITEMS`: by its
+        `POOL_SHEET_BARS` entry when measured, else by its words."""
+        sig = bar_signature(screen)
+        known = [k for k, v in POOL_SHEET_BARS.items() if v == sig]
+        if known:
+            return not set(known) & set(POOL_SHEET_NO_ITEMS)
+        return "ITEMS" in (self.pool_sheet_words(screen) or "").replace(":", " ").split()
+
     def pool_sheet(self, line: int) -> dict:
         """Pool: roster line `line`'s sheet from the map, shot, and back on the
         map bar.  Only `End`, `v` and `Escape` are pressed, and the highlight
@@ -5138,7 +5197,7 @@ class Driver:
         if not name:
             raise self.fail(f"sheet-{line}-name", f"roster line {line} has no name drawn")
         self.s.key(VIEW)
-        if not self.s.wait_for(lambda sc: bar_signature(sc) in POOL_SHEET_BARS.values(), 15.0):
+        if not self.s.wait_for(self.on_pool_sheet, 15.0):
             raise self.fail(f"sheet-{line}-open", "VIEW did not open the sheet bar")
         screen = self.s.settle(quiet=0.8, timeout=30.0)
         # An NPC's sheet draws ` (NPC)` after the name, so the name is
@@ -5250,7 +5309,7 @@ class Driver:
         if not name:
             raise self.fail(f"{label}-name", f"roster line {line} has no name drawn")
         self.s.key(VIEW)
-        if not self.s.wait_for(lambda sc: bar_signature(sc) in POOL_SHEET_BARS.values(), 15.0):
+        if not self.s.wait_for(self.on_pool_sheet, 15.0):
             raise self.fail(f"{label}-open", "VIEW did not open the sheet bar")
         screen = self.s.settle(quiet=0.8, timeout=30.0)
         count = min(len(name) + 1, POD_NAME_CELLS)
@@ -5258,7 +5317,7 @@ class Driver:
         got = _cell_digest(_cells(screen, *POD_SHEET_NAME, count))
         checked = self.check_sheet(screen, line, want, f"{label}-name", got=got)
         sheet_bar = bar_signature(screen)
-        if sheet_bar == POOL_SHEET_BARS["no_items"]:
+        if not self.pool_sheet_offers_items(screen):
             raise self.fail(f"{label}-sheet", f"roster line {line}'s sheet offers no ITEMS")
         self.shot(f"{label}-sheet")
         self.s.key(SHEET_ITEMS)
