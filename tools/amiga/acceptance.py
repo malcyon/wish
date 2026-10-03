@@ -71,6 +71,7 @@ from tools.amiga.route_pool import (  # noqa: E402
 from tools.amiga.route_silver_blades import (  # noqa: E402
     ACCEPT_ROUTE,
     CAMP_SAVE_LETTER,
+    LOAD_MESSAGE,
     MENU_SAVE_LETTER,
     ROUTE,
     SILVER_BLADES_INTERSTITIALS,
@@ -846,6 +847,7 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
         displays = result.get("camp_displays", [])
         result["read"]["verdicts"].extend(_camp_verdicts(sheets))
         result["read"]["verdicts"].extend(_display_verdicts(displays))
+        result["read"]["verdicts"].extend(_join_verdicts(result.get("camp_joins", [])))
         # A sheet with neither bar is a member with no HEAL to show, such as a ranger; a
         # `heal` step's own sheets are states that must match, so HEAL is never read that way.
         # An effects list is read by its identity rule, so one without a rule reads nothing.
@@ -858,6 +860,8 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
                     f"{shown} sheet(s) recorded after the last rest" if shown > 0
                     else "no sheet was recorded after the last rest, so the rest is unproven"))
             rest = bool(rest and shown > 0)
+    if "load_message" in result:
+        result["read"]["verdicts"].append(_load_message_verdict(result["load_message"]))
     d_ok = bool(result.get("walk", {}).get("d_ok"))
     result["success"] = rest and d_ok
     walk = result.get("walk", {})
@@ -881,6 +885,33 @@ def _display_verdicts(displays: list[dict[str, Any]]) -> list[str]:
         "matches the identity rule cut for this party" if entry["identity_checked"]
         else "has no identity rule, so nothing checked what it lists")
         for entry in displays]
+
+
+def _join_verdicts(joins: list[dict[str, Any]]) -> list[str]:
+    """One line per JOIN the run pressed: the message a rule matched, and whose rows followed."""
+    lines = []
+    for entry in joins:
+        if entry.get("message"):
+            said = f"JOIN answered {route_camp.JOIN_MESSAGES[entry['message']]!r}"
+        elif entry.get("messages_ruled"):
+            said = "no JOIN message rule matched"
+        else:
+            said = "the guard map holds no JOIN message rule, so the message line was not read"
+        joined = entry.get("joined")
+        rows = "" if joined is None else "; the redrawn list " + (
+            "matches the identity rule cut for this party" if joined["identity_checked"]
+            else "has no identity rule, so nothing checked its rows")
+        lines.append(f"{entry.get('shot', 'a join')}: {said}{rows}")
+    return lines
+
+
+def _load_message_verdict(entry: dict[str, Any]) -> str:
+    """Whether SCROLLS DROPPED! was drawn after the load, or why it was not read."""
+    if not entry["guarded"]:
+        return "the guard map holds no SCROLLS DROPPED! rule, so the load message was not read"
+    if entry["shown"]:
+        return f"SCROLLS DROPPED! was drawn after the load ({entry['shot']})"
+    return f"SCROLLS DROPPED! was not drawn on any of {entry['grabs']} grabs after the load"
 
 
 def _camp_verdicts(sheets: list[dict[str, Any]]) -> list[str]:
@@ -1383,6 +1414,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     if counter is not None:
         result["rulebook"] = []
     landed: dict[str, Any] = {"state": None}
+    # Silver Blades' loader may print SCROLLS DROPPED! as it loads, so its load is watched.
+    silver_blades = title is None or published_name == "ssb"
     if accept and answer is None and journal_python is not None:
         answer = functools.partial(run_journal_answer, journal_python)
     claimed = start_attempted = copied = stopped = False
@@ -1452,6 +1485,27 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             raise RouteError(IDENTITY_MESSAGES.get(
                 state, f"{state} shows a party other than the prepared party"))
 
+    #: The message rules tested on every grab while one state is reached, and the first that
+    #: matched, kept under its own name because the next grab overwrites the crop.
+    messages: dict[str, Any] = {"watch": (), "seen": None, "shot": None, "grabs": 0}
+
+    def watch_messages(states: tuple[str, ...]) -> None:
+        messages.update(watch=states, seen=None, shot=None, grabs=0)
+
+    def look_for_messages(crop: pathlib.Path, name: str) -> None:
+        if not messages["watch"]:
+            return
+        messages["grabs"] += 1
+        if messages["seen"] is not None:
+            return
+        for state in messages["watch"]:
+            if _has_rule(guard, state) and guard(state, crop):
+                kept = shots / f"{name}-{state}.png"
+                shutil.copyfile(crop, kept)
+                messages.update(seen=state, shot=str(kept))
+                log("message", state=state, name=name, shot=str(kept))
+                return
+
     def observe(state: str, name: str, crop: pathlib.Path) -> None:
         """Record a camp screen: whether a sheet offers HEAL, and whose identity rule was checked.
 
@@ -1467,6 +1521,21 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             entry = {"state": state, "shot": name, "identity_checked": _has_rule(identity, state)}
             result.setdefault("camp_item_lists", []).append(entry)
             log("camp_item_list", **entry)
+            return
+        if route_camp.is_join(state):
+            # The message is whatever a message rule matched on this grab or an earlier one.
+            entry = {"state": state, "shot": name, "message": messages["seen"],
+                     "message_shot": messages["shot"],
+                     "messages_ruled": [m for m in route_camp.JOIN_MESSAGES
+                                        if _has_rule(guard, m)]}
+            result.setdefault("camp_joins", []).append(entry)
+            log("camp_join", **entry)
+            return
+        if route_camp.is_joined(state):
+            entry = {"state": state, "shot": name,
+                     "identity_checked": _has_rule(identity, state)}
+            result.setdefault("camp_joins", [{}])[-1]["joined"] = entry
+            log("camp_joined", **entry)
             return
         if not route_camp.is_sheet(state):
             return
@@ -1623,6 +1692,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         while True:
             digest = capture(name, check=False, settle=False)
             if digest:
+                look_for_messages(crop, name)
                 hit = recognise(state, crop, done)
                 if hit:
                     check_identity(hit, crop)
@@ -1845,8 +1915,28 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     first_wait = min_waits.get(state, POST_WRITE_WAIT)
                 else:
                     first_wait = min_waits.get(state, 0)
+                loading = (silver_blades and kind == "key" and state == "loaded_menu"
+                           and previous_state == "load_picker")
+                if loading:
+                    watch_messages((LOAD_MESSAGE,))
+                elif route_camp.is_join(state):
+                    watch_messages(tuple(route_camp.JOIN_MESSAGES))
                 digest = reach(state, name, first_wait,
                                strict=not accept or state in strict_states)
+                if loading:
+                    guarded = _has_rule(guard, LOAD_MESSAGE)
+                    result["load_message"] = {
+                        "state": LOAD_MESSAGE, "guarded": guarded, "grabs": messages["grabs"],
+                        "shown": (messages["seen"] is not None) if guarded else None,
+                        "shot": messages["shot"]}
+                    log("load_message", **result["load_message"])
+                watch_messages(())
+                if route_camp.is_join(state):
+                    # JOIN's message is gone after its delay; the list it redrew is read now.
+                    after = route_camp.joined_after(state)
+                    reach(after, f"{n:02d}-{after}",
+                          min_waits.get(after, route_camp.JOINED_WAIT),
+                          strict=not accept or after in strict_states)
                 if (key, state, previous_state) == (
                         route_camp.REST_GO, route_camp.CAMP, route_camp.REST_MENU):
                     # A sheet counts as showing a rest's result only if it comes after it.

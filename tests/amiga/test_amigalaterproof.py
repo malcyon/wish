@@ -555,3 +555,71 @@ def test_the_flag_is_refused_on_a_save_that_is_not_silver_blades(
                         amiga_port.CURSE_DELTAS)
     with pytest.raises(SystemExit):
         _award_diff(monkeypatch, capsys, _AWARDS, "ssb")
+
+
+# ---------------------------------------------------------------------------
+# A party over the Silver Blades loader's joined-scroll limit
+# ---------------------------------------------------------------------------
+
+def _over_limit_inputs(tmp_path, bundles: int):
+    """A DOS Silver Blades member holding `bundles` joined scrolls of ten, composed from the
+    documented format by `tests/convert/test_joinedscroll.py`, and a synthetic Amiga disk
+    whose slot A the build rebuilds."""
+    from goldbox import amiga_savegame
+    from goldbox.amiga_adf import AmigaDisk
+    from tests.amiga.test_amiga_savegame import _synthetic
+    from tests.convert.test_joinedscroll import SCROLL_A, _joined, _read
+
+    source = tmp_path / "dos"
+    source.mkdir()
+    _read(source, b"".join(_joined(*[SCROLL_A] * 10) for _ in range(bundles)), bundles)
+    disk = AmigaDisk.blank("Secret 1")
+    disk.make_dir("/SAVE")
+    disk.write_file("/SAVE/savgamA.sav", _synthetic(amiga_savegame.SILVER_BLADES, ("ALPHA",)))
+    into = tmp_path / "into.adf"
+    disk.save(into)
+    return source, into
+
+
+def _build(source, into, out, *flags):
+    return proof.main(["build", "--source", str(source), "--into", str(into),
+                       "--out", str(out), *flags])
+
+
+def _joined_in(out) -> int:
+    from goldbox import amiga_savegame
+    from goldbox.amiga_adf import AmigaDisk
+    save = amiga_savegame.read_slot(AmigaDisk(bytearray(out.read_bytes())), "A",
+                                    amiga_savegame.SILVER_BLADES)
+    return amiga_later.joined_scroll_count(save.characters)
+
+
+def test_a_build_over_the_joined_scroll_limit_stops_as_save_as_does(tmp_path):
+    source, into = _over_limit_inputs(tmp_path, 13)
+    out = tmp_path / "run.adf"
+    with pytest.raises(SystemExit, match="hold 130 scrolls .* keeps 120; --over-joined-limit"):
+        _build(source, into, out)
+    assert not out.exists()
+
+
+def test_over_joined_limit_writes_the_party_whole_and_puts_the_limit_back(tmp_path, capsys):
+    source, into = _over_limit_inputs(tmp_path, 13)
+    out = tmp_path / "run.adf"
+    assert _build(source, into, out, "--over-joined-limit") == 0
+    assert _joined_in(out) == 130
+    assert "130 scrolls in joined scrolls" in capsys.readouterr().out
+    assert amiga_later.AMIGA_SSB_JOINED_SCROLL_LIMIT == 120
+
+
+def test_a_build_at_the_limit_needs_no_flag(tmp_path):
+    source, into = _over_limit_inputs(tmp_path, 12)
+    out = tmp_path / "run.adf"
+    assert _build(source, into, out) == 0
+    assert _joined_in(out) == 120
+
+
+def test_the_limit_is_put_back_when_the_build_fails(tmp_path):
+    source, into = _over_limit_inputs(tmp_path, 13)
+    with pytest.raises(SystemExit, match="--out must not be --into"):
+        _build(source, into, into, "--over-joined-limit")
+    assert amiga_later.AMIGA_SSB_JOINED_SCROLL_LIMIT == 120

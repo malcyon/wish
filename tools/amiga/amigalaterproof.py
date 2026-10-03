@@ -35,6 +35,12 @@ engine itself recomputes on load -- `#402 (Amiga Curse recomputes
 thac0_current and a roster_tail byte on load, and no declared list says
 so)` is the run that put `thac0_current` and one `roster_tail` byte there.
 
+`build` stops, as Save As does, at a party whose joined scrolls hold more
+scrolls than the Silver Blades loader keeps
+(`goldbox.amiga_later.AMIGA_SSB_JOINED_SCROLL_LIMIT`). `--over-joined-limit`
+writes such a party anyway, for the run that measures that limit: it raises the
+constant inside this process only, for the length of the build.
+
 `tools/amiga/porslotdiff.py` is the Pool of Radiance equivalent and does not fit
 these two, whose party lives inside the saved game rather than in `CHRDAT`
 files beside it.  Every input is opened read-only and `--out` is required.
@@ -43,6 +49,7 @@ files beside it.  Every input is opened read-only and `--out` is required.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import pathlib
 import sys
 
@@ -342,6 +349,30 @@ def compare_effects(name: str, ours: tuple[bytes, ...],
 # build
 # ---------------------------------------------------------------------------
 
+#: More scrolls than any party can hold in joined scrolls (8 members, 16 items, 10 scrolls
+#: each), so `--over-joined-limit` leaves nothing in this process that stops at the limit.
+OVER_JOINED_LIMIT = 8 * 16 * 10
+
+
+@contextlib.contextmanager
+def joined_limit(over: bool):
+    """`amiga_later.AMIGA_SSB_JOINED_SCROLL_LIMIT` raised past any party while `over` holds.
+
+    Only for a run that measures the Silver Blades loader's limit: a save written
+    this way is one the loader is expected to cut short. The constant is put
+    back afterwards, so nothing outside this process, and nothing after the
+    build within it, sees the raised value.
+    """
+    if not over:
+        yield
+        return
+    kept = amiga_later.AMIGA_SSB_JOINED_SCROLL_LIMIT
+    amiga_later.AMIGA_SSB_JOINED_SCROLL_LIMIT = OVER_JOINED_LIMIT
+    try:
+        yield
+    finally:
+        amiga_later.AMIGA_SSB_JOINED_SCROLL_LIMIT = kept
+
 def reorder(built: list, first: str | None) -> list:
     """The converted party with one character moved to the front."""
     if first is None:
@@ -356,9 +387,21 @@ def reorder(built: list, first: str | None) -> list:
 
 
 def do_build(args) -> int:
+    with joined_limit(args.over_joined_limit):
+        return _build(args)
+
+
+def _build(args) -> int:
     built = amigalaterwrite.convert(
         amigalaterwrite.party_from(args.source))
     built = reorder(built, args.first)
+    # The Save As writer stops at the loader's limit, and so does this, unless the run is
+    # the one that measures the limit.
+    held = amiga_later.joined_scroll_count([c for _n, c, _r in built])
+    limit = amiga_later.AMIGA_SSB_JOINED_SCROLL_LIMIT
+    if held > limit:
+        raise SystemExit(f"the party's joined scrolls hold {held} scrolls and the Silver "
+                         f"Blades loader keeps {limit}; --over-joined-limit writes it anyway")
     for _char, character, report in built:
         print(amigalaterwrite.describe(character, report))
         if report.unaccounted:
@@ -381,7 +424,7 @@ def do_build(args) -> int:
     disk.write_file(target, rebuilt)
     disk.save(args.out)
     print(f"\n{args.out}: {target}, {len(rebuilt)} bytes, "
-          f"{len(built)} characters")
+          f"{len(built)} characters, {held} scrolls in joined scrolls")
     for n, (_c, character, _r) in enumerate(built):
         print(f"  {n + 1}. {character.name.strip():<16} "
               f"items {len(character.items):>2}  "
@@ -497,6 +540,9 @@ def main(argv: list[str] | None = None) -> int:
     build.add_argument("--first",
                        help="a character to move to the front of the party")
     build.add_argument("--out", required=True, type=pathlib.Path)
+    build.add_argument("--over-joined-limit", action="store_true",
+                       help="write a party holding more scrolls in joined scrolls than the "
+                            "Silver Blades loader keeps, for the run that measures the limit")
 
     diff = sub.add_parser("diff", help="our party against the engine's resave")
     diff.add_argument("--ours", required=True, type=pathlib.Path)

@@ -66,9 +66,10 @@ def test_pool_takes_only_items_for_a_line_the_party_has(text, why):
         route_camp.validate_steps(tuple(text.split(";")), 4, name="pool")
 
 
-@pytest.mark.parametrize("name", ["ssb", "curse", "darkness"])
+@pytest.mark.parametrize("name", ["curse", "darkness"])
 def test_items_is_refused_for_a_title_whose_item_routine_is_unread(name):
-    with pytest.raises(RouteError, match="item list is built for Pool of Radiance only"):
+    with pytest.raises(RouteError,
+                       match="item list is built for Pool of Radiance and Silver Blades only"):
         route_camp.parse_steps("items 2", name)
 
 

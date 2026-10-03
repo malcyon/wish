@@ -294,6 +294,12 @@ ROUTE = (
 MIN_WAIT_OVERRIDES = {"load_picker": 20.0, "loaded_menu": 20.0}
 DEFAULT_MIN_WAIT = 15.0
 
+#: The guard state for the message line showing `SCROLLS DROPPED!`. `/Secret`'s loader prints
+#: it (`026B88`, through `01D4E0`, which prints, waits for the game speed's delay and leaves
+#: the line as it is) when it threw away a joined scroll that took the party past 120 scrolls
+#: (`0269C2`). The accept route tests it on every grab while it waits for the loaded menu.
+LOAD_MESSAGE = "scrolls_dropped"
+
 # The two saves the accept route writes, on slots the game's own disk never ships.
 MENU_SAVE_LETTER = "B"
 CAMP_SAVE_LETTER = "D"

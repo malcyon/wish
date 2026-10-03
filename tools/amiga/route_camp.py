@@ -131,10 +131,45 @@ takes only `items N`, which shows the item list of the member on line N:
   key is `E` or ESC (`01B82A`), and the sheet routine then redraws the sheet
   (`01B6E8`) and reads its bar again.
 
+Silver Blades' `/Secret` (file offsets) takes `items N` and `join N I` beside
+its other camp steps:
+
+* **The sheet** offers `Items` only while the member's item list at `+0xFE` is
+  not empty (`022B3C`), so, as in Pool of Radiance, the sheet `V` reaches before
+  `I` is its own guarded state whose rule is the bar with that word on it.
+* **The item routine** `022F12` lists the chain at `+0xFE` under `Ready Item`
+  (`023152`) through the list viewer `02A938`. Its bar always carries `Join`
+  (`023066`); `Halve` only below 16 items (`023040`), and `Sell` and `Id` only
+  in a shop. The key switch at `023508` reads `D` to `U`, and `J` runs JOIN
+  (`023B02`) on the highlighted item, which starts on the first one
+  (`022F2E`), then redraws the list (`0234AC`). `E` or ESC returns to the
+  sheet (`022F40`). Which key moves the highlight is not
+  read: `join N I` presses `ITEM_NEXT` (NP2, the `$84` that moves the camp
+  highlight and the picker) `I - 1` times, and every press waits for a state of
+  its own, so an identity rule cut with row I highlighted shows where it went.
+* **JOIN** answers on the message line through `01A088`, which prints, waits
+  for the game speed's delay (`01D53A`, one of 0 to 5000 from the table at
+  data `+0x235E`, in units not measured) and clears the line again (`0293AA`): so a message is on screen
+  only for that delay. In order it answers `Bundles are limited to %d
+  scrolls.` when the highlighted joined scroll holds 10 (`023B28`), `Too many
+  Bundles!` when the party's joined scrolls (`023AC8`, every member from
+  `g5168` along `+0x13A`) and this member's loose scrolls come to more than 120
+  (`023BBA`), and `There are no similar items to join with.` when fewer than
+  two scrolls can join (`023BCE`). An item that is not a scroll goes to the
+  stacking branch, which answers `That cannot be joined with other items.` for
+  one with no quantity (`023D80`). A JOIN on a scroll that works prints
+  nothing: it folds every loose scroll and every joined scroll that still fits
+  into the highlighted one, up to 10 (`023C64`-`023D72`).
+
+`join N I` opens line N's item list, highlights row I, presses `J`, grabs the
+screen at once for the message, then settles on the redrawn list, and leaves
+through the sheet. `JOIN_MESSAGES` names the guard states the driver tests on
+every grab of that first state.
+
 `items N` reads no record byte: whether the rows on screen are the member's
 own is the identity rule cut for the run's party, as for a sheet. Every camp
-state an `items` step waits for is strict, so a screen its guard does not
-recognise stops the run before the next key.
+state an `items` or `join` step waits for is strict, the camp bar included, so
+a screen its guard does not recognise stops the run before the next key.
 """
 
 from __future__ import annotations
@@ -180,9 +215,25 @@ DISPLAY_TITLES = frozenset({"curse"})
 #: the last and back (Curse `0237CA` and `01BF56`-`01BF8A`, Pool of Radiance's highlight
 #: `01CBD4`), so a later line may be reached backwards.
 WRAPS = frozenset({"curse", "pool"})
-#: The titles whose sheet and item routine have been read, so `items N` may name them; their
-#: other camp steps are not built.
-ITEMS_TITLES = frozenset({"pool"})
+#: The titles whose sheet and item routine have been read, so `items N` may name them.
+ITEMS_TITLES = frozenset({"pool", "ssb"})
+#: The titles whose only camp step is `items N`: their other camp steps are not built.
+ITEMS_ONLY = frozenset({"pool"})
+#: The titles whose JOIN routine has been read, so `join N I` may name them.
+JOIN_TITLES = frozenset({"ssb"})
+JOIN = "J"
+#: The key `join N I` presses to move the item list's highlight down one row (see above).
+ITEM_NEXT = "NP2"
+#: The most rows an item list holds: a member carries at most 16 items.
+ITEM_ROWS = 16
+#: The guard states the driver tests on every grab right after `J`, each the message line
+#: showing one of JOIN's answers.
+JOIN_MESSAGES = {
+    "join_limited": "Bundles are limited to %d scrolls.",
+    "join_too_many": "Too many Bundles!",
+    "join_no_similar": "There are no similar items to join with.",
+    "join_cannot": "That cannot be joined with other items.",
+}
 
 CAMP = "camp"
 SHEET = "camp_sheet"
@@ -201,11 +252,22 @@ ITEMS_SHEET = "camp_sheet_items"
 #: The camp save the published route presses next, which the camp steps go before.
 CAMP_SAVE_STEP = ("S", "camp_save_picker", "key")
 
+#: The screen right after `J`, for party line 1, grabbed at once for JOIN's message;
+#: `join_state` names the others.
+JOIN_LIST = "camp_join"
+#: The item list redrawn after JOIN, for party line 1; `joined_state` names the others.
+JOINED_LIST = "camp_joined"
+
 MIN_WAITS = {SHEET: 10.0, SHEET_HEAL: 10.0, SHEET_SPENT: 15.0, HEAL_WHOM: 10.0,
              REST_MENU: 5.0, MAGIC_MENU: 5.0, DISPLAY: 10.0, ITEMS_LIST: 10.0,
              ITEMS_SHEET: 10.0,
              **{f"{state}_{n}": 10.0 for state in (ITEMS_LIST, ITEMS_SHEET)
                 for n in range(2, PARTY_MAX + 1)}}
+#: Seconds after the first grab past `J` before the redrawn list is settled on, so JOIN's
+#: message delay has run out. How long the speed table's longest delay lasts is not measured.
+JOINED_WAIT = 10.0
+#: Seconds to wait for a highlight move to be drawn.
+ROW_WAIT = 5.0
 #: Seconds the camp bar may take to come back after a rest, beyond the game's own pace.
 REST_LIMIT = 900.0
 #: A rest this long or longer can land on the clock a run with no rest would show.
@@ -229,9 +291,55 @@ def items_state(line: int) -> str:
     return ITEMS_LIST if line == 1 else f"{ITEMS_LIST}_{line}"
 
 
+def items_row_state(line: int, row: int) -> str:
+    """Party line `line`'s item list with row `row` highlighted, both counted from 1."""
+    return items_state(line) if row == 1 else f"{items_state(line)}_row{row}"
+
+
+def join_state(line: int) -> str:
+    """The screen right after `J` on party line `line`'s item list, grabbed for the message."""
+    return JOIN_LIST if line == 1 else f"{JOIN_LIST}_{line}"
+
+
+def joined_state(line: int) -> str:
+    """Party line `line`'s item list as JOIN redrew it, settled on after the message."""
+    return JOINED_LIST if line == 1 else f"{JOINED_LIST}_{line}"
+
+
+_LINE = "(?:_[2-9])?"
+_ROW = "(?:_row(?:[2-9]|1[0-6]))?"
+
+
 def is_items(state: str) -> bool:
     """Whether `state` is a camp item list, whose rows are read by its identity rule."""
-    return state == ITEMS_LIST or re.fullmatch(rf"{ITEMS_LIST}_[2-9]", state) is not None
+    return re.fullmatch(rf"{ITEMS_LIST}{_LINE}{_ROW}", state) is not None
+
+
+def is_join(state: str) -> bool:
+    """Whether `state` is the grab right after `J`, on which JOIN's message is looked for."""
+    return re.fullmatch(rf"{JOIN_LIST}{_LINE}", state) is not None
+
+
+def is_joined(state: str) -> bool:
+    """Whether `state` is the item list JOIN redrew, whose rows are read by its identity rule."""
+    return re.fullmatch(rf"{JOINED_LIST}{_LINE}", state) is not None
+
+
+def joined_after(state: str) -> str:
+    """The redrawn list that follows join state `state`."""
+    if not is_join(state):
+        raise RouteError(f"{state!r} is not a join state")
+    return JOINED_LIST + state[len(JOIN_LIST):]
+
+
+def _min_wait(state: str) -> float:
+    if is_join(state):
+        return 0.0
+    if is_joined(state):
+        return JOINED_WAIT
+    if is_items(state) and "_row" in state:
+        return ROW_WAIT
+    return MIN_WAITS.get(state, 10.0)
 
 
 def is_sheet(state: str) -> bool:
@@ -269,8 +377,8 @@ def rest_presses(minutes: int) -> tuple[int, int, int]:
 
 
 def sheet_lines(name: str) -> tuple[tuple[int, ...], tuple[int, ...]]:
-    """The party lines `view N` and `heal N` may name for title `name`; none in `ITEMS_TITLES`."""
-    if name in ITEMS_TITLES:
+    """The party lines `view N` and `heal N` may name for title `name`; none in `ITEMS_ONLY`."""
+    if name in ITEMS_ONLY:
         return (), ()
     try:
         return SHEET_LINES[name], HEAL_LINES[name]
@@ -303,6 +411,13 @@ def _step_line(words: list[str]) -> int | None:
     return int(words[1]) if words[1].isdigit() else None
 
 
+def _join_place(words: list[str]) -> tuple[int, int] | None:
+    """The party line and item row a `join N I` token names, else None."""
+    if words[0] != "join" or len(words) != 3 or not all(w.isdigit() for w in words[1:]):
+        return None
+    return int(words[1]), int(words[2])
+
+
 def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
                    name: str = "ssb") -> None:
     """Refuse a camp step list the route cannot drive for title `name`.
@@ -314,13 +429,15 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
     `rest DURATION` rests that long, and `display` shows the effects list (only
     for a title in `DISPLAY_TITLES`). A `heal` whose sheet does not offer HEAL
     fails the run at that sheet, since its guard is the bar with the word on it.
-    `items` or `items N` shows the item list of party line N (1 when left out),
-    and is the only step a title in `ITEMS_TITLES` takes.
+    `items` or `items N` shows the item list of party line N (1 when left out;
+    only for a title in `ITEMS_TITLES`), and is the only step a title in
+    `ITEMS_ONLY` takes. `join N I` presses JOIN on row I of line N's item list
+    (only for a title in `JOIN_TITLES`).
     """
     view_lines, heal_lines = sheet_lines(name)
     if not tokens:
         raise RouteError("the camp step list is empty")
-    if name in ITEMS_TITLES:
+    if name in ITEMS_ONLY:
         _validate_items(tokens, party_size)
         return
     healed = False
@@ -332,10 +449,31 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
             healed = True
         elif token.startswith("rest "):
             healed = False
+    lines_held = min(party_size, PARTY_MAX)
     for token in tokens:
         words = token.split()
         if words[0] == "items":
-            raise RouteError(f"{token!r}: the item list is built for Pool of Radiance only")
+            if name not in ITEMS_TITLES:
+                raise RouteError(f"{token!r}: the item list is built for Pool of Radiance "
+                                 f"and Silver Blades only")
+            line = _step_line(words)
+            if line is None:
+                raise RouteError(f"camp step {token!r} is not items or items N")
+            if not 1 <= line <= lines_held:
+                raise RouteError(f"{token!r}: the party has lines 1 to {lines_held} only")
+            continue
+        if words[0] == "join":
+            if name not in JOIN_TITLES:
+                raise RouteError(f"{token!r}: JOIN is built for Silver Blades only")
+            place = _join_place(words)
+            if place is None:
+                raise RouteError(f"camp step {token!r} is not join N I")
+            line, row = place
+            if not 1 <= line <= lines_held:
+                raise RouteError(f"{token!r}: the party has lines 1 to {lines_held} only")
+            if not 1 <= row <= ITEM_ROWS:
+                raise RouteError(f"{token!r}: an item list has rows 1 to {ITEM_ROWS} only")
+            continue
         line = _step_line(words)
         if line is not None:
             lines = tuple(n for n in (view_lines if words[0] == "view" else heal_lines)
@@ -354,8 +492,10 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
             if name not in DISPLAY_TITLES:
                 raise RouteError("'display': the effects list is built for Curse only")
             continue
+        also = (", nor items N" if name in ITEMS_TITLES else "") + (
+            " or join N I" if name in JOIN_TITLES else "")
         raise RouteError(f"camp step {token!r} is not view, view N, heal, heal N, "
-                         f"rest DURATION or display")
+                         f"rest DURATION or display{also}")
     if rest_minutes(tokens) >= CLOCK_BLIND_REST:
         last_rest = max(i for i, t in enumerate(tokens) if t.startswith("rest "))
         if not any(t.split()[0] in ("view", "heal") for t in tokens[last_rest + 1:]):
@@ -382,7 +522,7 @@ def normalise(tokens: tuple[str, ...]) -> tuple[str, ...]:
     """Each step in one spelling, so two spellings build one route.
 
     `view` becomes `view 1`, `items` becomes `items 1`, `heal 1` becomes
-    `heal`, and a rest time becomes its minutes.
+    `heal`, and a rest time becomes its minutes; `join N I` is already one spelling.
     """
     out = []
     for token in tokens:
@@ -453,6 +593,16 @@ def steps_for(tokens: tuple[str, ...], name: str = "ssb", party_size: int | None
                       (ITEMS, items_state(line), "key"),
                       (SHEET_EXIT, items_sheet_state(line), "key"), (SHEET_EXIT, CAMP, "key")]
             steps += back
+        elif words[0] == "join":
+            line, row = int(words[1]), int(words[2])
+            there, back = _moves(line, name, party_size, CAMP)
+            steps += there
+            steps += [(VIEW, items_sheet_state(line), "key"), (ITEMS, items_state(line), "key")]
+            steps += [(ITEM_NEXT, items_row_state(line, n), "key") for n in range(2, row + 1)]
+            # The driver settles on `joined_state(line)` after this grab, before `E` goes out.
+            steps += [(JOIN, join_state(line), "key"),
+                      (SHEET_EXIT, items_sheet_state(line), "key"), (SHEET_EXIT, CAMP, "key")]
+            steps += back
         elif words[0] == "display":
             steps += [(CAMP_MAGIC, MAGIC_MENU, "key"), (MAGIC_DISPLAY, DISPLAY, "key"),
                       (DISPLAY_EXIT, MAGIC_MENU, "key"), (MAGIC_EXIT, CAMP, "key")]
@@ -474,11 +624,11 @@ def camp_title(title: AmigaTitle, tokens: tuple[str, ...], party_size: int = PAR
 
     The camp states are not strict: a screen the guard map lacks is settled and
     marks the run as measuring, so one boot can capture them all, and the camp
-    save's own strict picker still stops the run before any write. For a title in
-    `ITEMS_TITLES` they are strict instead, the camp bar included, so every key
-    of an `items` step goes out on a screen its guard recognised. A kept slot
-    letter the rest menu uses as a key (`A`, for a source loaded from slot D)
-    becomes a simple key on the rest menu only.
+    save's own strict picker still stops the run before any write. The states of
+    an `items` or `join` step are strict instead, the camp bar and each list JOIN
+    redraws included, so every key of those steps goes out on a screen its guard
+    recognised. A kept slot letter the rest menu uses as a key (`A`, for a source
+    loaded from slot D) becomes a simple key on the rest menu only.
     """
     validate_steps(tokens, party_size, name=name)
     route = list(title.route)
@@ -496,9 +646,11 @@ def camp_title(title: AmigaTitle, tokens: tuple[str, ...], party_size: int = PAR
     limits = dict(title.wait_limits)
     if rest_minutes(tokens):
         limits[CAMP] = max(limits.get(CAMP, 0.0), REST_LIMIT)
-    strict = title.strict
-    if name in ITEMS_TITLES:
-        strict = strict | {CAMP} | {state for _, state, _ in added}
+    item_tokens = tuple(t for t in normalise(tokens) if t.split()[0] in ("items", "join"))
+    item_states = {state for _, state, _ in steps_for(item_tokens, name, party_size)}
+    item_states |= {joined_after(state) for state in item_states if is_join(state)}
+    strict = title.strict | ({CAMP} | item_states if item_states else set())
+    waits = {state: _min_wait(state) for state in item_states}
     return dataclasses.replace(
         title, route=tuple(route), plain_keys=simple, strict=frozenset(strict),
-        min_waits={**title.min_waits, **MIN_WAITS}, wait_limits=limits)
+        min_waits={**title.min_waits, **MIN_WAITS, **waits}, wait_limits=limits)
