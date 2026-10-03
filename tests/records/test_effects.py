@@ -2987,3 +2987,22 @@ def test_a_tied_expiry_ends_on_the_base_in_either_slot_direction(ascending):
         got = _c64_scores([(2 + (n.id == 12), held[n.id], rows[n.id])
                            for n in nodes], ascending)
         assert got == [(held[38], effects._pool_strength_value(_ACTIVE))]
+
+
+@pytest.mark.parametrize("title, eid, words", [
+    (_C, 13, ("`$1F40`", "`$124F`", "`$F976`")),
+    (_C, 58, ("`$1F53`", "`$25CF`", "`$124F`")),
+    (_C, 137, ("`$2191`", "`$124F`", "`$F976`")),
+    (_C, 144, ("`$25D2`", "`$25A5`", "`$124F`")),
+    (_S, 107, ("`$26E2`", "`$1242`", "`$F619`")),
+    (_S, 55, ("`$11FD`", "`$183A`", "`$13AC`")),
+    (_C, 128, ("`$9929`", "`$82E9`", "`$834C`")),
+    (_S, 128, ("`$9465`", "`$8337`", "`$839A`")),
+])
+def test_ids_no_c64_save_holds_say_where_they_are_written_and_removed(
+        title, eid, words):
+    got = effects.dos_record(title, effects.Effect(0, eid, 0, 1, 1), 0)
+    assert isinstance(got, effects.Unconverted)
+    assert got.reason.startswith("no rule yet, and none is needed")
+    for word in words:
+        assert word in got.reason

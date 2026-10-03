@@ -889,7 +889,7 @@ between fights, so this is a question about what survives the end of one.
 | DOS Silver Blades | No. The end-of-fight strip and the removal when the holder leaves combat both take 11 off | CONFIRMED from code; the demo skip below PROBABLE |
 | DOS Curse | No, for the same reasons | CONFIRMED from code; the same caveat |
 | DOS Pool | Yes, by one route: a party caster charms another party member, whose side stays the party's under computer control (quickfight 1, control `0xB3`), and the party wins. Nothing removes the duration-0 node until he leaves a later fight or is dispelled. A monster's charm cannot reach a save: while its target stands the other side is never empty (resident `0x2F7B`), knocking him out removes the node (`0x2BDF0`), and fleeing leaves him behind (`0x5C2B`-`0x5C68`) | PROBABLE: nobody has read whether spell 10's target picker offers an ally |
-| C64, all three | No. Curse and Silver Blades sweep every combatant at the end of combat, and Pool's `POST.COM $14FB` deletes the row of every occupied roster slot | CONFIRMED for the sweeps' content, PROBABLE that every way a fight ends reaches them |
+| C64, all three | No. Curse and Silver Blades sweep every combatant at the end of combat, and Pool's `POST.COM $14FB` deletes the row of every occupied roster slot | CONFIRMED for the sweeps' content. CONFIRMED for Curse and Silver Blades that every way a fight ends reaches them: win, wipe-out, all members fled and CONTINUE BATTLE answered no each pass the fight-over test (Curse COMBAT2 `$F962`-`$F96A`, Silver Blades `$F605`-`$F60D`) before the title's one store to `$7F11`; COMBAT, COMBAT2, ECL64 and POST.COM hold no save or load code. Pool's `POST.COM $14FB` half is PROBABLE |
 
 **A second charm on a charmed target, and a charm with no free row.**
 CONFIRMED from code unless graded; static reads, nothing booted. Evidence:
@@ -1463,8 +1463,12 @@ magnitude (Pool `$18E3`, Curse `$18AC`, Silver Blades `$192F`). Both later
 duration 1 and owner `$7EB4`. Curse `COMBAT $1F40`, `$1F53` and `$25D2`
 select ids 13, 58 and 144 for its writer. The two-entry id tables at Curse
 `COMBAT $2197` and Silver Blades `$26E8` select 27/137 and 27/107 for
-their generic writers, with duration 1. Their gameplay triggers and whether
-combatant-index owners can be party members remain unestablished.
+their generic writers, with duration 1. The triggers are the engulf routine
+`$1F13` (monster trait 57), the grab routine `$25A5` (trait 96) and
+Confusion's outcome. Every row they write is removed by the end-of-fight sweep
+(`$124F` in Curse, `$1242` in Silver Blades), so no save holds one. Whether a
+monster carrying trait 57 or 96 meets the party was not traced to a monster
+record.
 
 **CONFIRMED post-combat cleanup:** Pool `POST.COM $212E` strips ids 21, 29,
 30, 51–54, 58–60 and 95. Curse `$2142` strips 21, 29–31, 51–53 and 58.
@@ -1488,18 +1492,19 @@ be a monster. Each id is listed with why its sample row has no rule.
 | Pool of Radiance | 32 | A table entry whose handler is not followed to a row write, and no DOS writer is read for it. |
 | Pool of Radiance | 33, 51 | A duration-0 row converts as a granted record; no C64 cast writes a running row. |
 | Pool of Radiance | 35, 49 | Prayer converts only as a party-wide row; an owned row has no rule. |
-| Curse of the Azure Bonds | 13 | The C64 id is the engulf countdown, whose magnitude is a combatant index. |
-| Curse of the Azure Bonds | 128 | A table entry whose handler is not followed to a row write, and no DOS writer is read for it. |
+| Curse of the Azure Bonds | 13 | The engulf countdown, whose magnitude is a combatant index. Written on the attacked combatant by COMBAT `$1F40`, inside the trait-57 handler `$1F13`. The end-of-fight sweep COMBAT `$124F` (list `$1273`) removes it, so no save holds one. |
+| Curse of the Azure Bonds | 128 | No C64 writer. Camp row 51 (ECL65 `$9929`) has handler `$82E9`, which never reaches the camp writer `$80EE` (callers `$819F`, `$81AF`, `$834C`), and no combat row or immediate writes 128. |
 | Curse of the Azure Bonds | 68 | Feeblemind's duration-0 row converts as a granted record; the C64 holds INT at 3 and WIS at its permanent score, and DOS and the Amiga hold both at 3. A timed row has no rule, because no C64 cast writes one. |
 | Curse of the Azure Bonds | 33 | A duration-0 row converts as a granted record; a running row has no rule. |
 | Curse of the Azure Bonds | 49 | Prayer converts only as a party-wide row; an owned row has no rule. |
-| Curse of the Azure Bonds | 58, 144 | A literal `COMBAT` call writes it; what triggers the call is not read. |
-| Curse of the Azure Bonds | 137 | Confusion's outcome node, written by a literal `COMBAT` call; its record changes are not converted. |
+| Curse of the Azure Bonds | 58, 144 | 58 is the "already held" lock, written by engulf (COMBAT `$1F53`, duration 9) and grab (`$25CF`, duration 0), each only when the target holds no 58. 144 is the grabber's hold, written on the attacker by the grab routine `$25A5` (the trait-96 handler, COMBAT `$25D2`) at duration 0. Both are on the sweep list `$1273`, and POST.COM `$2142` also strips 58, so no save holds one. |
+| Curse of the Azure Bonds | 137 | Confusion's outcome node, written at duration 1 by COMBAT `$2191` through the generic writer, whose `$118E` keeps one row per id and owner. The sweep list `$1273` removes it, so no save holds one; its record changes are not converted. |
 | Secret of the Silver Blades | 33, 51 | A duration-0 row converts as a granted record; a running row has no rule. |
 | Secret of the Silver Blades | 49 | Prayer converts only as a party-wide row; an owned row has no rule. |
-| Secret of the Silver Blades | 55 | A table entry whose handler is not followed to a row write, and no DOS writer is read for it. |
+| Secret of the Silver Blades | 55 | No C64 writer leaves a running row. The writer `$11FD` gets duration 0 (X = 0 at `$1827`) and `$183A` removes the row; only `$13AC`, with all ten trait slots full, writes `(55, owner, 0, $7F)`, at duration 0. |
 | Secret of the Silver Blades | 68 | Feeblemind's duration-0 row converts as a granted record; the C64, DOS and the Amiga hold INT and WIS at 3. A timed row has no rule, because no C64 cast writes one. |
-| Secret of the Silver Blades | 107 | Confusion's outcome node, written by a literal `COMBAT` call; its record changes are not converted. |
+| Secret of the Silver Blades | 107 | Confusion's outcome node, written at duration 1 by COMBAT `$26E2` through the generic writer, with the one-per-owner check `$118B`. COMBAT `$1242` (list COMBAT2 `$F296`) removes it from `$F60D`, before the fight's only exit `$F619`, so no save holds one; its record changes are not converted. |
+| Secret of the Silver Blades | 128 | No C64 writer. Camp row 51 (ECL65 `$9465`) has handler `$8337`, which never reaches the camp writer `$80EE` (callers `$819F`, `$81AF`, `$839A`), and no combat row or immediate writes 128. |
 
 **Feeblemind (68), Curse and Silver Blades.** The C64 writes `level | $80` at
 duration 0 (`COMBAT $1D61`, Silver Blades `$2227`) and lowers the scores in

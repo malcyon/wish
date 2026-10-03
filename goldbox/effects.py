@@ -485,6 +485,52 @@ POOL_UNWRITTEN_ROW_IDS = frozenset({13, 51})
 _BLADES = "secret-of-the-silver-blades"
 _CURSE = "curse-of-the-azure-bonds"
 
+#: Why a Curse or Silver Blades row of these ids has no DOS rule: no save holds
+#: one, so none is needed. The "no rule yet" opening is the marker
+#: `tools/c64/effectcrosswalk.py` counts these ids by.
+_FIGHT_ONLY = ("no rule yet, and none is needed: {writer}, only in a fight. "
+               "The end-of-fight sweep {sweep} removes it from every "
+               "combatant with a nonzero status before the fight's only exit "
+               "{exit}, so the C64 never saves one")
+_CURSE_SWEEP = ("COMBAT `$124F` (list `$1273`), run from COMBAT2 `$F96A`")
+_CURSE_EXIT = "COMBAT2 `$F976` (program 5)"
+_NO_C64_WRITER_128 = ("no rule yet, and none is needed: no C64 writer makes "
+                      "an id-128 row. No combat row or immediate writes it, "
+                      "and camp row 51 (ECL65 {row}) has handler {handler}, "
+                      "which never reaches the camp writer `$80EE` (callers "
+                      "{callers})")
+UNSAVED_ROW_REASONS = {
+    (_CURSE, 13): _FIGHT_ONLY.format(
+        writer="engulf writes it (COMBAT `$1F40`, inside the trait-57 "
+               "handler `$1F13`)",
+        sweep=_CURSE_SWEEP, exit=_CURSE_EXIT),
+    (_CURSE, 58): _FIGHT_ONLY.format(
+        writer="engulf (COMBAT `$1F53`) and grab (`$25CF`) write it",
+        sweep=_CURSE_SWEEP, exit=_CURSE_EXIT),
+    (_CURSE, 137): _FIGHT_ONLY.format(
+        writer="Confusion's outcome writes it (COMBAT `$2191`)",
+        sweep=_CURSE_SWEEP, exit=_CURSE_EXIT),
+    (_CURSE, 144): _FIGHT_ONLY.format(
+        writer="the grab routine `$25A5` (the trait-96 handler) writes it "
+               "(COMBAT `$25D2`)",
+        sweep=_CURSE_SWEEP, exit=_CURSE_EXIT),
+    (_BLADES, 107): _FIGHT_ONLY.format(
+        writer="Confusion's outcome writes it (COMBAT `$26E2`)",
+        sweep="COMBAT `$1242` (list COMBAT2 `$F296`), run from `$F60D`",
+        exit="COMBAT2 `$F619` (program 5)"),
+    (_BLADES, 55): ("no rule yet, and none is needed: no C64 writer leaves a "
+                    "running id-55 row. The writer `$11FD` gets duration 0 "
+                    "(X = 0 at `$1827`) and `$183A` removes the row; only "
+                    "`$13AC`, with all ten trait slots full, writes "
+                    "(55, owner, 0, `$7F`), at duration 0"),
+    (_CURSE, 128): _NO_C64_WRITER_128.format(
+        row="`$9929`", handler="`$82E9`",
+        callers="`$819F`, `$81AF` and `$834C`"),
+    (_BLADES, 128): _NO_C64_WRITER_128.format(
+        row="`$9465`", handler="`$8337`",
+        callers="`$819F`, `$81AF` and `$839A`"),
+}
+
 #: Giant Strength, the effect of DOS spell 59 and C64 combat spell 59: Silver
 #: Blades' id 113 (C64 camp row 39) and Curse's 146 (the Potion of Giant
 #: Strength; DOS writes the id as an immediate, `GAME.OVR:0x31FB8`). DOS writes
@@ -1013,7 +1059,8 @@ def _value_node(title_key: str, effect_id: int,
         return bonus, 1
     if title_key == "pool-of-radiance" and effect_id in POOL_UNWRITTEN_ROW_IDS:
         return Unconverted(f"no C64 cast writes a running id-{effect_id} row")
-    return Unconverted("no rule yet for this id in this title")
+    reason = UNSAVED_ROW_REASONS.get((title_key, effect_id))
+    return Unconverted(reason or "no rule yet for this id in this title")
 
 
 def dos_record(title_key: str, row: "Effect",
