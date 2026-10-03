@@ -323,6 +323,8 @@ class LiveVariables:
         self.ds: int | None = None
         self.base: int | None = None
         self.found: dict = {}
+        #: The array pointer as `SEG:OFF`, from the latest read.
+        self.pointer: str | None = None
         self.block = b""
         self.area_byte = 0
 
@@ -343,7 +345,9 @@ class LiveVariables:
             if why is None:
                 if self.ds is None:
                     self.found = {"ds": f"{ds:04X}", "base": f"{self.base:#x}",
-                                  "tries": len(tried) + 1}
+                                  "tries": len(tried) + 1,
+                                  "pointer": self.pointer,
+                                  "area": self.area_byte}
                 self.ds = ds
                 return self
             tried.append(f"DS {ds:04X}: {why}")
@@ -364,6 +368,7 @@ class LiveVariables:
         if seg == 0 or base + 2 * BLOCK_WORDS > 0x100000:
             return f"the array pointer reads {seg:04X}:{off:04X}"
         self.base = base
+        self.pointer = f"{seg:04X}:{off:04X}"
         self.block = self.s.read(base, 2 * BLOCK_WORDS)
         why = self.check()
         if why is None and not any(self.block):
@@ -434,6 +439,8 @@ class NoEncounters:
         self.writes: list[dict] = []
         #: How many moves found the party in each area.
         self.areas: dict[int, int] = {}
+        #: How many times a restore re-armed the switch.
+        self.resets = 0
 
     def on(self) -> None:
         self.switch.on()
@@ -444,6 +451,7 @@ class NoEncounters:
         would otherwise look like a change by the game."""
         self.switch.held.clear()
         self.switch.on()
+        self.resets += 1
 
     def before_move(self) -> list[dict]:
         """Write the gate; a no-op while the switch is off."""
@@ -464,6 +472,24 @@ class NoEncounters:
 
     def check_save(self) -> None:
         self.switch.check_save()
+
+    def report(self) -> dict:
+        """What the switch read and wrote, for a run's `summary.json`: the
+        pointer and area read on load, each gate write, the areas the moves
+        were made in, and what yielded or was left unsuppressed."""
+        found = self.live.found
+        return {
+            "pointer": found.get("pointer"),
+            "area_on_load": found.get("area"),
+            "data_segment": found.get("ds"),
+            "writes": [{"area": w["area"], "address": w["address"],
+                        "before": w["was"], "after": w["wrote"]}
+                       for w in self.writes if "wrote" in w],
+            "areas": {f"${a:02X}": n for a, n in sorted(self.areas.items())},
+            "unsuppressed_moves": self.switch.unsuppressed_moves,
+            "yielded": sorted(f"${a:04X}" for a in self.switch.yielded),
+            "resets": self.resets,
+        }
 
 
 class SuppressedPool(dosbox.PoolOfRadiance):
@@ -541,6 +567,33 @@ def later_load(por: dosbox.PoolOfRadiance, letter: str) -> None:
         s.key(acc.POD_CONTINUE)
         screen = s.settle(quiet=1.0, timeout=60.0)
     por.record_map(screen)
+
+
+def install_slot(folder: Path, save_dir: Path, source: str | None) -> str:
+    """Install the slot `source` of `folder` (the only one, when None) into
+    `save_dir`, as `acceptance.run` does, and return its letter."""
+    from tools.dos import staging
+
+    slot = staging.source_slot(folder, source)
+    return staging.install(folder, save_dir, slot, source)["as_slot"]
+
+
+def load_title(title: str, s, por: dosbox.PoolOfRadiance, enc: NoEncounters,
+               letter: str) -> None:
+    """Load slot `letter` and reach the map, by the title's own path: Pool's
+    `load_game`, Silver Blades' `acceptance.Driver` load and begin, and
+    Curse's `later_load`."""
+    if title == POOL:
+        por.to_main_menu()
+        por.load_game(letter)
+    elif title == SILVER:
+        from tools.dos import acceptance as acc
+
+        d = acc.Driver(s, lambda **kw: None, letter, "ssb", encounters=enc)
+        d.load()
+        d.begin()
+    else:
+        later_load(por, letter)
 
 
 def later_answer(por: dosbox.PoolOfRadiance,
@@ -654,8 +707,7 @@ def live(title: str, folder: Path, steps: int, out: Path,
                 return str(dest)
 
             s.stage(fresh=True)
-            letter = staging.install(folder, s.save_dir,
-                                     staging.source_slot(folder, source))["as_slot"]
+            letter = install_slot(folder, s.save_dir, source)
             report["staged"] = [staging.stage_var(s.save_dir, letter, a, v)
                                 for a, v in stage]
             save = s.save_file(letter).read_bytes()
@@ -675,11 +727,7 @@ def live(title: str, folder: Path, steps: int, out: Path,
 
             started = time.time()
             s.boot(fresh=False)
-            if title == POOL:
-                por.to_main_menu()
-                por.load_game(letter)
-            else:
-                later_load(por, letter)
+            load_title(title, s, por, enc, letter)
             report["boot_seconds"] = round(time.time() - started, 1)
             shot("loaded")
             # The engine's pointer, found from the memory image and the save,

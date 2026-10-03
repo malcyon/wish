@@ -101,8 +101,9 @@ proves a conversion.**  It boots DOSBox-X and, through
 every move key of a `walk`, `turn` or `fight`; the gates are saved variables, so
 a `save` step stops the run while the switch is on.  `--speculative-encounters`
 allows Silver Blades, whose offsets were not read in a running game.
-`summary.json` records `no_encounters: true`.  Without the flag random
-encounters stay on and nothing is written.
+`summary.json` records `no_encounters: true` and a `no_encounters_report` of
+the switch's reads and writes.  Without the flag random encounters stay on and
+nothing is written.
 
 **The load route is read from the code.**  `LOAD SAVED GAME` (`GAME.OVR`
 0x12887) asks `load from where?` over `Pools Secret Exit`: `Pools` is this
@@ -6388,12 +6389,15 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
     summary: dict = {"title": args.title, "slot": args.slot.upper(),
                      "steps": args.steps, **git, "completed": False}
     no_encounters = bool(getattr(args, "no_encounters", False))
+    encounters = None
     if no_encounters:
         summary["no_encounters"] = True
     note(event="start", out=str(out), **summary)
 
     def write_summary():
         summary["elapsed_seconds"] = round(clock() - deadline.begun, 1)
+        if encounters is not None:
+            summary["no_encounters_report"] = encounters.report()
         (out / "summary.json").write_text(json.dumps(summary, indent=2))
 
     save = pathlib.Path(args.save) if args.save else None
@@ -6524,7 +6528,6 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
             summary["installed"] = took
             summary["staged"] = staged
             note(event="staged", **took, stages=staged)
-            encounters = None
             if no_encounters:
                 installed_save = (session.save_dir
                                   / f"SAVGAM{letter}{title.suffix}")

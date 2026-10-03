@@ -405,3 +405,85 @@ def test_a_combat_bar_after_press_return_is_a_fight_and_stops_the_walk(monkeypat
 def test_the_map_after_press_return_is_cleared(monkeypatch):
     por, keys = answering(monkeypatch, [("map", None)])
     assert N.pool_answer(por) == ("cleared", "press_return")
+
+
+def test_report_holds_the_pointer_area_writes_areas_unsuppressed_yielded_and_resets():
+    block = saved_block()
+    x = StubX(machine(block), [DS, DS, DS])
+    enc = N.NoEncounters(x, N.POOL, b"\x01" + block, log=lambda line: None)
+    enc.on()
+    enc.before_move()
+    x.memory[BASE + 2 * (GATE - 0x4900)] = 4      # a restore: the original is back
+    enc.reset()
+    enc.before_move()
+    report = enc.report()
+    assert report["pointer"] == f"{BASE >> 4:04X}:{BASE & 0xF:04X}"
+    assert report["area_on_load"] == SLUMS
+    assert report["areas"] == {f"${SLUMS:02X}": 2}
+    assert report["writes"] == [
+        {"area": SLUMS, "address": f"${GATE:04X}", "before": 4, "after": 15}] * 2
+    assert report["unsuppressed_moves"] == 0
+    assert report["yielded"] == []
+    assert report["resets"] == 1
+
+
+def test_report_lists_a_gate_the_game_took_back_as_yielded():
+    block = saved_block()
+    x = StubX(machine(block), [DS])
+    enc = N.NoEncounters(x, N.POOL, b"\x01" + block, log=lambda line: None)
+    enc.on()
+    enc.before_move()
+    x.memory[BASE + 2 * (GATE - 0x4900)] = 9      # the game writes the gate
+    enc.before_move()
+    report = enc.report()
+    assert report["yielded"] == [f"${GATE:04X}"]
+    assert len(report["writes"]) == 1
+
+
+def test_install_slot_names_the_source_and_the_letter_separately(tmp_path, monkeypatch):
+    from tools.dos import staging
+
+    seen = {}
+    monkeypatch.setattr(staging, "source_slot",
+                        lambda folder, wanted=None: wanted.upper())
+
+    def install(save, save_dir, letter, source=None):
+        seen.update(letter=letter, source=source)
+        return {"as_slot": letter}
+
+    monkeypatch.setattr(staging, "install", install)
+    assert N.install_slot(tmp_path, tmp_path, "d") == "D"
+    assert seen == {"letter": "D", "source": "d"}
+
+
+
+
+def test_silver_blades_loads_through_the_acceptance_driver_not_curses_path(monkeypatch):
+    from tools.dos import acceptance
+
+    calls = []
+
+    class Driver:
+        def __init__(self, session, note, slot, title, **kw):
+            calls.append(("driver", slot, title, kw["encounters"]))
+
+        def load(self):
+            calls.append("load")
+
+        def begin(self):
+            calls.append("begin")
+
+    monkeypatch.setattr(acceptance, "Driver", Driver)
+    monkeypatch.setattr(N, "later_load",
+                        lambda por, letter: calls.append("later_load"))
+    marker = object()
+    N.load_title(N.SILVER, object(), object(), marker, "D")
+    assert calls == [("driver", "D", "ssb", marker), "load", "begin"]
+
+
+def test_curse_still_loads_through_later_load(monkeypatch):
+    calls = []
+    monkeypatch.setattr(N, "later_load",
+                        lambda por, letter: calls.append(("later_load", letter)))
+    N.load_title(N.CURSE, object(), object(), object(), "B")
+    assert calls == [("later_load", "B")]

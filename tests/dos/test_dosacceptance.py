@@ -10792,6 +10792,9 @@ def test_the_flag_goes_with_a_title_that_has_a_switch_and_into_the_summary(
         def on(self):
             made.append("on")
 
+        def report(self):
+            return {"pointer": "2F00:0010", "writes": [], "resets": 0}
+
     log = _fake_run(monkeypatch, tmp_path, menu_error=TimeoutError("no menu"))
     monkeypatch.setattr(da.dosnoencounters, "NoEncounters", Switch)
     monkeypatch.setattr(da.dosboxx, "claim", dosbox.claim)
@@ -10803,6 +10806,8 @@ def test_the_flag_goes_with_a_title_that_has_a_switch_and_into_the_summary(
     assert made == [("pool-of-radiance", None, False), "on"]
     summary = json.loads((tmp_path / "out" / "summary.json").read_text())
     assert summary["no_encounters"] is True
+    assert summary["no_encounters_report"] == {
+        "pointer": "2F00:0010", "writes": [], "resets": 0}
 
 
 def _real_switch(words, area=0x14):
@@ -10829,7 +10834,7 @@ def _real_switch(words, area=0x14):
     enc.switch = da.dosnoencounters.EncounterSwitch(
         da.dosnoencounters.POOL, enc.live.peek, enc.live.poke, enc.live.area,
         lambda line: None)
-    enc.writes, enc.areas = [], {}
+    enc.writes, enc.areas, enc.resets = [], {}, 0
     return enc
 
 
