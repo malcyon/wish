@@ -15,7 +15,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from tools.curse_of_the_azure_bonds import cursewheel, doscurse  # noqa: E402
 
-SECRET = "Z"
+SECRET = "QXJ7"
 
 
 class FakeSession:
@@ -23,10 +23,14 @@ class FakeSession:
         self.dir = tmp_path
         (tmp_path / "shots").mkdir()
         self.keys: list[str] = []
+        self.fail = False
 
     def shot(self, name):
         path = self.dir / "shots" / f"{name}.png"
         path.write_bytes(b"")
+        (self.dir / "shots" / f"{name}-big.png").write_bytes(b"")
+        if self.fail:
+            raise RuntimeError("blank")
         return path
 
     def key(self, *keys):
@@ -60,14 +64,14 @@ def test_wheel_types_the_answer_then_return(tmp_path, monkeypatch):
     assert seen == [(4, 3, 4, 1)]
     log = (tmp_path / "c.log").read_text()
     assert "answered" in log
-    assert SECRET not in log.replace("wheel", "")
+    assert SECRET not in log
     assert not list((tmp_path / "shots").glob("*.png"))
 
 
 def test_wheel_stops_when_no_challenge_is_on_screen(tmp_path, monkeypatch):
     _reading(monkeypatch, ink=3)
     con = _console(tmp_path)
-    with pytest.raises(RuntimeError, match="no code-wheel challenge"):
+    with pytest.raises(doscurse.WheelNotAnswered, match="no code-wheel challenge"):
         con.do("wheel 4")
     assert con.s.keys == []
 
@@ -75,8 +79,40 @@ def test_wheel_stops_when_no_challenge_is_on_screen(tmp_path, monkeypatch):
 def test_wheel_stops_when_the_path_is_not_read(tmp_path, monkeypatch):
     _reading(monkeypatch, path=None)
     con = _console(tmp_path)
-    with pytest.raises(RuntimeError, match="path could not be read"):
+    with pytest.raises(doscurse.WheelNotAnswered, match="path could not be read"):
         con.do("wheel 4")
+    assert con.s.keys == []
+
+
+def test_wheel_stops_on_a_frame_with_little_ink(tmp_path, monkeypatch):
+    _reading(monkeypatch, ink=60)
+    con = _console(tmp_path)
+    with pytest.raises(doscurse.WheelNotAnswered, match="no code-wheel"):
+        con.do("wheel 4")
+    assert con.s.keys == []
+
+
+def test_wheel_deletes_its_shots_when_the_shot_fails(tmp_path, monkeypatch):
+    _reading(monkeypatch)
+    con = _console(tmp_path)
+    con.s.fail = True
+    with pytest.raises(doscurse.WheelNotAnswered):
+        con.do("wheel 4")
+    assert not list((tmp_path / "shots").glob("*.png"))
+
+
+def test_a_reader_error_is_logged_by_type_only(tmp_path, monkeypatch):
+    _reading(monkeypatch)
+
+    def boom(*args):
+        raise ValueError(SECRET)
+
+    monkeypatch.setattr(cursewheel, "answer", boom)
+    con = _console(tmp_path)
+    with pytest.raises(doscurse.WheelNotAnswered) as err:
+        con.do("wheel 4")
+    assert SECRET not in str(err.value)
+    assert "ValueError" in str(err.value)
     assert con.s.keys == []
 
 
@@ -84,6 +120,6 @@ def test_wheel_stops_when_the_path_is_not_read(tmp_path, monkeypatch):
 def test_wheel_needs_a_box_number(tmp_path, monkeypatch, line):
     _reading(monkeypatch)
     con = _console(tmp_path)
-    with pytest.raises(RuntimeError, match="box number"):
+    with pytest.raises(doscurse.WheelNotAnswered, match="box number"):
         con.do(line)
     assert con.s.keys == []

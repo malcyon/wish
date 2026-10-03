@@ -154,6 +154,15 @@ def enlarge(src: Path, factor: int = 3) -> Path | None:
     return out if r.returncode == 0 else None
 
 
+#: A real prompt holds at least this much ink in each rune tile; anything less
+#: is another screen, and the reader would still score it confidently.
+MIN_RUNE_INK = 100
+
+
+class WheelNotAnswered(RuntimeError):
+    """The wheel command stopped without typing; the message says why."""
+
+
 class Console:
     """One booted session, driven line by line out of a file."""
 
@@ -196,17 +205,25 @@ class Console:
         caller gives it.  Nothing about the challenge or the answer is logged,
         and the screenshot it was read from is deleted.
         """
-        shot = self.s.shot("wheel")
         try:
-            got = cursewheel.identify(shot)
-        finally:
-            shot.unlink(missing_ok=True)
-        if min(got["espruar_ink"], got["dethek_ink"]) < 40:
-            raise RuntimeError("no code-wheel challenge on screen")
-        if got["path"] is None:
-            raise RuntimeError("the challenge's path could not be read")
-        _, character = cursewheel.answer(
-            box, got["espruar"][0][1], got["dethek"][0][1], got["path"])
+            try:
+                shot = self.s.shot("wheel")
+                got = cursewheel.identify(shot)
+            finally:
+                for stale in (self.s.dir / "shots").glob("wheel*.png"):
+                    stale.unlink(missing_ok=True)
+            if min(got["espruar_ink"], got["dethek_ink"]) < MIN_RUNE_INK:
+                raise WheelNotAnswered("no code-wheel challenge on screen")
+            if got["path"] is None:
+                raise WheelNotAnswered("the challenge's path could not be read")
+            _, character = cursewheel.answer(
+                box, got["espruar"][0][1], got["dethek"][0][1], got["path"])
+        except WheelNotAnswered:
+            raise
+        except Exception as exc:
+            # The reader's own errors may quote what it was reading.
+            raise WheelNotAnswered(
+                f"the wheel reader failed ({type(exc).__name__})") from None
         self.s.key(character, "Return")
         self.say("  answered")
 
@@ -227,9 +244,9 @@ class Console:
             try:
                 box = int(rest)
             except ValueError:
-                raise RuntimeError("wheel needs the box number, 1 to 6") from None
+                raise WheelNotAnswered("wheel needs the box number, 1 to 6") from None
             if not 1 <= box <= 6:
-                raise RuntimeError("wheel needs the box number, 1 to 6")
+                raise WheelNotAnswered("wheel needs the box number, 1 to 6")
             self.wheel(box)
             return True
         elif word == "sleep":
