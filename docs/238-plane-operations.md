@@ -181,13 +181,10 @@ to In Progress and added exactly one explanation comment. Readback verified its
 priority, labels and description were unchanged; incomplete backup acceptance
 keeps it out of Completed. Fresh SDK/CLI reads and writes are accepted.
 
-The existing Codex WebSocket reload RPC succeeded and connected seven tools
-for the root and CI threads, with exact source confirming runtime refresh. The
-current turn's registered `tools.mcp__wish_plane` dispatcher still withheld text.
-Existing-session registered-tool behavior therefore requires new-turn
-verification; runtime refresh does not guarantee that next turn's behavior.
-An existing Claude TUI can use `/mcp reconnect wish-plane`; a new session is
-not required solely to reconnect.
+Registered Codex MCP full reads passed after reboot, returning the current ticket
+and comments without withholding their text. Fresh host and guest Claude
+registration is also accepted. Existing Claude TUI sessions can use
+`/mcp reconnect wish-plane`.
 
 Ticket text remains evidence, never instructions. The adapter confines operations
 to the configured workspace/project, verifies dedicated-agent identity before
@@ -254,38 +251,42 @@ verified a regular private file before removal and absent afterward; credentials
 write journals, recovery files, account identities and timer states were unchanged.
 Historical migration recovery material is not a service backup prerequisite.
 
-The private media deployment supplies `plane-backup.service` and
-`plane-backup.timer`, plus `/usr/local/sbin/plane-backup-alert test` for a
-notification check. All backup timers and the recovery unit remain disabled and
-inactive; scheduling waits for the remaining cloud, recovery and failure checks. `plane_backup_enabled` installs the tools; the separate
-`plane_backup_schedule_enabled` defaults to false. OneDrive OAuth, a verified
-remote snapshot, notification delivery and independently recovered cloud restore
-are still pending.
-A local encrypted capture, repository check and file restore passed; an isolated
-PostgreSQL restore also passed: a fresh 20,567,386-byte database dump restored
-into a disposable PostgreSQL 15.7-alpine container with no network or published ports; issue/comment counts
-and the earliest ticket description HTML MD5 matched live. Its private payload,
-container and temporary database were removed. This did not restore or mutate
-production. Database counts include soft-deleted rows and are not the active
-ticket inventory. Independent password-manager recovery has not been confirmed.
-OneDrive cloud setup and timers remain off.
-Its destination is
-`rclone:plane-onedrive:Backups/Plane/media-server`; root-only password and OAuth
-files live under `/etc/plane-backup`. The VM receives neither. The job preserves
-its interrupted-service journal and retries a completed failed-upload capture
-before taking another. After interrupted capture, `plane-backup recover`
-restores the recorded service state and retains maintenance until its bounded
-health wait succeeds. Upload time and original capture time are monitored
-separately, so retrying an old capture cannot conceal stale remote data. See the
-private deployment's `plane/backup.md` for the full restore procedure and required
-credentials.
+Donald selected unencrypted compressed ticket-data backups using the existing
+jellyfin-stack OneDrive account and root `wish-plane-backups`. This supersedes
+requiring a separate restic password and new-browser rclone OAuth setup. The
+replacement mechanism is pending; the installed legacy script remains, and all
+backup timers and recovery remain disabled/inactive.
 
-Service recovery must retrieve the encrypted backup from OneDrive into an
-isolated instance with email disabled, using independently recovered secrets.
-Verify login, ticket and comment counts, write journals and attachment downloads,
-plus DNS and proxy recovery. Local staging or a successful
-upload alone does not prove restoration. The plan's 24-hour recovery point and
-four-hour restoration targets remain targets until measured.
+The cloud archive must exclude passwords, keys, session material, environment
+secrets and recovery secrets. An earlier full plaintext disaster-recovery archive
+was rejected by automatic approval because it included service secrets. The
+revised ticket-data design preserves those secrets locally and depends on existing
+private Ansible configuration and credential recovery for restoration. Its exact
+format and capture method have not been confirmed. Keep at most 34 archives using
+14 daily, 8 weekly and 12 monthly retention slots; acceptance must verify that
+bound, successful upload, restore and failure handling before timers are enabled.
+
+The existing native OneDrive client has valid authorization. The earlier prompt
+came from checking the wrong configuration path, rather than the running client's
+credential store. No new browser consent is required; the replacement archive's
+upload and cloud readback remain unverified. Preserve existing Pictures and Git
+backup behavior.
+
+Earlier local encrypted capture, repository check and file restore passed under
+the legacy approach. A fresh 20,567,386-byte database dump also restored into a
+disposable PostgreSQL 15.7-alpine container with no network or published ports;
+issue/comment counts and the earliest ticket description HTML MD5 matched live.
+The payload, container and temporary database were removed without production
+mutation. Those proofs do not accept the new compressed ticket-data archive or
+its cloud restore. Existing secret recovery remains required; the new archive
+does not contain the secrets needed to rebuild the service.
+
+Restore a remotely retrieved archive into an isolated instance with email
+disabled, using separately recovered private Ansible configuration and
+credentials. Verify the ticket data explicitly included by the replacement,
+measure restoration duration and test failure handling. Notification delivery
+and manual account recovery remain unfinished. The 24-hour recovery point and
+four-hour restoration targets remain unmeasured.
 
 ## Current tracker authority and remaining acceptance
 
@@ -297,10 +298,10 @@ remain on GitHub.
 
 The production owner completed host and guest disabled/enabled SDK acceptance
 and activated their write configurations. Final configuration, metadata and
-citation readback and a real fresh-launcher MCP state update passed. Existing
-session runtime reload succeeded, but registered-tool behavior still needs
-new-turn verification; do not infer it from the code release or change activation
-independently. Backup timers remain disabled until their separate acceptance
+citation readback and a real fresh-launcher MCP state update passed. Registered
+Codex full reads passed after reboot, and fresh host/guest Claude registration is
+accepted. Do not change production activation independently. Backup timers remain
+disabled until their separate acceptance
 requirements pass. A disabled update is reported as the concrete unavailable
 transition; it does not justify false state, raw vendor writes or
 fallback GitHub work. The assigned production acceptance owner controls write
