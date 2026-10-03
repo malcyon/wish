@@ -787,9 +787,11 @@ def _best_unjoin(party: "Sequence[DosCharacter] | Sequence[NeutralCharacter]",
                  ) -> tuple[dict[int, tuple[int, ...]], int]:
     """The joined scrolls to unjoin, and the scrolls still joined after.
 
-    Exact.  A choice is ranked by the rows it adds, then by how many joined
-    scrolls it takes apart, then by being the latest in party and pack order,
-    which keeps joined the scrolls the Amiga loader reads first.  A choice
+    Exact.  A choice is ranked first by the fewest item rows it adds (a joined
+    scroll of `q` adds `q - 1`), then by the fewest joined scrolls taken
+    apart, then by being the latest in party and pack order, which keeps
+    joined the scrolls the Amiga loader reads first.  So it is not the fewest
+    joined scrolls: two fives are unjoined before one ten.  A choice
     may not take a member past :data:`amiga_later.AMIGA_SSB_ITEM_ROWS`.
     When no choice reaches the limit this is the one that unjoins the most
     scrolls.  The indices are into each member's `scroll_bundles` after
@@ -872,7 +874,14 @@ def amiga_unjoin_choice(
 def _amiga_pack_overflow(party: "Sequence[DosCharacter] | Sequence[NeutralCharacter]",
                          leave: "Mapping[int, Collection[int]]"
                          ) -> tuple[PackOverflow, ...]:
-    """The party-wide overflow of :func:`pack_overflow` for the Amiga."""
+    """The party-wide overflow of :func:`pack_overflow` for the Amiga.
+
+    As for the C64's :class:`PackOverflow`: `items` and `units` describe each
+    pack **as it was handed in**, before `leave`, so an index in either is the
+    index `leave` takes, and `needed` is the scrolls still joined **after**
+    `leave` and the best unjoin.  A caller drawing a choice from `units`
+    must not read `needed` as their count.
+    """
     from . import amiga_later  # imports this module at its top
     holders = []
     for index, char in enumerate(party):
@@ -1007,18 +1016,32 @@ def _with_pack(char: NeutralCharacter, inventory: Sequence[bytes],
 
 def unjoined_for_amiga(party: Sequence[NeutralCharacter],
                        leave: "Mapping[int, Collection[int]] | None" = None
-                       ) -> tuple[tuple[NeutralCharacter, ...], list[str]]:
-    """`party` after `leave` and the best :func:`unjoin`, and a line for each
-    joined scroll taken apart.
+                       ) -> tuple[tuple[NeutralCharacter, ...], list[str],
+                                  list[str]]:
+    """`party` after `leave` and the best :func:`unjoin`, a line for each
+    joined scroll taken apart, and a line for each item left behind.
 
     The party is returned unchanged when it already fits the Amiga loader.
     A party no unjoin brings within the limit raises `DosRecordError`; a
     caller asks :func:`pack_overflow` first, which says what does not fit.
-    An unjoined scroll is not a loss: each scroll arrives whole.
+    An unjoined scroll is not a loss: each scroll arrives whole.  Each line
+    is also logged; neither list is text a player reads.
     """
     leave = {m: frozenset(v) for m, v in (leave or {}).items() if v}
     kept = list(party)
-    for member, gone in leave.items():
+    left_lines = []
+    for member, gone in sorted(leave.items()):
+        held = pack_of(kept[member])[0]
+        for n in sorted(gone):
+            if 0 <= n < len(held):
+                block = held[n]
+                left_lines.append(
+                    f"{_member_name(kept[member])} -- inventory item {n}, "
+                    f"type {block[0]}, left behind by the player's choice: "
+                    f"the party's joined scrolls needed more than the Amiga "
+                    f"loader keeps")
+                _log.info("Left behind by the player's choice: %s",
+                          left_lines[-1])
         kept[member] = _without_left_behind(kept[member], gone)
     choice = amiga_unjoin_choice(kept)
     if choice is None:
@@ -1035,11 +1058,12 @@ def unjoined_for_amiga(party: Sequence[NeutralCharacter],
                 f"inventory item {b.first}, taken apart into {b.count} "
                 f"scrolls, each with the joined scroll's weight and readied "
                 f"flag")
+            _log.info("Unjoined for the Amiga: %s", lines[-1])
         inventory, bundles = unjoin(inventory, bundles, which)
         kept[member] = _with_pack(
             char, inventory, bundles,
             ", the joined scrolls unjoined for the Amiga's 120-scroll limit")
-    return tuple(kept), lines
+    return tuple(kept), lines, left_lines
 
 
 def _without_type_zero(char: NeutralCharacter

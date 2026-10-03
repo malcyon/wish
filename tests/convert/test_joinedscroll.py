@@ -756,8 +756,8 @@ def test_a_party_at_exactly_the_limit_is_left_alone(tmp_path):
         tmp_path, "PAINE", *[_bundle_of(10, 10 * k) for k in range(12)])]
     assert dos_codec.amiga_unjoin_choice(party) == {}
     assert dos_codec.pack_overflow(party, "amiga") == ()
-    same, lines = dos_codec.unjoined_for_amiga(party)
-    assert lines == [] and all(a is b for a, b in zip(same, party))
+    same, lines, left = dos_codec.unjoined_for_amiga(party)
+    assert lines == [] and left == [] and all(a is b for a, b in zip(same, party))
     built, report = amiga_savegame.new_savegame(_fresh_state(), party, "A")
     assert report.unjoined == []
     (char,) = _amiga_party(built)
@@ -825,7 +825,7 @@ def test_an_unjoined_readied_scroll_stays_readied(tmp_path):
 
 def test_the_unjoin_is_on_the_provenance_of_the_pack(tmp_path):
     party = _specimen_u(tmp_path)
-    (paine, guy, third), lines = dos_codec.unjoined_for_amiga(party)
+    (paine, guy, third), lines, _left = dos_codec.unjoined_for_amiga(party)
     assert "unjoined" in paine.fields["inventory"].origin
     assert "unjoined" in guy.fields["inventory"].origin
     assert "scroll_bundles" not in guy.fields
@@ -972,3 +972,56 @@ def test_save_as_drive_stops_specimen_l_naming_the_party_overflow(tmp_path):
         pytest.skip("needs the player's Silver Blades disks")
     assert report["refused"][0] == "AmigaJoinedScrollsDoNotFit"
     assert "122" in report["refused"][1] and "written" not in report
+
+
+def test_each_item_left_behind_is_on_the_report_and_logged(tmp_path, caplog):
+    party = _specimen_l(tmp_path)
+    ordinary = len(party[0].get("inventory")) - 1
+    with caplog.at_level("INFO", logger="wish.goldbox.dos_codec"):
+        _built, report = amiga_savegame.new_savegame(
+            _fresh_state(), party, "A", leave={0: {ordinary}})
+    (line,) = report.left_behind
+    assert f"inventory item {ordinary}," in line and line.startswith("PAINE")
+    assert any("Left behind by the player's choice" in r.message
+               and f"inventory item {ordinary}," in r.message
+               for r in caplog.records)
+    assert report.losses == [] and report.dropped == []
+
+
+def test_each_unjoin_is_logged_and_is_not_in_the_summary(tmp_path, caplog):
+    with caplog.at_level("INFO", logger="wish.goldbox.dos_codec"):
+        _built, report = amiga_savegame.new_savegame(
+            _fresh_state(), _specimen_u(tmp_path), "A")
+    logged = [r.message for r in caplog.records
+              if r.message.startswith("Unjoined for the Amiga")]
+    assert len(logged) == 2 == len(report.unjoined)
+    assert not any("unjoin" in line.lower() or "joined scroll of" in line
+                   for line in report.summary_notes())
+
+
+def test_two_fives_are_unjoined_before_one_ten(tmp_path):
+    """Rows added come before joined scrolls taken apart: ten scrolls out of
+    two fives cost 8 rows and out of a ten cost 9."""
+    tens = _party_member(tmp_path, "A",
+                         *[_bundle_of(10, 10 * k) for k in range(11)])
+    other = _party_member(tmp_path, "B", _bundle_of(5, 200),
+                          _bundle_of(5, 210), _bundle_of(10, 220))
+    assert dos_codec.amiga_unjoin_choice([tens, other]) == {1: (0, 1)}
+
+
+def test_the_amiga_overflow_describes_the_pack_before_leave_and_needs_after(
+        tmp_path):
+    paine = _specimen_l(tmp_path)[0]
+    # Sixteen rows, so B's joined scroll of ten cannot be unjoined either.
+    extra = _party_member(
+        tmp_path, "B", _bundle_of(10, 300),
+        *[bytes(_item(10 + n, weight=10)) for n in range(15)])
+    party = [paine, extra]
+    ordinary = len(paine.get("inventory")) - 1
+    (before,) = dos_codec.pack_overflow(party, "amiga")
+    (after,) = dos_codec.pack_overflow(party, "amiga", {0: {ordinary}})
+    assert before.needed == 132
+    # The leave frees the row for the pair, so two scrolls come out of 132.
+    assert after.needed == 130
+    assert after.items == before.items and after.units == before.units
+    assert len(after.items[0]) == len(paine.get("inventory"))

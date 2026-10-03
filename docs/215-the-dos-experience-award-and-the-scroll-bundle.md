@@ -336,8 +336,10 @@ whole Amiga saved game.
 taking one apart loses no scroll: `goldbox.dos_codec.unjoin` leaves the
 scrolls in the joined scroll's place, each with the head's weight and
 readied flag and every other byte as it was, and
-`goldbox.amiga_savegame.new_savegame` does it for the fewest joined scrolls
-that bring the party to 120 (`amiga_unjoin_choice`). The head's weight is
+`goldbox.amiga_savegame.new_savegame` does it for the joined scrolls that
+add the fewest item rows and then are the fewest, latest in the party first,
+to bring the party to 120 (`amiga_unjoin_choice`): two joined scrolls of five
+go before one of ten. The head's weight is
 what both engines count, a joined scroll weighing its head's weight times its
 quantity and a head's weight being its scroll count (measured on DOS, joined
 scrolls of three and ten), so the scrolls together weigh what the joined

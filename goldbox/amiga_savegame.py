@@ -595,9 +595,11 @@ def new_savegame(state: world_state.WorldState,
 
     ``leave`` maps a member to the neutral inventory indices to leave behind.
     A party whose joined scrolls then hold more than the loader keeps has
-    the fewest joined scrolls taken apart that bring it within the limit
+    the joined scrolls that add the fewest item rows, then the fewest joined
+    scrolls, taken apart to bring it within the limit
     (:func:`goldbox.dos_codec.amiga_unjoin_choice`), each on
-    ``SaveReport.unjoined``; one no unjoin brings within it raises
+    ``SaveReport.unjoined``, and each item left behind is on
+    ``SaveReport.left_behind``; one no unjoin brings within it raises
     :class:`AmigaJoinedScrollsDoNotFit`.
     """
     container = container_for(c64_port.by_title(state.title).key)
@@ -619,7 +621,9 @@ def new_savegame(state: world_state.WorldState,
         overflow = dos_codec.pack_overflow(party, "amiga", leave)
         if overflow:
             raise AmigaJoinedScrollsDoNotFit(overflow[0], container.title)
-        party, report.unjoined = dos_codec.unjoined_for_amiga(party, leave)
+        party, report.unjoined, left = dos_codec.unjoined_for_amiga(
+            party, leave)
+        report.left_behind.extend(left)
     built = []
     char_reports = []
     for position, (char, icon) in enumerate(zip(party, icons)):
