@@ -5392,6 +5392,37 @@ def test_a_walk_with_no_save_after_it_is_lost():
         A.validate_walks([_walked("I", True, [5, 4, 0])])
 
 
+def _snap(verb, name="s1"):
+    return {"verb": verb, "name": name}
+
+
+def test_a_walk_a_restore_undid_does_not_count_as_a_move_asked():
+    results = [_snap("snapshot"), _walked("I", False, [5, 5, 0], blocked=[0]),
+               _snap("restore"), _saved(P, P)]
+    A.validate_walks(results)
+
+
+def test_a_walk_before_the_snapshot_still_counts_after_a_restore():
+    results = [_walked("I", False, [5, 5, 0], blocked=[0]), _snap("snapshot"),
+               _walked("I", True, [5, 4, 0]), _snap("restore"), _saved(P, P)]
+    with pytest.raises(A.StepFailed, match="did not move"):
+        A.validate_walks(results)
+
+
+def test_a_walk_after_the_restore_is_checked_as_before():
+    results = [_snap("snapshot"), _walked("I", True, [5, 4, 0]), _snap("restore"),
+               _walked("I", False, [5, 5, 0], blocked=[0]), _saved(P, P)]
+    with pytest.raises(A.StepFailed, match="did not move: 1 forward"):
+        A.validate_walks(results)
+
+
+def test_a_walk_with_no_restore_still_fails_when_the_party_did_not_move():
+    results = [_snap("snapshot"), _walked("I", False, [5, 5, 0], blocked=[0]),
+               _saved(P, P)]
+    with pytest.raises(A.StepFailed, match="did not move"):
+        A.validate_walks(results)
+
+
 class _WalkedPool(_Pool):
     def walk(self, arg):
         return _walked("I", False, [5, 5, 0], blocked=[0])
