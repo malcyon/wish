@@ -914,20 +914,19 @@ def parse_steps(texts) -> list[Step]:
         raise ValueError("the first step is load")
     if any(s.verb == "load" for s in steps[1:]):
         raise ValueError("one boot, one load")
-    taken: set[str] = set()
-    saved = False
+    taken: dict[str, bool] = {}
     for step in steps:
         if step.verb == "snapshot":
-            taken.add(step.arg)
+            taken[step.arg] = False
         elif step.verb == "save":
-            saved = True
+            taken = dict.fromkeys(taken, True)
         elif step.verb == "restore":
             if step.arg not in taken:
                 raise ValueError(f"{step.text!r}: no snapshot {step.arg!r} "
                                  f"was taken before it")
-            if saved:
+            if taken[step.arg]:
                 raise ValueError(
-                    f"{step.text!r}: a save came before it, and a restore puts "
+                    f"{step.text!r}: a save came between its snapshot and it, and a restore puts "
                     f"the machine back while the game's save stays on the disk "
                     f"image, so the run would no longer be one consistent game")
     for before, step in zip(steps, steps[1:]):
@@ -4738,18 +4737,43 @@ class PoolRun:
         retries = self.sess.walk_retries
         if retries:
             self.log.emit("restore", name="walk-retry", retries=retries)
+            # Safe because `parse_steps` allows no save between a snapshot and
+            # its restore, so the disk image still matches the snapshot's copy.
             self.reattach()
         if not walked:
             raise self.fail("walk", f"walk {route}: {self.sess.walk_refused}")
         end = self.position()
         self.capture(f"walked-{route}")
+        moved = abs(end[0] - start[0]) + abs(end[1] - start[1])
+        forward = route.count("I")
+        blocked: list[int] = []
+        expected = None
         if not ("I" in route or "M" in route) and end[:2] != start[:2]:
             raise self.fail("walk", f"walk {route} has no forward move and the "
                                     f"square went from {start[:2]} to {end[:2]}")
+        if "M" not in route:
+            if start[2] is not None:
+                expected = (start[2] + sum(TURNS[c] for c in route)) % 4
+            if forward and not moved:
+                raise self.fail("walk", f"walk {route}: no forward move left "
+                                        f"{start[:2]}")
+            if forward == len(route):
+                # Every move is forward, so a wall stops the rest of the route.
+                blocked = list(range(moved, forward))
+                if start[2] is not None:
+                    dx, dy = STEP[start[2]]
+                    if end[:2] != [start[0] + dx * moved, start[1] + dy * moved]:
+                        raise self.fail(
+                            "walk", f"walk {route}: went from {start[:2]} to "
+                                    f"{end[:2]}, not {moved} square(s) ahead: "
+                                    f"an exit or a teleport")
+            if (expected is not None and end[2] is not None
+                    and end[2] != expected):
+                raise self.fail("walk", f"walk {route} should leave the party "
+                                        f"facing {expected}, it faces {end[2]}")
         return {"route": route, "start": start, "position": end, "moves": [],
-                "asked_forward": route.count("I"),
-                "squares_moved": abs(end[0] - start[0]) + abs(end[1] - start[1]),
-                "back_moved": 0, "blocked": [], "expected_facing": None,
+                "asked_forward": forward, "squares_moved": moved,
+                "back_moved": 0, "blocked": blocked, "expected_facing": expected,
                 "retries": retries}
 
     def reattach(self) -> None:
@@ -4774,6 +4798,8 @@ class PoolRun:
         session's save block (`reattach`)."""
         name = parse_snapshot_name("restore", name)
         self.sess.restore(name)
+        # Safe because `parse_steps` allows no save between a snapshot and
+        # its restore, so the disk image still matches the snapshot's copy.
         self.reattach()
         self.log.emit("restore", name=name)
         if not self.to_world():
@@ -7432,6 +7458,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--compare", nargs=2, metavar="RUN", default=None,
                     help="two evidence directories: print what their readings differ in")
     args = ap.parse_args(argv)
+    if args.walk_retry < 0:
+        ap.error("--walk-retry cannot be negative")
     if args.compare:
         print(json.dumps(compare(*map(pathlib.Path, args.compare)), indent=2))
         return 0

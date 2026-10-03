@@ -12837,16 +12837,56 @@ def test_the_parser_takes_snapshot_and_restore_steps():
         ("snapshot", "camp-1"), ("rest", "1h"), ("restore", "camp-1")]
 
 
-@pytest.mark.parametrize("steps", [
-    ["load", "snapshot"], ["load", "snapshot a/b"], ["load", "restore a"],
-    ["load", "snapshot a", "save", "restore a"]])
-def test_the_parser_stops_a_bad_snapshot_or_restore(steps):
-    with pytest.raises(ValueError):
+@pytest.mark.parametrize("steps, why", [
+    (["load", "snapshot"], "needs an argument"),
+    (["load", "snapshot a/b"], "a snapshot name is letters"),
+    (["load", "restore a"], "no snapshot 'a' was taken"),
+    (["load", "snapshot a", "save", "restore a"], "a save came between")])
+def test_the_parser_stops_a_bad_snapshot_or_restore(steps, why):
+    with pytest.raises(ValueError, match=why):
         A.parse_steps(steps)
 
 
+def test_a_save_before_the_snapshot_does_not_stop_its_restore():
+    A.parse_steps(["load", "save", "snapshot a", "restore a"])
+
+
+def test_a_negative_walk_retry_is_refused(capsys):
+    with pytest.raises(SystemExit):
+        A.main(["--walk-retry", "-1"])
+    assert "--walk-retry cannot be negative" in capsys.readouterr().err
+
+
+def test_a_retried_walk_whose_forward_move_went_nowhere_fails(tmp_path, monkeypatch):
+    sess = SnapshotSession(walls={(5, 4)})
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    run.walk_retry = 1
+    with pytest.raises(A.StepFailed, match="no forward move left"):
+        run.walk("I")
+    log.close()
+
+
+def test_a_retried_walk_reports_the_forward_moves_a_wall_stopped(tmp_path, monkeypatch):
+    sess = SnapshotSession(walls={(5, 3)})
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    run.walk_retry = 1
+    got = run.walk("III")
+    log.close()
+    assert got["squares_moved"] == 1 and got["blocked"] == [1, 2]
+
+
+def test_a_retried_turn_is_judged_by_its_facing(tmp_path, monkeypatch):
+    sess = SnapshotSession(facing=0)
+    sess.drift = 1
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    run.walk_retry = 1
+    with pytest.raises(A.StepFailed, match="should leave the party facing"):
+        run.walk("K")
+    log.close()
+
+
 def test_a_restore_after_a_save_is_stopped_with_the_reason():
-    with pytest.raises(ValueError, match="a save came before it"):
+    with pytest.raises(ValueError, match="a save came between"):
         A.parse_steps(["load", "snapshot a", "save", "restore a"])
 
 
