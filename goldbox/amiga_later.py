@@ -167,9 +167,15 @@ AMIGA_LATER_ITEM_QUANTITY = 0x03A
 #: keeps.  It adds the scroll counts of every joined scroll already loaded
 #: (`0x23AC8`, walking a list linked at record `$13A`) to this one's and,
 #: over 120 (`cmpi.w #$78` at `0x269C2`), reads the scrolls into a scratch
-#: buffer and frees the head.  PROBABLE that the list is the party: which
-#: list `$13A` links has not been read.
+#: buffer and frees the head.  CONFIRMED that the count runs across the party:
+#: a slot of thirteen joined scrolls of ten loads with twelve, and JOIN at 120
+#: answers TOO MANY BUNDLES!.
 AMIGA_SSB_JOINED_SCROLL_LIMIT = 120
+
+#: The item rows a character holds, a joined scroll taking one: `/Secret`
+#: refuses a seventeenth at `0x24B50`, CONFIRMED
+#: (`docs/173-carrying-limits.md`).
+AMIGA_SSB_ITEM_ROWS = 16
 
 
 def joined_scroll_count(characters: "Sequence[AmigaCharacter]") -> int:

@@ -326,25 +326,35 @@ whole Amiga saved game.
   slots. That is the player's choice of what stays behind; until something
   asks, `goldbox.dos_codec.write_c64_save` raises `JoinedScrollsDoNotFit`
   rather than dropping any.
-* **The Amiga loader's 120, PROBABLE.** It adds the scroll counts of every
-  joined scroll already loaded (`0x23AC8`, a list linked at record `$13A`) to
-  this one's, and over 120 (`0x269C2`) reads the scrolls into a scratch buffer
-  and frees the head. PROBABLE only because which list `$13A` links has not
-  been read; `goldbox.amiga_savegame.new_savegame` refuses a party over it.
-  **To settle it:** load an Amiga Silver Blades save whose party holds 121
-  scrolls in joined scrolls and count them on `ITEMS`.
+* **The Amiga loader's 120, CONFIRMED.** It adds the scroll counts of every
+  joined scroll already loaded (`0x23AC8`) to this one's, and over 120
+  (`0x269C2`) reads the scrolls into a scratch buffer and frees the head. The
+  count runs across the party: a slot staged with 13 joined scrolls of ten
+  loaded with 12, and JOIN at 120 answered TOO MANY BUNDLES!.
 
-**Conversions that still stop.** DOS allows sixteen heads of up to ten scrolls; the
-C64 has sixteen slots and the Amiga a probable 120-scroll limit.
-`JoinedScrollsDoNotFit` is a stop, not a completed conversion, until a
-chooser exists, and it carries no text a player reads yet.
+**Unjoining comes first on the Amiga.** A joined scroll is its scrolls, so
+taking one apart loses no scroll: `goldbox.dos_codec.unjoin` leaves the
+scrolls in the joined scroll's place, each with the head's weight and
+readied flag and every other byte as it was, and
+`goldbox.amiga_savegame.new_savegame` does it for the fewest joined scrolls
+that bring the party to 120 (`amiga_unjoin_choice`). The head's weight is
+what both engines count, a joined scroll weighing its head's weight times its
+quantity and a head's weight being its scroll count (measured on DOS, joined
+scrolls of three and ten), so the scrolls together weigh what the joined
+scroll did. A member needs `q - 1` free rows of the Amiga's sixteen
+(`0x24B50`) to unjoin a joined scroll of `q`; a party no unjoin brings to
+120 raises `AmigaJoinedScrollsDoNotFit`, and the player's choice of what to
+leave for that case is not built yet.
 
-**UNVERIFIED: the head's weight.** The writer stores `weight x quantity` for
-a joined-scroll head, and JOIN makes both the scroll count, so the head counts
-as that number squared. The recount (`0x3A2C7`) is known only to walk head
-items; how it weighs a head has not been read. **To settle it:** load a
-joined-scroll save in DOSBox and compare the stored `encumbrance` with the
-engine's own recount.
+**Conversions that still stop.** The C64 has sixteen slots, and an Amiga
+party that no unjoin brings to 120 stops.
+`JoinedScrollsDoNotFit` and `AmigaJoinedScrollsDoNotFit` are stops, not
+completed conversions, until a chooser exists, and they carry no text a
+player reads yet.
+
+**CONFIRMED on DOS: the head's weight.** The stored encumbrance is the
+head's weight times its quantity: a joined scroll of ten keeps weight 10 and
+a joined scroll of three weighs 3.
 
 **Not yet proven in any running game.** Every byte above is the engines' own
 code read statically; no joined scroll converted by Wish has been loaded in

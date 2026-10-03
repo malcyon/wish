@@ -49,7 +49,9 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
 
     `window` is an `EditorBinding`, whose `game_files_for` finds the game data
     a route needs. The report carries `written` (paths), `slot`, `losses`,
-    `dropped` and `left_behind` from the conversion's accounting, or
+    `dropped`, `left_behind` and `unjoined` (the joined scrolls an Amiga
+    destination took apart to stay within the loader's limit) from the
+    conversion's accounting, or
     `refused` -- the exception's class and text -- when Save As refused or
     failed.
 
@@ -100,6 +102,7 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
         report["dropped"] = list(getattr(plan.report, "dropped", []) or [])
         report["left_behind"] = list(
             getattr(plan.report, "left_behind", []) or [])
+        report["unjoined"] = list(getattr(plan.report, "unjoined", []) or [])
         published = saveplan.publish(plan, party, assets=assets)
     except Exception as exc:
         if isinstance(exc, saveplan.NamesDoNotFit):

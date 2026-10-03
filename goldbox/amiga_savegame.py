@@ -18,7 +18,7 @@ import contextlib
 import copy
 import dataclasses
 import struct
-from collections.abc import Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 
@@ -529,11 +529,34 @@ def area_script(ecl_glb: bytes, area: int) -> bytes:
     return blocks[named[0]]
 
 
+class AmigaJoinedScrollsDoNotFit(AmigaSaveError):
+    """A party whose joined scrolls pass the Amiga loader's limit however
+    many are unjoined.
+
+    Not `dos_codec.JoinedScrollsDoNotFit`: that one is per character and the
+    editor opens a per-character window for it.  `overflow` is the one
+    party-scope :class:`goldbox.dos_codec.PackOverflow`; `needed` and `limit`
+    are its own.
+    """
+
+    def __init__(self, overflow: "dos_codec.PackOverflow",
+                 title: str) -> None:
+        self.overflow = overflow
+        self.needed = overflow.needed
+        self.limit = overflow.limit
+        super().__init__(
+            f"the party's joined scrolls hold {overflow.needed} scrolls and "
+            f"the {title} loader keeps {overflow.limit}")
+
+
 @dataclasses.dataclass
 class SaveReport(neutral.Report):
     total: int = 0
     unwritten: list[int] = dataclasses.field(default_factory=list)
     converted: list[str] = dataclasses.field(default_factory=list)
+    #: The joined scrolls taken apart to bring the party within the
+    #: loader's limit.  Not a loss: every scroll arrives whole.
+    unjoined: list[str] = dataclasses.field(default_factory=list)
 
     def summary_notes(self) -> list[str]:
         lines = list(self.converted)
@@ -561,6 +584,7 @@ def new_savegame(state: world_state.WorldState,
                  slot: str,
                  ecl_glb: bytes | None = None,
                  icons: Sequence[object | None] | None = None,
+                 leave: "Mapping[int, Collection[int]] | None" = None,
                  ) -> tuple[bytes, SaveReport]:
     """Build one later-title Amiga saved game from zeroes.
 
@@ -568,6 +592,13 @@ def new_savegame(state: world_state.WorldState,
     current area.  Silver Blades stages no script and rejects that argument.
     Every character is converted through ``write_later`` and embedded in
     marching order.
+
+    ``leave`` maps a member to the neutral inventory indices to leave behind.
+    A party whose joined scrolls then hold more than the loader keeps has
+    the fewest joined scrolls taken apart that bring it within the limit
+    (:func:`goldbox.dos_codec.amiga_unjoin_choice`), each on
+    ``SaveReport.unjoined``; one no unjoin brings within it raises
+    :class:`AmigaJoinedScrollsDoNotFit`.
     """
     container = container_for(c64_port.by_title(state.title).key)
     party = tuple(characters)
@@ -579,9 +610,18 @@ def new_savegame(state: world_state.WorldState,
         icons = (None,) * len(party)
     if len(icons) != len(party):
         raise AmigaSaveError("the icon count does not match the party count")
+    report = SaveReport()
+    # The loader discards a joined scroll whole once the party's joined
+    # scrolls pass its limit, so a party over it has joined scrolls taken
+    # apart first, which loses no scroll (docs/215 section 4).
+    leave = {m: frozenset(v) for m, v in (leave or {}).items() if v}
+    if leave or any(c.get("scroll_bundles") for c in party):
+        overflow = dos_codec.pack_overflow(party, "amiga", leave)
+        if overflow:
+            raise AmigaJoinedScrollsDoNotFit(overflow[0], container.title)
+        party, report.unjoined = dos_codec.unjoined_for_amiga(party, leave)
     built = []
     char_reports = []
-    report = SaveReport()
     for position, (char, icon) in enumerate(zip(party, icons)):
         # The game's party loader overwrites this byte with the member's
         # position in file order and writes it that way on every save, so
@@ -594,9 +634,9 @@ def new_savegame(state: world_state.WorldState,
         report.dropped.extend(char_report.dropped)
         report.warnings.extend(char_report.warnings)
         report.losses.extend(char_report.losses)
-    # Past this many scrolls in joined scrolls the loader discards a joined
-    # scroll whole, so the save is not written rather than written to lose
-    # one; which scrolls stay behind is the player's to choose (#432).
+    # The unjoin above already brought the party within the loader's limit; a
+    # write that still passes it would have the loader discard a joined
+    # scroll whole, so it is not written.
     held = amiga_later.joined_scroll_count(built)
     if held > amiga_later.AMIGA_SSB_JOINED_SCROLL_LIMIT:
         raise AmigaSaveError(
