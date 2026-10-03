@@ -1784,17 +1784,6 @@ def test_two_pool_strength_nodes_on_one_character_write_no_row_and_say_so():
     assert any("effect 12" in d for d in lines)
 
 
-def test_a_running_and_a_granted_pool_strength_node_write_no_row():
-    payload = bytearray(0x1C00)
-    char = _pool_character(bytes.fromhex("260A007301"))
-    char.set("granted_effects", [bytes.fromhex("260000" "5C01") + NULL],
-             "built here")
-    _rec, rep = c64_codec.write(char, payload=payload, party_slot=2,
-                                clock_minutes=0)
-    assert _rows(payload)[63] == (0, 0, 0, 0)
-    assert len(_lines(rep)) == 1 and "effect 38" in _lines(rep)[0]
-
-
 def test_two_restoring_pool_rows_of_equal_minutes_read_back_as_two_lines():
     """Both rows restore, so which ends first depends on a sweep order nobody
     has read: the reader refuses rather than guess."""
@@ -4077,6 +4066,49 @@ def test_a_pool_pair_written_in_the_other_order_takes_slots_by_expiry():
         62: (12, 2, effects.closest_duration(60, 0), 0xF1)}
 
 
+@pytest.mark.parametrize("first, second, want", [
+    # The active node ends first, so its row holds the parked boost.
+    (bytes((38, 10, 0, 0x71, 1)), bytes((38, 60, 0, 0x95, 1)), 0x94),
+    # The parked node ends first and restores nothing.
+    (bytes((38, 60, 0, 0x71, 1)), bytes((38, 10, 0, 0x95, 1)), 0x14),
+], ids=["active-first", "parked-first"])
+def test_two_pool_strength_casts_become_two_timed_rows(first, second, want):
+    rows, rep = _pool_pair_rows(first, second)
+    ten, sixty = effects.closest_duration(10, 0), effects.closest_duration(60, 0)
+    assert rows == {63: (38, 2, ten, want), 62: (38, 2, sixty, 0xF1)}
+    assert not [d for d in rep.dropped + rep.losses if "running_effects" in d]
+    payload = bytearray(0x1C00)
+    c64_codec.write(_pool_character(first, second), payload=payload,
+                    party_slot=2, clock_minutes=0)
+    out = _read(payload, 2)
+    assert not _lines(out)
+    assert sorted(bytes(r)[:5] for r in out.get("running_effects")) \
+        == sorted([first, second])
+
+
+@pytest.mark.parametrize("spell, gauntlets", [
+    # The spell is parked with its own boost; the gauntlets hold the base.
+    (bytes((38, 10, 0, 0x95, 1)), bytes((38, 0, 0, 0x73, 1))),
+    (bytes((12, 10, 0, 0x95, 1)), bytes((38, 0, 0, 0x73, 1))),
+    # An Enlarge that ties the gauntlets and came second holds the base.
+    (bytes((12, 10, 0, 0x73, 1)), bytes((38, 0, 0, 0xDC, 1))),
+], ids=["strength", "enlarge", "enlarge-tie"])
+def test_gauntlets_beside_a_running_pool_strength_convert_as_the_gauntlets(
+        spell, gauntlets):
+    char = _pool_character(spell)
+    char.set("granted_effects", [gauntlets + NULL], "built here")
+    char.set("strength", 18, "built here")
+    char.set("exceptional_strength", 0, "built here")
+    payload = bytearray(0x1C00)
+    rec, rep = c64_codec.write(char, payload=payload, party_slot=2,
+                               clock_minutes=0)
+    rows = {s: r for s, r in _rows(payload).items() if r[0]}
+    assert rows == {63: (38, 2, 0, ROLAND_STRENGTH_MAGNITUDE)}
+    assert (rec.get("strength"), rec.get("exceptional_strength")) == (18, 0)
+    label = c64_codec.running_effect_label(spell[0], 10, char.game)
+    assert [d for d in rep.dropped if d.startswith(label)]
+
+
 def test_a_parked_pool_node_ending_first_is_a_row_with_bit_7_clear():
     rows, _rep = _pool_pair_rows(bytes((38, 60, 0, 0x71, 1)),
                                  bytes((12, 10, 0, 0x95, 1)))
@@ -4085,10 +4117,7 @@ def test_a_parked_pool_node_ending_first_is_a_row_with_bit_7_clear():
 
 @pytest.mark.parametrize("nodes, granted", [
     ((_POOL_ACTIVE, _POOL_PARKED, bytes((12, 5, 0, 0x66, 1))), ()),
-    ((_POOL_ACTIVE, bytes((38, 60, 0, 0x95, 1))), ()),
     ((_POOL_ACTIVE, _POOL_PARKED), (bytes((38, 0, 0, 0x73, 1)),)),
-    # Not the pair: one running Strength beside a granted one.
-    ((_POOL_ACTIVE,), (bytes((38, 0, 0, 0x73, 1)),)),
 ])
 def test_other_pool_strength_states_are_still_refused(nodes, granted):
     rows, rep = _pool_pair_rows(*nodes, granted=granted)

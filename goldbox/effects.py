@@ -1066,9 +1066,14 @@ def pool_strength_chain_order(
 
 def pool_strength_chain_rows(
         nodes: "Sequence[RunningEffect]",
-        clock_minutes: int | None = None) -> "dict[int, int] | Unconverted":
-    """The two C64 magnitudes for a Pool character holding a Strength and an
-    Enlarge node together, keyed by effect id (12 and 38), or why not.
+        clock_minutes: int | None = None,
+) -> "list[tuple[RunningEffect, int]] | Unconverted":
+    """The two C64 magnitudes for a Pool character holding two strength nodes
+    together, as `(node, magnitude)` pairs in the order the rows expire, or
+    why not.
+
+    The pair is a Strength and an Enlarge (ids 12 and 38) or two Strengths
+    (38 and 38); a pair is told apart by the node, never by its id.
 
     DOS Pool keeps one active node, whose data is the score to restore, and
     parks a weaker or later one with its own boost in the data byte and bit 7
@@ -1080,12 +1085,14 @@ def pool_strength_chain_rows(
     outlasts it, and the parked node's row then holds the base. A parked node
     that ends first restores nothing, so its row has bit 7 clear.
 
-    Only exactly one Strength and one Enlarge, both with flag 1 and one of them
-    parked, is converted; the caller has already checked that no granted node
-    sets strength. Nodes are ordered by `pool_strength_chain_order`.
+    Both nodes must have flag 1 and one of them must be parked; the caller has
+    already checked that no granted node sets strength. Nodes are ordered by
+    `pool_strength_chain_order`.
     """
-    if len(nodes) != 2 or sorted(n.id for n in nodes) != [12, 38]:
-        return Unconverted("not exactly one Strength and one Enlarge node")
+    if len(nodes) != 2 or sorted(n.id for n in nodes) not in (
+            [12, 38], [38, 38]):
+        return Unconverted("not two strength nodes, a Strength with an "
+                           "Enlarge or a Strength with a Strength")
     if any(n.flag != 1 for n in nodes):
         return Unconverted("a strength node with a flag byte other than 1")
     active = [n for n in nodes if not n.data & 0x80]
@@ -1097,29 +1104,32 @@ def pool_strength_chain_rows(
     first, second = pool_strength_chain_order(nodes, clock_minutes)
     base = active[0].data
     if first is active[0]:
-        return {first.id: MAGNITUDE_RESTORE_FLAG
-                | _pool_strength_value(parked.data & 0x7F),
-                second.id: MAGNITUDE_RESTORE_FLAG | _pool_strength_value(base)}
-    return {first.id: _pool_strength_value(parked.data & 0x7F),
-            second.id: MAGNITUDE_RESTORE_FLAG | _pool_strength_value(base)}
+        return [(first, MAGNITUDE_RESTORE_FLAG
+                 | _pool_strength_value(parked.data & 0x7F)),
+                (second, MAGNITUDE_RESTORE_FLAG | _pool_strength_value(base))]
+    return [(first, _pool_strength_value(parked.data & 0x7F)),
+            (second, MAGNITUDE_RESTORE_FLAG | _pool_strength_value(base))]
 
 
 def pool_strength_chain_nodes(
         rows: "Sequence[Effect]",
         clock_minutes: int) -> "dict[int, RunningEffect] | Unconverted":
-    """The two DOS nodes for one Pool character's Strength and Enlarge rows,
-    keyed by effect id, or why not; the inverse of `pool_strength_chain_rows`.
+    """The two DOS nodes for one Pool character's two strength rows, keyed by
+    row slot, or why not; the inverse of `pool_strength_chain_rows`.
 
-    `rows` is every strength row (ids 12 and 38) the character owns. The rows
-    are sorted by `(time left, -slot)`, the order the writer puts the earlier
-    ending one in the higher slot. The first row with bit 7 set is the active
-    node, whose data is the base the last such row restores; a later one is
-    parked, holding the previous row's value with bit 7 set; a row with bit 7
-    clear is a parked node that ended first. The result must reproduce the rows
-    through `pool_strength_chain_rows`, or it is refused.
+    `rows` is every strength row (ids 12 and 38) the character owns, a
+    Strength with an Enlarge or two Strengths. The rows are sorted by
+    `(time left, -slot)`, the order the writer puts the earlier ending one in
+    the higher slot. The first row with bit 7 set is the active node, whose
+    data is the base the last such row restores; a later one is parked,
+    holding the previous row's value with bit 7 set; a row with bit 7 clear is
+    a parked node that ended first. The result must reproduce the rows through
+    `pool_strength_chain_rows`, or it is refused.
     """
-    if len(rows) != 2 or sorted(r.id for r in rows) != [12, 38]:
-        return Unconverted("not exactly one Strength and one Enlarge row")
+    if len(rows) != 2 or sorted(r.id for r in rows) not in (
+            [12, 38], [38, 38]):
+        return Unconverted("not two strength rows, a Strength with an "
+                           "Enlarge or a Strength with a Strength")
     if any(r.duration == 0 for r in rows):
         return Unconverted("a never-expiring strength row beside a running "
                            "one")
@@ -1132,22 +1142,57 @@ def pool_strength_chain_nodes(
     for row in ordered:
         value = row.magnitude & 0x7F
         if row is lit[0]:
-            data[row.id] = _pool_strength_data(lit[-1].magnitude & 0x7F)
+            data[row.slot] = _pool_strength_data(lit[-1].magnitude & 0x7F)
         elif row in lit:
-            data[row.id] = (_pool_strength_data(
+            data[row.slot] = (_pool_strength_data(
                 lit[lit.index(row) - 1].magnitude & 0x7F)
                 | MAGNITUDE_RESTORE_FLAG)
         else:
-            data[row.id] = _pool_strength_data(value) | MAGNITUDE_RESTORE_FLAG
-    nodes = {r.id: RunningEffect(
+            data[row.slot] = _pool_strength_data(value) | MAGNITUDE_RESTORE_FLAG
+    nodes = {r.slot: RunningEffect(
         r.id, min(remaining_minutes(r.duration, clock_minutes),
-                  DOS_MINUTES_MAX), data[r.id], 1) for r in ordered}
-    again = pool_strength_chain_rows([nodes[r.id] for r in ordered],
+                  DOS_MINUTES_MAX), data[r.slot], 1) for r in ordered}
+    again = pool_strength_chain_rows([nodes[r.slot] for r in ordered],
                                      clock_minutes)
-    if again != {r.id: r.magnitude for r in rows}:
+    if isinstance(again, Unconverted):
+        return again
+    magnitudes = {r.slot: r.magnitude for r in rows}
+    if any(magnitudes[row.slot] != magnitude
+           for row in ordered
+           for node, magnitude in again if node is nodes[row.slot]):
         return Unconverted("strength rows no DOS timeline of two nodes "
                            "produces")
     return nodes
+
+
+def pool_gauntlets_over_spell_row(
+        running: RunningEffect, granted: bytes) -> tuple[int, int] | Unconverted:
+    """The one C64 row for Gauntlets of Ogre Power beside a running Strength
+    or Enlarge, or why not.
+
+    DOS holds the gauntlets' duration-0 node and the spell's node together,
+    one active with the base in its data and the other parked with its own
+    boost (`GAME.OVR:0x2C046`). The C64 never holds both: the second source
+    writes no row (`SPELLE04 $A8FD`), so a spell cast before the gauntlets are
+    readied leaves only the spell's row. This writes the gauntlets' row, which
+    restores the base, and the caller writes no row for the spell.
+    """
+    if (running.id not in STRENGTH_IDS or running.flag != 1
+            or granted[:3] != bytes((38, 0, 0)) or granted[4] != 1):
+        return Unconverted("not a running strength node beside the gauntlets")
+    nodes = (running.data, granted[3])
+    if sum(1 for d in nodes if d & 0x80) != 1:
+        return Unconverted("not exactly one parked strength node")
+    parked = next(d for d in nodes if d & 0x80)
+    if parked & 0x7F == 0:
+        return Unconverted("a parked strength node with no boost")
+    base = next(d for d in nodes if not d & 0x80)
+    row = never_expiring_strength_row(
+        "pool-of-radiance", bytes((38, 0, 0, base, 1)))
+    if row is None:
+        return Unconverted("a data byte no DOS engine writes for the "
+                           "gauntlets' strength node")
+    return row
 
 
 def party_row_record(title_key: str, row: "Effect",

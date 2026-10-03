@@ -6,6 +6,7 @@ effects, in two separate panels)`.
 from __future__ import annotations
 
 import bisect
+import itertools
 
 import pytest
 from gamedata import game_disk
@@ -2595,25 +2596,32 @@ def _chain_row(slot, eid, minutes, magnitude):
                           magnitude)
 
 
+def _chain(nodes, clock=None):
+    """`pool_strength_chain_rows` as `[(id, magnitude)]`, in expiry order."""
+    got = effects.pool_strength_chain_rows(nodes, clock)
+    assert not isinstance(got, effects.Unconverted), got.reason
+    return [(n.id, m) for n, m in got]
+
+
 def test_the_active_node_ending_first_hands_the_parked_boost_on():
     nodes = [_RE(38, 10, _ACTIVE, 1), _RE(12, 60, _PARKED, 1)]
-    assert effects.pool_strength_chain_rows(nodes) == {38: 0x94, 12: 0xF1}
+    assert _chain(nodes) == [(38, 0x94), (12, 0xF1)]
     back = effects.pool_strength_chain_nodes(
         [_chain_row(3, 38, 10, 0x94), _chain_row(2, 12, 60, 0xF1)], 0)
-    assert back == {38: nodes[0], 12: nodes[1]}
+    assert back == {3: nodes[0], 2: nodes[1]}
 
 
 def test_a_parked_node_ending_first_restores_nothing():
     nodes = [_RE(12, 10, _PARKED, 1), _RE(38, 60, _ACTIVE, 1)]
-    assert effects.pool_strength_chain_rows(nodes) == {12: 0x14, 38: 0xF1}
+    assert _chain(nodes) == [(12, 0x14), (38, 0xF1)]
     back = effects.pool_strength_chain_nodes(
         [_chain_row(3, 12, 10, 0x14), _chain_row(2, 38, 60, 0xF1)], 0)
-    assert back == {12: nodes[0], 38: nodes[1]}
+    assert back == {3: nodes[0], 2: nodes[1]}
 
 
 def test_the_chain_input_order_does_not_matter_only_the_minutes_do():
     nodes = [_RE(12, 60, _PARKED, 1), _RE(38, 10, _ACTIVE, 1)]
-    assert effects.pool_strength_chain_rows(nodes) == {38: 0x94, 12: 0xF1}
+    assert _chain(nodes) == [(38, 0x94), (12, 0xF1)]
 
 
 @pytest.mark.parametrize("order", [0, 1])
@@ -2624,11 +2632,11 @@ def test_equal_minutes_write_the_parked_node_first_whatever_the_list_order(
     nodes = [_RE(38, 10, _ACTIVE, 1), _RE(12, 10, _PARKED, 1)]
     if order:
         nodes.reverse()
-    assert effects.pool_strength_chain_rows(nodes) == {12: 0x14, 38: 0xF1}
+    assert _chain(nodes) == [(12, 0x14), (38, 0xF1)]
     assert [n.id for n in effects.pool_strength_chain_order(nodes)] == [12, 38]
     back = effects.pool_strength_chain_nodes(
         [_chain_row(3, 12, 10, 0x14), _chain_row(2, 38, 10, 0xF1)], 0)
-    assert back == {38: _RE(38, 10, _ACTIVE, 1), 12: _RE(12, 10, _PARKED, 1)}
+    assert back == {2: _RE(38, 10, _ACTIVE, 1), 3: _RE(12, 10, _PARKED, 1)}
 
 
 @pytest.mark.parametrize("active_minutes, parked_minutes", [(63, 64), (64, 63),
@@ -2639,11 +2647,11 @@ def test_minutes_that_share_a_duration_byte_tie_like_equal_minutes(
         effects.closest_duration(parked_minutes, 0)
     nodes = [_RE(38, active_minutes, _ACTIVE, 1),
              _RE(12, parked_minutes, _PARKED, 1)]
-    assert effects.pool_strength_chain_rows(nodes, 0) == {12: 0x14, 38: 0xF1}
+    assert _chain(nodes, 0) == [(12, 0x14), (38, 0xF1)]
     # Without the clock the two minutes are compared as they are.
-    without = effects.pool_strength_chain_rows(nodes)
-    assert without == ({12: 0x14, 38: 0xF1} if parked_minutes < active_minutes
-                       else {38: 0x94, 12: 0xF1})
+    assert _chain(nodes) == ([(12, 0x14), (38, 0xF1)]
+                             if parked_minutes < active_minutes
+                             else [(38, 0x94), (12, 0xF1)])
 
 
 def test_both_restoring_rows_of_one_byte_are_refused_as_ambiguous():
@@ -2667,23 +2675,25 @@ def test_every_two_node_timeline_round_trips_through_the_rows(start, stop):
     count = 0
     for base in range(start, stop):
         for boost in range(1, 0x80):
-            for a_id, p_id, a_min, p_min in ((38, 12, 10, 60),
-                                             (12, 38, 60, 10)):
+            for a_id, p_id, a_min, p_min in (
+                    (38, 12, 10, 60), (12, 38, 60, 10),
+                    (38, 38, 10, 60), (38, 38, 60, 10)):
                 nodes = [_RE(a_id, a_min, base, 1),
                          _RE(p_id, p_min, boost | 0x80, 1)]
                 nodes.sort(key=lambda n: n.minutes)
                 rows = effects.pool_strength_chain_rows(nodes)
-                assert isinstance(rows, dict)
+                assert isinstance(rows, list)
+                magnitude = {id(n): m for n, m in rows}
                 back = effects.pool_strength_chain_nodes(
-                    [_chain_row(3 - i, n.id, n.minutes, rows[n.id])
+                    [_chain_row(3 - i, n.id, n.minutes, magnitude[id(n)])
                      for i, n in enumerate(nodes)], 0)
-                assert back == {n.id: n for n in nodes}, (base, boost, a_min, p_min)
+                assert back == {3 - i: n for i, n in enumerate(nodes)}, (
+                    base, boost, a_id, p_id, a_min, p_min)
                 count += 1
-    assert count == (stop - start) * 127 * 2
+    assert count == (stop - start) * 127 * 4
 
 
 @pytest.mark.parametrize("nodes", [
-    [_RE(38, 10, _ACTIVE, 1), _RE(38, 60, _PARKED, 1)],
     [_RE(38, 10, _ACTIVE, 1), _RE(12, 60, 0x72, 1)],
     [_RE(38, 10, _PARKED, 1), _RE(12, 60, _PARKED, 1)],
     [_RE(38, 10, _ACTIVE, 0), _RE(12, 60, _PARKED, 1)],
@@ -2702,7 +2712,6 @@ def test_other_strength_states_stay_refused(nodes):
     [_chain_row(3, 38, 10, 0x14), _chain_row(2, 12, 60, 0x14)],
     [_chain_row(3, 38, 60, 0x14), _chain_row(2, 12, 10, 0xF1)],
     [_chain_row(3, 38, 10, 0x94), effects.Effect(2, 12, 2, 0, 0xF1)],
-    [_chain_row(3, 38, 10, 0x94), _chain_row(2, 38, 60, 0xF1)],
 ])
 def test_strength_rows_no_timeline_produces_stay_refused(rows):
     got = effects.pool_strength_chain_nodes(rows, 0)
@@ -2768,34 +2777,37 @@ def test_the_c64_rows_and_the_dos_chain_leave_the_same_score_at_each_expiry(
     count = 0
     for base in range(1, 0x80, 7):
         for boost in range(1, 0x80, 9):
-            for a_min, p_min in _SIM_MINUTES:
-                nodes = [_RE(38, a_min, base, 1),
-                         _RE(12, p_min, boost | 0x80, 1)]
+            for ids, (a_min, p_min) in itertools.product(
+                    ((38, 12), (12, 38), (38, 38)), _SIM_MINUTES):
+                nodes = [_RE(ids[0], a_min, base, 1),
+                         _RE(ids[1], p_min, boost | 0x80, 1)]
                 rows = effects.pool_strength_chain_rows(nodes, clock)
-                assert isinstance(rows, dict)
-                ticks = {n.id: effects.remaining_minutes(
+                assert isinstance(rows, list)
+                magnitude = {id(n): m for n, m in rows}
+                ticks = {id(n): effects.remaining_minutes(
                     effects.closest_duration(n.minutes, clock), clock)
                     for n in nodes}
                 c64 = _c64_scores(
-                    [(3 - i, ticks[n.id], rows[n.id])
+                    [(3 - i, ticks[id(n)], magnitude[id(n)])
                      for i, n in enumerate(
                          effects.pool_strength_chain_order(nodes, clock))],
                     ascending)
-                held = [_RE(n.id, ticks[n.id], n.data, 1) for n in nodes]
+                held = [_RE(n.id, ticks[id(n)], n.data, 1) for n in nodes]
                 dos = _dos_scores(held)
                 # Compare in the C64's own value space.
                 dos = [(m, v if v == "boost" else
                         effects._pool_strength_value(v)) for m, v in dos]
                 assert c64 == dos, (base, boost, a_min, p_min, ascending)
                 count += 1
-    assert count == 19 * 15 * len(_SIM_MINUTES)
+    assert count == 19 * 15 * 3 * len(_SIM_MINUTES)
 
 
 @pytest.mark.parametrize("ascending", [True, False])
 def test_a_tied_expiry_ends_on_the_base_in_either_slot_direction(ascending):
     for a_min, p_min in ((10, 10), (63, 64), (75, 70)):
         nodes = [_RE(38, a_min, _ACTIVE, 1), _RE(12, p_min, _PARKED, 1)]
-        rows = effects.pool_strength_chain_rows(nodes, 0)
+        rows = dict((n.id, m) for n, m in effects.pool_strength_chain_rows(
+            nodes, 0))
         held = {n.id: effects.remaining_minutes(
             effects.closest_duration(n.minutes, 0), 0) for n in nodes}
         got = _c64_scores([(2 + (n.id == 12), held[n.id], rows[n.id])
