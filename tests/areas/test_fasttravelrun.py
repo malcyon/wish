@@ -1040,11 +1040,12 @@ def test_a_fight_before_a_step_is_fought_with_melee_and_recorded():
     assert sheet
 
 
-def test_an_unknown_row_stops_the_walk_before_any_key_is_pressed():
+def test_an_unknown_row_stops_the_walk_before_any_key_is_pressed(fake_clock):
     sess, m = make()
     sess = WalkSession(m)
     sess.row = "LARGE SMALL LEAVE"
     steps, sheet = FT.walk_afterwards(sess)
+    assert fake_clock[0] >= 60.0
     assert sess.pressed == [] and sess.sheets == [] and not sheet
     assert "LARGE SMALL LEAVE" in steps[0]["refused"]
     assert steps[0]["row"] == "LARGE SMALL LEAVE"
@@ -1586,6 +1587,7 @@ def fake_clock(monkeypatch):
     monkeypatch.setattr(FT, "time", types.SimpleNamespace(
         monotonic=lambda: now[0], time=lambda: now[0],
         sleep=lambda s: now.__setitem__(0, now[0] + s)))
+    return now
 
 
 def test_settle_indoors_accepts_the_move_sub_bar(tmp_path, fake_clock):

@@ -238,8 +238,8 @@ def test_wrapper_plans_shard_once_and_records_selected_weight_provenance(tmp_pat
     }))
     calls = []
 
-    def plan(root, inventory, measured):
-        calls.append((inventory, measured))
+    def plan(root, inventory, measured, count):
+        calls.append((inventory, measured, count))
         return {"version": 1, "files": list(files), "shards": [[files[0]], [files[1]]],
                 "seconds": [3, 2], "groups": {}}
 
@@ -260,7 +260,7 @@ def test_wrapper_plans_shard_once_and_records_selected_weight_provenance(tmp_pat
         "--output", str(output), "--shard-index", "1", "--weights", str(weight_path),
         "--weight-key", "linux", "--", "-n", "2",
     ]) == 0
-    assert calls == [(files, weights)]
+    assert calls == [(files, weights, 2)]
     command = seen["command"]
     assert command[command.index("--ci-shard-index") + 1] == "1"
     path = Path(next(option.partition("=")[2] for option in command
@@ -275,6 +275,104 @@ def test_wrapper_plans_shard_once_and_records_selected_weight_provenance(tmp_pat
     assert report["shard"]["unmeasured_files"] == []
     assert report["shard"]["excluded_files"] == ["tests/generate/test_generated.py"]
     assert "--ignore=tests/generate/test_generated.py" in command
+
+
+def test_wrapper_passes_four_shard_count_and_failure_list(tmp_path, monkeypatch):
+    from tools.suite import ci_shard
+
+    files = tuple(f'tests/test_{i}.py' for i in range(4))
+    weights = tmp_path / 'weights.json'
+    weights.write_text(json.dumps({
+        'version': 1, 'platforms': {'linux': {
+            'weights': dict.fromkeys(files, 1),
+            'source_sha': 'a' * 40, 'run_id': 123,
+        }},
+    }))
+    monkeypatch.setattr(ci_shard, 'inventory', lambda root: files)
+    counts = []
+
+    def plan(root, inventory, measured, count):
+        counts.append(count)
+        return {'version': 1, 'files': list(files), 'shards': [[name] for name in files],
+                'seconds': [1] * count, 'groups': {}}
+
+    monkeypatch.setattr(ci_shard, 'make_plan', plan)
+    commands = []
+
+    def start(command, env):
+        commands.append(command)
+        return SimpleNamespace(pid=123, returncode=0, poll=lambda: 0)
+
+    monkeypatch.setattr(ci_measure.subprocess, 'Popen', start)
+    monkeypatch.setitem(sys.modules, 'psutil', SimpleNamespace(
+        Process=lambda pid: object(), cpu_count=lambda logical: 4,
+    ))
+    failures = tmp_path / 'failures.json'
+    failures.write_text('[]')
+    monkeypatch.setenv('WISH_CI_PRIOR_FAILURES_JSON', '["tests/test_0.py::test_other"]')
+    output = tmp_path / 'output'
+    assert ci_measure.main([
+        '--output', str(output), '--shard-index', '3', '--shard-count', '4',
+        '--weights', str(weights), '--weight-key', 'linux',
+        '--prior-failures', str(failures), '--', '-q',
+    ]) == 0
+    assert counts == [4]
+    report = json.loads((output / 'resources.json').read_text())
+    assert report['shard']['count'] == 4
+    assert report['full_shard_run'] is True
+    assert f'--wish-prior-failures={failures}' in commands[0]
+    assert not (output / 'prior-failures.json').exists()
+
+
+@pytest.mark.parametrize('use_env', [False, True])
+def test_external_failure_list_preserves_pytest_testpaths(tmp_path, use_env):
+    project = tmp_path / 'project'
+    (project / 'tests').mkdir(parents=True)
+    (project / 'livetests').mkdir()
+    (project / 'pyproject.toml').write_text(
+        "[tool.pytest.ini_options]\ntestpaths = ['tests']\n", encoding='utf-8')
+    (project / 'conftest.py').write_text(
+        'def pytest_addoption(parser):\n'
+        '    parser.addoption("--wish-prior-failures")\n', encoding='utf-8')
+    (project / 'tests' / 'test_selected.py').write_text(
+        'def test_selected(): pass\n', encoding='utf-8')
+    (project / 'livetests' / 'test_outside.py').write_text(
+        'raise RuntimeError("Outside configured testpaths")\n', encoding='utf-8')
+    failures = tmp_path / 'prior-failures.json'
+    failures.write_text('[]', encoding='utf-8')
+    output = tmp_path / 'profile'
+    env = os.environ.copy()
+    env['PYTHONPATH'] = os.pathsep.join(filter(None, [str(REPO), env.get('PYTHONPATH')]))
+    if use_env:
+        env['WISH_CI_PRIOR_FAILURES_JSON'] = '["tests/test_selected.py::test_selected"]'
+    else:
+        env.pop('WISH_CI_PRIOR_FAILURES_JSON', None)
+    source = [] if use_env else ['--prior-failures', str(failures)]
+    result = subprocess.run(
+        [sys.executable, str(REPO / 'tools/suite/ci_measure.py'),
+         '--output', str(output), *source, '--', '-q'],
+        cwd=project, env=env, capture_output=True, text=True, timeout=60,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    profile = json.loads((output / 'pytest-main.json').read_text())
+    assert profile['collected_tests'] == 1
+    assert set(profile['files']) == {'tests/test_selected.py'}
+    resources = json.loads((output / 'resources.json').read_text())
+    selected = output / 'prior-failures.json' if use_env else failures
+    assert f'--wish-prior-failures={selected}' in resources['command']
+    if use_env:
+        assert json.loads(selected.read_text()) == ['tests/test_selected.py::test_selected']
+
+
+@pytest.mark.parametrize('raw', [None, '', '[]', '{bad', '{}', '[1]', '[""]',
+                                  '["tests/test_a.py::test_a\\nnext"]'])
+def test_invalid_prior_failure_env_does_not_select_a_file(tmp_path, monkeypatch, raw):
+    if raw is None:
+        monkeypatch.delenv('WISH_CI_PRIOR_FAILURES_JSON', raising=False)
+    else:
+        monkeypatch.setenv('WISH_CI_PRIOR_FAILURES_JSON', raw)
+    assert ci_measure.prior_failures_option(None, tmp_path) is None
+    assert not (tmp_path / 'prior-failures.json').exists()
 
 
 def test_external_shard_plan_keeps_pytest_testpaths(tmp_path, monkeypatch):
@@ -300,14 +398,14 @@ def test_external_shard_plan_keeps_pytest_testpaths(tmp_path, monkeypatch):
     }), encoding="utf-8")
     monkeypatch.setattr(ci_shard, "inventory", lambda root: (
         "tests/test_selected.py", "tests/test_unselected.py"))
-    monkeypatch.setattr(ci_shard, "make_plan", lambda root, files, measured: {
+    monkeypatch.setattr(ci_shard, "make_plan", lambda root, files, measured, count: {
         "version": 1,
         "files": ["tests/test_selected.py", "tests/test_unselected.py"],
         "shards": [["tests/test_selected.py"], ["tests/test_unselected.py"]],
         "seconds": [1, 1],
         "groups": {},
     })
-    args = SimpleNamespace(shard_index=0, weights=weights, weight_key="linux")
+    args = SimpleNamespace(shard_index=0, shard_count=2, weights=weights, weight_key="linux")
     shard_options, _ = ci_measure.shard_arguments(
         argparse.ArgumentParser(), args, tmp_path / "outside-output")
     env = os.environ.copy()
@@ -324,6 +422,7 @@ def test_external_shard_plan_keeps_pytest_testpaths(tmp_path, monkeypatch):
 @pytest.mark.parametrize("options", [
     ["--shard-index", "0"], ["--weight-key", "linux"],
     ["--weights", "missing.json"], ["--shard-index", "2"],
+    ["--shard-count", "4"], ["--shard-count", "0"],
 ])
 def test_incomplete_shard_options_stop_before_pytest(tmp_path, monkeypatch, options):
     monkeypatch.setattr(ci_measure.subprocess, "Popen", lambda *a, **kw: pytest.fail("Started pytest"))

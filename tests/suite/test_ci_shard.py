@@ -67,10 +67,33 @@ def test_zero_weights_still_produce_two_nonempty_shards(tmp_path):
     assert all(make_plan(tmp_path, files, dict.fromkeys(files, 0))['shards'])
 
 
+def test_four_shards_cover_files_and_keep_transitive_groups(tmp_path):
+    files = suite(tmp_path, {
+        'test_a.py': 'pytest.mark.xdist_group("one")',
+        'test_b.py': 'pytest.mark.xdist_group("one"); pytest.mark.xdist_group("two")',
+        'test_c.py': 'pytest.mark.xdist_group("two")',
+        'test_d.py': '', 'test_e.py': '', 'test_f.py': '',
+    })
+    plan = make_plan(tmp_path, files, {}, 4)
+    assert len(plan['shards']) == 4
+    assert all(plan['shards'])
+    assert {name for shard in plan['shards'] for name in shard} == set(files)
+    assert any({'test_a.py', 'test_b.py', 'test_c.py'} <= set(shard)
+               for shard in plan['shards'])
+    assert plan == make_plan(tmp_path, tuple(reversed(files)), {}, 4)
+
+
+@pytest.mark.parametrize('count', [0, -1, True, 3])
+def test_invalid_or_unfillable_shard_count_fails(tmp_path, count):
+    files = suite(tmp_path, {'test_a.py': '', 'test_b.py': ''})
+    with pytest.raises(ValueError):
+        make_plan(tmp_path, files, {}, count)
+
+
 def test_one_connected_unit_cannot_be_split(tmp_path):
     files = suite(tmp_path, {'test_a.py': 'pytest.mark.xdist_group("same")',
                              'test_b.py': 'pytest.mark.xdist_group("same")'})
-    with pytest.raises(ValueError, match='inventory'):
+    with pytest.raises(ValueError, match='independent test units'):
         make_plan(tmp_path, files, {})
 
 
@@ -82,6 +105,12 @@ def test_serialized_plan_rejects_missing_or_repeated_files(shards):
     with pytest.raises(ValueError):
         validate_plan({'version': 1, 'files': ['test_a.py', 'test_b.py'],
                        'shards': shards})
+
+
+def test_serialized_plan_accepts_one_and_four_shards():
+    files = [f'test_{index}.py' for index in range(4)]
+    for shards in ([files], [[name] for name in files]):
+        validate_plan({'version': 1, 'files': files, 'shards': shards})
 
 
 def test_inventory_uses_tracked_files_patterns_and_directory_exclusions(tmp_path):
@@ -148,6 +177,17 @@ def test_unexpected_collected_files_fail(tmp_path):
                         '--ci-shard-index', '0')
     assert result.returncode != 0
     assert 'Collected files outside shard plan' in result.stderr
+
+
+@pytest.mark.parametrize('index', ['-1', '4'])
+def test_out_of_range_shard_index_fails_before_collection(tmp_path, index):
+    files = suite(tmp_path, {f'test_{i}.py': f'def test_{i}(): pass'
+                             for i in range(4)})
+    write_plan(tmp_path / 'plan.json', make_plan(tmp_path, files, {}, 4))
+    result = run_pytest(tmp_path, '--collect-only', '--ci-shard-plan', 'plan.json',
+                        '--ci-shard-index', index)
+    assert result.returncode != 0
+    assert 'Shard index' in result.stderr
 
 
 def test_loadgroup_keeps_shared_group_in_one_worker(tmp_path):
@@ -291,3 +331,91 @@ def test_weights_cli_rejects_incomplete_resource_report(tmp_path, change):
         main(['--profile', str(profile), '--source-sha', 'a' * 40,
               '--run-id', '123', '--output', str(output), '--weight-key', 'new'])
     assert not output.exists()
+
+
+def profile_bundle(tmp_path, index, *, files=None, run_attempt='1'):
+    source = tmp_path / f'shard-{index}'
+    source.mkdir()
+    names = files or (f'tests/test_{index}.py',)
+    profile = measured_profile()
+    profile['collected_tests'] = 1
+    profile['files'] = {name: {
+        'setup_seconds': 1.0, 'call_seconds': 2.0,
+        'teardown_seconds': 0.5, 'reports': 3,
+    } for name in names}
+    (source / 'pytest-main.json').write_text(json.dumps(profile))
+    (source / 'junit.xml').write_text('<testsuites><testsuite><testcase/></testsuite></testsuites>')
+    (source / 'resources.json').write_text(json.dumps({
+        'schema_version': 1, 'exit_code': 0, 'cleanup_complete': True,
+        'run_sha': 'a' * 40, 'run_id': '123', 'run_attempt': run_attempt,
+        'full_shard_run': True,
+        'shard': {'index': index, 'weight_key': 'linux',
+                  'selected_files': [f'tests/test_{index}.py'],
+                  'source_sha': 'b' * 40, 'run_id': '99'},
+    }))
+    (source / 'shard-plan.json').write_text(json.dumps({
+        'version': 1,
+        'files': ['tests/test_0.py', 'tests/test_1.py'],
+        'shards': [['tests/test_0.py'], ['tests/test_1.py']],
+        'seconds': [1, 1], 'groups': {},
+    }))
+    return source / 'pytest-main.json'
+
+
+def test_multi_profile_import_combines_disjoint_main_reports(tmp_path):
+    from tools.suite.ci_shard import combined_profile_weights
+
+    paths = [profile_bundle(tmp_path, index) for index in range(2)]
+    assert combined_profile_weights(paths, 'a' * 40, '123', 'linux') == {
+        'tests/test_0.py': 3.5, 'tests/test_1.py': 3.5,
+    }
+
+
+def test_single_new_profile_rejects_incomplete_run(tmp_path):
+    from tools.suite.ci_shard import combined_profile_weights
+
+    path = profile_bundle(tmp_path, 0)
+    resources = path.with_name('resources.json')
+    data = json.loads(resources.read_text())
+    data['full_shard_run'] = False
+    resources.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match='complete CI shard run'):
+        combined_profile_weights([path], 'a' * 40, '123', 'linux')
+
+
+@pytest.mark.parametrize('mutation', [
+    'duplicate_file', 'missing_shard', 'wrong_sha', 'wrong_attempt',
+    'wrong_selected', 'unsafe_path', 'failed_resource',
+])
+def test_multi_profile_import_rejects_inconsistent_reports(tmp_path, mutation):
+    from tools.suite.ci_shard import combined_profile_weights
+
+    paths = [profile_bundle(tmp_path, index) for index in range(2)]
+    if mutation == 'missing_shard':
+        paths.pop()
+        # A single profile retains the compatible single-report import path.
+        paths.append(paths[0])
+    else:
+        target = paths[1]
+        if mutation in ('duplicate_file', 'unsafe_path'):
+            data = json.loads(target.read_text())
+            name = 'tests/test_0.py' if mutation == 'duplicate_file' else '../escape.py'
+            data['files'] = {name: next(iter(data['files'].values()))}
+            target.write_text(json.dumps(data))
+        elif mutation == 'wrong_selected':
+            path = target.with_name('resources.json')
+            data = json.loads(path.read_text())
+            data['shard']['selected_files'] = ['tests/test_0.py']
+            path.write_text(json.dumps(data))
+        else:
+            path = target.with_name('resources.json')
+            data = json.loads(path.read_text())
+            field, value = {
+                'wrong_sha': ('run_sha', 'b' * 40),
+                'wrong_attempt': ('run_attempt', '2'),
+                'failed_resource': ('exit_code', 1),
+            }[mutation]
+            data[field] = value
+            path.write_text(json.dumps(data))
+    with pytest.raises(ValueError):
+        combined_profile_weights(paths, 'a' * 40, '123', 'linux')

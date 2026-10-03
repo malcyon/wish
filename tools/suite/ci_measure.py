@@ -97,33 +97,30 @@ def shard_arguments(parser, args, output):
     supplied = (args.shard_index is not None, args.weights is not None,
                 args.weight_key is not None)
     if not any(supplied):
+        if args.shard_count != 2:
+            parser.error("--shard-count requires shard weights and an index")
         return [], None
     if not all(supplied):
         parser.error("--shard-index, --weights and --weight-key are required together")
+    if args.shard_count < 1 or args.shard_index < 0 or args.shard_index >= args.shard_count:
+        parser.error("--shard-count must be positive and --shard-index within its range")
     if __package__ in (None, ""):
         sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     from tools.suite import ci_shard
 
     try:
         data = json.loads(args.weights.read_text(encoding="utf-8"))
-        if not isinstance(data, dict) or type(data.get("version")) is not int or data["version"] != 1:
-            raise ValueError("Unsupported weight file version")
-        platforms = data.get("platforms")
-        if not isinstance(platforms, dict) or args.weight_key not in platforms:
+        ci_shard.validate_weights(data)
+        platforms = data["platforms"]
+        if args.weight_key not in platforms:
             raise ValueError(f"Missing platform weights: {args.weight_key}")
         selected = platforms[args.weight_key]
-        if not isinstance(selected, dict) or not isinstance(selected.get("weights"), dict):
-            raise ValueError("Platform weights must be a mapping")
         sha = selected.get("source_sha")
         run_id = selected.get("run_id")
-        if not isinstance(sha, str) or len(sha) != 40 or any(c not in "0123456789abcdefABCDEF" for c in sha):
-            raise ValueError("Weight source SHA must contain 40 hexadecimal digits")
-        if isinstance(run_id, bool) or not isinstance(run_id, (int, str)) or not str(run_id).isdigit() or int(run_id) <= 0:
-            raise ValueError("Invalid weight source run ID")
         root = Path(__file__).resolve().parents[2]
         excluded = "tests/generate/test_generated.py"
         files = tuple(name for name in ci_shard.inventory(root) if name != excluded)
-        plan = ci_shard.make_plan(root, files, selected["weights"])
+        plan = ci_shard.make_plan(root, files, selected["weights"], args.shard_count)
     except (OSError, ValueError, TypeError, subprocess.CalledProcessError) as error:
         parser.error(f"Invalid shard configuration: {error}")
     output.mkdir(parents=True, exist_ok=True)
@@ -131,6 +128,7 @@ def shard_arguments(parser, args, output):
     ci_shard.write_plan(path, plan)
     metadata = {
         "index": args.shard_index,
+        "count": args.shard_count,
         "weight_key": args.weight_key,
         "weights_path": str(args.weights.resolve()),
         "source_sha": sha,
@@ -145,12 +143,35 @@ def shard_arguments(parser, args, output):
             "--ci-shard-index", str(args.shard_index), f"--ignore={excluded}"], metadata
 
 
+def prior_failures_option(explicit_path, output):
+    """Write valid optional CI node IDs as data for pytest's priority hook."""
+    if explicit_path is not None:
+        return f"--wish-prior-failures={explicit_path.resolve()}"
+    raw = os.environ.get("WISH_CI_PRIOR_FAILURES_JSON", "")
+    if not raw.strip():
+        return None
+    try:
+        nodes = json.loads(raw)
+    except ValueError:
+        return None
+    if (not isinstance(nodes, list) or not nodes
+            or not all(isinstance(node, str) and node.strip()
+                       and not any(ord(character) < 32 for character in node)
+                       for node in nodes)):
+        return None
+    path = output / "prior-failures.json"
+    path.write_text(json.dumps(nodes) + "\n", encoding="utf-8")
+    return f"--wish-prior-failures={path}"
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--shard-index", type=int, choices=(0, 1))
+    parser.add_argument("--shard-index", type=int)
+    parser.add_argument("--shard-count", type=int, default=2)
     parser.add_argument("--weights", type=Path)
     parser.add_argument("--weight-key")
+    parser.add_argument("--prior-failures", type=Path)
     parser.add_argument("pytest_args", nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
     output = args.output.resolve()
@@ -165,7 +186,11 @@ def main(argv=None):
     if pytest_args[:1] == ["--"]:
         pytest_args = pytest_args[1:]
     command = [sys.executable, "-m", "pytest", "-p", "tools.suite.ci_profile",
-               "--durations=50", f"--junitxml={output / 'junit.xml'}", *shard_options, *pytest_args]
+               "--durations=50", f"--junitxml={output / 'junit.xml'}", *shard_options]
+    prior_option = prior_failures_option(args.prior_failures, output)
+    if prior_option is not None:
+        command.append(prior_option)
+    command.extend(pytest_args)
     started = time.perf_counter()
     interrupted = []
 
@@ -198,6 +223,11 @@ def main(argv=None):
         data = {
             "schema_version": 1,
             "command": command,
+            "run_sha": os.environ.get("GITHUB_SHA"),
+            "run_id": os.environ.get("GITHUB_RUN_ID"),
+            "run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
+            "full_shard_run": bool(shard) and pytest_args in (
+                ["-q"], ["-q", "--ignore=tests/generate/test_generated.py"]),
             "exit_code": exit_code,
             "cleanup_complete": cleanup_complete,
             "shard": shard,

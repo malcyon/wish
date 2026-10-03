@@ -13,18 +13,26 @@ import time
 from urllib.parse import urlencode
 
 DEFAULT_REPO = "malcyon/wish"
+ROUTE_JOB = "Classify test route"
 GENERATED_JOB = "generated files match their sources"
+
+
 # A code route is complete only after every routine shard succeeds.
-CODE_JOBS = (
-    "pytest (ubuntu-latest, py3.12, shard 1/2)",
-    "pytest (ubuntu-latest, py3.12, shard 2/2)",
-    "pytest (windows-latest, py3.13, shard 1/2)",
-    "pytest (windows-latest, py3.13, shard 2/2)",
-)
+def code_jobs(shard_count: int) -> tuple[str, ...]:
+    """Name every required routine shard for the requested CI generation."""
+    return tuple(
+        f"pytest ({platform}, py{python}, shard {index}/{shard_count})"
+        for platform, python in (("ubuntu-latest", "3.12"),
+                                 ("windows-latest", "3.13"))
+        for index in range(1, shard_count + 1)
+    )
+
+
+CODE_JOBS = code_jobs(4)
 DOCS_JOB = "documentation-only validation"
 WORKFLOWS = {
     ".github/workflows/lint.yml": ("ruff",),
-    ".github/workflows/test.yml": (GENERATED_JOB, *CODE_JOBS, DOCS_JOB),
+    ".github/workflows/test.yml": (ROUTE_JOB, GENERATED_JOB, *CODE_JOBS, DOCS_JOB),
 }
 PAGE_SIZE = 100
 MAX_PAGES = 100
@@ -108,7 +116,7 @@ def _is_pytest_job(name) -> bool:
 
 
 def inspect(sha: str, repo: str, transport, deadline: float,
-            clock=time.monotonic) -> dict:
+            clock=time.monotonic, shard_count: int = 4) -> dict:
     """Return one complete snapshot; no missing or stale result can pass."""
     base = f"/repos/{repo}/actions"
     runs = pages(transport, f"{base}/runs", "workflow_runs",
@@ -133,9 +141,13 @@ def inspect(sha: str, repo: str, transport, deadline: float,
             selected[path] = (rank, run)
 
     report = {"sha": sha, "verdict": "pending", "workflows": {},
-              "missing_workflows": [], "missing_jobs": {}}
+              "missing_workflows": [], "missing_jobs": {}, "settled": False}
     failed = False
-    for path, expected in WORKFLOWS.items():
+    required_code_jobs = code_jobs(shard_count)
+    workflows = {**WORKFLOWS,
+                 ".github/workflows/test.yml":
+                     (ROUTE_JOB, GENERATED_JOB, *required_code_jobs, DOCS_JOB)}
+    for path, expected in workflows.items():
         if path not in selected:
             report["missing_workflows"].append(path)
             continue
@@ -174,22 +186,25 @@ def inspect(sha: str, repo: str, transport, deadline: float,
                 failed = True
 
         if path == ".github/workflows/test.yml":
+            route_state = _job_state(matched.get(ROUTE_JOB))
             generated_state = _job_state(matched.get(GENERATED_JOB))
-            code_states = [_job_state(matched.get(name)) for name in CODE_JOBS]
+            code_states = [_job_state(matched.get(name)) for name in required_code_jobs]
             docs_state = _job_state(matched.get(DOCS_JOB))
             pytest_jobs = {name: job for name, job in matched.items()
                            if _is_pytest_job(name)}
-            extra_pytest_names = set(pytest_jobs) - set(CODE_JOBS)
+            extra_pytest_names = set(pytest_jobs) - set(required_code_jobs)
             extra_pytest_states = {
                 name: _job_state(job) for name, job in pytest_jobs.items()
-                if name not in CODE_JOBS
+                if name not in required_code_jobs
             }
 
-            code_route = (generated_state == "success" and
+            code_route = (route_state == "success" and
+                          generated_state == "success" and
                           all(state == "success" for state in code_states) and
                           docs_state == "skipped" and
                           not extra_pytest_names)
-            docs_route = (generated_state == "success" and
+            docs_route = (route_state == "success" and
+                          generated_state == "success" and
                           docs_state == "success" and
                           all(_job_state(job) == "skipped"
                               for job in pytest_jobs.values()))
@@ -200,7 +215,7 @@ def inspect(sha: str, repo: str, transport, deadline: float,
             if code_route == docs_route:
                 # Neither route has enough evidence yet, or terminal jobs
                 # describe a contradictory/incomplete route.
-                route_states = [generated_state, *code_states, docs_state,
+                route_states = [route_state, generated_state, *code_states, docs_state,
                                 *extra_pytest_states.values()]
                 if "failure" in route_states:
                     failed = True
@@ -210,7 +225,7 @@ def inspect(sha: str, repo: str, transport, deadline: float,
                 entry["accepted_route"] = "code" if code_route else "docs"
             missing = [name for name in expected if name not in matched]
             if entry.get("accepted_route") == "docs":
-                missing = [name for name in missing if name not in CODE_JOBS]
+                missing = [name for name in missing if name not in required_code_jobs]
             if missing:
                 report["missing_jobs"][path] = missing
         else:
@@ -220,6 +235,15 @@ def inspect(sha: str, repo: str, transport, deadline: float,
             if any(_job_state(matched.get(name)) == "skipped" for name in expected):
                 failed = True
 
+    report["settled"] = (
+        not report["missing_workflows"]
+        and all(entry["status"] == "completed" and
+                all(_job_state(job) != "pending"
+                    for job in entry["jobs"].values()) and
+                (path not in report["missing_jobs"] or
+                 entry["conclusion"] not in (None, "", "success"))
+                for path, entry in report["workflows"].items())
+    )
     if failed:
         report["verdict"] = "failure"
     elif not report["missing_workflows"] and not report["missing_jobs"] and all(
@@ -236,28 +260,51 @@ def inspect(sha: str, repo: str, transport, deadline: float,
     return report
 
 
+def _emit_failure(event: dict) -> None:
+    """Report a completed failed job immediately without ending monitoring."""
+    print(json.dumps(event, separators=(",", ":")), file=sys.stderr, flush=True)
+
+
 def watch(sha: str, repo: str = DEFAULT_REPO, timeout: float = 1200,
           interval: float = 30, transport=gh_get, clock=time.monotonic,
-          sleep=time.sleep) -> dict:
-    """Poll internally until success, failure, error, or a monotonic deadline."""
+          sleep=time.sleep, on_failure=_emit_failure,
+          shard_count: int = 4) -> dict:
+    """Poll until all available jobs settle, or reach a monotonic deadline."""
     deadline = clock() + timeout
     report = {"sha": sha, "verdict": "timeout", "workflows": {},
               "missing_workflows": list(WORKFLOWS), "missing_jobs": {}}
+    seen_failures = set()
+    failed = False
     while True:
         try:
-            report = inspect(sha, repo, transport, deadline, clock)
+            report = inspect(sha, repo, transport, deadline, clock,
+                             shard_count=shard_count)
         except TimeoutError:
-            report["verdict"] = "timeout"
+            report["verdict"] = "failure" if failed else "timeout"
             return report
         except CIWatchError as exc:
             report["verdict"] = "error"
             report["error"] = str(exc)
             return report
-        if report["verdict"] != "pending":
+        failed = report["verdict"] == "failure"
+        for path, run in report["workflows"].items():
+            for name, job in run["jobs"].items():
+                if (job["status"] != "completed" or
+                        _job_state(job) != "failure" or
+                        job["id"] in seen_failures):
+                    continue
+                seen_failures.add(job["id"])
+                on_failure({"event": "job_failure", "sha": sha,
+                            "workflow": path, "run_id": run["id"],
+                            "run_url": run["html_url"], "job_id": job["id"],
+                            "job": name, "job_url": job["html_url"],
+                            "conclusion": job["conclusion"]})
+        if report["verdict"] == "success" or (
+                report["verdict"] == "failure" and report["settled"]):
             return report
         remaining = deadline - clock()
         if remaining <= 0:
-            report["verdict"] = "timeout"
+            report["verdict"] = "failure" if failed else "timeout"
             return report
         sleep(min(interval, remaining))
 
@@ -268,6 +315,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repo", default=DEFAULT_REPO)
     parser.add_argument("--timeout", type=float, default=1200)
     parser.add_argument("--interval", type=float, default=30)
+    parser.add_argument("--shard-count", type=int, default=4,
+                        help="Expected routine shards per platform")
     args = parser.parse_args(argv)
     if not re.fullmatch(r"[0-9a-fA-F]{40}", args.sha):
         parser.error("SHA must be 40 hexadecimal characters")
@@ -276,7 +325,10 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("Timeout and interval must be finite and positive")
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", args.repo):
         parser.error("Repository must be owner/name")
-    report = watch(args.sha.lower(), args.repo, args.timeout, args.interval)
+    if args.shard_count < 1:
+        parser.error("Shard count must be positive")
+    report = watch(args.sha.lower(), args.repo, args.timeout, args.interval,
+                   shard_count=args.shard_count)
     print(json.dumps(report, separators=(",", ":")))
     return {"success": 0, "timeout": 2, "failure": 1, "error": 1}[report["verdict"]]
 

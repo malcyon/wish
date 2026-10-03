@@ -1,4 +1,4 @@
-"""Plan two deterministic pytest shards and filter files before their import."""
+"""Plan deterministic pytest shards and filter files before their import."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ import re
 import statistics
 import subprocess
 import tomllib
+import xml.etree.ElementTree as ET
 from pathlib import Path, PurePosixPath
 
 import pytest
@@ -78,10 +79,13 @@ def _relative_file(name: str) -> bool:
             and '\\' not in name and path.as_posix() == name)
 
 
-def make_plan(root: Path, files: tuple[str, ...], weights: dict[str, float]) -> dict:
+def make_plan(root: Path, files: tuple[str, ...], weights: dict[str, float],
+              shard_count: int = 2) -> dict:
     """Keep connected groups together and assign longest units to the lighter shard."""
     if len(files) != len(set(files)) or any(not _relative_file(p) for p in files):
         raise ValueError('Inventory must contain unique repository-relative paths')
+    if type(shard_count) is not int or shard_count < 1:
+        raise ValueError('Shard count must be a positive integer')
     for name, value in weights.items():
         if (not _relative_file(name) or isinstance(value, bool)
                 or not isinstance(value, (int, float))
@@ -112,11 +116,13 @@ def make_plan(root: Path, files: tuple[str, ...], weights: dict[str, float]) -> 
         units.setdefault(leader(name), []).append(name)
     ordered = sorted(units.values(), key=lambda names: (
         -sum(weights.get(name, fallback) for name in names), tuple(names)))
-    shards = [[], []]
-    totals = [0.0, 0.0]
+    if len(ordered) < shard_count:
+        raise ValueError('Not enough independent test units for nonempty shards')
+    shards = [[] for _ in range(shard_count)]
+    totals = [0.0] * shard_count
     for names in ordered:
         # Give each shard a unit even when every measured weight is zero.
-        index = min(range(2), key=lambda i: (totals[i], bool(shards[i]), i))
+        index = min(range(shard_count), key=lambda i: (bool(shards[i]), totals[i], i))
         shards[index].extend(names)
         totals[index] += sum(weights.get(name, fallback) for name in names)
     plan = {'version': 1, 'files': sorted(files),
@@ -134,11 +140,11 @@ def validate_plan(plan: dict) -> None:
     if (not isinstance(files, list) or not all(isinstance(p, str) for p in files)
             or len(files) != len(set(files))
             or not all(_relative_file(p) for p in files)
-            or not isinstance(shards, list) or len(shards) != 2
+            or not isinstance(shards, list) or not shards
             or not all(isinstance(s, list) and s for s in shards)
             or not all(isinstance(p, str) for s in shards for p in s)):
         raise ValueError('Invalid shard inventory')
-    joined = shards[0] + shards[1]
+    joined = [name for shard in shards for name in shard]
     if len(joined) != len(set(joined)) or set(joined) != set(files):
         raise ValueError('Shard files must be disjoint and cover the inventory exactly')
     groups = plan.get('groups', {})
@@ -164,8 +170,8 @@ def write_plan(path: Path, plan: dict) -> None:
 
 def pytest_addoption(parser):
     group = parser.getgroup('ci-shard')
-    group.addoption('--ci-shard-plan', help='Precomputed two-shard JSON plan')
-    group.addoption('--ci-shard-index', type=int, choices=(0, 1))
+    group.addoption('--ci-shard-plan', help='Precomputed shard JSON plan')
+    group.addoption('--ci-shard-index', type=int)
 
 
 def pytest_configure(config):
@@ -178,6 +184,8 @@ def pytest_configure(config):
     try:
         plan = json.loads(Path(path).read_text(encoding='utf-8'))
         validate_plan(plan)
+        if index < 0 or index >= len(plan['shards']):
+            raise ValueError(f'Shard index {index} is outside 0..{len(plan["shards"]) - 1}')
     except (OSError, ValueError, TypeError, AttributeError) as error:
         raise pytest.UsageError(f'Invalid shard plan: {error}') from error
     config.pluginmanager.register(_Selection(config.rootpath, plan, index))
@@ -268,20 +276,20 @@ def profile_weights(profile: dict) -> dict[str, float]:
     return dict(sorted(weights.items()))
 
 
-def main(argv=None):
-    """Merge measured main-process durations into a platform weights document."""
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--profile', required=True, type=Path)
-    parser.add_argument('--weight-key', required=True)
-    parser.add_argument('--source-sha', required=True)
-    parser.add_argument('--run-id', required=True)
-    parser.add_argument('--output', required=True, type=Path)
-    args = parser.parse_args(argv)
-    try:
-        if args.profile.name != 'pytest-main.json':
+def combined_profile_weights(paths: list[Path], source_sha: str, run_id: str,
+                             weight_key: str) -> dict[str, float]:
+    """Combine one successful main report from every shard in a CI run."""
+    if not paths:
+        raise ValueError('At least one main profile is required')
+    plans = []
+    indexes = set()
+    weights = {}
+    provenance = set()
+    attempts = set()
+    for path in paths:
+        if path.name != 'pytest-main.json':
             raise ValueError('Profile must be pytest-main.json; worker reports duplicate its costs')
-        resources = json.loads(args.profile.with_name('resources.json').read_text(
-            encoding='utf-8'))
+        resources = json.loads(path.with_name('resources.json').read_text(encoding='utf-8'))
         if (not isinstance(resources, dict)
                 or type(resources.get('schema_version')) is not int
                 or resources['schema_version'] != 1
@@ -289,7 +297,67 @@ def main(argv=None):
                 or resources['exit_code'] != 0
                 or resources.get('cleanup_complete') is not True):
             raise ValueError('Expected successful resources.json with complete cleanup')
-        weights = profile_weights(json.loads(args.profile.read_text(encoding='utf-8')))
+        profile = json.loads(path.read_text(encoding='utf-8'))
+        report = profile_weights(profile)
+        modern = any(key in resources for key in ('run_sha', 'run_id', 'full_shard_run'))
+        if modern:
+            if resources.get('run_sha') != source_sha or str(resources.get('run_id')) != run_id:
+                raise ValueError('Profile run/SHA provenance does not match requested weights')
+        if len(paths) > 1 or modern:
+            if type(profile.get('collected_tests')) is not int or profile['collected_tests'] < 1:
+                raise ValueError('Incomplete main profile collection')
+            if (re.fullmatch(r'[1-9][0-9]*', str(resources.get('run_attempt'))) is None
+                    or resources.get('full_shard_run') is not True):
+                raise ValueError('Profile is not a complete CI shard run')
+            junit = ET.parse(path.with_name('junit.xml')).getroot()
+            if len(junit.findall('.//testcase')) != profile['collected_tests']:
+                raise ValueError('JUnit cases disagree with collected test count')
+            shard = resources.get('shard')
+            if (not isinstance(shard, dict) or shard.get('weight_key') != weight_key
+                    or type(shard.get('index')) is not int):
+                raise ValueError('Missing or inconsistent shard provenance')
+            plan = json.loads(path.with_name('shard-plan.json').read_text(encoding='utf-8'))
+            validate_plan(plan)
+            index = shard['index']
+            if shard.get('count', len(plan['shards'])) != len(plan['shards']):
+                raise ValueError('Profile shard count disagrees with plan')
+            if index < 0 or index >= len(plan['shards']) or index in indexes:
+                raise ValueError('Duplicate or invalid profile shard index')
+            selected = shard.get('selected_files')
+            if (not isinstance(selected, list) or not all(isinstance(name, str) for name in selected)
+                    or len(selected) != len(set(selected))
+                    or set(selected) != set(plan['shards'][index])):
+                raise ValueError('Profile selected files disagree with shard plan')
+            if set(report) != set(plan['shards'][index]):
+                raise ValueError('Profile files do not cover the selected shard')
+            indexes.add(index)
+            plans.append(plan)
+            provenance.add((shard.get('source_sha'), str(shard.get('run_id'))))
+            attempts.add(resources.get('run_attempt'))
+        overlap = weights.keys() & report.keys()
+        if overlap:
+            raise ValueError(f'Duplicate profile file: {sorted(overlap)[0]}')
+        weights.update(report)
+    if len(paths) > 1:
+        if (indexes != set(range(len(plans[0]['shards'])))
+                or any(plan != plans[0] for plan in plans[1:])
+                or len(provenance) != 1 or len(attempts) != 1):
+            raise ValueError('Incomplete or inconsistent shard profile set')
+    return dict(sorted(weights.items()))
+
+
+def main(argv=None):
+    """Merge measured main-process durations into a platform weights document."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--profile', required=True, type=Path, action='append')
+    parser.add_argument('--weight-key', required=True)
+    parser.add_argument('--source-sha', required=True)
+    parser.add_argument('--run-id', required=True)
+    parser.add_argument('--output', required=True, type=Path)
+    args = parser.parse_args(argv)
+    try:
+        weights = combined_profile_weights(args.profile, args.source_sha, args.run_id,
+                                           args.weight_key)
         data = {'version': 1, 'platforms': {}}
         if args.output.exists():
             data = json.loads(args.output.read_text(encoding='utf-8'))
@@ -300,7 +368,7 @@ def main(argv=None):
         validate_weights(data)
         args.output.write_text(json.dumps(data, indent=2, sort_keys=True) + '\n',
                                encoding='utf-8')
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError, TypeError, ET.ParseError) as error:
         parser.error(str(error))
     return 0
 

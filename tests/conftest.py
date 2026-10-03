@@ -22,12 +22,47 @@ See `docs/112-test-harness.md` for the measurements.
 
 import gc
 import importlib.util
+import json
 import os
 import pathlib
 import sys
 
 import pytest
 import yaml
+
+
+def pytest_addoption(parser):
+    group = parser.getgroup("wish-repair")
+    group.addoption("--wish-prior-failures",
+                    help="JSON array of node IDs to run first without dropping other tests")
+
+
+def pytest_collection_modifyitems(config, items):
+    """Give every xdist worker the same order, including its stale IDs."""
+    value = config.getoption("--wish-prior-failures")
+    if value is None:
+        return
+    path = pathlib.Path(value)
+    try:
+        prior = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    if not isinstance(prior, list) or not all(isinstance(node, str) for node in prior):
+        return
+    positions = {node: index for index, node in enumerate(prior)}
+
+    def priority(item):
+        nodeid = item.nodeid
+        if nodeid not in positions:
+            groups = {str(marker.args[0] if marker.args else
+                          marker.kwargs.get("name", "default"))
+                      for marker in item.iter_markers("xdist_group")}
+            suffix = "@" + "_".join(sorted(groups)) if groups else ""
+            if suffix and nodeid.endswith(suffix):
+                nodeid = nodeid[:-len(suffix)]
+        return (0, positions[nodeid]) if nodeid in positions else (1, 0)
+
+    items.sort(key=priority)
 
 _TOOLS = pathlib.Path(__file__).resolve().parent.parent / "tools"
 

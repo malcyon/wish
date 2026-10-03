@@ -8180,3 +8180,97 @@ baselines per worker, retaining up to **6.875 MiB** of image bytes. Each caller
 still writes a fresh mutable disk file. This trades retained memory for less
 repeated image construction; it does not demonstrate lower peak memory or
 remove disk writes. Real disk geometry and isolation checks remain.
+
+### Second CI pass: route first, validate alongside tests
+
+The first sharded workflow still made test jobs wait for the generated and
+repository-policy checks. Those checks remain required, but they do not choose
+the test route. A lightweight route job now checks out the exact commit with
+complete history and classifies docs-only versus full testing before either
+validation or test setup begins. Missing or uncertain history still selects
+full testing.
+
+On the full route, repository-policy and generated-file validation can run at
+the same time as the routine test matrix. Routine pushes and fork pull requests
+use four weighted shards on Ubuntu/Python 3.12 and four on Windows/Python 3.13.
+The full scheduled, manual and release matrices still run all four platform
+and Python combinations without sharding. The watcher requires every expected
+shard, the generated and lint checks, and a separate exact-commit attestation
+for docs-only runs. Same-repository pull requests continue to rely on their
+branch-push run.
+
+This architecture preserves the complete routine platform test selection and
+the full compatibility matrix at release time. It changes when independent
+checks can start and how routine tests divide across runners; the first sharded
+run above measures only the earlier two-shard design. No timing claim for this
+second pass follows from that run.
+
+The shard count is configurable, and the weighted planner keeps each test file
+and each transitive literal `xdist_group` together. Weight records name their
+source commit and workflow run. The importer combines repeated
+`--profile pytest-main.json` arguments only when every shard is present and its
+run, SHA, attempt, JUnit inventory and selected files agree; duplicate files,
+failed profiles and mixed provenance stop the import. The routine workflow
+uses four shards per platform. The two-shard compatibility setting is for
+workflows that also have the route gate; the watcher expects four by default.
+
+The route watcher reports each completed failed job once, then keeps polling
+until every expected shard and the route, generated and lint gates finish. A
+failure notification does not make the run complete or successful. The docs
+route still needs its separate exact-commit attestation. Keep all failures from
+the current SHA before starting the next repair attempt.
+
+### Ordering known failures and validating the outgoing tree
+
+`ci_measure.py --prior-failures FILE` passes a JSON node-ID list to pytest's
+prior-failure plugin. It moves matching tests ahead of the remaining tests;
+all tests still run, and an absent, stale or malformed list cannot narrow the
+selection. The ordering was checked with two xdist workers. It helps expose
+known failures earlier while preserving the complete shard selection; do not
+use `-x` or stop after the first failure.
+
+For a hosted repair, the workflow also reads the repository Actions variable
+`WISH_CI_PRIOR_FAILURES_JSON`. It must contain a JSON array of node-ID strings.
+Missing, empty or malformed values do nothing; an explicit
+`--prior-failures FILE` takes precedence. Set it from a reviewed JSON file with
+`gh variable set WISH_CI_PRIOR_FAILURES_JSON < "$CI_FAILURES"`, then remove it
+after the repair with `gh variable delete WISH_CI_PRIOR_FAILURES_JSON`. The
+GitHub Actions variable is separate from the tracker; the Plane worker owns
+tracker migration.
+
+`ci_validate.py` checks focused work against an isolated copy of the staged
+Git tree. Stage the files owned by the change, then run it with a new output
+directory and each affected test:
+
+```sh
+.venv/bin/python tools/suite/ci_validate.py \
+  --output "$CI_SNAPSHOT" \
+  --test tests/path/to/test_affected.py
+```
+
+Set `CI_SNAPSHOT` to a new, unused temporary directory. Repeat `--test` for
+additional targets. For a test that needs private game
+disks, pass `--registry /path/to/gamedisks.yaml`; the private registry is linked
+into the temporary snapshot, not copied. The command records the prospective
+commit and tree, checks that the index and parent did not change, collects
+affected test directories together with repository guards, and runs the
+focused tests, Ruff and `genui.py --check` against the snapshot. The commit
+must use that same validated tree.
+
+The focused optimization pass passed 1,628 tests with no skips in 79.24 seconds
+on the local machine. Reusing one staging-sweep scan took 76.44 seconds in its
+focused shared-fixture run. The exhaustive effects check still covers all
+127 × 127 × 2 combinations, divided into eight cases with exact union and no
+overlap; those cases took 2.83–3.67 seconds each. The unknown-row fast-travel
+case uses fake time and still exercises the production 60-second deadline.
+That case took under 0.05 seconds; its focused run passed two tests with no
+skips in 1.65 seconds total.
+
+A separate fixture profile collected 1,472 items with six workers and every
+worker exited successfully, but the controller failed while flushing its
+temporary report because `json.dumps()` received an unexpected `flush` keyword
+argument. It is not a passing test run. Its worker-summed costs were 0.762 seconds for `tmp_path`,
+0.121 seconds for configuration isolation and 2.243 seconds for per-test
+garbage collection. Those diagnostic totals support keeping the existing
+fixture protections; they do not measure a complete suite or justify changing
+the global fixtures.

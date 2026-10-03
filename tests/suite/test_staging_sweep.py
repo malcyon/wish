@@ -78,6 +78,7 @@ from __future__ import annotations
 import ast
 import pathlib
 import subprocess
+from types import MappingProxyType
 
 import pytest
 
@@ -377,10 +378,18 @@ def _where(found: dict, key) -> str:
 
 # -- the tree as it stands ----------------------------------------------------
 
-def test_every_copy_into_a_reused_directory_has_been_read_and_ruled_on():
+@pytest.fixture(scope="module")
+def current_tree_copies():
+    return MappingProxyType({key: frozenset(lines) for key, lines in
+                             reused_destination_copies().items()})
+
+
+@pytest.mark.xdist_group("staging_current_tree")
+def test_every_copy_into_a_reused_directory_has_been_read_and_ruled_on(
+        current_tree_copies):
     """#492: a copy that is neither on the allowlist nor on the filed-defect
     list is one nobody has looked at."""
-    found = reused_destination_copies()
+    found = current_tree_copies
     unruled = sorted(set(found) - set(ARTEFACT_COPIES) - set(OPEN_DEFECTS))
     assert unruled == [], (
         "these copy into a pool slot, a tool's own --out, or an emulator "
@@ -392,22 +401,24 @@ def test_every_copy_into_a_reused_directory_has_been_read_and_ruled_on():
         + "\n  ".join(f"{_where(found, key)}  {key[1]}" for key in unruled))
 
 
-def test_the_allowlist_names_no_copy_that_has_gone_away():
+@pytest.mark.xdist_group("staging_current_tree")
+def test_the_allowlist_names_no_copy_that_has_gone_away(current_tree_copies):
     """The list may shrink, and a stale entry is how it grows by accident:
     an entry nothing matches any more would silently bless whatever took that
     destination expression next."""
-    found = reused_destination_copies()
+    found = current_tree_copies
     stale = sorted(set(ARTEFACT_COPIES) - set(found))
     assert stale == [], (
         "these allowlist entries match no copy in tools/ any more, so delete "
         "them:\n  " + "\n  ".join(f"{f}  {d}" for f, d in stale))
 
 
-def test_every_filed_defect_is_still_there_and_still_filed():
+@pytest.mark.xdist_group("staging_current_tree")
+def test_every_filed_defect_is_still_there_and_still_filed(current_tree_copies):
     """`OPEN_DEFECTS` is a claim about the tree, so it can be wrong. An entry
     whose site has been fixed comes out; one that is still there keeps its
     issue number in the reason, so the next reader can go and look."""
-    found = reused_destination_copies()
+    found = current_tree_copies
     fixed = sorted(set(OPEN_DEFECTS) - set(found))
     assert fixed == [], (
         "these are fixed -- take them out of OPEN_DEFECTS:\n  "
@@ -532,10 +543,12 @@ def test_a_run_copying_its_own_result_into_out_is_not_a_defect(name, dest):
     assert (name, dest) not in OPEN_DEFECTS, (name, dest)
 
 
-def test_the_failure_message_names_none_of_the_run_s_own_results():
+@pytest.mark.xdist_group("staging_current_tree")
+def test_the_failure_message_names_none_of_the_run_s_own_results(
+        current_tree_copies):
     """The assertion a person actually reads. If either above ever
     reached it, the next reader would learn the sweep cries wolf."""
-    found = reused_destination_copies()
+    found = current_tree_copies
     unruled = set(found) - set(ARTEFACT_COPIES) - set(OPEN_DEFECTS)
     assert unruled & set(OWN_RESULT) == set()
 
@@ -596,6 +609,16 @@ def test_the_sweep_catches_a_copy_into_a_pool_slot(tmp_path):
 
     assert reused_destination_copies(tmp_path) == {
         ("toolstub.py", "pathlib.Path(slot.dir) / 'SIDE0.D64'"): {5}}
+
+
+def test_the_sweep_reads_a_changed_file_at_the_same_path(tmp_path):
+    source = tmp_path / "toolstub.py"
+    source.write_text("import shutil\nshutil.copy(save, scratch / 'SIDE0.D64')\n")
+    assert reused_destination_copies(tmp_path) == {}
+
+    source.write_text("import shutil\nshutil.copy(save, slot_dir / 'SIDE0.D64')\n")
+    assert reused_destination_copies(tmp_path) == {
+        ("toolstub.py", "slot_dir / 'SIDE0.D64'"): {2}}
 
 
 def test_the_sweep_catches_a_slot_path_built_two_assignments_earlier(tmp_path):

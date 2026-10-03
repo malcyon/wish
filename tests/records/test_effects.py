@@ -2653,10 +2653,20 @@ def test_both_restoring_rows_of_one_byte_are_refused_as_ambiguous():
     assert isinstance(got, effects.Unconverted)
 
 
-def test_every_two_node_timeline_round_trips_through_the_rows():
+_TWO_NODE_BASE_RANGES = tuple((start, min(start + 16, 0x80))
+                              for start in range(1, 0x80, 16))
+
+
+def test_two_node_base_partitions_cover_the_domain_once():
+    assert tuple(base for start, stop in _TWO_NODE_BASE_RANGES
+                 for base in range(start, stop)) == tuple(range(1, 0x80))
+
+
+@pytest.mark.parametrize("start, stop", _TWO_NODE_BASE_RANGES)
+def test_every_two_node_timeline_round_trips_through_the_rows(start, stop):
     """Active base 1-127 and parked boost 1-127, in both expiry orders."""
     count = 0
-    for base in range(1, 0x80):
+    for base in range(start, stop):
         for boost in range(1, 0x80):
             for a_id, p_id, a_min, p_min in ((38, 12, 10, 60),
                                              (12, 38, 60, 10)):
@@ -2668,9 +2678,9 @@ def test_every_two_node_timeline_round_trips_through_the_rows():
                 back = effects.pool_strength_chain_nodes(
                     [_chain_row(3 - i, n.id, n.minutes, rows[n.id])
                      for i, n in enumerate(nodes)], 0)
-                assert back == {n.id: n for n in nodes}, (base, boost)
+                assert back == {n.id: n for n in nodes}, (base, boost, a_min, p_min)
                 count += 1
-    assert count == 127 * 127 * 2
+    assert count == (stop - start) * 127 * 2
 
 
 @pytest.mark.parametrize("nodes", [
