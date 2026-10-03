@@ -4106,7 +4106,7 @@ def test_gauntlets_beside_a_running_pool_strength_convert_as_the_gauntlets(
     assert rows == {63: (38, 2, 0, ROLAND_STRENGTH_MAGNITUDE)}
     assert (rec.get("strength"), rec.get("exceptional_strength")) == (18, 0)
     label = c64_codec.running_effect_label(spell[0], 10, char.game)
-    assert [d for d in rep.dropped if d.startswith(label)]
+    assert not [d for d in rep.dropped + rep.losses if d.startswith(label)]
 
 
 def test_a_parked_pool_node_ending_first_is_a_row_with_bit_7_clear():
@@ -4118,6 +4118,8 @@ def test_a_parked_pool_node_ending_first_is_a_row_with_bit_7_clear():
 @pytest.mark.parametrize("nodes, granted", [
     ((_POOL_ACTIVE, _POOL_PARKED, bytes((12, 5, 0, 0x66, 1))), ()),
     ((_POOL_ACTIVE, _POOL_PARKED), (bytes((38, 0, 0, 0x73, 1)),)),
+    # Not the pair: one running Strength beside a granted one, neither parked.
+    ((_POOL_ACTIVE,), (bytes((38, 0, 0, 0x73, 1)),)),
 ])
 def test_other_pool_strength_states_are_still_refused(nodes, granted):
     rows, rep = _pool_pair_rows(*nodes, granted=granted)
@@ -4184,3 +4186,80 @@ def test_the_amiga_warrior_test_refuses_a_title_it_has_no_rule_for():
     with pytest.raises(ValueError):
         c64_codec.amiga_strength_warrior("pool-of-radiance",
                                          {"fighter": 4}, {})
+
+
+# --- the gauntlets beside a running Strength through Save As --------------------
+
+
+_POOL_PARKED_STRENGTH = bytes((38, 10, 0, 0x95, 1))
+_GAUNTLETS_NODE = bytes((38, 0, 0, 0x73, 1))
+
+
+def test_save_as_c64_writes_the_gauntlets_alone_and_is_not_blocked(
+        tmp_path, monkeypatch):
+    """A DOS Pool party whose first member holds the gauntlets' node and a
+    running, parked Strength: the dialog's own no-loss rule finds nothing
+    lost, and the C64 save it writes holds the gauntlets' row and 18/00. The
+    node pair is put on the specimen member as the codec reads it, because
+    no save the game wrote holds the pair."""
+    from gamedata import specimen_root
+    from PyQt6.QtWidgets import QApplication
+
+    from editor import roster, saveplan
+    from goldbox.d64 import D64
+    from goldbox.savegame import load_save
+    from tools.convert import convertdrops
+
+    QApplication.instance() or QApplication([])
+    root = specimen_root()
+    found = list(root.glob("*-dos/WISH-SPEC-por-hireling-swordsman-03")
+                 ) if root else []
+    if not found:
+        pytest.skip("needs WISH-SPEC-por-hireling-swordsman-03 "
+                    "(tools/registry/specimens.py)")
+    party = roster.Party(str(found[0]))
+    try:
+        assets = saveplan.resolve_assets(
+            party.source, "c64", game_files=convertdrops.game_files)
+    except saveplan.MissingAssets:
+        pytest.skip("needs Pool of Radiance's own C64 disks, found through "
+                    "automap/gamedisks.py")
+    target = party.members[0].record.get("name")
+    # The comparison Save As ends with reads the member's own record, so the
+    # score it expects is the one the node pair leaves.
+    party.members[0].record.set("strength", 18)
+    party.members[0].record.set("exceptional_strength", 0)
+    real = dos_codec.to_neutral
+
+    def with_the_pair(character, **kwargs):
+        char = real(character, **kwargs)
+        if char.get("name") == target:
+            char.set("running_effects", [_POOL_PARKED_STRENGTH + NULL],
+                     "built here")
+            char.set("granted_effects", [_GAUNTLETS_NODE + NULL],
+                     "built here")
+            char.set("strength", 18, "built here")
+            char.set("exceptional_strength", 0, "built here")
+        return char
+
+    monkeypatch.setattr(dos_codec, "to_neutral", with_the_pair)
+    from editor import convert
+    source = convert.Source.of_snapshot(saveplan.prepare(party))
+    rehearsal, _slot = saveplan.rehearse(saveplan.route(source, "c64"),
+                                         source, assets)
+    assert not [d for d in saveplan.losses(rehearsal.report)
+                if "strength" in d.lower() or "effect 38" in d]
+    plan = saveplan.prepare_save_as(party, "c64", tmp_path / "out.d64", assets)
+    (image,) = plan.files
+    disk = tmp_path / "read-back.d64"
+    disk.write_bytes(plan.files[image])
+    _game, save0, _save1 = load_save(D64.open(str(disk)))
+    strength = [e for e in effects.active_effects(save0.to_bytes())
+                if e.id in effects.STRENGTH_IDS]
+    assert [(e.id, e.duration, e.magnitude) for e in strength] \
+        == [(38, 0, ROLAND_STRENGTH_MAGNITUDE)]
+    from support.doslatertitles import _c64_party
+
+    _game, chars = _c64_party(disk)
+    (char,) = [c for c in chars if c.get("name") == target]
+    assert (char.get("strength"), char.get("exceptional_strength")) == (18, 0)

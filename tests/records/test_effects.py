@@ -2718,6 +2718,42 @@ def test_strength_rows_no_timeline_produces_stay_refused(rows):
     assert isinstance(got, effects.Unconverted) and got.reason
 
 
+_GAUNTLETS = bytes((38, 0, 0, 0x73, 1))
+
+
+def test_the_gauntlets_beside_a_parked_spell_give_the_gauntlets_row():
+    assert effects.pool_gauntlets_over_spell_row(
+        _RE(38, 10, 0x95, 1), _GAUNTLETS) == (38, 0xF3)
+    # A spell holding the base, the gauntlets parked with their own boost.
+    assert effects.pool_gauntlets_over_spell_row(
+        _RE(12, 10, 0x73, 1), bytes((38, 0, 0, 0xDC, 1))) == (38, 0xF3)
+
+
+@pytest.mark.parametrize("running, granted", [
+    # No parked node.
+    (_RE(38, 10, 0x71, 1), _GAUNTLETS),
+    # Two parked nodes.
+    (_RE(38, 10, 0x95, 1), bytes((38, 0, 0, 0xDC, 1))),
+    # A parked node with no boost.
+    (_RE(38, 10, 0x80, 1), _GAUNTLETS),
+    (_RE(38, 10, 0x73, 1), bytes((38, 0, 0, 0x80, 1))),
+    # The running node's flag byte is not 1.
+    (_RE(38, 10, 0x95, 0), _GAUNTLETS),
+    # Not a strength node, or not the gauntlets' node.
+    (_RE(14, 10, 0x95, 1), _GAUNTLETS),
+    (_RE(38, 10, 0x95, 1), bytes((12, 0, 0, 0x73, 1))),
+    (_RE(38, 10, 0x95, 1), bytes((38, 5, 0, 0x73, 1))),
+    (_RE(38, 10, 0x95, 1), bytes((38, 0, 1, 0x73, 1))),
+    (_RE(38, 10, 0x95, 1), bytes((38, 0, 0, 0x73, 0))),
+    # The base is 0, which no DOS engine writes.
+    (_RE(38, 10, 0x95, 1), bytes((38, 0, 0, 0x00, 1))),
+    (_RE(38, 10, 0x00, 1), bytes((38, 0, 0, 0x95, 1))),
+])
+def test_the_gauntlets_beside_other_nodes_stay_refused(running, granted):
+    got = effects.pool_gauntlets_over_spell_row(running, granted)
+    assert isinstance(got, effects.Unconverted) and got.reason
+
+
 # --- an independent simulator of the two engines' expiry ------------------------
 #
 # The C64 restores per slot: each row that runs out puts its bit-7 value back,

@@ -1674,10 +1674,11 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
             title_key, node.minutes, clock, False)
             if node.id == effects.SLOW_POISON_ID else quiet)
         if node is spell_dropped:
-            rep.dropped.append(
-                f"{which}: a strength node running beside the gauntlets, "
-                "which the C64 never holds: only the gauntlets' row is "
-                "written")
+            # Not a loss the player is told of: the C64 game itself keeps
+            # the gauntlets alone when both sources are present.
+            _log.info("%s: a strength node running beside the gauntlets, "
+                      "which the C64 never holds: no row is written for it",
+                      which)
             continue
         if chain_rows is not None and id(node) in chain_rows:
             row_for = (node.id, chain_rows[id(node)])
