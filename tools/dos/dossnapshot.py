@@ -106,6 +106,10 @@ class SnapshotSession(dosboxx.XSession):
     #: Seconds a save or a load may take before it is called failed.
     STATE_TIMEOUT = 60.0
 
+    #: Seconds the state file may take to become a complete zip after the
+    #: log line, in case DOSBox-X logs before the file is flushed.
+    ZIP_WAIT = 2.0
+
     def __init__(self, *args, snapshot_dir: Path | None = None, **kwargs):
         super().__init__(*args, **kwargs)
         self.snapshot_dir = Path(snapshot_dir) if snapshot_dir else scratch.cache_dir(
@@ -153,8 +157,12 @@ class SnapshotSession(dosboxx.XSession):
         path = self.snapshot_path(name)
         self.state_file.unlink(missing_ok=True)
         self._press_for(SAVE_KEY, RE_SAVED, f"snapshot {name}")
-        if not zipfile.is_zipfile(self.state_file):
-            raise SnapshotFailed(f"snapshot {name}: {self.state_file} is not a complete state")
+        deadline = time.time() + self.ZIP_WAIT
+        while not zipfile.is_zipfile(self.state_file):
+            if time.time() >= deadline:
+                raise SnapshotFailed(
+                    f"snapshot {name}: {self.state_file} is not a complete state")
+            time.sleep(0.1)
         scratch.ensure(self.snapshot_dir)
         shutil.move(str(self.state_file), path)
         self._saves_record(name).write_text(
@@ -168,19 +176,28 @@ class SnapshotSession(dosboxx.XSession):
         snapshot; the restore does not put those back.  Raises
         `FileNotFoundError` for a name never saved and `SnapshotFailed` when
         DOSBox-X does not load it.  The machine runs on from the snapshot's
-        instant when this returns.
+        instant when this returns.  A missing or unreadable record of the
+        `SAVE` folder raises `SnapshotFailed` before anything is loaded.
         """
         path = self.snapshot_path(name)
         if not path.is_file():
             raise FileNotFoundError(f"no snapshot {name!r} at {path}")
+        before = self._read_saves_record(name)
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(path, self.state_file)
         self._press_for(LOAD_KEY, RE_LOADED, f"restore {name}")
-        try:
-            before = json.loads(self._saves_record(name).read_text())
-        except (OSError, ValueError):
-            before = {}
         return changed_files(before, folder_digests(self.save_dir))
+
+    def _read_saves_record(self, name: str) -> dict[str, str]:
+        record = self._saves_record(name)
+        try:
+            before = json.loads(record.read_text())
+        except (OSError, ValueError) as e:
+            raise SnapshotFailed(f"restore {name}: cannot read {record}: {e}") from e
+        if not (isinstance(before, dict) and all(
+                isinstance(k, str) and isinstance(v, str) for k, v in before.items())):
+            raise SnapshotFailed(f"restore {name}: {record} is not a record of file digests")
+        return before
 
     def discard_snapshot(self, name: str) -> None:
         """Delete a snapshot and its record of the `SAVE` folder."""

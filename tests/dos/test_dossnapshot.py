@@ -180,8 +180,44 @@ def test_a_save_with_no_log_line_times_out(session, monkeypatch):
 def test_a_state_file_that_is_not_a_complete_zip_raises(session, monkeypatch):
     emu = FakeEmulator(session, write_zip=False)
     monkeypatch.setattr(session, "key", emu.key)
+    session.ZIP_WAIT = 0.3
     with pytest.raises(dossnapshot.SnapshotFailed, match="not a complete state"):
         session.snapshot("leg")
+
+
+def test_a_state_file_completed_after_the_log_line_is_waited_for(session, monkeypatch):
+    """The log line can come before the file is flushed; the wait sees it finish."""
+    emu = FakeEmulator(session, write_zip=False)
+    monkeypatch.setattr(session, "key", emu.key)
+    slept = []
+
+    def sleep(seconds):
+        # The flush lands during the first pause after the log line.
+        if dossnapshot.SAVE_KEY in emu.pressed and not slept:
+            with zipfile.ZipFile(session.state_file, "w") as z:
+                z.writestr("Memory", "flushed")
+        slept.append(seconds)
+
+    monkeypatch.setattr(dossnapshot.time, "sleep", sleep)
+    path = session.snapshot("leg")
+    assert zipfile.is_zipfile(path)
+    assert slept
+
+
+@pytest.mark.parametrize("record", [None, "not json", "[1, 2]"])
+def test_a_missing_or_corrupt_saves_record_raises_before_loading(session, monkeypatch,
+                                                                  record):
+    emu = FakeEmulator(session)
+    monkeypatch.setattr(session, "key", emu.key)
+    session.snapshot("leg")
+    sidecar = session.snapshot_dir / "leg.saves.json"
+    if record is None:
+        sidecar.unlink()
+    else:
+        sidecar.write_text(record)
+    with pytest.raises(dossnapshot.SnapshotFailed, match="leg.saves.json"):
+        session.restore("leg")
+    assert emu.loaded == []
 
 
 def test_discard_removes_the_state_and_its_record(session, monkeypatch):
