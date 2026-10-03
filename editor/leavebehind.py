@@ -8,12 +8,12 @@ ticks, a joined scroll is a heading that is neither ticked nor selected, and
 each scroll inside it is a row the player ticks, with the spells it holds on a
 quieter line under it. Ticking more than the pack needs is allowed.
 
-**Approved by Donald, and exactly these:** `HEADING` and `EXPLANATION`, and
-for effects mode `EFFECTS_EXPLANATION` and `EFFECTS_REMAINING`. The window's own
-title, the joined scroll's heading and the words around each character's
-remaining count are not settled, so this module shows them blank rather than
-writing any (`.claude/rules/gui-text.md`). The accept button's
-label is the caller's: the existing Convert or Save As label.
+**Approved by Donald, and exactly these:** `HEADING`, which is also the
+window's title, `EXPLANATION`, `JOINED_HEADING` and `ITEMS_REMAINING`, and for
+effects mode `EFFECTS_EXPLANATION` and `EFFECTS_REMAINING`. No other word is
+written (`.claude/rules/gui-text.md`). The accept button's label is the
+caller's: the existing Convert or Save As label. In pack mode the remaining
+count of every character together sits left of the buttons, level with them.
 
 **A second mode lists running effects** (`effects=`), built from
 `goldbox.dos_codec.EffectsDoNotFit.overflow`: the C64's 64-row table of
@@ -21,8 +21,8 @@ running effects is the whole party's, so there is one count for the party and
 not one per character. Each character who holds an effect the player can leave
 out is a row, with every such effect beneath it on a row of its own, repeats
 included. The heading, the explanation, the count beneath the list and the
-effect names are Donald's approved ones; every other word of this mode is blank
-until he settles it, and the columns that would hold no text are hidden.
+effect names are Donald's approved ones; every other word of this mode is blank,
+and the columns that would hold no text are hidden.
 
 The item rows reuse the Items tab: its name (`editor.inventory.describe`), its
 `Qty` and `Readied` columns under their own headers, and the spell form its
@@ -63,6 +63,10 @@ EXPLANATION = (
 EFFECTS_EXPLANATION = ("The C64 save has room for 64 running effects. "
                        "Choose at least {n} to leave behind.")
 EFFECTS_REMAINING = "{n} more to leave behind"
+#: A joined scroll's heading, and the pack-mode count of items still to leave
+#: (`{n}` is every character's remaining count together).
+JOINED_HEADING = "Joined scroll"
+ITEMS_REMAINING = "Items still to leave: {n}"
 
 #: The columns: the Items tab's own item, quantity and readied columns, and
 #: one more that holds a character's remaining count and nothing else.
@@ -90,8 +94,7 @@ class LeaveBehindDialog(QDialog):
         super().__init__(parent)
         self.ui = Ui_LeaveBehindDialog()
         self.ui.setupUi(self)
-        # Blank on purpose: the window's title is not settled.
-        self.setWindowTitle("")
+        self.setWindowTitle(HEADING)
         self.ui.heading_label.setText(HEADING)
         self.ui.explanation_label.setText(
             EXPLANATION if effects is None
@@ -136,9 +139,11 @@ class LeaveBehindDialog(QDialog):
             # about an effect, and no time left is shown.
             for column in (QTY_COLUMN, READIED_COLUMN, COUNT_COLUMN):
                 self.tree.setColumnHidden(column, True)
-        # The party-wide count is only there in effects mode; pack mode keeps
-        # its count on each character's row.
+        # Effects mode counts the party's effects beneath the list; pack mode
+        # counts items beside the buttons, and each character's row keeps its
+        # own count too.
         self.ui.remaining_label.setVisible(effects is not None)
+        self.ui.items_remaining_label.setVisible(effects is None)
         self.tree.expandAll()
         self.tree.itemChanged.connect(self._changed)
         self._refresh()
@@ -161,9 +166,8 @@ class LeaveBehindDialog(QDialog):
         parent = character
         for unit in entry.units:
             if unit.kind == "joined":
-                # Heading only: it names the scrolls beneath it. Its text is
-                # not settled, so the row is blank.
-                parent = QTreeWidgetItem(character, [""])
+                # Heading only: it names the scrolls beneath it.
+                parent = QTreeWidgetItem(character, [JOINED_HEADING])
                 parent.setFlags(Qt.ItemFlag.ItemIsEnabled)
                 continue
             if unit.kind == "item":
@@ -271,9 +275,13 @@ class LeaveBehindDialog(QDialog):
             self.buttons.button(QDialogButtonBox.StandardButton.Ok
                                 ).setEnabled(remaining == 0)
             return
+        total = 0
         for entry, character, ticked in self._entries:
-            character.setText(COUNT_COLUMN,
-                              str(self._remaining(entry, ticked)))
+            left = self._remaining(entry, ticked)
+            total += left
+            character.setText(COUNT_COLUMN, str(left))
+        self.ui.items_remaining_label.setText(
+            ITEMS_REMAINING.format(n=total))
         ok = self.buttons.button(QDialogButtonBox.StandardButton.Ok)
         ok.setEnabled(all(self._remaining(entry, ticked) == 0
                           for entry, _character, ticked in self._entries))

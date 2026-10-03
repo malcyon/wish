@@ -13,7 +13,6 @@ class Ui_LeaveBehindDialog(object):
     def setupUi(self, LeaveBehindDialog):
         LeaveBehindDialog.setObjectName("LeaveBehindDialog")
         LeaveBehindDialog.resize(560, 520)
-        LeaveBehindDialog.setWindowTitle("")
         self.outer_layout = QtWidgets.QVBoxLayout(LeaveBehindDialog)
         self.outer_layout.setObjectName("outer_layout")
         self.heading_label = QtWidgets.QLabel(parent=LeaveBehindDialog)
@@ -47,10 +46,19 @@ class Ui_LeaveBehindDialog(object):
         self.remaining_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight|QtCore.Qt.AlignmentFlag.AlignVCenter)
         self.remaining_label.setObjectName("remaining_label")
         self.outer_layout.addWidget(self.remaining_label)
+        self.button_row = QtWidgets.QHBoxLayout()
+        self.button_row.setObjectName("button_row")
+        self.items_remaining_label = QtWidgets.QLabel(parent=LeaveBehindDialog)
+        self.items_remaining_label.setText("")
+        self.items_remaining_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeading|QtCore.Qt.AlignmentFlag.AlignLeft|QtCore.Qt.AlignmentFlag.AlignVCenter)
+        self.items_remaining_label.setObjectName("items_remaining_label")
+        self.button_row.addWidget(self.items_remaining_label)
         self.buttons = QtWidgets.QDialogButtonBox(parent=LeaveBehindDialog)
         self.buttons.setStandardButtons(QtWidgets.QDialogButtonBox.StandardButton.Cancel|QtWidgets.QDialogButtonBox.StandardButton.Ok)
         self.buttons.setObjectName("buttons")
-        self.outer_layout.addWidget(self.buttons)
+        self.button_row.addWidget(self.buttons)
+        self.button_row.setStretch(0, 1)
+        self.outer_layout.addLayout(self.button_row)
         self.outer_layout.setStretch(2, 1)
 
         self.retranslateUi(LeaveBehindDialog)
@@ -59,4 +67,5 @@ class Ui_LeaveBehindDialog(object):
         QtCore.QMetaObject.connectSlotsByName(LeaveBehindDialog)
 
     def retranslateUi(self, LeaveBehindDialog):
-        pass
+        _translate = QtCore.QCoreApplication.translate
+        LeaveBehindDialog.setWindowTitle(_translate("LeaveBehindDialog", "Choose what to leave behind"))

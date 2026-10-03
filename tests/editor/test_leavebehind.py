@@ -9,7 +9,8 @@ can be ticked and what the window hands back, not about the game's words.
 from __future__ import annotations
 
 import pytest
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QPoint, QRect, Qt
+from PyQt6.QtGui import QFont
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QDialog, QDialogButtonBox
 from support import packoverflow as packs
@@ -97,16 +98,21 @@ def test_the_heading_and_explanation_are_donalds_words_exactly(app):
         "leave behind until each pack fits.")
 
 
-def test_no_word_is_written_that_donald_has_not_settled(app):
-    """The window's title and the joined scroll's heading are blank, and the
-    headers are the Items tab's own."""
+def test_the_window_title_joined_heading_and_count_are_donalds_words_exactly(
+        app):
     dialog = _dialog()
-    assert dialog.windowTitle() == ""
+    assert dialog.windowTitle() == "Choose what to leave behind"
     headings = [r for r in _rows(dialog)
                 if r.parent() is not None and r.parent().parent() is None
                 and not r.flags() & CHECKABLE and r.childCount()]
     assert headings, "no joined-scroll heading"
-    assert {h.text(NAME) for h in headings} == {""}
+    assert {h.text(NAME) for h in headings} == {"Joined scroll"}
+    assert dialog.ui.items_remaining_label.text() == "Items still to leave: 3"
+    # The number is every character's remaining count together.
+    _tick(dialog, 0, 3)
+    assert dialog.ui.items_remaining_label.text() == "Items still to leave: 2"
+    _tick(dialog, 2, 1, 2)
+    assert dialog.ui.items_remaining_label.text() == "Items still to leave: 0"
     header = dialog.tree.headerItem()
     assert [header.text(c) for c in range(4)] == \
         [HEADERS[ITEMS_NAME], HEADERS[ITEMS_QTY], HEADERS[ITEMS_READIED], ""]
@@ -417,7 +423,7 @@ def test_effects_mode_writes_only_the_words_donald_approved(app):
     assert dialog.ui.explanation_label.text() == (
         "The C64 save has room for 64 running effects. "
         "Choose at least 2 to leave behind.")
-    assert dialog.windowTitle() == ""
+    assert dialog.windowTitle() == "Choose what to leave behind"
     header = dialog.tree.headerItem()
     assert [header.text(c) for c in range(4)] == [
         activeeffects.HEADER_EFFECT, "", "", ""]
@@ -492,11 +498,46 @@ def test_effects_accept_waits_for_the_party_count_and_allows_more(app):
     assert not _accept(dialog).isEnabled()
 
 
-def test_pack_mode_shows_no_party_count(app):
+def test_pack_mode_shows_the_item_count_and_effects_mode_its_own_count(app):
     dialog = _dialog()
+    assert dialog.ui.items_remaining_label.isVisibleTo(dialog)
     assert not dialog.ui.remaining_label.isVisibleTo(dialog)
     effects = _effects_dialog()
     assert effects.ui.remaining_label.isVisibleTo(effects)
+    assert not effects.ui.items_remaining_label.isVisibleTo(effects)
+
+
+@pytest.mark.parametrize("offset", range(0, 11))
+def test_the_item_count_shares_a_row_with_the_buttons_aligned_left(app, offset):
+    """The count is level with Convert and Cancel, to their left, at the
+    window's left edge, below the list, at every font a person uses."""
+    base = app.font()
+    bigger = QFont(base)
+    bigger.setPointSizeF(base.pointSizeF() + offset)
+    app.setFont(bigger)
+    try:
+        dialog = _dialog()
+        dialog.show()
+        app.processEvents()
+        label = dialog.ui.items_remaining_label
+        label_box = QRect(label.mapTo(dialog, QPoint(0, 0)), label.size())
+        buttons = dialog.buttons
+        buttons_box = QRect(buttons.mapTo(dialog, QPoint(0, 0)), buttons.size())
+        tree = dialog.tree
+        tree_box = QRect(tree.mapTo(dialog, QPoint(0, 0)), tree.size())
+        assert label.alignment() & Qt.AlignmentFlag.AlignLeft
+        margin = dialog.layout().contentsMargins().left()
+        assert label_box.left() == margin
+        assert label_box.right() < buttons_box.left()
+        assert label_box.top() < buttons_box.bottom()
+        assert buttons_box.top() < label_box.bottom()
+        assert label_box.top() >= tree_box.bottom()
+        # Its words fit whole.
+        assert label_box.width() >= label.fontMetrics().horizontalAdvance(
+            label.text())
+        dialog.close()
+    finally:
+        app.setFont(base)
 
 
 def test_chosen_effects_is_exactly_what_is_ticked(app):
