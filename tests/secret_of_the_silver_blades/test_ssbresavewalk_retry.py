@@ -182,6 +182,19 @@ def test_a_resave_that_wrote_nothing_fails_the_run_and_says_so(
     assert _run_main.shots[-1] == "failure.png"
 
 
+def test_a_failure_screenshot_that_cannot_be_taken_is_logged(
+        monkeypatch, tmp_path, capsys):
+    def broken(self, path, **kw):
+        if path.endswith("failure.png"):
+            raise OSError("import: no display")
+        return True
+
+    monkeypatch.setattr(_Kbd, "screenshot", broken)
+    code, _ = _run_main(monkeypatch, tmp_path, resaved=False)
+    assert code == 1
+    assert "no failure.png: import: no display" in capsys.readouterr().out
+
+
 def test_a_walk_that_did_not_move_the_party_fails_the_run(
         monkeypatch, tmp_path, capsys):
     code, _ = _run_main(monkeypatch, tmp_path, resaved=True, moved=False)

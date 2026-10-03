@@ -224,8 +224,8 @@ def main(argv=None) -> int:
             log.say(f"FAILED: {missed}")
             try:
                 sess.kbd.screenshot(str(out / "failure.png"))
-            except Exception:
-                pass
+            except Exception as e:
+                log.say(f"  no failure.png: {e}")
             return 1
         log.say("SUCCESS")
         return 0

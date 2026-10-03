@@ -316,6 +316,64 @@ def test_xdotool_is_run_with_a_timeout(monkeypatch):
     assert seen.get("timeout") == S.XDO_TIMEOUT
 
 
+def test_with_sound_on_a_found_dialog_still_gets_the_quiet_period(
+        tmp_path, monkeypatch):
+    s = Fake(tmp_path)
+    s.sound_off = False
+    x = FakeX(s.wire, dialogs_per_undump=1)
+    x.late = [2]
+    monkeypatch.setattr(S, "_xdo", x)
+    s.snapshot("a")
+    s.restore("a")
+    assert x.dialogs == [] and len(x.returns) == 2
+
+
+class Ticks:
+    """`stop.wait` for `n` looks, then stop."""
+
+    def __init__(self, n):
+        self.left = n
+
+    def wait(self, interval):
+        self.left -= 1
+        return self.left < 0
+
+
+def test_the_boot_watcher_goes_on_after_an_xdotool_timeout(monkeypatch):
+    calls = []
+
+    def xdo(display, *args):
+        calls.append(args[0])
+        if len(calls) == 1:
+            raise S.subprocess.TimeoutExpired(["xdotool"], S.XDO_TIMEOUT)
+        return "1" if args[0] == "search" else "VICE (C64SC)"
+
+    logged = []
+    monkeypatch.setattr(S, "_xdo", xdo)
+    monkeypatch.setattr(S.Session, "log", staticmethod(
+        lambda *a: logged.append(" ".join(map(str, a)))))
+    S.dismiss_dialogs(":99", Ticks(3), 0.0)
+    assert calls.count("search") == 3
+    assert any("missed one look" in line for line in logged)
+    assert not any("watcher stopped" in line for line in logged)
+
+
+def test_the_boot_watcher_stops_when_xdotool_is_missing(monkeypatch):
+    calls = []
+
+    def xdo(display, *args):
+        calls.append(args[0])
+        raise FileNotFoundError("xdotool")
+
+    logged = []
+    monkeypatch.setattr(S, "_xdo", xdo)
+    monkeypatch.setattr(S.Session, "log", staticmethod(
+        lambda *a: logged.append(" ".join(map(str, a)))))
+    S.dismiss_dialogs(":99", Ticks(3), 0.0)
+    assert calls == ["search"]
+    assert any("watcher stopped" in line for line in logged)
+
+
 def test_the_retried_leg_is_walked_with_the_dialog_closed(tmp_path, monkeypatch):
     s = Fake(tmp_path, legs=["I"])
     x = FakeX(s.wire, dialogs_per_undump=1)

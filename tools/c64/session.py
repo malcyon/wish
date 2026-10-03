@@ -904,7 +904,8 @@ def launched_silent(env) -> bool:
     """Whether `launch.sh` starts VICE with sound off under `env`.
 
     It adds `+sound` when `POR_HEADLESS` is `1`, then `PORFLAGS`, where a later
-    `+sound` or `-sound` wins, as on VICE's own command line.
+    `+sound` or `-sound` wins, as on VICE's own command line.  Only those two
+    are read, not a `Sound=` setting in the slot's seeded `vicerc`.
     """
     off = env.get("POR_HEADLESS", "0") == "1"
     for flag in env.get("PORFLAGS", "").split():
@@ -919,16 +920,20 @@ def dismiss_dialogs(display: str, stop, interval: float = 1.5,
                     settle: float = 0.5) -> None:
     """Call `dismiss_error_dialog` every `interval` seconds until `stop` is set.
 
-    Ends, having said so once, when `xdotool` cannot be run: nothing can be
-    dismissed without it, and a thread dying on an uncaught error would only
-    print a traceback that reads as a crash in the game.
+    Ends, having said so once, when `xdotool` cannot be run (`OSError`):
+    nothing can be dismissed without it, and a thread dying on an uncaught
+    error would only print a traceback that reads as a crash in the game.  A
+    call that timed out or failed otherwise is logged and the next look goes
+    ahead.
     """
     while not stop.wait(interval):
         try:
             dismiss_error_dialog(display, settle)
-        except (OSError, subprocess.SubprocessError) as e:
+        except OSError as e:
             Session.log(f"dialog watcher stopped, no dialog will be closed: {e}")
             return
+        except subprocess.SubprocessError as e:
+            Session.log(f"dialog watcher missed one look: {e}")
 
 
 class Session:
@@ -1304,8 +1309,8 @@ class Session:
     RESTORE_DIALOG_MAX = 4
 
     #: Whether VICE was launched with sound off (`launched_silent`), which is
-    #: when an undump opens the dialog.  True for a session that did not
-    #: launch its emulator, since the pool's launch is silent.
+    #: when an undump opens the dialog.  A session attached to an emulator
+    #: it did not launch assumes the pool's silent launch, so True.
     sound_off = True
 
     #: A snapshot's path goes on the wire behind a one-byte length.
@@ -1426,8 +1431,8 @@ class Session:
         sends goes to it and the game sees none.
 
         With sound off, looks until `RESTORE_DIALOG_WAIT` seconds after
-        `resumed`, and after each close for `RESTORE_DIALOG_QUIET` more; with
-        sound on, looks once.  Closes each dialog found, and raises
+        `resumed`; with sound on, looks once.  Either way, after each close it
+        looks for `RESTORE_DIALOG_QUIET` more.  Closes each dialog found, and raises
         `RuntimeError` on finding one more after `RESTORE_DIALOG_MAX`.  An
         `xdotool` that fails is logged and the restore goes on, as the
         fastloader answer does.
