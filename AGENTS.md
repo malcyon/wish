@@ -40,8 +40,9 @@ only when Donald explicitly requests GitHub work. Do not fall back to GitHub
 when a Plane read or update is unavailable. GitHub still hosts the repository,
 PRs and CI; that does not make its issues the current work register.
 
-Cite every Plane ticket as `WISH-N (the ticket's own title)`, using
-`.venv/bin/python tools/plane/planeread.py WISH-N --cite`. The project-scoped reader
+Cite every Plane ticket as `WISH-N (the ticket's own title)`, using the
+project-scoped `wish-plane` MCP or `tools/plane/planeread.py WISH-N --cite`
+with the managed runtime and private configuration described in `issues.md`. The project-scoped reader
 returns all private Plane titles, descriptions and comments. Do not look up GitHub titles to fill a Plane
 citation. Code and commit messages may use the identifier without its title.
 For explicitly requested GitHub work, use `tools/github/issueread.py N --cite`
