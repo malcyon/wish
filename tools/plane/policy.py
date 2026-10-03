@@ -151,10 +151,52 @@ class Policy:
         return f'[{filtered["identifier"]} ({title})]({filtered["url"]})'
 
 
+_DELIMITER_ROW = re.compile(r'^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$')
+_FENCE = re.compile(r'^\s{0,3}(`{3,}|~{3,})')
+_CODE_SPAN = re.compile(r'(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)')
+
+
+def _escape_code_pipes(line):
+    """Escape a bare pipe inside a code span so a table cell is not split there."""
+    def fix(match):
+        body = re.sub(r'(?<!\\)\|', r'\\|', match.group(2))
+        return f'{match.group(1)}{body}{match.group(1)}'
+    return _CODE_SPAN.sub(fix, line)
+
+
+def _protect_table_code(text):
+    """Escape pipes inside code spans on table rows; fenced blocks and other text are untouched."""
+    lines = text.split('\n')
+    fence = None
+    block = []
+
+    def flush():
+        if any('|' in lines[i] and _DELIMITER_ROW.match(lines[i]) for i in block):
+            for index in block:
+                lines[index] = _escape_code_pipes(lines[index])
+        block.clear()
+
+    for index, line in enumerate(lines):
+        marker = _FENCE.match(line)
+        if fence is not None:
+            if marker and marker.group(1)[0] == fence[0] and len(marker.group(1)) >= len(fence):
+                fence = None
+            continue
+        if marker:
+            flush()
+            fence = marker.group(1)
+        elif line.strip():
+            block.append(index)
+        else:
+            flush()
+    flush()
+    return '\n'.join(lines)
+
+
 def paragraph(text):
     """Render supplied Markdown as HTML; raw HTML stays escaped and unsafe link schemes are not linked."""
     if not isinstance(text, str) or not text.strip():
         raise PlaneError("Nonempty text is required")
     from markdown_it import MarkdownIt
     renderer = MarkdownIt('commonmark', {'html': False, 'breaks': True}).enable('table')
-    return renderer.render(text).strip()
+    return renderer.render(_protect_table_code(text)).strip()

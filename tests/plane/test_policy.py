@@ -977,3 +977,19 @@ def test_edit_comment_readback_transport_failure_keeps_its_class(tmp_path):
     client, _ = failing_comment_client(tmp_path, 3, PlaneOutcomeUnknown('Timed out'))
     with pytest.raises(PlaneOutcomeUnknown, match='Timed out'):
         client.edit_comment(ITEM, COMMENT, 'Text')
+
+
+def test_pipe_in_code_span_keeps_table_cell_whole():
+    from tools.plane.policy import paragraph
+    out = paragraph('| a | b |\n|---|---|\n| `(22, level|$80)` | x |')
+    assert out.count('<td>') == 2
+    assert '<td><code>(22, level|$80)</code></td>' in out
+
+
+def test_pipes_outside_table_code_spans_are_unchanged():
+    from tools.plane.policy import paragraph
+    assert paragraph('Use `a|b` here') == '<p>Use <code>a|b</code> here</p>'
+    out = paragraph('```\n| a | b |\n|---|---|\n| `x|y` | z |\n```')
+    assert '| `x|y` | z |' in out and '\\|' not in out
+    out = paragraph('| a | b |\n|---|---|\n| `x\\|y` | p|q |')
+    assert '<td><code>x|y</code></td>' in out and '<td>p</td>' in out
