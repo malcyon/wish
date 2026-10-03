@@ -210,23 +210,28 @@ class Console:
                 shutil.copyfile(src, shots / f"last{tail}.png")
         self.say(f"  shot {out.name}")
 
-    def frame(self, out: Path) -> None:
-        """Write a DOSBox-X frame at 320x200, as DOSBox 0.74 would draw it.
+    def screen(self) -> Screen:
+        """The session's capture; on DOSBox-X a torn grab is halved loosely.
 
         A grab torn between two blits is halved by each block's top-left pixel
-        rather than refused, so an animated screen still gets its shot.
+        rather than refused, so an animated screen still gets its shot and
+        its digests.
         """
-        from PIL import Image
         try:
-            screen = self.s.capture()
+            return self.s.capture()
         except dosboxx.NotLineDoubled:
             from tools.dos.acceptance import loose_halve
-            screen = loose_halve(dosbox.Session.capture(self.s))
             self.say("  torn frame, halved loosely")
+            return loose_halve(dosbox.Session.capture(self.s))
+
+    def frame(self, out: Path) -> None:
+        """Write a DOSBox-X frame at 320x200, as DOSBox 0.74 would draw it."""
+        from PIL import Image
+        screen = self.screen()
         Image.frombytes("RGB", (screen.width, screen.height), screen.px).save(out)
 
     def describe(self) -> None:
-        screen: Screen = self.s.capture()
+        screen = self.screen()
         self.say(f"  frame={screen.digest()} bar.ink={screen.ink(BAR)} "
                  f"bar.glyphs={screen.glyphs(BAR)}")
 

@@ -20,6 +20,7 @@ Tests for Curse of the Azure Bonds: its C64 disks, saves, tables and level-up ru
 | `test_cursetrainer.py` | Checks Curse's saving throws, hit dice, attacks, spell slot rows and level-up behaviour against the trainer read out of `GEN` and the shipped party. |
 | `test_cursewarp.py` | Checks that `tools/curse_of_the_azure_bonds/curseload.py`'s world entry sends its stuck-screen Escape only when the machine is idle in a key wait. |
 | `test_cursewheel.py` | Checks that `tools/curse_of_the_azure_bonds/cursewheel.py` recognises DOS Curse's code-wheel prompt from frames built here and answers it. |
+| `test_doscurse_dosboxx.py` | Checks that the DOS Curse console on DOSBox-X writes 320x200 shots and frame digests, halving a torn grab loosely, focuses before it types, and answers the wheel through XTEST. |
 | `test_doscurse_snapshot.py` | Checks that the DOS Curse console's `snapshot` and `restore` commands pass their name to the DOSBox-X session, log the saves a restore leaves on disk, and that `--snapshots` boots DOSBox-X. |
 | `test_doscurse_wheel.py` | Checks that the DOS Curse console's `wheel` command types the answer and Return, and stops with a reason when no challenge is read. |
 | `test_curtraitnames.py` | Checks that Curse's effect-code names come from Curse's own tables and differ from Pool of Radiance's where the data disagrees. |
