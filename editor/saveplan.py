@@ -53,6 +53,7 @@ from goldbox import (
     effects,
     layout,
     rewrite,
+    titles,
 )
 from goldbox.d64 import D64
 from goldbox.neutral import ABILITIES as NEUTRAL_ABILITIES
@@ -411,6 +412,40 @@ class DroppedFields(SaveAsError):
         self.lost = list(lost)
         super().__init__(f"{len(self.lost)} field(s) would be lost: "
                          + "; ".join(self.lost))
+
+
+class WrongGameFolder(DroppedFields):
+    """The DOS game folder chosen is another title's, so nothing is written.
+
+    Its area numbers are that title's own, and the writer would put one of
+    them in the save, which the destination title cannot load. It is a
+    `DroppedFields` so the window already reports it as a save that could not
+    be converted; the message is for the debug log only.
+    """
+
+    def __init__(self, folder: pathlib.Path, folder_title: str,
+                 save_title: str):
+        self.folder = folder
+        self.folder_title = folder_title
+        self.save_title = save_title
+        super().__init__([f"the DOS game folder {folder} holds "
+                          f"{folder_title}, but the save is {save_title}"])
+
+
+def check_dos_folder(source: Any, port: str, assets: "Assets") -> None:
+    """Raise `WrongGameFolder` when a DOS destination's game folder is
+    another title's.
+
+    A folder whose title cannot be recognised passes, as does any route that
+    reads no DOS game folder.
+    """
+    folder = assets.dos_folder
+    if folder is None or port != "dos" or DOS_GAME_FOLDER not in requirements(
+            source, port):
+        return
+    held = titles.dos_folder_title(folder)
+    if held is not None and held != source.key:
+        raise WrongGameFolder(folder, held, source.key)
 
 
 class StalePlan(SaveAsError):
@@ -1804,6 +1839,7 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
         files, slot, report = native_files(snapshot), snapshot.slot, None
         title = snapshot.title
     else:
+        check_dos_folder(source, port, assets or Assets())
         rehearsal, slot = rehearse(direction, source, assets or Assets(),
                                    names=names, leave=leave,
                                    # Sent only with a choice, as `leave`

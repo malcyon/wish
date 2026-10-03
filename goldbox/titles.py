@@ -24,6 +24,7 @@ why, so it is not renamed here.
 
 from __future__ import annotations
 
+import pathlib
 from dataclasses import dataclass
 
 from . import dos_port
@@ -272,6 +273,47 @@ def by_title(title: str | None) -> Title | None:
     it does not have one.
     """
     return BY_TITLE.get(title) if title else None
+
+
+# ---------------------------------------------------------------------------
+# Which title a DOS game folder holds
+# ---------------------------------------------------------------------------
+
+#: Title key -> (launcher, configuration file, folder name). Each installed
+#: DOS game holds its launcher beside a configuration file no other title's
+#: folder has, and the archives name the folder for the launcher's stem.
+DOS_FOLDER_FILES = {
+    "pool-of-radiance": ("START.EXE", "POOL.CFG", "POOLRAD"),
+    "curse-of-the-azure-bonds": ("START.EXE", "CURSE.CFG", "CURSE"),
+    "secret-of-the-silver-blades": ("START.EXE", "BLADES.CFG", "SECRET"),
+    "pools-of-darkness": ("START.BAT", "POOL4.CFG", "DARKNESS"),
+}
+
+
+def dos_folder_title(folder: "str | pathlib.Path") -> str | None:
+    """Which title a DOS game folder holds, as a key, or `None` when nothing
+    says.
+
+    What the folder holds decides: its launcher beside the title's own
+    configuration file, matched without regard to case. A folder holding
+    neither falls back to its name, which the archives give the launcher's
+    stem.
+    """
+    folder = pathlib.Path(folder).expanduser()
+    try:
+        held = {path.name.upper() for path in folder.iterdir()}
+    except OSError:
+        held = set()
+    by_contents = [key for key, (launcher, config, _) in
+                   DOS_FOLDER_FILES.items()
+                   if launcher in held and config in held]
+    if len(by_contents) == 1:
+        return by_contents[0]
+    names = {folder.name.upper(), folder.resolve().name.upper()}
+    for key, (_, _, stem) in DOS_FOLDER_FILES.items():
+        if stem in names:
+            return key
+    return None
 
 
 # ---------------------------------------------------------------------------

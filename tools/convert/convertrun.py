@@ -85,12 +85,6 @@ def disks_dir(named: str | None = None) -> pathlib.Path | None:
 # Which DOS game folder a conversion is written against
 # ---------------------------------------------------------------------------
 
-#: A file only that title's DOS game folder holds, by launcher stem: each
-#: installed game's own configuration file, one per folder in the archives.
-CONFIG_FILES = {"POOLRAD": "POOL.CFG", "CURSE": "CURSE.CFG",
-                "SECRET": "BLADES.CFG", "DARKNESS": "POOL4.CFG"}
-
-
 def _dos_titles() -> dict[str, Title]:
     """Title key -> `tools.dos.acceptance.Title`, for every title with a
     DOS game folder in the archives."""
@@ -109,33 +103,6 @@ def source_title(source: pathlib.Path, slot: str | None) -> str | None:
         return Source.detect(source, slot=slot).key
     except Exception:
         return None
-
-
-def folder_title(folder: pathlib.Path) -> str | None:
-    """Which title a DOS game folder holds, or `None` when nothing says.
-
-    What the folder holds decides: its launcher (`Title.exe`) beside the
-    title's own configuration file (`CONFIG_FILES`), matched without regard
-    to case. A folder holding neither falls back to its name, which the
-    archives and `tools.dos.dosbox.Session.stage` both give the launcher's
-    stem (`POOLRAD`, `CURSE`, `SECRET`, `DARKNESS`).
-    """
-    folder = folder.expanduser()
-    try:
-        held = {path.name.upper() for path in folder.iterdir()}
-    except OSError:
-        held = set()
-    known = _dos_titles()
-    by_contents = [key for key, title in known.items()
-                   if title.exe.upper() in held
-                   and CONFIG_FILES.get(title.stem) in held]
-    if len(by_contents) == 1:
-        return by_contents[0]
-    for name in (folder.name.upper(), folder.resolve().name.upper()):
-        for key, title in known.items():
-            if name == title.stem:
-                return key
-    return None
 
 
 def _archive_folder(title: Title, name: str) -> pathlib.Path:
@@ -170,7 +137,7 @@ def dos_game_folder(source_key: str | None,
         if title is None:
             raise SystemExit(f"No DOS game folder is known for {name}.")
         return _archive_folder(title, name)
-    held = folder_title(named)
+    held = titles.dos_folder_title(named)
     if held is None:
         raise SystemExit(
             f"Cannot tell which game the DOS game folder {named} holds.")
