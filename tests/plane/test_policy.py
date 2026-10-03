@@ -993,3 +993,24 @@ def test_pipes_outside_table_code_spans_are_unchanged():
     assert '| `x|y` | z |' in out and '\\|' not in out
     out = paragraph('| a | b |\n|---|---|\n| `x\\|y` | p|q |')
     assert '<td><code>x|y</code></td>' in out and '<td>p</td>' in out
+
+
+def test_table_code_escape_leaves_prose_above_the_header_alone():
+    from tools.plane.policy import paragraph
+    out = paragraph('intro `a|b`\n| a | b |\n|---|---|\n| `x|y` | z |')
+    assert '<p>intro <code>a|b</code></p>' in out
+    assert '<td><code>x|y</code></td>' in out and '\\' not in out
+
+
+def test_table_inside_a_blockquote_keeps_a_code_cell_whole():
+    from tools.plane.policy import paragraph
+    out = paragraph('> | a | b |\n> |---|---|\n> | `x|y` | z |')
+    assert out.count('<td>') == 2
+    assert '<td><code>x|y</code></td>' in out
+
+
+def test_double_backtick_span_in_a_table_cell_keeps_the_cell_whole():
+    from tools.plane.policy import paragraph
+    out = paragraph('| a | b |\n|---|---|\n| `` a|b `` | z |')
+    assert out.count('<td>') == 2
+    assert '<td><code>a|b</code></td>' in out

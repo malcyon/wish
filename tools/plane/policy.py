@@ -153,7 +153,14 @@ class Policy:
 
 _DELIMITER_ROW = re.compile(r'^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$')
 _FENCE = re.compile(r'^\s{0,3}(`{3,}|~{3,})')
+_QUOTE = re.compile(r'^(?:\s{0,3}>)*[ \t]*')
 _CODE_SPAN = re.compile(r'(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)')
+
+
+def _split_quote(line):
+    """Split a line into its leading blockquote markers and the rest."""
+    prefix = _QUOTE.match(line).group(0)
+    return prefix, line[len(prefix):]
 
 
 def _escape_code_pipes(line):
@@ -171,9 +178,21 @@ def _protect_table_code(text):
     block = []
 
     def flush():
-        if any('|' in lines[i] and _DELIMITER_ROW.match(lines[i]) for i in block):
-            for index in block:
-                lines[index] = _escape_code_pipes(lines[index])
+        # A table starts at the header line above its delimiter row and runs while rows hold a pipe;
+        # prose above the header and text after the table keep their pipes.
+        position = 1
+        while position < len(block):
+            _, delimiter = _split_quote(lines[block[position]])
+            _, header = _split_quote(lines[block[position - 1]])
+            if '|' in delimiter and '|' in header and _DELIMITER_ROW.match(delimiter):
+                end = position - 1
+                while end < len(block) and '|' in _split_quote(lines[block[end]])[1]:
+                    prefix, rest = _split_quote(lines[block[end]])
+                    lines[block[end]] = prefix + _escape_code_pipes(rest)
+                    end += 1
+                position = end + 1
+            else:
+                position += 1
         block.clear()
 
     for index, line in enumerate(lines):
