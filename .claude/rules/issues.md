@@ -8,18 +8,20 @@ fallback to GitHub. Repository PRs and exact-SHA CI remain on GitHub.
 ## Read and cite
 
 Prefer the registered `wish-plane` MCP. For CLI access from the repository root,
-use the deployment-managed runtime and private configuration on host or guest:
+use the deployment-managed runtime and private configuration:
 
 ```sh
 export WISH_PLANE_CONFIG="$HOME/.config/wish-plane/config.json"
-PLANE_PYTHON="$HOME/.local/share/wish-plane/venv/bin/python"
+PLANE_PYTHON="$HOME/.local/share/wish/plane-venv/bin/python"
 "$PLANE_PYTHON" tools/plane/planeread.py --list
 "$PLANE_PYTHON" tools/plane/planeread.py --metadata
 "$PLANE_PYTHON" tools/plane/planeread.py WISH-N --json
 "$PLANE_PYTHON" tools/plane/planeread.py WISH-N --cite
 ```
 
-`HOME` selects the configured host or guest account; do not change it. The shared
+`HOME` selects the configured account; do not change it. The path above is the agent guest's
+runtime. The host's runtime is whatever the host advisor installed; a host session
+confirms it with `ls` before use and runs the guest command only on the guest. The shared
 Wish `.venv` is not the deployed Plane environment. These paths contain no token;
 the private configuration names the owner-only credential file.
 

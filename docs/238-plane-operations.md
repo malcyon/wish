@@ -139,20 +139,23 @@ instance:
 The adapter exposes list, search, read, citation, project metadata, create,
 comment and update operations. The same policy is available through these
 commands from the repository root. Prefer the registered `wish-plane` MCP; CLI
-access uses the deployment-managed environment on host or guest, not Wish's
+access uses the deployment-managed environment, not Wish's
 shared `.venv`:
 
 ```sh
 export WISH_PLANE_CONFIG="$HOME/.config/wish-plane/config.json"
-PLANE_PYTHON="$HOME/.local/share/wish-plane/venv/bin/python"
+PLANE_PYTHON="$HOME/.local/share/wish/plane-venv/bin/python"
 "$PLANE_PYTHON" tools/plane/planeread.py --list
 "$PLANE_PYTHON" tools/plane/planeread.py --metadata
 "$PLANE_PYTHON" tools/plane/planeread.py WISH-N --cite
 "$PLANE_PYTHON" tools/plane/planeagent.py --help
 ```
 
-`HOME` selects the configured host or guest account; leave it unchanged. The
-configuration path contains no token and loads the owner-only credential file.
+`HOME` selects the configured account; leave it unchanged. The path above is the
+agent guest's runtime. The host's runtime is whatever the host advisor installed;
+a host session confirms it with `ls` before use and runs the guest command only
+on the guest. The configuration path contains no token and loads the owner-only
+credential file.
 Use the same `"$PLANE_PYTHON"` for create, comment and update commands in
 `.claude/rules/issues.md`.
 
