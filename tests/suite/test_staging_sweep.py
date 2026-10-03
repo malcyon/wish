@@ -128,6 +128,7 @@ ARTEFACT_COPIES: dict[tuple[str, str], str] = {
         "this run's own shots directory, emptied of *.png files once the slot "
         "was claimed; the *.png files already in `out/shots` are removed first",
     ("curse_of_the_azure_bonds/curseregain.py", "shots / png.name"): "this run's own shots directory",
+    ("curse_of_the_azure_bonds/doscurse.py", 'out / "shots"'): "this run's own shots directory, copied out as the console ends",
     ("dos/dosencsave.py", "shots / png.name"): "this run's own shots directory",
     ("dos/dosfightrun.py", 'out / f"{name}.png"'): "this run's own shots directory",
     ("dos/dosfightwatch.py", 'out / "encounter.png"'): "the encounter this run shot",

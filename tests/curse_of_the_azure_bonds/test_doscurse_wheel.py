@@ -42,10 +42,10 @@ def _console(tmp_path):
                             tmp_path / "c.log")
 
 
-def _reading(monkeypatch, ink=100, path=1):
+def _reading(monkeypatch, ink=100, path=1, dethek_ink=None):
     monkeypatch.setattr(cursewheel, "identify", lambda shot: {
         "espruar": [(1.0, 3)], "dethek": [(1.0, 4)],
-        "espruar_ink": ink, "dethek_ink": ink, "path": path})
+        "espruar_ink": ink, "dethek_ink": dethek_ink or ink, "path": path})
     seen = []
 
     def answer(box, e, d, p):
@@ -84,12 +84,30 @@ def test_wheel_stops_when_the_path_is_not_read(tmp_path, monkeypatch):
     assert con.s.keys == []
 
 
-def test_wheel_stops_on_a_frame_with_little_ink(tmp_path, monkeypatch):
-    _reading(monkeypatch, ink=60)
+def test_wheel_stops_on_a_blank_frame(tmp_path, monkeypatch):
+    _reading(monkeypatch, ink=30)
     con = _console(tmp_path)
     with pytest.raises(doscurse.WheelNotAnswered, match="no code-wheel"):
         con.do("wheel 4")
     assert con.s.keys == []
+
+
+def test_wheel_types_when_dethek_ink_is_low_but_the_path_reads(
+        tmp_path, monkeypatch):
+    _reading(monkeypatch, ink=137, dethek_ink=72)
+    con = _console(tmp_path)
+    con.do("wheel 4")
+    assert con.s.keys == [SECRET, "Return"]
+
+
+def test_copy_out_keeps_the_log_and_shots(tmp_path):
+    slot = tmp_path / "slot"
+    (slot / "shots").mkdir(parents=True)
+    (slot / "console.log").write_text("hello")
+    (slot / "shots" / "001-last.png").write_bytes(b"x")
+    doscurse.copy_out(slot, tmp_path / "out")
+    assert (tmp_path / "out" / "console.log").read_text() == "hello"
+    assert (tmp_path / "out" / "shots" / "001-last.png").read_bytes() == b"x"
 
 
 def test_wheel_deletes_its_shots_when_the_shot_fails(tmp_path, monkeypatch):

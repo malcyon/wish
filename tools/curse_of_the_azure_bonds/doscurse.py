@@ -154,9 +154,10 @@ def enlarge(src: Path, factor: int = 3) -> Path | None:
     return out if r.returncode == 0 else None
 
 
-#: A real prompt holds at least this much ink in each rune tile; anything less
-#: is another screen, and the reader would still score it confidently.
-MIN_RUNE_INK = 100
+#: Only a blank frame is under this much ink in a rune tile.  Real Dethek
+#: tiles hold as few as 72 pixels, so what decides that a challenge is on screen
+#: is the reader finding its path, not the amount of ink.
+MIN_RUNE_INK = 40
 
 
 class WheelNotAnswered(RuntimeError):
@@ -311,7 +312,18 @@ class Console:
         self.say("lifetime expired")
 
 
-def console(game: str, note: str, minutes: float, exe: str = "START.EXE") -> int:
+def copy_out(slot_dir: Path, out: Path) -> None:
+    """Copy the log and shots out of a slot directory that is about to go."""
+    out.mkdir(parents=True, exist_ok=True)
+    log = slot_dir / "console.log"
+    if log.is_file():
+        shutil.copyfile(log, out / "console.log")
+    if (slot_dir / "shots").is_dir():
+        shutil.copytree(slot_dir / "shots", out / "shots", dirs_exist_ok=True)
+
+
+def console(game: str, note: str, minutes: float, exe: str = "START.EXE",
+            out: Path | None = None) -> int:
     with claim(note or "doscurse") as slot:
         cmds = slot.dir / "console.cmd"
         log = slot.dir / "console.log"
@@ -321,8 +333,12 @@ def console(game: str, note: str, minutes: float, exe: str = "START.EXE") -> int
         print(f"commands: {cmds}")
         print(f"log:      {log}")
         print(f"shots:    {slot.dir / 'shots'}")
-        with Session(slot, find_game(game), exe=exe) as s:
-            Console(s, cmds, log).run(minutes)
+        try:
+            with Session(slot, find_game(game), exe=exe) as s:
+                Console(s, cmds, log).run(minutes)
+        finally:
+            if out is not None:
+                copy_out(slot.dir, out)
     return 0
 
 
@@ -344,11 +360,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--scale", type=int, default=2, help="pane: blow-up factor")
     ap.add_argument("--events", action="store_true",
                     help="pane: list the shots with ink in the region")
-    ap.add_argument("--out", default=str(scratch.scratch_dir("doscurse") / "pane.png"))
+    ap.add_argument("--out", default=None,
+                    help="pane: the montage file (default in scratch); "
+                         "console: a directory to copy console.log and shots/ "
+                         "into when the console ends")
     args = ap.parse_args(argv)
     if args.command == "pane":
         return pane(args.slot, args.rect, args.last, args.shots,
-                    Path(args.out), args.scale, args.events)
+                    Path(args.out or scratch.scratch_dir("doscurse") / "pane.png"),
+                    args.scale, args.events)
     if args.command == "check":
         absent = dosbox.missing_tools()
         print("tools missing:", ", ".join(absent) if absent else "none")
@@ -358,7 +378,8 @@ def main(argv: list[str] | None = None) -> int:
             print("game:", exc)
             return 1
         return 1 if absent else 0
-    return console(args.game, args.note, args.minutes, args.exe)
+    return console(args.game, args.note, args.minutes, args.exe,
+                   Path(args.out) if args.out else None)
 
 
 if __name__ == "__main__":
