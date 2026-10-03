@@ -11,6 +11,28 @@
       "example": "679/5fcbfccc65-amiga-pool-accept2b/accept2b/shots/07-camp.png",
       "sha256": "6ef80ecffc6013570eeda6c5bab63423056fc15f0b6e387b0a8fa4601b0120fd"
     },
+    "camp_display": {
+      "also": [],
+      "box": [
+        300,
+        46,
+        440,
+        66
+      ],
+      "example": "273/wish273-pool-rest/accept1/shots/09-camp_display.png",
+      "sha256": "4ff46837069ed69617be52b86b62b473306be9e0737459e32e38260664d0a83c"
+    },
+    "camp_magic": {
+      "also": [],
+      "box": [
+        56,
+        418,
+        600,
+        432
+      ],
+      "example": "273/wish273-pool-rest/accept1/shots/08-camp_magic.png",
+      "sha256": "f086e9fd0652a1b11fc826284a2e7d5df5722186022bffcb4b2c570c81bb9d51"
+    },
     "camp_save_picker": {
       "also": [],
       "box": [
@@ -65,6 +87,17 @@
       ],
       "example": "679/5fcbfccc65-amiga-pool-accept2b/accept2b/shots/09-quit_prompt.png",
       "sha256": "46baa42774b9d5136f4ba893ee5597b393ab9d65179ad81b3d8852bf4b14f54f"
+    },
+    "rest_menu": {
+      "also": [],
+      "box": [
+        56,
+        418,
+        600,
+        432
+      ],
+      "example": "273/wish273-pool-rest/accept1/shots/12-rest_menu.png",
+      "sha256": "126587cefc682cd714a3968c086ca60279937b3d8333ea1a046df4e59e33052a"
     },
     "save_path": {
       "also": [],

@@ -2,7 +2,8 @@
 
 A published route (`route_silver_blades.published_title` or
 `route_curse.published_title`) walks two squares, camps and saves, and
-Pools of Darkness' accept route (`route_darkness.DARKNESS`) walks one.
+Pools of Darkness' and Pool of Radiance's accept routes (`route_darkness.DARKNESS`,
+`route_pool.POOL`) walk one.
 `camp_title` splices the steps a `--camp` list names into it, after the camp
 key and before the camp save, so the save that follows holds what the steps
 did. The two titles use the same letters. The keys come from Silver Blades'
@@ -70,8 +71,8 @@ Curse of the Azure Bonds' `/Curse` (file offsets) differs only where noted:
   `029410` is called with no bar words of its own, so its bar is `Exit`, and
   `E` returns to the magic menu, whose own `E` returns to the camp bar.
 
-`display` opens that list and leaves it again; it is built for Curse only,
-the one title whose magic menu and list viewer have been read.
+`display` opens that list and leaves it again; it is built for Curse and Pool
+of Radiance, the titles whose magic menu and list viewer have been read.
 
 `heal N` has the member on line N lay on hands on himself: the camp
 highlight goes to his line, and the picker, which starts on the first member,
@@ -103,7 +104,8 @@ and the same kind of picker, with `Lay` where the other two say `Heal`:
   moves, is driven.
 
 Pool of Radiance's `/program` (file offsets; one build on every disk-one image)
-takes only `items N`, which shows the item list of the member on line N:
+takes `items N`, which shows the item list of the member on line N, `rest
+DURATION` and `display`, and no `view` or `heal`:
 
 * **The camp bar** is `Save View Magic Rest Alter Exit` (`008DD1`), read by
   the camp loop at `007B2E` through the menu routine `0319FE`. That routine's
@@ -130,6 +132,27 @@ takes only `items N`, which shows the item list of the member on line N:
   `Halve`, `Join`, `Sell` and `Id` (`01E7A2`-`01E7D0`). It loops until the
   key is `E` or ESC (`01B82A`), and the sheet routine then redraws the sheet
   (`01B6E8`) and reads its bar again.
+* **The camp bar's `R`** (`007BF8`) runs `00682E`, which presets the rest time
+  to the longest any member needs to memorize (hours at hunk 32 + `0x1A20`,
+  minutes in tens and ones at `+0x1A1E` and `+0x1A1C`), then the rest routine
+  `005FB6`, whose menu `005B28` reads `Rest Days Hours Mins Add Sub Exit`
+  (`008D4A`) and opens on the minutes field. `D`, `H` and `M` choose a field,
+  `A` adds a day, an hour or five minutes, `S` subtracts the same, `R` or
+  RETURN rests and `E` leaves. The subtraction `005880` zeroes the whole time
+  (`setmem` of 14 bytes at `+0x1A1A`) when the field and every field above it
+  hold nothing to borrow, so `D S S` clears the preset here too. Each five
+  minutes of rest may be interrupted by a roll the area sets (`0060E8`), which
+  prints `The Party is rudely interrupted!`.
+* **The camp bar's `M`** (`007BE6`) runs the magic menu `0072C2`, whose bar is
+  `Cast Memorize Scribe Display Rest Exit` (`008DFA`); `D` runs `006DC2`, which
+  walks the whole party from hunk 32 + `0x0AEE` and builds one list: each
+  member's name, then one line per node, or ` <No Spell Effects>`, then a blank
+  line, shown under the heading `Display` (`0090F2`) through the list viewer
+  with no bar words of its own. `E` leaves the magic menu.
+
+The rest menu's `D` and the magic menu's `D` are Pool's after slot letter on its
+own route, so a Pool camp run whose steps press `D` saves its after slot to
+`route_pool.POOL_CAMP_AFTER` instead.
 
 Silver Blades' `/Secret` (file offsets) takes `items N` and `join N I` beside
 its other camp steps:
@@ -211,15 +234,16 @@ SHEET_LINES = {"ssb": (1, 2), "curse": (1, 2, 3, 4, 5, 6), "darkness": (1,)}
 #: `heal N` can name: the identity rule of `camp_sheet_heal` and `camp_sheet_spent` is his.
 HEAL_LINES = {"ssb": (1,), "curse": (6,), "darkness": (1,)}
 #: The titles whose magic menu and effects list have been read, so `display` may name them.
-DISPLAY_TITLES = frozenset({"curse"})
+DISPLAY_TITLES = frozenset({"curse", "pool"})
 #: The titles whose camp highlight and HEAL picker are read to wrap from the first member to
 #: the last and back (Curse `0237CA` and `01BF56`-`01BF8A`, Pool of Radiance's highlight
 #: `01CBD4`), so a later line may be reached backwards.
 WRAPS = frozenset({"curse", "pool"})
 #: The titles whose sheet and item routine have been read, so `items N` may name them.
 ITEMS_TITLES = frozenset({"pool", "ssb"})
-#: The titles whose only camp step is `items N`: their other camp steps are not built.
-ITEMS_ONLY = frozenset({"pool"})
+#: The titles whose camp sheet steps, `view N` and `heal N`, are not built: Pool of Radiance's
+#: sheet has no HEAL, and its guard map holds no camp sheet.
+SHEETLESS = frozenset({"pool"})
 #: The titles whose JOIN routine has been read, so `join N I` may name them.
 JOIN_TITLES = frozenset({"ssb"})
 JOIN = "J"
@@ -378,8 +402,8 @@ def rest_presses(minutes: int) -> tuple[int, int, int]:
 
 
 def sheet_lines(name: str) -> tuple[tuple[int, ...], tuple[int, ...]]:
-    """The party lines `view N` and `heal N` may name for title `name`; none in `ITEMS_ONLY`."""
-    if name in ITEMS_ONLY:
+    """The party lines `view N` and `heal N` may name for title `name`; none in `SHEETLESS`."""
+    if name in SHEETLESS:
         return (), ()
     try:
         return SHEET_LINES[name], HEAL_LINES[name]
@@ -482,8 +506,9 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
     for a title in `DISPLAY_TITLES`). A `heal` whose sheet does not offer HEAL
     fails the run at that sheet, since its guard is the bar with the word on it.
     `items` or `items N` shows the item list of party line N (1 when left out;
-    only for a title in `ITEMS_TITLES`), and is the only step a title in
-    `ITEMS_ONLY` takes. `join N I` presses JOIN on row I of line N's item list
+    only for a title in `ITEMS_TITLES`). A title in `SHEETLESS` takes no `view`
+    or `heal`, so its rests must total less than `CLOCK_BLIND_REST`, which the
+    clock can prove. `join N I` presses JOIN on row I of line N's item list
     (only for a title in `JOIN_TITLES`).
     """
     view_lines, heal_lines = sheet_lines(name)
@@ -491,9 +516,6 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
     tokens, _ = split_machine_steps(tokens)
     if not tokens:
         raise RouteError("the camp step list is empty")
-    if name in ITEMS_ONLY:
-        _validate_items(tokens, party_size)
-        return
     healed = False
     for token in tokens:
         if token.split()[0] == "heal":
@@ -529,6 +551,9 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
                 raise RouteError(f"{token!r}: an item list has rows 1 to {ITEM_ROWS} only")
             continue
         line = _step_line(words)
+        if line is not None and name in SHEETLESS:
+            raise RouteError(f"camp step {token!r}: the camp route reads no sheet on Pool of "
+                             f"Radiance, which takes items N, rest DURATION and display")
         if line is not None:
             lines = tuple(n for n in (view_lines if words[0] == "view" else heal_lines)
                           if n <= party_size)
@@ -544,12 +569,17 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
             continue
         if words == ["display"]:
             if name not in DISPLAY_TITLES:
-                raise RouteError("'display': the effects list is built for Curse only")
+                raise RouteError("'display': the effects list is built for Curse and Pool of "
+                                 "Radiance only")
             continue
         also = (", nor items N" if name in ITEMS_TITLES else "") + (
             " or join N I" if name in JOIN_TITLES else "")
         raise RouteError(f"camp step {token!r} is not view, view N, heal, heal N, "
                          f"rest DURATION or display{also}")
+    if rest_minutes(tokens) >= CLOCK_BLIND_REST and name in SHEETLESS:
+        raise RouteError(
+            f"rests totalling {CLOCK_BLIND_REST} minutes or more need a sheet after the last "
+            f"rest, and the camp route reads no sheet on Pool of Radiance")
     if rest_minutes(tokens) >= CLOCK_BLIND_REST:
         last_rest = max(i for i, t in enumerate(tokens) if t.startswith("rest "))
         if not any(t.split()[0] in ("view", "heal") for t in tokens[last_rest + 1:]):
@@ -557,19 +587,6 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
                 f"rests totalling {CLOCK_BLIND_REST} minutes or more need a view or heal "
                 f"after the last rest: the clock cannot prove such a rest, so the run needs "
                 f"a sheet to show it")
-
-
-def _validate_items(tokens: tuple[str, ...], party_size: int) -> None:
-    """Refuse any step but `items` or `items N` for a line the party has."""
-    for token in tokens:
-        words = token.split()
-        line = _step_line(words)
-        if words[0] != "items" or line is None:
-            raise RouteError(f"camp step {token!r} is not items or items N: the camp route "
-                             f"is built for the item list only on Pool of Radiance")
-        if not 1 <= line <= min(party_size, PARTY_MAX):
-            raise RouteError(f"{token!r}: the party has lines 1 to "
-                             f"{min(party_size, PARTY_MAX)} only")
 
 
 def normalise(tokens: tuple[str, ...]) -> tuple[str, ...]:

@@ -138,7 +138,7 @@ def test_curse_camp_steps_reach_the_paladin_on_line_6():
 def test_a_title_without_camp_steps_is_refused():
     with pytest.raises(RouteError, match="Pools of Darkness and Pool of Radiance only"):
         route_camp.parse_steps("view", "darkness-unstarted")
-    with pytest.raises(RouteError, match="item list only on Pool of Radiance"):
+    with pytest.raises(RouteError, match="reads no sheet on Pool of Radiance"):
         route_camp.parse_steps("view", "pool")
 
 
@@ -365,7 +365,7 @@ def test_the_manifest_s_camp_steps_rebuild_the_route_for_either_title_and_no_oth
     curse = route_curse.published_title("D")
     title = foundation._camp_title("curse", curse, list(CURSE_STEPS), CURSE_NAMES)
     assert title.route == route_camp.camp_title(curse, CURSE_STEPS, 6, name="curse").route
-    with pytest.raises(RouteError, match="item list only on Pool of Radiance"):
+    with pytest.raises(RouteError, match="reads no sheet on Pool of Radiance"):
         foundation._camp_title("pool", base, list(STEPS), NAMES)
     with pytest.raises(RouteError, match="lines 1 to 6 only"):
         foundation._camp_title("curse", curse, ["view 7"], CURSE_NAMES)
@@ -399,7 +399,7 @@ def test_the_cli_reads_camp_steps_for_the_prepare_s_own_title(capsys):
     with pytest.raises(SystemExit):
         foundation.main(["prepare", "--title", "pool", "--run-id", "x",
                          "--published-disk-one", "--camp", "view"])
-    assert "item list only on Pool of Radiance" in capsys.readouterr().err
+    assert "reads no sheet on Pool of Radiance" in capsys.readouterr().err
 
 
 CAMP_STATES = ("camp_sheet", "camp_sheet_heal", "camp_sheet_spent", "heal_whom", "rest_menu")
@@ -880,9 +880,9 @@ def test_a_darkness_camp_screen_the_guard_map_lacks_is_settled_and_fails_the_run
 
 
 @pytest.mark.parametrize("manifest_title,accept,why", [
-    ("curse", True, "Pools of Darkness accept only"),
-    (None, True, "Pools of Darkness accept only"),
-    ("darkness", False, "Pools of Darkness accept only"),
+    ("curse", True, "Pool of Radiance accept, only"),
+    (None, True, "Pool of Radiance accept, only"),
+    ("darkness", False, "Pool of Radiance accept, only"),
 ])
 def test_camp_steps_in_a_manifest_that_is_not_a_darkness_accept_are_refused(
         tmp_path, clock, manifest_title, accept, why):
@@ -929,7 +929,8 @@ def test_the_cli_takes_camp_steps_and_an_issue_for_a_darkness_prepare(capsys, mo
     assert seen["camp"] == DARK_CAMP and seen["issue"] == "628"
     assert foundation.main(["prepare", "--title", "curse", "--run-id", "x",
                             "--camp", "view"]) == 2
-    assert "--camp requires --published-disk-one or --title darkness" in capsys.readouterr().err
+    assert ("--camp requires --published-disk-one, --title darkness or --title pool"
+            in capsys.readouterr().err)
     seen.clear()
     assert foundation.main(["prepare", "--title", "curse", "--run-id", "x",
                             "--issue", "628"]) == 0
@@ -974,7 +975,7 @@ def test_display_opens_the_curse_magic_menu_s_effects_list_and_comes_back_to_the
 
 @pytest.mark.parametrize("name", ["ssb", "darkness"])
 def test_display_is_refused_for_a_title_whose_magic_menu_is_unread(name):
-    with pytest.raises(RouteError, match="effects list is built for Curse only"):
+    with pytest.raises(RouteError, match="effects list is built for Curse and Pool of Radiance only"):
         route_camp.parse_steps("display", name)
 
 

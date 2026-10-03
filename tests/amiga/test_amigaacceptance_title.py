@@ -1295,7 +1295,48 @@ def test_a_pinned_accept_still_refuses_specimen_preservation(tmp_path, clock, sp
         _preserving(tmp_path, clock, manifest=manifest)
 
 
-@pytest.mark.parametrize("issue", [None, "631", "#631", "#631 ()", "#x (title)"])
+PLANE_ISSUE = ("WISH-7 (A C64 party under a camp Bless and Enlarge loses them on the way to "
+               "the Amiga)")
+
+
+def test_a_substituted_specimen_takes_a_plane_ticket_as_planeread_cites_it(
+        tmp_path, clock, specimen_tree):
+    _, result = _preserving(tmp_path, clock, specimen_issue=PLANE_ISSUE)
+    assert result["success"] is True, result.get("specimen_error")
+    slug = acceptance._slug
+    # Plane and GitHub number apart, so WISH-7 is not filed where #7 would be.
+    assert pathlib.Path(result["specimen"]["path"]).parent == (
+        specimen_tree / "por-amiga" /
+        f"WISH-SPEC-wish-plane-7-pool-{slug(tmp_path.name)}-{slug('recon1')}")
+    provenance = specimens.read_provenance(pathlib.Path(result["specimen"]["provenance"]))
+    assert provenance["issue"] == PLANE_ISSUE
+
+
+def test_the_specimen_name_token_carries_the_tracker_of_a_plane_ticket():
+    assert acceptance._issue_token("#631 (a title)") == "631"
+    assert acceptance._issue_token("WISH-273 (a title)") == "plane-273"
+    # `planeread.py WISH-N --cite` prints the citation as a Markdown link.
+    assert acceptance._issue_token(
+        "[WISH-273 (a title (with brackets))](http://plane.example/issues/x)") == "plane-273"
+    with pytest.raises(winuaesession.RouteError, match="WISH-N"):
+        acceptance._issue_token("WISH-273")
+
+
+def test_a_substituted_specimen_takes_the_link_planeread_cite_prints(
+        tmp_path, clock, specimen_tree):
+    cited = f"[{PLANE_ISSUE}](http://plane.example/wish/issues/x)"
+    _, result = _preserving(tmp_path, clock, specimen_issue=cited)
+    assert result["success"] is True, result.get("specimen_error")
+    assert pathlib.Path(result["specimen"]["path"]).parent.name.startswith(
+        "WISH-SPEC-wish-plane-7-pool-")
+    provenance = specimens.read_provenance(pathlib.Path(result["specimen"]["provenance"]))
+    assert provenance["issue"] == cited
+
+
+@pytest.mark.parametrize("issue", [None, "631", "#631", "#631 ()", "#x (title)", "WISH-7",
+                                   "WISH-7 ()", "wish-7 (title)", "WISH-x (title)",
+                                   "#WISH-7 (title)", "[WISH-7 (title)]", "[WISH-7 (title)]()",
+                                   "[#7 (title)](http://x)"])
 def test_substituted_preservation_needs_a_cited_issue(tmp_path, clock, specimen_tree, issue):
     with pytest.raises(winuaesession.RouteError, match="--specimen-issue"):
         _preserving(tmp_path, clock, specimen_issue=issue)

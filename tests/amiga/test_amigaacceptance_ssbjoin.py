@@ -114,8 +114,8 @@ def test_join_is_refused_for_a_title_whose_join_routine_is_unread(name):
         route_camp.validate_steps(("join 1 1",), 6, name=name)
 
 
-def test_pool_still_takes_only_items():
-    with pytest.raises(RouteError, match="item list only on Pool of Radiance"):
+def test_pool_takes_no_join():
+    with pytest.raises(RouteError, match="JOIN is built for Silver Blades only"):
         route_camp.validate_steps(("join 1 1",), 4, name="pool")
 
 

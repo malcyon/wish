@@ -53,15 +53,15 @@ def test_items_moves_to_the_line_opens_the_sheet_and_its_list_and_comes_back():
 
 
 @pytest.mark.parametrize("text,why", [
-    ("view", "item list only on Pool of Radiance"),
-    ("heal", "item list only on Pool of Radiance"),
-    ("rest 1h", "item list only on Pool of Radiance"),
-    ("display", "item list only on Pool of Radiance"),
-    ("items x", "item list only on Pool of Radiance"),
+    ("view", "reads no sheet on Pool of Radiance"),
+    ("heal", "reads no sheet on Pool of Radiance"),
+    ("view 2", "reads no sheet on Pool of Radiance"),
+    ("items x", "is not items or items N"),
     ("items 5", "lines 1 to 4 only"),
     ("items 0", "lines 1 to 4 only"),
+    ("rest 22h", "reads no sheet on Pool of Radiance"),
 ])
-def test_pool_takes_only_items_for_a_line_the_party_has(text, why):
+def test_pool_takes_items_for_a_line_the_party_has_and_no_sheet(text, why):
     with pytest.raises(RouteError, match=why):
         route_camp.validate_steps(tuple(text.split(";")), 4, name="pool")
 

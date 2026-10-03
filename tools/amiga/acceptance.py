@@ -67,6 +67,7 @@ from tools.amiga.route_pool import (  # noqa: E402
     POOL,
     POOL_SOURCES,
     _prepare_pool,
+    pool_camp_title,
     pool_title_for,
 )
 from tools.amiga.route_silver_blades import (  # noqa: E402
@@ -824,6 +825,11 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
                     "place_after": after.get("place"),
                     "place_changed": walk["place_changed"],
                     "squares_moved": walk["squares_moved"], "verdicts": verdicts}
+                # Evidence only: each saved member's effect rows, [id, minutes, data, flag].
+                if "effects" in control or "effects" in after:
+                    result["read"]["effects"] = {
+                        title.control_letter: control.get("effects"),
+                        title.after_letter: after.get("effects")}
                 result["kept_unchanged"] = {
                     c: title.slot_files(fetched, c) == before
                     for c, before in kept_before.items()}
@@ -1003,7 +1009,23 @@ def _read_reload(title: AmigaTitle, manifest: dict, result: dict[str, Any],
 
 _FULL_TITLES = {"pool": "Pool of Radiance", "curse": "Curse of the Azure Bonds",
                 "ssb": "Secret of the Silver Blades"}
-SPECIMEN_ISSUE = re.compile(r"#(\d+) \(.+\)")
+#: A cited issue: a GitHub `#N (title)`, a Plane `WISH-N (title)`, or the Markdown link
+#: `[WISH-N (title)](url)` that `planeread.py --cite` prints.
+SPECIMEN_ISSUE = re.compile(
+    r"(?:#(\d+)|WISH-(\d+)) \(.+\)|\[WISH-(\d+) \(.+\)\]\(\S+\)")
+#: How `--specimen-issue` must be written, for the errors that refuse it.
+SPECIMEN_ISSUE_FORMS = '"#N (title)" or "WISH-N (title)", or planeread.py --cite\'s link'
+
+
+def _issue_token(issue: str) -> str:
+    """The specimen-name token of a cited issue: `631` for `#631 (...)`, `plane-7` for `WISH-7 (...)` or its link.
+
+    The two trackers number apart, so a Plane ticket's token carries its tracker.
+    """
+    found = SPECIMEN_ISSUE.fullmatch(issue)
+    if found is None:
+        raise RouteError(f"{issue!r} is not {SPECIMEN_ISSUE_FORMS}")
+    return found.group(1) or f"plane-{found.group(2) or found.group(3)}"
 
 
 def _slug(value: str) -> str:
@@ -1067,7 +1089,7 @@ def _preserve_substituted(manifest_path: pathlib.Path, manifest: dict, attempt: 
     the kept slots and the loaded slot are unchanged and no other save letter appeared.
     """
     run_id = manifest_path.parent.name
-    number = SPECIMEN_ISSUE.fullmatch(issue).group(1)
+    number = _issue_token(issue)
     sub, pinned = manifest["substitute"], manifest["registered"]["specimen"]
     kept = ", ".join(title.kept_letters)
     what = (
@@ -1093,7 +1115,7 @@ def _preserve_staged(manifest_path: pathlib.Path, manifest: dict, attempt: str,
     run's success test checks: the staged slot is unchanged and no other save letter appeared.
     """
     run_id = manifest_path.parent.name
-    number = SPECIMEN_ISSUE.fullmatch(issue).group(1)
+    number = _issue_token(issue)
     source, joined = manifest["source"], manifest["staged_from"]
     what = (
         f"Run {run_id!r}, attempt {attempt!r}: the boot disk fetched after the game loaded "
@@ -1344,21 +1366,21 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         raise RouteError("a published disk-one manifest needs --published-disk-one")
     elif "camp" in manifest:
         if title is None or not accept or manifest.get("title") not in CAMP_TITLES:
-            raise RouteError("camp steps are driven on a published accept or a Pools of "
-                             "Darkness accept only")
-        title = _camp_title(manifest["title"], title, manifest["camp"], manifest["names_a"])
+            raise RouteError("camp steps are driven on a published accept, or a Pools of "
+                             "Darkness or Pool of Radiance accept, only")
+        title = accept_title(title, manifest)
     if preserve_specimen and title is None and not published_disk_one:
         if "staged_from" not in manifest:
             raise RouteError(staged_message)
         if specimen_issue is None or not SPECIMEN_ISSUE.fullmatch(specimen_issue):
-            raise RouteError(staged_message + ', and a staged one needs --specimen-issue '
-                             '"#N (title)" naming its issue')
+            raise RouteError(staged_message + ", and a staged one needs --specimen-issue "
+                             f"{SPECIMEN_ISSUE_FORMS} naming its issue")
     elif preserve_specimen and not published_disk_one:
         if ("substitute" not in manifest or manifest.get("title") not in _FULL_TITLES
                 or "specimen" not in manifest.get("registered", {})
                 or specimen_issue is None or not SPECIMEN_ISSUE.fullmatch(specimen_issue)):
             raise RouteError(preserve_message + ", and a substituted one needs --specimen-issue "
-                             '"#N (title)" naming its issue')
+                             f"{SPECIMEN_ISSUE_FORMS} naming its issue")
     if title is POOL:
         title = pool_title_for(manifest)
     if title is not None:
@@ -1399,7 +1421,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                                  holder, audio_proof, attempt, deadline_seconds, boot_limit)
     else:
         originals = {name: _input(manifest, name)
-                     for name in ("source", "boot_source", "disk_b_source")
+                     for name in ("source", "substitute", "boot_source", "disk_b_source")
                      if name in manifest}
         if accept and "boot_source" not in originals:
             raise RouteError("the manifest names no boot_source for the journal answerer")
@@ -1409,7 +1431,9 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         if len({df0.resolve(), published.resolve(), df1.resolve()}) != 3:
             raise RouteError("DF0, published DF1 and working DF1 must be separate files")
         letter = manifest["slot_letter"]
-        slot = _verified_disk(published).read_file("/SAVE/savgamA.sav")
+        # A substitute's slot may sit under another letter on the disk it came from.
+        slot = _verified_disk(published).read_file(
+            f"/SAVE/savgam{manifest.get('published_letter', 'A')}.sav")
         # A save count edits only the staged slot, so the published one has its own digest.
         published_sha = manifest.get("published_slot_sha256", manifest["slot_sha256"])
         if hashlib.sha256(slot).hexdigest() != published_sha:
@@ -2158,14 +2182,18 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     elif "inventory" in reading:
                         result["slot_b"] = {"inventory": reading["inventory"],
                                             "state": reading["place"]}
+                    # Only the pinned JOIN party must keep Guy's joined inventory.
+                    party_problems = (_no_problems if "substitute" in manifest
+                                      else _silver_blades_problems)
                     if not measure:
                         result["menu_save_problems"] = menu_save_problems(
-                            manifest, reading)
+                            manifest, reading, extra_problems=party_problems)
                     if accept:
                         slot_d = _slot_reading(fetched, CAMP_SAVE_LETTER)
                         result["slot_d_sha256"] = slot_d.get("sha256")
                         result["camp_save_problems"] = menu_save_problems(
-                            manifest, slot_d, letter=CAMP_SAVE_LETTER, check_place=False)
+                            manifest, slot_d, letter=CAMP_SAVE_LETTER, check_place=False,
+                            extra_problems=party_problems)
                         squares = sum(1 for *_, kind in steps if kind == "move")
                         walk = walk_verdict(manifest["state_a"], reading, slot_d, squares)
                         result["walk"] = walk
@@ -2176,6 +2204,9 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                             "place_changed": walk["place_changed"],
                             "squares_moved": walk["squares_moved"],
                             "verdicts": walk["verdicts"],
+                            # Evidence only: each saved member's effect rows.
+                            "effects": {MENU_SAVE_LETTER: reading.get("effects"),
+                                        CAMP_SAVE_LETTER: slot_d.get("effects")},
                         }
                         log("read", **result["read"])
                         allowed = {f"savgam{c}.sav".lower()
@@ -2255,7 +2286,7 @@ _SUBSTITUTABLE = frozenset(
 
 
 #: The titles whose own accept route (not a published one) takes camp steps from its manifest.
-CAMP_TITLES = frozenset({"darkness"})
+CAMP_TITLES = frozenset({"darkness", "pool"})
 
 
 def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = None,
@@ -2307,7 +2338,8 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
         manifest = _PREPARE[name](run, specimen)
     if camp:
         try:
-            _camp_title(name, title, list(camp), manifest["names_a"])
+            _camp_title(name, pool_title_for(manifest) if title is POOL else title,
+                        list(camp), manifest["names_a"])
         except RouteError:
             # The party is read only once the disks are copied, so a rejection takes the folder
             # with it and a corrected retry can use the same run id.
@@ -2377,7 +2409,9 @@ def _turn_about(name: str, letter: str, place: dict | None) -> bool:
 def _camp_title(name: str, title: AmigaTitle, camp: Any, names: list) -> AmigaTitle:
     """The route with a manifest's camp steps before its camp save.
 
-    A published Silver Blades or Curse route, or Pools of Darkness' own accept route.
+    A published Silver Blades or Curse route, or Pools of Darkness' or Pool of Radiance's own
+    accept route. A Pool run whose steps press its after letter saves that slot elsewhere
+    (`route_pool.pool_camp_title`).
     """
     route_camp.sheet_lines(name)
     if not isinstance(camp, list) or not all(isinstance(t, str) for t in camp):
@@ -2385,7 +2419,25 @@ def _camp_title(name: str, title: AmigaTitle, camp: Any, names: list) -> AmigaTi
     tokens = tuple(camp)
     if route_camp.normalise(tokens) != tokens:
         raise RouteError("the manifest camp steps are not in their normal form")
+    if name == "pool":
+        route_camp.validate_steps(tokens, len(names), name=name)
+        game, _ = route_camp.split_machine_steps(tokens)
+        title = pool_camp_title(title, tuple(
+            key for key, _, _ in route_camp.steps_for(game, name, len(names))))
     return route_camp.camp_title(title, tokens, len(names), name=name)
+
+
+def accept_title(title: AmigaTitle, manifest: dict) -> AmigaTitle:
+    """The route a title's own accept run drives for `manifest`.
+
+    Pool's comes from its start square (`pool_title_for`); a manifest with camp steps puts them
+    before the camp save. Published disk-one runs build theirs from their own manifest.
+    """
+    if title is POOL:
+        title = pool_title_for(manifest)
+    if "camp" in manifest:
+        title = _camp_title(manifest["title"], title, manifest["camp"], manifest["names_a"])
+    return title
 
 
 def _container_key(name: str) -> str:
@@ -2808,9 +2860,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--published-disk-one", action="store_true")
     p.add_argument("--saveas-report", type=pathlib.Path)
     p.add_argument("--camp", default="",
-                   help="published Silver Blades and Curse, or Pools of Darkness: camp steps "
-                        "driven before the camp save, as 'view;heal;rest 1h' (view, view N, "
-                        "heal, heal N, rest DURATION, and for Curse display)")
+                   help="published Silver Blades and Curse, Pools of Darkness or Pool of "
+                        "Radiance: camp steps driven before the camp save, as "
+                        "'view;heal;rest 1h' (view, view N, heal, heal N, rest DURATION, and "
+                        "for Curse display; Pool takes items N, rest DURATION and display)")
     p.add_argument("--stage-place", default=None, metavar="X,Y,F",
                    help="published Silver Blades and Curse only: put the party on square X,Y "
                         "facing F (0 N, 1 E, 2 S, 3 W) in working DF0's loaded slot")
@@ -2825,9 +2878,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--accept-summary", type=pathlib.Path, default=None,
                    help="darkness-reload only: that accept run's summary.json")
     p.add_argument("--substitute", type=pathlib.Path, default=None,
-                   help="a disk holding a party some other tool wrote, whose "
-                        "--substitute-letter slot replaces the route's loaded "
-                        "slot; only titles in _SUBSTITUTABLE accept this")
+                   help="a disk holding a party some other tool wrote, such as a Save As "
+                        "Amiga output, whose --substitute-letter slot replaces the route's "
+                        "loaded slot; Pool, Curse and Silver Blades accept this, Silver "
+                        "Blades in place of --source")
     p.add_argument("--substitute-letter", default="A",
                    help="the slot to read off --substitute (default A)")
     m = sub.add_parser("measure", help="boot and press the route up to the first save; writes nothing")
@@ -2853,8 +2907,9 @@ def main(argv: list[str] | None = None) -> int:
                         "fetched save disk before release; it follows the run's own success "
                         "verdict, not --expect")
     a.add_argument("--specimen-issue", default=None,
-                   help='a substituted or staged --preserve-specimen: the issue the specimen is for, as '
-                        '"#N (title)"')
+                   help="a substituted or staged --preserve-specimen: the issue the specimen is "
+                        "for, as \"#N (title)\", \"WISH-N (title)\", or the link "
+                        "planeread.py WISH-N --cite prints")
     r = sub.add_parser("reload", help="guarded load of a game-written slot and a check of the place "
                                       "on screen; writes nothing")
     common(r)
@@ -2897,7 +2952,8 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "prepare" and args.saveas_report is not None:
             raise RouteError("--saveas-report requires --published-disk-one")
         elif args.command == "prepare" and args.camp and args.title not in CAMP_TITLES:
-            raise RouteError("--camp requires --published-disk-one or --title darkness")
+            raise RouteError("--camp requires --published-disk-one, --title darkness or "
+                             "--title pool")
         elif args.command == "prepare" and args.stage_place is not None:
             raise RouteError("--stage-place requires --published-disk-one")
         if args.command == "reload" and silver_blades:
@@ -2907,11 +2963,16 @@ def main(argv: list[str] | None = None) -> int:
                              "and no walk")
         if args.command == "prepare":
             if silver_blades:
-                if args.source is None:
-                    raise RouteError("Silver Blades prepare requires --source")
+                if (args.source is None) == (args.substitute is None):
+                    raise RouteError("Silver Blades prepare requires --source or --substitute")
+                if args.substitute is not None and (
+                        args.staged_from is not None or args.save_count is not None):
+                    raise RouteError("--staged-from and --save-count go with --source, not "
+                                     "--substitute")
+                if args.source is not None and args.substitute_letter != "A":
+                    raise RouteError("--substitute-letter goes with --substitute")
                 if (args.disk3 is not None or args.disk3_sha256 is not None
-                        or args.accept_summary is not None or args.substitute is not None
-                        or args.substitute_letter != "A"):
+                        or args.accept_summary is not None):
                     raise RouteError("Silver Blades prepare takes no title-only options")
             elif (args.source is not None or args.staged_from is not None
                   or args.save_count is not None):
@@ -2933,6 +2994,11 @@ def main(argv: list[str] | None = None) -> int:
         expect = parse_expect(args.expect) if getattr(args, "expect", None) else None
         with terminating():
             if args.command == "prepare":
+                if silver_blades and args.substitute is not None:
+                    print(route_silver_blades.prepare_substitute(
+                        args.substitute, args.run_id, letter=args.substitute_letter,
+                        issue=args.issue or "672"))
+                    return 0
                 if silver_blades:
                     print(route_silver_blades.prepare(
                         args.source, args.run_id, staged_from=args.staged_from,
@@ -3011,7 +3077,9 @@ def main(argv: list[str] | None = None) -> int:
                     accepted, line = route_silver_blades.expect_verdict(
                         args.manifest, attempt, expect)
                 else:
-                    accepted, line = expect_verdict(title, args.manifest, attempt, expect)
+                    judged = title if args.published_disk_one else accept_title(
+                        title, json.loads(args.manifest.read_text()))
+                    accepted, line = expect_verdict(judged, args.manifest, attempt, expect)
                 print(line)
                 success = success and accepted
             return 0 if success else 1

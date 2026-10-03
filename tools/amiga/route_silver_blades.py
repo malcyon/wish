@@ -281,6 +281,77 @@ def prepare(source: pathlib.Path, run_id: str, *, staged_from: pathlib.Path | No
     return manifest_path
 
 
+def prepare_substitute(substitute: pathlib.Path, run_id: str, *, letter: str = "A",
+                       issue: str = "672") -> pathlib.Path:
+    """Stage slot `letter` of a disk some other tool wrote, such as a Save As Amiga output, into a private DF0.
+
+    The legacy route's other inputs are as `prepare` makes them: DF0 is the
+    registered side A holding the slot as `SLOT_LETTER`, DF1 a copy of disk B.
+    A read-only copy of `substitute` stands as the published disk and
+    `published_letter` names its slot, so the run checks that slot as it checks
+    a published one. Guy de Valois must be in the party, and the first member
+    must carry items, since the route opens his item list; the joined inventory
+    of the pinned JOIN party is not required.
+    """
+    if not HOLDER.fullmatch(run_id):
+        raise RouteError("run id must use letters, digits, dot, underscore or hyphen")
+    if len(letter) != 1 or not letter.isalpha() or not letter.isupper():
+        raise RouteError(f"substitute letter {letter!r} is not one capital letter")
+    substitute = substitute.expanduser().resolve()
+    if not substitute.is_file():
+        raise RouteError(f"the substitute {substitute} is missing")
+    substitute_sha = sha256(substitute)
+    disk = _verified_disk(substitute)
+    try:
+        slot = disk.read_file(f"/SAVE/savgam{letter}.sav")
+        save = amiga_savegame.read_slot(disk, letter, TITLE)
+        state = amiga_savegame.state_from_savegame(save)
+    except Exception as exc:  # noqa: BLE001 - any reader failure means the slot does not decode
+        raise RouteError(f"slot {letter} of {substitute} does not decode: "
+                         f"{type(exc).__name__}: {exc}") from exc
+    inventory = _inventory(save, require_joined=False)
+    if inventory["members"][0]["count"] == 0:
+        raise RouteError(f"{inventory['members'][0]['name']} carries nothing, so the sheet the "
+                         "route opens shows no ITEMS")
+    boot_source = amigabladesjournal.find_disk()
+    if sha256(boot_source) != staging.SOURCE_SHA256:
+        raise RouteError("registered Silver Blades side A differs from the measured build")
+    run = scratch.cache_dir("acceptance", issue, run_id)
+    df0 = scratch.cache_dir("amigaacceptance", run_id, "boot-with-slot.adf")
+    if run.exists() or df0.exists():
+        raise RouteError(f"run or staged DF0 already exists: {run}, {df0}")
+    disk_b_source = find_disk_b()
+    scratch.ensure(run)
+    published = run / "SECRETSAVE-substitute.adf"
+    with substitute.open("rb") as reader, published.open("xb") as writer:
+        shutil.copyfileobj(reader, writer)
+    stage = staging.stage_embedded_boot_disk(boot_source, slot, SLOT_LETTER, df0)
+    df1 = run / "disk-b-working.adf"
+    with disk_b_source.open("rb") as reader, df1.open("xb") as writer:
+        shutil.copyfileobj(reader, writer)
+    if sha256(substitute) != substitute_sha or sha256(published) != substitute_sha:
+        raise RouteError("the substitute changed during preparation")
+    if sha256(boot_source) != staging.SOURCE_SHA256:
+        raise RouteError("registered boot disk changed during preparation")
+    if sha256(df1) != DISK_B_SHA256 or sha256(disk_b_source) != DISK_B_SHA256:
+        raise RouteError("working DF1 differs from the pinned disk B")
+    published.chmod(stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
+    slot_sha = hashlib.sha256(slot).hexdigest()
+    manifest = {
+        "substitute": {**_entry(substitute), "letter": letter},
+        "boot_source": _entry(boot_source),
+        "df0": _entry(df0), "published_df1": _entry(published), "published_letter": letter,
+        "disk_b_source": _entry(disk_b_source), "df1": _entry(df1),
+        "slot_letter": SLOT_LETTER, "slot_sha256": slot_sha, "published_slot_sha256": slot_sha,
+        "stage": stage, "inventory_a": inventory,
+        "state_a": {"area": state.area, "x": state.x, "y": state.y,
+                    "facing": state.facing},
+    }
+    manifest_path = run / "prepare.json"
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+    return manifest_path
+
+
 # `title` is the screen the route starts from: the version line over the
 # PLAY / DEMO / QUIT bar, which takes `P` and ignores RETURN. Left alone, the
 # attract loop moves on from it to the story intro and the credits.

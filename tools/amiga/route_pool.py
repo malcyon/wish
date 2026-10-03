@@ -172,6 +172,24 @@ POOL_TOUR = _with_tour(POOL)
 POOL_FORWARD_TOUR = _with_tour(POOL_FORWARD)
 
 
+#: The after slot of a Pool camp run whose camp steps press `D`, which is the rest menu's days
+#: field and the magic menu's Display: a slot letter is pressed only to save it.
+POOL_CAMP_AFTER = "F"
+
+
+def pool_camp_title(title: AmigaTitle, keys: tuple[str, ...]) -> AmigaTitle:
+    """`title` (a Pool route) saving its after slot to `POOL_CAMP_AFTER` when `keys` press its after letter.
+
+    `keys` are the keys the run's camp steps press. Any other route is returned as it is.
+    """
+    if title.after_letter not in {key.upper() for key in keys}:
+        return title
+    route = tuple((POOL_CAMP_AFTER, state, kind)
+                  if kind == "write" and key == title.after_letter else (key, state, kind)
+                  for key, state, kind in title.route)
+    return dataclasses.replace(title, route=route, after_letter=POOL_CAMP_AFTER)
+
+
 def _walkable(walls: geo.Geo, x: int, y: int, direction: int) -> bool:
     """No wall on the edge, or a door standing open; a solid wall and a locked door are not."""
     return (walls.wall(x, y, direction) == 0
