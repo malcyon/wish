@@ -256,7 +256,7 @@ def test_spoof_failed_rollback_preserves_inspection_instruction(spoof_tool, monk
             return ('192.0.2.1', 45000)
 
     monkeypatch.setattr(sys, 'argv', args)
-    monkeypatch.setattr(spoof_tool['os'], 'geteuid', lambda: 0)
+    monkeypatch.setattr(spoof_tool['os'], 'geteuid', lambda: 0, raising=False)
     monkeypatch.setattr(spoof_tool['socket'], 'socket', lambda: Socket())
     monkeypatch.setattr(spoof_tool['socket'], 'create_connection', lambda *a, **k: Socket())
     monkeypatch.setitem(spoof_tool['main'].__globals__, 'run', run)
