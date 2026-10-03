@@ -158,6 +158,10 @@ ARTEFACT_COPIES: dict[tuple[str, str], str] = {
         "the sheet after one keypress this run made",
     ("icons/dosportraitparty.py", 'out / f"sheet-{index}.png"'):
         "one character's sheet this run shot",
+    ("dos/dossnapshot.py", 'out / "before.png"'): "the screen this run shot before the snapshot",
+    ("dos/dossnapshot.py", 'out / "after.png"'): "the screen this run shot after its moves",
+    ("dos/dossnapshot.py", 'out / "restored.png"'): "the screen this run shot after the restore",
+    ("dos/dossnapshot.py", 'out / "dbg.log"'): "the log DOSBox-X wrote in this run",
     ("dos/dossheetread.py", "shots / png.name"): "this run's own shots directory",
     ("dos/dosshop.py", "shots / png.name"): "this run's own shots directory",
     ("dos/dostrain.py", "shots / png.name"): "this run's own shots directory",
@@ -203,6 +207,8 @@ ARTEFACT_COPIES: dict[tuple[str, str], str] = {
     ("dos/dosoutdoorprobe.py", "out / p.name"):
         "the save and CHRDAT records the game wrote in this run's staged tree",
     ("dos/dosparty.py", "save / p.name"):
+        "the save files the game wrote in this run's staged tree",
+    ("dos/dossnapshot.py", 'out / f"SAVGAM{n}.DAT"'):
         "the save files the game wrote in this run's staged tree",
     ("dos/dostrain.py", "d / p.name"):
         "the save files the game wrote in this run's staged tree",
