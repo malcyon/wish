@@ -428,8 +428,12 @@ class WrongGameFolder(DroppedFields):
         self.folder = folder
         self.folder_title = folder_title
         self.save_title = save_title
-        super().__init__([f"the DOS game folder {folder} holds "
-                          f"{folder_title}, but the save is {save_title}"])
+        # Not a field loss, so the message states the folder alone rather
+        # than `DroppedFields`' count of lost fields.
+        SaveAsError.__init__(
+            self, f"the DOS game folder {folder} holds {folder_title}, "
+            f"but the save is {save_title}")
+        self.lost = []
 
 
 def check_dos_folder(source: Any, port: str, assets: "Assets") -> None:

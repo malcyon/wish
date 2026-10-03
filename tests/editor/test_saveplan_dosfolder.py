@@ -123,3 +123,56 @@ def test_a_silver_blades_save_writes_with_the_silver_blades_folder(tmp_path):
                             game_files=assets.game_files,
                             source_files=assets.source_files))
     assert not (tmp_path / "other").exists()
+
+
+def test_the_message_states_the_wrong_folder_and_no_field_loss(tmp_path):
+    party = c64_party(tmp_path, "secret-of-the-silver-blades")
+    folder = folder_of(tmp_path, "pool-of-radiance")
+    with pytest.raises(saveplan.WrongGameFolder) as stopped:
+        save_as(party, folder, tmp_path / "out")
+    assert str(stopped.value) == (
+        f"the DOS game folder {folder} holds pool-of-radiance, but the "
+        f"save is secret-of-the-silver-blades")
+    assert stopped.value.lost == []
+
+
+def test_an_amiga_save_stops_on_another_titles_folder(tmp_path):
+    from test_saveplan import amiga_disk
+
+    path = amiga_disk(tmp_path)
+    party = Party(str(path))
+    source = convert.Source.detect(path)
+    assert source.port == "amiga"
+    folder = folder_of(tmp_path, "pool-of-radiance")
+    with pytest.raises(saveplan.WrongGameFolder):
+        saveplan.check_dos_folder(source, "dos",
+                                  saveplan.Assets(dos_folder=folder))
+    with pytest.raises(saveplan.WrongGameFolder):
+        saveplan.prepare_save_as(party, "dos", tmp_path / "out",
+                                 saveplan.Assets(dos_folder=folder))
+    assert not (tmp_path / "out").exists()
+
+
+def test_a_pools_of_darkness_destination_is_not_stopped_on_its_folder(
+        tmp_path, monkeypatch):
+    """Its writer reads no game folder, so which one was named is moot."""
+    from test_convertrejection import _pod_disk
+
+    monkeypatch.setenv(convert.POD_CONVERT_ENV, "1")
+    path = _pod_disk(tmp_path)
+    source = convert.Source.detect(path)
+    assert source.key == titles.POOLS_OF_DARKNESS.key
+    assert saveplan.DOS_GAME_FOLDER not in saveplan.requirements(source, "dos")
+    folder = folder_of(tmp_path, "pool-of-radiance")
+    saveplan.check_dos_folder(source, "dos", saveplan.Assets(dos_folder=folder))
+
+
+def test_the_folder_table_agrees_with_the_acceptance_driver_stems():
+    from tools.dos.acceptance import CONVERT_TITLE_KEYS, TITLES
+
+    keys = {key: TITLES[short] for short, key in CONVERT_TITLE_KEYS.items()}
+    keys[titles.POOLS_OF_DARKNESS.key] = TITLES["darkness"]
+    assert set(titles.DOS_FOLDER_FILES) == set(keys)
+    for key, (launcher, _config, stem) in titles.DOS_FOLDER_FILES.items():
+        assert stem == keys[key].stem
+        assert launcher == keys[key].exe
