@@ -165,6 +165,48 @@ def test_silver_blades_map_guards_line_one_items_and_join_steps_and_their_messag
         assert lists - {state} <= set(spec['guards'][state]['also'])
 
 
+def _rules(value):
+    return value if isinstance(value, list) else [value]
+
+
+def test_silver_blades_identity_covers_the_line_one_lists_and_sheet_but_not_the_join_grab():
+    from tools.amiga import route_camp
+
+    spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, 'ssb')
+    steps = route_camp.steps_for(('items 1', 'join 1 2', 'join 1 1'), 'ssb')
+    states = {state for _, state, _ in steps}
+    states |= {route_camp.joined_after(state) for state in states if route_camp.is_join(state)}
+    checked = {s for s in states
+               if route_camp.is_items(s) or route_camp.is_joined(s) or s == 'camp_sheet_items'}
+    assert checked == {'camp_sheet_items', 'camp_items', 'camp_items_row2', 'camp_joined'}
+    assert checked <= spec['identity'].keys()
+    # The first grab after J can catch the list half redrawn (wish4-b1__a_join1-00), so a rows
+    # rule there would stop a correct run on timing; the redrawn list is checked instead.
+    assert 'camp_join' not in spec['identity']
+
+
+def test_silver_blades_sheet_family_and_camp_sheet_items_list_each_other():
+    spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, 'ssb')
+    family = {'camp_sheet', 'camp_sheet_2', 'camp_sheet_heal', 'camp_sheet_spent', 'sheet'}
+    guards = spec['guards']
+    # The ITEMS button is on every sheet of a member who carries something.
+    assert family <= set(guards['camp_sheet_items']['also'])
+    for state in family:
+        for rule in _rules(guards[state]):
+            assert 'camp_sheet_items' in rule['also'], state
+    # Identity is the name line: every rule with the same picture lists the other.
+    identity = spec['identity']
+    items = identity['camp_sheet_items']
+    same = {state for state in family
+            if any((r['box'], r['sha256']) == (items['box'], items['sha256'])
+                   for r in _rules(identity[state]))}
+    assert same == family - {'camp_sheet_2'}
+    assert same <= set(items['also'])
+    for state in same:
+        for rule in _rules(identity[state]):
+            assert 'camp_sheet_items' in rule['also'], state
+
+
 def _interstitial_screens(title):
     from tools.amiga import route_silver_blades
     from tools.amiga.route_curse import CURSE
