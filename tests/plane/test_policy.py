@@ -612,3 +612,35 @@ def test_no_code_path_opens_a_sqlite_file(tmp_path, monkeypatch):
 
 def test_a_configuration_that_still_names_a_journal_file_loads(tmp_path):
     assert settings(tmp_path, journal_file=str(tmp_path / 'writes.sqlite')).project == PROJECT
+
+
+def test_update_whose_explanation_is_rejected_says_the_change_was_applied(tmp_path):
+    from tools.plane.policy import PlaneHttpError
+    current = record()
+
+    def handle(method, path, data, params):
+        if path == 'users/me':
+            return {'id': AGENT}
+        if path.endswith('/labels'):
+            return {'results': [], 'next_page_results': False}
+        if path.endswith('/comments') and method == 'POST':
+            raise PlaneHttpError('Plane returned HTTP 400', 400)
+        if method == 'PATCH':
+            current.update(data)
+        return dict(current)
+    with pytest.raises(PlaneError, match='change to .* was applied but its explanation comment was not') as failure:
+        Client(settings(tmp_path), Fake(handle)).update(ITEM, {'priority': 'low'}, 'Why')
+    assert not isinstance(failure.value, PlaneHttpError) and current['priority'] == 'low'
+
+
+def test_never_connected_classifies_real_requests_exceptions():
+    import requests
+    from urllib3.exceptions import NewConnectionError
+
+    from tools.plane.client import never_connected
+    refused = requests.ConnectionError(OSError('x'))
+    refused.args = (type('Pool', (), {'reason': NewConnectionError(None, 'refused')})(),)
+    assert never_connected(refused)
+    assert never_connected(requests.ConnectTimeout())
+    assert not never_connected(requests.ReadTimeout())
+    assert not never_connected(requests.ConnectionError('Connection aborted'))

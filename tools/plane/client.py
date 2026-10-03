@@ -199,7 +199,10 @@ class Client:
             payload['description_html'] = paragraph(payload['description_html'])
         self.write(identifier, 'PATCH', f'{self.items}/{uuid(record["id"])}', payload)
         confirm_changes(self.raw(record['id']), payload)
-        explained = self.comment(identifier, explanation)
+        try:
+            explained = self.comment(identifier, explanation)
+        except (PlaneNotSent, PlaneHttpError) as exc:
+            raise PlaneError(f"The change to {identifier} was applied but its explanation comment was not; post the comment alone") from exc
         current = self.raw(record['id'])
         confirm_changes(current, payload)
         return {**self.policy.compact(current), 'comment_id': explained['id']}
