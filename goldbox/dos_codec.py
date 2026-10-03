@@ -117,6 +117,7 @@ from .items import (
     WEAPON_NEEDS_ARROWS,
     WEAPON_NEEDS_BOLTS,
     WEAPON_RANGED,
+    Item,
     ItemType,
 )
 from .layout import Confidence, Field, Kind
@@ -734,9 +735,16 @@ def _member_name(char: "DosCharacter | NeutralCharacter") -> str:
             else char.name)
 
 
+def _type_zero_indices(inventory: Sequence[bytes]) -> list[int]:
+    """The indices of `inventory` whose item the C64 counts as an empty slot."""
+    return [n for n, item in enumerate(inventory)
+            if Item(bytes(item)).is_empty]
+
+
 def pack_overflow(party: "Sequence[DosCharacter] | Sequence[NeutralCharacter]",
                   port: str = "c64",
                   leave: "Mapping[int, Collection[int]] | None" = None,
+                  drop_type_zero: bool = False,
                   ) -> tuple[PackOverflow, ...]:
     """Each member whose pack still needs more slots than the destination has
     after `leave`, and who held a joined scroll before it.
@@ -745,6 +753,8 @@ def pack_overflow(party: "Sequence[DosCharacter] | Sequence[NeutralCharacter]",
     has always had; without a joined scroll a DOS pack never exceeds sixteen
     (#399).  `leave` maps a member's index to the inventory indices left
     behind.  Only `port="c64"` is built; any other raises `ValueError`.
+    With `drop_type_zero` the items the writer is going to leave out (see
+    :func:`_without_type_zero`) do not count towards the slots needed.
     """
     if port != "c64":
         raise ValueError(f"no pack limit is built for port {port!r}")
@@ -760,11 +770,13 @@ def pack_overflow(party: "Sequence[DosCharacter] | Sequence[NeutralCharacter]",
         if not bundles:
             continue
         after, _kept = leave_behind(inventory, bundles, leave.get(index, ()))
-        if len(after) <= c64_codec.ITEM_SLOTS:
+        needed = len(after) - (len(_type_zero_indices(after))
+                               if drop_type_zero else 0)
+        if needed <= c64_codec.ITEM_SLOTS:
             continue
         out.append(PackOverflow(
             port, "character", (index,), (_member_name(char),),
-            c64_codec.ITEM_SLOTS, len(after), (tuple(inventory),),
+            c64_codec.ITEM_SLOTS, needed, (tuple(inventory),),
             tuple(_pack_units(index, inventory, bundles))))
     return tuple(out)
 
@@ -814,6 +826,19 @@ def _without_left_behind(char: NeutralCharacter,
     else:
         out.fields.pop("scroll_bundles", None)
     return out
+
+
+def _without_type_zero(char: NeutralCharacter
+                       ) -> tuple[NeutralCharacter, list[int]]:
+    """`char` without the inventory items the C64 counts as an empty slot,
+    and the indices they had.
+
+    The C64 game skips a slot whose type byte is 0, so it cannot hold such an
+    item.  Built on :func:`leave_behind`, so a joined scroll's index shifts as
+    it does for a player's own choice.
+    """
+    gone = _type_zero_indices(char.get("inventory") or ())
+    return (_without_left_behind(char, gone) if gone else char), gone
 
 
 class EffectEntry(NamedTuple):
@@ -3122,6 +3147,7 @@ def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
                   item_types: "Mapping[int, ItemType] | None" = None,
                   name: str | None = None,
                   leave_effects: Collection[int] = (),
+                  drop_type_zero: bool = False,
                   ) -> tuple[CharacterRecord, Report]:
     """Build a 580-byte C64 character record from a DOS one.
 
@@ -3140,12 +3166,20 @@ def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
     `leave` is the neutral inventory indices the player chose to leave
     behind, applied by :func:`leave_behind` before the C64 record is built.
 
+    `drop_type_zero` leaves out every item the C64 counts as an empty slot,
+    after `leave`; see :func:`_without_type_zero`.
+
     `name` is the name the player chose for this character, put in the
     neutral record before the C64 record is built, so the writer's own name
     checks see it and record no loss for the name it replaced.
 
     `leave_effects` is the neutral `running_effects` indices the player chose
     to leave out, applied after `leave` and before the C64 record is built.
+
+    `drop_type_zero` leaves out the items the C64 counts as an empty slot,
+    after `leave` and `leave_effects`.  Left off, the C64 writer still writes
+    them and reports each as dropped, which the editor's DOS sheet and the
+    in-place DOS save rely on.
 
     The report names no character: it is one character's provenance, and which
     character that is belongs to the caller, which is the only thing that
@@ -3166,6 +3200,8 @@ def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
         out = _without_left_behind(out, leave)
     if leave_effects:
         out = _without_left_effects(out, leave_effects)
+    if drop_type_zero:
+        out, _gone = _without_type_zero(out)
     return neutral_to_c64_record(out, icon=icon, payload=payload,
                                  party_slot=party_slot,
                                  clock_minutes=clock_minutes,
@@ -7754,14 +7790,18 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
     # after that raises `JoinedScrollsDoNotFit` naming every such member, so
     # nothing is dropped that the player did not choose.
     leave = {m: frozenset(v) for m, v in (leave or {}).items() if v}
-    before = pack_overflow(party)
+    # Pool of Radiance's nameless type-0 item has no C64 home, so it is left
+    # out before the C64 writer sees it and does not count towards the pack.
+    drop_zero = (c64_codec.deltas_for(c64_save.container_for(game)).key
+                 == "pool-of-radiance")
+    before = pack_overflow(party, drop_type_zero=drop_zero)
     forced = {m for o in before for m in o.members}
     for member in leave:
         if member not in forced:
             raise DosRecordError(
                 f"member {member} fits the C64's {c64_codec.ITEM_SLOTS} item "
                 f"slots, so nothing may be left behind for him")
-    after = pack_overflow(party, leave=leave)
+    after = pack_overflow(party, leave=leave, drop_type_zero=drop_zero)
     if after:
         raise JoinedScrollsDoNotFit(after)
     leave_effects = {m: frozenset(v)
@@ -7848,6 +7888,8 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
             kept = _without_left_behind(char, left) if left else char
             if left_effects:
                 kept = _without_left_effects(kept, left_effects)
+            if drop_zero:
+                kept, _gone = _without_type_zero(kept)
             rec, one = neutral_to_c64_record(
                 kept,
                 icon=_neutral_icon_for(
@@ -7864,7 +7906,7 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
                 payload=save0, party_slot=place, clock_minutes=clock_mins,
                 leave=left, item_types=item_types,
                 name=(names or {}).get(index),
-                leave_effects=left_effects)
+                leave_effects=left_effects, drop_type_zero=drop_zero)
             name = (names or {}).get(index, char.name)
         all_faced = all_faced and one.has_portrait
         # `party_order` in a roster block is the record's slot index, not the
@@ -7873,6 +7915,15 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
         rec.set("party_order", place)
         raw = rec.to_bytes()
         who = f"slot {place}: {name}, {index + 1} in the source marching order"
+        if drop_zero:
+            held = pack_of(char)[0]
+            for n in _type_zero_indices(held):
+                if n in left:
+                    continue
+                report.warnings.append(
+                    f"{who} -- inventory item {n}, type 0, left out: the C64 "
+                    f"game counts a type-0 slot as empty")
+                _log.info("Left out: %s", report.warnings[-1])
         if left:
             held = pack_of(char)[0]
             scrolls = C64_SCROLL_TYPES[c64_codec.deltas_for(container).key]

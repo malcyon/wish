@@ -1,4 +1,4 @@
-"""A type-0 item record is written into its C64 slot and reported as dropped.
+"""The C64 writer reports a type-0 item as dropped; a Pool Save As leaves it out first.
 
 The C64 counts a slot whose type byte is 0 as empty.  No game data creates
 such a record; a DOS Pool party Wish converted from the C64 before it read the
@@ -12,11 +12,14 @@ import pathlib
 import pytest
 from gamedata import specimen_root
 from PyQt6.QtWidgets import QApplication
+from support import packoverflow
+from support.doslatertitles import _c64_party
 from support.neutralrecords import FILLED_ITEM, _filled
 
-from editor import roster, saveplan
-from goldbox import c64_codec, dos_codec
-from tools.convert import convertdrops
+from automap import gamedisks
+from editor import convert, roster, saveplan
+from goldbox import c64_codec, c64_port, dos_codec
+from goldbox.neutral import NeutralCharacter, ScrollBundle
 
 
 @pytest.fixture
@@ -80,18 +83,122 @@ def test_the_wish_made_specimens_count_ten_type_zero_records(name, slot):
     assert sum(counts.values()) == 10
 
 
-def test_save_as_to_the_c64_refuses_the_type_zero_records(app, tmp_path):
-    folder = _specimen("issue641-dirten-seven-resave")
-    party = roster.Party(str(folder))
+def _game_files(game):
+    """The disks' files with Pool's `ITEMS` table, which the editor reads and
+    `convertdrops.game_files` leaves out; without it the writer cannot tell a
+    readied weapon from readied armour."""
+    where = gamedisks.find(game.key)
+    if where is None:
+        return None
+    return convert._game_files_from_folder(where, game)
+
+
+def _assets(party):
     try:
-        assets = saveplan.resolve_assets(party.source, "c64",
-                                         game_files=convertdrops.game_files)
+        return saveplan.resolve_assets(party.source, "c64",
+                                       game_files=_game_files)
     except saveplan.MissingAssets:
         pytest.skip("needs Pool of Radiance's own C64 disks, found through "
                     "automap/gamedisks.py")
-    with pytest.raises(saveplan.DroppedFields) as caught:
-        saveplan.prepare_save_as(party, "c64", tmp_path / "out.d64", assets)
-    # The same line from two members is one entry, so the ten records show as
-    # the nine distinct item indexes they sit at.
-    lines = {x for x in caught.value.lost if TYPE_ZERO in x}
-    assert {int(x.split()[2]) for x in lines} == {1, 2, 4, 5, 11, 12, 13, 14, 15}
+
+
+def _written_member(plan, tmp_path, name):
+    (image,) = plan.files
+    written = tmp_path / "read-back.d64"
+    written.write_bytes(plan.files[image])
+    _game, chars = _c64_party(written)
+    (char,) = [c for c in chars if c.get("name") == name]
+    return char
+
+
+def _lines(plan, who):
+    return [w for w in plan.report.warnings
+            if who in w and "type 0, left out" in w]
+
+
+def _source_pack(folder, slot):
+    for n in range(1, 8):
+        dos = dos_codec.read_character(folder / f"CHRDAT{slot}{n}.SAV")
+        if dos.name == "THRENDER GRONE":
+            return [bytes(i) for i in dos_codec.to_neutral(dos).get("inventory")]
+    raise AssertionError("THRENDER GRONE is not in the specimen")
+
+
+@pytest.mark.parametrize("name, slot, readied", [
+    ("por-793-type0-readied", "E", True),
+    ("por-793-treasure-type0-item", "C", False),
+])
+def test_save_as_to_the_c64_leaves_the_type_zero_item_out(
+        app, tmp_path, name, slot, readied):
+    source = _source_pack(_specimen(name), slot)
+    zero = [i for i in source if not i[0]]
+    assert len(zero) == 1 and bool(zero[0][6] & 0x80) == readied
+    party = roster.Party(str(_specimen(name)))
+    plan = saveplan.prepare_save_as(party, "c64", tmp_path / "out.d64",
+                                    _assets(party))
+    assert saveplan.losses(plan.report) == []
+    assert _type_zero_lines(plan.report) == []
+    assert len(_lines(plan, "THRENDER GRONE")) == 1
+    char = _written_member(plan, tmp_path, "THRENDER GRONE")
+    held = [bytes(i) for i in char.get("inventory")]
+    assert len(held) == 2 and all(i[0] for i in held)
+    assert held == [i for i in source if i[0]]
+    if readied:
+        tail = bytes(char.get("roster_tail"))
+        want = bytearray(bytes(char.get("attack_forms"))[2:8])
+        want[4] = (want[4] + c64_codec.c64_strength_damage_step(
+            char.get("strength"), char.get("exceptional_strength"))) & 0xFF
+        assert tail[3:9] == bytes(want)
+        hit = c64_codec.c64_strength_hit_step(
+            char.get("strength"), char.get("exceptional_strength"))
+        assert char.get("thac0_current") == (char.get("thac0_base") + hit) & 0xFF
+
+
+def test_save_as_to_the_c64_converts_the_issue641_party(app, tmp_path):
+    party = roster.Party(str(_specimen("issue641-dirten-seven-resave")))
+    plan = saveplan.prepare_save_as(party, "c64", tmp_path / "out.d64",
+                                    _assets(party))
+    assert saveplan.losses(plan.report) == []
+    assert len([w for w in plan.report.warnings if "type 0, left out" in w]) == 10
+    char = _written_member(plan, tmp_path, "SIMON")
+    assert len(char.get("inventory")) == 12
+    assert any(bytes(i)[6] & 0x80 for i in char.get("inventory"))
+
+
+def test_the_convert_rehearsal_finds_nothing_lost(app):
+    party = roster.Party(str(_specimen("por-793-treasure-type0-item")))
+    assets = _assets(party)
+    source = convert.Source.of_snapshot(saveplan.prepare(party))
+    rehearsal, _slot = saveplan.rehearse(saveplan.route(source, "c64"),
+                                         source, assets)
+    assert saveplan.losses(rehearsal.report) == []
+
+
+def _pool_member(items, bundles=()):
+    char = NeutralCharacter("test", source="made up",
+                            game=c64_port.POOL_OF_RADIANCE)
+    char.set("name", "ALPHA", "made up")
+    char.set("inventory", items, "made up")
+    char.set("scroll_bundles", tuple(bundles), "made up")
+    return char
+
+
+def test_without_type_zero_shifts_a_joined_scroll_down_by_one():
+    items = [packoverflow.ordinary(0), TYPE_ZERO_RECORD,
+             packoverflow.ordinary(1), packoverflow.scroll(5),
+             packoverflow.scroll(6)]
+    bundle = ScrollBundle(3, 2, packoverflow.head(2))
+    char, gone = dos_codec._without_type_zero(_pool_member(items, [bundle]))
+    assert gone == [1]
+    assert char.get("inventory") == [items[0], items[2], items[3], items[4]]
+    assert [b.first for b in char.get("scroll_bundles")] == [2]
+
+
+def test_pack_overflow_does_not_count_a_type_zero_item():
+    items = ([packoverflow.ordinary(n) for n in range(14)]
+             + [TYPE_ZERO_RECORD, packoverflow.scroll(5),
+                packoverflow.scroll(6)])
+    char = _pool_member(items, [ScrollBundle(15, 2, packoverflow.head(2))])
+    assert len(items) == 17
+    assert len(dos_codec.pack_overflow([char])) == 1
+    assert dos_codec.pack_overflow([char], drop_type_zero=True) == ()
