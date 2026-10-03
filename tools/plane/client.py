@@ -235,8 +235,9 @@ class Client:
         result = self.write(identifier, 'PATCH', path, {'comment_html': html})
         if result['author_id'] != self.settings.agent:
             raise PlaneError("Comment authorship did not match the agent account; read the ticket back")
+        stored = self.transport.request('GET', path)
         try:
-            confirm_changes(self.transport.request('GET', path), {'comment_html': html})
+            confirm_changes(stored, {'comment_html': html})
         except PlaneError as exc:
             raise PlaneError("Plane comment readback did not confirm the requested change; read the ticket back") from exc
         return result

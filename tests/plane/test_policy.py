@@ -5,7 +5,13 @@ import os
 import pytest
 
 from tools.plane.client import Client
-from tools.plane.policy import PlaneError, PlaneHttpError, Policy, Settings
+from tools.plane.policy import (
+    PlaneError,
+    PlaneHttpError,
+    PlaneOutcomeUnknown,
+    Policy,
+    Settings,
+)
 
 AGENT = '00000000-0000-0000-0000-000000000001'
 OUTSIDE = '00000000-0000-0000-0000-000000000002'
@@ -854,7 +860,7 @@ def test_edit_comment_renders_markdown_and_patches_the_comment_endpoint(tmp_path
     result = client.edit_comment(ITEM, COMMENT, MARKDOWN)
     patches = [c for c in fake.calls if c[0] == 'PATCH']
     assert len(patches) == 1
-    assert patches[0][1].endswith(f'/work-items/{ITEM}/comments/{COMMENT}') or patches[0][1].endswith(f'/{ITEM}/comments/{COMMENT}')
+    assert patches[0][1].endswith(f'/{ITEM}/comments/{COMMENT}')
     html = patches[0][2]['comment_html']
     assert set(patches[0][2]) == {'comment_html'}
     assert '<h2>Heading</h2>' in html and '<li>one</li>' in html and '<table>' in html and '##' not in html
@@ -872,3 +878,40 @@ def test_edit_comment_refuses_a_comment_by_another_author(tmp_path):
     with pytest.raises(PlaneError, match='written by the agent'):
         client.edit_comment(ITEM, COMMENT, MARKDOWN)
     assert not [c for c in fake.calls if c[0] == 'PATCH']
+
+
+def failing_comment_client(tmp_path, fail_on, error):
+    """A comment editor whose `fail_on` call (the nth comment-endpoint request) raises `error`."""
+    seen = []
+
+    def handle(method, path, data, params):
+        if path == 'users/me':
+            return {'id': AGENT}
+        if path.endswith(f'/comments/{COMMENT}'):
+            seen.append(method)
+            if len(seen) == fail_on:
+                raise error
+            return {'id': COMMENT, 'created_by': AGENT, 'comment_html': '<p>x</p>', 'created_at': 'now'}
+        return record()
+    fake = Fake(handle)
+    return Client(settings(tmp_path), fake), fake
+
+
+def test_edit_comment_stops_without_patching_when_the_first_read_is_a_404(tmp_path):
+    client, fake = failing_comment_client(tmp_path, 1, PlaneHttpError('Plane returned HTTP 404', 404))
+    with pytest.raises(PlaneHttpError):
+        client.edit_comment(ITEM, COMMENT, 'Text')
+    assert not [c for c in fake.calls if c[0] == 'PATCH']
+
+
+def test_edit_comment_patch_with_unknown_outcome_names_the_ticket(tmp_path):
+    client, fake = failing_comment_client(tmp_path, 2, PlaneOutcomeUnknown('Timed out'))
+    with pytest.raises(PlaneOutcomeUnknown, match=f'Read {ITEM} back'):
+        client.edit_comment(ITEM, COMMENT, 'Text')
+    assert [c[0] for c in fake.calls].count('PATCH') == 1
+
+
+def test_edit_comment_readback_transport_failure_keeps_its_class(tmp_path):
+    client, _ = failing_comment_client(tmp_path, 3, PlaneOutcomeUnknown('Timed out'))
+    with pytest.raises(PlaneOutcomeUnknown, match='Timed out'):
+        client.edit_comment(ITEM, COMMENT, 'Text')

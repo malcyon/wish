@@ -82,3 +82,14 @@ def test_mcp_create_stops_at_disabled_write_guard_without_sending_a_request(adap
         asyncio.run(server.call_tool('create_ticket', dict(title='Ticket', body='Body',
                                                          priority='high', labels=[])))
     assert transport.calls == []
+
+
+def test_mcp_edit_comment_passes_its_arguments_to_the_client(adapter):
+    class Recorder:
+        def edit_comment(self, *args):
+            self.args = args
+            return {'id': args[1]}
+    recorder = Recorder()
+    server = build_server(recorder)
+    asyncio.run(server.call_tool('edit_comment', dict(identifier='WISH-1', comment_id=OUTSIDE, body='## Text')))
+    assert recorder.args == ('WISH-1', OUTSIDE, '## Text')
