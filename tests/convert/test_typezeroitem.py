@@ -202,3 +202,21 @@ def test_pack_overflow_does_not_count_a_type_zero_item():
     assert len(items) == 17
     assert len(dos_codec.pack_overflow([char])) == 1
     assert dos_codec.pack_overflow([char], drop_type_zero=True) == ()
+
+
+def test_a_neutral_pool_party_loses_its_type_zero_item_in_write_c64_save():
+    from goldbox import world_state
+    from goldbox.savegame import SaveGame0
+    fx = pathlib.Path(__file__).resolve().parents[1] / "fixtures"
+    payload = bytearray(SaveGame0.from_prg(
+        (fx / "savedgame0.bin").read_bytes()).to_bytes())
+    state = world_state.from_c64(bytes(payload), game=c64_port.POOL_OF_RADIANCE)
+    party, _ = dos_codec.c64_party(bytes(payload), None,
+                                   game=c64_port.POOL_OF_RADIANCE)
+    char = party[0]
+    items = [bytes(i) for i in char.get("inventory")]
+    char.set("inventory", [*items, TYPE_ZERO_RECORD], "built here")
+    report = dos_codec.write_c64_save(bytearray(payload), None, state, [char],
+                                      game=c64_port.POOL_OF_RADIANCE)
+    assert _type_zero_lines(report) == []
+    assert len([w for w in report.warnings if "type 0, left out" in w]) == 1

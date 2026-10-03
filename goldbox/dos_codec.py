@@ -3166,9 +3166,6 @@ def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
     `leave` is the neutral inventory indices the player chose to leave
     behind, applied by :func:`leave_behind` before the C64 record is built.
 
-    `drop_type_zero` leaves out every item the C64 counts as an empty slot,
-    after `leave`; see :func:`_without_type_zero`.
-
     `name` is the name the player chose for this character, put in the
     neutral record before the C64 record is built, so the writer's own name
     checks see it and record no loss for the name it replaced.
@@ -3176,8 +3173,8 @@ def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
     `leave_effects` is the neutral `running_effects` indices the player chose
     to leave out, applied after `leave` and before the C64 record is built.
 
-    `drop_type_zero` leaves out the items the C64 counts as an empty slot,
-    after `leave` and `leave_effects`.  Left off, the C64 writer still writes
+    `drop_type_zero` leaves out the items the C64 counts as an empty slot
+    (see :func:`_without_type_zero`), after `leave` and `leave_effects`.  Left off, the C64 writer still writes
     them and reports each as dropped, which the editor's DOS sheet and the
     in-place DOS save rely on.
 
