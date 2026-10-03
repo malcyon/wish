@@ -176,8 +176,15 @@ def test_only_silver_blades_ever_writes_the_bundle_type_into_an_item():
 
 # --- stage: a slot whose members carry the joined scrolls asked for ----------
 
-#: Seven spell ids are enough to tell 49 staged scrolls apart.
+#: Seven spell ids are enough to tell 42 staged scrolls apart.
 IDS = [9, 10, 11, 12, 13, 14, 15]
+#: Made-up templates of the four kinds, as `item_templates` returns them.
+ITEMS = {
+    "scroll": bytes((0x27, 1, 2, 3, 0, 0, 4, 0, 10, 0, 0, 0xB8, 0x0B, 1, 2, 3)),
+    "staff": bytes((0x0F, 0, 0, 0x0F, 0, 0, 0, 0, 50, 0, 0, 10, 0, 0, 0, 0)),
+    "darts": bytes((0x05, 0, 0, 0x05, 0, 0, 0, 0, 5, 0, 4, 0, 0, 0, 0, 0)),
+    "arrows": bytes((0x1E, 0, 0, 0x1E, 0, 0, 0, 0, 3, 0, 10, 0, 0, 0, 0, 0)),
+}
 
 
 def _slot(tmp_path: pathlib.Path, members: int = 3) -> pathlib.Path:
@@ -206,7 +213,7 @@ def _staged(tmp_path):
     save = _slot(tmp_path)
     packs = {2: sb.parse_pack("j10*2,s*2,staff"), 1: sb.parse_pack("s*3")}
     out = tmp_path / "out"
-    report = sb.stage(save, "A", packs, out, IDS)
+    report = sb.stage(save, "A", packs, out, IDS, ITEMS)
     return save, out, report
 
 
@@ -263,7 +270,8 @@ def test_only_the_pack_count_and_weight_change_in_the_record(tmp_path):
         assert len(after) == len(before)
         assert {i for i in range(len(before)) if before[i] != after[i]} <= allowed
     enc = fields["encumbrance"]
-    staff = sb.stage(save, "A", {2: sb.parse_pack("staff")}, tmp_path / "staff", IDS)
+    staff = sb.stage(save, "A", {2: sb.parse_pack("staff")}, tmp_path / "staff",
+                     IDS, ITEMS)
     assert staff["lines"][2]["joined"] == []
 
     def weight(folder):
@@ -291,12 +299,12 @@ def test_a_pack_the_game_never_holds_is_refused(spec, why):
 def test_a_line_outside_the_party_and_a_used_folder_are_refused(tmp_path):
     save = _slot(tmp_path)
     with pytest.raises(ValueError, match="line 4 is not in a party of 3"):
-        sb.stage(save, "A", {4: [("scroll", 1)]}, tmp_path / "a", IDS)
+        sb.stage(save, "A", {4: [("scroll", 1)]}, tmp_path / "a", IDS, ITEMS)
     used = tmp_path / "used"
     used.mkdir()
     (used / "x").write_bytes(b"")
     with pytest.raises(ValueError, match="not empty"):
-        sb.stage(save, "A", {1: [("scroll", 1)]}, used, IDS)
+        sb.stage(save, "A", {1: [("scroll", 1)]}, used, IDS, ITEMS)
 
 
 def test_the_staged_scrolls_take_only_levelled_magic_user_ids():
@@ -306,6 +314,43 @@ def test_the_staged_scrolls_take_only_levelled_magic_user_ids():
     except FileNotFoundError:
         pytest.skip("needs the DOS Silver Blades archive")
     ids = sb.mage_spell_ids(game)
-    # The dosjoin run's two staged scrolls carried 112, 115, 91 and 82, 83, 88.
+    # Two of the game's own mage scroll templates carry 112, 115, 91 and 82, 83, 88.
     assert len(ids) == 53 and {82, 83, 88, 91, 112, 115} <= set(ids)
     assert 109 not in ids and 1 not in ids
+
+
+def test_every_staged_scroll_has_three_different_ids_and_its_own_three():
+    n = len(IDS)
+    triples = [sb.scroll_spells(k, IDS) for k in range(n * (n - 1))]
+    assert all(len(set(t)) == 3 for t in triples)
+    assert len(set(triples)) == len(triples)
+    with pytest.raises(ValueError, match="at most 42"):
+        sb.scroll_spells(n * (n - 1), IDS)
+
+
+def test_only_a_scrolls_spells_differ_from_its_template(tmp_path):
+    _save, out, _report = _staged(tmp_path)
+    items = (out / "CHRDATA1.STF").read_bytes()
+    from goldbox import dos_codec
+    for i in range(3):
+        got = dos_codec.item_to_c64(items[i * STRIDE:i * STRIDE + 0x3F] + bytes(4))
+        assert got[:13] == ITEMS["scroll"][:13]
+
+
+def test_a_bad_stage_is_one_line_and_exit_two(tmp_path, capsys):
+    assert sb.main(["stage", "--out", str(tmp_path / "o"), "--pack", "1=j11"]) == 2
+    err = capsys.readouterr().err
+    assert err == "stage: a joined scroll holds 2 to 10 scrolls, not 11\n"
+    assert not (tmp_path / "o").exists()
+
+
+def test_the_templates_come_from_the_titles_own_item_files():
+    from tools.dos import dosbox
+    try:
+        game = dosbox.find_game("SECRET")
+    except FileNotFoundError:
+        pytest.skip("needs the DOS Silver Blades archive")
+    got = sb.item_templates(game)
+    assert {k: v[0] for k, v in got.items()} == sb.ITEM_TYPES
+    assert all(got["scroll"][13:16]) and got["scroll"][6] & 0x07 == 4
+    assert all(got[k][4] == 0 for k in sb.ORDINARY)

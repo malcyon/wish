@@ -603,17 +603,16 @@ ITEM_NEXT_ROW = "Down"
 ITEM_HALVE = "h"
 ITEM_JOIN = "j"
 #: Silver Blades' `ITEMS` bar is `READY TRADE DROP [HALVE] JOIN EXIT`; `t`
-#: opened `TRADE WITH WHOM?` in the hand-driven run `cbea7c9243-dosjoin` of
-#: WISH-4, and `j` joined two stacks of arrows and two mage scrolls there.
+#: opens `TRADE WITH WHOM?` and `j` joins at once, both seen in a driven boot.
 ITEM_TRADE = "t"
 #: That prompt's bar, `TRADE WITH WHOM? SELECT EXIT`, by `bar_signature`: the
-#: same on its 2 captures (shots 125 and 128 of that run).  It draws the
+#: same on 2 captures.  It draws the
 #: party-menu roster with the trader's line highlighted; `Down` moved the
 #: highlight a line on, and `s` gave the item to the highlighted member and
 #: brought the trader's list back without the item.
 SSB_TRADE_BAR = "c4590a78b4fc9cbd"
 #: Where each title's `join` runs: Pools of Darkness in camp, Silver Blades
-#: at the party menu, as the dosjoin run did it.
+#: at the party menu, where its sheet's `ITEMS` was driven.
 JOIN_WHERE = {"darkness": "camp", "ssb": "party"}
 #: The `ITEMS` list's first text row: its rows start at y = 40
 #: (`screens.ITEM_LIST_RECT`), eight pixels a row.
@@ -2100,16 +2099,17 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
         elif k == "items" and title == "pool":
             if where != "camp":
                 raise ValueError(f"items needs camp first: {step.text!r}")
-        elif k in ("join", "trade") and title == "ssb":
-            if where != "party":
-                raise ValueError(f"{k} needs the party menu, before begin: "
-                                 f"{step.text!r}")
-        elif k == "trade":
-            raise ValueError(f"trade is driven in ssb only, not {title}")
-        elif k == "join" and title not in JOIN_WHERE:
-            raise ValueError(f"join is driven in {', '.join(sorted(JOIN_WHERE))} "
-                             f"only, not {title}")
-        elif k in ("items", "halve", "join", "memorize"):
+        elif k in ("join", "trade"):
+            if k == "trade" and title != "ssb":
+                raise ValueError(f"trade is driven in ssb only, not {title}")
+            if title not in JOIN_WHERE:
+                raise ValueError(f"join is driven in {', '.join(sorted(JOIN_WHERE))} "
+                                 f"only, not {title}")
+            if where != JOIN_WHERE[title]:
+                raise ValueError(f"{k} needs " + ("camp first" if JOIN_WHERE[title] == "camp"
+                                                  else "the party menu, before begin")
+                                 + f": {step.text!r}")
+        elif k in ("items", "halve", "memorize"):
             if title != "darkness":
                 raise ValueError(f"{k} is driven in darkness only, not {title}")
             if where != "camp":
@@ -5360,7 +5360,7 @@ class Driver:
         does not check the pair; the live run records it.  Silver Blades'
         is driven from the party menu (`_ssb_item_command`).
         """
-        if self.title.key == "ssb":
+        if JOIN_WHERE.get(self.title.key) == "party":
             return self._ssb_item_command(line, row, ITEM_JOIN, "join")
         return self._item_command(line, row, ITEM_JOIN, "join", grow=0)
 

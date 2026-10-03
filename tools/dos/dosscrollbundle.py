@@ -183,29 +183,22 @@ def default_roots() -> list[pathlib.Path]:
 # Staging a pack
 # --------------------------------------------------------------------------
 
-#: The items `stage` composes, as the sixteen bytes of the neutral inventory
-#: (`dos_codec.item_to_c64`): type, three name ids, plus, plus save, readied
-#: and hidden, cursed, weight, quantity, value, then three bytes that are a
-#: scroll's spell ids.  Each is the item the hand-driven run `cbea7c9243-dosjoin`
-#: staged into the archives' slot A party and the engine loaded, drew, joined,
-#: traded and wrote back in its resaves B, C and D: the scroll is an
-#: unidentified `MAGE SCROLL` (hidden 4) of weight 10 and value 3000, which
-#: JOIN made into `Bundle of 2 Scrolls`.
-SCROLL = bytes((0x27, 0x66, 0x27, 0x28, 2, 0, 4, 0, 10, 0, 0)) + (3000).to_bytes(2, "little")
-ORDINARY = {
-    "staff": bytes((0x0F, 0, 0, 0x0F, 0, 0, 0, 0, 50, 0, 0, 10, 0, 0, 0, 0)),
-    "darts": bytes((0x05, 0, 0, 0x05, 0, 0, 0, 0, 5, 0, 4, 0, 0, 0, 0, 0)),
-    "arrows": bytes((0x1E, 0, 0, 0x1E, 0, 0, 0, 0, 3, 0, 10, 0, 0, 0, 0, 0)),
-}
-#: The head items a member may hold: the Silver Blades `ITEMS` list never drew
-#: more than 16 in the dosjoin run, whose TRADE onto a member of 15 made 16,
-#: and the Amiga port's limit is 16 (`/Secret` `0x24B50`).  A pack of 17 is
-#: a state only an editor makes, so `stage` refuses one.
+#: The items `stage` can put in a pack, by the item type it takes from the
+#: title's own `ITEM<n>.DAX` templates (`item_templates`).  `scroll` is a mage
+#: scroll, the only scroll JOIN has been seen to join.
+ITEM_TYPES = {"scroll": 0x27, "staff": 0x0F, "darts": 0x05, "arrows": 0x1E}
+ORDINARY = tuple(k for k in ITEM_TYPES if k != "scroll")
+#: A template's stride: `ITEM<n>.DAX` blocks hold 63-byte records in every
+#: title, Silver Blades included.
+TEMPLATE_SIZE = 63
+#: The head items a member may hold: a TRADE onto a member of 15 made 16 and
+#: no more, and the Amiga port's limit is 16 (`/Secret` `0x24B50`), so a pack
+#: of 17 is a state only an editor makes and `stage` refuses it.
 MOST_HEADS = 16
 #: The most scrolls `stage` puts in one joined scroll.  `GAME.OVR` holds
 #: `Bundles are limited to <n> scrolls.`, the number filled in at run time
-#: and not yet read; ten is what the specimens of WISH-4's plan hold, and is
-#: PROBABLE until a JOIN onto a joined scroll of ten is seen.
+#: and not yet read; ten is PROBABLE until a JOIN onto a joined scroll of ten
+#: is seen.
 MOST_JOINED = 10
 #: Silver Blades' spell table: `START.EXE` `DS:449D`, sixteen bytes an id,
 #: byte 0 the class, 3 being magic-user, and byte 1 the level
@@ -254,22 +247,25 @@ def parse_pack(text: str) -> list[tuple[str, int]]:
 
 
 def scroll_spells(k: int, ids: list[int]) -> bytes:
-    """The three spell ids of the party's `k`th staged scroll, from 0.
+    """Three different spell ids for the party's `k`th staged scroll, from 0.
 
-    The first two are `ids[k % n]` and `ids[k // n]`, so no two of the
-    party's scrolls carry the same three while `k < n * n`; the third is
-    another id so that each scroll holds three spells, as the dosjoin run's
-    did.
+    The first is `ids[k % n]` and the second the one `1 + k // n` places
+    after it, so the ordered pair names `k` and no two scrolls carry the same
+    ids while `k < n * (n - 1)`; the third is the next id not already used.
     """
     n = len(ids)
-    if k >= n * n:
-        raise ValueError(f"scroll {k}: {n} ids tell at most {n * n} scrolls apart")
-    return bytes((ids[k % n], ids[k // n], ids[(k + n // 2) % n]))
+    if n < 3 or k >= n * (n - 1):
+        raise ValueError(f"scroll {k}: {n} ids tell at most {n * (n - 1)} "
+                         "scrolls apart")
+    a = k % n
+    b = (a + 1 + k // n) % n
+    c = next(i % n for i in range(b + 1, b + 3) if i % n != a)
+    return bytes((ids[a], ids[b], ids[c]))
 
 
 def joined_head(scrolls: list[bytes]) -> bytes:
-    """The sixteen bytes JOIN makes for `scrolls`, as resave C of the dosjoin
-    run holds it: type 0x49, names 0x27, the count and 0x4D, the scrolls'
+    """The sixteen bytes JOIN makes for `scrolls`, as a game-written save
+    holds them: type 0x49, names 0x27, the count and 0x4D, the scrolls'
     plus, weight and quantity the count, value their sum, no spells.  The
     weight of a joined scroll of more than two is PROBABLE."""
     k = len(scrolls)
@@ -279,25 +275,61 @@ def joined_head(scrolls: list[bytes]) -> bytes:
             + min(value, 0xFFFF).to_bytes(2, "little") + bytes(3))
 
 
-def compose_pack(units: list[tuple[str, int]], ids: list[int], first: int
+def compose_pack(units: list[tuple[str, int]], ids: list[int], first: int,
+                 items: dict[str, bytes]
                  ) -> tuple[list[bytes], tuple[ScrollBundle, ...], int]:
-    """The neutral `inventory` and `scroll_bundles` for `units`, numbering
-    scrolls from `first`; returns the next number too."""
+    """The neutral `inventory` and `scroll_bundles` for `units`, from the
+    sixteen-byte `items` of `item_templates`, numbering scrolls from
+    `first`; returns the next number too.  Only a scroll's three spell ids
+    differ from its template."""
     inventory: list[bytes] = []
     bundles: list[ScrollBundle] = []
     k = first
     for kind, n in units:
         if kind in ORDINARY:
-            inventory.append(ORDINARY[kind])
+            inventory.append(items[kind])
             continue
         scrolls = []
         for _ in range(n):
-            scrolls.append(SCROLL + scroll_spells(k, ids))
+            scrolls.append(items["scroll"][:13] + scroll_spells(k, ids))
             k += 1
         if kind == "joined":
             bundles.append(ScrollBundle(len(inventory), n, joined_head(scrolls)))
         inventory += scrolls
     return inventory, tuple(bundles), k
+
+
+def item_templates(game: pathlib.Path) -> dict[str, bytes]:
+    """One template of each `ITEM_TYPES` kind from the title's `ITEM<n>.DAX`,
+    as sixteen bytes.
+
+    Of each type, an unenchanted one (plus 0); of the scrolls, one carrying
+    three spells, an unidentified one (hidden 4) first.  Ties go to the
+    lowest bytes, so the choice does not depend on file order.
+    """
+    from goldbox import dos_savegame
+    found: dict[str, list[bytes]] = {k: [] for k in ITEM_TYPES}
+    for path in sorted(game.glob("ITEM*.DAX")):
+        data = path.read_bytes()
+        for entry in dos_savegame.dax_index(data):
+            block = dos_savegame.dax_block(data, entry[0], path.name)
+            if len(block) % TEMPLATE_SIZE:
+                continue
+            for i in range(len(block) // TEMPLATE_SIZE):
+                item = dos_codec.item_to_c64(
+                    bytes(block[i * TEMPLATE_SIZE:(i + 1) * TEMPLATE_SIZE]))
+                for kind, type_index in ITEM_TYPES.items():
+                    if item[0] != type_index:
+                        continue
+                    if kind == "scroll" and all(item[13:16]):
+                        found[kind].append(item)
+                    elif kind != "scroll" and item[4] == 0:
+                        found[kind].append(item)
+    missing = [k for k, v in found.items() if not v]
+    if missing:
+        raise FileNotFoundError(f"no {', '.join(missing)} template in "
+                                f"{game}/ITEM*.DAX")
+    return {k: min(v, key=lambda b: (b[6] & 0x07 != 4, b)) for k, v in found.items()}
 
 
 def mage_spell_ids(game: pathlib.Path) -> list[int]:
@@ -310,14 +342,14 @@ def mage_spell_ids(game: pathlib.Path) -> list[int]:
 
 
 def stage(save: pathlib.Path, slot: str, packs: dict[int, list[tuple[str, int]]],
-          out: pathlib.Path, ids: list[int]) -> dict:
+          out: pathlib.Path, ids: list[int], items: dict[str, bytes]) -> dict:
     """Copy slot `slot` of `save` into `out`, roster line N holding `packs[N]`.
 
     Each staged member is read, its pack replaced on the neutral record and
     written by `dos_codec.write`; the item file, `item_count` and
     `encumbrance` are taken from what it writes, and every other byte of the
     record is the slot's own.  Roster line N is the Nth `CHRDAT<slot><n>`
-    file, which is the order the dosjoin run's party menu drew.
+    file, which is the order the party menu draws.
     """
     slot = slot.upper()
     deltas = dos_port.SECRET_OF_THE_SILVER_BLADES
@@ -339,7 +371,7 @@ def stage(save: pathlib.Path, slot: str, packs: dict[int, list[tuple[str, int]]]
     k, report = 0, {"slot": slot, "from": str(save), "lines": {}}
     for line in sorted(packs):
         char = party[line - 1]
-        inventory, bundles, k_next = compose_pack(packs[line], ids, k)
+        inventory, bundles, k_next = compose_pack(packs[line], ids, k, items)
         neutral = dos_codec.to_neutral(char)
         neutral.set("inventory", inventory, "staged by dosscrollbundle.py stage")
         neutral.set("scroll_bundles", bundles, "staged by dosscrollbundle.py stage")
@@ -468,12 +500,13 @@ def parse_packs(texts: list[str]) -> dict[int, list[tuple[str, int]]]:
 
 def cmd_stage(args) -> int:
     if not args.out or not args.pack:
-        print("stage needs --out and at least one --pack")
+        print("stage needs --out and at least one --pack", file=sys.stderr)
         return 2
+    packs = parse_packs(args.pack)
     game = dosbox.find_game("SECRET")
     save = pathlib.Path(args.save_from) if args.save_from else game / "SAVE"
-    report = stage(save, args.slot, parse_packs(args.pack), pathlib.Path(args.out),
-                   mage_spell_ids(game))
+    report = stage(save, args.slot, packs, pathlib.Path(args.out),
+                   mage_spell_ids(game), item_templates(game))
     print(json.dumps(report, indent=1))
     return 0
 
@@ -494,8 +527,12 @@ def main(argv: list[str] | None = None) -> int:
                     help="stage: N=SPEC, roster line N's whole pack "
                          "(jK, s, staff, darts, arrows, each with *N)")
     args = ap.parse_args(argv)
-    return {"sites": cmd_sites, "sweep": cmd_sweep, "read": cmd_read,
-            "stage": cmd_stage}[args.cmd](args)
+    try:
+        return {"sites": cmd_sites, "sweep": cmd_sweep, "read": cmd_read,
+                "stage": cmd_stage}[args.cmd](args)
+    except (ValueError, FileNotFoundError) as e:
+        print(f"{args.cmd}: {e}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

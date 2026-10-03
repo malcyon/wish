@@ -10209,7 +10209,7 @@ def test_pool_begin_after_a_load_onto_the_map_presses_nothing(tmp_path, monkeypa
 
 class FakeSsbItems(FakeCurseMenu):
     """Silver Blades' party menu, `PICK CHARACTER`, the sheet and its `ITEMS`,
-    as the hand-driven run `cbea7c9243-dosjoin` of WISH-4 met them: `i` opens
+    as a driven boot met them: `i` opens
     the list on row 1 with every row drawn `NO` and its name; `Down` moves the
     highlight; `j` joins the row with the next one of the same name; `t` asks
     `TRADE WITH WHOM?` over the roster with the trader highlighted, where
@@ -10380,7 +10380,7 @@ def test_join_off_the_party_menu_is_refused_before_a_key(tmp_path):
     ("149-paine-16-heads-after-trade", 16, 0, "NO QUARTER STAFF"),
 ])
 def test_the_dosjoin_items_lists_read_as_rows_and_text(shot, rows, highlight, last):
-    """The hand-driven run of WISH-4: Guy's two stacks of ten arrows joined
+    """A driven boot: Guy's two stacks of ten arrows joined
     into one, PAINE's two mage scrolls into a bundle, and Guy's staff traded
     to PAINE, which made her sixteen rows."""
     from tools.dos import dosbox as real
