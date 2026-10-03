@@ -252,7 +252,16 @@ class Run:
 
     def view_in_world(self, name: str) -> dict:
         """The same sheet, off the world screen's party panel."""
-        index = route_pool.panel_index(self.sess, name)
+        try:
+            index = route_pool.panel_index(self.sess, name)
+        except route_pool.PanelError as e:
+            self.log("sheet", where="world", asked_for=name, ok=False,
+                     why=str(e))
+            return {}
+        if index is None:
+            self.log("sheet", where="world", asked_for=name, ok=False,
+                     why="the screen is a bitmap")
+            return {}
         before = self.gate_count(f"world-before-{name}")
         self.shots += 1
         shot = self.out / f"{self.shots:02d}-world-sheet-{name}.png"

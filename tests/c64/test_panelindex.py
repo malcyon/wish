@@ -175,8 +175,32 @@ def test_c64strength_picks_by_the_name_column(tmp_path):
     run.shots = 0
     run.gate_count = lambda stage: 0
     run.roster = lambda stage: []
-    run.log = lambda *a, **k: None
+    logged = []
+    run.log = lambda kind, **k: logged.append(k)
     run.view_in_world("BRUTUS")
     assert run.sess.index == 2
-    with pytest.raises(route_pool.PanelError):
-        run.view_in_world("BRO")
+    run.sess.index = None
+    assert run.view_in_world("BRO") == {}
+    assert "not on the party panel" in logged[-1]["why"]
+    assert run.sess.index is None
+
+
+def test_c64strength_does_not_open_a_sheet_on_a_bitmap_screen(tmp_path):
+    from tools.c64 import c64strength
+
+    class Blind(Sess):
+        def screen(self):
+            return None
+
+        def character_sheet(self, index, shot=None):
+            raise AssertionError("opened a sheet with no panel read")
+
+    run = c64strength.Run.__new__(c64strength.Run)
+    run.sess = Blind()
+    run.out = tmp_path
+    run.shots = 0
+    run.gate_count = lambda stage: 0
+    logged = []
+    run.log = lambda kind, **k: logged.append(k)
+    assert run.view_in_world("BRUTUS") == {}
+    assert logged[-1]["why"] == "the screen is a bitmap"
