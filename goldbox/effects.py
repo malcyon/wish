@@ -1951,12 +1951,38 @@ def raise_strength(strength: int, percentile: int, steps: int) -> tuple[int, int
 #: The ids DOS's Strength recalculation reads as strength sources in each
 #: later title: Strength (38), Enlarge (12) and the title's own third source
 #: (Curse 146, Silver Blades 113), read in that order (`0x26`, then `0x92` or
-#: `0x71`, then `0x0C` in `GAME.OVR`). A character with any of them beside the
-#: Strength being converted has a score no single rule explains.
+#: `0x71`, then `0x0C` in `GAME.OVR`). The C64 recalculation merges the same
+#: three (`c64_later_strength_rebuild`).
 LATER_STRENGTH_SOURCE_IDS: dict[str, frozenset[int]] = {
     "curse-of-the-azure-bonds": frozenset({12, 38, 146}),
     "secret-of-the-silver-blades": frozenset({12, 38, 113}),
 }
+
+#: The powers (`item[15]`) of a readied item the C64's Strength recalculation
+#: reads: a girdle merges the table entry its `item[14] & 7` picks; Curse's
+#: `plus_one` adds 1 below 18 (`ECL65 $9172`-`$97A7`) and `cap_three` lowers
+#: the score to 3 (`$91EF`-`$91FA`). Silver Blades tests `$83` and then `$85`
+#: for the girdle (`$9636`-`$96F4`) and has neither of the other two.
+LATER_STRENGTH_ITEM_POWERS: dict[str, dict[str, frozenset[int]]] = {
+    "curse-of-the-azure-bonds": {
+        "girdle": frozenset({0x85}), "plus_one": frozenset({0x88}),
+        "cap_three": frozenset({0x8D})},
+    "secret-of-the-silver-blades": {
+        "girdle": frozenset({0x83, 0x85}), "plus_one": frozenset(),
+        "cap_three": frozenset()},
+}
+
+#: The table the C64 merges its strength sources through (Curse `ECL65
+#: $9223`/`$922F`, Silver Blades `$96E9`/`$96F5`): Enlarge's ten entries and two
+#: more, 23 and 24, which a girdle or Giant Strength index reaches.
+C64_STRENGTH_TABLE: tuple[tuple[int, int], ...] = ENLARGE_STRENGTHS + (
+    (23, 0), (24, 0))
+
+#: The first item slots the C64's strength scan reads, and the bit in `item[6]`
+#: that marks one readied.
+_STRENGTH_ITEM_SLOTS = 16
+_ITEM_READIED = 0x80
+
 
 #: The classes whose level makes DOS's recalculation climb the percentile by
 #: tens; the six level bytes it tests are the current and former arrays of
@@ -2021,50 +2047,150 @@ def _later_strength_sources(title_key: str, nodes: "Iterable[RunningEffect]",
             sum(1 for g in granted if bytes(g)[0] in ids))
 
 
+def later_strength_items(title_key: str,
+                         inventory: "Iterable[bytes]") -> list[bytes]:
+    """The readied items among the first sixteen whose power is one the C64's
+    strength recalculation reads, highest slot first (the order of its scan,
+    Curse `ECL65 $9761`)."""
+    powers = frozenset().union(*LATER_STRENGTH_ITEM_POWERS[title_key].values())
+    found = []
+    for item in list(inventory)[:_STRENGTH_ITEM_SLOTS]:
+        item = bytes(item)
+        if len(item) >= 16 and item[0] and item[6] & _ITEM_READIED \
+                and item[15] in powers:
+            found.append(item)
+    found.reverse()
+    return found
+
+
+def _first_row(rows: "Iterable[tuple[int, int]]", ids: "Iterable[int]"
+               ) -> int | None:
+    """The magnitude of the first row whose id is in `ids`."""
+    ids = frozenset(ids)
+    for row_id, magnitude in rows:
+        if row_id in ids:
+            return magnitude
+    return None
+
+
+def c64_later_strength_rebuild(
+        title_key: str, permanent: tuple[int, int], drain: int,
+        rows: "Iterable[tuple[int, int]]",
+        items: "Iterable[bytes]") -> tuple[int, int]:
+    """The score the C64's Strength recalculation (Curse `ECL65 $9160`,
+    Silver Blades `$9636`) leaves in force.
+
+    `rows` are the running `(id, magnitude)` pairs in write order, `items` the
+    readied items `later_strength_items` found. The recalculation starts from
+    the permanent score less the drain, climbs by the first Strength row only,
+    then merges (keeps the higher of) the table entry a girdle, the first
+    Enlarge row and the first Giant Strength row each pick.
+    """
+    rows = list(rows)
+    powers = LATER_STRENGTH_ITEM_POWERS[title_key]
+    items = [bytes(i) for i in items]
+    strength, percentile = permanent
+    strength -= drain
+    if strength < 18 and any(i[15] in powers["plus_one"] for i in items):
+        strength += 1
+    magnitude = _first_row(rows, (38,))
+    if magnitude is not None:
+        strength, percentile = raise_strength(
+            strength, percentile, later_ability_bonus(magnitude))
+    indices = [(i[14] & 7) + 5 for i in items if i[15] in powers["girdle"]]
+    magnitude = _first_row(rows, (12,))
+    if magnitude is not None:
+        if magnitude & 0x0F == 0:
+            raise ValueError("an Enlarge row with no level")
+        indices.append(min(magnitude & 0x0F, 10) - 1)
+    magnitude = _first_row(rows, (GIANT_STRENGTH_IDS[title_key],))
+    if magnitude is not None:
+        indices.append(((magnitude & 0x7F) >> LATER_ABILITY_BONUS_SHIFT) + 5)
+    for index in indices:
+        # An index past the table reads a zero the merge never keeps.
+        if index < len(C64_STRENGTH_TABLE):
+            strength, percentile = max((strength, percentile),
+                                       C64_STRENGTH_TABLE[index])
+    if strength > 3 and any(i[15] in powers["cap_three"] for i in items):
+        strength = 3
+    return strength, percentile
+
+
+def _later_strength_rows(title_key: str, running: "list[RunningEffect]"
+                         ) -> list[tuple[int, int]] | None:
+    """`c64_row` of each running strength source, or `None` if one has no
+    row."""
+    rows = []
+    for node in running:
+        row = c64_row(title_key, node)
+        if isinstance(row, Unconverted):
+            return None
+        rows.append(row)
+    return rows
+
+
 def c64_later_strength_in_force(
         title_key: str, permanent: tuple[int, int],
         in_force: tuple[int, int], nodes: "Iterable[RunningEffect]",
-        granted: "Iterable[bytes]", warrior: bool) -> tuple[int, int] | None:
-    """The score in force the C64's own Strength gives, for a DOS
-    character whose only strength source is one Strength node, or `None`.
+        granted: "Iterable[bytes]", warrior: bool, *,
+        readied_items: "Iterable[bytes]" = ()) -> tuple[int, int] | None:
+    """The score in force the C64's own Strength gives a DOS character that
+    has a Strength node, or `None`.
 
-    The C64 recalculation (`ECL65 $9160`) climbs the permanent score by the
-    node's roll and ignores the score in force, so no later recalculation
-    changes it. `None` when the source score is not one that node explains on
-    its own (gauntlets, a girdle, a drain), which the writer then copies.
+    The C64 recalculation (`ECL65 $9160`) rebuilds the score from the
+    permanent one and ignores the score in force, so no later recalculation
+    changes it (`c64_later_strength_rebuild`). `None` when a granted record is
+    a strength source, which the C64 never searches, or when a node has no C64
+    row. A Strength node alone is also checked against the score DOS holds, so
+    a score that node does not explain (a drain) is copied.
     """
     running, granted_count = _later_strength_sources(title_key, nodes, granted)
-    if granted_count or len(running) != 1:
+    if granted_count or not any(n.id == 38 for n in running):
         return None
-    node = running[0]
-    if node.id != 38 or not 101 <= node.data <= 108:
+    rows = _later_strength_rows(title_key, running)
+    if rows is None:
         return None
-    if tuple(in_force) not in dos_later_strength_states(
-            tuple(permanent), node.data, warrior):
-        return None
-    return raise_strength(*permanent, node.data - 100)
+    items = later_strength_items(title_key, readied_items)
+    if len(running) == 1 and not items:
+        if tuple(in_force) not in dos_later_strength_states(
+                tuple(permanent), running[0].data, warrior):
+            return None
+    return c64_later_strength_rebuild(title_key, tuple(permanent), 0, rows,
+                                      items)
 
 
 def dos_later_strength_in_force(
         title_key: str, permanent: tuple[int, int],
         in_force: tuple[int, int], nodes: "Iterable[RunningEffect]",
-        granted: "Iterable[bytes]", warrior: bool) -> tuple[int, int] | None:
-    """The score in force a DOS cast of the same roll gives, for a C64
-    character whose only strength source is one Strength node, or `None`.
+        granted: "Iterable[bytes]", warrior: bool, *,
+        readied_items: "Iterable[bytes]" = ()) -> tuple[int, int] | None:
+    """The score in force a DOS cast of the same rolls gives, for a C64
+    character that has a Strength node, or `None`.
 
-    `nodes` are the reader's DOS-form nodes. `None` when the C64 score is not
-    the one that roll gives from the permanent score.
+    `nodes` are the reader's DOS-form nodes. `None` when a granted record or a
+    readied item is a strength source (DOS's terms for them are not read), or
+    when the C64 score is not the one its rows give from the permanent score.
     """
     running, granted_count = _later_strength_sources(title_key, nodes, granted)
-    if granted_count or len(running) != 1:
+    if granted_count or later_strength_items(title_key, readied_items):
         return None
-    node = running[0]
-    if node.id != 38 or node.flag != 1 or not 101 <= node.data <= 108:
+    first = next((n for n in running if n.id == 38), None)
+    if first is None or first.flag != 1 or not 101 <= first.data <= 108:
         return None
-    if tuple(in_force) != raise_strength(*permanent, node.data - 100):
+    rows = _later_strength_rows(title_key, running)
+    if rows is None:
         return None
-    return dos_later_strength(tuple(permanent), tuple(permanent), node.data,
-                              warrior)
+    if tuple(in_force) != c64_later_strength_rebuild(
+            title_key, tuple(permanent), 0, rows, ()):
+        return None
+    score = dos_later_strength(tuple(permanent), tuple(permanent),
+                               first.data, warrior)
+    for source in (next((n for n in running if n.id == 12), None),
+                   next((n for n in running
+                         if n.id == GIANT_STRENGTH_IDS[title_key]), None)):
+        if source is not None:
+            score = max(score, later_node_score(source.data))
+    return score
 
 
 def mirror_image_count(dos_data: int, *, later: bool) -> int:

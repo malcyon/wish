@@ -964,7 +964,8 @@ def _native_strength(char: NeutralCharacter,
                                 char.get("former_levels"))
          if char.port == "Amiga"
          else effects.later_strength_warrior(char.get("levels"),
-                                             char.get("former_levels"))))
+                                             char.get("former_levels"))),
+        readied_items=char.get("inventory") or ())
 
 
 def engine_grants_restoration(levels, experience_award) -> bool:
@@ -1019,8 +1020,8 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         char.fields = dict(char.fields)
         for field, score in zip(("strength", "exceptional_strength"), native):
             char.set(field, score,
-                     "the C64's own Strength recalculation (ECL65 $9160) of "
-                     "the running Strength's roll, from the permanent score",
+                     "the C64's own recalculation (ECL65 $9160) of every "
+                     "strength source, from the permanent score",
                      Confidence.CONFIRMED, Provenance.COMPUTED)
     pool_item_table = (deltas.key == "pool-of-radiance"
                        and item_types is not None)

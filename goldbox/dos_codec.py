@@ -5466,7 +5466,8 @@ def write(char: NeutralCharacter,
                     deltas.key, char.get("levels"), char.get("former_levels"))
                  if into == "Amiga"
                  else effects.later_strength_warrior(
-                     char.get("levels"), char.get("former_levels"))))
+                     char.get("levels"), char.get("former_levels"))),
+                readied_items=char.get("inventory") or ())
     for neutral_name, dos_name in (WRITE_DIRECT + DARKNESS_WRITE_DIRECT +
                                    undead_direct(deltas.key)):
         # A field this title's record does not have at all -- Pools of

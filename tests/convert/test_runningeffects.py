@@ -3911,12 +3911,100 @@ def test_the_c64_strength_score_reaches_the_hit_step_and_the_report():
 
 
 @pytest.mark.parametrize("port", ["DOS", "Amiga"])
-def test_another_strength_source_leaves_the_c64_score_copied(port):
+def test_another_strength_source_arrives_at_the_c64s_own_score(port):
     game = c64_port.CURSE_OF_THE_AZURE_BONDS
     enlarge = bytes((12, 10, 0, 0x76, 1))
     char = _strength_character(port, game, 8, (17, 0), (18, 0),
                                {"cleric": 5}, enlarge)
-    assert _c64_strength(char)[0] == (18, 0)
+    assert _c64_strength(char)[0] == (18, 70)
+
+
+def _enlarge_node(key, level):
+    return bytes((12, 10, 0, effects.later_node_data(
+        *effects.ENLARGE_STRENGTHS[level - 1]),
+        effects.LATER_CAST_FLAGS[key][12]))
+
+
+def _giant_node(key):
+    return bytes((effects.GIANT_STRENGTH_IDS[key], 10, 0, 0x79, 1))
+
+
+@pytest.mark.parametrize("key", [_CURSE_KEY, _SSB_KEY])
+@pytest.mark.parametrize("first, extra, dos, want", [
+    (8, (), (18, 0), (18, 70)),
+    (8, (("enlarge", 1),), (18, 0), (18, 70)),
+    (8, (("enlarge", 3),), (18, 51), (18, 70)),
+    (8, (("enlarge", 5),), (18, 91), (18, 91)),
+    (8, (("enlarge", 7),), (19, 0), (19, 0)),
+    (8, (("giant", 0),), (21, 0), (21, 0)),
+    (3, (("strength", 8),), (18, 0), (18, 20)),
+    (8, (("strength", 3),), (18, 0), (18, 70)),
+])
+def test_a_dos_strength_beside_another_source_arrives_at_the_c64s_own_score(
+        key, first, extra, dos, want):
+    """The first eight rows of the table in the WISH-8 plan: a cleric of
+    permanent 17/00 casts Strength and has the extra source too. The first
+    Strength node is the one whose roll the C64 climbs by."""
+    rest = []
+    for kind, n in extra:
+        if kind == "enlarge":
+            rest.append(_enlarge_node(key, n))
+        elif kind == "giant":
+            rest.append(_giant_node(key))
+        else:
+            rest.append(bytes((38, 10, 0, 100 + n, 1)))
+    game = c64_port.by_key(key)
+    char = _strength_character("DOS", game, first, (17, 0), dos,
+                               {"cleric": 5}, *rest)
+    payload = bytearray(0x1C00)
+    rec, rep = c64_codec.write(char, payload=payload, party_slot=2,
+                               clock_minutes=0)
+    assert (rec.get("strength"), rec.get("exceptional_strength")) == want
+    assert rec.get("strength_index") == c64_codec.strength_index(*want)
+    assert (rec.get_raw("abilities_second")[0],
+            rec.get_raw("abilities_second")[6]) == (17, 0)
+    assert not [line for line in rep.dropped + rep.losses
+                if "strength" in line.lower()]
+    strength_slots = [i for i, r in _rows(payload).items() if r[0] == 38]
+    assert _rows(payload)[max(strength_slots)][3] == \
+        effects.later_ability_magnitude(first, (100 + first) & 0x0F)
+
+
+def _girdle(n, power):
+    """A synthetic readied item, 16 bytes of numbers: not game data."""
+    item = bytearray(16)
+    item[0], item[6], item[14], item[15] = 1, 0x80, n, power
+    return bytes(item)
+
+
+@pytest.mark.parametrize("key, power", [(_CURSE_KEY, 0x85), (_SSB_KEY, 0x85),
+                                        (_SSB_KEY, 0x83)])
+@pytest.mark.parametrize("n, want", [(0, (18, 100)), (3, (21, 0))])
+def test_a_readied_girdle_beside_strength_gives_the_table_entry(
+        key, power, n, want):
+    game = c64_port.by_key(key)
+    char = _strength_character("DOS", game, 8, (17, 0), want, {"cleric": 5})
+    char.set("inventory", [_girdle(n, power)], "built here")
+    assert _c64_strength(char)[0] == want
+
+
+@pytest.mark.parametrize("key", [_CURSE_KEY, _SSB_KEY])
+@pytest.mark.parametrize("extra, c64, want", [
+    ((("enlarge", 3),), (18, 70), (18, 51)),
+    ((("strength", 8),), (18, 20), (18, 0)),
+])
+def test_a_c64_strength_beside_another_source_arrives_at_what_dos_gives(
+        key, extra, c64, want):
+    game = c64_port.by_key(key)
+    rest = [_enlarge_node(key, n) if kind == "enlarge"
+            else bytes((38, 10, 0, 100 + n, 1)) for kind, n in extra]
+    roll = 3 if extra[0][0] == "strength" else 8
+    char = _strength_character("C64", game, roll, (17, 0), c64,
+                               {"cleric": 5}, *rest)
+    assert _dos_strength(char)[0] == want
+    # A readied girdle keeps the copied score: DOS's term for it is not read.
+    char.set("inventory", [_girdle(0, 0x85)], "built here")
+    assert _dos_strength(char)[0] == c64
 
 
 def test_an_amiga_source_strength_arrives_at_the_c64s_own_score():

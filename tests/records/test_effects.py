@@ -2598,7 +2598,7 @@ def test_a_c64_strength_round_trips_through_dos_and_back(name, total):
     assert count == total
 
 
-def test_the_native_strength_helpers_return_none_when_the_node_is_not_alone():
+def test_the_native_strength_helpers_return_none_when_the_score_is_not_explained():
     node = _RE(38, 10, 103, 1)
     perm, warrior = (15, 0), False
     want = effects.raise_strength(*perm, 3)
@@ -2607,7 +2607,8 @@ def test_the_native_strength_helpers_return_none_when_the_node_is_not_alone():
     # Another strength source, running or granted, or a score the node does
     # not explain.
     assert effects.c64_later_strength_in_force(
-        _C, perm, (18, 0), [node, _RE(12, 10, 0x76, 1)], [], warrior) is None
+        _C, perm, (18, 0), [node, _RE(12, 10, 0x76, 1)], [],
+        warrior) == want
     assert effects.c64_later_strength_in_force(
         _C, perm, (18, 0), [node], [bytes((146, 0, 0, 0, 0))], warrior) is None
     assert effects.c64_later_strength_in_force(
@@ -2617,11 +2618,88 @@ def test_the_native_strength_helpers_return_none_when_the_node_is_not_alone():
     assert effects.dos_later_strength_in_force(
         _C, perm, want, [node], [], warrior) == (18, 0)
     assert effects.dos_later_strength_in_force(
-        _C, perm, want, [node, _RE(12, 10, 0x76, 1)], [], warrior) is None
+        _C, perm, want, [node, _RE(12, 10, 0x76, 1)], [],
+        warrior) == (18, 0)
     assert effects.dos_later_strength_in_force(
         _C, perm, (16, 0), [node], [], warrior) is None
     assert effects.dos_later_strength_in_force(
         _C, perm, want, [_RE(38, 10, 103, 0)], [], warrior) is None
+
+
+# --- the C64's own strength rebuild --------------------------------------------
+
+_SSB = "secret-of-the-silver-blades"
+
+
+def _item(power, n=0, *, readied=True, kind=1):
+    item = bytearray(16)
+    item[0], item[6], item[14], item[15] = kind, 0x80 if readied else 0, n, power
+    return bytes(item)
+
+
+def _rebuild(permanent, rows=(), items=(), *, drain=0, key=_C):
+    return effects.c64_later_strength_rebuild(key, permanent, drain, rows,
+                                              items)
+
+
+def _strength_row(bonus):
+    return 38, effects.later_ability_magnitude(bonus, 0)
+
+
+def test_the_rebuild_subtracts_the_drain_from_the_permanent_score():
+    assert _rebuild((17, 0), drain=2) == (15, 0)
+    assert _rebuild((17, 0), [_strength_row(3)], drain=2) == (18, 0)
+
+
+def test_curse_adds_one_for_a_plus_one_item_below_eighteen_only():
+    item = _item(0x88)
+    assert _rebuild((16, 0), items=[item]) == (17, 0)
+    assert _rebuild((18, 0), items=[item]) == (18, 0)
+    assert _rebuild((16, 0), items=[item], key=_SSB) == (16, 0)
+
+
+def test_only_the_first_strength_row_climbs():
+    assert _rebuild((15, 0), [_strength_row(3), _strength_row(8)]) == (18, 0)
+    assert _rebuild((15, 0), [_strength_row(8), _strength_row(3)]) == (18, 50)
+
+
+def test_a_girdle_picks_the_table_entry_its_low_bits_index():
+    assert _rebuild((10, 0), items=[_item(0x85, 0)]) == (18, 100)
+    assert _rebuild((10, 0), items=[_item(0x85, 3)]) == (21, 0)
+    assert _rebuild((10, 0), items=[_item(0x85, 11)]) == (21, 0)
+    assert _rebuild((10, 0), items=[_item(0x85, 7)]) == (10, 0)
+    assert _rebuild((10, 0), items=[_item(0x83, 0)], key=_SSB) == (18, 100)
+    assert _rebuild((10, 0), items=[_item(0x83, 0)]) == (10, 0)
+
+
+def test_enlarge_is_capped_at_level_ten_and_keeps_the_higher_score():
+    flag = effects.MAGNITUDE_RESTORE_FLAG
+    assert _rebuild((10, 0), [(12, flag | 3)]) == (18, 51)
+    assert _rebuild((10, 0), [(12, flag | 15)]) == (22, 0)
+    assert _rebuild((18, 80), [(12, flag | 3)]) == (18, 80)
+    with pytest.raises(ValueError):
+        _rebuild((10, 0), [(12, flag)])
+
+
+@pytest.mark.parametrize("key", [_C, _SSB])
+def test_giant_strengths_nibble_three_gives_twenty_one(key):
+    row = (effects.GIANT_STRENGTH_IDS[key], effects.GIANT_STRENGTH_C64)
+    assert _rebuild((10, 0), [row], key=key) == (21, 0)
+
+
+def test_curse_lowers_the_score_to_three_for_the_cap_item():
+    assert _rebuild((18, 50), items=[_item(0x8D)]) == (3, 50)
+    assert _rebuild((18, 50), items=[_item(0x8D)], key=_SSB) == (18, 50)
+
+
+def test_the_readied_strength_items_come_highest_slot_first():
+    girdle, plus, idle = _item(0x85, 1), _item(0x88), _item(0x85, 2, readied=False)
+    other = _item(0x10)
+    got = effects.later_strength_items(
+        _C, [girdle, other, idle, _item(0x85, kind=0), plus])
+    assert got == [plus, girdle]
+    assert effects.later_strength_items(
+        _C, [bytes(16)] * 16 + [girdle]) == []
 
 
 # --- a Pool Strength and Enlarge together ----------------------------------------

@@ -327,8 +327,13 @@ the same way. Amiga Curse and Pool of Radiance recompute as DOS does. Amiga
 Silver Blades differs in one test: a former fighter, paladin or ranger counts
 only above `former_level`, which no record we write satisfies, so there only a
 current level makes a warrior, and a dual-classed ex-fighter gets 18/0 where
-DOS climbs by tens. Both apply only when the one Strength node explains the
-source score; another strength source leaves the score copied. C64 to DOS
+DOS climbs by tens. A DOS source arrives at
+`effects.c64_later_strength_rebuild`, the C64's own merge of its first Strength
+row, first Enlarge row, first Giant Strength row and readied items, whatever
+other strength sources the character holds; a C64 source with such a source
+arrives at the DOS merge of the same nodes, and with a readied strength item or
+a granted strength source the score is copied. A score a single Strength node
+does not explain (a drain, gauntlets) is copied. C64 to DOS
 writes the low nibble a DOS cast carries, so the C64 caster's level is lost.
 `confirm_later_strength_arm` pins the DOS arm the model rests on.
 
