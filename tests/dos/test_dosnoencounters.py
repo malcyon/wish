@@ -72,6 +72,7 @@ def switch(words, title=N.POOL, area=SLUMS, events=None, lines=None):
                                    (lines if lines is not None else []).append)
     enc.writes = []
     enc.areas = {}
+    enc.resets, enc.arming, enc.yield_history = 0, 1, []
     return enc, events
 
 
@@ -436,8 +437,27 @@ def test_report_lists_a_gate_the_game_took_back_as_yielded():
     x.memory[BASE + 2 * (GATE - 0x4900)] = 9      # the game writes the gate
     enc.before_move()
     report = enc.report()
-    assert report["yielded"] == [f"${GATE:04X}"]
+    assert report["yielded"] == [{"arming": 1, "area": SLUMS,
+                                  "address": f"${GATE:04X}", "value": 9}]
     assert len(report["writes"]) == 1
+
+
+def test_a_yield_before_a_reset_stays_in_the_report():
+    block = saved_block()
+    x = StubX(machine(block), [DS])
+    enc = N.NoEncounters(x, N.POOL, b"\x01" + block, log=lambda line: None)
+    enc.on()
+    enc.before_move()
+    x.memory[BASE + 2 * (GATE - 0x4900)] = 9      # the game overrides the gate
+    enc.before_move()
+    x.memory[BASE + 2 * (GATE - 0x4900)] = 4      # a restore
+    enc.reset()
+    enc.before_move()
+    report = enc.report()
+    assert enc.switch.yielded == set()
+    assert report["yielded"] == [{"arming": 1, "area": SLUMS,
+                                  "address": f"${GATE:04X}", "value": 9}]
+    assert report["resets"] == 1
 
 
 def test_install_slot_names_the_source_and_the_letter_separately(tmp_path, monkeypatch):
@@ -456,6 +476,30 @@ def test_install_slot_names_the_source_and_the_letter_separately(tmp_path, monke
     assert seen == {"letter": "D", "source": "d"}
 
 
+def _slots(folder, *letters):
+    for letter in letters:
+        (folder / f"SAVGAM{letter}.DAT").write_bytes(b"\x00" * 16)
+        (folder / f"CHRDAT{letter}1.SAV").write_bytes(b"\x01" * 4)
+
+
+def test_install_slot_with_several_slots_and_no_source_fails(tmp_path):
+    folder, save_dir = tmp_path / "save", tmp_path / "play"
+    folder.mkdir()
+    save_dir.mkdir()
+    _slots(folder, "D", "E")
+    with pytest.raises(FileNotFoundError, match="--from-slot"):
+        N.install_slot(folder, save_dir, None)
+    assert list(save_dir.iterdir()) == []
+
+
+def test_install_slot_installs_the_named_slot_of_several(tmp_path):
+    folder, save_dir = tmp_path / "save", tmp_path / "play"
+    folder.mkdir()
+    save_dir.mkdir()
+    _slots(folder, "D", "E")
+    assert N.install_slot(folder, save_dir, "d") == "D"
+    names = sorted(p.name for p in save_dir.iterdir())
+    assert "SAVGAMD.DAT" in names and "SAVGAME.DAT" not in names
 
 
 def test_silver_blades_loads_through_the_acceptance_driver_not_curses_path(monkeypatch):

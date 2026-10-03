@@ -10835,6 +10835,7 @@ def _real_switch(words, area=0x14):
         da.dosnoencounters.POOL, enc.live.peek, enc.live.poke, enc.live.area,
         lambda line: None)
     enc.writes, enc.areas, enc.resets = [], {}, 0
+    enc.arming, enc.yield_history = 1, []
     return enc
 
 

@@ -441,6 +441,11 @@ class NoEncounters:
         self.areas: dict[int, int] = {}
         #: How many times a restore re-armed the switch.
         self.resets = 0
+        #: Which arming the switch is in: 1 from the start, plus one per reset.
+        self.arming = 1
+        #: Every gate word the game took back, across resets, with the arming
+        #: it happened in; `EncounterSwitch.yielded` is cleared by each one.
+        self.yield_history: list[dict] = []
 
     def on(self) -> None:
         self.switch.on()
@@ -452,6 +457,7 @@ class NoEncounters:
         self.switch.held.clear()
         self.switch.on()
         self.resets += 1
+        self.arming += 1
 
     def before_move(self) -> list[dict]:
         """Write the gate; a no-op while the switch is off."""
@@ -462,6 +468,10 @@ class NoEncounters:
             area = self.live.area()
         self.areas[area] = self.areas.get(area, 0) + 1
         self.writes += done
+        self.yield_history += [
+            {"arming": self.arming, "area": row["area"],
+             "address": row["address"], "value": row["was"]}
+            for row in done if row.get("yielded")]
         return done
 
     def off(self) -> list[dict]:
@@ -487,7 +497,7 @@ class NoEncounters:
                        for w in self.writes if "wrote" in w],
             "areas": {f"${a:02X}": n for a, n in sorted(self.areas.items())},
             "unsuppressed_moves": self.switch.unsuppressed_moves,
-            "yielded": sorted(f"${a:04X}" for a in self.switch.yielded),
+            "yielded": list(self.yield_history),
             "resets": self.resets,
         }
 
