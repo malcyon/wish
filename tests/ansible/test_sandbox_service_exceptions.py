@@ -173,6 +173,45 @@ def spoof_tool():
     return runpy.run_path(str(ROLE / 'files/service-spoof-test.py'))
 
 
+def test_spoof_rolls_back_with_restricted_windows_script_policy(spoof_tool, monkeypatch):
+    import base64
+    import shlex
+    from types import SimpleNamespace
+
+    args = SimpleNamespace(source='10.77.0.10', windows_ip='10.77.0.11',
+                           destination='192.0.2.20', port=80, key='',
+                           controller_user='donald', windows_user='donald')
+    script = spoof_tool['powershell_script'](args, 'probe', 45000)
+    command = spoof_tool['ssh_command'](args, script)
+    policy = {'alias_present': False, 'dad_transmits': 3}
+
+    def restricted_powershell(argv, **kwargs):
+        words = shlex.split(argv[-1])
+        decoded = base64.b64decode(words[-1]).decode('utf-16-le')
+        assert '& $Rollback' in decoded
+        policy.update(alias_present=True, dad_transmits=0)
+        if '-ExecutionPolicy' not in words or words[words.index('-ExecutionPolicy') + 1] != 'Bypass':
+            raise subprocess.CalledProcessError(1, argv, stderr='Rollback script execution is disabled')
+        policy.update(alias_present=False, dad_transmits=3)
+        return SimpleNamespace(stdout='Cleanup verified')
+
+    monkeypatch.setattr(subprocess, 'run', restricted_powershell)
+    assert spoof_tool['run'](command) == 'Cleanup verified'
+    assert policy == {'alias_present': False, 'dad_transmits': 3}
+
+
+def test_spoof_command_failure_reports_stderr_without_encoded_payload(spoof_tool, monkeypatch):
+    command = ['ssh', 'powershell.exe -EncodedCommand PRIVATE-PAYLOAD']
+
+    def failure(argv, **kwargs):
+        raise subprocess.CalledProcessError(1, argv, stderr='Rollback script execution is disabled\n')
+
+    monkeypatch.setattr(subprocess, 'run', failure)
+    with pytest.raises(RuntimeError) as caught:
+        spoof_tool['run'](command)
+    assert str(caught.value) == 'Command failed (1): Rollback script execution is disabled'
+
+
 def _syn(source='10.77.0.10', source_port=45000, sequence=1234, mac='52:54:00:00:00:11'):
     return {'source': source, 'destination': '192.0.2.20', 'source_port': source_port,
             'destination_port': 80, 'sequence': sequence, 'mac': mac}

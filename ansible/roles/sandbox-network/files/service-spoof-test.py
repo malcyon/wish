@@ -19,7 +19,10 @@ from pathlib import Path
 
 
 def run(argv, timeout=10):
-    return subprocess.run(argv, capture_output=True, text=True, timeout=timeout, check=True).stdout
+    try:
+        return subprocess.run(argv, capture_output=True, text=True, timeout=timeout, check=True).stdout
+    except subprocess.CalledProcessError as error:
+        raise RuntimeError(f'Command failed ({error.returncode}): {error.stderr.strip()}') from None
 
 
 def read_syns(path):
@@ -188,7 +191,7 @@ def ssh_command(args, script):
     if args.key:
         command += ['-i', args.key, '-o', 'IdentitiesOnly=yes']
     return command + [args.windows_user + '@' + args.windows_ip,
-                      'powershell.exe -NoProfile -EncodedCommand ' + encoded]
+                      'powershell.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand ' + encoded]
 
 
 def main():
