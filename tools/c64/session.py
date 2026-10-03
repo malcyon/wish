@@ -861,10 +861,20 @@ def _set_reg(mon, memspace: int, reg_id: int, value: int) -> None:
                                                value & 0xFFFF))
 
 
+#: Seconds an `xdotool` call may take before it raises `TimeoutExpired`; a
+#: hung one would otherwise hold `_DIALOG_LOCK` for good.
+XDO_TIMEOUT = 10.0
+
+
 def _xdo(display: str, *args: str) -> str:
     return subprocess.run(["xdotool", *args],
                           env={"DISPLAY": display, "PATH": "/usr/bin:/bin"},
-                          capture_output=True, text=True, check=False).stdout
+                          capture_output=True, text=True, check=False,
+                          timeout=XDO_TIMEOUT).stdout
+
+
+#: Held while one caller looks for a dialog and closes it.
+_DIALOG_LOCK = threading.Lock()
 
 
 def dismiss_error_dialog(display: str, settle: float = 0.5) -> bool:
@@ -890,7 +900,19 @@ def dismiss_error_dialog(display: str, settle: float = 0.5) -> bool:
     return False
 
 
-_DIALOG_LOCK = threading.Lock()
+def launched_silent(env) -> bool:
+    """Whether `launch.sh` starts VICE with sound off under `env`.
+
+    It adds `+sound` when `POR_HEADLESS` is `1`, then `PORFLAGS`, where a later
+    `+sound` or `-sound` wins, as on VICE's own command line.
+    """
+    off = env.get("POR_HEADLESS", "0") == "1"
+    for flag in env.get("PORFLAGS", "").split():
+        if flag == "+sound":
+            off = True
+        elif flag == "-sound":
+            off = False
+    return off
 
 
 def dismiss_dialogs(display: str, stop, interval: float = 1.5,
@@ -904,7 +926,7 @@ def dismiss_dialogs(display: str, stop, interval: float = 1.5,
     while not stop.wait(interval):
         try:
             dismiss_error_dialog(display, settle)
-        except OSError as e:
+        except (OSError, subprocess.SubprocessError) as e:
             Session.log(f"dialog watcher stopped, no dialog will be closed: {e}")
             return
 
@@ -1074,6 +1096,7 @@ class Session:
             # `POR_HEADLESS=0` in the environment still wins.
             extra["POR_HEADLESS"] = os.environ.get("POR_HEADLESS", "1")
         env = instance.launch_env(extra)
+        self.sound_off = launched_silent(env)
         os.makedirs(self.here, exist_ok=True)
         proc = subprocess.Popen(
             [os.path.join(TOOLS, "c64", "launch.sh"), self.disk],
@@ -1269,12 +1292,21 @@ class Session:
     RETRY_SETTLE = 0.7
 
     #: Seconds after an undump within which `restore` looks for VICE's error
-    #: dialog.  Measured on VICE 3.10 with `+sound`: up within a second of the
-    #: machine resuming, every time.
+    #: dialog, when VICE runs with sound off.  Measured on VICE 3.10 with
+    #: `+sound`: up within a second of the machine resuming, every time.
+    #: With sound on there is one look and no wait.
     RESTORE_DIALOG_WAIT = 2.5
 
-    #: Error dialogs `restore` closes before it gives up on the keyboard.
+    #: Seconds `restore` keeps looking after it closes a dialog, for another.
+    RESTORE_DIALOG_QUIET = 1.5
+
+    #: Error dialogs `restore` closes; one more raises.
     RESTORE_DIALOG_MAX = 4
+
+    #: Whether VICE was launched with sound off (`launched_silent`), which is
+    #: when an undump opens the dialog.  True for a session that did not
+    #: launch its emulator, since the pool's launch is silent.
+    sound_off = True
 
     #: A snapshot's path goes on the wire behind a one-byte length.
     SNAPSHOT_PATH_MAX = 255
@@ -1345,8 +1377,10 @@ class Session:
 
         Raises `FileNotFoundError` for a name never saved and `MonitorError`
         if VICE refuses the file.  The machine runs on from the snapshot's
-        instant when this returns, with VICE's error dialog closed
-        (`_close_restore_dialogs`), so keys reach the game again.
+        instant, and has run up to about 3 s past it when this returns (the
+        drive's settling time, and with sound off the look for VICE's error
+        dialog), with that dialog closed (`_close_restore_dialogs`) so keys
+        reach the game again.
 
         **The disk recorded at the snapshot is always attached again**, so the
         drive and its host file agree.  That resets the drive; a load in
@@ -1389,33 +1423,45 @@ class Session:
         initialize SID engine` with `-sounddev dummy` -- about a second after
         the machine resumes.  A modal GTK dialog grabs the keyboard
         (`dismiss_error_dialog`), so until it closes every key the driver
-        sends goes to it and the game sees none.  Looks until
-        `RESTORE_DIALOG_WAIT` seconds after `resumed` and closes each one
-        found; raises `RuntimeError` when one is still coming back after
-        `RESTORE_DIALOG_MAX` closes.
+        sends goes to it and the game sees none.
+
+        With sound off, looks until `RESTORE_DIALOG_WAIT` seconds after
+        `resumed`, and after each close for `RESTORE_DIALOG_QUIET` more; with
+        sound on, looks once.  Closes each dialog found, and raises
+        `RuntimeError` on finding one more after `RESTORE_DIALOG_MAX`.  An
+        `xdotool` that fails is logged and the restore goes on, as the
+        fastloader answer does.
         """
+        def looks_for(seconds: float) -> int:
+            return max(0, math.ceil(seconds / self.DIALOG_SETTLE))
+
         # Counted, not timed, so the looks end however long each one takes.
-        waited = time.monotonic() - resumed
-        looks = 1 + max(0, math.ceil((self.RESTORE_DIALOG_WAIT - waited)
-                                     / self.DIALOG_SETTLE))
+        wait = self.RESTORE_DIALOG_WAIT if self.sound_off else 0.0
+        left = 1 + looks_for(wait - (time.monotonic() - resumed))
         closed = 0
-        while True:
-            looks -= 1
-            if dismiss_error_dialog(str(self.display), self.DIALOG_SETTLE):
-                closed += 1
-                if closed > self.RESTORE_DIALOG_MAX:
+        while left > 0:
+            left -= 1
+            try:
+                found = dismiss_error_dialog(str(self.display),
+                                             self.DIALOG_SETTLE)
+            except (OSError, subprocess.SubprocessError) as e:
+                self.log(f"  could not look for VICE's error dialog after the "
+                         f"restore: {e}")
+                return
+            if found:
+                if closed >= self.RESTORE_DIALOG_MAX:
                     raise RuntimeError(
-                        f"VICE's error dialog came back after each of "
-                        f"{self.RESTORE_DIALOG_MAX} closes following the "
-                        f"restore, so no key would reach the game")
+                        f"VICE opened more than {self.RESTORE_DIALOG_MAX} "
+                        f"error dialogs after the restore, so no key can be "
+                        f"relied on to reach the game")
+                closed += 1
+                left = max(left, looks_for(self.RESTORE_DIALOG_QUIET))
                 continue
-            if closed:
-                self.log(f"  closed {closed} VICE error dialog(s) after the "
-                         f"restore")
-                return
-            if looks <= 0:
-                return
-            time.sleep(self.DIALOG_SETTLE)
+            if left > 0:
+                time.sleep(self.DIALOG_SETTLE)
+        if closed:
+            self.log(f"  closed {closed} VICE error dialog(s) after the "
+                     f"restore")
 
     def walk_with_retry(self, moves: str, retries: int = 3,
                         name: str = "walk-retry", hold=0.15, gap=0.30,

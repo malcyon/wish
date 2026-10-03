@@ -222,6 +222,10 @@ def main(argv=None) -> int:
         missed = shortfall(moved, restores, ok, args.force_restore)
         if missed:
             log.say(f"FAILED: {missed}")
+            try:
+                sess.kbd.screenshot(str(out / "failure.png"))
+            except Exception:
+                pass
             return 1
         log.say("SUCCESS")
         return 0

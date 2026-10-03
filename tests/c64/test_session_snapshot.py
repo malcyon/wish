@@ -116,7 +116,15 @@ class FakeX:
         self.seen_undumps = 0
         self.dialogs = []
         self.returns = []
+        self.searches = 0
+        self.first_return = 0
+        #: Searches after the first Return at which one more dialog opens.
+        self.late = []
         self.next_id = 100
+
+    def _open(self):
+        self.next_id += 1
+        self.dialogs.append(str(self.next_id))
 
     def catch_up(self):
         """Put up the dialogs of every undump since the last look."""
@@ -124,16 +132,20 @@ class FakeX:
         while self.seen_undumps < undumps:
             self.seen_undumps += 1
             for _ in range(self.per_undump):
-                self.next_id += 1
-                self.dialogs.append(str(self.next_id))
+                self._open()
 
     def __call__(self, display, *args):
         self.catch_up()
         if args[0] == "search":
+            self.searches += 1
+            if self.returns and self.searches - self.first_return in self.late:
+                self._open()
             return " ".join(["1"] + self.dialogs)
         if args[0] == "getwindowname":
             return "VICE Error" if args[1] in self.dialogs else "VICE (C64SC)"
         if args[:2] == ("key", "Return"):
+            if not self.returns:
+                self.first_return = self.searches
             self.returns.append(len(self.wire))
             if self.dialogs:
                 self.dialogs.pop()
@@ -206,9 +218,102 @@ def test_a_restore_whose_dialog_keeps_coming_back_raises(tmp_path, monkeypatch):
         x.returns.append(1) or "") if a[:2] == ("key", "Return")
         else x(d, *a))
     s.snapshot("a")
-    with pytest.raises(RuntimeError, match="no key would reach the game"):
+    with pytest.raises(RuntimeError,
+                       match="more than 4 error dialogs after the restore"):
         s.restore("a")
     assert len(x.returns) == S.Session.RESTORE_DIALOG_MAX + 1
+
+
+def test_a_second_dialog_after_the_first_close_is_closed_too(
+        tmp_path, monkeypatch):
+    s = Fake(tmp_path)
+    x = FakeX(s.wire, dialogs_per_undump=1)
+    # Two empty looks, a second of the restore's own pace, after the close.
+    x.late = [3]
+    monkeypatch.setattr(S, "_xdo", x)
+    s.snapshot("a")
+    s.restore("a")
+    assert x.dialogs == [], "the late dialog is still up"
+    assert len(x.returns) == 2
+    assert any("closed 2 VICE error dialog" in line for line in s.lines)
+
+
+def test_restore_keeps_looking_for_the_quiet_period_after_a_close(
+        tmp_path, monkeypatch):
+    s = Fake(tmp_path)
+    x = FakeX(s.wire, dialogs_per_undump=1)
+    monkeypatch.setattr(S, "_xdo", x)
+    s.snapshot("a")
+    s.restore("a")
+    quiet = -(-S.Session.RESTORE_DIALOG_QUIET // S.Session.DIALOG_SETTLE)
+    assert x.searches - x.first_return >= quiet
+
+
+@pytest.mark.parametrize("error", [
+    OSError("xdotool: not found"),
+    S.subprocess.TimeoutExpired(["xdotool"], 10.0),
+])
+def test_a_failing_xdotool_after_the_undump_is_logged_and_the_restore_ends(
+        tmp_path, monkeypatch, error):
+    s = Fake(tmp_path)
+    s.snapshot("a")
+
+    def broken(display, *args):
+        raise error
+
+    monkeypatch.setattr(S, "_xdo", broken)
+    s.restore("a")
+    assert any("could not look for VICE's error dialog" in line
+               for line in s.lines)
+    assert s.lines[-1].strip() == "restored a"
+
+
+def test_with_sound_on_restore_looks_once_and_does_not_wait(
+        tmp_path, monkeypatch):
+    s = Fake(tmp_path)
+    s.sound_off = False
+    x = FakeX(s.wire, dialogs_per_undump=0)
+    monkeypatch.setattr(S, "_xdo", x)
+    s.snapshot("a")
+    SLEPT.clear()
+    s.restore("a")
+    assert x.searches == 1
+    # The one half second is `attach` draining the text monitor.
+    assert SLEPT.count(S.Session.DIALOG_SETTLE) == 1
+
+
+def test_with_sound_off_restore_looks_for_the_whole_wait(tmp_path, monkeypatch):
+    s = Fake(tmp_path)
+    x = FakeX(s.wire, dialogs_per_undump=0)
+    monkeypatch.setattr(S, "_xdo", x)
+    s.snapshot("a")
+    s.restore("a")
+    assert x.searches >= S.Session.RESTORE_DIALOG_WAIT / S.Session.DIALOG_SETTLE
+
+
+@pytest.mark.parametrize("env, off", [
+    ({"POR_HEADLESS": "1"}, True),
+    ({"POR_HEADLESS": "0"}, False),
+    ({}, False),
+    ({"POR_HEADLESS": "1", "PORFLAGS": "-sound"}, False),
+    ({"POR_HEADLESS": "0", "PORFLAGS": "-warp +sound"}, True),
+    ({"POR_HEADLESS": "1", "PORFLAGS": "-sound +sound"}, True),
+])
+def test_launched_silent_reads_the_launch_as_launch_sh_does(env, off):
+    assert S.launched_silent(env) is off
+
+
+def test_xdotool_is_run_with_a_timeout(monkeypatch):
+    seen = {}
+
+    def run(cmd, **kw):
+        seen.update(kw)
+        return S.subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.undo()  # the real `_xdo`, not the autouse stand-in
+    monkeypatch.setattr(S.subprocess, "run", run)
+    S._xdo(":99", "search", "--name", ".")
+    assert seen.get("timeout") == S.XDO_TIMEOUT
 
 
 def test_the_retried_leg_is_walked_with_the_dialog_closed(tmp_path, monkeypatch):

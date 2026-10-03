@@ -98,7 +98,11 @@ def test_the_force_restore_option_is_off_by_default():
 
 
 class _Kbd:
+    def __init__(self):
+        self.shots = []
+
     def screenshot(self, path, **kw):
+        self.shots.append(path.rsplit("/", 1)[-1])
         return True
 
 
@@ -162,7 +166,9 @@ def _run_main(monkeypatch, tmp_path, *, resaved, moved=True, restores=1,
     out = tmp_path / "out"
     argv = ["--disks", str(tmp_path), "--produced", str(tmp_path / "p.D64"),
             "--out", str(out)] + (["--force-restore"] if force else [])
-    return w.main(argv), out
+    code = w.main(argv)
+    _run_main.shots = sess.kbd.shots
+    return code, out
 
 
 def test_a_resave_that_wrote_nothing_fails_the_run_and_says_so(
@@ -173,6 +179,7 @@ def test_a_resave_that_wrote_nothing_fails_the_run_and_says_so(
     assert "FAILED: ENCAMP > SAVE did not write the party back." in printed
     assert "SUCCESS" not in printed
     assert '"resave_ok": false' in (out / "summary.json").read_text()
+    assert _run_main.shots[-1] == "failure.png"
 
 
 def test_a_walk_that_did_not_move_the_party_fails_the_run(
@@ -194,6 +201,7 @@ def test_a_run_that_walked_restored_and_resaved_succeeds(
     code, _ = _run_main(monkeypatch, tmp_path, resaved=True)
     assert code == 0
     assert "SUCCESS" in capsys.readouterr().out
+    assert "failure.png" not in _run_main.shots
 
 
 def test_an_unforced_run_needs_no_restore(monkeypatch, tmp_path):
