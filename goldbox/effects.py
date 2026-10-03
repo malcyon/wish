@@ -2056,8 +2056,9 @@ def later_strength_items(title_key: str,
     found = []
     for item in list(inventory)[:_STRENGTH_ITEM_SLOTS]:
         item = bytes(item)
-        if len(item) >= 16 and item[0] and item[6] & _ITEM_READIED \
-                and item[15] in powers:
+        # The C64 scan tests the readied bit and the power byte only
+        # (`ECL65 $9769`-`$9790`), so a type-0 record is not skipped.
+        if len(item) >= 16 and item[6] & _ITEM_READIED and item[15] in powers:
             found.append(item)
     return found
 

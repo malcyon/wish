@@ -2699,9 +2699,10 @@ def test_curse_lowers_the_score_to_three_for_the_cap_item():
 def test_the_readied_strength_items_keep_the_inventory_order():
     girdle, plus, idle = _item(0x85, 1), _item(0x88), _item(0x85, 2, readied=False)
     other = _item(0x10)
+    typeless = _item(0x85, 5, kind=0)
     got = effects.later_strength_items(
-        _C, [girdle, other, idle, _item(0x85, kind=0), plus])
-    assert got == [girdle, plus]
+        _C, [girdle, other, idle, typeless, plus])
+    assert got == [girdle, typeless, plus]
     assert effects.later_strength_items(
         _C, [bytes(16)] * 16 + [girdle]) == []
 

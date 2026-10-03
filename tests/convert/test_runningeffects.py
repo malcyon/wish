@@ -3988,6 +3988,24 @@ def test_a_readied_girdle_beside_strength_gives_the_table_entry(
     assert _c64_strength(char)[0] == want
 
 
+def test_the_girdle_in_the_highest_c64_slot_wins():
+    """The C64 scan counts slots down from 15 and takes the first readied
+    match. The neutral list is in screen order, so its first item lands in the
+    highest slot: here slot 9 holds the girdle of low bits 3 and slot 3 the one
+    of low bits 0."""
+    game = c64_port.CURSE_OF_THE_AZURE_BONDS
+    char = _strength_character("DOS", game, 1, (10, 0), (11, 0),
+                               {"cleric": 5})
+    filler = bytes((2,) + (0,) * 15)
+    char.set("inventory", [_girdle(3, 0x85)] + [filler] * 5
+             + [_girdle(0, 0x85)] + [filler] * 3, "built here")
+    rec, _rep = c64_codec.write(char, payload=bytearray(0x1C00),
+                                party_slot=2, clock_minutes=0)
+    raw = rec.get_raw("inventory")
+    assert raw[9 * 16 + 14] == 3 and raw[3 * 16 + 14] == 0
+    assert (rec.get("strength"), rec.get("exceptional_strength")) == (21, 0)
+
+
 @pytest.mark.parametrize("key", [_CURSE_KEY, _SSB_KEY])
 @pytest.mark.parametrize("extra, c64, want", [
     ((("enlarge", 3),), (18, 70), (18, 51)),
