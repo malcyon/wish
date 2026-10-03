@@ -369,3 +369,39 @@ def test_a_title_whose_offsets_were_never_read_live_needs_the_opt_in_and_the_sav
 
 def test_suppressed_pool_is_the_ordinary_driver():
     assert issubclass(N.SuppressedPool, dosbox.PoolOfRadiance)
+
+
+class BarScreen:
+    def __init__(self, ink):
+        self._ink = ink
+
+    def ink(self, rect):
+        return self._ink
+
+
+def answering(monkeypatch, frames):
+    """`pool_answer` after a `PRESS RETURN`, with `frames` the `(ink, bar kind)`
+    of each capture that follows the key."""
+    from tools.dos import dosfightwatch as fw
+
+    keys = []
+    por = dosbox.PoolOfRadiance.__new__(dosbox.PoolOfRadiance)
+    por.s = type("S", (), {"key": lambda self, k: keys.append(k)})()
+    por.world_bar = "map"
+    queue = iter(frames)
+    monkeypatch.setattr(fw, "_await_bar", lambda por, patience: ("press_return", True))
+    monkeypatch.setattr(fw, "_grab", lambda por: (lambda f: (BarScreen(f[0]), f[1]))(
+        next(queue, ("gone", None))))
+    monkeypatch.setattr(N.time, "sleep", lambda s: None)
+    return por, keys
+
+
+def test_a_combat_bar_after_press_return_is_a_fight_and_stops_the_walk(monkeypatch):
+    por, keys = answering(monkeypatch, [("blank", None), ("fight", "command")])
+    assert N.pool_answer(por) == ("met", "fight")
+    assert keys == ["Return"]
+
+
+def test_the_map_after_press_return_is_cleared(monkeypatch):
+    por, keys = answering(monkeypatch, [("map", None)])
+    assert N.pool_answer(por) == ("cleared", "press_return")

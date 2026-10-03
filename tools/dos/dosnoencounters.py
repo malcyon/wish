@@ -482,8 +482,9 @@ class SuppressedPool(dosbox.PoolOfRadiance):
 
 def pool_answer(por: dosbox.PoolOfRadiance) -> tuple[str, str | None]:
     """Pool of Radiance's bars after a move that did not come back: `met` at
-    an encounter's, `cleared` after answering a locked door or a `YES NO`, and
-    `stuck` at anything else."""
+    an encounter's or, after answering a `PRESS RETURN`, a combat bar's,
+    `cleared` after answering a locked door or a `YES NO`, and `stuck` at
+    anything else."""
     from tools.dos import dosfightwatch as fw
 
     kind, resolved = fw._await_bar(por, 90.0)
@@ -495,9 +496,18 @@ def pool_answer(por: dosbox.PoolOfRadiance) -> tuple[str, str | None]:
     if key is None:
         return "stuck", kind
     por.s.key(key)
-    if not por.s.wait_until_ink(dosbox.BAR, por.world_bar or "", timeout=20.0):
-        return "stuck", kind
-    return "cleared", kind
+    # A `PRESS RETURN` that opens a fight leads to its command bar, not to the
+    # map: a combat bar after the key is a fight, and the walk stops there.
+    deadline = time.time() + 20.0
+    while time.time() < deadline:
+        screen, bar = fw._grab(por)
+        if screen is not None:
+            if screen.ink(dosbox.BAR) == (por.world_bar or ""):
+                return "cleared", kind
+            if bar in fw.FIGHT_BARS:
+                return "met", "fight"
+        time.sleep(0.25)
+    return "stuck", kind
 
 
 def later_load(por: dosbox.PoolOfRadiance, letter: str) -> None:

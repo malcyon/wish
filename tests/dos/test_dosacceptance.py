@@ -10704,3 +10704,102 @@ def test_a_snapshot_run_boots_snapshot_session_and_records_each_step(monkeypatch
     summary = json.loads((tmp_path / "out" / "summary.json").read_text())
     assert [r["step"] for r in summary["results"]] == ["load", "snapshot s", "restore s"]
     assert summary["results"][2]["changed_saves"] == ["SAVGAMD.DAT"]
+
+
+# -- --no-encounters ---------------------------------------------------------
+
+class FakeEncounters:
+    """Stands in for `dosnoencounters.NoEncounters`, logging into `events`."""
+
+    def __init__(self, events, blocked=False):
+        self.events, self.blocked = events, blocked
+
+    def before_move(self):
+        self.events.append("before_move")
+        return []
+
+    def check_save(self):
+        self.events.append("check_save")
+        if self.blocked:
+            raise da.dosnoencounters.SaveBlocked("no_encounters is on")
+
+
+def _walker_with_moves(tmp_path, monkeypatch, encounters=None):
+    """A Pool map walker over the real `PoolOfRadiance.move`, replaced by a
+    function that logs the key into `encounters.events` and moves the map."""
+    events = [] if encounters is None else encounters.events
+    game = PoolMap(tmp_path)
+
+    def move(self, key, timeout=20.0):
+        events.append(key)
+        if key == "Up":
+            game.x += 1
+        else:
+            game.facing = (game.facing + 1) % 4
+        return True
+
+    monkeypatch.setattr(dosbox.PoolOfRadiance, "move", move)
+    d = da.Driver(game, lambda **k: None, "A", "pool", encounters=encounters)
+    d.where = "map"
+    d.world_ink = game.capture().ink(dosbox.BAR)
+    d.world_sig = screens.bar_signature(game.capture())
+    return events, d
+
+
+def test_no_encounters_calls_before_move_before_every_move_key_of_a_walk(tmp_path, monkeypatch):
+    events: list = []
+    events, d = _walker_with_moves(tmp_path, monkeypatch, FakeEncounters(events))
+    d.walk("MI")
+    assert events == ["before_move", "Right", "before_move", "Right",
+                      "before_move", "Up"]
+
+
+def test_without_the_flag_no_encounter_call_is_made(tmp_path, monkeypatch):
+    events, d = _walker_with_moves(tmp_path, monkeypatch)
+    d.walk("MI")
+    assert events == ["Right", "Right", "Up"]
+    assert type(d.game) is dosbox.PoolOfRadiance
+
+
+@pytest.mark.usefixtures("pool_map_measured")
+def test_save_stops_the_run_while_the_switch_is_on_and_presses_nothing(tmp_path):
+    events: list = []
+    game = FakePool(tmp_path, keys=TITLE_KEYS["pool"])
+    d = da.Driver(game, lambda **k: None, "A", "pool",
+                  encounters=FakeEncounters(events, blocked=True))
+    d.camp()
+    pressed = list(game.keys)
+    with pytest.raises(da.StepFailed, match="save stopped: no_encounters is on"):
+        d.save("D")
+    assert events == ["check_save"] and game.keys == pressed
+    assert not (game.save_dir / "SAVGAMD.DAT").exists()
+
+
+def test_the_flag_goes_with_a_title_that_has_a_switch_and_into_the_summary(
+        monkeypatch, tmp_path):
+    import json
+    for bad in (["--no-encounters", "--title", "darkness"],
+                ["--speculative-encounters"]):
+        with pytest.raises(SystemExit):
+            da.main(["--save", ".", "--steps", "load", *bad])
+
+    made = []
+
+    class Switch:
+        def __init__(self, session, title, save=None, log=None, speculative=False):
+            made.append((title, save, speculative))
+
+        def on(self):
+            made.append("on")
+
+    log = _fake_run(monkeypatch, tmp_path, menu_error=TimeoutError("no menu"))
+    monkeypatch.setattr(da.dosnoencounters, "NoEncounters", Switch)
+    monkeypatch.setattr(da.dosboxx, "claim", dosbox.claim)
+    monkeypatch.setattr(da.dosboxx, "XSession",
+                        lambda slot, game: _Session(tmp_path, log))
+    args = _run_args(tmp_path, ["load"])
+    args.no_encounters, args.speculative_encounters = True, False
+    assert da.run(args) == 1
+    assert made == [("pool-of-radiance", None, False), "on"]
+    summary = json.loads((tmp_path / "out" / "summary.json").read_text())
+    assert summary["no_encounters"] is True

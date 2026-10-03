@@ -95,6 +95,15 @@ walk or turn, camp save, items); the rest menu has not been reached and
 stays PROBABLE.  A screen that does not answer its key stops the run with a
 `lost-*.png`.
 
+**`--no-encounters` is for driver and automapper testing, never for a run that
+proves a conversion.**  It boots DOSBox-X and, through
+`dosnoencounters.NoEncounters`, writes the running area's encounter gate before
+every move key of a `walk`, `turn` or `fight`; the gates are saved variables, so
+a `save` step stops the run while the switch is on.  `--speculative-encounters`
+allows Silver Blades, whose offsets were not read in a running game.
+`summary.json` records `no_encounters: true`.  Without the flag random
+encounters stay on and nothing is written.
+
 **The load route is read from the code.**  `LOAD SAVED GAME` (`GAME.OVR`
 0x12887) asks `load from where?` over `Pools Secret Exit`: `Pools` is this
 title's own `SAVGAM<L>.PTY`, `Secret` a Silver Blades save, `Exit` backs out.
@@ -221,6 +230,7 @@ from tools.dos import (  # noqa: E402
     dosbox,
     dosboxx,
     dosfightwatch,
+    dosnoencounters,
     dospod,
     dossnapshot,
     route_silver_blades,
@@ -1806,6 +1816,12 @@ TITLES = {
                       exe="START.BAT", suffix=".PTY"),
 }
 
+#: The `dosnoencounters` title each `--no-encounters` run names; Pools of
+#: Darkness has no switch.
+NO_ENCOUNTER_TITLES = {"pool": dosnoencounters.POOL,
+                       "curse": dosnoencounters.CURSE,
+                       "ssb": dosnoencounters.SILVER}
+
 #: The C64 party `--fixture-row` stages into for each later title: an
 #: engine-written save in `$WISH_SPECIMENS/por-c64/` (`docs/235` §4).  Pool
 #: of Radiance uses the committed fixture party instead.
@@ -3010,8 +3026,11 @@ class Driver:
     """
 
     def __init__(self, session, note, slot: str, title: str = "pool",
-                 party_size: int = 6, deadline: Deadline | None = None):
+                 party_size: int = 6, deadline: Deadline | None = None,
+                 encounters: dosnoencounters.NoEncounters | None = None):
         self.s = session
+        #: The `--no-encounters` switch, or None: random encounters stay on.
+        self.encounters = encounters
         #: The run's route window, or None: nothing then limits a wait.
         self.deadline = deadline
         #: Why the last failure capture failed, or None.
@@ -3020,7 +3039,9 @@ class Driver:
         self.slot = slot
         self.title = TITLES[title]
         self.keys = self.title.rest_keys()
-        self.game = dosbox.PoolOfRadiance(session)
+        self.game = (dosnoencounters.SuppressedPool(session, encounters)
+                     if encounters is not None
+                     else dosbox.PoolOfRadiance(session))
         self.camp_sig: str | None = None
         self.world_ink: str | None = None
         self.world_sig: str | None = None
@@ -6119,6 +6140,11 @@ class Driver:
             raise StepFailed(f"{verb} needs DOSBox-X: DOSBox 0.74 has no save states")
 
     def save(self, letter: str) -> dict:
+        if self.encounters is not None:
+            try:
+                self.encounters.check_save()
+            except dosnoencounters.SaveBlocked as e:
+                raise StepFailed(f"save stopped: {e}") from e
         if self.where == "party":
             return self.party_save(letter)
         if self.camp_sig is None:
@@ -6351,6 +6377,9 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
     expects = [parse_expect(e) for e in args.expect]
     summary: dict = {"title": args.title, "slot": args.slot.upper(),
                      "steps": args.steps, **git, "completed": False}
+    no_encounters = bool(getattr(args, "no_encounters", False))
+    if no_encounters:
+        summary["no_encounters"] = True
     note(event="start", out=str(out), **summary)
 
     def write_summary():
@@ -6421,7 +6450,8 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
         # A `fight` reads the combatants through the debugger, so its run
         # boots DOSBox-X from that pool, whose captures `XSession` halves back
         # to DOSBox 0.74's 320x200.
-        debugger = any(s.kind in ("fight", "prayer-watch") for s in steps)
+        debugger = (any(s.kind in ("fight", "prayer-watch") for s in steps)
+                    or no_encounters)
         # `snapshot` and `restore` are DOSBox-X save states, so such a run boots
         # `SnapshotSession` too.
         snapshots = any(s.kind in ("snapshot", "restore") for s in steps)
@@ -6486,8 +6516,20 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
             note(event="staged", **took, stages=staged)
             session.boot(fresh=False)
             size = sum(1 for f in took.get("files", []) if f.endswith(".SAV")) or 6
+            encounters = None
+            if no_encounters:
+                installed_save = (session.save_dir
+                                  / f"SAVGAM{letter}{title.suffix}")
+                encounters = dosnoencounters.NoEncounters(
+                    session, NO_ENCOUNTER_TITLES[args.title],
+                    installed_save.read_bytes() if installed_save.is_file()
+                    else None,
+                    log=lambda line: note(event="no-encounters", note=line),
+                    speculative=bool(getattr(args, "speculative_encounters",
+                                             False)))
+                encounters.on()
             d = Driver(session, note, letter, args.title, party_size=size,
-                       deadline=deadline)
+                       deadline=deadline, encounters=encounters)
             if getattr(args, "first_bar_key", None) is not None:
                 d.first_bar_key = parse_key(args.first_bar_key)
             d.intervene = bool(getattr(args, "intervene", False))
@@ -7048,6 +7090,14 @@ def main(argv: list[str] | None = None) -> int:
                          "first bar without one), which kills the monsters and "
                          "ends the fight in the party's favour (ssb, with a "
                          "fight step)")
+    ap.add_argument("--no-encounters", action="store_true",
+                    help="write the running area's encounter gate through the "
+                         "DOSBox-X debugger before every move key, and stop "
+                         "any save step; for driver and automapper testing, "
+                         "never for a run that proves a conversion")
+    ap.add_argument("--speculative-encounters", action="store_true",
+                    help="with --no-encounters, use Silver Blades' data-segment "
+                         "offsets, which were not read in a running game")
     ap.add_argument("--expect", action="append", default=[],
                     metavar="NAME:ID:MINUTES[:DATA]",
                     help="a node the last saved slot must hold (repeatable)")
@@ -7106,6 +7156,12 @@ def main(argv: list[str] | None = None) -> int:
             if not any(parse_step(s).kind == "fight" for s in getattr(args, "steps", [])):
                 raise ValueError("--first-bar-key is pressed in a fight: add a "
                                  "fight step")
+        if args.speculative_encounters and not args.no_encounters:
+            raise ValueError("--speculative-encounters goes with --no-encounters")
+        if args.no_encounters and args.title not in NO_ENCOUNTER_TITLES:
+            raise ValueError(f"--no-encounters is for "
+                             f"{', '.join(sorted(NO_ENCOUNTER_TITLES))} only, "
+                             f"not {args.title}")
         if args.intervene:
             if args.title not in CHEAT_ARGS:
                 raise ValueError(f"--intervene is measured for "
