@@ -59,6 +59,11 @@ CURSE_EXCEPTIONS = {
     # folds in as in `CHRDATJ1.SAV` above; his THAC0 byte is unchanged. The
     # staged memorised spell and the Strength node on MARK do not touch it.
     "WISH-SPEC-curse-wish8-strength-leftover-dos-resave/CHRDATA1.SAV": 16,
+    # DOS Curse's resave of the foundation-walked slot D, after two Strength
+    # casts on SHARA in camp. Slot 2 is MARK, whose former paladin level 5
+    # folds in as in the foundation-walked `CHRDATD2.SAV` above; his record
+    # differs from that one only in the effect-chain and heap pointers.
+    "WISH-SPEC-curse-wish8-strength-twice-dos-resave/CHRDATD2.SAV": 16,
 }
 
 
