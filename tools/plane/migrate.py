@@ -221,6 +221,11 @@ class Ledger:
             CREATE TABLE IF NOT EXISTS destinations (
                 plane_id TEXT PRIMARY KEY, record TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS body_overrides (
+                source_key TEXT PRIMARY KEY, source_body_digest TEXT NOT NULL,
+                editor_id TEXT NOT NULL, plane_id TEXT NOT NULL,
+                markdown TEXT NOT NULL, readback TEXT NOT NULL, captured_at TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS outcomes (
                 source_key TEXT NOT NULL, kind TEXT NOT NULL,
                 detail TEXT NOT NULL, status TEXT NOT NULL,
@@ -288,6 +293,74 @@ class Ledger:
             (key, kind, json.dumps(source), expected[0], author_id, trusted,
              json.dumps(payload), expected[1], parent, source.get("created_at"), source.get("updated_at")),
         )
+
+    def issue_body(self, key: str, source: dict) -> str:
+        """Preserve a confirmed Plane edit until an overlapping source change is resolved."""
+        body = source.get("body") or ""
+        override = self.db.execute(
+            "SELECT source_body_digest,markdown FROM body_overrides WHERE source_key=?", (key,)
+        ).fetchone()
+        if override is None:
+            return body
+        if override[0] != digest(body):
+            raise MigrationError("GitHub body changed after a preserved Plane edit; manual reconciliation required")
+        return override[1]
+
+    def preserve_body_edit(self, key: str, readback: dict, settings, apply: bool = True):
+        """Confirm one imported issue while preserving its trusted editor's current Markdown."""
+        from tools.plane.client import HTMLContent, confirm_changes
+        from tools.plane.policy import uuid
+
+        row = self.db.execute(
+            "SELECT source,payload,source_digest,author_id,trusted,status,plane_id,kind FROM objects WHERE source_key=?",
+            (key,),
+        ).fetchone()
+        if row is None or row[7] != "issue" or row[5] not in {"pending", "complete"}:
+            raise MigrationError("Body edit recovery requires a pending or confirmed imported issue")
+        creator = readback.get("created_by")
+        creator = creator.get("id") if isinstance(creator, dict) else creator
+        editor = readback.get("updated_by")
+        editor = editor.get("id") if isinstance(editor, dict) else editor
+        plane_id = uuid(readback.get("id"))
+        if (self.project_id != settings.project or readback.get("project") != settings.project
+                or creator not in settings.importers or editor not in settings.trusted
+                or editor in settings.importers or row[6] not in {None, plane_id}):
+            raise MigrationError("Body edit recovery requires the expected project, importer and trusted editor")
+        payload = json.loads(row[1])
+        confirm_changes(readback, {field: value for field, value in payload.items() if field != "description_html"})
+        current = readback.get("description_html")
+        if not isinstance(current, str):
+            raise MigrationError("Body edit recovery requires a confirmed HTML description")
+        events = HTMLContent(current).events
+        structure = [(event[0], event[1]) if event[0] != "data" else ("data",) for event in events]
+        direct = [("start", "pre"), ("data",), ("end", "pre")]
+        code = [("start", "pre"), ("start", "code"), ("data",), ("end", "code"), ("end", "pre")]
+        empty_paragraph = [("start", "p"), ("end", "p")]
+        if structure not in (direct, code, direct + empty_paragraph, code + empty_paragraph):
+            raise MigrationError("Body edit recovery only accepts literal Markdown in the existing code block")
+        markdown = next(event[1] for event in events if event[0] == "data")
+        source = json.loads(row[0])
+        expected = (digest(source.get("body") or ""), uuid(editor), plane_id, markdown, json.dumps(readback, sort_keys=True))
+        previous = self.db.execute(
+            "SELECT source_body_digest,editor_id,plane_id,markdown,readback FROM body_overrides WHERE source_key=?", (key,)
+        ).fetchone()
+        if previous is not None:
+            if previous != expected:
+                raise MigrationError("A different preserved Plane edit already exists")
+            return
+        if not apply:
+            return
+        captured = datetime.now(UTC).isoformat()
+        with self.db:
+            self.db.execute("INSERT INTO body_overrides VALUES (?,?,?,?,?,?,?)", (key, *expected, captured))
+            self.db.execute("INSERT INTO revisions (source_key,source,payload,source_digest,author_id,trusted,captured_at) VALUES (?,?,?,?,?,?,?)",
+                            (key, *row[:5], captured))
+            payload["description_html"] = current
+            self.db.execute("INSERT INTO destinations VALUES (?,?) ON CONFLICT(plane_id) DO UPDATE SET record=excluded.record",
+                            (plane_id, json.dumps(readback)))
+            self.db.execute("UPDATE objects SET status='complete',plane_id=?,payload=?,payload_digest=? WHERE source_key=?",
+                            (plane_id, json.dumps(payload), digest(payload), key))
+        self.write_provenance()
 
     def provenance(self, plane_id: str) -> dict | None:
         row = self.db.execute(
@@ -431,7 +504,7 @@ def prepare(snapshot: dict, ledger: Ledger, trusted_ids: frozenset[str],
             if state_key not in states:
                 raise MigrationError("Explicit destination state mapping is missing")
             key = f"github:{repository}:issue:{issue['id']}"
-            body = issue.get("body") or ""
+            body = ledger.issue_body(key, issue)
             payload = {"name": issue["title"], "description_html": render_markdown(body),
                        "priority": priority, "state": states[state_key]}
             payload["labels"] = [labels_map[name] for name in labels if name.casefold() not in EXCLUDED_LABELS]

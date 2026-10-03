@@ -667,3 +667,74 @@ def test_markdown_source_html_and_unsafe_links_are_not_executable():
     assert "<script" not in rendered and "<img" not in rendered
     assert 'href="javascript:' not in rendered
     assert "&lt;script&gt;" in rendered and "&lt;img" in rendered
+
+
+@pytest.fixture
+def edited_issue(ledger):
+    from types import SimpleNamespace
+
+    source = snapshot()
+    state = "00000000-0000-0000-0000-000000000020"
+    labels = {"Priority: High": "00000000-0000-0000-0000-000000000021", "question": "00000000-0000-0000-0000-000000000022"}
+    prepare(source, ledger, frozenset({"42"}), {3}, {"open": state}, labels)
+    key, raw, payload = ledger.db.execute("SELECT source_key,source,payload FROM objects WHERE kind='issue'").fetchone()
+    settings = SimpleNamespace(project=ledger.project_id, importers={"00000000-0000-0000-0000-000000000011"},
+                               trusted={"00000000-0000-0000-0000-000000000012"})
+    readback = {**json.loads(payload), "id": "00000000-0000-0000-0000-000000000010", "project": ledger.project_id,
+                "created_by": next(iter(settings.importers)), "updated_by": next(iter(settings.trusted)),
+                "description_html": "<pre><code>Original evidence `edited`</code></pre><p></p>"}
+    with ledger.db:
+        ledger.db.execute("UPDATE objects SET status='pending' WHERE source_key=?", (key,))
+    return source, state, labels, key, raw, settings, readback
+
+
+def test_trusted_plane_body_edit_preserves_source_and_renders_current_markdown(ledger, edited_issue):
+    from tools.plane.migrate import render_markdown
+
+    source, state, labels, key, raw, settings, readback = edited_issue
+    ledger.preserve_body_edit(key, readback, settings)
+    ledger.preserve_body_edit(key, readback, settings)
+    assert ledger.db.execute("SELECT source FROM objects WHERE source_key=?", (key,)).fetchone()[0] == raw
+    assert ledger.db.execute("SELECT count(*) FROM body_overrides").fetchone()[0] == 1
+    source["records"][0]["issue"]["updated_at"] = "2026-02-01T00:00:00Z"
+    prepare(source, ledger, frozenset({"42"}), {3}, {"open": state}, labels, reconcile=True)
+    payload, status, identifier = ledger.db.execute("SELECT payload,status,plane_id FROM objects WHERE source_key=?", (key,)).fetchone()
+    assert json.loads(payload)["description_html"] == render_markdown("Original evidence `edited`")
+    assert status == "planned_update" and identifier == readback["id"]
+    assert ledger.db.execute("SELECT author_id,trusted FROM objects WHERE source_key=?", (key,)).fetchone() == ("99", 0)
+    assert json.loads(ledger.db.execute("SELECT source FROM objects WHERE source_key=?", (key,)).fetchone()[0])["body"] == "Original evidence"
+
+
+def test_changed_github_body_conflicts_with_preserved_plane_edit(ledger, edited_issue):
+    source, state, labels, key, raw, settings, readback = edited_issue
+    ledger.preserve_body_edit(key, readback, settings)
+    source["records"][0]["issue"]["body"] = "A later GitHub edit"
+    with pytest.raises(MigrationError, match="GitHub body changed"):
+        prepare(source, ledger, frozenset({"42"}), {3}, {"open": state}, labels, reconcile=True)
+    assert ledger.db.execute("SELECT source FROM objects WHERE source_key=?", (key,)).fetchone()[0] == raw
+    assert ledger.db.execute("SELECT markdown FROM body_overrides WHERE source_key=?", (key,)).fetchone()[0] == "Original evidence `edited`"
+
+
+@pytest.mark.parametrize("change", ["editor", "metadata", "rendered_body"])
+def test_body_edit_recovery_rejects_untrusted_or_ambiguous_changes(ledger, edited_issue, change):
+    source, state, labels, key, raw, settings, readback = edited_issue
+    if change == "editor":
+        readback["updated_by"] = "00000000-0000-0000-0000-000000000099"
+    elif change == "metadata":
+        readback["name"] = "Independent title edit"
+    else:
+        readback["description_html"] = "<p>Rendered text cannot recover its original Markdown</p>"
+    from tools.plane.policy import PlaneError
+
+    with pytest.raises((MigrationError, PlaneError)):
+        ledger.preserve_body_edit(key, readback, settings)
+    assert ledger.db.execute("SELECT count(*) FROM body_overrides").fetchone()[0] == 0
+    assert ledger.db.execute("SELECT status FROM objects WHERE source_key=?", (key,)).fetchone()[0] == "pending"
+
+
+def test_body_edit_verification_does_not_modify_issue_state(ledger, edited_issue):
+    source, state, labels, key, raw, settings, readback = edited_issue
+    ledger.preserve_body_edit(key, readback, settings, apply=False)
+    assert ledger.db.execute("SELECT status FROM objects WHERE source_key=?", (key,)).fetchone()[0] == "pending"
+    assert ledger.db.execute("SELECT count(*) FROM body_overrides").fetchone()[0] == 0
+    assert ledger.db.execute("SELECT count(*) FROM destinations").fetchone()[0] == 0

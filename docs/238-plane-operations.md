@@ -182,6 +182,16 @@ before rerunning with `--reconcile-delta` to change its rendering in place;
 never repost a pending write. Explicit delta reconciliation retains previous
 payloads and rechecks old destination content before updating it.
 
+
+A trusted Plane edit to the first imported issue is preserved separately in
+`body_overrides`: current Markdown, editor UUID, destination UUID, confirmed
+readback and the digest of the original GitHub body. The original GitHub source
+and author are not rewritten. Recovery accepts only the known literal-Markdown
+code block and unchanged issue metadata, then records the actual destination
+before delta rendering updates it in place. Later GitHub metadata changes may
+be reconciled while that original body is unchanged; an overlapping GitHub
+body change stops for manual resolution instead of replacing the Plane edit.
+
 The current service host cannot resolve `plane.morton.lan`. Its private import
 runner uses an exact-host resolver for that name to `192.168.1.182`, preserving
 the configured origin and HTTP Host header. This exception is recorded in
