@@ -204,7 +204,8 @@ def _best(table: dict[str, list[int]], class_levels) -> int | None:
     return best
 
 
-def dos_engine_thac0(rows: dict[str, list[int]], class_levels) -> int | None:
+def dos_engine_thac0(rows: dict[str, list[int]], class_levels,
+                     former_levels=None) -> int | None:
     """What the DOS engine's own recompute leaves in `thac0_base`, as THAC0.
 
     `rows` is `dos_rows`, entry 0 included.  The loop the engine runs when it
@@ -219,6 +220,14 @@ def dos_engine_thac0(rows: dict[str, list[int]], class_levels) -> int | None:
     other loop, the one a class change runs, does test the level first and
     writes the table's own number; nothing on this machine holds what it
     leaves.
+
+    `former_levels` is the record's `former_class_levels` by class name.  A
+    former class whose level is non-zero and strictly below the highest
+    current level has been regained, and the engine then improves the byte from
+    that class's row at the former level when the row beats it --
+    `docs/209-the-regained-dual-class-on-dos.md`, "And the rest of the regained
+    class comes from the former array too".  A former level at or above the
+    current one changes nothing.
     """
     held = {name: int(level or 0) for name, level in dict(class_levels or {}).items()}
     best = None
@@ -226,6 +235,13 @@ def dos_engine_thac0(rows: dict[str, list[int]], class_levels) -> int | None:
         if not row:
             continue
         got = row[max(0, min(held.get(name, 0), len(row) - 1))]
+        best = got if best is None else min(best, got)
+    level = max(held.values(), default=0)
+    for name, old in dict(former_levels or {}).items():
+        row = rows.get(name)
+        if not row or not 0 < int(old or 0) < level:
+            continue
+        got = row[min(int(old), len(row) - 1)]
         best = got if best is None else min(best, got)
     return best
 
@@ -291,8 +307,12 @@ DOS_TITLE_BY_KEY = {"pool-of-radiance": "pool-of-radiance",
                     "secret-of-the-silver-blades": "secret-of-the-silver-blades"}
 
 
-def dos_records(title: str = "pool-of-radiance", extra: list[str] = ()):
+def dos_records(title: str = "pool-of-radiance", extra: list[str] = (),
+                former: bool = False):
     """`(source, name, class levels, stored THAC0)` for every DOS record.
+
+    With `former` each tuple gains a fifth member, the class levels of
+    `former_class_levels` by name, empty where the title has no such array.
 
     The specimen tree, the player's DOS game folder, the archives, and any
     `--extra` directory.  Records of another title are skipped, so one sweep
@@ -330,8 +350,15 @@ def dos_records(title: str = "pool-of-radiance", extra: list[str] = ()):
                 for slot, name, _ in dos_codec.CLASS_LEVEL_SLOTS
                 if slot < len(raw) and raw[slot]}
         parent = pathlib.Path(path).parent.name
-        yield (f"{parent}/{pathlib.Path(path).name}", char.name,
+        out = (f"{parent}/{pathlib.Path(path).name}", char.name,
                held, 60 - char.get("thac0_base"))
+        if former:
+            old = (char.raw("former_class_levels")
+                   if "former_class_levels" in char.fields else b"")
+            out += ({name: old[slot]
+                     for slot, name, _ in dos_codec.CLASS_LEVEL_SLOTS
+                     if slot < len(old) and old[slot]},)
+        yield out
 
 
 # ---------------------------------------------------------------------------
@@ -380,8 +407,9 @@ def _sweep(records, table, label: str, quiet: bool, rows=None) -> int:
     carries today.
     """
     total = agree = table_agree = 0
-    for source, name, held, stored in records:
-        want = _best(table, held) if rows is None else dos_engine_thac0(rows, held)
+    for source, name, held, stored, *old in records:
+        want = (_best(table, held) if rows is None
+                else dos_engine_thac0(rows, held, *old))
         alone = _best(table, held)
         if want is None:
             continue
@@ -418,7 +446,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1 if _sweep(c64_records(args.title), c64_table(args.title),
                            f"C64 {args.title}", args.quiet) else 0
     rows = dos_rows(args.title)
-    return 1 if _sweep(dos_records(args.title, args.extra),
+    return 1 if _sweep(dos_records(args.title, args.extra, former=True),
                        {name: row[1:] for name, row in rows.items()},
                        f"DOS {args.title}", args.quiet, rows=rows) else 0
 

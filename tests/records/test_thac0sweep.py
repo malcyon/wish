@@ -31,39 +31,10 @@ TITLES = ("pool-of-radiance", "curse-of-the-azure-bonds",
 #: The records on this machine that the engine's own rule does not account
 #: for, and why each is not a counter-example.
 CURSE_EXCEPTIONS = {
-    # `former_class_levels`, folded in by the regained-class loop without
-    # clearing -- `docs/209-the-regained-dual-class-on-dos.md`.
-    "WISH-SPEC-curse-408-regained-paladin/CHRDATJ1.SAV": 16,
-    # MARK's former paladin level 5 folds in the same way, in the specimen's
-    # own DOS resave -- same category, `#632 (A C64 Curse party converted to
-    # DOS gets saving throws and THAC0 that DOS Curse replaces on its first
-    # save)`.
-    "WISH-SPEC-curse-632-wish-converted-resave/CHRDATB2.SAV": 16,
     # Written by `goldbox/dos_codec.py` rather than by the game: the two
     # magic-users `#608` is about, holding the table's own 21.
     "WISH-SPEC-curse-551-party-as-converted/CHRDATA1.SAV": 21,
     "WISH-SPEC-curse-551-party-as-converted/CHRDATA2.SAV": 21,
-    # Wish's own conversion of MARK, before DOS Curse's first save folds his
-    # former paladin level in above -- `#632`.
-    "WISH-SPEC-curse-632-wish-converted-resave/CHRDATA2.SAV": 16,
-    # DOS Curse's own resave of the 632 specimen's slot B to slots B and D
-    # (`#679`): byte-identical to `WISH-SPEC-curse-632-wish-converted-resave/
-    # CHRDATB2.SAV` above, so MARK's former paladin level folds the same way.
-    "WISH-SPEC-dos-curse-foundation-walked/CHRDATB2.SAV": 16,
-    "WISH-SPEC-dos-curse-foundation-walked/CHRDATD2.SAV": 16,
-    # DOS Curse's resave of that same slot D (`#758`), byte-identical to the
-    # foundation-walked `CHRDATD2.SAV` above, so the same fold applies.
-    "WISH-SPEC-dos-curse-758-staged-turn-row-resave/CHRDATD2.SAV": 16,
-    # DOS Curse's resave of the 408 specimen's slot J to slot A, after a
-    # Strength cast in camp. Slot 1 is MATHEW, whose former paladin level 5
-    # folds in as in `CHRDATJ1.SAV` above; his THAC0 byte is unchanged. The
-    # staged memorised spell and the Strength node on MARK do not touch it.
-    "WISH-SPEC-curse-wish8-strength-leftover-dos-resave/CHRDATA1.SAV": 16,
-    # DOS Curse's resave of the foundation-walked slot D, after two Strength
-    # casts on SHARA in camp. Slot 2 is MARK, whose former paladin level 5
-    # folds in as in the foundation-walked `CHRDATD2.SAV` above; his record
-    # differs from that one only in the effect-chain and heap pointers.
-    "WISH-SPEC-curse-wish8-strength-twice-dos-resave/CHRDATD2.SAV": 16,
 }
 
 
@@ -79,7 +50,7 @@ def _rows(title: str) -> dict[str, list[int]]:
 def _records(title: str) -> list[tuple]:
     if gamedata.specimen_root() is None and not dosbox.ARCHIVES.is_dir():
         pytest.skip("needs the specimen tree or the DOS archives")
-    return list(thac0sweep.dos_records(title))
+    return list(thac0sweep.dos_records(title, former=True))
 
 
 @pytest.mark.parametrize("title", TITLES)
@@ -130,6 +101,30 @@ def test_a_curse_magic_user_of_level_five_comes_out_one_better_than_the_row():
         assert thac0sweep.dos_engine_thac0(rows, {"magic-user": 6}) == 19
 
 
+def test_a_regained_former_class_improves_the_byte():
+    """A cleric 6 who was a paladin 5 hits as the paladin does, THAC0 16."""
+    rows = _rows("curse-of-the-azure-bonds")
+    assert thac0sweep.dos_engine_thac0(rows, {"cleric": 6}) == 18
+    assert thac0sweep.dos_engine_thac0(
+        rows, {"cleric": 6}, {"paladin": 5}) == 16
+
+
+def test_a_character_with_no_former_class_is_unchanged():
+    rows = _rows("curse-of-the-azure-bonds")
+    for held in ({"cleric": 6}, {"magic-user": 5}, {"fighter": 3, "thief": 4}):
+        alone = thac0sweep.dos_engine_thac0(rows, held)
+        assert thac0sweep.dos_engine_thac0(rows, held, {}) == alone
+        assert thac0sweep.dos_engine_thac0(rows, held, None) == alone
+
+
+def test_a_former_level_not_yet_passed_changes_nothing():
+    """The engine's test is strict: former 5 against level 5 is not regained."""
+    rows = _rows("curse-of-the-azure-bonds")
+    alone = thac0sweep.dos_engine_thac0(rows, {"cleric": 5})
+    assert thac0sweep.dos_engine_thac0(
+        rows, {"cleric": 5}, {"paladin": 5}) == alone
+
+
 def test_pool_of_radiance_is_untouched_by_the_floor():
     """Its rows never go above 20 at any level, so nothing is floored."""
     rows = _rows("pool-of-radiance")
@@ -155,8 +150,8 @@ def test_every_dos_record_on_this_machine_reproduces_from_the_engine_rule(
     if not records:
         pytest.skip(f"no {title} DOS records on this machine")
     missed = {}
-    for source, _name, held, stored in records:
-        want = thac0sweep.dos_engine_thac0(rows, held)
+    for source, _name, held, stored, old in records:
+        want = thac0sweep.dos_engine_thac0(rows, held, old)
         if want != stored:
             missed[source] = stored
     assert missed == exceptions
@@ -175,8 +170,8 @@ def test_the_table_alone_misses_what_the_engine_rule_reaches():
     records = _records("curse-of-the-azure-bonds")
     if not records:
         pytest.skip("no Curse DOS records on this machine")
-    engine = sum(thac0sweep.dos_engine_thac0(rows, held) == stored
-                 for _s, _n, held, stored in records)
+    engine = sum(thac0sweep.dos_engine_thac0(rows, held, old) == stored
+                 for _s, _n, held, stored, old in records)
     alone = sum(thac0sweep._best(table, held) == stored
-                for _s, _n, held, stored in records)
+                for _s, _n, held, stored, _old in records)
     assert engine > alone
