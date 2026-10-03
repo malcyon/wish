@@ -2227,6 +2227,7 @@ graph LR
   classcode --> titles
   derive --> items
   derive -.->|deferred| levels
+  dos_codec -.->|deferred| amiga_later
   dos_codec --> areas
   dos_codec --> c64_codec
   dos_codec --> c64_port
