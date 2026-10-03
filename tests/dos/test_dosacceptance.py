@@ -10455,12 +10455,15 @@ def _snap_driver(tmp_path, session):
 def test_the_driver_snapshots_and_restores_by_name_and_logs_the_changed_saves(tmp_path):
     log: list[str] = []
     d, notes = _snap_driver(tmp_path, _SnapSession(tmp_path, log, ["SAVGAMD.DAT"]))
-    d.where = "map"
+    d.where, d.line, d.left_camp, d.scribing = "map", 2, False, False
+    d.fights, d.combat_ds, d.sheets = 0, None, {1: "a"}
     first = d.snapshot("leg")
-    d.where = "camp"
+    d.where, d.line, d.left_camp, d.scribing = "camp", 5, True, True
+    d.fights, d.combat_ds, d.sheets = 1, 0x1F00, {1: "a", 2: "b"}
     second = d.restore("leg")
     assert log == ["snapshot leg", "restore leg", "settle"]
-    assert d.where == "map"
+    assert (d.where, d.line, d.left_camp, d.scribing) == ("map", 2, False, False)
+    assert (d.fights, d.combat_ds, d.sheets) == (0, None, {1: "a"})
     assert first["name"] == "leg" and second["changed_saves"] == ["SAVGAMD.DAT"]
     assert [(n["event"], n["name"]) for n in notes] == [("snapshot", "leg"),
                                                          ("restore", "leg")]

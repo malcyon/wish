@@ -3046,7 +3046,7 @@ class Driver:
         #: When the driver was made, which is when the boot was over.
         self.began = time.time()
         #: What `snapshot` recorded of the driver's own place, by name.
-        self._places: dict[str, tuple] = {}
+        self._places: dict[str, dict] = {}
 
     # -- evidence ----------------------------------------------------------
 
@@ -6025,7 +6025,7 @@ class Driver:
         """Save the whole machine under `name`; DOSBox-X only."""
         self.need_snapshots("snapshot")
         path = self.s.snapshot(name)
-        self._places[name] = (self.where, self.line, self.left_camp, self.scribing)
+        self._places[name] = self._place()
         self.note(event="snapshot", name=name, path=str(path))
         return {"name": name, "path": str(path)}
 
@@ -6040,9 +6040,20 @@ class Driver:
         changed = self.s.restore(name)
         self.s.settle()
         if name in self._places:
-            self.where, self.line, self.left_camp, self.scribing = self._places[name]
+            for attr, value in self._places[name].items():
+                setattr(self, attr, dict(value) if isinstance(value, dict) else value)
         self.note(event="restore", name=name, changed_saves=changed)
         return {"name": name, "changed_saves": changed}
+
+    #: What a restore puts back with the machine.  `combat_ds` and `sheets` are
+    #: caches read off the timeline being left, so they go back to what the
+    #: snapshot held; `fights` must, or the first-fight keys are skipped.
+    PLACE_ATTRS = ("where", "line", "left_camp", "scribing", "fights", "combat_ds",
+                   "sheets")
+
+    def _place(self) -> dict:
+        return {a: (dict(v) if isinstance(v := getattr(self, a), dict) else v)
+                for a in self.PLACE_ATTRS}
 
     def need_snapshots(self, verb: str) -> None:
         if not hasattr(self.s, "snapshot"):
