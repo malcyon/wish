@@ -713,7 +713,7 @@ def _value_row(title_key: str, node: RunningEffect,
             return Unconverted("a Mirror Image node no DOS engine writes")
         if data >> 4 > 4:
             return Unconverted("a Mirror Image count above 4, which "
-                               "waits on the C64 combat-writer read")
+                               "no C64 writer produces: it rolls 1d4")
         return node.id, mirror_image_count(data, later=True)
     return Unconverted("no rule yet for this id in this title")
 
@@ -975,17 +975,18 @@ def _value_node(title_key: str, effect_id: int,
             return m & 0x7F, m >> 7
         if m & 0x80:
             return Unconverted("a Mirror Image magnitude with bit 7 set, "
-                               "which waits on the C64 combat-writer read")
+                               "which no C64 writer produces")
         return m, 0
     if title_key in LATER_CAST_FLAGS and effect_id in LATER_VALUE_IDS:
         if effect_id == 28:
             if m > 4:
                 return Unconverted("a Mirror Image count above 4, which "
-                                   "waits on the C64 combat-writer read")
+                                   "no C64 writer produces: it rolls 1d4")
             return m << 4 | m, 0
         if not m & MAGNITUDE_RESTORE_FLAG:
-            return Unconverted("a magnitude without bit 7, which waits on "
-                               "the C64 combat-writer read")
+            return Unconverted("a magnitude without bit 7, which no C64 "
+                               "writer produces: combat Enlarge sets bit 7 "
+                               "and no combat row writes 14 or 38")
         if effect_id == 12:
             if m & 0x0F == 0:
                 return Unconverted("an Enlarge magnitude with no level")

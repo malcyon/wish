@@ -1483,7 +1483,7 @@ be a monster. Each id is listed with why its sample row has no rule.
 | Pool of Radiance | 33, 51 | A duration-0 row converts as a granted record; no C64 cast writes a running row. |
 | Pool of Radiance | 35, 49 | Prayer converts only as a party-wide row; an owned row has no rule. |
 | Curse of the Azure Bonds | 13 | The C64 id is the engulf countdown, whose magnitude is a combatant index. |
-| Curse of the Azure Bonds | 55, 128 | A table entry whose handler is not followed to a row write, and no DOS writer is read for it. |
+| Curse of the Azure Bonds | 128 | A table entry whose handler is not followed to a row write, and no DOS writer is read for it. |
 | Curse of the Azure Bonds | 68 | Feeblemind's duration-0 row converts as a granted record; the C64 holds INT at 3 and WIS at its permanent score, and DOS and the Amiga hold both at 3. A timed row has no rule, because no C64 cast writes one. |
 | Curse of the Azure Bonds | 33 | A duration-0 row converts as a granted record; a running row has no rule. |
 | Curse of the Azure Bonds | 49 | Prayer converts only as a party-wide row; an owned row has no rule. |
@@ -1518,10 +1518,12 @@ the bit 7 each C64 cast writes, apart from the DOS flag.
 | Case | Sweep evidence and limit |
 |---|---|
 | Curse id 13 | **CONFIRMED combat path:** `COMBAT $1F40` sets id 13 and `$1F50` calls the row writer with a roll and bit 7. Cleanup does not strip 13. Survival of its target to save is unmeasured. |
-| Later 12, 14, 38 without bit 7; Mirror Image above 4 | **UNRESOLVED:** the combat handler pointers and their values remain to be followed. |
-| Pool Mirror Image with bit 7 | **UNRESOLVED:** its combat handler pointer remains to be followed. |
+| Later 12, 14, 38 without bit 7; Mirror Image above 4 | **CONFIRMED unwritten:** Curse `COMBAT $172A` and Silver Blades `$1AA5` set bit 7 on a combat Enlarge, no combat row writes 14 or 38, and Mirror Image rolls 1d4 (Curse `$184F` through `$2F6A`, Silver Blades `$1BFE`). |
+| Pool Mirror Image with bit 7 | **CONFIRMED unwritten:** the camp cast (`SPELLE04 $A96B`) and the combat cast (`SPELLE00 $AAC9`) both roll 1d4. |
 | Pool's stale `$2879` | **CONFIRMED writer mechanism:** a nonzero override reaches the generic camp row. A two-cast game run must establish whether one cast leaves it for the next. |
-| Haste outside `$01`–`$1F`, Slowed outside level 1–15 or 63 minutes, the Giant Strength id (Curse 146, Silver Blades 113) other than `$BC` | **UNRESOLVED across all writers:** the table inventory alone cannot prove these guards unreachable. |
+| The Giant Strength id (Curse 146, Silver Blades 113) other than `$BC` | **CONFIRMED unwritten:** the camp cast (`ECL65 $83C2`) and the combat cast (`COMBAT $1EEA`) write only `$BC`. |
+| Slowed outside level 1–15 or 63 minutes | **PROBABLE:** the duration is 3 plus the level in minutes, and the level runs 1–15. |
+| Haste outside `$01`–`$1F` | **UNRESOLVED:** an item cast of spell 57 in a fight may reach a doubled level that makes the magnitude 0, which the guard refuses. |
 
 Combat rows are nine bytes: the fixed minutes at `+1`, the minutes per level
 at `+2`, the id at `+5` and the handler at `+7`. **CONFIRMED** the later
