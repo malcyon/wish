@@ -164,7 +164,7 @@ class Client:
         payload = dict(changes)
         if 'labels' in changes:
             allowed = {uuid(v['id']): str(v.get('name', '')) for v in self.pages(f'{self.prefix}/labels')}
-            payload['labels'] = project_labels(changes['labels'], allowed)
+            payload['labels'] = project_labels(changes['labels'], allowed, existing=record.get('labels', []))
         if 'description_html' in payload:
             payload['description_html'] = paragraph(payload['description_html'])
         self.write(operation_id + ':edit', 'PATCH', f'{self.items}/{uuid(record["id"])}', payload)
@@ -175,13 +175,17 @@ class Client:
         return current
 
 
-def project_labels(labels, allowed):
-    """Validate project labels without changing any other ticket field."""
+def project_labels(labels, allowed, *, existing=()):
+    """Validate project labels while retaining explicitly requested existing labels."""
     if not isinstance(labels, list):
         raise PlaneError('Labels must be a list of project label UUIDs')
     labels = list(dict.fromkeys(uuid(value) for value in labels))
-    if any(value not in allowed or allowed[value].casefold() == 'human' for value in labels):
-        raise PlaneError('Labels must belong to this project and cannot grant human origin')
+    if any(value not in allowed for value in labels):
+        raise PlaneError('Labels must belong to this project')
+    existing = {uuid(value['id'] if isinstance(value, dict) else value) for value in existing}
+    if any(value not in existing and (allowed[value].casefold() in {'ai', 'human'}
+                                      or allowed[value].casefold().startswith('priority:')) for value in labels):
+        raise PlaneError('Reserved AI, Human and Priority labels cannot be newly added')
     return labels
 
 

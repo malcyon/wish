@@ -391,13 +391,16 @@ def test_edited_html_markup_does_not_count_as_equivalent_text():
 
 SECOND_LABEL = '00000000-0000-0000-0000-000000000009'
 HUMAN_LABEL = '00000000-0000-0000-0000-00000000000a'
+AI_LABEL = '00000000-0000-0000-0000-00000000000b'
+PRIORITY_LABEL = '00000000-0000-0000-0000-00000000000c'
 
 
 @pytest.fixture
 def priority_client(tmp_path):
     current = record(labels=[LABEL, SECOND_LABEL])
     labels = [{'id': LABEL, 'name': 'bug'}, {'id': SECOND_LABEL, 'name': 'needs-info'},
-              {'id': HUMAN_LABEL, 'name': 'human'}]
+              {'id': HUMAN_LABEL, 'name': 'HuMaN'}, {'id': AI_LABEL, 'name': 'AI'},
+              {'id': PRIORITY_LABEL, 'name': 'Priority: High'}]
     def handle(method, path, data, params):
         if path == 'users/me':
             return {'id': AGENT}
@@ -466,7 +469,6 @@ def test_label_only_change_preserves_native_priority(priority_client):
 @pytest.mark.parametrize('labels, error', [
     ([SECOND_LABEL], 'bug, enhancement or question'),
     ([LABEL, OUTSIDE], 'belong to this project'),
-    ([LABEL, HUMAN_LABEL], 'human origin'),
     ([LABEL, 'invalid'], 'UUID'),
 ])
 def test_create_rejects_missing_type_or_invalid_labels(priority_client, labels, error):
@@ -478,7 +480,6 @@ def test_create_rejects_missing_type_or_invalid_labels(priority_client, labels, 
 
 @pytest.mark.parametrize('labels, error', [
     ([OUTSIDE], 'belong to this project'),
-    ([HUMAN_LABEL], 'human origin'),
     (['invalid'], 'UUID'),
 ])
 def test_update_rejects_invalid_labels_before_write(priority_client, labels, error):
@@ -486,6 +487,32 @@ def test_update_rejects_invalid_labels_before_write(priority_client, labels, err
     with pytest.raises(PlaneError, match=error):
         client.update('labels', ITEM, {'labels': labels}, 'Change labels')
     assert all(call[0] == 'GET' for call in fake.calls)
+
+
+@pytest.mark.parametrize('reserved', [AI_LABEL, HUMAN_LABEL, PRIORITY_LABEL])
+def test_create_rejects_new_reserved_label_before_write(priority_client, reserved):
+    client, _, _, fake = priority_client
+    with pytest.raises(PlaneError, match='Reserved'):
+        client.create('create', 'Ticket', 'Evidence', 'low', [LABEL, reserved])
+    assert all(call[0] == 'GET' for call in fake.calls)
+
+
+@pytest.mark.parametrize('reserved', [AI_LABEL, HUMAN_LABEL, PRIORITY_LABEL])
+def test_update_rejects_new_reserved_label_before_write(priority_client, reserved):
+    client, _, _, fake = priority_client
+    with pytest.raises(PlaneError, match='Reserved'):
+        client.update('labels', ITEM, {'labels': [LABEL, SECOND_LABEL, reserved]}, 'Change labels')
+    assert all(call[0] == 'GET' for call in fake.calls)
+
+
+@pytest.mark.parametrize('reserved', [AI_LABEL, HUMAN_LABEL, PRIORITY_LABEL])
+def test_update_preserves_existing_reserved_and_adds_ordinary_label(priority_client, reserved):
+    client, current, _, fake = priority_client
+    current['labels'] = [LABEL, {'id': reserved}]
+    result = client.update('labels', ITEM, {'labels': [LABEL, reserved, SECOND_LABEL]}, 'Add a project label')
+    assert result['priority'] == 'high'
+    assert result['labels'] == [LABEL, reserved, SECOND_LABEL]
+    assert next(call[2] for call in fake.calls if call[0] == 'PATCH') == {'labels': [LABEL, reserved, SECOND_LABEL]}
 
 
 def test_native_priority_readback_precedes_explanation_comment(priority_client):
