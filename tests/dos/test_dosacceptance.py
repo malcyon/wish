@@ -1218,7 +1218,7 @@ _LATER_CAST_ROWS = [("level", "1ST LEVEL"), ("spell", "SHIELD"), ("level", "2ND 
 
 
 class CastLater(CastPool):
-    """Curse's and Silver Blades' camp `MAGIC > CAST`, as WISH-8's hand casts
+    """Curse's and Silver Blades' camp `MAGIC > CAST`, as the live casts
     showed them: Pool's screens and bars but for the camp bar, copies of one
     spell drawn as one row `STRENGTH (2)`, the title's own roster and list
     keys, and `S` picking the target, where `Return` leaves the prompt for the
@@ -1345,6 +1345,57 @@ def test_later_cast_with_pools_return_never_casts(tmp_path, _cast_measured, monk
     with pytest.raises(da.StepFailed, match="never came back one STRENGTH shorter"):
         d.cast(6, "STRENGTH", 2)
     assert game.cast == [] and not game.save_file("B").exists()
+
+
+@pytest.mark.parametrize("title", ["pool", "curse", "ssb"])
+@pytest.mark.usefixtures("pool_map_measured")
+def test_cast_passes_the_recorded_camp_bar_only_in_curse_and_silver_blades(
+        tmp_path, _cast_measured, monkeypatch, title):
+    # Pool keeps the measured `PoolOfRadiance.CAMP_BAR`: the step passes no
+    # camp bar there, so `cast` falls back to the constant.
+    if title == "pool":
+        game, d = _cast_camp(tmp_path)
+    else:
+        game, d = _later_cast_camp(tmp_path, title, rows=_LATER_CAST_ROWS)
+    seen = {}
+    real = d.game.cast
+
+    def spy(*a, **k):
+        seen.update(k)
+        return real(*a, **k)
+    monkeypatch.setattr(d.game, "cast", spy)
+    d.cast(2 if title == "pool" else 6, "BLESS" if title == "pool" else "STRENGTH",
+           None if title == "pool" else 2)
+    if title == "pool":
+        assert seen["camp_bar"] is None
+        assert dosbox.PoolOfRadiance.CAMP_BAR == screens.bar_signature(
+            dosbox.Screen(W, H, bytes(game._frame("camp"))))
+    else:
+        assert seen["camp_bar"] == d.camp_sig != dosbox.PoolOfRadiance.CAMP_BAR
+
+
+@pytest.mark.parametrize("title", ["curse", "ssb"])
+def test_later_cast_of_a_spell_not_on_the_list_presses_nothing_after_cast(
+        tmp_path, _cast_measured, title):
+    game, d = _later_cast_camp(tmp_path, title, rows=_LATER_CAST_ROWS)
+    with pytest.raises(da.StepFailed, match="BLESS is not in the caster's memory"):
+        d.cast(6, "BLESS", 2)
+    assert game.keys[-2:] == ["m", "c"] and game.mode == "list"
+    assert game.cast == [] and not game.save_file("B").exists()
+
+
+@pytest.mark.parametrize("drawn,spells", [
+    ("STRENGTH (1)", ((1, "STRENGTH"),)),
+    ("STRENGTH", ((1, "STRENGTH"),)),
+    # No copy is not a count: the row keeps its words, which no spell matches.
+    ("STRENGTH (0)", ((1, "STRENGTH (0)"),)),
+])
+def test_a_list_row_reads_as_its_count_of_copies(drawn, spells):
+    px = bytearray(W * H * 3)
+    _text(px, 1, 1, "WISHHEL'S SPELLS IN MEMORY")
+    _text(px, da.SCRIBE_LIST[1] // 8, 1, "2ND LEVEL", _CAST_HEAD)
+    _text(px, da.SCRIBE_LIST[1] // 8 + 1, 3, drawn, _WHITE)
+    assert da.cast_list(dosbox.Screen(W, H, bytes(px)), _FONT).spells == spells
 
 
 def test_a_counted_row_reads_as_that_many_copies_on_one_row(tmp_path):

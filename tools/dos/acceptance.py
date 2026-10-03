@@ -5902,6 +5902,7 @@ class Driver:
         Blades share but for the camp bar (the one `camp` recorded), with the
         spell list read as text with the title's font (`cast_list`) and each
         title's keys (`CAMP_ROSTER_NEXT`, `CAST_LIST_DOWN`, `CAST_SELECT`);
+        Pool's camp bar stays the measured `PoolOfRadiance.CAMP_BAR`;
         any screen it does not know stops the run with a `lost-cast-*` shot
         and nothing more pressed.
         """
@@ -5927,7 +5928,8 @@ class Driver:
             got = self.game.cast(spell_key(spell), target or None,
                                  read=lambda sc: cast_list(sc, font),
                                  party_size=self.party_size, caster=name, shot=self.shot,
-                                 camp_bar=self.camp_sig, list_down=CAST_LIST_DOWN[key],
+                                 camp_bar=None if key == "pool" else self.camp_sig,
+                                 list_down=CAST_LIST_DOWN[key],
                                  target_next=roster_next, select=CAST_SELECT[key])
         except dosbox.WrongCaster as e:
             raise self.fail(label, f"roster line {line}'s list: {e}") from None
