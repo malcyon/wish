@@ -162,6 +162,7 @@ from goldbox.savegame import (  # noqa: E402
     ROSTER_SCRIBE_QUEUE_COUNT,
     ROSTER_SLOT_INDEX,
 )
+from goldbox.world import PLAYABLE_X, WINDOW_STEP  # noqa: E402
 from tools.c64 import (  # noqa: E402
     route_pool,
     runlog,  # noqa: E402
@@ -664,6 +665,16 @@ COMPASS = S.COMPASS
 #: on the travel grid the window the travel pair is local to.
 _POOL_BOX = c64_save.CONTAINERS["pool-of-radiance"]
 AREA_AT = _POOL_BOX.save_load_address + _POOL_BOX.current_script
+
+#: The travel grid's three windows, west to east: areas `$19`-`$1B`, each
+#: `WINDOW_STEP` world columns east of the last, walkable at window-local x
+#: `PLAYABLE_X` (`goldbox/world.py`, `docs/113-world-map.md`).
+TRAVEL_WINDOWS = (0x19, 0x1A, 0x1B)
+
+#: How long a pressed digit is given to move the travel pair, as
+#: `Session.walk_outdoors` gives it: a step is hours of game time and can go
+#: to the disk.
+OUTDOOR_PATIENCE = 25.0
 
 
 #: Pool's city-watch random event ends a camp rest with these two words on
@@ -1409,11 +1420,15 @@ def _record_sha256(records: list[bytes]) -> list[str]:
 def place_of(payload: bytes, game) -> dict:
     """The area, the square and the facing (0 to 3) a save payload holds,
     through the reader every conversion uses; with `outdoors` and the
-    travel pair `travel` too when the party stands on the travel grid."""
+    travel pair `travel` too when the party stands on the travel grid.
+
+    Only a title with a travel grid (Pool of Radiance) can stand on one:
+    Curse and Silver Blades save `$E6` as zero in a dungeon, and their square
+    is x and y whatever that byte says."""
     state = world_state.from_c64(bytes(payload), game)
     place = {"area": state.area, "x": state.x, "y": state.y,
              "facing": state.facing}
-    if state.outdoors:
+    if state.outdoors and c64_save.container_for(game).travel_grid:
         place.update(outdoors=True, travel=list(state.travel))
     return place
 
@@ -4849,22 +4864,114 @@ class PoolRun:
 
     @staticmethod
     def _outdoor_step(before: list, after: list, move: str) -> str | None:
-        """None when AFTER is BEFORE or one square along MOVE's compass
-        direction, else what it was.  A window change (another area) is
-        accepted as a step, since the pair is local to each window."""
-        if after == before or after[2] != before[2]:
+        """None when AFTER is BEFORE, one square along MOVE's compass
+        direction, or a window crossing `_window_crossing` accepts; else
+        what it was."""
+        if after == before:
             return None
         dx, dy = COMPASS[move]
+        if after[2] != before[2]:
+            return PoolRun._window_crossing(before, after, move)
         if after[:2] == [before[0] + dx, before[1] + dy]:
             return None
         return (f"moved from {before[:2]} to {after[:2]}, not one square "
                 f"along {move} ({dx},{dy}): an exit or a teleport")
 
+    @staticmethod
+    def _window_crossing(before: list, after: list, move: str) -> str | None:
+        """None when a change of area is MOVE stepping off the edge of one
+        travel window into the next, else what it was.
+
+        The windows overlap and sit `WINDOW_STEP` columns apart, so a step
+        east off x 15 of one window is x 3 of the next in the same world
+        column scheme, and west off x 2 is x 14 (`docs/113-world-map.md`,
+        W4-W6, predicted there and not yet measured live).  The landing is
+        accepted at that column or on the new window's own edge, where the
+        seam squares overlap; y moves by MOVE's own amount.
+        """
+        dx, dy = COMPASS[move]
+        if before[2] not in TRAVEL_WINDOWS or after[2] not in TRAVEL_WINDOWS:
+            return (f"went from area {before[2]} to area {after[2]}, which "
+                    f"are not both travel-grid windows: an exit or a teleport")
+        step = TRAVEL_WINDOWS.index(after[2]) - TRAVEL_WINDOWS.index(before[2])
+        if dx == 0 or step != dx:
+            return (f"took the party from window {before[2]} to window "
+                    f"{after[2]}, which is not the next window along "
+                    f"{move} ({dx},{dy}): a teleport")
+        side = "east" if dx > 0 else "west"
+        edge = PLAYABLE_X[-1] if dx > 0 else PLAYABLE_X[0]
+        if before[0] != edge:
+            return (f"left window {before[2]} from x {before[0]}, not from its "
+                    f"{side} edge at x {edge}: a teleport")
+        if after[1] != before[1] + dy:
+            return (f"crossed into window {after[2]} at y {after[1]}, not "
+                    f"{before[1] + dy}: a teleport")
+        column = before[0] + dx - dx * WINDOW_STEP
+        entry = PLAYABLE_X[0] if dx > 0 else PLAYABLE_X[-1]
+        if after[0] not in (column, entry):
+            return (f"crossed into window {after[2]} at x {after[0]}, neither "
+                    f"the next column (x {column}) nor its edge (x {entry}): "
+                    f"a teleport")
+        return None
+
+    def _await_travel_move(self, route: str, before: list) -> list:
+        """The travel place once it differs from BEFORE, or as it stands
+        after `OUTDOOR_PATIENCE` seconds."""
+        until = self.clock() + self.budget(OUTDOOR_PATIENCE, f"walk {route}")
+        while True:
+            now = self.travel_place()
+            if now != before or self.clock() >= until:
+                return now
+            time.sleep(0.5)
+
+    def _press_outdoor(self, route: str, n: int, move: str,
+                       before: list) -> tuple[list | None, bool]:
+        """Press one compass digit and return the travel place after it and
+        whether the digit went twice; None when the digit was never pressed
+        (`walk_refused` says why).
+
+        A pair that does not move is a wall only when the direction prompt
+        is still up both times: the digit is pressed once more at that
+        prompt, and a pair still unmoved is `blocked`.  Any other row 24
+        fails the walk, since a key nothing read and an encounter that took
+        the bar both leave the pair alone too."""
+        sess = self.sess
+        sess.walk_refused = None
+        if not sess.outdoor_key(move):
+            sess.leave_outdoor_move()
+            if not getattr(sess, "walk_refused", None):
+                sess.walk_refused = (f"the digit {move} was never pressed: "
+                                     f"no direction prompt came up")
+            return None, False
+        resent = False
+        after = self._await_travel_move(route, before)
+        for press in ("first", "second"):
+            if after != before:
+                break
+            row = self.bar().strip()
+            if S.OUTDOOR_PROMPT not in row:
+                sess.leave_outdoor_move()
+                raise self.fail(
+                    "walk", f"walk {route}: move {n} ({move}) left the travel "
+                            f"square {before[:2]} after its {press} press and "
+                            f"row 24 reads {row!r}, not the direction prompt, "
+                            f"so it is not a wall")
+            if resent:
+                break
+            resent = True
+            sess.suppress_encounters()
+            sess.kbd.key(move, 0.15, 0.30)
+            after = self._await_travel_move(route, before)
+        sess.leave_outdoor_move()
+        return after, resent
+
     def _walk_outdoors(self, route: str) -> dict:
-        """`walk` on the travel grid: each digit pressed once
-        (`Session.walk_outdoors`), judged by the travel pair before and
-        after.  A move that leaves the pair alone is blocked; one that changes
-        it by anything but its compass step fails the walk."""
+        """`walk` on the travel grid: each digit pressed at the direction
+        prompt (`_press_outdoor`), judged by the travel pair before and
+        after.  A move that leaves the pair alone after a second press at a
+        prompt still up is blocked; one that changes it by anything but its
+        compass step, or a crossing into the next window, fails the walk.  An
+        unreadable travel square fails the walk."""
         self.leave_arrival(f"walk {route}")
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
@@ -4876,9 +4983,8 @@ class PoolRun:
             self.refuse_prompt(route, last, "was up before the next move")
             before = self.travel_place()
             last = (n, move, before)
-            moved = self.sess.walk_one(move, tries=1, answer_prompts=False)
-            refused = getattr(self.sess, "walk_refused", None)
-            if refused:
+            after, resent = self._press_outdoor(route, n, move, before)
+            if after is None:
                 row = self.bar().strip()
                 self.log.emit("move", move=move, n=n, before=before,
                               after=None, resent=False, row24=row, text=None,
@@ -4889,7 +4995,7 @@ class PoolRun:
                     raise self.fail("walk", f"walk {route}: an encounter "
                                             f"began before move {n} ({move}) "
                                             f"from {before[:2]}: {row}")
-                raise self.fail("walk", f"walk {route}: {refused}")
+                raise self.fail("walk", f"walk {route}: {self.sess.walk_refused}")
             look_until = self.clock() + LOOK_SECONDS
             while True:
                 self.budget(1, f"walk {route}")
@@ -4900,7 +5006,7 @@ class PoolRun:
             stopped = self.sess.walk_stop(wait=12.0)
             if stopped is not None:
                 self.log.emit("move", move=move, n=n, before=before,
-                              after=None, resent=False,
+                              after=None, resent=resent,
                               row24=self.bar().strip(), text=None, keyed=True,
                               stop_screen=[r.strip() for r in stopped])
                 raise self.fail(
@@ -4909,14 +5015,15 @@ class PoolRun:
                             f"{stopped[24].strip()}")
             after = self.travel_place()
             self.log.emit("move", move=move, n=n, before=before, after=after,
-                          resent=False, row24=self.bar().strip(), text=None,
+                          resent=resent, row24=self.bar().strip(), text=None,
                           keyed=True)
             wrong = self._outdoor_step(before, after, move)
             if wrong:
                 raise self.fail("walk", f"walk {route}: move {n} {wrong}")
             moves.append({"move": move, "before": before, "after": after,
                           "blocked": after == before, "moved": after != before,
-                          "status_moved": moved, "resent": False})
+                          "window_changed": after[2] != before[2],
+                          "resent": resent})
         self.refuse_prompt(route, last, "ran the square's event")
         end = self.travel_place()
         self.capture(f"walked-{route}")
@@ -4925,23 +5032,32 @@ class PoolRun:
                                      if m["blocked"]])
 
     @staticmethod
-    def _outdoor_result(route, start, end, moves, blocked, **extra) -> dict:
+    def _outdoor_result(route, start, end, moves, blocked,
+                        squares_moved=None, **extra) -> dict:
         """A travel-grid walk's result in `walk`'s own keys: `position` is
-        `[x, y, None]` (no facing out there) and `area` the window."""
+        `[x, y, None]` (no facing out there) and `area` the window.
+        `squares_moved` is every step not `blocked` unless given."""
+        if squares_moved is None:
+            squares_moved = len(route) - len(blocked)
         return {"route": route, "outdoors": True,
                 "start": [start[0], start[1], None], "start_area": start[2],
                 "position": [end[0], end[1], None], "area": end[2],
                 "moves": moves, "asked_forward": len(route),
-                "squares_moved": len(route) - len(blocked), "back_moved": 0,
+                "squares_moved": squares_moved, "back_moved": 0,
                 "blocked": blocked, "expected_facing": None, **extra}
 
     def _walk_outdoors_retrying(self, route: str) -> dict:
-        """`_walk_retrying` on the travel grid, judged by the start and end
-        travel squares.  Ending where every step lands means none was
-        blocked; otherwise the largest set of steps that reaches the end is
-        taken as the ones that moved and the rest are `blocked`, and an end no
-        set of steps reaches fails as an exit or a teleport.  A window change
-        counts as having moved, with the steps unjudged."""
+        """`_walk_retrying` on the travel grid.  **Only the total
+        displacement is checked**, from the start and end travel squares:
+        `Session.walk_with_retry` moves the party and keeps no step's square.
+
+        An end on the start square is every step `blocked`, as
+        `_walk_outdoors` records it.  Otherwise the largest set of steps that
+        reaches the end is taken as the ones that moved and the rest are
+        `blocked`, and an end no set of steps reaches fails as an exit or a
+        teleport.  A change of window is recorded as `window_changed` with
+        the steps unjudged and none counted in `squares_moved`, since no
+        step's own crossing was seen."""
         self.leave_arrival(f"walk {route}")
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
@@ -4957,11 +5073,14 @@ class PoolRun:
         end = self.travel_place()
         self.capture(f"walked-{route}")
         if end == start:
-            raise self.fail("walk", f"walk {route}: no move left the travel "
-                                    f"square {start[:2]}")
+            return self._outdoor_result(route, start, end, [],
+                                        list(range(len(route))),
+                                        retries=retries)
         if end[2] != start[2]:
             return self._outdoor_result(route, start, end, [], [],
-                                        retries=retries, window_changed=True)
+                                        squares_moved=0, retries=retries,
+                                        window_changed=True,
+                                        steps_unjudged=True)
         # Each displacement some set of the steps makes, with the largest
         # such set of step indexes.
         reach: dict[tuple[int, int], tuple[int, ...]] = {(0, 0): ()}

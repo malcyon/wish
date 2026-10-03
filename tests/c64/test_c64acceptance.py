@@ -13015,6 +13015,8 @@ class _TravelMonitor:
         self.sess = sess
 
     def __enter__(self):
+        if self.sess.unreadable:
+            raise OSError("monitor connection refused")
         return self
 
     def __exit__(self, *exc):
@@ -13028,19 +13030,37 @@ class _TravelMonitor:
         return bytes(mem[addr][:n])
 
 
+class _DigitKeyboard(FakeKeyboard):
+    """The second press `_press_outdoor` sends straight to the keyboard."""
+
+    def key(self, name, *timing):
+        self.session.step(name)
+
+
+PROMPT_BAR = "1-8, RETURN OR BUTTON"
+
+
 class OutdoorSession(WalkSession):
-    """A party on the travel grid: each digit moves the travel pair by its
-    compass step unless the square there is in `blocked`, and `teleport`
-    sends the next step somewhere else."""
+    """A party on the travel grid.  `outdoor_key` puts up the direction
+    prompt and presses a digit, which moves the travel pair by its compass
+    step unless the square there is in `blocked`; `lost` presses are not
+    read at all, `land` sends the next step to that (x, y, area), and
+    `after_press` names the bar a press leaves when the pair stays put."""
 
     def __init__(self, x=8, y=27, area=26, blocked=(), inside=0):
         super().__init__(x=x, y=y, facing=0)
+        self.screens["prompt"] = _window({}, PROMPT_BAR)
+        self.screens["other"] = _window({}, "THE PARTY RESTS")
         self.area, self.inside = area, inside
         self.blocked = set(blocked)
-        self.teleport = None
+        self.lost = 0
+        self.land = None
+        self.after_press = "prompt"
+        self.unreadable = False
         self.reads = []
         self.walk_retries = 0
         self.calls = []
+        self.kbd = _DigitKeyboard(self)
 
     def indoors(self):
         return self.inside != 0
@@ -13051,25 +13071,42 @@ class OutdoorSession(WalkSession):
     def position(self):
         raise AssertionError("a travel-grid walk must not read the status line")
 
-    def walk_one(self, move, *a, **k):
+    def suppress_encounters(self):
+        pass
+
+    def outdoor_key(self, key, *a, **k):
+        self.state = "prompt"
+        self.step(key)
+        return True
+
+    def leave_outdoor_move(self, tries=4):
+        if self.state == "prompt":
+            self.state = "world"
+        return True
+
+    def step(self, move):
         self.pressed.append(move)
-        self.walk_refused = None
-        if move not in A.S.COMPASS:
-            self.walk_refused = "the driver pressed nothing"
+        if self.lost:
+            self.lost -= 1
             return False
+        if self.land is not None:
+            (self.x, self.y, self.area), self.land = self.land, None
+            return True
         dx, dy = A.S.COMPASS[move]
         to = (self.x + dx, self.y + dy)
-        if self.teleport is not None:
-            to, self.teleport = self.teleport, None
         if to in self.blocked:
+            self.state = self.after_press
             return False
         self.x, self.y = to
         return True
 
+    def walk_one(self, move, *a, **k):
+        raise AssertionError("a travel-grid walk presses its digit itself")
+
     def walk_with_retry(self, moves, retries=3):
         self.calls.append(("walk_with_retry", moves, retries))
         for ch in moves:
-            self.walk_one(ch)
+            self.step(ch)
         return True
 
 
@@ -13088,23 +13125,96 @@ def test_walk_22_outdoors_presses_the_digits_and_moves_the_travel_pair(
     assert A.S.TRAVEL_XY in sess.reads
 
 
-def test_an_outdoor_step_into_a_blocked_square_is_recorded_blocked(
+def test_an_outdoor_wall_is_blocked_only_after_a_second_press_at_the_prompt(
         tmp_path, monkeypatch):
     sess = OutdoorSession(blocked={(9, 26)})
     run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
     got = run.walk("23")
     log.close()
-    assert sess.pressed == ["2", "3"]
+    assert sess.pressed == ["2", "2", "3"]
+    assert got["moves"][0]["resent"] is True and got["moves"][1]["resent"] is False
     assert got["blocked"] == [0] and got["position"] == [9, 27, None]
+    assert got["squares_moved"] == 1
+
+
+def test_a_lost_outdoor_key_is_pressed_again_and_is_not_a_wall(tmp_path, monkeypatch):
+    sess = OutdoorSession()
+    sess.lost = 1
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    got = run.walk("2")
+    log.close()
+    assert sess.pressed == ["2", "2"]
+    assert got["blocked"] == [] and got["position"] == [9, 26, None]
+    assert got["moves"][0]["resent"] is True
+
+
+def test_an_unmoved_pair_with_the_prompt_gone_fails_and_is_not_a_wall(
+        tmp_path, monkeypatch):
+    sess = OutdoorSession(blocked={(9, 26)})
+    sess.after_press = "other"
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    with pytest.raises(A.StepFailed, match="not the direction prompt, so it is "
+                                           "not a wall"):
+        run.walk("2")
+    log.close()
+    assert sess.pressed == ["2"]
+
+
+def test_an_unreadable_travel_square_fails_the_walk(tmp_path, monkeypatch):
+    sess = OutdoorSession()
+    sess.unreadable = True
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    with pytest.raises(A.StepFailed, match="could not read the travel square"):
+        run.walk("2")
+    log.close()
+    assert sess.pressed == []
 
 
 def test_an_outdoor_step_that_lands_off_its_compass_square_fails_the_walk(
         tmp_path, monkeypatch):
     sess = OutdoorSession()
-    sess.teleport = (12, 20)
+    sess.land = (12, 20, 26)
     run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
     with pytest.raises(A.StepFailed, match="not one square along 2"):
         run.walk("2")
+    log.close()
+
+
+@pytest.mark.parametrize("move, before, landing", [
+    ("3", (15, 20, 0x1A), (3, 20, 0x1B)),     # east off x 15, the next column
+    ("3", (15, 20, 0x1A), (2, 20, 0x1B)),     # east, on the new window's edge
+    ("2", (15, 20, 0x1A), (3, 19, 0x1B)),     # north-east keeps its y step
+    ("7", (2, 20, 0x1A), (14, 20, 0x19)),     # west off x 2
+])
+def test_a_step_off_a_window_edge_into_the_next_window_is_a_move(
+        tmp_path, monkeypatch, move, before, landing):
+    x, y, area = before
+    sess = OutdoorSession(x=x, y=y, area=area)
+    sess.land = landing
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    got = run.walk(move)
+    log.close()
+    assert got["squares_moved"] == 1 and got["area"] == landing[2]
+    assert got["moves"][0]["window_changed"] is True
+
+
+@pytest.mark.parametrize("move, before, landing, why", [
+    ("3", (8, 20, 0x1A), (9, 20, 0x1B), "not from its east edge"),
+    ("3", (15, 20, 0x1A), (9, 20, 0x1B), "neither the next column"),
+    ("3", (15, 20, 0x1A), (3, 22, 0x1B), "at y 22, not 20"),
+    ("7", (15, 20, 0x1A), (3, 20, 0x1B), "not the next window along 7"),
+    ("1", (15, 20, 0x1A), (3, 19, 0x1B), "not the next window along 1"),
+    ("3", (15, 20, 0x19), (3, 20, 0x1B), "not the next window"),
+    ("3", (15, 20, 0x1A), (3, 20, 0x05), "not both travel-grid windows"),
+])
+def test_a_window_change_that_is_not_an_edge_crossing_fails_the_walk(
+        tmp_path, monkeypatch, move, before, landing, why):
+    x, y, area = before
+    sess = OutdoorSession(x=x, y=y, area=area)
+    sess.land = landing
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    with pytest.raises(A.StepFailed, match=why):
+        run.walk(move)
     log.close()
 
 
@@ -13126,6 +13236,29 @@ def test_a_retried_outdoor_walk_is_judged_by_its_travel_squares(tmp_path, monkey
     assert sess.calls == [("walk_with_retry", "223", 2)]
     assert got["position"] == [10, 26, None]
     assert got["squares_moved"] == 2 and got["blocked"] == [1]
+
+
+def test_a_retried_outdoor_walk_that_ends_where_it_began_is_all_blocked(
+        tmp_path, monkeypatch):
+    sess = OutdoorSession(blocked={(9, 26), (9, 27)})
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    run.walk_retry = 1
+    got = run.walk("23")
+    log.close()
+    assert got["blocked"] == [0, 1] and got["squares_moved"] == 0
+    assert got["position"] == [8, 27, None]
+
+
+def test_a_retried_outdoor_walk_into_another_window_counts_no_step(
+        tmp_path, monkeypatch):
+    sess = OutdoorSession(x=15, y=20, area=0x1A)
+    sess.land = (3, 20, 0x1B)
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    run.walk_retry = 1
+    got = run.walk("33")
+    log.close()
+    assert got["window_changed"] is True and got["steps_unjudged"] is True
+    assert got["squares_moved"] == 0 and got["blocked"] == []
 
 
 @pytest.mark.parametrize("arg", ["9", "2I", "0"])
@@ -13171,17 +13304,37 @@ def test_an_outdoor_save_on_another_travel_square_than_the_walk_ended_fails():
                           _saved(OUT, {**OUT, "travel": [9, 26]})])
 
 
+@pytest.mark.parametrize("key", ["curse-of-the-azure-bonds",
+                                 "secret-of-the-silver-blades"])
+def test_a_later_title_save_with_e6_zero_is_placed_by_its_square(key):
+    box = c64_save.CONTAINERS[key]
+    payload = bytearray(0x1000)
+    assert payload[box.indoors] == 0
+    payload[box.current_script] = 3
+    payload[box.position:box.position + 3] = bytes([5, 9, 1])
+    payload[box.travel_position:box.travel_position + 2] = bytes([7, 7])
+    game = SimpleNamespace(key=key)
+    place = A.place_of(bytes(payload), game)
+    assert place == {"area": 3, "x": 5, "y": 9, "facing": 1}
+    moved = A.place_of(bytes(payload[:box.position] + bytes([5, 8, 1])
+                             + payload[box.position + 3:]), game)
+    assert A.place_verdict(place, moved)["place_changed"] is True
+    A.validate_walks([_walked("I", True, [5, 8, 1]),
+                      {"verb": "save", **A.place_verdict(place, moved)}])
+
+
 def test_an_encounter_menu_that_takes_the_next_outdoor_move_is_named(
         tmp_path, monkeypatch):
     class Ambushed(OutdoorSession):
-        def walk_one(self, move, *a, **k):
+        def outdoor_key(self, key, *a, **k):
             if len(self.pressed) == 1:
-                self.screens["world"] = _window({}, "COMBAT WAIT FLEE PARLAY")
+                self.state = "ambush"
                 self.walk_refused = "the driver pressed nothing"
                 return False
-            return super().walk_one(move, *a, **k)
+            return super().outdoor_key(key, *a, **k)
 
     sess = Ambushed()
+    sess.screens["ambush"] = _window({}, "COMBAT WAIT FLEE PARLAY")
     run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
     with pytest.raises(A.StepFailed, match="an encounter began before move 1"):
         run.walk("75")
