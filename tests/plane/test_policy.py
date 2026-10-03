@@ -1014,3 +1014,32 @@ def test_double_backtick_span_in_a_table_cell_keeps_the_cell_whole():
     out = paragraph('| a | b |\n|---|---|\n| `` a|b `` | z |')
     assert out.count('<td>') == 2
     assert '<td><code>a|b</code></td>' in out
+
+
+def test_fenced_code_inside_a_blockquote_keeps_its_source_text():
+    from tools.plane.policy import paragraph
+    out = paragraph('> ```\n> | a | b |\n> |---|---|\n> | `x|y` | z |\n> ```')
+    assert '\\' not in out
+    assert '| `x|y` | z |' in out and '<pre><code>' in out
+
+
+def test_unquoted_line_after_a_quoted_table_is_not_a_table_row():
+    from tools.plane.policy import paragraph
+    out = paragraph('> | a | b |\n> |---|---|\n> | `x|y` | z |\n| `m|n` | q |')
+    assert '\\' not in out
+    assert '<p>| <code>m|n</code> | q |</p>' in out
+    assert '<td><code>x|y</code></td>' in out
+
+
+def test_indented_code_block_keeps_its_source_text():
+    from tools.plane.policy import paragraph
+    out = paragraph('para\n\n    | a | b |\n    |---|---|\n    | `x|y` | z |')
+    assert '\\' not in out
+    assert '| `x|y` | z |' in out and '<pre><code>' in out
+
+
+def test_table_nested_in_two_blockquotes_keeps_a_code_cell_whole():
+    from tools.plane.policy import paragraph
+    out = paragraph('> > | a | b |\n> > |---|---|\n> > | `x|y` | z |')
+    assert out.count('<td>') == 2
+    assert '<td><code>x|y</code></td>' in out

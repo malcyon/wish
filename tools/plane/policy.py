@@ -153,7 +153,7 @@ class Policy:
 
 _DELIMITER_ROW = re.compile(r'^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$')
 _FENCE = re.compile(r'^\s{0,3}(`{3,}|~{3,})')
-_QUOTE = re.compile(r'^(?:\s{0,3}>)*[ \t]*')
+_QUOTE = re.compile(r'^(?:\s{0,3}>[ ]?)*')
 _CODE_SPAN = re.compile(r'(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)')
 
 
@@ -161,6 +161,10 @@ def _split_quote(line):
     """Split a line into its leading blockquote markers and the rest."""
     prefix = _QUOTE.match(line).group(0)
     return prefix, line[len(prefix):]
+
+
+def _indent(text):
+    return len(text[:len(text) - len(text.lstrip())].expandtabs(4))
 
 
 def _escape_code_pipes(line):
@@ -182,12 +186,20 @@ def _protect_table_code(text):
         # prose above the header and text after the table keep their pipes.
         position = 1
         while position < len(block):
-            _, delimiter = _split_quote(lines[block[position]])
-            _, header = _split_quote(lines[block[position - 1]])
-            if '|' in delimiter and '|' in header and _DELIMITER_ROW.match(delimiter):
+            delimiter_prefix, delimiter = _split_quote(lines[block[position]])
+            header_prefix, header = _split_quote(lines[block[position - 1]])
+            depth = delimiter_prefix.count('>')
+            if (
+                '|' in delimiter and '|' in header and _DELIMITER_ROW.match(delimiter)
+                and header_prefix.count('>') == depth
+                and _indent(delimiter) <= 3 and _indent(header) <= 3
+            ):
                 end = position - 1
-                while end < len(block) and '|' in _split_quote(lines[block[end]])[1]:
+                while end < len(block):
                     prefix, rest = _split_quote(lines[block[end]])
+                    # A line outside the quote (or in a deeper one) is not a row of this table.
+                    if '|' not in rest or prefix.count('>') != depth:
+                        break
                     lines[block[end]] = prefix + _escape_code_pipes(rest)
                     end += 1
                 position = end + 1
@@ -196,14 +208,18 @@ def _protect_table_code(text):
         block.clear()
 
     for index, line in enumerate(lines):
-        marker = _FENCE.match(line)
+        prefix, rest = _split_quote(line)
+        depth = prefix.count('>')
+        marker = _FENCE.match(rest)
         if fence is not None:
-            if marker and marker.group(1)[0] == fence[0] and len(marker.group(1)) >= len(fence):
-                fence = None
-            continue
+            if depth >= fence[1]:
+                if marker and marker.group(1)[0] == fence[0][0] and len(marker.group(1)) >= len(fence[0]):
+                    fence = None
+                continue
+            fence = None
         if marker:
             flush()
-            fence = marker.group(1)
+            fence = (marker.group(1), depth)
         elif line.strip():
             block.append(index)
         else:
