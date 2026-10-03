@@ -18,15 +18,22 @@ class FakeSession:
         self.walk_retries = 0
         self.walk_refused = None
         self.pos = 5
+        self.events = []
+        self.in_combat = False
 
     def square(self):
         return self.pos
 
     def attach(self, path):
         self.attached.append(path)
+        self.events.append("attach")
 
     def walk_with_retry(self, moves, retries=3):
         self.walk_retries = 0
+        self.events.append("walk")
+        if self.in_combat:
+            self.walk_refused = "the game is already in combat"
+            return False
         for attempt in range(retries + 1):
             self.attempts += 1
             if self.attempts > self.fights:
@@ -53,6 +60,21 @@ def test_a_walk_with_no_fight_restores_nothing_and_attaches_nothing():
 
 def test_a_walk_that_fails_every_retry_stops_with_the_reason():
     sess = FakeSession(fights=99)
-    with pytest.raises(RuntimeError, match="met an encounter every time.*each attempt"):
+    with pytest.raises(RuntimeError, match="walk I stopped: an encounter began on each attempt"):
         ssbresavewalk.walk_square(sess, "I")
+    assert sess.attached == []
+
+
+def test_the_disk_is_attached_once_and_only_after_the_walk_that_restored():
+    sess = FakeSession(fights=2)
+    ssbresavewalk.walk_square(sess, "I")
+    assert sess.events == ["walk", "attach"]
+
+
+def test_a_walk_begun_in_combat_reports_that_and_attaches_nothing():
+    sess = FakeSession(fights=0)
+    sess.in_combat = True
+    with pytest.raises(RuntimeError, match="already in combat") as e:
+        ssbresavewalk.walk_square(sess, "I")
+    assert "every time" not in str(e.value)
     assert sess.attached == []

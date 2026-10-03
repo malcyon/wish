@@ -83,8 +83,7 @@ def walk_square(sess, move: str = "I") -> tuple[bool, int]:
     """
     before = sess.square()
     if not sess.walk_with_retry(move):
-        raise RuntimeError(f"walk {move} met an encounter every time: "
-                           f"{sess.walk_refused}")
+        raise RuntimeError(f"walk {move} stopped: {sess.walk_refused}")
     restores = sess.walk_retries
     if restores:
         sess.attach(sess.save_disk)
