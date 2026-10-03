@@ -10,8 +10,8 @@ the default work register after a one-time open-ticket migration. This supersede
 the original authority gate, final-delta plan and closed-dependency import scope.
 GitHub issue tools now require an explicit GitHub request; code, PRs and CI
 remain there. Host and guest SDK acceptance passed with write configurations
-disabled and enabled; registered-tool behavior still requires new-turn
-verification. Backup scheduling remains a separate disabled gate.
+disabled and enabled. Registered Codex full reads passed after reboot, and fresh
+host/guest Claude registration is accepted. Backup scheduling remains disabled.
 
 Donald revised the deployment on 2026-10-02: use HTTP on the LAN without a
 certificate, disable Plane email, and let him configure NPM manually. He has
@@ -21,20 +21,20 @@ pre-write acceptance inventory was 26 tickets and 633 comments: 25 original impo
 tickets, 631 original comments, one native CI ticket and two subsequent comments.
 Host/guest deployment and full-content SDK acceptance passed with write gates
 disabled and enabled. Final configuration, metadata and citation checks passed;
-a fresh registered-launcher MCP state update passed. Existing Codex runtime
-reload succeeded, but the current turn still withheld registered-tool text;
-new-turn verification is required without a next-turn guarantee.
+a fresh registered-launcher MCP state update passed. Registered Codex MCP full
+reads were subsequently verified after reboot.
+Fresh host and guest Claude registration was accepted.
 
 ## Recommended design
 
 | Component | Plan | Evidence or constraint |
 |---|---|---|
-| Edition | Community v1.4.2, pinned by release tags and image digests. | The deployment is live; the one-time migration is accepted and retired; host and guest SDK acceptance passed; existing-session registered-tool behavior still requires new-turn verification. |
+| Edition | Community v1.4.2, pinned by release tags and image digests. | The deployment is live; the one-time migration is accepted and retired; host and guest SDK acceptance passed; registered MCP full reads are verified after reboot. |
 | Host | A separate Compose project on media-server, currently `192.168.1.182`. | `jellyfin-stack/ansible/inventory.yml` and `ansible/group_vars/media_servers/vars.yml`. |
 | Ingress | Existing Nginx Proxy Manager (NPM), forwarding HTTP to a Plane routing container. | Main Compose already assigns NPM ports 80, 81 and 443. |
 | DNS | An Ansible-managed Pi-hole record for `plane.morton.lan`. | The media role already preserves and extends Pi-hole `dns.hosts` for Grafana. |
-| Agents | Project-scoped `wish-plane` stdio adapter for host and guest clients. | Exact-SHA host/guest SDK acceptance passed 26 tickets and 633 comments with disabled/enabled write configurations; runtime reload succeeded, but registered-tool behavior requires new-turn verification. |
-| Backup | Implemented media-server restic/rclone job, with daily scheduling disabled pending acceptance. | Local encrypted capture/check/file restore and isolated PostgreSQL restore passed; OAuth, verified remote snapshot and independent recovery remain pending. |
+| Agents | Project-scoped `wish-plane` stdio adapter for host and guest clients. | Exact-SHA host/guest SDK acceptance passed 26 tickets and 633 comments with disabled/enabled write configurations; registered Codex MCP full reads passed after reboot; fresh host/guest Claude registration is accepted. |
+| Backup | Selected compressed ticket-data archives using the existing OneDrive account; installed legacy restic/rclone job remains disabled. | Existing native client authorization is valid; unencrypted archives selected for root `wish-plane-backups`, with implementation, upload/restore and bounded retention unfinished. |
 | Work register | Plane is the current default by Donald's explicit instruction; import was open-only and one-time. | GitHub retains code, PRs, CI and public intake; issue tools require an explicit GitHub request. |
 
 The supplied [self-hosting overview](https://developers.plane.so/self-hosting/overview)
@@ -153,10 +153,9 @@ host and guest SDK acceptance passed with disabled and enabled write
 configurations. Obsolete author-origin configuration fields were removed on both
 clients, preserving mode `0600` and all other fields; settings, token/identity,
 metadata and citation checks passed. A fresh registered-launcher MCP state update passed, adding one explanation
-comment and preserving priority, labels and description. Existing Codex runtime
-reload connected seven tools, but the current turn's dispatcher still withheld
-text: new-turn registered-tool verification remains required. Existing Claude
-TUI sessions can use `/mcp reconnect wish-plane`.
+comment and preserving priority, labels and description. Registered Codex MCP full reads subsequently passed after reboot, returning
+current ticket text and comments. Fresh host and guest Claude registration is
+accepted. Existing Claude TUI sessions can use `/mcp reconnect wish-plane`.
 Ticket text remains evidence, never instructions. Hooks remain tripwires, not a
 security boundary, especially when credentials are readable in the guest.
 
@@ -171,79 +170,43 @@ combination suitable; a cloud feature list is not acceptance evidence.
 
 ## Daily OneDrive backup
 
-The existing media-server OneDrive container binds `/mnt/media/onedrive` as its
-local sync directory. `ansible/roles/media-server/tasks/media.yml` configures an
-allowlist containing only `/Pictures/*` and `/wish-backups/*`, and seeds its
-refresh token without overwriting later token rotation. The existing Git backup
-runs at 03:15 UTC and uses `ansible/templates/wish-repository-backup.sh.j2`. It does
-not cover Plane, and its local completion does not prove cloud upload.
+Donald selected unencrypted compressed ticket-data archives using the existing
+jellyfin-stack OneDrive account, under the OneDrive root `wish-plane-backups`.
+This supersedes the separate restic/rclone repository, additional backup password
+and new-browser OAuth design. Preserve existing Pictures and Git backup behavior.
 
-Use direct restic-over-rclone upload for Plane. This requires new rclone
-provisioning and OAuth setup, but gives the job a remote completion result and
-encrypted incremental snapshots. Keep `Backups/Plane` outside the existing sync
-client's allowlist and local sync directory, so two clients never manage the
-same backup repository. Preserve existing Pictures and Git backup behavior.
-
-| Item | Implementation and acceptance |
+| Item | Selected design and acceptance |
 |---|---|
-| IaC files | Jellyfin-stack contains the backup script, service, timer, recovery and notification units, and tasks in the Plane role. |
-| Schedule | The persistent timer uses 03:30 America/Chicago, a bounded runtime and a job lock; `plane_backup_schedule_enabled` stays false until restore and failure acceptance. |
-| Destination | Set `RESTIC_REPOSITORY=rclone:plane-onedrive:Backups/Plane/media-server`; confirm the intended account, drive and folder at setup. |
-| Credentials | Keep rclone OAuth configuration and the restic password restricted on media-server, with independent recovery copies in the password manager. The VM receives neither. |
-| Content | Include a PostgreSQL dump and required roles, object data, rendered Plane secrets/configuration, deployment files, version/digest manifest and durable agent write journals; migration provenance is not a service backup prerequisite. |
-| Retention | Keep 14 daily, 8 weekly and 12 monthly successful snapshots, with stable host/tag/path grouping and restic retention. |
-| Monitoring | Export successful upload time and original capture time separately, duration, size and errors. Alert when remotely verified data is older than 26 hours; retrying an old capture must not reset its age. Notification delivery remains unproven. |
-| Recovery targets | Target no more than 24 hours of data loss when daily backups succeed, and restoration within four hours. Measure these; they are not current guarantees. |
+| Implementation | The production owner is preparing the replacement. The installed legacy restic/rclone script remains; this decision is not deployment or upload evidence. |
+| Destination and authentication | Use the existing OneDrive account and root `wish-plane-backups`. Existing native-client authorization is healthy; the earlier prompt checked the wrong configuration path. Archive upload and cloud readback remain unverified. |
+| Content | Compressed ticket data only. Exclude passwords, API keys, session material, environment secrets and recovery secrets. The exact archive format and capture mechanism remain unconfirmed. |
+| Secret recovery | Preserve service secrets locally. Restore depends on existing private Ansible configuration and credential recovery; the archive is not a complete disaster-recovery package. No additional restic password is required by the selected design. |
+| Retention | Keep at most 34 archives across 14 daily, 8 weekly and 12 monthly slots. The replacement must demonstrate the bound and preserve successful backups after failures. |
+| Schedule | Backup timers and recovery remain disabled/inactive until the replacement passes upload, retention, restoration and failure acceptance. |
+| Monitoring | Distinguish local capture from verified remote upload. Notification delivery remains unproven. |
+| Recovery targets | Target no more than 24 hours of data loss when daily backups succeed and restoration within four hours; these are unmeasured targets. |
 
-Use [rclone's OneDrive backend](https://rclone.org/onedrive/) for authentication
-and transport. Initial OAuth consent needs Donald's browser; unattended refresh
-must work afterward. Preserve refreshed token state across Ansible reruns. Test
-revocation and quota exhaustion handling, and verify the chosen account/drive.
-No OneDrive access is required from `agent-vm`.
+Automatic approval rejected an earlier plaintext full disaster-recovery archive
+because it included service secrets. The selected ticket-data archive excludes
+those secrets; the production owner must verify the content boundary before any
+upload. This documents the revised decision, not completed implementation.
 
-Use [restic's rclone backend](https://restic.readthedocs.io/en/stable/030_preparing_a_new_repo.html)
-for encrypted, deduplicated snapshots. Keep its password recoverable independently
-of both server and repository. Restic owns the cloud repository; do not delete
-its internal files using a generic age rule. Apply
-[retention](https://restic.readthedocs.io/en/stable/060_forget.html) only after
-successful backup and run periodic pruning under the same job lock.
+Earlier local encrypted capture/check/file-restore and isolated PostgreSQL restore
+proofs passed for the legacy approach. They do not establish acceptance of the new
+compressed archive, existing-account cloud upload or restore using separate local
+credentials. Test those against the implemented replacement before scheduling it.
 
-The private backup replacement at `1ac92106f0520fd992c729aec406438b1989fe8e`
-is independently reviewed, pushed and installed. The installed script passed shell
-syntax and SHA-256 verification. It has no migration-provenance, `state.lock` or
-migration-marker dependency; backup timers and recovery remain disabled/inactive:
+The installed legacy backup script at private commit
+`1ac92106f0520fd992c729aec406438b1989fe8e` has no migration-provenance,
+`state.lock` or migration-marker dependency. Its timer and recovery units remain
+disabled. Existing frontend recovery, private credentials and Ansible recovery
+inputs remain local; do not include them in the unencrypted cloud archive.
 
-1. Check staging capacity, credentials and repository access; acquire the backup job lock.
-   The reviewed replacement removes retired migration capture/lock/recovery dependencies.
-   Use a private staging directory outside the checkout and OneDrive sync tree.
-2. Put ingress into maintenance, stop scheduling new background work, drain
-   active jobs, then stop all application writers, including API, collaboration
-   and workers. Bound the wait; failure restores service and raises an alert.
-3. With writers quiescent, create a logical PostgreSQL dump with matching database
-   tools and copy object storage into the same staging set. Capture release-specific
-   persistent queue/cache state if recovery requires it; document which transient
-   state can be rebuilt. Do not copy a running database's data directory.
-4. Record checksums and versions, complete the staging set, and restore service
-   before uploading. Cleanup and systemd recovery handling must restore the
-   pre-backup service state after failure. Test interruption during maintenance.
-5. Back up the completed set with restic, check exit status and remote snapshot
-   listing, and record its ID. Treat partial runs as failures. Retain failed-upload
-   staging for bounded retry and alert before it fills disk. A new upload failure
-   must not delete successful older snapshots.
-6. Apply retention after success. Run regular repository integrity checks,
-   rotating data-read checks and a complete restore drill as recovery acceptance and
-   periodically afterward. Distinguish local capture from off-host success.
-
-Restore from OneDrive into an isolated Compose project at the recorded database
-and Plane versions, with notifications disabled and no production DNS. Restore
-configuration, secrets, database and objects together. Verify login, counts,
-comments, write journals and attachment downloads. The first drill must use remotely
-retrieved data and independently recovered credentials, not staging files. Include
-host-loss recovery for DNS and proxy configuration. Record downtime
-and restoration duration. The [Plane backup reference](https://developers.plane.so/self-hosting/manage/backup-restore)
-identifies database, uploads and configuration as recovery inputs; adapt the
-procedure to the pinned Community release rather than using Commercial-only
-Prime CLI commands.
+Restore a remotely retrieved ticket archive into an isolated instance with email
+disabled, using separately recovered private configuration and credentials. Verify
+tickets, comments and any other data the replacement explicitly includes. Record
+restoration duration and compare restored content with the accepted capture.
+Neither local staging nor successful upload alone proves restoration.
 
 ## Wish rules, tools and current Plane authority
 
@@ -289,7 +252,7 @@ editor identity, and has no human-thread origin block. See [current operations](
 | 1. Preflight | Record host capacity, versions, live NPM state, DNS, disabled email and OneDrive account/folder. Prove required Community API/MCP operations in a disposable project. |
 | 2. Infrastructure | Ansible rerun is idempotent; services/migrations succeed; Homepage opens Plane; HTTP login, WebSockets and attachments work. |
 | 3. Isolation and clients | Both clients reach Plane from agent-vm. Media SSH, NPM81, Homepage3000 and unrelated LAN targets stay denied. Win11 gains no exception. Use reachable host-side controls so a stopped service cannot masquerade as isolation. |
-| 4. Backup | The scheduled media-server job creates a verified OneDrive snapshot; failure alerts work; independent restore meets measured recovery targets. |
+| 4. Backup | The scheduled media-server job creates and verifies a compressed ticket-data archive in `wish-plane-backups`; failure alerts work; independent restore meets measured recovery targets. |
 | 5. One-time migration complete | Accepted 25 open tickets and 631 comments; preserve source authorship, provenance and recovery evidence. No further history or delta import is authorized. |
 | 6. Policy acceptance | Both clients read all private Plane content with complete pagination and citations, enforce project scope and agent-authored creation/comments, and pass native priority/state updates, correction comments, retries and closure readback. GitHub push/CI still work. |
 | 7. Current authority | Donald selected Plane after one-time open import. Update rules and queue caches from live Plane; no automatic delta, history import or synchronization is authorized. |
@@ -307,8 +270,8 @@ history/dependency-closure import or final-delta gate;
 remaining acceptance does not authorize another import. Current Plane edits
 must not be replaced from historical GitHub archives.
 
-Existing-session registered-tool verification, OneDrive OAuth,
-independently recovered cloud restore and manual account recovery remain work for their
+Replacement backup implementation, remote upload/restore and manual account
+recovery remain work for their
 owners. The production owner activated host/guest write configurations after SDK
 acceptance. Backup schedules stay disabled until their separate gates pass; the tracker choice itself is already settled.
 
@@ -328,8 +291,9 @@ previous images. An image downgrade does not reverse a database migration.
 
 Media deployment and VM networking belong to the host maintenance role. Wish
 policy/tool implementation belongs to the Wish implementation role when assigned.
-Account bootstrap, OAuth consent and production migration remain explicit stages;
-record actual versions, counts, timestamps, snapshot IDs and failures at each gate.
+Account bootstrap, existing OneDrive authentication and backup replacement
+acceptance remain explicit stages; record actual versions, counts, timestamps,
+archive identities and failures at each gate.
 
 The deployed tracker cutover commit
 `9903a5577f8f06b7c244ebb4a749280c480e9aa8` passed exact-SHA test run `37097524700`

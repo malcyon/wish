@@ -72,6 +72,10 @@ branch pushes and fork pull requests run four weighted shards on Ubuntu/Python
 3.12 and four on Windows/Python 3.13. Weekly, manual and called release runs
 cover all four platform/Python combinations without sharding. The measurements
 and limits are in [Why CI takes fifteen to eighteen minutes](50-experiments.md#why-ci-takes-fifteen-to-eighteen-minutes).
+The corrected 21,018-ID snapshot passed on SHA
+`3e5645468e3fc75267b0542e057721b0a5968d25` in all three samples. The median
+was 4:40.923, down from the 9:38 baseline; each run finished under five
+minutes. The timing and resource evidence is in [the repeat-run measurements](50-experiments.md#repeat-runs-on-the-corrected-inventory).
 
 The `generated` job checks repository contents and tool paths, then runs
 `tests/generate/test_generated.py`: compiled forms plus the documents generated
@@ -97,7 +101,10 @@ only for workflows that include the route-classification job.
 Shard weights come from successful profiles tied to a source SHA, workflow run
 and attempt. The importer combines only main-process reports and checks the
 complete shard set, selected-file inventory, JUnit count and matching
-provenance before changing the weights file.
+provenance before changing the weights file. Uploaded profile artifacts include
+the workflow-attempt suffix, so a rerun's measurements cannot be confused with
+an earlier attempt. On Windows, snapshot extraction preserves the staged Git
+bytes despite `core.autocrlf`; its regression check simulates that setting.
 
 For a repair, `WISH_CI_PRIOR_FAILURES_JSON` can prioritize known node IDs on the
 hosted run without removing other tests; a wrapper `--prior-failures FILE`
