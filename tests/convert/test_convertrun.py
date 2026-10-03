@@ -136,24 +136,41 @@ def test_leave_chooses_the_item_an_over_limit_pack_leaves_behind(
     assert report["left_behind"] == list(prepared[-1].report.left_behind)
 
 
+
 # ---------------------------------------------------------------------------
-# Which DOS game folder `--to dos` writes against (WISH-276)
+# Which DOS game folder `--to dos` writes against
 # ---------------------------------------------------------------------------
 
 POOL = "pool-of-radiance"
 SILVER = "secret-of-the-silver-blades"
+DARKNESS = "pools-of-darkness"
+
+#: Launcher stem -> what the fake folder holds: launcher and configuration.
+HOLDS = {"POOLRAD": ("START.EXE", "POOL.CFG"),
+         "CURSE": ("START.EXE", "CURSE.CFG"),
+         "SECRET": ("START.EXE", "BLADES.CFG"),
+         "DARKNESS": ("START.BAT", "POOL4.CFG")}
+
+
+def _game_folder(where, stem, lower=False):
+    """An empty stand-in for a DOS game folder holding `stem`'s files."""
+    where.mkdir(parents=True)
+    for name in HOLDS[stem]:
+        (where / (name.lower() if lower else name)).write_bytes(b"")
+    return where
 
 
 @pytest.fixture
 def fake_run(tmp_path, monkeypatch):
     """`convertrun.main` with the archives, the source and Save As faked:
-    each title's folder is an empty one named for its launcher, and the
-    Save As stand-in records the folder it was given and writes nothing."""
-    archives = {stem: tmp_path / "archives" / stem
-                for stem in ("POOLRAD", "CURSE", "SECRET")}
-    for folder in archives.values():
-        folder.mkdir(parents=True)
+    each title's folder holds its launcher and configuration file, and the
+    Save As stand-in records what it was given and writes nothing."""
+    from tools.dos import dospod
+
+    archives = {stem: _game_folder(tmp_path / "archives" / stem, stem)
+                for stem in HOLDS}
     calls = []
+    detected = []
 
     def find_game(stem="POOLRAD"):
         return archives[stem]
@@ -167,52 +184,150 @@ def fake_run(tmp_path, monkeypatch):
     class FakeSource:
         @classmethod
         def detect(cls, path, party=None, slot=None):
+            detected.append(path)
+            if title["key"] is None:
+                raise ValueError("not a save")
             return type("Detected", (), {"key": title["key"]})()
 
     import editor.convert
     monkeypatch.setattr(convertrun.dosbox, "find_game", find_game)
+    monkeypatch.setattr(dospod, "find_game", find_game)
     monkeypatch.setattr(convertrun, "write_via_save_as", save_as)
     monkeypatch.setattr(convertrun, "disks_dir", lambda named=None: tmp_path)
     monkeypatch.setattr(editor.convert, "Source", FakeSource)
     out = tmp_path / "out"
 
-    def run(key, *extra):
+    def run(key, *extra, to="dos"):
         title["key"] = key
-        argv = ["--source", str(tmp_path / "SOURCE.D64"), "--to", "dos",
+        argv = ["--source", str(tmp_path / "SOURCE.D64"), "--to", to,
                 "--out", str(out), "--no-play", *extra]
         return convertrun.main(argv)
 
-    return run, archives, calls, out
+    run.archives, run.calls, run.out, run.detected = (
+        archives, calls, out, detected)
+    run.tmp = tmp_path
+    return run
+
+
+def _stops(run, key, *extra):
+    """The sentence a stopped run printed, having written nothing."""
+    with pytest.raises(SystemExit) as stopped:
+        run(key, *extra)
+    assert run.calls == []
+    assert not run.out.exists()
+    return str(stopped.value)
 
 
 def test_a_silver_blades_source_is_written_against_silver_blades(fake_run):
     """No `--game`: a Silver Blades save is written against the Silver
     Blades folder, not Pool of Radiance's."""
-    run, archives, calls, _out = fake_run
-    run(SILVER)
-    assert calls == [archives["SECRET"]]
+    fake_run(SILVER)
+    assert fake_run.calls == [fake_run.archives["SECRET"]]
 
 
 @pytest.mark.parametrize("key, stem", [(SILVER, "POOLRAD"),
-                                       (POOL, "SECRET")])
+                                       (POOL, "SECRET"),
+                                       (DARKNESS, "POOLRAD")])
 def test_a_game_folder_of_another_title_stops_before_writing(
         fake_run, key, stem):
     """A `--game` folder holding another title stops the run with a sentence
     naming both titles, before Save As runs or `--out` is made."""
-    run, archives, calls, out = fake_run
-    with pytest.raises(SystemExit) as stopped:
-        run(key, "--game", str(archives[stem]))
-    message = str(stopped.value)
+    message = _stops(fake_run, key, "--game", str(fake_run.archives[stem]))
     assert message.startswith("The DOS game folder ")
     assert "but the save is" in message
-    assert calls == []
-    assert not out.exists()
+
+
+def test_another_title_under_an_unrecognised_name_stops(fake_run):
+    """What the folder holds decides, whatever it is called."""
+    games = _game_folder(fake_run.tmp / "Games", "POOLRAD")
+    message = _stops(fake_run, SILVER, "--game", str(games))
+    assert message == (f"The DOS game folder {games} is Pool of Radiance, "
+                       f"but the save is Secret of the Silver Blades.")
+
+
+def test_a_folder_holding_no_title_under_no_title_name_stops(fake_run):
+    """Nothing in it and nothing in its name: the run cannot tell."""
+    empty = fake_run.tmp / "Empty"
+    empty.mkdir()
+    message = _stops(fake_run, POOL, "--game", str(empty))
+    assert message == (f"Cannot tell which game the DOS game folder {empty} "
+                       f"holds.")
 
 
 def test_a_pool_source_is_written_against_pool_as_before(fake_run):
     """A Pool of Radiance save still takes Pool's folder by default, and
     the Pool folder named outright is used as given."""
-    run, archives, calls, _out = fake_run
-    run(POOL)
-    run(POOL, "--game", str(archives["POOLRAD"]))
-    assert calls == [archives["POOLRAD"], archives["POOLRAD"]]
+    fake_run(POOL)
+    fake_run(POOL, "--game", str(fake_run.archives["POOLRAD"]))
+    assert fake_run.calls == [fake_run.archives["POOLRAD"]] * 2
+
+
+@pytest.mark.parametrize("name, lower", [("poolrad", True),
+                                         ("My Pool copy", False),
+                                         ("copy", True)])
+def test_a_lowercase_or_renamed_pool_folder_is_recognised(
+        fake_run, name, lower):
+    """A copy of the game under another name, or with its files in lower
+    case, is recognised by what it holds and used as given."""
+    copy = _game_folder(fake_run.tmp / name, "POOLRAD", lower=lower)
+    fake_run(POOL, "--game", str(copy))
+    assert fake_run.calls == [copy]
+
+
+def test_a_folder_named_for_its_title_is_recognised_by_name(fake_run):
+    """A folder named `POOLRAD` with no configuration file in it still
+    counts as Pool of Radiance's."""
+    bare = fake_run.tmp / "bare" / "POOLRAD"
+    bare.mkdir(parents=True)
+    fake_run(POOL, "--game", str(bare))
+    assert fake_run.calls == [bare]
+
+
+def test_a_symlinked_folder_is_used_as_given(fake_run):
+    """A link to the right folder, under a name of its own, is accepted
+    and handed on as the link."""
+    link = fake_run.tmp / "linked"
+    try:
+        link.symlink_to(fake_run.archives["SECRET"], target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("this filesystem makes no symbolic links")
+    fake_run(SILVER, "--game", str(link))
+    assert fake_run.calls == [link]
+
+
+def test_a_trailing_slash_is_the_same_folder(fake_run):
+    folder = fake_run.archives["SECRET"]
+    fake_run(SILVER, "--game", str(folder) + "/")
+    assert fake_run.calls == [folder]
+
+
+def test_a_pools_of_darkness_source_is_written_against_darkness(fake_run):
+    fake_run(DARKNESS)
+    assert fake_run.calls == [fake_run.archives["DARKNESS"]]
+
+
+def test_a_source_nothing_can_open_keeps_the_old_default(fake_run):
+    """An unopenable source keeps Pool's folder, or the one named, and
+    Save As says why it fails."""
+    fake_run(None)
+    fake_run(None, "--game", str(fake_run.archives["SECRET"]))
+    assert fake_run.calls == [fake_run.archives["POOLRAD"],
+                              fake_run.archives["SECRET"]]
+
+
+def test_a_c64_destination_ignores_the_game_folder(fake_run):
+    """`--to c64` neither opens the source early nor checks `--game`."""
+    fake_run(SILVER, to="c64")
+    fake_run(SILVER, "--game", str(fake_run.archives["POOLRAD"]), to="c64")
+    assert fake_run.calls == [None, fake_run.archives["POOLRAD"]]
+    assert fake_run.detected == []
+
+
+def test_missing_archives_stop_before_writing(fake_run, monkeypatch):
+    def nowhere(stem="POOLRAD"):
+        raise FileNotFoundError(f"no DOS {stem}")
+
+    monkeypatch.setattr(convertrun.dosbox, "find_game", nowhere)
+    message = _stops(fake_run, SILVER)
+    assert message == ("No DOS Secret of the Silver Blades game folder was "
+                       "found.")

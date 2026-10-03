@@ -47,6 +47,7 @@ import re
 import shutil
 import subprocess
 import sys
+from typing import TYPE_CHECKING
 
 # Before PyQt6 is imported anywhere below.  Donald works at this desktop
 # while agents run, and a Qt child prefers Wayland over whatever is set for
@@ -68,6 +69,9 @@ from automap.paths import tool_disks  # noqa: E402
 from goldbox import dos_savegame as sg  # noqa: E402
 from tools.dos import dosbox  # noqa: E402
 
+if TYPE_CHECKING:
+    from tools.dos.acceptance import Title
+
 
 def disks_dir(named: str | None = None) -> pathlib.Path | None:
     """Where the player keeps the C64 game disks, or `None` when there are
@@ -81,11 +85,20 @@ def disks_dir(named: str | None = None) -> pathlib.Path | None:
 # Which DOS game folder a conversion is written against
 # ---------------------------------------------------------------------------
 
-def _dos_titles() -> dict[str, "object"]:
-    """Title key -> `tools.dos.acceptance.Title`, for every title the DOS
-    acceptance driver boots."""
+#: A file only that title's DOS game folder holds, by launcher stem: each
+#: installed game's own configuration file, one per folder in the archives.
+CONFIG_FILES = {"POOLRAD": "POOL.CFG", "CURSE": "CURSE.CFG",
+                "SECRET": "BLADES.CFG", "DARKNESS": "POOL4.CFG"}
+
+
+def _dos_titles() -> dict[str, Title]:
+    """Title key -> `tools.dos.acceptance.Title`, for every title with a
+    DOS game folder in the archives."""
+    from goldbox import titles
     from tools.dos.acceptance import CONVERT_TITLE_KEYS, TITLES
-    return {key: TITLES[short] for short, key in CONVERT_TITLE_KEYS.items()}
+    found = {key: TITLES[short] for short, key in CONVERT_TITLE_KEYS.items()}
+    found[titles.POOLS_OF_DARKNESS.key] = TITLES["darkness"]
+    return found
 
 
 def source_title(source: pathlib.Path, slot: str | None) -> str | None:
@@ -99,14 +112,38 @@ def source_title(source: pathlib.Path, slot: str | None) -> str | None:
 
 
 def folder_title(folder: pathlib.Path) -> str | None:
-    """Which title a DOS game folder holds, by its own name: the archives
-    and `tools.dos.dosbox.Session.stage` both keep each game in a folder
-    named for its launcher's stem (`POOLRAD`, `CURSE`, `SECRET`)."""
-    name = folder.expanduser().resolve().name.upper()
-    for key, title in _dos_titles().items():
-        if name == title.stem:
-            return key
+    """Which title a DOS game folder holds, or `None` when nothing says.
+
+    What the folder holds decides: its launcher (`Title.exe`) beside the
+    title's own configuration file (`CONFIG_FILES`), matched without regard
+    to case. A folder holding neither falls back to its name, which the
+    archives and `tools.dos.dosbox.Session.stage` both give the launcher's
+    stem (`POOLRAD`, `CURSE`, `SECRET`, `DARKNESS`).
+    """
+    folder = folder.expanduser()
+    try:
+        held = {path.name.upper() for path in folder.iterdir()}
+    except OSError:
+        held = set()
+    known = _dos_titles()
+    by_contents = [key for key, title in known.items()
+                   if title.exe.upper() in held
+                   and CONFIG_FILES.get(title.stem) in held]
+    if len(by_contents) == 1:
+        return by_contents[0]
+    for name in (folder.name.upper(), folder.resolve().name.upper()):
+        for key, title in known.items():
+            if name == title.stem:
+                return key
     return None
+
+
+def _archive_folder(title: Title, name: str) -> pathlib.Path:
+    """`title`'s folder in the archives, or `SystemExit` saying none is."""
+    try:
+        return title.find_game()
+    except FileNotFoundError:
+        raise SystemExit(f"No DOS {name} game folder was found.") from None
 
 
 def dos_game_folder(source_key: str | None,
@@ -117,17 +154,22 @@ def dos_game_folder(source_key: str | None,
     (`goldbox.dos_codec.dos_dax_number`) and puts it in the save's byte 0
     and `$5012`, so another title's folder gives a save naming that title's
     container. With no folder named, the source title's own comes from the
-    registry, as `tools/dos/acceptance.py` finds it.
+    registry, as `tools/dos/acceptance.py` finds it. A source nothing can
+    open keeps Pool of Radiance's default, and Save As says why it fails.
     """
     from goldbox import titles
+    known = _dos_titles()
     if source_key is None:
-        return named if named is not None else dosbox.find_game()
+        if named is not None:
+            return named
+        return _archive_folder(known[titles.POOL_OF_RADIANCE.key],
+                               titles.POOL_OF_RADIANCE.title)
     name = titles.by_key(source_key).title
     if named is None:
-        title = _dos_titles().get(source_key)
+        title = known.get(source_key)
         if title is None:
             raise SystemExit(f"No DOS game folder is known for {name}.")
-        return title.find_game()
+        return _archive_folder(title, name)
     held = folder_title(named)
     if held is None:
         raise SystemExit(
