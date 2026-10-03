@@ -12798,3 +12798,108 @@ def test_leave_items_finds_the_bordered_exit_row_and_selects_it(tmp_path, monkey
     assert sess.sent[:3] == [("key", "Down"), ("key", "Down"),
                              ("key", A.route_pool.SELECT["key"])]
     assert sess.state == "left"
+
+
+# --- snapshot, restore and the retrying walk ---------------------------------------
+
+class SnapshotSession(WalkSession):
+    """A walking fake that records snapshot, restore and walk_with_retry calls."""
+
+    attached = "/slot/SIDE0.D64"
+
+    def __init__(self, met=0, **kw):
+        super().__init__(**kw)
+        self.calls = []
+        self.met = met
+        self.walk_retries = 0
+
+    def snapshot(self, name):
+        self.calls.append(("snapshot", name))
+        return f"/slot/snapshots/{name}.vsf"
+
+    def restore(self, name):
+        self.calls.append(("restore", name))
+
+    def walk_with_retry(self, moves, retries=3):
+        self.calls.append(("walk_with_retry", moves, retries))
+        self.walk_retries = min(self.met, retries)
+        if self.met > retries:
+            self.walk_refused = f"an encounter began on each of {retries + 1} attempts"
+            return False
+        for ch in moves:
+            self.walk_one(ch)
+        return True
+
+
+def test_the_parser_takes_snapshot_and_restore_steps():
+    steps = A.parse_steps(["load", "snapshot camp-1", "rest 1h", "restore camp-1"])
+    assert [(s.verb, s.arg) for s in steps[1:]] == [
+        ("snapshot", "camp-1"), ("rest", "1h"), ("restore", "camp-1")]
+
+
+@pytest.mark.parametrize("steps", [
+    ["load", "snapshot"], ["load", "snapshot a/b"], ["load", "restore a"],
+    ["load", "snapshot a", "save", "restore a"]])
+def test_the_parser_stops_a_bad_snapshot_or_restore(steps):
+    with pytest.raises(ValueError):
+        A.parse_steps(steps)
+
+
+def test_a_restore_after_a_save_is_stopped_with_the_reason():
+    with pytest.raises(ValueError, match="a save came before it"):
+        A.parse_steps(["load", "snapshot a", "save", "restore a"])
+
+
+def test_snapshot_then_restore_call_the_session_with_the_same_name(tmp_path, monkeypatch):
+    sess = SnapshotSession()
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    run.snapshot("before-rest")
+    run.restore("before-rest")
+    log.close()
+    assert sess.calls == [("snapshot", "before-rest"), ("restore", "before-rest")]
+    assert sess.attaches == ["/slot/SIDE0.D64"]
+
+
+def test_walk_goes_through_walk_with_retry_when_asked(tmp_path, monkeypatch):
+    sess = SnapshotSession(met=1)
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    run.walk_retry = 2
+    got = run.walk("I")
+    log.close()
+    assert sess.calls == [("walk_with_retry", "I", 2)]
+    assert got["retries"] == 1 and got["squares_moved"] == 1
+    assert sess.attaches == ["/slot/SIDE0.D64"]
+
+
+def test_walk_with_retry_that_meets_an_encounter_every_time_fails_the_step(
+        tmp_path, monkeypatch):
+    sess = SnapshotSession(met=9)
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    run.walk_retry = 1
+    with pytest.raises(A.StepFailed, match="an encounter began on each of 2"):
+        run.walk("I")
+    log.close()
+
+
+def test_walk_does_not_retry_unless_asked(tmp_path, monkeypatch):
+    sess = SnapshotSession()
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    run.walk("I")
+    log.close()
+    assert sess.calls == [] and sess.pressed == ["I"]
+
+
+def test_a_run_records_each_snapshot_and_restore(tmp_path, monkeypatch):
+    class Snap(_Pool):
+        def snapshot(self, name):
+            return {"name": name, "path": "p"}
+
+        def restore(self, name):
+            return {"name": name}
+
+    rc, _, out = _drive(tmp_path, monkeypatch,
+                        ["load", "snapshot a", "restore a"], pool=Snap)
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert rc == 0
+    assert [(r["verb"], r["name"]) for r in summary["results"][1:]] == [
+        ("snapshot", "a"), ("restore", "a")]

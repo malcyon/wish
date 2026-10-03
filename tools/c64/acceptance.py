@@ -60,6 +60,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `items WHO`, `view WHO` | `VIEW` and the ITEMS list, or the sheet alone, as text, with each item's Detect Magic mark; on Curse and Silver Blades it then leaves through the list's `EXIT`, the sheet's `EXIT` and the camp's `EXIT`, so the next step starts in the world |
 | `rest 5m`, `rest 8h`, `rest 1h30m` | camp `REST` for exactly that long (`tools/c64/route_pool.py`'s rest); straight after a `scribe` it rests in the camp the scribe left open, since every camp exit cancels the scribe queue, and adds `stayed_in_camp`; a city-watch `GO STAY` event that ends it is answered `GO`, logged as `random_event`, and the result's `rest_completed` says whether the clock ran the full time.  A rest the area's check interrupted (`$6DD3` = `$FF`, or `CAMP` already gone) waits for the prompt the area puts up sending no key apart from disk-swap answers, answers it, and adds `ended: "interrupted"`, `interrupted`, `bar`, `prompts` and `watch_seen`, which only an interrupted rest carries.  Whenever a watch was answered, interrupted or not, the result has `state_cleared` (the bytes `GO` clears).  A fight fails the step at once, and any other prompt fails it naming row 24.  A Curse or Silver Blades rest the game stopped (`rest_later`'s `interrupted`) answers each `PRESS ... TO CONTINUE` page with Return, keeps its text, and adds `ended: "interrupted"`, `interrupted`, `bar`, `prompts` and `text`; a fight after the event fails the step at once naming the event's text |
 | `walk MOVES` | I forward, J left, K right, M turns about and tries the edge behind the original facing -- one square back keeping that facing where the edge carries no wall art, or held turned about where it does -- each judged by `position()` before and after (Pool's status line holds the clock, and a Pool area whose line shows no square, such as area 7, is judged by the live triple too; Curse's and Silver Blades' lags a step, so they are judged by the live triple `$C04B`-`$C04D`, and their one retry too): `blocked` when a forward move left x,y alone, a turn (`J`/`K`) must leave the square and change the facing by its amount, and `M` must leave the square either where it started or one square behind, facing either as it started or exactly reversed; a move that brings up a disk prompt, or lands anywhere else, fails the walk |
+| `snapshot NAME`, `restore NAME` | `snapshot` saves the whole machine, drive and disk included, under NAME (letters, digits, `-`, `_`); `restore` puts it back, attaches the drive's disk again so a later `save` works, and waits for the world bar. A `restore` needs an earlier `snapshot` of that name and no `save` before it, since the save stays on the disk image while memory goes back; the parser stops the run otherwise. Each is recorded in the run log and as a result in `summary.json`. `--walk-retry N` makes every `walk` step go through `Session.walk_with_retry`: after an encounter it restores and walks again, up to N more times, judged by its start and end squares only (the result adds `retries`); the step fails with the machine restored when every attempt met one |
 | `fight [SECONDS]` | walk until a fight starts, then fight it with `Session.melee_turn` for at most SECONDS (120); a fight still going when SECONDS end, or one the party loses, fails the step (the run cannot continue from it), and the checkpoint counts read at that point are kept as `lost_reading` in the summary. Pool repeats `--walk`; Curse walks to Tilverton's tavern and punches the barkeep; Silver Blades sets the wandering roll's fight gate `$4C2D` to 1, walks `GEO10` toward 12,0 and 12,15 in turn (at most `--walk-steps` moves), sends each key only once the move bar is up and the engine idles in its key wait, sends none from `COM.PREP` until the first command bar, and puts `$4C2D` back after the fight (`wander_gate` in the result); a party wiped back to the party menu fails the step at once |
 | `cast CASTER:SPELL>TARGET` | Curse: `ENCAMP > MAGIC > CAST`, the one spell named, on TARGET; the target's row of the cured id before and after (`CURE BLINDNESS`) |
 | `cast CASTER:ANIMATE DEAD` | Pool: camp cast without a target prompt; every party slot's roster status, trait slots, creature byte `0xD7`, and the effect arrays before and after |
@@ -530,7 +531,7 @@ VERBS = {"load": "never", "camp-list": "may", "items": "must", "view": "must",
          "cast": "must", "cure": "must", "walk": "must", "ready": "must",
          "scribe": "must", "temple-probe": "must", "warp": "must",
          "walk-fight": "must", "walk-flee": "must", "remove": "must",
-         "fight-flee": "may"}
+         "fight-flee": "may", "snapshot": "must", "restore": "must"}
 
 #: How long the screen after HEAL must stay unchanged before it is kept, so a
 #: half-drawn frame that lingers for a few reads is not taken for the list.
@@ -713,6 +714,20 @@ def parse_walk(arg: str) -> str:
     return route
 
 
+#: The session's own rule for a snapshot name, read once so a step is checked
+#: before anything boots.
+SNAPSHOT_NAME = S.Session.SNAPSHOT_NAME
+
+
+def parse_snapshot_name(verb: str, arg: str) -> str:
+    """The name a `snapshot` or `restore` step gives: letters, digits, - and _."""
+    name = arg.strip()
+    if not SNAPSHOT_NAME.match(name):
+        raise ValueError(f"{verb} {arg!r}: a snapshot name is letters, "
+                         f"digits, - and _")
+    return name
+
+
 def parse_walk_fight(arg: str) -> tuple[str, str | None]:
     """`IIK` or `IIK/NO`: the moves, and the one answer a `YES NO` on the last
     square may be given.  NO is the only answer the step will press."""
@@ -866,6 +881,8 @@ def parse_steps(texts) -> list[Step]:
             raise ValueError(f"{verb} takes nothing, got {text!r}")
         if takes == "must" and not arg:
             raise ValueError(f"{verb} needs an argument")
+        if verb in ("snapshot", "restore"):
+            parse_snapshot_name(verb, arg)
         if verb == "rest":
             parse_rest(arg)
         elif verb == "peek":
@@ -897,6 +914,22 @@ def parse_steps(texts) -> list[Step]:
         raise ValueError("the first step is load")
     if any(s.verb == "load" for s in steps[1:]):
         raise ValueError("one boot, one load")
+    taken: set[str] = set()
+    saved = False
+    for step in steps:
+        if step.verb == "snapshot":
+            taken.add(step.arg)
+        elif step.verb == "save":
+            saved = True
+        elif step.verb == "restore":
+            if step.arg not in taken:
+                raise ValueError(f"{step.text!r}: no snapshot {step.arg!r} "
+                                 f"was taken before it")
+            if saved:
+                raise ValueError(
+                    f"{step.text!r}: a save came before it, and a restore puts "
+                    f"the machine back while the game's save stays on the disk "
+                    f"image, so the run would no longer be one consistent game")
     for before, step in zip(steps, steps[1:]):
         if step.verb == "remove" and before.verb not in ("load", "remove"):
             raise ValueError(f"{step.text!r}: remove runs on the party menu, "
@@ -1719,6 +1752,10 @@ class PoolRun:
     #: The budget for each fight a walk-fight or walk-flee step fights; the
     #: command line sets it per run.
     walk_fight_seconds = WALK_FIGHT_SECONDS
+
+    #: How many times a `walk` step may roll back and walk its route again
+    #: after an encounter; 0 walks it once, as before.  `--walk-retry` sets it.
+    walk_retry = 0
 
     #: Whether `walk-fight` asks `walk_one` to detect an encounter the move
     #: started.  Pool of Radiance only: the 12 s silent load and the mode-4
@@ -4600,6 +4637,8 @@ class PoolRun:
         # `Session.walk_one` stops waiting for the sub-bar at the run's deadline.
         self.sess.walk_expired = self.spent
         try:
+            if self.walk_retry:
+                return self._walk_retrying(route)
             return self._walk(route)
         finally:
             self.sess.walk_expired = None
@@ -4682,6 +4721,64 @@ class PoolRun:
             raise self.fail("world", f"{step}: the world bar never came back, "
                                      f"row 24 still reads "
                                      f"{self.bar().strip()!r}")
+
+    def _walk_retrying(self, route: str) -> dict:
+        """`walk` for a run that meets encounters: `Session.walk_with_retry`
+        snapshots, walks, and restores and walks again after an encounter.
+
+        The session moves the party, so there is no per-move judgement here;
+        the result holds the start and end squares and `retries`, and the
+        step fails when every attempt met an encounter, the machine restored.
+        """
+        self.leave_arrival(f"walk {route}")
+        if not self.to_world():
+            raise self.fail("world", "the world bar never came back")
+        start = self.position()
+        walked = self.sess.walk_with_retry(route, self.walk_retry)
+        retries = self.sess.walk_retries
+        if retries:
+            self.log.emit("restore", name="walk-retry", retries=retries)
+            self.reattach()
+        if not walked:
+            raise self.fail("walk", f"walk {route}: {self.sess.walk_refused}")
+        end = self.position()
+        self.capture(f"walked-{route}")
+        if not ("I" in route or "M" in route) and end[:2] != start[:2]:
+            raise self.fail("walk", f"walk {route} has no forward move and the "
+                                    f"square went from {start[:2]} to {end[:2]}")
+        return {"route": route, "start": start, "position": end, "moves": [],
+                "asked_forward": route.count("I"),
+                "squares_moved": abs(end[0] - start[0]) + abs(end[1] - start[1]),
+                "back_moved": 0, "blocked": [], "expected_facing": None,
+                "retries": retries}
+
+    def reattach(self) -> None:
+        """Attach the disk the drive already holds, on purpose.
+
+        `Session.restore` leaves a flag that makes `save_game` raise, because
+        the drive holds the snapshot's copy of the disk.  No save came between
+        the snapshot and the restore, so the copy and the host file agree, and
+        attaching it again lifts the flag.
+        """
+        self.sess.attach(self.sess.attached)
+
+    def snapshot(self, name: str) -> dict:
+        """Save the whole machine under NAME."""
+        name = parse_snapshot_name("snapshot", name)
+        path = self.sess.snapshot(name)
+        self.log.emit("snapshot", name=name, path=str(path))
+        return {"name": name, "path": str(path)}
+
+    def restore(self, name: str) -> dict:
+        """Put the machine back as `snapshot NAME` left it, then lift the
+        session's save block (`reattach`)."""
+        name = parse_snapshot_name("restore", name)
+        self.sess.restore(name)
+        self.reattach()
+        self.log.emit("restore", name=name)
+        if not self.to_world():
+            raise self.fail("world", "the world bar never came back")
+        return {"name": name}
 
     def _walk(self, route: str) -> dict:
         self.leave_arrival(f"walk {route}")
@@ -7017,6 +7114,7 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                                   else parse_key(getattr(args, "first_bar_key", None)))
         if hasattr(args, "walk_fight_seconds"):
             pool.walk_fight_seconds = args.walk_fight_seconds
+        pool.walk_retry = getattr(args, "walk_retry", 0)
         pool.read_ats = tuple(parse_read_at(getattr(args, "read_at", [])))
         if temple_mode:
             pool.temple_input_deadline = deadline - 100
@@ -7056,6 +7154,10 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                 got = pool.rest(step.arg)
             elif step.verb == "walk":
                 got = pool.walk(step.arg)
+            elif step.verb == "snapshot":
+                got = pool.snapshot(step.arg)
+            elif step.verb == "restore":
+                got = pool.restore(step.arg)
             elif step.verb == "fight":
                 got = pool.fight(step.arg, args.walk, args.walk_steps)
             elif step.verb == "fight-flee":
@@ -7311,6 +7413,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="take one empty-square step after the first command bar")
     ap.add_argument("--walk-steps", type=int, default=40,
                     help="how far `fight` walks looking for one")
+    ap.add_argument("--walk-retry", type=int, default=0, metavar="N",
+                    help="a `walk` step that meets an encounter rolls back to "
+                         "a snapshot and walks again, up to N more times")
     ap.add_argument("--walk-fight-seconds", type=float, default=PoolRun.walk_fight_seconds,
                     help="the budget for each fight a walk-fight or walk-flee "
                          "step fights")
