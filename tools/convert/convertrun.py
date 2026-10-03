@@ -78,6 +78,68 @@ def disks_dir(named: str | None = None) -> pathlib.Path | None:
 
 
 # ---------------------------------------------------------------------------
+# Which DOS game folder a conversion is written against
+# ---------------------------------------------------------------------------
+
+def _dos_titles() -> dict[str, "object"]:
+    """Title key -> `tools.dos.acceptance.Title`, for every title the DOS
+    acceptance driver boots."""
+    from tools.dos.acceptance import CONVERT_TITLE_KEYS, TITLES
+    return {key: TITLES[short] for short, key in CONVERT_TITLE_KEYS.items()}
+
+
+def source_title(source: pathlib.Path, slot: str | None) -> str | None:
+    """The source save's title key, the way Save As detects it, or `None`
+    when it cannot be opened (Save As then says why itself)."""
+    from editor.convert import Source
+    try:
+        return Source.detect(source, slot=slot).key
+    except Exception:
+        return None
+
+
+def folder_title(folder: pathlib.Path) -> str | None:
+    """Which title a DOS game folder holds, by its own name: the archives
+    and `tools.dos.dosbox.Session.stage` both keep each game in a folder
+    named for its launcher's stem (`POOLRAD`, `CURSE`, `SECRET`)."""
+    name = folder.expanduser().resolve().name.upper()
+    for key, title in _dos_titles().items():
+        if name == title.stem:
+            return key
+    return None
+
+
+def dos_game_folder(source_key: str | None,
+                    named: pathlib.Path | None) -> pathlib.Path:
+    """The DOS game folder to write against, or `SystemExit` saying why not.
+
+    The writer reads the area's `ECL<n>.DAX` number out of this folder
+    (`goldbox.dos_codec.dos_dax_number`) and puts it in the save's byte 0
+    and `$5012`, so another title's folder gives a save naming that title's
+    container. With no folder named, the source title's own comes from the
+    registry, as `tools/dos/acceptance.py` finds it.
+    """
+    from goldbox import titles
+    if source_key is None:
+        return named if named is not None else dosbox.find_game()
+    name = titles.by_key(source_key).title
+    if named is None:
+        title = _dos_titles().get(source_key)
+        if title is None:
+            raise SystemExit(f"No DOS game folder is known for {name}.")
+        return title.find_game()
+    held = folder_title(named)
+    if held is None:
+        raise SystemExit(
+            f"Cannot tell which game the DOS game folder {named} holds.")
+    if held != source_key:
+        raise SystemExit(
+            f"The DOS game folder {named} is "
+            f"{titles.by_key(held).title}, but the save is {name}.")
+    return named
+
+
+# ---------------------------------------------------------------------------
 # The Save As route
 # ---------------------------------------------------------------------------
 
@@ -227,8 +289,12 @@ def word_diff(ours: bytes, theirs: bytes) -> list[str]:
 
 
 def play_dos(written: list[pathlib.Path], slot: str, out: pathlib.Path,
-             steps: int, resave: str) -> dict:
+             steps: int, resave: str,
+             game: pathlib.Path | None = None) -> dict:
     """Copy the dialog's files into a staged game tree and load them.
+
+    `game` is the folder the save was written against, staged so the game
+    that loads it is the one its bytes name; `None` stages Pool of Radiance.
 
     The files are copied verbatim -- nothing is rebuilt here, which is the
     whole point of the run. `goldbox.dos_codec.new_dos_save` clears the slot's
@@ -238,7 +304,7 @@ def play_dos(written: list[pathlib.Path], slot: str, out: pathlib.Path,
     """
     report: dict = {"slot": slot, "steps_asked": steps}
     with dosbox.claim("convertrun") as claimed:
-        s = dosbox.Session(claimed, dosbox.find_game())
+        s = dosbox.Session(claimed, game or dosbox.find_game())
         try:
             s.stage(fresh=True)
             cleared = []
@@ -350,8 +416,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out", required=True,
                    help="where the conversion and the run's files go")
     p.add_argument("--game", default=None,
-                   help="the DOS game folder, for a DOS destination "
-                        "(default: tools.dos.dosbox.find_game())")
+                   help="the DOS game folder, for a DOS destination; it "
+                        "must hold the source save's title (default: that "
+                        "title's folder in the archives)")
     p.add_argument("--disks", default=None,
                    help="the player's C64 game disks; read, never written")
     p.add_argument("--name", action="append", default=[],
@@ -391,10 +458,16 @@ def main(argv: list[str] | None = None) -> int:
     disks = disks_dir(args.disks)
     if disks is None:
         raise SystemExit("No game disks found. Set $POR_DISKS.")
+    game = pathlib.Path(args.game) if args.game else None
+    if args.to == "dos":
+        # Settled before `--out` is made, so a wrong folder writes nothing.
+        game = dos_game_folder(
+            source_title(pathlib.Path(args.source).expanduser(),
+                         args.source_slot.upper() if args.source_slot
+                         else None),
+            game)
     out = pathlib.Path(args.out).resolve()
     out.mkdir(parents=True, exist_ok=True)
-    game = pathlib.Path(args.game) if args.game else (
-        dosbox.find_game() if args.to == "dos" else None)
 
     names: dict[int, str] = {}
     if args.name:
@@ -455,7 +528,8 @@ def main(argv: list[str] | None = None) -> int:
         rc = report["play"]["returncode"]
     else:
         report["play"] = play_dos(written, report["write"]["slot"] or "A",
-                                  out, args.steps, args.resave or "D")
+                                  out, args.steps, args.resave or "D",
+                                  game)
         # `moved` is read out of the built and resaved files, not the
         # per-step digest count, so a step that crossed into another area
         # cannot read as a failure here the way it could in `walked` (#341

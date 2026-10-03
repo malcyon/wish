@@ -134,3 +134,85 @@ def test_leave_chooses_the_item_an_over_limit_pack_leaves_behind(
     (left,) = prepared[0].report.left_behind
     assert "left behind" in left
     assert report["left_behind"] == list(prepared[-1].report.left_behind)
+
+
+# ---------------------------------------------------------------------------
+# Which DOS game folder `--to dos` writes against (WISH-276)
+# ---------------------------------------------------------------------------
+
+POOL = "pool-of-radiance"
+SILVER = "secret-of-the-silver-blades"
+
+
+@pytest.fixture
+def fake_run(tmp_path, monkeypatch):
+    """`convertrun.main` with the archives, the source and Save As faked:
+    each title's folder is an empty one named for its launcher, and the
+    Save As stand-in records the folder it was given and writes nothing."""
+    archives = {stem: tmp_path / "archives" / stem
+                for stem in ("POOLRAD", "CURSE", "SECRET")}
+    for folder in archives.values():
+        folder.mkdir(parents=True)
+    calls = []
+
+    def find_game(stem="POOLRAD"):
+        return archives[stem]
+
+    def save_as(source, to, folder, game, disks, **kwargs):
+        calls.append(game)
+        return {"written": [], "refused": ["Fake", "nothing written"]}
+
+    title = {}
+
+    class FakeSource:
+        @classmethod
+        def detect(cls, path, party=None, slot=None):
+            return type("Detected", (), {"key": title["key"]})()
+
+    import editor.convert
+    monkeypatch.setattr(convertrun.dosbox, "find_game", find_game)
+    monkeypatch.setattr(convertrun, "write_via_save_as", save_as)
+    monkeypatch.setattr(convertrun, "disks_dir", lambda named=None: tmp_path)
+    monkeypatch.setattr(editor.convert, "Source", FakeSource)
+    out = tmp_path / "out"
+
+    def run(key, *extra):
+        title["key"] = key
+        argv = ["--source", str(tmp_path / "SOURCE.D64"), "--to", "dos",
+                "--out", str(out), "--no-play", *extra]
+        return convertrun.main(argv)
+
+    return run, archives, calls, out
+
+
+def test_a_silver_blades_source_is_written_against_silver_blades(fake_run):
+    """No `--game`: a Silver Blades save is written against the Silver
+    Blades folder, not Pool of Radiance's."""
+    run, archives, calls, _out = fake_run
+    run(SILVER)
+    assert calls == [archives["SECRET"]]
+
+
+@pytest.mark.parametrize("key, stem", [(SILVER, "POOLRAD"),
+                                       (POOL, "SECRET")])
+def test_a_game_folder_of_another_title_stops_before_writing(
+        fake_run, key, stem):
+    """A `--game` folder holding another title stops the run with a sentence
+    naming both titles, before Save As runs or `--out` is made."""
+    run, archives, calls, out = fake_run
+    with pytest.raises(SystemExit) as stopped:
+        run(key, "--game", str(archives[stem]))
+    message = str(stopped.value)
+    assert message.startswith("The DOS game folder ")
+    assert "but the save is" in message
+    assert calls == []
+    assert not out.exists()
+
+
+def test_a_pool_source_is_written_against_pool_as_before(fake_run):
+    """A Pool of Radiance save still takes Pool's folder by default, and
+    the Pool folder named outright is used as given."""
+    run, archives, calls, _out = fake_run
+    run(POOL)
+    run(POOL, "--game", str(archives["POOLRAD"]))
+    assert calls == [archives["POOLRAD"], archives["POOLRAD"]]
