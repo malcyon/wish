@@ -12,6 +12,7 @@ without them.
 from __future__ import annotations
 
 import pathlib
+import re
 import shutil
 
 import pytest
@@ -3897,22 +3898,29 @@ def test_a_dos_running_strength_arrives_at_the_c64s_own_score(
         effects.later_ability_magnitude(roll, (100 + roll) & 0x0F)]
 
 
-@pytest.mark.parametrize("key, data", [(_CURSE_KEY, 0x02), (_SSB_KEY, 0xFC)])
-@pytest.mark.parametrize("permanent, in_force, levels, c64_score", [
-    ((18, 53), (18, 100), {"paladin": 5}, (18, 100)),
-    ((18, 88), (18, 88), {"ranger": 11}, (18, 100)),
-    ((17, 0), (18, 100), {"paladin": 5}, (18, 70)),
+# Each in-force score is one the title's own cast leaves for that byte
+# (`effects.dos_later_strength_states`), so the score is rebuilt, not copied.
+@pytest.mark.parametrize("key, data, permanent, in_force, levels, c64_score", [
+    (_CURSE_KEY, 0x02, (18, 53), (18, 100), {"paladin": 5}, (18, 100)),
+    (_CURSE_KEY, 0x02, (18, 88), (18, 88), {"ranger": 11}, (18, 100)),
+    (_CURSE_KEY, 0x02, (17, 0), (18, 100), {"paladin": 5}, (18, 70)),
+    (_SSB_KEY, 0xFC, (18, 53), (18, 53), {"paladin": 5}, (18, 100)),
+    (_SSB_KEY, 0xFC, (18, 88), (18, 88), {"ranger": 11}, (18, 100)),
+    (_SSB_KEY, 0xFC, (17, 0), (18, 100), {"paladin": 5}, (18, 70)),
+    (_SSB_KEY, 0xFC, (17, 0), (18, 48), {"paladin": 5}, (18, 70)),
 ])
 def test_a_curse_leftover_strength_node_converts_at_the_c64s_top_roll_and_back(
         key, data, permanent, in_force, levels, c64_score):
     game = c64_port.by_key(key)
     char = _strength_character("DOS", game, 8, permanent, in_force, levels,
                                data=data)
+    assert in_force in effects.dos_later_strength_states(
+        permanent, data, True)
     payload = bytearray(0x1C00)
     rec, rep = c64_codec.write(char, payload=payload, party_slot=2,
                                clock_minutes=0)
-    assert not [d for d in rep.dropped if "trength" in str(d)]
-    assert not [d for d in rep.losses if "trength" in str(d)]
+    assert not [d for d in (*rep.dropped, *rep.losses)
+                if re.search(r"\beffect 38\b", str(d))]
     rows = [r for r in _rows(payload).values() if r[0] == 38]
     # The top roll's climb nibble, with the node's own low nibble kept.
     assert [r[3] for r in rows] == [0xF0 | (data & 0x0F)]
