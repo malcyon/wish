@@ -170,7 +170,7 @@ POOL_STATES = ("title", "party_menu", "save_path", "load_picker", "world", "shee
                "camp_save_picker", "quit_prompt", "rest_menu", "camp_magic", "camp_display")
 
 
-def _rest_run(tmp_path, clock, *, guard_states=POOL_STATES, identity=None):
+def _rest_run(tmp_path, clock, *, guard_states=POOL_STATES, identity=None, on=None):
     base = dataclasses.replace(route_pool.POOL, read_slot=_read_slot, slot_letters=_letters,
                                slot_files=_files)
     slots = [("A", _slot(START, {name: [BLESS] for name in NAMES})), ("B", b"kept slot")]
@@ -184,7 +184,7 @@ def _rest_run(tmp_path, clock, *, guard_states=POOL_STATES, identity=None):
     path.write_text(json.dumps(manifest))
     guest = RestingGuest(clock)
     result = acceptance.run_recon(
-        path, guest=guest, guard=MapGuard(states=guard_states),
+        path, guest=guest, guard=MapGuard(states=guard_states, on=on),
         identity=identity or DisplayIdentity(), holder="wish273-test",
         audio_proof=_audio_proof(tmp_path), title=base, accept=True)
     return guest, result
@@ -211,6 +211,56 @@ def test_a_pool_camp_run_lists_the_effects_rests_lists_them_again_and_reads_them
     assert result["read"]["effects"] == {"C": {name: [] for name in NAMES},
                                          "F": {name: [] for name in NAMES}}
     assert result["extra_saves"] == []
+
+
+def test_an_effects_list_whose_bar_offers_a_further_page_says_only_page_1_was_read(
+        tmp_path, clock):
+    # The first list holds every member's Bless and GRIMNIR's Enlarge, so its bar reads
+    # NEXT EXIT; after the rest the list fits one page and the bar reads EXIT.
+    first = {}
+
+    def two_pages(path):
+        first.setdefault("shot", path.stem)
+        return path.stem == first["shot"]
+
+    _, result = _rest_run(tmp_path, clock, guard_states=(*POOL_STATES, "camp_display_more"),
+                          on={"camp_display_more": two_pages})
+    assert [e["more_pages"] for e in result["camp_displays"]] == [True, False]
+    shot = result["camp_displays"][0]["shot"]
+    paged = [line for line in result["read"]["verdicts"] if "page 1 only" in line]
+    assert paged == [f"{shot}: the bar reads NEXT EXIT, so the list has a further page; "
+                     "the display check covered page 1 only"]
+    # The verdict line is evidence; it does not fail a run whose other checks passed.
+    assert result["success"] is True
+
+
+def test_with_no_rule_for_a_further_page_no_page_is_claimed_either_way(tmp_path, clock):
+    _, result = _rest_run(tmp_path, clock)
+    assert [e["more_pages"] for e in result["camp_displays"]] == [None, None]
+    assert not any("page 1 only" in line for line in result["read"]["verdicts"])
+
+
+def test_an_expect_whose_route_cannot_be_built_is_its_verdict_s_failure(
+        tmp_path, monkeypatch, capsys):
+    manifest = tmp_path / "prepare.json"
+    manifest.write_text(json.dumps({"title": "pool", "names_a": NAMES}))
+    monkeypatch.setattr(acceptance, "PixelGuards", lambda path: None)
+    monkeypatch.setattr(acceptance, "WinGuest", lambda: None)
+    monkeypatch.setattr(acceptance, "run_recon",
+                        lambda *a, **k: {"success": True, "error": "", "unguarded": []})
+
+    def inconsistent(manifest):
+        raise RouteError("the manifest turn_about disagrees with its recorded place")
+
+    monkeypatch.setattr(acceptance, "pool_title_for", inconsistent)
+    code = acceptance.main([
+        "accept", "--title", "pool", "--manifest", str(manifest), "--audio-proof", "a.json",
+        "--attempt", "accept1", "--guards", "g.json", "--identity", "i.json",
+        "--expect", "BRUTUS:1:0:128"])
+    out = capsys.readouterr().out
+    assert code == 1
+    assert ("expect BRUTUS id 1 at 0 minutes: refutes (the route this manifest names cannot "
+            "be built: the manifest turn_about disagrees with its recorded place)") in out
 
 
 def test_an_effects_list_with_no_identity_rule_fails_the_run(tmp_path, clock):

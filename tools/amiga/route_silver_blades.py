@@ -49,6 +49,11 @@ def expect_verdict(manifest_path: pathlib.Path, attempt: str,
 
 def _inventory(save: amiga_savegame.AmigaSavegame, *, require_joined: bool = True
                ) -> dict[str, Any]:
+    """Each member's items, and whether Guy de Valois holds the JOIN party's joined inventory.
+
+    `require_joined` refuses a party without Guy, or whose Guy lacks those items; only the
+    pinned JOIN route needs either. Without it, `guy_index` is None for a party with no Guy.
+    """
     members = []
     for person in save.characters:
         items = [
@@ -62,7 +67,9 @@ def _inventory(save: amiga_savegame.AmigaSavegame, *, require_joined: bool = Tru
     guy = next((member for member in members
                 if member["name"].upper() == "GUY DE VALOIS"), None)
     if guy is None:
-        raise RouteError("Guy de Valois is absent from the converted Amiga party")
+        if require_joined:
+            raise RouteError("Guy de Valois is absent from the converted Amiga party")
+        return {"members": members, "guy_index": None, "joined_inventory_expected": False}
     arrows = [item for item in guy["items"]
               if item["type"] == 0x1E and item["plus"] == 1]
     joined_ok = (guy["count"] == 13 and len(arrows) == 1
@@ -289,9 +296,9 @@ def prepare_substitute(substitute: pathlib.Path, run_id: str, *, letter: str = "
     registered side A holding the slot as `SLOT_LETTER`, DF1 a copy of disk B.
     A read-only copy of `substitute` stands as the published disk and
     `published_letter` names its slot, so the run checks that slot as it checks
-    a published one. Guy de Valois must be in the party, and the first member
-    must carry items, since the route opens his item list; the joined inventory
-    of the pinned JOIN party is not required.
+    a published one. The first member must carry items, since the route opens
+    his item list; neither Guy de Valois nor the pinned JOIN party's joined
+    inventory is required.
     """
     if not HOLDER.fullmatch(run_id):
         raise RouteError("run id must use letters, digits, dot, underscore or hyphen")

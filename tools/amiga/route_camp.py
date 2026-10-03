@@ -270,6 +270,9 @@ REST_MENU = "rest_menu"
 #: The magic menu reached from the camp bar, and the effects list its `Display` shows.
 MAGIC_MENU = "camp_magic"
 DISPLAY = "camp_display"
+#: The guard state for an effects list whose bar reads `NEXT EXIT`: the list has a further
+#: page, which `display` does not turn to, so only the first page is read.
+DISPLAY_MORE = "camp_display_more"
 #: The item list a sheet's `Items` shows, for party line 1; `items_state` names the others.
 ITEMS_LIST = "camp_items"
 #: The sheet whose bar offers `Items`, for party line 1; `items_sheet_state` names the others.
@@ -684,6 +687,7 @@ def steps_for(tokens: tuple[str, ...], name: str = "ssb", party_size: int | None
                       (SHEET_EXIT, items_sheet_state(line), "key"), (SHEET_EXIT, CAMP, "key")]
             steps += back
         elif words[0] == "display":
+            # The list is left from its first page; a further page is recorded, not read.
             steps += [(CAMP_MAGIC, MAGIC_MENU, "key"), (MAGIC_DISPLAY, DISPLAY, "key"),
                       (DISPLAY_EXIT, MAGIC_MENU, "key"), (MAGIC_EXIT, CAMP, "key")]
         else:

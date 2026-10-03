@@ -22,6 +22,19 @@
       "example": "273/wish273-pool-rest/accept1/shots/09-camp_display.png",
       "sha256": "4ff46837069ed69617be52b86b62b473306be9e0737459e32e38260664d0a83c"
     },
+    "camp_display_more": {
+      "also": [
+        "camp_display"
+      ],
+      "box": [
+        56,
+        418,
+        600,
+        432
+      ],
+      "example": "273/wish273-pool-rest/accept2/shots/09-camp_display.png",
+      "sha256": "6f0d2deff9d7bbfe22895baa3aeeec0ed8dc300cc9f640dc96920719e60d6abd"
+    },
     "camp_magic": {
       "also": [],
       "box": [

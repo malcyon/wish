@@ -1315,6 +1315,10 @@ def test_a_substituted_specimen_takes_a_plane_ticket_as_planeread_cites_it(
 def test_the_specimen_name_token_carries_the_tracker_of_a_plane_ticket():
     assert acceptance._issue_token("#631 (a title)") == "631"
     assert acceptance._issue_token("WISH-273 (a title)") == "plane-273"
+    # One ticket, one token, however its number is padded.
+    assert acceptance._issue_token("WISH-007 (a title)") == "plane-7"
+    assert acceptance._issue_token("#0631 (a title)") == "631"
+    assert acceptance._issue_token("[WISH-0273 (a title)](http://x)") == "plane-273"
     # `planeread.py WISH-N --cite` prints the citation as a Markdown link.
     assert acceptance._issue_token(
         "[WISH-273 (a title (with brackets))](http://plane.example/issues/x)") == "plane-273"

@@ -16,6 +16,8 @@ from tools.amiga import acceptance, route_silver_blades
 from tools.amiga.winuaesession import RouteError
 
 clock = measure.clock  # the fixture that replaces the driver's time and sleep
+#: The real reader, kept before the `staged` fixture replaces it.
+_real_inventory = route_silver_blades._inventory
 
 MEMBERS = [{"name": "Guy de Valois", "count": 9, "items": []},
            {"name": "MORGAINE", "count": 3, "items": []}]
@@ -146,6 +148,42 @@ def test_a_substitute_slot_is_staged_as_c_on_side_a_and_recorded_with_its_letter
     assert manifest["inventory_a"]["required"] is False
     assert "source" not in manifest and "staged_from" not in manifest
     assert _sha(pathlib.Path(manifest["df1"]["path"])) == _sha(staged.disk_b)
+
+
+class _Item(dict):
+    text = "LONG SWORD"
+
+
+def _save(*members):
+    """A decoded save whose characters carry `count` items each."""
+    return types.SimpleNamespace(characters=[
+        types.SimpleNamespace(name=name, items=[_Item(type_index=1)] * count)
+        for name, count in members])
+
+
+def test_only_the_join_route_needs_guy_de_valois():
+    save = _save(("MORGAINE", 2), ("PAINE", 0))
+    with pytest.raises(RouteError, match="Guy de Valois is absent"):
+        route_silver_blades._inventory(save)
+    inventory = route_silver_blades._inventory(save, require_joined=False)
+    assert inventory["guy_index"] is None
+    assert inventory["joined_inventory_expected"] is False
+    assert [(m["name"], m["count"]) for m in inventory["members"]] == [
+        ("MORGAINE", 2), ("PAINE", 0)]
+
+
+def test_a_substitute_party_without_guy_is_staged_if_its_first_member_carries_items(
+        tmp_path, home, staged, monkeypatch):
+    monkeypatch.setattr(route_silver_blades, "_inventory", _real_inventory)
+    monkeypatch.setattr(route_silver_blades.amiga_savegame, "read_slot",
+                        lambda disk, letter, title: _save(("MORGAINE", 2), ("PAINE", 0)))
+    path = route_silver_blades.prepare_substitute(_substitute(tmp_path), "noguy")
+    manifest = json.loads(path.read_text())
+    assert [m["name"] for m in manifest["inventory_a"]["members"]] == ["MORGAINE", "PAINE"]
+    monkeypatch.setattr(route_silver_blades.amiga_savegame, "read_slot",
+                        lambda disk, letter, title: _save(("PAINE", 0), ("MORGAINE", 2)))
+    with pytest.raises(RouteError, match="PAINE carries nothing"):
+        route_silver_blades.prepare_substitute(_substitute(tmp_path), "noguy2")
 
 
 def test_a_party_whose_first_member_carries_nothing_is_refused(tmp_path, home, staged):

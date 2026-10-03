@@ -920,11 +920,19 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
 
 
 def _display_verdicts(displays: list[dict[str, Any]]) -> list[str]:
-    """One line per effects list the run reached: whether its identity rule was checked."""
-    return [f"{entry['shot']}: the effects list " + (
-        "matches the identity rule cut for this party" if entry["identity_checked"]
-        else "has no identity rule, so nothing checked what it lists")
-        for entry in displays]
+    """One line per effects list the run reached: whether its identity rule was checked.
+
+    A list whose bar offered a further page gets a second line: only its first page was read.
+    """
+    lines = []
+    for entry in displays:
+        lines.append(f"{entry['shot']}: the effects list " + (
+            "matches the identity rule cut for this party" if entry["identity_checked"]
+            else "has no identity rule, so nothing checked what it lists"))
+        if entry.get("more_pages"):
+            lines.append(f"{entry['shot']}: the bar reads NEXT EXIT, so the list has a further "
+                         "page; the display check covered page 1 only")
+    return lines
 
 
 def _join_verdicts(joins: list[dict[str, Any]]) -> list[str]:
@@ -1025,7 +1033,10 @@ def _issue_token(issue: str) -> str:
     found = SPECIMEN_ISSUE.fullmatch(issue)
     if found is None:
         raise RouteError(f"{issue!r} is not {SPECIMEN_ISSUE_FORMS}")
-    return found.group(1) or f"plane-{found.group(2) or found.group(3)}"
+    # One ticket, one token: `WISH-007` and `WISH-7` are the same ticket.
+    if found.group(1):
+        return str(int(found.group(1)))
+    return f"plane-{int(found.group(2) or found.group(3))}"
 
 
 def _slug(value: str) -> str:
@@ -1631,7 +1642,10 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         map held a rule for their state.
         """
         if route_camp.is_display(state):
-            entry = {"state": state, "shot": name, "identity_checked": _has_rule(identity, state)}
+            entry = {"state": state, "shot": name, "identity_checked": _has_rule(identity, state),
+                     # None: the guard map holds no rule for a bar that offers a further page.
+                     "more_pages": (bool(guard(route_camp.DISPLAY_MORE, crop))
+                                    if _has_rule(guard, route_camp.DISPLAY_MORE) else None)}
             result.setdefault("camp_displays", []).append(entry)
             log("camp_display", **entry)
             return
@@ -3077,9 +3091,16 @@ def main(argv: list[str] | None = None) -> int:
                     accepted, line = route_silver_blades.expect_verdict(
                         args.manifest, attempt, expect)
                 else:
-                    judged = title if args.published_disk_one else accept_title(
-                        title, json.loads(args.manifest.read_text()))
-                    accepted, line = expect_verdict(judged, args.manifest, attempt, expect)
+                    try:
+                        judged = title if args.published_disk_one else accept_title(
+                            title, json.loads(args.manifest.read_text()))
+                    except RouteError as exc:
+                        name, eid, minutes, _data = expect
+                        accepted, line = False, (
+                            f"expect {name} id {eid} at {minutes} minutes: refutes (the "
+                            f"route this manifest names cannot be built: {exc})")
+                    else:
+                        accepted, line = expect_verdict(judged, args.manifest, attempt, expect)
                 print(line)
                 success = success and accepted
             return 0 if success else 1
