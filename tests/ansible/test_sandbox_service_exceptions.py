@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import io
 import json
 import subprocess
 import sys
@@ -57,9 +58,7 @@ def test_both_guests_disable_source_learning_and_pin_their_own_address():
 
 
 @pytest.mark.parametrize('broken', ['', 'live-ip', 'inactive-ip', 'learning', 'mac'])
-def test_permission_cannot_open_until_live_and_saved_guest_identity_is_fixed(tmp_path, broken):
-    import os
-
+def test_permission_cannot_open_until_live_and_saved_guest_identity_is_fixed(monkeypatch, broken):
     tasks = yaml.safe_load((ROLE / 'tasks/main.yml').read_text())
     task = next(t for t in tasks if t['name'].startswith('Verify fixed interface'))
     command = task['ansible.builtin.command']['argv']
@@ -77,21 +76,52 @@ def test_permission_cannot_open_until_live_and_saved_guest_identity_is_fixed(tmp
         live = live.replace("value='none'", "value='any'")
     elif broken == 'mac':
         live = live.replace('52:54:00:00:00:11', '52:54:00:00:00:10')
-    fake = tmp_path / 'virsh'
-    fake.write_text(f'#!{sys.executable}\nimport sys\n'
-                    f'print("win11" if "list" in sys.argv else '
-                    f'{saved!r} if "--inactive" in sys.argv else {live!r})\n')
-    fake.chmod(0o755)
+    calls = []
+
+    def virsh(argv, *, text, timeout):
+        assert argv[:3] == ['virsh', '-c', 'qemu:///system']
+        assert text is True and timeout == 10
+        args = argv[3:]
+        calls.append(args)
+        if args == ['list', '--name']:
+            return 'win11\n'
+        if args == ['dumpxml', 'win11', '--inactive']:
+            return saved
+        if args == ['dumpxml', 'win11']:
+            return live
+        pytest.fail(f'Unexpected libvirt read: {args}')
+
+    monkeypatch.setattr(subprocess, 'check_output', virsh)
     data = {'leases': {'win11': {'ip': '10.77.0.11', 'mac': '52:54:00:00:00:11'}},
             'network': 'sandbox', 'filter': 'no-lan'}
-    result = subprocess.run([sys.executable, *command[1:]], input=json.dumps(data),
-                            capture_output=True, text=True, timeout=5,
-                            env={**os.environ, 'PATH': str(tmp_path) + os.pathsep + os.environ['PATH']})
-    assert (result.returncode == 0) == (broken == ''), result.stderr
+    monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(data)))
+    if broken:
+        message = {'live-ip': '^Pin IP first: win11$', 'inactive-ip': '^Pin IP first: win11$',
+                   'learning': '^Disable IP learning first: win11$', 'mac': '^win11$'}[broken]
+        with pytest.raises(AssertionError, match=message):
+            exec(command[2], {})
+    else:
+        exec(command[2], {})
+    expected = [['list', '--name'], ['dumpxml', 'win11', '--inactive']]
+    if broken != 'inactive-ip':
+        expected.append(['dumpxml', 'win11'])
+    assert calls == expected
 
 
-def test_existing_domain_bindings_preserve_devices_and_need_no_second_update(tmp_path):
-    import os
+def test_unavailable_libvirt_is_not_an_identity_rejection(monkeypatch):
+    tasks = yaml.safe_load((ROLE / 'tasks/main.yml').read_text())
+    task = next(t for t in tasks if t['name'].startswith('Verify fixed interface'))
+
+    def unavailable(*args, **kwargs):
+        raise OSError('Cannot start virsh')
+
+    monkeypatch.setattr(subprocess, 'check_output', unavailable)
+    monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps({'leases': {}})))
+    with pytest.raises(OSError, match='Cannot start virsh'):
+        exec(task['ansible.builtin.command']['argv'][2], {})
+
+
+def test_existing_domain_bindings_preserve_devices_and_need_no_second_update(monkeypatch, capsys):
     import xml.etree.ElementTree as ET
 
     tasks = yaml.safe_load((ROLE / 'tasks/main.yml').read_text())
@@ -102,22 +132,25 @@ def test_existing_domain_bindings_preserve_devices_and_need_no_second_update(tmp
       <model type='e1000e'/><target dev='vnet7'/>
       <filterref filter='no-lan'/>
     </interface><disk type='file'/></devices></domain>"""
-    domain_file = tmp_path / 'domain.xml'
-    domain_file.write_text(domain)
-    fake = tmp_path / 'virsh'
-    fake.write_text(f'#!{sys.executable}\nimport sys\nfrom pathlib import Path\n'
-                    f'print("win11" if "list" in sys.argv else '
-                    f'Path({str(domain_file)!r}).read_text())\n')
-    fake.chmod(0o755)
+
+    def virsh(argv, *, text, timeout):
+        assert argv[:3] == ['virsh', '-c', 'qemu:///system']
+        assert text is True and timeout == 10
+        args = argv[3:]
+        if args in (['list', '--name'], ['list', '--all', '--name']):
+            return 'win11\n'
+        if args in (['dumpxml', 'win11'], ['dumpxml', 'win11', '--inactive']):
+            return domain
+        pytest.fail(f'Unexpected libvirt read: {args}')
+
+    monkeypatch.setattr(subprocess, 'check_output', virsh)
     data = {'leases': {'win11': {'ip': '10.77.0.11', 'mac': '52:54:00:00:00:11'}},
             'network': 'sandbox', 'filter': 'no-lan'}
 
     def prepare():
-        result = subprocess.run([sys.executable, *command[1:]], input=json.dumps(data),
-                                capture_output=True, text=True, timeout=5,
-                                env={**os.environ, 'PATH': str(tmp_path) + os.pathsep + os.environ['PATH']})
-        assert result.returncode == 0, result.stderr
-        return json.loads(result.stdout)
+        monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(data)))
+        exec(command[2], {})
+        return json.loads(capsys.readouterr().out)
 
     changes = prepare()
     assert {entry['mode'] for entry in changes} == {'config', 'live'}
@@ -129,7 +162,7 @@ def test_existing_domain_bindings_preserve_devices_and_need_no_second_update(tmp
         assert {p.get('name'): p.get('value') for p in iface.findall('filterref/parameter')} == {
             'IP': '10.77.0.11', 'CTRL_IP_LEARNING': 'none',
         }
-    domain_file.write_text('<domain><devices>' + changes[0]['xml'] + '</devices></domain>')
+    domain = '<domain><devices>' + changes[0]['xml'] + '</devices></domain>'
     assert prepare() == []
 
 

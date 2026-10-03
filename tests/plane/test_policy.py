@@ -1,5 +1,6 @@
 """Check that untrusted ticket text cannot bypass filtering or write safeguards."""
 import json
+import os
 
 import pytest
 
@@ -132,6 +133,7 @@ def test_wrong_account_cannot_write(tmp_path):
     assert len(fake.calls) == 1
 
 
+@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
 def test_timeout_prevents_duplicates_across_process_restart_and_new_id(tmp_path):
     path = tmp_path / 'writes.sqlite'
     def timeout():
@@ -143,6 +145,7 @@ def test_timeout_prevents_duplicates_across_process_restart_and_new_id(tmp_path)
             Journal(path).run(key, {'payload': 'Text'}, lambda: pytest.fail('Duplicate write'))
 
 
+@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
 def test_completed_writes_reuse_result_and_reject_changed_payload(tmp_path):
     journal = Journal(tmp_path / 'writes.sqlite')
     assert journal.run('write', {'body': 'Text'}, lambda: {'id': ITEM}) == {'id': ITEM}
@@ -166,6 +169,7 @@ def test_controls_and_markdown_cannot_change_citation_target(tmp_path):
     assert citation.endswith(f'/issues/{ITEM})')
 
 
+@pytest.mark.skipif(os.name != 'posix', reason='Credentials require POSIX ownership and private file modes')
 def test_token_requires_private_permissions(tmp_path):
     config = settings(tmp_path)
     config.token_file.write_text('Secret')
@@ -193,6 +197,7 @@ def test_update_requires_explanation_before_mutating(tmp_path):
         Client(settings(tmp_path), Fake(handle)).update('edit', ITEM, {'priority': 'low'}, '')
 
 
+@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
 def test_correction_comment_is_after_patch_and_state_is_read_back(tmp_path):
     current = record()
     def handle(method, path, data, params):
@@ -214,6 +219,7 @@ def test_correction_comment_is_after_patch_and_state_is_read_back(tmp_path):
     assert [c[0] for c in fake.calls if c[0] != 'GET'] == ['PATCH', 'POST']
 
 
+@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
 def test_state_change_with_wrong_readback_is_not_reported_complete(tmp_path):
     def handle(method, path, data, params):
         if path == 'users/me':
@@ -310,6 +316,7 @@ def test_missing_editor_identity_withholds_current_text(tmp_path, timestamps):
     assert 'SECRET' not in json.dumps(result)
 
 
+@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
 def test_body_correction_ignored_by_server_posts_no_success_comment(tmp_path):
     def handle(method, path, data, params):
         if path == 'users/me':
@@ -332,6 +339,7 @@ def test_bare_list_does_not_prove_complete_pagination(tmp_path, resource):
         list(client.pages(f'{client.prefix}/{resource}'))
 
 
+@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
 def test_reordered_labels_and_normalized_html_confirm_before_explanation(tmp_path):
     current = record()
     explained = []

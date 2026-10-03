@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import ssl
 import sys
 import tomllib
@@ -71,6 +72,7 @@ def test_provisioning_is_opt_in_and_credentials_are_private():
     assert 'REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt' in launcher
 
 
+@pytest.mark.skipif(os.name != 'posix', reason='Configuration rollback restores POSIX file modes with fchmod')
 def test_codex_unrelated_change_fails_and_restores_original(tmp_path, monkeypatch):
     codex = tmp_path / '.codex/config.toml'
     codex.parent.mkdir()
@@ -125,7 +127,8 @@ def test_http_is_explicit_and_does_not_require_a_certificate():
         assert "agent_guest_plane_base_url.startswith('https://')" in conditions
 
 
-@pytest.mark.parametrize('existing', [False, True])
+@pytest.mark.parametrize('existing', [False, pytest.param(True, marks=pytest.mark.skipif(
+    os.name != 'posix', reason='Configuration rollback restores POSIX file modes with fchmod'))])
 @pytest.mark.parametrize('failure', ['command', 'timeout', 'invalid_toml'])
 def test_failed_codex_registration_restores_file_and_permissions(tmp_path, monkeypatch, existing, failure):
     codex = tmp_path / '.codex/config.toml'
