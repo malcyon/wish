@@ -2726,14 +2726,14 @@ def test_the_gauntlets_beside_a_parked_spell_give_the_gauntlets_row():
         _RE(38, 10, 0x95, 1), _GAUNTLETS) == (38, 0xF3)
     # A spell holding the base, the gauntlets parked with their own boost.
     assert effects.pool_gauntlets_over_spell_row(
-        _RE(12, 10, 0x73, 1), bytes((38, 0, 0, 0xDC, 1))) == (38, 0xF3)
+        _RE(12, 10, 0x73, 1), bytes((38, 0, 0, 0xE5, 1))) == (38, 0xF3)
 
 
 @pytest.mark.parametrize("running, granted", [
     # No parked node.
     (_RE(38, 10, 0x71, 1), _GAUNTLETS),
     # Two parked nodes.
-    (_RE(38, 10, 0x95, 1), bytes((38, 0, 0, 0xDC, 1))),
+    (_RE(38, 10, 0x95, 1), bytes((38, 0, 0, 0xE5, 1))),
     # A parked node with no boost.
     (_RE(38, 10, 0x80, 1), _GAUNTLETS),
     (_RE(38, 10, 0x73, 1), bytes((38, 0, 0, 0x80, 1))),

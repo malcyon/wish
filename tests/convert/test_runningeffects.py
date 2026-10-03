@@ -4090,9 +4090,15 @@ def test_two_pool_strength_casts_become_two_timed_rows(first, second, want):
     # The spell is parked with its own boost; the gauntlets hold the base.
     (bytes((38, 10, 0, 0x95, 1)), bytes((38, 0, 0, 0x73, 1))),
     (bytes((12, 10, 0, 0x95, 1)), bytes((38, 0, 0, 0x73, 1))),
+    # A Strength at exactly 18/00 on a fighter already wearing the gauntlets
+    # holds the base, and the gauntlets are parked with data 0xE5.
+    (bytes((38, 10, 0, 0x73, 1)), bytes((38, 0, 0, 0xE5, 1))),
     # An Enlarge that ties the gauntlets and came second holds the base.
-    (bytes((12, 10, 0, 0x73, 1)), bytes((38, 0, 0, 0xDC, 1))),
-], ids=["strength", "enlarge", "enlarge-tie"])
+    (bytes((12, 10, 0, 0x73, 1)), bytes((38, 0, 0, 0xE5, 1))),
+    # A magic-user, cleric or thief: the Strength is parked with boost 1.
+    (bytes((38, 10, 0, 0x81, 1)), bytes((38, 0, 0, 0x73, 1))),
+], ids=["strength", "enlarge", "strength-holds-base", "enlarge-tie",
+        "strength-parked-boost-1"])
 def test_gauntlets_beside_a_running_pool_strength_convert_as_the_gauntlets(
         spell, gauntlets):
     char = _pool_character(spell)
