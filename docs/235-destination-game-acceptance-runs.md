@@ -193,6 +193,7 @@ each is built for:
 | `camp` | `ENCAMP`; records the camp bar | All four |
 | `rest 5m`, `rest 1h30m`, `rest 8d` | Camp `REST` for that long; Pools of Darkness' rest menu is read from `GAME.EXE` and is PROBABLE until a run reaches it | All four |
 | `display` | Camp `MAGIC > DISPLAY`: every page of the list of spells in effect read as text with the title's own font, returning each member's name and effect names; Pool also requires six member rows | Pool, Curse, Silver Blades |
+| `cast N SPELL [T]` | Camp `MAGIC > CAST` for roster line N, which is highlighted with `End` in Pool and Curse and `Down` in Silver Blades; the spell list is read as text, and SPELL is reached by moving the highlight down (`End` in Pool and Curse, `Down` in Silver Blades). A spell memorised twice shows as one row with a count, such as `STRENGTH (2)`, in Curse and Silver Blades. A target, T, is picked with the roster's key and `SELECT` (`Return` in Pool, `s` in Curse and Silver Blades). The cast is believed when the list comes back one SPELL shorter, or, for the caster's only row, when `CAST` opens nothing; any other screen stops the run | Pool, Curse, Silver Blades; Pools of Darkness is refused |
 | `train N` | The party menu's `TRAIN CHARACTER` for roster line N | Curse |
 | `save X` | Camp `SAVE` to slot X and decline the quit, or `SAVE CURRENT GAME` at the party menu; believed when the file changes | All four |
 | `read` | Copies `SAVE/` out and decodes every node, the clock, the place and each character's experience, installed slot against each saved one | All four |
