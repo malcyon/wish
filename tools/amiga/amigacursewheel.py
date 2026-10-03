@@ -65,12 +65,12 @@ def _wheel_modules():
 
 
 #: The character pitch the private repository's reader fits over, in captured
-#: pixels per Amiga pixel.  It was written against FS-UAE, which draws the
-#: 320-pixel screen about four times over; `winvm shot` grabs WinUAE's 720-wide
-#: window, where the same screen lands at exactly 2.0, and the fit's search
-#: never reaches it.  Scaling the capture up by a whole number with nearest
-#: neighbour puts it back in range and invents no pixel: every sample the
-#: reader takes is a pixel that was really there.
+#: pixels per Amiga pixel across the screen.  It was written against FS-UAE,
+#: which draws the 320-pixel screen about four times over; a `winvm shot` of
+#: WinUAE puts the same screen at exactly 2.0, and the fit's search never
+#: reaches it.  Widening the capture by a whole number with nearest neighbour
+#: puts it back in range and invents no pixel: every sample the reader takes
+#: is a pixel that was really there.
 PITCH_MIN = 3.6
 
 
@@ -90,7 +90,16 @@ def scale_factor(pitch: float) -> int:
 
 
 def _to_reader_scale(path: pathlib.Path, screen=None):
-    """The screenshot at a scale the private repository's reader can fit."""
+    """The screenshot at a scale the private repository's reader can fit.
+
+    Only the width is enlarged.  The reader searches the column pitch alone
+    and measures the row pitch off the rune tile, so the height never needed
+    it -- and enlarging it breaks the tile apart: the reader finds a tile as a
+    run of rows holding its green, ending at a gap of four captured rows, and
+    a rune that crosses the whole tile on one Amiga row leaves a gap of two
+    rows at 2.0 and four once doubled.  The top tile then reads as half a
+    tile, at half its row pitch, and matches no rune.
+    """
     import numpy as np  # noqa: PLC0415
     from PIL import Image  # noqa: PLC0415
 
@@ -99,9 +108,11 @@ def _to_reader_scale(path: pathlib.Path, screen=None):
     grids = screen.find_runes(np.array(image).astype(int))
     if not grids:
         return np.array(image).astype(int)
-    factor = scale_factor(grids[0][2])
+    #: Each grid is (top, left, row pitch, column pitch); the narrowest
+    #: column pitch is the one that has to reach the range.
+    factor = scale_factor(min(grid[3] for grid in grids))
     if factor > 1:
-        image = image.resize((image.width * factor, image.height * factor),
+        image = image.resize((image.width * factor, image.height),
                              Image.NEAREST)
     return np.array(image).astype(int)
 
