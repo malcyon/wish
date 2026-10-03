@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import datetime
 from html.parser import HTMLParser
 from importlib.metadata import version
 
@@ -53,8 +54,10 @@ class Transport:
                     time.sleep(int(delay))
                     continue
                 raise PlaneHttpError("Plane rate limit reached; wait for Retry-After before retrying reads", 429)
-            if not 200 <= response.status_code < 300:
+            if 400 <= response.status_code < 500:
                 raise PlaneHttpError(f'Plane returned HTTP {response.status_code}', response.status_code)
+            if not 200 <= response.status_code < 300:
+                raise PlaneError(f'Plane returned HTTP {response.status_code}')
             try:
                 return response.json()
             except (ValueError, json.JSONDecodeError) as exc:
@@ -155,13 +158,27 @@ class Client:
 
     def reconcile(self, operation_id):
         """Settle a pending journal key by reading Plane; never sends the write."""
-        def decide(request):
+        def after(row, reserved_at):
+            created = row.get('created_at')
+            try:
+                return bool(created) and datetime.fromisoformat(created).timestamp() >= reserved_at
+            except ValueError:
+                return False
+
+        def decide(request, reserved_at):
             method, path, payload = request['method'], request['path'], request['payload']
+            agent = self.settings.agent
             if method == 'POST' and path.endswith('/comments'):
                 wanted = HTMLContent(payload['comment_html']).events
                 for row in self.pages(path):
-                    if self.policy.author(row) == self.settings.agent and HTMLContent(row.get('comment_html') or '').events == wanted:
+                    if (self.policy.author(row) == agent and after(row, reserved_at)
+                            and HTMLContent(row.get('comment_html') or '').events == wanted):
                         return self.policy.compact_comment(row)
+                return None
+            if method == 'POST':
+                for row in self.pages(path):
+                    if self.policy.author(row) == agent and after(row, reserved_at) and row.get('name') == payload['name']:
+                        return self.policy.compact(row)
                 return None
             if method == 'PATCH':
                 record = self.transport.request('GET', path)
@@ -169,8 +186,9 @@ class Client:
                     confirm_changes(record, payload)
                 except PlaneError:
                     return None
-                return self.policy.compact(record)
-            raise PlaneError("Only comment and update writes can be reconciled")
+                # Values already held before the reservation do not show that this write applied.
+                return self.policy.compact(record) if after({'created_at': record.get('updated_at')}, reserved_at) else None
+            raise PlaneError("Only create, comment and update writes can be reconciled")
         return Journal(self.settings.journal_file).reconcile(operation_id, decide)
 
     def create(self, operation_id, title, body, priority, labels):

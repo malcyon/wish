@@ -534,7 +534,7 @@ def test_markdown_renders_to_matching_tags():
         assert tag in out
 
 
-def test_plain_text_is_paragraphs_and_html_is_escaped():
+def test_unformatted_text_is_paragraphs_and_html_is_escaped():
     from tools.plane.policy import paragraph
     assert paragraph('First\nsecond\n\nThird') == '<p>First<br />\nsecond</p>\n<p>Third</p>'
     out = paragraph('<script>alert(1)</script> and <b>x</b>')
@@ -559,7 +559,7 @@ def test_journal_waits_for_a_writer_holding_the_lock(tmp_path):
         db = sqlite3.connect(journal.path, isolation_level=None)
         db.execute('BEGIN IMMEDIATE')
         held.set()
-        time.sleep(2)
+        time.sleep(7)
         db.execute('COMMIT')
         db.close()
     thread = threading.Thread(target=hold)
@@ -604,29 +604,114 @@ def test_error_response_leaves_key_retryable_but_read_timeout_stays_pending(tmp_
         journal.run('slow', {'p': 3}, lambda: pytest.fail('Duplicate write'))
 
 
-@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
-def test_reconcile_marks_present_comment_done_and_absent_comment_unsent(tmp_path):
-    present = {'on': True}
+def age_reservation(tmp_path, key, reserved_at=1_000_000.0):
+    import sqlite3
+    db = sqlite3.connect(tmp_path / 'journal.sqlite')
+    db.execute('UPDATE writes SET reserved_at=? WHERE key=?', (reserved_at, key))
+    db.commit()
+    db.close()
 
+
+def lost_write_client(tmp_path, rows, patched=None):
+    """A client whose writes all time out, over a server holding `rows` as comments or tickets."""
     def handle(method, path, data, params):
-        if method == 'POST':
+        if method in {'POST', 'PATCH'}:
             raise PlaneError('Plane request failed; write outcomes require reconciliation')
         if path == 'users/me':
             return {'id': AGENT}
-        if path.endswith('/comments'):
-            rows = [{'id': OUTSIDE, 'created_by': AGENT, 'comment_html': '<p>Text</p>'}] if present['on'] else []
+        if path.endswith('/comments') or path.endswith('/work-items'):
             return {'results': rows, 'next_page_results': False}
-        return record()
-    fake = Fake(handle)
-    client = Client(settings(tmp_path), fake)
-    for key in ('present', 'absent'):
+        return patched or record()
+    return Client(settings(tmp_path), Fake(handle))
+
+
+NEW, OLD = '2026-01-01T00:00:00Z', '1970-01-01T00:00:00Z'
+
+
+@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
+def test_reconcile_matches_only_agent_comments_created_after_the_reservation(tmp_path):
+    rows = [{'id': IMPORTER, 'created_by': AGENT, 'comment_html': '<p>Text</p>', 'created_at': OLD},
+            {'id': ITEM, 'created_by': OUTSIDE, 'comment_html': '<p>Text</p>', 'created_at': NEW}]
+    client = lost_write_client(tmp_path, rows)
+    with pytest.raises(PlaneError):
+        client.comment('lost', ITEM, 'Text')
+    age_reservation(tmp_path, 'lost')
+    assert client.reconcile('lost') == {'operation_id': 'lost', 'status': 'unsent', 'result': None}
+    with pytest.raises(PlaneError):
+        client.comment('lost2', ITEM, 'Later')
+    age_reservation(tmp_path, 'lost2')
+    rows.append({'id': OUTSIDE, 'created_by': AGENT, 'comment_html': '<p>Later</p>', 'created_at': NEW})
+    done = client.reconcile('lost2')
+    assert done['status'] == 'done' and done['result']['id'] == OUTSIDE
+
+
+@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
+def test_reconcile_refuses_a_key_reserved_within_five_minutes(tmp_path):
+    client = lost_write_client(tmp_path, [])
+    with pytest.raises(PlaneError):
+        client.comment('fresh', ITEM, 'Text')
+    with pytest.raises(PlaneError, match='less than 5 minutes'):
+        client.reconcile('fresh')
+
+
+@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
+def test_reconcile_update_needs_the_ticket_changed_after_the_reservation(tmp_path):
+    client = lost_write_client(tmp_path, [], patched=record(priority='low', updated_at=OLD))
+    with pytest.raises(PlaneError):
+        client.update('edit', ITEM, {'priority': 'low'}, 'Changed')
+    age_reservation(tmp_path, 'edit:edit')
+    assert client.reconcile('edit:edit')['status'] == 'unsent'
+    client = lost_write_client(tmp_path, [], patched=record(priority='medium', updated_at=NEW))
+    with pytest.raises(PlaneError):
+        client.update('edit2', ITEM, {'priority': 'medium'}, 'Changed')
+    age_reservation(tmp_path, 'edit2:edit')
+    assert client.reconcile('edit2:edit')['status'] == 'done'
+
+
+@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
+def test_reconcile_create_finds_the_agent_ticket_with_the_title(tmp_path):
+    rows = [record(created_at=OLD, name='Ticket')]
+    client = lost_write_client(tmp_path, rows)
+    client.writable = lambda identifier=None: None
+    client.pages = lambda path: iter(rows if path == client.items else [{'id': LABEL, 'name': 'bug'}])
+    with pytest.raises(PlaneError):
+        client.create('made', 'Ticket', 'Body', 'low', [LABEL])
+    age_reservation(tmp_path, 'made')
+    assert client.reconcile('made')['status'] == 'unsent'
+    with pytest.raises(PlaneError):
+        client.create('made2', 'Ticket', 'Body2', 'low', [LABEL])
+    age_reservation(tmp_path, 'made2')
+    rows.append(record(id=OUTSIDE, sequence_id=2, created_at=NEW, name='Ticket'))
+    done = client.reconcile('made2')
+    assert done['status'] == 'done' and done['result']['id'] == OUTSIDE
+
+
+@pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
+def test_server_error_and_redirect_statuses_leave_the_key_pending(tmp_path, monkeypatch):
+    import requests
+
+    from tools.plane import client as client_module
+
+    class Response:
+        def __init__(self, status):
+            self.status_code = status
+            self.headers = {}
+
+    transport = object.__new__(client_module.Transport)
+    transport.resource = type('R', (), {'session': type('S', (), {'request': lambda self, *a, **k: Response(status[0])})(),
+                                        '_build_url': lambda self, p: p, '_headers': lambda self: {}})()
+    assert requests
+    journal = Journal(tmp_path / 'writes.sqlite')
+    for status_code, key in ((503, 'five'), (302, 'three')):
+        status = [status_code]
         with pytest.raises(PlaneError):
-            client.comment(key, ITEM, 'Text' if key == 'present' else 'Other')
-    assert client.reconcile('present')['status'] == 'done'
-    assert client.reconcile('present')['result']['id'] == OUTSIDE
-    present['on'] = False
-    assert client.reconcile('absent') == {'operation_id': 'absent', 'status': 'unsent', 'result': None}
-    assert not [c for c in fake.calls if c[0] == 'POST' and c[1].endswith('/comments')][2:]
+            journal.run(key, {'p': key}, lambda: transport.request('POST', 'x', {}))
+        with pytest.raises(PlaneError, match='uncertain'):
+            journal.run(key, {'p': key}, lambda: pytest.fail('Duplicate write'))
+    status = [404]
+    with pytest.raises(PlaneError):
+        journal.run('four', {'p': 'four'}, lambda: transport.request('POST', 'x', {}))
+    assert journal.run('four', {'p': 'four'}, lambda: {'id': ITEM}) == {'id': ITEM}
 
 
 @pytest.mark.skipif(os.name != 'posix', reason='Write journals require POSIX private file modes')
