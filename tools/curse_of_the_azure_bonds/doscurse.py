@@ -34,7 +34,16 @@ Commands, one per line, blank lines and `#` comments ignored:
 | `files` | log the game's `SAVE` directory, with sizes and mtimes |
 | `copy label` | copy `SAVE` to `<label>/` in this tool's scratch directory, the specimen |
 | `restart` | stop and start DOSBox, keeping the staged tree and its saves |
+| `snapshot wm` | `--snapshots` only: save the whole machine under the name (letters, digits, `-`, `_`) |
+| `restore wm` | `--snapshots` only: put the machine back as `snapshot wm` left it, settle, and log the `SAVE` files changed since, which stay on disk |
 | `quit` | close the session and release the slot |
+
+`--snapshots` boots DOSBox-X through `tools/dos/dossnapshot.py`'s
+`SnapshotSession` on that harness's own slot pool, because DOSBox 0.74 has no
+save state.  Its captures are halved back to 320x200, so the shots and `pane`
+read the same rectangles either way.  A snapshot holds memory, not the mounted
+`SAVE` folder: a game save made between a snapshot and its restore stays on
+disk while the party goes back.
 
 Every command is followed by a capture, so `shots/last.png` and
 `shots/last-big.png` are always the frame after the most recent line.  The
@@ -48,7 +57,7 @@ specimen is copied *out* of that tree, never out of the archives.
 
     tools/curse_of_the_azure_bonds/doscurse.py pane --slot 0 --rect view --last 8
 
-is the reading half, and it is offline: it crops one named region out of the
+(with `--snapshots` for a DOSBox-X console's slot) is the reading half, and it is offline: it crops one named region out of the
 last few shots and montages them, so eight steps of a walk are one picture
 instead of eight.  `--rect text --events` instead *lists* the shots whose
 message pane is not blank, which is how a driven walk finds the square that
@@ -68,7 +77,7 @@ REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
 from tools.curse_of_the_azure_bonds import cursewheel  # noqa: E402
-from tools.dos import dosbox  # noqa: E402
+from tools.dos import dosbox, dosboxx, dossnapshot  # noqa: E402
 from tools.dos.dosbox import BAR, Screen, Session, claim, find_game  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
@@ -89,14 +98,15 @@ PANES = {
 }
 
 
-def shot_files(slot: int, last: int, names: list[str]) -> list[Path]:
+def shot_files(slot: int, last: int, names: list[str],
+               inst: Path = dosbox.INST) -> list[Path]:
     """The shots to read: the named ones, or the last `last` in order.
 
     `last.png` and `last-big.png` are skipped -- they are copies of a shot
     already in the list, and a montage that repeats its own final frame reads
     as one step more than the walk actually took.
     """
-    shots = dosbox.INST / str(slot) / "shots"
+    shots = inst / str(slot) / "shots"
     every = sorted((p for p in shots.glob("*.png")
                     if not p.stem.startswith("last")
                     and not p.stem.endswith("-big")),
@@ -107,11 +117,11 @@ def shot_files(slot: int, last: int, names: list[str]) -> list[Path]:
 
 
 def pane(slot: int, rect: str, last: int, names: list[str], out: Path,
-         scale: int, events: bool) -> int:
+         scale: int, events: bool, inst: Path = dosbox.INST) -> int:
     """Crop `rect` out of each shot; montage them, or list the ones with ink."""
-    files = shot_files(slot, last, names)
+    files = shot_files(slot, last, names, inst)
     if not files:
-        print(f"no shots under {dosbox.INST / str(slot) / 'shots'}")
+        print(f"no shots under {inst / str(slot) / 'shots'}")
         return 1
     geometry = PANES[rect]
     if events:
@@ -172,6 +182,9 @@ class Console:
         self.cmds = cmds
         self.log = log
         self.n = 0
+        #: The snapshots taken in this console, so a `restore` never loads a
+        #: state an earlier run left under the same name.
+        self.snapshots: set[str] = set()
 
     # -- output ---------------------------------------------------------
 
@@ -184,15 +197,33 @@ class Console:
         shots = self.s.dir / "shots"
         shots.mkdir(exist_ok=True)
         out = shots / f"{self.n:03d}-{name}.png"
-        subprocess.run(
-            ["import", "-window", self.s.window, "-depth", "8", str(out)],
-            env=self.s.env(), check=True, capture_output=True)
+        if isinstance(self.s, dosboxx.XSession):
+            self.frame(out)
+        else:
+            subprocess.run(
+                ["import", "-window", self.s.window, "-depth", "8", str(out)],
+                env=self.s.env(), check=True, capture_output=True)
         enlarge(out)
         for tail in ("", "-big"):
             src = out.with_name(out.stem + tail + ".png")
             if src.is_file():
                 shutil.copyfile(src, shots / f"last{tail}.png")
         self.say(f"  shot {out.name}")
+
+    def frame(self, out: Path) -> None:
+        """Write a DOSBox-X frame at 320x200, as DOSBox 0.74 would draw it.
+
+        A grab torn between two blits is halved by each block's top-left pixel
+        rather than refused, so an animated screen still gets its shot.
+        """
+        from PIL import Image
+        try:
+            screen = self.s.capture()
+        except dosboxx.NotLineDoubled:
+            from tools.dos.acceptance import loose_halve
+            screen = loose_halve(dosbox.Session.capture(self.s))
+            self.say("  torn frame, halved loosely")
+        Image.frombytes("RGB", (screen.width, screen.height), screen.px).save(out)
 
     def describe(self) -> None:
         screen: Screen = self.s.capture()
@@ -238,9 +269,16 @@ class Console:
         if word == "key":
             self.s.key(*rest.split())
         elif word == "type":
-            subprocess.run(["xdotool", "type", "--clearmodifiers", "--window",
-                            self.s.window, rest],
-                           env=self.s.env(), check=True, capture_output=True)
+            if isinstance(self.s, dosboxx.XSession):
+                # SDL2 ignores `--window`'s synthetic events: focus, then XTEST.
+                subprocess.run(["xdotool", "windowfocus", self.s.window],
+                               env=self.s.env(), capture_output=True)
+                subprocess.run(["xdotool", "type", "--clearmodifiers", rest],
+                               env=self.s.env(), check=True, capture_output=True)
+            else:
+                subprocess.run(["xdotool", "type", "--clearmodifiers", "--window",
+                                self.s.window, rest],
+                               env=self.s.env(), check=True, capture_output=True)
         elif word == "wheel":
             try:
                 box = int(rest)
@@ -274,6 +312,9 @@ class Console:
             shutil.copytree(self.s.save_dir, dest)
             self.say(f"  copied {self.s.save_dir} -> {dest}")
             return True
+        elif word in ("snapshot", "restore"):
+            if not self.machine_state(word, rest):
+                return True
         elif word == "restart":
             self.s.restart()
         elif word == "quit":
@@ -285,6 +326,36 @@ class Console:
         time.sleep(0.4)
         self.shoot()
         self.describe()
+        return True
+
+    def machine_state(self, word: str, name: str) -> bool:
+        """`snapshot NAME` or `restore NAME`; False when nothing was done.
+
+        A restore puts memory back but not the `SAVE` folder, so the files
+        changed since the snapshot are named in the log.
+        """
+        if not hasattr(self.s, "snapshot"):
+            self.say(f"  ! {word} needs DOSBox-X: start the console with --snapshots")
+            return False
+        if not dossnapshot.SNAPSHOT_NAME.match(name):
+            self.say(f"  ! {word} needs a name of letters, digits, - and _")
+            return False
+        if word == "snapshot":
+            path = self.s.snapshot(name)
+            self.snapshots.add(name)
+            self.say(f"  snapshot {name} -> {path}")
+            return True
+        if name not in self.snapshots:
+            self.say(f"  ! no snapshot {name!r} in this console")
+            return False
+        changed = self.s.restore(name)
+        self.s.settle()
+        self.say(f"  restored {name}")
+        if changed:
+            self.say("  SAVE files changed since the snapshot stay on disk: "
+                     + ", ".join(changed))
+        else:
+            self.say("  no SAVE file changed since the snapshot")
         return True
 
     def run(self, minutes: float) -> None:
@@ -323,8 +394,13 @@ def copy_out(slot_dir: Path, out: Path) -> None:
 
 
 def console(game: str, note: str, minutes: float, exe: str = "START.EXE",
-            out: Path | None = None) -> int:
-    with claim(note or "doscurse") as slot:
+            out: Path | None = None, snapshots: bool = False) -> int:
+    if snapshots and dosboxx.unavailable():
+        print(dosboxx.unavailable())
+        return 2
+    lease = dosboxx.claim if snapshots else claim
+    session = dossnapshot.SnapshotSession if snapshots else Session
+    with lease(note or "doscurse") as slot:
         cmds = slot.dir / "console.cmd"
         log = slot.dir / "console.log"
         cmds.write_text("")
@@ -332,9 +408,9 @@ def console(game: str, note: str, minutes: float, exe: str = "START.EXE",
         print(f"slot {slot.n} display {slot.display}")
         print(f"commands: {cmds}")
         print(f"log:      {log}")
-        print(f"shots:    {slot.dir / 'shots'}")
+        print(f"shots:    {slot.dir / 'shots'}", flush=True)
         try:
-            with Session(slot, find_game(game), exe=exe) as s:
+            with session(slot, find_game(game), exe=exe) as s:
                 Console(s, cmds, log).run(minutes)
         finally:
             if out is not None:
@@ -364,11 +440,15 @@ def main(argv: list[str] | None = None) -> int:
                     help="pane: the montage file (default in scratch); "
                          "console: a directory to copy console.log and shots/ "
                          "into when the console ends")
+    ap.add_argument("--snapshots", action="store_true",
+                    help="console: boot DOSBox-X, so `snapshot NAME` and "
+                         "`restore NAME` work; pane: read that console's slot")
     args = ap.parse_args(argv)
     if args.command == "pane":
         return pane(args.slot, args.rect, args.last, args.shots,
                     Path(args.out or scratch.scratch_dir("doscurse") / "pane.png"),
-                    args.scale, args.events)
+                    args.scale, args.events,
+                    dosboxx.INST if args.snapshots else dosbox.INST)
     if args.command == "check":
         absent = dosbox.missing_tools()
         print("tools missing:", ", ".join(absent) if absent else "none")
@@ -379,7 +459,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         return 1 if absent else 0
     return console(args.game, args.note, args.minutes, args.exe,
-                   Path(args.out) if args.out else None)
+                   Path(args.out) if args.out else None, args.snapshots)
 
 
 if __name__ == "__main__":
