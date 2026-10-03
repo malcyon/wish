@@ -124,6 +124,13 @@
 - name: Claude Code
   tags: claude
   block:
+    - name: Disable Claude Code feedback surveys in interactive shells
+      ansible.builtin.lineinfile:
+        path: "{{ ansible_user_dir }}/.bashrc"
+        regexp: '^\s*(export\s+)?CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY='
+        line: 'export CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY=1'
+      tags: terminal_preferences
+
     # The native installer, so `claude update` keeps working.
     - name: Install Claude Code
       ansible.builtin.shell: "curl -fsSL {{ agent_guest_claude_install_url }} | bash"
