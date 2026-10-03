@@ -178,7 +178,7 @@ and new-browser OAuth design. Preserve existing Pictures and Git backup behavior
 | Item | Selected design and acceptance |
 |---|---|
 | Implementation | The production owner is preparing the replacement. The installed legacy restic/rclone script remains; this decision is not deployment or upload evidence. |
-| Destination and authentication | Use the existing OneDrive account and root `wish-plane-backups`. A new authentication probe prompted; the running-client check is pending, so usable unattended authentication is not confirmed. |
+| Destination and authentication | Use the existing OneDrive account and root `wish-plane-backups`. Existing native-client authorization is healthy; the earlier prompt checked the wrong configuration path. Archive upload and cloud readback remain unverified. |
 | Content | Compressed ticket data only. Exclude passwords, API keys, session material, environment secrets and recovery secrets. The exact archive format and capture mechanism remain unconfirmed. |
 | Secret recovery | Preserve service secrets locally. Restore depends on existing private Ansible configuration and credential recovery; the archive is not a complete disaster-recovery package. No additional restic password is required by the selected design. |
 | Retention | Keep at most 34 archives across 14 daily, 8 weekly and 12 monthly slots. The replacement must demonstrate the bound and preserve successful backups after failures. |
