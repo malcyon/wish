@@ -53,6 +53,10 @@ def clean(value):
     return ''.join(c for c in str(value or '') if c == '\n' or not unicodedata.category(c).startswith('C'))
 
 
+# The account that wrote the comments imported from GitHub (wish-importer@plane.morton.lan).
+IMPORTER_ACCOUNT = 'bbca0246-1fb1-4715-8f6a-7926e4f023a9'
+
+
 class Settings:
     """Validate the local allowlist and private credential locations."""
 
@@ -68,6 +72,7 @@ class Settings:
             raise PlaneError("Invalid workspace or project identifier")
         self.project = uuid(data['project_id'])
         self.agent = uuid(data['agent_account_id'])
+        self.importer = uuid(data.get('importer_account_id', IMPORTER_ACCOUNT))
         self.token_file = Path(data['token_file'])
         self.writes_enabled = data.get('writes_enabled') is True
         self.resource = data.get('resource', 'work-items')

@@ -6,6 +6,7 @@ import pytest
 
 from tools.plane.client import Client
 from tools.plane.policy import (
+    IMPORTER_ACCOUNT,
     PlaneError,
     PlaneHttpError,
     PlaneOutcomeUnknown,
@@ -873,9 +874,66 @@ def test_edit_comment_fails_when_the_readback_differs(tmp_path):
         client.edit_comment(ITEM, COMMENT, MARKDOWN)
 
 
-def test_edit_comment_refuses_a_comment_by_another_author(tmp_path):
-    client, fake = comment_editor(tmp_path, author=OUTSIDE)
-    with pytest.raises(PlaneError, match='written by the agent'):
+def importer_editor(tmp_path, **kw):
+    client, fake = comment_editor(tmp_path, **kw)
+    client.settings.importer = IMPORTER
+    return client, fake
+
+
+def test_edit_comment_edits_an_importer_comment_and_keeps_its_author(tmp_path):
+    client, fake = importer_editor(tmp_path, author=IMPORTER)
+    result = client.edit_comment(ITEM, COMMENT, MARKDOWN)
+    assert [c[0] for c in fake.calls].count('PATCH') == 1
+    assert result['author_id'] == IMPORTER
+
+
+def test_importer_account_defaults_to_the_named_constant(tmp_path):
+    assert settings(tmp_path).importer == IMPORTER_ACCOUNT
+    assert settings(tmp_path, importer_account_id=IMPORTER).importer == IMPORTER
+
+
+@pytest.mark.parametrize('author', [OUTSIDE, '12345678-1234-4234-8234-123456789abc', None])
+def test_edit_comment_refuses_any_other_author_without_patching(tmp_path, author):
+    client, fake = importer_editor(tmp_path, author=author)
+    with pytest.raises(PlaneError, match='agent or the importer'):
+        client.edit_comment(ITEM, COMMENT, MARKDOWN)
+    assert not [c for c in fake.calls if c[0] == 'PATCH']
+
+
+def test_edit_comment_fails_when_the_patch_result_changes_the_author(tmp_path):
+    client, fake = importer_editor(tmp_path, author=IMPORTER)
+    inner = fake.handler
+
+    def handle(method, path, data, params):
+        result = inner(method, path, data, params)
+        return {**result, 'created_by': AGENT} if method == 'PATCH' else result
+    fake.handler = handle
+    with pytest.raises(PlaneError, match='authorship changed'):
+        client.edit_comment(ITEM, COMMENT, MARKDOWN)
+
+
+def test_edit_comment_fails_when_the_readback_changes_the_author(tmp_path):
+    client, fake = importer_editor(tmp_path, author=IMPORTER)
+    inner = fake.handler
+
+    def handle(method, path, data, params):
+        result = inner(method, path, data, params)
+        return {**result, 'created_by': AGENT} if method == 'GET' and len(fake.calls) > 2 else result
+    fake.handler = handle
+    with pytest.raises(PlaneError, match='authorship changed'):
+        client.edit_comment(ITEM, COMMENT, MARKDOWN)
+
+
+def test_edit_comment_still_needs_writes_and_a_matching_credential(tmp_path):
+    client, fake = comment_editor(tmp_path)
+    client.settings.writes_enabled = False
+    with pytest.raises(PlaneError):
+        client.edit_comment(ITEM, COMMENT, MARKDOWN)
+    assert not [c for c in fake.calls if c[0] == 'PATCH']
+    client, fake = comment_editor(tmp_path)
+    inner = fake.handler
+    fake.handler = lambda m, p, d, q: {'id': OUTSIDE} if p == 'users/me' else inner(m, p, d, q)
+    with pytest.raises(PlaneError, match='credential'):
         client.edit_comment(ITEM, COMMENT, MARKDOWN)
     assert not [c for c in fake.calls if c[0] == 'PATCH']
 

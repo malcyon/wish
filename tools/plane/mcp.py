@@ -49,7 +49,7 @@ def build_server(client=None):
 
     @server.tool()
     def edit_comment(identifier: str, comment_id: str, body: str) -> dict:
-        """Replace the Markdown body of one of the agent's own comments on a project ticket."""
+        """Replace the Markdown body of a comment by the agent or the importer account on a project ticket."""
         return client.edit_comment(identifier, comment_id, body)
 
     @server.tool()

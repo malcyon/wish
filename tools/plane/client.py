@@ -226,16 +226,19 @@ class Client:
         return result
 
     def edit_comment(self, identifier, comment_id, body):
-        """Replace the body of one of the agent's own comments with rendered Markdown and confirm it by readback."""
+        """Replace the body of a comment by the agent or the importer account with rendered Markdown, keeping its author, and confirm it by readback."""
         record = self.writable(identifier)
         path = f'{self.items}/{uuid(record["id"])}/comments/{uuid(comment_id)}'
         html = paragraph(body)
-        if self.policy.author(self.transport.request('GET', path)) != self.settings.agent:
-            raise PlaneError("Only a comment written by the agent account can be edited")
+        original = self.policy.author(self.transport.request('GET', path))
+        if original not in {self.settings.agent, self.settings.importer}:
+            raise PlaneError("Only a comment written by the agent or the importer account can be edited")
         result = self.write(identifier, 'PATCH', path, {'comment_html': html})
-        if result['author_id'] != self.settings.agent:
-            raise PlaneError("Comment authorship did not match the agent account; read the ticket back")
+        if result['author_id'] != original:
+            raise PlaneError("Comment authorship changed after the edit; read the ticket back")
         stored = self.transport.request('GET', path)
+        if self.policy.author(stored) != original:
+            raise PlaneError("Comment authorship changed after the edit; read the ticket back")
         try:
             confirm_changes(stored, {'comment_html': html})
         except PlaneError as exc:
