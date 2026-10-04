@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Edit a copy of a native save through the Character Editor's own Save, and report.
 
-Copies `--base` (a disk image, or a DOS save folder) to `--out`, opens it in `editor.window.EditorBinding` (offscreen),
-changes one member's gold, strength and one item quantity the way the editor's
-widgets and inventory model do, and calls `save(interactive=False)`. The report
+Copies `--base` (a disk image, or a DOS save folder) to `--out`, opens it in
+`editor.window.EditorBinding` (offscreen), changes one member's gold, strength
+and one item quantity the way the editor's widgets and inventory model do, and
+calls `save(interactive=False)`. `--out` must not exist, or be an empty folder
+for a DOS save, so no stale file or earlier backup reaches the report. The report
 (JSON, also printed) gives each field before and after, read back from the
 written file with `Party`, the backups Save wrote under `backups/` (beside an image,
 inside a DOS folder, one per file Save replaced) and whether each equals the
@@ -55,6 +57,10 @@ def sha256(path: pathlib.Path) -> str:
 
 def _copy(base: pathlib.Path, out: pathlib.Path) -> None:
     """Copy a save file, or a save folder's files without its `backups/`."""
+    if out.is_dir() and any(out.iterdir()):
+        raise SystemExit(f"{out}: already holds files; give a new --out")
+    if out.exists() and not out.is_dir():
+        raise SystemExit(f"{out}: already exists; give a new --out")
     if base.is_dir():
         out.mkdir(parents=True, exist_ok=True)
         for name in _files(base):

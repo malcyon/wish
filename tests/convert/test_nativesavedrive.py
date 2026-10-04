@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pathlib
 
+import pytest
 from conftest import load_tools_module
 from support.amigasavegame import synthetic_curse
 
@@ -138,3 +139,22 @@ def test_a_c64_disk_is_edited_and_backed_up_beside_itself(tmp_path):
     (backup,) = report["backups"]
     assert pathlib.Path(backup["path"]).parent == out.parent / "backups"
     assert backup["equals_pre_edit"]
+
+
+def test_an_out_that_already_holds_files_is_not_copied_into(tmp_path):
+    base = tmp_path / "base"
+    base.mkdir()
+    (base / "CHRDATA1.SAV").write_bytes(b"new")
+    stale = tmp_path / "out"
+    (stale / "backups").mkdir(parents=True)
+    (stale / "OLD.SAV").write_bytes(b"old")
+
+    with pytest.raises(SystemExit, match="already holds files"):
+        nativesavedrive._copy(base, stale)
+    assert not (stale / "CHRDATA1.SAV").exists()
+
+    taken = tmp_path / "file.adf"
+    taken.write_bytes(b"x")
+    with pytest.raises(SystemExit, match="already exists"):
+        nativesavedrive._copy(base, taken)
+    assert taken.read_bytes() == b"x"
