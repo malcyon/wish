@@ -234,6 +234,8 @@ import contextlib  # noqa: E402
 import json  # noqa: E402
 import types  # noqa: E402
 
+import pytest  # noqa: E402
+
 from goldbox.d64 import D64  # noqa: E402
 from tools.curse_of_the_azure_bonds import cursewarp as WARP  # noqa: E402
 
@@ -441,6 +443,20 @@ def test_a_fight_offered_after_the_choice_stops_with_nothing_pressed(
     assert calls == ["press_bar:ASK PERMISSION"]
     arrival = json.loads((tmp_path / "out" / "arrival.json").read_text())
     assert arrival["fight"] and not arrival["ok"]
+    assert not dest.exists()
+
+
+@pytest.mark.parametrize("bar", ["RUN AWAY  (FIGHT)  PARLAY",
+                                 "FIGHT?  RUN AWAY"])
+def test_a_fight_word_in_punctuation_still_stops_the_answerer(
+        monkeypatch, tmp_path, bar):
+    calls, args, dest = _run_with_fakes(
+        monkeypatch, tmp_path, arrival_choice="ASK PERMISSION",
+        bars=[(YULASH, "press_bar"), (bar, None)])
+    assert WARP.run(args) == 6
+    assert calls == ["press_bar:ASK PERMISSION"]
+    arrival = json.loads((tmp_path / "out" / "arrival.json").read_text())
+    assert arrival["fight"]
     assert not dest.exists()
 
 

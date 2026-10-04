@@ -51,6 +51,7 @@ import hashlib
 import json
 import os
 import pathlib
+import string
 import subprocess
 import sys
 import time
@@ -232,7 +233,7 @@ FIGHT_WORDS = ("FIGHT", "COMBAT", "ATTACK")
 #: How long a message box's row 24 may still read the same after its Return
 #: before `answer_arrival` presses again.  The row is redrawn after the 3D
 #: view, so a second Return sent sooner lands on the world bar and chooses
-#: `MOVE` with it, which is what the first live run of the choice did.
+#: `MOVE` with it.
 REPRESS_AFTER = 8.0
 
 
@@ -326,7 +327,7 @@ def answer_arrival(sess, choice: str, timeout: float = 120.0) -> dict:
             out["bars"].append(bar)
             sess.log(f"  arrival: {bar!r}")
             seen = bar
-        words = bar.replace(",", " ").split()
+        words = [w.strip(string.punctuation) for w in bar.split()]
         if not chosen and choice in bar:
             if not sess.press_bar(choice):
                 out["error"] = f"{choice} could not be chosen"
