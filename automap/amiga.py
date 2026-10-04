@@ -902,8 +902,12 @@ SNAPSHOT_NAME = re.compile(r"[A-Za-z0-9_-]{1,32}")
 #: opens the device rather than a file or folder.
 WINDOWS_DEVICE = re.compile(r"(?i)(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?")
 
-#: The names WinUAE gives its copies' pipes; the lane script finds the one its own emulator serves by pid.
+#: The names WinUAE gives its copies' pipes; the lane script records the one its own
+#: emulator's boot log names.
 LANE_PIPE_NAME = re.compile(r"WinUAE(?:_[1-9])?")
+
+#: The lane script's `lane` reply: the lane, the emulator's pid and start time, and its pipe.
+LANE_REPLY = re.compile(r"(?m)^ok lane=(\d+) pid=(\d+) started=\S+ pipe=(WinUAE(?:_[1-9])?)\s*$")
 
 #: The completion marker's name; `~` cannot be in a snapshot name, so no snapshot
 #: shares its path.
@@ -1078,8 +1082,8 @@ class WinuaePipe:
 
     **Over `ssh` a debugger command goes to the lane `holder` claims.** The test
     VM runs one WinUAE per lane, and a second copy serves `WinUAE_1` rather than
-    `WinUAE`, in start order, so the pipe is found by its server pid after the
-    lane script's `lane` verb has checked the claim and named the pid
+    `WinUAE`, in start order, so the pipe is the one the lane's run receipt names,
+    which the lane script's `lane` verb reports after it has checked the claim
     (`_open_by_lane`). A local pipe with no holder is opened by `pipe`.
 
     The framing is 8-bit text with no byte-order mark, and that is not a
@@ -1165,40 +1169,42 @@ class WinuaePipe:
 
         Each copy takes the first free of `WinUAE`, `WinUAE_1`..`WinUAE_9`, so the name
         says nothing about whose emulator it is. The lane script's `lane` verb checks
-        the claim, the run receipt and the executable and names the pid; the pipe
-        whose server process is that pid is the holder's, as `winuae.ps1`'s
-        `Open-LanePipe` finds it. Another copy's pipe is only opened and closed.
+        the claim, the run receipt and the executable, and names the pid and the pipe the
+        lane's run receipt records. Only that pipe is opened, and its server process
+        must be that pid.
         """
         script = r"""  $lane=(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File '@SCRIPT@' lane -Holder '@HOLDER@' 2>&1 | Out-String).Trim()
-  if ($lane -notmatch '(?m)^ok lane=(\d+) pid=(\d+) ') { throw [InvalidOperationException]::new(($lane -replace '\s+',' ')) }
+  if ($lane -notmatch '@REPLY@') { throw [InvalidOperationException]::new(($lane -replace '\s+',' ')) }
   [uint32]$lanePid=$Matches[2]
-  Write-Output ('<<lane>> ' + $Matches[1] + ' ' + $lanePid)
+  $name=$Matches[3]
+  Write-Output ('<<lane>> ' + $Matches[1] + ' ' + $lanePid + ' ' + $name)
   if (-not ('WishPipe.Info' -as [type])) {
     Add-Type -Namespace WishPipe -Name Info -MemberDefinition '[DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetNamedPipeServerProcessId(IntPtr Pipe, out uint ServerProcessId);'
   }
-  $p=$null
-  $seen=@()
-  $until=[Diagnostics.Stopwatch]::StartNew()
-  do {
-    $seen=@()
-    $live=@([IO.Directory]::GetFiles('\\.\pipe\') | ForEach-Object { [IO.Path]::GetFileName($_) })
-    foreach ($name in (@('WinUAE') + (1..9 | ForEach-Object { "WinUAE_$_" }))) {
-      if ($live -cnotcontains $name) { continue }
-      $try=New-Object IO.Pipes.NamedPipeClientStream '.',$name,'InOut'
-      try {
-        $try.Connect(2000)
-        [uint32]$owner=0
-        if ([WishPipe.Info]::GetNamedPipeServerProcessId($try.SafePipeHandle.DangerousGetHandle(),[ref]$owner) -and $owner -eq $lanePid) { $p=$try; break }
-        $seen+="$name served by pid=$owner"
-      } catch { $seen+="$name not opened: $($_.Exception.Message)" }
-      $try.Dispose()
-    }
-    if (-not $p) { Start-Sleep -Milliseconds 250 }
-  } while (-not $p -and $until.ElapsedMilliseconds -lt @CONNECT@)
-  if (-not $p) { throw [InvalidOperationException]::new("no WinUAE pipe is served by @HOLDER@'s winuae64 pid=$lanePid ($($seen -join '; '))") }"""
+  $live=@([IO.Directory]::GetFiles('\\.\pipe\') | ForEach-Object { [IO.Path]::GetFileName($_) })
+  if ($live -cnotcontains $name) { throw [InvalidOperationException]::new("\\.\pipe\$name, which @HOLDER@'s winuae64 pid=$lanePid opened, is gone; stop the lane and start it again") }
+  $p=New-Object IO.Pipes.NamedPipeClientStream '.',$name,'InOut'
+  $p.Connect(@CONNECT@)
+  $p.ReadMode=[IO.Pipes.PipeTransmissionMode]::Message
+  [uint32]$owner=0
+  if (-not ([WishPipe.Info]::GetNamedPipeServerProcessId($p.SafePipeHandle.DangerousGetHandle(),[ref]$owner) -and $owner -eq $lanePid)) {
+    # A pipe closed with no request sent is closed for good by WinUAE, so one read goes first.
+    try {
+      $q=[Text.Encoding]::ASCII.GetBytes('CFG floppy0')
+      $m=New-Object byte[] ($q.Length+1)
+      [Array]::Copy($q,$m,$q.Length)
+      $p.Write($m,0,$m.Length)
+      $p.Flush()
+      $p.ReadAsync((New-Object byte[] 65536),0,65536).Wait(@READ@) | Out-Null
+    } catch { }
+    $p.Dispose()
+    throw [InvalidOperationException]::new("\\.\pipe\$name is served by pid=$owner, not by @HOLDER@'s winuae64 pid=$lanePid; stop the lane and start it again")
+  }"""
         return (script.replace("@SCRIPT@", self.LANE_SCRIPT)
                 .replace("@HOLDER@", self.holder or "")
-                .replace("@CONNECT@", str(self.CONNECT_MS)))
+                .replace("@REPLY@", LANE_REPLY.pattern)
+                .replace("@CONNECT@", str(self.CONNECT_MS))
+                .replace("@READ@", str(self.READ_MS)))
 
     def _framed(self, messages: list[str], repeat: int = 1,
                 fetch: list[tuple[str, str]] | None = None) -> str:
@@ -1208,6 +1214,9 @@ class WinuaePipe:
         can never go down as `CFG `. The one `CFG` message this project sends
         is built in `winuae.ps1`, never here.
         """
+        if not messages:
+            raise ValueError("a pipe opened with no message to send is closed with nothing sent, "
+                             "which makes WinUAE close it for good")
         encoded = ",".join(
             "'" + base64.b64encode(m.encode("ascii")).decode("ascii")
             + "'" for m in messages)

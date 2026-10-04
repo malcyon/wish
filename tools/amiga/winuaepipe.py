@@ -39,7 +39,7 @@ Nothing here claims or releases the WinUAE lane, exactly as
 cannot be handed between the several runs one experiment needs.  `--holder`
 names the claim: each WinUAE copy takes the first free of `WinUAE`, `WinUAE_1`..,
 so the guest asks `winuae.ps1 lane` for that holder's emulator and opens the
-pipe whose server is its pid.
+pipe the lane's run receipt names, and no other.
 """
 
 from __future__ import annotations

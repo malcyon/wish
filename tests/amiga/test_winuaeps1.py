@@ -58,60 +58,99 @@ def test_every_pipe_verb_opens_the_pipe_its_own_emulator_serves():
     assert PS1.count("Open-LanePipe $lane.proc.Id") == 5
 
 
-def test_the_lane_pipe_is_chosen_by_its_server_pid():
+def test_the_lane_pipe_is_the_one_its_run_receipt_names_and_its_server_is_checked():
     body = _body("Open-LanePipe")
+    assert "$run = Read-Kv $LanePaths.run" in body
+    assert "$run['pipe']" in body
     asked = body.index("GetNamedPipeServerProcessId")
-    matched = body.index("$owner -eq $LanePid) { $script:LanePipeName = $name; return $try }", asked)
-    assert asked < matched
-    assert "$all = @('WinUAE') + (1..9 | ForEach-Object { \"WinUAE_$_\" })" in body
+    closed = body.index("Close-LanePipe $try", asked)
+    thrown = body.index("is served by pid=$owner, not by this lane's winuae64 pid=$LanePid", closed)
+    assert asked < closed < thrown
 
 
-def test_a_lane_whose_pipe_is_nobody_s_is_named_with_every_server_seen():
-    assert "no WinUAE pipe is served by this lane's winuae64 pid=$LanePid" in _body("Open-LanePipe")
+def test_the_lane_pipe_opener_opens_one_name_and_never_searches():
+    body = _body("Open-LanePipe")
+    for gone in ("1..9", "WinUAE_$_", "foreach", "do {", "$seen"):
+        assert gone not in body, gone
+    assert body.count("New-Object IO.Pipes.NamedPipeClientStream") == 1
+    assert PS1.count("NamedPipeClientStream") == 1
+
+
+def test_a_lane_without_a_recorded_pipe_or_with_a_gone_one_says_to_restart_it():
+    body = _body("Open-LanePipe")
+    assert "run receipt names no WinUAE pipe; stop the lane and start it again" in body
+    assert "is gone; WinUAE never makes it again, so stop the lane and start it again" in body
+    assert "[IO.Directory]::GetFiles('\\\\.\\pipe\\')" in body
 
 
 def test_the_pipe_name_set_is_the_same_in_python_and_powershell():
-    body = _body("Open-LanePipe")
-    assert "'WinUAE'" in body and "(1..9" in body and "WinUAE_$_" in body
+    name = amiga.LANE_PIPE_NAME.pattern
+    assert name == "WinUAE(?:_[1-9])?"
+    assert f"'^{name}\\z'" in _body("Open-LanePipe")
+    assert name in _body("Read-LanePipeName")
     assert amiga.LANE_PIPE_NAME.fullmatch("WinUAE")
     assert all(amiga.LANE_PIPE_NAME.fullmatch(f"WinUAE_{n}") for n in range(1, 10))
     assert not amiga.LANE_PIPE_NAME.fullmatch("WinUAE_10")
 
 
-def test_the_pipe_search_waits_for_a_pipe_the_lane_has_not_made_yet():
-    """The emulator can exist before its pipe does; the old fixed-name connect waited five seconds."""
+def test_the_pipe_opener_keeps_its_signature_and_its_five_second_connect():
     sig = re.search(r"function Open-LanePipe\(\[int\]\$LanePid, \[int\]\$WaitMs = (\d+)\)", PS1)
     assert sig and sig.group(1) == "5000"
-    body = _body("Open-LanePipe")
-    assert "while ($until.ElapsedMilliseconds -lt $WaitMs)" in body
-    assert "Start-Sleep -Milliseconds 250" in body
+    assert "$try.Connect($WaitMs)" in _body("Open-LanePipe")
 
 
-def test_a_lone_pipe_and_an_unavailable_listing_keep_the_five_second_connect_for_winuae():
-    body = _body("Open-LanePipe")
-    assert "if ($names.Count -eq 1 -or ($null -eq $live -and $name -ceq 'WinUAE')) { 5000 } else { 2000 }" in body
+def test_a_pipe_is_closed_only_after_one_request_and_its_reply():
+    body = _body("Close-LanePipe")
+    guarded = body.index("-eq 'opened'")
+    sent = body.index("Send-Pipe $Pipe 'CFG floppy0'", guarded)
+    assert guarded < sent < body.index(".Dispose()")
+    assert "$pipe.Dispose()" not in PS1 and "$try.Dispose()" not in PS1
 
 
-def test_a_failed_listing_is_recorded_and_not_swallowed():
-    body = _body("Open-LanePipe")
-    assert "catch { }" not in body
-    assert 'listing unavailable: $($_.Exception.Message)' in body
+def test_send_pipe_records_when_a_request_is_outstanding_and_answered():
+    body = _body("Send-Pipe")
+    assert body.index("$script:LanePipeState = 'sent'") < body.index("$Pipe.Write(")
+    assert body.index("$script:LanePipeState = 'answered'") > body.index("while (-not $Pipe.IsMessageComplete)")
 
 
-def test_the_no_pipe_message_names_the_listing_and_every_server_seen():
-    body = _body("Open-LanePipe")
-    assert "$listed; $($seen -join '; ')" in body
-    assert "$name served by pid=$owner, skipped" in body
+def test_start_waits_for_the_pipe_line_and_records_the_name_in_the_receipt():
+    body = _case("start")
+    released = body.index("$mutex.ReleaseMutex()")
+    read = body.index("Read-LanePipeName", released)
+    polled = body.index("Get-ReceiptProcess", read)
+    slept = body.index("Start-Sleep -Milliseconds 500", polled)
+    recorded = body.index("pipe    = $pipeName", slept)
+    printed = body.index("ok pid=$($proc.Id) session=$($proc.SessionId) pipe=$pipeName", recorded)
+    assert released < read < polled < slept < recorded < printed
+    assert "$PipeLineBoundMs = 20000" in PS1
+    assert "stop the lane and start it again" in body[polled:]
+    assert "wrote no IPC: Named Pipe line to" in body
+    assert "exited before opening its pipe" in body
+
+
+def test_the_boot_log_is_read_through_a_shared_handle_and_matched_on_its_pipe_line():
+    body = _body("Read-LanePipeName")
+    assert "[IO.FileShare]::ReadWrite" in body
+    assert (r"'(?m)^IPC: Named Pipe ''\\\\\.\\pipe\\(WinUAE(?:_[1-9])?)'' open\r?$'") in body
+    assert "throw" in body
+
+
+def test_no_text_calls_probing_another_copys_pipe_harmless():
+    docs = (PS1_PATH.parents[2] / "docs" / "143-winuae-debugger.md").read_text()
+    for text in (PS1, pathlib.Path(amiga.__file__).read_text(), docs):
+        for phrase in ("briefly occupies", "occupies it briefly", "only opened and closed"):
+            assert phrase not in text, phrase
+
+
+def test_the_pipe_rule_is_commented_where_the_pipe_is_opened():
+    start = PS1.index("function Open-LanePipe")
+    comment = " ".join(PS1[PS1.rindex("\n\n", 0, start):start].replace("#", " ").split())
+    assert "close that pipe for good" in comment and "nothing here opens another lane's pipe" in comment
 
 
 def test_a_wrong_server_verdict_names_the_pipe_that_was_opened():
     assert r"\\.\pipe\WinUAE is served" not in PS1
     assert PS1.count(r"fail \\.\pipe\$($script:LanePipeName) is served by pid=") == 2
-
-
-def test_probing_another_copys_pipe_is_commented_where_it_happens():
-    start = PS1.index("function Open-LanePipe")
-    assert "nMaxInstances 1" in PS1[PS1.rindex("\n\n", 0, start):start]
 
 
 # -- one emulator per lane, found by the pid in the lane's own receipt --------------
@@ -157,7 +196,7 @@ def test_debugger_disposes_its_pipe_on_every_path_and_fails_unless_the_reply_is_
     assert "ok debugger entered" in section
     # One finally closes the pipe whether the send returned, failed or threw.
     tail = body[body.index("  } catch {", start):]
-    assert "} finally {\n    if ($pipe) { $pipe.Dispose() }" in tail
+    assert "} finally {\n    if ($pipe) { Close-LanePipe $pipe }" in tail
     assert "if (-not $verdict.StartsWith('ok ', [StringComparison]::Ordinal)) { exit 1 }" in tail
 
 
@@ -325,6 +364,7 @@ def test_the_lane_verb_names_the_holders_lane_and_pid():
     valid = re.search(r"ValidateSet\(([^)]*)\)", PS1).group(1)
     assert "'lane'" in valid
     assert "ok lane=$ActiveLane pid=" in _case("lane")
+    assert "pipe=$pipeName" in _case("lane")
 
 
 def _case(name: str) -> str:
@@ -508,7 +548,8 @@ def test_press_releases_the_key_on_a_fresh_pipe_after_a_timed_out_down_and_retri
     finally_ = body[body.index("} finally {", body.index('"CFG KEY_RAW_DOWN')):]
     finally_ = finally_[:finally_.index("if (-not $verdict) {")]
     assert "} catch {" in body[body.index('"CFG KEY_RAW_DOWN'):body.index("} finally {", body.index('"CFG KEY_RAW_DOWN'))]
-    assert "Open-LanePipe $lane.proc.Id" in finally_
+    assert "Close-LanePipe $pipe" in finally_
+    assert finally_.index("Close-LanePipe $pipe") < finally_.index("Open-LanePipe $lane.proc.Id")
     assert "$try -lt 2" in finally_
     assert "catch" in finally_
     assert "may still be held down" in finally_
@@ -601,3 +642,15 @@ def test_the_intruder_waits_for_b_to_be_running_before_it_acts():
 def test_the_lanecheck_removes_a_leftover_hijack_job_on_any_exit():
     final = LANECHECK[LANECHECK.index("} finally {"):]
     assert "Remove-Job -Job $script:HijackJob" in final
+
+
+def test_the_lanecheck_reads_every_lane_again_in_reverse_and_checks_the_pipes_are_still_listed():
+    body = _lanecheck_body("Scenario-EveryLane")
+    names = body.index("each start reports its own distinct pipe=")
+    first = body.index("'drives', '-Holder', $d.holder")
+    second = body.index("for ($n = $Lanes - 1; $n -ge 0; $n--)", first)
+    again = body.index("'drives', '-Holder', $ds[$n].holder", second)
+    listed = body.index("[IO.Directory]::GetFiles('\\\\.\\pipe\\')", again)
+    assert names < first < second < again < listed
+    assert "$listed -cnotcontains $_" in body
+    assert "pipe=$($pipes[$n])" in body

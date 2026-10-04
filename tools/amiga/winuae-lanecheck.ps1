@@ -487,6 +487,8 @@ function Claim-Line([int]$N) {
   ((Drive @('status')).out -split "`r?`n" | Where-Object { $_ -match "^claim$tag\s*=" }) -join ''
 }
 
+function Pipe-Of($Reply) { if ($Reply.out -match '(?m)^ok pid=\d+ session=\d+ pipe=(WinUAE(?:_[1-9])?)\s*$') { $Matches[1] } else { '' } }
+
 function Pid-Of($Reply) { if ($Reply.out -match '(?m)^ok pid=(\d+)') { [int]$Matches[1] } else { 0 } }
 
 # Each holder runs its own emulator, and every verb reaches only that holder's.
@@ -505,6 +507,9 @@ function Scenario-EveryLane {
   $distinct = @($pids | Where-Object { $_ -eq 0 }).Count -eq 0 -and @($pids | Sort-Object -Unique).Count -eq $Lanes
   Verdict $distinct 'each start reports its own pid' (($starts | ForEach-Object { $_.out }) -join "`n")
   if (-not $distinct) { Reset-Lane | Out-Null; return }
+  $pipes = @($starts | ForEach-Object { Pipe-Of $_ })
+  $named = @($pipes | Where-Object { $_ -eq '' }).Count -eq 0 -and @($pipes | Sort-Object -Unique).Count -eq $Lanes
+  Verdict $named 'each start reports its own distinct pipe=' (($starts | ForEach-Object { $_.out }) -join "`n")
   $began = @{}
   foreach ($id in $pids) { $began[$id] = (Get-Process -Id $id -ErrorAction SilentlyContinue).StartTime }
   for ($n = 0; $n -lt $Lanes; $n++) {
@@ -512,10 +517,20 @@ function Scenario-EveryLane {
     $cmd = (Get-CimInstance Win32_Process -Filter "ProcessId=$id").CommandLine
     Verdict ($cmd -match [regex]::Escape($d.config)) "lane $($n + 1)'s emulator runs its own holder's config" $cmd
     $l = Drive @('lane', '-Holder', $d.holder)
-    Verdict ($l.code -eq 0 -and $l.out -match "pid=$id ") "$($d.holder)'s lane verb names its own pid" $l.out
+    Verdict ($l.code -eq 0 -and $l.out -match "pid=$id " -and $l.out -match "pipe=$($pipes[$n])\s*$") "$($d.holder)'s lane verb names its own pid and the pipe its start reported" $l.out
     $r = Drive @('drives', '-Holder', $d.holder)
     Verdict ($r.code -eq 0 -and $r.out -match "ok drives pid=$id") "$($d.holder)'s drives reads its own pipe" $r.out
   }
+  # A client that opened another lane's pipe and left without a request would have made
+  # WinUAE close it for good, so every lane is read again, last lane first, and every
+  # recorded pipe must still be listed. Listing a pipe opens nothing.
+  for ($n = $Lanes - 1; $n -ge 0; $n--) {
+    $r = Drive @('drives', '-Holder', $ds[$n].holder)
+    Verdict ($r.code -eq 0 -and $r.out -match "ok drives pid=$($pids[$n])") "$($ds[$n].holder)'s second drives, in reverse lane order, reads its own pipe" $r.out
+  }
+  $listed = @([IO.Directory]::GetFiles('\\.\pipe\') | ForEach-Object { [IO.Path]::GetFileName($_) })
+  $lost = @($pipes | Where-Object { $listed -cnotcontains $_ })
+  Verdict ($lost.Count -eq 0) 'every recorded pipe is still listed after the second pass' "lost=$($lost -join ',') listed=$(($listed | Where-Object { $_ -like 'WinUAE*' }) -join ',')"
   # Lane 2 is stopped first: the others must keep their own processes.
   $s2 = Drive @('stop', '-Holder', $ds[1].holder)
   Verdict ($s2.code -eq 0 -and -not (Get-Process -Id $pids[1] -ErrorAction SilentlyContinue)) "$($ds[1].holder)'s stop ends its own emulator" $s2.out

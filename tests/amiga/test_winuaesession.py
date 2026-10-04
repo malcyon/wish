@@ -152,6 +152,11 @@ def test_lane_reads_the_lane_number_from_the_lane_verb(clock):
     assert guest.sent[0][1].endswith(" lane -Holder wish282-x")
 
 
+def test_lane_reads_the_lane_number_from_a_reply_that_names_the_pipe(clock):
+    guest = Guest(["ok lane=2 pid=4242 started=2026-10-04T03:11:09.0000000-05:00 pipe=WinUAE_1"])
+    assert guest.lane("wish282-x", 5) == 2
+
+
 def test_lane_stops_on_a_reply_that_names_no_lane(clock):
     with pytest.raises(winuaesession.RouteError, match="names no lane"):
         Guest(["ok pid=4242"]).lane("wish282-x", 5)

@@ -116,7 +116,7 @@ $Rest = $passthru.ToArray()
 $Exe     = 'C:\Program Files\WinUAE\winuae64.exe'
 $Root    = 'C:\Amiga'
 # How many emulators may run at once. Keys, screenshots and debugger reads go
-# through each lane's own pipe, found by its server pid, so lanes do not type into,
+# through each lane's own pipe, the one its boot log names, so lanes do not type into,
 # photograph or read each other: measured with two copies booted at once, each
 # lane's frame changed only with its own key presses, and `winuae-lanecheck.ps1
 # -Lanes 2` passed. Raise it only after a lanecheck at the new count has passed.
@@ -195,6 +195,30 @@ function Read-SendLog {
     return $null
   }
   return @(($text -split "\r?\n") | Where-Object { $_ -ne '' })
+}
+
+# How long `start` waits for the emulator's boot log to name its pipe.
+$PipeLineBoundMs = 20000
+
+# The pipe name WinUAE wrote into this lane's own boot log when it created the pipe, or
+# $null while the file or the line is not there yet. WinUAE takes the first free of
+# \\.\pipe\WinUAE, WinUAE_1 .. WinUAE_9, so the name says nothing about the lane by
+# itself; only this lane's own log says which one is its. It reads through a handle that
+# shares the file, as Read-SendLog does, because the emulator still holds the log open.
+function Read-LanePipeName {
+  if (-not (Test-Path -LiteralPath $LanePaths.bootlog)) { return $null }
+  try {
+    $fs = New-Object IO.FileStream($LanePaths.bootlog, [IO.FileMode]::Open, [IO.FileAccess]::Read,
+            ([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
+    try {
+      $r = New-Object IO.StreamReader($fs, [Text.Encoding]::UTF8, $true)
+      $text = $r.ReadToEnd()
+    } finally { $fs.Close() }
+  } catch { return $null }
+  $found = @([regex]::Matches($text, '(?m)^IPC: Named Pipe ''\\\\\.\\pipe\\(WinUAE(?:_[1-9])?)'' open\r?$') | ForEach-Object { $_.Groups[1].Value })
+  if ($found.Count -gt 1) { throw "$($LanePaths.bootlog) names $($found.Count) WinUAE pipes: $($found -join ', ')" }
+  if ($found.Count -eq 1) { return $found[0] }
+  $null
 }
 
 # The claim and the run receipt are `key=value` lines. Not ConvertFrom-StringData,
@@ -704,7 +728,7 @@ function Invoke-State([string]$Verb) {
     $verdict = "fail $($_.Exception.GetType().FullName): $($_.Exception.Message)"
     if ($pending) { $verdict += '; WinUAE still holds the pending state save, which the next statefile_path completes' }
   } finally {
-    if ($pipe) { $pipe.Dispose() }
+    if ($pipe) { Close-LanePipe $pipe }
     if ($Verb -eq 'snapshot' -and -not $done) { Remove-Item -LiteralPath $part -Recurse -Force -ErrorAction SilentlyContinue }
   }
   if (-not $open) { $verdict; exit 1 }
@@ -763,50 +787,41 @@ function Get-LaneEmulator {
   @{ proc = $mine.proc; run = $mine.run; exe = $path }
 }
 
-# Each WinUAE copy takes the first free of \\.\pipe\WinUAE, WinUAE_1 .. WinUAE_9 (uaeipc.cpp), so
-# the name says nothing about whose pipe it is. The pipe belongs to the lane when its
-# server process is the lane's winuae64; with one copy running that is `WinUAE`.
-# The only way to read a pipe's server pid is to open it, and each pipe has one instance
-# (uaeipc.cpp nMaxInstances 1), so probing another copy's pipe briefly occupies it.
-# A lane's winuae64 can exist before it creates its pipe, so the search repeats until
-# $WaitMs has passed, as the old fixed-name Connect(5000) waited. The opened pipe's
-# name is left in $script:LanePipeName for the verdicts.
+# Each WinUAE copy takes the first free of \\.\pipe\WinUAE, WinUAE_1 .. WinUAE_9 (uaeipc.cpp),
+# so the name says nothing about whose pipe it is, and `start` records the one this lane's
+# own boot log names in the run receipt. A client that connects to a WinUAE pipe and closes
+# it without a request before WinUAE services it makes WinUAE close that pipe for good, so
+# nothing here opens another lane's pipe, and every connection sends one request before it
+# closes. The opened pipe's name is left in $script:LanePipeName for the verdicts.
 function Open-LanePipe([int]$LanePid, [int]$WaitMs = 5000) {
-  $all = @('WinUAE') + (1..9 | ForEach-Object { "WinUAE_$_" })
-  $until = [Diagnostics.Stopwatch]::StartNew()
-  $seen = @()
-  $listed = ''
-  do {
-    $seen = @()
-    $names = $all
-    try {
-      $live = @([IO.Directory]::GetFiles('\\.\pipe\') | ForEach-Object { [IO.Path]::GetFileName($_) })
-      $names = @($all | Where-Object { $live -ccontains $_ })
-      $listed = "live WinUAE pipes: $($names -join ', ')"
-    } catch {
-      $live = $null
-      $listed = "listing unavailable: $($_.Exception.Message)"
-    }
-    foreach ($name in $names) {
-      # A listing that failed leaves every name to try; WinUAE keeps its 5000 ms there.
-      $connectMs = if ($names.Count -eq 1 -or ($null -eq $live -and $name -ceq 'WinUAE')) { 5000 } else { 2000 }
-      $try = New-Object IO.Pipes.NamedPipeClientStream '.', $name, 'InOut'
-      try {
-        $try.Connect($connectMs)
-        [uint32]$owner = 0
-        if (-not [Wish.PipeInfo]::GetNamedPipeServerProcessId($try.SafePipeHandle.DangerousGetHandle(), [ref]$owner)) {
-          throw "GetNamedPipeServerProcessId failed, error $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
-        }
-        if ($owner -eq $LanePid) { $script:LanePipeName = $name; return $try }
-        $seen += "$name served by pid=$owner, skipped"
-      } catch {
-        $seen += "$name not opened: $($_.Exception.Message)"
-      }
-      $try.Dispose()
-    }
-    if ($until.ElapsedMilliseconds -lt $WaitMs) { Start-Sleep -Milliseconds 250 }
-  } while ($until.ElapsedMilliseconds -lt $WaitMs)
-  throw "no WinUAE pipe is served by this lane's winuae64 pid=$LanePid ($listed; $($seen -join '; '))"
+  $run = Read-Kv $LanePaths.run
+  $name = $run['pipe']
+  if (-not $name -or $name -cnotmatch '^WinUAE(?:_[1-9])?\z') {
+    throw "lane $ActiveLane's run receipt names no WinUAE pipe; stop the lane and start it again"
+  }
+  if ($run['pid'] -ne [string]$LanePid) {
+    throw "lane $ActiveLane's run receipt names pid=$($run['pid']), not this lane's winuae64 pid=$LanePid"
+  }
+  $live = @([IO.Directory]::GetFiles('\\.\pipe\') | ForEach-Object { [IO.Path]::GetFileName($_) })
+  if ($live -cnotcontains $name) {
+    throw "\\.\pipe\$name, which lane $ActiveLane's winuae64 pid=$LanePid opened, is gone; WinUAE never makes it again, so stop the lane and start it again"
+  }
+  $try = New-Object IO.Pipes.NamedPipeClientStream '.', $name, 'InOut'
+  $try.Connect($WaitMs)
+  $script:LanePipeName = $name
+  $script:LanePipeState = 'opened'
+  $try.ReadMode = [IO.Pipes.PipeTransmissionMode]::Message
+  [uint32]$owner = 0
+  if (-not [Wish.PipeInfo]::GetNamedPipeServerProcessId($try.SafePipeHandle.DangerousGetHandle(), [ref]$owner)) {
+    $err = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+    Close-LanePipe $try
+    throw "GetNamedPipeServerProcessId failed, error $err"
+  }
+  if ($owner -ne $LanePid) {
+    Close-LanePipe $try
+    throw "\\.\pipe\$name is served by pid=$owner, not by this lane's winuae64 pid=$LanePid; stop the lane and start it again"
+  }
+  $try
 }
 
 # One message out, one reply back, both NUL-terminated as `uaeipc.cpp` wants: a
@@ -815,6 +830,7 @@ function Send-Pipe($Pipe, [string]$Text, [int]$WaitMs = 10000) {
   $b = [Text.Encoding]::ASCII.GetBytes($Text)
   $msg = New-Object byte[] ($b.Length + 1)
   [Array]::Copy($b, $msg, $b.Length)
+  $script:LanePipeState = 'sent'
   $Pipe.Write($msg, 0, $msg.Length)
   $Pipe.Flush()
   $buf = New-Object byte[] 65536
@@ -826,7 +842,21 @@ function Send-Pipe($Pipe, [string]$Text, [int]$WaitMs = 10000) {
     if ($n -gt 0) { $ms.Write($buf, 0, $n) }
     if ($n -eq 0) { break }
   } while (-not $Pipe.IsMessageComplete)
+  $script:LanePipeState = 'answered'
   ,$ms.ToArray()
+}
+
+# Closes a lane's pipe the way WinUAE tolerates. A pipe closed before any request has been
+# sent makes WinUAE drop it for good, so a pipe that was opened and never used gets one
+# harmless read, `CFG floppy0`, and its reply before it is disposed. A pipe with a request
+# still outstanding is only disposed: a second request cannot help it, and the lane may
+# need a restart.
+function Close-LanePipe($Pipe) {
+  if ($script:LanePipeState -eq 'opened') {
+    try { Send-Pipe $Pipe 'CFG floppy0' 2000 | Out-Null } catch { }
+  }
+  $Pipe.Dispose()
+  $script:LanePipeState = $null
 }
 
 function Read-Drives($Pipe, $Sw, [int]$Seq, $Tags, [long]$Until = 0) {
@@ -894,7 +924,7 @@ function Invoke-Diagnose {
   } catch {
     $verdict = "fail $($_.Exception.GetType().FullName): $($_.Exception.Message)"
   } finally {
-    if ($pipe) { $pipe.Dispose() }
+    if ($pipe) { Close-LanePipe $pipe }
   }
   if (-not $open) { $verdict; exit 1 }
   $verdict
@@ -1020,7 +1050,7 @@ function Invoke-PipeVerb([string]$Verb) {
             try {
               # A timed-out DOWN leaves a read pending, so the UP gets a fresh connection.
               if ($downFailed -or $try -gt 0) {
-                $pipe.Dispose()
+                Close-LanePipe $pipe
                 $pipe = Open-LanePipe $lane.proc.Id
                 $pipe.ReadMode = [IO.Pipes.PipeTransmissionMode]::Message
               }
@@ -1042,7 +1072,7 @@ function Invoke-PipeVerb([string]$Verb) {
   } catch {
     $verdict = "fail $($_.Exception.GetType().FullName): $($_.Exception.Message)"
   } finally {
-    if ($pipe) { $pipe.Dispose() }
+    if ($pipe) { Close-LanePipe $pipe }
   }
   $verdict
   $out
@@ -1175,7 +1205,7 @@ function Invoke-Floppy([string]$Verb) {
   } catch {
     $verdict = "fail $($_.Exception.GetType().FullName): $($_.Exception.Message)"
   } finally {
-    if ($pipe) { $pipe.Dispose() }
+    if ($pipe) { Close-LanePipe $pipe }
   }
   # Nothing was sent and there are no replies to keep: a failure before the pipe is open is a rejection.
   if (-not $open) { $verdict; exit 1 }
@@ -1397,6 +1427,7 @@ switch ($Cmd) {
     $held = $false
     $said = @()
     $code = 0
+    $proc = $null
     try {
       try { $held = $mutex.WaitOne(60000) }
       catch [System.Threading.AbandonedMutexException] { $held = $true }
@@ -1472,6 +1503,38 @@ switch ($Cmd) {
     } finally {
       if ($held) { $mutex.ReleaseMutex() }
       $mutex.Dispose()
+    }
+    # The pipe name is read from this lane's own boot log, so the wait needs no lock: no
+    # other lane writes that file. WinUAE writes the line within a second of starting.
+    if ($code -eq 0 -and $proc) {
+      $pipeName = $null
+      $gone = $false
+      $bound = [Diagnostics.Stopwatch]::StartNew()
+      while (-not $pipeName -and -not $gone -and $bound.ElapsedMilliseconds -lt $PipeLineBoundMs) {
+        try { $pipeName = Read-LanePipeName }
+        catch { $said = @("fail $($_.Exception.Message)"); $code = 1; $gone = $true }
+        if (-not $pipeName -and -not $gone) {
+          if (-not (Get-ReceiptProcess (Read-Kv $LanePaths.run))) { $gone = $true }
+          else { Start-Sleep -Milliseconds 250 }
+        }
+      }
+      if ($code -eq 0 -and $pipeName) {
+        # Keeps the first connect out of WinUAE's start-up window while it creates the pipe.
+        Start-Sleep -Milliseconds 500
+        $rr = Read-Kv $LanePaths.run
+        Write-Kv $LanePaths.run @{
+          holder  = $rr['holder']
+          pid     = $rr['pid']
+          started = $rr['started']
+          args    = $rr['args']
+          pipe    = $pipeName
+        }
+        $said = @("ok pid=$($proc.Id) session=$($proc.SessionId) pipe=$pipeName")
+      } elseif ($code -eq 0) {
+        $why = if ($gone) { 'exited before opening its pipe' } else { "wrote no IPC: Named Pipe line to $($LanePaths.bootlog) within $($PipeLineBoundMs / 1000) s" }
+        $said = @("fail winuae64 pid=$($proc.Id) $why; stop the lane and start it again")
+        $code = 1
+      }
     }
     $said
     exit $code
@@ -1790,7 +1853,12 @@ switch ($Cmd) {
     # that must open that emulator's pipe itself.
     $got = Get-LaneEmulator
     if ($got.err) { $got.err; exit 1 }
-    "ok lane=$ActiveLane pid=$($got.proc.Id) started=$($got.proc.StartTime.ToString('o'))"
+    $pipeName = $got.run['pipe']
+    if (-not $pipeName -or $pipeName -cnotmatch '^WinUAE(?:_[1-9])?\z') {
+      "fail lane $ActiveLane's run receipt names no WinUAE pipe; stop the lane and start it again"
+      exit 1
+    }
+    "ok lane=$ActiveLane pid=$($got.proc.Id) started=$($got.proc.StartTime.ToString('o')) pipe=$pipeName"
   }
 
   'status' {
@@ -1810,7 +1878,7 @@ switch ($Cmd) {
       $c = Get-Claim (Lane-Paths $n).claim
       if ($c) { "claim$tag = $($c['holder']) since $($c['since'])" } else { "claim$tag = none" }
       $r = Read-Kv (Lane-Paths $n).run
-      if ($r.ContainsKey('pid')) { "run  $tag = pid=$($r['pid']) holder=$($r['holder']) args=$($r['args'])" } else { "run  $tag = no receipt" }
+      if ($r.ContainsKey('pid')) { "run  $tag = pid=$($r['pid']) holder=$($r['holder']) pipe=$($r['pipe']) args=$($r['args'])" } else { "run  $tag = no receipt" }
     }
     "System ROMs = $((Get-ItemProperty $RomKey -Name KickstartPath -ErrorAction SilentlyContinue).KickstartPath)"
     $n = if (Test-Path "$RomKey\DetectedROMs") {

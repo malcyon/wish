@@ -521,8 +521,8 @@ with a `g`. The console route stays: it is what every driven tool uses, and its
 **Over `ssh` a debugger command needs the lane holder.** A second WinUAE copy
 serves `WinUAE_1` rather than `WinUAE`, in start order, so a pipe opened by name
 can be another lane's emulator. `WinuaePipe(holder=...)` runs `winuae.ps1 lane`
-on the guest in the same `ssh` call, which checks the claim and names the pid,
-and opens the pipe whose server is that pid; without a holder an `ssh` debugger
+on the guest in the same `ssh` call, which checks the claim and names the pid and
+the pipe the lane's run receipt records, and opens only that pipe; without a holder an `ssh` debugger
 command raises. `winuaepipe.py` and `noencounters.py` take `--holder`. A local
 pipe with no holder is still opened by name.
 
@@ -580,7 +580,7 @@ checked first.
 **Ownership is checked in the process that holds the pipe.** `drives` and
 `insert` read the claim (`Claim-Denial`, and the claim's token when one is given),
 the run receipt (`Resolve-MyEmulator`) and the executable path of the one
-`winuae64` before opening `\\.\pipe\WinUAE`, then compare the pipe's server
+`winuae64` before opening the lane's recorded pipe, then compare the pipe's server
 process (`GetNamedPipeServerProcessId`) with the lane's process, read the claim
 again, and once more immediately before the setter. A decline made before the pipe
 is open exits 1 with the reason; after it, the exit code is 0 and the first line
@@ -664,11 +664,14 @@ of `amigashots.py`, `winwish --window winuae`) are deleted.
   hidden copy received it while the copy above it received nothing (CONFIRMED).
   The codes are the Amiga's own (`tools/amiga/amigakeys.py`), so a cursor key
   is `0x4C` to `0x4F` and never a keypad key (§5.1).
-* **Each copy's pipe is found by its server pid.** A copy takes the first free
-  of `WinUAE`, `WinUAE_1` to `WinUAE_9`, so the name says nothing about whose it
-  is; the verbs open each in turn and keep the one whose
-  `GetNamedPipeServerProcessId` is the lane's `winuae64`. Probing another copy's
-  pipe occupies it briefly, since there is one instance.
+* **Each copy's pipe is the one its own boot log names.** A copy takes the first
+  free of `WinUAE`, `WinUAE_1` to `WinUAE_9`, so the name says nothing about
+  whose it is. `start` reads the name from the lane's own boot log into the run
+  receipt, and every verb opens only that name and checks that its server
+  (`GetNamedPipeServerProcessId`) is the lane's `winuae64`. A client that
+  connects and closes without a request before WinUAE services the pipe makes
+  WinUAE close it for good, so no tool may open another lane's pipe, and every
+  connection sends one request before it closes.
 * **`winuae.ps1 debugger` sends `CFG AKS_ENTERDEBUGGER 1`.** It halts the
   machine and shows the `>` prompt with no key press and no focus: the reply was
   `404` in 312 ms and the console showed the register dump and the prompt

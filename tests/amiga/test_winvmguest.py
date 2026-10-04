@@ -479,4 +479,4 @@ def test_the_token_value_check_and_the_disk_pattern_are_exact():
 def test_the_poll_compares_paths_and_modes_case_sensitively_and_the_pipe_is_disposed():
     assert "$before.paths[$o] -ceq $path" in FLOPPY
     assert "$now.paths[$o] -cne $before.paths[$o] -or $now.modes[$o] -cne $before.modes[$o]" in FLOPPY
-    assert re.search(r"finally \{\s*if \(\$pipe\) \{ \$pipe\.Dispose\(\) \}", FLOPPY)
+    assert re.search(r"finally \{\s*if \(\$pipe\) \{ Close-LanePipe \$pipe \}", FLOPPY)

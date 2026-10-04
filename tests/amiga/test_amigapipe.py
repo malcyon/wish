@@ -408,16 +408,46 @@ def test_the_pipe_name_is_settable_because_a_second_winuae_gets_another():
     assert "'.','WinUAE_1','InOut'" in guest.scripts[0]
 
 
-def test_a_debugger_command_over_ssh_opens_the_pipe_its_holders_emulator_serves():
-    """Each copy takes the first free of `WinUAE`, `WinUAE_1`..; the name says nothing
-    about whose emulator it is, so the guest asks the lane script for the holder's pid
-    and opens the pipe whose server is that pid."""
+LANE_LINE = "ok lane=2 pid=4242 started=2026-10-04T03:11:09.0000000-05:00"
+
+
+def test_a_debugger_command_over_ssh_opens_only_the_pipe_its_holders_lane_records():
+    """Each copy takes the first free of `WinUAE`, `WinUAE_1`..; the guest asks the lane
+    script for the holder's pid and pipe, opens that one pipe and checks its server."""
     p, guest = pipe({0: b"\x00" * 16})
     p.send(["m 0 1"])
     script = guest.scripts[0]
     assert f"-File 'C:\\Amiga\\winuae.ps1' lane -Holder '{HOLDER}'" in script
+    assert amiga.LANE_REPLY.pattern in script
+    assert script.count("NamedPipeClientStream") == 1
+    assert "1..9" not in script and "WinUAE_$_" not in script
     assert "GetNamedPipeServerProcessId" in script and "$owner -eq $lanePid" in script
     assert "'.','WinUAE','InOut'" not in script
+    mismatch = script[script.index("$owner -eq $lanePid"):]
+    assert mismatch.index("CFG floppy0") < mismatch.index("$p.Dispose()")
+
+
+def test_the_lane_reply_carries_the_lane_the_pid_and_the_pipe():
+    found = amiga.LANE_REPLY.search(f"{LANE_LINE} pipe=WinUAE_1")
+    assert found and found.groups() == ("2", "4242", "WinUAE_1")
+    for reply in (LANE_LINE, f"{LANE_LINE} pipe=WinUAE_10", f"{LANE_LINE} pipe=Other"):
+        assert not amiga.LANE_REPLY.search(reply), reply
+
+
+def test_a_lane_reply_without_a_pipe_is_a_pipe_error_carrying_its_text():
+    assert not amiga.LANE_REPLY.search(LANE_LINE)
+
+    def old_driver(argv, timeout):
+        return (f"<<error>> System.InvalidOperationException\r\n<<message>> {LANE_LINE}\r\n"
+                "<<hresult>> n/a\r\n<<win32>> n/a\r\n<<end>>\r\n")
+
+    with pytest.raises(amiga.PipeError, match="ok lane=2 pid=4242"):
+        amiga.WinuaePipe(runner=old_driver, holder=HOLDER).send(["m 0 1"])
+
+
+def test_a_pipe_opened_with_no_message_to_send_is_blocked():
+    with pytest.raises(ValueError, match="nothing sent"):
+        amiga.WinuaePipe(holder=HOLDER)._framed([])
 
 
 def test_a_debugger_command_over_ssh_without_a_holder_is_blocked():
