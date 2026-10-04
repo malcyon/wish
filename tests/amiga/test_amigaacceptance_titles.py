@@ -3148,6 +3148,57 @@ def test_a_published_disk_3_prepare_refuses_a_slot_without_its_vault(tmp_path, m
         foundation.prepare_published_disk_three("run", report, "2")
 
 
+def test_a_published_disk_3_prepare_removes_its_folder_when_a_working_copy_differs(
+        tmp_path, monkeypatch):
+    three = Three(tmp_path, monkeypatch)
+    report, _ = three.report(three.published("D"))
+    monkeypatch.setattr(foundation.shutil, "copyfile",
+                        lambda src, dst: pathlib.Path(dst).write_bytes(b"other"))
+    with pytest.raises(winuaesession.RouteError, match="working copy differs"):
+        foundation.prepare_published_disk_three("run", report, "2")
+    assert not list((tmp_path / "cache").rglob("run"))
+
+
+def test_a_published_disk_3_prepare_removes_its_folder_when_a_registered_image_changed(
+        tmp_path, monkeypatch):
+    three = Three(tmp_path, monkeypatch)
+    report, _ = three.report(three.published("D"))
+    calls = []
+
+    def find(wanted):
+        calls.append(1)
+        return {key: (key, three.ones[key] if len(calls) < 2 else b"changed") for key in wanted}
+
+    monkeypatch.setattr(foundation, "_find_images", find)
+    with pytest.raises(winuaesession.RouteError, match="registered image changed"):
+        foundation.prepare_published_disk_three("run", report, "2")
+    assert not list((tmp_path / "cache").rglob("run"))
+
+
+def test_a_published_disk_3_prepare_files_number_and_wish_number_under_one_folder(
+        tmp_path, monkeypatch):
+    three = Three(tmp_path, monkeypatch)
+    report, _ = three.report(three.published("D"))
+    path = foundation.prepare_published_disk_three("run", report, "2")
+    assert path.parent == tmp_path / "cache" / "acceptance" / "WISH-2" / "run"
+    assert _three_manifest(path)["issue"] == "WISH-2"
+    with pytest.raises(winuaesession.RouteError, match="already exists"):
+        foundation.prepare_published_disk_three("run", report, "WISH-2")
+
+
+def test_published_letters_never_take_a_letter_that_only_a_vault_holds():
+    present = ["A", "B", "C", "D", "E"]
+    assert route_darkness.published_letters("D", present)[:2] == ("F", "G")
+    control, after, kept = route_darkness.published_letters("D", present, ["f", "F"][1:])
+    assert (control, after) == ("G", "H") and kept == ("A", "B", "C", "E")
+
+
+def test_vault_letters_read_every_vault_whatever_its_case(tmp_path):
+    disk = _registered_three()
+    disk.write_file("/SAVE/vaultf.dat", b"orphan")
+    assert route_darkness.vault_letters(disk) == ["A", "B", "C", "D", "E", "F"]
+
+
 def test_a_published_disk_3_prepare_keeps_camp_steps_and_refuses_bad_ones_before_a_folder_exists(
         tmp_path, monkeypatch):
     three = Three(tmp_path, monkeypatch)

@@ -23,6 +23,7 @@ DARKNESS_VOLUME = "POD 3"
 DARKNESS_LOADED = "B"
 
 _DARKNESS_SAVED_GAME = re.compile(r"savgam([A-Z])\.pty", re.IGNORECASE)
+_DARKNESS_VAULT = re.compile(r"vault([A-Z])\.dat", re.IGNORECASE)
 
 
 def _darkness_read_slot(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, Any]:
@@ -317,27 +318,37 @@ _CONTROL_STEP = ("F", "loaded_menu", "write")
 _AFTER_STEP = ("G", "exit_game", "write")
 
 
-def published_letters(loaded: str, present: list[str] | tuple[str, ...]
+def vault_letters(disk: amiga_adf.AmigaDisk) -> list[str]:
+    """The letters of the `Vault<L>.DAT` files on a disk 3, whether or not a saved game goes with them."""
+    found = (_DARKNESS_VAULT.fullmatch(e.name) for e in _darkness_saves(disk))
+    return sorted(m.group(1).upper() for m in found if m)
+
+
+def published_letters(loaded: str, present: list[str] | tuple[str, ...],
+                      vaults: list[str] | tuple[str, ...] = ()
                       ) -> tuple[str, str, tuple[str, ...]]:
     """The control letter, the after letter and the kept letters of a disk 3 that holds `present`.
 
-    The control and after letters are the first two of `PUBLISHED_SAVE_LETTERS` the disk does
-    not hold; every other held letter but the loaded one is kept.
+    The control and after letters are the first two of `PUBLISHED_SAVE_LETTERS` that neither a
+    saved game in `present` nor a vault in `vaults` uses, so an orphan vault is never overwritten;
+    every other saved-game letter but the loaded one is kept.
     """
-    free = [c for c in PUBLISHED_SAVE_LETTERS if c not in present]
+    held = set(present) | set(vaults)
+    free = [c for c in PUBLISHED_SAVE_LETTERS if c not in held]
     if len(free) < 2:
         raise RouteError(f"disk 3 holds {sorted(present)}: fewer than two of "
                          f"{PUBLISHED_SAVE_LETTERS} are free to save to")
     return free[0], free[1], tuple(sorted(c for c in present if c != loaded))
 
 
-def published_title(loaded: str, present: list[str] | tuple[str, ...]) -> AmigaTitle:
+def published_title(loaded: str, present: list[str] | tuple[str, ...],
+                    vaults: list[str] | tuple[str, ...] = ()) -> AmigaTitle:
     """`DARKNESS` for a disk 3 whose loaded slot is `loaded` and which holds the letters `present`.
 
     The registered route loads B and saves to F and G, which a published disk 3 may hold or
     lack, so the load key, the control save and the after save are the letters this disk allows.
     """
-    control, after, kept = published_letters(loaded, present)
+    control, after, kept = published_letters(loaded, present, vaults)
 
     def swap(route: tuple) -> tuple:
         return tuple((loaded, *step[1:]) if step == _LOAD_STEP

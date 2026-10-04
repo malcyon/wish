@@ -68,6 +68,7 @@ from tools.amiga.route_darkness import (  # noqa: E402
     _prepare_darkness_reload,
     published_reload_title,
     published_title,
+    vault_letters,
 )
 from tools.amiga.route_pool import (  # noqa: E402
     POOL,
@@ -2904,6 +2905,13 @@ def _pin_key(issue: str) -> str:
     return issue.removeprefix("WISH-")
 
 
+def _wish_issue(issue: str) -> str:
+    """`WISH-N` for an issue given as `N` or `WISH-N`, so both name one run folder."""
+    if not ISSUE_ARGUMENT.fullmatch(issue):
+        raise RouteError("the issue is a number or WISH-N")
+    return "WISH-" + issue.removeprefix("WISH-")
+
+
 def _darkness_pins(issue: str) -> frozenset:
     """The DOS sources a ticket pins for Pools of Darkness; none when it has no row."""
     key = _pin_key(issue)
@@ -2926,7 +2934,7 @@ def _darkness_disk_three_title(manifest: dict, disk: amiga_adf.AmigaDisk) -> Ami
         title = published_reload_title(letter, present)
         recorded = {"kept_letters": list(title.kept_letters)}
     else:
-        title = published_title(letter, present)
+        title = published_title(letter, present, vault_letters(disk))
         recorded = {"control_letter": title.control_letter, "after_letter": title.after_letter,
                     "kept_letters": list(title.kept_letters)}
     if any(manifest.get(key) != value for key, value in recorded.items()):
@@ -2964,10 +2972,12 @@ def prepare_published_disk_three(run_id: str, report_path: pathlib.Path, issue: 
     by SHA-256 under `issue` in `PUBLISHED_SOURCES_BY_ISSUE`. The loaded letter is the report's
     slot; the control and after letters are two the image does not hold and every other held
     letter is kept. `camp` is a list of camp steps, as for `prepare_published`. Nothing registered
-    is written, and a refusal leaves no run folder.
+    is written, and an error leaves no run folder. `issue` names the run folder as `WISH-N`,
+    whether it is given as `N` or `WISH-N`.
     """
     if not HOLDER.fullmatch(run_id):
         raise RouteError("run id must use letters, digits, dot, underscore or hyphen")
+    issue = _wish_issue(issue)
     pins = _darkness_pins(issue)
     if not pins:
         raise RouteError(f"issue {issue} pins no dos source for darkness")
@@ -3013,7 +3023,7 @@ def prepare_published_disk_three(run_id: str, report_path: pathlib.Path, issue: 
     if "place" not in reading:
         raise RouteError(f"published slot {letter} does not decode: {reading}")
     present = DARKNESS.slot_letters(published)
-    title = published_title(letter, present)
+    title = published_title(letter, present, vault_letters(published))
     if camp:
         camp = route_camp.normalise(tuple(camp))
         _camp_title("darkness", title, list(camp), reading["names"])
@@ -3023,24 +3033,28 @@ def prepare_published_disk_three(run_id: str, report_path: pathlib.Path, issue: 
     if run.exists():
         raise RouteError(f"run folder already exists: {run}")
     scratch.ensure(run)
-    disks: dict[str, dict[str, str]] = {}
-    for key, data in (("disk1", images["disk1"][1]), ("disk2", images["disk2"][1]),
-                      ("disk3", image.read_bytes())):
-        working = run / f"{key}.adf"
-        working.write_bytes(data)
-        disks[key] = _entry(working)
-    published_copy = run / "published.adf"
-    report_copy = run / "saveas-report.json"
-    shutil.copyfile(image, published_copy)
-    report_copy.write_bytes(report_bytes)
-    published_copy.chmod(stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
-    report_copy.chmod(stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
-    if (any(disks[key]["sha256"] != pinned for key, pinned in wanted.items()) or
-            disks["disk3"]["sha256"] != image_sha or sha256(published_copy) != image_sha):
-        raise RouteError("a working copy differs from its input")
-    after = _find_images(wanted)
-    if any(hashlib.sha256(after[key][1]).hexdigest() != pinned for key, pinned in wanted.items()):
-        raise RouteError("a registered image changed during preparation")
+    try:
+        disks: dict[str, dict[str, str]] = {}
+        for key, data in (("disk1", images["disk1"][1]), ("disk2", images["disk2"][1]),
+                          ("disk3", image.read_bytes())):
+            working = run / f"{key}.adf"
+            working.write_bytes(data)
+            disks[key] = _entry(working)
+        published_copy = run / "published.adf"
+        report_copy = run / "saveas-report.json"
+        shutil.copyfile(image, published_copy)
+        report_copy.write_bytes(report_bytes)
+        published_copy.chmod(stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
+        report_copy.chmod(stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
+        if (any(disks[key]["sha256"] != pinned for key, pinned in wanted.items()) or
+                disks["disk3"]["sha256"] != image_sha or sha256(published_copy) != image_sha):
+            raise RouteError("a working copy differs from its input")
+        after = _find_images(wanted)
+        if any(hashlib.sha256(after[key][1]).hexdigest() != pinned for key, pinned in wanted.items()):
+            raise RouteError("a registered image changed during preparation")
+    except BaseException:
+        shutil.rmtree(run, ignore_errors=True)
+        raise
     manifest = {
         "mode": PUBLISHED_DISK_THREE_MODE, "issue": issue, "title": "darkness",
         "source_port": "dos", "source_sha256": source_pin,
@@ -3075,8 +3089,9 @@ def prepare_published_disk_three_reload(
     if not HOLDER.fullmatch(run_id):
         raise RouteError("run id must use letters, digits, dot, underscore or hyphen")
     issue = issue or json.loads(pathlib.Path(published_manifest).read_text()).get("issue")
-    if not isinstance(issue, str) or not ISSUE_ARGUMENT.fullmatch(issue):
+    if not isinstance(issue, str):
         raise RouteError("the issue is a number or WISH-N")
+    issue = _wish_issue(issue)
     published_manifest, fetched, accept_summary = (
         pathlib.Path(p) for p in (published_manifest, fetched, accept_summary))
     for path in (fetched, accept_summary):
@@ -3303,7 +3318,8 @@ def main(argv: list[str] | None = None) -> int:
                         "facing F (0 N, 1 E, 2 S, 3 W) in working DF0's loaded slot")
     p.add_argument("--source", type=pathlib.Path)
     p.add_argument("--staged-from", type=pathlib.Path)
-    p.add_argument("--issue", help="the run folder's ticket: a number, or WISH-N")
+    p.add_argument("--issue", help="the run folder's ticket: a number, or WISH-N; a published disk 3 "
+                   "run files either under WISH-N")
     p.add_argument("--save-count", type=int, default=None,
                    help="Silver Blades only: a value for the private helper that stages the prepared slot")
     p.add_argument("--disk3", type=pathlib.Path, default=None,
