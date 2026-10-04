@@ -15,7 +15,9 @@ else writes the disk, so the bytes are what a player's Save produces.
 
 `--who` is a zero-based roster row, `--item POSITION=QUANTITY` is repeatable and
 names an inventory position of that member, and `--slot` picks the saved game on
-a disk or folder that holds several.
+a disk or folder that holds several. `--slot` opens the party with `_adopt`,
+because `EditorBinding.load` opens a slot-picker dialog. The exit status is 1
+unless Save wrote the file and left a backup.
 """
 from __future__ import annotations
 
@@ -80,6 +82,12 @@ def drive(base: pathlib.Path, out: pathlib.Path, who: int, gold: int,
     from editor.window import EditorBinding
     from wish.ui_window import Ui_WishWindow
 
+    def widget(name: str):
+        try:
+            return binding._widgets[name]
+        except KeyError:
+            raise SystemExit(f"The editor has no widget {name!r}") from None
+
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)
     if slot:
@@ -97,8 +105,8 @@ def drive(base: pathlib.Path, out: pathlib.Path, who: int, gold: int,
 
     # `save()` flushes the widgets of the current row, so select it first.
     binding.roster.selectRow(who)
-    binding._widgets["gold"].setValue(gold)
-    binding._widgets["strength"].setValue(strength)
+    widget("gold").setValue(gold)
+    widget("strength").setValue(strength)
     inventory = binding.party.members[who].inventory
     for pos, qty in items.items():
         inventory.set_quantity(pos, qty)
@@ -107,7 +115,13 @@ def drive(base: pathlib.Path, out: pathlib.Path, who: int, gold: int,
     app.processEvents()
 
     backups = sorted((out.parent / "backups").glob(out.name + ".*"))
+    problem = None
+    if not note.startswith("wrote "):
+        problem = f"Save did not write the file: {note}"
+    elif not backups:
+        problem = "Save left no backup"
     return {
+        "ok": problem is None, "problem": problem,
         "base": str(base), "out": str(out), "who": who, "slot": slot,
         "save_said": note,
         "before": before,
@@ -153,6 +167,9 @@ def main(argv=None) -> int:
     if args.report:
         args.report.write_text(text + "\n")
     print(text)
+    if not report["ok"]:
+        print(report["problem"], file=sys.stderr)
+        return 1
     return 0
 
 
