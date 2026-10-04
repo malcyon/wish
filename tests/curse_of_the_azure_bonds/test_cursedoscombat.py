@@ -229,25 +229,32 @@ def _items_of(char) -> bytes:
     return b"".join(i.to_bytes() for i in char.items)
 
 
-#: The one engine-written record the rebuild does not reproduce, and why:
-#: MATHEW dual-classed from paladin to magic-user in play and was saved
-#: without the combat rebuild running again, so his roster tail still holds
-#: the 1d8 of a type-1 weapon he no longer has readied -- and his `thac0_current`
-#: still holds the paladin's 47.
-_STALE_AFTER_DUAL_CLASS = {
-    ("por-dos/WISH-SPEC-curse-131-dualclassed-in-area-1", "CHRDATJ1.SAV")}
+#: Engine-written records whose stored values predate a rebuild, each with
+#: the reason the rebuild cannot reproduce them.
+_STALE_BEFORE_REBUILD = {
+    # MATHEW dual-classed from paladin to magic-user in play and was saved
+    # without the combat rebuild running again, so his roster tail still holds
+    # the 1d8 of a type-1 weapon he no longer has readied -- and his
+    # `thac0_current` still holds the paladin's 47.
+    ("por-dos/WISH-SPEC-curse-131-dualclassed-in-area-1", "CHRDATJ1.SAV"):
+        "dual-classed in play and saved without the rebuild running again",
+    ("coab-dos/WISH-SPEC-curse-wish8-strength-leftover-dos-resave",
+     "CHRDATA2.SAV"):
+        "saved right after a camp Strength cast, before the game reran its "
+        "rebuild",
+}
 
 
 def test_the_rebuild_reproduces_every_engine_written_dos_curse_record():
     """The damage, dice and movement bytes of every DOS Curse record DOS
-    Curse wrote, recomputed from the rest of the same record: 74 records on
-    this machine less one named exception, so 73 -- 71 with nothing readied
-    and 2 with a weapon (item type 1, 1d8 with flag 4, and item type 0x56, a ranged weapon
-    that takes the missile step).
+    Curse wrote, recomputed from the rest of the same record, less the named
+    records in `_STALE_BEFORE_REBUILD`. Most have nothing readied; the rest
+    carry a weapon (item type 1, 1d8 with flag 4, and item type 0x56, a ranged
+    weapon that takes the missile step).
 
     `thac0_current` is not compared here: `FE:25` rewrites `thac0_base`
     after the rebuild has read it, so a record whose base moved at its last
-    load keeps a THAC0 built from the old one (nine records here). The
+    load keeps a THAC0 built from the old one (several records here). The
     conversion test below checks it against the record the engine loaded.
     """
     import test_cursedossaves as saves
@@ -258,7 +265,7 @@ def test_the_rebuild_reproduces_every_engine_written_dos_curse_record():
     move = table["movement_current"].offset
     checked, armed, mismatched = 0, 0, []
     for specimen_dir, name, char in saves._curse_dos_records():
-        if (specimen_dir, name) in _STALE_AFTER_DUAL_CLASS:
+        if (specimen_dir, name) in _STALE_BEFORE_REBUILD:
             continue
         rec = char.to_bytes()
         got = dos_codec.dos_combat_rebuild(rec, _items_of(char), types)
