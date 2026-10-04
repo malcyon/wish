@@ -157,8 +157,8 @@ function Scenario-Own {
   }
   $a = Drive (@('start') + (Holder-Args 'lanecheck') + @('-log', '-f', $ConfigB))
   Verdict ($a.code -eq 0 -and $a.out -match '^ok pid=') 'the holder can start' $a.out
-  $k = Drive (@('key', '7A') + (Holder-Args 'lanecheck'))
-  Verdict ($k.code -eq 0 -and $k.out -match '^ok pressed VK 0x7A') 'the holder can press F11' $k.out
+  $k = Drive (@('debugger') + (Holder-Args 'lanecheck'))
+  Verdict ($k.code -eq 0 -and $k.out -match '^ok debugger entered') 'the holder can enter the debugger over the pipe' $k.out
   $s = Drive (@('stop') + (Holder-Args 'lanecheck'))
   Verdict ($s.code -eq 0 -and @(Emulators).Count -eq 0) 'the holder can stop' $s.out
   if ($HasClaim) {
@@ -307,8 +307,8 @@ function Scenario-SendPid {
   if ($HasClaim) { Drive @('claim', '-Holder', 'lanecheck') | Out-Null }
   $a = Drive (@('start') + (Holder-Args 'lanecheck') + @('-log', '-f', $ConfigB, '-s', 'floppy0='))
   if ($a.code -ne 0) { Verdict $false 'the lane could not start an emulator' $a.out; Reset-Lane | Out-Null; return }
-  $k = Drive (@('key', '7A') + (Holder-Args 'lanecheck'))
-  Verdict ($k.code -eq 0) 'F11 opened the debugger' $k.out
+  $k = Drive (@('debugger') + (Holder-Args 'lanecheck'))
+  Verdict ($k.code -eq 0) 'the pipe opened the debugger' $k.out
   # $PID is this check's own process: a real pid, certainly not the emulator.
   $wrong = Drive (@('send', "-TargetPid $PID -DumpOnly -Tail 5") + (Holder-Args 'lanecheck'))
   Verdict ($wrong.code -ne 0 -and $wrong.out -match 'but this lane') `
@@ -384,14 +384,14 @@ function Scenario-ForeignStop {
 }
 
 function Scenario-ForeignKey {
-  "foreignkey: B's `key` must block an emulator A started"
+  "foreignkey: B's `debugger` must block an emulator A started"
   for ($n = 1; $n -le $Rounds; $n++) {
     if (-not (Reset-Lane)) { Verdict $false "round ${n}: lane would not reset" ''; continue }
     if ($HasClaim) { Drive (@('claim') + (Holder-Args 'driverA')) | Out-Null }
     $a = Drive (@('start') + (Holder-Args 'driverA') + @('-log', '-f', $ConfigA))
     if (@(Emulators).Count -ne 1) { Verdict $false "round ${n}: A's emulator did not start" $a.out; continue }
-    $b = Drive @('key', '7A')
-    Verdict ($b.code -ne 0) "round ${n}: B's keypress was blocked" ("B said: $($b.out)")
+    $b = Drive @('debugger')
+    Verdict ($b.code -ne 0) "round ${n}: B's debugger request was blocked" ("B said: $($b.out)")
   }
   Reset-Lane | Out-Null
 }
@@ -450,10 +450,6 @@ function Scenario-TwoLane {
     $h = $who[0]; $id = $who[1]
     $l = Drive @('lane', '-Holder', $h)
     Verdict ($l.code -eq 0 -and $l.out -match "pid=$id ") "$h's lane verb names its own pid" $l.out
-    $k = Drive @('key', '7A', '-Holder', $h)
-    Verdict ($k.code -eq 0 -and $k.out -match "at pid=$id ") "$h's key reaches its own pid" $k.out
-    $f = Drive @('front', '-Holder', $h)
-    Verdict ($f.code -eq 0 -and $f.out -match "pid=$id ") "$h's front raises its own pid" $f.out
     $d = Drive @('drives', '-Holder', $h)
     Verdict ($d.code -eq 0 -and $d.out -match "ok drives pid=$id") "$h's drives reads its own pipe" $d.out
   }

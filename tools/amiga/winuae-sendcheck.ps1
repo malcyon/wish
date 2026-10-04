@@ -71,12 +71,12 @@ try {
     "injector: $Injector (original backed up to $Backup)"
   } else { "injector: $Live" }
 
-  # Eight `m` lines and no `g`: the emulator stays halted, so one F11 serves
+  # Eight `m` lines and no `g`: the emulator stays halted, so one debugger entry serves
   # every batch and the check is nothing but send after send.
   [IO.File]::WriteAllText($Batch, (("m 40000 1`r`n") * $Lines))
   [IO.File]::WriteAllText($Resume, "g`r`n")
-  $k = Verdict (Drive key 7A -Holder $Holder)
-  if ($k -notmatch '^ok') { "fail F11 was not pressed: $k"; exit 1 }
+  $k = Verdict (Drive debugger -Holder $Holder)
+  if ($k -notmatch '^ok') { "fail the debugger was not entered: $k"; exit 1 }
 
   for ($i = 1; $i -le $Batches; $i++) {
     $out = @(Drive send "-File $Batch" -Holder $Holder)

@@ -15,14 +15,11 @@
 #   winvm ssh "$ps claim -Holder por-run"       # first: takes the lowest free lane
 #   winvm ssh "$ps roms -Holder por-run"        # once, then winvm promote
 #   winvm ssh "$ps start -Holder por-run -log -f C:\Amiga\configs\goldbox-a500.uae"
-#   winvm ssh "$ps key 7A -Holder por-run"      # F11: enter the debugger
-#   winvm ssh "$ps key 68 -Holder por-run"      # numeric keypad 8
-#   winvm ssh "$ps key 26 -Extended -Holder por-run"   # the cursor key, not KP8
+#   winvm ssh "$ps debugger -Holder por-run"   # CFG AKS_ENTERDEBUGGER 1 over the pipe, no key, no focus
 #   winvm ssh "$ps shot -Holder por-run"        # WinUAE's own screenshot over the pipe, no desktop
 #   winvm ssh "$ps press 44,45 -Holder por-run" # Amiga raw key codes over the pipe, no focus
 #   winvm ssh "$ps send '-File C:\Amiga\cmds.txt' -Holder por-run"
 #   winvm ssh "$ps send '-DumpOnly -Tail 40' -Holder por-run"
-#   winvm ssh "$ps front -Holder por-run"
 #   winvm ssh "$ps drives -Holder por-run"      # what DF0 and DF1 hold, read over WinUAE's pipe
 #   winvm ssh "$ps insert -Holder por-run 0 C:\Amiga\Disks\wish679-por-run-disk2.adf <sha256>"
 #   winvm ssh "$ps snapshot -Holder por-run before-walk"   # the whole machine, to C:\Amiga\States
@@ -61,8 +58,8 @@
 # claim files, so every verb that takes -Holder acts on that holder's lane.
 # Nothing finds an emulator by process name:
 #
-#   * `claim` blocks a second holder of the same lane, and `start`, `stop`, `key`,
-#     `send`, `front` and `roms` block a caller who is not the holder;
+#   * `claim` blocks a second holder of the same lane, and `start`, `stop`,
+#     `send` and `roms` block a caller who is not the holder;
 #   * `start` takes a guest-wide mutex, launches the lane's task, and adopts the
 #     one new winuae64 that no lane's receipt names, whose command line is the
 #     one THIS call passed and which started after this call was made;
@@ -75,7 +72,7 @@
 
 param(
   [Parameter(Mandatory=$true)]
-  [ValidateSet('start','stop','front','status','send','key','shot','press','roms','clean','claim','release','drives','insert','diagnose','config-hash','config-remove','snapshot','restore','discard-snapshot','lane')][string]$Cmd,
+  [ValidateSet('start','stop','status','send','debugger','shot','press','roms','clean','claim','release','drives','insert','diagnose','config-hash','config-remove','snapshot','restore','discard-snapshot','lane')][string]$Cmd,
   [Parameter(ValueFromRemainingArguments=$true)][string[]]$Rest
 )
 
@@ -83,11 +80,10 @@ param(
 # than declared as parameters, and that is not a matter of taste. PowerShell
 # fills a positional parameter BEFORE it fills a ValueFromRemainingArguments
 # one, wherever each is declared and whatever Position each is given -- so a
-# declared -Holder eats the `7A` of `key 7A` and the quoted argument of `send`.
+# declared -Holder eats the first positional argument, such as the quoted argument of `send`.
 # Measured, with -Holder at Position 99 and $Rest at Position 1:
-# `key 7A` bound cmd=[key] holder=[7A] rest=[], and the keypress was then
-# blocked for having no VK code. Reading them here leaves every existing call
-# form exactly as it was.
+# `key 7A` bound cmd=[key] holder=[7A] rest=[]. Reading them here leaves every
+# call form exactly as it was.
 #
 # For the same family of reasons neither name may be abbreviated by the caller:
 # PowerShell would match `-f` to -Holder-like names by prefix, and `-f`, `-log`
@@ -99,11 +95,6 @@ $Override = $false
 # and `send` assign a local $token of their own.
 $WantToken = ''
 $WantTokenGiven = $false
-# `key -Extended` sets KEYEVENTF_EXTENDEDKEY, which is what separates the four
-# cursor keys from the four numeric-keypad keys: without it keybd_event turns
-# VK_UP into scancode 0x48, and 0x48 with no E0 prefix is DIK_NUMPAD8. Every
-# arrow this driver has ever pressed was really a keypad key.
-$Extended = $false
 # `-Lane <n>` names a lane outright, which `-Override` needs: the holder of a
 # lane that has been abandoned is not there to be looked up. `-Exclusive` makes
 # `claim` take every lane.
@@ -119,7 +110,6 @@ for ($i = 0; $i -lt $given.Count; $i++) {
   if ($a -eq '-Holder') { $i++; if ($i -lt $given.Count) { $Holder = $given[$i] } }
   elseif ($a -eq '-Override') { $Override = $true }
   elseif ($a -eq '-Token') { $WantTokenGiven = $true; $i++; if ($i -lt $given.Count) { $WantToken = $given[$i] } }
-  elseif ($a -eq '-Extended') { $Extended = $true }
   elseif ($a -eq '-Exclusive') { $Exclusive = $true }
   elseif ($a -eq '-Lane') { $i++; if ($i -lt $given.Count) { $LaneArg = $given[$i] } else { $LaneArg = '-' } }
   else { [void]$passthru.Add($a) }
@@ -152,7 +142,7 @@ function Lane-Paths([int]$n) {
       ini     = "$Root\lanes\1\winuae.ini"
       shots   = "$Root\lanes\1\shots\"
       task    = 'winuae-run'
-      helpers = @{ front = 'winuae-front'; key = 'winuae-key'; send = 'winuae-send' }
+      helpers = @{ send = 'winuae-send' }
     }
   }
   @{
@@ -164,7 +154,7 @@ function Lane-Paths([int]$n) {
     ini     = "$Root\lanes\$n\winuae.ini"
     shots   = "$Root\lanes\$n\shots\"
     task    = "winuae-run-$n"
-    helpers = @{ front = "winuae-front-$n"; key = "winuae-key-$n"; send = "winuae-send-$n" }
+    helpers = @{ send = "winuae-send-$n" }
   }
 }
 
@@ -466,77 +456,6 @@ function Why-NotRun([string]$Name) {
   ("lastResult=0x{0:X}" -f $info.LastTaskResult) +
   " lastRun=$($info.LastRunTime)$why"
 }
-
-# Run a snippet in session 1 and wait for the receipt it writes. The snippet is
-# passed as -EncodedCommand rather than dropped in a temp file: nothing to
-# quote, nothing to clean up afterwards.
-function Invoke-Session1 {
-  param([string]$Name, [string]$Script, [int]$TimeoutSec = 30)
-  # The token is this call's own. Waiting on the file merely EXISTING would
-  # accept a receipt a previous call's helper wrote, and would also accept a
-  # half-written one, since Set-Content is not atomic; waiting for our own
-  # token in it accepts neither.
-  $token = [guid]::NewGuid().ToString('N').Substring(0, 12)
-  Remove-Item $LanePaths.receipt -ErrorAction SilentlyContinue
-  $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes("`$Token = '$token'`r`n" + $Script))
-  $bad = Register-Session1Task $Name 'powershell.exe' `
-    "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand $enc" `
-    ([TimeSpan]::FromMinutes(1))
-  if ($bad) { return $bad }
-  Start-Session1Task $Name
-  for ($i = 0; $i -lt $TimeoutSec * 10; $i++) {
-    $r = (Get-Content -Raw $LanePaths.receipt -ErrorAction SilentlyContinue)
-    if ($r -and $r.Contains("token=$token")) { return ($r -replace "\s*token=$token\s*$", '').Trim() }
-    Start-Sleep -Milliseconds 100
-  }
-  "fail $Name wrote no receipt in ${TimeoutSec}s: $(Why-NotRun $Name)"
-}
-
-# Every helper ends by writing one line: "ok ..." or "fail ...".
-#
-# The helper finds its emulator by the pid the caller resolved from the lane's
-# receipt, and checks it again, because between the two there is a whole
-# scheduled-task launch, and that is long enough for the emulator to have gone.
-#
-# Double every backtick below, comments included. This is a double-quoted
-# here-string, so `r emits a carriage return -- PowerShell reads that as a
-# line ending, and the rest of a comment becomes a command. It parses clean
-# and fails only when that branch runs, which is the worst way to find it.
-#
-# The blank last line is deliberate: this string is concatenated before another,
-# and a here-string does not promise a newline at its end.
-function Helper-Preamble([string]$ReceiptPath, [int]$Id) {
-@"
-`$Receipt = '$ReceiptPath'
-function Report([string]`$m) { "`$m token=`$Token" | Set-Content -Path `$Receipt -Encoding ASCII }
-Add-Type @'
-using System;using System.Runtime.InteropServices;
-public class W {
-  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
-  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h,int c);
-  [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr h);
-  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-  [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, IntPtr extra);
-}
-'@
-`$p = Get-Process -Id $Id -ErrorAction SilentlyContinue
-if (-not `$p -or `$p.ProcessName -ne 'winuae64') { Report "fail winuae64 pid=$Id is not running"; exit 1 }
-`$h = `$p.MainWindowHandle
-if (`$h -eq [IntPtr]::Zero) { Report "fail pid=`$(`$p.Id) has no main window"; exit 1 }
-
-"@
-}
-
-# Raising the emulator is a prerequisite for `key` -- keybd_event goes to
-# whatever has focus -- and for `winvm shot`, since anything else open on the
-# guest desktop would otherwise sit on top of it.
-$RaiseAndCheck = @'
-[W]::ShowWindow($h,9) | Out-Null
-[W]::BringWindowToTop($h) | Out-Null
-[W]::SetForegroundWindow($h) | Out-Null
-Start-Sleep -Milliseconds 300
-$fg = ([W]::GetForegroundWindow() -eq $h)
-'@
 
 # -- `snapshot`, `restore` and `discard-snapshot`: the whole machine, over the pipe --
 #
@@ -981,17 +900,24 @@ function Invoke-Diagnose {
   '<<end>>'
 }
 
-# The pipe verbs `shot` and `press`: neither raises a window nor needs a scheduled task,
+# The pipe verbs `shot`, `press` and `debugger`: none raises a window nor needs a scheduled task,
 # because the lane's own pipe works from the ssh session. They check the claim, the
 # receipt and the pipe's server pid exactly as Invoke-Diagnose does.
 #
 # `shot` sends `DBG sc`. WinUAE answers 404 whether or not it wrote a file, so the one new PNG
-# in the lane's shots folder is the only success signal. A process writes at most 999 files
-# (screenshot.cpp never resets its counter), so a shot with no file after number 999 is the
-# limit and not a transient failure. The continuous-capture option is never sent, with any value: 0 starts it too.
+# in the lane's shots folder is the only success signal. After each good shot it sends
+# `CFG SPC_SCREENSHOT 0`, which resets WinUAE's per-process file counter so a long run stays
+# below the 999-file limit; a shot with no file after number 999 is that limit and not a
+# transient failure. `CFG AKS_SCREENSHOT_FILE` is never sent, with any value: 0 starts continuous capture too.
 #
 # `press` sends a raw Amiga key code down, holds it, and sends it up in a finally, so no failure
 # leaves a key held. A held key repeats.
+#
+# `debugger` sends `CFG AKS_ENTERDEBUGGER 1`, which halts the machine and puts WinUAE's
+# debugger console in front, with no key press and no focus. The pipe does not answer
+# while the debugger sits at its prompt, so nothing that needs the pipe goes after it
+# until `g` has been typed through `send`. It is a diagnostic: an acceptance run reads
+# memory through the pipe and never enters the debugger.
 function Invoke-PipeVerb([string]$Verb) {
   $codes = @()
   if ($Verb -ceq 'press') {
@@ -1000,7 +926,7 @@ function Invoke-PipeVerb([string]$Verb) {
     foreach ($c in $codes) {
       if ($c -cnotmatch '^[0-9A-Fa-f]{2}\z' -or [Convert]::ToInt32($c, 16) -gt 0x7F) { "fail '$c' is not a raw key code from 00 to 7F"; exit 1 }
     }
-  } elseif ($Rest.Count) { 'fail shot takes no arguments'; exit 1 }
+  } elseif ($Rest.Count) { "fail $Verb takes no arguments"; exit 1 }
   $lane = Get-LaneEmulator
   if ($lane.err) { $lane.err; exit 1 }
   $pipe = $null; $verdict = $null; $out = @()
@@ -1067,6 +993,11 @@ function Invoke-PipeVerb([string]$Verb) {
           $out = @('WINVM-SHOT-BEGIN', [Convert]::ToBase64String($bytes), 'WINVM-SHOT-END')
         }
       }
+    }
+    if (-not $verdict -and $Verb -ceq 'debugger') {
+      $r = [Text.Encoding]::ASCII.GetString((Send-Pipe $pipe 'CFG AKS_ENTERDEBUGGER 1' 10000)).TrimEnd([char]0)
+      if ($r -cne '404') { $verdict = "fail AKS_ENTERDEBUGGER replied $r" }
+      else { $verdict = "ok debugger entered at pid=$($lane.proc.Id)" }
     }
     if (-not $verdict -and $Verb -ceq 'press') {
       $done = @()
@@ -1590,61 +1521,6 @@ switch ($Cmd) {
     "fail winuae64 pid=$($live.Id) still running 10s after Stop-ScheduledTask"; exit 1
   }
 
-  'front' {
-    $deny = Claim-Denial
-    if ($deny) { $deny; exit 1 }
-    $mine = Resolve-MyEmulator
-    if ($mine.err) { $mine.err; exit 1 }
-    $r = Invoke-Session1 $LanePaths.helpers.front ((Helper-Preamble $LanePaths.receipt $mine.proc.Id) + $RaiseAndCheck + @'
-
-Report $(if ($fg) { "ok raised pid=$($p.Id) hwnd=$h" } else { "fail pid=$($p.Id) did not take the foreground" })
-'@)
-    $r
-    if ($r -notmatch '^ok') { exit 1 }
-  }
-
-  'key' {
-    # Synthesise a real key press in session 1. keybd_event goes in at the
-    # driver level, so WinUAE's DirectInput keyboard sees it; PostMessage
-    # would not. $Rest[0] is a virtual-key code in hex, e.g. 7A for F11.
-    #
-    # -Extended adds KEYEVENTF_EXTENDEDKEY, and it is not cosmetic. WinUAE
-    # reads scancodes, and keybd_event derives one from the virtual key
-    # without the E0 prefix unless asked: VK_UP, VK_DOWN, VK_LEFT and
-    # VK_RIGHT then arrive as DIK_NUMPAD8, 2, 4 and 6. So `key 26` is the
-    # keypad and `key 26 -Extended` is the cursor key, and both matter here --
-    # Amiga Curse and Amiga Silver Blades read the party's direction from
-    # either. See #361 (An Amiga party cannot be made to walk, because the
-    # WinUAE driver sends only keystrokes).
-    #
-    # `responding` is reported for information and is NOT a receipt for the
-    # debugger being up: measured at the debugger's own prompt, with the
-    # emulation thread held, `Responding` was still True and the title bar
-    # still read "[goldbox-a500.uae] - WinUAE". The receipt for F11 is the ">"
-    # prompt in what `send` reads back off the console.
-    $deny = Claim-Denial
-    if ($deny) { $deny; exit 1 }
-    if (-not ($Rest[0] -match '^[0-9A-Fa-f]{1,2}$')) { "fail '$($Rest[0])' is not a hex VK code"; exit 1 }
-    $vk = $Rest[0]
-    $down = if ($Extended) { 1 } else { 0 }   # KEYEVENTF_EXTENDEDKEY
-    $up   = $down + 2                         # ... | KEYEVENTF_KEYUP
-    $how  = if ($Extended) { ' extended' } else { '' }
-    $mine = Resolve-MyEmulator
-    if ($mine.err) { $mine.err; exit 1 }
-    $r = Invoke-Session1 $LanePaths.helpers.key ((Helper-Preamble $LanePaths.receipt $mine.proc.Id) + $RaiseAndCheck + @"
-
-if (-not `$fg) { Report "fail pid=`$(`$p.Id) did not take the foreground, so the key would go elsewhere"; exit 1 }
-[W]::keybd_event(0x$vk, 0, $down, [IntPtr]::Zero)
-Start-Sleep -Milliseconds 120
-[W]::keybd_event(0x$vk, 0, $up, [IntPtr]::Zero)
-Start-Sleep -Milliseconds 500
-`$p.Refresh()
-Report "ok pressed VK 0x$vk$how at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
-"@)
-    $r
-    if ($r -notmatch '^ok') { exit 1 }
-  }
-
   'send' {
     # $Rest is passed straight to winuae-send.ps1. Quote it as ONE argument --
     #   send '-File C:\Amiga\cmds.txt'
@@ -1657,7 +1533,7 @@ Report "ok pressed VK 0x$vk$how at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
     $deny = Claim-Denial
     if ($deny) { $deny; exit 1 }
     # Two emulators means two consoles, and an emulator this lane did not start
-    # means typing into somebody else's game. Same rule as `front` and `key`.
+    # means typing into somebody else's game. Same rule as `debugger`.
     $mine = Resolve-MyEmulator
     if ($mine.err) { $mine.err; exit 1 }
     $p = $mine.proc
@@ -1777,7 +1653,7 @@ Report "ok pressed VK 0x$vk$how at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
     # Run this once and `winvm promote`, so the Gold image always has it.
     # `start` blocks over a live emulator and so does this: the scan launches
     # its own `winuae64`, and for the minute it runs there are two, which is
-    # exactly the ambiguity `front`, `key` and `send` now block. Nothing
+    # exactly the ambiguity `debugger` and `send` now block. Nothing
     # enforced this, and `roms` is the one command that creates the condition.
     $deny = Claim-Denial
     if ($deny) { $deny; exit 1 }
@@ -1882,6 +1758,7 @@ Report "ok pressed VK 0x$vk$how at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
   'diagnose' { Invoke-Diagnose }
   'shot' { Invoke-PipeVerb 'shot' }
   'press' { Invoke-PipeVerb 'press' }
+  'debugger' { Invoke-PipeVerb 'debugger' }
   'config-hash' { Invoke-PrivateConfig 'config-hash' }
   'config-remove' { Invoke-PrivateConfig 'config-remove' }
   'snapshot' { Invoke-State 'snapshot' }

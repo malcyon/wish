@@ -434,3 +434,10 @@ def test_multi_profile_import_rejects_inconsistent_reports(tmp_path, mutation):
             path.write_text(json.dumps(data))
     with pytest.raises(ValueError):
         combined_profile_weights(paths, 'a' * 40, '123', 'linux')
+
+
+def test_the_committed_weights_do_not_name_the_deleted_winvmsettle_test():
+    path = Path(__file__).resolve().parents[2] / 'tools' / 'suite' / 'ci_weights.json'
+    data = json.loads(path.read_text())
+    for platform in data['platforms'].values():
+        assert 'tests/amiga/test_winvmsettle.py' not in platform['weights']

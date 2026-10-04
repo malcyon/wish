@@ -12,7 +12,8 @@ import re
 
 from automap import amiga
 
-PS1 = (pathlib.Path(__file__).resolve().parents[2] / "tools" / "amiga" / "winuae.ps1").read_text()
+PS1_PATH = pathlib.Path(__file__).resolve().parents[2] / "tools" / "amiga" / "winuae.ps1"
+PS1 = PS1_PATH.read_text()
 
 
 def _body(function: str) -> str:
@@ -130,18 +131,37 @@ def test_the_emulator_is_found_by_the_pid_in_the_lanes_receipt():
     assert ".Count -gt 1" not in body
 
 
-def test_the_helper_preamble_takes_the_pid_and_counts_nothing():
-    body = PS1[PS1.index("function Helper-Preamble"):PS1.index("$RaiseAndCheck = ")]
-    assert "[string]$ReceiptPath, [int]$Id" in body
-    assert "winuae64 processes" not in body and "Count -gt 1" not in body
-    assert "Get-Process -Id $Id" in body
+def test_the_script_has_no_key_or_front_verb_and_no_focus_helper():
+    verbs = re.search(r"ValidateSet\(([^)]*)\)", PS1).group(1)
+    assert "'key'" not in verbs and "'front'" not in verbs
+    assert "\n  'key' {" not in PS1 and "\n  'front' {" not in PS1
+    for word in ("RaiseAndCheck", "keybd_event", "SetForegroundWindow", "Invoke-Session1",
+                 "Helper-Preamble", "$Extended", "-Extended", "winuae-front", "winuae-key"):
+        assert word not in PS1, word
     assert "function Pid-Guard" not in PS1
+
+
+def test_debugger_enters_over_the_pipe_with_no_key_or_window():
+    verbs = re.search(r"ValidateSet\(([^)]*)\)", PS1).group(1)
+    assert "'debugger'" in verbs
+    assert "'debugger' { Invoke-PipeVerb 'debugger' }" in PS1
+    body = _body("Invoke-PipeVerb")
+    assert "'CFG AKS_ENTERDEBUGGER 1'" in body
+
+
+def test_the_lane_checks_do_not_press_a_key_or_raise_a_window():
+    for name in ("winuae-lanecheck.ps1", "winuae-sendcheck.ps1"):
+        text = (PS1_PATH.parent / name).read_text()
+        assert not re.search(r"Drive\s*\(?@?\(?\s*'?key\b", text), name
+        assert not re.search(r"Drive\s*\(?@?\(?\s*'?front\b", text), name
+        assert "7A" not in text and "F11" not in text, name
+        assert "debugger" in text, name
 
 
 def test_lane_one_keeps_the_names_a_run_in_flight_already_uses():
     body = _body("Lane-Paths")
     for name in ("winuae-claim.txt", "winuae-run.txt", "winuae-action.txt", "send.log",
-                 "console.txt", "'winuae-run'", "'winuae-front'", "'winuae-key'", "'winuae-send'"):
+                 "console.txt", "'winuae-run'", "'winuae-send'"):
         assert name in body, name
 
 
@@ -366,3 +386,10 @@ def test_shot_discards_a_file_that_lands_just_after_a_no_new_file_failure():
     section = body[start:body.index("wrote no file", start)]
     assert "Remove-Item" in section and "-cnotcontains" in section
     assert "discarded as stale" in section
+
+
+def test_the_console_route_enters_the_debugger_over_the_pipe_not_with_a_key():
+    script = amiga.WinuaeDebugger("wish37", runner=lambda *_: "")._script(["m 0 1", "g"], [])
+    assert "winuae.ps1 debugger -Holder wish37" in script
+    assert "winuae.ps1 key" not in script
+    assert not hasattr(amiga, "DEBUGGER_KEY")

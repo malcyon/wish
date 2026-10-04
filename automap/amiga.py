@@ -13,9 +13,9 @@ median of 2.3 ms a command with the emulator holding 49.9 FPS throughout, on
 `#37 (Automap the Amiga version, not just the C64)`.
 
 **`WinuaeDebugger` is the older route and the one every driven tool uses.** It
-presses F11 -- the `SPC_ENTERDEBUGGER` input event, which is the only way into
-the *interactive* debugger, since `use_debugger=true` cannot start it on Windows
-at all -- and types `S <file> <addr> <n>` and `g` into the emulator's console.
+sends `CFG AKS_ENTERDEBUGGER 1` over the copy's own pipe -- no key press and no
+focus, and the only way into the *interactive* debugger, since
+`use_debugger=true` cannot start it on Windows at all -- and types `S <file> <addr> <n>` and `g` into the emulator's console.
 That halts the machine for the length of the batch and puts a console in front
 of whoever is playing, so it belongs to a driven run and not to a player's
 session. It stays because its `W` and its single-stepping reach parts of the
@@ -33,7 +33,7 @@ costs, what it blocks and what it cannot do is on the class.
 
 **One `ssh` call does the whole of either WinUAE route**, which is the design
 decision this module is built around. `winuae.ps1` and `winuae-send.ps1` are three separate
-guest commands -- write the batch file, press F11, inject the batch -- and each
+guest commands -- write the batch file, enter the debugger, inject the batch -- and each
 run on its own would be an `ssh` round trip of about half a second. They are
 composed here into a single PowerShell script, base64'd into
 `powershell -EncodedCommand`, so a poll is one round trip whatever it reads.
@@ -96,10 +96,6 @@ from .target import WINDOW_H, WINDOW_W, Fix, NotConnected
 
 #: A child of the `wish` logger, like every other module here.
 _log = logging.getLogger("wish.automap.amiga")
-
-#: F11, the virtual key `tools/amiga/goldbox-a500.uae` binds `SPC_ENTERDEBUGGER` to.
-#: The debugger has no other way in -- `docs/143-winuae-debugger.md` §5.
-DEBUGGER_KEY = 0x7A
 
 #: Where `winuae.ps1` and its helpers live on the guest, and where a dump goes.
 #: `docs/143` §6: the path an `S` command is given **must be absolute**, or
@@ -412,7 +408,7 @@ class WinuaeDebugger:
     # -- building the guest script ---------------------------------------
 
     def _script(self, lines: list[str], fetch: list[tuple[str, str]]) -> str:
-        """The PowerShell the guest runs: write the batch, F11, inject, print.
+        """The PowerShell the guest runs: write the batch, enter the debugger, inject, print.
 
         `fetch` is `(name, guest path)`; each file is printed as
         `<<name>> <base64>` on its own line, and a file that is not there is
@@ -433,7 +429,7 @@ class WinuaeDebugger:
             f"New-Item -ItemType Directory -Force -Path '{GUEST_DUMP}' "
             "| Out-Null",
             "Write-Output '<<key>>'",
-            f"& {ps}{GUEST_ROOT}\\winuae.ps1 key {DEBUGGER_KEY:02X} "
+            f"& {ps}{GUEST_ROOT}\\winuae.ps1 debugger "
             f"-Holder {self.holder}",
             "Write-Output '<<send>>'",
             f"& {ps}{GUEST_ROOT}\\winuae.ps1 send "
@@ -2545,7 +2541,7 @@ class AmigaTarget:
     def _resume(self, lines: list[str]) -> None:
         """Add the `g` that starts the machine again, where there was a halt.
 
-        The console route enters the debugger by pressing F11, which stops the
+        The console route enters the debugger over the pipe, which stops the
         emulation thread, so every batch has to end by resuming it -- a batch
         that forgets leaves the emulator halted, which is the whole of
         `#95 (A WinUAE debugger batch can stop half-way through and leave the
