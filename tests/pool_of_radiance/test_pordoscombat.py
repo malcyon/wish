@@ -250,7 +250,13 @@ def _weight_sum(rec: bytes, itm: bytes) -> int:
 #:   save ran no rebuild on SIMON, PRINCESS FATIMA and MAD MAN;
 #: * `pool-736-effects-over-64-camp-cast-resave`, staged to level 6 from a
 #:   rebuilt creation save: its six characters were only loaded, camped, cast
-#:   and saved, so no rebuild ran and `thac0_current` kept its level-1 value.
+#:   and saved, so no rebuild ran and `thac0_current` kept its level-1 value;
+#: * `pool-8-friends-mirror-prayer-level6-dos-engine-save`, party staged to
+#:   level 6, then the game only cast, camped and saved, so no rebuild ran;
+#: * `pool-8-level6-sean-prayer30-camp-save-dos-engine-save`, a copy of the
+#:   previous one's slot D, likewise only cast, camped and saved;
+#: * `por-dos-alt-ctrl-name-wish14`, a Wish Amiga-to-DOS conversion loaded,
+#:   walked once and saved by the game, which does not run the rebuild.
 #:
 #: A specimen whose `provenance.toml` (`what` or `made_by`) names one of these,
 #: or one of its own descendants, as the copy it was staged from is excluded
@@ -268,6 +274,9 @@ _NOT_REBUILT = {
     "por-dos/WISH-SPEC-issue641-dirten-seven-resave",
     "por-dos/WISH-SPEC-por-790-scribe-complete-stale-count",
     "por-dos/WISH-SPEC-pool-736-effects-over-64-camp-cast-resave",
+    "por-dos/WISH-SPEC-pool-8-friends-mirror-prayer-level6-dos-engine-save",
+    "por-dos/WISH-SPEC-pool-8-level6-sean-prayer30-camp-save-dos-engine-save",
+    "por-dos/WISH-SPEC-por-dos-alt-ctrl-name-wish14",
 }
 
 #: The one character in `_NOT_REBUILT` whose sheet the run drew with VIEW,
