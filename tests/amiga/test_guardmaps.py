@@ -148,6 +148,24 @@ def test_committed_maps_cover_guarded_routes():
     assert required <= spec['guards'].keys()
 
 
+def test_pool_map_guards_line_one_items_and_holds_its_list_identity():
+    """A Pool substitute run with `items 1` keys every strict state on a recognised screen."""
+    from tools.amiga import route_camp
+    from tools.amiga.route_pool import POOL
+
+    spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, 'pool')
+    route = route_camp.camp_title(POOL, ('items 1',), 6, name='pool')
+    assert {'camp_sheet_items', 'camp_items'} <= route.strict
+    assert route.strict <= spec['guards'].keys()
+    assert {'camp_items', 'camp_sheet_items'} <= spec['identity'].keys()
+    # The camp sheet is the world sheet's picture, so each guard admits the other.
+    assert 'sheet' in spec['guards']['camp_sheet_items']['also']
+    assert 'camp_sheet_items' in spec['guards']['sheet']['also']
+    # The pinned party keeps its sheet and roster rules beside the substituted party's.
+    for state in ('sheet', 'world'):
+        assert len(_rules(spec['identity'][state])) >= 2, state
+
+
 def test_silver_blades_map_guards_line_one_items_and_join_steps_and_their_messages():
     from tools.amiga import route_camp, route_silver_blades
 
