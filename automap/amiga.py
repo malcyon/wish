@@ -898,6 +898,8 @@ SNAPSHOT_NAME = re.compile(r"[A-Za-z0-9_-]{1,32}")
 
 #: A Windows device name, in any case and with any extension: a path through one
 #: opens the device rather than a file or folder.
+#: The names WinUAE gives its copies' pipes; the lane script finds the one its own emulator serves by pid.
+LANE_PIPE_NAME = re.compile(r"WinUAE(?:_[1-9])?")
 WINDOWS_DEVICE = re.compile(r"(?i)(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?")
 
 #: The completion marker's name; `~` cannot be in a snapshot name, so no snapshot
@@ -1278,9 +1280,9 @@ Write-Output '<<end>>'
         `insert_floppy` and `drives` are the callers; a control that must reach the
         guest's own checks with a request Python would block calls this directly.
         """
-        if self.pipe != "WinUAE":
+        if not LANE_PIPE_NAME.fullmatch(self.pipe):
             raise ValueError(f"The pipe {self.pipe!r} is not allowed: the lane script "
-                             "reaches WinUAE's own pipe only")
+                             "reaches a WinUAE pipe only")
         words = [verb, "-Holder", holder]
         if token is not None:
             if not _TOKEN.fullmatch(token):

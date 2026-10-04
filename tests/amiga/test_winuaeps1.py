@@ -49,3 +49,29 @@ def test_a_failed_move_back_names_where_the_old_snapshot_is():
     back = body.index("Move-Item -LiteralPath $Backup -Destination $Dir -ErrorAction Stop")
     named = body.index("so it is in $Backup", back)
     assert back < named
+
+
+def test_every_pipe_verb_opens_the_pipe_its_own_emulator_serves():
+    """Two copies make `WinUAE` possibly the other lane's pipe, so no verb names one."""
+    assert "'WinUAE', 'InOut'" not in PS1
+    assert PS1.count("Open-LanePipe $lane.proc.Id") == 3
+
+
+def test_the_lane_pipe_is_chosen_by_its_server_pid():
+    body = _body("Open-LanePipe")
+    asked = body.index("GetNamedPipeServerProcessId")
+    matched = body.index("-eq $LanePid) { return $try }", asked)
+    assert asked < matched
+    assert "$names = @('WinUAE') + (1..9 | ForEach-Object { \"WinUAE_$_\" })" in body
+
+
+def test_a_lane_whose_pipe_is_nobody_s_is_named_with_every_server_seen():
+    assert "no WinUAE pipe is served by this lane's winuae64 pid=$LanePid" in _body("Open-LanePipe")
+
+
+def test_the_pipe_name_set_is_the_same_in_python_and_powershell():
+    body = _body("Open-LanePipe")
+    assert "'WinUAE'" in body and "(1..9" in body and "WinUAE_$_" in body
+    assert amiga.LANE_PIPE_NAME.fullmatch("WinUAE")
+    assert all(amiga.LANE_PIPE_NAME.fullmatch(f"WinUAE_{n}") for n in range(1, 10))
+    assert not amiga.LANE_PIPE_NAME.fullmatch("WinUAE_10")

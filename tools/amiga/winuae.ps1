@@ -618,8 +618,7 @@ function Invoke-State([string]$Verb) {
   try {
     Add-Type -Namespace Wish -Name PipeInfo -MemberDefinition '[DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetNamedPipeServerProcessId(IntPtr Pipe, out uint ServerProcessId);'
     $sw = [Diagnostics.Stopwatch]::StartNew()
-    $pipe = New-Object IO.Pipes.NamedPipeClientStream '.', 'WinUAE', 'InOut'
-    $pipe.Connect(5000)
+    $pipe = Open-LanePipe $lane.proc.Id
     $pipe.ReadMode = [IO.Pipes.PipeTransmissionMode]::Message
     $open = $true
     $tags.Add("<<connect_ms>> $($sw.ElapsedMilliseconds)") | Out-Null
@@ -761,6 +760,34 @@ function Get-LaneEmulator {
   @{ proc = $mine.proc; run = $mine.run; exe = $path }
 }
 
+# Each WinUAE copy takes the first free of \\.\pipe\WinUAE, WinUAE_1 .. WinUAE_9 (uaeipc.cpp), so
+# the name says nothing about whose pipe it is. The pipe belongs to the lane when its
+# server process is the lane's winuae64; with one copy running that is `WinUAE`.
+function Open-LanePipe([int]$LanePid) {
+  $names = @('WinUAE') + (1..9 | ForEach-Object { "WinUAE_$_" })
+  try {
+    $live = [IO.Directory]::GetFiles('\\.\pipe\') | ForEach-Object { [IO.Path]::GetFileName($_) }
+    $names = @($names | Where-Object { $live -ccontains $_ })
+  } catch { }
+  $seen = @()
+  foreach ($name in $names) {
+    $try = New-Object IO.Pipes.NamedPipeClientStream '.', $name, 'InOut'
+    try {
+      $try.Connect($(if ($names.Count -eq 1) { 5000 } else { 2000 }))
+      [uint32]$owner = 0
+      if (-not [Wish.PipeInfo]::GetNamedPipeServerProcessId($try.SafePipeHandle.DangerousGetHandle(), [ref]$owner)) {
+        throw "GetNamedPipeServerProcessId failed, error $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
+      }
+      if ($owner -eq $LanePid) { return $try }
+      $seen += "$name=$owner"
+    } catch {
+      $seen += "$name=$($_.Exception.Message)"
+    }
+    $try.Dispose()
+  }
+  throw "no WinUAE pipe is served by this lane's winuae64 pid=$LanePid ($($seen -join ', '))"
+}
+
 # One message out, one reply back, both NUL-terminated as `uaeipc.cpp` wants: a
 # request without its NUL picks up bytes of a longer earlier one.
 function Send-Pipe($Pipe, [string]$Text, [int]$WaitMs = 10000) {
@@ -818,8 +845,7 @@ function Invoke-Diagnose {
   try {
     Add-Type -Namespace Wish -Name PipeInfo -MemberDefinition '[DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetNamedPipeServerProcessId(IntPtr Pipe, out uint ServerProcessId);'
     $sw = [Diagnostics.Stopwatch]::StartNew()
-    $pipe = New-Object IO.Pipes.NamedPipeClientStream '.', 'WinUAE', 'InOut'
-    $pipe.Connect(5000)
+    $pipe = Open-LanePipe $lane.proc.Id
     $pipe.ReadMode = [IO.Pipes.PipeTransmissionMode]::Message
     $open = $true
     $tags.Add("<<connect_ms>> $($sw.ElapsedMilliseconds)") | Out-Null
@@ -901,8 +927,7 @@ function Invoke-Floppy([string]$Verb) {
   try {
     Add-Type -Namespace Wish -Name PipeInfo -MemberDefinition '[DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetNamedPipeServerProcessId(IntPtr Pipe, out uint ServerProcessId);'
     $sw = [Diagnostics.Stopwatch]::StartNew()
-    $pipe = New-Object IO.Pipes.NamedPipeClientStream '.', 'WinUAE', 'InOut'
-    $pipe.Connect(5000)
+    $pipe = Open-LanePipe $lane.proc.Id
     $pipe.ReadMode = [IO.Pipes.PipeTransmissionMode]::Message
     $open = $true
     $tags.Add("<<connect_ms>> $($sw.ElapsedMilliseconds)") | Out-Null

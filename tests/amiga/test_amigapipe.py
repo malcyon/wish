@@ -800,11 +800,18 @@ def test_a_floppy_change_blocks_a_token_that_is_not_the_claims():
     assert guest.calls == []
 
 
-def test_a_floppy_change_blocks_a_pipe_that_is_not_winuaes_own():
-    guest = LaneGuest()
-    with pytest.raises(ValueError, match="WinUAE's own pipe only"):
-        insert(guest, pipe="WinUAE_1")
-    assert guest.calls == []
+def test_a_floppy_change_blocks_a_pipe_that_is_not_a_winuae_pipe():
+    for name in ("WinUAE_10", "WinUAE_0", "Other", "winuae"):
+        guest = LaneGuest()
+        with pytest.raises(ValueError, match="a WinUAE pipe only"):
+            insert(guest, pipe=name)
+        assert guest.calls == []
+
+
+def test_a_floppy_change_reaches_the_lane_script_for_a_second_copys_pipe_name():
+    guest = LaneGuest(guest_output("ok inserted drive=0 polls=4", swap_reads()))
+    insert(guest, pipe="WinUAE_1")
+    assert guest.calls
 
 
 def test_a_floppy_change_never_goes_through_the_debugger_script(monkeypatch):
@@ -1206,7 +1213,7 @@ def test_a_leftover_working_folder_is_cleared_before_the_pipe_opens_or_named():
     clear = body.index("Remove-Item -LiteralPath $part -Recurse -Force -ErrorAction SilentlyContinue\n    if (Test-Path -LiteralPath $part)")
     held = body.index("could not be removed, so a process still holds a file in it")
     make = body.index("New-Item -ItemType Directory -Force -Path $part")
-    opened = body.index("New-Object IO.Pipes.NamedPipeClientStream")
+    opened = body.index("Open-LanePipe $lane.proc.Id")
     assert clear < held < make < opened
 
 
