@@ -489,7 +489,8 @@ POOL_SHEET_BAR_HEAD = "VIEW"
 POOL_ITEMS_BAR_HEAD = "READY"
 POOL_ITEMS_TITLE = "'S ITEMS"
 POOL_ITEM_FIRST_ROW = 5
-POOL_ITEM_ROW = re.compile(r"(YES|NO)\s+(\*\s*)?(\S.*)")
+#: A type-0 item draws no name, so its row is the flag alone.
+POOL_ITEM_ROW = re.compile(r"(YES|NO)(?:\s+(\*\s*)?(\S.*)?)?")
 #: The sheet's rows read as text, and the figure the `view` step reports.
 POOL_SHEET_ROWS = range(1, 23)
 POOL_ENCUMBRANCE = re.compile(r"ENCUMBRANCE\s+(\d+)")
@@ -1064,7 +1065,7 @@ def pool_item_list(screen: dosbox.Screen, font: dict[bytes, str]) -> list[dict]:
         if m is None:
             raise ValueError(f"item row {k + 1} reads {text!r}")
         items.append({"ready": m.group(1) == "YES", "marked": bool(m.group(2)),
-                      "name": m.group(3).strip()})
+                      "name": (m.group(3) or "").strip()})
     return items
 
 

@@ -11213,3 +11213,14 @@ def test_silver_blades_needs_the_speculative_flag_and_an_installed_save(capsys):
         da.main(["--title", "ssb", "--save", ".", "--steps", "load",
                  "--no-encounters"])
     assert "--speculative-encounters" in capsys.readouterr().err
+
+
+def test_a_pool_item_row_with_no_name_reads_beside_the_named_rows(monkeypatch):
+    rows = {5: "YES  LONG SWORD", 6: "NO", 7: "NO  * POTION", 8: "YES *", 9: ""}
+    monkeypatch.setattr(da, "text_row", lambda screen, row, font, cols=None: rows[row])
+    assert da.pool_item_list(None, {}) == [
+        {"ready": True, "marked": False, "name": "LONG SWORD"},
+        {"ready": False, "marked": False, "name": ""},
+        {"ready": False, "marked": True, "name": "POTION"},
+        {"ready": True, "marked": True, "name": ""},
+    ]
