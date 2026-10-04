@@ -20,6 +20,7 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import sys
 
 
@@ -33,11 +34,17 @@ def main(argv=None):
                     help="the Amiga Pool of Radiance disk to convert")
     ap.add_argument("--disks", required=True,
                     help="C64 Pool of Radiance game disks folder")
+    ap.add_argument("--source-slot", default=None, metavar="L",
+                    help="which saved game to read off the Amiga disk "
+                         "(default: the alphabetically first slot it holds)")
     ap.add_argument("--out-dir", required=True,
                     help="folder Convert writes its wish-YYYY-MM-DD subfolder "
                          "into")
     ap.add_argument("--summary", required=True)
     args = ap.parse_args(argv)
+    if args.source_slot is not None and not re.fullmatch(
+            r"[A-Ja-j]", args.source_slot):
+        ap.error("--source-slot is one letter, A to J")
 
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     # Imported from this checkout before `--tree` goes first on the path,
@@ -61,7 +68,10 @@ def main(argv=None):
     window = EditorBinding(root, disks=args.disks)
     try:
         result = saveasdrive.save_as(window, args.specimen, "c64", out_dir,
-                                     c64_folder=args.disks)
+                                     c64_folder=args.disks,
+                                     source_slot=(args.source_slot.upper()
+                                                  if args.source_slot
+                                                  else None))
     finally:
         window.close()
 
@@ -75,6 +85,7 @@ def main(argv=None):
 
     summary = {
         "specimen": args.specimen,
+        "source_slot": args.source_slot.upper() if args.source_slot else None,
         "specimen_sha256": hashlib.sha256(
             pathlib.Path(args.specimen).read_bytes()).hexdigest(),
         "direction": "AmigaToC64 pool-of-radiance",
