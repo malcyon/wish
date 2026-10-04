@@ -2292,9 +2292,11 @@ graph LR
   spell_names --> amiga_hunks
   spell_names --> exepack
   spell_names --> spells
+  spell_names --> stonecracker
   spell_names --> titles
   spells --> d64
   spells --> levels
+  stonecracker --> amiga_hunks
   strength --> layout
   strength --> petscii
   strength --> savegame

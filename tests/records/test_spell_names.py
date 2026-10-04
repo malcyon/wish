@@ -16,12 +16,13 @@ from __future__ import annotations
 
 import dataclasses
 import hashlib
+import itertools
 import re
 import struct
 
 import pytest
 
-from goldbox import amiga_hunks, exepack, spell_names, spells
+from goldbox import amiga_hunks, exepack, spell_names, spells, stonecracker
 from tests.support.hunks import hunk_file
 
 #: A three-spell title: ids 1-3 are spells, id 4 is past the last.
@@ -163,7 +164,7 @@ def _cstrings(texts: list[str]) -> tuple[bytes, list[int]]:
     blob, offsets = bytearray(), []
     for text in texts:
         offsets.append(len(blob))
-        blob += text.encode() + b"\x00"
+        blob += text.encode("latin1") + b"\x00"
     return bytes(blob + bytes(-len(blob) % 4)), offsets
 
 
@@ -222,10 +223,59 @@ def test_amiga_cell_form_reads_fixed_width_names():
         1: "Alpha", 2: "Beta", 3: "Gamma"}
 
 
-def test_a_crunched_program_is_named_as_crunched():
-    program = hunk_file([(amiga_hunks.HUNK_CODE, b"\x4E\x75\x00\x00S404" + bytes(8), [])])
+def _crunched(program: bytes) -> bytes:
+    """`program` StoneCracker-crunched, stored as literals: the layout the
+    decruncher rebuilds it from, then an `S404` stream of one literal token
+    per byte (`goldbox.stonecracker` describes both)."""
+    hunks, relocs = amiga_hunks.parse(program)
+    layout = struct.pack(">I", len(hunks) - 1)
+    layout += b"".join(struct.pack(">I", h.allocated // 4) for h in hunks)
+    for h in hunks:
+        body = program[h.file_offset:h.file_offset + h.size] if h.file_offset else None
+        if body is None:
+            layout += struct.pack(">H", 0x8000)
+            continue
+        layout += struct.pack(">HH", 0x4000 | len(body) >> 18, len(body) // 4 & 0xFFFF)
+        layout += body
+        mine = sorted((t, o) for (src, o), t in relocs.items() if src == h.number)
+        if mine:
+            layout += b"\x00\x00"
+            for target, offset in mine:
+                layout += struct.pack(">HHI", 1, target, 10 << 24 | offset)
+            layout += b"\x00\x00"
+    layout += b"\xff\xff"
+    bits = "".join("0" + format(b, "08b") for b in reversed(layout))
+    left = len(bits) % 16
+    words = [int(bits[i:i + 16], 2) for i in range(left, len(bits), 16)]
+    body = b"".join(struct.pack(">H", w) for w in reversed(words))
+    buffer = int(bits[:left], 2) << (16 - left) if left else 0
+    stream = (b"S404" + struct.pack(">III", 0, len(layout), 4 + len(body)) + body
+              + struct.pack(">HHH", 9, buffer, left))
+    stream += bytes(-len(stream) % 4)
+    return hunk_file([(amiga_hunks.HUNK_CODE, b"\x4E\x75\x00\x00", []),
+                      (amiga_hunks.HUNK_CODE, stream, [])])
+
+
+def test_a_crunched_program_is_decrunched_before_the_table_search():
+    program = _small_data_program(["", "Alpha", "Beta", "Gamma"])
+    crunched = _crunched(program)
+    assert b"Alpha" not in crunched
+    assert spell_names.amiga_spell_names(crunched, TINY) == {
+        1: "Alpha", 2: "Beta", 3: "Gamma"}
+
+
+def test_a_crunched_program_that_does_not_decrunch_says_so():
+    crunched = bytearray(_crunched(_small_data_program(["", "Alpha", "Beta", "Gamma"])))
+    at = crunched.index(b"S404")
+    crunched[at + 16:at + 18] = b"\xff\xff"      # garble the stream's last word read
     with pytest.raises(spell_names.SpellNameError, match="StoneCracker"):
-        spell_names.amiga_spell_names(program, TINY)
+        spell_names.amiga_spell_names(bytes(crunched), TINY)
+
+
+def test_amiga_names_may_carry_latin_1_letters():
+    program = _small_data_program(["", "Segen", "Schutz vor B\xf6sem", "Gro\xdf"])
+    assert spell_names.amiga_spell_names(program, TINY) == {
+        1: "Segen", 2: "Schutz vor B\u00f6sem", 3: "Gro\u00df"}
 
 
 def test_spell_names_names_the_platforms_it_knows():
@@ -318,7 +368,8 @@ def dos_names():
 
 @pytest.fixture(scope="module")
 def amiga_programs():
-    """`{title: {sha1: program}}` for every distinct Amiga program here."""
+    """`{title: {sha1: program}}` for every distinct Amiga program here, as
+    stored on the disk: the crunched one still crunched."""
     from automap import gamedisks
     from goldbox.amiga_adf import AmigaDisk
     from tools.amiga import amigasaves
@@ -330,12 +381,16 @@ def amiga_programs():
             disk = AmigaDisk(bytearray(data))
         except Exception:
             continue
+        try:
+            entries = list(disk.walk())
+        except Exception:
+            continue
         for key in TITLES:
-            try:
-                program = spell_names.amiga_program([disk], key)
-            except Exception:                   # not this title's disk
-                continue
-            out.setdefault(key, {})[hashlib.sha1(program).hexdigest()] = program
+            name = spell_names.AMIGA_PROGRAMS[key].lower()
+            for path, _entry in entries:
+                if path.strip("/").lower() == name:
+                    program = disk.read_file(path)
+                    out.setdefault(key, {})[hashlib.sha1(program).hexdigest()] = program
     return out
 
 
@@ -364,17 +419,47 @@ def test_amiga_names_cover_every_spell_and_agree_with_dos_id_for_id(
     if key not in amiga_programs:
         pytest.skip(f"no Amiga {key} disks")
     table = spells.BY_KEY[key]
-    read = 0
+    english = 0
     for program in amiga_programs[key].values():
-        try:
-            names = spell_names.amiga_spell_names(program, key)
-        except spell_names.SpellNameError as error:
-            # The one build that does not read is the crunched one, and it
-            # says so; any other failure is a misread table.
-            assert "crunched" in str(error)
-            continue
-        read += 1
+        names = spell_names.amiga_spell_names(program, key)
         _check_names(names, table)
+        if stonecracker.is_crunched(program):
+            continue                            # German: see the next test
+        english += 1
         if key in dos_names:
             assert _differ(names, dos_names[key][0], table) == AMIGA_VS_DOS[key]
-    assert read >= 1
+    assert english >= 1
+
+
+def _same_name_pairs(names: dict[int, str], table) -> set[tuple[int, int]]:
+    """Pairs of spell ids whose names match after `_norm`."""
+    ids = [i for i in sorted(names) if spells.spell_group(i, table)]
+    return {(a, b) for a, b in itertools.combinations(ids, 2)
+            if _norm(names[a]) == _norm(names[b])}
+
+
+#: The crunched Amiga Pools of Darkness (the `[a]` disk 1) is the German
+#: release, so its names cannot match the English ones word for word. What
+#: does carry over is which ids repeat a spell under one name -- Detect Magic
+#: at 5, 11 and 77, Dispel Magic at 41 and 46, and ten more pairs -- and a
+#: table shifted by one id shares one of those thirteen pairs, not twelve.
+#: The one the German text breaks is 44 and 100, Bestow Curse, which it
+#: words two ways.
+GERMAN_LOSES_PAIRS = {(44, 100)}
+
+
+def test_the_crunched_german_pools_of_darkness_names_line_up_with_the_english(
+        amiga_programs):
+    key = "pools-of-darkness"
+    programs = amiga_programs.get(key, {}).values()
+    crunched = [p for p in programs if stonecracker.is_crunched(p)]
+    english = [p for p in programs if not stonecracker.is_crunched(p)]
+    if not crunched or not english:
+        pytest.skip("needs the crunched and an uncrunched Amiga Pools of Darkness")
+    table = spells.BY_KEY[key]
+    theirs = _same_name_pairs(spell_names.amiga_spell_names(english[0], key), table)
+    for program in crunched:
+        names = spell_names.amiga_spell_names(program, key)
+        assert set(names) == set(spell_names.amiga_spell_names(english[0], key))
+        assert theirs - _same_name_pairs(names, table) == GERMAN_LOSES_PAIRS
+        assert _same_name_pairs(names, table) <= theirs

@@ -10,9 +10,9 @@ raises `SpellNameError` rather than answering from the wrong bytes.
 
 | | DOS | Amiga |
 |---|---|---|
-| file | `START.EXE` (Pools of Darkness: `GAME.EXE`), EXEPACK-packed | `/program`, `/Curse`, `/Secret`, `/Pools of Darkness` |
+| file | `START.EXE` (Pools of Darkness: `GAME.EXE`), EXEPACK-packed | `/program`, `/Curse`, `/Secret`, `/Pools of Darkness`, decrunched first if StoneCracker-crunched |
 | indexed by | `mov dx, stride / mul dx / mov di, ax / add di, base` in `GAME.OVR` | Pool of Radiance: `moveq #stride, d1 / jsr mul / lea abs.l, a0 / adda.l d0, a0`; the others: `asl.l #2, d0 / lea d16(a4), a0 / move.l (a0, d0.l), -(a7)` |
-| form | `String[stride - 1]` at `DS:base + stride * id` | Pool of Radiance: NUL-padded `char[41]` at `base + 41 * id`; the others: a pointer an id, to a C string |
+| form | `String[stride - 1]` at `DS:base + stride * id` | Pool of Radiance: NUL-padded `char[41]` at `base + 41 * id`; the others: a pointer an id, to a C string, ISO 8859-1 |
 
 **The id is the index on every port**: slot 0 of each table is the id-0 slot
 no spell uses, so no port numbers its spells differently from the C64. What
@@ -20,7 +20,9 @@ differs is the text, and only in three ways: case (the C64 and Amiga Silver
 Blades are upper case), abbreviation (Amiga Pools of Darkness' `Prot. From
 Evil, 10' Radius`), and what the non-spell ids hold -- empty, `spell N`, an
 item that casts it, or (Amiga Silver Blades) the engine's own internal name.
-`spells.SpellTable.not_a_spell` says which ids those are.
+`spells.SpellTable.not_a_spell` says which ids those are. A translated build
+names its spells in its own language under the same ids: the German Amiga
+Pools of Darkness is read as it stands, umlauts included.
 
 `docs/86-spell-table.md` has the per-title offsets, the counts and the
 evidence.
@@ -33,7 +35,7 @@ import re
 import struct
 from collections.abc import Iterable
 
-from . import amiga_hunks, exepack, spells, titles
+from . import amiga_hunks, exepack, spells, stonecracker, titles
 
 PLATFORMS = ("c64", "dos", "amiga")
 
@@ -53,13 +55,6 @@ SMALL_DATA_BIAS = 0x7FFE
 
 #: Longest name accepted through an Amiga pointer, NUL included.
 _POINTER_LIMIT = 64
-
-#: Signatures of executable crunchers, and how far into the file to look.
-#: One release of Amiga Pools of Darkness on this machine (`[a]`, disk 1)
-#: carries its program StoneCracker-crunched: a 76-byte stub hunk and the
-#: packed body, `S404` at file offset 512.
-CRUNCHERS = {b"S404": "StoneCracker 4.04"}
-_CRUNCHER_WINDOW = 0x400
 
 
 class SpellNameError(ValueError):
@@ -241,26 +236,33 @@ _AMIGA_POINTER_INDEX = re.compile(rb"\xE5\x80\x41\xEC(..)\x2F\x30\x08\x00", re.S
 _AMIGA_STRIDE_INDEX = re.compile(rb"\x72(.)\x4E\xBA..\x41\xF9(....)\xD1\xC0", re.S)
 
 
+def _amiga_text(text: bytes) -> bool:
+    """Printable ISO 8859-1, the Amiga's character set, in which the German
+    Pools of Darkness writes its umlauts and sharp s (`0xC4`-`0xFC`)."""
+    return all(0x20 <= c < 0x7F or 0xA0 <= c for c in text)
+
+
 def _c_slot(data: bytes, at: int, stride: int) -> str | None:
     """The NUL-terminated, NUL-padded `char[stride]` at `at`, or None."""
     if at < 0 or at + stride > len(data):
         return None
     cell = data[at:at + stride]
     end = cell.find(b"\x00")
-    if end < 0 or not _printable(cell[:end]) or any(cell[end:]):
+    if end < 0 or not _amiga_text(cell[:end]) or any(cell[end:]):
         return None
     return cell[:end].decode("latin1")
 
 
 def _c_string(data: bytes, at: int, limit: int) -> str | None:
     end = data.find(b"\x00", at, at + limit)
-    if at < 0 or end < 0 or not _printable(data[at:end]):
+    if at < 0 or end < 0 or not _amiga_text(data[at:end]):
         return None
     return data[at:end].decode("latin1")
 
 
 def amiga_spell_names(program: bytes, game) -> dict[int, str]:
-    """`{id: name}` out of an Amiga Hunk executable.
+    """`{id: name}` out of an Amiga Hunk executable, decrunched first if
+    it is StoneCracker-crunched (`stonecracker.as_loaded`).
 
     Two forms, each found from the code that indexes it. Pool of Radiance
     keeps fixed-width `char[41]` cells in a data hunk and reaches them through
@@ -270,6 +272,12 @@ def amiga_spell_names(program: bytes, game) -> dict[int, str]:
     are returned.
     """
     table = _table(game)
+    try:
+        program = stonecracker.as_loaded(program)
+    except stonecracker.StoneCrackerError as error:
+        raise SpellNameError(
+            f"the {table.title} program is {stonecracker.NAME}-crunched and "
+            f"does not decrunch: {error}") from None
     try:
         hunks, relocs = amiga_hunks.parse(program)
     except (ValueError, IndexError, struct.error) as error:
@@ -320,13 +328,6 @@ def amiga_spell_names(program: bytes, game) -> dict[int, str]:
                     continue
                 candidates[key] = _run(lambda i, b=base: pointer(b + 4 * i))
 
-    if not any(len(names) >= table.last_spell for names in candidates.values()):
-        crunched = next((name for sig, name in CRUNCHERS.items()
-                         if sig in program[:_CRUNCHER_WINDOW]), None)
-        if crunched is not None:
-            raise SpellNameError(
-                f"the {table.title} program is {crunched}-crunched, and this "
-                f"module reads only an uncrunched one")
     names = _choose(candidates, table)
     return {i: text for i, text in enumerate(names, start=1) if text}
 
@@ -355,10 +356,14 @@ def _amiga_disks(where):
 
 
 def amiga_program(where, game) -> bytes:
-    """The title's Amiga program file, off the first disk that carries it.
+    """The title's Amiga program file, off the first disk that carries it,
+    decrunched if it is StoneCracker-crunched, so every reader gets the
+    program the game runs.
 
     `where` is a folder of `.adf` images, one image path, or an iterable of
-    paths, image bytes or `AmigaDisk` objects. Raises `FileNotFoundError`.
+    paths, image bytes or `AmigaDisk` objects. Raises `FileNotFoundError`,
+    and `stonecracker.StoneCrackerError` for a crunched program that does not
+    decrunch.
     """
     name = AMIGA_PROGRAMS[_table(game).key].lower()
     for disk in _amiga_disks(where):
@@ -368,7 +373,7 @@ def amiga_program(where, game) -> bytes:
             continue
         for path, _entry in entries:
             if path.strip("/").lower() == name:
-                return disk.read_file(path)
+                return stonecracker.as_loaded(disk.read_file(path))
     raise FileNotFoundError(f"no Amiga /{AMIGA_PROGRAMS[_table(game).key]}")
 
 

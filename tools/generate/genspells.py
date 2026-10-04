@@ -51,7 +51,7 @@ Radiance and Curse. The exceptions are wording, and
 | Pool of Radiance | `START.EXE` `DS:28E9`, 41 (`String[40]`) | `/program` hunk 31 `+0x27CB`, `char[41]` cells |
 | Curse of the Azure Bonds | `START.EXE` `DS:27BF`, 41 | `/Curse` small data `0x1D5A` (`-$62A4(a4)`), a pointer an id |
 | Secret of the Silver Blades | `START.EXE` `DS:348B`, 35 (`String[34]`) | `/Secret` small data `0x253C` (`-$5AC2(a4)`) |
-| Pools of Darkness | `GAME.EXE` `DS:53CD`, 35 | `/Pools of Darkness` small data `0x250A` (`-$5AF4(a4)`) |
+| Pools of Darkness | `GAME.EXE` `DS:53CD`, 35 | `/Pools of Darkness` small data `0x250A` (`-$5AF4(a4)`); the German build `0x2526` (`-$5AD8(a4)`) |
 
 * **DOS.** The launcher is EXEPACK-packed (`goldbox/exepack.py` expands it);
   `DS` comes from the entry's far call into `System`'s initialiser
@@ -79,11 +79,18 @@ named spell on either later port**: DOS calls it `spell 109` and the Amiga
 `RESERVED`, where the C64 repeats `DEATH SPELL` -- the same id Pools of
 Darkness' engine makes a druid spell.
 
-**One Amiga build is not read:** the `[a]` release of Pools of Darkness disk 1
-carries `/Pools of Darkness` crunched with StoneCracker 4.04 (`S404` at file
-offset 512, a 76-byte stub hunk), and the loader raises `SpellNameError`
-saying so. The other Pools of Darkness disk-1 images here hold three
-uncrunched programs that differ by hash, and all three read the same names.
+**The `[a]` release of Amiga Pools of Darkness disk 1 is the German one, and
+its program is crunched.** `/Pools of Darkness` there is StoneCracker 4.04
+(`S404` at file offset 512, after a 76-byte stub hunk); `goldbox/stonecracker.py`
+decrunches it in memory, from a format read off the decrunch routine in the
+file itself, and `spell_names` reads the result like any other build. The
+decrunched program is a different build from the English ones -- a 355,844-byte
+code hunk against 316,128 -- with German text throughout, and its 134 named
+entries (ids 1-137) are the English ones translated id for id: the same ids are empty, the
+same ids repeat a name (12 of the English build's 13 repeated pairs; the German
+text words Bestow Curse two ways at 44 and 100), and the names are ISO 8859-1 with
+umlauts. The other Pools of Darkness disk-1 images here hold three uncrunched
+English programs that differ by hash, and all three read the same names.
 """
 
 OUT = Path(__file__).resolve().parent.parent.parent / "docs" / "86-spell-table.md"
