@@ -644,11 +644,19 @@ def test_pool_bless_handler_reads_nothing_from_its_node():
 
 
 def _memory_writes(eng, addr):
-    """The destination operand of every instruction in a handler that stores
-    to memory, as text."""
+    """The memory operand of every instruction in a handler that can store to
+    memory, as text; string stores are reported as their mnemonic."""
     out = []
+    dest_first = {"mov", "add", "sub", "inc", "dec", "and", "or", "xor", "neg",
+                  "not", "shl", "shr", "sar", "rol", "ror", "rcl", "rcr", "pop",
+                  "adc", "sbb"}
     for ins in reads.body(eng.ovr, addr):
-        if ins.mnemonic in ("mov", "add", "sub", "inc", "dec", "and", "or"):
+        m = ins.mnemonic.split()[-1]
+        if m.startswith(("stos", "movsb", "movsw", "movsd")):
+            out.append(m)
+        elif m == "xchg":
+            out.extend(o.strip() for o in ins.op_str.split(",") if "[" in o)
+        elif m in dest_first:
             dest = ins.op_str.split(",")[0]
             if "[" in dest:
                 out.append(dest)

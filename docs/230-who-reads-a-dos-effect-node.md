@@ -101,13 +101,15 @@ byte for each. The ids the plan named, all CONFIRMED:
 | 8 Protection from Evil | the same handler as 45 | the same as 45 | the same as 45 |
 | 9, 46 Protection from Good | `0xF007`, the attacker only; writes only the globals `[0x6816]` and `[0x6822]` | -- | -- |
 | 16 Read Magic | `0xF2A2`, empty | -- | -- |
-| 17 Shield | `0xF2A9`, writes the record's current armour class (`0x111`) to at least `0x39` | -- | -- |
+| 17 Shield | `0xF2A9`, writes the record's current armour class (`0x111`) to at least `0x39`, adds 1 to the global `[0x6816]` and clears `[0x6818]` when `[0x681B]` is `0x0F` | -- | -- |
 | 61 | `0x100EB`, never the node | -- | -- |
 | 89 displacement | `0x110EB` reads **and writes** byte 3 | reads 3 | reads 3 |
 | 7, 95 (Silver Blades gnome, elf) | -- | -- | nothing read |
 | 92, 97 (Silver Blades halfling) | -- | -- | nothing read |
 | racial 18, 26, 47, 48, 90, 97, 107, 124 | nothing read | nothing read (90 is not racial here and reads 3) | nothing read (107 reads 3) |
 | class 8, 105, 134 | -- | nothing read | nothing read |
+
+In this table `--` means the id was not examined in that title. Ids 9, 46, 16 and 17 in Pool read neither byte 3 nor byte 4 of their node, so they are not in the list of ids read past the duration.
 
 The writes are real per-effect state. In Pool of Radiance 89 keeps
 displacement's per-round flag in bit 4 of byte 3; 32, 74, 75, 95, 99 and 103
