@@ -317,7 +317,8 @@ def substitute_title(*, issue: str, items_screen: bool, opening_scene: bool) -> 
 
 
 def prepare_substitute(substitute: pathlib.Path, run_id: str, *, letter: str = "A",
-                       issue: str = "672", camp: tuple[str, ...] = ()) -> pathlib.Path:
+                       issue: str = "672",
+                       camp: tuple[str, ...] | list[str] = ()) -> pathlib.Path:
     """Stage slot `letter` of a disk some other tool wrote, such as a Save As Amiga output, into a private DF0.
 
     The legacy route's other inputs are as `prepare` makes them: DF0 is the
@@ -334,6 +335,8 @@ def prepare_substitute(substitute: pathlib.Path, run_id: str, *, letter: str = "
     and F. The legacy route has neither. A first member who carries nothing is then visited
     without ITEMS rather than refused.
     """
+    if isinstance(camp, str):
+        raise TypeError("camp is a sequence of steps, not one string")
     if not HOLDER.fullmatch(run_id):
         raise RouteError("run id must use letters, digits, dot, underscore or hyphen")
     if len(letter) != 1 or not letter.isalpha() or not letter.isupper():
@@ -437,7 +440,10 @@ def title_for_substitute(manifest: dict) -> AmigaTitle:
         letter = manifest["published_letter"]
     except (KeyError, TypeError) as exc:
         raise RouteError(f"the substitute manifest is malformed: {exc!r}") from exc
-    _, _, state = _substitute_slot(_verified_disk(copy), letter, copy)
+    slot, _, state = _substitute_slot(_verified_disk(copy), letter, copy)
+    if (manifest["slot_sha256"] != manifest["published_slot_sha256"]
+            or hashlib.sha256(slot).hexdigest() != manifest["published_slot_sha256"]):
+        raise RouteError("the substitute's slot differs from the manifest")
     unstarted = world_state.has_not_set_out(state)
     if manifest["opening_scene"] != unstarted:
         raise RouteError("the manifest opening_scene disagrees with the substitute's slot")
@@ -527,6 +533,7 @@ def _slot_reading(fetched: amiga_adf.AmigaDisk, letter: str) -> dict[str, Any]:
         return reading
     reading["place"] = {"area": state.area, "x": state.x, "y": state.y,
                         "facing": state.facing}
+    reading["not_set_out"] = world_state.has_not_set_out(state)
     reading["names"] = [member["name"] for member in inventory["members"]]
     reading["clock"] = saved.clock
     reading["inventory"] = inventory

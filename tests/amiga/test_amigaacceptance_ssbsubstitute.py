@@ -129,7 +129,7 @@ def staged(tmp_path, monkeypatch):
     party = types.SimpleNamespace(members=[dict(m) for m in MEMBERS])
     monkeypatch.setattr(route_silver_blades.amiga_savegame, "read_slot",
                         lambda disk, letter, title: party)
-    # A party that has set out and stands on the start square, as WISH-273's did.
+    # A party that has set out, saved standing on the start square.
     state = types.SimpleNamespace(area=16, x=3, y=3, facing=2, set_out=True,
                                   title=areas.SECRET_OF_THE_SILVER_BLADES)
     monkeypatch.setattr(route_silver_blades.amiga_savegame, "state_from_savegame",
@@ -373,6 +373,25 @@ def test_a_title_manifest_that_disagrees_with_its_slot_is_refused(tmp_path, home
             route_silver_blades.title_for_substitute({**manifest, key: value})
 
 
+def test_a_title_manifest_whose_slot_is_not_the_one_it_recorded_is_refused(
+        tmp_path, home, staged):
+    _, manifest = _title_prepare(tmp_path, staged)
+    route_silver_blades.title_for_substitute(manifest)
+    for key, value in (("published_letter", "B"), ("slot_sha256", "0" * 64),
+                       ("published_slot_sha256", "0" * 64)):
+        with pytest.raises(RouteError, match="slot differs from the manifest|does not decode"):
+            route_silver_blades.title_for_substitute({**manifest, key: value})
+    with pytest.raises(RouteError, match="loads slot D"):
+        route_silver_blades.title_for_substitute({**manifest, "slot_letter": "C"})
+
+
+def test_a_camp_given_as_one_string_is_a_type_error_and_leaves_no_run_folder(
+        tmp_path, home, staged):
+    with pytest.raises(TypeError, match="not one string"):
+        route_silver_blades.prepare_substitute(_substitute(tmp_path), "camp1", camp="items 2")
+    assert staged.calls == [] and not home.exists()
+
+
 def test_the_cli_runs_a_title_manifest_as_its_title_and_not_the_legacy_route(
         tmp_path, monkeypatch, capsys):
     seen, _guest = _record_cli(monkeypatch)
@@ -566,6 +585,8 @@ def _title_run(tmp_path, clock, monkeypatch, *, camp=CAMP, guest=None, identity=
     manifest = {
         "mode": route_silver_blades.SUBSTITUTE_TITLE_MODE, "title": "ssb", "issue": "4",
         "loaded_letter": "D", "slot_letter": "D", "published_letter": "A",
+        "slot_sha256": hashlib.sha256(b"").hexdigest(),
+        "published_slot_sha256": hashlib.sha256(b"").hexdigest(),
         "names_a": SUB_NAMES, "state_a": SSB_START, "expected_after": None,
         "items_screen": True, "opening_scene": True, "disks": {"df0": df0, "df1": df1},
         "registered": registered, "substitute": registered["substitute"],

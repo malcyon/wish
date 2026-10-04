@@ -2407,13 +2407,13 @@ def _items_screen(name: str, reading: dict) -> bool:
     return name != "ssb" or reading["inventory"]["members"][0]["count"] > 0
 
 
-def _opening_scene(name: str, place: dict | None) -> bool:
-    """Whether the party has not set out, so the game shows its opening scene before the world."""
-    if name != "ssb":
-        return False
-    start = areas.start_of(areas.SECRET_OF_THE_SILVER_BLADES)
-    return place == {"area": start.area, "x": start.arrival.x, "y": start.arrival.y,
-                     "facing": start.arrival.facing}
+def _opening_scene(name: str, reading: dict | None) -> bool:
+    """Whether the party has not set out, so the game shows its opening scene before the world.
+
+    The game decides by the save's set-out flag, which `reading["not_set_out"]` carries. The
+    start square does not tell: a party that has set out can be saved standing on it.
+    """
+    return name == "ssb" and bool(reading and reading.get("not_set_out"))
 
 
 #: The published Curse C64 source's start: a wall stands ahead to the west, so the party turns and
@@ -2541,9 +2541,17 @@ def _published_manifest(path: pathlib.Path, name: str) -> tuple[dict, AmigaTitle
     items_screen = manifest.get("items_screen", True)
     if not isinstance(items_screen, bool):
         raise RouteError("the manifest items_screen is not a boolean")
-    opening_scene = _opening_scene(name, manifest.get("state_a"))
+    recorded = None
+    if name == "ssb":
+        recorded = _published_title(name, letter, issue=manifest["issue"]).read_slot(
+            _verified_disk(_input(manifest["registered"], "published")), letter)
+        if "inventory" not in recorded:
+            cause = ("is missing" if recorded.get("missing") else
+                     f"does not decode: {recorded.get('decode_error', 'no inventory')}")
+            raise RouteError(f"the published slot {cause}, so items_screen cannot be checked")
+    opening_scene = _opening_scene(name, recorded)
     if manifest.get("opening_scene", opening_scene) != opening_scene:
-        raise RouteError("the manifest opening_scene disagrees with its recorded place")
+        raise RouteError("the manifest opening_scene disagrees with the published slot")
     title = _published_title(name, letter, issue=manifest["issue"], turn_about=turn_about,
                              items_screen=items_screen, opening_scene=opening_scene)
     if "camp" in manifest:
@@ -2551,12 +2559,6 @@ def _published_manifest(path: pathlib.Path, name: str) -> tuple[dict, AmigaTitle
     for key in ("source", "report", "published", "disk_one", "disk_two"):
         _input(manifest["registered"], key)
     if name == "ssb":
-        recorded = title.read_slot(
-            _verified_disk(_input(manifest["registered"], "published")), letter)
-        if "inventory" not in recorded:
-            cause = ("is missing" if recorded.get("missing") else
-                     f"does not decode: {recorded.get('decode_error', 'no inventory')}")
-            raise RouteError(f"the published slot {cause}, so items_screen cannot be checked")
         if items_screen != _items_screen(name, recorded):
             raise RouteError("the manifest items_screen disagrees with the published slot")
     disk1_pin, disk2_pin, executable, volume = PUBLISHED_DISKS[name]
@@ -2702,7 +2704,7 @@ def prepare_published(name: str, run_id: str, report_path: pathlib.Path,
     # Curse's start square faces a wall to the east, and CURSE_WALLED_WEST faces one to the west.
     turn_about = _turn_about(name, letter, reading["place"])
     items_screen = _items_screen(name, reading)
-    opening_scene = _opening_scene(name, reading["place"])
+    opening_scene = _opening_scene(name, reading)
     title = _published_title(name, letter, issue=issue, turn_about=turn_about,
                              items_screen=items_screen, opening_scene=opening_scene)
     if camp:
@@ -2993,7 +2995,7 @@ def main(argv: list[str] | None = None) -> int:
         elif (args.command == "prepare" and args.camp and args.title not in CAMP_TITLES
               and not (silver_blades and args.substitute is not None)):
             raise RouteError("--camp requires --published-disk-one, --title darkness or "
-                             "--title pool, or --substitute with --title ssb")
+                             "--title pool; --title ssb also takes it with --substitute")
         elif args.command == "prepare" and args.stage_place is not None:
             raise RouteError("--stage-place requires --published-disk-one")
         if args.command == "reload" and silver_blades:

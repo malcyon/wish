@@ -2794,23 +2794,31 @@ def test_the_opening_scene_route_replaces_only_the_answer_wait_and_adds_no_turn(
                    blades.published_title("D", opening_scene=True).route)
 
 
-def test_the_opening_route_is_chosen_by_the_start_place_alone():
-    start = areas.start_of(areas.SECRET_OF_THE_SILVER_BLADES)
-    place = {"area": start.area, "x": start.arrival.x, "y": start.arrival.y,
-             "facing": start.arrival.facing}
-    assert place == SSB_START
-    assert foundation._opening_scene("ssb", place) is True
-    assert foundation._opening_scene("ssb", dict(place, y=5)) is False
-    assert foundation._opening_scene("ssb", dict(place, facing=geo.NORTH)) is False
-    assert foundation._opening_scene("curse", place) is False
+def test_the_opening_route_is_chosen_by_the_saves_set_out_flag_not_the_place():
+    assert foundation._opening_scene("ssb", {"not_set_out": True}) is True
+    # A party that has set out and was saved on the start square gets no opening scene.
+    assert foundation._opening_scene("ssb", {"not_set_out": False, "place": SSB_START}) is False
+    assert foundation._opening_scene("curse", {"not_set_out": True}) is False
     assert foundation._opening_scene("ssb", None) is False
+
+
+@pytest.mark.parametrize("not_set_out", [True, False])
+def test_a_prepared_party_on_the_start_square_gets_the_opening_scene_only_if_it_has_not_set_out(
+        tmp_path, monkeypatch, not_set_out):
+    monkeypatch.setattr(foundation.route_silver_blades.world_state, "has_not_set_out",
+                        lambda _state: not_set_out)
+    path = _prepared_published(tmp_path, monkeypatch, members_items=0)
+    manifest, title = foundation._published_manifest(path, "ssb")
+    assert manifest["state_a"] == SSB_START
+    assert manifest["opening_scene"] is not_set_out
+    assert bool(title.wait_limits) is not_set_out
 
 
 def test_a_prepared_party_records_and_uses_the_route_its_place_calls_for(
         tmp_path, monkeypatch):
     path = _prepared_published(tmp_path, monkeypatch, members_items=0)
     manifest, title = foundation._published_manifest(path, "ssb")
-    expected = foundation._opening_scene("ssb", manifest["state_a"])
+    expected = foundation._opening_scene("ssb", {"not_set_out": manifest["opening_scene"]})
     assert manifest["opening_scene"] is expected
     assert bool(title.wait_limits) is expected
     manifest["opening_scene"] = not expected
