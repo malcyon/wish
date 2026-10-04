@@ -108,3 +108,33 @@ def test_find_transcript_searches_every_session(tmp_path):
     assert queuegap.find_transcript('abc', tmp_path).parent.parent.name == 'second'
     assert queuegap.find_transcript('agent-abc', tmp_path) is not None
     assert queuegap.find_transcript('nope', tmp_path) is None
+
+
+def test_replay_skips_torn_lines_and_missing_keys(tmp_path, capsys):
+    ledger = tmp_path / 'ledger.jsonl'
+    ledger.write_text('\n'.join([
+        json.dumps({'op': 'assign', 'ticket': 'WISH-1', 'agent': 'a1'}),
+        '{"op": "assign", "ticket": "WISH-2", "ag',
+        json.dumps({'op': 'assign', 'ticket': 'WISH-3'}),
+        json.dumps({'op': 'reason', 'ticket': 'WISH-4'}),
+        json.dumps({'op': 'done'}),
+        '[1, 2]',
+        json.dumps({'op': 'reason', 'ticket': 'WISH-5', 'text': 'why'}),
+    ]) + '\n')
+    assigned, reasons, done = queuegap.replay(ledger)
+    assert assigned == {'WISH-1': {'a1': {'lane': None, 'role': None}}}
+    assert reasons == {'WISH-5': 'why'} and done == set()
+    assert len(capsys.readouterr().err.splitlines()) == 5
+
+
+def test_find_transcript_takes_the_newest_by_mtime(tmp_path):
+    transcript(tmp_path, 'abc', 30, session='zzz-old')
+    transcript(tmp_path, 'abc', 1, session='aaa-new')
+    assert queuegap.find_transcript('abc', tmp_path).parent.parent.name == 'aaa-new'
+
+
+def test_json_includes_titles_only_with_titles(tmp_path, capsys):
+    plain = json.loads('\n'.join(run(tmp_path, [ticket(1)], capsys, '--min-agents', '0', '--json')))
+    assert 'title' not in plain['gaps'][0]
+    titled = json.loads('\n'.join(run(tmp_path, [ticket(1)], capsys, '--min-agents', '0', '--json', '--titles')))
+    assert titled['gaps'][0]['title'] == 'Title 1'

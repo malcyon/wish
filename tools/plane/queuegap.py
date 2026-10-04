@@ -45,17 +45,20 @@ def replay(ledger):
         try:
             event = json.loads(line)
             op = event['op']
+            agent = event['agent'] if op in {'assign', 'done'} else None
+            text = event['text'] if op == 'reason' else None
         except (ValueError, KeyError, TypeError) as exc:
-            raise ValueError(f'{ledger}:{number} is not a ledger event') from exc
+            print(f'{ledger}:{number} skipped, not a usable ledger event ({type(exc).__name__}: {exc})', file=sys.stderr)
+            continue
         ticket = event.get('ticket')
         if op == 'assign':
-            assigned.setdefault(ticket, {})[event['agent']] = {'lane': event.get('lane'), 'role': event.get('role')}
+            assigned.setdefault(ticket, {})[agent] = {'lane': event.get('lane'), 'role': event.get('role')}
             reasons.pop(ticket, None)
-            done.discard(event['agent'])
+            done.discard(agent)
         elif op == 'done':
-            done.add(event['agent'])
+            done.add(agent)
         elif op == 'reason':
-            reasons[ticket] = event['text']
+            reasons[ticket] = text
         elif op == 'clear':
             reasons.pop(ticket, None)
     return assigned, reasons, done
@@ -64,8 +67,8 @@ def replay(ledger):
 def find_transcript(agent, root=CLAUDE_PROJECT):
     """The subagent transcript `<root>/<session>/subagents/agent-<id>.jsonl`, or None."""
     name = agent if agent.startswith('agent-') else f'agent-{agent}'
-    matches = sorted(Path(root).glob(f'*/subagents/{name}.jsonl'))
-    return matches[-1] if matches else None
+    matches = list(Path(root).glob(f'*/subagents/{name}.jsonl'))
+    return max(matches, key=lambda path: path.stat().st_mtime) if matches else None
 
 
 def liveness(agent, done, stale_minutes, now, root=CLAUDE_PROJECT):
@@ -177,6 +180,8 @@ def main(argv=None, tickets=None, root=CLAUDE_PROJECT, now=None):
         except (PlaneError, OSError, ValueError, KeyError) as exc:
             print(f'Queue gap check failed: {type(exc).__name__}: {exc}', file=sys.stderr)
             return 1
+        if args.json and not args.titles:
+            result['gaps'] = [{k: v for k, v in gap.items() if k != 'title'} for gap in result['gaps']]
         print(json.dumps(result, indent=2) if args.json else '\n'.join(render(result, args.titles)))
     return 0
 
