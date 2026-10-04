@@ -315,7 +315,7 @@ def _grab(por: dosbox.PoolOfRadiance, tries: int | None = None):
     the grab could not read.
 
     The debugger halts the emulator on a watchpoint between two blits, and a
-    frame captured then is torn; `dosboxx.halve` refuses it, and it stays
+    frame captured then is torn; `dosboxx.halve` blocks it, and it stays
     torn until the emulator runs again.  That is a frame to skip, not the end
     of the run, so the caller keeps polling.  `tries` replaces the session's
     `CAPTURE_TRIES` for this one grab: a grab retried while the emulator is
@@ -1141,7 +1141,7 @@ def place_like(save: pathlib.Path, donor: bytes, script: bytes) -> dict:
 
 
 def check_donor_script(donor: bytes, script: bytes) -> None:
-    """Refuse a script that is not the one the donor's own buffer holds.
+    """Block a script that is not the one the donor's own buffer holds.
 
     The engine stages the area's `ECL` block into the save with the rest of
     the buffer zero, so a mismatch means the wrong DAX block was read.
@@ -1656,7 +1656,7 @@ class PrayerWatch:
 
     def stub_load(self) -> int | None:
         """The segment in the id-49 stub's far jump, or None while the stub
-        still reads `INT 3Fh`; anything else is refused."""
+        still reads `INT 3Fh`; anything else is blocked."""
         entry = self.rd(self.stub, self.layout.stub_49, 5)
         if entry[0] == 0xEA:
             return _w16(entry, 3)
@@ -1690,7 +1690,7 @@ class PrayerWatch:
 
     def attack_load(self) -> int | None:
         """The segment in the attack roll's stub far jump, or None while the
-        stub still reads `INT 3Fh`; anything else is refused."""
+        stub still reads `INT 3Fh`; anything else is blocked."""
         entry = self.rd(self.attack_stub, self.layout.stub_attack, 5)
         if entry[0] == 0xEA:
             return _w16(entry, 3)

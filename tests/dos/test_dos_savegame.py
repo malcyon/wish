@@ -19,7 +19,7 @@ def blank() -> bytearray:
 # --- the variable space ------------------------------------------------------
 
 
-def test_the_variable_space_maps_both_ends_and_refuses_one_past():
+def test_the_variable_space_maps_both_ends_and_blocks_one_past():
     """`1 + 2*(addr - $4900)`, checked at the edges rather than the middle."""
     assert sg.word_offset(sg.VAR_BASE) == sg.VAR_OFFSET
     last = sg.VAR_BASE + sg.VAR_WORDS - 1
@@ -59,13 +59,13 @@ def test_a_word_is_little_endian():
 
 @pytest.mark.parametrize("accessor", ["dax_number", "party_size", "position",
                                       "character_files"])
-def test_a_short_buffer_is_refused_rather_than_indexed(accessor):
+def test_a_short_buffer_is_blocked_rather_than_indexed(accessor):
     """`IndexError` from inside a decode says nothing; this says what is wrong."""
     with pytest.raises(sg.DosSaveError):
         getattr(sg, accessor)(bytes(sg.SAVGAM_SIZE - 1))
 
 
-def test_a_short_buffer_is_refused_before_a_word_is_unpacked():
+def test_a_short_buffer_is_blocked_before_a_word_is_unpacked():
     with pytest.raises(sg.DosSaveError):
         sg.word(bytes(10), sg.AREA)
 
@@ -153,7 +153,7 @@ def test_the_clock_goes_back_the_way_it_came():
     assert sg.clock(bytes(save)) == (10, 23, 21, 6)
 
 
-def test_a_clock_of_the_wrong_length_is_refused():
+def test_a_clock_of_the_wrong_length_is_blocked():
     with pytest.raises(sg.DosSaveError):
         sg.put_clock(blank(), (0, 3, 2))
 
@@ -325,7 +325,7 @@ def test_a_move_writes_the_place_and_stages_the_script():
     assert save[sg.ECL_BUFFER[0]:sg.ECL_BUFFER[0] + len(body)] == body
 
 
-def test_a_script_too_long_for_the_buffer_is_refused():
+def test_a_script_too_long_for_the_buffer_is_blocked():
     room = sg.ECL_BUFFER[1] - sg.ECL_BUFFER[0]
     with pytest.raises(sg.DosSaveError):
         sg.move_to_area(blank(), area=20, dax=2, wallset=(2, 4, 1),
@@ -404,7 +404,7 @@ def test_a_block_that_is_not_there_is_named_rather_than_returned_empty():
         sg.dax_block(_dax({0: b"only this one"}), 20)
 
 
-def test_a_block_that_unpacks_short_is_refused():
+def test_a_block_that_unpacks_short_is_blocked():
     """A truncated container would otherwise hand back a plausible prefix."""
     import struct
     body = bytes([1, 0x41, 0x42])
@@ -457,7 +457,7 @@ def test_a_block_that_unpacks_short_is_still_caught_by_the_length_check():
     lambda save: sg.put_word(save, sg.AREA, 5),
     lambda save: sg.put_clock(save, [0, 0, 0, 0, 0, 0]),
 ])
-def test_the_writers_refuse_a_short_buffer_like_the_readers_do(call):
+def test_the_writers_block_a_short_buffer_like_the_readers_do(call):
     """`put_word` and `put_clock` skipped `_whole`, so a short buffer reached
     `struct.pack_into` and came back as `struct.error` -- the unhelpful raw
     error the guard exists to replace."""
@@ -605,7 +605,7 @@ _ALL_SHAPES = pytest.mark.parametrize(
     "key", [s.key for s in sg.CONTAINERS])
 
 
-def test_a_container_whose_widths_do_not_add_up_is_refused_at_import():
+def test_a_container_whose_widths_do_not_add_up_is_blocked_at_import():
     """The check that makes a fifth title cheap to try: a region declared too
     wide moves every one after it, and the container raises rather than reading
     somebody else's bytes.
@@ -767,7 +767,7 @@ def test_silver_blades_stages_no_script_and_its_scripts_are_no_smaller():
             == sg.ECL_BUFFER[1] - sg.ECL_BUFFER[0] - 12)
 
 
-def test_a_container_of_an_unknown_length_is_refused():
+def test_a_container_of_an_unknown_length_is_blocked():
     """A file that is none of the four sizes names no container, and guessing is
     how a reader hands back a party that is not there."""
     with pytest.raises(sg.DosSaveError):
@@ -802,7 +802,7 @@ def test_a_byte_variable_is_its_index_less_one_at_both_ends():
             sg.pod_var_offset(outside)
 
 
-def test_the_byte_array_is_refused_on_a_title_that_has_no_such_thing():
+def test_the_byte_array_is_blocked_on_a_title_that_has_no_such_thing():
     """Offset `index - 1` in a Pool of Radiance save is the low byte of
     somebody else's word, so answering there would be a lie rather than an
     error."""
@@ -937,7 +937,7 @@ def test_a_shipped_container_reads_as_a_party_of_six_in_a_dungeon():
 #: built.  `_played()`'s job is "only the containers the engine wrote", and a
 #: `*.PTY` glob cannot tell a staged save from a played one -- this is the one
 #: place that fact can be recorded, since the specimen tree itself cannot be
-#: annotated (`tools/registry/specimens.py add` refuses to overwrite).
+#: annotated (`tools/registry/specimens.py add` will not overwrite).
 _WISH_WRITTEN = {
     ("WISH-SPEC-pod-678-amiga-converted-walked-dos", "SAVGAMA.PTY"):
         "the save Wish's Amiga-to-DOS conversion staged for #678, "
@@ -1025,7 +1025,7 @@ def test_every_played_container_names_exactly_its_own_party():
     assert True in seen and False in seen, "both modes have to appear to mean this"
 
 
-def test_a_table_that_disagrees_with_its_count_is_refused():
+def test_a_table_that_disagrees_with_its_count_is_blocked():
     """A container whose count byte disagrees with its own name table is not
     what the engine writes, in either direction: this issue's count-byte-
     lowered case, and the eight-name table #678's staged save showed."""
@@ -1048,7 +1048,7 @@ def test_a_table_that_disagrees_with_its_count_is_refused():
         _assert_a_played_party(path, bytes(all_eight))
 
 
-def test_a_previous_mode_that_disagrees_with_the_in_dungeon_variable_is_refused():
+def test_a_previous_mode_that_disagrees_with_the_in_dungeon_variable_is_blocked():
     """A container whose previous-mode byte disagrees with its own in-dungeon
     variable is not what the engine writes -- the same pairing
     tests/amiga/test_podsavegame.py::test_the_previous_mode_tracks_the_in_dungeon_variable

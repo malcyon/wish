@@ -5,7 +5,7 @@
 supports)` decision 13 asks what a conversion does when the destination has
 no room, and named "seventeen items" as one of the cases.  Reading each
 title's `GAME.OVR` says the case cannot arise -- every DOS Gold Box title
-refuses a character a seventeenth item -- and this is the half of that claim
+blocks a character a seventeenth item -- and this is the half of that claim
 that runs.
 
 **The experiment is a boundary, taken one action apart on one character.**
@@ -13,7 +13,7 @@ Three characters of an engine-written party are given item lists of 2, 15 and
 16 by writing their `.ITM` files; then, from the first character's item
 screen, the same item is offered by `TRADE` to a character holding 15 and to
 a character holding 16.  The engine's answer to the second is the word
-`Overloaded`, and after the 15-item character accepts one it refuses the next
+`Overloaded`, and after the 15-item character accepts one it blocks the next
 -- so the only thing that changed between the acceptance and the rejection is
 that its own count reached sixteen.
 

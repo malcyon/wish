@@ -388,7 +388,7 @@ class Screen:
         near-white pixels per band and returning the band with the most is
         how the highlight is read rather than assumed -- measured against
         `PALADIN'S SPELLS IN GRIMOIRE`, where 186-394 pixels lit the
-        highlighted row and 0 lit every other one, so `minimum` only refuses a
+        highlighted row and 0 lit every other one, so `minimum` only blocks a
         rectangle carrying no highlight at all rather than discriminating
         between rows.
 
@@ -447,7 +447,7 @@ def uniform_colour(screen: Screen | None) -> tuple[int, int, int] | None:
 
     A capture of the wrong window is not an error -- `import` takes it happily
     and returns one flat colour -- so nothing downstream notices.  One colour
-    is the signature, and refusing it by name is what stops that reading as
+    is the signature, and blocking it by name is what stops that reading as
     "the game did nothing".
     """
     if screen is None:
@@ -482,7 +482,7 @@ def candidate_windows(ids: list[str], pids: dict[str, int | None],
     **`_NET_WM_PID` is SDL2's, and DOSBox 0.74 is SDL 1.2** -- the string does
     not appear in `libSDL-1.2.so.0` at all, where `libSDL2-2.0.so.0` carries
     it -- so for this harness every window takes the no-pid fallback and the
-    choice is the content one.  What keeps that safe here is `boot()` refusing
+    choice is the content one.  What keeps that safe here is `boot()` blocking
     a display something already answers on: on a display this session created,
     the only client that can have a window is the DOSBox it started.  The
     filter is the belt to that brace, and it goes live the day 0.74 is built
@@ -499,7 +499,7 @@ def server_on(display: str) -> bool:
     "Can't open display", so the readiness loop that tested its status was
     satisfied by a display that did not exist -- and never waited for anything.
     Connecting to `/tmp/.X11-unix/X<n>` cannot be read two ways; a socket left
-    behind by a dead server refuses the connection.
+    behind by a dead server blocks the connection.
 
     Asked before `Xvfb` is started as well as after.  A second `Xvfb` on a busy
     display does exit with "Server is already active", but it takes a moment,
@@ -616,7 +616,7 @@ class Session:
     #: What has to be on `PATH` before this class can run.  A class attribute
     #: rather than the module constant so a subclass can narrow it: DOSBox-X's
     #: `XSession` is this class with the launch replaced, and demanding DOSBox
-    #: 0.74 of a machine carrying only the debugger build refused it a session
+    #: 0.74 of a machine carrying only the debugger build blocked it a session
     #: over an emulator that harness never starts (#73).
     TOOLS = TOOLS
 
@@ -693,7 +693,7 @@ class Session:
         smaller faults fed it and are fixed here too: the readiness wait now
         asks the X socket rather than `xdotool`'s exit status, which cannot
         distinguish "no windows matched" from "cannot open display"; and a
-        display something already answers on is refused rather than shared,
+        display something already answers on is blocked rather than shared,
         which is how two DOSBoxes came to be on one display at all.
         """
         self.stage(fresh=fresh)
@@ -784,7 +784,7 @@ class Session:
                 p.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 os.killpg(os.getpgid(p.pid), signal.SIGKILL)
-                # Reaped, not merely signalled: `boot()` now refuses a display
+                # Reaped, not merely signalled: `boot()` now blocks a display
                 # something still answers on, so `restart()` would race its own
                 # `Xvfb` out of existence and be told the slot is somebody's.
                 with contextlib.suppress(subprocess.TimeoutExpired):
@@ -864,7 +864,7 @@ class Session:
         return Screen.from_ppm(r.stdout)
 
     def shot(self, name: str, allow_blank: bool = False) -> Path:
-        """Write a PNG of the window, refusing to write one that is blank.
+        """Write a PNG of the window, failing instead of writing one that is blank.
 
         A screenshot of the wrong window is a file that looks like the game
         drew nothing, which is the most expensive way for this harness to fail
@@ -1128,9 +1128,9 @@ def judge_step(moved_ui: bool, changed: bool, *,
 
     * `"walked"` -- the party moved, in the area it started in or a new one;
     * `"blocked"` -- the party tried and a wall (or a closed door, or a
-      refused command) stopped it, and `changed` is false because nothing on
+      blocked command) stopped it, and `changed` is false because nothing on
       screen moved;
-    * `"refused"` -- the driver sent no key at all, which is a driver error
+    * `"unsent"` -- the driver sent no key at all, which is a driver error
       and never a wall (`#360 (The session driver will not walk a Curse or
       Silver Blades party in a dungeon, because it reads Pool of Radiance's
       indoors flag)`'s `Session.walk_stopped`, in this harness's own
@@ -1147,7 +1147,7 @@ def judge_step(moved_ui: bool, changed: bool, *,
     loop, and the digest decides alone.
     """
     if not moved_ui:
-        return "refused", "the driver pressed nothing"
+        return "unsent", "the driver pressed nothing"
     if area_before is not None and area_after is not None:
         if area_before != area_after:
             return "walked", None

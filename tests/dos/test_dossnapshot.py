@@ -50,7 +50,7 @@ def test_adding_the_config_twice_adds_each_line_once(tmp_path):
     assert once.count("saveremark=false") == 1
 
 
-def test_a_config_with_no_dosbox_section_is_refused():
+def test_a_config_with_no_dosbox_section_is_blocked():
     with pytest.raises(ValueError):
         dossnapshot.add_config("[sdl]\nfullscreen=false\n")
 
@@ -230,7 +230,7 @@ def test_discard_removes_the_state_and_its_record(session, monkeypatch):
 
 
 @pytest.mark.parametrize("name", ["", "../x", "a b", "a/b"])
-def test_a_name_that_could_leave_the_folder_is_refused(session, name):
+def test_a_name_that_could_leave_the_folder_is_blocked(session, name):
     with pytest.raises(ValueError):
         session.snapshot_path(name)
 

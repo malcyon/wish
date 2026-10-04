@@ -45,7 +45,7 @@ POOL_ITEMS_BAR = "0a653b8b1d7793d7"
 POOL_ITEMS_WORDS = ("READY", "USE", "TRADE", "DROP", "HALVE", "JOIN", "EXIT")
 
 #: One bar cell's `Screen.glyphs` digest to its letter, read from DOSBox
-#: captures.  A glyph not in the table refuses the whole bar, on purpose: an
+#: captures.  A glyph not in the table blocks the whole bar, on purpose: an
 #: unknown screen fails closed rather than being read as some other word.
 BAR_LETTERS = {
     "9438e360f578e12c": " ", "61d526bdf060e4d9": "A", "d2010e88777efb2d": "D",

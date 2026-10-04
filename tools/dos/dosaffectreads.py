@@ -811,7 +811,7 @@ def data_indexed_callers(eng: Engine, offset: int) -> list[dict]:
 # Casting a spell: the saving throw, the spell table and a spell's own gate
 # --------------------------------------------------------------------------
 # What protects a target from a spell's effect is not only list 9.  The spell
-# routine may refuse a target before anything is applied, the saving throw
+# routine may block a target before anything is applied, the saving throw
 # adds a record byte and walks list 12, and the spell's row in the 16-byte
 # spell table names the effect, whether a save negates it and against which
 # column.  These read each of those out of the engine.

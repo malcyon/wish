@@ -61,7 +61,7 @@ from tools.registry import scratch  # noqa: E402
 TRAIN_LEVEL = 0xD51
 
 
-def _refuse_rename(letter: str, source: str) -> None:
+def _check_rename(letter: str, source: str) -> None:
     if letter != source:
         raise ValueError(f"the saved game names its own files and the engine "
                          f"loads those; install {source} as {source}, not {letter}")
@@ -79,7 +79,7 @@ def install_whole(save: pathlib.Path, save_dir: pathlib.Path,
     title and `letter` must equal `source`.
     """
     letter, source = letter.upper(), source.upper()
-    _refuse_rename(letter, source)
+    _check_rename(letter, source)
     took = {"container": None, "records": []}
     for path in sorted(save.iterdir()):
         name = path.name.upper()
@@ -108,7 +108,7 @@ def install(container: pathlib.Path, records: pathlib.Path,
     never be read as one of ours.
     """
     letter, source = letter.upper(), source.upper()
-    _refuse_rename(letter, source)
+    _check_rename(letter, source)
     took = {"container": None, "records": []}
     src = container / f"SAVGAM{source}.DAT"
     data = bytearray(src.read_bytes())

@@ -41,7 +41,7 @@ def test_an_at_sign_is_a_double_click_at_a_screen_pixel():
     assert dospod.step_kind("@0,0") == ("click", (0, 0))
 
 
-def test_a_click_with_no_comma_is_refused_rather_than_pressed_as_a_key():
+def test_a_click_with_no_comma_is_blocked_rather_than_pressed_as_a_key():
     """Falling back to "press it as a key" would swallow the typo and leave
     the run looking like it worked."""
     with pytest.raises(ValueError):
@@ -107,8 +107,8 @@ class _Boot:
     draws each typed key and takes Return -- or the party menu, where a digit
     does nothing and Return would pick `Create New Character`."""
 
-    def __init__(self, question: bool, refuses: bool = False):
-        self.titles, self.question, self.refuses = 2, question, refuses
+    def __init__(self, question: bool, blocks: bool = False):
+        self.titles, self.question, self.blocks = 2, question, blocks
         self.typed, self.keys, self.created = "", [], False
 
     def screen(self) -> str:
@@ -121,7 +121,7 @@ class _Boot:
         if self.titles:
             self.titles -= k == "Escape"
         elif self.question and k == "Return":
-            self.question, self.typed = self.refuses, ""
+            self.question, self.typed = self.blocks, ""
         elif self.question and k != "Escape":
             self.typed += k
         elif k == "Return":
@@ -152,7 +152,7 @@ def test_the_party_menu_is_reached_and_return_is_never_pressed_on_it(
 
 
 def test_a_question_that_keeps_coming_back_stops_the_boot(_no_sleep):
-    boot = _Boot(True, refuses=True)
+    boot = _Boot(True, blocks=True)
     with pytest.raises(TimeoutError, match="still answering"):
         dospod.to_party_menu(boot, questions=2)
     assert boot.keys.count("Return") == 2
@@ -197,10 +197,10 @@ def _journal(monkeypatch):
 class _Question:
     """The question as `GAME.OVR` 0x3603 draws it: each typed key is drawn,
     `Return` with something typed leaves for the map.  `swallow` drops the
-    first key; `refuses` never leaves."""
+    first key; `blocks` never leaves."""
 
-    def __init__(self, showing=True, swallow=False, refuses=False):
-        self.showing, self.swallow, self.refuses = showing, swallow, refuses
+    def __init__(self, showing=True, swallow=False, blocks=False):
+        self.showing, self.swallow, self.blocks = showing, swallow, blocks
         self.typed, self.keys = 0, []
 
     def capture(self):
@@ -212,7 +212,7 @@ class _Question:
         self.keys.append(k)
         if self.swallow:
             self.swallow = False
-        elif k == "Return" and self.typed and not self.refuses:
+        elif k == "Return" and self.typed and not self.blocks:
             self.showing = False
         elif len(k) == 1:
             self.typed += 1
@@ -248,7 +248,7 @@ def test_a_swallowed_letter_is_typed_again_while_the_question_stays(_journal):
 
 
 def test_a_question_that_never_goes_stops_after_its_tries(_journal):
-    game = _Question(refuses=True)
+    game = _Question(blocks=True)
     with pytest.raises(TimeoutError, match="still showing after 2"):
         dospod.answer_journal(game, tries=2)
     assert game.keys == [dospod.JOURNAL_ANSWER, "Return"] * 2

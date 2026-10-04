@@ -193,7 +193,7 @@ ORDINARY = tuple(k for k in ITEM_TYPES if k != "scroll")
 TEMPLATE_SIZE = 63
 #: The head items a member may hold: a TRADE onto a member of 15 made 16 and
 #: no more, and the Amiga port's limit is 16 (`/Secret` `0x24B50`), so a pack
-#: of 17 is a state only an editor makes and `stage` refuses it.
+#: of 17 is a state only an editor makes and `stage` blocks it.
 MOST_HEADS = 16
 #: The most scrolls `stage` puts in one joined scroll.  `GAME.OVR` holds
 #: `Bundles are limited to <n> scrolls.`, the number filled in at run time

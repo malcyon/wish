@@ -42,7 +42,7 @@ conversion logged.
 a C64 `.D64` or Amiga `.adf` at `PATH`, whatever title or port it is (a C64
 save, or an Amiga Curse, Silver Blades or Pool of Radiance one), is read at
 slot `L` (default `A`) through `editor.convert.Source.detect` and converted by
-Save As DOS the same way `--fixture-row` converts a staged C64 party, refusing
+Save As DOS the same way `--fixture-row` converts a staged C64 party, blocking
 a source whose title does not match `--title`:
 
     tools/dos/acceptance.py --title ssb \\
@@ -63,13 +63,13 @@ a source whose title does not match `--title`:
 | `halve N I`, `join N I` | Pools of Darkness, in camp: member N's `ITEMS`, the highlight moved to row I (from 1, at most 18) with `Down`, `h` or `j` pressed once, and the rows counted before and after; `halve` must add a row and keep the highlight or the run stops before any save, `join` only records; back to camp.  Silver Blades' `join N I`, at the party menu before `begin`: `VIEW CHARACTER`, line N at `PICK CHARACTER` with `Down`, `SELECT`, the sheet checked by its name, `ITEMS`, row I highlighted, `j` once, the rows counted and read as text before and after, and `Exit` back to the party menu; it only records |
 | `trade N I M` | Silver Blades, at the party menu before `begin`: line N's `ITEMS` as `join` opens it, row I highlighted, `TRADE`, line M picked at `TRADE WITH WHOM?` with `Down` and `SELECT`, and the list required back; N's rows and M's name are recorded, and nothing checks that the item moved |
 | `memorize N` | Pools of Darkness, in camp: roster line N highlighted with `Down`, `MAGIC`, `MEMORIZE`; the grimoire's title checked against line N's name; every page shot and its eleven rows read, turning with `NEXT` until the bar stops offering it; `lists_126` says whether a page draws `MONSTER SUMMONING`, spell id 126; `EXIT` to the Magic bar and to camp.  Nothing is memorized |
-| `add NAME` | Pool, first or after another `add`, with no `load`: the party menu (title screens pressed past as `load` does), `ADD CHARACTER TO PARTY` (`a`), the highlight walked with `End` onto the row reading NAME (several words, as `CHARLIST.TXT` lists it), `Return`, believed only when the row redraws as `* NAME`, then `EXIT` (`e`), and NAME required on the party menu's roster.  Each screen is read as text with the title's font before its key and an unknown one stops the run with nothing more pressed; a list longer than one screen is not paged.  Before the boot the save folder is emptied and every exported character of the title's own `SAVE` folder (`.CHA`, `.ITM`, `.SPC`) and its `CHARLIST.TXT` are staged into it, and a NAME that `CHARLIST.TXT` does not list is refused.  A run that begins with `add` takes no `--save`, and then no staging option, `--expect` or `read`; `view N` and `save X` may follow |
+| `add NAME` | Pool, first or after another `add`, with no `load`: the party menu (title screens pressed past as `load` does), `ADD CHARACTER TO PARTY` (`a`), the highlight walked with `End` onto the row reading NAME (several words, as `CHARLIST.TXT` lists it), `Return`, believed only when the row redraws as `* NAME`, then `EXIT` (`e`), and NAME required on the party menu's roster.  Each screen is read as text with the title's font before its key and an unknown one stops the run with nothing more pressed; a list longer than one screen is not paged.  Before the boot the save folder is emptied and every exported character of the title's own `SAVE` folder (`.CHA`, `.ITM`, `.SPC`) and its `CHARLIST.TXT` are staged into it, and a NAME that `CHARLIST.TXT` does not list is blocked.  A run that begins with `add` takes no `--save`, and then no staging option, `--expect` or `read`; `view N` and `save X` may follow |
 | `view N` | At the party menu, before `begin`.  Pool, after `add`: `End` to line N, `VIEW CHARACTER` (`v`), the sheet read as text (its name row must read line N's name, `encumbrance` is the figure it draws), `ITEMS` when the sheet offers it, the list's title `<NAME>'S ITEMS` checked and each row read as `ready`, `marked` and `name`, and `Escape` twice back.  Pools of Darkness and Silver Blades: `VIEW CHARACTER`, line N at `PICK CHARACTER` with `Down`, `SELECT`.  Curse: `End` to line N on the party menu, then `v`.  The sheet is checked by its name as above (never by a bar); a sheet that draws `(NPC)` two cells after the name (a control byte above 0x7F) is the member's too, read with the title's font, and the result's `header` names it.  `EXIT` returns to the party menu, and only Pools of Darkness pages `ITEMS` |
-| `items N` | Pool, in camp: member N's `ITEMS` list, first screen only, from `End` to the line, `v`, `i`, and `Escape` twice back to camp; refuses a sheet with no `ITEMS`; records `rows` and `marked`, the rows (from 1) drawn with the Detect Magic `* ` |
+| `items N` | Pool, in camp: member N's `ITEMS` list, first screen only, from `End` to the line, `v`, `i`, and `Escape` twice back to camp; blocks a sheet with no `ITEMS`; records `rows` and `marked`, the rows (from 1) drawn with the Detect Magic `* ` |
 | `sheet N` | Pool: member N's sheet from the map (`End` to the line, `v`, `Escape`); the sheet is taken on a measured `POOL_SHEET_BARS` bar or, for any class's bar, on its words read as `POOL_SHEET_BAR_TEXT`; needs either measured map bar of `POOL_MAP_BARS` back |
 | `display` | Pool, Curse and Silver Blades, in camp: `MAGIC`, `DISPLAY`, every page of the list of spells in effect read as text with the title's own font (`load_font`), turning with `n` while the bar is ` NEXT EXIT`; `members` is each member's name and the effect names under it, and the list must name every member (Pool's page also six name rows); `Return` or `e` back to the Magic bar (`DISPLAY_LEAVE`) and `e` to camp |
 | `cast N SPELL [T]` | Pool, Curse and Silver Blades, in camp: roster line N highlighted (`End` in Pool and Curse, `Down` in Silver Blades), `MAGIC`, `CAST`; the caster's spell list read as text with the title's font (`load_font`), its title checked against line N's name, every row required to read, and SPELL (any memorised spell, as the list spells it; a hyphen reads as a space) required on it, a Curse or Silver Blades row `STRENGTH (2)` counting as two copies (`CAST_COUNT`); the highlight moved with `CAST_LIST_DOWN` (`End`, Silver Blades `Down`) to SPELL's row, reading it after each press, and `CAST`.  A spell that asks `CAST SPELL ON WHOM` gets T picked with the roster's key and `SELECT` (`Return` in Pool, `S` in the other two, `CAST_SELECT`); one that asks with no T given stops with nothing more pressed, a target prompt on any other bar stops naming it, and a spell that goes off without asking when T was given fails the step after the cast.  The cast is believed only when the list comes back holding one SPELL fewer, or, for the caster's only row, when the Magic bar comes back and `CAST` pressed there twice opens nothing, which is what it does with nothing memorised (a list that does open must not hold SPELL); `EXIT` twice to camp.  Any other screen stops the run with nothing more pressed, `LOSE IT` included |
-| `scribe N SPELL` | Pool, Curse and Silver Blades, in camp: roster line N highlighted (`End` in Pool and Curse, `Down` in Silver Blades), `MAGIC`, `SCRIBE`; the scroll list read as text with the title's font (`load_font`), its title checked against line N's name, and SPELL (several words; a hyphen reads as a space) required on it without the `*` of a spell being scribed; the highlight walked onto SPELL's row with `SCRIBE_LIST_DOWN`, reading it after each press, and `SCRIBE` believed only when that row redraws as `*SPELL`.  Each `SCRIBE` is sent only while the row is highlighted and unmarked, the second only when no text row changed after the first, while it was awaited or on a reading taken after; a changed text row without the mark is the game refusing, and the step fails with the words it drew, while a change outside the text (the camp picture, Silver Blades' pointer) is not one.  A rejection drawn and gone between two readings is not seen, so two presses with neither a mark nor a change fail saying it may have been one.  Then the list's `EXIT`, the chosen spells read (SPELL must be listed `*`), their `EXIT`, `YES` at `SCRIBE THESE SPELLS?` and the Magic bar's `EXIT`, each pressed only at the screen it belongs to.  The party stays camped, so a camp `save` keeps the scribe pending and a `rest` finishes it; that rest's `scribe_pending` says a scribe was pending when it began, which any step outside `SCRIBE_KEEPS` forgets.  A `SCRIBE` that leaves the Magic bar up with the message window changed is sent a second time, and fails if that opens no list either, naming any words drawn.  Seen live once in Curse: the window is cleared and nothing is drawn while a converted scroll with a hidden name is unread, and the list opens with a staged Read Magic effect node (a memory edit, not a cast); the cleric and item-class condition is code reading only, and the `has no copyable scrolls` string (`SCRIBE_NONE`) was never seen live.  Driven in Pool of Radiance and Curse; Silver Blades' screens and keys are the hand-driven run's |
+| `scribe N SPELL` | Pool, Curse and Silver Blades, in camp: roster line N highlighted (`End` in Pool and Curse, `Down` in Silver Blades), `MAGIC`, `SCRIBE`; the scroll list read as text with the title's font (`load_font`), its title checked against line N's name, and SPELL (several words; a hyphen reads as a space) required on it without the `*` of a spell being scribed; the highlight walked onto SPELL's row with `SCRIBE_LIST_DOWN`, reading it after each press, and `SCRIBE` believed only when that row redraws as `*SPELL`.  Each `SCRIBE` is sent only while the row is highlighted and unmarked, the second only when no text row changed after the first, while it was awaited or on a reading taken after; a changed text row without the mark is the game blocking, and the step fails with the words it drew, while a change outside the text (the camp picture, Silver Blades' pointer) is not one.  A rejection drawn and gone between two readings is not seen, so two presses with neither a mark nor a change fail saying it may have been one.  Then the list's `EXIT`, the chosen spells read (SPELL must be listed `*`), their `EXIT`, `YES` at `SCRIBE THESE SPELLS?` and the Magic bar's `EXIT`, each pressed only at the screen it belongs to.  The party stays camped, so a camp `save` keeps the scribe pending and a `rest` finishes it; that rest's `scribe_pending` says a scribe was pending when it began, which any step outside `SCRIBE_KEEPS` forgets.  A `SCRIBE` that leaves the Magic bar up with the message window changed is sent a second time, and fails if that opens no list either, naming any words drawn.  Seen live once in Curse: the window is cleared and nothing is drawn while a converted scroll with a hidden name is unread, and the list opens with a staged Read Magic effect node (a memory edit, not a cast); the cleric and item-class condition is code reading only, and the `has no copyable scrolls` string (`SCRIBE_NONE`) was never seen live.  Driven in Pool of Radiance and Curse; Silver Blades' screens and keys are the hand-driven run's |
 | `rest 5m`, `rest 1h30m`, `rest 8d` | camp `REST`, the rest time zeroed and set by key, then rested; minutes in fives; Pool's `GO STAY` random event at the end is answered `GO` (see below); in Curse a message over the continue bar that ends the rest (Tilverton's Royal Guards) gets `Return`, the map bar is required, and the party camps again, logged as `ended_by_message` |
 | `save X` | in camp, camp `SAVE` to slot X and decline the quit; at the party menu, `SAVE CURRENT GAME`; believed when `SAVGAMX.DAT` changes |
 | `train N` | Curse: roster line N (from 1), `TRAIN CHARACTER`, `YES`, and `LEARN` for any spell the level brings, back to the party menu |
@@ -78,7 +78,7 @@ a source whose title does not match `--title`:
 | `press KEY` | one X keysym (`Down`, `Return`, `t`), then a settle and a PNG; capture only, so only `press`, `shot` and `read` may come after it |
 | `walk MI`, `walk I`, `walk 1` | Pool and Curse (`MI`): turn right twice at the map bar and step one square.  Pool (`I`): step one square forward without turning.  Silver Blades and Pools of Darkness (`1`): press MOVE, step one square turning right past a wall, and leave move mode (`e` in Silver Blades, `Escape` in Pools of Darkness) back to the map bar.  In Pool and Curse a `PRESS <ENTER>/<RETURN> TO CONTINUE` story box the step lands on is answered with `Return`, `WALK_CONTINUE_ROUNDS` boxes at most, each logged as `press_continue`; combat or any other screen still stops the walk.  A step is believed only when the `x,y` on the status line changes (never the clock beside it), a blank line is never the starting reading, and a run with a walk fails unless `read` shows the last saved slot's place differs from the installed one |
 | `turn N` | N from 1 to 4: the walk's control.  Silver Blades and Pools of Darkness press MOVE first and leave move mode after; N `Right` presses, each reading the `x,y` square, which a turn must leave alone (`lost-walk-turn`); the party stays on the map for `camp`, `save D` and `read`.  A run with `turn` and no `walk` fails unless `read` shows the saved place unchanged ("did not move") |
-| `fight`, `fight 900` | Curse and Silver Blades, from the map: walk (Silver Blades in move mode) preferring squares not yet stood on (`Explorer`) until a fight starts, answer each bar by `FIGHT_KEYS` (`COMBAT`, `QUICK`, `EXIT` at the treasure and at a locked door, which the walk then marks walled, `NO` at `YES NO`, `Return` to continue), and end on the map once its bar has held `FIGHT_SETTLED` seconds; the number bounds walk and fight, in seconds (`FIGHT_SECONDS`).  At each command bar the debugger names who acts (`bar` in `run.jsonl`); at the first it logs `placement`, every combatant's square, side, quickfight and control (`COMBAT_LAYOUTS`), and `--first-bar-key KEY` is pressed there once instead of `QUICK`, the next bar logging every record again as `after-first-bar-key`.  A Silver Blades fight in area 16 is refused unless the gate `$4C2D` is 1, since a successful wandering roll there is a compliment: add `--stage-var 4C2D=1`.  With `--intervene` (Silver Blades only) the game starts as `START.EXE X Gem` (`CHEAT_ARGS`) and Alt+X, the game's own end-the-fight key, is pressed once at the bar after the first-bar key, or at the first bar without one; a command bar coming back stops the run (`fight-intervene`).  The defeat screen (`PARTY_DESTROYED`) stops it at once (`fight-destroyed`).  A second `fight` in the boot follows `camp`, `save X` and `leave`, or another `fight`; the first-bar key and Alt+X are the first fight's only, each result names its fight by number, and every later fight presses `SPACE` once at its first combat screen (`HAND_BACK`: a command bar, or a blank or unclassified bar once combat has begun -- the encounter menu answered, the placement read, or the combat window changed from what the last fight left and reading as a fight, probed at most every `COMBAT_PROBE_SECONDS`), because `QUICK` survives into the next fight, logging every combatant's quickfight just before it (`before-hand-back`) and recording `handed_back`, `handed_back_to` and `before_hand_back`.  A run with a `fight` boots DOSBox-X (`dosboxx.XSession`) rather than DOSBox 0.74 |
+| `fight`, `fight 900` | Curse and Silver Blades, from the map: walk (Silver Blades in move mode) preferring squares not yet stood on (`Explorer`) until a fight starts, answer each bar by `FIGHT_KEYS` (`COMBAT`, `QUICK`, `EXIT` at the treasure and at a locked door, which the walk then marks walled, `NO` at `YES NO`, `Return` to continue), and end on the map once its bar has held `FIGHT_SETTLED` seconds; the number bounds walk and fight, in seconds (`FIGHT_SECONDS`).  At each command bar the debugger names who acts (`bar` in `run.jsonl`); at the first it logs `placement`, every combatant's square, side, quickfight and control (`COMBAT_LAYOUTS`), and `--first-bar-key KEY` is pressed there once instead of `QUICK`, the next bar logging every record again as `after-first-bar-key`.  A Silver Blades fight in area 16 is blocked unless the gate `$4C2D` is 1, since a successful wandering roll there is a compliment: add `--stage-var 4C2D=1`.  With `--intervene` (Silver Blades only) the game starts as `START.EXE X Gem` (`CHEAT_ARGS`) and Alt+X, the game's own end-the-fight key, is pressed once at the bar after the first-bar key, or at the first bar without one; a command bar coming back stops the run (`fight-intervene`).  The defeat screen (`PARTY_DESTROYED`) stops it at once (`fight-destroyed`).  A second `fight` in the boot follows `camp`, `save X` and `leave`, or another `fight`; the first-bar key and Alt+X are the first fight's only, each result names its fight by number, and every later fight presses `SPACE` once at its first combat screen (`HAND_BACK`: a command bar, or a blank or unclassified bar once combat has begun -- the encounter menu answered, the placement read, or the combat window changed from what the last fight left and reading as a fight, probed at most every `COMBAT_PROBE_SECONDS`), because `QUICK` survives into the next fight, logging every combatant's quickfight just before it (`before-hand-back`) and recording `handed_back`, `handed_back_to` and `before_hand_back`.  A run with a `fight` boots DOSBox-X (`dosboxx.XSession`) rather than DOSBox 0.74 |
 | `prayer-watch 49`, `prayer-watch 35` | Pool (35 and 49), Curse and Silver Blades (49), from the map, `load` first, with each title's addresses (`dosfightwatch.PRAYER_LAYOUTS`).  Pool walks to an encounter (`walk_to_encounter`) and arms at the encounter menu; Curse and Silver Blades walk as `fight` does (Silver Blades' area 16 needs `--stage-var 4C2D=1` here too) and arm at the first command bar, once `placement` is logged and `QUICK` pressed there.  At that point it reads every member's effect nodes and Prayer's handler table, breaks on the id-49 stub (and Pool's id-35 stub) and the attack roll's stub (Pool's `08D2:003E`, the table's segment less the Prayer unit plus the attack unit), arm the list-10 call and its return at the segment that stub's far jump names, re-arming when a stub hit shows a new one, arm the handler, bonus test, +1 helper and penalty at the overlay segment the stub's far jump names once it loads, answer each bar (Pool by `COMBAT_KEYS`, Curse and Silver Blades by `FIGHT_KEYS`), and log each halt as `prayer-halt`: registers, 16 bytes at `SS:SP`, the four-frame `BP` chain, combatant name and side, the node's five bytes and the two roll bytes the +1 helper raises (Pool's `DS:0x6816` and `DS:0x6822`).  A party attack is a list-10 call halt with a side-0 attacker, closed by that attacker's next return halt.  For id 49 the step stops after one party attack whose own helper or penalty halt fell inside it, and in Curse and Silver Blades only once a monster's attack has also reached the penalty (`monster_penalties`), which a conclusive run there needs (only a list-10 penalty, an attack, counts as a monster's attack; a saving-throw penalty, list 12, does not; and a later round replaces an ally's round until a member carrying the node has completed one); for id 35 three completed pairs with no Prayer stub halt inside them are a conclusive result, and the step stops after the third.  It also stops when the map has held `FIGHT_SETTLED` seconds, at the defeat screen (Curse and Silver Blades), or after `PRAYER_FIGHT_SECONDS`; the step fails if the menu or first command bar came more than `PRAYER_BOOT_SECONDS` after the driver was made (Pool's walk is bounded by its 40 steps, the other two's by `FIGHT_SECONDS`, and both by the run's `--deadline`).  The result is `conclusive: False`, and the run exits 2 with `inconclusive` in `summary.json` rather than `lost` or `completed`, when no member carried the node at the menu or at the stop, an armed or halted routine's code did not match `GAME.OVR`, the stop-time party was not read, or, for id 49, no party attack armed at the stubs ran its helper or penalty (the first call loads the overlay before its routines are armed, so a round needs a later attack).  Only `shot`, `press` and `read` may follow |
 | `read` | copies `SAVE/` out and decodes every node, the clock, the place and each character's experience, installed slot against each saved one; for Pools of Darkness also each character's eight thief skills, item count, encumbrance, movement, current movement, record byte 0x130 (spell id 126's book byte, `book_0x130`) and items |
 
@@ -1504,7 +1504,7 @@ def combatant_record(record: bytes, layout: CombatLayout) -> dict:
 def loose_halve(screen: dosbox.Screen) -> dosbox.Screen:
     """A DOSBox-X grab (640x400) as 320x200 by each block's top-left pixel.
 
-    `dosboxx.halve` refuses a grab torn between two blits; this takes it,
+    `dosboxx.halve` blocks a grab torn between two blits; this takes it,
     for the rows `fight` reads, which the tear does not reach while only the
     picture moves.  A frame already 320 wide is returned as it is.
     """
@@ -2028,7 +2028,7 @@ def parse_step(text: str) -> Step:
         name, target = words[2:], 0
         if len(name) > 1 and re.fullmatch(r"\d+", name[-1]):
             if not re.fullmatch(r"[1-8]", name[-1]):
-                raise ValueError(f"cast target line {name[-1]} is refused: the roster "
+                raise ValueError(f"cast target line {name[-1]} is blocked: the roster "
                                  f"has lines 1 to 8: {text!r}")
             target = int(name.pop())
         spell = "-".join(spell_key(" ".join(name)).split())
@@ -2036,19 +2036,19 @@ def parse_step(text: str) -> Step:
     if kind == "scribe" and len(words) >= 3 and re.fullmatch(r"[1-8]", words[1]):
         spell = spell_key(" ".join(words[2:]))
         if SCRIBE_MARK in spell:
-            raise ValueError(f"scribe {spell!r} is refused: name the spell without "
+            raise ValueError(f"scribe {spell!r} is blocked: name the spell without "
                              f"the {SCRIBE_MARK} the list draws on one being scribed")
         return Step(kind, text, line=int(words[1]), name=spell)
     if kind == "change" and len(words) == 3 and re.fullmatch(r"[1-8]", words[1]):
         if words[2].upper() not in CHANGE_CLASSES:
-            raise ValueError(f"change to {words[2]!r} is refused: the class is one "
+            raise ValueError(f"change to {words[2]!r} is blocked: the class is one "
                              f"of {', '.join(CHANGE_CLASSES)}")
         return Step(kind, text, line=int(words[1]), name=words[2].upper())
     if kind in ("halve", "join") and len(words) == 3 and re.fullmatch(
             r"[1-8]", words[1]) and re.fullmatch(r"\d+", words[2]):
         row = int(words[2])
         if not 1 <= row <= ITEM_ROWS:
-            raise ValueError(f"{kind} row {row} is refused: the list shows rows 1 to "
+            raise ValueError(f"{kind} row {row} is blocked: the list shows rows 1 to "
                              f"{ITEM_ROWS} and the rows past them need Next, which "
                              "is not driven here")
         return Step(kind, text, line=int(words[1]), row=row)
@@ -2057,10 +2057,10 @@ def parse_step(text: str) -> Step:
             r"[1-8]", words[3]):
         row, to = int(words[2]), int(words[3])
         if not 1 <= row <= ITEM_ROWS:
-            raise ValueError(f"trade row {row} is refused: the list shows rows 1 to "
+            raise ValueError(f"trade row {row} is blocked: the list shows rows 1 to "
                              f"{ITEM_ROWS}")
         if to == int(words[1]):
-            raise ValueError(f"trade {text!r} is refused: line {to} would trade "
+            raise ValueError(f"trade {text!r} is blocked: line {to} would trade "
                              "with itself")
         return Step(kind, text, line=int(words[1]), row=row, to=to)
     if kind == "walk" and len(words) == 2 and any(
@@ -2083,20 +2083,20 @@ def parse_step(text: str) -> Step:
     if kind == "add" and len(words) >= 2:
         name = " ".join(words[1:]).upper()
         if len(name) > POD_NAME_CELLS or name.startswith("*"):
-            raise ValueError(f"add {name!r} is refused: a name is at most "
+            raise ValueError(f"add {name!r} is blocked: a name is at most "
                              f"{POD_NAME_CELLS} characters and is given without "
                              "the * the list draws on one already picked")
         return Step(kind, text, name=name)
     if kind == "press" and len(words) == 2 and re.fullmatch(r"\w+", words[1]):
         if words[1].lower() in ("e", "escape"):
-            raise ValueError(f"press {words[1]} is refused: E is exit to DOS at "
+            raise ValueError(f"press {words[1]} is blocked: E is exit to DOS at "
                              "Curse's party menu and Escape backs out of a prompt")
         return Step(kind, text, key=words[1])
     raise ValueError(f"not a step: {text!r} ({STEP_HELP})")
 
 
 def validate_steps(steps: list[Step], title: str = "pool") -> None:
-    """Refuse an order the driver would only find out after booting DOSBox.
+    """Block an order the driver would only find out after booting DOSBox.
 
     The party is somewhere at each step -- not yet loaded, on the map, at the
     party menu or in camp -- and each step needs one of those.  `shot` and
@@ -2385,7 +2385,7 @@ def stage_side(save_dir: pathlib.Path, letter: str, line: int, side: int,
 def parse_key(text: str) -> str:
     """`SPACE` or one letter or digit, as the X keysym `fight` presses.
 
-    `Y` is refused: it answers `YES`, which the step never answers.
+    `Y` is blocked: it answers `YES`, which the step never answers.
     """
     if text.upper() == "SPACE":
         return "space"
@@ -2402,7 +2402,7 @@ def parse_record_bytes(texts) -> list[tuple[int, int, int]]:
     offset lies inside the record is `check_staging`'s and `stage_record`'s
     to say, since the record's size is the installed title's.  A number is `0`,
     a decimal with no leading zero, or `0x` hex; a leading zero (`010`), `_`,
-    a sign and `0b`/`0o` are refused rather than read as some other base.  A
+    a sign and `0b`/`0o` are blocked rather than read as some other base.  A
     byte named twice takes its last value, because the stages run in order."""
     out = []
     for text in texts:
@@ -2807,7 +2807,7 @@ def parse_name(text: str) -> tuple[int, str]:
 
 def parse_names(texts: list[str], title: str) -> dict[int, str]:
     """`--name` values as the `{position: name}` `prepare_save_as` takes,
-    refusing a repeated position or a name over the DOS field's width."""
+    blocking a repeated position or a name over the DOS field's width."""
     from editor import saveplan
     width = saveplan.name_width("dos", CONVERT_TITLE_KEYS[title])
     names: dict[int, str] = {}
@@ -2828,8 +2828,8 @@ def _save_as_dos(party, out: pathlib.Path, title: str, report: dict,
 
     The route is the editor's own, `prepare_save_as` then `publish`, as
     `tests/convert/test_runningeffects.py`'s `_dos_plan` prepares it.
-    `prepare_save_as` refuses a conversion that would drop a field, which is
-    reported as `refused` and ends the run before any boot.  Shared by
+    `prepare_save_as` blocks a conversion that would drop a field, which is
+    reported as `stopped` and ends the run before any boot.  Shared by
     `build_source` (a staged C64 party) and `build_saveas_source` (any save
     `editor.convert.Source.detect` accepts): both build `party` and a `report`
     of their own and hand them here for the rest of the route.
@@ -2908,12 +2908,12 @@ CONVERT_TITLE_KEYS = {"pool": "pool-of-radiance",
 def build_saveas_source(path: str | pathlib.Path, slot: str, out: pathlib.Path,
                         title: str, names: dict[int, str] | None = None) -> dict:
     """Copy `path` into `out` and Save As DOS whatever save `Source.detect`
-    finds there at `slot`, refusing a source whose title is not `title`.
+    finds there at `slot`, blocking a source whose title is not `title`.
 
     `path` is a C64 disk image or an Amiga `.adf` holding any save
     `editor.convert.Source.detect` reads -- a Curse or Silver Blades save from
     either port, or an Amiga Pool of Radiance one.  A Pools of Darkness source
-    is refused: `--amiga-slot` converts it through the Convert window's own
+    is blocked: `--amiga-slot` converts it through the Convert window's own
     route.  `names` maps a party position to the name chosen for that member,
     as the Shorten window hands them to `prepare_save_as`; without one, a name
     too long for DOS raises `saveplan.NamesDoNotFit`.
@@ -3002,7 +3002,7 @@ def build_amiga_source(disk: str, slot: str, out: pathlib.Path) -> dict:
     The disk is copied to `out/source.adf` and never written.  A warning the
     conversion logs (a spell id the DOS book does not hold, say) is listed in
     `warnings`, since it reaches neither `dropped` nor `losses`.  A conversion
-    that raises is reported as `refused`.
+    that raises is reported as `stopped`.
     """
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from editor import convert, saveplan
@@ -4182,7 +4182,7 @@ class Driver:
 
     def _combat_window_raw(self) -> bytes | None:
         """`combat_window`'s bytes under the `DS` an earlier fight read true,
-        in one halt, or None when there is none or the read is refused."""
+        in one halt, or None when there is none or the read is blocked."""
         if self.combat_ds is None:
             return None
         lo, n = combat_window(COMBAT_LAYOUTS[self.title.key])
@@ -4431,7 +4431,7 @@ class Driver:
         """The screen, halved by `loose_halve` when DOSBox-X's grab is torn.
 
         An animated picture (Silver Blades' archway at 3,0 of area 16) tears
-        every grab, and `XSession.capture` then refuses all of them, so the
+        every grab, and `XSession.capture` then blocks all of them, so the
         bar under it would never be answered.  The rows `fight` reads are
         still while the picture moves.
         """
@@ -4700,9 +4700,9 @@ class Driver:
         (`read_combat`), at least one record holding a name, and a party
         member among them or the acting record one of them.  A window that
         does not, or a read the debugger
-        refuses, is read again after a fresh halt with the `DS` read afresh,
+        blocks, is read again after a fresh halt with the `DS` read afresh,
         `FIGHT_PRESSES` times at most; a `DS` that read true once is kept.
-        Each refused read is logged (`fight-memory-unread`) and named when
+        Each blocked read is logged (`fight-memory-unread`) and named when
         the run stops, since a halt can land where `DS` is not the game's.
         A record whose name is not a name is logged (`fight-odd-record`)
         and kept with `name` None.
@@ -4766,7 +4766,7 @@ class Driver:
                 known.update(read_now)
             except (CombatUnread, dosboxx.NotHalted, RuntimeError, ValueError) as e:
                 # A wrong DS reads garbage pointers, which the debugger may
-                # refuse (`NotHalted`, a short dump) as well as misread.
+                # block (`NotHalted`, a short dump) as well as misread.
                 whys.append(f"DS {'unread' if ds is None else f'{ds:04X}'}: "
                             f"{type(e).__name__}: {e}")
                 self.note(event="fight-memory-unread", why=whys[-1])
@@ -4957,7 +4957,7 @@ class Driver:
         `End`, reading it after each press, and `Return` is believed only
         when the row redraws as `* NAME`, the game's mark that it read the
         file; `name` is believed added only when the party menu's roster
-        draws it after `EXIT`, since a refused add is starred too.  A list
+        draws it after `EXIT`, since a blocked add is starred too.  A list
         too long for one screen is not paged: `N` and `P` are unmeasured
         here.
         """
@@ -6088,12 +6088,12 @@ class Driver:
         `*SPELL`.  Each key is sent only while the list shows with that row
         highlighted and unmarked; the second only when no text row changed
         after the first, neither while it was awaited nor on a reading taken
-        after, since a changed text row without the mark is the game refusing
+        after, since a changed text row without the mark is the game blocking
         (`You already know that spell`, `You can not scribe that spell`),
         whose words the failure carries.  A frame that changes only outside
         the text (the camp picture, Silver Blades' pointer) is not a rejection.
         A rejection drawn and gone between two readings is not seen: then the
-        second key refuses again, and the failure says that neither a mark
+        second key blocks again, and the failure says that neither a mark
         nor a change was seen, which may be such a rejection.  Returns the keys
         sent.
         """
@@ -6131,7 +6131,7 @@ class Driver:
             if not changed and seen(self.s.capture()):
                 return sent
             if changed:
-                raise self.fail(f"{label}-refused", "SCRIBE did not mark the spell and "
+                raise self.fail(f"{label}-blocked", "SCRIBE did not mark the spell and "
                                 f"the screen changed: {' / '.join(changed[0])}")
         raise self.fail(label, "two presses of SCRIBE brought no mark and no change "
                         "was seen, possibly a rejection drawn and gone between readings")
@@ -6340,7 +6340,7 @@ class Driver:
         `End` wraps, and the highlight stays where the last command left it,
         so the presses are `(line - here) % party size`
         (`docs/194-the-dos-training-ladder.md`).  A `t` that leaves the screen
-        as it was is the school refusing; there is no message to read.
+        as it was is the school blocking; there is no message to read.
         """
         if self.where != "party" or self.title.key != "curse":
             raise StepFailed("train is Curse's party-menu command")
@@ -6357,8 +6357,8 @@ class Driver:
                 offered = True
                 break
         if not offered:
-            raise self.fail("train-refused", f"TRAIN CHARACTER changed nothing for "
-                            f"line {line} (the school refuses him, or the hall "
+            raise self.fail("train-blocked", f"TRAIN CHARACTER changed nothing for "
+                            f"line {line} (the school blocks him, or the hall "
                             "is shut: stage --hall)")
         self.shot("train-offer")
         self.s.key(TRAIN_YES)
@@ -6536,7 +6536,7 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
         summary["source"] = built
         note(event="converted", **{k: v for k, v in built.items() if k != "read"})
         if "stopped" in built or built["dropped"] or built["losses"]:
-            summary["lost"] = "the conversion refused, dropped or lost something"
+            summary["lost"] = "the conversion stopped, dropped or lost something"
             write_summary()
             return 1
         save = out / "source"
@@ -6548,7 +6548,7 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
         summary["source"] = built
         note(event="converted", **{k: v for k, v in built.items() if k != "read"})
         if "stopped" in built or built["dropped"] or built["losses"]:
-            summary["lost"] = "the conversion refused, dropped or lost something"
+            summary["lost"] = "the conversion stopped, dropped or lost something"
             write_summary()
             return 1
         save = out / "source"
@@ -6797,7 +6797,7 @@ GATE_AREA = 16
 
 
 def check_gate(args, save: pathlib.Path, from_slot: str | None) -> None:
-    """Refuse a `--stage-var` outside the title's array, and a Silver Blades
+    """Block a `--stage-var` outside the title's array, and a Silver Blades
     `fight` or `prayer-watch` in area 16 whose gate word would not be 1: a
     successful roll there is a compliment, never a fight."""
     staged = [parse_var(t) for t in getattr(args, "stage_var", []) or []]
@@ -6831,7 +6831,7 @@ def check_gate(args, save: pathlib.Path, from_slot: str | None) -> None:
 
 
 def check_staging(args, save: pathlib.Path, from_slot: str | None) -> None:
-    """Refuse a stage the installed save cannot take, before a slot is claimed.
+    """Block a stage the installed save cannot take, before a slot is claimed.
 
     `--hall` is measured for the titles in `HALL_TITLES`
     (`docs/194-the-dos-training-ladder.md`); another title's `SAVGAM` is not
@@ -6895,7 +6895,7 @@ def charlist_names(folder: pathlib.Path) -> list[str]:
 
 
 def check_exports(folder: pathlib.Path, names: list[str]) -> None:
-    """Refuse an `add` whose name `folder`'s `CHARLIST.TXT` does not list, or
+    """Block an `add` whose name `folder`'s `CHARLIST.TXT` does not list, or
     lists more than once (the step would not know which row to pick), before
     a slot is claimed."""
     listed = charlist_names(folder)

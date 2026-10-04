@@ -33,7 +33,7 @@ one cost an hour and none of them announces itself:
    is discarded.
 4. Commands are truncated at `MAXCMDLEN` = 254 characters with no complaint, so
    a long `SM` would write part of its bytes and report success.  `write()`
-   chunks, and `dbg()` refuses to send a line that would be cut.
+   chunks, and `dbg()` will not send a line that would be cut.
 
 **The Wayland trap is the one that matters to a human.**  DOSBox-X asks for a
 working directory with a `zenity` chooser when it has no configured one, GTK
@@ -99,7 +99,7 @@ DOSBOXX = os.environ.get("DOSBOXX") or shutil.which("dosbox-x") or "/usr/local/b
 
 #: What `XSession` needs on `PATH`, in place of `tools/dos/dosbox.py`'s list.
 #: **DOSBox 0.74 is not on it**: this harness never launches it, and inheriting
-#: the base list refused a session on a machine carrying only the debugger
+#: the base list blocked a session on a machine carrying only the debugger
 #: build, naming an emulator it has no use for (#73).  `dosbox-x` is not on it
 #: either -- `DOSBOXX` may be a path rather than a name, so `missing_tools()`
 #: checks it both ways below.
@@ -588,7 +588,7 @@ class XSession(dosbox.Session):
     instance started and nothing else.
     """
 
-    #: How many grabs `capture()` makes before a torn frame is refused, and the
+    #: How many grabs `capture()` makes before a torn frame is blocked, and the
     #: pause between them.
     CAPTURE_TRIES = 4
     CAPTURE_RETRY_GAP = 0.15
@@ -767,7 +767,7 @@ class XSession(dosbox.Session):
         the same at either size.
 
         **A grab can land between two of the window's blits**, so the top of
-        the frame is one moment and the bottom the next.  `halve()` refuses
+        the frame is one moment and the bottom the next.  `halve()` blocks
         that (`NotLineDoubled`) and is left strict; the seam belongs to that one
         grab, so this grabs again a few times before letting the rejection out.  A
         window that is not line-doubled at all fails every try and still raises.

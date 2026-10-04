@@ -69,12 +69,12 @@ def test_the_former_class_flag_still_takes_a_byte():
 
 
 @pytest.mark.parametrize("size", [si.CURSE_RECORD - 1, si.SSB_RECORD])
-def test_staging_refuses_a_record_that_is_not_curse(size):
+def test_staging_blocks_a_record_that_is_not_curse(size):
     with pytest.raises(ValueError, match="422"):
         si.stage_guy(bytes(size), 3)
 
 
-def test_staging_refuses_a_value_that_is_not_a_byte():
+def test_staging_blocks_a_value_that_is_not_a_byte():
     with pytest.raises(ValueError):
         si.stage_guy(bytes(_curse()), 256)
 

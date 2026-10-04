@@ -291,12 +291,12 @@ def test_only_the_pack_count_and_weight_change_in_the_record(tmp_path):
     ("j10*12,s*4,staff", "at most 16"), ("wand", "no item called"),
     ("s*0", "repeats nothing"), ("x!", "not a pack item"),
 ])
-def test_a_pack_the_game_never_holds_is_refused(spec, why):
+def test_a_pack_the_game_never_holds_is_blocked(spec, why):
     with pytest.raises(ValueError, match=why):
         sb.parse_pack(spec)
 
 
-def test_a_line_outside_the_party_and_a_used_folder_are_refused(tmp_path):
+def test_a_line_outside_the_party_and_a_used_folder_are_blocked(tmp_path):
     save = _slot(tmp_path)
     with pytest.raises(ValueError, match="line 4 is not in a party of 3"):
         sb.stage(save, "A", {4: [("scroll", 1)]}, tmp_path / "a", IDS, ITEMS)

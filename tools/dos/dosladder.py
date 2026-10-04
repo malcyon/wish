@@ -231,7 +231,7 @@ def stage_experience(save_dir: pathlib.Path, letter: str,
     **A multi-class character is staged from the class it is about to train**,
     at that class's own single-class threshold, which is a second question in
     the same boot: if the school trains it, a multi-class character is not
-    asked for a multiple of the threshold; if it refuses, it is.
+    asked for a multiple of the threshold; if it blocks, it is.
     Returns what each record was given, so the run's log says which number is
     ours.
     """
@@ -371,7 +371,7 @@ class Ladder:
             self.x, self.y = square
             self.shot(f"school-retry-{square[0]}-{square[1]}")
             if self.g.bar() == self.world:
-                self.log(event="school-refused", square=list(square))
+                self.log(event="school-blocked", square=list(square))
                 return False
         self.press("y", "school-yes")
         self.menu = self.s.capture().ink(dosbox.BAR)
@@ -403,7 +403,7 @@ class Ladder:
         `End` moves the highlight down a line and wraps at the bottom, and
         where it starts is wherever the last menu left it -- so the count is
         `(want - here) % 6` and the tool tracks `here` across the whole boot.
-        A `t` that leaves the screen exactly as it was is the school refusing
+        A `t` that leaves the screen exactly as it was is the school blocking
         the character -- there is no message left on a settled screen -- and a
         `t` that changes it is the confirmation `<NAME> WILL BECOME: A LEVEL n
         <CLASS>`, which `y` accepts.
@@ -418,7 +418,7 @@ class Ladder:
             if after == before:
                 after = self.press("t", f"t-{idx}-again")
             if after == before:
-                self.log(event="refused", school=school, slot=idx)
+                self.log(event="blocked", school=school, slot=idx)
                 results.append({"slot": idx, "school": school, "trained": False})
                 continue
             self.press("y", f"train-{idx}")

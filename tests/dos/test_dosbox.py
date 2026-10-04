@@ -202,7 +202,7 @@ def test_a_ppm_with_a_comment_decodes():
     assert dosbox.Screen.from_ppm(body).px == bytes([9, 9, 9])
 
 
-def test_something_that_is_not_a_ppm_is_refused():
+def test_something_that_is_not_a_ppm_is_blocked():
     with pytest.raises(ValueError):
         dosbox.Screen.from_ppm(b"\x89PNG\r\n")
 
@@ -445,7 +445,7 @@ def test_a_leased_slot_is_not_leased_twice(tmp_path, monkeypatch):
 
 
 @posix_only
-def test_the_pool_refuses_once_its_display_band_is_full(tmp_path, monkeypatch):
+def test_the_pool_blocks_once_its_display_band_is_full(tmp_path, monkeypatch):
     """The band, not the lease count, is what is exhausted here: the lease
     directory has a free slot throughout, and only the two displays are held.
 
@@ -511,7 +511,7 @@ def test_a_plain_session_still_asks_for_dosbox(tmp_path, monkeypatch):
     assert "not installed: dosbox" in str(e.value)
 
 
-def test_a_session_refuses_to_stage_outside_the_scratch_directory(tmp_path):
+def test_a_session_will_not_stage_outside_the_scratch_directory(tmp_path):
     """The assertion that keeps a copy from ever landing on the player's files."""
     slot = dosbox.Slot(n=0, dir=tmp_path, _fd=-1, _display_num=30)
     session = dosbox.Session.__new__(dosbox.Session)
@@ -576,9 +576,9 @@ def test_a_session_stages_through_a_symlinked_scratch_directory(tmp_path, monkey
 
 
 @symlink_only
-def test_a_session_still_refuses_a_symlink_that_escapes_the_scratch_directory(tmp_path, monkeypatch):
+def test_a_session_still_blocks_a_symlink_that_escapes_the_scratch_directory(tmp_path, monkeypatch):
     """The safety property the fix must not loosen: an instance directory that
-    is itself a symlink pointing outside the scratch directory is still refused, and
+    is itself a symlink pointing outside the scratch directory is still blocked, and
     whatever it pointed at survives untouched.
     """
     main = tmp_path / "main"
@@ -604,7 +604,7 @@ def test_a_session_still_refuses_a_symlink_that_escapes_the_scratch_directory(tm
 
 
 @symlink_only
-def test_a_sibling_directory_sharing_the_prefix_is_still_refused(tmp_path, monkeypatch):
+def test_a_sibling_directory_sharing_the_prefix_is_still_blocked(tmp_path, monkeypatch):
     """`scratch/dosbox-other/` shares `scratch/dosbox` as a string prefix without
     being inside it -- the second, smaller defect the same line carried.
     """
@@ -674,7 +674,7 @@ def test_a_window_whose_capture_failed_is_not_taken_for_a_good_one():
     assert dosbox.has_content(_screen(4, 2, bytes(px))) is True
 
 
-def test_a_capture_with_one_pixel_lit_is_not_refused():
+def test_a_capture_with_one_pixel_lit_is_not_blocked():
     px = bytearray(b"\x00\x00\x00" * 8)
     px[12] = 1
     assert dosbox.uniform_colour(_screen(4, 2, bytes(px))) is None
@@ -738,7 +738,7 @@ class _BlankWindow:
         return {}
 
 
-def test_a_screenshot_of_a_blank_window_is_refused_by_name(tmp_path):
+def test_a_screenshot_of_a_blank_window_is_blocked_by_name(tmp_path):
     """`shot()` writes no file rather than one that looks like a dead game."""
     with pytest.raises(dosbox.BlankCapture) as e:
         dosbox.Session.shot(_BlankWindow(tmp_path), "loaded")
@@ -750,7 +750,7 @@ def test_the_shot_on_the_way_out_of_a_failure_is_written_anyway(tmp_path,
                                                                monkeypatch):
     """`leave_camp` takes one to explain itself, and a blank frame is the point.
 
-    Refusing that one would replace the `TimeoutError` that says what went
+    Blocking that one would replace the `TimeoutError` that says what went
     wrong with a `BlankCapture` that says less.
     """
     ran = []
@@ -1010,7 +1010,7 @@ def test_every_dax_block_of_every_archive_reaches_its_stated_size():
     assert blocks > 1000
 
 
-def test_a_truncated_dax_block_is_refused_by_name():
+def test_a_truncated_dax_block_is_blocked_by_name():
     """A decoder must not raise `IndexError` on its own input (#65)."""
     # A repeat opcode as the last byte of the block: the operand is missing.
     with pytest.raises(DaxError) as exc:
@@ -1035,7 +1035,7 @@ def test_a_file_too_short_for_its_index_is_not_a_dax():
     assert "T.DAX: not a .DAX" in str(exc.value)
 
 
-def test_a_dax_index_pointing_past_the_file_is_refused():
+def test_a_dax_index_pointing_past_the_file_is_blocked():
     """Truncate an archive and the block is named, not sliced short."""
     data = bytearray(struct.pack("<H", 9) + struct.pack("<BIHH", 9, 0, 2, 3))
     data += b"\x01AB"                       # copy two bytes: a whole block
@@ -1276,7 +1276,7 @@ def test_memorize_page_one_verifies_the_turn_and_stages_with_memorize_command():
     assert sess.pressed == ["n", "m"]
 
 
-def test_memorize_refuses_an_unmeasured_third_page_before_any_key_goes_out():
+def test_memorize_blocks_an_unmeasured_third_page_before_any_key_goes_out():
     sess = _GrimoireSession(lands_on=4)
     with pytest.raises(NotImplementedError):
         dosbox.Camp(sess).memorize(row=4, page=2)

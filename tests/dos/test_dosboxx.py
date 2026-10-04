@@ -128,7 +128,7 @@ def test_read_says_the_emulator_is_running_when_the_dump_answers_nothing(tmp_pat
 # --------------------------------------------------------------------------
 
 
-def test_a_command_longer_than_the_parser_accepts_is_refused():
+def test_a_command_longer_than_the_parser_accepts_is_blocked():
     """`MAXCMDLEN` is 254 and the debugger truncates without complaining."""
     with pytest.raises(ValueError):
         dosboxx.XSession.dbg(object(), "EV " + "AX " * 200)
@@ -290,7 +290,7 @@ def test_halve_recovers_the_frame_dosboxx_doubled_it_from():
 
 
 def test_halve_leaves_an_odd_sized_frame_alone():
-    """Nothing this harness captures is odd-sized; refusing to guess is safer."""
+    """Nothing this harness captures is odd-sized; stopping instead of guessing is safer."""
     from tools.dos import dosbox
 
     screen = dosbox.Screen(3, 3, bytes(27))
@@ -396,11 +396,11 @@ def test_capture_grabs_again_when_a_grab_was_torn_between_two_blits(monkeypatch,
     assert "try 1 of" in logged and "not one pixel" in logged
 
 
-def test_capture_still_refuses_a_window_that_is_never_line_doubled(monkeypatch):
+def test_capture_still_blocks_a_window_that_is_never_line_doubled(monkeypatch):
     """A steady non-doubled window (an 80x25 text mode) must keep failing loudly.
 
     Retrying is for a grab that landed mid-redraw; a window that is wrong on
-    every grab is the wrong measurement `NotLineDoubled` exists to refuse.
+    every grab is the wrong measurement `NotLineDoubled` exists to block.
     """
     from tools.dos import dosbox
 
@@ -566,7 +566,7 @@ def test_a_claim_lands_inside_its_own_band(tmp_path, monkeypatch):
 
 
 @posix_only
-def test_the_pool_refuses_once_its_display_band_is_full(tmp_path, monkeypatch):
+def test_the_pool_blocks_once_its_display_band_is_full(tmp_path, monkeypatch):
     """Before #213 the search walked past a full band into whatever the next
     free number happened to be, instead of admitting its own was exhausted.
 
@@ -602,7 +602,7 @@ def test_a_machine_with_only_the_debugger_build_can_open_a_session(tmp_path,
     """This harness never launches DOSBox 0.74, so it must not require it (#73).
 
     `XSession.__init__` runs `tools/dos/dosbox.py`'s `require_tools()`, whose list
-    names `dosbox`; a machine carrying only the debugger build was refused a
+    names `dosbox`; a machine carrying only the debugger build was blocked a
     session with `not installed: dosbox`, about an emulator nothing here starts.
     `require_debugger` is stubbed because the debugger build is what the machine
     under test *has*, and CI has neither.

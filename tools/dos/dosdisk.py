@@ -18,7 +18,7 @@ will not do."*:
   `goldbox.iconparts.IconParts.dos_icon` off `SPELLE64`/`SPELLN64` (#130);
 * `ANIMATE00`'s 852 payload bytes, which sit at `$8400` in `SAVEDGAME1`.
 
-So it refuses without them rather than inventing either.
+So it blocks without them rather than inventing either.
 
 The DOS folder is found the way `tools/dos/dosbox.py` finds it -- `$FR_ARCHIVES`,
 then `~/Downloads/fr-archives` -- and the game disks the way every other tool
@@ -120,7 +120,7 @@ def build(folder: pathlib.Path, slot: str, disks: pathlib.Path,
 
     The creation menu's two tables (#57) come off the same `disks` directory
     the icon and `ANIMATE00` already do, read through `tables_from_disks`.
-    Unlike those two, a conversion does not refuse without them: a directory
+    Unlike those two, a conversion does not block without them: a directory
     that answers with no `POOL[0-9].D64` or no `GEN` on any side leaves
     `portraits` `None`, and `dos.new_save` carries the party's own records
     with the sheet portrait switched off, the same as an engine-written save

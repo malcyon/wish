@@ -442,7 +442,7 @@ def test_a_locked_door_that_does_not_clear_ends_the_walk():
     assert result["why"] == "locked door did not clear"
 
 
-def test_pile_mode_refuses_to_run_without_a_folder():
+def test_pile_mode_will_not_run_without_a_folder():
     with pytest.raises(SystemExit):
         dosfightwatch.main(["pile"])
 
@@ -469,7 +469,7 @@ def test_two_bytes_tripped_by_one_word_write_are_both_classified():
     assert report["taken"] == 532 and report["matches"] is True
 
 
-def test_a_ds_that_is_not_the_games_is_refused_and_the_override_skips_the_check():
+def test_a_ds_that_is_not_the_games_is_blocked_and_the_override_skips_the_check():
     ovr = _ovr()
     dbg = _Debugger(ovr, [], counts=(13, 7))
     base = dosboxx.linear((DS, dosfightwatch.PILE_BASE))
@@ -541,7 +541,7 @@ def test_a_folder_placed_like_a_donor_stands_where_the_donor_stands(tmp_path):
     assert (save / "CHRDATE7.SAV").read_bytes() == b"\x07" * 285
 
 
-def test_placing_refuses_an_outdoor_donor(tmp_path):
+def test_placing_blocks_an_outdoor_donor(tmp_path):
     folder, save = _stage(tmp_path)
     with pytest.raises(ValueError, match="overland"):
         dosfightwatch.install_folder(save, folder, place=(_donor(outdoors=True), b"\0\0"))
@@ -1379,16 +1379,16 @@ def test_the_breakpoints_come_off_and_the_game_runs_when_a_halt_cannot_be_read()
 def test_finish_attempts_each_release_step_on_its_own():
     dbg, watch, notes, _ = _ready()
 
-    def refuse():
+    def block():
         raise dosfightwatch.dosboxx.NotHalted("running")
-    dbg.clear_breakpoints = refuse
+    dbg.clear_breakpoints = block
     runs = dbg.runs
     assert watch.finish() is not None
     assert dbg.runs == runs + 1
     assert [n["step"] for n in notes if n["event"] == "prayer-finish-error"] == ["clear"]
 
 
-def test_a_table_that_is_not_prayers_is_refused(monkeypatch):
+def test_a_table_that_is_not_prayers_is_blocked(monkeypatch):
     monkeypatch.setattr(dosfightwatch.time, "sleep", lambda s: None)
     dbg = FakeDebugger()
     _world(dbg)
@@ -1398,7 +1398,7 @@ def test_a_table_that_is_not_prayers_is_refused(monkeypatch):
         watch.attach(tries=2)
 
 
-def test_a_stub_that_is_neither_int_3f_nor_a_far_jump_is_refused():
+def test_a_stub_that_is_neither_int_3f_nor_a_far_jump_is_blocked():
     dbg = FakeDebugger()
     _world(dbg)
     dbg.put(STUB, 0xED, bytes.fromhex("9090909090"))
@@ -1578,7 +1578,7 @@ def test_id_49_needs_its_helper_inside_the_pair_not_after_it():
     assert result["conclusive"] is False and result["round_completed"] is False
 
 
-def test_an_attack_stub_that_is_neither_int_3f_nor_a_far_jump_is_refused():
+def test_an_attack_stub_that_is_neither_int_3f_nor_a_far_jump_is_blocked():
     dbg = FakeDebugger()
     _world(dbg)
     dbg.put(ASTUB, P.stub_attack, bytes.fromhex("9090909090"))
@@ -1588,7 +1588,7 @@ def test_an_attack_stub_that_is_neither_int_3f_nor_a_far_jump_is_refused():
         watch.arm()
 
 
-def test_an_attack_unit_descriptor_that_is_not_start_exes_is_refused():
+def test_an_attack_unit_descriptor_that_is_not_start_exes_is_blocked():
     dbg = FakeDebugger()
     _world(dbg)
     dbg.put(ASTUB, 0, b"\x01" * 12)
@@ -2044,7 +2044,7 @@ def test_a_later_title_party_round_alone_does_not_stop_or_conclude_the_run(title
 
 
 @pytest.mark.parametrize("title", LATER)
-def test_a_later_title_whose_table_names_another_stub_is_refused(title, monkeypatch):
+def test_a_later_title_whose_table_names_another_stub_is_blocked(title, monkeypatch):
     monkeypatch.setattr(dosfightwatch.time, "sleep", lambda s: None)
     dbg, watch, lay, _, _ = _later(title)
     dbg.put(DS, lay.handler_table + 49 * 4, _le(lay.stub_49 + 5) + _le(STUB))

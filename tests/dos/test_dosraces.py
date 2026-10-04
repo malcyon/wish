@@ -312,19 +312,19 @@ def test_the_walk_stops_at_the_class_table_rather_than_eating_it():
     assert read == names
 
 
-def test_a_file_with_no_alignment_table_is_refused():
+def test_a_file_with_no_alignment_table_is_blocked():
     with pytest.raises(LookupError):
         dosraces.read_table(b"\x03Elf\0\0\0\0\0\0" * 8)
 
 
-def test_a_run_too_short_to_be_a_race_table_is_refused():
+def test_a_run_too_short_to_be_a_race_table_is_blocked():
     """Handing back three entries would read as a title with three races,
     and every record in it would decode to something."""
     with pytest.raises(LookupError):
         dosraces.read_table(_synthetic(("Elf", "Dwarf", "Gnome"), 9))
 
 
-def test_two_alignment_tables_are_refused_rather_than_guessed_between():
+def test_two_alignment_tables_are_blocked_rather_than_guessed_between():
     blob = _synthetic(("Elf", "Half-Elf", "Dwarf", "Gnome", "Halfling"), 9)
     with pytest.raises(LookupError):
         dosraces.read_table(blob + blob)

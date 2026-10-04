@@ -34,7 +34,7 @@ def test_each_block_lands_at_the_address_the_classifier_uses(named, vm):
     assert vm_address(named) == vm
 
 
-def test_an_address_below_the_array_is_refused():
+def test_an_address_below_the_array_is_blocked():
     with pytest.raises(ValueError):
         vm_address(0x48FF)
 

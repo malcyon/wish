@@ -105,7 +105,7 @@ def fields(save: bytes) -> dict:
 
 
 def parse_route(text: str) -> list[str]:
-    """`"U,SC,R,SD"` as a list of steps, refusing anything that would lie.
+    """`"U,SC,R,SD"` as a list of steps, blocking anything that would lie.
 
     Two things are rejected rather than run. A step that is neither a move
     nor `S<slot>` is a typo, and letting it through would walk a route that

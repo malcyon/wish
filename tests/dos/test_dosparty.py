@@ -66,6 +66,6 @@ def test_every_printable_non_alphanumeric_character_has_a_keysym(monkeypatch,
         assert key.isalpha() and key.isascii(), (ch, key)
 
 
-def test_a_character_with_no_keysym_is_refused(monkeypatch, tmp_path):
+def test_a_character_with_no_keysym_is_blocked(monkeypatch, tmp_path):
     with pytest.raises(ValueError):
         _typed("a\u00e9", monkeypatch, tmp_path)

@@ -173,7 +173,7 @@ def test_the_later_tail_is_written_zero_and_pool_of_radiances_is_not(container):
     assert pool[sg.VIEW_MODE_BYTE] == sg.VIEW_MODE_INDOORS
 
 
-def test_a_7424_byte_payload_is_refused_without_a_title():
+def test_a_7424_byte_payload_is_blocked_without_a_title():
     """Curse and Silver Blades are the same size on the C64 and different
     files on DOS, so guessing would build a save the wrong engine loads."""
     with pytest.raises(dos_codec.DosRecordError) as e:
@@ -263,7 +263,7 @@ def test_a_whole_save_from_nothing_is_the_titles_own_size_and_accounted(
         container, tmp_path):
     """`container_for` sizes the buffer -- 5469 for Silver Blades, 13149 for
     Curse -- and every byte has a source.  Before #299 the writer built
-    13137 bytes whatever it was handed, and refused a 7424-byte payload."""
+    13137 bytes whatever it was handed, and blocked a 7424-byte payload."""
     _game, _save0, report, savgam = _built(container, tmp_path)
     assert len(savgam) == container.size
     assert report.unwritten == []
@@ -335,7 +335,7 @@ def test_a_silver_blades_save_stages_no_script_and_names_the_dax(tmp_path):
 @pytest.mark.parametrize("container", LATER, ids=lambda s: s.key)
 def test_the_gate_can_fail_for_the_later_titles_too(container, tmp_path,
                                                     monkeypatch):
-    """With the zero account taken away `new_dos_save` refuses rather than
+    """With the zero account taken away `new_dos_save` blocks rather than
     handing back a file whose zeroes nobody stands behind."""
     game, save0, save1 = _payloads(container)
     # The codec rather than the `goldbox/dos_codec.py` shim: since `#470`'s

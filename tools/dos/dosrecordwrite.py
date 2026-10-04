@@ -25,7 +25,7 @@ Every byte that differs at the end is a byte one of the two conversions or the
 engine changed, and the report says which field it was in.
 
 Nothing here writes to the player's own directories: `from-c64` needs `--out`
-and refuses a directory that already holds a `CHRDAT` file unless `--force`.
+and blocks a directory that already holds a `CHRDAT` file unless `--force`.
 
 Examples
 --------

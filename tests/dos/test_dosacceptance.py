@@ -320,7 +320,7 @@ def test_a_key_that_changes_nothing_stops_the_run(tmp_path):
     assert game.rested == []
 
 
-def test_rest_and_save_refuse_before_camp(tmp_path):
+def test_rest_and_save_block_before_camp(tmp_path):
     d = da.Driver(FakePool(tmp_path), lambda **k: None, "A")
     with pytest.raises(da.StepFailed, match="camp first"):
         d.rest(5)
@@ -650,7 +650,7 @@ def test_a_next_that_opens_an_unknown_screen_presses_nothing_more(tmp_path,
     assert game.keys == ["m", "d", "n"] and game.mode == "wrong"
 
 
-def test_display_is_refused_in_pools_of_darkness_before_any_key(tmp_path, display_measured):
+def test_display_is_blocked_in_pools_of_darkness_before_any_key(tmp_path, display_measured):
     game, d = _display_camp(tmp_path, "curse", _CURSE_PARTY)
     d.title = da.TITLES["darkness"]
     with pytest.raises(da.StepFailed, match="curse, pool, ssb only"):
@@ -677,7 +677,7 @@ def test_a_cell_reads_heavy_glyphs_under_the_pointer_and_blank_when_only_pointer
         ["A", "B", "H", " ", " ", " "]
 
 
-def test_a_member_line_after_an_effect_starts_a_new_member_and_an_orphan_effect_is_refused():
+def test_a_member_line_after_an_effect_starts_a_new_member_and_an_orphan_effect_is_blocked():
     assert da.display_members(["", "A", " X", " Y", "", "B", " <NO MAGICAL EFFECTS>"]) == \
         [{"name": "A", "effects": ["X", "Y"]}, {"name": "B", "effects": []}]
     with pytest.raises(ValueError, match="before any name"):
@@ -888,12 +888,12 @@ class CastPool(FakePool):
                 # back: nothing was cast.
                 hide = self.pending if self.failure == "hidden_row" else None
                 if not self.message:
-                    if self.failure not in ("hidden_row", "refused", "garbled_after"):
+                    if self.failure not in ("hidden_row", "blocked", "garbled_after"):
                         del self.rows[next(i for i, r in enumerate(self.rows)
                                            if r == ("spell", self.pending))]
                     self.mode, self.hl = "list", self.last_spell()
                     if self.EMPTY_TO_MAGIC and (not self.spell_rows() or self.failure
-                                                in ("refused", "garbled_after")):
+                                                in ("blocked", "garbled_after")):
                         self.mode = "magic"
             if self.mode == "magic":
                 return self._magic_frame()
@@ -1133,7 +1133,7 @@ def test_pool_cast_settles_although_the_camp_fire_moves_in_the_list_region(
 def test_pool_cast_a_rejection_back_at_the_magic_bar_fails_on_the_reopened_list(
         tmp_path, _cast_measured, monkeypatch):
     monkeypatch.setattr(CastPool, "EMPTY_TO_MAGIC", True)
-    game, d = _cast_camp(tmp_path, rows=_cast_rows("BLESS"), failure="refused")
+    game, d = _cast_camp(tmp_path, rows=_cast_rows("BLESS"), failure="blocked")
     with pytest.raises(da.StepFailed, match="opened again still holds 1 BLESS"):
         d.cast(2, "BLESS")
     assert game.mode == "list" and game.keys[-1] == "c"
@@ -1152,7 +1152,7 @@ def test_pool_cast_an_unreadable_row_after_the_cast_is_never_counted_as_one_fewe
 
 
 @pytest.mark.usefixtures("pool_map_measured")
-def test_pool_cast_an_unreadable_row_on_the_reopened_list_is_refused(
+def test_pool_cast_an_unreadable_row_on_the_reopened_list_is_blocked(
         tmp_path, _cast_measured, monkeypatch):
     monkeypatch.setattr(CastPool, "EMPTY_TO_MAGIC", True)
     game, d = _cast_camp(tmp_path, rows=_cast_rows("BLESS"), failure="garbled_after")
@@ -1163,10 +1163,10 @@ def test_pool_cast_an_unreadable_row_on_the_reopened_list_is_refused(
 
 
 @pytest.mark.usefixtures("pool_map_measured")
-def test_pool_cast_a_reopened_list_under_another_title_is_refused(
+def test_pool_cast_a_reopened_list_under_another_title_is_blocked(
         tmp_path, _cast_measured, monkeypatch):
     monkeypatch.setattr(CastPool, "EMPTY_TO_MAGIC", True)
-    game, d = _cast_camp(tmp_path, rows=_cast_rows("BLESS"), failure="refused")
+    game, d = _cast_camp(tmp_path, rows=_cast_rows("BLESS"), failure="blocked")
     real = game._list_frame
 
     def other_title(highlight, hide=None):
@@ -1199,7 +1199,7 @@ def test_pool_cast_a_reopen_that_opens_no_list_stops_there(
 def test_pool_cast_with_rows_left_is_never_believed_through_the_magic_bar(
         tmp_path, _cast_measured, monkeypatch):
     monkeypatch.setattr(CastPool, "EMPTY_TO_MAGIC", True)
-    game, d = _cast_camp(tmp_path, rows=_cast_rows("BLESS", "BLESS"), failure="refused")
+    game, d = _cast_camp(tmp_path, rows=_cast_rows("BLESS", "BLESS"), failure="blocked")
     with pytest.raises(da.StepFailed, match="never came back one BLESS shorter"):
         d.cast(2, "BLESS")
 
@@ -1299,7 +1299,7 @@ def test_the_cast_step_parses_and_is_taken_in_camp_in_curse_and_silver_blades(ti
         da.validate_steps(_steps("load", "begin", "cast 6 STRENGTH 2"), title)
 
 
-def test_the_cast_step_is_refused_in_pools_of_darkness():
+def test_the_cast_step_is_blocked_in_pools_of_darkness():
     with pytest.raises(ValueError, match="cast is driven in curse, pool, ssb only"):
         da.validate_steps(_steps("load", "begin", "camp", "cast 6 STRENGTH 2"),
                           "darkness")
@@ -1485,7 +1485,7 @@ def test_pool_cast_animate_dead_step_parses_and_save_and_read_may_follow():
 
 
 @pytest.mark.usefixtures("pool_map_measured")
-def test_pool_cast_a_target_line_outside_the_party_is_refused_before_any_key(
+def test_pool_cast_a_target_line_outside_the_party_is_blocked_before_any_key(
         tmp_path, _cast_measured):
     game, d = _cast_camp(tmp_path)
     with pytest.raises(da.StepFailed, match="target line 8 is not in a party of 6"):
@@ -1512,7 +1512,7 @@ def test_pool_cast_never_answers_lose_it(tmp_path, _cast_measured):
     assert game.mode == "lose" and game.keys[-1] == "c"
 
 
-def test_pool_cast_steps_parse_and_a_bad_one_is_refused():
+def test_pool_cast_steps_parse_and_a_bad_one_is_blocked():
     step = da.parse_step("cast 2 bless")
     assert (step.kind, step.line, step.name, step.row) == ("cast", 2, "BLESS", 0)
     step = da.parse_step("cast 2 CURE-LIGHT-WOUNDS 5")
@@ -1866,7 +1866,7 @@ def test_durations(text, minutes):
 
 
 @pytest.mark.parametrize("text", ["", "5", "m", "5s", "h5"])
-def test_a_duration_that_is_not_one_is_refused(text):
+def test_a_duration_that_is_not_one_is_blocked(text):
     with pytest.raises(ValueError):
         da.parse_duration(text)
 
@@ -1880,7 +1880,7 @@ def test_rest_presses_split_the_time_the_way_the_menu_holds_it():
             da.rest_presses(bad)
 
 
-def test_steps_parse_and_a_bad_one_is_refused():
+def test_steps_parse_and_a_bad_one_is_blocked():
     assert da.parse_step("save d").letter == "D"
     assert da.parse_step("rest 5m").minutes == 5
     assert da.parse_step("rest 8d").minutes == 8 * 1440
@@ -1896,7 +1896,7 @@ def test_steps_parse_and_a_bad_one_is_refused():
             da.parse_step(bad)
 
 
-def test_the_command_line_refuses_a_bad_step_before_any_boot():
+def test_the_command_line_blocks_a_bad_step_before_any_boot():
     with pytest.raises(SystemExit):
         da.main(["--save", ".", "--steps", "load", "rest 3m"])
 
@@ -2107,7 +2107,7 @@ def test_a_failed_close_still_releases_the_slot_and_the_log(monkeypatch, tmp_pat
     assert (tmp_path / "out" / "summary.json").is_file()
 
 
-def test_a_bad_step_order_is_refused_before_a_slot_is_claimed(monkeypatch, tmp_path, capsys):
+def test_a_bad_step_order_is_blocked_before_a_slot_is_claimed(monkeypatch, tmp_path, capsys):
     log = _fake_run(monkeypatch, tmp_path)
     with pytest.raises(SystemExit):
         da.main(["--save", str(tmp_path), "--steps", "load", "rest 5m"])
@@ -2770,7 +2770,7 @@ def test_a_folder_of_two_slots_needs_the_one_named(tmp_path):
     assert took["from_slot"] == "B"
 
 
-def test_install_refuses_a_letter_the_container_does_not_name(tmp_path):
+def test_install_blocks_a_letter_the_container_does_not_name(tmp_path):
     """The engine loads by the saved game's own file list, so a slot renamed
     from J to A loaded no party in the Curse boot that tried it."""
     save, dest = tmp_path / "staged", tmp_path / "play"
@@ -2784,7 +2784,7 @@ def test_install_refuses_a_letter_the_container_does_not_name(tmp_path):
     assert [p.name for p in dest.iterdir()] == ["KEEP.ME"]
 
 
-def test_a_run_asked_for_another_letter_is_refused_before_a_slot_is_claimed(
+def test_a_run_asked_for_another_letter_is_blocked_before_a_slot_is_claimed(
         tmp_path, monkeypatch, capsys):
     save = tmp_path / "staged"
     save.mkdir()
@@ -2833,7 +2833,7 @@ def test_the_stages_write_what_they_log(tmp_path):
 
 @pytest.mark.parametrize("bad", ["0=1:2:3:4", "1=1:2:3", "1=256:0:0:0",
                                  "1=1:65536:0:0", "x"])
-def test_a_bad_node_is_refused(bad):
+def test_a_bad_node_is_blocked(bad):
     with pytest.raises(ValueError):
         da.parse_node(bad)
 
@@ -2845,7 +2845,7 @@ def test_a_stage_control_line_parses_control_alone_or_with_share():
 
 
 @pytest.mark.parametrize("bad", ["0=1", "1=1:2:3", "1=256", "1=1:256", "x"])
-def test_a_bad_stage_control_line_is_refused(bad):
+def test_a_bad_stage_control_line_is_blocked(bad):
     with pytest.raises(ValueError):
         da.parse_control(bad)
 
@@ -3130,7 +3130,7 @@ def test_the_command_line_wires_stage_control_into_staging(tmp_path):
     assert (control_raw[1], control_raw[2]) == (0xB1, 1)
 
 
-def test_check_staging_refuses_a_stage_control_line_with_no_chrdat(tmp_path):
+def test_check_staging_blocks_a_stage_control_line_with_no_chrdat(tmp_path):
     args = _run_args(tmp_path, [])
     args.stage_control = ["1=0xB1:1"]
     with pytest.raises(ValueError, match="line 1"):
@@ -3343,9 +3343,9 @@ def test_curse_trains_the_line_asked_for_and_learns_its_spell(tmp_path):
     assert game.trained == [3, 2] and game.keys.count("End") == 2 + 5
 
 
-def test_a_school_that_refuses_stops_the_run(tmp_path):
+def test_a_school_that_blocks_stops_the_run(tmp_path):
     game, d = _curse_loaded(tmp_path, trainable=())
-    with pytest.raises(da.StepFailed, match="train-refused"):
+    with pytest.raises(da.StepFailed, match="train-blocked"):
         d.train(1)
     assert game.trained == []
 
@@ -3465,7 +3465,7 @@ def test_a_later_title_party_converts_with_its_bless_and_reads_back(
 def test_main_calls_build_saveas_source_with_the_convert_path_slot_and_title(
         tmp_path, monkeypatch):
     """`--convert PATH` calls `build_saveas_source(PATH, "A", out, title)`,
-    and a refused result stops the run with `summary["lost"]` set."""
+    and a blocked result stops the run with `summary["lost"]` set."""
     calls = []
 
     def fake(path, slot, out, title, names=None):
@@ -3486,7 +3486,7 @@ def test_convert_and_save_are_mutually_exclusive():
         da.main(["--title", "curse", "--convert", "X", "--save", "."])
 
 
-def test_convert_refuses_darkness():
+def test_convert_blocks_darkness():
     with pytest.raises(SystemExit):
         da.main(["--title", "darkness", "--convert", "X"])
 
@@ -3504,7 +3504,7 @@ def test_name_options_parse_into_positions():
     (["0=Wren", "0=Bran"], "position 0 twice"),
     (["1=" + "W" * 16], "over the 15"),
     (["--name=1=" + "W" * 16], "over the 15")])
-def test_a_bad_name_option_is_refused_before_any_boot(
+def test_a_bad_name_option_is_blocked_before_any_boot(
         names, message, tmp_path, monkeypatch, capsys):
     def boom(*a, **k):
         raise AssertionError("reached the conversion")
@@ -3545,9 +3545,9 @@ def test_main_hands_the_chosen_names_to_the_conversion(tmp_path, monkeypatch):
     assert calls == [{0: "Wren", 2: "Bran"}]
 
 
-def test_save_as_dos_passes_names_and_refuses_cleanly(tmp_path, monkeypatch):
+def test_save_as_dos_passes_names_and_blocks_cleanly(tmp_path, monkeypatch):
     """A fake `prepare_save_as` records `names`; an out-of-party position and a
-    name still too long are `refused` reports, and any other SaveAsError
+    name still too long are `blocked` reports, and any other SaveAsError
     still raises."""
     from types import SimpleNamespace
 
@@ -3583,9 +3583,9 @@ def test_save_as_dos_passes_names_and_refuses_cleanly(tmp_path, monkeypatch):
         da._save_as_dos(party, tmp_path, "pool", {}, {0: "Wren"})
 
 
-def test_build_saveas_source_refuses_a_title_mismatch(tmp_path):
+def test_build_saveas_source_blocks_a_title_mismatch(tmp_path):
     """A Pool of Radiance disk built the way `build_source`'s fallback builds
-    one, offered to `--convert` for curse, is refused rather than converted."""
+    one, offered to `--convert` for curse, is blocked rather than converted."""
     from goldbox import dos_codec
     from goldbox.c64_port import POOL_OF_RADIANCE
     from goldbox.savegame import SaveGame0, SaveGame1
@@ -3765,23 +3765,23 @@ def test_encamp_is_never_pressed_at_the_party_menu(tmp_path):
 # -- review findings: rejections before a slot is claimed, and the log handle -----------
 
 
-def test_hall_is_refused_for_a_title_whose_hall_word_is_not_documented(capsys):
+def test_hall_is_blocked_for_a_title_whose_hall_word_is_not_documented(capsys):
     with pytest.raises(SystemExit):
         da.main(["--title", "darkness", "--save", ".", "--hall", "--steps", "load"])
     assert "--hall" in capsys.readouterr().err
 
 
-def test_hall_refuses_a_save_too_short_to_hold_the_word(tmp_path):
+def test_hall_blocks_a_save_too_short_to_hold_the_word(tmp_path):
     (tmp_path / "SAVGAMA.DAT").write_bytes(bytes(0x100))
     with pytest.raises(ValueError, match="too short"):
         staging.stage_hall(tmp_path, "A")
     assert (tmp_path / "SAVGAMA.DAT").stat().st_size == 0x100
 
 
-def test_hall_is_no_longer_refused_for_ssb(tmp_path):
+def test_hall_is_no_longer_blocked_for_ssb(tmp_path):
     """Silver Blades' hall word is now measured at the same offset as Pool's
     and Curse's (`docs/194-the-dos-training-ladder.md`), so `--hall` staging
-    is no longer refused for it before a slot is claimed."""
+    is no longer blocked for it before a slot is claimed."""
     import argparse
     (tmp_path / "SAVGAMA.DAT").write_bytes(bytes(staging.HALL_WORD + 2))
     args = argparse.Namespace(title="ssb", hall=True, xp=[], add_node=[], stage_control=[])
@@ -3802,7 +3802,7 @@ def _staged_run(monkeypatch, tmp_path, **extra):
 
 
 @pytest.mark.parametrize("extra", [{"xp": ["3=100"]}, {"add_node": ["3=1:2:3:4"]}])
-def test_a_line_with_no_record_is_refused_before_a_slot_is_claimed(
+def test_a_line_with_no_record_is_blocked_before_a_slot_is_claimed(
         monkeypatch, tmp_path, extra):
     log, args = _staged_run(monkeypatch, tmp_path, **extra)
     with pytest.raises(ValueError, match="CHRDATA3.SAV"):
@@ -3810,7 +3810,7 @@ def test_a_line_with_no_record_is_refused_before_a_slot_is_claimed(
     assert "claim" not in log
 
 
-def test_a_short_save_is_refused_for_hall_before_a_slot_is_claimed(monkeypatch, tmp_path):
+def test_a_short_save_is_blocked_for_hall_before_a_slot_is_claimed(monkeypatch, tmp_path):
     log, args = _staged_run(monkeypatch, tmp_path, hall=True)
     (tmp_path / "saves" / "SAVGAMA.DAT").write_bytes(bytes(0x100))
     with pytest.raises(ValueError, match="too short"):
@@ -3819,7 +3819,7 @@ def test_a_short_save_is_refused_for_hall_before_a_slot_is_claimed(monkeypatch, 
 
 
 @pytest.mark.parametrize("key", ["e", "E", "Escape", "escape"])
-def test_press_refuses_exit_to_dos_and_escape(key):
+def test_press_blocks_exit_to_dos_and_escape(key):
     with pytest.raises(ValueError):
         da.parse_step(f"press {key}")
 
@@ -4029,7 +4029,7 @@ def test_a_loss_only_the_debug_log_hears_of_is_listed_among_the_warnings(
         "wish.goldbox.dos_codec: spells_known: id 126 is outside the book"]
 
 
-def test_a_slot_the_disk_does_not_hold_is_refused_before_anything_is_written(
+def test_a_slot_the_disk_does_not_hold_is_blocked_before_anything_is_written(
         tmp_path):
     out = tmp_path / "out"
     out.mkdir()
@@ -4041,7 +4041,7 @@ def test_a_slot_the_disk_does_not_hold_is_refused_before_anything_is_written(
 def test_a_pools_of_darkness_slot_installs_its_container_vault_and_records(
         pod_source, tmp_path):
     """`SAVGAMA.PTY`, `VAULTA.DAT` and every `CHRDATA*`, which is what
-    `new_pod_save_from` writes.  Before this title, `source_slot` refused the
+    `new_pod_save_from` writes.  Before this title, `source_slot` blocked the
     folder: it holds 0 SAVGAM?.DAT files."""
     out, _ = pod_source
     dest = tmp_path / "play"
@@ -4115,7 +4115,7 @@ def test_orders_pools_of_darkness_does_not_allow(title, steps, why):
         da.validate_steps(_steps(*steps), title)
 
 
-def test_the_new_steps_parse_and_bad_ones_are_refused():
+def test_the_new_steps_parse_and_bad_ones_are_blocked():
     assert da.parse_step("sheet 4").line == 4
     assert (da.parse_step("items 8").kind, da.parse_step("items 8").line) == ("items", 8)
     assert da.parse_step("walk 1").key == "1"
@@ -4137,7 +4137,7 @@ def test_the_new_steps_parse_and_bad_ones_are_refused():
     (["--title", "darkness", "--amiga-slot", "K", "--amiga-disk", "x.adf"],
      "not an Amiga"),
 ])
-def test_the_command_line_refuses_a_bad_source_before_any_boot(argv, why, capsys):
+def test_the_command_line_blocks_a_bad_source_before_any_boot(argv, why, capsys):
     with pytest.raises(SystemExit):
         da.main(argv)
     assert why in capsys.readouterr().err
@@ -4752,7 +4752,7 @@ def test_two_lines_showing_one_sheet_frame_stop_the_run(tmp_path, monkeypatch):
         d.sheet(5)
 
 
-def test_a_line_past_the_party_is_refused_before_a_key(tmp_path):
+def test_a_line_past_the_party_is_blocked_before_a_key(tmp_path):
     game, d = _camped_pod(tmp_path, size=4)
     with pytest.raises(da.StepFailed, match="not in a party of 4"):
         d.sheet(5)
@@ -4833,12 +4833,12 @@ def test_orders_with_view_allowed(steps):
     # Pool's load puts the party on the map; its party menu is `add`'s.
     ("pool", ("load", "view 1"), "view needs the party menu"),
 ])
-def test_orders_with_view_refused(title, steps, why):
+def test_orders_with_view_blocked(title, steps, why):
     with pytest.raises(ValueError, match=why):
         da.validate_steps(_steps(*steps), title)
 
 
-def test_view_parses_and_a_bad_line_is_refused():
+def test_view_parses_and_a_bad_line_is_blocked():
     assert (da.parse_step("view 3").kind, da.parse_step("view 3").line) == ("view", 3)
     for bad in ("view", "view 0", "view 9", "view x"):
         with pytest.raises(ValueError):
@@ -4971,7 +4971,7 @@ def test_pick_item_reads_the_highlight_after_every_press(tmp_path, monkeypatch):
     assert len(reads) >= 1 + 3
 
 
-def test_a_row_past_the_list_is_refused_before_a_key(tmp_path):
+def test_a_row_past_the_list_is_blocked_before_a_key(tmp_path):
     game, d = _itemed(tmp_path)
     d.open_sheet(1)
     game.key("i")
@@ -5011,7 +5011,7 @@ def test_halve_that_moves_the_highlight_stops_the_run(tmp_path, monkeypatch):
         d.halve(1, 1)
 
 
-def test_halve_on_a_full_list_is_refused_before_h(tmp_path):
+def test_halve_on_a_full_list_is_blocked_before_h(tmp_path):
     game, d = _itemed(tmp_path)
     game.keys.clear()
     with pytest.raises(da.StepFailed, match="already draws 18 rows.*not measured"):
@@ -5020,7 +5020,7 @@ def test_halve_on_a_full_list_is_refused_before_h(tmp_path):
     assert game.mode == "items"
 
 
-def test_pick_item_refuses_a_highlight_already_past_the_row(tmp_path):
+def test_pick_item_blocks_a_highlight_already_past_the_row(tmp_path):
     game, d = _itemed(tmp_path)
     d.open_sheet(1)
     game.key("i")
@@ -5266,7 +5266,7 @@ def _magic_driver(tmp_path, **kw):
     return game, d
 
 
-def test_memorize_parses_and_a_bad_line_is_refused():
+def test_memorize_parses_and_a_bad_line_is_blocked():
     got = da.parse_step("memorize 5")
     assert (got.kind, got.line) == ("memorize", 5)
     for bad in ("memorize", "memorize 0", "memorize 9", "memorize x", "memorize 1 2"):
@@ -5285,7 +5285,7 @@ def test_memorize_is_allowed_in_camp_before_and_after_a_save():
     ("curse", ("load", "begin", "camp", "memorize 1"), "darkness only"),
     ("pool", ("load", "camp", "memorize 1"), "darkness only"),
 ])
-def test_memorize_is_refused_where_the_driver_cannot_reach_it(title, steps, why):
+def test_memorize_is_blocked_where_the_driver_cannot_reach_it(title, steps, why):
     with pytest.raises(ValueError, match=why):
         da.validate_steps(_steps(*steps), title)
 
@@ -5623,7 +5623,7 @@ def describe_result(installed, slot):
 
 def test_the_run_boots_start_bat_from_the_title_own_directory(monkeypatch, pod_source):
     """`dospod.find_game`, not the `START.EXE` search, and `START.BAT` as
-    the launcher; a container of the wrong title is refused before a claim."""
+    the launcher; a container of the wrong title is blocked before a claim."""
     out, _ = pod_source
     tmp_path = out.parent
     log = _fake_run(monkeypatch, tmp_path, menu_error=TimeoutError("stopped here"))
@@ -6399,7 +6399,7 @@ def test_an_interrupt_or_exit_is_recorded_as_lost_and_still_raised(
     assert got["completed"] is False and type(error).__name__ in got["lost"]
 
 
-def test_a_cleanup_window_the_wrappers_margin_cannot_hold_is_refused():
+def test_a_cleanup_window_the_wrappers_margin_cannot_hold_is_blocked():
     da.Deadline(_Clock(), 900.0)
     with pytest.raises(ValueError, match="wrapper"):
         da.Deadline(_Clock(), 900.0, cleanup=da.WRAPPER_MARGIN)
@@ -6787,7 +6787,7 @@ def test_the_command_prints_help(command):
 
 
 @pytest.mark.parametrize("command", ENTRY_POINTS)
-def test_the_command_refuses_a_slot_that_is_not_a_letter(command, tmp_path):
+def test_the_command_blocks_a_slot_that_is_not_a_letter(command, tmp_path):
     done = _cli(*command, "--save", tmp_path, "--slot", "K")
     assert done.returncode == 2
     assert "--slot is one letter, A to J" in done.stderr
@@ -7235,7 +7235,7 @@ def test_a_list_longer_than_the_engines_test_stops_before_select(tmp_path):
     assert game.changed == [] and "s" not in game.keys[2:]
 
 
-def test_a_class_the_engine_does_not_offer_is_refused_before_a_key(tmp_path):
+def test_a_class_the_engine_does_not_offer_is_blocked_before_a_key(tmp_path):
     game, d = _changing(tmp_path, _change_record())
     with pytest.raises(da.StepFailed, match="may not change to CLERIC"):
         d.change(2, "CLERIC")
@@ -7316,7 +7316,7 @@ def test_a_curse_rest_that_ends_in_camp_is_not_a_message(tmp_path, monkeypatch):
 # -- the new steps' words and orders --------------------------------------------------
 
 
-def test_heal_cure_and_change_parse_and_bad_ones_are_refused():
+def test_heal_cure_and_change_parse_and_bad_ones_are_blocked():
     assert (da.parse_step("heal 2").kind, da.parse_step("heal 2").line) == ("heal", 2)
     assert (da.parse_step("cure 8").kind, da.parse_step("cure 8").line) == ("cure", 8)
     step = da.parse_step("change 2 magic-user")
@@ -7349,7 +7349,7 @@ def test_orders_the_camp_sheet_steps_allow(title, steps):
     ("curse", ("load", "begin", "change 1 FIGHTER"), "change needs the party menu"),
     ("ssb", ("load", "change 1 FIGHTER"), "change is driven in curse only"),
 ])
-def test_orders_the_camp_sheet_steps_refuse(title, steps, why):
+def test_orders_the_camp_sheet_steps_block(title, steps, why):
     with pytest.raises(ValueError, match=why):
         da.validate_steps(_steps(*steps), title)
 
@@ -7506,7 +7506,7 @@ def test_pool_items_reports_no_marked_row_on_an_unmarked_list(tmp_path, monkeypa
 
 
 @pytest.mark.usefixtures("pool_map_measured")
-def test_pool_items_refuses_a_sheet_with_no_items_before_pressing_i(tmp_path, monkeypatch):
+def test_pool_items_blocks_a_sheet_with_no_items_before_pressing_i(tmp_path, monkeypatch):
     game, d = _pool_items(tmp_path, monkeypatch, sheet="no_items")
     with pytest.raises(da.StepFailed, match="offers no ITEMS"):
         d.items(1)
@@ -7582,7 +7582,7 @@ def test_a_stage_record_line_parses_hex_and_decimal_and_lists():
 
 @pytest.mark.parametrize("bad", ["1:0x10C", "1=3", "0:5=1", "9:5=1", "1:5=256",
                                  "1:-1=1", "1:5=", "x:5=1"])
-def test_a_bad_stage_record_line_is_refused(bad):
+def test_a_bad_stage_record_line_is_blocked(bad):
     with pytest.raises(ValueError):
         da.parse_record_bytes([bad])
 
@@ -7599,7 +7599,7 @@ def test_stage_record_changes_exactly_the_named_byte(tmp_path):
                    "offset": "0x10c", "before": "00", "after": "06"}
 
 
-def test_stage_record_refuses_an_offset_past_the_record(tmp_path):
+def test_stage_record_blocks_an_offset_past_the_record(tmp_path):
     original = _pool_record()
     (tmp_path / "CHRDATD1.SAV").write_bytes(original)
     with pytest.raises(ValueError, match="outside"):
@@ -7618,7 +7618,7 @@ def test_the_command_line_wires_stage_record_after_stage_control(tmp_path):
     assert (data[0x10C], data[0x9F]) == (1, 4)
 
 
-def test_check_staging_refuses_a_stage_record_before_the_boot(tmp_path):
+def test_check_staging_blocks_a_stage_record_before_the_boot(tmp_path):
     args = _run_args(tmp_path, [])
     args.stage_record = ["1:0x10C=1"]
     with pytest.raises(ValueError, match="line 1"):
@@ -7643,7 +7643,7 @@ def test_read_slot_reports_the_status_bytes_and_the_turning_readings(tmp_path):
 
 @pytest.mark.parametrize("bad", ["1:010=1", "1:0x10=01", "1:1_0=1", "1:+5=1",
                                  "1:0b11=1", "1:0o7=1", "1:0xZZ=1", "1:5=1.5"])
-def test_a_record_number_that_is_not_plain_decimal_or_hex_is_refused_by_item(bad):
+def test_a_record_number_that_is_not_plain_decimal_or_hex_is_blocked_by_item(bad):
     with pytest.raises(ValueError) as e:
         da.parse_record_bytes(["1:2=3", bad])
     assert repr(bad) in str(e.value)
@@ -7678,7 +7678,7 @@ def test_a_stage_record_names_a_lowercase_source_file_and_any_slot_letter(tmp_pa
 
 @pytest.mark.parametrize("option, bad", [("--stage-record", "1:010=1"),
                                          ("--stage-control", "1=0xZZ")])
-def test_main_refuses_a_bad_stage_value_before_anything_is_built(
+def test_main_blocks_a_bad_stage_value_before_anything_is_built(
         tmp_path, monkeypatch, capsys, option, bad):
     def claimed(*a, **k):
         raise AssertionError("an emulator slot was claimed")
@@ -7762,7 +7762,7 @@ def test_the_first_bar_key_is_space_or_one_letter_or_digit():
     (["--first-bar-key", "SPACE"], "add a fight step"),
     (["--first-bar-key", "QQ"], "SPACE or one letter"),
 ])
-def test_main_refuses_a_first_bar_key_it_cannot_press(tmp_path, monkeypatch, capsys,
+def test_main_blocks_a_first_bar_key_it_cannot_press(tmp_path, monkeypatch, capsys,
                                                       extra, error):
     def claimed(*a, **k):
         raise AssertionError("an emulator slot was claimed")
@@ -7871,7 +7871,7 @@ def test_the_combat_window_reads_every_combatant_and_who_is_selected():
         == ("ORC", 1, 1, 0xB2, 8)
 
 
-def test_a_window_that_is_not_a_fight_is_refused():
+def test_a_window_that_is_not_a_fight_is_blocked():
     lo, n = da.combat_window(_ssb())
     with pytest.raises(da.CombatUnread, match="count is 0"):
         da.read_combat(bytes(n), lo, _ssb())
@@ -8386,7 +8386,7 @@ def test_a_quick_the_game_did_not_take_is_pressed_again_and_logged_once(
     assert game.keys == ["m", "Up", "Up", "c", "q", "q", "q", "e", "n"]
 
 
-def test_y_is_refused_as_the_first_bar_key():
+def test_y_is_blocked_as_the_first_bar_key():
     for key in ("y", "Y"):
         with pytest.raises(ValueError, match="YES"):
             da.parse_key(key)
@@ -8486,7 +8486,7 @@ def test_stage_var_on_the_specimen_touches_only_the_gate_word(tmp_path):
 
 @pytest.mark.parametrize("bad", ["4C2D", "4C2D=", "=1", "zz=1", "4C2D=0x10000",
                                  "4C2D=01", "4C2D=-1", "12345=1"])
-def test_a_bad_stage_var_line_is_refused(bad):
+def test_a_bad_stage_var_line_is_blocked(bad):
     with pytest.raises(ValueError):
         da.parse_var(bad)
 
@@ -8497,7 +8497,7 @@ def test_a_stage_var_line_parses_hex_addresses_and_values():
     assert da.parse_var("0x4C2D=65535") == (0x4C2D, 65535)
 
 
-def test_stage_var_refuses_an_address_outside_the_array_and_a_bad_value(tmp_path):
+def test_stage_var_blocks_an_address_outside_the_array_and_a_bad_value(tmp_path):
     from goldbox import dos_savegame
     _synthetic_ssb_save(tmp_path)
     with pytest.raises(dos_savegame.DosSaveError):
@@ -8507,7 +8507,7 @@ def test_stage_var_refuses_an_address_outside_the_array_and_a_bad_value(tmp_path
     assert (tmp_path / "SAVGAMD.DAT").read_bytes() == bytes(5469)
 
 
-def test_stage_var_refuses_pools_of_darkness_before_a_slot_is_claimed(
+def test_stage_var_blocks_pools_of_darkness_before_a_slot_is_claimed(
         monkeypatch, tmp_path):
     log, args = _staged_run(monkeypatch, tmp_path, stage_var=["4C2D=1"])
     saves = tmp_path / "saves"
@@ -8531,7 +8531,7 @@ def test_the_command_line_wires_stage_var_after_stage_record(tmp_path):
     assert (tmp_path / "SAVGAMD.DAT").read_bytes()[0x25B] == 1
 
 
-def test_main_refuses_a_bad_stage_var_before_a_slot_is_claimed(tmp_path, monkeypatch, capsys):
+def test_main_blocks_a_bad_stage_var_before_a_slot_is_claimed(tmp_path, monkeypatch, capsys):
     def claimed(*a, **k):
         raise AssertionError("an emulator slot was claimed")
 
@@ -8571,14 +8571,14 @@ def test_stage_place_changes_exactly_the_square_and_facing(tmp_path):
 
 
 @pytest.mark.parametrize("place", [(16, 14, 0), (6, 16, 0), (6, 14, 4), (-1, 14, 0)])
-def test_stage_place_refuses_a_square_or_facing_out_of_range(tmp_path, place):
+def test_stage_place_blocks_a_square_or_facing_out_of_range(tmp_path, place):
     source = _synthetic_curse_save(tmp_path)
     with pytest.raises(ValueError, match="0 to 15"):
         staging.stage_place(tmp_path, "C", *place)
     assert (tmp_path / "SAVGAMC.DAT").read_bytes() == source
 
 
-def test_stage_place_refuses_an_outdoor_save(tmp_path):
+def test_stage_place_blocks_an_outdoor_save(tmp_path):
     source = _synthetic_curse_save(tmp_path, indoors=False)
     with pytest.raises(ValueError, match="outdoors"):
         staging.stage_place(tmp_path, "C", 6, 14, 0)
@@ -8587,7 +8587,7 @@ def test_stage_place_refuses_an_outdoor_save(tmp_path):
 
 @pytest.mark.parametrize("bad", ["6,14", "6,14,0,1", "6;14;0", "a,14,0", "6,14,4",
                                  "16,14,0", "6,14,-1", "6,014,0", ""])
-def test_a_bad_stage_place_is_refused(bad):
+def test_a_bad_stage_place_is_blocked(bad):
     with pytest.raises(ValueError):
         da.parse_place(bad)
 
@@ -8608,7 +8608,7 @@ def test_the_command_line_stages_the_place_after_the_var_stages(tmp_path):
     assert done[0]["after"] == [6, 14, 0]
 
 
-def test_main_refuses_a_bad_stage_place_before_a_slot_is_claimed(tmp_path, monkeypatch, capsys):
+def test_main_blocks_a_bad_stage_place_before_a_slot_is_claimed(tmp_path, monkeypatch, capsys):
     def claimed(*a, **k):
         raise AssertionError("an emulator slot was claimed")
 
@@ -8619,7 +8619,7 @@ def test_main_refuses_a_bad_stage_place_before_a_slot_is_claimed(tmp_path, monke
     assert "6,14" in capsys.readouterr().err
 
 
-def test_stage_place_refuses_pools_of_darkness_before_a_slot_is_claimed(
+def test_stage_place_blocks_pools_of_darkness_before_a_slot_is_claimed(
         monkeypatch, tmp_path):
     log, args = _staged_run(monkeypatch, tmp_path, stage_place="6,14,0")
     saves = tmp_path / "saves"
@@ -8635,7 +8635,7 @@ def test_stage_place_refuses_pools_of_darkness_before_a_slot_is_claimed(
 
 @pytest.mark.parametrize("size, match", [(13149, "outdoors"),
                                             (1234, "known saved-game size")])
-def test_stage_place_refuses_an_outdoor_or_unknown_save_before_a_slot_is_claimed(
+def test_stage_place_blocks_an_outdoor_or_unknown_save_before_a_slot_is_claimed(
         monkeypatch, tmp_path, size, match):
     log, args = _staged_run(monkeypatch, tmp_path, stage_place="6,14,0")
     (tmp_path / "saves" / "SAVGAMA.DAT").write_bytes(bytes(size))
@@ -8646,7 +8646,7 @@ def test_stage_place_refuses_an_outdoor_or_unknown_save_before_a_slot_is_claimed
     assert "claim" not in log
 
 
-def test_a_silver_blades_fight_in_area_16_is_refused_without_the_gate(
+def test_a_silver_blades_fight_in_area_16_is_blocked_without_the_gate(
         monkeypatch, tmp_path):
     from goldbox import dos_savegame
     save = _ssb_copy(tmp_path)
@@ -8774,14 +8774,14 @@ def test_inconclusive_watch_names_only_the_watches_that_say_so():
 
 def test_the_prayer_watch_needs_its_title_the_map_and_the_debugger(tmp_path, monkeypatch):
     game, d = _fighter(tmp_path)
-    with pytest.raises(da.StepFailed) as refused:
+    with pytest.raises(da.StepFailed) as blocked:
         d.prayer_watch(35)
-    assert str(refused.value) == ("prayer-watch 35 is driven in pool only: id 35 is "
+    assert str(blocked.value) == ("prayer-watch 35 is driven in pool only: id 35 is "
                                   "Prayer's +1 half there, and a ssb Prayer is id 49")
     d.title = da.TITLES["darkness"]
-    with pytest.raises(da.StepFailed) as refused:
+    with pytest.raises(da.StepFailed) as blocked:
         d.prayer_watch(49)
-    assert str(refused.value) == ("prayer-watch is driven in curse, pool, ssb only, "
+    assert str(blocked.value) == ("prayer-watch is driven in curse, pool, ssb only, "
                                   f"not {d.title.key}")
     d.title = da.TITLES["pool"]
     d.where = "camp"
@@ -8929,7 +8929,7 @@ def test_a_later_prayer_watch_fails_when_no_fight_comes_in_its_budget(
     assert _LaterWatch.made[0]["watch"].calls == []
 
 
-def test_a_silver_blades_prayer_watch_in_area_16_is_refused_without_the_gate(
+def test_a_silver_blades_prayer_watch_in_area_16_is_blocked_without_the_gate(
         monkeypatch, tmp_path):
     save = _ssb_copy(tmp_path)
     _fake_run(monkeypatch, tmp_path)
@@ -8992,7 +8992,7 @@ def test_a_command_bar_after_intervene_stops_the_run(tmp_path, fight_now):
     (["fight"], "curse", "ssb only"),
     (["fight"], "darkness", "ssb only"),
 ])
-def test_main_refuses_intervene_it_cannot_use(tmp_path, monkeypatch, capsys,
+def test_main_blocks_intervene_it_cannot_use(tmp_path, monkeypatch, capsys,
                                               extra, title, error):
     def claimed(*a, **k):
         raise AssertionError("an emulator slot was claimed")
@@ -9201,7 +9201,7 @@ def test_an_npc_header_does_not_excuse_another_name_or_another_header(
 
 def test_the_captured_npc_sheet_is_the_rangers_with_its_header():
     """#667's `1bf7cf2dad-l51-subject`: roster line 5, the Ranger staged with
-    control 0xB3, drew `(NPC)` after his name, and the name check refused it."""
+    control 0xB3, drew `(NPC)` after his name, and the name check blocked it."""
     try:
         game = da.TITLES["curse"].find_game()
     except (FileNotFoundError, OSError):
@@ -9399,7 +9399,7 @@ def test_a_stage_side_line_parses_the_side_alone_or_with_quickfight():
 
 @pytest.mark.parametrize("bad", ["0=1", "9=1", "5=256", "5=1:256", "5", "5=1:2:3",
                                  "5=", "x"])
-def test_a_bad_stage_side_line_is_refused(bad):
+def test_a_bad_stage_side_line_is_blocked(bad):
     with pytest.raises(ValueError):
         da.parse_side(bad)
 
@@ -9447,14 +9447,14 @@ def test_the_command_line_stages_the_side_after_control_and_before_record(tmp_pa
     assert (tmp_path / "CHRDATJ5.SAV").read_bytes()[0x197:0x199] == b"\x01\x01"
 
 
-def test_check_staging_refuses_a_stage_side_line_with_no_chrdat(tmp_path):
+def test_check_staging_blocks_a_stage_side_line_with_no_chrdat(tmp_path):
     args = _run_args(tmp_path, [])
     args.stage_side = ["3=1"]
     with pytest.raises(ValueError, match="line 3"):
         da.check_staging(args, tmp_path, "J")
 
 
-def test_main_refuses_a_bad_stage_side_before_any_slot(tmp_path, monkeypatch, capsys):
+def test_main_blocks_a_bad_stage_side_before_any_slot(tmp_path, monkeypatch, capsys):
     def claimed(*a, **k):
         raise AssertionError("an emulator slot was claimed")
 
@@ -9638,7 +9638,7 @@ class FakeScribe(FakePool):
     `CHOOSE SPELL: SCRIBE EXIT`, a heading per level at column 1 and each spell
     at column 3, the highlight a white block the title's list key moves down
     the spells and wraps; `S` there redraws the highlighted spell as `*SPELL`
-    at column 2, or, for a spell in `refuse`, shows a message for one capture
+    at column 2, or, for a spell in `block`, shows a message for one capture
     and changes nothing; `E` opens `<NAME>'S SPELLS TO SCRIBE` over `EXIT`
     when a spell is marked, else goes back to the Magic bar; its `E` asks
     `SCRIBE THESE SPELLS?YES NO`, whose `Y` scribes and returns to the Magic
@@ -9649,7 +9649,7 @@ class FakeScribe(FakePool):
     default), `swallow_pick` drops the first `S` on the list, `head` draws
     another name on the list's title, and `marked` spells are drawn `*`
     already.  `flicker` changes one pixel outside the text on every capture,
-    as the camp picture and Silver Blades' pointer can; `unseen` refuses
+    as the camp picture and Silver Blades' pointer can; `unseen` blocks
     without drawing anything a capture can see; `late` draws a rejection's
     message only on the second capture after the key; `lag` keeps the
     confirmation on screen for that many captures after `Y`; `after_yes`
@@ -9666,7 +9666,7 @@ class FakeScribe(FakePool):
     CAMP = "SAVE VIEW MAGIC REST ALTER FIX EXIT"
     MAGIC = "CAST MEMORIZE SCRIBE DISPLAY REST EXIT"
 
-    def __init__(self, tmp, title="ssb", start=None, swallow_pick=False, refuse=(),
+    def __init__(self, tmp, title="ssb", start=None, swallow_pick=False, block=(),
                  marked=(), head=None, flicker=False, unseen=False, late=False,
                  lag=0, after_yes=False, stuck_list=False, copyable=True,
                  notice=0, notice_text="HAS NO COPYABLE SCROLLS", deaf_magic=False,
@@ -9680,7 +9680,7 @@ class FakeScribe(FakePool):
         self.spell_rows = [k for k, (kind, _) in enumerate(self.rows) if kind == "spell"]
         self.start = self.spell_rows[0] if start is None else start
         self.hl = self.start
-        self.swallow_pick, self.refuse, self.head = swallow_pick, set(refuse), head
+        self.swallow_pick, self.block, self.head = swallow_pick, set(block), head
         self.marked = set(marked)
         self.message = False
         self.scribed: list[str] = []
@@ -9721,7 +9721,7 @@ class FakeScribe(FakePool):
             spell = self.rows[self.hl][1]
             if self.swallow_pick:
                 self.swallow_pick = False
-            elif spell in self.refuse:
+            elif spell in self.block:
                 self.message = not self.unseen
                 self.delay = 1 if self.late else 0
             else:
@@ -9833,7 +9833,7 @@ def test_the_scribe_step_parses_a_line_and_a_spell_of_several_words():
 
 @pytest.mark.parametrize("text", ["scribe 5", "scribe 9 SLEEP", "scribe X SLEEP",
                                   "scribe 5 *SLEEP"])
-def test_the_scribe_step_refuses_a_malformed_argument(text):
+def test_the_scribe_step_blocks_a_malformed_argument(text):
     assert da.parse_step("scribe 5 SLEEP").name == "SLEEP"
     with pytest.raises(ValueError):
         da.parse_step(text)
@@ -9850,7 +9850,7 @@ def test_scribe_is_taken_in_camp_in_the_three_titles(title):
                           title)
 
 
-def test_scribe_is_refused_in_pools_of_darkness():
+def test_scribe_is_blocked_in_pools_of_darkness():
     steps = [da.parse_step(s) for s in ("load", "begin", "camp", "scribe 6 SLEEP")]
     with pytest.raises(ValueError, match="scribe is driven in curse, pool, ssb only"):
         da.validate_steps(steps, "darkness")
@@ -9892,7 +9892,7 @@ def test_a_swallowed_scribe_key_is_sent_once_more(tmp_path, scribe_measured):
 
 
 def test_the_games_rejection_fails_the_step_after_one_key(tmp_path, scribe_measured):
-    game, d = _scribe_camp(tmp_path, start=4, refuse={"PROTECTION FROM GOOD"})
+    game, d = _scribe_camp(tmp_path, start=4, block={"PROTECTION FROM GOOD"})
     with pytest.raises(da.StepFailed, match="YOU ALREADY KNOW THAT SPELL"):
         d.scribe(6, "PROTECTION FROM GOOD")
     assert game.keys[5:] == ["m", "s", "s"]
@@ -9956,7 +9956,7 @@ def test_the_read_magic_sentence_is_only_for_curse(tmp_path, scribe_measured):
         assert ("likely lists nothing until Read Magic" in str(e.value)) is hinted
 
 
-def test_a_spell_not_on_the_scroll_list_is_refused_before_any_pick(tmp_path,
+def test_a_spell_not_on_the_scroll_list_is_blocked_before_any_pick(tmp_path,
                                                                     scribe_measured):
     game, d = _scribe_camp(tmp_path)
     with pytest.raises(da.StepFailed, match="SLEEP is not on the scroll list"):
@@ -9964,7 +9964,7 @@ def test_a_spell_not_on_the_scroll_list_is_refused_before_any_pick(tmp_path,
     assert game.keys[5:] == ["m", "s"]
 
 
-def test_a_spell_already_being_scribed_is_refused_before_any_pick(tmp_path,
+def test_a_spell_already_being_scribed_is_blocked_before_any_pick(tmp_path,
                                                                    scribe_measured):
     game, d = _scribe_camp(tmp_path, marked={"PROTECTION FROM GOOD"})
     with pytest.raises(da.StepFailed, match="already drawn"):
@@ -9972,7 +9972,7 @@ def test_a_spell_already_being_scribed_is_refused_before_any_pick(tmp_path,
     assert game.keys[5:] == ["m", "s"]
 
 
-def test_another_members_scroll_list_is_refused_before_any_pick(tmp_path,
+def test_another_members_scroll_list_is_blocked_before_any_pick(tmp_path,
                                                                  scribe_measured):
     game, d = _scribe_camp(tmp_path, head="PAINE")
     with pytest.raises(da.StepFailed, match="not roster line 6's"):
@@ -9980,7 +9980,7 @@ def test_another_members_scroll_list_is_refused_before_any_pick(tmp_path,
     assert game.keys[5:] == ["m", "s"]
 
 
-def test_scribe_is_refused_outside_its_titles_and_before_camp(tmp_path, scribe_measured):
+def test_scribe_is_blocked_outside_its_titles_and_before_camp(tmp_path, scribe_measured):
     game, d = _scribe_camp(tmp_path, "darkness")
     with pytest.raises(da.StepFailed, match="scribe is driven in"):
         d.scribe(6, "SLEEP")
@@ -10021,7 +10021,7 @@ def test_a_frame_that_changes_outside_the_text_is_not_a_rejection(tmp_path,
 
 
 def test_a_rejection_no_capture_saw_fails_saying_it_may_be_one(tmp_path, scribe_measured):
-    game, d = _scribe_camp(tmp_path, start=4, refuse={"PROTECTION FROM GOOD"},
+    game, d = _scribe_camp(tmp_path, start=4, block={"PROTECTION FROM GOOD"},
                            unseen=True)
     with pytest.raises(da.StepFailed, match="no mark and no change was seen, possibly "
                        "a rejection"):
@@ -10031,7 +10031,7 @@ def test_a_rejection_no_capture_saw_fails_saying_it_may_be_one(tmp_path, scribe_
 
 def test_a_rejection_drawn_after_the_wait_is_read_before_a_second_key(tmp_path,
                                                                      scribe_measured):
-    game, d = _scribe_camp(tmp_path, start=4, refuse={"PROTECTION FROM GOOD"},
+    game, d = _scribe_camp(tmp_path, start=4, block={"PROTECTION FROM GOOD"},
                            late=True)
     with pytest.raises(da.StepFailed, match="YOU ALREADY KNOW THAT SPELL"):
         d.scribe(6, "PROTECTION FROM GOOD")
@@ -10094,7 +10094,7 @@ class FakeAddPool(FakePool):
     member), `a` opening `ADD A CHARACTER: ADD EXIT`, the names from row 2,
     `End` and `Home` moving the highlight and wrapping, the arrows doing
     nothing and any other key picking: a picked row redraws as `* NAME` and
-    the member joins unless named in `refuse`; `e` back to the menu.  `v`
+    the member joins unless named in `block`; `e` back to the menu.  `v`
     opens the current member's sheet, its bar offering `ITEMS` when `items`
     is not empty, `i` the list `<NAME>'S ITEMS` over `READY ...`, and
     `Escape` goes back a screen each time.
@@ -10109,12 +10109,12 @@ class FakeAddPool(FakePool):
             "VIEW CHARACTER", "ADD CHARACTER TO PARTY", "REMOVE CHARACTER FROM PARTY",
             "SAVE CURRENT GAME", "BEGIN ADVENTURING", "EXIT TO DOS")
 
-    def __init__(self, tmp, listed=_ADD_LISTED, refuse=(), ignore_pick=False,
+    def __init__(self, tmp, listed=_ADD_LISTED, block=(), ignore_pick=False,
                  after_a=None, no_add=False, items=_ADD_ITEMS, sheet_of=None,
                  encumbrance=True):
         super().__init__(tmp)
         self.mode, self.titles = "title", 2
-        self.listed, self.refuse, self.ignore_pick = list(listed), set(refuse), ignore_pick
+        self.listed, self.block, self.ignore_pick = list(listed), set(block), ignore_pick
         self.after_a, self.no_add, self.items, self.sheet_of = after_a, no_add, items, sheet_of
         #: False draws the sheet without its ENCUMBRANCE row.
         self.encumbrance = encumbrance
@@ -10143,7 +10143,7 @@ class FakeAddPool(FakePool):
             name = self.listed[self.hl]
             if not self.ignore_pick and name not in self.starred:
                 self.starred.add(name)
-                if name not in self.refuse:
+                if name not in self.block:
                     self.party.append(name)
         elif m == "sheet" and k == "i" and self.items:
             self.mode = "items"
@@ -10217,7 +10217,7 @@ def _after_menu(game: FakeAddPool) -> list[str]:
     return keys
 
 
-def test_the_add_step_parses_a_name_of_several_words_and_refuses_a_bad_one():
+def test_the_add_step_parses_a_name_of_several_words_and_blocks_a_bad_one():
     step = da.parse_step("add klytus ryton")
     assert (step.kind, step.name) == ("add", "KLYTUS RYTON")
     for bad in ("add", "add *ARRONEL", "add ABCDEFGHIJKLMNOP"):
@@ -10269,7 +10269,7 @@ def test_a_second_add_starts_at_the_party_menu_and_the_view_reads_it(
     ({"after_a": "wrong"}, "not 'ADD A CHARACTER: ADD EXIT'", "a"),
     ({"listed": ("ARGORA", "BRYTWYN")}, "ARRONEL is not on the list", "a"),
     ({"ignore_pick": True}, "never redrew as '\\* ARRONEL'", "Return"),
-    ({"refuse": ("ARRONEL",)}, "left him out of the party", "e"),
+    ({"block": ("ARRONEL",)}, "left him out of the party", "e"),
     ({"no_add": True}, "not the party menu offering ADD CHARACTER TO PARTY", "Return"),
 ])
 def test_add_stops_at_the_screen_that_is_not_the_one_its_key_belongs_to(
@@ -10305,7 +10305,7 @@ def test_pool_view_of_a_member_carrying_nothing_leaves_the_sheet_at_once(
     assert got["items"] is None and not got["items_offered"]
 
 
-def test_pool_view_refuses_a_sheet_drawing_another_name(tmp_path, add_measured):
+def test_pool_view_blocks_a_sheet_drawing_another_name(tmp_path, add_measured):
     game, d = _add_boot(tmp_path, sheet_of="ARGORA")
     d.add("ARRONEL")
     game.keys.clear()
@@ -10357,7 +10357,7 @@ def test_a_run_that_begins_with_add_stages_the_exports_into_an_emptied_save(
     assert log == ["claim", "close", "release"]
 
 
-def test_an_add_the_shipped_list_lacks_is_refused_before_a_slot_is_claimed(
+def test_an_add_the_shipped_list_lacks_is_blocked_before_a_slot_is_claimed(
         monkeypatch, tmp_path):
     log = _fake_run(monkeypatch, tmp_path)
     _shipped_save(tmp_path / "game" / "SAVE")
@@ -10381,7 +10381,7 @@ def test_only_a_run_that_begins_with_add_takes_no_save(monkeypatch, capsys, argv
     assert why in capsys.readouterr().err and len(ran) == 1
 
 
-def test_an_add_is_refused_before_the_claim_when_the_save_folder_is_missing(
+def test_an_add_is_blocked_before_the_claim_when_the_save_folder_is_missing(
         monkeypatch, tmp_path):
     log = _fake_run(monkeypatch, tmp_path)
     with pytest.raises(ValueError, match="SAVE is not a directory"):
@@ -10389,7 +10389,7 @@ def test_an_add_is_refused_before_the_claim_when_the_save_folder_is_missing(
     assert log == []
 
 
-def test_an_add_is_refused_when_the_list_names_the_character_twice(tmp_path):
+def test_an_add_is_blocked_when_the_list_names_the_character_twice(tmp_path):
     shipped = _shipped_save(tmp_path / "shipped")
     (shipped / "CHARLIST.TXT").write_bytes(b"ARRONEL\r\nARGORA\r\nARRONEL\r\n")
     da.check_exports(shipped, ["ARGORA"])
@@ -10417,7 +10417,7 @@ def test_the_add_walk_stops_at_the_deadline_before_moving(tmp_path, add_measured
 
 
 @pytest.mark.parametrize("extra", [["--from-slot", "B"], ["--first-bar-key", "q"]])
-def test_a_run_with_no_save_refuses_a_slot_or_a_fight_key(monkeypatch, capsys, extra):
+def test_a_run_with_no_save_blocks_a_slot_or_a_fight_key(monkeypatch, capsys, extra):
     monkeypatch.setattr(da, "run", lambda args: 0)
     with pytest.raises(SystemExit):
         da.main([*extra, "--steps", "add ARRONEL", "view 1"])
@@ -10831,7 +10831,7 @@ def test_silver_blades_joins_and_trades_at_the_party_menu_and_saves_there():
     ("darkness", ("load", "begin", "camp", "trade 1 1 2"), "trade is driven in ssb only"),
     ("ssb", ("load", "halve 1 1"), "halve is driven in darkness only"),
 ])
-def test_join_and_trade_are_refused_where_they_are_not_driven(title, steps, why):
+def test_join_and_trade_are_blocked_where_they_are_not_driven(title, steps, why):
     with pytest.raises(ValueError, match=why):
         da.validate_steps(_steps(*steps), title)
 
@@ -10866,7 +10866,7 @@ def test_a_trade_that_asks_nothing_stops_before_any_select(tmp_path, ssb_trade_b
     assert game.keys[-1] == "t" and game.mode == "items"
 
 
-def test_join_off_the_party_menu_is_refused_before_a_key(tmp_path):
+def test_join_off_the_party_menu_is_blocked_before_a_key(tmp_path):
     game, d, _ = _ssb_items_driver(tmp_path)
     d.where = "map"
     with pytest.raises(da.StepFailed, match="party menu"):
@@ -11189,7 +11189,7 @@ def test_a_restore_re_arms_the_switch_so_the_next_walk_still_forces_the_gate(
 
 
 @pytest.mark.parametrize("key", ["s", "S"])
-def test_press_refuses_a_save_key_while_the_switch_is_on(tmp_path, key):
+def test_press_blocks_a_save_key_while_the_switch_is_on(tmp_path, key):
     events: list = []
     game = FakePool(tmp_path)
     d = da.Driver(game, lambda **k: None, "A", "pool",

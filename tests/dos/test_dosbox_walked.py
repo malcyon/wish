@@ -62,7 +62,7 @@ def test_the_driver_pressing_nothing_is_a_driver_error_not_a_wall():
     # Pool of Radiance's indoors flag)'s `Session.walk_stopped` distinction,
     # ported into this harness's own vocabulary.
     kind, reason = dosbox.judge_step(False, True, area_before=0, area_after=20)
-    assert kind == "refused"
+    assert kind == "unsent"
     assert reason == "the driver pressed nothing"
 
 
@@ -202,7 +202,7 @@ def test_an_engine_save_that_wrote_the_file_and_left_camp_is_saved(monkeypatch, 
 # -- a renamed slot loads no party --------------------------------------------------
 
 
-def test_both_installs_refuse_to_rename_a_slot(tmp_path):
+def test_both_installs_will_not_rename_a_slot(tmp_path):
     """The engine loads by the saved game's own file list, so J installed as A
     loads nothing."""
     import pytest

@@ -57,7 +57,7 @@ class RawSession(dosboxx.XSession):
 
     `dosboxx.halve` insists on a line-doubled 640x400 frame, which is Pool
     of Radiance's; Silver Blades' title frame is not, and the boot's
-    `settle()` would refuse it forever.  Nothing here reads a rectangle off
+    `settle()` would block it forever.  Nothing here reads a rectangle off
     the screen, so the raw window is enough.
     """
 

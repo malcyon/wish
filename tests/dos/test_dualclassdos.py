@@ -3,7 +3,7 @@
 Three claims, none of which needs the player's disks:
 
 * `tools/dos/dualclassdos.py`'s `source_title` names the **game tree** a record
-  came out of, and refuses rather than guesses.  A record is grouped by its
+  came out of, and blocks rather than guesses.  A record is grouped by its
   *size*, which only ever names four titles, and six exist on this machine --
   OUGO is a Treasures of the Savage Frontier record read as Pools of Darkness,
   and before this the sweep printed him under the wrong title in as many
@@ -62,7 +62,7 @@ def test_the_deepest_game_directory_wins():
     ("SavesDir", "76561197971030711", "1882370", "English", "CHRDATA1.SAV"),
     ("scratch", "curse", "234-before", "CHRDATA1.SAV"),
 ])
-def test_a_path_that_names_no_game_tree_refuses(parts):
+def test_a_path_that_names_no_game_tree_blocks(parts):
     """`?` rather than a guess: a Steam app id names the whole collection."""
     assert dualclassdos.source_title(pathlib.Path(*parts)) == "?"
 
@@ -89,7 +89,7 @@ def test_listing_puts_a_boundary_on_the_site():
     assert marked[0].lstrip().startswith(f"{SITE:06X}"), marked
 
 
-def test_listing_refuses_rather_than_printing_an_empty_window():
+def test_listing_blocks_rather_than_printing_an_empty_window():
     """Past the end of the image there is no boundary, and it says so."""
     pytest.importorskip("capstone")
     lines = dosdis16.listing(STREAM, len(STREAM) + 16, before=4, window=8)

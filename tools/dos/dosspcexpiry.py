@@ -57,7 +57,7 @@ class claim_free:
     """Lease a DOSBox-X slot whose X display nobody is holding.
 
     The pool leases by `flock`, but a display can be held by an orphaned Xvfb
-    from a run that lost its lease, and `XSession.boot` refuses to share one.
+    from a run that lost its lease, and `XSession.boot` will not share one.
     Skip past those rather than fail on the first, and hand back every busy
     lease on the way out.  Nothing here kills anything: a display something
     else answers on is somebody else's until its owner tears it down.
@@ -92,7 +92,7 @@ def boot_retry(s: dosboxx.XSession, fresh: bool = True, tries: int = 6, gap: flo
 
     `tests/dos/test_dosboxx.py` claims a synthetic slot on a fixed display, so a
     suite run elsewhere on the machine can put an Xvfb on this pool's first
-    display for a couple of minutes.  `XSession.boot` refuses to share it,
+    display for a couple of minutes.  `XSession.boot` will not share it,
     rightly; this waits and asks again rather than failing the whole run.
     """
     for n in range(tries):
@@ -111,7 +111,7 @@ def save_slot(s: dosboxx.XSession, letter: str, timeout: float = 90.0) -> bytes:
 
     `PoolOfRadiance.save_game` does this with `settle()`, and under DOSBox-X a
     capture taken while "THE PARTY MAKES CAMP" is still being drawn is not
-    line-doubled and `capture()` refuses it.  This version waits on the clock
+    line-doubled and `capture()` blocks it.  This version waits on the clock
     and the file instead of the screen, and leaves camp with the same `n` /
     `Escape` pair `leave_camp` uses.
     """
@@ -301,7 +301,7 @@ def cmd_chain(args: argparse.Namespace) -> int:
     result: dict = {"slot": args.slot, "steps": args.steps}
     with claim_free("dosspcexpiry chain") as slot:
         # Not `with XSession(...)`: its `__enter__` boots, and a second boot
-        # finds its own Xvfb on the display and refuses to share it.
+        # finds its own Xvfb on the display and will not share it.
         s = dosboxx.XSession(slot, game)
         try:
             boot_retry(s)

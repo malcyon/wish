@@ -168,7 +168,7 @@ def make(*, c64: pathlib.Path, slot: str = "A", steps: int = 2,
                 before = por.status()
                 if por.step():
                     # A blocked step comes back on the same command bar and
-                    # the same status line: the engine simply refuses it, and
+                    # the same status line: the engine simply blocks it, and
                     # counting it as a walk would claim eight squares for a
                     # party that never left the first one.  Turn instead, so
                     # the walk goes somewhere and can meet something.

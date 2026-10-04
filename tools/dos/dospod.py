@@ -141,7 +141,7 @@ def to_party_menu(session: dosbox.Session, presses: int = 30,
             return answered
         if len(answered) >= questions:
             raise TimeoutError(f"still answering a question after {questions}; "
-                               "the answer is being refused or this is not "
+                               "the answer is being blocked or this is not "
                                "the copy-protection question")
         session.key("Return")
         answered.append(still)

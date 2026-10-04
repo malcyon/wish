@@ -89,7 +89,7 @@ def test_a_counted_loop_lands_its_body_once_per_trip():
     assert wm.square_region(regions).at == 12801
 
 
-def test_a_chain_whose_widths_are_no_titles_size_is_refused():
+def test_a_chain_whose_widths_are_no_titles_size_is_blocked():
     """A misread loop or a missed call must produce nothing, because a map
     that is nearly right is the one somebody would build on."""
     broken = _chain(loop=False).replace(b"\xb8\x05\x00\x50", b"\xb8\x06\x00\x50")

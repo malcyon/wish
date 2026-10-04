@@ -83,7 +83,7 @@ def test_a_bang_snapshots_and_does_not_press_anything():
 
 def test_a_hash_types_a_string_rather_than_pressing_one_key():
     """`CHARACTER NAME:` wants eight keystrokes, and a step called `#gnomf1`
-    pressed as a keysym is a step `xdotool` refuses."""
+    pressed as a keysym is a step `xdotool` blocks."""
     assert dosgnome.step_kind("#gnomf1") == ("type", "gnomf1")
 
 
@@ -92,7 +92,7 @@ def test_a_tilde_waits():
     assert dosgnome.step_kind("~0.5") == ("wait", 0.5)
 
 
-def test_a_tilde_with_no_number_is_refused_rather_than_pressed_as_a_key():
+def test_a_tilde_with_no_number_is_blocked_rather_than_pressed_as_a_key():
     """Falling back to "press it as a key" would swallow the typo and leave
     the run looking like it worked."""
     with pytest.raises(ValueError):

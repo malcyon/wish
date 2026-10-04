@@ -537,7 +537,7 @@ def test_the_stored_encumbrance_is_one_debit_behind_after_the_trainer_charges():
     `WISH-SPEC-por-party-trained-c2` the clerics' school trained WISHCLE and
     WISHHEL and took 1000 gold from each: those two come out at +1000 and the
     four it never touched at 0. In `WISH-SPEC-por-train-clamp`, where TRAIN
-    CHARACTER was pressed and refused, no fee was charged and all six are 0.
+    CHARACTER was pressed and blocked, no fee was charged and all six are 0.
     """
     charged = {"WISHCLE", "WISHHEL"}
     trained = {}
@@ -724,7 +724,7 @@ def test_the_dos_record_grows_with_every_title():
 
     **The specimens are the archives and stay there.** What is measured is a file
     length, which is the one property a character editor cannot change without
-    the game refusing the record, so an edited save is as good a witness as any
+    the game blocking the record, so an edited save is as good a witness as any
     for it. Pool of Radiance's 285 is corroborated directly by the specimen
     tree: every record `#249` and `#84` watched the game write is 285 bytes.
     Curse, Silver Blades and Pools of Darkness have no clean specimen at all
@@ -880,7 +880,7 @@ def test_a_curse_item_file_under_the_old_name_is_not_read(tmp_path):
     (tmp_path / "CHRDATC1.ITM").write_bytes(_synthetic_battle_axe())
 
     # Not read as the item file, so the record's count of one has no item
-    # file beside it and is refused rather than read as an empty pack.
+    # file beside it and is blocked rather than read as an empty pack.
     with pytest.raises(dos_codec.DosRecordError, match=r"CHRDATC1\.SWG"):
         dos_codec.read_character(record)
 
@@ -1006,7 +1006,7 @@ def test_a_joined_scroll_is_one_item_and_the_plate_mail_after_it_is_read(
 # read back as fewer items, with nothing to say why. #113's fix was to find
 # the *file*; this is the fix for the file being the wrong length.
 
-def test_an_item_file_short_of_a_whole_number_of_items_is_refused(tmp_path):
+def test_an_item_file_short_of_a_whole_number_of_items_is_blocked(tmp_path):
     """63 x 1 - 1 = 62 bytes: not a whole number of 63-byte items."""
     from goldbox import dos_codec
 
@@ -1020,7 +1020,7 @@ def test_an_item_file_short_of_a_whole_number_of_items_is_refused(tmp_path):
         dos_codec.read_character(record)
 
 
-def test_an_item_file_that_is_present_and_empty_is_refused(tmp_path):
+def test_an_item_file_that_is_present_and_empty_is_blocked(tmp_path):
     """Present and zero bytes is the case the absent-file silence must not cover.
 
     `#221 (An item file that does not match its own count is read silently)`
@@ -1042,7 +1042,7 @@ def test_an_item_file_short_of_the_records_own_count_reads_the_file(tmp_path):
     """The record claims two items; the file holds one, and the game loads one.
 
     The engine's loader reads the item file to its end and ignores the count
-    byte, so the count stays as written and the item is not refused.
+    byte, so the count stays as written and the item is not blocked.
     """
     from goldbox import dos_codec
 
@@ -1148,7 +1148,7 @@ def test_an_absent_item_file_is_still_read_quietly_when_the_record_counts_none(
     assert not character.items
 
 
-def test_a_record_that_counts_items_with_no_item_file_is_refused(tmp_path):
+def test_a_record_that_counts_items_with_no_item_file_is_blocked(tmp_path):
     """A folder copied without its item files must not read as an empty pack."""
     from goldbox import dos_codec
 
@@ -1160,7 +1160,7 @@ def test_a_record_that_counts_items_with_no_item_file_is_refused(tmp_path):
         dos_codec.read_character(record)
 
 
-def test_a_partial_trailing_effect_node_is_refused(tmp_path):
+def test_a_partial_trailing_effect_node_is_blocked(tmp_path):
     """Nine-byte nodes: ten bytes leaves one stray byte, which was dropped."""
     from goldbox import dos_codec
 

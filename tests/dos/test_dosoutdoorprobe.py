@@ -53,7 +53,7 @@ def test_a_route_is_read_case_insensitively_and_ignores_spaces():
 
 
 @pytest.mark.parametrize("bad", ["X", "N,SC", "U,S", "U,S1", "up", ""])
-def test_a_step_that_is_neither_a_move_nor_a_save_is_refused(bad):
+def test_a_step_that_is_neither_a_move_nor_a_save_is_blocked(bad):
     """A typo would walk a route that is not the one anybody asked for.
 
     `""` is in the list because an empty route step comes from a stray comma
@@ -66,7 +66,7 @@ def test_a_step_that_is_neither_a_move_nor_a_save_is_refused(bad):
         probe.parse_route(bad)
 
 
-def test_the_same_slot_letter_twice_is_refused():
+def test_the_same_slot_letter_twice_is_blocked():
     """The second save overwrites the first waypoint's specimen in place.
 
     The game writes `SAVGAM<slot>.DAT`, so a route saving to C twice reports
@@ -178,7 +178,7 @@ def test_the_seed_leaves_the_dungeon_square_where_the_engine_left_it():
 
 @needs_dos_saves
 @pytest.mark.parametrize("area", [0, 20, 21, 99])
-def test_an_area_that_is_not_a_travel_window_is_refused(area):
+def test_an_area_that_is_not_a_travel_window_is_blocked(area):
     """A probe is only ever wanted for the overland, and 99 is no area."""
     with pytest.raises(ValueError):
         probe.seed(_indoor_savgam(), area=area, x=7, y=29,

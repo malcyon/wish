@@ -87,14 +87,14 @@ def test_load_template_reads_the_named_item_off_the_registry_disks(monkeypatch):
     assert seen["path"] == str(pathlib.Path("/disks") / "POOL1.D64")
 
 
-def test_load_template_refuses_an_unknown_name(monkeypatch):
+def test_load_template_blocks_an_unknown_name(monkeypatch):
     monkeypatch.setattr(D.gamedisks, "find", lambda name: "/disks")
     monkeypatch.setattr(D.c64_items, "load_item_templates", lambda path: {})
     with pytest.raises(SystemExit):
         D.load_template("NOTHING LIKE THAT")
 
 
-def test_load_template_refuses_with_no_registered_disks(monkeypatch):
+def test_load_template_blocks_with_no_registered_disks(monkeypatch):
     monkeypatch.setattr(D.gamedisks, "find", lambda name: None)
     with pytest.raises(SystemExit):
         D.load_template("ANYTHING")

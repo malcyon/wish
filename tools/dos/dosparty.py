@@ -22,7 +22,7 @@ characters this run made.  The player's own files are opened read only, by
 it.**  `Home` and `End` move the highlight within the page, `N`/`P` turn it,
 `E` and `Escape` leave, and any other key picks whatever is highlighted -- so
 a run that presses `Down` then `Return` picks the first entry and looks like
-the game refusing the second.  A list is opened fresh with the highlight on
+the game blocking the second.  A list is opened fresh with the highlight on
 entry 0, so entry *n* is `End` pressed *n* times and then `Return`.
 
 The creation flow, verified by screenshot at every step:

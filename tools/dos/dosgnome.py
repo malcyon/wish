@@ -23,7 +23,7 @@ menus, and this game's generic list menu ignores the arrow keys: `Home` and
 `End` move the highlight within the page, `N`/`P` and `PgDn`/`PgUp` turn the
 page, `E` and `Escape` leave, and **any other key picks whatever is
 highlighted**.  A run that presses `Down` and then `Return` therefore picks
-the first entry and looks exactly like the game refusing the second.  The
+the first entry and looks exactly like the game blocking the second.  The
 command bars (`KEEP`, `EXIT`, `SAVE`) are the other family and answer to the
 highlighted letter.  So a list is addressed by `Home` plus n presses of the
 key that moves the highlight one line, and every step is screenshotted so a

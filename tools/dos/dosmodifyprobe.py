@@ -24,7 +24,7 @@ changes the byte on the EXIT arm, refutes the reading rather than confirming
 it.
 
 **MODIFY CHARACTER is only offered on a character who has just been made** --
-the engine refuses it unless experience is 0, 8333, 12500 or 25000 -- so this
+the engine blocks it unless experience is 0, 8333, 12500 or 25000 -- so this
 has to roll its own party rather than load one.  It reuses
 `tools/dos/dosparty.py`'s creation flow, which is where the menu positions were
 mapped.

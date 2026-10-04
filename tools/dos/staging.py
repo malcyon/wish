@@ -66,7 +66,7 @@ def install(save: pathlib.Path, save_dir: pathlib.Path, letter: str,
 
     The staged tree's own `SAVE` is the archives' copy, which is the edited
     play directory (`.claude/rules/testing.md`), so none of it is kept.
-    A rename is refused: the saved game names its own `CHRDAT` files and the
+    A rename is blocked: the saved game names its own `CHRDAT` files and the
     engine loads those, so a slot under another letter loads no party.  A
     Pools of Darkness slot is its `SAVGAM<slot>.PTY`, its `VAULT<slot>.DAT`
     and its `CHRDAT` files, which is what `dos_codec.new_pod_save_from` writes.
@@ -136,7 +136,7 @@ def stage_place(save_dir: pathlib.Path, letter: str, x: int, y: int,
                 facing: int) -> dict:
     """Put the party on square `x`,`y` facing `facing` (0 N, 1 E, 2 S, 3 W) in `SAVGAM<letter>.DAT`.
 
-    Refused for a save made outdoors, where the square bytes are frozen at the
+    Blocked for a save made outdoors, where the square bytes are frozen at the
     last indoor square and the game does not read them.  The square must be a
     valid, open square on the saved map: this writes only `pos_x`, `pos_y` and
     `pos_facing`, and leaves the area word and the square scratch bytes for the

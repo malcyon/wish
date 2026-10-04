@@ -3,7 +3,7 @@ from __future__ import annotations
 """Writing a C64 party that is standing on the travel grid into a DOS save.
 
 `#190 (A C64 party standing on the travel grid cannot be written into a DOS
-save)`.  The converter used to refuse an outdoor party outright, and before
+save)`.  The converter used to block an outdoor party outright, and before
 that it wrote one standing on **the template's** square in the template's
 area, which is the failure `.claude/rules/conversions.md` exists to prevent:
 the file loads, the party is somewhere it has never been, and nothing about
@@ -142,7 +142,7 @@ def _write(save0: bytes, tmp_path, game_dir) -> tuple[bytes, "dos_codec.SaveRepo
 # --- the rejection that went ---------------------------------------------------
 
 def test_the_travel_grid_is_no_longer_a_rejection():
-    """It was refused because no move of a DOS saved game onto the travel grid
+    """It was blocked because no move of a DOS saved game onto the travel grid
     had been driven; one has been now, so the reason is gone.  The other two
     rejections stay."""
     for window in (25, 26, 27):
@@ -256,7 +256,7 @@ def test_the_outdoor_facing_is_dropped_rather_than_taken_from_the_stale_byte(
 
 
 def test_every_byte_of_an_outdoor_conversion_has_a_source(tmp_path, game_dir):
-    """`new_dos_save` refuses a byte it did not write, so reaching the end is
+    """`new_dos_save` blocks a byte it did not write, so reaching the end is
     the assertion -- but say it, because a save built for the travel
     grid is a different set of writes from an indoor one."""
     savgam, report = _write(_c64_on_the_travel_grid(), tmp_path, game_dir)

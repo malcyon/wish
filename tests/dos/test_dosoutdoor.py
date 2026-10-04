@@ -103,10 +103,10 @@ def test_the_script_reaches_the_ecl_buffer_from_byte_two():
 
 @needs_dos_saves
 @pytest.mark.parametrize("area", [0, 20, 21, 99])
-def test_an_area_that_is_not_a_travel_window_is_refused(area):
+def test_an_area_that_is_not_a_travel_window_is_blocked(area):
     """A seed is only ever wanted for the overland, and 99 is no area at all.
 
-    Refusing here is what stops the tool quietly making an indoor specimen
+    Blocking here is what stops the tool quietly making an indoor specimen
     and a reader believing it was made outdoors.
     """
     with pytest.raises(ValueError):

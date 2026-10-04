@@ -60,7 +60,7 @@ def stage_save(s: dosboxx.XSession, source: pathlib.Path, slot: str) -> bytes:
     `stage_writable`, not a bare `shutil.copy`: `source` is often a read-only
     specimen, and `shutil.copy` carries that mode onto the copy -- the
     watched session then finds a `SAVE` directory it cannot write and the
-    save it is trying to observe is refused in silence (#495).
+    save it is trying to observe is blocked in silence (#495).
     """
     s.stage(fresh=True)
     letter = slot.upper()
@@ -75,7 +75,7 @@ def boot_settled(s: dosboxx.XSession, tries: int = 4) -> None:
     """Boot, and boot again when the first capture lands on a half-drawn frame.
 
     `XSession.boot` ends with a `settle()`, and that capture can land while
-    the emulator is still drawing its first frame, which `halve()` refuses as
+    the emulator is still drawing its first frame, which `halve()` blocks as
     not line-doubled.  The game has not gone anywhere; the emulator has, so
     close it and start again on the staged tree.
     """

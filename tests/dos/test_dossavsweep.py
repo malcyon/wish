@@ -207,7 +207,7 @@ def test_a_seed_never_wins_the_name_of_an_identical_engine_save(tmp_path):
 
 # -- describe and sweep -------------------------------------------------
 
-def test_describe_refuses_to_invent_a_pools_of_darkness_reading(tmp_path):
+def test_describe_will_not_invent_a_pools_of_darkness_reading(tmp_path):
     """Pools of Darkness has no container byte and no variable array.
 
     A number read at Pool of Radiance's offsets would be a plausible-looking

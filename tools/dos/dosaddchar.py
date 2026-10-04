@@ -5,10 +5,10 @@ duplicate test.
 The measurement `#216 (Every converted DOS character carries the same identity
 byte at 0x0AB)` asked for.  `goldbox.dos_codec.write` used to leave `unnamed_0ab`
 zero in every record it made, and the engine uses that byte in one test:
-adding a saved character to the party is refused when the candidate's **name
+adding a saved character to the party is blocked when the candidate's **name
 and `0x0AB` both** match a character already in the party.  Six converted
 characters therefore carried the same value where the game's own carry a
-random one each, and the question was whether a player can be refused an add
+random one each, and the question was whether a player can be blocked an add
 that the game would have allowed.  They can: the answer this tool measured is
 that the second of two same-named converted characters is turned away in
 silence, and `goldbox.dos_codec.WRITE_DERIVED` is what the writer does instead now.
@@ -20,18 +20,18 @@ differ in one byte and nothing else:
 
 | variant | the two files' `0x0AB` | expected |
 |---|---|---|
-| `--ident 0` | `0x00` and `0x00`, what the conversion used to write | refused, party of one |
+| `--ident 0` | `0x00` and `0x00`, what the conversion used to write | blocked, party of one |
 | `--ident 0x42` | `0x00` and `0x42`, the second hand-set | accepted, party of two |
 | `--writer` | whatever `goldbox.dos_codec.write` writes today | accepted, party of two |
 
 If both of the first two are accepted, the byte is not part of the test and
-the issue is refuted.  If both are refused, the test is on the name alone and
+the issue is refuted.  If both are blocked, the test is on the name alone and
 the zero is irrelevant -- also a refutation, and the reason the control run is
 not optional.  `--writer` is the third question and a different one: not what
 the engine does, but whether what the writer produces now clears it.
 
 Nothing is loaded from a saved game: the party starts empty, so the engine's
-own six-character capacity check cannot be what refuses the second add.  The
+own six-character capacity check cannot be what blocks the second add.  The
 staged `CHARLIST.TXT` is replaced with two names of our own, so the menu
 offers nothing else, and the file the menu opens is `<entry>.CHA` -- the
 *entry* names the file, and the *record inside* carries the name the duplicate
@@ -42,7 +42,7 @@ generic list menu, and **the arrow keys do nothing in it**: `Home` and `End`
 move the highlight within the page, `N` and `P` (and `PgDn`/`PgUp`) turn the
 page, and any other key picks whatever is highlighted -- which is how a run
 that presses `Down` and then `Return` offers the engine the first entry twice
-and measures nothing.  A successful *or* refused add rewrites the menu entry
+and measures nothing.  A successful *or* blocked add rewrites the menu entry
 in place as `* NAME`, and a starred entry is skipped before the file is even
 read, so each entry can only be offered once per visit.  That star is also
 this tool's proof that the record was read at all: `beta_was_read` in the
