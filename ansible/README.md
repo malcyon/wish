@@ -275,7 +275,7 @@ SPICE carries audio, which is why it is used instead of VNC: WinUAE is not much 
 | thing | how |
 |---|---|
 | WinUAE | installed at first logon from the unattend ISO, so no download is needed in the guest, to `C:\Program Files\WinUAE`; excluded from Defender real-time scanning |
-| WinUAE harness | `winvm_amiga_harness_files` (`winuae.ps1`, `winuae-send.ps1`, `winuaemute.ps1`, `winuae-lanecheck.ps1` and `winuae-sendcheck.ps1` into `C:\Amiga`, `goldbox-a500.uae` into `C:\Amiga\configs`) and the folders in `winvm_amiga_dirs`, from `tools/amiga`: installed at first logon from the unattend ISO, and on every run of the role into a guest that is running and answers ssh, copying only files whose SHA-256 differs and checking each hash after the copy |
+| WinUAE harness | `winvm_amiga_harness_files` (`winuae.ps1`, `winuae-send.ps1`, `winuaemute.ps1`, `winuae-lanecheck.ps1` and `winuae-sendcheck.ps1` into `C:\Amiga`, `goldbox-a500.uae` into `C:\Amiga\configs`) and the folders in `winvm_amiga_dirs`, from `tools/amiga`: installed at first logon from the unattend ISO, and on every run of the role into a guest that is running, answers ssh and has finished its first-logon script, copying from the commit checked out (`HEAD`, never uncommitted edits) only files whose SHA-256 differs and checking each hash after the copy; the same run unregisters the scheduled tasks in `winvm_amiga_stale_tasks` |
 | Kickstart ROMs | WinUAE ships none. `winvm_kickstart_src` is staged into the unattend ISO and copied to `C:\Amiga\Kickstarts`; raw dumps are recognised by CRC, and Cloanto/Amiga Forever ROMs (they begin `AMIROMTYPE1`) need `rom.key` in the same directory |
 | Defender exclusions | `winvm_defender_exclusions`, applied at first logon, and added to a running guest by the same run that updates the WinUAE harness |
 | VICE | unpacked, not installed, to `C:\VICE`, binary at `C:\VICE\bin\x64sc.exe`; `winvm_install_vice: false` skips it, and the log at `C:\Windows\Temp\guest-setup.log` has the result under `install VICE` |
@@ -283,13 +283,13 @@ SPICE carries audio, which is why it is used instead of VNC: WinUAE is not much 
 | JiffyDOS | `winvm_jiffydos_src` into `C:\C64\JiffyDOS`; empty skips it, and VICE uses the stock kernal |
 | QXL display driver | installed with `pnputil` from the virtio ISO (`winvm_install_qxl`); on a guest without the driver, run `pnputil /add-driver E:\qxldod\w10\amd64\qxldod.inf /install` from the attached virtio volume, then reboot |
 
-After a change to one of the harness files, or after `winvm revert`, bring the running guest up to date from the repository root, with no WinUAE lane claimed (`winvm ssh 'powershell -NoProfile -ExecutionPolicy Bypass -File C:\Amiga\winuae.ps1 status'`). The run uses `winvm ssh` and `winvm scp` as you, so it needs your key in the guest, not root's; `--check --diff` lists what differs and copies nothing:
+After a change to one of the harness files, or after `winvm revert`, bring the running guest up to date from the repository root, with no WinUAE lane claimed (`winvm ssh 'powershell -NoProfile -ExecutionPolicy Bypass -File C:\Amiga\winuae.ps1 status'`). Only committed changes are deployed: the run exports `HEAD`'s copies with `git archive`, so commit an edit before running it. It uses `winvm ssh` and `winvm scp` as you, so it needs your key in the guest, not root's. Under `--check` its survey lists each file, folder, exclusion and stale task that differs, and copies nothing:
 
 ```bash
 ansible-playbook -i ansible/inventory.yml ansible/windows-vm.yml --tags winvm_harness
 ```
 
-A guest that is off or not yet answering ssh is skipped with a message. A file copied in by hand to try a change before it is committed is put back to the repository's copy by the next run.
+A guest that is off, or whose `C:\Windows\Temp\guest-setup.log` does not yet end with its last line, is skipped with a message. A running guest that ssh cannot reach fails the run when `--tags winvm_harness` was given, and is skipped with the ssh error otherwise. A file the guest has open stops the run with an error rather than being replaced: `goldbox-a500.uae` while WinUAE is starting from it is the likely case, so stop the lane's emulator and run again. A file copied in by hand to try a change before it is committed is put back to the committed copy by the next run.
 
 ### The `winvm` command
 

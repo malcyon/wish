@@ -365,7 +365,7 @@ should not — they live in the overlay and are meant to evaporate. Game disks y
 will want in every future session should, which means copying them in and then
 running `winvm promote` once. The harness files in the table in §1 need no
 promote: rerunning `ansible/windows-vm.yml --tags winvm_harness` after a revert
-puts the repository's copies back.
+puts the committed copies back.
 
 **Run `winuae.ps1 stop`, then `clean`, before promoting.** Scheduled tasks
 outlive the run that registered them, and a promote would weld this document's
@@ -568,7 +568,8 @@ again, and once more immediately before the setter. A decline made before the pi
 is open exits 1 with the reason; after it, the exit code is 0 and the first line
 of output is `ok ...` or `fail ...`, so the raw replies of a failure still reach
 the caller. The deployed `C:\Amiga\winuae.ps1` must be this repository's copy, which
-`ansible/windows-vm.yml --tags winvm_harness` deploys.
+`ansible/windows-vm.yml --tags winvm_harness` deploys from the commit checked
+out, never from uncommitted edits.
 
 **The probe** is `tools/amiga/amigadrivecheck.py`: three generated blank disks, DF0
 swapped to a second disk and back with DF1 checked at every step, and four
@@ -1382,8 +1383,8 @@ the WinUAE VM, and neither of them can tell)`:
   into the running guest's overlay and not promoted, so it does not survive
   `winvm revert`, and the 2026-08-25 line above about golden's copies hashing
   equal to `tools/` is no longer true. Rerun
-  `ansible/windows-vm.yml --tags winvm_harness` after any revert, which now
-  deploys the harness instead of a hand `scp`, and promote deliberately when
+  `ansible/windows-vm.yml --tags winvm_harness` after any revert, and promote
+  deliberately when
   the overlay holds nothing else you would not want in the baseline
 
 **Checked on the VM itself, 2026-09-01**, for `#95 (A WinUAE debugger batch

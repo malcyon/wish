@@ -119,6 +119,13 @@ winvm_amiga_dirs:
   - 'C:\Amiga\States'
   - 'C:\Amiga\dump'
   - 'C:\Amiga\lanes'
+# Scheduled tasks registered by verbs since deleted from winuae.ps1; the
+# harness run unregisters them from a running guest.
+winvm_amiga_stale_tasks:
+  - winuae-front
+  - winuae-key
+# The checkout on the controller whose committed HEAD the harness comes from.
+winvm_repo_dir: "{{ playbook_dir }}/.."
 # On the host: the copies a running guest is updated from, readable by the
 # account that runs `winvm`, unlike the unattend staging directory.
 winvm_harness_stage_dir: "{{ winvm_state_dir }}/harness"

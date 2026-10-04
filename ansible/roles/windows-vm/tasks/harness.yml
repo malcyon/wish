@@ -1,59 +1,129 @@
 ---
-# Keeps a running Windows guest's WinUAE harness the repository's copy: the
-# files in winvm_amiga_harness_files, the folders in winvm_amiga_dirs and the
-# Defender exclusions. Everything in the guest goes through the `winvm` this
-# role installs, as the account running the playbook, whose key the guest
-# trusts; root has none of those keys. A guest that is off or not answering ssh
-# yet is skipped with a message, and gets the files at first logon or on the
-# next run.
+# Keeps a running Windows guest's WinUAE harness the repository's committed
+# copy: the files in winvm_amiga_harness_files, the folders in
+# winvm_amiga_dirs, the Defender exclusions, and no scheduled task left from a
+# deleted verb (winvm_amiga_stale_tasks). Everything in the guest goes through
+# the `winvm` this role installs, as the account running the playbook, whose
+# key the guest trusts; root has none of those keys.
+#
+# A guest that is off, or still running its first-logon script, is skipped with
+# a message. A running guest that does not answer ssh fails the run when the
+# `winvm_harness` tag was asked for, and is skipped with the error otherwise.
 #
 # Under --check the survey still runs, since it only reads, and lists what a
 # real run would change; nothing is copied.
 
-- name: Create the host's harness staging directory
-  ansible.builtin.file:
-    path: "{{ winvm_harness_stage_dir }}"
+# From HEAD, not the working tree, so a file half way through an edit never
+# reaches the guest. Extracted on the controller into a directory removed below.
+- name: Make a directory for the committed harness files
+  ansible.builtin.tempfile:
     state: directory
-    owner: root
-    group: root
-    mode: "0755"
-
-- name: Stage the harness files for a running guest
-  ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../tools/amiga/{{ item.src }}"
-    dest: "{{ winvm_harness_stage_dir }}/{{ item.src }}"
-    owner: root
-    group: root
-    mode: "0644"
-  loop: "{{ winvm_amiga_harness_files }}"
-  loop_control:
-    label: "{{ item.src }}"
-
-# Hashed from the repository rather than the staged copy, so --check compares
-# the guest with what a real run would send.
-- name: Hash the repository's harness files
-  ansible.builtin.stat:
-    path: "{{ playbook_dir }}/../tools/amiga/{{ item.src }}"
-    get_checksum: true
-    checksum_algorithm: sha256
-  loop: "{{ winvm_amiga_harness_files }}"
-  loop_control:
-    label: "{{ item.src }}"
+    suffix: .winvm-harness
+  register: winvm_harness_tmp
   delegate_to: localhost
   become: false
-  register: winvm_harness_local
+  check_mode: false
 
+- name: Stage the committed harness files
+  block:
+    - name: Export the committed harness files from git
+      ansible.builtin.command:
+        argv: >-
+          {{ ['git', '-C', winvm_repo_dir, 'archive', '--format=tar',
+              '-o', winvm_harness_tmp.path ~ '/harness.tar', 'HEAD', '--']
+             + (winvm_amiga_harness_files | map(attribute='src') | map('regex_replace', '^', 'tools/amiga/') | list) }}
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      check_mode: false
+
+    - name: Unpack the committed harness files
+      ansible.builtin.unarchive:
+        src: "{{ winvm_harness_tmp.path }}/harness.tar"
+        dest: "{{ winvm_harness_tmp.path }}"
+        remote_src: true
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      check_mode: false
+
+    - name: Hash the committed harness files
+      ansible.builtin.stat:
+        path: "{{ winvm_harness_tmp.path }}/tools/amiga/{{ item.src }}"
+        get_checksum: true
+        checksum_algorithm: sha256
+      loop: "{{ winvm_amiga_harness_files }}"
+      loop_control:
+        label: "{{ item.src }}"
+      delegate_to: localhost
+      become: false
+      register: winvm_harness_local
+
+    - name: Create the host's harness staging directory
+      ansible.builtin.file:
+        path: "{{ winvm_harness_stage_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Stage the committed harness files for a running guest
+      ansible.builtin.copy:
+        src: "{{ winvm_harness_tmp.path }}/tools/amiga/{{ item.src }}"
+        dest: "{{ winvm_harness_stage_dir }}/{{ item.src }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: "{{ winvm_amiga_harness_files }}"
+      loop_control:
+        label: "{{ item.src }}"
+  always:
+    - name: Remove the directory the committed files were exported to
+      ansible.builtin.file:
+        path: "{{ winvm_harness_tmp.path }}"
+        state: absent
+      delegate_to: localhost
+      become: false
+      check_mode: false
+
+# An undefined domain is a guest not built yet; any other virsh error fails.
 - name: Check the Windows guest is running
   ansible.builtin.command:
     argv: [virsh, -c, "qemu:///system", domstate, "{{ winvm_name }}"]
   register: winvm_harness_state
   changed_when: false
-  failed_when: false
+  failed_when:
+    - winvm_harness_state.rc != 0
+    - "'failed to get domain' not in winvm_harness_state.stderr"
   check_mode: false
 
-- name: Check the Windows guest answers ssh
+- name: Note whether the guest is running
+  ansible.builtin.set_fact:
+    winvm_harness_running: "{{ winvm_harness_state.rc == 0 and winvm_harness_state.stdout | trim == 'running' }}"
+    winvm_harness_asked: "{{ 'winvm_harness' in ansible_run_tags }}"
+
+# Also reads the first-logon log: sshd answers before guest-setup.ps1 has
+# finished, and its own harness copy must not race this one. A log that is
+# absent, or whose last line is the end of a run, means it is not running.
+- name: Check the Windows guest answers ssh and has finished its first-logon script
   ansible.builtin.command:
-    argv: [timeout, "30", /usr/local/bin/winvm, ssh, exit]
+    argv:
+      - timeout
+      - "60"
+      - /usr/local/bin/winvm
+      - ssh
+      - >-
+        powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand
+        {{ winvm_harness_probe | b64encode(encoding='utf-16-le') }}
+  vars:
+    winvm_harness_probe: |
+      $log = 'C:\Windows\Temp\guest-setup.log'
+      $last = if (Test-Path -LiteralPath $log) { @(Get-Content -LiteralPath $log -Tail 1) } else { @() }
+      if ($last.Count -eq 0 -or $last[0] -match '=== guest-setup done ===|FAIL  install WinUAE harness files') {
+        'SETUP finished'
+      } else {
+        "SETUP running: $($last[0])"
+      }
   register: winvm_harness_ssh
   changed_when: false
   failed_when: false
@@ -61,7 +131,28 @@
   become: false
   environment:
     SSH_ASKPASS_REQUIRE: never
-  when: winvm_harness_state.stdout | trim == 'running'
+  when: winvm_harness_running
+
+- name: Note whether the guest can be updated
+  ansible.builtin.set_fact:
+    winvm_harness_ssh_ok: >-
+      {{ winvm_harness_running and winvm_harness_ssh.rc | default(1) == 0
+         and (winvm_harness_ssh.stdout_lines | default([]) | select('match', '^SETUP ') | list | length > 0) }}
+    winvm_harness_ready: >-
+      {{ winvm_harness_running and winvm_harness_ssh.rc | default(1) == 0
+         and 'SETUP finished' in winvm_harness_ssh.stdout_lines | default([]) }}
+
+- name: Stop on a running guest that ssh cannot reach, when the harness was asked for
+  ansible.builtin.fail:
+    msg: >-
+      {{ winvm_name }} is running, but `winvm ssh` failed (exit
+      {{ winvm_harness_ssh.rc | default('none') }}:
+      {{ winvm_harness_ssh.stderr | default('') | trim | default('no output', true) }}), so
+      the WinUAE harness was not updated.
+  when:
+    - winvm_harness_running
+    - not winvm_harness_ssh_ok
+    - winvm_harness_asked
 
 - name: Say why the running guest's harness was not updated
   ansible.builtin.debug:
@@ -72,16 +163,17 @@
       with `--tags winvm_harness`.
   vars:
     winvm_harness_why: >-
-      {{ 'does not answer ssh yet' if winvm_harness_state.stdout | trim == 'running'
-         else 'is ' ~ (winvm_harness_state.stdout | trim | default('undefined', true)) }}
-  when: >-
-    winvm_harness_state.stdout | trim != 'running'
-    or (winvm_harness_ssh.rc | default(1)) != 0
+      {{ ('is ' ~ (winvm_harness_state.stdout | trim) if winvm_harness_state.rc == 0 else 'is not defined')
+         if not winvm_harness_running
+         else ('is still running its first-logon script ('
+               ~ (winvm_harness_ssh.stdout_lines | select('match', '^SETUP ') | first) ~ ')'
+               if winvm_harness_ssh_ok
+               else 'is running, but `winvm ssh` failed (exit ' ~ (winvm_harness_ssh.rc | default('none'))
+                    ~ ': ' ~ (winvm_harness_ssh.stderr | default('') | trim | default('no output', true)) ~ ')') }}
+  when: not winvm_harness_ready
 
 - name: Update the running guest's harness
-  when:
-    - winvm_harness_state.stdout | trim == 'running'
-    - (winvm_harness_ssh.rc | default(1)) == 0
+  when: winvm_harness_ready
   vars:
     winvm_harness_want: >-
       {{ dict(winvm_harness_local.results
@@ -105,14 +197,21 @@
         '{{ e }}'
       {% endfor %}
       )
+      $staleTasks = @(
+      {% for t in winvm_amiga_stale_tasks %}
+        '{{ t }}'
+      {% endfor %}
+      )
       function Hash-Of($p) {
         if (Test-Path -LiteralPath $p -PathType Leaf) { (Get-FileHash -Algorithm SHA256 -LiteralPath $p).Hash } else { 'MISSING' }
       }
   block:
     # Read-only: prints one line for each thing a real run would change.
-    - name: Survey the guest's harness files, folders and Defender exclusions
+    - name: Survey the guest's harness files, folders, Defender exclusions and stale tasks
       ansible.builtin.command:
         argv:
+          - timeout
+          - "120"
           - /usr/local/bin/winvm
           - ssh
           - >-
@@ -128,6 +227,7 @@
           foreach ($d in $dirs) { if (-not (Test-Path -LiteralPath $d -PathType Container)) { "NODIR $d" } }
           $have = @((Get-MpPreference).ExclusionPath)
           foreach ($e in $exclusions) { if ($have -notcontains $e) { "NOEXCL $e" } }
+          foreach ($t in $staleTasks) { if (Get-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue) { "OLDTASK $t" } }
           'SURVEYED'
       register: winvm_harness_survey_out
       changed_when: false
@@ -145,16 +245,18 @@
           {{ winvm_harness_survey_out.stdout_lines | select('match', '^STALE ')
              | map('replace', 'STALE ', '') | list }}
         winvm_harness_setup_needed: >-
-          {{ winvm_harness_survey_out.stdout_lines | select('match', '^(NODIR|NOEXCL) ') | list | length > 0 }}
+          {{ winvm_harness_survey_out.stdout_lines | select('match', '^(NODIR|NOEXCL|OLDTASK) ') | list | length > 0 }}
 
     - name: List what the guest lacks
       ansible.builtin.debug:
         msg: "{{ winvm_harness_survey_out.stdout_lines | reject('equalto', 'SURVEYED') | list }}"
       when: winvm_harness_stale | length > 0 or winvm_harness_setup_needed
 
-    - name: Create the harness folders and Defender exclusions in the guest
+    - name: Create the harness folders and Defender exclusions, and remove stale tasks, in the guest
       ansible.builtin.command:
         argv:
+          - timeout
+          - "120"
           - /usr/local/bin/winvm
           - ssh
           - >-
@@ -168,6 +270,10 @@
           foreach ($e in $exclusions) { if ($have -notcontains $e) { Add-MpPreference -ExclusionPath $e } }
           $have = @((Get-MpPreference).ExclusionPath)
           foreach ($e in $exclusions) { if ($have -notcontains $e) { throw "Defender exclusion not set: $e" } }
+          foreach ($t in $staleTasks) {
+            if (Get-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue) { Unregister-ScheduledTask -TaskName $t -Confirm:$false }
+            if (Get-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue) { throw "scheduled task still registered: $t" }
+          }
           'DONE'
       register: winvm_harness_setup_out
       changed_when: true
@@ -184,6 +290,8 @@
     - name: Copy each changed harness file to the guest
       ansible.builtin.command:
         argv:
+          - timeout
+          - "120"
           - /usr/local/bin/winvm
           - scp
           - "{{ winvm_harness_stage_dir }}/{{ item.src }}"
@@ -205,6 +313,8 @@
     - name: Put the changed harness files in place and check their hashes
       ansible.builtin.command:
         argv:
+          - timeout
+          - "120"
           - /usr/local/bin/winvm
           - ssh
           - >-
