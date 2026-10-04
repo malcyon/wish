@@ -184,6 +184,11 @@ def test_darkness_map_guards_ready_steps_and_every_lines_item_list():
     owned = {s for s in states if s.startswith(('camp_items', 'camp_sheet_items'))}
     assert owned <= spec['identity'].keys()
     assert not rows & spec['identity'].keys()
+    # READY flips the YES/NO column, and `ready 1 7` twice opens the list again with row 7 at NO,
+    # so a list's identity rule reads only the item names to the right of that column.
+    for state in owned:
+        if state.startswith('camp_items'):
+            assert all(rule['box'][0] >= 150 for rule in _rules(spec['identity'][state])), state
     # Line 1 of the substituted party is not the pinned party's first member, so its world
     # sheet and roster need a second rule beside the pinned ones.
     for kind, state in (('guards', 'sheet'), ('identity', 'sheet'), ('identity', 'loaded_menu')):

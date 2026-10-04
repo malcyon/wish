@@ -731,68 +731,68 @@
     "camp_items": {
       "also": [],
       "box": [
-        74,
+        150,
         104,
         676,
         400
       ],
       "example": "amiga-grab-crops/wish9-b1__13-camp_items.png",
-      "sha256": "f7bd8d9d2f3495bf05f565ddd3f70d28edf06590d28984b833a9494f32140b7b"
+      "sha256": "6a08a1f2f88dc549c61ee804578b99c47d9b64e2f1d7eef71a673c4d558623c4"
     },
     "camp_items_2": {
       "also": [],
       "box": [
-        74,
+        150,
         104,
         676,
         400
       ],
       "example": "amiga-grab-crops/wish9-b1__25-camp_items_2.png",
-      "sha256": "03250ea88a7b2c91e03aa2573a7061458205e62cc35e36258fcce2eb4ae7e235"
+      "sha256": "7a30aeb8cb613577cbdd509d2301d2f619fba8257f637a5fe45c36daa8216b81"
     },
     "camp_items_3": {
       "also": [],
       "box": [
-        74,
+        150,
         104,
         676,
         400
       ],
       "example": "amiga-grab-crops/wish9-b1__28-camp_items_3.png",
-      "sha256": "a287b28473209d728df060f1c1d434a58f03354d3aa7f3a391d00cbca0676340"
+      "sha256": "804aa7007218f32fd30bab058b65e5d86a5fcb7a6a25ff4854cef80282a2f638"
     },
     "camp_items_4": {
       "also": [],
       "box": [
-        74,
+        150,
         104,
         676,
         400
       ],
       "example": "amiga-grab-crops/wish9-b1__30-camp_items_4.png",
-      "sha256": "5ccef6d32ed31e119a7a285f99d0968af91bd6a40ea9c429abfa85bab5b748e4"
+      "sha256": "fa62970c20d962b8b30d81a9d76fc2ffec9adcac1dba8cb6f819e491931966f5"
     },
     "camp_items_5": {
       "also": [],
       "box": [
-        74,
+        150,
         104,
         676,
         400
       ],
       "example": "amiga-grab-crops/wish9-b1__32-camp_items_5.png",
-      "sha256": "3aed809bd154c8957b2b92b320515a019e815a77cc41835b1e89a1902cb54a22"
+      "sha256": "f9fb8774868dbe7dddda0a69b9c82357e1d4bbf51f2389e7ee76b84937be9aa6"
     },
     "camp_items_6": {
       "also": [],
       "box": [
-        74,
+        150,
         104,
         676,
         400
       ],
       "example": "amiga-grab-crops/wish9-b1__34-camp_items_6.png",
-      "sha256": "9e45d2c4bd1578b23da1a8f8eb4ff04cc1870398ad405a1927d82f7e2d1cc0df"
+      "sha256": "74fce2d07a0e624ff2c2afa566ebf6289c37e49efb71fa284a88760f0a073a31"
     },
     "camp_sheet": {
       "also": [
