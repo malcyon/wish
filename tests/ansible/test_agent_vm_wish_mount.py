@@ -1,6 +1,4 @@
-"""The sshfs unit the `agent-vm` role installs on the desktop, rendered with the
-role's defaults: a writable view of the guest's whole filesystem that only the
-mounting user can reach."""
+"""The two sshfs units that expose only the guest home and temporary files."""
 from __future__ import annotations
 
 import pathlib
@@ -11,36 +9,58 @@ import yaml
 ROLE = pathlib.Path(__file__).resolve().parents[2] / "ansible" / "roles" / "agent-vm"
 
 
-def _exec_start() -> str:
+def _exec_starts() -> dict[str, str]:
     variables = yaml.safe_load((ROLE / "defaults" / "main.yml").read_text())
-    variables.update(agent_vm_operator="op", agent_vm_wish_mount="/home/op/agent-wish",
+    variables.update(agent_vm_operator="op", agent_vm_user="agent",
                      sandbox_net_name="sandbox", sandbox_net_leases={})
     variables["agent_vm_network_name"] = variables["agent_vm_ip"] = variables["agent_vm_mac"] = ""
-    # Rendered by hand: the template only substitutes `{{ name }}`, and jinja2
-    # is not a dependency of the suite.
-    def render(text: str) -> str:
-        return re.sub(r"\{\{\s*(\w+)\s*\}\}", lambda m: str(variables[m.group(1)]), text)
+    # Rendered by hand: the template only substitutes variable and item fields.
+    def render(text: str, item: dict | None = None) -> str:
+        def replace(match: re.Match) -> str:
+            name = match.group(1)
+            return str(item[name[5:]] if name.startswith("item.") else variables[name])
+
+        return re.sub(r"\{\{\s*([\w.]+)\s*\}\}", replace, text)
 
     for _ in range(4):
         for k, v in list(variables.items()):
             if isinstance(v, str):
                 variables[k] = render(v)
-    text = render((ROLE / "templates" / "agent-vm-wish-mount.service.j2").read_text())
-    m = re.search(r"^ExecStart=(.*?)(?=^\S)", text, re.S | re.M)
-    assert m
-    return m.group(1).replace("\\\n", " ")
+    template = (ROLE / "templates" / "agent-vm-wish-mount.service.j2").read_text()
+    starts = {}
+    for raw in variables["agent_vm_wish_mounts"]:
+        item = {key: render(value) for key, value in raw.items()}
+        text = render(template, item)
+        match = re.search(r"^ExecStart=(.*?)(?=^\S)", text, re.S | re.M)
+        assert match
+        starts[item["unit"]] = match.group(1).replace("\\\n", " ")
+    return starts
 
 
-def test_mount_is_writable_whole_filesystem_of_the_mounting_user_only():
-    line = _exec_start()
-    opts = line.split("-o ")[1].split()[0].split(",")
-    assert "ro" not in opts
-    assert "agent-vm:/ /home/op/agent-wish" in line
-    for kept in ("reconnect", "BatchMode=yes", "ConnectTimeout=3",
-                 "ServerAliveInterval=2", "ServerAliveCountMax=2"):
-        assert kept in opts
-    assert "follow_symlinks" in opts and "noexec" in opts
-    assert "allow_other" not in line and "allow_root" not in line
+def test_mounts_expose_only_home_and_tmp_to_the_mounting_user():
+    starts = _exec_starts()
+    assert set(starts) == {"agent-wish-home.service", "agent-wish-tmp.service"}
+    assert "agent-vm:/home/agent /home/op/agent-home" in starts["agent-wish-home.service"]
+    assert "agent-vm:/tmp /home/op/agent-tmp" in starts["agent-wish-tmp.service"]
+    for line in starts.values():
+        opts = line.split("-o ")[1].split()[0].split(",")
+        assert "ro" not in opts
+        for kept in ("reconnect", "BatchMode=yes", "ConnectTimeout=3",
+                     "ServerAliveInterval=2", "ServerAliveCountMax=2"):
+            assert kept in opts
+        assert "follow_symlinks" in opts and "noexec" in opts
+        assert "allow_other" not in line and "allow_root" not in line
+
+
+def test_retired_root_mount_stops_before_scoped_mounts_start():
+    tasks = yaml.safe_load((ROLE / "tasks" / "main.yml").read_text())
+    names = [task["name"] for task in tasks]
+    assert names.index("Stop and disable the retired root mount") < names.index(
+        "Create the home and temporary mount points")
+    assert names.index("Check that the retired root mount is gone") < names.index(
+        "Enable the home and temporary mounts at login, and start them")
+    for task in tasks[names.index("Check for the retired root mount unit"):]:
+        assert "agent_vm_mount" in task["tags"]
 
 
 def _tasks(items):

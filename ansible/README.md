@@ -136,22 +136,22 @@ ansible-playbook -i ansible/inventory.yml ansible/agent-vm.yml
 
 ## Browsing and editing the guest's files
 
-The guest's whole filesystem is mounted on the desktop, **writable as the guest's `agent` account**, at `~/agent-wish`, so the guest's home directory and its `/tmp` are under it, in `home/` and `tmp/`. Open the checkout in a local editor:
+Only the guest account's home directory and `/tmp` are mounted on the desktop, **writable as the guest's `agent` account**, at `~/agent-home` and `~/agent-tmp`. Open the checkout in a local editor:
 
 ```bash
-code ~/agent-wish/home/<agent account>/src/wish
+code ~/agent-home/src/wish
 ```
 
-It is an sshfs mount made by a systemd user unit, `agent-wish.service`, which mounts when you log in and needs nothing typed. It is mounted by you and not by root, and neither `allow_other` nor `allow_root` is set, so only your desktop account can reach it. The mount is `follow_symlinks` (a symlink the guest plants is resolved on the guest, so an editor never opens or saves a file on this desktop through one) and `noexec` (nothing from the guest runs here from the mount). Open the checkout rather than `~/agent-wish` itself: `~/agent-wish` is the guest's whole filesystem, and a recursive search or a desktop indexer (baloo, tracker) started on the whole mount walks `/proc`, `/sys` and `/mnt/disks` over ssh. No editor server runs in the guest. What you write goes straight into files the agents are using: an edit under `~/src/wish` changes their working tree at once.
+Two sshfs user units, `agent-wish-home.service` and `agent-wish-tmp.service`, mount the directories when you log in. They are mounted by you and not by root, and neither `allow_other` nor `allow_root` is set, so only your desktop account can reach them. Both use `follow_symlinks` (a symlink the guest plants is resolved on the guest, so an editor never opens or saves a file on this desktop through one) and `noexec` (nothing from the guest runs here from a mount). Open the checkout at `~/agent-home/src/wish`: opening all of `~/agent-home` also asks an editor to scan caches and private files. The retired `~/agent-wish` directory is no longer mounted. No editor server runs in the guest. An edit under `~/agent-home/src/wish` changes the files the agents are using at that moment.
 
 | situation | what happens |
 |---|---|
 | A write | It reaches the guest as `agent`; the guest's own permissions decide whether it is allowed |
-| The guest reboots | The mount reconnects by itself; `ls` works again a few seconds after the guest answers ssh |
+| The guest reboots | Both mounts reconnect by themselves; `ls` works again a few seconds after the guest answers ssh |
 | The guest is down when you log in | systemd retries every 10 seconds until it is up |
-| The guest is down or dies | ssh notices within a few seconds and a request on the mount returns an error rather than hanging; a stale mount left by a crash is cleared before each start |
+| The guest is down or dies | ssh notices within a few seconds and a request on either mount returns an error rather than hanging; a stale mount left by a crash is cleared before each start |
 
-`systemctl --user status agent-wish` says what it is doing, `journalctl --user -u agent-wish` says why it is not, and `fusermount3 -u ~/agent-wish` unmounts it by hand. The path, the remote directory and the timings are role variables (`agent_vm_wish_mount`, `agent_vm_wish_remote`, `agent_vm_wish_mount_alive`, `agent_vm_wish_mount_retry`). A symlink shows as what it points at, resolved in the guest. `--tags agent_vm` applies the unit and then verifies the mount; `--tags verify` alone only checks a mount that is already up. **VS Code Remote SSH into the guest is not used**: it forwards your GitHub sign-in into the guest; the design document has the finding.
+`systemctl --user status agent-wish-home agent-wish-tmp` shows the units, and `journalctl --user -u agent-wish-home -u agent-wish-tmp` gives their logs. The paths and timings are role variables (`agent_vm_wish_mounts`, `agent_vm_wish_mount_alive`, `agent_vm_wish_mount_retry`). A symlink shows as what it points at, resolved in the guest. `--tags agent_vm_mount` applies and verifies the mounts; `--tags verify` only checks mounts already up. **VS Code Remote SSH into the guest is not used**: it forwards your GitHub sign-in into the guest; the design document has the finding.
 
 ## The credential
 
@@ -400,7 +400,7 @@ ansible-playbook -i ansible/inventory.yml ansible/agent-vm-teardown.yml
 ansible-playbook -i ansible/inventory.yml ansible/windows-vm-teardown.yml
 ```
 
-The Ubuntu teardown force-stops and undefines the domain, stops the sshfs mount unit and deletes its file, and removes the guest's disk, the game disks image and its staging copy, the state directory (the seed ISO, the generated domain XML and the stamps), the ssh alias and the AppArmor override. It leaves `agent_vm_disks_dir` (yours, and where `coab-source` and `game-icons` were downloaded), the downloaded cloud image, the login key, and the empty mount point `agent_vm_wish_mount` (`~/agent-wish`). The Windows teardown force-stops the domain and undefines it (with `--nvram`, or libvirt fails and orphans the UEFI varstore), removes the port-forward units, the whole `winvm_base_dir` tree and the AppArmor override.
+The Ubuntu teardown force-stops and undefines the domain, stops both sshfs mount units and deletes their files, and removes the guest's disk, the game disks image and its staging copy, the state directory (the seed ISO, the generated domain XML and the stamps), the ssh alias and the AppArmor override. It leaves `agent_vm_disks_dir` (yours, and where `coab-source` and `game-icons` were downloaded), the downloaded cloud image, the login key, and the empty mount point directories `~/agent-home` and `~/agent-tmp`. The Windows teardown force-stops the domain and undefines it (with `--nvram`, or libvirt fails and orphans the UEFI varstore), removes the port-forward units, the whole `winvm_base_dir` tree and the AppArmor override.
 
 Neither teardown removes the `sandbox` network, the `no-lan` filter or the libvirt firewall-backend pin, which both guests share, and neither removes the QEMU and libvirt packages, since pulling about 99 packages off a host is a bigger change than removing a guest; `sudo apt purge --autoremove qemu-system-x86 libvirt-daemon-system swtpm` finishes the job. libvirt's `default` network is left as it is: stopped and not autostarting only if `winvm_disable_default_network` was set when the guest was built.
 

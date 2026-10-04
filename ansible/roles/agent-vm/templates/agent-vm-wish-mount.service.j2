@@ -1,9 +1,7 @@
 # Managed by Ansible — roles/agent-vm.
 #
-# A writable view of the agent VM's whole filesystem, to browse and edit in a local
-# GUI. Writes reach the guest as its {{ agent_vm_user }} account, and the guest's own permissions decide
-# what that account may change. No editor server runs in the guest: the only thing
-# on its side is sshd, which is already there.
+# A writable view of {{ item.remote }} on the agent VM. Writes reach the guest
+# as {{ agent_vm_user }}, and the guest's own permissions decide what may change.
 #
 # Mounted by the person, not by root, and neither allow_other nor allow_root is set,
 # so only that person can reach the mount; nothing is added to /etc/fuse.conf. The
@@ -19,16 +17,16 @@
 #     the mount point returns an error instead of hanging. A stale mount from a
 #     crashed sshfs is cleared before each start, and again on stop.
 [Unit]
-Description=Writable view of the {{ agent_vm_name }} filesystem as {{ agent_vm_user }} at {{ agent_vm_wish_mount }}
+Description=Writable view of {{ agent_vm_name }}:{{ item.remote }} as {{ agent_vm_user }} at {{ item.mount }}
 # A guest that stays down is not a reason to give up.
 StartLimitIntervalSec=0
 
 [Service]
 Type=simple
-ExecStartPre=-/usr/bin/fusermount3 -uz {{ agent_vm_wish_mount }}
-ExecStart=/usr/bin/sshfs -f {{ agent_vm_name }}:{{ agent_vm_wish_remote }} {{ agent_vm_wish_mount }} \
+ExecStartPre=-/usr/bin/fusermount3 -uz {{ item.mount }}
+ExecStart=/usr/bin/sshfs -f {{ agent_vm_name }}:{{ item.remote }} {{ item.mount }} \
     -o reconnect,ServerAliveInterval={{ agent_vm_wish_mount_alive }},ServerAliveCountMax=2,ConnectTimeout=3,BatchMode=yes,cache_timeout=2,follow_symlinks,noexec
-ExecStopPost=-/usr/bin/fusermount3 -uz {{ agent_vm_wish_mount }}
+ExecStopPost=-/usr/bin/fusermount3 -uz {{ item.mount }}
 Restart=always
 RestartSec={{ agent_vm_wish_mount_retry }}
 

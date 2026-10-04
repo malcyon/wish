@@ -48,22 +48,24 @@
     database: passwd
     key: "{{ agent_vm_operator }}"
 
-- name: Stop and disable the read-only mount of the guest's code
+- name: Stop and disable the guest file mounts
   ansible.builtin.systemd:
-    name: agent-wish.service
+    name: "{{ item }}"
     scope: user
     enabled: false
     state: stopped
+  loop: "{{ (agent_vm_wish_mounts | map(attribute='unit') | list) + ['agent-wish.service'] }}"
   become: true
   become_user: "{{ agent_vm_operator }}"
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ getent_passwd[agent_vm_operator][1] }}"
   failed_when: false
 
-- name: Remove the mount unit
+- name: Remove the guest file mount units
   ansible.builtin.file:
-    path: "/home/{{ agent_vm_operator }}/.config/systemd/user/agent-wish.service"
+    path: "/home/{{ agent_vm_operator }}/.config/systemd/user/{{ item }}"
     state: absent
+  loop: "{{ (agent_vm_wish_mounts | map(attribute='unit') | list) + ['agent-wish.service'] }}"
   become: true
   become_user: "{{ agent_vm_operator }}"
 
