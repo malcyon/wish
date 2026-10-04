@@ -653,8 +653,7 @@ class CharacterCard(QObject):
         if self.hp is not None:
             self.hp.set(who.hp_fraction, f"{hp} / {who.hp_max} hp",
                         hp_colour(who.hp_fraction))
-            self.hp.setToolTip("current hit points from the roster block; the "
-                               "maximum from the character record")
+            self.hp.setToolTip("Current hit points")
 
         for bar, klass in zip(self.xp, who.classes):
             if bar is None:
@@ -667,10 +666,10 @@ class CharacterCard(QObject):
                 bar.set(klass.fraction or 0.0,
                         f"{klass.experience} / {klass.next_threshold} xp",
                         EXPERIENCE)
-            bar.setToolTip(
-                f"{klass.name} level {klass.level}. For a multi-class "
-                "character the split of experience between classes is not "
-                "established, so each bar uses the one stored number")
+            tip = (f"{klass.name} level {klass.level}. For a multi-class "
+                   "character the split of experience between classes is not "
+                   "established, so each bar uses the one stored number")
+            bar.setToolTip(tip[:1].upper() + tip[1:])
             bar.show()
         for bar in self.xp[len(who.classes):]:
             if bar is not None:

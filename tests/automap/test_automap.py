@@ -1306,6 +1306,19 @@ def test_a_card_at_a_class_ceiling_says_maximum(app):
     assert card.xp[0].fraction == 1.0
 
 
+def test_card_tooltips_open_with_a_capital_and_the_hp_tip_is_short(app):
+    from automap.panel import CharacterCard
+    klass = live.ClassProgress("fighter", 5, 5000, 8000, 0.5)
+    card = CharacterCard(make_root(), 0)
+    card.show_character(live.Character(
+        slot=0, name="MAGNUS", classes=(klass,), level=5, armour_class=2,
+        thac0=13, hp=30, hp_max=40, experience=5000))
+    assert card.hp.toolTip() == "Current hit points"
+    assert card.xp[0].toolTip().startswith("Fighter level 5")
+    for tip in (card.hp.toolTip(), card.xp[0].toolTip()):
+        assert tip[0].isupper()
+
+
 def test_the_strip_says_square_dash_until_the_party_has_been_located(app):
     """Before the first fix, `(0,0) facing N` is not where the party is -- it
     is `AutomapState`'s defaults -- so the strip says it does not know.
