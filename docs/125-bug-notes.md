@@ -924,6 +924,94 @@ record below by the number of extra coins the change came back in, three for a
 narrower than it was written as: no record can be 5000 below *for this reason*.
 `.claude/rules/testing.md` says how to read a miss.
 
+## N25. A Strength spell that runs out leaves its THAC0 behind in DOS Pool of Radiance
+
+**What the game does.** When a Strength spell ends, the DOS engine puts the
+character's strength back and leaves the THAC0 and damage it computed from the
+raised score in the record. Casting the spell stores the score at `GAME.OVR`
+`0x2C133`-`0x2C143` and then calls the whole-record recompute N19 describes
+(`00BA:0BB8`, `START.EXE` image `0x1758`) at `0x2C14D`. Running out does not:
+the time routine (`0x23DCC`-`0x240BB`, entered through `0x241A1`) counts the
+effect down and calls `remove_affect` (`0x2AF10`), whose handler for ids 12 and
+38 (`0xF115`-`0xF22E`) writes strength `0x10` and exceptional strength `0x16`
+and returns. None of the 22 call sites of the recompute in `GAME.OVR` is in any
+of those three routines. SAVE does not recompute and the loader does not either,
+so the stale bytes go into the save and come back out of it. CONFIRMED, from
+the code and from a game-written save.
+
+**What it should do.** Call the recompute after restoring the score, as the
+cast does.
+
+**The evidence.** `WISH-SPEC-pool-8-strength-twice-and-gauntlets-dos-engine-saves`,
+THRENDER GRONE, all three slots written by the game:
+
+| slot | strength `0x10` / `0x16` | `thac0_current` `0x110` | damage, `roster_tail` byte 7 |
+|---|---|---|---|
+| D, under the spell | 18 / 100 | 43 (THAC0 17) | `0x07` |
+| E, under the spell | 18 / 100 | 43 | `0x07` |
+| F, after the rest it ran out in | **17 / 0** | **43** | **`0x07`** |
+| what the recompute stores at 17 / 0 | | 41 (THAC0 19) | `0x02` |
+
+From E to F his 285-byte record changes in those two strength bytes and
+nowhere else. The 41 and `0x02` are what he held in slot D of
+`WISH-SPEC-por-694-gauntlets-readied`, the save the run started from, and what
+`goldbox.dos_codec.dos_combat_rebuild` gives for slot F.
+
+**Only one reader acts on the stale field before something recomputes it, and
+it is the script's party-strength command.** `PARTYSTRENGTH` (ECL `$1D`,
+dispatched at `0x3D79` to `0x200C`) walks the party list from `DS:5D96` and
+reads the stored fields, not the ability scores: `hp_current` `0x11B`,
+`armour_class` `0x111`, `thac0_current` `0x110`, and the cleric and magic-user
+levels at `0x096` and `0x09B`. Per member it adds hit points, 5 a point of
+THAC0 field above 39, 5 a point of armour field above 60, 8 a magic-user level
+and 4 a cleric level, divides by ten and adds the quotient to the total. It
+calls no recompute. This differs from the C64 routine in
+[`114-party-strength.md`](114-party-strength.md) three ways: current hit points
+rather than maximum, a divide per character rather than once, and the THAC0
+term clamped at zero. For THRENDER in slot F that is `(11 + 5·4) / 10 = 3`
+where the recomputed record gives `(11 + 5·2) / 10 = 2`, so the party counts
+one stronger than it is. CONFIRMED from the code.
+
+**A fight is not affected.** The COMBAT statement's handler (`0x24E1`) reaches
+`0xD8B2` through `0x9881` and `0xE402`, and that routine walks the party list
+recomputing every member (`0xD8DA`) before it allocates the combat block at
+record `+0x108`; each combatant's turn recomputes again (`0x9A8A`) before it
+acts. VIEW and the item screens recompute before they draw, as N19 found. So
+no attack roll and no screen uses the stale THAC0. CONFIRMED from the code.
+
+**What the player meets.** A player can reach this by playing: cast Strength,
+rest until it runs out, leave camp and walk on without opening VIEW, and the
+next script that asks for party strength sizes its fight as though the spell
+were still on. All 18 reachable `PARTYSTRENGTH` statements, in twelve of the
+area scripts and on both ports, feed a monster count or a gate. One in the
+`ECL08` script uses the raw value as a `LOADMON` count, so one point of strength
+is one more monster; another in the same script offers the graveyard commission
+only from 19; the New Phlan one changes the monster type at 24 and 50; most of
+the others divide first, so one point changes the count only across a
+boundary. Nothing on
+screen distinguishes that fight from an ordinary one, because the counts are
+random or rest on numbers the game never shows, so the player meets a slightly
+bigger fight and has no way to know it. PROBABLE that nothing recomputes on the
+way: a static search of the call graph from the adventure loop (`0x403E`, eight
+calls deep, 635 routines) reaches the recompute only through COMBAT, `ADDNPC`
+and `PROGRAM` statements and through VIEW, and from camp (`0x196A0`) only
+through VIEW; it does not follow calls made through a pointer. What would
+confirm it: in DOSBox-X, load slot F of the specimen above, walk the party
+into a square whose script runs `PARTYSTRENGTH` without opening VIEW, and
+break at `GAME.OVR` `0x2054`, where AL holds the byte just read from `0x110`;
+43 for THRENDER confirms it, 41 says something recomputed on the way.
+
+**And the cost to this project.** A save taken after the spell runs out fails
+the recompute comparison on that one record, so
+`tests/pool_of_radiance/test_pordoscombat.py` lists it as a Strength expiry
+after the last recompute. A converter that writes the recomputed value writes
+what the game itself stores at the next VIEW or fight.
+
+**Version.** Pool of Radiance, DOS. The C64 expiry and the later DOS titles'
+have not been read for this. What would settle the C64: break on the Strength
+handler's write to record `0x10` when a spell runs out in a rest, and check
+whether roster `+0x0E` changes before the next fight.
+
 ## Not yet confirmed
 
 Four findings that a player *would* notice, and that are kept out of
