@@ -898,9 +898,10 @@ SNAPSHOT_NAME = re.compile(r"[A-Za-z0-9_-]{1,32}")
 
 #: A Windows device name, in any case and with any extension: a path through one
 #: opens the device rather than a file or folder.
+WINDOWS_DEVICE = re.compile(r"(?i)(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?")
+
 #: The names WinUAE gives its copies' pipes; the lane script finds the one its own emulator serves by pid.
 LANE_PIPE_NAME = re.compile(r"WinUAE(?:_[1-9])?")
-WINDOWS_DEVICE = re.compile(r"(?i)(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?")
 
 #: The completion marker's name; `~` cannot be in a snapshot name, so no snapshot
 #: shares its path.

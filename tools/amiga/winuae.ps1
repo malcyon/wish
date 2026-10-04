@@ -631,7 +631,7 @@ function Invoke-State([string]$Verb) {
     }
     $tags.Add("<<server_pid>> $server") | Out-Null
     if ($server -ne $lane.proc.Id) {
-      $verdict = "fail \\.\pipe\WinUAE is served by pid=$server, not by this lane's winuae64 pid=$($lane.proc.Id)"
+      $verdict = "fail \\.\pipe\$($script:LanePipeName) is served by pid=$server, not by this lane's winuae64 pid=$($lane.proc.Id)"
     }
     if (-not $verdict) {
       $again = Get-LaneEmulator
@@ -763,29 +763,47 @@ function Get-LaneEmulator {
 # Each WinUAE copy takes the first free of \\.\pipe\WinUAE, WinUAE_1 .. WinUAE_9 (uaeipc.cpp), so
 # the name says nothing about whose pipe it is. The pipe belongs to the lane when its
 # server process is the lane's winuae64; with one copy running that is `WinUAE`.
-function Open-LanePipe([int]$LanePid) {
-  $names = @('WinUAE') + (1..9 | ForEach-Object { "WinUAE_$_" })
-  try {
-    $live = [IO.Directory]::GetFiles('\\.\pipe\') | ForEach-Object { [IO.Path]::GetFileName($_) }
-    $names = @($names | Where-Object { $live -ccontains $_ })
-  } catch { }
+# The only way to read a pipe's server pid is to open it, and each pipe has one instance
+# (uaeipc.cpp nMaxInstances 1), so probing another copy's pipe briefly occupies it.
+# A lane's winuae64 can exist before it creates its pipe, so the search repeats until
+# $WaitMs has passed, as the old fixed-name Connect(5000) waited. The opened pipe's
+# name is left in $script:LanePipeName for the verdicts.
+function Open-LanePipe([int]$LanePid, [int]$WaitMs = 5000) {
+  $all = @('WinUAE') + (1..9 | ForEach-Object { "WinUAE_$_" })
+  $until = [Diagnostics.Stopwatch]::StartNew()
   $seen = @()
-  foreach ($name in $names) {
-    $try = New-Object IO.Pipes.NamedPipeClientStream '.', $name, 'InOut'
+  $listed = ''
+  do {
+    $seen = @()
+    $names = $all
     try {
-      $try.Connect($(if ($names.Count -eq 1) { 5000 } else { 2000 }))
-      [uint32]$owner = 0
-      if (-not [Wish.PipeInfo]::GetNamedPipeServerProcessId($try.SafePipeHandle.DangerousGetHandle(), [ref]$owner)) {
-        throw "GetNamedPipeServerProcessId failed, error $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
-      }
-      if ($owner -eq $LanePid) { return $try }
-      $seen += "$name=$owner"
+      $live = @([IO.Directory]::GetFiles('\\.\pipe\') | ForEach-Object { [IO.Path]::GetFileName($_) })
+      $names = @($all | Where-Object { $live -ccontains $_ })
+      $listed = "live WinUAE pipes: $($names -join ', ')"
     } catch {
-      $seen += "$name=$($_.Exception.Message)"
+      $live = $null
+      $listed = "listing unavailable: $($_.Exception.Message)"
     }
-    $try.Dispose()
-  }
-  throw "no WinUAE pipe is served by this lane's winuae64 pid=$LanePid ($($seen -join ', '))"
+    foreach ($name in $names) {
+      # A listing that failed leaves every name to try; WinUAE keeps its 5000 ms there.
+      $connectMs = if ($names.Count -eq 1 -or ($null -eq $live -and $name -ceq 'WinUAE')) { 5000 } else { 2000 }
+      $try = New-Object IO.Pipes.NamedPipeClientStream '.', $name, 'InOut'
+      try {
+        $try.Connect($connectMs)
+        [uint32]$owner = 0
+        if (-not [Wish.PipeInfo]::GetNamedPipeServerProcessId($try.SafePipeHandle.DangerousGetHandle(), [ref]$owner)) {
+          throw "GetNamedPipeServerProcessId failed, error $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
+        }
+        if ($owner -eq $LanePid) { $script:LanePipeName = $name; return $try }
+        $seen += "$name served by pid=$owner, skipped"
+      } catch {
+        $seen += "$name not opened: $($_.Exception.Message)"
+      }
+      $try.Dispose()
+    }
+    if ($until.ElapsedMilliseconds -lt $WaitMs) { Start-Sleep -Milliseconds 250 }
+  } while ($until.ElapsedMilliseconds -lt $WaitMs)
+  throw "no WinUAE pipe is served by this lane's winuae64 pid=$LanePid ($listed; $($seen -join '; '))"
 }
 
 # One message out, one reply back, both NUL-terminated as `uaeipc.cpp` wants: a
@@ -940,7 +958,7 @@ function Invoke-Floppy([string]$Verb) {
     }
     $tags.Add("<<server_pid>> $server") | Out-Null
     if ($server -ne $lane.proc.Id) {
-      $verdict = "fail \\.\pipe\WinUAE is served by pid=$server, not by this lane's winuae64 pid=$($lane.proc.Id)"
+      $verdict = "fail \\.\pipe\$($script:LanePipeName) is served by pid=$server, not by this lane's winuae64 pid=$($lane.proc.Id)"
     }
     if (-not $verdict) {
       # The claim can be stolen with -Override while the pipe was opening; ask again.

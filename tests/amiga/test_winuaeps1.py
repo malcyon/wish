@@ -60,9 +60,9 @@ def test_every_pipe_verb_opens_the_pipe_its_own_emulator_serves():
 def test_the_lane_pipe_is_chosen_by_its_server_pid():
     body = _body("Open-LanePipe")
     asked = body.index("GetNamedPipeServerProcessId")
-    matched = body.index("-eq $LanePid) { return $try }", asked)
+    matched = body.index("$owner -eq $LanePid) { $script:LanePipeName = $name; return $try }", asked)
     assert asked < matched
-    assert "$names = @('WinUAE') + (1..9 | ForEach-Object { \"WinUAE_$_\" })" in body
+    assert "$all = @('WinUAE') + (1..9 | ForEach-Object { \"WinUAE_$_\" })" in body
 
 
 def test_a_lane_whose_pipe_is_nobody_s_is_named_with_every_server_seen():
@@ -75,3 +75,39 @@ def test_the_pipe_name_set_is_the_same_in_python_and_powershell():
     assert amiga.LANE_PIPE_NAME.fullmatch("WinUAE")
     assert all(amiga.LANE_PIPE_NAME.fullmatch(f"WinUAE_{n}") for n in range(1, 10))
     assert not amiga.LANE_PIPE_NAME.fullmatch("WinUAE_10")
+
+
+def test_the_pipe_search_waits_for_a_pipe_the_lane_has_not_made_yet():
+    """The emulator can exist before its pipe does; the old fixed-name connect waited five seconds."""
+    sig = re.search(r"function Open-LanePipe\(\[int\]\$LanePid, \[int\]\$WaitMs = (\d+)\)", PS1)
+    assert sig and sig.group(1) == "5000"
+    body = _body("Open-LanePipe")
+    assert "while ($until.ElapsedMilliseconds -lt $WaitMs)" in body
+    assert "Start-Sleep -Milliseconds 250" in body
+
+
+def test_a_lone_pipe_and_an_unavailable_listing_keep_the_five_second_connect_for_winuae():
+    body = _body("Open-LanePipe")
+    assert "if ($names.Count -eq 1 -or ($null -eq $live -and $name -ceq 'WinUAE')) { 5000 } else { 2000 }" in body
+
+
+def test_a_failed_listing_is_recorded_and_not_swallowed():
+    body = _body("Open-LanePipe")
+    assert "catch { }" not in body
+    assert 'listing unavailable: $($_.Exception.Message)' in body
+
+
+def test_the_no_pipe_message_names_the_listing_and_every_server_seen():
+    body = _body("Open-LanePipe")
+    assert "$listed; $($seen -join '; ')" in body
+    assert "$name served by pid=$owner, skipped" in body
+
+
+def test_a_wrong_server_verdict_names_the_pipe_that_was_opened():
+    assert r"\\.\pipe\WinUAE is served" not in PS1
+    assert PS1.count(r"fail \\.\pipe\$($script:LanePipeName) is served by pid=") == 2
+
+
+def test_probing_another_copys_pipe_is_commented_where_it_happens():
+    start = PS1.index("function Open-LanePipe")
+    assert "nMaxInstances 1" in PS1[PS1.rindex("\n\n", 0, start):start]
