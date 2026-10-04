@@ -14,14 +14,21 @@ Radiance, whose halls train one class each, the class the C64 Level up would
 pick (`levelup.best_next_class`).
 
 What a caller must supply because a record cannot: the spell a magic-user
-learns (`offers` lists the trainer's own menu), the dice (`rng`), the item and
-effect nodes the recompute and the trainer read (`plan_member` takes both from
-the live party member), and, for a Curse or Silver Blades thief, what the
-running machine holds that the thief-skill step reads besides the record
-(`read_machine`; see each section). Where the copy would need something no
-caller can supply, `plan` raises `CannotLevel` and writes nothing: an effect
-node the trainer would add, and a druid or monk level, which no player was
-found to hold.
+learns (`offers` lists the trainer's own menu), the dice (`rng`), and the item
+and effect nodes the recompute and the trainer read (`plan_member` takes both
+from the live party member). Where the copy would need something no caller can
+supply, `plan` raises `CannotLevel` and writes nothing: a druid or monk level,
+which no player was found to hold.
+
+The effect node the Silver Blades and Pools of Darkness trainers add for a
+regained ranger or paladin is not a record write: `Plan.added_effects` names
+it, and `write_plan` makes it in the game's own effect pool with
+`automap/amigaeffects.py` before it writes the record.
+
+**A Curse or Silver Blades thief does not get the trainer's thief skills.**
+Those two trainers mis-compute them (`docs/124` §1.23), so the level, race and
+dexterity rows are summed by `levels.ad_d_thief_skills`, the rule the C64 and
+DOS ports apply.
 
 Each section names its executable, the routines it copies and where
 `docs/124` §1.23 records their reading; addresses are file offsets into that executable and
@@ -34,6 +41,8 @@ import random
 from dataclasses import dataclass
 
 from goldbox import amiga_pod, levels, spells
+
+from . import amigaeffects
 
 
 class CannotLevel(Exception):
@@ -63,6 +72,9 @@ class Plan:
     writes: tuple[tuple[int, bytes], ...]
     #: The spell the magic-user learned, if the trainer asked.
     learned: int | None = None
+    #: The effect nodes the trainer appends to the character's effect list,
+    #: in its order, as `amigaeffects.NewEffect`.
+    added_effects: tuple[amigaeffects.NewEffect, ...] = ()
 
 
 def writes_between(before: bytes, after: bytes) -> tuple[tuple[int, bytes], ...]:
@@ -81,27 +93,6 @@ def writes_between(before: bytes, after: bytes) -> tuple[tuple[int, bytes], ...]
     return tuple(out)
 
 
-@dataclass(frozen=True)
-class TrainerMachine:
-    """What a trainer reads from the running Amiga besides the record.
-
-    `read_machine` fills it from a live machine; a thief's level-up in Curse
-    or Silver Blades needs it, and nothing else does.
-    """
-
-    #: Curse: the `d7` the game was started with, which its thief-skill step
-    #: adds (see the Curse section). Only the low byte is read.
-    register: int | None = None
-    #: Silver Blades: the bytes of the loaded data hunk from `g1F7C`, which
-    #: its thief-skill step reads past the end of its tables (see the Silver
-    #: Blades section).
-    tables: bytes | None = None
-
-
-def _u32(raw, at: int = 0) -> int:
-    return int.from_bytes(raw[at:at + 4], "big")
-
-
 def _effect_ids(effects) -> set[int]:
     """The id of each effect: an int is the id, a node's bytes hold it at +0,
     which is the byte every Amiga trainer's find-effect routine compares."""
@@ -117,11 +108,17 @@ _NOT_COPIED = ("a {} level is not copied: no player character was found "
                "to hold one")
 
 
-#: What `plan` says when the trainer would add an effect node to a former
-#: ranger or paladin who regains the class and does not have it yet: the
-#: game allocates a heap node for it, and a level-up is writes to the record.
-_ADDS_EFFECT = ("the trainer adds effect {:#x} to the character's effect list, "
-                "and a write to the record cannot add a node")
+def _regained_effects(rec, pairs, effects, signed: bool
+                      ) -> tuple[amigaeffects.NewEffect, ...]:
+    """The nodes the Silver Blades and Pools of Darkness trainers add once
+    the class is regained: for each `(former level offset, id)` whose former
+    level is above 0 (compared signed or unsigned, as the title's trainer
+    does) and whose id the character's list lacks, the constructor's
+    `(record, id, 0, 0xFF, 0)`, in that order."""
+    have = _effect_ids(effects)
+    return tuple(amigaeffects.NewEffect(effect) for at, effect in pairs
+                 if (_s8(rec[at]) if signed else rec[at]) > 0
+                 and effect not in have)
 
 
 def apply_to(raw: bytes, plan_: Plan) -> bytes:
@@ -715,9 +712,11 @@ def pod_offers(rec) -> list[int]:
     return out
 
 
-#: The effects `0x3D884` adds when `pod_regained` holds: 0x69 for a former
-#: ranger and 8 for a former paladin, each only if the character lacks it.
-_POD_REGAINED_EFFECTS = ((_POD_RANGER, 0x69), (3, 8))
+#: The effects `0x3D884` adds when `pod_regained` holds, through the
+#: constructor `0x12FD4`: 0x69 for a former ranger (`tst.b $A8` then `bls`,
+#: unsigned) and then 8 for a former paladin (`$A7`), each only if the
+#: character lacks it (`0x1A6EE`).
+_POD_REGAINED_EFFECTS = ((_POD_FORMER + _POD_RANGER, 0x69), (_POD_FORMER + 3, 8))
 
 
 def _pod_hit_points(rec: bytearray, mask: int, classes: int, rng) -> None:
@@ -764,8 +763,7 @@ def _pod_hp_bonus(rec, slot: int) -> int:
     return value
 
 
-def _pod_plan(raw: bytes, rng, learn: int | None, effects, items=(),
-              machine: TrainerMachine | None = None) -> Plan:
+def _pod_plan(raw: bytes, rng, learn: int | None, effects, items=()) -> Plan:
     rec = bytearray(raw)
     _pod_check(rec)
     mask, clamp = _pod_ready_mask(rec)
@@ -794,15 +792,13 @@ def _pod_plan(raw: bytes, rng, learn: int | None, effects, items=(),
                 raise CannotLevel(f"spell {learn} is not on the trainer's menu")
             _pod_learn(rec, learn)
             learned = learn
-    if pod_regained(rec):
-        for slot, effect in _POD_REGAINED_EFFECTS:
-            if rec[_POD_FORMER + slot] and effect not in _effect_ids(effects):
-                raise CannotLevel(_ADDS_EFFECT.format(effect))
+    added = (_regained_effects(rec, _POD_REGAINED_EFFECTS, effects, False)
+             if pod_regained(rec) else ())
     if rec[_POD_LEVEL] > rec[_POD_FORMER_LEVEL]:
         _pod_hit_points(rec, mask, len(held), rng)
     rec[_POD_READY] = pod_ready_flag(rec)
     return Plan(POOLS_OF_DARKNESS, tuple(trained), _s32(rec, _POD_EXPERIENCE),
-                writes_between(raw, rec), learned)
+                writes_between(raw, rec), learned, added)
 
 
 # --- Pool of Radiance --------------------------------------------------------
@@ -1093,8 +1089,7 @@ def _por_raise(rec: bytearray, slot: int) -> None:
         rec[_POR_DRAINED] = drained - 1
 
 
-def _por_plan(raw: bytes, rng, learn: int | None, effects, items=(),
-              machine: TrainerMachine | None = None) -> Plan:
+def _por_plan(raw: bytes, rng, learn: int | None, effects, items=()) -> Plan:
     rec = bytearray(raw)
     _por_check(rec)
     ready, clamp = _por_ready(rec)
@@ -1142,13 +1137,9 @@ def _por_plan(raw: bytes, rng, learn: int | None, effects, items=(),
 # §1.23.
 # Record offsets are the 428-byte Amiga record's (`CURSE_DELTAS`).
 #
-# **The thief-skill step `0x390C4` adds the `d7` the game was started with.**
-# It sets `d7` itself only when a readied item of power `0x8B` is worn, and
-# nothing between the game's startup and the trainer writes it otherwise, so
-# the value is whatever AmigaDOS handed the program, which depends on the
-# Kickstart (`_START_D7`). A Kickstart with no measurement, or a game started
-# from Workbench, makes `read_machine` stop. `docs/124` §1.23 has the code
-# reading and the measurements.
+# **The thief-skill step `0x390C4` is not copied**: it adds a leftover start-up
+# register to every skill (`docs/124` §1.23), so the skills come from
+# `levels.ad_d_thief_skills` instead.
 
 CURSE = "curse-of-the-azure-bonds"
 
@@ -1184,23 +1175,6 @@ _CU_STATUS = 0x19A
 _CU_HP_CURRENT = 0x1A9
 _CU_DEXTERITY = 0x017
 _CU_THIEF_SKILLS = 0x0EA                    # eight bytes
-
-#: `g192C`, `g1994` and `g19D4`, one run of 223 bytes that the thief-skill
-#: step indexes as one: level rows 0-12 (row 0 repeats row 1; rows 1-9 are
-#: `levels._THIEF_SKILLS_POOL`), race rows 0-7 (row 0 repeats the dwarf's;
-#: rows 1-7 are `levels._DOS_THIEF_SKILL_RACE_POOL`) and dexterity rows 9-19
-#: (the first five columns of `levels._DOS_THIEF_SKILL_DEX_POOL`).
-_CU_THIEF_RUN = bytes(
-    v & 0xFF for row in (
-        (levels._THIEF_SKILLS_POOL[0],) + levels._THIEF_SKILLS_POOL
-        + ((80, 67, 65, 78, 63, 30, 99, 50), (90, 72, 70, 86, 70, 35, 99, 60),
-           (100, 77, 75, 94, 77, 35, 99, 65))
-        + (levels._DOS_THIEF_SKILL_RACE_POOL[0],)
-        + levels._DOS_THIEF_SKILL_RACE_POOL
-        + tuple(row[:5] for row in levels._DOS_THIEF_SKILL_DEX_POOL))
-    for v in row)
-_CU_THIEF_RACE_AT = 13 * 8
-_CU_THIEF_DEX_AT = _CU_THIEF_RACE_AT + 8 * 8
 
 #: `g1BA0`: each slot's bit in the ready mask.
 _CU_READY_BIT = (2, 2, 8, 16, 32, 1, 4, 4)
@@ -1468,80 +1442,23 @@ def _curse_saves(rec: bytearray, items) -> None:
         rec[_CU_SAVES + column] = value & 0xFF
 
 
-def _curse_thief_item(items) -> int:
-    """`0x390D4`: the kind (`0x0B` or 2) of the first readied item node whose
-    power byte is above 0x80 with `& 0x7F` one of those two; 0 if none."""
-    for node in items:
-        if len(node) > 0x41 and node[0x41] > 0x80 and node[0x35]:
-            if node[0x41] & 0x7F in (0x0B, 2):
-                return node[0x41] & 0x7F
-    return 0
-
-
-def _curse_thief_skills(rec: bytearray, items, register: int | None) -> None:
-    """`0x390C4`: the eight thief skills, from the level row at the thief
-    level (plus a regained former one), the race row and, on the first five,
-    the dexterity row, **each plus the low byte of `d7`** (`register`).
-
-    A negative race value whose size plus `d7` exceeds the level value gives
-    0. A readied item of power kind 2 counts a level below 4 as 4, and from
-    level 4 adds 10 to every skill; one of kind `0x0B` sets `d7` itself, to 0
-    with the first skill counted at level 5 at least, or 5 if already there,
-    and then likewise for the second at 7, keeping the second's `d7` for the
-    rest. Nothing is clamped.
-    """
-    kind = _curse_thief_item(items)
-    if register is None and kind != 0x0B:
-        raise CannotLevel(_CU_NO_REGISTER)
-    d7 = (register or 0) & 0xFF
+def _curse_thief_skills(rec: bytearray) -> None:
+    """The eight thief skills at the thief level (plus a regained former
+    one), by `levels.ad_d_thief_skills`."""
     level = _s8((int(curse_regained(rec)) * _s8(rec[_CU_FORMER + _CU_THIEF])
                  + _s8(rec[_CU_LEVELS + _CU_THIEF])) & 0xFF)
-    ten = kind == 2
-    if level < 4 and ten:
-        level, ten = 4, False
-
-    def run(at: int) -> int:
-        if not 0 <= at < len(_CU_THIEF_RUN):
-            raise CannotLevel("the thief-skill step reads past the copied "
-                              "tables for this level, race or dexterity")
-        return _CU_THIEF_RUN[at]
-
-    for skill in range(1, 9):
-        here = level
-        if kind == 0x0B and skill in (1, 2):
-            least = 5 if skill == 1 else 7
-            if here < least:
-                here, d7 = least, 0
-            else:
-                d7 = 5
-        race = _s8(run(_CU_THIEF_RACE_AT + _s8(rec[_CU_RACE]) * 8 + skill - 1))
-        cell = run(here * 8 + skill - 1)
-        if race < 0 and -race + d7 > cell:
-            value = 0
-        else:
-            value = (d7 + cell + race) & 0xFF
-            if skill < 6:
-                dex = (rec[_CU_DEXTERITY] - 9) * 5 + skill - 1
-                value = (value + _s8(run(_CU_THIEF_DEX_AT + dex))) & 0xFF
-        if ten:
-            value = (value + 10) & 0xFF
-        rec[_CU_THIEF_SKILLS + skill - 1] = value
+    skills = levels.ad_d_thief_skills(level, rec[_CU_RACE], CURSE,
+                                      rec[_CU_DEXTERITY])
+    if skills is None:
+        raise CannotLevel("a thief with no dexterity has no thief-skill row")
+    rec[_CU_THIEF_SKILLS:_CU_THIEF_SKILLS + 8] = bytes(skills)
 
 
-#: What `plan` says for a Curse thief when the caller gave no register.
-_CU_NO_REGISTER = ("the thief skills add the d7 the game was started with; "
-                   "pass read_machine's TrainerMachine")
-
-
-def curse_recompute(rec: bytearray, items=(), register: int | None = None
-                    ) -> None:
+def curse_recompute(rec: bytearray, items=()) -> None:
     """`0x38A52`: THAC0 over all eight slots with level 0 included, the
     level byte, `attack_forms[0]` raised to 3, capacity, saves, thief skills
     for a thief level, the class mask, and a regained class's attacks, THAC0
-    and, for a regained former thief, the thief skills again. With no
-    `register` the thief-skill step is left out, unless a readied item sets
-    `d7` itself (see `_curse_thief_skills`)."""
-    thief = register is not None or _curse_thief_item(items) == 0x0B
+    and, for a regained former thief, the thief skills again."""
     rec[_CU_THAC0] = 0
     for slot in range(len(CURSE_SLOTS)):
         level = rec[_CU_LEVELS + slot]
@@ -1555,8 +1472,8 @@ def curse_recompute(rec: bytearray, items=(), register: int | None = None
             rec[_CU_ATTACKS] = 3
     _curse_capacity(rec, items)
     _curse_saves(rec, items)
-    if thief and _s8(rec[_CU_LEVELS + _CU_THIEF]) > 0:
-        _curse_thief_skills(rec, items, register)
+    if _s8(rec[_CU_LEVELS + _CU_THIEF]) > 0:
+        _curse_thief_skills(rec)
     bits = 0
     for slot in range(len(CURSE_SLOTS)):
         former = _s8(rec[_CU_FORMER + slot])
@@ -1578,8 +1495,8 @@ def curse_recompute(rec: bytearray, items=(), register: int | None = None
         if (_s8(rec[_CU_FORMER + 2]) > 6 or _s8(rec[_CU_FORMER + 4]) > 7
                 or _s8(rec[_CU_FORMER + 3]) > 6):
             rec[_CU_ATTACKS] = 3
-        if thief and _s8(rec[_CU_FORMER + _CU_THIEF]) > 0:
-            _curse_thief_skills(rec, items, register)
+        if _s8(rec[_CU_FORMER + _CU_THIEF]) > 0:
+            _curse_thief_skills(rec)
 
 
 def _curse_can_cast(rec, who: int) -> bool:
@@ -1695,11 +1612,9 @@ def _curse_raise(rec: bytearray, mask: int) -> None:
             rec[_CU_DRAINED] = drained - 1
 
 
-def _curse_plan(raw: bytes, rng, learn: int | None, effects, items=(),
-                machine: TrainerMachine | None = None) -> Plan:
+def _curse_plan(raw: bytes, rng, learn: int | None, effects, items=()) -> Plan:
     rec = bytearray(raw)
     _curse_check(rec)
-    register = machine.register if machine is not None else None
     mask, clamp = _curse_ready(rec)
     if clamp > 0:
         rec[_CU_EXPERIENCE:_CU_EXPERIENCE + 4] = clamp.to_bytes(4, "big", signed=True)
@@ -1710,11 +1625,7 @@ def _curse_plan(raw: bytes, rng, learn: int | None, effects, items=(),
     trained = tuple(CURSE_SLOTS[slot] for slot in _curse_held(rec)
                     if _CU_READY_BIT[slot] & mask)
     _curse_raise(rec, mask)
-    if register is None and _curse_thief_item(items) != 0x0B and (
-            _s8(rec[_CU_LEVELS + _CU_THIEF]) > 0
-            or (curse_regained(rec) and _s8(rec[_CU_FORMER + _CU_THIEF]) > 0)):
-        raise CannotLevel(_CU_NO_REGISTER)
-    curse_recompute(rec, items, register)
+    curse_recompute(rec, items)
     learned = None
     if (_s8(rec[_CU_LEVELS + _CU_MAGIC_USER]) > _s8(old_magic)
             or _s8(rec[_CU_LEVELS + _CU_RANGER]) > 8):
@@ -1747,20 +1658,9 @@ def _curse_plan(raw: bytes, rng, learn: int | None, effects, items=(),
 # Record offsets are the 340-byte Amiga record's (`SILVER_BLADES_DELTAS`).
 # The Hall of Training trains every ready class, so a press does too.
 #
-# **The thief-skill step `0x3CE78` reads its three word tables off by one.**
-# The level row is `g1F7C + level * 16 + 2 * skill` with the skill counted
-# from 1, so a thief of level L reads level L+1's row from its second word
-# and the next row's first; the race row `g209C + race * 16 + 2 * skill` is
-# off the same way (a human, race 6, reads the dexterity table); and the
-# dexterity row is `g20FC + dexterity * 10 + 2 * skill` with no subtraction,
-# from a table of eleven five-word rows that begins at dexterity 9. From
-# dexterity 10's fifth skill on, those reads land on the relocated longwords
-# that follow the table at `g216A`, pointers into the code hunk, so the values
-# depend on where AmigaDOS loaded the program. CONFIRMED from the code, and
-# in the running game: copied over the live machine's own bytes, the step
-# gives Malachite's 133 13 156 6 127 84 50 95 exactly (`9f0896c0`, 8 of 8;
-# code hunk at `0xC0A830`, data hunk at `0xC56BF8`). So the copy reads those
-# bytes from the running machine (`read_machine`), never from the file.
+# **The thief-skill step `0x3CE78` is not copied**: it reads its tables off by
+# one and past the dexterity table (`docs/124` §1.23), so the skills come from
+# `levels.ad_d_thief_skills` instead.
 
 SILVER_BLADES = "secret-of-the-silver-blades"
 
@@ -1795,14 +1695,6 @@ _SB_STATUS = 0x143
 _SB_HP_CURRENT = 0x152
 _SB_DEXTERITY = 0x017
 _SB_THIEF_SKILLS = 0x08D                    # eight bytes
-#: `g1F7C`, `g209C` and `g20FC` as offsets into `TrainerMachine.tables`,
-#: which starts at `g1F7C`, and how many bytes `read_machine` takes: enough
-#: for any signed level and race byte and any dexterity.
-_SB_TABLES_AT = 0x1F7C
-_SB_RACE_AT = 0x209C - _SB_TABLES_AT
-_SB_DEX_AT = 0x20FC - _SB_TABLES_AT
-_SB_TABLES_SIZE = 0xC00
-
 #: `g1F48` (words): each slot's bit in the ready mask.
 _SB_READY_BIT = (2, 2, 8, 16, 32, 1, 4)
 #: `g1F3A` (words): each slot's bit in the class mask at `0x0CC`.
@@ -2091,47 +1983,23 @@ def _ssb_saves(rec: bytearray, items) -> None:
         rec[_SB_SAVES + column] = value & 0xFF
 
 
-def _ssb_thief_skills(rec: bytearray, tables: bytes) -> None:
-    """`0x3CE78` over `tables`, the live bytes from `g1F7C`: for each skill
-    1-8, the level word and the race word as the section's note describes;
-    0 if the race word is negative and its size exceeds the level word,
-    else their sum, plus on skills 1-5 the dexterity word. Each sum is cut
-    to a byte; nothing is clamped. The level is the thief level plus a
-    regained former one."""
-    def word(at: int) -> int:
-        if not 0 <= at <= len(tables) - 2:
-            raise CannotLevel("the thief-skill step reads outside the bytes "
-                              "read_machine took")
-        return int.from_bytes(tables[at:at + 2], "big", signed=True)
-
+def _ssb_thief_skills(rec: bytearray) -> None:
+    """The eight thief skills at the thief level (plus a regained former
+    one), by `levels.ad_d_thief_skills`."""
     level = _s8((int(ssb_regained(rec)) * _s8(rec[_SB_FORMER + _SB_THIEF])
                  + _s8(rec[_SB_LEVELS + _SB_THIEF])) & 0xFF)
-    race = _s8(rec[_SB_RACE])
-    for skill in range(1, 9):
-        adjust = word(_SB_RACE_AT + race * 16 + 2 * skill)
-        base = word(level * 16 + 2 * skill)
-        if adjust < 0 and _s16(-adjust) > base:
-            value = 0
-        else:
-            value = (base + adjust) & 0xFF
-            if skill < 6:
-                value = (value + word(_SB_DEX_AT + rec[_SB_DEXTERITY] * 10
-                                      + 2 * skill)) & 0xFF
-        rec[_SB_THIEF_SKILLS + skill - 1] = value
+    skills = levels.ad_d_thief_skills(level, rec[_SB_RACE], SILVER_BLADES,
+                                      rec[_SB_DEXTERITY])
+    if skills is None:
+        raise CannotLevel("a thief with no dexterity has no thief-skill row")
+    rec[_SB_THIEF_SKILLS:_SB_THIEF_SKILLS + 8] = bytes(skills)
 
 
-def _s16(value: int) -> int:
-    value &= 0xFFFF
-    return value - 0x10000 if value > 0x7FFF else value
-
-
-def ssb_recompute(rec: bytearray, items=(), tables: bytes | None = None
-                  ) -> None:
+def ssb_recompute(rec: bytearray, items=()) -> None:
     """`0x3C802`: THAC0 over all seven slots with level 0 included, the
     level byte, `attack_forms[0]` (3 above fighter or paladin 6 and 4 above
     12; the ranger 7 and 14), capacity, saves, thief skills for a thief
-    level, the class mask, and a regained class's attacks and THAC0. With no
-    `tables` the thief-skill step is left out."""
+    level, the class mask, and a regained class's attacks and THAC0."""
     rec[_SB_THAC0] = 0
     for slot in range(len(SSB_SLOTS)):
         level = rec[_SB_LEVELS + slot]
@@ -2152,8 +2020,8 @@ def ssb_recompute(rec: bytearray, items=(), tables: bytes | None = None
                 rec[_SB_ATTACKS] = 4
     _ssb_capacity(rec, items)
     _ssb_saves(rec, items)
-    if tables is not None and _s8(rec[_SB_LEVELS + _SB_THIEF]) > 0:
-        _ssb_thief_skills(rec, tables)
+    if _s8(rec[_SB_LEVELS + _SB_THIEF]) > 0:
+        _ssb_thief_skills(rec)
     bits = 0
     for slot in range(len(SSB_SLOTS)):
         former = _s8(rec[_SB_FORMER + slot])
@@ -2242,9 +2110,12 @@ def _ssb_hit_points(rec: bytearray, classes: int, rng) -> None:
     rec[_SB_HP_CURRENT] = (rec[_SB_HP_MAX] - damage) & 0xFF
 
 
-#: `0xE732`: the effects added when `ssb_regained` holds, 0x69 for a former
-#: ranger and 8 for a former paladin, each only if the character lacks it.
-_SB_REGAINED_EFFECTS = ((_SB_RANGER, 0x69), (_SB_PALADIN, 8))
+#: `0xE732`: the effects added when `ssb_regained` holds, through the
+#: constructor `0x12DAC`: 0x69 for a former ranger (`tst.b $B7` then `ble`,
+#: signed) and then 8 for a former paladin (`$B6`), each only if the
+#: character lacks it (`0x1AB12`).
+_SB_REGAINED_EFFECTS = ((_SB_FORMER + _SB_RANGER, 0x69),
+                        (_SB_FORMER + _SB_PALADIN, 8))
 
 
 def _ssb_ready_slots(rec) -> list[int]:
@@ -2252,15 +2123,9 @@ def _ssb_ready_slots(rec) -> list[int]:
     return [slot for slot in _ssb_held(rec) if _SB_READY_BIT[slot] & mask]
 
 
-def _ssb_plan(raw: bytes, rng, learn: int | None, effects, items=(),
-              machine: TrainerMachine | None = None) -> Plan:
+def _ssb_plan(raw: bytes, rng, learn: int | None, effects, items=()) -> Plan:
     rec = bytearray(raw)
     _ssb_check(rec)
-    tables = machine.tables if machine is not None else None
-    if tables is None and _s8(rec[_SB_LEVELS + _SB_THIEF]) > 0:
-        raise CannotLevel("the thief skills read the loaded program's bytes "
-                          "past the dexterity table; pass read_machine's "
-                          "TrainerMachine")
     mask, clamp = _ssb_ready(rec)
     if clamp > 0 and clamp < _s32(rec, _SB_EXPERIENCE):
         rec[_SB_EXPERIENCE:_SB_EXPERIENCE + 4] = clamp.to_bytes(4, "big", signed=True)
@@ -2280,7 +2145,7 @@ def _ssb_plan(raw: bytes, rng, learn: int | None, effects, items=(),
             lost = rec[_SB_HP_LOST]
             rec[_SB_HP_LOST] = (lost - lost // drained) & 0xFF
             rec[_SB_DRAINED] = drained - 1
-    ssb_recompute(rec, items, tables)
+    ssb_recompute(rec, items)
     learned = None
     if (_s8(rec[_SB_LEVELS + _SB_MAGIC_USER]) > _s8(old_magic)
             or _s8(rec[_SB_LEVELS + _SB_RANGER]) > 8):
@@ -2292,15 +2157,12 @@ def _ssb_plan(raw: bytes, rng, learn: int | None, effects, items=(),
                 raise CannotLevel(f"spell {learn} is not on the trainer's menu")
             _ssb_learn(rec, learn)
             learned = learn
-    if ssb_regained(rec):
-        for slot, effect in _SB_REGAINED_EFFECTS:
-            if (_s8(rec[_SB_FORMER + slot]) > 0
-                    and effect not in _effect_ids(effects)):
-                raise CannotLevel(_ADDS_EFFECT.format(effect))
+    added = (_regained_effects(rec, _SB_REGAINED_EFFECTS, effects, True)
+             if ssb_regained(rec) else ())
     if _s8(rec[_SB_LEVEL]) > _s8(rec[_SB_FORMER_LEVEL]):
         _ssb_hit_points(rec, len(held), rng)
     return Plan(SILVER_BLADES, tuple(trained), _s32(rec, _SB_EXPERIENCE),
-                writes_between(raw, rec), learned)
+                writes_between(raw, rec), learned, added)
 
 
 # --- every title -------------------------------------------------------------
@@ -2315,16 +2177,14 @@ def supported(key: str) -> bool:
 
 
 def plan(raw: bytes, key: str, *, rng=None, learn: int | None = None,
-         effects=(), items=(), machine: TrainerMachine | None = None) -> Plan:
+         effects=(), items=()) -> Plan:
     """What one press of Level up writes into the heap record `raw`.
 
     `key` is the `automap.amiga.MACHINES` key. `learn` is the spell a
     magic-user picks from `offers`; `effects` the bytes of each of the
     character's effect nodes (or bare effect ids), which the trainer looks
     through before it adds one; `items` the bytes of each of its item nodes,
-    in list order, which the recomputes read; `machine` what `read_machine`
-    read from the running Amiga, which a Curse or Silver Blades thief needs;
-    `rng` anything with `randint`. `plan_member` takes all of these but the
+    in list order, which the recomputes read; `rng` anything with `randint`. `plan_member` takes all of these but the
     dice and the spell from a live party member. Raises `CannotLevel`, and
     `NeedsSpell` when the trainer's menu wants a pick `learn` did not give.
     """
@@ -2332,99 +2192,42 @@ def plan(raw: bytes, key: str, *, rng=None, learn: int | None = None,
     if planner is None:
         raise CannotLevel(f"no Amiga trainer is copied for {key}")
     return planner(bytes(raw), rng or random, learn, tuple(effects or ()),
-                   tuple(items), machine)
+                   tuple(items))
 
 
-def plan_member(member, key: str, *, rng=None, learn: int | None = None,
-                machine: TrainerMachine | None = None) -> Plan:
+def plan_member(member, key: str, *, rng=None, learn: int | None = None) -> Plan:
     """`plan` for an `automap.amigaparty.AmigaMember`: its record, its item
     nodes and its effect nodes as the party list holds them."""
     return plan(member.raw, key, rng=rng, learn=learn,
                 effects=[node.raw for node in member.effect_nodes],
-                items=[node.raw for node in member.item_nodes],
-                machine=machine)
+                items=[node.raw for node in member.item_nodes])
 
 
-#: ExecBase fields, and a process's, that `read_machine` walks (Kickstart's
-#: `exec/execbase.h` and `dos/dosextens.h`).
-_EXEC_VERSION = 0x14                        # lib_Version, a word
-_EXEC_REVISION = 0x16                       # lib_Revision, a word
-_EXEC_THIS_TASK = 0x114
-_EXEC_TASK_LISTS = (0x196, 0x1A4)           # TaskReady, TaskWait
-_TASK_TYPE = 0x08
-_NT_PROCESS = 13
-_PROCESS_PORT = 0x5C                        # pr_MsgPort
-_PROCESS_CLI = 0xAC                         # pr_CLI, a BPTR
-_CLI_MODULE = 0x3C                          # cli_Module, a BPTR to the seglist
-_MAX_TASKS = 64
-#: The exec versions and revisions (`lib_Version`, `lib_Revision`) whose
-#: start-up `d7` was measured, and what it held: Kickstart 1.3 (exec 34.2) the
-#: starting process's message port, Kickstart 2.04 (exec 37.132) the address
-#: of the program's first segment. Any other revision is not known to behave
-#: the same, so `_start_d7` stops on it; `docs/124` §1.23 has the evidence.
-_START_D7 = {(34, 2): "port", (37, 132): "segment"}
+def write_plan(target, member, plan_: Plan) -> tuple[tuple[int, bytes], ...]:
+    """Make `plan_` in the running game for `member`, the
+    `automap.amigaparty.AmigaMember` it was planned from, and return the
+    `(address, bytes)` writes in the order they were made.
 
-
-def _game_process(read, data_base: int) -> tuple[int, int]:
-    """The process running the program whose data hunk is at `data_base`,
-    and the address of that program's first segment: the process whose
-    CLI's loaded module has a segment there."""
-    exec_base = _u32(read(4, 4))
-    tasks = [_u32(read(exec_base + _EXEC_THIS_TASK, 4))]
-    for head in _EXEC_TASK_LISTS:
-        node = _u32(read(exec_base + head, 4))
-        for _ in range(_MAX_TASKS):
-            following = _u32(read(node, 4)) if node else 0
-            if not following:
-                break
-            tasks.append(node)
-            node = following
-    for task in tasks:
-        if not task or read(task + _TASK_TYPE, 1)[0] != _NT_PROCESS:
-            continue
-        cli = _u32(read(task + _PROCESS_CLI, 4)) * 4
-        first = _u32(read(cli + _CLI_MODULE, 4)) * 4 if cli else 0
-        segment = first
-        for _ in range(_MAX_TASKS):
-            if not segment:
-                break
-            if segment + 4 == data_base:
-                return task, first
-            segment = _u32(read(segment, 4)) * 4
-    raise CannotLevel("no CLI process on the machine runs the game, so the "
-                      "d7 it was started with is not known")
-
-
-def _start_d7(read, data_base: int) -> int:
-    """The `d7` AmigaDOS started the game with, by the Kickstart's own rule
-    (`_START_D7`)."""
-    exec_base = _u32(read(4, 4))
-    version = int.from_bytes(read(exec_base + _EXEC_VERSION, 2), "big")
-    revision = int.from_bytes(read(exec_base + _EXEC_REVISION, 2), "big")
-    rule = _START_D7.get((version, revision))
-    if rule is None:
-        raise CannotLevel(f"what Kickstart exec {version}.{revision} starts a "
-                          f"program with in d7 was not measured")
-    process, segment = _game_process(read, data_base)
-    return process + _PROCESS_PORT if rule == "port" else segment
-
-
-def read_machine(read, data_base: int, key: str) -> TrainerMachine:
-    """What the title's trainer reads from the running Amiga besides the
-    record: `read(address, length)` reads its memory and `data_base` is the
-    load address of the title's data hunk (`AmigaTarget.data_base`).
-
-    Curse: the `d7` the game was started with, by the rule measured for the
-    running Kickstart (the Curse section). Silver Blades: the data hunk's
-    bytes from `g1F7C`, relocated words and all. Nothing for the other two
-    titles.
+    The trainer's new effect nodes go first, through `amigaeffects`, then the
+    record's bytes. Raises `CannotLevel`, having written nothing, when a byte
+    the plan replaces no longer holds what `member` read, or when the effect
+    pool or list does not read as the game keeps them.
     """
-    if key == CURSE:
-        return TrainerMachine(register=_start_d7(read, data_base))
-    if key == SILVER_BLADES:
-        return TrainerMachine(tables=bytes(read(data_base + _SB_TABLES_AT,
-                                                _SB_TABLES_SIZE)))
-    return TrainerMachine()
+    address = member.address
+    for offset, data in plan_.writes:
+        live = bytes(target.read(address + offset, len(data)))
+        if live != bytes(member.raw[offset:offset + len(data)]):
+            raise CannotLevel("the record changed after it was read")
+    try:
+        added = amigaeffects.writes(target, plan_.key, address,
+                                    plan_.added_effects)
+    except amigaeffects.EffectError as exc:
+        raise CannotLevel(str(exc)) from exc
+    made = added + tuple((address + offset, data)
+                         for offset, data in plan_.writes)
+    for at, data in made:
+        target.write(at, data)
+    return made
 
 
 _READY = {POOLS_OF_DARKNESS: (lambda rec: _pod_ready_slots(rec), POD_SLOTS),
@@ -2442,13 +2245,11 @@ def ready_classes(raw: bytes, key: str) -> tuple[str, ...]:
     return tuple(names[slot] for slot in slots(bytes(raw)))
 
 
-def offers(raw: bytes, key: str, items=(), effects=(),
-           machine: TrainerMachine | None = None) -> list[int]:
+def offers(raw: bytes, key: str, items=(), effects=()) -> list[int]:
     """The spell ids the trainer's menu offers on this press; empty when it
     asks for none or `plan` stops. No die is rolled for the answer."""
     try:
-        plan(raw, key, rng=random.Random(0), items=items, effects=effects,
-             machine=machine)
+        plan(raw, key, rng=random.Random(0), items=items, effects=effects)
     except NeedsSpell as asked:
         return asked.offers
     except CannotLevel:

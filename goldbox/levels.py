@@ -190,7 +190,7 @@ under Curse, which does implement them.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 #: What the racial-limit tables write for "no limit".
 UNLIMITED = 99
@@ -2429,6 +2429,26 @@ def saving_throws(class_levels, race: int = 0, constitution: int = 0,
 def thief_skills(level: int, race: int, game=None,
                  dexterity: int = 0) -> tuple[int, ...] | None:
     return for_game(game).thief_skill_row(level, race, dexterity)
+
+
+def ad_d_thief_skills(level: int, race: int, game=None,
+                      dexterity: int = 0) -> tuple[int, ...] | None:
+    """The thief skills AD&D gives: level, race and dexterity rows added,
+    each column clamped at 0.
+
+    For Curse and Pool of Radiance this is `thief_skills` clamped. Silver
+    Blades' C64 reads its racial table at `race * 8` with no decrement, so
+    every thief gets the next race's row (`thief_skill_race_index_from=0`);
+    here the table is read at `race - 1`, its five laid-out rows only, and a
+    human gets no racial row.
+    """
+    tables = for_game(game)
+    if tables.thief_skill_race_index_from == 0:
+        tables = replace(
+            tables, thief_skill_race=tables.thief_skill_race[:5],
+            thief_skill_race_index_from=1)
+    row = tables.thief_skill_row(level, race, dexterity)
+    return None if row is None else tuple(max(0, v) for v in row)
 
 
 def dos_thief_skills(level: int, race: int, game=None,

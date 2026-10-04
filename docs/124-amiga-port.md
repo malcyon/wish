@@ -2847,8 +2847,9 @@ this table, except where graded.
 rules do not give**, often above 100 or collapsed to single figures, and the
 numbers depend on the machine the game runs on. This section used to report
 both titles' skills as "not sensible" and Level up stopped on every thief in
-them; both are now read to the byte, and Level up copies them by reading what
-the running Amiga holds (`automap/amigalevelup.py`, `read_machine`).
+them; both are now read to the byte. **Both trainers mis-compute them**, and
+Wish's Level up does not copy that: it applies the rule the C64 and DOS ports
+apply (the last paragraph of this section).
 
 **Curse adds the `d7` the program was started with to every skill.** The
 thief-skill step `0x390C4` adds the low byte of `d7` to each of the eight
@@ -2891,8 +2892,30 @@ dexterity 10's fifth skill on it reads the relocated longwords at `g216A`,
 pointers into the code hunk, so the value depends on where AmigaDOS loaded
 the program. CONFIRMED from the code, and in the running game: the step
 copied over the R6l boot's own memory (code hunk `0xC0A830`, data hunk
-`0xC56BF8`) gives Malachite's 133 13 156 6 127 84 50 95, 8 of 8. Level up
-reads those bytes from the running machine, never from the file.
+`0xC56BF8`) gives Malachite's 133 13 156 6 127 84 50 95, 8 of 8.
+
+**What Wish's Level up does for a thief in these two titles.** It applies the
+rule the other ports apply, `levels.ad_d_thief_skills`: the level row plus the
+race row plus the dexterity row, with each column clamped at 0 (AD&D has no
+negative skill). The choices, each with its reason:
+
+* **Curse takes the C64's rows** (`levels.thief_skills`), because both ports
+  carry the same tables and DOS Curse's own stored value is inflated by a stack
+  leftover (`goldbox/levels.py`, `THIEF_SKILL_DOS_STORAGE_INFLATED`).
+* **Silver Blades takes its racial row by `race - 1`, a human none.** The
+  C64 reads that table at `race * 8` with no decrement, so a C64 thief gets the
+  next race's row (a bug in the shipped game), and nobody has read DOS's
+  routine for this title; copying either would hand the player a different
+  wrong number.
+* **A negative sum is stored as 0**, because AD&D has no negative skill; the
+  C64 stores the wrapped byte and Pool of Radiance's DOS rule clamps.
+* **The readied-item terms are dropped.** Power `0x8B` sets `d7` itself, which is
+  the leftover-register defect. Power 2's +10 is not applied either: neither
+  the C64 trainer's reading (`goldbox/levelup.py`, `goldbox/levels.py`) nor the
+  DOS Curse reading (`THIEF_SKILL_DOS_STORAGE_INFLATED`) has an item term on the thief skills.
+* **No thief stops Level up for these reasons any more.** The Kickstart
+  revision check, the Workbench case and the reads from the running machine
+  are gone; a dexterity outside the table reads its end row, as the C64 does.
 
 **Level up and the effect a regained class brings.** When a former ranger or
 paladin regains the class, the Silver Blades and Pools of Darkness trainers
