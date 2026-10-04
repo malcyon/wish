@@ -1031,7 +1031,19 @@ function Invoke-PipeVerb([string]$Verb) {
         if ($last -ge 999) {
           $verdict = "fail WinUAE has written its 999 screenshots for pid=$($lane.proc.Id) (reply $reply, last counter $last); restart the emulator"
         } else {
-          $verdict = "fail DBG sc wrote no file in $($LanePaths.shots) (reply $reply, last counter $last)"
+          # A file written late would be taken as the next shot's own, so give it a
+          # short bound to appear and delete it: the next call lists a clean folder.
+          $late = @()
+          for ($i = 0; $i -lt 12 -and -not $late.Count; $i++) {
+            Start-Sleep -Milliseconds 250
+            $late = @(Get-ChildItem -Path $LanePaths.shots -Filter *.png -ErrorAction Stop | Where-Object { $before -cnotcontains $_.Name })
+          }
+          $lateNote = ''
+          if ($late.Count) {
+            $lateNote = "; $($late.Count) file appeared within 3 s and was discarded as stale: $(($late | ForEach-Object { $_.Name }) -join ', ')"
+            $late | Remove-Item -ErrorAction Stop
+          }
+          $verdict = "fail DBG sc wrote no file in $($LanePaths.shots) (reply $reply, last counter $last)$lateNote"
         }
       } elseif ($new.Count -gt 1) {
         $verdict = "fail DBG sc wrote $($new.Count) files in $($LanePaths.shots): $(($new | ForEach-Object { $_.Name }) -join ', ')"
@@ -1057,13 +1069,32 @@ function Invoke-PipeVerb([string]$Verb) {
       $done = @()
       for ($k = 0; $k -lt $codes.Count -and -not $verdict; $k++) {
         $hex = $codes[$k].ToUpper()
+        $downFailed = $null
         try {
           $r = [Text.Encoding]::ASCII.GetString((Send-Pipe $pipe "CFG KEY_RAW_DOWN 0x$hex" 10000)).TrimEnd([char]0)
           if ($r -cne '404') { $verdict = "fail KEY_RAW_DOWN 0x$hex replied $r" }
           else { Start-Sleep -Milliseconds 120 }
+        } catch {
+          # The DOWN's reply never came: its read may still be pending on this pipe.
+          $downFailed = $_.Exception.Message
+          $verdict = "fail KEY_RAW_DOWN 0x$hex $($_.Exception.GetType().FullName): $downFailed"
         } finally {
-          $r = [Text.Encoding]::ASCII.GetString((Send-Pipe $pipe "CFG KEY_RAW_UP 0x$hex" 10000)).TrimEnd([char]0)
-          if (-not $verdict -and $r -cne '404') { $verdict = "fail KEY_RAW_UP 0x$hex replied $r" }
+          $upReply = $null
+          for ($try = 0; $try -lt 2 -and $upReply -cne '404'; $try++) {
+            try {
+              # A timed-out DOWN leaves a read pending, so the UP gets a fresh connection.
+              if ($downFailed -or $try -gt 0) {
+                $pipe.Dispose()
+                $pipe = Open-LanePipe $lane.proc.Id
+                $pipe.ReadMode = [IO.Pipes.PipeTransmissionMode]::Message
+              }
+              $upReply = [Text.Encoding]::ASCII.GetString((Send-Pipe $pipe "CFG KEY_RAW_UP 0x$hex" 10000)).TrimEnd([char]0)
+            } catch { $upReply = $null; $upError = $_.Exception.Message }
+          }
+          if ($upReply -cne '404') {
+            $why = if ($null -ne $upReply) { "replied $upReply" } else { $upError }
+            $verdict = "fail KEY_RAW_UP 0x$hex $why; key 0x$hex may still be held down in the emulator" + $(if ($verdict) { " ($verdict)" } else { '' })
+          }
         }
         if (-not $verdict) {
           $done += "0x$hex"
@@ -1516,7 +1547,24 @@ switch ($Cmd) {
         if (-not $state -or $state -ne 'Running') { break }
         Start-Sleep -Milliseconds 250
       }
+      # A task that stopped in the last 250 ms must not be reported as running.
+      $state = (Get-ScheduledTask -TaskName $LanePaths.task -ErrorAction SilentlyContinue).State
       if ($state -and $state -eq 'Running') { "fail the lane's task is still running 10s after Stop-ScheduledTask"; exit 1 }
+      if ($LaneCount -eq 1) {
+        # With one lane any winuae64 left is somebody's: a person's, or a leftover
+        # the task has not finished ending. Give a leftover its 10 s, then say so.
+        for ($i = 0; $i -lt 40; $i++) {
+          if (-not (Get-Process -Name winuae64 -ErrorAction SilentlyContinue)) { break }
+          Start-Sleep -Milliseconds 250
+        }
+        $left = @(Get-Process -Name winuae64 -ErrorAction SilentlyContinue)
+        if ($left.Count -and $Override) { "fail winuae64 still running 10s after Stop-ScheduledTask"; exit 1 }
+        if ($left.Count) {
+          "fail winuae64 pid=$($left[0].Id) is running and this lane has no receipt for it"
+          'stop blocks an emulator it did not launch; pass -Override to end it anyway'
+          exit 1
+        }
+      }
       Remove-Item $LanePaths.run -ErrorAction SilentlyContinue
       'ok stopped'; exit 0
     }

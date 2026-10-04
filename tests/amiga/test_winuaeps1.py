@@ -54,7 +54,7 @@ def test_a_failed_move_back_names_where_the_old_snapshot_is():
 def test_every_pipe_verb_opens_the_pipe_its_own_emulator_serves():
     """Two copies make `WinUAE` possibly the other lane's pipe, so no verb names one."""
     assert "'WinUAE', 'InOut'" not in PS1
-    assert PS1.count("Open-LanePipe $lane.proc.Id") == 4
+    assert PS1.count("Open-LanePipe $lane.proc.Id") == 5
 
 
 def test_the_lane_pipe_is_chosen_by_its_server_pid():
@@ -190,7 +190,7 @@ def test_stop_ends_this_lanes_task_and_waits_on_its_pid():
     body = _case("stop")
     assert "Stop-ScheduledTask -TaskName $LanePaths.task" in body
     assert "$Task" not in body.replace("$LanePaths.task", "")
-    assert "Get-Process -Name winuae64" not in body
+    assert "Get-Process -Name winuae64" not in body[body.index("$mine = Resolve-MyEmulator"):]
 
 
 def test_roms_and_clean_look_at_every_lane():
@@ -317,3 +317,43 @@ def test_press_validates_codes_and_splits_comma_lists():
 
 def test_no_screenshot_file_option_is_ever_sent():
     assert "AKS_SCREENSHOT_FILE" not in PS1
+
+
+def test_one_lane_stop_without_a_receipt_fails_while_a_stranger_s_winuae64_remains():
+    head = _case("stop")
+    head = head[:head.index("$mine = Resolve-MyEmulator")]
+    assert "if ($LaneCount -eq 1) {" in head
+    tail = head[head.index("if ($LaneCount -eq 1) {"):]
+    assert "Get-Process -Name winuae64" in tail
+    assert "stop blocks an emulator it did not launch; pass -Override to end it anyway" in tail
+    assert "fail winuae64 still running 10s after Stop-ScheduledTask" in tail
+    assert tail.index("$Override") < tail.index("stop blocks an emulator")
+    assert tail.index("exit 1") < tail.index("Remove-Item $LanePaths.run")
+
+
+def test_stop_reads_the_task_state_again_after_the_wait_loop():
+    head = _case("stop")
+    head = head[:head.index("$mine = Resolve-MyEmulator")]
+    loop_end = head.index("Start-Sleep -Milliseconds 250\n      }")
+    after = head[loop_end:]
+    assert "(Get-ScheduledTask -TaskName $LanePaths.task" in after
+    assert after.index("(Get-ScheduledTask") < after.index("is still running 10s")
+
+
+def test_press_releases_the_key_on_a_fresh_pipe_after_a_timed_out_down_and_retries():
+    body = _body("Invoke-PipeVerb")
+    finally_ = body[body.index("} finally {", body.index('"CFG KEY_RAW_DOWN')):]
+    finally_ = finally_[:finally_.index("if (-not $verdict) {")]
+    assert "} catch {" in body[body.index('"CFG KEY_RAW_DOWN'):body.index("} finally {", body.index('"CFG KEY_RAW_DOWN'))]
+    assert "Open-LanePipe $lane.proc.Id" in finally_
+    assert "$try -lt 2" in finally_
+    assert "catch" in finally_
+    assert "may still be held down" in finally_
+
+
+def test_shot_discards_a_file_that_lands_just_after_a_no_new_file_failure():
+    body = _body("Invoke-PipeVerb")
+    start = body.index("$late = @()")
+    section = body[start:body.index("wrote no file", start)]
+    assert "Remove-Item" in section and "-cnotcontains" in section
+    assert "discarded as stale" in section
