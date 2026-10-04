@@ -3,6 +3,7 @@
 
     tools/amiga/installfsuae.py
     tools/amiga/installfsuae.py --into DIR
+    tools/amiga/installfsuae.py --with-restore-redraw
 
 The patched emulator (`grahambates/fs-uae`, the GDB-remote build) has no release
 of its own.  Its author ships a build inside the npm package `uae-dap`, and an
@@ -19,11 +20,14 @@ is touched, and a `uae-dap-<version>` that does not hold the binary is blocked.
 
 The shipped Linux binary segfaults on every state save, state load and reset,
 and after a state load its picture stays black, so the install patches it in
-place, one `BinaryPatch` after another (`PATCH_CHAIN`): the pinned original,
-then `NULL_GUARD`, then `RESTORE_REDRAW`.  A binary that is not at one of the
-steps, or whose bytes at a patch site are not the expected ones, stops the
-install with nothing written.  A second run with the last step in place does
-nothing and says so; one with an earlier step in place finishes the chain.
+place, one `BinaryPatch` after another: the pinned original, then `NULL_GUARD`
+(`PATCH_CHAIN`, the default).  `--with-restore-redraw` adds `RESTORE_REDRAW`
+(`REDRAW_CHAIN`), which is opt-in until it is cleared.  A binary that is not at
+one of the steps, or whose bytes at a patch site are not the expected ones,
+stops the install with nothing written.  A second run with the last step in
+place does nothing and says so; one with an earlier step in place finishes the
+chain.  A default run on a binary that already holds the redraw patch leaves it
+alone and says so.
 `docs/239-fs-uae-patches.md` records every patch.
 """
 
@@ -133,8 +137,13 @@ RESTORE_REDRAW = BinaryPatch(
     ),
 )
 
-#: The patches the install applies, in order; each starts where the last ends.
-PATCH_CHAIN = (NULL_GUARD, RESTORE_REDRAW)
+#: The patches a default install applies, in order; each starts where the last ends.
+PATCH_CHAIN = (NULL_GUARD,)
+
+#: `PATCH_CHAIN` plus the redraw, applied only on request: it is not yet cleared
+#: (see `docs/239-fs-uae-patches.md`, "Measured on the patched binary").
+REDRAW_CHAIN = (NULL_GUARD, RESTORE_REDRAW)
+
 
 def default_dir() -> pathlib.Path:
     """The directory installs go under by default, beside Wish's own per-user data."""
@@ -356,18 +365,24 @@ def download(url: str, to: pathlib.Path, opener=None, limit: int = MAX_BYTES) ->
 
 def install(parent: pathlib.Path, fetch=download, url: str = URL,
             expected: str = SHA256,
-            chain: tuple[BinaryPatch, ...] | None = None) -> pathlib.Path:
+            chain: tuple[BinaryPatch, ...] | None = None,
+            with_restore_redraw: bool = False) -> pathlib.Path:
     """Return the patched binary's path, fetching and unpacking only if it is not there.
 
     The install is `install_dir(parent)`; `parent` itself is never modified
     beyond that one directory and the temporary files this removes again.
-    `chain` defaults to `PATCH_CHAIN`, looked up when called.
+    `chain` defaults to `PATCH_CHAIN`, or `REDRAW_CHAIN` with
+    `with_restore_redraw`, looked up when called.  A binary already at the end
+    of `REDRAW_CHAIN` is left alone by a run that did not ask for the redraw.
     """
-    chain = chain or PATCH_CHAIN
+    chain = chain or (REDRAW_CHAIN if with_restore_redraw else PATCH_CHAIN)
     into = install_dir(parent)
     binary = into / BINARY
     if binary.exists():
-        if patch_chain(binary, chain):
+        if (chain[-1] is not REDRAW_CHAIN[-1]
+                and sha256_of(binary) == REDRAW_CHAIN[-1].patched_sha256):
+            print(f"Already installed, holding the opt-in restore-redraw patch: {binary}")
+        elif patch_chain(binary, chain):
             print(f"Patched the installed binary: {binary}")
         else:
             print(f"Already installed: {binary}")
@@ -391,13 +406,16 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--into", type=pathlib.Path, default=None,
                         help=f"the directory to install under (default {default_dir()})")
+    parser.add_argument("--with-restore-redraw", action="store_true",
+                        help="also apply the redraw-after-state-load patch, which is not yet cleared")
     args = parser.parse_args(argv)
     if not (sys.platform.startswith("linux")
             and platform.machine() in ("x86_64", "AMD64")):
         print("Only Linux on x86-64 is supported.", file=sys.stderr)
         return 2
     try:
-        binary = install((args.into or default_dir()).resolve())
+        binary = install((args.into or default_dir()).resolve(),
+                         with_restore_redraw=args.with_restore_redraw)
     except (OSError, ValueError, tarfile.TarError, EOFError, zlib.error,
             http.client.IncompleteRead) as error:
         print(f"Install failed: {error}", file=sys.stderr)

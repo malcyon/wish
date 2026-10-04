@@ -116,8 +116,11 @@ of padding after a `ret` at `0x6b3440`.
 
 ## The SHA-256 chain
 
-`installfsuae.PATCH_CHAIN` applies the steps in order. Each step starts from
-the digest the previous one ends at.
+`installfsuae.REDRAW_CHAIN` lists the steps in order. Each step starts from
+the digest the previous one ends at. The default install, `PATCH_CHAIN`, stops
+after step 1: step 2 is opt-in with `--with-restore-redraw` because the
+reboot and shutdown segfault under "Measured on the patched binary" are not
+yet cleared.
 
 | Step | Binary | SHA-256 |
 |---|---|---|
@@ -127,14 +130,16 @@ the digest the previous one ends at.
 
 `patch_chain()` handles a binary at any step:
 
-- **At step 0 or 1:** it checks the bytes at every remaining site, applies the
+- **At an earlier step:** it checks the bytes at every remaining site, applies the
   remaining steps in memory, checks each result's digest and replaces the file
   by a rename. A running emulator keeps the file it started from.
-- **At step 2:** it does nothing.
+- **At the last step of the chain it was given:** it does nothing. A default
+  run on a binary at step 2 leaves it alone and says it holds the opt-in patch.
 - **Anything else:** an unknown digest, or a site holding neither its shipped
   nor its patched bytes, stops the install with nothing written.
 
-A fresh install patches the unpacked binary before it moves into place.
+A fresh install patches the unpacked binary before it moves into place, to
+step 1, or to step 2 with `--with-restore-redraw`.
 
 ## Verifying and rebuilding
 

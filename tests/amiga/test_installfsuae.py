@@ -41,6 +41,7 @@ posix_only = pytest.mark.skipif(sys.platform == "win32",
 REAL_GUARD = installfsuae.NULL_GUARD
 REAL_REDRAW = installfsuae.RESTORE_REDRAW
 REAL_CHAIN = installfsuae.PATCH_CHAIN
+REAL_REDRAW_CHAIN = installfsuae.REDRAW_CHAIN
 
 SHIPPED = b"an executable"
 PATCHED = b"an EXECutable"
@@ -64,7 +65,8 @@ FAKE_REDRAW = installfsuae.BinaryPatch(
 @pytest.fixture(autouse=True)
 def fake_chain(monkeypatch):
     """Every install here patches the stand-in binary, as a real one is patched."""
-    monkeypatch.setattr(installfsuae, "PATCH_CHAIN", (FAKE_GUARD, FAKE_REDRAW))
+    monkeypatch.setattr(installfsuae, "PATCH_CHAIN", (FAKE_GUARD,))
+    monkeypatch.setattr(installfsuae, "REDRAW_CHAIN", (FAKE_GUARD, FAKE_REDRAW))
 
 
 def build(path: pathlib.Path, members: dict[str, bytes | tarfile.TarInfo]) -> str:
@@ -576,7 +578,7 @@ def test_main_on_another_platform_exits_2_and_installs_nothing(tmp_path, monkeyp
 ])
 def test_main_reports_a_failed_install_as_one_line_and_exits_1(
         tmp_path, monkeypatch, capsys, linux_x86, error):
-    def fail(parent):
+    def fail(parent, **kw):
         raise error
 
     monkeypatch.setattr(installfsuae, "install", fail)
@@ -590,7 +592,7 @@ def test_main_reports_a_failed_install_as_one_line_and_exits_1(
 
 def test_main_quotes_the_paths_it_prints_and_exits_0(tmp_path, monkeypatch, capsys, linux_x86):
     binary = tmp_path / "my games" / installfsuae.BINARY
-    monkeypatch.setattr(installfsuae, "install", lambda parent: binary)
+    monkeypatch.setattr(installfsuae, "install", lambda parent, **kw: binary)
 
     assert installfsuae.main(["--into", str(tmp_path)]) == 0
 
@@ -604,7 +606,7 @@ def test_main_quotes_the_paths_it_prints_and_exits_0(tmp_path, monkeypatch, caps
 def test_main_installs_under_the_into_directory(tmp_path, monkeypatch, capsys, linux_x86):
     seen = []
     monkeypatch.setattr(installfsuae, "install",
-                        lambda parent: seen.append(parent) or parent / installfsuae.BINARY)
+                        lambda parent, **kw: seen.append(parent) or parent / installfsuae.BINARY)
 
     installfsuae.main(["--into", str(tmp_path)])
 
@@ -641,10 +643,19 @@ def test_the_shipped_guard_is_consistent():
         assert len(digest) == 64 and int(digest, 16) >= 0
 
 
-def test_an_install_patches_the_binary_it_unpacks_through_the_whole_chain(tmp_path):
+def test_a_default_install_ends_at_the_null_guard_without_the_redraw(tmp_path):
     fetch, digest = fetcher(tmp_path, good_members())
 
     binary = installfsuae.install(tmp_path / "share", fetch=fetch, expected=digest)
+
+    assert binary.read_bytes() == PATCHED
+
+
+def test_an_install_with_the_redraw_patches_through_the_whole_chain(tmp_path):
+    fetch, digest = fetcher(tmp_path, good_members())
+
+    binary = installfsuae.install(tmp_path / "share", fetch=fetch, expected=digest,
+                                  with_restore_redraw=True)
 
     assert binary.read_bytes() == FINAL
 
@@ -659,7 +670,7 @@ def test_an_installed_original_is_patched_without_a_download(tmp_path, capsys):
 
     assert installfsuae.install(parent, fetch=fetch, expected=digest) == binary
 
-    assert binary.read_bytes() == FINAL
+    assert binary.read_bytes() == PATCHED
     assert fetch.calls == []
     assert "Patched the installed binary" in capsys.readouterr().out
     assert sorted(p.name for p in binary.parent.iterdir()) == [installfsuae.BINARY]
@@ -724,24 +735,26 @@ def test_the_shipped_redraw_is_consistent():
 
 
 def test_the_shipped_chain_starts_at_the_pinned_binary_and_links_up():
-    assert REAL_CHAIN == (REAL_GUARD, REAL_REDRAW)
+    assert REAL_CHAIN == (REAL_GUARD,)
+    assert REAL_REDRAW_CHAIN == (REAL_GUARD, REAL_REDRAW)
     assert REAL_GUARD.original_sha256 == (
         "cee4e3c9f735168ce97e57fa846383fa8efcd718343ee53d212af2737e697d97")
     assert REAL_GUARD.patched_sha256 == REAL_REDRAW.original_sha256
-    sites = [s for patch in REAL_CHAIN for s in patch.sites]
+    sites = [s for patch in REAL_REDRAW_CHAIN for s in patch.sites]
     spans = sorted((s.offset, s.offset + len(s.original)) for s in sites)
     assert all(a_end <= b_start for (_, a_end), (b_start, _) in zip(spans, spans[1:]))
 
 
 @pytest.mark.parametrize("start", [SHIPPED, PATCHED], ids=["original", "guarded"])
-def test_an_installed_binary_at_any_step_ends_at_the_last(tmp_path, capsys, start):
+def test_the_redraw_flag_takes_an_installed_binary_from_either_step_to_the_last(
+        tmp_path, capsys, start):
     parent = tmp_path / "share"
     binary = installfsuae.install_dir(parent) / installfsuae.BINARY
     binary.parent.mkdir(parents=True)
     binary.write_bytes(start)
     fetch, digest = fetcher(tmp_path, good_members())
 
-    installfsuae.install(parent, fetch=fetch, expected=digest)
+    installfsuae.install(parent, fetch=fetch, expected=digest, with_restore_redraw=True)
 
     assert binary.read_bytes() == FINAL
     assert fetch.calls == []
@@ -749,17 +762,44 @@ def test_an_installed_binary_at_any_step_ends_at_the_last(tmp_path, capsys, star
     assert [p.name for p in binary.parent.iterdir()] == [installfsuae.BINARY]
 
 
-def test_a_binary_at_the_end_of_the_chain_is_left_alone(tmp_path, capsys):
+@pytest.mark.parametrize("flag", [False, True], ids=["default", "with redraw"])
+def test_a_binary_at_the_end_of_the_chain_is_left_alone(tmp_path, capsys, flag):
     parent = tmp_path / "share"
     binary = installfsuae.install_dir(parent) / installfsuae.BINARY
     binary.parent.mkdir(parents=True)
     binary.write_bytes(FINAL)
     fetch, digest = fetcher(tmp_path, good_members())
 
-    installfsuae.install(parent, fetch=fetch, expected=digest)
+    installfsuae.install(parent, fetch=fetch, expected=digest, with_restore_redraw=flag)
 
     assert binary.read_bytes() == FINAL
     assert "Already installed" in capsys.readouterr().out
+    assert fetch.calls == []
+
+
+def test_a_default_run_on_a_guard_only_binary_changes_nothing(tmp_path, capsys):
+    parent = tmp_path / "share"
+    binary = installfsuae.install_dir(parent) / installfsuae.BINARY
+    binary.parent.mkdir(parents=True)
+    binary.write_bytes(PATCHED)
+    fetch, digest = fetcher(tmp_path, good_members())
+
+    installfsuae.install(parent, fetch=fetch, expected=digest)
+
+    assert binary.read_bytes() == PATCHED
+    assert "Already installed" in capsys.readouterr().out
+    assert [p.name for p in binary.parent.iterdir()] == [installfsuae.BINARY]
+
+
+def test_main_passes_the_redraw_flag_on(tmp_path, monkeypatch, linux_x86):
+    seen = []
+    monkeypatch.setattr(installfsuae, "install",
+                        lambda parent, **kw: seen.append(kw) or parent / installfsuae.BINARY)
+
+    installfsuae.main(["--into", str(tmp_path)])
+    installfsuae.main(["--into", str(tmp_path), "--with-restore-redraw"])
+
+    assert seen == [{"with_restore_redraw": False}, {"with_restore_redraw": True}]
 
 
 @pytest.mark.parametrize("content, offset", [
@@ -775,7 +815,7 @@ def test_wrong_bytes_at_either_redraw_site_stop_with_nothing_written(
     fetch, digest = fetcher(tmp_path, good_members())
 
     with pytest.raises(ValueError, match=f"at {offset}, not the expected"):
-        installfsuae.install(parent, fetch=fetch, expected=digest)
+        installfsuae.install(parent, fetch=fetch, expected=digest, with_restore_redraw=True)
 
     assert binary.read_bytes() == content
     assert [p.name for p in binary.parent.iterdir()] == [installfsuae.BINARY]
