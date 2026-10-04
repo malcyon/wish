@@ -2106,7 +2106,7 @@ def test_wish_reports_a_helper_whose_pid_is_gone(wished, tmp_path, monkeypatch):
 def test_wish_blocks_every_command_that_reads_the_emulator(
         wished, tmp_path, word):
     rows = run_wish(tmp_path, [f"{word} +0x10 4"])
-    assert "blocked" in by_event(rows, word)[0]["error"]
+    assert "not allowed" in by_event(rows, word)[0]["error"]
 
 
 def test_wish_keys_are_held_through_fsuaepor_and_a_bad_line_costs_one_row(
