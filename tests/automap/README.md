@@ -6,6 +6,7 @@ Tests for the live automapper in `automap/`: its map model and geometry, the par
 |---|---|
 | `test_actions.py` | Checks the live actions (healing, identifying, levelling, the trainer flags and re-entry) through the addresses they write to a `MemoryTarget`. |
 | `test_amigaactions.py` | Checks, against a fake party and a byte-array target, that the Amiga actions write at the record address plus the row's offset, honour the combat gate, `can_write` and the facts a row must list as measured, keep spell lists apart from the C64's, and never reach a C64 address. |
+| `test_amigalevelup.py` | Checks the Amiga Level up against what the games' halls measured on records built in the test, Pool of Radiance's recompute against a watched load, and each recompute against the saved records on the player's disks. |
 | `test_amigafasttravel.py` | Checks, against a fake trip table and target, which Amiga trips are offered and which show the unsupported sentence, what happens when the area changes or does not, and that the C64 sentences are reused and no C64 address is read. |
 | `test_amigalocate.py` | Checks that one sweep of an Amiga's memory names which title is loaded and where, and that `AmigaTarget.locate` is that same search. |
 | `test_amigamaps.py` | Checks that the map loader reads an Amiga title's own maps out of a folder of disk images, names the title from the disk, leaves `disk_globs` alone and skips Pools of Darkness. |
