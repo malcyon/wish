@@ -35,6 +35,7 @@ configured model, not the same decision spelled two ways.
 | `backlog-auditor` | Sonnet | `gpt-6-sol` (high) | before a refinement pass, or when the backlog has grown unwieldy; it reports audits and bounded briefs only |
 | `changelog-writer` | Sonnet | `gpt-6-sol` (high) | after a batch of work lands, and before cutting a release |
 | `test-runner` | **Haiku** | `gpt-6-luna` (medium) | a focused run on named tests, the CI result for an exact pushed SHA, or a whole-suite diagnostic when one is explicitly asked for, so that the run does not block the window Donald is asking questions in. It reports and fixes nothing |
+| `queue-manager` | Haiku | `gpt-6-luna` (medium) | a list of gap tickets needs each one's next step read from its comments. It returns one line per ticket, writes nothing and decides nothing |
 
 **Cost is not the filter on `deep-research` and `architect`; fit is.** Fable is
 Claude Code's name for the tier behind both (Codex runs the same two agents on

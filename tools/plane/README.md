@@ -10,3 +10,4 @@ Apply Wish ticket policy to a single private Plane project.
 | `planeagent.py` | Creates (in Backlog, Queue or In Progress), comments on, edits comments by the agent or the importer account on, and changes tickets. |
 | `planeread.py` | Lists, searches, reads, cites and reports the state of tickets through the policy layer. |
 | `policy.py` | Validates private project configuration, renders Markdown and defines the write error types. |
+| `queuegap.py` | Keeps the orchestrator's local assignment ledger and prints the unfinished tickets that have no live agent and no recorded reason. |
