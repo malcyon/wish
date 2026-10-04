@@ -4580,6 +4580,7 @@ class PoolRun:
                 "fight-cast")) is not None:
             raise failed
         if not tactic.casts:
+            self.keep_fight_reading()
             raise self.fail("fight-cast", f"fight-cast: {caster} never cast "
                                           f"{spell} in the fight")
         return {"walked": taken, "acted": result.acted, "casts": tactic.casts,

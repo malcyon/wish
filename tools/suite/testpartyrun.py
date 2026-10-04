@@ -68,7 +68,7 @@ from tools.c64 import session as S  # noqa: E402
 from tools.c64.c64addprobe import answer as answer_yn  # noqa: E402
 from tools.c64.c64nametable import character_files  # noqa: E402
 from tools.c64.hallmenu import area as resident_area  # noqa: E402
-from tools.c64.route_pool import (  # noqa: E402  # noqa: E402
+from tools.c64.route_pool import (  # noqa: E402
     ROSTER_STRIDE,
     SAVE1_LOAD,
     leave_items,

@@ -252,8 +252,9 @@ class _CastSession:
     """Records the keys a cast sends; the spell list shows PRAYER and the
     targeting bar appears only when `asks_target`."""
 
-    def __init__(self, asks_target=False):
+    def __init__(self, asks_target=False, bar_returns=True):
         self.asks_target = asks_target
+        self.bar_returns = bar_returns
         self.calls: list[tuple] = []
 
     def mon(self, timeout=5.0):
@@ -271,6 +272,10 @@ class _CastSession:
         self.calls.append(("wait", text))
         found = text == "PRAYER" or (text == "TARGET" and self.asks_target)
         return (0 if found else None), None
+
+    def await_bar(self, kinds, timeout=6.0):
+        self.calls.append(("await", kinds))
+        return object() if self.bar_returns else None
 
     def screen(self):
         return self
@@ -317,7 +322,27 @@ def test_caster_backs_out_when_a_party_spell_asks_for_a_target(cast_patches):
     caster = route_pool.Caster(FakeLog(), [("BAKSHI", "PRAYER", None)])
     assert caster.cast(sess, sess, _Me(), "PRAYER", None) is False
     assert ("bar", "EXIT") in sess.calls
+    assert sess.calls[-1] == ("await", (route_pool.S.BAR_COMMAND,))
     assert caster.casts == []
+
+
+def test_caster_fails_when_the_combat_bar_never_comes_back(cast_patches):
+    sess = _CastSession(asks_target=True, bar_returns=False)
+    caster = route_pool.Caster(FakeLog(), [("BAKSHI", "PRAYER", None)])
+    with pytest.raises(RuntimeError, match="combat bar did not come back"):
+        caster.cast(sess, sess, _Me(), "PRAYER", None)
+    assert sess.calls.count(("bar", "EXIT")) == route_pool.Caster.BACK_OUT_PRESSES
+
+
+def test_caster_drops_a_failed_cast_and_leaves_the_turn_to_the_other_tactic(
+        cast_patches):
+    sess = _CastSession(asks_target=True)
+    caster = route_pool.Caster(FakeLog(), [("BAKSHI", "PRAYER", None)],
+                               otherwise=lambda s, state: "FLEE")
+    assert caster(sess, "bar") == "FLEE"
+    assert caster.queue == []
+    assert caster(sess, "bar") == "FLEE"
+    assert sess.calls.count(("select", "CAST")) == 1
 
 
 def test_caster_gives_other_members_turns_to_the_other_tactic(cast_patches):

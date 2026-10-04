@@ -721,6 +721,8 @@ class Caster:
     where it got to.
     """
 
+    BACK_OUT_PRESSES = 3
+
     def __init__(self, log: Log, queue: list[tuple[str, str, str | None]],
                  otherwise=None):
         self.log = log
@@ -743,7 +745,11 @@ class Caster:
             if self.cast(sess, b, me, spell, target):
                 self.queue.pop(0)
                 return "CAST"
-            return sess.combat_turn()
+            # One attempt per queued cast: a cast that failed is dropped, so
+            # every later turn of that member is the other tactic's and the
+            # fight is not spent retrying it.
+            self.log.say(f"  {spell} dropped after one failed attempt")
+            self.queue.pop(0)
         return self.otherwise(sess, state)
 
     def cast(self, sess: S.Session, b, me, spell: str,
@@ -807,8 +813,7 @@ class Caster:
                       me=(me.x, me.y), target=(who.x, who.y))
         # The game then puts up `NEXT PREV MANUAL TARGET EXIT`: NEXT cycles
         # the candidate targets and the right-hand panel names the current
-        # one, TARGET confirms. Fire run 5 found the bar; the numpad aiming
-        # it replaced went to nothing.
+        # one, TARGET confirms.
         if sess.wait_text("TARGET", 10)[0] is None:
             self.log.say("  no targeting bar after choosing the spell")
             self.log.emit("screen", tag="cast-notarget", rows=sheet_rows(sess))
@@ -850,7 +855,6 @@ class Caster:
                      f"{before[:6]} -> {after[:6]}")
         return True
 
-
     def finish_untargeted(self, sess: S.Session, me, spell: str,
                           before: list[int]) -> bool:
         """The end of a cast whose spell has no target prompt: the game casts
@@ -860,8 +864,14 @@ class Caster:
             self.log.say(f"  {spell} asked for a target")
             self.log.emit("screen", tag="cast-asked-target",
                           rows=sheet_rows(sess))
-            sess.combat_bar("EXIT", timeout=8)
-            return False
+            # The next turn starts from the combat bar, so EXIT until it is
+            # back; a bar that never returns fails the step.
+            for _ in range(self.BACK_OUT_PRESSES):
+                sess.combat_bar("EXIT", timeout=8)
+                if sess.await_bar((S.BAR_COMMAND,), timeout=4) is not None:
+                    return False
+            raise RuntimeError(f"the combat bar did not come back after "
+                               f"backing out of {spell}")
         time.sleep(2.5)
         self.log.emit("screen", tag="cast-done", rows=sheet_rows(sess))
         sess.handle_prompt()
