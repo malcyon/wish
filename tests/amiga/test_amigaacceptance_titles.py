@@ -6,6 +6,7 @@ import base64
 import dataclasses
 import hashlib
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -3152,6 +3153,25 @@ def test_a_published_disk_3_prepare_removes_its_folder_when_a_working_copy_diffe
         tmp_path, monkeypatch):
     three = Three(tmp_path, monkeypatch)
     report, _ = three.report(three.published("D"))
+    monkeypatch.setattr(foundation.shutil, "copyfile",
+                        lambda src, dst: pathlib.Path(dst).write_bytes(b"other"))
+    with pytest.raises(winuaesession.RouteError, match="working copy differs"):
+        foundation.prepare_published_disk_three("run", report, "2")
+    assert not list((tmp_path / "cache").rglob("run"))
+
+
+def test_a_failed_published_disk_3_prepare_removes_its_read_only_copies(tmp_path, monkeypatch):
+    three = Three(tmp_path, monkeypatch)
+    report, _ = three.report(three.published("D"))
+    real_unlink = os.unlink
+
+    def windows_unlink(path, *args, **kwargs):
+        if not os.access(path, os.W_OK):
+            raise PermissionError(13, "Access is denied", str(path))
+        real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(foundation.os, "unlink", windows_unlink)
+    monkeypatch.setattr(foundation.os, "remove", windows_unlink)
     monkeypatch.setattr(foundation.shutil, "copyfile",
                         lambda src, dst: pathlib.Path(dst).write_bytes(b"other"))
     with pytest.raises(winuaesession.RouteError, match="working copy differs"):

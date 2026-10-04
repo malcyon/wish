@@ -2963,6 +2963,18 @@ def published_darkness_title(manifest_path: pathlib.Path, name: str) -> AmigaTit
         raise RouteError(f"the manifest lacks {exc.args[0]!r}") from exc
 
 
+def _remove_run_folder(run: pathlib.Path) -> None:
+    """Delete a run folder whose copies were made read-only; a failure to delete is raised.
+
+    Windows refuses to unlink a read-only file, so the bit is cleared and the unlink retried.
+    """
+    def clear_and_retry(function, path, error):
+        os.chmod(path, stat.S_IWRITE)
+        function(path)
+
+    shutil.rmtree(run, onexc=clear_and_retry)
+
+
 def prepare_published_disk_three(run_id: str, report_path: pathlib.Path, issue: str,
                                  camp: tuple[str, ...] = ()) -> pathlib.Path:
     """Preserve and check a disk 3 that Save As wrote from a DOS Pools of Darkness slot, before any guest run.
@@ -3053,7 +3065,7 @@ def prepare_published_disk_three(run_id: str, report_path: pathlib.Path, issue: 
         if any(hashlib.sha256(after[key][1]).hexdigest() != pinned for key, pinned in wanted.items()):
             raise RouteError("a registered image changed during preparation")
     except BaseException:
-        shutil.rmtree(run, ignore_errors=True)
+        _remove_run_folder(run)
         raise
     manifest = {
         "mode": PUBLISHED_DISK_THREE_MODE, "issue": issue, "title": "darkness",
