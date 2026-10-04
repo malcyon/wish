@@ -97,7 +97,7 @@ def walk_square(sess, move: str = "I",
     else:
         walked = sess.walk_with_retry(move)
     if not walked:
-        raise RuntimeError(f"walk {move} stopped: {sess.walk_refused}")
+        raise RuntimeError(f"walk {move} stopped: {sess.walk_stopped}")
     restores = sess.walk_retries
     if restores:
         sess.attach(sess.save_disk)

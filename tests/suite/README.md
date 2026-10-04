@@ -4,6 +4,7 @@ Tests for the suite's own tooling under `tools/suite/` and the guards that keep 
 
 | file | purpose |
 |---|---|
+| `test_banned_words.py` | Checks that the words `.claude/rules/words.md` bans stay out of the tracked files in the scope each has, within the per-file limits a sweep of the stem is still lowering. |
 | `test_ci_measure.py` | Checks profiling preserves worker selection, sampled accounting, test failures and per-file timing reports in serial and distributed runs. |
 | `test_ci_route.py` | Checks docs-only routing requires a verified ordinary push whose complete changed-path set is Markdown under `docs/`. |
 | `test_ci_shard.py` | Checks weighted shard planning preserves atomic files and transitive xdist groups, and assigns unseen files a median weight. |

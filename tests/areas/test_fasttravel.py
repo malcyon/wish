@@ -143,7 +143,7 @@ def test_the_mode_flag_still_disables_the_button(app):
     bar = row(app, machine(mode=COMBAT))
     somewhere_else(bar)
     assert not bar.button.isEnabled()
-    assert "refused during a fight" in bar.button.toolTip()
+    assert "not available during a fight" in bar.button.toolTip()
     assert "$6E11" not in bar.button.toolTip()
 
 

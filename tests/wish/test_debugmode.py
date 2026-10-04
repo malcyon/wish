@@ -266,7 +266,7 @@ def test_fasttravel_legality_rejections_carry_no_developer_detail():
     ft = actions.FastTravel()
     reasons = {
         "no emulator attached": ft.legality(None, area(20)).reason,
-        "refused during a fight": ft.legality(
+        "not available during a fight": ft.legality(
             machine(mode=COMBAT), area(20)).reason,
         "resident overlay is not DUNGEON": ft.legality(
             machine(mode=3), area(20)).reason,
@@ -711,7 +711,7 @@ def test_the_button_carries_its_rejection_in_its_tooltip(app):
     developer_detail` is the sweep over every branch."""
     row = bar(app, machine(mode=COMBAT))
     assert not row.button.isEnabled()
-    assert "refused during a fight" in row.button.toolTip()
+    assert "not available during a fight" in row.button.toolTip()
     assert "$6E11" not in row.button.toolTip()
     assert not row.back_button.isEnabled()
     assert "nothing to go back to" in row.back_button.toolTip()
@@ -873,7 +873,7 @@ def test_a_refused_fasttravel_is_reported_as_an_alarm(app):
     row.combo.setCurrentIndex(row.rows.index(area(13)))
     row.run()
     assert said and said[-1][1] is True
-    assert "refused during a fight" in said[-1][0]
+    assert "not available during a fight" in said[-1][0]
 
 
 # --- the map window ----------------------------------------------------------

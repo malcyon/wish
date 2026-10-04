@@ -2105,13 +2105,13 @@ def test_a_writer_that_fails_partway_leaves_no_folder_behind(tmp_path,
     monkeypatch.setattr(convert.ConvertDialog, "exec",
                         lambda self: next(answers))
     rejections = []
-    real_refuse = convert.ConvertDialog.refuse
+    real_report_failure = convert.ConvertDialog.report_failure
 
     def note_rejection(self, text):
         rejections.append(text)
-        return real_refuse(self, text)
+        return real_report_failure(self, text)
 
-    monkeypatch.setattr(convert.ConvertDialog, "refuse", note_rejection)
+    monkeypatch.setattr(convert.ConvertDialog, "report_failure", note_rejection)
     # `editor.convert`'s `C64ToDos` calls `dos_codec.new_dos_save_from`
     # directly (#619's Stage A), not `new_dos_save`, so the patch has to
     # land on the function the caller actually looks up.
@@ -3212,7 +3212,7 @@ def test_a_successful_dos_conversion_pops_the_confirmation_alongside_the_status_
 def test_a_refused_conversion_never_pops_the_success_confirmation(
         tmp_path, monkeypatch):
     """A write that fails still shows only its own rejection
-    (`CANNOT_CONVERT`, via `dialog.refuse`) -- never `CONVERT_SUCCESS`
+    (`CANNOT_CONVERT`, via `dialog.report_failure`) -- never `CONVERT_SUCCESS`
     alongside it. CI-safe: a direction whose `write` always raises, the
     same retry form `test_a_writer_that_fails_partway_leaves_no_folder_
     behind` proves against a real DOS write."""
@@ -3243,7 +3243,7 @@ def test_a_refused_conversion_never_pops_the_success_confirmation(
         def exec(self):
             return next(self._answers)
 
-        def refuse(self, text):
+        def report_failure(self, text):
             self.rejections.append(text)
 
         def close(self):

@@ -1967,11 +1967,11 @@ class EditorBinding(QObject):
                 except Exception:
                     _log.exception("could not convert with the names %s",
                                    choice)
-                    dialog.refuse(convert_mod.CANNOT_CONVERT)
+                    dialog.report_failure(convert_mod.CANNOT_CONVERT)
                     continue
                 if (dialog.rehearsal is None and not dialog.pack_overflow
                         and dialog.effect_overflow is None):
-                    dialog.refuse(convert_mod.CANNOT_CONVERT)
+                    dialog.report_failure(convert_mod.CANNOT_CONVERT)
                     continue
             if dialog.rehearsal is None and dialog.pack_overflow:
                 # The destination cannot hold a pack as it stands: ask what
@@ -1988,11 +1988,11 @@ class EditorBinding(QObject):
                 except Exception:
                     _log.exception("could not convert with %s left behind",
                                    choice)
-                    dialog.refuse(convert_mod.CANNOT_CONVERT)
+                    dialog.report_failure(convert_mod.CANNOT_CONVERT)
                     continue
                 if (dialog.rehearsal is None
                         and dialog.effect_overflow is None):
-                    dialog.refuse(convert_mod.CANNOT_CONVERT)
+                    dialog.report_failure(convert_mod.CANNOT_CONVERT)
                     continue
             if dialog.rehearsal is None and dialog.effect_overflow is not None:
                 # The C64's shared effect table cannot hold the party's
@@ -2008,10 +2008,10 @@ class EditorBinding(QObject):
                 except Exception:
                     _log.exception("could not convert with the running "
                                    "effects %s left out", choice)
-                    dialog.refuse(convert_mod.CANNOT_CONVERT)
+                    dialog.report_failure(convert_mod.CANNOT_CONVERT)
                     continue
                 if dialog.rehearsal is None:
-                    dialog.refuse(convert_mod.CANNOT_CONVERT)
+                    dialog.report_failure(convert_mod.CANNOT_CONVERT)
                     continue
             if dialog.rehearsal is None:
                 return "cancelled"
@@ -2029,7 +2029,7 @@ class EditorBinding(QObject):
                 #: destination under a `wish-YYYY-MM-DD` name, indis-
                 #: tinguishable from a conversion that worked.
                 shutil.rmtree(fresh, ignore_errors=True)
-                dialog.refuse(convert_mod.CANNOT_CONVERT)
+                dialog.report_failure(convert_mod.CANNOT_CONVERT)
                 continue
             if dialog.direction.destination_port == "c64":
                 self.load(str(written[0]))
@@ -2944,7 +2944,7 @@ class EditorBinding(QObject):
         snapshot = saveplan.prepare(self.party)
         if snapshot is not None:
             try:
-                saveplan.refuse_alias(path, snapshot, assets)
+                saveplan.check_not_alias(path, snapshot, assets)
             except saveplan.SaveAsError as exc:
                 text = (DESTINATION_IS_SOURCE
                        if "being written from" in str(exc)

@@ -1118,7 +1118,7 @@ class RefusedArena(ArenaSession):
             (24, col, col + len("DONE") - 1))
 
 
-def test_a_blow_the_game_refuses_passes_the_turn_rather_than_pressing_on():
+def test_a_blow_the_game_blocks_passes_the_turn_rather_than_pressing_on():
     b = combat.read_battle(MemoryTarget(synthetic_arena(
         fighters=((0, 25, 13), (8, 26, 13)))))
     me = b.party[0]

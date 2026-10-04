@@ -181,7 +181,7 @@ def test_each_failing_condition_greys_the_button_with_its_reason(measured):
 
     window, _ = attached(POOL, mode=amigaparty.ROWS[POOL].combat_value)
     assert enabled(window) == set()
-    assert states(window)["heal"] == (False, "Heal party is refused during a fight")
+    assert states(window)["heal"] == (False, "Heal party is not available during a fight")
 
     window, target = attached(POOL)
     target.fail_at.add(BASE + amigaparty.ROWS[POOL].mode)

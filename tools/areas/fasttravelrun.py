@@ -183,9 +183,9 @@ def walk_verdict(steps: list[dict], sheet_opened: bool) -> tuple[bool, str]:
     """
     if not steps:
         return False, "no step was tried"
-    refused = [s for s in steps if s.get("refused")]
+    refused = [s for s in steps if s.get("stopped")]
     if refused:
-        return False, f"the driver refused a step: {refused[0]['refused']}"
+        return False, f"the driver refused a step: {refused[0]['stopped']}"
     walked = [s for s in steps if "move" in s]
     moved = sum(1 for s in walked
                 if not s.get("interrupted")
@@ -601,12 +601,12 @@ def fought(sess, steps: list[dict], row: str) -> bool:
     steps.append({"fight": outcome, "row": row, "world": back})
     print(f"  fight: {outcome} world={back}", flush=True)
     if outcome == S.LOST:
-        steps[-1]["refused"] = "the fight was lost"
+        steps[-1]["stopped"] = "the fight was lost"
     elif not back:
-        steps[-1]["refused"] = "the world did not come back after a fight"
+        steps[-1]["stopped"] = "the world did not come back after a fight"
     elif sess.in_combat():
-        steps[-1]["refused"] = "another fight began straight after a fight"
-    return "refused" not in steps[-1]
+        steps[-1]["stopped"] = "another fight began straight after a fight"
+    return "stopped" not in steps[-1]
 
 
 #: `ECL64`, the fight's script. PROBABLE: the game loads it into the `ECL`
@@ -745,7 +745,7 @@ def walk_afterwards(sess, timeout: float = 60.0,
         here = at()
         steps.append({"move": "wait", "ok": False, "row": row,
                       "before": here, "after": here,
-                      "refused": f"the game never settled: $6E1B reads "
+                      "stopped": f"the game never settled: $6E1B reads "
                                  f"{raw} and row 24 {row!r}"})
         print(f"  walk: the game never settled ($6E1B={raw}, row 24 "
               f"{row!r})", flush=True)
@@ -773,7 +773,7 @@ def walk_afterwards(sess, timeout: float = 60.0,
             here = at()
             steps.append({"move": "wait", "ok": False, "row": row,
                           "before": here, "after": here,
-                          "refused": "a fight is still going after two "
+                          "stopped": "a fight is still going after two "
                                      "fights were fought"})
             print("  walk: a fight is still going after two fights",
                   flush=True)
@@ -795,7 +795,7 @@ def walk_afterwards(sess, timeout: float = 60.0,
             here = at()
             steps.append({"move": move, "ok": False, "row": row,
                           "before": here, "after": here,
-                          "refused": f"row 24 is not the world bar, the move "
+                          "stopped": f"row 24 is not the world bar, the move "
                                      f"sub-bar or the direction prompt: {row!r}"})
             print(f"  walk {move}: stopped on row 24 {row!r}", flush=True)
             return steps, False
@@ -851,7 +851,7 @@ def walk_afterwards(sess, timeout: float = 60.0,
                     attempts[-1]["stop_screen"] = stop_screen
                 if gi:
                     retry_used += 1
-                refused = getattr(sess, "walk_refused", None)
+                refused = getattr(sess, "walk_stopped", None)
                 if refused:
                     done = True
                     break
@@ -869,7 +869,7 @@ def walk_afterwards(sess, timeout: float = 60.0,
                 break
         last = attempts[-1]
         step = {"move": last["move"], "ok": last["ok"], "row": last["row"],
-                "before": before, "after": last["after"], "refused": refused,
+                "before": before, "after": last["after"], "stopped": refused,
                 "shadow_before": shadow_before, "shadow_after": sess.square()}
         for key in ("screens", "stop_screen", "walk_one"):
             if key in last:
@@ -910,7 +910,7 @@ def walk_afterwards(sess, timeout: float = 60.0,
             moved += 1
             if stop_after_moves is not None and moved >= stop_after_moves:
                 break
-    # A step can end on a prompt without `walk_refused` being set, and the
+    # A step can end on a prompt without `walk_stopped` being set, and the
     # sheet's keys must not be pressed into it.
     row = settle_row(sess, timeout)
     if sess.in_combat():
@@ -928,7 +928,7 @@ def walk_afterwards(sess, timeout: float = 60.0,
         here = at()
         steps.append({"move": "sheet", "ok": False, "row": row,
                       "before": here, "after": here,
-                      "refused": f"row 24 is not the world bar, the move "
+                      "stopped": f"row 24 is not the world bar, the move "
                                  f"sub-bar or the direction prompt: {row!r}"})
         print(f"  sheet: stopped on row 24 {row!r}", flush=True)
         return steps, False

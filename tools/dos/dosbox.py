@@ -1133,7 +1133,7 @@ def judge_step(moved_ui: bool, changed: bool, *,
     * `"refused"` -- the driver sent no key at all, which is a driver error
       and never a wall (`#360 (The session driver will not walk a Curse or
       Silver Blades party in a dungeon, because it reads Pool of Radiance's
-      indoors flag)`'s `Session.walk_refused`, in this harness's own
+      indoors flag)`'s `Session.walk_stopped`, in this harness's own
       vocabulary rather than a second one).
 
     `area_before`/`area_after` take priority over `changed` when both are

@@ -58,7 +58,7 @@ class BoatSession(S.Session):
         self.rows = list(rows)
         self.answers = list(answers or [])
         self.bars: list[str] = []
-        self.walk_refused = None
+        self.walk_stopped = None
         self.outdoor_boat = None
         self.messages: list[str] = []
 
@@ -89,8 +89,8 @@ def test_the_boat_question_is_named_rather_than_pressed_at():
     sess = BoatSession([WORLD_ROW, BOAT_ROW], answers=[BOAT_ROW])
     assert sess.outdoor_key("1", 0.0, 0.0, timeout=2.0) is False
     assert sess.kbd.sent == []
-    assert "boat" in (sess.walk_refused or "")
-    assert "not a wall" in (sess.walk_refused or "")
+    assert "boat" in (sess.walk_stopped or "")
+    assert "not a wall" in (sess.walk_stopped or "")
 
 
 def test_a_run_that_says_which_way_it_wants_gets_past_the_boat():
@@ -111,7 +111,7 @@ def test_an_ordinary_square_still_takes_move_and_then_the_digit():
     assert sess.outdoor_key("3", 0.0, 0.0, timeout=5.0) is True
     assert sess.bars == ["MOVE"]
     assert sess.kbd.sent == ["3"]
-    assert sess.walk_refused is None
+    assert sess.walk_stopped is None
 
 
 def test_a_prompt_already_up_needs_no_move_at_all():
@@ -162,8 +162,8 @@ def test_a_boat_answer_that_presses_nothing_stops_rather_than_waiting_for_ever()
     assert sess.outdoor_key("1", 0.0, 0.0, timeout=1.0) is False
     assert sess.kbd.sent == []
     assert sess.bars == ["MOVE", "STAY"]
-    assert "not a wall" in (sess.walk_refused or "")
-    assert "STAY could not be found" in (sess.walk_refused or "")
+    assert "not a wall" in (sess.walk_stopped or "")
+    assert "STAY could not be found" in (sess.walk_stopped or "")
 
 
 def test_a_boat_that_will_not_go_away_is_answered_a_fixed_number_of_times():
@@ -176,8 +176,8 @@ def test_a_boat_that_will_not_go_away_is_answered_a_fixed_number_of_times():
     assert sess.outdoor_key("1", 0.0, 0.0, timeout=1.0) is False
     assert sess.bars == ["MOVE"] + ["TAKE"] * S.BOAT_ANSWERS
     assert sess.kbd.sent == []
-    assert f"{S.BOAT_ANSWERS} times" in (sess.walk_refused or "")
-    assert "not a wall" in (sess.walk_refused or "")
+    assert f"{S.BOAT_ANSWERS} times" in (sess.walk_stopped or "")
+    assert "not a wall" in (sess.walk_stopped or "")
 
 
 def test_an_unrecognised_row_24_is_a_driver_error_and_not_a_wall():
@@ -193,5 +193,5 @@ def test_an_unrecognised_row_24_is_a_driver_error_and_not_a_wall():
     assert sess.outdoor_key("4", 0.0, 0.0, timeout=1.0) is False
     assert sess.kbd.sent == []
     assert sess.bars == []
-    assert "pressed nothing" in (sess.walk_refused or "")
-    assert "not a wall" in (sess.walk_refused or "")
+    assert "pressed nothing" in (sess.walk_stopped or "")
+    assert "not a wall" in (sess.walk_stopped or "")

@@ -679,7 +679,7 @@ class FightResult:
         the only tactic that ever answers `ATTACK` -- which it does for a step
         into an enemy's square and for nothing else.  A character with a
         missile weapon readied cannot strike that way, so its turn is passed
-        rather than counted; `test_a_blow_the_game_refuses_passes_the_turn_
+        rather than counted; `test_a_blow_the_game_blocks_passes_the_turn_
         rather_than_pressing_on` pins exactly that.  **So a party that fought
         only with bows or spells reads here as a party that did nothing**, and
         `evidence` cannot tell the two apart.  That is the same fault `#163`
@@ -1031,7 +1031,7 @@ class Session:
 
     #: See `__init__`; here as well so a `Session` built without it -- the
     #: fake ones in `tests/` -- still answers the attribute.
-    walk_refused: str | None = None
+    walk_stopped: str | None = None
     #: Row 24 of the disk prompt `walk_one(answer_prompts=False)` stopped at.
     walk_prompt: str | None = None
     #: True when the last `walk_one` went through `walk_outdoors`.
@@ -1074,7 +1074,7 @@ class Session:
     _gates_held: dict | None = None
 
     #: True after a snapshot restore until `attach` runs; a class default so a
-    #: `Session` built without `__init__` still passes `_refuse_save`.
+    #: `Session` built without `__init__` still passes `_check_save_allowed`.
     _restored_unattached = False
 
     #: Areas already reported as unsuppressed, so each is logged once.
@@ -1122,7 +1122,7 @@ class Session:
         # answered `False` before `#360 (The session driver will not walk
         # a Curse or Silver Blades party in a dungeon, because it reads Pool
         # of Radiance's indoors flag)`.
-        self.walk_refused: str | None = None
+        self.walk_stopped: str | None = None
         self.walk_retries = 0
         self._restored_unattached = False
         # The process group `launch()` started.  Teardown kills this and nothing
@@ -1326,7 +1326,7 @@ class Session:
             path = os.path.join(self.here, f"SIDE{path}.D64")
         path = os.path.abspath(path)
         assert path.startswith(self.here), \
-            f"refusing to attach outside {self.here}: {path}"
+            f"will not attach outside {self.here}: {path}"
         with self.mon(5):  # stopping is what makes the text monitor answer
             self.text.sendall(f'attach "{path}" {unit}\n'.encode())
             time.sleep(0.5)
@@ -1550,7 +1550,7 @@ class Session:
         True when no encounter began, with the party where the leg left it and
         the snapshot deleted.  False when the retries ran out, **with the
         machine restored to the start of the leg**, so the caller is never left
-        standing in a fight it asked not to have; `walk_refused` and
+        standing in a fight it asked not to have; `walk_stopped` and
         `walk_retries` say what happened.  False at once, with nothing
         snapshotted, when the game is already in combat.
         A move a wall stops is not an encounter and is not retried: as in
@@ -1574,7 +1574,7 @@ class Session:
                              f"the leg unforced")
         self.walk_retries = 0
         if self.in_combat():
-            self.walk_refused = ("the game is already in combat, so there is "
+            self.walk_stopped = ("the game is already in combat, so there is "
                                  "no encounter-free state to snapshot")
             return False
         self.snapshot(name)
@@ -1596,7 +1596,7 @@ class Session:
             # A raised error is not a failed leg: nothing is left to restore.
             self.discard_snapshot(name)
             raise
-        self.walk_refused = (f"an encounter began on each of {retries + 1} "
+        self.walk_stopped = (f"an encounter began on each of {retries + 1} "
                              f"attempts at the leg {moves!r}")
         return False
 
@@ -2928,7 +2928,7 @@ class Session:
         ambush skips when `skip_world_map_ambushes` is set; a no-op unless one
         of the two options is on.  Called just before each direction key.
 
-        Anything written sets `_pokes_written`, which `_refuse_save` reads.
+        Anything written sets `_pokes_written`, which `_check_save_allowed` reads.
         Each address's value before its first write is kept in `_gates_held`
         for `restore_encounter_gates`; a value the game wrote there itself
         between two writes, neither the original nor the poke, is kept as
@@ -3008,7 +3008,7 @@ class Session:
             mon.write(self._title_entry(REST_INTERRUPT_BYTE, "rest byte"),
                       b"\x00")
 
-    def _refuse_save(self, allow_suppressed: bool = False) -> None:
+    def _check_save_allowed(self, allow_suppressed: bool = False) -> None:
         """Every `save_game`, this class's and each override, calls this first.
 
         A save is refused after a snapshot restore until a disk is attached,
@@ -3160,7 +3160,7 @@ class Session:
         same answer until `#360 (The session driver will not walk a Curse or
         Silver Blades party in a dungeon, because it reads Pool of Radiance's
         indoors flag)`, so a run recorded a map fact it had never
-        measured.  `walk_refused` carries the second case: None after a move
+        measured.  `walk_stopped` carries the second case: None after a move
         that was sent, and a sentence saying what the driver would not do
         after one that was not.
 
@@ -3184,10 +3184,10 @@ class Session:
         **Taking `MOVE` can run the square's own text first**, and a key sent
         before `I,J,K,M` is up is lost, so the direction key waits for that
         bar (`MOVE_SUBBAR_LOOKS` reads, 0.3 s apart) and is not sent at all
-        if it never appears; `walk_refused` says so.  `walk_screens` holds
+        if it never appears; `walk_stopped` says so.  `walk_screens` holds
         the rows just before the key and 1.2 s after it.
         """
-        self.walk_refused = None
+        self.walk_stopped = None
         self.walk_prompt = None
         self.walked_outdoors = False
         self.walk_screens = None
@@ -3212,7 +3212,7 @@ class Session:
                 self.log(f"  live square unreadable, judging by the screen: {e}")
         if squareless:
             if before is None:
-                self.walk_refused = (
+                self.walk_stopped = (
                     f"the driver pressed nothing for {move}: the live square "
                     f"never steadied before the key; this is a driver error, "
                     f"not a wall")
@@ -3328,11 +3328,11 @@ class Session:
             return False
         self._leave_move(answer_prompts)
         if not sent and self._walk_expired():
-            self.walk_refused = (
+            self.walk_stopped = (
                 f"the driver pressed nothing for {move}: the caller's time "
                 f"ran out while it waited for {MOVE_SUBBAR}")
         elif not sent:
-            self.walk_refused = (
+            self.walk_stopped = (
                 f"the driver pressed nothing for {move}: taking MOVE never "
                 f"brought up {MOVE_SUBBAR}; this is a driver error, not a wall")
         return False
@@ -3441,14 +3441,14 @@ class Session:
         unless the caller named a `walk_encounter` word that is on the row."""
         self.walk_stop_screen = rows
         row = rows[24].strip()
-        self.walk_refused = (
+        self.walk_stopped = (
             f"the driver pressed nothing for {move}: row 24 reads {row!r}, "
             f"and a walk does not answer that screen")
         word = self.walk_encounter
         if word and word_column(row, word) >= 0:
             _log_line(self, f"  Encounter menu {row!r}: taking {word} as asked")
             self.select_bar(word, timeout=8)
-            self.walk_refused += (
+            self.walk_stopped += (
                 f"; it answered {word} because the caller asked")
         else:
             _log_line(self, f"  Encounter stop {row!r}: pressing nothing")
@@ -3506,7 +3506,7 @@ class Session:
         game.
         """
         if move not in COMPASS:
-            self.walk_refused = (
+            self.walk_stopped = (
                 f"the driver pressed nothing: it read this party as being on "
                 f"the travel grid, where {move} is not a direction. That is a "
                 f"driver error and not a wall")
@@ -3589,7 +3589,7 @@ class Session:
                     self.log(f"  a boat landing: |{row.strip()}| -- answering "
                              f"{self.outdoor_boat}")
                     if not self.select_bar(self.outdoor_boat, timeout=10):
-                        self.walk_refused = (
+                        self.walk_stopped = (
                             f"the driver pressed nothing: this square is a "
                             f"boat landing and {self.outdoor_boat} could not "
                             f"be found on the bar to answer it with. That is "
@@ -3605,7 +3605,7 @@ class Session:
                     deadline = max(deadline, time.time() + timeout)
                     continue
                 if self.outdoor_boat:
-                    self.walk_refused = (
+                    self.walk_stopped = (
                         f"the driver pressed nothing: it answered the boat "
                         f"{self.outdoor_boat} {answered} times and the "
                         f"question was still on screen, so it never reached a "
@@ -3614,7 +3614,7 @@ class Session:
                     self.log(f"  a boat landing: |{row.strip()}|; still up "
                              f"after {answered} answers")
                     return False
-                self.walk_refused = (
+                self.walk_stopped = (
                     "the driver pressed nothing: this square is a boat "
                     "landing and the game is asking whether to take the boat, "
                     "so there is no direction prompt to press a digit at. "
@@ -3638,7 +3638,7 @@ class Session:
         # would be the same invented map fact `#382 (An outdoor Pool of
         # Radiance party's compass step is refused, and the retry cannot find
         # the movement prompt afterwards)` was.
-        self.walk_refused = (
+        self.walk_stopped = (
             f"the driver pressed nothing: row 24 showed neither the direction "
             f"prompt, nor MOVE, nor the boat question within {timeout:.0f}s, "
             f"so there was nowhere to press a digit. That is a driver error "
@@ -3725,7 +3725,7 @@ class Session:
         """`ENCAMP` then `SAVE`; refused under `no_encounters` (automapper
         and driver testing only, never conversion proof) unless
         `allow_suppressed`."""
-        self._refuse_save(allow_suppressed)
+        self._check_save_allowed(allow_suppressed)
         if to:
             self.save_disk = os.path.abspath(to)
         s = self.screen()
@@ -4805,8 +4805,8 @@ def handle(sess: Session, line: str) -> bool:
         # Silver Blades party in a dungeon, because it reads Pool of
         # Radiance's indoors flag)`: say so here rather than letting the caller
         # read an unchanged position as a party hemmed in.
-        if sess.walk_refused:
-            print(sess.walk_refused)
+        if sess.walk_stopped:
+            print(sess.walk_stopped)
         print(sess.position())
     elif cmd == "save":
         print(sess.save_game(args[0] if args else None))

@@ -4610,7 +4610,7 @@ class WalkSession(FakeSession):
         self.x, self.y, self.facing, self.walls = x, y, facing, set(walls)
         self.doors = set(doors)
         self.clock = 0
-        self.walk_refused = None
+        self.walk_stopped = None
         self.pressed = []
         self.drift = 0
         self.prompts = 0
@@ -6055,7 +6055,7 @@ class UnsteadyCurseSession(LaterWalkSession):
     def __init__(self, settled, **kw):
         super().__init__(**kw)
         self.settled = settled
-        self.walk_refused = None
+        self.walk_stopped = None
 
     def steady_triple(self):
         if self.settled > 0:
@@ -6065,7 +6065,7 @@ class UnsteadyCurseSession(LaterWalkSession):
 
     def walk_one(self, move, *a, **k):
         self.pressed.append(move)
-        self.walk_refused = "the party's square did not settle"
+        self.walk_stopped = "the party's square did not settle"
         return False
 
 
@@ -8468,7 +8468,7 @@ class RejectionFreeAmbush(AmbushWalk):
         if self.calls == 0:
             self.calls += 1
             self.state, self.opens_fight = "press", True
-            self.walk_refused = self.walk_stop_screen = None
+            self.walk_stopped = self.walk_stop_screen = None
             self.walk_unsent_press_bar = True
             return False
         self.walk_unsent_press_bar = False
@@ -8518,7 +8518,7 @@ class UnsentPressBar(AmbushWalk):
         return super().screen()
 
     def walk_one(self, move, *a, **k):
-        self.walk_screens = self.walk_stop_screen = self.walk_refused = None
+        self.walk_screens = self.walk_stop_screen = self.walk_stopped = None
         self.walk_unsent_press_bar = False
         if self.calls in self.unsent_calls or "all" in self.unsent_calls:
             self.calls += 1
@@ -8527,7 +8527,7 @@ class UnsentPressBar(AmbushWalk):
             return False
         row = self.screen().row(24)
         if not row.strip():
-            self.walk_refused = self.REJECTION
+            self.walk_stopped = self.REJECTION
             return False
         return WalkSession.walk_one(self, move, *a, **k)
 
@@ -11201,7 +11201,7 @@ def test_remove_picks_the_numbered_row_waits_for_the_write_and_keeps_the_disk(
     log.close()
     assert sess.sent == [("row", A.REMOVE_ROW), ("row", _PANEL[2]), ("row", "EXIT")]
     assert got["row"] == _PANEL[2] and got["left"] == left
-    assert got["refused"] is None
+    assert got["stopped"] is None
     assert got["added"] == ["\\x01SILAS"] and got["gone"] == []
     assert got["closed"] and not got["reattached"]
     assert pathlib.Path(got["kept"]).name == "removed-1.D64"
@@ -11246,7 +11246,7 @@ def test_a_refused_write_is_answered_no_and_kept(tmp_path, monkeypatch):
     kept = [json.loads(line) for line in (tmp_path / "run.jsonl").read_text(
         encoding="utf-8").splitlines()]
     got = next(e for e in kept if e["kind"] == "remove-not-taken")
-    assert got["refused"] == asked and got["left"] == _PANEL
+    assert got["stopped"] == asked and got["left"] == _PANEL
     assert got["added"] == got["gone"] == got["changed"] == []
     assert (tmp_path / "removed-1.D64").is_file()
 
@@ -12983,7 +12983,7 @@ class SnapshotSession(WalkSession):
         self.calls.append(("walk_with_retry", moves, retries))
         self.walk_retries = min(self.met, retries)
         if self.met > retries:
-            self.walk_refused = f"an encounter began on each of {retries + 1} attempts"
+            self.walk_stopped = f"an encounter began on each of {retries + 1} attempts"
             return False
         for ch in moves:
             self.walk_one(ch)
@@ -13456,7 +13456,7 @@ def test_an_encounter_menu_that_takes_the_next_outdoor_move_is_named(
         def outdoor_key(self, key, *a, **k):
             if len(self.pressed) == 1:
                 self.state = "ambush"
-                self.walk_refused = "the driver pressed nothing"
+                self.walk_stopped = "the driver pressed nothing"
                 return False
             return super().outdoor_key(key, *a, **k)
 
@@ -13529,14 +13529,14 @@ class _GateOutdoor(OutdoorSession):
         self.order.append("restore")
         return A.S.Session.restore_encounter_gates(self)
 
-    def _refuse_save(self, allow_suppressed=False):
-        return A.S.Session._refuse_save(self, allow_suppressed)
+    def _check_save_allowed(self, allow_suppressed=False):
+        return A.S.Session._check_save_allowed(self, allow_suppressed)
 
     def log(self, *a):
         pass
 
     def save_game(self, *a, **k):
-        self._refuse_save()
+        self._check_save_allowed()
         self.order.append("save_game")
         return True
 
@@ -13732,7 +13732,7 @@ def test_a_driver_error_with_a_blank_bar_fails_at_once_without_waiting_for_a_que
 
         def walk_one(self, move, tries=1, answer_prompts=True):
             self.bar = ""
-            self.walk_refused = "the driver pressed nothing"
+            self.walk_stopped = "the driver pressed nothing"
             return False
 
     clock = _Clock(monkeypatch)

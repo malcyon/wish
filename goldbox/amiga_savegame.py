@@ -2280,8 +2280,7 @@ def pod_vault_from_amiga(data: bytes) -> dos_codec.PodVault:
         nodes += 1
         if nodes > POD_VAULT_NODES:
             raise AmigaSaveError(
-                f"the vault's item list holds more than {POD_VAULT_NODES} "
-                f"nodes, which the game's own deposit refuses to write")
+                "The vault holds more items than the game can store.")
         item = amiga_pod.PodItem.from_bytes(data[at:at + POD_ITEM_BYTES])
         at += POD_ITEM_BYTES
         heads.append(item)
@@ -2294,9 +2293,7 @@ def pod_vault_from_amiga(data: bytes) -> dos_codec.PodVault:
                 nodes += 1
                 if nodes > POD_VAULT_NODES:
                     raise AmigaSaveError(
-                        f"the vault's item list holds more than "
-                        f"{POD_VAULT_NODES} nodes, which the game's own "
-                        f"deposit refuses to write")
+                        "The vault holds more items than the game can store.")
                 chained.append(data[at:at + POD_ITEM_BYTES])
                 at += POD_ITEM_BYTES
     items = tuple(it.to_dos_bytes() for it in amiga_pod.unbundle(heads, chained))

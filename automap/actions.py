@@ -389,7 +389,7 @@ class Action:
             # the log.
             _log.debug("%s refused: $%04X is 2 (combat)",
                       self.label, machine.mode_flag)
-            return Verdict(False, f"{self.label} is refused during a fight")
+            return Verdict(False, f"{self.label} is not available during a fight")
         return Verdict(True)
 
     def apply(self, target, **kwargs) -> Outcome:

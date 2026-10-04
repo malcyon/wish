@@ -582,7 +582,7 @@ answers `ATTACK`, it answers it for a step into an enemy's square and for
 nothing else, and **nothing here drives `AIM` or `CAST`**. A character with a
 missile weapon readied cannot strike by stepping, so its turn is passed rather
 than counted —
-`test_a_blow_the_game_refuses_passes_the_turn_rather_than_pressing_on` pins
+`test_a_blow_the_game_blocks_passes_the_turn_rather_than_pressing_on` pins
 exactly that. So a party that fought only with bows or spells reads as a party
 that did nothing.
 

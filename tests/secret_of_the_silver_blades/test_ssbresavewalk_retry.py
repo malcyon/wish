@@ -18,7 +18,7 @@ class FakeSession:
         self.restores = 0
         self.attached = []
         self.walk_retries = 0
-        self.walk_refused = None
+        self.walk_stopped = None
         self.pos = 5
         self.events = []
         self.in_combat = False
@@ -36,7 +36,7 @@ class FakeSession:
         self.fights = max(self.fights, force_restores)
         self.events.append("walk")
         if self.in_combat:
-            self.walk_refused = "the game is already in combat"
+            self.walk_stopped = "the game is already in combat"
             return False
         for attempt in range(retries + 1):
             self.attempts += 1
@@ -45,7 +45,7 @@ class FakeSession:
                 return True
             self.restores += 1
             self.walk_retries = attempt + 1
-        self.walk_refused = f"an encounter began on each attempt at {moves!r}"
+        self.walk_stopped = f"an encounter began on each attempt at {moves!r}"
         return False
 
 

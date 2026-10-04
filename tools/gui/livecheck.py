@@ -543,7 +543,7 @@ class Run:
             # could catch a marker one step behind.
             said = self.sess.status()
             steps.append({"key": move, "session_says_moved": bool(took),
-                          "refused": self.sess.walk_refused,
+                          "stopped": self.sess.walk_stopped,
                           "mapper": [state.x, state.y, state.facing_letter],
                           "status_line": None if said is None else said.where(),
                           "agrees": said is not None and not said.outdoors
@@ -559,11 +559,11 @@ class Run:
             self.draw(state, "walked")
         # **A step nobody asked for is not a wall**, and telling the two apart
         # is what makes this check about the automapper rather than about the
-        # driver. `Session.walk_refused` is set when the driver decided not to
+        # driver. `Session.walk_stopped` is set when the driver decided not to
         # press a key at all; a key that was pressed and moved nothing is the
         # game refusing the step, which the mapper is entitled to see and is
         # itself evidence (`Automapper._refused`).
-        unpressed = [s["key"] for s in steps if s["refused"]]
+        unpressed = [s["key"] for s in steps if s["stopped"]]
         # **A route can end where it started and still be followed.** `JIKI`
         # against a wall is turn, blocked, turn back, blocked -- the marker
         # tracked both turns and the start and the end are the same reading,
@@ -1171,7 +1171,7 @@ def run(args) -> int:
         # fight and every one of them is refused in one. The first Pool of
         # Radiance run walked four squares out of the Slums into a wandering
         # encounter and measured nothing: Heal party, Fast Travel and Level
-        # up each answered "refused during a fight", which is the gate
+        # up each answered "not available during a fight", which is the gate
         # working and is not what this is here to find out.
         if not args.no_actions:
             run_.safely("C16", "Heal party", run_.check_heal)

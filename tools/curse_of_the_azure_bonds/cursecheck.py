@@ -143,7 +143,7 @@ def walk(sess, moves: str, log) -> list[dict]:
     Both readings, every step.  The status line is the one a player sees and
     the live triple is the one that exists in every area, and a step that
     moves neither is a wall -- while a step the driver never sent is a driver
-    error, which `Session.walk_refused` says
+    error, which `Session.walk_stopped` says
 
     **`before` and `after` bracket the whole call**, script screens included,
     so they can come back equal on a step that `moved` says landed: the
@@ -162,8 +162,8 @@ def walk(sess, moves: str, log) -> list[dict]:
         at = sess.status()
         row = {"key": move, "moved": moved, "before": before, "after": after,
                "status": None if at is None else at.where()}
-        if sess.walk_refused:
-            row["refused"] = sess.walk_refused
+        if sess.walk_stopped:
+            row["stopped"] = sess.walk_stopped
         log(event="step", **row)
         steps.append(row)
     return steps

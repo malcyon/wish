@@ -96,7 +96,7 @@ def test_walk_one_sends_no_direction_key_before_the_move_subbar(monkeypatch):
     sess = NeverSubbarSession()
     assert sess.walk_one("K", tries=1) is False
     assert "k" not in sess.kbd.sent
-    assert "pressed nothing" in sess.walk_refused
+    assert "pressed nothing" in sess.walk_stopped
 
 
 class _Clocked(FakeSession):
@@ -162,4 +162,4 @@ def test_a_wait_past_the_callers_deadline_presses_nothing_and_says_why(monkeypat
     sess.walk_expired = lambda: sess.now >= 1.0
     assert sess.walk_one("I", tries=1) is False
     assert sess.kbd.sent == [] and sess.now < 2.0
-    assert "time ran out" in sess.walk_refused
+    assert "time ran out" in sess.walk_stopped

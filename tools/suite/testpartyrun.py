@@ -432,7 +432,7 @@ def _turn_key(sess, log: Log, key: str, expected: int, leg: str, here, there):
     `turn_not_seen` desync, or None.
 
     A turn does not always change the status tuple `walk_one` compares, so its
-    return value says nothing; only `walk_refused`, set when the driver pressed
+    return value says nothing; only `walk_stopped`, set when the driver pressed
     nothing, does.  The facing the status line then reports is the check, and a
     line with no facing is a desync too, because both the New Phlan and Slums
     lines carry one.
@@ -442,13 +442,13 @@ def _turn_key(sess, log: Log, key: str, expected: int, leg: str, here, there):
     if sess.in_combat():
         seen = None
     else:
-        refused = sess.walk_refused
+        refused = sess.walk_stopped
         if refused is not None:
             log.emit("route_key", leg=leg, key=key, to=list(there), turn=True,
                      facing=None, expected=expected, refused=refused)
             return {"leg": leg, "key": key, "from": list(here),
                     "to": list(there), "reason": "not_pressed",
-                    "refused": refused, "row24": _row24(sess)}
+                    "stopped": refused, "row24": _row24(sess)}
         # The line can be blank for a moment while the screen redraws after a
         # turn, so it is read again for about a second before it counts as gone.
         seen = _status_line(sess)[0]
@@ -650,7 +650,7 @@ def _answer_locked_door(sess, log: Log, out, leg: str, key: str, here, there,
     record = {"leg": leg, "key": key, "from": list(here), "to": list(there),
               "reason": "locked_door", "square": list(there), "row24": row}
     if not sess.select_bar("QUIT", timeout=8):
-        record["refused"] = "QUIT could not be selected on the door's bar"
+        record["stopped"] = "QUIT could not be selected on the door's bar"
         return "stopped", record
     outcome, after = settle_step(sess, log, key, here)
     if outcome == "fight":
@@ -660,7 +660,7 @@ def _answer_locked_door(sess, log: Log, out, leg: str, key: str, here, there,
                                    outcome, after)
     path = replan(tuple(here), tuple(there)) if replan is not None else None
     if path is None:
-        record["refused"] = (f"the door at {tuple(there)} is locked and no "
+        record["stopped"] = (f"the door at {tuple(there)} is locked and no "
                              f"route from {tuple(here)} avoids it")
         return "stopped", record
     log.emit("route_replanned", leg=leg, blocked=list(there),
@@ -737,9 +737,9 @@ def walk_route(sess, log: Log, path, facing: int, leg: str, out=None,
                     if not moved:
                         bad = {"leg": leg, "key": key,
                                "from": list(here), "to": list(there)}
-                        if sess.walk_refused is not None:
+                        if sess.walk_stopped is not None:
                             bad.update(reason="not_pressed",
-                                       refused=sess.walk_refused,
+                                       stopped=sess.walk_stopped,
                                        row24=_row24(sess))
                 if bad is None:
                     break
@@ -782,7 +782,7 @@ def walk_route(sess, log: Log, path, facing: int, leg: str, out=None,
                     bad.update(after=outcome, row24=stop["row24"])
                     return want, None, bad
                 log.emit("route_retry", leg=leg, key=key, to=list(there),
-                         refused=bad["refused"])
+                         refused=bad["stopped"])
             outcome, row = settle_step(sess, log, key, landed, quiet=quiet)
             if outcome == "fight":
                 return want, landed, None

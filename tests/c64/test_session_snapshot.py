@@ -468,7 +468,7 @@ def test_retries_run_out_with_the_machine_restored_and_the_reason_set(tmp_path):
     s = Fake(tmp_path, legs=["I"] * 3)
     assert s.walk_with_retry("i", retries=2) is False
     assert s.restores == 3 and s.walk_retries == 3
-    assert "3 attempts" in s.walk_refused
+    assert "3 attempts" in s.walk_stopped
 
 
 def test_a_walk_one_without_the_encounters_option_still_retries(tmp_path):
@@ -588,7 +588,7 @@ def test_a_party_already_in_combat_is_refused_before_any_snapshot(tmp_path):
     s.combat = True
     assert s.walk_with_retry("i") is False
     assert s.wire == [] and s.walked == []
-    assert "already in combat" in s.walk_refused
+    assert "already in combat" in s.walk_stopped
 
 
 def test_a_snapshot_path_too_long_for_the_monitor_is_refused(tmp_path):

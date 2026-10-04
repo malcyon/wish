@@ -261,12 +261,12 @@ class CurseSession(por.Session):
         `answer_prompts=False` is `Session.walk_one`'s: a disk prompt ends the
         call with `False` and `walk_prompt` set, unanswered.
         """
-        self.walk_refused = None
+        self.walk_stopped = None
         self.walk_prompt = None
         if not self.enter_move(answer_prompts=answer_prompts):
             if self.walk_prompt:
                 return False
-            self.walk_refused = (
+            self.walk_stopped = (
                 "the driver pressed nothing: it could not get the game to "
                 "the move sub-bar, so there was nothing to send a direction "
                 "at. That is a driver error and not a wall")
@@ -274,7 +274,7 @@ class CurseSession(por.Session):
             return False
         before = self.steady_triple()
         if before is None:
-            self.walk_refused = (
+            self.walk_stopped = (
                 "the driver pressed nothing: the party's square did not "
                 "settle, so there was no square to judge the step against. "
                 "That is a driver error and not a wall")
@@ -341,7 +341,7 @@ class CurseSession(por.Session):
         prompt that is gone in under a second, and a run that waits to be
         asked has already missed it.
         """
-        self._refuse_save(allow_suppressed)
+        self._check_save_allowed(allow_suppressed)
         if to:
             self.save_disk = os.path.abspath(to)
         if not self.to_world_bar():

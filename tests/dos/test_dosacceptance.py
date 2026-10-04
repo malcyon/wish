@@ -3470,7 +3470,7 @@ def test_main_calls_build_saveas_source_with_the_convert_path_slot_and_title(
 
     def fake(path, slot, out, title, names=None):
         calls.append((path, slot, out, title))
-        return {"refused": "not this title"}
+        return {"stopped": "not this title"}
 
     monkeypatch.setattr(da, "build_saveas_source", fake)
     rc = da.main(["--title", "curse", "--convert", "X", "--out", str(tmp_path / "out"),
@@ -3525,7 +3525,7 @@ def test_name_needs_convert(capsys):
 
 def test_a_good_name_with_convert_does_not_exit_at_parsing(tmp_path, monkeypatch):
     monkeypatch.setattr(da, "build_saveas_source",
-                        lambda *a, **k: {"refused": "stop"})
+                        lambda *a, **k: {"stopped": "stop"})
     assert da.main(["--title", "pool", "--convert", "X", "--name", "0=Wren",
                     "--out", str(tmp_path / "o"), "--issue", "1", "--run", "t"]) == 1
 
@@ -3535,7 +3535,7 @@ def test_main_hands_the_chosen_names_to_the_conversion(tmp_path, monkeypatch):
 
     def fake(path, slot, out, title, names=None):
         calls.append(names)
-        return {"refused": "stop here"}
+        return {"stopped": "stop here"}
 
     monkeypatch.setattr(da, "build_saveas_source", fake)
     rc = da.main(["--title", "pool", "--convert", "X", "--name", "0=Wren",
@@ -3570,13 +3570,13 @@ def test_save_as_dos_passes_names_and_refuses_cleanly(tmp_path, monkeypatch):
     party = SimpleNamespace(members=[object(), object()])
 
     built = da._save_as_dos(party, tmp_path, "pool", {}, {2: "X"})
-    assert "position 2" in built["refused"] and seen == []
+    assert "position 2" in built["stopped"] and seen == []
 
     raises.append(saveplan.NamesDoNotFit(((1, "L" * 18),), 15))
     built = da._save_as_dos(party, tmp_path, "pool", {}, {0: "Wren"})
-    assert "position 1" in built["refused"] and seen == [{"names": {0: "Wren"}}]
+    assert "position 1" in built["stopped"] and seen == [{"names": {0: "Wren"}}]
     built = da._save_as_dos(party, tmp_path, "pool", {})
-    assert "position 1" in built["refused"] and seen[1] == {}
+    assert "position 1" in built["stopped"] and seen[1] == {}
 
     raises[0] = saveplan.SaveAsError("other")
     with pytest.raises(saveplan.SaveAsError):
@@ -3599,7 +3599,7 @@ def test_build_saveas_source_refuses_a_title_mismatch(tmp_path):
     out = tmp_path / "out"
     out.mkdir()
     built = da.build_saveas_source(disk, "A", out, "curse")
-    assert "refused" in built
+    assert "stopped" in built
 
 
 def test_build_saveas_source_converts_a_c64_curse_or_ssb_specimen(tmp_path):
@@ -3950,7 +3950,7 @@ def test_an_amiga_vault_reaches_the_dos_folder_with_each_case_split(tmp_path):
     out.mkdir()
     disk_path = _pod_disk(tmp_path, slot="A", vault=vault)
     built = da.build_amiga_source(str(disk_path), "SavGamA.pty", out)
-    assert "refused" not in built, built.get("refused")
+    assert "stopped" not in built, built.get("stopped")
 
     heads = [amiga_pod.PodItem.from_bytes(sword),
              amiga_pod.PodItem.from_bytes(case),
@@ -3988,7 +3988,7 @@ def test_an_amiga_slot_converts_by_the_convert_route_and_reads_back(pod_source):
     replaced by its two scrolls with their spell ids, all as `read` reports
     them."""
     out, built = pod_source
-    assert "refused" not in built, built.get("refused")
+    assert "stopped" not in built, built.get("stopped")
     assert built["direction"] == "PodAmigaToDos"
     assert built["dropped"] == [] and built["losses"] == []
     assert built["amiga_slot"] == "SavGamC.pty" and built["dos_slot"] == "A"
@@ -4034,7 +4034,7 @@ def test_a_slot_the_disk_does_not_hold_is_refused_before_anything_is_written(
     out = tmp_path / "out"
     out.mkdir()
     built = da.build_amiga_source(str(_pod_disk(tmp_path)), "D", out)
-    assert "slot D" in built["refused"]
+    assert "slot D" in built["stopped"]
     assert not (out / "source").exists()
 
 

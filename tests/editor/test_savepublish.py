@@ -1929,14 +1929,14 @@ def test_a_destination_that_is_the_conversions_own_game_data_is_refused(
                          (game, saveplan.Assets(game_disks=(pool,))),
                          (game, saveplan.Assets(c64_folder=game))):
         with pytest.raises(saveplan.SaveAsError) as caught:
-            saveplan.refuse_alias(path, snapshot, assets)
+            saveplan.check_not_alias(path, snapshot, assets)
         assert "this conversion reads" in str(caught.value)
     for path, assets in ((game / "SAVE", saveplan.Assets(dos_folder=game)),
                          (game / "MYSAVE.D64",
                           saveplan.Assets(game_disks=(pool,))),
                          (game / "MYSAVE.D64",
                           saveplan.Assets(c64_folder=game))):
-        saveplan.refuse_alias(path, snapshot, assets)      # allowed
+        saveplan.check_not_alias(path, snapshot, assets)      # allowed
     assert disk.read_bytes() == b"not really a disk"
     assert pool.read_bytes() == b"not really a disk either"
 

@@ -2844,15 +2844,15 @@ def _save_as_dos(party, out: pathlib.Path, title: str, report: dict,
                                      dos_folder=dosbox.find_game(TITLES[title].stem))
     dest = out / "source"
     if names and max(names) >= len(party.members):
-        return {**report, "refused": f"--name position {max(names)} is not a "
+        return {**report, "stopped": f"--name position {max(names)} is not a "
                 f"member of a party of {len(party.members)}"}
     try:
         plan = saveplan.prepare_save_as(party, "dos", dest, assets,
                                         **({"names": names} if names else {}))
     except saveplan.DroppedFields as e:
-        return {**report, "refused": str(e)}
+        return {**report, "stopped": str(e)}
     except saveplan.NamesDoNotFit as e:
-        return {**report, "refused": "no --name for " + "; ".join(
+        return {**report, "stopped": "no --name for " + "; ".join(
             f"position {p} ({n!r}, {e.width} fit)" for p, n in e.unfit)}
     report["dropped"] = list(plan.report.dropped)
     report["losses"] = list(plan.report.losses)
@@ -2932,7 +2932,7 @@ def build_saveas_source(path: str | pathlib.Path, slot: str, out: pathlib.Path,
     key = CONVERT_TITLE_KEYS[title]
     source = Source.detect(copy, slot=slot)
     if source.key != key:
-        return {**report, "refused": f"{path} holds {source.key!r}, not "
+        return {**report, "stopped": f"{path} holds {source.key!r}, not "
                 f"{title}'s {key!r}"}
     party = roster.Party(source)
     return _save_as_dos(party, out, title, report, names)
@@ -3027,12 +3027,12 @@ def build_amiga_source(disk: str, slot: str, out: pathlib.Path) -> dict:
             source = convert.Source.detect(adf, slot=letter)
             if source.key != "pools-of-darkness" or letter not in (
                     source.available_slots or [source.slot]):
-                return {**report, "refused": f"{label} holds no Pools of Darkness "
+                return {**report, "stopped": f"{label} holds no Pools of Darkness "
                         f"slot {letter} (it holds {source.available_slots})"}
             directions = [d for d in convert.destinations_for(source)
                           if d.destination_port == "dos"]
             if len(directions) != 1:
-                return {**report, "refused": f"{len(directions)} DOS directions "
+                return {**report, "stopped": f"{len(directions)} DOS directions "
                         "are offered for this disk; one is wanted"}
             rehearsal, wrote = saveplan.rehearse(directions[0], source,
                                                  saveplan.Assets())
@@ -3040,7 +3040,7 @@ def build_amiga_source(disk: str, slot: str, out: pathlib.Path) -> dict:
             dest.mkdir(parents=True, exist_ok=True)
             directions[0].write(rehearsal, dest)
     except Exception as e:  # noqa: BLE001 -- recorded, and the run stops before a boot
-        return {**report, "refused": f"{type(e).__name__}: {e}",
+        return {**report, "stopped": f"{type(e).__name__}: {e}",
                 "warnings": collect.lines}
     finally:
         wish_log.removeHandler(collect)
@@ -6525,7 +6525,7 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                              args.title, getattr(args, "c64_save", None))
         summary["source"] = built
         note(event="converted", **{k: v for k, v in built.items() if k != "read"})
-        if "refused" in built or built["dropped"] or built["losses"]:
+        if "stopped" in built or built["dropped"] or built["losses"]:
             summary["lost"] = "the conversion dropped or lost a field"
             write_summary()
             return 1
@@ -6535,7 +6535,7 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
         built = build_amiga_source(args.amiga_disk, args.amiga_slot, out)
         summary["source"] = built
         note(event="converted", **{k: v for k, v in built.items() if k != "read"})
-        if "refused" in built or built["dropped"] or built["losses"]:
+        if "stopped" in built or built["dropped"] or built["losses"]:
             summary["lost"] = "the conversion refused, dropped or lost something"
             write_summary()
             return 1
@@ -6547,7 +6547,7 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                                     args.title, chosen)
         summary["source"] = built
         note(event="converted", **{k: v for k, v in built.items() if k != "read"})
-        if "refused" in built or built["dropped"] or built["losses"]:
+        if "stopped" in built or built["dropped"] or built["losses"]:
             summary["lost"] = "the conversion refused, dropped or lost something"
             write_summary()
             return 1

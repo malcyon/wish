@@ -2049,12 +2049,12 @@ class ConvertDialog(QDialog):
         """The folder Convert would write inside, as the user has left it."""
         return self._folder_path or ""
 
-    def refuse(self, text: str) -> None:
+    def report_failure(self, text: str) -> None:
         """Report a failed write the way the rest of the app reports one --
         `EditorBinding.save`'s own `QMessageBox.critical(self.root, "Cannot
         save", ...)` -- now that this dialog carries no pane of its own to
         put it on (2026-09-10). `editor/window.py`'s two callers
-        (`dialog.refuse(str(exc))`, `dialog.refuse(convert_mod.
+        (`dialog.report_failure(str(exc))`, `dialog.report_failure(convert_mod.
         CANNOT_CONVERT)`) are unchanged; only what this does with the text
         they hand it changed."""
         QMessageBox.critical(self, DIALOG_TITLE, text)

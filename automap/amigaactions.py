@@ -155,7 +155,7 @@ class _AmigaAction:
         if state is None:
             return engine.Verdict(False, "the machine is not readable right now")
         if state == row.combat_value and self.name not in row.combat_legal:
-            return engine.Verdict(False, f"{self.label} is refused during a fight")
+            return engine.Verdict(False, f"{self.label} is not available during a fight")
         return engine.Verdict(True)
 
     def _measured(self, row) -> bool:

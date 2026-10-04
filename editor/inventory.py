@@ -405,7 +405,7 @@ class InventoryModel(QAbstractTableModel):
             lines.append(f"Shows in game as {item.unidentified_name!r} until "
                          f"it is identified")
         if item.is_cursed:
-            lines.append("Cursed: the game refuses to un-ready it")
+            lines.append("Cursed: the game will not let you un-ready it")
         if item.saving_throw_bonus:
             lines.append(f"Saving throws {item.saving_throw_bonus:+d}")
         if item.type_index in C64_SCROLL_TYPES.get(self.spells.key, ()):

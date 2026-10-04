@@ -621,7 +621,7 @@ class Assets:
     is an existing directory.
 
     `game_disks` is the `.d64` files those `GameFiles` were actually read
-    off, when anybody knows: `refuse_alias` will not let a Save As land on
+    off, when anybody knows: `check_not_alias` will not let a Save As land on
     one of them. **It is empty when the disks came from the injected
     `game_files` callable**, because `editor.dosimport.GameFiles` does not
     keep which disk each part came from -- so a destination that is one of
@@ -1792,7 +1792,7 @@ def _inside_or_equal(path: pathlib.Path, other: pathlib.Path) -> bool:
     return here.is_relative_to(there)
 
 
-def refuse_alias(path: pathlib.Path, snapshot: Snapshot,
+def check_not_alias(path: pathlib.Path, snapshot: Snapshot,
                  assets: "Assets | None") -> None:
     """Refuse a destination that is, holds or sits inside something this
     Save As is reading.
@@ -1907,7 +1907,7 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
     if snapshot is None:
         raise SaveAsError("there is no saved game open to write")
     source = Source.of_snapshot(snapshot)
-    refuse_alias(pathlib.Path(path), snapshot, assets)
+    check_not_alias(pathlib.Path(path), snapshot, assets)
     wanted = DESTINATION_SUFFIX.get(port)
     if wanted and pathlib.Path(path).suffix.lower() != wanted:
         raise SaveAsError(f"a {port} destination is a {wanted} file and "

@@ -181,7 +181,7 @@ def trainer_steps(key: str) -> list[tuple[str, int, str]]:
     return out
 
 
-def refuses_npcs(key: str) -> list[str]:
+def npc_limit_files(key: str) -> list[str]:
     """The files carrying the ADD CHARACTER rejection text `CAN'T ADD NPCS`."""
     return sorted({name for name, data in files(key) if b"CAN'T ADD NPCS" in data})
 
@@ -217,7 +217,7 @@ def main(argv=None) -> int:
         steps = trainer_steps(key)
         print(f"  INC/DEC of ${RECORD[key] + ABILITIES:04X},X (the PoR trainer's step): "
               + (", ".join(f"{n} +0x{i:04X} {m}" for n, i, m in steps) or "none"))
-        print("  CAN'T ADD NPCS in: " + (", ".join(refuses_npcs(key)) or "no file"))
+        print("  CAN'T ADD NPCS in: " + (", ".join(npc_limit_files(key)) or "no file"))
         mon = monster_bytes(key)
         print(f"  MON* byte 0x0B8 ({sum(mon.values())} files): "
               + ", ".join(f"${v:02X} x{n} (morale {morale(v)})"

@@ -192,7 +192,7 @@ class WalkSession(PatrolSession):
         # Slums' does not, and `drift` leaves the square where it was.
         self.coords, self.drift, self.square = coords, drift, tuple(start[:2])
         # In camp row 24 is camp's own bar, there is no status line, and
-        # `walk_one` presses nothing and says so in `walk_refused`.
+        # `walk_one` presses nothing and says so in `walk_stopped`.
         self.camp, self.camp_exit_works = camp, camp_exit_works
         self.camp_rejections, self.exits = [], 0
 
@@ -237,12 +237,12 @@ class WalkSession(PatrolSession):
     def walk_one(self, key, *a, **k):
         if self.camp:
             self.camp_rejections.append(key)
-            self.walk_refused = "the driver pressed nothing: camp's bar"
+            self.walk_stopped = "the driver pressed nothing: camp's bar"
             return False
-        self.walk_refused = None
+        self.walk_stopped = None
         if self._arrival_row() not in (WORLD, SUBBAR):
             self.blank_keys.append(key)
-            self.walk_refused = "the driver pressed nothing: row 24 not the world's"
+            self.walk_stopped = "the driver pressed nothing: row 24 not the world's"
             return False
         self.keys.append(key)
         self.fighting = self.fight_after == len(self.keys)
@@ -416,7 +416,7 @@ def test_a_turn_the_driver_did_not_press_is_a_not_pressed_desync(monkeypatch):
     sess = WalkSession(monkeypatch, None, 20, (), (9, 13, 0), None, camp=True)
     got = T.walk_route(sess, RecordingLog(), [(9, 13), (9, 14)], 0, "new-phlan")
     assert got[2]["reason"] == "not_pressed" and got[2]["key"] == "k"
-    assert "camp" in got[2]["refused"] and sess.camp_rejections == ["K"]
+    assert "camp" in got[2]["stopped"] and sess.camp_rejections == ["K"]
 
 
 def test_a_forward_key_the_driver_did_not_press_is_a_not_pressed_desync(
@@ -950,7 +950,7 @@ class StepScript(WalkSession):
             self.blank_keys.append(key)
             self.walk_stop_screen = ("",) * 24 + (row,)
             self.select_bar(self.walk_encounter)
-            self.walk_refused = ("the driver pressed nothing: an encounter "
+            self.walk_stopped = ("the driver pressed nothing: an encounter "
                                  "menu; it answered COMBAT")
             return False
         return super().walk_one(key, *a, **k)
@@ -1480,7 +1480,7 @@ def test_a_locked_door_with_no_route_round_it_records_the_refused_square(
     assert sess.asked == ["QUIT"]
     assert got[1] is None and got[2]["reason"] == "locked_door"
     assert got[2]["square"] == [5, 6] and got[2]["from"] == [5, 5]
-    assert "(5, 6)" in got[2]["refused"]
+    assert "(5, 6)" in got[2]["stopped"]
     assert sess.keys == ["I"]
 
 
@@ -1525,7 +1525,7 @@ def test_a_locked_target_square_has_no_route_and_is_refused(monkeypatch):
         monkeypatch, T.slums_replanner(_geo(), (5, 8)), doors={3})
     assert sess.asked == ["QUIT"]
     assert got[1] is None and got[2]["reason"] == "locked_door"
-    assert got[2]["square"] == [5, 8] and "(5, 8)" in got[2]["refused"]
+    assert got[2]["square"] == [5, 8] and "(5, 8)" in got[2]["stopped"]
 
 
 def test_a_locked_door_after_a_refused_key_is_answered_with_quit(
@@ -1566,7 +1566,7 @@ class EncounterAfterKey(WalkSession):
         self.bar, self.triple = bar, triple
 
     def walk_one(self, key, *a, **k):
-        self.walk_refused = None
+        self.walk_stopped = None
         self.keys.append(key)
         self.encounter = True
         return False

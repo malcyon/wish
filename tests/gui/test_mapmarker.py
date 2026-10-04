@@ -610,7 +610,7 @@ class DiskSess(Sess):
         if PROMPT not in self.row:
             return False
         if self.attach_raises:
-            raise AssertionError("refusing to attach")
+            raise AssertionError("will not attach")
         self.answered += 1
         self.row = GRID
         if self.finishes_on_answer:

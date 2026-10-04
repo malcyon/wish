@@ -239,7 +239,7 @@ FIELD_COMMENTS = {
               "and your value is kept."),
     "npc": ("true for a companion the party picked up rather than one you\n"
             "made. This is bit 7 of 0x0B8, the byte the game itself tests --\n"
-            "it counts player characters with it and refuses a seventh."),
+            "it counts player characters with it and will not take a seventh."),
     "exceptional_strength": "0-100, only meaningful when strength is 18",
     "experience": "24-bit, so up to 16777215",
 }

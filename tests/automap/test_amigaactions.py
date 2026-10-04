@@ -174,7 +174,7 @@ def test_combat_stops_each_action_that_is_not_combat_legal(world, store, name):
     world.mode = 2
     verdict = acts(store)[name].legality(world.target)
     assert not verdict
-    assert verdict.reason == f"{acts(store)[name].label} is refused during a fight"
+    assert verdict.reason == f"{acts(store)[name].label} is not available during a fight"
     assert not acts(store)[name].apply(world.target).ok
 
 

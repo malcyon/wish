@@ -2244,7 +2244,7 @@ class PoolRun:
         change = directory_change(self.directory or [], directory)
         self.directory = directory
         got = {"who": who, "row": row, "listed": listed, "left": left,
-               "refused": refused, "drive_error": drive, **disk,
+               "stopped": refused, "drive_error": drive, **disk,
                "directory": directory, **change}
         if refused is not None and (left is None or len(left) != len(listed) - 1):
             # Every later step would run on a party that still holds WHO.
@@ -4768,7 +4768,7 @@ class PoolRun:
             return
         self.restore_gates(f"before {what}")
         try:
-            self.sess._refuse_save()
+            self.sess._check_save_allowed()
         except RuntimeError as e:
             raise self.fail(what, str(e)) from e
 
@@ -4890,7 +4890,7 @@ class PoolRun:
             # its restore, so the disk image still matches the snapshot's copy.
             self.reattach()
         if not walked:
-            raise self.fail("walk", f"walk {route}: {self.sess.walk_refused}")
+            raise self.fail("walk", f"walk {route}: {self.sess.walk_stopped}")
         end = self.position()
         self.capture(f"walked-{route}")
         moved = abs(end[0] - start[0]) + abs(end[1] - start[1])
@@ -5009,7 +5009,7 @@ class PoolRun:
                        before: list) -> tuple[list | None, bool]:
         """Press one compass digit and return the travel place after it and
         whether the digit went twice; None when the digit was never pressed
-        (`walk_refused` says why).
+        (`walk_stopped` says why).
 
         A pair that does not move is a wall only when the direction prompt
         is still up both times: the digit is pressed once more at that
@@ -5017,11 +5017,11 @@ class PoolRun:
         fails the walk, since a key nothing read and an encounter that took
         the bar both leave the pair alone too."""
         sess = self.sess
-        sess.walk_refused = None
+        sess.walk_stopped = None
         if not sess.outdoor_key(move):
             sess.leave_outdoor_move()
-            if not getattr(sess, "walk_refused", None):
-                sess.walk_refused = (f"the digit {move} was never pressed: "
+            if not getattr(sess, "walk_stopped", None):
+                sess.walk_stopped = (f"the digit {move} was never pressed: "
                                      f"no direction prompt came up")
             return None, False
         resent = False
@@ -5076,7 +5076,7 @@ class PoolRun:
                     raise self.fail("walk", f"walk {route}: an encounter "
                                             f"began before move {n} ({move}) "
                                             f"from {before[:2]}: {row}")
-                raise self.fail("walk", f"walk {route}: {self.sess.walk_refused}")
+                raise self.fail("walk", f"walk {route}: {self.sess.walk_stopped}")
             look_until = self.clock() + LOOK_SECONDS
             while True:
                 self.budget(1, f"walk {route}")
@@ -5151,7 +5151,7 @@ class PoolRun:
             # Safe for the reason `_walk_retrying` gives.
             self.reattach()
         if not walked:
-            raise self.fail("walk", f"walk {route}: {self.sess.walk_refused}")
+            raise self.fail("walk", f"walk {route}: {self.sess.walk_stopped}")
         end = self.travel_place()
         self.capture(f"walked-{route}")
         if end[2] != start[2]:
@@ -5243,7 +5243,7 @@ class PoolRun:
             asked = None
             if (not status_moved and screens is None and not self.spent()
                     and not getattr(self.sess, "walked_outdoors", False)
-                    and not (getattr(self.sess, "walk_refused", None)
+                    and not (getattr(self.sess, "walk_stopped", None)
                              and not self.bar().strip())):
                 # Taking MOVE put a question up before the key was sent (a
                 # shop front): NO, as `savecheck.py` answers it, then the key.
@@ -5262,7 +5262,7 @@ class PoolRun:
                                                       answer_prompts=False)
                     self.refuse_prompt(route, last, "ran the square's event")
                     screens = getattr(self.sess, "walk_screens", None)
-            refused = getattr(self.sess, "walk_refused", None)
+            refused = getattr(self.sess, "walk_stopped", None)
             if refused:
                 self.log.emit("move", move=move, n=n, before=before,
                               after=self.steady_position(), resent=resent,
@@ -5572,7 +5572,7 @@ class PoolRun:
         answered = self.answer_side_prompt(route, last, "ran the square's event")
         unread = unread and not answered
         stop = getattr(sess, "walk_stop_screen", None)
-        refused = getattr(sess, "walk_refused", None)
+        refused = getattr(sess, "walk_stopped", None)
         if refused and stop is None:
             raise self.fail(self.walk_verb, f"{self.walk_verb} {route}: {refused}")
         pressed = stop is not None

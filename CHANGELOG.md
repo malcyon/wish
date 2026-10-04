@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- A Secret of the Silver Blades save made before the party has set out now converts to the start of the story, instead of being refused. ([#535](https://github.com/malcyon/wish/issues/535))
+- A Secret of the Silver Blades save made before the party has set out now converts to the start of the story, instead of failing to convert. ([#535](https://github.com/malcyon/wish/issues/535))
 - A Curse of the Azure Bonds magic-user or cleric converted from Commodore 64 to DOS or Amiga now arrives able to memorise the right number of spells for its level, instead of none. ([#547](https://github.com/malcyon/wish/issues/547))
 - Secret of the Silver Blades casters now show their correct spell capacity when their DOS save is open in Character Editor. ([#572](https://github.com/malcyon/wish/issues/572))
 - A Curse of the Azure Bonds or Secret of the Silver Blades magic-user converted from Commodore 64 to DOS or Amiga now arrives with the engine's correct THAC0. ([#608](https://github.com/malcyon/wish/issues/608))
@@ -89,7 +89,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Round counter shown beside combat messages now resets at the start of each fight, instead of climbing across every fight in the session.
 - THAC0, armour class and four other Combat and Stats fields now show blank on a save slot too small to carry them, instead of a wrong number. ([#150](https://github.com/malcyon/wish/issues/150))
 - Combat icons converted from DOS now show the correct colors and shape. ([#130](https://github.com/malcyon/wish/issues/130), [#267](https://github.com/malcyon/wish/issues/267))
-- Two characters converted from DOS with the same name both convert now, instead of the second being refused. ([#216](https://github.com/malcyon/wish/issues/216))
+- Two characters converted from DOS with the same name both convert now, instead of the second failing to convert. ([#216](https://github.com/malcyon/wish/issues/216))
 - A dual-classed Curse of the Azure Bonds character no longer imports with a false warning that its record is corrupt. ([#229](https://github.com/malcyon/wish/issues/229))
 - A converted dwarf, gnome or halfling keeps his constitution bonus to saving throws now, instead of arriving three or four points worse. ([#311](https://github.com/malcyon/wish/issues/311))
 - A converted cleric or paladin can turn undead on the Commodore 64 now, instead of arriving with the ability switched off. ([#288](https://github.com/malcyon/wish/issues/288))
@@ -97,7 +97,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Importing to Curse of the Azure Bonds or Secret of the Silver Blades no longer warns about a missing sheet portrait; neither title's character sheet ever draws one. ([#300](https://github.com/malcyon/wish/issues/300), [#329](https://github.com/malcyon/wish/issues/329))
 - The import pane no longer reports a missing portrait twice in two different wordings, and no longer heads an empty list with "Wish cannot currently convert these fields." ([#314](https://github.com/malcyon/wish/issues/314), [#338](https://github.com/malcyon/wish/issues/338))
 - Import no longer shows a memory address, an internal issue number or a raw file offset when it explains why a save could not be read or a field could not be converted. ([#176](https://github.com/malcyon/wish/issues/176), [#195](https://github.com/malcyon/wish/issues/195), [#244](https://github.com/malcyon/wish/issues/244))
-- A DOS save made before the party set out -- Curse of the Azure Bonds' opening area, or before Pool of Radiance's party has left the training hall -- now converts to the start of the story, instead of being refused. ([#301](https://github.com/malcyon/wish/issues/301), [#326](https://github.com/malcyon/wish/issues/326))
+- A DOS save made before the party set out -- Curse of the Azure Bonds' opening area, or before Pool of Radiance's party has left the training hall -- now converts to the start of the story, instead of failing to convert. ([#301](https://github.com/malcyon/wish/issues/301), [#326](https://github.com/malcyon/wish/issues/326))
 - A Curse of the Azure Bonds paladin or Secret of the Silver Blades ranger now shows a class letter and a working experience bar on its roster card, instead of a bare "?". ([#197](https://github.com/malcyon/wish/issues/197))
 - Secret of the Silver Blades characters show their own experience progress on the roster card now, instead of Pool of Radiance's. ([#187](https://github.com/malcyon/wish/issues/187))
 - A Curse of the Azure Bonds cleric's spell capacity is computed from Curse's own wisdom bonus now, instead of Pool of Radiance's. ([#231](https://github.com/malcyon/wish/issues/231))
@@ -120,7 +120,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Refused experience point totals that exceed the 3-byte limit supported by DOS saves. ([#111](https://github.com/malcyon/wish/issues/111))
+- Experience point totals that exceed the 3-byte limit supported by DOS saves are no longer accepted. ([#111](https://github.com/malcyon/wish/issues/111))
 - Fixed an issue where the loaded-files cache wouldn't rebuild if the template stayed in the same area. ([#121](https://github.com/malcyon/wish/issues/121))
 - Fixed the conversion report to correctly account for SAVEDGAME1 instead of only SAVEDGAME0. ([#120](https://github.com/malcyon/wish/issues/120))
 - Ensured a new character's icon colors are written explicitly, avoiding cases where the figure was painted the combat floor's grey color. ([#112](https://github.com/malcyon/wish/issues/112))

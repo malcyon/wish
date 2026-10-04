@@ -2833,7 +2833,7 @@ def test_no_encounters_leaves_a_different_script_alone(scripted, tmp_path):
     assert gate_bytes(guest) == other
     assert not any(b.startswith("M") for b in guest.received)
     refusals = [x for r in rows if r["event"] == "no_encounters"
-                for x in r.get("rows", []) if "refused" in x]
+                for x in r.get("rows", []) if "stopped" in x]
     assert len(refusals) == 1               # logged once, not every heartbeat
 
 
@@ -2955,7 +2955,7 @@ def test_a_rest_row_outside_the_expected_memory_is_not_written():
     switch = switch_over(memory, {REST: 0x500000}, speculative=True,
                          inside=lambda address, n: False)
     rows = switch.apply()
-    assert memory.writes == [] and "refused" in rows[0]
+    assert memory.writes == [] and "stopped" in rows[0]
 
 
 def test_a_rest_value_the_game_wrote_since_is_what_is_put_back():

@@ -233,7 +233,7 @@ def test_elapsed_is_none_unless_both_moments_happened():
 def step(ok=True, refused=None):
     """A step that moved changes square; one that did not stays put."""
     return {"move": "1", "ok": ok, "before": (1, 1),
-            "after": (1, 0) if ok else (1, 1), "refused": refused}
+            "after": (1, 0) if ok else (1, 1), "stopped": refused}
 
 
 def test_walk_verdict_passes_a_party_that_moved_and_opened_the_sheet():
@@ -310,7 +310,7 @@ class WalkSession(FakeSession):
         self.turn_fails = set()  # turn keys that do not take
         self.facing = 0
         self.pressed = []
-        self.walk_refused = None
+        self.walk_stopped = None
         self.kbd = FakeKbd()
         self.sheets = []
         self.row = "MOVE VIEW CAST AREA ENCAMP SEARCH LOOK"
@@ -370,7 +370,7 @@ def test_the_walk_goes_each_way_then_opens_the_sheet_and_records_each_step():
     assert set(FT.WALK_OUTDOORS) == {"1", "3", "5", "7"}   # N, E, S, W
     assert sheet and sess.sheets == [0]
     assert steps[0] == {"move": "1", "ok": True, "before": (5, 5),
-                        "after": (6, 5), "refused": None,
+                        "after": (6, 5), "stopped": None,
                         "row": sess.row, "shadow_before": (5, 5),
                         "shadow_after": (6, 5)}
     assert len(steps) == len(FT.WALK_OUTDOORS)
@@ -523,7 +523,7 @@ def test_a_retry_that_lands_on_a_prompt_stops_the_retries():
     sess = Prompt(m, indoors=True, blocked={"I"})
     steps, _ = FT.walk_afterwards(sess, timeout=0.0)
     assert sess.pressed == ["I", "J"]
-    assert "refused" in steps[-1] and steps[-1]["refused"]
+    assert "stopped" in steps[-1] and steps[-1]["stopped"]
 
 
 class RedrawSession(WalkSession):
@@ -557,7 +557,7 @@ def test_a_row_that_stays_empty_is_refused_with_the_row_recorded(monkeypatch):
     monkeypatch.setattr(FT.time, "sleep", lambda s: now.__setitem__(0, now[0] + s))
     steps, sheet = FT.walk_afterwards(sess, timeout=5.0)
     assert sess.pressed == [] and not sheet
-    assert steps[0]["row"] == "" and "refused" in steps[0]
+    assert steps[0]["row"] == "" and "stopped" in steps[0]
     assert now[0] >= 5.0
 
 
@@ -1047,7 +1047,7 @@ def test_an_unknown_row_stops_the_walk_before_any_key_is_pressed(fake_clock):
     steps, sheet = FT.walk_afterwards(sess)
     assert fake_clock[0] >= 60.0
     assert sess.pressed == [] and sess.sheets == [] and not sheet
-    assert "LARGE SMALL LEAVE" in steps[0]["refused"]
+    assert "LARGE SMALL LEAVE" in steps[0]["stopped"]
     assert steps[0]["row"] == "LARGE SMALL LEAVE"
     assert not FT.walk_verdict(steps, sheet)[0]
 
@@ -1292,7 +1292,7 @@ def test_a_non_empty_row_that_never_settles_is_refused_and_recorded(monkeypatch)
     sess = _Clocked(m, ["PRESS RETURN"])
     steps, sheet = FT.walk_afterwards(sess, timeout=5.0)
     assert sess.pressed == [] and not sheet
-    assert steps[0]["row"] == "PRESS RETURN" and "refused" in steps[0]
+    assert steps[0]["row"] == "PRESS RETURN" and "stopped" in steps[0]
     assert now[0] >= 5.0
 
 
@@ -1462,13 +1462,13 @@ def test_a_refused_step_ends_the_walk_at_once():
     def walk_one(key):
         ok = real(key)
         if len(sess.pressed) == 2:
-            sess.walk_refused = "the driver pressed nothing"
+            sess.walk_stopped = "the driver pressed nothing"
         return ok
 
     sess.walk_one = walk_one
     steps, sheet = FT.walk_afterwards(sess)
     assert sess.pressed == ["I", "I"]
-    assert steps[-1]["refused"] and len(steps) == 2
+    assert steps[-1]["stopped"] and len(steps) == 2
     assert sheet is False and sess.sheets == [] and sess.fights == []
 
 
@@ -1558,7 +1558,7 @@ def test_a_single_attempt_rejection_keeps_its_screens_on_the_step():
     sess = WalkSession(m, indoors=True)
     sess.walk_screens = ["row a"]
     sess.walk_stop_screen = ["row b"]
-    sess.walk_refused = "the driver pressed nothing"
+    sess.walk_stopped = "the driver pressed nothing"
     steps, _ = FT.walk_afterwards(sess)
     assert "attempts" not in steps[0]
     assert steps[0]["screens"] == ["row a"]
@@ -1576,7 +1576,7 @@ def test_a_walk_ending_on_a_prompt_does_not_press_the_sheet_into_it():
     sess = Prompt(m, indoors=True)
     steps, sheet = FT.walk_afterwards(sess, timeout=0.0, stop_after_moves=1)
     assert sheet is False and sess.sheets == []
-    assert steps[-1]["refused"] and "INSERT DISK" in steps[-1]["refused"]
+    assert steps[-1]["stopped"] and "INSERT DISK" in steps[-1]["stopped"]
 
 
 @pytest.fixture
@@ -1835,7 +1835,7 @@ def test_a_fight_that_is_not_cleanly_over_refuses_the_sheet(
     sess = _last_step_fight(m, **kw)
     steps, opened = FT.walk_afterwards(sess, stop_after_moves=1)
     assert opened is False and sess.sheets == []
-    assert reason in steps[-1]["refused"]
+    assert reason in steps[-1]["stopped"]
     assert not FT.walk_verdict(steps, opened)[0]
 
 
@@ -1978,7 +1978,7 @@ def test_a_caves_walk_that_never_settles_presses_nothing(fake_clock):
     sess = CavesSession(m, area=0x64)
     steps, sheet = FT.walk_afterwards(sess, timeout=20)
     assert sess.calls == [] and sheet is False
-    assert "$6E1B" in steps[0]["refused"] and "100" in steps[0]["refused"]
+    assert "$6E1B" in steps[0]["stopped"] and "100" in steps[0]["stopped"]
     assert not FT.walk_verdict(steps, sheet)[0]
 
 
@@ -2018,8 +2018,8 @@ def test_a_fight_still_going_is_not_reported_as_the_game_never_settling(
     monkeypatch.setattr(FT, "fought", lambda *a, **k: True)
     steps, sheet = FT.walk_afterwards(sess, stop_after_moves=1)
     assert sheet is False
-    assert "fight is still going" in steps[-1]["refused"]
-    assert "never settled" not in steps[-1]["refused"]
+    assert "fight is still going" in steps[-1]["stopped"]
+    assert "never settled" not in steps[-1]["stopped"]
 
 
 def test_a_caves_attempt_records_what_walk_one_returned(monkeypatch):

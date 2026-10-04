@@ -106,7 +106,7 @@ def test_an_encounter_menu_before_the_key_is_recorded_and_not_answered(monkeypat
     sess = Fake(monkeypatch, PATROL)
     assert sess.walk_one("I") is False
     assert sess.keys == [] and sess.kernal == []
-    assert "COMBAT WAIT FLEE ADVANCE" in sess.walk_refused
+    assert "COMBAT WAIT FLEE ADVANCE" in sess.walk_stopped
     assert sess.walk_stop_screen[24].strip() == "COMBAT WAIT FLEE ADVANCE"
 
 
@@ -115,7 +115,7 @@ def test_a_walk_that_was_asked_for_the_fight_takes_it(monkeypatch):
     sess.walk_encounter = S.ENCOUNTER_FIGHT
     assert sess.walk_one("I") is False
     assert sess.asked == ["COMBAT"]
-    assert sess.keys == [] and "because the caller asked" in sess.walk_refused
+    assert sess.keys == [] and "because the caller asked" in sess.walk_stopped
 
 
 def test_a_fight_bar_stops_the_walk_without_asking_for_move(monkeypatch):
@@ -157,7 +157,7 @@ def test_a_blank_row_24_throughout_presses_no_return(monkeypatch):
     sess = Fake(monkeypatch, "")
     assert sess.walk_one("I", tries=2) is False
     assert not sess.pressed_return() and "i" not in sess.keys
-    assert "never brought up" in sess.walk_refused
+    assert "never brought up" in sess.walk_stopped
 
 
 class Machine:
@@ -223,8 +223,8 @@ def test_an_unsteady_square_before_the_key_presses_nothing(monkeypatch):
     sess.steady_triple = lambda seconds=1.0: None
     assert sess.walk_one("I") is False
     assert sess.keys == []
-    assert "never steadied" in sess.walk_refused
-    assert "driver error" in sess.walk_refused
+    assert "never steadied" in sess.walk_stopped
+    assert "driver error" in sess.walk_stopped
 
 
 def test_no_live_position_keeps_the_old_retries(monkeypatch):
@@ -383,7 +383,7 @@ def test_a_menu_drawn_while_move_waits_for_its_sub_bar_is_answered(monkeypatch):
     assert sess.asked == ["MOVE", "COMBAT"]
     assert sess.keys == [] and sess.left == 0
     assert sess.walk_stop_screen[24].strip() == "COMBAT WAIT FLEE ADVANCE"
-    assert "because the caller asked" in sess.walk_refused
+    assert "because the caller asked" in sess.walk_stopped
 
 
 def test_a_late_yes_no_is_recorded_and_nothing_is_pressed(monkeypatch):
@@ -471,7 +471,7 @@ def test_a_menu_that_never_draws_ends_with_the_old_message_after_the_long_wait(
     sess.walk_encounter = S.ENCOUNTER_FIGHT
     assert sess.walk_one("I", tries=1, encounters=True) is False
     assert sess.looks == S.Session.ENCOUNTER_MENU_LOOKS + 1
-    assert "never brought up" in sess.walk_refused
+    assert "never brought up" in sess.walk_stopped
 
 
 def test_without_the_opt_in_the_sub_bar_wait_is_the_usual_length(monkeypatch):
@@ -488,7 +488,7 @@ def test_a_menu_after_the_callers_time_ran_out_is_not_answered(monkeypatch):
     assert sess.walk_one("I", tries=1, encounters=True) is False
     assert sess.asked == ["MOVE"] and sess.keys == []
     assert sess.walk_stop_screen is None
-    assert "time ran out" in sess.walk_refused
+    assert "time ran out" in sess.walk_stopped
 
 
 def test_a_fight_on_an_object_without_a_log_still_reports_nothing_and_runs(
@@ -597,7 +597,7 @@ def test_a_walk_that_fights_leaves_an_ambush_press_bar_for_its_caller(monkeypatc
     sess = Ambush(monkeypatch)
     sess.walk_encounter = S.ENCOUNTER_FIGHT
     assert sess.walk_one("I", tries=1, encounters=True) is False
-    assert sess.walk_refused is None and sess.walk_stop_screen is None
+    assert sess.walk_stopped is None and sess.walk_stop_screen is None
     assert sess.keys == [] and sess.left == 0
     assert sess.walk_unsent_press_bar is True
 
@@ -615,7 +615,7 @@ def test_a_plain_walk_still_reports_a_press_bar(monkeypatch):
     sess = Ambush(monkeypatch)
     assert sess.walk_one("I", tries=1) is False
     assert sess.walk_unsent_press_bar is False
-    assert "never brought up" in sess.walk_refused
+    assert "never brought up" in sess.walk_stopped
 
 
 DISK_BAR = "INSERT SIDE # 2, AND PRESS ANY KEY."
@@ -623,7 +623,7 @@ DISK_BAR = "INSERT SIDE # 2, AND PRESS ANY KEY."
 
 def _refuses(sess, **kw):
     assert sess.walk_one("I", tries=1, encounters=True, **kw) is False
-    assert "never brought up" in sess.walk_refused or "ran out" in sess.walk_refused
+    assert "never brought up" in sess.walk_stopped or "ran out" in sess.walk_stopped
 
 
 def test_a_fighting_walk_with_no_word_still_refuses_a_press_bar(monkeypatch):
@@ -644,7 +644,7 @@ def test_an_expired_walk_gives_the_time_ran_out_rejection(monkeypatch):
     sess.walk_encounter = S.ENCOUNTER_FIGHT
     sess.walk_expired = lambda: True
     _refuses(sess)
-    assert "ran out" in sess.walk_refused
+    assert "ran out" in sess.walk_stopped
 
 
 def test_a_yes_no_bar_still_refuses(monkeypatch):
@@ -652,7 +652,7 @@ def test_a_yes_no_bar_still_refuses(monkeypatch):
     sess.walk_encounter = S.ENCOUNTER_FIGHT
     sess.current = screen(("YES NO", ["SOMETHING?"]))
     assert sess.walk_one("I", tries=1, encounters=True) is False
-    assert sess.walk_refused is not None and sess.keys == []
+    assert sess.walk_stopped is not None and sess.keys == []
     assert sess.walk_stop_screen[24].strip() == "YES NO"
 
 

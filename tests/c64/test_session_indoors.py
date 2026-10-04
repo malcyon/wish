@@ -72,7 +72,7 @@ class FakeSession(S.Session):
         self.kbd = FakeKeyboard()
         self.asked: list[int] = []
         self.memory = dict(memory or {})
-        self.walk_refused = None
+        self.walk_stopped = None
         self._statuses = iter([(1, 100, 3, 12), (1, 100, 3, 13)])
         self.messages: list[str] = []
 
@@ -116,7 +116,7 @@ def test_a_curse_party_is_walked_with_the_letter_the_caller_gave():
     sess = FakeSession()
     assert sess.walk_one("I") is True
     assert sess.kbd.sent == ["i"]
-    assert sess.walk_refused is None
+    assert sess.walk_stopped is None
 
 
 def test_curse_reads_its_own_live_square_and_not_pool_of_radiances():
@@ -205,7 +205,7 @@ def test_pool_of_radiance_still_reads_its_flag_and_still_refuses_a_letter():
     assert sess.indoors() is False
     assert sess.walk_one("I") is False
     assert sess.kbd.sent == []
-    assert "pressed nothing" in (sess.walk_refused or "")
+    assert "pressed nothing" in (sess.walk_stopped or "")
 
 
 def test_steady_triple_logs_each_disagreeing_read_and_nothing_when_steady(

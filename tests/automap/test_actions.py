@@ -929,7 +929,7 @@ def test_curses_gate_is_read_at_its_own_linker_byte_and_not_pool_of_radiances():
     # one read, and Pool of Radiance's byte saying "no fight" does not stop
     # the rejection.
     assert not verdict
-    assert verdict.reason == "Identify is refused during a fight"
+    assert verdict.reason == "Identify is not available during a fight"
     assert "$" not in verdict.reason
 
 

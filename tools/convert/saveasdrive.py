@@ -3,7 +3,7 @@
 Opens `source` as the editor does, resolves the destination's game data, then
 calls `saveplan.prepare_save_as` and `saveplan.publish`, so what the tool boots
 is the rehearsed bytes Save As publishes and not what `File > Convert...`
-writes. It does not call `refuse_alias`, flush edits or confirm a replacement:
+writes. It does not call `check_not_alias`, flush edits or confirm a replacement:
 the destination is always a new dated folder under `folder`, so it can neither
 be the source nor replace a file. No dialog exists here, so a rejection is
 returned as `report["refused"]` with the exception's own words. Imports of `editor` are lazy so a caller can point

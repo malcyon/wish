@@ -138,7 +138,7 @@ def test_on_changes_every_gate_and_records_it(title, state):
     assert sorted(r["address"] for r in saved["rows"]) == sorted(gates.values())
     assert saved["data_base"] == DATA_BASE
     assert pipe.lanes == ["wish266"]
-    assert not any("error" in r or "refused" in r for r in result["rows"])
+    assert not any("error" in r or "stopped" in r for r in result["rows"])
 
 
 @pytest.mark.parametrize("title", TITLES)
@@ -183,7 +183,7 @@ def test_a_save_key_is_refused_while_the_switch_is_on(state, save):
     switch(pipe, "pool-of-radiance", state).on()
     presses = []
     result = switch(pipe, "pool-of-radiance", state, presses).keys(["E", save, "C"])
-    assert "turn it off first" in result["refused"]
+    assert "turn it off first" in result["stopped"]
     assert presses == []
     switch(pipe, "pool-of-radiance", state).off()
     assert switch(pipe, "pool-of-radiance", state, presses).keys(["E", "S"])["pressed"] \
@@ -202,7 +202,7 @@ def test_a_save_key_is_refused_while_a_change_is_still_recorded(state):
     saved = json.loads(state.path.read_text())
     assert saved["on"] is False and len(saved["rows"]) == len(gates)
     presses = []
-    assert "refused" in switch(pipe, "pool-of-radiance", state, presses).keys(["S"])
+    assert "stopped" in switch(pipe, "pool-of-radiance", state, presses).keys(["S"])
     assert presses == []
 
 
@@ -210,7 +210,7 @@ def test_an_unreadable_state_refuses_a_save_key(state):
     state.path.write_text("{not json", encoding="utf-8")
     presses = []
     result = switch(FakePipe(), "pool-of-radiance", state, presses).keys(["S"])
-    assert "cannot be read" in result["refused"] and presses == []
+    assert "cannot be read" in result["stopped"] and presses == []
 
 
 def test_keys_with_the_switch_never_on_write_nothing(state):
@@ -310,7 +310,7 @@ def test_on_for_another_title_is_refused_while_a_change_is_recorded(state):
         switch(pipe, "secret-of-the-silver-blades", state).on()
     presses = []
     result = switch(pipe, "secret-of-the-silver-blades", state, presses).keys(["s"])
-    assert "pool-of-radiance" in result["refused"] and presses == []
+    assert "pool-of-radiance" in result["stopped"] and presses == []
 
 
 def test_a_key_that_cannot_be_pressed_reports_the_keys_that_went_in(state):

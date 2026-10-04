@@ -114,7 +114,7 @@ def test_rest_byte_is_zeroed(game, addr):
 
 def test_save_is_refused_once_pokes_were_written_even_after_turning_off():
     s = Fake(3)
-    s._refuse_save()  # nothing written yet: allowed
+    s._check_save_allowed()  # nothing written yet: allowed
     s.suppress_encounters()
     s.no_encounters = False
     for save in (S.Session.save_game, curserun.CurseSession.save_game):
@@ -128,7 +128,7 @@ def test_save_is_refused_once_pokes_were_written_even_after_turning_off():
 def test_a_flag_on_with_nothing_written_does_not_refuse():
     s = Fake(0x50)  # world map: an entry with no pokes
     s.suppress_encounters()
-    s._refuse_save()
+    s._check_save_allowed()
 
 
 def test_allow_suppressed_is_keyword_only():
@@ -282,7 +282,7 @@ def test_restore_puts_back_every_original_reads_it_back_and_lifts_the_block():
     s.suppress_encounters()
     assert (s.mem[0x4C02], s.mem[0x4C2A]) == (8, 1)
     with pytest.raises(RuntimeError, match="pokes"):
-        s._refuse_save()
+        s._check_save_allowed()
     rows = s.restore_encounter_gates()
     assert (s.mem[0x4C02], s.mem[0x4C2A]) == (3, 0)
     assert [(r["address"], r["original"], r["written"], r["action"],
@@ -290,7 +290,7 @@ def test_restore_puts_back_every_original_reads_it_back_and_lifts_the_block():
         ("$4C02", 3, 8, "restored", 3, True),
         ("$4C2A", 0, 1, "restored", 0, True)]
     assert s.no_encounters is False
-    s._refuse_save()  # verified: the save may run
+    s._check_save_allowed()  # verified: the save may run
     assert s.restore_encounter_gates() == []
 
 
@@ -320,7 +320,7 @@ def test_a_value_the_game_wrote_while_held_is_not_overwritten_by_a_guess():
         s.restore_encounter_gates()
     assert (0x4C02, 3) not in pokes(s)
     with pytest.raises(RuntimeError, match="pokes"):
-        s._refuse_save()
+        s._check_save_allowed()
 
 
 def test_a_write_with_no_recorded_original_cannot_be_restored():
@@ -359,7 +359,7 @@ def test_a_travel_gate_writes_nothing_over_another_script():
     s.suppress_encounters()
     assert pokes(s) == []
     assert any("not suppressed" in line for line in s.lines)
-    s._refuse_save()
+    s._check_save_allowed()
 
 
 def test_a_script_the_area_reloaded_over_the_poke_is_left_alone():
@@ -371,7 +371,7 @@ def test_a_script_the_area_reloaded_over_the_poke_is_left_alone():
     rows = s.restore_encounter_gates()
     assert pokes(s) == []
     assert rows[0]["action"] == "script replaced" and rows[0]["verified"]
-    s._refuse_save()
+    s._check_save_allowed()
 
 
 def test_a_snapshot_keeps_the_originals_a_restore_needs(tmp_path):
@@ -399,7 +399,7 @@ def test_a_new_script_that_kept_the_poked_byte_is_not_verified():
         s.restore_encounter_gates()
     assert pokes(s) == []
     with pytest.raises(RuntimeError, match="pokes"):
-        s._refuse_save()
+        s._check_save_allowed()
 
 
 def test_a_poke_left_in_memory_is_never_recorded_as_the_original():

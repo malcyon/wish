@@ -228,7 +228,7 @@ def test_walk_one_that_may_not_answer_leaves_a_disk_prompt_alone():
         row=lambda r: "INSERT SIDE # 2, AND PRESS ANY KEY.")
     assert session.walk_one("I", answer_prompts=False) is False
     assert session.walk_prompt == "INSERT SIDE # 2, AND PRESS ANY KEY."
-    assert session.walk_refused is None
+    assert session.walk_stopped is None
     assert session.events == []
 
 
@@ -298,7 +298,7 @@ def test_a_prompt_that_appears_while_polling_the_move_ends_the_walk(monkeypatch)
     session.live_triple = lambda: (5, 5, 0)
     assert session.walk_one("I", patience=500, answer_prompts=False) is False
     assert session.walk_prompt == SIDE_PROMPT
-    assert session.walk_refused is None
+    assert session.walk_stopped is None
     assert [e for e in session.events if e[0] in ("attach", "kernal")] == []
 
 
@@ -369,7 +369,7 @@ def test_a_party_square_that_never_settles_sends_no_key(monkeypatch):
     session.live_triple = lambda: (next(reads), 0, 0)
     assert session.walk_one("I") is False
     assert session.pressed is False
-    assert "did not settle" in session.walk_refused
+    assert "did not settle" in session.walk_stopped
 
 
 def test_a_party_that_never_settles_after_the_key_ends_the_wait_at_patience(

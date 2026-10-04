@@ -59,7 +59,7 @@ def test_the_driver_pressing_nothing_is_a_driver_error_not_a_wall():
     # Even handed an area change and a changed digest, a step the driver
     # never sent a key for is never a wall -- #360 (The session driver will
     # not walk a Curse or Silver Blades party in a dungeon, because it reads
-    # Pool of Radiance's indoors flag)'s `Session.walk_refused` distinction,
+    # Pool of Radiance's indoors flag)'s `Session.walk_stopped` distinction,
     # ported into this harness's own vocabulary.
     kind, reason = dosbox.judge_step(False, True, area_before=0, area_after=20)
     assert kind == "refused"

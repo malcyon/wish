@@ -240,7 +240,7 @@ def test_one_odd_reading_does_not_take_the_controls_off(ours, theirs,
     one this is for."""
     mapper = Automapper(machine(theirs), ours, title=POOL)
     mapper._contradicted()
-    assert Automapper.CONTRADICTIONS_BEFORE_REFUSING > 1
+    assert Automapper.CONTRADICTIONS_BEFORE_DISABLING > 1
     assert mapper.title_check is not NOT_OURS
 
 

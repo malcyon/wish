@@ -409,7 +409,7 @@ class Automapper:
     #: not enough: a single odd read costs a player their Level up button, and
     #: `_check_resident` runs every `RESIDENT_EVERY` polls, so two is about
     #: four seconds and no player notices the difference.
-    CONTRADICTIONS_BEFORE_REFUSING = 2
+    CONTRADICTIONS_BEFORE_DISABLING = 2
 
     def __init__(self, target, maps: dict[str, Geo] | None = None,
                  area: str | None = None, title: str | None = POOL_OF_RADIANCE):
@@ -1099,7 +1099,7 @@ class Automapper:
         Counted rather than obeyed on sight. The map is 1024 bytes of the
         player's own disk read through an emulator monitor, and one bad read
         that took a control away would be a worse bug than the one this is
-        for; `CONTRADICTIONS_BEFORE_REFUSING` is how many it takes.
+        for; `CONTRADICTIONS_BEFORE_DISABLING` is how many it takes.
 
         The rejection then **stands until it is positively contradicted**. Two
         things lift it and neither is the absence of evidence: one of our own
@@ -1112,7 +1112,7 @@ class Automapper:
         if self.title_check is NOT_OURS:
             return
         self._contradictions += 1
-        if self._contradictions >= self.CONTRADICTIONS_BEFORE_REFUSING:
+        if self._contradictions >= self.CONTRADICTIONS_BEFORE_DISABLING:
             self.title_check = NOT_OURS
             _log.info(
                 "the map at $0400 is not one of %s's %d, so the machine is not "

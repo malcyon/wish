@@ -2911,10 +2911,10 @@ def test_a_fight_disables_what_a_fight_forbids(app):
     # what a person now reads is the situation they are in.  The address went
     # to `_log.debug`, where whoever is debugging can still get it.
     assert not bar.buttons["heal"].isEnabled()
-    assert bar.buttons["heal"].toolTip() == "Heal party is refused during a fight"
+    assert bar.buttons["heal"].toolTip() == "Heal party is not available during a fight"
     assert not bar.buttons["identify"].isEnabled()
     assert (bar.buttons["identify"].toolTip()
-            == "Identify is refused during a fight")
+            == "Identify is not available during a fight")
     # And the thing that must stay true of every one of them.
     for name in ("heal", "identify"):
         assert "$" not in bar.buttons[name].toolTip()

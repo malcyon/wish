@@ -213,7 +213,7 @@ class EncounterSwitch:
                     if address not in self.refused:
                         self.refused.add(address)
                         done.append({"row": row.spec, "grade": row.grade,
-                                     "refused": f"the {STATEMENT} bytes there "
+                                     "stopped": f"the {STATEMENT} bytes there "
                                                 f"hash to {digest(now)}, not "
                                                 f"{row.digest}"})
                     continue
@@ -237,7 +237,7 @@ class EncounterSwitch:
                     if address not in self.refused:
                         self.refused.add(address)
                         done.append({"row": row.spec, "grade": row.grade,
-                                     "refused": f"{address:#x} is outside the "
+                                     "stopped": f"{address:#x} is outside the "
                                                 "expected memory"})
                     continue
                 now = self.read(address, len(row.new))
@@ -794,13 +794,13 @@ class WinuaeEncounters:
             saved = self._load()
         except StateError as exc:
             if is_save_key(" ".join(names)):
-                return {"action": "keys", "refused": str(exc), "pressed": []}
+                return {"action": "keys", "stopped": str(exc), "pressed": []}
             raise
         if is_save_key(" ".join(names)) and (saved["on"] or saved["rows"]):
             titles = sorted({str(r.get("title")) for r in saved["rows"]}
                             | ({str(saved.get("title"))} if saved["on"] else set()))
             return {"action": "keys", "pressed": [],
-                    "refused": ("no_encounters is on or a change it made is "
+                    "stopped": ("no_encounters is on or a change it made is "
                                 f"still in the game ({', '.join(titles)}), and a "
                                 "save carries the changed script: turn it off "
                                 "first")}
@@ -884,7 +884,7 @@ def main(argv: list[str] | None = None) -> int:
                           "error": f"{type(exc).__name__}: {exc}"}))
         return 1
     print(json.dumps(result))
-    return 1 if "error" in result or "refused" in result else 0
+    return 1 if "error" in result or "stopped" in result else 0
 
 
 if __name__ == "__main__":

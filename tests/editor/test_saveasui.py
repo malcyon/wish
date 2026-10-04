@@ -353,7 +353,7 @@ def test_a_destination_that_is_the_open_save_is_refused(app, tmp_path,
         raise saveplan.SaveAsError(f"{target} is the save this is being "
                                    f"written from")
 
-    monkeypatch.setattr(ew.saveplan, "refuse_alias", fake_refuse)
+    monkeypatch.setattr(ew.saveplan, "check_not_alias", fake_refuse)
     said = _confirm(binding, monkeypatch, path)
     assert said == [(ew.CANNOT_SAVE_TITLE, ew.DESTINATION_IS_SOURCE)]
 
@@ -367,7 +367,7 @@ def test_a_destination_that_is_a_game_file_is_refused(app, tmp_path,
         raise saveplan.SaveAsError(
             f"{target} is, or holds, the game disk this conversion reads")
 
-    monkeypatch.setattr(ew.saveplan, "refuse_alias", fake_refuse)
+    monkeypatch.setattr(ew.saveplan, "check_not_alias", fake_refuse)
     said = _confirm(binding, monkeypatch, tmp_path / "beside-a-disk.d64")
     assert said == [(ew.CANNOT_SAVE_TITLE, ew.DESTINATION_IS_GAME_FILE)]
 
@@ -568,7 +568,7 @@ class _OverflowingSaveAs:
         binding.begin_save_as("c64")
         monkeypatch.setattr(binding, "_resolve_destination_assets",
                             lambda: saveplan.Assets())
-        monkeypatch.setattr(ew.saveplan, "refuse_alias", lambda *a: None)
+        monkeypatch.setattr(ew.saveplan, "check_not_alias", lambda *a: None)
         # No C64 disks on this machine's preferences: the button is greyed
         # until they are found, and finding them is not what this tests.
         binding._child("button_destination_save_as").setEnabled(True)
@@ -1053,7 +1053,7 @@ class _RealNamesSaveAs:
         binding.begin_save_as("dos")
         monkeypatch.setattr(binding, "_resolve_destination_assets",
                             lambda: assets)
-        monkeypatch.setattr(ew.saveplan, "refuse_alias", lambda *a: None)
+        monkeypatch.setattr(ew.saveplan, "check_not_alias", lambda *a: None)
         binding._child("button_destination_save_as").setEnabled(True)
 
         def choose(unfit, width, accept_label, shown=None):
@@ -1511,7 +1511,7 @@ def test_a_completed_save_as_forgets_that_the_row_was_shown(
     binding = dos_save_as(app, tmp_path, monkeypatch, SILVER)
     folder_field(binding).setText(str(game_folder(tmp_path, SILVER)))
     assert binding._dos_folder_row_shown
-    monkeypatch.setattr(ew.saveplan, "refuse_alias", lambda *a: None)
+    monkeypatch.setattr(ew.saveplan, "check_not_alias", lambda *a: None)
     monkeypatch.setattr(
         ew.saveplan, "prepare_save_as",
         lambda _party, _port, path, _assets, **_k: SimpleNamespace(
