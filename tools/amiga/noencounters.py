@@ -426,10 +426,17 @@ def restore_row(read, write, resolve, row: dict) -> dict:
     return {"address": address, "repaired": "error" not in result, **result}
 
 
-def winuae_state_path() -> pathlib.Path:
-    """Where the WinUAE switch keeps its state: one file, because the guest
-    runs one WinUAE and every run against it must find what an earlier one left."""
-    return scratch.cache_dir("noencounters", "winuae.json")
+#: A lane holder's name, as `winuae.ps1` and `automap.amiga` accept it; it names a file here.
+_HOLDER = re.compile(r"[A-Za-z0-9._-]{1,64}")
+
+
+def winuae_state_path(holder: str) -> pathlib.Path:
+    """Where the WinUAE switch keeps `holder`'s state: one file per lane holder,
+    because each lane runs its own WinUAE and every run by that holder must find
+    what an earlier one left."""
+    if not _HOLDER.fullmatch(holder) or holder.strip(".") == "":
+        raise ValueError(f"the lane holder {holder!r} is not a lane holder name")
+    return scratch.cache_dir("noencounters", f"winuae-{holder}.json")
 
 
 class StateError(ValueError):
@@ -449,8 +456,8 @@ class WinuaeState:
     EMPTY = {"on": False, "title": None, "speculative": False,
              "anchor_base": None, "data_base": None, "rows": []}
 
-    def __init__(self, path: pathlib.Path | None = None):
-        self.path = pathlib.Path(path) if path is not None else winuae_state_path()
+    def __init__(self, path: pathlib.Path):
+        self.path = pathlib.Path(path)
 
     def load(self) -> dict:
         try:
@@ -594,13 +601,13 @@ class WinuaeEncounters:
     the next command takes it over or puts it back.
     """
 
-    def __init__(self, title: str, target, *, state: WinuaeState | None = None,
+    def __init__(self, title: str, target, *, state: WinuaeState,
                  lane_check=lambda: None, press=lambda name: None):
         if not rows_for(title):
             raise ValueError(f"no encounter rows for {title!r}")
         self.title = title
         self.target = target
-        self.state = state or WinuaeState()
+        self.state = state
         self.lane_check = lane_check
         self.press = press
         self.memory = PipeMemory(target)
@@ -849,7 +856,12 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("status", help="print the state file")
     args = parser.parse_args(argv)
 
-    state = WinuaeState()
+    if args.holder is None:
+        parser.error("--holder is needed")
+    try:
+        state = WinuaeState(winuae_state_path(args.holder))
+    except ValueError as exc:
+        parser.error(str(exc))
     try:
         saved = state.load()
     except StateError as exc:
@@ -863,11 +875,9 @@ def main(argv: list[str] | None = None) -> int:
     title = args.title or saved.get("title")
     if title is None:
         parser.error("--title is needed: the state names no title")
-    if args.holder is None:
-        parser.error("--holder is needed")
     from tools.amiga import amigadrive  # noqa: PLC0415
 
-    pipe = amiga.WinuaePipe()
+    pipe = amiga.WinuaePipe(holder=args.holder)
     enc = WinuaeEncounters(
         title, amiga.AmigaTarget(pipe, amiga.MACHINES[title]), state=state,
         lane_check=lambda: pipe.drives(args.holder),

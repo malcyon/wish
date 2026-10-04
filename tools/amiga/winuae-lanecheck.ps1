@@ -15,11 +15,11 @@
 # Each scenario is one of those, as a driver B doing something to a driver A's
 # emulator. PASS means B was blocked.
 #
-# With -Lanes 2 it checks the driver's two-lane mode instead: it writes a copy of
-# the driver with `$LaneCount = 1` replaced by the count, and `-Scenario all` then
-# runs the four scenarios for several lanes (twolane, exclusive, stalelane,
-# overridelane). The single-lane scenarios assume a second holder is blocked, so
-# they are run without -Lanes. The deployed driver is never edited.
+# -Lanes sets how many lanes the driver is checked with: when the driver's own
+# `$LaneCount` differs, it writes a copy with the count replaced. With -Lanes 2,
+# `-Scenario all` runs the four scenarios for several lanes (twolane, exclusive,
+# stalelane, overridelane); the single-lane scenarios assume a second holder is
+# blocked, so they are run with -Lanes 1. The deployed driver is never edited.
 #
 # It leaves nothing behind: the lane is reset before and after every scenario,
 # and never by killing a process by name -- Stop-ScheduledTask ends the tree
@@ -47,23 +47,33 @@ $ReclaimSeconds = 12
 $Exe     = 'C:\Program Files\WinUAE\winuae64.exe'
 $Root    = 'C:\Amiga'
 $Task    = 'winuae-run'
-$ConfigA = "$Root\configs\pod-a500.uae"        # driver A: Pools of Darkness
-$ConfigB = "$Root\configs\goldbox-a500.uae"    # driver B: the Gold Box machine
+# The check's own folder: two configs with different paths, so each emulator's
+# command line says whose it is, and a blank disk per driver, so `drives` reads a
+# disk in each lane (WinUAE answers an empty drive's `CFG floppy0` with 404).
+$Work    = "$Root\lanecheck"
+$Machine = "$Root\configs\goldbox-a500.uae"
+$ConfigA = "$Work\driverA.uae"
+$ConfigB = "$Work\driverB.uae"
+$DiskA   = "$Work\driverA.adf"
+$DiskB   = "$Work\driverB.adf"
 $ArgsA   = "-log -f $ConfigA"
 $ArgsB   = "-log -f $ConfigB"
 
 if (-not (Test-Path $Driver))  { "fail no driver at $Driver"; exit 1 }
-if ($Lanes -gt 1) {
-  # The count is a constant in the driver, so a several-lane copy is a text
-  # replacement; it has to land exactly once or the copy is not what was asked for.
-  $text = Get-Content -Raw $Driver
-  $found = @([regex]::Matches($text, '(?m)^\$LaneCount = 1\s*$')).Count
-  if ($found -ne 1) { "fail $Driver has $found lines reading `$LaneCount = 1, not one"; exit 1 }
+if (-not (Test-Path $Machine)) { "fail no config at $Machine"; exit 1 }
+# The count is a constant in the driver, so a copy with another count is a text
+# replacement; it has to land exactly once or the copy is not what was asked for.
+$text = Get-Content -Raw $Driver
+$counts = @([regex]::Matches($text, '(?m)^\$LaneCount = \d+\s*$'))
+if ($counts.Count -ne 1) { "fail $Driver has $($counts.Count) lines setting `$LaneCount, not one"; exit 1 }
+if ([int]($counts[0].Value -replace '\D', '') -ne $Lanes) {
   $Driver = "$Root\winuae-lanecheck-driver.ps1"
-  Set-Content -Path $Driver -Value ([regex]::Replace($text, '(?m)^\$LaneCount = 1\s*$', "`$LaneCount = $Lanes")) -Encoding ASCII
+  Set-Content -Path $Driver -Value ([regex]::Replace($text, '(?m)^\$LaneCount = \d+\s*$', "`$LaneCount = $Lanes")) -Encoding ASCII
 }
-if (-not (Test-Path $ConfigA)) { "fail no config at $ConfigA"; exit 1 }
-if (-not (Test-Path $ConfigB)) { "fail no config at $ConfigB"; exit 1 }
+New-Item -ItemType Directory -Force -Path $Work | Out-Null
+Copy-Item $Machine $ConfigA -Force
+Copy-Item $Machine $ConfigB -Force
+foreach ($disk in $DiskA, $DiskB) { [IO.File]::WriteAllBytes($disk, (New-Object byte[] 901120)) }
 
 # An older winuae.ps1 has no -Holder and no claim, so the claim scenarios are
 # reported as n/a against it rather than as failures of something it never had.
@@ -437,8 +447,8 @@ function Scenario-TwoLane {
   $ca = Drive @('claim', '-Holder', 'driverA')
   $cb = Drive @('claim', '-Holder', 'driverB')
   Verdict ($ca.code -eq 0 -and $cb.code -eq 0) 'both holders are granted a lane' ($ca.out + "`n" + $cb.out)
-  $a = Drive @('start', '-Holder', 'driverA', '-log', '-f', $ConfigA)
-  $b = Drive @('start', '-Holder', 'driverB', '-log', '-f', $ConfigB)
+  $a = Drive @('start', '-Holder', 'driverA', '-log', '-f', $ConfigA, '-s', "floppy0=$DiskA")
+  $b = Drive @('start', '-Holder', 'driverB', '-log', '-f', $ConfigB, '-s', "floppy0=$DiskB")
   $pa = Pid-Of $a; $pb = Pid-Of $b
   Verdict ($pa -ne 0 -and $pb -ne 0 -and $pa -ne $pb) 'each start reports its own pid' ($a.out + "`n" + $b.out)
   if ($pa -eq 0 -or $pb -eq 0 -or $pa -eq $pb) { Reset-Lane | Out-Null; return }
@@ -529,5 +539,7 @@ if (Wants 'stalelane' $true)    { Scenario-StaleLane }
 if (Wants 'overridelane' $true) { Scenario-OverrideLane }
 
 "$($script:pass) passed, $($script:fail) failed"
+Remove-Item -Recurse -Force $Work -ErrorAction SilentlyContinue
+if ($Driver -ceq "$Root\winuae-lanecheck-driver.ps1") { Remove-Item $Driver -ErrorAction SilentlyContinue }
 if (@(Emulators).Count -ne 0) { "warning: winuae64 still running: $(((Emulators) | ForEach-Object { $_.ProcessId }) -join ',')" }
 if ($script:fail -gt 0) { exit 1 }

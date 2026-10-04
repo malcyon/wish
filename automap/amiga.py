@@ -1071,6 +1071,12 @@ class WinuaePipe:
     measured guest-side cost is the same number for both and the round trip is
     what the `ssh` adds.
 
+    **Over `ssh` a debugger command goes to the lane `holder` claims.** The test
+    VM runs one WinUAE per lane, and a second copy serves `WinUAE_1` rather than
+    `WinUAE`, in start order, so the pipe is found by its server pid after the
+    lane script's `lane` verb has checked the claim and named the pid
+    (`_open_by_lane`). A local pipe with no holder is opened by `pipe`.
+
     The framing is 8-bit text with no byte-order mark, and that is not a
     preference: a UTF-16 request takes a reply path that `_tcscpy`s into a
     16384-**byte** buffer while bounding at 16384 **characters**
@@ -1101,7 +1107,8 @@ class WinuaePipe:
     TIMEOUT = 60.0
 
     def __init__(self, runner=None, timeout: float | None = None,
-                 pipe: str = "WinUAE", connection: str = "ssh"):
+                 pipe: str = "WinUAE", connection: str = "ssh",
+                 holder: str | None = None):
         self._run = runner or _run
         self.timeout = self.TIMEOUT if timeout is None else timeout
         self.pipe = pipe
@@ -1109,6 +1116,11 @@ class WinuaePipe:
             raise ValueError(f"connection {connection!r} is neither 'ssh' nor "
                              "'local'")
         self.connection = connection
+        if holder is not None and not _HOLDER.fullmatch(holder):
+            raise ValueError(f"the lane holder {holder!r} is not a lane holder name")
+        #: The lane claim whose emulator a debugger command goes to; over ssh the
+        #: guest has several WinUAE copies, and only the lane script knows whose is whose.
+        self.holder = holder
         #: Every command this session sent, for a run log.
         self.sent: list[str] = []
 
@@ -1133,7 +1145,55 @@ class WinuaePipe:
         one absent dump must not lose the replies that say why.
         """
         _check_commands(commands)
+        if self.connection == "ssh" and self.holder is None:
+            raise ValueError("a debugger command over ssh needs the lane holder, because "
+                             "a pipe opened by name can be another lane's emulator")
         return self._framed([f"DBG {c}" for c in commands], repeat, fetch)
+
+    def _open_by_name(self) -> str:
+        """The PowerShell that opens the pipe by its name: one WinUAE, no lanes."""
+        return f"""  $p=New-Object IO.Pipes.NamedPipeClientStream '.','{self.pipe}','InOut'
+  $p.Connect({self.CONNECT_MS})"""
+
+    def _open_by_lane(self) -> str:
+        """The PowerShell that opens the pipe the holder's own emulator serves.
+
+        Each copy takes the first free of `WinUAE`, `WinUAE_1`..`WinUAE_9`, so the name
+        says nothing about whose emulator it is. The lane script's `lane` verb checks
+        the claim, the run receipt and the executable and names the pid; the pipe
+        whose server process is that pid is the holder's, as `winuae.ps1`'s
+        `Open-LanePipe` finds it. Another copy's pipe is only opened and closed.
+        """
+        script = r"""  $lane=(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File '@SCRIPT@' lane -Holder '@HOLDER@' 2>&1 | Out-String).Trim()
+  if ($lane -notmatch '(?m)^ok lane=(\d+) pid=(\d+) ') { throw [InvalidOperationException]::new(($lane -replace '\s+',' ')) }
+  [uint32]$lanePid=$Matches[2]
+  Write-Output ('<<lane>> ' + $Matches[1] + ' ' + $lanePid)
+  if (-not ('WishPipe.Info' -as [type])) {
+    Add-Type -Namespace WishPipe -Name Info -MemberDefinition '[DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetNamedPipeServerProcessId(IntPtr Pipe, out uint ServerProcessId);'
+  }
+  $p=$null
+  $seen=@()
+  $until=[Diagnostics.Stopwatch]::StartNew()
+  do {
+    $seen=@()
+    $live=@([IO.Directory]::GetFiles('\\.\pipe\') | ForEach-Object { [IO.Path]::GetFileName($_) })
+    foreach ($name in (@('WinUAE') + (1..9 | ForEach-Object { "WinUAE_$_" }))) {
+      if ($live -cnotcontains $name) { continue }
+      $try=New-Object IO.Pipes.NamedPipeClientStream '.',$name,'InOut'
+      try {
+        $try.Connect(2000)
+        [uint32]$owner=0
+        if ([WishPipe.Info]::GetNamedPipeServerProcessId($try.SafePipeHandle.DangerousGetHandle(),[ref]$owner) -and $owner -eq $lanePid) { $p=$try; break }
+        $seen+="$name served by pid=$owner"
+      } catch { $seen+="$name not opened: $($_.Exception.Message)" }
+      $try.Dispose()
+    }
+    if (-not $p) { Start-Sleep -Milliseconds 250 }
+  } while (-not $p -and $until.ElapsedMilliseconds -lt @CONNECT@)
+  if (-not $p) { throw [InvalidOperationException]::new("no WinUAE pipe is served by @HOLDER@'s winuae64 pid=$lanePid ($($seen -join '; '))") }"""
+        return (script.replace("@SCRIPT@", self.LANE_SCRIPT)
+                .replace("@HOLDER@", self.holder or "")
+                .replace("@CONNECT@", str(self.CONNECT_MS)))
 
     def _framed(self, messages: list[str], repeat: int = 1,
                 fetch: list[tuple[str, str]] | None = None) -> str:
@@ -1156,11 +1216,11 @@ class WinuaePipe:
                 f"Remove-Item -LiteralPath '{path}' -Force }} "
                 "else { Write-Output 'MISSING' }")
         fetched = "\n".join(tail)
+        opened = self._open_by_lane() if self.holder is not None else self._open_by_name()
         return f"""$ErrorActionPreference='Stop'
 $sw=[Diagnostics.Stopwatch]::StartNew()
 try {{
-  $p=New-Object IO.Pipes.NamedPipeClientStream '.','{self.pipe}','InOut'
-  $p.Connect({self.CONNECT_MS})
+{opened}
   $p.ReadMode=[IO.Pipes.PipeTransmissionMode]::Message
 }} catch {{
   $e=$_.Exception

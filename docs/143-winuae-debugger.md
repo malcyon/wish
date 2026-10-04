@@ -23,7 +23,7 @@ QEMU/KVM. From here it is reached with:
 ```sh
 export SSH_ASKPASS_REQUIRE=never   # see below; set it once, for the session
 winvm acquire wish-re          # start the VM, take a lease
-winvm ssh "$ps claim -Holder por-run"          # take the one Amiga lane -- 1.1
+winvm ssh "$ps claim -Holder por-run"          # take a free Amiga lane -- 1.1
 winvm ssh "$ps start -Holder por-run -log -f C:\Amiga\configs\goldbox-a500.uae"
 tools/amiga/amigadrive.py --holder por-run shot /tmp/screen.png   # WinUAE's own screenshot -- 4.3
 winvm ssh "$ps stop -Holder por-run"
@@ -147,7 +147,7 @@ is the other**, and that one is not rare — `tools/amiga/winuae-lanecheck.ps1`'
 `hijack` round produced `fail 2 winuae64 processes after starting: 1944,9640`
 from two `start` calls a second apart.
 
-### 1.1 One lane at a time, and the claim that enforces it
+### 1.1 One holder per lane, and the claim that enforces it
 
 **The hazard is not two emulators. It is two drivers of the one emulator**, and
 until 2026-09-01 nothing on this machine could tell them apart. There was one
@@ -167,7 +167,7 @@ thing at the end of a run kills the other agent's emulator.
 
 | call | what it does |
 |---|---|
-| `claim -Holder <id>` | takes the lane; blocks a second holder, naming who has it and since when |
+| `claim -Holder <id>` | takes a free lane; when every lane is held, blocks the caller, naming who has each and since when |
 | `release -Holder <id>` | gives it back. Does *not* stop the emulator |
 | `claim -Holder <id> -Override` | takes a lane whose holder has gone away, and says whose it was |
 | everything that touches the emulator | `start`, `stop`, `send`, `roms`, `shot`, `press`, `debugger`, `drives`, `insert` and the snapshot verbs block a caller who is not the holder |
@@ -249,10 +249,11 @@ Two checks sit under the claim, because a claim only binds a caller who passes
 task, the send log, the console file, a WinUAE ini and a screenshot folder
 (§4.3). Lane 1 uses the bare names (`winuae-claim.txt`, `winuae-run.txt`,
 `lanes\1\winuae.ini`) and lane *n* adds `-n`. A holder has one lane, and every
-verb that takes `-Holder` acts on it. `$LaneCount` is still 1: keys and
-screenshots no longer share the desktop, but a second lane waits for a
-two-lane run of `winuae-lanecheck.ps1` (`-Lanes 2`) to pass against the
-driver.
+verb that takes `-Holder` acts on it. **`$LaneCount` is 2.** Keys, screenshots
+and debugger reads each reach the holder's own emulator through the pipe its
+pid serves, and two copies booted at once each showed only their own key
+presses (CONFIRMED, one two-copy boot). `winuae-lanecheck.ps1 -Lanes 2` is the
+check to pass before the count changes again.
 
 The claim is a file in the guest, `C:\Amiga\winuae-claim.txt` for lane 1, and it records
 the boot it was taken in: a claim cannot outlive a restart, because every
@@ -272,6 +273,12 @@ code. `press` takes its codes the same way, so the rule holds for it too.
 
 `tools/amiga/winuae-lanecheck.ps1` is the proof, and it runs against whichever copy
 of the driver it is pointed at, so an older one can be watched to fail.
+`-Lanes` sets the lane count it checks: when the driver's own `$LaneCount`
+differs it runs a copy with the count replaced, so the single-lane scenarios run
+with `-Lanes 1` and the two-lane ones with `-Lanes 2`. It writes its own two
+configs and a blank disk per driver under `C:\Amiga\lanecheck`, and removes
+them, because an empty drive answers `CFG floppy0` with `404` and `drives` reads
+that as a pipe that does not answer.
 Measured 2026-09-01; the round count is per row, because the rare ones need
 more of them:
 
@@ -507,6 +514,14 @@ command line.** `AmigaTarget` takes either transport and asks it one question,
 `halts_machine`, which decides both `halts_on_read` and whether a batch ends
 with a `g`. The console route stays: it is what every driven tool uses, and its
 `W` and single-stepping reach parts of the debugger the pipe will not send.
+
+**Over `ssh` a debugger command needs the lane holder.** A second WinUAE copy
+serves `WinUAE_1` rather than `WinUAE`, in start order, so a pipe opened by name
+can be another lane's emulator. `WinuaePipe(holder=...)` runs `winuae.ps1 lane`
+on the guest in the same `ssh` call, which checks the claim and names the pid,
+and opens the pipe whose server is that pid; without a holder an `ssh` debugger
+command raises. `winuaepipe.py` and `noencounters.py` take `--holder`. A local
+pipe with no holder is still opened by name.
 
 **Where it runs is the part not to lose.** Wish and WinUAE on one Windows
 machine is a local pipe opened by a local process — no network, no session

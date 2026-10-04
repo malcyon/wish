@@ -115,11 +115,12 @@ $Rest = $passthru.ToArray()
 
 $Exe     = 'C:\Program Files\WinUAE\winuae64.exe'
 $Root    = 'C:\Amiga'
-# How many emulators may run at once. Keys and screenshots go through each lane's
-# own pipe, so lanes do not type into or photograph each other; raise it only
-# after a two-lane live run of winuae-lanecheck.ps1 has passed, and set it to the
-# count that run measured.
-$LaneCount = 1
+# How many emulators may run at once. Keys, screenshots and debugger reads go
+# through each lane's own pipe, found by its server pid, so lanes do not type into,
+# photograph or read each other: measured with two copies booted at once, each
+# lane's frame changed only with its own key presses, and `winuae-lanecheck.ps1
+# -Lanes 2` passed. Raise it only after a lanecheck at the new count has passed.
+$LaneCount = 2
 
 # Everything one lane owns. Lane 1 keeps the names the script has always used,
 # so a run started by an earlier copy of the script is lane 1 to this one.

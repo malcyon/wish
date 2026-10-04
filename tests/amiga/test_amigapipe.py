@@ -119,6 +119,8 @@ class PipeGuest:
 
 def pipe(memory=None, guest=None, **kwargs):
     guest = guest or PipeGuest(memory)
+    if kwargs.get("connection", "ssh") == "ssh":
+        kwargs.setdefault("holder", HOLDER)
     return amiga.WinuaePipe(runner=guest, **kwargs), guest
 
 
@@ -223,7 +225,7 @@ def test_a_pipe_that_will_not_open_reports_the_win32_number():
                 "<<hresult>> 0x80070005\r\n"
                 "<<win32>> 5\r\n<<end>>\r\n")
 
-    p = amiga.WinuaePipe(runner=block)
+    p = amiga.WinuaePipe(runner=block, holder=HOLDER)
     with pytest.raises(amiga.PipeError, match="Win32 5"):
         p.send(["m 0 1"])
 
@@ -238,13 +240,13 @@ def test_a_guest_that_replied_to_fewer_commands_than_it_was_sent_is_an_error():
     def half(argv, timeout):
         return "<<connect_ms>> 5\r\n<<end>>\r\n"
 
-    p = amiga.WinuaePipe(runner=half)
+    p = amiga.WinuaePipe(runner=half, holder=HOLDER)
     with pytest.raises(amiga.PipeError, match="2 commands and the guest"):
         p.send(["m 0 1", "m 4 1"])
 
 
 def test_a_script_that_never_reached_its_end_is_an_error():
-    p = amiga.WinuaePipe(runner=lambda argv, timeout: "nothing at all")
+    p = amiga.WinuaePipe(runner=lambda argv, timeout: "nothing at all", holder=HOLDER)
     with pytest.raises(amiga.PipeError, match="did not finish"):
         p.send(["m 0 1"])
 
@@ -253,7 +255,7 @@ def test_a_reply_that_never_came_is_named_as_that():
     def hang(argv, timeout):
         return "<<connect_ms>> 5\r\n<<timeout>>\r\n<<end>>\r\n"
 
-    p = amiga.WinuaePipe(runner=hang)
+    p = amiga.WinuaePipe(runner=hang, holder=HOLDER)
     with pytest.raises(amiga.PipeError, match="never replied"):
         p.send(["m 0 1"])
 
@@ -399,10 +401,46 @@ def test_a_connection_that_is_neither_is_blocked():
 
 
 def test_the_pipe_name_is_settable_because_a_second_winuae_gets_another():
-    """`createIPC` appends `_1`, `_2` and so on when the name is taken."""
-    p, guest = pipe({0: b"\x00" * 16}, pipe="WinUAE_1")
+    """`createIPC` appends `_1`, `_2` and so on when the name is taken; a local
+    pipe with no lane holder is opened by that name."""
+    p, guest = pipe({0: b"\x00" * 16}, pipe="WinUAE_1", connection="local")
     p.send(["m 0 1"])
     assert "'.','WinUAE_1','InOut'" in guest.scripts[0]
+
+
+def test_a_debugger_command_over_ssh_opens_the_pipe_its_holders_emulator_serves():
+    """Each copy takes the first free of `WinUAE`, `WinUAE_1`..; the name says nothing
+    about whose emulator it is, so the guest asks the lane script for the holder's pid
+    and opens the pipe whose server is that pid."""
+    p, guest = pipe({0: b"\x00" * 16})
+    p.send(["m 0 1"])
+    script = guest.scripts[0]
+    assert f"-File 'C:\\Amiga\\winuae.ps1' lane -Holder '{HOLDER}'" in script
+    assert "GetNamedPipeServerProcessId" in script and "$owner -eq $lanePid" in script
+    assert "'.','WinUAE','InOut'" not in script
+
+
+def test_a_debugger_command_over_ssh_without_a_holder_is_blocked():
+    """With two lanes, a pipe opened by name can be another holder's emulator."""
+    guest = PipeGuest({0: b"\x00" * 16})
+    with pytest.raises(ValueError, match="lane holder"):
+        amiga.WinuaePipe(runner=guest).send(["m 0 1"])
+    assert guest.scripts == []
+
+
+@pytest.mark.parametrize("holder", ["x'; Remove-Item C:\\", "", "a" * 65, "a b"])
+def test_a_holder_that_is_not_a_lane_holder_name_is_blocked(holder):
+    with pytest.raises(ValueError, match="holder"):
+        amiga.WinuaePipe(holder=holder)
+
+
+def test_a_lane_the_guest_will_not_name_is_a_pipe_error():
+    def denied(argv, timeout):
+        return ("<<error>> LaneError\r\n<<message>> fail the WinUAE lane is claimed by x\r\n"
+                "<<hresult>> n/a\r\n<<win32>> n/a\r\n<<end>>\r\n")
+
+    with pytest.raises(amiga.PipeError, match="claimed by x"):
+        amiga.WinuaePipe(runner=denied, holder=HOLDER).send(["m 0 1"])
 
 
 def test_a_semicolon_inside_quotes_is_not_a_second_command():
@@ -859,7 +897,7 @@ def test_the_debugger_route_still_blocks_what_could_open_a_console(command):
 
 def test_a_debugger_command_still_goes_down_with_dbg_and_never_cfg():
     guest = CfgGuest()
-    amiga.WinuaePipe(runner=guest).send(["m 0 1"])
+    amiga.WinuaePipe(runner=guest, holder=HOLDER).send(["m 0 1"])
     assert guest.messages == ["DBG m 0 1"]
 
 
@@ -915,7 +953,7 @@ def test_a_directory_the_guest_could_not_make_raises(monkeypatch):
         return subprocess.CompletedProcess(argv, 1, "", "New-Item : Access denied")
 
     monkeypatch.setattr(amiga.subprocess, "run", failed)
-    p = amiga.WinuaePipe()
+    p = amiga.WinuaePipe(holder=HOLDER)
     with pytest.raises(amiga.GuestError, match="Access denied"):
         p.batch(["S x 0 1"], [("b0", "x")])
 
@@ -1261,3 +1299,22 @@ def test_one_bad_read_in_the_restore_poll_does_not_end_it():
     loop = body[body.index("while (-not $back"):body.index("if ($back)")]
     assert "catch { $readError = $_.Exception.Message }" in loop
     assert "the last error was: $readError" in body
+
+
+def test_the_pipe_command_line_reaches_the_holders_own_emulator(monkeypatch, capsys):
+    from tools.amiga import winuaepipe
+
+    seen = {}
+
+    class Pipe:
+        def __init__(self, **kwargs):
+            seen.update(kwargs)
+
+        def send(self, commands, with_timings=False):
+            return [("m 0 1", "00000000 0000")], [1.0]
+
+    monkeypatch.setattr(winuaepipe, "WinuaePipe", Pipe)
+    assert winuaepipe.main(["--holder", HOLDER, "probe"]) == 0
+    assert seen == {"holder": HOLDER}
+    with pytest.raises(SystemExit):
+        winuaepipe.main(["probe"])

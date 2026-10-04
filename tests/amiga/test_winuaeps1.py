@@ -178,7 +178,35 @@ def test_lane_one_keeps_the_names_a_run_in_flight_already_uses():
 
 
 def test_the_lane_count_is_one_constant_in_one_place():
-    assert PS1.count("$LaneCount = 1\n") == 1
+    assert len(re.findall(r"(?m)^\$LaneCount = \d+$", PS1)) == 1
+
+
+def test_the_guest_runs_two_lanes():
+    """Raised after a two-lane lanecheck passed and two booted copies each saw only their own keys."""
+    assert re.search(r"(?m)^\$LaneCount = 2$", PS1)
+
+
+LANECHECK = (PS1_PATH.parent / "winuae-lanecheck.ps1").read_text()
+
+
+def _lanecheck_body(function: str) -> str:
+    start = LANECHECK.index(f"function {function}")
+    return LANECHECK[start:LANECHECK.index("\n}\n", start)]
+
+
+def test_the_lanecheck_runs_any_lane_count_against_a_driver_of_another_count():
+    """The one-lane scenarios need a one-lane copy of a two-lane driver, and the other way round."""
+    assert r"'(?m)^\$LaneCount = \d+\s*$'" in LANECHECK
+    assert "-ne $Lanes" in LANECHECK
+
+
+def test_the_lanecheck_needs_no_config_or_disk_the_guest_may_lack():
+    """It writes its own two configs and blank disks, so `drives` reads a disk in each lane."""
+    assert "pod-a500.uae" not in LANECHECK
+    assert "$ConfigA = \"$Work\\driverA.uae\"" in LANECHECK and "$ConfigB = \"$Work\\driverB.uae\"" in LANECHECK
+    body = _lanecheck_body("Scenario-TwoLane")
+    assert "\"floppy0=$DiskA\"" in body and "\"floppy0=$DiskB\"" in body
+    assert "Remove-Item -Recurse -Force $Work" in LANECHECK
 
 
 def test_start_takes_the_guest_wide_mutex_before_it_launches_and_frees_it_in_a_finally():

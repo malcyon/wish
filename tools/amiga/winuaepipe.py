@@ -14,10 +14,10 @@ rig does -- a `winvm ssh` to the Windows VM -- while `WinuaePipe` itself also
 speaks to a local pipe, which is what Wish and WinUAE on one Windows machine
 would be.  Four commands:
 
-    tools/amiga/winuaepipe.py probe
-    tools/amiga/winuaepipe.py send 'm 0 1' 'm c00000 2'
-    tools/amiga/winuaepipe.py ticker --reads 5 --gap 1
-    tools/amiga/winuaepipe.py time --reads 5
+    tools/amiga/winuaepipe.py --holder H probe
+    tools/amiga/winuaepipe.py --holder H send 'm 0 1' 'm c00000 2'
+    tools/amiga/winuaepipe.py --holder H ticker --reads 5 --gap 1
+    tools/amiga/winuaepipe.py --holder H time --reads 5
 
 `probe` is the one to run first on a machine nobody has tried this on: it opens
 the pipe, sends one harmless `m 0 1`, and prints the reply, the Win32 error
@@ -36,7 +36,10 @@ the 8-bit path goes through `ua_copy` with a size and is bounded.
 
 Nothing here claims or releases the WinUAE lane, exactly as
 `tools/amiga/amigatarget.py` does not: a claim that ends with the process that took it
-cannot be handed between the several runs one experiment needs.
+cannot be handed between the several runs one experiment needs.  `--holder`
+names the claim: each WinUAE copy takes the first free of `WinUAE`, `WinUAE_1`..,
+so the guest asks `winuae.ps1 lane` for that holder's emulator and opens the
+pipe whose server is its pid.
 """
 
 from __future__ import annotations
@@ -82,8 +85,8 @@ def _print_replies(replies, show_raw: bool) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--pipe", default="WinUAE",
-                    help="pipe name on the guest (default: WinUAE)")
+    ap.add_argument("--holder", required=True,
+                    help="the winuae.ps1 lane claim whose emulator the commands go to")
     ap.add_argument("--json", action="store_true",
                     help="print one JSON object instead of text")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -115,7 +118,7 @@ def main(argv: list[str] | None = None) -> int:
                         help="the debugger command to time")
 
     args = ap.parse_args(argv)
-    pipe = WinuaePipe(pipe=args.pipe)
+    pipe = WinuaePipe(holder=args.holder)
 
     if args.cmd == "probe":
         started = time.monotonic()

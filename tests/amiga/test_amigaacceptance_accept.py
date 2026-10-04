@@ -1330,3 +1330,10 @@ def test_a_pools_of_darkness_substitute_blocks_preservation_before_any_guest_cal
         _accept(tmp_path, clock, guest=guest, manifest=path,
                 preserve_specimen=True, specimen_issue=ISSUE)
     assert guest.calls == []
+
+
+def test_the_rulebook_memory_target_reads_the_holders_own_emulator():
+    """With two lanes the debugger pipe is found through the holder's lane, never by name."""
+    options = acceptance._draw_options(types.SimpleNamespace(rulebook_draws=2, rulebook_records=None),
+                                       "wish282-a")
+    assert options["target"].debugger.holder == "wish282-a"

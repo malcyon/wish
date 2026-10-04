@@ -3333,7 +3333,7 @@ def _draw_options(args: argparse.Namespace, holder: str) -> dict[str, Any]:
         return {"rulebook_draws": draws, **({} if records is None else {"rulebook_records": records})}
     from automap import amiga  # noqa: PLC0415
 
-    pipe = amiga.WinuaePipe()
+    pipe = amiga.WinuaePipe(holder=holder)
     return {"rulebook_draws": draws,
             **({} if records is None else {"rulebook_records": records}),
             "target": amiga.AmigaTarget(pipe, amiga.MACHINES["secret-of-the-silver-blades"]),

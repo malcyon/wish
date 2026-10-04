@@ -339,3 +339,37 @@ def test_a_failed_save_leaves_no_temporary_file(state, monkeypatch):
         state.save({"on": True, "rows": []})
     assert sorted(p.name for p in state.path.parent.iterdir()) == ["winuae.json"]
     assert json.loads(state.path.read_text())["on"] is False
+
+
+def test_each_holder_keeps_its_own_state_file(tmp_path, monkeypatch):
+    """Two lanes each hold their own changes, so one holder's journal must not be another's."""
+    monkeypatch.setattr(ne.scratch, "cache_dir", lambda *parts: tmp_path.joinpath(*parts))
+    a, b = ne.winuae_state_path("wish282-a"), ne.winuae_state_path("wish282-b")
+    assert a != b and a.parent == b.parent
+    assert a.name == "winuae-wish282-a.json"
+
+
+@pytest.mark.parametrize("holder", ["../x", "a b", "", "a" * 65])
+def test_a_holder_that_is_not_a_file_name_has_no_state_file(holder):
+    with pytest.raises(ValueError, match="holder"):
+        ne.winuae_state_path(holder)
+
+
+def test_the_command_line_opens_the_holders_pipe_and_state(tmp_path, monkeypatch):
+    seen = {}
+
+    class Pipe:
+        def __init__(self, **kwargs):
+            seen["pipe"] = kwargs
+
+    monkeypatch.setattr(ne.scratch, "cache_dir", lambda *parts: tmp_path.joinpath(*parts))
+    monkeypatch.setattr(ne.amiga, "WinuaePipe", Pipe)
+    monkeypatch.setattr(ne.WinuaeEncounters, "off", lambda self: seen.setdefault("state", self.state.path) and {})
+    assert ne.main(["--holder", "wish282-a", "--title", "pool-of-radiance", "off"]) == 0
+    assert seen["pipe"] == {"holder": "wish282-a"}
+    assert seen["state"] == tmp_path / "noencounters" / "winuae-wish282-a.json"
+
+
+def test_status_needs_the_holder_because_the_state_is_the_holders(capsys):
+    with pytest.raises(SystemExit):
+        ne.main(["status"])
