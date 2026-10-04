@@ -686,3 +686,5 @@ def test_an_unpacked_binary_that_cannot_be_patched_fails_the_install(tmp_path):
 
     with pytest.raises(ValueError, match="not patched"):
         installfsuae.install(tmp_path / "share", fetch=fetch, expected=digest)
+
+    assert not installfsuae.install_dir(tmp_path / "share").exists()

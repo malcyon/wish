@@ -154,7 +154,12 @@ def patch_binary(path: pathlib.Path, patch: BinaryPatch) -> bool:
     fd, name = tempfile.mkstemp(prefix=".patch-", dir=path.parent)
     staged = pathlib.Path(name)
     try:
-        with os.fdopen(fd, "wb") as out:
+        try:
+            handle = os.fdopen(fd, "wb")
+        except BaseException:
+            os.close(fd)
+            raise
+        with handle as out:
             out.write(data)
         staged.chmod(path.stat().st_mode & 0o777)
         os.replace(staged, path)
@@ -230,8 +235,13 @@ def replace_dir(staging: pathlib.Path, into: pathlib.Path) -> None:
     shutil.rmtree(aside, ignore_errors=True)
 
 
-def extract(tarball: pathlib.Path, into: pathlib.Path) -> None:
-    """Unpack `MEMBER_ROOT` of `tarball` as the directory `into`, all or nothing."""
+def extract(tarball: pathlib.Path, into: pathlib.Path,
+            patch: BinaryPatch | None = None) -> None:
+    """Unpack `MEMBER_ROOT` of `tarball` as the directory `into`, all or nothing.
+
+    With `patch`, the binary is patched before the swap, so a patch that fails
+    leaves nothing installed.
+    """
     with tarfile.open(tarball, "r:gz") as archive:
         wanted = wanted_members(archive)
         if not any(rel == BINARY for _, rel in wanted):
@@ -249,6 +259,8 @@ def extract(tarball: pathlib.Path, into: pathlib.Path) -> None:
                 with archive.extractfile(member) as source, target.open("wb") as out:
                     shutil.copyfileobj(source, out)
                 target.chmod(0o755 if member.mode & 0o111 else 0o644)
+            if patch is not None:
+                patch_binary(staging / BINARY, patch)
             # mkdtemp makes it 0700, and it is about to become the install.
             staging.chmod(0o755)
             replace_dir(staging, into)
@@ -314,10 +326,9 @@ def install(parent: pathlib.Path, fetch=download, url: str = URL,
         print(f"Fetching {url}")
         fetch(url, tarball)
         check_digest(tarball, expected)
-        extract(tarball, into)
+        extract(tarball, into, patch)
     finally:
         tarball.unlink(missing_ok=True)
-    patch_binary(binary, patch)
     return binary
 
 
