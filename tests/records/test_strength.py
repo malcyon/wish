@@ -117,7 +117,7 @@ def test_party_size_is_only_the_number_of_terms():
 
 # --- the terms --------------------------------------------------------------
 
-def test_a_better_thac0_is_worth_five_a_point():
+def test_each_point_of_better_thac0_scores_five():
     save0, roster = captured()
     roster_byte(roster, 0, 0x0E, 43)               # THAC0 17, one better
     assert value_of(save0, roster) == 26 + 5

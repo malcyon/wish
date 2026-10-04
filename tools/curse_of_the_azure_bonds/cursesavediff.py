@@ -2,8 +2,7 @@
 """Diff two *Curse of the Azure Bonds* `SAVEAZURE` payloads, region by region.
 
 The engine's own rewrite is the oracle a conversion is checked against
-(`#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which the
-importer refuses today)` step 3): load a save Wish built, take the game's own
+(the work on converting a Curse of the Azure Bonds DOS save into a C64 one, step 3): load a save Wish built, take the game's own
 `ENCAMP > SAVE`, and every byte where the two disagree is either the engine's
 bookkeeping or ours being wrong.  Reading 7424 bytes of `cmp -l` output is not
 how anybody tells those apart, so this labels each run of differing bytes with

@@ -8,8 +8,7 @@ byte under the name `SAVEDBASH` -- one 7424-byte file at `$4B00`, eight
 character pages, a name table at `+$C00`, eight item pages, `ANIMATE00`'s
 picture buffer at `+$1800` and the roster at `+$1C00` -- but three header rows
 differ and the name table may be keyed the other way round, so the geometry
-lives in `goldbox/c64_save.py` and this file is the runner (`#193 (Convert a Secret of
-the Silver Blades DOS save into a C64 one, which the importer refuses today)`).
+lives in `goldbox/c64_save.py` and this file is the runner (the work on converting a Secret of the Silver Blades DOS save into a C64 one).
 
     tools/secret_of_the_silver_blades/ssbdisk.py --folder path/to/dos-ssb-save --slot D \\
         --out SSBD.D64 --report --sheet

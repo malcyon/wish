@@ -119,7 +119,7 @@ COUNTERS = {
     "1F30_ask_for_disk": 0x1F30,   # JSR $182D, the save loader's disk check
     "183A_prompt_drawn": 0x183A,   # the arm $182D takes when $03B4 is not 2
     "1F48_load": 0x1F48,           # JSR $3159
-    "1F4D_load_failed": 0x1F4D,        # the UNABLE TO LOAD message
+    "1F4D_load_failed": 0x1F4D,    # the UNABLE TO LOAD message
 }
 
 

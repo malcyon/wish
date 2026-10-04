@@ -12,8 +12,7 @@ answerer -- is `tools/c64/session.py`'s and is shared.
 file imports `SSBSession`, `stage` and `load_party` rather than restating
 them.  What it adds is the one thing `#20` never needed: **a save disk this
 project built, staged as `SIDE0`, and a session left serving so the party on
-it can be read off the running game** (`#193 (Convert a Secret of the Silver
-Blades DOS save into a C64 one, which the importer refuses today)` step 3).
+it can be read off the running game** (the work on converting a Secret of the Silver Blades DOS save into a C64 one, step 3).
 
     tools/secret_of_the_silver_blades/ssbdisk.py --folder DIR --slot D \\
         --out SSBD.D64

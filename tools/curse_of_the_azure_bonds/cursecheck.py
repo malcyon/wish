@@ -19,8 +19,7 @@ answer:
 
 * whether the game's own `LOAD SAVED GAME` takes a container Wish built --
   Curse has no save picker at all, so this is the loader and not a file list
-  (`#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which
-  the importer refuses today)`);
+  (the work on converting a Curse of the Azure Bonds DOS save into a C64 one);
 * the status line: facing, clock and square, which is the DOS save's own;
 * the party panel: every name the game lists with its armour class and hit
   points, and **how many** rows it lists, which is what catches a stranger

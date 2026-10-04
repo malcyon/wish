@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Where a title's area scripts keep their variables, swept on both ports.
 
-`#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which the
-importer refuses today)` step 0a is the ticket. A conversion writes the
+The work on converting a Curse of the Azure Bonds DOS save into a C64 one (step 0a) is the ticket. A conversion writes the
 saved-game header, and the header is mostly script variables: quest flags, the
 per-script scratch, the party's square. Before `apply_quest_flags` can be
 trusted at a new base, somebody has to say **which addresses the scripts

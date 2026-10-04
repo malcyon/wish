@@ -212,8 +212,7 @@ class CurseSession(por.Session):
         even turn it, which from outside looks exactly like a party walled in
         on every side; `press_kernal(0x4A)` turned it from west to south on
         the first try, 2026-09-05
-        (`#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one,
-        which the importer refuses today)`).  So the same key goes in through
+        (the work on converting a Curse of the Azure Bonds DOS save into a C64 one).  So the same key goes in through
         `$0277` here, the way Return already does at this title's `YES NO`
         bars.
         """

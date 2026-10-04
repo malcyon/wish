@@ -5,9 +5,7 @@ Nothing here reads a real code-wheel prompt off a real screenshot -- that
 would be a specimen of the very thing `#108` keeps out of this repository.
 The frames below are built from simple figures, enough ink in each rune tile
 and a path band drawn at the exact per-cell geometry measured off three live
-DOS Curse prompts on 2026-09-14 (`#537 (tools/curse_of_the_azure_bonds/cursewheel.py never recognises
-a real DOS Curse code-wheel screenshot, so its own command line refuses every
-prompt)`, both comments on that issue): a dot is a 3x3 diamond at columns
+DOS Curse prompts on 2026-09-14 (the work on recognising a real DOS Curse code-wheel screenshot, both comments on that issue): a dot is a 3x3 diamond at columns
 2-4, rows 4-6 of its 8x8 text cell; a dash is a 7px-wide bar across rows 2-3.
 `identify()` runs its whole pipeline against the `codewheel` entry's reference
 bitmaps without any frame corresponding to a real challenge; what is

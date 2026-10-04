@@ -125,7 +125,6 @@ LIMITS_EVERY: dict[str, int] = {
     "tests/amiga/test_winuaeps1.py": 0,
     "tests/amiga/test_winvmguest.py": 0,
     "tests/amiga/test_winwish.py": 0,
-    "tests/records/test_strength.py": 1,
     "tools/amiga/acceptance.py": 0,
     "tools/amiga/amigabladesjournal.py": 0,
     "tools/amiga/amigacontainercheck.py": 0,

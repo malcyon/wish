@@ -744,8 +744,7 @@ def test_fast_travel_is_offered_silver_blades_now_that_one_has_been_driven():
 
 
 def test_curse_is_offered_too_now_that_its_table_exists():
-    """`#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one,
-    which the importer refuses today)` step 0b built `AREAS_CURSE`, and
+    """The work on converting a Curse of the Azure Bonds DOS save into a C64 one (step 0b) built `AREAS_CURSE`, and
     `automap.fasttravel`'s addresses for Curse were CONFIRMED by four driven
     warps (`#19`) before this table existed -- so both of
     `automap.actions.area_rows`'s gates are open, the same as Silver Blades'.
@@ -923,8 +922,7 @@ def test_curse_has_no_area_zero_and_the_table_is_not_missing_it():
     Adding one would move `goldbox.dos_codec`'s rejection from `area_in` to
     `_resident_geo` rather than remove it, and a C64 save naming area 0 sends
     the loader after `GEO00`, which is on none of the sides
-    (`#301 (A DOS Curse save standing in area 0 is refused by the import,
-    because no row of the area table names area 0)`,
+    (the work on a DOS Curse save standing in area 0, which no row of the area table names;
     `docs/185-a-party-that-has-not-set-out.md`).
 
     This guards against the row rather than a defect: it is here so that the
@@ -944,8 +942,7 @@ def test_a_party_that_has_not_set_out_starts_where_its_own_title_says():
     A DOS save made from the party-formation menu holds area 0 on all three
     titles, and 0 means two different things: New Phlan in Pool of Radiance,
     and nowhere at all in Curse. So the conversion asks the title rather than
-    reading the word (`#301 (A DOS Curse save standing in area 0 is refused
-    by the import, because no row of the area table names area 0)`).
+    reading the word (the work on a DOS Curse save standing in area 0, which no row of the area table names).
     """
     curse = areas.start_of(CURSE_OF_THE_AZURE_BONDS)
     assert curse.area == 0x01
@@ -976,9 +973,7 @@ def test_pool_of_radiances_start_square_is_the_one_its_area_row_already_holds():
 
 
 def test_silver_blades_starts_in_area_0x10_at_3_3_facing_south():
-    """`STARTS` now carries Silver Blades' row (`#535 (A Secret of the Silver
-    Blades save made before the party set out is refused by Convert, because
-    nobody has measured where that title begins)`), measured the same way
+    """`STARTS` now carries Silver Blades' row (the work on a Silver Blades save made before the party set out), measured the same way
     Curse's was: one boot, a character created, `SAVE CURRENT GAME` at the
     party menu, then `BEGIN ADVENTURING` with the party standing still. The
     second save read area `$10`, square `3,3` facing south, clock 00:00.
@@ -1001,8 +996,7 @@ def test_silver_blades_starts_in_area_0x10_at_3_3_facing_south():
 def test_every_start_names_a_row_of_its_own_titles_table():
     """A `STARTS` entry pointing at an id its title does not have would send a
     conversion after a script that is on none of the sides, which is the
-    failure `#301 (A DOS Curse save standing in area 0 is refused by the
-    import, because no row of the area table names area 0)` measured on the
+    failure that a DOS Curse save standing in area 0 showed on the
     C64: the loader asked for `GEO00` for ever."""
     for title, start in areas.STARTS.items():
         row = areas.area_in(start.area, title)

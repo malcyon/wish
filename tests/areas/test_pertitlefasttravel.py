@@ -326,8 +326,7 @@ def test_the_way_back_is_looked_up_in_the_title_being_travelled_in():
     this test was written, because `goldbox.areas.areas_for_title` rejected
     each title until its table was built
     (`#20 (Build an area table for Silver Blades)`,
-    `#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which
-    the importer refuses today)` step 0b). `21` decimal is `$15`, a different
+    the work on converting a Curse of the Azure Bonds DOS save into a C64 one, step 0b). `21` decimal is `$15`, a different
     place in each of the three titles: Sokol Keep in Pool of Radiance, a
     side-2 area on `GEO21` in Silver Blades, and Curse's own `$15` on `GEO15`.
     """

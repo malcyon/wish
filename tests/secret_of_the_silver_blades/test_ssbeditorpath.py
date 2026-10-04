@@ -11,8 +11,7 @@ shipped demo one.
 
 **Everything here reads a save the game itself wrote.**
 `WISH-SPEC-ssb-d-engine-resave` is the C64 engine's own `ENCAMP > SAVE`, made
-in VICE on 2026-09-05 for `#193 (Convert a Secret of the Silver Blades DOS save
-into a C64 one, which the importer refuses today)`. A round trip proven on a
+in VICE on 2026-09-05 for the work on converting a Secret of the Silver Blades DOS save into a C64 one. A round trip proven on a
 disk this project wrote would be a round trip proven against our own beliefs;
 `.claude/rules/testing.md` is the reason it is that specimen and not another.
 

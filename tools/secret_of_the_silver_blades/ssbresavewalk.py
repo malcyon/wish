@@ -8,8 +8,7 @@ library supports)`, the `DosToC64` Silver Blades walk, when
 `tools.secret_of_the_silver_blades.ssbsession.SSBSession` directly and reuses `tools/c64/savecheck.py`'s screen
 readers, the pattern the sibling `AmigaToC64` Silver Blades walk set. The
 worked-around bug in `tools/secret_of_the_silver_blades/ssbwarp.py`'s save prompt
-(`#539 (tools/secret_of_the_silver_blades/ssbwarp.py's SAVE_PROMPT does not match Silver Blades' actual
-save-disk prompt, so ENCAMP > SAVE silently refuses)`) has been fixed since,
+(the save-prompt mismatch that made ENCAMP > SAVE fail silently) has been fixed since,
 so the assignment that patched it is gone. The sheet is still read by
 pressing VIEW and reading the raw screen, the workaround for
 `#540 (Session.character_sheet() times out on every Silver Blades sheet,

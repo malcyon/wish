@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """What a Curse of the Azure Bonds save holds before the party begins adventuring.
 
-`#301 (A DOS Curse save standing in area 0 is refused by the import, because
-no row of the area table names area 0)` is the ticket.  A DOS Curse save whose
+The work on a DOS Curse save standing in area 0 is the ticket.  A DOS Curse save whose
 area word is 0 is one the player made from the party-formation menu, before
 pressing `BEGIN ADVENTURING`; Curse has no `ECL00` and no `GEO00`, so 0 is not
 a place at all.  This tool takes the C64 half of that measurement, which is

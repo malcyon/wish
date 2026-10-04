@@ -4,9 +4,7 @@
 `tools/c64/savecheck.py --walk` answers a step with `moved=True` or `moved=False`,
 and a `False` out here has meant three different things at once: the square
 rejected the party, the driver never found the movement prompt, or the key went
-somewhere the game was not reading.  `#382 (An outdoor Pool of Radiance party's
-compass step is refused, and the retry cannot find the movement prompt
-afterwards)` is what that ambiguity cost -- eight directions all reported as
+somewhere the game was not reading.  The work on an outdoor Pool of Radiance party's compass step is what that ambiguity cost -- eight directions all reported as
 rejected, with no reading that says which of the three it was.
 
 So this reads, for every stage of one step:
@@ -96,9 +94,7 @@ def reach_prompt(sess, log: Log, timeout: float = 40.0,
                  boat: str = "STAY") -> list[str]:
     """Get row 24 to the `1-8` prompt, answering whatever stands in the way.
 
-    **A boat landing is in the way, and that is what `#382 (An outdoor Pool of
-    Radiance party's compass step is refused, and the retry cannot find the
-    movement prompt afterwards)` turned out to be.**  Selecting `MOVE` on the
+    **A boat landing is in the way, and that is what the work on an outdoor Pool of Radiance party's compass step turned out to be.**  Selecting `MOVE` on the
     square the Amiga party sailed to puts up `TAKE BOAT STAY` rather than the
     direction prompt, so a driver that only knows `MOVE` and `1-8` waits out
     its timeout on a game that is asking it a question.  `STAY` declines the

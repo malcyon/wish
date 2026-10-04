@@ -25,7 +25,7 @@ shows as the square moving, which is the thing to prove:
 
     tools/pool_of_radiance/outdoorwalk.py --disk OUTC.D64 --slot 2 --moves 8484
 
-Written for `#50 (Lift the wilderness refusal from the DOS save converter)`,
+Written for the work on converting wilderness DOS saves,
 whose end-to-end proof is "convert a wilderness DOS save, load it, and walk".
 
 Nothing is written to the player's disks: `Session.attach` rejects a path
@@ -160,8 +160,7 @@ def main(argv=None) -> int:
     # Compass digits, not `I J K M`. The travel grid's bar is
     # `1-8, RETURN OR BUTTON`, and a driver pressing the dungeon's letters out
     # here moves the party not at all while looking exactly like a save that
-    # cannot walk -- which is what an hour of `#50 (Lift the wilderness refusal
-    # from the DOS save converter)` was spent on. This default was that hour
+    # cannot walk -- which is what an hour of the work on converting wilderness DOS saves was spent on. This default was that hour
     # written back into the tool meant to prevent it.
     #
     # The eight are the compass **clockwise from north**, not the numpad:
