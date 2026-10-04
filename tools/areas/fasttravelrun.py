@@ -185,7 +185,7 @@ def walk_verdict(steps: list[dict], sheet_opened: bool) -> tuple[bool, str]:
         return False, "no step was tried"
     rejected = [s for s in steps if s.get("stopped")]
     if rejected:
-        return False, f"the driver stopped a step: {rejected[0]['stopped']}"
+        return False, f"the driver rejected a step: {rejected[0]['stopped']}"
     walked = [s for s in steps if "move" in s]
     moved = sum(1 for s in walked
                 if not s.get("interrupted")
