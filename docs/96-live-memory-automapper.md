@@ -1063,8 +1063,10 @@ slow RAM waits on "Waiting to connect..." for ever.
 build binds no key to save or load, and the GDB server has no command for
 either. Slot files are `base/Save States/Default/FS-UAE_<n>.uss`. The shipped
 binary segfaults on every state save, state load and reset, and after a load
-its picture stays black until the game redraws. Wish fixes both by patching
-the binary on install and by patching the source in the build scripts;
+its picture stays black until the game redraws. The default install fixes the
+crash by patching the binary (a NULL guard); the black picture is fixed only
+by `installfsuae.py --with-restore-redraw`, which is opt-in until its reboot
+and shutdown faults are explained. The build scripts patch the source;
 [239-fs-uae-patches.md](239-fs-uae-patches.md) records each patch, its bytes,
 its SHA-256 chain and what was measured on it.
 * **A save and a load on the NULL-guarded binary restore the machine

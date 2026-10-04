@@ -146,8 +146,9 @@ step 1, or to step 2 with `--with-restore-redraw`.
 - **Check an installed binary.** `sha256sum` it and compare with the table.
   `objdump -d --start-address=ADDR --stop-address=ADDR+N` on each address
   above shows the instructions listed.
-- **Patch by hand.** `tools/amiga/installfsuae.py` patches an installed binary
-  at any step in place, and a second run reports `Already installed`.
+- **Patch by hand.** `tools/amiga/installfsuae.py` run by default brings an
+  installed binary to the NULL-guard step, and with `--with-restore-redraw` to
+  the redraw step; a second run reports `Already installed`.
 - **Build from source.** `tools/amiga/fsuaebuildcontainer.sh` (gcc) and
   `tools/amiga/fsuaebuildclang.sh` (clang) build `remote_debugger_barto` in a
   container, with the source at `/src` and the checkout's `tools/amiga` at
