@@ -7,6 +7,7 @@ the command line the driver would have sent.
 from __future__ import annotations
 
 import pathlib
+import subprocess
 import sys
 
 import pytest
@@ -193,3 +194,21 @@ def test_a_snapshot_failure_is_one_line_and_a_nonzero_exit(monkeypatch):
     monkeypatch.setattr(amigadrive, "WinuaePipe", Pipe)
     with pytest.raises(SystemExit, match="did not appear within 15 s"):
         amigadrive.main(["--holder", "h1", "snapshot", "before-walk"])
+
+
+def test_a_hung_ssh_in_a_shot_is_a_shot_error_and_not_a_traceback(tmp_path, clock):
+    def run(*args, timeout):
+        raise subprocess.TimeoutExpired(["winvm", *args], timeout)
+
+    with pytest.raises(amigadrive.ShotError):
+        amigadrive.shot("a", tmp_path / "x.png", run=run)
+    assert not (tmp_path / "x.png").exists()
+
+
+def test_a_hung_ssh_in_a_press_stops_with_the_key_not_pressed_message(monkeypatch):
+    def hung(*args, timeout=180):
+        raise subprocess.TimeoutExpired(["winvm", *args], timeout)
+
+    monkeypatch.setattr(amigadrive, "_winvm", hung)
+    with pytest.raises(SystemExit, match="Key RET was not pressed"):
+        amigadrive.press("holder", "RET", 0)

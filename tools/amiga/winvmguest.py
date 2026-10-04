@@ -19,12 +19,13 @@ and a pinned host key (`ansible/roles/agent-winvm-access`), and this is the
     winvm lane [--expect HOLDER|free]     who holds the WinUAE lane
 
 `ssh`, `scp` and `shot` take the same arguments as the desktop's `winvm`, so the
-tools that call it (`amigadrive.py` and the rest) run
-unchanged.  `shot` is a view of the Windows desktop for a person; no WinUAE run
-uses it (`winuae.ps1 shot` takes the emulator's own screenshot).  `acquire`, `release`, `up`, `down`, `save`, `promote`, `revert` and
-`guest-setup` are blocked: the Windows guest autostarts with the host and only
-the desktop changes its state.  Who may drive WinUAE is decided on Windows, by
-`winuae.ps1 claim`, and read here through `winuae.ps1 status`.
+tools that call it (`amigadrive.py` and the rest) run unchanged.  `shot` is a
+view of the Windows desktop for a person; no WinUAE run uses it (`winuae.ps1
+shot` takes the emulator's own screenshot).  `acquire`, `release`, `up`, `down`,
+`save`, `promote`, `revert` and `guest-setup` are blocked: the Windows guest
+autostarts with the host and only the desktop changes its state.  Who may drive
+WinUAE is decided on Windows, by `winuae.ps1 claim`, and read here through
+`winuae.ps1 status`.
 
 The screenshot is taken in the console session (session 1) by a one-off
 scheduled task with an Interactive principal, because an ssh login lands in

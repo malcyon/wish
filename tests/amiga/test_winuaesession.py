@@ -134,3 +134,13 @@ def test_no_run_driver_names_a_desktop_grab_or_the_focus_verbs(name):
     assert "winuae.ps1 key" not in source and "} key " not in source
     assert "-Extended" not in source
     assert "winvmsettle" not in source
+
+
+def test_a_failed_capture_shot_does_not_recrop_a_frame_left_by_an_earlier_capture(tmp_path, clock):
+    raw, cropped = tmp_path / "r.png", tmp_path / "c.png"
+    raw.write_bytes(base64.b64decode(_shot().split("\n")[2]))
+    guest = Guest(["fail DBG sc wrote no file in C:\\x (reply 404, last counter 1)"])
+    guest.holder = "h"
+    with pytest.raises(winuaesession.RouteError, match="wrote no file"):
+        guest.capture("title", raw, cropped, timeout=30)
+    assert not cropped.exists()

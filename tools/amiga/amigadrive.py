@@ -90,7 +90,10 @@ def press(holder: str, name: str, settle: float) -> str:
                          f"names are {', '.join(sorted(amigakeys.KEYS))}") from None
     if key.amiga is None:
         raise SystemExit(f"'{key.name}' is an emulator key ({key.host}), not an Amiga key")
-    out = _winvm("ssh", f"{PS} press {key.amiga:02X} -Holder {holder}")
+    try:
+        out = _winvm("ssh", f"{PS} press {key.amiga:02X} -Holder {holder}")
+    except subprocess.TimeoutExpired:
+        raise SystemExit(f"Key {key.name} was not pressed: winvm timed out") from None
     # Anchored, because `winuae.ps1` anchors its own reply check
     # (`$r -notmatch '^ok'`) and a substring test would read any future
     # failure message containing "ok" -- "unlocked", "broken" -- as a
@@ -123,7 +126,7 @@ def shot(holder: str, out: pathlib.Path, run: Callable[..., str] | None = None,
         text = run("ssh", f"{PS} shot -Holder {holder}", timeout=timeout)
         found = _SHOT_OK.search(text)
         png = winvmguest.decode_shot(text) if found else None
-    except (SystemExit, RuntimeError) as exc:
+    except (SystemExit, RuntimeError, subprocess.TimeoutExpired) as exc:
         text, found, png = str(exc), None, None
     if png is None:
         if "999 screenshots" in text or ("wrote no file" in text and counter >= SHOT_LIMIT):

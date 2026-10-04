@@ -12,7 +12,6 @@ import pathlib
 import re
 import signal
 import subprocess
-import sys
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -221,31 +220,20 @@ class WinGuest:
     def capture(self, state: str, raw: pathlib.Path, cropped: pathlib.Path,
                 timeout: float) -> None:
         """Grab until two consecutive crops of the Amiga screen are identical."""
-        started, previous, made, shots = time.monotonic(), None, False, 0
+        started, previous, shots = time.monotonic(), None, 0
         holder = self._holder()
-        try:
-            while True:
-                left = timeout - (time.monotonic() - started)
-                # A short shot risks a timeout, so only the first one is allowed to be
-                # short: a failure capture with little time left must still leave a frame.
-                if left <= 0 or (left < SHOT_SECONDS and shots):
-                    raise RouteError(f"{state} did not settle inside {timeout:.0f}s")
-                made = False
-                shots += 1
-                self._take(holder, raw, cropped, min(SHOT_SECONDS, left))
-                made = True
-                frame = cropped.read_bytes()
-                if previous == frame:
-                    return
-                previous = frame
-        finally:
-            if not made and raw.exists() and sys.exc_info()[0] is not None:
-                try:
-                    from tools.amiga import screens  # noqa: PLC0415
-
-                    screens.canonical_file(raw, cropped)
-                except Exception:
-                    pass
+        while True:
+            left = timeout - (time.monotonic() - started)
+            # A short shot risks a timeout, so only the first one is allowed to be
+            # short: a failure capture with little time left must still leave a frame.
+            if left <= 0 or (left < SHOT_SECONDS and shots):
+                raise RouteError(f"{state} did not settle inside {timeout:.0f}s")
+            shots += 1
+            self._take(holder, raw, cropped, min(SHOT_SECONDS, left))
+            frame = cropped.read_bytes()
+            if previous == frame:
+                return
+            previous = frame
 
     def grab(self, state: str, raw: pathlib.Path, cropped: pathlib.Path,
              timeout: float) -> bool:
