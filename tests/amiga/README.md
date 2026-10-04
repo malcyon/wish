@@ -28,6 +28,7 @@ Tests for the Amiga port: its filesystem, saved-game and character-record reader
 | `test_amigaicons.py` | Checks the Amiga Curse and Silver Blades combat-icon art against DOS's own, off the player's disks. |
 | `test_amigaindexedrefs.py` | Checks `tools/amiga/amigaindexedrefs.py`'s `d8(An,Xn)` indexed-site search and its `lea` base-within-reach search, on hand-built instructions in a synthetic hunk. |
 | `test_amigajournalgates.py` | Checks the Silver Blades journal preflight against a fake private reader and that the grid fit ignores green text outside the emulator window, on built images. |
+| `test_amigakeys.py` | Checks that every key `amigadrive.KEYS` and the FS-UAE drivers send is in `tools/amiga/amigakeys.py` once, and its raw codes against the Amiga Hardware Reference Manual and WinUAE's `keyboard.h`. |
 | `test_amigalaterproof.py` | Checks the party ordering and the mask of engine-recomputed bytes in `tools/amiga/amigalaterproof.py`. |
 | `test_amigalaterslot.py` | Checks `tools/amiga/amigalaterslot.py` writes the name, count word and chain head the game's loader reads, on synthetic disks. |
 | `test_amigalaterwindow.py` | Checks that an Amiga Curse or Silver Blades record's unnamed `field_83_87` bytes survive to Amiga and to DOS, on records built here and on the player's disks. |
