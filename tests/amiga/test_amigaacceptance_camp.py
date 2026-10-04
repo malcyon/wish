@@ -40,6 +40,7 @@ from tools.amiga import (
     route_silver_blades,
     staging,
 )
+from tools.amiga.screens import rules_of
 from tools.amiga.winuaesession import RouteError
 
 clock = measure.clock  # the fixture that replaces the driver's time and sleep
@@ -287,19 +288,20 @@ def test_every_camp_sheet_rule_is_listed_by_the_party_menu_sheet_and_the_reverse
     maps = _maps(name)
     camp = {route_camp.sheet_state(n) for n in route_camp.SHEET_LINES[name]}
     camp |= {route_camp.SHEET_HEAL, route_camp.SHEET_SPENT}
-    # Every camp sheet shows the party menu's sheet frame, so the frame guard lists them all.
-    assert camp <= set(maps["guards"]["sheet"]["also"])
+    # Every camp sheet shows the party menu's sheet frame, so each frame guard rule lists them all.
+    for frame in rules_of(maps["guards"]["sheet"]):
+        assert camp <= set(frame["also"])
     for kind in ("guards", "identity"):
-        # A rule on the same box and picture as `sheet` collides with it, and each lists the other.
-        # The identity rules name a member, so only a camp sheet of the party menu's first
+        # A rule on the same box and picture as a `sheet` rule collides with it, and each lists the
+        # other. The identity rules name a member, so only a camp sheet of the party menu's first
         # member (Silver Blades' paladin, Curse's line 1) collides there.
-        sheet = maps[kind]["sheet"]
-        for state in camp & set(maps[kind]):
-            value = maps[kind][state]
-            for rule in value if isinstance(value, list) else [value]:
-                if (rule["box"], rule["sha256"]) == (sheet["box"], sheet["sha256"]):
-                    assert "sheet" in rule["also"] and state in sheet["also"], (kind, state)
-    assert route_camp.sheet_state(1) in maps["identity"]["sheet"]["also"]
+        for sheet in rules_of(maps[kind]["sheet"]):
+            for state in camp & set(maps[kind]):
+                for rule in rules_of(maps[kind][state]):
+                    if (rule["box"], rule["sha256"]) == (sheet["box"], sheet["sha256"]):
+                        assert "sheet" in rule["also"] and state in sheet["also"], (kind, state)
+    for sheet in rules_of(maps["identity"]["sheet"]):
+        assert route_camp.sheet_state(1) in sheet["also"]
 
 
 @pytest.mark.parametrize("name", sorted(route_camp.SHEET_LINES))

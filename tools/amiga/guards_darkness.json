@@ -958,6 +958,7 @@
       },
       {
         "also": [
+          "camp_sheet",
           "camp_sheet_items"
         ],
         "box": [
