@@ -1,7 +1,7 @@
 # Versioning, packaging and CI
 
 **Status: built and released.** Versioning, three workflows and a PyInstaller
-spec are in the tree. `v0.1.0`, `v0.1.1` and `v0.1.2` have been tagged and
+spec are in the tree. Versions `v0.1.0` through `v0.1.5` have been tagged and
 pushed, each with its own GitHub release page and PyPI upload.
 
 ---
@@ -174,8 +174,9 @@ what vulture flags.
    exactly one file beside `_internal/` and `wish export --help` prints its
    usage — which is the only check that reaches `tools.wish`, a hidden import
    PyInstaller's scan cannot find on its own.
-4. `publish`: gathers the three shipped files, writes `SHA256SUMS`, and hands
-   the lot to `softprops/action-gh-release` with `generate_release_notes`.
+4. `publish`: gathers the three shipped files, writes `SHA256SUMS`, extracts
+   this version's section from `CHANGELOG.md` as the release notes, and hands
+   the files and notes to `softprops/action-gh-release`.
 5. `pypi`: after `publish`, uploads the wheel and the sdist. §5.
 
 ## 4. The PyInstaller spec
@@ -243,8 +244,8 @@ file name and the environment name — hence `environment: pypi` and
 with no `password`. The publisher has to be registered on PyPI once before the
 first tag, or the upload fails on an unrecognised token.
 
-It runs on `v*` tags only and `needs: [publish]`, so a failed upload cannot
-leave a half-made release page behind it.
+It runs on `v*` tags only and `needs: [publish]`. The release page exists before
+the PyPI upload, so a failed upload leaves a release page that needs attention.
 
 ## Verification
 
