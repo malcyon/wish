@@ -250,11 +250,15 @@ FOUR = {"heal", "store-spells", "restore-spells", "identify"}
 
 def test_only_the_writes_seen_on_screen_and_kept_over_a_step_are_confirmed():
     # The R2, R3 and gap-run measurements in docs/96, "Which writes are proven".
+    # Level up (WISH-1): the sheet showed both classes, the game's own save
+    # kept the result and a reload brought it back, on Silver Blades (EPONA)
+    # and Pools of Darkness (DOMINIC). Curse and Pool of Radiance have no
+    # live press.
     assert {k: r.confirmed for k, r in ap.ROWS.items()} == {
         "pool-of-radiance": FOUR,
         "curse-of-the-azure-bonds": FOUR,
-        "secret-of-the-silver-blades": FOUR,
-        "pools-of-darkness": FOUR,
+        "secret-of-the-silver-blades": FOUR | {"level-up"},
+        "pools-of-darkness": FOUR | {"level-up"},
     }
 
 

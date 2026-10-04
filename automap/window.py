@@ -1978,16 +1978,21 @@ class AutomapBinding(QObject):
         log = amigalevelup.WriteLog(target)
         try:
             made = amigalevelup.write_plan(log, member, plan)
-        except (amigalevelup.CannotLevel, amiga.NotConnected) as why:
+        except Exception as why:
             if not log.made:
-                self.messages.say(
-                    f"level up: {member.name} cannot level: {why}", alarm=True)
-                return
+                if isinstance(why, (amigalevelup.CannotLevel,
+                                    amiga.NotConnected)):
+                    self.messages.say(
+                        f"level up: {member.name} cannot level: {why}",
+                        alarm=True)
+                    return
+                raise                   # nothing landed; `_level_up_amiga` logs it
             # Part-way: a "cannot level" line would be false. Logged only,
             # once, with exactly the writes that landed.
-            _log.error("Amiga level up for %s stopped part-way (%s: %s); "
-                       "writes made: %s", member.name, type(why).__name__, why,
-                       [(hex(at), data.hex()) for at, data in log.made])
+            _log.exception("Amiga level up for %s stopped part-way (%s); "
+                           "completed writes: %s", member.name,
+                           type(why).__name__,
+                           [(hex(at), data.hex()) for at, data in log.made])
             self._refresh_roster()
             return
         before = amigalevelup.summary(member.raw, key)["levels"]

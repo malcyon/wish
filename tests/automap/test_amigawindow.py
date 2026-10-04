@@ -686,6 +686,7 @@ def test_a_failure_between_writes_is_logged_and_nothing_escapes(monkeypatch, cap
         window._level_up(0)
     stops = [r for r in caplog.records if "stopped part-way" in r.message]
     assert len(stops) == 1 and "GuestError" in stops[0].message
+    assert "completed writes" in stops[0].message
     assert hex(HEAP) in stops[0].message and "'00'" in stops[0].message
     assert lines == []                      # no player line claims a result
     assert not any("failed" in r.message for r in caplog.records)
@@ -742,3 +743,39 @@ def test_can_write_is_read_through_a_wrapped_target():
     assert window._amiga_row() is not None
     target.can_write = False
     assert window._amiga_row() is None
+
+
+@pytest.mark.parametrize("error", [ValueError("outside the Amiga's memory"),
+                                   amigaparty.PartyError("odd"),
+                                   amiga.GuestError("gone")])
+def test_a_second_write_that_fails_logs_exactly_what_landed(monkeypatch, caplog, error):
+    window, target = pod_window([fighter(8)])
+    lines = spoken(window, monkeypatch)
+    real = target.write
+    count = []
+
+    def second_fails(addr, data, verify=True):
+        count.append(addr)
+        if len(count) == 2:
+            raise error
+        return real(addr, data, verify)
+
+    monkeypatch.setattr(target, "write", second_fails)
+    with caplog.at_level("ERROR", logger="wish.automap.window"):
+        window._level_up(0)
+    stops = [r for r in caplog.records if "stopped part-way" in r.message]
+    assert len(stops) == 1 and "completed writes" in stops[0].message
+    assert len(target.writes) == 1 and hex(target.writes[0][0]) in stops[0].message
+    assert lines == []
+
+
+def test_a_failure_with_nothing_written_that_is_not_a_trainer_stop_is_only_logged(
+        monkeypatch, caplog):
+    window, target = pod_window([fighter(8)])
+    lines = spoken(window, monkeypatch)
+    monkeypatch.setattr(amigalevelup, "write_plan",
+                        lambda *a: (_ for _ in ()).throw(ValueError("odd")))
+    with caplog.at_level("ERROR", logger="wish.automap.window"):
+        window._level_up(0)
+    assert lines == [] and target.writes == []
+    assert "level up for slot 0 failed" in caplog.text
