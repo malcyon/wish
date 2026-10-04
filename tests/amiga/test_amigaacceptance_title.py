@@ -1362,7 +1362,8 @@ def test_substituted_preservation_of_an_unlisted_title_refuses_before_any_guest_
         tmp_path, clock, specimen_tree):
     manifest = _substituted_manifest(tmp_path)
     data = json.loads(manifest.read_text())
-    data["title"] = "darkness"
+    # Pools of Darkness has its own, earlier refusal; the measure-only route stays unlisted.
+    data["title"] = "darkness-unstarted"
     manifest.write_text(json.dumps(data))
     _refuse_before_any_guest_call(tmp_path, clock, "--specimen-issue", manifest=manifest)
 

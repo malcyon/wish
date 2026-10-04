@@ -180,9 +180,33 @@ DARKNESS_UNSTARTED = dataclasses.replace(
 )
 
 
+def _darkness_import_slot(dest: amiga_adf.AmigaDisk, dest_letter: str,
+                          source: amiga_adf.AmigaDisk, source_letter: str) -> bytes:
+    """Replace `dest`'s `SavGam<dest_letter>.pty` with `source`'s slot and return the bytes written.
+
+    A slot that is missing, or that the Pools of Darkness reader rejects, is refused. The
+    existing file's own name case stays and no other file, `Vault<L>.DAT` included, is touched.
+    """
+    data = amiga_savegame.pod_read_slot(source, source_letter)
+    amiga_savegame.pod_from_amiga(data)
+    amiga_savegame.pod_parse(data)
+    path = amiga_savegame.pod_slot_path(dest_letter)
+    name = dest.lookup(path).name
+    dest.remove_file(path)
+    dest.write_file(path.rsplit("/", 1)[0] + "/" + name, data)
+    return data
+
+
 def _prepare_darkness(run: pathlib.Path, override: pathlib.Path | None,
-                      loaded: str = DARKNESS_LOADED) -> dict[str, Any]:
-    """Disk 3 is itself the registered save disk, so `override` stands in for it and no specimen file exists."""
+                      loaded: str = DARKNESS_LOADED, *, substitute: pathlib.Path | None = None,
+                      substitute_letter: str = "A") -> dict[str, Any]:
+    """Disk 3 is itself the registered save disk, so `override` stands in for it and no specimen file exists.
+
+    `substitute`, a disk some other tool wrote a party onto, has its `substitute_letter` slot
+    replace the loaded slot on the run's working disk 3 (`_darkness_import_slot`); the pinned
+    disks and the loaded slot's letter are unchanged, and `state_a` and `names_a` describe the
+    substituted party.
+    """
     wanted = {"disk1": DARKNESS_DISK1_SHA256, "disk2": DARKNESS_DISK2_SHA256,
               "disk3": DARKNESS_DISK3_SHA256}
     if override is not None:
@@ -201,6 +225,28 @@ def _prepare_darkness(run: pathlib.Path, override: pathlib.Path | None,
     for taken in (DARKNESS.control_letter, DARKNESS.after_letter):
         if taken in present:
             raise RouteError(f"slot {taken} already exists on disk 3")
+    substituted: dict[str, str] | None = None
+    if substitute is not None:
+        substitute = pathlib.Path(substitute)
+        if not substitute.is_file():
+            raise RouteError(f"the substitute {substitute} is missing")
+        source_disk = amiga_adf.AmigaDisk.open(substitute)
+        source_problems = source_disk.verify()
+        if source_problems:
+            raise RouteError(f"{substitute} fails ADF verification: {source_problems}")
+        working = amiga_adf.AmigaDisk(bytearray(images["disk3"][1]))
+        try:
+            _darkness_import_slot(working, loaded, source_disk, substitute_letter)
+        except (amiga_adf.AmigaDiskError, amiga_savegame.AmigaSaveError,
+                amiga_savegame.PodSaveError, ValueError) as exc:
+            raise RouteError(f"the substitute slot could not be imported: {exc}") from exc
+        problems = working.verify()
+        if problems:
+            raise RouteError(f"the substituted working disk fails verification: {problems}")
+        save = working
+        images["disk3"] = (images["disk3"][0], working.to_bytes())
+        substituted = {"path": str(substitute), "sha256": sha256(substitute),
+                       "letter": substitute_letter}
     reading = DARKNESS.read_slot(save, loaded)
     if "place" not in reading:
         raise RouteError(f"slot {loaded} does not decode: {reading}")
@@ -210,7 +256,8 @@ def _prepare_darkness(run: pathlib.Path, override: pathlib.Path | None,
         path = run / f"{key}.adf"
         path.write_bytes(data)
         disks[key] = {"path": str(path), "sha256": sha256(path)}
-    if any(disks[key]["sha256"] != pinned for key, pinned in wanted.items()):
+    if any(disks[key]["sha256"] != pinned for key, pinned in wanted.items()
+           if not (key == "disk3" and substituted)):
         raise RouteError("a working copy differs from the pinned disk")
     manifest = {
         "title": "darkness", "disks": disks, "registered": {},
@@ -219,6 +266,8 @@ def _prepare_darkness(run: pathlib.Path, override: pathlib.Path | None,
         "loaded_letter": loaded,
         "state_a": reading["place"], "names_a": reading["names"],
     }
+    if substituted:
+        manifest["substitute"] = substituted
     after = _find_images({k: v for k, v in wanted.items() if override is None or k != "disk3"})
     if any(hashlib.sha256(after[key][1]).hexdigest() != wanted[key] for key in after):
         raise RouteError("a registered image changed during preparation")

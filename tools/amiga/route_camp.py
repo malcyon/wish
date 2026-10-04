@@ -99,9 +99,17 @@ and the same kind of picker, with `Lay` where the other two say `Heal`:
   14 bytes at `g57B2`) when nothing above the field can be borrowed, so
   `D S S` clears the preset here too.
 * The keypad translation is the same code (`04A0A0`): keypad 0 to 9 give
-  `$89 $85 $84 $83 $86 $80 $82 $87 $88 $81`. The camp highlight's own keys
-  are not read, so only line 1, where neither the highlight nor the picker
-  moves, is driven.
+  `$89 $85 $84 $83 $86 $80 $82 $87 $88 $81`.
+* **The camp highlight** is `g57A8`. The camp loop (`00258E`) hands every key
+  not on the bar to `023AFC`, which moves it to the next member on `$84`/`$85`
+  and to the previous one on `$87`/`$88`, wrapping at either end (NP2, NP1 and
+  NP8, NP7). Camp entry does not reset it.
+* **The sheet** adds `Items` only while the member has items (`021558`-`02156C`);
+  `I` runs the item routine `021932`, whose list starts on the first item
+  (`021942`) with a bar of `Rdy`, `Trade`, `Drop`, `Halve`, `Join` and `Exit`. `Rdy`
+  (`021BBA`) runs the ready routine `022152`, and the list redraws with the same
+  row highlighted. The keypad Down (NP2) moves the row highlight: the cursor Down
+  was dropped on this list in a run under FS-UAE.
 
 Pool of Radiance's `/program` (file offsets; one build on every disk-one image)
 takes `items N`, which shows the item list of the member on line N, `rest
@@ -218,7 +226,7 @@ REST_ADD, REST_SUBTRACT, REST_GO = "A", "S", "R"
 #: The keys that move the camp's highlight and HEAL's picker to the next and the previous
 #: member, per title: Silver Blades takes `$84`/`$88` (NP2, NP8; measured), Curse only
 #: `$85`/`$87` (NP1, NP7; read from `0237CA` and `01BF8E`). Pools of Darkness' picker takes
-#: `$84`/`$88` (`01B084`); its camp highlight is not read, and no line it drives moves either.
+#: `$84`/`$88` (`01B084`) and so does its camp highlight (`023AFC`).
 MEMBER_KEYS = {"ssb": ("NP2", "NP8"), "curse": ("NP1", "NP7"), "darkness": ("NP2", "NP8"),
                "pool": ("NP1", "NP7")}
 REST_STEP = 5
@@ -237,11 +245,14 @@ HEAL_LINES = {"ssb": (1,), "curse": (6,), "darkness": (1,)}
 #: The titles whose magic menu and effects list have been read, so `display` may name them.
 DISPLAY_TITLES = frozenset({"curse", "pool"})
 #: The titles whose camp highlight and HEAL picker are read to wrap from the first member to
-#: the last and back (Curse `0237CA` and `01BF56`-`01BF8A`, Pool of Radiance's highlight
-#: `01CBD4`), so a later line may be reached backwards.
-WRAPS = frozenset({"curse", "pool"})
+#: the last and back (Curse `0237CA` and `01BF56`-`01BF8A`, Pools of Darkness' highlight
+#: `023AFC`, Pool of Radiance's highlight `01CBD4`), so a later line may be reached backwards.
+WRAPS = frozenset({"curse", "darkness", "pool"})
 #: The titles whose sheet and item routine have been read, so `items N` may name them.
-ITEMS_TITLES = frozenset({"pool", "ssb"})
+ITEMS_TITLES = frozenset({"darkness", "pool", "ssb"})
+#: The titles whose item routine's `Rdy` has been read, so `ready N I` may name them.
+READY_TITLES = frozenset({"darkness"})
+READY = "R"
 #: The titles whose camp sheet steps, `view N` and `heal N`, are not built: Pool of Radiance's
 #: sheet has no HEAL, and its guard map holds no camp sheet.
 SHEETLESS = frozenset({"pool"})
@@ -448,11 +459,16 @@ def _step_line(words: list[str]) -> int | None:
     return int(words[1]) if words[1].isdigit() else None
 
 
-def _join_place(words: list[str]) -> tuple[int, int] | None:
-    """The party line and item row a `join N I` token names, else None."""
-    if words[0] != "join" or len(words) != 3 or not all(w.isdigit() for w in words[1:]):
+def _item_place(words: list[str]) -> tuple[int, int] | None:
+    """The party line and item row a `join N I` or `ready N I` token names, else None."""
+    if len(words) != 3 or not all(w.isdigit() for w in words[1:]):
         return None
     return int(words[1]), int(words[2])
+
+
+def _join_place(words: list[str]) -> tuple[int, int] | None:
+    """The party line and item row a `join N I` token names, else None."""
+    return _item_place(words) if words[0] == "join" else None
 
 
 #: The steps that act on the machine and not on the game: `snapshot NAME` saves it, `restore NAME`
@@ -513,7 +529,8 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
     only for a title in `ITEMS_TITLES`). A title in `SHEETLESS` takes no `view`
     or `heal`, so its rests must total less than `CLOCK_BLIND_REST`, which the
     clock can prove. `join N I` presses JOIN on row I of line N's item list
-    (only for a title in `JOIN_TITLES`).
+    (only for a title in `JOIN_TITLES`), and `ready N I` presses READY on it (only for a
+    title in `READY_TITLES`).
     """
     view_lines, heal_lines = sheet_lines(name)
     _validate_machine_steps(tuple(t for t in tokens if is_machine_step(t)))
@@ -534,13 +551,25 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
         words = token.split()
         if words[0] == "items":
             if name not in ITEMS_TITLES:
-                raise RouteError(f"{token!r}: the item list is built for Pool of Radiance "
-                                 f"and Silver Blades only")
+                raise RouteError(f"{token!r}: the item list is built for Pool of Radiance, "
+                                 f"Pools of Darkness and Silver Blades only")
             line = _step_line(words)
             if line is None:
                 raise RouteError(f"camp step {token!r} is not items or items N")
             if not 1 <= line <= lines_held:
                 raise RouteError(f"{token!r}: the party has lines 1 to {lines_held} only")
+            continue
+        if words[0] == "ready":
+            if name not in READY_TITLES:
+                raise RouteError(f"{token!r}: READY is built for Pools of Darkness only")
+            place = _item_place(words)
+            if place is None:
+                raise RouteError(f"camp step {token!r} is not ready N I")
+            line, row = place
+            if not 1 <= line <= lines_held:
+                raise RouteError(f"{token!r}: the party has lines 1 to {lines_held} only")
+            if not 1 <= row <= ITEM_ROWS:
+                raise RouteError(f"{token!r}: an item list has rows 1 to {ITEM_ROWS} only")
             continue
         if words[0] == "join":
             if name not in JOIN_TITLES:
@@ -577,7 +606,8 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
                                  "Radiance only")
             continue
         also = (", nor items N" if name in ITEMS_TITLES else "") + (
-            " or join N I" if name in JOIN_TITLES else "")
+            " or join N I" if name in JOIN_TITLES else "") + (
+            " or ready N I" if name in READY_TITLES else "")
         raise RouteError(f"camp step {token!r} is not view, view N, heal, heal N, "
                          f"rest DURATION or display{also}")
     if rest_minutes(tokens) >= CLOCK_BLIND_REST and name in SHEETLESS:
@@ -597,7 +627,7 @@ def normalise(tokens: tuple[str, ...]) -> tuple[str, ...]:
     """Each step in one spelling, so two spellings build one route.
 
     `view` becomes `view 1`, `items` becomes `items 1`, `heal 1` becomes
-    `heal`, and a rest time becomes its minutes; `join N I` is already one spelling.
+    `heal`, and a rest time becomes its minutes; `join N I` and `ready N I` are already one spelling.
     """
     out = []
     for token in tokens:
@@ -687,6 +717,16 @@ def steps_for(tokens: tuple[str, ...], name: str = "ssb", party_size: int | None
             steps += [(JOIN, join_state(line), "key"),
                       (SHEET_EXIT, items_sheet_state(line), "key"), (SHEET_EXIT, CAMP, "key")]
             steps += back
+        elif words[0] == "ready":
+            line, row = int(words[1]), int(words[2])
+            there, back = _moves(line, name, party_size, CAMP)
+            steps += there
+            steps += [(VIEW, items_sheet_state(line), "key"), (ITEMS, items_state(line), "key")]
+            steps += [(ITEM_NEXT, items_row_state(line, n), "key") for n in range(2, row + 1)]
+            # The list redraws with the same row highlighted, whatever READY did to the item.
+            steps += [(READY, items_row_state(line, row), "key"),
+                      (SHEET_EXIT, items_sheet_state(line), "key"), (SHEET_EXIT, CAMP, "key")]
+            steps += back
         elif words[0] == "display":
             # The list is left from its first page; a further page is recorded, not read.
             steps += [(CAMP_MAGIC, MAGIC_MENU, "key"), (MAGIC_DISPLAY, DISPLAY, "key"),
@@ -732,7 +772,7 @@ def camp_title(title: AmigaTitle, tokens: tuple[str, ...], party_size: int = PAR
     limits = dict(title.wait_limits)
     if rest_minutes(tokens):
         limits[CAMP] = max(limits.get(CAMP, 0.0), REST_LIMIT)
-    item_tokens = tuple(t for t in normalise(tokens) if t.split()[0] in ("items", "join"))
+    item_tokens = tuple(t for t in normalise(tokens) if t.split()[0] in ("items", "join", "ready"))
     item_states = {state for _, state, _ in steps_for(item_tokens, name, party_size)}
     item_states |= {joined_after(state) for state in item_states if is_join(state)}
     strict = title.strict | ({CAMP} | item_states if item_states else set())

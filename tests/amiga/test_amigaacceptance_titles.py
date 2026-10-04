@@ -872,13 +872,14 @@ def test_curse_prepare_threads_a_substitute_slot_through_to_the_manifest(
 def test_prepare_refuses_a_substitute_on_a_title_that_is_not_substitutable(
         tmp_path, monkeypatch):
     """`substitute` is only wired through `_SUBSTITUTABLE`; every other title
-    refuses it before a run folder is ever created."""
+    refuses it before a run folder is ever created.
+    Pools of Darkness takes one, so the measure-only route, which loads no save, stands in."""
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     run_root = scratch.cache_dir("acceptance", amiga_route.ISSUE)
     before = set(run_root.iterdir()) if run_root.exists() else set()
     with pytest.raises(winuaesession.RouteError, match="takes no substitute slot"):
-        foundation.prepare(foundation.DARKNESS, "no-substitute-run",
+        foundation.prepare(foundation.DARKNESS_UNSTARTED, "no-substitute-run",
                            substitute=tmp_path / "x.adf")
     after = set(run_root.iterdir()) if run_root.exists() else set()
     assert after == before
@@ -3339,7 +3340,7 @@ def test_a_published_disk_3_reload_refuses_a_summary_of_another_disk_or_a_failed
 def test_prepare_takes_a_number_or_wish_n_for_the_run_folder(tmp_path, monkeypatch, issue, ok):
     monkeypatch.setattr(scratch, "cache_dir", lambda *parts: tmp_path.joinpath(*parts))
 
-    def fake(run, specimen):
+    def fake(run, specimen, **substitute):  # darkness takes `substitute` keywords now
         scratch.ensure(run)
         return {"title": "darkness", "names_a": NAMES}
 

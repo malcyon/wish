@@ -1315,3 +1315,18 @@ def test_a_staged_accept_whose_guest_did_not_stop_registers_nothing(
     assert result["success"] is False
     assert "did not stop" in result["specimen_error"]
     assert "specimen" not in result and _nothing_registered(specimen_tree)
+
+
+def test_a_pools_of_darkness_substitute_refuses_preservation_before_any_guest_call(
+        tmp_path, clock, specimen_tree):
+    """Its manifest has no registered specimen, so preserving one would fail late."""
+    guest = AcceptGuest(clock)
+    manifest = json.loads(_manifest(tmp_path).read_text())
+    manifest.update({"title": "darkness", "substitute": {"path": "x", "sha256": "0", "letter": "B"},
+                     "registered": {}})
+    path = tmp_path / "darkness-substitute.json"
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(winuaesession.RouteError, match="Pools of Darkness substitute"):
+        _accept(tmp_path, clock, guest=guest, manifest=path,
+                preserve_specimen=True, specimen_issue=ISSUE)
+    assert guest.calls == []

@@ -66,11 +66,76 @@ def test_pool_takes_items_for_a_line_the_party_has_and_no_sheet(text, why):
         route_camp.validate_steps(tuple(text.split(";")), 4, name="pool")
 
 
-@pytest.mark.parametrize("name", ["curse", "darkness"])
+# Pools of Darkness' item routine is read now, so only Curse is left without one; the message
+# names the three titles that have it.
+@pytest.mark.parametrize("name", ["curse"])
 def test_items_is_refused_for_a_title_whose_item_routine_is_unread(name):
-    with pytest.raises(RouteError,
-                       match="item list is built for Pool of Radiance and Silver Blades only"):
+    with pytest.raises(RouteError, match="item list is built for Pool of Radiance, "
+                                         "Pools of Darkness and Silver Blades only"):
         route_camp.parse_steps("items 2", name)
+
+
+def test_darkness_camp_highlight_wraps_on_np2_and_np8():
+    assert "darkness" in route_camp.WRAPS
+    assert route_camp.steps_for(("items 2",), "darkness", 6)[0] == ("NP2", "camp", "key")
+    # The last of six lines is one NP8 back from the first, and NP2 forward brings it home.
+    steps = route_camp.steps_for(("items 6",), "darkness", 6)
+    assert steps[0] == ("NP8", "camp", "key") and steps[-1] == ("NP2", "camp", "key")
+
+
+def test_darkness_items_goes_v_i_e_e():
+    assert route_camp.steps_for(("items 1",), "darkness", 6) == (
+        ("V", "camp_sheet_items", "key"), ("I", "camp_items", "key"),
+        ("E", "camp_sheet_items", "key"), ("E", "camp", "key"))
+
+
+def test_ready_presses_np2_down_to_the_row_then_r_on_the_redrawn_row():
+    assert route_camp.steps_for(("ready 1 7",), "darkness", 6) == (
+        ("V", "camp_sheet_items", "key"), ("I", "camp_items", "key"),
+        *[("NP2", f"camp_items_row{n}", "key") for n in range(2, 8)],
+        ("R", "camp_items_row7", "key"),
+        ("E", "camp_sheet_items", "key"), ("E", "camp", "key"))
+    assert route_camp.steps_for(("ready 1 1",), "darkness", 6)[2] == (
+        "R", "camp_items", "key")
+    assert route_camp.steps_for(("ready 3 1",), "darkness", 6)[:2] == (
+        ("NP2", "camp", "key"), ("NP2", "camp", "key"))
+
+
+@pytest.mark.parametrize("text,why", [
+    ("ready 1 0", "rows 1 to 16 only"),
+    ("ready 1 17", "rows 1 to 16 only"),
+    ("ready 7 1", "lines 1 to 6 only"),
+    ("ready 1", "is not ready N I"),
+    ("ready x 1", "is not ready N I"),
+])
+def test_ready_refuses_a_place_that_is_not_a_line_and_row(text, why):
+    with pytest.raises(RouteError, match=why):
+        route_camp.validate_steps((text,), 6, name="darkness")
+
+
+@pytest.mark.parametrize("name", ["pool", "ssb", "curse"])
+def test_ready_is_refused_for_a_title_whose_ready_routine_is_unread(name):
+    with pytest.raises(RouteError, match="READY is built for Pools of Darkness only"):
+        route_camp.validate_steps(("ready 1 1",), 4, name=name)
+
+
+def test_ready_steps_go_before_the_camp_save_and_every_state_is_strict():
+    tokens = ("ready 1 7", "ready 1 7")
+    title = route_camp.camp_title(route_darkness.DARKNESS, tokens, 6, name="darkness")
+    at = route_darkness.DARKNESS.route.index(route_camp.CAMP_SAVE_STEP)
+    added = route_camp.steps_for(tokens, "darkness", 6)
+    assert title.route == (*route_darkness.DARKNESS.route[:at], *added,
+                           *route_darkness.DARKNESS.route[at:])
+    assert {"camp", "camp_sheet_items", "camp_items",
+            *(f"camp_items_row{n}" for n in range(2, 8))} <= set(title.strict)
+
+
+def test_ready_marks_land_after_the_steps_before_them():
+    title = route_camp.camp_title(route_darkness.DARKNESS, ("ready 1 2", "snapshot a"), 6,
+                                  name="darkness")
+    marks = route_camp.camp_marks(title, ("ready 1 2", "snapshot a"), 6, name="darkness")
+    assert list(marks.values()) == [(("snapshot", "a"),)]
+    assert title.route[next(iter(marks)) - 1] == ("E", "camp", "key")
 
 
 def test_the_pool_items_steps_go_between_the_first_camp_key_and_its_camp_save():

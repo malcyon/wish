@@ -1482,6 +1482,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             raise RouteError("camp steps are driven on a published accept, or a Pools of "
                              "Darkness or Pool of Radiance accept, only")
         title = accept_title(title, manifest)
+    if preserve_specimen and "substitute" in manifest and manifest.get("title") == "darkness":
+        raise RouteError("a Pools of Darkness substitute has no registered specimen to preserve")
     if preserve_specimen and manifest.get("mode") == PUBLISHED_DISK_THREE_MODE:
         if specimen_issue is None or not SPECIMEN_ISSUE.fullmatch(specimen_issue):
             raise RouteError("a published disk 3 --preserve-specimen needs --specimen-issue "
@@ -2439,7 +2441,8 @@ def _name(title: AmigaTitle) -> str:
 
 #: Titles with a slot importer for their own save format.
 _SUBSTITUTABLE = frozenset(
-    source.name for source in (POOL_SOURCES, CURSE_SOURCES) if source.import_slot is not None)
+    {"darkness", *(source.name for source in (POOL_SOURCES, CURSE_SOURCES)
+                   if source.import_slot is not None)})
 
 
 #: The titles whose own accept route (not a published one) takes camp steps from its manifest.
@@ -3342,8 +3345,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--substitute", type=pathlib.Path, default=None,
                    help="a disk holding a party some other tool wrote, such as a Save As "
                         "Amiga output, whose --substitute-letter slot replaces the route's "
-                        "loaded slot; Pool, Curse and Silver Blades accept this, Silver "
-                        "Blades in place of --source")
+                        "loaded slot; Pool, Curse, Pools of Darkness and Silver Blades accept "
+                        "this, Silver Blades in place of --source")
     p.add_argument("--substitute-letter", default="A",
                    help="the slot to read off --substitute (default A)")
     m = sub.add_parser("measure", help="boot and press the route up to the first save; writes nothing")
