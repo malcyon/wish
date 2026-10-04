@@ -642,3 +642,80 @@ def test_a_press_that_the_gate_would_not_offer_writes_nothing(how):
         window.mapper.title_check = NOT_OURS
     window._level_up(0)
     assert target.writes == []
+
+
+# -- review follow-ups -------------------------------------------------------------
+
+def test_a_pools_of_darkness_dialog_never_shows_a_pool_of_radiance_name(monkeypatch):
+    from PyQt6.QtWidgets import QInputDialog
+
+    from goldbox import spells
+    window, target = pod_window([magic_user()])
+    called = []
+    monkeypatch.setattr(spells, "load_spell_names",
+                        lambda *a, **k: called.append(a) or {9: "Burning Hands"})
+    monkeypatch.setattr("automap.paths.find_disks", lambda *a, **k: called.append(a)
+                        or "/nowhere")
+    shown = []
+    monkeypatch.setattr(QInputDialog, "getItem", staticmethod(
+        lambda parent, title, label, items, *a: shown.extend(items) or ("", False)))
+    window._level_up(0)
+    assert shown == [f"spell {i}" for i in range(9, 22)]
+    assert called == []
+
+
+def test_silver_blades_keeps_its_c64_spell_names(monkeypatch):
+    from goldbox import spells
+    window, _ = attached(SILVER)
+    monkeypatch.setattr("automap.live._disk_images", lambda root, game: ["x.d64"])
+    monkeypatch.setattr("automap.paths.find_disks", lambda game=None: "root")
+    monkeypatch.setattr(spells, "load_spell_names", lambda path, game=None: {9: game.key})
+    assert window._names_for_spells() == {9: "secret-of-the-silver-blades"}
+
+
+def test_a_failure_between_writes_is_logged_and_nothing_escapes(monkeypatch, caplog):
+    window, target = pod_window([fighter(8)])
+    lines = spoken(window, monkeypatch)
+
+    def half(t, member, plan):
+        t.write(member.address, b"\x00")
+        raise amiga.GuestError("the emulator stopped answering")
+
+    monkeypatch.setattr(amigalevelup, "write_plan", half)
+    with caplog.at_level("ERROR", logger="wish.automap.window"):
+        window._level_up(0)
+    assert "stopped part-way" in caplog.text and "GuestError" in caplog.text
+    assert lines == []                      # no player line claims a result
+
+
+def test_an_error_after_the_writes_is_logged_and_nothing_escapes(monkeypatch, caplog):
+    window, target = pod_window([fighter(8)])
+    monkeypatch.setattr(amigalevelup, "summary",
+                        lambda *a: (_ for _ in ()).throw(KeyError("odd")))
+    with caplog.at_level("ERROR", logger="wish.automap.window"):
+        window._level_up(0)
+    assert "level up for slot 0 failed" in caplog.text
+    assert target.writes                    # the writes were made
+
+
+def test_the_gate_is_checked_again_after_the_spell_dialog(monkeypatch):
+    from PyQt6.QtWidgets import QInputDialog
+    window, target = pod_window([magic_user()])
+    monkeypatch.setattr(window, "_names_for_spells", lambda: {})
+
+    def pick(*_a):
+        target.put(BASE + amigaparty.ROWS[POOLS_OF_DARKNESS].mode,
+                   bytes([amigaparty.ROWS[POOLS_OF_DARKNESS].combat_value]))
+        return "spell 10", True
+
+    monkeypatch.setattr(QInputDialog, "getItem", staticmethod(pick))
+    window._level_up(0)
+    assert target.writes == []
+
+
+def test_can_write_is_read_through_a_wrapped_target():
+    window, target = pod_window([fighter(8)])
+    window.mapper.target = SimpleNamespace(target=target)
+    assert window._amiga_row() is not None
+    target.can_write = False
+    assert window._amiga_row() is None

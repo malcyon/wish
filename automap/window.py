@@ -983,6 +983,7 @@ class AutomapBinding(QObject):
         #: Spell names, read off the player's disks the first time a wizard is
         #: levelled and kept after. A magic-user picks its new spell by name.
         self._spell_names: dict[int, str] | None = None
+        self._spell_names_for: str | None = None
         self.strip = BottomStrip(self.root)
         self.notes_panel = NotesPanel(self.root)
         self.notes_panel.chosen.connect(self.point_at)
@@ -1599,7 +1600,8 @@ class AutomapBinding(QObject):
         target = self.mapper.target
         row = amigaparty.row_for(target)
         if (row is None or "level-up" not in row.confirmed
-                or not getattr(target, "can_write", False)):
+                or not getattr(getattr(target, "target", target),
+                               "can_write", False)):
             return None
         return row
 
@@ -1784,6 +1786,17 @@ class AutomapBinding(QObject):
         names: the dialog falls back to numbering the offers, which is worse
         but is not a rejection.
         """
+        title = (amiga.MACHINES[self._amiga_key].title
+                 if self._amiga_key is not None else self.state.title)
+        game = game_named(title)
+        if game is None:
+            # A title with no C64 port (Pools of Darkness) has no name table,
+            # and `find_disks` and `load_spell_names` would answer with Pool of
+            # Radiance's: a wrong name on a spell is worse than its number.
+            return {}
+        if self._spell_names_for != title:
+            self._spell_names = None
+            self._spell_names_for = title
         if self._spell_names is None:
             # `find_disks` returns the *directory*, not a list of images -- the
             # same form `live.item_names` walks with `_disk_names`. Iterating
@@ -1792,7 +1805,6 @@ class AutomapBinding(QObject):
             from .paths import find_disks
 
             self._spell_names = {}
-            game = game_named(self.state.title)
             root = find_disks(game)
             for path in (_disk_images(root, game) if root else ()):
                 try:
@@ -1915,13 +1927,31 @@ class AutomapBinding(QObject):
         """The card's button on an Amiga: the title's own trainer, copied in
         `amigalevelup`, planned on the live record and written through the
         target. Nothing is written unless the title's row confirms `level-up`,
-        the machine can be written and the game is not in a fight."""
+        the machine can be written and the game is not in a fight; the gate is
+        checked again after the spell dialog, which can stay open while the
+        game moves on. Nothing escapes this slot: any other failure is logged
+        (it may have stopped part-way, which "cannot level" would misreport,
+        so no player line is written for it) and the cards are read again."""
+        try:
+            self._press_level_up_amiga(slot)
+        except Exception:
+            _log.exception("Amiga level up for slot %s failed", slot)
+            try:
+                self._refresh_roster()
+            except Exception:
+                _log.exception("The cards could not be read after it")
+
+    def _may_level_up_amiga(self) -> bool:
+        row = self._amiga_row()
+        return not (self._amiga_key is None or row is None
+                    or self.mapper.title_check is NOT_OURS
+                    or amigaparty.mode(self.mapper.target)
+                    in (None, row.combat_value))
+
+    def _press_level_up_amiga(self, slot: int) -> None:
         target = self.mapper.target
         key = self._amiga_key
-        row = self._amiga_row()
-        if (key is None or row is None
-                or self.mapper.title_check is NOT_OURS
-                or amigaparty.mode(target) in (None, row.combat_value)):
+        if not self._may_level_up_amiga():
             return
         party = amigaparty.read_party(target)
         member = next((m for m in party or () if m.slot == slot), None)
@@ -1937,13 +1967,27 @@ class AutomapBinding(QObject):
             spell = self._chosen_spell(member.raw, member.name, offers=offers)
             if spell is None:
                 return                  # the player closed the dialog
+            if not self._may_level_up_amiga():
+                return                  # the game moved on under the dialog
         try:
             plan = amigalevelup.plan_member(member, key, learn=spell or None)
-            amigalevelup.write_plan(target, member, plan)
-        except (amigalevelup.CannotLevel, amiga.NotConnected) as why:
+        except amigalevelup.CannotLevel as why:
             self.messages.say(f"level up: {member.name} cannot level: {why}",
                               alarm=True)
             return
+        try:
+            made = amigalevelup.write_plan(target, member, plan)
+        except amigalevelup.CannotLevel as why:
+            # Raised before the first write, so nothing was changed.
+            self.messages.say(f"level up: {member.name} cannot level: {why}",
+                              alarm=True)
+            return
+        except Exception:
+            # A transport error can land between writes. `write_plan` does not
+            # say how far it got, so the log carries the plan it was making.
+            _log.exception("Amiga level up for %s stopped part-way; plan "
+                           "writes %s", member.name, plan.writes)
+            raise
         before = amigalevelup.summary(member.raw, key)["levels"]
         after = amigalevelup.summary(amigalevelup.apply_to(member.raw, plan),
                                      key)["levels"]
@@ -1953,6 +1997,7 @@ class AutomapBinding(QObject):
         bits = bits or [f"a {name}" for name in plan.classes]
         summary = bits[0] if len(bits) == 1 else (
             ", ".join(bits[:-1]) + " and " + bits[-1])
+        _log.debug("Amiga level up wrote %d runs", len(made))
         self.messages.say(f"level up: {member.name} is now {summary}!")
         self._refresh_roster()
 
