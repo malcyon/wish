@@ -17,4 +17,4 @@ Scripts that generate files from the code and the game's data: the compiled Qt f
 | `genmemory.py` | **Generates** `docs/41-memory-regions.md` from `goldbox/memory.py`. |
 | `genspells.py` | **Generates** `docs/86-spell-table.md` from `SPELLN00` on a game disk. |
 | `gentemplates.py` | **Generates** `docs/87-item-templates.md`: every item record on the game disks, which are the records `wish` copies when a YAML entry names a `template`. |
-| `genui.py` | Compiles `editor/character.ui` to `editor/ui_character.py`. The editor calls `ensure_current()` at startup, so it is rarely run by hand; `--check` regenerates into memory and fails if the committed file differs, which is what CI runs. |
+| `genui.py` | Compiles every `.ui` to its `ui_*.py`; Wish calls `ensure_current()` at startup, and `--check` is the check CI runs. |

@@ -4,7 +4,7 @@
     tools/generate/genui.py [--check]
 
 `--check` regenerates into memory and fails if the committed file differs,
-which is what CI wants. The editor calls `ensure_current()` at startup, so in
+which is what CI wants. Wish calls `ensure_current()` at startup, so in
 normal use this never has to be run by hand -- edit the .ui in Qt Designer,
 restart the editor, done.
 """
@@ -12,6 +12,7 @@ restart the editor, done.
 from __future__ import annotations
 
 import argparse
+import os
 import pathlib
 import subprocess
 import sys
@@ -46,7 +47,6 @@ def discover() -> list[tuple[pathlib.Path, pathlib.Path]]:
 
 def compile_ui(ui: pathlib.Path) -> str:
     """Run pyuic6 and return the generated source."""
-    import os
     env = dict(os.environ, PYTHONIOENCODING="utf-8")
     out = subprocess.run([sys.executable, "-m", "PyQt6.uic.pyuic", str(ui)],
                          capture_output=True, text=True, encoding="utf-8", env=env)
@@ -56,26 +56,34 @@ def compile_ui(ui: pathlib.Path) -> str:
 
 
 def ensure_current(ui: pathlib.Path | None = None,
-                   py: pathlib.Path | None = None) -> bool:
-    """Regenerate stale pairs. Returns True if anything was written.
+                   py: pathlib.Path | None = None) -> list[pathlib.Path]:
+    """Regenerate stale pairs and return the `.ui` paths actually rewritten.
 
     Called with no arguments, checks every pair in the project. Called with
-    a specific (ui, py), checks only that one -- which is what
-    `editor/__main__.py` still does.
+    a specific (ui, py), checks only that one.
+
+    A `.ui` newer than its compiled file is only a hint: a checkout writes
+    files in any order, and pyuic6's header differs on every machine. The file
+    is rewritten only when the generated widgets differ; otherwise its bytes
+    stay and its mtime is refreshed so the next start skips the compile.
     """
     if ui is not None and py is not None:
         pairs = [(ui, py)]
     else:
         pairs = discover()
-    wrote = False
+    rewritten = []
     for ui_path, py_path in pairs:
         if not ui_path.exists():
             continue
         if py_path.exists() and py_path.stat().st_mtime >= ui_path.stat().st_mtime:
             continue
-        py_path.write_text(encoding="utf-8", data=compile_ui(ui_path))
-        wrote = True
-    return wrote
+        source = compile_ui(ui_path)
+        if py_path.exists() and body(py_path.read_text(encoding="utf-8")) == body(source):
+            os.utime(py_path)
+            continue
+        py_path.write_text(encoding="utf-8", data=source)
+        rewritten.append(ui_path)
+    return rewritten
 
 
 def body(source: str) -> str:

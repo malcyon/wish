@@ -124,7 +124,7 @@ def test_a_save_disk_called_export_is_still_openable(tmp_path, monkeypatch):
     from wish.__main__ import main
 
     opened = []
-    monkeypatch.setattr(tools.generate.genui, "ensure_current", lambda: False)
+    monkeypatch.setattr(tools.generate.genui, "ensure_current", lambda: [])
     monkeypatch.setattr(wish.window, "run",
                         lambda save, *a, **k: (opened.append(save), 0)[1])
     (tmp_path / "export").write_bytes(b"")

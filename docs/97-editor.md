@@ -25,9 +25,9 @@ That matches how everything else generated in this repo works — `gendocs.py`,
 can be read, and gives autocompletion for every widget on the form.
 
 **The loop is: open `wish/window.ui` in Designer, drag fields around, save,
-restart Wish.** `tools.generate.genui.ensure_current()` compares mtimes at startup and
-regenerates when the `.ui` is newer than the `.py`, so there is no separate
-build step to forget and no way to run a stale form. `tools/generate/genui.py` exists for
+restart Wish.** `tools.generate.genui.ensure_current()` recompiles a `.ui` that is newer than
+its `.py` at startup and rewrites the compiled file only if the form itself
+changed, so there is no separate build step to forget and no way to run a stale form. `tools/generate/genui.py` exists for
 CI and for building a wheel, where `pyuic6` should not be a runtime dependency.
 
 Both routes were tested before choosing. Runtime `uic.loadUi` also works and

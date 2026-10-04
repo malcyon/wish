@@ -112,8 +112,8 @@ def main(argv: list[str] | None = None) -> int:
     except ImportError:
         pass  # A frozen build has no .ui and no pyuic6; the form is compiled in.
     else:
-        if ensure_current():
-            print("character.ui changed; recompiled the form")
+        for rewritten in ensure_current():
+            print(f"{rewritten.name} changed; recompiled the form")
 
     from automap.maps import forget, load_maps_titled
 
