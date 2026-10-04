@@ -664,13 +664,49 @@ def test_a_pools_of_darkness_dialog_never_shows_a_pool_of_radiance_name(monkeypa
     assert called == []
 
 
-def test_silver_blades_keeps_its_c64_spell_names(monkeypatch):
-    from goldbox import spells
+def amiga_names_from(monkeypatch, window, loader):
+    """Point the window at fake Amiga disks and replace the name loader."""
+    from goldbox import spell_names
+    window.disks = "disks"
+    monkeypatch.setattr("automap.maps.amiga_images", lambda where, title: ["x.adf"])
+    monkeypatch.setattr(spell_names, "spell_names", loader)
+
+
+@pytest.mark.parametrize("key", [POOLS_OF_DARKNESS, SILVER])
+def test_amiga_spell_names_come_from_that_titles_amiga_disks(monkeypatch, key):
+    window, _ = attached(key)
+    asked = []
+    amiga_names_from(monkeypatch, window, lambda game, platform, where:
+                     asked.append((game, platform, where)) or {9: "Name"})
+    assert window._names_for_spells() == {9: "Name"}
+    assert asked == [(key, "amiga", ["x.adf"])]
+
+
+@pytest.mark.parametrize("error", [FileNotFoundError("none"), "no table"])
+def test_missing_amiga_files_give_no_names_for_that_title_only(monkeypatch, error):
+    from goldbox import spell_names
     window, _ = attached(SILVER)
-    monkeypatch.setattr("automap.live._disk_images", lambda root, game: ["x.d64"])
+    if isinstance(error, str):
+        error = spell_names.SpellNameError(error)
+
+    def raises(*a):
+        raise error
+    amiga_names_from(monkeypatch, window, raises)
     monkeypatch.setattr("automap.paths.find_disks", lambda game=None: "root")
-    monkeypatch.setattr(spells, "load_spell_names", lambda path, game=None: {9: game.key})
-    assert window._names_for_spells() == {9: "secret-of-the-silver-blades"}
+    assert window._names_for_spells() == {}
+
+
+def test_names_are_cached_per_title_and_platform(monkeypatch):
+    window, _ = attached(SILVER)
+    calls = []
+    amiga_names_from(monkeypatch, window, lambda game, platform, where:
+                     calls.append(game) or {1: game})
+    assert window._names_for_spells() == {1: SILVER}
+    window._names_for_spells()
+    assert calls == [SILVER]
+    window._amiga_key = POOLS_OF_DARKNESS
+    assert window._names_for_spells() == {1: POOLS_OF_DARKNESS}
+    assert calls == [SILVER, POOLS_OF_DARKNESS]
 
 
 def test_a_failure_between_writes_is_logged_and_nothing_escapes(monkeypatch, caplog):

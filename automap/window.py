@@ -898,6 +898,11 @@ class AutomapBinding(QObject):
     the connection is simply re-established on the next tick.
     """
 
+    #: Class-level defaults so a bare instance (no `__init__`) still reads as
+    #: showing a C64 with no cached spell names.
+    _amiga_key: str | None = None
+    _spell_names_for: tuple[str, str] | None = None
+
     statusChanged = pyqtSignal(str)     # for a host window's status bar
     #: Emitted with a title's name when `_check_the_game` finds the machine
     #: running a *different* configured title than the one this window is set
@@ -983,7 +988,7 @@ class AutomapBinding(QObject):
         #: Spell names, read off the player's disks the first time a wizard is
         #: levelled and kept after. A magic-user picks its new spell by name.
         self._spell_names: dict[int, str] | None = None
-        self._spell_names_for: str | None = None
+        self._spell_names_for: tuple[str, str] | None = None
         self.strip = BottomStrip(self.root)
         self.notes_panel = NotesPanel(self.root)
         self.notes_panel.chosen.connect(self.point_at)
@@ -1780,43 +1785,64 @@ class AutomapBinding(QObject):
     # -- levelling -------------------------------------------------------
 
     def _names_for_spells(self) -> dict[int, str]:
-        """The spell-name table, or an empty one when the disks are absent.
+        """The spell-name table of the title and platform being run, or an
+        empty one when its files are absent or hold no table.
 
-        Absent disks are not an error here any more than they are for the item
+        Absent files are not an error here any more than they are for the item
         names: the dialog falls back to numbering the offers, which is worse
-        but is not a rejection.
+        but is not a rejection. Another title's names are never used instead.
         """
+        platform = "c64" if self._amiga_key is None else "amiga"
         title = (amiga.MACHINES[self._amiga_key].title
                  if self._amiga_key is not None else self.state.title)
+        if self._spell_names_for != (title, platform):
+            self._spell_names = None
+            self._spell_names_for = (title, platform)
+        if self._spell_names is None:
+            self._spell_names = (self._amiga_spell_names()
+                                 if platform == "amiga"
+                                 else self._c64_spell_names(title))
+        return self._spell_names
+
+    def _amiga_spell_names(self) -> dict[int, str]:
+        """The running Amiga title's names off its own disks."""
+        from goldbox import titles
+        from goldbox.spell_names import SpellNameError, spell_names
+
+        from .maps import amiga_images
+        if self.disks is None:
+            return {}
+        try:
+            images = amiga_images(self.disks, titles.by_key(self._amiga_key))
+            return spell_names(self._amiga_key, "amiga", images)
+        except (OSError, SpellNameError) as exc:
+            _log.debug("no Amiga spell names for %s: %s", self._amiga_key, exc)
+            return {}
+
+    def _c64_spell_names(self, title) -> dict[int, str]:
         game = game_named(title)
         if game is None:
-            # A title with no C64 port (Pools of Darkness) has no name table,
-            # and `find_disks` and `load_spell_names` would answer with Pool of
-            # Radiance's: a wrong name on a spell is worse than its number.
+            # A title with no C64 port has no name table, and `find_disks` and
+            # `load_spell_names` would answer with Pool of Radiance's: a wrong
+            # name on a spell is worse than its number.
             return {}
-        if self._spell_names_for != title:
-            self._spell_names = None
-            self._spell_names_for = title
-        if self._spell_names is None:
-            # `find_disks` returns the *directory*, not a list of images -- the
-            # same form `live.item_names` walks with `_disk_names`. Iterating
-            # it directly crashed the window the first time a wizard levelled.
-            from .live import _disk_images
-            from .paths import find_disks
+        # `find_disks` returns the *directory*, not a list of images -- the
+        # same form `live.item_names` walks with `_disk_names`. Iterating
+        # it directly crashed the window the first time a wizard levelled.
+        from .live import _disk_images
+        from .paths import find_disks
 
-            self._spell_names = {}
-            root = find_disks(game)
-            for path in (_disk_images(root, game) if root else ()):
-                try:
-                    from goldbox.spells import load_spell_names
-                    found = load_spell_names(str(path), game)
-                except Exception as exc:                # not the right disk
-                    _log.debug("no spell names on %s: %s", path.name, exc)
-                    continue
-                if found:
-                    self._spell_names = found
-                    break
-        return self._spell_names
+        root = find_disks(game)
+        for path in (_disk_images(root, game) if root else ()):
+            try:
+                from goldbox.spells import load_spell_names
+                found = load_spell_names(str(path), game)
+            except Exception as exc:                # not the right disk
+                _log.debug("no spell names on %s: %s", path.name, exc)
+                continue
+            if found:
+                return found
+        return {}
 
     def ask(self, question: str) -> bool:
         """A yes/no the player has to answer. A method so a test can answer
