@@ -15,6 +15,7 @@ import pathlib
 import pytest
 from gamedata import synthetic_save
 
+from automap.gamedisks import RegistryError
 from editor import convert, saveplan
 from editor.roster import Party
 from goldbox import (
@@ -1464,9 +1465,14 @@ def test_a_c64_pool_party_with_a_charmed_character_saves_as_dos_and_amiga(
                 source, "amiga", game_files=convertdrops.game_files,
                 amiga_disk=disk)
             out = tmp_path / "out.adf"
-    except (saveplan.MissingAssets, FileNotFoundError, SystemExit):
+    except (saveplan.MissingAssets, FileNotFoundError, RegistryError):
         pytest.skip("needs Pool of Radiance's own C64 disks and the "
                     "destination's game files")
+    except SystemExit as stop:
+        # Only the archives lacking the game folder is a missing-files skip.
+        if "game folder was found" not in str(stop.code):
+            raise
+        pytest.skip("needs the DOS Pool of Radiance game folder")
     plan = saveplan.prepare_save_as(party, port, out, assets)
     assert isinstance(plan, saveplan.SavePlan)
 
@@ -1515,6 +1521,15 @@ def test_source_neutral_reads_an_amiga_pool_member(tmp_path):
     neutral_char = saveplan.source_neutral(
         party.members[0], snapshot, snapshot.title)
     assert neutral_char.get("name") == "ALPHA"
+
+
+def test_source_neutral_still_reads_an_amiga_curse_member(tmp_path):
+    party = Party(str(amiga_disk(tmp_path)))
+    snapshot = saveplan.prepare(party)
+    neutral_char = saveplan.source_neutral(
+        party.members[0], snapshot, snapshot.title)
+    assert neutral_char.get("name") == "ALPHA"
+    assert neutral_char.port == "Amiga"
 
 
 def test_an_amiga_pool_party_with_a_charmed_character_saves_as_c64(tmp_path):
