@@ -28,6 +28,8 @@ saved games that run produced are in the specimens below.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from gamedata import specimen_root
 from support.amigalaterwrite import _verified, engine_written_parties
@@ -94,7 +96,9 @@ def _block_mask(char: amiga_later.AmigaCharacter) -> set[int]:
     at = deltas.record_size
     for _ in char.items:
         for offset, size, _why in amiga_later.LATER_ITEM_WRITE_UNSOURCED:
-            out.update(range(at + offset, at + offset + size))
+            # The scroll chain is past the end of a node that is too short to have one.
+            if offset < deltas.item_size:
+                out.update(range(at + offset, at + offset + size))
         at += deltas.item_size
     for _ in char.effects:
         for offset, size, _why in amiga_later.LATER_EFFECT_WRITE_UNSOURCED:
@@ -106,6 +110,21 @@ def _block_mask(char: amiga_later.AmigaCharacter) -> set[int]:
 # ---------------------------------------------------------------------------
 # The tables, which need no game data
 # ---------------------------------------------------------------------------
+
+def test_the_curse_mask_stays_inside_each_node():
+    """The scroll-chain entry sits past the end of a 66-byte Curse item node,
+    so an unclipped mask would hide the first bytes of the next node -- the
+    first effect node's id -- from the round-trip check."""
+    deltas = amiga_port.CURSE_DELTAS
+    char = SimpleNamespace(deltas=deltas, items=[None, None], effects=[None])
+    mask = _block_mask(char)
+    first_effect = deltas.record_size + 2 * deltas.item_size
+    effect_declared = {first_effect + offset + k
+                       for offset, size, _ in amiga_later.LATER_EFFECT_WRITE_UNSOURCED
+                       for k in range(size)}
+    spill = {n for n in mask if n >= first_effect} - effect_declared
+    assert not spill, sorted(spill)
+    assert max(mask) < first_effect + deltas.effect_size
 
 def test_the_unsourced_list_is_the_shift_maps_own_gaps():
     """A pad the shift map creates and the writer's table forgets would be a
