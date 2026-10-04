@@ -144,9 +144,17 @@ PUBLISHED_SOURCES_BY_ISSUE = {
     "666": {
         ("curse", "c64"): frozenset({"9facc90c1f7cefdb909368b6db5b8135960631244ac259d21fab65d681352041"}),
     },
-    # The game-written C64 Curse save of the strength-spell ladder, reloaded and resaved.
+    # The Silver Blades C64 hold resave whose sixth member, MORGAINE, is feebleminded, and the
+    # game-written Curse C64 save of Feeblemind cast on its first member, MATHEW.
+    "661": {
+        ("ssb", "c64"): frozenset({"1e5a51d1d630b518306ae9772b85de61715384ac674077fafb79f54c613e1e16"}),
+        ("curse", "c64"): frozenset({"9f7217a53ffe162bad585bfdf93a938929165ed2e5d2552287127c79696471a9"}),
+    },
+    # The game-written C64 Curse save of the strength-spell ladder, reloaded and resaved, and the
+    # DOS Silver Blades save of Slow Poison cast on a poisoned companion, resaved while it runs.
     "667": {
         ("curse", "c64"): frozenset({"ff3228edf42aa56a0fbf5159e8354358a38673115216a1b6c7f3439cae2686f2"}),
+        ("ssb", "dos"): frozenset({"91a136ce86b34267b81d1ddd1d5037ce54d1a7d5b7e63732dddcb0af3070921b"}),
     },
 }
 
@@ -167,6 +175,9 @@ PUBLISHED_ISSUE_TEXT = {
             "so a converted paladin loses them)"),
     "666": ("#666 (A C64 party under a camp Prayer loses it on the way to DOS or the Amiga, "
             "because nothing converts the save's party-wide effect rows)"),
+    "661": ("WISH-7 (A C64 party under a running spell loses it on the way to DOS or the Amiga "
+            "with no line anywhere, because the C64 reader reads only the paladin's rows out of "
+            "the effect arrays)"),
     "667": ("#667 (A DOS party under Prayer, the strength and charisma spells, Mirror Image or "
             "an effect with no C64 spell row is still refused when saved as a C64 save, because "
             "only the ordinary caster-level spells convert)"),

@@ -61,9 +61,9 @@ def test_camp_steps_parse(text, tokens):
     ("rest 0m", "longer than no time"),
     ("rest 30d", "shorter than 30 days"),
     ("rest soon", "not like"),
-    ("view 9", "sheets for lines 1 to 2 only"),
-    ("view 3", "sheets for lines 1 to 2 only"),
-    ("view 0", "sheets for lines 1 to 2 only"),
+    ("view 9", "sheets for lines 1 to 6 only"),
+    ("view 7", "sheets for lines 1 to 6 only"),
+    ("view 0", "sheets for lines 1 to 6 only"),
     ("rest 1d", "need a view or heal"),
     ("rest 1d;rest 1h", "after the last rest"),
     ("view;rest 22h", "need a view or heal"),
@@ -388,14 +388,14 @@ def test_the_cli_takes_camp_steps_only_for_a_published_prepare(capsys):
 
 
 def test_the_cli_reads_camp_steps_for_the_prepare_s_own_title(capsys):
-    # Curse's lines pass the parse and reach the next check; Silver Blades' refuse line 6.
+    # Curse's lines pass the parse and reach the next check; Silver Blades' refuse line 7.
     assert foundation.main(["prepare", "--title", "curse", "--run-id", "x",
                             "--camp", "view 6;heal 6"]) == 2
     assert "--camp requires --published-disk-one" in capsys.readouterr().err
     with pytest.raises(SystemExit):
         foundation.main(["prepare", "--title", "ssb", "--run-id", "x",
-                         "--published-disk-one", "--camp", "view 6"])
-    assert "lines 1 to 2 only" in capsys.readouterr().err
+                         "--published-disk-one", "--camp", "view 7"])
+    assert "lines 1 to 6 only" in capsys.readouterr().err
     with pytest.raises(SystemExit):
         foundation.main(["prepare", "--title", "pool", "--run-id", "x",
                          "--published-disk-one", "--camp", "view"])
@@ -1080,11 +1080,15 @@ def test_a_published_prepare_for_666_keeps_its_display_and_refuses_another_sourc
 #: The game-written C64 Curse strength-ladder save, reloaded and resaved, that the #667 Amiga run starts from.
 LADDER_667 = ("coab-c64/WISH-SPEC-curse-667-strength-ladder-c64-resave.D64",
               "ff3228edf42aa56a0fbf5159e8354358a38673115216a1b6c7f3439cae2686f2")
+#: The game-written DOS Silver Blades save of Slow Poison cast on a poisoned companion, resaved while it runs.
+SLOW_POISON_667 = ("ssb-dos/WISH-SPEC-ssb-667-slow-poison-companion-running-resave/SAVGAMD.DAT",
+                   "91a136ce86b34267b81d1ddd1d5037ce54d1a7d5b7e63732dddcb0af3070921b")
 
 
-def test_667_pins_only_the_curse_ladder_save_and_names_its_issue():
+def test_667_pins_the_curse_ladder_and_the_silver_blades_slow_poison_saves_and_names_its_issue():
     assert foundation.PUBLISHED_SOURCES_BY_ISSUE["667"] == {
-        ("curse", "c64"): frozenset({LADDER_667[1]})}
+        ("curse", "c64"): frozenset({LADDER_667[1]}),
+        ("ssb", "dos"): frozenset({SLOW_POISON_667[1]})}
     assert foundation.PUBLISHED_ISSUE_TEXT["667"].startswith("#667 (A DOS party under Prayer")
 
 
@@ -1103,6 +1107,82 @@ def test_a_published_prepare_for_667_refuses_another_source(tmp_path, monkeypatc
     report.write_text(json.dumps(data))
     with pytest.raises(RouteError, match="differs from the pinned specimen"):
         foundation.prepare_published("curse", "other", report, "667")
+
+
+def test_the_pinned_667_slow_poison_source_is_the_specimen_on_disk():
+    root = gamedata.specimen_root()
+    if root is None or not (root / SLOW_POISON_667[0]).is_file():
+        pytest.skip(f"needs the specimen {SLOW_POISON_667[0]}")
+    assert staging.sha256(root / SLOW_POISON_667[0]) == SLOW_POISON_667[1]
+
+
+def test_a_published_prepare_for_667_takes_the_silver_blades_dos_save_and_refuses_another(
+        tmp_path, monkeypatch):
+    report = _published_report(tmp_path, monkeypatch, "ssb", "dos", pinned=SLOW_POISON_667[1],
+                               names=("GUY DE VALOIS", "PAINE", "EPONA", "MALACHITE", "DOMINIC",
+                                      "MORGAINE"))
+    steps = ("view 2", "rest 30m", "view 2")
+    path = foundation.prepare_published("ssb", "slow-poison", report, "667", camp=steps)
+    manifest, _title = foundation._published_manifest(path, "ssb")
+    assert manifest["issue"] == "667" and manifest["camp"] == list(steps)
+    data = json.loads(report.read_text())
+    data["specimen_sha256"] = "0" * 64
+    report.write_text(json.dumps(data))
+    with pytest.raises(RouteError, match="differs from the pinned specimen"):
+        foundation.prepare_published("ssb", "other", report, "667", camp=steps)
+
+
+#: The game-written C64 saves with a feebleminded member that the #661 Amiga runs start from.
+FEEBLEMIND_661 = {
+    "ssb": ("ssb-c64/WISH-SPEC-ssb-661-fml-l3-c64-feeblemind-hold-resave.D64",
+            "1e5a51d1d630b518306ae9772b85de61715384ac674077fafb79f54c613e1e16"),
+    "curse": ("coab-c64/WISH-SPEC-curse-661-feeblemind-cast-resave.D64",
+              "9f7217a53ffe162bad585bfdf93a938929165ed2e5d2552287127c79696471a9")}
+
+
+def test_661_pins_the_two_feeblemind_saves_and_names_its_issue():
+    assert foundation.PUBLISHED_SOURCES_BY_ISSUE["661"] == {
+        ("ssb", "c64"): frozenset({FEEBLEMIND_661["ssb"][1]}),
+        ("curse", "c64"): frozenset({FEEBLEMIND_661["curse"][1]})}
+    assert foundation.PUBLISHED_ISSUE_TEXT["661"].startswith("WISH-7 (A C64 party under a running spell")
+
+
+@pytest.mark.parametrize("name", sorted(FEEBLEMIND_661))
+def test_the_pinned_661_sources_are_the_specimens_on_disk(name):
+    relative, digest = FEEBLEMIND_661[name]
+    root = gamedata.specimen_root()
+    if root is None or not (root / relative).is_file():
+        pytest.skip(f"needs the specimen {relative}")
+    assert staging.sha256(root / relative) == digest
+
+
+@pytest.mark.parametrize("name,names", [
+    ("ssb", ("GUY DE VALOIS", "PAINE", "EPONA", "MALACHITE", "DOMINIC", "MORGAINE")),
+    ("curse", ("MATHEW", "TRAVIS"))])
+def test_a_published_prepare_for_661_takes_the_pinned_source_and_refuses_another(
+        tmp_path, monkeypatch, name, names):
+    report = _published_report(tmp_path, monkeypatch, name, "c64",
+                               pinned=FEEBLEMIND_661[name][1], names=names)
+    steps = ("view 6",) if name == "ssb" else ("view 1",)
+    path = foundation.prepare_published(name, "feeblemind", report, "661", camp=steps)
+    manifest, _title = foundation._published_manifest(path, name)
+    assert manifest["issue"] == "661" and manifest["camp"] == list(steps)
+    data = json.loads(report.read_text())
+    data["specimen_sha256"] = "0" * 64
+    report.write_text(json.dumps(data))
+    with pytest.raises(RouteError, match="differs from the pinned specimen"):
+        foundation.prepare_published(name, "other", report, "661", camp=steps)
+
+
+def test_silver_blades_camp_steps_reach_every_line_of_a_party_of_six():
+    assert route_camp.SHEET_LINES["ssb"] == (1, 2, 3, 4, 5, 6)
+    tokens = route_camp.parse_steps("view 1;view 2;view 3;view 4;view 5;view 6", "ssb")
+    assert route_camp.normalise(tokens) == tuple(f"view {n}" for n in range(1, 7))
+    assert route_camp.steps_for(("view 6",), "ssb", 6) == (
+        ("NP2", "camp", "key"),) * 5 + (
+        ("V", "camp_sheet_6", "key"), ("E", "camp", "key")) + (("NP8", "camp", "key"),) * 5
+    with pytest.raises(RouteError, match="sheets for lines 1 to 6 only"):
+        route_camp.parse_steps("view 7", "ssb")
 
 
 def test_curse_s_party_menu_guard_matches_a_full_party_and_one_with_room_to_add():

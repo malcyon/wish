@@ -531,3 +531,29 @@ def test_committed_silver_blades_camp_sheets_match_itemless_crops(tmp_path):
     guard = PixelGuards(tmp_path / 'guards.json')
     for (_, state), path in crops.items():
         assert guard(state, path)
+
+
+def test_silver_blades_sheets_of_lines_3_to_6_share_the_sheet_frame_and_line_3_has_its_name_line():
+    spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, 'ssb')
+    guards, identity = spec['guards'], spec['identity']
+    new = {f'camp_sheet_{n}' for n in range(3, 7)}
+    frame = guards['camp_sheet']
+    # The ARMOR CLASS / THAC0 / DAMAGE labels are one picture on every member's sheet, so lines
+    # 3 to 6 take line 1's rule and each sheet state lists every other.
+    for state in new:
+        rule = guards[state]
+        assert (rule['box'], rule['sha256']) == (frame['box'], frame['sha256']), state
+        assert (new | {'sheet', 'camp_sheet', 'camp_sheet_2', 'camp_sheet_heal',
+                       'camp_sheet_spent', 'camp_sheet_items', 'camp_sheet_items_2',
+                       'camp_sheet_items_3'}) - {state} <= set(rule['also']), state
+    for state in ('sheet', 'camp_sheet', 'camp_sheet_2', 'camp_sheet_items', 'camp_sheet_items_2',
+                  'camp_sheet_items_3'):
+        assert new <= set(guards[state]['also']), state
+    for state in ('camp_sheet_heal', 'camp_sheet_spent'):
+        assert all(new <= set(rule['also']) for rule in _rules(guards[state])), state
+    # Only line 3 has a cut name line, EPONA's, listed with her items-list state; lines 4 to 6
+    # wait for their own grabs.
+    assert identity['camp_sheet_3']['sha256'] == identity['camp_sheet_items_3']['sha256']
+    assert 'camp_sheet_items_3' in identity['camp_sheet_3']['also']
+    assert 'camp_sheet_3' in identity['camp_sheet_items_3']['also']
+    assert not new - {'camp_sheet_3'} & identity.keys()
