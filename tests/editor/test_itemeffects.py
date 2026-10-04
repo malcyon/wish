@@ -57,10 +57,9 @@ def test_a_curse_potion_of_speed_is_named(app):
     assert rows["Effect"] == "Potion of Speed"
 
 
-def test_another_unmapped_curse_effect_keeps_the_item_only_line(app):
+def test_a_curse_potion_of_extra_healing_is_named(app):
     rows, _names, _table = _rows(app, CURSE, "POTION EXTRA HEALING")
-    assert rows["Effect"].startswith("effect 99 ")
-    assert "argument to the power" not in rows["Effect"]
+    assert rows["Effect"] == "Potion of Extra Healing"
 
 
 def test_the_items_tooltip_uses_the_title_rule(app):
@@ -69,9 +68,9 @@ def test_the_items_tooltip_uses_the_title_rule(app):
     model = InventoryModel()
     model.set_spells(table)
     tip = model._tooltip(0, Item(tpl["WAND OF ICE STORM"]))
-    assert "effect: spell 87" in tip
+    assert "Effect: spell 87" in tip
     default = InventoryModel()._tooltip(0, Item(tpl["WAND OF ICE STORM"]))
-    assert "effect: spell 64" in default      # Pool's rule, 87 - 23
+    assert "Effect: spell 64" in default      # Pool's rule, 87 - 23
 
 
 # --- the window hands the title's table to the Items list --------------------
@@ -153,10 +152,10 @@ def test_pool_of_radiance_potion_of_speed_stays_57(app):
     traits.set_item(item)
     assert dict(traits.rows)["Effect"] == \
         "effect 57 — the item-only range past RESTORATION"
-    assert "effect: spell 57" in InventoryModel()._tooltip(0, item)
+    assert "Effect: spell 57" in InventoryModel()._tooltip(0, item)
 
 
-# --- "Potion of Speed" is scoped to a Curse potion (no disks needed) ---------
+# --- every later title's item-only effect is named (no disks needed) --------
 
 def _synthetic(key, type_index, *, effect=57, charges=0, types=None):
     from editor.inventory import ItemTraitsModel
@@ -169,21 +168,82 @@ def _synthetic(key, type_index, *, effect=57, charges=0, types=None):
     return dict(m.rows)
 
 
-def test_a_synthetic_curse_potion_of_speed_is_named(app):
-    from editor.inventory import CURSE_POTION_TYPE
-    assert _synthetic(CURSE, CURSE_POTION_TYPE)["Effect"] == "Potion of Speed"
+# Written out here, not read from the editor's table, so a wrong entry there fails.
+NAMES = {
+    CURSE: {
+        57: "Potion of Speed", 59: "Potion of Giant Strength",
+        61: "Wand of Paralyzation", 63: "Dust of Disappearance",
+        64: "Necklace of Missiles", 65: "Wand of Magic Missiles",
+        95: "Scroll of Protection from Dragon Breath",
+        96: "Scroll of Protection from Paralyzation",
+        97: "Potion of Invisibility", 98: "Wand of Defoliation",
+        99: "Potion of Extra Healing",
+    },
+    SSB: {
+        57: "Potion of Speed", 59: "Potion of Giant Strength",
+        61: "Wand of Paralyzation", 62: "Potion of Healing",
+        63: "Elixir of Youth", 64: "Necklace of Missiles",
+        65: "Wand of Magic Missiles",
+        95: "Scroll of Protection from Dragon Breath",
+        97: "Potion of Invisibility", 99: "Potion of Extra Healing",
+    },
+}
+NO_ITEM = {CURSE: (60, 62), SSB: (60, *range(101, 109))}
 
 
-def test_silver_blades_effect_57_keeps_the_item_only_line(app):
-    from editor.inventory import CURSE_POTION_TYPE
-    row = _synthetic(SSB, CURSE_POTION_TYPE)["Effect"]
-    assert row.startswith("effect 57 ")
+def _tip(key, effect):
+    from editor.inventory import InventoryModel
+    raw = bytearray(16)
+    raw[0] = 1
+    raw[14] = effect
+    model = InventoryModel()
+    model.set_spells(spells.BY_KEY[key])
+    return model._tooltip(0, Item(bytes(raw)))
 
 
-def test_a_curse_non_potion_with_57_keeps_the_item_only_line(app):
-    from editor.inventory import CURSE_POTION_TYPE
-    row = _synthetic(CURSE, CURSE_POTION_TYPE + 8)["Effect"]
-    assert row.startswith("effect 57 ")
+@pytest.mark.parametrize("key, sid", [(k, i) for k, t in NAMES.items()
+                                      for i in t])
+def test_an_item_only_effect_is_named_in_the_row_and_the_hover(app, key, sid):
+    name = NAMES[key][sid]
+    assert _synthetic(key, 1, effect=sid)["Effect"] == name
+    assert f"Effect: {name}" in _tip(key, sid).split("\n")
+
+
+@pytest.mark.parametrize("key, sid", [(k, i) for k, t in NO_ITEM.items()
+                                      for i in t])
+def test_an_effect_no_item_stores_shows_its_number(app, key, sid):
+    assert _synthetic(key, 1, effect=sid)["Effect"] == str(sid)
+    assert f"Effect: {sid}" in _tip(key, sid).split("\n")
+
+
+def test_the_same_id_is_named_per_title(app):
+    assert _synthetic(CURSE, 1, effect=63)["Effect"] == "Dust of Disappearance"
+    assert _synthetic(SSB, 1, effect=63)["Effect"] == "Elixir of Youth"
+    assert _synthetic(SSB, 1, effect=96)["Effect"].startswith("spell 96")
+
+
+@pytest.mark.parametrize("key", [CURSE, SSB])
+def test_no_item_only_row_claims_a_range_past_a_spell(app, key):
+    for sid in spells.BY_KEY[key].not_a_spell:
+        assert "past" not in _synthetic(key, 1, effect=sid)["Effect"]
+
+
+def test_a_real_spell_keeps_its_display(app):
+    assert "Effect: spell 87" in _tip(SSB, 87).split("\n")
+
+
+def test_every_hover_line_opens_with_a_capital(app):
+    from editor.inventory import InventoryModel
+    raw = bytearray(16)
+    raw[0], raw[5], raw[7], raw[13], raw[14], raw[15] = 1, 0x14, 0x80, 3, 87, 0x20
+    raw[6] = 0x01                  # hidden name words: the unidentified line
+    for key in (CURSE, SSB, "pool-of-radiance"):
+        model = InventoryModel()
+        model.set_spells(spells.BY_KEY[key])
+        lines = model._tooltip(0, Item(bytes(raw))).split("\n")
+        assert len(lines) >= 5, lines
+        for line in lines:
+            assert not line[0].islower(), line
 
 
 def test_a_curse_scroll_spell_byte_57_keeps_its_text(app):
@@ -191,8 +251,32 @@ def test_a_curse_scroll_spell_byte_57_keeps_its_text(app):
     scroll = 0x3D
     types = {scroll: ItemType(scroll, bytes(16))}
     row = _synthetic(CURSE, scroll, effect=57, types=types)["Spells"]
-    assert row.startswith("effect 57 ")
+    assert row == "57"
     assert "Potion of Speed" not in row
+
+
+@pytest.mark.parametrize("key", [CURSE, SSB])
+def test_every_item_only_template_is_named_in_both_places(app, key):
+    """Every game template whose +14 is an item-only id (disk-backed)."""
+    from editor.inventory import InventoryModel, ItemTraitsModel
+    table, names, tpl, item_names = _title(key)
+    model = InventoryModel()
+    model.set_spells(table)
+    seen = 0
+    for name, raw in tpl.items():
+        item = Item(raw, item_names)
+        sid = item.effect_in(table)
+        if (sid is None or sid not in table.not_a_spell
+                or item.type_index in C64_SCROLL_TYPES[key]):
+            continue
+        traits = ItemTraitsModel()
+        traits.set_tables({}, names, table)
+        traits.set_item(item)
+        expected = NAMES[key].get(sid, str(sid))
+        assert dict(traits.rows)["Effect"] == expected, name
+        assert f"Effect: {expected}" in model._tooltip(0, item).split("\n"), name
+        seen += 1
+    assert seen >= 8
 
 
 # --- a scroll's tooltip leaves off charges, effect and power -----------------
@@ -212,8 +296,8 @@ def test_a_scrolls_tooltip_has_no_charges_effect_or_power(app, key):
     for type_index in C64_SCROLL_TYPES[key]:
         tip = _scroll_tip(key, type_index)
         assert "charges" not in tip
-        assert "effect" not in tip
-        assert "power" not in tip
+        assert "effect" not in tip.lower()
+        assert "power" not in tip.lower()
 
 
 def test_a_wand_tooltip_keeps_its_charges_and_power(app):
@@ -224,4 +308,4 @@ def test_a_wand_tooltip_keeps_its_charges_and_power(app):
     model = InventoryModel()
     model.set_spells(spells.BY_KEY[CURSE])
     tip = model._tooltip(0, Item(bytes(raw)))
-    assert "5 charges" in tip and "power 0x22" in tip
+    assert "5 charges" in tip and "Power 0x22" in tip

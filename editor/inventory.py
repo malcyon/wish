@@ -42,15 +42,47 @@ from goldbox.items import (
     repair_ring_of_fire_resistance,
 )
 from goldbox.savegame import SAVE0_LOAD_ADDRESS
-from goldbox.spells import CURSE_OF_THE_AZURE_BONDS, POOL_OF_RADIANCE, SpellTable
+from goldbox.spells import (
+    CURSE_OF_THE_AZURE_BONDS,
+    POOL_OF_RADIANCE,
+    SECRET_OF_THE_SILVER_BLADES,
+    SpellTable,
+)
 from goldbox.spells import describe as describe_spell
 from goldbox.spells import for_game as spell_table
 
 from .ui_inventory import Ui_AddItemDialog
 
-# Curse's potion of speed: the potion item type and the effect id it stores.
-CURSE_POTION_TYPE = 71
-CURSE_POTION_OF_SPEED = 57
+# The item-only effects of each later title, by the id stored in item byte +14.
+# Every name is the one item that stores the id; an id no game item stores is
+# absent and shows as its number.
+ITEM_ONLY_EFFECT_NAMES: dict[str, dict[int, str]] = {
+    CURSE_OF_THE_AZURE_BONDS.key: {
+        57: "Potion of Speed",
+        59: "Potion of Giant Strength",
+        61: "Wand of Paralyzation",
+        63: "Dust of Disappearance",
+        64: "Necklace of Missiles",
+        65: "Wand of Magic Missiles",
+        95: "Scroll of Protection from Dragon Breath",
+        96: "Scroll of Protection from Paralyzation",
+        97: "Potion of Invisibility",
+        98: "Wand of Defoliation",
+        99: "Potion of Extra Healing",
+    },
+    SECRET_OF_THE_SILVER_BLADES.key: {
+        57: "Potion of Speed",
+        59: "Potion of Giant Strength",
+        61: "Wand of Paralyzation",
+        62: "Potion of Healing",
+        63: "Elixir of Youth",
+        64: "Necklace of Missiles",
+        65: "Wand of Magic Missiles",
+        95: "Scroll of Protection from Dragon Breath",
+        97: "Potion of Invisibility",
+        99: "Potion of Extra Healing",
+    },
+}
 
 EMPTY = bytes(ITEM_SIZE)
 
@@ -359,14 +391,14 @@ class InventoryModel(QAbstractTableModel):
         return ""
 
     def _tooltip(self, row: int, item: Item) -> str:
-        lines = [f"slot {row}: {item.raw.hex()}"]
+        lines = [f"Slot {row}: {item.raw.hex()}"]
         if not item.is_identified:
-            lines.append(f"shows in game as {item.unidentified_name!r} until "
+            lines.append(f"Shows in game as {item.unidentified_name!r} until "
                          f"it is identified")
         if item.is_cursed:
-            lines.append("cursed: the game refuses to un-ready it")
+            lines.append("Cursed: the game refuses to un-ready it")
         if item.saving_throw_bonus:
-            lines.append(f"saving throws {item.saving_throw_bonus:+d}")
+            lines.append(f"Saving throws {item.saving_throw_bonus:+d}")
         if item.type_index in C64_SCROLL_TYPES.get(self.spells.key, ()):
             # +13-+15 are spell ids on a scroll, not charges, effect or power.
             return "\n".join(lines)
@@ -374,11 +406,19 @@ class InventoryModel(QAbstractTableModel):
             lines.append(f"{item.charges} charges")
         effect = item.effect_in(self.spells)
         if effect is not None:
-            lines.append(f"effect: spell {effect}")
+            lines.append(self._effect_line(effect))
         if item.power:
-            lines.append(f"power {item.power:#04x}"
+            lines.append(f"Power {item.power:#04x}"
                          + (" (applied while readied)" if item.is_passive else ""))
         return "\n".join(lines)
+
+    def _effect_line(self, effect: int) -> str:
+        """The hover line for +14: a real spell, or an item-only effect's name."""
+        if self.spells.key == POOL_OF_RADIANCE.key or (
+                effect <= self.spells.last_spell
+                and effect not in self.spells.not_a_spell):
+            return f"Effect: spell {effect}"
+        return f"Effect: {item_only_effect(self.spells, effect)}"
 
     # -- editing ----------------------------------------------------------
 
@@ -499,6 +539,11 @@ class AddItemDialog(QDialog):
 # are charges, an effect and a dispatch byte.
 
 
+def item_only_effect(spells: SpellTable, sid: int) -> str:
+    """An item-only effect's item name in the later titles, else its number."""
+    return ITEM_ONLY_EFFECT_NAMES.get(spells.key, {}).get(sid, str(sid))
+
+
 def _location_name(kind: ItemType | None) -> str:
     if kind is None:
         return ""
@@ -571,27 +616,22 @@ class ItemTraitsModel(QAbstractTableModel):
 
     # -- the readings -----------------------------------------------------
 
-    def _spell(self, sid: int) -> str:
-        """A real spell by name; an item-only effect by number.
+    def _spell(self, sid: int, *, item_names: bool = True) -> str:
+        """A real spell by name; an item-only effect by its item's name or number.
 
-        Past the title's last spell the ids continue as an item-only run, and
-        the name table has combat messages at those indices rather than effect
-        names. Naming POTION OF HEALING's 62 "IS POISONED" would be worse than
-        a number -- and where that starts is the title's, 56 on Pool of
-        Radiance and 117 on Silver Blades.
+        A scroll's spell slot holds spell ids, never an item's effect, so it
+        asks for the number only.
 
-        UNAPPROVED WORDING for the second line: the Pool of Radiance one is
-        Donald's and is kept exactly, because RESTORATION is the name of its
-        last spell and a number is worse. The later titles have no such
-        landmark, so they get the number. The one exception, a Curse potion
-        with effect 57, is named in :meth:`_power_rows` where the item is known.
+        Past a title's real spells the name table holds combat messages rather
+        than effect names, so an item-only id never goes through it. Pool of
+        Radiance's wording is Donald's and is kept exactly, because
+        RESTORATION is the name of its last spell.
         """
         if sid <= self.spells.last_spell and sid not in self.spells.not_a_spell:
             return describe_spell(sid, self.spell_names, self.spells)
-        if self.spells.last_spell == POOL_OF_RADIANCE.last_spell:
+        if self.spells.key == POOL_OF_RADIANCE.key:
             return f"effect {sid} — the item-only range past RESTORATION"
-        return (f"effect {sid} — the item-only range past spell "
-                f"{self.spells.last_spell}")
+        return item_only_effect(self.spells, sid) if item_names else str(sid)
 
     def _scroll_spell(self, sid: int) -> str:
         """A scroll's spell id, named by its real spell when the scribe mark is on.
@@ -599,11 +639,11 @@ class ItemTraitsModel(QAbstractTableModel):
         DOS and Amiga add 128 to a scroll's spell while it is being scribed
         and a camp save can keep it. Only a real spell's mark is read that
         way; a byte whose low seven bits are past the title's last spell is
-        left to :meth:`_spell`.
+        left to :meth:`_spell`, as a number.
         """
         if sid > 0x80 and sid & 0x7F <= self.spells.last_spell:
             sid &= 0x7F
-        return self._spell(sid)
+        return self._spell(sid, item_names=False)
 
     def _describe(self, item: Item) -> list[tuple[str, str]]:
         kind = self.types.get(item.type_index)
@@ -657,11 +697,7 @@ class ItemTraitsModel(QAbstractTableModel):
             return [("Spells", ", ".join(spells) if spells else EMPTY_TEXT)]
         rows = [("Charges", str(charges) if charges else EMPTY_TEXT)]
         effect_id = item.effect_in(self.spells)
-        if (effect_id == CURSE_POTION_OF_SPEED
-                and self.spells.key == CURSE_OF_THE_AZURE_BONDS.key
-                and item.type_index == CURSE_POTION_TYPE):
-            rows.append(("Effect", "Potion of Speed"))
-        elif effect_id is not None:
+        if effect_id is not None:
             rows.append(("Effect", self._spell(effect_id)))
         elif effect:
             # +15 is set, so +14 is that handler's argument -- the gauntlets'

@@ -52,7 +52,10 @@ def test_a_byte_past_the_last_spell_keeps_the_item_only_text(title):
     last = model.spells.last_spell
     for sid in (128, 128 + last + 1, 246, 255):
         assert model._scroll_spell(sid) == model._spell(sid)
-    assert "effect" in model._scroll_spell(255)
+    if model.spells.key == "pool-of-radiance":
+        assert "effect" in model._scroll_spell(255)
+    else:
+        assert model._scroll_spell(255) == "255"
 
 
 def test_a_scroll_row_names_every_marked_spell():
