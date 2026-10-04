@@ -59,7 +59,7 @@ Every level-1 constant below is what those six hold:
 | `attack_forms` | `02 00 01 00 02 00 00 00` | the same eight bytes |
 | `attack_level` | **1 for every class**, magic-user included | 1 |
 | `hp_max` | `hp_rolled + constitution bonus` | `levels`, via the same rule |
-| `hp_rolled` | an ordinary roll of the class's die for a single-class character; **more than the trainer's rule allows** for a multi-class one | see `_seed_hit_points`, where the multi-class rule is a guess |
+| `hp_rolled` | DOS: one die per class, each raised to two-thirds of its size, then averaged; the C64 is not that rule | `_seed_hit_points`, from the C64's own table (`GEN $0F7C`-`$0F9E`) |
 
 `tests/suite/test_testparty.py` re-derives each of those from the specimen rather
 than trusting this table, and skips where the specimen tree is absent.
@@ -544,29 +544,49 @@ def equip(one: Built, tables, game=None) -> None:
         f", {sum(_items.Item(r, names).weight_tenths * max(1, r[10]) for r in raws) / 10:.1f} lb")
 
 
+#: Pool of Radiance's creation hit-point rule per class code, `(N, S, minimum)`:
+#: roll N dice of S sides and raise the sum to the minimum.  Read from `GEN`
+#: `$0F7C` (N), `$0F8D` (S) and `$0F9E` (minimum), which creation indexes by
+#: the class code at `$0B43`-`$0B77`.  Only the codes creation offers are here;
+#: a multi-class character rolls one die of the truncated mean of its class dice.
+POOL_CREATION_HIT_POINTS: dict[int, tuple[int, int, int]] = {
+    0: (1, 8, 7),     # cleric
+    2: (1, 10, 9),    # fighter
+    5: (1, 4, 4),     # magic-user
+    6: (1, 6, 5),     # thief
+    8: (1, 9, 7),     # cleric/fighter
+    9: (1, 7, 6),     # cleric/fighter/magic-user
+    11: (1, 6, 5),    # cleric/magic-user
+    12: (1, 7, 6),    # cleric/thief
+    13: (1, 7, 6),    # fighter/magic-user
+    14: (1, 8, 7),    # fighter/thief
+    15: (1, 6, 5),    # fighter/magic-user/thief
+    16: (1, 5, 4),    # magic-user/thief
+}
+
+
 def _seed_hit_points(spec: Spec, game, rng) -> int:
     """The hit points a level-1 character starts with.
 
-    **A single-class character's is the trainer's rule and a multi-class
-    character's is not.**  All four single-class records among the six the
-    engine rolled hold an ordinary roll of the class's own die -- cleric 6 of a
-    d8, fighter 6 of a d10, magic-user 4 of a d4, thief 4 of a d6 -- which is
-    what `goldbox.levelup.roll_hit_points` gives.  The two multi-class ones
-    hold **more than that rule allows**: the dwarf fighter/thief stores 6,
-    where one die divided between two classes could never exceed 5, and the
-    half-elf cleric/fighter/magic-user stores 7 against a ceiling of 5.  Both
-    fit "one die per class, averaged", which is AD&D's own creation rule and
-    is *not* the rule `GEN $208D` uses at the school.
-
-    So for a multi-class character this **UNMEASURED** rule is used and said
-    to be a guess, and a caller who knows the number hands it in through
-    `Spec.hit_points_rolled` instead.  The experiment that would settle it:
-    roll six multi-class characters in the game's own creation screens with
-    `tools/dos/dosparty.py` and see whether any `hp_rolled` exceeds the largest
-    single die of the character's classes.
+    **Pool of Radiance's creation rule** (`GEN $0B4C`) is N dice of S sides
+    raised to a minimum, all three taken from the character's class code in
+    `POOL_CREATION_HIT_POINTS`, for single- and multi-class characters alike.
+    It is not the trainer's `levelup.roll_hit_points`.  Another title has no
+    table here and keeps that function's roll for a single class and one roll
+    per class, averaged, for several -- the rule DOS's creation uses, which is
+    a different port's and is a guess for them.  A caller who knows the number
+    hands it in through `Spec.hit_points_rolled`.
     """
     if spec.hit_points_rolled is not None:
         return spec.hit_points_rolled
+    if getattr(game, "key", None) == "pool-of-radiance":
+        code = classcode.code_for(
+            spec.class_bits, {name: 1 for name in spec.levels}, game=game)
+        if code not in POOL_CREATION_HIT_POINTS:
+            raise ValueError(
+                f"class code {code} is not one Pool of Radiance creation offers")
+        dice, sides, minimum = POOL_CREATION_HIT_POINTS[code]
+        return max(sum(rng.randint(1, sides) for _ in range(dice)), minimum)
     order = [n for n in levels.for_game(game).class_order if n in spec.levels]
     if len(order) <= 1:
         first = order[0] if order else next(iter(spec.levels))

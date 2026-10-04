@@ -93,6 +93,63 @@ def test_the_smallest_rolls_give_a_smaller_party_than_the_largest():
     assert all(low[n] < high[n] for n in high), (low, high)
 
 
+def _creation_spec(names) -> testparty.Spec:
+    return dataclasses.replace(
+        testparty.PARTY[0], levels={n: 1 for n in names},
+        abilities=dict(testparty.PARTY[0].abilities), hit_points_rolled=None)
+
+
+_CREATION_CODES = {
+    0: ("cleric",), 2: ("fighter",), 5: ("magic-user",), 6: ("thief",),
+    8: ("cleric", "fighter"), 9: ("cleric", "fighter", "magic-user"),
+    11: ("cleric", "magic-user"), 12: ("cleric", "thief"),
+    13: ("fighter", "magic-user"), 14: ("fighter", "thief"),
+    15: ("fighter", "magic-user", "thief"), 16: ("magic-user", "thief"),
+}
+
+
+def test_the_creation_table_names_every_code_the_menu_offers():
+    assert set(_CREATION_CODES) == set(testparty.POOL_CREATION_HIT_POINTS)
+
+
+@pytest.mark.parametrize("code", sorted(_CREATION_CODES))
+def test_level_one_hit_points_run_from_the_codes_minimum_to_its_dice(code):
+    dice, sides, minimum = testparty.POOL_CREATION_HIT_POINTS[code]
+    spec = _creation_spec(_CREATION_CODES[code])
+    for mode, want in (("min", minimum), ("max", dice * sides)):
+        record, _ = testparty.level_one(spec, GAME, testparty.rolls_for(mode))
+        assert record.get("char_class") == code
+        assert record.get("hp_rolled") == want, (code, mode)
+
+
+def test_the_c64_creation_table_holds_for_every_record_the_engine_rolled():
+    from tools.registry import specimens
+
+    root = gamedata.specimen_root()
+    path = root and root / "por-c64" / "WISH-SPEC-por-c64-party-l1-rolled.D64"
+    if not path or not path.is_file():
+        pytest.skip("needs WISH-SPEC-por-c64-party-l1-rolled")
+    recorded = specimens.read_provenance(
+        path.with_suffix(".provenance.toml")).get("sha256", {})
+    assert recorded.get(path.name) == specimens.sha256_file(path), \
+        f"{path.name} has changed since it was recorded"
+    disk = D64.open(str(path))
+    tables = levels.for_game(GAME)
+    checked = 0
+    for entry in disk.directory():
+        record = CharacterRecord.from_prg(
+            disk.read_file(entry.raw_name.rstrip(b"\xa0")))
+        dice, sides, minimum = testparty.POOL_CREATION_HIT_POINTS[
+            record.get("char_class")]
+        rolled = record.get("hp_rolled")
+        assert minimum <= rolled <= dice * sides, entry.raw_name
+        bonus = tables.constitution_hp_bonus(
+            record.get("constitution"), fighter=bool(record.get("class_bits") & 8))
+        assert record.get("hp_max") == rolled + dice * bonus, entry.raw_name
+        checked += 1
+    assert checked == 6
+
+
 # --- the ceilings docs/119-test-party.md asks for ---------------------------
 
 def test_bulwark_reaches_the_fighter_ceiling_and_arrives_wounded(built):
