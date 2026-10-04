@@ -623,3 +623,64 @@ def test_the_limit_is_put_back_when_the_build_fails(tmp_path):
     with pytest.raises(SystemExit, match="--out must not be --into"):
         _build(source, into, into, "--over-joined-limit")
     assert amiga_later.AMIGA_SSB_JOINED_SCROLL_LIMIT == 120
+
+
+# ---------------------------------------------------------------------------
+# A joined scroll's scrolls are nodes of their own
+# ---------------------------------------------------------------------------
+
+class _Joined:
+    """What the mask and the labels read of a character: deltas, items (each
+    with its `subnodes`) and effects."""
+
+    def __init__(self, deltas, scrolls_per_item, effects=0) -> None:
+        from types import SimpleNamespace
+        self.deltas = deltas
+        self.items = tuple(SimpleNamespace(subnodes=(None,) * n)
+                           for n in scrolls_per_item)
+        self.effects = (None,) * effects
+
+
+def test_a_joined_scrolls_scrolls_get_their_own_mask_and_label():
+    deltas = amiga_port.SILVER_BLADES_DELTAS
+    char = _Joined(deltas, (0, 2, 0))          # nodes: item 0, item 1, 2 scrolls, item 2
+    mask = proof.declared_block_mask(char)
+    base = deltas.record_size
+    size = deltas.item_size
+    chain = amiga_later.AMIGA_SSB_SCROLL_CHAIN
+    for node in range(5):
+        at = base + node * size
+        assert set(range(at, at + 0x2E)) <= mask, node         # display line and next
+        assert set(range(at + chain, at + chain + 4)) <= mask, node
+        assert at + 0x30 not in mask, node                       # a real item byte
+    assert proof.part_at(char, base + 1 * size + 0x30) == "item 1 +0x030"
+    assert proof.part_at(char, base + 2 * size + 0x30) == "item 1 scroll 0 +0x030"
+    assert proof.part_at(char, base + 3 * size + 0x30) == "item 1 scroll 1 +0x030"
+    assert proof.part_at(char, base + 4 * size + 0x30) == "item 2 +0x030"
+
+
+def test_the_scroll_chain_is_not_masked_on_a_title_whose_node_has_none():
+    deltas = amiga_port.CURSE_DELTAS
+    char = _Joined(deltas, (0, 0))
+    mask = proof.declared_block_mask(char)
+    base = deltas.record_size
+    # The second node's first byte is masked as its display line, but nothing
+    # is masked past the second node's own end by a chain entry.
+    assert base + deltas.item_size * 2 not in mask
+
+
+def test_the_wish4_stage4_resave_has_no_undeclared_difference(capsys):
+    """A Silver Blades party holding joined scrolls, resaved by the engine."""
+    import pathlib
+    ours = (pathlib.Path.home() / ".cache/wish/acceptance/4/stage4/saveas-u125"
+            / "wish-2026-10-03/POOLSAVE.ADF")
+    root = specimen_root()
+    theirs = (root / "ssb-amiga" / "WISH-SPEC-ssb-wish4-amiga-saveas-u125-camp-saved"
+              / "fetched-df0.adf") if root else None
+    if not ours.is_file() or theirs is None or not theirs.is_file():
+        pytest.skip("needs the WISH-4 stage 4 resave and its specimen")
+    code = proof.main(["diff", "--ours", str(ours), "--ours-slot", "A",
+                       "--theirs", str(theirs), "--theirs-slot", "F",
+                       "--opening-award", "ssb"])
+    assert "0 differences outside the declared lists" in capsys.readouterr().out
+    assert code == 0

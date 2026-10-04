@@ -120,14 +120,26 @@ def declared_record_mask(deltas: amiga_port.AmigaDeltas) -> set[int]:
     return out
 
 
+def item_nodes(char: amiga_later.AmigaCharacter) -> list[str]:
+    """One label per item node in a block, in file order: each item, then the
+    scrolls of a joined scroll, which are nodes of their own."""
+    out: list[str] = []
+    for n, item in enumerate(char.items):
+        out.append(f"item {n}")
+        out.extend(f"item {n} scroll {m}" for m in range(len(item.subnodes)))
+    return out
+
+
 def declared_block_mask(char: amiga_later.AmigaCharacter) -> set[int]:
     """The same over a whole block: record, then item nodes, then effects."""
     deltas = char.deltas
     out = declared_record_mask(deltas)
     at = deltas.record_size
-    for _ in char.items:
+    for _ in item_nodes(char):
         for offset, size, _why in amiga_later.LATER_ITEM_WRITE_UNSOURCED:
-            out.update(range(at + offset, at + offset + size))
+            # The scroll chain is past the end of a node that is too short to have one.
+            if offset < deltas.item_size:
+                out.update(range(at + offset, at + offset + size))
         at += deltas.item_size
     for _ in char.effects:
         for offset, size, _why in amiga_later.LATER_EFFECT_WRITE_UNSOURCED:
@@ -158,9 +170,10 @@ def part_at(char: amiga_later.AmigaCharacter, offset: int) -> str:
     if offset < deltas.record_size:
         return f"record {field_at(deltas, offset)}"
     at = offset - deltas.record_size
-    if at < len(char.items) * deltas.item_size:
-        return f"item {at // deltas.item_size} +0x{at % deltas.item_size:03x}"
-    at -= len(char.items) * deltas.item_size
+    nodes = item_nodes(char)
+    if at < len(nodes) * deltas.item_size:
+        return f"{nodes[at // deltas.item_size]} +0x{at % deltas.item_size:03x}"
+    at -= len(nodes) * deltas.item_size
     return f"effect {at // deltas.effect_size} +0x{at % deltas.effect_size:03x}"
 
 

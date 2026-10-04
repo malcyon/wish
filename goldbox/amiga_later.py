@@ -1429,6 +1429,13 @@ LATER_ITEM_WRITE_UNSOURCED: tuple[tuple[int, int, str], ...] = (
      "ITEM<n> template loader, which copies an uninitialised stack struct; "
      "a node the game builds itself is zero"),
     (0x03E, 1, "the same, reading 47 in 9 of 9 for the same reason"),
+    (AMIGA_SSB_SCROLL_CHAIN, 4,
+     "Silver Blades only (a Curse node ends at 0x042): the scroll chain. "
+     "/Secret's loader never reads the saved value; it allocates each "
+     "scroll into the previous node's 0x042 (0x26A32-0x26A40), reads the 70 "
+     "bytes, then clears the new scroll's 0x02A (0x26A64) and 0x042 "
+     "(0x26A82), and takes the count from the head's quantity at 0x03A. "
+     "The writer writes zero and the game writes live heap addresses"),
 )
 
 #: An effect node's byte at offset 1, which Pool of Radiance and Curse treat
