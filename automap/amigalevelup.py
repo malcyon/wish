@@ -27,8 +27,9 @@ it, and `write_plan` makes it in the game's own effect pool with
 
 **A Curse or Silver Blades thief does not get the trainer's thief skills.**
 Those two trainers mis-compute them (`docs/124` §1.23), so the level, race and
-dexterity rows are summed by `levels.ad_d_thief_skills`, the rule the C64 and
-DOS ports apply.
+dexterity rows are summed by `levels.ad_d_thief_skills`, which clamps each
+column at 0 as the DOS port does; the C64 stores the negative sum as its
+wrapped byte.
 
 Each section names its executable, the routines it copies and where
 `docs/124` §1.23 records their reading; addresses are file offsets into that executable and
@@ -42,7 +43,7 @@ from dataclasses import dataclass
 
 from goldbox import amiga_pod, levels, spells
 
-from . import amigaeffects
+from . import amigaeffects, amigaparty
 
 
 class CannotLevel(Exception):
@@ -2203,6 +2204,57 @@ def plan_member(member, key: str, *, rng=None, learn: int | None = None) -> Plan
                 items=[node.raw for node in member.item_nodes])
 
 
+#: Per title: the record offsets `summary` reads, as (class levels, former
+#: class levels or None, experience, level, former level or None, hit points
+#: current, hit points maximum).
+_SUMMARY = {
+    POOLS_OF_DARKNESS: (_POD_LEVELS, _POD_FORMER, _POD_EXPERIENCE, _POD_LEVEL,
+                        _POD_FORMER_LEVEL, _POD_HP_CURRENT, _POD_HP_MAX),
+    POOL_OF_RADIANCE: (_POR_LEVELS, None, _POR_EXPERIENCE, _POR_LEVEL, None,
+                       _POR_HP_CURRENT, _POR_HP_MAX),
+    CURSE: (_CU_LEVELS, _CU_FORMER, _CU_EXPERIENCE, _CU_LEVEL,
+            _CU_FORMER_LEVEL, _CU_HP_CURRENT, _CU_HP_MAX),
+    SILVER_BLADES: (_SB_LEVELS, _SB_FORMER, _SB_EXPERIENCE, _SB_LEVEL,
+                    _SB_FORMER_LEVEL, _SB_HP_CURRENT, _SB_HP_MAX),
+}
+
+
+def summary(raw: bytes, key: str) -> dict:
+    """What a record holds that Level up reads and writes, by name: the
+    class levels and former class levels in slot order, experience, the level
+    and former level bytes, and hit points."""
+    if key not in _SUMMARY:
+        raise CannotLevel(f"no Amiga trainer is copied for {key}")
+    levels_at, former_at, xp, level, former_level, hp, hp_max = _SUMMARY[key]
+    slots = len({POOLS_OF_DARKNESS: POD_SLOTS, POOL_OF_RADIANCE: POR_SLOTS,
+                 CURSE: CURSE_SLOTS, SILVER_BLADES: SSB_SLOTS}[key])
+    return {"levels": list(raw[levels_at:levels_at + slots]),
+            "former": (None if former_at is None
+                       else list(raw[former_at:former_at + slots])),
+            "experience": _s32(raw, xp), "level": raw[level],
+            "former_level": None if former_level is None else raw[former_level],
+            "hp": [raw[hp], raw[hp_max]]}
+
+
+def _not_on_the_chain(target, key: str, address: int, wanted):
+    """`wanted` without the effects whose id is already on the record's live
+    effect list, so a plan read before another press cannot add a duplicate."""
+    if not wanted:
+        return ()
+    row = amigaparty.ROWS.get(key)
+    if row is None:
+        return tuple(wanted)
+    head = int.from_bytes(bytes(target.read(address + row.effects.head, 4)),
+                          "big")
+    try:
+        nodes = amigaparty.chain(target, head, row.effects.link,
+                                 row.effects.size, "the effect list")
+    except amigaparty.PartyError as exc:
+        raise CannotLevel(str(exc)) from exc
+    have = {node.raw[0] for node in nodes}
+    return tuple(e for e in wanted if e.id not in have)
+
+
 def write_plan(target, member, plan_: Plan) -> tuple[tuple[int, bytes], ...]:
     """Make `plan_` in the running game for `member`, the
     `automap.amigaparty.AmigaMember` it was planned from, and return the
@@ -2219,8 +2271,9 @@ def write_plan(target, member, plan_: Plan) -> tuple[tuple[int, bytes], ...]:
         if live != bytes(member.raw[offset:offset + len(data)]):
             raise CannotLevel("the record changed after it was read")
     try:
-        added = amigaeffects.writes(target, plan_.key, address,
-                                    plan_.added_effects)
+        added = amigaeffects.writes(
+            target, plan_.key, address,
+            _not_on_the_chain(target, plan_.key, address, plan_.added_effects))
     except amigaeffects.EffectError as exc:
         raise CannotLevel(str(exc)) from exc
     made = added + tuple((address + offset, data)

@@ -247,6 +247,38 @@ def test_a_regained_former_paladin_gets_the_effect_the_trainer_adds():
                    effects=(8,)).added_effects == ()
 
 
+def test_a_former_ranger_level_of_0x80_is_negative_in_silver_blades_only():
+    """Silver Blades tests the former level signed (`ble`), Pools of Darkness
+    unsigned (`bls`): the same 0x80 is no former ranger in one and a former
+    ranger in the other."""
+    ranger = lv.amigaeffects.NewEffect(0x69, 0, 0xFF, 0)
+    ssb = bytearray(340)
+    ssb[0x6B], ssb[0x19] = 6, 16
+    ssb[0xAC + 2] = ssb[0x88] = 5
+    ssb[0xB3 + 4] = 0x80
+    ssb[0x89] = 5
+    put32(ssb, 0xC8, 70000)
+    ssb[0x70], ssb[0x152] = 40, 40
+    assert lv.plan(ssb, lv.SILVER_BLADES, rng=Dice(5, 5)).added_effects == ()
+    ssb[0xB3 + 4] = 5
+    assert lv.plan(ssb, lv.SILVER_BLADES, rng=Dice(5, 5)).added_effects == (ranger,)
+    pod = _pod_fighter(6)
+    pod[0xA8] = 0x80
+    pod[0x8A] = 5
+    assert lv.plan(pod, lv.POOLS_OF_DARKNESS,
+                   rng=Dice(5, 5)).added_effects == (ranger,)
+
+
+def test_one_press_regaining_both_classes_adds_the_ranger_then_the_paladin():
+    rec = _pod_fighter(6)
+    rec[0xA8] = 5
+    rec[0xA7] = 5
+    rec[0x8A] = 5
+    plan = lv.plan(rec, lv.POOLS_OF_DARKNESS, rng=Dice(5, 5))
+    assert plan.added_effects == (lv.amigaeffects.NewEffect(0x69, 0, 0xFF, 0),
+                                  lv.amigaeffects.NewEffect(8, 0, 0xFF, 0))
+
+
 def test_plan_member_reads_the_members_own_item_and_effect_nodes():
     from types import SimpleNamespace
 

@@ -82,6 +82,8 @@ def test_a_node_takes_the_first_clear_bit_of_the_first_byte_not_full(key):
     assert m.u32(POOL + 9 * 10 + 6) == node
     assert made[-1] == (POOL + 9 * 10 + 6, node.to_bytes(4, "big"))
     assert made == tuple(m.written)
+    bitmap = DATA + fx.POOLS[key].descriptor + 8 + 1
+    assert [at for at, _ in made] == [node, node + 2, bitmap, POOL + 9 * 10 + 6]
 
 
 def test_an_empty_list_gets_the_node_as_its_head():
@@ -171,6 +173,42 @@ def test_write_plan_writes_nothing_over_a_record_that_changed():
     with pytest.raises(lv.CannotLevel, match="changed"):
         lv.write_plan(m, member, plan)
     assert m.written == []
+
+
+@pytest.mark.parametrize("change, why", [
+    (dict(bitmap=bytes([0xFF]) * 27), "full"),
+    (dict(bitmap=bytes([0x01]), nodes=(0, 1)), "not a slot"),
+])
+def test_write_plan_writes_nothing_when_the_pool_or_list_reads_wrong(change, why):
+    rec = _ssb_regaining()
+    m = machine(SSB, **change)
+    m.put(RECORD + 0x96, m.read(RECORD + 0x96, 4))
+    m.put(RECORD, bytes(rec[:0x96]) + m.read(RECORD + 0x96, 4)
+          + bytes(rec[0x9A:]))
+    member = SimpleNamespace(address=RECORD, raw=m.read(RECORD, 340),
+                             effect_nodes=(), item_nodes=())
+    plan = lv.plan_member(member, SSB, rng=Dice())
+    assert plan.added_effects
+    with pytest.raises(lv.CannotLevel, match=why):
+        lv.write_plan(m, member, plan)
+    assert m.written == []
+
+
+def test_write_plan_drops_an_effect_already_on_the_live_chain():
+    """A plan read before another press made the node must not add a second."""
+    rec = _ssb_regaining()
+    m = machine(SSB, bytes([0x01]), nodes=(0,))
+    m.put(POOL, bytes([0x69]) + m.read(POOL + 1, 9))
+    m.put(RECORD, bytes(rec[:0x96]) + m.read(RECORD + 0x96, 4)
+          + bytes(rec[0x9A:]))
+    member = SimpleNamespace(address=RECORD, raw=m.read(RECORD, 340),
+                             effect_nodes=(), item_nodes=())
+    plan = lv.plan_member(member, SSB, rng=Dice())
+    assert plan.added_effects == (fx.NewEffect(0x69, 0, 0xFF, 0),)
+    made = lv.write_plan(m, member, plan)
+    assert made == tuple(m.written)
+    assert [at for at, _ in made] == [RECORD + o for o, _ in plan.writes]
+    assert m.read(DATA + 0x7618 + 8, 1) == b"\x01"
 
 
 #: File offset, then the bytes there, of each instruction the pools and the
