@@ -1161,7 +1161,7 @@ more boot**: re-derive the hunk, dereference `+0x5160`, and check `$49C5`
 against the map the mapper names and `$49C7` against the status line. Nothing
 reads any of it -- `automap/amiga.py` records the two numbers in the layout's
 `notes` and leaves `Fix.clock` None, because the clock's only consumer,
-`Automapper._refused`, requires both fixes to come from a status line this
+`Automapper._blocked_step`, requires both fixes to come from a status line this
 backend never reads.
 
 **Pool of Radiance is not covered.** Its Amiga build is a many-hunk executable
@@ -1266,7 +1266,7 @@ addresses and the engine relinks both on load.
 * **experience is capped at 16 777 215.** The Amiga field is a `u32be` and the
   reader reads all four bytes, but `goldbox.dos_codec.write`'s own field is three bytes
   wide, so anything going through it overflows with a bare `OverflowError`
-  above that. No Pool of Radiance character can reach it. `#111`.
+  above that. No Pool of Radiance character can reach it. `#111 (An experience total over 16 777 215 crashes the DOS writer instead of being blocked)`.
 
 **The file names**, read off disk 1 and confirmed by the game's own save to
 slot B (§1.9b): `save/CHRDAT<slot><n>.sav` with `.itm` and `.spc` beside it,
@@ -1798,7 +1798,7 @@ name `goldbox.dos_port.POOLS_OF_DARKNESS` gives the field.
 | `0x09D` | 7 | `class_levels` | probe |
 | `0x0A4` | 7 | `former_class_levels` | importer, and the dual-class routine |
 | `0x0AB` | 8 | `attack_forms` | importer. `0x0AB` is attacks in halves and `0x0AD`/`0x0AF`/`0x0B1` the damage triple |
-| `0x0B3` | 1 | `armour_class_base` | importer; 50 in 19 of 19, as DOS in 12 of 12. The writer now copies this byte through from the source rather than always writing 50 (#635) |
+| `0x0B3` | 1 | `armour_class_base` | importer; 50 in 19 of 19, as DOS in 12 of 12. The writer now copies this byte through from the source rather than always writing 50 (#635 (Read what a Pools of Darkness armour-class base other than 50 means, so the Amiga conversion writes it instead of blocking)) |
 | `0x0B4`, `0x0B5` | 1, 1 | `strength_bonus`, `unnamed_0ab` | importer |
 | `0x0B6` | 1 | **highest hit points** (DOS `highest_hp_max`, `0x17A`) | `0x015FB4` |
 | `0x0B7` | 1 | `class_bits` | importer |
@@ -2184,7 +2184,7 @@ in the file would be where the loader expected it otherwise.
 | field | why not |
 |---|---|
 | `encumbrance`, `thac0_current`, `armour_class`, `movement_current` | the game recomputes them on load, each demonstrated by a probe that wrote a wrong value and read the right one back off the sheet |
-| `armour_class_base`, `0x0B3` | **superseded by #635**: copied through from the source's own stored base, because both engines seed the current armour-class calculation from it on creation and on every rebuild. A source with none of its own gets the unarmoured `60 - 10`, which is what 19 of 19 `.pc` files — whose characters all carry items — and 12 of 12 DOS records hold |
+| `armour_class_base`, `0x0B3` | **superseded by #635 (Read what a Pools of Darkness armour-class base other than 50 means, so the Amiga conversion writes it instead of blocking)**: copied through from the source's own stored base, because both engines seed the current armour-class calculation from it on creation and on every rebuild. A source with none of its own gets the unarmoured `60 - 10`, which is what 19 of 19 `.pc` files — whose characters all carry items — and 12 of 12 DOS records hold |
 | `roster_tail`, `0x188` | all nine bytes are rebuilt by the engine — §1.19b, which is why the row is in `POD_WRITE_DERIVED` rather than the drop list |
 | bytes no neutral field names, all left zero | the stale item count `0x0C7`, `hands_used` `0x0C8` (2 in 18 of 19) and `gap_19a` `0x0C9` (2 in 5 of 19, 0 in the other 14; its neighbour `0x0CA` is 0 in 19 of 19) |
 
@@ -3415,7 +3415,7 @@ So nobody is surprised, and nobody tries.
 | **Race and class codes** | `goldbox/c64_port.py` already documents that the race table changes per title on the C64 alone (human is 7 in Pool of Radiance, 6 in Silver Blades). PoD's Amiga table has not been read. | read PoD's own table before writing a race byte |
 | **Copper, silver, electrum and gold** | only platinum (`0x04C`), gems and jewelry have been located in the `.pc`. R7 was the probe for the lighter coins and did not finish; `0x048` and `0x04A` are zero in all twelve and are the obvious candidates. | reported, with the total, so the player knows what was left on the counter |
 | **Unarmed damage** | not a loss so much as a category error: the C64's damage triple already includes the readied weapon, and PoD's item nodes carry the same information the writer emits. | write the unarmoured `1d2`, which is what all twelve genuine records hold, and let PoD derive the rest from the item nodes. §2.5 shows it coming out at `1D2+1` with no items; that the game applies a worn item's bonus is argued from the recompute, not run, because probe P3 carried none |
-| **Armour class** | **superseded by #635**: the *stored base* (`armour_class_base`) is not a category error, because both engines seed the current armour-class calculation from that one byte, so it is real state and the writer copies it through. Only the *current, post-modifier* value (`armour_class`, the byte at `0x187`) stays a category error — PoD recomputes it from the base and whatever is readied, on every load | copy `armour_class_base` from the source and let PoD derive `armour_class` itself. §2.5 shows it coming out at `AC 8` with an unarmoured base and no items |
+| **Armour class** | **superseded by #635 (Read what a Pools of Darkness armour-class base other than 50 means, so the Amiga conversion writes it instead of blocking)**: the *stored base* (`armour_class_base`) is not a category error, because both engines seed the current armour-class calculation from that one byte, so it is real state and the writer copies it through. Only the *current, post-modifier* value (`armour_class`, the byte at `0x187`) stays a category error — PoD recomputes it from the base and whatever is readied, on every load | copy `armour_class_base` from the source and let PoD derive `armour_class` itself. §2.5 shows it coming out at `AC 8` with an unarmoured base and no items |
 | **Everything Silver Blades knew and Pools of Darkness does not** | quest flags, position, journal entries | not converted, and not wanted — see §3 |
 
 ---

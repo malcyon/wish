@@ -64,7 +64,7 @@ Animate Dead field was too broad. The registered game-written
 and an owned id-32 array row at index 63. On that input, the predicate returns
 the array index, so the temple's `STA $6BAD,X` targets `$6BEC`, not the trait
 slot at `$6BB6`; it does not clear the array id. This is an instruction-path
-finding for `#700`.
+finding for `#700 (Converting a Pool of Radiance C64 party holding a camp-cast Animate Dead zombie needs more than removing the block)`.
 A successful temple Raise Dead and its game-written resave have not been
 observed, so the resulting player state remains unconfirmed.
 

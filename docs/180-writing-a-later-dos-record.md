@@ -122,8 +122,8 @@ because the **C64 engine itself** is one of its steps:
 
 The two C64 saves are `WISH-SPEC-curse-h-engine-resave.D64` and
 `WISH-SPEC-ssb-d-engine-resave.D64`, both the C64 game's own `ENCAMP > SAVE`
-of a party this project converted, from `#192` and
-`#193`.
+of a party this project converted, from `#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which the importer blocks today)` and
+`#193 (Convert a Secret of the Silver Blades DOS save into a C64 one, which the importer blocks today)`.
 
 **The measurement below was taken once, on 2026-09-05, and its other half is
 gone.** The DOS folders those two parties were converted from were
@@ -133,7 +133,7 @@ so the run cannot be repeated as it stands. The nearest specimen of the same
 party, `WISH-SPEC-ssb-234-party-pair`, is a *different state* of those
 characters and comparing against it shows real differences rather than
 conversion faults. Re-taking it means putting a converted party through the
-C64 game again, which is what `#192` and `#193` did.
+C64 game again, which is what `#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which the importer blocks today)` and `#193 (Convert a Secret of the Silver Blades DOS save into a C64 one, which the importer blocks today)` did.
 
 | party | characters back byte for byte | what differs, and why |
 |---|---|---|
@@ -150,14 +150,14 @@ writer:
   give back. **The section below shows the DOS engine putting it back on
   load**, so this costs a converted cleric nothing.
 * **the name.** `Guy de Valois ` comes back as `GUY DE VALOIS`, 13 bytes
-  over 14. That is `goldbox.dos_codec.c64_name` doing what `#193` proved in the running game: the C64 draws its text in the
+  over 14. That is `goldbox.dos_codec.c64_name` doing what `#193 (Convert a Secret of the Silver Blades DOS save into a C64 one, which the importer blocks today)` proved in the running game: the C64 draws its text in the
   uppercase/graphics set, where a lower-case letter is a punctuation mark,
   and SSI's own C64 copy of that party holds `GUY DE VALOIS` too.
 * **MALACHITE's treasure-share byte**, above.
 
 ## The DOS game loaded it
 
-`#192` and `#193` set the
+`#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which the importer blocks today)` and `#193 (Convert a Secret of the Silver Blades DOS save into a C64 one, which the importer blocks today)` set the
 standard: convert, boot the game, read the sheets, and diff the engine's own
 resave. The record half of that was done for Silver Blades on 2026-09-05.
 
@@ -180,7 +180,7 @@ GAME` took them.
   MACE +1, LONG SWORD +1, SHIELD +2, PLATE MAIL +1. Every name, plus and
   quantity, at the 67-byte stride.
 * PAINE drew as a **RANGER** level 8 -- the class that arrived as a paladin
-  before `#193` -- and his `SPELLS` list held
+  before `#193 (Convert a Secret of the Silver Blades DOS save into a C64 one, which the importer blocks today)` -- and his `SPELLS` list held
   INVISIBILITY TO ANIMALS, a druid spell in Silver Blades' own 1..117 id
   space, converted through the C64 and back.
 

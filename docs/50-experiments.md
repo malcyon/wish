@@ -3074,7 +3074,7 @@ One thing nobody has taken, and it is cheap: `Fingerprint` needs **111 steps** t
 identify New Phlan from positive evidence alone, because a square being walkable
 rules out very little. **One blocked step would settle it instantly** — and the
 status line already carries the clock, so *clock advanced + square unchanged +
-facing unchanged* is a blocked step. `Fingerprint.refused()` exists and nothing
+facing unchanged* is a blocked step. `Fingerprint.record_blocked()` exists and nothing
 calls it.
 
 
@@ -5497,7 +5497,7 @@ step east, `21,28 E 10:15` next day), with the engine's `CHRDAT` files, the
 screenshots and `run1.py`. `run2.py` is the DOSBox-X debugger pass on save
 D; `run2.log` its output.
 
-**Result 1. The travel square is `$49C3`/`$49C4`, window-local — the #50
+**Result 1. The travel square is `$49C3`/`$49C4`, window-local — the #50 (Lift the wilderness block from the DOS save converter)
 blocker, settled.** (7,29) → (7,28) → (8,28) against the three screens;
 world x = local x + 13 for window 26, y unchanged, exactly the C64 seam
 arithmetic. Live corroboration: `BPM` on `$49C3`'s low byte, one east step,
@@ -5559,7 +5559,7 @@ different lineages) -- and byte 12805 carries the low byte of `$5200`, which
 unnamed; the counts and the whole map are `docs/141-dos-savegame.md`, which is
 the document that gets kept current.
 
-Moving an outdoor save to a new area has still not been driven; #50 owns the
+Moving an outdoor save to a new area has still not been driven; #50 (Lift the wilderness block from the DOS save converter) owns the
 converter form.
 
 ## The later titles' mode flag is `$7F11`, and their LINKER is Pool of Radiance's

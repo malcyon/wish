@@ -5,7 +5,7 @@ Radiance's table, which disagrees with Curse's own data about eight codes)`
 gave Curse a table of its own and left eighteen codes with no name at all:
 ten where the creature carrying the code contradicts Pool of Radiance's name
 without saying what the right one is, and eight above `NAMES`'s reach that a
-Curse creature carries and nothing names. `#567` named all eighteen, and corrected a nineteenth, by
+Curse creature carries and nothing names. `#567 (Twelve of Curse of the Azure Bonds' own effect codes have no name at all, only Pool of Radiance's wrong one)` named all eighteen, and corrected a nineteenth, by
 reading the routine each id dispatches -- the fifth route in
 `docs/171-c64-trait-slots.md`'s table, run against Curse's own addresses.
 `#609 (Six of Curse of the Azure Bonds' inherited effect names disagree with
@@ -225,7 +225,7 @@ something it does not.
   134, 137 and 145, along with 144, which is 96's partner and does the
   hugging. 144 is readable from the same pass -- it is the crush each round,
   and its message index is 68, `HUGS` -- and it is left out because nothing
-  in the list of `#567` asked
+  in the list of `#567 (Twelve of Curse of the Azure Bonds' own effect codes have no name at all, only Pool of Radiance's wrong one)` asked
   for it.
 * **The `IS SMOTHERED TO DEATH` message (index 57) was not traced to a
   handler.** 57's engulf prints `ENGULFS ITS FOE` and applies the pair, and

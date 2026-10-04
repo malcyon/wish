@@ -322,7 +322,7 @@ layers as working code in `automap/vice.py`, `tools/c64/session.py` and
 is the only thing to assert.** A blocked move costs no time on Curse (four turns
 and one blocked step at an unchanged clock) or Silver Blades (four bumps at `(3,3)`
 left the clock at `0:05`), so "the clock changed" is evidence of neither
-movement nor a blocked step. `automap.state`'s `_refused` infers a one-minute cost and
+movement nor a blocked step. `automap.state`'s `_blocked_step` infers a one-minute cost and
 says in its own docstring that it is inferred; on both later titles it never
 fires, and a driver that wants blocked steps must compare squares.
 [120-curse-testing.md](120-curse-testing.md) §4,

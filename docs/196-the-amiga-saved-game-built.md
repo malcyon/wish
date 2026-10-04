@@ -186,7 +186,7 @@ is the next section.
 12810 (the view type) and byte 12803 (the wall in front) had never been seen
 in an outdoor Amiga saved game and writing either would have been inventing a
 value. A third WinUAE run made two,
-`#321`, and
+`#321 (An Amiga Pool of Radiance conversion blocks a party standing on the travel grid, because no outdoor Amiga saved game has ever been read)`, and
 both bytes agree with DOS:
 
 | byte | outdoors | indoors | what DOS holds outdoors |

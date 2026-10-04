@@ -480,7 +480,7 @@ identifies the map where a dozen successful steps would not.
 
 **Costs, measured.** A move is one minute, a turn is free, and **a blocked move
 is free** — four bumps at `(3,3)` facing east left the clock at `0:05`.
-`automap.state`'s `_refused` infers a one-minute cost and says in its docstring
+`automap.state`'s `_blocked_step` infers a one-minute cost and says in its docstring
 that it is inferred; on this title it would never fire.
 
 **Not done.** The party never left `GEO10`, so no area boundary was crossed and

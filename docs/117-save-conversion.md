@@ -577,7 +577,7 @@ DOS character file  ->  reader  ->  NeutralCharacter  ->  writer  ->  C64 record
 The middle is `goldbox/neutral.py`: a typed record of 64 declared fields, each one
 a `Value` carrying the number, the grade the source's own field table gave it,
 and the phrase saying where it came from. It also holds `Writer`, the
-take-refuse-report protocol every writer inherits rather than copies. Every
+take-fail-report protocol every writer inherits rather than copies. Every
 port keeps its own declarative table with a confidence on every field —
 `goldbox/layout.py` for the C64, `goldbox/dos_port.py` for DOS — and a codec reads
 only its own. The Amiga keeps no third table: `goldbox/amiga_port.py` is a
@@ -645,7 +645,7 @@ Bonds and Secret of the Silver Blades), the per-script `scratch`, whether the
 party is `outdoors`, its `travel` square, whether it has `set_out` at all —
 false only for a save made from the party-formation menu, before `BEGIN
 ADVENTURING`, substituted from `goldbox.areas.STARTS` rather than blocked
-(#301, #326) — and the later titles' own copied
+(#301 (A DOS Curse save standing in area 0 is blocked by the import, because no row of the area table names area 0), #326 (A Pool of Radiance save made before the party began adventuring is blocked, because the initialiser left $49E6 at 0 and New Phlan is indoors)) — and the later titles' own copied
 `header` words (`+$E7`-`+$E9`, `+$FD`-`+$FE`; empty of meaning for Pool of
 Radiance, which copies none of them). The addresses it reads are the ones
 `docs/141-dos-savegame.md` maps for DOS and C64 and `docs/165-amiga-savegame.md`
@@ -1535,7 +1535,7 @@ for. `$49C5` is the map `LOADFILES` reloads and `$49F2` the script id;
 **So the template no longer has to stand in the DOS party's area.** What
 `convert_save` still blocks is six areas of the thirty, where the answer
 would be a guess: the four that load no map and the two whose script picks its
-map at run time. The travel-grid block came off in #50: the C64 side of the
+map at run time. The travel-grid block came off in #50 (Lift the wilderness block from the DOS save converter): the C64 side of the
 outdoor recipe was already CONFIRMED — slot 4 = the `SQRDATA` number in place
 of slot 2, the travel square in `$49C3`/`$49C4`,
 `docs/140-loaded-files-cache.md` — and #59 (Map the DOS saved game, not just the character record)'s outdoor pass measured the DOS
@@ -1728,7 +1728,7 @@ The drawings were first made against a design in which `goldbox/amiga_codec.py` 
 `goldbox/yaml_io.py` had a middle of their own, in the C64's format; they said so, and the
 answer was to give every codec the same middle. What is drawn below is the
 arrangement after that: one `NeutralCharacter`, four codecs around it, and the
-take-refuse-report protocol in `goldbox/neutral.py` where every writer inherits it
+take-fail-report protocol in `goldbox/neutral.py` where every writer inherits it
 rather than copying it.
 
 ### One conversion end to end
@@ -1877,7 +1877,7 @@ classDiagram
     +summary() str
   }
   class Writer {
-    <<the take-refuse-report protocol, inherited>>
+    <<the take-fail-report protocol, inherited>>
     +NeutralCharacter char
     +Report report
     +str into
@@ -1976,7 +1976,7 @@ classDiagram
 field. It inherits the vocabulary check, `Value`, the grades and `Report`.
 **A writer** is `write()` plus a name-to-name table and a `field_disposition()`
 saying what it does with each of the 64 neutral names; it inherits `Report`,
-`disposition`, and the whole take-refuse-report protocol as `neutral.Writer`.
+`disposition`, and the whole take-fail-report protocol as `neutral.Writer`.
 So the claim holds as stated: a fourth format is one reader or one writer, and
 the bookkeeping that makes a codec honest comes with the middle rather than
 being copied into each end.
@@ -2345,7 +2345,7 @@ the block above ever drifts from what the tool prints.
    each of the 64 neutral names, and a test fails if the two sets disagree.
 3. **What does adding a codec cost?** One reader or one writer. The
    vocabulary, the grades, `Value`, `Report`, `disposition` and the whole
-   take-refuse-report protocol — `use`, `emit`, `get` and the closing sweep —
+   take-fail-report protocol — `use`, `emit`, `get` and the closing sweep —
    are inherited from `goldbox/neutral.py`. `goldbox/amiga_pod.py` is the demonstration:
    rewritten onto the neutral record it lost its own copy of that bookkeeping
    and its own middle in the C64's format, and every `.pc` byte it writes is what it

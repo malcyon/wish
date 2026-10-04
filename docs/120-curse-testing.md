@@ -308,7 +308,7 @@ save-disk wordings -- `session.SAVE_PROMPT` for the camp one and its own
 `wait_bar` calls `handle_prompt` on every poll, so a driven camp save now
 goes through this needle too and attaches the save disk as soon as the camp
 prompt is recognised, rather than waiting for `save_game`'s own
-belt-and-brace attach lower down (`#539`).
+belt-and-brace attach lower down (`#539 (tools/secret_of_the_silver_blades/ssbwarp.py's SAVE_PROMPT does not match Silver Blades' actual save-disk prompt, so ENCAMP > SAVE silently blocks)`).
 
 ### 3.3 The `ITEMS` screen takes Return and nothing else
 
@@ -339,7 +339,7 @@ can be checked without an emulator.
 | `party_fix`, status-line path | **transfers unchanged** | Curse draws `S 0:03  5,13` on the same row 14 of the same `$CC00` screen and `RE_STATUS` matches it as written |
 | `party_fix`, memory fallback | **does not transfer** | `$49C0` in a running Curse is engine code. Curse's live triple is `$C04B`, which is *outside* the save image, so a per-title base cannot simply be a payload offset |
 | `Fingerprint` | transfers unchanged | 16 candidates → **2** on four completed steps and one blocked step, **0 contradictions**, `GEO01` among the survivors and equal to what `ResidentGeo` said independently |
-| `automap/state.py`'s `_refused` | **never fires on Curse** | it infers a blocked step from clock+1 with the square unchanged, and Curse's clock does not advance on a blocked step. Its docstring already allows this; a driver that wants blocked steps must compare squares |
+| `automap/state.py`'s `_blocked_step` | **never fires on Curse** | it infers a blocked step from clock+1 with the square unchanged, and Curse's clock does not advance on a blocked step. Its docstring already allows this; a driver that wants blocked steps must compare squares |
 | one step costs one minute | **CONFIRMED for a completed forward step**, and zero for a turn or a blocked step | the clock ran `0:01 → 0:03 → 0:07` over six steps and stood still through four turns and one blocked step |
 | area names | structure done, content not | `goldbox/areas.py:GEO_NAMES` is keyed by title and Curse's table is empty, so `area_label` degrades rather than lying. Naming Curse's sixteen maps still needs somebody who has played it |
 | `FilenameDigits` | **moot** | there is no filename strategy in `automap/area.py`, and `$2714` is code in a running Curse anyway |

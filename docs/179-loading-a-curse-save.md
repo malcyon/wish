@@ -133,7 +133,7 @@ seconds, overridable per call. CONFIRMED by the same command run twice with
 nothing else changed: `$03F1` = 74 and a failed load without it, `$03F1` = 0 and
 a party on the screen with it.
 
-This is the same fault as `#192`'s second `ENCAMP > SAVE`
+This is the same fault as `#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which the importer blocks today)`'s second `ENCAMP > SAVE`
 coming back `--SAVE ERROR--` until the image was detached and put back.
 
 ### 60, and a save disk the drive never finished writing

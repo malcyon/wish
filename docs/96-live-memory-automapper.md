@@ -281,7 +281,7 @@ where the numbers are; nothing in `automap/live.py` holds an address (#29 (The l
 
 ### The blocked step -- wired up
 
-`Fingerprint.refused()` had nothing calling it, because the mapper cannot see
+`Fingerprint.record_blocked()` had nothing calling it, because the mapper cannot see
 key presses. It does not need to: the status line carries the game clock, and
 **clock advanced by one minute + square unchanged + facing unchanged** is a
 step the game blocked. Positive evidence needs 111 steps to identify New Phlan;
@@ -479,7 +479,7 @@ is exactly when the pointer may move.
 | the status line | `target.party_fix` | a 40x25 PETSCII screen at a VIC-derived address. The Amiga answers `fix` itself from the engine's globals and never reaches it |
 | the banking capability | `target.screen_banks`, `automap/vice.py` | a 68000 has one memory, so the capability is absent and `screen_banks` hands back the one reader |
 | `RESIDENT_GEO`, `SEARCH_RANGES` | `automap/area.py` | `$0400`, and a sweep of `$0400`-`$CFFF`. `ResidentGeo.search()` cannot run on an Amiga: wrong ranges, and each region is a round trip |
-| `_refused` | `automap/state.py` | requires **both** fixes to come from the status line, so it never fires on a backend whose every fix is `"memory"` |
+| `_blocked_step` | `automap/state.py` | requires **both** fixes to come from the status line, so it never fires on a backend whose every fix is `"memory"` |
 | `_running`'s cheap proof | `automap/state.py` | a status line proves a Gold Box game for free on the C64; on the Amiga only the resident map block can, which costs two round trips |
 | `RESIDENT_EVERY`, `PROVEN_FOR`, the 200 ms timer | `automap/state.py`, `automap/window.py` | tuned to a poll costing 14 ms of emulated time |
 | the live party tab, the Action buttons, Level up, Fast Travel | `automap/live.py`, `automap/actions.py` | the C64 save image at `Game.save_load_address`, and writes to C64 addresses. An Amiga gets `automap/amigaparty.py`, `automap/amigaactions.py` and `automap/amigafasttravel.py` instead; Level up is off on every Amiga title |

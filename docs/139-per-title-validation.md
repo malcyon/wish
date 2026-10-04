@@ -75,7 +75,7 @@ applicable.
 | A15 | character traits panel (`0x0AD`–`0x0B6`) | V | V | V | The seed tables are found by the read that uses them — `LDX <race> / LDA <table>,X / STA <slot>` — and the number of slots seeded is per title: Pool of Radiance one (`GEN $0BF3`), Curse three (`$24EA`), Silver Blades two (`$0C4B`). **Curse's codes are Pool of Radiance's**, every one landing on the race its name demands. **Silver Blades' are not**: its elf is seeded 95 and its half-elf 18, which read as "fights on from -6 to 0 hit points" and a gnome's bonus against kobolds. **Closed by #186 (The character sheet gives a Silver Blades elf a Pool of Radiance ability)**: `goldbox/traits.py` is a table per title now, Curse pointing at Pool of Radiance's and Silver Blades carrying its own — six of its nine seeded codes named by pointing the existing wording at this title's number, and 7, 92 and 105 showing their number because nobody has read what they mean. `test_coldread.py`, six tests, corroborated on the shipped party; `test_pertitle_ui.py`, seven more, on a record built with an elf in it because the shipped party is all humans and dwarves |
 | A16 | the four active-effect arrays are read | V | V | V | **This row said "active effects panel" and marked it V for Pool of Radiance; there is no such panel in the program for any title.** `docs/133-active-effects.md` opens "A plan, not a record of work", and the box that carried that title is now `Character Traits`, which is A15. What exists is `automap/live.py:active_effects`, feeding the combat view and the condition badges — and its four payload offsets `$000`, `$040`, `$080`, `$280` and its 64 slots are now measured on all three titles: `CAMP`'s owner-renumber loop is instruction for instruction the same in each with `LDX #$3F`, and `DUNGEON`'s duration tick likewise. `test_coldread.py::test_the_effect_arrays_sit_where_the_save_image_puts_them` and `…::test_camp_renumbers_sixty_four_effect_owners_in_every_title`. **What an id *means* on a later title is not settled** and A15 is a reason to doubt it — see C13 |
 | A17 | an unchanged save writes back byte-identically | V | V | V | `test_curse.py::test_the_editor_writes_a_curse_save_back_unchanged`; **SSB closed by #33 (One Silver Blades session, for the whole editor path)** — `test_ssbeditorpath.py::test_the_editor_writes_a_silver_blades_save_back_unchanged`, on `WISH-SPEC-ssb-d-engine-resave`, the C64 engine's own `ENCAMP > SAVE` |
-| A18 | YAML export → import → byte-identical disk | V | V | V | `test_curse.py::test_a_curse_save_disk_survives_yaml_byte_for_byte`; **SSB closed by #33 (One Silver Blades session, for the whole editor path)** — `test_ssbeditorpath.py::test_a_silver_blades_save_disk_survives_yaml_byte_for_byte`. The row's old reason, that SSB had no save disk in the tests, stopped being true on 2026-09-05 when `#193` left six engine-written Silver Blades disks in the specimen tree |
+| A18 | YAML export → import → byte-identical disk | V | V | V | `test_curse.py::test_a_curse_save_disk_survives_yaml_byte_for_byte`; **SSB closed by #33 (One Silver Blades session, for the whole editor path)** — `test_ssbeditorpath.py::test_a_silver_blades_save_disk_survives_yaml_byte_for_byte`. The row's old reason, that SSB had no save disk in the tests, stopped being true on 2026-09-05 when `#193 (Convert a Secret of the Silver Blades DOS save into a C64 one, which the importer blocks today)` left six engine-written Silver Blades disks in the specimen tree |
 | A19 | a save of one title will not import into another | V | V | V | `test_curse.py::test_a_curse_party_will_not_import_into_a_pool_of_radiance_disk` and its mirror; **SSB closed by #33 (One Silver Blades session, for the whole editor path)** in both directions — `test_ssbeditorpath.py::test_a_silver_blades_party_will_not_import_into_a_pool_of_radiance_disk` and `…test_a_pool_of_radiance_party_will_not_import_into_a_silver_blades_disk`, each asserting the error message names both titles |
 | A20 | an edited field appears in the running game | V | V | V | `docs/120` §5.2 — name, gold and current hit points, all three read off Curse's own screens. **SSB closed by #33 (One Silver Blades session, for the whole editor path)** on 2026-09-08, VICE pool slot 3: MORGAINE renamed to `BRIGHID`, gold 0 → 4321 and strength 17 → 12 through `EditorBinding`, and the game drew `BRIGHID` on the party-formation panel and in the `VIEW WHICH CHARACTER?` list, `STR 12` and `GOLD          4321` on the sheet. `tools/secret_of_the_silver_blades/ssbedit.py` is the run |
 
@@ -84,7 +84,7 @@ applicable.
 | # | feature | PoR | COAB | SSB | evidence |
 |---|---|---|---|---|---|
 | B1 | read a DOS save | V | V | V | `test_dossave.py`, `test_dosconvert.py`. `editor/convert.py`'s `DIRECTIONS` registers all three titles in each of the six directions between C64, DOS and Amiga (Pools of Darkness, Amiga to DOS only, sits behind `WISH_EXPERIMENTAL_POD_CONVERT`) |
-| B2 | convert a DOS save into a C64 one | V | V | V | #6 (Convert a DOS save into a C64 save), #192 and #193, closed: each converted disk loads in VICE and the party walks |
+| B2 | convert a DOS save into a C64 one | V | V | V | #6 (Convert a DOS save into a C64 save), #192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which the importer blocks today) and #193 (Convert a Secret of the Silver Blades DOS save into a C64 one, which the importer blocks today), closed: each converted disk loads in VICE and the party walks |
 
 ### C. The automapper — needs a live machine
 
@@ -178,7 +178,7 @@ was made on 2026-09-05.
 `WISH-SPEC-ssb-d-engine-resave` — the C64 engine's own save — and §3 G5's
 premise went with them: the blocker it named, "a save the game itself wrote",
 had already been met on 2026-09-05 by
-#193, and nobody had returned to the row.
+#193 (Convert a Secret of the Silver Blades DOS save into a C64 one, which the importer blocks today), and nobody had returned to the row.
 
 #31 (Cold-read Curse and Silver Blades for the fields the editor shows) moved eight of them, all by reading files this project already opens:
 A9 and A14 to `V` for Curse, A10, A12 and A14 to `V` for Silver Blades, A15 to
@@ -335,7 +335,7 @@ carries the runs.
 **Its premise was already out of date when it was written here.** This section
 said everything SSB had came from `SAVEDBASH`, a shipped demo party, so the
 work had to start by playing far enough to save. It did not:
-`#193` left `WISH-SPEC-ssb-d-engine-resave` in the specimen
+`#193 (Convert a Secret of the Silver Blades DOS save into a C64 one, which the importer blocks today)` left `WISH-SPEC-ssb-d-engine-resave` in the specimen
 tree on 2026-09-05 — the C64 engine's own `ENCAMP > SAVE` — and `#344 (A
 converted Silver Blades dwarf, gnome or halfling keeps DOS's saving throws,
 because that title's racial bonus has never been watched in the game)` left a

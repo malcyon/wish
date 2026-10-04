@@ -40,7 +40,7 @@ mid-redraw can land on a real, in-range address the renderer is using as a
 scratch cursor rather than on the party's own square — CONFIRMED from the
 bytecode, `#715 (The C64 driver's screen capture and live-memory reads aren't
 atomic, and patching each surfaced race isn't converging)`. The `-e` stall
-on `#700` is the one
+on `#700 (Converting a Pool of Radiance C64 party holding a camp-cast Animate Dead zombie needs more than removing the block)` is the one
 observed instance; that it caught the indoor renderer specifically, rather
 than one of `DUNGEON`'s four walks, is PROBABLE — the program counter was not
 recorded at the time.
@@ -512,7 +512,7 @@ to reach.
 * **`automap/area.py` against all 29 maps.** `ResidentGeo` matches `$0400` byte
   for byte against the disk copies; fasttraveling to each area in turn turns that into
   a 29-case test instead of one anecdote about New Phlan.
-* **`Fingerprint.refused()`, which nothing calls.** `docs/50` notes that one
+* **`Fingerprint.record_blocked()`, which nothing calls.** `docs/50` notes that one
   blocked step identifies New Phlan instantly where 111 positive steps are
   needed. A fasttravel plus a scripted walk into a known wall produces that step on
   demand.

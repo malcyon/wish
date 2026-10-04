@@ -36,7 +36,7 @@ The failures came in a sequence, each one a narrower version of the last.
 First bare numbers everywhere. Then titles in the prose and bare numbers in
 tables -- a column of bare numbers is the least readable thing in a reply, not
 the most. Then titles in the table and bare numbers in the prose around it:
-"#102 (A minimally-cached save cannot walk into an area, and the party is stuck where it stands) is solved", "#59 (Map the DOS saved game, not just the character record)'s inherit list", "#50's proof now passes". A number used
+"#102 (A minimally-cached save cannot walk into an area, and the party is stuck where it stands) is solved", "#59 (Map the DOS saved game, not just the character record)'s inherit list", "#50 (Lift the wilderness block from the DOS save converter)'s proof now passes". A number used
 as the subject of a sentence is the worst place for it, because that is exactly
 where the reader most needs to know what is being talked about. "The resizable
 columns with #135 (The automapper's roster column does not scroll, so a full party puts a 944px floor under the window)" is the same kind of failure. There is no "already introduced it above"
@@ -839,7 +839,7 @@ cheap where grinding at a disassembly it was not sent to read is not.
 **What makes an issue assignable to `junior-dev` is a property of the issue
 body.** `#71 (Character draws on top of itself when the header is squeezed to
 its floor)` looked like ordinary work and took nine rounds and a `QTableView`
-subclass. `#73` named the two candidate approaches and said which was smaller, and
+subclass. `#73 (The DOSBox-X harness will not start without DOSBox 0.74, which it never runs)` named the two candidate approaches and said which was smaller, and
 that is what made it assignable.
 
 **A reviewer in a shared tree reviews everybody.** `code-reviewer` starts with
@@ -901,7 +901,7 @@ The two issues that illustrated `junior-dev`'s filter:
 
 > `#71 (Character draws on top of itself when the header is squeezed to its floor)`
 > looked like ordinary work and took nine rounds and a `QTableView` subclass.
-> `#73` named the two candidate approaches and said
+> `#73 (The DOSBox-X harness will not start without DOSBox 0.74, which it never runs)` named the two candidate approaches and said
 > which was smaller, and that is what made it assignable.
 
 #### .claude/rules/delegating.md -- "Writing the brief"

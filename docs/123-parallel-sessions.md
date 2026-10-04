@@ -471,7 +471,7 @@ The live-session work currently waiting, by which game has to be booted:
 |---|---|---|---|
 | FastTravel: is `$2034` safe to enter? (+6 more) | 118 §"Open questions" | PoR | the other PoR rows |
 | `ResidentGeo` against all 29 maps | 118 §5 | PoR | ” |
-| `Fingerprint.refused()`, first ever call | 118 §5 | PoR | ” |
+| `Fingerprint.record_blocked()`, first ever call | 118 §5 | PoR | ” |
 | Overland map W1, the first step onto the travel grid | 113 | PoR | ” |
 | Release testing L7 + M1–M6 | 122 | PoR | ” |
 | Curse tier 3 — live addresses | 120 | **Curse** | tiers 4, 5.2 |

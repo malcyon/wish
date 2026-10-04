@@ -7,8 +7,8 @@ the Silver Blades that is the only thing area 0 can be; on Pool of Radiance
 area 0 is also New Phlan, a real place a party spends much of the game in.
 So the state has to be read off the container, never off the area word.
 
-This is what `#301` and
-`#326`
+This is what `#301 (A DOS Curse save standing in area 0 is blocked by the import, because no row of the area table names area 0)` and
+`#326 (A Pool of Radiance save made before the party began adventuring is blocked, because the initialiser left $49E6 at 0 and New Phlan is indoors)`
 turned out to be, and `goldbox/dos_codec.py` converts such a save: to New Phlan
 for Pool of Radiance, and to the C64 game's own pre-adventure save for Curse
 and Silver Blades.
@@ -115,7 +115,7 @@ takes the buffer where the format has one and the word where it does not, and
 never-adventured containers hold 0 there and Curse's and Silver Blades' six
 hold 1 -- PROBABLE, from the containers, neither initialiser read for this
 word. It is why each title was blocked by a different check, and why a fix
-tested on Curse alone would not have found `#326`:
+tested on Curse alone would not have found `#326 (A Pool of Radiance save made before the party began adventuring is blocked, because the initialiser left $49E6 at 0 and New Phlan is indoors)`:
 
 | title | area word | which check blocked it, until 2026-09-06 |
 |---|---|---|
@@ -183,7 +183,7 @@ somebody builds a cache by hand.
 
 ## What the import does now
 
-Donald decided on 2026-09-05, on `#301`:
+Donald decided on 2026-09-05, on `#301 (A DOS Curse save standing in area 0 is blocked by the import, because no row of the area table names area 0)`:
 **a party that has not set out is converted rather than blocked**, on the
 reading that the player loses nothing -- there was nothing to lose yet -- and
 that blocking would leave somebody who saved straight after making their
