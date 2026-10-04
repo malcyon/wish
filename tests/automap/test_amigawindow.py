@@ -7,6 +7,7 @@ Whether those offsets are the game's is a measurement on a running Amiga; these
 tests check what the window does with the answers.
 """
 
+import logging
 import os
 from types import SimpleNamespace
 
@@ -723,8 +724,15 @@ def test_an_unexpected_loader_error_gives_no_names_and_is_logged(monkeypatch, ca
     def breaks(*a):
         raise RuntimeError("odd image")
     amiga_names_from(monkeypatch, window, breaks)
-    with caplog.at_level("DEBUG"):
-        assert window._names_for_spells() == {}
+    # wish.debuglog switches propagation off on the "wish" logger once imported, so
+    # the root-level caplog handler only sees this logger if it is attached directly.
+    wish = logging.getLogger("wish")
+    wish.addHandler(caplog.handler)
+    try:
+        with caplog.at_level(logging.DEBUG, logger="wish.automap.window"):
+            assert window._names_for_spells() == {}
+    finally:
+        wish.removeHandler(caplog.handler)
     assert any(r.exc_info and "odd image" in str(r.exc_info[1])
                for r in caplog.records)
 
