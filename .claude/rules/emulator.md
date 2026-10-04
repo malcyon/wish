@@ -127,7 +127,11 @@ and read each one back equal; a gate that reads back wrong, or one the game
 wrote itself while it was held, raises and the save stays blocked.
 `allow_suppressed=True` saves anyway and is for automapper and driver testing
 only. A walking conversion proof may switch encounters off only through
-`tools/c64/acceptance.py --no-encounters`, which turns the switch on for each
+`tools/c64/acceptance.py --no-encounters`, `tools/c64/savecheck.py
+--no-encounters` or `tools/convert/convertrun.py --no-encounters` (C64 only;
+the last two set the gates before the first key of `--walk` and put them back
+and verify them after the walk, before `--resave`, stopping the run if one
+cannot be verified). `acceptance.py` turns the switch on for each
 `walk` step, clears the title's rest-interruption byte during each `rest` step
 so a rest in a town runs to its end (without the switch a rest behaves as the
 game does), and restores and verifies the gates at its end and before every
