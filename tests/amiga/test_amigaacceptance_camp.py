@@ -1174,6 +1174,47 @@ def test_a_published_prepare_for_661_takes_the_pinned_source_and_refuses_another
         foundation.prepare_published(name, "other", report, "661", camp=steps)
 
 
+#: The DOS saves the WISH-22 Amiga-destination runs start from, under the specimen root.
+DOS_22 = {
+    "curse": ("por-dos/WISH-SPEC-curse-234-party-dualclassed/SAVGAMD.DAT",
+              "4e911c12a449a4ff1694aab6d918f120c176df66483e32428cb50454db8b03df"),
+    "ssb": ("ssb-dos/WISH-SPEC-ssb-joined-arrow-dos-672/SAVGAMD.DAT",
+            "b3515793dada24b6a85061f5c2fdc5555a45df40381ee0009e9fd54ba381fb72")}
+
+
+def test_22_pins_the_two_dos_saves_and_names_its_issue():
+    assert foundation.PUBLISHED_SOURCES_BY_ISSUE["22"] == {
+        ("curse", "dos"): frozenset({DOS_22["curse"][1]}),
+        ("ssb", "dos"): frozenset({DOS_22["ssb"][1]})}
+    assert foundation.PUBLISHED_ISSUE_TEXT["22"] == (
+        "WISH-22 (Validate Character Editor Open, Save and Save As across C64, DOS and Amiga)")
+
+
+@pytest.mark.parametrize("name", sorted(DOS_22))
+def test_the_pinned_22_sources_are_the_specimens_on_disk(name):
+    relative, digest = DOS_22[name]
+    root = gamedata.specimen_root()
+    if root is None or not (root / relative).is_file():
+        pytest.skip(f"needs the specimen {relative}")
+    assert staging.sha256(root / relative) == digest
+
+
+@pytest.mark.parametrize("name,names", [
+    ("ssb", ("GUY DE VALOIS", "PAINE")), ("curse", ("MATHEW", "TRAVIS"))])
+def test_a_published_prepare_for_22_files_under_its_issue_and_refuses_another_source(
+        tmp_path, monkeypatch, name, names):
+    report = _published_report(tmp_path, monkeypatch, name, "dos",
+                               pinned=DOS_22[name][1], names=names)
+    path = foundation.prepare_published(name, "dos", report, "22")
+    manifest, _title = foundation._published_manifest(path, name)
+    assert manifest["issue"] == "22" and path.parent.parent.name == "22"
+    data = json.loads(report.read_text())
+    data["specimen_sha256"] = "0" * 64
+    report.write_text(json.dumps(data))
+    with pytest.raises(RouteError, match="differs from the pinned specimen"):
+        foundation.prepare_published(name, "other", report, "22")
+
+
 def test_silver_blades_camp_steps_reach_every_line_of_a_party_of_six():
     assert route_camp.SHEET_LINES["ssb"] == (1, 2, 3, 4, 5, 6)
     tokens = route_camp.parse_steps("view 1;view 2;view 3;view 4;view 5;view 6", "ssb")

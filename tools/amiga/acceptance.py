@@ -156,6 +156,12 @@ PUBLISHED_SOURCES_BY_ISSUE = {
         ("curse", "c64"): frozenset({"ff3228edf42aa56a0fbf5159e8354358a38673115216a1b6c7f3439cae2686f2"}),
         ("ssb", "dos"): frozenset({"91a136ce86b34267b81d1ddd1d5037ce54d1a7d5b7e63732dddcb0af3070921b"}),
     },
+    # The two DOS saves the Character Editor's Save As converts to the Amiga: the Curse party
+    # with a dual-classed member and the Silver Blades party joined by arrow.
+    "22": {
+        ("curse", "dos"): frozenset({"4e911c12a449a4ff1694aab6d918f120c176df66483e32428cb50454db8b03df"}),
+        ("ssb", "dos"): frozenset({"b3515793dada24b6a85061f5c2fdc5555a45df40381ee0009e9fd54ba381fb72"}),
+    },
 }
 
 
@@ -181,6 +187,8 @@ PUBLISHED_ISSUE_TEXT = {
     "667": ("#667 (A DOS party under Prayer, the strength and charisma spells, Mirror Image or "
             "an effect with no C64 spell row is still refused when saved as a C64 save, because "
             "only the ordinary caster-level spells convert)"),
+    "22": ("WISH-22 (Validate Character Editor Open, Save and Save As across C64, DOS and "
+           "Amiga)"),
 }
 PUBLISHED_DISKS = {
     "ssb": ("2f9ae86494561231dd1d70b350ae07b959c9f62642b64e9d4b57ffd23686ace4",
@@ -301,6 +309,25 @@ def _reader_index(before: list[str], after: list[str]) -> int | None:
     except ValueError:
         return None
     return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+#: The snapshot a walk retry restores; a `--camp` step may not use the name.
+WALK_LEG = "walk-leg"
+
+
+class GuardMissed(RouteError):
+    """A guarded state's screen did not match within its limit."""
+
+
+def _walk_leg(steps: Any) -> tuple[int, int] | None:
+    """The 1-based first and last step of the contiguous `turn`/`move` run that starts the walk."""
+    walking = [n for n, step in enumerate(steps, 1) if step[2] in ("turn", "move")]
+    if not walking:
+        return None
+    end = walking[0]
+    while end < len(steps) and steps[end][2] in ("turn", "move"):
+        end += 1
+    return walking[0], end
 
 
 def snapshot_pipe() -> Any:
@@ -1209,7 +1236,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
               rulebook_draws: int | None = None, target: Any = None,
               lane_check: Callable[[], Any] | None = None,
               rulebook_records: list[int] | None = None,
-              marks: Mapping[int, tuple[tuple[str, str], ...]] | None = None) -> dict[str, Any]:
+              marks: Mapping[int, tuple[tuple[str, str], ...]] | None = None,
+              walk_retry: int = 0) -> dict[str, Any]:
     """Walk the route, stopping at the first unrecognised state, and fetch both disks.
 
     A guarded state is found by polling single grabs until its static box
@@ -1247,6 +1275,12 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     key goes out; a snapshot is therefore refused at index 0, where no screen has been reached.
     Names match without regard to case, as the guest's files do. A `--camp` list's `snapshot
     NAME` and `restore NAME` steps become marks.
+
+    `walk_retry` (accept only) takes a snapshot named `walk-leg` before the route's first `turn`
+    or `move` step, requires each step of that leg to match its guard, and on a miss, such as an
+    encounter screen, restores the snapshot and walks the leg again, at most `walk_retry` times;
+    a further miss stops the run. Each retry is listed in `result["walk_retries"]`. No game save
+    falls inside a leg, so a restore never strands one on the disk image.
 
     `preserve_specimen` registers the fetched save disk of a run that succeeded by its own
     verdict, before `--expect` is judged, so a run that later fails `--expect` still leaves its
@@ -1514,12 +1548,20 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             *((k, s, "key") for k, s in route), (write_keys[0], "loaded_menu", "write"))
         strict_states = {"title", *(s for _, s in ROUTE)}
         table = SILVER_BLADES_INTERSTITIALS
+    if walk_retry < 0:
+        raise RouteError("walk retries cannot be negative")
+    if walk_retry and not accept:
+        raise RouteError("walk retries belong to an accept run")
+    if walk_retry:
+        result["walk_retries"] = []
     marks = {**(marks or {})}
     if title is not None and "camp" in manifest and accept:
         for index, pairs in route_camp.camp_marks(
                 title, tuple(manifest["camp"]), len(manifest["names_a"]),
                 name=manifest["title"]).items():
             marks[index] = (*pairs, *marks.get(index, ()))
+    if any(name.lower() == WALK_LEG for pairs in marks.values() for _, name in pairs):
+        raise RouteError(f"the snapshot name {WALK_LEG} is the walk retry's own")
     if marks:
         if measure or reload:
             raise RouteError("snapshot and restore steps belong to an accept run")
@@ -1867,7 +1909,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 if not strict:
                     return settle_unguarded(state, name)
                 missing = result.get("interstitials_without_guard")
-                raise RouteError(f"{state} screen was not recognized within {limit:.0f}s;"
+                raise GuardMissed(f"{state} screen was not recognized within {limit:.0f}s;"
                                  f" kept {crop}"
                                  + (f"; the guard map has no rule for {missing}" if missing else ""))
             wait(poll)
@@ -2057,58 +2099,82 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             skip_first = landed["state"] == "party_menu" and steps[0][1] == "party_menu"
             previous_world = ""
             previous_state = ""
-            for n, (key, state, kind) in enumerate(steps, 1):
-                for verb, mark_name in marks.get(n - 1, ()):
-                    machine_step(verb, mark_name, n)
-                if n == 1 and skip_first:
-                    result["events"].append({"skipped": key, "step": n})
-                    continue
-                if kind == "answer":
-                    run_answer()
+            leg = _walk_leg(steps) if walk_retry else None
+            resumed = False
+            n = 0
+            while n < len(steps):
+                n += 1
+                key, state, kind = steps[n - 1]
+                in_leg = leg is not None and leg[0] <= n <= leg[1]
+                if resumed and n == leg[0]:
+                    resumed = False
                 else:
-                    perform(key, kind, state, n)
-                name = (f"{n:02d}-post_write" if kind == "write" and state == "loaded_menu"
-                        else f"{n:02d}-{state}")
-                if kind == "move":
-                    first_wait = min_waits.get("world_after_move", 0)
-                elif kind == "write":
-                    first_wait = min_waits.get(state, POST_WRITE_WAIT)
-                else:
-                    first_wait = min_waits.get(state, 0)
-                loading = (silver_blades and kind == "key" and state == "loaded_menu"
-                           and previous_state == "load_picker")
-                if loading:
-                    watch_messages((LOAD_MESSAGE,))
-                elif route_camp.is_join(state):
-                    watch_messages(tuple(route_camp.JOIN_MESSAGES))
-                digest = reach(state, name, first_wait,
-                               strict=not accept or state in strict_states)
-                if loading:
-                    guarded = _has_rule(guard, LOAD_MESSAGE)
-                    result["load_message"] = {
-                        "state": LOAD_MESSAGE, "guarded": guarded, "grabs": messages["grabs"],
-                        "shown": (messages["seen"] is not None) if guarded else None,
-                        "shot": messages["shot"]}
-                    log("load_message", **result["load_message"])
-                watch_messages(())
-                if route_camp.is_join(state):
-                    # JOIN's message is gone after its delay; the list it redrew is read now.
-                    after = route_camp.joined_after(state)
-                    reach(after, f"{n:02d}-{after}",
-                          min_waits.get(after, route_camp.JOINED_WAIT),
-                          strict=not accept or after in strict_states)
-                if (key, state, previous_state) == (
-                        route_camp.REST_GO, route_camp.CAMP, route_camp.REST_MENU):
-                    # A sheet counts as showing a rest's result only if it comes after it.
-                    result["sheets_before_last_rest"] = len(result.get("camp_sheets", []))
-                previous_state = state
-                if kind == "move":
-                    # Evidence only: the two saves judge the walk, never the picture.
-                    result["events"][-1]["crop_changed"] = digest != previous_world
-                if state == "world":
-                    previous_world = digest
-                    if counter is not None:
-                        counter.locate()
+                    for verb, mark_name in marks.get(n - 1, ()):
+                        machine_step(verb, mark_name, n)
+                    if in_leg and n == leg[0]:
+                        machine_step("snapshot", WALK_LEG, n)
+                try:
+                    if n == 1 and skip_first:
+                        result["events"].append({"skipped": key, "step": n})
+                        continue
+                    if kind == "answer":
+                        run_answer()
+                    else:
+                        perform(key, kind, state, n)
+                    name = (f"{n:02d}-post_write" if kind == "write" and state == "loaded_menu"
+                            else f"{n:02d}-{state}")
+                    if kind == "move":
+                        first_wait = min_waits.get("world_after_move", 0)
+                    elif kind == "write":
+                        first_wait = min_waits.get(state, POST_WRITE_WAIT)
+                    else:
+                        first_wait = min_waits.get(state, 0)
+                    loading = (silver_blades and kind == "key" and state == "loaded_menu"
+                               and previous_state == "load_picker")
+                    if loading:
+                        watch_messages((LOAD_MESSAGE,))
+                    elif route_camp.is_join(state):
+                        watch_messages(tuple(route_camp.JOIN_MESSAGES))
+                    digest = reach(state, name, first_wait,
+                                   strict=not accept or state in strict_states or in_leg)
+                    if loading:
+                        guarded = _has_rule(guard, LOAD_MESSAGE)
+                        result["load_message"] = {
+                            "state": LOAD_MESSAGE, "guarded": guarded, "grabs": messages["grabs"],
+                            "shown": (messages["seen"] is not None) if guarded else None,
+                            "shot": messages["shot"]}
+                        log("load_message", **result["load_message"])
+                    watch_messages(())
+                    if route_camp.is_join(state):
+                        # JOIN's message is gone after its delay; the list it redrew is read now.
+                        after = route_camp.joined_after(state)
+                        reach(after, f"{n:02d}-{after}",
+                              min_waits.get(after, route_camp.JOINED_WAIT),
+                              strict=not accept or after in strict_states)
+                    if (key, state, previous_state) == (
+                            route_camp.REST_GO, route_camp.CAMP, route_camp.REST_MENU):
+                        # A sheet counts as showing a rest's result only if it comes after it.
+                        result["sheets_before_last_rest"] = len(result.get("camp_sheets", []))
+                    previous_state = state
+                    if kind == "move":
+                        # Evidence only: the two saves judge the walk, never the picture.
+                        result["events"][-1]["crop_changed"] = digest != previous_world
+                    if state == "world":
+                        previous_world = digest
+                        if counter is not None:
+                            counter.locate()
+                except GuardMissed as exc:
+                    if not in_leg:
+                        raise
+                    if len(result["walk_retries"]) >= walk_retry:
+                        raise RouteError(f"step {n} ({state}) after {walk_retry} walk "
+                                         f"retries: {exc}") from exc
+                    result["walk_retries"].append(
+                        {"attempt": len(result["walk_retries"]) + 1, "step": n, "error": str(exc)})
+                    log("walk_retry", step=n, error=str(exc))
+                    machine_step("restore", WALK_LEG, leg[0])
+                    resumed = True
+                    n = leg[0] - 1
             for verb, mark_name in marks.get(len(steps), ()):
                 machine_step(verb, mark_name, len(steps) + 1)
             if counter is not None:
@@ -2949,6 +3015,9 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--expect", default=None,
                    help="NAME:ID:MINUTES:DATA, checked against the route's later slot")
     a.add_argument("--journal-python")
+    a.add_argument("--walk-retry", type=int, default=0, metavar="N",
+                   help="snapshot before the first turn or move step, and on a screen the guard "
+                        "does not match restore it and walk again, at most N times")
     a.add_argument("--rulebook-draws", type=int, default=None,
                    help=f"Silver Blades only: camp saves to make in this boot, 1 to {RULEBOOK_DRAWS_MAX}")
     a.add_argument("--rulebook-records", type=_record_numbers, default=None,
@@ -3116,6 +3185,7 @@ def main(argv: list[str] | None = None) -> int:
                     published_disk_one=args.published_disk_one,
                     published_name=args.title if args.published_disk_one else None,
                     journal_python=getattr(args, "journal_python", None),
+                    walk_retry=getattr(args, "walk_retry", 0),
                     **_draw_options(args, holder),
                     preserve_specimen=getattr(args, "preserve_specimen", False),
                     specimen_issue=getattr(args, "specimen_issue", None),

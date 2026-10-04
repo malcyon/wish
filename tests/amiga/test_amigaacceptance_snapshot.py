@@ -8,6 +8,8 @@ from tests.amiga import test_amigaacceptance_camp as camp
 from tests.amiga import test_amigaacceptance_measure as measure
 from tests.amiga.test_amigaacceptance_accept import (  # noqa: F401
     KEYS,
+    AcceptGuest,
+    MapGuard,
     _accept,
     readings,
 )
@@ -165,3 +167,54 @@ def test_a_restore_that_lands_on_another_camp_screen_stops_the_run(
                           on_also={"camp": lambda p: not restored})
     assert "after restoring s" in result["error"] and "camp screen was not recognized" in result["error"]
     assert result["success"] is False
+
+
+def _encounter_guard(pipe, times):
+    """A world guard that fails every grab of step 12 until `times` restores have happened."""
+    def world(path):
+        restores = sum(1 for call in pipe.calls if call[0] == "restore")
+        return not (path.stem == "12-world" and restores < times)
+    return MapGuard(on={"world": world})
+
+
+def test_a_walk_retry_restores_the_snapshot_and_walks_the_leg_again(
+        tmp_path, clock, readings, monkeypatch):  # noqa: F811
+    guest = AcceptGuest(clock)
+    fake = FakePipe(guest)
+    monkeypatch.setattr(acceptance, "snapshot_pipe", lambda: fake)
+    _, result = _accept(tmp_path, clock, guest=guest, guard=_encounter_guard(fake, 1),
+                        walk_retry=2)
+    assert result["error"] == "" and result["success"] is True
+    assert [c[:2] for c in fake.calls] == [("snapshot", "walk-leg"), ("restore", "walk-leg")]
+    assert [(r["attempt"], r["step"]) for r in result["walk_retries"]] == [(1, 12)]
+    assert "world screen was not recognized" in result["walk_retries"][0]["error"]
+    # The first move went out twice: once into the miss, once after the restore.
+    assert measure._keys(guest) == "P L C V I E E S B B NP8 NP8 NP8 E S D N".split()
+    assert '"event": "walk_retry"' in _log(tmp_path)
+
+
+def test_a_walk_retry_that_runs_out_stops_the_run_naming_the_step(
+        tmp_path, clock, readings, monkeypatch):  # noqa: F811
+    guest = AcceptGuest(clock)
+    fake = FakePipe(guest)
+    monkeypatch.setattr(acceptance, "snapshot_pipe", lambda: fake)
+    _, result = _accept(tmp_path, clock, guest=guest, guard=_encounter_guard(fake, 99),
+                        walk_retry=1)
+    assert result["success"] is False
+    assert "step 12 (world) after 1 walk retries" in result["error"]
+    assert [c[0] for c in fake.calls] == ["snapshot", "restore"]
+    assert len(result["walk_retries"]) == 1
+
+
+def test_without_walk_retry_the_walk_makes_no_snapshot_and_a_miss_is_unchanged(
+        tmp_path, clock, readings, pipe):  # noqa: F811
+    guest, result = _accept(tmp_path, clock)
+    assert result["error"] == "" and "walk_retries" not in result
+    assert pipe.calls == [] and measure._keys(guest) == KEYS
+
+
+def test_a_walk_retry_snapshot_name_is_not_free_for_a_camp_step(
+        tmp_path, clock, readings, pipe):  # noqa: F811
+    with pytest.raises(RouteError, match="walk-leg"):
+        _accept(tmp_path, clock, walk_retry=1, marks={14: (("snapshot", "Walk-Leg"),)})
+    assert pipe.calls == []
