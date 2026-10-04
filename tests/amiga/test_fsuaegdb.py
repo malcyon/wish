@@ -4009,3 +4009,25 @@ def test_session_levelup_errors_write_nothing_and_the_session_goes_on(
     assert why in events["levelup"]["error"]
     assert not any(b.startswith("M") for b in guest.received)
     assert any(r["event"] == "wait" for r in rows)
+
+
+def test_session_levelup_that_fails_part_way_lists_the_writes_already_made(
+        driven, tmp_path):
+    guest, _ = driven
+    _lv_machine(guest, 6, effects=1)
+    _second_packet_goes_wrong(guest, "E01")
+    events, _ = run_session(tmp_path, ["locate", "levelup BINKY 1"])
+    row = events["levelup"]
+    assert "GuestError" in row["error"] and row["name"] == "BINKY"
+    assert len(row["writes"]) == 1
+    at, data = row["writes"][0]
+    assert guest.peek(int(at, 16), len(data) // 2).hex() == data
+
+
+@pytest.mark.parametrize("line", ["party", "pool", "levelup BINKY 1"])
+def test_party_pool_and_levelup_without_a_title_are_error_rows(
+        untitled, tmp_path, line):
+    _, rows = run_session(tmp_path, [line, "wait 0.5"], title="none")
+    assert [r["event"] for r in rows if r.get("error")] == [line.split()[0]]
+    assert "no title" in next(r for r in rows if r.get("error"))["error"]
+    assert any(r["event"] == "wait" for r in rows)
