@@ -6092,6 +6092,87 @@ def test_a_dos_pool_party_with_no_items_anywhere_logs_it(
     assert sum("No disk with ITEMS found" in m for m in seen) == 1
 
 
+def _items_table(type_index):
+    """A game `ITEMS` file, two header bytes and 128 types of 16, with one
+    non-empty type so a table's origin can be told from its keys."""
+    table = bytearray(2 + 128 * 16)
+    table[2 + type_index * 16] = 1
+    return bytes(table)
+
+
+def _prefs_pool_folder(tmp_path, items=None):
+    """A folder standing for the Pool of Radiance folder set in Preferences,
+    as the `game_folders` mapping the binding is built with."""
+    folder = tmp_path / "prefs-game"
+    folder.mkdir()
+    if items is not None:
+        (folder / "ITEMS").write_bytes(items)
+    return {"pool-of-radiance": str(folder)}
+
+
+def _save_outside_the_game_folder(tmp_path, port, beside=None):
+    """A Pool save of `port` with no game folder around it, and the table
+    `beside` it when given. Returns the path to open."""
+    from support.amigasavegame import synthetic_curse
+
+    from goldbox import amiga_savegame, dos_port
+    if port == "dos":
+        folder = tmp_path / "por"
+        folder.mkdir()
+        _synthetic_dos_folder(folder, dos_port.POOL_OF_RADIANCE)
+        if beside is not None:
+            (folder / "ITEMS").write_bytes(beside)
+        return folder / "SAVGAMA.DAT"
+    _amiga_pool_editor(tmp_path)
+    if beside is not None:
+        disk = amiga_savegame.make_save_disk(
+            amiga_savegame.CURSE, "A", synthetic_curse(("ALPHA",)))
+        disk.write_file("/items", beside)
+        disk.save(str(tmp_path / "PoolOfRadiance-2.adf"))
+    return tmp_path / "pool.adf"
+
+
+@pytest.mark.parametrize("port", ["dos", "amiga"])
+def test_a_pool_save_outside_the_game_folder_gets_the_table_from_preferences(
+        tmp_path, monkeypatch, port):
+    from editor.window import EditorBinding
+    monkeypatch.setattr("editor.window.EditorBinding._find_disk",
+                        lambda self, *a, **k: None)
+    path = _save_outside_the_game_folder(tmp_path, port)
+    prefs = _prefs_pool_folder(tmp_path, _items_table(7))
+    with _window_warnings() as seen:
+        w = EditorBinding(make_root(), str(path), game_folders=prefs)
+    assert not any("No disk with ITEMS found" in m for m in seen)
+    assert list(w.party.item_types) == [7]
+
+
+@pytest.mark.parametrize("port", ["dos", "amiga"])
+def test_a_table_beside_the_save_wins_over_the_preferences_folder(
+        tmp_path, monkeypatch, port):
+    from editor.window import EditorBinding
+    monkeypatch.setattr("editor.window.EditorBinding._find_disk",
+                        lambda self, *a, **k: None)
+    path = _save_outside_the_game_folder(tmp_path, port, _items_table(3))
+    prefs = _prefs_pool_folder(tmp_path, _items_table(7))
+    w = EditorBinding(make_root(), str(path), game_folders=prefs)
+    assert list(w.party.item_types) == [3]
+
+
+@pytest.mark.parametrize("port", ["dos", "amiga"])
+@pytest.mark.parametrize("prefs_has_folder", [True, False])
+def test_a_preferences_folder_with_no_table_changes_nothing(
+        tmp_path, monkeypatch, port, prefs_has_folder):
+    from editor.window import EditorBinding
+    monkeypatch.setattr("editor.window.EditorBinding._find_disk",
+                        lambda self, *a, **k: None)
+    path = _save_outside_the_game_folder(tmp_path, port)
+    prefs = _prefs_pool_folder(tmp_path) if prefs_has_folder else None
+    with _window_warnings() as seen:
+        w = EditorBinding(make_root(), str(path), game_folders=prefs)
+    assert not w.party.item_types
+    assert sum("No disk with ITEMS found" in m for m in seen) == 1
+
+
 def test_a_failed_save_then_a_reverted_icon_still_writes_the_icon_on_disk(
         tmp_path, monkeypatch):
     """`_write_back` rebuilds `save0` before the disk write, so a failed try

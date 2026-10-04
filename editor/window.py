@@ -2347,6 +2347,16 @@ class EditorBinding(QObject):
                     return
         if party.port == "amiga" and self._load_amiga_movement_items():
             return
+        # A save kept outside the game folder still gets the table from the
+        # Pool of Radiance folder Preferences holds. The DOS `ITEMS` serves
+        # the Amiga as well: disk 2's `/items` is byte-identical to it.
+        own = self._own_disk_folder(game)
+        folder = saveplan.expand_folder(own) if own else None
+        if party.port in ("dos", "amiga") and folder is not None:
+            table = dos_codec.item_type_table(folder)
+            if table is not None:
+                party.item_types = item_types_from_payload(table)
+                return
         found = self._find_disk(load_item_types, game.disk_glob, game)
         if found is None:
             _log.warning("No disk with ITEMS found, so movement is left as "
