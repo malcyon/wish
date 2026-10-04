@@ -89,6 +89,40 @@ winvm_winuae_url: https://download.abime.net/winuae/releases/InstallWinUAE6030_x
 winvm_winuae_msi: InstallWinUAE6030_x64.msi
 winvm_winuae_install_dir: 'C:\Program Files\WinUAE'
 
+# The repository's WinUAE harness: the files tools/amiga runs on the guest, by
+# `src` under tools/amiga and `dest` in the guest. They reach a new guest
+# through the unattend ISO at first logon, and a running one over ssh on every
+# run of this role (tasks/harness.yml, tag `winvm_harness`), so an edit to one
+# of them reaches the guest by rerunning the playbook. The tools name these
+# paths themselves; change a `dest` only together with the tools.
+winvm_amiga_harness_files:
+  - src: winuae.ps1
+    dest: 'C:\Amiga\winuae.ps1'
+  - src: winuae-send.ps1
+    dest: 'C:\Amiga\winuae-send.ps1'
+  - src: winuaemute.ps1
+    dest: 'C:\Amiga\winuaemute.ps1'
+  - src: winuae-lanecheck.ps1
+    dest: 'C:\Amiga\winuae-lanecheck.ps1'
+  - src: winuae-sendcheck.ps1
+    dest: 'C:\Amiga\winuae-sendcheck.ps1'
+  - src: goldbox-a500.uae
+    dest: 'C:\Amiga\configs\goldbox-a500.uae'
+# Folders the tools write into at run time and expect to exist: staged disks,
+# machine states, debugger dumps and the per-lane ini and screenshot folders,
+# which `winuae.ps1 start` creates under lanes itself.
+winvm_amiga_dirs:
+  - 'C:\Amiga'
+  - 'C:\Amiga\configs'
+  - 'C:\Amiga\Disks'
+  - 'C:\Amiga\Kickstarts'
+  - 'C:\Amiga\States'
+  - 'C:\Amiga\dump'
+  - 'C:\Amiga\lanes'
+# On the host: the copies a running guest is updated from, readable by the
+# account that runs `winvm`, unlike the unattend staging directory.
+winvm_harness_stage_dir: "{{ winvm_state_dir }}/harness"
+
 # VICE ships as a zip rather than an installer, so it is unpacked by
 # guest-setup.ps1 instead of handed to msiexec. Staged into the unattend ISO
 # for the same reason as WinUAE: first logon needs no working internet.

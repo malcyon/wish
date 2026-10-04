@@ -254,19 +254,27 @@ Step 'copy JiffyDOS ROMs' {
 
 {% if winvm_install_winuae %}
 # --- WinUAE harness ---------------------------------------------------------
-# The launcher and machine settings are repository files staged on UNATTEND.
-# Re-running guest-setup updates the guest to the current reviewed copies.
+# The repository's harness files (winvm_amiga_harness_files) are staged on
+# UNATTEND; this copies each into place and checks its SHA-256. A running guest
+# is kept current by tasks/harness.yml over ssh rather than by this script.
 try {
     $u = Get-Volume | Where-Object { $_.FileSystemLabel -eq 'UNATTEND' } | Select-Object -First 1
     if (-not $u) { throw 'UNATTEND volume not found' }
-    foreach ($file in @('winuae.ps1', 'goldbox-a500.uae')) {
-        $src = '{0}:\{1}' -f $u.DriveLetter, $file
+    $dirs = @(
+{% for d in winvm_amiga_dirs %}
+        '{{ d }}'
+{% endfor %}
+    )
+    foreach ($d in $dirs) { New-Item -ItemType Directory -Force -Path $d -ErrorAction Stop | Out-Null }
+    $files = @(
+{% for f in winvm_amiga_harness_files %}
+        @{ src = '{{ f.src }}'; dst = '{{ f.dest }}' }
+{% endfor %}
+    )
+    foreach ($file in $files) {
+        $src = '{0}:\{1}' -f $u.DriveLetter, $file.src
+        $dst = $file.dst
         if (-not (Test-Path -LiteralPath $src)) { throw "not found: $src" }
-        $dst = if ($file -eq 'winuae.ps1') {
-            'C:\Amiga\winuae.ps1'
-        } else {
-            'C:\Amiga\configs\goldbox-a500.uae'
-        }
         New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null
         Copy-Item -LiteralPath $src -Destination $dst -Force -ErrorAction Stop
         $sourceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $src).Hash

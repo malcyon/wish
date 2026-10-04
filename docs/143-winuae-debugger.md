@@ -61,8 +61,8 @@ costs nothing.
 | Game disk images | `C:\Amiga\Disks` — Pool of Radiance, Curse, Silver Blades, Pools of Darkness as `.adf`/`.zip` |
 | guest address | `10.77.0.11`, static — no DHCP on that libvirt network |
 | host → guest | `ssh donald@10.77.0.11`, key-only |
-| the machine config | `tools/amiga/goldbox-a500.uae`, deployed to `C:\Amiga\configs\` |
-| the guest-side driver | `tools/amiga/winuae.ps1` and `tools/amiga/winuae-send.ps1`, deployed to `C:\Amiga\` |
+| the machine config | `tools/amiga/goldbox-a500.uae`, deployed to `C:\Amiga\configs\` by `ansible/windows-vm.yml` |
+| the guest-side driver | `tools/amiga/winuae.ps1`, `tools/amiga/winuae-send.ps1` and `tools/amiga/winuaemute.ps1`, deployed to `C:\Amiga\` by `ansible/windows-vm.yml` (`--tags winvm_harness` on the desktop; `ansible/README.md`) |
 | the check on the driver | `tools/amiga/winuae-lanecheck.ps1` — proves one driver cannot destroy another's run, 1.1 |
 | the check on `send` | `tools/amiga/winuae-sendcheck.ps1` — provokes the batch that dies half-way, §7 trap 7 |
 
@@ -355,9 +355,11 @@ machine is clean again, without the 25-minute Windows install.
 
 The consequence for daily use: **decide whether a file should survive a
 revert.** Memory dumps, save files, WinUAE configs and throwaway test binaries
-should not — they live in the overlay and are meant to evaporate. Game disks and
-tools you will want in every future session should, which means copying them in
-and then running `winvm promote` once.
+should not — they live in the overlay and are meant to evaporate. Game disks you
+will want in every future session should, which means copying them in and then
+running `winvm promote` once. The harness files in the table in §1 need no
+promote: rerunning `ansible/windows-vm.yml --tags winvm_harness` after a revert
+puts the repository's copies back.
 
 **Run `winuae.ps1 stop`, then `clean`, before promoting.** Scheduled tasks
 outlive the run that registered them, and a promote would weld this document's
@@ -559,7 +561,8 @@ process (`GetNamedPipeServerProcessId`) with the lane's process, read the claim
 again, and once more immediately before the setter. A decline made before the pipe
 is open exits 1 with the reason; after it, the exit code is 0 and the first line
 of output is `ok ...` or `fail ...`, so the raw replies of a failure still reach
-the caller. The deployed `C:\Amiga\winuae.ps1` must be this repository's copy.
+the caller. The deployed `C:\Amiga\winuae.ps1` must be this repository's copy, which
+`ansible/windows-vm.yml --tags winvm_harness` deploys.
 
 **The probe** is `tools/amiga/amigadrivecheck.py`: three generated blank disks, DF0
 swapped to a second disk and back with DF1 checked at every step, and four
@@ -1353,9 +1356,10 @@ the WinUAE VM, and neither of them can tell)`:
   and neither of them can tell)` `winuae.ps1`.** The fixed copy was deployed
   into the running guest's overlay and not promoted, so it does not survive
   `winvm revert`, and the 2026-08-25 line above about golden's copies hashing
-  equal to `tools/` is no longer true. `scp tools/amiga/winuae.ps1
-  donald@10.77.0.11:'C:/Amiga/'` after any revert, and promote deliberately
-  when the overlay holds nothing else you would not want in the baseline
+  equal to `tools/` is no longer true. Rerun
+  `ansible/windows-vm.yml --tags winvm_harness` after any revert, which now
+  deploys the harness instead of a hand `scp`, and promote deliberately when
+  the overlay holds nothing else you would not want in the baseline
 
 **Checked on the VM itself, 2026-09-01**, for `#95 (A WinUAE debugger batch
 can stop half-way through and leave the emulator halted)` — the detail is §7

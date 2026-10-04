@@ -228,14 +228,14 @@
 # repository files. The first-logon script installs both from the unattend ISO.
 - name: Stage the WinUAE harness files into the unattend ISO
   ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../tools/amiga/{{ item }}"
-    dest: "{{ winvm_state_dir }}/unattend/{{ item }}"
+    src: "{{ playbook_dir }}/../tools/amiga/{{ item.src }}"
+    dest: "{{ winvm_state_dir }}/unattend/{{ item.src }}"
     owner: root
     group: root
     mode: "0644"
-  loop:
-    - winuae.ps1
-    - goldbox-a500.uae
+  loop: "{{ winvm_amiga_harness_files }}"
+  loop_control:
+    label: "{{ item.src }}"
   when: winvm_install_winuae | bool
   register: winvm_winuae_harness
 
@@ -515,3 +515,12 @@
   loop: "{{ winvm_forwarded_ports }}"
   loop_control:
     label: "{{ item.name }} ({{ item.port }})"
+
+# --- WinUAE harness in a running guest --------------------------------------
+# First logon installs the harness from the unattend ISO; this keeps a guest
+# that already exists on the repository's copy. `--tags winvm_harness` runs it
+# alone.
+- name: Bring the running guest's WinUAE harness up to date
+  ansible.builtin.import_tasks: harness.yml
+  when: winvm_install_winuae | bool
+  tags: winvm_harness

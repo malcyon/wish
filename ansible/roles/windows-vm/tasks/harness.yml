@@ -1,0 +1,238 @@
+---
+# Keeps a running Windows guest's WinUAE harness the repository's copy: the
+# files in winvm_amiga_harness_files, the folders in winvm_amiga_dirs and the
+# Defender exclusions. Everything in the guest goes through the `winvm` this
+# role installs, as the account running the playbook, whose key the guest
+# trusts; root has none of those keys. A guest that is off or not answering ssh
+# yet is skipped with a message, and gets the files at first logon or on the
+# next run.
+#
+# Under --check the survey still runs, since it only reads, and lists what a
+# real run would change; nothing is copied.
+
+- name: Create the host's harness staging directory
+  ansible.builtin.file:
+    path: "{{ winvm_harness_stage_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Stage the harness files for a running guest
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../tools/amiga/{{ item.src }}"
+    dest: "{{ winvm_harness_stage_dir }}/{{ item.src }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ winvm_amiga_harness_files }}"
+  loop_control:
+    label: "{{ item.src }}"
+
+# Hashed from the repository rather than the staged copy, so --check compares
+# the guest with what a real run would send.
+- name: Hash the repository's harness files
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/../tools/amiga/{{ item.src }}"
+    get_checksum: true
+    checksum_algorithm: sha256
+  loop: "{{ winvm_amiga_harness_files }}"
+  loop_control:
+    label: "{{ item.src }}"
+  delegate_to: localhost
+  become: false
+  register: winvm_harness_local
+
+- name: Check the Windows guest is running
+  ansible.builtin.command:
+    argv: [virsh, -c, "qemu:///system", domstate, "{{ winvm_name }}"]
+  register: winvm_harness_state
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Check the Windows guest answers ssh
+  ansible.builtin.command:
+    argv: [timeout, "30", /usr/local/bin/winvm, ssh, exit]
+  register: winvm_harness_ssh
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  become: false
+  environment:
+    SSH_ASKPASS_REQUIRE: never
+  when: winvm_harness_state.stdout | trim == 'running'
+
+- name: Say why the running guest's harness was not updated
+  ansible.builtin.debug:
+    msg: >-
+      {{ winvm_name }} {{ winvm_harness_why }}, so the WinUAE harness in the
+      guest was left as it is. A new guest installs it at first logon; for one
+      that already exists, start it with `winvm up` and run this playbook again
+      with `--tags winvm_harness`.
+  vars:
+    winvm_harness_why: >-
+      {{ 'does not answer ssh yet' if winvm_harness_state.stdout | trim == 'running'
+         else 'is ' ~ (winvm_harness_state.stdout | trim | default('undefined', true)) }}
+  when: >-
+    winvm_harness_state.stdout | trim != 'running'
+    or (winvm_harness_ssh.rc | default(1)) != 0
+
+- name: Update the running guest's harness
+  when:
+    - winvm_harness_state.stdout | trim == 'running'
+    - (winvm_harness_ssh.rc | default(1)) == 0
+  vars:
+    winvm_harness_want: >-
+      {{ dict(winvm_harness_local.results
+              | map(attribute='item.src')
+              | zip(winvm_harness_local.results | map(attribute='stat.checksum') | map('upper'))) }}
+    winvm_harness_ps_prelude: |
+      $ErrorActionPreference = 'Stop'
+      $ProgressPreference = 'SilentlyContinue'
+      $files = @(
+      {% for f in winvm_amiga_harness_files %}
+        @{ src = '{{ f.src }}'; dst = '{{ f.dest }}'; sha = '{{ winvm_harness_want[f.src] }}' }
+      {% endfor %}
+      )
+      $dirs = @(
+      {% for d in winvm_amiga_dirs %}
+        '{{ d }}'
+      {% endfor %}
+      )
+      $exclusions = @(
+      {% for e in winvm_defender_exclusions %}
+        '{{ e }}'
+      {% endfor %}
+      )
+      function Hash-Of($p) {
+        if (Test-Path -LiteralPath $p -PathType Leaf) { (Get-FileHash -Algorithm SHA256 -LiteralPath $p).Hash } else { 'MISSING' }
+      }
+  block:
+    # Read-only: prints one line for each thing a real run would change.
+    - name: Survey the guest's harness files, folders and Defender exclusions
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/winvm
+          - ssh
+          - >-
+            powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand
+            {{ winvm_harness_survey | b64encode(encoding='utf-16-le') }}
+      vars:
+        winvm_harness_survey: |
+          {{ winvm_harness_ps_prelude }}
+          foreach ($f in $files) {
+            $have = Hash-Of $f.dst
+            if ($have -ne $f.sha) { "STALE $($f.src)"; "  $($f.dst) is $have, the repository's is $($f.sha)" }
+          }
+          foreach ($d in $dirs) { if (-not (Test-Path -LiteralPath $d -PathType Container)) { "NODIR $d" } }
+          $have = @((Get-MpPreference).ExclusionPath)
+          foreach ($e in $exclusions) { if ($have -notcontains $e) { "NOEXCL $e" } }
+          'SURVEYED'
+      register: winvm_harness_survey_out
+      changed_when: false
+      failed_when: >-
+        winvm_harness_survey_out.rc != 0
+        or 'SURVEYED' not in winvm_harness_survey_out.stdout_lines
+      check_mode: false
+      become: false
+      environment:
+        SSH_ASKPASS_REQUIRE: never
+
+    - name: Work out what the guest lacks
+      ansible.builtin.set_fact:
+        winvm_harness_stale: >-
+          {{ winvm_harness_survey_out.stdout_lines | select('match', '^STALE ')
+             | map('replace', 'STALE ', '') | list }}
+        winvm_harness_setup_needed: >-
+          {{ winvm_harness_survey_out.stdout_lines | select('match', '^(NODIR|NOEXCL) ') | list | length > 0 }}
+
+    - name: List what the guest lacks
+      ansible.builtin.debug:
+        msg: "{{ winvm_harness_survey_out.stdout_lines | reject('equalto', 'SURVEYED') | list }}"
+      when: winvm_harness_stale | length > 0 or winvm_harness_setup_needed
+
+    - name: Create the harness folders and Defender exclusions in the guest
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/winvm
+          - ssh
+          - >-
+            powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand
+            {{ winvm_harness_setup | b64encode(encoding='utf-16-le') }}
+      vars:
+        winvm_harness_setup: |
+          {{ winvm_harness_ps_prelude }}
+          foreach ($d in $dirs) { New-Item -ItemType Directory -Force -Path $d | Out-Null }
+          $have = @((Get-MpPreference).ExclusionPath)
+          foreach ($e in $exclusions) { if ($have -notcontains $e) { Add-MpPreference -ExclusionPath $e } }
+          $have = @((Get-MpPreference).ExclusionPath)
+          foreach ($e in $exclusions) { if ($have -notcontains $e) { throw "Defender exclusion not set: $e" } }
+          'DONE'
+      register: winvm_harness_setup_out
+      changed_when: true
+      failed_when: >-
+        winvm_harness_setup_out.rc != 0
+        or 'DONE' not in winvm_harness_setup_out.stdout_lines
+      when: winvm_harness_setup_needed
+      become: false
+      environment:
+        SSH_ASKPASS_REQUIRE: never
+
+    # Copied beside the destination under a temporary name first, so a tool
+    # starting meanwhile never reads a half-written driver.
+    - name: Copy each changed harness file to the guest
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/winvm
+          - scp
+          - "{{ winvm_harness_stage_dir }}/{{ item.src }}"
+          - >-
+            {{ winvm_admin_user }}@{{ winvm_ip }}:{{ (item.dest ~ '.deploy') | replace(winvm_harness_backslash, '/') }}
+      vars:
+        # A variable, not a literal: Ansible doubles a backslash written inside
+        # a template's string literal, and scp wants forward slashes.
+        winvm_harness_backslash: '\'
+      loop: "{{ winvm_amiga_harness_files }}"
+      loop_control:
+        label: "{{ item.src }}"
+      when: item.src in winvm_harness_stale
+      changed_when: true
+      become: false
+      environment:
+        SSH_ASKPASS_REQUIRE: never
+
+    - name: Put the changed harness files in place and check their hashes
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/winvm
+          - ssh
+          - >-
+            powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand
+            {{ winvm_harness_place | b64encode(encoding='utf-16-le') }}
+      vars:
+        winvm_harness_place: |
+          {{ winvm_harness_ps_prelude }}
+          $stale = @(
+          {% for s in winvm_harness_stale %}
+            '{{ s }}'
+          {% endfor %}
+          )
+          foreach ($f in $files) {
+            if ($stale -notcontains $f.src) { continue }
+            $tmp = "$($f.dst).deploy"
+            if ((Hash-Of $tmp) -ne $f.sha) { throw "the copy of $($f.src) at $tmp does not hash to $($f.sha)" }
+            if (Test-Path -LiteralPath $f.dst) { [IO.File]::Replace($tmp, $f.dst, $null) } else { [IO.File]::Move($tmp, $f.dst) }
+            if ((Hash-Of $f.dst) -ne $f.sha) { throw "$($f.dst) does not hash to $($f.sha) after the copy" }
+            "deployed $($f.dst) SHA256 $($f.sha)"
+          }
+          'DONE'
+      register: winvm_harness_place_out
+      changed_when: true
+      failed_when: >-
+        winvm_harness_place_out.rc != 0
+        or 'DONE' not in winvm_harness_place_out.stdout_lines
+      when: winvm_harness_stale | length > 0
+      become: false
+      environment:
+        SSH_ASKPASS_REQUIRE: never
