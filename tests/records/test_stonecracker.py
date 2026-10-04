@@ -191,6 +191,15 @@ def test_a_header_whose_stream_runs_past_the_file_raises():
         stonecracker.header(b"S403" + stream[4:])
 
 
+def test_a_header_claiming_a_huge_length_raises_before_allocating():
+    stream, _ = _crunch(b"abcabcabc")
+    huge = stream[:8] + struct.pack(">I", 0xFFFFFFFF) + stream[12:]
+    with pytest.raises(stonecracker.StoneCrackerError, match="decrunched bytes"):
+        stonecracker.decrunch(huge)
+    with pytest.raises(stonecracker.StoneCrackerError):
+        stonecracker.header(huge)
+
+
 # --- the decrunched executable layout ------------------------------------------
 
 def _group(target: int, offsets: list[int], selector: int) -> bytes:
@@ -257,6 +266,15 @@ def test_kinds_can_be_given_when_the_default_guess_is_wrong():
 def test_a_layout_that_does_not_add_up_raises(damage, message):
     with pytest.raises(stonecracker.StoneCrackerError, match=message):
         stonecracker.segments(damage(_layout_bytes()))
+
+
+def test_a_relocation_outside_its_hunk_raises():
+    layout = _layout_bytes()
+    # The data hunk's relocation at offset 8 of 20 bytes moves to 17.
+    damaged = layout.replace(_group(0, [8], 10), _group(0, [17], 10))
+    assert damaged != layout
+    with pytest.raises(stonecracker.StoneCrackerError, match="outside hunk 1"):
+        stonecracker.segments(damaged)
 
 
 # --- a crunched executable ---------------------------------------------------

@@ -65,6 +65,11 @@ NAME = "StoneCracker 4.04"
 _END = 0xFFFF
 _HAS_CONTENTS = 0x4000
 
+#: The most the densest token expands a packed byte (23 + 255k bytes for about
+#: 8k + 12 bits), and a ceiling on any decrunched length.
+_MAX_RATIO = 256
+_MAX_LENGTH = 16 << 20
+
 #: A relocation group's selector byte: how many bytes each later entry takes.
 _DELTA_WIDTH = {2: 3, 6: 2, 10: 1}
 
@@ -106,6 +111,10 @@ def header(data: bytes, at: int = 0) -> Header:
         raise StoneCrackerError(
             f"the {NAME} stream at {at:#x} claims {packed} packed bytes; "
             f"{len(data) - at - 18} are there")
+    if length > min(packed * _MAX_RATIO, _MAX_LENGTH):
+        raise StoneCrackerError(
+            f"the {NAME} stream at {at:#x} claims {length} decrunched bytes "
+            f"from {packed} packed")
     return head
 
 
@@ -275,6 +284,11 @@ def segments(layout: bytes) -> list[Segment]:
                 offsets.append(offset)
             if p > len(layout):
                 raise StoneCrackerError("the relocations run past the layout")
+            size = len(hunks[with_contents].contents)
+            if any(o + 4 > size for o in offsets):
+                raise StoneCrackerError(
+                    f"a relocation lies outside hunk {with_contents}'s "
+                    f"{size} bytes")
             relocs.setdefault(target, []).extend(offsets)
     return hunks
 
