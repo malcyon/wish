@@ -173,3 +173,55 @@ def test_a_saved_party_in_a_later_area_stages_the_block_the_table_names(area):
     script = amiga_savegame._glib_blocks(glb)[dict(_pairs(glb))[area]]
     assert landed.ecl[:len(script)] == script
     assert amiga_savegame.state_from_savegame(landed).area == area
+
+
+#: A Curse party the game saved in area $10 (Yulash), made by an agent driving
+#: the C64 game, so it is a record we watched being written.
+YULASH_C64 = "coab-c64/WISH-SPEC-curse-wish23-c64-yulash-sneak-in.D64"
+
+
+def test_a_c64_party_in_area_sixteen_saves_as_amiga_with_the_script_the_table_names(
+        tmp_path):
+    """Save As from the C64 specimen: the converted save keeps area $10 and
+    stages block 5 of `ECL.GLB`, the block the area table names for it (and
+    not block 16, which is area $32's script)."""
+    from editor import convert
+    from goldbox import dos_port, world_state
+    from goldbox.amiga_adf import AmigaDisk, AmigaDiskError
+    from tests import gamedata
+    from tests.support.amigasavegame import synthetic_disk_one
+    from tools.amiga import amigasaves
+
+    root = gamedata.specimen_root()
+    path = root / YULASH_C64 if root else None
+    if path is None or not path.is_file():
+        pytest.skip(f"needs {YULASH_C64}; set $WISH_SPECIMENS")
+    image = None
+    for _label, data in amigasaves.images():
+        try:
+            AmigaDisk(data).read_file("/DISKB/ECL.GLB")
+        except (AmigaDiskError, ValueError):
+            continue
+        image = data
+        break
+    if image is None:
+        pytest.skip("needs the player's Amiga Curse disk B")
+    disk_two = tmp_path / "disk-two.adf"
+    disk_two.write_bytes(image)
+    glb = AmigaDisk(image).read_file("/DISKB/ECL.GLB")
+
+    deltas = dos_port.CURSE_OF_THE_AZURE_BONDS
+    source = convert.Source.detect(path)
+    assert world_state.from_c64(source.save0, source=str(path)).area == 0x10
+    disk_one = tmp_path / "disk-one.adf"
+    synthetic_disk_one(deltas.key, ("A",)).save(str(disk_one))
+
+    rehearsal = convert.C64ToAmiga(deltas).rehearse(
+        source, "A", disk_two, disk_one=disk_one)
+
+    landed = amiga_savegame.parse(rehearsal.savegame, amiga_savegame.CURSE)
+    block = amiga_savegame._glib_blocks(glb)[dict(_pairs(glb))[0x10]]
+    assert len(block) == 7664
+    assert amiga_savegame.state_from_savegame(landed).area == 0x10
+    assert landed.ecl[:len(block)] == block
+    assert rehearsal.report.losses == []
