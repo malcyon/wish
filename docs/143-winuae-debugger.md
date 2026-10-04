@@ -120,6 +120,12 @@ subkey, takes one headless run to rebuild it, and then checks the result.
 Measured: 5 entries before, all of them WinUAE's own pseudo-ROMs (`SuperIV`,
 `HRTMon`, `AROS`, `NOROM`, `ENABLED`); 14 after, of which nine are real files.
 
+**A lane run reads none of this registry.** `winuae.ps1 start` launches with
+`-ini`, so the settings come from the lane's own ini, written fresh at every
+start, and its ROM folder is the lane folder. The Kickstart a lane boots is the
+absolute `kickstart_rom_file` in the config (CONFIRMED, one lane boot with an
+empty lane folder drew the Kickstart 1.3 insert-disk screen).
+
 **The ROM the dialog asks for is present**: `C:\Amiga\Kickstarts\kick34005.A500`
 is 262,144 bytes with SHA-1 `891e9a547772fe0c6c19b610baf8bc4ea7fcb785`, which
 is Kickstart 1.3 rev 34.5 [315093-02]. It is `ROM_006` after the scan.
@@ -589,9 +595,24 @@ of `amigashots.py`, `winwish --window winuae`) are deleted.
   through ssh took 2.4 s (CONFIRMED, one call).
 * **The lane's ini says where the file goes.** `start` writes
   `C:\Amiga\lanes\<n>\winuae.ini` fresh every time, with `ScreenshotPath` set to
-  `C:\Amiga\lanes\<n>\shots\`, `Screenshot_Original=1`, `Screenshot_Mode=1`,
-  `Screenshot_ClipMode=0` and the window position, and launches with `-ini` in
-  front of the caller's arguments. WinUAE reads the screenshot keys again on
+  the lane folder `C:\Amiga\lanes\<n>\`, `Screenshot_Original=1`, `Screenshot_Mode=1`,
+  `Screenshot_ClipMode=0`, the window position, `PathMode=WinUAE` and
+  `RelativePaths=0`, and launches with `-ini` and `-datapath C:\Amiga\lanes\<n>`
+  in front of the caller's arguments. Without `PathMode`, `-ini` makes WinUAE
+  write its folders relative to the task's working directory, `C:\Amiga`, and
+  then change into them, so they land one level off and the copy dies at start
+  with `0xc0000409` (CONFIRMED, 6 boots and `win32.cpp` 6393-6396, 6538).
+  `-datapath` makes the lane folder WinUAE's data folder, and with it every
+  folder WinUAE looks up, screenshots included: under `-datapath`, 6.0.3's
+  `fetch_path` never reads the ini's path keys (`start_data >= 0` gates the
+  read), so the shot lands in the data folder whatever `ScreenshotPath` says
+  (CONFIRMED, one diagnose run wrote `..._001.png` into `C:\Amiga\lanes\1\`
+  while `ScreenshotPath` named `shots\`). The argument must not
+  end in a backslash, because `\"` escapes the closing quote and WinUAE then
+  keeps its exe folder (CONFIRMED, one boot each way). `PathMode=WinUAE_Custom`
+  cannot do the same: 6.0.3 reads `PathCustom` with the length of the
+  `PathMode` string, so it keeps 12 characters (CONFIRMED, `registry.cpp`
+  138-141 and one boot). WinUAE reads the screenshot keys again on
   every shot, no `.uae` option changes the size or the offset (CONFIRMED from
   the 6.0.3 source), and a limited task writes under `C:\Amiga` but not under
   Program Files (CONFIRMED). The folder is emptied at `start`. Two copies each
@@ -722,8 +743,11 @@ stayed white; the rejected setting's role in that failure remains unproved.
 A menu drive still needs no console, so `-log` off is still right for one that
 reads nothing.
 
-**`C:\Users\Public\Documents\Amiga Files\WinUAE\winuaebootlog.txt` is the
-first place to look when a run misbehaves.** It records which config loaded,
+**The boot log is the first place to look when a run misbehaves.** A lane run
+writes it to `C:\Amiga\lanes\<n>\winuaebootlog.txt`, its data folder, and
+`start` deletes the old one first, so the file there is always the current
+launch's; only a run started without `-ini` writes
+`C:\Users\Public\Documents\Amiga Files\WinUAE\winuaebootlog.txt`. It records which config loaded,
 the Kickstart version (`KS ver = 34 (0x22)` for 1.3), and every rejected line as
 `unknown config entry: '...'`. That is how `win32.active_nocapture_pause` was
 found not to exist.
@@ -876,6 +900,7 @@ scp donald@10.77.0.11:C:/Amiga/dump/party.bin /tmp/
 process working directory: `S t2.bin 40000 10`, run with the working directory
 set to `C:\Amiga`, reported success and wrote to
 `C:\Users\Public\Documents\Amiga Files\WinUAE\t2.bin` — WinUAE's data path.
+Under a lane the data path is the lane folder, `C:\Amiga\lanes\<n>\`.
 
 `m <address> [<lines>]` also dumps memory, but to the console as formatted hex.
 Use it when a human is looking.
@@ -1221,8 +1246,8 @@ removed; §4.3 is what replaced them.
 * **`g` resumes, proved by halting again**: `VPOS` moved from 104 to 208 between
   two `F11` halts, with the CPU parked in the Kickstart's `stop #$2000` both
   times — §7
-* **a relative path in `S` resolves against WinUAE's data path**, not the
-  process working directory — §6
+* **a relative path in `S` resolves against WinUAE's data path** (the lane
+  folder under a lane), not the process working directory — §6
 * **the ROM scan can be driven with no GUI**: `KickstartPath` set and
   `DetectedROMs` deleted, one `use_gui=no` run rebuilds the database from 5
   pseudo-ROM entries to 14 — §1. Proved by screenshot: the "system ROMs is

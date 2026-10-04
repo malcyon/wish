@@ -144,3 +144,14 @@ def test_a_failed_capture_shot_does_not_recrop_a_frame_left_by_an_earlier_captur
     with pytest.raises(winuaesession.RouteError, match="wrote no file"):
         guest.capture("title", raw, cropped, timeout=30)
     assert not cropped.exists()
+
+
+def test_lane_reads_the_lane_number_from_the_lane_verb(clock):
+    guest = Guest(["ok lane=2 pid=4242 started=2026-10-04T03:11:09.0000000-05:00"])
+    assert guest.lane("wish282-x", 5) == 2
+    assert guest.sent[0][1].endswith(" lane -Holder wish282-x")
+
+
+def test_lane_stops_on_a_reply_that_names_no_lane(clock):
+    with pytest.raises(winuaesession.RouteError, match="names no lane"):
+        Guest(["ok pid=4242"]).lane("wish282-x", 5)

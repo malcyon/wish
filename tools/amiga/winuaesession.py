@@ -117,6 +117,14 @@ class WinGuest:
         """Claim a lane; `exclusive` takes every lane, for work that needs the whole desktop."""
         return self._lane(holder, "claim -Exclusive" if exclusive else "claim", timeout)
 
+    def lane(self, holder: str, timeout: float) -> int:
+        """The lane number `holder`'s running emulator is in, from the `lane` verb."""
+        receipt = self._lane(holder, "lane", timeout)
+        found = re.match(r"ok lane=(\d+) ", receipt + " ")
+        if not found:
+            raise RouteError(f"winuae.ps1 lane names no lane: {receipt!r}")
+        return int(found.group(1))
+
     def put(self, local: pathlib.Path, remote: str, timeout: float) -> str:
         receipt = self._run("put", str(local), remote, timeout=timeout)
         self.staged.add(remote.replace("/", "\\"))

@@ -223,7 +223,8 @@ GUARD_LIMIT = 120.0
 # A key pressed while the disk is being written is swallowed, so the screen
 # after the write gets the same long first wait as the load picker.
 POST_WRITE_WAIT = 20.0
-BOOT_LOG = r"C:\Users\Public\Documents\Amiga Files\WinUAE\winuaebootlog.txt"
+#: Each lane's boot log; `winuae.ps1 start` makes the lane folder WinUAE's data folder and deletes the old log.
+BOOT_LOG = r"C:\Amiga\lanes\{lane}\winuaebootlog.txt"
 
 #: The most draws one boot may make; the route's own camp save is the first.
 RULEBOOK_DRAWS_MAX = 15
@@ -477,9 +478,6 @@ def _run_diagnose(manifest_path: pathlib.Path, manifest: dict, title: AmigaTitle
             raise RouteError(f"claim was not new: {receipt!r}")
         claimed = True
         result["claim"] = receipt
-        before_log = out / "winuaebootlog-before.txt"
-        guest.get(BOOT_LOG, before_log, timeout=limit(30))
-        result["boot_log_before"] = _entry(before_log)
         for key, path in disks.items():
             guest.put(path, remotes[key], timeout=limit(90))
         config_staged = True
@@ -491,6 +489,7 @@ def _run_diagnose(manifest_path: pathlib.Path, manifest: dict, title: AmigaTitle
         result["start"] = guest.start(
             holder, *(None if key is None else remotes[key] for key in title.mounted),
             timeout=limit(60), options=title.options, config=result["config"]["path"])
+        result["lane"] = guest.lane(holder, timeout=limit(30))
         boot_started = time.monotonic()
         # Stop, two disk fetches, boot-log fetch, config removal and release each
         # have their own bounded call; keep their full allowance after the boot.
@@ -571,19 +570,23 @@ def _run_diagnose(manifest_path: pathlib.Path, manifest: dict, title: AmigaTitle
                     result[f"fetch_{key}_error"] = f"{type(exc).__name__}: {exc}"
             if started:
                 try:
+                    if "lane" not in result:
+                        raise RouteError("the lane is unknown, so its boot log cannot be read")
                     bootlog = out / "winuaebootlog.txt"
-                    guest.get(BOOT_LOG, bootlog, timeout=cleanup_limit(30))
+                    result["boot_log_fresh"] = False
+                    guest.get(BOOT_LOG.format(lane=result["lane"]), bootlog,
+                              timeout=cleanup_limit(30))
                     result["boot_log"] = _entry(bootlog)
                     content = bootlog.read_text(errors="replace")
-                    result["boot_log_fresh"] = (result["boot_log"]["sha256"] !=
-                                                result["boot_log_before"]["sha256"])
+                    # `start` deleted the lane's previous log, so one that is there now is this launch's.
+                    result["boot_log_fresh"] = True
                     result["boot_log_matches_start"] = all(
                         path in content for path in (
                             result["config"]["path"],
                             remotes["df0"].replace("/", "\\"),
                             remotes["df1"].replace("/", "\\")))
-                    if not result["boot_log_fresh"] or not result["boot_log_matches_start"]:
-                        result["boot_log_error"] = "boot log is stale or names another launch"
+                    if not result["boot_log_matches_start"]:
+                        result["boot_log_error"] = "boot log names another launch"
                     result["gfx_api_rejected"] = bool(re.search(
                         r"Unknown value .* for option 'gfx_api'",
                         content, re.IGNORECASE))

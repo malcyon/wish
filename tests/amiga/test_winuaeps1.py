@@ -292,9 +292,10 @@ def test_start_empties_the_shots_folder_and_writes_the_ini_before_the_task_is_re
     assert emptied < start.index("Set-Content -Path $LanePaths.ini") < start.index("Register-Session1Task $LanePaths.task")
 
 
-def test_start_launches_with_the_lane_ini_in_front_of_the_callers_arguments():
+def test_start_launches_with_the_lane_ini_and_data_folder_in_front_of_the_callers_arguments():
     start = _case("start")
-    assert '$wanted = "-ini `"$($LanePaths.ini)`" " + ($Rest -join \' \')' in start
+    assert ('$wanted = "-ini `"$($LanePaths.ini)`" -datapath `"$(Split-Path $LanePaths.ini)`" " '
+            "+ ($Rest -join ' ')") in start
     assert "Register-Session1Task $LanePaths.task $Exe $wanted" in start
     assert "$expected = \"`\"$Exe`\" $wanted\"" in start
 
@@ -302,7 +303,37 @@ def test_start_launches_with_the_lane_ini_in_front_of_the_callers_arguments():
 def test_every_lane_has_its_own_ini_and_shots_folder():
     paths = _body("Lane-Paths")
     assert '"$Root\\lanes\\1\\winuae.ini"' in paths and '"$Root\\lanes\\$n\\winuae.ini"' in paths
-    assert '"$Root\\lanes\\1\\shots\\"' in paths and '"$Root\\lanes\\$n\\shots\\"' in paths
+    assert 'shots   = "$Root\\lanes\\1\\"' in paths and 'shots   = "$Root\\lanes\\$n\\"' in paths
+
+
+def test_screenshots_are_looked_for_in_the_data_folder():
+    """Under -datapath WinUAE 6.0.3 ignores the ini's ScreenshotPath and saves into its data folder,
+    so the folder `shot` watches is the one `-datapath` names."""
+    paths = _body("Lane-Paths")
+    for lane in ("1", "$n"):
+        assert f'shots   = "$Root\\lanes\\{lane}\\"' in paths
+        assert f'ini     = "$Root\\lanes\\{lane}\\winuae.ini"' in paths
+    assert "-datapath `\"$(Split-Path $LanePaths.ini)`\"" in _case("start")
+
+
+def test_every_lane_has_its_own_boot_log_in_its_data_folder():
+    """`-datapath` makes the lane folder WinUAE's data folder, which is where it writes its boot log."""
+    paths = _body("Lane-Paths")
+    assert 'bootlog = "$Root\\lanes\\1\\winuaebootlog.txt"' in paths
+    assert 'bootlog = "$Root\\lanes\\$n\\winuaebootlog.txt"' in paths
+
+
+def test_the_data_folder_argument_ends_without_a_backslash():
+    """A trailing backslash before the closing quote escapes it, and WinUAE keeps its exe folder."""
+    start = _case("start")
+    wanted = start[start.index("$wanted = "):start.index("\n", start.index("$wanted = "))]
+    assert "-datapath" in wanted and "\\`\"" not in wanted and "$LanePaths.shots" not in wanted
+
+
+def test_start_deletes_the_lanes_old_boot_log_before_the_task_is_registered():
+    start = _case("start")
+    removed = start.index("if (Test-Path $LanePaths.bootlog) { Remove-Item $LanePaths.bootlog -ErrorAction Stop }")
+    assert removed < start.index("Register-Session1Task $LanePaths.task")
 
 
 def test_the_script_lists_shot_and_press_as_verbs():

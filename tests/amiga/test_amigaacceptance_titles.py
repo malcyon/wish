@@ -2109,7 +2109,8 @@ class _RecordingGuest:
 
 @pytest.mark.parametrize("reaches_title,stale_log,timing,intermediate", [
     (True, False, "normal", None), (False, False, "normal", None),
-    (True, True, "normal", None), (False, False, "exhausted", None),
+    (True, "missing", "normal", None), (True, "other", "normal", None),
+    (False, False, "exhausted", None),
     (False, False, "probe_boundary", None),
     (True, False, "normal", "credits"),
     (False, False, "normal", "credits"),
@@ -2165,6 +2166,10 @@ def test_diagnose_uses_private_config_and_cleans_up_without_game_input(
             assert drives == tuple(self.staged_path(k) for k in ("df0", "df1"))
             return "ok pid=123"
 
+        def lane(self, holder, timeout):
+            self.calls.append("lane")
+            return 1
+
         def staged_path(self, key):
             return next(p for p in self.remote if p.endswith(f"-{key}.adf"))
 
@@ -2210,8 +2215,11 @@ def test_diagnose_uses_private_config_and_cleans_up_without_game_input(
 
         def get(self, remote, local, timeout):
             self.calls.append("get")
-            if remote == foundation.BOOT_LOG:
-                if not self.started or stale_log:
+            if remote == foundation.BOOT_LOG.format(lane=1):
+                assert self.started, "the boot log was read before the start"
+                if stale_log == "missing":
+                    raise foundation.RouteError("winvm get failed: the lane has no boot log")
+                if stale_log == "other":
                     local.write_text("previous boot log")
                 else:
                     invocation = (f"'-f C:\\Amiga\\configs\\wish705-wish705-test.uae "
@@ -2263,9 +2271,14 @@ def test_diagnose_uses_private_config_and_cleans_up_without_game_input(
     if timing == "normal" and intermediate != "party_menu":
         assert result["white_probe"]["first"]["execbase"] == 0x1000
         assert result["white_probe"]["status"].startswith("pid=123")
-    if stale_log:
+    if stale_log == "missing":
         assert result["boot_log_fresh"] is False
-        assert result["boot_log_error"] == "boot log is stale or names another launch"
+        assert result["boot_log_error"] == "RouteError: winvm get failed: the lane has no boot log"
+    if stale_log == "other":
+        assert result["boot_log_matches_start"] is False
+        assert result["boot_log_error"] == "boot log names another launch"
+    assert result["lane"] == 1
+    assert guest.calls.index("start") < guest.calls.index("lane") < guest.calls.index("get")
     if timing == "exhausted":
         assert result["cleanup_after_deadline"] is True
         assert guest.stop_timeout >= 20
@@ -2387,10 +2400,8 @@ def test_diagnose_records_config_hash_failure_and_failed_cleanup(tmp_path):
             return f"ok claimed by {holder}"
 
         def get(self, remote, local, timeout):
-            if remote == foundation.BOOT_LOG:
-                local.write_text("old boot log")
-            else:
-                local.write_bytes(self.remote[remote])
+            # No start, so no lane and no boot log to read.
+            local.write_bytes(self.remote[remote])
 
         def put(self, local, remote, timeout):
             self.remote[remote] = local.read_bytes()

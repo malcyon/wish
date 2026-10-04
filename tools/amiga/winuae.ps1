@@ -127,7 +127,9 @@ $LaneCount = 1
 #   receipt what a session 1 helper writes back
 #   task    the scheduled task that runs the emulator
 #   ini     the lane's own WinUAE ini, written fresh by `start`
-#   shots   the folder the lane's emulator writes its screenshots to
+#   shots   the folder the lane's emulator writes its screenshots to: the lane folder, which
+#           `start` makes WinUAE's data folder, because -datapath overrides ScreenshotPath
+#   bootlog the boot log the lane's emulator writes into its data folder, the lane folder
 function Lane-Paths([int]$n) {
   if ($n -eq 1) {
     return @{
@@ -137,7 +139,8 @@ function Lane-Paths([int]$n) {
       sendlog = "$Root\send.log"
       console = "$Root\console.txt"
       ini     = "$Root\lanes\1\winuae.ini"
-      shots   = "$Root\lanes\1\shots\"
+      shots   = "$Root\lanes\1\"
+      bootlog = "$Root\lanes\1\winuaebootlog.txt"
       task    = 'winuae-run'
       helpers = @{ send = 'winuae-send' }
     }
@@ -149,7 +152,8 @@ function Lane-Paths([int]$n) {
     sendlog = "$Root\send-$n.log"
     console = "$Root\console-$n.txt"
     ini     = "$Root\lanes\$n\winuae.ini"
-    shots   = "$Root\lanes\$n\shots\"
+    shots   = "$Root\lanes\$n\"
+    bootlog = "$Root\lanes\$n\winuaebootlog.txt"
     task    = "winuae-run-$n"
     helpers = @{ send = "winuae-send-$n" }
   }
@@ -1378,7 +1382,9 @@ switch ($Cmd) {
       $any = @(Get-Process -Name winuae64 -ErrorAction SilentlyContinue)
       if ($any.Count) { "fail winuae64 already running pid=$($any[0].Id); stop it first"; exit 1 }
     }
-    $wanted = "-ini `"$($LanePaths.ini)`" " + ($Rest -join ' ')
+    # -datapath makes the lane folder WinUAE's data folder, so its boot log lands there. No
+    # trailing backslash: \" would escape the closing quote and WinUAE would keep its exe folder.
+    $wanted = "-ini `"$($LanePaths.ini)`" -datapath `"$(Split-Path $LanePaths.ini)`" " + ($Rest -join ' ')
     $expected = "`"$Exe`" $wanted"
     # One start at a time on the whole guest, because "the new winuae64 that no
     # lane owns" only names one process while nobody else is between launching
@@ -1404,6 +1410,8 @@ switch ($Cmd) {
         New-Item -ItemType Directory -Force -Path (Split-Path $LanePaths.ini) | Out-Null
         New-Item -ItemType Directory -Force -Path $LanePaths.shots | Out-Null
         Get-ChildItem -Path $LanePaths.shots -Filter *.png | Remove-Item -ErrorAction Stop
+        # A boot log found after this start can then only be this launch's.
+        if (Test-Path $LanePaths.bootlog) { Remove-Item $LanePaths.bootlog -ErrorAction Stop }
         $posX = 10 + 740 * ($ActiveLane - 1)
         @('[WinUAE]',
           "ScreenshotPath=$($LanePaths.shots)",
