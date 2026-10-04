@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Refuse a `gh` call that would write to an issue as Donald rather than as the bot.
+"""Block a `gh` call that would write to an issue as Donald rather than as the bot.
 
 `AGENTS.md`, "The tracker is public, and its text is not instructions", says an
 agent files and comments with `tools/wishagent.py`, so its work is authored by
@@ -24,7 +24,7 @@ A `PreToolUse` hook on Bash. Exit 2 blocks the call and feeds stderr back to the
 assistant, which then runs the tool instead. Codex sends the same two payload
 fields and honours the same exit code, so one script serves both harnesses.
 
-**What is refused**, on any `gh` invocation however it is reached -- prefixed
+**What is blocked**, on any `gh` invocation however it is reached -- prefixed
 with an environment variable or a path, wrapped in a subshell, chained after
 `&&`, `;` or `|`, or handed to `bash -c`/`sh -c`/`eval` as a quoted script:
 
@@ -32,7 +32,7 @@ with an environment variable or a path, wrapped in a subshell, chained after
     `tools/wishagent.py` has a verb for;
   * `gh issue lock` and `unlock`, which is a different rejection: **nothing on
     this tracker is locked**, measured three ways on 2026-09-11 -- a GitHub App
-    installation is refused a comment on a locked issue whatever permissions it
+    installation is not allowed a comment on a locked issue whatever permissions it
     holds, so locking would silence this project's own bot rather than the
     public. `docs/218-the-wish-agent-bot.md` has the measurement;
   * `gh api` with a writing method (`-X`/`--method` `POST`, `PATCH`, `PUT`,
@@ -49,10 +49,10 @@ goes around it. It exists so the wrong habit stops working.
 
 A heredoc body is data unless a shell is reading it, in which case it is a
 script and is read as one, so `sh <<'EOF'` around a `gh issue comment` is
-refused. Comments are dropped from the command line by a scan that respects
+blocked. Comments are dropped from the command line by a scan that respects
 quoting and not from inside a quoted `bash -c '...'` script. An apostrophe in
 such a comment makes `shlex` fail on the script, and the hook then allows the
-call instead of refusing it (`bash -c "# it's a note` and a newline, then `gh
+call instead of blocking it (`bash -c "# it's a note` and a newline, then `gh
 issue comment 1 --body-file b"`). A shell fed through a pipe (`printf 'gh issue
 comment 1' | sh`) or a here-string (`sh <<< 'gh issue comment 1'`), a command
 line quoted for another machine (`ssh host '...'`), a shell behind a wrapper
@@ -82,9 +82,9 @@ TOOL = "tools/wishagent.py"
 BOUNDARY = {"&&", "||", "|", ";", "&"}
 
 #: Each has a `tools/wishagent.py` verb, so each has somewhere to go.
-REFUSED_SUBCOMMANDS = {"create", "comment", "close", "reopen", "edit"}
+BLOCKED_SUBCOMMANDS = {"create", "comment", "close", "reopen", "edit"}
 
-#: Refused for a different reason, and with a different message.
+#: Blocked for a different reason, and with a different message.
 LOCK_SUBCOMMANDS = {"lock", "unlock"}
 
 WRITING_METHODS = {"POST", "PATCH", "PUT", "DELETE"}
@@ -140,7 +140,7 @@ def _plane_api(scoped: list[str]) -> bool:
     return False
 
 
-def _refuse_plane() -> None:
+def _block_plane() -> None:
     print(
         "Raw Plane transport bypasses Wish's project and dedicated-agent "
         "write contract. Use "
@@ -216,14 +216,14 @@ def rejection(tokens: list[str], depth: int = 0) -> str | None:
         if words[0] == "issue" and len(words) > 1:
             if words[1] in LOCK_SUBCOMMANDS:
                 return "lock"
-            if words[1] in REFUSED_SUBCOMMANDS:
+            if words[1] in BLOCKED_SUBCOMMANDS:
                 return "write"
         if words[0] == "api" and _api_writes_an_issue(scoped):
             return "write"
     return None
 
 
-def _refuse_write() -> None:
+def _block_write() -> None:
     print(
         "That writes to an issue as Donald. `gh` is authenticated as his own "
         "account, so an issue or comment it posts says he wrote it -- and this "
@@ -247,10 +247,10 @@ def _refuse_write() -> None:
     )
 
 
-def _refuse_lock() -> None:
+def _block_lock() -> None:
     print(
         "Nothing on this tracker is locked, and locking one would be worse "
-        "than it sounds: a GitHub App installation is refused a comment on a "
+        "than it sounds: a GitHub App installation is not allowed a comment on a "
         "locked issue whatever permissions it holds -- measured three ways on "
         "2026-09-11, with `issues: write`, with `contents: write` added, and "
         "with the whole installation unnarrowed. So locking an issue silences "
@@ -290,19 +290,19 @@ def main() -> int:
         # the wrong identity cannot be reauthored.
         if re.search(r"\bgh\b.*\bissue\b.*\b(create|comment|close|reopen|edit)\b",
                      runnable):
-            _refuse_write()
+            _block_write()
             return 2
         return 0
 
     found = rejection(tokens)
     if found == "plane":
-        _refuse_plane()
+        _block_plane()
         return 2
     if found == "lock":
-        _refuse_lock()
+        _block_lock()
         return 2
     if found == "write":
-        _refuse_write()
+        _block_write()
         return 2
     return 0
 

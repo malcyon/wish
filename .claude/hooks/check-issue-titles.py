@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Refuse a reply that cites an issue number without saying what it is.
+"""Block a reply that cites an issue number without saying what it is.
 
 A bare `#59` makes Donald do the lookup: fast for the assistant, which has
 the number in hand, and slow for him, who has to go and find out what it is
@@ -48,13 +48,13 @@ import sys
 CITATION = re.compile(r"(?<![\w#/&])#(\d{1,6})\b")
 
 # What counts as naming it: an opening parenthesis straight after, which is
-# `#59 (Map the DOS saved game...)`. A bare number is what we refuse.
+# `#59 (Map the DOS saved game...)`. A bare number is what we block.
 NAMED = re.compile(r"\s*\(")
 
 # The commit-message form, where `AGENTS.md` rules the number goes bare: it
 # is inside parentheses at the end of the one line, and GitHub hotlinks it
 # there. `(closes #14)`, `(fixes #14)`, `(#10)` -- a title would break the
-# sentence, so quoting a commit message must not be refused here.
+# sentence, so quoting a commit message must not be blocked here.
 COMMIT_FORM = re.compile(r"\((?:closes\s+|close\s+|fixes\s+|fix\s+)?$", re.I)
 
 # Fenced blocks only. Single-backtick spans are prose here -- see the module

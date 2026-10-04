@@ -106,7 +106,7 @@ slot or VM lane nobody is using.
    backgrounded. Repeat until the marker appears.
 3. Never end a turn while any task ID you started, or were handed, is still
    running.
-4. A bare `sleep N` with N of 30 or more is refused by the harness, and the
+4. A bare `sleep N` with N of 30 or more is blocked by the harness, and the
    rejection suggests `Monitor` or `run_in_background: true` — neither is useful
    here: subagents have no `Monitor` tool, and `run_in_background` followed by
    ending the turn is the failure itself, not an escape from it. Wait with an

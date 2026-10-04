@@ -101,7 +101,7 @@ def strip_comments(text: str, join_lines: str | None = None) -> str:
     the text from the quote on has every newline replaced by `join_lines`.
 
     Three forms are still read wrongly, and each drops a banned command that
-    comes after it, so the guards allow what an unfiltered reading would refuse: a
+    comes after it, so the guards allow what an unfiltered reading would block: a
     `#` inside backticks (``echo `echo #`; gh ...``), where the comment really
     ends at the closing backtick; a `#` inside a parameter expansion
     (`echo ${x:- #foo}; gh ...`); and a backslash-escaped quote inside `$'...'`

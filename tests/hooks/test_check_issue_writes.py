@@ -1,4 +1,4 @@
-"""`.claude/hooks/check-issue-writes.py` refuses a write that would go out as Donald.
+"""`.claude/hooks/check-issue-writes.py` blocks a write that would go out as Donald.
 
 `AGENTS.md` says an agent files and comments with `tools/wishagent.py`, so its
 work is authored by `wish-agent[bot]`. **The rule on its own did not hold**: on
@@ -9,7 +9,7 @@ with one port per platform a title shipped on)` posted its findings with
 that is what every older document shows. This hook is that sentence's
 enforcement.
 
-Both halves of the list matter. A hook that refused `gh issue list` or
+Both halves of the list matter. A hook that blocked `gh issue list` or
 `gh label` would be switched off inside an hour, and then it would guard
 nothing.
 """
@@ -45,7 +45,7 @@ def run(command, monkeypatch, tool_name="Bash"):
 
 
 #: Each has a `tools/wishagent.py` verb, so each rejection has somewhere to go.
-REFUSED = [
+BLOCKED = [
     "gh issue comment 470 --body-file /tmp/b",
     "gh issue create --title x --body-file /tmp/b",
     "gh issue close 470",
@@ -68,7 +68,7 @@ REFUSED = [
     "gh api -X DELETE /repos/malcyon/wish/issues/470/labels/AI",
 ]
 
-#: Reads, repository-level commands, and the tool itself. Refusing any of
+#: Reads, repository-level commands, and the tool itself. Blocking any of
 #: these would make the hook the problem.
 ALLOWED = [
     "gh issue list --limit 300 --state open",
@@ -123,8 +123,8 @@ def _shell_heredocs(banned):
 SHELL_HEREDOCS = _shell_heredocs("gh issue comment 470 --body-file b")
 
 
-@pytest.mark.parametrize("command", REFUSED)
-def test_a_write_as_donald_is_refused(command, monkeypatch):
+@pytest.mark.parametrize("command", BLOCKED)
+def test_a_write_as_donald_is_blocked(command, monkeypatch):
     assert run(command, monkeypatch) == 2
 
 
@@ -134,10 +134,10 @@ def test_a_read_or_a_repository_command_is_let_through(command, monkeypatch):
 
 
 @pytest.mark.parametrize("command", LOCKING)
-def test_locking_is_refused_for_its_own_reason(command, monkeypatch, capsys):
+def test_locking_is_blocked_for_its_own_reason(command, monkeypatch, capsys):
     """Locking gets a different message, because it is a different mistake.
 
-    A GitHub App installation is refused a comment on a locked issue whatever
+    A GitHub App installation is not allowed a comment on a locked issue whatever
     permissions it holds, measured three ways on 2026-09-11 -- so locking
     silences this project's own bot rather than the public.
     """
@@ -151,7 +151,7 @@ def test_locking_is_refused_for_its_own_reason(command, monkeypatch, capsys):
 def test_a_heredoc_that_quotes_the_command_is_let_through(command, monkeypatch):
     """Writing a file that documents the command is not running it.
 
-    `check-issue-reads.py`'s first version refused the edit that wrote its own
+    `check-issue-reads.py`'s first version blocked the edit that wrote its own
     documentation. That lesson is taken here rather than relearnt.
     """
     assert run(command, monkeypatch) == 0
@@ -177,7 +177,7 @@ def test_a_shell_fed_on_stdin_by_another_command_is_a_known_limit(monkeypatch):
     """The boundary of the tripwire, recorded so a reader does not mistake it for cover.
 
     A shell fed through a pipe would need a quoted data argument read as a
-    script, which would also refuse `echo 'gh issue comment 470'`, a command
+    script, which would also block `echo 'gh issue comment 470'`, a command
     that is allowed on purpose. `ssh host '...'` names another machine. A
     wrapper in front of the shell (`sudo`, `env`, `nohup`, `exec`, `command`,
     `xargs`) is not looked through, and another interpreter's heredoc body is
@@ -203,7 +203,7 @@ def test_a_hash_the_comment_scan_misreads_is_a_known_limit(monkeypatch):
     treat as a comment, and the scan drops the write with it: the `#` sits
     inside backticks, inside a parameter expansion, or after a
     backslash-escaped quote in `$'...'`. All three are allowed today; a fix
-    that refuses them should move them to `REFUSED`.
+    that blocks them should move them to `BLOCKED`.
     """
     banned = "gh issue comment 1 --body-file b"
     for command in [
@@ -219,8 +219,8 @@ def test_an_apostrophe_in_a_comment_inside_a_quoted_script_is_a_known_limit(monk
 
     Comments are dropped from the command line and not from inside a quoted
     `bash -c` script, so the apostrophe in the comment makes `shlex` raise and
-    the script is allowed. The same script without the comment line is refused;
-    a fix that refuses this one should move it to `REFUSED`.
+    the script is allowed. The same script without the comment line is blocked;
+    a fix that blocks this one should move it to `BLOCKED`.
     """
     banned = "gh issue comment 1 --body-file b"
     assert run(f'bash -c "{banned}"', monkeypatch) == 2
@@ -231,7 +231,7 @@ def test_an_apostrophe_in_a_shell_comment_does_not_hide_the_script_from_the_scan
     """A comment is dropped before the script is tokenised, so its apostrophe cannot break it.
 
     Left in, the apostrophe makes `shlex` raise and the text fallback finds a
-    `gh` with an `issue` and a `comment` in the text, which refuses a script
+    `gh` with an `issue` and a `comment` in the text, which blocks a script
     that writes nothing.
     """
     command = "sh <<'EOF'\n# it's fine\necho \"gh is right: issue comment\"\nEOF"
@@ -248,7 +248,7 @@ def test_the_rejection_names_the_tool_and_a_runnable_line(capsys, monkeypatch):
 
 
 def test_the_rejection_names_the_edit_verb(capsys, monkeypatch):
-    """`gh issue edit` is refused, and the message must point somewhere that
+    """`gh issue edit` is blocked, and the message must point somewhere that
     can actually correct a title or a body -- `edit_issue()`'s own verb,
     not one of the other three."""
     assert run("gh issue edit 470 --title x", monkeypatch) == 2
@@ -257,7 +257,7 @@ def test_the_rejection_names_the_edit_verb(capsys, monkeypatch):
 
 
 def test_the_rejection_names_the_reopen_verb(capsys, monkeypatch):
-    """`gh issue reopen` is refused, and the message must name the verb that
+    """`gh issue reopen` is blocked, and the message must name the verb that
     reopens an issue as the bot."""
     assert run("gh issue reopen 470", monkeypatch) == 2
     err = capsys.readouterr().err
@@ -295,8 +295,8 @@ def test_both_harnesses_payload_formats(tool_input, expected, monkeypatch):
     assert mod.main() == expected
 
 
-def test_unbalanced_quotes_still_refuse_a_write(monkeypatch):
-    """`shlex` cannot parse it, so the safe reading is to refuse.
+def test_unbalanced_quotes_still_block_a_write(monkeypatch):
+    """`shlex` cannot parse it, so the safe reading is to block.
 
     A rewrite costs a moment. A comment posted under the wrong identity cannot
     be reauthored.

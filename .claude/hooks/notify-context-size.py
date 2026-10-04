@@ -11,7 +11,7 @@ This is a `PreToolUse` hook on `Agent`, `Task` and `SendMessage`. It reads
 the last recorded context total from the transcript and, the first time it
 passes the line, writes a JSON object with a `systemMessage` field to
 stdout, which Claude Code shows Donald as a one-line notice. It never
-refuses the tool call -- the session keeps going, and Claude Code compacts
+blocks the tool call -- the session keeps going, and Claude Code compacts
 the context itself when the window fills.
 
 The line is 400,000 tokens; `WISH_HANDOFF_TOKENS` overrides it, for a

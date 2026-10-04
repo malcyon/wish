@@ -12,17 +12,17 @@ foundation gate in [Requirements for Adding a New Platform](../../docs/236-requi
 That gate covers all four games and proves the harness with existing game
 saves before it is used to judge converted saves.
 
-## Refusing a save is not a fix
+## Blocking a save is not a fix
 
-Refusing a valid save is a conversion bug, not a solution to one. Missing
+Blocking a valid save is a conversion bug, not a solution to one. Missing
 mappings, unknown fields, unimplemented effects, and differences in
 representation are work for Wish to resolve. Do not close their tickets, claim
 conversion support, or call them fixed because Wish now detects the problem and
-refuses the save.
+blocks the save.
 
 A regression test for a conversion fix must demonstrate successful conversion
 of the formerly failing save or condition and the preserved player behavior.
-A test proving that Wish refuses the save can document an outstanding defect;
+A test proving that Wish blocks the save can document an outstanding defect;
 it cannot serve as the acceptance test for fixing that defect. Renaming an
 error, hiding a route, or passing only the specimens we have does not
 prove completion either.
@@ -246,7 +246,7 @@ what is measured about reaching them:
 
 | | the ceiling | can it be reached? |
 |---|---|---|
-| C64 items | 16 slots in the record | DOS and Amiga refuse a seventeenth head item (`docs/173-carrying-limits.md`); Silver Blades can join scrolls under one head, but a game-written bundle that exceeds the C64 slots has not been tested in the running games |
+| C64 items | 16 slots in the record | DOS and Amiga block a seventeenth head item (`docs/173-carrying-limits.md`); Silver Blades can join scrolls under one head, but a game-written bundle that exceeds the C64 slots has not been tested in the running games |
 | C64 trait slots | 10, shared between racial effects and item grants | racial ids are 0-4 by race, CONFIRMED (human 0, elf 1, half-elf 1, halfling 2, dwarf 4, gnome 4), so it needs a dwarf or gnome with **seven or more effect-granting items readied at once** -- **UNMEASURED** |
 
 Measure per title before designing anything: Curse's items are 67 bytes where
@@ -299,7 +299,7 @@ output until the field is understood, and keep working to understand what is
 needed.
 
 So **an undecoded field blocks the output, not the work: it is not a gap the
-template fills and not a reason to accept refusing the save.** When the
+template fills and not a reason to accept blocking the save.** When the
 conversion needs a byte nobody has attributed, the work is to go and measure
 it, and the ticket says so.
 

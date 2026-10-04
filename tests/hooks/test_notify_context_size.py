@@ -3,7 +3,7 @@
 `.claude/skills/orchestrate/SKILL.md` says the orchestrator neither sees nor
 acts on this; it exists only so Donald gets one notice, printed as a
 `systemMessage` Claude Code shows him, from a hook that otherwise never
-refuses the tool call it watches.
+blocks the tool call it watches.
 """
 import importlib.util
 import io

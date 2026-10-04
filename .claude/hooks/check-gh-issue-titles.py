@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Refuse a `gh issue` comment that cites an issue number without saying what it is.
+"""Block a `gh issue` comment that cites an issue number without saying what it is.
 
 The sibling `check-issue-titles.py` is a `Stop` hook that reads what the
-assistant said to Donald and refuses a bare `#59`. An issue comment never
+assistant said to Donald and blocks a bare `#59`. An issue comment never
 passes through it, because it leaves through Bash rather than through a reply,
 so this hook applies the same check to that route. The rule itself is in
 `.claude/rules/issues.md`, "Citing an issue".

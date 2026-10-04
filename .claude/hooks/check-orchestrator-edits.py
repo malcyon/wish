@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Refuse the orchestrator's own edits to a repository file.
+"""Block the orchestrator's own edits to a repository file.
 
 `.claude/skills/orchestrate/SKILL.md` tells the orchestrator it never edits
 files itself -- every change goes to a subagent. The rule alone does not
@@ -8,7 +8,7 @@ moment, and it is also what turns a review into a loop of four or more
 passes against the orchestrator's own edits.
 
 This is a `PreToolUse` hook on `Edit`, `Write`, `MultiEdit` and
-`NotebookEdit`. It refuses with exit 2, and its stderr -- which goes back to
+`NotebookEdit`. It blocks with exit 2, and its stderr -- which goes back to
 the assistant as the tool's result -- says to send the change out instead,
 when all three hold:
 
@@ -27,7 +27,7 @@ when all three hold:
 
 Anything missing -- no `transcript_path`, an unreadable transcript, no
 repository root found -- lets the edit through: a hook with nothing to go on
-refuses nothing.
+blocks nothing.
 
 Scanning the whole transcript for the marker has to be cheap enough to run
 on every edit, so the answer is cached in a stamp file under the temp
@@ -147,7 +147,7 @@ def is_orchestrator(transcript_path: str) -> bool:
 
 def rejection(file_path: str) -> str:
     return (
-        f"Refused: the orchestrator does not edit files, and {file_path} is "
+        f"Blocked: the orchestrator does not edit files, and {file_path} is "
         "one. Send this change to a junior-dev brief instead -- back to the "
         "agent that made it, or to a new one, with the reviewer's finding "
         "as the brief.\n"

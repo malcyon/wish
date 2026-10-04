@@ -1,9 +1,9 @@
-"""`.claude/hooks/check-orchestrator-edits.py` refuses the orchestrator's own edits.
+"""`.claude/hooks/check-orchestrator-edits.py` blocks the orchestrator's own edits.
 
 `.claude/skills/orchestrate/SKILL.md` says the orchestrator never edits a
 file itself -- every change goes to a subagent. This hook makes that
 mechanical: a `PreToolUse` hook on `Edit`, `Write`, `MultiEdit` and
-`NotebookEdit` that refuses when the call is the main window's (not a
+`NotebookEdit` that blocks when the call is the main window's (not a
 subagent's, which carries an `agent_id` and is handed the main session's
 `transcript_path`), the transcript has shown the
 orchestrate skill's opening sentence, and the file being written is inside
@@ -107,7 +107,7 @@ def test_a_main_window_transcript_without_the_marker_is_let_through(isolated_tmp
     assert run(monkeypatch, call(path, inside)) == 0
 
 
-def test_a_main_window_transcript_with_the_marker_is_refused_for_a_repository_file_and_let_through_outside_it(
+def test_a_main_window_transcript_with_the_marker_is_blocked_for_a_repository_file_and_let_through_outside_it(
         isolated_tmp, monkeypatch, capsys):
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(isolated_tmp / "repo"))
     path = transcript(isolated_tmp, marker=True)
@@ -141,7 +141,7 @@ def test_the_stamp_makes_the_second_call_skip_re_reading(isolated_tmp, monkeypat
     os.remove(path)
     assert not os.path.exists(path)
     # The transcript is gone; a fresh read would treat that as "let through"
-    # (an unreadable transcript never refuses), so a rejection here proves the
+    # (an unreadable transcript never blocks), so a rejection here proves the
     # stamp answered instead of the file.
     assert run(monkeypatch, call(path, inside)) == 2
     assert "does not edit files" in capsys.readouterr().err

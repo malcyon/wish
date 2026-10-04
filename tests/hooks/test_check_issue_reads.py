@@ -1,11 +1,11 @@
-"""`.claude/hooks/check-issue-reads.py` refuses the reads that leak comment text.
+"""`.claude/hooks/check-issue-reads.py` blocks the reads that leak comment text.
 
 The hook is the enforcement half of `tools/github/issueread.py`: without it the
 filtered reader is a convention somebody has to remember, and
 `.claude/rules/sessions.md` tells every fresh session to run the unfiltered
-form. So what matters is both halves of the list -- that it refuses each form
+form. So what matters is both halves of the list -- that it blocks each form
 that would print a comment body, and that it lets through the ordinary reads
-this project makes all day. A hook that refused `gh issue list` would be turned
+this project makes all day. A hook that blocked `gh issue list` would be turned
 off within the hour, and then it would be guarding nothing.
 """
 import importlib.util
@@ -40,7 +40,7 @@ def run(command, tool_name="Bash", monkeypatch=None):
     return mod.main()
 
 
-REFUSED = [
+BLOCKED = [
     "gh issue view 510 --comments",
     "gh issue view 510 --json number,title,comments",
     "gh issue view 510 --json=comments",
@@ -52,7 +52,7 @@ REFUSED = [
     "gh issue view 89 --comments | head -50",
     # `title` and `body` are an issue's own text, just as much as a comment
     # is -- these nine plus the four in
-    # test_a_real_call_is_refused_wherever_it_sits_in_the_line got straight
+    # test_a_real_call_is_blocked_wherever_it_sits_in_the_line got straight
     # through the first version of this hook.
     "gh issue view 510 --json number,title",
     "gh issue list --limit 300 --json number,title",
@@ -63,8 +63,8 @@ REFUSED = [
     "gh api /repos/malcyon/wish/issues",
     "gh api /repos/malcyon/wish/issues/510",
     "gh api graphql -f query='...'",
-    # `gh issue view --web` is refused for a different reason -- see
-    # test_web_is_refused_for_the_browser_reason_not_the_trust_one.
+    # `gh issue view --web` is blocked for a different reason -- see
+    # test_web_is_blocked_for_the_browser_reason_not_the_trust_one.
     # The exact command `AGENTS.md`'s "Name every issue you cite" and
     # `.claude/rules/issues.md`'s "Citing an issue" both gave before #523 --
     # already caught by the `--json ...,title` check above, kept here as a
@@ -92,14 +92,14 @@ ALLOWED = [
     # this no longer carries `title` too, which is banned outright now.
     "gh issue view 510 --json number,state,commentsCount",
     # Talking *about* the command is not running it. The first version of this
-    # hook refused the edit that wrote this project's own documentation.
+    # hook blocked the edit that wrote this project's own documentation.
     "grep -rn 'gh issue view --comments' docs/",
     'git commit -m "stop using gh issue view --comments"',
 ]
 
 #: A heredoc body is data being written to a file, and it is how this project
 #: writes every document and every issue body -- so its text quotes commands
-#: constantly. These are the forms that were refused in real use.
+#: constantly. These are the forms that were blocked in real use.
 HEREDOCS = [
     """cat > docs/x.md <<'EOF'
 Read an issue like this:
@@ -140,8 +140,8 @@ def _shell_heredocs(banned):
 SHELL_HEREDOCS = _shell_heredocs("gh issue view 510 --comments")
 
 
-@pytest.mark.parametrize("command", REFUSED)
-def test_a_read_that_would_print_comment_bodies_is_refused(command, monkeypatch):
+@pytest.mark.parametrize("command", BLOCKED)
+def test_a_read_that_would_print_comment_bodies_is_blocked(command, monkeypatch):
     assert run(command, monkeypatch=monkeypatch) == 2
 
 
@@ -155,7 +155,7 @@ def test_a_heredoc_that_quotes_the_command_is_let_through(command, monkeypatch):
     """Writing a file that documents the command is not running the command.
 
     This is a regression test with a date on it: on 2026-09-11 the first
-    version of this hook refused the edit that wrote
+    version of this hook blocked the edit that wrote
     `docs/218-the-wish-agent-bot.md`, because the page quotes the command it is
     telling you not to use. A guard that blocks its own documentation is one
     somebody turns off.
@@ -183,7 +183,7 @@ def test_a_shell_fed_on_stdin_by_another_command_is_a_known_limit(monkeypatch):
     """The boundary of the tripwire, recorded so a reader does not mistake it for cover.
 
     A shell fed through a pipe would need a quoted data argument read as a
-    script, which would also refuse `echo 'gh issue view 510 --comments'`, a
+    script, which would also block `echo 'gh issue view 510 --comments'`, a
     command that is allowed on purpose. `ssh host '...'` names another
     machine. A wrapper in front of the shell (`sudo`, `env`, `nohup`, `exec`,
     `command`, `xargs`) is not looked through, and another interpreter's
@@ -209,7 +209,7 @@ def test_a_hash_the_comment_scan_misreads_is_a_known_limit(monkeypatch):
     treat as a comment, and the scan drops the read with it: the `#` sits
     inside backticks, inside a parameter expansion, or after a
     backslash-escaped quote in `$'...'`. All three are allowed today; a fix
-    that refuses them should move them to `REFUSED`.
+    that blocks them should move them to `BLOCKED`.
     """
     banned = "gh issue view 1 --comments"
     for command in [
@@ -225,8 +225,8 @@ def test_an_apostrophe_in_a_comment_inside_a_quoted_script_is_a_known_limit(monk
 
     Comments are dropped from the command line and not from inside a quoted
     `bash -c` script, so the apostrophe in the comment makes `shlex` raise and
-    the script is allowed. The same script without the comment line is refused;
-    a fix that refuses this one should move it to `REFUSED`.
+    the script is allowed. The same script without the comment line is blocked;
+    a fix that blocks this one should move it to `BLOCKED`.
     """
     banned = "gh issue view 1 --comments"
     assert run(f'bash -c "{banned}"', monkeypatch=monkeypatch) == 2
@@ -237,7 +237,7 @@ def test_an_apostrophe_in_a_shell_comment_does_not_hide_the_script_from_the_scan
     """A comment is dropped before the script is tokenised, so its apostrophe cannot break it.
 
     Left in, the apostrophe makes `shlex` raise and the text fallback finds
-    `gh` inside `right` and `issues` in the text, which refuses a script that
+    `gh` inside `right` and `issues` in the text, which blocks a script that
     reads nothing.
     """
     command = "sh <<'EOF'\n# it's fine\necho \"issues are right\"\nEOF"
@@ -258,7 +258,7 @@ def test_an_apostrophe_in_a_shell_comment_does_not_hide_the_script_from_the_scan
     "/usr/bin/gh issue view 510 --comments",
     "`gh issue view 510 --comments`",
 ])
-def test_a_real_call_is_refused_wherever_it_sits_in_the_line(command, monkeypatch):
+def test_a_real_call_is_blocked_wherever_it_sits_in_the_line(command, monkeypatch):
     """Anchoring on command position must not become a way through.
 
     `shlex` keeps shell punctuation glued to a word, so the subshell form hands
@@ -274,7 +274,7 @@ def test_a_real_call_is_refused_wherever_it_sits_in_the_line(command, monkeypatc
     "sh -c \"gh issue view 510 --json comments\"",
     "eval 'gh issue view 510 --comments'",
 ])
-def test_a_call_quoted_as_a_script_for_bash_sh_or_eval_is_refused(command, monkeypatch):
+def test_a_call_quoted_as_a_script_for_bash_sh_or_eval_is_blocked(command, monkeypatch):
     """`bash -c`, `sh -c` and `eval` all execute their argument as a new
     command line, so a `gh` call quoted inside one is a real invocation --
     unlike the same text quoted for `grep` or `git commit -m`, which never
@@ -285,7 +285,7 @@ def test_a_call_quoted_as_a_script_for_bash_sh_or_eval_is_refused(command, monke
     assert run(command, monkeypatch=monkeypatch) == 2
 
 
-def test_web_is_refused_for_the_browser_reason_not_the_trust_one(capsys, monkeypatch):
+def test_web_is_blocked_for_the_browser_reason_not_the_trust_one(capsys, monkeypatch):
     """`gh issue view --web` opens a browser on Donald's own screen --
     `AGENTS.md`, "The machine" -- which is a different reason from the trust
     one every other rejection here gives, and reads differently."""
@@ -304,7 +304,7 @@ def test_the_rejection_names_the_filtered_reader(capsys, monkeypatch):
 
 
 def test_the_rejection_names_the_citation_mode(capsys, monkeypatch):
-    """#523: the refused command is often the one `AGENTS.md`'s "Name every
+    """#523: the blocked command is often the one `AGENTS.md`'s "Name every
     issue you cite" documents, so the rejection must point at the one-line
     replacement rather than only at the whole-issue reader -- a message that
     tells you to print the whole issue when you wanted one line is what gets
@@ -335,8 +335,8 @@ def test_a_non_string_command_never_blocks(monkeypatch):
     assert mod.main() == 0
 
 
-def test_unbalanced_quotes_fall_back_to_refusing(monkeypatch):
-    """`shlex` cannot parse it, so the safe reading is to refuse.
+def test_unbalanced_quotes_fall_back_to_blocking(monkeypatch):
+    """`shlex` cannot parse it, so the safe reading is to block.
 
     A rewrite costs a moment; letting the call through costs the thing the
     hook exists to prevent.

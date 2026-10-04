@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Refuse a `gh` call that would print an issue's title, body or comments unfiltered.
+"""Block a `gh` call that would print an issue's title, body or comments unfiltered.
 
 `malcyon/wish` is public with issues enabled, so an issue's title, body and
 every comment on it are text a stranger can write. `gh issue view N
@@ -34,7 +34,7 @@ tripwire; client configuration must register only the policy adapter.
 A `PreToolUse` hook on Bash. Exit 2 blocks the call and feeds stderr back to
 the assistant, which then runs the filtered form instead.
 
-**What is refused**, on any `gh` invocation however it is reached --
+**What is blocked**, on any `gh` invocation however it is reached --
 prefixed with an environment variable or a path, wrapped in a subshell,
 chained after `&&`, `;` or `|`, or handed to `bash -c`/`sh -c`/`eval` as a
 quoted script:
@@ -44,7 +44,7 @@ quoted script:
     `--json` fields;
   * `gh api` against `/issues`, `/issues/<n>`, `/issues/<n>/comments`,
     `/issues/comments/<id>`, or `gh api graphql`;
-  * `gh issue view --web`, refused separately: it opens a browser, and
+  * `gh issue view --web`, blocked separately: it opens a browser, and
     `AGENTS.md`'s "The machine" is that nothing an agent runs may put a
     window on Donald's own screen. That is a different reason from the
     trust one above and gets a different message.
@@ -66,11 +66,11 @@ the first. The actual filtering is `tools/github/issueread.py`; this exists so t
 unfiltered habit stops working before it becomes the habit.
 
 A heredoc body is data unless a shell is reading it, in which case it is a
-script and is read as one, so `sh <<'EOF'` around a banned read is refused.
+script and is read as one, so `sh <<'EOF'` around a banned read is blocked.
 Comments are dropped from the command line by a scan that respects quoting and
 not from inside a quoted `bash -c '...'` script. An apostrophe in such a
 comment makes `shlex` fail on the script, and the hook then allows the call
-instead of refusing it (`bash -c "# it's a note` and a newline, then `gh issue
+instead of blocking it (`bash -c "# it's a note` and a newline, then `gh issue
 view 1 --comments"`). A shell fed through a pipe (`printf 'gh issue view 1
 --comments' | sh`) or a here-string (`sh <<< 'gh issue view 1 --comments'`), a
 command line quoted for another machine (`ssh host '...'`), a shell behind a
@@ -154,7 +154,7 @@ def _plane_api(scoped: list[str]) -> bool:
     return False
 
 
-def _refuse_plane() -> None:
+def _block_plane() -> None:
     print(
         "Raw Plane transport bypasses Wish's project and dedicated-agent "
         "write contract. Use "
@@ -185,14 +185,14 @@ def _rejection(tokens: list[str], depth: int = 0) -> tuple[str, str] | None:
         cleaned = _clean(tokens[i])
 
         if cleaned in shellcommands.SHELLS and i + 2 < n and _clean(tokens[i + 1]) == "-c":
-            found = _refuse_in_script(tokens[i + 2], depth)
+            found = _block_in_script(tokens[i + 2], depth)
             if found:
                 return found
             i += 3
             continue
 
         if cleaned == "eval" and i + 1 < n:
-            found = _refuse_in_script(tokens[i + 1], depth)
+            found = _block_in_script(tokens[i + 1], depth)
             if found:
                 return found
             i += 2
@@ -245,7 +245,7 @@ def _rejection(tokens: list[str], depth: int = 0) -> tuple[str, str] | None:
     return None
 
 
-def _refuse_in_script(script: str, depth: int) -> tuple[str, str] | None:
+def _block_in_script(script: str, depth: int) -> tuple[str, str] | None:
     """Recurse into a quoted script handed to `bash -c`, `sh -c` or `eval`.
 
     One level deep is enough for every form seen in real use; capped at
@@ -261,7 +261,7 @@ def _refuse_in_script(script: str, depth: int) -> tuple[str, str] | None:
     return _rejection(inner_tokens, depth=depth + 1)
 
 
-def _refuse_text(what: str) -> None:
+def _block_text(what: str) -> None:
     print(
         f"{what} would print an issue's own title, body or comment text "
         f"unfiltered, and this tracker is public: any of them can be "
@@ -283,7 +283,7 @@ def _refuse_text(what: str) -> None:
     )
 
 
-def _refuse_web(what: str) -> None:
+def _block_web(what: str) -> None:
     print(
         f"{what} opens a browser -- on Donald's own screen. `AGENTS.md`, "
         f"\"The machine\": nothing an agent runs may put a window there.\n\n"
@@ -335,12 +335,12 @@ def main() -> int:
     try:
         tokens = shlex.split(runnable, comments=False)
     except ValueError:
-        # Unbalanced quotes. Fall back to the raw text: refusing a call that
+        # Unbalanced quotes. Fall back to the raw text: blocking a call that
         # only mentions a banned form costs a rewrite, and letting one
         # through costs the thing this hook exists to prevent.
         if "gh" in runnable and ("--comments" in runnable or "comments" in runnable
                                   or "issues" in runnable or "graphql" in runnable):
-            _refuse_text("this call")
+            _block_text("this call")
             return 2
         return 0
 
@@ -349,11 +349,11 @@ def main() -> int:
         return 0
     what, reason = found
     if reason == "plane":
-        _refuse_plane()
+        _block_plane()
     elif reason == "web":
-        _refuse_web(what)
+        _block_web(what)
     else:
-        _refuse_text(what)
+        _block_text(what)
     return 2
 
 
