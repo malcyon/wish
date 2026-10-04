@@ -16,17 +16,15 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import pathlib
 import subprocess
 import sys
+import tempfile
 import traceback
 
 from editor import convert
 from goldbox import amiga_adf, amiga_savegame, dos_codec, dos_savegame
-
-#: Errors the readers and writers raise for a save or disk they cannot take.
-KNOWN_ERRORS = (convert.ConvertError, dos_savegame.DosSaveError, dos_codec.DosRecordError,
-                amiga_adf.AmigaDiskError, amiga_savegame.AmigaSaveError)
 
 REPORT_NAME = "saveas-report.json"
 COMMIT_NAME = "commit.txt"
@@ -43,6 +41,30 @@ def commit_text(tree: pathlib.Path) -> str:
                               capture_output=True, text=True).stdout
     return f"{git('rev-parse', 'HEAD').strip()}\n{git('status', '--porcelain')}"
 
+
+class ImageNotWritable(Exception):
+    """The image's path is an input or a directory, so writing it would clobber or fail."""
+
+
+def _write_image(image: pathlib.Path, data: bytes, inputs: tuple[pathlib.Path, ...]) -> None:
+    """Write `data` to `image` through a temp file and `os.replace`, which swaps a link itself, not its target."""
+    if image.resolve() in inputs:
+        raise ImageNotWritable(f"{image} is one of the run's inputs")
+    if image.is_dir() and not image.is_symlink():
+        raise ImageNotWritable(f"{image} is a directory")
+    fd, temp = tempfile.mkstemp(dir=image.parent, prefix=".disk3-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+        os.replace(temp, image)
+    except BaseException:
+        pathlib.Path(temp).unlink(missing_ok=True)
+        raise
+
+
+#: Errors the readers and writers raise for a save or disk they cannot take.
+KNOWN_ERRORS = (convert.ConvertError, ImageNotWritable, dos_savegame.DosSaveError, dos_codec.DosRecordError,
+                amiga_adf.AmigaDiskError, amiga_savegame.AmigaSaveError)
 
 def run(specimen: pathlib.Path, disk3: pathlib.Path, out: pathlib.Path,
         replace: bool = False, tree: pathlib.Path | None = None) -> dict:
@@ -70,14 +92,14 @@ def run(specimen: pathlib.Path, disk3: pathlib.Path, out: pathlib.Path,
         rehearsal = convert.PodDosToAmiga().rehearse(
             source, source.slot, None, disk_three=amiga_adf.AmigaDisk.open(disk3),
             replace=replace)
-    except (convert.ConvertError, ValueError, OSError) as exc:
+        image = out / f"disk3-{rehearsal.slot}.adf"
+        _write_image(image, rehearsal.disk, (specimen, disk3))
+    except (convert.ConvertError, ImageNotWritable, ValueError, OSError) as exc:
         if not isinstance(exc, KNOWN_ERRORS):
             # An unnamed ValueError or OSError may be a bug, so keep its traceback.
             traceback.print_exc()
         outcome["stopped"] = [type(exc).__name__, str(exc)]
     else:
-        image = out / f"disk3-{rehearsal.slot}.adf"
-        image.write_bytes(rehearsal.disk)
         report["dropped"] = [str(x) for x in rehearsal.report.dropped]
         report["losses"] = [str(x) for x in rehearsal.report.losses]
         report["warnings"] = [str(x) for x in rehearsal.report.warnings]

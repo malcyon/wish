@@ -269,3 +269,48 @@ def test_an_unreadable_disk_three_is_a_stopped_report_with_a_traceback(
     assert report["save_as"]["stopped"][0] in ("IsADirectoryError", "PermissionError")
     assert "Traceback" in capsys.readouterr().err
     assert not list((tmp_path / "out").glob("*.adf"))
+
+
+def _stopped_without_image(report, out):
+    assert report["save_as"]["stopped"], report
+    assert report["written"] == []
+    assert (out / "saveas-report.json").is_file()
+
+
+def test_a_link_at_the_image_path_to_the_disk_three_is_not_written_through(staged):
+    specimen, disk3, out = staged
+    out.mkdir()
+    before = disk3.read_bytes()
+    (out / f"disk3-{LETTER}.adf").symlink_to(disk3)
+    report = podsaveasdrive.run(specimen, disk3, out)
+    _stopped_without_image(report, out)
+    assert disk3.read_bytes() == before
+
+
+def test_a_link_at_the_image_path_to_elsewhere_is_replaced_not_followed(staged, tmp_path):
+    specimen, disk3, out = staged
+    out.mkdir()
+    other = tmp_path / "other.adf"
+    other.write_bytes(b"keep")
+    (out / f"disk3-{LETTER}.adf").symlink_to(other)
+    report = podsaveasdrive.run(specimen, disk3, out)
+    assert not report["save_as"].get("stopped"), report
+    assert other.read_bytes() == b"keep"
+    assert not (out / f"disk3-{LETTER}.adf").is_symlink()
+
+
+def test_a_directory_at_the_image_path_is_a_stopped_report(staged):
+    specimen, disk3, out = staged
+    (out / f"disk3-{LETTER}.adf").mkdir(parents=True)
+    _stopped_without_image(podsaveasdrive.run(specimen, disk3, out), out)
+
+
+def test_the_disk_three_named_as_the_image_is_not_overwritten(staged):
+    specimen, _disk3, out = staged
+    out.mkdir()
+    same = out / f"disk3-{LETTER}.adf"
+    same.write_bytes(_synthetic_disk_three().to_bytes())
+    before = same.read_bytes()
+    _stopped_without_image(podsaveasdrive.run(specimen, same, out), out)
+    assert same.read_bytes() == before
+    assert not list(out.glob(".disk3-*"))
