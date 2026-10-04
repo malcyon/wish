@@ -6,7 +6,7 @@
 `--check` regenerates into memory and fails if the committed file differs,
 which is what CI wants. Wish calls `ensure_current()` at startup, so in
 normal use this never has to be run by hand -- edit the .ui in Qt Designer,
-restart the editor, done.
+restart Wish, done.
 """
 
 from __future__ import annotations

@@ -48,6 +48,17 @@ def test_a_widget_difference_is_written_and_named(tmp_path, monkeypatch):
     assert py.read_text(encoding="utf-8") == new
 
 
+def test_a_missing_compiled_file_is_written(tmp_path, monkeypatch):
+    ui = tmp_path / "form.ui"
+    py = tmp_path / "ui_form.py"
+    ui.write_text("<ui/>", encoding="utf-8")
+    new = f"# h\n\n{BODY}"
+    _count(monkeypatch, new)
+
+    assert genui.ensure_current(ui, py) == [ui]
+    assert py.read_text(encoding="utf-8") == new
+
+
 def test_startup_names_the_rewritten_form(tmp_path, monkeypatch, capsys):
     import wish.window
     from wish.__main__ import main
