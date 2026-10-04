@@ -345,6 +345,22 @@ def test_grab_is_false_while_there_is_no_window_or_no_frame_yet_and_an_error_aft
         guest.grab("title", tmp_path / "r.png", tmp_path / "c.png", 3)
 
 
+def test_a_hires_frame_is_not_shown_yet_and_keeps_its_raw_frame_and_no_crop(lane, tmp_path, monkeypatch):
+    guest = _started(tmp_path, lane)
+    raw, cropped = tmp_path / "raw.png", tmp_path / "crop.png"
+    cropped.write_bytes(b"stale")
+
+    def hires(display, key, settle):
+        frame = Image.new("RGB", (754, 576), (0, 0, 0))
+        for x in range(16, 736, 2):
+            frame.putpixel((x, 100), (255, 255, 255))     # a one-pixel stroke breaks the 2x2 blocks
+        frame.save(guest.work / "shots" / "FS-UAE_Full_261004-0000_01.png")
+
+    monkeypatch.setattr(fsuaegdb, "press", hires)
+    assert guest.grab("journal", raw, cropped, 10) is False
+    assert raw.exists() and not cropped.exists()
+
+
 def test_capture_returns_on_the_second_identical_frame(lane, tmp_path, monkeypatch, clock):
     guest = _started(tmp_path, lane)
     frames = []

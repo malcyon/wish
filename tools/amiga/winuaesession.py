@@ -251,6 +251,7 @@ class WinGuest:
         A guard reads a static box, so an animated screen needs no settling, and a frame
         with no crop is one no guard can match.
         """
+        # Imported here because `screens` imports `RouteError` from this module.
         from tools.amiga import screens  # noqa: PLC0415
 
         if timeout <= 0:

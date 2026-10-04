@@ -54,7 +54,7 @@ def canonical(image, *, replication: int | None = None, origin: tuple[int, int] 
     native = window.resize(_WINDOW, Image.NEAREST)
     if native.resize(window.size, Image.NEAREST).tobytes() != window.tobytes():
         raise NotExactCapture(f"the frame is not {replication}x copies of each Amiga pixel, "
-                         "so it is not an exact capture")
+                              "so it is not an exact capture")
     return native.resize(CANONICAL, Image.NEAREST)
 
 

@@ -1805,8 +1805,10 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             raise RouteError("screen guard map lacks ['journal']")
         for round_ in range(4):
             name = f"journal-{round_}"
-            if not capture(name, check=False, settle=False) or not guard(
-                    "journal", shots / f"{name}.png"):
+            # "" is a frame not shown yet (no window, or hires), not an empty screen.
+            while not capture(name, check=False, settle=False):
+                wait(GUARD_POLL)
+            if not guard("journal", shots / f"{name}.png"):
                 return
             if round_ == 3:
                 raise RouteError("the journal challenge is still on screen after three answers")

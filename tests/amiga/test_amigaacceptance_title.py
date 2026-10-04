@@ -520,6 +520,28 @@ def test_the_journal_answer_presses_x_and_return_and_stops_after_three_rounds(tm
     assert _keys(guest).count("X") == 3 and "still on screen" in result["error"]
 
 
+def test_a_journal_grab_that_shows_nothing_yet_is_retried_not_taken_for_no_challenge(tmp_path, clock):
+    class HiresFirst(TitleGuest):
+        """The first journal grab is the hires loading window: no crop, so not shown yet."""
+
+        hires_left = 2
+
+        def grab(self, state, raw, cropped, timeout=None):
+            if state.startswith("journal-0") and self.hires_left:
+                self.hires_left -= 1
+                self.calls.append(("grab", state))
+                raw.write_bytes(b"hires")
+                return False
+            return super().grab(state, raw, cropped, timeout)
+
+    route = ROUTE[:2] + ((None, "loaded_menu", "answer"),) + ROUTE[4:]
+    title = make_title(route=route, measure_route=route[:2])
+    guard = MapGuard(states=("title", *STATES, "journal"), on={"journal": lambda path: True})
+    guest, result = _run(tmp_path, clock, title=title, guard=guard, guest=HiresFirst(clock))
+    assert guest.hires_left == 0
+    assert _keys(guest) == ["P", "L", "X", "RET", "X", "RET", "X", "RET"]
+
+
 def test_measure_with_a_title_never_writes_or_answers(tmp_path, clock):
     guest, result = _run(tmp_path, clock, accept=False, measure=True,
                          guard=MapGuard(states=STATES))

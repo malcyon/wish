@@ -246,7 +246,8 @@ class FsuaeGuest:
             time.sleep(0.2)
 
     def grab(self, state: str, raw: pathlib.Path, cropped: pathlib.Path, timeout: float) -> bool:
-        """One screenshot, cut to the Amiga screen; False while the emulator has drawn nothing yet."""
+        """One screenshot, cut to the Amiga screen; False while the emulator has drawn nothing yet
+        or the frame is not an exact capture (hires), with `raw` kept and no crop."""
         from tools.amiga import fsuaepor  # noqa: PLC0415
 
         self._need_slot("grab")
@@ -261,7 +262,11 @@ class FsuaeGuest:
             return False
         self._screened = True
         shutil.copyfile(path, raw)
-        screens.canonical_file(raw, cropped)
+        try:
+            screens.canonical_file(raw, cropped)
+        except screens.NotExactCapture:
+            cropped.unlink(missing_ok=True)
+            return False
         return True
 
     def capture(self, state: str, raw: pathlib.Path, cropped: pathlib.Path, timeout: float) -> None:
