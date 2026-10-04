@@ -151,21 +151,12 @@ class Policy:
         return f'[{filtered["identifier"]} ({title})]({filtered["url"]})'
 
 
-_DELIMITER_ROW = re.compile(r'^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$')
-_FENCE = re.compile(r'^\s{0,3}(`{3,}|~{3,})')
-_QUOTE = re.compile(r'^(?:\s{0,3}>[ ]?)*')
-_LIST_MARKER = re.compile(r'^( {0,3})([-+*]|\d{1,9}[.)])( +|$)')
 _CODE_SPAN = re.compile(r'(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)')
 
 
-def _split_quote(line):
-    """Split a line into its leading blockquote markers and the rest."""
-    prefix = _QUOTE.match(line).group(0)
-    return prefix, line[len(prefix):]
-
-
-def _indent(text):
-    return len(text[:len(text) - len(text.lstrip())].expandtabs(4))
+def _renderer():
+    from markdown_it import MarkdownIt
+    return MarkdownIt('commonmark', {'html': False, 'breaks': True}).enable('table')
 
 
 def _escape_code_pipes(line):
@@ -176,106 +167,44 @@ def _escape_code_pipes(line):
     return _CODE_SPAN.sub(fix, line)
 
 
-def _expand_leading(text):
-    """Turn the leading whitespace into spaces so columns can be counted by characters."""
-    stripped = text.lstrip(' \t')
-    return text[:len(text) - len(stripped)].expandtabs(4) + stripped
+def _tables(renderer, text):
+    """Map each table's first source line to (end line, header cell count) as markdown-it parses it."""
+    found = {}
+    tokens = renderer.parse(text)
+    for index, token in enumerate(tokens):
+        if token.type == 'table_open' and token.map:
+            cells = 0
+            for inner in tokens[index + 1:]:
+                if inner.type == 'tr_close':
+                    break
+                if inner.type == 'th_open':
+                    cells += 1
+            found[token.map[0]] = (token.map[1], cells)
+    return found
 
 
 def _protect_table_code(text):
-    """Escape pipes inside code spans on table rows; fenced blocks and other text are untouched."""
+    """Escape pipes inside code spans on the lines markdown-it parses as table rows, and only there."""
+    renderer = _renderer()
+    before = _tables(renderer, text)
+    if not before:
+        return text
     lines = text.split('\n')
-    parts = {}
-    fence = None
-    block = []
-    stack = []
-    stack_depth = 0
-    serial = 0
-    previous_blank = True
-
-    def flush():
-        # A table starts at the header line above its delimiter row and runs while rows hold a pipe;
-        # prose above the header and text after the table keep their pipes.
-        position = 1
-        while position < len(block):
-            delimiter_head, delimiter, delimiter_key = parts[block[position]]
-            header_head, header, header_key = parts[block[position - 1]]
-            if (
-                '|' in delimiter and '|' in header and _DELIMITER_ROW.match(delimiter)
-                and header_key == delimiter_key
-                and _indent(delimiter) <= 3 and _indent(header) <= 3
-            ):
-                end = position - 1
-                while end < len(block):
-                    head, rest, key = parts[block[end]]
-                    # A line outside the quote or list item (or in a deeper one) is not a row of this table.
-                    if '|' not in rest or key != delimiter_key:
-                        break
-                    lines[block[end]] = head + _escape_code_pipes(rest)
-                    end += 1
-                position = end + 1
-            else:
-                position += 1
-        block.clear()
-
-    for index, line in enumerate(lines):
-        quote, rest = _split_quote(line)
-        depth = quote.count('>')
-        rest = _expand_leading(rest)
-        if not rest.strip():
-            if fence is not None and depth >= fence[1]:
-                continue
-            fence = None
-            flush()
-            previous_blank = True
-            continue
-        indent = _indent(rest)
-        if fence is not None and depth >= fence[1] and indent >= fence[2]:
-            inner = rest[fence[2]:]
-            marker = _FENCE.match(inner)
-            if marker and marker.group(1)[0] == fence[0][0] and len(marker.group(1)) >= len(fence[0]):
-                fence = None
-            previous_blank = False
-            continue
-        fence = None
-        if depth != stack_depth:
-            stack, stack_depth = [], depth
-        lazy = False
-        while stack and indent < stack[-1][0]:
-            if not previous_blank and not _LIST_MARKER.match(rest.lstrip()):
-                lazy = True
-                break
-            stack.pop()
-        base = stack[-1][0] if stack else 0
-        if lazy:
-            head, content, key = quote, rest, (depth, 'lazy')
-        else:
-            item = _LIST_MARKER.match(rest[base:]) if indent - base <= 3 else None
-            if item:
-                spaces = len(item.group(3))
-                width = item.end(2) + (spaces if 1 <= spaces <= 4 else 1)
-                serial += 1
-                stack.append((base + width, serial))
-                head, content = quote + rest[:base + width], rest[base + width:]
-            else:
-                head, content = quote + rest[:base], rest[base:]
-            key = (depth, stack[-1][1] if stack else 0)
-        parts[index] = (head, content, key)
-        marker = _FENCE.match(content)
-        if marker:
-            flush()
-            fence = (marker.group(1), depth, 0 if lazy or not stack else stack[-1][0])
-        else:
-            block.append(index)
-        previous_blank = False
-    flush()
-    return '\n'.join(lines)
+    escaped = list(lines)
+    # Quote markers and list indents hold no backticks, so a whole line can be scanned.
+    for start, (end, _cells) in before.items():
+        for index in range(start, end):
+            escaped[index] = _escape_code_pipes(lines[index])
+    after = _tables(renderer, '\n'.join(escaped))
+    for start, (end, cells) in before.items():
+        # A header left with too few cells makes markdown-it drop the table, so that table keeps its source.
+        if after.get(start, (None, None))[1] != cells:
+            escaped[start:end] = lines[start:end]
+    return '\n'.join(escaped)
 
 
 def paragraph(text):
     """Render supplied Markdown as HTML; raw HTML stays escaped and unsafe link schemes are not linked."""
     if not isinstance(text, str) or not text.strip():
         raise PlaneError("Nonempty text is required")
-    from markdown_it import MarkdownIt
-    renderer = MarkdownIt('commonmark', {'html': False, 'breaks': True}).enable('table')
-    return renderer.render(_protect_table_code(text)).strip()
+    return _renderer().render(_protect_table_code(text)).strip()

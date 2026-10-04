@@ -1085,3 +1085,45 @@ def test_lazy_line_after_a_list_item_gets_no_backslash():
     from tools.plane.policy import paragraph
     out = paragraph('- item\n| `m|n` | q |')
     assert '\\' not in out
+
+
+def _outside_tables(html):
+    import re
+    return re.sub(r'<table>.*?</table>', '', html, flags=re.S)
+
+
+@pytest.mark.parametrize('source', [
+    '* * *\n    | `x|y` | b |\n    |---|---|',
+    '- - -\n    | `x|y` | b |\n    |---|---|',
+    'a\n2. | `x|y` | b |\n   |---|---|',
+    'a\n10. | `x|y` | b |\n    |---|---|',
+    '- a\n| `x|y` | b |\n|---|---|',
+    '> a\n| `x|y` | b |\n|---|---|',
+    '10) a\n   | `x|y` | b |\n   |---|---|',
+    '- > | `x|y` | b |\n  |---|---|',
+    '- - | `x|y` | b |\n    |---|---|',
+    'text `a|b`\n|---|---|',
+])
+def test_a_line_markdown_it_does_not_render_as_a_table_gets_no_backslash(source):
+    from tools.plane.policy import paragraph
+    assert '\\' not in _outside_tables(paragraph(source))
+
+
+def test_header_left_with_too_few_cells_keeps_its_source():
+    from tools.plane.policy import _protect_table_code
+    source = '| `x|y` |\n|---|---|'
+    assert _protect_table_code(source) == source
+
+
+def test_fuzzed_line_mixes_never_put_a_backslash_outside_a_table():
+    import random
+
+    from tools.plane.policy import paragraph
+    rng = random.Random(279)
+    prefixes = ['', '', ' ', '   ', '    ', '\t', '- ', '-   ', '* ', '+ ', '1. ', '1) ', '10. ',
+                '  - ', '    - ', '> ', '-', '      ']
+    bodies = ['| a | b |', '|---|---|', '| `x|y` | `p|q` |', '| `x|y` | b |', '* * *', '---', '```',
+              '~~~', '', '# h', '| a | `u|v` |', 'a', '> q', 'a | b']
+    for _ in range(2000):
+        source = '\n'.join(rng.choice(prefixes) + rng.choice(bodies) for _ in range(rng.randint(2, 7)))
+        assert '\\' not in _outside_tables(paragraph(source)), source
