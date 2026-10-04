@@ -13742,3 +13742,56 @@ def test_a_driver_error_with_a_blank_bar_fails_at_once_without_waiting_for_a_que
         run.walk("I")
     log.close()
     assert clock.now - start < A.QUESTION_SECONDS
+
+
+def test_fight_cast_step_parses_and_bad_forms_are_rejected():
+    steps = A.parse_steps(["load", "fight-cast BAKSHI:prayer"])
+    assert (steps[1].verb, steps[1].arg) == ("fight-cast", "BAKSHI:prayer")
+    assert A.parse_fight_cast("BAKSHI:prayer") == ("BAKSHI", "PRAYER")
+    for bad in ("fight-cast", "fight-cast BAKSHI", "fight-cast :PRAYER",
+                "fight-cast BAKSHI:PRAYER>SEAN"):
+        with pytest.raises(ValueError, match="fight-cast"):
+            A.parse_steps(["load", bad])
+
+
+def _cast_run(outcome, casts, tactics):
+    run = _flee_run(outcome, _slots(("BAKSHI", 1), ("SEAN", 1)),
+                    _slots(("BAKSHI", 1), ("SEAN", 1)), tactics)
+    sess = run.sess
+    sess.walk_encounter = None
+    run.flight_tactic = lambda: "flight"
+    inner = sess.fight
+
+    def fight(*, budget, tactic):
+        tactic.casts.extend(casts)
+        return inner(budget=budget, tactic=tactic)
+
+    sess.fight = fight
+    run.walk_into_fight = lambda walk, steps, verb="fight": 3
+    return run
+
+
+def test_fight_cast_casts_untargeted_then_flees_and_records_the_cast():
+    tactics = []
+    cast = {"caster": "BAKSHI", "spell": "PRAYER", "target": None}
+    run = _cast_run(A.S.RAN, [cast], tactics)
+    got = run.fight_cast("BAKSHI:PRAYER", "I", 5)
+    tactic = tactics[0]
+    assert isinstance(tactic, A.route_pool.Caster)
+    assert tactic.queue == [("BAKSHI", "PRAYER", None)]
+    assert tactic.otherwise == "flight"
+    assert got["casts"] == [cast]
+    assert [m["name"] for m in got["got_away"]] == ["BAKSHI", "SEAN"]
+    assert got["outcome"] == A.S.RAN
+
+
+def test_fight_cast_fails_naming_the_step_when_nobody_cast():
+    run = _cast_run(A.S.RAN, [], [])
+    with pytest.raises(A.StepFailed, match="fight-cast: BAKSHI never cast"):
+        run.fight_cast("BAKSHI:PRAYER", "I", 5)
+
+
+def test_fight_cast_that_does_not_run_away_fails_naming_the_step():
+    run = _cast_run(A.S.WON, [{"caster": "BAKSHI"}], [])
+    with pytest.raises(A.StepFailed, match="fight-cast"):
+        run.fight_cast("BAKSHI:PRAYER", "I", 5)

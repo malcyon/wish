@@ -69,6 +69,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
 | `ready WHO>LABEL`, `ready WHO>#N` | Pool only: `ENCAMP > VIEW WHO > ITEMS`, press READY once for LABEL, and read every party record, effect row and item block before and after. `screen_changed` describes the item row; `memory_changed` describes bytes in those three ranges; legacy `flipped` keeps its screen-only meaning. `--capture-ready` saves three bounded in-list checkpoints for BAKSHI and registers the game-written save before teardown. `#N` is the Nth row of WHO's ITEMS list from 1, for an item that draws no name: the step checks the list up is WHO's and has a row N before any READY key, then reports `outcome` (`readied`, `unreadied`, `rejected` or `unchanged`), the row before and after, and the rejection text the game printed (`WRONG CLASS`), and takes no `--capture-ready` checkpoints |
 | `fight-flee [SECONDS]` | `fight`'s route into a fight, then `fleedrive.Flight` as the tactic with no wound patch, for at most SECONDS (120): the members who run stay alive and the game's own drop of a member left behind runs, which `walk-flee`'s menu FLEE never reaches. The result records `got_away` and `left_behind` (each member's slot, name and status before and after, a member left behind being one whose name the drop cleared); a fight that does not end on `THE PARTY RUNS AWAY` (won, lost, or still going at SECONDS) fails the step naming `fight-flee` |
+| `fight-cast CASTER:SPELL` | Pool only: `fight`'s route into a fight, then CASTER casts SPELL on his turn through `route_pool.Caster` (a spell with no target prompt, such as PRAYER; one that asks for a target fails the cast), and every other turn, and CASTER's turns after the cast, run `fleedrive.Flight` until the party runs away, for at most 900 seconds. The result records `casts` (the caster, spell and roster hit points before and after), `got_away` and `left_behind` as `fight-flee` does, and the cast's screens are in `run.jsonl` as `cast-list` and `cast-done`; a fight that does not end on `THE PARTY RUNS AWAY`, or one in which CASTER never cast, fails the step naming `fight-cast` |
 | `walk-fight MOVES[/NO]` | Pool only: `walk`'s moves, but an encounter menu is answered COMBAT (never FLEE), the fight is fought out with `Session.melee_turn` (900 s each), and the route resumes from the square the fight left the party on, an `I` that did not complete being sent once more; the treasure screen a won fight reaches is kept as `NN-treasure.png` and `.txt` before the fight answers it; a treasure screen met on the walk after a fight (mode 5, a bar holding `EXIT`, such as `VIEW POOL EXIT`) is left with EXIT, once for each bar it shows (a `GO BACK LEAVE TREASURE` bar that EXIT opens is answered LEAVE), on the encounter path as well as after a `PRESS` bar, and listed in `treasure_screens`; an `INSERT SIDE # N` prompt (sides 2 to 4) is answered once per side, with the image attached, a key pressed and the frame kept as `sideN-before-answer`, and a repeat or a save-disk prompt fails the step; a forward move must land on the next square, else the step fails as blocked or as an exit or a teleport. A `YES NO` is answered NO only on the last key, and only when `/NO` is given; anywhere else it fails the step with nothing pressed. With a `save` after it, the summary's `drain` says whether some character's level fell by 1 or 2 with `levels_drained` equal to the fall, `hp_lost_to_drain` not zero, one class level down by the same amount and `hp_max` down by `hp_lost_to_drain`; nobody drained is recorded, not a failure |
 | `walk-flee MOVES[/NO]` | Pool only: `walk-fight`, but an encounter menu is answered FLEE; each flee is recorded in `flees` as `escaped` (the world bar or the move prompt `I,J,K,M, RETURN OR BUTTON` came back) or with the `fight` that opened, which is fought out; a move that escaped a flee is judged only for a readable facing, a caught one as `walk-fight` judges; a flee that ends in neither is a failure after `FIGHT_OPENS_SECONDS` |
 | `warp AREA` | Pool only: fast-travel the loaded party into area AREA (the writes and jump of `automap.actions.FastTravel`, no arrival square), wait for the key-wait loop, and fail unless the live facing byte `$C04D` is the one the area's arrival script sets (area 10: 1, east); returns the writes and the triple `$C04B`-`$C04D` |
@@ -550,7 +551,8 @@ VERBS = {"load": "never", "camp-list": "may", "items": "must", "view": "must",
          "cast": "must", "cure": "must", "walk": "must", "ready": "must",
          "scribe": "must", "temple-probe": "must", "warp": "must",
          "walk-fight": "must", "walk-flee": "must", "remove": "must",
-         "fight-flee": "may", "snapshot": "must", "restore": "must"}
+         "fight-flee": "may", "snapshot": "must", "restore": "must",
+         "fight-cast": "must"}
 
 #: How long the screen after HEAL must stay unchanged before it is kept, so a
 #: half-drawn frame that lingers for a few reads is not taken for the list.
@@ -813,6 +815,17 @@ def parse_cast(arg: str) -> tuple[str, str, str | None]:
     return caster, spell, target
 
 
+def parse_fight_cast(arg: str) -> tuple[str, str]:
+    """`CASTER:SPELL` as its two names; the spell is cast without a target."""
+    m = re.fullmatch(r"([^:>]+):([^:>]+)", arg.strip())
+    if m is None:
+        raise ValueError(f"fight-cast {arg!r}: say fight-cast CASTER:SPELL")
+    caster, spell = m.group(1).strip(), m.group(2).strip().upper()
+    if not caster or not spell:
+        raise ValueError(f"fight-cast {arg!r}: say fight-cast CASTER:SPELL")
+    return caster, spell
+
+
 def parse_cure(arg: str) -> tuple[str, str]:
     """`PALADIN>TARGET` as its two names."""
     m = re.fullmatch(r"([^:>]+)>([^:>]+)", arg.strip())
@@ -951,6 +964,8 @@ def parse_steps(texts) -> list[Step]:
             parse_cast(arg)
         elif verb == "cure":
             parse_cure(arg)
+        elif verb == "fight-cast":
+            parse_fight_cast(arg)
         elif verb == "ready":
             parse_ready(arg)
         elif verb == "scribe":
@@ -4420,9 +4435,10 @@ class PoolRun:
         from tools.pool_of_radiance import fleedrive
         return fleedrive.Flight(self.log)
 
-    def flee_failure(self, arg: str, result) -> StepFailed | None:
-        """The failure for a `fight-flee` that did not end on the party
-        running away, or None."""
+    def flee_failure(self, arg: str, result,
+                     verb: str = "fight-flee") -> StepFailed | None:
+        """The failure for a `fight-flee` (or, named by `verb`, a `fight-cast`)
+        that did not end on the party running away, or None."""
         if result.outcome == S.RAN:
             return None
         self.keep_fight_reading()
@@ -4432,7 +4448,7 @@ class PoolRun:
         else:
             why = (f"the fight ended {result.outcome!r} after {result.turns} "
                    f"turns, not in the party running away")
-        return self.fail("fight-flee", f"fight-flee: {why}")
+        return self.fail(verb, f"{verb}: {why}")
 
     #: `POST.COM`'s drop-loop spare flag (`docs/110-combat-log.md`, "A party
     #: that runs away loses every character it leaves behind"), where known.
@@ -4520,7 +4536,9 @@ class PoolRun:
         with contextlib.suppress(Exception):
             self.lost_reading = {"step": "fight", "after": self.reading()}
 
-    def fight(self, arg: str, walk: str, steps: int, flee: bool = False) -> dict:
+    def walk_into_fight(self, walk: str, steps: int, verb: str = "fight") -> int:
+        """Walk `walk` until a fight opens, answering an encounter menu with
+        the fight, and return the steps taken."""
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
         taken = 0
@@ -4534,8 +4552,43 @@ class PoolRun:
         finally:
             self.sess.walk_encounter = None
         if not self.sess.in_combat():
-            raise self.fail("fight", f"no fight in {taken} steps of {walk}")
+            raise self.fail(verb, f"no fight in {taken} steps of {walk}")
         self.capture("fight-start")
+        return taken
+
+    #: The seconds a `fight-cast` has to cast and then run away.
+    FIGHT_CAST_SECONDS = 900.0
+
+    def fight_cast(self, arg: str, walk: str, steps: int) -> dict:
+        """`fight`'s route into a fight, then CASTER casts SPELL on his turn
+        and the party runs away under `fleedrive.Flight`.
+
+        The cast is `route_pool.Caster`'s, with no target; every other turn is
+        the flight's, so the party leaves the fight with nobody knocked out.
+        A fight in which CASTER never cast fails the step."""
+        caster, spell = parse_fight_cast(arg)
+        taken = self.walk_into_fight(walk, steps, "fight-cast")
+        before = self.flee_before()
+        tactic = route_pool.Caster(self.log, [(caster, spell, None)],
+                                 otherwise=self.flight_tactic())
+        result = self.sess.fight(budget=self.FIGHT_CAST_SECONDS, tactic=tactic)
+        self.capture("fight-end")
+        seen = result.outcome
+        result = self.flee_settled(result, before)
+        if (failed := self.flee_failure(
+                str(int(self.FIGHT_CAST_SECONDS)), result,
+                "fight-cast")) is not None:
+            raise failed
+        if not tactic.casts:
+            raise self.fail("fight-cast", f"fight-cast: {caster} never cast "
+                                          f"{spell} in the fight")
+        return {"walked": taken, "acted": result.acted, "casts": tactic.casts,
+                **self.flee_result(before, self.party_slots()),
+                "ran_line_seen": seen == S.RAN, "outcome_seen": seen,
+                **dataclasses.asdict(result)}
+
+    def fight(self, arg: str, walk: str, steps: int, flee: bool = False) -> dict:
+        taken = self.walk_into_fight(walk, steps)
         before = self.flee_before() if flee else None
         result = self.sess.fight(budget=float(arg or 120),
                                  tactic=(self.flight_tactic() if flee
@@ -6736,6 +6789,9 @@ class CurseRun(PoolRun):
     def walk_flee(self, arg: str) -> dict:
         raise self.fail("walk-flee", "Pool of Radiance only")
 
+    def fight_cast(self, arg: str, walk: str, steps: int) -> dict:
+        raise self.fail("fight-cast", "Pool of Radiance only")
+
     def fight(self, arg: str, walk: str, steps: int, flee: bool = False) -> dict:
         """The tavern brawl.  With `flee` the party runs from it under
         `fleedrive.Flight`; the drop of the members left behind is spared when
@@ -7645,6 +7701,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                 got = pool.fight(step.arg, args.walk, args.walk_steps)
             elif step.verb == "fight-flee":
                 got = pool.fight(step.arg, args.walk, args.walk_steps, flee=True)
+            elif step.verb == "fight-cast":
+                got = pool.fight_cast(step.arg, args.walk, args.walk_steps)
             elif step.verb == "warp":
                 got = pool.warp(step.arg)
             elif step.verb == "walk-fight":

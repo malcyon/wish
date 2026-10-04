@@ -15,6 +15,8 @@ the pattern `tests/c64/test_savecheck_move_subbar.py` uses.
 
 from __future__ import annotations
 
+import pytest
+
 from tools.c64 import route_pool
 from tools.c64 import session as S
 from tools.c64.runlog import Log
@@ -222,3 +224,117 @@ def test_ready_capture_keeps_the_first_blank_row_and_the_returned_list(monkeypat
     normal = NormalSession()
     assert route_pool.toggle_item(normal, FakeLog(), "GAUNTLETS", "ready") is True
     assert normal.keys == ["KP_0"]
+
+
+# --- Caster: the combat cast, with and without a target prompt -------------------
+
+class _Mon:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self, addr, length):
+        return bytes(length)
+
+    def resume(self):
+        pass
+
+
+class _Me:
+    name = "BAKSHI "
+    index = 1
+    x = y = 3
+
+
+class _CastSession:
+    """Records the keys a cast sends; the spell list shows PRAYER and the
+    targeting bar appears only when `asks_target`."""
+
+    def __init__(self, asks_target=False):
+        self.asks_target = asks_target
+        self.calls: list[tuple] = []
+
+    def mon(self, timeout=5.0):
+        return _Mon()
+
+    def combat_bar(self, word, timeout=5.0):
+        self.calls.append(("bar", word))
+        return True
+
+    def select_bar(self, word, timeout=5.0):
+        self.calls.append(("select", word))
+        return True
+
+    def wait_text(self, text, timeout=5.0):
+        self.calls.append(("wait", text))
+        found = text == "PRAYER" or (text == "TARGET" and self.asks_target)
+        return (0 if found else None), None
+
+    def screen(self):
+        return self
+
+    def row(self, r):
+        return "PRAYER" if r == 5 else ""
+
+    def handle_prompt(self):
+        self.calls.append(("prompt",))
+
+    def press_kernal(self, key):
+        self.calls.append(("kernal", key))
+
+    def battle(self):
+        return self
+
+    def acting(self, b):
+        return _Me()
+
+
+@pytest.fixture
+def cast_patches(monkeypatch):
+    monkeypatch.setattr(route_pool.time, "sleep", lambda s: None)
+    monkeypatch.setattr(route_pool, "sheet_rows", lambda sess: [])
+    monkeypatch.setattr(route_pool, "item_highlight", lambda s, rows: 5)
+    monkeypatch.setattr(route_pool, "press_select",
+                        lambda sess: sess.calls.append(("pick",)))
+
+
+def test_caster_casts_a_party_spell_without_aiming(cast_patches):
+    sess, log = _CastSession(), FakeLog()
+    caster = route_pool.Caster(log, [("BAKSHI", "PRAYER", None)])
+    assert caster.cast(sess, sess, _Me(), "PRAYER", None) is True
+    assert sess.calls[:4] == [("bar", "CAST"), ("wait", "PRAYER"),
+                              ("select", "CAST"), ("pick",)]
+    assert ("bar", "TARGET") not in sess.calls
+    assert ("bar", "NEXT") not in sess.calls
+    assert caster.casts[0]["spell"] == "PRAYER"
+    assert caster.casts[0]["target"] is None
+
+
+def test_caster_backs_out_when_a_party_spell_asks_for_a_target(cast_patches):
+    sess = _CastSession(asks_target=True)
+    caster = route_pool.Caster(FakeLog(), [("BAKSHI", "PRAYER", None)])
+    assert caster.cast(sess, sess, _Me(), "PRAYER", None) is False
+    assert ("bar", "EXIT") in sess.calls
+    assert caster.casts == []
+
+
+def test_caster_gives_other_members_turns_to_the_other_tactic(cast_patches):
+    seen = []
+    sess = _CastSession()
+    sess.name = "SEAN"
+    caster = route_pool.Caster(
+        FakeLog(), [("OTHER", "PRAYER", None)],
+        otherwise=lambda s, state: seen.append(state) or "FLEE")
+    assert caster(sess, "bar") == "FLEE"
+    assert seen == ["bar"]
+    assert caster.queue == [("OTHER", "PRAYER", None)]
+
+
+def test_caster_casts_on_the_named_members_turn_and_returns_cast(cast_patches):
+    sess = _CastSession()
+    caster = route_pool.Caster(FakeLog(), [("BAKSHI", "PRAYER", None)],
+                               otherwise=lambda s, state: "FLEE")
+    assert caster(sess, "bar") == "CAST"
+    assert caster.queue == []

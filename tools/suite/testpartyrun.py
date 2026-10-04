@@ -68,8 +68,13 @@ from tools.c64 import session as S  # noqa: E402
 from tools.c64.c64addprobe import answer as answer_yn  # noqa: E402
 from tools.c64.c64nametable import character_files  # noqa: E402
 from tools.c64.hallmenu import area as resident_area  # noqa: E402
-from tools.c64.route_pool import leave_items, open_items, toggle_item  # noqa: E402
-from tools.c64.traitask import ROSTER_STRIDE, SAVE1_LOAD  # noqa: E402
+from tools.c64.route_pool import (  # noqa: E402  # noqa: E402
+    ROSTER_STRIDE,
+    SAVE1_LOAD,
+    leave_items,
+    open_items,
+    toggle_item,
+)
 from tools.pool_of_radiance import dirtenicon  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 

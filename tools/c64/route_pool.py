@@ -693,3 +693,184 @@ def rest_later(sess, log, minutes: int, hours: int, cp: dict,
     return {"before": before, "after": after, "ended": ended,
             "interrupted": ended == "interrupted", "rest_left": list(left),
             "bar": bar, "rest_interrupt": interrupt, **extra, **counts}
+
+
+#: `SAVEDGAME1` loads at `$8300`; the roster is eight 32-byte blocks with the
+#: current hit points at `+$19` (`goldbox/savegame.py`).
+SAVE1_LOAD = 0x8300
+ROSTER_STRIDE = 0x20
+ROSTER_HP = 0x19
+
+
+def roster_hp(m) -> list[int]:
+    """Current hit points of the eight roster blocks at `$8300`."""
+    raw = m.read(SAVE1_LOAD, ROSTER_STRIDE * 8)
+    return [raw[i * ROSTER_STRIDE + ROSTER_HP] for i in range(8)]
+
+
+class Caster:
+    """A fight tactic: the named caster casts the named spell at the named
+    party member when his turn comes, and everybody else fights as before.
+
+    `queue` is `[(caster, spell, target), ...]`, names as the panel prints
+    them; a target of None is a spell the game casts without a target prompt
+    (a party spell such as Prayer). `otherwise` is the tactic for every turn
+    that is not a cast, `Session.melee_turn` unless the caller wants another.
+    Everything it does is logged with the screen, because nothing in this
+    project has driven CAST in combat before and a failed attempt has to say
+    where it got to.
+    """
+
+    def __init__(self, log: Log, queue: list[tuple[str, str, str | None]],
+                 otherwise=None):
+        self.log = log
+        self.queue = list(queue)
+        self.otherwise = otherwise or S.Session.melee_turn
+        self.turn = 0
+        self.casts: list[dict] = []
+
+    def __call__(self, sess: S.Session, state) -> str:
+        self.turn += 1
+        with sess.mon(8) as m:
+            now = roster_hp(m)
+            m.resume()
+        self.log.emit("hp", turn=self.turn, hp=now)
+        b = sess.battle()
+        me = sess.acting(b)
+        if me is not None and self.queue and \
+                me.name.strip() == self.queue[0][0]:
+            _, spell, target = self.queue[0]
+            if self.cast(sess, b, me, spell, target):
+                self.queue.pop(0)
+                return "CAST"
+            return sess.combat_turn()
+        return self.otherwise(sess, state)
+
+    def cast(self, sess: S.Session, b, me, spell: str,
+             target: str | None) -> bool:
+        who = None
+        if target is not None:
+            who = next((c for c in b.characters if c.name.strip() == target),
+                       None)
+            if who is None:
+                self.log.say(f"  no {target} on the map")
+                return False
+        with sess.mon(8) as m:
+            before = roster_hp(m)
+            m.resume()
+        if not sess.combat_bar("CAST", timeout=12):
+            self.log.say("  CAST could not be selected")
+            return False
+        time.sleep(1.0)
+        self.log.emit("screen", tag="cast-list", rows=sheet_rows(sess))
+        if sess.wait_text(spell, 10)[0] is None:
+            self.log.say(f"  {spell} is not on the list")
+            self.log.emit("screen", tag="cast-nospell", rows=sheet_rows(sess))
+            sess.press_kernal(0x0D)
+            return False
+        # `SPELLS: CAST EXIT` is the bar; CAST on it puts a cursor on the
+        # list, the same form as the item list, and fire picks the row.
+        if not sess.select_bar("CAST", timeout=10):
+            self.log.say("  CAST could not be selected on the spells bar")
+            return False
+        time.sleep(0.8)
+        chosen = False
+        deadline = time.time() + 15
+        while time.time() < deadline:
+            s = sess.screen()
+            if s is None:
+                time.sleep(0.3)
+                continue
+            # Only the spell rows and the list's own EXIT: the heading and
+            # the level line are coloured on their own account and would
+            # make the odd-one-out test find nothing.
+            rows = [r for r in range(3, 22)
+                    if spell in s.row(r) or s.row(r).strip() == "EXIT"]
+            want = next((r for r in rows if spell in s.row(r)), None)
+            at = item_highlight(s, rows)
+            if want is None or at is None:
+                time.sleep(0.3)
+                continue
+            if at == want:
+                press_select(sess)
+                chosen = True
+                break
+            sess.kbd.key("Down" if at < want else "Up", 0.15, 0.30)
+        if not chosen:
+            self.log.say(f"  could not choose {spell}")
+            self.log.emit("screen", tag="cast-stuck", rows=sheet_rows(sess))
+            return False
+        time.sleep(1.0)
+        if target is None:
+            return self.finish_untargeted(sess, me, spell, before)
+        self.log.emit("screen", tag="cast-aim", rows=sheet_rows(sess),
+                      me=(me.x, me.y), target=(who.x, who.y))
+        # The game then puts up `NEXT PREV MANUAL TARGET EXIT`: NEXT cycles
+        # the candidate targets and the right-hand panel names the current
+        # one, TARGET confirms. Fire run 5 found the bar; the numpad aiming
+        # it replaced went to nothing.
+        if sess.wait_text("TARGET", 10)[0] is None:
+            self.log.say("  no targeting bar after choosing the spell")
+            self.log.emit("screen", tag="cast-notarget", rows=sheet_rows(sess))
+            return False
+        aimed = False
+        for n in range(24):
+            s = sess.screen()
+            if s is None:
+                time.sleep(0.3)
+                continue
+            panel = " ".join(s.row(r)[S.PANEL_LEFT:] for r in range(0, 12))
+            self.log.emit("aim", n=n, panel=panel.split())
+            if target in panel:
+                aimed = True
+                break
+            if not sess.combat_bar("NEXT", timeout=8):
+                break
+            time.sleep(0.7)
+        self.log.emit("screen", tag="cast-aimed", rows=sheet_rows(sess),
+                      aimed=aimed)
+        if not aimed:
+            self.log.say(f"  NEXT never brought the panel round to {target}")
+            sess.combat_bar("EXIT", timeout=8)
+            return False
+        if not sess.combat_bar("TARGET", timeout=8):
+            self.log.say("  TARGET could not be selected")
+            return False
+        time.sleep(2.5)
+        self.log.emit("screen", tag="cast-done", rows=sheet_rows(sess))
+        sess.handle_prompt()
+        with sess.mon(8) as m:
+            after = roster_hp(m)
+            m.resume()
+        record = {"caster": me.name.strip(), "spell": spell, "target": target,
+                  "hp_before": before, "hp_after": after}
+        self.casts.append(record)
+        self.log.emit("cast", **record)
+        self.log.say(f"  {me.name.strip()} cast {spell} at {target}: hp "
+                     f"{before[:6]} -> {after[:6]}")
+        return True
+
+
+    def finish_untargeted(self, sess: S.Session, me, spell: str,
+                          before: list[int]) -> bool:
+        """The end of a cast whose spell has no target prompt: the game casts
+        it on the pick. A targeting bar that does appear is backed out of and
+        reported, because that spell is not one this path knows how to aim."""
+        if sess.wait_text("TARGET", 4)[0] is not None:
+            self.log.say(f"  {spell} asked for a target")
+            self.log.emit("screen", tag="cast-asked-target",
+                          rows=sheet_rows(sess))
+            sess.combat_bar("EXIT", timeout=8)
+            return False
+        time.sleep(2.5)
+        self.log.emit("screen", tag="cast-done", rows=sheet_rows(sess))
+        sess.handle_prompt()
+        with sess.mon(8) as m:
+            after = roster_hp(m)
+            m.resume()
+        record = {"caster": me.name.strip(), "spell": spell, "target": None,
+                  "hp_before": before, "hp_after": after}
+        self.casts.append(record)
+        self.log.emit("cast", **record)
+        self.log.say(f"  {me.name.strip()} cast {spell}")
+        return True
