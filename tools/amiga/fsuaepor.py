@@ -447,6 +447,23 @@ def title_bar_up(image) -> bool:
     return ink >= BAR_INK_MIN
 
 
+def _picker_steps(rows: list[tuple[int, str]], limit: float) -> list[tuple]:
+    """Title, `p`, the picker, and an add for each `(picker row, name)`."""
+    steps: list[tuple] = [("title", limit),
+                          ("key", "p", 4), ("played",), ("shot", "play"),
+                          ("key", "a", 3), ("shot", "add-character"),
+                          ("key", "p", 10), ("shot", "picker")]
+    current = 1
+    for row, name in rows:
+        for _ in range(row - current):
+            steps += [("mark",), ("key", "Down", 0.6), ("moved", "down-ignored")]
+        current = row
+        steps += [("shot", f"on-{name}"), ("mark",), ("key", "a", 0.6),
+                  ("stable", f"still-adding-{name}"), ("moved", "add-ignored"),
+                  ("shot", f"added-{name}")]
+    return steps
+
+
 def panel_script(rows: list[tuple[int, str]], members: int, limit: float
                  ) -> list[tuple]:
     """The fixed Pools of Darkness key script, as `(kind, ...)` steps.
@@ -462,18 +479,7 @@ def panel_script(rows: list[tuple[int, str]], members: int, limit: float
     FS-UAE menu then Return quits the emulator, and `e` on the party menu is
     EXIT FROM GAME.
     """
-    steps: list[tuple] = [("title", limit),
-                          ("key", "p", 4), ("played",), ("shot", "play"),
-                          ("key", "a", 3), ("shot", "add-character"),
-                          ("key", "p", 10), ("shot", "picker")]
-    current = 1
-    for row, name in rows:
-        for _ in range(row - current):
-            steps += [("mark",), ("key", "Down", 0.6), ("moved", "down-ignored")]
-        current = row
-        steps += [("shot", f"on-{name}"), ("mark",), ("key", "a", 0.6),
-                  ("stable", f"still-adding-{name}"), ("moved", "add-ignored"),
-                  ("shot", f"added-{name}")]
+    steps = _picker_steps(rows, limit)
     steps += [("key", "e", 3), ("shot", "panel")]
     for k in range(1, members + 1):
         if k > 1:
@@ -488,6 +494,31 @@ def panel_script(rows: list[tuple[int, str]], members: int, limit: float
     return steps
 
 
+def ready_script(row: int, item_row: int, limit: float) -> list[tuple]:
+    """Add the character on picker `row`, open its sheet and ITEMS, and press
+    READY twice on `item_row`, as `panel_script` steps.
+
+    Each key after the add is followed by `mark` and `moved`, so a key the game
+    dropped stops the run.  Like `panel_script` it never sends `Up` or `y`, and
+    never two `e` in a row.
+    """
+    steps = _picker_steps([(row, f"row{row}")], limit)
+
+    def press(key: str, settle: float, label: str) -> None:
+        steps.extend([("mark",), ("key", key, settle), ("moved", f"{label}-ignored"),
+                      ("shot", label)])
+
+    press("e", 3, "panel")
+    press("v", 3, "sheet")
+    press("i", 3, "items")
+    for _ in range(item_row - 1):
+        press("Down", 0.6, "item-down")
+    press("r", 1, "ready-1")
+    press("r", 1, "ready-2")
+    press("e", 3, "last")
+    return steps
+
+
 def pod_panel(args) -> int:
     """Run the fixed key script on the slot's display, a shot at each checkpoint."""
     disk = AmigaDisk(pathlib.Path(args.adf).read_bytes())
@@ -498,6 +529,21 @@ def pod_panel(args) -> int:
         raise SystemExit(f"{', '.join(missing)} not in {args.adf}; the picker's "
                          f"rows are {', '.join(names) or 'none'}")
     rows = sorted((names.index(n) + 1, n) for n in wanted)
+    return _run_script(args, panel_script(rows, len(rows), args.boot))
+
+
+def pod_ready(args) -> int:
+    """Add one payload, open its items page and press READY twice, with shots."""
+    disk = AmigaDisk(pathlib.Path(args.adf).read_bytes())
+    names = picker_rows(disk)
+    if not 1 <= args.row <= len(names):
+        raise SystemExit(f"row {args.row} is not in {args.adf}; the picker's "
+                         f"rows are {', '.join(names) or 'none'}")
+    return _run_script(args, ready_script(args.row, args.item_row, args.boot))
+
+
+def _run_script(args, steps: list[tuple]) -> int:
+    """Run `steps` on the slot's display, a shot at each checkpoint."""
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     count = 0
@@ -510,7 +556,7 @@ def pod_panel(args) -> int:
 
     bar = None
     marked = None
-    for step in panel_script(rows, len(rows), args.boot):
+    for step in steps:
         if step[0] == "title":
             bar = _wait_for_bar(args.display, step[1], take)
         elif step[0] == "played":
@@ -836,6 +882,17 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--payload", action="append",
                    help="a .pc name to add; default the three payload names")
     p.set_defaults(func=pod_panel)
+    p = sub.add_parser("pod-ready", help="add a payload, then press READY twice on an item")
+    p.add_argument("--display", required=True)
+    p.add_argument("--adf", required=True, help="the staged pod3.adf")
+    p.add_argument("--out", required=True, help="directory for the shots")
+    p.add_argument("--boot", type=float, default=300,
+                   help="longest to wait for the title bar, in seconds")
+    p.add_argument("--row", type=int, required=True,
+                   help="the payload's row in the picker, counting from 1")
+    p.add_argument("--item-row", type=int, required=True,
+                   help="the item's row on the items page, counting from 1")
+    p.set_defaults(func=pod_ready)
     p = sub.add_parser("wheel", help="answer Curse's code wheel on the display")
     p.add_argument("--display", required=True)
     p.add_argument("--settle", type=float, default=1.0)
