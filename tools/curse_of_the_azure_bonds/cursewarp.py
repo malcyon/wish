@@ -14,6 +14,7 @@ area of a running Curse.
     tools/curse_of_the_azure_bonds/cursewarp.py --pool 3 --probe --out DIR
     tools/curse_of_the_azure_bonds/cursewarp.py --pool 5 --to 0x10 --disk 3 --via-actions --out DIR
     tools/curse_of_the_azure_bonds/cursewarp.py --to 0x10 --disk 3 --via-actions --save SAVE.D64 --camp-save OUT.D64 --out DIR
+    tools/curse_of_the_azure_bonds/cursewarp.py --to 0x10 --disk 3 --via-actions --save SAVE.D64 --arrival-choice "SNEAK IN" --camp-save OUT.D64 --out DIR
 
 `--probe` boots, loads the party, and reports what the machine holds without
 warping -- which is what to run first, because the current area and the
@@ -215,10 +216,24 @@ def walk_proof(sess, addr: Addresses, keys: str = "JIKIKIJI") -> dict:
     return out
 
 
-#: The current area and a third byte of the saved-state record, peeked as
-#: they stand so a reader can compare them with the save.  `Addresses.slot`
-#: is the area-cache slot, a different byte.
+#: The current area and the resident-map byte, peeked as they stand so a
+#: reader can compare them with the save.  `$4BC5` is the byte DOS and
+#: `goldbox/dos_savegame.py` number `$49C5` (Curse's C64 save page sits `$200`
+#: above Pool of Radiance's); the loaded-files dirty bit `docs/50-experiments.md`
+#: names at `$4BC5` is Pool of Radiance's address, not this one.
+#: `Addresses.slot` is the area-cache slot, a different byte.
 AREA_AT, SAVED_PEEK = 0x4BF2, 0x4BC5
+
+#: Words on row 24 that put a fight one key away.  Once the arrival choice
+#: has been made, a bar carrying one of them stops `answer_arrival` with
+#: nothing pressed.
+FIGHT_WORDS = ("FIGHT", "COMBAT", "ATTACK")
+
+#: How long a message box's row 24 may still read the same after its Return
+#: before `answer_arrival` presses again.  The row is redrawn after the 3D
+#: view, so a second Return sent sooner lands on the world bar and chooses
+#: `MOVE` with it, which is what the first live run of the choice did.
+REPRESS_AFTER = 8.0
 
 
 def _sha256(path) -> str:
@@ -242,12 +257,30 @@ def camp_save(sess, addr: Addresses, dest: pathlib.Path,
             f"{SAVED_PEEK:04X}": m.peek(SAVED_PEEK),
             f"{LIVE_X:04X}": list(m.read(LIVE_X, 3)),
         }
-    if not sess.save_game():
+    try:
+        finished = sess.save_game()
+    except Exception as exc:
+        out["error"] = f"the game was not asked to save: {exc}"
+        return out
+    if not finished:
         out["error"] = "the game did not finish saving"
         return out
+    # **VICE can hold the directory track back** while the game's own
+    # `INSERT YOUR GAME DISK` prompt is still up, so the first copy can find
+    # `SAVEAZURE` open; attaching the same image again flushes it, as
+    # `tools/c64/acceptance.py`'s `keep_save_disk` does.
+    disk = pathlib.Path(sess.save_disk)
+    out["reattached"] = False
     try:
-        por.copy_closed_disk(pathlib.Path(sess.save_disk), dest,
-                             attempts=30, backoff=1.0)
+        por.copy_closed_disk(disk, dest, attempts=30, backoff=1.0)
+    except RuntimeError:
+        out["reattached"] = True
+        try:
+            sess.attach(str(disk))
+            por.copy_closed_disk(disk, dest, attempts=30, backoff=1.0)
+        except Exception as exc:
+            out["error"] = f"the saved disk was not copied: {exc}"
+            return out
     except Exception as exc:
         out["error"] = f"the saved disk was not copied: {exc}"
         return out
@@ -260,6 +293,82 @@ def camp_save(sess, addr: Addresses, dest: pathlib.Path,
             text=True, check=True).stdout.strip()
     except Exception:
         out["commit"] = None
+    return out
+
+
+def answer_arrival(sess, choice: str, timeout: float = 120.0) -> dict:
+    """Answer the arriving script's question with `choice`, then its boxes.
+
+    Yulash's arrival asks `SNEAK IN  ASK PERMISSION  LEAVE` before the
+    world bar comes back, so `camp_save` cannot reach `ENCAMP` until somebody
+    answers.  The bar carrying `choice` is answered with `press_bar`; after
+    that only a `PRESS`/`CONTINUE`/`MORE` box and a disk prompt are
+    answered.  It stops with nothing pressed on a fight (`in_combat`), on a
+    bar naming one of `FIGHT_WORDS`, and on any other bar that is still up
+    when `timeout` runs out.  `ok` is True when `ENCAMP` is back on row 24.
+    """
+    out: dict = {"choice": choice, "ok": False, "fight": False, "bars": []}
+    deadline = time.time() + timeout
+    chosen = False
+    seen = None
+    returned: tuple[str, float] | None = None
+    while time.time() < deadline:
+        if sess.in_combat():
+            out["fight"] = True
+            out["error"] = "a fight started after the arrival choice"
+            return out
+        s = sess.screen()
+        if s is None:
+            time.sleep(0.5)
+            continue
+        bar = s.row(24).strip()
+        if bar != seen:
+            out["bars"].append(bar)
+            sess.log(f"  arrival: {bar!r}")
+            seen = bar
+        words = bar.replace(",", " ").split()
+        if not chosen and choice in bar:
+            if not sess.press_bar(choice):
+                out["error"] = f"{choice} could not be chosen"
+                return out
+            out["answered"] = bar
+            chosen = True
+            time.sleep(1.0)
+            continue
+        if "ENCAMP" in bar:
+            if chosen:
+                out["ok"] = True
+            else:
+                out["error"] = (f"the world bar came back and no bar offered "
+                                f"{choice}")
+            break
+        if chosen and any(w in words for w in FIGHT_WORDS):
+            out["fight"] = True
+            out["error"] = f"a fight is one key away: {bar!r}"
+            return out
+        if sess.handle_prompt(s):
+            time.sleep(1.0)
+            continue
+        if chosen and por.MOVE_SUBBAR in bar:
+            # The world bar with MOVE chosen: the arrival is over.
+            sess.leave_move(2)
+            time.sleep(1.0)
+            continue
+        if "CONTINUE" in bar or "MORE" in bar or "PRESS" in bar:
+            if returned is None or returned[0] != bar or \
+                    time.time() - returned[1] > REPRESS_AFTER:
+                sess.press_kernal(0x0D)
+                returned = (bar, time.time())
+        else:
+            returned = None
+        time.sleep(1.0)
+    else:
+        out["error"] = (f"row 24 stopped at {seen!r}" if chosen else
+                        f"no bar offered {choice}; row 24 stopped at {seen!r}")
+    if out["ok"]:
+        with sess.mon(8) as m:
+            out["area"] = m.peek(AREA_AT)
+            out["square"] = list(m.read(LIVE_X, 3))
     return out
 
 
@@ -573,6 +682,16 @@ def run(args) -> int:
         after = snapshot(sess, addr)
         after["resident"] = resident_geo(sess, maps)
         after["idle"] = landed
+        if landed and args.arrival_choice:
+            arrival = answer_arrival(sess, args.arrival_choice)
+            (out / "arrival.json").write_text(json.dumps(arrival, indent=1))
+            print("arrival:", json.dumps(arrival), flush=True)
+            if not arrival["ok"]:
+                print(f"{arrival['error']}; nothing was saved and the walk "
+                      f"proof does not run", flush=True)
+                print(screen_text(sess, out / "arrival-stop.txt"), flush=True)
+                sess.kbd.screenshot(str(out / "arrival-stop.png"))
+                return 6
         saved = None
         if landed and args.camp_save:
             saved = camp_save(sess, addr, pathlib.Path(args.camp_save),
@@ -630,6 +749,11 @@ def main(argv: list[str]) -> int:
                     help="after landing and before the walk proof, make the "
                          "game save (CAMP, SAVE, SAVE GAME) and copy the "
                          "game-written disk to OUT")
+    ap.add_argument("--arrival-choice", default="", metavar="NAME",
+                    help="answer the arrival script's question with NAME "
+                         "(e.g. \"SNEAK IN\") and its message boxes before "
+                         "--camp-save; stops with exit 6, pressing nothing, "
+                         "if a fight starts or is offered")
     ap.add_argument("--force", action="store_true",
                     help="warp even from the travel grid, which is expected "
                          "to wedge the loader")

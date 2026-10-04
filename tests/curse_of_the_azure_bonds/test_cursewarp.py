@@ -250,8 +250,19 @@ class _SaveMon:
         return bytes(range(n))
 
 
-def _run_with_fakes(monkeypatch, tmp_path, save_ok=True, camp_save="x"):
+def _run_with_fakes(monkeypatch, tmp_path, save_ok=True, camp_save="x",
+                    arrival_choice="", bars=None, save_raises=None,
+                    combat_on=None):
+    """`run` with every machine call faked.
+
+    `bars` is what row 24 says, in order: each entry is held until the call
+    named in its second field (`press_bar`, `press_kernal` or `leave_move`)
+    moves it on, or for good when that field is None; an optional third
+    field keeps the row up for that many more reads after the call.  `combat_on` is a bar at which
+    `in_combat` starts answering True.
+    """
     calls: list[str] = []
+    script = list(bars or [])
     disk = tmp_path / "slot.D64"
     D64.blank("GAMEWRITTEN").save(disk)
     source = tmp_path / "source.D64"
@@ -274,7 +285,24 @@ def _run_with_fakes(monkeypatch, tmp_path, save_ok=True, camp_save="x"):
             pass
 
         def screen(self):
-            return None
+            if not script:
+                return None
+            bar = script[0][0]
+            if script[0][1] == "read":
+                left = script[0][2] - 1
+                if left:
+                    script[0] = (bar, "read", left)
+                else:
+                    script.pop(0)
+            return FakeScreen("", bar=bar)
+
+        def attach(self, path):
+            calls.append("attach")
+
+        def leave_move(self, tries=8):
+            calls.append("leave_move")
+            self._advance("leave_move")
+            return True
 
         @contextlib.contextmanager
         def mon(self, t):
@@ -282,7 +310,35 @@ def _run_with_fakes(monkeypatch, tmp_path, save_ok=True, camp_save="x"):
 
         def save_game(self):
             calls.append("save_game")
+            if save_raises is not None:
+                raise save_raises
             return save_ok
+
+        def _advance(self, how):
+            if script and script[0][1] == how:
+                linger = script[0][2] if len(script[0]) > 2 else 0
+                if linger:
+                    script[0] = (script[0][0], "read", linger)
+                else:
+                    script.pop(0)
+
+        def in_combat(self):
+            return bool(script) and script[0][0] == combat_on
+
+        def press_bar(self, label):
+            calls.append(f"press_bar:{label}")
+            self._advance("press_bar")
+            return True
+
+        def press_kernal(self, code):
+            calls.append("return")
+            self._advance("press_kernal")
+
+        def handle_prompt(self, s=None):
+            return False
+
+        def log(self, *a):
+            pass
 
         def terminate(self):
             pass
@@ -312,7 +368,10 @@ def _run_with_fakes(monkeypatch, tmp_path, save_ok=True, camp_save="x"):
     args = types.SimpleNamespace(
         out=str(tmp_path / "out"), disks=str(tmp_path), pool=None, save="",
         probe=False, force=False, geo="", via_actions=False, to=0x10,
-        disk=3, camp_save=str(dest) if camp_save else "")
+        disk=3, camp_save=str(dest) if camp_save else "",
+        arrival_choice=arrival_choice)
+    clock = FakeClock()
+    monkeypatch.setattr(WARP, "time", clock)
     return calls, args, dest
 
 
@@ -339,3 +398,99 @@ def test_without_camp_save_nothing_is_saved(monkeypatch, tmp_path):
                                         camp_save=None)
     assert WARP.run(args) == 0
     assert calls == ["walk_proof"]
+
+
+def test_a_save_game_that_raises_still_writes_saved_json_and_walks(
+        monkeypatch, tmp_path):
+    calls, args, dest = _run_with_fakes(
+        monkeypatch, tmp_path,
+        save_raises=RuntimeError("a snapshot was restored"))
+    assert WARP.run(args) == 5
+    assert calls == ["save_game", "walk_proof"]
+    saved = json.loads((tmp_path / "out" / "saved.json").read_text())
+    assert saved["ok"] is False
+    assert "a snapshot was restored" in saved["error"]
+    assert not dest.exists()
+
+
+YULASH = "SNEAK IN  ASK PERMISSION  LEAVE"
+STORY = "PRESS BUTTON OR RETURN TO CONTINUE."
+WORLD = "MOVE VIEW CAST AREA ENCAMP SEARCH LOOK"
+
+
+def test_arrival_choice_answers_the_bar_and_its_box_before_the_save(
+        monkeypatch, tmp_path):
+    calls, args, dest = _run_with_fakes(
+        monkeypatch, tmp_path, arrival_choice="SNEAK IN",
+        bars=[(YULASH, "press_bar"), (STORY, "press_kernal"), (WORLD, None)])
+    assert WARP.run(args) == 0
+    assert calls == ["press_bar:SNEAK IN", "return", "save_game",
+                     "walk_proof"]
+    arrival = json.loads((tmp_path / "out" / "arrival.json").read_text())
+    assert arrival["ok"] and arrival["answered"] == YULASH
+    assert arrival["area"] == 0x10
+    assert dest.exists()
+
+
+def test_a_fight_offered_after_the_choice_stops_with_nothing_pressed(
+        monkeypatch, tmp_path):
+    calls, args, dest = _run_with_fakes(
+        monkeypatch, tmp_path, arrival_choice="ASK PERMISSION",
+        bars=[(YULASH, "press_bar"), ("RUN AWAY  FIGHT  PARLAY", None)])
+    assert WARP.run(args) == 6
+    assert calls == ["press_bar:ASK PERMISSION"]
+    arrival = json.loads((tmp_path / "out" / "arrival.json").read_text())
+    assert arrival["fight"] and not arrival["ok"]
+    assert not dest.exists()
+
+
+def test_a_fight_that_starts_after_the_choice_stops_the_run(
+        monkeypatch, tmp_path):
+    calls, args, dest = _run_with_fakes(
+        monkeypatch, tmp_path, arrival_choice="SNEAK IN",
+        bars=[(YULASH, "press_bar"), ("", None)], combat_on="")
+    assert WARP.run(args) == 6
+    assert calls == ["press_bar:SNEAK IN"]
+    assert not dest.exists()
+
+
+def test_an_arrival_with_no_such_choice_stops_before_saving(
+        monkeypatch, tmp_path):
+    calls, args, dest = _run_with_fakes(
+        monkeypatch, tmp_path, arrival_choice="SNEAK IN",
+        bars=[(WORLD, None)])
+    assert WARP.run(args) == 6
+    assert calls == []
+    assert not dest.exists()
+
+
+def test_a_box_row_that_lingers_gets_one_return_and_move_mode_is_left(
+        monkeypatch, tmp_path):
+    calls, args, dest = _run_with_fakes(
+        monkeypatch, tmp_path, arrival_choice="SNEAK IN",
+        bars=[(YULASH, "press_bar"), (STORY, "press_kernal", 3),
+              ("I,J,K,M, RETURN OR BUTTON", "leave_move"), (WORLD, None)])
+    assert WARP.run(args) == 0
+    assert calls == ["press_bar:SNEAK IN", "return", "leave_move",
+                     "save_game", "walk_proof"]
+
+
+def test_a_disk_still_open_after_the_save_is_attached_again_and_copied(
+        monkeypatch, tmp_path):
+    calls, args, dest = _run_with_fakes(monkeypatch, tmp_path)
+    real = WARP.por.copy_closed_disk
+    tries = []
+
+    def copy(src, dst, **kw):
+        tries.append(kw)
+        if "attach" not in calls:
+            raise RuntimeError("open directory entry 'SAVEAZURE'")
+        return real(src, dst, **kw)
+
+    monkeypatch.setattr(WARP.por, "copy_closed_disk", copy)
+    assert WARP.run(args) == 0
+    assert calls == ["save_game", "attach", "walk_proof"]
+    assert len(tries) == 2
+    saved = json.loads((tmp_path / "out" / "saved.json").read_text())
+    assert saved["ok"] and saved["reattached"]
+    assert dest.read_bytes() == disk_bytes(tmp_path)
