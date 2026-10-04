@@ -2971,3 +2971,335 @@ def test_the_pool_walk_east_off_the_slums_is_judged_moved_into_new_phlan(tmp_pat
     assert result["error"] == "", result["read"]
     assert result["walk"]["d_ok"] is True and result["success"] is True
     assert result["walk"]["area_crossed"] == {"from": 20, "to": 0}
+
+
+# A Pools of Darkness run on a disk 3 that Wish wrote, with the registered disks replaced by
+# synthetic ones whose slots are JSON, so the checks run without the player's disks.
+THREE_SOURCE = b"a DOS slot"
+THREE_START = dict(DARK_START, x=3)
+
+
+def _pty(place, names=NAMES):
+    return json.dumps({"place": place, "names": names}).encode()
+
+
+def _pty_read(disk, letter):
+    try:
+        raw = disk.read_file(f"/SAVE/SavGam{letter}.pty")
+    except Exception:
+        return {"missing": True, "sha256": None}
+    data = json.loads(raw)
+    return {"sha256": hashlib.sha256(raw).hexdigest(), "place": data["place"],
+            "names": data["names"]}
+
+
+def _pty_letters(disk):
+    return sorted(e.name[6].upper() for e in disk.entries(disk.lookup("/SAVE").block)
+                  if e.name.lower().startswith("savgam") and e.name.lower().endswith(".pty"))
+
+
+def _pty_files(disk, letter):
+    name = f"SavGam{letter}.pty"
+    return {name: disk.read_file(f"/SAVE/{name}")}
+
+
+def _registered_three():
+    disk = AmigaDisk.blank("POD 3")
+    disk.make_dir("/SAVE")
+    disk.write_file("/SAVE/write.me", b"x")
+    disk.write_file("/SAVE/spindisk", b"y")
+    for letter in "ABCDE":
+        disk.write_file(f"/SAVE/SavGam{letter}.pty", _pty(dict(DARK_START, x=5), ["OLD"]))
+        disk.write_file(f"/SAVE/Vault{letter}.DAT", b"old vault " + letter.encode())
+    return disk
+
+
+class Three:
+    """A registered disk 3, and the Save As report and image that publish a DOS slot onto it."""
+
+    def __init__(self, tmp_path, monkeypatch, *, pin=True):
+        self.tmp = tmp_path
+        monkeypatch.setattr(scratch, "cache_dir", lambda *parts: tmp_path.joinpath("cache", *parts))
+        self.registered = _registered_three()
+        self.registered_path = tmp_path / "registered3.adf"
+        self.registered.save(self.registered_path)
+        self.ones = {key: AmigaDisk.blank(label).to_bytes()
+                     for key, label in (("disk1", "POD 1"), ("disk2", "POD 2"))}
+        sha = {k: hashlib.sha256(v).hexdigest() for k, v in self.ones.items()}
+        monkeypatch.setattr(foundation, "DARKNESS_DISK1_SHA256", sha["disk1"])
+        monkeypatch.setattr(foundation, "DARKNESS_DISK2_SHA256", sha["disk2"])
+        monkeypatch.setattr(foundation, "DARKNESS_DISK3_SHA256",
+                            hashlib.sha256(self.registered_path.read_bytes()).hexdigest())
+        monkeypatch.setattr(foundation, "_find_images", lambda wanted: {
+            key: (key, self.ones[key]) for key in wanted})
+        dark = dataclasses.replace(foundation.DARKNESS, read_slot=_pty_read,
+                                   slot_letters=_pty_letters, slot_files=_pty_files)
+        monkeypatch.setattr(foundation, "DARKNESS", dark)
+        monkeypatch.setattr(route_darkness, "DARKNESS", dark)
+        self.source = tmp_path / "SAVGAMD.PTY"
+        self.source.write_bytes(THREE_SOURCE)
+        self.source_sha = hashlib.sha256(THREE_SOURCE).hexdigest()
+        monkeypatch.setattr(foundation, "PUBLISHED_SOURCES_BY_ISSUE", {
+            **foundation.PUBLISHED_SOURCES_BY_ISSUE,
+            **({"2": {("darkness", "dos"): frozenset({self.source_sha})}} if pin else {})})
+
+    def published(self, letter="D", *, mutate=None):
+        disk = AmigaDisk(self.registered.to_bytes())
+        disk.write_file(f"/SAVE/SavGam{letter}.pty", _pty(THREE_START))
+        disk.write_file(f"/SAVE/Vault{letter}.DAT", b"new vault")
+        if mutate:
+            mutate(disk)
+        return disk
+
+    def report(self, disk, letter="D", name="darkness-three.adf", **over):
+        image = self.tmp / name
+        disk.save(image)
+        sha = hashlib.sha256(image.read_bytes()).hexdigest()
+        report = {"specimen": str(self.source), "specimen_sha256": self.source_sha,
+                  "amiga_disk3": str(self.registered_path), "written": [str(image)],
+                  "written_sha256": {image.name: sha},
+                  "save_as": {"to": "amiga", "slot": letter, "source": str(self.source),
+                              "written": [str(image)], "destination": str(image),
+                              "refused": False, "losses": [], "dropped": []}}
+        report.update(over)
+        path = self.tmp / f"report-{name}.json"
+        path.write_text(json.dumps(report))
+        return path, image
+
+
+def _three_manifest(path):
+    return json.loads(path.read_text())
+
+
+def test_a_published_disk_3_prepare_replaces_a_held_letter_and_takes_the_next_free_two(
+        tmp_path, monkeypatch):
+    three = Three(tmp_path, monkeypatch)
+    report, image = three.report(three.published("D"))
+    path = foundation.prepare_published_disk_three("run", report, "WISH-2")
+    manifest = _three_manifest(path)
+    assert path.parent == tmp_path / "cache" / "acceptance" / "WISH-2" / "run"
+    assert manifest["mode"] == foundation.PUBLISHED_DISK_THREE_MODE
+    assert manifest["loaded_letter"] == "D" and manifest["state_a"] == THREE_START
+    assert (manifest["control_letter"], manifest["after_letter"]) == ("F", "G")
+    assert manifest["kept_letters"] == ["A", "B", "C", "E"]
+    assert manifest["disks"]["disk3"]["sha256"] == hashlib.sha256(image.read_bytes()).hexdigest()
+    assert manifest["source_sha256"] == three.source_sha
+    title = foundation.published_darkness_title(path, "darkness")
+    assert ("D", "disk2_prompt", "key") in title.route and ("B", "disk2_prompt", "key") not in title.route
+    assert [s[0] for s in title.route if s[2] == "write"] == ["F", "G"]
+    assert title.plain_keys == (("E", "loaded_menu"), ("B", "journal"), ("E", "camp"))
+
+
+def test_a_published_disk_3_prepare_for_a_letter_the_disk_lacks_adds_it_and_saves_past_it(
+        tmp_path, monkeypatch):
+    three = Three(tmp_path, monkeypatch)
+    report, _ = three.report(three.published("F"), letter="F")
+    manifest = _three_manifest(foundation.prepare_published_disk_three("run", report, "2"))
+    assert manifest["loaded_letter"] == "F"
+    assert (manifest["control_letter"], manifest["after_letter"]) == ("G", "H")
+    assert manifest["kept_letters"] == ["A", "B", "C", "D", "E"]
+
+
+@pytest.mark.parametrize("why, build, issue", [
+    ("a file outside the slot changed",
+     lambda three: three.published("D", mutate=lambda d: d.write_file("/SAVE/write.me", b"z")),
+     "2"),
+    ("a file was added outside the slot",
+     lambda three: three.published("D", mutate=lambda d: d.write_file("/SAVE/extra", b"z")),
+     "2"),
+    ("the slot was not converted", lambda three: three.published_unchanged(), "2"),
+    ("no source is pinned for the ticket", lambda three: three.published("D"), "3"),
+])
+def test_a_published_disk_3_prepare_refuses_and_leaves_no_run_folder(
+        tmp_path, monkeypatch, why, build, issue):
+    three = Three(tmp_path, monkeypatch)
+    three.published_unchanged = lambda: AmigaDisk(three.registered.to_bytes())
+    report, _ = three.report(build(three))
+    with pytest.raises(winuaesession.RouteError):
+        foundation.prepare_published_disk_three("run", report, issue)
+    assert not (tmp_path / "cache").exists(), why
+
+
+def test_a_published_disk_3_prepare_refuses_a_source_and_a_report_that_disagree(
+        tmp_path, monkeypatch):
+    three = Three(tmp_path, monkeypatch)
+    disk = three.published("D")
+    wrong = three.report(disk, specimen_sha256="0" * 64)[0]
+    with pytest.raises(winuaesession.RouteError, match="source differs"):
+        foundation.prepare_published_disk_three("run", wrong, "2")
+    lossy = three.report(disk, name="lossy.adf")[0]
+    data = json.loads(lossy.read_text())
+    data["save_as"]["losses"] = ["a field"]
+    lossy.write_text(json.dumps(data))
+    with pytest.raises(winuaesession.RouteError, match="lossless"):
+        foundation.prepare_published_disk_three("run", lossy, "2")
+    other = three.report(disk, name="other.adf", amiga_disk3=str(three.source))[0]
+    with pytest.raises(winuaesession.RouteError, match="registered pin"):
+        foundation.prepare_published_disk_three("run", other, "2")
+    assert not (tmp_path / "cache").exists()
+
+
+def test_a_published_disk_3_prepare_refuses_a_slot_without_its_vault(tmp_path, monkeypatch):
+    three = Three(tmp_path, monkeypatch)
+    disk = AmigaDisk(three.registered.to_bytes())
+    disk.write_file("/SAVE/SavGamF.pty", _pty(THREE_START))
+    report, _ = three.report(disk, letter="F")
+    with pytest.raises(winuaesession.RouteError, match="outside the converted slot"):
+        foundation.prepare_published_disk_three("run", report, "2")
+
+
+def test_a_published_disk_3_prepare_keeps_camp_steps_and_refuses_bad_ones_before_a_folder_exists(
+        tmp_path, monkeypatch):
+    three = Three(tmp_path, monkeypatch)
+    report, _ = three.report(three.published("D"))
+    with pytest.raises(winuaesession.RouteError):
+        foundation.prepare_published_disk_three("run", report, "2", camp=("view 9",))
+    assert not (tmp_path / "cache").exists()
+    path = foundation.prepare_published_disk_three(
+        "run", report, "2", camp=("view", "rest 1h", "snapshot s", "restore s"))
+    manifest = _three_manifest(path)
+    assert manifest["camp"] == list(foundation.route_camp.normalise(
+        ("view", "rest 1h", "snapshot s", "restore s")))
+    title = foundation.accept_title(foundation.published_darkness_title(path, "darkness"), manifest)
+    assert title.route.index(("S", "camp_save_picker", "key")) > title.route.index(("E", "camp", "key"))
+    marks = foundation.route_camp.camp_marks(
+        title, tuple(manifest["camp"]), len(manifest["names_a"]), name="darkness")
+    assert any(("snapshot", "s") in pairs for pairs in marks.values())
+
+
+def test_a_published_disk_3_manifest_is_refused_when_its_disk_or_pin_changed(
+        tmp_path, monkeypatch):
+    three = Three(tmp_path, monkeypatch)
+    report, _ = three.report(three.published("D"))
+    path = foundation.prepare_published_disk_three("run", report, "2")
+    manifest = _three_manifest(path)
+    for change, match in (({"control_letter": "H"}, "save letters"),
+                          ({"source_sha256": "0" * 64}, "pinned specimen"),
+                          ({"title": "pool"}, "CLI title")):
+        path.write_text(json.dumps({**manifest, **change}))
+        with pytest.raises(winuaesession.RouteError, match=match):
+            foundation.published_darkness_title(path, "darkness")
+    path.write_text(json.dumps(manifest))
+    assert foundation.published_darkness_title(path, "darkness") is not None
+    assert foundation.published_darkness_title(_dark_manifest(tmp_path), "darkness") is None
+
+
+def test_run_recon_refuses_a_title_that_is_not_the_published_disk_3_route(tmp_path, monkeypatch):
+    three = Three(tmp_path, monkeypatch)
+    report, _ = three.report(three.published("D"))
+    path = foundation.prepare_published_disk_three("run", report, "2")
+    with pytest.raises(winuaesession.RouteError, match="differs from the published disk 3"):
+        foundation.run_recon(path, guest=None, guard=MapGuard(states=DARK_STATES, on={}),
+                             identity=_IdentityMap(), holder="wish2-test",
+                             audio_proof=_audio_proof(tmp_path), title=route_darkness.DARKNESS,
+                             accept=True)
+
+
+def _accepted(three, path, tmp_path, *, same_place=False, extra=None):
+    """A fetched disk 3 as an accept run leaves it: the control and after saves added."""
+    manifest = _three_manifest(path)
+    published = AmigaDisk.open(manifest["registered"]["published"]["path"])
+    fetched = AmigaDisk(published.to_bytes())
+    fetched.write_file(f"/SAVE/SavGam{manifest['control_letter']}.pty", _pty(THREE_START))
+    fetched.write_file(f"/SAVE/SavGam{manifest['after_letter']}.pty",
+                       _pty(THREE_START if same_place else dict(THREE_START, x=4)))
+    if extra:
+        fetched.write_file(*extra)
+    file = tmp_path / "fetched3.adf"
+    fetched.save(file)
+    sha = hashlib.sha256(file.read_bytes()).hexdigest()
+    summary = tmp_path / "summary.json"
+    summary.write_text(json.dumps({"success": True, "accept": True,
+                                   "fetched": {"disk3": {"sha256": sha}}}))
+    return file, sha, summary
+
+
+def test_a_published_disk_3_reload_loads_the_after_slot_and_keeps_every_other(
+        tmp_path, monkeypatch):
+    three = Three(tmp_path, monkeypatch)
+    report, _ = three.report(three.published("D"))
+    path = foundation.prepare_published_disk_three("run", report, "WISH-2")
+    file, sha, summary = _accepted(three, path, tmp_path)
+    reload = foundation.prepare_published_disk_three_reload("again", path, file, sha, summary)
+    manifest = _three_manifest(reload)
+    assert reload.parent == tmp_path / "cache" / "acceptance" / "WISH-2" / "again"
+    assert manifest["mode"] == foundation.PUBLISHED_DISK_THREE_RELOAD_MODE
+    assert manifest["loaded_letter"] == "G" and manifest["other_letter"] == "F"
+    assert manifest["state_a"] == dict(THREE_START, x=4) and manifest["other_place"] == THREE_START
+    assert manifest["kept_letters"] == ["A", "B", "C", "D", "E", "F"]
+    title = foundation.published_darkness_title(reload, "darkness-reload")
+    assert title.control_letter is None and title.kept_letters == tuple("ABCDEF")
+    assert ("G", "disk2_prompt", "key") in title.route
+    assert title.plain_keys == (("E", "loaded_menu"), ("B", "journal"))
+
+
+@pytest.mark.parametrize("why, kwargs, match", [
+    ("same place", {"same_place": True}, "one place"),
+    ("an extra file", {"extra": ("/SAVE/VaultG.DAT", b"v")}, "plus slots"),
+])
+def test_a_published_disk_3_reload_refuses_a_disk_that_is_not_the_published_one_plus_two_saves(
+        tmp_path, monkeypatch, why, kwargs, match):
+    three = Three(tmp_path, monkeypatch)
+    report, _ = three.report(three.published("D"))
+    path = foundation.prepare_published_disk_three("run", report, "2")
+    file, sha, summary = _accepted(three, path, tmp_path, **kwargs)
+    with pytest.raises(winuaesession.RouteError, match=match):
+        foundation.prepare_published_disk_three_reload("again", path, file, sha, summary)
+    assert not (tmp_path / "cache" / "acceptance" / "2" / "again").exists(), why
+
+
+def test_a_published_disk_3_reload_refuses_a_summary_of_another_disk_or_a_failed_run(
+        tmp_path, monkeypatch):
+    three = Three(tmp_path, monkeypatch)
+    report, _ = three.report(three.published("D"))
+    path = foundation.prepare_published_disk_three("run", report, "2")
+    file, sha, summary = _accepted(three, path, tmp_path)
+    data = json.loads(summary.read_text())
+    summary.write_text(json.dumps({**data, "success": False}))
+    with pytest.raises(winuaesession.RouteError, match="not a successful accept"):
+        foundation.prepare_published_disk_three_reload("again", path, file, sha, summary)
+    summary.write_text(json.dumps({**data, "fetched": {"disk3": {"sha256": "0" * 64}}}))
+    with pytest.raises(winuaesession.RouteError, match="another disk"):
+        foundation.prepare_published_disk_three_reload("again", path, file, sha, summary)
+
+
+@pytest.mark.parametrize("issue, ok", [("WISH-2", True), ("2", True), ("WISH-", False),
+                                       ("wish-2", False), ("2x", False), ("../2", False)])
+def test_prepare_takes_a_number_or_wish_n_for_the_run_folder(tmp_path, monkeypatch, issue, ok):
+    monkeypatch.setattr(scratch, "cache_dir", lambda *parts: tmp_path.joinpath(*parts))
+
+    def fake(run, specimen):
+        scratch.ensure(run)
+        return {"title": "darkness", "names_a": NAMES}
+
+    monkeypatch.setattr(foundation, "_PREPARE", {"darkness": fake})
+    if ok:
+        path = foundation.prepare(foundation.DARKNESS, "run", issue=issue)
+        assert path.parent == tmp_path / "acceptance" / issue / "run"
+    else:
+        with pytest.raises(winuaesession.RouteError, match="WISH-N"):
+            foundation.prepare(foundation.DARKNESS, "run", issue=issue)
+
+
+def test_the_cli_routes_a_published_disk_3_prepare_and_its_reload(tmp_path, monkeypatch, capsys):
+    seen = []
+    monkeypatch.setattr(foundation, "prepare_published_disk_three",
+                        lambda *a, **k: seen.append(("three", a, k)) or tmp_path / "p.json")
+    monkeypatch.setattr(foundation, "prepare_published_disk_three_reload",
+                        lambda *a, **k: seen.append(("reload", a, k)) or tmp_path / "r.json")
+    head = ["prepare", "--published-disk-three", "--run-id", "r", "--issue", "WISH-2"]
+    assert foundation.main([*head, "--title", "darkness", "--saveas-report", "rep.json",
+                            "--camp", "view"]) == 0
+    assert seen[0][0] == "three" and seen[0][1][:3] == ("r", pathlib.Path("rep.json"), "WISH-2")
+    assert seen[0][2] == {"camp": ("view 1",)}
+    assert foundation.main([*head, "--title", "darkness-reload", "--published-manifest", "m.json",
+                            "--disk3", "d.adf", "--disk3-sha256", "ab",
+                            "--accept-summary", "s.json"]) == 0
+    assert seen[1][1] == ("r", pathlib.Path("m.json"), pathlib.Path("d.adf"), "ab",
+                          pathlib.Path("s.json"), "WISH-2")
+    for argv in ([*head, "--title", "darkness"], [*head, "--title", "pool", "--saveas-report", "x"],
+                 [*head, "--title", "darkness-reload"],
+                 [*head, "--title", "darkness", "--saveas-report", "x", "--published-disk-one"],
+                 ["prepare", "--run-id", "r", "--title", "darkness", "--published-manifest", "m"]):
+        assert foundation.main(argv) == 2
+    assert len(seen) == 2

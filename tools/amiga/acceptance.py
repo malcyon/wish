@@ -35,7 +35,7 @@ from typing import Any, Callable
 if __package__ in (None, ""):
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
-from goldbox import amiga_adf, areas, geo  # noqa: E402
+from goldbox import amiga_adf, amiga_savegame, areas, geo  # noqa: E402
 from tools.amiga import (  # noqa: E402
     amigabladesjournal,
     route_camp,
@@ -57,11 +57,17 @@ from tools.amiga.route_curse import (  # noqa: E402
 )
 from tools.amiga.route_darkness import (  # noqa: E402
     DARKNESS,
+    DARKNESS_DISK1_SHA256,
+    DARKNESS_DISK2_SHA256,
+    DARKNESS_DISK3_SHA256,
     DARKNESS_RELOAD,
     DARKNESS_UNSTARTED,
     DARKNESS_UNSTARTED_LOADED,
+    DARKNESS_VOLUME,
     _prepare_darkness,
     _prepare_darkness_reload,
+    published_reload_title,
+    published_title,
 )
 from tools.amiga.route_pool import (  # noqa: E402
     POOL,
@@ -88,6 +94,7 @@ from tools.amiga.screens import PixelGuards, _guards, _has_rule  # noqa: E402
 from tools.amiga.staging import (  # noqa: E402
     StageError,
     _entry,
+    _find_images,
     _verified_disk,
     replace_file_in_place,
     sha256,
@@ -105,6 +112,12 @@ from tools.registry import evidence, scratch, specimens  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 PUBLISHED_ISSUE = "677"
+#: A run folder's ticket: a bare number, or a Plane `WISH-N`. The source pins of
+#: `PUBLISHED_SOURCES_BY_ISSUE` are keyed by the number alone.
+ISSUE_ARGUMENT = re.compile(r"\d+|WISH-\d+")
+#: The manifest modes of a Pools of Darkness run on a disk 3 that Wish wrote.
+PUBLISHED_DISK_THREE_MODE = "published_disk_three"
+PUBLISHED_DISK_THREE_RELOAD_MODE = "published_disk_three_reload"
 #: Pinned Save As sources a published disk-one run may start from, as a set of SHA-256 values per
 #: title and port. The Silver Blades pair and the Curse C64 pair each hold one party of share 0 and
 #: one of share 1.
@@ -1157,6 +1170,28 @@ def _preserve_substituted(manifest_path: pathlib.Path, manifest: dict, attempt: 
         _FULL_TITLES[manifest["title"]], issue, what, fetched)
 
 
+def _preserve_published_disk_three(
+        manifest_path: pathlib.Path, manifest: dict, attempt: str, title: AmigaTitle, issue: str,
+        fetched: pathlib.Path) -> dict[str, str]:
+    """Register the disk 3 of a successful published disk 3 accept run.
+
+    The game wrote the control and after slots; Wish wrote the loaded slot's two files, so the
+    provenance says so, and only claims what the run's success test checks.
+    """
+    run_id = manifest_path.parent.name
+    letter = manifest["loaded_letter"]
+    what = (
+        f"Run {run_id!r}, attempt {attempt!r}: the disk 3 fetched after the game loaded slot "
+        f"{letter}, saved slot {title.control_letter}, walked and saved slot {title.after_letter}. "
+        f"The game wrote slots {title.control_letter} and {title.after_letter}. Wish wrote "
+        f"SavGam{letter}.pty and Vault{letter}.DAT by converting the DOS save "
+        f"{manifest['registered']['source']['path']} (SHA-256 {manifest['source_sha256']}) onto a "
+        f"copy of the registered disk 3, and every other file is that disk's own.")
+    return _register_fetched(
+        f"wish-{_issue_token(issue)}-darkness-{_slug(run_id)}-{_slug(attempt)}",
+        "Pools of Darkness", issue, what, fetched)
+
+
 def _preserve_staged(manifest_path: pathlib.Path, manifest: dict, attempt: str,
                      issue: str, fetched: pathlib.Path) -> dict[str, str]:
     """Register the boot disk of a successful Silver Blades accept staged with `--staged-from`.
@@ -1422,6 +1457,14 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             raise RouteError("the selected title route differs from the published manifest")
     elif manifest.get("mode") == "published_disk_one":
         raise RouteError("a published disk-one manifest needs --published-disk-one")
+    elif manifest.get("mode") in (PUBLISHED_DISK_THREE_MODE, PUBLISHED_DISK_THREE_RELOAD_MODE):
+        expected_title = published_darkness_title(manifest_path, manifest.get("title"))
+        if title != expected_title:
+            raise RouteError("the selected title route differs from the published disk 3 manifest")
+        if "camp" in manifest:
+            if not accept:
+                raise RouteError("camp steps are driven on an accept run only")
+            title = accept_title(title, manifest)
     elif manifest.get("mode") == SUBSTITUTE_TITLE_MODE:
         expected_title = route_silver_blades.title_for_substitute(manifest)
         if (title is None or title.issue != expected_title.issue or
@@ -1438,7 +1481,11 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             raise RouteError("camp steps are driven on a published accept, or a Pools of "
                              "Darkness or Pool of Radiance accept, only")
         title = accept_title(title, manifest)
-    if preserve_specimen and title is None and not published_disk_one:
+    if preserve_specimen and manifest.get("mode") == PUBLISHED_DISK_THREE_MODE:
+        if specimen_issue is None or not SPECIMEN_ISSUE.fullmatch(specimen_issue):
+            raise RouteError("a published disk 3 --preserve-specimen needs --specimen-issue "
+                             f"{SPECIMEN_ISSUE_FORMS} naming its issue")
+    elif preserve_specimen and title is None and not published_disk_one:
         if "staged_from" not in manifest:
             raise RouteError(staged_message)
         if specimen_issue is None or not SPECIMEN_ISSUE.fullmatch(specimen_issue):
@@ -2239,7 +2286,10 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                         _preserve_published(manifest_path, attempt, published_name, fetched,
                                             manifest.get("issue", PUBLISHED_ISSUE),
                                             manifest.get("staged_place"))
-                        if published_disk_one else _preserve_substituted(
+                        if published_disk_one else _preserve_published_disk_three(
+                            manifest_path, manifest, attempt, title, specimen_issue, fetched)
+                        if manifest.get("mode") == PUBLISHED_DISK_THREE_MODE else
+                        _preserve_substituted(
                             manifest_path, manifest, attempt, title, specimen_issue, fetched))
                     problems = specimens.check_specimens(specimens.tree_root())
                     if problems:
@@ -2427,8 +2477,8 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
         raise RouteError(f"{name} takes no substitute slot")
     if camp and name not in CAMP_TITLES:
         raise RouteError(f"{name} takes camp steps only on a published prepare")
-    if issue is not None and not re.fullmatch(r"\d+", issue):
-        raise RouteError("the issue is a number")
+    if issue is not None and not ISSUE_ARGUMENT.fullmatch(issue):
+        raise RouteError("the issue is a number or WISH-N")
     if camp:
         camp = route_camp.normalise(tuple(camp))
         route_camp.validate_steps(camp, name=name)
@@ -2847,6 +2897,266 @@ def prepare_published(name: str, run_id: str, report_path: pathlib.Path,
     return path
 
 
+def _pin_key(issue: str) -> str:
+    """The `PUBLISHED_SOURCES_BY_ISSUE` key of a run folder's ticket: its number."""
+    if not ISSUE_ARGUMENT.fullmatch(issue):
+        raise RouteError("the issue is a number or WISH-N")
+    return issue.removeprefix("WISH-")
+
+
+def _darkness_pins(issue: str) -> frozenset:
+    """The DOS sources a ticket pins for Pools of Darkness; none when it has no row."""
+    key = _pin_key(issue)
+    return _source_pins(key, "darkness", "dos") if key in PUBLISHED_SOURCES_BY_ISSUE else frozenset()
+
+
+def _slot_paths(letter: str) -> tuple[str, str]:
+    """Lower-cased paths of the two files a Pools of Darkness slot is written to."""
+    return (amiga_savegame.pod_slot_path(letter).lower(),
+            amiga_savegame.pod_vault_path(letter).lower())
+
+
+def _darkness_disk_three_title(manifest: dict, disk: amiga_adf.AmigaDisk) -> AmigaTitle:
+    """The route a published or reloaded disk 3 allows, from the letters the disk holds."""
+    letter = manifest["loaded_letter"]
+    present = DARKNESS.slot_letters(disk)
+    if letter not in present:
+        raise RouteError(f"the disk 3 holds no slot {letter} to load")
+    if manifest.get("mode") == PUBLISHED_DISK_THREE_RELOAD_MODE:
+        title = published_reload_title(letter, present)
+        recorded = {"kept_letters": list(title.kept_letters)}
+    else:
+        title = published_title(letter, present)
+        recorded = {"control_letter": title.control_letter, "after_letter": title.after_letter,
+                    "kept_letters": list(title.kept_letters)}
+    if any(manifest.get(key) != value for key, value in recorded.items()):
+        raise RouteError("the manifest's save letters differ from the letters its disk 3 holds")
+    return title
+
+
+def published_darkness_title(manifest_path: pathlib.Path, name: str) -> AmigaTitle | None:
+    """The route a Pools of Darkness manifest on a published disk 3 names, or None for any other manifest."""
+    try:
+        manifest = json.loads(pathlib.Path(manifest_path).read_text())
+    except (OSError, ValueError):
+        return None
+    mode = manifest.get("mode") if isinstance(manifest, dict) else None
+    if mode not in (PUBLISHED_DISK_THREE_MODE, PUBLISHED_DISK_THREE_RELOAD_MODE):
+        return None
+    if manifest.get("title") != name:
+        raise RouteError("the CLI title differs from the published disk 3 manifest")
+    try:
+        if mode == PUBLISHED_DISK_THREE_MODE:
+            pins = _darkness_pins(str(manifest["issue"]))
+            if manifest["source_sha256"] not in pins:
+                raise RouteError("the manifest source differs from the pinned specimen")
+        return _darkness_disk_three_title(manifest, _verified_disk(_input(manifest["disks"], "disk3")))
+    except KeyError as exc:
+        raise RouteError(f"the manifest lacks {exc.args[0]!r}") from exc
+
+
+def prepare_published_disk_three(run_id: str, report_path: pathlib.Path, issue: str,
+                                 camp: tuple[str, ...] = ()) -> pathlib.Path:
+    """Preserve and check a disk 3 that Save As wrote from a DOS Pools of Darkness slot, before any guest run.
+
+    The published image must be the registered disk 3 in every file but the loaded slot's
+    `SavGam<L>.pty` and `Vault<L>.DAT`, and both must be on it. The report's DOS source is pinned
+    by SHA-256 under `issue` in `PUBLISHED_SOURCES_BY_ISSUE`. The loaded letter is the report's
+    slot; the control and after letters are two the image does not hold and every other held
+    letter is kept. `camp` is a list of camp steps, as for `prepare_published`. Nothing registered
+    is written, and a refusal leaves no run folder.
+    """
+    if not HOLDER.fullmatch(run_id):
+        raise RouteError("run id must use letters, digits, dot, underscore or hyphen")
+    pins = _darkness_pins(issue)
+    if not pins:
+        raise RouteError(f"issue {issue} pins no dos source for darkness")
+    report_path = pathlib.Path(report_path)
+    report_bytes = report_path.read_bytes()
+    report = json.loads(report_bytes)
+    outcome = report.get("save_as", {})
+    if (outcome.get("refused") or outcome.get("losses") or outcome.get("dropped") or
+            report.get("written") != outcome.get("written") or
+            len(report.get("written", [])) != 1 or outcome.get("to") != "amiga"):
+        raise RouteError("Save As did not publish one lossless Amiga image")
+    letter = outcome.get("slot")
+    if not isinstance(letter, str) or not re.fullmatch(r"[A-J]", letter):
+        raise RouteError("Save As reported no source slot letter")
+    source = pathlib.Path(report["specimen"])
+    image = pathlib.Path(report["written"][0])
+    disk3 = pathlib.Path(report["amiga_disk3"])
+    source_pin = report.get("specimen_sha256")
+    if (source != pathlib.Path(outcome.get("source", "")) or
+            source_pin not in pins or sha256(source) != source_pin):
+        raise RouteError("the Save As source differs from the pinned specimen")
+    if sha256(disk3) != DARKNESS_DISK3_SHA256:
+        raise RouteError("the Save As disk 3 differs from the registered pin")
+    image_sha = sha256(image)
+    if (report.get("written_sha256") != {image.name: image_sha} or
+            pathlib.Path(outcome.get("destination", "")) != image):
+        raise RouteError("the Save As image differs from its report")
+    published = _verified_disk(image)
+    registered = _verified_disk(disk3)
+    if published.volume_name != DARKNESS_VOLUME or registered.volume_name != DARKNESS_VOLUME:
+        raise RouteError(f"the published image is not a {DARKNESS_VOLUME} disk")
+    old, new = _disk_files(registered), _disk_files(published)
+    slot_paths = _slot_paths(letter)
+    if (set(new) != set(old) | set(slot_paths) or
+            any(new.get(key) != value for key, value in old.items() if key not in slot_paths) or
+            set(path.lower() for path, _ in published.walk_dirs()) !=
+            set(path.lower() for path, _ in registered.walk_dirs()) or
+            published.to_bytes()[:1024] != registered.to_bytes()[:1024]):
+        raise RouteError("the published image differs from disk 3 outside the converted slot")
+    if new[slot_paths[0]] == old.get(slot_paths[0]):
+        raise RouteError("the published slot was not converted")
+    reading = DARKNESS.read_slot(published, letter)
+    if "place" not in reading:
+        raise RouteError(f"published slot {letter} does not decode: {reading}")
+    present = DARKNESS.slot_letters(published)
+    title = published_title(letter, present)
+    if camp:
+        camp = route_camp.normalise(tuple(camp))
+        _camp_title("darkness", title, list(camp), reading["names"])
+    wanted = {"disk1": DARKNESS_DISK1_SHA256, "disk2": DARKNESS_DISK2_SHA256}
+    images = _find_images(wanted)
+    run = scratch.cache_dir("acceptance", issue, run_id)
+    if run.exists():
+        raise RouteError(f"run folder already exists: {run}")
+    scratch.ensure(run)
+    disks: dict[str, dict[str, str]] = {}
+    for key, data in (("disk1", images["disk1"][1]), ("disk2", images["disk2"][1]),
+                      ("disk3", image.read_bytes())):
+        working = run / f"{key}.adf"
+        working.write_bytes(data)
+        disks[key] = _entry(working)
+    published_copy = run / "published.adf"
+    report_copy = run / "saveas-report.json"
+    shutil.copyfile(image, published_copy)
+    report_copy.write_bytes(report_bytes)
+    published_copy.chmod(stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
+    report_copy.chmod(stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
+    if (any(disks[key]["sha256"] != pinned for key, pinned in wanted.items()) or
+            disks["disk3"]["sha256"] != image_sha or sha256(published_copy) != image_sha):
+        raise RouteError("a working copy differs from its input")
+    after = _find_images(wanted)
+    if any(hashlib.sha256(after[key][1]).hexdigest() != pinned for key, pinned in wanted.items()):
+        raise RouteError("a registered image changed during preparation")
+    manifest = {
+        "mode": PUBLISHED_DISK_THREE_MODE, "issue": issue, "title": "darkness",
+        "source_port": "dos", "source_sha256": source_pin,
+        "loaded_letter": letter, "names_a": reading["names"], "state_a": reading["place"],
+        "control_letter": title.control_letter, "after_letter": title.after_letter,
+        "kept_letters": list(title.kept_letters),
+        "expected_after": None,
+        "disks": disks,
+        "registered": {"source": _entry(source), "report": _entry(report_copy),
+                       "published": _entry(published_copy), "disk_three": _entry(disk3)},
+        "sources": {key: {"label": images[key][0], "sha256": wanted[key]} for key in wanted},
+    }
+    if camp:
+        manifest["camp"] = list(camp)
+    path = run / "prepare.json"
+    path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+    published_darkness_title(path, "darkness")
+    return path
+
+
+def prepare_published_disk_three_reload(
+        run_id: str, published_manifest: pathlib.Path, fetched: pathlib.Path, fetched_sha256: str,
+        accept_summary: pathlib.Path, issue: str | None = None) -> pathlib.Path:
+    """Prepare a reload run on the disk 3 a successful published disk 3 accept run fetched.
+
+    `published_manifest` is that run's `prepare.json`. Refuses a file that does not hash to
+    `fetched_sha256`, a summary that is not a successful accept run whose fetched disk 3 has that
+    hash, a disk that is not the published image plus exactly the control and after saves, saves
+    that do not decode to the loaded party, and two saves at one place. The reload loads the after
+    slot and compares the control slot's place; every other held slot is kept.
+    """
+    if not HOLDER.fullmatch(run_id):
+        raise RouteError("run id must use letters, digits, dot, underscore or hyphen")
+    issue = issue or json.loads(pathlib.Path(published_manifest).read_text()).get("issue")
+    if not isinstance(issue, str) or not ISSUE_ARGUMENT.fullmatch(issue):
+        raise RouteError("the issue is a number or WISH-N")
+    published_manifest, fetched, accept_summary = (
+        pathlib.Path(p) for p in (published_manifest, fetched, accept_summary))
+    for path in (fetched, accept_summary):
+        if not path.is_file():
+            raise RouteError(f"the file {path} is missing")
+    first = published_darkness_title(published_manifest, "darkness")
+    if first is None:
+        raise RouteError("the manifest is not a published disk 3 run")
+    manifest = json.loads(published_manifest.read_text())
+    if sha256(fetched) != fetched_sha256:
+        raise RouteError(f"the disk 3 SHA-256 differs: {sha256(fetched)}")
+    try:
+        summary = json.loads(accept_summary.read_text())
+        summary_sha = summary["fetched"]["disk3"]["sha256"]
+    except (ValueError, KeyError, TypeError) as exc:
+        raise RouteError(f"the accept summary {accept_summary} is unreadable: {exc}") from exc
+    if summary.get("success") is not True or summary.get("accept") is not True:
+        raise RouteError("the summary is not a successful accept run")
+    if summary_sha != fetched_sha256:
+        raise RouteError("the summary's fetched disk 3 is another disk")
+    save = _verified_disk(fetched)
+    if save.volume_name != DARKNESS_VOLUME:
+        raise RouteError(f"disk 3 is not a verified {DARKNESS_VOLUME} disk")
+    published = _verified_disk(_input(manifest["registered"], "published"))
+    control, after = first.control_letter, first.after_letter
+    written = {c: DARKNESS.slot_files(save, c) for c in (control, after)}
+    added = {f"/save/{name}".lower() for files in written.values() for name in files}
+    have, before = _disk_files(save), _disk_files(published)
+    if len(added) != 2 or set(have) != set(before) | added or any(
+            have[name] != data for name, data in before.items()):
+        raise RouteError(f"disk 3 is not the published disk 3 plus slots {control} and {after}")
+    reading = {c: DARKNESS.read_slot(save, c) for c in (control, after)}
+    for c, one in reading.items():
+        if "place" not in one:
+            raise RouteError(f"slot {c} does not decode: {one}")
+        if one["names"] != manifest["names_a"]:
+            raise RouteError(f"slot {c} names another party than slot {manifest['loaded_letter']}")
+    if reading[control]["place"] == reading[after]["place"]:
+        raise RouteError(f"slots {control} and {after} are at one place, which the screen "
+                         "cannot tell apart")
+    present = DARKNESS.slot_letters(save)
+    reload_title = published_reload_title(after, present)
+    run = scratch.cache_dir("acceptance", issue, run_id)
+    if run.exists():
+        raise RouteError(f"run folder already exists: {run}")
+    wanted = {"disk1": DARKNESS_DISK1_SHA256, "disk2": DARKNESS_DISK2_SHA256}
+    images = _find_images(wanted)
+    scratch.ensure(run)
+    disks: dict[str, dict[str, str]] = {}
+    for key in wanted:
+        working = run / f"{key}.adf"
+        working.write_bytes(images[key][1])
+        disks[key] = _entry(working)
+    working = run / "disk3.adf"
+    shutil.copyfile(fetched, working)
+    disks["disk3"] = _entry(working)
+    if any(disks[key]["sha256"] != pinned for key, pinned in wanted.items()):
+        raise RouteError("a working copy differs from the pinned disk")
+    if disks["disk3"]["sha256"] != fetched_sha256 or sha256(fetched) != fetched_sha256:
+        raise RouteError("the working disk 3 differs from the input")
+    result = {
+        "mode": PUBLISHED_DISK_THREE_RELOAD_MODE, "issue": issue, "title": "darkness-reload",
+        "disks": disks,
+        "registered": {"accept_disk3": _entry(fetched),
+                       "published": manifest["registered"]["published"]},
+        "sources": {key: {"label": images[key][0], "sha256": wanted[key]} for key in wanted},
+        "loaded_letter": after, "state_a": reading[after]["place"],
+        "names_a": reading[after]["names"],
+        "other_letter": control, "other_place": reading[control]["place"],
+        "kept_letters": list(reload_title.kept_letters),
+        "slot_sha256": {c: one["sha256"] for c, one in reading.items()},
+        "accept_summary": _entry(accept_summary),
+        "published_manifest": _entry(published_manifest),
+    }
+    path = run / "prepare.json"
+    path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    published_darkness_title(path, "darkness-reload")
+    return path
+
+
 def _summary(result: dict[str, Any], manifest: pathlib.Path, attempt: str) -> str:
     path = str(manifest.parent / attempt / "summary.json")
     if result.get("diagnose"):
@@ -2975,6 +3285,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--title", required=True, choices=choices)
     p.add_argument("--run-id", required=True)
     p.add_argument("--published-disk-one", action="store_true")
+    p.add_argument("--published-disk-three", action="store_true",
+                   help="Pools of Darkness only: prepare from a disk 3 Save As wrote, or with "
+                        "--title darkness-reload from the disk 3 such a run fetched")
+    p.add_argument("--published-manifest", type=pathlib.Path, default=None,
+                   help="darkness-reload with --published-disk-three: the published accept "
+                        "run's prepare.json")
     p.add_argument("--saveas-report", type=pathlib.Path)
     p.add_argument("--camp", default="",
                    help="published Silver Blades and Curse, a Silver Blades --substitute, "
@@ -2987,7 +3303,7 @@ def main(argv: list[str] | None = None) -> int:
                         "facing F (0 N, 1 E, 2 S, 3 W) in working DF0's loaded slot")
     p.add_argument("--source", type=pathlib.Path)
     p.add_argument("--staged-from", type=pathlib.Path)
-    p.add_argument("--issue")
+    p.add_argument("--issue", help="the run folder's ticket: a number, or WISH-N")
     p.add_argument("--save-count", type=int, default=None,
                    help="Silver Blades only: a value for the private helper that stages the prepared slot")
     p.add_argument("--disk3", type=pathlib.Path, default=None,
@@ -3052,6 +3368,37 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "diagnose" and (not silver_blades or not args.published_disk_one
                                            or args.deadline > 600 or args.boot_limit > 300):
             raise RouteError("diagnose needs published Silver Blades and bounded limits")
+        if args.command == "prepare" and args.published_disk_three:
+            if args.published_disk_one:
+                raise RouteError("--published-disk-one and --published-disk-three are two routes")
+            if any((args.source, args.staged_from, args.substitute, args.stage_place,
+                    args.save_count is not None)):
+                raise RouteError("a published disk 3 takes only its Save As report")
+            if args.title == "darkness":
+                if args.saveas_report is None:
+                    raise RouteError("a published disk 3 needs --saveas-report")
+                if any((args.disk3, args.disk3_sha256, args.accept_summary,
+                        args.published_manifest)):
+                    raise RouteError("a published disk 3 takes only a Save As report")
+                with terminating():
+                    print(prepare_published_disk_three(
+                        args.run_id, args.saveas_report, args.issue or ISSUE, camp=args.camp))
+                return 0
+            if args.title == "darkness-reload":
+                if args.saveas_report is not None or args.camp:
+                    raise RouteError("a published disk 3 reload takes no Save As report or camp steps")
+                if not all((args.disk3, args.disk3_sha256, args.accept_summary,
+                            args.published_manifest)):
+                    raise RouteError("a published disk 3 reload needs --published-manifest, "
+                                     "--disk3, --disk3-sha256 and --accept-summary")
+                with terminating():
+                    print(prepare_published_disk_three_reload(
+                        args.run_id, args.published_manifest, args.disk3, args.disk3_sha256,
+                        args.accept_summary, args.issue))
+                return 0
+            raise RouteError("--published-disk-three is for Pools of Darkness only")
+        if args.command == "prepare" and args.published_manifest is not None:
+            raise RouteError("--published-manifest requires --published-disk-three")
         if args.published_disk_one:
             if args.command == "reload":
                 raise RouteError("published disk one has no reload route")
@@ -3071,7 +3418,8 @@ def main(argv: list[str] | None = None) -> int:
             if args.command == "measure" and (args.route or args.write_keys):
                 raise RouteError("published disk one uses its source-specific route")
         elif args.command == "prepare" and args.saveas_report is not None:
-            raise RouteError("--saveas-report requires --published-disk-one")
+            raise RouteError("--saveas-report requires --published-disk-one or "
+                             "--published-disk-three")
         elif (args.command == "prepare" and args.camp and args.title not in CAMP_TITLES
               and not (silver_blades and args.substitute is not None)):
             raise RouteError("--camp requires --published-disk-one, --title darkness or "
@@ -3139,6 +3487,8 @@ def main(argv: list[str] | None = None) -> int:
                 manifest, title = _published_manifest(args.manifest, args.title)
             else:
                 title = None if silver_blades else TITLES[args.title]
+                if args.title in ("darkness", "darkness-reload"):
+                    title = published_darkness_title(args.manifest, args.title) or title
             # A Silver Blades substitute prepared with camp steps, or whose party has not set out,
             # runs as a title; any other Silver Blades manifest runs the legacy route.
             substituted = bool(silver_blades and not args.published_disk_one

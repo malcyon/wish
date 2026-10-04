@@ -304,3 +304,58 @@ def _prepare_darkness_reload(run: pathlib.Path, disk3: pathlib.Path, disk3_sha25
         "slot_sha256": {letter: one["sha256"] for letter, one in reading.items()},
         "accept_summary": {"path": str(accept_summary), "sha256": sha256(accept_summary)},
     }
+
+
+#: The letters a published disk 3 run saves to, in the order they are taken. The game's own save
+#: picker offers A to H, and `B` and `E` are left out because the route presses them as the
+#: Begin Adventuring key and the exit key, which only a letter that is not a kept slot may take.
+PUBLISHED_SAVE_LETTERS = ("F", "G", "H", "A", "C", "D")
+
+_SIMPLE_KEY_STATES = (("E", "loaded_menu"), ("B", "journal"), ("E", "camp"))
+_LOAD_STEP = ("B", "disk2_prompt", "key")
+_CONTROL_STEP = ("F", "loaded_menu", "write")
+_AFTER_STEP = ("G", "exit_game", "write")
+
+
+def published_letters(loaded: str, present: list[str] | tuple[str, ...]
+                      ) -> tuple[str, str, tuple[str, ...]]:
+    """The control letter, the after letter and the kept letters of a disk 3 that holds `present`.
+
+    The control and after letters are the first two of `PUBLISHED_SAVE_LETTERS` the disk does
+    not hold; every other held letter but the loaded one is kept.
+    """
+    free = [c for c in PUBLISHED_SAVE_LETTERS if c not in present]
+    if len(free) < 2:
+        raise RouteError(f"disk 3 holds {sorted(present)}: fewer than two of "
+                         f"{PUBLISHED_SAVE_LETTERS} are free to save to")
+    return free[0], free[1], tuple(sorted(c for c in present if c != loaded))
+
+
+def published_title(loaded: str, present: list[str] | tuple[str, ...]) -> AmigaTitle:
+    """`DARKNESS` for a disk 3 whose loaded slot is `loaded` and which holds the letters `present`.
+
+    The registered route loads B and saves to F and G, which a published disk 3 may hold or
+    lack, so the load key, the control save and the after save are the letters this disk allows.
+    """
+    control, after, kept = published_letters(loaded, present)
+
+    def swap(route: tuple) -> tuple:
+        return tuple((loaded, *step[1:]) if step == _LOAD_STEP
+                     else (control, *step[1:]) if step == _CONTROL_STEP
+                     else (after, *step[1:]) if step == _AFTER_STEP else step
+                     for step in route)
+
+    return dataclasses.replace(
+        DARKNESS, route=swap(DARKNESS.route), measure_route=swap(DARKNESS.measure_route),
+        control_letter=control, after_letter=after, kept_letters=kept,
+        plain_keys=tuple(e for e in _SIMPLE_KEY_STATES if e[0] in kept))
+
+
+def published_reload_title(loaded: str, present: list[str] | tuple[str, ...]) -> AmigaTitle:
+    """`DARKNESS_RELOAD` loading `loaded` from a disk 3 that holds `present`; every other held slot is kept."""
+    kept = tuple(sorted(c for c in present if c != loaded))
+    route = tuple((loaded, *step[1:]) if step == (DARKNESS_RELOAD_LOADED, "disk2_prompt", "key")
+                  else step for step in _RELOAD_ROUTE)
+    return dataclasses.replace(
+        DARKNESS_RELOAD, route=route, measure_route=route, kept_letters=kept,
+        plain_keys=tuple(e for e in _SIMPLE_KEY_STATES[:2] if e[0] in kept))
