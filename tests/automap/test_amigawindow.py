@@ -357,7 +357,7 @@ def ready_character():
 
 
 @pytest.mark.parametrize("key", sorted(TITLES))
-def test_level_up_stays_hidden_and_refused_on_the_amiga(measured, monkeypatch, key):
+def test_level_up_stays_hidden_and_blocked_on_the_amiga(measured, monkeypatch, key):
     window, target = attached(key)
     assert not window.roster.levelling
     card = window.roster.cards[0]

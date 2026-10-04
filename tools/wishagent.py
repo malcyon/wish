@@ -72,7 +72,7 @@ CONFIG_DIR = os.path.expanduser(os.path.join("~", ".config", "wish-agent"))
 DEFAULT_KEY_PATH = os.path.join(CONFIG_DIR, "private-key.pem")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
 
-# GitHub refuses a JWT whose (exp - iat) exceeds 600 seconds. 60 seconds of
+# GitHub rejects a JWT whose (exp - iat) exceeds 600 seconds. 60 seconds of
 # slack behind `now` covers clock skew on the side that checks `iat`; the
 # 500-second reach forward stays comfortably under the ceiling once that
 # 60 is added back in, rather than landing on it exactly.
@@ -319,7 +319,7 @@ def _request(method, url, headers, body):
 
     An `HTTPError` still carries a status GitHub sent, so it is returned like
     any other response and left to `_call`'s 5xx retry. A `URLError` or a
-    bare `OSError` -- DNS failure, connection refused, reset, a hung TLS
+    bare `OSError` -- DNS failure, connection rejected, reset, a hung TLS
     handshake -- carries no status at all, so there is nothing for that retry
     loop to inspect; it is raised as `ApiError` here and left uncaught, which
     fails the call immediately rather than looping on a problem `_call`'s

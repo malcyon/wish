@@ -46,7 +46,7 @@ a filesystem write that is *nearly* right corrupts a disk silently:
 
 What this does not do
 ---------------------
-* **A file is never grown or replaced.** :meth:`D64.write_file` refuses a
+* **A file is never grown or replaced.** :meth:`D64.write_file` blocks a
   name already in the directory; :meth:`D64.write_file_inplace` is what
   rewrites one, and only at the same block count. Nothing here scratches a
   file, so no block is ever freed.
@@ -70,7 +70,7 @@ Variants
 --------
 
 A ``.D64`` comes in six sizes and this reader knows all six. Anything else is
-still refused -- a size we cannot name is a file we cannot claim to understand,
+still blocked -- a size we cannot name is a file we cannot claim to understand,
 and guessing at one is how a reader starts returning plausible nonsense.
 
 ===========  ======  ===========  ==============================================
@@ -93,7 +93,7 @@ because on the specimens we hold they mark *padding*, not damage: all 85 sectors
 on Champions of Krynn side A's tracks 36-40 carry code 3, which is DOS error 21,
 "no sync character" -- what an unformatted track reads as -- and no sector chain
 on that disk leaves track 35.
-Refusing an image because it reports errors would refuse a perfectly readable
+Blocking an image because it reports errors would block a perfectly readable
 disk; hiding the codes would lose the evidence that says the padding is padding.
 
 **Only the standard 174848-byte image is writable.** Every other variant is
@@ -232,7 +232,7 @@ _TRACK_LAYOUT = ((17, 21), (24, 19), (30, 18), (MAX_TRACK_COUNT, 17))
 def sectors_per_track(track: int, track_count: int = TRACK_COUNT) -> int:
     """Number of sectors on ``track`` (1-based).
 
-    ``track_count`` defaults to 35, so a bare call still refuses track 36 --
+    ``track_count`` defaults to 35, so a bare call still blocks track 36 --
     which is what every existing caller means by it.
     """
     if not 1 <= track <= track_count:
@@ -498,7 +498,7 @@ class D64:
 
     def _require_writable(self) -> None:
         if not self._variant.writable:
-            _log.debug("refusing a write to a %d-byte D64 (%s); only standard "
+            _log.debug("blocking a write to a %d-byte D64 (%s); only standard "
                        "%d-byte 35-track images may be written",
                        self._variant.size, self._variant.description, IMAGE_SIZE)
             raise ReadOnlyImageError(self._variant.size, self._variant.description)
@@ -590,8 +590,8 @@ class D64:
         over. `os.replace` is atomic on POSIX: after it, the file is either
         entirely the old image or entirely the new one.
 
-        Refused on a read-only variant. `to_bytes` still works, so copying one
-        out remains possible; what is refused is this module putting its name to
+        Blocked on a read-only variant. `to_bytes` still works, so copying one
+        out remains possible; what is blocked is this module putting its name to
         a written image whose format it does not fully model.
 
         **`writable` is about the format and never about the filesystem**, and
@@ -600,7 +600,7 @@ class D64:
         a destination somebody chmodded to 444 is overwritten without complaint
         and comes back carrying the temporary's mode. Nothing in the open or
         save path calls `os.access` on the target, deliberately: an editor that
-        refused to save because a file was marked read-only would be refusing
+        that would not save because a file was marked read-only would be stopping
         something the operating system allows.
 
         **Windows does not allow it.** There `chmod(0o444)` sets the read-only
@@ -615,7 +615,7 @@ class D64:
         does, because that opens the destination `wb`. Every round of the
         staging bug -- #430, #455, #469, #472, #476, #487 -- is the second kind.
         And neither is the failure that started the family: a save disk the
-        *game* is handed write-protected has its writes refused by the
+        *game* is handed write-protected has its writes blocked by the
         emulated drive, silently, and that is not this program at all.
         """
         self._require_writable()

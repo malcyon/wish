@@ -129,7 +129,7 @@ def test_an_empty_list_is_an_empty_party():
     assert ap.walk(mem.read, row, BASE) == ()
 
 
-def test_a_list_that_comes_back_on_itself_is_refused():
+def test_a_list_that_comes_back_on_itself_is_blocked():
     row, mem = ap.ROWS["secret-of-the-silver-blades"], Memory()
     addrs = lay_party(mem, row, THREE)
     mem.long(addrs[2] + row.next_offset, addrs[0])
@@ -154,7 +154,7 @@ def test_a_pointer_in_the_targets_measured_memory_is_not_outside_it():
     assert "outside the Amiga's memory" not in str(caught.value)
 
 
-def test_an_odd_pointer_is_refused():
+def test_an_odd_pointer_is_blocked():
     row, mem = ap.ROWS["pool-of-radiance"], Memory()
     addrs = lay_party(mem, row, THREE)
     mem.long(addrs[0] + row.next_offset, addrs[1] + 1)
@@ -162,7 +162,7 @@ def test_an_odd_pointer_is_refused():
         ap.walk(mem.read, row, BASE)
 
 
-def test_a_pointer_outside_memory_is_refused_before_it_is_read():
+def test_a_pointer_outside_memory_is_blocked_before_it_is_read():
     row, mem = ap.ROWS["pool-of-radiance"], Memory()
     lay_party(mem, row, THREE)
     mem.long(BASE + row.head, 0x00F00000)
@@ -170,7 +170,7 @@ def test_a_pointer_outside_memory_is_refused_before_it_is_read():
         ap.walk(mem.read, row, BASE)
 
 
-def test_a_list_that_never_ends_is_refused():
+def test_a_list_that_never_ends_is_blocked():
     row, mem = ap.ROWS["curse-of-the-azure-bonds"], Memory()
     lay_party(mem, row, [(b"X%d" % i, 1, 1) for i in range(ap.MAX_RECORDS + 1)],
               slots=[8] * (ap.MAX_RECORDS + 1))
@@ -198,7 +198,7 @@ def test_more_than_eight_members_is_not_a_party():
     assert ap.read_party(target_for(key, mem)) is None
 
 
-def test_an_item_chain_that_loops_is_refused():
+def test_an_item_chain_that_loops_is_blocked():
     row, mem = ap.ROWS["curse-of-the-azure-bonds"], Memory()
     lay_party(mem, row, THREE, items=(2, 0, 0))
     party = ap.walk(mem.read, row, BASE)
@@ -434,7 +434,7 @@ def test_the_party_is_exactly_the_members_before_twenty_monsters(members):
     assert len(ap.walk(mem.read, ap.ROWS[key], BASE)) == members + 20
 
 
-def test_an_item_list_that_never_ends_is_refused():
+def test_an_item_list_that_never_ends_is_blocked():
     mem = Memory()
     row = ap.ROWS["pools-of-darkness"]
     lay_party(mem, row, THREE, items=(ap.MAX_NODES + 1, 0, 0))
@@ -446,7 +446,7 @@ def test_an_item_list_that_never_ends_is_refused():
     assert len(ap.walk(mem2.read, row, BASE)[0].items()) == ap.MAX_NODES
 
 
-def test_a_record_that_runs_past_the_end_of_memory_is_refused():
+def test_a_record_that_runs_past_the_end_of_memory_is_blocked():
     mem = Memory()
     row = ap.ROWS["curse-of-the-azure-bonds"]
     lay_party(mem, row, THREE)

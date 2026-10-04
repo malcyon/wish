@@ -122,7 +122,7 @@ def test_measure_writes_nothing_to_the_save_disk(tmp_path, clock):
     assert result["published_unchanged"] and result["working_unchanged"]
 
 
-def test_measure_refuses_without_a_fresh_mute_proof(tmp_path, clock):
+def test_measure_blocks_without_a_fresh_mute_proof(tmp_path, clock):
     guest = ScreenGuest(clock)
     stale = tmp_path / "stale.json"
     stale.write_text("{}")
@@ -223,7 +223,7 @@ def test_the_title_is_polled_until_its_guard_matches(tmp_path, clock):
     assert clock.sleeps.count(acceptance.TITLE_POLL) == 2
 
 
-def test_guarded_mode_without_a_guard_is_refused(tmp_path):
+def test_guarded_mode_without_a_guard_is_blocked(tmp_path):
     with pytest.raises(winuaesession.RouteError, match="guard"):
         acceptance.run_recon(
             _prepared(tmp_path), guest=FailedPostWriteGuest(),
@@ -262,11 +262,11 @@ def test_measure_never_presses_b_even_when_write_keys_replace_it(tmp_path, clock
             _measure(tmp_path / str(len(keys[0])), guest,
                      route=(("RET", "version"), ("B", "sheet")), write_keys=keys)
         except winuaesession.RouteError:
-            pass  # an empty entry is refused before anything is pressed
+            pass  # an empty entry is blocked before anything is pressed
         assert "B" not in _keys(guest)
 
 
-def test_measure_with_an_empty_route_is_refused(tmp_path, clock):
+def test_measure_with_an_empty_route_is_blocked(tmp_path, clock):
     guest = ScreenGuest(clock)
     with pytest.raises(winuaesession.RouteError, match="route step"):
         _measure(tmp_path, guest, route=())
@@ -662,7 +662,7 @@ def test_a_guard_map_for_the_measured_route_loads(tmp_path):
     assert "version" not in guards
 
 
-def test_guarded_mode_refuses_a_guard_map_missing_a_route_state(tmp_path):
+def test_guarded_mode_blocks_a_guard_map_missing_a_route_state(tmp_path):
     guards = screens.PixelGuards(_full_map(tmp_path, drop=("items",)))
     guest = FailedPostWriteGuest()
     with pytest.raises(winuaesession.RouteError, match="lacks.*items"):
@@ -713,14 +713,14 @@ def _rules(tmp_path, rule):
     {"sha256": "ab" * 32},
     ["box"],
 ])
-def test_a_malformed_guard_rule_is_refused_on_load(tmp_path, rule):
+def test_a_malformed_guard_rule_is_blocked_on_load(tmp_path, rule):
     with pytest.raises(winuaesession.RouteError, match="title"):
         screens.PixelGuards(_rules(tmp_path, rule))
 
 
 @pytest.mark.parametrize("box", [[0, 0, 8], [0, 0, 8, 8, 9], [0, 0, 721, 8],
                                  [0, 0, 8, 569], [8, 0, 8, 8], [-1, 0, 8, 8]])
-def test_a_guard_box_with_the_wrong_numbers_or_outside_the_image_is_refused(
+def test_a_guard_box_with_the_wrong_numbers_or_outside_the_image_is_blocked(
         tmp_path, box):
     shot = _image(tmp_path / "shot.png", (0, 51, 102))
     with pytest.raises(winuaesession.RouteError, match="invalid crop box"):

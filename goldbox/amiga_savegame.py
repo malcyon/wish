@@ -43,7 +43,7 @@ SAVE_DRAWER = "SAVE"
 SLOT_LETTERS = "ABCDEFGHIJ"
 # The Amiga engines load and save up to eight characters: Pool of Radiance's
 # loader (/program 0x272a6), Curse's (/Curse 0x2683e) and Silver Blades'
-# (/Secret 0x2796e) loop on the count with no cap, and add-character refuses
+# (/Secret 0x2796e) loop on the count with no cap, and add-character blocks
 # only above seven.
 PARTY_MAX = 8
 GAME_MODE_CAMP = 2
@@ -977,7 +977,7 @@ def read_por_characters(disk: AmigaDisk, slot: str,
     first missing `.sav`.
 
     Returned as a list rather than yielded, so a bad slot letter or a disk
-    with no save drawer is refused here and not at the first step of a loop.
+    with no save drawer is blocked here and not at the first step of a loop.
     """
     from . import amiga_por
     letter = _por_slot(slot)
@@ -1272,7 +1272,7 @@ def por_state_from_amiga(savgam: bytes, source: str = "") -> world_state.WorldSt
     return world_state.from_amiga(savgam, source=source)
 
 
-#: The travel grid used to be refused here, because two bytes of an outdoor
+#: The travel grid used to be blocked here, because two bytes of an outdoor
 #: Amiga saved game had never been seen.  **Both were measured on 2026-09-07**
 #: and both agree with DOS: byte 12810, the view type, is
 #: :data:`POR_VIEW_TYPE_OVERLAND` = 3, and byte 12803, the wall in front, is
@@ -1311,7 +1311,7 @@ def por_conversion_reason(area: int) -> "str | None":
 
     The mirror of `goldbox.dos_codec.conversion_reason`.  An area with no row has no
     disk number and no script.  **The three travel windows are no longer
-    refused**: areas 25, 26 and 27 have blocks in `ecl.dax` and the two bytes
+    blocked**: areas 25, 26 and 27 have blocks in `ecl.dax` and the two bytes
     that stopped this were measured (`#321 (An Amiga Pool of Radiance
     conversion refuses a party standing on the travel grid, because no
     outdoor Amiga saved game has ever been read)`).  Whether `ecl.dax` holds
@@ -2101,8 +2101,8 @@ def pod_from_amiga(data: bytes,
     Fills the same fields `world_state.pod_from_dos` does from the DOS
     container, so the two are equal for the same saved party.  The facing is
     halved to 0-3 as on DOS; the characters after the count are not read here.
-    A buffer that is not `POD_SAVEGAME_SIZE` long is refused, as
-    `pod_from_dos` refuses one that is not the container's size; `pod_parse`
+    A buffer that is not `POD_SAVEGAME_SIZE` long is blocked, as
+    `pod_from_dos` blocks one that is not the container's size; `pod_parse`
     itself takes any length so a truncated file can still be reported on.
     """
     if len(data) != POD_SAVEGAME_SIZE:
@@ -2229,7 +2229,7 @@ def pod_slots_present(disk: AmigaDisk) -> list[str]:
 
 
 def pod_read_slot(disk: AmigaDisk, slot: str) -> bytes:
-    """One slot's raw `SavGam<L>.pty` bytes, refusing a missing or short one."""
+    """One slot's raw `SavGam<L>.pty` bytes, blocking a missing or short one."""
     letter = slot_letter(slot)
     path = pod_slot_path(letter)
     try:
@@ -2332,7 +2332,7 @@ def pod_vault_to_amiga(vault: dos_codec.PodVault) -> bytes:
     For the DOS to Amiga direction (#194, commit 2): a DOS vault has no case,
     so every record becomes an ordinary head item -- a DOS type 105 record
     would ask the reader to chain-walk nodes that are not there, and is
-    refused as damaged.  Padding past the written heads, up to
+    blocked as damaged.  Padding past the written heads, up to
     `POD_VAULT_SIZE`, is left zero -- whether the game accepts that in place
     of its own item-template padding is #651's still-open padding question,
     settled by a WinUAE run rather than by this function.

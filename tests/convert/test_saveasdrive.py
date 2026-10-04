@@ -47,7 +47,7 @@ def test_save_as_twice_into_one_folder_publishes_both_times(tmp_path):
                             tmp_path, c64_folder=disk_dir())
         for _ in range(2)]
 
-    assert all("refused" not in r for r in reports), reports
+    assert all("stopped" not in r for r in reports), reports
     first, second = ([p for p in r["written"] if p.endswith(".D64")]
                      for r in reports)
     assert first and second and first != second
@@ -58,7 +58,7 @@ def test_a_real_rejection_names_its_class_and_writes_nothing(tmp_path):
     report = saveasdrive.save_as(_NoGameFiles(), _save_dir() / "SAVGAMA.DAT",
                                  "c64", tmp_path)
 
-    assert report["refused"][0] == "MissingAssets"
+    assert report["stopped"][0] == "MissingAssets"
     assert report["error"].startswith("MissingAssets: ")
     assert "written" not in report
     assert list(tmp_path.rglob("*.D64")) == []
@@ -105,7 +105,7 @@ def test_a_name_that_does_not_fit_is_reported_with_its_width(monkeypatch,
     _patch_save_as(monkeypatch, prepare)
     report = saveasdrive.save_as(_NoGameFiles(), "unused", "amiga", tmp_path)
 
-    assert report["refused"][0] == "NamesDoNotFit"
+    assert report["stopped"][0] == "NamesDoNotFit"
     assert report["unfit"] == [[0, "L" * 18]]
     assert report["width"] == 15
     assert "written" not in report

@@ -91,7 +91,7 @@ box took `ABCDEFGHIJKLMNO` and ignored `P` through `T`. The record's field is
 Two things the issue was unsure about:
 
 * **The game's own name entry takes a space happily**, so this is not a name
-  the Amiga would never make and refusing or folding it in our writer would
+  the Amiga would never make and blocking or folding it in our writer would
   take away a name the game itself offers a player. The box was `RENAME` rather
   than `CREATE NEW CHARACTER`; it is the same kind of prompt and a run that uses
   creation as well is cheap now.

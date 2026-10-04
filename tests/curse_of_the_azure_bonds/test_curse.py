@@ -197,7 +197,7 @@ def test_curse_slots_sit_at_4f00():
     assert sg0.slot(1).address == 0x5000
 
 
-def test_a_truncated_save_is_refused_by_size_not_decoded():
+def test_a_truncated_save_is_rejected_by_size_not_decoded():
     """Curse side B's 2032-byte `SAVEAZURE` is a demo party, not a save."""
     where = gamedata.curse_dir()
     if where is None:

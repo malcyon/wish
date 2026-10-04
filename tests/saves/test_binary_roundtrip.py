@@ -97,18 +97,18 @@ def test_a_character_record_round_trips_through_its_prg():
 # --- rubbish in --------------------------------------------------------------
 
 @pytest.mark.parametrize("data", [b"", b"\x00", bytes(1023), bytes(1025)])
-def test_a_geo_of_the_wrong_size_is_refused(data):
+def test_a_geo_of_the_wrong_size_is_blocked(data):
     with pytest.raises(GeoError):
         Geo(data)
 
 
 @pytest.mark.parametrize("data", [b"", b"\x01"])
-def test_a_prg_without_a_load_address_is_refused(data):
+def test_a_prg_without_a_load_address_is_blocked(data):
     with pytest.raises(ValueError, match="load address"):
         split_load_address(data)
 
 
-def test_a_truncated_record_is_refused():
+def test_a_truncated_record_is_blocked():
     with pytest.raises(ValueError):
         CharacterRecord(bytes(RECORD_SIZE - 1))
 

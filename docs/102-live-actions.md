@@ -38,8 +38,8 @@ so `2` is COMBAT in all three and only the address is per title.
 It is `automap.c64.C64Machine.mode_flag` — CONFIRMED for Pool of Radiance, Curse and Silver
 Blades, None for the three Krynn-era titles, whose loaders have not been read.
 Silver Blades has been watched through a real fight: `1` `DUNGEON` → `4`
-`COM.PREP` → `2` `COMBAT`, with the three combat-illegal actions refusing on
-the `2`. An action whose title has None **refuses**, with the reason in its
+`COM.PREP` → `2` `COMBAT`, with the three combat-illegal actions blocking on
+the `2`. An action whose title has None **blocks**, with the reason in its
 tooltip and in the `Outcome`: reading Pool of Radiance's byte on a Curse
 machine would answer "not combat" whatever the game was doing, which is a gate
 that is open rather than a gate that is missing.
@@ -107,7 +107,7 @@ went 8 → 9 mid-fight at `$6E11 = 2`. See
 
 **A character at zero is skipped.** Zero is dead or dying and whatever else
 marks that is not decoded, so raising the byte alone would be the half-write
-levelling refuses over. The outcome says whom it skipped.
+levelling stops on. The outcome says whom it skipped.
 
 ### 2. Store and restore memorized spells — `store-spells`, `restore-spells`
 
@@ -178,7 +178,7 @@ experience for another level. The card is which character it means.
 
 **Pool of Radiance, Curse and Silver Blades.** `GEN` is a different build in every
 title, so each title's trainer was measured on its own (`levels.TRAINER_MEASURED`),
-and `level_up_blockers` refuses any other title by name and the button is not
+and `level_up_blockers` blocks any other title by name and the button is not
 drawn at all — [levelling](135-levelling.md), "One title, and it says so".
 
 **It does not ask which class.** A multi-class character with two ready gets
@@ -199,7 +199,7 @@ is non-empty and the window asks first; otherwise nothing is asked.
 | `spells_castable` | the class table plus the wisdom bonus, cleric in the high nibble |
 | thief skills | the level row plus the racial row, and no ability score |
 | which class | `best_next_class`, not the player: highest post-level threshold. `class_for(record)` is the answer, and an explicit `class_name` still overrides |
-| a magic-user's new spell | **chosen**, from `offers(record)`. The action refuses without one rather than picking. Asked *after* the class, since only then is it known whether it is needed |
+| a magic-user's new spell | **chosen**, from `offers(record)`. The action blocks without one rather than picking. Asked *after* the class, since only then is it known whether it is needed |
 
 `level_up_blockers()` survives as the gate: any field it writes that is not
 CONFIRMED in `goldbox/layout.py` stops the action dead. It is empty today, and it
@@ -210,7 +210,7 @@ the rest of the coin to platinum; that is what a school costs rather than what
 a level costs, so none of the seven coin fields is written, and neither is
 movement. **Healing is done**, because the trainer does it: current hit points
 end at the *new* maximum, after the die has been rolled. A character at 0 is
-refused rather than healed, for the reason `HealParty` gives.
+blocked rather than healed, for the reason `HealParty` gives.
 
 ---
 
@@ -331,7 +331,7 @@ writes the game's own move statements past the area script
 
 * Each action's effect is visible in the game's own display without reloading —
   **done for `heal`**, and the party list is where it shows.
-* Each action refuses in combat where it should, and says why — tested.
+* Each action blocks in combat where it should, and says why — tested.
 * A save taken after an action loads clean, and `wish export` on it
   round-trips byte-identical — **not yet run**.
 * With no emulator attached the buttons are disabled, not merely inert.

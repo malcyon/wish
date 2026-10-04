@@ -59,7 +59,7 @@ def test_the_flag_block_comes_out_of_any_container_it_arrives_in():
         assert book.flags(source).to_bytes() == want
 
 
-def test_a_block_of_the_wrong_length_is_refused():
+def test_a_block_of_the_wrong_length_is_blocked():
     with pytest.raises(ValueError):
         book.flags(b"\0" * 12)
 

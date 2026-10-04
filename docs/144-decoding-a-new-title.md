@@ -274,7 +274,7 @@ into the item area is reverted, because that region is fed from a master
 elsewhere.
 
 **Validate before trust.** Overlays make every address conditional, so read the
-region, check it still decodes as a sane party, and refuse to draw or write if
+region, check it still decodes as a sane party, and will not draw or write if
 it does not. `automap.target._plausible` and `PartyFix` exist for exactly that,
 and for writes the check is mandatory.
 
@@ -312,14 +312,14 @@ layers as working code in `automap/vice.py`, `tools/c64/session.py` and
    mismatch is logged loudly rather than averaged away.
 2. **Every square the party occupies is walkable** in the decoded map.
 3. **Every completed step crossed a passable edge.**
-4. **Every refused step corresponds to an impassable edge.** The strongest single
+4. **Every blocked step corresponds to an impassable edge.** The strongest single
    observation available: impassable edges are rare, so **one blocked step identifies
    the map** where positive evidence alone needs 111 steps.
 5. **Area identification switches on exactly the boundary step**, to the file the
    independent map-matching named for that area.
 
 **The map fact is that the *square* did not change on a forward step, and that
-is the only thing to assert.** A refused move costs no time on Curse (four turns
+is the only thing to assert.** A blocked move costs no time on Curse (four turns
 and one blocked step at an unchanged clock) or Silver Blades (four bumps at `(3,3)`
 left the clock at `0:05`), so "the clock changed" is evidence of neither
 movement nor a blocked step. `automap.state`'s `_refused` infers a one-minute cost and

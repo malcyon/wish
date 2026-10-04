@@ -26,7 +26,7 @@ this copy rather than against `goldbox/areas.py`'s -- catching either table
 going stale on its own.
 
 Everything else is the shipped conversion.  No byte comes from another save:
-`goldbox.dos_codec.new_save` refuses a payload with an unsourced byte in it, and
+`goldbox.dos_codec.new_save` rejects a payload with an unsourced byte in it, and
 the two things no DOS save can supply -- the 36-byte combat icon and
 `ANIMATE00` -- are read off the player's own Curse sides at run time.
 """
@@ -130,7 +130,7 @@ def game_files(disks: pathlib.Path) -> tuple[IconParts, bytes]:
     -- `goldbox/iconparts.py` reads `SPELLE64` byte-identical in all three
     titles -- and `ANIMATE00` is on the sides that carry an area.  Neither
     can come from a DOS save and neither has a default: a conversion that
-    cannot read them refuses rather than inventing bytes.
+    cannot read them rejects rather than inventing bytes.
     """
     icon = animate = None
     for path in sorted(disks.glob("*.[dD]64")):

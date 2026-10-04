@@ -880,7 +880,7 @@ def areas_for(title: str | None) -> tuple[Area, ...]:
 
     **This is the knowledge, not the permission.** It answers with Silver
     Blades' twenty-two rows; `areas_for_title` below is the one a fast travel
-    asks, and it still refuses them. Use this for labelling a map, for a
+    asks, and it still blocks them. Use this for labelling a map, for a
     report, or for anything that only reads.
     """
     return TABLES.get(title or "", ())
@@ -959,7 +959,7 @@ def geos_in(title: str | None) -> frozenset[str]:
     """Every map any area of this title loads.
 
     The set a `GEO` number read out of a saved game is checked against, so
-    that a number nothing could have loaded is refused rather than written
+    that a number nothing could have loaded is blocked rather than written
     into a converted save. It is the *union* of the rows and not a range:
     `GEO0C` is in no row (`areas_for_geo("GEO0C")` is empty) and 12 is inside
     any range anybody would write.
@@ -967,7 +967,7 @@ def geos_in(title: str | None) -> frozenset[str]:
     **The set can be short of what a title's disks hold**, because two Pool
     of Radiance rows are `dynamic_geo` -- their script chooses its map at run
     time and their `geos` entry is the doc's inference from the id, which is
-    known to be wrong for both. If this ever refuses a save the game itself
+    known to be wrong for both. If this ever blocks a save the game itself
     wrote, the row is what is incomplete.
     """
     return frozenset(g for a in areas_for(title) for g in a.geos)

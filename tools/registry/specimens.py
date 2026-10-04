@@ -31,7 +31,7 @@ remembering to look.
 **A file with no `provenance.toml` covering it is not a specimen.**  Every
 specimen answers, in that file: who made it and how, when, which title and
 platform, what was done to it in the game, whether it has ever been opened in
-an editor, and the hash of every file it holds.  `add` refuses to create one
+an editor, and the hash of every file it holds.  `add` declines to create one
 without the required fields; `check` and `list` flag any file in the tree
 that no `provenance.toml` accounts for.
 
@@ -81,7 +81,7 @@ tool, not a silent re-add.
 **`repair` is the one exception, and it is deliberately narrow.**  It closes a
 directory entry the emulated drive never closed -- `#298 (A save disk copied
 out of an emulator slot before the drive closes the file cannot be loaded by
-the game)`, two bytes, the type byte and the block count -- and refuses if
+the game)`, two bytes, the type byte and the block count -- and rejects if
 anything else would move, if any file would fail to read back identically, or
 if the specimen no longer matches its own manifest.  It sets
 `edited_afterwards` and rewrites the hash, because the edit is real however
@@ -111,7 +111,7 @@ PLATFORMS = ("c64", "dos", "amiga")
 #: character file) and #331 (Amiga Silver Blades asks a journal word before it
 #: will adventure, so the title cannot be driven past its party menu) before
 #: this tool took Amiga specimens at all, and both picked this same form.
-#: `add` refuses a title that is not here rather than guessing an abbreviation.
+#: `add` rejects a title that is not here rather than guessing an abbreviation.
 #: `pod` is the fourth, added for #575 so the engine-written Pools of
 #: Darkness containers a `tools/dos/dospod.py` drive left in scratch could be
 #: kept somewhere that is not gitignored.
@@ -242,7 +242,7 @@ def _unclosed_c64_entries(path: pathlib.Path) -> list:
     type byte clear (`$02` rather than `$82`, `*PRG` in a listing) and fills
     the block count in only when the file is closed. A disk pulled out of an
     emulator slot before the drive finished writing back looks exactly like
-    that, and the game refuses to load it -- `60, WRITE FILE OPEN`. See
+    that, and the game declines to load it -- `60, WRITE FILE OPEN`. See
     `tools/curse_of_the_azure_bonds/curseload.py`'s `close_splat()`, which repairs a copy of one.
 
     A path that does not parse as a recognised D64 size is not this check's
@@ -258,9 +258,9 @@ def _unclosed_c64_entries(path: pathlib.Path) -> list:
     return [e for e in image.iter_directory() if not e.is_closed]
 
 
-def _refuse_character_without_items(sources: list[pathlib.Path]) -> None:
-    """Refuse a DOS `CHRDAT??.SAV` whose `item_count` is above zero when no
-    source is the item file beside it: `read_character` refuses that folder,
+def _require_items(sources: list[pathlib.Path]) -> None:
+    """Reject a DOS `CHRDAT??.SAV` whose `item_count` is above zero when no
+    source is the item file beside it: `read_character` rejects that folder,
     so registering it would leave a specimen every rewrite test trips on.
 
     A length that is no known record is skipped, for the reason
@@ -296,7 +296,7 @@ def add(platform: str, name: str, sources: list[pathlib.Path], *,
         edited_afterwards: bool = False, root: pathlib.Path | None = None
         ) -> pathlib.Path:
     """Copy `sources` into the tree as one specimen and write its
-    `provenance.toml`.  Refuses rather than overwriting: an existing
+    `provenance.toml`.  Rejects rather than overwriting: an existing
     specimen is not replaced, because replacing it silently is exactly the
     failure this tree exists to prevent.
     """
@@ -315,7 +315,7 @@ def add(platform: str, name: str, sources: list[pathlib.Path], *,
         if not s.is_file():
             raise ValueError(f"not a file: {s}")
     if platform == "dos":
-        _refuse_character_without_items(sources)
+        _require_items(sources)
     if platform == "c64":
         for s in sources:
             unclosed = _unclosed_c64_entries(s)
@@ -327,7 +327,7 @@ def add(platform: str, name: str, sources: list[pathlib.Path], *,
                 raise ValueError(
                     f"{s} has a directory entry the drive never closed -- "
                     f"{names}. The 1541 still believes this file is open "
-                    f"for writing and the game will refuse to load it "
+                    f"for writing and the game will decline to load it "
                     f"(`60, WRITE FILE OPEN`); this is not a corrupt "
                     f"payload, it is a save copied out of the emulator "
                     f"slot before the drive finished writing back (#298), "
@@ -496,7 +496,7 @@ def check_specimens(root: pathlib.Path | None = None) -> list[str]:
 
 
 def unloadable_specimens(root: pathlib.Path | None = None) -> list[dict]:
-    """Every C64 specimen in the tree the game itself would refuse to load.
+    """Every C64 specimen in the tree the game itself would decline to load.
 
     The same test `add` applies at the door -- a directory entry whose top
     type-byte bit the drive never set -- run over what is already here, since
@@ -551,7 +551,7 @@ def repair_unloadable(name: str, *, note: str, root: pathlib.Path | None = None,
     byte and block count, that every entry that was already closed is
     untouched, and that every file on the disk reads back byte for byte
     identical through `D64.read_file`.  A specimen whose bytes no longer match
-    its own manifest is refused outright, because repairing over drift would
+    its own manifest is rejected outright, because repairing over drift would
     hide the drift.
 
     `note` goes into the provenance as `issue_note` and is the caller's to
@@ -673,7 +673,7 @@ def correct_what(name: str, *, what: str, reason: str,
     For a provenance that was written wrongly, not for a specimen that changed:
     `edited_afterwards` stays as it was.  The old text, the date and `reason`
     are appended to `issue_note`, so the correction is itself on record.  A
-    specimen whose files no longer match the manifest is refused, since the
+    specimen whose files no longer match the manifest is rejected, since the
     manifest is what is being copied over unchanged.
     """
     root = root or tree_root()
@@ -731,7 +731,7 @@ def correct_what(name: str, *, what: str, reason: str,
                     or back.get("issue_note") != fields["issue_note"]:
                 raise ValueError(f"{name}: the rewritten provenance.toml does "
                                  f"not read back as written; left unchanged")
-            # Windows refuses to replace a file whose read-only attribute is
+            # Windows declines to replace a file whose read-only attribute is
             # set, whatever its directory allows.
             prov_path.chmod(stat.S_IREAD | stat.S_IWRITE)
             os.replace(tmp, prov_path)
@@ -761,7 +761,7 @@ def cmd_add(args: argparse.Namespace) -> int:
                    what=args.what, command=args.command, created=args.created,
                    edited_afterwards=args.edited)
     except (ValueError, FileExistsError) as exc:
-        print(f"refused: {exc}")
+        print(f"rejected: {exc}")
         return 1
     print(f"added {dest}")
     return 0
@@ -774,7 +774,7 @@ def cmd_repair(args: argparse.Namespace) -> int:
             report = repair_unloadable(name, note=args.note,
                                        dry_run=args.dry_run)
         except ValueError as exc:
-            print(f"refused: {exc}")
+            print(f"rejected: {exc}")
             rc = 1
             continue
         head = "would repair" if args.dry_run else "repaired"
@@ -798,7 +798,7 @@ def cmd_correct(args: argparse.Namespace) -> int:
     try:
         r = correct_what(args.name, what=args.what, reason=args.reason)
     except ValueError as exc:
-        print(f"refused: {exc}")
+        print(f"rejected: {exc}")
         return 1
     print(f"corrected {r['name']}\n  was: {r['was']}\n  now: {r['now']}")
     return 0
@@ -832,7 +832,7 @@ def cmd_check(args: argparse.Namespace) -> int:
     # decision rather than a repair -- see `unloadable_specimens`.
     open_files = unloadable_specimens(root)
     if open_files:
-        print(f"\n{len(open_files)} specimen(s) the game itself would refuse "
+        print(f"\n{len(open_files)} specimen(s) the game itself would reject "
               f"to load -- a directory entry the drive never closed, "
               f"#298 (A save disk copied out of an emulator slot before the "
               f"drive closes the file cannot be loaded by the game). The "

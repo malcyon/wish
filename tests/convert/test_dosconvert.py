@@ -1311,7 +1311,7 @@ def test_a_writer_narrowed_inventory_still_reaches_losses_through_the_party_save
 
 
 @needs_dos_saves
-def test_a_template_from_another_area_is_moved_not_refused():
+def test_a_template_from_another_area_is_moved_not_blocked():
     """`$FF` in all twenty-five slots, then slot 2 = the `GEO`, slot 8 = the
     area id and slot 11 = `ANIMATE00`. The arriving script's entry 4 refills
     the rest, CONFIRMED twice in the running game
@@ -1381,7 +1381,7 @@ def test_a_template_already_in_the_area_is_moved_like_any_other():
 def test_an_area_that_names_no_map_takes_the_one_the_save_names():
     """Six of the thirty areas name no map of their own: the four whose script
     loads none and the two that pick one at run time.  All six used to be
-    refused, on the reasoning that guessing a map is what writes a save that
+    blocked, on the reasoning that guessing a map is what writes a save that
     loads and hangs -- and the training hall is one of them, so a player who
     saved there got `Saves from this location are not supported.` (#257).
 
@@ -1408,7 +1408,7 @@ def test_an_area_that_names_no_map_takes_the_one_the_save_names():
 
 
 @needs_dos_saves
-def test_a_resident_map_no_area_loads_is_refused():
+def test_a_resident_map_no_area_loads_is_blocked():
     """`$49C5` is trusted, and trusted is not unchecked.  `GEO0C` is on no
     disk and in no row, so a save claiming it is either not a save this
     reader understands or an area table with a row missing -- and either way
@@ -1423,7 +1423,7 @@ def test_a_resident_map_no_area_loads_is_refused():
 
 
 @needs_dos_saves
-def test_a_resident_map_that_contradicts_the_area_is_refused():
+def test_a_resident_map_that_contradicts_the_area_is_blocked():
     """The other check on `$49C5`.  Area 20 loads `GEO14` and nothing else, so
     a save that says the party is in area 20 with `GEO15` resident is two
     sources disagreeing, and neither is trusted over the other.  Twelve of
@@ -1450,7 +1450,7 @@ def test_a_training_hall_save_converts_into_the_hall_on_new_phlans_map():
     screen.
 
     Reading the map as the area put the party in New Phlan; reading the area
-    as the map refused the save.  Both words are read, each from its own
+    as the map blocked the save.  Both words are read, each from its own
     address, and the two disagreeing is the point rather than a fault.
     """
     where = gamedata.specimen("por-party-trained-c2")
@@ -1555,7 +1555,7 @@ def _mismatched_savgam(indoors_word: int, area: int, script: int) -> bytes:
     """A `SAVGAM` whose own `$49E6` disagrees with what `goldbox/areas.py` says
     about its script id -- never seen on a real disk (#59 is 3 of 3
     agreeing), but reachable by a corrupt or hand-edited save now that #50 no
-    longer refuses all outdoor input.  Built from nothing rather than a real
+    longer blocks all outdoor input.  Built from nothing rather than a real
     specimen, because the whole point is a save no real disk has ever held."""
     savgam = bytearray(sg.SAVGAM_SIZE)
     sg.put_word(savgam, sg.INDOORS, indoors_word)
@@ -1564,12 +1564,12 @@ def _mismatched_savgam(indoors_word: int, area: int, script: int) -> bytes:
     # A party in the world, not one that has never set out: a container
     # built from nothing is all zero, which is exactly the never-adventured
     # signature `dos_codec.never_adventured` reads (#301, #326), and such a save
-    # is converted to the start rather than refused.  Stage a script.
+    # is converted to the start rather than blocked.  Stage a script.
     _stage_a_script(savgam)
     return bytes(savgam)
 
 
-def test_an_outdoor_bit_with_an_indoor_script_id_is_refused():
+def test_an_outdoor_bit_with_an_indoor_script_id_is_blocked():
     """`$49E6` = 0 (outdoors) but the script id names an indoor area.
 
     The compare used to run inside `apply_file_cache` itself; it is
@@ -1583,7 +1583,7 @@ def test_an_outdoor_bit_with_an_indoor_script_id_is_refused():
         world_state.from_dos(savgam)
 
 
-def test_an_indoor_bit_with_an_outdoor_script_id_is_refused():
+def test_an_indoor_bit_with_an_outdoor_script_id_is_blocked():
     """`$49E6` != 0 (indoors) but the area, `$49F2`, is one of the three
     overland windows.  It read `$49C5` here until #257 established that the
     area is the script word indoors as well as out."""
@@ -1805,7 +1805,7 @@ def test_the_pool_of_radiance_layout_is_the_table_it_was_read_from():
         == dos_port.LAYOUT
 
 
-def test_a_record_of_an_unknown_length_is_refused():
+def test_a_record_of_an_unknown_length_is_blocked():
     """A file that is not one of the four sizes names no title, and guessing
     is how a reader hands back rubbish that looks like a character."""
     with pytest.raises(dos_codec.DosRecordError):
@@ -2159,7 +2159,7 @@ def test_a_save_built_from_nothing_accounts_for_every_byte():
 
 @needs_dos_saves
 def test_the_combat_icons_of_the_party_are_the_ones_creation_writes():
-    """Zero is refused here (#57): screen code 0 in `CHARPIC00` is a real
+    """Zero is blocked here (#57): screen code 0 in `CHARPIC00` is a real
     glyph, so a zeroed 36-byte icon draws as a 3x3 block of black hooks on the
     combat arena rather than as nothing.
 
@@ -2517,7 +2517,7 @@ def test_convert_save_with_no_animate_reports_the_region_as_inherited():
     The cache is written to say slot 11 is resident whatever happens, so a
     caller that does not supply the file has produced a save asserting
     `ANIMATE00` is in memory over bytes nobody looked at. `new_save` is what
-    refuses that; the report is what makes it visible to anything else, and
+    blocks that; the report is what makes it visible to anything else, and
     a well-meant "just zero it" here would put the assertion back over a page
     of zeros with nothing left to notice.
     """
@@ -2532,7 +2532,7 @@ def test_convert_save_with_no_animate_reports_the_region_as_inherited():
 
 
 @needs_dos_saves
-def test_a_wrong_sized_animate_is_refused_rather_than_written():
+def test_a_wrong_sized_animate_is_blocked_rather_than_written():
     """852 bytes on all eight `POOL` sides. Something else is not the file,
     and writing it would put the wrong bytes under a cache entry that says
     they are the right ones.
@@ -2595,7 +2595,7 @@ def test_an_outdoor_dos_save_builds_a_whole_c64_save(tmp_path):
     `apply_position` writes `$49C0`-`$49C2` on its **indoor** branch only:
     outdoors the square is the travel pair `$49C3`/`$49C4` and those three
     bytes are nobody's.  With a template underneath that was "left alone";
-    from nothing it is three bytes with no source, so `new_save` refused
+    from nothing it is three bytes with no source, so `new_save` blocked
     every outdoor save there is -- `3 bytes of the save have no source ...
     the first is SAVEDGAME0 $49C0`.
 
@@ -2745,7 +2745,7 @@ def test_a_party_that_has_not_set_out_is_read_off_the_container_not_the_area_wor
 
 def test_a_pool_of_radiance_party_that_has_not_set_out_converts_to_new_phlan():
     """`$49E6` is 0 in such a save because the initialiser left it 0, and
-    New Phlan is indoors, so the indoors compare refused every one of the
+    New Phlan is indoors, so the indoors compare blocked every one of the
     seven (#326).  Now the start row says where the party goes -- area 0,
     `GEO00`, POOL3, `15,1` facing west -- and `$49E6` is written 1 from
     the row rather than compared against the initialiser."""
@@ -2802,7 +2802,7 @@ def test_a_conversion_with_no_disks_at_all_gives_every_character_his_own_face(
     carries no portrait line.
 
     `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs the import
-    working for all three C64 titles)` had this refuse for one night --
+    working for all three C64 titles)` had this stop for one night --
     `NoPortraitTablesError`, a sentence Donald never approved -- and the
     rejection, the sentence and the exception are all gone.  Watched failing
     with the fallback in `to_neutral` taken out: the switch comes out
@@ -2872,7 +2872,7 @@ def test_a_real_never_adventured_party_converts_and_the_player_is_told():
     """`WISH-SPEC-por-304-modify-exited` slot C: two fighters rolled in the
     game's own CREATE NEW CHARACTER, added to the party and saved from the
     party-formation menu, never having pressed `BEGIN ADVENTURING`.  It was
-    refused with the `$49E6` message until #326; it converts to the start
+    blocked with the `$49E6` message until #326; it converts to the start
     of the story now, and the one sentence Donald approved on #301 is on
     the report for the messages pane."""
     where = gamedata.specimen("por-304-modify-exited")

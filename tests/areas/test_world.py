@@ -58,7 +58,7 @@ def test_the_documented_sizes_add_up():
     assert MIN_FILE_SIZE == GRID_SIZE + TILE_TABLE_SIZE == 2808
 
 
-def test_a_short_payload_is_refused():
+def test_a_short_payload_is_rejected():
     with pytest.raises(WorldError):
         Window(synthetic_window()[:MIN_FILE_SIZE - 1])
 
@@ -272,7 +272,7 @@ def test_identify_names_the_window_a_block_is_or_nearly_is():
     bad = bytearray(grids[0])
     bad[7] = TILE_COUNT
     assert world.identify(bytes(bad)) is None
-    # Nothing near any window is refused, however far the nearest is.
+    # Nothing near any window is rejected, however far the nearest is.
     assert world.identify(bytes(GRID_SIZE)) is None
     far = bytearray(grids[2])
     for at in range(SITE_PAINT_TOLERANCE + 1):
@@ -292,7 +292,7 @@ def test_identify_accepts_exactly_the_tolerance_and_no_more():
 
 
 @needs_disks
-def test_identify_refuses_a_block_of_the_wrong_length():
+def test_identify_rejects_a_block_of_the_wrong_length():
     world = World.from_disks(_pool_disks())
     grid = world.windows[1].to_bytes()[:GRID_SIZE]
     assert world.identify(grid[:-1]) is None

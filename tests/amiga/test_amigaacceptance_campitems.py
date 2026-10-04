@@ -69,7 +69,7 @@ def test_pool_takes_items_for_a_line_the_party_has_and_no_sheet(text, why):
 # Pools of Darkness' item routine is read now, so only Curse is left without one; the message
 # names the three titles that have it.
 @pytest.mark.parametrize("name", ["curse"])
-def test_items_is_refused_for_a_title_whose_item_routine_is_unread(name):
+def test_items_is_blocked_for_a_title_whose_item_routine_is_unread(name):
     with pytest.raises(RouteError, match="item list is built for Pool of Radiance, "
                                          "Pools of Darkness and Silver Blades only"):
         route_camp.parse_steps("items 2", name)
@@ -108,13 +108,13 @@ def test_ready_presses_np2_down_to_the_row_then_r_on_the_redrawn_row():
     ("ready 1", "is not ready N I"),
     ("ready x 1", "is not ready N I"),
 ])
-def test_ready_refuses_a_place_that_is_not_a_line_and_row(text, why):
+def test_ready_blocks_a_place_that_is_not_a_line_and_row(text, why):
     with pytest.raises(RouteError, match=why):
         route_camp.validate_steps((text,), 6, name="darkness")
 
 
 @pytest.mark.parametrize("name", ["pool", "ssb", "curse"])
-def test_ready_is_refused_for_a_title_whose_ready_routine_is_unread(name):
+def test_ready_is_blocked_for_a_title_whose_ready_routine_is_unread(name):
     with pytest.raises(RouteError, match="READY is built for Pools of Darkness only"):
         route_camp.validate_steps(("ready 1 1",), 4, name=name)
 
@@ -336,7 +336,7 @@ def test_a_screen_that_does_not_come_back_stops_the_run_with_nothing_more_presse
     assert _after_camp(guest) == ["NP1", "NP1", "V", "I", "E"]
 
 
-def test_a_guard_map_without_the_items_screens_is_refused_before_a_key_is_pressed(
+def test_a_guard_map_without_the_items_screens_is_blocked_before_a_key_is_pressed(
         tmp_path, clock):
     class Lacking(PoolCampGuard):
         def __contains__(self, state):

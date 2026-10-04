@@ -94,7 +94,7 @@ added hostile NPC attacks you once combat starts.
 |---|---|
 | Pools of Darkness | hex-edit `savgam@.pty` (`@` = `A`…`J`), set offsets **18, 21, 197** to **1** |
 | Dark Queen of Krynn | the same three offsets, set to **2** |
-| Gateway to the Savage Frontier | `ECL5` records 98 and 99; swapping 99 over 19 (Sundabar) triggered the menus but every jump then demanded a disk the loader refused |
+| Gateway to the Savage Frontier | `ECL5` records 98 and 99; swapping 99 over 19 (Sundabar) triggered the menus but every jump then demanded a disk the loader blocked |
 | Buck Rogers: Matrix Cubed | playtester text at `ECL` 2; never made to run |
 | Secret of the Silver Blades, Treasures of the Savage Frontier | **no spare area id in either `GEO` or `ECL`** — searched exhaustively |
 | Pool of Radiance, Curse, Champions, Death Knights, Silver Blades | never reported |

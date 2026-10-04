@@ -1087,7 +1087,7 @@ def test_a_hand_edited_row_of_heights_that_is_not_one_opens_at_the_defaults():
     """The settings file is documented as one you can read and fix, so
     everything a person can type into it has to be survivable.
 
-    The whole row is refused rather than mended, for `Settings.column_widths`'
+    The whole row is blocked rather than mended, for `Settings.column_widths`'
     reason: a mended row is part somebody's and part ours. Zero passes,
     because zero is a row dragged shut.
     """

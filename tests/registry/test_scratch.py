@@ -39,7 +39,7 @@ def test_ensure_creates_the_directory_and_its_parents(tmp_path):
 
 
 @pytest.mark.parametrize("bad", ["", ".", "..", "a/b", "../x", "a\\b"])
-def test_a_name_that_could_leave_its_own_directory_is_refused(bad):
+def test_a_name_that_could_leave_its_own_directory_is_rejected(bad):
     with pytest.raises(ValueError):
         scratch.scratch_dir(bad)
     with pytest.raises(ValueError):

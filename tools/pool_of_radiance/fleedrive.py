@@ -46,7 +46,7 @@ Everything goes to `--out`: `run.jsonl` one event per line, `screens.txt` the
 distinct screens in order, `after.json` the program-counter samples taken once
 the outcome line is up, and `outcome-line.png`.  Nothing here writes to the
 player's disks -- `stage_disks` copies the sides and the save into the pool
-slot, and `Session.attach` refuses a path outside it.
+slot, and `Session.attach` rejects a path outside it.
 
 Written for `#445 (The game's third fight outcome, THE PARTY RUNS AWAY, has
 never been seen on a screen)`.
@@ -564,7 +564,7 @@ class Flight:
                         return "FLEE"
                     break
                 if bar is not None and bar.kind == S.BAR_MOVE:
-                    continue            # the step was refused; try another
+                    continue            # the step was rejected; try another
                 break
             key = step_to_edge(b, me, avoid)
             if key is None:

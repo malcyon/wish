@@ -1128,7 +1128,7 @@ def test_the_icon_from_a_c64_party_reaches_the_written_record(tmp_path):
 
 
 def test_a_hand_authored_icon_does_not_fail_the_whole_party(tmp_path):
-    """`recognise` refuses a figure the game's own ICON menu never composed
+    """`recognise` blocks a figure the game's own ICON menu never composed
     (SHARA THE GRAY's, #130); `c64_party` catches that for one character
     rather than losing every character's figure to it.
 
@@ -1405,7 +1405,7 @@ def test_two_characters_of_the_same_name_get_different_identity_bytes():
 
     The engine's "is this character already in the party" test is the name
     **and** this byte, so two converted characters sharing a name were the
-    same character to it and the second was silently refused -- no message,
+    same character to it and the second was silently blocked -- no message,
     the entry starred as though added, the roster simply not gaining a line.
     Measured in a driven DOSBox session by `tools/dos/dosaddchar.py`.
 
@@ -1588,7 +1588,7 @@ def test_a_truncated_name_reaches_the_party_reports_losses(tmp_path,
                                                             monkeypatch):
     """A per-character loss -- here a name too long for the fifteen-byte
     DOS field -- reaches `report.losses`, not just `report.warnings`, so
-    `editor/saveplan.py`'s guard can refuse the Save As rather than write it
+    `editor/saveplan.py`'s guard can block the Save As rather than write it
     silently."""
     from goldbox import areas
 
@@ -1639,7 +1639,7 @@ def test_every_shipped_record_writes_the_identity_its_own_bytes_derive():
     eighteen, nothing in `identity_byte` prevents it, and changing one byte
     of the record re-rolls every digest: writing `attack_level` as the DOS
     engine's own constant moved SILAS onto GILES's 240 in the archives'
-    party A.  Neither is refused by the engine, because `GILES` and `SILAS`
+    party A.  Neither is blocked by the engine, because `GILES` and `SILAS`
     part company at the name.  What is still asserted is the entropy the
     fix does rest on -- a digest that collapsed to a constant or to a
     handful of values fails the distinct-value count below, as `return 0`
@@ -2211,7 +2211,7 @@ def test_write_dos_save_writes_a_readable_party(tmp_path):
 
 
 @needs_dos_saves
-def test_write_dos_save_refuses_to_write_into_the_template(tmp_path):
+def test_write_dos_save_blocks_to_write_into_the_template(tmp_path):
     save0, save1 = _fixture_payloads()
     with pytest.raises(dos_codec.DosRecordError):
         dos_codec.write_dos_save(save0, save1, _save_dir(), _save_dir(), "A")
@@ -2531,7 +2531,7 @@ def test_a_party_from_another_area_lands_in_its_own_area(tmp_path):
 
 
 @needs_dos_saves
-def test_a_conversion_with_no_game_files_refuses_rather_than_borrowing_an_area(
+def test_a_conversion_with_no_game_files_blocks_rather_than_borrowing_an_area(
         tmp_path):
     """With no `ECL<n>.DAX` the party's own area cannot be staged, and the
     only other answer is the area somebody else's save was made in.
@@ -2550,7 +2550,7 @@ def test_a_conversion_with_no_game_files_refuses_rather_than_borrowing_an_area(
         dos_codec.write_dos_save(save0, None, _save_dir(), tmp_path / "out", "A",
                            game=empty)
     assert "ECL2.DAX" in str(e.value)
-    # And nothing was written, so a slot the conversion refuses is a slot the
+    # And nothing was written, so a slot the conversion blocks is a slot the
     # previous conversion left alone.
     assert not (tmp_path / "out" / "SAVGAMA.DAT").exists()
 
@@ -2562,7 +2562,7 @@ def test_savgam_writes_reads_the_resident_geo_from_the_c64_saves_own_word():
     Area 11, the training hall, is where the two words part company: its
     script loads no map at all, so an engine-written save there holds
     `$49C5` = 0 with `$49F2` = 11.  `dos_codec.write_dos_save` cannot reach this --
-    `move_reason` refuses area 11 before `savgam_writes` is ever called,
+    `move_reason` blocks area 11 before `savgam_writes` is ever called,
     which is the rejection the issue says hides the fault -- so this calls
     `savgam_writes` directly, the same way that caller does.
     """
@@ -2591,7 +2591,7 @@ def test_an_area_with_no_legal_answer_is_named_rather_than_guessed(area,
     assert wanted in dos_codec.move_reason(area)
 
 
-def test_the_areas_with_a_legal_answer_are_not_refused():
+def test_the_areas_with_a_legal_answer_are_not_blocked():
     """New Phlan among them: the C64 loads no WALLSET there, and a move
     carrying an empty triple draws it identically -- `p60/run3` (scratch, deleted) Z0.
 
@@ -2659,7 +2659,7 @@ def test_a_character_who_carries_nothing_gets_no_itm_file(tmp_path):
 
 
 @pytest.mark.parametrize("slot", ["../../evil", "AB", "", "1", "a/b", "."])
-def test_a_slot_that_is_not_one_letter_is_refused(slot, tmp_path):
+def test_a_slot_that_is_not_one_letter_is_blocked(slot, tmp_path):
     """`slot` is interpolated into the paths this function unlinks.
 
     `pathlib`'s `/` splits an embedded separator into components, so
@@ -2792,11 +2792,11 @@ def test_a_saved_game_built_on_a_template_counts_what_it_took_from_it(
 
 
 @needs_dos_saves
-def test_new_dos_save_refuses_a_byte_it_did_not_write(tmp_path, monkeypatch):
+def test_new_dos_save_blocks_a_byte_it_did_not_write(tmp_path, monkeypatch):
     """The gate has to be able to fail, or it is not a gate.
 
     With the zero account taken away the same conversion leaves 4854 bytes
-    with no source, and `new_dos_save` refuses rather than handing back a
+    with no source, and `new_dos_save` blocks rather than handing back a
     file whose zeroes nobody stands behind.
     """
     save0, save1 = _fixture_payloads()
@@ -2811,9 +2811,9 @@ def test_new_dos_save_refuses_a_byte_it_did_not_write(tmp_path, monkeypatch):
 
 
 @needs_dos_saves
-def test_a_refused_conversion_leaves_the_directory_exactly_as_it_found_it(
+def test_a_blocked_conversion_leaves_the_directory_exactly_as_it_found_it(
         tmp_path, monkeypatch):
-    """A rejection that has already written the file it refuses is not a
+    """A rejection that has already written the file it blocks is not a
     rejection.
 
     `new_dos_save` can only know the count at the end, so it used to clear the
@@ -2838,11 +2838,11 @@ def test_a_refused_conversion_leaves_the_directory_exactly_as_it_found_it(
         dos_codec.new_dos_save(save0, save1, out, "A", _game_dir())
 
     assert not (out / "SAVGAMA.DAT").exists(), \
-        "the saved game it refused was written anyway"
+        "the saved game it blocked was written anyway"
     assert sorted(p.name for p in out.iterdir()) == before, \
         "the rejection changed the directory"
     assert keep.read_bytes() == b"the party that was already here", \
-        "the rejection cleared the slot it refused to replace"
+        "the rejection cleared the slot it would not replace"
 
 
 @needs_dos_saves
@@ -3128,7 +3128,7 @@ def _bare_state(title):
         outdoors=False, travel=(0, 0), set_out=True, header={})
 
 
-def test_the_party_writer_refuses_a_title_it_has_no_container_for(tmp_path):
+def test_the_party_writer_blocks_a_title_it_has_no_container_for(tmp_path):
     """Pools of Darkness has no descriptor in `c64_port`, and the writer used
     to answer that with the Pool of Radiance container."""
     out = tmp_path / "out"

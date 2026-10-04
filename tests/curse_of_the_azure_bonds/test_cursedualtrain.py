@@ -2,7 +2,7 @@
 
 `#18 (Measure Curse's trainer so Level Up works there)`. Four routines in
 Curse's `GEN` behave differently for a non-zero `dual_class_level` at `0x0BA`,
-and until 2026-09-05 `goldbox/levelup.py` refused such a character outright
+and until 2026-09-05 `goldbox/levelup.py` rejected such a character outright
 because none of the four had been seen running. All four have now been watched,
 over eight `TRAIN CHARACTER` presses on one character in a pooled VICE session:
 
@@ -45,7 +45,7 @@ CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
 
 #: What was poked into `0x0E8` before each press. Enough for the fighter's
 #: seventh level (125,001) and short of its ninth (250,001), so the seven
-#: presses raise one level each and the eighth is refused.
+#: presses raise one level each and the eighth is rejected.
 TRAINING_EXPERIENCE = 150_000
 
 #: The die the engine rolled, per press. The first five are `None` because the
@@ -98,7 +98,7 @@ def _philippe(name: str) -> CharacterRecord:
 def measured(monkeypatch):
     """Reach past `TRAINER_MEASURED` for the length of one test.
 
-    `plan` refuses Curse outright, and rightly -- switching the title on is a
+    `plan` rejects Curse outright, and rightly -- switching the title on is a
     change to `goldbox/levels.py`. Everything here is about whether this module
     *would* reproduce the trainer, which is the question that has to be
     answered before the key is added, so it is asked the way
@@ -167,7 +167,7 @@ def test_the_clamp_writes_what_the_engine_wrote_after_every_press(measured):
 
 
 def test_the_old_class_is_never_ready_however_much_experience_it_has(measured):
-    """`GEN $1321`. The eighth press was refused with `UNABLE TO ADVANCE`
+    """`GEN $1321`. The eighth press was rejected with `UNABLE TO ADVANCE`
     while she held 150,000 experience and a magic-user 6 that wants 135,001."""
     final = _replay(_philippe("curse-dual-classed"))[-1]
     final.set("experience", TRAINING_EXPERIENCE)

@@ -2,7 +2,7 @@
 confirm the vectors and BASIC interpreter match the bug's own screenshots.
 
 Takes no arguments -- the crash state it pokes in is fixed -- so the only
-thing a command line can do here is ask for `--help` or refuse anything else
+thing a command line can do here is ask for `--help` or reject anything else
 (`#403 (A tool with no argument parser reads --help as input and boots an
 emulator)`: this used to boot regardless of what followed the script name).
 """

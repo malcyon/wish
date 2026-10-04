@@ -235,7 +235,7 @@ building a save where they disagree — SILAS with `0x073` = 5 (MAGIC-USER) and
 | `0x073` char_class | **the class printed on the sheet**, and as a table index | the sheet said `MAGIC-USER`; `LIBRARY $31E1`-`$320D` index three name tables by it, `POST.COM $123F`/`$15E3` `LDX` it |
 | `0x0EB` class_bits | **what the character may ready** | he readied a `LONG SWORD` anyway. `LIBRARY $465D` is `LDA $6D99 / AND $6BEB / BNE` — the item type's class-usage byte against the bitmask, else "WRONG CLASS." `CAMP $167D` is the same test |
 
-Control: LADY KATHERINE, `0x0EB` = 5, was refused `SCALE MAIL` (cleric/fighter),
+Control: LADY KATHERINE, `0x0EB` = 5, was blocked `SCALE MAIL` (cleric/fighter),
 so the check is real. Neither field is a cache of the other, and an editor should
 keep offering both.
 

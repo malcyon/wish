@@ -108,7 +108,7 @@ class WinGuest:
                  timeout: float, address: int | None = None) -> dict[str, Any]:
         if (section, key) not in {("CFG", "gfx_api"), ("CFG", "floppy0"),
                                   ("CFG", "floppy1"), ("DBG", "c"), ("DBG", "m")}:
-            raise RouteError("diagnose refused an unapproved read")
+            raise RouteError("diagnose blocked an unapproved read")
         if (section, key) == ("DBG", "m"):
             if address is None or not 0 <= address <= 0xFFFFFFFF:
                 raise RouteError("diagnose memory address is outside 32 bits")

@@ -569,7 +569,7 @@ def draws_sheet_portrait(game=None) -> bool:
 #: store all these art id tables ourselves?  ...  It's just a handful of
 #: numbers, right?  Just pull them from each title so you can cross
 #: reference them.  Then you don't need the disks at all."*  And, asked
-#: whether that crossed `AGENTS.md`'s line: *"We don't need to refuse game
+#: whether that crossed `AGENTS.md`'s line: *"We don't need to block game
 #: disks.  Just store the IDs we would otherwise be looking up.  They are
 #: 40 years old and they are not going to change."*  And, the same day:
 #: *"A table of 26 numbers doesn't break any rules.  It's not art, it's

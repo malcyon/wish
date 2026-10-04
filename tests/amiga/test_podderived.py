@@ -8,9 +8,9 @@ counted it as a loss -- nothing the writer actually loses, since the game
 rebuilds `attack_level` from class and level on load and the portrait pair is
 zero in every record either port has ever produced.
 
-`test_an_unusual_armour_class_base_converts_instead_of_being_refused` is
+`test_an_unusual_armour_class_base_converts_instead_of_being_blocked` is
 `#635 (Read what a Pools of Darkness armour-class base other than 50 means,
-so the Amiga conversion writes it instead of refusing)`: both engines seed
+so the Amiga conversion writes it instead of blocking)`: both engines seed
 the current armour-class calculation from the stored base at creation and on
 every rebuild, so a base other than 50 is real state and copying it through
 is what keeps the character's armour class the one he had.
@@ -90,14 +90,14 @@ def _dos_pod_readied_item() -> dos_codec.DosItem:
     return dos_codec.DosItem(bytes(data))
 
 
-def test_an_unusual_armour_class_base_converts_instead_of_being_refused():
+def test_an_unusual_armour_class_base_converts_instead_of_being_blocked():
     """`#635 (Read what a Pools of Darkness armour-class base other than 50
-    means, so the Amiga conversion writes it instead of refusing)`: a DOS
+    means, so the Amiga conversion writes it instead of blocking)`: a DOS
     Pools of Darkness character whose stored base is 49 -- displayed base AC
     11, not the unarmoured 10 every measured record holds -- has real state.
     Both engines seed the current armour-class calculation from that byte, at
     creation and on every rebuild, so the conversion must write it rather
-    than refuse the save or silently replace it with the unarmoured
+    than block the save or silently replace it with the unarmoured
     constant.
 
     Checked with and without a readied item in the source, because the base

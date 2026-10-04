@@ -32,7 +32,7 @@ Two ceilings, both in the C64 character record:
 **What it counts and what it does not.**  It counts what is on the disks:
 item entries and trait bytes in a C64 saved game, `item_count` and `.SPC`
 records beside a DOS one, item nodes and effect nodes in an Amiga one.  It
-does not watch the running game refuse a pickup -- an engine's own ceiling is
+does not watch the running game block a pickup -- an engine's own ceiling is
 a comparison in an overlay -- so where a sweep reaches a ceiling it says the
 population reached it and not that the engine allows it.
 
@@ -68,7 +68,7 @@ from goldbox import items as c64items  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 
 #: Item record byte `+15`, bit 7: "readying this dispatches a power handler".
-#: `CAMP $10B5` is `LDA $6D8B / BPL`, so an item without it is refused with
+#: `CAMP $10B5` is `LDA $6D8B / BPL`, so an item without it is blocked with
 #: `NOT HERE` and grants nothing (`docs/125-bug-notes.md` U4).
 GRANT_FLAG_AT, GRANT_FLAG_BIT = 15, 0x80
 #: Byte `+14`, the effect id the grant writes into a free trait slot.

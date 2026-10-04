@@ -226,7 +226,7 @@ def test_no_permanent_effect_id_in_the_specimen_tree_fails_to_cross():
             try:
                 char = dos_codec.read_character(path)
             except dos_codec.DosRecordError as exc:
-                # A specimen registered without its item files is refused by
+                # A specimen registered without its item files is blocked by
                 # design; skip that record only, so every other record in the
                 # folder, and every other kind of read error, still counts.
                 if "is missing" not in str(exc):

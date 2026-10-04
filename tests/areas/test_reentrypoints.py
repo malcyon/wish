@@ -93,7 +93,7 @@ def test_word_and_at_read_through_the_base():
     assert rp.at(bytes(image), BASE, 0x0900, 2) == b"\x34\x12"
 
 
-def test_word_refuses_an_address_outside_the_image():
+def test_word_rejects_an_address_outside_the_image():
     with pytest.raises(IndexError):
         rp.word(b"\x00\x00", BASE, 0x9000)
     with pytest.raises(IndexError):
@@ -110,7 +110,7 @@ def test_read_tail_derives_whatever_the_bytes_say_rather_than_the_constant():
     assert rp.read_tail(body, BASE, POR.tail) == (0x03C7, 0x0820)
 
 
-def test_read_tail_refuses_a_block_that_is_not_the_tail():
+def test_read_tail_rejects_a_block_that_is_not_the_tail():
     image = bytearray(synthetic())
     put(image, POR.tail, b"\x60" * 13)
     with pytest.raises(ValueError):
@@ -122,7 +122,7 @@ def test_find_patched_jsr_returns_the_address_the_call_pushes():
     assert rp.find_patched_jsr(body, BASE, 0x0809) == 0x08A6
 
 
-def test_find_patched_jsr_refuses_when_no_placeholder_is_in_range():
+def test_find_patched_jsr_rejects_when_no_placeholder_is_in_range():
     body = synthetic(call=0x0A00)
     with pytest.raises(ValueError):
         rp.find_patched_jsr(body, BASE, 0x0809, limit=0x40)

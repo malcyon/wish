@@ -18,14 +18,14 @@ the 13 allies and the monsters act between them, and five monsters were
 still standing when the budget ran out.  3600 s allows about 190 party
 turns; that figure is an estimate, not a measured fight length.
 
-`code` reads ten byte runs off the player's own disks and refuses if any
+`code` reads ten byte runs off the player's own disks and rejects if any
 differs from what the driver was written against; `main` runs the same check
 before it calls `run`, so a mismatch never claims a slot.  `run` boots an
 emulator through the instance pool and writes `run.jsonl`, `readings.json`,
 `screens.txt` and PNGs under `--out`.  The save is copied into the slot; the
 player's disks are never written.
 
-Exit codes: 0 finished; 1 refused before the trigger (area, arrival, byte
+Exit codes: 0 finished; 1 rejected before the trigger (area, arrival, byte
 check, arguments); 2 an exception; 3 no brawl within `--max-entries`; 4 the
 trap lost the monitor; 5 an unknown screen; 6 the charm slot already had a
 charm row; 7 a bad `--stage-item`.  Pass conditions are judged from
@@ -387,7 +387,7 @@ def wound(m, slots, acting: int, hp: int = 1) -> None:
 def stage_charm(m, slot: int, form: str, acting: int) -> dict:
     """Give SLOT a charm row and the matching side byte; read both back.
 
-    Refuses (`Exit` 6) when a `$0B` row owned by SLOT exists already, and
+    Rejects (`Exit` 6) when a `$0B` row owned by SLOT exists already, and
     otherwise takes the highest free row, as the game's own search does.
     """
     ids = m.read(CHARM_ID_AT, ROWS)
@@ -703,7 +703,7 @@ class Traps:
             if not was["status_was"]:
                 # An empty block (status 0) is not a character; dying it would
                 # stage nothing the status pass counts.
-                self.note("dying_staged", slot=slot, acting=acting, refused="empty block", **was)
+                self.note("dying_staged", slot=slot, acting=acting, rejected="empty block", **was)
             else:
                 write_combatant(m, slot, 0, bytes([DYING]), acting)
                 write_combatant(m, slot, HP_AT, bytes([0, 0]), acting)
@@ -1081,7 +1081,7 @@ class Tactic:
         return self.flight(sess, state)
 
     def melee(self, sess, state, friends: frozenset[int]) -> str:
-        """`Session.melee_turn` against the monster side only; refuse an ally attack.
+        """`Session.melee_turn` against the monster side only; reject an ally attack.
 
         `melee_turn` picks its target from `battle().enemies`, so `battle` is
         wrapped for the one call, as a second guard: `is_party` already follows
@@ -1111,7 +1111,7 @@ class Tactic:
         s = sess.screen()
         if s is not None and "ATTACK ALLY" in s.row(24):
             answered = bool(sess.combat_bar("NO", timeout=12))
-            self.log.emit("attack_ally_refused", call=self.calls, answered=answered)
+            self.log.emit("attack_ally_blocked", call=self.calls, answered=answered)
             if not answered:
                 return ""
             if sess.await_bar((S.BAR_MOVE,), timeout=6) is not None:
@@ -1141,7 +1141,7 @@ class Tactic:
 
 
 def check_args(args) -> str | None:
-    """Why these arguments are refused, or None."""
+    """Why these arguments are rejected, or None."""
     if args.mode == "flee" and args.stay is None:
         return "--mode flee needs --stay"
     if args.mode == "win":
@@ -1149,13 +1149,13 @@ def check_args(args) -> str | None:
                             ("--wound-allies", args.wound_allies),
                             ("--stay", args.stay is not None)):
             if given:
-                return f"{flag} is refused with --mode win"
+                return f"{flag} is rejected with --mode win"
     if args.mode == "flee":
         for flag, value in (("--stage-6de3", args.stage_6de3), ("--stage-item", args.stage_item),
                             ("--stage-dying", args.stage_dying),
                             ("--stage-mercy", args.stage_mercy)):
             if value is not None:
-                return f"{flag} is refused with --mode flee"
+                return f"{flag} is rejected with --mode flee"
     for flag, value in (("--charm", args.charm), ("--stay", args.stay),
                         ("--stage-dying", args.stage_dying)):
         if value is not None and not 0 <= value <= 5:
@@ -1168,7 +1168,7 @@ def check_args(args) -> str | None:
 
 
 def resolve_item(name: str, disks: str) -> bytes:
-    """The named item's 16 bytes, refusing (`Exit` 7) one whose plus is not 1-$7F."""
+    """The named item's 16 bytes, rejecting (`Exit` 7) one whose plus is not 1-$7F."""
     try:
         templates = load_item_templates(str(pathlib.Path(disks) / "POOL1.D64"))
     except (SystemExit, Exception) as exc:
@@ -1347,7 +1347,7 @@ def run(args) -> int:
     try:
         return _run(args, out, log)
     except Exit as exit_:
-        log.emit("refused", why=exit_.why, code=exit_.code)
+        log.emit("rejected", why=exit_.why, code=exit_.code)
         log.say(exit_.why)
         return exit_.code
     except Exception as exc:

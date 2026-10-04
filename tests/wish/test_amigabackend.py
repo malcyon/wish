@@ -319,7 +319,7 @@ def test_a_found_title_is_not_swept_for_again():
     assert again.data_base == BASE
 
 
-def test_two_titles_in_memory_are_refused_and_both_are_named():
+def test_two_titles_in_memory_are_blocked_and_both_are_named():
     memory = loaded(BLADES)
     memory.update(loaded(CURSE, at=0xC30000))
     with pytest.raises(amiga.FsuaeError) as raised:
@@ -439,7 +439,7 @@ def test_a_title_that_is_still_there_costs_one_small_read_and_no_sweep():
     assert sock.sweeps() == 1
 
 
-def test_one_title_at_two_bases_is_refused_and_both_are_named():
+def test_one_title_at_two_bases_is_blocked_and_both_are_named():
     memory = loaded(BLADES)
     memory.update(loaded(BLADES, at=0xC30000))
     with pytest.raises(amiga.FsuaeError,
@@ -464,12 +464,12 @@ def test_a_connection_the_emulator_dropped_is_replaced():
     assert opener.calls == 2
 
 
-def test_a_refused_socket_leaves_nothing_cached():
-    def refuse():
+def test_a_blocked_socket_leaves_nothing_cached():
+    def block():
         raise ConnectionRefusedError("nothing is listening")
 
     with pytest.raises(amiga.FsuaeError):
-        fsuae.connect(opener=refuse, clock=Clock())
+        fsuae.connect(opener=block, clock=Clock())
     assert fsuae._transport is None
 
 
@@ -928,7 +928,7 @@ def test_a_sweep_longer_in_total_than_the_age_limit_still_finishes_if_ticks_keep
     assert sock.sweeps() == 1
 
 
-class Refusing(FakeSocket):
+class Blocking(FakeSocket):
     """Answers every `m` with `E01`, as the fork does for unreadable memory."""
 
     def sendall(self, data: bytes) -> None:
@@ -940,9 +940,9 @@ class Refusing(FakeSocket):
             super().sendall(data)
 
 
-def test_a_refused_read_does_not_shrink_the_pieces():
-    opener, clock = Opener(Refusing(loaded(BLADES))), Clock()
-    with pytest.raises(amiga.FsuaeError, match="refused"):
+def test_a_blocked_read_does_not_shrink_the_pieces():
+    opener, clock = Opener(Blocking(loaded(BLADES))), Clock()
+    with pytest.raises(amiga.FsuaeError, match="would not read"):
         fsuae.connect(opener=opener, clock=clock, deadline_clock=Stepping())
     assert fsuae._piece == fsuae.SWEEP_CHUNK
 

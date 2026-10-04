@@ -66,7 +66,7 @@ MAP_TAB, EDITOR_TAB = 0, 1
 #: Said in the Messages panel when `#357 (The automapper reads the shared
 #: Game disks folder, so setting a title's own folder does not make it map
 #: that title)` step 4 switches the window to a title the machine turned out
-#: to be running, rather than refusing. **Approved by Donald, 2026-09-07**,
+#: to be running, rather than blocking. **Approved by Donald, 2026-09-07**,
 #: chosen over two longer wordings that named the disks or the folder: the
 #: line says the thing a player wants to know -- the automapper is on this
 #: title now -- and leaves the reason it changed to the debug log beside it.
@@ -475,7 +475,7 @@ class WishWindow(QMainWindow):
 
         `#357 (The automapper reads the shared Game disks folder, so setting
         a title's own folder does not make it map that title)` step 4,
-        Donald's ruling of 2026-09-07: switch to it rather than refuse, and
+        Donald's ruling of 2026-09-07: switch to it rather than block, and
         say so. Setting `self._title` before `reload_disks` is the whole of
         the mechanism -- `game()` reads it, `resolve_disks` asks
         `game_folders` for that title's own row, and `AutomapBinding.set_maps`
@@ -731,7 +731,7 @@ class WishWindow(QMainWindow):
     # -- shutting down ---------------------------------------------------
 
     def closeEvent(self, event) -> None:
-        """The editor asks about unsaved changes first, and may refuse.
+        """The editor asks about unsaved changes first, and may block.
 
         Its own `closeEvent` owns that question -- the merged window must not
         grow a second copy of it and get the two out of step.
@@ -780,7 +780,7 @@ def dress(app) -> None:
     both into `<prefix>/share`, which is on the search path for a
     `pip install --user` and not for a virtualenv or a `pipx` install -- so
     `wish.installdesktop.ensure` puts them in the user's own directory the
-    first time it finds none. It refuses to run on anything but Linux, when an
+    first time it finds none. It does not run on anything but Linux, when an
     entry already exists anywhere on the search path, when
     `WISH_NO_DESKTOP_INSTALL` is set, and in a headless or offscreen run --
     the last of which is what keeps the test suite out of somebody's home

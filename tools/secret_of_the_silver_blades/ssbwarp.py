@@ -288,7 +288,7 @@ def walk_proof(sess, keys: str = "JIKI") -> dict:
     out = {"bar": clear_messages(sess)}
     if "ENCAMP" not in out["bar"]:
         # No world bar, so nothing to walk from: `clear_messages` says why.
-        out.update(refused=out["bar"], moved=False, turned=False)
+        out.update(rejected=out["bar"], moved=False, turned=False)
         return out
 
     def triple():
@@ -496,7 +496,7 @@ def run(args) -> int:
                 break
             pc = idle_in_key_window(sess, addr)
             if pc is None:
-                print("the machine is not idle in a key window; refusing",
+                print("the machine is not idle in a key window; rejecting",
                       flush=True)
                 break
             square = None
@@ -514,7 +514,7 @@ def run(args) -> int:
             if args.via_actions:
                 made = warp_via_actions(target, game, row, square)
                 if not made.get("ok"):
-                    print("FastTravel refused:",
+                    print("FastTravel rejected:",
                           json.dumps(made), flush=True)
                     report["hops"].append({"target": f"0x{want:02X}",
                                            "writes": made, "landed": False})

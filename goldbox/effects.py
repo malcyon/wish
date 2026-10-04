@@ -432,7 +432,7 @@ SLOW_POISON_QUIET_C64 = 0x7F
 #: it already. Curse's `(25, n, 0xFF, 0)`, which its handler 138 (Alias,
 #: Dragonbait) writes, is a different node and converts to the C64's own row
 #: for that handler, magnitude 0 (`COMBAT $2902` writes it with Y = 0). Silver
-#: Blades' 108 form stays refused: no DOS play writes it.
+#: Blades' 108 form stays blocked: no DOS play writes it.
 LATER_INVISIBLE_ID = 25
 LATER_INVISIBLE_MONSTER = (0xFF, 0)
 
@@ -468,7 +468,7 @@ HASTE_MAX_DATA = 0x1F
 #: id-42 handler reads the magnitude, and Dispel Magic reads its low nibble.
 #: The later titles' Fumble writes `(42, level minutes, 0, 0)` on a save made,
 #: and the C64's Fumble the level. Silver Blades' `(42, 3, 0xFF, 0)` from its
-#: id-79 handler is a different node and stays refused.
+#: id-79 handler is a different node and stays blocked.
 SLOWED_ID = 42
 SLOWED_MAX_LEVEL = 15
 SLOWED_MAX_MINUTES = 63
@@ -566,7 +566,7 @@ ZERO_LEVEL_IDS: dict[str, frozenset[int]] = {
 #: side, 1)` (`GAME.OVR:0x130CF`). The id-35 handler returns at once in remove
 #: mode (`0x11AC4` to `0x11C7E`), so the flag does nothing, and C64 bit 7
 #: would run the Confusion roll again at expiry: the flag is not written. DOS
-#: writes flag 1 for this case and nothing else, so a flag above 1 is refused
+#: writes flag 1 for this case and nothing else, so a flag above 1 is blocked
 #: like every sibling branch's flag check.
 _INERT_FLAG = frozenset({(_BLADES, 35)})
 
@@ -1066,7 +1066,7 @@ def c64_row(title_key: str, node: RunningEffect, *,
     take their title's rule from `docs/226`; `strength_nodes` counts the
     nodes on this character that set strength; `slow_poison_quiet` is
     `slow_poison_quiet()` for this character. The other ids with a rule of
-    their own are listed at `_own_rule_row`. A state refused as one "no DOS
+    their own are listed at `_own_rule_row`. A state blocked as one "no DOS
     engine writes" is unreachable in play.
     """
     own = _own_rule_row(title_key, node, slow_poison_quiet)
@@ -1242,7 +1242,7 @@ def pool_strength_chain_nodes(
     data is the base the last such row restores; a later one is parked,
     holding the previous row's value with bit 7 set; a row with bit 7 clear is
     a parked node that ended first. The result must reproduce the rows through
-    `pool_strength_chain_rows`, or it is refused.
+    `pool_strength_chain_rows`, or it is blocked.
     """
     if len(rows) != 2 or sorted(r.id for r in rows) not in (
             [12, 38], [38, 38]):
@@ -1588,7 +1588,7 @@ def pool_charm_record(title_key: str, row: "Effect",
     own side and bit 0 the charmer's. The node takes the charmer from the
     row's magnitude bit 0, never from `0x10C`, the own side from whichever bit
     holds it, and the count from `charm_count`. Bit 5 with bit 6 clear is a
-    state the handler never leaves, so it refuses. A row without bit 7 (the
+    state the handler never leaves, so it blocks. A row without bit 7 (the
     vampire's `$06` and `$07`) reads as the same charm with bit 7, because
     DOS's node for that ability has flag 1.
     """
@@ -1857,7 +1857,7 @@ def clear_effect(payload: bytearray, slot: int) -> None:
     whose id is 12, 14 or 38 with that bit set (`Effect.restores_a_statistic`),
     or 13 in combat (`COMBAT_MAGNITUDE_VALUE_IDS`), leaves the character's
     strength or charisma altered for good. A caller
-    offering to remove an effect must apply the restore or refuse those slots
+    offering to remove an effect must apply the restore or block those slots
     (`docs/133-active-effects.md`, "What this means for a write path").
     """
     _check_slot(slot)

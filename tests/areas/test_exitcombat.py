@@ -2,7 +2,7 @@
 scripts say.
 
 `automap.fasttravel.choose_door` skips a route marked `combat`, so a stale flag
-would send a party through a fight or refuse a door that is safe.
+would send a party through a fight or reject a door that is safe.
 """
 from __future__ import annotations
 

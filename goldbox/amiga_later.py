@@ -173,7 +173,7 @@ AMIGA_LATER_ITEM_QUANTITY = 0x03A
 AMIGA_SSB_JOINED_SCROLL_LIMIT = 120
 
 #: The item rows a character holds, a joined scroll taking one: `/Secret`
-#: refuses a seventeenth at `0x24B50`, CONFIRMED
+#: blocks a seventeenth at `0x24B50`, CONFIRMED
 #: (`docs/173-carrying-limits.md`).
 AMIGA_SSB_ITEM_ROWS = 16
 
@@ -925,7 +925,7 @@ def later_field_disposition(deltas: AmigaDeltas) -> dict[str, str]:
               if n in declared and n not in _dos.ABILITY_ORDER]
     # `attack_level` is a copy for both titles this reader serves though it
     # is no longer on the DOS reader's own `DIRECT` (#527): see the block in
-    # `to_neutral_later`, which refuses rather than copies for a title whose
+    # `to_neutral_later`, which blocks rather than copies for a title whose
     # engine keeps no fighting level there.
     if "attack_level" in declared:
         direct.append(("attack_level", "attack_level"))
@@ -1515,7 +1515,7 @@ def later_write_deltas(char: NeutralCharacter,
     (`.claude/rules/conversions.md`).  `deltas` overrides it for a caller
     that has already resolved the title.
 
-    Pool of Radiance is refused by name rather than by falling through, since
+    Pool of Radiance is blocked by name rather than by falling through, since
     :func:`write_por` is its writer and a caller that lands here has the
     wrong one.
     """
@@ -1703,7 +1703,7 @@ def _later_effect_nodes(
     untranslated.  Its drop list is returned rather than discarded: in the
     common case it repeats what `dosrep.dropped` already carries from the DOS
     half's own call, but that call takes `innate_effects` through
-    `neutral.Writer.use`, which refuses a field held below the writer's
+    `neutral.Writer.use`, which blocks a field held below the writer's
     confidence minimum and reports one generic line with no id in it, where
     this function reads the field straight off `char` with no minimum and can
     still classify an id as its own rejection.  A rejection here must still

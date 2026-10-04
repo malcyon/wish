@@ -409,20 +409,20 @@ def test_e_pools_of_darkness_has_no_attack_level_and_the_others_work_it_out():
         assert bytes_[0] == bytes_[1], (game, bytes_)
 
 
-# --- F: one past a width is clamped or refused, by name ---------------------
+# --- F: one past a width is clamped or blocked, by name ---------------------
 
 #: The scalars a DOS field cannot hold one past, with the width each is
-#: declared at: every multi-byte one, which the writer refuses with a
+#: declared at: every multi-byte one, which the writer blocks with a
 #: `ValueError`.  The widths are typed here, not read from the table, so a
 #: field the table narrows or widens fails; and named, so a field that moves
 #: from one side to the other fails rather than falling out of the sweep.
 _COINS = {name: 2 for name in ("copper", "silver", "electrum", "gold",
                                "platinum", "gems", "jewelry")}
-_LATER_REFUSED = {"age": 2, "experience": 4, "experience_award": 2, **_COINS}
-_REFUSED = {
-    POOL: dict(_LATER_REFUSED),
-    CURSE: dict(_LATER_REFUSED),
-    SILVER: dict(_LATER_REFUSED),
+_LATER_FAILS = {"age": 2, "experience": 4, "experience_award": 2, **_COINS}
+_FAILS = {
+    POOL: dict(_LATER_FAILS),
+    CURSE: dict(_LATER_FAILS),
+    SILVER: dict(_LATER_FAILS),
     POOLS_OF_DARKNESS: {"age": 2, "experience": 4, "experience_award": 2,
                         "highest_experience": 4,
                         **{n: 2 for n in ("platinum", "gems", "jewelry")}},
@@ -436,7 +436,7 @@ _THIEF_COLUMNS = {f"thief_{n}" for n in (
 
 
 def _side(game, s) -> str:
-    return "refused" if s.neutral in _REFUSED[game] else "clamped"
+    return "blocked" if s.neutral in _FAILS[game] else "clamped"
 
 
 @pytest.mark.parametrize("pair", _SWEPT, ids=_ids)
@@ -446,7 +446,7 @@ def test_f_one_past_a_width_is_handled_the_way_its_side_says(pair):
     above, below = s.high + 1, s.low - 1
     char = doswidths.base(game)
 
-    if side == "refused":
+    if side == "blocked":
         for past in (above, below):
             char.set(s.neutral, past, "boundary: one past")
             with pytest.raises(ValueError, match=f"{s.dos}: {past} does not "
@@ -465,20 +465,20 @@ def test_f_one_past_a_width_is_handled_the_way_its_side_says(pair):
 
 @pytest.mark.parametrize("game", doswidths.GAMES)
 def test_f_the_two_sides_exhaust_the_scalars(game):
-    """Every swept scalar is a refused multi-byte field or a clamped one-byte
+    """Every swept scalar is a blocked multi-byte field or a clamped one-byte
     one, `I8` or `U8` -- by the layout's own width, so a field that changes
     width is caught by the names above no longer agreeing with it."""
     table = dos_port.FIELDS_BY_NAME_FOR[game]
     names = {s.neutral for s in doswidths.scalars(game)
              if s.neutral not in doswidths.ALWAYS_RECOMPUTED}
-    assert set(_REFUSED[game]) <= names
+    assert set(_FAILS[game]) <= names
     swept = {s.neutral: s for s in doswidths.scalars(game)}
-    assert {n: swept[n].size for n in _REFUSED[game]} == _REFUSED[game]
+    assert {n: swept[n].size for n in _FAILS[game]} == _FAILS[game]
     for s in doswidths.scalars(game):
         if s.neutral in doswidths.ALWAYS_RECOMPUTED:
             continue
         kind = table[s.dos].kind
-        want = "refused" if s.size > 1 else "clamped"
+        want = "blocked" if s.size > 1 else "clamped"
         assert _side(game, s) == want, (game, s.neutral, kind, s.size)
     assert _THIEF_COLUMNS <= names
 
@@ -684,7 +684,7 @@ def test_j_a_spell_run_entry_past_a_byte_is_clamped_and_on_losses(game):
 @pytest.mark.parametrize("game", doswidths.GAMES)
 def test_j_a_reader_warning_reaches_warnings_and_never_losses(game):
     """`Writer.finish` puts the reader's own notes on the report; a caller that
-    refuses on `losses` must not refuse on those."""
+    blocks on `losses` must not block on those."""
     char = doswidths.base(game)
     char.warnings.append("a note the reader made about its own source")
     rep = _write_report(char)
@@ -703,7 +703,7 @@ def test_i_a_dos_item_becomes_exactly_sixteen_bytes(size, fill):
     shift every later boundary without an error.  The two builders that turn a
     DOS item into a C64 one -- `DosItem.to_c64` and `item_to_c64`, which
     `amiga_later` and `amiga_pod` also call -- return a tuple of sixteen byte
-    values or refuse, so the case is not reachable through either."""
+    values or block, so the case is not reachable through either."""
     data = bytearray([fill]) * size
     at, width = dos_codec.ITEM_TAIL
     for i in range(at, min(at + width, size)):
@@ -713,12 +713,12 @@ def test_i_a_dos_item_becomes_exactly_sixteen_bytes(size, fill):
 
 
 @pytest.mark.parametrize("length", [0, 15, 16, 62, 64, 66, 68, 130])
-def test_i_a_dos_item_of_any_other_length_is_refused(length):
+def test_i_a_dos_item_of_any_other_length_is_blocked(length):
     with pytest.raises(dos_codec.DosRecordError):
         dos_codec.item_to_c64(bytes(length))
 
 
-def test_i_a_nonzero_item_tail_is_refused_not_dropped():
+def test_i_a_nonzero_item_tail_is_blocked_not_dropped():
     data = bytearray(67)
     data[dos_codec.ITEM_TAIL[0]] = 1
     with pytest.raises(dos_codec.DosRecordError):

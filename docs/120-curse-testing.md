@@ -214,7 +214,7 @@ not in the save image at all.
 | area byte | `$4BC2` | **`$4DC2`** (payload `+$2C2`), read `$81` | PROBABLE |
 | resident `GEO` block | `$0400` | **`$0400` — unchanged** | CONFIRMED |
 | `LIBRARY`'s `GEO` stem digits at `$2714` | — | **not there**; `$2710` is code. The `docs/116` figure came from the file and does not hold live. Nothing depends on it | — |
-| combat mode flag | `$6E11` | **`$7F11`** | CONFIRMED. `LINKER` is resident at `$2D00` and begins `LDA $7F11`; its name table at `$2D42` is Pool of Radiance's entry for entry, so `2` is still COMBAT. Sampled world `1` / camp `9` / roster `0`. `C64Machine.mode_flag` is set and the five live actions no longer refuse (#29 (The live reader uses Pool of Radiance's addresses on every title)) |
+| combat mode flag | `$6E11` | **`$7F11`** | CONFIRMED. `LINKER` is resident at `$2D00` and begins `LDA $7F11`; its name table at `$2D42` is Pool of Radiance's entry for entry, so `2` is still COMBAT. Sampled world `1` / camp `9` / roster `0`. `C64Machine.mode_flag` is set and the five live actions no longer block (#29 (The live reader uses Pool of Radiance's addresses on every title)) |
 
 **How `$C04B` was earned**, because it is the one that a "check `$4BC0`" task
 would have got wrong in both directions. `$4BC0`–`$4BC2` *is* the position
@@ -228,7 +228,7 @@ step must, agreement with the status line at every later reading, and the
 instruction that writes it.
 
 **The clock advances one minute per *completed* forward step**, and by nothing
-at all on a turn or on a step the game refused. Measured over four turns and one
+at all on a turn or on a step the game blocked. Measured over four turns and one
 blocked step at an unchanged clock. Consequence in tier 4.
 
 **The area byte stays PROBABLE**: `$4DC2` read `$81` — area 1 with the `$80`
@@ -308,9 +308,7 @@ save-disk wordings -- `session.SAVE_PROMPT` for the camp one and its own
 `wait_bar` calls `handle_prompt` on every poll, so a driven camp save now
 goes through this needle too and attaches the save disk as soon as the camp
 prompt is recognised, rather than waiting for `save_game`'s own
-belt-and-brace attach lower down (`#539 (tools/secret_of_the_silver_blades/ssbwarp.py's SAVE_PROMPT does
-not match Silver Blades' actual save-disk prompt, so ENCAMP > SAVE silently
-refuses)`).
+belt-and-brace attach lower down (`#539`).
 
 ### 3.3 The `ITEMS` screen takes Return and nothing else
 
@@ -336,12 +334,12 @@ can be checked without an emulator.
 
 | component | verdict | evidence |
 |---|---|---|
-| `Geo` decode and rendering | transfers unchanged | every step the game allowed crosses an edge `GEO01` calls passable; the one it refused is an edge `GEO01` calls solid |
+| `Geo` decode and rendering | transfers unchanged | every step the game allowed crosses an edge `GEO01` calls passable; the one it blocked is an edge `GEO01` calls solid |
 | `ResidentGeo` at `$0400` | **transfers unchanged** | `identify()` returned `GEO01` — an exact 1024-byte match against the disk copy. The `$0400` in `automap/area.py` is not a Pool of Radiance fact after all |
 | `party_fix`, status-line path | **transfers unchanged** | Curse draws `S 0:03  5,13` on the same row 14 of the same `$CC00` screen and `RE_STATUS` matches it as written |
 | `party_fix`, memory fallback | **does not transfer** | `$49C0` in a running Curse is engine code. Curse's live triple is `$C04B`, which is *outside* the save image, so a per-title base cannot simply be a payload offset |
 | `Fingerprint` | transfers unchanged | 16 candidates → **2** on four completed steps and one blocked step, **0 contradictions**, `GEO01` among the survivors and equal to what `ResidentGeo` said independently |
-| `automap/state.py`'s `_refused` | **never fires on Curse** | it infers a blocked step from clock+1 with the square unchanged, and Curse's clock does not advance on a refused step. Its docstring already allows this; a driver that wants blocked steps must compare squares |
+| `automap/state.py`'s `_refused` | **never fires on Curse** | it infers a blocked step from clock+1 with the square unchanged, and Curse's clock does not advance on a blocked step. Its docstring already allows this; a driver that wants blocked steps must compare squares |
 | one step costs one minute | **CONFIRMED for a completed forward step**, and zero for a turn or a blocked step | the clock ran `0:01 → 0:03 → 0:07` over six steps and stood still through four turns and one blocked step |
 | area names | structure done, content not | `goldbox/areas.py:GEO_NAMES` is keyed by title and Curse's table is empty, so `area_label` degrades rather than lying. Naming Curse's sixteen maps still needs somebody who has played it |
 | `FilenameDigits` | **moot** | there is no filename strategy in `automap/area.py`, and `$2714` is code in a running Curse anyway |
@@ -450,7 +448,7 @@ sides.
 
 ## Out of scope
 
-A base-level check is defined as much by what it refuses as by what it covers.
+A base-level check is defined as much by what it blocks as by what it covers.
 None of the following is planned, and each is left out for a reason.
 
 | not tested | why that is right |

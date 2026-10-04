@@ -386,7 +386,7 @@ class Fingerprint:
 
         An observation that eliminates every candidate is not evidence about
         which map this is; it is evidence that the observation was wrong. A
-        garbled status line, a step across an area boundary, or a refused step
+        garbled status line, a step across an area boundary, or a blocked step
         inferred from the clock when the party was really bashing a locked door
         all produce one, and obeying it would throw away the true map for good.
         So the last non-empty set is kept and the contradiction is counted,

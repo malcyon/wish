@@ -11,7 +11,7 @@ They are. But the dialog is the last problem, not the first.
 | question | answer | grade |
 |---|---|---|
 | Is the area table per-title? | **No.** `goldbox/areas.py:AREAS` is thirty Pool of Radiance `ECL` scripts with `POOL`-disk numbers in them. What P10/P24 made per-title was `GEO_NAMES` — map file → name — and nothing else | CONFIRMED, read |
-| What do we have for Curse and Silver Blades? | **Silver Blades has a table**: twenty-two areas, seventeen maps, the disk side for every one, twelve arrival squares, twenty of the twenty-two named -- `goldbox.areas.AREAS_SILVER_BLADES`, built by `tools/areas/areatable.py` off its own six sides for `#20 (Build an area table for Silver Blades)`. **Curse has one too**: twenty-five areas on six sides, sixteen maps, twenty-four of the twenty-five named and fourteen with a derived arrival square (PROBABLE), `goldbox.areas.AREAS_CURSE`, built by the same tool for `#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which the importer refuses today)`. Both re-derive off the disks today -- 25 of 25 and 22 of 22 on id, side and maps, `tools/areas/areatable.py <title> --check`, 2026-09-08 | CONFIRMED that the rows are what the scripts say; for Silver Blades CONFIRMED that the game does what they say, since fifteen driven arrivals matched the map at `$0400` byte for byte, and PROBABLE for Curse, where four warps landed but no individual row was checked |
+| What do we have for Curse and Silver Blades? | **Silver Blades has a table**: twenty-two areas, seventeen maps, the disk side for every one, twelve arrival squares, twenty of the twenty-two named -- `goldbox.areas.AREAS_SILVER_BLADES`, built by `tools/areas/areatable.py` off its own six sides for `#20 (Build an area table for Silver Blades)`. **Curse has one too**: twenty-five areas on six sides, sixteen maps, twenty-four of the twenty-five named and fourteen with a derived arrival square (PROBABLE), `goldbox.areas.AREAS_CURSE`, built by the same tool for `#192`. Both re-derive off the disks today -- 25 of 25 and 22 of 22 on id, side and maps, `tools/areas/areatable.py <title> --check`, 2026-09-08 | CONFIRMED that the rows are what the scripts say; for Silver Blades CONFIRMED that the game does what they say, since fifteen driven arrivals matched the map at `$0400` byte for byte, and PROBABLE for Curse, where four warps landed but no individual row was checked |
 | What do we have for Pools of Darkness? | **The C64 never got it.** `docs/124` §1: the four-game run ends on the Amiga precisely because of this, and `goldbox/c64_port.py` has six titles and PoD is not one of them | CONFIRMED |
 | Does the fasttravel mechanism transfer? | **Yes.** `NEWECL` is the same routine in Curse and in Silver Blades, and four driven warps landed a Curse party in four different areas. §6 | CONFIRMED for Curse, PROBABLE for Silver Blades |
 
@@ -41,7 +41,7 @@ The title reaches that table already: `AutomapState.title` is set from the open
 save's `Game`, failing that from whichever title has a folder set in
 Preferences and is first in `games.GAMES` order (`automap.maps.titles_in`),
 failing that `games.DEFAULT` — and with no save open, the machine can correct
-that guess among the titles with a folder set, rather than only refuse
+that guess among the titles with a folder set, rather than only block
 (`#357 (The automapper reads the shared Game disks folder, so setting a
 title's own folder does not make it map that title)`) — so the map's labels
 are per-title today and the fast-travel dropdown is not.
@@ -263,7 +263,7 @@ Two differences that are not relocations, and neither can be assumed away:
   `$102E`–`$103A`, gated on the indoors flag and calling `GDRIVE00 $C003`. So
   the claim that warping out of the travel grid wedges the loader — Pool of
   Radiance's, and unrecoverable — must be tested in Curse rather than assumed
-  to hold there. `tools/curse_of_the_azure_bonds/cursewarp.py` refuses it without `--force`.
+  to hold there. `tools/curse_of_the_azure_bonds/cursewarp.py` blocks it without `--force`.
 
 The disk column of a Curse area table is still a separate measurement, but a
 smaller one than this section used to say: the number is the side that carries
@@ -316,7 +316,7 @@ about **which** wall-art number they are, and that is not something the format
 promises — a wall may be a different picture from each face. It threw away 31
 of the 95 maps, `GEO20` at 0.212 among them, and the two Silver Blades maps
 below 0.93 reciprocity went with them. Those maps read as `UNKNOWN`, which
-refuses nothing, so no player could reach it;
+blocks nothing, so no player could reach it;
 `#436 (The map plausibility check throws out five of Pool of Radiance's own maps)`
 has the specimens and the margins.
 

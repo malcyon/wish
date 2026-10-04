@@ -16,7 +16,7 @@ editor is a file tool with **zero emulator dependency** ([README.md](README.md)
 | `automap/area.py` | three strategies for "which `GEO` are we on" |
 | `automap/state.py` | position, exploration, notes |
 | `automap/render.py` | map geometry as drawing primitives, plus an SVG renderer — no Qt |
-| `automap/c64.py` | one row per C64 title: the engine's own party square, `LINKER`'s dispatch byte, and each save-image region as a live address. A title nobody has run under a monitor has no addresses and is refused |
+| `automap/c64.py` | one row per C64 title: the engine's own party square, `LINKER`'s dispatch byte, and each save-image region as a live address. A title nobody has run under a monitor has no addresses and is blocked |
 | `automap/live.py` | the running game's party, effects and clock, as simple data — no Qt |
 | `automap/panel.py` | the roster cards and the bottom strip |
 | `automap/window.py` | the PyQt6 window: roster left, map right, strip below |
@@ -123,7 +123,7 @@ needs the explicit `ram` bank.
 right overlay is resident*. Patching `$12D9` after the game had swapped a
 different overlay into that space corrupted a live routine — see the warning in
 [Getting past the copy protection](50-experiments.md). So a live backend needs **validate-before-trust**: read the region, check
-it still decodes as a sane party, and refuse otherwise. For writes that check
+it still decodes as a sane party, and block otherwise. For writes that check
 should be mandatory.
 
 **Batch aggressively.** Read the whole save image in one call, not sixty small
@@ -189,9 +189,9 @@ scratch buffer elsewhere.
 
 `Fingerprint` on its own cannot finish on positive evidence: squares occupied
 and steps completed need **111 steps** to get New Phlan down to one candidate.
-A single *refused* step settles it, and `Automapper` now supplies one -- the
+A single *blocked* step settles it, and `Automapper` now supplies one -- the
 status line carries the game clock, so clock advanced + square unchanged +
-facing unchanged is a refused step in the current facing. See below.
+facing unchanged is a blocked step in the current facing. See below.
 
 `SAVEDGAME1` past `$83FF` is **not** the other thing the game saves: it is
 resident code and a graphics buffer. So an explored-squares bitmap is either in
@@ -279,12 +279,12 @@ hand already and asking for it again would be a round trip for bytes we have.
 `live.memory_blocks(game)` is where that choice is made and `goldbox/c64_port.py` is
 where the numbers are; nothing in `automap/live.py` holds an address (#29 (The live reader uses Pool of Radiance's addresses on every title)).
 
-### The refused step -- wired up
+### The blocked step -- wired up
 
 `Fingerprint.refused()` had nothing calling it, because the mapper cannot see
 key presses. It does not need to: the status line carries the game clock, and
 **clock advanced by one minute + square unchanged + facing unchanged** is a
-step the game refused. Positive evidence needs 111 steps to identify New Phlan;
+step the game blocked. Positive evidence needs 111 steps to identify New Phlan;
 one blocked step settles it, because impassable edges are rare.
 
 Guarded three ways -- both fixes must come from the status line (the fallback is
@@ -296,7 +296,7 @@ standing still), and the facing must not have changed.
 **Unconfirmed against the running game: whether a bump costs a minute at all.**
 A move does. If a bump costs nothing this never fires; if bashing a locked door
 costs a minute it records a false blocked edge, which is what
-`Fingerprint._narrow` now absorbs -- it refuses to narrow to zero candidates,
+`Fingerprint._narrow` now absorbs -- it will not narrow to zero candidates,
 keeps the last set that fitted, and counts the contradiction instead.
 
 ## Giving up on a connection, and hanging up while doing it
@@ -363,9 +363,9 @@ used to describe that broken state and now describes what replaced it.
 
 Neither source survived out there:
 
-* the **status line** was refused by `_plausible`, which caps y at `GRID` = 16 --
+* the **status line** was blocked by `_plausible`, which caps y at `GRID` = 16 --
   a dungeon's size -- while wilderness y runs to 28 and 29. North of row 16 it
-  was worse than refused: the loose `RE_STATUS` took the final `S` of
+  was worse than blocked: the loose `RE_STATUS` took the final `S` of
   `OUTDOORS` for a facing, so a party there read as a *plausible indoor* fix on
   a square it had never stood on -- the same fault `#189 (The emulator driver
   cannot move a party on the travel grid, and reads its facing out of the word
@@ -441,8 +441,8 @@ connection is all a run of the emulator ever gets.
 
 **What was measured on a running machine.** Amiga Silver Blades (2026-09-08):
 the shipped `Automapper.poll()` named the area from the block the game itself
-had loaded, followed a party through a turn and a step, refused to move on a
-step the map says is impassable and the game refused too, and held its fix
+had loaded, followed a party through a turn and a step, would not move on a
+step the map says is impassable and the game blocked too, and held its fix
 while a shop menu was up. `automap/target.py`, `automap/live.py`,
 `automap/state.py`, `automap/render.py` and `goldbox/geo.py` were untouched by
 any of it.
@@ -522,7 +522,7 @@ several -- and does not matter over the socket, where a transport with a
 Amiga's memory once and searches it for every title's anchor string, so asking
 after two titles costs one sweep. It returns `{title: [bases]}` -- a title with
 more than one base, or two titles at once, is reported for the caller to
-refuse and never resolved by taking the first. `AmigaTarget.locate()` is the
+block and never resolved by taking the first. `AmigaTarget.locate()` is the
 same search for one title.
 
 **`AmigaTarget.c64_memory` is `False`**, an optional capability the window reads
@@ -851,7 +851,7 @@ Darkness it moved the party to its own arrival square, over the statements
 in Curse's Tilverton from the sewers replayed the game's opening ("all your gear
 is gone"), on the C64 too; on the Amiga the party's items were still there
 afterwards. In Pool of Radiance a trip out of the wilderness grid into New Phlan
-worked, where the C64 refuses it, and left fragments of the wilderness picture
+worked, where the C64 blocks it, and left fragments of the wilderness picture
 around the 3D frame; a `SAVE` of `$49E6` did not clear them and the walked boat
 exit leaves none. A trip onto the grid with `$49C3`/`$49C4` written landed on the
 written square in 3 of 3 trips, then the game asked the boat question. A jump

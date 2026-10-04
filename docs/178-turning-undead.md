@@ -13,7 +13,7 @@ His command bar reads
 
     MOVE VIEW AIM USE CAST QUICK DONE
 
-There is no `TURN` on it. The command is not greyed out, not refused with a
+There is no `TURN` on it. The command is not greyed out, not blocked with a
 message: it is not on the bar at all, and the only way to notice is to know it
 should be there. Pool of Radiance's first dungeons are full of skeletons and
 zombies, so this is a cleric who cannot do the thing his class is for.
@@ -181,7 +181,7 @@ target is read from this filter; the other stores to `$A4E2` (`$1181`, `$14C5`,
 `goldbox/c64_codec.py` **computes** `turn_power` rather than copying it, from
 the character's own cleric and paladin levels through
 `goldbox.derive.turn_power`. The neutral field is still consumed, so a source
-that refuses it is still reported; what changes is that the byte written is
+that blocks it is still reported; what changes is that the byte written is
 the one this title's own `GEN` would write.
 
 Copying and computing differ only where the source was wrong. No engine-written

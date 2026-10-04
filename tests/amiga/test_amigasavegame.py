@@ -211,7 +211,7 @@ def test_diagnostic_parsing_retains_trailing_bytes_for_the_checker():
         parse(data, CURSE)
 
 
-def test_a_file_that_fits_no_map_is_refused():
+def test_a_file_that_fits_no_map_is_blocked():
     with pytest.raises(AmigaSaveError):
         detect(bytes(20000))
     with pytest.raises(AmigaSaveError):
@@ -344,14 +344,14 @@ def test_the_party_size_word_is_kept_truthful():
     assert out.word(0x503E) == out.count == 1
 
 
-def test_a_party_from_the_wrong_title_is_refused():
+def test_a_party_from_the_wrong_title_is_blocked():
     save = parse(synthetic_curse())
     other = parse(synthetic_silver_blades()).characters
     with pytest.raises(AmigaSaveError):
         rebuild(save, other)
 
 
-def test_an_empty_or_oversized_party_is_refused():
+def test_an_empty_or_oversized_party_is_blocked():
     save = parse(synthetic_curse())
     with pytest.raises(AmigaSaveError):
         rebuild(save, [])
@@ -359,7 +359,7 @@ def test_an_empty_or_oversized_party_is_refused():
         rebuild(save, save.characters * 5)
 
 
-def test_pool_of_radiance_is_refused_because_its_party_is_not_in_the_file():
+def test_pool_of_radiance_is_blocked_because_its_party_is_not_in_the_file():
     save = parse(synthetic_pool_of_radiance())
     with pytest.raises(AmigaSaveError):
         rebuild(save)
@@ -415,13 +415,13 @@ def test_with_square_writes_curses_coordinates_as_words():
                                    "pad": 0}
 
 
-def test_with_square_refuses_a_value_the_field_cannot_hold():
+def test_with_square_blocks_a_value_the_field_cannot_hold():
     save = parse(synthetic_silver_blades())
     with pytest.raises(AmigaSaveError):
         with_square(save, x=256)
 
 
-def test_with_square_refuses_a_field_the_container_has_not_got():
+def test_with_square_blocks_a_field_the_container_has_not_got():
     save = parse(synthetic_silver_blades())
     with pytest.raises(AmigaSaveError):
         with_square(save, wallset_entry_0=1)
@@ -453,7 +453,7 @@ def test_a_saved_game_of_the_wrong_size_reads_the_characters_by_presence():
     assert len(found) == 2
 
 
-def test_a_saved_count_above_the_character_files_present_is_refused():
+def test_a_saved_count_above_the_character_files_present_is_blocked():
     disk = _por_slot_disk(["ALPHA", "BETA", "GAMMA"], synthetic_pool_of_radiance("A", 5))
     with pytest.raises(amiga_savegame.AmigaSaveError, match="slot A counts 5.*CHRDATA4"):
         amiga_savegame.read_por_characters(disk, "A")

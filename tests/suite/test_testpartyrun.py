@@ -149,7 +149,7 @@ def test_plan_keeps_new_phlan_off_scripted_squares_and_the_slums_to_plain_ids():
     assert (14, 4) not in second
 
 
-def test_plan_refuses_when_a_scripted_column_cuts_off_the_goal():
+def test_plan_rejects_when_a_scripted_column_cuts_off_the_goal():
     slums = _geo({(13, y): 9 for y in range(16)})
     with pytest.raises(SystemExit):
         T.plan_fight_route(_geo(), slums, (3, 4), (12, 4))
@@ -160,11 +160,11 @@ SUBBAR = "I,J,K,M, RETURN OR BUTTON"
 
 
 class WalkSession(PatrolSession):
-    """Fights when the party has sent `fight_after` keys; refuses the keys
-    numbered in `refuse` (1-based); stands at `start` until `arrive_after`
+    """Fights when the party has sent `fight_after` keys; rejects the keys
+    numbered in `reject` (1-based); stands at `start` until `arrive_after`
     keys have been sent, then on the New Phlan exit."""
 
-    def __init__(self, monkeypatch, fight_after=None, area=20, refuse=(),
+    def __init__(self, monkeypatch, fight_after=None, area=20, reject=(),
                  start=(3, 4, 3), arrive_after=None, turns_move=True,
                  turn_lands=True, facing_known=True, coords=True, drift=False,
                  camp=False, camp_exit_works=True, arrival=None,
@@ -181,7 +181,7 @@ class WalkSession(PatrolSession):
         # `area_before`, when set, is the area until the edge key is sent.
         self.area_now, self.area_before = area, area_before
         self.keys, self.fight_after = [], fight_after
-        self.refuse, self.start, self.arrive_after = refuse, start, arrive_after
+        self.reject, self.start, self.arrive_after = reject, start, arrive_after
         # `turns_move` False makes `walk_one` say False for a turn, as it may
         # when the status tuple it compares does not change; the live facing
         # letter does change on every turn, and `turn_lands` False leaves it
@@ -249,8 +249,8 @@ class WalkSession(PatrolSession):
         if key in "KJ":
             if self.turn_lands:
                 self.facing = (self.facing + (1 if key == "K" else -1)) % 4
-            return self.turns_move and len(self.keys) not in self.refuse
-        moved = len(self.keys) not in self.refuse
+            return self.turns_move and len(self.keys) not in self.reject
+        moved = len(self.keys) not in self.reject
         if moved and not self.drift:
             dx, dy = geowalk.STEP[self.facing]
             self.square = (self.square[0] + dx, self.square[1] + dy)
@@ -285,14 +285,14 @@ class RecordingLog(Log):
         self.events.append((kind, what))
 
 
-def _walk(monkeypatch, fight_after, area=20, refuse=(), start=(3, 4, 3),
+def _walk(monkeypatch, fight_after, area=20, reject=(), start=(3, 4, 3),
           arrive=True, **fake):
     monkeypatch.setattr(T, "dump", lambda *a, **k: None)
     monkeypatch.setattr(T, "resident_area", lambda sess, log=None: sess.area)
     first, _ = T.plan_fight_route(_geo(), _geo(), start[:2], (12, 4))
     # A route of no keys leaves the party on its start, which is the exit.
     arrive_after = max(1, len(geowalk.keys_for(first, start[2]))) if arrive else None
-    sess = WalkSession(monkeypatch, fight_after, area, refuse, start,
+    sess = WalkSession(monkeypatch, fight_after, area, reject, start,
                        arrive_after, **fake)
     Clock(monkeypatch)      # after the session, whose init stubs `sleep`
     log = RecordingLog()
@@ -322,20 +322,20 @@ def test_a_route_that_finishes_with_no_fight_began_nowhere(monkeypatch):
     assert got["began_at"] is None and got["at_target"] is False
 
 
-def test_a_refused_step_stops_the_walk_and_is_never_the_target(monkeypatch):
+def test_a_rejected_step_stops_the_walk_and_is_never_the_target(monkeypatch):
     first, second = T.plan_fight_route(_geo(), _geo(), (3, 4), (12, 4))
     total = (len(first) - 1) + 1 + (len(second) - 1)
-    # Refuse a Slums step, with the fight on the very last key the plan sends:
+    # Reject a Slums step, with the fight on the very last key the plan sends:
     # the party never got there, so it is not at the target.
-    refused = total - 2
-    sess, log, got = _walk(monkeypatch, fight_after=total, refuse={refused})
-    assert len(sess.keys) == refused
+    rejected = total - 2
+    sess, log, got = _walk(monkeypatch, fight_after=total, reject={rejected})
+    assert len(sess.keys) == rejected
     assert got["at_target"] is not True and got["desynced"]["leg"] == "slums"
-    assert got["desynced"]["to"] == list(second[refused - len(first)])
+    assert got["desynced"]["to"] == list(second[rejected - len(first)])
 
 
-def test_a_refused_new_phlan_step_never_presses_the_edge(monkeypatch):
-    sess, log, got = _walk(monkeypatch, fight_after=None, refuse={1})
+def test_a_rejected_new_phlan_step_never_presses_the_edge(monkeypatch):
+    sess, log, got = _walk(monkeypatch, fight_after=None, reject={1})
     assert sess.keys == ["I"]
     assert got["desynced"]["leg"] == "new-phlan" and got["at_target"] is False
     assert not [e for e in log.events if e[0] == "edge"]
@@ -348,7 +348,7 @@ def test_a_fight_after_a_turn_key_is_on_the_square_the_party_left():
     assert sess.keys == ["K"] and got == (0, (5, 5), None)
 
 
-def test_the_edge_is_refused_when_the_party_is_not_where_it_planned(monkeypatch):
+def test_the_edge_is_rejected_when_the_party_is_not_where_it_planned(monkeypatch):
     with pytest.raises(RuntimeError, match="planned"):
         _walk(monkeypatch, fight_after=None, arrive=False)
 
@@ -378,9 +378,9 @@ def test_walk_to_fight_stops_when_the_edge_leaves_the_wrong_area(monkeypatch):
         _walk(monkeypatch, fight_after=None, area=1)
 
 
-def _turning_walk(monkeypatch, refuse=(), **fake):
+def _turning_walk(monkeypatch, reject=(), **fake):
     monkeypatch.setattr(T, "dump", lambda *a, **k: None)
-    sess = WalkSession(monkeypatch, None, 20, refuse, (9, 13, 0), None, **fake)
+    sess = WalkSession(monkeypatch, None, 20, reject, (9, 13, 0), None, **fake)
     # (9, 14) is behind a party at (9, 13) facing north: two turns, then forward.
     got = T.walk_route(sess, RecordingLog(), [(9, 13), (9, 14)], 0, "new-phlan")
     return sess, got
@@ -392,7 +392,7 @@ def test_a_turn_walk_one_reports_unmoved_does_not_desync_the_walk(monkeypatch):
 
 
 def test_a_forward_key_reported_unmoved_still_desyncs_after_turns(monkeypatch):
-    sess, got = _turning_walk(monkeypatch, turns_move=False, refuse={3})
+    sess, got = _turning_walk(monkeypatch, turns_move=False, reject={3})
     assert got[2]["key"] == "i" and "reason" not in got[2]
 
 
@@ -443,10 +443,10 @@ def test_the_edge_turn_desyncs_as_turn_not_seen(monkeypatch):
 def test_a_status_line_without_coordinates_still_gives_the_facing(monkeypatch):
     # The Slums' line reads `S 8:07`; the memory copy behind `position()` lags,
     # so the check must not ask it, in the walk or after it.
-    def refuse():
+    def reject():
         raise AssertionError("position() is the lagging copy")
 
-    monkeypatch.setattr(WalkSession, "position", lambda self: refuse())
+    monkeypatch.setattr(WalkSession, "position", lambda self: reject())
     sess, got = _turning_walk(monkeypatch, turns_move=False, coords=False)
     assert sess.keys == ["K", "K", "I"] and got == (2, None, None)
     log = RecordingLog()
@@ -833,7 +833,7 @@ def test_the_combat_icon_is_read_every_two_seconds_not_every_poll(monkeypatch):
     assert clock.now >= 20 and len(reads) == 10
 
 
-def test_an_area_load_that_never_ends_is_refused_with_a_screenshot(
+def test_an_area_load_that_never_ends_is_rejected_with_a_screenshot(
         monkeypatch):
     dumps = []
     monkeypatch.setattr(T, "dump", lambda sess, out, log, tag: dumps.append(tag))
@@ -901,7 +901,7 @@ class StepScript(WalkSession):
     `after_key`: row 24 reads `rows`, one entry per `screen()` read, the last
     repeating.  `on_press` replaces them when Return is pressed, and a
     `"<fight>"` entry brings the fight up.  A key sent while the script's row
-    is not a walkable bar is refused, as `walk_one` refuses it."""
+    is not a walkable bar is rejected, as `walk_one` rejects it."""
 
     def __init__(self, monkeypatch, after_key, rows, on_press=None,
                  on_combat=None):
@@ -1026,7 +1026,7 @@ def test_a_script_after_a_turn_is_waited_out_before_the_step(monkeypatch):
     assert got == (2, None, None)
 
 
-def test_a_key_refused_after_a_stale_bar_is_sent_again_once_the_bar_is_back(
+def test_a_key_rejected_after_a_stale_bar_is_sent_again_once_the_bar_is_back(
         monkeypatch):
     # The bar from before the script is still up when the step's wait reads
     # it, and the script blanks row 24 only afterwards (`full13`, (14,7)).
@@ -1038,7 +1038,7 @@ def test_a_key_refused_after_a_stale_bar_is_sent_again_once_the_bar_is_back(
     assert len(retries) == 1 and retries[0]["to"] == [5, 7]
 
 
-def test_an_encounter_the_refused_key_met_is_waited_into_the_fight(
+def test_an_encounter_the_rejected_key_met_is_waited_into_the_fight(
         monkeypatch):
     # `full14`, (14,4): the next key met `COMBAT WAIT FLEE PARLAY`, `walk_one`
     # took COMBAT, and the fight was still loading when it returned.
@@ -1049,7 +1049,7 @@ def test_an_encounter_the_refused_key_met_is_waited_into_the_fight(
     assert got == (2, (5, 6), None)
 
 
-def test_a_refused_key_at_a_choice_keeps_its_rejection_and_names_the_choice(
+def test_a_rejected_key_at_a_choice_keeps_its_rejection_and_names_the_choice(
         monkeypatch):
     sess, log, got, dumps, _ = _script_walk(
         monkeypatch, [WORLD, WORLD, "", "LEAVE TALK ATTACK"])
@@ -1097,7 +1097,7 @@ def test_a_fight_loading_behind_the_drawn_menu_after_combat_is_the_fight(
     assert got == (2, (5, 6), None)
 
 
-def test_the_retry_after_a_refused_key_keeps_the_last_steps_quiet_hold(
+def test_the_retry_after_a_rejected_key_keeps_the_last_steps_quiet_hold(
         monkeypatch):
     quiets = []
     real = T.settle_step
@@ -1107,7 +1107,7 @@ def test_the_retry_after_a_refused_key_keeps_the_last_steps_quiet_hold(
         return real(sess, log, key, there, **kw)
 
     monkeypatch.setattr(T, "settle_step", spy)
-    # The last step's key is refused behind a stale bar, then goes.
+    # The last step's key is rejected behind a stale bar, then goes.
     _script_walk(monkeypatch, [WORLD, WORLD, "", "", WORLD], after_key=2)
     assert quiets[-2:] == [T.FINAL_QUIET, T.FINAL_QUIET]
 
@@ -1204,9 +1204,9 @@ class FightScreen(PatrolSession):
 @pytest.fixture(autouse=True)
 def _no_game_disks_for_the_icon_score(monkeypatch):
     """The icon score reads the player's disks; these tests are fakes."""
-    def refuse():
+    def reject():
         raise T.dirtenicon.RepairError("no disks in a fake")
-    monkeypatch.setattr(T.dirtenicon, "native_default", refuse)
+    monkeypatch.setattr(T.dirtenicon, "native_default", reject)
     monkeypatch.setattr(T.savecheck, "roll_call", _fake_roll)
     # CI has no registry and no disks: discovery finds nothing.
     monkeypatch.setattr(T, "DISKS", None)
@@ -1474,7 +1474,7 @@ def test_the_replanned_route_keeps_off_the_locked_square(monkeypatch):
     assert got == (2, None, None)
 
 
-def test_a_locked_door_with_no_route_round_it_records_the_refused_square(
+def test_a_locked_door_with_no_route_round_it_records_the_rejected_square(
         monkeypatch):
     sess, log, got = _door_walk(monkeypatch, lambda here, square: None)
     assert sess.asked == ["QUIT"]
@@ -1519,7 +1519,7 @@ def test_a_second_door_on_the_replanned_route_is_avoided_too(monkeypatch):
     assert got[2]["reason"] == "locked_door" and got[2]["square"] == [4, 5]
 
 
-def test_a_locked_target_square_has_no_route_and_is_refused(monkeypatch):
+def test_a_locked_target_square_has_no_route_and_is_rejected(monkeypatch):
     # The door is on the last step, onto the target itself.
     sess, log, got = _door_walk(
         monkeypatch, T.slums_replanner(_geo(), (5, 8)), doors={3})
@@ -1528,7 +1528,7 @@ def test_a_locked_target_square_has_no_route_and_is_refused(monkeypatch):
     assert got[2]["square"] == [5, 8] and "(5, 8)" in got[2]["stopped"]
 
 
-def test_a_locked_door_after_a_refused_key_is_answered_with_quit(
+def test_a_locked_door_after_a_rejected_key_is_answered_with_quit(
         monkeypatch):
     sess, log, got = _door_walk(
         monkeypatch,
@@ -1539,7 +1539,7 @@ def test_a_locked_door_after_a_refused_key_is_answered_with_quit(
     assert got[1] is None and got[2] is None
 
 
-def test_a_door_bar_after_a_refused_turn_is_not_answered(monkeypatch):
+def test_a_door_bar_after_a_rejected_turn_is_not_answered(monkeypatch):
     # No turn was made, so the walk cannot plan from the facing it assumed.
     sess, log, got = _door_walk(
         monkeypatch, lambda here, square: [here, (6, 5)],
@@ -1557,7 +1557,7 @@ def test_a_bar_missing_a_door_word_is_not_answered_with_quit(monkeypatch):
 
 class EncounterAfterKey(WalkSession):
     """The first `I` is sent and the square's script puts up `bar` after
-    `walk_one` has left: it says the party did not move and refuses nothing
+    `walk_one` has left: it says the party did not move and rejects nothing
     (`full18`, (14,4)).  `triple` is what the live square reads."""
 
     def __init__(self, monkeypatch, bar=ENCOUNTER, triple=(5, 5, 2)):

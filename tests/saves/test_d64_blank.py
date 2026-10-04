@@ -93,7 +93,7 @@ def test_a_blank_disk_names_itself_what_it_was_told():
     (b"OK", b"000"),        # a disk id is exactly two bytes
     (b"OK", b"0"),
 ])
-def test_a_blank_disk_refuses_a_name_it_cannot_store(name, disk_id):
+def test_a_blank_disk_blocks_a_name_it_cannot_store(name, disk_id):
     with pytest.raises(ValueError):
         D64.blank(name=name, disk_id=disk_id)
 
@@ -212,7 +212,7 @@ def test_a_second_file_never_lands_on_the_first_ones_blocks():
     assert disk.read_file(b"TWO") == _pattern(9000, 5)
 
 
-def test_a_name_already_on_the_disk_is_refused():
+def test_a_name_already_on_the_disk_is_blocked():
     disk = D64.blank()
     disk.write_file(b"THING", _pattern(300))
     before = disk.to_bytes()
@@ -222,12 +222,12 @@ def test_a_name_already_on_the_disk_is_refused():
 
 
 @pytest.mark.parametrize("name", [b"", b"A" * 17, b"BAD\xa0NAME"])
-def test_a_name_a_1541_cannot_store_is_refused(name):
+def test_a_name_a_1541_cannot_store_is_blocked(name):
     with pytest.raises(ValueError):
         D64.blank().write_file(name, _pattern(10))
 
 
-def test_a_read_only_variant_refuses_to_be_written():
+def test_a_read_only_variant_blocks_to_be_written():
     """A 40-track rip is somebody else's disk, not a save disk."""
     disk = D64.from_bytes(bytes(196608))
     assert not disk.writable

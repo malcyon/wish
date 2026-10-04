@@ -1,4 +1,4 @@
-"""File > Convert... refuses a conversion with a reported loss, except the
+"""File > Convert... blocks a conversion with a reported loss, except the
 flagged Pools of Darkness direction, and is on the menu only behind
 `WISH_EXPERIMENTAL_POD_CONVERT` (#511, stage 4 / B4).
 
@@ -85,7 +85,7 @@ def _lossy_rehearsal(monkeypatch):
             convert.Rehearsal(LOSSY, {"X.SAV": b"\x00"}), "A"))
 
 
-def test_a_lossy_dos_to_c64_conversion_is_refused_with_the_approved_sentence(
+def test_a_lossy_dos_to_c64_conversion_is_blocked_with_the_approved_sentence(
         tmp_path, monkeypatch):
     _lossy_rehearsal(monkeypatch)
     warned, critical = _capture_modals(monkeypatch)
@@ -131,7 +131,7 @@ def test_a_lossy_pools_of_darkness_conversion_is_not_blocked(
     assert (warned, critical) == ([], [])
 
 
-def test_a_conversion_with_nothing_lost_is_not_refused(tmp_path, monkeypatch):
+def test_a_conversion_with_nothing_lost_is_not_blocked(tmp_path, monkeypatch):
     clean = SimpleNamespace(messages=[], losses=[], dropped=[])
     monkeypatch.setattr(
         convert.saveplan, "rehearse",
@@ -195,7 +195,7 @@ def test_the_file_menu_has_convert_in_its_place_when_the_flag_is_on(
     assert action.text() == convert.MENU_CONVERT
 
 
-def test_a_dos_folder_copied_without_its_item_files_is_refused_not_a_crash(
+def test_a_dos_folder_copied_without_its_item_files_is_blocked_not_a_crash(
         tmp_path, monkeypatch):
     """A record that counts items with no `.ITM` beside it reaches the same
     rejection as any other unreadable source."""

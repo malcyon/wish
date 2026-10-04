@@ -6,7 +6,7 @@ edits the evidence by accident.  `shutil.copy` carries that mode onto the
 copy.  A tool that stages such a copy where the running game has to write --
 a pool slot's `SIDE0.D64`, a DOSBox instance's `SAVE` directory -- hands the
 game a save disk it cannot write to, **and the game does not complain**.
-Every write is refused in silence and the run reports success.  On 2026-09-08
+Every write is rejected in silence and the run reports success.  On 2026-09-08
 a driven Curse run walked its whole menu sequence, left no character file, and
 that was read as the game not writing one.  The second half of the same bug is
 louder: the next run staging into that directory dies on a bare
@@ -681,7 +681,7 @@ def test_the_sweep_catches_a_copy_in_a_helper_that_takes_out_as_a_parameter(
 def test_the_sweep_catches_a_copy_into_a_staged_save_directory(tmp_path):
     """The silent half of the bug: the game reads and writes its saved games
     out of the instance's staged `SAVE` directory, so a read-only record there
-    is refused on every write with no message at all."""
+    is rejected on every write with no message at all."""
     (tmp_path / "toolstub.py").write_text(
         "import shutil\n"
         "\n"

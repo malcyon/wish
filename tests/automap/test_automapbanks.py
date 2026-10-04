@@ -131,7 +131,7 @@ def test_a_status_line_is_read_while_the_game_has_the_chips_banked_out(
     """The fix a player sees on the map.
 
     The RAM under the wrongly computed screen holds a *plausible* status line
-    on purpose: `_plausible` cannot refuse `9,9` facing north, so before this
+    on purpose: `_plausible` cannot block `9,9` facing north, so before this
     the marker moved to a square the party was not on.
     """
     mon = a_machine()
@@ -167,7 +167,7 @@ def test_the_reader_as_it_was_could_answer_a_square_the_party_was_not_on():
     constructed, because nothing about ordinary RAM says which it holds, and
     both bytes are ordinary RAM at that address.  With bit 5 clear the old
     reader reads on, finds `N 03:00  9,9` at the address it computed out of
-    RAM, and `_plausible` cannot refuse it: the marker moves to a square the
+    RAM, and `_plausible` cannot block it: the marker moves to a square the
     party is not on and the explored set is fed from it.
     """
     from automap.target import party_fix

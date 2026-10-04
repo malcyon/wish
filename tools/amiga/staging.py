@@ -89,7 +89,7 @@ def stage_place(data: bytes, container: str, x: int, y: int,
 
     Writes only the three square bytes that hold the place; the wall byte, the
     area word and the rest are left for the engine to recompute on the first
-    step, as the DOS driver's `stage_place` leaves them. Refused, before
+    step, as the DOS driver's `stage_place` leaves them. Blocked, before
     anything is written, for a value out of range, a file that is not a saved
     game of `container`, and a party standing outdoors, where the square is the
     last indoor one and the game does not read it, and a party that has not
@@ -100,7 +100,7 @@ def stage_place(data: bytes, container: str, x: int, y: int,
         raise StageError(f"place {x},{y},{facing}: x and y are 0 to 15, facing 0 to 3")
     try:
         save = amiga_savegame.parse(data, container)
-        # The indoors word is what the game reads; the world state refuses a save whose
+        # The indoors word is what the game reads; the world state blocks a save whose
         # word and area disagree, which would hide this reason behind a decode error.
         outdoors = save.word(dos_savegame.INDOORS) == 0
         state = None if outdoors else amiga_savegame.state_from_savegame(save)
@@ -278,7 +278,7 @@ def stage_boot_disk(
     expected_source_sha256: str = SOURCE_SHA256,
     expected_secret_sha256: str = SECRET_SHA256,
 ) -> dict[str, object]:
-    """Write one verified scratch ADF, refusing a changed source or overwrite.
+    """Write one verified scratch ADF, blocking a changed source or overwrite.
 
     The default hashes pin registered side A and its executable.  Overrides
     exist for generated, game-data-free tests.
@@ -396,7 +396,7 @@ def stage_embedded_boot_disk(
 
     The game searches its own boot volume's SAVE drawer first, so this is a
     save the game reads with its own disks in place.  Every other file and the
-    boot block stay byte-identical, and a letter already in use is refused.
+    boot block stay byte-identical, and a letter already in use is blocked.
     """
     source = pathlib.Path(source)
     out = pathlib.Path(out)

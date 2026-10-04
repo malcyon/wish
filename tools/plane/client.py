@@ -167,7 +167,7 @@ class Client:
                 f"{exc}. Read {target} back and check whether the write is there before retrying.") from exc
 
     def state_ids(self, names):
-        """Map each exact state name to its live project UUID, refusing a name the project lacks."""
+        """Map each exact state name to its live project UUID, rejecting a name the project lacks."""
         live = {str(s.get('name')): uuid(s['id']) for s in self.pages(f'{self.prefix}/states')}
         missing = [n for n in names if n not in live]
         if missing:

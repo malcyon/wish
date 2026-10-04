@@ -101,7 +101,7 @@ def test_no_later_title_clears_bit_7(key):
 
 
 @pytest.mark.parametrize("key", LATER)
-def test_the_later_titles_refuse_to_add_a_companion_from_the_roster(key):
+def test_the_later_titles_block_to_add_a_companion_from_the_roster(key):
     _sites(key)
     assert flags0b8.npc_limit_files(key)
 

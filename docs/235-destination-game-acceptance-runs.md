@@ -14,7 +14,7 @@ afterwards.
 |---|---|
 | the Bless runs | #661 (A C64 party under a running spell loses it on the way to DOS or the Amiga with no line anywhere, because the C64 reader reads only the paladin's rows out of the effect arrays) |
 | the Detect Magic runs | #666 (A C64 party under a camp Prayer loses it on the way to DOS or the Amiga, because nothing converts the save's party-wide effect rows) and #668 (A DOS Pool of Radiance party under Detect Magic reaches the C64 with a row the game never reads, because the converted row belongs to one character and the C64 asks only for a party-wide one) |
-| the Prayer runs | #667 (A DOS party under Prayer, the strength and charisma spells, Mirror Image or an effect with no C64 spell row is still refused when saved as a C64 save, because only the ordinary caster-level spells convert) |
+| the Prayer runs | WISH-8 (A DOS party under Prayer, the strength and charisma spells, Mirror Image or an effect with no C64 spell row still fails to save as a C64 save, because only the ordinary caster-level spells convert) |
 | the cure-disease runs | #649 (Converting a dual-classed DOS Curse of the Azure Bonds character to C64 loses his leftover paladin cure-disease use) |
 | the joined-scroll runs | #432 (A joined scroll in a DOS Silver Blades save shifts everything after it out of the character's pack) |
 | the opening-scene runs | #653 (Converting an Amiga Curse or Silver Blades party that has not yet set out to the C64 or DOS lands it already adventuring, so the opening experience award never happens) |
@@ -90,7 +90,7 @@ puts a Curse or Silver Blades party on a separate save disk that the game never
 reads while its own disk A is in DF0). Pools of Darkness has disk 3 in DF1 from the first frame
 because the route was written before a runtime floppy insert
 (`WinuaePipe.insert_floppy`, which `run_recon` still offers as an `insert`
-step) could be told from a refused one: WinUAE's pipe answers `404` to every
+step) could be told from a blocked one: WinUAE's pipe answers `404` to every
 `CFG floppy<N> <path>` setter whether it applied or not, so the earlier `404`
 receipt proved nothing (`docs/143-winuae-debugger.md` section 4.2). Pool of
 Radiance's `POOLSAVE` in DF2 is unchanged.
@@ -193,7 +193,7 @@ each is built for:
 | `camp` | `ENCAMP`; records the camp bar | All four |
 | `rest 5m`, `rest 1h30m`, `rest 8d` | Camp `REST` for that long; Pools of Darkness' rest menu is read from `GAME.EXE` and is PROBABLE until a run reaches it | All four |
 | `display` | Camp `MAGIC > DISPLAY`: every page of the list of spells in effect read as text with the title's own font, returning each member's name and effect names; Pool also requires six member rows | Pool, Curse, Silver Blades |
-| `cast N SPELL [T]` | Camp `MAGIC > CAST` for roster line N, which is highlighted with `End` in Pool and Curse and `Down` in Silver Blades; the spell list is read as text, and SPELL is reached by moving the highlight down (`End` in Pool and Curse, `Down` in Silver Blades). A spell memorised twice shows as one row with a count, such as `STRENGTH (2)`, in Curse and Silver Blades. A target, T, is picked with the roster's key and `SELECT` (`Return` in Pool, `s` in Curse and Silver Blades). The cast is believed when the list comes back one SPELL shorter, or, for the caster's only row, when `CAST` opens nothing; any other screen stops the run | Pool, Curse, Silver Blades; Pools of Darkness is refused |
+| `cast N SPELL [T]` | Camp `MAGIC > CAST` for roster line N, which is highlighted with `End` in Pool and Curse and `Down` in Silver Blades; the spell list is read as text, and SPELL is reached by moving the highlight down (`End` in Pool and Curse, `Down` in Silver Blades). A spell memorised twice shows as one row with a count, such as `STRENGTH (2)`, in Curse and Silver Blades. A target, T, is picked with the roster's key and `SELECT` (`Return` in Pool, `s` in Curse and Silver Blades). The cast is believed when the list comes back one SPELL shorter, or, for the caster's only row, when `CAST` opens nothing; any other screen stops the run | Pool, Curse, Silver Blades; Pools of Darkness is blocked |
 | `train N` | The party menu's `TRAIN CHARACTER` for roster line N | Curse |
 | `save X` | Camp `SAVE` to slot X and decline the quit, or `SAVE CURRENT GAME` at the party menu; believed when the file changes | All four |
 | `read` | Copies `SAVE/` out and decodes every node, the clock, the place and each character's experience, installed slot against each saved one | All four |
@@ -261,18 +261,18 @@ failed capture or a spent deadline stops the run with a failed verdict. The
 route gets `--deadline` less min(300, deadline/2), which is kept for cleanup, and
 a lane call cut short by it that then times out is reported as the route time
 running out. A state with no guard is settled by two equal captures, listed as `unguarded`, and the
-run does not pass. It fetches the disks back, refuses if a registered disk or a
+run does not pass. It fetches the disks back, blocks if a registered disk or a
 kept slot changed, decodes the control and after slots, and prints one verdict
 line for each ("slot C: did not move", "slot D: moved 1 square from area 0
 9,13 facing 0 to area 0 9,14 facing 2"). The lane is claimed by the run and
 released in `finally`. Before the claim and again before the emulator starts,
-the run refuses unless the `winuaemute.ps1` readback passed as `--audio-proof`
+the run blocks unless the `winuaemute.ps1` readback passed as `--audio-proof`
 is under five minutes old.
 
 | title | driver | what its `prepare` does |
 |---|---|---|
 | Silver Blades | `acceptance.py prepare\|measure\|accept --title ssb` | Publishes the pinned C64 JOIN party through Save As Amiga, stages DF0 as a copy of disk 1 carrying that slot and DF1 as a copy of disk B, and writes `prepare.json` with every input's SHA-256. `accept` needs `--guards`, `--identity` and `--journal-python /usr/bin/python3`, and its preflight loads the private reader's digit templates before the lane is claimed |
-| Pool, Curse, Pools of Darkness | `acceptance.py prepare\|measure\|accept --title pool\|curse\|darkness`, and `reload --title darkness-reload` | Copies the title's registered disks and specimen into a run folder, refusing on any hash difference or a save letter the run writes that already exists (Pools of Darkness has no specimen beforehand: disk 3 is the save disk). `prepare --title darkness-reload` takes `--disk3`, `--disk3-sha256` and `--accept-summary`: the game-written disk 3 an accept run fetched, its SHA-256 and that run's summary; `reload` loads slot G from it, checks the place on screen and writes nothing. `measure --title darkness-unstarted` loads disk 3's own slot A, a party that has not set out, and presses through the journal and the screens after it; it only measures, so `accept` and `reload` refuse it. `accept --preserve-specimen` registers a successful published or substituted run's fetched save disk before the lane is released; a substituted run also takes `--specimen-issue "#N (title)"` |
+| Pool, Curse, Pools of Darkness | `acceptance.py prepare\|measure\|accept --title pool\|curse\|darkness`, and `reload --title darkness-reload` | Copies the title's registered disks and specimen into a run folder, blocking on any hash difference or a save letter the run writes that already exists (Pools of Darkness has no specimen beforehand: disk 3 is the save disk). `prepare --title darkness-reload` takes `--disk3`, `--disk3-sha256` and `--accept-summary`: the game-written disk 3 an accept run fetched, its SHA-256 and that run's summary; `reload` loads slot G from it, checks the place on screen and writes nothing. `measure --title darkness-unstarted` loads disk 3's own slot A, a party that has not set out, and presses through the journal and the screens after it; it only measures, so `accept` and `reload` block it. `accept --preserve-specimen` registers a successful published or substituted run's fetched save disk before the lane is released; a substituted run also takes `--specimen-issue "#N (title)"` |
 
 Use `guardmaps.py add`, `export` and `check` for guard maps. The file `tools/amiga/staging.py` is a DF0 staging helper (`stage_boot_disk` hides
 a boot disk's `SAVE` drawer; `stage_embedded_boot_disk` writes a slot into it),
@@ -509,7 +509,7 @@ private helper under `/usr/bin/python3`.
 **The Amiga silence proof.** Only one WinUAE lane exists, so no two Amiga runs
 overlap. Each run passes `--audio-proof`, the JSON `winuaemute.ps1` prints
 after muting the guest's default playback endpoint and reading the mute back,
-and the driver refuses a readback older than five minutes.
+and the driver blocks a readback older than five minutes.
 
 **Amiga Pools of Darkness is proven, by two accept boots and two reload boots.**
 The route mounts disk 1 in DF0 and disk 3 in DF1 from the first frame and presses
@@ -601,7 +601,7 @@ host's `virsh dumpxml agent-vm`: no sound device and an audio backend of `none`
 (`docs/233`), so a missing guest `pactl` blocks nothing. WinUAE's is the JSON
 readback `winuaemute.ps1` prints after muting the guest's default playback
 endpoint, taken through `winvm ssh` immediately before the boot and passed as
-`--audio-proof`; the driver refuses one older than five minutes
+`--audio-proof`; the driver blocks one older than five minutes
 (`.claude/rules/emulator.md`).
 
 ## 7. Who does what

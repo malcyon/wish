@@ -73,7 +73,7 @@ def import_slot(dest: AmigaDisk, dest_letter: str, source: AmigaDisk, source_let
     """Put `source_letter`'s saved game from `source` onto `dest` as `dest_letter`, in place.
 
     Reads and rebuilds through `amiga_savegame`, the same round trip an edited
-    slot takes, and refuses if the rebuilt slot fails `amigasavecheck`. `dest`
+    slot takes, and blocks if the rebuilt slot fails `amigasavecheck`. `dest`
     and `source` are two already-open disks -- typically a copy of a pinned
     game disk and a disk a different tool wrote a party onto -- so this is how
     a party built elsewhere reaches the letter a route boots from. Returns the

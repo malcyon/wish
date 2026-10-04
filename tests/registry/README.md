@@ -8,6 +8,6 @@ Tests for the machine-local registries: the game-disk registry, the emulator ins
 | `test_evidence.py` | Checks that `tools/registry/evidence.py` reports a clean, modified and non-repository tree and builds the acceptance evidence path. |
 | `test_instance.py` | Checks the emulator instance pool in `tools/registry/instance.py`: slot allocation, leases and contention, the reap table and the seeded `vicerc`, none of which needs an emulator. |
 | `test_scratch.py` | Checks that `tools/registry/scratch.py` gives one directory per tool under the temp directory and creates nothing until asked. |
-| `test_specimenbackup.py` | Checks that `tools/registry/specimenbackup.py` counts the copies of each recorded specimen and archives, verifies and refuses destinations correctly, in a temporary tree. |
+| `test_specimenbackup.py` | Checks that `tools/registry/specimenbackup.py` counts the copies of each recorded specimen and archives, verifies and blocks destinations correctly, in a temporary tree. |
 | `test_specimens.py` | Checks that `tools/registry/specimens.py` adds specimens read-only with their hashes and provenance, then lists and checks them, under a temporary root that is never the real store. |
 | `test_tooldisks.py` | Checks that every disk-reading tool stops with a message, rather than scanning the current directory, on a machine with no disks. |

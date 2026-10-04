@@ -71,10 +71,10 @@ def test_a_record_in_the_played_directory_and_the_archives_grades_edited():
         == "spec"
 
 
-def test_a_record_whose_item_file_is_missing_is_refused_with_the_readers_reason(
+def test_a_record_whose_item_file_is_missing_is_blocked_with_the_readers_reason(
         tmp_path):
     """It declares three items nobody can weigh, and `read_character` now
-    refuses it.  It is reported among the refused with that reason, neither
+    blocks it.  It is reported among the blocked with that reason, neither
     counted as a failure of the sum nor dropped without a word."""
     _record(tmp_path / "EXPORT.CHA", gold=100, encumbrance=900, items=3)
 

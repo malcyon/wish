@@ -86,7 +86,7 @@ def test_the_first_box_takes_the_focus(app):
     assert dialog.focusWidget() is _boxes(dialog)[0]
 
 
-def test_a_box_holds_no_more_than_the_width_and_refuses_what_a_name_cannot_be(app):
+def test_a_box_holds_no_more_than_the_width_and_blocks_what_a_name_cannot_be(app):
     dialog = _dialog(app)
     for box in _boxes(dialog):
         assert box.maxLength() == WIDTH
@@ -153,7 +153,7 @@ def test_a_box_left_empty_disables_accept_until_it_holds_a_name_again(app):
     assert _ok(dialog).isEnabled()
 
 
-def test_a_name_the_writer_would_refuse_disables_accept(app):
+def test_a_name_the_writer_would_block_disables_accept(app):
     """`fit_names` takes printable ASCII only, so a starting cut holding
     anything else must not be handed to it."""
     dialog = _dialog(app, ((0, "CAFÉ" + "X" * 14),))
@@ -218,12 +218,12 @@ def test_the_sentence_is_hidden_when_no_name_is_too_long(app):
     assert _boxes(dialog)[0].text() == "ABCDE"
 
 
-def test_the_box_refuses_a_character_the_destination_draws_differently(app):
+def test_the_box_blocks_a_character_the_destination_draws_differently(app):
     dialog = _shown_dialog(((2, "A{B|C}D~E"),))
     validator = _boxes(dialog)[0].validator()
     assert validator.validate("AB", 2)[0] == QValidator.State.Acceptable
     assert validator.validate("A{", 2)[0] == QValidator.State.Invalid
-    # A lower-case letter is drawn as its capital, so it is not refused.
+    # A lower-case letter is drawn as its capital, so it is not blocked.
     assert validator.validate("ab", 2)[0] == QValidator.State.Acceptable
 
 

@@ -220,7 +220,7 @@ def _no_modals():
     saved = {}
     SUPPRESSED.clear()
 
-    def refuse(name):
+    def reject(name):
         def answer(*args, **kwargs):
             said = next((a for a in args if isinstance(a, str)), "")
             SUPPRESSED.append(f"{name}: {said}")
@@ -231,7 +231,7 @@ def _no_modals():
 
     for name in ("critical", "warning", "information", "question", "about"):
         saved[name] = getattr(QMessageBox, name)
-        setattr(QMessageBox, name, staticmethod(refuse(name)))
+        setattr(QMessageBox, name, staticmethod(reject(name)))
     return saved
 
 

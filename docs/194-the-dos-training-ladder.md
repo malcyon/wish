@@ -33,7 +33,7 @@ Area 11 has no map of its own -- it reuses New Phlan's `GEO00` -- so the
 schools are New Phlan's own squares under a second script. The table is
 `ECL0B`'s, read on the C64 (`docs/50-experiments.md`, P18) and confirmed
 square by square against the player's own DOS `GEO00` at run time by
-`dosladder.check_hall`, which refuses to walk if they disagree.
+`dosladder.check_hall`, which will not walk if they disagree.
 
 | square | script id | what it is |
 |---|---|---|
@@ -87,9 +87,9 @@ opened after another school opens with the highlight where the last one left
 it, not on the first character, and `End` from the sixth line goes back to the
 first. So the count from any line to any other is `(want - here) % 6`, tracked
 across the whole boot. A run that assumed the highlight reset trained whoever
-was two lines below the previous trainee, and every one of those was refused
+was two lines below the previous trainee, and every one of those was blocked
 because it was the wrong class for that school -- which looks exactly like the
-game refusing a legitimate request.
+game blocking a legitimate request.
 
 **A `t` that leaves the screen exactly as it was is a stop.** There is no
 message left on a settled screen. A `t` that changes it is
@@ -169,7 +169,7 @@ holding 6,000 -- one below cleric level 4's 6,001, the largest of 6,000
 **At a class's ceiling the clamp does nothing.** WISHCLE trained cleric 5 to 6,
 where there is no threshold two levels above, and her experience came back out
 at the 300,000 that went in -- three rungs running, including two where the
-school refused her outright. `dosladder.clamp_cap` returns None for that case
+school blocked her outright. `dosladder.clamp_cap` returns None for that case
 rather than guessing.
 
 `tools/dos/dosladder.py --audit <run>` prints the prediction against what the

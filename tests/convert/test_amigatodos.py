@@ -121,10 +121,10 @@ def test_the_amiga_to_dos_row_takes_the_c64_to_dos_constructor():
     assert direction.source_key == dos_port.POOL_OF_RADIANCE.key
 
 
-def test_a_source_with_no_amiga_slot_is_refused_rather_than_guessed_at(
+def test_a_source_with_no_amiga_slot_is_blocked_rather_than_guessed_at(
         shipped_adf):
     """Unreachable through the dialog, whose `.adf` branch always names a
-    slot -- but a caller building a `Source` by hand must be refused rather
+    slot -- but a caller building a `Source` by hand must be blocked rather
     than have a slot letter invented for it."""
     source = convert.Source(port="amiga", title=dos_port.POOL_OF_RADIANCE,
                             path=shipped_adf, slot=None)

@@ -2,8 +2,8 @@
 
 **A character can change class exactly once, and no engine-written record can
 ever hold two former classes.** All four ports asked -- Curse of the Azure
-Bonds and Secret of the Silver Blades, on the C64 and on DOS -- refuse a
-second `HUMAN CHANGE CLASS`, and each refuses by reading the very field the
+Bonds and Secret of the Silver Blades, on the C64 and on DOS -- block a
+second `HUMAN CHANGE CLASS`, and each blocks by reading the very field the
 first change wrote. So `neutral.former_levels`, which maps a class name to the
 level it was left at, is more general than any port needs, and the
 platform-limit rule of `.claude/rules/conversions.md` has nothing to apply to
@@ -65,7 +65,7 @@ $20AD  LDX $7CB9 / STA $7CC9,X       class_levels[old] = the old level
 $20B3  LDA $0B82,X / ORA $7CEB / STA $7CEB
 ```
 
-So the stop is permanent: a character who has changed class once is refused
+So the stop is permanent: a character who has changed class once is blocked
 for the rest of the game, and there is no state in which the pair at `0x0B9`
 and `0x0BA` describes anything but the single class he left.
 
@@ -137,11 +137,11 @@ command itself, at the head of the routine at `0x3CD94`:
 ```
 03CD9F  push [0x7d3a]/[0x7d38]        ; the current character
 03CDA7  call 0x3cb94                  ; is he human?
-03CDAD  je  refuse
+03CDAD  je  block
 03CDAF  push [0x7d3a]/[0x7d38]
 03CDB8  call 0x3ca98                  ; which class was he
 03CDBB  cmp al, 0x11 / je proceed
-03CDBF  refuse: format the name, append the string at cs:0xf09, print, return
+03CDBF  block: format the name, append the string at cs:0xf09, print, return
 ```
 
 The string at `cs:0xf09` is ` doesn't qualify.`, seventeen bytes, and the same
@@ -170,7 +170,7 @@ as fast as the harness can take them, starting about a tenth of a second after
 the key, are all the party menu; ` doesn't qualify.` never appeared in any of
 them. **PROBABLE** that the message is printed and overwritten faster than a
 capture; what would settle it is a breakpoint on `0x3CDDF` in a debugger, or
-counting the frames a *known* refused change draws for -- Guy de Valois, a paladin 8
+counting the frames a *known* blocked change draws for -- Guy de Valois, a paladin 8
 with no eligible class, takes the same path and is equally silent here.
 
 ## No record anywhere holds two
@@ -207,7 +207,7 @@ run time and never on the specimen.
 ## What a conversion can meet
 
 **One former class, or none.** `goldbox/neutral.py`'s `former_levels` is a
-dict, so it can carry more, and the writers already refuse more than one; that
+dict, so it can carry more, and the writers already block more than one; that
 stop is a guard against a file we do not understand rather than a case the
 game produces. Nothing has to be built for `.claude/rules/conversions.md`'s
 "a destination that genuinely holds fewer things than the source" on account of

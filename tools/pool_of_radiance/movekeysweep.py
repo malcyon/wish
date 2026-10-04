@@ -12,7 +12,7 @@ fight starts, so it drives an emulator.
 
 The probe showed the step into an enemy square doing nothing for ten seconds.
 Every press in both runs was `KP_1`, so two readings survive and this tells
-them apart: is a step into an occupied square refused, or is `KP_1` dead?
+them apart: is a step into an occupied square rejected, or is `KP_1` dead?
 
 For each press it records the destination square's contents (empty, a party
 member, an enemy), whether the character moved, whether `MOVE LEFT` went down,

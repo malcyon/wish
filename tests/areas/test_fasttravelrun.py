@@ -230,10 +230,10 @@ def test_elapsed_is_none_unless_both_moments_happened():
     assert FT.elapsed(None, 52.0) is None
 
 
-def step(ok=True, refused=None):
+def step(ok=True, rejected=None):
     """A step that moved changes square; one that did not stays put."""
     return {"move": "1", "ok": ok, "before": (1, 1),
-            "after": (1, 0) if ok else (1, 1), "stopped": refused}
+            "after": (1, 0) if ok else (1, 1), "stopped": rejected}
 
 
 def test_walk_verdict_passes_a_party_that_moved_and_opened_the_sheet():
@@ -252,9 +252,9 @@ def test_walk_verdict_fails_when_the_sheet_never_opens():
     assert not ok and "character sheet" in message
 
 
-def test_walk_verdict_fails_a_step_the_driver_refused_to_press():
-    ok, message = FT.walk_verdict([step(refused="not a compass digit")], True)
-    assert not ok and "refused" in message
+def test_walk_verdict_fails_a_step_the_driver_rejected_to_press():
+    ok, message = FT.walk_verdict([step(rejected="not a compass digit")], True)
+    assert not ok and "rejected" in message
 
 
 def test_walk_verdict_fails_a_walk_whose_steps_never_change_square():
@@ -384,7 +384,7 @@ def test_the_walk_indoors_uses_the_dungeons_own_keys():
     assert set(FT.WALK_INDOORS) <= set("IJKM")
 
 
-def test_the_walk_refuses_to_guess_a_world_it_could_not_read():
+def test_the_walk_rejects_to_guess_a_world_it_could_not_read():
     sess, m = make()
     sess = WalkSession(m, indoors=None)
     assert FT.walk_afterwards(sess) == ([], False)
@@ -549,7 +549,7 @@ def test_an_empty_row_after_a_disk_prompt_is_waited_out_then_walked():
     assert steps[0]["row"] == FT.S.OUTDOOR_PROMPT
 
 
-def test_a_row_that_stays_empty_is_refused_with_the_row_recorded(monkeypatch):
+def test_a_row_that_stays_empty_is_rejected_with_the_row_recorded(monkeypatch):
     sess, m = make()
     sess = RedrawSession(m, [""])
     now = [0.0]
@@ -980,9 +980,9 @@ def test_enable_debug_logging_routes_automap_debug_lines_to_stdout(capsys):
     try:
         FT.enable_debug_logging()
         FT.enable_debug_logging()
-        logging.getLogger("wish.automap.actions").debug("refused: pc $1234")
+        logging.getLogger("wish.automap.actions").debug("rejected: pc $1234")
         out = capsys.readouterr().out
-        assert out.count("refused: pc $1234") == 1
+        assert out.count("rejected: pc $1234") == 1
     finally:
         logger.setLevel(old_level)
         logger.handlers[:] = old_handlers
@@ -1286,7 +1286,7 @@ def test_a_disk_prompt_answered_by_the_wait_is_then_walked():
     assert "".join(sess.pressed) == FT.WALK_OUTDOORS and sheet
 
 
-def test_a_non_empty_row_that_never_settles_is_refused_and_recorded(monkeypatch):
+def test_a_non_empty_row_that_never_settles_is_rejected_and_recorded(monkeypatch):
     now = _fake_clock(monkeypatch)
     sess, m = make()
     sess = _Clocked(m, ["PRESS RETURN"])
@@ -1454,7 +1454,7 @@ def test_settle_indoors_settles_on_the_command_bar(tmp_path, fake_clock):
     assert FT.settle_world(sess, tmp_path, {}) == (True, "")
 
 
-def test_a_refused_step_ends_the_walk_at_once():
+def test_a_stopped_step_ends_the_walk_at_once():
     sess, m = make()
     sess = WalkSession(m, indoors=True)
     real = sess.walk_one
@@ -1828,7 +1828,7 @@ def _last_step_fight(m, outcome="won", after=None, settled=True):
     ({"settled": False}, "did not come back"),
     ({"outcome": "lost"}, "lost"),
 ])
-def test_a_fight_that_is_not_cleanly_over_refuses_the_sheet(
+def test_a_fight_that_is_not_cleanly_over_rejects_the_sheet(
         monkeypatch, kw, reason):
     monkeypatch.setattr(FT.time, "sleep", lambda s: None)
     sess, m = make()

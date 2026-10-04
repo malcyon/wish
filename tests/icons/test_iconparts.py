@@ -127,7 +127,7 @@ def test_size_for_is_large_only_when_the_small_list_is_too_short(parts):
     assert parts.size_for("large", "head", small_heads) == "large"
 
 
-def test_an_option_out_of_range_is_refused(parts):
+def test_an_option_out_of_range_is_rejected(parts):
     with pytest.raises(ValueError):
         parts.compose("large", 35, 0)
     with pytest.raises(ValueError):

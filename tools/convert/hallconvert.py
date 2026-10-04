@@ -19,7 +19,7 @@ The `geo` disk is built by monkeypatching `current_area` back to
 shipped code rather than from a hand-built file, so the disk can be booted
 and the player's own experience of the bug read off the screen.  The
 `script` disk is what the fixed reader builds.  It used to be able to
-**refuse**, when the map came out of `goldbox/areas.py` and a mapless area
+**block**, when the map came out of `goldbox/areas.py` and a mapless area
 had no map to name; it now comes out of the save's own `$49C5` and the hall
 converts, so `--borrow` is kept only as the record of how the design was
 prototyped before it shipped.
@@ -83,7 +83,7 @@ def convert(folder: pathlib.Path, slot: str, disks: pathlib.Path,
     try:
         dosdisk.build(folder, slot, disks, out)
     except dos_codec.DosRecordError as e:
-        return there, f"{name}: REFUSED -- {e}"
+        return there, f"{name}: BLOCKED -- {e}"
     finally:
         sg.current_area, areas.area_in = was, was_area
     return there, f"{name}: wrote {out}"

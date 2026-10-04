@@ -438,7 +438,7 @@ def test_a_c64_cleric_carrying_the_same_id_gains_no_paladins_effect(deltas):
     **45 is unread past its duration in both later titles** (`#621`'s Stage
     2a, `docs/230-who-reads-a-dos-effect-node.md` (a)), so it is now in
     `C64_TRAIT_PERMANENT_IDS` and converts as `INNATE_PAYLOAD` rather than
-    being refused -- what stays pinned is that the cleric never gains the
+    being blocked -- what stays pinned is that the cleric never gains the
     paladin's own 8.
     """
     char = _c64_neutral(deltas.key, name="TESTER", class_bits=2,
@@ -723,7 +723,7 @@ def test_the_same_item_unreadied_now_converts_by_its_own_permanent_id():
 def test_silver_blades_elf_racial_id_reaches_the_spc_file_by_its_race():
     """Rule 1's race test: Secret of the Silver Blades' elf (race 1) carries
     95 in `RACE_COMBAT_EFFECTS_SILVER_BLADES`, so a C64 trait slot holding it
-    converts as innate rather than being refused, guarded by the character's
+    converts as innate rather than being blocked, guarded by the character's
     own race the way `C64_CLASS_TRAITS` is guarded by class."""
     char = _c64_neutral(SSB.key, name="TESTER", race=1, innate_effects=[95])
     _rec, _itm, spc, rep = dos_codec.write(char)
@@ -742,7 +742,7 @@ def test_silver_blades_gnomes_two_racial_ids_both_reach_the_spc_file():
 def test_silver_blades_halflings_92_converts_with_a_logged_difference(caplog):
     """92 is not in Silver Blades' `VALUE_READ`, so it is in
     `C64_TRAIT_PERMANENT_IDS` and converts through rule 3 rather than being
-    refused -- Donald's decision on `#621` (2026-09-22 23:33): the halfling
+    blocked -- Donald's decision on `#621` (2026-09-22 23:33): the halfling
     keeps his immunity to Fear and to Feeblemind through his class, loses his
     immunity to Ray of Enfeeblement the way a DOS-born halfling already does,
     and the difference is recorded only in the debug log, as an engine
@@ -755,11 +755,11 @@ def test_silver_blades_halflings_92_converts_with_a_logged_difference(caplog):
     assert sum("92" in r.message for r in caplog.records) == 1
 
 
-def test_a_pool_readied_item_with_an_unread_power_byte_is_still_refused():
+def test_a_pool_readied_item_with_an_unread_power_byte_is_still_blocked():
     """Pinning the strength node: 38 is the id Pool of Radiance's `0x83`
     power grants, and its value byte needs the character's own strength
     before the item (`docs/230-who-reads-a-dos-effect-node.md` (c)), which
-    Stage 3 does not settle, so it stays refused by name rather than being
+    Stage 3 does not settle, so it stays blocked by name rather than being
     guessed at as `INNATE_PAYLOAD`."""
     item = _c64_item(effect=38, power=0x83, readied=True)
     char = _c64_neutral(POOL.key, name="TESTER", innate_effects=[38],
@@ -773,7 +773,7 @@ def test_a_pool_readied_item_with_an_unread_power_byte_is_still_refused():
 
 def test_a_curse_readied_items_own_power_byte_no_longer_stops_its_permanent_id():
     """`item_unread` used to catch any readied item whose power byte had bit
-    7 set, refusing an id that equalled its `+14` even when that power was
+    7 set, blocking an id that equalled its `+14` even when that power was
     never the title's own grant.  Curse's own item-power dispatch reaches a
     slot only for power `0x80` (`#621`'s Stage 3b, `docs/230` (b)) -- `0x81`
     goes to `ECL65 $8686` and writes nothing -- so 56 beside this item is
@@ -781,7 +781,7 @@ def test_a_curse_readied_items_own_power_byte_no_longer_stops_its_permanent_id()
     case `test_the_same_item_unreadied_now_converts_by_its_own_permanent_id`
     converts.  `C64_ITEM_GRANTS_WITHOUT_DOS_FORM` has no entry for Curse, so
     rule 2.5 never takes this id and it reaches rule 3.  Red before the
-    narrowing: 56 used to be refused by name."""
+    narrowing: 56 used to be blocked by name."""
     item = _c64_item(effect=56, power=0x81, readied=True)
     char = _c64_neutral(CURSE.key, name="TESTER", innate_effects=[56],
                         inventory=[item])
@@ -796,7 +796,7 @@ def test_a_curse_readied_ioun_stone_no_longer_stops_detect_magic():
     `C64_ITEM_GRANTS_WITHOUT_DOS_FORM` for Curse (empty -- Curse's own grant
     is `0x80` alone), so it no longer matches rule 2.5, and 5 reaches rule 3
     as any other Curse trait id would.  Red before the narrowing: the item's
-    bit-7 power byte alone used to refuse 5 by name."""
+    bit-7 power byte alone used to block 5 by name."""
     item = _c64_item(effect=5, power=0x88, readied=True)
     char = _c64_neutral(CURSE.key, name="TESTER", innate_effects=[5],
                         inventory=[item])
@@ -824,7 +824,7 @@ def test_a_pool_readied_item_with_power_0x84_no_longer_stops_its_own_id():
     `C64_ITEM_GRANTS_WITHOUT_DOS_FORM` (Pool has no entry there), so a
     trait id equal to such an item's `+14` reaches rule 3 like any other
     unrelated trait id.  Red before the narrowing: the item's bit-7 power
-    byte alone used to refuse 82 by name."""
+    byte alone used to block 82 by name."""
     item = _c64_item(effect=82, power=0x84, readied=True)
     char = _c64_neutral(POOL.key, name="TESTER", innate_effects=[82],
                         inventory=[item])
@@ -833,11 +833,11 @@ def test_a_pool_readied_item_with_power_0x84_no_longer_stops_its_own_id():
     assert _innate_drops(rep) == []
 
 
-def test_a_silver_blades_camp_only_grant_with_no_dos_form_is_still_refused():
+def test_a_silver_blades_camp_only_grant_with_no_dos_form_is_still_blocked():
     """The real case `item_unread` exists for: Silver Blades' `0x82` writes
     a trait slot in camp (Stage 3b) and DOS Silver Blades has no grant for
     it and no shipped item carries it in combat, so 56 beside such an item
-    stays refused by name.  Green before and after the narrowing."""
+    stays blocked by name.  Green before and after the narrowing."""
     item = _c64_item(effect=56, power=0x82, readied=True)
     char = _c64_neutral(SSB.key, name="TESTER", innate_effects=[56],
                         inventory=[item])
@@ -851,7 +851,7 @@ def test_a_silver_blades_camp_only_grant_with_no_dos_form_is_still_refused():
 def test_a_silver_blades_readied_girdle_reaches_the_amiga_too():
     """The Amiga route calls the same `c64_trait_nodes` (`amiga_later.py`'s
     `_later_effect_nodes`), so the same narrowing applies there: 5 beside a
-    readied `0x85` item converts instead of being refused."""
+    readied `0x85` item converts instead of being blocked."""
     from goldbox import amiga_later, amiga_por
 
     item = _c64_item(effect=5, power=0x85, readied=True)
@@ -869,10 +869,10 @@ def test_a_silver_blades_camp_only_grant_is_still_reported_dropped_on_the_amiga(
     inside the same `write_later` normally reports the same lines, so the
     gap only shows where the two calls actually diverge: an
     `innate_effects` field held below the writer's confidence minimum.
-    `neutral.Writer.use` refuses it and reports one generic line with no id
+    `neutral.Writer.use` blocks it and reports one generic line with no id
     in it, while `_later_effect_nodes` reads the field straight off `char`
     with no minimum and still classifies 56 as the same unread `item_unread`
-    case `test_a_silver_blades_camp_only_grant_with_no_dos_form_is_still_refused`
+    case `test_a_silver_blades_camp_only_grant_with_no_dos_form_is_still_blocked`
     pins on the DOS side -- and that classification used to reach no
     accounting at all (found by the review of `8b6888a7`, `#621`).  Red
     before the fix: no line in `rep.dropped` named 56."""

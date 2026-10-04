@@ -220,7 +220,7 @@ def main(argv: list[str] | None = None) -> int:
     # docstring makes, and writing the result back over the source is the one
     # way to break it.  The player keeps their disks somewhere this script is
     # pointed at by hand, so naming the same file twice is a typo away.
-    # `tools/amiga/porslot.py` has refused it from the start; this one did not.
+    # `tools/amiga/porslot.py` has blocked it from the start; this one did not.
     written_to = args.out or args.save_disk
     if pathlib.Path(written_to).resolve() == pathlib.Path(args.disk).resolve():
         raise SystemExit(

@@ -232,7 +232,7 @@ class _StubPlan:
         self.destination = _StubDestination(pathlib.Path(path))
 
 
-def test_a_lossy_conversion_is_refused_with_the_approved_sentence_only(
+def test_a_lossy_conversion_is_blocked_with_the_approved_sentence_only(
         app, tmp_path, monkeypatch):
     binding, _path = c64_party(app, tmp_path)
     binding.begin_save_as("c64")
@@ -242,12 +242,12 @@ def test_a_lossy_conversion_is_refused_with_the_approved_sentence_only(
 
     monkeypatch.setattr(ew.saveplan, "prepare_save_as", fake_prepare)
     said = _confirm(binding, monkeypatch)
-    assert said == [(ew.CANNOT_SAVE_TITLE, ew.LOSS_REFUSED)]
+    assert said == [(ew.CANNOT_SAVE_TITLE, ew.LOSS_NOT_CONVERTED)]
     assert "This is a fault in Wish." not in said[0][1]
     assert not binding._child("destination_section").isHidden()
 
 
-def test_a_nonempty_dos_target_is_refused(app, tmp_path, monkeypatch):
+def test_a_nonempty_dos_target_is_blocked(app, tmp_path, monkeypatch):
     """`prepare_save_as` and `publish` are both stubbed -- what is exercised
     is `_publish_plan`'s own mapping from `files.TargetNotEmpty` to C4's
     text, not a real conversion, which is `test_savepublish.py`'s job and
@@ -314,7 +314,7 @@ def test_recovery_failed_with_no_backup_says_so_and_names_nothing_untouched(
     assert "unchanged" not in said[0][1]
 
 
-def test_a_wrong_extension_is_refused_before_anything_is_read(
+def test_a_wrong_extension_is_blocked_before_anything_is_read(
         app, tmp_path, monkeypatch):
     binding, _path = c64_party(app, tmp_path)
     binding.begin_save_as("c64")
@@ -344,30 +344,30 @@ def test_no_extension_gets_the_platforms_own_appended(app, tmp_path,
     assert str(seen["path"]).endswith("mysave.d64")
 
 
-def test_a_destination_that_is_the_open_save_is_refused(app, tmp_path,
+def test_a_destination_that_is_the_open_save_is_blocked(app, tmp_path,
                                                          monkeypatch):
     binding, path = c64_party(app, tmp_path)
     binding.begin_save_as("c64")
 
-    def fake_refuse(target, _snapshot, _assets):
+    def fake_block(target, _snapshot, _assets):
         raise saveplan.SaveAsError(f"{target} is the save this is being "
                                    f"written from")
 
-    monkeypatch.setattr(ew.saveplan, "check_not_alias", fake_refuse)
+    monkeypatch.setattr(ew.saveplan, "check_not_alias", fake_block)
     said = _confirm(binding, monkeypatch, path)
     assert said == [(ew.CANNOT_SAVE_TITLE, ew.DESTINATION_IS_SOURCE)]
 
 
-def test_a_destination_that_is_a_game_file_is_refused(app, tmp_path,
+def test_a_destination_that_is_a_game_file_is_blocked(app, tmp_path,
                                                        monkeypatch):
     binding, _path = c64_party(app, tmp_path)
     binding.begin_save_as("c64")
 
-    def fake_refuse(target, _snapshot, _assets):
+    def fake_block(target, _snapshot, _assets):
         raise saveplan.SaveAsError(
             f"{target} is, or holds, the game disk this conversion reads")
 
-    monkeypatch.setattr(ew.saveplan, "check_not_alias", fake_refuse)
+    monkeypatch.setattr(ew.saveplan, "check_not_alias", fake_block)
     said = _confirm(binding, monkeypatch, tmp_path / "beside-a-disk.d64")
     assert said == [(ew.CANNOT_SAVE_TITLE, ew.DESTINATION_IS_GAME_FILE)]
 
@@ -687,7 +687,7 @@ def test_a_stale_plan_whose_pack_now_fits_leaves_nothing_behind(
     assert run.published[1].leave == {}
 
 
-def test_a_choice_the_writer_still_refuses_shows_the_existing_sentence(
+def test_a_choice_the_writer_still_blocks_shows_the_existing_sentence(
         app, tmp_path, monkeypatch):
     run = _OverflowingSaveAs(app, tmp_path, monkeypatch)
     def still_too_many(*_args, leave=None, **_kwargs):
@@ -697,7 +697,7 @@ def test_a_choice_the_writer_still_refuses_shows_the_existing_sentence(
     monkeypatch.setattr(ew.saveplan, "prepare_save_as", still_too_many)
     run.press()
 
-    assert run.said == [(ew.CANNOT_SAVE_TITLE, ew.LOSS_REFUSED)]
+    assert run.said == [(ew.CANNOT_SAVE_TITLE, ew.LOSS_NOT_CONVERTED)]
     assert run.prepared == [None, {1: frozenset({16})}]
     assert len(run.asked) == 1
     assert run.published == []
@@ -819,7 +819,7 @@ def test_a_stale_plan_whose_effects_changed_asks_again(
     assert run.published[1].leave_effects == second
 
 
-def test_an_effects_choice_the_writer_still_refuses_shows_the_existing_sentence(
+def test_an_effects_choice_the_writer_still_blocks_shows_the_existing_sentence(
         app, tmp_path, monkeypatch):
     run = _EffectsSaveAs(app, tmp_path, monkeypatch)
 
@@ -830,7 +830,7 @@ def test_an_effects_choice_the_writer_still_refuses_shows_the_existing_sentence(
     monkeypatch.setattr(ew.saveplan, "prepare_save_as", still_too_many)
     run.press()
 
-    assert run.said == [(ew.CANNOT_SAVE_TITLE, ew.LOSS_REFUSED)]
+    assert run.said == [(ew.CANNOT_SAVE_TITLE, ew.LOSS_NOT_CONVERTED)]
     assert run.effects_prepared == [None, run.effects_answer]
     assert len(run.effects_asked) == 1
     assert run.published == []
@@ -945,7 +945,7 @@ def test_a_stale_plan_whose_names_changed_asks_again_rather_than_reuse_the_posit
     assert run.published[1].names == second
 
 
-def test_names_the_writer_still_refuses_show_the_existing_sentence(
+def test_names_the_writer_still_blocks_show_the_existing_sentence(
         app, tmp_path, monkeypatch):
     run = _UnfitSaveAs(app, tmp_path, monkeypatch)
 
@@ -956,7 +956,7 @@ def test_names_the_writer_still_refuses_show_the_existing_sentence(
     monkeypatch.setattr(ew.saveplan, "prepare_save_as", still_too_long)
     run.press()
 
-    assert run.said == [(ew.CANNOT_SAVE_TITLE, ew.LOSS_REFUSED)]
+    assert run.said == [(ew.CANNOT_SAVE_TITLE, ew.LOSS_NOT_CONVERTED)]
     assert run.names_prepared == [None, {0: "FIRST", 1: "SECOND"}]
     assert len(run.names_asked) == 1
     assert run.published == []

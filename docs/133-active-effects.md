@@ -15,7 +15,7 @@ party and can expire. `wish/window.ui` carries both panels;
 **CONFIRMED:** The `Character Traits` table always shows ten slots. `Add…`
 puts a picked id in the first free slot; `Remove` clears the selected slot and
 compacts the block. A trailing `255` remains the fill byte in slot 9, not a
-trait. The picker and warnings name uncertainty without refusing the write.
+trait. The picker and warnings name uncertainty without blocking the write.
 
 **CONFIRMED:** `goldbox.traits.for_game()` supplies the title-specific id table
 and confidence grade. Pool of Radiance and Curse share the base table; Secret
@@ -127,7 +127,7 @@ recorded and did not interpret.
 * **A second dungeon step passed no minute.** In the eight-hour run the first
   step moved the clock 21:16 → 21:17 and took one off unit `00`; the second
   left every clock byte and every count where the first had put them. Whether
-  the party was refused that move or a step only sometimes ticks the clock is
+  the party was blocked that move or a step only sometimes ticks the clock is
   UNMEASURED — walk ten steps of open ground and log the clock after each.
 * **The rest's expiry checkpoint fired three times for two expiring slots.**
   Three hits on `CAMP $131F` against the two slots, units `00` and `01`, that
@@ -217,7 +217,7 @@ restores a statistic on the way through; `goldbox.effects.clear_effect()`
 zeroes the four bytes and does not. A slot whose magnitude has bit 7 set and
 whose id is 12, 14 or 38 — or 13, in combat — leaves the character
 permanently altered if it is cleared that way, so anything that offers Remove has to apply the restore
-itself or refuse. **A magnitude written with bit 7 set on one of those ids is
+itself or block. **A magnitude written with bit 7 set on one of those ids is
 a deferred write to the character record**, not an opaque byte.
 
 The earlier plan's `P3-EFFECTS.D64` claims are removed: that disk image is not

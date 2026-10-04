@@ -327,7 +327,7 @@ reaches `$16FA`, which decides in three clauses:
   character is away with no roll at all;
 * otherwise its own movement (`$6C1B` through `$9B8F`) against the fastest
   thing on the other side (`$2B69,X`, built by `$1768`): faster is away,
-  slower is refused;
+  slower is blocked;
 * level is a coin flip, `JSR $2D88`.
 
 Away is `$1719`: `$86 RUNNING` into the record, and `COMBAT`'s own message 5

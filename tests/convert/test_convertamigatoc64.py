@@ -75,7 +75,7 @@ def test_the_tool_reads_the_slot_it_is_given(app, tmp_path):
     assert seen["C"]["produced_sha256"] != seen["d"]["produced_sha256"]
 
 
-def test_the_tool_refuses_a_slot_that_is_not_a_letter(tmp_path, capsys):
+def test_the_tool_blocks_a_slot_that_is_not_a_letter(tmp_path, capsys):
     with pytest.raises(SystemExit):
         convertamigatoc64.main([
             "--tree", ".", "--specimen", "x", "--disks", "x",

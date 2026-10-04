@@ -22,7 +22,7 @@ work that was already finished, so §0 comes first.
 | detect the travel grid live: the `OUTDOORS` status line and the `$49E6` = 0 / `$49C3`/`$49C4` fallback, gated on `Title.travel_grid` | `automap/target.py`, `automap/c64.py` | **done**, `#205 (A party that walks out onto the travel grid leaves the automapper's marker behind)` |
 | the mapper's third mode, `AutomapState.outdoors`; the strip's `Outdoors (x,y)`, the label `Wilderness`, the status `Outdoors, no map` | `automap/state.py`, `automap/panel.py`, `automap/window.py` | **done**, same issue; the three strings are Donald's |
 | read `SQRDATA04`/`05`/`06` off the disks, the 18 x 36 grid, the 120 tile entries, the stitch at world x 15 and 28 | `goldbox/world.py`, `tests/areas/test_world.py` (19 tests) | **done**, commits `4836f23` and `806497c` |
-| a party's outdoor state in a save, every port: `outdoors`, `travel`, and `geo` holding the `SQRDATA` number when outdoors | `goldbox/world_state.py` | **done**, `#352 (Handle world state for Amiga saves)` and `#376 (An Amiga party on the travel grid still cannot be converted to the C64 or DOS, because the reader refuses one)` |
+| a party's outdoor state in a save, every port: `outdoors`, `travel`, and `geo` holding the `SQRDATA` number when outdoors | `goldbox/world_state.py` | **done**, `#352 (Handle world state for Amiga saves)` and `#376` |
 | engine-written outdoor C64 saves and the tool that makes more | `p190/C64OUT1.D64`, `C64OUT2.D64` (scratch, deleted); `tools/c64/c64outdoor.py` | the tool exists; both saves are **gone**, as are `p3/W1.D64`-`W7.D64` (`cited/p190` kept only a seed disk and the log) |
 | walking a party on the grid under VICE, one compass step at a time, with a screenshot per press | `tools/c64/session.py` (`savecheck --walk`), `tools/pool_of_radiance/outdoorstep.py`, `tools/areas/windowsquare.py` | **done**, `#189 (The emulator driver cannot move a party on the travel grid, and reads its facing out of the word OUTDOORS)` |
 | screenshots of the travel screen | `cited/178/25-westwindow-arrival.png` (14,29), `25-westwindow.step3.png` (15,29), `26-middlewindow-arrival.png` (7,29) | exist; the "one screenshot" the ticket was waiting on has been on disk since `#178 (Fast Travel to the wilderness leaves the party on whatever overland square it last stood on)` |
@@ -48,7 +48,7 @@ work that was already finished, so §0 comes first.
 | `SQRPACI00` (640 bytes, identical on POOL6/7/8) is 385 zero bytes, the identity tile remap `01`-`7F`, and then the `$0600` parameter block: `+2` = `$8C00` (`P_MAP`), `+4` = `$8B00`, `+7` = 20 (`P_STRIDE`, not the row stride), `+$12` = 17, `+$13` = 35 | CONFIRMED by matching the tail against `automap/combat.py`'s own offsets | corrects the "structured tail" in the 2026-09-04 comment on `#11 (Draw the wilderness on the automapper)` |
 | Travel is eight-way, the compass 1 N, 2 NE, 3 E, 4 SE, 5 S, 6 SW, 7 W, 8 NW; the heading is at `$033D`, outside the save image | CONFIRMED that it is eight-way and unsaved | `docs/113`, `docs/90` (W2 and W3), `tools/areas/windowsquare.py`, `tools/c64/c64outdoor.py` |
 | Which value of `$033D` is which direction: clockwise from north, 0 N, 1 NE, 2 E, 3 SE, 4 S, 5 SW, 6 W, 7 NW, all eight. The game stores compass digit - 1 (`DUNGEON $0ADD`-`$0AF5`), its joystick table (`$0B34`) gives the same values, and its step table (`GDRIVE00 $C41E`) moves the party the matching way | CONFIRMED, from the game's code; the earlier PROBABLE rested on two live readings, digit 1 leaving 0 and digit 3 setting 2 | `automap/render.py` `TRAVEL_HEADINGS`; the stage E comment on `#11 (Draw the wilderness on the automapper)` |
-| A refused step still turns the party: every direction press writes `$033D` before the step is tried | PROBABLE -- the loop after the step, which holds the encounter checks, was not traced | a blocked step on the live walk shows it |
+| A blocked step still turns the party: every direction press writes `$033D` before the step is tried | PROBABLE -- the loop after the step, which holds the encounter checks, was not traced | a blocked step on the live walk shows it |
 | `$033D` is also scratch outside travel: `COMBAT` and `SECSET64` store to it, and `GDRIVE00`'s `$C021` entry leaves it at 8 | CONFIRMED that the writers exist; whether the marker then points a stale direction after an outdoor fight is SPECULATIVE | `automap/state.py` reads 8 or more as no heading |
 | The game's travel view is a window of squares around the party whose top-left is `CAMERA` `$037E`; the combat view is 7 across | PROBABLE for combat, UNKNOWN for travel -- the screenshots look narrower than seven tiles | measurement B reads `$037E` and the screen |
 | A site is hidden by painting ordinary terrain over its square until its flag is set; four are known: `1A` (12,11) nomad camp, `1B` (11,8) lizardman keep, (6,15) kobold caves, (7,23) a site that was cut | CONFIRMED | `tests/areas/test_p3.py` `PAINTED`, `docs/90` |
@@ -151,7 +151,7 @@ reading on another window is taken.
 3. **Reopening the script read** for the 46 sites, the river swap and the
    disk line ("Buccaneer Base -- disk 6"). Closed at his direction on
    2026-08-31; nothing below needs it, and piece 7 is the only thing waiting.
-4. **Whether a note may be pinned to an outdoor square.** The lattice refuses
+4. **Whether a note may be pinned to an outdoor square.** The lattice blocks
    a click outdoors today (`automap/window.py` `mouseReleaseEvent`) because
    there was no square to pin to; once there is, allowing it is a change to
    what he sees.
@@ -195,7 +195,7 @@ its `PAINTED` squares altered still identifies; a page of zeroes and a real
 `GEO` block do not. Fails if the tolerance goes to 0 (the painted case) or if
 the byte-below-120 clause is removed (zeroes pass, since a zero page is
 inside any tolerance of nothing -- it differs in every non-zero byte, so this
-clause is what refuses a *sparse* impostor; measure it rather than trust this
+clause is what blocks a *sparse* impostor; measure it rather than trust this
 sentence).
 
 **3. Identify the window outdoors, in `automap/state.py`.** `_poll_outdoors`

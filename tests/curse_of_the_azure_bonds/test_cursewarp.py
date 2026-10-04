@@ -61,7 +61,7 @@ def test_idle_in_key_window_confirms_a_pc_genuinely_in_the_window():
     assert CURSE.idle_in_key_window(sess, Addr()) == 0x2005
 
 
-def test_idle_in_key_window_refuses_a_pc_outside_both_windows():
+def test_idle_in_key_window_rejects_a_pc_outside_both_windows():
     """The load-in-progress case: the screen has not changed, but the PC is
     off in the KERNAL loader rather than waiting in a key window."""
     sess = FakeSess(pc=0xE000)

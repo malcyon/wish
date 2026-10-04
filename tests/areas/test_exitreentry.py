@@ -203,7 +203,7 @@ def test_indoors_accepts_any_non_zero_the_way_dungeon_does():
 
 @needs_disks
 def test_the_edge_square_is_open_on_the_side_the_party_steps_off():
-    """`$10EC` refuses to count a step through a wall, so the gate never opens.
+    """`$10EC` declines to count a step through a wall, so the gate never opens.
 
     Measured on 2026-09-04: the first choice of `PHLAN_EDGE` was (15, 1)
     facing east, `$C04E` read 14 there, `$6DD5` stayed 0 and `ECL00`'s

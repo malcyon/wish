@@ -62,7 +62,7 @@ def test_the_report_names_its_specimens_and_tallies_every_value(capsys):
     assert "        3        3        2" in out  # fighter 3, value 3, twice
 
 
-def test_an_unknown_c64_field_is_refused_rather_than_guessed_at():
+def test_an_unknown_c64_field_is_blocked_rather_than_guessed_at():
     """A typo in a field name must not read a plausible byte."""
     with pytest.raises(SystemExit):
         list(fieldsweep.monster_rows("attack_levels"))

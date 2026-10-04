@@ -62,7 +62,7 @@ def legal() -> frozenset[bytes]:
 def test_the_table_names_every_figure_a_dos_player_can_choose(tables):
     """Fourteen heads and thirty-two bodies, which is what the editor wraps at.
 
-    A missing row is a character the conversion would refuse, and the record
+    A missing row is a character the conversion would reject, and the record
     byte comes from the player's own game rather than from us.
     """
     assert sorted(tables.heads) == list(DOS_HEADS)
@@ -200,14 +200,14 @@ def test_the_high_nibble_moves_the_leg_and_the_shield_and_nothing_else(
         assert parts.dos_icon(0, 1, "large", bytes(moved), tables) != ordinary, part
 
 
-def test_a_figure_the_table_does_not_name_is_refused(parts, tables):
+def test_a_figure_the_table_does_not_name_is_rejected(parts, tables):
     with pytest.raises(ValueError, match="head 14"):
         parts.dos_icon(14, 0, "large", DEFAULT_COLOURS, tables)
     with pytest.raises(ValueError, match="body 32"):
         parts.dos_icon(0, 32, "large", DEFAULT_COLOURS, tables)
 
 
-def test_a_size_no_player_record_holds_is_refused():
+def test_a_size_no_player_record_holds_is_rejected():
     """A monster's `0x0C0` is zero, and a monster draws from other art."""
     assert dos_size(1) == "small"
     assert dos_size(2) == "large"

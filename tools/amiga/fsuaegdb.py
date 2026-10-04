@@ -94,7 +94,7 @@ VHPOSR = 0xDFF006
 #: needs a layout says so.
 NO_TITLE = "none"
 
-#: The session commands that need a layout, and so are refused under it.
+#: The session commands that need a layout, and so are blocked under it.
 TITLED_COMMANDS = ("locate", "fix", "peek", "observe", "poll", "no_encounters")
 
 #: One `dump` is at most one region of the A500's memory, the size `probe`'s
@@ -128,7 +128,7 @@ def helper_runtime(args) -> pathlib.Path:
     return fsuaehelper.runtime_dir()
 
 
-def refuse_when_helper_holds(args) -> None:
+def stop_if_helper_holds(args) -> None:
     """Stop before opening a socket when a Wish connection helper has the door.
 
     The fork takes one client per run.  A second one waits in its backlog for
@@ -145,7 +145,7 @@ def refuse_when_helper_holds(args) -> None:
 
 
 def connect(args, resume: bool = True) -> amiga.FsuaeGdb:
-    refuse_when_helper_holds(args)
+    stop_if_helper_holds(args)
     return amiga.FsuaeGdb(host=args.host, port=args.port,
                           timeout=args.timeout, resume=resume)
 
@@ -175,7 +175,7 @@ def resolve_layout(args, gdb) -> amiga.AmigaMachine:
     return amiga.MACHINES[args.title] if args.title else detect_layout(gdb)
 
 
-def refuse_no_title(args, command: str) -> None:
+def require_title(args, command: str) -> None:
     """Stop a command that needs a layout before it connects, under `--title none`."""
     if args.title == NO_TITLE:
         raise SystemExit(f"{command} needs a title's layout; --title {NO_TITLE} "
@@ -189,7 +189,7 @@ def target(args) -> amiga.AmigaTarget:
     relocates the executable on every `LoadSeg`, so an address from yesterday
     is wrong today.
     """
-    refuse_no_title(args, "this command")
+    require_title(args, "this command")
     gdb = connect(args)
     try:
         layout = resolve_layout(args, gdb)
@@ -261,7 +261,7 @@ def probe(args) -> int:
 SHIFTED_SYMBOLS = frozenset('!@#$%^&*()_+{}|:"<>?~')
 
 
-def refuse_shift_letter(key: str) -> None:
+def check_shift_letter(key: str) -> None:
     """ValueError for a key that would send Shift; the driver must never send Shift.
 
     xdotool sends an upper-case letter or a shifted symbol as Shift plus
@@ -289,7 +289,7 @@ def press(display: str, key: str, settle: float) -> None:
     """
     from tools.amiga import fsuaepor
 
-    refuse_shift_letter(key)
+    check_shift_letter(key)
     env = {"DISPLAY": display, "PATH": "/usr/bin:/bin"}
     found = fsuaepor.find_windows(display)
     if found:
@@ -463,7 +463,7 @@ POKE_TIMEOUT = 3.0
 def poke_row(gdb, tgt, rest: str) -> dict:
     """`poke SPEC HEX` as a log row: a write through the session's own GDB client.
 
-    `AmigaTarget.write` refuses a GDB transport because Wish's product path
+    `AmigaTarget.write` blocks a GDB transport because Wish's product path
     only reads, not because the emulator cannot write; this verb sends the `M`
     packet itself, which the installed `fs-uae-gdb` handles. It never trusts the
     reply alone: the bytes are read back, and a write the server ignored is an
@@ -511,7 +511,7 @@ def dump_row(gdb, rest: str, out: pathlib.Path) -> dict:
     """`dump NAME ADDRESS LENGTH` as a log row, the bytes in `out/dumps/NAME.bin`.
 
     Absolute, read straight off the connection: the point is to capture memory
-    of a title that has no layout, and a read the server refuses is a row too
+    of a title that has no layout, and a read the server blocks is a row too
     because the one connection cannot be taken up again.
     """
     parts = rest.split()
@@ -569,7 +569,7 @@ def expand_sequence(text: str, index: int) -> list[str]:
     for key in keys:
         # All of them before the first is sent, so a bad key never leaves a
         # floppy half inserted.
-        refuse_shift_letter(key)
+        check_shift_letter(key)
     return keys
 
 
@@ -1101,7 +1101,7 @@ class Encounters:
     def active(self) -> bool:
         return self.switch is not None and self.switch.active
 
-    def refuse_key(self, keys: str, now: float) -> bool:
+    def blocks_key(self, keys: str, now: float) -> bool:
         """Before a `key`: True (and an error row) for a save key while the
         script may be changed -- the switch on, a row it failed to put back,
         or an earlier run's change in the journal -- otherwise apply the
@@ -1299,7 +1299,7 @@ def session(args) -> int:
         fix                 where the party is, from the engine's globals
         peek <spec> <n>     n bytes of memory: `+0x5B12` is a data-hunk
                             offset, `*0x57AC+0x24` dereferences the pointer
-                            there first.  Read-only; refused before `locate`
+                            there first.  Read-only; blocked before `locate`
         poke <spec> <hex>   CHANGES THE RUNNING GAME: writes up to 64 bytes
                             with an `M` packet and logs address, old and new
                             bytes.  `<spec>` is a peek spec or an absolute
@@ -1317,7 +1317,7 @@ def session(args) -> int:
                             save carries the loaded script, so `off` comes
                             first and restores every original; it stays off
                             until `on` again.  A `key` line with `s` or `S`
-                            is refused while it is on as a safety net, which
+                            is blocked while it is on as a safety net, which
                             is not complete: a save can start without an `s`
         swap <index>        put swap list image <index> in the drive, by the
                             keys of `--swap-sequence` (default: the F12 menu
@@ -1409,7 +1409,7 @@ def session(args) -> int:
         swap = (swap_error, swap_log)
 
         def handle(word: str, rest: str, line: str, now: float) -> bool:
-            if word == "key" and enc.refuse_key(rest, now):
+            if word == "key" and enc.blocks_key(rest, now):
                 return True
             return dispatch(word, rest, line, now)
 
@@ -1622,11 +1622,11 @@ WISH_ENV = (*WISH_UNSET, WISH_FLAG, "XDG_CONFIG_HOME", "XDG_DATA_HOME",
             "QT_QPA_PLATFORM", "WAYLAND_DISPLAY", "XDG_SESSION_TYPE",
             "GDK_BACKEND")
 
-#: The session commands that read the emulator, which `wish` refuses: the
+#: The session commands that read the emulator, which `wish` blocks: the
 #: window holds the only way to the game, and the point of the run is that
 #: nothing else does.  `no_encounters` is the exception: it goes through a
 #: client of the window's connection helper (`helper_machine`).
-WISH_REFUSED = ("peek", "poke", "locate", "fix", "dump", "poll", "time", "geo")
+WISH_BLOCKED_VERBS = ("peek", "poke", "locate", "fix", "dump", "poll", "time", "geo")
 
 #: How often the window's events run while a command waits.
 PUMP_STEP = 0.05
@@ -1697,7 +1697,7 @@ def helper_machine(port: int, runtime=None):
 
 def parse_disks_for(items: list[str] | None) -> dict[str, str]:
     """`--disks-for KEY=FOLDER` as the `game_folders` row a player's
-    Preferences would write, refusing an unknown title or a missing folder."""
+    Preferences would write, blocking an unknown title or a missing folder."""
     from automap.maps import AMIGA_ONLY_TITLES
     from goldbox import c64_port
 
@@ -1943,7 +1943,7 @@ def wish(args) -> int:
                             as in `session`, through a client of the window's
                             connection helper, which it opens on the first
                             `on`; applied again on every pass and before every
-                            `key`, a save key refused while on, and every row
+                            `key`, a save key blocked while on, and every row
                             put back at the end of the run
 
     `peek`, `poke`, `locate`, `fix`, `dump`, `poll`, `time` and `geo` are
@@ -2032,10 +2032,10 @@ def wish(args) -> int:
              window=run.window is not None)
 
         def handle(word: str, rest: str, line: str, now: float) -> bool:
-            if word == "key" and enc.refuse_key(rest, now):
+            if word == "key" and enc.blocks_key(rest, now):
                 return True
-            if word in WISH_REFUSED:
-                error = (f"`{word}` is refused: the window holds the only "
+            if word in WISH_BLOCKED_VERBS:
+                error = (f"`{word}` is not allowed: the window holds the only "
                          "way to the game, and `wish` opens no debugger "
                          "connection of its own")
                 print(f"           {error}")
@@ -2110,7 +2110,7 @@ def check_automap_keys(args) -> None:
     try:
         keys = [key for _, key in schedule(getattr(args, "boot", "") or "")]
         for key in [*keys, *walk]:
-            refuse_shift_letter(key)
+            check_shift_letter(key)
     except ValueError as exc:
         raise SystemExit(f"--boot/--walk: {exc}") from exc
 
@@ -2161,7 +2161,7 @@ def resolve_key(display: str, key: str) -> str:
     a `keyup`, which releases a key nobody holds.
     """
     key = KEY_ALIASES.get(key, key)
-    refuse_shift_letter(key)
+    check_shift_letter(key)
     if not key_known(display, key):
         raise ValueError(f"no such key name {key!r}")
     return key
@@ -2185,7 +2185,7 @@ def held_key(args, key: str, idle=time.sleep,
     Shares `fsuaepor.keys`, the implementation the `amiga-pod` runs used.  A
     hold of 0 is the old unheld `xdotool key`.
     """
-    refuse_shift_letter(key)
+    check_shift_letter(key)
     wait_for_first_key(args.display,
                        getattr(args, "first_key_after", FIRST_KEY_AFTER),
                        idle, budget)
@@ -2321,7 +2321,7 @@ def automap(args) -> int:
     from automap import state as mapstate
     from tools.amiga.amigatarget import find_maps
 
-    refuse_no_title(args, "automap")
+    require_title(args, "automap")
     if not args.title:
         # The game may not be loaded yet (`--boot`), so there is nothing to
         # detect before the connection is open, and a wrong guess costs a boot.

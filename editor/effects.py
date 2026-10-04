@@ -31,7 +31,7 @@ UNSURE = QColor("#7d6608")     # a GUESS, coloured the way an NPC name is
 #: A code the sheet will write and `docs/133-active-effects.md` has a reason to
 #: doubt -- a monster's attack form on a character, a code with no handler, a
 #: code nobody has named, the same code twice. Not a rejection: the editor writes
-#: what is picked, the way the spellbook does, and says what it is not refusing.
+#: what is picked, the way the spellbook does, and says what it is not blocking.
 WARN = QColor("#8b3a1a")
 
 
@@ -77,7 +77,7 @@ SECTION_TABLE = "From the DOS table"
 
 #: Why a code is coloured, on the picker row and on the sheet. The four cases
 #: `docs/133-active-effects.md` sets out under "What a nonsense combination
-#: could do". None of them refuses the write.
+#: could do". None of them blocks the write.
 REASON_MONSTER = ("A monster's way of attacking. A character has none of the "
                   "parts it reads, so nobody knows what it would do.")
 REASON_NO_HANDLER = ("The game has no answer for this one, so nothing is "

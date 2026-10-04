@@ -26,7 +26,7 @@ recording which ones move it.
 
 Captures go to the temp directory (`tools/registry/scratch.py`).  Nothing is
 written to the player's disks: `stage_disks` copies the sides into the slot
-and `Session.attach` refuses a path outside it.  The pool owns the emulator --
+and `Session.attach` rejects a path outside it.  The pool owns the emulator --
 claim, launch, tear down.
 """
 from __future__ import annotations
@@ -181,7 +181,7 @@ def warp(sess, target, ft, out: pathlib.Path, area_id: int) -> dict:
     """One fast travel, through the shipped `FastTravel.apply`."""
     row = A.area_by_id(area_id)
     # A menu left on screen keeps the PC out of the key-wait loop, and
-    # `FastTravel.legality` rightly refuses that -- which is how the first run
+    # `FastTravel.legality` rightly rejects that -- which is how the first run
     # of this never reached window 27 at all.
     clear_menu(sess, out, "")
     sess.leave_outdoor_move(2)
@@ -194,7 +194,7 @@ def warp(sess, target, ft, out: pathlib.Path, area_id: int) -> dict:
     for note in outcome.notes:
         print(f"  note: {note}", flush=True)
     if not outcome.ok:
-        raise RuntimeError(f"refused: {outcome.message}")
+        raise RuntimeError(f"rejected: {outcome.message}")
     wait_idle(sess)
     sess.settle(4)
     return {"notes": list(outcome.notes),

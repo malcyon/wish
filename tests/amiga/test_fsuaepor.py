@@ -28,7 +28,7 @@ def test_set_name_changes_the_name_field_and_nothing_else():
     assert len(after) == len(record)
 
 
-def test_set_name_refuses_a_name_with_no_room_for_its_nul():
+def test_set_name_blocks_a_name_with_no_room_for_its_nul():
     with pytest.raises(ValueError):
         fsuaepor.set_name(bytes(288), b"ABCDEFGHIJKLMNOP")
 

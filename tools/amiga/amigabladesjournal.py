@@ -370,7 +370,7 @@ def tables(adf: pathlib.Path):
     return amiga_tables.tables(disk.read_file("Secret"))
 
 
-def refuse_keep_inside_repository(directory: pathlib.Path) -> None:
+def require_keep_outside_repository(directory: pathlib.Path) -> None:
     """`SystemExit` when `directory` is inside this repository's tree."""
     root = HERE.parent.parent.resolve()
     if directory.resolve().is_relative_to(root):
@@ -517,7 +517,7 @@ def answer(holder: str, settle: float, adf: pathlib.Path,
     later change to the reader can be checked against it by `replay`.  Nothing
     is kept for a screen with no challenge on it.  `keep` must lie outside this
     repository, whose tree must never hold a capture; a directory inside it is
-    refused before anything is grabbed.
+    blocked before anything is grabbed.
 
     `capture` takes a path and puts the emulator's screen in it; `press` takes
     one character and sends it.  Both default to WinUAE's -- `winvm shot` and
@@ -540,7 +540,7 @@ def answer(holder: str, settle: float, adf: pathlib.Path,
             amigadrive.press(holder, key, settle)
 
     if keep is not None:
-        refuse_keep_inside_repository(keep)
+        require_keep_outside_repository(keep)
     screen, amiga_tables = _blades_modules()
     table = tables(adf)
     tidy = shot is None
@@ -566,7 +566,7 @@ def answer(holder: str, settle: float, adf: pathlib.Path,
             return False
         if match is None:
             # A challenge read at a ratio nothing else confirmed may be a
-            # misreading, and a misreading is not worth keeping.
+            # misreading, and a misreading should not be kept.
             if keep is not None and len(aspects) == 1:
                 _keep(keep, shot, challenge, None, None)
             # Deliberately not the exception's own message: it quotes the

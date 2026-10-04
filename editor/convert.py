@@ -157,7 +157,7 @@ _log = logging.getLogger("wish.editor.convert")
 
 
 class ConvertError(Exception):
-    """Anything a direction or `Source.detect` refuses, phrased for a
+    """Anything a direction or `Source.detect` blocks, phrased for a
     player to read -- in a modal `QMessageBox` since 2026-09-10."""
 
 
@@ -294,7 +294,7 @@ class Source:
 
         Reads the name and whether it is a folder, never the contents, so a
         path that does not exist and is called `x.adf` still answers True and
-        `detect` is what refuses it. Anything else is taken for a C64 disk
+        `detect` is what blocks it. Anything else is taken for a C64 disk
         image.
         """
         path = pathlib.Path(path)
@@ -486,7 +486,7 @@ class Source:
 #: A DOS save container picked directly -- the dialog's save picker matches
 #: `*.d64` and this pattern in one filter, so there is no separate slot row
 #: (`#52`'s dialog, decision 2). Case-insensitive: the game itself always
-#: writes upper case, but a picker should not refuse a renamed copy.
+#: writes upper case, but a picker should not block a renamed copy.
 _SAVGAM_FILE_RE = re.compile(r"^SAVGAM([A-Za-z])\.(DAT|PTY)$", re.IGNORECASE)
 
 #: What an Amiga disk image is called. Lower case, and `Source.detect`
@@ -1522,7 +1522,7 @@ def destinations_for(source: Source) -> list[Direction]:
 
     Empty for anything not in `DIRECTIONS` and, unless
     `WISH_EXPERIMENTAL_POD_CONVERT` is set, `POD_DIRECTIONS`.  An unready
-    direction is never offered and never refused.
+    direction is never offered and never blocked.
     """
     directions = DIRECTIONS + (POD_DIRECTIONS if pod_convert_enabled() else ())
     return [d for d in directions
@@ -1724,7 +1724,7 @@ NO_DISK = "Choose Amiga game disk 2."
 #: 2026-09-10, for the same reason as `NO_GAME_FOLDER` above.
 NO_FOLDER = "Choose where to write."
 #: `goldbox.dos_codec.CANNOT_CONVERT`, approved under `#195 (The import pane shows
-#: a player a memory address when the conversion refuses for any reason but
+#: a player a memory address when the conversion blocks for any reason but
 #: the wrong title)` on 2026-09-02. It names a source Wish cannot read, or a
 #: rehearsal failure that has no `dos_codec.DosRecordError.player_message`.
 CANNOT_CONVERT = dos_codec.CANNOT_CONVERT
@@ -1746,7 +1746,7 @@ POOLS_OF_DARKNESS_UNSUPPORTED = "Pools of Darkness saves are not yet supported."
 #: missing set of game disks is a field the dialog itself cannot fill in for
 #: the player, the same form as `NO_FOLDER` and the other rows above, so a
 #: modal added nothing a disabled Convert button did not already say.
-#: `editor/window.py`'s own direct use of it, refusing `File ▸ Import`
+#: `editor/window.py`'s own direct use of it, blocking `File ▸ Import`
 #: outright before its dialog even opened, is gone along with that menu
 #: entry, `#52 (File ▸ Import and File ▸ Export for every direction the
 #: library supports)`, 2026-09-14.
@@ -2351,7 +2351,7 @@ class ConvertDialog(QDialog):
         """Rehearse again with what the player chose to leave behind, and the
         names already chosen when there are any.
 
-        Raises what the writer raises, so a caller can refuse the write; a
+        Raises what the writer raises, so a caller can block the write; a
         rehearsal that comes out with a loss is left `None`, as `replan` does.
         """
         self._chosen["leave"] = leave
@@ -2362,13 +2362,13 @@ class ConvertDialog(QDialog):
         except dos_codec.EffectsDoNotFit as exc:
             # The pack is settled and the effects are next, so a party whose
             # pack and effects both overflow is asked twice rather than
-            # refused.
+            # blocked.
             self.effect_overflow = exc.overflow
 
     def rehearse_naming(self, names: "Mapping[int, str]") -> None:
         """Rehearse again with the names the player chose, keyed by position.
 
-        Raises what the writer raises, so a caller can refuse the write; a
+        Raises what the writer raises, so a caller can block the write; a
         rehearsal that comes out with a loss is left `None`, as `replan` does.
         """
         self._chosen["names"] = names
@@ -2379,7 +2379,7 @@ class ConvertDialog(QDialog):
         """Rehearse again with the running effects the player chose to leave
         out, keyed by member, and every earlier choice kept.
 
-        Raises what the writer raises, so a caller can refuse the write; a
+        Raises what the writer raises, so a caller can block the write; a
         rehearsal that comes out with a loss is left `None`, as `replan` does.
         """
         self._chosen["leave_effects"] = leave_effects

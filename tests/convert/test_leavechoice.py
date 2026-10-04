@@ -3,7 +3,7 @@
 A DOS Silver Blades character whose joined scrolls need more than the C64's
 sixteen slots converts once the player names what stays behind; each item left
 is one line of `Report.left_behind` and never a loss, so Save As does not
-refuse the player's own choice.
+block the player's own choice.
 """
 
 from __future__ import annotations
@@ -96,7 +96,7 @@ def test_saveplan_rehearse_hands_the_choice_to_the_direction(monkeypatch):
 
 @pytest.mark.parametrize("name", [
     "C64ToDos", "AmigaToDos", "C64ToAmiga", "DosToAmiga"])
-def test_a_direction_that_writes_no_c64_record_refuses_a_choice(name):
+def test_a_direction_that_writes_no_c64_record_blocks_a_choice(name):
     direction = getattr(convert, name, None)
     if direction is None:
         pytest.skip(f"no {name} class")

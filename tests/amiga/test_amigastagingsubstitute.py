@@ -100,14 +100,14 @@ def test_a_substitute_at_a_different_letter_is_read_by_that_letter(tmp_path, sou
     assert manifest["names_a"] == ["EPSILON"]
 
 
-def test_a_missing_substitute_is_refused(tmp_path, sources):
+def test_a_missing_substitute_is_blocked(tmp_path, sources):
     src, specimen = sources
     with pytest.raises(RouteError, match="substitute .* is missing"):
         staging._prepare_from(src, tmp_path / "run", specimen,
                               substitute=tmp_path / "no-such-file.adf")
 
 
-def test_a_substitute_with_no_such_letter_is_refused(tmp_path, sources):
+def test_a_substitute_with_no_such_letter_is_blocked(tmp_path, sources):
     src, specimen = sources
     substitute = _curse_disk(tmp_path, "substitute.adf", {"A": ("GAMMA",)})
     with pytest.raises(RouteError, match="could not be imported"):
@@ -115,7 +115,7 @@ def test_a_substitute_with_no_such_letter_is_refused(tmp_path, sources):
                               substitute=substitute, substitute_letter="Z")
 
 
-def test_an_unreadable_substitute_is_refused_at_adf_open(tmp_path, sources):
+def test_an_unreadable_substitute_is_blocked_at_adf_open(tmp_path, sources):
     src, specimen = sources
     substitute = tmp_path / "broken.adf"
     substitute.write_bytes(b"not an ADF image" * 100)
@@ -123,7 +123,7 @@ def test_an_unreadable_substitute_is_refused_at_adf_open(tmp_path, sources):
         staging._prepare_from(src, tmp_path / "run", specimen, substitute=substitute)
 
 
-def test_a_substitute_that_fails_adf_verification_is_refused(tmp_path, sources):
+def test_a_substitute_that_fails_adf_verification_is_blocked(tmp_path, sources):
     """A structurally valid ADF -- `AmigaDisk.open` succeeds -- whose root block
     checksum is wrong, so only `_prepare_from`'s own `source_disk.verify()`
     call, not `AmigaDisk.open`, rejects it."""
@@ -183,7 +183,7 @@ def test_pool_substitute_copies_slot_bytes_and_keeps_other_slots(tmp_path):
     assert staging.sha256(substitute) == manifest["substitute"]["sha256"]
 
 
-def test_pool_substitute_refuses_missing_source_letter(tmp_path):
+def test_pool_substitute_blocks_missing_source_letter(tmp_path):
     pinned, specimen = _pool_disk(tmp_path, "pool-pinned.adf", "A", "ALPHA")
     other, _ = _pool_disk(tmp_path, "pool-other.adf", "B", "BETA")
     for entry in other.entries():

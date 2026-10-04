@@ -255,7 +255,7 @@ class C64Deltas:
     `goldbox/layout.py` is Pool of Radiance's table and every offset in it is
     the same in the later titles -- what differs is how far three regions run
     and whether two fields are used at all.  Each row below was read out of
-    the title's own overlays, and a title with no row is refused (#274) --
+    the title's own overlays, and a title with no row is blocked (#274) --
     only no title *at all*, `None`, still means Pool of Radiance.
 
     Named `C64Deltas` rather than `RecordShape` since `#470 (Give the project
@@ -440,7 +440,7 @@ def deltas_for(game=None) -> C64Deltas:
     handing back Pool of Radiance's spell span, ability layout and dual-class
     answer for a title nobody has read the overlays of is inventing that
     title's geometry, silently, exactly the way a title with no fast-travel
-    row is refused rather than given Pool of Radiance's coordinates
+    row is blocked rather than given Pool of Radiance's coordinates
     (`automap/fasttravel.py`). Only `None` -- a caller with no title in hand
     at all, not a title that is unmeasured -- still means Pool of Radiance.
     """
@@ -459,7 +459,7 @@ def deltas_for(game=None) -> C64Deltas:
 
 
 def span_of(names: "tuple[str, ...]") -> tuple[int, int]:
-    """`(offset, size)` of a run of declared fields, refusing a gap in it."""
+    """`(offset, size)` of a run of declared fields, blocking a gap in it."""
     fields = [_field(n) for n in names]
     at = fields[0].offset
     size = 0
@@ -492,7 +492,7 @@ def _set_span(rec: CharacterRecord, names: "tuple[str, ...]",
 
 def _get_span(rec: CharacterRecord, names: "tuple[str, ...]") -> bytes:
     """Read back what :func:`_set_span` writes, in one piece."""
-    span_of(names)                      # refuses a run with a hole in it
+    span_of(names)                      # blocks a run with a hole in it
     return b"".join(rec.get_raw(n) for n in names)
 
 
@@ -788,7 +788,7 @@ def _readied_weapon(raws: list[bytes],
     """The readied item whose type has location 0, or None.
 
     The lowest slot wins, as the game's downward scan leaves it; READY
-    refuses a second weapon, so only a save the game did not write has two.
+    blocks a second weapon, so only a save the game did not write has two.
     An item whose type is missing from `item_types` is skipped.
     """
     return next((r for r in _readied_items(raws)
@@ -1156,10 +1156,10 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         if field == "experience" and int(value) > top:
             # The one scalar the DOS titles with a four-byte experience keep
             # wider than the C64's three.  It is clamped to the field's
-            # largest value rather than refused, so the character converts;
-            # a negative value still reaches `rec.set` and is refused there.
+            # largest value rather than blocked, so the character converts;
+            # a negative value still reaches `rec.set` and is blocked there.
             # The clamp is a conversion and not a loss, so the line goes on
-            # `warnings` only: on `losses` a Save As would refuse the whole
+            # `warnings` only: on `losses` a Save As would block the whole
             # party.  Warnings reach the debug log on Save As and the
             # `--report` summary, and no text a player reads.
             rep.warnings.append(EXPERIENCE_CLAMPED.format(
@@ -1358,7 +1358,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                     # reads the level: it dispels one level off.
                     # A destination-engine limit, not a bad write: it goes on
                     # `warnings` (the debug log), not `losses`, which would
-                    # make Save As refuse the whole save.
+                    # make Save As block the whole save.
                     rep.warnings.append(
                         f"{label}: a charm whose count's low bit differs "
                         "from its charmer's side, which the C64 dispels one "
@@ -1384,7 +1384,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
             and is_npc and not (pool_charmed or pool_zombie_pc)):
         # A Pool of Radiance companion holding 4 to 7 parts, which no C64
         # byte can.  Written as the most it holds, and reported on `warnings`
-        # only: on `losses` a Save As would refuse the whole party.
+        # only: on `losses` a Save As would block the whole party.
         written = c64_share_from_dos(int(share.value))
         parts = int(share.value) & 7
         rec.set("treasure_share", written)
@@ -2161,7 +2161,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
 
     # -- computed, not copied ------------------------------------------------
     # `w.get`, not `char.get`: the minimum applies to a derivation as much as
-    # to a copy, so a refused race yields infravision 0 and not a value
+    # to a copy, so a blocked race yields infravision 0 and not a value
     # computed from a grade this conversion would not write.
     rec.set("infravision", _infravision(char.game, w.get("race", 0)))
     rep.note(0x0D5, 1,
@@ -2452,7 +2452,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         kept = converted[:ITEM_SLOTS]
         # A type-0 record is written into its slot all the same, because the
         # editor's Save pairs each DOS item with a C64 slot holding any
-        # nonzero byte and would refuse a party with one skipped; the C64
+        # nonzero byte and would block a party with one skipped; the C64
         # counts such a slot empty, so the record is reported as dropped.
         for n, item in enumerate(converted):
             if Item(bytes(item)).is_empty:
@@ -2470,9 +2470,9 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         # measurement found reached in practice, and only by a specimen this
         # project manufactured to exercise it (`tools/dos/dositemcap.py`): 52 of
         # 950 real characters carry exactly sixteen and none carries more,
-        # and DOS Pool of Radiance refuses a seventeenth item itself --
+        # and DOS Pool of Radiance blocks a seventeenth item itself --
         # watched in DOSBox, a character holding fifteen accepted a TRADE and
-        # an identical one holding sixteen was refused -- so the two ports'
+        # an identical one holding sixteen was blocked -- so the two ports'
         # own ceilings already agree.  Donald, 2026-09-07: "So why does your
         # scenario have a DOS save with 20 items on a character if it is not
         # been measured... I agree that we do not need the sentences."
@@ -2947,7 +2947,7 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                         "`goldbox.effects.closest_duration`; ids 12, 14, 28 and "
                         "38 (Enlarge, Friends, Mirror Image, Strength) take "
                         "each title's value rule in `goldbox.effects`; a node with no "
-                        "rule is reported by id and refused; the paladin's cure "
+                        "rule is reported by id and blocked; the paladin's cure "
                         "node goes through the `paladin_cures` row; an id in "
                         "`effects.PARTY_ROW_IDS` becomes one row owned by the "
                         "whole party, lasting as long as the longest such "
@@ -3149,7 +3149,7 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                       "source, played back through `goldbox.paladin."
                       "c64_cure_write` (#600) -- a paladin whose count and "
                       "recovery no C64 state reproduces exactly still gets "
-                      "the byte, reported as a loss rather than refused. "
+                      "the byte, reported as a loss rather than blocked. "
                       "Zero for a former paladin, whose count and timer the "
                       "C64 regain rebuilds at the full count for his old "
                       "level -- lost only when DOS would refill him from a "

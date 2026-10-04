@@ -780,7 +780,7 @@ def _xenv(display: str) -> dict[str, str]:
 
 
 #: What `xdotool windowfocus` prints on every call to the emulator's window:
-#: SDL refuses the focus request, the keys arrive anyway.
+#: SDL blocks the focus request, the keys arrive anyway.
 FOCUS_BAD_MATCH = re.compile(r"BadMatch.*X_SetInputFocus", re.S)
 
 #: Where one X error report begins, so stderr can be judged a report at a time.

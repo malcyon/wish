@@ -336,7 +336,7 @@ class ActionBar(QObject):
 
         `disk` keys the stored spell lists. The map does not open a file, so it
         is empty unless a host tells us better, and `SpellStore` keys that as
-        the unknown disk rather than refusing.
+        the unknown disk rather than blocking.
         """
         self.target = target
         self.disk = disk
@@ -431,10 +431,10 @@ class FastTravelBar(QObject):
 
     **Area 30 is not listed.** `ECL1E` is the attract-mode demo: a fasttravel there
     leaves the world and no later fasttravel can be started, so the session is over
-    (P20). `FastTravel.legality` refuses it as well, for a caller that does not come
+    (P20). `FastTravel.legality` blocks it as well, for a caller that does not come
     through this dropdown; a control that offers a session-ending choice and
     then argues about it is worse than one that does not offer it.
-    Everything the row refuses, it refuses with the reason -- the same rule
+    Everything the row blocks, it blocks with the reason -- the same rule
     `ActionBar` follows, and here the reasons are the whole diagnostic.
 
     **The player chooses which areas are offered, in Preferences.** The row
@@ -852,11 +852,11 @@ class FastTravelBar(QObject):
                          if geos and self.maps else None)
 
     def combat_verdict(self, target=None) -> engine.Verdict:
-        """Whether a fight refuses the dropdown.
+        """Whether a fight blocks the dropdown.
 
         This is `Action.legality`'s own mode-flag gate, called directly and
         not `self.fasttravel.legality`'s full chain: the full chain also
-        refuses on the *selected* area (already there, wrong side of the
+        blocks on the *selected* area (already there, wrong side of the
         overland/indoors split), and gating the dropdown on that would lock a
         player out of picking a different area precisely because the one
         showing is bad. Combat is the one reason a bad pick cannot fix.
@@ -970,7 +970,7 @@ class FastTravelBar(QObject):
 
         Donald's design for #152: *"instead of greying the button out, why not
         pause after the user clicks the Fast Travel button and wait for the
-        operation to be safe?"* The button no longer refuses on where the 6502
+        operation to be safe?"* The button no longer blocks on where the 6502
         happens to be, so the click does, and it waits first.
 
         Three ways out, and the wait can never be the reason nothing happens:

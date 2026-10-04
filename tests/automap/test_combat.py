@@ -54,7 +54,7 @@ def test_no_fight_means_no_combat_memory_is_read():
                for addr, _ in machine.reads)
 
 
-def test_a_parameter_block_that_cannot_be_one_is_refused():
+def test_a_parameter_block_that_cannot_be_one_is_blocked():
     """$0600 is ordinary RAM between fights. The captured world snapshot reads
     `00 08 00 00 00 8c ...` there -- a map base of zero."""
     machine = arena()

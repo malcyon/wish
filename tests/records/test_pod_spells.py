@@ -143,7 +143,7 @@ def test_the_spellbook_records_ids_1_to_126():
     assert spells.spell_group(126, POD) == ("magic-user", 9)
 
 
-def test_the_two_mask_helpers_refuse_a_title_with_no_mask():
+def test_the_two_mask_helpers_block_a_title_with_no_mask():
     """This title has no C64 port, so `0x078` is not its spellbook."""
     assert spells.for_game(POD).spellbook_size == 0
     with pytest.raises(ValueError, match="no spellbook bitmask"):

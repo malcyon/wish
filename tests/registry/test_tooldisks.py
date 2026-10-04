@@ -311,7 +311,7 @@ def _nothing_launches(monkeypatch):
     """Everything that claims a slot, stages disks, starts an emulator or a
     child process raises, so a missing guard shows up as the claim it made."""
 
-    def refuse(what):
+    def reject(what):
         def raiser(*a, **k):
             raise AssertionError(f"{what} was reached with no disks")
         return raiser
@@ -326,9 +326,9 @@ def _nothing_launches(monkeypatch):
                                 "Session")),
                          (curserun, ("stage", "CurseSession"))):
         for name in names:
-            monkeypatch.setattr(owner, name, refuse(f"{owner.__name__}.{name}"))
+            monkeypatch.setattr(owner, name, reject(f"{owner.__name__}.{name}"))
     import subprocess
-    monkeypatch.setattr(subprocess, "Popen", refuse("subprocess.Popen"))
+    monkeypatch.setattr(subprocess, "Popen", reject("subprocess.Popen"))
 
 
 @pytest.fixture

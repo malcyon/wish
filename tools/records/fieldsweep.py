@@ -159,7 +159,7 @@ def monster_rows(field: str, title: str = "pool-of-radiance"):
     from goldbox import layout
 
     # The field name is checked before the disks are looked for, so a typo is
-    # refused on a machine that has no game files rather than answering with
+    # blocked on a machine that has no game files rather than answering with
     # an empty sweep.
     declared = layout.FIELDS_BY_NAME.get(field)
     if declared is None:

@@ -125,7 +125,7 @@ def _do_import(args, data, original) -> int:
             changes = import_into(original, data, tmp.name, game_disk=game)
     else:
         if pathlib.Path(args.output).resolve() == pathlib.Path(original).resolve():
-            print("--output must differ from the original save; refusing to "
+            print("--output must differ from the original save; declining to "
                   "overwrite it", file=sys.stderr)
             return 2
         changes = import_into(original, data, args.output, game_disk=game)

@@ -51,7 +51,7 @@ def test_a_reader_that_loads_its_template_passes_silently(tmp_path, monkeypatch,
     ("FileNotFoundError('no template')", "FileNotFoundError", "no template"),
     ("ValueError('malformed')", "ValueError", "malformed"),
 ])
-def test_a_reader_that_cannot_load_its_template_is_refused_by_name(
+def test_a_reader_that_cannot_load_its_template_is_blocked_by_name(
         tmp_path, monkeypatch, raises, name, text):
     _reader(tmp_path, monkeypatch, f"def load_digits():\n    raise {raises}\n")
     with pytest.raises(winuaesession.RouteError) as error:
@@ -145,7 +145,7 @@ def test_a_desktop_with_no_window_is_fitted_whole(tmp_path, monkeypatch):
     assert _whole_image_result(image, tmp_path, "again") == expected
 
 
-def test_a_desktop_with_no_window_is_not_refused_by_the_crop(tmp_path):
+def test_a_desktop_with_no_window_is_not_blocked_by_the_crop(tmp_path):
     image = _bands_on((1024, 768))
     grid, _ = _whole_image_result(image, tmp_path, "nowindow")
     assert grid == (32.0, 32.0, 32.0)
@@ -171,7 +171,7 @@ def _fake_reader_stdout(monkeypatch, tmp_path, stdout):
     monkeypatch.setattr(route_silver_blades.subprocess, "run", run)
 
 
-def test_exit_zero_with_an_error_and_no_ok_is_refused(tmp_path, monkeypatch):
+def test_exit_zero_with_an_error_and_no_ok_is_blocked(tmp_path, monkeypatch):
     _fake_reader_stdout(monkeypatch, tmp_path, "template missing\n")
     with pytest.raises(winuaesession.RouteError, match="no ok line"):
         route_silver_blades.journal_preflight("py")
@@ -182,7 +182,7 @@ def test_noise_before_the_last_ok_line_passes(tmp_path, monkeypatch):
     route_silver_blades.journal_preflight("py")
 
 
-def test_ok_that_is_not_the_last_line_is_refused(tmp_path, monkeypatch):
+def test_ok_that_is_not_the_last_line_is_blocked(tmp_path, monkeypatch):
     _fake_reader_stdout(monkeypatch, tmp_path, "ok\nerror\n")
     with pytest.raises(winuaesession.RouteError, match="no ok line"):
         route_silver_blades.journal_preflight("py")

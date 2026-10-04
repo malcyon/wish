@@ -55,7 +55,7 @@ and are never printed: the log says "option 3 of 3", the way `tools/areas/eclwal
 prints a string as its length.
 
 The pool owns the emulator: claim, launch, tear down.  The player's disks are
-copied into the slot and read there; `Session.attach` refuses a path outside
+copied into the slot and read there; `Session.attach` rejects a path outside
 it.  Captures go to `wish/ohlowatch` under the temp directory, not into the repository.
 """
 from __future__ import annotations
@@ -360,7 +360,7 @@ def answer(sess, body, out, label, menu_at, option, expect,
             result["screens"].append({"len": len(row.strip()),
                                       "words": len(row.split())})
         # A keypress the game swallowed leaves the same row up and should be
-        # re-sent, so this does not refuse a repeat -- it caps them, and
+        # re-sent, so this does not reject a repeat -- it caps them, and
         # waits for the row to move before trying again. Without the cap a
         # script that ends on a bar carrying the same word would be answered
         # for ever.

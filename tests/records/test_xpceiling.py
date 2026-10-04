@@ -101,7 +101,7 @@ def test_the_matcher_finds_an_add_adc_pair_and_nothing_else():
     # no segment override: not a far pointer, so not a character record
     ("no prefix", _PAIR[1:]),
 ])
-def test_the_matcher_refuses_a_near_miss(what, image):
+def test_the_matcher_blocks_a_near_miss(what, image):
     assert xpceiling.accumulates(b"\x90" * 8 + image + b"\x90" * 8,
                                  0x127) == [], what
 
@@ -220,7 +220,7 @@ def _clamped(key: str, value: int):
 @pytest.mark.parametrize("key", sorted(_BLANK_SIZES))
 @pytest.mark.parametrize("value", [0x1000000, 0x7FFFFFFF])
 def test_experience_past_three_bytes_converts_as_the_c64_maximum(key, value):
-    """Refused before: `ValueError: experience: 16777216 does not fit in 3
+    """Blocked before: `ValueError: experience: 16777216 does not fit in 3
     bytes`.  A character with that much converts at `0xFFFFFF` now, and the
     warning line names the value that was held so the debug log can say why the
     number changed."""
@@ -241,7 +241,7 @@ def test_the_c64_maximum_is_kept_exactly_and_drops_nothing(key):
 
 
 @pytest.mark.parametrize("key", sorted(_BLANK_SIZES))
-def test_a_negative_experience_is_still_refused(key):
+def test_a_negative_experience_is_still_blocked(key):
     """The clamp is for a value too big; one no field can hold still raises."""
     from goldbox import c64_codec
     from tools.records import boundarywidths

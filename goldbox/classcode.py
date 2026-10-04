@@ -126,7 +126,7 @@ def code_for(bits: int, levels: "dict[str, int] | None" = None,
 
     `None` when there is nothing to decide with, or when the classes are a
     combination the title's own table has no code for -- three exist, and
-    `goldbox.yaml_io.class_code_for` refuses those for the same reason: a
+    `goldbox.yaml_io.class_code_for` blocks those for the same reason: a
     code that is not in the table means a different class.
     """
     table = table_for(game)

@@ -353,7 +353,7 @@ def test_both_rejections_fire_when_the_game_is_the_wrong_one(app, ours, theirs,
 
 
 def test_every_write_button_goes_with_them(app, ours, theirs, notes_elsewhere):
-    """Level up and Fast Travel are the two that refuse *by title*, but heal,
+    """Level up and Fast Travel are the two that block *by title*, but heal,
     store spells and identify write Pool of Radiance's addresses on every
     title (`docs/139` C16-C19), so a machine running another game is the worst
     place to leave them enabled."""

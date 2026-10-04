@@ -8,10 +8,10 @@ import types
 def fake_savecount_builder():
     """Build a fake private `savecount.py` under `directory/ssb/analysis`.
 
-    `refuse` makes `with_count` raise `SaveCountError`; `sibling` makes the module
+    `fail` makes `with_count` raise `SaveCountError`; `sibling` makes the module
     import a second module from the same directory, as a real helper might.
     """
-    def build(directory, *, refuse=False, sibling=False):
+    def build(directory, *, fail=False, sibling=False):
         analysis = directory / "ssb" / "analysis"
         analysis.mkdir(parents=True)
         head = ""
@@ -22,7 +22,7 @@ def fake_savecount_builder():
         (analysis / "savecount.py").write_text(
             head + "class SaveCountError(ValueError):\n    pass\n\n"
             "def with_count(slot, n):\n"
-            f"    if {refuse!r}:\n        raise SaveCountError('private-detail')\n"
+            f"    if {fail!r}:\n        raise SaveCountError('private-detail')\n"
             f"    return slot + {suffix} + str(n).encode()\n")
     return build
 
@@ -52,11 +52,11 @@ class FakeGameMemory:
         pass
 
 
-def fake_stage_helper(memory, log, *, refuse_at=None, message="refused by the helper",
+def fake_stage_helper(memory, log, *, fail_at=None, message="blocked by the helper",
                       raises=None):
     """A fake private helper: `stage_live` records its arguments and appends to `log`.
 
-    `refuse_at` is the call number that raises the helper's own error, `helper.SaveCountError`,
+    `fail_at` is the call number that raises the helper's own error, `helper.SaveCountError`,
     with `message`; `raises` is another exception raised on the first call.
     """
     class SaveCountError(ValueError):
@@ -67,7 +67,7 @@ def fake_stage_helper(memory, log, *, refuse_at=None, message="refused by the he
         log.append("stage")
         if raises is not None:
             raise raises
-        if refuse_at == len(helper.calls):
+        if fail_at == len(helper.calls):
             raise SaveCountError(message)
         helper.armed = True
 

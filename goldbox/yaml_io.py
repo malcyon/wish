@@ -25,7 +25,7 @@ titles after it write **one** file with the same roster as its last page; which
 form a disk has is `goldbox/c64_port.py`'s business, not this module's.
 
 **The document records the title it came from**, as `game:`, and an import into
-a different title's disk is refused. The container geometry differs between them
+a different title's disk is blocked. The container geometry differs between them
 and the race and class tables differ again, so a silent cross-title import would
 write a plausible-looking corrupt save.
 
@@ -125,7 +125,7 @@ class ValueError_(ValueError):
 
 #: Donald's wording, approved verbatim (#145) -- no slot, no name, no second
 #: sentence. Kept as one constant so it only needs changing in one place.
-NAME_CHANGE_REFUSED = "ERROR: Name field cannot be changed."
+NAME_CHANGE_ERROR = "ERROR: Name field cannot be changed."
 
 
 def _decode(table: dict[int, str], value: int, field: str) -> str | int:
@@ -279,7 +279,7 @@ def class_code_for(bits: int, game: C64Container | None = None) -> int:
     """The single class code matching a class bitmask.
 
     Three combinations have no code in the game's table -- magic-user/cleric/
-    thief, cleric/thief/fighter, and all four at once. Refuse them rather than
+    thief, cleric/thief/fighter, and all four at once. Block them rather than
     write a code that means something else.
 
     Delegates to `goldbox.classcode.code_for` (#310), which is the mask-only
@@ -915,7 +915,7 @@ def _apply_npc(rec, entry, slot: int, who: str) -> list[str]:
 
 
 def _check_game(data: dict[str, Any], game: C64Container) -> None:
-    """Refuse a party exported from one title into another title's disk.
+    """Block a party exported from one title into another title's disk.
 
     A document with no `game:` key predates this check and is assumed to be
     Pool of Radiance, which is what every such document is.
@@ -979,10 +979,10 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
         # that reason, but it is not editable through this import: #145 is
         # what an unsanitised rename did to the GUI, and the fix there is to
         # make the name unreachable rather than to guard it. The YAML path
-        # gets the same answer -- refuse the whole import rather than write a
+        # gets the same answer -- block the whole import rather than write a
         # record whose name silently stayed the old one.
         if "name" in entry and entry["name"] != who:
-            raise ValueError_(NAME_CHANGE_REFUSED)
+            raise ValueError_(NAME_CHANGE_ERROR)
 
         for f in EDITABLE:
             if f not in entry or f in FRIENDLY or f == "name":
@@ -1087,7 +1087,7 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
         # `dual_class_level` is the level -- `goldbox/c64_codec.py` writes
         # the same pair from the same field on a conversion). Donald's
         # decision (#256, 2026-09-07): a full editable field, and the
-        # importer refuses a value the game would read as an instruction it
+        # importer blocks a value the game would read as an instruction it
         # cannot take back rather than writing it -- the game decides
         # whether a character may change class again by reading exactly
         # these two bytes, and gives no message a player would ever see if
@@ -1176,7 +1176,7 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
         if "spells_known" in entry:
             book = [int(s) for s in (entry["spells_known"] or [])]
             # The ceiling is the title's, not Pool of Radiance's: the mask has
-            # bits for ids 1-55, 1-100 or 1-117, and refusing MORGAINE's 94 on
+            # bits for ids 1-55, 1-100 or 1-117, and blocking MORGAINE's 94 on
             # the way back in would make the export of #85 unimportable.
             ceiling = spell_table(game).last_spellbook_spell
             for sid in book:

@@ -268,7 +268,7 @@ log that blanked every time somebody opened one would be a flicker.
 * Reading is pure: the decoder copies its input, and the specimen save's bytes
   are identical after the panel has drawn them.
 
-## The other titles have no equivalent, and this is why the panel refuses (#40 (Is there a commissions equivalent in Curse or Silver Blades?))
+## The other titles have no equivalent, and this is why the panel draws nothing (#40 (Is there a commissions equivalent in Curse or Silver Blades?))
 
 **Curse of the Azure Bonds and Secret of the Silver Blades have nothing a
 Quest Log could draw.** Established by reading every string in both
@@ -304,6 +304,6 @@ That is **one number** — the five bonds — on a linear plot, and Silver Blade
 has not even that. There is no board to offer from and no ledger to read back,
 so a per-title panel would have a single integer to draw and no rows.
 
-**So the panel's refusing to draw is permanent rather than provisional**, and #35 (Combat and commissions features should say they are Pool of Radiance's)'s decision to
-make the panel refuse instead of making it per-title is the right one for a
+**So the panel drawing nothing is permanent rather than provisional**, and #35 (Combat and commissions features should say they are Pool of Radiance's)'s decision to
+make the panel draw nothing instead of making it per-title is the right one for a
 reason rather than for want of information.

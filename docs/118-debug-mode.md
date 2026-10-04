@@ -40,8 +40,7 @@ mid-redraw can land on a real, in-range address the renderer is using as a
 scratch cursor rather than on the party's own square — CONFIRMED from the
 bytecode, `#715 (The C64 driver's screen capture and live-memory reads aren't
 atomic, and patching each surfaced race isn't converging)`. The `-e` stall
-on `#700 (Converting a Pool of Radiance C64 party holding a camp-cast Animate
-Dead zombie needs more than fixing the refusal that blocks it)` is the one
+on `#700` is the one
 observed instance; that it caught the indoor renderer specifically, rather
 than one of `DUNGEON`'s four walks, is PROBABLE — the program counter was not
 recorded at the time.
@@ -289,7 +288,7 @@ argument that put the actions there: it acts on what is drawn above it.
   the entries**: `ECL1E` is the attract-mode demo, travelling there ends the
   session (§4), and a control that lists a session-ending choice and then
   argues about it is worse than one that does not list it. `FastTravel.legality`
-  refuses it as well, which is what protects a caller that did not come through
+  blocks it as well, which is what protects a caller that did not come through
   the dropdown.
 * **`Fast Travel` button**, disabled with the reason in its tooltip, exactly as
   `ActionBar` does it: no emulator, not `ViceTarget`, `$6E11 != 1`, or the
@@ -402,7 +401,7 @@ nothing.
 **All of it is now observed.** P15 fasttraveled from the key-wait loop twice and from
 `$2E4E`, the key *fetcher* the loop calls, once; both worked, because `$203A`'s
 `LDX $03BF / TXS` discards the interrupted call depth either way. Half the idle
-PC samples fall in the fetcher, so a harness that refuses it fails about half
+PC samples fall in the fetcher, so a harness that blocks it fails about half
 the times it is asked (P36). P16 wrote `07 07 01` to `$C04B` before a fasttravel and
 read it back unchanged afterwards, with `$49C0` flushed to match — so the
 arrival square is written **before** the load and no second stop is needed.
@@ -470,13 +469,13 @@ line up and (13,13) in the Slums is a wall in Sokol Keep.
 | failure | what it looks like | guard |
 |---|---|---|
 | wrong disk in drive 8 | `LIBRARY` prints `INSERT SIDE # n, AND PRESS ANY KEY.` on row 24 and waits — the same prompt a player gets walking through the door, and it carries on once the disk is there | **the game's own prompt is the guard.** wish says nothing beforehand (§2) and times the trip out and reports. The text monitor's `attach` answers it — but the 1541 only notices a disk *change*, so the image has to be re-attached even when it is already in the drive |
-| `$6E11 != 1` | `$2034` is some other overlay's code — an immediate crash | refuse; re-check at apply time, not only in the tooltip |
-| PC mid-script or mid-load | the stack reset discards work in flight; the screen may be left half-drawn | refuse unless the PC is in the key-wait loop or its fetcher; refusing the fetcher alone made the button fail five times in seven |
-| target == current area | nothing happens, silently, and `$4A00` is not cleared | refuse, with the reason |
+| `$6E11 != 1` | `$2034` is some other overlay's code — an immediate crash | block; re-check at apply time, not only in the tooltip |
+| PC mid-script or mid-load | the stack reset discards work in flight; the screen may be left half-drawn | block unless the PC is in the key-wait loop or its fetcher; blocking the fetcher alone made the button fail five times in seven |
+| target == current area | nothing happens, silently, and `$4A00` is not cleared | block, with the reason |
 | arrival square is a wall or off-map | **has never happened.** Fifteen fasttravels put the party on `(0, 0)` and it was inside the grid and had an open edge every time | choose the square from the map, never carry one over |
 | arrival square is in a **pocket** of the map | the party can walk, and cannot get out: `(0, 0)` is walled off from the bulk of `GEO05`, `GEO19`, `GEO1A` and `GEO1B` | **fixed**: the square comes from the map's largest connected component, off the outer ring — `goldbox.areas.landing_square` |
-| **area 30** | the attract-mode demo: `$C04B`-`$C04D` read `254, 127, 16`, no map is resident, no status line and no command bar appear, and the PC never returns to the key-wait loop, so nothing can be fasttraveled out again — the session is over | **fixed**: not offered in the dropdown, and refused by `FastTravel.legality` for a caller that did not come through it |
-| a script's own **menu** is up | the next fasttravel is refused, because the PC is in the script's handler and not in the key-wait loop. The Cave of Diogenes is the one that does it on arrival — the silver dragon asks `WHAT WILL YOU SAY IS YOUR REASON FOR BEING HERE?` and waits — and it cost P20 four probes. Not a defect: waiting does not clear it | dismiss the menu, then fasttravel. Anything that fasttravels repeatedly has to clear the arriving script's **menus**, not only its messages |
+| **area 30** | the attract-mode demo: `$C04B`-`$C04D` read `254, 127, 16`, no map is resident, no status line and no command bar appear, and the PC never returns to the key-wait loop, so nothing can be fasttraveled out again — the session is over | **fixed**: not offered in the dropdown, and blocked by `FastTravel.legality` for a caller that did not come through it |
+| a script's own **menu** is up | the next fasttravel is blocked, because the PC is in the script's handler and not in the key-wait loop. The Cave of Diogenes is the one that does it on arrival — the silver dragon asks `WHAT WILL YOU SAY IS YOUR REASON FOR BEING HERE?` and waits — and it cost P20 four probes. Not a defect: waiting does not clear it | dismiss the menu, then fasttravel. Anything that fasttravels repeatedly has to clear the arriving script's **menus**, not only its messages |
 | **quest flags are inconsistent** | the arriving script assumes things the party never did | unavoidable, and the honest answer is to say it under the row's help icon: a fasttravel is not the same as playing there |
 | the player saves after a fasttravel | a save disk with that inconsistency baked in | debug mode must be pointed at a **copy**; the automapper never writes a disk and this does not change that |
 
@@ -514,7 +513,7 @@ to reach.
   for byte against the disk copies; fasttraveling to each area in turn turns that into
   a 29-case test instead of one anecdote about New Phlan.
 * **`Fingerprint.refused()`, which nothing calls.** `docs/50` notes that one
-  refused step identifies New Phlan instantly where 111 positive steps are
+  blocked step identifies New Phlan instantly where 111 positive steps are
   needed. A fasttravel plus a scripted walk into a known wall produces that step on
   demand.
 * ~~**The overland map.**~~ **Done.** A fasttravel from area 23 to area 26 came up
@@ -598,7 +597,7 @@ the sections above. Both entries below are answers rather than questions, and
    * a **store watchpoint** across the step that walked out of New Phlan and
      into the Slums caught exactly two writes: `$10EE` with 0, then `$1115`
      leaving 1. The exit script ran and the area changed.
-   * six ordinary and refused steps read 0 afterwards; both boundary crossings
+   * six ordinary and blocked steps read 0 afterwards; both boundary crossings
      read 1.
 
    **PROBABLE**, and what would promote it is naming the table: `X` counts it
@@ -628,7 +627,7 @@ the sections above. Both entries below are answers rather than questions, and
    four probes.
 
    **All five recommendations are now in the code.** Area 30 is out of the
-   dropdown and refused by `FastTravel.legality`; the fallback is
+   dropdown and blocked by `FastTravel.legality`; the fallback is
    `goldbox.areas.landing_square`; the overland and `dynamic_geo` areas get no
    square; area 21 carries `Arrival(8, 14, 0)`. §3 above is the current rule.
 

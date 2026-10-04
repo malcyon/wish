@@ -41,7 +41,7 @@ GAME_MODES = {2: "camp", 3: "overland", 4: "3D adventuring", 5: "combat",
 #: engine stores 3 outdoors**: both saved games the Amiga game itself made on
 #: the travel grid hold 3, which is what DOS holds in 10 of 10 outdoor
 #: specimens, and 2 has never been seen in any Amiga saved game on this
-#: machine (`#321 (An Amiga Pool of Radiance conversion refuses a party
+#: machine (`#321 (An Amiga Pool of Radiance conversion blocks a party
 #: standing on the travel grid, because no outdoor Amiga saved game has ever
 #: been read)`).  2 is kept in the table so a file holding it reads as
 #: something rather than as `?`.

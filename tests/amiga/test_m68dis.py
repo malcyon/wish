@@ -250,7 +250,7 @@ def test_references_to_finds_an_absolute_long_call():
     assert [hit.mnemonic for hit in hits] == ["jsr"]
 
 
-def test_a_window_with_no_whole_word_left_is_refused_the_same_way():
+def test_a_window_with_no_whole_word_left_is_blocked_the_same_way():
     """`decode` is public; `_Undecodable` is private and must not escape it.
 
     Asking to decode at an offset the window does not reach is the same

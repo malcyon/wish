@@ -742,7 +742,7 @@ def test_replay_reports_a_damaged_tally_line_instead_of_crashing(monkeypatch, tm
     assert journal.replay(keep, tmp_path / "d.adf") == (2, 3, ["tally.jsonl line 3"])
 
 
-def test_a_keep_directory_inside_the_repository_is_refused(monkeypatch, tmp_path):
+def test_a_keep_directory_inside_the_repository_is_blocked(monkeypatch, tmp_path):
     _keeping(monkeypatch, tmp_path, {"kind": "x"})
     inside = pathlib.Path(journal.__file__).resolve().parent / "kept-here"
     with pytest.raises(SystemExit, match="inside the repository"):

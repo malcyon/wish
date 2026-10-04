@@ -376,7 +376,7 @@ def test_offers_lists_spells_when_the_magic_user_is_ready(measured):
 
 
 def test_level_up_blockers_is_empty_for_silver_blades():
-    """What actually un-darkens the button. It refuses a title outside
+    """What actually un-darkens the button. It rejects a title outside
     `levels.TRAINER_MEASURED` whatever tables it has, which is why this
     ticket needed a driven session rather than another table."""
     from automap import actions
@@ -402,7 +402,7 @@ def _heal_the_party(sg0, game) -> None:
     -- was left as those presses had made it. So MORGAINE's block says 40
     over a record whose maximum is 35, DOMINIC's 82 over 78, PAINE's 80 over
     74 and GUY DE VALOIS' 102 over 95, which are exactly the maxima the
-    presses had given them. `automap.live.roster_page_plausible` refuses a
+    presses had given them. `automap.live.roster_page_plausible` rejects a
     page whose hit points exceed the record's maximum, by design (`#82`), so
     `read_party` answers None and this test never reaches the code it is
     about.

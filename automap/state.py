@@ -380,9 +380,9 @@ class Automapper:
     poll. The mapper cannot see key presses, but the status line carries the
     game clock, and the clock only moves when the party acts. So *clock advanced
     by one minute + square unchanged + facing unchanged* is a step the game
-    refused -- and one refused step counts for about a hundred successful ones,
+    blocked -- and one blocked step counts for about a hundred successful ones,
     because positive evidence needs 111 steps to get New Phlan down to one
-    candidate and impassable edges are rare. See `_refused`.
+    candidate and impassable edges are rare. See `_blocked_step`.
     """
 
     # How often to re-read the resident map block *when nothing suggests it
@@ -434,10 +434,10 @@ class Automapper:
         self._hold_unsafe = False
         self._verdict = None
         #: The status line Curse left on screen after the map changed, which
-        #: disagreed with the engine at that moment; refused until it changes.
+        #: disagreed with the engine at that moment; blocked until it changes.
         self._stale_line: tuple[int, int, int] | None = None
         self._started = False       # no "last position" to be adjacent to yet
-        self._last: Fix | None = None       # the previous fix, for _refused
+        self._last: Fix | None = None       # the previous fix, for _blocked_step
         #: The target the rest of this state belongs to. A strong reference on
         #: purpose: `is` against an object that has been freed could be true of
         #: a different object allocated at the same address, and holding it
@@ -549,7 +549,7 @@ class Automapper:
         old area's.** Curse redraws its status line a step late. On the one
         poll where the area has just been named, `$0400` already holds the
         new map, so the engine's square (`_engine_square`) cannot belong to
-        the old one: it is taken instead, and that exact line is refused
+        the old one: it is taken instead, and that exact line is blocked
         until the game redraws it.
 
         **The area is named before the fix is recorded, never after.** That
@@ -684,7 +684,7 @@ class Automapper:
                 self.fingerprint.moved(self.state.x, self.state.y, fix.x, fix.y)
             else:
                 self.fingerprint.saw(fix.x, fix.y)
-                if self._refused(fix):
+                if self._blocked_step(fix):
                     self.fingerprint.refused(fix.x, fix.y, fix.facing)
             if not self.state.candidates or not self.state.candidates.certain:
                 self.state.candidates = self.fingerprint.candidates
@@ -884,7 +884,7 @@ class Automapper:
         """Is a Gold Box game actually in memory? Nothing is recorded until it is.
 
         The second-opinion guard in `poll` cannot answer this, and that is the
-        point of a separate one: it refuses a position until a second poll
+        point of a separate one: it blocks a position until a second poll
         agrees with it, and a machine sitting at the BASIC prompt reads the
         same bytes every time. Garbage that never changes agrees with itself.
 
@@ -974,7 +974,7 @@ class Automapper:
     # searching, camping, resting -- and must not be read as a bump.
     STEP_MINUTES = 1
 
-    def _refused(self, fix: Fix) -> bool:
+    def _blocked_step(self, fix: Fix) -> bool:
         """Did the party just try to walk into something and fail?
 
         Three guards, each of them a way this would otherwise lie:
@@ -992,7 +992,7 @@ class Automapper:
         * **Same square and same facing.** Turning on the spot changes the
           facing, so a turn is never mistaken for a bump.
 
-        **The clock cost of a refused step is not confirmed.** A move costs a
+        **The clock cost of a blocked step is not confirmed.** A move costs a
         minute; whether walking into a wall costs the same minute is inferred,
         not measured -- nobody has watched the clock during a bump. If it turns
         out to cost nothing, this simply never fires and the fingerprint is no
@@ -1018,7 +1018,7 @@ class Automapper:
         a title's own folder does not make it map that title)` step 4: with
         no save open, nothing has said which of several *configured* titles
         is actually running, so `_check_the_game` asks the machine directly
-        before refusing. `elsewhere` is every other configured title's own
+        before blocking. `elsewhere` is every other configured title's own
         maps, title -> `{area: Geo}` -- built by the window from
         `Settings.game_folders`, never a search, so a title with no folder
         set is never a candidate and the rejection still fires for it exactly

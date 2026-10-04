@@ -314,7 +314,7 @@ could enter the party. First roll kept for every one.
 | `WISH-SPEC-por-party-l1-rolled` | the same six as loose roster `WISH*.CHA` plus `CHARLIST.TXT` |
 | `WISH-SPEC-por-party-l1-intown` | the same six in the game, standing at (0,4) in New Phlan with Rolf's opening tour finished, written by the game's own ENCAMP > SAVE |
 | `WISH-SPEC-por-party-trained-c2` | WISHCLE and WISHHEL trained from level 1 to 2 at the clerics' school |
-| `WISH-SPEC-por-train-clamp` | the evidence that TRAIN CHARACTER cuts experience even when it refuses to train |
+| `WISH-SPEC-por-train-clamp` | the evidence that TRAIN CHARACTER cuts experience even when it will not train |
 
 **ADD CHARACTER TO PARTY deletes `<NAME>.CHA`** and folds the record into
 `CHRDAT<slot><n>.SAV`, so the loose rolled records and the party save cannot
@@ -404,7 +404,7 @@ CONFIRMED. Five characters, two controls in the same run, and three of the five
 values predicted before the key was pressed.
 
 Every record went in holding 300,000 experience. TRAIN CHARACTER was pressed at
-the **clerics'** school on characters it refuses — level unchanged, no 1000 gp
+the **clerics'** school on characters it blocks — level unchanged, no 1000 gp
 charge — and every one came out with experience cut to **one below the
 threshold two levels above its current level**:
 

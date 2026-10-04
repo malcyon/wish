@@ -865,7 +865,7 @@ def load_save(disk, game: C64Container | None = None):
     With no `game` the title is identified from the disk's own directory, which
     is what makes opening a Curse save need no argument. The size check is the
     corroborator: Curse's side B carries a 2032-byte `SAVEAZURE` that is a
-    truncated demo party, and this refuses it by name rather than decoding
+    truncated demo party, and this blocks it by name rather than decoding
     nonsense.
 
     `SaveGame1` is None only for Pool of Radiance, and only when the disk

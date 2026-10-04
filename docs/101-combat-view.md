@@ -215,7 +215,7 @@ the seven ranges the view reads:
   bytes decode, and **bit 7 of the map agrees exactly with `$8B00`**;
 * with the mode byte anything but 2, **no combat memory is read at all** —
   three addresses, and none of them `$8B00`;
-* a parameter block that cannot be one is refused, including the real bytes
+* a parameter block that cannot be one is blocked, including the real bytes
   `$0600` holds in the world;
 * the canvas swaps on the flag and back, with the area map's explored squares
   unchanged.

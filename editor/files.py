@@ -1,7 +1,7 @@
 """Opening and saving, and not losing anybody's save disk.
 
 The editor writes back over the file you opened -- no forced new filename. That
-is the opposite of the CLI, which refuses to overwrite its input, and it is only
+is the opposite of the CLI, which fails to overwrite its input, and it is only
 defensible because of the two guarantees here.
 
 **Atomic.** `D64.save` writes a temporary beside the target, fsyncs it and
@@ -13,7 +13,7 @@ not noticed until the game is booted, by which point a one-deep backup would
 already hold the damage.
 
 **And the folder is named, never guessed.** `save_disk` is told where the copy
-goes and refuses to write when nothing was named -- there is no hidden
+goes and fails to write when nothing was named -- there is no hidden
 directory to fall back to, because the guarantee above matters more than the
 save that would have gone through without it.
 """
@@ -59,7 +59,7 @@ class TargetNotEmpty(RuntimeError):
     """A save folder that already holds files, which a new save will not join.
 
     One folder holding two parties' files is neither of them, so a
-    destination that is not empty is refused rather than mixed into.
+    destination that is not empty is blocked rather than mixed into.
     """
 
 

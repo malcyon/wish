@@ -544,7 +544,7 @@ class CombatMemory:
 #:   itself. Silver Blades' pair is CONFIRMED from the binary alone -- the
 #:   routine is byte-identical to Curse's, already corroborated live -- and a
 #:   wrong address here shows nothing rather than something wrong, because
-#:   `rolls.matches` refuses a roll that does not agree with the message it is
+#:   `rolls.matches` blocks a roll that does not agree with the message it is
 #:   shown beside.
 BY_KEY: dict[str, CombatMemory] = {
     G.POOL_OF_RADIANCE.key: CombatMemory(

@@ -10,7 +10,7 @@ pooled emulator, `#19` -- but through `tools/curse_of_the_azure_bonds/cursewarp.
 than through `automap/actions.py`, and no Silver Blades party has been
 fast-travelled at all. What is asserted here is that the right title's
 addresses are written, in the handler's order, and that a title nobody has
-read is refused rather than written to with somebody else's numbers.
+read is rejected rather than written to with somebody else's numbers.
 """
 
 from __future__ import annotations
@@ -267,7 +267,7 @@ def test_pool_of_radiance_is_unchanged_by_any_of_this():
 
 def test_the_key_wait_window_is_the_running_titles_own():
     """Pool of Radiance's `$10C2` is inside Curse's `DUNGEON` too, and is not
-    its key-wait loop -- so a PC there has to be refused in a Curse session
+    its key-wait loop -- so a PC there has to be rejected in a Curse session
     even though the same number is accepted in a Pool of Radiance one."""
     target = machine(CURSE, pc=0x10C2)
     verdict = actions.FastTravel(CURSE).legality(target, Row(3, disk=2))
@@ -276,7 +276,7 @@ def test_the_key_wait_window_is_the_running_titles_own():
     # `#306 (The Fast Travel button's own disabled tooltip carries a memory
     # address)` took every address out of what a player reads, so the reason
     # is now the one sentence Donald approved and the numbers went to the log.
-    # What this test is actually about is unchanged: the *same* PC is refused
+    # What this test is actually about is unchanged: the *same* PC is rejected
     # in a Curse session and accepted in a Pool of Radiance one, which is
     # asserted here and in the sibling test rather than by reading a number
     # out of a sentence.
@@ -289,7 +289,7 @@ def test_the_key_wait_window_is_the_running_titles_own():
         machine(CURSE, pc=0x101D), Row(3, disk=2)).ok
 
 
-def test_a_title_nobody_has_read_is_refused_rather_than_written_to():
+def test_a_title_nobody_has_read_is_rejected_rather_than_written_to():
     """Champions of Krynn has a mode flag nobody has found and a `NEWECL`
     nobody has located, so there is no tail to jump to. The rejection is the
     sentence every other action already gives for an unmeasured address."""
@@ -323,7 +323,7 @@ def test_the_way_back_is_looked_up_in_the_title_being_travelled_in():
     Radiance's table, which is what it did whatever was running.
 
     **Both Curse and Silver Blades answer with a row now** -- neither did when
-    this test was written, because `goldbox.areas.areas_for_title` refused
+    this test was written, because `goldbox.areas.areas_for_title` rejected
     each title until its table was built
     (`#20 (Build an area table for Silver Blades)`,
     `#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which

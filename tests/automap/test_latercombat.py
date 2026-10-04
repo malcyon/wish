@@ -114,7 +114,7 @@ def test_pool_of_radiance_is_still_read_exactly_where_it_always_was():
            (was.geometry, was.camera, was.terrain)
 
 
-def test_a_title_nobody_has_run_under_a_monitor_is_refused():
+def test_a_title_nobody_has_run_under_a_monitor_is_blocked():
     """Champions of Krynn has no measured addresses, so it gets no battle.
 
     **Not a fall back to Pool of Radiance's.** An unmeasured address reads as a
@@ -124,7 +124,7 @@ def test_a_title_nobody_has_run_under_a_monitor_is_refused():
     assert combat.memory_for(c64_port.CHAMPIONS_OF_KRYNN) is None
     target = MemoryTarget(synthetic_arena())
     assert combat.read_battle(target, c64_port.CHAMPIONS_OF_KRYNN) is None
-    assert target.reads == [], "it read the machine before refusing"
+    assert target.reads == [], "it read the machine before blocking"
 
 
 def test_the_ranges_read_are_this_titles_and_not_the_other_ones():

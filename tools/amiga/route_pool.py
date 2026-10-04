@@ -239,7 +239,7 @@ def pool_turns_about(place: dict, *,
 
 def pool_title_for(manifest: dict, *,
                    load_geo: Callable[[str], geo.Geo] | None = None) -> AmigaTitle:
-    """The route this manifest's start square needs, refusing a recorded `turn_about` its walls contradict.
+    """The route this manifest's start square needs, blocking a recorded `turn_about` its walls contradict.
 
     A manifest with no `turn_about` predates the choice and keeps the turn about. An
     `opening_tour` manifest gets the route that answers the tour's pages, and must start at

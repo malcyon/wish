@@ -31,7 +31,7 @@ Three things about the design of it:
   and the table showing stretches to fill it. In one column none
   of the three could have the height it wanted, and a dialog compressed below
   its layout's minimum squeezes the controls that can be squeezed rather than
-  refusing -- which is what "a lot of fields are squished" was. No width here
+  blocking -- which is what "a lot of fields are squished" was. No width here
   is a chosen number either: `room_for` asks the style what a line edit needs
   for its own placeholder, the spin box sizes itself from its special-value
   text, and the table is asked for its column.
@@ -508,7 +508,7 @@ class PreferencesDialog(QDialog):
         control, which no sentence in a settings dialog needs.
 
         Getting this wrong is not cosmetic. A dialog handed less height than
-        its layout's minimum does not refuse -- it squeezes what can be
+        its layout's minimum does not block -- it squeezes what can be
         squeezed, and what can be squeezed here is the Ultimate host box and
         the poll spinner, which went to nine pixels tall with their text cut
         through the middle. That was Donald's "squished and unusable".

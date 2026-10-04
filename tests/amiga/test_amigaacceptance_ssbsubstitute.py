@@ -90,7 +90,7 @@ def _substitute(tmp_path, letter="A", raw=b"converted party"):
     ("x", "a", "is not one capital letter"),
     ("x", "AB", "is not one capital letter"),
 ])
-def test_a_bad_run_id_or_letter_is_refused_before_anything_is_read(
+def test_a_bad_run_id_or_letter_is_blocked_before_anything_is_read(
         tmp_path, home, run_id, letter, why):
     with pytest.raises(RouteError, match=why):
         route_silver_blades.prepare_substitute(_substitute(tmp_path), run_id, letter=letter)
@@ -198,7 +198,7 @@ def test_a_substitute_party_without_guy_is_staged_if_its_first_member_carries_it
         route_silver_blades.prepare_substitute(_substitute(tmp_path), "noguy2")
 
 
-def test_a_party_whose_first_member_carries_nothing_is_refused(tmp_path, home, staged):
+def test_a_party_whose_first_member_carries_nothing_is_blocked(tmp_path, home, staged):
     staged.party.members[0]["count"] = 0
     with pytest.raises(RouteError, match="Guy de Valois carries nothing"):
         route_silver_blades.prepare_substitute(_substitute(tmp_path), "x")
@@ -255,7 +255,7 @@ def test_the_join_check_still_holds_for_a_run_with_no_substitute(tmp_path, clock
     assert result["success"] is False
 
 
-def test_a_substitute_changed_after_preparation_is_refused_before_the_run(tmp_path, clock):
+def test_a_substitute_changed_after_preparation_is_blocked_before_the_run(tmp_path, clock):
     manifest = _substituted(tmp_path)
     (tmp_path / "SECRETSAVE.adf").write_bytes(b"changed")
     with pytest.raises(RouteError, match="substitute is missing or changed"):
@@ -360,7 +360,7 @@ def test_camp_steps_the_route_cannot_drive_leave_no_run_folder(tmp_path, home, s
     assert staged.calls == [] and not home.exists()
 
 
-def test_a_title_manifest_that_disagrees_with_its_slot_is_refused(tmp_path, home, staged):
+def test_a_title_manifest_that_disagrees_with_its_slot_is_blocked(tmp_path, home, staged):
     _, manifest = _title_prepare(tmp_path, staged)
     staged.state.set_out = False
     with pytest.raises(RouteError, match="opening_scene disagrees with the substitute's slot"):
@@ -373,7 +373,7 @@ def test_a_title_manifest_that_disagrees_with_its_slot_is_refused(tmp_path, home
             route_silver_blades.title_for_substitute({**manifest, key: value})
 
 
-def test_a_title_manifest_whose_slot_is_not_the_one_it_recorded_is_refused(
+def test_a_title_manifest_whose_slot_is_not_the_one_it_recorded_is_blocked(
         tmp_path, home, staged):
     _, manifest = _title_prepare(tmp_path, staged)
     route_silver_blades.title_for_substitute(manifest)

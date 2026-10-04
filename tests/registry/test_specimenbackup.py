@@ -139,14 +139,14 @@ def test_archive_holds_every_file_including_the_provenance(tmp_path, tree):
     assert result["files"] == len(names)
 
 
-def test_archive_refuses_to_overwrite(tmp_path, tree):
+def test_archive_rejects_to_overwrite(tmp_path, tree):
     dest = tmp_path / "copy.tar.gz"
     specimenbackup.archive(dest, tree)
     with pytest.raises(FileExistsError):
         specimenbackup.archive(dest, tree)
 
 
-def test_archive_refuses_a_destination_inside_the_repository(tree):
+def test_archive_rejects_a_destination_inside_the_repository(tree):
     """A subdirectory included: the game's data must never be committed, and a copy
     meant to outlive the working tree does not live in it."""
     with pytest.raises(ValueError, match="inside"):
@@ -156,7 +156,7 @@ def test_archive_refuses_a_destination_inside_the_repository(tree):
         specimenbackup.archive(specimenbackup.REPO / "copy.tar", tree)
 
 
-def test_archive_refuses_a_tree_that_no_longer_matches_its_manifests(tree):
+def test_archive_rejects_a_tree_that_no_longer_matches_its_manifests(tree):
     """An archive of a damaged tree preserves the damage, and the damage is
     exactly what the manifests exist to catch."""
     victim = tree / "por-dos" / "WISH-SPEC-party0" / "WISH0.CHA"
@@ -245,7 +245,7 @@ def test_audit_command_reports_the_counts(tmp_path, tree, capsys):
     assert "party1" in out and "0 of   2 files" in out
 
 
-def test_archive_refuses_a_zstd_name_it_cannot_write(tmp_path, tree):
+def test_archive_rejects_a_zstd_name_it_cannot_write(tmp_path, tree):
     """A `.tar.zst` that is a bare tar is worse than no archive at all.
 
     Nothing here writes zstd -- `_stream_tar` only reads it -- so a

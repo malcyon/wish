@@ -73,7 +73,7 @@ def _engine_save_disk() -> pathlib.Path | None:
     return candidate if candidate.exists() else None
 
 #: A conversion needs the combat icon tables and `ANIMATE00` off the player's
-#: C64 disks and refuses without them.  Zeros stand in wherever what is under
+#: C64 disks and blocks without them.  Zeros stand in wherever what is under
 #: test is the place or the party rather than the figure -- the same thing
 #: `tests/convert/test_curseconvert.py` does, and for the same reason: this is a
 #: round trip of our own code, not a claim about what a game disk holds.
@@ -130,7 +130,7 @@ def test_the_two_arrangements_of_save_disk_are_told_apart_by_their_save_entry(
     assert amiga_savegame.por_save_path("savgamA.dat", "") == "/savgamA.dat"
 
 
-def test_a_disk_with_no_save_entry_at_all_is_refused(tmp_path):
+def test_a_disk_with_no_save_entry_at_all_is_blocked(tmp_path):
     """A blank floppy is not a save disk with no saves on it; it is not a
     save disk.  Answering `""` for it would send every reader hunting the
     root of an unrelated volume."""
@@ -184,7 +184,7 @@ def test_reading_off_the_disk_gives_what_reading_off_a_path_gives(
         assert len(by_path.effects) == len(char.effects)
 
 
-def test_a_slot_the_disk_has_no_files_for_is_refused_by_name(shipped_disk):
+def test_a_slot_the_disk_has_no_files_for_is_blocked_by_name(shipped_disk):
     """Disk 1 ships slot A alone, so every other letter has no records --
     and the sentence names the file it looked for rather than raising a
     `KeyError` several calls down."""
@@ -223,15 +223,15 @@ def test_an_indoor_party_still_reads_as_indoors(shipped_disk):
     """The other half of the gate lifted by `#376 (An Amiga party on the
     travel grid still cannot be converted to the C64 or DOS, because the
     reader refuses one)`, so it cannot be a tautology: an indoor party is
-    unaffected by an outdoor one no longer being refused."""
+    unaffected by an outdoor one no longer being blocked."""
     _party, savgam = amiga_savegame.read_por_slot(shipped_disk, "A")
     state = amiga_savegame.read_por_state(savgam, "the shipped slot A")
     assert state.outdoors is False
 
 
 def test_a_party_on_the_travel_grid_reads_the_travel_square(outdoor_disk):
-    """`read_por_state` used to refuse an outdoor party outright -- `#321
-    (An Amiga Pool of Radiance conversion refuses a party standing on the
+    """`read_por_state` used to block an outdoor party outright -- `#321
+    (An Amiga Pool of Radiance conversion blocks a party standing on the
     travel grid, because no outdoor Amiga saved game has ever been read)`.
     `#376` lifted the guard once `#321` had measured the two bytes that had
     never been seen.
@@ -301,7 +301,7 @@ def test_an_outdoor_party_converts_to_the_c64_travel_grid(outdoor_disk):
     assert report.unwritten == []
 
 
-def test_a_saved_game_of_the_wrong_length_is_refused(shipped_disk):
+def test_a_saved_game_of_the_wrong_length_is_blocked(shipped_disk):
     """A `savgam<letter>.dat` is 13,141 bytes and the reader says so, rather
     than reading a word off the end of a short one."""
     with pytest.raises(AmigaRecordError) as raised:

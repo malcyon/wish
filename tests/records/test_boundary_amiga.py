@@ -15,7 +15,7 @@ already uses: `tools/records/boundarychars.py` for Pool of Radiance and
 Blades combination plus each title's deepest caster.  All are read as though off
 a C64 record, which is the route a conversion into the Amiga takes.
 
-Pools of Darkness stays out: `goldbox.amiga_pod.write_pod` refuses the
+Pools of Darkness stays out: `goldbox.amiga_pod.write_pod` blocks the
 generator's base character and is its own writer rather than a re-cut of the DOS
 record, so a sweep there would report the two gaps its own issues already track
 and not a width.

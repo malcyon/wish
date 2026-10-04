@@ -87,7 +87,7 @@ fixture is id 73 with owner `0x00`, which is a character. Nor can one be cast
 by any party on any disk here — **the highest cleric is level 2**, and the
 lowest of the five, 21 Silence 15' Radius, is a level 3 cleric's.
 `automap/live.py`'s `PROBABLE_BADGED` is the list of the five, and the test
-refuses a sixth: a PROBABLE id gets a picture only because somebody chose it.
+blocks a sixth: a PROBABLE id gets a picture only because somebody chose it.
 
 **The argument that used to be here was that the row would be permanently
 empty without them, and it is no longer true.** Two spells have since been

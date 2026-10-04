@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Check `tools/amiga/m68dis.py` against capstone over a real Amiga binary.
 
-`m68dis.py` **refuses to guess**: a word it does not recognise prints as
+`m68dis.py` **will not guess**: a word it does not recognise prints as
 `dc.w`, never as the nearest instruction that fits. The evidence for that
 claim is the run this tool does -- 100 385 instructions of the Amiga *Pools of
 Darkness* binary with no length disagreements, no operand disagreements and
-nothing capstone decoded that `m68dis` refused (`docs/50-experiments.md`, "The
+nothing capstone decoded that `m68dis` blocked (`docs/50-experiments.md`, "The
 68000 disassembler"). Getting that answer again is the whole reason this is
 kept: a claim about a disassembler is only as old as the last time somebody
 ran the comparison.
@@ -14,7 +14,7 @@ ran the comparison.
 
 **The mode is not cosmetic and both are run.** In `CS_MODE_M68K_020` capstone
 decodes instructions the target CPU does not have, so it reads a `dc.w`
-`m68dis` correctly refused as a real instruction -- which is why a comparison
+`m68dis` correctly blocked as a real instruction -- which is why a comparison
 that does not say which mode it used says very little. The 000 run is the one
 the write-up rests on; the 020 run is printed underneath for contrast, and
 every word the two tools disagree about there is accounted for by name rather
@@ -45,7 +45,7 @@ DEFAULT_OFFSET = 0x28
 DEFAULT_LENGTH = 0x4D2E0
 
 #: 68020-only mnemonics: capstone in 020 mode decodes these and the target
-#: CPU has none of them, so `m68dis` refusing the word is the right answer.
+#: CPU has none of them, so `m68dis` blocking the word is the right answer.
 ONLY_020 = ("chk.l", "bfext", "bfins", "bfset", "bfclr", "bftst", "divsl",
             "divul", "muls.l", "mulu.l", "trapcc", "pack", "unpk", "rtd",
             "moves", "cas", "cmp2", "chk2")
@@ -65,7 +65,7 @@ def norm(text: str) -> str:
     return s
 
 
-def why_we_refused(data: bytes, pos: int, ours, theirs) -> str:
+def why_we_declined(data: bytes, pos: int, ours, theirs) -> str:
     """Why `m68dis` said `dc.w` where capstone printed an instruction."""
     mn, ops = theirs.mnemonic, theirs.op_str
     if mn[0] == "b" and mn[:3] not in ("bch", "bcl", "bse", "bts", "bkp"):
@@ -91,8 +91,8 @@ def run(cs_mode, label: str, data: bytes, start: int, end: int) -> int:
     md = capstone.Cs(capstone.CS_ARCH_M68K,
                      capstone.CS_MODE_BIG_ENDIAN | cs_mode)
     compared = size_bad = op_bad = 0
-    refused_by_us: collections.Counter = collections.Counter()
-    refused_by_them = 0
+    declined_by_us: collections.Counter = collections.Counter()
+    declined_by_them = 0
     pos = start
     while pos + 2 <= end:
         ours = m68dis.decode(data, pos)
@@ -100,7 +100,7 @@ def run(cs_mode, label: str, data: bytes, start: int, end: int) -> int:
         decoded = theirs is not None and theirs.mnemonic != "dc.w"
         if not ours.known:
             if decoded:
-                refused_by_us[why_we_refused(data, pos, ours, theirs)] += 1
+                declined_by_us[why_we_declined(data, pos, ours, theirs)] += 1
         elif decoded:
             compared += 1
             if theirs.size != ours.size:
@@ -112,15 +112,15 @@ def run(cs_mode, label: str, data: bytes, start: int, end: int) -> int:
                 print(f"  ${pos:06X}: {ours.text!r} against capstone's "
                       f"{theirs.mnemonic} {theirs.op_str!r}")
         else:
-            refused_by_them += 1
+            declined_by_them += 1
         pos += ours.size
     print(f"--- {label}")
     print(f"  Both decoded it              {compared}")
     print(f"  Length disagreements         {size_bad}")
     print(f"  Operand disagreements        {op_bad}")
-    print(f"  capstone refused, we did not {refused_by_them}")
-    print(f"  We refused, capstone did not {sum(refused_by_us.values())}")
-    for reason, count in refused_by_us.most_common():
+    print(f"  capstone blocked, we did not {declined_by_them}")
+    print(f"  We blocked, capstone did not {sum(declined_by_us.values())}")
+    for reason, count in declined_by_us.most_common():
         print(f"      {count:6d}  {reason}")
     return size_bad + op_bad
 

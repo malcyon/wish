@@ -125,7 +125,7 @@ def test_the_cleric_grant_stops_two_bytes_below_the_one_that_would_hold_56():
 
 
 @gamedata.needs_disks
-def test_the_learn_menu_refuses_every_id_from_56_up():
+def test_the_learn_menu_blocks_every_id_from_56_up():
     """`CPX #$38 / BCS` in `GEN`'s magic-user menu builder.
 
     The builder walks a 32-byte copy of the mask, so it *could* offer ids far

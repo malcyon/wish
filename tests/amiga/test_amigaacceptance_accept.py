@@ -249,7 +249,7 @@ def test_accept_fails_on_a_save_slot_it_did_not_name(tmp_path, clock, readings):
     assert result["extra_saves"] == ["savgamE.sav"] and result["success"] is False
 
 
-def test_accept_refuses_before_the_claim_without_the_recon_guards(tmp_path, clock):
+def test_accept_blocks_before_the_claim_without_the_recon_guards(tmp_path, clock):
     guest = AcceptGuest(clock)
     with pytest.raises(winuaesession.RouteError, match="lacks .*sheet"):
         _accept(tmp_path, clock, guest=guest,
@@ -257,7 +257,7 @@ def test_accept_refuses_before_the_claim_without_the_recon_guards(tmp_path, cloc
     assert guest.calls == []
 
 
-def test_accept_refuses_before_the_claim_without_identity(tmp_path, clock):
+def test_accept_blocks_before_the_claim_without_identity(tmp_path, clock):
     guest = AcceptGuest(clock)
     with pytest.raises(winuaesession.RouteError, match="identity map lacks"):
         acceptance.run_recon(_manifest(tmp_path), guest=guest, guard=MapGuard(),
@@ -267,7 +267,7 @@ def test_accept_refuses_before_the_claim_without_identity(tmp_path, clock):
     assert guest.calls == []
 
 
-def test_accept_refuses_before_the_claim_without_a_journal_interpreter(tmp_path, clock):
+def test_accept_blocks_before_the_claim_without_a_journal_interpreter(tmp_path, clock):
     guest = AcceptGuest(clock)
     with pytest.raises(winuaesession.RouteError, match="journal interpreter"):
         _accept(tmp_path, clock, guest=guest,
@@ -276,7 +276,7 @@ def test_accept_refuses_before_the_claim_without_a_journal_interpreter(tmp_path,
     assert guest.calls == []
 
 
-def test_accept_refuses_a_manifest_without_the_boot_disk_for_the_answerer(tmp_path, clock):
+def test_accept_blocks_a_manifest_without_the_boot_disk_for_the_answerer(tmp_path, clock):
     manifest = _manifest(tmp_path)
     data = json.loads(manifest.read_text())
     del data["boot_source"]
@@ -308,7 +308,7 @@ def test_the_preflight_wants_the_imports_and_the_private_tables(tmp_path, monkey
         route_silver_blades.journal_preflight("py")
 
 
-def test_a_save_letter_that_is_a_prepared_slot_is_refused(tmp_path, clock, monkeypatch):
+def test_a_save_letter_that_is_a_prepared_slot_is_blocked(tmp_path, clock, monkeypatch):
     monkeypatch.setattr(acceptance, "MENU_SAVE_LETTER", route_silver_blades.SLOT_LETTER)
     guest = AcceptGuest(clock)
     with pytest.raises(winuaesession.RouteError, match="would overwrite"):
@@ -647,7 +647,7 @@ def test_silver_blades_accept_requires_journal_before_guest_use(monkeypatch):
                             "--audio-proof", "mute.json"]) == 2
 
 
-def test_other_titles_refuse_silver_blades_only_options(monkeypatch):
+def test_other_titles_block_silver_blades_only_options(monkeypatch):
     monkeypatch.setattr(acceptance, "WinGuest", lambda: pytest.fail("guest created"))
     assert acceptance.main(["prepare", "--title", "pool", "--run-id", "run",
                             "--source", "source.d64"]) == 2
@@ -657,7 +657,7 @@ def test_other_titles_refuse_silver_blades_only_options(monkeypatch):
                             "--journal-python", "python"]) == 2
 
 
-def test_silver_blades_reload_refuses_before_guest_use(monkeypatch):
+def test_silver_blades_reload_blocks_before_guest_use(monkeypatch):
     monkeypatch.setattr(acceptance, "WinGuest", lambda: pytest.fail("guest created"))
     assert acceptance.main(["reload", "--title", "ssb", "--manifest", "m.json",
                             "--guards", "g.json", "--identity", "i.json",
@@ -798,7 +798,7 @@ class DrawGuest(AcceptGuest):
             self.questions = None if self.questions is None else self.questions - 1
 
 
-def _draws(tmp_path, clock, monkeypatch, draws, *, questions=None, memory=None, refuse_at=None,
+def _draws(tmp_path, clock, monkeypatch, draws, *, questions=None, memory=None, fail_at=None,
            lane_check=None, helper_args=None, answer_seconds=0.0, picker_seen=True,
            seed=None, reader=None, **kw):
     memory = memory or FakeGameMemory()
@@ -807,7 +807,7 @@ def _draws(tmp_path, clock, monkeypatch, draws, *, questions=None, memory=None, 
         seed.log = log
         seed.memory = memory
         monkeypatch.setattr(acceptance, "_load_drawseed", lambda: seed)
-    helper = fake_stage_helper(memory, log, refuse_at=refuse_at, **(helper_args or {}))
+    helper = fake_stage_helper(memory, log, fail_at=fail_at, **(helper_args or {}))
     monkeypatch.setattr(route_silver_blades, "_load_savecount", lambda: helper)
     guest = DrawGuest(clock, helper, questions=questions)
     guest.log = log
@@ -914,17 +914,17 @@ def test_a_draw_that_reaches_exit_game_with_no_question_fails_the_run(
 
 def test_a_rejection_by_the_helper_stops_before_s_and_its_type_is_logged(
         tmp_path, clock, readings, monkeypatch):
-    run = _draws(tmp_path, clock, monkeypatch, 3, refuse_at=2)
+    run = _draws(tmp_path, clock, monkeypatch, 3, fail_at=2)
     assert _keys(run.guest) == KEYS + ["S", "D", "N"]
     assert run.result["error"] == "RouteError: draw 3: SaveCountError"
-    refused = [e for e in _events(tmp_path) if e["event"] == "draw_error"]
-    assert [(e["draw"], e["error"]) for e in refused] == [(3, "SaveCountError")]
+    blocked = [e for e in _events(tmp_path) if e["event"] == "draw_error"]
+    assert [(e["draw"], e["error"]) for e in blocked] == [(3, "SaveCountError")]
     assert run.result["success"] is False
 
 
 def test_a_helper_message_never_reaches_the_log_or_the_result(
         tmp_path, clock, readings, monkeypatch):
-    run = _draws(tmp_path, clock, monkeypatch, 3, refuse_at=1,
+    run = _draws(tmp_path, clock, monkeypatch, 3, fail_at=1,
                  helper_args={"message": "private-detail"})
     assert "private-detail" not in (tmp_path / "recon1" / "run.jsonl").read_text()
     assert "private-detail" not in json.dumps(run.result, default=str)
@@ -949,7 +949,7 @@ def test_without_the_lane_claim_nothing_is_staged(tmp_path, clock, readings, mon
     assert "lane claim was not confirmed" in run.result["error"]
 
 
-def test_draws_are_refused_before_the_claim_without_what_they_need(
+def test_draws_are_blocked_before_the_claim_without_what_they_need(
         tmp_path, clock, readings, monkeypatch):
     guest = AcceptGuest(clock)
     with pytest.raises(acceptance.RouteError, match="memory target"):
@@ -963,7 +963,7 @@ def test_draws_are_refused_before_the_claim_without_what_they_need(
     assert guest.calls == []
 
 
-def test_draws_that_cannot_fit_the_deadline_are_refused_before_the_claim(
+def test_draws_that_cannot_fit_the_deadline_are_blocked_before_the_claim(
         tmp_path, clock, readings, monkeypatch):
     monkeypatch.setattr(route_silver_blades, "_load_savecount",
                         lambda: fake_stage_helper(FakeGameMemory(), []))
@@ -977,7 +977,7 @@ def test_draws_that_cannot_fit_the_deadline_are_refused_before_the_claim(
 
 
 @pytest.mark.parametrize("draws", [0, 16, -1])
-def test_a_draw_count_outside_one_to_fifteen_is_refused(tmp_path, clock, readings, draws):
+def test_a_draw_count_outside_one_to_fifteen_is_blocked(tmp_path, clock, readings, draws):
     with pytest.raises(acceptance.RouteError, match="1 to 15"):
         _accept(tmp_path, clock, rulebook_draws=draws)
 
@@ -1005,10 +1005,10 @@ def test_a_run_without_draws_keeps_no_interstitial_copies(tmp_path, clock, readi
 
 def test_a_failed_copy_of_a_kept_screen_is_logged_and_the_run_goes_on(
         tmp_path, clock, readings, monkeypatch):
-    def refuse(*args):
+    def block(*args):
         raise OSError("disk full")
 
-    monkeypatch.setattr(acceptance.shutil, "copyfile", refuse)
+    monkeypatch.setattr(acceptance.shutil, "copyfile", block)
     run = _draws(tmp_path, clock, monkeypatch, 2)
     assert run.result["success"] is True
     errors = [e for e in _events(tmp_path) if e["event"] == "interstitial_keep_error"]
@@ -1061,8 +1061,8 @@ class FakeDrawSeed:
     class DrawSeedError(ValueError):
         pass
 
-    def __init__(self, shift=0, refuse=False, raises=None, drawn_raises=None, index_raises=None):
-        self.shift, self.refuse, self.raises, self.drawn_raises = shift, refuse, raises, drawn_raises
+    def __init__(self, shift=0, block=False, raises=None, drawn_raises=None, index_raises=None):
+        self.shift, self.block, self.raises, self.drawn_raises = shift, block, raises, drawn_raises
         self.index_raises = index_raises
         self.staged, self.calls, self.log = [], [], []
 
@@ -1071,8 +1071,8 @@ class FakeDrawSeed:
         self.log.append(f"seed{k}")
         if self.raises is not None:
             raise self.raises
-        if self.refuse:
-            raise self.DrawSeedError("refused by the helper")
+        if self.block:
+            raise self.DrawSeedError("blocked by the helper")
         self.staged.append(k)
 
     def reader_index(self, k, table=None):
@@ -1136,7 +1136,7 @@ def test_a_staged_draw_the_reader_kept_nothing_for_fails_the_run(
     assert run.result["rulebook"][0]["reader"] is None
 
 
-def test_records_are_refused_before_the_claim_without_the_keep_variable(
+def test_records_are_blocked_before_the_claim_without_the_keep_variable(
         tmp_path, clock, readings, monkeypatch):
     monkeypatch.delenv(route_silver_blades.KEEP_ENV, raising=False)
     monkeypatch.setattr(route_silver_blades, "_load_savecount",
@@ -1150,9 +1150,9 @@ def test_records_are_refused_before_the_claim_without_the_keep_variable(
 
 def test_the_helpers_own_rejection_stops_the_draw_with_its_type_only(
         tmp_path, clock, readings, monkeypatch):
-    _, run = _seeded(tmp_path, clock, monkeypatch, [3], seed=FakeDrawSeed(refuse=True))
+    _, run = _seeded(tmp_path, clock, monkeypatch, [3], seed=FakeDrawSeed(block=True))
     assert run.result["error"].endswith("stage_draw failed: DrawSeedError")
-    assert "refused by the helper" not in run.result["error"]
+    assert "blocked by the helper" not in run.result["error"]
 
 
 @pytest.mark.parametrize("where", ["raises", "drawn_raises", "index_raises"])
@@ -1165,7 +1165,7 @@ def test_any_helper_exception_reaches_the_error_as_its_type_only(
     assert "secret" not in json.dumps(_events(tmp_path))
 
 
-def test_records_are_refused_before_the_claim_when_they_cannot_be_used(
+def test_records_are_blocked_before_the_claim_when_they_cannot_be_used(
         tmp_path, clock, readings, monkeypatch):
     guest = AcceptGuest(clock)
     monkeypatch.setenv(route_silver_blades.KEEP_ENV, str(tmp_path))
@@ -1189,7 +1189,7 @@ def test_records_are_refused_before_the_claim_when_they_cannot_be_used(
     assert guest.calls == []
 
 
-def test_a_missing_private_drawseed_is_refused_naming_its_path(monkeypatch, tmp_path):
+def test_a_missing_private_drawseed_is_blocked_naming_its_path(monkeypatch, tmp_path):
     monkeypatch.setenv(acceptance.amigabladesjournal.ENV, str(tmp_path))
     with pytest.raises(acceptance.RouteError, match="drawseed.py is missing"):
         acceptance._load_drawseed()
@@ -1259,7 +1259,7 @@ def test_a_staged_accept_that_fails_registers_nothing(
     assert not specimen_tree.exists() or list(specimen_tree.rglob("WISH-SPEC-*")) == []
 
 
-def test_an_unstaged_silver_blades_accept_still_refuses_preservation(tmp_path, clock, specimen_tree):
+def test_an_unstaged_silver_blades_accept_still_blocks_preservation(tmp_path, clock, specimen_tree):
     guest = AcceptGuest(clock)
     with pytest.raises(winuaesession.RouteError, match="published disk-one or substituted"):
         _accept(tmp_path, clock, guest=guest, preserve_specimen=True, specimen_issue=ISSUE)
@@ -1296,10 +1296,10 @@ def test_a_staged_accept_whose_release_fails_registers_nothing(
 
 def test_a_staged_accept_whose_registration_fails_is_a_failed_run(
         tmp_path, clock, readings, specimen_tree, monkeypatch):
-    def refuse(*args, **kwargs):
+    def block(*args, **kwargs):
         raise winuaesession.RouteError("specimen name collision")
 
-    monkeypatch.setattr(acceptance, "_register_fetched", refuse)
+    monkeypatch.setattr(acceptance, "_register_fetched", block)
     _, result = _staged_preserve(tmp_path, clock, AcceptGuest(clock))
     assert result["success"] is False and "name collision" in result["specimen_error"]
     assert "specimen" not in result and _nothing_registered(specimen_tree)
@@ -1317,7 +1317,7 @@ def test_a_staged_accept_whose_guest_did_not_stop_registers_nothing(
     assert "specimen" not in result and _nothing_registered(specimen_tree)
 
 
-def test_a_pools_of_darkness_substitute_refuses_preservation_before_any_guest_call(
+def test_a_pools_of_darkness_substitute_blocks_preservation_before_any_guest_call(
         tmp_path, clock, specimen_tree):
     """Its manifest has no registered specimen, so preserving one would fail late."""
     guest = AcceptGuest(clock)

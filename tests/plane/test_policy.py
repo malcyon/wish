@@ -635,9 +635,9 @@ def test_5xx_3xx_and_read_timeout_name_the_ticket_to_read_back(monkeypatch, tmp_
 def test_no_code_path_opens_a_sqlite_file(tmp_path, monkeypatch):
     import sqlite3
 
-    def refuse(*args, **kwargs):
+    def reject(*args, **kwargs):
         raise AssertionError('sqlite opened')
-    monkeypatch.setattr(sqlite3, 'connect', refuse)
+    monkeypatch.setattr(sqlite3, 'connect', reject)
     fake = Fake(lambda method, path, data, params: {'id': AGENT} if path == 'users/me' else
                 {'id': OUTSIDE, 'created_by': AGENT, 'comment_html': ''} if method == 'POST' else record())
     Client(settings(tmp_path), fake).comment(ITEM, 'Text')
@@ -672,9 +672,9 @@ def test_never_connected_classifies_real_requests_exceptions():
     from urllib3.exceptions import NewConnectionError
 
     from tools.plane.client import never_connected
-    refused = requests.ConnectionError(OSError('x'))
-    refused.args = (type('Pool', (), {'reason': NewConnectionError(None, 'refused')})(),)
-    assert never_connected(refused)
+    rejected = requests.ConnectionError(OSError('x'))
+    rejected.args = (type('Pool', (), {'reason': NewConnectionError(None, 'rejected')})(),)
+    assert never_connected(rejected)
     assert never_connected(requests.ConnectTimeout())
     assert not never_connected(requests.ReadTimeout())
     assert not never_connected(requests.ConnectionError('Connection aborted'))
@@ -743,14 +743,14 @@ def test_failed_move_names_the_ticket_in_backlog_and_the_wanted_state(tmp_path):
 
 
 @pytest.mark.parametrize('name', ['queue', 'Done', 'In progress'])
-def test_unknown_state_name_is_refused_before_anything_is_sent(tmp_path, name):
+def test_unknown_state_name_is_rejected_before_anything_is_sent(tmp_path, name):
     client, _, fake = state_client(tmp_path)
     with pytest.raises(PlaneError, match='Choose a state'):
         client.create('Ticket', 'Evidence', 'high', [LABEL], name)
     assert not [c for c in fake.calls if c[0] != 'GET']
 
 
-def test_state_missing_from_project_metadata_is_refused_before_anything_is_sent(tmp_path):
+def test_state_missing_from_project_metadata_is_rejected_before_anything_is_sent(tmp_path):
     client, _, fake = state_client(tmp_path)
     original = fake.handler
     fake.handler = lambda m, p, d, q: ({'results': STATES[:1], 'next_page_results': False} if p.endswith('/states') else original(m, p, d, q))
@@ -894,7 +894,7 @@ def test_the_editable_authors_are_exactly_the_agent_and_the_importer(tmp_path):
 
 
 @pytest.mark.parametrize('author', [OUTSIDE, '12345678-1234-4234-8234-123456789abc', None])
-def test_edit_comment_refuses_any_other_author_without_patching(tmp_path, author):
+def test_edit_comment_rejects_any_other_author_without_patching(tmp_path, author):
     client, fake = comment_editor(tmp_path, author=author)
     with pytest.raises(PlaneError, match='agent or the importer'):
         client.edit_comment(ITEM, COMMENT, MARKDOWN)

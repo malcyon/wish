@@ -43,7 +43,7 @@ POD = dos_port.POOLS_OF_DARKNESS
 #: The names the reader fills that the writer's own report does not treat as
 #: an ordinary copy: `armour_class` is derived, recomputed by the engine on
 #: load, and `armour_class_base` is copied through (#635) but from a source
-#: field the writer's own guard once refused rather than trusted.
+#: field the writer's own guard once blocked rather than trusted.
 READ_ONLY = ("armour_class", "armour_class_base")
 
 
@@ -213,7 +213,7 @@ def test_write_pod_reports_the_derived_and_constant_fields_as_derived():
     seed the current armour-class calculation from the stored base, so it is
     real state the writer copies through, and it is asserted **not** derived
     here -- `test_an_unusual_armour_class_base_converts_instead_of_being_
-    refused` in `tests/amiga/test_podderived.py` is where its conversion is
+    blocked` in `tests/amiga/test_podderived.py` is where its conversion is
     proved."""
     raw = bytearray(amiga_pod.PodWriter(
         name="TEST",
@@ -453,7 +453,7 @@ def test_every_dos_record_converts_into_a_pc():
     engine rebuilds on load or holds a constant value for is on
     `POD_WRITE_DERIVED` or `POD_WRITE_CONSTANTS`, not on `POD_WRITE_DROPPED`,
     so `editor/saveplan.losses()` -- `[*report.dropped, *report.losses]` --
-    would not refuse a Save As over a byte nobody loses.
+    would not block a Save As over a byte nobody loses.
     """
     seen = 0
     for path in dos_records():
@@ -747,7 +747,7 @@ def test_a_memorised_id_that_is_not_a_byte_is_reported_and_not_fatal():
             and line.endswith("300, 256, 128, 0, -1")]
 
 
-def test_the_writer_refuses_a_memorised_id_that_is_not_a_byte():
+def test_the_writer_blocks_a_memorised_id_that_is_not_a_byte():
     for bad in (300, 256, 128, 0, -1):
         with pytest.raises(ValueError):
             amiga_pod.PodWriter(
@@ -832,10 +832,10 @@ def test_the_engines_own_icon_rule_by_race_sex_size_and_class(
         slots) == (head, body)
 
 
-def test_the_writer_refuses_an_icon_past_the_screens_own_wrap():
+def test_the_writer_blocks_an_icon_past_the_screens_own_wrap():
     """13 and 31 are where the ICON screen wraps each byte back to zero, so
     they are the last art `CHEAD.TLB` and `CBODY.TLB` have; a value past
-    either makes the loader refuse the whole file."""
+    either makes the loader block the whole file."""
     for kwargs in ({"icon_head": 14}, {"icon_body": 32},
                    {"icon_head": -1}, {"icon_body": -1}):
         with pytest.raises(ValueError):

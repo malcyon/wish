@@ -223,7 +223,7 @@ def hiding_for_pass_two(worktree: pathlib.Path, python: str,
     paths, a home-folder guess or the specimen tree hold data on this machine,
     that hiding leaves the data reachable, so the run falls back to pointing
     the example's variables at a path that does not exist; a mount namespace
-    that hid the paths themselves is refused on machines that forbid
+    that hid the paths themselves is rejected on machines that forbid
     unprivileged user namespaces. The fallback does not touch `WISH_SPECIMENS`,
     so a specimen tree stays reachable in it.
     """

@@ -234,13 +234,13 @@ def test_every_declared_field_has_a_disposition_in_every_title(deltas):
     assert set(table) - declared == set()
 
 
-def test_the_conversion_no_longer_refuses_curse():
+def test_the_conversion_no_longer_blocks_curse():
     """`#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one,
     which the importer refuses today)` step 3 loaded a converted Curse save
     in the running game and read the sheet, so step 4 puts Curse on
     `CONVERTS` for real.
 
-    **This used to end by asserting Silver Blades was still refused, and
+    **This used to end by asserting Silver Blades was still blocked, and
     then Pools of Darkness.** Silver Blades was proven the same way on
     2026-09-05 (`#193 (Convert a Secret of the Silver Blades DOS save into a
     C64 one, which the importer refuses today)`); Pools of Darkness joined
@@ -427,7 +427,7 @@ def test_no_dos_derived_or_constant_field_reaches_the_import_pane():
 
 
 def test_a_curse_conversion_needs_no_creation_tables():
-    """`#131`: `new_save` refuses a conversion without the creation menu's
+    """`#131`: `new_save` blocks a conversion without the creation menu's
     tables wherever the destination draws a sheet portrait, and Curse draws
     none (#300, `draws_sheet_portrait`), so `portraits=None` converts here
     exactly as before -- the control for the Pool of Radiance rejection in
@@ -463,7 +463,7 @@ def test_a_converted_party_shows_no_portrait_or_identity_drop_line():
 
 
 def test_a_curse_save_is_written_whole():
-    """`new_save` refuses a byte with no source, so this passing at all is the
+    """`new_save` blocks a byte with no source, so this passing at all is the
     claim: 7424 bytes, none of them inherited and none left zero by accident.
 
     The party is `#131`'s specimen, standing on (3,12) in Tilverton with the

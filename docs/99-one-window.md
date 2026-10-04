@@ -111,7 +111,7 @@ Only the visible tab polls. Switching tabs changes what is read, not how often.
 
 **And when something else already holds the monitor, the map says so in red.**
 The two cases look identical from the outside unless they are told apart: with
-nothing running the TCP connect is *refused*, and with another client attached
+nothing running the TCP connect is *blocked*, and with another client attached
 the connect *succeeds* and is then never served. `ViceTarget` pings on attach
 and raises `MonitorBusy` when the ping times out, so "waiting for a game" is
 never said about a game that is running. It is a colour and not a dialog,

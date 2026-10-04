@@ -314,7 +314,7 @@ the C64's `ECL1E`, is the attract-mode demo, which nothing sends a party to
 loads GEO12)`). Nothing anywhere on `POOLDATA` is the Amiga's copy of `ECL1E`:
 all 843 blocks of all 23 containers were unpacked and compared, and the closest
 match is 23%, which is the background resemblance of one ECL script to another.
-`goldbox.amiga_savegame.por_area_script` refuses that area by name, so an area 30 source
+`goldbox.amiga_savegame.por_area_script` blocks that area by name, so an area 30 source
 is an error rather than a party arriving somewhere else.
 
 **Which disks a conversion needs depends on what it writes.** A `POOLSAVE` save

@@ -179,7 +179,7 @@ def _player(share: int) -> CharacterRecord:
 
 
 @pytest.mark.parametrize("share", (0x04, 0x84, 0xFF))
-def test_a_c64_player_characters_share_with_bit_2_is_still_refused(share):
+def test_a_c64_player_characters_share_with_bit_2_is_still_blocked(share):
     """His byte in that slot is not a share, so nothing says what to clear."""
     rec = _player(share)
     assert not rec.get("flags_0b8") & 0x80
@@ -192,7 +192,7 @@ def test_a_c64_player_characters_share_with_bit_2_is_still_refused(share):
 @pytest.mark.parametrize("game", ("curse-of-the-azure-bonds",
                                   "secret-of-the-silver-blades"))
 @pytest.mark.parametrize("share", (0x04, 0x84, 0xFF))
-def test_a_c64_companions_share_with_bit_2_is_still_refused_outside_pool(
+def test_a_c64_companions_share_with_bit_2_is_still_blocked_outside_pool(
         game, share):
     """Only Pool of Radiance's DOS and Amiga masks are measured."""
     rec = _c64_companion(share)
@@ -239,7 +239,7 @@ def test_the_c64_byte_for_a_dos_share(share, expected):
                                                  (0x05, 5, 0x07)))
 def test_the_parts_the_c64_cannot_give_are_on_the_warnings_not_the_losses(
         share, parts, written):
-    """A loss would make Save As refuse the party; the warning is what a
+    """A loss would make Save As block the party; the warning is what a
     caller can read."""
     _rec, rep = _dos_to_c64(share)
     lines = [w for w in rep.warnings if "treasure_share" in w]
@@ -266,7 +266,7 @@ def test_an_amiga_hireling_converts_to_the_c64_the_same_way(share):
 
 
 @pytest.mark.parametrize("share", (0x04, 0x84, 0xFF))
-def test_a_dos_player_characters_share_with_bit_2_is_still_refused(share):
+def test_a_dos_player_characters_share_with_bit_2_is_still_blocked(share):
     raw = bytearray(dos_port.RECORD_SIZE)
     raw[DOS_CONTROL], raw[DOS_SHARE] = 0x01, share
     with pytest.raises(ValueError, match="bit 2 set"):
@@ -274,7 +274,7 @@ def test_a_dos_player_characters_share_with_bit_2_is_still_refused(share):
 
 
 @pytest.mark.parametrize("share", (0x04, 0x84, 0xFF))
-def test_a_dos_zombie_with_a_bit_2_share_is_still_refused(share):
+def test_a_dos_zombie_with_a_bit_2_share_is_still_blocked(share):
     """Animate Dead's zombie is a player character to the C64, so its byte
     is not a companion's share."""
     raw = bytearray(dos_port.RECORD_SIZE)

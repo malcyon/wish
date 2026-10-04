@@ -81,7 +81,7 @@ Two corrections to `docs/119-test-party.md` this run forced
 -----------------------------------------------------------
 * **ASTRA cannot be a cleric 6.**  A half-elf's cleric limit is 5 --
   `GEN $1E64`, seven races of four classes, CONFIRMED -- so the plan's
-  6 / 6 / 6 is refused by the game's own clamp and by `levelup.plan`.  She is
+  6 / 6 / 6 is rejected by the game's own clamp and by `levelup.plan`.  She is
   generated as cleric 5 / fighter 6 / magic-user 6, which still puts both
   nibbles of `spells_castable` above zero, which is what she was for.
 * **A wound cannot come from the trainer.**  Training heals to the new maximum
@@ -441,7 +441,7 @@ def equip(one: Built, tables, game=None) -> None:
 
     A readied item whose `+15` is `0x84` runs a power on READY that takes
     `+14 >> 4` hit points and un-readies the item unless `+14 & 0x0F` is the
-    character's alignment, so `equip` refuses that loadout.
+    character's alignment, so `equip` rejects that loadout.
     """
     from goldbox import items as _items
 
@@ -466,7 +466,7 @@ def equip(one: Built, tables, game=None) -> None:
         raise SystemExit(f"{one.spec.name}: {len(raws)} items and the C64 "
                          f"record has {slots} slots")
 
-    # A loadout the game itself would refuse is a loadout that measures
+    # A loadout the game itself would reject is a loadout that measures
     # nothing, so both rejections it makes are checked here rather than found in
     # the emulator: the class filter on every item, and one readied item per
     # place on the body.
@@ -479,7 +479,7 @@ def equip(one: Built, tables, game=None) -> None:
             raise SystemExit(
                 f"{one.spec.name}: {item.name} is readied but accepts "
                 f"alignment {raw[14] & 0x0F} and {one.spec.name} is alignment "
-                f"{one.spec.alignment}; the game refuses it on READY and "
+                f"{one.spec.alignment}; the game rejects it on READY and "
                 f"takes {raw[14] >> 4} hit points")
         kind = types.get(item.type_index)
         if kind is None:
@@ -758,7 +758,7 @@ def build(spec: Spec, game=None, rolls: str = "max", seed: int = 0,
                 gaps=list(report.dropped), notes=list(report.warnings))
     if report.unaccounted:
         raise SystemExit(f"{spec.name}: {len(report.unaccounted)} of 580 "
-                         f"bytes have no provenance; refusing to generate a "
+                         f"bytes have no provenance; declining to generate a "
                          f"record nobody can explain")
 
     wanted = dict(spec.levels)

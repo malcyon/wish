@@ -159,7 +159,7 @@ class Title:
     #: disk (`docs/121-silver-blades.md`, "No city-block/wilderness
     #: structure"), so `$49E6` and `$49C3` there would be read as this
     #: title's meaning of bytes that belong to something else -- a plausible
-    #: wrong square, which `automap.target.party_fix` refuses to answer rather
+    #: wrong square, which `automap.target.party_fix` does not answer rather
     #: than guess at. See `automap.c64.C64Machine.indoors_flag_base` and
     #: `travel_position_base`, which are None wherever this is False.
     #:

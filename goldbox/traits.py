@@ -425,7 +425,7 @@ EMPTY = "—"
 # creature set that carries it in Pool of Radiance, and BASILISK, MEDUSA and
 # SARGATHA carry the pair 58/59 where Pool of Radiance's basilisk and medusa
 # carry 83/127, with the one of the pair on list 14 matching the one of Pool
-# of Radiance's pair on list 14. It also **refused** four that positional
+# of Radiance's pair on list 14. It also **blocked** four that positional
 # agreement had offered, which is the more useful half: 60 "unused" (an IRON
 # GOLEM carries it), 65 "melee poison, +4 to save" (a COCKATRICE, which has
 # no poison), 83 "petrifying gaze" (two dragons, while this title's basilisk
@@ -549,7 +549,7 @@ NAMES_SILVER_BLADES: dict[int, tuple[str, str]] = {
     # template carries 61 at +14 with +15 = $80.
     61: (NAMES[61][0], "CONFIRMED"),         # lists 6 and 12, spell damage
     89: (NAMES[89][0], "PROBABLE"),                    # list 16, miss chance
-    # Agreement offered "half damage from fire" and the handler refuses it:
+    # Agreement offered "half damage from fire" and the handler blocks it:
     # $290E is `LDA #$01 / AND $A904 / BEQ / JSR $14EF`, which zeroes the
     # damage on fire and halves nothing. FIRE GIANT and DREADLORD carry it,
     # and a fire giant is immune. The string is Pool of Radiance's 112.
@@ -708,7 +708,7 @@ NAMES_SILVER_BLADES: dict[int, tuple[str, str]] = {
 # asked by no instruction, so they do nothing in a slot and are named for the
 # active-effects panel, which shares this table.
 #
-# Nine ids that positional agreement offered a name for were refused in the
+# Nine ids that positional agreement offered a name for were blocked in the
 # first pass and then read in the third, which is where a reader is most
 # likely to want the reasoning:
 #
@@ -764,7 +764,7 @@ NAMES_SILVER_BLADES: dict[int, tuple[str, str]] = {
 #:
 #: **Twenty-seven more are named from the routine each one dispatches**, read
 #: one at a time out of Curse's own `COMBAT` through the handler tables at
-#: `$EE2A`/`$EEBC` -- the ten the monster sweep could only refuse (57, 81,
+#: `$EE2A`/`$EEBC` -- the ten the monster sweep could only block (57, 81,
 #: 82, 84, 85, 86, 87, 90, 96, 103), the eight above `NAMES`'s reach that a
 #: Curse creature carries (128, 129, 130, 131, 132, 133, 135, 138), 73, and
 #: the eight whose inherited name Curse's own handler contradicts (50, 54,

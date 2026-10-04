@@ -247,12 +247,12 @@ def test_a_folder_of_sides_that_carry_no_menu_says_which_it_tried(tmp_path):
 
 # ---------------------------------------------------------------------------
 # #300: the glob was `POOL[0-9].D64` alone, so a Curse or Silver Blades
-# folder -- real disks, correctly named for their own title -- was refused
+# folder -- real disks, correctly named for their own title -- was rejected
 # with a message about `POOL<n>.D64`, which is not what either title's sides
 # are called.
 # ---------------------------------------------------------------------------
 @needs_curse_disks
-def test_a_curse_folder_is_not_refused_for_lacking_pool_disks():
+def test_a_curse_folder_is_not_rejected_for_lacking_pool_disks():
     """The bug this issue reported: a real, correctly-named Curse folder was
     rejected as if it were an empty one, because the glob only knew `POOL`.
 
@@ -642,7 +642,7 @@ def test_a_folder_with_no_amiga_sides_says_which_files_it_wanted(tmp_path):
         assert name in said
 
 
-def test_the_stored_menu_answers_per_port_and_refuses_an_unknown_one():
+def test_the_stored_menu_answers_per_port_and_rejects_an_unknown_one():
     """`stored_tables` has to be asked which port, and defaults to the pair.
 
     `None` is the C64's and DOS's shared menu, which is what every caller

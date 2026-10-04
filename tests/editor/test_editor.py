@@ -330,7 +330,7 @@ def test_saving_the_minority_titles_member_uses_its_own_title_not_the_partys(
 
     Here the disk mixes a Pool of Radiance file with a Curse cleric's, so the
     party as a whole falls back to Pool of Radiance (`detect_from_roster`
-    refuses to pick between two disagreeing titles) while SHARA's own file
+    fails to pick between two disagreeing titles) while SHARA's own file
     still names Curse. Saving her memorised spells has to use *her* title,
     not the party's whole-disk fallback, or the same corruption reaches the
     one character on the disk whose title actually differs from the
@@ -426,7 +426,7 @@ def test_the_message_spells_out_a_backup_that_went_somewhere_else(tmp_path):
     assert str(elsewhere) in said          # the whole path, not just the leaf
 
 
-def test_no_backup_folder_refuses_the_save_rather_than_writing(tmp_path):
+def test_no_backup_folder_blocks_the_save_rather_than_writing(tmp_path):
     """The rule the editor's licence to overwrite rests on.
 
     It writes back over the file you opened, and the only reason that is
@@ -625,7 +625,7 @@ def test_abilities_altered_is_empty_and_disabled_on_an_unconfirmed_title(
 def test_morale_above_100_is_shown_read_only_not_clamped(app, tmp_path):
     """A companion copied from a Pool of Radiance monster record can hold up
     to 254 (docs/232): shown decoded and disabled, never clamped to 100 or
-    refused."""
+    blocked."""
     from goldbox import c64_port
     save = synthetic_save(tmp_path, game=c64_port.POOL_OF_RADIANCE)
     w = _shown_editor(save)
@@ -744,10 +744,10 @@ def test_typing_into_control_letter_by_letter_reaches_the_end_intact(
     assert w._flush(0) == []
 
 
-def test_flush_control_fields_refuses_an_unrecognized_value_on_its_own(
+def test_flush_control_fields_blocks_an_unrecognized_value_on_its_own(
         app, tmp_path):
     """`_control_committed`'s own revert (the test above) is not the only
-    guard: `_flush_control_fields` must independently refuse a Control value
+    guard: `_flush_control_fields` must independently block a Control value
     it does not recognise, in case the combo ever ends up holding one some
     other way, rather than defaulting to "Player-controlled" and wiping the
     byte (#623 review)."""
@@ -1098,12 +1098,12 @@ def test_the_name_is_still_shown_though_disabled(app, save):
     assert w._widgets["name"].text() == "MALCYON"
 
 
-# --- a field that refuses to save is a pop-up (#145) -------------------------
+# --- a field that fails to save is a pop-up (#145) -------------------------
 #
 # Donald's ruling: keep the reporting mechanism `4738b19` built, but as a
 # pop-up rather than a status-bar line, worded "Error: {label} could not be
 # saved." with the label read live off the sheet. No field can actually
-# refuse today -- every spin box is ranged to what its field holds, every
+# block today -- every spin box is ranged to what its field holds, every
 # combo box offers only its own entries, and the two spell widgets always
 # hand back exactly the field's width -- so these tests force the failure at
 # `CharacterRecord.set` to prove the mechanism itself, independent of
@@ -1113,7 +1113,7 @@ from goldbox.record import CharacterRecord  # noqa: E402
 
 
 @game_disks
-def test_a_field_that_refuses_to_save_pops_up_the_approved_sentence(
+def test_a_field_that_fails_to_save_pops_up_the_approved_sentence(
         app, save, monkeypatch):
     import editor.window as ew
     from editor.window import EditorBinding
@@ -1136,7 +1136,7 @@ def test_a_field_that_refuses_to_save_pops_up_the_approved_sentence(
 
 
 @game_disks
-def test_two_refused_fields_in_one_flush_are_one_dialog_not_two(
+def test_two_blocked_fields_in_one_flush_are_one_dialog_not_two(
         app, save, monkeypatch):
     """Consecutive pop-ups would be worse than the bug -- one dialog, one
     line per field. `_widgets` is a dict in widget-tree order, not sheet
@@ -1296,7 +1296,7 @@ def test_a_fractional_weight_edits_to_the_nearest_tenth(editor):
 
 
 @game_disks
-def test_weight_out_of_range_is_refused(editor):
+def test_weight_out_of_range_is_blocked(editor):
     editor.roster.selectRow(0)                    # MALCYON, six darts
     model = editor.items
     before = model.inventory.item(1).weight_tenths
@@ -1306,7 +1306,7 @@ def test_weight_out_of_range_is_refused(editor):
 
 
 @game_disks
-def test_rubbish_weight_is_refused(editor):
+def test_rubbish_weight_is_blocked(editor):
     editor.roster.selectRow(0)                    # MALCYON, six darts
     model = editor.items
     before = model.inventory.item(1).weight_tenths
@@ -1437,7 +1437,7 @@ def test_deleting_closes_the_gap(editor):
 @game_disks
 def test_an_identified_item_cannot_be_un_identified(editor):
     """Which name words to hide is not recoverable once they are shown -- the
-    CLI refuses the same edit."""
+    CLI blocks the same edit."""
     from PyQt6.QtCore import Qt
     editor.roster.selectRow(2)
     flags = editor.items.flags(editor.items.index(0, 4))
@@ -1518,7 +1518,7 @@ def test_editing_the_spellbook_reaches_the_disk(editor, save):
 
 @game_disks
 def test_a_memorised_spell_the_character_does_not_know_is_allowed(editor, save):
-    """Shown, never refused: the CLI reports the same inconsistency and writes
+    """Shown, never blocked: the CLI reports the same inconsistency and writes
     it anyway, because trying what the game has not been shown is the point."""
     from editor.window import EditorBinding
     editor.roster.selectRow(5)                    # MALCYON -- row 5, #160
@@ -1568,7 +1568,7 @@ def test_the_memorised_widget_holds_as_many_slots_as_it_was_given():
     assert w.slot_count() == size == 81
     assert w.ids() == ids
     assert w.to_bytes() == raw                 # untouched: back byte for byte
-    assert w.add_spell(21)                     # seventeen was refused before
+    assert w.add_spell(21)                     # seventeen was blocked before
     assert len(w.ids()) == 21
     assert len(w.to_bytes()) == size
 
@@ -2581,7 +2581,7 @@ def _test_the_roster_elides_a_name_rather_than_widening_the_window(app, party):
         "W" * NAME_SIZE)
     assert w.root.minimumSizeHint().width() == minimum, (
         "the minimum moved while the window was being resized")
-    assert w.width() == minimum, "the window refused to be made as small as it says"
+    assert w.width() == minimum, "the window failed to be made as small as it says"
 
 
 def _drag_name_divider(view, x_after: int) -> None:
@@ -3948,7 +3948,7 @@ def test_the_picker_offers_the_whole_table_in_two_provenance_sections(app):
 def test_a_monster_attack_form_on_a_character_is_coloured_and_says_why(app):
     """83 is a basilisk's petrifying gaze and a character has none of the
     parts its handler reads. The editor writes it anyway -- the spellbook
-    precedent -- and says what it is not refusing.
+    precedent -- and says what it is not blocking.
 
     The four cases are `docs/133-active-effects.md`'s "What a nonsense
     combination could do" table, in the order a reader wants them: the code's
@@ -4908,7 +4908,7 @@ def _roster_rows(party):
 
 
 def _blank_files():
-    """The combat icon and `ANIMATE00` a conversion refuses to run without.
+    """The combat icon and `ANIMATE00` a conversion fails to run without.
     Zeros stand in: what is compared is the roster, not the figure."""
     from editor.dosimport import GameFiles
     return GameFiles(icon=bytes(36), animate=bytes(852))
@@ -4957,7 +4957,7 @@ def _synthetic_dos_folder(tmp_path, deltas, numbers=(1, 2, 3), class_bits=None,
         record, itm, spc, _rep = dos_codec.write(char, deltas=deltas)
         (tmp_path / f"CHRDATA{n}.SAV").write_bytes(record)
         # The title names its own item and effect files (`.SWG`/`.FX` on Curse),
-        # and the reader refuses a record that counts items with no item file.
+        # and the reader blocks a record that counts items with no item file.
         (tmp_path / f"CHRDATA{n}{deltas.item_suffix}").write_bytes(itm)
         (tmp_path / f"CHRDATA{n}{deltas.effect_suffix}").write_bytes(spc)
     (tmp_path / "SAVGAMA.DAT").write_bytes(b"")
@@ -5057,8 +5057,8 @@ def test_a_dos_party_of_seven_with_a_count_of_seven_stays_seven(tmp_path):
     assert len(characters) == 7
 
 
-def test_a_dos_party_of_one_file_under_a_higher_count_is_not_refused(tmp_path):
-    """A counted file that is missing is skipped, not refused: two
+def test_a_dos_party_of_one_file_under_a_higher_count_is_not_blocked(tmp_path):
+    """A counted file that is missing is skipped, not blocked: two
     engine-written specimens (`por-item-granted`, `por-item-twenty`) count 6
     and keep only file 1. Green before and after."""
     from goldbox import dos_codec, dos_port, dos_savegame
@@ -5233,7 +5233,7 @@ def test_opening_a_multi_slot_dos_folder_uses_the_slot_picker(
 
     _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE)
     (tmp_path / "SAVGAMB.DAT").write_bytes(b"")
-    for suffix in (".SAV", ".ITM", ".SPC"):    # the reader refuses a record without its item file
+    for suffix in (".SAV", ".ITM", ".SPC"):    # the reader blocks a record without its item file
         (tmp_path / f"CHRDATB1{suffix}").write_bytes(
             (tmp_path / f"CHRDATA1{suffix}").read_bytes())
     shown = []
@@ -5637,9 +5637,9 @@ def test_pools_of_darkness_cannot_be_opened_and_the_rejection_is_catchable(tmp_p
     (tmp_path / "CHRDATA1.SAV").write_bytes(
         bytes(dos_port.POOLS_OF_DARKNESS.record_size))
     (tmp_path / "SAVGAMA.PTY").write_bytes(b"")
-    with pytest.raises(dos_codec.WrongTitleError) as refused:
+    with pytest.raises(dos_codec.WrongTitleError) as blocked:
         Party(str(tmp_path))
-    assert refused.value.title == dos_port.POOLS_OF_DARKNESS.title
+    assert blocked.value.title == dos_port.POOLS_OF_DARKNESS.title
 
 
 def test_opening_a_pools_of_darkness_folder_shows_the_convert_sentence(
@@ -5658,19 +5658,19 @@ def test_opening_a_pools_of_darkness_folder_shows_the_convert_sentence(
     assert "goldbox/" not in said[0][1] and "c64_port" not in said[0][1]
 
 
-def test_another_title_refused_on_open_shows_the_general_message(
+def test_another_title_blocked_on_open_shows_the_general_message(
         app, tmp_path, monkeypatch):
     import editor.window as ew
     from editor.convert import POOLS_OF_DARKNESS_UNSUPPORTED
     from goldbox import dos_codec, dos_port
 
-    def refuse(*a, **k):
+    def block(*a, **k):
         raise dos_codec.WrongTitleError(
             "developer reason", dos_port.CURSE_OF_THE_AZURE_BONDS.title)
 
     from editor.convert import Source
     monkeypatch.setattr(Source, "looks_like_a_save", staticmethod(lambda p: False))
-    monkeypatch.setattr(ew, "Party", refuse)
+    monkeypatch.setattr(ew, "Party", block)
     said = []
     monkeypatch.setattr(ew.QMessageBox, "critical",
                         lambda *a, **k: said.append((a[1], a[2])))
@@ -5714,7 +5714,7 @@ def test_an_amiga_pool_party_opens_from_its_adf(tmp_path):
     assert isinstance(party.members[0].native, amiga_por.AmigaPorCharacter)
 
 
-def test_an_amiga_disk_that_holds_no_save_is_refused_by_the_source_it_needs(tmp_path):
+def test_an_amiga_disk_that_holds_no_save_is_blocked_by_the_source_it_needs(tmp_path):
     from editor.convert import ConvertError
     from goldbox.amiga_adf import AmigaDisk
     path = tmp_path / "blank.adf"

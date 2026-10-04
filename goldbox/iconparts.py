@@ -642,7 +642,7 @@ class IconParts:
         :data:`DEFAULT_SIZE` for what was measured and on what sample.
 
         This is what a conversion from a port with no C64 icon writes.  Zero
-        is refused: screen code 0 in `CHARPIC00` is a real glyph, so a zeroed
+        is blocked: screen code 0 in `CHARPIC00` is a real glyph, so a zeroed
         icon draws as a 3x3 block of black hooks on the combat arena (#57,
         seen in a fight).
         """

@@ -247,7 +247,7 @@ def test_a_pack_the_c64_cannot_hold_stops_the_write_rather_than_losing_one(
         tmp_path):
     """Fifteen items and a joined pair need seventeen slots.  The choice of
     what stays behind is the player's, and nothing asks for it yet, so the
-    whole-save writer refuses rather than dropping the seventeenth."""
+    whole-save writer blocks rather than dropping the seventeenth."""
     char = _read(tmp_path, _crowded(15, 2), 16)
     assert dos_codec.c64_slots_needed(char) == 17
     with pytest.raises(dos_codec.JoinedScrollsDoNotFit) as caught:
@@ -300,7 +300,7 @@ def test_amiga_to_dos_gives_back_the_joined_scroll(tmp_path):
     assert dos_codec.write(back, deltas=SSB)[1] == direct
 
 
-def test_a_block_whose_joined_scroll_runs_off_the_data_is_refused(tmp_path):
+def test_a_block_whose_joined_scroll_runs_off_the_data_is_blocked(tmp_path):
     _neutral, built, _report = _amiga(tmp_path)
     block = built.block_bytes()
     cut = SILVER_BLADES_DELTAS.record_size + 3 * SILVER_BLADES_DELTAS.item_size
@@ -309,7 +309,7 @@ def test_a_block_whose_joined_scroll_runs_off_the_data_is_refused(tmp_path):
 
 
 # --- the neutral record's own checks -----------------------------------------
-def test_a_bundle_that_is_not_a_run_of_scrolls_is_refused():
+def test_a_bundle_that_is_not_a_run_of_scrolls_is_blocked():
     inventory = [bytes(dos_codec.item_to_c64(bytes(SWORD)))]
     head = bytes((0x49,)) + bytes(15)
     with pytest.raises(dos_codec.DosRecordError, match="not a run of scrolls"):
@@ -650,7 +650,7 @@ def test_two_members_overflowing_are_each_cut_and_the_third_is_untouched(
     assert not any("left behind" in w for w in report.warnings)
 
 
-def test_a_choice_for_a_member_who_fits_or_out_of_range_is_refused(tmp_path):
+def test_a_choice_for_a_member_who_fits_or_out_of_range_is_blocked(tmp_path):
     a = _named(tmp_path, "AAA", 15, SCROLL_A, SCROLL_B)
     b = _named(tmp_path, "BBB", 14, SCROLL_A, SCROLL_A)
     with pytest.raises(dos_codec.DosRecordError, match="fits"):
@@ -842,7 +842,7 @@ def _specimen_l(tmp_path):
         *[bytes(_item(10 + n, weight=10)) for n in range(3)])]
 
 
-def test_a_party_no_unjoin_can_fit_is_refused_with_what_it_needs(tmp_path):
+def test_a_party_no_unjoin_can_fit_is_blocked_with_what_it_needs(tmp_path):
     party = _specimen_l(tmp_path)
     assert dos_codec.amiga_unjoin_choice(party) is None
     (over,) = dos_codec.pack_overflow(party, "amiga")
@@ -870,7 +870,7 @@ def test_leaving_one_ordinary_item_lets_the_pair_be_unjoined(tmp_path):
         [True] * 12 + [False, False, False, False]
 
 
-def test_a_choice_for_a_member_out_of_range_is_refused_for_the_amiga(tmp_path):
+def test_a_choice_for_a_member_out_of_range_is_blocked_for_the_amiga(tmp_path):
     with pytest.raises(dos_codec.DosRecordError):
         dos_codec.pack_overflow(_specimen_l(tmp_path), "amiga", {3: {0}})
 
@@ -951,27 +951,27 @@ def _through_save_as_drive(tmp_path, name: str) -> dict:
 
 def test_save_as_drive_reports_the_unjoined_scrolls_of_specimen_u(tmp_path):
     report = _through_save_as_drive(tmp_path, "ssb-wish4-joined-u125")
-    if report.get("refused", [""])[0] == "MissingAssets":
+    if report.get("stopped", [""])[0] == "MissingAssets":
         pytest.skip("needs the player's Silver Blades disks")
-    assert "refused" not in report, report
+    assert "stopped" not in report, report
     assert len(report["unjoined"]) == 2
     assert report["losses"] == [] and report["left_behind"] == []
 
 
 def test_save_as_drive_reports_nothing_unjoined_for_specimen_c(tmp_path):
     report = _through_save_as_drive(tmp_path, "ssb-wish4-joined-c115")
-    if report.get("refused", [""])[0] == "MissingAssets":
+    if report.get("stopped", [""])[0] == "MissingAssets":
         pytest.skip("needs the player's Silver Blades disks")
-    assert "refused" not in report, report
+    assert "stopped" not in report, report
     assert report["unjoined"] == []
 
 
 def test_save_as_drive_stops_specimen_l_naming_the_party_overflow(tmp_path):
     report = _through_save_as_drive(tmp_path, "ssb-wish4-joined-l122")
-    if report.get("refused", [""])[0] == "MissingAssets":
+    if report.get("stopped", [""])[0] == "MissingAssets":
         pytest.skip("needs the player's Silver Blades disks")
-    assert report["refused"][0] == "AmigaJoinedScrollsDoNotFit"
-    assert "122" in report["refused"][1] and "written" not in report
+    assert report["stopped"][0] == "AmigaJoinedScrollsDoNotFit"
+    assert "122" in report["stopped"][1] and "written" not in report
 
 
 def test_each_item_left_behind_is_on_the_report_and_logged(tmp_path, caplog):

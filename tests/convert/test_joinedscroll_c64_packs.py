@@ -43,7 +43,7 @@ def _convert(tmp_path, folder, slot: str, leave):
     report = convertrun.write_via_save_as(
         folder / f"SAVGAM{slot}.DAT", "c64", out, None, disks,
         source_slot=slot, **({"leave": leave} if leave else {}))
-    assert "refused" not in report, report
+    assert "stopped" not in report, report
     (disk,) = [p for p in report["written"] if p.endswith(".D64")]
     return disk, report
 

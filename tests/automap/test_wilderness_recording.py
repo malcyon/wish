@@ -113,7 +113,7 @@ def test_a_camped_party_is_believed_when_the_window_identifies(on):
     assert mapper.state.outdoors
 
 
-def test_a_camped_party_over_a_zero_page_is_still_refused(on):
+def test_a_camped_party_over_a_zero_page_is_still_blocked(on):
     mapper, _ = mapper_for([out(8, 20, "memory")], bytes(GRID_SIZE))
     assert mapper.poll() is False
     assert not mapper.state.outdoors

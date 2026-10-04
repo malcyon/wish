@@ -107,7 +107,7 @@ so it is presumably the temple's. Its level is left unguessed.
 
 From `57` the same table continues with **combat message
 fragments** rather than spells — they share the mechanism and not the
-meaning. `wish` refuses to write an id above
+meaning. `wish` will not write an id above
 `56` into a spell list for that reason.
 
 | id | text |

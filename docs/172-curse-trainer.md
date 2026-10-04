@@ -61,7 +61,7 @@ storage and nobody has read the DOS routine that consumes it against
 
 **What the mask does beyond opening the menu.** `GEN $150F` copies `$7EA8` into
 `$2CCA` and `$1533 LSR $2CCA / BCC` consumes one bit per class about to be
-raised, so 127 permits seven. Observed at both ends: 0 refuses everything and
+raised, so 127 permits seven. Observed at both ends: 0 blocks everything and
 127 raised two classes in one visit. **The per-class consumption itself is a
 code reading only** -- no character here has eight ready classes, so no value
 between the two was ever distinguishable, and one attempt to test it with
@@ -69,8 +69,7 @@ between the two was ever distinguishable, and one attempt to test it with
 
 ## The five trainings
 
-The party is the converted Tilverton party of `#192 (Convert a Curse of the
-Azure Bonds DOS save into a C64 one, which the importer refuses today)`, with
+The party is the converted Tilverton party of `#192`, with
 **two fields written by us** into five of the six slots before the boot and
 nothing else: experience at record `0x0E8` and platinum at `0x0C3`. MARK's slot
 was left alone and is the control -- his 25,000 experience and 300 platinum are
@@ -148,14 +147,14 @@ class. CONFIRMED.
 `UNABLE TO ADVANCE` -- `GEN` message 27, `$2056 LDY #$1B` -- where Pool of
 Radiance says `LOW EXPERIENCE OR WRONG CLASS`.
 
-**A refused training costs nothing.** With the gate shut, MATHEW and PHILIPPE
-were each refused, and PHILIPPE's sheet still read PLATINUM 2000 afterwards and
+**A blocked training costs nothing.** With the gate shut, MATHEW and PHILIPPE
+were each blocked, and PHILIPPE's sheet still read PLATINUM 2000 afterwards and
 her slot on the next save was unchanged. The mechanism is that `$205B JMP
 $2031` leaves out the `$3918`/`$45F8` write-back the success path takes at
 `$2073`/`$2076`, so the deduction `$21EA` made in the working record at `$7C00`
 never reaches the roster. CONFIRMED for what a player sees; **PROBABLE for the
 mechanism**, because the working record read 1800 immediately after one
-refused training and 2000 after the other, and which read raced a redraw was not pinned.
+blocked training and 2000 after the other, and which read raced a redraw was not pinned.
 
 ### 4. The paladin's turning level, and the racial saving-throw bonus
 
@@ -194,8 +193,7 @@ there -- so the conversion does not write it and the engine does. CONFIRMED.
 SHARA is a cleric with wisdom 17 taken from 5 to 6, the level at which a Pool of
 Radiance trainer writes a new capacity byte. `0x0EE`-`0x0F6` read nine zeroes
 before and nine zeroes after. That is a third reading behind
-`levels.stores_spell_capacity=False`, after `#192 (Convert a Curse of the Azure Bonds DOS save into a
-C64 one, which the importer refuses today)`'s code sweep and its
+`levels.stores_spell_capacity=False`, after `#192`'s code sweep and its
 memorise-screen demonstration. CONFIRMED.
 
 Five of five trained characters came out with `char_class` at `0x073` = 0 where
@@ -231,7 +229,7 @@ dual-class slot)` read out of `GEN $23C9` and `$18EB`.
 
 **What it does not settle**, and it is what `levelup.plan`'s dual-class stop
 is about: none of the four routines that behave differently *afterwards* has
-been seen running -- `$15E7` refusing the die until the new class passes the old
+been seen running -- `$15E7` blocking the die until the new class passes the old
 level, `$124F` giving the old class its own hit-point term, `$1470` and `$1321`
 leaving its slot out of the clamp and out of eligibility, `$20A3` putting it
 back. PHILIPPE is fighter 1 with 0 experience and 2000 gp in
@@ -262,7 +260,7 @@ A second session the same day closed the first two --
   entries (`docs/192-curse-dual-class.md` listed the changes Curse needed).
 
 Also closed there: the four routines that make a dual-classed character
-different, all watched, so `goldbox/levelup.py` no longer refuses one. The
+different, all watched, so `goldbox/levelup.py` no longer blocks one. The
 paragraph above under `HUMAN CHANGE CLASS` that says *"none of the four
 routines that behave differently afterwards has been seen running"* was true
 when it was written and is not now.

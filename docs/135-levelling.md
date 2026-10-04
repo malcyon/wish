@@ -160,7 +160,7 @@ spell id from 1 to 55 the character does not know, whose spell level is at or
 below `(new level + 1) // 2`, that is not a cleric spell, and puts them on a
 menu. The level-up does not finish until one is picked — which is why a
 magic-user's training stalls if the driver presses Return blindly, and why
-`LevelUp` refuses without a `spell` rather than choosing one. A **cleric**
+`LevelUp` blocks without a `spell` rather than choosing one. A **cleric**
 needs no choice: it is granted its whole new spell level at once.
 
 ## Money, healing, and the two things `LevelUp` leaves alone
@@ -184,7 +184,7 @@ it exists in a 580-byte export and nowhere else. Live and on disk the only copy
 is the roster block's `+0x19`, one byte, capped at 255 — which is the byte
 `HealParty` has been writing all along.
 
-**A character at 0 hit points is refused**, not levelled. Zero is dead or dying
+**A character at 0 hit points is blocked**, not levelled. Zero is dead or dying
 and the record does not say which, so healing one to full would produce a
 corpse in a state the game never writes. It is the same stop `HealParty`
 makes and it names the reason.
@@ -235,7 +235,7 @@ magic-user 2 (2,501) and thief 2 (1,251).
 
 * **Thief first.** She becomes thief 2; the clamp takes the larger of
   magic-user 2's 2,501 and thief 3's 2,501 and leaves her at **2,500** — one
-  short of both. The magic-user school then refuses her, and she has lost the
+  short of both. The magic-user school then blocks her, and she has lost the
   level she had earned. 2,502 points are gone.
 * **Magic-user first.** She becomes magic-user 2; the clamp takes the larger of
   magic-user 3's 5,001 and thief 2's 1,251 and leaves her at **5,000**. The
@@ -289,13 +289,13 @@ confirm — the clamp is what the trainer always does.
 
 ## One title, and it says so
 
-**Levelling is refused for a title whose trainer has not been read**, with the
+**Levelling is blocked for a title whose trainer has not been read**, with the
 reason in the outcome's notes, and the button does not appear on the card at
 all (#16 (Level Up assumes Pool of Radiance, and silently corrupts a Curse character)). `automap.actions.level_up_blockers` takes the title as well as the
 record, and `goldbox.levels.TRAINER_MEASURED` is the list of titles whose trainer
 has been read: Pool of Radiance, Curse and Silver Blades. A title with no entry
-(DOS Pools of Darkness) is still refused. This section first said "one entry"
-and that every title but Pool of Radiance was refused; Curse joined when its
+(DOS Pools of Darkness) is still blocked. This section first said "one entry"
+and that every title but Pool of Radiance was blocked; Curse joined when its
 trainer was read in its own `GEN` (`docs/172-curse-trainer.md`,
 `docs/192-curse-dual-class.md`) and Silver Blades when a driven training
 reproduced every field, saving throw and spellbook byte
@@ -465,7 +465,7 @@ without a driven training**, and a Curse training was then driven and watched:
 count and rounds up *at random* against the remainder, so a multi-class
 level-up has no single right answer to compare against (`docs/172-curse-trainer.md`). `levels.TRAINER_MEASURED` now names
 Pool of Radiance, Curse and Silver Blades, and `goldbox/levelup.plan` no longer
-refuses a dual-classed character (`docs/192-curse-dual-class.md`).
+blocks a dual-classed character (`docs/192-curse-dual-class.md`).
 
 ### The seven rules that are not Pool of Radiance's
 
@@ -507,7 +507,7 @@ branch Pool of Radiance has no class for.
 `$1909` starts at 2, walks all eight class slots comparing each level with the
 row at `$191E` — `63 63 63 07 63 63 07 08`, so 99 for magic-user, cleric and
 thief, 7 for the fighter, 7 for the paladin and **8 for the ranger** — and
-stores 2 or 3 with `STY $7CD9`. Pool of Radiance's `$2342` refuses to lower
+stores 2 or 3 with `STY $7CD9`. Pool of Radiance's `$2342` will not lower
 what is there and only ever writes 3, for a fighter at 7.
 
 `goldbox/levels.py` gave Curse's ranger the fighter's band and so said 7 until
@@ -566,7 +566,7 @@ level already paid for.
 
 **The writer, found on `#224 (0x0B9 and 0x0BA are documented both as an NPC marker and as the dual-class slot)` (`0x0B9` and `0x0BA` are documented both as an NPC
 marker and as the dual-class slot).** `GEN $2387` gates on race 7, on a check
-that refuses with carry clear, on `0x0BA` still being zero, and on level 2 or
+that blocks with carry clear, on `0x0BA` still being zero, and on level 2 or
 better, then `$23C9` stores the slot and `$23D2` the level. `$18EB` gives the
 convention the readers rely on: `LDY #$FF / LDA 0x0BA / BEQ / LDY 0x0B9` --
 **zero in `0x0BA` means "not dual-classed"**, so slot 0, the magic-user, is not

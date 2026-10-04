@@ -207,13 +207,13 @@ def test_the_table_is_the_one_the_code_reads_not_a_lookalike():
     assert [(r.a, r.b) for r in world.roads] == [(0, 1), (0, 2), (1, 3), (2, 3)]
 
 
-def test_a_menu_that_disagrees_with_the_table_is_refused():
+def test_a_menu_that_disagrees_with_the_table_is_rejected():
     menus = {**MENUS, 1: ("AMBER", "DUN")}
     with pytest.raises(W.WorldMapError, match="place 1"):
         W.read_world_map({"ECL50": script(NAMES, TABLE, 3, menus)})
 
 
-def test_no_neighbour_routine_is_refused():
+def test_no_neighbour_routine_is_rejected():
     with pytest.raises(W.WorldMapError, match="0 routines"):
         W.read_script(bytes(64), 0x50)
 
@@ -249,7 +249,7 @@ def test_a_place_its_owner_does_not_name_is_unknown():
     assert world.places[3].name is None
 
 
-def test_scripts_with_different_tables_are_refused():
+def test_scripts_with_different_tables_are_rejected():
     left = script(NAMES, TABLE, 3, MENUS)
     other = list(TABLE)
     other[0] = 3
@@ -295,7 +295,7 @@ def test_marker_cells_join_the_places():
     assert len(world.cells) == 5
 
 
-def test_a_driver_without_the_marker_tables_is_refused():
+def test_a_driver_without_the_marker_tables_is_rejected():
     with pytest.raises(W.WorldMapError, match="no column and row"):
         W.read_marker_cells(bytes((0x4C, 0x10, 0xC0, 0x4C, 0x20, 0xC0)) + bytes(64))
 
@@ -308,31 +308,31 @@ def test_a_menu_row_is_the_kth_real_road_when_a_slot_in_between_is_empty():
     assert not any(g.conditional for g in world.legs)
 
 
-def test_a_script_name_without_an_area_id_is_refused():
+def test_a_script_name_without_an_area_id_is_rejected():
     with pytest.raises(W.WorldMapError, match="area id"):
         W.read_world_map({"ECLXY": script(NAMES, TABLE, 3, MENUS)})
 
 
-def test_a_leg_handed_over_twice_is_refused():
+def test_a_leg_handed_over_twice_is_rejected():
     body = script(NAMES, TABLE, 3, MENUS, leaving=[(3, 0x51), (3, 0x52)])
     with pytest.raises(W.WorldMapError, match="leg 3"):
         W.read_script(body, 0x50)
 
 
-def test_a_menu_walk_that_never_reaches_the_choice_is_refused():
+def test_a_menu_walk_that_never_reaches_the_choice_is_rejected():
     body = script(NAMES, TABLE, 3, MENUS, padding=300)
     with pytest.raises(W.WorldMapError, match="256"):
         W.read_script(body, 0x50)
 
 
-def test_a_script_base_that_is_not_a_page_is_refused(monkeypatch):
+def test_a_script_base_that_is_not_a_page_is_rejected(monkeypatch):
     monkeypatch.setitem(globals(), "BASE", BASE + 0x10)
     body = script(NAMES, TABLE, 3, MENUS)
     with pytest.raises(W.WorldMapError, match="not pinned"):
         W.read_script(body, 0x50)
 
 
-def test_a_place_both_scripts_handle_is_refused():
+def test_a_place_both_scripts_handle_is_rejected():
     body = script(NAMES, TABLE, 3, MENUS)
     with pytest.raises(W.WorldMapError, match="handled by two scripts"):
         W.read_world_map({"ECL50": body, "ECL51": body})

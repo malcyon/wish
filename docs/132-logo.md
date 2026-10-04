@@ -358,7 +358,7 @@ notice.
 
 **The no-images rule is gone**, so none of this needed working around. Donald,
 2026-08: *"You need to remove that test that blocks all pngs. We don't need
-that."* `tests/suite/test_repository_contents.py` still refuses disk images,
+that."* `tests/suite/test_repository_contents.py` still blocks disk images,
 executables, audio and PDFs, which is the part that was ever about the game.
 
 ### Still not done
@@ -475,7 +475,7 @@ suggestions."* And, 2026-09-06: *"If there is something fancy we need to do
 around theming or dark mode, let me know. His images are transparent. I
 agree that simple will work better."*
 
-**The first comparison sheet was refused, and the rule it broke governs
+**The first comparison sheet was blocked, and the rule it broke governs
 everything below.** It switched off the two ring bitmaps in an in-memory
 copy of the artist's SVG, cropped the W out of the combo mark with a
 viewBox, and drew a pentagram of its own. Donald: *"you're editing the

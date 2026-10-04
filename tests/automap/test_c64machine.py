@@ -68,7 +68,7 @@ def test_a_measured_title_has_both(key):
 
 
 @pytest.mark.parametrize("key", UNMEASURED)
-def test_every_action_refuses_on_a_title_with_no_mode_flag(key):
+def test_every_action_blocks_on_a_title_with_no_mode_flag(key):
     """`actions.mode` answers None, and an action says so rather than writing.
 
     This is the rejection the move had to keep. `mode()` reading an unmeasured
@@ -78,9 +78,9 @@ def test_every_action_refuses_on_a_title_with_no_mode_flag(key):
     game = c64_port.BY_KEY[key]
     target = MemoryTarget({c64.MODE_FLAG_POOL: bytes([1])})
     assert actions.mode(target, game) is None
-    refused = actions.RestoreSpells(game=game).legality(target)
-    assert not refused.ok
-    assert refused.reason == actions.UNSUPPORTED.format(title=game.title)
+    blocked = actions.RestoreSpells(game=game).legality(target)
+    assert not blocked.ok
+    assert blocked.reason == actions.UNSUPPORTED.format(title=game.title)
     # And the same target does let Pool of Radiance through, so the rejection
     # above is the missing flag rather than an unreadable machine.
     assert actions.RestoreSpells().legality(target).ok
@@ -193,7 +193,7 @@ def test_the_machine_agrees_with_combatmemory_on_the_four_fields_both_know(key):
     slots. Nothing before this pinned that they agree, so an edit to one could
     silently diverge from the other and neither test would notice.
 
-    This does not argue for unifying the two tables: `CombatMemory` refuses
+    This does not argue for unifying the two tables: `CombatMemory` blocks
     on the three titles `C64Machine` still measures for
     (`memory_for` returns None for them), and folding them together would need
     that rejection rebuilt for titles nobody has run a fight on, for no
@@ -212,7 +212,7 @@ def test_a_game_outside_the_registry_keeps_its_own_geometry():
 
     `tests/editor/test_pertitle_ui.py` builds one, and `Game`'s own `_base`
     properties have always answered for it. The machine does the same rather
-    than refusing, so the two stay equal for every `Game` there is.
+    than blocking, so the two stay equal for every `Game` there is.
     """
     made_up = c64_save.C64Container(key="untabled", title="Untabled",
                                     save_file=b"SAVEX", save_load_address=0x4B00,

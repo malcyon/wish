@@ -96,7 +96,7 @@ def _dos_specimen(name: str) -> pathlib.Path:
 
 def _amiga_outdoor_specimen(name: str) -> bytes:
     """One file out of `WISH-SPEC-por-amiga-outdoor`, the run of `#321 (An
-    Amiga Pool of Radiance conversion refuses a party standing on the travel
+    Amiga Pool of Radiance conversion blocks a party standing on the travel
     grid, because no outdoor Amiga saved game has ever been read)`."""
     root = gamedata.specimen_root()
     if root is None:
@@ -192,7 +192,7 @@ def test_a_sixteen_letter_amiga_por_name_with_no_terminator_still_warns():
         out.warnings
 
 
-def test_a_dos_dax_is_refused_rather_than_read_as_an_amiga_one():
+def test_a_dos_dax_is_blocked_rather_than_read_as_an_amiga_one():
     """The two formats share an extension and nothing else (#65)."""
     with pytest.raises(amiga_dax.AmigaDaxError):
         amiga_dax.block(b"\x00\x09" + b"\x00" * 64, 0, "not-a-dax")
@@ -302,7 +302,7 @@ def test_the_regions_a_player_would_notice_round_trip_byte_for_byte(
 
 
 # ---------------------------------------------------------------------------
-# What it refuses
+# What it blocks
 # ---------------------------------------------------------------------------
 
 def _outdoor_dos_state() -> world_state.WorldState:
@@ -328,7 +328,7 @@ def _outdoor_dos_state() -> world_state.WorldState:
 
 
 def test_a_party_on_the_travel_grid_gets_the_bytes_the_engine_writes(ecl_dax):
-    """The two bytes `#321 (An Amiga Pool of Radiance conversion refuses a
+    """The two bytes `#321 (An Amiga Pool of Radiance conversion blocks a
     party standing on the travel grid, because no outdoor Amiga saved game
     has ever been read)` measured, and the container around them.
 
@@ -404,7 +404,7 @@ def test_the_engines_own_outdoor_saved_game_round_trips(ecl_dax):
     assert built[amiga_savegame.POR_WALL_BYTE] == savgam[amiga_savegame.POR_WALL_BYTE]
 
 
-def test_an_area_the_amiga_has_no_script_for_is_refused(ecl_dax):
+def test_an_area_the_amiga_has_no_script_for_is_blocked(ecl_dax):
     """`ecl.dax` holds 29 blocks and the C64 has 30; area 30 is the missing
     one, so a party standing there has no script to stage."""
     assert 30 not in amiga_dax.block_ids(ecl_dax)
@@ -418,7 +418,7 @@ def test_an_area_the_amiga_has_no_script_for_is_refused(ecl_dax):
         amiga_savegame.new_por_savegame(state, "B", 6, ecl_dax)
 
 
-def test_a_party_of_nobody_or_of_nine_is_refused(ecl_dax):
+def test_a_party_of_nobody_or_of_nine_is_blocked(ecl_dax):
     state = _c64_state("por-party-twin-pair")
     for count in (0, 9):
         with pytest.raises(AmigaRecordError):
@@ -463,7 +463,7 @@ def test_a_saved_game_naming_one_character_can_be_pointed_at_another_slot(
 
     It demanded a `CHRDAT` name in all six entries, so an engine-written
     one-character saved game -- and every one this writer builds for a party
-    of fewer than six -- was refused as "not the saved game this function
+    of fewer than six -- was blocked as "not the saved game this function
     knows how to point at another slot".
     """
     state = _c64_state("por-party-twin-pair")
@@ -475,7 +475,7 @@ def test_a_saved_game_naming_one_character_can_be_pointed_at_another_slot(
                  at + amiga_savegame.POR_CHARACTER_TABLE_STRIDE + 8] == bytes(8)
 
 
-def test_a_file_with_no_names_at_all_is_still_refused():
+def test_a_file_with_no_names_at_all_is_still_blocked():
     with pytest.raises(AmigaRecordError):
         amiga_savegame.move_savegame_to_slot(bytes(amiga_savegame.POR_SAVEGAME_SIZE), "B")
 

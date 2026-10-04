@@ -67,8 +67,8 @@ def _c64_in_the_training_hall() -> bytes:
     return bytes(save0)
 
 
-def test_a_conversion_is_not_refused_an_area_whose_script_loads_no_map():
-    """The five areas `move_reason` refuses are all conversions can write.
+def test_a_conversion_is_not_blocked_an_area_whose_script_loads_no_map():
+    """The five areas `move_reason` blocks are all conversions can write.
 
     Three of them load no map at all (8, 11, 19) and two pick theirs at run
     time (3, 5).  Every one of those is a statement about the *area table*,
@@ -79,7 +79,7 @@ def test_a_conversion_is_not_refused_an_area_whose_script_loads_no_map():
     turned out to have a map after all: `ECL1E` carries `LOADFILES 18, 2, 255`
     and file 18 is `GEO12`, read off the player's own POOL1
     (`#260 (Area 30 is recorded as having no map, and ECL1E loads GEO12)`).
-    `move_reason` stopped refusing it in the same change, which is right
+    `move_reason` stopped blocking it in the same change, which is right
     and is why this test moved rather than the code.
     """
     for area in (3, 5, 8, TRAINING_HALL, 19):
@@ -90,7 +90,7 @@ def test_a_conversion_is_not_refused_an_area_whose_script_loads_no_map():
     assert dos_codec.conversion_reason(30) is None
 
 
-def test_a_conversion_still_refuses_an_area_with_no_row():
+def test_a_conversion_still_blocks_an_area_with_no_row():
     """The one rejection the save cannot answer: there is no `ECL<n>.DAX` to
     lift a script out of and no disk number to write."""
     assert "not an area" in dos_codec.conversion_reason(31)
@@ -107,7 +107,7 @@ def test_the_move_rule_is_unchanged():
 
 @needs_dos_game
 def test_a_party_in_the_training_hall_converts_and_keeps_its_own_map(tmp_path):
-    """The whole of `#276` in one call: the save that used to be refused.
+    """The whole of `#276` in one call: the save that used to be blocked.
 
     `$49C5` comes out 0 and `$49F2` comes out 11, which is what an
     engine-written hall save holds and what DOS Pool of Radiance's own resave

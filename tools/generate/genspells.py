@@ -70,7 +70,7 @@ def main() -> int:
     w("")
     w(f"From `{LAST_SPELL + 1}` the same table continues with **combat message")
     w("fragments** rather than spells — they share the mechanism and not the")
-    w("meaning. `wish` refuses to write an id above")
+    w("meaning. `wish` declines to write an id above")
     w(f"`{LAST_SPELL}` into a spell list for that reason.")
     w("")
     w("| id | text |")

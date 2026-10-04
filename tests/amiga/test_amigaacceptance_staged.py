@@ -106,7 +106,7 @@ def test_staged_source_records_rows_in_prepare_manifest(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("target", ["SAVEDBASH", "OTHER"])
-def test_staged_source_refuses_other_file_changes(tmp_path, monkeypatch, target):
+def test_staged_source_blocks_other_file_changes(tmp_path, monkeypatch, target):
     original, join = _sources(tmp_path, monkeypatch)
 
     def change(staged):
@@ -120,7 +120,7 @@ def test_staged_source_refuses_other_file_changes(tmp_path, monkeypatch, target)
 
 
 @pytest.mark.parametrize("offset", [0x0C0, 0x27F, 0x417])
-def test_staged_source_refuses_changes_between_effect_arrays(tmp_path, monkeypatch, offset):
+def test_staged_source_blocks_changes_between_effect_arrays(tmp_path, monkeypatch, offset):
     original, join = _sources(tmp_path, monkeypatch)
 
     def change(staged):
@@ -205,7 +205,7 @@ def test_prepare_silver_blades_requires_a_source_before_preparation(monkeypatch)
     assert acceptance.main(["prepare", "--title", "ssb", "--run-id", "run"]) == 2
 
 
-def test_silver_blades_prepare_refuses_other_titles_options_before_preparation(monkeypatch):
+def test_silver_blades_prepare_blocks_other_titles_options_before_preparation(monkeypatch):
     monkeypatch.setattr(route, "prepare", lambda *args, **kwargs:
                         pytest.fail("prepare was called"))
     assert acceptance.main(["prepare", "--title", "ssb", "--source", "source.d64",
@@ -284,11 +284,11 @@ def test_prepare_with_a_save_count_stages_the_edited_slot(tmp_path, monkeypatch)
     assert published.read_file("/SAVE/savgamA.sav") == b"slot"
 
 
-def test_a_save_count_the_helper_refuses_is_a_route_error(tmp_path, monkeypatch):
+def test_a_save_count_the_helper_blocks_is_a_route_error(tmp_path, monkeypatch):
     wheel = tmp_path / "wheel"
-    fake_savecount(wheel, refuse=True)
+    fake_savecount(wheel, fail=True)
     monkeypatch.setattr(route.amigabladesjournal, "wheel_repo", lambda: wheel)
-    with pytest.raises(RouteError, match="save count 30 refused: SaveCountError") as info:
+    with pytest.raises(RouteError, match="save count 30 blocked: SaveCountError") as info:
         _prepared(tmp_path, monkeypatch, save_count=30)
     assert "private-detail" not in str(info.value)
 

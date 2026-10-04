@@ -68,14 +68,14 @@ def test_the_mode_flag_is_what_decides_combat():
 
 @pytest.mark.parametrize("name", ["heal", "identify", "store-spells",
                                   "restore-spells", "level-up"])
-def test_the_actions_that_must_refuse_in_combat_do(name):
+def test_the_actions_that_must_block_in_combat_do(name):
     action = find(name)
     verdict = action.legality(machine(COMBAT))
     assert not verdict and "fight" in verdict.reason
     assert not action.apply(machine(COMBAT)).ok
 
 
-def test_refusing_in_combat_happens_at_apply_and_not_only_in_the_tooltip():
+def test_blocking_in_combat_happens_at_apply_and_not_only_in_the_tooltip():
     """A button's enabled state is a poll interval stale, so the write itself
     has to check. Nothing may reach the machine."""
     target = machine(COMBAT)
@@ -85,30 +85,30 @@ def test_refusing_in_combat_happens_at_apply_and_not_only_in_the_tooltip():
 
 
 def test_healing_is_legal_out_of_combat():
-    """The half of the gate `test_the_actions_that_must_refuse_in_combat_do`
-    does not cover: Donald asked for Heal Party to refuse mid-fight the way
+    """The half of the gate `test_the_actions_that_must_block_in_combat_do`
+    does not cover: Donald asked for Heal Party to block mid-fight the way
     Store/Restore Spells and Identify already do, and outside a fight it is
     unchanged."""
     assert find("heal").legality(machine(WORLD))
 
 
-def test_every_action_refuses_with_no_emulator():
+def test_every_action_blocks_with_no_emulator():
     for action in actions.actions():
         verdict = action.legality(None)
         assert not verdict and verdict.reason
 
 
-def test_a_machine_with_no_party_in_it_refuses_at_apply():
+def test_a_machine_with_no_party_in_it_blocks_at_apply():
     """Zeros are what the title screen, a disk load and a menu all look like.
     `legality` cannot tell mode 0 from an absent machine -- `read_party` can,
-    and refusing there is what keeps a write off an empty slot."""
+    and blocking there is what keeps a write off an empty slot."""
     empty = MemoryTarget({})
     assert not actions.in_combat(empty)
     outcome = find("heal").apply(empty)
     assert not outcome.ok and outcome.writes == ()
 
 
-def test_read_party_refuses_a_roster_page_borrowed_by_a_picture():
+def test_read_party_blocks_a_roster_page_borrowed_by_a_picture():
     """#82: on Silver Blades, a full-screen picture leaves the roster page
     reading as graphics data while the record slots -- read from a different
     page -- are unaffected. `read_party`'s other checks would pass; only the
@@ -128,7 +128,7 @@ def test_read_party_refuses_a_roster_page_borrowed_by_a_picture():
     assert party is not None and party.by_slot(0).name == "BRUTUS"
 
 
-def test_read_party_refuses_hit_points_above_the_recorded_maximum():
+def test_read_party_blocks_hit_points_above_the_recorded_maximum():
     """The second, independent check #82 names: BRUTUS's maximum is 11."""
     from goldbox.savegame import ROSTER_HP_CURRENT
     save0, save1 = captured()
@@ -164,7 +164,7 @@ def test_healing_a_whole_party_writes_nothing_when_nobody_is_hurt():
 
 def test_healing_leaves_a_character_at_zero_alone():
     """Zero is dead or dying, and what else marks that is not decoded. Raising
-    the hit point byte alone would be the half-write levelling refuses over."""
+    the hit point byte alone would be the half-write levelling blocks over."""
     outcome = find("heal").apply(machine(hp=0))
     assert outcome.writes == ()
     assert any("0" in note and "BRUTUS" in note for note in outcome.notes)
@@ -254,7 +254,7 @@ def test_a_list_stored_before_the_span_was_known_still_restores(tmp_path):
     """A `spells.json` written when the field was sixteen bytes holds sixteen,
     and those sixteen are the front of the same run.
 
-    Refusing it -- which the length check did, on "not 81 bytes" -- would have
+    Blocking it -- which the length check did, on "not 81 bytes" -- would have
     told a player nothing could be restored for a list this program itself
     stored last week (#268). Sixteen bytes go back at the front and the rest
     of the run is left alone, which is exactly what restoring did before.
@@ -268,7 +268,7 @@ def test_a_list_stored_before_the_span_was_known_still_restores(tmp_path):
     assert target.read(0x4D20, 16) == bytes([1, 3]) + bytes(14)
 
 
-def test_a_stored_list_wider_than_the_record_is_refused(tmp_path):
+def test_a_stored_list_wider_than_the_record_is_blocked(tmp_path):
     store = actions.SpellStore(tmp_path / "spells.json")
     store.put("PORSAVE11", "BRUTUS", bytes(MEMORISED + 1))
     outcome = find("restore-spells", store).apply(machine(), disk="PORSAVE11")
@@ -369,14 +369,14 @@ def with_experience(points: int, levels_drained: int = 0) -> MemoryTarget:
                          0x6E11: bytes([WORLD])})
 
 
-def test_levelling_refuses_without_the_experience_for_it():
+def test_levelling_blocks_without_the_experience_for_it():
     """BRUTUS is a fighter 1 with no experience, so there is nothing to take."""
     outcome = find("level-up").apply(machine(), slot=0)
     assert not outcome.ok and outcome.writes == ()
     assert "2001" in outcome.message
 
 
-def test_levelling_refuses_before_it_reads_a_slot_that_is_not_there():
+def test_levelling_blocks_before_it_reads_a_slot_that_is_not_there():
     assert not find("level-up").apply(machine(), slot=7).ok
 
 
@@ -389,7 +389,7 @@ def test_the_blockers_are_empty_because_every_field_is_confirmed():
 
 # --- three titles have been measured and three have not ----------------------
 
-def test_levelling_a_character_in_another_title_refuses_and_writes_nothing():
+def test_levelling_a_character_in_another_title_blocks_and_writes_nothing():
     """#16. Champions of Krynn is the example now: `levels.for_game` falls
     back to Pool of Radiance's tables for it, so a Krynn fighter would be
     written Pool of Radiance's THAC0, saving throws and hit die -- the silent
@@ -428,7 +428,7 @@ def test_levelling_a_character_in_another_title_refuses_and_writes_nothing():
 @pytest.mark.parametrize("game", ["champions-of-krynn",
                                   "death-knights-of-krynn",
                                   "gateway-to-the-savage-frontier"])
-def test_every_title_but_the_three_measured_ones_is_refused_by_name(game):
+def test_every_title_but_the_three_measured_ones_is_blocked_by_name(game):
     """Three trainers are measured and three are not.
 
     Curse's joined on `#18 (Measure Curse's trainer so Level Up works there)`
@@ -439,7 +439,7 @@ def test_every_title_but_the_three_measured_ones_is_refused_by_name(game):
     2026-09-16 --
     `tests/secret_of_the_silver_blades/test_ssbtrainer.py::test_silver_blades_is_now_in_trainer_measured`.
     The three below have no tables at all, so `levels.for_game` falls back to
-    Pool of Radiance's and `trainer_measured` refuses every one of them, which
+    Pool of Radiance's and `trainer_measured` blocks every one of them, which
     is exactly the silent wrong answer the blocker is here to stop."""
     from goldbox import c64_port
 
@@ -518,7 +518,7 @@ def test_no_money_moves():
     assert not [a for a, _ in outcome.writes if a in coin]
 
 
-def test_a_character_at_zero_is_refused_rather_than_healed():
+def test_a_character_at_zero_is_blocked_rather_than_healed():
     """Levelling ends in a heal, and zero is dead or dying -- the record does
     not say which. A corpse at full hit points is a state the game never has."""
     save0, save1 = captured()
@@ -690,7 +690,7 @@ def test_the_offer_is_for_the_level_being_reached_not_the_one_held():
     assert all(spells.spell_group(i)[0] == "magic-user" for i in offered)
 
 
-def test_the_ceiling_refuses():
+def test_the_ceiling_blocks():
     target = with_experience(10 ** 6)
     record = actions.read_party(target).by_slot(0).record
     record.set("level_fighter", 8)
@@ -698,7 +698,7 @@ def test_the_ceiling_refuses():
         levelup.plan(record, "fighter")
 
 
-def test_a_race_at_its_limit_refuses():
+def test_a_race_at_its_limit_blocks():
     """A halfling stops at fighter 6 whatever the class ceiling says."""
     target = with_experience(10 ** 6)
     record = actions.read_party(target).by_slot(0).record
@@ -733,9 +733,9 @@ def test_quickfight_leaves_the_rest_of_the_byte_alone():
     assert find("clear-quickfight").apply(target).writes == ((0x830C, b"\x03"),)
 
 
-def test_quickfight_refuses_when_the_flag_is_not_known(monkeypatch):
+def test_quickfight_blocks_when_the_flag_is_not_known(monkeypatch):
     """The rejection path stays, because a retracted address must go back to
-    refusing rather than to poking whatever `+0x0C` happens to be."""
+    blocking rather than to poking whatever `+0x0C` happens to be."""
     monkeypatch.setattr(actions, "QUICKFIGHT", None)
     action = actions.ClearQuickfight()
     verdict = action.legality(machine())
@@ -872,7 +872,7 @@ def test_a_title_with_no_measured_mode_flag_writes_nothing():
     `LINKER`'s own byte, and `LINKER` is a separate resident in every title.
     Three have been read -- `$6E11`, `$7F11`, `$7F11` -- and the Krynn-era
     titles have not, so on those there is no way to tell a fight from the map
-    and every action refuses rather than write blind.
+    and every action blocks rather than write blind.
 
     A wounded party is used deliberately: on Pool of Radiance's machine this
     same call heals, so what is asserted is the rejection and not an empty one.
@@ -906,7 +906,7 @@ def test_curses_gate_is_read_at_its_own_linker_byte_and_not_pool_of_radiances():
 
     The control is the same machine with a `2` at `$7F11` and a `1` at
     Pool of Radiance's address: an action that is illegal in combat has to
-    refuse, which it cannot do if it is reading the wrong byte.
+    block, which it cannot do if it is reading the wrong byte.
     """
     assert c64.machine_for(CURSE).mode_flag == 0x7F11
     target = curse_machine(mode=WORLD, hp=1)
@@ -967,7 +967,7 @@ def test_the_heal_button_is_disabled_in_combat_and_not_just_the_gate():
 
 
 def test_the_fast_travel_dropdown_is_disabled_in_combat():
-    """The button already refuses mid-fight; the dropdown used to stay
+    """The button already blocks mid-fight; the dropdown used to stay
     enabled regardless, so a destination could still be picked while the
     button that would act on it was dead."""
     from automap.actionbar import FastTravelBar
@@ -1012,7 +1012,7 @@ class ReenterTarget(MemoryTarget):
         self.jumps.append(address)
 
 
-def test_reenter_refuses_a_title_with_no_measured_reentry_addresses():
+def test_reenter_blocks_a_title_with_no_measured_reentry_addresses():
     target = ReenterTarget({fasttravel.CURSE_OF_THE_AZURE_BONDS.saved_sp
                             or 0x03BF: bytes([0xF0])})
     assert not fasttravel.CURSE_OF_THE_AZURE_BONDS.has_exit_reentry
@@ -1253,7 +1253,7 @@ def test_the_two_hop_runs_the_one_door_the_area_has():
 #: through: no route that can start a fight, then the lowest id.
 MULTI_DOOR_CHOICE = {0: 8, 7: 5, 22: 23, 25: 19, 26: 0, 27: 0}
 ONE_DOOR_AREAS = (1, 2, 9, 13, 14, 16, 17, 21, 23, 28)
-#: One-door areas whose only door can start a fight: Fast Travel refuses them.
+#: One-door areas whose only door can start a fight: Fast Travel blocks them.
 ONE_DOOR_FIGHTS = (1, 28)
 ONE_DOOR_WALKS = tuple(a for a in ONE_DOOR_AREAS if a not in ONE_DOOR_FIGHTS)
 
@@ -1280,13 +1280,13 @@ def test_choose_door_skips_every_fight_then_takes_the_lowest_destination():
     assert fasttravel.choose_door(sorted(rows, key=lambda r: -r[0])) == (2, calm)
 
 
-def test_choose_door_refuses_when_every_route_can_start_a_fight():
+def test_choose_door_blocks_when_every_route_can_start_a_fight():
     fight = fasttravel.ExitRoute(1, (0, 0), combat=True)
     assert fasttravel.choose_door([(1, fight), (2, fight)]) is None
 
 
 def test_choose_door_takes_a_single_door_only_when_it_cannot_fight():
-    """A single door is chosen or refused by the same rule as several: the
+    """A single door is chosen or blocked by the same rule as several: the
     Buccaneer Base's and the Zhentil Keep Outpost's only door can start a
     fight, so there is no door to take."""
     fight = fasttravel.ExitRoute(1, (0, 0), combat=True)
@@ -1318,11 +1318,11 @@ def test_no_area_with_several_doors_has_every_door_fighting():
 def test_the_areas_whose_every_door_can_fight_are_1_and_28():
     """Read off the generated table: of every area with a door, these are
     the ones with no door that cannot start a fight."""
-    refuse = {a for a in range(31)
+    block = {a for a in range(31)
               if fasttravel.exits_from(a)
               and all(r.combat for _, r in fasttravel.exits_from(a))}
-    assert refuse == set(ONE_DOOR_FIGHTS)
-    assert refuse <= set(ONE_DOOR_AREAS)
+    assert block == set(ONE_DOOR_FIGHTS)
+    assert block <= set(ONE_DOOR_AREAS)
 
 
 @pytest.mark.parametrize("here", sorted(MULTI_DOOR_CHOICE))
@@ -1360,10 +1360,10 @@ def test_the_eight_one_door_areas_whose_door_cannot_fight_walk_out(here):
 
 
 @pytest.mark.parametrize("here", ONE_DOOR_FIGHTS)
-def test_the_two_one_door_areas_whose_door_can_fight_refuse_and_write_nothing(
+def test_the_two_one_door_areas_whose_door_can_fight_block_and_write_nothing(
         here):
     """Buccaneer Base (1) and the Zhentil Keep Outpost (28): the only door
-    can start a fight, so the trip is refused with the every-door-fights
+    can start a fight, so the trip is blocked with the every-door-fights
     outcome and the machine is left exactly as it was."""
     (_, route), = fasttravel.exits_from(here)
     assert route.combat
@@ -1378,9 +1378,9 @@ def test_the_two_one_door_areas_whose_door_can_fight_refuse_and_write_nothing(
     assert ft.pending is None
 
 
-def test_the_two_hop_refuses_when_every_door_can_start_a_fight(monkeypatch):
+def test_the_two_hop_blocks_when_every_door_can_start_a_fight(monkeypatch):
     """No data has an area like this, so the rows are made here: the trip is
-    refused, nothing is written and no fight route is chosen."""
+    blocked, nothing is written and no fight route is chosen."""
     fight = fasttravel.ExitRoute(1, (0, 0), combat=True)
     monkeypatch.setattr(fasttravel, "EXIT_ROUTES", {(13, 25): fight,
                                                     (13, 26): fight})
@@ -1580,7 +1580,7 @@ def test_a_declined_exit_gives_up_at_the_deadline_and_writes_nothing(
 
 def test_going_through_and_coming_back_cancels_the_trip_silently(monkeypatch):
     """The arrival menu's LARGE or SMALL walks the party back into the starting
-    area, and the arrival menu keeps the idle check refusing meanwhile."""
+    area, and the arrival menu keeps the idle check blocking meanwhile."""
     target, ft = _first_hop(monkeypatch)
     addr = fasttravel.POOL_OF_RADIANCE
     target.memory[addr.slot] = bytes([27])
@@ -1722,7 +1722,7 @@ def test_reenter_writes_nothing_to_the_stack_page_when_set_registers_raises():
             self.resumed = False
 
         def set_registers(self, regs):
-            raise RuntimeError("this build refused the register write")
+            raise RuntimeError("this build blocked the register write")
 
         def resume(self):
             self.resumed = True
@@ -1735,7 +1735,7 @@ def test_reenter_writes_nothing_to_the_stack_page_when_set_registers_raises():
         "nothing should have been pushed to the stack page: the capability "
         "check happens before any write, not after a failed one")
     assert mon.resumed, (
-        "a refused register write must still resume the monitor -- "
+        "a blocked register write must still resume the monitor -- "
         "otherwise the machine is left halted with nothing to bring it back")
 
 

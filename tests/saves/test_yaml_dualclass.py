@@ -6,7 +6,7 @@ YAML export as a full field like any other, shown and editable. The hazard is
 that the game reads exactly the C64's `dual_class_slot`/`dual_class_level`
 pair to decide whether a character may ever change class again, and gives no
 message a player would see if the pair disagrees with what actually happened
-in the game -- so `goldbox/yaml_io.py`'s importer refuses a value it cannot
+in the game -- so `goldbox/yaml_io.py`'s importer blocks a value it cannot
 trust rather than writing it. This file is the regression test for the export
 and for each of the importer's rejections.
 
@@ -164,7 +164,7 @@ def test_a_record_with_no_portrait_round_trips_and_stays_unset(tmp_path):
         assert "portrait_body" not in read_back, slot.record.name
 
 
-# --- the importer refuses rather than writing what it is given ---------
+# --- the importer blocks rather than writing what it is given ---------
 
 def _edited(mutate):
     data = export_save(CURSE_DUAL_CLASSED())
@@ -176,21 +176,21 @@ def _shara(data):
     return next(e for e in data["party"] if e["name"] == "SHARA")
 
 
-def test_an_unknown_class_name_is_refused(tmp_path):
+def test_an_unknown_class_name_is_blocked(tmp_path):
     data = _edited(lambda d: (_shara(d).update(
         classes=["fighter"], former_levels={"wizard": 3})))
     with pytest.raises(ValueError_, match="not a class"):
         import_into(CURSE_DUAL_CLASSED(), data, str(tmp_path / "o.d64"))
 
 
-def test_a_level_outside_the_byte_is_refused(tmp_path):
+def test_a_level_outside_the_byte_is_blocked(tmp_path):
     data = _edited(lambda d: (_shara(d).update(
         classes=["fighter"], former_levels={"cleric": 999})))
     with pytest.raises(ValueError_, match="outside what a class can reach"):
         import_into(CURSE_DUAL_CLASSED(), data, str(tmp_path / "o.d64"))
 
 
-def test_a_zero_level_is_refused_as_half_written(tmp_path):
+def test_a_zero_level_is_blocked_as_half_written(tmp_path):
     """The hand-edited-file case: a class named with no real level. Zero is
     the neutral field's own 'not dual-classed' sentinel, so a zero entry is
     not a value for 'never left this class', it is a mistake."""
@@ -200,7 +200,7 @@ def test_a_zero_level_is_refused_as_half_written(tmp_path):
         import_into(CURSE_DUAL_CLASSED(), data, str(tmp_path / "o.d64"))
 
 
-def test_a_non_numeric_level_is_refused_as_half_written(tmp_path):
+def test_a_non_numeric_level_is_blocked_as_half_written(tmp_path):
     data = _edited(lambda d: (_shara(d).update(
         classes=["fighter"], former_levels={"cleric": "five"})))
     with pytest.raises(ValueError_, match="half-written"):
@@ -213,13 +213,13 @@ def test_the_former_class_cannot_equal_the_only_current_class(tmp_path):
         import_into(CURSE_DUAL_CLASSED(), data, str(tmp_path / "o.d64"))
 
 
-def test_a_former_class_with_no_class_change_is_refused(tmp_path):
+def test_a_former_class_with_no_class_change_is_blocked(tmp_path):
     data = _edited(lambda d: _shara(d).update(former_levels={"fighter": 3}))
     with pytest.raises(ValueError_, match="no change to classes"):
         import_into(CURSE_DUAL_CLASSED(), data, str(tmp_path / "o.d64"))
 
 
-def test_two_former_classes_are_refused(tmp_path):
+def test_two_former_classes_are_blocked(tmp_path):
     data = _edited(lambda d: (_shara(d).update(
         classes=["magic-user"],
         former_levels={"fighter": 3, "thief": 2})))
@@ -234,7 +234,7 @@ def test_former_levels_must_be_a_mapping(tmp_path):
         import_into(CURSE_DUAL_CLASSED(), data, str(tmp_path / "o.d64"))
 
 
-def test_a_title_with_no_field_refuses_a_hand_added_one(tmp_path):
+def test_a_title_with_no_field_blocks_a_hand_added_one(tmp_path):
     save = POOL_ORDINARY()
     data = export_save(save)
     data["party"][0]["classes"] = ["magic-user"]

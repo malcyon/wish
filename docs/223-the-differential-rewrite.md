@@ -39,7 +39,7 @@ Amiga `.adf` images and 14 loose Amiga Curse and Silver Blades saved games.
 Nothing was skipped: the tool reports what it could not read and reported
 nothing. **Pools of Darkness is out of the sweep** for two independent
 reasons -- the five `pod-dos` specimens hold no `CHRDAT??.SAV` at all, and the
-title has no C64 port, so `c64_port.by_key` refuses it and the editor will not
+title has no C64 port, so `c64_port.by_key` blocks it and the editor will not
 open one.
 
 Two measurements were taken of each character.
@@ -126,7 +126,7 @@ takes the field from, `goldbox.dos_codec.write_targets`.
 
 Every field has an Amiga span. `field_83_87` used to have none, because the
 second insertion had not been located inside the run it straddles and
-`amiga_por_offset` refused it; the insertion is now located (the money pad at
+`amiga_por_offset` blocked it; the insertion is now located (the money pad at
 0x089), so the field is a five-byte span at 0x084 and no port has an unplaced
 field.
 
@@ -352,13 +352,13 @@ a *non*-thief, whose byte the writer copies, and never move on a thief, whose
 skills the writer recomputes from level and dexterity regardless of what the
 sheet asks for.
 
-**Nothing in this measurement was refused for an illegal value**: 0 of 72
+**Nothing in this measurement was blocked for an illegal value**: 0 of 72
 characters had a field where every fuzz raised something other than the
 rewrite's own error. The fuzz is +1 on one byte, so it is a lower bound on
 what a player can reach -- a field it could not move is read-only for that
 value, and a field it moved is writable for certain.
 
-**An edit that reaches nothing is refused rather than written.**
+**An edit that reaches nothing is blocked rather than written.**
 `goldbox.rewrite.patch` raises `RewriteError` when the two records differ, the
 item file did not change, and no span of the port's record moved. Before that,
 such an edit was written as a save that changed nothing and reported no

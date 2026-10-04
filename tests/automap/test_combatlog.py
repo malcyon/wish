@@ -224,7 +224,7 @@ def test_a_message_carries_the_round_it_was_said_in():
     assert log.flush()[0].round == 1
 
 
-# --- parsing, and refusing to ----------------------------------------------
+# --- parsing, and failing to ----------------------------------------------
 
 @pytest.mark.parametrize("text,subject,outcome,damage", [
     ("MAGNUS ATTACKS AND HITS FOR 5 POINTS OF DAMAGE", "MAGNUS", "attack", 5),

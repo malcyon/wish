@@ -58,7 +58,7 @@ def guard_rule(image_path: pathlib.Path, box, state: str = "guard") -> dict[str,
 
 
 def checked_rule(crop: pathlib.Path, box, state: str, unlike) -> dict[str, Any]:
-    """Refuse a uniform box or one that also recognises a neighbouring screen."""
+    """Block a uniform box or one that also recognises a neighbouring screen."""
     rule = guard_rule(crop, box, state)
     for other in unlike:
         if _box_digest(other, box, state) == rule["sha256"]:

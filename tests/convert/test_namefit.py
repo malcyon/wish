@@ -180,7 +180,7 @@ def test_a_name_the_destination_cannot_show_is_named_as_unfit(
     assert saveplan.name_fits(name, port, title) is (not unfit)
 
 
-def test_a_chosen_name_the_destination_cannot_show_is_refused():
+def test_a_chosen_name_the_destination_cannot_show_is_blocked():
     with pytest.raises(saveplan.SaveAsError) as excinfo:
         saveplan.check_names(["JR"], "dos", CURSE, {0: "A{B"})
     assert not isinstance(excinfo.value, saveplan.NamesDoNotFit)

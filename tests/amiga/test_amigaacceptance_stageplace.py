@@ -50,7 +50,7 @@ def test_a_staged_place_changes_only_the_three_square_bytes_and_reads_back():
 
 
 @pytest.mark.parametrize("place", [(16, 0, 0), (0, 16, 0), (0, 0, 4), (-1, 0, 0), (0, -1, 0), (0, 0, -1)])
-def test_a_place_out_of_range_is_refused(place):
+def test_a_place_out_of_range_is_blocked(place):
     with pytest.raises(staging.StageError, match="x and y are 0 to 15, facing 0 to 3"):
         staging.stage_place(_curse(), KEY, *place)
 
@@ -60,7 +60,7 @@ def test_a_place_out_of_range_is_refused(place):
     (_curse(script=False), "has not set out"),
     (b"not a saved game", "not a readable"),
 ], ids=["outdoors", "not-set-out", "unknown"])
-def test_an_outdoor_unset_or_unknown_save_is_refused(data, why):
+def test_an_outdoor_unset_or_unknown_save_is_blocked(data, why):
     with pytest.raises(staging.StageError, match=why):
         staging.stage_place(data, KEY, 6, 14, 0)
 
@@ -91,13 +91,13 @@ def test_a_prepare_without_a_place_is_unchanged(tmp_path, monkeypatch):
     (_curse(), (16, 0, 0), "x and y are 0 to 15"),
     (_curse(script=False), (6, 14, 0), "has not set out"),
 ], ids=["range", "not-set-out"])
-def test_a_refused_place_makes_no_run_folder(tmp_path, monkeypatch, save, place, why):
+def test_a_blocked_place_makes_no_run_folder(tmp_path, monkeypatch, save, place, why):
     with pytest.raises(RouteError, match=why):
         _prepare(tmp_path, monkeypatch, save, place=place)
     assert not (tmp_path / "cache").exists()
 
 
-def test_a_staged_df0_that_differs_by_more_than_the_place_is_refused(tmp_path, monkeypatch):
+def test_a_staged_df0_that_differs_by_more_than_the_place_is_blocked(tmp_path, monkeypatch):
     path, _report = _prepare(tmp_path, monkeypatch, _curse(), place=(6, 14, 0))
     manifest = json.loads(path.read_text())
     df0_path = manifest["disks"]["df0"]["path"]
@@ -112,7 +112,7 @@ def test_a_staged_df0_that_differs_by_more_than_the_place_is_refused(tmp_path, m
         foundation._published_manifest(path, "curse")
 
 
-def test_a_staged_manifest_whose_df0_is_the_published_image_is_refused(tmp_path, monkeypatch):
+def test_a_staged_manifest_whose_df0_is_the_published_image_is_blocked(tmp_path, monkeypatch):
     path, _report = _prepare(tmp_path, monkeypatch, _curse(), place=(6, 14, 0))
     manifest = json.loads(path.read_text())
     published = manifest["registered"]["published"]
@@ -122,7 +122,7 @@ def test_a_staged_manifest_whose_df0_is_the_published_image_is_refused(tmp_path,
         foundation._published_manifest(path, "curse")
 
 
-def test_the_cli_refuses_a_bad_place_and_a_place_without_published_disk_one(tmp_path, capsys):
+def test_the_cli_blocks_a_bad_place_and_a_place_without_published_disk_one(tmp_path, capsys):
     for extra, why in ((["--published-disk-one", "--saveas-report", "x.json",
                           "--stage-place", "16,0,0"], "x and y are 0 to 15"),
                        (["--stage-place", "6,14,0"], "requires --published-disk-one"),
@@ -156,7 +156,7 @@ def _staged(tmp_path, monkeypatch):
     return path, json.loads(path.read_text())
 
 
-def test_a_staged_df0_with_a_changed_free_sector_is_refused(tmp_path, monkeypatch):
+def test_a_staged_df0_with_a_changed_free_sector_is_blocked(tmp_path, monkeypatch):
     path, manifest = _staged(tmp_path, monkeypatch)
     df0 = pathlib.Path(manifest["disks"]["df0"]["path"])
     image = AmigaDisk.open(df0)
@@ -219,7 +219,7 @@ def test_the_preserved_specimen_says_the_loaded_slot_was_staged(tmp_path, monkey
     assert "staged" not in seen[1]
 
 
-def test_an_in_place_overwrite_refuses_a_missing_path_and_a_drawer():
+def test_an_in_place_overwrite_blocks_a_missing_path_and_a_drawer():
     disk = AmigaDisk(amiga_savegame.make_save_disk(KEY, "D", _curse()).to_bytes())
     with pytest.raises(staging.StageError, match="not on the disk"):
         staging.replace_file_in_place(disk, "/save/savgamZ.dat", b"x")
@@ -244,7 +244,7 @@ def test_a_prepare_whose_slot_is_missing_is_a_route_error(tmp_path, monkeypatch)
         foundation.prepare_published("curse", "staged", report, "628", place=(6, 14, 0))
 
 
-def test_the_slack_after_the_files_end_is_zeroed_and_a_mutation_there_is_refused(
+def test_the_slack_after_the_files_end_is_zeroed_and_a_mutation_there_is_blocked(
         tmp_path, monkeypatch):
     path, manifest = _staged(tmp_path, monkeypatch)
     df0 = pathlib.Path(manifest["disks"]["df0"]["path"])

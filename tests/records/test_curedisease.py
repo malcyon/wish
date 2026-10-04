@@ -237,7 +237,7 @@ WRITER_CASES = {
     (CURSE, 6, 0, NODE): (0, ((141, 0xC3, 0xC7),)),
     (CURSE, 11, 0, None): (0, ()),
     (CURSE, 6, 0, None): (0, ()),
-    # Donald's decision (#600): rather than refuse this state,
+    # Donald's decision (#600): rather than block this state,
     # `c64_cure_write` writes an adjustment row -- id 141, duration and
     # magnitude both the byte the cure itself writes -- rather than the
     # state's own recovery time, which no C64 Curse state holds exactly

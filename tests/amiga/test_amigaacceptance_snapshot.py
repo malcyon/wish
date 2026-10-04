@@ -123,7 +123,7 @@ def test_the_users_snapshot_name_keeps_its_case_and_matches_without_it():
     assert tokens == ("snapshot Leg", "view", "restore leg")
 
 
-def test_a_mark_before_the_first_step_is_refused_before_the_claim(tmp_path, clock, readings, pipe):  # noqa: F811
+def test_a_mark_before_the_first_step_is_blocked_before_the_claim(tmp_path, clock, readings, pipe):  # noqa: F811
     with pytest.raises(RouteError, match="before the first route step"):
         _accept(tmp_path, clock, marks={0: (("snapshot", "walk"),)})
     assert pipe.calls == []

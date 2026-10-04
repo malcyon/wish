@@ -57,7 +57,7 @@ def _inventory(save: amiga_savegame.AmigaSavegame, *, require_joined: bool = Tru
                ) -> dict[str, Any]:
     """Each member's items, and whether Guy de Valois holds the JOIN party's joined inventory.
 
-    `require_joined` refuses a party without Guy, or whose Guy lacks those items; only the
+    `require_joined` blocks a party without Guy, or whose Guy lacks those items; only the
     pinned JOIN route needs either. Without it, `guy_index` is None for a party with no Guy.
     """
     members = []
@@ -257,7 +257,7 @@ def prepare(source: pathlib.Path, run_id: str, *, staged_from: pathlib.Path | No
         try:
             slot = savecount.with_count(slot, save_count)
         except savecount.SaveCountError as exc:
-            raise RouteError(f"save count {save_count!r} refused: "
+            raise RouteError(f"save count {save_count!r} blocked: "
                              f"{type(exc).__name__}") from None
     stage = staging.stage_embedded_boot_disk(boot_source, slot, SLOT_LETTER, df0)
     df1 = run / "disk-b-working.adf"
@@ -333,7 +333,7 @@ def prepare_substitute(substitute: pathlib.Path, run_id: str, *, letter: str = "
     run instead (`SUBSTITUTE_TITLE_MODE`): the slot is staged as `TITLE_SLOT_LETTER` and
     `substitute_title` drives it, through the opening scene and the camp steps, saving to C
     and F. The legacy route has neither. A first member who carries nothing is then visited
-    without ITEMS rather than refused.
+    without ITEMS rather than blocked.
     """
     if isinstance(camp, str):
         raise TypeError("camp is a sequence of steps, not one string")
@@ -415,7 +415,7 @@ def prepare_substitute(substitute: pathlib.Path, run_id: str, *, letter: str = "
 def title_for_substitute(manifest: dict) -> AmigaTitle:
     """The route a substitute prepared as a title run drives, before its camp steps.
 
-    Refused unless the manifest agrees with itself and with its read-only copy of the
+    Blocked unless the manifest agrees with itself and with its read-only copy of the
     substitute: slot D staged and loaded, the opening scene exactly when that slot's party has
     not set out, ITEMS exactly when the first member carries something, and the members its
     inventory names.
@@ -628,7 +628,7 @@ def _journal_reader_failure(journal_python: str, analysis: pathlib.Path) -> str:
 
 
 def journal_preflight(journal_python: str) -> None:
-    """Refuse before the lane is claimed unless the private reader's imports and template file load.
+    """Block before the lane is claimed unless the private reader's imports and template file load.
 
     The reader check runs before the numpy check is judged so that a missing dependency, which
     also fails the reader, is reported as itself.
@@ -659,7 +659,7 @@ def run_journal_answer(journal_python: str, holder: str, adf: pathlib.Path,
     command = [journal_python, str(script), "--holder", holder, "--adf", str(adf)]
     if os.environ.get(KEEP_ENV):
         try:
-            amigabladesjournal.refuse_keep_inside_repository(pathlib.Path(os.environ[KEEP_ENV]))
+            amigabladesjournal.require_keep_outside_repository(pathlib.Path(os.environ[KEEP_ENV]))
         except SystemExit as exc:
             raise RouteError(f"{KEEP_ENV}: {exc}") from None
         command += ["--keep", os.environ[KEEP_ENV]]

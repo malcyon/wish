@@ -22,7 +22,7 @@ every call this project considers dangerous -- claiming a pool slot,
 constructing a `Session`, calling `.boot`/`.launch`/`.serve`, or opening a Qt
 application -- sit behind a call to `argparse`'s own `parse_args`, in the
 same function or in the function that calls it?** `argparse.parse_args`
-handles `-h`/`--help` and refuses an unrecognised argument entirely on its
+handles `-h`/`--help` and rejects an unrecognised argument entirely on its
 own, before a single line of the tool's own code runs, so putting a
 dangerous call behind it is sufficient without having to run either path.
 
@@ -169,7 +169,7 @@ def _reason_for_candidates(candidates, dangerous, filename) -> str | None:
     parses_loosely = any(_has_call_named(c, "parse_known_args")
                          for c in candidates)
     if not (parses and not parses_loosely):
-        return (f"{filename} calls {dangerous} but does not refuse an "
+        return (f"{filename} calls {dangerous} but does not reject an "
                 f"unrecognised argument with argparse's own parse_args -- "
                 f"--help or a typo would reach it")
     return None

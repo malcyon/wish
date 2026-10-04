@@ -30,9 +30,9 @@ are the Commodore 64 runs; section 7 is the same tab on the four Amiga titles.
 | C17 | Save and Restore spells | MELCAR, SLEEP | PALADIN | PAINE |
 | C18 | Identify | 1 item | 1 item | 1 item |
 | C14, C19 | the quickfight badge, lit and cleared | slot 5, `$83AC` | yes | yes |
-| C20 | Level up | offered | offered | refused, writing nothing (its trainer was not yet in `levels.TRAINER_MEASURED`; it is now) |
+| C20 | Level up | offered | offered | blocked, writing nothing (its trainer was not yet in `levels.TRAINER_MEASURED`; it is now) |
 
-The two Silver Blades cells that read "none" and "refused" were the shipped
+The two Silver Blades cells that read "none" and "blocked" were the shipped
 behaviour being right on 2026-09-08 rather than a gap: Silver Blades had no
 badge table (`#196 (The automapper's condition badges name a Silver Blades trait with Pool of Radiance's meaning)`) and its
 trainer had not been measured (`#16 (Level Up assumes Pool of Radiance, and silently corrupts a Curse character)`, `goldbox.levels.trainer_measured`).
@@ -124,9 +124,9 @@ only have come from that row.
   badged ids named in `traits.NAMES_SILVER_BLADES`; the draw has not been
   re-run on a live machine (`docs/139` C13).
 
-**Level up refused on Silver Blades in `run`, not in `legality`.** The action
+**Level up blocked on Silver Blades in `run`, not in `legality`.** The action
 answered *legal* there, because `Action.legality` only asks the loader's mode
-flag; what refused was `level_up_blockers` inside `run`, and the window
+flag; what blocked was `level_up_blockers` inside `run`, and the window
 additionally never built the button (`roster.levelling` was False). So the
 check ran the action and measured that it wrote nothing:
 `levelling MORGAINE would write fields we cannot derive, so it writes
@@ -203,9 +203,9 @@ that happens to read zero. It is `#360 (The session driver will not walk a Curse
 in the same batch as the control. Filed as `#426 (The session driver will not
 walk a Silver Blades party, because SSBSession never says which title it is)`.
 
-**A walk starts fights, and every action is refused in one.** The first Pool
+**A walk starts fights, and every action is blocked in one.** The first Pool
 of Radiance run left the Slums, took four steps into a wandering encounter,
-and Heal party, Fast Travel and Level up all answered "refused during a
+and Heal party, Fast Travel and Level up all answered "blocked during a
 fight". That is the gate working and it measured nothing, so the actions now
 run before the walk and the party in Pool of Radiance's default save stands in New Phlan,
 which has no wandering monsters.
@@ -244,7 +244,7 @@ agree on the square and the facing.
   It has seven groups now, in `docs/136-condition-badges.md`, and no live
   machine has drawn them.
 * **Anything on the three Krynn-era titles.** They have no `mode_flag` and no
-  `live_position`, so every action refuses and the memory fallback answers
+  `live_position`, so every action blocks and the memory fallback answers
   None. Nothing here changes that.
 
 ## 6. Re-running it

@@ -62,7 +62,7 @@ becomes the authorization.
 
 The first design locked every issue the bot opened, so that the public could
 read them and not comment. It does not work. **A GitHub App installation is
-refused a comment on a locked issue whatever permissions it holds**, tested
+blocked a comment on a locked issue whatever permissions it holds**, tested
 three ways on 2026-09-11 against a scratch issue:
 
 | token | result |
@@ -95,7 +95,7 @@ agent **reads** instead.
 | `AI` / `human` labels | a human misreading the tracker; agents posting into an outsider's thread | nothing; labels are cosmetic by design |
 | Retained `issue-titles-context.py` filtering | Outside titles in an explicitly requested GitHub context read; automatic SessionStart registration is disabled. | Text Donald pastes in himself. |
 | `tools/github/issueread.py` withholding a body | an outside comment's text entering an agent's context at all | the agent knowing the comment exists, which is the point |
-| `check-issue-reads.py` refusing `gh issue view --comments` | the filter being something to remember | an agent reading the issue on the web and telling Donald |
+| `check-issue-reads.py` blocking `gh issue view --comments` | the filter being something to remember | an agent reading the issue on the web and telling Donald |
 | Rules saying issue text is data | a compliant agent obeying a sentence in an issue | nothing mechanically -- a rule is a prompt, and a prompt is not a boundary |
 
 The channel that was open before any of this was not a comment. It was
@@ -167,7 +167,7 @@ is therefore somebody outside the project, which is what `human` should mark.
 | Private key | `~/.config/wish-agent/private-key.pem`, mode `0600`, directory `0700`. Never in this repository; `*.pem` is gitignored as a second line of defence |
 | App ID, installation ID | `~/.config/wish-agent/config.json`, or `$WISH_AGENT_APP_ID` / `$WISH_AGENT_INSTALLATION_ID`. Neither is a secret — both are integers that appear in GitHub URLs |
 | Installed on | `malcyon/wish` only — *Only select repositories*, not *All repositories* |
-| Permissions | `Issues: Read & write`, `Contents: Read & write` (revoked once, and re-granted and approved on 2026-09-18), `Workflows: Read & write`, `Metadata: Read-only`, `Actions: Read-only`. Contents and Workflows are what let the App push -- a push touching `.github/workflows/` is refused without Workflows |
+| Permissions | `Issues: Read & write`, `Contents: Read & write` (revoked once, and re-granted and approved on 2026-09-18), `Workflows: Read & write`, `Metadata: Read-only`, `Actions: Read-only`. Contents and Workflows are what let the App push -- a push touching `.github/workflows/` is blocked without Workflows |
 | Token lifetime | One hour. An issues token is cached in the process only; a push token is minted on every call and cached nowhere. This tool writes neither to a file |
 
 Tokens are narrowed further at mint time, and there are two modes. The issues
@@ -201,7 +201,7 @@ credentials (`store`, `manager`, `osxkeychain`) the token would be written by
 that one; the empty-string line above resets the list so only this helper is
 left. And it answers for every `github.com` repository, since git does not send
 the path unless `credential.useHttpPath` is set, but the token is minted for
-`wish` alone, so pushing any other repository through it is refused by GitHub.
+`wish` alone, so pushing any other repository through it is blocked by GitHub.
 
 Commits are authored as `wish-agent[bot]` by setting `user.name` to that and
 `user.email` to `<id>+wish-agent[bot]@users.noreply.github.com`, where the id is
@@ -210,7 +210,7 @@ the bot user's numeric id: `gh api /users/wish-agent%5Bbot%5D --jq .id`.
 Changing an App's permissions does not apply them to an existing installation:
 GitHub asks the account owner to approve the change at
 `github.com/settings/installations`, and until he does, asking for what was newly
-granted is refused, which looks exactly like a broken tool. The tool prints
+granted is blocked, which looks exactly like a broken tool. The tool prints
 whatever GitHub answered.
 
 **To rotate the key:** generate a new one on the app's settings page, put it at
@@ -225,7 +225,7 @@ immediately.
 
 In this order, because that is roughly how often each one is the cause:
 
-1. **Key permissions.** The tool refuses a key that is group- or world-readable
+1. **Key permissions.** The tool blocks a key that is group- or world-readable
    and names the `chmod`. A key copied about tends to come back as `0664`.
 2. **Clock skew.** The JWT carries `iat` and `exp`; more than a minute of drift
    gets a `401` from the token endpoint.

@@ -6,7 +6,7 @@ Radiance's table, which disagrees with Curse's own data about eight codes)`
 is where `goldbox/traits.py`'s `NAMES_CURSE` came from, and `#567 (Twelve of
 Curse of the Azure Bonds' own effect codes have no name at all, only a
 refusal of Pool of Radiance's wrong one)` is where the eighteen codes it
-could only refuse got names, by reading the routine each one dispatches.
+could only reject got names, by reading the routine each one dispatches.
 
 Two kinds of test here, and the second is the one that would catch a
 mistake:
@@ -51,10 +51,10 @@ BY_SPELL = {
     136: "ENTANGLE", 142: "FEAR", 143: "FIRE SHIELD",
 }
 
-#: The ten codes the monster sweep could only refuse -- a Pool of Radiance
+#: The ten codes the monster sweep could only reject -- a Pool of Radiance
 #: name landing on a Curse creature that cannot have it -- and the creature
 #: that carries each. Named from their handlers on `#567`.
-REFUSED = (57, 81, 82, 84, 85, 86, 87, 90, 96, 103)
+REJECTED = (57, 81, 82, 84, 85, 86, 87, 90, 96, 103)
 
 #: The eight codes above `NAMES`'s reach that a Curse creature carries and
 #: `NAMES` never named at all. Named from their handlers on `#567`.
@@ -62,7 +62,7 @@ CURSE_ONLY = (128, 129, 130, 131, 132, 133, 135, 138)
 
 #: Every code `NAMES_CURSE` names from its handler rather than from the
 #: spell table or the sweep.
-FROM_HANDLERS = REFUSED + CURSE_ONLY + (73,)
+FROM_HANDLERS = REJECTED + CURSE_ONLY + (73,)
 
 #: The eight codes that carried a Pool of Radiance name Curse's own handler
 #: contradicts. Named from their handlers on `#609 (Six of Curse of the Azure
@@ -138,7 +138,7 @@ def test_the_thirteen_codes_dont_carry_pool_of_radiances_wording():
 
 
 def test_the_handler_named_codes_have_a_name_of_their_own():
-    """The eighteen `#561` could only refuse, and 73. Every one is named,
+    """The eighteen `#561` could only reject, and 73. Every one is named,
     CONFIRMED, and says something Pool of Radiance's table does not."""
     assert len(FROM_HANDLERS) == 19
     for code in FROM_HANDLERS:
@@ -265,7 +265,7 @@ def test_71_73_and_109_are_written_only_by_an_ungrouped_row():
 
 
 def test_the_creatures_that_carry_the_handler_named_codes():
-    """The ten refused codes, read straight off the 70 `MON*` templates.
+    """The ten rejected codes, read straight off the 70 `MON*` templates.
     Each is the creature whose *Monster Manual* entry the handler reading
     describes: the shambling mound that engulfs, the vegepygmies an edged
     weapon barely scratches, the slug that spits acid, the beholder's eyes,

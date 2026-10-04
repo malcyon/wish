@@ -170,7 +170,7 @@ if (-not $DumpOnly -and -not (Test-Path -LiteralPath $File)) {
   Say "-File '$File' does not exist"; Finish 6
 }
 
-# A scheduled task's powershell.exe gets its own console; AttachConsole refuses
+# A scheduled task's powershell.exe gets its own console; AttachConsole blocks
 # while one is held.
 [Con]::FreeConsole() | Out-Null
 if (-not [Con]::AttachConsole([uint32]$TargetPid)) {

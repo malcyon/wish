@@ -138,7 +138,7 @@ def dispatch_tables(body: bytes, base: int) -> tuple[int, int, int, int]:
     of Radiance at `$08A4`, Curse at `$089C` -- so the candidates are ranked by
     how many entries their tables hold and the widest wins.  A table that
     cannot reach opcode `$20` is not the one being looked for, and a title
-    where none can is a title this tool refuses rather than guesses at.
+    where none can is a title this tool rejects rather than guesses at.
     """
     best = None
     for call, lo_store, hi_store in self_modifying_calls(body, base):
@@ -347,7 +347,7 @@ def one_reference(body: bytes, base: int, opcode: int, addr: int,
     else. **Exactly once is the whole test.** A second reference would mean
     the pattern had found something other than the routine being looked for,
     and then the address it hands back is a guess wearing a derivation's
-    clothes; the caller gets None and refuses instead.
+    clothes; the caller gets None and rejects instead.
     """
     want = bytes([opcode, addr & 0xFF, addr >> 8])
     hits, at = [], body.find(want)

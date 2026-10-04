@@ -277,7 +277,7 @@ def test_a_charmed_dos_zombie_still_writes_the_zombie_byte_and_the_charm_row(
     assert rec.get("flags_0b8") == stored
     assert rec.get("treasure_share") == 0
     # Count 1 with a party charmer is the one-level Dispel Magic difference,
-    # which is noted on the warnings and does not refuse the save.
+    # which is noted on the warnings and does not block the save.
     assert not rep.losses
     assert len([w for w in rep.warnings if "low bit" in w]) == 1
 
@@ -387,7 +387,7 @@ def test_a_full_effect_table_keeps_the_trait_slot_and_reports_the_lost_row():
 
 
 @pytest.mark.parametrize("charm", [0x21, 0x20, 0x61, 0x60])
-def test_a_charmed_zombie_is_not_refused_for_the_charms_side(charm):
+def test_a_charmed_zombie_is_not_blocked_for_the_charms_side(charm):
     char = _dos_zombie(0, 0xB3, None)
     char.set("granted_effects",
              [bytes((32, 0, 0, 5, 1)),
@@ -434,7 +434,7 @@ def test_a_c64_zombie_row_becomes_the_node_dos_writes_with_flag_one(side):
 
 
 @pytest.mark.parametrize("magnitude, row", [(0xFF, True), (0, False)])
-def test_a_c64_zombie_with_no_row_value_to_convert_still_refuses(
+def test_a_c64_zombie_with_no_row_value_to_convert_still_blocks(
         magnitude, row):
     rec, payload = _zombie_source(magnitude, row=row)
     char = c64_codec.read(rec, game=c64_port.POOL_OF_RADIANCE,
@@ -641,7 +641,7 @@ def test_the_same_residue_on_a_zombie_still_gives_the_node(form):
     char = c64_codec.read(rec, game=c64_port.POOL_OF_RADIANCE,
                           payload=payload, party_slot=4)
     if form == "trait only":
-        # No row means no caster level to convert, so it still refuses.
+        # No row means no caster level to convert, so it still blocks.
         assert 32 in char.get("innate_effects")
         return
     assert char.get("granted_effects") == [bytes((32, 0, 0, 5, 1))]

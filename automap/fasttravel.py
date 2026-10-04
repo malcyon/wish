@@ -14,7 +14,7 @@ dispatch, take entry `$20` of the tables it builds, read the routine. A
 constant written down is a claim nothing checks.
 
 **A title with no row is offered no fast travel at all.** `addresses_for`
-answers None, `FastTravel.legality` refuses, and `automap.actions.area_rows`
+answers None, `FastTravel.legality` blocks, and `automap.actions.area_rows`
 hands back nothing -- because the failure of a wrong address here is not an
 error message, it is a `JMP` into somebody else's code and a byte written into
 whatever the running title keeps at another title's number. Three of the six
@@ -429,7 +429,7 @@ def choose_door(doors: Sequence[tuple[int, ExitRoute]]
     destination id of the rest is taken**, so the answer does not depend on
     how the rows arrive; an area with one door takes it when it cannot fight.
     None means there is no door, or every one of them can start a fight, and
-    the trip is refused rather than a fight route chosen.
+    the trip is blocked rather than a fight route chosen.
     """
     safe = [row for row in doors if not row[1].combat]
     return min(safe, key=lambda row: row[0]) if safe else None

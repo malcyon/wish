@@ -297,7 +297,7 @@ class TestRosterBlocks:
         sg1 = self._save1()
         assert SaveGame1(sg1.to_bytes()).to_bytes() == sg1.to_bytes()
 
-    def test_a_value_that_cannot_be_stored_is_refused(self):
+    def test_a_value_that_cannot_be_stored_is_blocked(self):
         sg1 = self._save1()
         with pytest.raises(SaveGameError):
             sg1.roster(0).armour_class = 999
@@ -669,7 +669,7 @@ class TestPartyPosition:
         assert diff == [0x49C2 - 0x4900]
         assert sg.party.facing_name == "south"
 
-    def test_a_bad_facing_is_refused(self):
+    def test_a_bad_facing_is_blocked(self):
         sg = self._save("PORSAVE9")
         with pytest.raises(SaveGameError):
             sg.party.facing = "widdershins"
@@ -751,7 +751,7 @@ def test_tail_damage_lists_a_secondary_form_only_when_it_has_dice():
     assert tail_damage(bytes.fromhex("300100010008060000")) == ("1d8",)
 
 
-def test_tail_damage_refuses_a_tail_of_the_wrong_length():
+def test_tail_damage_blocks_a_tail_of_the_wrong_length():
     from goldbox.savegame import tail_damage
     with pytest.raises(ValueError):
         tail_damage(bytes(8))

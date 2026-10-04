@@ -19,7 +19,7 @@ Four things this file pins, one per architect-plan step:
   folder is not a rung in the precedence any more (step 2);
 * the Game disks tab carries one row per title and no shared one (step 3);
 * with no save open, the machine names which configured title is actually
-  running and the window switches to its folder instead of refusing (step 4).
+  running and the window switches to its folder instead of blocking (step 4).
 """
 
 import pathlib

@@ -2,7 +2,7 @@
 
 Small and hand-editable on purpose: a JSON file you can look at and fix. An
 unreadable or half-written file is treated as "no settings yet" rather than as
-an error -- losing a preference does not justify refusing to start over.
+an error -- losing a preference does not justify failing to start over.
 """
 
 from __future__ import annotations
@@ -100,7 +100,7 @@ def whole_sizes(raw, count: int) -> list[int] | None:
 
     None is what a hand-edited file gets: a size that is negative, is not a
     number, is above `WIDTH_CEILING`, or a row of the wrong length after the
-    layout changed. **The whole row is refused rather than mended**, because a
+    layout changed. **The whole row is blocked rather than mended**, because a
     mended row is part somebody's and part ours, and a window laid out from
     that is harder to explain than one that opened at its defaults.
 
@@ -287,7 +287,7 @@ class Settings:
 
         None is what a hand-edited file gets: a width that is negative, is not
         a number, is above `WIDTH_CEILING`, or a row of the wrong length after
-        the layout changed. **The whole row is refused rather than mended**,
+        the layout changed. **The whole row is blocked rather than mended**,
         because a mended row is three widths of which one is somebody's and
         two are ours, and a window laid out from that is harder to explain
         than one that opened at its defaults.
@@ -303,7 +303,7 @@ class Settings:
         The same rule as `column_widths` above and for the same reasons: a
         hand-edited number that is not a whole size between zero and
         `WIDTH_CEILING`, or a row of the wrong length after the layout
-        changed, refuses the whole row rather than mending part of it. Zero
+        changed, blocks the whole row rather than mending part of it. Zero
         passes, because zero is the height of a row dragged shut.
         """
         return whole_sizes(self.editor_rows, count)
@@ -360,7 +360,7 @@ class Settings:
 # -- window geometry ---------------------------------------------------------
 #
 # Qt's own encoding, not a width and a height: it carries the position and the
-# screen too, and `restoreGeometry` knows how to refuse one saved on a monitor
+# screen too, and `restoreGeometry` knows how to block one saved on a monitor
 # that is no longer attached. The clamp is ours -- Qt will happily restore a
 # window larger than the screen it lands on, and the automapper is 1875 px wide
 # by default, which is wider than plenty of laptops.

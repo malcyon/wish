@@ -856,7 +856,7 @@ player, so presumably the temple's.
 
 **From 57 the table stops being spells** and continues with combat message
 fragments -- `IS CHARMED`, `AND MISSES...`, `POINTS OF DAMAGE`. Same mechanism,
-different meaning. `wish` refuses to write an id above 56 into a spell list.
+different meaning. `wish` will not write an id above 56 into a spell list.
 
 Full table in [the spell table](86-spell-table.md); reader in `goldbox/spells.py`.
 
@@ -1391,7 +1391,7 @@ carries code **9**. Both match the 1989 editor's multi-class table, which now
 agrees with six independently obtained values and has never disagreed. Code 9
 also matches the NPC `ENVOY` found in the monster files.
 
-**Result 5, from a limitation Donald hit.** The game **refuses a seventh player
+**Result 5, from a limitation Donald hit.** The game **blocks a seventh player
 character**: six is the maximum, and the remaining two of the eight slots are for
 NPCs only. That answers a question this knowledge base got wrong earlier, when
 "up to five NPCs" was inferred from a single hacked save and withdrawn. The rule
@@ -1961,7 +1961,7 @@ Nothing in `CAMP` touches the counters — every one of `CAMP`'s references to
 and none is indexed. So memorising and resting fills `0x020` and leaves the
 counters holding the previous fight's numbers. `PORSAVE4` reads `0/0/0` because
 it was saved after a rest and before the next fight, which is exactly the "the
-cache was stale" explanation the section above refused to accept without
+cache was stale" explanation the section above would not accept without
 evidence. The evidence is the absence of a writer.
 
 **Result 4. Watched happening, at no emulator cost.** `cited/p235c64/run1
@@ -3072,9 +3072,9 @@ before the party moves, by matching those 1024 bytes against the disk copies.
 
 One thing nobody has taken, and it is cheap: `Fingerprint` needs **111 steps** to
 identify New Phlan from positive evidence alone, because a square being walkable
-rules out very little. **One refused step would settle it instantly** — and the
+rules out very little. **One blocked step would settle it instantly** — and the
 status line already carries the clock, so *clock advanced + square unchanged +
-facing unchanged* is a refused step. `Fingerprint.refused()` exists and nothing
+facing unchanged* is a blocked step. `Fingerprint.refused()` exists and nothing
 calls it.
 
 
@@ -3172,7 +3172,7 @@ The attempt to make weight decisive failed and turned up something better:
 `$5900`+ is a *copy* fed from a master elsewhere, and live pokes there do not
 stick. That is a new fact about the format and a trap for any future live edit.
 
-Incidental: the game **silently** refuses to ready a second weapon — no message
+Incidental: the game **silently** will not ready a second weapon — no message
 at all. Un-ready the first.
 
 ## Combat: the mode flag, and where the combatants are
@@ -3486,7 +3486,7 @@ loaded it **without reconciling**: `$5073` = `05`, `$50EB` = `08`.
 |---|---|---|
 | the sheet's class line | `MAGIC-USER` | `0x073` is what is displayed |
 | un-ready then re-ready his `LONG SWORD` (thief/fighter) | allowed | `0x0EB` is what is tested |
-| control: LADY KATHERINE (`0x0EB` = 5) readying `SCALE MAIL` (cleric/fighter) | refused | the check is real |
+| control: LADY KATHERINE (`0x0EB` = 5) readying `SCALE MAIL` (cleric/fighter) | blocked | the check is real |
 
 The control is the point. "It readied" alone would be equally consistent with
 the game never checking.
@@ -3646,7 +3646,7 @@ Scratch: `analysis6/ecl6.py` (scratch, deleted) and the extracted scripts in
 
 ## The trainer's own routine, and the end of the level-up blockers
 
-**The question.** `automap.actions.LevelUp` refused, and named five fields it
+**The question.** `automap.actions.LevelUp` blocked, and named five fields it
 could not derive: the hit-die roll, the saving-throw modifiers, the cleric's
 wisdom bonus, a thief skill table the project did not have, and whatever else
 the trainer touched that nobody had measured. Twenty-nine trainings had already
@@ -3819,7 +3819,7 @@ separates them; the murder does, and so does a lost wandering fight.
 **The east doorway works and the west one does not.** Walking east off the
 slums' `(15, 4)` reached New Phlan, and walking west off New Phlan's `(0, 6)`
 came back. Walking west off New Phlan's `(0, 4)` — the square `PORSAVE12` was
-saved on, facing west, one step before `PORSAVE13` — was refused four times,
+saved on, facing west, one step before `PORSAVE13` — was blocked four times,
 with `$6DD5` still 0 afterwards, so the engine never treated it as a boundary
 crossing. Both squares are edge exits in `GEO00` with the same barrier bits.
 Unexplained, and the difference is not `ECL00`, whose entry 0 is an
@@ -4520,7 +4520,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   **And the fetcher needed adding.** `$2E4E`-`$2E6A` is the key reader the loop
   calls: `LDA $DC00 / AND #$1F / STA $03F0` for the CIA row, then `LDA $C6` and
   the KERNAL buffer at `$0277` into `$03CB`, `RTS`; `$2E65` is the no-key path
-  writing `$FF`. Half the idle samples are in it, so refusing it made FastTravel To
+  writing `$FF`. Half the idle samples are in it, so blocking it made FastTravel To
   fail about half the times it was pressed — measured, five failures in
   seven attempts in this session. It is called *from* the loop, so `$203A`'s
   `LDX $03BF / TXS` discards exactly the same nothing, and P15 had already
@@ -5497,7 +5497,7 @@ step east, `21,28 E 10:15` next day), with the engine's `CHRDAT` files, the
 screenshots and `run1.py`. `run2.py` is the DOSBox-X debugger pass on save
 D; `run2.log` its output.
 
-**Result 1. The travel square is `$49C3`/`$49C4`, window-local — the #50 (Lift the wilderness refusal from the DOS save converter)
+**Result 1. The travel square is `$49C3`/`$49C4`, window-local — the #50
 blocker, settled.** (7,29) → (7,28) → (8,28) against the three screens;
 world x = local x + 13 for window 26, y unchanged, exactly the C64 seam
 arithmetic. Live corroboration: `BPM` on `$49C3`'s low byte, one east step,
@@ -5559,7 +5559,7 @@ different lineages) -- and byte 12805 carries the low byte of `$5200`, which
 unnamed; the counts and the whole map are `docs/141-dos-savegame.md`, which is
 the document that gets kept current.
 
-Moving an outdoor save to a new area has still not been driven; #50 (Lift the wilderness refusal from the DOS save converter) owns the
+Moving an outdoor save to a new area has still not been driven; #50 owns the
 converter form.
 
 ## The later titles' mode flag is `$7F11`, and their LINKER is Pool of Radiance's
@@ -5568,7 +5568,7 @@ converter form.
 Secret of the Silver Blades, and `2` is COMBAT there exactly as `$6E11 = 2` is
 in Pool of Radiance.** CONFIRMED for Curse, PROBABLE for Silver Blades. It is
 the last address `automap/actions.py` needed and the reason all five live
-action buttons refused on both titles (#29 (The live reader uses Pool of Radiance's addresses on every title)).
+action buttons blocked on both titles (#29 (The live reader uses Pool of Radiance's addresses on every title)).
 
 **It is not derivable and it was never going to be.** The save image moved
 `$4900` → `$4B00` between the two games; the flag moved `$6E11` → `$7F11`,
@@ -5628,7 +5628,7 @@ of `4` in any title** — the Pool of Radiance row above says of it "never
 sampled live; that row is disassembly only", and it can come off that footing
 now. The gate was exercised in the same breath: `actions.in_combat` answered
 True, `heal` stayed legal and `identify`, `store-spells` and `restore-spells`
-all refused with "refused during a fight (`$7F11` is 2)".
+all blocked with "blocked during a fight (`$7F11` is 2)".
 
 **Curse did not give one**, and that is the one thing this pair of sittings did
 not get. About 250 driven steps through Tilverton produced scripted text, a
@@ -5639,9 +5639,9 @@ dispatch table alone. It is the same table as the one Silver Blades has now
 been watched running, which is why this is a footnote and not a blocker.
 
 **What this changes in the program.** `C64Machine.mode_flag` is `$7F11` for both
-later titles, so the five live actions no longer refuse there and
+later titles, so the five live actions no longer block there and
 `docs/139`'s C16–C19 leave `R`. The three Krynn-era titles keep `None`: their
-`LINKER` has not been read, and a title with no gate must refuse rather than
+`LINKER` has not been read, and a title with no gate must block rather than
 read somebody else's byte and call whatever it finds "not combat".
 
 ## Measured versus inherited: the DOS saved game's last unnamed bytes (#59 (Map the DOS saved game, not just the character record))
@@ -5884,15 +5884,15 @@ are identical in both modes; what changes is the count of rejected decodings, an
 | instruction lengths that disagreed | **0** |
 | mnemonics that disagreed | **0** |
 | operands that disagreed, after normalising the two syntaxes | **0** |
-| we refused, capstone decoded | 2 288 — 1 943 branches to an odd address, 248 68020 scaled or memory-indirect index extensions, 97 index extensions with the 68020 format bit set. That is the whole 2 288 with nothing left over |
-| capstone refused, we decoded | 0 |
+| we blocked, capstone decoded | 2 288 — 1 943 branches to an odd address, 248 68020 scaled or memory-indirect index extensions, 97 index extensions with the 68020 format bit set. That is the whole 2 288 with nothing left over |
+| capstone blocked, we decoded | 0 |
 
 Every one of the 2 288 is inside string data, and in each the rejection is the
 stricter reading. **Two of the three are legal encodings that no assembler
 would emit**, which is a narrower claim than "a 68000 cannot do this" and a
 more useful one: real silicon ignores the reserved extension bits, and an odd
 branch target is taken and then address-errors at run time rather than being
-an illegal instruction. Refusing them is what separates code from string data
+an illegal instruction. Blocking them is what separates code from string data
 in a binary with both scattered through one hunk, and the comments in
 `tools/amiga/m68dis.py` say so in those words. The 24 remaining textual differences
 are capstone writing `lea.l` and `pea.l` where we write `lea` and `pea`.
@@ -6183,7 +6183,7 @@ always 0 — which is the right answer for a flask you throw at undead and
 resolve with a spell effect, and for a canary.
 
 Two corroborations. The weapon-rating loop at `COMBAT $1F73` tests the same bit
-and refuses to add a negative at all. And the family stores its other small
+and will not add a negative at all. And the family stores its other small
 negative modifiers the same way: `LIBRARY $3651` and `$3670` are the strength
 hit and damage tables and hold `$FD` for the −3 AD&D 1st edition gives strength
 3.
@@ -6564,8 +6564,8 @@ the routines that *skip* the old slot. Curse `GEN $2387` is the routine that
 fills it, and its gate is AD&D 1st edition's rule for dual-classing:
 
 * `LDA race / CMP #$07 / BNE` — human only;
-* `JSR $23FC / BCC` — a check that refuses on carry clear;
-* `LDA 0x0BA / BNE` — refuses if the character has already dual-classed;
+* `JSR $23FC / BCC` — a check that blocks on carry clear;
+* `LDA 0x0BA / BNE` — blocks if the character has already dual-classed;
 * `LDA level / CMP #$02 / BCS` — level 2 or better.
 
 Then `$23C9` copies a workspace pair into the record: the class slot to
@@ -6616,7 +6616,7 @@ on the grounds that the byte was unattributed and the engine carried our zero
 through a resave unread (#69 (No WRITE_UNSOURCED zero has been tested during combat)). The question `#216 (Every converted DOS
 character carries the same identity byte at 0x0AB)` asked was whether that
 costs a player anything, and it does: **two converted characters of the same
-name cannot both be in one party**, and the game says nothing when it refuses
+name cannot both be in one party**, and the game says nothing when it blocks
 the second.
 
 ### The routine, read out of a memory image
@@ -6653,12 +6653,12 @@ Three details the read added:
 * **The candidate is starred before the party is walked.** The routine builds
   `"* "` + the entry name, 40 characters wide, and copies it back over the
   menu entry — so an entry is starred whether it was let in or turned away,
-  and a starred entry is refused at the top of the loop by
+  and a starred entry is blocked at the top of the loop by
   `cmp byte es:[di+1], 0x2a` before the file is opened. The list is rebuilt
   from `CHARLIST.TXT` on the next visit, so the star lasts one visit and this
   byte is what stops a re-add across visits.
 * **Capacity is a separate test after this one**: six with `0x84 < 0x80`,
-  eight in total, so a party with room cannot be refused for being full.
+  eight in total, so a party with room cannot be blocked for being full.
 
 ### The measurement, one byte apart
 
@@ -6679,7 +6679,7 @@ uses the game's own `SAVE CURRENT GAME` into slot C, which the archives do not
 use, and counts what the engine wrote. **CONFIRMED.**
 
 The control that makes it believable is the star: both runs show
-`* ALPHA` *and* `* BETA` after the second pick, so the refused record really
+`* ALPHA` *and* `* BETA` after the second pick, so the blocked record really
 was opened and really did reach the comparison. A run that mis-drove the menu
 would otherwise look exactly like a stop — and one did, because
 **the arrow keys do nothing in that menu**. `Home` and `End` move the
@@ -6709,7 +6709,7 @@ six characters saved twice, and their derived bytes differ because their
 experience does. Inside one converted save that does not matter — #69 (No WRITE_UNSOURCED zero has been tested during combat)
 established that the engine never rewrites this byte — so the exposure is a
 player who converts the same party into two slots at two points in play and
-then moves a character between them, where the engine would refuse a duplicate
+then moves a character between them, where the engine would block a duplicate
 and we would let it in. That is the mirror of the bug being fixed and much
 narrower.
 
@@ -7624,7 +7624,7 @@ where NPCs may join.
 `ECL0B`.** Its recruitment call at `$9FEB` is preceded by `$A19C`'s same
 party-count test, `< 8`. After the call, the menu at `$A015-$A019` can return
 to `$9DBE` for another candidate. The separate attempt counter at `$4A10`
-permits eight attempts; it does not count two NPCs and then refuse. This
+permits eight attempts; it does not count two NPCs and then block. This
 provides a script route for filling slots 7, 6 and then 5, rather than relying
 on the unproven provenance of a found eight-member save.
 
@@ -7665,7 +7665,7 @@ this engine evidence, not weakened to accept arbitrary output.
 `tools/pool_of_radiance/dirtenicon.py` inspects by default; `--out` must name a new `.d64` in
 an existing directory. It locates DIRTEN across all eight party slots by name,
 NPC flag, nonzero roster status with `OUT_OF_PLAY` clear, and matching roster
-slot identity. It refuses
+slot identity. It blocks
 missing or ambiguous identity, any nonzero icon, unsupported saves, malformed
 sector chains and cross-links. It reads the native default through `POR_DISKS`
 then `automap.paths.find_disks()`, requires POOL3's composed default to equal
@@ -7674,7 +7674,7 @@ POOL1's INIT seed, and prints hashes instead of embedding art.
 The command verifies the planned image against an independently mapped
 36-byte disk window, exclusively creates the named output, and holds that
 descriptor through the write, flush, hash verification and final path/inode
-check. Input/output aliases and existing files are refused. The pre-creation
+check. Input/output aliases and existing files are blocked. The pre-creation
 source rehash detects prior drift; it cannot exclude later external writes.
 The output represents the named input snapshot, and the tool never opens its
 source for writing. A failure may leave an incomplete output, explicitly
@@ -7700,7 +7700,7 @@ byte accepted `$80` and `$81`, although `c64_codec.OUT_OF_PLAY = $80` is
 independent of the low status bits. `layout.py` records the engine's measured
 `$81`/`$05` controls and `LIBRARY`'s separate mask/display branches. Generated
 `$80` and `$81` tests of the stop both failed before the guard was added. Both
-now refuse; `$01` and `$05` still pass. No further low-status restriction was
+now block; `$01` and `$05` still pass. No further low-status restriction was
 inferred from the review.
 
 **The old temporary-path publisher could publish unverified bytes and remove
@@ -7721,7 +7721,7 @@ second probe changed the source immediately after that check. Its output was
 still exactly the verified inspected snapshot, but the old `input unchanged`
 success wording was false. The source was never written by the repair code.
 The revised wording names the snapshot and promises only read-only treatment
-of the source. Prior detected drift still refuses before output creation; a
+of the source. Prior detected drift still blocks before output creation; a
 generated late-edit case preserves both the correct snapshot output and the
 external writer's new source bytes.
 
@@ -7735,7 +7735,7 @@ nothing, so those counters and directory allocation bits do not choose or
 alter its output bytes. They remain pre-existing filesystem bookkeeping, not
 a general filesystem-health guarantee. Actual file/file and file/directory
 cross-links are different: they share physical data, and existing checks reject
-them. A generated file sharing an otherwise empty directory sector is refused
+them. A generated file sharing an otherwise empty directory sector is blocked
 without a new gate.
 
 **Terminal checks — CONFIRMED on the revised change.** The seven initial

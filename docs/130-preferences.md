@@ -327,7 +327,7 @@ has over searching beside the open save in `paths.resolve_disks`. Left empty,
   "a GUI is not the place for documentation" (`tests/wish/test_preferences.py`'s
   `test_the_report_prints_two_lines_and_not_six`).
 * **Existence is checked, like the remembered folder.** A chosen folder can be
-  renamed or deleted like any other, and `open_start_dir` refuses a preference
+  renamed or deleted like any other, and `open_start_dir` blocks a preference
   that is no longer there rather than handing a dead path to the dialog — the
   same rule `#66 (Remember where the save disks are, and let Preferences say where)` step 4 already applied to the remembered one.
 * **`editor.files` is the one place this resolves**, alongside
@@ -645,7 +645,7 @@ What it does now:
 
 * **`saveGeometry()` / `restoreGeometry()`**, base64 in `Settings.geometry`.
   They carry the position and the screen as well as the size, and
-  `restoreGeometry` knows how to refuse a geometry saved on a monitor that is
+  `restoreGeometry` knows how to block a geometry saved on a monitor that is
   no longer attached.
 * **`clamp_to_screen`** afterwards, always: Qt will happily restore a window
   larger than the screen it lands on, and 1875 px is wider than plenty of
@@ -791,7 +791,7 @@ gives it, the Ultimate host box and the poll spinner are nine pixels tall with
 their text cut through the middle, and the area table shows one row; every one
 of them is wide enough. The cause is §12's cap: one column of groups wants
 930 px, cosmic-comp hands the window 662, and **a layout given less than its
-minimum does not refuse** — it takes the shortfall out of whatever can be
+minimum does not block** — it takes the shortfall out of whatever can be
 squeezed, which is exactly the line edits, the spin box and the table.
 
 * **`General`, `Game disks` and `Fast travel`.** General holds the backups

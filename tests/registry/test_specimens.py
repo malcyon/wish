@@ -70,7 +70,7 @@ def _silver_blades_record(items: int) -> bytes:
     return bytes(record)
 
 
-def test_add_refuses_a_dos_character_that_counts_items_without_its_item_file(
+def test_add_rejects_a_dos_character_that_counts_items_without_its_item_file(
         tree, tmp_path):
     sav = tmp_path / "CHRDATA1.SAV"
     sav.write_bytes(_silver_blades_record(2))
@@ -137,7 +137,7 @@ def test_add_leaves_the_specimen_directory_unwritable(tree, one_source):
         (dest / "SNEAKED-IN.SAV").write_bytes(b"not part of the specimen")
 
 
-def test_add_refuses_to_overwrite_an_existing_specimen(tree, one_source):
+def test_add_rejects_to_overwrite_an_existing_specimen(tree, one_source):
     _add(tree, one_source)
     with pytest.raises(FileExistsError):
         _add(tree, one_source)
@@ -152,7 +152,7 @@ def test_add_never_touches_the_source_files(tree, one_source):
         assert path.read_bytes() == data
 
 
-def test_add_refuses_a_name_that_is_not_a_plain_slug(tree, one_source):
+def test_add_rejects_a_name_that_is_not_a_plain_slug(tree, one_source):
     with pytest.raises(ValueError):
         specimens.add("dos", "Gnomf 1!", one_source, root=tree,
                       title="x", issue="x", made_by="x", what="x")
@@ -196,7 +196,7 @@ def test_add_takes_a_pools_of_darkness_specimen_into_its_own_directory(
     assert specimens.check_specimens(tree) == []
 
 
-def test_add_refuses_a_title_with_no_known_slug(tree, one_source):
+def test_add_rejects_a_title_with_no_known_slug(tree, one_source):
     with pytest.raises(ValueError):
         specimens.add("amiga", "x", one_source, root=tree,
                       title="Some Title Nobody Has Added Yet",
@@ -230,9 +230,9 @@ def _unclosed_curse_disk(tmp_path, name="SIDE0.D64"):
     return path
 
 
-def test_add_refuses_a_c64_disk_with_an_unclosed_directory_entry(tree, tmp_path):
+def test_add_rejects_a_c64_disk_with_an_unclosed_directory_entry(tree, tmp_path):
     """#298: the specimen tree must not accept a disk the game itself
-    refuses to load with `60, WRITE FILE OPEN`."""
+    declines to load with `60, WRITE FILE OPEN`."""
     d64 = _unclosed_curse_disk(tmp_path)
     with pytest.raises(ValueError, match=r"never closed.*SAVEAZURE.*\$02"):
         specimens.add("c64", "curse-broken", [d64], root=tree,
@@ -242,8 +242,8 @@ def test_add_refuses_a_c64_disk_with_an_unclosed_directory_entry(tree, tmp_path)
 
 
 def test_add_accepts_a_c64_disk_the_drive_closed(tree, tmp_path):
-    """The check must not refuse a well-formed disk -- proof it is not
-    refusing everything."""
+    """The check must not reject a well-formed disk -- proof it is not
+    rejecting everything."""
     disk = D64.blank(b"CURSE SAVE")
     payload = bytes(range(256)) * 29
     disk.write_file(b"SAVEAZURE", payload)
@@ -277,7 +277,7 @@ def test_check_catches_a_specimen_file_edited_after_the_fact(tree, one_source):
 def test_check_catches_a_missing_file(tree, one_source):
     dest = _add(tree, one_source)
     dest.chmod(stat.S_IRWXU)
-    # Windows refuses to unlink a read-only file, where a POSIX system only
+    # Windows declines to unlink a read-only file, where a POSIX system only
     # asks that the *directory* be writable.  Clear the file's own bit too, so
     # this reads the same on both.
     victim = dest / "GNOMF1.CHA"
@@ -495,7 +495,7 @@ def test_specimen_files_can_select_by_record_size(fake_tree):
 def _plant_c64(tree, name, source, title="Curse of the Azure Bonds"):
     """Put a C64 specimen in the tree by hand, hashes and all.
 
-    `add` refuses an unclosed disk, which is the point of it -- so a test
+    `add` rejects an unclosed disk, which is the point of it -- so a test
     about specimens already in the tree cannot use `add` to make one. This is
     what the five real ones look like: they were added before the check
     existed.
@@ -611,7 +611,7 @@ def test_repair_records_the_edit_in_the_provenance(tree, tmp_path):
     assert not prov.stat().st_mode & stat.S_IWUSR
 
 
-def test_repair_refuses_a_specimen_that_no_longer_matches_its_manifest(
+def test_repair_rejects_a_specimen_that_no_longer_matches_its_manifest(
         tree, tmp_path):
     """Repairing over drift would hide the drift, which is the one thing this
     tree exists to catch."""
@@ -625,7 +625,7 @@ def test_repair_refuses_a_specimen_that_no_longer_matches_its_manifest(
     assert dest.read_bytes() == bytes(raw)     # and it wrote nothing
 
 
-def test_repair_refuses_a_specimen_whose_entries_are_all_closed(tree, tmp_path):
+def test_repair_rejects_a_specimen_whose_entries_are_all_closed(tree, tmp_path):
     """The control: a sound disk is not quietly rewritten and re-hashed."""
     disk = D64.blank(b"CURSE SAVE")
     disk.write_file(b"SAVEAZURE", bytes(range(256)) * 29)
@@ -651,14 +651,14 @@ def test_repair_dry_run_writes_nothing(tree, tmp_path):
         ["curse-left-open"]
 
 
-def test_repair_refuses_a_change_outside_the_directory_entry(
+def test_repair_rejects_a_change_outside_the_directory_entry(
         tree, tmp_path, monkeypatch):
     """The guard that has no natural way to fire, so it is driven by hand.
 
     `close_splat()` only ever touches a directory entry, which is why the
     five real repairs came out at two bytes each. The check is here for the
     day somebody changes that: a repair that moves a byte of the payload is
-    refused rather than written and re-hashed under a new SHA-256.
+    rejected rather than written and re-hashed under a new SHA-256.
     """
     from tools.curse_of_the_azure_bonds import curseload
 
@@ -702,7 +702,7 @@ def test_correct_what_rewrites_the_text_and_records_the_old_one(tree, one_source
     assert not prov.stat().st_mode & stat.S_IWUSR
 
 
-def test_correct_what_refuses_a_specimen_that_no_longer_matches(tree, one_source):
+def test_correct_what_rejects_a_specimen_that_no_longer_matches(tree, one_source):
     d = _add(tree, one_source)
     (d / "GNOMF1.CHA").chmod(stat.S_IRWXU)
     (d / "GNOMF1.CHA").write_bytes(b"changed")
@@ -788,7 +788,7 @@ def test_correct_what_failed_write_leaves_the_original_read_only(
         ["GNOMF1.SPC", "GNOMF1.CHA", "provenance.toml"])
 
 
-def test_correct_what_refuses_a_name_registered_twice(tree, one_source):
+def test_correct_what_rejects_a_name_registered_twice(tree, one_source):
     _add(tree, one_source)
     specimens.add("amiga", "gnomf1", one_source, title="Pool of Radiance",
                   issue="#84 (x)", made_by="t", what="w", root=tree)
@@ -798,7 +798,7 @@ def test_correct_what_refuses_a_name_registered_twice(tree, one_source):
 
 @pytest.mark.parametrize("kw", [{"what": ""}, {"what": "  \n"},
                                 {"reason": ""}, {"reason": " \t"}])
-def test_correct_what_refuses_empty_input(tree, one_source, kw):
+def test_correct_what_rejects_empty_input(tree, one_source, kw):
     prov = _add(tree, one_source) / "provenance.toml"
     before = prov.read_bytes()
     with pytest.raises(ValueError, match="empty"):
@@ -806,7 +806,7 @@ def test_correct_what_refuses_empty_input(tree, one_source, kw):
     assert prov.read_bytes() == before
 
 
-def test_correct_what_refuses_a_no_op(tree, one_source):
+def test_correct_what_rejects_a_no_op(tree, one_source):
     prov = _add(tree, one_source) / "provenance.toml"
     before = prov.read_bytes()
     with pytest.raises(ValueError, match="already has"):
@@ -814,7 +814,7 @@ def test_correct_what_refuses_a_no_op(tree, one_source):
     assert prov.read_bytes() == before
 
 
-def test_correct_what_refuses_rather_than_drop_an_unknown_key(tree, one_source):
+def test_correct_what_rejects_rather_than_drop_an_unknown_key(tree, one_source):
     prov = _add(tree, one_source) / "provenance.toml"
     prov.chmod(stat.S_IRWXU)
     prov.write_text(prov.read_text().replace(

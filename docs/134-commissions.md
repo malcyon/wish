@@ -63,7 +63,7 @@ after a `COMBAT`**, which is what makes "encounters" the right word:
   is exactly one increment**; nothing adds per monster group or per square.
 
 The wandering half is capped by a *different* byte. `$4A80` counts won
-wandering fights, and both spawn sites refuse to roll another once it reaches
+wandering fights, and both spawn sites will not roll another once it reaches
 15 — `ECL14 $9B32` and `$ADD6`, `COMPARE [$4A80], 15 / IF>= / EXIT`. Ten set
 plus fifteen wandering is 25 exactly, and the two specimens that finished the
 slums (`p20/CONV2.D64`, `fields/npc_party.d64` (scratch, deleted)) show `$4A80` = 15
@@ -133,7 +133,7 @@ which are unambiguous because an `ECL` loads at `$9900`:
 | `$A3A2`/`$A3A8` | `SAVE 255` into both, after the `TREASURE`/`COMBAT` pair that pays 150 platinum and one random magic item — the delivery |
 | `$A084`/`$A0B8` | `SAVE 255, [$4A04]`, then the fight, then `SAVE 255, [$4A81]` — he was killed instead |
 | `$9F13`, `$9F1B`, `$9F30`, `$9F3B` | the entry test: 255 in either byte exits, then `[$4A81] == 250` and `[$4A04] == 250` pick his three speeches apart |
-| `$AE1E` | `COMPARE [$4A81], 250 / IF>= / EXIT` — the booth refuses a party that already has the potion or has finished with him |
+| `$AE1E` | `COMPARE [$4A81], 250 / IF>= / EXIT` — the booth blocks a party that already has the potion or has finished with him |
 
 **The file offsets quoted on `#157 (Ohlo's potion errand does not appear in the Quest Log)` and `#158 (Track the quests the game itself forgets, starting with Ohlo's potion)` do not all point where they
 say.** They were `0x957`, `0x1748`, `0xaa4` and `0x7b8`, and they are not

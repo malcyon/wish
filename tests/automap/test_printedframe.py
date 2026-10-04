@@ -147,7 +147,7 @@ def test_the_marker_crosses_between_town_and_ruins_both_ways(tmp_path, monkeypat
     assert go("W 4:38  0,15", (11, 2, 3), (0x00, 0x0F, 0), ruins, 2) == (
         "GEO20", 11, 2, 3, "memory")
     # Back west into town: `$4CFD` is `$FF` again, the line still reads the
-    # Ruins' pair, which the area change refuses until the game redraws it.
+    # Ruins' pair, which the area change blocks until the game redraws it.
     assert go("W 4:38  0,15", (15, 8, 3), (0xFF, 0x0F, 0), town) == (
         "GEO10", 15, 8, 3, "memory")
     assert go("W 4:38  0,15", (15, 8, 3), (0xFF, 0x0F, 0), town, 2) == (

@@ -183,9 +183,9 @@ def walk_verdict(steps: list[dict], sheet_opened: bool) -> tuple[bool, str]:
     """
     if not steps:
         return False, "no step was tried"
-    refused = [s for s in steps if s.get("stopped")]
-    if refused:
-        return False, f"the driver refused a step: {refused[0]['stopped']}"
+    rejected = [s for s in steps if s.get("stopped")]
+    if rejected:
+        return False, f"the driver stopped a step: {rejected[0]['stopped']}"
     walked = [s for s in steps if "move" in s]
     moved = sum(1 for s in walked
                 if not s.get("interrupted")
@@ -226,7 +226,7 @@ def second_hop(ft, open_target, marks: dict | None = None,
 
     While a hop is pending, each poll prints what `continue_pending` decides
     on -- the raw area byte, the overlay mode and the program counter -- so a
-    hop that never fires says which check refused. `marks["through"]` is set
+    hop that never fires says which check rejected. `marks["through"]` is set
     to `clock()` on the first poll that reads the area the door leads to with the loader idle
     (bit 7 clear), before
     `continue_pending` can make the hop: the start of the second hop's own
@@ -432,7 +432,7 @@ def settle_world(sess, out: pathlib.Path, shots: dict,
     # `Session.outdoor_key` drives a step from it, so it is checked first and
     # again after the wait, in case the arrival settled there.
     # Indoors the settle is judged by row 24 through `indoor_bar`, so that
-    # prompt, the stale travel-grid screen of a hop still loading, is refused
+    # prompt, the stale travel-grid screen of a hop still loading, is rejected
     # there because it is not an indoor bar.
     # A failed read (None) is not the grid either, and the area byte is read
     # again after the wait, which is when a hop finishes loading.
@@ -592,7 +592,7 @@ def square_hidden(sess, tries: int = 12) -> bool:
 
 def fought(sess, steps: list[dict], row: str) -> bool:
     """Fight the fight the party is in, append `{"fight": ...}` to *steps*, and
-    say whether the walk may go on. A `refused` reason is recorded, and False
+    say whether the walk may go on. A `rejected` reason is recorded, and False
     returned, when the fight was lost, the world did not come back, or another
     fight is already on."""
     result = sess.fight(budget=300, tactic=S.Session.melee_turn)
@@ -687,10 +687,10 @@ def walk_afterwards(sess, timeout: float = 60.0,
     never ends one) and recorded as `{"fight": ...}`. Any row that is neither
     the world bar, the move sub-bar nor the travel grid's direction prompt
     (walked with `Session.outdoor_key`, which sends the digit itself)
-    stops the walk with a refused step, because `walk_one` would press Return at it and pick a menu's first
+    stops the walk with a rejected step, because `walk_one` would press Return at it and pick a menu's first
     option.
 
-    A refused step ends the walk at once; an attempt carries `screens`, the rows
+    A rejected step ends the walk at once; an attempt carries `screens`, the rows
     `Session.walk_one` kept for its key, whenever it kept any.
 
     Indoors, `before` and `after` come from the status line and
@@ -710,7 +710,7 @@ def walk_afterwards(sess, timeout: float = 60.0,
       `walk_one`, what `walk_one` itself returned, without using it;
     * before every key and before the sheet the walk waits for `world_ready`,
       so no key goes into a fight or an area still loading under a stale
-      command bar; a game that never settles ends the walk with a refused step;
+      command bar; a game that never settles ends the walk with a rejected step;
     * each step carries `area_before`, `area_after` (read once the game has
       settled or a fight is on), `area_reads` (every raw `AREA_BYTE` seen
       while waiting) and `fight_after`. A step after which the area changed, a
@@ -754,7 +754,7 @@ def walk_afterwards(sess, timeout: float = 60.0,
     def ready_or_fought(row: str) -> tuple[bool, str]:
         """In an area judged from memory, wait for `world_ready` and fight a
         fight it finds; True with row 24 once keys may go, False once a
-        refused step has been recorded."""
+        rejected step has been recorded."""
         if not from_memory:
             return True, row
         for _ in range(2):
@@ -805,7 +805,7 @@ def walk_afterwards(sess, timeout: float = 60.0,
         attempts: list[dict] = []
         facing = 0          # quarter turns away from the facing the step began with
         off_route = capped = False
-        refused = None
+        rejected = None
         first = [(move, "step" if _is_step(indoors, move) else "turn")]
         groups = [first] + _retry_groups(indoors, move)
         done = False
@@ -851,8 +851,8 @@ def walk_afterwards(sess, timeout: float = 60.0,
                     attempts[-1]["stop_screen"] = stop_screen
                 if gi:
                     retry_used += 1
-                refused = getattr(sess, "walk_stopped", None)
-                if refused:
+                rejected = getattr(sess, "walk_stopped", None)
+                if rejected:
                     done = True
                     break
                 if kind == "step":
@@ -869,7 +869,7 @@ def walk_afterwards(sess, timeout: float = 60.0,
                 break
         last = attempts[-1]
         step = {"move": last["move"], "ok": last["ok"], "row": last["row"],
-                "before": before, "after": last["after"], "stopped": refused,
+                "before": before, "after": last["after"], "stopped": rejected,
                 "shadow_before": shadow_before, "shadow_after": sess.square()}
         for key in ("screens", "stop_screen", "walk_one"):
             if key in last:
@@ -900,7 +900,7 @@ def walk_afterwards(sess, timeout: float = 60.0,
         steps.append(step)
         print(f"  walk {last['move']}: ok={step['ok']} {before} -> {step['after']}"
               f" ({len(attempts)} attempt(s))", flush=True)
-        if refused:
+        if rejected:
             return steps, False
         if capped:
             break

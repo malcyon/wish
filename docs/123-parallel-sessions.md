@@ -291,7 +291,7 @@ The two known ways an instance wedges:
 | symptom | cause | recovery |
 |---|---|---|
 | monitor accepts the connection and never answers the greeting | another client attached, **or** the machine is halted at a checkpoint stop with no connection open, which waits for the next connection to read it (`docs/70-driving-the-game.md`) | connect and read the stop, or delete the checkpoints |
-| monitor refuses the connection but the pid is alive | X gone, or VICE crashed into a dialog | kill |
+| monitor drops the connection but the pid is alive | X gone, or VICE crashed into a dialog | kill |
 
 `ViceTarget` already separates these: `NotConnected` on a failed connect,
 `MonitorBusy` on a greeting that times out inside `GREETING = 1.0`. It cannot
@@ -717,7 +717,7 @@ All eight passed on 2026-08-22.
 | 5 | Donald's `vicerc` is byte-identical after a pooled run | yes, md5 unchanged across every run here. **The most important single check in the list** |
 | 6 | Two instances on 6520 and 6521 each answer their own greeting | yes, and a byte written through one was absent through the other |
 | 7 | Killing slot 0's process group leaves slot 1 running | yes |
-| 8 | `instance.reap()` refuses a slot whose flock is held | yes, from a second process |
+| 8 | `instance.reap()` blocks a slot whose flock is held | yes, from a second process |
 | 9 | a decoy `x64sc` the pool did not launch survives a full cycle | yes — the check the whole task was for |
 
 ### 9.2 The first parallel run

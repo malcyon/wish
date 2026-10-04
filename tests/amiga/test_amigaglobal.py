@@ -118,7 +118,7 @@ def test_a_routine_with_no_jump_table_entry_has_no_callers_and_says_so():
     assert amigaglobal.callers(exe, at + CALL_AT) == []
 
 
-def test_a_program_with_no_small_data_base_is_refused_rather_than_searched(
+def test_a_program_with_no_small_data_base_is_blocked_rather_than_searched(
         tmp_path, capsys):
     """Pool of Radiance's `/program` has no `d16(a4)` globals to look for."""
     exe = tmp_path / "program"

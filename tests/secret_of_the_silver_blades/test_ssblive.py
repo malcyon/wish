@@ -9,7 +9,7 @@ machine with the player's disks can check again without an emulator.
 Three kinds of assertion, and they are different in nature:
 
 * **The walk specimens.** Twelve moves the driven party actually made in `GEO10`,
-  nine completed and three refused, recorded square by square. Against the
+  nine completed and three rejected, recorded square by square. Against the
   decoded map every completed move must cross a passable edge and every rejection
   must meet an impassable one. That is the automapper validation, frozen: if a
   later change to `goldbox/geo.py` starts reading the barrier planes differently,
@@ -104,18 +104,18 @@ def test_every_step_the_party_completed_crossed_a_passable_edge():
             f"{FIRST_MAP} says is blocked")
 
 
-def test_every_step_the_game_refused_met_an_impassable_edge():
+def test_every_step_the_game_rejected_met_an_impassable_edge():
     """The strongest single observation available: rejections are rare.
 
     Three of them, and each one identifies the map far more sharply than a
     successful step does -- `GEO10` has 480 edges and only a handful are shut.
     """
     geo = _first_map()
-    refused = [(x, y, d) for x, y, d, moved in WALK if not moved]
-    assert len(refused) == 3
-    for x, y, d in refused:
+    rejected = [(x, y, d) for x, y, d, moved in WALK if not moved]
+    assert len(rejected) == 3
+    for x, y, d in rejected:
         assert not geo.is_passable(x, y, d), (
-            f"the game refused ({x},{y}) direction {d}, which the decoded "
+            f"the game rejected ({x},{y}) direction {d}, which the decoded "
             f"{FIRST_MAP} says is open")
 
 

@@ -215,7 +215,7 @@ class AmigaDiskTypeError(AmigaDiskError):
     """A disk whose DOS type this module does not read, or does not write.
 
     `dos_type` is the bootblock's fourth byte; `writing` says whether it was
-    the write that was refused, the disk itself having been read.
+    the write that was blocked, the disk itself having been read.
     """
 
     def __init__(self, dos_type: int, writing: bool) -> None:
@@ -280,7 +280,7 @@ def _all_or_nothing(method):
 
     A directory-cache write can find it needs a new cache block after the
     file's own blocks are taken; restoring the snapshot is what keeps a
-    refused write from leaving half its work behind.
+    blocked write from leaving half its work behind.
     """
     @functools.wraps(method)
     def wrapper(self, *args, **kwargs):
@@ -540,7 +540,7 @@ class AmigaDisk:
 
     @staticmethod
     def _enter_dir(seen: set[int], block: int) -> None:
-        """Refuse a drawer reached a second time."""
+        """Block a drawer reached a second time."""
         if block in seen:
             raise AmigaDiskError(
                 f"the directory tree returns to block {block}")
@@ -663,8 +663,8 @@ class AmigaDisk:
         A floppy never needs a second: one page carries 4064 bits against
         1758 data blocks. Real disks put junk in the later slots anyway --
         Pools of Darkness disk 2 names block 955 **twice** and disk 3 names
-        1352 and 1360 -- so a reader that trusted them would refuse three
-        genuine disks. A disk actually too big for one page is refused.
+        1352 and 1360 -- so a reader that trusted them would block three
+        genuine disks. A disk actually too big for one page is blocked.
         """
         page = self._u32(self.block(self.root), _HDR_BM_PAGES)
         if not page:
@@ -1014,7 +1014,7 @@ class AmigaDisk:
             self._set_free(number, True)
 
     def _file_blocks(self, header: int) -> list[int]:
-        """Every block a file holds, its comment block included, refusing a
+        """Every block a file holds, its comment block included, blocking a
         looping extension chain."""
         blocks: list[int] = self._comment_blocks(header)
         seen: set[int] = set()
@@ -1036,7 +1036,7 @@ class AmigaDisk:
     def _comment_blocks(self, header: int) -> list[int]:
         """The comment block a long-name entry owns, as a list of none or one.
 
-        Refuses a pointer at anything but a comment block naming `header`,
+        Blocks a pointer at anything but a comment block naming `header`,
         because freeing it would free a block something else holds.
         """
         if not self.long_names:
@@ -1291,7 +1291,7 @@ class AmigaDisk:
 
     def _settle_caches(self, drawer: int, stale: set[int]) -> None:
         """After a write into `drawer`: rebuild a cache that was stale before
-        it, and refuse the write if a cache it edited now disagrees with its
+        it, and block the write if a cache it edited now disagrees with its
         hash table."""
         for number in self._cache_family(drawer):
             if number in stale and self._cache_mismatches("", number):

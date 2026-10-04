@@ -19,7 +19,7 @@ at all -- and types `S <file> <addr> <n>` and `g` into the emulator's console.
 That halts the machine for the length of the batch and puts a console in front
 of whoever is playing, so it belongs to a driven run and not to a player's
 session. It stays because its `W` and its single-stepping reach parts of the
-debugger the pipe deliberately refuses to send.
+debugger the pipe deliberately will not send.
 
 **`FsuaeGdb` is the Linux route, and the only one a player on Linux can use.**
 The patched FS-UAE at `grahambates/fs-uae`, branch `remote_debugger_prb28`,
@@ -29,7 +29,7 @@ read from the frame handler of a **running** machine: `vsync_pre()` ends
 and the `m` branch reads through `get_mem_bank(adr)->bget(adr)` with no state
 check and no call to `activate_debugger()`. So there is no console, no
 keypress, no halt and no `ssh` -- a socket on loopback, like the C64's. What it
-costs, what it refuses and what it cannot do is on the class.
+costs, what it blocks and what it cannot do is on the class.
 
 **One `ssh` call does the whole of either WinUAE route**, which is the design
 decision this module is built around. `winuae.ps1` and `winuae-send.ps1` are three separate
@@ -65,7 +65,7 @@ string the game's own data hunk carries, at an offset read out of the
 executable on the player's own disk -- so the base is **computed at run time**
 and the layout table holds only offsets, which are a property of the build.
 
-`AmigaMachine` is the per-title table. A title with no row is refused rather
+`AmigaMachine` is the per-title table. A title with no row is blocked rather
 than given another title's numbers, which is the same rule
 `automap.c64.C64Machine.live_position` follows on the C64 side.
 
@@ -329,7 +329,7 @@ MACHINES: dict[str, AmigaMachine] = {
 
 
 class GuestError(NotConnected):
-    """The guest refused, or the emulator was not there to be read.
+    """The guest blocked, or the emulator was not there to be read.
 
     A subclass of `NotConnected` so `automap/window.py` keeps retrying rather
     than falling over: an Amiga that is booting, or a lane somebody else holds,
@@ -384,7 +384,7 @@ class WinuaeDebugger:
 
     **`WinuaePipe` is the other transport and the faster one.** This one is
     what every driven tool uses and is kept working: it needs no pipe, and its
-    `W` and its single-stepping reach parts of the debugger the pipe refuses to
+    `W` and its single-stepping reach parts of the debugger the pipe will not
     send. Use it when the machine is nobody's to disturb.
     """
 
@@ -539,7 +539,7 @@ def _pieces(cmd: str) -> list[str]:
 
 
 def _check_commands(commands: list[str]) -> None:
-    """Refuse anything that could put a console in front of the player.
+    """Block anything that could put a console in front of the player.
 
     Checked here rather than in the caller because every route into this
     transport goes through one function, and a batch is composed from several
@@ -595,7 +595,7 @@ FLOPPY_POLL_SECONDS = 10.0
 
 
 class FloppyError(GuestError):
-    """A floppy change was refused, unanswered or not proved.
+    """A floppy change was blocked, unanswered or not proved.
 
     `receipt` holds whatever the guest returned, so the raw replies survive a
     failure; the caller must not press a key on after one.
@@ -610,7 +610,7 @@ class GuestRejection(FloppyError):
     """The lane script itself answered `fail ...`; `line` is that line, unchanged."""
 
     def __init__(self, line: str, receipt: dict | None = None):
-        super().__init__("The guest refused the floppy change: " + line[5:], receipt)
+        super().__init__("The guest blocked the floppy change: " + line[5:], receipt)
         self.line = line
 
 
@@ -675,7 +675,7 @@ class FloppyReceipt:
         return self.status
 
 
-def refuse_floppy_change(drive, path, holder, sha256) -> tuple[int, str, str, str]:
+def check_floppy_change(drive, path, holder, sha256) -> tuple[int, str, str, str]:
     """The request as it may be sent, or a `ValueError` before anything leaves.
 
     Only DF0 and DF1 may change, the path must be one file staged for `holder`
@@ -683,7 +683,7 @@ def refuse_floppy_change(drive, path, holder, sha256) -> tuple[int, str, str, st
     directory climb or a network path gets through.
     """
     if isinstance(drive, bool) or not isinstance(drive, int) or drive not in (0, 1):
-        raise ValueError(f"Floppy drive {drive!r} is refused: only DF0 and DF1 "
+        raise ValueError(f"Floppy drive {drive!r} is not allowed: only DF0 and DF1 "
                          "may be changed")
     holder = _floppy_holder(holder)
     if not isinstance(path, str):
@@ -701,20 +701,20 @@ def refuse_floppy_change(drive, path, holder, sha256) -> tuple[int, str, str, st
     elif not FLOPPY_PATH.fullmatch(path):
         reason = "it is not a staged ADF under C:\\Amiga\\Disks"
     if reason:
-        raise ValueError(f"Floppy path {path!r} is refused: {reason}")
+        raise ValueError(f"Floppy path {path!r} is not allowed: {reason}")
     prefix = _FLOPPY_PREFIX.match(path)
     if not path[prefix.end():].startswith(holder + "-") \
             or len(path) == prefix.end() + len(holder) + 1 + len(".adf"):
         raise ValueError(f"Floppy path {path!r} belongs to another holder")
     if not isinstance(sha256, str) or not _SHA256.fullmatch(sha256):
-        raise ValueError(f"SHA-256 {sha256!r} is refused: it is not 64 "
+        raise ValueError(f"SHA-256 {sha256!r} is not allowed: it is not 64 "
                          "hexadecimal digits")
     return drive, path, holder, sha256.lower()
 
 
 def _floppy_holder(holder) -> str:
     if not isinstance(holder, str) or not _HOLDER.fullmatch(holder):
-        raise ValueError(f"Holder {holder!r} is refused: it is not a lane-safe name")
+        raise ValueError(f"Holder {holder!r} is not allowed: it is not a lane-safe name")
     return holder
 
 
@@ -796,7 +796,7 @@ def _check_status(receipt: FloppyReceipt) -> None:
     """Stop on the guest's own `fail` reply; anything but `ok` or `fail` is an error."""
     status = receipt.status
     if status.startswith("fail"):
-        raise FloppyError("The guest refused the floppy change: "
+        raise FloppyError("The guest blocked the floppy change: "
                           + status[5:], receipt.as_dict())
     if not status.startswith("ok"):
         raise FloppyError(f"The guest answered {status!r}, which is neither ok "
@@ -912,7 +912,7 @@ STATE_HEADER = b"ASF "
 
 
 class SnapshotError(GuestError):
-    """A snapshot, restore or discard was refused or not proved.
+    """A snapshot, restore or discard was blocked or not proved.
 
     `receipt` holds whatever the guest returned, so its raw replies survive.
     """
@@ -929,21 +929,21 @@ def snapshot_place(holder: str, name: str) -> tuple[str, str]:
     `statefile_path`, so each snapshot has a directory of its own named like it.
     The guest writes into `_part_folder` and moves that to `<folder>` once the
     state and its `complete~` marker are in it. A holder of `.`, or one holding
-    `..` or ending in a dot, is refused, because Windows would resolve its
+    `..` or ending in a dot, is blocked, because Windows would resolve its
     folder to another one, and so is a Windows device name (`CON`, `NUL`,
     `COM1` and the rest, in any case) as a holder or a name.
     """
     holder = _floppy_holder(holder)
     if holder == "." or ".." in holder or holder.endswith("."):
-        raise ValueError(f"Holder {holder!r} is refused: Windows would read it as "
+        raise ValueError(f"Holder {holder!r} is not allowed: Windows would read it as "
                          "another folder")
     if WINDOWS_DEVICE.fullmatch(holder):
-        raise ValueError(f"Holder {holder!r} is refused: it is a Windows device name")
+        raise ValueError(f"Holder {holder!r} is not allowed: it is a Windows device name")
     if not isinstance(name, str) or not SNAPSHOT_NAME.fullmatch(name):
-        raise ValueError(f"Snapshot name {name!r} is refused: it is not 1-32 "
+        raise ValueError(f"Snapshot name {name!r} is not allowed: it is not 1-32 "
                          "letters, digits, - and _")
     if WINDOWS_DEVICE.fullmatch(name):
-        raise ValueError(f"Snapshot name {name!r} is refused: it is a Windows device name")
+        raise ValueError(f"Snapshot name {name!r} is not allowed: it is a Windows device name")
     folder = f"{STATE_ROOT}\\{holder}\\{name}"
     return folder, f"{folder}\\{name}"
 
@@ -1022,7 +1022,7 @@ def _read_state(out: str, receipt: StateReceipt) -> StateReceipt:
             receipt.tags[m.group(1)] = m.group(2)
     status = receipt.status
     if status.startswith("fail "):
-        raise SnapshotError(f"The guest refused the {receipt.verb}: {status[5:]}",
+        raise SnapshotError(f"The guest blocked the {receipt.verb}: {status[5:]}",
                             receipt.as_dict())
     if not status.startswith("ok"):
         raise SnapshotError(f"The guest answered {status!r}, which is neither ok "
@@ -1249,7 +1249,7 @@ Write-Output '<<end>>'
         accepted. So success is a poll over one connection: the query shows the
         path, the drive reads `ro`, then two consecutive polls read `rw` with
         the path unchanged, and the other drive never moves. The guest does the
-        connecting, the ownership checks, the send and the poll; this refuses a
+        connecting, the ownership checks, the send and the poll; this blocks a
         bad request before anything leaves and judges the raw replies afterwards.
 
         A drive is 0 or 1 (an `int`, never a `bool`); `path` is the Windows form
@@ -1259,7 +1259,7 @@ Write-Output '<<end>>'
         the paths this run copied to the guest. Any failure raises `FloppyError`,
         whose `receipt` keeps every reply, and the caller must not press a key on.
         """
-        drive, path, holder, sha256 = refuse_floppy_change(
+        drive, path, holder, sha256 = check_floppy_change(
             drive, path, holder, sha256)
         if staged is not None and path not in staged:
             raise ValueError(f"Floppy path {path!r} is not a disk this run staged "
@@ -1276,15 +1276,15 @@ Write-Output '<<end>>'
         """Run one `winuae.ps1` verb on the guest: its output and the seconds it took.
 
         `insert_floppy` and `drives` are the callers; a control that must reach the
-        guest's own checks with a request Python would refuse calls this directly.
+        guest's own checks with a request Python would block calls this directly.
         """
         if self.pipe != "WinUAE":
-            raise ValueError(f"The pipe {self.pipe!r} is refused: the lane script "
+            raise ValueError(f"The pipe {self.pipe!r} is not allowed: the lane script "
                              "reaches WinUAE's own pipe only")
         words = [verb, "-Holder", holder]
         if token is not None:
             if not _TOKEN.fullmatch(token):
-                raise ValueError(f"Claim token {token!r} is refused: it is not "
+                raise ValueError(f"Claim token {token!r} is not allowed: it is not "
                                  "twelve hexadecimal digits")
             words += ["-Token", token]
         words += args
@@ -1306,8 +1306,8 @@ Write-Output '<<end>>'
             raise FloppyError(f"The guest could not be run: {text}",
                               {"output": text}) from exc
 
-    def refused_verb(self, verb: str, holder: str, args: list[str]) -> str:
-        """Run a lane verb that a control expects the guest to refuse; give its first line.
+    def blocked_verb_reason(self, verb: str, holder: str, args: list[str]) -> str:
+        """Run a lane verb that a control expects the guest to block; give its first line.
 
         A `fail` first line raises `GuestRejection` with the guest's line, whether the
         guest exited 1 before opening the pipe or 0 after it, exactly as
@@ -1332,7 +1332,7 @@ Write-Output '<<end>>'
         try:
             out, receipt.seconds = self.lane_verb(verb, holder, token, [name])
         except GuestRejection as exc:
-            raise SnapshotError(f"The guest refused the {verb}: {exc.line[5:]}",
+            raise SnapshotError(f"The guest blocked the {verb}: {exc.line[5:]}",
                                 exc.receipt) from exc
         except FloppyError as exc:
             raise SnapshotError(str(exc), exc.receipt) from exc
@@ -1392,7 +1392,7 @@ Write-Output '<<end>>'
                 token: str | None = None) -> StateReceipt:
         """Put the machine back as `snapshot(name)` left it, and prove it went back.
 
-        The guest refuses a snapshot with no `complete~` marker or whose file
+        The guest blocks a snapshot with no `complete~` marker or whose file
         does not hash as the marker says. It reads Exec's idle and dispatch
         counts, sends `CFG statefile <file>`, and reads them again until they
         fall to between the snapshot's value and the value read before the
@@ -1626,7 +1626,7 @@ def parse_memory_dump(text: str) -> dict[int, int]:
 #: number; on FS-UAE it is configurable, which is what lets two runs coexist.
 FSUAE_PORT = 2345
 
-#: Packets that would stop the machine or end the run, refused by name. Each is
+#: Packets that would stop the machine or end the run, blocked by name. Each is
 #: read off `barto_gdbserver.cpp`'s own dispatch rather than guessed:
 #:
 #: * `k` -- kill, and the emulator goes with it;
@@ -2004,7 +2004,7 @@ class FsuaeGdb:
             # `E01` is every failure this server has: one unreadable byte
             # anywhere in the range clears the whole reply.
             raise FsuaeError(
-                f"the emulator refused to read {length:#x} bytes at "
+                f"the emulator would not read {length:#x} bytes at "
                 f"{addr:#x} ({reply}); some address in that range is not "
                 "memory this machine has")
         try:
@@ -2061,7 +2061,7 @@ def find_anchor(memory: bytes, base: int, anchor: bytes,
     -- a copy in a buffer, a second instance in another loaded thing -- and a
     locator that took the first hit would be right most of the time and wrong
     silently. The caller checks each candidate against what the game should
-    hold there and refuses when more than one survives.
+    hold there and blocks when more than one survives.
     """
     out, at = [], memory.find(anchor)
     while at >= 0:
@@ -2152,7 +2152,7 @@ def locate_machines(read, machines, memory=MEMORY,
     A title with no hit is absent from the result, and an empty result means
     none of them is loaded (or the one that is has not finished loading). A
     title with more than one base is returned with all of them, for the caller
-    to refuse: see `find_anchor` on why a second copy is reported rather than
+    to block: see `find_anchor` on why a second copy is reported rather than
     resolved here. Because every row is tried, each anchor must be in its own
     executable and no other one, or a running title is also reported as a
     second; `tests/amiga/test_amigatarget.py` checks every pair on the
@@ -2553,7 +2553,7 @@ class AmigaTarget:
             lines.append("g")
 
     def close(self) -> None:
-        """Refuse further reads. **The transport is left alone.**
+        """Block further reads. **The transport is left alone.**
 
         Nothing to close on either WinUAE route -- each call is its own `ssh`
         -- and on `FsuaeGdb` closing would be worse than a leak: the emulator
@@ -2642,7 +2642,7 @@ class AmigaTarget:
         with it. It is in the resident copy of the saved game's `$49xx` array,
         which `layout.notes` names -- one round trip past a pointer, on top of
         a poll that already costs fifteen seconds. And nothing would read it:
-        `Automapper._refused` is the one caller, and it requires *both* fixes
+        `Automapper._blocked_step` is the one caller, and it requires *both* fixes
         to come from the status line, which no fix from this backend ever
         does. `#37 (Automap the Amiga version, not just the C64)` has the
         measurement.
@@ -2825,7 +2825,7 @@ class AmigaTarget:
         addr = int.from_bytes(raw, "big")
         # A null pointer is what the global holds before an area has loaded,
         # and zero is *inside* chip memory -- it is the 68000's exception
-        # vector table, which is never a map. So it is refused by name rather
+        # vector table, which is never a map. So it is blocked by name rather
         # than by the range test below.
         if addr == 0 or not any(base <= addr and addr + 0x400 <= base + length
                                 for base, length in self.memory):

@@ -13,7 +13,7 @@ routine and its own charset, which shares nothing with `goldbox/layout.py`.
 **Nothing is written to the player's disks.**  `--disk` is a copy
 `tools/suite/testparty.py` already made; `tools/c64/session.stage_disks` copies the eight
 sides and that save into the pool slot's own directory, and `Session.attach`
-refuses any path outside it.  `POR_HEADLESS` is the slot's default, so no
+rejects any path outside it.  `POR_HEADLESS` is the slot's default, so no
 window lands on the desktop.
 
 Every event goes to `run.jsonl` as it happens rather than into a summary a
@@ -239,7 +239,7 @@ def item_toggle_pair(sess, log: Log, out: pathlib.Path, name: str,
     whose target item cannot be readied on its own, such as a two-handed
     weapon while a shield is already worn: un-ready the shield, ready the
     weapon, then reverse both, and every step is still a before/after roster
-    read rather than an assumption about why the direct toggle refused.
+    read rather than an assumption about why the direct toggle rejected.
     """
     diffs: list[dict] = []
     steps = sequence or [label, label]
@@ -442,13 +442,13 @@ def _turn_key(sess, log: Log, key: str, expected: int, leg: str, here, there):
     if sess.in_combat():
         seen = None
     else:
-        refused = sess.walk_stopped
-        if refused is not None:
+        rejected = sess.walk_stopped
+        if rejected is not None:
             log.emit("route_key", leg=leg, key=key, to=list(there), turn=True,
-                     facing=None, expected=expected, refused=refused)
+                     facing=None, expected=expected, rejected=rejected)
             return {"leg": leg, "key": key, "from": list(here),
                     "to": list(there), "reason": "not_pressed",
-                    "stopped": refused, "row24": _row24(sess)}
+                    "stopped": rejected, "row24": _row24(sess)}
         # The line can be blank for a moment while the screen redraws after a
         # turn, so it is read again for about a second before it counts as gone.
         seen = _status_line(sess)[0]
@@ -513,7 +513,7 @@ def settle_step(sess, log: Log, key: str, there,
     (`ECL14` entry 1, id 0).  Row 24 goes blank while its monster loads; a
     surprise then prints its line over a `PRESS` bar and goes straight to
     the fight, and any other roll opens `COMBAT WAIT FLEE ADVANCE`.  A key
-    sent in that time is refused by `walk_one`.  So a `PRESS` bar is
+    sent in that time is rejected by `walk_one`.  So a `PRESS` bar is
     answered, a disk prompt handled, and the caller's `walk_encounter` word
     taken once on a menu that
     carries it, as `walk_one` itself does, unless `taken` says it already
@@ -689,7 +689,7 @@ def walk_route(sess, log: Log, path, facing: int, leg: str, out=None,
     After every key that took, `settle_step` waits for the game to come back
     to a bar the next key can go at, because a square's script can still be
     running.  That wait cannot tell a bar left over from before the script
-    from a live one, so a key `walk_one` refused without pressing
+    from a live one, so a key `walk_one` rejected without pressing
     (`not_pressed`) is followed by the same wait and sent once more when a
     walkable bar comes back.  Either wait can find a fight, which stops the
     walk on the square the party stands on.  A key that was sent but did not
@@ -701,7 +701,7 @@ def walk_route(sess, log: Log, path, facing: int, leg: str, out=None,
     screen that never clears, stops the walk with a screenshot under `out`
     when one is given: after a key that took, `reason` is `choice` or
     `unsettled`;
-    after a refused key, `reason` stays `not_pressed` and `after` names
+    after a rejected key, `reason` stays `not_pressed` and `after` names
     which of the two held.
 
     A `BASH PICKLOCK QUIT` bar, a locked door on the square being stepped on,
@@ -782,7 +782,7 @@ def walk_route(sess, log: Log, path, facing: int, leg: str, out=None,
                     bad.update(after=outcome, row24=stop["row24"])
                     return want, None, bad
                 log.emit("route_retry", leg=leg, key=key, to=list(there),
-                         refused=bad["stopped"])
+                         rejected=bad["stopped"])
             outcome, row = settle_step(sess, log, key, landed, quiet=quiet)
             if outcome == "fight":
                 return want, landed, None
@@ -935,7 +935,7 @@ def score_party_icons(sess, log: Log, roll: dict, disks=None) -> None:
     from; `native_default` takes no path and reads `$POR_DISKS` or the
     registry, so the two are the same directory only when the run was started
     that way.  With no directory at all `icon_charset` is asked with None and
-    refuses, which is logged the same way.  Logs `icon_score_unavailable` and returns when `roll` is empty
+    rejects, which is logged the same way.  Logs `icon_score_unavailable` and returns when `roll` is empty
     or the game's own default or glyphs cannot be read.
     """
     if not roll:
@@ -1149,11 +1149,11 @@ def pick_a_fight(sess, log: Log, out: pathlib.Path, steps: int = 150,
 
     Wall-following rather than a fixed pattern: go forward while it works,
     turn (alternating left and right so a dead end does not send this back
-    the way it came) the moment a step is refused.  A first attempt with a
+    the way it came) the moment a step is rejected.  A first attempt with a
     fixed `IIIIJIIII` cycle spent 80 moves getting from (9, 13) to (8, 13) --
     one tile -- because most of the forward presses were walls and the turns
     never pointed it anywhere new twice in a row (a scratch run directory,
-    2026-09-16, deleted).  A wall refusing a step is not an error here, just the
+    2026-09-16, deleted).  A wall rejecting a step is not an error here, just the
     signal to turn.
 
     `fight_at` is a Slums square `(x, y)`: the walk is then planned from the

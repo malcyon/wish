@@ -224,7 +224,7 @@ def _save_as(source: pathlib.Path, slot, port: str, out: pathlib.Path) -> dict:
         window, source, port, out, source_slot=slot, dos_folder=dos,
         amiga_disk=two if port == "amiga" else None,
         amiga_disk_one=one if port == "amiga" else None)
-    assert "refused" not in report, report.get("error")
+    assert "stopped" not in report, report.get("error")
     return report
 
 

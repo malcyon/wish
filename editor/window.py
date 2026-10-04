@@ -94,7 +94,7 @@ OPEN_FILTER = ("Saved game (*.d64 *.D64 *.adf *.ADF SAVGAM?.DAT SAVGAM?.PTY);;"
                "All files (*)")
 
 #: Donald's wording, approved verbatim (#145) -- one line per field that
-#: refused, `{label}` filled from the widget's own on-screen label
+#: blocked, `{label}` filled from the widget's own on-screen label
 #: (`_field_label`), never the internal snake_case field name. No reason, no
 #: value, no second sentence: he approved this sentence whole.
 FIELD_NOT_SAVED = "Error: {label} could not be saved."
@@ -162,7 +162,7 @@ CANNOT_SAVE_TITLE = "Cannot save"
 #: is a fault in Wish.", no field list, no acknowledgement. The field names
 #: and both values go to the debug log only (`saveplan.validate` already
 #: logs them).
-LOSS_REFUSED = "The save could not be converted."
+LOSS_NOT_CONVERTED = "The save could not be converted."
 #: Shown at the DOS game folder row when the folder chosen is another title's;
 #: the two names are the titles' own (`goldbox.titles.Title.title`).
 WRONG_DOS_FOLDER = ("This folder is for {folder}. "
@@ -1400,8 +1400,8 @@ class EditorBinding(QObject):
         offers, though -- an editable combo still accepts whatever the
         player finishes typing, so `_control_committed` (once they finish,
         on the line edit's `editingFinished`) and `_flush_control_fields`
-        are what actually refuse a value that is neither label (review of
-        #623). `_control_changed` must not do that refusing itself -- Qt
+        are what actually block a value that is neither label (review of
+        #623). `_control_changed` must not do that blocking itself -- Qt
         fires it on every keystroke, and rejecting a value there rejects
         each partial keystroke before the player can finish typing.
         """
@@ -1615,7 +1615,7 @@ class EditorBinding(QObject):
         Raises when the combo holds neither of Donald's own two labels --
         `_control_changed` already reverts a stray typed value on the way in,
         but this is the second, independent check: whatever reaches here
-        unrecognised must refuse rather than be read as "Player-controlled"
+        unrecognised must block rather than be read as "Player-controlled"
         and wipe the byte. `_flush`'s caller degrades that to a normal
         per-field save failure (#623 review).
         """
@@ -2913,7 +2913,7 @@ class EditorBinding(QObject):
         self._dos_folder_row_shown = False
 
     def confirm_save_as(self) -> None:
-        """The Save As button: check the name, refuse an alias, confirm a
+        """The Save As button: check the name, block an alias, confirm a
         replacement, prepare the output and publish it."""
         source, port = self._save_as_source, self._save_as_port
         if source is None or port is None or self.party is None:
@@ -2960,7 +2960,7 @@ class EditorBinding(QObject):
 
     def _replace_confirmed(self, path: pathlib.Path) -> bool:
         """C5: confirm before an existing image is replaced. A DOS
-        destination is never "replaced" this way -- `TargetNotEmpty` refuses
+        destination is never "replaced" this way -- `TargetNotEmpty` blocks
         a folder that already holds files, so there is nothing to confirm
         for that port."""
         if self._save_as_port == "dos" or not path.exists():
@@ -3006,8 +3006,8 @@ class EditorBinding(QObject):
                       port, exc)
             if names:
                 # The window lets nothing through that still does not fit, so
-                # this is a writer refusing what the player chose.
-                QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, LOSS_REFUSED)
+                # this is a writer blocking what the player chose.
+                QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, LOSS_NOT_CONVERTED)
                 return None
             if (remembered_names is not None
                     and remembered_names[1] == exc.unfit):
@@ -3024,20 +3024,20 @@ class EditorBinding(QObject):
                                       leave_effects=leave_effects,
                                       remembered_effects=remembered_effects)
         except saveplan.DroppedFields as exc:
-            _log.debug("Save As to %s refused: %s", path, exc)
-            QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, LOSS_REFUSED)
+            _log.debug("Save As to %s blocked: %s", path, exc)
+            QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, LOSS_NOT_CONVERTED)
         except saveplan.MissingAssets:
             self._resolve_destination_assets()
         except saveplan.SaveAsError as exc:
-            _log.debug("Save As to %s refused: %s", path, exc)
+            _log.debug("Save As to %s blocked: %s", path, exc)
             QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, SAVE_AS_FAILED)
         except dos_codec.JoinedScrollsDoNotFit as exc:
             _log.info("The pack does not fit the %s destination: %s",
                       port, exc)
             if leave:
                 # The window lets nothing through that still does not fit, so
-                # this is a writer refusing what the player chose.
-                QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, LOSS_REFUSED)
+                # this is a writer blocking what the player chose.
+                QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, LOSS_NOT_CONVERTED)
                 return None
             packs = self._packs_of(exc.overflow)
             if remembered is not None and remembered[1] == packs:
@@ -3061,8 +3061,8 @@ class EditorBinding(QObject):
                       port, exc)
             if leave_effects:
                 # The window lets nothing through that still does not fit, so
-                # this is a writer refusing what the player chose.
-                QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, LOSS_REFUSED)
+                # this is a writer blocking what the player chose.
+                QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, LOSS_NOT_CONVERTED)
                 return None
             entries = exc.overflow.entries
             if (remembered_effects is not None
@@ -3082,11 +3082,11 @@ class EditorBinding(QObject):
                                       names=names, leave_effects=choice)
         except (dos_codec.DosRecordError, amiga_port.AmigaRecordError,
                 amiga_pod.ConversionError) as exc:
-            # A writer refusing this particular party. Uncaught, PyQt6 aborts
+            # A writer blocking this particular party. Uncaught, PyQt6 aborts
             # the process from the button's slot; it is the same rejection
             # `DroppedFields` is, so it reads the same sentence.
-            _log.debug("Save As to %s refused: %s", path, exc)
-            QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, LOSS_REFUSED)
+            _log.debug("Save As to %s blocked: %s", path, exc)
+            QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, LOSS_NOT_CONVERTED)
         except Exception:
             _log.exception("could not prepare a Save As to %s", path)
             QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, SAVE_AS_FAILED)
@@ -3280,7 +3280,7 @@ class EditorBinding(QObject):
         return text or "a field"
 
     def _report_flush_failures(self, failures: list[str]) -> None:
-        """Pop up Donald's sentence, once per field that refused (#145).
+        """Pop up Donald's sentence, once per field that blocked (#145).
 
         One dialog for the whole flush, not one pop-up per field -- several
         of those in a row would be worse than the silent failure they

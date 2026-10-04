@@ -550,7 +550,7 @@ def test_reading_a_spellbook_never_touches_the_byte_after_it():
     assert spells_known(bytes(record)) == []
 
 
-def test_a_slot_record_refuses_the_fields_it_does_not_carry():
+def test_a_slot_record_blocks_the_fields_it_does_not_carry():
     """The hazard this guards: a save slot holds 256 bytes, and 0x100-0x11F is
     the roster block kept in SAVEDGAME1. Reading armour_class from a slot used
     to answer 0, which through the roster's `60 - value` bias decodes as AC 60 --
@@ -581,7 +581,7 @@ def test_is_stored_is_decided_by_the_end_of_the_field_not_its_start():
     assert not rec.is_stored("hp_current")
 
 
-def test_the_biased_encodings_round_trip_and_refuse_nonsense():
+def test_the_biased_encodings_round_trip_and_block_nonsense():
     """A silent wrap here produces a plausible number -- 60 - (-5) is 65, an
     ordinary byte -- so the encoders raise instead."""
     import pytest

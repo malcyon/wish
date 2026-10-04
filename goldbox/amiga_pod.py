@@ -593,7 +593,7 @@ DERIVED = (ENCUMBRANCE, ENCUMBRANCE + 1, ITEM_COUNT_CACHE, HANDS_USED,
 #: Record bytes the writer leaves zero on purpose, as `(first, last, why)`.
 #: Every other byte of a record is either written, credited by the writer's
 #: own plan, or in :data:`DERIVED`, so a byte in none of the three is one the
-#: writer forgot and the save builder's `unwritten` gate refuses it.
+#: writer forgot and the save builder's `unwritten` gate blocks it.
 LEFT_ZERO: tuple[tuple[int, int, str], ...] = (
     (0x000, 0x043, "the heap: `heap_104`'s two halves, the two chain heads "
                    "and the thirteen readied-item longwords, which the "
@@ -920,7 +920,7 @@ def unbundle(items: Sequence[PodItem],
     its `GAME.OVR` stores type `0x49` into an item, so separate scrolls are how
     it holds the same spells
     (docs/215-the-dos-experience-award-and-the-scroll-bundle.md, section 3).
-    Each scroll takes its case's `readied`: DOS refuses to read a scroll that
+    Each scroll takes its case's `readied`: DOS does not read a scroll that
     is not readied and lets any number be readied at once, and the Amiga
     gates a case by the case's own flag, so a readied case's scrolls arrive
     readied and an unreadied case's arrive unreadied, whatever their own
@@ -1366,7 +1366,7 @@ class PodWriter:
     what the engine's own creation routine would have given this character
     (:func:`engine_default_icon`), because the numbers are menu positions in
     this port's own art and a value past the end of `CHEAD.TLB` makes the
-    loader refuse the file. `provenance()` says where every non-zero byte of
+    loader block the file. `provenance()` says where every non-zero byte of
     the output came from, so nothing lands in the file uncredited.
 
     The tail past the 404-byte record is built here too: `items` are twenty
@@ -1484,7 +1484,7 @@ class PodWriter:
             raise ValueError(f"{CLASS_LEVEL_COUNT} class levels")
         # The ICON screen's own wrap points, which are what the art libraries
         # have: a head past 13 or a body past 31 is an item `CHEAD.TLB` has
-        # not got, and the loader refuses the whole file for one.
+        # not got, and the loader blocks the whole file for one.
         if self.icon_head is not None and not 0 <= self.icon_head <= 13:
             raise ValueError("the combat icon's head is 0 to 13")
         if self.icon_body is not None and not 0 <= self.icon_body <= 31:
@@ -1920,7 +1920,7 @@ def _class_mask(levels: Sequence[int], former: Sequence[int] | None,
 
 
 #: Class combinations -> PoD's class code. Only the combinations both ports
-#: have; a combination PoD's table has no entry for is refused rather than
+#: have; a combination PoD's table has no entry for is blocked rather than
 #: written as something else, which is `yaml_io.class_code_for`'s rule too.
 CLASS_CODE_FROM_C64: dict[frozenset[str], str] = {
     frozenset(k.split("+")): v for k, v in {
@@ -3011,7 +3011,7 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
     # shipped party (#194): ABAGAIL is a magic-user 12 who was a cleric 11
     # and PAINE a magic-user 13 who was a ranger 9. Before this, ABAGAIL was
     # written as `CLERIC/MAGIC-USER`, a class she is not, and PAINE was
-    # refused outright -- Pools of Darkness has no magic-user/ranger code,
+    # blocked outright -- Pools of Darkness has no magic-user/ranger code,
     # and nor should it: no character can be both at once.
     #
     # A class he *regained* -- non-zero in both arrays -- stays, since he
@@ -3067,7 +3067,7 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
             f"behind: only platinum, gems and jewelry have a located home in "
             f"the .pc")
 
-    # **The armour-class base is real state, not padding to refuse on**
+    # **The armour-class base is real state, not padding to block on**
     # (#635): both the DOS and the Amiga engine seed the current armour-class
     # calculation from this stored byte, at creation and on every rebuild, so
     # it is copied through to 0x0B3 rather than replaced with the unarmoured
@@ -3444,7 +3444,7 @@ def _class_names(char: NeutralCharacter, bits: int) -> list[str]:
     key resolves through `titles.BY_KEY` to its own six classes rather than
     falling through to `games`' Pool of Radiance default, which names
     neither the paladin nor the ranger -- every Pools of Darkness paladin
-    used to arrive as an unnameable raw `64` and was refused
+    used to arrive as an unnameable raw `64` and was blocked
     (`#460 (goldbox/games.py has no Pools of Darkness entry, so every lookup
     answers with Pool of Radiance's tables for it)`).
     """

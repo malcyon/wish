@@ -165,7 +165,7 @@ def test_the_debugger_says_it_did_not_know_the_command():
     # space -- and `split(" ")` does not agree with that.
     "g\tc00000", "g\nc00000", "m 0 1;g\tc00000",
 ])
-def test_a_command_that_could_open_a_console_is_refused(command):
+def test_a_command_that_could_open_a_console_is_blocked(command):
     """`activate_debugger()` calls `open_console()`, and that console is a
     window in front of whoever is playing.
 
@@ -180,7 +180,7 @@ def test_a_command_that_could_open_a_console_is_refused(command):
     assert guest.scripts == [], "nothing may reach the guest"
 
 
-def test_ipc_quit_is_refused_by_name():
+def test_ipc_quit_is_blocked_by_name():
     """`uaeipc.cpp:38`: it quits the emulator, mid-game."""
     p, _guest = pipe()
     with pytest.raises(ValueError, match="quits the emulator"):
@@ -194,13 +194,13 @@ def test_a_pipe_that_will_not_open_reports_the_win32_number():
     """The number is the whole diagnosis: 2 is no emulator running, 5 is a
     security descriptor keeping this process out, 231 is somebody else's
     client already connected."""
-    def refuse(argv, timeout):
+    def block(argv, timeout):
         return ("<<error>> System.UnauthorizedAccessException\r\n"
                 "<<message>> Access to the path is denied.\r\n"
                 "<<hresult>> 0x80070005\r\n"
                 "<<win32>> 5\r\n<<end>>\r\n")
 
-    p = amiga.WinuaePipe(runner=refuse)
+    p = amiga.WinuaePipe(runner=block)
     with pytest.raises(amiga.PipeError, match="Win32 5"):
         p.send(["m 0 1"])
 
@@ -284,7 +284,7 @@ def test_a_dump_cut_off_by_winuaes_line_counter_says_so():
         p.memory(0xC00000, 32)
 
 
-def test_a_read_too_big_for_one_reply_is_refused_rather_than_truncated():
+def test_a_read_too_big_for_one_reply_is_blocked_rather_than_truncated():
     """A reply is capped near 16 KB, which is about 3 KB of memory through
     `m`. Past that the caller wants `S` to a file."""
     p, _guest = pipe()
@@ -370,7 +370,7 @@ def test_the_ssh_route_is_one_winvm_call():
     assert len(guest.scripts) == 1
 
 
-def test_a_connection_that_is_neither_is_refused():
+def test_a_connection_that_is_neither_is_blocked():
     with pytest.raises(ValueError, match="neither"):
         amiga.WinuaePipe(connection="telnet")
 
@@ -384,11 +384,11 @@ def test_the_pipe_name_is_settable_because_a_second_winuae_gets_another():
 
 def test_a_semicolon_inside_quotes_is_not_a_second_command():
     """`debug_line` tracks quotes, so a filename with a `;` in it is one
-    piece and must not be refused -- a guard that splits blindly would make
+    piece and must not be blocked -- a guard that splits blindly would make
     `S` unusable on such a path."""
     p, guest = pipe()
     p.send(['S "dump;1" 0 10'])
-    assert guest.scripts, "the command was refused and should not have been"
+    assert guest.scripts, "the command was blocked and should not have been"
 
 
 # -- a floppy insert ----------------------------------------------------------
@@ -733,14 +733,14 @@ def test_the_drives_verb_reads_both_drives_and_changes_nothing():
     assert receipt.status == "ok drives pid=4242"
 
 
-def test_the_drives_verb_refuses_a_pipe_that_answers_no_queries():
+def test_the_drives_verb_blocks_a_pipe_that_answers_no_queries():
     reads = [(0, 100, {**state(), "q0": nul("404")})]
     with pytest.raises(amiga.FloppyError, match="not answering configuration queries"):
         amiga.WinuaePipe(runner=LaneGuest(guest_output("ok drives pid=1", reads, setter=None))).drives(HOLDER)
 
 
 @pytest.mark.parametrize("drive", [2, 3, 4, -1, True, False, "0", None, 0.0, 1.0])
-def test_a_floppy_change_refuses_every_drive_but_df0_and_df1(drive):
+def test_a_floppy_change_blocks_every_drive_but_df0_and_df1(drive):
     guest = LaneGuest()
     with pytest.raises(ValueError, match="only DF0 and DF1 may be changed"):
         insert(guest, drive=drive)
@@ -750,27 +750,27 @@ def test_a_floppy_change_refuses_every_drive_but_df0_and_df1(drive):
 @pytest.mark.parametrize("path,text", [
     (None, "is not a disk this run staged"), (3, "is not a disk this run staged"),
     (b"x", "is not a disk this run staged"),
-    (DISK_B + ";q", "is refused"), (DISK_B.replace("probeB", "pr obeB"), "is refused"),
-    (DISK_B.replace("probeB", 'pr"obeB'), "is refused"),
-    (DISK_B.replace("probeB", "pr'obeB"), "is refused"),
-    (DISK_B.replace("probeB", "pr=obeB"), "is refused"),
-    (DISK_B.replace("probeB", "pr%obeB"), "is refused"),
-    (DISK_B.replace(".adf", ".adf\n"), "is refused"),
-    (DISK_B.replace("probeB", "pr\tobeB"), "is refused"),
-    (DISK_B.replace("probeB", "pr\u00e9obeB"), "is refused"),
-    ("C:\\Amiga\\Disks\\..\\wish679-x.adf", "is refused"),
-    (DISK_B.replace("probeB", "pro..beB"), "is refused"),
-    ("\\\\server\\share\\wish679-x.adf", "is refused"),
-    ("\\\\?\\C:\\Amiga\\Disks\\wish679-x.adf", "is refused"),
-    ("C:\\Amiga\\Disks\\wish679-x.zip", "is refused"),
-    ("D:\\Amiga\\Disks\\wish679-x.adf", "is refused"),
-    ("C:\\Amiga\\Disks\\sub\\wish679-x.adf", "is refused"),
+    (DISK_B + ";q", "is not allowed"), (DISK_B.replace("probeB", "pr obeB"), "is not allowed"),
+    (DISK_B.replace("probeB", 'pr"obeB'), "is not allowed"),
+    (DISK_B.replace("probeB", "pr'obeB"), "is not allowed"),
+    (DISK_B.replace("probeB", "pr=obeB"), "is not allowed"),
+    (DISK_B.replace("probeB", "pr%obeB"), "is not allowed"),
+    (DISK_B.replace(".adf", ".adf\n"), "is not allowed"),
+    (DISK_B.replace("probeB", "pr\tobeB"), "is not allowed"),
+    (DISK_B.replace("probeB", "pr\u00e9obeB"), "is not allowed"),
+    ("C:\\Amiga\\Disks\\..\\wish679-x.adf", "is not allowed"),
+    (DISK_B.replace("probeB", "pro..beB"), "is not allowed"),
+    ("\\\\server\\share\\wish679-x.adf", "is not allowed"),
+    ("\\\\?\\C:\\Amiga\\Disks\\wish679-x.adf", "is not allowed"),
+    ("C:\\Amiga\\Disks\\wish679-x.zip", "is not allowed"),
+    ("D:\\Amiga\\Disks\\wish679-x.adf", "is not allowed"),
+    ("C:\\Amiga\\Disks\\sub\\wish679-x.adf", "is not allowed"),
     ("C:\\Amiga\\Disks\\wish679-" + "x" * 200 + ".adf", "longer than 200"),
     (DISK_B.replace(HOLDER, "wish679-other000000"), "belongs to another holder"),
     (f"C:\\Amiga\\Disks\\wish679-{HOLDER}-.adf", "belongs to another holder"),
     (f"C:\\Amiga\\Disks\\wish679-{HOLDER[:-1]}-probeB.adf", "belongs to another holder"),
 ])
-def test_a_floppy_change_refuses_a_bad_path_before_anything_is_sent(path, text):
+def test_a_floppy_change_blocks_a_bad_path_before_anything_is_sent(path, text):
     guest = LaneGuest()
     with pytest.raises(ValueError, match=text):
         insert(guest, path=path)
@@ -778,7 +778,7 @@ def test_a_floppy_change_refuses_a_bad_path_before_anything_is_sent(path, text):
 
 
 @pytest.mark.parametrize("sha", [None, "", "b" * 63, "b" * 65, "g" * 64, " " + "b" * 63])
-def test_a_floppy_change_refuses_a_hash_that_is_not_a_sha256(sha):
+def test_a_floppy_change_blocks_a_hash_that_is_not_a_sha256(sha):
     guest = LaneGuest()
     with pytest.raises(ValueError, match="is not 64 hexadecimal digits"):
         insert(guest, sha=sha)
@@ -786,21 +786,21 @@ def test_a_floppy_change_refuses_a_hash_that_is_not_a_sha256(sha):
 
 
 @pytest.mark.parametrize("holder", ["", "a b", "x;y", "a" * 65, None, "a/b"])
-def test_a_floppy_change_refuses_a_holder_that_is_not_lane_safe(holder):
+def test_a_floppy_change_blocks_a_holder_that_is_not_lane_safe(holder):
     guest = LaneGuest()
     with pytest.raises(ValueError, match="not a lane-safe name"):
         insert(guest, holder=holder)
     assert guest.calls == []
 
 
-def test_a_floppy_change_refuses_a_token_that_is_not_the_claims():
+def test_a_floppy_change_blocks_a_token_that_is_not_the_claims():
     guest = LaneGuest()
     with pytest.raises(ValueError, match="twelve hexadecimal digits"):
         amiga.WinuaePipe(runner=guest).insert_floppy(0, DISK_B, HOLDER, SHA_B, token="x; dbg")
     assert guest.calls == []
 
 
-def test_a_floppy_change_refuses_a_pipe_that_is_not_winuaes_own():
+def test_a_floppy_change_blocks_a_pipe_that_is_not_winuaes_own():
     guest = LaneGuest()
     with pytest.raises(ValueError, match="WinUAE's own pipe only"):
         insert(guest, pipe="WinUAE_1")
@@ -808,17 +808,17 @@ def test_a_floppy_change_refuses_a_pipe_that_is_not_winuaes_own():
 
 
 def test_a_floppy_change_never_goes_through_the_debugger_script(monkeypatch):
-    def refuse(*a, **k):
+    def block(*a, **k):
         raise AssertionError("a floppy change went through script()")
 
-    monkeypatch.setattr(amiga.WinuaePipe, "script", refuse)
-    monkeypatch.setattr(amiga.WinuaePipe, "_framed", refuse)
+    monkeypatch.setattr(amiga.WinuaePipe, "script", block)
+    monkeypatch.setattr(amiga.WinuaePipe, "_framed", block)
     guest = LaneGuest(guest_output("ok inserted drive=0 polls=4", swap_reads()))
     insert(guest)
 
 
 @pytest.mark.parametrize("command", ["CFG floppy0 x dbg g", "ipc_quit", "g", "IPC_QUIT"])
-def test_the_debugger_route_still_refuses_what_could_open_a_console(command):
+def test_the_debugger_route_still_blocks_what_could_open_a_console(command):
     guest = LaneGuest()
     if command.startswith("CFG"):
         # The debugger prefix goes on in front, so a CFG text is a debugger word, not a setter.
@@ -835,30 +835,30 @@ def test_a_debugger_command_still_goes_down_with_dbg_and_never_cfg():
     assert guest.messages == ["DBG m 0 1"]
 
 
-def test_a_verb_the_guest_refuses_after_the_pipe_is_open_still_raises_with_its_text():
+def test_a_verb_the_guest_blocks_after_the_pipe_is_open_still_raises_with_its_text():
     guest = LaneGuest("fail C:\\x.adf does not exist\r\n<<end>>\r\n")
     with pytest.raises(amiga.FloppyError, match="C:.x.adf does not exist"):
-        amiga.WinuaePipe(runner=guest).refused_verb("insert", HOLDER, ["0", DISK_B, SHA_B])
+        amiga.WinuaePipe(runner=guest).blocked_verb_reason("insert", HOLDER, ["0", DISK_B, SHA_B])
 
 
 def test_a_verb_the_guest_accepts_returns_its_first_line_and_a_rejection_before_the_pipe_raises():
-    said = amiga.WinuaePipe(runner=LaneGuest("ok inserted drive=0\r\n<<end>>\r\n")).refused_verb(
+    said = amiga.WinuaePipe(runner=LaneGuest("ok inserted drive=0\r\n<<end>>\r\n")).blocked_verb_reason(
         "insert", HOLDER, ["0", DISK_B, SHA_B])
     assert said == "ok inserted drive=0"
     with pytest.raises(amiga.FloppyError, match="claimed by other"):
         amiga.WinuaePipe(runner=LaneGuest(error=amiga.GuestError(
-            "winvm ssh failed: fail the WinUAE lane is claimed by other"))).refused_verb(
+            "winvm ssh failed: fail the WinUAE lane is claimed by other"))).blocked_verb_reason(
                 "insert", HOLDER, ["0", DISK_B, SHA_B])
 
 
 def test_a_fail_line_from_a_non_zero_exit_is_a_rejection_and_any_other_error_is_not():
     err = amiga.GuestError("winvm ssh failed: fail the WinUAE lane is claimed by other since t\nIf x has gone")
     with pytest.raises(amiga.GuestRejection) as caught:
-        amiga.WinuaePipe(runner=LaneGuest(error=err)).refused_verb("insert", HOLDER, ["0", DISK_B, SHA_B])
+        amiga.WinuaePipe(runner=LaneGuest(error=err)).blocked_verb_reason("insert", HOLDER, ["0", DISK_B, SHA_B])
     assert caught.value.line == "fail the WinUAE lane is claimed by other since t"
     other = amiga.GuestError("winvm ssh did not answer in 60s")
     with pytest.raises(amiga.FloppyError) as caught:
-        amiga.WinuaePipe(runner=LaneGuest(error=other)).refused_verb("insert", HOLDER, ["0", DISK_B, SHA_B])
+        amiga.WinuaePipe(runner=LaneGuest(error=other)).blocked_verb_reason("insert", HOLDER, ["0", DISK_B, SHA_B])
     assert not isinstance(caught.value, amiga.GuestRejection)
 
 
@@ -973,7 +973,7 @@ def test_a_state_file_that_never_appeared_is_the_guests_one_sentence():
     out = saved(extra=(), status=f"fail {pending}")
     with pytest.raises(amiga.SnapshotError) as err:
         snap(LaneGuest(out))
-    assert str(err.value) == f"The guest refused the snapshot: {pending}"
+    assert str(err.value) == f"The guest blocked the snapshot: {pending}"
     assert err.value.receipt["messages"][1]["text"] == PATH_MSG
 
 
@@ -1017,7 +1017,7 @@ def test_a_rejection_before_the_pipe_opens_is_a_snapshot_error_with_the_guests_t
 
 
 @pytest.mark.parametrize("name", ["", "a b", "..", "a\\b", "x" * 33, "a;b", None])
-def test_a_snapshot_name_that_is_not_a_word_is_refused_before_anything_is_sent(name):
+def test_a_snapshot_name_that_is_not_a_word_is_blocked_before_anything_is_sent(name):
     guest = LaneGuest(saved())
     with pytest.raises(ValueError, match="Snapshot name"):
         snap(guest, name=name)
@@ -1025,7 +1025,7 @@ def test_a_snapshot_name_that_is_not_a_word_is_refused_before_anything_is_sent(n
 
 
 @pytest.mark.parametrize("holder", ["a..b", ".", "..", "abc."])
-def test_a_holder_windows_would_read_as_another_folder_is_refused(holder):
+def test_a_holder_windows_would_read_as_another_folder_is_blocked(holder):
     guest = LaneGuest(saved())
     with pytest.raises(ValueError, match="another folder"):
         snap(guest, holder=holder)
@@ -1083,7 +1083,7 @@ def test_a_restore_of_another_file_is_an_error():
         amiga.WinuaePipe(runner=guest).restore("before-walk", HOLDER)
 
 
-def test_a_restore_of_a_name_never_saved_is_the_guests_refusal():
+def test_a_restore_of_a_name_never_saved_is_the_guests_block():
     error = amiga.GuestError(
         f"winvm ssh failed: fail there is no snapshot before-walk for {HOLDER}")
     with pytest.raises(amiga.SnapshotError, match="there is no snapshot before-walk"):
@@ -1133,7 +1133,7 @@ def test_the_lane_script_sends_the_pending_save_before_the_folder():
 
 @pytest.mark.parametrize("holder", ["CON", "con", "Nul", "PRN", "AUX", "COM1", "com9",
                                     "LPT1", "lpt9", "CON.x", "nul.anything"])
-def test_a_holder_that_is_a_windows_device_name_is_refused_before_anything_is_sent(holder):
+def test_a_holder_that_is_a_windows_device_name_is_blocked_before_anything_is_sent(holder):
     guest = LaneGuest(saved())
     with pytest.raises(ValueError, match="Windows device name"):
         snap(guest, holder=holder)
@@ -1141,7 +1141,7 @@ def test_a_holder_that_is_a_windows_device_name_is_refused_before_anything_is_se
 
 
 @pytest.mark.parametrize("name", ["CON", "con", "aux", "Com3", "LPT2", "nul"])
-def test_a_snapshot_name_that_is_a_windows_device_name_is_refused(name):
+def test_a_snapshot_name_that_is_a_windows_device_name_is_blocked(name):
     guest = LaneGuest(saved())
     with pytest.raises(ValueError, match="Windows device name"):
         snap(guest, name=name)

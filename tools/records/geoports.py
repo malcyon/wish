@@ -481,7 +481,7 @@ def report_closest(out: io.TextIOBase, show: int = 10,
             # `(gap - 1) // 2`, not `gap // 2`. The line above states a strict
             # bound -- "must stay under 40" is satisfied by 39 -- but this one
             # names the value the constant would *become*, and the check it is
-            # answering is `2 * NEAR_ENOUGH >= gap`, which refuses equality. On
+            # answering is `2 * NEAR_ENOUGH >= gap`, which blocks equality. On
             # an even gap `gap // 2` is the first value that fails: 2 x 9 is 18
             # and Pools of Darkness' closest pair is 18 apart. Odd gaps hid it,
             # because floor division already lands one under the half.

@@ -31,12 +31,12 @@ about the code that ships.
 **Every address here is Curse's, read out of Curse's overlays**, and none of
 them is Pool of Radiance's with an offset applied by hand: `tools/areas/newecl.py`
 prints the derivation.  They are re-derived at run time rather than written
-down, so a differently-cracked release answers with its own or refuses.
+down, so a differently-cracked release answers with its own or rejects.
 
 **The party must be indoors.**  Warping out of an overland area with the
 indoors flag clear wedges Pool of Radiance's loader in an unrecoverable
 `INSERT SIDE #` loop (`docs/118-debug-mode.md` §3), and nothing suggests Curse
-is kinder; `--force` is there to test that claim deliberately and is refused
+is kinder; `--force` is there to test that claim deliberately and is rejected
 otherwise.
 
 Nothing is written to the player's disks.  `curserun.stage` copies the six
@@ -640,7 +640,7 @@ def run(args) -> int:
         if args.probe:
             return 0
         if not before["idle"]:
-            print(f"the PC is ${pc:04X} and not in a key window; refusing",
+            print(f"the PC is ${pc:04X} and not in a key window; rejecting",
                   flush=True)
             return 4
         if before["mode"] != 1:
@@ -671,7 +671,7 @@ def run(args) -> int:
             print("FastTravel.apply:", json.dumps(made), flush=True)
             (out / "writes.json").write_text(json.dumps(made, indent=1))
             if not made.get("ok"):
-                print("the action refused; nothing was written", flush=True)
+                print("the action rejected; nothing was written", flush=True)
                 return 4
         else:
             made = warp(sess, addr, args.to, args.disk, square)

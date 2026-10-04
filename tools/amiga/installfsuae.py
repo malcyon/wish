@@ -13,9 +13,9 @@ unpacks only `package/bin/fs-uae/` into `uae-dap-<version>` under the directory
 only build in the tarball that runs here.
 
 A download whose digest differs is deleted and nothing is unpacked, and a tar
-member that would land outside the target directory refuses the whole archive.
+member that would land outside the target directory blocks the whole archive.
 Only a directory this script made is ever replaced: nothing else under `--into`
-is touched, and a `uae-dap-<version>` that does not hold the binary is refused.
+is touched, and a `uae-dap-<version>` that does not hold the binary is blocked.
 A second run with the binary already in place does nothing and says so.
 """
 
@@ -92,7 +92,7 @@ def wanted_members(archive: tarfile.TarFile) -> list[tuple[tarfile.TarInfo, str]
     """The members under `MEMBER_ROOT`, each with its path below it.
 
     Every member is checked, wanted or not: a tarball with one that would leave
-    the target directory is refused whole rather than trimmed.
+    the target directory is blocked whole rather than trimmed.
     """
     wanted = []
     for member in archive.getmembers():
@@ -109,15 +109,15 @@ def wanted_members(archive: tarfile.TarFile) -> list[tuple[tarfile.TarInfo, str]
 
 
 def check_replaceable(into: pathlib.Path) -> None:
-    """Refuse an existing `into` that does not hold the binary.
+    """Block an existing `into` that does not hold the binary.
 
     Whatever else is there was not put there by this script, and `--into`
     can name any directory a person has.
     """
     if into.is_symlink() and not into.exists():
-        raise ValueError(f"Refusing to replace {into}: it is a broken link")
+        raise ValueError(f"Will not replace {into}: it is a broken link")
     if into.exists() and not (into / BINARY).exists():
-        raise ValueError(f"Refusing to replace {into}: it does not contain "
+        raise ValueError(f"Will not replace {into}: it does not contain "
                          f"{BINARY}, so this script did not create it")
 
 
@@ -174,7 +174,7 @@ def extract(tarball: pathlib.Path, into: pathlib.Path) -> None:
 
 def require_https(url: str) -> None:
     if urllib.parse.urlsplit(url).scheme != "https":
-        raise ValueError(f"Refusing {url}: only https is allowed")
+        raise ValueError(f"Blocking {url}: only https is allowed")
 
 
 class HttpsOnlyRedirect(urllib.request.HTTPRedirectHandler):
@@ -186,7 +186,7 @@ class HttpsOnlyRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def download(url: str, to: pathlib.Path, opener=None, limit: int = MAX_BYTES) -> None:
-    """Fetch `url` to `to` over https, refusing more than `limit` bytes."""
+    """Fetch `url` to `to` over https, blocking more than `limit` bytes."""
     require_https(url)
     opener = opener or urllib.request.build_opener(HttpsOnlyRedirect)
     total = 0

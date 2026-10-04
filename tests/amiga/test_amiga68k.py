@@ -97,6 +97,6 @@ def test_an_absolute_reference_resolves_through_the_reloc_table():
     assert any("h1+0x4" in ln and '"Loading..."' in ln for ln in lines), lines
 
 
-def test_a_file_without_a_hunk_header_is_refused():
+def test_a_file_without_a_hunk_header_is_blocked():
     with pytest.raises(ValueError):
         Executable.parse(b"DOS\0" + bytes(60))

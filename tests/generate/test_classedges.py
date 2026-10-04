@@ -4,7 +4,7 @@
 with one port per platform a title shipped on)` is judged at each stage by
 whether `Title` has an edge in a `goldbox/`-scoped class diagram, and
 `tools/generate/classdiagram.py` cannot draw one here -- `pylint` is not in `.venv` and
-the tool refuses to install it.  So the count is read out of the AST instead,
+the tool declines to install it.  So the count is read out of the AST instead,
 and this is what says the reading is the same one `pyreverse` would make:
 **an annotated attribute counts, a parameter does not.**
 

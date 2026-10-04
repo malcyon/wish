@@ -13,7 +13,7 @@
 # three times in one night -- every call reporting ok.
 #
 # Each scenario is one of those, as a driver B doing something to a driver A's
-# emulator. PASS means B was refused.
+# emulator. PASS means B was blocked.
 #
 # It leaves nothing behind: the lane is reset before and after every scenario,
 # and never by killing a process by name -- Stop-ScheduledTask ends the tree
@@ -127,7 +127,7 @@ function Scenario-Args {
   Reset-Lane | Out-Null
 }
 
-# The guards have to refuse the neighbour without refusing the holder, and a
+# The guards have to block the neighbour without blocking the holder, and a
 # check that only ever asserts a rejection cannot tell a working lane from a
 # bricked one.
 function Scenario-Own {
@@ -201,7 +201,7 @@ function Scenario-Hijack {
     # intruder then replaced it -- which is A destroying B's run afterwards, a
     # real thing but not this scenario's, and not something `start` can prevent
     # once it has returned. What protects B there is the run receipt, which
-    # refuses B's next call. That case is now named on its own line instead of
+    # blocks B's next call. That case is now named on its own line instead of
     # being counted as a hijack or hidden as a pass.
     $okPid  = if ($out -match '(?m)^ok pid=(\d+)') { [int]$Matches[1] } else { 0 }
     $okProc = if ($okPid) { @(Emulators | Where-Object { $_.ProcessId -eq $okPid })[0] } else { $null }
@@ -211,7 +211,7 @@ function Scenario-Hijack {
             "round ${n}: B was not handed A's emulator as its own success $note" `
             ("B said: $out`nfirst emulator up: $($intruder.CommandLine)`nrunning: $($live.CommandLine)")
     if ($okPid -and -not $okProc) {
-      "        | note: A replaced B's emulator after B returned ok pid=$okPid; the run receipt is what refuses B's next call"
+      "        | note: A replaced B's emulator after B returned ok pid=$okPid; the run receipt is what blocks B's next call"
     }
   }
   "  $raced of $HijackRounds rounds actually raced"
@@ -269,7 +269,7 @@ function Scenario-Reclaim {
     # Both halves, and the second half is not decoration. With only
     # `$intruded -eq 0` this scenario passed four times against a build whose
     # every re-claim failed -- nobody else could take a lane driverA was
-    # continuously refusing to give up, so nothing was intruded and nothing was
+    # continuously declining to give up, so nothing was intruded and nothing was
     # asserted about driverA still being able to hold it. Denying the holder its
     # own normal operation has to fail here too.
     Verdict ($intruded -eq 0 -and $reasserted -gt 0) `
@@ -281,10 +281,10 @@ function Scenario-Reclaim {
 
 # `send` is the one command that takes a pid from the caller, and a supplied
 # -TargetPid used to be preferred over the one the ownership check had just
-# proved. That it was inert depended on a different check refusing two
+# proved. That it was inert depended on a different check blocking two
 # emulators, which is not the same as being safe.
 function Scenario-SendPid {
-  "sendpid: send must refuse a -TargetPid that is not this lane's emulator"
+  "sendpid: send must block a -TargetPid that is not this lane's emulator"
   if (-not (Reset-Lane)) { Verdict $false 'lane would not reset' ''; return }
   if ($HasClaim) { Drive @('claim', '-Holder', 'lanecheck') | Out-Null }
   $a = Drive (@('start') + (Holder-Args 'lanecheck') + @('-log', '-f', $ConfigB, '-s', 'floppy0='))
@@ -294,7 +294,7 @@ function Scenario-SendPid {
   # $PID is this check's own process: a real pid, certainly not the emulator.
   $wrong = Drive (@('send', "-TargetPid $PID -DumpOnly -Tail 5") + (Holder-Args 'lanecheck'))
   Verdict ($wrong.code -ne 0 -and $wrong.out -match 'but this lane') `
-          "a -TargetPid that is not the lane's emulator is refused" $wrong.out
+          "a -TargetPid that is not the lane's emulator is blocked" $wrong.out
   # The lane's OWN pid first, in lower case, and a bogus one second. Getting the
   # first one right is what makes this a test of the duplicate rule rather than
   # of the equality check beside it -- and the lower case is the point, because
@@ -302,7 +302,7 @@ function Scenario-SendPid {
   $mypid = if ($a.out -match 'ok pid=(\d+)') { $Matches[1] } else { '0' }
   $dupe = Drive (@('send', "-targetpid $mypid -TargetPid $PID -DumpOnly -Tail 5") + (Holder-Args 'lanecheck'))
   Verdict ($dupe.code -ne 0 -and $dupe.out -match 'more than one') `
-          'two -TargetPid flags of differing case are refused as a duplicate' $dupe.out
+          'two -TargetPid flags of differing case are blocked as a duplicate' $dupe.out
   $right = Drive (@('send', '-DumpOnly -Tail 5') + (Holder-Args 'lanecheck'))
   Verdict ($right.code -eq 0) 'the lane can still read its own console back' `
           (($right.out -split "`r?`n" | Select-Object -Last 2) -join ' / ')
@@ -340,7 +340,7 @@ function Scenario-ClaimRace {
 }
 
 function Scenario-ForeignStop {
-  "foreignstop: B's `stop` must refuse an emulator A started"
+  "foreignstop: B's `stop` must block an emulator A started"
   for ($n = 1; $n -le $Rounds; $n++) {
     if (-not (Reset-Lane)) { Verdict $false "round ${n}: lane would not reset" ''; continue }
     if ($HasClaim) { Drive (@('claim') + (Holder-Args 'driverA')) | Out-Null }
@@ -366,35 +366,35 @@ function Scenario-ForeignStop {
 }
 
 function Scenario-ForeignKey {
-  "foreignkey: B's `key` must refuse an emulator A started"
+  "foreignkey: B's `key` must block an emulator A started"
   for ($n = 1; $n -le $Rounds; $n++) {
     if (-not (Reset-Lane)) { Verdict $false "round ${n}: lane would not reset" ''; continue }
     if ($HasClaim) { Drive (@('claim') + (Holder-Args 'driverA')) | Out-Null }
     $a = Drive (@('start') + (Holder-Args 'driverA') + @('-log', '-f', $ConfigA))
     if (@(Emulators).Count -ne 1) { Verdict $false "round ${n}: A's emulator did not start" $a.out; continue }
     $b = Drive @('key', '7A')
-    Verdict ($b.code -ne 0) "round ${n}: B's keypress was refused" ("B said: $($b.out)")
+    Verdict ($b.code -ne 0) "round ${n}: B's keypress was blocked" ("B said: $($b.out)")
   }
   Reset-Lane | Out-Null
 }
 
 function Scenario-Claim {
-  "claim: a second holder is refused"
+  "claim: a second holder is blocked"
   if (-not $HasClaim) { "  n/a $Driver has no claim"; return }
   Reset-Lane | Out-Null
   $first  = Drive @('claim', '-Holder', 'driverA')
   Verdict ($first.code -eq 0) 'the first holder is granted the lane' $first.out
   $second = Drive @('claim', '-Holder', 'driverB')
-  Verdict ($second.code -ne 0) 'the second holder is refused' $second.out
+  Verdict ($second.code -ne 0) 'the second holder is blocked' $second.out
   $wrong  = Drive @('release', '-Holder', 'driverB')
-  Verdict ($wrong.code -ne 0) 'a release by anyone but the holder is refused' $wrong.out
+  Verdict ($wrong.code -ne 0) 'a release by anyone but the holder is blocked' $wrong.out
   $steal  = Drive @('claim', '-Holder', 'driverB', '-Override')
   Verdict ($steal.code -eq 0 -and $steal.out -match 'taken from driverA') `
           'a stale claim can be taken deliberately, and says whose it was' $steal.out
   $free   = Drive @('release', '-Holder', 'driverB')
   Verdict ($free.code -eq 0) 'the holder can release' $free.out
   $unheld = Drive @('start', '-log', '-f', $ConfigB)
-  Verdict ($unheld.code -ne 0) 'an unclaimed start is refused' $unheld.out
+  Verdict ($unheld.code -ne 0) 'an unclaimed start is blocked' $unheld.out
   Reset-Lane | Out-Null
 }
 

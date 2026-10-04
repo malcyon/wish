@@ -9,7 +9,7 @@ the window handles them generically and never has to know which is which.
 
 **Neither consistency rule is enforced.** A memorised spell ought to be one the
 character knows, and the count at each level ought to fit what class, level and
-Wisdom allow. The CLI reports both and refuses neither, because the point of an
+Wisdom allow. The CLI reports both and blocks neither, because the point of an
 editor is to be able to try what the game has not been shown. So the capacity
 sits beside the list and an unknown spell is coloured, and the edit goes
 through either way.

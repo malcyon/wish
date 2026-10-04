@@ -345,7 +345,7 @@ from it (`#187 (Silver Blades characters are shown Pool of Radiance's level
 progression)`). The trainer's own inputs -- the thief-skill racial
 adjustment, the constitution hit-point bonus, the wisdom bonus spells, the
 turning table -- were unread or unattributed here, which is why the title was
-refused; a driven training has since reproduced every field, and
+blocked; a driven training has since reproduced every field, and
 `levels.TRAINER_MEASURED` now names it.
 
 Read three of those even if the rest is a lookup table.
@@ -389,12 +389,12 @@ platinum and 124,000 experience were the same after five presses, where Curse
 takes 1,000 gp a class and lowers the experience to one under the next
 threshold. The thief skills were rewritten from a dexterity the engine read
 (`0x0A5`-`0x0AC` all moved), which is the input `goldbox/levelup.py` still
-refuses this title for; the pairs are in `cited/344` for whoever reads
+blocks this title for; the pairs are in `cited/344` for whoever reads
 `$126D` next. The engine's own save of the trained party is
 `~/wish-specimens/por-c64/WISH-SPEC-ssb-malachite-trained.D64`.
 
 **The racial limits are a third independent source for the race table.** The
-routine at `$178A` refuses to look one up for race 6 or above — the human rule —
+routine at `$178A` will not look one up for race 6 or above — the human rule —
 and the five rows below it are AD&D's elf, half-elf, dwarf, gnome and halfling
 in exactly the order `goldbox/titles.py:RACES_SILVER_BLADES` already had from the
 label pool and from the import's own arithmetic.
@@ -441,7 +441,7 @@ than inferred.
 Verdigris reached a wandering encounter; the flag went `1` `DUNGEON` → `4`
 `COM.PREP` → `2` `COMBAT`, with `MOVE VIEW AIM TURN QUICK DONE` on the command
 bar. `actions.in_combat` answered True, `heal` stayed legal, and `identify`,
-`store-spells` and `restore-spells` each refused with "refused during a fight
+`store-spells` and `restore-spells` each stopped with "not available during a fight
 (`$7F11` is 2)". The roster read correctly *during* the fight too. `4` had
 never been sampled live in any title before this.
 
@@ -478,7 +478,7 @@ contradictions. It is `WALK` in `tests/secret_of_the_silver_blades/test_ssblive.
 the valuable half — `GEO10` has 480 edges and few are shut, so one blocked step
 identifies the map where a dozen successful steps would not.
 
-**Costs, measured.** A move is one minute, a turn is free, and **a refused move
+**Costs, measured.** A move is one minute, a turn is free, and **a blocked move
 is free** — four bumps at `(3,3)` facing east left the clock at `0:05`.
 `automap.state`'s `_refused` infers a one-minute cost and says in its docstring
 that it is inferred; on this title it would never fire.
@@ -551,7 +551,7 @@ they are listed here rather than made.
 | **The address the save writes need not be the address the game reads.** `$4BC0` did not move across six steps and two turns | say so where the `$49C0` lag is described. "Lags a move" is the mild version of this failure; "does not move at all" is the severe one, and both look identical for the first step |
 | **The resident `GEO` is at `$0400` in a third title** | promote it: two games was a pattern, three is the rule. The loader does not relocate the map block |
 | **The save-image search worked in one step, exactly as written** | promote it too. Comparing the live region against a save the game had just written gave the base with 25 bytes of difference, all of them the loaded-file cache |
-| **A refused move costs no time here** | the skill says the cost of a bump is unmeasured. It is measured now, for one title: zero. Keep the "unmeasured" wording for the others |
+| **A blocked move costs no time here** | the skill says the cost of a bump is unmeasured. It is measured now, for one title: zero. Keep the "unmeasured" wording for the others |
 | **A D64 written by a driven session must be flushed before it is read** | a new hazard row. It is not in the list, it looks exactly like a corrupt file, and it made a working import answer `CHARACTER NOT FOUND` |
 | **`spells_known` is sixteen bytes on this engine** | the per-game constants table gains a row, and `goldbox/layout.py`'s note that "nothing proves it stops at eight" can be replaced by the `GEN` clear loop |
 | **The disk prompts and the side letters are per-title** | `INSERT SIDE A` is a letter here where Pool of Radiance uses a digit, and the import and export prompts name the *other* game. A driver that matches Pool of Radiance's wordings answers none of them |

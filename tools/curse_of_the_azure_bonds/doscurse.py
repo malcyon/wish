@@ -214,7 +214,7 @@ class Console:
         """The session's capture; on DOSBox-X a torn grab is halved loosely.
 
         A grab torn between two blits is halved by each block's top-left pixel
-        rather than refused, so an animated screen still gets its shot and
+        rather than rejected, so an animated screen still gets its shot and
         its digests.
         """
         try:

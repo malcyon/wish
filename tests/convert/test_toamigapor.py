@@ -271,7 +271,7 @@ def test_the_copied_container_is_still_reachable_and_says_so(tmp_path, capsys):
 # Rejections, which need no game data at all
 # ---------------------------------------------------------------------------
 
-def test_two_sources_at_once_are_refused(tmp_path):
+def test_two_sources_at_once_are_blocked(tmp_path):
     from tools.amiga import toamigapor
 
     with pytest.raises(SystemExit) as caught:
@@ -281,7 +281,7 @@ def test_two_sources_at_once_are_refused(tmp_path):
     assert "exactly one" in str(caught.value)
 
 
-def test_no_source_at_all_is_refused(tmp_path):
+def test_no_source_at_all_is_blocked(tmp_path):
     from tools.amiga import toamigapor
 
     with pytest.raises(SystemExit) as caught:
@@ -292,7 +292,7 @@ def test_no_source_at_all_is_refused(tmp_path):
 
 @pytest.mark.skipif(not gamedata.have_specimen("curse-234-before"),
                     reason="needs WISH-SPEC-curse-234-before")
-def test_a_dos_curse_party_is_refused_before_any_conversion_work(tmp_path):
+def test_a_dos_curse_party_is_blocked_before_any_conversion_work(tmp_path):
     """A conversion is between two ports of the same title.
 
     Pointing this at a DOS Curse folder used to print a full report that read
@@ -305,7 +305,7 @@ def test_a_dos_curse_party_is_refused_before_any_conversion_work(tmp_path):
 
     where = gamedata.specimen("curse-234-before")
     disk = _por_disk_1(tmp_path)
-    out = tmp_path / "por1-refused.adf"
+    out = tmp_path / "por1-blocked.adf"
     with pytest.raises(SystemExit) as raised:
         toamigapor.main([str(disk), "--to", "B", "--out", str(out),
                          "--dos", str(where), "--dos-slot", "C"])
@@ -314,9 +314,9 @@ def test_a_dos_curse_party_is_refused_before_any_conversion_work(tmp_path):
 
 
 def test_the_input_disk_cannot_be_named_as_the_output(tmp_path):
-    """A player's own disk given twice is refused before anything is written.
+    """A player's own disk given twice is blocked before anything is written.
 
-    `tools/amiga/porslot.py` has refused this from the start and said why: the
+    `tools/amiga/porslot.py` has blocked this from the start and said why: the
     player keeps their disks somewhere the script is pointed at by hand, so
     naming the same file as the source and the destination is a typo away.
     `tools/amiga/toamigapor.py` had no such guard, and either `--out` or

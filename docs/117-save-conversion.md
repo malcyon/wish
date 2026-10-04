@@ -13,7 +13,7 @@ Donald ruled on 2026-09-09 that it was deleted rather than finished. `File >
 Convert…` (`editor/convert.py`) is built only behind
 `WISH_EXPERIMENTAL_POD_CONVERT`, for the Amiga-to-DOS Pools of Darkness
 direction; every other direction is converted through Save As in the Character
-Editor (`editor/saveplan.py`), which refuses a party with a reported loss.
+Editor (`editor/saveplan.py`), which blocks a party with a reported loss.
 Everything the plan said had to be found out first has been found out —
 the spell tables agree exactly, nothing DOS stores is lost that matters, and
 the clock is the one loose end.
@@ -644,11 +644,8 @@ each returns a `WorldState`.
 Bonds and Secret of the Silver Blades), the per-script `scratch`, whether the
 party is `outdoors`, its `travel` square, whether it has `set_out` at all —
 false only for a save made from the party-formation menu, before `BEGIN
-ADVENTURING`, substituted from `goldbox.areas.STARTS` rather than refused
-(#301 (A DOS Curse save standing in area 0 is refused by the import, because
-no row of the area table names area 0), #326 (A Pool of Radiance save made
-before the party began adventuring is refused, because the initialiser left
-$49E6 at 0 and New Phlan is indoors)) — and the later titles' own copied
+ADVENTURING`, substituted from `goldbox.areas.STARTS` rather than blocked
+(#301, #326) — and the later titles' own copied
 `header` words (`+$E7`-`+$E9`, `+$FD`-`+$FE`; empty of meaning for Pool of
 Radiance, which copies none of them). The addresses it reads are the ones
 `docs/141-dos-savegame.md` maps for DOS and C64 and `docs/165-amiga-savegame.md`
@@ -719,9 +716,9 @@ can have nowhere to go. **`goldbox.c64_codec.write` clamps it**: a total above
 `report.warnings` (not `dropped` or `losses`) gets one line saying the experience was clamped and from
 what (`experience: DOS holds 16777216, which does not fit the C64's 3 bytes;
 written as 16777215, the most they hold`). The character converts rather than
-being refused, which is Donald's decision: refusing leaves the player with no
+being blocked, which is Donald's decision: blocking leaves the player with no
 converted character at all, and a clamped one is the most the C64 can hold. A
-negative value is still refused, since no field holds it. **CONFIRMED**: the
+negative value is still blocked, since no field holds it. **CONFIRMED**: the
 boundary is exact, `0xFFFFFF` kept and `0x1000000` and `0x7FFFFFFF` clamped to
 it, on an engine-written Curse record and an engine-written Silver Blades one
 and on blank records of both titles (`tests/records/test_xpceiling.py`).
@@ -729,8 +726,8 @@ and on blank records of both titles (`tests/records/test_xpceiling.py`).
 The line goes to the debug log and nowhere a player reads (`editor/saveplan.py`
 and `editor/dosimport.py` log `report.warnings`). Donald ruled that the player
 is told nothing. It is a warning and not a loss because a loss makes Save As
-refuse the whole party, which he ruled against; the first version put the line
-on `dropped`, and Save As then refused a clamped character. The clamp lives in the one shared writer, so an Amiga source reaches it the
+block the whole party, which he ruled against; the first version put the line
+on `dropped`, and Save As then blocked a clamped character. The clamp lives in the one shared writer, so an Amiga source reaches it the
 same way; the Amiga destinations keep experience in four bytes and need none.
 
 **The engines accumulate experience 32 bits wide. CONFIRMED** from each
@@ -877,7 +874,7 @@ neither of the C64's two bytes exists as such:
   which is the state `GEN $20A3` leaves behind;
 * more than one non-zero entry in the former array is a record nobody
   understands — both engines gate on human and on not already being
-  dual-classed — and the conversion should refuse it rather than pick a slot.
+  dual-classed — and the conversion should block it rather than pick a slot.
 
 ### CONFIRMED in both titles, by two records we watched being written
 
@@ -1077,7 +1074,7 @@ from somewhere.** This is the whole list.
 | `$8300`-`$83FF` | 256 | roster: derived combat values | **yes** — recompute for the target, do not copy |
 | `$8400`-`$8753` | 852 | `ANIMATE00`, resident — code, not party state | **yes** — read the file off the player's own `POOL` disk. 852 payload bytes at load address `$1000`, byte-identical on all eight sides, and 829 of the 852 match what an engine-written save holds here on all 14 of Donald's save disks. `$8400 + 852 - 1` is `$8753`, so the boundary with the buffer below is the file's own length rather than a guess. **Not scratch**: cache slot 11 tells the engine the file is resident, so nothing reloads it — `docs/140-loaded-files-cache.md` §"Slot 11 is not lazy, because the save is carrying the file", and #122 (A converted save says ANIMATE00 is resident and carries whatever the template had there) |
 | `$8754`-`$8AFF` | 940 | bitmap buffer | **yes, as zero** — 407 non-zero bytes of a template wiped, and the result loaded, walked, fought and changed area indistinguishably from the control (#118 (Write a C64 save from nothing, so importing a DOS save needs no existing .d64) step 3) |
-| `$4BE0`-`$4CFF` | 288 | combat icon table | **synthesise** — DOS has no equivalent; `goldbox/iconparts.py` composes the icon the game's own character creation writes. **Zero is refused**: screen code 0 in `CHARPIC00` is a real glyph, so a zeroed icon draws as a 3x3 block of black hooks in a fight (#57 (Convert the character portrait across ports)) |
+| `$4BE0`-`$4CFF` | 288 | combat icon table | **synthesise** — DOS has no equivalent; `goldbox/iconparts.py` composes the icon the game's own character creation writes. **Zero is blocked**: screen code 0 in `CHARPIC00` is a real glyph, so a zeroed icon draws as a 3x3 block of black hooks in a fight (#57 (Convert the character portrait across ports)) |
 | `$49C0`-`$49C2` | 3 | party x, y, facing | **yes** — DOS keeps them at file offsets 12801, 12802, 12803; the facing is the C64's doubled. Obstacle 2 |
 | `$4BC2` | 1 | current `GEO` | **yes** — DOS keeps the area id at file offset 395, in the same numbering. Obstacle 2 |
 | `$49C6`-`$49CB` | 6 | clock, six digits | **probably** — needs the DOS clock format |
@@ -1536,9 +1533,9 @@ for. `$49C5` is the map `LOADFILES` reloads and `$49F2` the script id;
 `goldbox/areas.py` has the disk and the `GEO` for every area.
 
 **So the template no longer has to stand in the DOS party's area.** What
-`convert_save` still refuses is six areas of the thirty, where the answer
+`convert_save` still blocks is six areas of the thirty, where the answer
 would be a guess: the four that load no map and the two whose script picks its
-map at run time. The travel-grid block came off in #50 (Lift the wilderness refusal from the DOS save converter): the C64 side of the
+map at run time. The travel-grid block came off in #50: the C64 side of the
 outdoor recipe was already CONFIRMED — slot 4 = the `SQRDATA` number in place
 of slot 2, the travel square in `$49C3`/`$49C4`,
 `docs/140-loaded-files-cache.md` — and #59 (Map the DOS saved game, not just the character record)'s outdoor pass measured the DOS
@@ -1566,7 +1563,7 @@ computed one.
 buffers and writes all 9216 bytes; `goldbox.dos_codec.save_disk` puts them on a
 `D64.blank()`. What it costs is the player's own `POOL*` disks at the moment
 it runs, for the two things that are the game's own data and may not be stored
-here — and with those missing the import refuses rather than inventing them.
+here — and with those missing the import blocks rather than inventing them.
 
 | region | from |
 |---|---|
@@ -1586,7 +1583,7 @@ here — and with those missing the import refuses rather than inventing them.
 `Report.unaccounted` is empty and so is `Report.unwritten`: every one of the
 9216 bytes has a one-line provenance, and none of them says "not converted --
 left as the template save had it". `unwritten` is what makes that checkable rather than
-asserted — `new_save` refuses to return a save with an entry in it.
+asserted — `new_save` will not return a save with an entry in it.
 
 ### The composed icon, seen in a fight (#118 (Write a C64 save from nothing, so importing a DOS save needs no existing .d64))
 
@@ -1760,7 +1757,7 @@ sequenceDiagram
     Reader->>Table: the DOS field's declared confidence
     Table-->>Reader: Confidence
     Reader->>Char: set(name, value, origin, confidence, how, dropped)
-    Note over Char: a name outside FIELDS raises NeutralError here.<br/>The vocabulary refuses a typo at the reader,<br/>not at the writer that would never see the field
+    Note over Char: a name outside FIELDS raises NeutralError here.<br/>The vocabulary blocks a typo at the reader,<br/>not at the writer that would never see the field
   end
   Reader->>Char: drop("DOS icon_colours @0x0c1: the combat icon colours") x 12
   Note over Reader,Char: the reader says only where a value came from,<br/>and what it could not convert at all
@@ -1783,13 +1780,13 @@ sequenceDiagram
     else graded below the minimum, or never set
       Char-->>W: None
       W->>Rep: dropped += "DOS name: read at UNKNOWN,<br/>which is not a grade this conversion will write"
-      W->>Rep: dropped += the refused Value's own dropped
+      W->>Rep: dropped += the blocked Value's own dropped
       Note right of Rec: nothing is written. The byte stays zero and is<br/>accounted for at the end as "zero, no DOS source"
     end
   end
 
   Writer->>W: get("race") for infravision, get("strength") for strength_index
-  Note over W: a derivation asks at the same minimum as a copy.<br/>A refused race yields infravision 0, not 0x0D5 from a grade<br/>this conversion would not have written
+  Note over W: a derivation asks at the same minimum as a copy.<br/>A blocked race yields infravision 0, not 0x0D5 from a grade<br/>this conversion would not have written
   Writer->>Rep: note(...) for every computed byte and documented constant
   Writer->>W: finish()
   W->>Char: unwritten(taken)
@@ -1802,8 +1799,8 @@ sequenceDiagram
 The minimum is applied in one place and at one grade, and it is applied to a
 derivation as well as to a copy: `neutral.Writer.get` exists because
 `NeutralCharacter.get` does not apply one, and a writer that computes a byte
-from a field it would have refused to copy is standing behind the value twice
-as hard, not half as hard. A dropped field also carries the refused value's own
+from a field it would not have copied is standing behind the value twice
+as hard, not half as hard. A dropped field also carries the blocked value's own
 `dropped` list into the report — what a reader had to leave behind to produce
 a value is a fact about the source whether or not the value is written. The
 running `.SPC` effects used to ride on `innate_effects.dropped` exactly that
@@ -1899,7 +1896,7 @@ classDiagram
   }
 
   NeutralCharacter "1" o-- "0..64" Value : fields
-  NeutralCharacter ..> FIELDS : set refuses a name not declared here
+  NeutralCharacter ..> FIELDS : set blocks a name not declared here
   Writer --> NeutralCharacter : take, unwritten
   Writer --> Report : note, dropped, warnings
   Value --> Confidence
@@ -2394,7 +2391,7 @@ happened to carry the target area's buffer, so it was never a variable in
 that bisection; variant X1 of `p60/run2` (scratch, deleted) is the control, and it fails. The buffer
 is the target's `ECL<dax>.DAX` block from byte 2 on — every block opens
 `88 13` — which is why the conversion takes a `game` directory, and why it
-refuses rather than writing a save without one.
+blocks rather than writing a save without one.
 
 Two DOSBox runs, both through the real converter, both walked:
 
@@ -2408,15 +2405,15 @@ Two DOSBox runs, both through the real converter, both walked:
 no `WALLSET` for — all three cache slots read `$FF` — where DOS's own slot A
 holds `(0, $FFFF, $FFFF)`. A save moved there with three empty words in the
 triple draws a view **pixel-identical** to one carrying DOS's own triple, so the
-converter sources the triple from the C64 and does not refuse the empty case
+converter sources the triple from the C64 and does not block the empty case
 (`p60/run3` (scratch, deleted) Z0 against `run2` X3, 229 differing pixels and every one of
 them in the colour-cycling command bar).
 
-**Three** kinds of area are refused, each because there is no legal answer
+**Three** kinds of area are blocked, each because there is no legal answer
 rather than because it is untested: an area this project has no row for, an
 area whose script picks its map at run time or loads none at all, and an area
 whose `ECL<n>.DAX` is not there to read. The travel grid was a fourth until
-#190 (A C64 party standing on the travel grid cannot be written into a DOS save): it was refused for want of a specimen rather than for want of an answer,
+#190 (A C64 party standing on the travel grid cannot be written into a DOS save): it was blocked for want of a specimen rather than for want of an answer,
 and now it converts and the result has been loaded, walked and resaved by the
 game itself. The last of those used to leave the party on the
 template's square with a warning, and a warning is not enough: the file
@@ -2457,7 +2454,7 @@ here fails a test. Four kinds of byte have no neutral source:
   is the identity the engine compares, after the name, when a saved character
   is being added to the party, so six converted characters all holding zero
   are indistinguishable there and a second character of the same name is
-  refused in silence. A digest rather than a random draw because a converter
+  blocked in silence. A digest rather than a random draw because a converter
   that writes different bytes on two runs of the same save cannot be diffed
   against itself; distinct 6 of 6 in each of the four shipped parties, and
   identical on a second write in all 24 records. See "Two same-named
@@ -2743,7 +2740,7 @@ did **not** hold for free on the reader beside it: the first real consumer of
   too, so the value is legal; it is simply not information the C64 has.
 * **Current combat numbers need `SAVEDGAME1`.** A C64 save without the
   roster file (the game disks' own `SAVEDGAME0`-only saves) has no current
-  hit points to give; the writer refuses and reports rather than writing
+  hit points to give; the writer blocks and reports rather than writing
   hp_max as a guess, and the party arrives at 0 hit points on the sheet.
 
 ### The portrait, which is one menu written two ways (#57 (Convert the character portrait across ports))
@@ -2879,7 +2876,7 @@ And for the reverse direction, `tests/convert/test_doswriter.py`:
 * **A party converted from another area is moved to where it actually stood**,
   every write checked against the byte map and the staged script against the
   `ECL<n>.DAX` block it came from; and with no game directory to read, the
-  conversion refuses and names the file that was missing.
+  conversion blocks and names the file that was missing.
 * **A converted save loads and plays in DOS Pool of Radiance** under
   DOSBox — the four driven runs above, and the two area-moved parties of
   #60 (Put a converted party where it actually stood, not where the template stood).
@@ -3041,7 +3038,7 @@ finding in the useful direction: they cannot be got wrong.
   survivable across all five runs and nothing says what would put a value
   there.
 * **Settled, both of them (#190 (A C64 party standing on the travel grid cannot be written into a DOS save)).** An outdoor C64 party is no longer
-  refused: moving the party to its overland square has been driven twice, on two squares, and
+  blocked: moving the party to its overland square has been driven twice, on two squares, and
   each result loaded, drew the overland, walked, and was resaved by the game's
   own `ENCAMP > SAVE`. The blocker had never been the converter -- none of the
   player's twenty C64 save disks has the party outdoors, every one reading `$49E6` =

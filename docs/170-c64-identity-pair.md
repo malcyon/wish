@@ -14,7 +14,7 @@ character, stable through play -- and nothing in the game reads them.**
 CONFIRMED from the code on all eight sides, and corroborated in the running
 game by watchpoints that never fired.
 
-The C64 needs no identity byte because its add screen refuses a duplicate by
+The C64 needs no identity byte because its add screen blocks a duplicate by
 **name alone**, and a save disk can hold only one character of a name in the
 first place. So the DOS byte has no *consumer* on the C64, but it does have a
 **home**: writing it into `0x0E6` costs nothing, changes nothing the C64 does,
@@ -24,7 +24,7 @@ and lets a C64 to DOS conversion give the byte back instead of inventing one.
 |---|---|---|
 | CONFIRMED | `0x0E6`-`0x0E7` are written by exactly one site, two raw calls to the generator | `GEN $0C01`-`$0C0A`; the boot disk's `POOLRE` is a copy of the same code |
 | CONFIRMED | nothing reads them | sweep of 589 files: 0 reads absolute, 0 indirect (`LDY #$E6` then `(zp),Y`), 0 against any of the twelve party slots; in three boots the load watchpoint on `$6BE6`-`$6BE7` never moved except in step with the unreferenced `$6BE4`-`$6BE5` beside it (block copies), while the experience control moved alone |
-| CONFIRMED | the add screen tests the name and nothing else | `GEN $1897`, read in full below; in the running game a different character under a party member's name was starred and refused, and a party member's own record under a new name was let in |
+| CONFIRMED | the add screen tests the name and nothing else | `GEN $1897`, read in full below; in the running game a different character under a party member's name was starred and blocked, and a party member's own record under a new name was let in |
 | CONFIRMED | the pair is Pool of Radiance's alone | Curse's and Silver Blades' GEN never write it and nothing in either title reads it (412 and 349 files); SSI's own Curse party reads `00 00` in 6 of 6 and a Silver Blades party in 4 of 4 |
 | PROBABLE | one save disk holds one character of a name | the save routine at `GEN $19B4` hands the drive `S0:\x01NAME` -- the scratch command -- before the write at `$3039`; `$3039` itself was not read |
 
@@ -114,7 +114,7 @@ Run 1, party of six already loaded:
 |---|---|---|---|---|
 | main menu, LOAD SAVED GAME | 0 | 0 | 0 | six in the party |
 | ADD CHARACTER TO PARTY, list built | 0 | 0 | 0 | `*` on all six names, TWIN unstarred |
-| pick the starred `MALCYON` (BRUTUS's record) | 0 | 0 | 0 | list unchanged: refused, nothing drawn |
+| pick the starred `MALCYON` (BRUTUS's record) | 0 | 0 | 0 | list unchanged: blocked, nothing drawn |
 | pick `TWIN` | 0 | 0 | 0 | list unchanged: `TOO MANY PLAYER CHARACTERS` went by, six already in |
 | VIEW CHARACTER, BRUTUS's sheet | 0 | 0 | **2** | `EXP 0` drawn: the control fires and the pair does not |
 
@@ -129,7 +129,7 @@ was the same drive mis-steered, and its counts agree):
 | loaded | 0 | 0 | 0 | six in the party |
 | two removed | 12 | 12 | 12 | the export of each is written, which reads the whole record |
 | ADD list built | 12 | 12 | 12 | `*` on BRUTUS, MAGNUS, **MALCYON**, ROLAND; SILAS, LADY KATHERINE and TWIN unstarred |
-| pick the starred `MALCYON` | 12 | 12 | 12 | list unchanged, and no read at all: a starred pick is refused before the file is opened |
+| pick the starred `MALCYON` | 12 | 12 | 12 | list unchanged, and no read at all: a starred pick is blocked before the file is opened |
 | pick `TWIN` | 14 | 14 | 14 | `*TWIN`: added; the copy into the slot reads each byte once |
 | pick `LADY KATHERINE` | 16 | 16 | 16 | `*LADY KATHERINE`: added |
 | VIEW, TWIN's sheet | 16 | 16 | **18** | `TWIN`, `MALE ELF AGE 176`, `MAGIC-USER`, `EXP 0`: MALCYON's sheet under the new name |

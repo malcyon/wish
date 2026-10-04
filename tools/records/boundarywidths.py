@@ -44,7 +44,7 @@ GAMES = tuple(c64_codec.DELTAS_BY_KEY)
 POOL = "pool-of-radiance"
 
 #: What a name field holds.  The writer's `petscii.encode_record_name` folds
-#: to capitals and refuses anything that is not printable ASCII, so this
+#: to capitals and blocks anything that is not printable ASCII, so this
 #: is a length and never a character set.
 NAME_WIDTH = layout.NAME_SIZE
 
@@ -201,22 +201,22 @@ def ceilings(game: str) -> Ceilings:
 #: its extreme is.
 STRUCTURED: dict[str, str] = {
     "name": "0, 20 and 21 characters: the record's NUL-padded name field",
-    "levels": "the seven class slots, each 0 and 255, and 256 refused",
+    "levels": "the seven class slots, each 0 and 255, and 256 blocked",
     "former_levels": "the one class a dual-classed human left, a byte",
     "spells_known": "every id the title's mask has a bit for, and one past",
     "spells_memorised": "the title's own slot count, and one past",
     "spells_castable": "three packed nibbles, a count per level, 0 to 15",
     "abilities_second": "seven bytes, in the two titles that keep the array",
     "size_small": "a byte",
-    "attack_forms": "exactly eight bytes, and seven or nine refused",
+    "attack_forms": "exactly eight bytes, and seven or nine blocked",
     "innate_effects": "ten trait slots, and one past",
     "granted_effects": "the trait slots the racial ids leave, and one past",
     "inventory": "sixteen item slots, and one past",
     "scroll_bundles": "no width: the C64 has no joined scroll and writes each "
                       "scroll of one to a slot of its own from `inventory`, "
                       "so the field is taken and adds no byte",
-    "roster_tail": "exactly nine bytes, and eight or ten refused",
-    "treasure_share": "0 to 3 as the C64 masks it; bit 2 refused (#303)",
+    "roster_tail": "exactly nine bytes, and eight or ten blocked",
+    "treasure_share": "0 to 3 as the C64 masks it; bit 2 blocked (#303)",
     "npc": "a flag, no width",
     "npc_control_byte": "a byte, written whole when npc is true",
     "status": "the seven C64 states; an unnamed one is reported",
@@ -234,7 +234,7 @@ STRUCTURED: dict[str, str] = {
     "icon_colours": "six bytes; see icon_head",
     "running_effects": "a list of running-effect nodes, each written as a "
                        "row in the save's shared effect arrays; a node the "
-                       "title has no rule for is reported and refused",
+                       "title has no rule for is reported and blocked",
     "paladin_cures": "a byte, 0 to 3; a paladin level DOS and the C64 refill "
                      "to different counts (255, say) is reported as a loss "
                      "rather than written (#600)",

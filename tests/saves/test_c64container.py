@@ -7,7 +7,7 @@ held three titles' payload map, so there is now one class with six rows and
 three of them carry a payload map nobody has measured.
 
 **The whole risk of that merge is one thing**: a title with no measured
-payload map answering with Pool of Radiance's offsets instead of refusing,
+payload map answering with Pool of Radiance's offsets instead of blocking,
 which is `#460 (goldbox/games.py has no Pools of Darkness entry, so every
 lookup answers with Pool of Radiance's tables for it)` one class over.  Before
 the merge the rejection was free, because Champions of Krynn simply was not a
@@ -101,7 +101,7 @@ def test_a_game_descriptor_is_still_hashable():
 # --- the rejection ------------------------------------------------------------
 
 @pytest.mark.parametrize("key", UNMEASURED)
-def test_an_unmeasured_title_is_refused_by_key_as_it_always_was(key):
+def test_an_unmeasured_title_is_blocked_by_key_as_it_always_was(key):
     with pytest.raises(KeyError):
         c64_save.container_for(key)
     assert key not in c64_save.CONTAINERS
@@ -109,7 +109,7 @@ def test_an_unmeasured_title_is_refused_by_key_as_it_always_was(key):
 
 
 @pytest.mark.parametrize("key", UNMEASURED)
-def test_an_unmeasured_title_is_refused_by_its_own_row(key):
+def test_an_unmeasured_title_is_blocked_by_its_own_row(key):
     """The door the merge opened, and the one `measured` exists to shut.
 
     `container_for` short-circuits on anything that is already a container,

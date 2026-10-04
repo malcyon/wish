@@ -6,7 +6,7 @@ from __future__ import annotations
 is six converters, three codecs around one neutral record is three readers and
 three writers.  These are the tests of the middle -- that a value put into it
 comes back out of a writer unchanged, that a value no writer will take is
-*reported*, and that a value the reader does not stand behind is refused
+*reported*, and that a value the reader does not stand behind is blocked
 rather than guessed at.
 """
 
@@ -29,7 +29,7 @@ from goldbox.savegame import SAVE0_LOAD_ADDRESS
 
 # --- the vocabulary ----------------------------------------------------------
 
-def test_a_field_outside_the_vocabulary_is_refused():
+def test_a_field_outside_the_vocabulary_is_blocked():
     """A reader that invents a name would be a field silently unread by every
     writer, which is the failure the declared vocabulary exists to stop."""
     char = NeutralCharacter("test")
@@ -114,10 +114,10 @@ def test_undeclared_finds_a_field_no_disposition_names():
     assert neutral.undeclared(declared, short) == ({"strength"}, set())
 
 
-# --- confidence: a writer refuses what the reader does not stand behind ------
+# --- confidence: a writer blocks what the reader does not stand behind ------
 
 def test_a_value_graded_unknown_is_not_written():
-    """The point of a grade per field: a codec refuses to write what it does
+    """The point of a grade per field: a codec does not write what it does
     not understand rather than writing a plausible-looking guess."""
     char = NeutralCharacter("test")
     char.set("wisdom", 9, "somewhere", Confidence.UNKNOWN)
@@ -139,7 +139,7 @@ def test_a_grade_a_writer_will_take_is_written():
 
 def test_a_value_graded_exactly_at_the_minimum_grade_asked_for_is_taken():
     """The minimum grade is the lowest one a writer accepts, so a value graded
-    at it is written; only a lower grade is refused."""
+    at it is written; only a lower grade is blocked."""
     char = NeutralCharacter("test")
     char.set("wisdom", 9, "somewhere", Confidence.PROBABLE)
     taken = char.take("wisdom", Confidence.PROBABLE)
@@ -147,7 +147,7 @@ def test_a_value_graded_exactly_at_the_minimum_grade_asked_for_is_taken():
     assert taken.value == 9
 
 
-def test_a_probable_value_is_refused_when_confirmed_is_asked_for():
+def test_a_probable_value_is_blocked_when_confirmed_is_asked_for():
     """PROBABLE and CONFIRMED are different grades: a writer that will only
     stand behind CONFIRMED must not be handed a PROBABLE value."""
     char = NeutralCharacter("test")
@@ -448,7 +448,7 @@ def test_the_dos_reader_sets_nothing_the_c64_writer_leaves_behind():
 
 @needs_dos_saves
 def test_the_reader_grades_every_value_it_carries():
-    """A value with no grade cannot be refused, so every one carries the grade
+    """A value with no grade cannot be blocked, so every one carries the grade
     `goldbox/dos_port.py` gives the field it was read from."""
     path = next(p for p in sorted(_save_dir().glob("*.SAV"))
                 if p.stat().st_size == dos_port.RECORD_SIZE)
@@ -489,7 +489,7 @@ def test_a_name_dropped_from_a_writers_table_is_named_rather_than_lost():
     assert neutral.undeclared(neutral.FIELDS, short) == ({"race"}, set())
 
 
-# --- the shared take-refuse-report protocol ----------------------------------
+# --- the shared take-fail-report protocol ----------------------------------
 
 def _writer(char, minimum=Confidence.GUESS, dropped=(), derived=(),
             constants=()):
@@ -501,7 +501,7 @@ def _writer(char, minimum=Confidence.GUESS, dropped=(), derived=(),
 
 def test_the_minimum_grade_applies_to_a_derivation_as_much_as_to_a_copy():
     """`NeutralCharacter.get` applies no minimum grade, which is why `Writer.get`
-    exists: a byte computed from a field the writer would have refused to copy
+    exists: a byte computed from a field the writer would not have copied
     would be a guess wearing a rule's clothes."""
     char = NeutralCharacter("test")
     char.set("race", 3, "a value nobody measured", Confidence.UNKNOWN)
@@ -826,7 +826,7 @@ def test_the_c64_reader_supplies_what_the_c64_writer_takes(game):
     assert taken - set(back.keys()) == set()
 
 
-def test_deltas_for_refuses_a_title_it_has_not_measured():
+def test_deltas_for_blocks_a_title_it_has_not_measured():
     """Champions of Krynn has a `Game` but no `C64Deltas` row (#274): asking
     for its deltas must not hand back Pool of Radiance's silently."""
     with pytest.raises(KeyError):

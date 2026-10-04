@@ -391,7 +391,7 @@ def come_home(args, sess, target, app, binding, out, log, step: int) -> int:
     ever -- `LOADFILES` dispatches on `$49E6` and asks for a `SQRDATA` the
     indoor area has not got, and the game sits on `INSERT SIDE # n` with the
     PC in the KERNAL's serial routines (`docs/50-experiments.md`).  That is
-    why `FastTravel.legality` refuses the trip outright, and why this is a
+    why `FastTravel.legality` rejects the trip outright, and why this is a
     probe in a tool rather than anything the window offers.
 
     The same experiment ends "so `$49E6` has to be right **before** `$2034`",
@@ -837,9 +837,9 @@ def run(args, log: Log) -> int:
             else:
                 why = "the party is indoors" if inside else "the indoors read gave no answer"
             if inside is not False:
-                log.say(f"--start refused: {why}")
-                log.emit("start_refused", reason=why)
-                args.stopped = f"--start refused: {why}"
+                log.say(f"--start rejected: {why}")
+                log.emit("start_blocked", reason=why)
+                args.stopped = f"--start rejected: {why}"
                 return stopped_run(args, app, binding, out, log, sess, step)
             square = bytes(args.start[:2])
             write_square(target, args.start)

@@ -23,7 +23,7 @@ which is what keeps a snapshot and a Save producing the same bytes.
 The second half of this module is the Save As over that snapshot, in three
 steps a caller takes in order: `resolve_assets` finds whatever game data the
 route needs off the player's own disks, `prepare_save_as` rehearses the whole
-output in memory and refuses it if reading it back gives a party the sheet
+output in memory and blocks it if reading it back gives a party the sheet
 would not recognise, and
 `publish` puts the prepared bytes where the player asked and opens them again
 as the document to adopt. Nothing on disk changes before the last of the
@@ -233,7 +233,7 @@ def write_amiga(party: Any, disk: Any) -> Any:
     """Write every member's edits into `disk`, an `.adf` already open.
 
     Returns the same disk. **The image is put back and the failure re-raised
-    if any character refuses**: AmigaDOS allocates the replacement before it
+    if any character blocks**: AmigaDOS allocates the replacement before it
     frees the original, so a run that stops halfway leaves a disk that is
     neither what it was nor what it meant to be. A Pool of Radiance
     character's movement is rebuilt afterwards (`Party.amiga_movement`),
@@ -347,7 +347,7 @@ def c64_payloads(party: Any) -> tuple[SaveGame0, "SaveGame1 | None", D64]:
 
 
 # ---------------------------------------------------------------------------
-# Save As: what it refuses
+# Save As: what it blocks
 # ---------------------------------------------------------------------------
 
 class SaveAsError(Exception):
@@ -625,7 +625,7 @@ class Assets:
     one of them. **It is empty when the disks came from the injected
     `game_files` callable**, because `editor.dosimport.GameFiles` does not
     keep which disk each part came from -- so a destination that is one of
-    *those* disks is refused only by the folder the caller named, if it
+    *those* disks is blocked only by the folder the caller named, if it
     named one.
     """
 
@@ -929,7 +929,7 @@ def fit_names(party: "Sequence[Any]", port: str, title_key: str,
     would cut, delete characters from or draw differently, once the
     replacements are applied, is collected and raised as `NamesDoNotFit`,
     one entry per character in party order, so a caller can put up one
-    dialog rather than refusing after the first.
+    dialog rather than blocking after the first.
     """
     width = name_width(port, title_key)
     unfit = None
@@ -1031,7 +1031,7 @@ KEPT_FIELDS = (
 #:
 #: **And the values a writer derives rather than carries**, each one a
 #: measured decision of the codec with its own issue behind it. Forcing these
-#: equal would refuse a conversion for writing the *right* value:
+#: equal would block a conversion for writing the *right* value:
 #:
 #: * `thac0_base` -- `goldbox.dos_codec._THAC0_RECOMPUTE_FROM_PORTS`: the two
 #:   ports ship different THAC0 tables (#366), so a C64 source's byte is
@@ -1134,13 +1134,13 @@ def c64_slot_records(at: pathlib.Path) -> "list[CharacterRecord]":
     Pool of Radiance C64 saves this machine's registry holds, the rule
     agrees with the editor's own reader on every one of them -- six
     characters each, where "any non-zero byte in the slot" says eight on
-    thirteen of the fifteen and would refuse a Save As that lost nothing.
+    thirteen of the fifteen and would block a Save As that lost nothing.
 
     It is deliberately **weaker than `goldbox.savegame.looks_occupied`**,
     which also demands all six abilities in 3 to 25: a party built for a
     test rolls 1 to 6, so the editor's own occupancy test reads a save that
     really does hold its records as an empty roster, and comparing through
-    `editor.roster.Party` would refuse those conversions instead.
+    `editor.roster.Party` would block those conversions instead.
     """
     _game, save0, _save1 = load_save(D64.open(str(at)))
     return [CharacterRecord(one.window + bytes(RECORD_SIZE - len(one.window)),
@@ -1241,7 +1241,7 @@ def _expected_char_class(record: CharacterRecord,
     (`_regained_class_zeroed_levels`), and asks the destination's own
     class-code table what that character's code is. `None` when the table
     cannot name the state, so the raw sheet value is compared instead and an
-    unexplained change is still refused.
+    unexplained change is still blocked.
     """
     if destination.native or destination.port not in ("dos", "amiga"):
         return None
@@ -1261,7 +1261,7 @@ def _expected_turn_power(record: CharacterRecord,
     (`GAME.OVR:0x139CD`, `goldbox.derive.turn_power`), and the Amiga's
     later-title record is the DOS record repacked, with no caster byte of its
     own (`goldbox.amiga_later.LATER_ACCOUNTED`). Comparing the C64's own
-    cached byte therefore refuses a cleric or paladin whose caster level has
+    cached byte therefore blocks a cleric or paladin whose caster level has
     moved since that byte was last written by the C64 game (#637) -- and the
     same trainer that leaves `char_class` stale (#636) leaves a regained
     former class's level in place too, so the levels are zeroed the same way
@@ -1330,9 +1330,9 @@ def _expected_treasure_share(record: CharacterRecord,
     else:
         return None
     # Only a Pool of Radiance companion is rewritten; a player character's
-    # byte and the other titles' stay refused by the writer.
+    # byte and the other titles' stay blocked by the writer.
     # A DOS zombie or charmed player character carrying bit 2 never reaches
-    # the comparison: the C64 writer refuses it first.
+    # the comparison: the C64 writer blocks it first.
     if (getattr(destination.title, "key", destination.title)
             != dos_codec.POOL_OF_RADIANCE.key
             or not int(record.get("flags_0b8")) & 0x80):
@@ -1405,7 +1405,7 @@ def charmed_pool_fields(record: CharacterRecord, neutral: NeutralCharacter,
     control byte in `flags_0b8`. The writer's own decision,
     `c64_codec.charmed_pool_player_fields`, gives both bytes from the sheet's
     share, assuming the charm row found a free slot: a save whose shared
-    effect arrays are full carries a loss line for it and is refused.
+    effect arrays are full carries a loss line for it and is blocked.
 
     From a C64 source to a DOS or Amiga save, the sheet shows the C64's own
     form (`flags_0b8` 1, share 0) and the writer gives the taken-over form
@@ -1619,7 +1619,7 @@ class SavePlan:
         default_factory=dict)
 
     def invalidate(self) -> None:
-        """Mark this output as no longer the answer, so `publish` refuses it."""
+        """Mark this output as no longer the answer, so `publish` blocks it."""
         self.stale = True
 
     def is_current(self, party: Any, port: str,
@@ -1794,7 +1794,7 @@ def _inside_or_equal(path: pathlib.Path, other: pathlib.Path) -> bool:
 
 def check_not_alias(path: pathlib.Path, snapshot: Snapshot,
                  assets: "Assets | None") -> None:
-    """Refuse a destination that is, holds or sits inside something this
+    """Block a destination that is, holds or sits inside something this
     Save As is reading.
 
     The save itself first: writing a Save As over its own source destroys
@@ -1807,7 +1807,7 @@ def check_not_alias(path: pathlib.Path, snapshot: Snapshot,
     on**: a destination that *is* one of those files or folders, or one that
     holds it. A save beside the game disks is none of the project's
     business -- `<disks>/MYSAVE.D64` next to `POOL1.D64` overwrites nothing
-    -- and refusing everything under the folder takes a place the player may
+    -- and blocking everything under the folder takes a place the player may
     well keep saves in away from them for nothing.
     """
     if _inside_or_equal(path, snapshot.path):
@@ -1867,7 +1867,7 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
     The open party's own snapshot is the source on every port, so the edits
     on screen are in the output whether or not the save they came from has
     ever been written. A destination of the source's own port is a native
-    copy; anything else is the registered conversion, which is **refused
+    copy; anything else is the registered conversion, which is **blocked
     outright if it would lose a field**, before a byte of the destination is
     touched.
 
@@ -2009,7 +2009,7 @@ def validate(destination: Destination, files: dict[str, bytes],
     nothing and one that leaves the player holding an unreadable
     destination. Then `expected` -- the party as the sheet holds it -- is
     compared with what the written save actually came back with, and **any
-    difference is refused**: a name cut to the destination's own width and a
+    difference is blocked**: a name cut to the destination's own width and a
     value clamped to a narrower field are losses `losses()` also names off
     the conversion's own report (#619), and this comparison is the second
     guard rather than a redundant one -- it catches a loss no writer admitted
@@ -2082,7 +2082,7 @@ def validate(destination: Destination, files: dict[str, bytes],
         # The accounting is the evidence for the defect each of these is, so
         # it goes to the log whether or not the caller says anything
         # (`.claude/rules/conversions.md`).
-        _log.info("refusing a Save As to %s: %s", destination.path,
+        _log.info("blocking a Save As to %s: %s", destination.path,
                   "; ".join(lost))
         raise DroppedFields(lost)
 
@@ -2128,7 +2128,7 @@ class Published:
         Raises `RecoveryFailed`, carrying the backup that still holds the
         destination's own bytes and **every path still on disk**, rather
         than let a caller report that nothing was written. The removals go
-        on past a file that refuses to go, so one unremovable file does not
+        on past a file that fails to go, so one unremovable file does not
         leave five more beside it unmentioned and unremoved.
         """
         try:
@@ -2178,7 +2178,7 @@ def publish(plan: SavePlan, party: Any,
     against the plan rather than merely carried: the flag a caller sets is
     only as good as the caller's own noticing, so the edits, the destination
     and the assets are recomputed here and output that is no longer what
-    they would produce is refused. Publishing bytes a player has since
+    they would produce is blocked. Publishing bytes a player has since
     edited past is the one failure in this module nothing on disk would
     show.
 
@@ -2188,7 +2188,7 @@ def publish(plan: SavePlan, party: Any,
 
     An image is written through a temporary sibling and renamed over
     whatever was there, which is backed up first; a save folder is staged
-    complete and moved in, and a folder that already holds files is refused
+    complete and moved in, and a folder that already holds files is blocked
     rather than mixed into. The published output is then opened as a save in
     its own right -- a destination that cannot be read is rolled back here
     rather than handed on. A write that fails takes the folders publication
@@ -2196,7 +2196,7 @@ def publish(plan: SavePlan, party: Any,
     no empty `~/new/place/` behind.
 
     Raises `StalePlan` for output the caller has invalidated or that the
-    party has moved past, and whatever `editor.files` raises for a refused
+    party has moved past, and whatever `editor.files` raises for a blocked
     or failed write: `NoBackupFolder`, `TargetNotEmpty` and `OSError`.
     **`RecoveryFailed` has to be caught beside those three**: it is a
     `RuntimeError` rather than a `SaveAsError`, and it means bytes are on

@@ -168,7 +168,7 @@ MARKERS: dict[int, dict[int, str]] = {
 #     fight is exactly one increment**.
 #
 # The wandering half is capped elsewhere. `$4A80` counts won wandering fights
-# and both spawn sites refuse to roll another once it reaches 15 (`ECL14
+# and both spawn sites do not roll another once it reaches 15 (`ECL14
 # $9B32` and `$ADD6`, `COMPARE [$4A80], 15 / IF>= / EXIT`). That 15 is the
 # number Ozzy_98's PC walkthrough quotes; it is a different counter from this
 # one and does not contradict the 25. Ten set fights plus fifteen wandering

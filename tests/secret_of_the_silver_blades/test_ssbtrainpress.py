@@ -95,9 +95,9 @@ def test_press_fails_when_the_party_list_poke_does_not_land(
         _press(tmp_path, 0, 35)
 
 
-def test_press_refuses_an_hp_max_the_party_list_byte_cannot_hold(
+def test_press_rejects_an_hp_max_the_party_list_byte_cannot_hold(
         tmp_path, fake_port):
-    """The party list's byte is one wide, so 300 is refused rather than clamped."""
+    """The party list's byte is one wide, so 300 is rejected rather than clamped."""
     mem, _ = fake_port
     with pytest.raises(SystemExit, match="255"):
         _press(tmp_path, 0, 300)

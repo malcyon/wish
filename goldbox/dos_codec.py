@@ -14,7 +14,7 @@ codec of that pair -- the only module that knows a DOS offset.  The C64 half
 is `goldbox/c64_codec.py`'s, and the two never mention each other.
 `goldbox/dos_port.py` is the field table, in the same declarative style as
 `goldbox/layout.py` and with a confidence on every entry, which is the grade the
-neutral value carries and a writer refuses to write below.
+neutral value carries and a writer does not write below.
 
 `export_party` renders the result as the editor's own YAML, so a DOS party
 and a C64 party come out in one form; that is a view, not the interchange.
@@ -221,7 +221,7 @@ CANNOT_CONVERT = "This save cannot be converted."
 
 class DosRecordError(ValueError):
     """A file that is not a DOS Gold Box character record, or a conversion
-    that refuses for any other reason.
+    that blocks for any other reason.
 
     The message carries the developer's reason -- offsets, addresses, source
     file names, issue numbers -- because that is what a traceback and a log
@@ -396,7 +396,7 @@ class DosItem(_Fielded):
 #: joined scroll and its scrolls they are a live pointer and are cleared
 #: before the item is projected (`_chain_cleared`); a **non-zero** one on any
 #: other item is a state nobody has seen the engine leave, and `item_to_c64`
-#: refuses it rather than guess (`.claude/rules/conversions.md`).
+#: blocks it rather than guess (`.claude/rules/conversions.md`).
 ITEM_TAIL = (0x3F, 4)
 
 #: The item type Silver Blades' `ITEMS > JOIN` command writes on the scroll it
@@ -433,7 +433,7 @@ def item_to_c64(record: bytes) -> bytes:
     """Project one DOS item onto the C64's sixteen bytes.
 
     63 bytes in three titles and 67 in Secret of the Silver Blades, whose
-    four extra bytes are :data:`ITEM_TAIL` and are refused if they hold
+    four extra bytes are :data:`ITEM_TAIL` and are blocked if they hold
     anything -- every field this reads is below `0x03E` and so is at the same
     offset whichever title wrote it (#113).
 
@@ -1123,7 +1123,7 @@ class EffectsDoNotFit(DosRecordError):
     limit, so a few camp casts reach it.  The player chooses which effects are
     left out and `overflow` lists every one that can be.  Raised after the
     payload has been written, so a caller that passed its own payload holds a
-    partly written one, as it does after any refused conversion.
+    partly written one, as it does after any blocked conversion.
     """
 
     def __init__(self, overflow: EffectOverflow) -> None:
@@ -1445,7 +1445,7 @@ ITEM_GRANT_PAYLOAD = bytes((0x00, 0x00, 0x0C, 0x00))
 #: puts it in the active-effect array rather than a trait slot, and
 #: `effects.never_expiring_strength_record` converts that row before this
 #: function ever sees it (`#694`).  38 held in a trait slot is a different
-#: case -- Wish's own DOS-to-C64 output, not the game's -- and stays refused
+#: case -- Wish's own DOS-to-C64 output, not the game's -- and stays blocked
 #: under `c64_trait_nodes`' rule 4, since 38 is on Pool's `VALUE_READ` list.
 #: `0x84`, `0x87` and `0x89` write no node at all.
 #: `tests/dos/test_dosaffectreads.py::test_a_readied_item_in_pool_of_radiance`
@@ -2119,11 +2119,11 @@ def required_item_suffix(data: bytes) -> str | None:
 
     The count matters only to whether an item file must exist: the items
     themselves are whatever the file holds, so a count above zero with a
-    missing or empty file is refused and a count of zero with no file reads
+    missing or empty file is blocked and a count of zero with no file reads
     no items.
 
     Raises `DosDeltasError` for a length that is no known record.  The reader
-    and the specimen registry both ask this, so they refuse the same folder.
+    and the specimen registry both ask this, so they block the same folder.
     """
     deltas = deltas_for(len(data))
     if data[FIELDS_BY_NAME_FOR[deltas.key]["item_count"].offset]:
@@ -2179,7 +2179,7 @@ def read_character(path: str | pathlib.Path) -> DosCharacter:
     spc = _sibling(path, deltas.effect_suffix)
     # The engine's loader reads the item file to its end and never looks at
     # the record's `item_count`, so this does too: a stale count (a scribed
-    # scroll leaves it one high, an export leaves it zero) neither refuses the
+    # scroll leaves it one high, an export leaves it zero) neither blocks the
     # save nor hides items the game gives the character.
     count = data[FIELDS_BY_NAME_FOR[deltas.key]["item_count"].offset]
     stride = deltas.item_size
@@ -2230,7 +2230,7 @@ def party_numbers(folder: str | pathlib.Path, slot: str) -> list[int]:
     or a container this project cannot yet read.
 
     A numbered file that the count expects but that is missing is skipped,
-    not refused: two engine-written specimens (`por-item-granted`,
+    not blocked: two engine-written specimens (`por-item-granted`,
     `por-item-twenty`) count 6 and keep only file 1, and both open today.
     """
     folder = pathlib.Path(folder)
@@ -2665,7 +2665,7 @@ def portrait_tables(game: str | pathlib.Path | None
 
     Returns `(tables, why_not)`, never raises: the portrait is one cosmetic
     pair of bytes and a game directory that cannot answer for them is a
-    reason to report them, not to refuse a conversion that is right in every
+    reason to report them, not to block a conversion that is right in every
     other field.  `goldbox/portraits.py` has the two tables and what they are.
     """
     if game is None:
@@ -3841,7 +3841,7 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
                        "cleared ($04 as $08), because the C64 masks the "
                        "share with 3 and this engine with 7 "
                        "(dos_share_from_c64). A player character's byte, "
-                       "and any other title's, is refused as before"),
+                       "and any other title's, is blocked as before"),
 )
 
 #: Neutral fields the DOS writer takes nothing from, and why.  Reported by
@@ -4198,11 +4198,11 @@ WRITE_DERIVED: tuple[tuple[str, str], ...] = (
      "the identity byte the engine uses to tell two characters of the same "
      "name apart. Written by character creation as one call to the random "
      "routine and read in exactly one place -- ADD CHARACTER TO PARTY, which "
-     "refuses a candidate whose **name and this byte both** match a "
+     "blocks a candidate whose **name and this byte both** match a "
      "character already in the party. Zero in every converted record made "
      "the six of a party indistinguishable there, and #216 measured the "
      "consequence in DOSBox: two different characters both named DUPLICO, "
-     "the second one silently refused with this byte 0x00 in both and let "
+     "the second one silently blocked with this byte 0x00 in both and let "
      "in with 0x42 in the second, the engine's own save writing one "
      "CHRDATC<n>.SAV against two. So it is derived from the rest of the "
      "record instead -- a digest rather than a random draw, because a "
@@ -4890,7 +4890,7 @@ WRITE_TRANSFORMED_LATER: tuple[tuple[str, str], ...] = (
 #: than the value every record holds** (#304).  The only instruction in Pool
 #: of Radiance, Curse or Silver Blades that stores an immediate into it stores
 #: **1**, and it is the last statement of MODIFY CHARACTER, reached when the
-#: player presses `K` for KEEP -- a command the engine refuses on any
+#: player presses `K` for KEEP -- a command the engine blocks on any
 #: character whose experience is not 0, 8333, 12500 or 25000, so it is
 #: reachable only just after creation.
 #:
@@ -6128,7 +6128,7 @@ def write(char: NeutralCharacter,
     icon_body_field = use("icon_body")
     icon_colours_field = use("icon_colours")
     # The art library's own wrap points -- the same ones
-    # `amiga_pod.PodCharacter._check` refuses a Pool of Darkness source for,
+    # `amiga_pod.PodCharacter._check` blocks a Pool of Darkness source for,
     # since both ports draw the combat icon out of the same fourteen heads
     # and thirty-two bodies (#612).
     if icon_head_field is not None and not 0 <= int(icon_head_field.value) <= 13:
@@ -6663,7 +6663,7 @@ def write(char: NeutralCharacter,
         # `Writer.finish` does not add its own generic drop line below, and
         # report the drop only when the byte is actually non-zero.  Every
         # C64 Pool of Radiance record reads zero here (the title has no
-        # paladin class, #626), so reporting it unconditionally refused
+        # paladin class, #626), so reporting it unconditionally blocked
         # every one of those saves for a byte that was never anything but
         # zero.
         held = use("paladin_cures")
@@ -6786,7 +6786,7 @@ def write(char: NeutralCharacter,
     # port" but "does this port's own record hold a genuine draw rather than
     # something DOS itself would have to invent", which is every port but
     # DOS.  `w.use`, not `char.get`, so a value graded below the minimum is
-    # refused and reported rather than taken, and so the field counts as
+    # blocked and reported rather than taken, and so the field counts as
     # consumed either way.
     _derived_name = "unnamed_0ab"
     _derived_why = dict(WRITE_DERIVED)[_derived_name]
@@ -7477,13 +7477,13 @@ ANIMATE_SIZE = 852
 #: off `move_reason` -- the other direction -- in #190, once an outdoor
 #: DOS move had actually been driven.  `WILDERNESS`, Donald's own wording
 #: for it, is gone with the last thing that raised it: neither direction
-#: refuses a party on the travel grid now.
+#: blocks a party on the travel grid now.
 #:
 #: **`UNSUPPORTED_LOCATION` came off `apply_file_cache` in #257** and is now
 #: `move_reason`'s alone.  Converting a save, the resident map is a word
 #: *in that save* -- `$49C5`, see `_resident_geo` -- so an area that loads no
 #: map or picks one at run time needs no row to name one, and the training
-#: hall stopped being refused.  Moving there is a different question
+#: hall stopped being blocked.  Moving there is a different question
 #: with no save to read: the player names an area the party has never been
 #: in, and the table is the only source there is.
 NOT_AN_AREA = ("the DOS party is in area {area}, which is not an area of "
@@ -7503,7 +7503,7 @@ NOT_SET_OUT = ("Your party had not set out yet, so it starts at the "
 #: Pool of Radiance, Curse and Silver Blades all have one, so none of them
 #: raises it; it stays for a title added without a measured start.  Donald's
 #: wording, 2026-09-06.  It names no title on purpose, so it reads the same
-#: whichever title is refused, and nothing is interpolated into it.
+#: whichever title is blocked, and nothing is interpolated into it.
 NOT_SET_OUT_UNPLACED = ("This save has never been played yet. Wish does not "
                         "yet support converting these saves.")
 
@@ -7579,7 +7579,7 @@ def _start_of_the_story(title: str) -> "tuple[areas.Start, areas.Area]":
     instead, because a party placed at the start skips the opening there
     (`apply_file_cache`).
 
-    A title with no `areas.STARTS` row is refused rather than guessed.
+    A title with no `areas.STARTS` row is blocked rather than guessed.
     """
     start = areas.start_of(title)
     row = areas.start_area(title)
@@ -7605,7 +7605,7 @@ def _where_the_party_is(savgam: bytes, title: str,
 
     A party that has not set out is placed at `_start_of_the_story`; one that
     has is in the area its own `$49F2` names, and a save naming an area this
-    title has no row for is refused -- `NOT_AN_AREA`, the one rejection the
+    title has no row for is blocked -- `NOT_AN_AREA`, the one rejection the
     save cannot answer for itself.
     """
     if never_adventured(savgam, container):
@@ -7635,11 +7635,11 @@ def _resident_geo(savgam: bytes, where: "areas.Area", title: str) -> int:
 
     * **an area whose script loads no map** -- the training hall (11) and
       Phlan City Hall (8) run on whatever `ECL00` left resident, so
-      `where.geos` is empty and the conversion refused the save outright with
+      `where.geos` is empty and the conversion blocked the save outright with
       `Saves from this location are not supported.`;
     * **an area that picks its map at run time** -- areas 3 and 5, whose
       `geos` entry `goldbox/areas.py` says in as many words is the doc's
-      inference from the id and is wrong for both.  Refused as well;
+      inference from the id and is wrong for both.  Blocked as well;
     * **an area that loads two maps**, where `geos[0]` is whichever the
       script loads first and the party may be standing on the other.
 
@@ -7659,9 +7659,9 @@ def _resident_geo(savgam: bytes, where: "areas.Area", title: str) -> int:
     known = {areas.geo_number(g) for g in areas.geos_in(title)}
     # An empty set is not a contradiction, it is a title whose area table
     # nobody has built yet -- `areas.geos_in` says so itself: "if this ever
-    # refuses a save the game itself wrote, the row is what is incomplete."
-    # Curse of the Azure Bonds has no rows at all, so refusing on an empty
-    # set refused every Curse save there is, which is the opposite of what
+    # blocks a save the game itself wrote, the row is what is incomplete."
+    # Curse of the Azure Bonds has no rows at all, so blocking on an empty
+    # set blocked every Curse save there is, which is the opposite of what
     # #257 set out to do: trust the word in the save.
     if known and geo not in known:
         raise DosRecordError(
@@ -7903,7 +7903,7 @@ def _fit_effects(report: Report, save0: bytearray,
 
     Raises :class:`EffectsDoNotFit` when rows are short and at least that many
     effects can still be left out; with fewer, the loss lines the writer
-    already made stay and the save is refused as before.  The short count is
+    already made stay and the save is blocked as before.  The short count is
     the members' own rows that found no slot plus each party row once, since
     a party row is one row however many members hold the node.
     """
@@ -8028,7 +8028,7 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
     # A joined scroll takes a C64 slot for every scroll it holds (#432).  DOS
     # allows sixteen heads of up to ten scrolls each, the C64 has sixteen
     # slots, and the Amiga's limit is a probable 120 scrolls
-    # (`amiga_savegame.new_savegame` refuses over it).  The player chooses
+    # (`amiga_savegame.new_savegame` blocks over it).  The player chooses
     # what stays behind and `leave` carries it; a pack still over the limit
     # after that raises `JoinedScrollsDoNotFit` naming every such member, so
     # nothing is dropped that the player did not choose.
@@ -8453,7 +8453,7 @@ def convert_save(folder: str | pathlib.Path, slot: str,
     `tools/`, the whole of `tests/convert/test_dosconvert.py` -- already gives it.
 
     A party whose running effects do not fit raises :class:`EffectsDoNotFit`
-    with the caller's payloads partly written, the state a refused conversion
+    with the caller's payloads partly written, the state a blocked conversion
     leaves; the routes that let a player choose pass fresh ones.
     """
     container = c64_save.container_for(game)
@@ -8549,7 +8549,7 @@ def new_save(folder: str | pathlib.Path, slot: str,
     gets the figure his own DOS record names instead (#130).  `animate` is
     `ANIMATE00`'s payload; both come off the player's own game disks, and
     there is no default for either -- a conversion that cannot read them is
-    one that would have to invent bytes, and it refuses instead.  `portraits`
+    one that would have to invent bytes, and it blocks instead.  `portraits`
     is the creation menu's two tables (#57), and **it is the one thing here
     that has a default**: left out, the stored menu in `goldbox/portraits.py`
     is used, so a Pool of Radiance party arrives with every face its own
@@ -9001,12 +9001,12 @@ LATER_HEADER_COPIED = (0xE7, 3)
 def move_reason(area: int) -> str | None:
     """Why this area cannot be a move target, or `None` if it can.
 
-    Two kinds, both of which the C64 converter refuses in the other
+    Two kinds, both of which the C64 converter blocks in the other
     direction: an area this project has no row for, and one whose script
     picks its map at run time or loads none at all.  Unapproved wording.
 
     **The travel grid was a third and is not any more** (#190).  It was
-    refused because no DOS move onto a travel window had ever been
+    blocked because no DOS move onto a travel window had ever been
     driven; one has now, and an outdoor area needs no `GEO` for the same
     reason `where.geos` is not consulted for it -- the overland loads none.
     `WILDERNESS`, the rejection Donald wrote for it, has gone with it.
@@ -9036,15 +9036,15 @@ def conversion_reason(area: int,
     title's own table (#299).
 
     **A conversion is not a move, and the difference is where the map
-    comes from** (#276).  :func:`move_reason` refuses six areas because
+    comes from** (#276).  :func:`move_reason` blocks six areas because
     the caller names an area the party has never been in, so `goldbox/areas.py`
     is the only source for which `GEO` has to be resident and four of those
     areas load no map of their own while two pick theirs at run time.
 
     Converting a save, the resident map is **a word in the save being
     converted** -- `$49C5`, which `savgam_writes` now reads out of the C64
-    save's own bytes.  So none of those six is a gap any more, and refusing
-    them means refusing a party standing in the training hall, which is
+    save's own bytes.  So none of those six is a gap any more, and blocking
+    them means blocking a party standing in the training hall, which is
     exactly the fault `#257 (A DOS save made in the training hall converts as
     though the party were in New Phlan)` fixed on the way in.
 
@@ -9077,7 +9077,7 @@ def _area_dax(area: int, template: "pathlib.Path | None",
     experiment, Pool of Radiance only -- the table's side stands in, which
     is the same number for every Pool of Radiance and Curse row that has a
     block.  The two are compared where both are known, and a disagreement
-    in a title where they are measured equal is refused rather than
+    in a title where they are measured equal is blocked rather than
     written.
     """
     title = title or areas.POOL_OF_RADIANCE
@@ -9152,7 +9152,7 @@ def c64_title(save0: bytes, title=None) -> c64_port.C64Container:
     """Which C64 title a `SAVEDGAME0` payload belongs to.
 
     `title` is a `goldbox.c64_port.C64Container`, its key, or None.  **A 7424-byte
-    payload is refused without one**: Curse of the Azure Bonds and Secret
+    payload is blocked without one**: Curse of the Azure Bonds and Secret
     of the Silver Blades write the same size, their DOS containers differ
     (13149 against 5469 bytes, one staging a script and one not), and
     guessing between them would build a save the wrong engine loads
@@ -9195,7 +9195,7 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
     path here without one: the load path reads the staged script and dies in
     `Load3DMap` when it is somebody else's (#60), and a conversion that
     cannot read the game's files has nothing to put there but a stranger's
-    area.  The caller refuses instead.  **Silver Blades stages none**, and
+    area.  The caller blocks instead.  **Silver Blades stages none**, and
     passes None.
 
     **`game` is the C64 title** (`goldbox.c64_port.C64Container`, or None for Pool of
@@ -9220,7 +9220,7 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
     area id into both there names `GEO0B`, a map no script loads.  This used
     to derive `$49C5` from `area`, which is `move_to_area`'s own default and is
     right for the areas that load their own map and wrong for the six
-    `move_reason` refuses before this can run.  **`indoors` is still the
+    `move_reason` blocks before this can run.  **`indoors` is still the
     area table's own answer and not `state.outdoors`**: this direction has
     always trusted `areas.area_in(area, game.title).outdoors` over the C64
     payload's own `$49E6` byte, and that is unchanged -- only where the
@@ -9998,7 +9998,7 @@ def write_dos_save_from(state: "world_state.WorldState",
     if template is not None and out.resolve() == template.resolve():
         raise DosRecordError(
             "the output directory is the template; the template is read-only")
-    # Before `mkdir`, so a refused title leaves nothing behind.
+    # Before `mkdir`, so a blocked title leaves nothing behind.
     c64 = _c64_game_of(state)
     out.mkdir(parents=True, exist_ok=True)
 
@@ -10135,7 +10135,7 @@ def write_dos_save_from(state: "world_state.WorldState",
     ))
 
     # What is left is what the file owes to somebody else's save, and it is
-    # empty when there was no template.  `new_dos_save_from` refuses on it
+    # empty when there was no template.  `new_dos_save_from` blocks on it
     # rather than returning a save with a stranger's byte in it (#26).
     report.unwritten = [i for i in range(container.size)
                         if i not in report.sources]
@@ -10168,7 +10168,7 @@ def write_dos_save(save0: bytes, save1: bytes | None,
     and the DOS file is built to `dos_savegame.container_for(title)`, so a
     Curse party comes out as a 13149-byte `SAVGAM<slot>.DAT` with its
     script staged and a Silver Blades one as 5469 bytes with none.  A
-    7424-byte payload is refused without it, because Curse and Silver
+    7424-byte payload is blocked without it, because Curse and Silver
     Blades are the same size on the C64 and different files on DOS.
 
     **`template` is `None` for a conversion**, and :func:`new_dos_save` is
@@ -10210,7 +10210,7 @@ def write_dos_save(save0: bytes, save1: bytes | None,
       template's: every write `dos_savegame.MOVE_WRITES` lists, including
       the area's own script lifted out of `ECL<n>.DAX`.
 
-    **An area it cannot write, it refuses.**  There is no fallback to the
+    **An area it cannot write, it blocks.**  There is no fallback to the
     template's square any more: a party that arrives standing where a
     stranger stood, carrying that stranger's script, is wrong data that looks
     right.  Donald's ruling on the same question in the other direction,
@@ -10276,15 +10276,15 @@ def new_dos_save_from(state: "world_state.WorldState",
     # **Built somewhere else first, and moved in only once it is known
     # good.**  The rejection below used to fire *after* `write_dos_save` had
     # already cleared the slot and written all seven files, so a caller who
-    # hit it was left with exactly the save this function exists to refuse --
+    # hit it was left with exactly the save this function exists to block --
     # a stranger's bytes on disk, with nothing about the directory saying so.
     # The sibling rejection in `_area_script` gets this right by firing before
-    # anything is written; this one could not, because the count it refuses on
+    # anything is written; this one could not, because the count it blocks on
     # is only known at the end.  So the write goes to a staging directory on
     # the same filesystem and `out` is not touched at all unless the count is
     # zero.
 
-    # The lookup runs first: a title with no container is refused here, before
+    # The lookup runs first: a title with no container is blocked here, before
     # `out` is made, so a rejection leaves no empty directory behind.
     c64 = _c64_game_of(state)
     out = pathlib.Path(out)
@@ -10356,7 +10356,7 @@ def pod_savgam(state: "world_state.PodWorldState", slot: str, count: int
     """Build a Pools of Darkness `SAVGAM<slot>.PTY`'s 1364 bytes from zero.
 
     `write_dos_save_from`'s own `savgam_writes`/`savgam_zeroes` reach
-    `dos_savegame.word_offset`, which refuses a container with no
+    `dos_savegame.word_offset`, which blocks a container with no
     word-wide variable array (`container.var_words`) -- this title's own array
     is byte-wide, so this writer names each field's own file offset
     directly rather than adding a Pools of Darkness branch to those two.
@@ -10495,7 +10495,7 @@ def new_pod_save_from(state: "world_state.PodWorldState",
     """A whole Pools of Darkness DOS save from a place and a party.
 
     Not built on `new_dos_save_from`: that goes through `_c64_game_of`,
-    which refuses a title with no C64 port, and this one never shipped on
+    which blocks a title with no C64 port, and this one never shipped on
     the C64.  This is its sibling, keyed on
     `dos_savegame.SAVE_POOLS_OF_DARKNESS` instead of a C64 title, and it
     stages no area script and needs no game directory -- this title's own

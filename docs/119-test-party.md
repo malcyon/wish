@@ -124,8 +124,8 @@ is the source for levels and thresholds.
 
 **ASTRA's cleric was 6 here until 2026-09-08 and a half-elf cannot reach it.**
 `GEN $1E64`'s twenty-eight bytes — seven races of four classes, CONFIRMED in §5
-below — stop a half-elf cleric at **5**, so the game's own trainer would refuse
-the sixth level and `goldbox.levelup.plan` refuses it too. Cleric 5 still puts
+below — stop a half-elf cleric at **5**, so the game's own trainer would block
+the sixth level and `goldbox.levelup.plan` blocks it too. Cleric 5 still puts
 the high nibble of `0x0EE` above zero beside the magic-user's low nibble, which
 is the whole of what she is for, so nothing else in the row changes.
 
@@ -206,7 +206,7 @@ records this section's diffs produced byte for byte. See
 there and the confidence table it argued from, both of which are still
 useful reading; it is no longer the plan.
 
-**Most of it already exists and deliberately refuses.** `automap/actions.py`
+**Most of it already exists and deliberately blocks.** `automap/actions.py`
 carries a `LevelUp` action whose entire implementation is
 `level_up_blockers()` — a list, as data, of every field it cannot derive — and
 whose `run` writes nothing. That stop is correct and **must stay**: the
@@ -219,7 +219,7 @@ The debug button is a **second** action beside it, not a loosening of the first.
 |---|---|---|
 | visible | always, disabled with reasons | **only in debug mode** — see `docs/118-debug-mode.md` |
 | writes | nothing | every field it can, from `goldbox/levels.py` |
-| unknown fields | is the reason it refuses | written from the table and **reported as unvouched** in `outcome.notes` |
+| unknown fields | is the reason it blocks | written from the table and **reported as unvouched** in `outcome.notes` |
 | claim | "this is what the game would do" | "this is what our tables say; the game has not agreed" |
 
 It hangs off the debug mode in `docs/118-debug-mode.md` (being written
@@ -263,7 +263,7 @@ Three of those blockers are cheap to remove and one is not:
 * **`hp_max` is a die roll and will never be a formula.** For a *test* party
   that does not matter — pick the table maximum and record that the number is
   chosen, not derived. It matters enormously for a shipped level-up button, and
-  is the honest reason `level-up` should keep refusing after `debug-level-up`
+  is the honest reason `level-up` should keep blocking after `debug-level-up`
   works.
 
 ---
@@ -298,12 +298,12 @@ tests/gamedata.save_disk("PORSAVE")        # the player's; skips if absent
   Session(...); sess.save_disk = copy; sess.boot(); sess.load_save()
 ```
 
-`write_file_inplace` refuses to change a file's block count, which is not a
+`write_file_inplace` will not change a file's block count, which is not a
 limitation here: both payloads are fixed sizes (7168 and 2048) and a rewritten
 save occupies exactly the chain it already had.
 
 `tools/c64/walkrun.py` already does the copy step — `shutil.copy(BASE_SAVE, HERE/SIDE0.D64)`
-— and `Session.attach` already refuses any path outside the session's scratch
+— and `Session.attach` already blocks any path outside the session's scratch
 directory. Nothing new is needed to get the disk into the emulator; what is
 new is what goes on it.
 
@@ -329,7 +329,7 @@ us.
 | whether a loaded save is validated | nothing suggests a checksum, and `wish` writes saves the game loads happily | **GUESS** — see `docs/117-save-conversion.md`, obstacle 7. It has never been *looked for* |
 
 **The ceilings are the game's, not the table's.** `GEN $1E21` is the routine
-that was missing when this section was written: it clamps rather than refuses,
+that was missing when this section was written: it clamps rather than blocks,
 so an over-cap character does not fail to train — the game writes the ceiling
 back over the level. What a *loaded* over-cap save does is still open, because
 the clamp is on the training path and nothing has been seen re-validating a
@@ -497,7 +497,7 @@ Six of the blockers in §3's table are now answerable, and one is not:
 * **The fee is 1000 gp at every level**, not only the first.
 * **Training heals.** MAGNUS went in at 2 of 9 and came out at 13 of 13, so a
   wounded high-level character cannot be produced by the trainer.
-* **At the ceiling the trainer refuses**, printing `NO MORE ADVANCEMENT
+* **At the ceiling the trainer blocks**, printing `NO MORE ADVANCEMENT
   POSSIBLE`. `GEN $1E21`'s clamp sits behind that stop and has still never
   been seen to fire.
 

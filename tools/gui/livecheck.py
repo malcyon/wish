@@ -202,7 +202,7 @@ class SessionTarget:
     # `automap.actions.program_counter` reaches the CPU two ways: a target
     # with a `pc()` of its own, or the monitor a `ViceTarget` is holding on
     # `_mon`. This holds no monitor between calls, so it answers for itself --
-    # and without these two, `FastTravel.legality` refuses with "this backend
+    # and without these two, `FastTravel.legality` rejects with "this backend
     # cannot read the CPU", which is what the first Silver Blades run got.
 
     def pc(self):
@@ -321,7 +321,7 @@ def _own_title(sess, game) -> None:
     defaults to Pool of Radiance. `tools/curse_of_the_azure_bonds/curserun.py`'s subclass sets it;
     `tools/secret_of_the_silver_blades/ssbsession.py`'s `SSBSession` does not, so a Silver Blades party
     standing in a dungeon read as being on the travel grid and `walk_one`
-    refused every key without pressing one -- `#360`'s defect, fixed for one
+    rejected every key without pressing one -- `#360`'s defect, fixed for one
     of the two later titles. Setting it here makes this file right whichever
     driver it is handed, and the miss is filed rather than patched in a driver
     three other tools share.
@@ -346,7 +346,7 @@ TITLES = {
     # **New Phlan rather than the Slums**, and it is not a preference: the
     # Slums party walked four squares into a wandering encounter on the first
     # run of this file, `$6E11` went to 2, and Heal party, Fast Travel and
-    # Level up all refused -- correctly, and with nothing measured. A town map
+    # Level up all rejected -- correctly, and with nothing measured. A town map
     # has no wandering monsters. This save also carries seventeen items with
     # sixteen readied, which is what the Identify check and the roster card's
     # readied line need.
@@ -561,8 +561,8 @@ class Run:
         # is what makes this check about the automapper rather than about the
         # driver. `Session.walk_stopped` is set when the driver decided not to
         # press a key at all; a key that was pressed and moved nothing is the
-        # game refusing the step, which the mapper is entitled to see and is
-        # itself evidence (`Automapper._refused`).
+        # game rejecting the step, which the mapper is entitled to see and is
+        # itself evidence (`Automapper._blocked_step`).
         unpressed = [s["key"] for s in steps if s["stopped"]]
         # **A route can end where it started and still be followed.** `JIKI`
         # against a wall is turn, blocked, turn back, blocked -- the marker
@@ -614,7 +614,7 @@ class Run:
                                UNREACHED, why="no fast-travel rows for this "
                                               "title")
         # **Wait for the loader to say DUNGEON before asking.** `FastTravel.
-        # legality` refuses with "Fast travel cannot act right now" whenever
+        # legality` rejects with "Fast travel cannot act right now" whenever
         # the mode flag is not 1, and a walk can leave the game on a script
         # menu or half-way through a load, which is what the first Curse run
         # hit. Waiting is not weakening the check: a player clicking the
@@ -647,7 +647,7 @@ class Run:
         # `FastTravel.legality` also requires the program counter to be inside
         # `DUNGEON`'s key-wait loop or the key fetcher it calls, and a walk
         # leaves the machine wherever the last keypress left it: the Pool of
-        # Radiance run refused here with the mode flag reading 1, which is the
+        # Radiance run rejected here with the mode flag reading 1, which is the
         # PC arm rather than the mode arm. A player clicking the button is a
         # player looking at the world, so waiting for that state is the check
         # rather than a way round it.
@@ -658,7 +658,7 @@ class Run:
             verdict = ft.legality(self.target, pick)
         if not verdict:
             return self.record("C6", "the area is re-read across a boundary",
-                               UNREACHED, why=f"Fast Travel refused: "
+                               UNREACHED, why=f"Fast Travel rejected: "
                                               f"{verdict.reason}",
                                before=before, to=pick.id,
                                mode_flag=settled)
@@ -842,7 +842,7 @@ class Run:
                                       unbadged and not drew) else FAIL
         return self.record(
             "C13", "the condition badges", result,
-            groups=len(groups), refuses_by_design=not groups,
+            groups=len(groups), blocked_by_design=not groups,
             staged_effect=self.BADGE_ID, staged_on=who.name,
             payload_offsets=[f"${base + at:04X}" for at, _v in rows],
             the_card_carries_it=carried, a_badge_was_drawn=drew,
@@ -1049,7 +1049,7 @@ class Run:
 
     def check_levelup(self) -> dict:
         """C20: Level up offers a level where the trainer is measured, and
-        refuses where it is not.
+        rejects where it is not.
 
         **Both directions, because either alone passes for the wrong
         reason.** A verdict of "legal" says nothing unless the title's trainer
@@ -1077,7 +1077,7 @@ class Run:
         # **The rejection is in `run`, not in `legality`, and that is where it
         # has to be checked.** `Action.legality` only asks the loader's mode
         # flag, so it answers True on a title whose trainer nobody has
-        # measured; what refuses is `level_up_blockers` inside `run`, and the
+        # measured; what rejects is `level_up_blockers` inside `run`, and the
         # window additionally never builds the button (`roster.levelling`).
         # So on an unmeasured title the action is actually *run* and the
         # measurement is that it wrote nothing -- `#16` is what a title that
@@ -1099,7 +1099,7 @@ class Run:
         return self.record(
             "C20", "Level up", PASS if agrees else FAIL,
             trainer_measured=measured, legality_passes=bool(verdict),
-            reason=verdict.reason, refused_for_the_fight=fighting,
+            reason=verdict.reason, blocked_for_the_fight=fighting,
             blockers=blockers, ran_and_wrote=wrote, offers=offers)
 
 
@@ -1168,7 +1168,7 @@ def run(args) -> int:
         run_.safely("C12", "the roster cards read the party", run_.check_roster)
         run_.safely("C13", "the condition badges", run_.check_badges)
         # **The actions go before the walk**, because a walk can start a
-        # fight and every one of them is refused in one. The first Pool of
+        # fight and every one of them is rejected in one. The first Pool of
         # Radiance run walked four squares out of the Slums into a wandering
         # encounter and measured nothing: Heal party, Fast Travel and Level
         # up each answered "not available during a fight", which is the gate

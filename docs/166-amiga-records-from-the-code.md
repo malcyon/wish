@@ -82,7 +82,7 @@ immediately, and none does.
 | `0x198` | `0x19D` | 14 | +5 | THAC0, AC at `0x19F`, roster tail, hit points at `0x1A9` |
 | — | `0x1AB` | 1 | | trailing pad; 422 + 5 = 427 is odd |
 
-`field_83_87` was refused as unplaceable before this. Placed, it reads
+`field_83_87` was blocked as unplaceable before this. Placed, it reads
 `00 00 01 00 00` in all four played characters — **`goldbox/dos_codec.py`'s DOS
 constant, byte for byte, in 24 of 24 DOS records** — and five zeros in all
 eleven pregens. That third byte is the "party flag at `0x0F8`" earlier work

@@ -2,8 +2,8 @@
 
 Asked under `#52 (File ▸ Import and File ▸ Export for every direction the
 library supports)`, whose plan lists "seventeen items" among the cases a
-conversion might have to refuse. It cannot arise: **Pool of Radiance, Curse
-of the Azure Bonds and Secret of the Silver Blades refuse a character a
+conversion might have to block. It cannot arise: **Pool of Radiance, Curse
+of the Azure Bonds and Secret of the Silver Blades block a character a
 seventeenth item, on DOS and on the Amiga alike, which is the same sixteen
 the C64 record has slots for.** Pools of Darkness, which no C64 machine ever
 ran, has one exemption and is the last section here.
@@ -32,7 +32,7 @@ from the routine's structure. The other seven compares sit at exactly the
 The C64 needs no such routine: its record **has** sixteen item slots of
 sixteen bytes and no seventeenth to fill, which is
 `goldbox/c64_codec.py`'s `ITEM_SLOTS` and `ITEM_SIZE` inside the 580-byte
-record (CONFIRMED from the layout). Whether the C64 engine also refuses in
+record (CONFIRMED from the layout). Whether the C64 engine also blocks in
 words has not been read, and it cannot change the number.
 
 Nothing here needed WinUAE: `tools/amiga/amiga68k.py` reads the Amiga executables
@@ -48,11 +48,11 @@ differ. Pool of Radiance's DOS copy:
 023795  push bp; mov bp,sp; sub sp,4
 02379b  push [bp+0xc]; push [bp+0xa]      ; the character, far
 0237a1  lcall 0xba:0x0bb8                 ; recount from the item chain
-0237a6  mov byte [bp-2], 0                ; refuse = false
+0237a6  mov byte [bp-2], 0                ; block = false
 0237aa  les di, [bp+0xa]
 0237ad  cmp byte ptr es:[di+0xc7], 0x0f   ; item_count > 15?
 0237b3  jbe +4
-0237b5  mov byte [bp-2], 1                ; refuse = true
+0237b5  mov byte [bp-2], 1                ; block = true
 0237b9  ...                               ; weight x quantity vs capacity + 1500
 02380a  mov al, [bp-2]; retf 8
 ```
@@ -145,7 +145,7 @@ and `0x008838`.
 carrying too many items.** The same word appears when the character is merely
 too heavy.
 
-**Two commands disappear instead of refusing.**
+**Two commands disappear instead of blocking.**
 
 * `HALVE` is left out of the item bar at sixteen -- `cmp ..., 0x10` then `jae`
   past the `pstrcat` of `" Halve"` at `GAME.OVR` `0x0220AC`. Confirmed on
@@ -168,7 +168,7 @@ and `encumbrance` to match. What the engine wrote back is the measurement.
 
 **The boundary, one action apart, one character.** `WISHFTR` offered a sling
 to `WISHCLE`, who held fifteen: accepted. `WISHFTR` then offered the identical
-sling to `WISHMAG`, who held sixteen: refused. The engine's own save to a
+sling to `WISHMAG`, who held sixteen: blocked. The engine's own save to a
 fresh slot:
 
 | character | before | after |
@@ -177,7 +177,7 @@ fresh slot:
 | WISHCLE | 15 items, 945 bytes, encumbrance 140 | **16 items**, 1008 bytes, 142 |
 | WISHMAG | 16 items, 1008 bytes, encumbrance 102 | **16 items**, 1008 bytes, 102 |
 
-**Weight is excluded, not assumed away.** The character that refused was
+**Weight is excluded, not assumed away.** The character that blocked was
 carrying *less* than the one that accepted -- 102 against 140 -- and every
 item in the experiment weighs two tenths of a pound against a limit no
 character is within 1500 units of. `WISH-SPEC-por-item-cap-16` is the save.

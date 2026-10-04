@@ -164,8 +164,8 @@ def test_only_area_30_is_closed_to_a_fasttravel():
     assert [a.id for a in areas.AREAS if not a.fasttravelable] == [30]
 
 
-def test_the_fasttravel_action_refuses_the_attract_mode_demo():
-    """Refused in the engine as well as absent from the dropdown, because the
+def test_the_fasttravel_action_rejects_the_attract_mode_demo():
+    """Rejected in the engine as well as absent from the dropdown, because the
     rejection is what protects a caller that did not come through the row."""
     from support.debugmachine import IN_THE_LOOP, machine
 

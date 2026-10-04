@@ -159,7 +159,7 @@ class EncounterSwitch:
         #: Rest values this switch overwrote: address -> what was there.
         self.held: dict[int, bytes] = {}
         #: Gate addresses whose statement did not match, already reported.
-        self.refused: set[int] = set()
+        self.blocked: set[int] = set()
         #: How many bytes each change covers: address -> span.
         self.spans: dict[int, int] = {}
         #: What each rest row holds: address -> the bytes written.
@@ -199,7 +199,7 @@ class EncounterSwitch:
 
     def apply(self) -> list[dict]:
         """Change every row that is currently loaded; return what was written
-        or refused (a refusal is reported once until the bytes match)."""
+        or blocked (a block is reported once until the bytes match)."""
         done = []
         for row in self.rows:
             address = self.resolve(row.spec)
@@ -210,14 +210,14 @@ class EncounterSwitch:
                 if address in self.patched and now == self.patched[address][1]:
                     continue
                 if digest(now) != row.digest:
-                    if address not in self.refused:
-                        self.refused.add(address)
+                    if address not in self.blocked:
+                        self.blocked.add(address)
                         done.append({"row": row.spec, "grade": row.grade,
                                      "stopped": f"the {STATEMENT} bytes there "
                                                 f"hash to {digest(now)}, not "
                                                 f"{row.digest}"})
                     continue
-                self.refused.discard(address)
+                self.blocked.discard(address)
                 changed = bytearray(now)
                 for offset, value in row.changes:
                     changed[offset] = value
@@ -234,8 +234,8 @@ class EncounterSwitch:
                     self._record()
             else:
                 if not self.inside(address, len(row.new)):
-                    if address not in self.refused:
-                        self.refused.add(address)
+                    if address not in self.blocked:
+                        self.blocked.add(address)
                         done.append({"row": row.spec, "grade": row.grade,
                                      "stopped": f"{address:#x} is outside the "
                                                 "expected memory"})
@@ -585,7 +585,7 @@ class WinuaeEncounters:
     `state` is the `WinuaeState`.
 
     `on` puts back whatever an earlier run left, then changes every loaded row
-    and records the switch as on.  `keys` presses keys, refusing the whole line
+    and records the switch as on.  `keys` presses keys, blocking the whole line
     when one is a save key while the switch is on or a change may be in the
     game, and while the switch is on takes it over and applies it again before
     each key.  `off` puts every recorded change back.  The switch stays on
@@ -752,7 +752,7 @@ class WinuaeEncounters:
         try:
             done = self._apply()
         except WINUAE_ERRORS:
-            # Whatever did not go back stays recorded, so a save is refused
+            # Whatever did not go back stays recorded, so a save is blocked
             # and the next `on` or `off` tries again.
             self.switch.off()
             self._save(False, self.switch.outstanding())
@@ -786,7 +786,7 @@ class WinuaeEncounters:
 
     def keys(self, names: list[str]) -> dict:
         """Press `names` in order, applying the switch again before each while it
-        is on; refuse the whole line, pressing nothing, when one is a save key
+        is on; block the whole line, pressing nothing, when one is a save key
         while the switch is on or a change of any title may still be in the
         game.  A key that cannot be pressed ends the line: the result's `error`
         says why and `pressed` holds the keys that went in."""

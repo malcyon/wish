@@ -64,8 +64,7 @@ Animate Dead field was too broad. The registered game-written
 and an owned id-32 array row at index 63. On that input, the predicate returns
 the array index, so the temple's `STA $6BAD,X` targets `$6BEC`, not the trait
 slot at `$6BB6`; it does not clear the array id. This is an instruction-path
-finding for `#700 (Converting a Pool of Radiance C64 party holding a camp-cast
-Animate Dead zombie needs more than fixing the refusal that blocks it)`.
+finding for `#700`.
 A successful temple Raise Dead and its game-written resave have not been
 observed, so the resulting player state remains unconfirmed.
 
@@ -83,7 +82,7 @@ arrays at `$4900` read before and after each press:
 
 The first press had nothing to revoke, because load had not put the id
 there. **Five runs before that one pressed READY from the world's VIEW and
-nothing moved**: `LIBRARY $4630`, the toggle, refuses a magical item -- bit
+nothing moved**: `LIBRARY $4630`, the toggle, blocks a magical item -- bit
 7 of `+15` -- with `NOT HERE` unless `$6DE4` is set, and CAMP sets that at
 `$0818` on entering the camp menu and clears it at `$0862` on leaving. A
 magical item is readied in camp or not at all, and the message is gone
@@ -296,13 +295,13 @@ performs makes sense of it. 31 "helpless" on list 7 beside hold, sleep and
 snake charm does; 50 "mummy rot, blocking healing" on the two saving-throw
 lists does not.
 
-### The monster sweep refused four that agreement offered
+### The monster sweep blocked four that agreement offered
 
 The route Pool of Radiance's own table was built on, over the 71 `MON*`
 records on the six Silver Blades sides. It named three -- 64 lands on this
 title's eight poisoners, the same creature set that carries it in Pool of
 Radiance, and BASILISK, MEDUSA and SARGATHA carry the pair 58/59 where Pool of
-Radiance's basilisk and medusa carry 83/127 -- and it refused four more:
+Radiance's basilisk and medusa carry 83/127 -- and it blocked four more:
 
 | id | the name agreement offered | the creature carrying it here |
 |---|---|---|
@@ -796,7 +795,7 @@ marching order (`ask2`, `ask3`), the item list prints an unidentified item
 by its noun (`ask3`), the list's bar takes the verb before the row and the
 row's highlight is not white at the name column (`ask4`, `ask5`), no key
 on the keyboard or a numpad joystick selects a row from the world's VIEW
-(`probe1`, `probe4`), because the toggle refuses a magical item outside
+(`probe1`, `probe4`), because the toggle blocks a magical item outside
 camp (`ask8`-`ask10`). Each holds `traits.jsonl`, `trace.log`,
 `asks.json`, and `tools/c64/traitask.py --report` prints the table.
 

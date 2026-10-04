@@ -92,7 +92,7 @@ class SpellTable:
     #: uses. Measured per title -- the evidence is the comment above
     #: `POOL_OF_RADIANCE` below. **Zero means the title has no such mask**,
     #: which is a title with no C64 port: `spells_known` and `spellbook_bytes`
-    #: refuse it rather than reading sixteen unrelated bytes.
+    #: block it rather than reading sixteen unrelated bytes.
     spellbook_size: int = 7
     #: How many spell ids the record records when it keeps **one byte per id**
     #: instead of a bitmask. Pools of Darkness' DOS record has 126 such bytes
@@ -483,7 +483,7 @@ POOLS_OF_DARKNESS = SpellTable(
     # `SPELLN`-style name file, no resident base and no pointer array to
     # name, and a zero `spellbook_size` says the record has no bitmask at
     # `0x078` either. `load_spell_names` has nothing to read for it and the
-    # two mask helpers refuse it rather than answering from the wrong bytes.
+    # two mask helpers block it rather than answering from the wrong bytes.
     file=b"",
     entries=0,
     resident_base=0,
@@ -1010,7 +1010,7 @@ def spells_known(record_bytes: bytes, game=None) -> list[int]:
 
 
 def _needs_mask(table: SpellTable) -> None:
-    """Refuse a title whose record keeps no bitmask at `0x078`.
+    """Block a title whose record keeps no bitmask at `0x078`.
 
     The three functions around this one read and write the C64 and neutral
     record's mask. A title with no C64 port has no such field -- Pools of

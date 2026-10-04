@@ -60,7 +60,7 @@ reads and a handful of tests.
 | `$C04B`-`$C04D`, the live square and facing | 19 | yes when the area has a known arrival square -- but the *area's* square, not this exit's | harmless: a different legal square, not a wrong one |
 | `$49C3`/`$49C4`, the overland square | 10 | **no** | **visible** -- see below |
 | `$4A20`+, a persistent quest flag | 9 | no | **not a defect**: the party did not take that route, so the flag should not move |
-| `$49E6`, indoors or on the travel grid | 6 | no | harmless: all six are same-area restarts `FastTravel.legality` refuses, and `ECL19`, `ECL1A` and `ECL1B` set it themselves in entry 4 |
+| `$49E6`, indoors or on the travel grid | 6 | no | harmless: all six are same-area restarts `FastTravel.legality` blocks, and `ECL19`, `ECL1A` and `ECL1B` set it themselves in entry 4 |
 | `$6DC9`, cancel the move in flight | 5 | no | harmless -- settled below |
 | `$49FD`/`$49FE`, the wall colours | 3 | no | harmless: the arriving area writes its own. 23 of the thirty scripts write `$49FD` and 27 write `$49FE` -- `goldbox/memory.py` says every script writes both, which is close and is not what the bytecode says |
 | `$6E22`-`$6E27`, the `WALLSET` and `WALLDEF` cache slots | 3 | no | harmless **for us**: all three sites are the same same-area restarts |

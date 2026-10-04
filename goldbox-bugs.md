@@ -422,7 +422,7 @@ is sitting at her table with the same three copper pieces on it. Three things
 follow from that.
 
 * **The slums never run out of random encounters.** `$4A80` counts won wandering
-  fights and both spawn sites refuse to roll another once it reaches fifteen
+  fights and both spawn sites will not roll another once it reaches fifteen
   (`ECL14 $9B32`, `$ADD6`). Murdering her puts it back to zero, and she can be
   murdered as often as you are willing to walk to the gate and back — so the
   fifteen is not a cap on anything, and the experience and treasure behind it
@@ -703,7 +703,7 @@ spellcaster in the party uses.
 **What the game does.** On the Commodore 64, that screen offers the ranger
 exactly one first-level magic-user spell to memorize: choosing a first one
 succeeds (`RANGER WILL MEMORIZE`), and choosing a second -- the same spell
-again, or a different one -- is refused (`RANGER CAN'T MEMORIZE`). On the DOS
+again, or a different one -- is blocked (`RANGER CAN'T MEMORIZE`). On the DOS
 version of the same game, at the same level, the same screen reads `RANGER CAN
 MEMORIZE: ... MAGIC-USER SPELLS: 2` and lets him prepare two.
 
@@ -718,7 +718,7 @@ experiment -- and then driven on both ports. On the Commodore 64: `RANGER WILL
 MEMORIZE` once, `RANGER CAN'T MEMORIZE` on a second attempt at the same spell
 and on a different one. Converted through Wish's own C64-to-DOS conversion and
 read the same way under DOSBox: `RANGER CAN MEMORIZE: ... MAGIC-USER SPELLS:
-2`, and a second spell is accepted where the C64 refused it.
+2`, and a second spell is accepted where the C64 blocked it.
 
 **What the player sees.** A ranger who has earned enough arcane
 training for two spells on paper is only ever handed one at the table, on the Commodore 64

@@ -71,7 +71,7 @@ def test_a_party_with_no_first_named_is_left_exactly_as_it_came():
     assert proof.reorder(built, None) is built
 
 
-def test_a_name_nobody_in_the_party_has_is_refused_rather_than_ignored():
+def test_a_name_nobody_in_the_party_has_is_blocked_rather_than_ignored():
     """Silently converting the party in its original order would produce a
     disk that looks right and tests nothing: the character with the items
     would still be last, with nobody behind him to be corrupted."""
@@ -549,7 +549,7 @@ def test_an_out_of_range_class_code_predicts_no_award():
     assert proof.opening_award(_Member("X", 200, (18,) * 6, 0), 6) is None
 
 
-def test_the_flag_is_refused_on_a_save_that_is_not_silver_blades(
+def test_the_flag_is_blocked_on_a_save_that_is_not_silver_blades(
         monkeypatch, capsys):
     monkeypatch.setattr(sys.modules[__name__], "_MEMBER_DELTAS",
                         amiga_port.CURSE_DELTAS)

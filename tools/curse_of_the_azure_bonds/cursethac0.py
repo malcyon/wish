@@ -31,7 +31,7 @@ tables through.  With it zero the rebuild adds nothing; with it one it adds
         --out DIR --goto 6,10 --quick 6
 
 And the other half of the question, which is what the **training hall** writes
-rather than what the fight does.  The hall refuses a character who cannot
+rather than what the fight does.  The hall rejects a character who cannot
 advance, so it takes an experience total as a third input:
 
     tools/curse_of_the_azure_bonds/cursethac0.py stage --base <same> --out hall.D64 \
@@ -201,7 +201,7 @@ def spoil(body: bytearray, slot: int, gate: int | None = None,
     happened from a rebuild that happened *and* found the gate open.
 
     `xp` is a third, and is only for the training-hall half of the question:
-    a character the hall refuses cannot show what the hall writes.  All three
+    a character the hall rejects cannot show what the hall writes.  All three
     are **inputs**; the measurement is what the engine does with them.
     """
     before = read_block(body, slot)
@@ -233,7 +233,7 @@ def stage(args) -> int:
     """Copy a Curse save disk and spoil the named characters' roster THAC0."""
     from tools.curse_of_the_azure_bonds import curseload  # noqa: PLC0415
 
-    curseload.refuse_open_entries(args.base)
+    curseload.check_open_entries(args.base)
     out = pathlib.Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(args.base, out)
@@ -399,7 +399,7 @@ class Run:
 
         Walking a Curse street puts a bar in front of the party every few
         squares, and while one is up `enter_move` cannot get back to
-        `I,J,K,M` -- so every following step is refused and the run looks
+        `I,J,K,M` -- so every following step is rejected and the run looks
         like a party walled in.  The locked door north of `7,12` in Tilverton
         is the one that stopped `issue368/run4` (scratch, deleted): `BASH PICKLOCK QUIT`,
         for twenty-five seconds a step until the budget was gone.

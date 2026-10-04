@@ -269,7 +269,7 @@ def test_c64_to_dos_matches_the_library_for_every_title(
     deltas = dos_port.DELTAS_BY_KEY[game.key]
     out = tmp_path / "out"
     # The source title's own combat icon table, off its C64 disks: without
-    # one the conversion reports a loss and the dialog refuses it, as Save As
+    # one the conversion reports a loss and the dialog blocks it, as Save As
     # does (#511).  Both sides of this comparison take the same table.
     files = _c64_game_files(game)
     if files is None:
@@ -321,7 +321,7 @@ def test_c64_to_dos_matches_the_library_for_every_title(
 # exercises, plus the four Amiga directions that comparison does not cover.
 #
 # A case that raises `saveplan.SaveAsError` here is a real conversion defect
-# (`.claude/rules/conversions.md`: refusing a save is not a fix), not
+# (`.claude/rules/conversions.md`: blocking a save is not a fix), not
 # something for this test to work around.
 # ---------------------------------------------------------------------------
 
@@ -914,7 +914,7 @@ def test_a_seven_member_c64_party_saves_as_dos_with_all_seven(app, tmp_path):
     # itself and pass for any seventh member.
     assert party.members[SEVEN_MEMBERS - 1].record.get("name") == SEVENTH_C64
     # The item files are part of the converted party; a record that counts
-    # items is refused without the file beside it.
+    # items is blocked without the file beside it.
     for filename, data in plan.files.items():
         (tmp_path / filename).write_bytes(data)
     for number, member in enumerate(party.members, start=1):

@@ -167,7 +167,7 @@ def curse_dir():
     registry happens to list them, and reordering it would move the whole Curse
     suite onto the damaged release in silence.
 
-    `curse_disks`'s docstring says `goldbox.d64` refuses that side. It does
+    `curse_disks`'s docstring says `goldbox.d64` rejects that side. It does
     not -- `D64.open` reads it as the error-bytes variant, `writable` False and
     `error_base` 174848 -- so "does it open" cannot tell the two sets apart and
     scoring on that left path order deciding after all. What separates them is
@@ -214,7 +214,7 @@ def curse_disks(engine_only: bool = True):
 
     One of the three published rips carries error bytes on one side and is
     175531 bytes -- 174848 plus a 683-byte error table. This said `goldbox.d64`
-    refuses it until 2026-09-02; it does not. `D64.open` reads it as the
+    rejects it until 2026-09-02; it does not. `D64.open` reads it as the
     error-bytes variant, `writable` False and `error_base` 174848. The `except`
     below therefore never fires for that side, and the reason the rip is not
     used is `curse_dir`'s preference for a set with no error table at all.

@@ -78,7 +78,7 @@ Convert disabled rather than making up either (`NO_DISKS` above). The third
 thing a Pool of Radiance conversion once read off the disks, the creation
 menu in `GEN`, is twenty-six integers and is stored
 (`goldbox.portraits.POOL_OF_RADIANCE_MENU`, 2026-09-06), so a sheet portrait
-needs no disk and nothing here refuses for its lack.
+needs no disk and nothing here blocks for its lack.
 
 A DOS save is a *directory* of loose files and a C64 save is one `.d64`;
 `rehearse` below takes the folder directly, as `ConvertDialog`'s own source
@@ -191,7 +191,7 @@ def rehearse(folder: str | pathlib.Path, slot: str,
 
     The DOS files are read, the game files in `files` were read before this
     was called, and the result exists only as the returned `Conversion`.
-    Anything `goldbox.dos_codec.new_save` refuses raises from in here, which is what
+    Anything `goldbox.dos_codec.new_save` blocks raises from in here, which is what
     the dialog turns into a sentence.
 
     **The title comes from the save itself, not from an assumption.** A
@@ -200,7 +200,7 @@ def rehearse(folder: str | pathlib.Path, slot: str,
     being written out as a Pool of Radiance save it never was (#192). A
     Curse save has no separate roster file -- its roster lives inside the one
     payload `goldbox/c64_save.py` describes -- so `save1` stays `None` rather
-    than an empty `SaveGame1`, which the constructor would refuse anyway.
+    than an empty `SaveGame1`, which the constructor would block anyway.
     """
     party = dos_codec.read_party(folder, slot)
     try:

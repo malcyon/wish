@@ -5,7 +5,7 @@ Before this fix, `new_savegame` copied `dropped` and `warnings` off each
 character's own report and never `losses`, so a save's report always came
 back with `losses == []` even when a character's name was cut, and
 `editor.saveplan.losses` -- the guard `File > Convert...` reads -- saw
-nothing to refuse.
+nothing to block.
 """
 
 from __future__ import annotations

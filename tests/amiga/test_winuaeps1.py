@@ -21,7 +21,7 @@ def _body(function: str) -> str:
 
 
 def test_the_device_name_pattern_is_the_same_in_python_and_powershell():
-    """Python refuses a device name before the guest sees it; the guest must refuse the same set."""
+    """Python blocks a device name before the guest sees it; the guest must block the same set."""
     found = re.search(r"\$Text -imatch '(.+)'", _body("Test-DeviceName"))
     assert found, "Test-DeviceName has no -imatch pattern"
     guest = found.group(1)

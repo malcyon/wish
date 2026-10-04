@@ -402,7 +402,7 @@ def reap(n: int, timeout: float = 8.0) -> str:
 
     Kills **the pgid recorded in that slot's lease file** and nothing else.  A
     slot whose flock is held is somebody's however dead it looks, and this
-    refuses it: that rejection is the rule that replaces `ss -tnp | grep 6502`.
+    rejects it: that rejection is the rule that replaces `ss -tnp | grep 6502`.
     """
     if fcntl is None:
         raise PoolUnavailable("the instance pool needs flock, so it is POSIX only")
@@ -720,7 +720,7 @@ def _socket_owner(path: Path, timeout: float = 1.0) -> int | None:
     `SO_PEERCRED` is the kernel's own record of who is on the other end of a
     connected `AF_UNIX` socket -- for one that is listening, the process that
     `accept()`ed this connection, which for an X11 socket is the X server
-    itself.  `None` for anything that does not exist, refuses the connection,
+    itself.  `None` for anything that does not exist, rejects the connection,
     or is not a Unix socket at all -- including on a platform with no
     `SO_PEERCRED`, which is everything but Linux.
     """
@@ -954,13 +954,13 @@ def _server_on(display: str) -> bool:
 def _killpg(pgid: object, timeout: float = 8.0) -> bool:
     """SIGTERM a process group, then SIGKILL what is left. By pgid, never by name.
 
-    Refuses our own group and anything that is not a plausible pgid, because the
+    Rejects our own group and anything that is not a plausible pgid, because the
     one time the by-name rule was broken what died was Donald's own window.
     """
     if not isinstance(pgid, int) or pgid <= 1:
         return False
     if pgid == os.getpgid(0):
-        raise ValueError(f"refusing to kill our own process group {pgid}")
+        raise ValueError(f"declining to kill our own process group {pgid}")
     try:
         os.killpg(pgid, signal.SIGTERM)
     except ProcessLookupError:

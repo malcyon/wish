@@ -137,7 +137,7 @@ def build_with_combat(title: str = TITLE):
     with a route that runs a `COMBAT` statement on the way out.
 
     **A pair counts as combat if any of its routes does**, although only the
-    first is stood on: Fast Travel refuses to choose a door that can start a
+    first is stood on: Fast Travel declines to choose a door that can start a
     fight, so the pair is safe only if every way to it is.
     """
     if not W.DISKS or not W.DISKS.exists():

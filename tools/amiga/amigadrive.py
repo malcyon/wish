@@ -20,7 +20,7 @@ no window, key or dialog; the state files stay on the guest under
 `C:\\Amiga\\States\\<holder>`.
 
 `--holder` is the lane claim `winuae.ps1` enforces, and it is required: every
-call this makes is refused without it.  Take the claim yourself before the
+call this makes is blocked without it.  Take the claim yourself before the
 first call and release it at the end -- this script does not, deliberately,
 because a claim that ends with the process that took it cannot be handed
 between the several runs one experiment needs.

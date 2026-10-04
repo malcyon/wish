@@ -252,7 +252,7 @@ those areas, and see whether it changes before the first key.
 * **The VM load's `$035F` case has no body.** `0x83BA cmp ax, 0x35F; jne +0`
   falls to the return with `[bp-2]` uninitialised (`0x82EF` zeroes `[bp-4]`
   only). `ECL1A` entry 0 compares `$035F` against its 29-entry table at
-  `$B019` to refuse a move. SPECULATIVE that the DOS overland's passability
+  `$B019` to block a move. SPECULATIVE that the DOS overland's passability
   test compares against a stack leftover; the experiment is a `BP` on that
   case's runtime address during a step and `EV AX` on the way out.
 * **`ECL1A` differs from `ECL7.DAX` block 26 in two bytes** (`$9923` and

@@ -19,7 +19,7 @@ The test suite, one directory per game or job the way `tools/` is, with the shar
 | [generate](generate/README.md) | Tests for the generators under `tools/generate/`, chiefly that each generated file is still what its generator writes today. |
 | [github](github/README.md) | Tests for the scripts that read and write the public issue tracker without letting a stranger's text into an agent's context. |
 | [gui](gui/README.md) | Tests for the scripts under `tools/gui/`, which photograph, measure and validate the window. |
-| [hooks](hooks/README.md) | Tests for the scripts under `.claude/hooks/`: what each one refuses and what it lets through. |
+| [hooks](hooks/README.md) | Tests for the scripts under `.claude/hooks/`: what each one blocks and what it lets through. |
 | [icons](icons/README.md) | Tests for combat icons and portraits: the option tables that compose a figure, the tables that convert one between ports, and the tools that draw and measure them. |
 | [pool_of_radiance](pool_of_radiance/README.md) | Tests for Pool of Radiance: its fight driver, the messages and icons it draws, and the tools under `tools/pool_of_radiance/`. |
 | [records](records/README.md) | Tests for the character record and the tables and rules around it: field layouts, derived values, level tables, per-title tables and the sweep tools. |

@@ -104,7 +104,7 @@ def test_idle_in_key_window_confirms_a_pc_genuinely_in_the_window():
     assert pc == 0x1005
 
 
-def test_idle_in_key_window_refuses_a_pc_outside_both_windows():
+def test_idle_in_key_window_rejects_a_pc_outside_both_windows():
     """This is the load-in-progress case: the screen is not drawing
     anything new, but the PC is off running the KERNAL loader rather than
     waiting in DUNGEON's loop or LIBRARY's fetcher."""

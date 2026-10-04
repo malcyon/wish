@@ -29,7 +29,7 @@ Three arrivals at Podol Plaza's own arrival square, so the pictures compare:
     `newecl_writes`, which is what wish ships
 
 Nothing is written to the player's disks: `stage_disks` copies the sides into
-the slot and `Session.attach` refuses a path outside it.  The pool owns the
+the slot and `Session.attach` rejects a path outside it.  The pool owns the
 emulator -- claim, launch, tear down.
 """
 from __future__ import annotations
@@ -178,7 +178,7 @@ def warp(sess, target, ft, area_id: int, repair: bool):
           f"legal={verdict.ok} {'' if verdict.ok else verdict.reason}",
           flush=True)
     if not verdict.ok:
-        raise RuntimeError(f"refused: {verdict.reason}")
+        raise RuntimeError(f"rejected: {verdict.reason}")
     here = ft.current_area(target)
     writes = A.newecl_writes(here or 0, area_id, getattr(row, "disk", None),
                              arrival)
@@ -324,7 +324,7 @@ def plan_walkin(sess, target, ft, out) -> int:
 
     Split from the main plan because it needs the party on the travel grid
     first, and the only way to get there is to walk out of the graveyard --
-    a warp from outdoors to an indoor area is refused, and rightly
+    a warp from outdoors to an indoor area is rejected, and rightly
     (`FastTravel.OUTDOORS_TRAP`).
     """
     warp(sess, target, ft, GRAVEYARD, True)
@@ -404,7 +404,7 @@ def run(args) -> int:
             raise RuntimeError('the walked exit west never left area 10')
         capture(sess, out, "07-grid-walked",
                 "walked west out of the graveyard on to the travel grid")
-        # A warp from the travel grid to an indoor area is refused --
+        # A warp from the travel grid to an indoor area is rejected --
         # `FastTravel.OUTDOORS_TRAP`, and rightly: it hangs the loader.  So
         # the party walks back in through the graveyard's real entrance
         # instead, which is also the only way to watch `ECL0A` entry 4 set the

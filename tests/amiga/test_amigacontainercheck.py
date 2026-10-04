@@ -107,7 +107,7 @@ def test_a_word_is_big_endian_rather_than_little():
     assert check.container_fields(bytes(raw))["area"] == 256
 
 
-def test_a_file_that_is_not_13141_bytes_is_refused():
+def test_a_file_that_is_not_13141_bytes_is_blocked():
     with pytest.raises(ValueError, match="13141"):
         check.container_fields(b"\0" * 13137)
 
@@ -255,16 +255,16 @@ def test_a_save_that_is_not_one_is_reported_rather_than_raising(monkeypatch):
     assert any("not a C64 Pool of Radiance save" in ln for ln in lines)
 
 
-def test_a_refused_area_is_reported_rather_than_raising(monkeypatch):
+def test_a_blocked_area_is_reported_rather_than_raising(monkeypatch):
     monkeypatch.setattr(check, "load_payload", lambda p, n: a_c64_payload())
 
-    def refuse(*a, **k):
+    def block(*a, **k):
         raise ValueError("area 30 has no script in the Amiga game's ecl.dax")
 
-    monkeypatch.setattr(check, "build", refuse)
+    monkeypatch.setattr(check, "build", block)
     lines, ok = check.report([pathlib.Path("area30.d64")], b"", None, "B", 6)
     assert not ok
-    assert any("refused" in ln and "area 30" in ln for ln in lines)
+    assert any("blocked" in ln and "area 30" in ln for ln in lines)
 
 
 def test_the_specimen_glob_takes_por_d64s_and_nothing_else(tmp_path):

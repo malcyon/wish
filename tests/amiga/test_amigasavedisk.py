@@ -139,7 +139,7 @@ def test_the_saved_game_on_a_save_disk_names_this_slots_own_files():
     assert names == [f"CHRDATB{n}".encode("ascii") for n in range(1, 9)]
 
 
-def test_a_saved_game_of_the_wrong_size_is_refused_before_anything_is_written():
+def test_a_saved_game_of_the_wrong_size_is_blocked_before_anything_is_written():
     """A save disk is formatted here, so a rejection costs the caller nothing.
 
     It still has to be a rejection rather than a disk with a 13,000-byte

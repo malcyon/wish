@@ -149,7 +149,7 @@ def test_exact_df1_is_preserved_and_failed_save_is_fetched(tmp_path):
     ]
 
 
-def test_unverified_mute_refuses_before_claim_or_boot(tmp_path):
+def test_unverified_mute_blocks_before_claim_or_boot(tmp_path):
     guest = FailedPostWriteGuest()
 
     with pytest.raises(winuaesession.RouteError, match="audio mute"):
@@ -181,7 +181,7 @@ def test_existing_same_holder_claim_never_touches_the_prior_lane(tmp_path):
     assert not (tmp_path / "recon1" / "fetched-df0.adf").exists()
 
 
-def test_stale_or_unmeasured_audio_mute_proof_is_refused(tmp_path):
+def test_stale_or_unmeasured_audio_mute_proof_is_blocked(tmp_path):
     proof = tmp_path / "mute.json"
     now = datetime.now(timezone.utc)
     measured = {
@@ -207,7 +207,7 @@ def test_stale_or_unmeasured_audio_mute_proof_is_refused(tmp_path):
     assert winuaesession._mute_proof(proof)
 
 
-def test_mute_proof_expiring_during_transfer_refuses_before_start(
+def test_mute_proof_expiring_during_transfer_blocks_before_start(
         tmp_path, monkeypatch):
     class ClockedDateTime:
         now_utc = datetime(2026, 9, 24, 18, 0, tzinfo=timezone.utc)
@@ -496,7 +496,7 @@ def _manifest_with(tmp_path, mutate):
     return path
 
 
-def _refused(tmp_path, mutate, match):
+def _fails(tmp_path, mutate, match):
     path = _manifest_with(tmp_path, mutate)
     guest = FailedPostWriteGuest()
     with pytest.raises(winuaesession.RouteError, match=match):
@@ -506,8 +506,8 @@ def _refused(tmp_path, mutate, match):
     assert guest.calls == []
 
 
-def test_recon_refuses_a_published_slot_that_differs_from_the_manifest(tmp_path):
-    _refused(tmp_path, lambda m, t: m.update(slot_sha256="0" * 64),
+def test_recon_blocks_a_published_slot_that_differs_from_the_manifest(tmp_path):
+    _fails(tmp_path, lambda m, t: m.update(slot_sha256="0" * 64),
              "published slot differs")
 
 
@@ -532,48 +532,48 @@ def test_recon_accepts_an_edited_staged_slot_beside_the_unedited_published_one(t
     assert ("claim", "wish672-test") in guest.calls
 
 
-def test_recon_refuses_a_tampered_published_slot_when_the_staged_one_is_edited(tmp_path):
+def test_recon_blocks_a_tampered_published_slot_when_the_staged_one_is_edited(tmp_path):
     def mutate(manifest, root):
         _with_edited_staged_slot(manifest, root)
         manifest["published_slot_sha256"] = "0" * 64
 
-    _refused(tmp_path, mutate, "published slot differs")
+    _fails(tmp_path, mutate, "published slot differs")
 
 
-def test_recon_refuses_a_staged_slot_that_differs_from_its_recorded_digest(tmp_path):
+def test_recon_blocks_a_staged_slot_that_differs_from_its_recorded_digest(tmp_path):
     def mutate(manifest, root):
         _with_edited_staged_slot(manifest, root)
         manifest["slot_sha256"] = "0" * 64
 
-    _refused(tmp_path, mutate, "not Wish's published slot")
+    _fails(tmp_path, mutate, "not Wish's published slot")
 
 
-def test_recon_refuses_a_boot_disk_slot_that_is_not_the_published_one(tmp_path):
+def test_recon_blocks_a_boot_disk_slot_that_is_not_the_published_one(tmp_path):
     def mutate(manifest, root):
         boot = AmigaDisk.open(root / "boot.adf")
         boot.write_file("/SAVE/savgamC.sav", b"another save")
         boot.save(root / "boot.adf")
         manifest["df0"]["sha256"] = _sha(root / "boot.adf")
 
-    _refused(tmp_path, mutate, "not Wish's published slot")
+    _fails(tmp_path, mutate, "not Wish's published slot")
 
 
-def test_recon_refuses_a_working_df1_that_is_not_disk_b(tmp_path):
+def test_recon_blocks_a_working_df1_that_is_not_disk_b(tmp_path):
     def mutate(manifest, root):
         _disk(root / "disk-b-working.adf", "Other")
         manifest["df1"]["sha256"] = _sha(root / "disk-b-working.adf")
 
-    _refused(tmp_path, mutate, "volume 'Secret 2'")
+    _fails(tmp_path, mutate, "volume 'Secret 2'")
 
 
-def test_recon_refuses_a_working_df1_that_differs_from_the_registered_disk_b(tmp_path):
+def test_recon_blocks_a_working_df1_that_differs_from_the_registered_disk_b(tmp_path):
     def mutate(manifest, root):
         disk = AmigaDisk.open(root / "disk-b-working.adf")
         disk.make_dir("/EXTRA")
         disk.save(root / "disk-b-working.adf")
         manifest["df1"]["sha256"] = _sha(root / "disk-b-working.adf")
 
-    _refused(tmp_path, mutate, "differs from the registered disk B")
+    _fails(tmp_path, mutate, "differs from the registered disk B")
 
 
 def test_start_opens_no_log_console(monkeypatch):

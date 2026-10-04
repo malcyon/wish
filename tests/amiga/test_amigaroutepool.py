@@ -50,17 +50,17 @@ def test_an_open_door_behind_the_party_keeps_the_turn_about():
     assert route_pool.pool_turns_about(KOBOLD_CAVES, load_geo=_loader(walls)) is True
 
 
-def test_a_square_closed_both_ways_is_refused():
+def test_a_square_closed_both_ways_is_blocked():
     walls = _map(x=6, y=5, closed=(geo.NORTH, geo.SOUTH))
     with pytest.raises(RouteError, match="no open edge"):
         route_pool.pool_turns_about(KOBOLD_CAVES, load_geo=_loader(walls))
 
 
 def test_an_area_with_two_maps_keeps_the_turn_about_without_reading_walls():
-    def refuse(name):
+    def block(name):
         raise AssertionError("no wall data should be read")
     place = {"area": 24, "x": 8, "y": 11, "facing": geo.SOUTH}
-    assert route_pool.pool_turns_about(place, load_geo=refuse) is True
+    assert route_pool.pool_turns_about(place, load_geo=block) is True
 
 
 def test_the_forward_route_has_no_turn_and_the_other_steps_are_unchanged():

@@ -302,7 +302,7 @@ def test_the_byte_check_accepts_a_disk_that_holds_every_row():
 
 
 @pytest.mark.parametrize("name,at", [(n, a) for n, a, _ in tb.CODE_ROWS])
-def test_the_byte_check_refuses_a_disk_that_differs_at_any_of_the_addresses(name, at):
+def test_the_byte_check_rejects_a_disk_that_differs_at_any_of_the_addresses(name, at):
     lines = []
     assert tb.check_code("root", load=fake_loader((name, at)), out=lines.append) == 1
     # A row inside another row's bytes (`$0A4D` lies in `$0A48`'s) turns both red.
@@ -319,7 +319,7 @@ def test_the_byte_check_matches_the_players_own_disks():
     assert tb.check_code(str(root), out=lines.append) == 0, lines
 
 
-def test_the_byte_check_refuses_the_players_disks_with_one_byte_altered():
+def test_the_byte_check_rejects_the_players_disks_with_one_byte_altered():
     root = gamedisks.find("pool-of-radiance")
     if root is None:
         pytest.skip("no Pool of Radiance disks")
@@ -400,7 +400,7 @@ def test_the_highest_free_row_is_taken():
     assert got["row"] == 0x3E
 
 
-def test_a_slot_that_already_has_a_charm_row_is_refused_and_nothing_is_written():
+def test_a_slot_that_already_has_a_charm_row_is_rejected_and_nothing_is_written():
     machine = Machine()
     machine.mem[tb.CHARM_ID_AT + 5] = tb.CHARM
     machine.mem[tb.CHARM_OWNER_AT + 5] = 2
@@ -602,7 +602,7 @@ def test_without_an_item_the_pile_is_only_read():
 
 
 @pytest.mark.parametrize("plus", [0, 0x80])
-def test_an_item_with_no_usable_plus_is_refused_with_exit_seven(monkeypatch, plus):
+def test_an_item_with_no_usable_plus_is_rejected_with_exit_seven(monkeypatch, plus):
     record = bytearray(ITEM)
     record[tb.PLUS_AT] = plus
     monkeypatch.setattr(tb, "load_item_templates", lambda disk, *a, **k: {"X": bytes(record)})
@@ -611,7 +611,7 @@ def test_an_item_with_no_usable_plus_is_refused_with_exit_seven(monkeypatch, plu
     assert exit_.value.code == 7
 
 
-def test_a_missing_item_is_refused_before_any_slot_is_claimed(monkeypatch, tmp_path):
+def test_a_missing_item_is_rejected_before_any_slot_is_claimed(monkeypatch, tmp_path):
     monkeypatch.setattr(tb, "load_item_templates", lambda disk, *a, **k: {})
 
     def claimed(*a, **k):
@@ -846,7 +846,7 @@ def test_a_y_of_sixteen_is_off_the_map_too(monkeypatch, tmp_path):
     dict(mode="flee", stay=1, charm=1),
     dict(mode="flee", stay=6),
     dict(force_destination=5)])
-def test_refused_argument_combinations(kw):
+def test_rejected_argument_combinations(kw):
     assert tb.check_args(args(**kw)) is not None
 
 
@@ -1073,13 +1073,13 @@ def test_a_failed_step_whose_screenshot_raises_logs_shot_failed(monkeypatch, tmp
     assert bad["label"] == "begin_adventuring-failed" and "OSError" in bad["error"]
 
 
-def test_a_failed_step_whose_screenshot_is_refused_names_no_picture(monkeypatch, tmp_path):
+def test_a_failed_step_whose_screenshot_is_rejected_names_no_picture(monkeypatch, tmp_path):
     failed, _, log = stalled_run(monkeypatch, tmp_path, shot=lambda: False)
     assert failed["shot"] is None
     assert not log.kinds("shot_failed")
 
 
-def test_a_refused_argument_combination_closes_the_log(monkeypatch, tmp_path):
+def test_a_rejected_argument_combination_closes_the_log(monkeypatch, tmp_path):
     torn, log = [], FakeLog()
     patch_run(monkeypatch, torn, log)
     assert tb.run(args(out=str(tmp_path / "o"), mode="flee")) == 1
@@ -1231,7 +1231,7 @@ def test_an_attack_ally_prompt_is_answered_no_and_the_turn_is_passed():
     assert tactic(sess, None) == "done"
     assert sess.picked == ["NO"]
     assert sess.turns == ["melee", "combat_turn"]
-    assert log.kinds("attack_ally_refused")
+    assert log.kinds("attack_ally_blocked")
 
 
 def test_no_prompt_leaves_the_melee_answer_alone():
@@ -1346,7 +1346,7 @@ def test_a_no_that_cannot_be_selected_leaves_the_prompt_to_the_fight_loop():
     assert tb.Tactic(sess, log, args())(sess, None) == ""
     assert sess.picked == ["NO"]
     assert sess.turns == ["melee"] and sess.returns == 0
-    assert log.kinds("attack_ally_refused")[0]["answered"] is False
+    assert log.kinds("attack_ally_blocked")[0]["answered"] is False
 
 
 def test_after_no_the_move_sub_bar_is_backed_out_of_before_the_turn_is_passed():
@@ -1818,7 +1818,7 @@ def test_stage_mercy_writes_the_flag_at_the_result_stop_and_reads_it_back(value)
 @pytest.mark.parametrize("kw", [dict(mode="flee", stay=1, stage_dying=0),
                                 dict(mode="flee", stay=1, stage_mercy=0),
                                 dict(stage_dying=6)])
-def test_the_staging_options_are_refused_in_flee_mode_and_out_of_range(kw):
+def test_the_staging_options_are_rejected_in_flee_mode_and_out_of_range(kw):
     assert tb.check_args(args(**kw)) is not None
 
 
@@ -1900,7 +1900,7 @@ def test_stage_dying_on_an_empty_block_writes_nothing_and_logs_what_it_found():
     traps.arm_result()
     result_hit(machine, sess, 0x01)
     got = traps.readings["dying_staged"][0]
-    assert got["refused"] == "empty block" and (got["status_was"], got["hp_was"]) == (0, 0)
+    assert got["rejected"] == "empty block" and (got["status_was"], got["hp_was"]) == (0, 0)
     assert machine.writes == []
 
 

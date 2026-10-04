@@ -100,7 +100,7 @@ def build(disk, slot: str, disks: pathlib.Path, out: pathlib.Path | None):
 
     The creation menu's two tables (#57) come off the same `disks` directory
     the icon and `ANIMATE00` do.  Unlike those two a conversion does not
-    refuse without them: `goldbox.dos_codec.to_neutral` falls back on the stored
+    block without them: `goldbox.dos_codec.to_neutral` falls back on the stored
     menu, so a Pool of Radiance party arrives with every face its own
     whether or not `GEN` was anywhere to be read.
     """

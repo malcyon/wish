@@ -182,12 +182,11 @@ is the next section.
 
 ### The travel grid, and the two bytes that had stopped it
 
-**A party on the travel grid was refused until 2026-09-07**, because byte
+**A party on the travel grid was blocked until 2026-09-07**, because byte
 12810 (the view type) and byte 12803 (the wall in front) had never been seen
 in an outdoor Amiga saved game and writing either would have been inventing a
 value. A third WinUAE run made two,
-`#321 (An Amiga Pool of Radiance conversion refuses a party standing on the
-travel grid, because no outdoor Amiga saved game has ever been read)`, and
+`#321`, and
 both bytes agree with DOS:
 
 | byte | outdoors | indoors | what DOS holds outdoors |
@@ -238,7 +237,7 @@ from the C64's stale west to the north it had just walked. **Bytes 12803 and
 12810, `$49C5`, `$49E6`, `$49C3`, the wallset triple and its index map all
 came back exactly as written.**
 
-## 5. What is refused, and why refusing is the answer
+## 5. What is blocked, and why blocking is the answer
 
 **An area with no block in `ecl.dax`** -- area 30 -- and an area with no row in
 `goldbox/areas.py`. Neither has a script to stage.

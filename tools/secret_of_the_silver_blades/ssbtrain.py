@@ -484,7 +484,7 @@ def press(args) -> int:
     `PARTY_CACHE`, because they are not in the record page: without them a
     save taken between two presses holds the earlier press's total beside the
     composed record's lower maximum.  The byte is one wide, so an `hp_max`
-    above 255 is refused.
+    above 255 is rejected.
 
     The spell menu is driven only when one was built: `$1C10` is zeroed and
     `$7A00` filled with `$FF` first, so a count that comes back non-zero is

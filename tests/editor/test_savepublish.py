@@ -1,4 +1,4 @@
-"""Preparing a Save As, refusing one that would lose a field, and publishing.
+"""Preparing a Save As, blocking one that would lose a field, and publishing.
 
 Everything here is built from the format rather than copied off a disk, so it
 runs with no game data at all -- `test_saveplan.py`'s own builders, and the
@@ -233,7 +233,7 @@ def test_a_c64_copy_of_a_save_holding_a_dropped_characters_residue_goes_ahead(
     Counting every slot with any non-zero byte in it makes the two slots
     still holding a dropped character's record part of the party, so six
     characters arrive as eight and every real Pool of Radiance save is
-    refused. The copy keeps the residue: a native copy is the image itself.
+    blocked. The copy keeps the residue: a native copy is the image itself.
     """
     path = save_with_residue_slots(tmp_path)
     party = Party(str(path))
@@ -281,10 +281,10 @@ def test_every_pool_of_radiance_c64_save_on_this_machine_copies_to_c64(
             if went_in != came_out] == []
 
 
-def test_no_pool_of_radiance_c64_save_is_refused_for_the_altered_flag(
+def test_no_pool_of_radiance_c64_save_is_blocked_for_the_altered_flag(
         tmp_path):
     """The symptom of #620, against the player's own disks: a C64 party whose
-    scores were altered in the modification screen refused a DOS destination
+    scores were altered in the modification screen blocked a DOS destination
     with `flags_0b8: 1 arrived as 0` on twelve of the fifteen save disks
     here, one character of six in each. No rejection may name that field now.
 
@@ -299,7 +299,7 @@ def test_no_pool_of_radiance_c64_save_is_refused_for_the_altered_flag(
     if not saves or files_for is None or game_folder is None:
         pytest.skip("needs the Pool of Radiance C64 disks and DOS game folder")
     assets = saveplan.Assets(dos_folder=game_folder, source_files=files_for)
-    went_ahead, refused, roster_disks = [], {}, []
+    went_ahead, blocked, roster_disks = [], {}, []
     for path in saves:
         party = Party(str(path))
         if saveplan.prepare(party) is None:
@@ -309,12 +309,12 @@ def test_no_pool_of_radiance_c64_save_is_refused_for_the_altered_flag(
             saveplan.prepare_save_as(party, "dos", tmp_path / path.stem,
                                      assets)
         except saveplan.DroppedFields as caught:
-            refused[path.name] = caught.lost
+            blocked[path.name] = caught.lost
         else:
             went_ahead.append(path.name)
 
-    assert went_ahead, f"every save refused: {refused}"
-    assert {name: lost for name, lost in refused.items()
+    assert went_ahead, f"every save blocked: {blocked}"
+    assert {name: lost for name, lost in blocked.items()
             if any("flags_0b8" in line for line in lost)} == {}
 
 
@@ -324,7 +324,7 @@ def test_every_pool_of_radiance_c64_save_goes_ahead_to_dos(tmp_path):
     ids the game's own importer keeps)`: SILAS, the sixth character of
     `PORSAVEA.D64` and `PORSAVEB.D64`, carries Protection from Evil, 10'
     Radius and Detect Magic in trait slots, which the writer used to drop
-    and refuse the whole save for. Every non-roster Pool of Radiance C64 save
+    and block the whole save for. Every non-roster Pool of Radiance C64 save
     on this machine now goes ahead. Skips where this machine's registry has
     no Pool of Radiance C64 disks or no DOS Pool of Radiance game folder.
     """
@@ -334,7 +334,7 @@ def test_every_pool_of_radiance_c64_save_goes_ahead_to_dos(tmp_path):
     if not saves or files_for is None or game_folder is None:
         pytest.skip("needs the Pool of Radiance C64 disks and DOS game folder")
     assets = saveplan.Assets(dos_folder=game_folder, source_files=files_for)
-    went_ahead, refused, roster_disks = [], {}, []
+    went_ahead, blocked, roster_disks = [], {}, []
     for path in saves:
         party = Party(str(path))
         if saveplan.prepare(party) is None:
@@ -344,12 +344,12 @@ def test_every_pool_of_radiance_c64_save_goes_ahead_to_dos(tmp_path):
             saveplan.prepare_save_as(party, "dos", tmp_path / path.stem,
                                      assets)
         except saveplan.DroppedFields as caught:
-            refused[path.name] = caught.lost
+            blocked[path.name] = caught.lost
         else:
             went_ahead.append(path.name)
 
-    assert went_ahead, f"every save refused: {refused}"
-    assert refused == {}, refused
+    assert went_ahead, f"every save blocked: {blocked}"
+    assert blocked == {}, blocked
 
 
 def test_a_native_copy_needs_no_game_data_and_has_no_conversion_report(
@@ -361,7 +361,7 @@ def test_a_native_copy_needs_no_game_data_and_has_no_conversion_report(
     assert plan.destination.native and plan.report is None
 
 
-def test_a_save_as_over_the_save_it_reads_is_refused(tmp_path):
+def test_a_save_as_over_the_save_it_reads_is_blocked(tmp_path):
     """There is a Save for writing back to the open save, and a Save As that
     published over its own source would be reading and destroying the same
     file."""
@@ -482,7 +482,7 @@ def test_every_dos_destination_asks_for_the_game_folder(tmp_path):
     """Measured rather than assumed: a Silver Blades DOS save stages no
     script and `goldbox.dos_codec` still reads the game folder to find which
     `ECL<n>.DAX` holds the area the party is standing in, so an Amiga Silver
-    Blades party converted with no folder is refused."""
+    Blades party converted with no folder is blocked."""
     path = amiga_disk(tmp_path)          # Curse, and the same holds for it
     source = convert.Source.detect(path)
 
@@ -524,7 +524,7 @@ def test_a_truncated_name_stops_a_save_as_and_is_on_no_list_at_all(
     destination's own field holds fifteen, and the conversion's accounting
     says nothing: neither `report.dropped` nor `report.losses` names it --
     the truncation is a line of `report.warnings` and nothing calls
-    `Report.lost` for it. What refuses it is the output read back.
+    `Report.lost` for it. What blocks it is the output read back.
 
     No game data: Silver Blades stages no area script, so this is the one
     cross-platform direction that runs anywhere.
@@ -559,7 +559,7 @@ def test_the_comparison_names_the_field_and_both_of_its_values():
 
     A record whose gold the destination clamped is named with what went in
     and what came back, and a party that came back a character short is
-    refused before any field is looked at.
+    blocked before any field is looked at.
     """
     records = [CharacterRecord.from_bytes(bytes(RECORD_SIZE))
                for _ in range(2)]
@@ -638,7 +638,7 @@ def test_every_kept_field_is_a_rejection_when_it_changes(field):
                                           ("turn_class", 2)))
 def test_undead_fields_are_compared_only_for_the_measured_titles(
         tmp_path, field, value):
-    """A changed zombie byte is refused where its meaning is measured.
+    """A changed zombie byte is blocked where its meaning is measured.
 
     Pool has both bytes; Curse has the turning row only.
     """
@@ -680,15 +680,15 @@ def test_every_known_field_is_compared_or_named_as_not_compared():
         "in neither list of the layout": sorted((kept | skipped) - known)}
 
 
-def test_a_c64_party_that_does_not_fit_a_dos_save_is_refused(tmp_path):
+def test_a_c64_party_that_does_not_fit_a_dos_save_is_blocked(tmp_path):
     """A conversion driven whole, with the player's own disks, whose C64
     party carries eighteen-character names and 65,535 maximum hit points.
 
-    Refusing the whole party for a name alone is the defect `#619`'s Stage A
+    Blocking the whole party for a name alone is the defect `#619`'s Stage A
     plan fixes: with no chosen replacement, `prepare_save_as` raises
     `NamesDoNotFit` naming each character's name, and only those -- no game
     writes 65,535 hit points, so `hp_max`'s own clamp is not this test's
-    business. With a replacement supplied, the party still refuses on
+    business. With a replacement supplied, the party still blocks on
     `hp_max` alone, and the name is no longer among what it names.
 
     Skips where this machine's registry has no Pool of Radiance C64 disks or
@@ -724,9 +724,9 @@ def test_a_c64_name_too_long_for_dos_converts_under_the_name_the_player_chose(
         tmp_path, port, chosen):
     """You have a Commodore 64 Pool of Radiance save in which one character
     is called `ABCDEFGHIJKLMNOPQR`, eighteen letters. `File ▸ Save As…`
-    refuses the whole party today over that one name, though every other
+    blocks the whole party today over that one name, though every other
     field of every character would convert -- `.claude/rules/conversions.md`,
-    "Refusing a save is not a fix". `#619`'s Stage A design instead asks for
+    its rule that a blocked save is not a fix. `#619`'s Stage A design instead asks for
     a name that fits the destination and converts the whole party once it
     has one.
 
@@ -735,7 +735,7 @@ def test_a_c64_name_too_long_for_dos_converts_under_the_name_the_player_chose(
     `Renamed` pins #638's guard: `stored_name` has to read the destination's
     own bytes rather than the sheet's C64-folded record, or a chosen name a
     DOS or Amiga save can hold as typed reports as arriving folded to
-    capitals and refuses.
+    capitals and blocks.
 
     Skips where this machine's registry has no Pool of Radiance C64 save
     disks or DOS game folder, or, for the Amiga destination, no Amiga Pool
@@ -858,7 +858,7 @@ def test_a_lower_case_c64_name_saves_as_dos_and_amiga_with_its_spelling(
     `Guy de Valois` exactly, as SSI's own DOS pregen and Amiga save do, but
     before this fix the read-back guard rebuilds the written destination's
     name through the sheet's C64-style record, which folds every name to
-    capitals regardless of port -- so it refuses the whole party on `name:
+    capitals regardless of port -- so it blocks the whole party on `name:
     'Guy de Valois' arrived as 'GUY DE VALOIS'`, though the bytes just
     written are exactly right.
 
@@ -909,7 +909,7 @@ def test_a_lower_case_c64_name_saves_as_dos_and_amiga_with_its_spelling(
 
     # The guard was pointed at the destination's own stored name, not
     # removed: a written destination that genuinely came back folded still
-    # has to be refused.
+    # has to be blocked.
     lost = saveplan.compare(
         [saveplan.edited_record(m) for m in party.members],
         [m.record for m in written.members],
@@ -933,7 +933,7 @@ def test_a_dos_or_amiga_character_renamed_on_the_sheet_saves_under_its_own_name(
     the character being renamed is the *source* member, whose `native` is
     still the disk's original, unedited bytes, so a guard that read
     `stored_name(member)` here instead of the sheet's own new value would
-    expect the save to still hold the character's old name and refuse a
+    expect the save to still hold the character's old name and block a
     Save As that wrote the rename correctly.
 
     Needs no game data: this is a native DOS-to-DOS or Amiga-to-Amiga copy,
@@ -976,7 +976,7 @@ def test_a_trained_c64_curse_character_saves_as_dos_with_its_current_class(
     training hall until he is a fighter 5 / thief 6, then use `File ▸ Save
     As…` to write a DOS copy. Curse's own trainer (`GEN $1939`) never updates
     the record's `char_class` byte, which still reads 0 -- a cleric, on a
-    character with no cleric level at all. Before this fix, Save As refused
+    character with no cleric level at all. Before this fix, Save As blocked
     the whole party with "char_class: 0 arrived as 14", though the DOS
     record it was about to write held the right class for a fighter/thief.
 
@@ -1046,7 +1046,7 @@ def test_a_trained_c64_curse_character_saves_as_dos_with_its_current_class(
     # The guard was narrowed, not disabled: an actually wrong class code
     # still has to show as a loss, so the read-back is corrupted by hand and
     # `compare` is asked directly rather than through another Save As (which
-    # would refuse to write a destination this test never asks it to write).
+    # would fail to write a destination this test never asks it to write).
     wrong = type(record)(record.to_bytes())
     wrong.set("char_class", 3)                   # anything but the real 14
     destination = saveplan.Destination(port="dos", path=out, slot="A",
@@ -1110,13 +1110,13 @@ def test_c64_cached_values_follow_the_dos_rules_without_weakening_the_guard(
     trained to level 5. The DOS record it is about to write turns undead
     correctly -- DOS derives the power to turn from the stored class level
     every time the player presses TURN, rather than keeping a cached byte for
-    it -- but Save As refuses the whole party anyway, because its read-back
+    it -- but Save As blocks the whole party anyway, because its read-back
     guard compares the C64's own stale cached bytes literally: `WISH-SPEC-
     curse-h-engine-resave`'s clerics and paladins still hold 0 at
     `turn_power` and `strength_bonus_flag`, the C64 engine's own values from
     before this specimen's last training, which DOS does not store at all.
 
-    Before the fix this refuses with exactly `strength_bonus_flag: 0 arrived
+    Before the fix this blocks with exactly `strength_bonus_flag: 0 arrived
     as 1`, `turn_power: 0 arrived as 3` (a paladin 5, who turns as a cleric
     two levels weaker) and `turn_power: 0 arrived as 6` (a cleric 5) --
     `goldbox.derive.turn_power`'s own table. After it, the save publishes and
@@ -1195,7 +1195,7 @@ def test_c64_cached_values_follow_the_dos_rules_without_weakening_the_guard(
         assert path.read_bytes()[bonus_at] == 1, path.name
 
     # The guard was narrowed to these two fields, not weakened: forcing the
-    # read-back to report a genuinely different `gold` still refuses.
+    # read-back to report a genuinely different `gold` still blocks.
     real_written_records = saveplan.written_records
 
     def tampered(port, at, slot):
@@ -1215,7 +1215,7 @@ def test_c64_cached_values_follow_the_dos_rules_without_weakening_the_guard(
 def test_a_dropped_field_stops_a_save_as_before_any_destination_write(
         tmp_path, monkeypatch):
     """The guard is the drop list itself: a conversion whose accounting
-    names a field with no home in the destination is refused, and the
+    names a field with no home in the destination is blocked, and the
     destination, the source and the editor are exactly as they were."""
     party, folder, _quantity = edited_dos_party(tmp_path / "save")
     before = files_under(folder)
@@ -1251,7 +1251,7 @@ def test_a_name_the_destination_could_not_hold_stops_it_too(
     assert not out.exists()
 
 
-def test_output_that_cannot_be_read_back_is_refused_before_publication(
+def test_output_that_cannot_be_read_back_is_blocked_before_publication(
         tmp_path, monkeypatch):
     """Validation is of the bytes, not of the writer's word for them."""
     party, _folder, _quantity = edited_dos_party(tmp_path / "save")
@@ -1273,7 +1273,7 @@ def test_output_that_cannot_be_read_back_is_refused_before_publication(
     assert not out.exists()
 
 
-def test_an_image_destination_that_got_two_files_is_refused(
+def test_an_image_destination_that_got_two_files_is_blocked(
         tmp_path, monkeypatch):
     """An image destination is one file at one chosen path, so a conversion
     that produced two is a rejection rather than a coin toss over which of them
@@ -1655,7 +1655,7 @@ def test_a_restore_whose_copystat_fails_leaves_the_target_as_it_was(
             if p.name.startswith(".target")] == []
 
 
-def test_a_dos_target_that_already_holds_files_is_refused(tmp_path):
+def test_a_dos_target_that_already_holds_files_is_blocked(tmp_path):
     """A folder with somebody else's save in it is not mixed into."""
     party, _folder, _quantity = edited_dos_party(tmp_path / "save")
     out = dos_folder(tmp_path / "other", slot="B", numbers=(1,))
@@ -1702,7 +1702,7 @@ def test_a_publication_that_fails_part_way_leaves_no_destination(
     with pytest.raises(OSError):
         saveplan.publish(plan, party, backups=tmp_path / "backups")
 
-    assert len(moves) == 3            # two landed, the third refused
+    assert len(moves) == 3            # two landed, the third blocked
     assert list(out.iterdir()) == []
 
 
@@ -1762,7 +1762,7 @@ def test_another_destination_or_asset_makes_it_stale(tmp_path):
             assets, amiga_disk=pathlib.Path("/elsewhere/disk2.adf")))
 
 
-def test_an_invalidated_plan_is_refused_rather_than_published(tmp_path):
+def test_an_invalidated_plan_is_blocked_rather_than_published(tmp_path):
     party, _folder, _quantity = edited_dos_party(tmp_path / "save")
     out = tmp_path / "chosen.adf"
     assets = disk_one_assets(tmp_path, party)
@@ -1782,7 +1782,7 @@ def test_an_amiga_source_is_current_until_it_is_edited(tmp_path):
     `goldbox.amiga_adf.AmigaDisk.write_file` stamps every directory entry
     with the time of day, so two assemblies of an unedited disk differ in a
     handful of bytes and in nothing a save holds -- a key taken over the
-    image would call an untouched party stale and refuse to publish it.
+    image would call an untouched party stale and fail to publish it.
     """
     party = Party(str(amiga_disk(tmp_path, name="open.adf")))
     out = tmp_path / "chosen.adf"
@@ -1809,7 +1809,7 @@ def test_a_dos_folders_other_saved_game_is_part_of_the_key(tmp_path):
     assert not plan.is_current(party, "dos", out)
 
 
-def test_publishing_after_an_edit_is_refused_by_publish_itself(tmp_path):
+def test_publishing_after_an_edit_is_blocked_by_publish_itself(tmp_path):
     """Not the flag: `publish` recomputes the edits, the destination and the
     assets, so a caller that forgot to invalidate still cannot write bytes
     the player has edited past."""
@@ -1851,10 +1851,10 @@ def test_the_game_data_behind_an_assets_path_is_in_its_token(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Destinations that are refused by their name or their place
+# Destinations that are blocked by their name or their place
 # ---------------------------------------------------------------------------
 
-def test_a_destination_without_the_right_suffix_is_refused(tmp_path):
+def test_a_destination_without_the_right_suffix_is_blocked(tmp_path):
     """The name decides whether the output can be opened again, so it is
     checked rather than left to the reader: `MySave` for an Amiga
     destination otherwise reaches validation and comes back as a sentence
@@ -1874,7 +1874,7 @@ def test_a_destination_without_the_right_suffix_is_refused(tmp_path):
                                     disk_one_assets(tmp_path, party))
 
 
-def test_a_destination_inside_the_open_save_is_refused(tmp_path):
+def test_a_destination_inside_the_open_save_is_blocked(tmp_path):
     """A DOS save is a folder, so a destination under it is the same
     collision as writing over the folder itself -- and a destination folder
     that holds the source is the other way round of it."""
@@ -1890,13 +1890,13 @@ def test_a_destination_inside_the_open_save_is_refused(tmp_path):
     assert files_under(folder) == before
 
 
-def test_a_destination_that_is_the_conversions_own_game_data_is_refused(
+def test_a_destination_that_is_the_conversions_own_game_data_is_blocked(
         tmp_path):
     """The game disks are read-only inputs and never a place to publish
     into: a Save As over one would overwrite the player's own game with a
     saved game.
 
-    What is refused is the file or folder itself, and a destination folder
+    What is blocked is the file or folder itself, and a destination folder
     that would swallow it -- **not everything underneath it**. A save beside
     the game disks, or a DOS save folder made inside the game folder,
     overwrites nothing and is the player's business.
@@ -1917,7 +1917,7 @@ def test_a_destination_that_is_the_conversions_own_game_data_is_refused(
         with pytest.raises(saveplan.SaveAsError) as caught:
             saveplan.prepare_save_as(party, "amiga", target, assets)
         assert "this conversion reads" in str(caught.value)
-    # And a destination beside the game disks lands rather than being refused.
+    # And a destination beside the game disks lands rather than being blocked.
     assert saveplan.prepare_save_as(party, "amiga", game / "mine.adf", assets)
 
     # The rest against the check itself, which runs before the route needs
@@ -2079,10 +2079,10 @@ def test_an_unreadable_dos_curse_save_still_asks_for_the_amiga_game_disk(
     container = convert.dos_savegame.container_for(deltas.key)
     (tmp_path / f"SAVGAMA{container.suffix}").write_bytes(b"\0" * 16)
 
-    def refuse(*_args, **_kwargs):
+    def block(*_args, **_kwargs):
         raise convert.dos_codec.DosRecordError("unreadable")
 
-    monkeypatch.setattr(convert.world_state, "from_dos", refuse)
+    monkeypatch.setattr(convert.world_state, "from_dos", block)
     source = convert.Source(port="dos", title=deltas, path=tmp_path, slot="A")
 
     assert convert.amiga_needs_game_disk(deltas, source) is True
@@ -2091,7 +2091,7 @@ def test_an_unreadable_dos_curse_save_still_asks_for_the_amiga_game_disk(
 
 
 # ---------------------------------------------------------------------------
-# What a conversion reads, writes or refuses, asserted through Save As
+# What a conversion reads, writes or blocks, asserted through Save As
 # ---------------------------------------------------------------------------
 
 def _amiga_pod_disk(tmp_path):
@@ -2167,11 +2167,11 @@ def test_save_as_to_dos_writes_the_c64_partys_own_combat_figures(tmp_path):
 
 
 @pytest.mark.parametrize("port", ["amiga", "dos"])
-def test_a_c64_party_with_no_source_disks_is_refused_for_a_conversion(
+def test_a_c64_party_with_no_source_disks_is_blocked_for_a_conversion(
         tmp_path, port):
     """The disks the source's own combat figures come from are asked for on
     their own: with the destination's data supplied and no disks found for the
-    source title, resolving the assets and preparing the save both refuse,
+    source title, resolving the assets and preparing the save both block,
     naming `SOURCE_DISKS` and nothing else, so a party never arrives with
     every figure silently the game's default."""
     source = _pool_c64_source(tmp_path)
@@ -2299,7 +2299,7 @@ def test_an_amiga_pools_of_darkness_disk_offers_only_a_copy_with_the_flag_off(
 
 def test_the_c64_disks_are_asked_for_by_the_destination_title(tmp_path):
     """A Curse DOS save saved as a C64 disk asks the lookup for Curse's own
-    title, never Pool of Radiance's, and refuses naming the destination's
+    title, never Pool of Radiance's, and blocks naming the destination's
     disks when nothing answers."""
     folder = dos_folder(tmp_path, deltas=dos_port.CURSE_OF_THE_AZURE_BONDS)
     source = convert.Source.detect(folder)
@@ -2413,7 +2413,7 @@ def test_a_c64_party_saved_as_amiga_writes_slot_a_and_a_readable_disk(
 
 
 # ---------------------------------------------------------------------------
-# What opening reads and refuses, and what the editor adopts
+# What opening reads and blocks, and what the editor adopts
 # ---------------------------------------------------------------------------
 
 def test_an_amiga_pool_of_radiance_disk_opens_at_its_first_slot_and_offers_c64_and_dos(
@@ -2435,9 +2435,9 @@ def test_an_amiga_pool_of_radiance_disk_opens_at_its_first_slot_and_offers_c64_a
     assert saveplan.route(source, "amiga") is None
 
 
-def test_an_amiga_disk_holding_no_saved_game_is_refused_not_guessed_at(
+def test_an_amiga_disk_holding_no_saved_game_is_blocked_not_guessed_at(
         tmp_path):
-    """A blank floppy is refused with a `ConvertError` by detection and by
+    """A blank floppy is blocked with a `ConvertError` by detection and by
     opening it as a party, never read as an empty save."""
     path = tmp_path / "blank.adf"
     path.write_bytes(AmigaDisk.blank("EMPTY").to_bytes())
@@ -2448,9 +2448,9 @@ def test_an_amiga_disk_holding_no_saved_game_is_refused_not_guessed_at(
         Party(str(path))
 
 
-def test_a_d64_that_cannot_be_read_is_refused_by_the_c64_reader(tmp_path):
+def test_a_d64_that_cannot_be_read_is_blocked_by_the_c64_reader(tmp_path):
     """The `.adf` branch is chosen by suffix and must not take a `.d64`: a
-    file of the wrong size is refused as a C64 disk, by both routes in."""
+    file of the wrong size is blocked as a C64 disk, by both routes in."""
     path = tmp_path / "notadisk.d64"
     path.write_bytes(b"\x00" * 64)
 
@@ -2561,12 +2561,12 @@ def test_an_edit_typed_on_the_sheet_reaches_a_dos_save_as_copy(
 
 
 @pytest.mark.parametrize("error", [
-    dos_codec.DosRecordError("writer refuses this party"),
+    dos_codec.DosRecordError("writer blocks this party"),
     dos_codec.WrongTitleError("wrong title", "a title"),
-    amiga_port.AmigaRecordError("amiga writer refuses this party"),
-    amiga_pod.ConversionError("pod writer refuses this party"),
+    amiga_port.AmigaRecordError("amiga writer blocks this party"),
+    amiga_pod.ConversionError("pod writer blocks this party"),
 ])
-def test_a_writer_refusing_a_party_is_refused_by_save_as_and_writes_nothing(
+def test_a_writer_blocking_a_party_is_blocked_by_save_as_and_writes_nothing(
         app, tmp_path, monkeypatch, error):
     """The exception used to leave the button's slot uncaught, which aborts
     the process with the edits on screen unsaved."""
@@ -2581,13 +2581,13 @@ def test_a_writer_refusing_a_party_is_refused_by_save_as_and_writes_nothing(
     out = tmp_path / "folder"
     editor._child("destination_dos_folder").setText(str(tmp_path))
 
-    def refuses(*_a, **_k):
+    def blocks(*_a, **_k):
         raise error
 
-    monkeypatch.setattr(saveplan, "rehearse", refuses)
+    monkeypatch.setattr(saveplan, "rehearse", blocks)
     said = _confirm(editor, monkeypatch, out)
 
-    assert said == [(ew.CANNOT_SAVE_TITLE, ew.LOSS_REFUSED)]
+    assert said == [(ew.CANNOT_SAVE_TITLE, ew.LOSS_NOT_CONVERTED)]
     assert not out.exists() or not any(out.iterdir())
     assert editor.path == path
     assert editor._widgets["gold"].value() == 9999
@@ -2828,7 +2828,7 @@ def test_ordinary_punctuation_and_lower_case_are_not_asked_for(tmp_path):
                              saveplan.Assets(game_files=folder_files))
 
 
-def test_a_c64_cleric_written_to_dos_is_not_refused_for_the_engines_byte():
+def test_a_c64_cleric_written_to_dos_is_not_blocked_for_the_engines_byte():
     """DOS Pool sets spellbook byte 56 on a cleric above level 1 whose
     `experience_award` low byte is nonzero, so a C64 cleric saved as DOS
     reads back holding what the engine itself would write, and the
@@ -2893,7 +2893,7 @@ def test_an_amiga_pool_party_with_punctuation_the_c64_draws_differently_asks_for
 def test_saving_to_a_d64_the_editor_will_not_write_says_only_that_it_cannot(
         app, tmp_path, monkeypatch, tracks_size):
     """A 35-track image with error bytes (and the 40- and 42-track images) is
-    refused, and the box shows Donald's sentence rather than the image's size."""
+    blocked, and the box shows Donald's sentence rather than the image's size."""
     ordinary = synthetic_save(tmp_path, "ordinary.d64").read_bytes()
     path = tmp_path / "ripped.d64"
     path.write_bytes(ordinary + bytes([1]) * (tracks_size - len(ordinary)))

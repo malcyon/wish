@@ -186,7 +186,7 @@ level-1 companion on the roster could be modified, and a kept change would
 store `$01` over his control byte, making him a player character. To settle
 it, take a copy of `npc_party.d64`, give a companion level 1 and experience
 0, open MODIFY CHARACTER on him in VICE, change a score, keep it and save. A
-record reading `$01` confirms it; the screen refusing him refutes it.
+record reading `$01` confirms it; the screen blocking him refutes it.
 
 **Curse, Silver Blades, Gateway, Champions and Death Knights: no such flag,
 CONFIRMED.** Curse's modify screen (`GEN $1D35` asks "MODIFY WHICH CHARACTER?", `$1D78`
@@ -233,7 +233,7 @@ other Amiga titles: no store site has been read.
 | Animate Dead, `SPELLE00` (combat) and `SPELLE04` (camp) | Pool of Radiance | `old \| $FE`, so bit 0 survives in bit 0 | a companion is set to `$B2`, morale 100, and it is never restored |
 | temple cure `SQRPACI64` | Pool of Radiance | -- | `& $01`, only when the byte is `$FE` or `$FF` |
 | import reset `SPELLE20` | Curse, Gateway | -- | a player character's byte set to `$00`; a companion's untouched |
-| ADD / REMOVE CHARACTER | all six | no write; the later five refuse a companion ("CAN'T ADD NPCS") | no write |
+| ADD / REMOVE CHARACTER | all six | no write; the later five block a companion ("CAN'T ADD NPCS") | no write |
 
 CONFIRMED for every row as code. The Animate Dead and cure pair is the only
 reversible transition in any title. **No instruction in any of the six turns
@@ -259,7 +259,7 @@ to be exactly `0x00`.
 
 | title, port | Control | Morale | Abilities altered |
 |---|---|---|---|
-| Pool of Radiance, C64 | yes: bit 7 | yes: `2 × (b & 0x7F)`, 0-100 step 2; refuse `$FE`/`$FF` | yes for a player: bit 0, meaning ability **or hit points** changed and kept |
+| Pool of Radiance, C64 | yes: bit 7 | yes: `2 × (b & 0x7F)`, 0-100 step 2; block `$FE`/`$FF` | yes for a player: bit 0, meaning ability **or hit points** changed and kept |
 | Curse, Silver Blades, Gateway, Champions, Death Knights, C64 | yes | yes, 0-100 step 2; the engine caps anything above at 100 | **no**: nothing writes or reads it; a set bit 0 is not the game's |
 | Pool of Radiance, Curse, Silver Blades, DOS | yes: control byte (`docs/195`) | yes, same encoding (`docs/195`) | yes, but it is the share byte and means "left MODIFY by KEEP" |
 | Pools of Darkness, DOS | yes | yes | **no**: the engine has no writer |

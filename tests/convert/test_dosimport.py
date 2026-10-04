@@ -152,7 +152,7 @@ def test_nothing_in_the_converted_save_is_left_to_a_previous_owner(
 
     `unwritten` is the list of offsets the conversion did not write. Against a
     template it holds 5405 of them; from nothing it must be empty, and
-    `new_save` refuses rather than returning a save it cannot account for.
+    `new_save` blocks rather than returning a save it cannot account for.
     """
     from editor.dosimport import rehearse
 
@@ -355,7 +355,7 @@ def test_a_real_conversion_that_truncates_nothing_shows_no_loss_line():
 #: slots_offered_are_the_ones_the_folder_holds`, `test_no_game_disks_is_a_
 #: pop_up_and_no_folder_picker`, `test_with_the_game_disks_there_the_
 #: import_gets_as_far_as_the_picker`, `test_a_disk_that_loads_once_but_
-#: fails_on_the_second_read_refuses`, `test_the_game_files_an_import_
+#: fails_on_the_second_read_blocks`, `test_the_game_files_an_import_
 #: needs_are_the_icon_and_animate`, `test_the_game_files_an_import_needs_
 #: include_the_creation_menu`, `test_an_import_started_from_the_window_
 #: carries_its_own_faces` -- are deleted along with the dialog, its menu
@@ -420,7 +420,7 @@ def test_closing_a_converted_party_with_no_destination_keeps_the_edit(
     reachable again by `File ▸ Import`'s own return (`#514 (Restoring File ▸
     Import makes #505's silent-save data loss reachable, so it must be fixed
     in the same change)`): a party adopted with `path=None` -- what
-    `DosImportDialog`'s own Convert button used to refuse to reach with an
+    `DosImportDialog`'s own Convert button used to stop from reaching with an
     empty destination, but a caller other than that dialog is not stopped by
     a disabled button -- leaves the window dirty with nowhere to write to.
     Closing it must not silently discard the party the way `#505` found it
@@ -536,7 +536,7 @@ def test_closing_a_converted_party_and_naming_it_in_the_chooser_saves_and_closes
 
 # --- the rejection a player reads (#176) --------------------------------------
 
-def test_a_refused_title_tells_the_player_which_game_and_no_issue_number():
+def test_a_blocked_title_tells_the_player_which_game_and_no_issue_number():
     """`#176 (A player importing a Curse of the Azure Bonds save is shown an
     issue number)`.
 

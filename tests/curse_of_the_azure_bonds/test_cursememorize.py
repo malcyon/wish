@@ -438,7 +438,7 @@ def test_relocation_changes_only_the_copied_slot_a_save(
     assert sg.wall_block(result)[0] == (1, 2, 3)
 
 
-def test_relocation_refuses_an_unregistered_or_different_map_before_writing(
+def test_relocation_rejects_an_unregistered_or_different_map_before_writing(
         tmp_path):
     staged = tmp_path / "SAVGAMA.DAT"
     original = bytes(_curse_save())

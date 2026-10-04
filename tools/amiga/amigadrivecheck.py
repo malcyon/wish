@@ -106,7 +106,7 @@ def run_drivecheck(*, guest: Any, run_dir: pathlib.Path, holder: str,
                    argv: list[str] | None = None) -> dict[str, Any]:
     """Run the probe once and write `run.jsonl` and `summary.json` under `run_dir`.
 
-    Refuses, before touching the guest's lane, a stale or missing audio proof and
+    Blocks, before touching the guest's lane, a stale or missing audio proof and
     a deployed `winuae.ps1` that is not this repository's copy. From the claim on
     it always stops only its own emulator, fetches and hashes every staged disk,
     releases the claim and records whether the lane is free.
@@ -198,8 +198,8 @@ def run_drivecheck(*, guest: Any, run_dir: pathlib.Path, holder: str,
         return pipe_factory(insert_limit()).insert_floppy(
             drive, path, holder, digest, staged=guest.staged)
 
-    def refused(name: str, call: Callable[[], Any], error: type, needle: str) -> str:
-        """Run a request that must be refused and pin the reason it gives.
+    def blocked(name: str, call: Callable[[], Any], error: type, needle: str) -> str:
+        """Run a request that must be blocked and pin the reason it gives.
 
         A guest rejection is matched on the guest's own `fail` line, so a transport
         or PowerShell error can never stand in for one.
@@ -210,10 +210,10 @@ def run_drivecheck(*, guest: Any, run_dir: pathlib.Path, holder: str,
             text = exc.line if isinstance(exc, amiga.GuestRejection) else str(exc)
             if not isinstance(exc, error):
                 step(name, "fail", expected=needle, observed=text)
-                raise RouteError(f"{name}: not refused as expected: {text}") from exc
+                raise RouteError(f"{name}: not blocked as expected: {text}") from exc
             if needle not in text:
                 step(name, "fail", expected=needle, observed=text)
-                raise RouteError(f"{name}: refused, but not for the expected reason: {text}") from exc
+                raise RouteError(f"{name}: blocked, but not for the expected reason: {text}") from exc
             step(name, "pass", rejection=text)
             return text
         step(name, "fail", expected=needle, observed=said or "accepted")
@@ -251,27 +251,27 @@ def run_drivecheck(*, guest: Any, run_dir: pathlib.Path, holder: str,
         change("restore DF0 to A", 0, "A", both)
 
         def wrong_holder():
-            return pipe_factory(limit(30)).refused_verb(
+            return pipe_factory(limit(30)).blocked_verb_reason(
                 "insert", INTRUDER, ["0", windows["B"], generated["B"]["sha256"]])
 
-        refused("control: another holder's claim", wrong_holder, amiga.GuestRejection,
+        blocked("control: another holder's claim", wrong_holder, amiga.GuestRejection,
                 f"claimed by {holder}")
         read_drives("control: another holder's claim leaves both drives", both)
 
-        refused("control: another holder's path, refused in Python",
+        blocked("control: another holder's path, blocked in Python",
                 lambda: guest_insert(0, foreign, generated["B"]["sha256"]),
                 ValueError, "belongs to another holder")
-        refused("control: another holder's path, refused in the guest",
-                lambda: pipe_factory(limit(30)).refused_verb(
+        blocked("control: another holder's path, blocked in the guest",
+                lambda: pipe_factory(limit(30)).blocked_verb_reason(
                     "insert", holder, ["0", foreign, generated["B"]["sha256"]]),
                 amiga.GuestRejection, f"is not staged for {holder}")
         read_drives("control: another holder's path leaves both drives", both)
 
-        refused("control: a file never staged, refused in Python",
+        blocked("control: a file never staged, blocked in Python",
                 lambda: guest_insert(0, never, generated["B"]["sha256"]),
                 ValueError, "is not a disk this run staged")
-        refused("control: a file never staged, refused in the guest",
-                lambda: pipe_factory(limit(30)).refused_verb(
+        blocked("control: a file never staged, blocked in the guest",
+                lambda: pipe_factory(limit(30)).blocked_verb_reason(
                     "insert", holder, ["0", never, generated["B"]["sha256"]]),
                 amiga.GuestRejection, "does not exist")
         read_drives("control: a file never staged leaves both drives", both)

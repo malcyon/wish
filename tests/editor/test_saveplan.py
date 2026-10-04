@@ -322,7 +322,7 @@ def test_a_stand_in_party_with_no_roster_still_answers_for_its_own_path(
     assert convert.Source.detect(path, stand_in).save0 == bytes(edited)
 
 
-def test_a_party_with_nothing_open_is_refused_rather_than_snapshotted(
+def test_a_party_with_nothing_open_is_blocked_rather_than_snapshotted(
         tmp_path):
     """A roster disk has characters and no saved game."""
     from types import SimpleNamespace
@@ -543,7 +543,7 @@ def test_an_amiga_pool_name_with_an_alt_or_ctrl_byte_opens_and_saves_back(
     assert written.read_file(_amiga_por_sav(written))[0:3] == typed
 
 
-def test_an_edit_that_reaches_no_byte_of_the_save_is_refused(tmp_path):
+def test_an_edit_that_reaches_no_byte_of_the_save_is_blocked(tmp_path):
     """`turn_power` is a C64 field no DOS record holds, so the rewrite raises
     rather than returning a snapshot that quietly lost the edit -- through
     `prepare` and through `Source.detect`, which is what the Convert window
@@ -767,7 +767,7 @@ def test_a_c64_zombie_is_expected_with_its_share_rewritten_like_a_companions(
 
 @pytest.mark.parametrize("share", [0xFF, 0x84, 0x04, 0x05])
 def test_a_dos_hireling_prepares_for_the_c64(tmp_path, share):
-    """The Training Hall's shares of 4 to 7 parts used to refuse the whole
+    """The Training Hall's shares of 4 to 7 parts used to block the whole
     party; they now arrive as the C64's three."""
     plan = _prepared_dos_hireling(tmp_path, share)
     assert isinstance(plan, saveplan.SavePlan)
@@ -1171,7 +1171,7 @@ def _feebleminded_neutral(feebleminded):
     return char
 
 
-def test_a_written_int_of_3_without_feeblemind_is_refused():
+def test_a_written_int_of_3_without_feeblemind_is_blocked():
     """Feeblemind's 3 is expected only for the character whose source holds
     the node; the same 3 on another character is still a loss."""
     def sheet():
@@ -1198,7 +1198,7 @@ def test_a_written_int_of_3_without_feeblemind_is_refused():
     lines = saveplan.compare([first, second],
                              [written(3, 14), written(3, 14)], curse,
                              source_port="c64")
-    # A blank record's strength-bonus flag is refused for its own reason
+    # A blank record's strength-bonus flag is blocked for its own reason
     # here, so only the two scores are read.
     scores = [line for line in lines if line.split(":")[0] in
               ("intelligence", "wisdom")]

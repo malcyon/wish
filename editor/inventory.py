@@ -217,7 +217,7 @@ class Inventory:
         """Only an item that arrived unidentified can be put back that way.
 
         Which name words to hide is not derivable from an identified record --
-        the CLI refuses the same edit for the same reason.
+        the CLI blocks the same edit for the same reason.
         """
         return bool(self.original[n][6] & HIDDEN_NAME_MASK)
 

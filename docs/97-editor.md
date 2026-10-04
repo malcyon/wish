@@ -155,7 +155,7 @@ form has to be obvious without help text beside it. What that cost:
 | `0x0AD — ten slots; racial abilities live here` | an address a player cannot use, a slot count the ten rows already show, and a claim the rows themselves make |
 | `Spellbook — what the character knows` | `Spellbook` |
 | `Memorised — what is prepared now` | `Memorized` |
-| `-- neither rule is enforced; the game may not agree` under the memorised list | the capacity note is a reading, not a warning; that the editor refuses nothing is [in the CLI doc](95-wish-cli.md) |
+| `-- neither rule is enforced; the game may not agree` under the memorised list | the capacity note is a reading, not a warning; that the editor blocks nothing is [in the CLI doc](95-wish-cli.md) |
 | `Thief ` on eight labels, `Save ` on five | the group box already says `Thief skills` and `Saving throws` |
 | the record address in an effect row's tooltip | same reason as the label above it; the tooltip keeps the name and how sure of it we are |
 
@@ -234,7 +234,7 @@ split Open and Save controls in the toolbar (`wish/window.ui`'s `buttons` row,
 inside `tab_editor`), with native copies and platform conversion through Save
 As. `File ▸ Convert…` is built only when `WISH_EXPERIMENTAL_POD_CONVERT` is set,
 for the Amiga-to-DOS Pools of Darkness direction the editor cannot open for
-Save As; every other conversion goes through Save As. Its dialog refuses a
+Save As; every other conversion goes through Save As. Its dialog blocks a
 conversion whose own accounting reports a loss with "The save could not be
 converted.", as Save As does, except in that Pools of Darkness direction.
 
@@ -275,15 +275,15 @@ character can be corrected.
 
 Every Save As is prepared and validated in memory before anything is written
 (`editor.saveplan.prepare_save_as`), and a conversion that would lose a field
-is refused outright with "The save could not be converted." -- never a
+is blocked outright with "The save could not be converted." -- never a
 partial write, never a choice to lose the field anyway. Publishing the
 prepared output (`editor.saveplan.publish`) then backs up and replaces an
 existing image with confirmation, or stages a whole new DOS save folder and
-refuses one that is not empty; on success the editor adopts the destination
+blocks one that is not empty; on success the editor adopts the destination
 the way `File ▸ Open` adopts anything, and the status line names what was
 written the same way an ordinary Save does.
 
-That is a deliberate departure from the CLI, which **refuses** to write over its
+That is a deliberate departure from the CLI, which **blocks** to write over its
 input (`tools/wish.py`, "--output must differ from the original save"). The CLI
 is a batch tool where clobbering the input is nearly always a mistake; an editor
 with the file open in front of you is the opposite case. But the departure has
@@ -407,7 +407,7 @@ sheet already edits, through the conversion's own codecs and with no game disk
 `Member.native` for the write-back. Armour class and hit points come off that
 converted record, so the roster reads what the converted `.d64` would.
 `Party.game` is still the title's `C64Container`, so no per-title table
-changes. Pools of Darkness has no C64 port and is refused.
+changes. Pools of Darkness has no C64 port and is blocked.
 
 For a roster disk and a `.chr` there are no `SAVEDGAME1` blocks, so AC and HP
 have nowhere to come from. Show them blank rather than inventing them, and grey
@@ -463,7 +463,7 @@ reconciling. That is the same discipline the importer learned the hard way: two
 losslessness bugs came from "helpfully" making two fields agree.
 
 `PROBABLE` and `GUESS` fields stay **editable** but carry their confidence in
-the tooltip. Refusing to edit them would make the editor useless for exactly the
+the tooltip. Blocking edits to them would make the editor useless for exactly the
 experiments that promote them.
 
 ---

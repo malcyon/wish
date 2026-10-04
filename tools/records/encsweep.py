@@ -107,7 +107,7 @@ class Row:
         """Can the identity even be evaluated on this record?
 
         Only if every item the record says it owns was found.  A DOS record
-        that counts items with no `.ITM` beside it is refused by
+        that counts items with no `.ITM` beside it is blocked by
         `read_character` and never becomes a row; an Amiga export is not, so
         its money alone would be compared against a stored total that
         includes items, and it "fails" by the whole weight of an inventory

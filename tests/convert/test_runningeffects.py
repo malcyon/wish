@@ -247,7 +247,7 @@ def _blessed_row_plan(party, tmp_path):
 
 @pytest.mark.parametrize("where", ["specimen", "play"])
 def test_save_as_c64_keeps_a_blessed_dos_party_blessed(tmp_path, where):
-    """`prepare_save_as` returns a plan instead of refusing, and each blessed
+    """`prepare_save_as` returns a plan instead of blocking, and each blessed
     character has one row in the written save: id 1, owned by that
     character's slot, `$02`, magnitude `$01`."""
     from gamedata import specimen
@@ -497,7 +497,7 @@ def test_save_as_c64_keeps_a_curse_party_shielded_and_protected(tmp_path):
 
 
 @pytest.mark.parametrize("eid, named", [(134, False), (45, True)])
-def test_a_refused_effect_line_names_the_effect_only_when_it_has_a_name(eid, named):
+def test_a_blocked_effect_line_names_the_effect_only_when_it_has_a_name(eid, named):
     """An unnamed id reads `effect 134`, not `effect 134 (trait 134)`: a running
     effect is not a trait."""
     char = neutral.NeutralCharacter(
@@ -554,7 +554,7 @@ def test_a_never_expiring_row_is_an_innate_effect_with_no_line():
     assert got.get("running_effects") is None
 
 
-def test_curse_cure_and_shield_rows_both_read_and_a_second_cure_is_refused():
+def test_curse_cure_and_shield_rows_both_read_and_a_second_cure_is_blocked():
     p = bytearray(0x1C00)
     effects.write_effect(p, 63, 141, 2, 0xC7, 0xC7)
     effects.write_effect(p, 62, 17, 2, 0x02, 0x0B)
@@ -666,7 +666,7 @@ def _fixture_payload():
 
 def test_save_as_dos_keeps_a_blessed_c64_character_blessed(tmp_path):
     """The proving test: Bless on slot 0 reaches BRUTUS's `.SPC`; a row with
-    no rule makes Save As refuse, naming the effect."""
+    no rule makes Save As block, naming the effect."""
     from editor import saveplan
 
     payload, save1 = _fixture_payload()
@@ -814,7 +814,7 @@ def test_a_game_written_flight_save_converts_its_orphan_rows_to_nothing(
         assert lines == []
         assert all(len(c.get("running_effects")) == 1 for c in party)
     else:
-        # The survivors' own staged rows are refused by #667's open
+        # The survivors' own staged rows are blocked by #667's open
         # limitation (`effects.py`, "a magnitude without bit 7"); this
         # count changes when it is lifted.
         assert len(lines) == survivors
@@ -924,19 +924,19 @@ _AMIGA_BLESS_CASES = [
 ]
 
 
-def _amiga_bless_disk(tmp_path, title, magnitude, refuse=False,
-                      refuse_id=13, first_id=1):
+def _amiga_bless_disk(tmp_path, title, magnitude, block=False,
+                      failing_id=13, first_id=1):
     """A C64 party with a 47-minute Bless staged on slot 0, as a `.d64`
-    `roster.Party` can open. `refuse=True` also stages an id-13 row, no rule
-    converts (`refuse_id`), the way `test_save_as_dos_keeps_a_blessed_c64_character_blessed`
+    `roster.Party` can open. `block=True` also stages an id-13 row, no rule
+    converts (`failing_id`), the way `test_save_as_dos_keeps_a_blessed_c64_character_blessed`
     does. Pool uses the committed fixture; the later titles use the
     engine-resave specimen `tools/dos/acceptance.py` stages for the same run.
     `None` when the later title's specimen is not on this machine.
     """
     rows = [(0x3F, first_id, 0, 0x2F, magnitude)]
-    if refuse:
-        rows.append((0x3E, refuse_id, 0, 0x2F, magnitude))
-    disk = tmp_path / f"{title}-{'refused' if refuse else 'source'}.d64"
+    if block:
+        rows.append((0x3E, failing_id, 0, 0x2F, magnitude))
+    disk = tmp_path / f"{title}-{'blocked' if block else 'source'}.d64"
     if title == "pool":
         payload, save1 = _fixture_payload()
         for row in rows:
@@ -974,7 +974,7 @@ def test_save_as_amiga_keeps_a_blessed_c64_character_blessed(
     """The Amiga half of `test_save_as_dos_keeps_a_blessed_c64_character_
     blessed`: a C64 party under a running Bless converts to the Amiga with
     nothing dropped, and the written save's node holds the same minutes and
-    magnitude; an id-13 row makes Save As refuse instead."""
+    magnitude; an id-13 row makes Save As block instead."""
     from editor import convert, roster, saveplan
     from tools.convert import convertdrops
 
@@ -1012,16 +1012,16 @@ def test_save_as_amiga_keeps_a_blessed_c64_character_blessed(
 
     # Silver Blades converts id 13 as Barkskin, so its rejection uses id 65, one
     # no DOS engine writes.
-    refuse_id = 65 if title == "ssb" else 13
-    refused = _amiga_bless_disk(tmp_path, title, magnitude, refuse=True,
-                                refuse_id=refuse_id)
-    if refused is None:
+    failing_id = 65 if title == "ssb" else 13
+    blocked = _amiga_bless_disk(tmp_path, title, magnitude, block=True,
+                                failing_id=failing_id)
+    if blocked is None:
         pytest.skip(f"needs the {title} C64 specimen")
-    party = roster.Party(str(refused))
+    party = roster.Party(str(blocked))
     source = party.source or convert.Source.detect(party.path)
     with pytest.raises(saveplan.DroppedFields) as err:
         saveplan.prepare_save_as(party, "amiga", tmp_path / "out2.adf", assets)
-    assert f"effect {refuse_id}" in str(err.value)
+    assert f"effect {failing_id}" in str(err.value)
 
 
 def test_save_as_amiga_keeps_a_silver_blades_barkskin_row(tmp_path):
@@ -1120,7 +1120,7 @@ def test_two_detect_magic_nodes_make_one_row_of_the_longest(order):
 def test_a_zero_minute_node_cannot_reach_the_writer():
     # `closest_duration` returns None below a minute, so this is what keeps
     # write_party_row from ever seeing it: a node at zero never expires and
-    # is a granted effect, and the record refuses to be built.
+    # is a granted effect, and the record is not built.
     with pytest.raises(ValueError):
         c64_codec.write(_pool_character(bytes((5, 0, 0, 3, 0))),
                         payload=bytearray(0x1C00), party_slot=2,
@@ -2031,7 +2031,7 @@ def test_two_pool_strength_nodes_on_one_character_write_no_row_and_say_so():
 
 def test_two_restoring_pool_rows_of_equal_minutes_read_back_as_two_lines():
     """Both rows restore, so which ends first depends on a sweep order nobody
-    has read: the reader refuses rather than guess."""
+    has read: the reader blocks rather than guess."""
     p = bytearray(0x1C00)
     effects.write_effect(p, 63, 12, 2, 0x0A, 0xE2)
     effects.write_effect(p, 62, 38, 2, 0x0A, 0xF3)
@@ -2074,7 +2074,7 @@ def test_save_as_dos_converts_a_pool_strength_row(tmp_path):
 # active-effect array at duration 0, magnitude `0x80 | old strength`, never
 # into a trait slot.  `c64_codec.read` used to hand every duration-0 row to
 # `innate_effects`, and `dos_codec.write`/`amiga_later.write_later` then
-# refused it as an unread item grant.  It now converts to DOS's own strength
+# blocked it as an unread item grant.  It now converts to DOS's own strength
 # node, `26 00 00 vv 01` (`docs/230-who-reads-a-dos-effect-node.md` (c)).
 
 ROLAND_STRENGTH_MAGNITUDE = 0xF3  # 15/0, "SPELLE04 $A8CC": (15 + 100) | 0x80.
@@ -2124,10 +2124,10 @@ def test_save_as_amiga_converts_a_readied_gauntlets_row():
     assert not _lines(rep)
 
 
-def test_a_second_strength_source_still_refuses_rather_than_double_convert():
+def test_a_second_strength_source_still_blocks_rather_than_double_convert():
     """A running Enlarge (id 12, a strength-setting id) on the same character
     as the gauntlets' duration-0 row: DOS Pool holds one strength score, so
-    both are refused rather than one silently overwriting the other -- the
+    both are blocked rather than one silently overwriting the other -- the
     same guard `test_two_pool_strength_nodes_on_one_character_write_no_row_and_say_so`
     proves for the DOS -> C64 direction."""
     p = bytearray(0x1C00)
@@ -2140,10 +2140,10 @@ def test_a_second_strength_source_still_refuses_rather_than_double_convert():
     assert len(lines) == 1 and "more than one strength row" in lines[0]
 
 
-def test_two_duration_0_strength_rows_are_both_refused_and_logged():
+def test_two_duration_0_strength_rows_are_both_blocked_and_logged():
     """Two readied-gauntlets-style rows (id 38, duration 0) on one owner: the
-    duration-0 fallthrough must refuse and log like the duration != 0 branch
-    does (`test_a_second_strength_source_still_refuses_rather_than_double_convert`),
+    duration-0 fallthrough must block and log like the duration != 0 branch
+    does (`test_a_second_strength_source_still_blocks_rather_than_double_convert`),
     not fall silently into `innate_effects` with nothing said."""
     p = bytearray(0x1C00)
     effects.write_effect(p, 63, 38, 2, 0, ROLAND_STRENGTH_MAGNITUDE)
@@ -2201,7 +2201,7 @@ def test_such_a_row_reads_back_as_the_node_DOS_wrote(game, node, row):
     assert not _lines(got)
 
 
-def test_id_13_is_still_refused_with_a_line_and_writes_no_row():
+def test_id_13_is_still_blocked_with_a_line_and_writes_no_row():
     payload = bytearray(0x1C00)
     _rec, rep = c64_codec.write(
         _title_character(_CURSE_G, bytes((13, 10, 0, 5, 0))),
@@ -3316,7 +3316,7 @@ def test_a_companion_the_monsters_charmed_writes_the_row_and_keeps_his_byte():
     assert not rep.losses
 
 
-def test_a_second_charm_node_writes_the_row_when_the_first_was_refused():
+def test_a_second_charm_node_writes_the_row_when_the_first_was_blocked():
     # Pins behaviour that held before the review too.
     char = _charmed_character(0)
     char.set("granted_effects",
@@ -3454,7 +3454,7 @@ def test_a_dos_silver_blades_slow_poison_companion_reaches_the_amiga_with_no_han
 
 
 def test_an_amiga_flag_zero_companion_reads_back_as_the_dos_node():
-    """Amiga to C64 must not refuse the node the DOS writer made, and the
+    """Amiga to C64 must not block the node the DOS writer made, and the
     C64 row is the `$7F` one that never runs the drain."""
     ssb = c64_port.SECRET_OF_THE_SILVER_BLADES
     built, _rep = amiga_later.write_later(_slow_poisoned(ssb))
@@ -3723,8 +3723,8 @@ def test_curse_invisibility_nodes_make_one_c64_row():
     assert len([w for w in rep.warnings if "merged" in w]) == 1
 
 
-def test_a_refused_caster_level_25_node_does_not_hide_the_monster_row():
-    """Merging only the `(25, n, 0xFF, 0)` nodes: a refused `(25, .., 0x0C,
+def test_a_blocked_caster_level_25_node_does_not_hide_the_monster_row():
+    """Merging only the `(25, n, 0xFF, 0)` nodes: a blocked `(25, .., 0x0C,
     1)` beside a monster node still writes the monster's row, and no merge
     line claims otherwise."""
     char = _slow_poison_character(
@@ -4007,7 +4007,7 @@ def test_save_as_c64_keeps_a_feebleminded_dos_character_feebleminded(
 
 
 @pytest.mark.parametrize("title, game, stem, name", _FEEBLE_SAVE_AS)
-def test_save_as_c64_refuses_a_feeblemind_row_with_no_free_slot(
+def test_save_as_c64_blocks_a_feeblemind_row_with_no_free_slot(
         tmp_path, monkeypatch, title, game, stem, name):
     """A row that cannot land leaves the character with his permanent scores
     and no Feeblemind, so the 3s his source held are reported lost."""
@@ -4519,7 +4519,7 @@ def test_a_parked_pool_node_ending_first_is_a_row_with_bit_7_clear():
     # Not the pair: one running Strength beside a granted one, neither parked.
     ((_POOL_ACTIVE,), (bytes((38, 0, 0, 0x73, 1)),)),
 ])
-def test_other_pool_strength_states_are_still_refused(nodes, granted):
+def test_other_pool_strength_states_are_still_blocked(nodes, granted):
     rows, rep = _pool_pair_rows(*nodes, granted=granted)
     assert not [r for r in rows.values() if r[0] in (12, 38)]
     assert [d for d in rep.dropped if "more than one strength" in d]
@@ -4562,7 +4562,7 @@ def test_the_two_pool_rows_read_back_as_the_same_two_nodes():
     assert sorted(spc[i:i + 5] for i in range(0, len(spc), 9)) == got
 
 
-def test_pool_rows_no_two_node_timeline_makes_are_still_refused():
+def test_pool_rows_no_two_node_timeline_makes_are_still_blocked():
     p = bytearray(0x1C00)
     effects.write_effect(p, 63, 38, 2, effects.closest_duration(10, 0), 0x94)
     effects.write_effect(p, 62, 12, 2, effects.closest_duration(60, 0), 0x71)
@@ -4580,7 +4580,7 @@ def test_a_written_pool_pair_survives_write_then_read():
         [_POOL_ACTIVE, _POOL_PARKED])
 
 
-def test_the_amiga_warrior_test_refuses_a_title_it_has_no_rule_for():
+def test_the_amiga_warrior_test_blocks_a_title_it_has_no_rule_for():
     with pytest.raises(ValueError):
         c64_codec.amiga_strength_warrior("pool-of-radiance",
                                          {"fighter": 4}, {})

@@ -344,7 +344,7 @@ NONSENSE = {
 
 @pytest.mark.parametrize("what", sorted(NONSENSE))
 def test_a_settings_file_nobody_can_use_reads_as_no_choice_at_all(what):
-    """The whole row is refused rather than mended: a mended row is three
+    """The whole row is blocked rather than mended: a mended row is three
     widths of which one is somebody's and two are ours, and a window laid out
     from that is harder to explain than one at its defaults."""
     settings = Settings(automap_columns=NONSENSE[what])

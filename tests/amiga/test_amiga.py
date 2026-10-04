@@ -82,7 +82,7 @@ def test_the_name_is_fifteen_characters_nul_terminated():
     assert PodCharacter.from_bytes(ramp("BASELINE")).name == "BASELINE"
 
 
-def test_a_short_buffer_is_refused_rather_than_read_past():
+def test_a_short_buffer_is_blocked_rather_than_read_past():
     with pytest.raises(ValueError):
         PodCharacter.from_bytes(bytes(ARMOUR_CLASS))
 
@@ -276,7 +276,7 @@ def test_every_non_zero_byte_the_writer_emits_is_credited_to_a_field():
     assert all(o in credited for o, b in enumerate(raw) if b)
 
 
-def test_the_writer_refuses_an_index_no_table_has():
+def test_the_writer_blocks_an_index_no_table_has():
     for kwargs in ({"race": len(RACES)}, {"character_class": len(CLASSES)},
                    {"sex": 2}, {"alignment": 9}):
         with pytest.raises(ValueError):
@@ -634,8 +634,8 @@ def test_a_reader_warning_never_reaches_the_pod_losses():
     assert rep.losses == []
 
 
-def test_a_class_pools_of_darkness_cannot_express_is_refused():
-    """A combination with no code is refused rather than written as another
+def test_a_class_pools_of_darkness_cannot_express_is_blocked():
+    """A combination with no code is blocked rather than written as another
     one, which is `yaml_io.class_code_for`'s rule in the other direction."""
     with pytest.raises(amiga_pod.ConversionError):
         amiga_pod.to_pc(sample(class_bits=2 | 4 | 8,
@@ -644,7 +644,7 @@ def test_a_class_pools_of_darkness_cannot_express_is_refused():
                                    "paladin": 0, "ranger": 0}))
 
 
-def test_a_field_graded_below_the_floor_is_refused_rather_than_guessed():
+def test_a_field_graded_below_the_floor_is_blocked_rather_than_guessed():
     """`neutral.Writer.use` is the whole of the rejection, and it is shared:
     a value the reader will not stand behind is reported, not written."""
     from goldbox.layout import Confidence
@@ -715,7 +715,7 @@ def _six_identical_names_disk(tmp_path) -> pathlib.Path:
 
     Built from the format like `gamedata.synthetic_party`, but with a single
     class Pools of Darkness has a code for: `synthetic_party`'s all-four-class
-    combination has none, which `to_pc` refuses.
+    combination has none, which `to_pc` blocks.
     """
     import gamedata
 
@@ -833,7 +833,7 @@ def test_the_record_size_is_the_dos_record_plus_three():
 
 
 @pytest.mark.parametrize("length", [285, 287, 289, 428, 484])
-def test_a_record_of_the_wrong_length_is_refused_by_name(length):
+def test_a_record_of_the_wrong_length_is_blocked_by_name(length):
     with pytest.raises(AmigaRecordError):
         AmigaPorCharacter.from_bytes(bytes(length))
 
@@ -1055,7 +1055,7 @@ def test_the_readied_flag_is_the_one_the_display_line_agrees_with():
     assert seen, "no item in the specimens carries the ready column"
 
 
-def test_an_item_of_the_wrong_length_is_refused_by_name():
+def test_an_item_of_the_wrong_length_is_blocked_by_name():
     with pytest.raises(AmigaRecordError):
         amiga_por.AmigaPorItem.from_bytes(bytes(dos_port.ITEM_SIZE))
     with pytest.raises(AmigaRecordError):
@@ -1076,7 +1076,7 @@ def test_the_effect_node_transposes_onto_the_dos_payload():
     assert out[5:] == EFFECT_NEXT_NULL
 
 
-def test_an_effect_node_of_the_wrong_length_is_refused():
+def test_an_effect_node_of_the_wrong_length_is_blocked():
     with pytest.raises(AmigaRecordError):
         amiga_por.amiga_por_effect_to_dos(bytes(dos_port.EFFECT_SIZE))
 
@@ -1704,26 +1704,26 @@ def test_a_written_record_reads_back_as_the_character_that_was_written():
 
 
 @pytest.mark.parametrize("length", [284, 286, 288, 428, 484])
-def test_a_dos_record_of_the_wrong_length_is_refused_by_name(length):
+def test_a_dos_record_of_the_wrong_length_is_blocked_by_name(length):
     with pytest.raises(AmigaRecordError):
         amiga_por.from_dos_record(bytes(length))
 
 
 @pytest.mark.parametrize("length", [62, 64, 65, 66])
-def test_a_dos_item_of_the_wrong_length_is_refused_by_name(length):
+def test_a_dos_item_of_the_wrong_length_is_blocked_by_name(length):
     with pytest.raises(AmigaRecordError):
         amiga_por.amiga_por_item_from_dos(bytes(length))
 
 
 @pytest.mark.parametrize("length", [8, 10])
-def test_a_dos_effect_of_the_wrong_length_is_refused_by_name(length):
+def test_a_dos_effect_of_the_wrong_length_is_blocked_by_name(length):
     with pytest.raises(AmigaRecordError):
         amiga_por.amiga_por_effect_from_dos(bytes(length))
 
 
 @pytest.mark.parametrize("slot,index", [("AB", 1), ("1", 1), ("A", 0),
                                         ("A", 9), ("", 1)])
-def test_a_save_file_name_outside_the_scheme_is_refused(slot, index):
+def test_a_save_file_name_outside_the_scheme_is_blocked(slot, index):
     with pytest.raises(AmigaRecordError):
         amiga_por.por_filename(slot, index)
 
@@ -1904,8 +1904,8 @@ def test_a_new_slot_does_not_take_another_slots_byte():
     assert disk.read_file(amiga_savegame.POR_SLOT_LIST) == b"AB D F    "
 
 
-def test_a_slot_letter_outside_the_ten_is_refused_before_anything_is_written():
-    """Refusing beats writing a slot the player cannot load.
+def test_a_slot_letter_outside_the_ten_is_blocked_before_anything_is_written():
+    """Blocking beats writing a slot the player cannot load.
 
     `K` is the eleventh letter and the list holds ten, so it can never be
     offered. The assertion that matters is the second one: the disk is
@@ -1919,7 +1919,7 @@ def test_a_slot_letter_outside_the_ten_is_refused_before_anything_is_written():
     assert disk.to_bytes() == before
 
 
-def test_a_slot_with_no_saved_game_is_refused():
+def test_a_slot_with_no_saved_game_is_blocked():
     """Character files alone are a drawer full of files, not a save slot."""
     disk = save_disk_with("A")
     before = disk.to_bytes()
@@ -1944,7 +1944,7 @@ def test_a_saved_game_moved_to_another_slot_is_rewritten():
         assert save[at:at + 8] == f"CHRDATB{n + 1}".encode()
 
 
-def test_a_saved_game_that_is_not_one_is_refused_by_name():
+def test_a_saved_game_that_is_not_one_is_blocked_by_name():
     with pytest.raises(AmigaRecordError):
         amiga_savegame.move_savegame_to_slot(bytes(amiga_savegame.POR_SAVEGAME_SIZE), "B")
     with pytest.raises(AmigaRecordError):
@@ -1990,7 +1990,7 @@ def test_the_slot_list_ignores_the_padding_and_keeps_the_letters():
 
 
 @pytest.mark.parametrize("party", [[], [1] * 9])
-def test_a_party_that_is_not_one_to_eight_is_refused(party):
+def test_a_party_that_is_not_one_to_eight_is_blocked(party):
     disk = save_disk_with("A")
     with pytest.raises(AmigaRecordError):
         amiga_savegame.write_por_slot(disk, "B", [sample()] * len(party),
@@ -2032,7 +2032,7 @@ def test_a_slot_that_will_not_fit_leaves_the_disk_exactly_as_it_was():
 
     `AmigaDisk.write_file` allocates the replacement before freeing the
     original, so a slot that runs the disk out of blocks stops part way
-    through -- which is the state `write_por_slot` exists to refuse, arrived
+    through -- which is the state `write_por_slot` exists to block, arrived
     at by a different route.
     """
     from goldbox.amiga_adf import AmigaDisk
@@ -2168,7 +2168,7 @@ def test_the_silver_blades_shift_map_is_the_one_its_unpacker_writes():
 
     It skips the spellbook, which the routine turns from 117 one-byte flags
     into 15 bytes of bitmask rather than copying, and which `deltas.offset`
-    refuses for that reason.
+    blocks for that reason.
     """
     deltas = amiga_port.SILVER_BLADES_DELTAS
     book = deltas.dos_field("spellbook")
@@ -2201,7 +2201,7 @@ def test_both_item_shift_maps_are_what_their_unpackers_write(key):
 
 
 def test_the_record_size_names_the_amiga_title():
-    """Three sizes, three titles, and a fourth is refused rather than read."""
+    """Three sizes, three titles, and a fourth is blocked rather than read."""
     assert amiga_port.AMIGA_DELTAS_BY_SIZE[428] is amiga_port.CURSE_DELTAS
     assert amiga_port.AMIGA_DELTAS_BY_SIZE[340] is amiga_port.SILVER_BLADES_DELTAS
     with pytest.raises(AmigaRecordError):
@@ -2211,7 +2211,7 @@ def test_the_record_size_names_the_amiga_title():
 def test_every_curse_insertion_is_placed_to_the_byte():
     """The map `/Curse`'s own record unpacker writes, with nothing left over.
 
-    Three windows used to be refused here because a specimen could not say
+    Three windows used to be blocked here because a specimen could not say
     where inside them the insertion sat.  The routine at `/Curse` `0x270A6`
     says: it expands the packed 422-byte DOS record into the 428-byte Amiga
     one a field group at a time, so every boundary is an instruction rather
@@ -2566,7 +2566,7 @@ def test_a_record_whose_ability_pairs_differ_is_found_and_detected():
         assert amiga_savegame.detect(data).deltas is deltas, deltas.key
 
 
-def test_the_signature_still_refuses_an_illegal_ability_byte():
+def test_the_signature_still_blocks_an_illegal_ability_byte():
     deltas = amiga_port.CURSE_DELTAS
     for bad in (0, 26):
         data, starts = _unequal_pair_save(deltas, (9, bad))
@@ -3366,6 +3366,6 @@ def test_to_pc_keeps_a_names_spaces():
     assert record[0x60 + 14:0x60 + 16] == b"\0\0"
 
 
-def test_to_pc_still_refuses_a_blank_name():
+def test_to_pc_still_blocks_a_blank_name():
     with pytest.raises(amiga_pod.ConversionError):
         amiga_pod.to_pc(sample(name="   "))

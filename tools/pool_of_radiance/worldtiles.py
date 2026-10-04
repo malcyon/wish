@@ -201,7 +201,7 @@ def explored_squares(route, pane: int = PANE) -> set[tuple[int, int]]:
 
 def _tile_image(world: W.World, x: int, y: int):
     """The tile at world `(x, y)` as a 24 x 24 image in the application's own
-    C64 palette.  `World.locate` refuses the two-square border a window
+    C64 palette.  `World.locate` rejects the two-square border a window
     carries, which the game's pane still draws, so the window is chosen here."""
     from PIL import Image
 

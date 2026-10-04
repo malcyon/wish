@@ -175,7 +175,7 @@ stores 1**: Pool of Radiance `0x01C263`, Curse `0x023463`, Silver Blades
 `0x0208A9`. All three are the last statement of the same routine, and all three
 are preceded by the same loop exit -- not a control key, and the key is `4Bh`,
 which is `K` for KEEP. The routine is `modifyPlayer` (`ovr018`), whose prompt
-reads `Keep Exit` over `Modify:`, and which refuses outright unless the
+reads `Keep Exit` over `Modify:`, and which blocks outright unless the
 character's experience is 0 (Pool of Radiance, on DOS and on the Amiga) or 0,
 8333, 12500 or 25000 (Curse; Silver Blades has its own four values). Pool of
 Radiance's gate is a 32-bit compare of experience with 0 at `GAME.OVR`
@@ -346,7 +346,7 @@ byte-per-title.md` reads every reference to the byte per title and finds none
 `0x0FA`, converted unchanged like a companion's. Treating it as the Pool of
 Radiance flag crossed the DOS and Amiga writers' correct output back into the
 C64's ability-altered flag on the read-back check alone, so a Save As from
-either of these two titles refused a character actually holding a share.
+either of these two titles blocked a character actually holding a share.
 
 What every record on this machine holds in the share byte,
 `tools/dos/dostailsweep.py --field field_83_87 --per-title` and a sweep of
@@ -363,7 +363,7 @@ the registry's `PORSAVE*.D64` through `editor.saveplan.c64_slot_records`:
 The control byte is `0x00` in all 320 DOS records, so every one of them is a
 player character and every `1` above is the modify flag.
 
-### What still refuses
+### What still blocks
 
 Values `0` through `3` preserve the raw byte and engine behaviour across all
 three ports for a companion. DOS and Amiga preserve `4` through `7` between
@@ -373,12 +373,12 @@ holding `4` through `7` parts is written to the C64 as `raw | 3`: never zero,
 so he is still named, and the 3 parts that are the most the C64 gives. The
 reduction goes on the conversion report's warnings and reaches the debug log.
 A player character's byte with bit 2 set, and a Curse or Silver Blades
-companion's, refuses before output, because the other masks are not measured.
+companion's, blocks before output, because the other masks are not measured.
 
 One record reports a loss and no engine writes it: a C64 **Pool of Radiance
 player character** holding both bit 0 of `0x0B8` and a non-zero `0x0FA`. The
 other ports have one byte for the two, so the raw share crosses as it always
-did and the flag is reported dropped, which refuses the conversion rather than
+did and the flag is reported dropped, which blocks the conversion rather than
 losing it in silence. Nothing in C64 Pool of Radiance writes `0x0FA` and 90 of
 90 records hold zero, so no save here can reach it.
 

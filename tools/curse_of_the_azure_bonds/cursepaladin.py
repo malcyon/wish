@@ -121,14 +121,14 @@ def describe(record: bytes) -> dict:
 def stage(args) -> int:
     """Copy a save disk, writing ability and level inputs into named slots.
 
-    Refuses a base whose `SAVEAZURE` the drive never closed: closing the entry
+    Rejects a base whose `SAVEAZURE` the drive never closed: closing the entry
     by hand cannot show that its data chain holds the write the caller meant
     to keep rather than the save before it.  `save_current_game()` has to wait
     for the drive to close the file before the disk is copied out.
     """
     from tools.curse_of_the_azure_bonds import curseload  # noqa: PLC0415
 
-    curseload.refuse_open_entries(args.base)
+    curseload.check_open_entries(args.base)
     image = pathlib.Path(args.base).read_bytes()
     load, payload = payload_of(image)
     names = slot_names(payload)

@@ -185,7 +185,7 @@ def patch(original: bytes, before: bytes, after: bytes,
 
     `edited` says the caller knows the two records differ and that this record
     is where the difference has to land.  Then a rewrite that moves no span at
-    all is refused rather than returned: the two renderings either agree --
+    all is blocked rather than returned: the two renderings either agree --
     the port has no such field -- or disagree somewhere the span map does not
     cover, and both mean the player's edit would vanish on the next read.
     """

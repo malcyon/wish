@@ -2,7 +2,7 @@
 """Put an Amiga *Pool of Radiance* party in front of New Phlan's harbour master.
 
 The only reason this exists is that **no Amiga saved game made outdoors had
-ever been read** (`#321 (An Amiga Pool of Radiance conversion refuses a party
+ever been read** (`#321 (An Amiga Pool of Radiance conversion blocks a party
 standing on the travel grid, because no outdoor Amiga saved game has ever been
 read)`), and the only way to get one is to make the game's own engine sail a
 party onto the travel grid and save there.

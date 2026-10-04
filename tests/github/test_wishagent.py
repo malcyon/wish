@@ -116,7 +116,7 @@ def test_jwt_iat_is_backdated_by_the_clock_skew_constant(configured):
 
 
 @pytest.mark.skipif(WINDOWS, reason="file mode bits do not mean this on Windows")
-def test_group_readable_key_is_refused(monkeypatch, tmp_path):
+def test_group_readable_key_is_rejected(monkeypatch, tmp_path):
     path = tmp_path / "private-key.pem"
     path.write_bytes(_rsa_key_pem())
     os.chmod(path, 0o644)
@@ -128,7 +128,7 @@ def test_group_readable_key_is_refused(monkeypatch, tmp_path):
 
 
 @pytest.mark.skipif(WINDOWS, reason="file mode bits do not mean this on Windows")
-def test_missing_key_is_refused_naming_the_path(monkeypatch, tmp_path):
+def test_missing_key_is_rejected_naming_the_path(monkeypatch, tmp_path):
     path = tmp_path / "does-not-exist.pem"
     monkeypatch.setenv("WISH_AGENT_KEY", str(path))
     monkeypatch.setenv("WISH_AGENT_APP_ID", "1")

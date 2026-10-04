@@ -173,7 +173,7 @@ right-hand end of the readied line and in the danger red:
 
 The tooltip says what each means, and the skull's says the thing the record does
 not: 0 is dead **or** dying and nothing decoded distinguishes them. That is the
-same reason `automap/actions.py` refuses to heal a character at 0.
+same reason `automap/actions.py` will not heal a character at 0.
 
 ## 7. The quickfight badge
 
@@ -387,7 +387,7 @@ The three columns, and every assertion a bound rather than a pixel count:
   **answers the mouse** -- a press, a move and a release, not a call to
   anything private. Proved red three ways: with the divider left at the
   style's own width, with the shut pane hidden instead of collapsed, and with
-  zero refused by the settings reader as if it were nonsense.
+  zero blocked by the settings reader as if it were nonsense.
 * A dragged width is what the next start opens at; a window resize does not
   overwrite it.
 * The map cannot be dragged shut from either side.

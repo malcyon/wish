@@ -28,7 +28,7 @@ shows as the square moving, which is the thing to prove:
 Written for `#50 (Lift the wilderness refusal from the DOS save converter)`,
 whose end-to-end proof is "convert a wilderness DOS save, load it, and walk".
 
-Nothing is written to the player's disks: `Session.attach` refuses a path
+Nothing is written to the player's disks: `Session.attach` rejects a path
 outside the slot's own directory, and `stage_disks` copies the sides there
 first.  The pool owns the emulator -- claim, launch, tear down.
 """

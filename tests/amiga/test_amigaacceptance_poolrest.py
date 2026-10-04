@@ -54,7 +54,7 @@ def test_pool_takes_rest_and_display_and_drives_them_with_the_letters_read_from_
     ("display 2", "is not view"),
     ("join 1 1", "JOIN is built for Silver Blades only"),
 ])
-def test_pool_refuses_a_step_it_cannot_drive_or_a_rest_its_clock_cannot_prove(text, why):
+def test_pool_blocks_a_step_it_cannot_drive_or_a_rest_its_clock_cannot_prove(text, why):
     with pytest.raises(RouteError, match=why):
         route_camp.parse_steps(text, "pool")
 

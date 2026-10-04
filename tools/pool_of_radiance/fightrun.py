@@ -19,7 +19,7 @@ was that a tool belongs in tools/ so nobody has to rebuild it. Only the data it
 produces belongs in scratch.
 
 Nothing here writes to the player's disks: the save and the eight sides are
-copied into the slot's own directory, and `Session.attach` refuses any path
+copied into the slot's own directory, and `Session.attach` rejects any path
 outside it.
 
     tools/pool_of_radiance/fightrun.py --save PORSAVE13.D64 --slot 1 --budget 600

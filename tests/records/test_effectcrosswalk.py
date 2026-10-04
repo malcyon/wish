@@ -380,7 +380,7 @@ def test_a_strength_of_one_and_18_over_100_share_one_byte():
 
 
 @pytest.mark.parametrize("strength, percentile", [(0, 0), (156, 0), (18, 101)])
-def test_a_score_outside_the_engines_range_is_refused(strength, percentile):
+def test_a_score_outside_the_engines_range_is_blocked(strength, percentile):
     with pytest.raises(ValueError, match="1 to 155"):
         effects.later_node_data(strength, percentile)
 

@@ -4,10 +4,10 @@ Commit 1 of `#194 (Import and export a Pools of Darkness save between DOS
 and the Amiga)`: `goldbox.dos_codec.pod_savgam`/`new_pod_save_from`, and
 `editor.convert.PodAmigaToDos` behind `WISH_EXPERIMENTAL_POD_CONVERT`.
 
-`write_dos_save_from` cannot host this title (`_c64_game_of` refuses one
+`write_dos_save_from` cannot host this title (`_c64_game_of` blocks one
 with no C64 port), so `pod_savgam` builds the 1364-byte `SAVGAM<slot>.PTY`
 field by field rather than through `savgam_writes`/`savgam_zeroes`, which
-reach `dos_savegame.word_offset` and refuse a byte-wide variable array.
+reach `dos_savegame.word_offset` and block a byte-wide variable array.
 
 **The specimens are the player's own DOS archives and Amiga disk images**,
 read through `support.dossave._game_dirs()` and
@@ -111,7 +111,7 @@ def test_pod_savgam_round_trips_a_synthetic_state():
     assert report.unwritten == []
 
 
-def test_pod_savgam_refuses_a_count_disagreeing_with_variable_32():
+def test_pod_savgam_blocks_a_count_disagreeing_with_variable_32():
     raw = _hand_built_pod_save(3)
     state = world_state.pod_from_dos(bytes(raw))
     with pytest.raises(dos_codec.DosRecordError, match="variable 32"):
@@ -188,18 +188,18 @@ def test_pod_vault_round_trips_two_hundred_case_free_items():
     assert dos_codec.pod_vault_from_dos(raw) == v
 
 
-def test_pod_vault_from_dos_refuses_a_partial_trailing_record():
+def test_pod_vault_from_dos_blocks_a_partial_trailing_record():
     with pytest.raises(dos_codec.DosRecordError):
         dos_codec.pod_vault_from_dos(bytes(12 + 63 + 5))
 
 
-def test_pod_vault_from_amiga_refuses_a_wrong_marker():
+def test_pod_vault_from_amiga_blocks_a_wrong_marker():
     data = _amiga_vault((0, 0, 0), 0, b"", marker=0x1234)
     with pytest.raises(amiga_savegame.AmigaSaveError, match="marker"):
         amiga_savegame.pod_vault_from_amiga(data)
 
 
-def test_pod_vault_from_amiga_refuses_a_case_walking_past_two_hundred_nodes():
+def test_pod_vault_from_amiga_blocks_a_case_walking_past_two_hundred_nodes():
     case = _amiga_node(type_index=0x49, quantity=201)
     scroll = _amiga_node(type_index=39, quantity=0)
     data = _amiga_vault((0, 0, 0), 1, case + scroll * 201)
@@ -220,13 +220,13 @@ def test_pod_vault_to_amiga_round_trips_case_free_items():
     assert amiga_savegame.pod_vault_from_amiga(raw) == v
 
 
-def test_pod_vault_to_amiga_refuses_more_than_two_hundred_items():
+def test_pod_vault_to_amiga_blocks_more_than_two_hundred_items():
     v = dos_codec.PodVault(0, 0, 0, tuple(_dos_item_record() for _ in range(201)))
     with pytest.raises(amiga_savegame.AmigaSaveError, match="200"):
         amiga_savegame.pod_vault_to_amiga(v)
 
 
-def test_pod_vault_to_amiga_refuses_a_dos_type_105_record():
+def test_pod_vault_to_amiga_blocks_a_dos_type_105_record():
     v = dos_codec.PodVault(0, 0, 0, (_dos_item_record(105),))
     with pytest.raises(amiga_savegame.AmigaSaveError, match="105"):
         amiga_savegame.pod_vault_to_amiga(v)
@@ -539,7 +539,7 @@ def test_the_pod_amiga_to_dos_row_end_to_end(tmp_path, monkeypatch):
 
 def test_a_magic_user_who_was_a_ranger_reads_back_as_class_bits_129():
     """DOS reads the same character as 129; without the former levels the
-    ranger's bit 6 reads as a paladin and `write_pod` refuses him."""
+    ranger's bit 6 reads as a paladin and `write_pod` blocks him."""
     slots = amiga_pod.CLASS_LEVEL_SLOTS
     levels = [0] * len(slots)
     levels[slots.index("MAGIC-USER")] = 13
@@ -787,7 +787,7 @@ def test_pod_new_savegame_credits_each_byte_it_leaves_zero_by_name():
     """The `unwritten` gate only means something when the writer says what it
     left zero: every byte of a block is a field the plan wrote or a row of
     `LEFT_ZERO` or `DERIVED`, none is a blanket credit, and a writer whose
-    plan lost a field is refused."""
+    plan lost a field is blocked."""
     state = _synthetic_state(1)
     char = amiga_pod.pod_to_neutral(_synthetic_fighter("ONE"))
     built, report = amiga_savegame.pod_new_savegame(state, [char])
@@ -807,7 +807,7 @@ def test_pod_new_savegame_credits_each_byte_it_leaves_zero_by_name():
                 assert report.sources[at + offset] == f"left zero: {why}"
 
 
-def test_pod_new_savegame_refuses_a_writer_whose_plan_lost_a_field(monkeypatch):
+def test_pod_new_savegame_blocks_a_writer_whose_plan_lost_a_field(monkeypatch):
     plan = amiga_pod.PodWriter._plan
 
     def without_former_class_levels(self):
@@ -822,7 +822,7 @@ def test_pod_new_savegame_refuses_a_writer_whose_plan_lost_a_field(monkeypatch):
         amiga_savegame.pod_new_savegame(state, [char])
 
 
-def test_pod_new_savegame_refuses_a_party_the_state_does_not_count():
+def test_pod_new_savegame_blocks_a_party_the_state_does_not_count():
     state = _synthetic_state(2)
     char = amiga_pod.pod_to_neutral(_synthetic_fighter("ONE"))
     with pytest.raises(amiga_savegame.AmigaSaveError):
@@ -834,8 +834,8 @@ def test_pod_new_savegame_refuses_a_party_the_state_does_not_count():
 
 
 @pytest.mark.parametrize("count", [0, 9])
-def test_pod_new_savegame_refuses_a_party_outside_one_to_eight(count):
-    # The state counts the same number, so only the range check can refuse.
+def test_pod_new_savegame_blocks_a_party_outside_one_to_eight(count):
+    # The state counts the same number, so only the range check can block.
     state = dataclasses.replace(_synthetic_state(1), count=count)
     char = amiga_pod.pod_to_neutral(_synthetic_fighter("ONE"))
     with pytest.raises(amiga_savegame.AmigaSaveError, match="1 to"):
@@ -923,7 +923,7 @@ def test_pod_slot_on_disk_three_adds_a_letter_the_disk_lacks():
 
 
 @pytest.mark.parametrize("drop", ["/DISK3", "/SAVE/spindisk", "/SAVE/WRITE.ME"])
-def test_pod_slot_on_disk_three_refuses_a_disk_missing_a_marker(drop):
+def test_pod_slot_on_disk_three_blocks_a_disk_missing_a_marker(drop):
     disk = _synthetic_disk_three(data_drawer=drop != "/DISK3")
     if drop != "/DISK3":
         disk.remove_file(drop)
@@ -932,7 +932,7 @@ def test_pod_slot_on_disk_three_refuses_a_disk_missing_a_marker(drop):
             disk, "A", _synthetic_amiga_pod_save(1), _a_vault())
 
 
-def test_pod_slot_on_disk_three_refuses_a_curse_disk_one():
+def test_pod_slot_on_disk_three_blocks_a_curse_disk_one():
     disk = AmigaDisk.blank("CurseA")
     disk.make_dir(f"/{amiga_savegame.SAVE_DRAWER}")
     disk.write_file(f"/{amiga_savegame.SAVE_DRAWER}/spindisk", b"\x01")
@@ -942,7 +942,7 @@ def test_pod_slot_on_disk_three_refuses_a_curse_disk_one():
             disk, "A", _synthetic_amiga_pod_save(1), _a_vault())
 
 
-def test_pod_slot_on_disk_three_refuses_files_the_game_would_not_write():
+def test_pod_slot_on_disk_three_blocks_files_the_game_would_not_write():
     disk = _synthetic_disk_three()
     with pytest.raises(amiga_savegame.AmigaSaveError):
         amiga_savegame.pod_slot_on_disk_three(
@@ -1146,7 +1146,7 @@ def test_a_letter_the_disk_already_holds_is_not_replaced_unasked():
     assert disk.to_bytes() == before
 
 
-def test_pod_dos_to_amiga_refuses_an_unasked_replacement():
+def test_pod_dos_to_amiga_blocks_an_unasked_replacement():
     folder = _pod_specimen("dos-pod-foundation-walked")
     held = next(p.stem[-1] for p in sorted(folder.glob("SAVGAM?.PTY")))
     with pytest.raises(convert.ConvertError):
@@ -1155,7 +1155,7 @@ def test_pod_dos_to_amiga_refuses_an_unasked_replacement():
             disk_three=_synthetic_disk_three(held))
 
 
-def test_pod_dos_to_amiga_refuses_a_slot_other_than_the_sources():
+def test_pod_dos_to_amiga_blocks_a_slot_other_than_the_sources():
     with pytest.raises(convert.ConvertError):
         convert.PodDosToAmiga().rehearse(
             _dos_source(".", "A"), "B", None,

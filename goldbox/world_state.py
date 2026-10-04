@@ -275,8 +275,8 @@ def from_c64(save0: bytes, game=None, source: str = "") -> WorldState:
     and `c64_save.container_for` says which title's own quest-flag width and
     header offsets apply.  Generalises `goldbox.amiga_por.por_state_from_c64`
     (now a one-line wrapper of this) beyond Pool of Radiance's own 217-byte
-    flag window, and reads an outdoor party rather than refusing one.  **The
-    wrapper refuses nothing either**, as it did until 2026-09-07: the two
+    flag window, and reads an outdoor party rather than blocking one.  **The
+    wrapper blocks nothing either**, as it did until 2026-09-07: the two
     bytes an outdoor Amiga saved game holds were measured that day and
     `#321 (An Amiga Pool of Radiance conversion refuses a party standing on
     the travel grid, because no outdoor Amiga saved game has ever been
@@ -327,11 +327,11 @@ def from_dos(savgam: bytes,
     (now a one-line wrapper of this) over every title `container_for`
     knows, rather than assuming Pool of Radiance's own flag width, and over
     a party that has never adventured, which `_resolve_dos_place` places at
-    the start of the story rather than refusing.
+    the start of the story rather than blocking.
 
-    Reads an outdoor party rather than refusing one, because the C64 side
+    Reads an outdoor party rather than blocking one, because the C64 side
     already has a travel square to write it into, and
-    `goldbox.amiga_por.por_state_from_dos` refuses nothing either -- for the
+    `goldbox.amiga_por.por_state_from_dos` blocks nothing either -- for the
     same reason `from_c64`'s wrapper stopped, on 2026-09-07.
     """
     from . import dos_codec as _dos
@@ -372,7 +372,7 @@ def from_amiga(savgam: bytes, source: str = "") -> WorldState:
     meaning -- Pool of Radiance's own `c64_save.C64Container.copied` is empty.
     Generalises `goldbox.amiga_por.por_state_from_amiga`, which is now a
     one-line wrapper that checks the file length and nothing else -- it
-    refused an outdoor save until 2026-09-07, when the two bytes one holds
+    blocked an outdoor save until 2026-09-07, when the two bytes one holds
     were measured and `#321 (An Amiga Pool of Radiance conversion refuses a
     party standing on the travel grid, because no outdoor Amiga saved game
     has ever been read)` closed.  There is no "has this party
@@ -433,9 +433,9 @@ def pod_from_dos(savgam: bytes,
     """A Pools of Darkness `SAVGAM<slot>.PTY`, as a place and a clock.
 
     Reads through `goldbox.dos_savegame`, so a buffer that is not the
-    container's size is refused there.  A container with no byte-wide variable
+    container's size is blocked there.  A container with no byte-wide variable
     array, which is every title but this one, raises.  `WorldState.from_dos`
-    is the reader for those and still refuses this title's file.
+    is the reader for those and still blocks this title's file.
 
     **The size names the container, not the title**: a Treasures of the Savage
     Frontier `SAVGAM<slot>.PTY` is also 1364 bytes and `dos_savegame.container_for`

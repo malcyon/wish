@@ -5,7 +5,7 @@ Each registered direction is loaded and walked in its emulator from the bytes
 Save As publishes: `tools/convert/saveasdrive.py` opens the source as the
 editor does and calls `saveplan.prepare_save_as` and `saveplan.publish`, so
 what boots is the rehearsed output, and a conversion that would lose a field
-is refused here as it is in the editor. `tools/dos/dosdisk.py` and
+is blocked here as it is in the editor. `tools/dos/dosdisk.py` and
 `tools/dos/dosnewsave.py` prove `goldbox.dos_codec` by calling it directly;
 this run does not. A byte-identity test is not a loaded game
 (`.claude/rules/conversions.md`: "A conversion is not proven until it runs").
@@ -19,7 +19,7 @@ What it does, in order:
 
 1. opens the source and Save As it to `--to` under `--out`, in a dated
    `wish-<date>` folder, with the game data the route needs; a rejection is
-   reported as `refused` and the run stops without booting anything;
+   reported as `blocked` and the run stops without booting anything;
 2. boots what came out. A C64 destination goes to the reader that knows
    its title -- `tools/c64/savecheck.py` for Pool of Radiance,
    `tools/curse_of_the_azure_bonds/cursecheck.py` for Curse of the Azure Bonds -- which reads the
@@ -171,7 +171,7 @@ def write_via_save_as(source: pathlib.Path, to: str, folder: pathlib.Path,
     to leave behind. `leave_effects` is
     `{member: {running-effect index}}`, what a player would tick in the
     window that asks which running effects to leave out. The report is `saveasdrive.save_as`'s:
-    `written`, `slot`, `losses` and `dropped`, or `refused` and `error` when
+    `written`, `slot`, `losses` and `dropped`, or `blocked` and `error` when
     Save As would not publish it.
     """
     from PyQt6.QtWidgets import QApplication, QWidget

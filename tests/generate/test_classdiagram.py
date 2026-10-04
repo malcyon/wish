@@ -64,7 +64,7 @@ def test_measure_mmd_on_an_empty_diagram_is_zero_classes():
     assert classdiagram.measure_mmd(EMPTY_MMD) == (0, 0)
 
 
-def test_slug_for_never_returns_a_name_scratch_dir_refuses():
+def test_slug_for_never_returns_a_name_scratch_dir_rejects():
     for targets in (["."], [".."], [""], []):
         assert classdiagram.slug_for(targets) == "run"
 
@@ -133,7 +133,7 @@ def test_report_diagram_names_modules_for_a_packages_file(tmp_path, capsys):
     assert "3 modules" in out
 
 
-def test_run_pyreverse_refuses_a_target_that_does_not_exist(tmp_path):
+def test_run_pyreverse_rejects_a_target_that_does_not_exist(tmp_path):
     with pytest.raises(classdiagram.ClassDiagramError):
         classdiagram.run_pyreverse(
             "pyreverse-never-called", tmp_path, ["nosuchmodule"],

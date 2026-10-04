@@ -19,7 +19,7 @@ does.  Nothing is invented and nothing is stored here -- the part tables are
 read off the disks at run time.
 
 The disk is edited **in place**, so point it at a copy.  It
-refuses a directory it was not given, refuses to write two slots the same
+rejects a directory it was not given, declines to write two slots the same
 figure, and prints the eighteen screen codes it left in each slot so the run
 that follows has the file's side of the comparison in its log.
 """

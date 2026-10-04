@@ -248,7 +248,7 @@ C64 build does the same is NOT FOUND.
 | Where the item area really is, and whether the 16-byte item record changed | PROBABLE `$5B00`; no Curse item record has been seen |
 | How wide the memorised-spell list at `0x020` is | NOT FOUND |
 | How wide the spellbook bitmask at `0x078` is | NOT FOUND in Curse — `0x078`–`0x07D` observed, 13 bytes predicted. **At least 8 bytes** on the later engine: Silver Blades and Death Knights casters set `0x07D`–`0x07F`, four of them holding `0x07F = 0x04`. The 13 is `⌈100/8⌉` from the DOS per-title spell counts (Pool of Radiance 56, Curse 100, Silver Blades 117, Pools of Darkness 126), so it is a prediction that assumes the C64 cut no spells — reading one Curse caster's spellbook against `COMBAT2`'s name table settles it. See `docs/127` §4 |
-| Where `paladinCuresLeft` and the dual-class array live | NOT FOUND. **HUMAN CHANGE CLASS is on the C64 party menu**, so the dual-class array is reachable by experiment; the one character tried was refused |
+| Where `paladinCuresLeft` and the dual-class array live | NOT FOUND. **HUMAN CHANGE CLASS is on the C64 party menu**, so the dual-class array is reachable by experiment; the one character tried was blocked |
 | Where the azure-bond state lives | NOT FOUND. It is not in the character record on DOS either |
 | How many combat slots Curse keeps, and where | NOT FOUND — `$5800`–`$5AFF` zero in both saves |
 | Which class and level each new spell id 57–100 belongs to | PROBABLE from AD&D — §10 — but no code assigns them here |
@@ -271,7 +271,7 @@ now settled, some against its guesses.
 
 One practical note that is not in the plan, **and it has since been fixed.**
 `CURSE4.D64` in the `with_docs` set is 175531 bytes — 35 tracks plus error bytes
-— and `goldbox/d64.py` refused it, because the reader took standard 174848-byte images
+— and `goldbox/d64.py` blocked it, because the reader took standard 174848-byte images
 only. It now reads **six** variants, that one included; the error bytes are
 exposed through `D64.error_code` and acted on by nothing, and every variant but
 the standard image is read-only. See [`10-disk-format.md`](10-disk-format.md).
@@ -354,7 +354,7 @@ the *Dungeon Master's Guide* NPC limits; the *Players Handbook* does not let a
 player be a dwarf, elf or gnome cleric at all. So Curse is the stricter reading
 of the same rule. PROBABLE that the effect in play is "cannot advance as a
 cleric" — the byte is 0 and the comparison is `level >= limit`, but no dwarf
-cleric has been trained in the emulator to watch it refuse.
+cleric has been trained in the emulator to watch it block.
 
 **Correction, 2026-09-07: this section used to say the sign was unexplained,
 and record it as a possible bug in `docs/125-bug-notes.md` (former entry

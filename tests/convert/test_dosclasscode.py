@@ -109,7 +109,7 @@ def test_a_level_array_the_mask_does_not_know_about_is_not_a_contradiction():
 
 def test_a_mask_the_games_table_has_no_code_for_leaves_the_source_value():
     """Three combinations have no code in the table the games walk, and
-    `goldbox/yaml_io.py` refuses them for the same reason: a code that is not
+    `goldbox/yaml_io.py` blocks them for the same reason: a code that is not
     in the table means a different class.  There is nothing to repair with,
     so nothing is repaired."""
     char = _character(0x07, 9, {"magic-user": 3, "cleric": 3, "thief": 3})

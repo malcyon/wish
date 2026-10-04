@@ -207,12 +207,12 @@ class UltimateTarget:
 
 def _errors(body: bytes) -> str:
     try:
-        return "; ".join(json.loads(body).get("errors") or []) or "refused"
+        return "; ".join(json.loads(body).get("errors") or []) or "rejected"
     except Exception as exc:
         # The body is the device's, and a firmware that answers with something
         # other than the documented JSON is exactly what this is for.
         debuglog.debug("unreadable error body from the Ultimate: %s", exc)
-        return "refused"
+        return "rejected"
 
 
 def present(timeout: float = 0.5) -> bool:

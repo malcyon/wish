@@ -122,7 +122,7 @@ def test_the_records_own_current_values_are_not_in_a_save(tmp_path):
     img.write_file_inplace(b"SAVEDGAME0", sg.to_prg())
     img.save(str(src))
     after = _record(src, MALCYON)
-    # The write went nowhere, and reading it back is now refused outright rather
+    # The write went nowhere, and reading it back is now blocked outright rather
     # than answering 0 -- which decoded as `60 - 0`, i.e. AC 60, a plausible
     # number that is entirely wrong. Those three offsets are the roster block,
     # which the record and SAVEDGAME1 share.

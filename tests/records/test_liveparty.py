@@ -296,7 +296,7 @@ def test_the_other_class_survives_when_its_threshold_is_below_the_clamp():
     assert levelup.ready_classes(after) == ["magic-user"]
 
 
-def test_a_character_sitting_exactly_on_the_published_threshold_is_refused():
+def test_a_character_sitting_exactly_on_the_published_threshold_is_blocked():
     """`GEN $1BBC` compares `>=` against a table that holds 2,501 where AD&D
     prints 2,500, so 2,500 exactly trains nobody."""
     assert levels.next_threshold("magic-user", 1) == 2501

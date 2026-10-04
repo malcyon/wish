@@ -181,7 +181,7 @@ def test_the_constants_check_accepts_the_values_the_game_writes(value):
 
 
 @pytest.mark.parametrize("value", [0, 1, 254])
-def test_the_constants_check_refuses_any_other_4fe1(value):
+def test_the_constants_check_blocks_any_other_4fe1(value):
     assert len(_wrong_constants("x", _save_with(value))) == 1
 
 

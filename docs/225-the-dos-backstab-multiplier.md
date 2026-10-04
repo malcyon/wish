@@ -87,7 +87,7 @@ regain helper, reads `former_class_levels[c]` into a local only when the call
 answered true and zeroes that local otherwise, then keeps the larger of the two
 locals, so the product above is that branch written as arithmetic.
 `tools/dos/backstab.py` matches the whole routine byte for byte, and a copy
-with the branch or the zeroing erased is refused. `Regained` is the same rule as in the
+with the branch or the zeroing erased is blocked. `Regained` is the same rule as in the
 two earlier titles: `GAME.OVR:0x38C8A` calls the active-class-level routine at
 `0x38C19`, which requires race 5 (human at record `0x0AD`) and returns the
 first positive entry in `class_levels` at record `0x151`, and accepts only an
@@ -174,7 +174,7 @@ the ceiling table the other five share, so its thief ceiling is not read here.
 The multiplier a player can therefore see is ×4 in Curse and Champions, ×3 in
 Gateway and ×5 in Silver Blades and Death Knights. PROBABLE: a character
 imported from an earlier title arrives with whatever level that title allowed,
-and the ceiling is what `GEN` refuses to train past rather than a bound on the
+and the ceiling is what `GEN` will not train past rather than a bound on the
 record.
 
 | Title | Thief-level gate and formula | Predicate call, then factor byte | Damage multiply | To-hit adjustment | Byte multiply |
@@ -207,7 +207,7 @@ the damage multiply at `$06E1`, immediately after `COMBAT $0CAD` rolls the
 damage (`docs/147-combat-rolls.md`) -- and the file is `$0400`-`$07FF` long.
 Whether no other base would put both calls on an instruction was not tested.
 
-The predicate first refuses a zero thief level, computes the factor into
+The predicate first blocks a zero thief level, computes the factor into
 zero-page `$B0`, then checks the weapons. The attack overlay checks the attack
 direction and copies `$B0` only when both paths pass. The damage path loads
 that same byte and calls the library's eight-bit multiply routine with the
@@ -301,7 +301,7 @@ reads record `0x110` and `0x118`, Silver Blades `0x0B2` and `0x0B9`. In both,
 `tools/amiga/amigabackstab.py` checks the whole run after the gate: a
 small-data `jsr d16(a4)`, the former slot loaded and multiplied into its
 result with `muls.w`, the current slot loaded and added with `add.w`, then the
-subtract; erasing the call, the multiply or the add is refused. It also checks
+subtract; erasing the call, the multiply or the add is blocked. It also checks
 that the predicate makes the same `jsr`. What it does not read is the routine
 that `jsr` reaches, which lies behind the `a4` jump table, so that it is the
 same regain rule as DOS is inferred from its role -- the gate calls it and the

@@ -121,7 +121,7 @@ def test_source_detect_reads_a_c64_save_disk(tmp_path):
     assert source.disk == disk.to_bytes()
 
 
-def test_source_detect_refuses_a_disk_with_no_save(tmp_path):
+def test_source_detect_blocks_a_disk_with_no_save(tmp_path):
     """A blank disk is a legal `.D64` and carries no title's save file."""
     from goldbox.d64 import D64
 
@@ -131,7 +131,7 @@ def test_source_detect_refuses_a_disk_with_no_save(tmp_path):
         convert.Source.detect(path)
 
 
-def test_source_detect_refuses_a_path_that_is_neither(tmp_path):
+def test_source_detect_blocks_a_path_that_is_neither(tmp_path):
     with pytest.raises(convert.ConvertError):
         convert.Source.detect(tmp_path / "nowhere")
 
@@ -155,7 +155,7 @@ def test_source_detect_identifies_each_dos_title(tmp_path, deltas):
     assert source.key == deltas.key
 
 
-def test_source_detect_refuses_a_folder_with_no_character_record(tmp_path):
+def test_source_detect_blocks_a_folder_with_no_character_record(tmp_path):
     """A folder holding only `SAVGAM?.PTY` -- no `CHRDAT` beside it -- is
     DOS-style but its title cannot be read from anything. A `ConvertError`
     a caller can show a player, not a raw `FileNotFoundError`."""
@@ -203,7 +203,7 @@ def test_source_detect_ignores_a_party_at_a_different_path(tmp_path):
     assert source.save0 == save0
 
 
-def test_source_detect_refuses_a_matching_party_with_nothing_open(tmp_path):
+def test_source_detect_blocks_a_matching_party_with_nothing_open(tmp_path):
     """A roster disk has characters and no saved game -- `exports.Source.
     from_party`'s own rejection, passed along."""
     path = tmp_path / "ROSTER.D64"
@@ -312,7 +312,7 @@ def test_destinations_for_a_curse_source_answers_the_curse_c64_direction():
 
 def test_destinations_for_an_unregistered_source_is_empty(tmp_path):
     """Pools of Darkness is read and has no C64 destination, so it is not
-    offered and not refused.
+    offered and not blocked.
 
     **This used to use Secret of the Silver Blades**, which was read with no
     C64 writer until `#193 (Convert a Secret of the Silver Blades DOS save
@@ -451,7 +451,7 @@ def game_files():
             pass
     if icon is None or animate is None:
         pytest.skip("the game disks here carry neither SPELLE64 nor ANIMATE00")
-    #: The creation menu too. A Pool of Radiance conversion refuses without
+    #: The creation menu too. A Pool of Radiance conversion blocks without
     #: it since `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs the
     #: import working for all three C64 titles)`, because a party arriving
     #: with no face on any sheet is worse than one that did not arrive.
@@ -519,7 +519,7 @@ def test_dos_to_c64_direction_is_the_transfer_test(game_files, tmp_path):
     #: The portrait tables too, since `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT,
     #: which needs the import working for all three C64 titles)` -- the
     #: reference call has to be given what the direction gives itself, or it
-    #: refuses where the direction does not and the two cannot be compared.
+    #: blocks where the direction does not and the two cannot be compared.
     ref_save0, ref_save1, _ = dos_codec.new_save(folder, slot, game_files.icon,
                                           game_files.animate,
                                           portraits=game_files.portraits)
@@ -740,11 +740,11 @@ def test_the_dialog_wires_the_sources_own_combat_icon_into_the_conversion(
 # DOS or the Amiga silently arrives with no combat figures, though a C64
 # destination refuses)`: the source's own disks are needed for the combat
 # icon exactly the way a C64 destination's already are, and a missing set
-# refuses the same way -- rather than converting with `icon_parts=None` and
+# blocks the same way -- rather than converting with `icon_parts=None` and
 # every figure silently the game's own default.
 # ---------------------------------------------------------------------------
 
-def test_a_c64_source_with_no_disks_is_refused_for_a_dos_destination(
+def test_a_c64_source_with_no_disks_is_blocked_for_a_dos_destination(
         tmp_path):
     """Watched failing before the fix: with `_no_disks`, `dialog.rehearsal`
     was not `None` and the Convert button was pressable, exactly `#482`'s
@@ -766,7 +766,7 @@ def test_a_c64_source_with_no_disks_is_refused_for_a_dos_destination(
         dialog.close()
 
 
-def test_a_c64_source_with_no_disks_is_refused_for_an_amiga_destination(
+def test_a_c64_source_with_no_disks_is_blocked_for_an_amiga_destination(
         tmp_path):
     """The same rejection, for the other silent direction `#482` named."""
     path = _por_c64_disk(tmp_path)
@@ -786,7 +786,7 @@ def test_a_c64_source_with_no_disks_is_refused_for_an_amiga_destination(
 
 
 # The unchanged case: `test_the_c64_disks_are_looked_up_by_the_destination_
-# title` above already proves a C64 destination still refuses through this
+# title` above already proves a C64 destination still blocks through this
 # same `NO_DISKS` line, so the fix above did not move the case that already
 # worked.
 
@@ -977,7 +977,7 @@ def _por_source_disks(_game=None):
     table and `ANIMATE00` off the player's disks, or skipping.
 
     A C64 party converted with no icon table reports a loss, and Convert
-    refuses a reported loss the way Save As does (#511), so a test of the
+    blocks a reported loss the way Save As does (#511), so a test of the
     write path needs the real table where `_some_disks` was once enough.
     """
     from goldbox.d64 import load_payload
@@ -1252,7 +1252,7 @@ def test_disk_candidates_prefers_a_titles_own_preferences_folder(tmp_path):
     folder holds Pool of Radiance's sides, Curse's own folder is set
     separately in Preferences (`#22 (A disk folder setting per game, not one
     shared by all six)`), and the destination lookup finds Curse's disk in
-    its own folder rather than refusing because the shared one has none."""
+    its own folder rather than blocking because the shared one has none."""
     shared = tmp_path / "shared"
     shared.mkdir()
     (shared / "POOL1.D64").write_bytes(b"pool")
@@ -1335,8 +1335,8 @@ def test_the_destination_line_names_the_folder_before_the_button_is_enabled(
     `rehearsal.files`, then the fix put back.
 
     Real game files, not `_no_disks`: this row's own C64 -> DOS default
-    direction refuses with no source disks (`#482`), and with a lookup that
-    has no combat icon it reports a loss and is refused (#511); this test is
+    direction blocks with no source disks (`#482`), and with a lookup that
+    has no combat icon it reports a loss and is blocked (#511); this test is
     about the destination line rather than either rejection."""
     path = _por_c64_disk(tmp_path)
     destination = tmp_path / "out"
@@ -1399,10 +1399,10 @@ def test_convert_with_no_source_opens_the_dialog_instead_of_a_picker(
     to open first is never called at all."""
     window = EditorBinding(_make_root())
 
-    def _refuse_a_picker(*args, **kwargs):
+    def _failing_picker(*args, **kwargs):
         raise AssertionError("a file picker opened before the Convert window")
 
-    monkeypatch.setattr(QFileDialog, "getOpenFileName", _refuse_a_picker)
+    monkeypatch.setattr(QFileDialog, "getOpenFileName", _failing_picker)
 
     opened = []
     original_exec = convert.ConvertDialog.exec
@@ -1465,7 +1465,7 @@ def test_the_open_saves_unsaved_edits_cross(tmp_path, monkeypatch):
     `disks=` is passed now: with none configured, `window.game_files_for`
     answered `None` for every title regardless of the real disks
     `@needs_disks` requires, and a C64 -> DOS conversion with no source disks
-    now refuses (`#482`) rather than converting with no combat icon."""
+    now blocks (`#482`) rather than converting with no combat icon."""
     path = _por_c64_disk(tmp_path, name="open.d64")
     window = EditorBinding(_make_root(), disks=str(disk_dir()))
     window.load(str(path))
@@ -1506,7 +1506,7 @@ def test_an_edit_typed_on_the_sheet_and_never_saved_still_converts(
     and never saved, has to reach the converted DOS record.
 
     `disks=` is passed now, for the same reason the sibling above needs it:
-    a C64 -> DOS conversion with no source disks refuses (`#482`)."""
+    a C64 -> DOS conversion with no source disks blocks (`#482`)."""
     from support.editorwindow import make_root
 
     from editor.window import EditorBinding
@@ -1640,10 +1640,10 @@ def test_no_string_reachable_in_the_pane_contains_a_hex_offset(tmp_path):
 
 
 @needs_dos_saves
-def test_no_string_in_the_refused_c64_to_dos_pane_carries_developer_detail(
+def test_no_string_in_the_blocked_c64_to_dos_pane_carries_developer_detail(
         tmp_path, monkeypatch):
     """A C64 source with a DOS game folder and a destination folder both
-    chosen, and no combat icon table, reports a loss.  Convert refuses it
+    chosen, and no combat icon table, reports a loss.  Convert blocks it
     with `CANNOT_CONVERT` (#511), the way Save As does, so the pane holds
     nothing and the loss lines reach the debug log instead -- `WISH_DEBUG`
     is exactly where a developer note belongs (`.claude/rules/gui-text.md`
@@ -1652,7 +1652,7 @@ def test_no_string_in_the_refused_c64_to_dos_pane_carries_developer_detail(
     and issue numbers in them)`).
 
     `_some_disks`, not `_no_disks`: a C64 source converting to DOS with no
-    source disks refuses before ever reaching a rehearsal (`#482`), and
+    source disks blocks before ever reaching a rehearsal (`#482`), and
     `icon=None` leaves the combat-icon loss on the report.
     """
     import re
@@ -1677,14 +1677,14 @@ def test_no_string_in_the_refused_c64_to_dos_pane_carries_developer_detail(
                                        folder=str(destination))
         try:
             text = dialog.ui.convert_destination_line.text()
-            refused = (dialog.rehearsal, dialog._blocked)
+            blocked = (dialog.rehearsal, dialog._blocked)
         finally:
             dialog.close()
         log_text = debuglog.path().read_text(encoding="utf-8")
     finally:
         debuglog.stop()
 
-    assert refused == (None, (convert.DIALOG_TITLE, convert.CANNOT_CONVERT))
+    assert blocked == (None, (convert.DIALOG_TITLE, convert.CANNOT_CONVERT))
     #: Proof this reached the state the test is about: a report with a loss.
     assert len(seen) == 1
     lost = list(seen[0].dropped) + list(seen[0].losses)
@@ -2072,7 +2072,7 @@ def test_a_writer_that_fails_partway_leaves_no_folder_behind(tmp_path,
     that worked.
 
     `Direction.write` puts several files in the folder, so a writer that
-    raises after the first of them leaves it non-empty.  `rmdir` refuses a
+    raises after the first of them leaves it non-empty.  `rmdir` blocks a
     non-empty directory, and the failure path used to swallow that -- which
     left the debris in the player's own destination under a
     `wish-YYYY-MM-DD` name, indistinguishable by name from a conversion
@@ -2099,7 +2099,7 @@ def test_a_writer_that_fails_partway_leaves_no_folder_behind(tmp_path,
         pathlib.Path(folder).joinpath("SAVGAMA.DAT").write_bytes(b"half")
         raise OSError(28, "No space left on device")
 
-    #: Accept once so the write is attempted, then refuse, so the retry loop
+    #: Accept once so the write is attempted, then block, so the retry loop
     #: `convert` runs on a rejection ends instead of spinning.
     answers = iter([QDialog.DialogCode.Accepted, QDialog.DialogCode.Rejected])
     monkeypatch.setattr(convert.ConvertDialog, "exec",
@@ -2164,10 +2164,10 @@ def test_a_successful_rehearsal_still_calls_pane_text_for_its_own_logging(
         dialog.close()
 
 
-def test_a_name_too_long_for_dos_is_refused_and_not_written(
+def test_a_name_too_long_for_dos_is_blocked_and_not_written(
         tmp_path, monkeypatch):
-    """A rehearsal whose report names a loss is refused with the existing
-    `CANNOT_CONVERT`, the way Save As refuses it (#511, stage 4): a name
+    """A rehearsal whose report names a loss is blocked with the existing
+    `CANNOT_CONVERT`, the way Save As blocks it (#511, stage 4): a name
     DOS's own fifteen-character field could not hold whole must not be
     written without a word.  The name-truncation consent modal stays retired
     (#619, `docs/227-editor-open-save-as.md`), so `warned` stays empty; the
@@ -2212,8 +2212,8 @@ def test_a_name_too_long_for_dos_is_refused_and_not_written(
         str(folder), None, lambda game: game_files,
         destination="c64", folder=str(destination))
     try:
-        #: A rehearsal whose report names a loss is refused, as Save As
-        #: refuses it: publishing it would write the loss without a word.
+        #: A rehearsal whose report names a loss is blocked, as Save As
+        #: blocks it: publishing it would write the loss without a word.
         assert dialog.rehearsal is None
         #: The dialog's own construction ran non-interactively; this is
         #: the first `replan()` a real player's own next action would
@@ -2413,7 +2413,7 @@ def test_the_dialog_is_blocked_by_the_players_sentence_and_not_the_exception(
     `_blocked` fills with the tracker's sentence, issue number included,
     instead.
     """
-    def refuse(*_args, **_kwargs):
+    def block(*_args, **_kwargs):
         raise dos_codec.WrongTitleError(
             "Curse of the Azure Bonds records read, but only Pool of "
             "Radiance converts: no other pair of ports has been measured "
@@ -2424,7 +2424,7 @@ def test_the_dialog_is_blocked_by_the_players_sentence_and_not_the_exception(
     dialog = convert.ConvertDialog(str(folder / "SAVGAMA.DAT"), None,
                                    _some_disks)
     try:
-        monkeypatch.setattr(dosimport, "rehearse", refuse)
+        monkeypatch.setattr(dosimport, "rehearse", block)
         dialog._interactive = True
         dialog.replan()
 
@@ -2469,14 +2469,14 @@ def test_the_dialog_is_blocked_by_the_fallback_and_not_the_developers_sentence(
     """
     import re
 
-    def refuse(*_args, **_kwargs):
+    def block(*_args, **_kwargs):
         raise dos_codec.DosRecordError(message)
 
     folder = _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE)
     dialog = convert.ConvertDialog(str(folder / "SAVGAMA.DAT"), None,
                                    _some_disks)
     try:
-        monkeypatch.setattr(dosimport, "rehearse", refuse)
+        monkeypatch.setattr(dosimport, "rehearse", block)
         dialog._interactive = True
         dialog.replan()
 
@@ -2500,14 +2500,14 @@ def test_the_dialog_is_blocked_by_the_fallback_for_a_rejection_dos_record_error_
     a raw traceback reaching a player. It must set `_blocked` to the same
     approved sentence, not `str(exc)`.
     """
-    def refuse(*_args, **_kwargs):
+    def block(*_args, **_kwargs):
         raise RuntimeError("$49E6 disagrees with goldbox/areas.py (#99)")
 
     folder = _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE)
     dialog = convert.ConvertDialog(str(folder / "SAVGAMA.DAT"), None,
                                    _some_disks)
     try:
-        monkeypatch.setattr(dosimport, "rehearse", refuse)
+        monkeypatch.setattr(dosimport, "rehearse", block)
         dialog._interactive = True
         dialog.replan()
 
@@ -2539,7 +2539,7 @@ def test_a_rejection_on_construction_is_shown_not_swallowed(tmp_path,
     checked is `#195`'s own guarantee: the modal actually fires (`shown`),
     not only that `_blocked` gets set, and Convert stays disabled.
     """
-    def refuse(*_args, **_kwargs):
+    def block(*_args, **_kwargs):
         raise dos_codec.DosRecordError("boom")
 
     folder = _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE)
@@ -2550,7 +2550,7 @@ def test_a_rejection_on_construction_is_shown_not_swallowed(tmp_path,
                         lambda self_, title, text: shown.append((title, text)))
     monkeypatch.setattr(convert.QFileDialog, "getOpenFileName",
                         lambda *a, **k: (str(source), ""))
-    monkeypatch.setattr(dosimport, "rehearse", refuse)
+    monkeypatch.setattr(dosimport, "rehearse", block)
 
     dialog = convert.ConvertDialog("", None, _some_disks)
     try:
@@ -2565,12 +2565,12 @@ def test_a_rejection_on_construction_is_shown_not_swallowed(tmp_path,
         dialog.close()
 
 
-def test_a_conversion_with_messages_a_drop_and_a_platform_loss_is_refused_and_shows_only_the_approved_sentence(
+def test_a_conversion_with_messages_a_drop_and_a_platform_loss_is_blocked_and_shows_only_the_approved_sentence(
         tmp_path, monkeypatch):
     """`DosImportDialog` carried a pane from 2026-09-06 until it lost it on
     2026-09-10, and `ConvertDialog` never carried one at all. `_blocked` is
     not set by a message alone (#619).  A drop or a `report.losses` line, a
-    name truncation included, refuses the conversion with the existing
+    name truncation included, blocks the conversion with the existing
     `CANNOT_CONVERT` (#511), as Save As does, and Convert is not pressable.
 
     Ported from `tests/convert/test_dosimport.py` (`#52 (File ▸ Import and File ▸
@@ -2681,16 +2681,16 @@ def test_an_adf_source_is_offered_the_commodore_64_and_dos(amiga_adf):
 
 def test_a_file_that_is_not_an_adf_still_goes_to_the_c64_reader(tmp_path):
     """The new branch is reached by suffix, so it must not swallow the C64
-    one: a `.d64` that cannot be read still refuses as a C64 disk."""
+    one: a `.d64` that cannot be read still blocks as a C64 disk."""
     path = tmp_path / "notadisk.d64"
     path.write_bytes(b"\x00" * 64)
     with pytest.raises(convert.ConvertError):
         convert.Source.detect(path)
 
 
-def test_an_adf_that_holds_no_saved_game_is_refused_and_not_guessed_at(
+def test_an_adf_that_holds_no_saved_game_is_blocked_and_not_guessed_at(
         tmp_path):
-    """A blank Amiga floppy is refused with a sentence rather than being
+    """A blank Amiga floppy is blocked with a sentence rather than being
     read as an empty Pool of Radiance disk."""
     from goldbox.amiga_adf import AmigaDisk
 
@@ -2987,7 +2987,7 @@ def test_the_dialog_writes_an_adf_when_a_disk_and_folder_are_given(tmp_path):
     `CONVERTED_AMIGA` status line.
 
     Real source disks, not `_no_disks` or `_some_disks`: a C64 source
-    converting to Amiga refuses with no source disks (`#482`) and with no
+    converting to Amiga blocks with no source disks (`#482`) and with no
     combat icon table, which is a reported loss (#511).
     """
     from support.toamigapor import _c64_specimen
@@ -3036,8 +3036,8 @@ def test_window_convert_writes_an_amiga_disk_and_reports_the_load_letter(
     `window.game_files_for` is patched to answer the real Pool of Radiance
     icon table for every title: with no disks folder set on this
     `EditorBinding`, it would otherwise return `None` for the specimen's own
-    title and the conversion would refuse (`#482`), and without an icon
-    table the conversion reports a loss and is refused (#511)."""
+    title and the conversion would block (`#482`), and without an icon
+    table the conversion reports a loss and is blocked (#511)."""
     from support.toamigapor import _c64_specimen
 
     from goldbox.amiga_adf import AmigaDisk
@@ -3209,7 +3209,7 @@ def test_a_successful_dos_conversion_pops_the_confirmation_alongside_the_status_
                      convert.CONVERT_SUCCESS.format(folder=fresh))]
 
 
-def test_a_refused_conversion_never_pops_the_success_confirmation(
+def test_a_blocked_conversion_never_pops_the_success_confirmation(
         tmp_path, monkeypatch):
     """A write that fails still shows only its own rejection
     (`CANNOT_CONVERT`, via `dialog.report_failure`) -- never `CONVERT_SUCCESS`
@@ -3669,7 +3669,7 @@ def _pack_overflowing_dialog(tmp_path, monkeypatch, *, folder=True):
 
 def test_a_pack_the_c64_cannot_hold_shows_nothing_and_leaves_convert_pressable(
         tmp_path, monkeypatch, caplog):
-    """Until Convert is pressed the dialog neither refuses nor pops a modal:
+    """Until Convert is pressed the dialog neither blocks nor pops a modal:
     it keeps the overflow, and Convert is enabled once a folder is named."""
     import logging
 
@@ -4035,7 +4035,7 @@ def test_cancelling_the_effects_chooser_writes_nothing(tmp_path, monkeypatch):
     assert all(not call["leave_effects"] for call in seen)
 
 
-def test_a_choice_the_writer_still_refuses_shows_the_existing_sentence(
+def test_a_choice_the_writer_still_blocks_shows_the_existing_sentence(
         tmp_path, monkeypatch):
     dialog, effects, seen, out = _effects_overflowing_dialog(tmp_path,
                                                              monkeypatch)
@@ -4050,7 +4050,7 @@ def test_a_choice_the_writer_still_refuses_shows_the_existing_sentence(
                         lambda *a, **k: rejections.append(a))
     window, _loaded = _window_for_pack_overflow(monkeypatch,
                                                 presses=[True, False])
-    # A choice the writer still turns away: Convert refuses.
+    # A choice the writer still turns away: Convert blocks.
     monkeypatch.setattr(window, "_choose_effects_left",
                         lambda *a: {0: frozenset({0})})
     try:
@@ -4116,7 +4116,7 @@ def _name_overflowing_dialog(tmp_path, monkeypatch, *, folder=True):
 
 def test_a_name_too_long_shows_nothing_and_leaves_convert_pressable(
         tmp_path, monkeypatch, caplog):
-    """Until Convert is pressed the dialog neither refuses nor pops a modal:
+    """Until Convert is pressed the dialog neither blocks nor pops a modal:
     it keeps what did not fit, and Convert is enabled once a folder is named.
 
     Fails without the change: `_blocked` is `(DIALOG_TITLE, CANNOT_CONVERT)`,

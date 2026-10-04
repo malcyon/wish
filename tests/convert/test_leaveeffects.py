@@ -6,7 +6,7 @@ rows, and DOS keeps them in a list per character with no count limit, so six
 members with eleven Protection from Evil nodes each need 66.  The writer
 raises `EffectsDoNotFit` naming every effect the player can leave out; the
 choice comes back as `leave_effects` and each effect left out is a line of
-`Report.left_behind`, never a loss, so Save As does not refuse it.  No game
+`Report.left_behind`, never a loss, so Save As does not block it.  No game
 data is read: every character is built here.
 """
 
@@ -105,7 +105,7 @@ def test_a_party_row_counts_once_and_is_not_offered():
     assert 49 not in {e.effect_id for e in overflow.entries}
 
 
-def test_an_index_outside_the_list_is_refused():
+def test_an_index_outside_the_list_is_blocked():
     with pytest.raises(dos_codec.DosRecordError, match="running effect 11"):
         _save(_party(11), leave_effects={0: {11}})
     with pytest.raises(dos_codec.DosRecordError, match="member 9"):

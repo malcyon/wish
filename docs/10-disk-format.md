@@ -33,7 +33,7 @@ guide never mentions it.
 
 ## Six variants, and only one of them writable
 
-`goldbox/d64.py` accepts **six** sizes and refuses anything else — a size we cannot name is a
+`goldbox/d64.py` accepts **six** sizes and blocks anything else — a size we cannot name is a
 file we cannot claim to understand. Tracks 1–35 sit at the same offsets in every variant,
 which is why a 40-track image is readable by code that only knows about 35.
 
@@ -214,7 +214,7 @@ to 226–255 (p. 67): thirty bytes each, with the same two-byte gaps. A write th
 when it fills slot 7, and the rest of the directory disappears. `ENTRY_FIELDS` is 30 for that
 reason.
 
-**A file is never grown or replaced.** `write_file` refuses a name already in the directory and
+**A file is never grown or replaced.** `write_file` blocks a name already in the directory and
 nothing scratches a file, so no block is ever freed. 144 files is the limit: eighteen directory
 sectors, because sector 0 of track 18 is the BAM — and 144 per diskette is what the User's Guide
 puts on its specification page (p. 3) and in its opening paragraph on p. 2.

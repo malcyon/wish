@@ -342,7 +342,7 @@ def report(saves, ecl_dax: bytes, shipped: bytes | None, slot: str,
         try:
             built_bytes, rep = build(payload, str(path), ecl_dax, slot, count)
         except Exception as e:
-            notes.append(f"* `{path.name}`: **refused** -- {e}")
+            notes.append(f"* `{path.name}`: **blocked** -- {e}")
             continue
         built = container_fields(built_bytes)
         rows = compare(source, built)

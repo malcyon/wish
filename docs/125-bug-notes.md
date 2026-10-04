@@ -963,7 +963,7 @@ perfectly valid sector chain. The file reads back as 582 bytes at `$7C00`.
 
 **What the player sees.** A directory listing that says 0 for a file that
 exists, and anything that trusts the count — a copier, a validator, another
-tool — refusing to see the file. Our own disk reader skipped zero-block entries
+tool — not seeing the file. Our own disk reader skipped zero-block entries
 and so hid every Curse-written character file until it was changed to follow the
 chain and ignore the count.
 
@@ -1240,7 +1240,7 @@ we intend to test them. Platform is stated only where the poster stated it.
 | R26 | Pools of Darkness | hidden loot in the beholder-attacked village regenerates on re-entry — unlimited arrows |
 | R27 | Pools of Darkness | REPAIR sometimes decreases (rarely increases) **permanent** hit points |
 | R28 | Pools of Darkness | Manshoon exists as a monster record and cannot be fought by normal means |
-| R29 | Pools of Darkness | refusing to see Arcam after qualifying leaves you unable to leave the arena by the front door, re-triggering the fight every two steps |
+| R29 | Pools of Darkness | the game not seeing Arcam after qualifying leaves you unable to leave the arena by the front door, re-triggering the fight every two steps |
 | R30 | Pools of Darkness | Hold Monster works on dracoliches |
 | R31 | Pools of Darkness | countermanding Gothmenes' summons *increases* the number of Pets of Kalistes while decreasing the other three types |
 | R32 | Pools of Darkness | in the Palace of Gothmenes without the Crystal Ring, an encounter frightened off with the Horn or Talisman never clears while you stand on the square — repeatable experience |

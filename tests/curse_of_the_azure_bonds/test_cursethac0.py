@@ -190,7 +190,7 @@ def test_the_spoil_argument_parses(text, want):
 
 
 def test_staging_experience_is_a_third_byte_range_and_nothing_else():
-    """The hall refuses a character who cannot advance, so the training half
+    """The hall rejects a character who cannot advance, so the training half
     of the question needs an experience total as an input.  It has to move
     three bytes and no others."""
     body = a_payload()

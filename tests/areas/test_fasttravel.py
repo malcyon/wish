@@ -166,7 +166,7 @@ def test_the_mode_flag_is_read_once_per_refresh(app):
 
 def test_a_click_in_that_moment_waits_and_then_travels(app):
     """The other half of the same second: the user clicks while the machine is
-    in the interrupt handler. Nothing is refused -- the click waits for the PC
+    in the interrupt handler. Nothing is rejected -- the click waits for the PC
     to come back to the key-wait loop, which on a real machine is the next look
     because every look hands the emulation ~14.3 ms, and then travels."""
     target = machine()
@@ -188,7 +188,7 @@ def test_the_wait_gives_up_rather_than_hanging(app, monkeypatch):
 
     `WAIT_SECONDS` is shortened here so the suite does not sit for two seconds:
     what is asserted is the behaviour the limit produces -- that the call ends,
-    refuses and writes nothing -- and not the number.
+    rejects and writes nothing -- and not the number.
     """
     monkeypatch.setattr(actionbar, "WAIT_SECONDS", 0.1)
     said = []
@@ -216,7 +216,7 @@ def test_a_connection_lost_mid_wait_ends_the_wait_rather_than_spinning(app):
     loop that swallowed the failure would take all of it.
 
     Only the CPU is dead here, deliberately. A target whose reads failed as
-    well would be refused by the mode flag before the wait ever started, and it
+    well would be rejected by the mode flag before the wait ever started, and it
     is the wait's own handling that is in question.
     """
     said = []

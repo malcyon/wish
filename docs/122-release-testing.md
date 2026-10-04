@@ -496,7 +496,7 @@ pip install "$HOME/Downloads/wish-release/wish_goldbox-<version>-py3-none-any.wh
 *Expect:* PyQt6, PyQt6-Qt6, PyQt6_sip and PyYAML pulled in — five packages
 including `wish-goldbox` itself, which is the distribution's name and not the
 command's — with no build step and no compiler.
-*If pip refuses the extras syntax,* quote the whole argument — the brackets are
+*If pip fails on the extras syntax,* quote the whole argument — the brackets are
 the shell's otherwise.
 
 **L9.** The one command reports the version, and carries the subcommands.
@@ -530,8 +530,8 @@ every `gold:` in the file, so a six-strong party gives
 `slot 0 MALCYON: gold 2 -> 4321` down to `slot 5 BRUTUS: gold 0 -> 4321` and
 `6 change(s) (dry run, nothing written)` — and writes nothing; the import writes
 `CLI-EDITED.D64`. *Expect also:* `wish import party.yaml -o TESTSAVE.D64` is
-**refused**, exit 2, on
-`--output must differ from the original save; refusing to overwrite it`.
+**blocked**, exit 2, on
+`--output must differ from the original save; declining to overwrite it`.
 Try it; a release where that guard is gone is a release that eats saves.
 
 **L11.** Losslessness. Export and re-import with no edit at all, and the disk
@@ -553,7 +553,7 @@ disk (`SAVEAZURE`) or a Secret of the Silver Blades one (`SAVEDBASH`) beside its
 own game disks and repeat L11 against it.
 
 *Expect:* the export names the right title in its header comment, the party
-decodes, and the re-import is byte-identical. *If the export refuses the disk,*
+decodes, and the re-import is byte-identical. *If the export stops on the disk,*
 the title table did not make it into the package — that is a release blocker for
 the same reason L9's `ModuleNotFoundError: tools` is.
 
@@ -856,7 +856,7 @@ tools/dos/dosdisk.py --slot J --out $TMPDIR/NEWJ.D64 --report --sheet
 ```
 
 *Expect:* `Bytes left to the payload: 0`. Anything else is a byte the
-conversion did not write, and `new_save` should have refused rather than
+conversion did not write, and `new_save` should have blocked rather than
 produced the file.
 
 **D2.** Keep the `--sheet` output. It is the other half of every comparison
@@ -980,7 +980,7 @@ own Windows machine. Eleven rows ✅ ⁵. The rest are still his to do.
 | L9 | `wish --version`, and exactly one name in `bin` | ✅ | n/a |
 | W4 | one executable in the zip, beside `_internal/` | n/a | ☐ |
 | L10 | `wish export` / dry-run / `wish import` round trip | ✅ ⁴ | ☐ |
-| L10 | `-o` over the original is refused | ✅ ⁴ | ☐ |
+| L10 | `-o` over the original is blocked | ✅ ⁴ | ☐ |
 | L11 | unedited round trip is byte-identical | ✅ ⁴ | ☐ |
 | L11a | the same, on a Curse or Silver Blades save | ✅ (Curse) | n/a |
 | L12 | the game loads the **CLI**-edited disk and shows the edit | ✅ | ☐ |

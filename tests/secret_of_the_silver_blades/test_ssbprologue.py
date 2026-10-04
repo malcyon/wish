@@ -456,4 +456,4 @@ def test_walk_proof_walks_nothing_when_the_world_bar_never_came(monkeypatch):
             raise AssertionError(f"walk_proof touched sess.{name}")
 
     out = ssbwarp.walk_proof(Sess())
-    assert out["refused"] == stopped and out["moved"] is False
+    assert out["rejected"] == stopped and out["moved"] is False

@@ -117,7 +117,7 @@ def test_stage_writes_nothing_it_was_not_asked_for(tmp_path):
     assert moved == {base + cp.ABILITY_NOW + 2, base + cp.ABILITY_COPY + 2}
 
 
-def test_a_name_the_disk_does_not_carry_is_refused(tmp_path):
+def test_a_name_the_disk_does_not_carry_is_rejected(tmp_path):
     path = _blank_save(tmp_path, {5: "MATHEW"})
     with pytest.raises(SystemExit):
         cp.stage(_Args(base=str(path), out=str(tmp_path / "x.d64"),
@@ -311,7 +311,7 @@ def test_save_current_game_gives_up_with_the_original_error_after_the_retry_budg
     assert run.sess.calls.count(("attach", run.sess.save_disk)) == 3
 
 
-def test_save_current_game_refuses_an_attempts_count_below_one(tmp_path, quick):
+def test_save_current_game_rejects_an_attempts_count_below_one(tmp_path, quick):
     """`copy_closed_disk` guards the same way; without this guard
     `attempts=0` leaves `last_exc` `None` and `raise last_exc` fails with a
     confusing `TypeError` instead of a clear complaint."""

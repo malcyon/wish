@@ -410,7 +410,7 @@ def field_verdicts(before, do) -> dict[str, str]:
 
     Each field is fuzzed at its first byte and at its last, because a field
     whose padding was all that moved reads as read-only when it is not.  A
-    fuzz the rewrite refuses with `RewriteError` *is* the read-only answer --
+    fuzz the rewrite blocks with `RewriteError` *is* the read-only answer --
     that is the rejection it raises when an edit lands nowhere -- and one that
     raises anything else is an illegal value rather than a verdict.
     """
@@ -432,7 +432,7 @@ def field_verdicts(before, do) -> dict[str, str]:
                 continue
             except Exception:
                 if verdict == "read-only":
-                    verdict = "refused"
+                    verdict = "stopped"
         out[f.name] = verdict
     return out
 
@@ -647,15 +647,15 @@ def _print_read_only(verdicts: dict, counts: dict, notes: list[str]) -> None:
         stuck = sorted(n for n, v in found.items() if v == {"read-only"})
         mixed = sorted(n for n, v in found.items()
                        if "writable" in v and "read-only" in v)
-        refused = sorted(n for n, v in found.items()
-                         if "writable" not in v and "refused" in v)
+        blocked = sorted(n for n, v in found.items()
+                         if "writable" not in v and "stopped" in v)
         print(f"## {port} {title}  ({counts[key]} characters)\n")
         print(f"    read-only on all {counts[key]} ({len(stuck)}): "
               f"{', '.join(stuck) or '-'}\n")
         print(f"    read-only on some and not others ({len(mixed)}): "
               f"{', '.join(mixed) or '-'}\n")
         print(f"    no verdict, every fuzz was an illegal value "
-              f"({len(refused)}): {', '.join(refused) or '-'}\n")
+              f"({len(blocked)}): {', '.join(blocked) or '-'}\n")
     if notes:
         print(f"## {len(notes)} things not examined\n")
         for note in notes:

@@ -3,11 +3,11 @@
 
 `tools/c64/savecheck.py --walk` answers a step with `moved=True` or `moved=False`,
 and a `False` out here has meant three different things at once: the square
-refused the party, the driver never found the movement prompt, or the key went
+rejected the party, the driver never found the movement prompt, or the key went
 somewhere the game was not reading.  `#382 (An outdoor Pool of Radiance party's
 compass step is refused, and the retry cannot find the movement prompt
 afterwards)` is what that ambiguity cost -- eight directions all reported as
-refused, with no reading that says which of the three it was.
+rejected, with no reading that says which of the three it was.
 
 So this reads, for every stage of one step:
 

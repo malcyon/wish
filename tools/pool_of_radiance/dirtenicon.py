@@ -124,7 +124,7 @@ def _validated_save(image: bytes):
     second = _one_entry(disk, POOL.roster_file)
 
     # The allowed physical diff alone cannot protect another logical file
-    # sharing a sector. Refuse cross-links, free-marked blocks and directory
+    # sharing a sector. Reject cross-links, free-marked blocks and directory
     # sectors before changing anything, including on otherwise readable disks.
     used = {(18, 0)}
     block = (18, 1)
@@ -263,7 +263,7 @@ def main(argv=None) -> int:
             print(f"Created and verified: {args.out}; source never opened for writing")
         return 0
     except (OSError, D64Error, ValueError, IndexError) as exc:
-        print(f"Refused: {exc}", file=sys.stderr)
+        print(f"Rejected: {exc}", file=sys.stderr)
         return 1
 
 

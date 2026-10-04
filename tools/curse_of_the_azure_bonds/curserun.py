@@ -108,7 +108,7 @@ def stage(slot, disks: str, save: str = "") -> str:
     """Copy the six Curse sides into the slot and make a save disk.
 
     The player's own disks are read and never written; `Session.attach`
-    refuses any path outside the slot's directory, so the only images the game
+    rejects any path outside the slot's directory, so the only images the game
     is ever shown are these copies.
     """
     slot.seed_vicerc()
@@ -138,7 +138,7 @@ def stage(slot, disks: str, save: str = "") -> str:
         # (`tools/registry/specimens.py` makes it so).  Staged unchanged, that gives
         # the game a write-protected save disk, and nothing says so: the run
         # boots, the party loads, and every write the game makes is silently
-        # refused.  A driven `REMOVE CHARACTER FROM PARTY` went the whole way
+        # rejected.  A driven `REMOVE CHARACTER FROM PARTY` went the whole way
         # through its menus that way and left no file on the disk
         # (`cited/439/readd1`, #439).  It also breaks the *next* run in
         # this slot, since a read-only `SIDE0.D64` cannot be staged over.
@@ -466,7 +466,7 @@ class CurseSession(por.Session):
         highlight is sitting on* rather than backing out of anything.  On
         2026-09-07 that left a driven session on a screen nobody had asked
         for after the first successful step, and the five steps after it were
-        refused for want of a bar.
+        rejected for want of a bar.
 
         So the state is entered once and re-entered only when something has
         taken it away -- a disk prompt, a room description, a

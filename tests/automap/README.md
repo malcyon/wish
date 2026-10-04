@@ -16,7 +16,7 @@ Tests for the live automapper in `automap/`: its map model and geometry, the par
 | `test_automap.py` | Checks the automapper's map model, sight and wall geometry, party panel and notes against recorded machines built from the saved-game fixtures. |
 | `test_automapbanks.py` | Checks that the screen address, the bitmap test and the status line are read from the memory the processor sees during a load, and that a poll still costs one resume. |
 | `test_busguard.py` | Checks that `automap/busguard.py` reads `$DD00` before a tick, holds the tick off while the bus is busy and cannot hold it off for ever. |
-| `test_c64machine.py` | Checks the per-title live addresses of `automap/c64.py`, that the three titles nobody has run answer none, and that every action refuses on them. |
+| `test_c64machine.py` | Checks the per-title live addresses of `automap/c64.py`, that the three titles nobody has run answer none, and that every action blocks on them. |
 | `test_checkpoint_hits.py` | Checks that `Monitor.checkpoint_hits` reads the hit count at bytes 13-16 of the checkpoint response and that no other module defines a copy of it. |
 | `test_columns.py` | Checks that the automapper's three columns open at their old widths, can be dragged wider or shut, and are remembered across a restart. |
 | `test_combat.py` | Checks the combat view against a composed arena: what it reads, how the map, bars and conditions draw, and what a click lands on. |
@@ -24,7 +24,7 @@ Tests for the live automapper in `automap/`: its map model and geometry, the par
 | `test_commissions.py` | Checks the decoder for the City Council's ledger flags and the panel that draws the commissions. |
 | `test_commissions_data.py` | Checks what the ledger's entries mean against the shipped scripts and disks: which keep a marker, which is dead and which two scripts share one address. |
 | `test_conditionbadges.py` | Checks that the roster card shows a badge for each effect it belongs to and no other, keeps its height with every badge lit, and credits every glyph. |
-| `test_fsuaehelper.py` | Checks, against a fake FS-UAE, that the helper forwards only memory reads, answers two clients their own replies, refuses a second helper per port and exits with the emulator, and that a stale JSON file and socket left by a dead helper are ignored. |
+| `test_fsuaehelper.py` | Checks, against a fake FS-UAE, that the helper forwards only memory reads, answers two clients their own replies, blocks a second helper per port and exits with the emulator, and that a stale JSON file and socket left by a dead helper are ignored. |
 | `test_issue286a2.py` | Checks that a live tick makes four reads, and twelve on every fifth tick, from a machine standing in New Phlan. |
 | `test_keptsquares.py` | Checks, through the real window over an Amiga-like and a C64 target, that explored squares are on disk as soon as they are seen, so a window dropped without closing leaves them for the next one, that nothing is written while the explored set does not grow, that a write that fails part-way leaves the previous file whole and no temporary file, that the file is flushed to the disk before it replaces the old one, that a save that keeps failing is logged once until one succeeds, and that the flat-notes migration runs once per area. |
 | `test_latercombat.py` | Checks that a fight in Curse or Silver Blades is read at those titles' own addresses and that the reader as it stood finds none. |

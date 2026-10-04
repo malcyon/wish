@@ -105,12 +105,12 @@ def test_the_inner_tower_exit_still_fights_tyranthraxus_on_its_route(capsys):
 
 
 @needs_disks
-def test_an_address_that_is_not_an_exit_is_refused(capsys):
+def test_an_address_that_is_not_an_exit_is_rejected(capsys):
     assert R.report(W.Machine(), "ECL0D", "1234") == 1
     assert "no NEWECL" in capsys.readouterr().err
 
 
 @needs_disks
-def test_a_script_that_is_not_on_the_disks_is_refused(capsys):
+def test_a_script_that_is_not_on_the_disks_is_rejected(capsys):
     assert R.report(W.Machine(), "ECL99", None) == 1
     assert "not on the disks" in capsys.readouterr().err

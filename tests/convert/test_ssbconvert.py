@@ -16,7 +16,7 @@ game on VICE pool slots 0 and 1 on 2026-09-05 before it was fixed:
 * **a ranger arrived as a paladin.**  DOS gives the two classes one bit
   between them and the C64 gives the ranger a bit of its own, and
   `class_bits` was copied straight across.
-* **a 67-byte Silver Blades item was refused** by `item_to_c64`, which
+* **a 67-byte Silver Blades item was blocked** by `item_to_c64`, which
   demanded 63.
 * **five bytes of the quest-flag page were zeroed**, because the window
   stopped where Pool of Radiance's wallset triple begins and this title keeps
@@ -354,7 +354,7 @@ def test_a_curse_gnome_and_halfling_carry_their_own_effects():
 
 # --- the item record: 67 bytes in this title alone ---------------------------
 def test_a_sixty_seven_byte_item_converts():
-    """`item_to_c64` demanded 63 and refused every Silver Blades item."""
+    """`item_to_c64` demanded 63 and blocked every Silver Blades item."""
     item = bytearray(SSB.item_size)
     table = dos_port.ITEM_FIELDS_BY_NAME
     item[table["type_index"].offset] = 39
@@ -364,7 +364,7 @@ def test_a_sixty_seven_byte_item_converts():
     assert out[0] == 39
 
 
-def test_an_item_whose_four_extra_bytes_are_used_is_refused():
+def test_an_item_whose_four_extra_bytes_are_used_is_blocked():
     """Nothing is attributed to `0x03F`-`0x042`; they read zero in 48 of 48
     driven records, so a non-zero one is a byte with nowhere to go."""
     item = bytearray(SSB.item_size)
@@ -832,7 +832,7 @@ def _shipped_silver_blades_save():
 def test_the_archives_shipped_silver_blades_party_reads_at_the_start_of_area_0x10():
     """The two saved games the archives ship for this title are both in this
     state -- area 0, `7,13` facing north, `$4FE1` = 0 -- so the first Silver
-    Blades save a player reaches for used to be refused until the title's
+    Blades save a player reaches for used to be blocked until the title's
     start was measured (#535); the DOS reader now places it at the arrival
     `areas.STARTS` names, with `set_out` false for the writers to act on.  A
     found save with no chain of custody, read here only to show what the

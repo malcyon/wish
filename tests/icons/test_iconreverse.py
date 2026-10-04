@@ -153,7 +153,7 @@ def test_small_heads_zero_and_five_are_the_same_drawing(parts):
     assert other == [("small", "head", 0, 5)]
 
 
-def test_an_icon_no_weapon_drew_is_refused(parts):
+def test_an_icon_no_weapon_drew_is_rejected(parts):
     """A hand-authored icon has to raise rather than compose a figure the
     player never chose. SHARA THE GRAY's is the real case (#130)."""
     with pytest.raises(ValueError):
@@ -250,7 +250,7 @@ def test_a_judgement_row_gives_the_nearest_figure_not_an_error(parts,
                                                 choice.head)]
 
 
-def test_an_icon_with_no_weapon_is_refused(parts, reverse_tables):
+def test_an_icon_with_no_weapon_is_rejected(parts, reverse_tables):
     """The same rejection `recognise` makes on its own, reached through the
     higher-level method rather than worked around."""
     with pytest.raises(ValueError):
@@ -400,7 +400,7 @@ def test_every_icon_on_the_players_disks_reads_back_into_menu_choices(parts):
     are not a simple (weapon, head) composition -- they carry a cell an
     earlier menu choice left behind, which the game draws exactly as stored
     -- and the recogniser has to name those too, because a conversion that
-    refused them would drop a real character's figure.
+    rejected them would drop a real character's figure.
     """
     from tools.icons import iconreverse
     folders = iconreverse.save_folders()

@@ -6,7 +6,7 @@ is the rehearsed bytes Save As publishes and not what `File > Convert...`
 writes. It does not call `check_not_alias`, flush edits or confirm a replacement:
 the destination is always a new dated folder under `folder`, so it can neither
 be the source nor replace a file. No dialog exists here, so a rejection is
-returned as `report["refused"]` with the exception's own words. Imports of `editor` are lazy so a caller can point
+returned as `report["stopped"]` with the exception's own words. Imports of `editor` are lazy so a caller can point
 `sys.path` at another checkout first.
 """
 from __future__ import annotations
@@ -52,7 +52,7 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
     `dropped`, `left_behind` and `unjoined` (the joined scrolls an Amiga
     destination took apart to stay within the loader's limit) from the
     conversion's accounting, or
-    `refused` -- the exception's class and text -- when Save As refused or
+    `stopped` -- the exception's class and text -- when Save As blocked or
     failed.
 
     `source_slot` names which of a DOS folder's or an Amiga disk's several
@@ -62,17 +62,17 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
 
     `names` is the `{position: name}` a player would choose in the Shorten
     window, handed to `prepare_save_as`. A name too long for the destination
-    with no choice for it is refused as `NamesDoNotFit`, and the report then
+    with no choice for it is blocked as `NamesDoNotFit`, and the report then
     also carries `unfit` (`[position, name]` for each) and `width`, so a caller
-    can see which names needed a choice and not only that Save As refused.
+    can see which names needed a choice and not only that Save As blocked.
 
     `leave` is the `{member: pack positions}` a player would tick in the
     window that opens when a pack needs more than the C64's sixteen slots. A
-    party still over is refused as `JoinedScrollsDoNotFit`.
+    party still over is blocked as `JoinedScrollsDoNotFit`.
 
     `leave_effects` is the `{member: running-effect indices}` a player would
     tick in the window that opens when the party's running effects need more
-    rows than the C64's shared table holds. A party still over is refused as
+    rows than the C64's shared table holds. A party still over is blocked as
     `EffectsDoNotFit`, and the report then also carries `effects_needed`,
     `effects_limit` and `effect_entries` (`[member, index, effect id,
     minutes]` for each effect that can be left out).
@@ -113,7 +113,7 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
             report["effects_needed"] = over.needed
             report["effects_limit"] = over.limit
             report["effect_entries"] = [list(e) for e in over.entries]
-        report["refused"] = [type(exc).__name__, str(exc)]
+        report["stopped"] = [type(exc).__name__, str(exc)]
         report["error"] = f"{type(exc).__name__}: {exc}"
         return report
     report["slot"] = plan.destination.slot

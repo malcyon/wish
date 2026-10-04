@@ -47,7 +47,7 @@ class FakeAmiga:
         #: `{base: bytes}`. Anything outside every block reads as zero, which
         #: is what a machine with memory there does.
         self.memory = dict(memory or {})
-        #: Addresses the server refuses, so `E01` can be provoked.
+        #: Addresses the server blocks, so `E01` can be provoked.
         self.unreadable: set[int] = set()
         #: Every packet body the client sent, in order.
         self.received: list[str] = []
@@ -174,12 +174,12 @@ def test_resume_can_be_left_to_the_caller():
     assert guest.received == ["qSupported"]
 
 
-def test_a_refused_connection_says_the_door_is_one_shot():
-    def refuse():
-        raise ConnectionRefusedError(111, "Connection refused")
+def test_a_blocked_connection_says_the_door_is_one_shot():
+    def block():
+        raise ConnectionRefusedError(111, "Connection blocked")
 
     with pytest.raises(amiga.FsuaeError) as caught:
-        amiga.FsuaeGdb(port=6525, opener=refuse)
+        amiga.FsuaeGdb(port=6525, opener=block)
     assert "6525" in str(caught.value)
     assert "closes it for good" in str(caught.value)
 
@@ -347,7 +347,7 @@ def test_a_short_transport_timeout_is_never_lengthened_by_the_poll_one():
 
 @pytest.mark.parametrize("body", ["k", "D", "s", "S05", "\x03", "vCont;s",
                                   "vCont;t"])
-def test_a_packet_that_stops_the_machine_is_refused(body):
+def test_a_packet_that_stops_the_machine_is_blocked(body):
     """Each one is a stop or a kill in the server's own dispatch."""
     guest = FakeAmiga()
     gdb = transport(guest)
@@ -450,7 +450,7 @@ def test_read_blocks_asks_for_the_memory_and_names_no_file():
     assert not any(body.startswith("S") for body in guest.received)
 
 
-def test_read_blocks_still_refuses_a_read_of_nothing():
+def test_read_blocks_still_blocks_a_read_of_nothing():
     guest = FakeAmiga({0xC00000: b"first"})
     tgt = amiga.AmigaTarget(transport(guest), BLADES)
     with pytest.raises(ValueError, match="not a read"):
@@ -700,7 +700,7 @@ def test_peek_through_a_null_pointer_reports_it_without_raising():
     assert guest.received[2:] == [f"m{BASE + 0x57AC:x},4"] * 2
 
 
-def test_peek_is_refused_before_locate():
+def test_peek_is_blocked_before_locate():
     guest = FakeAmiga()
     tgt = amiga.AmigaTarget(transport(guest), POD)
     before = list(guest.received)
@@ -1092,7 +1092,7 @@ def test_session_key_with_an_upper_case_letter_is_an_error_row_and_sends_nothing
     assert any(r["event"] == "wait" for r in rows)
 
 
-def test_press_refuses_an_upper_case_letter_before_any_xdotool_call(monkeypatch):
+def test_press_blocks_an_upper_case_letter_before_any_xdotool_call(monkeypatch):
     calls = []
     monkeypatch.setattr(fsuaegdb.subprocess, "run",
                         lambda *a, **k: calls.append(a))
@@ -1116,15 +1116,15 @@ def test_journal_answer_letters_are_typed_lower_case(monkeypatch):
 
 
 @pytest.mark.parametrize("key", ["!", "@", "~", "alt+Q", "ctrl+alt+A"])
-def test_shifted_symbols_and_compound_upper_case_keys_are_refused(key):
+def test_shifted_symbols_and_compound_upper_case_keys_are_blocked(key):
     with pytest.raises(ValueError, match="^Key .* would send Shift"):
-        fsuaegdb.refuse_shift_letter(key)
+        fsuaegdb.check_shift_letter(key)
 
 
 @pytest.mark.parametrize("key", ["Return", "F12", "alt+q", "KP_Up", "q", "7",
                                  "alt+F4"])
-def test_other_keys_are_not_refused(key):
-    fsuaegdb.refuse_shift_letter(key)
+def test_other_keys_are_not_blocked(key):
+    fsuaegdb.check_shift_letter(key)
 
 
 def test_swap_sequence_with_a_bad_key_sends_nothing():
@@ -1135,7 +1135,7 @@ def test_swap_sequence_with_a_bad_key_sends_nothing():
     assert sent == []
 
 
-def test_held_key_refuses_an_upper_case_letter_with_a_hold(monkeypatch):
+def test_held_key_blocks_an_upper_case_letter_with_a_hold(monkeypatch):
     from tools.amiga import fsuaepor
 
     monkeypatch.setattr(fsuaepor, "keys",
@@ -1157,7 +1157,7 @@ def test_automap_boot_and_walk_keys_are_checked_before_it_connects(
         fsuaegdb.automap(args)
 
 
-def test_session_key_named_keysyms_and_lower_case_letters_are_not_refused(
+def test_session_key_named_keysyms_and_lower_case_letters_are_not_blocked(
         driven, tmp_path):
     _, log = driven
     run_session(tmp_path, ["key Return F12 Escape q"])
@@ -1278,10 +1278,10 @@ def test_a_window_that_fails_to_open_still_restores_the_data_dir_and_closes(
     monkeypatch.setattr(fsuaegdb.amiga.FsuaeGdb, "close",
                         lambda self: (closed.append(1), real_close(self)))
 
-    def refuse(*a, **k):
+    def block(*a, **k):
         raise SystemExit("no maps")
 
-    monkeypatch.setattr(fsuaegdb, "open_window", refuse)
+    monkeypatch.setattr(fsuaegdb, "open_window", block)
     args = session_args(tmp_path, window=True, maps=str(tmp_path))
     pathlib.Path(args.commands).write_text("quit\n")
     with pytest.raises(SystemExit):
@@ -1583,7 +1583,7 @@ def test_commands_already_in_the_file_when_the_session_starts_are_run(
 
 
 @pytest.fixture
-def refusing(monkeypatch):
+def blocked_calls(monkeypatch):
     seen = []
     monkeypatch.setattr(fsuaegdb, "connect", lambda args: seen.append(1))
     return seen
@@ -1595,11 +1595,11 @@ def refusing(monkeypatch):
     (dict(swap_sequence="F12 Down*x"), "--swap-sequence"),
     (dict(peeks=["+0x10 zz"]), "--peeks"),
     (dict(peeks=["nolength"]), "--peeks")])
-def test_session_refuses_a_bad_argument_before_connecting(
-        refusing, tmp_path, kw, text):
+def test_session_blocks_a_bad_argument_before_connecting(
+        blocked_calls, tmp_path, kw, text):
     with pytest.raises(SystemExit, match=text):
         fsuaegdb.session(session_args(tmp_path, **kw))
-    assert refusing == []
+    assert blocked_calls == []
 
 
 def test_an_image_given_to_the_window_means_its_folder(monkeypatch, tmp_path):
@@ -1635,7 +1635,7 @@ def test_session_dump_writes_the_range_and_a_row_before_locate(driven, tmp_path)
         "first", 0xC00000, 0x40, hashlib.sha256(blob).hexdigest())
 
 
-def test_session_dump_refuses_more_than_half_a_megabyte(driven, tmp_path):
+def test_session_dump_blocks_more_than_half_a_megabyte(driven, tmp_path):
     _, rows = run_session(tmp_path, ["dump big 0x0 0x80001", "wait 0.5"])
     row = next(r for r in rows if r["event"] == "dump")
     assert row["error"].startswith("ValueError: ") and "0x80000" in row["error"]
@@ -1658,7 +1658,7 @@ def test_a_bad_dump_is_an_error_row_and_writes_nothing(driven, tmp_path, line):
         (tmp_path / "run" / "dumps").iterdir())
 
 
-def test_a_dump_the_server_refuses_is_an_error_row_not_the_end(driven, tmp_path):
+def test_a_dump_the_server_blocks_is_an_error_row_not_the_end(driven, tmp_path):
     guest, _ = driven
     guest.unreadable.add(0x10)
     _, rows = run_session(tmp_path, ["dump bad 0x0 0x20", "wait 0.5"])
@@ -1701,20 +1701,20 @@ def test_a_session_without_a_title_still_dumps_and_keys(untitled, tmp_path):
     assert events["dump"]["length"] == 8
 
 
-def test_a_window_needs_a_title_and_is_refused_before_connecting(
-        refusing, tmp_path):
+def test_a_window_needs_a_title_and_is_blocked_before_connecting(
+        blocked_calls, tmp_path):
     with pytest.raises(SystemExit, match="--window"):
         fsuaegdb.session(session_args(tmp_path, title="none", window=True,
                                       maps=str(tmp_path)))
-    assert refusing == []
+    assert blocked_calls == []
 
 
-def test_maps_need_a_title_and_are_refused_before_connecting(
-        refusing, tmp_path):
+def test_maps_need_a_title_and_are_blocked_before_connecting(
+        blocked_calls, tmp_path):
     with pytest.raises(SystemExit, match="--maps"):
         fsuaegdb.session(session_args(tmp_path, title="none",
                                       maps=str(tmp_path)))
-    assert refusing == []
+    assert blocked_calls == []
 
 
 def test_a_session_without_a_title_logs_no_image(untitled, tmp_path):
@@ -1734,7 +1734,7 @@ def test_title_none_is_a_choice_on_the_command_line():
     assert seen == ["none"]
 
 
-def test_a_command_that_needs_a_layout_refuses_title_none(monkeypatch):
+def test_a_command_that_needs_a_layout_blocks_title_none(monkeypatch):
     monkeypatch.setattr(fsuaegdb, "connect", lambda args: pytest.fail("connected"))
     args = argparse.Namespace(title="none", host="h", port=1, timeout=None)
     with pytest.raises(SystemExit, match="none"):
@@ -1899,14 +1899,14 @@ def test_a_session_that_cannot_detect_its_title_closes_the_connection(
 
 @pytest.mark.parametrize("kw, text", [
     (dict(maps="DISK"), "--maps"), (dict(window=True, maps="DISK"), "--title")])
-def test_maps_without_a_title_are_refused_before_connecting(
-        refusing, tmp_path, kw, text):
+def test_maps_without_a_title_are_blocked_before_connecting(
+        blocked_calls, tmp_path, kw, text):
     disk = tmp_path / "DISK"
     disk.mkdir()
     kw = {**kw, "maps": str(disk)}
     with pytest.raises(SystemExit, match=text):
         fsuaegdb.session(session_args(tmp_path, title=None, **kw))
-    assert refusing == []
+    assert blocked_calls == []
 
 
 def test_detection_names_two_titles_loaded_in_different_regions():
@@ -2029,10 +2029,10 @@ def wished(monkeypatch, tmp_path):
     monkeypatch.setattr(fsuaehelper, "runtime_dir", lambda environ=None: runtime)
     monkeypatch.setattr(fsuaehelper, "find", lambda port, rt, platform=None: None)
 
-    def refuse_socket(*a, **k):
+    def failing_socket(*a, **k):
         raise AssertionError("the driver opened the debugger")
 
-    monkeypatch.setattr(fsuaegdb.amiga, "FsuaeGdb", refuse_socket)
+    monkeypatch.setattr(fsuaegdb.amiga, "FsuaeGdb", failing_socket)
 
     def open_wish(out):
         window = FakeWindow()
@@ -2102,11 +2102,11 @@ def test_wish_reports_a_helper_whose_pid_is_gone(wished, tmp_path, monkeypatch):
     assert (helper["pid"], helper["alive"], helper["sock"]) == (77, False, False)
 
 
-@pytest.mark.parametrize("word", fsuaegdb.WISH_REFUSED)
-def test_wish_refuses_every_command_that_reads_the_emulator(
+@pytest.mark.parametrize("word", fsuaegdb.WISH_BLOCKED_VERBS)
+def test_wish_blocks_every_command_that_reads_the_emulator(
         wished, tmp_path, word):
     rows = run_wish(tmp_path, [f"{word} +0x10 4"])
-    assert "refused" in by_event(rows, word)[0]["error"]
+    assert "blocked" in by_event(rows, word)[0]["error"]
 
 
 def test_wish_keys_are_held_through_fsuaepor_and_a_bad_line_costs_one_row(
@@ -2225,7 +2225,7 @@ def test_wish_writes_the_title_folder_where_preferences_keeps_it(
     ("not-a-title=/tmp", "not a title"),
     ("pools-of-darkness=/no/such/folder", "not a folder"),
 ])
-def test_wish_refuses_a_bad_disks_for_before_the_window_exists(
+def test_wish_blocks_a_bad_disks_for_before_the_window_exists(
         wished, tmp_path, monkeypatch, item, text):
     monkeypatch.setattr(fsuaegdb, "open_wish", lambda out: pytest.fail("opened"))
     with pytest.raises(SystemExit, match=text):
@@ -2299,7 +2299,7 @@ def test_stop_without_helper_flag_reads_no_helper_files(monkeypatch, capsys):
     assert fsuaegdb.stop(stop_args()) == 0
 
 
-# review fixes: the helper's directory, a refused close, the environment, the parse
+# review fixes: the helper's directory, a blocked close, the environment, the parse
 
 
 from automap import fsuaehelper as _fsuaehelper  # noqa: E402
@@ -2473,17 +2473,17 @@ def test_a_real_window_opens_no_debugger_connection(tmp_path, monkeypatch):
 
     opened, dialled = [], []
 
-    def refuse(*a, **k):
+    def block(*a, **k):
         opened.append(a)
         raise AssertionError("a debugger connection was attempted")
 
-    def refuse_socket(address, *a, **k):
+    def failing_socket(address, *a, **k):
         # The VICE row probes its own monitor port; only the debugger's matters.
         dialled.append(address)
         raise ConnectionRefusedError(address)
 
-    monkeypatch.setattr(fsuaegdb.amiga, "FsuaeGdb", refuse)
-    monkeypatch.setattr(socket, "create_connection", refuse_socket)
+    monkeypatch.setattr(fsuaegdb.amiga, "FsuaeGdb", block)
+    monkeypatch.setattr(socket, "create_connection", failing_socket)
     monkeypatch.setenv(fsuaegdb.WISH_FLAG, "1")
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "rt"))
     monkeypatch.setattr(fsuaegdb.amiga, "FSUAE_PORT", 6598)
@@ -2832,9 +2832,9 @@ def test_no_encounters_leaves_a_different_script_alone(scripted, tmp_path):
                                      "wait 0.5"])
     assert gate_bytes(guest) == other
     assert not any(b.startswith("M") for b in guest.received)
-    refusals = [x for r in rows if r["event"] == "no_encounters"
+    blocked_rows = [x for r in rows if r["event"] == "no_encounters"
                 for x in r.get("rows", []) if "stopped" in x]
-    assert len(refusals) == 1               # logged once, not every heartbeat
+    assert len(blocked_rows) == 1               # logged once, not every heartbeat
 
 
 def test_a_roll_opcode_with_a_different_hash_is_not_written(scripted, tmp_path):
@@ -2872,7 +2872,7 @@ def test_the_slums_roll_has_its_constant_zeroed_and_put_back(monkeypatch):
     assert writes == [bytes([0x09, 0x00, 0x00]), bytes([0x08, 0x00, 0x0D])]
 
 
-def test_a_save_key_is_refused_while_it_is_on(scripted, tmp_path, monkeypatch):
+def test_a_save_key_is_blocked_while_it_is_on(scripted, tmp_path, monkeypatch):
     guest, log = scripted
     seen = on_each_key(monkeypatch, guest, log)
     events, _ = run_session(tmp_path, ["locate", "no_encounters on", "key s"])
@@ -3121,11 +3121,11 @@ def encounter_rows(rows):
     return [r for r in rows if r["event"] == "no_encounters"]
 
 
-def test_wish_no_encounters_is_not_refused_and_goes_through_the_helper(
+def test_wish_no_encounters_is_not_blocked_and_goes_through_the_helper(
         wish_scripted, tmp_path):
     guest = wish_scripted["guest"]
     rows = run_wish(tmp_path, ["no_encounters on", "wait 0.3"])
-    assert "no_encounters" not in fsuaegdb.WISH_REFUSED
+    assert "no_encounters" not in fsuaegdb.WISH_BLOCKED_VERBS
     on = encounter_rows(rows)[0]
     assert on["action"] == "on" and "error" not in on, on
     assert wish_scripted["connects"] == [wish_scripted["info"]]
@@ -3166,7 +3166,7 @@ def test_wish_no_encounters_is_applied_again_before_a_key_after_a_reload(
     assert seen == [POD_PATCHED, POD_PATCHED]
 
 
-def test_wish_refuses_a_save_key_while_the_switch_is_on(
+def test_wish_blocks_a_save_key_while_the_switch_is_on(
         wish_scripted, tmp_path):
     rows = run_wish(tmp_path, ["no_encounters on", "key s"])
     assert wish_scripted["keys"] == []
@@ -3211,7 +3211,7 @@ def test_a_heartbeat_reapply_waits_its_interval_but_a_key_does_not(monkeypatch):
         enc.reapply(at)
     assert applied == [0.0, 1.0]
     clock[0] = 1.2
-    assert enc.refuse_key("a", 1.2) is False
+    assert enc.blocks_key("a", 1.2) is False
     assert applied == [0.0, 1.0, 1.2]
 
 
@@ -3551,7 +3551,7 @@ def test_a_wish_start_with_a_live_helper_repairs_what_a_killed_run_left(
     assert encounter_rows(rows)[0]["action"] == "repair"
 
 
-def test_a_save_key_is_refused_after_an_off_that_left_a_row_changed(
+def test_a_save_key_is_blocked_after_an_off_that_left_a_row_changed(
         scripted, tmp_path, monkeypatch):
     guest, log = scripted
     real = fsuaegdb.poke_row

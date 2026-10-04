@@ -188,7 +188,7 @@ def test_published_silver_without_items_records_and_skips_it(tmp_path, monkeypat
 
 
 @pytest.mark.parametrize("items,recorded", [(1, False), (0, True)])
-def test_published_silver_refuses_an_items_screen_the_slot_contradicts(
+def test_published_silver_blocks_an_items_screen_the_slot_contradicts(
         tmp_path, monkeypatch, items, recorded):
     path = _prepared_published(tmp_path, monkeypatch, members_items=items)
     manifest = json.loads(path.read_text())
@@ -198,7 +198,7 @@ def test_published_silver_refuses_an_items_screen_the_slot_contradicts(
         foundation._published_manifest(path, "ssb")
 
 
-def test_published_silver_refuses_a_manifest_without_items_screen_for_an_itemless_slot(
+def test_published_silver_blocks_a_manifest_without_items_screen_for_an_itemless_slot(
         tmp_path, monkeypatch):
     path = _prepared_published(tmp_path, monkeypatch, members_items=0)
     manifest = json.loads(path.read_text())
@@ -221,7 +221,7 @@ def test_published_silver_names_why_the_slot_cannot_be_read(
         foundation._published_manifest(path, "ssb")
 
 
-def test_published_curse_refuses_an_items_screen_record(tmp_path, monkeypatch):
+def test_published_curse_blocks_an_items_screen_record(tmp_path, monkeypatch):
     path = _prepared_published(tmp_path, monkeypatch, name="curse")
     manifest = json.loads(path.read_text())
     manifest["items_screen"] = True
@@ -390,7 +390,7 @@ def test_published_silver_uses_journal_preflight_and_answerer_with_working_df0(
         def release(self, *args, **kwargs):
             receipt = super().release(*args, **kwargs)
             if registry_problem == "release":
-                raise OSError("lane release refused")
+                raise OSError("lane release blocked")
             return receipt
 
     guest = SilverGuest(clock, save_key="df0")
@@ -454,8 +454,8 @@ def test_published_silver_uses_journal_preflight_and_answerer_with_working_df0(
         assert "specimen tree is unavailable" in json.loads(foundation._summary(
             result, manifest_path, "recon1"))["error"]
     if success and registry_problem == "release":
-        assert "lane release refused" in result["release_error"]
-        assert "lane release refused" in json.loads(foundation._summary(
+        assert "lane release blocked" in result["release_error"]
+        assert "lane release blocked" in json.loads(foundation._summary(
             result, manifest_path, "recon1"))["error"]
         assert "specimen" in result
     assert any(call[0] == "release" for call in guest.calls)
@@ -495,7 +495,7 @@ def specimen_root(tmp_path, monkeypatch):
         _unlock(root)
 
 
-def test_published_specimen_name_is_idempotent_and_refuses_changed_source(tmp_path, specimen_root):
+def test_published_specimen_name_is_idempotent_and_blocks_changed_source(tmp_path, specimen_root):
     root = specimen_root
     run = tmp_path / "run"
     fetched = run / "accept1" / "fetched-df0.adf"
@@ -590,22 +590,22 @@ def test_measure_stops_before_the_first_save_and_presses_the_measure_route(tmp_p
     assert not {"C", "D", "Y"} & set(_keys(guest))
 
 
-def test_prepare_refuses_a_specimen_whose_sha256_differs(tmp_path, monkeypatch):
+def test_prepare_blocks_a_specimen_whose_sha256_differs(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     other = tmp_path / "other.adf"
     other.write_bytes(b"not the specimen")
     with pytest.raises(winuaesession.RouteError, match="specimen SHA-256 differs"):
-        foundation.prepare(foundation.POOL, "refused", specimen=other)
+        foundation.prepare(foundation.POOL, "blocked", specimen=other)
     assert not (tmp_path / ".cache").exists()
 
 
-def test_prepare_refuses_a_title_that_is_not_registered_here(tmp_path):
+def test_prepare_blocks_a_title_that_is_not_registered_here(tmp_path):
     with pytest.raises(winuaesession.RouteError, match="not one of this module's titles"):
         foundation.prepare(_title(), "x")
 
 
-def test_prepare_refuses_a_run_id_that_is_not_lane_safe():
+def test_prepare_blocks_a_run_id_that_is_not_lane_safe():
     with pytest.raises(winuaesession.RouteError, match="run id"):
         foundation.prepare(foundation.POOL, "a b")
 
@@ -636,7 +636,7 @@ def test_main_runs_each_command_and_exits_zero_only_on_success(tmp_path, clock, 
     assert "slot D: did not move" in capsys.readouterr().out
 
 
-def test_main_exits_two_when_the_run_is_refused(tmp_path, capsys):
+def test_main_exits_two_when_the_run_is_blocked(tmp_path, capsys):
     assert foundation.main(["prepare", "--title", "pool", "--run-id", "a b"]) == 2
     assert "run id" in capsys.readouterr().err
 
@@ -792,7 +792,7 @@ def test_the_curse_after_letter_is_not_the_exit_key_and_no_plain_step_presses_a_
     assert [key for key, _s, kind in curse.route if kind == "write"] == ["D", "F"]
 
 
-def test_an_after_letter_of_e_is_refused_at_construction():
+def test_an_after_letter_of_e_is_blocked_at_construction():
     with pytest.raises(winuaesession.RouteError, match="presses a save or kept slot letter"):
         dataclasses.replace(foundation.CURSE, after_letter="E")
 
@@ -802,13 +802,13 @@ def test_the_boot_spans_are_pinned():
     assert foundation.CURSE.boot_span == 120.0
 
 
-def test_prepare_refuses_a_curse_specimen_whose_sha256_differs(tmp_path, monkeypatch):
+def test_prepare_blocks_a_curse_specimen_whose_sha256_differs(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     other = tmp_path / "other.adf"
     other.write_bytes(b"not the specimen")
     with pytest.raises(winuaesession.RouteError, match="specimen SHA-256 differs"):
-        foundation.prepare(foundation.CURSE, "refused", specimen=other)
+        foundation.prepare(foundation.CURSE, "blocked", specimen=other)
     assert not (tmp_path / ".cache").exists()
 
 
@@ -869,7 +869,7 @@ def test_curse_prepare_threads_a_substitute_slot_through_to_the_manifest(
         "path": str(substitute), "sha256": staging.sha256(substitute), "letter": "Z"}
 
 
-def test_prepare_refuses_a_substitute_on_a_title_that_is_not_substitutable(
+def test_prepare_blocks_a_substitute_on_a_title_that_is_not_substitutable(
         tmp_path, monkeypatch):
     """`substitute` is only wired through `_SUBSTITUTABLE`; every other title
     stops with an error before a run folder is ever created.
@@ -991,7 +991,7 @@ def test_darkness_accept_order_puts_the_control_save_before_the_walk_and_the_aft
 
 
 @pytest.mark.parametrize("state", DARK_ACCEPT_STATES)
-def test_darkness_accept_refuses_to_start_when_the_guard_map_lacks_a_new_state(
+def test_darkness_accept_will_not_start_when_the_guard_map_lacks_a_new_state(
         tmp_path, clock, state):
     guard = MapGuard(states=tuple(s for s in DARK_STATES if s != state), on=DARK_FIRST_SCREEN)
     with pytest.raises(winuaesession.RouteError, match="screen guard map lacks"):
@@ -1047,7 +1047,7 @@ def test_darkness_route_and_measure_route_are_pinned_and_write_only_f_and_g():
 
 
 @pytest.mark.parametrize("letter", ["A", "H", "I", "J"])
-def test_darkness_refuses_a_write_step_that_is_not_the_control_or_after_letter(letter):
+def test_darkness_blocks_a_write_step_that_is_not_the_control_or_after_letter(letter):
     route = tuple((letter, state, kind) if kind == "write" and key == "F" else (key, state, kind)
                   for key, state, kind in foundation.DARKNESS.route)
     with pytest.raises(winuaesession.RouteError):
@@ -1076,13 +1076,13 @@ def test_darkness_names_where_e_is_the_exit_key_and_nowhere_else():
         dataclasses.replace(darkness, plain_keys=(("E", "camp"),))
 
 
-def test_prepare_refuses_a_darkness_disk_whose_sha256_differs(tmp_path, monkeypatch):
+def test_prepare_blocks_a_darkness_disk_whose_sha256_differs(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     other = tmp_path / "other.adf"
     other.write_bytes(b"not disk 3")
     with pytest.raises(winuaesession.RouteError, match="specimen SHA-256 differs"):
-        foundation.prepare(foundation.DARKNESS, "refused", specimen=other)
+        foundation.prepare(foundation.DARKNESS, "blocked", specimen=other)
     assert not (tmp_path / ".cache").exists()
 
 
@@ -1443,7 +1443,7 @@ def test_measure_passes_the_guard_file_it_is_given_and_none_without_one(tmp_path
     assert called.calls[-1]["guard"] == ("guards", "g.json")
 
 
-def test_measure_refuses_an_unreadable_guards_file_before_any_run_starts(tmp_path, monkeypatch,
+def test_measure_blocks_an_unreadable_guards_file_before_any_run_starts(tmp_path, monkeypatch,
                                                                          capsys):
     called = _Called()
     monkeypatch.setattr(foundation, "run_recon", called)
@@ -1482,18 +1482,18 @@ def test_darkness_prepare_copies_disk_2_as_a_working_copy_never_the_registered_i
 
 
 def test_darkness_never_presses_the_continuation_key_when_the_df0_insert_fails(tmp_path, clock):
-    class Refused(DarkGuest):
+    class Blocked(DarkGuest):
         def insert(self, holder, drive_number, remote, timeout=None, sha256=None):
             self.calls.append(("insert", drive_number, remote))
-            exc = RuntimeError("drive 0 refused")
-            exc.receipt = {"status": "refused"}
+            exc = RuntimeError("drive 0 blocked")
+            exc.receipt = {"status": "blocked"}
             raise exc
 
-    guest, result = _dark_run(tmp_path, clock, guest=Refused(clock, save_key="disk3"))
+    guest, result = _dark_run(tmp_path, clock, guest=Blocked(clock, save_key="disk3"))
     assert result["success"] is False and _keys(guest) == ["P", "L", "P", "B"]
     event = next(e for e in result["events"] if "insert" in e)
     assert event["drive"] == 0 and event["insert"] == "disk2"
-    assert event["error"] == "drive 0 refused" and event["receipt"] == {"status": "refused"}
+    assert event["error"] == "drive 0 blocked" and event["receipt"] == {"status": "blocked"}
 
 
 def test_darkness_insert_carries_the_disk_2_hash(tmp_path, clock):
@@ -1510,7 +1510,7 @@ def test_darkness_insert_carries_the_disk_2_hash(tmp_path, clock):
 
 
 @pytest.mark.parametrize("guard", [None, "lacking"])
-def test_darkness_measure_refuses_a_df0_insert_without_a_guard_on_the_prompt(
+def test_darkness_measure_blocks_a_df0_insert_without_a_guard_on_the_prompt(
         tmp_path, clock, guard):
     if guard:
         guard = MapGuard(states=tuple(s for s in MEASURE_STATES if s != "disk2_prompt"), on={})
@@ -1650,7 +1650,7 @@ def test_reload_fails_when_the_game_writes_to_disk_3(tmp_path, clock, spoil):
     assert result["success"] is False
 
 
-def test_reload_refuses_before_the_claim_when_a_guard_or_identity_rule_is_missing(
+def test_reload_blocks_before_the_claim_when_a_guard_or_identity_rule_is_missing(
         tmp_path, clock):
     for missing in (G_KEY, F_KEY):
         guest = ReloadGuest(clock)
@@ -1802,7 +1802,7 @@ def test_a_measure_run_presses_no_key_for_an_interstitial_at_an_unguarded_state(
     assert not any(e.get("interstitial") == "continue" for e in result["events"])
 
 
-def test_the_unstarted_darkness_measure_refuses_a_guard_map_with_no_disk_2_prompt(tmp_path, clock):
+def test_the_unstarted_darkness_measure_blocks_a_guard_map_with_no_disk_2_prompt(tmp_path, clock):
     guest = DarkGuest(clock, save_key="disk3")
     states = tuple(s for s in UNSTARTED_STATES if s != "disk2_prompt")
     with pytest.raises(winuaesession.RouteError, match="disk2_prompt.*DF0 insert needs a guard on the prompt$"):
@@ -1912,7 +1912,7 @@ def test_reload_prepare_writes_the_manifest_from_slots_g_and_f(tmp_path, monkeyp
     ("other party", "names another party"),
     ("one place", "at one place"),
 ])
-def test_reload_prepare_refuses(tmp_path, monkeypatch, what, match):
+def test_reload_prepare_blocks(tmp_path, monkeypatch, what, match):
     images = _reload_registered(tmp_path, monkeypatch)
     options = {"extra file": {"extra": [("/SAVE/notes.dat", b"x")]},
                "missing file": {"dropped": "A"},
@@ -1972,7 +1972,7 @@ def _reload_manifest_without(tmp_path, edit):
     (lambda d: d.update(other_letter="H"), "holds no slot H to compare"),
 ], ids=["other_letter", "other_place", "state_a x", "other_place facing", "not a mapping",
         "other slot absent"])
-def test_reload_refuses_a_manifest_that_cannot_be_compared_before_the_claim(
+def test_reload_blocks_a_manifest_that_cannot_be_compared_before_the_claim(
         tmp_path, clock, edit, match):
     guest = ReloadGuest(clock)
     path = _reload_manifest_without(tmp_path, edit)
@@ -2082,13 +2082,13 @@ def test_the_command_line_help_exits_0_both_ways_and_no_subcommand_exits_2():
     assert exc.value.code == 2
 
 
-def test_prepare_refuses_a_run_id_with_a_space_before_touching_anything(capsys):
+def test_prepare_blocks_a_run_id_with_a_space_before_touching_anything(capsys):
     assert foundation.main(["prepare", "--title", "pool", "--run-id", "a b"]) == 2
     assert capsys.readouterr().err == (
         "acceptance: run id must use letters, digits, dot, underscore or hyphen\n")
 
 
-def test_prepare_refuses_an_unknown_title_through_argparse():
+def test_prepare_blocks_an_unknown_title_through_argparse():
     with pytest.raises(SystemExit) as exc:
         foundation.main(["prepare", "--title", "unknown", "--run-id", "x"])
     assert exc.value.code == 2
@@ -2419,7 +2419,7 @@ def test_diagnose_records_config_hash_failure_and_failed_cleanup(tmp_path):
     assert json.loads((tmp_path / "preboot-failure" / "summary.json").read_text()) == result
 
 
-def test_measure_refuses_a_missing_disk2_prompt_guard_through_main_before_any_guest_call(
+def test_measure_blocks_a_missing_disk2_prompt_guard_through_main_before_any_guest_call(
         tmp_path, monkeypatch, capsys):
     guest = _RecordingGuest()
     monkeypatch.setattr(foundation, "WinGuest", lambda: guest)
@@ -2433,7 +2433,7 @@ def test_measure_refuses_a_missing_disk2_prompt_guard_through_main_before_any_gu
     assert guest.calls == []
 
 
-def test_accept_refuses_an_identity_map_missing_sheet_through_main_before_any_guest_call(
+def test_accept_blocks_an_identity_map_missing_sheet_through_main_before_any_guest_call(
         tmp_path, monkeypatch, capsys):
     guest = _RecordingGuest()
     monkeypatch.setattr(foundation, "WinGuest", lambda: guest)
@@ -2453,7 +2453,7 @@ def test_accept_refuses_an_identity_map_missing_sheet_through_main_before_any_gu
     ("pool", []),
     ("curse", ["--published-disk-one", "--preserve-specimen"]),
 ])
-def test_main_refuses_specimen_issue_without_a_substituted_preservation(
+def test_main_blocks_specimen_issue_without_a_substituted_preservation(
         tmp_path, capsys, monkeypatch, title, extra):
     for name in ("g", "i"):
         (tmp_path / name).write_text("{}")
@@ -2534,19 +2534,19 @@ def _manifest_with(tmp_path, monkeypatch, **changes):
 
 
 @pytest.mark.parametrize("bad", ["false", "true", 0, 1, None])
-def test_a_manifest_turn_about_that_is_not_a_bool_is_refused(tmp_path, monkeypatch, bad):
+def test_a_manifest_turn_about_that_is_not_a_bool_is_blocked(tmp_path, monkeypatch, bad):
     path = _manifest_with(tmp_path, monkeypatch, turn_about=bad)
     with pytest.raises(winuaesession.RouteError, match="not a boolean"):
         foundation._published_manifest(path, "curse")
 
 
-def test_a_manifest_turn_about_that_disagrees_with_its_place_is_refused(tmp_path, monkeypatch):
+def test_a_manifest_turn_about_that_disagrees_with_its_place_is_blocked(tmp_path, monkeypatch):
     path = _manifest_with(tmp_path, monkeypatch, turn_about=False)
     with pytest.raises(winuaesession.RouteError, match="disagrees with its recorded place"):
         foundation._published_manifest(path, "curse")
 
 
-def test_a_manifest_place_that_disagrees_with_its_turn_about_is_refused(tmp_path, monkeypatch):
+def test_a_manifest_place_that_disagrees_with_its_turn_about_is_blocked(tmp_path, monkeypatch):
     path = _manifest_with(tmp_path, monkeypatch, state_a=CURSE_WORLD)
     with pytest.raises(winuaesession.RouteError, match="disagrees with its recorded place"):
         foundation._published_manifest(path, "curse")
@@ -2953,7 +2953,7 @@ def test_the_curse_start_map_has_a_wall_west_of_five_thirteen_and_east_of_seven(
     assert start.is_passable(6, 13, geo.EAST)
 
 
-def test_a_source_in_the_pin_set_is_accepted_and_an_unlisted_one_is_refused(tmp_path, monkeypatch):
+def test_a_source_in_the_pin_set_is_accepted_and_an_unlisted_one_is_blocked(tmp_path, monkeypatch):
     path = _prepared_published(tmp_path, monkeypatch)
     manifest = json.loads(path.read_text())
     pinned = manifest["source_sha256"]
@@ -3062,7 +3062,7 @@ class Three:
                   "written_sha256": {image.name: sha},
                   "save_as": {"to": "amiga", "slot": letter, "source": str(self.source),
                               "written": [str(image)], "destination": str(image),
-                              "refused": False, "losses": [], "dropped": []}}
+                              "stopped": False, "losses": [], "dropped": []}}
         report.update(over)
         path = self.tmp / f"report-{name}.json"
         path.write_text(json.dumps(report))
@@ -3112,7 +3112,7 @@ def test_a_published_disk_3_prepare_for_a_letter_the_disk_lacks_adds_it_and_save
     ("the slot was not converted", lambda three: three.published_unchanged(), "2"),
     ("no source is pinned for the ticket", lambda three: three.published("D"), "3"),
 ])
-def test_a_published_disk_3_prepare_refuses_and_leaves_no_run_folder(
+def test_a_published_disk_3_prepare_blocks_and_leaves_no_run_folder(
         tmp_path, monkeypatch, why, build, issue):
     three = Three(tmp_path, monkeypatch)
     three.published_unchanged = lambda: AmigaDisk(three.registered.to_bytes())
@@ -3122,7 +3122,7 @@ def test_a_published_disk_3_prepare_refuses_and_leaves_no_run_folder(
     assert not (tmp_path / "cache").exists(), why
 
 
-def test_a_published_disk_3_prepare_refuses_a_source_and_a_report_that_disagree(
+def test_a_published_disk_3_prepare_blocks_a_source_and_a_report_that_disagree(
         tmp_path, monkeypatch):
     three = Three(tmp_path, monkeypatch)
     disk = three.published("D")
@@ -3141,7 +3141,7 @@ def test_a_published_disk_3_prepare_refuses_a_source_and_a_report_that_disagree(
     assert not (tmp_path / "cache").exists()
 
 
-def test_a_published_disk_3_prepare_refuses_a_slot_without_its_vault(tmp_path, monkeypatch):
+def test_a_published_disk_3_prepare_blocks_a_slot_without_its_vault(tmp_path, monkeypatch):
     three = Three(tmp_path, monkeypatch)
     disk = AmigaDisk(three.registered.to_bytes())
     disk.write_file("/SAVE/SavGamF.pty", _pty(THREE_START))
@@ -3220,7 +3220,7 @@ def test_vault_letters_read_every_vault_whatever_its_case(tmp_path):
     assert route_darkness.vault_letters(disk) == ["A", "B", "C", "D", "E", "F"]
 
 
-def test_a_published_disk_3_prepare_keeps_camp_steps_and_refuses_bad_ones_before_a_folder_exists(
+def test_a_published_disk_3_prepare_keeps_camp_steps_and_blocks_bad_ones_before_a_folder_exists(
         tmp_path, monkeypatch):
     three = Three(tmp_path, monkeypatch)
     report, _ = three.report(three.published("D"))
@@ -3239,7 +3239,7 @@ def test_a_published_disk_3_prepare_keeps_camp_steps_and_refuses_bad_ones_before
     assert any(("snapshot", "s") in pairs for pairs in marks.values())
 
 
-def test_a_published_disk_3_manifest_is_refused_when_its_disk_or_pin_changed(
+def test_a_published_disk_3_manifest_is_blocked_when_its_disk_or_pin_changed(
         tmp_path, monkeypatch):
     three = Three(tmp_path, monkeypatch)
     report, _ = three.report(three.published("D"))
@@ -3256,7 +3256,7 @@ def test_a_published_disk_3_manifest_is_refused_when_its_disk_or_pin_changed(
     assert foundation.published_darkness_title(_dark_manifest(tmp_path), "darkness") is None
 
 
-def test_run_recon_refuses_a_title_that_is_not_the_published_disk_3_route(tmp_path, monkeypatch):
+def test_run_recon_blocks_a_title_that_is_not_the_published_disk_3_route(tmp_path, monkeypatch):
     three = Three(tmp_path, monkeypatch)
     report, _ = three.report(three.published("D"))
     path = foundation.prepare_published_disk_three("run", report, "2")
@@ -3309,7 +3309,7 @@ def test_a_published_disk_3_reload_loads_the_after_slot_and_keeps_every_other(
     ("same place", {"same_place": True}, "one place"),
     ("an extra file", {"extra": ("/SAVE/VaultG.DAT", b"v")}, "plus slots"),
 ])
-def test_a_published_disk_3_reload_refuses_a_disk_that_is_not_the_published_one_plus_two_saves(
+def test_a_published_disk_3_reload_blocks_a_disk_that_is_not_the_published_one_plus_two_saves(
         tmp_path, monkeypatch, why, kwargs, match):
     three = Three(tmp_path, monkeypatch)
     report, _ = three.report(three.published("D"))
@@ -3320,7 +3320,7 @@ def test_a_published_disk_3_reload_refuses_a_disk_that_is_not_the_published_one_
     assert not (tmp_path / "cache" / "acceptance" / "2" / "again").exists(), why
 
 
-def test_a_published_disk_3_reload_refuses_a_summary_of_another_disk_or_a_failed_run(
+def test_a_published_disk_3_reload_blocks_a_summary_of_another_disk_or_a_failed_run(
         tmp_path, monkeypatch):
     three = Three(tmp_path, monkeypatch)
     report, _ = three.report(three.published("D"))

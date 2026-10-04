@@ -46,7 +46,7 @@ def test_a_c64_conversion_is_the_output_of_save_as(tmp_path, monkeypatch):
     report = convertrun.write_via_save_as(_save_dir() / "SAVGAMA.DAT", "c64",
                                           out, None, disk_dir())
 
-    assert "refused" not in report
+    assert "stopped" not in report
     assert len(prepared) == 1
     (written,) = [p for p in report["written"] if p.endswith(".D64")]
     (data,) = prepared[0].files.values()
@@ -71,7 +71,7 @@ def test_a_non_default_source_slot_converts_that_slots_party(tmp_path):
     report = convertrun.write_via_save_as(folder, "c64", out, None,
                                           curse_dir(), source_slot="B")
 
-    assert "refused" not in report
+    assert "stopped" not in report
     (written,) = [p for p in report["written"] if p.endswith(".D64")]
     landed = [m.name for m in
               Party(Source.detect(pathlib.Path(written))).members]
@@ -80,27 +80,27 @@ def test_a_non_default_source_slot_converts_that_slots_party(tmp_path):
 
 @needs_dos_saves
 @needs_disks
-def test_a_refused_save_as_writes_nothing_and_says_why(tmp_path, monkeypatch):
-    """A conversion Save As refuses is reported under `refused`, and nothing
+def test_a_blocked_save_as_writes_nothing_and_says_why(tmp_path, monkeypatch):
+    """A conversion Save As blocks is reported under `stopped`, and nothing
     lands under the output folder."""
-    def refuse(*args, **kwargs):
+    def block(*args, **kwargs):
         raise saveplan.DroppedFields(["a field the writer cannot hold"])
 
-    monkeypatch.setattr(saveplan, "prepare_save_as", refuse)
+    monkeypatch.setattr(saveplan, "prepare_save_as", block)
     out = tmp_path / "out"
     out.mkdir()
 
     report = convertrun.write_via_save_as(_save_dir() / "SAVGAMA.DAT", "c64",
                                           out, None, disk_dir())
 
-    assert report["refused"][0] == "DroppedFields"
+    assert report["stopped"][0] == "DroppedFields"
     assert "written" not in report
     assert list(out.glob("wish-*")) == []
 
 
 def test_leave_chooses_the_item_an_over_limit_pack_leaves_behind(
         tmp_path, monkeypatch):
-    """A pack needing 17 C64 slots is refused without `leave` and converts
+    """A pack needing 17 C64 slots is blocked without `leave` and converts
     with it, the chosen item recorded as left behind."""
     from support.silverblades import ssb_dir
     from test_leavechoice import NO_LEAVE_MESSAGE, _crowded_folder
@@ -121,15 +121,15 @@ def test_leave_chooses_the_item_an_over_limit_pack_leaves_behind(
     out = tmp_path / "out"
     out.mkdir()
 
-    refused = convertrun.write_via_save_as(folder, "c64", out, None, disks,
+    blocked = convertrun.write_via_save_as(folder, "c64", out, None, disks,
                                            source_slot="A")
-    assert refused["refused"][0] == "JoinedScrollsDoNotFit", refused
-    assert NO_LEAVE_MESSAGE in refused["refused"][1]
-    assert "written" not in refused
+    assert blocked["stopped"][0] == "JoinedScrollsDoNotFit", blocked
+    assert NO_LEAVE_MESSAGE in blocked["stopped"][1]
+    assert "written" not in blocked
 
     report = convertrun.write_via_save_as(folder, "c64", out, None, disks,
                                           source_slot="A", leave={0: {3}})
-    assert "refused" not in report, report
+    assert "stopped" not in report, report
     assert report["written"]
     (left,) = prepared[0].report.left_behind
     assert "left behind" in left
@@ -177,7 +177,7 @@ def fake_run(tmp_path, monkeypatch):
 
     def save_as(source, to, folder, game, disks, **kwargs):
         calls.append(game)
-        return {"written": [], "refused": ["Fake", "nothing written"]}
+        return {"written": [], "stopped": ["Fake", "nothing written"]}
 
     title = {}
 
@@ -396,7 +396,7 @@ def test_a_c64_walk_that_never_moved_fails_the_run(tmp_path, monkeypatch):
     assert convertrun.main(argv) == 0
 
 
-def test_no_encounters_is_refused_for_a_dos_destination(tmp_path):
+def test_no_encounters_is_blocked_for_a_dos_destination(tmp_path):
     with pytest.raises(SystemExit):
         convertrun.main(["--source", str(tmp_path / "S.D64"), "--to", "dos",
                          "--out", str(tmp_path / "out"), "--no-encounters"])

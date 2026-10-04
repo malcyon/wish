@@ -499,7 +499,7 @@ def test_the_screenshot_is_grabbed_inside_capture_with_a_timeout(
     assert of(events, "shot_failed") == []
 
 
-def test_a_refused_screenshot_is_logged(tmp_path, monkeypatch):
+def test_a_rejected_screenshot_is_logged(tmp_path, monkeypatch):
     monkeypatch.setattr(curseflee, "read_screen", lambda m: FakeScreen([]))
 
     def flee(sess):

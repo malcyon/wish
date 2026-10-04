@@ -315,7 +315,7 @@ dispatcher at `0x2DD5C` calls through (`ds:0x8A8E`, 118 entries), then, for a
 table effect, through `0x2D691`, which reads the spell's 16-byte row at
 `ds:0x449D + 16 * spell`: level at `+1`, save action at `+8`, save column at
 `+9`, effect id at `+10`. `0x2D691` rolls the save when the action byte is set,
-and the apply routine `0x37EB0` refuses the effect when the target saved and
+and the apply routine `0x37EB0` blocks the effect when the target saved and
 the action is 1. Only two rows name 29 or 68, and none of the 22 calls to the
 apply routine passes either as a constant:
 

@@ -59,7 +59,7 @@ def load_route_map(disks, game) -> WorldMap | None:
     """The title's places, roads and marker cells, or None.
 
     None for a title with no world map, a missing folder, disks that do not
-    carry the scripts and the driver, and anything the reader refuses; the
+    carry the scripts and the driver, and anything the reader blocks; the
     reason goes to the debug log. Every place must have a cell, since a place
     with nowhere to stand cannot be drawn.
     """

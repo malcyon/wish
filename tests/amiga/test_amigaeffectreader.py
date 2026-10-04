@@ -130,7 +130,7 @@ def test_parse_expect_reads_the_four_fields():
     assert parse_expect("PHILIPPE:1:47:5") == ("PHILIPPE", 1, 47, 5)
 
 
-def test_parse_expect_refuses_a_malformed_string():
+def test_parse_expect_blocks_a_malformed_string():
     from tools.amiga.winuaesession import RouteError
     with pytest.raises(RouteError):
         parse_expect("PHILIPPE-1-47-5")
@@ -193,9 +193,9 @@ def test_acceptance_expect_verdict_reads_the_fetched_curse_disk(tmp_path):
     assert accepted is True
     assert accepts == "expect PHILIPPE id 1 at 47 minutes: accepts"
 
-    refused, refutes = acceptance.expect_verdict(
+    blocked, refutes = acceptance.expect_verdict(
         title, run / "prepare.json", "accept1", ("PHILIPPE", 1, 40, 5))
-    assert refused is False
+    assert blocked is False
     assert refutes.startswith("expect PHILIPPE id 1 at 40 minutes: refutes")
 
 

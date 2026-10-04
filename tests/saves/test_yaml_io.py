@@ -230,13 +230,13 @@ def test_editing_by_name_works(tmp_path):
 # --- the name is not editable through the YAML either (#145) ---------------
 #
 # The GUI's name field is disabled outright; the CLI gets the same answer by
-# refusing an import whose name does not match the record it targets. The
+# blocking an import whose name does not match the record it targets. The
 # name is still exported -- it is what identifies the character in the file.
 
 
 @live
-def test_a_changed_name_is_refused_and_nothing_written(tmp_path):
-    """The whole import refuses, not just the name -- silently dropping the
+def test_a_changed_name_is_blocked_and_nothing_written(tmp_path):
+    """The whole import blocks, not just the name -- silently dropping the
     user's other edits would be the same bug with smaller symptoms."""
     data = export_save(SAVE, GAME)
     k = next(e for e in data["party"] if e["name"] == "LADY KATHERINE")
@@ -252,7 +252,7 @@ def test_a_changed_name_is_refused_and_nothing_written(tmp_path):
 @live
 def test_an_unchanged_name_still_imports_every_other_field(tmp_path):
     """The guard must not cost an ordinary edit -- only a changed name is
-    refused, and it must not stop the rest of the entry applying."""
+    blocked, and it must not stop the rest of the entry applying."""
     data = export_save(SAVE, GAME)
     k = next(e for e in data["party"] if e["name"] == "LADY KATHERINE")
     k["gold"] = 9999
@@ -392,7 +392,7 @@ def test_combat_edits_reach_savedgame1_and_touch_nothing_else(tmp_path):
 
 
 @live
-def test_out_of_range_combat_value_is_refused(tmp_path):
+def test_out_of_range_combat_value_is_blocked(tmp_path):
     data = export_save(SAVE, GAME)
     next(e for e in data["party"] if e["name"] == "MALCYON")["combat"]["armour_class"] = 999
     with pytest.raises(ValueError, match="does not fit"):
@@ -443,7 +443,7 @@ def test_editing_classes_carries_char_class_with_it(tmp_path):
 
 
 @live
-def test_a_class_combination_the_game_cannot_encode_is_refused(tmp_path):
+def test_a_class_combination_the_game_cannot_encode_is_blocked(tmp_path):
     data = export_save(SAVE, GAME)
     next(e for e in data["party"] if e["name"] == "SILAS")["classes"] = [
         "magic-user", "cleric", "thief"]
@@ -501,7 +501,7 @@ def test_removing_an_entry_removes_the_item(tmp_path):
 
 
 @live
-def test_too_many_items_is_refused(tmp_path):
+def test_too_many_items_is_blocked(tmp_path):
     data = export_save(SAVE, GAME)
     kath = next(e for e in data["party"] if e["name"] == "LADY KATHERINE")
     kath["items"] = kath["items"] * 6            # 18, over the 16 the game holds
@@ -510,7 +510,7 @@ def test_too_many_items_is_refused(tmp_path):
 
 
 @live
-def test_an_ambiguous_item_word_is_refused(tmp_path):
+def test_an_ambiguous_item_word_is_blocked(tmp_path):
     """RING appears twice in the name table and the two are not the same
     thing, so guessing would build the wrong item."""
     data = export_save(SAVE, GAME)
@@ -713,7 +713,7 @@ def test_an_item_can_be_copied_from_a_game_disk_template(tmp_path):
 
 
 @live
-def test_an_unknown_template_is_refused(tmp_path):
+def test_an_unknown_template_is_blocked(tmp_path):
     data = export_save(SAVE, GAME)
     next(e for e in data["party"] if e["name"] == "LADY KATHERINE")["items"] = [
         {"template": "SWORD OF PLOT ADVANCEMENT"}]

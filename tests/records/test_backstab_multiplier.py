@@ -261,7 +261,7 @@ def test_a_title_object_stands_for_its_key() -> None:
     ("champions-of-krynn", "Amiga"),
     ("pool-of-radiance", "Palm"),
 ])
-def test_a_pair_with_no_measured_rule_is_refused(key, port) -> None:
+def test_a_pair_with_no_measured_rule_is_blocked(key, port) -> None:
     char = NeutralCharacter(port, game=key)
     char.set("levels", {"thief": 5}, "test")
     with pytest.raises(ValueError, match="no backstab rule"):

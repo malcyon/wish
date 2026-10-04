@@ -215,7 +215,7 @@ def test_a_target_that_cannot_write_disables_all_but_save_spells(world, store):
     assert acts(store)["heal"].legality(Forward(Target()))
 
 
-def test_an_unreadable_mode_refuses(world, store):
+def test_an_unreadable_mode_blocks(world, store):
     world.mode = None
     assert acts(store)["heal"].legality(world.target).reason == (
         "the machine is not readable right now")
@@ -268,7 +268,7 @@ def test_heal_writes_a_wide_field_big_endian_and_never_past_the_ceiling(world, s
     assert out.notes == ()
 
 
-def test_a_partial_mask_on_an_overwritten_field_is_refused(world, store):
+def test_a_partial_mask_on_an_overwritten_field_is_blocked(world, store):
     for field, name in (("hp", "heal"), ("memorised", "restore-spells")):
         world.row = make_row(**{field: Spot(offset=0x10, length=1, mask=0x0F)})
         assert acts(store)[name].legality(world.target).reason == CURSE_TEXT

@@ -101,7 +101,7 @@ def dos_party(folder: pathlib.Path) -> list:
 
 
 def party_from(source: pathlib.Path) -> list:
-    """Whichever of the two the `--source` is, refused rather than guessed."""
+    """Whichever of the two the `--source` is, blocked rather than guessed."""
     if source.is_dir():
         party = dos_party(source)
         if not party:

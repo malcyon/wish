@@ -43,7 +43,7 @@ def unsupported(title: str) -> str:
 REQUIRES: dict[str, frozenset[str]] = {"heal": frozenset({"hp_max"})}
 
 #: Titles whose fight value comes from the code alone. The fight value is what
-#: refuses every action that is not combat-legal, so on these titles each
+#: blocks every action that is not combat-legal, so on these titles each
 #: action also needs `combat_value` in the row's `measured`.
 FIGHT_VALUE_FROM_CODE = frozenset({"curse-of-the-azure-bonds"})
 
@@ -166,7 +166,7 @@ class _AmigaAction:
         return need <= set(getattr(row, "measured", ()))
 
     #: The row field this action overwrites whole; a partial mask there is
-    #: refused. Empty for the actions that clear bits.
+    #: blocked. Empty for the actions that clear bits.
     WHOLE_BYTES = ""
 
     @property

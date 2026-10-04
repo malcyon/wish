@@ -413,7 +413,7 @@ def test_a_stack_weighs_its_low_weight_byte_times_the_quantity():
 
 
 @pytest.mark.parametrize("index", [31, 255])
-def test_a_strength_index_past_the_allowance_table_is_refused(index):
+def test_a_strength_index_past_the_allowance_table_is_blocked(index):
     rec = a_walker()
     rec.set("strength_index", index)
     with pytest.raises(ValueError, match=str(index)):

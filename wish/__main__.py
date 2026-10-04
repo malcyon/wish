@@ -69,7 +69,7 @@ def game_of(save: str | None):
     disks in one directory, the open save is the only thing that says which
     game's maps to load and whose area names to print. Never fatal -- an
     unreadable disk is the editor's error to report, with its own message,
-    not a reason to refuse to open the window.
+    not a reason to fail to open the window.
     """
     if not save:
         return None

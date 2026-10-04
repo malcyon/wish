@@ -17,7 +17,7 @@ into the character record before the boot --
 |---|---|
 | `class_levels[<his class>]` and `level` | so one training crosses the threshold instead of five |
 | `experience` | so the trainer will advance him at all |
-| `platinum` | Curse's trainer refuses anyone under 1000 gp before it looks at race or level (`GAME.OVR:0x24D2D`-`0x24D51`, `docs/209-the-regained-dual-class-on-dos.md`) |
+| `platinum` | Curse's trainer rejects anyone under 1000 gp before it looks at race or level (`GAME.OVR:0x24D2D`-`0x24D51`, `docs/209-the-regained-dual-class-on-dos.md`) |
 | `SAVGAM<slot>.DAT+0xD51` | the hall's class filter, so `TRAIN CHARACTER` works wherever the party stands (`docs/194-the-dos-training-ladder.md`) |
 
 -- and everything read afterwards is the engine's: `class_levels[old]`,
@@ -95,7 +95,7 @@ def stage_record(path: pathlib.Path, set_level: int | None,
     `set_level` goes into the slot of the class the record already holds --
     the one non-zero entry of `class_levels` -- and into `level` beside it, so
     the two agree the way every engine-written record does.  A record with no
-    live class, or more than one, is refused rather than guessed at: this run
+    live class, or more than one, is rejected rather than guessed at: this run
     is about a dual-classed character, who has exactly one.
     """
     c = dos_codec.read_character(path)
@@ -129,7 +129,7 @@ def save_slot_key(letter: str) -> str:
 
     Curse's slot list only offers A through J (`shots/06-save-01-s.png`,
     `docs/209-the-regained-dual-class-on-dos.md`); a letter outside that
-    range would press a key the prompt does not show, so it is refused
+    range would press a key the prompt does not show, so it is rejected
     rather than sent to the emulator.
     """
     key = letter.strip().lower()

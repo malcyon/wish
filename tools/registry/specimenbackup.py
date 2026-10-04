@@ -30,9 +30,9 @@ that directory happens to carry, which is a fact about how much of the tree
 could be reconstructed today -- not a fact about where the tree should live.
 `audit` searches only what `--in` and `--tar` name.
 
-**`archive` refuses a destination inside this repository.**
+**`archive` rejects a destination inside this repository.**
 The game's data must never be committed, and an archive whose whole purpose is
-to outlive the working tree has no business inside it.  It also refuses to run
+to outlive the working tree has no business inside it.  It also declines to run
 at all when `specimens.check_specimens` reports a problem, because an archive
 of a tree that no longer matches its manifests preserves the damage.
 
@@ -186,7 +186,7 @@ def audit(root: pathlib.Path | None = None, *,
 def archive(dest: pathlib.Path, root: pathlib.Path | None = None) -> dict:
     """Write the whole tree to `dest`, and report what went in.
 
-    Refuses a destination that exists, one inside this repository, and a tree
+    Rejects a destination that exists, one inside this repository, and a tree
     that does not match its own manifests.
     """
     root = root or specimens.tree_root()
@@ -229,7 +229,7 @@ def archive(dest: pathlib.Path, root: pathlib.Path | None = None) -> dict:
     mode = "w:gz" if dest.suffix in (".gz", ".tgz") else "w"
     # Written beside `dest` and renamed on success, so a run that dies partway
     # leaves nothing at the name it was asked for.  A truncated tar that reads
-    # as a real one is worse than no archive: `archive` refuses to overwrite,
+    # as a real one is worse than no archive: `archive` declines to overwrite,
     # so the wreck would stand in the way of every retry with nothing saying
     # it was a wreck.
     part = dest.with_name(dest.name + ".part")

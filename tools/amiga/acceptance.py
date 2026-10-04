@@ -5,11 +5,11 @@
 puts the party on square X,Y facing F (0 N, 1 E, 2 S, 3 W) in the loaded slot
 of working DF0 and nothing else: only the three square bytes change, the area
 and the wall byte are left for the engine to recompute on the first step. It
-is refused, before any run folder exists, for a value out of range (x and y 0 to
+is blocked, before any run folder exists, for a value out of range (x and y 0 to
 15) or a slot saved outdoors. The manifest records the change as `staged_place`
 and expects that square on load; the registered published image and the source
 pins still describe the unstaged Save As output, and `measure` and `accept`
-re-derive the staged DF0 from it, refusing any other difference.
+re-derive the staged DF0 from it, blocking any other difference.
 """
 
 from __future__ import annotations
@@ -179,6 +179,15 @@ PUBLISHED_SOURCES_BY_ISSUE = {
 }
 
 
+# Reports stored before the key was renamed still carry the old spelling; this reads that stored evidence.
+_STORED_STOPPED_KEY = "refused"
+
+
+def _stopped(outcome: Mapping[str, Any]) -> Any:
+    """The Save As stop recorded in `outcome`, under its current or its stored key."""
+    return outcome.get("stopped") or outcome.get(_STORED_STOPPED_KEY)
+
+
 def _source_pins(issue: str, name: str, port: str) -> frozenset:
     """The allowed source hashes for a title and port; a bare string counts as a set of one."""
     pins = PUBLISHED_SOURCES_BY_ISSUE[issue].get((name, port), frozenset())
@@ -199,7 +208,7 @@ PUBLISHED_ISSUE_TEXT = {
             "with no line anywhere, because the C64 reader reads only the paladin's rows out of "
             "the effect arrays)"),
     "667": ("#667 (A DOS party under Prayer, the strength and charisma spells, Mirror Image or "
-            "an effect with no C64 spell row is still refused when saved as a C64 save, because "
+            "an effect with no C64 spell row is still blocked when saved as a C64 save, because "
             "only the ordinary caster-level spells convert)"),
     "22": ("WISH-22 (Validate Character Editor Open, Save and Save As across C64, DOS and "
            "Amiga)"),
@@ -352,7 +361,7 @@ def snapshot_pipe() -> Any:
 
 
 def check_marks(marks: Mapping[int, tuple[tuple[str, str], ...]], steps: Any) -> None:
-    """Refuse machine steps that cannot run: a restore before its snapshot, one after a save, one off the route."""
+    """Block machine steps that cannot run: a restore before its snapshot, one after a save, one off the route."""
     taken: dict[str, bool] = {}
     if any(not 0 <= index <= len(steps) for index in marks):
         raise RouteError("a snapshot or restore step falls outside the route")
@@ -383,7 +392,7 @@ def _step_wait(min_waits: dict[str, float], state: str, kind: str) -> float:
 
 def _check_draws_fit(draws: int, steps: Any, min_waits: dict[str, float],
                      deadline_seconds: float) -> None:
-    """Refuse a run whose draws cannot fit the route time, by the steps' minimum waits.
+    """Block a run whose draws cannot fit the route time, by the steps' minimum waits.
 
     The route itself is estimated by the sum of its minimum waits, and each further draw by
     its three steps' waits plus `DRAW_ANSWER_SECONDS`; the route time is the deadline less
@@ -1074,7 +1083,7 @@ _FULL_TITLES = {"pool": "Pool of Radiance", "curse": "Curse of the Azure Bonds",
 #: `[WISH-N (title)](url)` that `planeread.py --cite` prints.
 SPECIMEN_ISSUE = re.compile(
     r"(?:#(\d+)|WISH-(\d+)) \(.+\)|\[WISH-(\d+) \(.+\)\]\(\S+\)")
-#: How `--specimen-issue` must be written, for the errors that refuse it.
+#: How `--specimen-issue` must be written, for the errors that block it.
 SPECIMEN_ISSUE_FORMS = '"#N (title)" or "WISH-N (title)", or planeread.py --cite\'s link'
 
 
@@ -1295,7 +1304,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     route's own, then each further one after the private helper's `stage_live` has run on
     `target` (an `AmigaTarget`), once `lane_check` has confirmed the lane claim. A draw that
     reaches EXIT GAME with no question fails the run; `result["rulebook"]` lists each. The
-    run is refused before the claim when the deadline cannot cover the draws.
+    run is blocked before the claim when the deadline cannot cover the draws.
     `rulebook_records` gives one record number per further draw: the private `drawseed` helper
     stages each before its camp save, and after the answer its `drawn` is logged beside the
     reader's kept-capture index; a draw that is not the staged record, no single kept capture,
@@ -1305,10 +1314,10 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     NAME)` saves the whole machine through the WinUAE pipe and `("restore", NAME)` puts it back,
     so a bad encounter costs one leg and not the run. An index equal to the route's length fires
     after the last step. A restore with no snapshot before it, or with a game save between the
-    two, is refused before the claim, since the save stays on the disk image while memory goes
+    two, is blocked before the claim, since the save stays on the disk image while memory goes
     back. A restore puts the run's own record of camp sheets, effects lists and JOIN results back
     as the snapshot found it, and waits for the screen the snapshot was taken on before the next
-    key goes out; a snapshot is therefore refused at index 0, where no screen has been reached.
+    key goes out; a snapshot is therefore blocked at index 0, where no screen has been reached.
     Names match without regard to case, as the guest's files do. A `--camp` list's `snapshot
     NAME` and `restore NAME` steps become marks.
 
@@ -2456,10 +2465,10 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
             ) -> pathlib.Path:
     """Copy the title's registered images and specimen into a run folder, write `prepare.json`, and return it.
 
-    Refuses when any pinned hash differs, the loaded slot does not decode, or a
+    Blocks when any pinned hash differs, the loaded slot does not decode, or a
     save letter the run writes already exists. Nothing registered is written.
     `darkness-reload` prepares from a game-written disk 3, so it requires `specimen`,
-    `specimen_sha256` and `accept_summary`, and the other titles refuse the last two.
+    `specimen_sha256` and `accept_summary`, and the other titles block the last two.
     `substitute`, only on a title in `_SUBSTITUTABLE`, replaces the route's
     loaded slot with `substitute_letter`'s slot from that disk; every other
     file, and the specimen's own pin, are unaffected.
@@ -2724,7 +2733,7 @@ def _published_manifest(path: pathlib.Path, name: str) -> tuple[dict, AmigaTitle
             } or
             report.get("save_as", {}).get("slot") != letter or
             report.get("save_as", {}).get("to") != "amiga" or
-            report.get("save_as", {}).get("refused") or
+            _stopped(report.get("save_as", {})) or
             report.get("save_as", {}).get("losses") or
             report.get("save_as", {}).get("dropped") or
             report.get("written_sha256") != {"POOLSAVE.ADF": manifest["registered"]["published"]["sha256"]}):
@@ -2769,7 +2778,7 @@ def prepare_published(name: str, run_id: str, report_path: pathlib.Path,
     `place` is `(x, y, facing)`: working DF0 holds the published image with only
     the loaded slot's square changed, and the manifest records the change as
     `staged_place` and expects that square on load. The registered published
-    image and the source pins are untouched. Refused before any run folder is
+    image and the source pins are untouched. Blocked before any run folder is
     made when the values are out of range or the slot was saved outdoors.
     """
     if not HOLDER.fullmatch(run_id):
@@ -2782,7 +2791,7 @@ def prepare_published(name: str, run_id: str, report_path: pathlib.Path,
     report_bytes = report_path.read_bytes()
     report = json.loads(report_bytes)
     outcome = report.get("save_as", {})
-    if (outcome.get("refused") or outcome.get("losses") or outcome.get("dropped") or
+    if (_stopped(outcome) or outcome.get("losses") or outcome.get("dropped") or
             report.get("written") != outcome.get("written") or
             len(report.get("written", [])) != 1 or
             outcome.get("to") != "amiga"):
@@ -2969,7 +2978,7 @@ def published_darkness_title(manifest_path: pathlib.Path, name: str) -> AmigaTit
 def _remove_run_folder(run: pathlib.Path) -> None:
     """Delete a run folder whose copies were made read-only; a failure to delete is raised.
 
-    Windows refuses to unlink a read-only file, so the bit is cleared and the unlink retried.
+    Windows will not unlink a read-only file, so the bit is cleared and the unlink retried.
     """
     def clear_and_retry(function, path, error):
         os.chmod(path, stat.S_IWRITE)
@@ -3000,7 +3009,7 @@ def prepare_published_disk_three(run_id: str, report_path: pathlib.Path, issue: 
     report_bytes = report_path.read_bytes()
     report = json.loads(report_bytes)
     outcome = report.get("save_as", {})
-    if (outcome.get("refused") or outcome.get("losses") or outcome.get("dropped") or
+    if (_stopped(outcome) or outcome.get("losses") or outcome.get("dropped") or
             report.get("written") != outcome.get("written") or
             len(report.get("written", [])) != 1 or outcome.get("to") != "amiga"):
         raise RouteError("Save As did not publish one lossless Amiga image")
@@ -3095,7 +3104,7 @@ def prepare_published_disk_three_reload(
         accept_summary: pathlib.Path, issue: str | None = None) -> pathlib.Path:
     """Prepare a reload run on the disk 3 a successful published disk 3 accept run fetched.
 
-    `published_manifest` is that run's `prepare.json`. Refuses a file that does not hash to
+    `published_manifest` is that run's `prepare.json`. Blocks a file that does not hash to
     `fetched_sha256`, a summary that is not a successful accept run whose fetched disk 3 has that
     hash, a disk that is not the published image plus exactly the control and after saves, saves
     that do not decode to the loaded party, and two saves at one place. The reload loads the after

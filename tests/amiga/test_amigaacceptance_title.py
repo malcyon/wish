@@ -544,12 +544,12 @@ def test_measure_boot_uses_the_titles_span(tmp_path, clock):
     {"turn": "left"}, {"boot_span": 0},
     {"interstitials": (("x", ("insert", 1, "nowhere", "SPACE"), None, 1),)},
 ])
-def test_an_inconsistent_description_is_refused(bad):
+def test_an_inconsistent_description_is_blocked(bad):
     with pytest.raises(winuaesession.RouteError, match="title description"):
         make_title(**bad)
 
 
-def test_a_description_that_does_not_fit_the_manifest_is_refused_before_a_lane_is_claimed(
+def test_a_description_that_does_not_fit_the_manifest_is_blocked_before_a_lane_is_claimed(
         tmp_path, clock):
     manifest = manifest_for(tmp_path)
     data = json.loads(manifest.read_text())
@@ -566,7 +566,7 @@ def test_a_description_that_does_not_fit_the_manifest_is_refused_before_a_lane_i
     ({"extra_slot": ("D", b"already there")}, "slot D already exists"),
     ({"loaded": "Q"}, "no slot Q"),
 ])
-def test_a_manifest_that_endangers_a_save_letter_is_refused_before_a_lane_is_claimed(
+def test_a_manifest_that_endangers_a_save_letter_is_blocked_before_a_lane_is_claimed(
         tmp_path, clock, kwargs, match):
     guest = TitleGuest(clock)
     with pytest.raises(winuaesession.RouteError, match=match):
@@ -582,7 +582,7 @@ def test_a_title_run_is_accept_or_measure(tmp_path, clock, modes):
     assert guest.calls == []
 
 
-def test_a_missing_title_guard_is_refused_before_a_lane_is_claimed(tmp_path, clock):
+def test_a_missing_title_guard_is_blocked_before_a_lane_is_claimed(tmp_path, clock):
     guest = TitleGuest(clock)
     with pytest.raises(winuaesession.RouteError, match="loaded_menu"):
         _run(tmp_path, clock, guest=guest, guard=MapGuard(states=("title", "party_menu",
@@ -654,12 +654,12 @@ STRICT = frozenset({"party_menu", "load_picker", "loaded_menu", "disk_wait", "ca
 
 
 @pytest.mark.parametrize("missing", ["loaded_menu", "disk_wait", "camp_picker"])
-def test_a_write_or_insert_after_a_state_that_is_not_strict_is_refused(missing):
+def test_a_write_or_insert_after_a_state_that_is_not_strict_is_blocked(missing):
     with pytest.raises(winuaesession.RouteError, match="not a strict state"):
         make_title(strict=STRICT - {missing})
 
 
-def test_a_title_with_no_strict_states_is_refused():
+def test_a_title_with_no_strict_states_is_blocked():
     with pytest.raises(winuaesession.RouteError, match="not a strict state"):
         make_title(strict=frozenset())
 
@@ -787,7 +787,7 @@ def test_a_measure_run_fails_when_a_disk_changed(tmp_path, clock):
 @pytest.mark.parametrize("kwargs", [
     {"route": (("P", "party_menu"),)}, {"write_keys": ("C",)},
 ])
-def test_a_title_run_refuses_a_route_or_write_keys_of_its_own(tmp_path, clock, kwargs):
+def test_a_title_run_blocks_a_route_or_write_keys_of_its_own(tmp_path, clock, kwargs):
     guest = TitleGuest(clock)
     with pytest.raises(winuaesession.RouteError, match="brings its own route and write keys"):
         _run(tmp_path, clock, guest=guest, **kwargs)
@@ -823,7 +823,7 @@ def test_the_titles_minimum_waits_are_used_and_the_callers_win(tmp_path, clock):
     assert 9.0 in sleeps and 7.0 not in sleeps
 
 
-def test_an_issue_that_is_not_all_digits_is_refused():
+def test_an_issue_that_is_not_all_digits_is_blocked():
     for issue in ("", "67x", "../679", "6 9"):
         with pytest.raises(winuaesession.RouteError, match="is not a number"):
             make_title(issue=issue)
@@ -895,7 +895,7 @@ def test_a_terminated_title_run_still_stops_fetches_and_releases(tmp_path, clock
 SIMPLE = (("E", "camp"),)
 
 
-def test_a_kept_letter_key_step_without_a_plain_keys_entry_is_refused():
+def test_a_kept_letter_key_step_without_a_plain_keys_entry_is_blocked():
     with pytest.raises(winuaesession.RouteError, match="presses a save or kept slot letter"):
         make_title(kept_letters=("B", "E"))
 
@@ -911,27 +911,27 @@ def test_a_plain_keys_entry_for_another_state_does_not_let_the_step_through():
 
 
 @pytest.mark.parametrize("letter,state", [("C", "loaded_menu"), ("D", "camp")])
-def test_the_control_and_after_letters_are_refused_even_when_listed(letter, state):
+def test_the_control_and_after_letters_are_blocked_even_when_listed(letter, state):
     with pytest.raises(winuaesession.RouteError, match="not a kept letter"):
         make_title(plain_keys=((letter, state),))
-    # A step pressing one of them as a simple key stays refused with the entry present.
+    # A step pressing one of them as a simple key stays blocked with the entry present.
     route = _swap(ROUTE, 7, (letter, "camp", "key"))
     with pytest.raises(winuaesession.RouteError, match="presses a save or kept slot letter"):
         make_title(route=route, measure_route=route, kept_letters=("B", "E"),
                    plain_keys=SIMPLE)
 
 
-def test_a_plain_keys_entry_whose_key_is_not_a_kept_letter_is_refused():
+def test_a_plain_keys_entry_whose_key_is_not_a_kept_letter_is_blocked():
     with pytest.raises(winuaesession.RouteError, match="not a kept letter"):
         make_title(plain_keys=(("S", "camp_picker"),))
 
 
-def test_a_plain_keys_entry_no_step_uses_is_refused():
+def test_a_plain_keys_entry_no_step_uses_is_blocked():
     with pytest.raises(winuaesession.RouteError, match="pressed by no step in that state"):
         make_title(kept_letters=("B", "E"), plain_keys=(*SIMPLE, ("E", "world")))
 
 
-def test_a_repeated_plain_keys_entry_is_refused():
+def test_a_repeated_plain_keys_entry_is_blocked():
     with pytest.raises(winuaesession.RouteError, match="repeat an entry"):
         make_title(kept_letters=("B", "E"), plain_keys=(*SIMPLE, *SIMPLE))
 
@@ -960,19 +960,19 @@ def _with_kept_e(route, **over):
                       strict=frozenset({*make_title().strict, "camp"}), **over)
 
 
-def test_a_kept_letter_pressed_on_a_save_picker_is_refused_even_as_a_plain_key():
+def test_a_kept_letter_pressed_on_a_save_picker_is_blocked_even_as_a_plain_key():
     route = ROUTE[:-1] + (("B", "camp", "key"),) + ROUTE[-1:]  # B right after camp_picker
     with pytest.raises(winuaesession.RouteError, match="kept letter B as a simple key on 'camp_picker'"):
         _with_kept_e(route, plain_keys=(("E", "camp"), ("B", "camp")))
 
 
-def test_a_plain_key_on_a_picker_is_refused_even_when_no_write_step_presses_there():
+def test_a_plain_key_on_a_picker_is_blocked_even_when_no_write_step_presses_there():
     route = _swap(ROUTE, 2, ("E", "loaded_menu", "key"))  # pressed on load_picker
     with pytest.raises(winuaesession.RouteError, match="on 'load_picker', where a picker screen"):
         _with_kept_e(route, plain_keys=(("E", "loaded_menu"), ("E", "camp")))
 
 
-def test_a_plain_key_on_the_screen_a_write_step_presses_on_is_refused():
+def test_a_plain_key_on_the_screen_a_write_step_presses_on_is_blocked():
     # C is pressed on `world` once the insert's screen is followed by a world step.
     route = _swap(ROUTE, INSERT_AT, ((1, "disk3", "SPACE"), "world", "insert"))
     with pytest.raises(winuaesession.RouteError, match="on 'world', where a route step presses a save"):
@@ -987,7 +987,7 @@ def test_the_same_plain_key_on_an_ordinary_screen_is_accepted_in_either_case():
 
 
 @pytest.mark.parametrize("entry", [("E",), ("E", 1), "E camp", ["E", "camp"]])
-def test_a_plain_keys_entry_that_is_not_a_pair_of_strings_is_refused(entry):
+def test_a_plain_keys_entry_that_is_not_a_pair_of_strings_is_blocked(entry):
     with pytest.raises(winuaesession.RouteError, match=r"must be \(key, state\) pairs"):
         make_title(kept_letters=("B", "E"), plain_keys=(entry,))
 
@@ -1059,13 +1059,13 @@ def test_a_df0_insert_after_a_strict_disk_prompt_is_accepted():
     _df0_title()
 
 
-def test_a_df0_insert_is_refused_as_the_first_step():
+def test_a_df0_insert_is_blocked_as_the_first_step():
     route = (((0, "spare", "SPACE"), "loaded_menu", "insert"), *DF0_ROUTE[3:])
     with pytest.raises(winuaesession.RouteError, match="DF0 insert.*first"):
         _df0_title(route)
 
 
-def test_a_df0_insert_after_a_state_that_is_not_a_disk_prompt_is_refused():
+def test_a_df0_insert_after_a_state_that_is_not_a_disk_prompt_is_blocked():
     with pytest.raises(winuaesession.RouteError, match="DF0 insert.*disk prompt"):
         _df0_title(disk_prompts=frozenset())
     with pytest.raises(winuaesession.RouteError, match="DF0 insert.*disk prompt"):
@@ -1077,7 +1077,7 @@ def test_a_df0_disk_prompt_must_be_strict():
         _df0_title(strict=DF0_STRICT - {"disk_ask"})
 
 
-def test_a_df0_insert_of_the_disk_already_in_df0_is_refused():
+def test_a_df0_insert_of_the_disk_already_in_df0_is_blocked():
     route = _swap(DF0_ROUTE, 2, ((0, "boot", "SPACE"), "loaded_menu", "insert"))
     with pytest.raises(winuaesession.RouteError, match="already in DF0"):
         _df0_title(route)
@@ -1090,7 +1090,7 @@ def test_a_df0_prompt_does_not_widen_the_other_drives(drive_number):
         _df0_title(route)
 
 
-def test_an_interstitial_insert_into_df0_is_refused_even_with_disk_prompts():
+def test_an_interstitial_insert_into_df0_is_blocked_even_with_disk_prompts():
     rows = (("disk_request", ("insert", 0, "spare", "SPACE"), None, 1),)
     with pytest.raises(winuaesession.RouteError, match="DF1 may change, or DF0 from a spare"):
         _df0_title(interstitials=rows)
@@ -1100,13 +1100,13 @@ def test_an_interstitial_insert_into_df0_is_accepted_on_a_strict_disk_prompt():
     _df0_title(interstitials=(("disk_ask", ("insert", 0, "spare", "SPACE"), None, 1),))
 
 
-def test_an_interstitial_insert_into_df0_of_the_disk_already_there_is_refused():
+def test_an_interstitial_insert_into_df0_of_the_disk_already_there_is_blocked():
     rows = (("disk_ask", ("insert", 0, "boot", "SPACE"), None, 1),)
     with pytest.raises(winuaesession.RouteError, match="DF1 may change, or DF0 from a spare"):
         _df0_title(interstitials=rows)
 
 
-def test_an_interstitial_insert_into_df0_is_refused_on_a_disk_prompt_that_is_not_strict():
+def test_an_interstitial_insert_into_df0_is_blocked_on_a_disk_prompt_that_is_not_strict():
     rows = (("disk_ask", ("insert", 0, "spare", "SPACE"), None, 1),)
     route = (("P", "party_menu", "key"), ("S", "camp_picker", "key"))
     with pytest.raises(winuaesession.RouteError, match="DF1 may change, or DF0 from a spare"):
@@ -1114,27 +1114,27 @@ def test_an_interstitial_insert_into_df0_is_refused_on_a_disk_prompt_that_is_not
                    interstitials=rows)
 
 
-def test_an_interstitial_insert_into_df0_of_the_save_disk_is_refused():
+def test_an_interstitial_insert_into_df0_of_the_save_disk_is_blocked():
     rows = (("disk_ask", ("insert", 0, "disk3", "SPACE"), None, 1),)
     with pytest.raises(winuaesession.RouteError, match="spare"):
         _df0_title(interstitials=rows)
 
 
-def test_a_df0_insert_step_of_a_disk_that_is_not_a_spare_is_refused():
+def test_a_df0_insert_step_of_a_disk_that_is_not_a_spare_is_blocked():
     route = _swap(DF0_ROUTE, 2, ((0, "disk3", "SPACE"), "loaded_menu", "insert"))
     with pytest.raises(winuaesession.RouteError, match="not a spare"):
         _df0_title(route)
 
 
 def test_a_df0_insert_run_stops_before_its_key_when_the_insert_fails(tmp_path, clock):
-    class Refused(TitleGuest):
+    class Blocked(TitleGuest):
         def insert(self, holder, drive_number, remote, timeout=None, sha256=None):
             self.calls.append(("insert", drive_number, remote))
             exc = RuntimeError("drive 0 did not read it back")
-            exc.receipt = {"status": "refused"}
+            exc.receipt = {"status": "blocked"}
             raise exc
 
-    guest = Refused(clock)
+    guest = Blocked(clock)
     guard = MapGuard(states=("title", *STATES, "disk_ask"))
     _, result = _run(tmp_path, clock, guest=guest, guard=guard, title=_df0_title())
     assert result["success"] is False
@@ -1142,10 +1142,10 @@ def test_a_df0_insert_run_stops_before_its_key_when_the_insert_fails(tmp_path, c
     assert keys == ["P", "A"]
     event = next(e for e in result["events"] if "insert" in e)
     assert event["drive"] == 0 and event["insert"] == "spare"
-    assert "did not read it back" in event["error"] and event["receipt"] == {"status": "refused"}
+    assert "did not read it back" in event["error"] and event["receipt"] == {"status": "blocked"}
 
 
-def test_a_df0_prompt_outside_strict_is_refused_on_the_real_darkness_description():
+def test_a_df0_prompt_outside_strict_is_blocked_on_the_real_darkness_description():
     import dataclasses
 
     from tools.amiga import route_darkness
@@ -1173,7 +1173,7 @@ def test_measure_still_starts_for_a_df1_insert_after_an_unguarded_state(tmp_path
     assert guest.starts and guest.inserted[0][0] == 1
 
 
-def test_measure_refuses_a_measure_only_df0_insert_after_an_unguarded_state(tmp_path, clock):
+def test_measure_blocks_a_measure_only_df0_insert_after_an_unguarded_state(tmp_path, clock):
     title = _df0_title(PLAIN_ROUTE, measure_route=DF0_ROUTE)
     guest = TitleGuest(clock)
     with pytest.raises(winuaesession.RouteError, match="a DF0 insert needs a guard"):
@@ -1193,7 +1193,7 @@ def test_measure_ignores_a_route_only_df0_insert(tmp_path, clock):
     {"after_letter": None},                         # only the control letter given
     {"control_letter": None, "after_letter": None},  # no letters, and the route still writes
 ])
-def test_a_title_with_one_save_letter_or_a_write_step_and_no_letters_is_refused(bad):
+def test_a_title_with_one_save_letter_or_a_write_step_and_no_letters_is_blocked(bad):
     with pytest.raises(winuaesession.RouteError, match="title description"):
         make_title(**bad)
 
@@ -1286,7 +1286,7 @@ def test_a_substituted_run_that_fails_registers_nothing(tmp_path, clock, specime
     assert not specimen_tree.exists() or list(specimen_tree.rglob("WISH-SPEC-*")) == []
 
 
-def test_a_pinned_accept_still_refuses_specimen_preservation(tmp_path, clock, specimen_tree):
+def test_a_pinned_accept_still_blocks_specimen_preservation(tmp_path, clock, specimen_tree):
     manifest = _substituted_manifest(tmp_path)
     data = json.loads(manifest.read_text())
     del data["substitute"]
@@ -1346,38 +1346,38 @@ def test_substituted_preservation_needs_a_cited_issue(tmp_path, clock, specimen_
         _preserving(tmp_path, clock, specimen_issue=issue)
 
 
-def _refuse_before_any_guest_call(tmp_path, clock, match, **kw):
+def _stops_before_any_guest_call(tmp_path, clock, match, **kw):
     guest = TitleGuest(clock)
     with pytest.raises(winuaesession.RouteError, match=match):
         _preserving(tmp_path, clock, guest=guest, **kw)
     assert guest.calls == []
 
 
-def test_substituted_preservation_without_an_issue_refuses_before_any_guest_call(
+def test_substituted_preservation_without_an_issue_blocks_before_any_guest_call(
         tmp_path, clock, specimen_tree):
-    _refuse_before_any_guest_call(tmp_path, clock, "--specimen-issue", specimen_issue=None)
+    _stops_before_any_guest_call(tmp_path, clock, "--specimen-issue", specimen_issue=None)
 
 
-def test_substituted_preservation_of_an_unlisted_title_refuses_before_any_guest_call(
+def test_substituted_preservation_of_an_unlisted_title_blocks_before_any_guest_call(
         tmp_path, clock, specimen_tree):
     manifest = _substituted_manifest(tmp_path)
     data = json.loads(manifest.read_text())
-    # Pools of Darkness has its own, earlier refusal; the measure-only route stays unlisted.
+    # Pools of Darkness has its own, earlier block; the measure-only route stays unlisted.
     data["title"] = "darkness-unstarted"
     manifest.write_text(json.dumps(data))
-    _refuse_before_any_guest_call(tmp_path, clock, "--specimen-issue", manifest=manifest)
+    _stops_before_any_guest_call(tmp_path, clock, "--specimen-issue", manifest=manifest)
 
 
-def test_substituted_preservation_without_a_pinned_specimen_refuses_before_any_guest_call(
+def test_substituted_preservation_without_a_pinned_specimen_blocks_before_any_guest_call(
         tmp_path, clock, specimen_tree):
     manifest = _substituted_manifest(tmp_path)
     data = json.loads(manifest.read_text())
     del data["registered"]["specimen"]
     manifest.write_text(json.dumps(data))
-    _refuse_before_any_guest_call(tmp_path, clock, "--specimen-issue", manifest=manifest)
+    _stops_before_any_guest_call(tmp_path, clock, "--specimen-issue", manifest=manifest)
 
 
-def test_preservation_is_refused_without_accept(tmp_path, clock, specimen_tree):
+def test_preservation_is_blocked_without_accept(tmp_path, clock, specimen_tree):
     with pytest.raises(winuaesession.RouteError, match="published disk-one or substituted"):
         _preserving(tmp_path, clock, accept=False, measure=True)
 
@@ -1444,7 +1444,7 @@ class _ClampedThenFailingGuest(TitleGuest):
 
 @pytest.mark.parametrize("error", [
     OSError("winvm ssh lost the connection"),
-    winuaesession.RouteError("winvm ssh refused the key"),
+    winuaesession.RouteError("winvm ssh blocked the key"),
 ])
 def test_a_genuine_error_after_a_clamped_call_that_returned_is_reported_as_itself(
         tmp_path, clock, error):

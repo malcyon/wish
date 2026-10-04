@@ -70,7 +70,7 @@ def test_a_shorter_name_clears_what_was_under_it():
         amiga_port.AMIGA_NAME_SIZE:]
 
 
-def test_a_name_that_would_not_fit_is_refused():
+def test_a_name_that_would_not_fit_is_blocked():
     char = amiga_later.AmigaCharacter.from_bytes(
         fake_record(amiga_port.CURSE_DELTAS, "IILANDA"), amiga_port.CURSE_DELTAS)
     with pytest.raises(SystemExit):
@@ -161,7 +161,7 @@ def test_a_slot_the_disk_does_not_have_is_named_in_the_rejection(curse_disk,
     assert "savgamZ" in str(raised.value)
 
 
-def test_writing_over_the_input_is_refused(curse_disk):
+def test_writing_over_the_input_is_blocked(curse_disk):
     with pytest.raises(SystemExit) as raised:
         run(str(curse_disk), "--to", "B", "--out", str(curse_disk))
     assert "--out" in str(raised.value)
@@ -190,7 +190,7 @@ def test_the_square_option_moves_three_bytes_and_nothing_else(tmp_path):
     assert (moved["x"], moved["y"], moved["facing"]) == (5, 9, 6)
 
 
-def test_a_square_that_is_not_three_numbers_is_refused(tmp_path):
+def test_a_square_that_is_not_three_numbers_is_blocked(tmp_path):
     disk = disk_with("/SAVE/savgamA.sav", synthetic_silver_blades(("GAMMA",)))
     image = tmp_path / "ssb.adf"
     disk.save(image)

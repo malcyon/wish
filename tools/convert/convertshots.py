@@ -90,7 +90,7 @@ def _synthetic_states(root: pathlib.Path):
     empty = convert.ConvertDialog("", None, _no_disks)
 
     pod_folder = _dos_folder(root, dos_port.POOLS_OF_DARKNESS, suffix="PTY")
-    refused = convert.ConvertDialog(
+    blocked = convert.ConvertDialog(
         str(pod_folder / "SAVGAMA.PTY"), None, _no_disks)
 
     dos_folder = _dos_folder(root, dos_port.POOL_OF_RADIANCE)
@@ -108,7 +108,7 @@ def _synthetic_states(root: pathlib.Path):
 
     return [
         ("01-empty", empty),
-        ("02-cannot-convert", refused),
+        ("02-cannot-convert", blocked),
         ("03-no-c64-disks", no_disks_state),
         ("04-no-dos-game-folder", no_game_folder),
         ("05-only-from-filled", only_from_filled),

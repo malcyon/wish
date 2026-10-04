@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A 68000 disassembler that refuses to guess.
+"""A 68000 disassembler that will not guess.
 
 Written to read the Amiga Gold Box binaries, which are Motorola 68000 and
 nothing later.  The one rule that matters: **an encoding this does not
@@ -17,7 +17,7 @@ that fits.
 distinction matters enough to say here: a 68020 index extension and a branch to
 an odd address are both encodings a 68000 will happily execute -- it ignores
 the reserved extension bits, and it takes the odd branch and address-errors
-afterwards.  Neither is refused because the CPU cannot do it.  They are refused
+afterwards.  Neither is blocked because the CPU cannot do it.  They are blocked
 because **no assembler emits them**, so a word carrying one is data rather than
 code, and telling those apart is most of the work in a binary with strings and
 tables scattered through its code hunk.  Do not cite this file for what a 68000
@@ -167,7 +167,7 @@ def _brief_index(ext: int) -> str:
     # Bit 8 selects the 68020 full extension format and bits 10-9 are its
     # scale.  A 68000 has neither and ignores the bits, so silicon would run
     # this -- but no assembler targeting a 68000 emits it, which makes a word
-    # carrying it data rather than code.  Refusing is what separates the two
+    # carrying it data rather than code.  Blocking is what separates the two
     # in a binary with strings and tables scattered through its code hunk.
     if ext & 0x0700:
         raise _Undecodable("68020 index extension: an assembler would not emit this")
@@ -603,7 +603,7 @@ def decode(data: bytes, offset: int, address: int | None = None,
     if address is None:
         address = offset
     # `end` bounds this the same way `len(data)` does, so a window with no
-    # whole word left in it is refused here rather than inside `_Cursor`.
+    # whole word left in it is blocked here rather than inside `_Cursor`.
     # `decode` is public and `_Undecodable` is not: without this, a caller
     # passing a narrow `end` got a private exception out of the one function
     # whose contract is that an undecodable word comes back as `dc.w` (#148).

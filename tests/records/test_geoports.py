@@ -309,7 +309,7 @@ def test_every_geo_block_in_the_archives_is_read_as_a_map():
 
 
 def test_the_only_size_any_block_has_is_the_one_the_engine_checks():
-    """`Load3DMap` refuses anything but `0x402` bytes, and nothing is refused.
+    """`Load3DMap` blocks anything but `0x402` bytes, and nothing is blocked.
 
     So the size test drops nothing here, which is the point: it is the
     engine's own membership test rather than a filter fitted to the specimens.
@@ -436,7 +436,7 @@ def test_the_watch_line_names_a_value_that_would_actually_pass_the_check(
     """`WATCH` prints what `NEAR_ENOUGH` would have to become, and it has to be
     a value the tool's own gate accepts.
 
-    That gate is `2 * NEAR_ENOUGH >= gap`, which refuses equality, so the
+    That gate is `2 * NEAR_ENOUGH >= gap`, which blocks equality, so the
     largest legal value for a gap of 18 is 8 and not 9.  `gap // 2` gave 9 --
     the first value that fails -- and only on an even gap, which is why Pools
     of Darkness' `GEO21`/`GEO31` at 18 is the pair that shows it and

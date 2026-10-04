@@ -390,7 +390,7 @@ def test_grabs_copy_crop_and_diff(tmp_path, capsys):
     assert 'identical' in capsys.readouterr().out
 
 
-def test_add_refuses_a_crop_owned_by_another_title(tmp_path, capsys):
+def test_add_blocks_a_crop_owned_by_another_title(tmp_path, capsys):
     root, maps = tmp_path / 'root', tmp_path / 'maps'
     maps.mkdir()
     curse = _run(root, '1', 'misleading-pool-name', 'curse', 'title')

@@ -406,7 +406,7 @@ def _build(args) -> int:
         print(amigalaterwrite.describe(character, report))
         if report.unaccounted:
             raise SystemExit(f"{character.name}: {len(report.unaccounted)} "
-                             f"bytes nobody sourced; refusing to write")
+                             f"bytes nobody sourced; declining to write")
 
     if args.out.resolve() == args.into.resolve():
         raise SystemExit("--out must not be --into; the input is read-only")

@@ -289,7 +289,7 @@ def test_the_client_socket_is_for_its_owner_alone(running):
 
 @pytest.mark.parametrize("body", ["k", "D", "s", "S05",
                                   "vCont;s", "vCont;t", "\x03", "?", "g"])
-def test_anything_but_a_read_or_a_write_is_refused_and_never_reaches_the_emulator(
+def test_anything_but_a_read_or_a_write_is_blocked_and_never_reaches_the_emulator(
         running, fork, body):
     client = Client(sock_path(running))
     if body == "\x03":
@@ -502,7 +502,7 @@ def test_a_greeting_without_continue_support_exits_5(runtime):
         other.close()
 
 
-def test_a_second_helper_for_the_same_port_refuses_to_start(running, fork, runtime):
+def test_a_second_helper_for_the_same_port_fails_to_start(running, fork, runtime):
     second = fsuaehelper.Helper(fork.port, runtime)
     assert second.startup() == 3
     second._cleanup()
@@ -721,10 +721,10 @@ def test_connecting_to_a_helper_with_a_full_backlog_gives_up_at_the_timeout(runt
 
 
 def test_a_failed_resume_leaves_no_half_published_helper(fork, runtime, monkeypatch):
-    def refuse(self):
+    def block(self):
         raise amiga.FsuaeError("no")
 
-    monkeypatch.setattr(amiga.FsuaeGdb, "resume", refuse)
+    monkeypatch.setattr(amiga.FsuaeGdb, "resume", block)
     helper = fsuaehelper.Helper(fork.port, runtime)
     assert helper.startup() == fsuaehelper.EXIT_NOT_PUBLISHED
     helper._cleanup()

@@ -91,7 +91,7 @@ def amiga_por_offset(dos_offset: int) -> int:
     """Where a DOS record offset lands in the Amiga one.
 
     Every DOS offset has an answer: all three insertions are located, so the
-    map has no window it has to refuse.
+    map has no window it has to block.
     """
     shift = 0
     for first, amount in AMIGA_POR_SHIFTS:
@@ -272,7 +272,7 @@ AMIGA_POR_ITEM_PAD = 0x03B
 def amiga_por_item_offset(dos_offset: int) -> int:
     """Where a DOS item offset lands in the Amiga one.
 
-    Unlike the record's map this one never refuses: both insertions sit past
+    Unlike the record's map this one never blocks: both insertions sit past
     the last field a caller reads by DOS offset, and the text field is
     re-cut rather than shifted.
     """

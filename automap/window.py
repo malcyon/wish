@@ -1251,7 +1251,7 @@ class AutomapBinding(QObject):
         **The rejection is not the only way out any more.** `#357 (The
         automapper reads the shared Game disks folder, so setting a title's
         own folder does not make it map that title)` step 4: the moment this
-        would otherwise refuse, and only then -- not on every tick the
+        would otherwise block, and only then -- not on every tick the
         rejection stands -- `self.other_maps` (set by the host) is asked which
         *other* configured title's maps the block at `$0400` actually
         matches. A hit is not said here at all: `titleObserved` is emitted
@@ -1462,7 +1462,7 @@ class AutomapBinding(QObject):
             # all, so every address below and in every button underneath it is
             # the wrong one (#21).
             # Withholding the target is the whole disable: each control already
-            # refuses, with the reason in its tooltip, when it has nothing to
+            # blocks, with the reason in its tooltip, when it has nothing to
             # act on, so nothing here has to invent a sentence. Nor is the
             # party re-read: at these addresses it would be another game's
             # bytes decoded as this one's characters.
@@ -1809,7 +1809,7 @@ class AutomapBinding(QObject):
         trains one class a press, and disagreed with it for one that trains
         several: a Curse character with two classes ready, the magic-user one
         of them but not the one `class_for` names, would open no dialog and
-        then refuse with "picks one new spell", asking for a choice the
+        then block with "picks one new spell", asking for a choice the
         button never let the player make
         (`#415 (automap/window.py picks the level-up spell dialog's class the
         same wrong way plan would have, blocking Curse's trainer)`).

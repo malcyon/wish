@@ -27,7 +27,7 @@ number if there was one, and how long each stage took.
 `debug_parser`; `g`, `t`, `f`, `w` and the breakpoint commands can reach
 `activate_debugger()`, which calls `open_console()` -- a console window in front
 of whoever is playing, which is the whole thing this route exists to avoid.
-`IPC_QUIT` quits the emulator and is refused here.
+`IPC_QUIT` quits the emulator and is blocked here.
 
 The message is sent as 8-bit text with no byte-order mark.  A UTF-16 request
 (`0xFF 0xFE`) takes a reply path that `_tcscpy`s into a 16384-**byte** buffer

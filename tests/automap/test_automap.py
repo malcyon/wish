@@ -201,7 +201,7 @@ def test_the_eight_travel_headings_are_eight_different_triangles():
     assert len(shapes) == 8
 
 
-def test_a_heading_outside_zero_to_seven_is_refused():
+def test_a_heading_outside_zero_to_seven_is_blocked():
     with pytest.raises(ValueError):
         travel_marker(5, 5, 8)
 
@@ -353,7 +353,7 @@ def test_the_fingerprint_narrows_to_new_phlan():
 
 
 @game_disks
-def test_a_refused_step_narrows_hard():
+def test_a_blocked_step_narrows_hard():
     maps = load_geo_files(f"{DISKS}/POOL3.D64")
     fp = Fingerprint(maps)
     fp.refused(0, 0, NORTH)               # the map edge blocks everyone
@@ -369,7 +369,7 @@ def test_an_observation_that_fits_nothing_is_counted_not_obeyed():
     assert fp.contradictions == 1
 
 
-# --- a refused step, inferred from the clock ---------------------------------
+# --- a blocked step, inferred from the clock ---------------------------------
 
 def _mapper_over(fixes, tmp_path, monkeypatch, geo=None):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
@@ -380,7 +380,7 @@ def _mapper_over(fixes, tmp_path, monkeypatch, geo=None):
     return mapper
 
 
-def test_a_step_the_game_refused_is_recorded(tmp_path, monkeypatch):
+def test_a_step_the_game_blocked_is_recorded(tmp_path, monkeypatch):
     """The whole point of A3: the mapper cannot see key presses, but the clock
     advancing while the party stays put and keeps facing the same way is a bump
     -- and one bump identifies an area that 111 successful steps would not."""
@@ -390,27 +390,27 @@ def test_a_step_the_game_refused_is_recorded(tmp_path, monkeypatch):
     assert mapper.fingerprint.blocked == [(5, 5, NORTH)]
 
 
-def test_standing_still_is_not_a_refused_step(tmp_path, monkeypatch):
+def test_standing_still_is_not_a_blocked_step(tmp_path, monkeypatch):
     """The clock does not run while the party does nothing, and doing nothing
     must not be evidence about anything."""
     fixes = [Fix(5, 5, NORTH, "status", 1000)] * 3
     assert _mapper_over(fixes, tmp_path, monkeypatch).fingerprint.blocked == []
 
 
-def test_a_long_wait_is_not_a_refused_step(tmp_path, monkeypatch):
+def test_a_long_wait_is_not_a_blocked_step(tmp_path, monkeypatch):
     """Searching, resting and camping all move the clock without a step."""
     fixes = [Fix(5, 5, NORTH, "status", 1000),
              Fix(5, 5, NORTH, "status", 1010)]
     assert _mapper_over(fixes, tmp_path, monkeypatch).fingerprint.blocked == []
 
 
-def test_turning_on_the_spot_is_not_a_refused_step(tmp_path, monkeypatch):
+def test_turning_on_the_spot_is_not_a_blocked_step(tmp_path, monkeypatch):
     fixes = [Fix(5, 5, NORTH, "status", 1000),
              Fix(5, 5, EAST, "status", 1001)]
     assert _mapper_over(fixes, tmp_path, monkeypatch).fingerprint.blocked == []
 
 
-def test_a_memory_fix_never_counts_as_refused(tmp_path, monkeypatch):
+def test_a_memory_fix_never_counts_as_blocked(tmp_path, monkeypatch):
     """$49C0 lags a move, so a real step read from memory looks exactly like a
     bump. Only the status line is trusted for this."""
     fixes = [Fix(5, 5, NORTH, "memory", 1000),
@@ -419,7 +419,7 @@ def test_a_memory_fix_never_counts_as_refused(tmp_path, monkeypatch):
 
 
 @game_disks
-def test_one_refused_step_beats_a_hundred_successful_ones(new_phlan):
+def test_one_blocked_step_beats_a_hundred_successful_ones(new_phlan):
     """Positive evidence needs 111 steps to settle New Phlan. Count what one
     bump adds against what standing on a square adds."""
     maps = load_geo_files(f"{DISKS}/POOL3.D64")
@@ -559,7 +559,7 @@ def test_the_ticks_are_kept_per_title_and_one_title_does_not_disturb_another(
 
 
 def test_unreadable_settings_are_not_fatal(tmp_path, monkeypatch):
-    """Losing a preference does not justify refusing to start."""
+    """Losing a preference does not justify failing to start."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("APPDATA", str(tmp_path))
     from automap.config import FILE, Settings
@@ -1060,7 +1060,7 @@ def test_a_machine_full_of_zeros_is_not_a_party():
     assert live.read_snapshot(live_machine(bytes(0x1C00), bytes(0x100))) is None
 
 
-def test_an_impossible_position_is_refused():
+def test_an_impossible_position_is_blocked():
     """Validate before trust: an overlay swap can put anything in these bytes."""
     save0, save1 = captured()
     broken = bytearray(save0)
@@ -1068,7 +1068,7 @@ def test_an_impossible_position_is_refused():
     assert live.snapshot_from_bytes(bytes(broken), save1) is None
 
 
-def test_a_roster_page_borrowed_by_a_picture_is_refused():
+def test_a_roster_page_borrowed_by_a_picture_is_blocked():
     """#82: on Silver Blades, a full-screen picture leaves the roster page
     reading as graphics data while the record slots are fine, so the position
     and the records both pass -- only `roster_page_plausible` catches this."""
@@ -1081,7 +1081,7 @@ def test_a_roster_page_borrowed_by_a_picture_is_refused():
     assert live.snapshot_from_bytes(save0, save1) is not None
 
 
-def test_hit_points_above_the_recorded_maximum_refuse_the_roster_too():
+def test_hit_points_above_the_recorded_maximum_block_the_roster_too():
     """The second, independent check #82 names: BRUTUS's maximum is 11."""
     from goldbox.savegame import ROSTER_HP_CURRENT
     save0, save1 = captured()
@@ -1127,7 +1127,7 @@ def test_a_curse_machine_is_read_at_4b00_and_not_4900():
 
 def test_the_same_machine_read_at_pool_of_radiances_addresses_lies():
     """And what it cost before the fix, which is the part to pin:
-    reading `$4900` on a Curse machine does **not** refuse. `$4900`-`$64FF`
+    reading `$4900` on a Curse machine does **not** block. `$4900`-`$64FF`
     overlaps `$4B00`'s payload two pages in, so the whole tab decodes -- a
     party, a square, an area name -- and every one of them is wrong."""
     wrong = live.read_snapshot(curse_machine())
@@ -1186,7 +1186,7 @@ def test_the_memory_fallback_reads_the_engines_own_triple():
 
 def test_a_title_whose_live_triple_is_unmeasured_gets_no_fallback():
     """Champions of Krynn has never been run under a monitor, so its
-    `live_position` is None and the fallback refuses. `$C04B` is a measurement
+    `live_position` is None and the fallback blocks. `$C04B` is a measurement
     of three other games, not a family constant, and answering with it would
     give a square rather than an error."""
     assert c64.machine_for(CHAMPIONS).live_position is None
@@ -1439,7 +1439,7 @@ def test_a_spell_on_one_character_stays_off_the_party_line(app):
 #
 # These build their party rather than reading it off `captured()`, which is a
 # party of one -- and one character carrying a spell is exactly the case the
-# rule refuses.
+# rule blocks.
 
 def party_of(*people):
     """A snapshot of a made-up party: `(hit points, effect ids)` each."""
@@ -1675,7 +1675,7 @@ def test_a_widget_the_form_does_not_have_is_named_in_the_debug_log(app, caplog):
 
 def test_a_socket_that_accepts_and_never_answers_is_busy_not_absent(monkeypatch):
     """The distinguishing signal, exactly: with nothing running the connect is
-    refused; with another client holding the monitor it succeeds and is then
+    rejected; with another client holding the monitor it succeeds and is then
     never served. VICE serves one connection and ignores the second in
     silence, so without this the map says "waiting for a game" about a game
     that is running."""
@@ -1696,7 +1696,7 @@ def test_a_socket_that_accepts_and_never_answers_is_busy_not_absent(monkeypatch)
     finally:
         listener.close()
 
-    # Nothing listening at all. Refused on Linux, and on Windows the SYN is
+    # Nothing listening at all. Rejected on Linux, and on Windows the SYN is
     # dropped so it times out instead -- neither is somebody else holding it.
     with pytest.raises(NotConnected) as gone:
         ViceTarget(host="127.0.0.1", port=port, timeout=0.5)
@@ -1707,7 +1707,7 @@ def test_a_connect_that_times_out_is_absent_not_busy(monkeypatch):
     """The half of the distinction the platform gets a vote on.
 
     Reading *any* timeout as busy assumes that with nothing listening the
-    connect is refused at once. That is true on Linux and false on Windows,
+    connect is rejected at once. That is true on Linux and false on Windows,
     where a filtered port is silently dropped and the connect times out -- so
     wish told a Windows user with no emulator running that something else was
     attached to it. Only the unanswered ping means busy.
@@ -2942,7 +2942,7 @@ def test_an_action_that_carries_a_confirm_asks_first(app):
     identify.confirm = "no way to undo"
     assert bar.run(identify) is None
     assert asked and "no way to undo" in asked[0]
-    assert said == []                       # refused before anything was read
+    assert said == []                       # blocked before anything was read
 
     bar.ask = lambda question: True
     outcome = bar.run(identify)
@@ -3405,7 +3405,7 @@ def test_the_action_bar_rebuilds_its_buttons_when_the_title_changes(app):
     assert all(b.isEnabled() for b in bar.buttons.values())
 
 
-def test_a_title_whose_loader_has_never_been_read_refuses_every_button(app):
+def test_a_title_whose_loader_has_never_been_read_blocks_every_button(app):
     """Champions of Krynn has no measured mode flag, so there is no way to tell
     a fight from the map and no button may write. The reason is in the tooltip
     rather than the button being silently inert."""
@@ -3567,7 +3567,7 @@ class NullSocketMonitor(HangUpMonitor):
         raise self.failure
 
 
-def test_a_target_that_gave_up_refuses_a_later_call_rather_than_crashing(
+def test_a_target_that_gave_up_blocks_a_later_call_rather_than_crashing(
         monkeypatch):
     """A user clicks Fast Travel a moment after the emulator stalls.
 

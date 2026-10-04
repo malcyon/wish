@@ -133,7 +133,7 @@ def test_the_log_folder_is_where_wish_writes_it():
 
 # -- the guest scripts --------------------------------------------------------
 
-def test_start_script_writes_settings_without_a_bom_and_refuses_session_zero():
+def test_start_script_writes_settings_without_a_bom_and_blocks_session_zero():
     script = winwish.start_script("h", winwish.environment(True, "h"))
     assert "UTF8Encoding $false" in script
     assert "automap.json" in script
@@ -246,7 +246,7 @@ def test_fetch_can_run_twice_in_one_folder(tmp_path):
     assert winwish.fetch(guest, SHA, tmp_path).parent == tmp_path
 
 
-def test_a_zip_fetched_for_another_commit_is_refused(tmp_path):
+def test_a_zip_fetched_for_another_commit_is_blocked(tmp_path):
     zipped = tmp_path / "wish-1.zip"
     zipped.write_bytes(b"PK")
     (tmp_path / "commit.txt").write_text("f" * 40 + "\n")
@@ -326,7 +326,7 @@ def test_shot_keeps_a_complete_png_whatever_the_exit_code_was(tmp_path):
 
 
 def test_shot_fails_in_one_sentence_when_no_png_comes_back(tmp_path):
-    for rc, reply in ((1, "ssh: connection refused"), (0, "ok"),
+    for rc, reply in ((1, "ssh: connection blocked"), (0, "ok"),
                       (1, f"{winvmguest.SHOT_BEGIN}\n{base64.b64encode(b'notapng').decode()}"
                           f"\n{winvmguest.SHOT_END}")):
         run = FakeRun([(lambda a: a[1] == "ps", rc, reply)])
@@ -373,7 +373,7 @@ def test_up_runs_the_steps_in_order(tmp_path, monkeypatch):
     assert run.verbs() == ["ps", "put", "ps", "lane", "ps"]
 
 
-def test_up_refuses_without_a_fresh_mute_proof(tmp_path, monkeypatch):
+def test_up_blocks_without_a_fresh_mute_proof(tmp_path, monkeypatch):
     args = _args(tmp_path, monkeypatch)
     monkeypatch.setattr(winwish, "_mute_proof", lambda path: False)
     run, lane = FakeRun(), FakeLane()
@@ -418,7 +418,7 @@ def test_up_releases_the_claim_when_winuae_does_not_start(tmp_path, monkeypatch)
     assert lane.log[-1] == "release" and "stop" not in lane.log
 
 
-def test_up_refuses_a_zip_fetched_for_another_commit(tmp_path, monkeypatch):
+def test_up_blocks_a_zip_fetched_for_another_commit(tmp_path, monkeypatch):
     args = _args(tmp_path, monkeypatch)
     (tmp_path / "commit.txt").write_text("f" * 40 + "\n")
     run, lane = FakeRun(), FakeLane()
@@ -515,7 +515,7 @@ def test_two_drives_or_fewer_add_no_settings(tmp_path, monkeypatch):
     assert lane.options == ()
 
 
-def test_a_drive_after_a_gap_is_refused_before_anything_starts(tmp_path, monkeypatch):
+def test_a_drive_after_a_gap_is_blocked_before_anything_starts(tmp_path, monkeypatch):
     run, lane = FakeRun(), FakeLane()
     args = _args(tmp_path, monkeypatch, "--df2", "c.adf")
     with pytest.raises(winwish.WinwishError, match="without a gap"):
@@ -523,7 +523,7 @@ def test_a_drive_after_a_gap_is_refused_before_anything_starts(tmp_path, monkeyp
     assert lane.log == [] and run.calls == []
 
 
-def test_an_empty_df0_is_refused_in_one_sentence(tmp_path, monkeypatch):
+def test_an_empty_df0_is_blocked_in_one_sentence(tmp_path, monkeypatch):
     run, lane = FakeRun(), FakeLane()
     args = _args(tmp_path, monkeypatch)
     args.df0 = ""
@@ -828,7 +828,7 @@ def test_up_gives_the_game_and_the_mounted_adfs_to_the_start(tmp_path, monkeypat
     assert "pool-of-radiance" in starts[0] and "b.adf" in starts[0]
 
 
-def test_a_game_key_that_is_not_one_is_refused_before_anything_runs(tmp_path, monkeypatch):
+def test_a_game_key_that_is_not_one_is_blocked_before_anything_runs(tmp_path, monkeypatch):
     run, lane = FakeRun(), FakeLane()
     args = _args(tmp_path, monkeypatch, "--game", "Pool; rm")
     with pytest.raises(winwish.WinwishError, match="not a game key"):
@@ -916,7 +916,7 @@ def test_ui_puts_its_script_on_the_guest_before_running_it():
     assert put[3].startswith("C:/Users/Public/wish-ui-") and put[3].endswith(".ps1")
 
 
-def test_more_names_than_the_limit_are_refused_before_anything_runs():
+def test_more_names_than_the_limit_are_blocked_before_anything_runs():
     run = FakeRun()
     with pytest.raises(winwish.WinwishError, match="at most"):
         winwish.ui(winwish.Guest(run), "h", "click", tuple("abcdefghi"))

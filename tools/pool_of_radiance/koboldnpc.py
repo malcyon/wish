@@ -25,7 +25,7 @@ the run's whole budget and change nothing about which statements run.  **The
 step itself is walked**, so the game's own dispatch reaches `$99C1`.
 
 Nothing is written to the player's disks: `stage_disks` copies the sides into
-the slot and `Session.attach` refuses a path outside it.  The pool owns the
+the slot and `Session.attach` rejects a path outside it.  The pool owns the
 emulator -- claim, launch, tear down.  Captures go under the temp directory, so the tool does not
 commit them.
 """
@@ -231,7 +231,7 @@ def plan_warp(sess, target, out) -> int:
     print(f"  legality: {verdict.ok} {'' if verdict.ok else verdict.reason}",
           flush=True)
     if not verdict.ok:
-        raise RuntimeError(f"refused: {verdict.reason}")
+        raise RuntimeError(f"rejected: {verdict.reason}")
     outcome = ft.apply(target, area=area)
     print("  " + outcome.message, flush=True)
     if not outcome.ok:

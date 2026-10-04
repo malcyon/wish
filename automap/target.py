@@ -24,7 +24,7 @@ Two hazards from `docs/70-driving-the-game.md` decide what is *not* here:
   `Monitor.hang_up()`, not EXIT, or a stop can be lost. Polling needs none, so
   none are offered.
 * **Validate before trust.** The game is heavily overlaid, so an address means
-  what we think only while its overlay is resident. `PartyFix` refuses a reading
+  what we think only while its overlay is resident. `PartyFix` blocks a reading
   that cannot be true rather than drawing nonsense.
 """
 
@@ -130,7 +130,7 @@ class Fix:
     `clock` is the game clock in minutes since midnight, or None where it could
     not be read. It costs nothing -- the status line already carries it and the
     memory fallback reads it in the same ten bytes -- and it is what lets a
-    *refused* step be spotted: see `Automapper.poll`.
+    *blocked* step be spotted: see `Automapper.poll`.
 
     `outdoors` is True on the travel grid, where `facing` is None -- the game
     prints no facing out there, the same form `tools/c64/session.py`'s `Status`
@@ -242,7 +242,7 @@ def party_fix(read, game: c64_port.C64Container | None = None, banks=None) -> Fi
     No fixed offset converts one to the other, so whenever the game prints
     that pair the answer is the engine's square, as a memory fix: the line
     and `$C04B` change at different moments, and a status fix carrying
-    memory's square could let `Automapper._refused` take a step for a bump.
+    memory's square could let `Automapper._blocked_step` take a step for a bump.
     Where the game prints the engine's square it still adds the turn to the
     facing, so the facing is turned back and the fix stays a status fix.
     """
@@ -391,7 +391,7 @@ class MonitorBusy(NotConnected):
 
     **What separates them is the ping, not the connect.** An earlier version
     read any timeout as busy, on the assumption that with nothing listening the
-    connect is *refused* at once. That holds on Linux and does not hold on
+    connect is *rejected* at once. That holds on Linux and does not hold on
     Windows, where a packet filter drops the SYN rather than answering it and
     the connect times out instead -- so wish told a Windows user with no
     emulator running that something else was attached to it. Only a timeout on
@@ -412,7 +412,7 @@ def monitor_listening(host: str | None = None, port: int | None = None,
     """Is a binary monitor accepting connections?
 
     Cheap enough to call on a timer, so the map can sit waiting for the game to
-    start rather than refusing to open without it.
+    start rather than failing to open without it.
 
     Defaults to the same address `Monitor` connects to, resolved at call
     time so pointing a running window at a pooled instance works.
@@ -452,7 +452,7 @@ class ViceTarget:
         if port is not None:
             kw["port"] = port
         # Two stages, and they mean different things. Nothing there at all is a
-        # failure to *connect*, however the platform spells it -- refused on
+        # failure to *connect*, however the platform spells it -- rejected on
         # Linux, usually a timed-out SYN behind the Windows firewall. Only a
         # connection that is made and then not answered is a busy monitor.
         try:
@@ -563,7 +563,7 @@ class ViceTarget:
     # -- Target ----------------------------------------------------------
 
     def _require_open(self) -> None:
-        """Refuse to use a connection that has been given up on.
+        """Raise instead of using a connection that has been given up on.
 
         `close()` nulls `Monitor.sock`, so a read through a target somebody
         still holds a reference to raises `AttributeError` on `sock.sendall`

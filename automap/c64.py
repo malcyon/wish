@@ -2,7 +2,7 @@
 
 `AmigaMachine` in `automap/amiga.py` is the same idea for the other machine,
 and this file is deliberately its mirror: one frozen row per title, a registry
-keyed by title key, and a title with no measurement refused rather than handed
+keyed by title key, and a title with no measurement blocked rather than handed
 another title's numbers.
 
 **What a machine is, and what it is not.** A `C64Machine` answers "where is
@@ -18,7 +18,7 @@ every machine here carries by reference.
 is a fact rather than a gap to paper over.** Champions of Krynn, Death Knights of
 Krynn and Gateway to the Savage Frontier have no `live_position` and no
 `mode_flag`, because nobody has run them under a monitor. Both stay None, and
-every caller refuses on None instead of reading Pool of Radiance's address and
+every caller blocks on None instead of reading Pool of Radiance's address and
 believing what it finds there -- `automap.actions.mode` is the one that matters,
 since an unmeasured mode flag reads as "not combat" whatever the machine is
 doing, which is a gate that is open rather than a gate that is missing.
@@ -98,7 +98,7 @@ MODE_FLAG_POOL = 0x6E11
 #:
 #: **`2` was sampled live on Silver Blades**, at the end of 228 driven steps:
 #: `1` -> `4` `COM.PREP` -> `2` with `MOVE VIEW AIM TURN QUICK DONE` on the
-#: command bar, and `identify` refusing because `$7F11` is 2. That is also the
+#: command bar, and `identify` blocking because `$7F11` is 2. That is also the
 #: first live sighting of `4` in any title. On Curse it was not: no session has
 #: reached a fight there, so `2` rests on the dispatch table alone -- which is
 #: the same table, so the risk is small and it is written down rather than
@@ -156,7 +156,7 @@ class C64Machine:
     **`live_position` and `mode_flag` are the two that are not geometry.**
     Neither is inside the save image, so neither follows `save_load_address`
     and neither transfers between titles; None means nobody has measured this
-    title's, and a caller must refuse rather than fall back, because a wrong
+    title's, and a caller must block rather than fall back, because a wrong
     address yields a plausible answer instead of an error.
     """
 
@@ -380,7 +380,7 @@ def machine_for(game=None) -> C64Machine:
     holding any of them does not have to convert first. None is Pool of
     Radiance's, matching every caller's own `game or games.DEFAULT`.
 
-    **A `C64Container` outside the registry is built rather than refused**, because its
+    **A `C64Container` outside the registry is built rather than blocked**, because its
     geometry is on the row and its live addresses are simply unmeasured -- so
     it answers the addresses it always did and None for the two that have to be
     measured. A bare key nobody knows raises, since that is a typo rather than

@@ -192,13 +192,13 @@ def test_a_map_that_is_not_resident_is_not_named():
 
 
 #: The route the party actually walked in `GEO01`, as observed: the square it
-#: started on, the steps it completed, and the one step the game refused. Our
+#: started on, the steps it completed, and the one step the game rejected. Our
 #: own measurements, so they belong in this repository; the maps they are
 #: checked against are read off the player's disks at run time.
 WALKED = [(5, 13), (6, 13), (6, 14), (6, 15), (7, 15)]
 STEPS = [((5, 13), (6, 13)), ((6, 13), (6, 14)),
          ((6, 14), (6, 15)), ((6, 15), (7, 15))]
-REFUSED = ((7, 15), geo.NORTH)
+REJECTED = ((7, 15), geo.NORTH)
 
 
 def test_the_walked_route_fits_geo01_and_narrows_sixteen_maps_to_two():
@@ -215,13 +215,13 @@ def test_the_walked_route_fits_geo01_and_narrows_sixteen_maps_to_two():
         fp.saw(x, y)
     for (x0, y0), (x1, y1) in STEPS:
         fp.moved(x0, y0, x1, y1)
-    fp.refused(*REFUSED[0], REFUSED[1])
+    fp.record_blocked(*REJECTED[0], REJECTED[1])
     assert fp.contradictions == 0
     assert "GEO01" in fp.names
     assert len(fp.names) <= 2
 
 
-def test_geo01_agrees_with_every_step_the_game_allowed_and_the_one_it_refused():
+def test_geo01_agrees_with_every_step_the_game_allowed_and_the_one_it_rejected():
     """The same evidence read the other way round: the decoded `GEO01` predicts
     the game's own answers, edge by edge."""
     geo01 = _curse_maps()["GEO01"]
@@ -229,7 +229,7 @@ def test_geo01_agrees_with_every_step_the_game_allowed_and_the_one_it_refused():
         direction = next(d for d, step in geo.STEP.items()
                          if step == (x1 - x0, y1 - y0))
         assert geo01.is_passable(x0, y0, direction), (x0, y0, direction)
-    (x, y), direction = REFUSED
+    (x, y), direction = REJECTED
     assert not geo01.is_passable(x, y, direction)
 
 

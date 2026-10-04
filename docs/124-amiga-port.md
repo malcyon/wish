@@ -50,7 +50,7 @@ confidence label.
   loads. The variable part is appended item and effect data; the record proper
   is **404 bytes** and the loader stops there when the counts are zero (§1.16),
   so the writer's 484 are 404 that matter and 80 PoD never reads.
-* **The first experiment ran, and PoD did not refuse it.** A genuine `.pc` on
+* **The first experiment ran, and PoD did not block it.** A genuine `.pc` on
   a disk we edited lists and adds; a C64 export's 582 bytes under the same name
   *also* lists and adds. That killed the two blockers that made the writer
   expensive.
@@ -832,7 +832,7 @@ invariant: `first_data` at `0x010` names the same block as the first entry of
 the data table, on **211 of 211** files across four real disks.
 
 Three more things the real disks taught, each of which would have made a
-reader refuse a genuine disk:
+reader block a genuine disk:
 
 * **the root block is 880 even on the 1804-block Curse save disk**, whose
   middle block, 902, is `ADDERLY.cha`;
@@ -919,7 +919,7 @@ which is how the run got an engine-written saved game without adventuring.
 
 **`BEGIN ADVENTURING` asks a copy-protection question**, on a screen of its own
 with an `ENTER` field: it names a word number, a journal entry and a page of
-the printed Adventurer's Journal, and a bare RETURN is refused. **PROBABLE,
+the printed Adventurer's Journal, and a bare RETURN is blocked. **PROBABLE,
 one observation**: the same word, entry and page stay on screen afterwards
 rather than a new challenge being drawn, so a misread costs a retry rather
 than a reboot -- pressed once, at the prompt whose misread
@@ -1137,7 +1137,7 @@ matched the live block to `GEO` id **16**, uniquely, among the 17 blocks of
 **The whole walk, through the shipped automapper.** On 2026-09-08 the same
 party walked `GEO10` while `automap.state.Automapper.poll()` watched: a turn
 (`NP2`, East to West), a step west to (5,9), and a step the map says is
-impossible -- `GEO10` walls (5,9) to the west, the game refused it, and the 3D
+impossible -- `GEO10` walls (5,9) to the west, the game blocked it, and the 3D
 view drew a wall dead ahead with the status line still reading `5,9 W 00:04`.
 The mapper named the area on every poll, moved its marker on the turn and the
 step and not on the blocked step, and held its fix while the shop's own
@@ -1266,7 +1266,7 @@ addresses and the engine relinks both on load.
 * **experience is capped at 16 777 215.** The Amiga field is a `u32be` and the
   reader reads all four bytes, but `goldbox.dos_codec.write`'s own field is three bytes
   wide, so anything going through it overflows with a bare `OverflowError`
-  above that. No Pool of Radiance character can reach it. `#111 (An experience total over 16 777 215 crashes the DOS writer instead of being refused)`.
+  above that. No Pool of Radiance character can reach it. `#111`.
 
 **The file names**, read off disk 1 and confirmed by the game's own save to
 slot B (§1.9b): `save/CHRDAT<slot><n>.sav` with `.itm` and `.spc` beside it,
@@ -1400,7 +1400,7 @@ somebody boots the game.
 | `save/savgam<slot>.dat`, **pointed at the slot's own party** | the engine loads the party the saved game's character table names, not the party the slot letter implies -- measured, because the game's own save to B rewrote all six entries from `CHRDATA<n>` to `CHRDATB<n>` (§1.9b) |
 | `save/save` | the slot list: ten bytes, one per slot, each letter in its own place -- `A` is byte 0 and `J` is byte 9, and a slot that does not exist is a space |
 
-Three things it refuses rather than doing badly: a slot letter outside
+Three things it blocks rather than doing badly: a slot letter outside
 `A`-`J`, which is what the ten-byte list can hold; a party that is not one to
 six characters; and a slot with no saved game and none given, because the
 character files alone are a drawer full of files rather than something the
@@ -1476,7 +1476,7 @@ merely about which letters appear.
 **And it is all or nothing on the disk.** `write_file` allocates the
 replacement before it frees the original (§1.10), so a slot that runs the disk
 out of blocks stops part way -- and a disk carrying three of six characters is
-the state this function exists to refuse, arrived at by a different route.
+the state this function exists to block, arrived at by a different route.
 `write_por_slot` snapshots the image before the first write and
 `AmigaDisk.restore` puts it back on any failure.
 
@@ -1798,7 +1798,7 @@ name `goldbox.dos_port.POOLS_OF_DARKNESS` gives the field.
 | `0x09D` | 7 | `class_levels` | probe |
 | `0x0A4` | 7 | `former_class_levels` | importer, and the dual-class routine |
 | `0x0AB` | 8 | `attack_forms` | importer. `0x0AB` is attacks in halves and `0x0AD`/`0x0AF`/`0x0B1` the damage triple |
-| `0x0B3` | 1 | `armour_class_base` | importer; 50 in 19 of 19, as DOS in 12 of 12. The writer now copies this byte through from the source rather than always writing 50 (#635 (Read what a Pools of Darkness armour-class base other than 50 means, so the Amiga conversion writes it instead of refusing)) |
+| `0x0B3` | 1 | `armour_class_base` | importer; 50 in 19 of 19, as DOS in 12 of 12. The writer now copies this byte through from the source rather than always writing 50 (#635) |
 | `0x0B4`, `0x0B5` | 1, 1 | `strength_bonus`, `unnamed_0ab` | importer |
 | `0x0B6` | 1 | **highest hit points** (DOS `highest_hp_max`, `0x17A`) | `0x015FB4` |
 | `0x0B7` | 1 | `class_bits` | importer |
@@ -2184,7 +2184,7 @@ in the file would be where the loader expected it otherwise.
 | field | why not |
 |---|---|
 | `encumbrance`, `thac0_current`, `armour_class`, `movement_current` | the game recomputes them on load, each demonstrated by a probe that wrote a wrong value and read the right one back off the sheet |
-| `armour_class_base`, `0x0B3` | **superseded by #635 (Read what a Pools of Darkness armour-class base other than 50 means, so the Amiga conversion writes it instead of refusing)**: copied through from the source's own stored base, because both engines seed the current armour-class calculation from it on creation and on every rebuild. A source with none of its own gets the unarmoured `60 - 10`, which is what 19 of 19 `.pc` files — whose characters all carry items — and 12 of 12 DOS records hold |
+| `armour_class_base`, `0x0B3` | **superseded by #635**: copied through from the source's own stored base, because both engines seed the current armour-class calculation from it on creation and on every rebuild. A source with none of its own gets the unarmoured `60 - 10`, which is what 19 of 19 `.pc` files — whose characters all carry items — and 12 of 12 DOS records hold |
 | `roster_tail`, `0x188` | all nine bytes are rebuilt by the engine — §1.19b, which is why the row is in `POD_WRITE_DERIVED` rather than the drop list |
 | bytes no neutral field names, all left zero | the stale item count `0x0C7`, `hands_used` `0x0C8` (2 in 18 of 19) and `gap_19a` `0x0C9` (2 in 5 of 19, 0 in the other 14; its neighbour `0x0CA` is 0 in 19 of 19) |
 
@@ -3004,9 +3004,9 @@ fits. Two of the twelve were overwritten, ten left genuine.
 | # | disk contains | expected | **observed** |
 |---|---|---|---|
 | A | ten genuine `.pc` files, one of them rewritten byte-identically by our own writer | lists and adds | **lists and adds.** TROND joined at AC −7, HP 138. Our write path is sound. |
-| B | `KILLKILL.pc` = `brutus.chr`'s 582 bytes verbatim, `$6B00` load address included | refused | **listed with a blank name and added to the party** — AC 60, HP 0, a full sheet |
-| C | `INRANGE.pc` = the same 580 bytes, load address stripped | refused | listed with a blank name; not the one that reached the party this session |
-| D | the same offered through `Secret` | refused | **not run** — the route wants `*.sav` and `adfedit.py` cannot create a new directory entry, only rewrite an existing one |
+| B | `KILLKILL.pc` = `brutus.chr`'s 582 bytes verbatim, `$6B00` load address included | blocked | **listed with a blank name and added to the party** — AC 60, HP 0, a full sheet |
+| C | `INRANGE.pc` = the same 580 bytes, load address stripped | blocked | listed with a blank name; not the one that reached the party this session |
+| D | the same offered through `Secret` | blocked | **not run** — the route wants `*.sav` and `adfedit.py` cannot create a new directory entry, only rewrite an existing one |
 
 The sheet PoD drew for B: `MALE`, `0 YEARS`, `LAWFUL GOOD`, `ELF`, `CLERIC`,
 `LEVEL 15/16/17/17/12/1`, `HIT POINTS 0/0`, `EXPERIENCE 0`, `STR 0 INT 40
@@ -3415,7 +3415,7 @@ So nobody is surprised, and nobody tries.
 | **Race and class codes** | `goldbox/c64_port.py` already documents that the race table changes per title on the C64 alone (human is 7 in Pool of Radiance, 6 in Silver Blades). PoD's Amiga table has not been read. | read PoD's own table before writing a race byte |
 | **Copper, silver, electrum and gold** | only platinum (`0x04C`), gems and jewelry have been located in the `.pc`. R7 was the probe for the lighter coins and did not finish; `0x048` and `0x04A` are zero in all twelve and are the obvious candidates. | reported, with the total, so the player knows what was left on the counter |
 | **Unarmed damage** | not a loss so much as a category error: the C64's damage triple already includes the readied weapon, and PoD's item nodes carry the same information the writer emits. | write the unarmoured `1d2`, which is what all twelve genuine records hold, and let PoD derive the rest from the item nodes. §2.5 shows it coming out at `1D2+1` with no items; that the game applies a worn item's bonus is argued from the recompute, not run, because probe P3 carried none |
-| **Armour class** | **superseded by #635 (Read what a Pools of Darkness armour-class base other than 50 means, so the Amiga conversion writes it instead of refusing)**: the *stored base* (`armour_class_base`) is not a category error, because both engines seed the current armour-class calculation from that one byte, so it is real state and the writer copies it through. Only the *current, post-modifier* value (`armour_class`, the byte at `0x187`) stays a category error — PoD recomputes it from the base and whatever is readied, on every load | copy `armour_class_base` from the source and let PoD derive `armour_class` itself. §2.5 shows it coming out at `AC 8` with an unarmoured base and no items |
+| **Armour class** | **superseded by #635**: the *stored base* (`armour_class_base`) is not a category error, because both engines seed the current armour-class calculation from that one byte, so it is real state and the writer copies it through. Only the *current, post-modifier* value (`armour_class`, the byte at `0x187`) stays a category error — PoD recomputes it from the base and whatever is readied, on every load | copy `armour_class_base` from the source and let PoD derive `armour_class` itself. §2.5 shows it coming out at `AC 8` with an unarmoured base and no items |
 | **Everything Silver Blades knew and Pools of Darkness does not** | quest flags, position, journal entries | not converted, and not wanted — see §3 |
 
 ---

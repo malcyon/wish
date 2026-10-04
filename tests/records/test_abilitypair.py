@@ -214,7 +214,7 @@ def test_the_two_arrays_come_off_that_disk_still_disagreeing():
     assert len(apart) == 6, apart
 
 
-def test_a_pool_of_radiance_disk_is_refused_rather_than_read_as_a_pair():
+def test_a_pool_of_radiance_disk_is_blocked_rather_than_read_as_a_pair():
     """Pool of Radiance holds seven zeroes at `0x065` and writes
     `SAVEDGAME0`/`SAVEDGAME1`, so reading one here would invent a base array
     of zeroes for every character."""

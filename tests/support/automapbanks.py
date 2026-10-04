@@ -19,7 +19,7 @@ STATUS_ROW = 14
 #: What the game is really showing: east, 16:48, square 5,2.
 TRUE_STATUS = "E 16:48  5,2"
 #: What the RAM under the wrongly computed screen holds.  Plausible on
-#: purpose: a fix that cannot be true is refused by `_plausible` and the
+#: purpose: a fix that cannot be true is rejected by `_plausible` and the
 #: reader falls back, where a *believable* wrong square is drawn on the map.
 JUNK_STATUS = "N 03:00  9,9"
 

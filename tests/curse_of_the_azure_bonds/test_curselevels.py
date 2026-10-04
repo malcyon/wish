@@ -689,7 +689,7 @@ def test_the_castable_row_reaches_curses_fifth_spell_level():
     assert [b >> 4 for b in pool] == [3, 3, 2, 0, 0, 0]
 
 
-def test_levelling_a_title_with_an_unread_trainer_refuses():
+def test_levelling_a_title_with_an_unread_trainer_rejects():
     """`_tables_for` names the title in its rejection.
 
     **This used to be asked of Silver Blades**, whose trainer inputs were
@@ -702,8 +702,8 @@ def test_levelling_a_title_with_an_unread_trainer_refuses():
 
     There are two rejections and both are checked, because the one Silver
     Blades used to hit is the second: a title with **no tables at all** is
-    refused by key, and a title with a full set of tables that nobody has
-    watched a trainer write is refused by `levels.trainer_measured`.
+    rejected by key, and a title with a full set of tables that nobody has
+    watched a trainer write is rejected by `levels.trainer_measured`.
     """
     import dataclasses
 

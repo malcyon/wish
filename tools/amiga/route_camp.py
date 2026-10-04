@@ -498,7 +498,7 @@ def split_machine_steps(tokens: tuple[str, ...]) -> tuple[tuple[str, ...], tuple
 
 
 def _validate_machine_steps(tokens: tuple[str, ...]) -> None:
-    """Refuse a snapshot name the lane cannot keep, or a restore with no snapshot before it."""
+    """Block a snapshot name the lane cannot keep, or a restore with no snapshot before it."""
     taken: set[str] = set()
     for token in tokens:
         words = token.split()
@@ -513,7 +513,7 @@ def _validate_machine_steps(tokens: tuple[str, ...]) -> None:
 
 def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
                    name: str = "ssb") -> None:
-    """Refuse a camp step list the route cannot drive for title `name`.
+    """Block a camp step list the route cannot drive for title `name`.
 
     `snapshot NAME` and `restore NAME` save the machine and put it back; the other steps are
     judged without them.

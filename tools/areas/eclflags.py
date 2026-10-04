@@ -86,7 +86,7 @@ INDEXED = {0x2A: 0, 0x35: 1}
 # The tables whose interiors are reached only through `GETTABLE`/`SAVETABLE`,
 # each with the instruction that bounds the index. Declared rather than
 # inferred, because the bound is a loop in the script and not a property of
-# the access; `check_tables()` refuses a base the walk does not find.
+# the access; `check_tables()` rejects a base the walk does not find.
 #
 #   $4A39 and $4A8F   ECL08 $9C4A/$9C54, both indexed by [$6E79], whose loop
 #                     is `ADD 1 / COMPARE [$6E79], 7 / IF< / GOTO $9C4A` at
@@ -252,7 +252,7 @@ def naming_reach(reach, lo, hi):
 
 
 def check_tables(bases):
-    """Refuse a declared table whose base no script actually indexes."""
+    """Reject a declared table whose base no script actually indexes."""
     for base, _length, where in TABLES:
         if base not in bases:
             raise SystemExit(

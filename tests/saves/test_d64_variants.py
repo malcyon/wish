@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""The D64 sizes `goldbox.d64` accepts, and the ones it must still refuse.
+"""The D64 sizes `goldbox.d64` accepts, and the ones it must still block.
 
 `tests/saves/test_d64.py` is the regression on the standard 174848-byte image and stays
 that way. This module covers what was added around it: the 40- and 42-track
@@ -97,12 +97,12 @@ def test_tracks_1_to_35_sit_at_the_same_offset_in_every_variant():
     assert sector_offset(40, 16, 40) == 196608 - 256
 
 
-# --- what is refused --------------------------------------------------------
+# --- what is blocked --------------------------------------------------------
 
 @pytest.mark.parametrize("size", [0, 1, 1024, 174847, 174849, 175530, 175532,
                                   196607, 197375, 197377, 205311, 206115,
                                   2 * 174848])
-def test_an_unrecognised_size_is_still_refused(size):
+def test_an_unrecognised_size_is_still_blocked(size):
     with pytest.raises(InvalidImageError):
         D64.from_bytes(b"\x00" * size)
 
@@ -160,7 +160,7 @@ VARIANT_SIZES_READ_ONLY = sorted(s for s, v in VARIANTS.items() if not v.writabl
 
 
 @pytest.mark.parametrize("size", VARIANT_SIZES_READ_ONLY)
-def test_a_variant_refuses_every_write(size, tmp_path):
+def test_a_variant_blocks_every_write(size, tmp_path):
     disk = D64.from_bytes(bytes(size))
     assert not disk.writable
     with pytest.raises(ReadOnlyImageError):
@@ -172,7 +172,7 @@ def test_a_variant_refuses_every_write(size, tmp_path):
     assert not (tmp_path / "no.d64").exists()
 
 
-def test_a_variant_refuses_the_write_before_it_looks_at_the_file():
+def test_a_variant_blocks_the_write_before_it_looks_at_the_file():
     """The guard comes first on purpose. A cracked directory -- Death Knights'
     has PETSCII art and a zero block count on every real file -- must not get
     as far as being resolved on an image we would not write to anyway."""
@@ -273,7 +273,7 @@ def test_the_extension_tracks_of_a_forty_track_image_are_unformatted():
 
 def test_champions_item_names_read_off_a_forty_track_side():
     """The reason P42 mattered: Champions' `ITEMNAMES` lives on the side that
-    was refused, so nothing could name a Champions item."""
+    was blocked, so nothing could name a Champions item."""
     path = _one(197376)
     disk = D64.open(path)
     if disk.find(b"ITEMNAMES") is None:

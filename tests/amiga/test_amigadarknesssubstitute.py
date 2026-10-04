@@ -45,7 +45,7 @@ def test_the_import_replaces_the_one_slot_and_nothing_else():
     assert dest.verify() == []
 
 
-def test_a_missing_source_slot_or_one_the_reader_rejects_is_refused_and_writes_nothing():
+def test_a_missing_source_slot_or_one_the_reader_rejects_is_blocked_and_writes_nothing():
     dest = _disk({"SavGamB.pty": _save(2)})
     source = _disk({"SavGamH.pty": _save(9, count=0), "SavGamG.pty": b"short"})
     for letter in ("H", "G", "F"):
@@ -90,7 +90,7 @@ def test_prepare_without_a_substitute_keeps_the_pinned_disk_3_and_records_none(p
     assert manifest["disks"]["disk3"]["sha256"] == route_darkness.DARKNESS_DISK3_SHA256
 
 
-def test_prepare_refuses_a_substitute_slot_the_reader_rejects(pinned):
+def test_prepare_blocks_a_substitute_slot_the_reader_rejects(pinned):
     substitute = pinned / "sub.adf"
     _disk({"SavGamH.pty": _save(9, count=0)}).save(substitute)
     with pytest.raises(RouteError, match="could not be imported"):

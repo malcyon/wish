@@ -19,7 +19,7 @@ the flatpak VICE sees `$HOME` and has a private `/tmp`, so a disk staged under
 the temp directory is one it cannot open.
 
 Neither function creates anything. A tool makes its output directory with
-`ensure` at the point it is about to write, so `--help`, a refused argument and
+`ensure` at the point it is about to write, so `--help`, a rejected argument and
 a dry run leave the disk as they found it.
 """
 from __future__ import annotations

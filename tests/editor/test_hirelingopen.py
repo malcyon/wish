@@ -1,7 +1,7 @@
 """A Pool of Radiance save with a Training Hall hireling opens in the editor.
 
 The DOS and Amiga roster is built from the C64 record, and the C64 writer
-refuses a treasure share with bit 2 set, which every Training Hall hireling
+blocks a treasure share with bit 2 set, which every Training Hall hireling
 ships with. Opening a save shows and edits the party; it must not depend on
 whether the party could be written to a C64.
 

@@ -62,7 +62,7 @@ seven-member party twice, CONFIRMED, and eight in it is PROBABLE). Pool of
 Radiance's loader (`/program`, `0x27228`-`0x272c0`) reads the count byte, then
 all `0x148` = 328 = 8 x 41 bytes of name table, and loops `1..count` with no
 upper bound tested; its save routine (`0x27750`) walks the party with no cap
-into the same table, and add-character (`0x26c8c`) refuses only when `$503E`
+into the same table, and add-character (`0x26c8c`) blocks only when `$503E`
 is above 7. Curse (`/Curse` `0x2678e`, `0x267f4`-`0x26842`, add-character
 `0x2656e`) and Silver Blades (`/Secret` `0x27924`-`0x27972`, add-character
 `0x276a0`) loop on the word count the same way. No Amiga saved game the engines
@@ -132,8 +132,7 @@ byte.
 
 **The view type reads 1 indoors and 3 on the travel grid**, measured on
 2026-09-07 on the first two Amiga saved games ever made outdoors
-(`#321 (An Amiga Pool of Radiance conversion refuses a party standing on the
-travel grid, because no outdoor Amiga saved game has ever been read)`). This
+(`#321`). This
 page said "1 = 3D, 2 = overland" from the code beside the write until then,
 and **2 is not what the engine stores**: no Amiga saved game on this machine
 holds it. 3 is what DOS holds at its own 12806 in 10 of 10 outdoor specimens,
@@ -196,9 +195,7 @@ outdoor Amiga saved games -- unmoved across a step that changed the travel
 square and the facing, where indoors the same byte is recomputed on every
 step. It is the same 14 DOS holds at `goldbox.dos_savegame.SCRATCH_BYTE` in
 its own engine-written outdoor saves, and the value
-`goldbox.amiga_por.POR_WALL_OUTDOORS` now writes (`#321 (An Amiga Pool of
-Radiance conversion refuses a party standing on the travel grid, because no
-outdoor Amiga saved game has ever been read)`).
+`goldbox.amiga_por.POR_WALL_OUTDOORS` now writes (`#321`).
 
 **The map on the disk agrees with the saved games.** `/DISK2/GEO.GLB` on Silver
 Blades disk B is a `GLIB` of 18 blocks: block 0 is a 70-byte index holding a

@@ -252,9 +252,9 @@ def test_the_half_elf_carries_the_only_trait_the_c64_seeds_her(built):
     assert not any(names["GRIMSTONE"].record.get_raw("item_effects"))
 
 
-def test_a_half_elf_cleric_six_is_refused_by_the_racial_limit():
+def test_a_half_elf_cleric_six_is_rejected_by_the_racial_limit():
     """`docs/119-test-party.md` §1 asks for ASTRA at cleric 6 and the game's
-    own table stops a half-elf at 5, so the generator must refuse rather than
+    own table stops a half-elf at 5, so the generator must reject rather than
     write a character the trainer would never have made."""
     spec = _by_name(testparty.party(rolls="max"))["ASTRA"].spec
     over = testparty.Spec(**{**spec.__dict__,
@@ -522,10 +522,10 @@ def test_an_unreadable_default_icon_stops_main_and_writes_no_disk(
     raised = (dirtenicon.RepairError("no default") if error == "repair"
               else OSError("unreadable"))
 
-    def refuse():
+    def reject():
         raise raised
 
-    monkeypatch.setattr(dirtenicon, "native_default", refuse)
+    monkeypatch.setattr(dirtenicon, "native_default", reject)
     out = tmp_path / "TESTPARTY.D64"
     with pytest.raises(SystemExit):
         testparty.main(["--no-items", "--disk", str(out),
@@ -534,7 +534,7 @@ def test_an_unreadable_default_icon_stops_main_and_writes_no_disk(
     assert hashlib.sha256(base.read_bytes()).hexdigest() == before
 
 
-def test_a_wrong_length_icon_is_refused_before_anything_is_written(tmp_path):
+def test_a_wrong_length_icon_is_rejected_before_anything_is_written(tmp_path):
     base = _synthetic_save_disk(tmp_path / "base.d64")
     out = tmp_path / "TESTPARTY.D64"
     with pytest.raises(ValueError):
@@ -661,7 +661,7 @@ def _one_with(alignment, template_raw):
 _LOCKED = bytes([0x24, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xF0, 0x84])
 
 
-def test_an_alignment_locked_item_is_refused_for_the_wrong_alignment():
+def test_an_alignment_locked_item_is_rejected_for_the_wrong_alignment():
     one, tables = _one_with(1, _LOCKED)
     with pytest.raises(SystemExit) as why:
         testparty.equip(one, tables)

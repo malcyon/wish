@@ -105,10 +105,10 @@ def test_the_six_shipped_saves_reproduce_without_disks():
         assert got == expect, name
 
 
-def test_levelling_refuses_an_unmeasured_title_however_full_its_tables_are():
+def test_levelling_rejects_an_unmeasured_title_however_full_its_tables_are():
     """Proves the guard in `goldbox/levelup.py:_tables_for` asks
     `levels.trainer_measured` and not `tables.thief_skills` -- an empty tuple
-    that would stop refusing the moment somebody attributes `$126D`.
+    that would stop rejecting the moment somebody attributes `$126D`.
 
     **This used to be asked of Silver Blades itself**, whose `thief_skills`
     was empty and which the old guard would have let through the moment
@@ -228,7 +228,7 @@ CURSE = levels.CURSE_OF_THE_AZURE_BONDS
 def test_the_five_trainer_inputs_are_no_longer_empty():
     """`goldbox/levelup.py:_tables_for` treats an empty tuple as "cannot
     answer" (`goldbox/levels.py`'s own comment on `thief_skills`), so this is
-    the same gate `test_levelling_still_refuses_silver_blades_even_with_
+    the same gate `test_levelling_still_rejects_silver_blades_even_with_
     thief_skills_filled` exercises the wrong side of -- these five now come
     from `GEN` and `ECL65`, not from a stand-in.
     """
@@ -254,7 +254,7 @@ def test_the_thief_racial_row_is_read_with_no_decrement():
     assert tuple(v & 0xFF for v in dwarf_gets) == want
 
     # And a human (race 6) gets nothing added, the way `$124D`'s
-    # `CMP #$06 / BCS` refuses to look one up at all.
+    # `CMP #$06 / BCS` declines to look one up at all.
     human_gets = levels.thief_skills(1, 6, game=SSB, dexterity=9)
     no_race_row = tuple((a + b) & 0xFF for a, b in zip(level1_row, dex9_row))
     assert tuple(v & 0xFF for v in human_gets) == no_race_row

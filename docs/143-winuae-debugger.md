@@ -129,7 +129,7 @@ This is in golden, so opening WinUAE on the VM gets the Quickstart panel reading
 **Not against a live session.** The scan is a real `winuae64` run, so for the
 minute it takes there are two of them, and `front`, `key` and `send` pick their
 target by process name — with two, the wrong one can be picked in silence.
-`roms` refuses while an emulator is running, and those three refuse when they
+`roms` blocks while an emulator is running, and those three block when they
 find more than one, naming both pids. Stop the session first.
 
 An SSH shell cannot leave one behind on its own: sshd ends its session's whole
@@ -159,10 +159,10 @@ thing at the end of a run kills the other agent's emulator.
 
 | call | what it does |
 |---|---|
-| `claim -Holder <id>` | takes the lane; refuses a second holder, naming who has it and since when |
+| `claim -Holder <id>` | takes the lane; blocks a second holder, naming who has it and since when |
 | `release -Holder <id>` | gives it back. Does *not* stop the emulator |
 | `claim -Holder <id> -Override` | takes a lane whose holder has gone away, and says whose it was |
-| everything that touches the emulator | `start`, `stop`, `key`, `send`, `front` and `roms` refuse a caller who is not the holder |
+| everything that touches the emulator | `start`, `stop`, `key`, `send`, `front` and `roms` block a caller who is not the holder |
 
 **The claim is a create, not a read-then-write**, and the difference was
 measured rather than reasoned about. Six `claim` calls released at the same
@@ -181,7 +181,7 @@ simultaneous claims since: exactly one holder, every time.
 Two things it does not promise, said here rather than left to be discovered:
 two callers both passing `-Override` can take the lane from each other, because
 a steal deletes and re-creates and both are entitled to; and a claim file that
-is present but unreadable is refused rather than assumed free — the first
+is present but unreadable is blocked rather than assumed free — the first
 version assumed free, and the losers of a race then deleted the winner's claim
 and took the lane, which granted 2, 2 and 3 holders of six across five rounds
 even after the create was made atomic.
@@ -200,7 +200,7 @@ nothing, which removes the window rather than narrowing it.
 for ten seconds is treated as stale.** `Try-TakeClaim` writes `boot` before
 `holder`, so a process killed between the two — an ssh drop takes the child
 PowerShell's whole tree, which is how this guest fails — leaves a wreck that
-would otherwise be `unreadable` for ever, refusing every command until a person
+would otherwise be `unreadable` for ever, blocking every command until a person
 passed `-Override`.
 
 **Ten seconds of age, deliberately, rather than a comparison against the boot
@@ -211,7 +211,7 @@ snapshot — would make a live write look stale and let a second holder take the
 lane with no `-Override`. That is this whole page's failure reopened by clock
 skew. An age is one clock compared with itself and it fails in the safe
 direction: a backwards step makes the age negative, the file reads as a write in
-flight, and the caller is refused rather than let in. A write lasts
+flight, and the caller is blocked rather than let in. A write lasts
 milliseconds, so ten seconds is margin rather than a measurement.
 
 **Every time the script declines to run it says how to get unstuck.** An agent whose predecessor died
@@ -223,18 +223,18 @@ Two checks sit under the claim, because a claim only binds a caller who passes
 `-Holder`:
 
 * **`start` verifies what it launched.** After the task starts, it compares the
-  running `winuae64`'s command line with the one this call passed, and refuses
-  a process that started before the call did. That is what turns the hijack
+  running `winuae64`'s command line with the one this call passed, and stops
+  on a process that started before the call did. That is what turns the hijack
   into an error: `fail winuae64 pid=1568 is running a command line this call
   did not pass`, quoting both.
 * **`start` writes a receipt** — `C:\Amiga\winuae-run.txt`, holding the pid, its
   start time, the arguments and the holder — and `stop`, `key`, `send` and
-  `front` refuse a `winuae64` that is not the one in it. `stop -Override` ends
+  `front` block a `winuae64` that is not the one in it. `stop -Override` ends
   it anyway and says what it is overriding.
-* **`send` refuses a `-TargetPid` that is not this lane's emulator.** It used to
+* **`send` blocks a `-TargetPid` that is not this lane's emulator.** It used to
   prefer a caller's own `-TargetPid` over the pid the ownership check had just
   proved, which walked straight past that check into whatever console the given
-  pid owns. It was inert only because a *different* check refuses two
+  pid owns. It was inert only because a *different* check blocks two
   emulators.
 
 The claim is a file in the guest, `C:\Amiga\winuae-claim.txt`, and it records
@@ -250,7 +250,7 @@ PowerShell fills a positional parameter *before* a
 `ValueFromRemainingArguments` one, wherever each is declared and whatever
 `Position` each is given: measured, with `-Holder` at `Position=99` and `$Rest`
 at `Position=1`, `winuae.ps1 key 7A` bound `cmd=[key] holder=[7A] rest=[]` and
-the keypress was refused for having no VK code.
+the keypress was blocked for having no VK code.
 
 `tools/amiga/winuae-lanecheck.ps1` is the proof, and it runs against whichever copy
 of the driver it is pointed at, so an older one can be watched to fail.
@@ -265,7 +265,7 @@ more of them:
 | six simultaneous `claim`s grant more than one holder | 2 of 3 rounds, all six granted | 0 of 8 rounds |
 | a second holder takes a lane while its holder re-asserts it | 4 of 4 rounds, with the window widened | 0 of 4 rounds, widened and not |
 | …and the holder can still re-assert its own lane | 0 re-assertions against a build whose re-claim always failed | 18–22 a round |
-| `send` obeys a `-TargetPid` that is not the lane's emulator | yes | refused |
+| `send` obeys a `-TargetPid` that is not the lane's emulator | yes | blocked |
 | the holder's own `start`, `key`, `send` and `stop` still work | works | works |
 
 **The hijack rounds say whether they actually raced**, and that is not a
@@ -281,7 +281,7 @@ running when the round ends. Asking the second question failed a round against
 the *fixed* driver, where the second call had verified its own emulator and
 returned, and the intruder replaced it afterwards — a real thing, but a
 different one, and nothing `start` can prevent once it has returned. The run
-receipt is what refuses that caller's next command, and the check now says so on
+receipt is what blocks that caller's next command, and the check now says so on
 its own line rather than counting it either way.
 
 Windows Update is disabled in the guest. It is never going to be patched, and
@@ -314,7 +314,7 @@ Donald has looked at the VM himself and left it. Measured on a domain paused
 from his desktop with no lease held:
 
 * `winvm up`, and so `winvm acquire`, dies on `error: Domain is already
-  active` — `up` special-cases only `running`, and `virsh start` refuses an
+  active` — `up` special-cases only `running`, and `virsh start` blocks an
   active domain. `acquire` writes its lease file *before* calling `up`, so the
   failed acquire leaves a lease nobody holds.
 * `winvm down` prints `down` and does nothing: both its `shutdown` and its
@@ -347,7 +347,7 @@ outlive the run that registered them, and a promote would weld this document's
 scaffolding into the baseline of every future session. `clean` unregisters the
 four task names and removes the receipt, `send.log` and `console.txt`.
 
-**`clean` refuses while the emulator is running, and that is safety rather than
+**`clean` blocks while the emulator is running, and that is safety rather than
 tidiness.** Unregistering `winuae-run` does not stop a `winuae64` that task
 already launched, and with the definition gone `stop` has nothing to stop:
 measured, `Stop-ScheduledTask` on an unregistered name returns `$? = False`,
@@ -480,7 +480,7 @@ equivalent of the Amiga-side `uae-configuration` program. The floppy change in
 command line.** `AmigaTarget` takes either transport and asks it one question,
 `halts_machine`, which decides both `halts_on_read` and whether a batch ends
 with a `g`. The console route stays: it is what every driven tool uses, and its
-`W` and single-stepping reach parts of the debugger the pipe refuses to send.
+`W` and single-stepping reach parts of the debugger the pipe will not send.
 
 **Where it runs is the part not to lose.** Wish and WinUAE on one Windows
 machine is a local pipe opened by a local process — no network, no session
@@ -521,14 +521,14 @@ nor one `200` line, a missing drive line, a wrong-drive or stale readback, or a
 poll that ends without the sequence is a `FloppyError` and the caller presses no
 continuation key.
 
-**What is refused before anything is sent.** A drive other than the integers 0 and
+**What is blocked before anything is sent.** A drive other than the integers 0 and
 1 (a `bool` too); a path that is not one file staged for the caller's holder
 under `C:\Amiga\Disks` and named `wish<issue>-<holder>-<key>.adf`, longer than 200
 characters, or holding `..`, a space, a quote, `;`, `=`, `%`, a control character or
 a non-ASCII character, and so any UNC or `\\?\` path; another holder's disk; a
 hash that is not 64 hexadecimal digits. In the guest, before the pipe is opened,
 the file must exist and hash to the staged SHA-256. A path already in the other
-drive is refused, and a path already in the target drive sends nothing: it is
+drive is blocked, and a path already in the target drive sends nothing: it is
 reported as loaded only if that drive reads `rw`. A setter for a missing file
 ejects the disk the drive held and leaves it empty, which is why the file is
 checked first.
@@ -1135,7 +1135,7 @@ address instead.
   copy of `winuae.ps1` is now the pre-`#116 (Two agents cannot share the WinUAE
   VM, and neither of them can tell)` one and no longer matches `tools/` — see
   the 2026-09-01 block below
-* **`front`, `key` and `send` refuse two emulators, and `roms` refuses one.**
+* **`front`, `key` and `send` block two emulators, and `roms` blocks one.**
   Watched to fail against a second `winuae64` started on purpose and stopped by
   its own pid: all three reported `fail 2 winuae64 processes: 1244,3652; stop
   all but one` with rc 1, and `roms` reported `fail winuae64 running pid=...;
@@ -1219,15 +1219,15 @@ the WinUAE VM, and neither of them can tell)`:
   re-assert — and that version fails 4 of 4 rounds against the same build, at
   0 re-assertions against 18–22 for the fixed one
 * **`send` obeyed a caller-supplied `-TargetPid`** over the pid its own
-  ownership check had just proved. Refused now, and watched: `fail send was
+  ownership check had just proved. Blocked now, and watched: `fail send was
   given -TargetPid 8272, but this lane's emulator is pid=6136`, with the lane's
   own console read-back still returning `--- exit 0`. A *duplicated*
-  `-TargetPid` is now refused outright rather than depending on which of the two
+  `-TargetPid` is now blocked outright rather than depending on which of the two
   `winuae-send.ps1`'s binder would take — `-match` reads only the first
 * **`[regex]::Matches` is case-sensitive and `-match` is not**, so the first
   duplicate check counted `-targetpid 6136 -TargetPid 8272` as one occurrence
   and let it through to be forwarded whole. `'IgnoreCase'` on the `Matches`
-  call settles it, and the check now watches it refuse: `fail send was given
+  call settles it, and the check now watches it block: `fail send was given
   more than one -TargetPid`
 * **`@($null).Count` is 1**, so `winuae.ps1 stop` with no other arguments walked
   into "Cannot index into a null array" the first time the argument scan was
@@ -1284,9 +1284,7 @@ made to walk, because the WinUAE driver sends only keystrokes)` -- §5.1 and
   console.device, no gameport.device and no keymap patch, so it is the other
   half of §5.1 rather than an exception to it. Outdoors the same `8` steps
   **north** -- overland movement is absolute and the facing shown is the
-  direction of the last step. `#321 (An Amiga Pool of Radiance conversion
-  refuses a party standing on the travel grid, because no outdoor Amiga saved
-  game has ever been read)`
+  direction of the last step. `#321`
 * **the whole run needed no debugger.** Three boots, about sixty keystrokes,
   five saved games and two disk images pulled back, all of it `winuae.ps1 key`
   and `winvm shot`. §9 and §10 stay unexercised

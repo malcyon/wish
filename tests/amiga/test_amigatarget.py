@@ -29,8 +29,8 @@ CURSE = amiga.MACHINES["curse-of-the-azure-bonds"]
 # -- the transport ------------------------------------------------------------
 
 
-def test_a_debugger_refuses_to_exist_without_a_lane_claim():
-    """`winuae.ps1` refuses every call without one, so failing here says why
+def test_a_debugger_will_not_exist_without_a_lane_claim():
+    """`winuae.ps1` blocks every call without one, so failing here says why
     once instead of once per keystroke."""
     with pytest.raises(ValueError, match="claim"):
         amiga.WinuaeDebugger("")
@@ -55,7 +55,7 @@ def test_several_blocks_cost_one_round_trip():
 
 def test_a_block_that_names_its_memory_is_read_anyway():
     """The C64's callers pass `(addr, length, "io")`. A 68000 has one memory,
-    so the name is ignored rather than refused -- the documented behaviour for
+    so the name is ignored rather than blocked -- the documented behaviour for
     a backend that cannot tell two memories apart."""
     t, _ = target({0xC00000: b"\xaa\xbb"})
     assert t.read_blocks([(0xC00000, 2, "io")]) == [b"\xaa\xbb"]
@@ -87,7 +87,7 @@ def test_a_missing_dump_says_so_rather_than_returning_zeros():
         t.read(0xC00000, 2)
 
 
-def test_a_short_dump_is_refused():
+def test_a_short_dump_is_blocked():
     """Half a block read as a whole one is a plausible wrong answer, which is
     the worst kind."""
     def runner(argv, timeout):
@@ -108,7 +108,7 @@ def test_a_write_goes_in_as_the_debuggers_own_W():
     assert lines[-1] == "g"
 
 
-def test_a_closed_target_refuses_to_read():
+def test_a_closed_target_will_not_read():
     t, _ = target({0xC00000: b"\x01"})
     t.close()
     with pytest.raises(NotConnected, match="closed"):
@@ -132,16 +132,16 @@ def test_locate_measures_the_base_from_the_anchor_rather_than_assuming_it():
     assert len(guest.calls) == 1, "the first region searched holds the game"
 
 
-def test_locate_refuses_when_the_anchor_is_nowhere():
+def test_locate_blocks_when_the_anchor_is_nowhere():
     """A machine running some other title, or one that has not finished
-    loading. Refusing is the point: a base guessed here misreads every byte
+    loading. Blocking is the point: a base guessed here misreads every byte
     after it."""
     t, _ = target({}, base=None)
     with pytest.raises(NotConnected, match="nowhere"):
         t.locate()
 
 
-def test_locate_refuses_two_candidates_rather_than_taking_the_first():
+def test_locate_blocks_two_candidates_rather_than_taking_the_first():
     memory = {BASE + SSB.anchor_offset: SSB.anchor,
               BASE + 0x40000 + SSB.anchor_offset: SSB.anchor}
     t, _ = target(memory, base=None)
@@ -239,7 +239,7 @@ def test_a_null_geo_pointer_is_no_map_rather_than_an_address():
     assert t.geo() is None
 
 
-def test_a_geo_pointer_outside_this_machines_memory_is_refused():
+def test_a_geo_pointer_outside_this_machines_memory_is_blocked():
     """Before an area has loaded the global holds whatever was there."""
     t, _ = target({BASE + SSB.geo_pointer: (0x00DEAD00).to_bytes(4, "big")})
     assert t.resident_geo_address() is None
@@ -504,7 +504,7 @@ def test_nothing_is_recorded_while_no_area_is_loaded():
     """At the party menu the globals still hold a square -- the file's own --
     and the `GEO` pointer holds no map. A mapper that believed the square
     would draw it onto whatever map was last loaded, which is exactly what
-    `Automapper._running` refuses to do."""
+    `Automapper._running` will not do."""
     t, _ = target({BASE + SSB.geo_pointer: bytes(4), **square(6, 9, 2)})
     mapper = _mapper(t)
     assert mapper.poll() is False
@@ -559,7 +559,7 @@ def test_the_library_is_keyed_the_way_the_c64_names_the_same_areas(key, tmp_path
 def test_every_block_in_the_library_reads_as_a_map(key, tmp_path):
     """The check `ResidentGeo.verdict` puts a live block through, run over the
     disk copies it would be matched against. All of them, or the live reading
-    would be refused for a map the game itself is drawing -- except the one
+    would be blocked for a map the game itself is drawing -- except the one
     block Pools of Darkness ships with no walls."""
     from automap.area import looks_like_a_map
     maps = amiga.load_maps(_map_disk(key, tmp_path))
@@ -675,7 +675,7 @@ def test_a_disk_with_no_library_on_it_is_not_an_error(tmp_path):
     assert amiga.load_maps(other[0]) == {}
 
 
-def test_the_glib_parse_refuses_a_container_it_is_not():
+def test_the_glib_parse_blocks_a_container_it_is_not():
     with pytest.raises(ValueError, match="GLIB"):
         amiga.glib_blocks(b"NOPE" + bytes(60))
 
@@ -717,7 +717,7 @@ def test_the_automap_command_drives_the_shipped_mapper_and_draws_it(tmp_path,
     assert guest.calls, "nothing was read from the machine at all"
 
 
-def test_the_automap_command_refuses_a_disk_with_no_maps_on_it(tmp_path,
+def test_the_automap_command_blocks_a_disk_with_no_maps_on_it(tmp_path,
                                                                monkeypatch):
     """Rather than drawing an empty map for a party it cannot place."""
     from tools.amiga import amigatarget

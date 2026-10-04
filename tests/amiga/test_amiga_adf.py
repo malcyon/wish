@@ -133,7 +133,7 @@ def test_every_real_disk_reads_every_file_to_its_stated_length():
         assert seen, path.name
 
 
-def test_a_file_that_is_not_there_is_refused_by_name():
+def test_a_file_that_is_not_there_is_blocked_by_name():
     for path in real_disks():
         disk = AmigaDisk.open(path)
         with pytest.raises(AmigaDiskError):
@@ -172,7 +172,7 @@ def test_a_file_longer_than_one_header_can_index_still_round_trips():
     assert disk.read_file("BIG.BIN") == payload
 
 
-def test_an_extension_chain_that_loops_is_refused_rather_than_followed_forever():
+def test_an_extension_chain_that_loops_is_blocked_rather_than_followed_forever():
     """A crafted image whose extension block names itself would otherwise be
     walked for ever."""
     disk = AmigaDisk.blank()
@@ -233,7 +233,7 @@ def test_many_files_in_one_directory_thread_their_hash_chains():
         assert disk.read_file(name) == name.encode()
 
 
-def test_a_full_disk_is_refused_and_leaves_the_disk_alone():
+def test_a_full_disk_is_blocked_and_leaves_the_disk_alone():
     disk = AmigaDisk.blank()
     disk.write_file("KEEP", b"keep me", when=WHEN)
     free = disk.free_count()
@@ -285,7 +285,7 @@ def test_a_failed_replacement_leaves_the_original_file_readable():
 
 
 @pytest.mark.parametrize("name", ["", "x" * 31, "with/slash", "with:colon"])
-def test_a_name_amigados_cannot_store_is_refused_by_name(name):
+def test_a_name_amigados_cannot_store_is_blocked_by_name(name):
     disk = AmigaDisk.blank()
     with pytest.raises(AmigaDiskError):
         disk.write_file(name, b"x", when=WHEN)
@@ -364,7 +364,7 @@ def test_a_bitmap_block_with_its_checksum_in_the_wrong_field_is_caught():
     assert any("marked free" in p for p in broken.verify()), broken.verify()
 
 
-def test_a_short_or_unaligned_image_is_refused_by_name():
+def test_a_short_or_unaligned_image_is_blocked_by_name():
     with pytest.raises(AmigaDiskError):
         AmigaDisk(b"DOS\x00" + bytes(100))
     with pytest.raises(AmigaDiskError):
@@ -372,7 +372,7 @@ def test_a_short_or_unaligned_image_is_refused_by_name():
 
 
 @pytest.mark.parametrize("dos_type", [8, 0xFF])
-def test_a_disk_type_this_module_does_not_read_is_refused_by_type(dos_type):
+def test_a_disk_type_this_module_does_not_read_is_blocked_by_type(dos_type):
     """Anything past `DOS\\7` is no AmigaDOS type at all."""
     data = bytearray(AmigaDisk.blank().to_bytes())
     data[3] = dos_type
@@ -468,7 +468,7 @@ def test_a_drawer_inside_a_drawer_works():
     assert disk.verify() == []
 
 
-def test_a_drawer_over_a_name_already_there_is_refused():
+def test_a_drawer_over_a_name_already_there_is_blocked():
     """Quietly returning the file of the same name is how a disk gets
     corrupted two operations later."""
     disk = AmigaDisk.blank("wishtest")
@@ -480,7 +480,7 @@ def test_a_drawer_over_a_name_already_there_is_refused():
         disk.make_dir("other", when=WHEN)
 
 
-def test_a_drawer_under_a_file_is_refused():
+def test_a_drawer_under_a_file_is_blocked():
     disk = AmigaDisk.blank("wishtest")
     disk.write_file("FILE", b"x", when=WHEN)
     with pytest.raises(AmigaDiskError):
@@ -509,7 +509,7 @@ def _looping_big_file(tmp_path):
     return AmigaDisk.open(str(path))
 
 
-def test_removing_a_file_whose_extension_chain_loops_is_refused_and_changes_nothing(
+def test_removing_a_file_whose_extension_chain_loops_is_blocked_and_changes_nothing(
         tmp_path):
     disk = _looping_big_file(tmp_path)
     before = bytes(disk._data)
@@ -518,7 +518,7 @@ def test_removing_a_file_whose_extension_chain_loops_is_refused_and_changes_noth
     assert bytes(disk._data) == before
 
 
-def test_writing_over_a_file_whose_extension_chain_loops_is_refused_and_changes_nothing(
+def test_writing_over_a_file_whose_extension_chain_loops_is_blocked_and_changes_nothing(
         tmp_path):
     disk = _looping_big_file(tmp_path)
     before = bytes(disk._data)
@@ -533,7 +533,7 @@ def test_verify_reports_an_extension_chain_that_loops_and_returns(tmp_path):
     assert sum("extension chain" in p and "loops" in p for p in problems) == 1
 
 
-def test_a_directory_tree_that_loops_is_refused_by_walk(tmp_path):
+def test_a_directory_tree_that_loops_is_blocked_by_walk(tmp_path):
     disk = AmigaDisk.blank()
     disk.make_dir("SAVE")
     drawer = disk.lookup("SAVE").block
@@ -813,7 +813,7 @@ def _ffs_file_pointing_at(bad: str) -> tuple[AmigaDisk, bytes, int]:
 
 
 @pytest.mark.parametrize("bad", ["boot", "zero", "root", "bitmap"])
-def test_an_ffs_data_pointer_at_a_filesystem_block_is_refused(bad):
+def test_an_ffs_data_pointer_at_a_filesystem_block_is_blocked(bad):
     """An FFS data block has no header to check, so the pointer itself is
     checked: the bootblock, a zero, the root and the bitmap hold no file."""
     disk, raw, pointer = _ffs_file_pointing_at(bad)
@@ -824,7 +824,7 @@ def test_an_ffs_data_pointer_at_a_filesystem_block_is_refused(bad):
 
 @pytest.mark.parametrize("bad", ["boot", "zero", "root", "bitmap"])
 def test_verify_reports_an_ffs_data_pointer_at_a_filesystem_block(bad):
-    """The same pointer `read_file` refuses is damage to `verify()`."""
+    """The same pointer `read_file` blocks is damage to `verify()`."""
     disk, raw, pointer = _ffs_file_pointing_at(bad)
     problems = AmigaDisk(raw).verify()
     assert any(f"block {pointer} as file data" in p for p in problems), problems
@@ -1078,7 +1078,7 @@ def test_a_new_drawer_on_a_directory_cache_disk_gets_its_own_cache(dos_type):
 @pytest.mark.parametrize("dos_type", DIRCACHE_TYPES)
 def test_a_directory_cache_write_that_cannot_fit_changes_nothing(dos_type):
     """The file's two blocks fit and the cache block its record needs does
-    not: the write is refused and every byte is as it was."""
+    not: the write is blocked and every byte is as it was."""
     disk = AmigaDisk.blank(dos_type=dos_type)
     for n in range(8):
         disk.write_file(f"{n:02d}".ljust(30, "x"), b"", when=WHEN)
@@ -1136,7 +1136,7 @@ STALE_KINDS = ("name", "size", "missing", "extra")
 @pytest.mark.parametrize("stale", STALE_KINDS)
 def test_a_stale_cache_is_a_warning_and_not_damage(dos_type, stale):
     """AmigaDOS finds a file through the hash tables, so a listing that
-    disagrees with them is reported apart from damage `verify()` refuses."""
+    disagrees with them is reported apart from damage `verify()` blocks."""
     disk = _stale_cache_disk(dos_type, stale)
     assert disk.verify() == []
     warnings = disk.cache_warnings()
@@ -1191,9 +1191,9 @@ def test_a_drawer_its_parent_does_not_list_still_takes_a_save(
 
 
 @pytest.mark.parametrize("dos_type", DIRCACHE_TYPES)
-def test_a_cache_mismatch_the_write_introduces_is_refused(dos_type, monkeypatch):
+def test_a_cache_mismatch_the_write_introduces_is_blocked(dos_type, monkeypatch):
     """A drawer whose cache agreed before the write must agree after it: a
-    write that forgets the new record is refused and changes nothing."""
+    write that forgets the new record is blocked and changes nothing."""
     disk = _dircache_disk(dos_type)
     before = disk.to_bytes()
     monkeypatch.setattr(AmigaDisk, "_cache_add", lambda self, drawer, header: None)
@@ -1641,7 +1641,7 @@ def test_a_long_name_up_to_106_characters_is_written(dos_type):
 
 @pytest.mark.parametrize("dos_type", LONG_NAME_TYPES)
 @pytest.mark.parametrize("name", ["", LONGEST + "x", "with/slash", "a:b"])
-def test_a_name_a_long_name_disk_cannot_store_is_refused(dos_type, name):
+def test_a_name_a_long_name_disk_cannot_store_is_blocked(dos_type, name):
     disk = AmigaDisk.blank(dos_type=dos_type)
     before = disk.to_bytes()
     with pytest.raises(AmigaDiskError):
@@ -1684,10 +1684,10 @@ def test_a_file_s_comment_block_goes_back_with_the_file(dos_type, operation):
 
 
 @pytest.mark.parametrize("dos_type", LONG_NAME_TYPES)
-def test_a_comment_pointer_at_another_block_is_refused_and_changes_nothing(
+def test_a_comment_pointer_at_another_block_is_blocked_and_changes_nothing(
         dos_type):
     """Freeing a block a header only claims to own would free somebody
-    else's; the write is refused, every byte stays, and verify says why."""
+    else's; the write is blocked, every byte stays, and verify says why."""
     image = bytearray(_spec_lnfs_image(dos_type, SPEC_LNFS))
     header = _spec_lnfs_entry(image, COMMENTED)
     victim = _spec_lnfs_entry(image, "short")
@@ -1805,7 +1805,7 @@ def test_a_disk_as_written_has_no_root_warning(dos_type):
 
 
 @pytest.mark.parametrize("dos_type", LONG_NAME_TYPES)
-def test_a_name_longer_than_the_merged_field_holds_is_refused(dos_type):
+def test_a_name_longer_than_the_merged_field_holds_is_blocked(dos_type):
     disk = _lnfs_broken(dos_type, "name_overrun")
     with pytest.raises(AmigaDiskError):
         list(disk.walk())

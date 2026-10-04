@@ -667,7 +667,7 @@ def word_offset(address: int, container: "DosContainer | None" = None) -> int:
 
 def _container_for_save(save: bytes,
                         container: "DosContainer | None" = None) -> DosContainer:
-    """The title this buffer is, refusing one that is no title's size.
+    """The title this buffer is, blocking one that is no title's size.
 
     Every accessor here reads an offset a container computes, so a buffer of the
     wrong length would read somebody else's region and hand back a plausible
@@ -1272,7 +1272,7 @@ def move_to_area(save: bytearray, *, area: int, dax: int, wallset,
     resident map, and is **not the same number** for an area whose script
     loads no map of its own, such as the training hall.  `geo` defaults to
     `area`, which is right for the areas that load their own map -- most of
-    them -- and wrong for the six `move_reason` refuses before this runs,
+    them -- and wrong for the six `move_reason` blocks before this runs,
     so a caller that knows the save's own `$49C5` passes it here rather than
     letting the default stand in for it.
 

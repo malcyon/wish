@@ -115,7 +115,7 @@ Three rules, each learned by wedging the emulator:
 
 `tools/c64/session.py` implements this as `Session.attach(path)`, and
 `tools/c64/walkrun.py` runs whole batches on it. Only copies under `drive/` (scratch, deleted)
-are ever attached — `attach` refuses any other path.
+are ever attached — `attach` blocks any other path.
 
 ## Driving a session end to end
 
@@ -132,7 +132,7 @@ The order of operations, all of it in `tools/c64/session.py`:
 | party menu | `BEGIN ADVENTURING` |
 | in the world | row 14 is the status line — `E 16:48 5,2`: facing, clock, x, y. **Outdoors it reads `OUTDOORS 22:02 7,28`**, with the word where the facing letter goes, so there is no facing to read on the travel grid and the square is window-local |
 | `MOVE`, in a dungeon | `I` forward, `J` turn left, `K` turn right, `M` turns about and tries the edge behind the original facing: with no wall art there it **steps back keeping the original facing**; with wall art it stays turned about, stepping through an open door or holding in place at a solid or locked one (#708 (The C64 drivers treat the indoor M key as an about-turn on the spot, but in Pool of Radiance it moves the party one square backward), confirmed from the engine's own `MOVE` handler and ten live presses); `Return` leaves |
-| `MOVE`, on the travel grid | **a different bar: `1-8, RETURN OR BUTTON`** — the compass, not `I J K M`. A driver that presses `I` out here moves the party not at all and looks exactly like a save that cannot walk, which is what an hour of #50 (Lift the wilderness refusal from the DOS save converter)'s proof was spent on. The eight are the compass **clockwise from north** and not the numpad — 1 N, 2 NE, 3 E, 4 SE, 5 S, 6 SW, 7 W, 8 NW — measured twice: `3` east and `6` south-west by writing `$49C3`/`$49C4` and reading the square back, and `1 3 5 7` walked as a closed box (7,28) → (7,27) → (8,27) → (8,28) → (7,28) on pool slot 3 on 2026-09-02. `Return` leaves |
+| `MOVE`, on the travel grid | **a different bar: `1-8, RETURN OR BUTTON`** — the compass, not `I J K M`. A driver that presses `I` out here moves the party not at all and looks exactly like a save that cannot walk, which is what an hour of #50's proof was spent on. The eight are the compass **clockwise from north** and not the numpad — 1 N, 2 NE, 3 E, 4 SE, 5 S, 6 SW, 7 W, 8 NW — measured twice: `3` east and `6` south-west by writing `$49C3`/`$49C4` and reading the square back, and `1 3 5 7` walked as a closed box (7,28) → (7,27) → (8,27) → (8,28) → (7,28) on pool slot 3 on 2026-09-02. `Return` leaves |
 | arriving on the travel grid | **a walked exit lands with `1-8, RETURN OR BUTTON` already up**, so asking for `MOVE` finds no such word and spins to its timeout — which from the outside is indistinguishable from a party that cannot move. A *warped* arrival, and a loaded outdoor save, land on the command bar and do need `MOVE` taking first. Read row 24 and answer whichever is there; `Session.outdoor_key` does |
 | the clock, on the travel grid | one overland step is about **twelve hours**: `22:02 → 10:03 → 22:04 → 10:05 → 22:06` across the four steps above, which is why the hour looks like it is flipping between two values |
 | `ENCAMP` → `SAVE` → `SAVE GAME` | writes `SAVEDGAME0`/`SAVEDGAME1` to whatever disk is in the drive |
@@ -315,7 +315,7 @@ Wait and read again.
 **The move sub-bar is not a menu and `select_bar` must never be pointed at it.**
 `MOVE` is a word on `MOVE/ATTACK, MOVE LEFT = 9` exactly as it is on the command
 bar, so matching cannot save you — `Right` sent there steps the character rather
-than moving a highlight. `Session.combat_bar` refuses every bar that is not a
+than moving a highlight. `Session.combat_bar` blocks every bar that is not a
 menu.
 
 **Take the highlight from the same snapshot as the text.** `Screen` carries its
@@ -779,7 +779,7 @@ fails; take it again. If the marker cannot be written the old snapshot is
 kept, and if moving the old folder back after a failed replacement also fails,
 the error names `<name>~old`, where the old snapshot then is.
 
-A restore refuses a snapshot with no marker or whose file does not hash as the
+A restore blocks a snapshot with no marker or whose file does not hash as the
 marker says, reads Exec's counts, sends `CFG statefile <file>`, and reads them
 again every 250 ms until they fall to between the snapshot's value and the
 value read just before the restore. A read that fails during that time counts
@@ -817,11 +817,11 @@ puts the recorded image back in each drive and an image written since the
 snapshot keeps that write. A game save made between a snapshot and its restore
 therefore stays on the disk image while memory goes back, and the disk and the
 game disagree; a run that saved in between treats that image as changed.
-Nothing refuses a save after a restore. `winuae.ps1 clean` removes
+Nothing blocks a save after a restore. `winuae.ps1 clean` removes
 `C:\Amiga\States`, so it deletes every holder's snapshots. A holder of `.`, one
 holding `..` or ending in a dot, and a Windows device name (`CON`, `PRN`, `AUX`,
 `NUL`, `COM1` to `COM9`, `LPT1` to `LPT9`, in any case and with any extension)
-as a holder or a name, are refused, because Windows would resolve the folder to
+as a holder or a name, are blocked, because Windows would resolve the folder to
 something else. FS-UAE has no usable machine-state save in this build, because
 its savestate crashes.
 
@@ -864,7 +864,7 @@ helper. Each change is recorded in `~/.cache/wish/noencounters/fsuae-<port>.json
 before it is written, so after a `kill -9` the next run against that emulator
 puts the byte back at its start, or at the first `on` or `off`. Turn it off
 before any save, because the saved game carries the loaded script; a save key is
-refused while a change may still be in the game.
+blocked while a change may still be in the game.
 
 For Silver Blades, `play [seconds]` waits for the `PLAY DEMO QUIT` bar and
 presses `p` the moment it shows, before the attract demo starts, and

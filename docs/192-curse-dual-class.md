@@ -4,7 +4,7 @@
 ends with three things open. This page is the second session the same day, for
 `#18 (Measure Curse's trainer so Level Up works there)`, and closes all three.
 
-**In one line: `goldbox/levelup.py` no longer refuses a dual-classed character,
+**In one line: `goldbox/levelup.py` no longer blocks a dual-classed character,
 because all four routines that make one different have been watched running;
 and `GEN $11AB`'s round-up is not the rule this project has been implementing.**
 
@@ -16,7 +16,7 @@ Now the rules are known, and what they cost him is said in his own
 terms: **he gains no hit points at all for as many levels as his old class
 had**, he pays 1000 gp for each of them, and the class he left never trains
 again however much experience he piles up. That is the game's design and not a
-defect; what was ours was refusing to model it.
+defect; what was ours was not modelling it.
 
 ## The four dual-class routines, watched
 
@@ -61,9 +61,9 @@ out of the class count. Constitution 16 reads `02` at `GEN $11D7`, and
 | fighter 8, magic-user 6 | 12 | `(8-6) x 2 = 4` | 16 | 33 | 49 |
 
 **`GEN $1321` -- the old class is never eligible. CONFIRMED.** Press 8 was
-refused with `UNABLE TO ADVANCE` while she held 150,000 experience and a
+blocked with `UNABLE TO ADVANCE` while she held 150,000 experience and a
 restored magic-user 6, which is 15,000 more than the magic-user's ninth level
-asks for. The refused training cost nothing: platinum read 400 before and after.
+asks for. The blocked training cost nothing: platinum read 400 before and after.
 
 **`GEN $1470` -- and it is out of the experience clamp. CONFIRMED, from a
 staged input.** With the levels poked to magic-user 10 / fighter 1,
@@ -155,7 +155,7 @@ valid samples; two more were discarded because the press landed on the wrong
 character, which `$7C00`'s name bytes caught.
 
 The three-class characters are not legal parties: LEDERA was given cleric,
-thief and fighter bits, and `GEN $1553` then refused to raise her cleric
+thief and fighter bits, and `GEN $1553` then would not raise her cleric
 because an elf cannot be one -- which is why her cleric level is constant in
 every row, and does not affect `$18E4`'s count of non-zero levels.
 
@@ -184,9 +184,9 @@ Both came off the pool slot with `SAVEAZURE` unclosed --
 `#298 (A save disk copied out of an emulator slot before the drive closes the
 file cannot be loaded by the game)` reproduces every time -- so the second was
 repaired before anything read it. `tools/curse_of_the_azure_bonds/cursetrain.py stage`
-refuses such a disk instead, because closing the entry cannot show whether the
+blocks such a disk instead, because closing the entry cannot show whether the
 chain holds the game's write or the save before it
-(`#714 (cursepaladin.py's --repair --close-splat can silently mask stale data instead of refusing it)`).
+(`#714`).
 
 ## What still stands between this and Level Up for Curse
 

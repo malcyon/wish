@@ -2,7 +2,7 @@
 
 Curse redraws its status line a step late, so on the poll where the new
 area is first named the line can still read the old area's square. The
-engine's square is taken instead, and that exact line is refused until the
+engine's square is taken instead, and that exact line is blocked until the
 game redraws it. Nothing is held back after that poll: a later disagreement
 between the line and the engine is an ordinary jump.
 """
@@ -130,7 +130,7 @@ def sewers_entry_with_a_stale_line(tmp_path, monkeypatch):
     return target, mapper
 
 
-def test_the_stale_line_is_refused_while_it_stays_on_screen(tmp_path, monkeypatch):
+def test_the_stale_line_is_blocked_while_it_stays_on_screen(tmp_path, monkeypatch):
     _, mapper = sewers_entry_with_a_stale_line(tmp_path, monkeypatch)
     for _ in range(4):
         assert (mapper.state.area, mapper.state.x, mapper.state.y,

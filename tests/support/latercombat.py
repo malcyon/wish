@@ -33,7 +33,7 @@ def later_arena(fighters=((0, 25, 13), (8, 30, 13))) -> dict[int, bytes]:
     params = bytearray(old[combat.PARAMS])
     params[0x02], params[0x03] = 0x00, 0x6F           # the combat map
     params[0x04], params[0x05] = 0x00, 0xCB           # the position table
-    # The save head has to be a whole `$1000` block: `read_battle` refuses a
+    # The save head has to be a whole `$1000` block: `read_battle` rejects a
     # short one, and the records sit `$400` into it.
     head = bytearray(where.save_head_length)
     records = old[combat.RECORDS]

@@ -160,7 +160,7 @@ def convert(record: bytes, value: int) -> tuple[str, str]:
     try:
         rec, rep = c64_codec.write(neutral)
     except ValueError as exc:
-        return f"{read_back}", f"refused: {exc}"
+        return f"{read_back}", f"blocked: {exc}"
     wrote = rec.get("experience")
     if wrote == value:
         verdict = "kept"

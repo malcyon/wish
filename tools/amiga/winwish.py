@@ -152,7 +152,7 @@ def write_file(path: str, text: str) -> str:
 
     The text goes as base64 bytes, not nested inside a second `-EncodedCommand`: each
     encoding multiplies the size by about 2.7, and a command line past 32,767
-    characters is refused by Windows ("exec request failed").  The BOM lets Windows
+    characters is blocked by Windows ("exec request failed").  The BOM lets Windows
     PowerShell 5.1 read non-ASCII text as UTF-8.
     """
     data = base64.b64encode(b"\xef\xbb\xbf" + text.encode("utf-8")).decode("ascii")
@@ -305,7 +305,7 @@ def start_script(holder: str, env: dict[str, str], wait: int = START_SECONDS,
         "if ($mine.Count -gt 0) { \"fail wish.exe already running pid=$($mine[0].Id); stop it first\"; exit 1 }",
         "New-Item -ItemType Directory -Force -Path \"$run\\appdata\\wish\", \"$run\\local\" | Out-Null",
         # No byte-order mark: `Settings.load` reads UTF-8 strictly, and a BOM makes
-        # json refuse the file, which falls back to defaults and no log.
+        # json block the file, which falls back to defaults and no log.
         *copy_disks,
         "$settings = \"$run\\appdata\\wish\\automap.json\"",
         f"{guard}[IO.File]::WriteAllText($settings, {q(settings_json(game if disks else None, disks_dir(holder)))}, (New-Object Text.UTF8Encoding $false)){tail}",
@@ -663,7 +663,7 @@ def ui_script(token: str, timeout: float) -> str:
     """What the ssh session runs: run the put `ui_file` in session 1 and print its answer between markers.
 
     The script itself is copied across with `winvm put` rather than carried in this
-    command, because a command line over 32,767 characters is refused.
+    command, because a command line over 32,767 characters is blocked.
     """
     task = f"wish-ui-{token}"
     out = rf"C:\Users\Public\{task}.txt"

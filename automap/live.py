@@ -283,7 +283,7 @@ class Character:
     def down(self) -> bool:
         """At zero hit points: dead or dying, and **which is not decoded**.
 
-        `automap/actions.py` refuses to heal one for the same reason. The card
+        `automap/actions.py` does not heal one for the same reason. The card
         marks it and says no more than that.
         """
         return self.hp == 0
@@ -658,7 +658,7 @@ def roster_page_plausible(save0: SaveGame0, save1: SaveGame1) -> bool:
     does not know what put the bytes there, only that they are there. The
     record slots this page is checked against come from a different page and
     are unaffected, so the two can be compared. Either check below is enough
-    to refuse:
+    to block:
 
     * `RosterBlock.slot_index` is the game's own back-reference to the slot
       it lives in, and is always that slot's index on every save read so far

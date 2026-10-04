@@ -175,7 +175,7 @@ RACE_NUMBERS = (
 #: 6 human -- the same numbering, read out of the C64 `GEN` and confirmed on
 #: the shipped pre-generated characters -- and `goldbox/levels.py` reaches the
 #: same conclusion from a third direction, since Silver Blades' race-indexed
-#: level-limit table at `GEN $178A` has the dwarf's row at 3 and refuses to
+#: level-limit table at `GEN $178A` has the dwarf's row at 3 and does not
 #: look one up at 6 or above, which is the human having no limit.  So this
 #: module and that one disagreed about the same game until #237.
 SILVER_BLADES_RACE_NUMBERS = (
@@ -453,7 +453,7 @@ _DECLARED: Sequence[Field] = (
     _f(0x07E, 1, _I8, "thief_read_languages", "Read languages", _MAYBE),
     _f(0x07F, 4, _RAW, "effect_chain", "Effect list pointer (LIVE)", _MAYBE,
        "a four-byte far pointer, and one of the seven runs Curse's importer "
-       "refuses to read (0x7F-0x82). The 0x081/0x082 pair moves with the "
+       "does not read (0x7F-0x82). The 0x081/0x082 pair moves with the "
        "heap between two saves of the same party; the active effects "
        "themselves are in the sibling `.SPC` file, one node per record, each "
        "carrying the next in its own last four bytes. LIVE, and NULL is the "
@@ -542,11 +542,11 @@ _DECLARED: Sequence[Field] = (
        "the byte that tells two characters of the same name apart. Stable "
        "per character across the A/B save pair and different for every "
        "character -- 165, 204, 0, 120, 154, 231 for the party. **ADD "
-       "CHARACTER TO PARTY refuses a candidate whose name *and* this byte "
+       "CHARACTER TO PARTY blocks a candidate whose name *and* this byte "
        "both match a character already in the party**, and that is measured "
        "in the running game rather than argued: #216 offered one party two "
        "records of the same name differing in this byte alone, and the "
-       "second was refused at 0x00 against 0x00 and let in at 0x42. The "
+       "second was blocked at 0x00 against 0x00 and let in at 0x42. The "
        "write site is character creation, one call to the random routine, "
        "which is a code read corroborated by the shipped records' entropy. "
        "It is not experience (that starts at 0x0AC and decodes), not hit "

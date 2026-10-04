@@ -6,7 +6,7 @@ here, the same way `live.py` and `combat.py` have none -- an action takes a
 window wires buttons to these; the tests drive them against `MemoryTarget`.
 
 **Everything is gated on the mode flag** the loader dispatches on, and never on
-the screen: `2` is COMBAT. An action that is illegal in combat refuses at
+the screen: `2` is COMBAT. An action that is illegal in combat blocks at
 `apply` time and not only in its tooltip, because a button's enabled state is
 one poll interval stale and a fight can start inside that interval.
 
@@ -20,7 +20,7 @@ at Pool of Radiance's `$4D00`, `$5900` and `$8300` (#29).
 each title's loader: `$6E11` in Pool of Radiance, `$7F11` in Curse and Silver
 Blades, and `2` is COMBAT in all three because their overlay name tables are the
 same table entry for entry (#29). The three Krynn-era titles have never been
-read, so `C64Machine.mode_flag` is None there and every action refuses rather
+read, so `C64Machine.mode_flag` is None there and every action blocks rather
 than write with no way to see a fight -- an unmeasured address answers "not
 combat" whatever the machine is doing, which is a gate that is open rather than
 one that is missing.
@@ -82,7 +82,7 @@ def _read(target, addr: int, length: int) -> bytes | None:
 
     Every caller treats that as "no answer" rather than as an error: at the
     title screen, mid-load or with the emulator gone the bytes simply are not
-    there, and each action refuses on that separately. The fault still reaches
+    there, and each action blocks on that separately. The fault still reaches
     the log, as one line and not a traceback -- these run on the poll, and the
     poll above them writes the traceback once per distinct failure.
     """
@@ -98,7 +98,7 @@ def _read(target, addr: int, length: int) -> bytes | None:
 #: write blind. The five actions all use it.
 UNSUPPORTED = "ERROR: Action unsupported on {title}."
 
-#: What a player reads when `FastTravel.legality` refuses because the running
+#: What a player reads when `FastTravel.legality` blocks because the running
 #: overlay is not `DUNGEON` or the program counter is not in its key-wait loop
 #: -- both mean the game is mid-something-else and cannot safely be jumped
 #: out of. Replaces two sentences that were entirely the developer's own
@@ -135,7 +135,7 @@ def mode(target, game: c64_port.C64Container | None = None) -> int | None:
     the machine could not be read, and **this title has no mode flag**.
     `C64Machine.mode_flag` is `LINKER`'s dispatch byte, read out of the loader on
     Pool of Radiance, Curse and Silver Blades and on no other title, so a title
-    with None here has no gate at all -- see `Action.legality`, which refuses
+    with None here has no gate at all -- see `Action.legality`, which blocks
     rather than reading somebody else's address and calling whatever it finds
     "not combat".
     """
@@ -148,7 +148,7 @@ def mode(target, game: c64_port.C64Container | None = None) -> int | None:
 
 def in_combat(target, game: c64_port.C64Container | None = None) -> bool:
     """True only when the mode flag *says* combat. An unreadable machine is not
-    combat -- it is unreadable, and every action refuses on that separately."""
+    combat -- it is unreadable, and every action blocks on that separately."""
     return mode(target, game) == COMBAT
 
 
@@ -338,7 +338,7 @@ class Action:
     label = ""
     #: One line, for a tooltip.
     description = ""
-    #: False means "refuse while the mode flag is 2".
+    #: False means "block while the mode flag is 2".
     combat_legal = False
     #: Non-empty means ask this question before running. There is no in-game
     #: undo for anything that carries one.
@@ -387,7 +387,7 @@ class Action:
             # memory address)`). Dropping the parenthetical leaves a complete
             # sentence, so nothing was invented; the address still reaches
             # the log.
-            _log.debug("%s refused: $%04X is 2 (combat)",
+            _log.debug("%s blocked: $%04X is 2 (combat)",
                       self.label, machine.mode_flag)
             return Verdict(False, f"{self.label} is not available during a fight")
         return Verdict(True)
@@ -412,7 +412,7 @@ class HealParty(Action):
     """Current hit points to maximum, for everyone standing.
 
     **Illegal in combat.** Donald: the Heal Party button, and the fast-travel
-    dropdown alongside it, should refuse during a fight the way Store/Restore
+    dropdown alongside it, should block during a fight the way Store/Restore
     Spells and Identify already do. It used to be legal mid-fight -- healing
     is a cheat rather than a corruption risk, and nothing the game recomputes
     would notice -- but that is no longer what the button offers.
@@ -471,7 +471,7 @@ class SpellStore:
     disks and the point of the store is to survive a session. The file is JSON
     under the config directory for the same reason `automap.json` is: small,
     hand-editable, and a corrupt one is treated as empty rather than as an
-    error -- losing a stored spell list does not justify refusing to start over.
+    error -- losing a stored spell list does not justify failing to start over.
     """
 
     def __init__(self, path=None):
@@ -520,7 +520,7 @@ class SpellStore:
 class StoreSpells(Action):
     """Remember what everyone has memorised, so it can be put back later.
 
-    Reads only, but it is refused in combat with the restore it pairs with: a
+    Reads only, but it is blocked in combat with the restore it pairs with: a
     list captured mid-fight is a list with the fight's casting already spent,
     which is not what anybody means by "store my spells".
     """
@@ -738,7 +738,7 @@ def game_title(game=None) -> str:
 
 def level_up_blockers(record: CharacterRecord | None = None,
                       game=None) -> tuple[str, ...]:
-    """Every reason levelling refuses, most specific first.
+    """Every reason levelling blocks, most specific first.
 
     Empty means every field the trainer touches is both derivable and
     CONFIRMED. **It got there by measurement, not by lowering a bar**: the
@@ -754,7 +754,7 @@ def level_up_blockers(record: CharacterRecord | None = None,
     `goldbox/levels.py`, so selecting them looks like enough, and it is not. Every
     derivation around them was read at Pool of Radiance's addresses out of Pool
     of Radiance's `GEN` -- `levels.TRAINER_MEASURED` names them -- so a title
-    nobody has measured is refused whatever tables it has.
+    nobody has measured is blocked whatever tables it has.
     """
     out = []
     unsure = [name for name in LEVEL_UP_FIELDS
@@ -791,13 +791,13 @@ class LevelUp(Action):
 
     **Healing is done, because the trainer does it.** Current hit points end at
     the *new* maximum, after the die is rolled and `hp_max` has risen. A
-    character at 0 is refused rather than healed: zero is dead or dying and the
+    character at 0 is blocked rather than healed: zero is dead or dying and the
     record does not say which, which is the same rejection `HealParty` makes.
 
     **A magic-user has to choose.** `GEN $215A` puts every spell it does not
     know, of a level it can now cast, on a menu and does not finish the
     level-up until one is picked -- so `spell` is required for a magic-user
-    with anything left to learn, and the action refuses rather than choosing.
+    with anything left to learn, and the action blocks rather than choosing.
     `offers(record)` is that list.
 
     **Which class is not a question the player is asked, and how many depends
@@ -822,7 +822,7 @@ class LevelUp(Action):
     `goldbox.c64_save.C64Container` the session is, and every table and every derivation is
     taken from it. None means Pool of Radiance, because every caller written
     before there was a second title meant that one. A title whose trainer
-    nobody has measured is refused by `level_up_blockers` before a byte is
+    nobody has measured is blocked by `level_up_blockers` before a byte is
     written -- see `goldbox.levels.TRAINER_MEASURED`.
     """
 
@@ -834,7 +834,7 @@ class LevelUp(Action):
     def __init__(self, game=None):
         # Not `super().__init__`: `None` here has to stay `None`. Every table
         # below takes a title-or-None and resolves it itself, and
-        # `level_up_blockers` refuses a title whose trainer nobody measured
+        # `level_up_blockers` blocks a title whose trainer nobody measured
         # before a byte is written -- so an unnamed title must not be quietly
         # turned into Pool of Radiance's descriptor.
         self.game = game
@@ -844,7 +844,7 @@ class LevelUp(Action):
         """`game` as a `Game`, for the addresses `run` writes to.
 
         An unknown key falls back to Pool of Radiance's geometry, which costs
-        nothing: `level_up_blockers` has already refused every title but the
+        nothing: `level_up_blockers` has already blocked every title but the
         one whose trainer was measured.
         """
         if isinstance(self.game, c64_port.C64Container):
@@ -1055,7 +1055,7 @@ def quickfight_flag(game: c64_port.C64Container | None = None) -> QuickfightFlag
     file, `$6700` inside the payload in Curse and Silver Blades (#29).
 
     `QUICKFIGHT` being None is the separate case, and it stays the one that
-    means "nobody has found this bit at all": `ClearQuickfight` then refuses
+    means "nobody has found this bit at all": `ClearQuickfight` then blocks
     with `WANTED` rather than writing an offset nothing established.
     """
     if QUICKFIGHT is None:
@@ -1151,7 +1151,7 @@ class QuickfightWatcher:
 
         A title with no measured mode flag never fires: `mode` answers None,
         which is the same "no edge" answer an unreadable machine gives, and
-        the action underneath would refuse in any case.
+        the action underneath would block in any case.
         """
         now = mode(target, self.game)
         was, self.was = self.was, now
@@ -1650,12 +1650,12 @@ def reenter(target, addr: fasttravel.FastTravelAddresses, entry: int) -> bool:
     (`addr.has_exit_reentry`) or this backend cannot set the stack pointer --
     found the way `jump` finds a PC setter, an optional `target.reenter(pc,
     sp)` or the VICE monitor a `ViceTarget` holds, so a backend that offers
-    neither is refused rather than made to pretend. Every one of those checks,
+    neither is blocked rather than made to pretend. Every one of those checks,
     including the monitor's own rejection of the new SP/PC, runs before
     the stack page is written, so a `False` return always means nothing was
     pushed -- `#494 (reenter() can push return addresses to the stack page
     and still report failure)`. The monitor is resumed exactly once, whether
-    the handoff succeeds or not: a refused register write leaves nothing
+    the handoff succeeds or not: a blocked register write leaves nothing
     written, and still has to let the machine carry on from wherever it was
     halted rather than leave it frozen at the monitor prompt.
     """
@@ -1790,7 +1790,7 @@ class FastTravel(Action):
         **The addresses come with the title and are never defaulted.**
         `automap/fasttravel.py` has a row for each of the three titles whose
         overlays have been read; `self.addresses` is None for the other three,
-        and every method below refuses rather than falling back to Pool of
+        and every method below blocks rather than falling back to Pool of
         Radiance's numbers. Falling back is the one answer that corrupts --
         `#14` fixed it for the area list, and this is the same mistake one
         address at a time.
@@ -1858,7 +1858,7 @@ class FastTravel(Action):
         """Whether `DUNGEON` is resident and the PC is somewhere a trip may
         start from: the two checks `legality` and `continue_pending` share."""
         if mode(target, self.game) != DUNGEON:
-            _log.debug("fasttravel refused: $%04X is not 1, so DUNGEON is "
+            _log.debug("fasttravel blocked: $%04X is not 1, so DUNGEON is "
                       "not the resident overlay and $%04X is not NEWECL",
                       c64.machine_for(self.game).mode_flag, addr.tail)
             return Verdict(False, FASTTRAVEL_BUSY)
@@ -1867,7 +1867,7 @@ class FastTravel(Action):
             return Verdict(False, "this backend cannot read the CPU, and "
                                   "fast travel has to set the program counter")
         if not any(lo <= pc < hi for lo, hi in (addr.key_wait, addr.key_fetch)):
-            _log.debug("fasttravel refused: PC $%04X is outside DUNGEON's "
+            _log.debug("fasttravel blocked: PC $%04X is outside DUNGEON's "
                       "key-wait loop ($%04X-$%04X) and the key fetcher it "
                       "calls ($%04X-$%04X)",
                       pc, addr.key_wait[0], addr.key_wait[1] - 1,
@@ -1904,7 +1904,7 @@ class FastTravel(Action):
             return Verdict(False, "the party is already in that area")
         indoors = self.current_indoors(target, addr)
         if indoors == 0 and not getattr(area, "outdoors", False):
-            _log.debug("fasttravel refused: $%04X is 0 (outdoors)",
+            _log.debug("fasttravel blocked: $%04X is 0 (outdoors)",
                       addr.indoors)
             return Verdict(False, self.OUTDOORS_TRAP)
         return Verdict(True)
@@ -1924,7 +1924,7 @@ class FastTravel(Action):
         self.pending = None
         addr = self.addresses
         if addr is None:
-            # `legality` refuses first for anything that came through `apply`.
+            # `legality` blocks first for anything that came through `apply`.
             # `run` is public, and a caller that skips the check must not get
             # Pool of Radiance's tail jumped to in another title's machine.
             return Outcome(False, UNSUPPORTED.format(title=self.game.title))
@@ -1940,7 +1940,7 @@ class FastTravel(Action):
             if doors:
                 chosen = fasttravel.choose_door(doors)
                 if chosen is None:
-                    _log.debug("two-hop fast travel refused: every door out "
+                    _log.debug("two-hop fast travel blocked: every door out "
                                "of area %d can start a fight", here)
                     return Outcome(False, self.EVERY_DOOR_FIGHTS)
                 through, door = chosen
@@ -2259,7 +2259,7 @@ class FastTravel(Action):
     #: P20 read `$C04B`-`$C04D` as `254, 127, 16` with no `GEO` resident, no
     #: status line and no command bar, and the PC never came back to the
     #: key-wait loop, so nothing could be fasttraveled out again. `FastTravelBar` does not
-    #: offer it; this refuses it for a caller that did not come through the
+    #: offer it; this blocks it for a caller that did not come through the
     #: dropdown (write-up lost, `reports/p20-arrivals.md`).
     ATTRACT_TRAP = ("this is the attract-mode demo, not a place: travelling "
                     "there leaves the world -- no map, no status line, and the "

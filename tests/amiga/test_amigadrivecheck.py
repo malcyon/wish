@@ -121,7 +121,7 @@ class FakePipe:
         return Receipt(self.guest.drives)
 
     def insert_floppy(self, drive, path, holder, sha, token=None, staged=None):
-        amiga.refuse_floppy_change(drive, path, holder, sha)
+        amiga.check_floppy_change(drive, path, holder, sha)
         if staged is not None and path not in staged:
             raise ValueError(f"Floppy path {path!r} is not a disk this run staged for {holder}")
         self.guest._do("insert", drive, path)
@@ -131,7 +131,7 @@ class FakePipe:
         self.guest.drives[drive] = path
         return Receipt(self.guest.drives, labels=("q0", "q1", "dbg", "set"))
 
-    def refused_verb(self, verb, holder, args):
+    def blocked_verb_reason(self, verb, holder, args):
         self.guest._do("lane_verb", holder, args[1])
         if holder != HOLDER:
             raise amiga.GuestRejection(f"fail the WinUAE lane is claimed by {HOLDER} since t, "
@@ -172,11 +172,11 @@ def test_the_probe_runs_its_steps_in_order_and_passes(tmp_path, clock, proof):
         "swap DF0 to B", "swap DF0 to B: readback",
         "restore DF0 to A", "restore DF0 to A: readback",
         "control: another holder's claim", "control: another holder's claim leaves both drives",
-        "control: another holder's path, refused in Python",
-        "control: another holder's path, refused in the guest",
+        "control: another holder's path, blocked in Python",
+        "control: another holder's path, blocked in the guest",
         "control: another holder's path leaves both drives",
-        "control: a file never staged, refused in Python",
-        "control: a file never staged, refused in the guest",
+        "control: a file never staged, blocked in Python",
+        "control: a file never staged, blocked in the guest",
         "control: a file never staged leaves both drives",
         "control: the same path twice", "control: the same path leaves both drives"]
     assert {s["verdict"] for s in result["steps"]} == {"pass"}
@@ -222,14 +222,14 @@ def test_every_staged_disk_is_fetched_and_hashed_after_the_run(tmp_path, clock, 
     assert result["cleaned_up"] is True and result["lane"] == "free"
 
 
-def test_a_stale_audio_proof_refuses_before_the_guest_is_touched(tmp_path, clock):
+def test_a_stale_audio_proof_blocks_before_the_guest_is_touched(tmp_path, clock):
     guest = FakeGuest(clock, sha256(check.REPO_SCRIPT))
     with pytest.raises(RouteError, match="audio mute has not been verified"):
         run(tmp_path, clock, write_proof(tmp_path / "old.json", age_seconds=600), guest=guest)
     assert guest.calls == [] and not (tmp_path / "run").exists()
 
 
-def test_a_missing_audio_proof_refuses_before_the_guest_is_touched(tmp_path, clock):
+def test_a_missing_audio_proof_blocks_before_the_guest_is_touched(tmp_path, clock):
     guest = FakeGuest(clock, sha256(check.REPO_SCRIPT))
     with pytest.raises(RouteError, match="audio mute has not been verified"):
         run(tmp_path, clock, tmp_path / "absent.json", guest=guest)
@@ -246,14 +246,14 @@ def test_an_audio_proof_that_expires_before_the_start_stops_the_run_and_cleans_u
     assert "start" not in order and "release" in order and order.count("get") == 3
 
 
-def test_a_deployed_lane_script_that_differs_from_this_one_refuses_before_a_claim(tmp_path, clock, proof):
+def test_a_deployed_lane_script_that_differs_from_this_one_blocks_before_a_claim(tmp_path, clock, proof):
     guest = FakeGuest(clock, "0" * 64)
     with pytest.raises(RouteError, match="not this repository's"):
         run(tmp_path, clock, proof, guest=guest)
     assert [c[0] for c in guest.calls] == ["deployed"]
 
 
-def test_an_existing_run_directory_is_refused(tmp_path, clock, proof):
+def test_an_existing_run_directory_is_blocked(tmp_path, clock, proof):
     (tmp_path / "run").mkdir()
     with pytest.raises(RouteError, match="already exists"):
         run(tmp_path, clock, proof)
@@ -273,7 +273,7 @@ def test_a_failed_change_stops_the_probe_and_still_cleans_up(tmp_path, clock, pr
 
 def test_a_control_that_is_accepted_fails_the_probe(tmp_path, clock, proof):
     class Lax(FakePipe):
-        def refused_verb(self, verb, holder, args):
+        def blocked_verb_reason(self, verb, holder, args):
             return "ok inserted drive=0"
 
     guest, result = run(tmp_path, clock, proof, pipe=Lax)
@@ -284,9 +284,9 @@ def test_a_control_that_is_accepted_fails_the_probe(tmp_path, clock, proof):
     assert "release" in [c[0] for c in guest.calls]
 
 
-def test_a_control_refused_for_the_wrong_reason_fails_the_probe(tmp_path, clock, proof):
+def test_a_control_blocked_for_the_wrong_reason_fails_the_probe(tmp_path, clock, proof):
     class Wrong(FakePipe):
-        def refused_verb(self, verb, holder, args):
+        def blocked_verb_reason(self, verb, holder, args):
             raise amiga.GuestRejection("fail something else")
 
     _, result = run(tmp_path, clock, proof, pipe=Wrong)
@@ -305,11 +305,11 @@ def test_df1_changing_during_a_step_fails_the_probe(tmp_path, clock, proof):
     assert result["steps"][-2]["step"] == "swap DF0 to B: readback"
 
 
-def test_a_refused_control_leaves_both_drives_checked(tmp_path, clock, proof):
+def test_a_blocked_control_leaves_both_drives_checked(tmp_path, clock, proof):
     class Disturbing(FakePipe):
-        def refused_verb(self, verb, holder, args):
+        def blocked_verb_reason(self, verb, holder, args):
             self.guest.drives[0] = "C:\\Amiga\\Disks\\somewhere-else.adf"
-            return super().refused_verb(verb, holder, args)
+            return super().blocked_verb_reason(verb, holder, args)
 
     _, result = run(tmp_path, clock, proof, pipe=Disturbing)
     assert result["passed"] is False
@@ -419,7 +419,7 @@ def test_a_clock_past_the_probing_deadline_raises_and_cleans_up(tmp_path, clock,
     assert [c[0] for c in guest.calls][-6:] == ["stop", "get", "get", "get", "release", "lane"]
 
 
-def test_less_than_twenty_seconds_left_refuses_a_floppy_change(tmp_path, clock, proof):
+def test_less_than_twenty_seconds_left_blocks_a_floppy_change(tmp_path, clock, proof):
     class Nearly(FakePipe):
         def drives(self, holder):
             clock.now += 165
@@ -436,7 +436,7 @@ def test_the_command_line_needs_an_audio_proof(capsys):
     assert "--audio-proof" in capsys.readouterr().err
 
 
-def test_the_command_line_refuses_a_stale_proof_with_a_capitalised_line(tmp_path, capsys, monkeypatch):
+def test_the_command_line_blocks_a_stale_proof_with_a_capitalised_line(tmp_path, capsys, monkeypatch):
     class Untouchable:
         def __getattr__(self, name):
             pytest.fail(f"touched the guest: {name}")
@@ -448,7 +448,7 @@ def test_the_command_line_refuses_a_stale_proof_with_a_capitalised_line(tmp_path
 
 # -- WinGuest.insert, which the driver's insert steps go through -----------------
 
-def test_winguest_insert_keeps_the_raw_replies_of_a_refused_change(monkeypatch):
+def test_winguest_insert_keeps_the_raw_replies_of_a_blocked_change(monkeypatch):
     from tools.amiga import winuaesession
 
     class Pipe:
@@ -466,7 +466,7 @@ def test_winguest_insert_keeps_the_raw_replies_of_a_refused_change(monkeypatch):
     assert caught.value.receipt == {"replies": ["x"]}
 
 
-def test_winguest_insert_refuses_a_disk_it_did_not_stage_before_anything_is_sent():
+def test_winguest_insert_blocks_a_disk_it_did_not_stage_before_anything_is_sent():
     from tools.amiga import winuaesession
 
     ran = []
@@ -482,17 +482,17 @@ class LateRejection(FakePipe):
 
     output = "fail C:\\x\\probeZ.adf does not exist\r\n<<end>>\r\n"
 
-    def refused_verb(self, verb, holder, args):
+    def blocked_verb_reason(self, verb, holder, args):
         if "probeZ" in args[1]:
             self.guest._do("lane_verb", holder, args[1])
-            return amiga.WinuaePipe(runner=lambda argv, t: self.output).refused_verb(
+            return amiga.WinuaePipe(runner=lambda argv, t: self.output).blocked_verb_reason(
                 verb, holder, args)
-        return super().refused_verb(verb, holder, args)
+        return super().blocked_verb_reason(verb, holder, args)
 
 
 def test_a_rejection_the_guest_makes_after_the_pipe_is_open_passes_the_control(tmp_path, clock, proof):
     _, result = run(tmp_path, clock, proof, pipe=LateRejection)
-    step = next(s for s in result["steps"] if s["step"] == "control: a file never staged, refused in the guest")
+    step = next(s for s in result["steps"] if s["step"] == "control: a file never staged, blocked in the guest")
     assert step["verdict"] == "pass" and "does not exist" in step["rejection"]
     assert result["passed"] is True
 
@@ -507,18 +507,18 @@ def test_a_guest_that_answers_ok_to_a_control_fails_it_and_records_what_it_said(
     assert step["verdict"] == "fail" and step["observed"] == "ok inserted drive=0 polls=1"
 
 
-# -- controls driven through the real refused_verb -------------------------------
+# -- controls driven through the real blocked_verb_reason -------------------------------
 
 class RealVerbPipe(FakePipe):
-    """Every control's verb is read by the real `WinuaePipe.refused_verb`."""
+    """Every control's verb is read by the real `WinuaePipe.blocked_verb_reason`."""
 
     def __init__(self, guest, timeout):
         super().__init__(guest, timeout)
         self.real = amiga.WinuaePipe(runner=self.runner)
 
-    def refused_verb(self, verb, holder, args):
+    def blocked_verb_reason(self, verb, holder, args):
         self.guest._do("lane_verb", holder, args[1])
-        return self.real.refused_verb(verb, holder, args)
+        return self.real.blocked_verb_reason(verb, holder, args)
 
     @staticmethod
     def runner(argv, timeout):
@@ -536,7 +536,7 @@ def test_the_wrong_holder_and_other_path_controls_pass_through_the_real_verb_rea
     assert result["passed"] is True
     by = {s["step"]: s for s in result["steps"]}
     assert by["control: another holder's claim"]["rejection"].startswith("fail the WinUAE lane is claimed by")
-    assert "is not staged for" in by["control: another holder's path, refused in the guest"]["rejection"]
+    assert "is not staged for" in by["control: another holder's path, blocked in the guest"]["rejection"]
 
 
 def test_a_transport_error_that_says_does_not_exist_does_not_pass_the_never_staged_control(tmp_path, clock, proof):
@@ -548,7 +548,7 @@ def test_a_transport_error_that_says_does_not_exist_does_not_pass_the_never_stag
             return RealVerbPipe.runner(argv, timeout)
 
     _, result = run(tmp_path, clock, proof, pipe=Transport)
-    assert result["passed"] is False and "not refused as expected" in result["error"]
+    assert result["passed"] is False and "not blocked as expected" in result["error"]
     assert result["steps"][-2]["verdict"] == "fail"
 
 
@@ -556,7 +556,7 @@ def test_a_powershell_error_after_a_failed_line_is_not_a_rejection_unless_the_fa
     real = amiga.WinuaePipe(runner=lambda a, t: (_ for _ in ()).throw(
         amiga.GuestError("winvm ssh failed: Exception: fail x does not exist")))
     with pytest.raises(amiga.FloppyError) as caught:
-        real.refused_verb("insert", HOLDER, ["0", "p", "s"])
+        real.blocked_verb_reason("insert", HOLDER, ["0", "p", "s"])
     assert not isinstance(caught.value, amiga.GuestRejection)
 
 
@@ -577,7 +577,7 @@ def _deployed(reply):
     return guest.deployed(5)
 
 
-def test_the_deployed_read_refuses_a_key_reported_twice():
+def test_the_deployed_read_blocks_a_key_reported_twice():
     with pytest.raises(RouteError, match="winuae64_version twice"):
         _deployed("winuae64_sha256=A\nwinuae64_version=1\nwinuae64_version=2\nwinuae_ps1_sha256=C")
 
@@ -588,7 +588,7 @@ def test_the_deployed_read_accepts_crlf_lines():
 
 
 @pytest.mark.parametrize("missing", ["winuae64_sha256", "winuae64_version", "winuae_ps1_sha256"])
-def test_the_deployed_read_refuses_a_missing_key_before_the_probe_runs(missing, tmp_path, clock, proof):
+def test_the_deployed_read_blocks_a_missing_key_before_the_probe_runs(missing, tmp_path, clock, proof):
     lines = {"winuae64_sha256": "A", "winuae64_version": "1", "winuae_ps1_sha256": "C"}
     del lines[missing]
     with pytest.raises(RouteError, match=f"did not report {missing}"):

@@ -47,7 +47,7 @@ def _hide_all_but(disk_path: pathlib.Path, keep_index: int,
 
     Built by patching `SaveGame0`'s own bytes in place rather than by
     keeping a fixture: `looks_occupied` (`goldbox/savegame.py`) reads a
-    slot's first byte as the name and refuses anything outside `A`-`Z`, so
+    slot's first byte as the name and blocks anything outside `A`-`Z`, so
     zeroing that one byte per slot hides it from `SaveGame0.characters`
     without touching anything else on the disk -- the roster, the items and
     the kept slot's own 256 bytes are the specimen's, unedited.  This is

@@ -245,8 +245,8 @@ def test_the_constitution_hit_point_table_has_no_floor_and_caps_by_score():
     done by clamping the *score*: `CPY #$03 / BCS / CPX #$11 / BCC / LDX #$10`
     reads 16 for any class slot below 3 whose constitution is 17 or more.
 
-    **The table starts at 1, not 15.** Pool of Radiance's `$2471` refuses to
-    look below 15 (`CPX #$0F`) and `levels.constitution_hp_bonus` refuses with
+    **The table starts at 1, not 15.** Pool of Radiance's `$2471` declines to
+    look below 15 (`CPX #$0F`) and `levels.constitution_hp_bonus` rejects with
     it; Curse indexes straight in, and the first six entries are -2 and -1. So
     a Curse character with a constitution of 6 or less loses hit points a
     level and `goldbox/levels.py` would write that it gains none.
@@ -518,7 +518,7 @@ def test_curses_ranger_reaches_three_attacks_in_two_rounds_at_eight_not_seven():
     measured separately (`#187`) and its `_ATTACKS_RANGER_SSB` has always said
     the ranger's first band ends at 7. Two titles, two readings, same rule.
 
-    **`STY $7CD9` is unconditional**, where Pool of Radiance's `$2342` refuses
+    **`STY $7CD9` is unconditional**, where Pool of Radiance's `$2342` rejects
     to lower what is stored -- which is `attack_forms_overwritten`.
     """
     payload = _gen()
@@ -881,7 +881,7 @@ def test_the_level_up_button_asks_for_a_spell_through_the_window_when_class_for_
     ready, `$14F8` trains both this visit, and `class_for` -- `best_class` --
     names the fighter. Before this ticket, `_level_up` opened the spell dialog
     only when `class_for` named the magic-user, so it would open nothing here
-    and the write would refuse with "picks one new spell", never having shown
+    and the write would reject with "picks one new spell", never having shown
     a menu to pick from. Reverting `automap/actions.py`'s `offers` and
     `automap/window.py`'s `_level_up` to their state before this ticket and
     rerunning this fails on exactly that message.
@@ -964,7 +964,7 @@ def test_curse_is_now_in_trainer_measured():
     `run` -- and `class_for` is `best_class`, the same function the test above
     shows answering the wrong class for TRAVIS and LEDERA. When the class it
     named was not the magic-user, and the magic-user was one of the classes
-    `plan_all` would raise on this visit, the button wrote nothing and refused
+    `plan_all` would raise on this visit, the button wrote nothing and rejected
     with "picks one new spell", having never opened a menu to pick one from
     (`test_the_level_up_button_asks_for_a_spell_through_the_window_when_class_for_would_have_named_the_fighter`).
     `_level_up` now gates the dialog on `actions.LevelUp.offers`, which itself
@@ -1348,7 +1348,7 @@ def test_the_shipped_thief_stores_the_eight_skills_this_gives():
     decoration -- it is five of the eight columns.
 
     `LevelTables.thief_skill_row` now carries Curse's three tables and is
-    checked against the same eight bytes. **It refuses without a dexterity**
+    checked against the same eight bytes. **It rejects without a dexterity**
     rather than reading row 0, which would be the adjustment for a dexterity
     of 9 and would quietly take 65 points off this character.
     """

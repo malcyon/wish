@@ -130,7 +130,7 @@ def test_a_variable_is_read_by_its_dos_number():
     assert save.data[dos_savegame.POD_PARTY_COUNT - 1] == 6
 
 
-def test_a_party_count_the_engine_would_not_write_is_refused():
+def test_a_party_count_the_engine_would_not_write_is_blocked():
     data = bytearray(build())
     struct.pack_into(">H", data, amiga_savegame.POD_COUNT_AT,
                      amiga_savegame.POD_PARTY_MAX + 1)
@@ -139,8 +139,8 @@ def test_a_party_count_the_engine_would_not_write_is_refused():
 
 
 @pytest.mark.parametrize("count", [0, amiga_savegame.POD_PARTY_MAX + 1])
-def test_a_party_count_outside_one_to_eight_is_refused_even_when_the_records_are_there(count):
-    """Nine well-formed records must be refused for their count and not for
+def test_a_party_count_outside_one_to_eight_is_blocked_even_when_the_records_are_there(count):
+    """Nine well-formed records must be blocked for their count and not for
     the filler a one-character buffer would leave where they should be."""
     data = bytearray(build(characters=((0, 0, 0),) * 9))
     struct.pack_into(">H", data, amiga_savegame.POD_COUNT_AT, count)
@@ -148,12 +148,12 @@ def test_a_party_count_outside_one_to_eight_is_refused_even_when_the_records_are
         podsavegame.parse(bytes(data))
 
 
-def test_a_buffer_shorter_than_the_header_is_refused_for_its_length():
+def test_a_buffer_shorter_than_the_header_is_blocked_for_its_length():
     with pytest.raises(podsavegame.PodSaveError, match="shorter than the header"):
         podsavegame.parse(bytes(amiga_savegame.POD_PARTY_AT - 1))
 
 
-def test_a_bundle_whose_count_overshoots_the_buffer_is_refused():
+def test_a_bundle_whose_count_overshoots_the_buffer_is_blocked():
     """The bundle's sub-items are skipped by count, not read, so nothing
     slices past the end: only the final position check sees the overshoot."""
     data = build(characters=((1, 1, 0),))
@@ -307,7 +307,7 @@ def test_dos_strides_do_not_read_these_files():
 
 def test_dos_offsets_do_not_read_a_synthetic_party_either():
     """Not only because the map-block word is 0: a map block of 3 puts a legal
-    count in DOS's count byte, and the entry length still refuses it."""
+    count in DOS's count byte, and the entry length still blocks it."""
     blob = build(map_block=3, characters=((0, 0, 0),) * 3)
     assert 1 <= blob[POD.party_size_byte] <= amiga_savegame.POD_PARTY_MAX
     assert not dos_reads_a_party(blob)

@@ -222,7 +222,7 @@ def test_the_breakdown_names_every_term_it_used():
     assert one.line == "BRUTUS 26 = 15 THAC0 + 11 hp max"
 
 
-def test_short_blocks_are_refused_rather_than_read_as_zeros():
+def test_short_blocks_are_blocked_rather_than_read_as_zeros():
     save0, roster = captured()
     with pytest.raises(ValueError):
         strength.from_bytes(bytes(save0[:0x100]), bytes(roster))

@@ -424,7 +424,7 @@ def banked(mon: Monitor, read=None) -> Banks | None:
     io, ram = ids.get("io"), ids.get("ram")
     if io is None or ram is None:
         # No named banks to ask for. Fall back to what the processor can see,
-        # and refuse to answer when it cannot see the chips at all.
+        # and not answer when it cannot see the chips at all.
         if read(0x01, 1)[0] & 0x07 not in IO_IN:
             return None
         def direct(addr: int, length: int) -> bytes:

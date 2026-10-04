@@ -137,7 +137,7 @@ def test_unrelated_bam_bookkeeping_is_preserved_not_repaired(difference, seed):
     assert repaired.to_bytes() == original
 
 
-def test_a_file_sharing_an_empty_directory_sector_is_refused(seed):
+def test_a_file_sharing_an_empty_directory_sector_is_rejected(seed):
     disk = generated_disk()
     directory = bytearray(disk.read_sector(18, 1))
     directory[:2] = bytes((18, 4))
@@ -160,7 +160,7 @@ def test_a_file_sharing_an_empty_directory_sector_is_refused(seed):
     "duplicate_name", "unclosed", "wrong_type", "cross_link", "free_block",
     "block_count", "directory_loop", "file_loop", "bad_bam", "error_map",
 ])
-def test_unsupported_or_malformed_sources_are_refused(condition, seed):
+def test_unsupported_or_malformed_sources_are_rejected(condition, seed):
     disk = generated_disk()
     if condition in ("missing_roster", "wrong_load", "short_save", "wrong_title"):
         damaged = D64.blank()
@@ -438,7 +438,7 @@ def test_cli_rejection_writes_no_file_and_reports_no_traceback(source, seed, mon
     original = source.read_bytes()
     output = source.with_name("another.d64")
     assert repair.main([str(source), "--out", str(output)]) == 1
-    assert capsys.readouterr().err.startswith("Refused: DIRTEN already has nonzero icon data")
+    assert capsys.readouterr().err.startswith("Rejected: DIRTEN already has nonzero icon data")
     assert source.read_bytes() == original
     assert not output.exists()
 
@@ -475,14 +475,14 @@ def test_native_data_uses_the_existing_discovery_convention(
         for name in ("POOL1.D64", "POOL3.D64"))
 
 
-def test_disagreeing_native_sources_are_refused(generated_game_disks, monkeypatch):
+def test_disagreeing_native_sources_are_rejected(generated_game_disks, monkeypatch):
     monkeypatch.setenv("POR_DISKS", str(generated_game_disks))
     monkeypatch.setattr(repair.IconParts, "load", lambda _disk: SimpleNamespace(default_icon=lambda: bytes([99] * 36)))
     with pytest.raises(repair.RepairError, match="does not match"):
         repair.native_default()
 
 
-def test_truncated_native_init_is_refused(generated_game_disks, monkeypatch):
+def test_truncated_native_init_is_rejected(generated_game_disks, monkeypatch):
     monkeypatch.setenv("POR_DISKS", str(generated_game_disks))
     path = generated_game_disks / "POOL1.D64"
     disk = D64.open(path)

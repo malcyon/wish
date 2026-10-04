@@ -154,7 +154,7 @@ never `0x03F`.
 So a file holding a bundle has more 67-byte records than `item_count` says,
 and a reader that takes the first `item_count` of them reads the bundle's
 spell pages as items and loses that many real items off the end of the pack.
-`goldbox.dos_codec.read_character` did that, and then refused the file, until
+`goldbox.dos_codec.read_character` did that, and then blocked the file, until
 `#432 (A joined scroll in a DOS Silver Blades save shifts everything after it
 out of the character's pack)`; it now reads the file with
 `goldbox.dos_codec.item_nodes`, the engine's loop, and section 4 says how
@@ -209,7 +209,7 @@ the DOS item is written from the scrolls. HILDE's and INA's cases are
 readied, and their scrolls are not.
 
 **Each scroll takes its case's `readied`, CONFIRMED from both executables.**
-DOS refuses `USE` on an item that is not readied and prints `Must be readied`
+DOS blocks `USE` on an item that is not readied and prints `Must be readied`
 (`0x24BF6`); the combat `Use` reaches the same routine. `READY` (`0x250D6`)
 checks hands, a slot for locations 0-9 and the class mask, and the `ITEMS`
 rows give type 39 and 40 no hands and locations `0x0B` and `0x0C`, so any
@@ -276,7 +276,7 @@ loader has no compare, and its one counter is never read. That is PROBABLE
 from the absent instruction. The same pattern was measured in DOS Pool of
 Radiance, where a 20-item file loaded and saved back as 20
 (`173-carrying-limits.md`). **What the player sees:** every spell arrives, but
-until CLERIC is down to fifteen items the game refuses him another one. On
+until CLERIC is down to fifteen items the game blocks him another one. On
 the Amiga, where the case counts as one item, he had room for one more.
 HILDE (13) and INA (12) are under the limit. **The experiment that confirms
 it:** load the converted `SavGamA` in DOS, count CLERIC's 21 scrolls on
@@ -292,7 +292,7 @@ hidden zero, spell bytes zero, `quantity` 1. Each further scroll is copied
 whole onto the end of the chain (`0x296A5`), a joined scroll's own chain is
 spliced on whole (`0x29641`), and after every merge `quantity` and `value`
 grow, and `name2` and `weight` are set to the new `quantity` (`0x296CC`).
-JOIN refuses past ten (`0x293C7`). So a joined scroll is its scrolls plus a
+JOIN blocks past ten (`0x293C7`). So a joined scroll is its scrolls plus a
 head derived from them, and taking it apart loses no spell.
 
 | port | holds a joined scroll | read from |

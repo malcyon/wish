@@ -237,7 +237,7 @@ def test_the_pool_can_be_full(pool, monkeypatch):
 
 
 @posix
-def test_the_pool_refuses_once_its_display_band_is_full(pool, monkeypatch):
+def test_the_pool_rejects_once_its_display_band_is_full(pool, monkeypatch):
     """#213: the search used to wander past a full band into whatever the next
     pool's numbers happened to be, rather than admitting its own band was
     exhausted -- so a band that is genuinely full must raise `PoolFull`
@@ -363,7 +363,7 @@ def test_reap_kills_the_recorded_pgid_and_nothing_else(pool):
 
 
 @posix
-def test_killpg_refuses_our_own_group(pool):
+def test_killpg_rejects_our_own_group(pool):
     with pytest.raises(ValueError):
         instance._killpg(os.getpgid(0))
 
@@ -764,10 +764,10 @@ def test_status_never_greets_or_listens_on_a_held_slot(pool, monkeypatch):
     with instance.claim() as slot:
         (slot.dir / "shot.png").write_bytes(b"x")
 
-        def _refuse(*a, **kw):
+        def _reject(*a, **kw):
             raise AssertionError("status must not probe a held slot's monitor")
-        monkeypatch.setattr(instance, "_greets", _refuse)
-        monkeypatch.setattr(instance, "_listening", _refuse)
+        monkeypatch.setattr(instance, "_greets", _reject)
+        monkeypatch.setattr(instance, "_listening", _reject)
         rows = instance.status()          # must not raise
         assert rows[slot.n]["state"] == instance.HELD
 
@@ -1493,7 +1493,7 @@ def test_ssbsession_stage_gives_the_game_a_writable_save_disk(pool):
     """#455: a read-only specimen must not stage into a read-only `SIDE0.D64`.
 
     Every write the game makes to a write-protected save disk is silently
-    refused -- a driven run boots, loads the party, and reports success while
+    rejected -- a driven run boots, loads the party, and reports success while
     nothing lands on the disk.
     """
     ssbsession = load_tools_module("ssbsession")

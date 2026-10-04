@@ -79,10 +79,10 @@ def test_the_field_disposition_no_longer_says_copied():
         .startswith("copied")
 
 
-def test_a_rule_that_refuses_falls_back_to_the_copy_and_warns(monkeypatch):
-    def refuse(*_args):
+def test_a_rule_that_blocks_falls_back_to_the_copy_and_warns(monkeypatch):
+    def block(*_args):
         raise ValueError("an item's type is not in the table")
-    monkeypatch.setattr(derive, "expected_movement", refuse)
+    monkeypatch.setattr(derive, "expected_movement", block)
     rec, rep = c64_codec.write(_char(), item_types={})
     assert rec.get("roster_movement") == 12
     assert "copied rather than recomputed" in rep.sources[0x11B]

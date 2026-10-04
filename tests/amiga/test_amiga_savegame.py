@@ -144,7 +144,7 @@ def test_pool_conversion_readers_keep_their_pre_consolidation_acceptance(
     amiga_savegame.POR_SAVEGAME_SIZE - 1,
     amiga_savegame.POR_SAVEGAME_SIZE + 1,
 ], ids=("short", "long"))
-def test_pool_conversion_readers_still_refuse_a_non_fixed_size_save(size, monkeypatch):
+def test_pool_conversion_readers_still_block_a_non_fixed_size_save(size, monkeypatch):
     """The pre-consolidation readers both retained the fixed-size boundary."""
     from goldbox import amiga_por
 

@@ -56,13 +56,13 @@
 # your game, and its `stop` ends your run -- three Pools of Darkness sessions
 # died that way in one night, and nothing in any output said so. So:
 #
-#   * `claim` refuses a second holder, and `start`, `stop`, `key`, `send`,
-#     `front` and `roms` refuse a caller who is not the holder;
+#   * `claim` blocks a second holder, and `start`, `stop`, `key`, `send`,
+#     `front` and `roms` block a caller who is not the holder;
 #   * `start` verifies that the emulator it found is running the command line
 #     THIS call passed, and was started after this call was made -- so a
 #     neighbour's emulator can never be reported as your own success;
 #   * `start` writes a receipt naming the pid it launched, and `stop`, `key`,
-#     `send` and `front` refuse a winuae64 that is not the one in it.
+#     `send` and `front` block a winuae64 that is not the one in it.
 #
 # See docs/143-winuae-debugger.md 1.1 and
 # #116 (Two agents cannot share the WinUAE VM, and neither of them can tell).
@@ -80,7 +80,7 @@ param(
 # declared -Holder eats the `7A` of `key 7A` and the quoted argument of `send`.
 # Measured, with -Holder at Position 99 and $Rest at Position 1:
 # `key 7A` bound cmd=[key] holder=[7A] rest=[], and the keypress was then
-# refused for having no VK code. Reading them here leaves every existing call
+# blocked for having no VK code. Reading them here leaves every existing call
 # form exactly as it was.
 #
 # For the same family of reasons neither name may be abbreviated by the caller:
@@ -247,7 +247,7 @@ function Read-Claim {
     # write look stale and let a second holder take the lane with no -Override,
     # which is this issue reopened by clock skew. An age is one clock compared
     # with itself, and it fails in the safe direction: a backwards step makes
-    # the age negative, the file reads as in flight, and the caller is refused
+    # the age negative, the file reads as in flight, and the caller is blocked
     # rather than let in. A write lasts milliseconds; ten seconds is the margin.
     $written = (Get-Item $ClaimFile -ErrorAction SilentlyContinue).LastWriteTime
     if ($written -and ((Get-Date) - $written).TotalSeconds -gt 10) { return @{ state = 'stale' } }
@@ -418,7 +418,7 @@ if (`$all.Count -eq 0) { Report 'fail no winuae64 process'; exit 1 }
 if (`$all.Count -gt 1) {
   # ``Select-Object -First 1`` picked whichever the OS listed first, so a
   # keypress could land in a second emulator -- the ``roms`` scan used to
-  # start one -- with nothing said. Refuse instead of guessing which is meant.
+  # start one -- with nothing said. Block instead of guessing which is meant.
   Report ('fail ' + `$all.Count + ' winuae64 processes: ' +
           ((`$all | ForEach-Object { `$_.Id }) -join ',') +
           '; stop all but one')
@@ -471,7 +471,7 @@ $fg = ([W]::GetForegroundWindow() -eq $h)
 # On a failure the temporary folder is removed and an older snapshot of the name is kept. If the
 # file never appears, WinUAE still holds the pending save, and the next
 # `statefile_path` sent to it completes that save.
-# restore <name>: refused without the marker or with a file that does not hash
+# restore <name>: blocked without the marker or with a file that does not hash
 # as the marker says; then `CFG statefile <file>`, and Exec's idle and dispatch
 # counts are read until they fall back to between the snapshot's value and the
 # value read just before the restore, which is the proof the machine went back.
@@ -810,7 +810,7 @@ function Invoke-Diagnose {
   if ($Rest[0] -ceq 'DBG' -and $Rest[1] -ceq 'c' -and $Rest.Count -eq 2) { $query = 'DBG c' }
   if ($Rest[0] -ceq 'DBG' -and $Rest[1] -ceq 'm' -and $Rest.Count -eq 3 -and
       $Rest[2] -cmatch '^[0-9A-Fa-f]{1,8}\z') { $query = "DBG m $($Rest[2]) 1" }
-  if (-not $query) { 'fail diagnose refused an unapproved read'; exit 1 }
+  if (-not $query) { 'fail diagnose blocked an unapproved read'; exit 1 }
   $lane = Get-LaneEmulator
   if ($lane.err) { $lane.err; exit 1 }
   $tags = New-Object System.Collections.ArrayList
@@ -875,7 +875,7 @@ function Invoke-PrivateConfig([string]$Verb) {
 function Invoke-Floppy([string]$Verb) {
   $write = ($Verb -eq 'insert')
   if ($write) {
-    # Refused before the claim is even read: nothing about the request can be right.
+    # Blocked before the claim is even read: nothing about the request can be right.
     $deny = Claim-Denial
     if ($deny) { $deny; exit 1 }
     if ($Rest.Count -ne 3) { 'fail insert needs <drive> <path> <sha256>'; exit 1 }
@@ -996,7 +996,7 @@ switch ($Cmd) {
   'claim' {
     # A tag is not a mutex: `winvm acquire wish-re` from two agents shares one
     # lease file, and the second one's release shuts the VM down under the
-    # first. This refuses the second holder instead -- and refuses it whether
+    # first. This blocks the second holder instead -- and blocks it whether
     # the two calls arrive an hour or a millisecond apart, which is the part
     # that had to be built rather than asserted. See Try-TakeClaim for what is
     # guaranteed and what is not.
@@ -1086,7 +1086,7 @@ switch ($Cmd) {
 
   'release' {
     # Releasing does not stop the emulator: the next holder would find one it
-    # did not start and be refused by every command, which is the right way
+    # did not start and be blocked by every command, which is the right way
     # round -- an emulator nobody claims is somebody's unfinished run until a
     # person says otherwise.
     if (-not $Holder) { 'fail release needs -Holder <id>'; exit 1 }
@@ -1179,7 +1179,7 @@ switch ($Cmd) {
     $mine = Resolve-MyEmulator
     if ($mine.err -and -not $Override) {
       $mine.err
-      'stop refuses an emulator it did not launch; pass -Override to end it anyway'
+      'stop blocks an emulator it did not launch; pass -Override to end it anyway'
       exit 1
     }
     if ($mine.err) { "ok overriding: $($mine.err)" }
@@ -1272,13 +1272,13 @@ Report "ok pressed VK 0x$vk$how at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
     # A caller-supplied -TargetPid used to be preferred verbatim, which walked
     # straight past the ownership check above: the injector would attach to
     # whatever console that pid owns. It was inert only because
-    # Resolve-MyEmulator refuses when there is more than one winuae64 -- safety
+    # Resolve-MyEmulator blocks when there is more than one winuae64 -- safety
     # belonging to a different check is not safety here. The driver knows the
-    # right pid; anything else is refused.
+    # right pid; anything else is blocked.
     # -match is not global, so it reads only the FIRST -TargetPid: given two,
     # the check would pass on the good one while both were forwarded to
     # winuae-send.ps1, whose binder's preference between them is not something
-    # this depends on. Refuse the form instead of needing the answer.
+    # this depends on. Block the form instead of needing the answer.
     # 'IgnoreCase' is not decoration: [regex]::Matches is the static .NET call
     # and is case-SENSITIVE, while the -match below is not. Without it,
     # `-targetpid 6136 -TargetPid 8272` counts as one occurrence, the rejection
@@ -1379,9 +1379,9 @@ Report "ok pressed VK 0x$vk$how at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
     # Measured: 5 built-in pseudo-ROMs before, 14 entries after.
     #
     # Run this once and `winvm promote`, so the Gold image always has it.
-    # `start` refuses over a live emulator and so does this: the scan launches
+    # `start` blocks over a live emulator and so does this: the scan launches
     # its own `winuae64`, and for the minute it runs there are two, which is
-    # exactly the ambiguity `front`, `key` and `send` now refuse. Nothing
+    # exactly the ambiguity `front`, `key` and `send` now block. Nothing
     # enforced this, and `roms` is the one command that creates the condition.
     $deny = Claim-Denial
     if ($deny) { $deny; exit 1 }
@@ -1391,7 +1391,7 @@ Report "ok pressed VK 0x$vk$how at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
       exit 1
     }
     if (-not (Test-Path $RomDir)) { "fail no ROM directory at $RomDir"; exit 1 }
-    # Say what actually went wrong. Unchecked, a refused or misdirected write
+    # Say what actually went wrong. Unchecked, a blocked or misdirected write
     # surfaces three steps later as "no KS 1.3 ... under $RomDir", which reads
     # as a missing ROM file and sends the next person to the wrong place
     # entirely. Measured: Set-ItemProperty on a key that does not exist is a
@@ -1435,7 +1435,7 @@ Report "ok pressed VK 0x$vk$how at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
     # would weld them into the golden image; golden should carry the emulator
     # and the scripts, not the scaffolding.
     #
-    # Refusing while the emulator is alive is safety, not tidiness. Unregistering
+    # Blocking while the emulator is alive is safety, not tidiness. Unregistering
     # winuae-run does NOT stop a winuae64 that task already launched, and with
     # the definition gone `stop`'s Stop-ScheduledTask is a silent no-op --
     # measured: on an unregistered name it returns $? = False, prints nothing

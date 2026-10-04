@@ -15,7 +15,7 @@ Tests for areas, maps and travel: the area tables, the map geometry and world ma
 | `test_fasttravelrun.py` | Checks the judgement logic of `tools/areas/fasttravelrun.py` against a fake monitor. |
 | `test_geo.py` | Checks `goldbox/geo.py`'s reading of a GEO map: its planes, edges, doors, wallsets and rendering, and that every GEO file on the disks parses. |
 | `test_newecl.py` | Checks that the `NEWECL` addresses `FastTravel` writes match what each title's own disks say. |
-| `test_p20.py` | Checks where Fast Travel lands a party in an area with no arrival square, and which areas it refuses. |
+| `test_p20.py` | Checks where Fast Travel lands a party in an area with no arrival square, and which areas it blocks. |
 | `test_p3.py` | Checks that the wilderness sites on the disks still hold their undiscovered artwork and that the three windows have the documented sizes. |
 | `test_pertitlefasttravel.py` | Checks what Fast Travel does in Curse and Silver Blades, on tables and fakes with no disks. |
 | `test_questflags.py` | Checks the quest-flag map's pinned counts and that the side-quest table agrees with the script bytecode it describes. |

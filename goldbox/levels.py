@@ -15,7 +15,7 @@ carries, and where:
 |---|---|---|---|
 | experience | `GEN` `$1DB5`, parallel low/mid/high arrays, 9 wide | `GEN` `$136E`, 6 rows x 13 entries x 3 bytes **big-endian** | `GEN` `$162D`, 6 rows x 19 entries x 3 bytes big-endian, row stride `0x39` |
 | class ceiling | `GEN` `$1E5C`, 8 bytes in class-bit order | `GEN` `$15A1`, same form | `GEN` `$17D0`, same form |
-| racial class limit | `GEN` `$1E60`, 4 bytes a race | `GEN` `$15A9`, 8 bytes a race | `GEN` `$17E0`, 8 bytes a race, races 1-5 only ($178A refuses 6+) |
+| racial class limit | `GEN` `$1E60`, 4 bytes a race | `GEN` `$15A9`, 8 bytes a race | `GEN` `$17E0`, 8 bytes a race, races 1-5 only ($178A blocks 6+) |
 | THAC0 | `GEN` `$1F1F`, 4 rows x 9, `LDA $1F1F,X` with `X = class * 9 + level` | `GEN` `$0E2C`/`$0E39`/`$0E46`, 13 wide, indexed by level; the fighter group is arithmetic instead | `GEN` `$106F`/`$107F`/`$108F`, packed (not strided) rows of `ceiling + 1`; the fighter group is `21 - level` at `$1045`, the same rule as Curse |
 | hit dice | -- (no class reaches the flat-hit-point rule) | `GEN` `$161E` die, `$1626` first flat level, `$162E` flat amount | `GEN` `$1845` die, `$184D` first flat level, `$1855` flat amount |
 | spell slots | `GEN` `$222C` cleric then `$224C` magic-user, 8 rows x 4 | `ECL65` `$888D` magic-user 11 rows then `$88C4` cleric 10, x 5 -- that overlay runs at `$8000`, so those are payload `0x88D` and `0x8C4` | not read (trainer input, #89) |
@@ -767,7 +767,7 @@ THIEF_SKILL_DEX_FROM_CURSE = 9
 #:
 #: * it has **no minimum** -- a score of 1 to 3 is -2 and 4 to 6 is -1, so a
 #:   Curse character that frail loses a hit point a level where Pool of
-#:   Radiance's `CPX #$0F` refuses to look below 15 and gives zero;
+#:   Radiance's `CPX #$0F` does not look below 15 and gives zero;
 #: * there is no second row for a non-fighter. `$126D` clamps the *score* to
 #:   16 for class slots 0-2 instead (`CPY #$03 / BCS / CPX #$11 / BCC / LDX
 #:   #$10`), which reaches the same +2 ceiling from the other direction.
@@ -1091,7 +1091,7 @@ class LevelTables:
     #: same slot order to use it (#18).
     trains_all_ready_classes: bool = False
     #: Whether the recompute writes `attack_forms` outright or only raises it.
-    #: Pool of Radiance's `$2342` refuses to lower (`LDX #$03 / CPX $6BD9 /
+    #: Pool of Radiance's `$2342` does not lower (`LDX #$03 / CPX $6BD9 /
     #: BCC skip`) and never writes anything but 3; Curse's `$1909` stores what
     #: it computed, 2 or 3, whatever was there before.
     attack_forms_overwritten: bool = False
@@ -1769,7 +1769,7 @@ _DOS_THAC0_SSB = (
 
 #: Race 3 is the dwarf in this title (`c64_port.RACES_SILVER_BLADES`), not the
 #: gnome it is in Pool of Radiance. Row 6, the human, is not on disk -- `$178A`
-#: refuses to look one up for race 6 or above, which is "no limit" -- and is
+#: does not look one up for race 6 or above, which is "no limit" -- and is
 #: synthesised the same way Curse's row 7 is.
 SECRET_OF_THE_SILVER_BLADES = LevelTables(
     key="secret-of-the-silver-blades",
@@ -2039,7 +2039,7 @@ def _pod_progression(name: str) -> tuple[Level, ...]:
 #:   round-up at all, which neither setting of
 #:   `hit_die_divide_round_up_on_tie` says), whether `attack_forms` is
 #:   overwritten -- keep the defaults, and `trainer_measured` is False, so
-#:   `goldbox/levelup.py` refuses the title before it reads any of them.
+#:   `goldbox/levelup.py` blocks the title before it reads any of them.
 #:
 #: `class_order` is the layout Curse and Silver Blades share. This title has
 #: no C64 record for it to describe; it is there so that `class_slot` and
@@ -2130,7 +2130,7 @@ DEFAULT = POOL_OF_RADIANCE
 #: class was not the magic-user, and the magic-user was one of the classes
 #: `plan_all` would raise this visit, no dialog opened and `run` then reached
 #: `plan`'s own magic-user step with `learn=None`, found spells on offer, and
-#: refused with "picks one new spell", which nothing had shown a menu for --
+#: blocked with "picks one new spell", which nothing had shown a menu for --
 #: watched happening on a magic-user 1 / fighter 2 character carrying only
 #: 4,001 experience, where `best_class` names the fighter (its post-level
 #: threshold, 4,001, beats the magic-user's 2,501) while `$14F8` still trains

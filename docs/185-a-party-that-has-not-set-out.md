@@ -7,10 +7,8 @@ the Silver Blades that is the only thing area 0 can be; on Pool of Radiance
 area 0 is also New Phlan, a real place a party spends much of the game in.
 So the state has to be read off the container, never off the area word.
 
-This is what `#301 (A DOS Curse save standing in area 0 is refused by the
-import, because no row of the area table names area 0)` and
-`#326 (A Pool of Radiance save made before the party began adventuring is
-refused, because the initialiser left $49E6 at 0 and New Phlan is indoors)`
+This is what `#301` and
+`#326`
 turned out to be, and `goldbox/dos_codec.py` converts such a save: to New Phlan
 for Pool of Radiance, and to the C64 game's own pre-adventure save for Curse
 and Silver Blades.
@@ -116,12 +114,10 @@ takes the buffer where the format has one and the word where it does not, and
 **The initialisers disagree about `$49E6`.** Pool of Radiance's seven
 never-adventured containers hold 0 there and Curse's and Silver Blades' six
 hold 1 -- PROBABLE, from the containers, neither initialiser read for this
-word. It is why each title was refused by a different check, and why a fix
-tested on Curse alone would not have found `#326 (A Pool of Radiance save
-made before the party began adventuring is refused, because the
-initialiser left $49E6 at 0 and New Phlan is indoors)`:
+word. It is why each title was blocked by a different check, and why a fix
+tested on Curse alone would not have found `#326`:
 
-| title | area word | which check refused it, until 2026-09-06 |
+| title | area word | which check blocked it, until 2026-09-06 |
 |---|---|---|
 | Pool of Radiance | 0, and 0 is a real row | the `$49E6` indoors/outdoors compare: 0 reads as outdoors, New Phlan is indoors |
 | Curse of the Azure Bonds | 0, no row | `area_in` -> `NOT_AN_AREA` |
@@ -187,11 +183,10 @@ somebody builds a cache by hand.
 
 ## What the import does now
 
-Donald decided on 2026-09-05, on `#301 (A DOS Curse save standing in area 0
-is refused by the import, because no row of the area table names area 0)`:
-**a party that has not set out is converted rather than refused**, on the
+Donald decided on 2026-09-05, on `#301`:
+**a party that has not set out is converted rather than blocked**, on the
 reading that the player loses nothing -- there was nothing to lose yet -- and
-that refusing would leave somebody who saved straight after making their
+that blocking would leave somebody who saved straight after making their
 characters unable to move them at all.
 
 The first form of that decision placed the party at the start of the first
@@ -282,7 +277,7 @@ would be the first.
 Two questions this section used to hold are answered and were deleted: they
 were open only until the live runs. Silver Blades' start is measured (area
 `$10`, 3,3 facing south) and `STARTS` holds it, so the import no longer
-refuses. The C64 runs began the game's own party-menu saves, so the C64 does
+blocks. The C64 runs began the game's own party-menu saves, so the C64 does
 play its own opening from one.
 
 **`$4FE1` is what a conversion writes, not a value every save holds.**

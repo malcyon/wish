@@ -75,7 +75,7 @@ def test_memory_answers_when_the_status_line_does_not():
     assert fix == Fix(9, 9, 3, "memory", 9 * 60 + 23)
 
 
-def test_an_impossible_reading_is_refused():
+def test_an_impossible_reading_is_blocked():
     """Validate before trust: the overlay may not be the one we think."""
     assert party_fix(machine("PRESS ANY KEY", memory_xy=(99, 3, 0)).read) is None
 
@@ -141,10 +141,10 @@ def test_reading_an_outdoor_fix_costs_four_round_trips_too():
     assert len(m.reads) == 4
 
 
-def test_a_travel_grid_square_outside_the_window_is_refused():
+def test_a_travel_grid_square_outside_the_window_is_blocked():
     """A guard on the outdoor pattern's own bounds -- 18 x 36, not the
-    walkable band. Passes today for the wrong reason (the old regex refused
-    every `y >= 16`, indoors or out); the window bound is what should refuse
+    walkable band. Passes today for the wrong reason (the old regex blocked
+    every `y >= 16`, indoors or out); the window bound is what should block
     it once the indoor guard no longer applies to `OUTDOORS` at all."""
     assert party_fix(machine("OUTDOORS 21:16 18,40",
                              memory_xy=(99, 3, 0)).read) is None
@@ -865,7 +865,7 @@ def test_the_password_header_is_sent_when_one_is_set(monkeypatch,
     assert ultimate_stub.seen[-1][2] == "swordfish"
 
 
-def test_a_read_past_the_top_of_memory_is_refused(monkeypatch, ultimate_stub):
+def test_a_read_past_the_top_of_memory_is_blocked(monkeypatch, ultimate_stub):
     host, port = ultimate_stub.server_address
     monkeypatch.setenv("POR_ULTIMATE", f"{host}:{port}")
     from wish.ultimate import UltimateTarget

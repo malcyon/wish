@@ -84,9 +84,9 @@ def test_the_pools_of_darkness_folder_is_offered_with_only_the_winuae_flag(
 # -- the probe -----------------------------------------------------------------
 
 def test_the_probe_is_false_when_the_pipe_directory_cannot_be_listed():
-    def refuse(_path):
+    def block(_path):
         raise OSError("no pipe directory here")
-    assert winuae.present(refuse) is False
+    assert winuae.present(block) is False
 
 
 def test_the_probe_sees_a_winuae_pipe_and_not_a_lookalike():
@@ -223,11 +223,11 @@ def test_a_piece_that_fails_for_another_reason_does_not_shrink_the_pieces():
     now = [0.0]
     locator = amigalocate.Locator(clock=lambda: now[0])
 
-    def refusing(addr, length, timeout=None):
-        raise amiga.PipeError("Refused.")
+    def blocking(addr, length, timeout=None):
+        raise amiga.PipeError("Blocked.")
 
     with pytest.raises(amiga.PipeError):
-        locator.target(refusing, transport)
+        locator.target(blocking, transport)
     now[0] += locator.SWEEP_EVERY
     assert max(_sizes_of_next_sweep(locator, transport)) == locator.SWEEP_CHUNK
 

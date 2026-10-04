@@ -264,7 +264,7 @@ def test_classes_to_names_is_per_title(key, bits, expected):
     assert yaml_io.classes_to_names(bits, c64_port.by_key(key)) == expected
 
 
-def test_names_to_classes_refuses_a_class_the_title_lacks():
+def test_names_to_classes_blocks_a_class_the_title_lacks():
     with pytest.raises(yaml_io.ValueError_):
         yaml_io.names_to_classes(["paladin"], c64_port.POOL_OF_RADIANCE)
     assert yaml_io.names_to_classes(
@@ -320,7 +320,7 @@ def item_names_disk(key: str) -> str:
     """A side of this title's disks that carries a readable `ITEMNAMES`.
 
     Skips otherwise -- one Champions side is a 40-track rip `goldbox/d64.py`
-    refuses, and it may be the only side holding the file.
+    blocks, and it may be the only side holding the file.
     """
     for path in disks_for(key):
         try:

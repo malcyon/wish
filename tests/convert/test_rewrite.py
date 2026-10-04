@@ -484,7 +484,7 @@ def test_an_item_edit_reaches_an_amiga_pool_item_node():
         dos_port.ITEM_FIELDS_BY_NAME["quantity"].offset)]
 
 
-def test_a_record_whose_slots_disagree_with_the_character_is_refused():
+def test_a_record_whose_slots_disagree_with_the_character_is_blocked():
     """The sixteen C64 slots are what ties a C64 item to the port's own, so a
     record holding a different number of them than the character it came from
     is a mismatch nobody can resolve."""
@@ -496,7 +496,7 @@ def test_a_record_whose_slots_disagree_with_the_character_is_refused():
         rewrite.rewrite_dos(wrong, before, before, _game(deltas))
 
 
-def test_three_records_of_different_lengths_are_refused():
+def test_three_records_of_different_lengths_are_blocked():
     with pytest.raises(rewrite.RewriteError):
         rewrite.patch(bytes(4), bytes(4), bytes(5), [])
 
@@ -559,7 +559,7 @@ def _read_back(port, out, into):
 
     DOS goes through the files, because `read_character` is where the
     record's `item_count` meets the item file: a count that lies about the
-    file is what it refuses, and a count short of it is what silently loses
+    file is what it blocks, and a count short of it is what silently loses
     the items past it.
     """
     kind, deltas = port
@@ -657,7 +657,7 @@ def test_a_twenty_item_character_keeps_the_four_the_sheet_never_saw(
 
 
 @pytest.mark.parametrize("port", PORTS, ids=_port_id)
-def test_an_edit_that_reaches_no_field_of_this_port_is_refused(port):
+def test_an_edit_that_reaches_no_field_of_this_port_is_blocked(port):
     """`turn_power` is a C64 field none of the six ports writes, so an edit
     to it would be thrown away silently.  A caller is told instead."""
     char, before = _make(port, 1)
@@ -917,7 +917,7 @@ def _fuzz_byte(rec, name: str, at: int, flip_top: bool = False):
     `flip_top` flips bit 7 instead of adding one, because a field can be
     unwritable to the `+1` probe alone -- which only ever touches the low
     bit -- while still being writable overall: on a Curse/Silver Blades
-    player character `flags_0b8` refuses to persist bit 0 (Pool of
+    player character `flags_0b8` does not persist bit 0 (Pool of
     Radiance's ability-altered flag, meaningless here) but keeps bit 7 (the
     NPC flag) and the morale bits, so only the top-bit probe finds it.
     """

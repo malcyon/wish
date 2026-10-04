@@ -6,11 +6,11 @@
 rehearsed output Save As publishes. It serves the walks of `DosToAmiga` (Secret
 of the Silver Blades and Curse of the Azure Bonds) and `C64ToAmiga` (Silver
 Blades), which differ only in the constants passed as arguments. A conversion
-Save As refuses is reported under `refused` and writes nothing.
+Save As blocks is reported under `stopped` and writes nothing.
 
 What it writes, under `--out-dir`: the converted files in a `wish-<date>/`
 subfolder, and a JSON report (`--report`) of the specimen and its SHA-256, the
-Amiga disk 2, the outcome Save As reported (`slot`, `losses`, `dropped` or `refused`) and
+Amiga disk 2, the outcome Save As reported (`slot`, `losses`, `dropped` or `stopped`) and
 the SHA-256 of every file written. The report is also printed.
 
 `--tree` runs the conversion from another checkout, such as a detached
@@ -23,7 +23,7 @@ is the C64 game-disks folder a C64 source needs (`--c64-game` looks it up in
         --amiga-disk2 /path/to/SecretOfTheSilverBlades_B.adf \\
         --amiga-disk1 /path/to/SecretOfTheSilverBlades_A.adf
 
-A name over the Amiga field's width is refused as `NamesDoNotFit`, with the
+A name over the Amiga field's width is blocked as `NamesDoNotFit`, with the
 names and the width under `save_as` `unfit` and `width`. `--name POSITION=NAME`
 (repeatable) gives the name to use for that party position, as the Shorten
 window's box does: `--name 0=SHORTNAME`.
@@ -155,7 +155,7 @@ def main(argv=None) -> int:
 
     print(json.dumps(report, indent=2))
     report_path.write_text(json.dumps(report, indent=2))
-    return 1 if "refused" in result else 0
+    return 1 if "stopped" in result else 0
 
 
 if __name__ == "__main__":

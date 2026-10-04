@@ -31,7 +31,7 @@ from tools.amiga import installfsuae  # noqa: E402
 ROOT = installfsuae.MEMBER_ROOT
 
 #: The installer only runs on Linux.  Windows has no 0o755 directory mode, no
-#: exec bit, refuses to rename a directory onto another, and needs a privilege
+#: exec bit, will not rename a directory onto another, and needs a privilege
 #: to make a symlink.
 posix_only = pytest.mark.skipif(sys.platform == "win32",
                                 reason="POSIX modes, directory renames and symlinks")
@@ -99,7 +99,7 @@ def test_a_tarball_with_the_pinned_digest_is_accepted(tmp_path):
     assert tarball.exists()
 
 
-def test_a_tarball_with_another_digest_is_refused_and_deleted(tmp_path):
+def test_a_tarball_with_another_digest_is_blocked_and_deleted(tmp_path):
     tarball = tmp_path / "bad.tgz"
     digest = build(tarball, good_members())
     tarball.write_bytes(tarball.read_bytes() + b"\0")
@@ -126,7 +126,7 @@ def test_a_download_that_fails_the_digest_unpacks_nothing_and_leaves_nothing(tmp
     ROOT + "../../../../evil",
     "package/../../evil",
 ])
-def test_a_member_that_would_escape_refuses_the_whole_archive(tmp_path, name):
+def test_a_member_that_would_escape_blocks_the_whole_archive(tmp_path, name):
     members = good_members()
     members[name] = b"escaped"
     fetch, digest = fetcher(tmp_path, members)
@@ -142,7 +142,7 @@ def test_a_member_that_would_escape_refuses_the_whole_archive(tmp_path, name):
 @pytest.mark.parametrize("kind", [
     tarfile.SYMTYPE, tarfile.LNKTYPE, tarfile.CHRTYPE, tarfile.BLKTYPE, tarfile.FIFOTYPE,
 ])
-def test_a_link_or_a_device_under_the_root_is_refused(tmp_path, kind):
+def test_a_link_or_a_device_under_the_root_is_blocked(tmp_path, kind):
     special = tarfile.TarInfo()
     special.type = kind
     if kind in (tarfile.SYMTYPE, tarfile.LNKTYPE):
@@ -171,7 +171,7 @@ def test_only_the_emulator_directory_is_unpacked(tmp_path):
     assert not (into / "fs-uae.dat").stat().st_mode & 0o111
 
 
-def test_a_tarball_with_no_linux_binary_is_refused(tmp_path):
+def test_a_tarball_with_no_linux_binary_is_blocked(tmp_path):
     tarball = tmp_path / "other.tgz"
     build(tarball, {ROOT + "fs-uae-darwin_x64": b"a mac binary"})
 
@@ -246,14 +246,14 @@ def test_a_file_already_in_the_into_directory_survives_an_install(tmp_path):
         "notes", "thesis.txt", f"uae-dap-{installfsuae.VERSION}"]
 
 
-def test_a_versioned_directory_without_the_binary_is_refused_not_deleted(tmp_path):
+def test_a_versioned_directory_without_the_binary_is_blocked_not_deleted(tmp_path):
     parent = tmp_path / "share"
     mine = installfsuae.install_dir(parent)
     mine.mkdir(parents=True)
     (mine / "precious.txt").write_bytes(b"not ours")
     fetch, digest = fetcher(tmp_path, good_members())
 
-    with pytest.raises(ValueError, match="Refusing to replace"):
+    with pytest.raises(ValueError, match="Will not replace"):
         installfsuae.install(parent, fetch=fetch, expected=digest)
 
     assert fetch.calls == []
@@ -261,14 +261,14 @@ def test_a_versioned_directory_without_the_binary_is_refused_not_deleted(tmp_pat
     assert [p.name for p in parent.iterdir()] == [mine.name]
 
 
-def test_extract_also_refuses_a_directory_without_the_binary(tmp_path):
+def test_extract_also_blocks_a_directory_without_the_binary(tmp_path):
     tarball = tmp_path / "good.tgz"
     build(tarball, good_members())
     into = tmp_path / "into"
     into.mkdir()
     (into / "precious.txt").write_bytes(b"not ours")
 
-    with pytest.raises(ValueError, match="Refusing to replace"):
+    with pytest.raises(ValueError, match="Will not replace"):
         installfsuae.extract(tarball, into)
 
     assert (into / "precious.txt").read_bytes() == b"not ours"
@@ -370,7 +370,7 @@ def test_an_interrupt_just_after_the_earlier_install_moved_aside_puts_it_back(
 
 
 @posix_only
-def test_a_broken_link_at_the_versioned_path_is_refused_and_named(tmp_path):
+def test_a_broken_link_at_the_versioned_path_is_blocked_and_named(tmp_path):
     parent = tmp_path / "share"
     parent.mkdir()
     link = installfsuae.install_dir(parent)
@@ -407,7 +407,7 @@ class FakeOpener:
     "file:///etc/passwd",
     "/etc/passwd",
 ])
-def test_a_download_that_is_not_https_is_refused_before_anything_is_opened(tmp_path, url):
+def test_a_download_that_is_not_https_is_blocked_before_anything_is_opened(tmp_path, url):
     opener = FakeOpener(b"data")
     to = tmp_path / "out.tgz"
 
@@ -418,7 +418,7 @@ def test_a_download_that_is_not_https_is_refused_before_anything_is_opened(tmp_p
     assert not to.exists()
 
 
-def test_a_download_larger_than_the_cap_is_refused_and_deleted(tmp_path):
+def test_a_download_larger_than_the_cap_is_blocked_and_deleted(tmp_path):
     opener = FakeOpener(b"x" * 25)
     to = tmp_path / "out.tgz"
 
@@ -448,7 +448,7 @@ class CountingReply:
         return False
 
 
-def test_a_download_over_the_cap_is_refused_before_the_whole_body_is_read(tmp_path):
+def test_a_download_over_the_cap_is_blocked_before_the_whole_body_is_read(tmp_path):
     """A hostile mirror serving gigabytes must be cut off, not buffered and then judged."""
     block = 1 << 20  # `download` reads this much at a time
     limit = block - 1
@@ -467,7 +467,7 @@ def test_a_download_over_the_cap_is_refused_before_the_whole_body_is_read(tmp_pa
     assert not to.exists()
 
 
-def test_a_download_with_no_opener_given_refuses_a_redirect_away_from_https(
+def test_a_download_with_no_opener_given_blocks_a_redirect_away_from_https(
         tmp_path, monkeypatch):
     real = urllib.request.build_opener
     built = []
@@ -500,7 +500,7 @@ def test_the_default_cap_admits_the_pinned_tarball():
 @pytest.mark.parametrize("target", [
     "http://mirror.example/a.tgz", "ftp://mirror.example/a.tgz", "file:///etc/passwd",
 ])
-def test_a_redirect_to_anything_but_https_is_refused(target):
+def test_a_redirect_to_anything_but_https_is_blocked(target):
     handler = installfsuae.HttpsOnlyRedirect()
     request = urllib.request.Request("https://registry.npmjs.org/a.tgz")
 

@@ -155,7 +155,7 @@ WEAPON_NEEDS_BOLTS = 0x80
 # bonus is added to the roll, a negative one is negated (`EOR #$FF / ADC #$01`)
 # and **subtracted**, and a result at or below zero is clamped to zero at
 # $0CEA. The weapon-rating routine at COMBAT $1F8D tests the same bit and
-# refuses to add a negative at all. Nothing anywhere compares the byte with
+# does not add a negative at all. Nothing anywhere compares the byte with
 # $FF, so it is an ordinary negative number rather than a marker.
 #
 # The family stores its other small negative modifiers the same way: LIBRARY's
@@ -567,7 +567,7 @@ class Item:
 
     @property
     def is_cursed(self) -> bool:
-        """Bit 7 of +7. The un-ready handler refuses while it is set, and
+        """Bit 7 of +7. The un-ready handler blocks while it is set, and
         SPELLE04 -- remove curse -- is the only thing that clears it. The rest
         of +7 is unused, as are bits 3-6 of +6: the only masks applied to
         either byte anywhere in the game are $80, $7F, $07 and $F8."""
@@ -701,7 +701,7 @@ def word_index(names: dict[int, str], word) -> int:
 
     Accepts an index directly, or a word to look up (case-insensitive). Seven
     words appear twice in the table -- RING, CLOAK, JAVELIN, TRIDENT, STONE,
-    OINTMENT, MIRROR -- and those are refused rather than guessed at, because
+    OINTMENT, MIRROR -- and those are blocked rather than guessed at, because
     the two entries are not interchangeable.
     """
     if isinstance(word, int):

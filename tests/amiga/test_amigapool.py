@@ -199,7 +199,7 @@ def test_a_block_pointer_whose_span_runs_past_the_end_of_memory_gives_no_fix():
     assert target(guest(pointer=0xC80000 - 0x20)).fix() is None
 
 
-def test_a_link_to_a_regions_first_byte_is_refused_before_it_is_read():
+def test_a_link_to_a_regions_first_byte_is_blocked_before_it_is_read():
     """The guard sits eight bytes before the hunk, outside memory here."""
     mem = guest()
     mem.put(H31 - 4, ((0xC00000 - 4) // 4).to_bytes(4, "big"))
@@ -207,7 +207,7 @@ def test_a_link_to_a_regions_first_byte_is_refused_before_it_is_read():
         amiga.AmigaTarget(mem, POOL, anchor_base=H31)
 
 
-def test_an_anchor_at_a_regions_first_byte_is_refused_before_it_is_read():
+def test_an_anchor_at_a_regions_first_byte_is_blocked_before_it_is_read():
     with pytest.raises(amiga.GuestError, match="outside the Amiga's memory"):
         amiga.AmigaTarget(guest(), POOL, anchor_base=0xC00000)
 

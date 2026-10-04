@@ -159,7 +159,7 @@ def test_locate_hops_from_the_anchors_hunk_to_the_data_hunk():
     assert target.anchor_base == H31
 
 
-def test_a_wrong_guard_a_zero_link_and_a_link_outside_memory_are_refused():
+def test_a_wrong_guard_a_zero_link_and_a_link_outside_memory_are_blocked():
     for memory, expected in [
             (hunks(data_guard=0x2F84 + 4), "expected 0x2f8c"),
             (hunks(anchor_guard=0x351C), "expected 0x3524"),

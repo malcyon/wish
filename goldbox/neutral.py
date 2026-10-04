@@ -19,7 +19,7 @@ Not just a number.  Each :class:`Value` carries
 * a **confidence**, taken from the grade the source port's field table gives
   the field it was read from.  A writer asks for what it is willing to stand
   behind (:meth:`NeutralCharacter.take`) and gets nothing rather than a guess
-  -- refusing to write is the point of the grades, not a decoration on them;
+  -- not writing is the point of the grades, not a decoration on them;
 * an **origin**, the reader's one-line phrase for where the value came from,
   which is what the writer's provenance report quotes.
 
@@ -129,7 +129,7 @@ class ScrollBundle(NamedTuple):
 #: The neutral vocabulary: every field a codec may set, and what it means.
 #:
 #: A name here is the *thing*, not any port's storage of it, and a reader that
-#: invents a name outside this table is refused -- a typo would otherwise be a
+#: invents a name outside this table is blocked -- a typo would otherwise be a
 #: field silently unread by every writer.  Where a value needs a convention
 #: (an order, a unit, an encoding) the entry states it, and that convention is
 #: the neutral one: a port whose own encoding differs converts on the way in.
@@ -496,7 +496,7 @@ class NeutralCharacter:
              minimum: Confidence = Confidence.GUESS) -> Value | None:
         """The value, or None when the reader trusts it less than `minimum`.
 
-        This is how a codec refuses to write what it does not understand: it
+        This is how a codec does not write what it does not understand: it
         asks for a field at the grade it is willing to stand behind, and a
         field graded below that comes back as nothing to write and something
         to report, never as a plausible-looking guess.
@@ -554,7 +554,7 @@ class Report:
     derived: list[str] = dataclasses.field(default_factory=list)
     #: Items and running effects the player chose to leave behind because the
     #: destination holds fewer.  Kept off `losses` and `dropped`: a choice is not a loss the
-    #: platform forced, and a save with a loss is refused by Save As.
+    #: platform forced, and a save with a loss is blocked by Save As.
     left_behind: list[str] = dataclasses.field(default_factory=list)
 
     def lost(self, line: str) -> None:
@@ -592,7 +592,7 @@ class Report:
 
 
 class Writer:
-    """The take-refuse-report protocol every writer shares.
+    """The take-fail-report protocol every writer shares.
 
     Hoisted from `goldbox/c64_codec.write`, where `use` and `emit` were closures
     a second writer would have copied by hand -- which is exactly what
@@ -601,13 +601,13 @@ class Writer:
     its own report and gets four things it would otherwise re-implement:
 
     * :meth:`use` -- take a field at the minimum, and turn a rejection into a
-      report line rather than silence.  A refused value's own `dropped` list
+      report line rather than silence.  A blocked value's own `dropped` list
       still reaches the report: what a reader had to leave behind to produce
       a value is a fact about the source whether or not the value is written.
     * :meth:`emit` -- the provenance note for the bytes a value became.
     * :meth:`get` -- a bare value for a *derivation*, at the same minimum.
       `NeutralCharacter.get` does not apply one, and a writer that computes
-      a byte from a field it would have refused to copy is standing behind
+      a byte from a field it would not have copied is standing behind
       the value twice as hard, not half as hard.
     * :meth:`finish` -- the closing sweep: neutral fields this writer took
       nothing from, then the reader's own drops and warnings.

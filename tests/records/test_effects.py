@@ -66,14 +66,14 @@ def test_write_then_read_round_trips_on_a_synthetic_payload():
         (5, 12, 3, 0x0A, 0xE2)
 
 
-def test_write_effect_refuses_a_slot_out_of_range():
+def test_write_effect_blocks_a_slot_out_of_range():
     payload = _blank_payload()
     with pytest.raises(ValueError):
         effects.write_effect(payload, effects.EFFECT_SLOTS,
                              id=1, owner=0, duration=0, magnitude=0)
 
 
-def test_write_effect_refuses_a_value_that_is_not_a_byte():
+def test_write_effect_blocks_a_value_that_is_not_a_byte():
     payload = _blank_payload()
     with pytest.raises(ValueError):
         effects.write_effect(payload, 0, id=256, owner=0, duration=0, magnitude=0)
@@ -96,7 +96,7 @@ def test_clear_effect_zeroes_all_four_arrays_and_nothing_else():
     assert changed == touched
 
 
-def test_clear_effect_refuses_a_slot_out_of_range():
+def test_clear_effect_blocks_a_slot_out_of_range():
     payload = _blank_payload()
     with pytest.raises(ValueError):
         effects.clear_effect(payload, -1)
@@ -184,7 +184,7 @@ def test_only_a_duration_byte_of_exactly_zero_is_marked_never_expires():
     assert not effects.duration_unit(0x40).never_expires
 
 
-def test_duration_unit_refuses_a_value_that_is_not_a_byte():
+def test_duration_unit_blocks_a_value_that_is_not_a_byte():
     with pytest.raises(ValueError):
         effects.duration_unit(256)
 
@@ -726,7 +726,7 @@ def test_which_of_two_casts_keeps_the_slot(old, new, replaced):
     assert effects.replaces_slot(old, new) is replaced
 
 
-def test_replaces_slot_refuses_a_value_that_is_not_a_byte():
+def test_replaces_slot_blocks_a_value_that_is_not_a_byte():
     with pytest.raises(ValueError):
         effects.replaces_slot(0, 256)
 
@@ -960,7 +960,7 @@ def test_the_packed_magnitude_is_the_byte_the_cast_writes(bonus, level, magnitud
 
 
 @pytest.mark.parametrize("bonus, level", [(0, 1), (9, 1), (-1, 1), (1, 16)])
-def test_a_magnitude_outside_the_nibbles_is_refused(bonus, level):
+def test_a_magnitude_outside_the_nibbles_is_blocked(bonus, level):
     with pytest.raises(ValueError):
         effects.later_ability_magnitude(bonus, level)
 
@@ -969,7 +969,7 @@ def test_a_magnitude_outside_the_nibbles_is_refused(bonus, level):
 
 
 def test_pool_expires_each_slot_on_its_own_for_that_slots_owner():
-    """The other half of "the cast refuses a second strength node": the sweep
+    """The other half of "the cast blocks a second strength node": the sweep
     and the handler read one slot at a time, so the arrays hold as many
     strength restores as a writer stages, each with its own timer.
     """
@@ -1058,21 +1058,21 @@ def test_the_longest_time_left_is_0xffff_and_round_trips():
     assert found.to_record() == record
 
 
-def test_a_record_at_zero_minutes_is_refused():
+def test_a_record_at_zero_minutes_is_blocked():
     with pytest.raises(ValueError, match="never expires"):
         effects.RunningEffect.from_record(bytes((1, 0, 0, 1, 0)) + _NULL)
     with pytest.raises(ValueError, match="never expires"):
         effects.RunningEffect(1, 0, 1, 0)
 
 
-def test_a_record_that_is_not_nine_bytes_is_refused():
+def test_a_record_that_is_not_nine_bytes_is_blocked():
     with pytest.raises(ValueError, match="9 bytes, got 8"):
         effects.RunningEffect.from_record(bytes((1, 2, 0, 1, 0, 0, 0, 0)))
     with pytest.raises(ValueError, match="9 bytes, got 10"):
         effects.RunningEffect.from_record(bytes((1, 2, 0, 1, 0)) + _NULL + b"\0")
 
 
-def test_a_running_effect_refuses_a_value_that_does_not_fit_its_bytes():
+def test_a_running_effect_blocks_a_value_that_does_not_fit_its_bytes():
     for args in ((256, 2, 1, 0), (1, 2, 256, 0), (1, 2, 1, 256),
                  (1, 65536, 1, 0), (-1, 2, 1, 0)):
         with pytest.raises(ValueError):
@@ -1235,7 +1235,7 @@ def test_dispel_evil_confusion_and_136_copy_a_zero_data_byte(title, eid):
     ("curse-of-the-azure-bonds", 4), ("curse-of-the-azure-bonds", 35),
     ("curse-of-the-azure-bonds", 136), (_BLADES, 4),
 ])
-def test_a_zero_data_node_with_a_flag_no_cast_writes_is_refused(title, eid):
+def test_a_zero_data_node_with_a_flag_no_cast_writes_is_blocked(title, eid):
     node = effects.RunningEffect(eid, 7, 1, 1)
     assert isinstance(effects.c64_row(title, node), effects.Unconverted)
 
@@ -1252,9 +1252,9 @@ def test_silver_blades_gaze_confusion_converts_and_drops_only_its_inert_flag():
                       effects.Unconverted)
 
 
-def test_silver_blades_gaze_confusion_refuses_a_flag_above_1():
+def test_silver_blades_gaze_confusion_blocks_a_flag_above_1():
     # DOS only ever writes flag 1 for the gaze's id-35 node
-    # (`GAME.OVR:0x130CF`); a flag no DOS engine writes is refused like every
+    # (`GAME.OVR:0x130CF`); a flag no DOS engine writes is blocked like every
     # sibling branch's flag check.
     node = effects.RunningEffect(35, 7, 1, 2)
     assert isinstance(effects.c64_row(_BLADES, node), effects.Unconverted)
@@ -1557,7 +1557,7 @@ def test_fire_shield_ids_are_a_later_title_rule(title):
 
 
 @pytest.mark.parametrize("title", _ALL[:2])
-def test_id_13_stays_refused_and_the_reason_says_no_dos_engine_writes_it(title):
+def test_id_13_stays_blocked_and_the_reason_says_no_dos_engine_writes_it(title):
     """DOS Reduce removes id 12 and writes no id-13 node, so no save a game
     wrote reaches this rejection; Silver Blades converts it as Barkskin
     (`docs/226`)."""
@@ -1592,7 +1592,7 @@ def test_dos_record_converts_the_later_titles_own_ids():
 
 
 @pytest.mark.parametrize("eid,magnitude", [(13, 1), (49, 1), (1, 0)])
-def test_dos_record_refuses_what_has_no_rule(eid, magnitude):
+def test_dos_record_blocks_what_has_no_rule(eid, magnitude):
     row = effects.Effect(63, eid, 0, 0x02, magnitude)
     assert isinstance(effects.dos_record("pool-of-radiance", row, 0),
                       effects.Unconverted)
@@ -1602,7 +1602,7 @@ def test_dos_record_refuses_what_has_no_rule(eid, magnitude):
     ("curse-of-the-azure-bonds", 1),
     ("secret-of-the-silver-blades", 1),
     ("pool-of-radiance", 2)])
-def test_dos_record_refuses_a_magnitude_with_bit_7_where_only_a_level_goes(
+def test_dos_record_blocks_a_magnitude_with_bit_7_where_only_a_level_goes(
         title, eid):
     """Only Pool's generic camp ids keep a leftover override byte."""
     row = effects.Effect(63, eid, 0, 0x02, 0x80)
@@ -1644,7 +1644,7 @@ def test_dos_record_clamps_a_day_count_to_sixteen_bits(byte):
     assert effects.dos_record("pool-of-radiance", row, 0).minutes == 0xFFFF
 
 
-def test_dos_record_refuses_a_never_expiring_row_by_raising():
+def test_dos_record_blocks_a_never_expiring_row_by_raising():
     with pytest.raises(ValueError):
         effects.dos_record("pool-of-radiance", effects.Effect(63, 1, 0, 0, 1),
                            0)
@@ -1985,14 +1985,14 @@ def test_silver_blades_enlarge_23_converts_to_the_c64s_enlarge_at_22():
     assert (back.data, back.flag) == (effects.later_node_data(22, 0), 0)
 
 
-def test_curse_never_writes_enlarge_23_and_refuses_it():
+def test_curse_never_writes_enlarge_23_and_blocks_it():
     assert isinstance(effects.c64_row(_C, _RE(12, 10, 0x7B, 1)),
                       effects.Unconverted)
     assert not effects.enlarge_capped(_C, _RE(12, 10, 0x7B, 1))
 
 
 @pytest.mark.parametrize("title", [_C, _S])
-def test_a_mirror_image_count_above_4_is_refused_in_both_directions(title):
+def test_a_mirror_image_count_above_4_is_blocked_in_both_directions(title):
     assert effects.c64_row(title, _RE(28, 10, 0x4F, 0)) == (28, 4)
     for count in (5, 15):
         assert isinstance(effects.c64_row(title, _RE(28, 10, count << 4, 0)),
@@ -2088,7 +2088,7 @@ def test_a_slowed_variant_no_ordinary_cast_writes_stays_unconverted(title):
         assert isinstance(effects.c64_row(title, node), effects.Unconverted)
 
 
-def test_pool_has_no_fumble_so_a_slowed_node_of_data_0_is_refused():
+def test_pool_has_no_fumble_so_a_slowed_node_of_data_0_is_blocked():
     # Data 0 is Fumble's slowed node, and only the later titles cast Fumble.
     node = effects.RunningEffect(42, 6, 0, 0)
     assert isinstance(effects.c64_row("pool-of-radiance", node),
@@ -2097,7 +2097,7 @@ def test_pool_has_no_fumble_so_a_slowed_node_of_data_0_is_refused():
 
 @pytest.mark.parametrize("title", _ALL)
 def test_a_slowed_node_of_one_minute_converts_and_zero_cannot_be_built(title):
-    # RunningEffect refuses minutes 0, so the lower boundary is 1.
+    # RunningEffect blocks minutes 0, so the lower boundary is 1.
     assert effects.c64_row(title, effects.RunningEffect(42, 1, 3, 0)) == (42, 3)
     with pytest.raises(ValueError):
         effects.RunningEffect(42, 0, 3, 0)
@@ -2107,7 +2107,7 @@ def test_a_slowed_node_of_one_minute_converts_and_zero_cannot_be_built(title):
     ("pool-of-radiance", 0), ("pool-of-radiance", 16),
     ("curse-of-the-azure-bonds", 16), ("secret-of-the-silver-blades", 16),
 ])
-def test_a_c64_slowed_row_with_a_magnitude_no_cast_writes_is_refused(
+def test_a_c64_slowed_row_with_a_magnitude_no_cast_writes_is_blocked(
         title, magnitude):
     row = effects.Effect(63, 42, 0, 6, magnitude)
     assert isinstance(effects.dos_record(title, row, 0), effects.Unconverted)
@@ -2116,7 +2116,7 @@ def test_a_c64_slowed_row_with_a_magnitude_no_cast_writes_is_refused(
 @pytest.mark.parametrize("title", _ALL)
 def test_a_c64_slowed_row_of_64_minutes_or_more_becomes_a_dos_node(title):
     # The directions differ on purpose: the C64 game writes 3 + caster level
-    # minutes, so a longer row is passed through rather than refused.
+    # minutes, so a longer row is passed through rather than blocked.
     row = effects.Effect(63, 42, 0, 70, 3)
     assert isinstance(effects.dos_record(title, row, 0), effects.RunningEffect)
 
@@ -2139,7 +2139,7 @@ def test_a_dos_pool_charm_node_becomes_the_c64_party_cast_row():
 def test_a_dos_pool_charm_node_no_engine_leaves_past_a_fight_still_converts(
         node, row):
     # The C64 keeps the charmer's side in the magnitude's bit 0 and never
-    # ages a charm, so the data bits 6 and 7 and the duration do not refuse.
+    # ages a charm, so the data bits 6 and 7 and the duration do not block.
     assert effects.pool_charm_row(_POOL, node) == row
 
 
@@ -2423,7 +2423,7 @@ def test_a_silver_blades_barkskin_node_round_trips_through_the_c64_row(level):
 
 
 @pytest.mark.parametrize("title", [_P, _C])
-def test_a_c64_id_13_row_is_refused_outside_silver_blades(title):
+def test_a_c64_id_13_row_is_blocked_outside_silver_blades(title):
     row = effects.Effect(63, 13, 0, 0x2A, 9)
     assert isinstance(effects.dos_record(title, row, 0), effects.Unconverted)
 
@@ -2792,7 +2792,7 @@ def test_minutes_that_share_a_duration_byte_tie_like_equal_minutes(
                              else [(38, 0x94), (12, 0xF1)])
 
 
-def test_both_restoring_rows_of_one_byte_are_refused_as_ambiguous():
+def test_both_restoring_rows_of_one_byte_are_blocked_as_ambiguous():
     got = effects.pool_strength_chain_nodes(
         [_chain_row(3, 12, 10, 0xE2), _chain_row(2, 38, 10, 0xF3)], 0)
     assert isinstance(got, effects.Unconverted)
@@ -2839,7 +2839,7 @@ def test_every_two_node_timeline_round_trips_through_the_rows(start, stop):
     [_RE(38, 10, _ACTIVE, 1)],
     [_RE(38, 10, _ACTIVE, 1), _RE(12, 60, _PARKED, 1), _RE(12, 5, 0x66, 1)],
 ])
-def test_other_strength_states_stay_refused(nodes):
+def test_other_strength_states_stay_blocked(nodes):
     got = effects.pool_strength_chain_rows(nodes)
     assert isinstance(got, effects.Unconverted) and got.reason
 
@@ -2851,7 +2851,7 @@ def test_other_strength_states_stay_refused(nodes):
     [_chain_row(3, 38, 60, 0x14), _chain_row(2, 12, 10, 0xF1)],
     [_chain_row(3, 38, 10, 0x94), effects.Effect(2, 12, 2, 0, 0xF1)],
 ])
-def test_strength_rows_no_timeline_produces_stay_refused(rows):
+def test_strength_rows_no_timeline_produces_stay_blocked(rows):
     got = effects.pool_strength_chain_nodes(rows, 0)
     assert isinstance(got, effects.Unconverted) and got.reason
 
@@ -2887,7 +2887,7 @@ def test_the_gauntlets_beside_a_parked_spell_give_the_gauntlets_row():
     (_RE(38, 10, 0x95, 1), bytes((38, 0, 0, 0x00, 1))),
     (_RE(38, 10, 0x00, 1), bytes((38, 0, 0, 0x95, 1))),
 ])
-def test_the_gauntlets_beside_other_nodes_stay_refused(running, granted):
+def test_the_gauntlets_beside_other_nodes_stay_blocked(running, granted):
     got = effects.pool_gauntlets_over_spell_row(running, granted)
     assert isinstance(got, effects.Unconverted) and got.reason
 

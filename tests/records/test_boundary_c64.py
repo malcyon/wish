@@ -11,7 +11,7 @@ two sweeps the DOS side did not need: every scalar the writer copies, at its
 lowest, its highest and one past (parts C to H), and every class combination
 Curse of the Azure Bonds' and Secret of the Silver Blades' own menus offer,
 including what their dual-class route leaves (parts I to K).  The rule for a
-value past a width is that the writer refuses it or writes exactly what fits
+value past a width is that the writer blocks it or writes exactly what fits
 -- never a neighbour's byte, never a wrapped number.
 `tools/records/boundarywidths.py` and `tools/records/laterchars.py` build the
 characters; nothing here reads a game file except the disk-backed checks of
@@ -294,7 +294,7 @@ def test_c_every_scalar_at_its_extreme_round_trips(game, high, caplog):
     assert checked > len(boundarywidths.scalars(game)) // 2
 
 
-# --- D: one past a scalar is refused ----------------------------------------
+# --- D: one past a scalar is blocked ----------------------------------------
 
 _SCALAR_CASES = [(game, scalar) for game in GAMES
                  for scalar in boundarywidths.scalars(game)]
@@ -303,7 +303,7 @@ _SCALAR_CASES = [(game, scalar) for game in GAMES
 @pytest.mark.parametrize("game,scalar", _SCALAR_CASES,
                          ids=[f"{game}-{scalar.neutral}"
                               for game, scalar in _SCALAR_CASES])
-def test_d_one_past_a_scalar_is_refused_not_wrapped(game, scalar):
+def test_d_one_past_a_scalar_is_blocked_not_wrapped(game, scalar):
     """A value one past the field's own width has to raise, naming the field,
     in every title -- a `& 0xFF` here would write a different number.  Bar
     experience above its width, which is clamped instead."""
@@ -311,8 +311,8 @@ def test_d_one_past_a_scalar_is_refused_not_wrapped(game, scalar):
         return
     for past in (scalar.high + 1, scalar.low - 1):
         if scalar.neutral == "experience" and past > scalar.high:
-            # Clamped, not refused: `test_xpceiling.py` has the clamp.
-            # Below zero is still refused, and stays in this loop.
+            # Clamped, not blocked: `test_xpceiling.py` has the clamp.
+            # Below zero is still blocked, and stays in this loop.
             continue
         char = boundarywidths.base(game)
         char.set(scalar.neutral, past, "boundary: one past")
@@ -320,7 +320,7 @@ def test_d_one_past_a_scalar_is_refused_not_wrapped(game, scalar):
             c64_codec.write(char)
 
 
-def test_d_one_past_a_class_level_is_refused():
+def test_d_one_past_a_class_level_is_blocked():
     for game in GAMES:
         char = boundarywidths.base(game)
         char.set("levels", {"fighter": 256}, "boundary: one past")
@@ -331,7 +331,7 @@ def test_d_one_past_a_class_level_is_refused():
 # --- E: the arrays, the name and the fixed-width blocks ---------------------
 
 @pytest.mark.parametrize("game", GAMES)
-def test_e_the_name_holds_its_width_and_refuses_one_more(game):
+def test_e_the_name_holds_its_width_and_blocks_one_more(game):
     width = boundarywidths.NAME_WIDTH
     for length in (0, 1, width):
         char = boundarywidths.base(game)
@@ -380,7 +380,7 @@ def test_e_memorised_spells_fill_the_engines_width_and_stop(game):
 
 
 @pytest.mark.parametrize("game", GAMES)
-def test_e_a_spell_id_past_a_byte_is_refused(game):
+def test_e_a_spell_id_past_a_byte_is_blocked(game):
     char = boundarywidths.base(game)
     char.set("spells_memorised", [256], "boundary: one past")
     with pytest.raises(ValueError):
@@ -454,7 +454,7 @@ def test_e_ten_trait_slots_are_shared_and_never_overrun(game, racial, grants):
 
 
 @pytest.mark.parametrize("game", GAMES)
-def test_e_a_trait_id_past_a_byte_is_refused(game):
+def test_e_a_trait_id_past_a_byte_is_blocked(game):
     char = boundarywidths.base(game)
     char.set("innate_effects", [256], "boundary: one past")
     with pytest.raises(ValueError):
@@ -479,7 +479,7 @@ def test_e_an_unarmed_tail_is_rebuilt_from_forms_that_differ_from_it(game):
 @pytest.mark.parametrize("field,width", [("attack_forms", 8),
                                          ("roster_tail", 9)])
 def test_e_a_fixed_width_block_takes_exactly_its_width(field, width):
-    """Eight bytes and nine: one short or one long is refused rather than
+    """Eight bytes and nine: one short or one long is blocked rather than
     written into the field beside it."""
     for game in GAMES:
         for n in (width, width - 1, width + 1):
@@ -498,7 +498,7 @@ def test_e_a_fixed_width_block_takes_exactly_its_width(field, width):
 
 @pytest.mark.parametrize("game", GAMES)
 def test_e_a_treasure_share_is_kept_to_the_bits_the_c64_masks(game):
-    """0 to 3 cross; a value with bit 2 set is refused rather than masked
+    """0 to 3 cross; a value with bit 2 set is blocked rather than masked
     into a different share (`docs/195-three-dos-record-bytes-named-from-the-
     overlays.md`)."""
     for share in (0, 1, 2, 3):

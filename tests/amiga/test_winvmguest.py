@@ -3,7 +3,7 @@
 Only the parts that decide something: the ssh and scp command lines and the
 options no call may lose, the PowerShell it encodes, the screenshot read back
 from the ssh output, the WinUAE lane read back from `winuae.ps1 status`, and the
-desktop commands it refuses.  No ssh is run; the one test that goes through
+desktop commands it blocks.  No ssh is run; the one test that goes through
 `main` replaces `subprocess.run`.
 """
 
@@ -54,7 +54,7 @@ def test_put_turns_backslashes_into_forward_slashes():
     assert argv[-3:] == ["a.ps1", "b.uae", "win11:C:/Amiga/configs"]
 
 
-def test_put_with_nothing_to_copy_is_refused():
+def test_put_with_nothing_to_copy_is_blocked():
     with pytest.raises(w.WinvmError):
         w.put_argv(CFG, "win11", [], "C:/Amiga/")
 
@@ -122,7 +122,7 @@ def test_the_capture_is_dpi_aware_and_written_by_rename():
 
 
 @pytest.mark.parametrize("token", ["", "a b", "x;y", "a" * 33, "../x"])
-def test_a_token_that_could_break_the_script_is_refused(token):
+def test_a_token_that_could_break_the_script_is_blocked(token):
     with pytest.raises(w.WinvmError):
         w.shot_script(token)
 
@@ -132,7 +132,7 @@ def _png(body: bytes = b"") -> bytes:
     return w.PNG_SIGNATURE + w.PNG_IHDR + bytes(13 + 4) + body + w.PNG_IEND
 
 
-def test_a_truncated_png_is_refused():
+def test_a_truncated_png_is_blocked():
     whole = _png(b"x" * 100)
     for cut in (whole[:-1], whole[:-12], w.PNG_SIGNATURE + b"pixels", whole[:20]):
         b64 = base64.b64encode(cut).decode()
@@ -153,7 +153,7 @@ def test_a_capture_that_failed_says_why():
         w.decode_shot(out)
 
 
-def test_something_that_is_not_a_png_is_refused():
+def test_something_that_is_not_a_png_is_blocked():
     b64 = base64.b64encode(b"GIF89a....").decode()
     with pytest.raises(w.WinvmError, match="not a PNG"):
         w.decode_shot(f"{w.SHOT_BEGIN}\n{b64}\n{w.SHOT_END}\n")
@@ -241,8 +241,8 @@ def test_the_status_script_asks_winuae_ps1_itself():
 
 # -- what the desktop does and this does not ----------------------------------
 
-@pytest.mark.parametrize("cmd", sorted(w.REFUSED))
-def test_the_lifecycle_commands_are_refused_without_running_anything(
+@pytest.mark.parametrize("cmd", sorted(w.BLOCKED_COMMANDS))
+def test_the_lifecycle_commands_are_blocked_without_running_anything(
         monkeypatch, capsys, cmd):
     monkeypatch.setattr(w.subprocess, "run",
                         lambda *a, **k: pytest.fail("ran something"))
@@ -251,8 +251,8 @@ def test_the_lifecycle_commands_are_refused_without_running_anything(
 
 
 def test_a_lease_points_at_the_winuae_lane_instead():
-    assert "winuae.ps1 claim" in w.REFUSED["acquire"]
-    assert "winuae.ps1 release" in w.REFUSED["release"]
+    assert "winuae.ps1 claim" in w.BLOCKED_COMMANDS["acquire"]
+    assert "winuae.ps1 release" in w.BLOCKED_COMMANDS["release"]
 
 
 # -- the lane script's `drives` and `insert` verbs ---------------------------------
@@ -279,7 +279,7 @@ def test_the_lane_script_accepts_the_two_new_verbs():
     assert "'drives' {" in WINUAE_PS1 and "'insert' {" in WINUAE_PS1
 
 
-def test_diagnose_refuses_foreign_claim_receipt_and_pipe_before_any_message():
+def test_diagnose_blocks_foreign_claim_receipt_and_pipe_before_any_message():
     valid = re.search(r"ValidateSet\(([^)]*)\)", WINUAE_PS1).group(1)
     assert "'diagnose'" in valid and "'diagnose' { Invoke-Diagnose }" in WINUAE_PS1
     body = WINUAE_PS1[WINUAE_PS1.index("function Invoke-Diagnose"):

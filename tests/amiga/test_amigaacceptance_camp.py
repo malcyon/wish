@@ -73,7 +73,7 @@ def test_camp_steps_parse(text, tokens):
     ("heal 2", "lay on hands for line 1 only"),
     ("heal x", "not view"),
 ])
-def test_camp_steps_refuse_what_the_route_cannot_drive(text, why):
+def test_camp_steps_block_what_the_route_cannot_drive(text, why):
     with pytest.raises(RouteError, match=why):
         route_camp.parse_steps(text)
 
@@ -89,7 +89,7 @@ def test_a_long_rest_is_allowed_when_a_sheet_follows_and_a_short_one_alone(steps
     route_camp.validate_steps(steps)
 
 
-def test_a_view_is_refused_past_the_party_s_last_line():
+def test_a_view_is_blocked_past_the_party_s_last_line():
     with pytest.raises(RouteError, match="sheets for line 1 only"):
         route_camp.validate_steps(("view 2",), party_size=1)
     with pytest.raises(RouteError, match="sheets for lines 1 to 5 only"):
@@ -135,7 +135,7 @@ def test_curse_camp_steps_reach_the_paladin_on_line_6():
     assert route_camp.normalise(tokens) == ("view 6", "rest 1500m", "view 6", "heal 6")
 
 
-def test_a_title_without_camp_steps_is_refused():
+def test_a_title_without_camp_steps_is_blocked():
     with pytest.raises(RouteError, match="Pools of Darkness and Pool of Radiance only"):
         route_camp.parse_steps("view", "darkness-unstarted")
     with pytest.raises(RouteError, match="reads no sheet on Pool of Radiance"):
@@ -388,7 +388,7 @@ def test_the_cli_takes_camp_steps_only_for_a_published_prepare(capsys):
 
 
 def test_the_cli_reads_camp_steps_for_the_prepare_s_own_title(capsys):
-    # Curse's lines pass the parse and reach the next check; Silver Blades' refuse line 7.
+    # Curse's lines pass the parse and reach the next check; Silver Blades' block line 7.
     assert foundation.main(["prepare", "--title", "curse", "--run-id", "x",
                             "--camp", "view 6;heal 6"]) == 2
     assert "--camp requires --published-disk-one" in capsys.readouterr().err
@@ -748,7 +748,7 @@ EXPECTED_628_PINS = (
 
 
 @pytest.mark.parametrize("name,port,sha", EXPECTED_628_PINS)
-def test_a_published_prepare_for_628_accepts_each_pinned_source_and_refuses_another(
+def test_a_published_prepare_for_628_accepts_each_pinned_source_and_blocks_another(
         tmp_path, monkeypatch, name, port, sha):
     report = _published_report(tmp_path, monkeypatch, name, port, pinned=sha)
     assert foundation.prepare_published(name, "pinned", report, "628").is_file()
@@ -788,7 +788,7 @@ def test_a_published_curse_prepare_keeps_its_camp_steps_and_the_accept_route_has
         route_curse.published_title("D"), CURSE_STEPS, 6, name="curse").route
 
 
-def test_a_published_curse_prepare_refuses_a_line_the_party_does_not_have(tmp_path, monkeypatch):
+def test_a_published_curse_prepare_blocks_a_line_the_party_does_not_have(tmp_path, monkeypatch):
     report = _published_report(tmp_path, monkeypatch, "curse", "dos", names=CURSE_NAMES[:5])
     with pytest.raises(RouteError, match="sheets for lines 1 to 5 only"):
         foundation.prepare_published("curse", "camp", report, "628", camp=("view 6",))
@@ -884,7 +884,7 @@ def test_a_darkness_camp_screen_the_guard_map_lacks_is_settled_and_fails_the_run
     (None, True, "Pool of Radiance accept, only"),
     ("darkness", False, "Pool of Radiance accept, only"),
 ])
-def test_camp_steps_in_a_manifest_that_is_not_a_darkness_accept_are_refused(
+def test_camp_steps_in_a_manifest_that_is_not_a_darkness_accept_are_blocked(
         tmp_path, clock, manifest_title, accept, why):
     with pytest.raises(RouteError, match=why):
         _dark_camp_run(tmp_path, clock, manifest_title=manifest_title, accept=accept)
@@ -937,7 +937,7 @@ def test_the_cli_takes_camp_steps_and_an_issue_for_a_darkness_prepare(capsys, mo
     assert seen["title"] is foundation.CURSE and seen["issue"] == "628"
 
 
-def test_a_darkness_prepare_the_party_refuses_leaves_no_run_folder_so_a_retry_can_run(
+def test_a_darkness_prepare_the_party_blocks_leaves_no_run_folder_so_a_retry_can_run(
         tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
@@ -974,7 +974,7 @@ def test_display_opens_the_curse_magic_menu_s_effects_list_and_comes_back_to_the
 
 
 @pytest.mark.parametrize("name", ["ssb", "darkness"])
-def test_display_is_refused_for_a_title_whose_magic_menu_is_unread(name):
+def test_display_is_blocked_for_a_title_whose_magic_menu_is_unread(name):
     with pytest.raises(RouteError, match="effects list is built for Curse and Pool of Radiance only"):
         route_camp.parse_steps("display", name)
 
@@ -1059,7 +1059,7 @@ def test_the_pinned_666_source_is_the_specimen_on_disk():
     assert staging.sha256(root / FLIGHT_666[0]) == FLIGHT_666[1]
 
 
-def test_a_published_prepare_for_666_keeps_its_display_and_refuses_another_source(
+def test_a_published_prepare_for_666_keeps_its_display_and_blocks_another_source(
         tmp_path, monkeypatch):
     report = _published_report(tmp_path, monkeypatch, "curse", "c64", pinned=FLIGHT_666[1],
                                names=("TRAVIS", "LEDERA"))
@@ -1099,7 +1099,7 @@ def test_the_pinned_667_source_is_the_specimen_on_disk():
     assert staging.sha256(root / LADDER_667[0]) == LADDER_667[1]
 
 
-def test_a_published_prepare_for_667_refuses_another_source(tmp_path, monkeypatch):
+def test_a_published_prepare_for_667_blocks_another_source(tmp_path, monkeypatch):
     report = _published_report(tmp_path, monkeypatch, "curse", "c64", pinned=LADDER_667[1])
     assert foundation.prepare_published("curse", "ladder", report, "667").is_file()
     data = json.loads(report.read_text())
@@ -1116,7 +1116,7 @@ def test_the_pinned_667_slow_poison_source_is_the_specimen_on_disk():
     assert staging.sha256(root / SLOW_POISON_667[0]) == SLOW_POISON_667[1]
 
 
-def test_a_published_prepare_for_667_takes_the_silver_blades_dos_save_and_refuses_another(
+def test_a_published_prepare_for_667_takes_the_silver_blades_dos_save_and_blocks_another(
         tmp_path, monkeypatch):
     report = _published_report(tmp_path, monkeypatch, "ssb", "dos", pinned=SLOW_POISON_667[1],
                                names=("GUY DE VALOIS", "PAINE", "EPONA", "MALACHITE", "DOMINIC",
@@ -1159,7 +1159,7 @@ def test_the_pinned_661_sources_are_the_specimens_on_disk(name):
 @pytest.mark.parametrize("name,names", [
     ("ssb", ("GUY DE VALOIS", "PAINE", "EPONA", "MALACHITE", "DOMINIC", "MORGAINE")),
     ("curse", ("MATHEW", "TRAVIS"))])
-def test_a_published_prepare_for_661_takes_the_pinned_source_and_refuses_another(
+def test_a_published_prepare_for_661_takes_the_pinned_source_and_blocks_another(
         tmp_path, monkeypatch, name, names):
     report = _published_report(tmp_path, monkeypatch, name, "c64",
                                pinned=FEEBLEMIND_661[name][1], names=names)
@@ -1201,7 +1201,7 @@ def test_the_pinned_22_sources_are_the_specimens_on_disk(name):
 
 @pytest.mark.parametrize("name,names", [
     ("ssb", ("GUY DE VALOIS", "PAINE")), ("curse", ("MATHEW", "TRAVIS"))])
-def test_a_published_prepare_for_22_files_under_its_issue_and_refuses_another_source(
+def test_a_published_prepare_for_22_files_under_its_issue_and_blocks_another_source(
         tmp_path, monkeypatch, name, names):
     report = _published_report(tmp_path, monkeypatch, name, "dos",
                                pinned=DOS_22[name][1], names=names)

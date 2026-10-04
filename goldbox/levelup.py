@@ -52,7 +52,7 @@ Silver Blades' sequence is `$1527`, and this is the whole of it (#89):
 title's *starting* spellbook -- Curse's `$167F`, Silver Blades' `$0F7C`. Both
 are grant loops of the same form, both are called only from character
 creation and from dual-classing, and both were read here as the trainer
-granting a row. `tools/c64/trainerspells.py` refuses to call a routine a trainer
+granting a row. `tools/c64/trainerspells.py` does not call a routine a trainer
 step unless the title's own sequence `JSR`s it, and `--check` diffs every
 level of every class against this module.
 
@@ -175,7 +175,7 @@ def _tables_for(game):
     throws, the hit die, thief skills, spell slots -- would be another game's,
     and nothing on the way out would say so.
 
-    Refusing is the visible half of the same rule `goldbox.spells.capacity`
+    Blocking is the visible half of the same rule `goldbox.spells.capacity`
     follows by returning nothing: an unread table shows as unread.
 
     UNAPPROVED WORDING: the rejection below is a new string and Donald has not
@@ -205,7 +205,7 @@ def classes_of(record, game=None) -> list[str]:
 
     A title `goldbox.levels` has no tables for falls back to Pool of Radiance's
     order, which would miss a Krynn knight at `0x10`. Nothing reaches that:
-    `_tables_for` refuses such a title before `plan` asks.
+    `_tables_for` blocks such a title before `plan` asks.
     """
     bits = record.get("class_bits") or 0
     order = levels.for_game(game).class_order
@@ -249,7 +249,7 @@ def ready_classes(record, game=None) -> list[str]:
 
     **The class a dual-classed character left is never ready**, `GEN $1321`,
     and that holds *after* `$20A3` has put its level back in the array.
-    Watched: PHILIPPE, magic-user 6 turned fighter, was refused with
+    Watched: PHILIPPE, magic-user 6 turned fighter, was blocked with
     `UNABLE TO ADVANCE` holding 150,000 experience and a restored magic-user 6
     -- 15,000 more than the magic-user's ninth level asks for (#18).
 
@@ -262,7 +262,7 @@ def ready_classes(record, game=None) -> list[str]:
     **`>=`, against the game's own number, which is the published one plus 1.**
     `GEN $1BBC` walks the class's threshold column downwards and takes the
     first row it is not below (`SBC` then `BCS`), and the rows themselves hold
-    2501 for magic-user 2 where AD&D prints 2500 -- so 2500 exactly is refused
+    2501 for magic-user 2 where AD&D prints 2500 -- so 2500 exactly is blocked
     and 2501 is offered. `goldbox/levels.py` stores the game's numbers, which is
     why the comparison here is a bare `>=`.
     """
@@ -756,7 +756,7 @@ def _hit_point_maximum(record, class_levels: dict[str, int], hp_rolled: int,
     level 5 against a `roll_to` of 9 or more, so the dice cap is; and nothing
     can approach 200 at level 5. The dual-class terms are unexercised too, and
     for a stronger reason: there is no dual-classed Curse character anywhere on
-    these disks, which is why `plan` refuses one rather than writing this.
+    these disks, which is why `plan` blocks one rather than writing this.
     """
     tables = levels.for_game(game)
     level = max(class_levels.values(), default=1)
@@ -847,7 +847,7 @@ def plan(record, class_name: str | None = None, *, game=None, rng=None,
     """What one level in `class_name` would write. Raises rather than guessing.
 
     **An absent `class_name` means "the best one"** -- `best_next_class` picks
-    it -- and not "refuse because two are ready". An explicit name still works
+    it -- and not "block because two are ready". An explicit name still works
     and is what the byte-for-byte replay of the measured trainings passes.
 
     `learn` is the spell a magic-user picks. It is required whenever the
@@ -868,12 +868,12 @@ def plan(record, class_name: str | None = None, *, game=None, rng=None,
     if class_name not in classes_of(record, game):
         raise CannotLevel(f"{record.name} is not a {class_name}")
     # `0x0BA` non-zero is the "has dual-classed" sentinel (`GEN $18EB`), and
-    # four routines change behaviour for it: `$15E7` refuses the die until the
+    # four routines change behaviour for it: `$15E7` blocks the die until the
     # new class passes the old level, `$124F` gives the old class its own
     # hit-point term, `$1470` and `$1321` leave its slot out of the clamp and
     # out of eligibility, and `$20A3` puts it back afterwards. All four were
     # watched happening on 2026-09-05, over eight trainings of one character
-    # (#18); until then this refused rather than write a rule nothing had
+    # (#18); until then this blocked rather than write a rule nothing had
     # checked.
     left_behind, old_level = dual_class_old(record, game)
     if class_name == left_behind:

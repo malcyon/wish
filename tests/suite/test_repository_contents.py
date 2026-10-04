@@ -1248,7 +1248,7 @@ def _index_modes(rels: list[str]) -> dict[str, str]:
 
 def test_every_hook_command_in_settings_is_executable_in_git(files):
     """A hook committed as 100644 fails with permission denied on every call
-    and so never refuses anything. The index mode is checked rather than
+    and so never rejects anything. The index mode is checked rather than
     `os.access`, which the Windows job cannot answer."""
     commands = hook_commands(json.loads(
         (ROOT / ".claude" / "settings.json").read_text(encoding="utf-8")))

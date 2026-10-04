@@ -193,7 +193,7 @@ def test_a_save_disk_the_drive_never_closed_is_repaired_in_place(tmp_path):
     `SAVEAZURE` with directory type `$02` and a block count of zero -- a file
     the drive still thinks is open for writing, which a listing shows as
     `*PRG`. The payload is all there, because the data blocks are written
-    before the entry is finished, but the drive refuses to open one and Curse
+    before the entry is finished, but the drive declines to open one and Curse
     reports `60, WRITE FILE OPEN` as `UNABLE TO LOAD SAVED GAME.`
 
     Setting the bit and the count is enough: the repaired copy of
@@ -235,7 +235,7 @@ def test_a_disk_the_drive_did_close_is_left_alone(tmp_path):
 
 
 def test_nothing_here_writes_outside_the_slot(tmp_path, monkeypatch):
-    """`attach` refuses a path that is not the session's own copy.
+    """`attach` rejects a path that is not the session's own copy.
 
     The player's disks are read and never written, and the way that is
     enforced is that the game is only ever shown an image inside the pool
@@ -394,7 +394,7 @@ def _save_disk(tmp_path, *, closed: bool, name="save.d64"):
     return path
 
 
-def test_refuse_open_entries_names_every_open_entry(tmp_path):
+def test_check_open_entries_names_every_open_entry(tmp_path):
     path = _save_disk(tmp_path, closed=False)
     disk = D64.open(path)
     disk.write_file(b"OTHER", b"x")
@@ -404,18 +404,18 @@ def test_refuse_open_entries_names_every_open_entry(tmp_path):
     path.write_bytes(bytes(raw))
     before = path.read_bytes()
 
-    with pytest.raises(SystemExit) as refused:
-        curseload.refuse_open_entries(str(path))
+    with pytest.raises(SystemExit) as rejected:
+        curseload.check_open_entries(str(path))
 
-    assert "SAVEAZURE" in str(refused.value) and "OTHER" in str(refused.value)
+    assert "SAVEAZURE" in str(rejected.value) and "OTHER" in str(rejected.value)
     assert path.read_bytes() == before
 
 
-def test_refuse_open_entries_passes_a_closed_disk(tmp_path):
+def test_check_open_entries_passes_a_closed_disk(tmp_path):
     path = _save_disk(tmp_path, closed=True)
     before = path.read_bytes()
 
-    assert curseload.refuse_open_entries(str(path)) is None
+    assert curseload.check_open_entries(str(path)) is None
     assert path.read_bytes() == before
 
 
@@ -436,11 +436,11 @@ def test_no_stage_command_accepts_a_save_disk_the_drive_never_closed(
     base = _save_disk(tmp_path, closed=False)
     out = tmp_path / "out.d64"
 
-    with pytest.raises(SystemExit) as refused:
+    with pytest.raises(SystemExit) as rejected:
         _stage_modules()[name].main(
             ["stage", "--base", str(base), "--out", str(out)])
 
-    assert "SAVEAZURE" in str(refused.value)
+    assert "SAVEAZURE" in str(rejected.value)
     assert not out.exists()
 
 
@@ -448,28 +448,28 @@ def test_no_stage_command_accepts_a_save_disk_the_drive_never_closed(
 def test_no_stage_command_takes_repair(tmp_path, capsys, name):
     """`--repair` was how an open disk got closed over a possibly stale chain.
 
-    The base is closed, so only the argument parser can refuse the flag.
+    The base is closed, so only the argument parser can reject the flag.
     """
     base = _save_disk(tmp_path, closed=True)
     out = tmp_path / "out.d64"
 
-    with pytest.raises(SystemExit) as refused:
+    with pytest.raises(SystemExit) as rejected:
         _stage_modules()[name].main(
             ["stage", "--base", str(base), "--out", str(out), "--repair"])
 
-    assert refused.value.code == 2
+    assert rejected.value.code == 2
     assert "unrecognized arguments: --repair" in capsys.readouterr().err
     assert not out.exists()
 
 
-def test_refuse_open_entries_passes_an_empty_disk(tmp_path):
+def test_check_open_entries_passes_an_empty_disk(tmp_path):
     path = tmp_path / "empty.d64"
     path.write_bytes(D64.blank(b"EMPTY").to_bytes())
 
-    assert curseload.refuse_open_entries(str(path)) is None
+    assert curseload.check_open_entries(str(path)) is None
 
 
-def test_refuse_open_entries_names_only_the_open_one_among_closed(tmp_path):
+def test_check_open_entries_names_only_the_open_one_among_closed(tmp_path):
     disk = D64.blank(b"MIXED")
     for name in (b"ONE", b"TWO", b"THREE", b"FOUR"):
         disk.write_file(name, b"x" * 300)
@@ -480,10 +480,10 @@ def test_refuse_open_entries_names_only_the_open_one_among_closed(tmp_path):
     path = tmp_path / "mixed.d64"
     path.write_bytes(bytes(raw))
 
-    with pytest.raises(SystemExit) as refused:
-        curseload.refuse_open_entries(str(path))
+    with pytest.raises(SystemExit) as rejected:
+        curseload.check_open_entries(str(path))
 
-    message = str(refused.value)
+    message = str(rejected.value)
     assert "FOUR" in message
     for closed in ("ONE", "TWO", "THREE"):
         assert closed not in message

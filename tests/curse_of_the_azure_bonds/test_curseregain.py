@@ -66,6 +66,6 @@ class TestSaveSlotKey:
         assert cr.save_slot_key(letter) == key
 
     @pytest.mark.parametrize("letter", ["K", "k", "Z", "", "AB", "1"])
-    def test_a_letter_outside_a_to_j_is_refused(self, letter):
+    def test_a_letter_outside_a_to_j_is_rejected(self, letter):
         with pytest.raises(SystemExit):
             cr.save_slot_key(letter)

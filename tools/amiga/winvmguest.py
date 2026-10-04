@@ -21,7 +21,7 @@ and a pinned host key (`ansible/roles/agent-winvm-access`), and this is the
 `ssh`, `scp` and `shot` take the same arguments as the desktop's `winvm`, so the
 tools that call it (`amigadrive.py`, `winvmsettle.py` and the rest) run
 unchanged.  `acquire`, `release`, `up`, `down`, `save`, `promote`, `revert` and
-`guest-setup` are refused: the Windows guest autostarts with the host and only
+`guest-setup` are blocked: the Windows guest autostarts with the host and only
 the desktop changes its state.  Who may drive WinUAE is decided on Windows, by
 `winuae.ps1 claim`, and read here through `winuae.ps1 status`.
 
@@ -71,19 +71,19 @@ WINUAE_PS1 = r"C:\Amiga\winuae.ps1"
 POWERSHELL = "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass"
 
 #: The desktop `winvm` commands that change the Windows guest's state or rely
-#: on libvirt, with the reason each is refused here.
-REFUSED = {
+#: on libvirt, with the reason each is blocked here.
+BLOCKED_COMMANDS = {
     "acquire": "leases are libvirt's, on the desktop; take the WinUAE lane "
                "with `winuae.ps1 claim -Holder <id>` instead",
     "release": "leases are libvirt's, on the desktop; give the WinUAE lane "
                "back with `winuae.ps1 release -Holder <id>` instead",
-    "up": "the Windows guest autostarts with the host; this tool refuses "
+    "up": "the Windows guest autostarts with the host; this tool blocks "
           "to start it",
-    "down": "this tool refuses to stop the Windows guest",
-    "save": "this tool refuses to suspend the Windows guest",
-    "promote": "this tool refuses to change the Windows guest's golden image; "
+    "down": "this tool will not stop the Windows guest",
+    "save": "this tool will not suspend the Windows guest",
+    "promote": "this tool will not change the Windows guest's golden image; "
                "that runs from the desktop",
-    "revert": "this tool refuses to revert the Windows guest; that runs "
+    "revert": "this tool will not revert the Windows guest; that runs "
               "from the desktop",
     "guest-setup": "the first-logon script is re-run from the desktop, "
                    "off the UNATTEND volume",
@@ -458,8 +458,8 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--expect", metavar="HOLDER|free",
                    help="exit 1 unless the lane is held by HOLDER, or free")
 
-    for name, why in REFUSED.items():
-        p = sub.add_parser(name, help=f"refused here: {why}")
+    for name, why in BLOCKED_COMMANDS.items():
+        p = sub.add_parser(name, help=f"blocked here: {why}")
         p.add_argument("rest", nargs="*", help=argparse.SUPPRESS)
     return parser
 
@@ -494,9 +494,9 @@ def main(argv: list[str] | None = None) -> int:
         args.args = scp_rest
     cfg, host = args.config, args.host
     try:
-        if args.cmd in REFUSED:
+        if args.cmd in BLOCKED_COMMANDS:
             print(f"winvm {args.cmd}: not available in the agent guest -- "
-                  f"{REFUSED[args.cmd]}.", file=sys.stderr)
+                  f"{BLOCKED_COMMANDS[args.cmd]}.", file=sys.stderr)
             return 2
         if args.cmd == "ssh":
             tty = not args.command and sys.stdin.isatty()

@@ -159,7 +159,7 @@ class Addresses:
 def stage(slot, disks: str, save: str = "") -> str:
     """Copy the six sides into the slot and put a save disk in `SIDE0`.
 
-    The player's disks are read and never written; `Session.attach` refuses
+    The player's disks are read and never written; `Session.attach` rejects
     any path outside the slot's directory, so the only images the game is ever
     shown are these copies.
 
@@ -190,7 +190,7 @@ def stage(slot, disks: str, save: str = "") -> str:
         # (`tools/registry/specimens.py` makes it so).  Staged unchanged, that gives
         # the game a write-protected save disk, and nothing says so: the run
         # boots, the party loads, and every write the game makes is silently
-        # refused (#455, #469).
+        # rejected (#455, #469).
         por.stage_writable(save, target)
     else:
         # **The shipped party is `SAVEDBASH` on side 6**, and this title's

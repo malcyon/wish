@@ -801,11 +801,11 @@ def test_a_prompt_that_vanishes_while_retrying_is_no_prompt(monkeypatch, tmp_pat
     sess.row = PROMPT
     tries = []
 
-    def refuse(s=None):
+    def reject(s=None):
         tries.append(1)
         sess.row = GRID                             # gone by the next look
         return False
-    sess.handle_prompt = refuse
+    sess.handle_prompt = reject
     assert M.answer_disk_prompt(args(), sess, log, 1) == (False, None)
     assert len(tries) == 1 and not log.of("disk_prompt")
 
@@ -857,7 +857,7 @@ def test_no_start_writes_nothing(monkeypatch, tmp_path):
 
 
 @pytest.mark.parametrize("bad", ["3", "1,2,3", "256,1", "-1,4", "x,1"])
-def test_start_refuses_a_square_that_is_not_two_bytes(monkeypatch, tmp_path, bad):
+def test_start_rejects_a_square_that_is_not_two_bytes(monkeypatch, tmp_path, bad):
     with pytest.raises(SystemExit):
         parse(monkeypatch, tmp_path, "--start", bad)
 
@@ -879,7 +879,7 @@ def test_start_indoors_writes_nothing_and_stops_the_run(monkeypatch, tmp_path):
     log = start_run(monkeypatch, tmp_path, events, code=1, sess=sess,
                     start=(3, 27), walk="77")
     assert not [e for e in events if e[0] in ("write", "press")]
-    assert "indoors" in log.of("start_refused")[0]["reason"]
+    assert "indoors" in log.of("start_blocked")[0]["reason"]
     assert not log.of("start")
 
 
@@ -890,7 +890,7 @@ def test_start_with_an_unreadable_indoors_flag_writes_nothing(monkeypatch, tmp_p
     log = start_run(monkeypatch, tmp_path, events, code=1, sess=sess,
                     start=(3, 27), walk="77")
     assert not [e for e in events if e[0] in ("write", "press")]
-    assert log.of("start_refused")
+    assert log.of("start_blocked")
 
 
 def test_start_read_back_mismatch_stops_the_run(monkeypatch, tmp_path):

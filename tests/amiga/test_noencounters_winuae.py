@@ -177,7 +177,7 @@ def test_off_puts_every_original_back(title, state):
 
 
 @pytest.mark.parametrize("save", ["S", "s"])
-def test_a_save_key_is_refused_while_the_switch_is_on(state, save):
+def test_a_save_key_is_blocked_while_the_switch_is_on(state, save):
     pipe = FakePipe()
     build(pipe, "pool-of-radiance")
     switch(pipe, "pool-of-radiance", state).on()
@@ -191,7 +191,7 @@ def test_a_save_key_is_refused_while_the_switch_is_on(state, save):
     assert presses == ["E", "S"]
 
 
-def test_a_save_key_is_refused_while_a_change_is_still_recorded(state):
+def test_a_save_key_is_blocked_while_a_change_is_still_recorded(state):
     """An `off` that could not write leaves the switch off and the row recorded."""
     pipe = FakePipe()
     gates = build(pipe, "pool-of-radiance")
@@ -206,7 +206,7 @@ def test_a_save_key_is_refused_while_a_change_is_still_recorded(state):
     assert presses == []
 
 
-def test_an_unreadable_state_refuses_a_save_key(state):
+def test_an_unreadable_state_blocks_a_save_key(state):
     state.path.write_text("{not json", encoding="utf-8")
     presses = []
     result = switch(FakePipe(), "pool-of-radiance", state, presses).keys(["S"])
@@ -295,15 +295,15 @@ def test_off_without_the_lane_changes_nothing(state):
         before = state.path.read_text()
         intruder = switch(pipe, "pool-of-radiance", state)
 
-        def refuse():
+        def block():
             raise amiga.GuestError("fail the lane is claimed by wish266")
-        intruder.lane_check = refuse
+        intruder.lane_check = block
         with pytest.raises(amiga.GuestError):
             intruder.off()
         assert state.path.read_text() == before
 
 
-def test_on_for_another_title_is_refused_while_a_change_is_recorded(state):
+def test_on_for_another_title_is_blocked_while_a_change_is_recorded(state):
     pipe = FakePipe()
     _left_recorded(pipe, state)
     with pytest.raises(ValueError, match="pool-of-radiance off"):

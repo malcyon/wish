@@ -103,13 +103,13 @@ that the pid filter is inert there: DOSBox 0.74 is SDL 1.2, which does not set
 * **Choose the window by `_NET_WM_PID`**, which SDL2 sets and which is the only
   thing that told the two apart. Choosing by content is *wrong* here — the
   window with pixels in it is whichever process drew last, not ours.
-* **Never share a display.** `boot()` refuses to start when an X server is
+* **Never share a display.** `boot()` will not start when an X server is
   already listening on the slot's display, because that is the condition the
   two windows need. The check connects to `/tmp/.X11-unix/X<n>`: `xdotool`
   cannot answer it, as it exits 1 both for "no windows matched" and for "Can't
   open display", which is also why the old readiness loop never waited for
   anything.
-* **Refuse a capture of one colour by name.** `shot()` raises `BlankCapture`
+* **Block a capture of one colour by name.** `shot()` raises `BlankCapture`
   rather than writing a PNG that looks like a game drawing nothing.
 
 The condition that starts it is a leaked process: `Xvfb` and `dosbox-x` are

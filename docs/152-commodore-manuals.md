@@ -109,7 +109,7 @@ contents entry is not a PDF page. **Add the offset, do not hunt:**
 | 1541 User's Guide | printed page + 6 |
 
 **The Programmer's Reference Guide is 173 MB and cannot be opened directly** —
-a reader that renders pages refuses it over 100 MB. Cut the range out first,
+a reader that renders pages blocks it over 100 MB. Cut the range out first,
 into a scratch directory, and read that:
 
     gs -q -dNOPAUSE -dBATCH -sDEVICE=pdfwrite -dFirstPage=257 -dLastPage=259 \

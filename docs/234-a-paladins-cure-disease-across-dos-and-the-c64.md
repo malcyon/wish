@@ -136,7 +136,7 @@ has to be 1 for him to cure once and no more, and then:
 
 ## Donald's decision
 
-Rather than refuse this state, `c64_cure_write` writes an adjustment: `0x012`
+Rather than block this state, `c64_cure_write` writes an adjustment: `0x012`
 = 1 and a row 141, duration and magnitude both `$C7` -- the same byte the C64
 cure itself writes, as if he had just cured from full on the day of
 conversion. **This is not DOS parity.** It gives up on reproducing whenever
@@ -207,7 +207,7 @@ ends the game with Turbo Pascal's `Runtime error 200` is PROBABLE. The run
 that settles it: in DOS Curse, have a paladin cure disease in camp, use HUMAN
 CHANGE CLASSES at a training hall the same day, then rest eight days. The
 finding is refuted if the rest ends normally. Silver Blades' 1 is dormant,
-because the gate refuses CURE until the regain.
+because the gate blocks CURE until the regain.
 
 **C64, CONFIRMED from the overlays, both titles.** A former paladin has no
 cure count of his own. `0x012` is the only home the count has, and the engine
@@ -324,7 +324,7 @@ days). Neither touches a record byte or an effect row.
   full between those two days adds a third row, and the second refills him
   before seven days are up, where DOS would have waited the whole seven.
 * Two former-paladin states still report a loss, and a reported loss makes
-  Save As refuse the party (`editor/saveplan.py` raises `DroppedFields` when
+  Save As block the party (`editor/saveplan.py` raises `DroppedFields` when
   the writer's accounting is not empty). That is not completion. The states
   are `d` above `full(F)` and `F` of 16 or more. The cure-node state is no
   longer among them: it converts as 0 and 0 with no row (see the table above).

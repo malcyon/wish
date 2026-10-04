@@ -272,13 +272,13 @@ def test_a_pools_of_darkness_state_takes_an_explicit_container():
             == world_state.pod_from_dos(save))
 
 
-def test_pod_from_dos_refuses_a_title_with_no_byte_array():
+def test_pod_from_dos_blocks_a_title_with_no_byte_array():
     with pytest.raises(dos_savegame.DosSaveError, match="no byte-wide"):
         world_state.pod_from_dos(bytes(dos_savegame.SAVGAM_SIZE),
                                  dos_savegame.SAVE_POOL_OF_RADIANCE)
 
 
-def test_the_shared_world_state_still_refuses_a_pools_of_darkness_save():
+def test_the_shared_world_state_still_blocks_a_pools_of_darkness_save():
     """`WorldState` has no home for a byte-wide array, and the rejection is
     correct: widening it to take this title is the wrong repair, and
     `pod_from_dos` is the reader for these files."""
@@ -341,7 +341,7 @@ def test_an_amiga_pools_of_darkness_state_halves_the_facing_and_reads_words_big_
     assert state.clock == (1, 2, 3, 4, 5, 6, 7)
 
 
-def test_an_amiga_buffer_that_is_not_a_pools_of_darkness_save_is_refused():
+def test_an_amiga_buffer_that_is_not_a_pools_of_darkness_save_is_blocked():
     from goldbox import amiga_savegame as amiga
 
     with pytest.raises(amiga.PodSaveError):
@@ -349,9 +349,9 @@ def test_an_amiga_buffer_that_is_not_a_pools_of_darkness_save_is_refused():
 
 
 @pytest.mark.parametrize("size", [1442, 32484, 0x2A4C - 1, 0x2A4C + 1])
-def test_an_amiga_saved_game_of_the_wrong_size_is_refused(size):
+def test_an_amiga_saved_game_of_the_wrong_size_is_blocked(size):
     """A count-1 party still parses at any of these lengths, so only the size
-    check refuses them."""
+    check blocks them."""
     from goldbox import amiga_savegame as amiga
 
     good = _amiga_pod_from_dos(bytes(_synthetic_pod_save()))

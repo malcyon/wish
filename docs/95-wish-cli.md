@@ -27,7 +27,7 @@ own `--help`.
 ## Safety
 
 * **An existing save is never modified.** `import` always writes a new disk, and
-  refuses if `--output` names the original.
+  blocks if `--output` names the original.
 * **`--dry-run`** reports exactly what would change without writing anything.
 * **Unknown bytes are preserved.** Only fields we understand are written back;
   the party header, everything in `SAVEDGAME1` past its first page, and the
@@ -108,7 +108,7 @@ implementation details a person editing a save should never have to learn:
 
 Multi-class is just a list, so `[magic-user, thief]` says what `class_bits: 5`
 used to. Names are case-insensitive and order does not matter. A raw number is
-still accepted if you prefer it, and an unrecognised name is refused with the
+still accepted if you prefer it, and an unrecognised name is blocked with the
 valid options listed rather than being silently mangled.
 
 Sections are separated by headings (`# --- money`), and derived groups say so,
@@ -130,7 +130,7 @@ and `wish` reads and writes that page:
       unknown_03_05: [0, 0, 0]
 ```
 
-Both combat numbers are stored as `60 - value`, so `wish` refuses anything that
+Both combat numbers are stored as `60 - value`, so `wish` blocks anything that
 will not fit rather than wrapping it around. `movement_current` is the encumbered
 figure and drops with armour — 12 unencumbered, 9 in banded mail — while the
 `movement` field further up is the unencumbered base.
@@ -151,7 +151,7 @@ cannot leave a save in a state no real save has been seen in:
 * **class** — the bitmask at `0x0EB` and the single class code at `0x073`,
   shown as `classes:` and `class_code:`. Editing `classes:` updates the code to
   match; three combinations have no code in the game's table
-  (magic-user/cleric/thief, cleric/thief/fighter, and all four) and are refused
+  (magic-user/cleric/thief, cleric/thief/fighter, and all four) and are blocked
   rather than written wrongly.
 
   **They are allowed to disagree.** The game itself ships NPCs where they do —
@@ -230,9 +230,9 @@ Failing that, append an entry with **no `raw`** and describe the item:
 
 `words` accepts names or numbers. Seven words appear twice in the game's table —
 `RING`, `CLOAK`, `JAVELIN`, `TRIDENT`, `STONE`, `OINTMENT`, `MIRROR` — and are
-refused with both indices rather than guessed at. Building by name needs a game
+blocked with both indices rather than guessed at. Building by name needs a game
 disk, so pass `--game-disk` on import if one is not found beside the save. A
-character carries at most sixteen items and more than that is refused.
+character carries at most sixteen items and more than that is blocked.
 
 Bytes we do not understand are zero in a built item, which is why copying an
 existing `raw` and editing it is safer than building one when a template exists.
@@ -260,7 +260,7 @@ The same check covers spells — a memorised spell that is not in the spellbook,
 or more memorised at a level than the character's class, level and Wisdom allow.
 
 **Nothing here is enforced**, only reported. No save that breaks these rules has
-been written and loaded in game, so refusing one would be guessing.
+been written and loaded in game, so blocking one would be guessing.
 
 One discrepancy is known and expected: MALCYON's THAC0 improves by one when he
 readies darts, which nothing accounts for. A second — BRUTUS coming out a point

@@ -62,7 +62,7 @@ def test_a_pool_save_stops_on_the_curse_folder_not_in_the_writer(tmp_path):
         save_as(party, folder, tmp_path / "out")
 
 
-def test_the_stop_is_one_the_window_reports_as_a_conversion_refused(tmp_path):
+def test_the_stop_is_one_the_window_reports_as_a_conversion_blocked(tmp_path):
     """`editor.window` answers a `DroppedFields` with its existing sentence."""
     assert issubclass(saveplan.WrongGameFolder, saveplan.DroppedFields)
 

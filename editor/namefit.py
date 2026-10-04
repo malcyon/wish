@@ -66,7 +66,7 @@ class NameFitDialog(QDialog):
         self.ui.setupUi(self)
         self.setWindowTitle(TITLE)
         # With no set given a name is only cut, as before characters were
-        # checked, and the box refuses anything unprintable.
+        # checked, and the box blocks anything unprintable.
         start = ((lambda name: name[:width].rstrip()) if shown is None
                  else (lambda name: saveplan.suggest_name(name, width, shown)))
         shown = saveplan.ALL_PRINTABLE if shown is None else shown

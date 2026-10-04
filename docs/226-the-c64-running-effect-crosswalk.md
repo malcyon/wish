@@ -309,7 +309,7 @@ gives 18/100.** The cast rolls `1d4`, `1d6` or `1d8` by class (Curse `0x30C44`,
 101, which the decoder above reads as 18/100 rather than as one step, so the
 recompute hands the target the maximum exceptional strength for the spell's
 duration -- and a magic-user reaches it too, because the merge takes the
-decoded percentile when the class ladder refuses the exceptional path. It is
+decoded percentile when the class ladder blocks the exceptional path. It is
 PROBABLE rather than CONFIRMED because it is an argument from two routines and
 nobody has cast the spell: casting Strength on a fighter at 15 under DOSBox
 until a 1 comes up and reading the sheet settles it. Encoding a strength of 1
@@ -495,7 +495,7 @@ A static read found no reader.
 
 **CONFIRMED from the bytecode, and it withdraws this page's earlier claim that
 two overlapping strength boosts are a thing C64 Pool cannot hold:** the cast is
-the only part of the engine that refuses a second node. Everything that ages,
+the only part of the engine that blocks a second node. Everything that ages,
 expires and restores works a slot at a time.
 
 | where | what it does |
@@ -669,10 +669,7 @@ generic cast puts the spell row's id on the targets: 145 in Curse (row byte
 10 `0x91`), 32 in Silver Blades (`0x20`). The C64's combat cast writes both
 rows on the caster with the level and a duration of the level (Curse `COMBAT
 $1AB8`: `LDX #$91`, then `LDX #$04`; Silver Blades `$1F96`: `LDX #$20`, then
-`LDX #$04`). So 145 and Silver Blades' 32 do have C64 rows, which #667 (A DOS
-party under Prayer, the strength and charisma spells, Mirror Image or an
-effect with no C64 spell row is still refused when saved as a C64 save,
-because only the ordinary caster-level spells convert) had said they lack: the
+`LDX #$04`). So 145 and Silver Blades' 32 do have C64 rows, which WISH-8 (A DOS party under Prayer, the strength and charisma spells, Mirror Image or an effect with no C64 spell row still fails to save as a C64 save, because only the ordinary caster-level spells convert) had said they lack: the
 combat table names id 4 for spell 73, and the handler writes the second row
 itself. The id-145 and id-32 handlers on both ports banish an attacker of the
 flagged kind on a failed save and then remove 4 and themselves; the id-4
@@ -702,7 +699,7 @@ that said the C64 "reuses the magnitude as the level of a retaliation cast" and
 that DOS takes it from the record misread both: the record byte DOS uses is
 the side, and it goes into the id-137 node. A DOS character holding 35 has
 no Confusion byte in the record; the record changes belong to the 142 and 137
-nodes; 142 converts with its record bytes and 137 is refused. Silver Blades also writes Confusion from its id-70
+nodes; 142 converts with its record bytes and 137 is blocked. Silver Blades also writes Confusion from its id-70
 gaze as `(35, 1d10 + 2, the monster's side, 1)` (`GAME.OVR:0x130CF`). Its
 handler returns at once in remove mode (`0x11AC4` to `0x11C7E`), so the flag
 does nothing there, and on the C64 bit 7 would run the Confusion roll a second
@@ -1180,11 +1177,8 @@ otherwise make it. `c64_codec.write` does this for Curse and Silver Blades
 through `DOS_PC_TAKEN_OVER`, and for a charmed Pool character (above). #720 (A Pool of Radiance player character the engine has taken
 over converts between DOS and the C64 as a companion, because both readers take
 the control byte's bit 7 for a companion) has no build of its own: its work sits
-in #667 (A DOS party under Prayer, the strength and charisma spells, Mirror
-Image or an effect with no C64 spell row is still refused when saved as a C64
-save, because only the ordinary caster-level spells convert) Step C for Charm
-and in #700 (Converting a Pool of Radiance C64 party holding a camp-cast
-Animate Dead zombie needs more than fixing the refusal that blocks it) for
+in WISH-8 (A DOS party under Prayer, the strength and charisma spells, Mirror Image or an effect with no C64 spell row still fails to save as a C64 save, because only the ordinary caster-level spells convert) Step C for Charm
+and in #700 for
 Animate Dead. Bit 6 of `0x10C`
 goes with the row: written
 when a Fear row is written, and read back as `npc` true with control `0xB3`
@@ -1263,8 +1257,8 @@ save yet.
 |---|---|
 | A raw DOS data byte is not a C64 magnitude | **CONFIRMED:** exceptional strength differs by one, and Prayer uses a different allegiance bit and polarity. |
 | One minutes-only value does not encode every C64 duration | **CONFIRMED:** it omits clock phase, and 64 minutes at phase 0 has no exact candidate among all 252 nonzero-count bytes. A conversion policy is still required. |
-| Pool overlapping Enlarge/Strength nodes do not have independent equivalent magnitudes | **CONFIRMED:** DOS `0x2C0D3` finds the active low-bit node, `0x2C129/0x2C12F` parks the displaced boost with bit 7, and expiry `0xF173–0xF227` selects the strongest remaining boost and moves the baseline into it. C64 `SPELLE04 $A8F4/$A8FA` updates current strength, then `$A8FD/$A904` searches ids 38/12 and `$A902/$A909` returns at `$A911` if either exists, retaining its earlier timer. `effects.pool_strength_chain_rows` writes two running strength nodes, a Strength with an Enlarge or two Strengths, as two rows timed from that chain, and `effects.pool_strength_chain_nodes` reads them back, keyed by row slot because two rows can share an id; a third running node is still refused, because the timeline then needs the whole chain. A granted strength node beside one running node converts as the granted node alone (`effects.pool_gauntlets_over_spell_row`): the C64 never holds both, and the gauntlets' row restores the base, so the spell's remaining time is the one loss, written to the debug log and not to the drop list. |
-| Pool overlapping nodes: two running strength nodes convert, and the gauntlets beside one convert as the gauntlets alone | **CONFIRMED that the destination holds them:** the cast refuses a second strength node (`SPELLE04 $A8FD`/`$A904`, returning at `$A911`), and that is all it proves, because a writer is not the cast. Every sweep is per slot -- see the section above -- so two staged slots expire at their own times and each restores its own score. A converted pair therefore reproduces the intermediate step, with the later-expiring node in the lower-numbered slot. For two running strength nodes, a Strength with an Enlarge or two Strengths, that value is written by `effects.pool_strength_chain_rows`, with equal expiry, or minutes that share a duration byte, ordered parked node first so the active node's base is the only restore whatever order the C64 sweeps its slots in; the rest need a value **recomputed from the DOS chain's timeline** rather than each node's byte translated on its own, and three concurrent boosts on one character still have nowhere to go: only ids 38 and 12 reach the restore handler. |
+| Pool overlapping Enlarge/Strength nodes do not have independent equivalent magnitudes | **CONFIRMED:** DOS `0x2C0D3` finds the active low-bit node, `0x2C129/0x2C12F` parks the displaced boost with bit 7, and expiry `0xF173–0xF227` selects the strongest remaining boost and moves the baseline into it. C64 `SPELLE04 $A8F4/$A8FA` updates current strength, then `$A8FD/$A904` searches ids 38/12 and `$A902/$A909` returns at `$A911` if either exists, retaining its earlier timer. `effects.pool_strength_chain_rows` writes two running strength nodes, a Strength with an Enlarge or two Strengths, as two rows timed from that chain, and `effects.pool_strength_chain_nodes` reads them back, keyed by row slot because two rows can share an id; a third running node is still blocked, because the timeline then needs the whole chain. A granted strength node beside one running node converts as the granted node alone (`effects.pool_gauntlets_over_spell_row`): the C64 never holds both, and the gauntlets' row restores the base, so the spell's remaining time is the one loss, written to the debug log and not to the drop list. |
+| Pool overlapping nodes: two running strength nodes convert, and the gauntlets beside one convert as the gauntlets alone | **CONFIRMED that the destination holds them:** the cast blocks a second strength node (`SPELLE04 $A8FD`/`$A904`, returning at `$A911`), and that is all it proves, because a writer is not the cast. Every sweep is per slot -- see the section above -- so two staged slots expire at their own times and each restores its own score. A converted pair therefore reproduces the intermediate step, with the later-expiring node in the lower-numbered slot. For two running strength nodes, a Strength with an Enlarge or two Strengths, that value is written by `effects.pool_strength_chain_rows`, with equal expiry, or minutes that share a duration byte, ordered parked node first so the active node's base is the only restore whatever order the C64 sweeps its slots in; the rest need a value **recomputed from the DOS chain's timeline** rather than each node's byte translated on its own, and three concurrent boosts on one character still have nowhere to go: only ids 38 and 12 reach the restore handler. |
 | Prayer converts as one party-wide row, not as a row owned by one slot | **CONFIRMED from code:** on the C64 a row owned by one slot reaches only that character, and every C64 Prayer cast writes owner `$FF` (#666 (A C64 party under a camp Prayer loses it on the way to DOS or the Amiga, because nothing converts the save's party-wide effect rows)). DOS asks for id 49 for every combatant through the check-list routine, which gives one member's node to the whole party out of combat and to every combatant within range 6 in a fight (Pool `GAME.OVR:0x2B04A`, Curse `0x3529C`, Silver Blades `0x3606F`). So a DOS id-49 node is one `$FF` row on the C64, and coming back the row is one node on every member. An earlier reading kept the row owned by the caster's slot; it came from the owner's own query alone and had not read the routine that asks for id 49. |
 | The Prayer holder cannot live in the row | **CONFIRMED:** only magnitude bits 4-5 are unread by every routine that means to read a Prayer row, and two bits cannot name one of eight slots; a stale index in the game's own handlers also reads them (a mark there changes the charisma it writes). The owner byte's low bits are read in full when the row expires, and an owner of `$FA` behaved as `$FF` in one combat-setup run only. The holder record above lives outside the row. |
 | Pool's camp Prayer row, `$FF`/35, does nothing on the C64 | **CONFIRMED from code, and it replaces "not proved equivalent":** camp spell 42's flag `$80` takes `SPELLE04 $A704` to `$A710`'s owner `$FF`, and `SPELLE04 $A816`/`$A81C` store it with id 35 (row byte 3 is `$A3`). No constant-id query, none of the 20 check lists, the camp expiry table `ECL65 $9AD5` or ECL `CHECKPARTY` (whose only effect queries ask for 19) asks for 35. Its combat handler `SPELLE01 $A9B2` (+1 to `$2AFE` and `$2B10`) is called only from `SQRPACI01 $078B`, which a camp Prayer never reaches. What does read the row: the camp list of spells in effect (`CAMP $16C3`-`$1797`, which names it), Dispel Magic (`SPELLE04 $AA5B`, `SPELLE00 $ABCE`), and, PROBABLE, the cleanup when a combatant falls (`COMBAT $29C4`), whose query for the fallen combatant also matches owner `$FF`. DOS Pool's camp Prayer is one id-49 node on the caster (`GAME.OVR:0x27AA9`, row byte 7 = 1), but the check-list routine gives the whole party the +1. DOS Pool's Magic > Display names an id-35 node "Prayer" (`GAME.OVR:0x189E1`) and nothing else reads it. So the C64 row converts to an id-35 node on every member. The earlier "the two ports differ" came from not having read the routine that asks for id 49. Curse and Silver Blades write their camp Prayer as `$FF`/49 (row 27), which is why Pool's 35 reads as a slip in its own row 42. Evidence and addresses: #666 (A C64 party under a camp Prayer loses it on the way to DOS or the Amiga, because nothing converts the save's party-wide effect rows), Part B. |
@@ -1340,7 +1334,7 @@ hold, the run is inconclusive. Stop after that camp entry or the existing
 boot timeout; preserve outputs outside the repository. This tests one
 independent-node translation, not a timeline converter.
 
-Prayer's conversion is checked by the two acceptance runs on #667 (A DOS party under Prayer, the strength and charisma spells, Mirror Image or an effect with no C64 spell row is still refused when saved as a C64 save, because only the ordinary caster-level spells convert), one on DOS Pool and one on Curse.
+Prayer's conversion is checked by the two acceptance runs on WISH-8 (A DOS party under Prayer, the strength and charisma spells, Mirror Image or an effect with no C64 spell row still fails to save as a C64 save, because only the ordinary caster-level spells convert), one on DOS Pool and one on Curse.
 
 **What the C64 writer converts, and what it still waits on.** The writer is
 built: `goldbox.effects.c64_row` turns a running node into a row of the save's
@@ -1380,7 +1374,7 @@ reported by name; converting them is #666 (A C64 party under a camp Prayer
 loses it on the way to DOS or the Amiga, because nothing converts the save's
 party-wide effect rows)); a timeline conversion for Pool's overlapping strength
 nodes, which the destination does hold (a second strength node on one
-character, running or granted, is refused by `strength_nodes`); the later
+character, running or granted, is blocked by `strength_nodes`); the later
 titles' Strength beside another strength source; a Curse or Silver Blades id-25 node of data `0xFF` (ids 138 and 108),
 which needs its own read; a Giant Strength magnitude (Curse id 146, Silver Blades id 113) other than `$BC`
 (strength 23); the ids with no C64 spell row that still need a read; and the
@@ -1402,7 +1396,7 @@ same way. Fire Shield (spell 85) writes two nodes, the shield (Curse 143, Silver
 Blades 112) and the 50 or 54 that names its damage type, each `(id, minutes, 0,
 0)` on DOS and each the caster's level with bit 7 clear on the C64
 (`COMBAT $1C6C`, camp `ECL65 $8460`); they convert by the zero-level rule
-(`effects.ZERO_LEVEL_IDS`), each row on its own. Id 13 is refused in Pool and Curse with a reason of
+(`effects.ZERO_LEVEL_IDS`), each row on its own. Id 13 is blocked in Pool and Curse with a reason of
 its own. In Pool no save a game wrote reaches it: DOS Reduce (spell 13) removes
 an id-12 node and writes no id-13 node in any title (read 3c). In Curse a C64
 save reaches it only when a fight has engulfed a party member (`COMBAT $1F40`)
@@ -1416,7 +1410,7 @@ gives the C64's -1 to the attacker's roll and +1 to saves. The camp writer is
 row 26 at `ECL65 $93B6`, which goes to `$819C` with the generic level
 magnitude and count `4 + level`; `POST.COM` does not strip it. Curse's C64
 id 13 is the engulf countdown, whose magnitude is a combatant index, so it
-stays refused. Dispel Evil (4
+stays blocked. Dispel Evil (4
 and Curse's 145 or Silver Blades' 32), Confusion (35), Fumble (27, and 42 with
 data 0), Stinking Cloud (30, 31), Curse's 136 and Silver Blades' Power Word
 Stun (106) convert both ways by the rules in "Combat-cast ids and their

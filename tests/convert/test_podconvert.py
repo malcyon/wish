@@ -6,7 +6,7 @@ The title has no C64 port and never will, so this is not `#192`'s and
 `#193`'s work over again: the second port is the **Amiga**, and what
 `#194 (Import and export a Pools of Darkness save between DOS and the Amiga)`
 needed first was a route between the 510-byte DOS record and the neutral
-record, which refused this title by name until 2026-09-08.
+record, which blocked this title by name until 2026-09-08.
 
 Three kinds of test, hardest evidence first.
 
@@ -91,7 +91,7 @@ def _mask(original: bytes) -> set[int]:
 # --- the title is convertible at all -----------------------------------------
 
 def test_the_title_reads_and_writes_now_that_it_has_a_second_port():
-    """`to_neutral` and `write` both refused this title by name until the
+    """`to_neutral` and `write` both blocked this title by name until the
     Amiga became its destination."""
     assert POD in dos_codec.CONVERTS
     assert POD in dos_codec.WRITES
@@ -149,8 +149,8 @@ def test_a_chosen_combat_icon_writes_to_pool_of_radiances_own_offsets():
     assert bytes(back.get("icon_colours")) == colours
 
 
-def test_dos_write_refuses_an_icon_head_past_the_art_librarys_thirteen():
-    """The neutral-fallback `DosIcon` block in `dos_codec.write` refuses an
+def test_dos_write_blocks_an_icon_head_past_the_art_librarys_thirteen():
+    """The neutral-fallback `DosIcon` block in `dos_codec.write` blocks an
     out-of-range `icon_head`/`icon_body` the same way
     `amiga_pod.PodCharacter._check` does, rather than writing a number
     `CHEAD.TLB`/`CBODY.TLB` have no entry for."""
@@ -160,10 +160,10 @@ def test_dos_write_refuses_an_icon_head_past_the_art_librarys_thirteen():
         dos_codec.write(char)
 
 
-def test_write_pod_refuses_an_icon_head_past_the_art_librarys_thirteen():
-    """`amiga_pod.write_pod`'s own guard, `PodCharacter._check`, refuses an
+def test_write_pod_blocks_an_icon_head_past_the_art_librarys_thirteen():
+    """`amiga_pod.write_pod`'s own guard, `PodCharacter._check`, blocks an
     `icon_head` the ICON screen's own art library (`CHEAD.TLB`) has no entry
-    for, rather than writing a number the Amiga loader would refuse the
+    for, rather than writing a number the Amiga loader would block the
     whole file for."""
     char = neutral.NeutralCharacter("test", source="made up",
                                     game="pools-of-darkness")

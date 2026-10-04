@@ -253,7 +253,7 @@ def _sheet_record(neutral: Any) -> CharacterRecord:
     """The sheet's record for one DOS or Amiga character, holding the port's
     own raw treasure share.
 
-    The C64 writer refuses a share with bit 2 set, because a C64 masks it with
+    The C64 writer blocks a share with bit 2 set, because a C64 masks it with
     3. Whether that byte can go into a C64 save is the converter's question;
     opening a save to show and edit the party is not. The writer is handed a
     stand-in that takes the same branch (never bit 2, never 0 or 1) and the
@@ -300,7 +300,7 @@ class Party:
         A path to a DOS save folder, a `SAVGAM<slot>.DAT` file or an Amiga
         `.adf` goes through `Source.detect`; any other path is a C64 disk
         image, opened as it always was -- including a roster disk, which
-        `Source.detect` would refuse for holding no save.
+        `Source.detect` would block for holding no save.
 
         `disk` is an image already in memory, standing in for reading one.
         The one caller is the DOS import, which builds a converted disk that
@@ -486,7 +486,7 @@ class Party:
         title.** Pool of Radiance's roster files load at `$6B00`, which is
         `record.LOAD_ADDRESS`; the file Curse of the Azure Bonds writes when
         `REMOVE CHARACTER FROM PARTY` parks somebody loads at `$7C00`, and all
-        four on `WISH-SPEC-curse-party-with-items.D64` were refused by the
+        four on `WISH-SPEC-curse-party-with-items.D64` were blocked by the
         address check and logged as "not a character record" (#456). So the
         address is one of two ways in, and the other is the content: a record
         whose name and six ability scores read like a character's is one,

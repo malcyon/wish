@@ -27,7 +27,7 @@ Blades)`, so there is no copy of the table here -- `--check-areas` re-derives
 them off the disks and diffs them against `goldbox.areas` rather than against
 a second copy that could go stale on its own.
 
-No byte comes from another save: `goldbox.dos_codec.new_save` refuses a payload with
+No byte comes from another save: `goldbox.dos_codec.new_save` rejects a payload with
 an unsourced byte in it, and the one thing no DOS save can supply -- the
 36-byte combat icon -- is composed from `SPELLE64` on the player's own sides
 at run time.  **This title stages no `ANIMATE00` into the save**, because its
@@ -93,7 +93,7 @@ def combat_icon(disks: pathlib.Path) -> IconParts:
     `goldbox/iconparts.py` reads `SPELLE64` byte-identical in all three C64
     titles, so this is the same call Curse's and Pool of Radiance's tools
     make.  There is no default: a conversion that cannot read it would have
-    to invent bytes, and it refuses instead.
+    to invent bytes, and it rejects instead.
     """
     for path in sorted(disks.glob("*.[dD]64")):
         try:

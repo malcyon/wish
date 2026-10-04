@@ -56,7 +56,7 @@ def test_a_routine_reads_that_table_and_clamps_to_it():
     """The citation `docs/119` was missing. At `$1E21`: take the class index
     from `$2B58`, raise `$2B50,X`, `CMP $1E5C,X`, and on a value above the
     table bump `$2B74` and write the ceiling back over the level. It clamps
-    rather than refusing, which is the part that was guessed at."""
+    rather than blocking, which is the part that was guessed at."""
     code = _at(_gen(), CEILING_ROUTINE, 30)
     assert code[:3] == bytes([0xAE, 0x58, 0x2B])          # LDX $2B58
     assert code[3:6] == bytes([0xBD, 0x50, 0x2B])         # LDA $2B50,X

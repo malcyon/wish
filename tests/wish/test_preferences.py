@@ -1607,7 +1607,7 @@ def test_three_tabs_and_it_opens_on_general_every_time(app, tmp_path,
 def test_it_opens_inside_the_work_area_with_nothing_squeezed(app, tmp_path,
                                                               monkeypatch):
     """cosmic-comp caps a window at 1280 x 675 (§12). A dialog handed less
-    height than its layout's minimum does not refuse -- it squeezes what can be
+    height than its layout's minimum does not block -- it squeezes what can be
     squeezed, and the Ultimate host box and the poll spinner went to nine
     pixels tall. Neither tab scrolls at the size it opens; the area table
     scrolls inside itself, which is what a table does.

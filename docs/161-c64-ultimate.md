@@ -159,7 +159,7 @@ keyboard scan rather than by DMA not reaching I/O. Trust the skill.
 | Run code | `runners run-prg-upload <local.prg>` | the only way to change banking, since `$01` is unreachable over DMA |
 | Mount a disk | `drives mount-upload a <local.d64>` | the player's own images, uploaded from a copy in scratch |
 | Type at it | `machine sendkey '<petscii>'` | KERNAL buffer only — see below |
-| Device settings | `config get` / `set` / `export` | read freely; `save-to-flash`, `load-from-flash` and `reset-to-default` are refused by `tools/c64/c64u.py` |
+| Device settings | `config get` / `set` / `export` | read freely; `save-to-flash`, `load-from-flash` and `reset-to-default` are blocked by `tools/c64/c64u.py` |
 
 **`sendkey` writes PETSCII into the KERNAL keyboard buffer at `$0277` and the
 count at `$00C6`.** That is the path BASIC, `INPUT` and `GET` read from. A
@@ -193,7 +193,7 @@ needs it, not by default.
 
 Read off `1541u-documentation.readthedocs.io`, "Data Streams", 2026-09-07.
 Recorded here so nobody has to look it up twice; **nothing in this project
-uses it**, and `tools/c64/c64u.py` refuses `streams` outright -- it needs the
+uses it**, and `tools/c64/c64u.py` blocks `streams` outright -- it needs the
 cable, and `listen video` opens a window on Donald's desktop.
 
 **A stream is a runtime action, not a setting.** The machine transmits nothing
@@ -438,9 +438,9 @@ Nothing below has been measured. Each line says what would settle it.
   replaces the live settings wholesale; the third cannot be undone from the
   CLI. `config export > $TMPDIR/c64u-config-backup.json` before changing any
   setting, and leave the device on the settings it started with.
-  `tools/c64/c64u.py` refuses all three, and `machine poweroff` with them.
+  `tools/c64/c64u.py` blocks all three, and `machine poweroff` with them.
 * **Never `c64u ui` or `c64u streams listen`** from an agent: both put a window
-  on the desktop Donald is working at. Refused in the wrapper too.
+  on the desktop Donald is working at. Blocked in the wrapper too.
 * **Do not leave it paused, frozen or looping.** `machine reset` is the way out
   of a program that will not stop, and `paused()` in the wrapper resumes from a
   `finally` so a failure mid-dump cannot leave it held.

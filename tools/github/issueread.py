@@ -34,7 +34,7 @@ issue number exits non-zero with the reason on stderr.
 a trusted author. Before this flag existed both rule files pointed at `gh
 issue view N --json number,title`, which prints an outside author's title
 just as directly as `--comments` prints their body -- so following the
-documented citation was refused by the same hook that refuses that
+documented citation was rejected by the same hook that rejects that
 `--comments`. For an outside author `--cite` withholds the title the same way
 the rest of this tool withholds one, so a citation of an untriaged issue
 reads as visibly incomplete rather than as a title a stranger wrote.

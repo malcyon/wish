@@ -61,7 +61,7 @@ READ_SIZE = 16384
 UTF8_BOM = b"\xef\xbb\xbf"
 
 #: The longest absolute path sent. WinUAE's name buffer is `MAX_PATH` and an
-#: overflow is parsed as the address, so a longer path is refused up front.
+#: overflow is parsed as the address, so a longer path is blocked up front.
 PATH_LIMIT = 200
 
 _NAME = re.compile(r"WinUAE(?:_(\d+))?")

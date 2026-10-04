@@ -72,7 +72,7 @@ class AmigaTitle:
     `write` steps may press only `control_letter` or `after_letter`, and no other step may press
     those. A title that only loads has neither letter and no `write` step. A kept letter is never
     written, so a non-write step may press one only where `plain_keys` names its `(key, state)`:
-    the game's own key that happens to be a slot's letter. A simple key is refused on a screen
+    the game's own key that happens to be a slot's letter. A simple key is blocked on a screen
     where some step writes and on a state whose name contains `picker`; the run's compare of
     every kept slot after the fetch is what proves none changed.
     Every entry must be a kept letter that some non-write step presses in that state. An `insert`
@@ -116,48 +116,48 @@ class AmigaTitle:
         return (*(k for k in self.mounted if k is not None), *self.spares)
 
     def __post_init__(self) -> None:
-        def refuse(why: str) -> None:
+        def block(why: str) -> None:
             raise RouteError(f"title description: {why}")
 
         keys = self.disk_keys
         if not re.fullmatch(r"[0-9]+", str(self.issue)):
-            refuse(f"issue {self.issue!r} is not a number")
+            block(f"issue {self.issue!r} is not a number")
         if not self.mounted or len(self.mounted) > 4 or self.mounted[0] is None:
-            refuse("DF0 must hold a disk and there are at most four drives")
+            block("DF0 must hold a disk and there are at most four drives")
         if len(set(keys)) != len(keys) or not all(HOLDER.fullmatch(str(k)) for k in keys):
-            refuse(f"disk keys {keys} must be distinct, lane-safe names")
+            block(f"disk keys {keys} must be distinct, lane-safe names")
         if self.save_disk not in keys:
-            refuse(f"save disk {self.save_disk!r} is not one of {keys}")
+            block(f"save disk {self.save_disk!r} is not one of {keys}")
         if not all(_OPTION.fullmatch(o) for o in self.options):
-            refuse(f"options {self.options} must each be name=value")
+            block(f"options {self.options} must each be name=value")
         if (self.control_letter is None) != (self.after_letter is None):
-            refuse("control and after letters are both given or both None")
+            block("control and after letters are both given or both None")
         if self.control_letter is None and any(
                 step[2] == "write" for route in (self.route, self.measure_route)
                 for step in route if isinstance(step, tuple) and len(step) == 3):
-            refuse("a title with no save letters has a write step")
+            block("a title with no save letters has a write step")
         letters = tuple(c for c in (self.control_letter, self.after_letter, *self.kept_letters)
                         if c is not None)
         if not all(_LETTER.fullmatch(str(c)) for c in letters) or len(set(letters)) != len(letters):
-            refuse(f"save letters {letters} must be distinct capitals")
+            block(f"save letters {letters} must be distinct capitals")
         if self.turn not in (None, "about"):
-            refuse(f"turn {self.turn!r} is neither None nor 'about'")
+            block(f"turn {self.turn!r} is neither None nor 'about'")
         if any(limit <= 0 for limit in self.wait_limits.values()):
-            refuse("every wait limit must be positive")
+            block("every wait limit must be positive")
         if self.title_limit <= 0 or self.boot_span <= 0:
-            refuse("the title limit and the boot span must be positive")
+            block("the title limit and the boot span must be positive")
         if any(w < 0 for w in self.min_waits.values()):
-            refuse("a minimum wait is negative")
+            block("a minimum wait is negative")
         simple = self.plain_keys
         if not (isinstance(simple, tuple) and all(
                 isinstance(e, tuple) and len(e) == 2 and all(isinstance(x, str) for x in e)
                 for e in simple)):
-            refuse(f"simple keys {simple!r} must be (key, state) pairs")
+            block(f"simple keys {simple!r} must be (key, state) pairs")
         if len(set(simple)) != len(simple):
-            refuse(f"simple keys {simple!r} repeat an entry")
+            block(f"simple keys {simple!r} repeat an entry")
         for entry in simple:
             if entry[0] not in self.kept_letters:
-                refuse(f"simple key {entry!r} is not a kept letter, so it cannot be pressed as a simple key")
+                block(f"simple key {entry!r} is not a kept letter, so it cannot be pressed as a simple key")
         used: set[tuple[str, str]] = set()
         # A kept letter pressed where a save letter goes out, or on a picker, could write a slot.
         save_screens = {"title" if at == 0 else route[at - 1][1]
@@ -166,9 +166,9 @@ class AmigaTitle:
                         if isinstance(step, tuple) and len(step) == 3 and step[2] == "write"}
         for name, route in (("route", self.route), ("measure_route", self.measure_route)):
             if not route:
-                refuse(f"{name} is empty")
+                block(f"{name} is empty")
             for at, step in enumerate(route):
-                allowed = self._check_step(name, step, keys, refuse,
+                allowed = self._check_step(name, step, keys, block,
                                            None if at == 0 else route[at - 1][1], at == 0)
                 if allowed:
                     used.add(allowed)
@@ -176,80 +176,80 @@ class AmigaTitle:
                     if on in save_screens or "picker" in on.lower():
                         why = ("a route step presses a save letter there" if on in save_screens
                                else "a picker screen takes a slot letter as a save")
-                        refuse(f"{name} step {step!r} presses kept letter {allowed[0]} as a "
+                        block(f"{name} step {step!r} presses kept letter {allowed[0]} as a "
                                f"simple key on {on!r}, where {why}")
                 if step[2] in ("write", "insert"):
                     # The key goes out on the screen the step before it reached, so that
                     # screen's guard must stop the run when it does not match.
                     before = "title" if at == 0 else route[at - 1][1]
                     if before != "title" and before not in self.strict:
-                        refuse(f"{name} {step[2]} step {step!r} follows {before!r}, which is "
+                        block(f"{name} {step[2]} step {step!r} follows {before!r}, which is "
                                f"not a strict state")
         for entry in simple:
             if entry not in used:
-                refuse(f"simple key {entry!r} is pressed by no step in that state")
+                block(f"simple key {entry!r} is pressed by no step in that state")
         for row in self.interstitials:
-            self._check_row(row, keys, refuse)
+            self._check_row(row, keys, block)
 
     def _write_letters(self) -> frozenset[str]:
         """The letters that save, or belong to a slot that must not change."""
         return frozenset(c for c in (self.control_letter, self.after_letter, *self.kept_letters)
                          if c is not None)
 
-    def _check_step(self, name, step, keys, refuse, before=None, first=False
+    def _check_step(self, name, step, keys, block, before=None, first=False
                     ) -> tuple[str, str] | None:
-        """Refuse a bad step; return the `plain_keys` entry that lets it press a kept letter, if any."""
+        """Block a bad step; return the `plain_keys` entry that lets it press a kept letter, if any."""
         if not isinstance(step, tuple) or len(step) != 3 or step[2] not in _STEP_KINDS:
-            refuse(f"{name} step {step!r} is not (key, state, kind) with a known kind")
+            block(f"{name} step {step!r} is not (key, state, kind) with a known kind")
         key, state, kind = step
         if not state or not isinstance(state, str):
-            refuse(f"{name} step {step!r} names no state")
+            block(f"{name} step {step!r} names no state")
         if kind == "answer":
             if key is not None:
-                refuse(f"{name} answer step {step!r} takes no key")
+                block(f"{name} answer step {step!r} takes no key")
             return None
         if kind == "insert":
             if not (isinstance(key, tuple) and len(key) == 3 and type(key[0]) is int
                     and key[0] in (0, 1) and key[1] in keys):
-                refuse(f"{name} insert step {step!r} needs (drive, a disk key, a key): "
+                block(f"{name} insert step {step!r} needs (drive, a disk key, a key): "
                        f"only DF1 may change while the game runs, or DF0 after a disk prompt")
             if key[0] == 0:
                 if first:
-                    refuse(f"{name} DF0 insert step {step!r} is the first step; only DF1 may "
+                    block(f"{name} DF0 insert step {step!r} is the first step; only DF1 may "
                            f"change unless a disk prompt precedes it")
                 if before not in self.disk_prompts:
-                    refuse(f"{name} DF0 insert step {step!r} comes after {before!r}, which is not "
+                    block(f"{name} DF0 insert step {step!r} comes after {before!r}, which is not "
                            f"a disk prompt; only DF1 may change there")
                 if before not in self.strict:
-                    refuse(f"{name} DF0 insert step {step!r} comes after disk prompt {before!r}, "
+                    block(f"{name} DF0 insert step {step!r} comes after disk prompt {before!r}, "
                            f"which is not a strict state")
                 if key[1] == self.mounted[0]:
-                    refuse(f"{name} DF0 insert step {step!r} names the disk already in DF0")
+                    block(f"{name} DF0 insert step {step!r} names the disk already in DF0")
                 if key[1] not in self.spares:
-                    refuse(f"{name} DF0 insert step {step!r} names a disk that is not a spare; "
+                    block(f"{name} DF0 insert step {step!r} names a disk that is not a spare; "
                            f"only a spare may go into DF0")
             key = key[2]
         if not isinstance(key, str) or key.upper() not in amigadrive.KEYS:
-            refuse(f"{name} step {step!r} presses a key with no WinUAE code")
+            block(f"{name} step {step!r} presses a key with no WinUAE code")
         if kind == "write" and key.upper() not in (self.control_letter, self.after_letter):
-            refuse(f"{name} write step {step!r} is not the control or after letter")
+            block(f"{name} write step {step!r} is not the control or after letter")
         if kind != "write" and key.upper() in self._write_letters():
             entry = (key.upper(), state)
             if key.upper() in self.kept_letters and entry in self.plain_keys:
                 return entry
-            refuse(f"{name} {kind} step {step!r} presses a save or kept slot letter")
+            block(f"{name} {kind} step {step!r} presses a save or kept slot letter")
         return None
 
-    def _check_row(self, row, keys, refuse) -> None:
+    def _check_row(self, row, keys, block) -> None:
         if not (isinstance(row, tuple) and len(row) == 4 and isinstance(row[3], int)
                 and row[3] >= 1 and isinstance(row[1], tuple) and row[1]):
-            refuse(f"interstitial {row!r} is not (screen, action, waiting_for, limit)")
+            block(f"interstitial {row!r} is not (screen, action, waiting_for, limit)")
         action = row[1]
         if action[0] == "keys":
             names = (action[1],) if isinstance(action[1], str) else tuple(action[1])
             if len(action) != 2 or not names or not all(
                     isinstance(k, str) and k.upper() in amigadrive.KEYS for k in names):
-                refuse(f"interstitial {row!r} presses a key with no WinUAE code")
+                block(f"interstitial {row!r} presses a key with no WinUAE code")
             pressed = names
         elif action[0] == "insert":
             # DF0 is safe to change only on a screen where the game itself asked for a disk, and
@@ -260,12 +260,12 @@ class AmigaTitle:
                                    and action[2] != self.mounted[0]))
             if not (drive_ok and action[2] in keys
                     and isinstance(action[3], str) and action[3].upper() in amigadrive.KEYS):
-                refuse(f"interstitial {row!r} needs (insert, drive, disk key, key): "
+                block(f"interstitial {row!r} needs (insert, drive, disk key, key): "
                        f"DF1 may change, or DF0 from a spare on a strict disk prompt")
             pressed = (action[3],)
         elif action == ("answer",):
             return
         else:
-            refuse(f"interstitial {row!r} has an unknown action")
+            block(f"interstitial {row!r} has an unknown action")
         if any(k.upper() in self._write_letters() for k in pressed):
-            refuse(f"interstitial {row!r} presses a save or kept slot letter")
+            block(f"interstitial {row!r} presses a save or kept slot letter")

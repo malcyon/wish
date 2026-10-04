@@ -36,7 +36,7 @@ Two subcommands:
         Copy a Curse save disk and write named fields into named slots of
         `SAVEAZURE`.  **Those are inputs we write and they prove nothing**;
         what the trainer does with them is the measurement
-        (`.claude/rules/testing.md`).  `stage` refuses a base whose
+        (`.claude/rules/testing.md`).  `stage` rejects a base whose
         `SAVEAZURE` the drive never closed -- `$02` in the directory type
         byte and a block count of zero, which is what an image copied out of
         a pool slot too early looks like and which the game will not load --
@@ -243,7 +243,7 @@ def stage(args) -> int:
     """Copy a save disk, writing experience and platinum into named slots."""
     from tools.curse_of_the_azure_bonds import curseload  # noqa: PLC0415
 
-    curseload.refuse_open_entries(args.base)
+    curseload.check_open_entries(args.base)
     image = pathlib.Path(args.base).read_bytes()
     load, payload = payload_of(image)
     names = slot_names(payload)

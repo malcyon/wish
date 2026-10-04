@@ -147,7 +147,7 @@ class Machine:
         # Every handler address has to land inside DUNGEON itself.  One that
         # does not means the tables were read from the wrong offsets -- a
         # different build, or a DUNGEON that is not this one -- and every
-        # operand count below it would then be somebody else's bytes.  Refuse
+        # operand count below it would then be somebody else's bytes.  Reject
         # rather than decode confidently from them.
         top = DUNGEON_BASE + len(body)
         stray = [(op, a) for op, a in enumerate(self.handler)

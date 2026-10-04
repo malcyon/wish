@@ -103,13 +103,13 @@ def test_every_key_of_an_items_or_join_step_goes_out_on_a_strict_state(steps):
     ("items 3", "lines 1 to 2 only"),
     ("items x", "is not items or items N"),
 ])
-def test_silver_blades_refuses_an_items_or_join_step_it_cannot_drive(text, why):
+def test_silver_blades_blocks_an_items_or_join_step_it_cannot_drive(text, why):
     with pytest.raises(RouteError, match=why):
         route_camp.validate_steps((text,), 2, name="ssb")
 
 
 @pytest.mark.parametrize("name", ["curse", "darkness"])
-def test_join_is_refused_for_a_title_whose_join_routine_is_unread(name):
+def test_join_is_blocked_for_a_title_whose_join_routine_is_unread(name):
     with pytest.raises(RouteError, match="JOIN is built for Silver Blades only"):
         route_camp.validate_steps(("join 1 1",), 6, name=name)
 
@@ -346,7 +346,7 @@ def _why(result):
         "fetched_save_error")}
 
 
-def test_a_join_the_game_refuses_records_its_message_and_the_rows_after(
+def test_a_join_the_game_blocks_records_its_message_and_the_rows_after(
         tmp_path, clock, monkeypatch):
     steps = ("items 1", "join 2 3")
     guest, result = _run(tmp_path, clock, monkeypatch, steps,
@@ -425,7 +425,7 @@ def test_a_highlight_that_did_not_move_stops_the_run_before_j(tmp_path, clock, m
 
 def test_rows_other_than_the_prepared_party_s_after_join_stop_the_run_before_e(
         tmp_path, clock, monkeypatch):
-    # The game joined the rows, but the run expected JOIN to refuse.
+    # The game joined the rows, but the run expected JOIN to block.
     guest, result = _run(tmp_path, clock, monkeypatch, ("join 2 2",))
     assert result["success"] is False
     assert "camp_joined_2 shows a party other than the prepared party" in result["error"]
@@ -443,7 +443,7 @@ def test_a_member_with_no_items_stops_the_run_at_his_sheet_before_i(tmp_path, cl
 
 
 @pytest.mark.parametrize("lacking", ["camp_joined_2", "camp_join_2", "camp_items_2_row3"])
-def test_a_guard_map_without_a_join_screen_is_refused_before_a_key_is_pressed(
+def test_a_guard_map_without_a_join_screen_is_blocked_before_a_key_is_pressed(
         tmp_path, clock, monkeypatch, lacking):
     guest = ItemsGuest(clock)
     with pytest.raises(RouteError, match=rf"screen guard map lacks .*'{lacking}'"):

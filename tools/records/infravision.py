@@ -25,7 +25,7 @@ the running game can say whether the engine recomputes the byte or keeps what
 it was given.  Staging a value the race would have produced anyway proves
 nothing, which is why the defaults are chosen to contradict.
 
-Nothing here writes to the player's disks: `stage` refuses to write over its
+Nothing here writes to the player's disks: `stage` does not write over its
 own source, and `table` and `read` only read.
 """
 

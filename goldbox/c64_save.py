@@ -15,7 +15,7 @@ payload map for the measured ones, so *"where does this save load?"* and
 of `measured` rather than an oversight.  Champions of Krynn, Death Knights of
 Krynn and Gateway to the Savage Frontier have their geometry from one shipped
 pre-generated party each and nobody here has read a save of them, so
-:func:`container_for` refuses them.  A title answering with another title's offsets is the defect
+:func:`container_for` blocks them.  A title answering with another title's offsets is the defect
 `#460 (goldbox/games.py has no Pools of Darkness entry, so every lookup
 answers with Pool of Radiance's tables for it)` names, one class over.
 
@@ -177,7 +177,7 @@ class C64Container:
     measurement only where `measured` is True.**  The defaults are what the
     three measured titles agree on, so an unmeasured row answers with
     plausible numbers nobody has checked; :func:`container_for` and
-    :data:`CONTAINERS` are the two doors, and both refuse the unmeasured three.
+    :data:`CONTAINERS` are the two doors, and both block the unmeasured three.
     """
 
     # -- the title, and the disk ------------------------------------------
@@ -726,7 +726,7 @@ SECRET_OF_THE_SILVER_BLADES = C64Container(
 # Each has its geometry -- file name, load address, size, roster page, disk
 # glob, item-name base -- from one shipped pre-generated party, which fixes
 # the layout but not the header fields.  Not one carries `measured=True`, so
-# `container_for` refuses all three and `CONTAINERS` has no entry for any of
+# `container_for` blocks all three and `CONTAINERS` has no entry for any of
 # them, exactly as it did when they had no row in this module at all.  What
 # they are here for is the four places that walk every C64 title for its
 # *disk*: `automap/paths.py`, `wish/preferences.py`, `wish/window.py` and

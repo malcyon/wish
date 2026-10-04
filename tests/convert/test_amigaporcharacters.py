@@ -49,7 +49,7 @@ def test_the_reading_stops_at_the_first_missing_character_file():
     assert len(found) == 1
 
 
-def test_a_slot_with_no_files_is_an_empty_list_and_a_bad_letter_is_refused():
+def test_a_slot_with_no_files_is_an_empty_list_and_a_bad_letter_is_blocked():
     disk = _disk(["ALPHA"])
     assert amiga_savegame.read_por_characters(disk, "B") == []
     with pytest.raises(amiga_savegame.AmigaSaveError):

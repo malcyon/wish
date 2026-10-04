@@ -58,7 +58,7 @@ def _stage(source, out):
     )
 
 
-def test_unsupported_platform_refuses_before_read_or_write(tmp_path, monkeypatch):
+def test_unsupported_platform_blocks_before_read_or_write(tmp_path, monkeypatch):
     source = tmp_path / "missing-source.adf"
     out = _out()
     monkeypatch.setattr(staging, "_POSIX_OUTPUT_SUPPORTED", False)
@@ -99,7 +99,7 @@ def test_stage_hides_only_the_boot_disk_drawer_and_preserves_its_contents(tmp_pa
 
 
 @POSIX_STAGING
-def test_stage_refuses_a_different_save_drawer_block_without_writing(tmp_path):
+def test_stage_blocks_a_different_save_drawer_block_without_writing(tmp_path):
     source = _disk(tmp_path, blocks=922)
     before = source.read_bytes()
     out = _out("must-not-exist.adf")
@@ -112,7 +112,7 @@ def test_stage_refuses_a_different_save_drawer_block_without_writing(tmp_path):
 
 
 @POSIX_STAGING
-def test_stage_refuses_a_missing_or_renamed_save_drawer(tmp_path):
+def test_stage_blocks_a_missing_or_renamed_save_drawer(tmp_path):
     source = _disk(tmp_path, drawer="SAUR")
     out = _out("must-not-exist.adf")
 
@@ -123,7 +123,7 @@ def test_stage_refuses_a_missing_or_renamed_save_drawer(tmp_path):
 
 
 @POSIX_STAGING
-def test_stage_refuses_a_name_with_the_wrong_hash_bucket(tmp_path, monkeypatch):
+def test_stage_blocks_a_name_with_the_wrong_hash_bucket(tmp_path, monkeypatch):
     source = _disk(tmp_path)
     out = _out("must-not-exist.adf")
     monkeypatch.setattr(staging, "HIDDEN_NAME", "SAVE_OFF_41")
@@ -135,7 +135,7 @@ def test_stage_refuses_a_name_with_the_wrong_hash_bucket(tmp_path, monkeypatch):
 
 
 @POSIX_STAGING
-def test_stage_refuses_a_source_hash_mismatch(tmp_path):
+def test_stage_blocks_a_source_hash_mismatch(tmp_path):
     source = _disk(tmp_path)
     before = source.read_bytes()
     out = _out("must-not-exist.adf")
@@ -152,7 +152,7 @@ def test_stage_refuses_a_source_hash_mismatch(tmp_path):
 
 
 @POSIX_STAGING
-def test_stage_refuses_a_secret_hash_mismatch(tmp_path):
+def test_stage_blocks_a_secret_hash_mismatch(tmp_path):
     source = _disk(tmp_path)
     before = source.read_bytes()
     out = _out("must-not-exist.adf")
@@ -169,7 +169,7 @@ def test_stage_refuses_a_secret_hash_mismatch(tmp_path):
 
 
 @POSIX_STAGING
-def test_stage_refuses_to_replace_an_existing_output(tmp_path):
+def test_stage_will_not_replace_an_existing_output(tmp_path):
     source = _disk(tmp_path)
     out = _out("existing.adf")
     out.parent.mkdir(parents=True)
@@ -182,7 +182,7 @@ def test_stage_refuses_to_replace_an_existing_output(tmp_path):
 
 
 @POSIX_STAGING
-def test_stage_refuses_an_output_outside_acceptance_roots(tmp_path):
+def test_stage_blocks_an_output_outside_acceptance_roots(tmp_path):
     source = _disk(tmp_path)
     out = tmp_path / "players-disks" / "must-not-exist.adf"
 
@@ -205,7 +205,7 @@ def test_stage_accepts_the_dedicated_acceptance_cache(tmp_path):
 
 
 @POSIX_STAGING
-def test_stage_refuses_a_symlink_into_an_outside_directory(tmp_path):
+def test_stage_blocks_a_symlink_into_an_outside_directory(tmp_path):
     source = _disk(tmp_path)
     player_dir = tmp_path / "players-disks"
     player_dir.mkdir()
@@ -222,7 +222,7 @@ def test_stage_refuses_a_symlink_into_an_outside_directory(tmp_path):
 
 
 @POSIX_STAGING
-def test_stage_refuses_a_parent_replaced_by_a_symlink_during_write(
+def test_stage_blocks_a_parent_replaced_by_a_symlink_during_write(
     tmp_path, monkeypatch,
 ):
     source = _disk(tmp_path)
@@ -330,7 +330,7 @@ def test_embedded_stage_adds_only_the_slot_file_and_keeps_every_other_file(tmp_p
 
 
 @POSIX_STAGING
-def test_embedded_stage_refuses_an_occupied_letter_without_writing(tmp_path):
+def test_embedded_stage_blocks_an_occupied_letter_without_writing(tmp_path):
     source = _disk(tmp_path)
     out = _out("must-not-exist.adf")
 
@@ -341,7 +341,7 @@ def test_embedded_stage_refuses_an_occupied_letter_without_writing(tmp_path):
 
 
 @POSIX_STAGING
-def test_embedded_stage_refuses_a_letter_the_game_cannot_build(tmp_path):
+def test_embedded_stage_blocks_a_letter_the_game_cannot_build(tmp_path):
     source = _disk(tmp_path)
     out = _out("must-not-exist.adf")
 

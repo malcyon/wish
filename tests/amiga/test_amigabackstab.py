@@ -157,7 +157,7 @@ def _with_nops(key: str, at: int, size: int) -> bytes:
                                         ("regain_multiply", 2),
                                         ("regain_add", 2)])
 def test_the_regain_arithmetic_is_read_and_not_assumed(key, step, size):
-    """Erasing the regain call, the multiply or the add is refused.
+    """Erasing the regain call, the multiply or the add is blocked.
 
     The engine adds the former thief slot times the regain call's result to
     the current slot before it subtracts one; each of the three instructions

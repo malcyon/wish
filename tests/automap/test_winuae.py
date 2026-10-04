@@ -324,7 +324,7 @@ def test_no_message_a_player_could_see_holds_a_path_or_starts_lowercase(
 
 
 
-def test_a_receipt_for_another_request_is_refused_and_the_pipe_kept(rig):
+def test_a_receipt_for_another_request_is_blocked_and_the_pipe_kept(rig):
     pipe, api, *_ = rig
     api.receipt = "Wrote 00000001 - 00000008 (8 bytes) to 'elsewhere.bin'."
     with pytest.raises(amiga.PipeError, match="another request"):
@@ -339,7 +339,7 @@ def test_a_reply_that_is_not_a_receipt_is_an_error(rig):
         pipe.read_memory(0, 8)
 
 
-def test_a_dump_path_too_long_for_winuae_is_refused_before_sending(tmp_path):
+def test_a_dump_path_too_long_for_winuae_is_blocked_before_sending(tmp_path):
     api = FakeWinuae(Clock())
     pipe = winuae.WinuaeLocalPipe(directory=tmp_path / ("d" * 220), api=api)
     with pytest.raises(amiga.PipeError, match="characters"):
@@ -354,10 +354,10 @@ def test_the_pipe_names_are_the_ones_winuae_creates_in_order():
 
 
 def test_an_unlistable_pipe_directory_is_no_pipes():
-    def refuse(_path):
+    def block(_path):
         raise OSError("nope")
-    assert winuae.winuae_pipes(refuse) == []
-    assert winuae.present(refuse) is False
+    assert winuae.winuae_pipes(block) == []
+    assert winuae.present(block) is False
 
 
 windows = pytest.mark.skipif(sys.platform != "win32",

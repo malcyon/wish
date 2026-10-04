@@ -3,11 +3,9 @@
 `#561 (A Curse of the Azure Bonds character's traits are named from Pool of
 Radiance's table, which disagrees with Curse's own data about eight codes)`
 gave Curse a table of its own and left eighteen codes with no name at all:
-ten where the creature carrying the code refuses Pool of Radiance's name
+ten where the creature carrying the code contradicts Pool of Radiance's name
 without saying what the right one is, and eight above `NAMES`'s reach that a
-Curse creature carries and nothing names. `#567 (Twelve of Curse of the Azure
-Bonds' own effect codes have no name at all, only a refusal of Pool of
-Radiance's wrong one)` named all eighteen, and corrected a nineteenth, by
+Curse creature carries and nothing names. `#567` named all eighteen, and corrected a nineteenth, by
 reading the routine each id dispatches -- the fifth route in
 `docs/171-c64-trait-slots.md`'s table, run against Curse's own addresses.
 `#609 (Six of Curse of the Azure Bonds' inherited effect names disagree with
@@ -46,8 +44,8 @@ why it is not a lookup.
 | `$11B0`, `$1231`, `$123F` | write an effect into the 64-entry array: id in `$A902`, owner `$945D`, duration, flags | 101 troll regeneration applies 59 through `$123D`, and 56 applies 25 for twelve turns |
 | `$945C`, `$945D` | the attacker and the target | `$263E` swaps them to put an effect on the attacker instead |
 | `$7C76`, `$7D19`, `$7D0C` | record `0x076` hit-point maximum, `0x119` hit points now, `0x10C` combat side | `goldbox/layout.py`; the staged record is `$7C00`, which the predicate's own `$7CAD` fixes |
-| `$034F` | how far away the target is | 126 the avoidable gaze refuses above 5, 121's acid squirt above 6, 128's breath above 9 |
-| `$A940` | the round, counted up in `COMBAT2` | 90 and 128 refuse above 4, 132 above 3 |
+| `$034F` | how far away the target is | 126 the avoidable gaze stops above 5, 121's acid squirt above 6, 128's breath above 9 |
+| `$A940` | the round, counted up in `COMBAT2` | 90 and 128 stop above 4, 132 above 3 |
 | `$9462` | hits landed this round | `ECL64` zeroes it before an attack sequence and increments it on a hit; 104 missile evasion decrements it when it takes a missile away |
 | `$25A6` | **the attack d20**, patched into 96's own first instruction | `ECL64 +0x04e5` is `LDY #$14 / JSR $2F6A / STA $25A6`, the same d20 roller `$0FD3` uses for a save |
 | `$4B00`, `$4B40`, `$4B80`, `$4D80` | the 64-entry effect array: id, owner, duration, magnitude | `$11BB` writes all four in order from `$A902`, `$945D`, `$A900` and `$A90E`, and `LIBRARY $409F` -- the predicate every check list asks through -- searches the first two |
@@ -170,7 +168,7 @@ TAX` that rolls 2d8 into X. Everything after that is shared: save byte 1
 -- and X as the duration. So the byte written to `$4B80` is zero, and a zero
 duration never runs out. Curse's own per-round sweep at `COMBAT2 $FA77` reads
 the id, reads the duration and branches away on either being zero before it
-reaches `DEC $4B80,X`; `$118E` goes further and refuses to overwrite a slot
+reaches `DEC $4B80,X`; `$118E` goes further and will not overwrite a slot
 whose duration is already zero with any other value, which is the engine
 treating zero as longer than anything else. `docs/133-active-effects.md` has
 the same finding from Pool of Radiance's three ageing routines.
@@ -227,8 +225,7 @@ something it does not.
   134, 137 and 145, along with 144, which is 96's partner and does the
   hugging. 144 is readable from the same pass -- it is the crush each round,
   and its message index is 68, `HUGS` -- and it is left out because nothing
-  in the list of `#567 (Twelve of Curse of the Azure Bonds' own effect codes
-  have no name at all, only a refusal of Pool of Radiance's wrong one)` asked
+  in the list of `#567` asked
   for it.
 * **The `IS SMOTHERED TO DEATH` message (index 57) was not traced to a
   handler.** 57's engulf prints `ENGULFS ITS FOE` and applies the pair, and

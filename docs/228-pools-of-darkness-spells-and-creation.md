@@ -290,7 +290,7 @@ The prompt passes 15 to the input routine
 (`GAME.OVR:0x01619B`, `push 13 / push 0 / push 15 / lcall 0x47f:0x711`) and the
 copy of the answer into the record truncates at 15 -- two numbers in the same
 routine, and the record's `name_text` is fifteen bytes. An empty name is
-refused (`cmp byte ptr es:[di], 0 / je` back to the prompt) and the first
+blocked (`cmp byte ptr es:[di], 0 / je` back to the prompt) and the first
 character is tested against a character set held in the code segment.
 
 ## The two ports read the same numbers

@@ -133,8 +133,8 @@ def test_curse_has_six_unsourced_bytes_and_silver_blades_three():
         0x095, 0x0C7, 0x0FD)
 
 
-def test_the_writer_refuses_a_title_it_has_no_record_for():
-    """Pool of Radiance is refused **by name**, since it has an Amiga writer
+def test_the_writer_blocks_a_title_it_has_no_record_for():
+    """Pool of Radiance is blocked **by name**, since it has an Amiga writer
     of its own and a caller who lands here has picked the wrong one."""
     por = neutral.NeutralCharacter("test",
                                    game=c64_port.by_key("pool-of-radiance"))

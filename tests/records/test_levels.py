@@ -524,7 +524,7 @@ def test_pool_of_radiance_and_curses_trainers_are_measured():
             continue
         assert not levels.trainer_measured(game), game.title
     # The three titles with tables of their own are these three; the other
-    # three fall back to Pool of Radiance's and are refused for it.
+    # three fall back to Pool of Radiance's and are blocked for it.
     assert levels.for_game(c64_port.CURSE_OF_THE_AZURE_BONDS).key == \
         "curse-of-the-azure-bonds"
     assert levels.for_game(c64_port.SECRET_OF_THE_SILVER_BLADES).key == \

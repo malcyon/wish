@@ -41,7 +41,7 @@ on turn 1.
 Everything goes to `--out`: `run.jsonl` one event per line, `screens.txt` the
 distinct screens in order, `hang.json` the PC samples.  Nothing here writes to
 the player's disks -- `stage_disks` copies the eight sides and the save into
-the pool slot, and `Session.attach` refuses any path outside it.
+the pool slot, and `Session.attach` rejects any path outside it.
 
 Written for `#128 (Nothing has ever read what the game prints when the party
 loses a fight)`.

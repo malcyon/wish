@@ -119,7 +119,7 @@ COUNTERS = {
     "1F30_ask_for_disk": 0x1F30,   # JSR $182D, the save loader's disk check
     "183A_prompt_drawn": 0x183A,   # the arm $182D takes when $03B4 is not 2
     "1F48_load": 0x1F48,           # JSR $3159
-    "1F4D_refused": 0x1F4D,        # the UNABLE TO LOAD message
+    "1F4D_load_failed": 0x1F4D,        # the UNABLE TO LOAD message
 }
 
 
@@ -314,8 +314,8 @@ def close_splat(path: str) -> list[dict]:
     return changed
 
 
-def refuse_open_entries(path: str) -> None:
-    """Refuse a disk image with a directory entry the drive never closed.
+def check_open_entries(path: str) -> None:
+    """Reject a disk image with a directory entry the drive never closed.
 
     Closing such an entry by hand cannot show whether its data chain holds the
     game's write or the save before it: the two images differ only in payload
@@ -854,7 +854,7 @@ def main(argv=None) -> int:
                          "whatever is in the drive, or leave it standing")
     ap.add_argument("--repair", action="store_true",
                     help="close any splat file in the staged copy of the save "
-                         "disk, which the drive otherwise refuses with 60")
+                         "disk, which the drive otherwise rejects with 60")
     ap.add_argument("--count", action="store_true",
                     help="count GEN $1F30, $183A, $1F48 and $1F4D, which says "
                          "whether the save-disk prompt was drawn at all")

@@ -58,7 +58,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 SKIP = {".git", ".venv", "build", "dist", "__pycache__",
         ".pytest_cache", ".ruff_cache"}
 
-#: PowerShell on this guest refuses a script otherwise: every scope of the
+#: PowerShell on this guest rejects a script otherwise: every scope of the
 #: execution policy is Undefined, which on Windows 11 client means Restricted.
 PS = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File"]
 

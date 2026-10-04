@@ -192,7 +192,7 @@ def test_a_save_made_outside_the_slums_cannot_say_the_errand_was_accepted():
 
 # --- the scratch page -------------------------------------------------------
 
-def test_the_persistent_block_reader_still_refuses_the_scratch_page():
+def test_the_persistent_block_reader_still_rejects_the_scratch_page():
     """`flags()` slices `$4A00`-`$4A1F` off, and must go on doing so.
 
     A quest whose acceptance is a scratch byte is exactly the thing that must

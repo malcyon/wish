@@ -24,7 +24,7 @@ class PlaneHttpError(PlaneError):
 
 
 class PlaneNotSent(PlaneError):
-    """The request never reached Plane, for example a refused connection or a failed name lookup."""
+    """The request never reached Plane, for example a rejected connection or a failed name lookup."""
 
 
 class PlaneOutcomeUnknown(PlaneError):

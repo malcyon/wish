@@ -53,8 +53,8 @@ def run(tag: str, source: pathlib.Path, disk: pathlib.Path,
     print(f"=== {tag}")
     print(f"source     {source}")
     print(f"slot       {report.get('slot')!r}")
-    if "refused" in report:
-        print(f"refused    {report['refused'][0]}: {report['refused'][1]}")
+    if "stopped" in report:
+        print(f"stopped    {report['stopped'][0]}: {report['stopped'][1]}")
     for line in report.get("losses", []):
         print(f"loss       {line}")
     for line in report.get("dropped", []):

@@ -71,7 +71,7 @@ Each platform's harness lives in `tools/<platform>/` under lowercase names that 
 | `route_pool.py`, `route_curse.py`, `route_silver_blades.py`, `route_darkness.py` | Title-specific route descriptions and actions, where separating them removes a mixed responsibility. |
 | `runlog.py` | The shared run log and signal handling (C64: `tools/c64/runlog.py`). |
 
-The Amiga session module is `tools/amiga/winuaesession.py` rather than `session.py`: `tests/conftest.py:_tool_path` finds a tool by file name under `tools/` and refuses a name found in more than one place, so a second `session.py` would break every test that loads `session` by name.
+The Amiga session module is `tools/amiga/winuaesession.py` rather than `session.py`: `tests/conftest.py:_tool_path` finds a tool by file name under `tools/` and blocks a name found in more than one place, so a second `session.py` would break every test that loads `session` by name.
 
 The rules:
 
@@ -79,7 +79,7 @@ The rules:
 * An old name is deleted after its maintained callers, tests and current documentation move. A compatibility wrapper exists only for a specifically identified consumer, and is recorded with a concrete removal condition.
 * An extracted shared helper keeps one implementation.
 * Evidence directories and recorded commands from earlier runs stay as history under the names they were run with.
-* No second `session.py` may exist under `tools/`: `tests/conftest.py:_tool_path` refuses a bare tool name with more than one match, and twenty tests load `session` by bare name.
+* No second `session.py` may exist under `tools/`: `tests/conftest.py:_tool_path` blocks a bare tool name with more than one match, and twenty tests load `session` by bare name.
 * Test files keep distinct base names across platforms, because the test directories have no `__init__.py`.
 
 ### Old to new
@@ -115,7 +115,7 @@ What stayed: `status_column` and the measured digests and key constants in `tool
 | Module boundaries | Keep format definitions, readers and writers in `goldbox/`, using its title and platform descriptions and neutral records. Keep emulator transport and live reads in `automap/` and driving tools, and application publication in `editor/`. Follow the existing [library responsibilities](../goldbox/README.md); avoid a second converter inside the harness. |
 | Complete field accounting | Account for every neutral field in the readers and writers, including party/world state, items, spells and effects. Declare transformations, measured constants and fields the game demonstrably derives. Resolve unknown bytes needed to construct output; do not inherit them from an unrelated party's save. Preserve opaque data when editing in place. |
 | Same-title directions | Enumerate both directions between the new platform and every supported peer with a port of the same title. Wish changes platforms; the game performs transfers between titles. A proven direction does not prove its reverse. |
-| Successful conversion | Preserve the player's behavior with empty drop and loss lists. Refusing a valid save is unfinished conversion work. Establish any claimed platform capacity limit in the running game before designing how the player chooses what fits. Follow the [conversion rules](../.claude/rules/conversions.md). |
+| Successful conversion | Preserve the player's behavior with empty drop and loss lists. Blocking a valid save is unfinished conversion work. Establish any claimed platform capacity limit in the running game before designing how the player chooses what fits. Follow the [conversion rules](../.claude/rules/conversions.md). |
 | Application output | Produce the exact bytes through the application's supported Save As/publication path, preserve the source and unrelated slots, and boot those published bytes as the player would. Extra harness repairs to the published container cannot count as application acceptance; use the [Open and Save As contract](227-editor-open-save-as.md). |
 | Live conversion proof | Reuse the proven destination harness for each direction. Load, inspect, move, save, decode and reload the converted party; exercise the behavior the conversion changes and retain the identity and movement controls. Compare round trips using declared masks, not a mask built from whatever happened to differ. |
 

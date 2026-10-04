@@ -126,7 +126,7 @@ def test_the_maps_a_title_loads_are_a_set_and_not_a_range():
 
     Twenty-nine maps for Pool of Radiance, which is the count the module's own
     docstring claims. An unknown title answers nothing at all -- the answer
-    that refuses every save rather than the one that validates against
+    that rejects every save rather than the one that validates against
     somebody else's game.
     """
     pool = areas.geos_in(areas.POOL_OF_RADIANCE)
@@ -350,7 +350,7 @@ def test_the_label_names_a_pool_of_radiance_area():
 
 def test_the_label_names_a_curse_area_with_its_own_name_not_pools():
     """`GEO15` used to have no Curse name at all, so this test proved the
-    label refused to borrow Pool of Radiance's "Sokol Keep". `#15 (Fast
+    label declined to borrow Pool of Radiance's "Sokol Keep". `#15 (Fast
     Travel for more than one Gold Box title)` landed Curse's own name for it,
     so the label now shows that instead of either the borrowed name or the
     file stem.
@@ -986,7 +986,7 @@ def test_silver_blades_starts_in_area_0x10_at_3_3_facing_south():
     Its two never-adventured containers hold the same area 0 and `7,13`
     facing north that Curse's do, and its table has no area 0 -- so before
     this the case existed and the answer had not been measured, and a caller
-    had to refuse rather than convert to whichever area looked likeliest.
+    had to reject rather than convert to whichever area looked likeliest.
     """
     start = areas.start_of(SECRET_OF_THE_SILVER_BLADES)
     assert start.area == 0x10

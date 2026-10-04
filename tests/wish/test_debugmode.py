@@ -139,7 +139,7 @@ def test_an_outdoor_target_writes_the_travel_square_and_not_the_geo_one():
             < addrs.index(fasttravel.POOL_OF_RADIANCE.came_from))
 
 
-def test_newecl_writes_refuses_arrival_and_overland_together():
+def test_newecl_writes_blocks_arrival_and_overland_together():
     """An area is indoors or outdoors, never both, so a caller supplying
     both squares is a bug and not a choice between writes."""
     with pytest.raises(ValueError):
@@ -287,7 +287,7 @@ def test_fasttravel_legality_rejections_carry_no_developer_detail():
     }
 
     for what, reason in reasons.items():
-        assert reason, f"{what}: branch did not refuse as expected"
+        assert reason, f"{what}: branch did not block as expected"
         assert not address.search(reason), (
             f"a memory address reaches a player ({what}): {reason!r}")
         assert not bare_issue.search(reason), (
@@ -373,14 +373,14 @@ def test_the_wall_pins_are_cleared_on_every_fast_travel():
         "by the area left behind keeps its old wall art")
 
 
-# --- what it refuses ---------------------------------------------------------
+# --- what it blocks ---------------------------------------------------------
 
-def test_a_fasttravel_is_refused_when_dungeon_is_not_resident():
+def test_a_fasttravel_is_blocked_when_dungeon_is_not_resident():
     """`$2034` is some other overlay's code, and jumping there is a crash.
 
     This scenario is `mode=COMBAT`, which `Action.legality`'s own combat
-    guard refuses on first -- `FastTravel`'s DUNGEON check never runs. Still
-    refused either way, so the assertion is on that rather than on which
+    guard blocks on first -- `FastTravel`'s DUNGEON check never runs. Still
+    blocked either way, so the assertion is on that rather than on which
     branch fired; `#306 (The Fast Travel button's own disabled tooltip
     carries a memory address)`'s own sweep,
     `test_fasttravel_legality_rejections_carry_no_developer_detail`, drives
@@ -389,7 +389,7 @@ def test_a_fasttravel_is_refused_when_dungeon_is_not_resident():
     assert not verdict and "$6E11" not in verdict.reason
 
 
-def test_a_fasttravel_is_refused_from_anywhere_but_the_key_wait_loop():
+def test_a_fasttravel_is_blocked_from_anywhere_but_the_key_wait_loop():
     """Mid-script or mid-load, the stack reload at `$203A` throws away work in
     flight. It is also the check that `PC_REGISTER` is the register we think."""
     target = machine(pc=0x2011)
@@ -405,7 +405,7 @@ def test_a_fasttravel_is_refused_from_anywhere_but_the_key_wait_loop():
     assert target.jumps == []
 
 
-def test_a_fasttravel_to_the_area_we_are_in_is_refused():
+def test_a_fasttravel_to_the_area_we_are_in_is_blocked():
     """`NEWECL` skips a same-area transition, so `$4A00` would not be cleared
     and nothing would happen -- silently, which is the objection."""
     verdict = actions.FastTravel().legality(machine(area=20), area(20))
@@ -418,7 +418,7 @@ def test_a_backend_with_no_cpu_cannot_fasttravel():
     assert not verdict and "program counter" in verdict.reason
 
 
-def test_nothing_is_written_by_a_refused_fasttravel():
+def test_nothing_is_written_by_a_blocked_fasttravel():
     target = machine(mode=COMBAT)
     before = dict(target.memory)
     outcome = actions.FastTravel().apply(target, area=area(20))
@@ -428,7 +428,7 @@ def test_nothing_is_written_by_a_refused_fasttravel():
 
 # --- going back --------------------------------------------------------------
 
-def test_fasttravel_back_is_refused_until_a_fasttravel_has_been_made():
+def test_fasttravel_back_is_blocked_until_a_fasttravel_has_been_made():
     travel = actions.FastTravel()
     verdict = travel.back_verdict(machine())
     assert not verdict and "nothing to go back to" in verdict.reason
@@ -635,7 +635,7 @@ def test_area_30_is_never_offered_however_the_setting_is_written(app):
 
 def test_nothing_ticked_says_so_rather_than_looking_broken(app):
     """An empty dropdown is the player's own choice here, so the row names the
-    setting to go and look at, and the button refuses with the same reason
+    setting to go and look at, and the button blocks with the same reason
     instead of the emulator's."""
     from automap.config import Settings
 
@@ -866,7 +866,7 @@ def test_a_party_that_went_through_and_came_back_says_nothing(app):
     assert through.jumps == [] and back.jumps == []
 
 
-def test_a_refused_fasttravel_is_reported_as_an_alarm(app):
+def test_a_blocked_fasttravel_is_reported_as_an_alarm(app):
     said = []
     row = bar(app, machine(mode=COMBAT),
               say=lambda text, detail="", alarm=False: said.append((text, alarm)))
@@ -1194,21 +1194,21 @@ def test_the_roster_button_levels_the_character_whose_card_it_is(app):
     assert seen["class_for_game"].key == "pool-of-radiance"
 
 
-def test_the_level_up_button_is_not_offered_in_a_title_we_would_refuse(app):
+def test_the_level_up_button_is_not_offered_in_a_title_we_would_block(app):
     """#16. A button that appears and then fails is worse than one that never
-    appears: `level_up_blockers` refuses every title whose trainer is not
+    appears: `level_up_blockers` blocks every title whose trainer is not
     measured, so the card does not offer the press.
 
-    Curse used to be this test's refused title and is not any more -- its
+    Curse used to be this test's blocked title and is not any more -- its
     trainer is fully measured (`#18 (Measure Curse's trainer so Level Up
     works there)`, `#415 (automap/window.py picks the level-up spell
     dialog's class the same wrong way plan would have, blocking Curse's
     trainer)`), so it is asserted offered below alongside Pool of Radiance.
-    Silver Blades took over as the still-refused example and is not one any
+    Silver Blades took over as the still-blocked example and is not one any
     more either -- its trainer is measured too (`#89 (Silver Blades' trainer
     grants spells from a table, and goldbox/levelup.py offers them from a
     menu)`) -- so Champions of Krynn, which has no level tables of its own
-    at all, is the refused example now."""
+    at all, is the blocked example now."""
     from PyQt6.QtWidgets import QMainWindow
 
     from automap.state import Automapper
@@ -1225,7 +1225,7 @@ def test_the_level_up_button_is_not_offered_in_a_title_we_would_refuse(app):
         Automapper(MemoryTarget({}), {},
                    title="Curse of the Azure Bonds"))
     assert curse.roster.levelling
-    # Fast Travel and Level Up used to be refused on separate grounds -- Curse
+    # Fast Travel and Level Up used to be blocked on separate grounds -- Curse
     # got its own area table under `#192 (Convert a Curse of the Azure Bonds
     # DOS save into a C64 one, which the importer refuses today)` step 0b,
     # before its trainer was measured -- and both are offered now.

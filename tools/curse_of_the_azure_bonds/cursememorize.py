@@ -2,7 +2,7 @@
 """Measure how DOS Curse's `MEMORIZE` list turns a page, one keypress at a time.
 
 `#574 (Camp.memorize's page-turn landing is stateful and not proven for page >
-0)` refuses `Camp.memorize(page>0)` because nothing here knows what a page turn
+0)` rejects `Camp.memorize(page>0)` because nothing here knows what a page turn
 does to the highlight, how many pages a grimoire has, or whether the command
 bar separates one page from another.  Nothing in the tree walks from the world
 map to `ENCAMP > MAGIC > MEMORIZE` either: `Camp` starts at the grimoire and

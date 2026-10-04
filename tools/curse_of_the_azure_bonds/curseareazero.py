@@ -99,7 +99,7 @@ ZEROABLE = ("area", "geo", "cache", "fdfe")
 
 #: `goldbox.dos_codec.apply_file_cache`'s own recipe, repeated here as three slot
 #: numbers so `--recipe` can build the disk the converter *would* write
-#: without importing the module that currently refuses to write it.  Curse
+#: without importing the module that currently declines to write it.  Curse
 #: sets bit 7 in every slot it fills (`Container.cache_bit7`).
 CACHE_GEO, CACHE_ECL, CACHE_ANIMATE = 2, 8, 11
 CACHE_RELOAD, ANIMATE_RESIDENT = 0x80, 0x00
