@@ -194,6 +194,7 @@ __all__ = [
     "item_type_table",
     "WRITE_NO_SUCH_FIELD",
     "write_field_disposition",
+    "c64_member_neutral",
     "c64_party",
     "write_dos_save_from",
     "write_dos_save",
@@ -9516,6 +9517,54 @@ def savgam_zeroes(savgam: bytearray, report: "SaveReport",
             f"corresponds to it")
 
 
+def _c64_save_context(save0: bytes, save1: bytes | None, c64):
+    """The parsed pages and the clock minutes every slot of one C64 save is
+    read against: `(SaveGame0, SaveGame1 or None, minutes)`."""
+    from .savegame import SaveGame0, SaveGame1
+
+    sg = SaveGame0.from_bytes(bytes(save0), c64)
+    if c64.roster_in_payload:
+        # Every later title keeps the roster inside the one payload, and
+        # `load_save` hands back a `SaveGame1` over that page; a caller
+        # passing `save1` for such a title has a second copy of the same
+        # bytes, so the payload's own page is the one read.
+        sg1 = SaveGame1(sg.roster_page(), c64)
+    else:
+        sg1 = SaveGame1(bytes(save1), c64) if save1 is not None else None
+    # The same six digits `world_state.from_c64` reads, straight off the
+    # payload -- a paladin's lay-on-hands and cure rows need the save's time
+    # of day to say how many minutes a duration byte has left.
+    clock_digits = tuple(save0[c64.clock + i]
+                         for i in range(dos_savegame.CLOCK_DIGITS))
+    return sg, sg1, effects.clock_minutes(clock_digits)
+
+
+def _read_c64_slot(char_slot, sg1, c64, save0, clock_mins) -> "NeutralCharacter":
+    """One occupied C64 slot read with its roster block, inventory and the
+    save's clock, which is what the effect rows need."""
+    from .items import items_for_slot
+
+    block = sg1.roster(char_slot.index) if sg1 is not None else None
+    inv = [i.raw for i in items_for_slot(bytes(save0), char_slot.index)]
+    return c64_codec.read(char_slot.record, roster=block,
+                          inventory=inv, game=c64,
+                          source=f"C64 slot {char_slot.index}",
+                          payload=save0, party_slot=char_slot.index,
+                          clock_minutes=clock_mins)
+
+
+def c64_member_neutral(save0: bytes, save1: bytes | None, game,
+                       index: int) -> "NeutralCharacter":
+    """The C64 party member in slot `index`, read exactly as `c64_party`
+    reads him (roster block, inventory and clock included)."""
+    c64 = c64_save.container_for(game)
+    sg, sg1, clock_mins = _c64_save_context(save0, save1, c64)
+    for char_slot in sg.characters:
+        if char_slot.index == index:
+            return _read_c64_slot(char_slot, sg1, c64, save0, clock_mins)
+    raise ValueError(f"C64 slot {index} holds no character")
+
+
 def c64_party(save0: bytes, save1: bytes | None, game=None,
              icon_parts: "IconParts | None" = None
              ) -> "tuple[list[NeutralCharacter], list[DosIcon | None]]":
@@ -9563,41 +9612,17 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
     memory addresses, overlay names and issue numbers in them)`'s own rule is
     that a converted field is not reported as dropped.
     """
-    from .items import items_for_slot
-    from .savegame import SaveGame0, SaveGame1
-
     container = c64_save.container_for(game)
     c64 = container
-    sg = SaveGame0.from_bytes(bytes(save0), c64)
-    if c64.roster_in_payload:
-        # Every later title keeps the roster inside the one payload, and
-        # `load_save` hands back a `SaveGame1` over that page; a caller
-        # passing `save1` for such a title has a second copy of the same
-        # bytes, so the payload's own page is the one read.
-        sg1 = SaveGame1(sg.roster_page(), c64)
-    else:
-        sg1 = SaveGame1(bytes(save1), c64) if save1 is not None else None
+    sg, sg1, clock_mins = _c64_save_context(save0, save1, c64)
     party = sg.characters
     reverse_tables = (c64_icon_tables(title=c64.key)
                       if icon_parts is not None else None)
     stale_icon_note = c64_codec.READ_DROPPED_PLAYER_TEXT.get("region_220")
-    # The same six digits `world_state.from_c64` reads, straight off the
-    # payload -- a paladin's lay-on-hands and cure rows (#600, #626, #628)
-    # need the save's time of day to say how many minutes a duration byte
-    # has left.
-    clock_digits = tuple(save0[container.clock + i]
-                         for i in range(dos_savegame.CLOCK_DIGITS))
-    clock_mins = effects.clock_minutes(clock_digits)
     out: "list[NeutralCharacter]" = []
     icons: "list[DosIcon | None]" = []
     for char_slot in party:
-        block = sg1.roster(char_slot.index) if sg1 is not None else None
-        inv = [i.raw for i in items_for_slot(bytes(save0), char_slot.index)]
-        character = c64_codec.read(char_slot.record, roster=block,
-                                   inventory=inv, game=c64,
-                                   source=f"C64 slot {char_slot.index}",
-                                   payload=save0, party_slot=char_slot.index,
-                                   clock_minutes=clock_mins)
+        character = _read_c64_slot(char_slot, sg1, c64, save0, clock_mins)
         icon = None
         if icon_parts is not None:
             # Not `char_slot.record.get_raw("region_220")`: `Slot.record`

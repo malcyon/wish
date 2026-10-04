@@ -1359,9 +1359,186 @@ def test_a_charm_with_no_free_slot_is_expected_as_the_writer_writes_it(share):
     assert {k: written[k] for k in expected} == expected
 
 
+@pytest.mark.parametrize("share", [0, 1, 3])
+def test_a_charmed_zombie_is_expected_as_the_writer_writes_him(share):
+    char = _charmed_pool_neutral(share)
+    char.set("status", "animated", "built here")
+    expected = c64_codec.charmed_pool_player_fields(char)
+    assert expected["flags_0b8"] & 0xFE == 0xFE
+    written = _written_charm_fields(char)
+    assert {k: written[k] for k in expected} == expected
+
+
+@pytest.mark.parametrize("free_slot", [True, False])
+@pytest.mark.parametrize("share", [0, 1, 3])
+@pytest.mark.parametrize("control", [0x00, 0x40])
+def test_a_charmed_player_character_who_is_no_companion_is_expected_as_the_writer_writes_him(
+        control, share, free_slot):
+    char = _charmed_pool_neutral(share, control=control)
+    expected = c64_codec.charmed_pool_player_fields(
+        char, charm_row_written=free_slot)
+    assert "flags_0b8" in expected
+    written = _written_charm_fields(char, free_slot=free_slot)
+    assert {k: written[k] for k in expected} == expected
+
+
 def test_a_companion_with_another_control_byte_is_not_a_charmed_player():
     char = _charmed_pool_neutral(1, control=0x90)
     assert c64_codec.charmed_pool_player_fields(char) == {}
     destination = _destination("c64", c64_port.POOL_OF_RADIANCE)
     assert saveplan.charmed_pool_fields(
         _charmed_sheet(1), char, "dos", destination) == {}
+
+
+# ---------------------------------------------------------------------------
+# A charmed Pool character through Save As, in every direction that rewrites
+# his two bytes. The specimen is a DOS save the engine wrote with one party
+# member's charm node and control byte staged before the boot
+# (`WISH-SPEC-pool-8-friends-mirror-prayer-charm-dos-engine-save`).
+# ---------------------------------------------------------------------------
+
+_CHARM_SPECIMEN = "pool-8-friends-mirror-prayer-charm-dos-engine-save"
+_CHARMED_FIELDS = ("flags_0b8", "treasure_share")
+
+
+def _charm_specimen():
+    from tools.registry import specimens
+    spec = next((entry["_files"][0].parent
+                 for entry in specimens.list_specimens()
+                 if entry.get("name") == _CHARM_SPECIMEN), None)
+    if spec is None:
+        pytest.skip("needs the charmed Pool of Radiance DOS specimen")
+    return spec
+
+
+def _c64_assets(source):
+    from tools.convert import convertdrops
+    try:
+        return saveplan.resolve_assets(
+            source, "c64", game_files=convertdrops.game_files)
+    except (saveplan.MissingAssets, FileNotFoundError):
+        pytest.skip("needs Pool of Radiance's own C64 disks")
+
+
+def _charmed_c64_party(tmp_path):
+    """The charm specimen saved as a C64 disk and opened again."""
+    party = Party(str(_charm_specimen()))
+    source = convert.Source.detect(party.path)
+    assets = _c64_assets(source)
+    path = tmp_path / "c64" / "charm.d64"
+    plan = saveplan.prepare_save_as(party, "c64", path, assets)
+    return saveplan.publish(plan, party, assets=assets).party
+
+
+def _charmed_members(party):
+    """The members the C64 reader finds charmed, by the writer's own test."""
+    snapshot = saveplan.prepare(party)
+    return [m for m in party.members
+            if c64_codec.pool_charmed_player(
+                saveplan.source_neutral(m, snapshot, snapshot.title))]
+
+
+def test_the_c64_reader_finds_the_charmed_member_through_source_neutral(
+        tmp_path):
+    party = _charmed_c64_party(tmp_path)
+    assert len(_charmed_members(party)) == 1
+
+
+@pytest.mark.parametrize("port", ["dos", "amiga"])
+def test_a_c64_pool_party_with_a_charmed_character_saves_as_dos_and_amiga(
+        tmp_path, port):
+    from tools.convert import convertdrops, convertrun
+    party = _charmed_c64_party(tmp_path)
+    source = convert.Source.detect(party.path)
+    try:
+        if port == "dos":
+            assets = saveplan.resolve_assets(
+                source, "dos", game_files=convertdrops.game_files,
+                dos_folder=convertrun.dos_game_folder("pool-of-radiance",
+                                                      None))
+            out = tmp_path / "out-dos"
+        else:
+            disk = convertdrops.amiga_game_disks(tmp_path).get(
+                c64_port.POOL_OF_RADIANCE.key)
+            assets = saveplan.resolve_assets(
+                source, "amiga", game_files=convertdrops.game_files,
+                amiga_disk=disk)
+            out = tmp_path / "out.adf"
+    except (saveplan.MissingAssets, FileNotFoundError, SystemExit):
+        pytest.skip("needs Pool of Radiance's own C64 disks and the "
+                    "destination's game files")
+    plan = saveplan.prepare_save_as(party, port, out, assets)
+    assert isinstance(plan, saveplan.SavePlan)
+
+
+def _charmed_amiga_pool_party(tmp_path):
+    """The charm specimen's party on an Amiga Pool disk, inside the saved
+    game of an Amiga slot the game wrote itself
+    (`WISH-SPEC-amiga-pool-foundation-walked`)."""
+    from tools.registry import specimens
+    spec = next((entry["_files"][0].parent
+                 for entry in specimens.list_specimens()
+                 if entry.get("name") == "amiga-pool-foundation-walked"), None)
+    if spec is None:
+        pytest.skip("needs the game-written Amiga Pool of Radiance specimen")
+    written = AmigaDisk(bytearray(
+        (spec / "fetched-save.adf").read_bytes()))
+    _party, savegame = amiga_savegame.read_por_slot(written, "A")
+    dos_party = Party(str(_charm_specimen()))
+    characters = [dos_codec.to_neutral(m.native) for m in dos_party.members]
+    # The saved game names its party's character files, so it can hold only as
+    # many as the game wrote there.
+    count = len(_party)
+    disk = amiga_savegame.make_por_save_disk(
+        "A", characters[:count], bytes(savegame))
+    path = tmp_path / "amiga" / "charm.adf"
+    path.parent.mkdir()
+    path.write_bytes(disk.to_bytes())
+    return Party(str(path))
+
+
+def test_source_neutral_reads_an_amiga_pool_member(tmp_path):
+    from support.neutralrecords import _filled
+
+    pool = c64_port.by_key("pool-of-radiance")
+    char = _filled(pool)
+    char.set("name", "ALPHA", "made up", Confidence.CONFIRMED,
+             c64_codec.Provenance.RESHAPED)
+    savgam = bytearray(amiga_savegame.POR_SAVEGAME_SIZE)
+    at = amiga_savegame.POOL_OF_RADIANCE.party_at
+    savgam[at:at + 8] = b"CHRDATA1"
+    disk = amiga_savegame.make_por_save_disk("A", [char], bytes(savgam))
+    path = tmp_path / "pool.adf"
+    path.write_bytes(disk.to_bytes())
+    party = Party(str(path))
+    snapshot = saveplan.prepare(party)
+    neutral_char = saveplan.source_neutral(
+        party.members[0], snapshot, snapshot.title)
+    assert neutral_char.get("name") == "ALPHA"
+
+
+def test_an_amiga_pool_party_with_a_charmed_character_saves_as_c64(tmp_path):
+    party = _charmed_amiga_pool_party(tmp_path)
+    source = convert.Source.detect(party.path)
+    assets = _c64_assets(source)
+    snapshot = saveplan.prepare(party)
+    assert any(c64_codec.pool_charmed_player(
+        saveplan.source_neutral(m, snapshot, snapshot.title))
+        for m in party.members)
+    saveplan.prepare_save_as(party, "c64", tmp_path / "out" / "out.d64",
+                             assets)
+
+
+@pytest.mark.parametrize("share", [0, 1, 3])
+def test_a_charmed_c64_sheet_is_expected_in_the_taken_over_form(share):
+    sheet = CharacterRecord.blank()
+    sheet.set("flags_0b8", 1)
+    sheet.set("treasure_share", 0)
+    char = _charmed_pool_neutral(share)
+    for port in ("dos", "amiga"):
+        fields = saveplan.charmed_pool_fields(
+            sheet, char, "c64", _destination(port, c64_port.POOL_OF_RADIANCE))
+        assert fields == {"flags_0b8": 0xB3, "treasure_share": share}
+    assert saveplan.charmed_pool_fields(
+        sheet, _charmed_pool_neutral(share, charmed=False), "c64",
+        _destination("dos", c64_port.POOL_OF_RADIANCE)) == {}

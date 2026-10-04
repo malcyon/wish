@@ -1389,25 +1389,40 @@ def feeblemind_scores(record: CharacterRecord, neutral: NeutralCharacter,
     return effects.c64_feeblemind_scores(title_key, permanent)
 
 
+#: The (source, destination) ports a charmed Pool character's two bytes differ on.
+_CHARM_ROUTES = frozenset({("dos", "c64"), ("amiga", "c64"),
+                           ("c64", "dos"), ("c64", "amiga")})
+
+
 def charmed_pool_fields(record: CharacterRecord, neutral: NeutralCharacter,
                         source_port: "str | None",
                         destination: "Destination") -> dict[str, int]:
     """The `flags_0b8` and `treasure_share` a charmed Pool player character
-    should be read back holding from a C64 save.
+    should be read back holding from a converted save.
 
-    The sheet record is built without the save's effect arrays, so it still
-    holds DOS's taken-over control byte in `flags_0b8`. The writer's own
-    decision, `c64_codec.charmed_pool_player_fields`, gives both bytes from
-    the sheet's share, assuming the charm row found a free slot: a save whose
-    shared effect arrays are full carries a loss line for it and is refused.
-    `{}` for any other character or route.
+    From a DOS or Amiga source to a C64 save, the sheet record is built
+    without the save's effect arrays, so it still holds DOS's taken-over
+    control byte in `flags_0b8`. The writer's own decision,
+    `c64_codec.charmed_pool_player_fields`, gives both bytes from the sheet's
+    share, assuming the charm row found a free slot: a save whose shared
+    effect arrays are full carries a loss line for it and is refused.
+
+    From a C64 source to a DOS or Amiga save, the sheet shows the C64's own
+    form (`flags_0b8` 1, share 0) and the writer gives the taken-over form
+    back: the control byte and the share the C64 reader recovered from the
+    charm row. `{}` for any other character or route.
     """
-    if (destination.native or destination.port != "c64"
-            or source_port != "dos"
-            or not _is_pool(destination)):
+    if destination.native or not _is_pool(destination):
         return {}
-    return c64_codec.charmed_pool_player_fields(
-        neutral, int(record.get("treasure_share")))
+    if source_port in ("dos", "amiga") and destination.port == "c64":
+        return c64_codec.charmed_pool_player_fields(
+            neutral, int(record.get("treasure_share")))
+    if source_port == "c64" and destination.port in ("dos", "amiga"):
+        if not c64_codec.pool_charmed_player(neutral):
+            return {}
+        return {"flags_0b8": int(neutral.get("npc_control_byte")),
+                "treasure_share": int(neutral.get("treasure_share"))}
+    return {}
 
 
 def _is_pool(destination: "Destination") -> bool:
@@ -1418,12 +1433,11 @@ def _is_pool(destination: "Destination") -> bool:
 def source_neutral(member: Any, snapshot: Any, title: Any) -> NeutralCharacter:
     """One source member, read the way the conversion reads him."""
     if snapshot.port == "c64":
-        return c64_codec.read(member.record, game=title,
-                              payload=snapshot.save0, party_slot=member.index)
+        return dos_codec.c64_member_neutral(snapshot.save0, snapshot.save1,
+                                            title, member.index)
     if snapshot.port == "dos":
         return dos_codec.to_neutral(member.native)
-    from goldbox import amiga_later
-    return amiga_later.to_neutral_later(member.native)
+    return amiga_por.to_neutral(member.native)
 
 
 def _signature(record: CharacterRecord,
@@ -1959,8 +1973,8 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
                 source.port, destination)
             for name, score in scores.items():
                 record.set(name, score)
-    if (destination.port == "c64" and not destination.native
-            and source.port == "dos" and _is_pool(destination)):
+    if (not destination.native and _is_pool(destination)
+            and (source.port, destination.port) in _CHARM_ROUTES):
         # A charmed Pool player character's two bytes are the writer's, not
         # the sheet's, or `compare` calls the charm's own conversion a loss.
         for member, record in zip(party.members, expected):
