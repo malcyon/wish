@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Edit a copy of a native save through the Character Editor's own Save, and report.
 
-Copies `--base` to `--out`, opens it in `editor.window.EditorBinding` (offscreen),
+Copies `--base` (a disk image, or a DOS save folder) to `--out`, opens it in `editor.window.EditorBinding` (offscreen),
 changes one member's gold, strength and one item quantity the way the editor's
 widgets and inventory model do, and calls `save(interactive=False)`. The report
 (JSON, also printed) gives each field before and after, read back from the
-written file with `Party`, the backup Save wrote under `backups/` and whether it
-equals the pre-edit bytes, and the SHA-256 of base, out and backup. Nothing
+written file with `Party`, the backups Save wrote under `backups/` (beside an image,
+inside a DOS folder, one per file Save replaced) and whether each equals the
+pre-edit bytes of its file, and the SHA-256 of base, out and backup. Nothing
 else writes the disk, so the bytes are what a player's Save produces.
 
     .venv/bin/python tools/convert/nativesavedrive.py --base curse.adf \\
@@ -33,8 +34,35 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 
+def _files(path: pathlib.Path) -> dict[str, bytes]:
+    """The bytes of a save, by file name: one entry for a file, one per file
+    for a DOS save folder (`backups/` excluded)."""
+    if path.is_dir():
+        return {p.name: p.read_bytes() for p in sorted(path.iterdir())
+                if p.is_file()}
+    return {path.name: path.read_bytes()}
+
+
 def sha256(path: pathlib.Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    """SHA-256 of a file, or of a folder's file names and bytes in name order."""
+    if not path.is_dir():
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    digest = hashlib.sha256()
+    for name, data in _files(path).items():
+        digest.update(name.encode() + b"\0" + data)
+    return digest.hexdigest()
+
+
+def _copy(base: pathlib.Path, out: pathlib.Path) -> None:
+    """Copy a save file, or a save folder's files without its `backups/`."""
+    if base.is_dir():
+        out.mkdir(parents=True, exist_ok=True)
+        for name in _files(base):
+            shutil.copyfile(base / name, out / name)
+            (out / name).chmod(0o644)
+    else:
+        shutil.copyfile(base, out)
+        out.chmod(0o644)
 
 
 def _read_back(path: pathlib.Path, slot: str | None, who: int,
@@ -60,6 +88,11 @@ def _commit() -> str | None:
         return None
 
 
+def _original(backup: pathlib.Path, names: list[str]) -> str:
+    """The saved file a `NAME.timestamp` backup is a copy of."""
+    return max((n for n in names if backup.name.startswith(n + ".")), key=len)
+
+
 def drive(base: pathlib.Path, out: pathlib.Path, who: int, gold: int,
           strength: int, items: dict[int, int],
           slot: str | None = None) -> dict:
@@ -71,9 +104,8 @@ def drive(base: pathlib.Path, out: pathlib.Path, who: int, gold: int,
     from PyQt6.QtWidgets import QApplication, QMainWindow
 
     out.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(base, out)
-    out.chmod(0o644)
-    pre_edit = out.read_bytes()
+    _copy(base, out)
+    pre_edit = _files(out)
     before = _read_back(out, slot, who, items)
 
     app = QApplication.instance() or QApplication([])
@@ -114,7 +146,12 @@ def drive(base: pathlib.Path, out: pathlib.Path, who: int, gold: int,
     note = binding.save(interactive=False)
     app.processEvents()
 
-    backups = sorted((out.parent / "backups").glob(out.name + ".*"))
+    # The editor puts backups in `backups/` inside a save folder and beside a
+    # save file, one copy per file Save replaced.
+    names = list(pre_edit)
+    backup_dir = (out if out.is_dir() else out.parent) / "backups"
+    backups = sorted(b for name in names
+                     for b in backup_dir.glob(name + ".*"))
     problem = None
     if not note.startswith("wrote "):
         problem = f"Save did not write the file: {note}"
@@ -127,7 +164,7 @@ def drive(base: pathlib.Path, out: pathlib.Path, who: int, gold: int,
         "before": before,
         "after": _read_back(out, slot, who, items),
         "backups": [{"path": str(b), "sha256": sha256(b),
-                     "equals_pre_edit": b.read_bytes() == pre_edit}
+                     "equals_pre_edit": b.read_bytes() == pre_edit[_original(b, names)]}
                     for b in backups],
         "sha256": {"base": sha256(base), "out": sha256(out)},
         "commit": _commit(),
