@@ -3,8 +3,7 @@
 
 `tools/c64/recordsweep.py` asks this of the character record and takes its window
 as a record offset; this asks it of **any** address window, which is what a
-saved-game header wants. `#192 (Convert a Curse of the Azure Bonds DOS save
-into a C64 one, which the importer refuses today)` step 0e is the ticket: the
+saved-game header wants. The work on converting a Curse of the Azure Bonds DOS save into a C64 one step 0e is the ticket: the
 converter has to write every header byte something reads, and zero the rest on
 evidence rather than by analogy with Pool of Radiance's `HEADER_ZEROED`.
 

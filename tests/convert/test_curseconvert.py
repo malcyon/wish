@@ -235,15 +235,13 @@ def test_every_declared_field_has_a_disposition_in_every_title(deltas):
 
 
 def test_the_conversion_no_longer_blocks_curse():
-    """`#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one,
-    which the importer refuses today)` step 3 loaded a converted Curse save
+    """The work on converting a Curse of the Azure Bonds DOS save into a C64 one step 3 loaded a converted Curse save
     in the running game and read the sheet, so step 4 puts Curse on
     `CONVERTS` for real.
 
     **This used to end by asserting Silver Blades was still blocked, and
     then Pools of Darkness.** Silver Blades was proven the same way on
-    2026-09-05 (`#193 (Convert a Secret of the Silver Blades DOS save into a
-    C64 one, which the importer refuses today)`); Pools of Darkness joined
+    2026-09-05 (the work on converting a Secret of the Silver Blades DOS save into a C64 one); Pools of Darkness joined
     on 2026-09-08 for its Amiga pairing rather than for a C64 one it will
     never have (`#194 (Import and export a Pools of Darkness save between
     DOS and the Amiga)`). So **every DOS title this project reads now

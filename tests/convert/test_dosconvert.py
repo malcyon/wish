@@ -1870,8 +1870,7 @@ def test_only_the_proven_titles_convert(deltas):
     converted save loaded in the running game.
 
     Pool of Radiance was always proven; Curse joined it as step 4 of
-    `#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which
-    the importer refuses today)`, after step 3 read a converted party's sheet
+    The work on converting a Curse of the Azure Bonds DOS save into a C64 one, after step 3 read a converted party's sheet
     in VICE. Handing a Silver Blades record to the C64 writer would read
     Curse's or Pool of Radiance's offsets out of a 439-byte record, so it
     still raises instead."""
@@ -2705,9 +2704,7 @@ def _never_adventured_savgam() -> bytes:
     """The signature all seven Pool of Radiance never-adventured containers
     on this machine share: area 0, map 0, `$49E6` = 0, `$4FE1` = 0, square
     `15,1` facing west, clock 00:00 and an all-zero script buffer
-    (`#326 (A Pool of Radiance save made before the party began
-    adventuring is refused, because the initialiser left $49E6 at 0 and New
-    Phlan is indoors)`).  Built from nothing, which is how the initialiser
+    (the work on a Pool of Radiance save made before the party began adventuring).  Built from nothing, which is how the initialiser
     leaves it."""
     savgam = bytearray(sg.SAVGAM_SIZE)
     sg.put_position(savgam, 15, 1, 3)

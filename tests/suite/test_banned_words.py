@@ -2,9 +2,10 @@
 
 A term is banned in the scope `SCOPES` gives it: every tracked text file,
 Markdown only, or `None` for a ban that depends on meaning and is left to review.
-Citations (`#N (title)`, `WISH-N (title)`) are blanked first because a
-citation quotes an issue's own title. While the sweep of the stem `refus` is
-unfinished, `LIMITS_EVERY` and `LIMITS_MARKDOWN` hold the most matches each
+Citations (`#N (title)`, `WISH-N (title)`) are blanked first for every term
+except the stem `refus`, because a citation quotes an issue's own title; the
+stem is banned inside citations too. While a sweep is unfinished,
+`LIMITS_EVERY` and `LIMITS_MARKDOWN` hold the most matches each
 file may still carry; a limit only ever goes down, and both dicts are deleted
 when the sweep is done.
 """
@@ -50,94 +51,8 @@ ALLOWED_LINES: tuple[tuple[str, str], ...] = ()
 
 # Most matches each file may carry until the sweep removes them (path: count).
 LIMITS_EVERY: dict[str, int] = {
-    "automap/amiga.py": 0,
-    "automap/winuae.py": 0,
     "docs/125-bug-notes.md": 1,
     "docs/160-why-these-rules.md": 9,
-    "tests/amiga/fakes.py": 0,
-    "tests/amiga/test_amiga.py": 0,
-    "tests/amiga/test_amiga68k.py": 0,
-    "tests/amiga/test_amiga_adf.py": 0,
-    "tests/amiga/test_amiga_savegame.py": 0,
-    "tests/amiga/test_amigaacceptance.py": 0,
-    "tests/amiga/test_amigaacceptance_accept.py": 0,
-    "tests/amiga/test_amigaacceptance_camp.py": 0,
-    "tests/amiga/test_amigaacceptance_campitems.py": 0,
-    "tests/amiga/test_amigaacceptance_measure.py": 0,
-    "tests/amiga/test_amigaacceptance_poolrest.py": 0,
-    "tests/amiga/test_amigaacceptance_snapshot.py": 0,
-    "tests/amiga/test_amigaacceptance_ssbjoin.py": 0,
-    "tests/amiga/test_amigaacceptance_ssbsubstitute.py": 0,
-    "tests/amiga/test_amigaacceptance_staged.py": 0,
-    "tests/amiga/test_amigaacceptance_stageplace.py": 0,
-    "tests/amiga/test_amigaacceptance_title.py": 0,
-    "tests/amiga/test_amigaacceptance_titles.py": 0,
-    "tests/amiga/test_amigabackstab.py": 0,
-    "tests/amiga/test_amigabladesjournal.py": 0,
-    "tests/amiga/test_amigacontainercheck.py": 0,
-    "tests/amiga/test_amigadarknesssubstitute.py": 0,
-    "tests/amiga/test_amigadrivecheck.py": 0,
-    "tests/amiga/test_amigaeffectreader.py": 0,
-    "tests/amiga/test_amigaglobal.py": 0,
-    "tests/amiga/test_amigajournalgates.py": 0,
-    "tests/amiga/test_amigalaterproof.py": 0,
-    "tests/amiga/test_amigalaterslot.py": 0,
-    "tests/amiga/test_amigalaterwrite.py": 0,
-    "tests/amiga/test_amigaparty.py": 0,
-    "tests/amiga/test_amigapipe.py": 0,
-    "tests/amiga/test_amigapool.py": 0,
-    "tests/amiga/test_amigaporsavegame.py": 0,
-    "tests/amiga/test_amigaporsavegameboundaries.py": 0,
-    "tests/amiga/test_amigaroutepool.py": 0,
-    "tests/amiga/test_amigasavedisk.py": 0,
-    "tests/amiga/test_amigasavegame.py": 0,
-    "tests/amiga/test_amigashots.py": 0,
-    "tests/amiga/test_amigastaging.py": 0,
-    "tests/amiga/test_amigastagingsubstitute.py": 0,
-    "tests/amiga/test_amigatarget.py": 0,
-    "tests/amiga/test_fsuaegdb.py": 0,
-    "tests/amiga/test_fsuaepor.py": 0,
-    "tests/amiga/test_guardmaps.py": 0,
-    "tests/amiga/test_installfsuae.py": 0,
-    "tests/amiga/test_m68dis.py": 0,
-    "tests/amiga/test_noencounters_winuae.py": 0,
-    "tests/amiga/test_podamiga.py": 0,
-    "tests/amiga/test_podderived.py": 0,
-    "tests/amiga/test_podsavegame.py": 0,
-    "tests/amiga/test_savegamelosses.py": 0,
-    "tests/amiga/test_winuaeps1.py": 0,
-    "tests/amiga/test_winvmguest.py": 0,
-    "tests/amiga/test_winwish.py": 0,
-    "tools/amiga/acceptance.py": 0,
-    "tools/amiga/amigabladesjournal.py": 0,
-    "tools/amiga/amigacontainercheck.py": 0,
-    "tools/amiga/amigadrive.py": 0,
-    "tools/amiga/amigadrivecheck.py": 0,
-    "tools/amiga/amigalaterproof.py": 0,
-    "tools/amiga/amigalaterslot.py": 0,
-    "tools/amiga/amigalaterwrite.py": 0,
-    "tools/amiga/fromamigapor.py": 0,
-    "tools/amiga/fsuaegdb.py": 0,
-    "tools/amiga/fsuaepor.py": 0,
-    "tools/amiga/installfsuae.py": 0,
-    "tools/amiga/m68dis.py": 0,
-    "tools/amiga/m68discheck.py": 0,
-    "tools/amiga/noencounters.py": 0,
-    "tools/amiga/route.py": 0,
-    "tools/amiga/route_camp.py": 0,
-    "tools/amiga/route_pool.py": 0,
-    "tools/amiga/route_silver_blades.py": 0,
-    "tools/amiga/screens.py": 0,
-    "tools/amiga/staging.py": 0,
-    "tools/amiga/toamigapor.py": 0,
-    "tools/amiga/winuae-lanecheck.ps1": 0,
-    "tools/amiga/winuae-send.ps1": 0,
-    "tools/amiga/winuae.ps1": 0,
-    "tools/amiga/winuaepipe.py": 0,
-    "tools/amiga/winuaesession.py": 0,
-    "tools/amiga/winvmguest.py": 0,
-    "tools/amiga/winwish.py": 0,
-    "tools/c64/c64recordoperandsweep.py": 1,
 }
 LIMITS_MARKDOWN: dict[str, int] = {
     ".agents/skills/caveman/SKILL.md": 2,
@@ -221,18 +136,24 @@ def scan(root, terms, pathspec=()):
     for row in listed.stdout.splitlines():
         path, number, _ = row.split(":", 2)
         candidates[path].append(int(number))
-    compiled = re.compile(regex)
+    stem = [t for t in terms if t in STEM]
+    rest = [t for t in terms if t not in STEM]
+    stem_re = re.compile(pattern(stem)) if stem else None
+    rest_re = re.compile(pattern(rest)) if rest else None
     found = {}
     for path, numbers in candidates.items():
         text = (pathlib.Path(root) / path).read_text(encoding="utf-8", errors="replace")
         lines = text.split("\n")
         for token in TOKEN_EXEMPT:
             text = text.replace(token, " " * len(token))
+        raw = text.split("\n")
         blanked = _blank_citations(text).split("\n")
         hits = []
         for n in numbers:
             if not _allowed(path, lines[n - 1]):
-                hits += [(n, lines[n - 1])] * len(compiled.findall(blanked[n - 1]))
+                count = len(rest_re.findall(blanked[n - 1])) if rest_re else 0
+                count += len(stem_re.findall(raw[n - 1])) if stem_re else 0
+                hits += [(n, lines[n - 1])] * count
         if hits:
             found[path] = hits
     return found
@@ -272,10 +193,10 @@ def _repo(tmp_path, name, text):
     return tmp_path
 
 
-def test_the_scan_catches_the_stem_in_identifiers_and_ignores_the_exempt(tmp_path):
+def test_the_scan_catches_the_stem_in_identifiers_and_citations_and_ignores_the_exempt(tmp_path):
     text = ("walk_refused = 1\nLOSS_REFUSED = 2\nisRefused = 3\nrefusing = 4\n"
             "except ConnectionRefusedError: pass\n"
             "# See #5 (a title that says refused,\n#   across two lines) here\n"
             "AIABJREFUs = 5\nREFUSAL_X = 6\n")
     found = scan(_repo(tmp_path, "sample.py", text), _terms("every"))
-    assert [n for n, _ in found["sample.py"]] == [1, 2, 3, 4, 9]
+    assert [n for n, _ in found["sample.py"]] == [1, 2, 3, 4, 6, 9]

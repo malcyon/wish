@@ -148,10 +148,8 @@ OUTDOOR_PROMPT = "1-8"
 #: so a driver that waits for `1-8` waits out its whole timeout in front of a
 #: game that is asking it something -- and then reports the step as blocked,
 #: which is a map fact nobody measured.  That is what
-#: `#382 (An outdoor Pool of Radiance party's compass step is refused, and the
-#: retry cannot find the movement prompt afterwards)` turned out to be: the
-#: converted Amiga party of `#376 (An Amiga party on the travel grid still
-#: cannot be converted to the C64 or DOS, because the reader refuses one)`
+#: The work on an outdoor Pool of Radiance party's compass step turned out to be: the
+#: converted Amiga party of the work on converting an Amiga party on the travel grid to the C64 or DOS
 #: stands on the west landing it sailed to, and eight directions in a row were
 #: recorded as rejected without a digit ever reaching the game.
 #:
@@ -2909,8 +2907,7 @@ class Session:
         Curse's move handler answers only the KERNAL buffer: an XTEST `I`
         there moves the party not at all and does not even turn it, which
         from outside looks exactly like a party hemmed in by walls
-        (`#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one,
-        which the importer refuses today)`, and `tools/curse_of_the_azure_bonds/curserun.py` overrides
+        (the work on converting a Curse of the Azure Bonds DOS save into a C64 one, and `tools/curse_of_the_azure_bonds/curserun.py` overrides
         this).
         """
         self.kbd.key(move.lower(), hold, gap)
@@ -3556,8 +3553,7 @@ class Session:
         went into the boat's own question, nothing moved, and the step was
         recorded as blocked.  Now the prompt is waited for, and a bar that is
         not the prompt is named rather than pressed at
-        (`#382 (An outdoor Pool of Radiance party's compass step is refused,
-        and the retry cannot find the movement prompt afterwards)`).
+        (the work on an outdoor Pool of Radiance party's compass step).
 
         `outdoor_boat` is what a caller sets to answer the boat rather than
         stop at it: `STAY` declines the passage and leaves the party on the

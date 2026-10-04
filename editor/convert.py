@@ -14,8 +14,7 @@ rule against a template. Today that is:
   Pool of Radiance, Curse of the Azure Bonds and Secret of the Silver Blades
   (`goldbox.dos_codec.new_save`; Pool of Radiance proven in VICE by
   `#119 (Play a converted DOS save in VICE, off a disk Wish built from
-  nothing)`, Curse of the Azure Bonds by `#192 (Convert a Curse of the Azure
-  Bonds DOS save into a C64 one, which the importer refuses today)`, Secret
+  nothing)`, Curse of the Azure Bonds by the work on converting a Curse of the Azure Bonds DOS save into a C64 one, Secret
   of the Silver Blades by `docs/175-silver-blades-save-conversion.md`);
 * C64 `.D64` → DOS save folder, one row per entry of the same `C64_PAIRED` --
   the same three titles (`goldbox.dos_codec.new_dos_save`; Pool of Radiance proven
@@ -596,8 +595,7 @@ class DosToC64(Direction):
     `goldbox.dos_codec.CONVERTS` (#118, #119, #192).
 
     One instance per entry of `CONVERTS` -- see `DIRECTIONS` below -- so a
-    title joining that tuple (`#193 (Convert a Secret of the Silver Blades
-    DOS save into a C64 one, which the importer refuses today)` will put
+    title joining that tuple (the work on converting a Secret of the Silver Blades DOS save into a C64 one will put
     Secret of the Silver Blades there) needs no edit to this class.
 
     `rehearse` is `editor.dosimport.rehearse` exactly as `File ▸ Import`
@@ -1736,10 +1734,8 @@ POOLS_OF_DARKNESS_UNSUPPORTED = "Pools of Darkness saves are not yet supported."
 #: `#342 (A Curse or Silver Blades save cannot be converted unless its C64
 #: sides sit in the Pool of Radiance disk folder)` gave each title its own
 #: folder and the old wording named `File ▸ Import` and one shared folder.
-#: **Reused for a missing source's disks too, since #482**
-#: (`#482 (With no game disks for the source title, a C64 party converted to
-#: DOS or the Amiga silently arrives with no combat figures, though a C64
-#: destination refuses)`): it names no direction, so the same sentence fits
+#: **Reused for a missing source's disks too, since the work on converting a C64 party to DOS or the Amiga when the source title has no game disks**:
+#: it names no direction, so the same sentence fits
 #: whichever side of the conversion could not be read.
 #:
 #: **Silent inside `ConvertDialog`, since `#52`'s fix of 2026-09-10** -- a

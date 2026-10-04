@@ -1,9 +1,7 @@
 """A boat landing's question is not a wall, and the driver used to call it one.
 
-`#382 (An outdoor Pool of Radiance party's compass step is refused, and the
-retry cannot find the movement prompt afterwards)`.  The converted Amiga party
-of `#376 (An Amiga party on the travel grid still cannot be converted to the
-C64 or DOS, because the reader refuses one)` stands on the west landing it
+This came out of the work on an outdoor Pool of Radiance party's compass step.  The converted Amiga party
+of the work on converting an Amiga party on the travel grid to the C64 or DOS stands on the west landing it
 sailed to.  Choosing `MOVE` there does not put up `1-8, RETURN OR BUTTON`; it
 puts up a picture of a boat, *"THERE IS A BOAT HERE THAT WILL TAKE YOU BACK TO
 THE CIVILISED SECTION OF PHLAN.  WILL YOU TAKE IT?"*, and the bar `TAKE BOAT

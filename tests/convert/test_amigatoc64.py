@@ -101,9 +101,7 @@ def outdoor_disk() -> AmigaDisk:
     """`WISH-SPEC-por-amiga-outdoor`'s own disk.  Slot A is the shipped save
     staged next to the harbour master; slots B and C are the first two
     saved games the Amiga engine itself ever wrote on the travel grid,
-    one overland step apart -- `#321 (An Amiga Pool of Radiance conversion
-    refuses a party standing on the travel grid, because no outdoor Amiga
-    saved game has ever been read)`'s run.
+    one overland step apart -- the work on converting an Amiga Pool of Radiance party standing on the travel grid's run.
     """
     import gamedata
 
@@ -220,9 +218,7 @@ def test_the_three_amiga_record_sizes_name_their_own_titles():
 # ---------------------------------------------------------------------------
 
 def test_an_indoor_party_still_reads_as_indoors(shipped_disk):
-    """The other half of the gate lifted by `#376 (An Amiga party on the
-    travel grid still cannot be converted to the C64 or DOS, because the
-    reader refuses one)`, so it cannot be a tautology: an indoor party is
+    """The other half of the gate lifted by the work on converting an Amiga party on the travel grid to the C64 or DOS, so it cannot be a tautology: an indoor party is
     unaffected by an outdoor one no longer being blocked."""
     _party, savgam = amiga_savegame.read_por_slot(shipped_disk, "A")
     state = amiga_savegame.read_por_state(savgam, "the shipped slot A")
@@ -258,8 +254,7 @@ def test_a_party_on_the_travel_grid_reads_the_travel_square(outdoor_disk):
 
 
 def test_an_outdoor_party_converts_to_the_c64_travel_grid(outdoor_disk):
-    """The headline `#376 (An Amiga party on the travel grid still cannot be
-    converted to the C64 or DOS, because the reader refuses one)` asks for:
+    """The headline the work on converting an Amiga party on the travel grid to the C64 or DOS asks for:
     a party read off the Amiga engine's own outdoor save, written into a C64
     `SAVEDGAME0`, and read back through `goldbox.world_state.from_c64` --
     the two ports agreeing rather than one number compared with itself, the

@@ -525,8 +525,7 @@ def test_a_session_will_not_stage_outside_the_scratch_directory(tmp_path):
     slot.release()
 
 
-#: #544 (`Session.stage()` refused a detached worktree whose scratch
-#: directory was symlinked to the shared one) -- distinct from `posix_only`
+#: The work on `Session.stage()` with a detached worktree whose scratch directory was symlinked to the shared one -- distinct from `posix_only`
 #: above, which is about `flock`. These three build a real symlink, which
 #: Windows handles differently (and often needs elevated privileges for), so
 #: they skip there rather than for any reason to do with the lease.

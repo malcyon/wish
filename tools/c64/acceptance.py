@@ -202,8 +202,7 @@ READY_SPECIMEN_ISSUE = (
     "after a save step, because it reads from a disk-transfer staging address "
     "a preceding save's disk swaps leave stale)")
 POOL_SPECIMEN_ISSUE = (
-    "#700 (Converting a Pool of Radiance C64 party holding a camp-cast "
-    "Animate Dead zombie needs more than fixing the refusal that blocks it)")
+    "the work on converting a Pool of Radiance C64 party holding a camp-cast Animate Dead zombie")
 TEMPLE_BRUTUS_SHA256 = (
     "7834be122f8a30c03f029d96b8ba39d0961545b998837e089e965e06a20edbe9")
 #: The registered specimen of a DOS-raised WISHFTR converted by Wish and

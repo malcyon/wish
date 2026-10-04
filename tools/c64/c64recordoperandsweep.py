@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Count the absolute-mode 6502 operands that land in a window of the C64
-character record, per file, across one title's disks -- a measurement for `#192
-(Convert a Curse of the Azure Bonds DOS save into a C64 one, which the importer
-refuses today)`.
+character record, per file, across one title's disks -- a measurement for the work
+on converting a Curse of the Azure Bonds DOS save into a C64 one.
 
     .venv/bin/python tools/c64/c64recordoperandsweep.py curse 0x100 0x140
 

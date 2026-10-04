@@ -1174,9 +1174,7 @@ POR_POS_X, POR_POS_Y, POR_POS_FACING = 12800, 12801, 12802
 POR_WALL_BYTE = 12803
 #: What the engine leaves in :data:`POR_WALL_BYTE` **outdoors**, where there
 #: is no wall in front of anybody: 14, in both engine-written outdoor Amiga
-#: saved games (`#321 (An Amiga Pool of Radiance conversion refuses a party
-#: standing on the travel grid, because no outdoor Amiga saved game has ever
-#: been read)`, 2026-09-07).  It did not move across an overland step that
+#: saved games (the work on converting an Amiga Pool of Radiance party standing on the travel grid, 2026-09-07).  It did not move across an overland step that
 #: changed the square and the facing, and it is the same 14 DOS's own
 #: engine-written outdoor saves hold at `goldbox.dos_savegame.SCRATCH_BYTE`.
 POR_WALL_OUTDOORS = 14
@@ -1193,9 +1191,7 @@ POR_SQUARE_PAD = (12805, 12810)
 #: Amiga game itself made on the travel grid hold **3**, which is what DOS
 #: holds at `goldbox.dos_savegame.VIEW_MODE_BYTE` in 10 of 10 outdoor
 #: specimens.  So the two ports agree after all, and 2 belongs to a mode
-#: nothing here has seen -- `#321 (An Amiga Pool of Radiance conversion
-#: refuses a party standing on the travel grid, because no outdoor Amiga
-#: saved game has ever been read)`, 2026-09-07.
+#: nothing here has seen -- the work on converting an Amiga Pool of Radiance party standing on the travel grid, 2026-09-07.
 POR_VIEW_TYPE = 12810
 POR_VIEW_TYPE_3D = 1
 POR_VIEW_TYPE_OVERLAND = 3
@@ -1280,9 +1276,7 @@ def por_state_from_amiga(savgam: bytes, source: str = "") -> world_state.WorldSt
 #: harbour master, sailed to the west landing and camped and saved there
 #: twice, one overland step apart, in Amiga Pool of Radiance under WinUAE;
 #: `tools/amiga/porboat.py` staged the eight bytes that put it in front of the
-#: harbour master and the engine wrote everything else.  `#321 (An Amiga Pool
-#: of Radiance conversion refuses a party standing on the travel grid,
-#: because no outdoor Amiga saved game has ever been read)` and
+#: harbour master and the engine wrote everything else.  The work on converting an Amiga Pool of Radiance party standing on the travel grid and
 #: `docs/196-the-amiga-saved-game-built.md` have the numbers.
 #:
 #: What an outdoor container needs beyond those two, all of it now written by
@@ -1312,9 +1306,7 @@ def por_conversion_reason(area: int) -> "str | None":
     The mirror of `goldbox.dos_codec.conversion_reason`.  An area with no row has no
     disk number and no script.  **The three travel windows are no longer
     blocked**: areas 25, 26 and 27 have blocks in `ecl.dax` and the two bytes
-    that stopped this were measured (`#321 (An Amiga Pool of Radiance
-    conversion refuses a party standing on the travel grid, because no
-    outdoor Amiga saved game has ever been read)`).  Whether `ecl.dax` holds
+    that stopped this were measured (the work on converting an Amiga Pool of Radiance party standing on the travel grid).  Whether `ecl.dax` holds
     the block is checked by :func:`por_area_script`, which is the only place
     that can see the player's own disk.
     """

@@ -20,8 +20,7 @@ without it -- the DOS → C64 direction also needs the player's own
 The Curse of the Azure Bonds transfer test reads
 `WISH-SPEC-curse-131-four-items-readied`, the DOS session
 `tests/convert/test_curseconvert.py`'s `_dos_save()` already reads
-for `#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which
-the importer refuses today)` -- the FR_ARCHIVES default Curse save this
+for the work on converting a Curse of the Azure Bonds DOS save into a C64 one -- the FR_ARCHIVES default Curse save this
 project has access to stands in area 0, which is not a mapped Curse area
 (`goldbox/areas.py`'s `AREAS_CURSE` starts at `0x01`), so it cannot stand in
 for a played party the way Pool of Radiance's does. `icon`/`animate` are
@@ -297,8 +296,7 @@ def test_directions_holds_eighteen_rows_derived_from_four_library_tuples():
 
 def test_destinations_for_a_curse_source_answers_the_curse_c64_direction():
     """Curse of the Azure Bonds joined `goldbox.dos_codec.CONVERTS` overnight
-    (`#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one,
-    which the importer refuses today)`), and this registry derives its row
+    (the work on converting a Curse of the Azure Bonds DOS save into a C64 one), and this registry derives its row
     from `CONVERTS` rather than listing it -- so it is offered with no edit
     to `editor/convert.py` beyond the derivation itself."""
     curse_source = convert.Source(port="dos",
@@ -315,8 +313,7 @@ def test_destinations_for_an_unregistered_source_is_empty(tmp_path):
     offered and not blocked.
 
     **This used to use Secret of the Silver Blades**, which was read with no
-    C64 writer until `#193 (Convert a Secret of the Silver Blades DOS save
-    into a C64 one, which the importer refuses today)` built one and it
+    C64 writer until the work on converting a Secret of the Silver Blades DOS save into a C64 one built one and it
     joined `goldbox.dos_codec.CONVERTS` on 2026-09-05. Pools of Darkness is the
     permanent example: `goldbox/c64_port.py` has no entry for it at all, because
     there is no C64 port to convert to, so no writer will ever appear.
@@ -388,8 +385,7 @@ def test_a_converts_entry_missing_its_name_fails_at_construction():
 
     The deltas object is built here rather than named from `dos_port`, because
     every title that has one is now in `DOS_TO_C64_NAMES` -- Silver Blades
-    joined on 2026-09-05 with `#193 (Convert a Secret of the Silver Blades
-    DOS save into a C64 one, which the importer refuses today)`. Copying a
+    joined on 2026-09-05 with the work on converting a Secret of the Silver Blades DOS save into a C64 one. Copying a
     real deltas under a key nothing names is what leaves this test asserting
     the same thing it always did. Champions of Krynn is the key to borrow:
     `goldbox/c64_port.py` knows it, so `c64_port.by_key` succeeds and the failure
@@ -532,9 +528,7 @@ def test_dos_to_c64_direction_is_the_transfer_test(game_files, tmp_path):
 def test_curse_dos_to_c64_direction_is_the_transfer_test(tmp_path):
     """The registry's derived Curse row writes the same bytes a direct call
     writes, calling `goldbox.dos_codec.new_save` and `goldbox.dos_codec.save_disk`
-    directly with `game=CURSE_OF_THE_AZURE_BONDS` -- so `#192 (Convert a
-    Curse of the Azure Bonds DOS save into a C64 one, which the importer
-    refuses today)`'s VICE proof stands for this path too. This is the
+    directly with `game=CURSE_OF_THE_AZURE_BONDS` -- so the work on converting a Curse of the Azure Bonds DOS save into a C64 one's VICE proof stands for this path too. This is the
     check `#52`'s plan asks for: `destinations_for` on a Curse folder
     answers one direction whose `destination_game` is Curse.
 
@@ -736,9 +730,7 @@ def test_the_dialog_wires_the_sources_own_combat_icon_into_the_conversion(
 
 
 # ---------------------------------------------------------------------------
-# `#482 (With no game disks for the source title, a C64 party converted to
-# DOS or the Amiga silently arrives with no combat figures, though a C64
-# destination refuses)`: the source's own disks are needed for the combat
+# The work on converting a C64 party to DOS or the Amiga when the source title has no game disks: the source's own disks are needed for the combat
 # icon exactly the way a C64 destination's already are, and a missing set
 # blocks the same way -- rather than converting with `icon_parts=None` and
 # every figure silently the game's own default.
@@ -1008,9 +1000,7 @@ def _some_disks(_game):
     no icon table.
 
     Building one would mean reading a real disk, and no test here needs it:
-    `#482 (With no game disks for the source title, a C64 party converted to
-    DOS or the Amiga silently arrives with no combat figures, though a C64
-    destination refuses)`'s guard checks only that this answers something,
+    The guard from the work on converting a C64 party to DOS or the Amiga when the source title has no game disks checks only that this answers something,
     and the callers below test the write path rather than the combat icon,
     which `#422 (A C64 party converted to an Amiga save disk arrives with no
     combat figure at all, because C64ToAmiga never recognises it)` and
@@ -2435,9 +2425,7 @@ def test_the_dialog_is_blocked_by_the_players_sentence_and_not_the_exception(
         dialog.close()
 
 
-#: The two developer sentences `#195 (The import pane shows a player a
-#: memory address when the conversion refuses for any reason but the wrong
-#: title)` names as confirmed reachable from `rehearse` -> `dos_codec.new_save`,
+#: The two developer sentences the work on the import pane showing a player a memory address names as confirmed reachable from `rehearse` -> `dos_codec.new_save`,
 #: quoted from `goldbox/dos_codec.py:new_save` and
 #: `goldbox/dos_codec.py:apply_file_cache` so the test forces the real
 #: wording rather than a guess at it.
@@ -2761,9 +2749,7 @@ def _outdoor_amiga_disk(tmp_path) -> pathlib.Path:
     Slot A is the shipped save staged next to the harbour master; slots B
     and C are the first two saved games the Amiga engine itself ever wrote
     on the travel grid, `tests/convert/test_amigatoc64.py`'s `outdoor_disk` fixture
-    and `#321 (An Amiga Pool of Radiance conversion refuses a party standing
-    on the travel grid, because no outdoor Amiga saved game has ever been
-    read)`'s run: world `(7, 29)` east at 05:53 for B, `(7, 28)` north at
+    and the work on converting an Amiga Pool of Radiance party standing on the travel grid's run: world `(7, 29)` east at 05:53 for B, `(7, 28)` north at
     17:53 for C, both area 26.
     """
     from gamedata import specimen

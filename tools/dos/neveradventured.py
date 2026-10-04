@@ -6,8 +6,7 @@ A Gold Box party can be saved from the party-formation menu, before
 `REMOVE CHARACTER FROM PARTY` and `BEGIN ADVENTURING` to any party with a
 character in it, on DOS and on the C64 alike.  Such a save carries the
 initialiser's world state rather than a real one, and
-`#301 (A DOS Curse save standing in area 0 is refused by the import, because
-no row of the area table names area 0)` is what happens when the import meets
+The work on a DOS Curse save standing in area 0, which no row of the area table names, is what happens when the import meets
 one.
 
 **The area word is 0 in such a save on all three titles, and that is not the

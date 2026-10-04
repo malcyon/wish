@@ -1253,8 +1253,7 @@ def test_a_title_with_no_area_table_has_no_tab_and_is_never_offered_another_titl
     `docs/138-multiple-games.md` §7 task 1.
 
     Champions of Krynn stands in here -- Curse of the Azure Bonds had a table
-    built for it by `#192 (Convert a Curse of the Azure Bonds DOS save into a
-    C64 one, which the importer refuses today)` step 0b, the way Silver
+    built for it by the work on converting a Curse of the Azure Bonds DOS save into a C64 one step 0b, the way Silver
     Blades did under `#20 (Build an area table for Silver Blades)`.
     """
     nowhere(tmp_path, monkeypatch)

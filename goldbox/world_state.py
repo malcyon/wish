@@ -278,9 +278,7 @@ def from_c64(save0: bytes, game=None, source: str = "") -> WorldState:
     flag window, and reads an outdoor party rather than blocking one.  **The
     wrapper blocks nothing either**, as it did until 2026-09-07: the two
     bytes an outdoor Amiga saved game holds were measured that day and
-    `#321 (An Amiga Pool of Radiance conversion refuses a party standing on
-    the travel grid, because no outdoor Amiga saved game has ever been
-    read)` closed.
+    the work on converting an Amiga Pool of Radiance party standing on the travel grid closed.
 
     `set_out` is false only for a Curse or Silver Blades save whose area is
     the raw 0 no row of either title's area table names -- the party menu's
@@ -373,23 +371,18 @@ def from_amiga(savgam: bytes, source: str = "") -> WorldState:
     Generalises `goldbox.amiga_por.por_state_from_amiga`, which is now a
     one-line wrapper that checks the file length and nothing else -- it
     blocked an outdoor save until 2026-09-07, when the two bytes one holds
-    were measured and `#321 (An Amiga Pool of Radiance conversion refuses a
-    party standing on the travel grid, because no outdoor Amiga saved game
-    has ever been read)` closed.  There is no "has this party
+    were measured and the work on converting an Amiga Pool of Radiance party standing on the travel grid closed.  There is no "has this party
     set out" question read off an Amiga file either -- every Amiga save
     read is a party in the world -- so `set_out` is always true, as on the
     C64 side.
 
     **`geo` is not the raw file word when the party is outdoors.**  Two
     engine-written outdoor Amiga saves hold 0 at the word `_resident_geo`
-    reads indoors (`#321 (An Amiga Pool of Radiance conversion refuses a
-    party standing on the travel grid, because no outdoor Amiga saved game
-    has ever been read)`), and `_resolve_dos_place` already knows the same
+    reads indoors (the work on converting an Amiga Pool of Radiance party standing on the travel grid), and `_resolve_dos_place` already knows the same
     is true of a DOS source and substitutes the area table's own `sqrdata`
     number rather than trust it.  Reading the raw 0 through here instead
     writes a C64 loaded-files cache with no `SQRDATA` slot filled in --
-    `#376 (An Amiga party on the travel grid still cannot be converted to
-    the C64 or DOS, because the reader refuses one)`: the game accepted the
+    The work on converting an Amiga party on the travel grid to the C64 or DOS: the game accepted the
     disk, drew the roster, and never reached a world to show, and
     `p190/C64OUT1.D64` (scratch, deleted) -- the engine's own outdoor resave from
     `#190 (A C64 party standing on the travel grid cannot be written into a

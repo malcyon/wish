@@ -246,9 +246,7 @@ class WrongTitleError(DosRecordError):
     Reading is per title and works for all four; **converting to the C64 is
     only for titles in `CONVERTS`**, each pair whose two ports have been
     measured against each other and proven in the running game -- Pool of
-    Radiance, and Curse of the Azure Bonds since `#192 (Convert a Curse of
-    the Azure Bonds DOS save into a C64 one, which the importer refuses
-    today)`.  Raising here is the difference between "not yet" and a
+    Radiance, and Curse of the Azure Bonds since the work on converting a Curse of the Azure Bonds DOS save into a C64 one.  Raising here is the difference between "not yet" and a
     conversion that silently reads the wrong bytes.
 
     The message carries the developer's reason, including the issue number,
@@ -2680,8 +2678,7 @@ def portrait_tables(game: str | pathlib.Path | None
 
 #: The DOS deltas :func:`to_neutral` will read into a neutral character, and
 #: therefore the titles the import converts.  **Curse of the Azure Bonds
-#: joined this list as step 4 of `#192 (Convert a Curse of the Azure Bonds
-#: DOS save into a C64 one, which the importer refuses today)`**, after step 3
+#: joined this list as step 4 of the work on converting a Curse of the Azure Bonds DOS save into a C64 one**, after step 3
 #: loaded a converted Curse save in the running game and read the sheet: six
 #: characters matched their DOS save on race, sex, age, alignment, class, all
 #: seven abilities, level, experience, HP, AC, THAC0, movement and money, the
@@ -7492,8 +7489,7 @@ UNSUPPORTED_LOCATION = "Saves from this location are not supported."
 
 #: The one sentence a player reads when a save made before the party set out
 #: is converted to the start of the story.  Donald's wording, approved
-#: 2026-09-05 on `#301 (A DOS Curse save standing in area 0 is refused by
-#: the import, because no row of the area table names area 0)`, chosen over
+#: 2026-09-05 on the work on a DOS Curse save standing in area 0, which no row of the area table names, chosen over
 #: saying nothing so that a player who expected to be somewhere else is told
 #: why.  `C64SaveReport.messages` carries it.
 NOT_SET_OUT = ("Your party had not set out yet, so it starts at the "
@@ -7536,9 +7532,7 @@ def never_adventured(savgam: bytes,
     a real script, which thirteen containers on this machine stand in with
     the clock running.  A rule keyed on the word would move every one of
     them to the arrival square and reset its clock
-    (`#326 (A Pool of Radiance save made before the party began
-    adventuring is refused, because the initialiser left $49E6 at 0 and New
-    Phlan is indoors)`).
+    (the work on a Pool of Radiance save made before the party began adventuring).
 
     What separates the two states is the container itself, two ways that
     agree on all 107 of 114 distinct containers where both can be taken
@@ -7569,9 +7563,7 @@ def never_adventured(savgam: bytes,
 def _start_of_the_story(title: str) -> "tuple[areas.Start, areas.Area]":
     """Where a party of this title that has not set out is converted to.
 
-    Donald's decision, 2026-09-05 on `#301 (A DOS Curse save standing in
-    area 0 is refused by the import, because no row of the area table names
-    area 0)`: such a party is converted to the start of the first area, which
+    Donald's decision, 2026-09-05 on the work on a DOS Curse save standing in area 0, which no row of the area table names: such a party is converted to the start of the first area, which
     is what the DOS engine itself does with the same save on
     `BEGIN ADVENTURING`.  That is the place `world_state.from_dos` reads for
     every title; a C64 destination writes it for Pool of Radiance only, and

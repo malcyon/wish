@@ -658,8 +658,7 @@ def test_a_session_of_another_title_is_offered_nothing_and_told_why(app):
     back to that list is the one answer that corrupts.
 
     Champions of Krynn stands in for "a title with no table" here -- Curse of
-    the Azure Bonds moved out of this role when `#192 (Convert a Curse of the
-    Azure Bonds DOS save into a C64 one, which the importer refuses today)`
+    the Azure Bonds moved out of this role when the work on converting a Curse of the Azure Bonds DOS save into a C64 one
     step 0b built its own twenty-five rows, the way Silver Blades moved out of
     it under `#20 (Build an area table for Silver Blades)`.
     """
@@ -1226,8 +1225,7 @@ def test_the_level_up_button_is_not_offered_in_a_title_we_would_block(app):
                    title="Curse of the Azure Bonds"))
     assert curse.roster.levelling
     # Fast Travel and Level Up used to be blocked on separate grounds -- Curse
-    # got its own area table under `#192 (Convert a Curse of the Azure Bonds
-    # DOS save into a C64 one, which the importer refuses today)` step 0b,
+    # got its own area table under the work on converting a Curse of the Azure Bonds DOS save into a C64 one step 0b,
     # before its trainer was measured -- and both are offered now.
     assert curse.fasttravel_bar.has_areas
 

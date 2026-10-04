@@ -4072,8 +4072,7 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
             "the C64's three packed bytes @0x0EE, cleric high nibble and "
             "magic-user low", grade("spells_castable"))
 
-    # Both fields arrived with #192 (Convert a Curse of the Azure Bonds DOS
-    # save into a C64 one, which the importer refuses today)'s container work
+    # Both fields arrived with the work on converting a Curse of the Azure Bonds DOS save into a C64 one's container work
     # and `write()` takes both, so the reader has to supply them or a record
     # cannot survive its own round trip.  Neither is stored in every title:
     # `abilities_second` is Curse's and Silver Blades' second array, and

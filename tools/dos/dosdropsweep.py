@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Does any record on this machine set a field the conversion cannot convert?
 
-`#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which the
-importer refuses today)` step 0c is the ticket. `.claude/rules/conversions.md`
+The work on converting a Curse of the Azure Bonds DOS save into a C64 one step 0c is the ticket. `.claude/rules/conversions.md`
 says every field is converted or is on a short list with a tested reason -- so
 before writing the conversion, somebody has to say which of Curse's extra
 fields any record on this machine actually uses. A field nothing sets still

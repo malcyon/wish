@@ -60,8 +60,7 @@ own comment carries what does not carry over. Twenty of its twenty-two rows
 carry a name read out of the title's own scripts; `$04` and `$11` are the
 opening scene and the opening vision, name no place, and are unnamed.
 
-`AREAS_CURSE` is the third, measured for `#192 (Convert a Curse of the Azure
-Bonds DOS save into a C64 one, which the importer refuses today)` step 0b by
+`AREAS_CURSE` is the third, measured for the work on converting a Curse of the Azure Bonds DOS save into a C64 one step 0b by
 the same tool. Fourteen of its twenty-five rows carry a derived arrival
 square (`#15 (Fast Travel for more than one Gold Box title)`), PROBABLE and
 never better -- see the table's own comment. Twenty-four of the twenty-five
@@ -649,8 +648,7 @@ def _c(id: int, disk: int, geos: tuple[str, ...],
 #: Curse of the Azure Bonds: twenty-five scripts, on six sides
 #: (`CURSE_A.D64`-`CURSE_F.D64`), `ECL64`/`ECL65` excluded the same way
 #: Silver Blades excludes its two -- they carry no `LOADFILES` and are not
-#: places.  Measured for `#192 (Convert a Curse of the Azure Bonds DOS save
-#: into a C64 one, which the importer refuses today)` step 0b by
+#: places.  Measured for the work on converting a Curse of the Azure Bonds DOS save into a C64 one step 0b by
 #: `tools/areas/areatable.py curse-of-the-azure-bonds`, which walks every script's
 #: control flow from its five entry `GOTO`s and reads the `LOADFILES`
 #: operands, corroborated by the loader's own disk byte `$7F12` agreeing
@@ -719,8 +717,7 @@ def _c(id: int, disk: int, geos: tuple[str, ...],
 #: would move `goldbox.dos_codec`'s rejection from `area_in` to `_resident_geo`
 #: rather than remove it, and a C64 save naming area 0 sends the loader
 #: after `GEO00` -- measured, `$B7`/`$BB` at the disk prompt -- which it can
-#: never find.  `#301 (A DOS Curse save standing in area 0 is refused by the
-#: import, because no row of the area table names area 0)` and
+#: never find.  The work on a DOS Curse save standing in area 0, which no row of the area table names, and
 #: `docs/185-a-party-that-has-not-set-out.md` have the measurements.
 AREAS_CURSE: tuple[Area, ...] = (
     _c(0x01, 2, ("GEO01",), Arrival(7, 13, 1),
@@ -815,8 +812,7 @@ class Start:
 #: container; this owns the area.
 #:
 #: Curse of the Azure Bonds is CONFIRMED in the running DOS game
-#: (`#301 (A DOS Curse save standing in area 0 is refused by the import,
-#: because no row of the area table names area 0)`): one boot, a character
+#: (the work on a DOS Curse save standing in area 0, which no row of the area table names): one boot, a character
 #: created, `SAVE CURRENT GAME` at the party menu, then `BEGIN ADVENTURING`
 #: with the party standing still, and the second save reads area 1, map 1,
 #: `7,13` facing east, clock 00:00, with the status line over
@@ -828,9 +824,7 @@ class Start:
 #: driven fast travel.  Two independent readings of the same square.
 #:
 #: Secret of the Silver Blades is CONFIRMED the same way
-#: (`#535 (A Secret of the Silver Blades save made before the party set out
-#: is refused by Convert, because nobody has measured where that title
-#: begins)`): one boot, a character created, `SAVE CURRENT GAME` to slot C at
+#: (the work on a Secret of the Silver Blades save made before the party set out): one boot, a character created, `SAVE CURRENT GAME` to slot C at
 #: the party menu, then `BEGIN ADVENTURING` through the arrival narrative with
 #: the party standing still, and slot D reads area `$10` (16), square `3,3`
 #: facing south, clock 00:00.  Slot C matches the never-adventured pattern
@@ -910,9 +904,7 @@ def areas_for_title(title: str | None) -> tuple[Area, ...]:
     driven was what the PROBABLE grade on the whole table was warning about,
     and that is what stopped being true.
 
-    **Curse is offered too, now that its table exists.** `#192 (Convert a
-    Curse of the Azure Bonds DOS save into a C64 one, which the importer
-    refuses today)` step 0b built `AREAS_CURSE` off the bytecode, and
+    **Curse is offered too, now that its table exists.** The work on converting a Curse of the Azure Bonds DOS save into a C64 one step 0b built `AREAS_CURSE` off the bytecode, and
     `automap/fasttravel.py`'s addresses for it were already CONFIRMED by four
     driven warps (`#19`) before this table existed -- so both of
     `automap.actions.area_rows`'s gates are open. **Unlike Silver Blades, no
