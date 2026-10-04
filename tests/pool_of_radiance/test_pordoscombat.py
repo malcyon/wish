@@ -285,6 +285,12 @@ _VIEWED_AFTER_A_CONVERSION = {
     ("por-dos/WISH-SPEC-c64todos-pool-52-walk-resave", "CHRDATD1.SAV"),
 }
 
+#: A record whose Strength expired after the last rebuild, leaving stale
+#: combat bytes: THRENDER GRONE.
+_STRENGTH_EXPIRED_AFTER_REBUILD = {
+    ("por-dos/WISH-SPEC-pool-8-strength-twice-and-gauntlets-dos-engine-saves", "CHRDATF1.SAV"),
+}
+
 
 _SPEC_PREFIX = "WISH-SPEC-"
 #: A specimen named by its directory (`WISH-SPEC-x`) or by its registry name
@@ -374,6 +380,8 @@ def _rebuilt_records():
         rec = char.to_bytes()
         if (specimen_dir in excluded
                 and (specimen_dir, name) not in _VIEWED_AFTER_A_CONVERSION):
+            continue
+        if (specimen_dir, name) in _STRENGTH_EXPIRED_AFTER_REBUILD:
             continue
         if _weight_sum(rec, _items_of(char)) != int.from_bytes(
                 rec[TABLE["encumbrance"].offset:TABLE["encumbrance"].end],
