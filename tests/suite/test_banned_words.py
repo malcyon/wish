@@ -46,10 +46,7 @@ EXCLUDED = (WORDS, "tests/suite/test_banned_words.py", "LICENSE",
 #: Python's own name for a socket error.
 TOKEN_EXEMPT = ("ConnectionRefusedError",)
 #: Lines a ban cannot reach, as (path, text of the line); none now.
-ALLOWED_LINES: tuple[tuple[str, str], ...] = (
-    # Reads reports stored before the key was renamed; they live outside the repository and keep the old spelling.
-    ("tools/amiga/acceptance.py", '_STORED_STOPPED_KEY = "refused"'),
-)
+ALLOWED_LINES: tuple[tuple[str, str], ...] = ()
 
 # Most matches each file may carry until the sweep removes them (path: count).
 LIMITS_EVERY: dict[str, int] = {

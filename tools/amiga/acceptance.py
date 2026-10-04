@@ -179,15 +179,6 @@ PUBLISHED_SOURCES_BY_ISSUE = {
 }
 
 
-# Reports stored before the key was renamed still carry the old spelling; this reads that stored evidence.
-_STORED_STOPPED_KEY = "refused"
-
-
-def _stopped(outcome: Mapping[str, Any]) -> Any:
-    """The Save As stop recorded in `outcome`, under its current or its stored key."""
-    return outcome.get("stopped") or outcome.get(_STORED_STOPPED_KEY)
-
-
 def _source_pins(issue: str, name: str, port: str) -> frozenset:
     """The allowed source hashes for a title and port; a bare string counts as a set of one."""
     pins = PUBLISHED_SOURCES_BY_ISSUE[issue].get((name, port), frozenset())
@@ -2733,7 +2724,7 @@ def _published_manifest(path: pathlib.Path, name: str) -> tuple[dict, AmigaTitle
             } or
             report.get("save_as", {}).get("slot") != letter or
             report.get("save_as", {}).get("to") != "amiga" or
-            _stopped(report.get("save_as", {})) or
+            report.get("save_as", {}).get("stopped") or
             report.get("save_as", {}).get("losses") or
             report.get("save_as", {}).get("dropped") or
             report.get("written_sha256") != {"POOLSAVE.ADF": manifest["registered"]["published"]["sha256"]}):
@@ -2791,7 +2782,7 @@ def prepare_published(name: str, run_id: str, report_path: pathlib.Path,
     report_bytes = report_path.read_bytes()
     report = json.loads(report_bytes)
     outcome = report.get("save_as", {})
-    if (_stopped(outcome) or outcome.get("losses") or outcome.get("dropped") or
+    if (outcome.get("stopped") or outcome.get("losses") or outcome.get("dropped") or
             report.get("written") != outcome.get("written") or
             len(report.get("written", [])) != 1 or
             outcome.get("to") != "amiga"):
@@ -3009,7 +3000,7 @@ def prepare_published_disk_three(run_id: str, report_path: pathlib.Path, issue: 
     report_bytes = report_path.read_bytes()
     report = json.loads(report_bytes)
     outcome = report.get("save_as", {})
-    if (_stopped(outcome) or outcome.get("losses") or outcome.get("dropped") or
+    if (outcome.get("stopped") or outcome.get("losses") or outcome.get("dropped") or
             report.get("written") != outcome.get("written") or
             len(report.get("written", [])) != 1 or outcome.get("to") != "amiga"):
         raise RouteError("Save As did not publish one lossless Amiga image")
