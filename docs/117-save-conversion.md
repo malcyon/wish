@@ -2288,6 +2288,11 @@ graph LR
   savegame --> d64
   savegame --> encoding
   savegame --> record
+  spell_names -.->|deferred| amiga_adf
+  spell_names --> amiga_hunks
+  spell_names --> exepack
+  spell_names --> spells
+  spell_names --> titles
   spells --> d64
   spells --> levels
   strength --> layout

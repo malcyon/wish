@@ -46,6 +46,7 @@ Tests for the character record and the tables and rules around it: field layouts
 | `test_ringoffire.py` | Checks the two Ring of Fire Resistance records the C64 ships and which one Wish hands out. |
 | `test_second_game.py` | Checks that Curse of the Azure Bonds reads through Pool of Radiance's decoders, over both games' records, roster block, maps and item tables. |
 | `test_silverslots.py` | Checks that Secret of the Silver Blades' spell-slot rows in `goldbox/spells.py` match the game's own `ECL65` and reach a converted caster's DOS and Amiga records. |
+| `test_spell_names.py` | Checks `goldbox/spell_names.py` and `goldbox/exepack.py` on synthetic executables, then reads every port's spell names off the player's disks and checks that each port names the same spell under the same id. |
 | `test_spellbooksweep.py` | Checks the geometry and the three engine sites behind `tools/records/spellbooksweep.py`'s answer on whether a character can hold Pool of Radiance's spell id 56. |
 | `test_strength.py` | Checks that `goldbox/strength.py` sums party strength term by term the way `DUNGEON $1BE8` does. |
 | `test_thac0sweep.py` | Checks that each DOS title's THAC0 rows start with a real THAC0 rather than a zero sentinel, that the recompute's own rule therefore limits every stored byte to at least 20, and that every DOS record on this machine reproduces from that rule with each exception named. |

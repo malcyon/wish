@@ -10,60 +10,22 @@ Reading the file as if it were the image works for the first few hundred
 bytes and then drifts, which is why the Turbo Pascal overlay descriptors in
 it looked unaligned and the data segment could not be found by file offset.
 
-This writes the expanded image with **no relocation applied**, so a `seg:off`
-the code uses is `seg * 16 + off` into the output -- the same numbering
-`GAME.OVR`'s far calls and the overlay descriptors carry.  The format is the
-documented one: commands read backwards from the end of the packed data,
-`0xB0`/`0xB1` fill a byte, `0xB2`/`0xB3` copy a run, bit 0 marks the last.
+This writes the image `goldbox.exepack.unpack` expands, with **no relocation
+applied**, so a `seg:off` the code uses is `seg * 16 + off` into the output.
 
 Nothing here is game data; the output goes where you name it and stays out of the repository.
 """
 
 from __future__ import annotations
 
-import struct
+import pathlib
 import sys
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
-def unpack(exe: bytes) -> tuple[bytes, dict]:
-    """The expanded image and the EXEPACK header's fields."""
-    header_paras = struct.unpack_from("<H", exe, 8)[0]
-    cs = struct.unpack_from("<H", exe, 0x16)[0]
-    base = header_paras * 16
-    stub = base + cs * 16
-    (real_ip, real_cs, _mem_start, _exepack_size, real_sp, real_ss,
-     dest_len, _skip_len, sig) = struct.unpack_from("<HHHHHHHH2s", exe, stub)
-    if sig != b"RB":
-        raise ValueError(f"not an EXEPACK executable: signature {sig!r}")
+from goldbox.exepack import unpack  # noqa: E402
 
-    packed = exe[base:stub]
-    p = len(packed)
-    while p > 0 and packed[p - 1] == 0xFF:
-        p -= 1
-    out = bytearray(dest_len * 16)
-    dst = len(out)
-    while True:
-        cmd = packed[p - 1]
-        p -= 1
-        length = packed[p - 2] | (packed[p - 1] << 8)
-        p -= 2
-        if cmd & 0xFE == 0xB0:
-            fill = packed[p - 1]
-            p -= 1
-            out[dst - length:dst] = bytes((fill,)) * length
-        elif cmd & 0xFE == 0xB2:
-            out[dst - length:dst] = packed[p - length:p]
-            p -= length
-        else:
-            raise ValueError(f"bad EXEPACK command {cmd:02x} at {p}")
-        dst -= length
-        if cmd & 1:
-            break
-    # Whatever lies below the last command is stored uncompressed.
-    out[:dst] = packed[:dst]
-    info = dict(real_cs=real_cs, real_ip=real_ip, real_ss=real_ss, real_sp=real_sp,
-                dest_len=dest_len, image=len(out), plain_prefix=dst)
-    return bytes(out), info
+__all__ = ["unpack", "main"]
 
 
 def main(argv: list[str] | None = None) -> int:

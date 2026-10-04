@@ -28,7 +28,7 @@ One row per write-up, saying what it establishes; a path beginning `cited/<name>
 | [70-driving-the-game.md](70-driving-the-game.md) | How to automate the game under VICE, what works (monitor watchpoints, character creation, disk swapping) and what does not |
 | [80-fields-wanted.md](80-fields-wanted.md) | The target field list for the editor, and what is known about each |
 | [85-item-tables.md](85-item-tables.md) | **Generated** by `tools/generate/genitems.py`: the word table and item-type table, read off a game disk |
-| [86-spell-table.md](86-spell-table.md) | **Generated** by `tools/generate/genspells.py`: spell id to name table, read off a game disk |
+| [86-spell-table.md](86-spell-table.md) | **Generated** by `tools/generate/genspells.py`: spell id to name table, read off a game disk, and where the C64, DOS and Amiga builds of each title keep their names |
 | [87-item-templates.md](87-item-templates.md) | **Generated** by `tools/generate/gentemplates.py`: every item on the game disks, for use as `template:` |
 | [88-map-files.md](88-map-files.md) | **Generated** by `tools/generate/genmaps.py`: the `GEO` map format and an inventory of all 29 files |
 | [89-level-tables.md](89-level-tables.md) | **Generated**: experience thresholds, THAC0, hit dice and spells per class |
