@@ -2362,10 +2362,10 @@ def test_curses_slow_poison_magnitude_7f_reads_back_as_the_dos_node():
         effects.Unconverted)
 
 
-@pytest.mark.parametrize("title", [_C, _S])
-def test_a_second_stinking_cloud_node_is_an_inert_c64_row(title):
-    """Curse's and Silver Blades' `(40, L + 16n, 1)` has no C64 writer, and
-    the row's bit-7-clear magnitude keeps its handler from ever running."""
+@pytest.mark.parametrize("title", [_P, _C, _S])
+def test_a_stinking_cloud_caster_node_is_an_inert_c64_row(title):
+    """Every title's `(40, L, L + 16n, 1)` has no C64 writer, and the row's
+    bit-7-clear magnitude keeps its handler from ever running."""
     assert effects.c64_row(title, _RE(40, 574, 0x1A, 1)) == (40, 0x1A)
     assert effects.c64_row(title, _RE(40, 574, 0x9A, 1)) == (40, 0x7A)
     assert isinstance(effects.c64_row(title, _RE(40, 574, 0x1A, 0)),
@@ -2376,11 +2376,6 @@ def test_a_second_stinking_cloud_node_is_an_inert_c64_row(title):
         title, effects.Effect(63, 40, 2, 0x0A, 0x9A), 0), effects.Unconverted)
     for data in range(0, 0x80):
         _round_trip(title, _RE(40, 1, data, 1))
-
-
-def test_pool_still_has_no_rule_for_id_40():
-    assert isinstance(effects.c64_row(_P, _RE(40, 574, 0x1A, 1)),
-                      effects.Unconverted)
 
 
 def test_curses_monster_invisibility_is_the_c64s_own_row():

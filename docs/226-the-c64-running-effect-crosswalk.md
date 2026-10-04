@@ -741,7 +741,7 @@ cloud would. The two duration-0 `(31, 0, FF, 0)` records from handlers 43 and
 ### Charm and Fear keep part of their state in the record
 
 **CONFIRMED from both ports' code.** Charm converts in both directions, and the
-conversion has not been run in the game. The C64 then playing him as a charmed
+Pool conversion has passed in the game. The C64 then playing him as a charmed
 party member is PROBABLE (fight-start placement below; `0x0B8` in `docs/232`).
 A DOS Pool of Radiance charm node, granted or running, whichever side charmed
 whom, on a player character or a companion, writes the C64's shared effect row

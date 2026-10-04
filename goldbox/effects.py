@@ -436,11 +436,11 @@ SLOW_POISON_QUIET_C64 = 0x7F
 LATER_INVISIBLE_ID = 25
 LATER_INVISIBLE_MONSTER = (0xFF, 0)
 
-#: A second Stinking Cloud caster node, `(40, L + 16n, 1)`, Curse and Silver
-#: Blades: DOS's expiry handler clears that caster's cloud squares (Curse
-#: `GAME.OVR:0x10B04`, Silver Blades `0x11D61`). No C64 code writes or asks
-#: for id 40, and its handler slot runs only when magnitude bit 7 is set, so
-#: a row with bit 7 clear ages and is deleted with no effect.
+#: A Stinking Cloud caster node, `(40, L, L + 16n, 1)`: DOS's expiry handler
+#: clears that caster's cloud squares (Pool `GAME.OVR:0xF91E`, Curse
+#: `0x10B04`, Silver Blades `0x11D61`). No C64 code in any of the three titles
+#: writes or asks for id 40, and its handler slot runs only when magnitude
+#: bit 7 is set, so a row with bit 7 clear ages and is deleted with no effect.
 STINKING_CLOUD_CASTER_ID = 40
 _CLOUD_CASTER_INERT = 0x7F
 
@@ -489,6 +489,7 @@ POOL_UNWRITTEN_ROW_IDS = frozenset({13, 51})
 
 _BLADES = "secret-of-the-silver-blades"
 _CURSE = "curse-of-the-azure-bonds"
+_CLOUD_CASTER_TITLES = ("pool-of-radiance", _CURSE, _BLADES)
 
 #: Why a Curse or Silver Blades row of these ids has no DOS rule: no save holds
 #: one, so none is needed. The "no rule yet" opening is the marker
@@ -903,7 +904,7 @@ def _own_rule_row(title_key: str, node: RunningEffect,
             and (node.data, node.flag) == LATER_INVISIBLE_MONSTER):
         return node.id, 0
     if (node.id == STINKING_CLOUD_CASTER_ID
-            and title_key in LATER_CAST_FLAGS):
+            and title_key in _CLOUD_CASTER_TITLES):
         if node.flag != 1:
             return Unconverted("a flag byte other than 1 on a second "
                                "stinking-cloud caster node")
@@ -996,7 +997,7 @@ def _own_rule_node(title_key: str, effect_id: int,
     if effect_id == LATER_INVISIBLE_ID and title_key == _CURSE and m == 0:
         return LATER_INVISIBLE_MONSTER
     if (effect_id == STINKING_CLOUD_CASTER_ID
-            and title_key in LATER_CAST_FLAGS):
+            and title_key in _CLOUD_CASTER_TITLES):
         if m & 0x80:
             return Unconverted("a second stinking-cloud magnitude with bit 7 "
                                "set, which no C64 routine writes")
