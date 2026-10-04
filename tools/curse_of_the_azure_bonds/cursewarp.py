@@ -13,6 +13,7 @@ area of a running Curse.
     tools/curse_of_the_azure_bonds/cursewarp.py --pool 3 --to 0x03 --disk 2 --out DIR
     tools/curse_of_the_azure_bonds/cursewarp.py --pool 3 --probe --out DIR
     tools/curse_of_the_azure_bonds/cursewarp.py --pool 5 --to 0x10 --disk 3 --via-actions --out DIR
+    tools/curse_of_the_azure_bonds/cursewarp.py --to 0x10 --disk 3 --via-actions --save SAVE.D64 --camp-save OUT.D64 --out DIR
 
 `--probe` boots, loads the party, and reports what the machine holds without
 warping -- which is what to run first, because the current area and the
@@ -45,9 +46,11 @@ writes goes to RAM.  Captures go to the `cursewarp` scratch directory by default
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import pathlib
+import subprocess
 import sys
 import time
 
@@ -209,6 +212,54 @@ def walk_proof(sess, addr: Addresses, keys: str = "JIKIKIJI") -> dict:
     out["turned"] = any(s["triple"][2] != out["triple_before"][2]
                         for s in steps)
     sess.leave_move()
+    return out
+
+
+#: The current area and a third byte of the saved-state record, peeked as
+#: they stand so a reader can compare them with the save.  `Addresses.slot`
+#: is the area-cache slot, a different byte.
+AREA_AT, SAVED_PEEK = 0x4BF2, 0x4BC5
+
+
+def _sha256(path) -> str:
+    return hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()
+
+
+def camp_save(sess, addr: Addresses, dest: pathlib.Path,
+              source: str = "") -> dict:
+    """Make the game save the party where it landed, and keep that disk.
+
+    Run before `walk_proof`, whose keys could meet an encounter.  The copy
+    waits for the 1541 to close the file (`copy_closed_disk`) so the image
+    kept is one the game will load.  `ok` is False when the game never
+    finished saving or the copy never closed.
+    """
+    out: dict = {"ok": False}
+    with sess.mon(8) as m:
+        out["peeks"] = {
+            f"{AREA_AT:04X}": m.peek(AREA_AT),
+            f"{addr.indoors:04X}": m.peek(addr.indoors),
+            f"{SAVED_PEEK:04X}": m.peek(SAVED_PEEK),
+            f"{LIVE_X:04X}": list(m.read(LIVE_X, 3)),
+        }
+    if not sess.save_game():
+        out["error"] = "the game did not finish saving"
+        return out
+    try:
+        por.copy_closed_disk(pathlib.Path(sess.save_disk), dest,
+                             attempts=30, backoff=1.0)
+    except Exception as exc:
+        out["error"] = f"the saved disk was not copied: {exc}"
+        return out
+    out["ok"] = True
+    out["source_sha256"] = _sha256(source) if source else None
+    out["saved_sha256"] = _sha256(dest)
+    try:
+        out["commit"] = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True,
+            text=True, check=True).stdout.strip()
+    except Exception:
+        out["commit"] = None
     return out
 
 
@@ -522,6 +573,15 @@ def run(args) -> int:
         after = snapshot(sess, addr)
         after["resident"] = resident_geo(sess, maps)
         after["idle"] = landed
+        saved = None
+        if landed and args.camp_save:
+            saved = camp_save(sess, addr, pathlib.Path(args.camp_save),
+                              source=args.save)
+            (out / "saved.json").write_text(json.dumps(saved, indent=1))
+            print("camp save:", json.dumps(saved), flush=True)
+            if not saved["ok"]:
+                print(f"{saved['error']}; the walk proof runs as evidence "
+                      f"only", flush=True)
         if landed:
             after["walk"] = walk_proof(sess, addr)
             after["resident_after_walk"] = resident_geo(sess, maps)
@@ -535,6 +595,8 @@ def run(args) -> int:
             (out / "after-screen.txt").write_text(after["screen"])
         if before["screen"]:
             (out / "before-screen.txt").write_text(before["screen"])
+        if saved is not None and not saved["ok"]:
+            return 5
         return 0 if landed else 5
     finally:
         if sess is not None:
@@ -564,6 +626,10 @@ def main(argv: list[str]) -> int:
                     help="make the trip with automap.actions.FastTravel "
                          "rather than with this file's own writes, which is "
                          "what a player clicking the button runs")
+    ap.add_argument("--camp-save", default="", metavar="OUT",
+                    help="after landing and before the walk proof, make the "
+                         "game save (CAMP, SAVE, SAVE GAME) and copy the "
+                         "game-written disk to OUT")
     ap.add_argument("--force", action="store_true",
                     help="warp even from the travel grid, which is expected "
                          "to wedge the loader")

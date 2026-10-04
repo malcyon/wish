@@ -226,3 +226,116 @@ def test_enter_world_without_addr_keeps_the_old_unconditional_escape(
     ok = CURSE.enter_world(sess, timeout=40.0)
     assert ok is False
     assert "Escape" in sent
+
+
+# ---- `cursewarp.py --camp-save` ----------------------------------------
+
+import contextlib  # noqa: E402
+import json  # noqa: E402
+import types  # noqa: E402
+
+from goldbox.d64 import D64  # noqa: E402
+from tools.curse_of_the_azure_bonds import cursewarp as WARP  # noqa: E402
+
+
+def disk_bytes(tmp_path):
+    return (tmp_path / "slot.D64").read_bytes()
+
+
+class _SaveMon:
+    def peek(self, at):
+        return 0x10
+
+    def read(self, at, n):
+        return bytes(range(n))
+
+
+def _run_with_fakes(monkeypatch, tmp_path, save_ok=True, camp_save="x"):
+    calls: list[str] = []
+    disk = tmp_path / "slot.D64"
+    D64.blank("GAMEWRITTEN").save(disk)
+    source = tmp_path / "source.D64"
+    source.write_bytes(b"source")
+    dest = tmp_path / "yulash.D64"
+
+    class Sess:
+        save_disk = str(disk)
+
+        def __init__(self, *a, **k):
+            pass
+
+        def boot(self):
+            return True
+
+        def patch_disk_prompt(self):
+            pass
+
+        def settle(self, n):
+            pass
+
+        def screen(self):
+            return None
+
+        @contextlib.contextmanager
+        def mon(self, t):
+            yield _SaveMon()
+
+        def save_game(self):
+            calls.append("save_game")
+            return save_ok
+
+        def terminate(self):
+            pass
+
+        kbd = types.SimpleNamespace(screenshot=lambda p: None)
+
+    addr = types.SimpleNamespace(
+        slot=0x4BF2, indoors=0x4BE6, mode=0x7F11, describe=lambda: "",
+        as_dict=lambda: {})
+    monkeypatch.setattr(WARP, "Addresses", lambda *a: addr)
+    monkeypatch.setattr(WARP, "curse_maps", lambda d: {})
+    monkeypatch.setattr(WARP.por, "claim_slot", lambda *a, **k: types.
+                        SimpleNamespace(n=1, port=1, display=1,
+                                        dir=str(tmp_path)))
+    monkeypatch.setattr(WARP.curserun, "stage", lambda *a: "first")
+    monkeypatch.setattr(WARP.curserun, "CurseSession", Sess)
+    monkeypatch.setattr(WARP, "load_curse_save", lambda s: True)
+    monkeypatch.setattr(WARP, "enter_world", lambda s, a: True)
+    monkeypatch.setattr(WARP, "wait_idle", lambda *a, **k: (True, 0))
+    monkeypatch.setattr(WARP, "resident_geo", lambda *a: {})
+    monkeypatch.setattr(WARP, "snapshot", lambda *a, **k: {
+        "mode": 1, "indoors": 1, "area": 2})
+    monkeypatch.setattr(WARP, "warp", lambda *a: {})
+    monkeypatch.setattr(WARP.por, "INDOORS_AT", 0, raising=False)
+    monkeypatch.setattr(
+        WARP, "walk_proof", lambda *a: calls.append("walk_proof") or {})
+    args = types.SimpleNamespace(
+        out=str(tmp_path / "out"), disks=str(tmp_path), pool=None, save="",
+        probe=False, force=False, geo="", via_actions=False, to=0x10,
+        disk=3, camp_save=str(dest) if camp_save else "")
+    return calls, args, dest
+
+
+def test_camp_save_saves_before_the_walk_proof_and_keeps_the_disk(
+        monkeypatch, tmp_path):
+    calls, args, dest = _run_with_fakes(monkeypatch, tmp_path)
+    assert WARP.run(args) == 0
+    assert calls == ["save_game", "walk_proof"]
+    assert dest.read_bytes() == disk_bytes(tmp_path)
+    saved = json.loads((tmp_path / "out" / "saved.json").read_text())
+    assert saved["ok"] and saved["saved_sha256"]
+    assert saved["peeks"]["4BF2"] == 0x10
+
+
+def test_a_failed_camp_save_exits_5_and_still_walks(monkeypatch, tmp_path):
+    calls, args, dest = _run_with_fakes(monkeypatch, tmp_path, save_ok=False)
+    assert WARP.run(args) == 5
+    assert calls == ["save_game", "walk_proof"]
+    assert not dest.exists()
+
+
+def test_without_camp_save_nothing_is_saved(monkeypatch, tmp_path):
+    calls, args, dest = _run_with_fakes(monkeypatch, tmp_path,
+                                        camp_save=None)
+    assert WARP.run(args) == 0
+    assert calls == ["walk_proof"]
