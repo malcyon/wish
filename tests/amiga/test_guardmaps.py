@@ -169,20 +169,50 @@ def _rules(value):
     return value if isinstance(value, list) else [value]
 
 
-def test_silver_blades_identity_covers_the_line_one_lists_and_sheet_but_not_the_join_grab():
+#: Camp steps over every row the U and C Save As parties' lists reach on lines 1 to 3.
+_UC_STEPS = ('items 1', 'items 2', 'items 3', 'join 1 3', 'join 2 15', 'join 3 2')
+
+
+def _step_states(tokens):
+    from tools.amiga import route_camp
+
+    states = {state for _, state, _ in route_camp.steps_for(tokens, 'ssb')}
+    return states | {route_camp.joined_after(s) for s in states if route_camp.is_join(s)}
+
+
+def test_silver_blades_map_guards_every_row_of_the_u_and_c_lists():
+    spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, 'ssb')
+    states = _step_states(_UC_STEPS)
+    assert {'camp_items_row3', 'camp_items_2_row15', 'camp_sheet_items_3', 'camp_joined_3'} <= states
+    assert states <= spec['guards'].keys()
+    # Every list state shows the same header, so each guard lists every other.
+    from tools.amiga import route_camp
+    lists = {s for s in states if route_camp.is_items(s) or route_camp.is_join(s)
+             or route_camp.is_joined(s)} | {'items'}
+    for state in lists:
+        for rule in _rules(spec['guards'][state]):
+            assert lists - {state} <= set(rule['also']), state
+
+
+def test_silver_blades_identity_covers_the_lists_and_sheets_but_not_the_join_grab():
     from tools.amiga import route_camp
 
     spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, 'ssb')
-    steps = route_camp.steps_for(('items 1', 'join 1 2', 'join 1 1'), 'ssb')
-    states = {state for _, state, _ in steps}
-    states |= {route_camp.joined_after(state) for state in states if route_camp.is_join(state)}
-    checked = {s for s in states
-               if route_camp.is_items(s) or route_camp.is_joined(s) or s == 'camp_sheet_items'}
-    assert checked == {'camp_sheet_items', 'camp_items', 'camp_items_row2', 'camp_joined'}
+    states = _step_states(('items 1', 'join 1 2', 'join 1 1')) | _step_states(_UC_STEPS)
+    checked = {s for s in states if route_camp.is_items(s) or route_camp.is_joined(s)
+               or s.startswith('camp_sheet_items')}
+    assert {'camp_sheet_items', 'camp_items', 'camp_items_row2', 'camp_joined',
+            'camp_sheet_items_2', 'camp_items_2_row15', 'camp_joined_3'} <= checked
     assert checked <= spec['identity'].keys()
     # The first grab after J can catch the list half redrawn (wish4-b1__a_join1-00), so a rows
     # rule there would stop a correct run on timing; the redrawn list is checked instead.
-    assert 'camp_join' not in spec['identity']
+    assert not {s for s in states if route_camp.is_join(s)} & spec['identity'].keys()
+    # Lines 1 and 2 of both Save As parties: one alternative was cut from each disk's list.
+    examples = {state: [r['example'] for r in _rules(spec['identity'][state])]
+                for state in ('camp_items', 'camp_items_2', 'camp_joined_2')}
+    for state, cut in examples.items():
+        for disk in ('wish4-uc__u_', 'wish4-uc__c_'):
+            assert any(disk in example for example in cut), (state, disk)
 
 
 def test_silver_blades_sheet_family_and_camp_sheet_items_list_each_other():
@@ -205,6 +235,22 @@ def test_silver_blades_sheet_family_and_camp_sheet_items_list_each_other():
     for state in same:
         for rule in _rules(identity[state]):
             assert 'camp_sheet_items' in rule['also'], state
+    # Lines 2 and 3 show the same ITEMS button, so their guards are the line 1 picture, and the
+    # sheet frame every member shows lists them all. Of the bars, only Guy's spent bar from
+    # the first camp run is also PAINE's and EPONA's (no HEAL on either).
+    lines = {'camp_sheet_items', 'camp_sheet_items_2', 'camp_sheet_items_3'}
+    for state in lines:
+        rule = guards[state]
+        assert (rule['box'], rule['sha256']) == (guards['camp_sheet_items']['box'],
+                                                 guards['camp_sheet_items']['sha256'])
+        assert (family | lines) - {state} <= set(rule['also'])
+    for state in ('camp_sheet', 'camp_sheet_2', 'sheet'):
+        assert lines <= set(guards[state]['also']), state
+    assert lines <= set(_rules(guards['camp_sheet_spent'])[0]['also'])
+    # PAINE's name line is camp_sheet_2's picture, so the two identity rules list each other.
+    assert identity['camp_sheet_items_2']['sha256'] == identity['camp_sheet_2']['sha256']
+    assert 'camp_sheet_2' in identity['camp_sheet_items_2']['also']
+    assert 'camp_sheet_items_2' in identity['camp_sheet_2']['also']
 
 
 def _interstitial_screens(title):
