@@ -522,9 +522,9 @@ def test_the_hijack_pause_lands_exactly_once_in_the_start_verb():
 
 def test_the_hijack_round_lets_b_continue_only_after_a_replaced_its_emulator():
     body = _lanecheck_body("Scenario-Hijack")
-    order = [body.index(s) for s in (
-        "hijack-launched.txt", "Start-AsIntruder $ArgsA", "-match [regex]::Escape($ConfigB)",
-        "hijack-go.txt", "Receive-Job -Job $job")]
+    order = [body.index(s) for s in ("hijack-launched.txt", "Start-AsIntruder $ArgsA")]
+    # The wait that follows the intruder, not the one for B's own emulator before it.
+    order.append(body.index("-match [regex]::Escape($ConfigB)", order[1]))
     # The first go-file write in the body is the never-launched branch; the one that matters follows the wait.
     assert order[0] < order[1] < order[2]
     assert body.rindex("hijack-go.txt") > order[2]
@@ -542,5 +542,25 @@ def test_the_intruder_stops_and_waits_before_it_registers():
 
 def test_the_lanecheck_control_breaks_only_the_command_line_match_of_its_own_copy():
     body = _lanecheck_body("New-HijackDriver")
-    assert "if ($Control)" in body and "$matching += $cand" in body
-    assert "Set-Content -Path $HijackDriver" in body
+    assert "if ($Control)" in body and "Set-Content -Path $HijackDriver" in body
+    literal = re.search(r"\$exact = '(.*)'\n", body).group(1).replace("''", "'")
+    assert PS1.count(literal) == 1
+
+
+def test_the_control_exits_1_only_when_a_round_passes():
+    body = _lanecheck_body("Scenario-Hijack")
+    assert "as required" in body
+    assert "$controlFailed -eq $HijackRounds" in body
+    assert 'Verdict $false "control:' in body
+
+
+def test_the_intruder_waits_for_b_to_be_running_before_it_acts():
+    body = _lanecheck_body("Scenario-Hijack")
+    wait = body.index("$ConfigB)", body.index("hijack-launched.txt", body.index("Test-Path")))
+    assert wait < body.index("Start-AsIntruder $ArgsA")
+    assert "never appeared" in body
+
+
+def test_the_lanecheck_removes_a_leftover_hijack_job_on_any_exit():
+    final = LANECHECK[LANECHECK.index("} finally {"):]
+    assert "Remove-Job -Job $script:HijackJob" in final

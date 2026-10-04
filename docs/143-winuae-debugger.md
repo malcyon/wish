@@ -306,8 +306,8 @@ intruder's emulator is up and the caller's own is gone. Each round passes when
 the call exits 1 with `is running a command line this call did not pass` and no
 receipt names the intruder's pid. A timing trigger on the task's `LastRunTime`
 raced 0 of 39 rounds against the lane-prefixed driver, so it was dropped.
-`-Control` runs the scenario against a copy that adopts any new emulator, which
-must fail every round. The deployed driver has no test hook.
+`-Control` runs the scenario against a copy that adopts any new emulator and
+exits 1 if any round passes. The deployed driver has no test hook.
 
 Its verdict is about **the pid the second call reported**, not about whatever is
 running when the round ends. Asking the second question failed a round against

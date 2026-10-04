@@ -217,11 +217,12 @@ function Scenario-Hijack {
   $bad = New-HijackDriver
   if ($bad) { Verdict $false $bad ''; return }
   $raced = 0
+  $controlFailed = 0
   for ($n = 1; $n -le $HijackRounds; $n++) {
     if (-not (Reset-Lane)) { Verdict $false "round ${n}: lane would not reset" ''; continue }
     Remove-Item "$Work\hijack-launched.txt", "$Work\hijack-go.txt" -ErrorAction SilentlyContinue
     if ($HasClaim) { Drive (@('claim') + (Holder-Args 'driverB')) | Out-Null }
-    $job = Start-Job -ScriptBlock {
+    $script:HijackJob = $job = Start-Job -ScriptBlock {
       param($drv, $cfg, $who)
       $ha = if ($who) { @('-Holder', $who) } else { @() }
       & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $drv start @ha -log -f $cfg 2>&1 | Out-String
@@ -232,6 +233,19 @@ function Scenario-Hijack {
       [IO.File]::WriteAllText("$Work\hijack-go.txt", 'x')
       $out = (Receive-Job -Job $job -Wait -AutoRemoveJob) -join "`n"
       Verdict $false "round ${n}: B never reached its launch" $out
+      continue
+    }
+    # `start` returns from its launch before the task's instance is running; an
+    # intruder that stops the task first can have its own start dropped by Task
+    # Scheduler, so it waits until B's emulator exists.
+    for ($w = 0; $w -lt 300; $w++) {
+      if (@(Emulators | Where-Object { $_.CommandLine -match [regex]::Escape($ConfigB) }).Count -ge 1) { break }
+      Start-Sleep -Milliseconds 100
+    }
+    if (@(Emulators | Where-Object { $_.CommandLine -match [regex]::Escape($ConfigB) }).Count -eq 0) {
+      [IO.File]::WriteAllText("$Work\hijack-go.txt", 'x')
+      $out = (Receive-Job -Job $job -Wait -AutoRemoveJob) -join "`n"
+      Verdict $false "round ${n}: B's emulator never appeared, so the intruder had nothing to replace (a failure here is the check's own)" $out
       continue
     }
     $intruder = Start-AsIntruder $ArgsA
@@ -254,12 +268,26 @@ function Scenario-Hijack {
     $aPid = if ($intruder) { $intruder.ProcessId } else { 0 }
     Verdict $landed "round ${n}: the intruder replaced B's emulator before B looked (a failure here is the check's own)" `
             "first emulator up: $($intruder.CommandLine)"
-    Verdict (-not $handedA) "round ${n}: B was not handed A's emulator as its own success" "B said: $out`nrunning: $($live.CommandLine)"
-    Verdict (($out -match 'exit=1') -and ($out -match 'is running a command line this call did not pass')) `
-            "round ${n}: B failed with the command-line mismatch" "B said: $out"
-    Verdict (-not ($aPid -and $receipt -match "(?m)^pid=$aPid\s*$")) "round ${n}: no run receipt names A's emulator" $receipt
+    $checks = @(
+      @{ ok = (-not $handedA); what = "round ${n}: B was not handed A's emulator as its own success"; saw = "B said: $out`nrunning: $($live.CommandLine)" },
+      @{ ok = (($out -match 'exit=1') -and ($out -match 'is running a command line this call did not pass')); what = "round ${n}: B failed with the command-line mismatch"; saw = "B said: $out" },
+      @{ ok = (-not ($aPid -and $receipt -match "(?m)^pid=$aPid\s*$")); what = "round ${n}: no run receipt names A's emulator"; saw = $receipt })
+    if ($Control) {
+      # The copy adopts any new emulator, so these are expected to fail; they are
+      # reported but only the count of rounds that did not fail decides the exit.
+      $failedHere = @($checks | Where-Object { -not $_.ok }).Count
+      foreach ($c in $checks) { "  $(if ($c.ok) { 'passed' } else { 'failed' }) $($c.what)" }
+      if ($failedHere -gt 0) { $controlFailed++ }
+    }
+    else {
+      foreach ($c in $checks) { Verdict $c.ok $c.what $c.saw }
+    }
   }
   "  $raced of $HijackRounds rounds actually raced"
+  if ($Control) {
+    if ($controlFailed -eq $HijackRounds) { "control: $controlFailed of $HijackRounds rounds failed, as required" }
+    else { Verdict $false "control: $controlFailed of $HijackRounds rounds failed, but the copy that adopts any new emulator must fail every round" '' }
+  }
   Reset-Lane | Out-Null
 }
 
@@ -560,6 +588,7 @@ try {
     Remove-Item $Driver -ErrorAction SilentlyContinue
     if (Test-Path $Driver) { "warning: $Driver was not deleted" }
   }
+  if ($script:HijackJob) { Stop-Job -Job $script:HijackJob -ErrorAction SilentlyContinue; Remove-Job -Job $script:HijackJob -Force -ErrorAction SilentlyContinue }
   Remove-Item $HijackDriver -ErrorAction SilentlyContinue
   if (Test-Path $HijackDriver) { "warning: $HijackDriver was not deleted" }
 }
