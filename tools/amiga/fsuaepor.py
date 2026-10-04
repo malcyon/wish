@@ -501,7 +501,8 @@ def ready_script(row: int, item_row: int, limit: float) -> list[tuple]:
     Each key after the add is followed by `mark` and `moved`, so a key the game
     dropped stops the run.  Like `panel_script` it never sends `Up` or `y`, and
     never two `e` in a row.  Both rows count from 1; anything lower raises
-    `ValueError`.
+    `ValueError`.  ITEMS rows move with `KP_Down`: the patched FS-UAE drops the
+    cursor `Down` there.
     """
     if row < 1 or item_row < 1:
         raise ValueError(f"row {row} and item row {item_row} must both be 1 or more")
@@ -515,7 +516,7 @@ def ready_script(row: int, item_row: int, limit: float) -> list[tuple]:
     press("v", 3, "sheet")
     press("i", 3, "items")
     for _ in range(item_row - 1):
-        press("Down", 0.6, "item-down")
+        press("KP_Down", 0.6, "item-down")
     press("r", 1, "ready-1")
     press("r", 1, "ready-2")
     press("e", 3, "last")

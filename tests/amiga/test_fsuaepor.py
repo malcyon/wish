@@ -535,12 +535,12 @@ def test_the_panel_script_reaches_each_row_and_never_ends_the_session(
 def test_the_ready_script_presses_ready_twice_on_the_item_row_and_never_ends_the_session():
     steps = fsuaepor.ready_script(1, 3, 300)
     pressed = [s[1] for s in steps if s[0] == "key"]
-    assert pressed == ["p", "a", "p", "a", "e", "v", "i", "Down", "Down",
-                       "r", "r", "e"]
+    assert pressed == ["p", "a", "p", "a", "e", "v", "i", "KP_Down",
+                       "KP_Down", "r", "r", "e"]
     assert "Up" not in pressed and "y" not in pressed
     assert not any(a == b == "e" for a, b in zip(pressed, pressed[1:]))
     for i, step in enumerate(steps):
-        if step[0] == "key" and step[1] in ("v", "i", "r") or step[:2] == ("key", "Down"):
+        if step[0] == "key" and step[1] in ("v", "i", "r") or step[:2] == ("key", "KP_Down"):
             if i > steps.index(("key", "e", 3)):
                 assert steps[i - 1] == ("mark",)
                 assert steps[i + 1][0] == "moved"
