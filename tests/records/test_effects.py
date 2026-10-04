@@ -1751,7 +1751,7 @@ def test_write_party_row_lets_a_never_expiring_row_win_in_either_order(
 
 def test_c64_party_row_keeps_the_data_byte():
     node = effects.RunningEffect(5, 10, 0x85, 0)
-    assert effects.c64_party_row("pool-of-radiance", node) == (5, 0x85)
+    assert effects.c64_party_row("pool-of-radiance", node) == (5, 0x05)
     assert isinstance(effects.c64_party_row(
         "pool-of-radiance", effects.RunningEffect(35, 10, 3, 1)),
         effects.Unconverted)
@@ -3007,3 +3007,35 @@ def test_ids_no_c64_save_holds_say_where_they_are_written_and_removed(
 def test_an_id_outside_the_unsaved_set_keeps_the_generic_reason(title, eid):
     got = effects.dos_record(title, effects.Effect(0, eid, 0, 1, 1), 0)
     assert got == effects.Unconverted("no rule yet for this id in this title")
+
+
+@pytest.mark.parametrize("effect_id", [5, 35])
+@pytest.mark.parametrize("data,magnitude", [
+    (0x85, 0x05), (0x80, 0x00), (0xFF, 0x7F), (0x06, 0x06), (0x7F, 0x7F)])
+def test_c64_party_row_clears_bit_7_of_detect_magic_and_pool_prayer(
+        effect_id, data, magnitude):
+    node = effects.RunningEffect(effect_id, 10, data, 0)
+    assert effects.c64_party_row(_POOL, node) == (effect_id, magnitude)
+
+
+@pytest.mark.parametrize("effect_id", [5, 35])
+@pytest.mark.parametrize("data,magnitude", [
+    (0x85, 0x05), (0xFF, 0x7F), (0x06, 0x06)])
+def test_party_granted_magnitude_clears_bit_7_for_ids_5_and_35(
+        effect_id, data, magnitude):
+    node = bytes((effect_id, 0, 0, data, 0))
+    assert effects.party_granted_magnitude(_POOL, node) == magnitude
+
+
+@pytest.mark.parametrize("effect_id", [5, 35])
+def test_a_trait_slot_ff_node_is_not_a_party_row(effect_id):
+    assert not effects.is_party_granted_record(
+        _POOL, bytes((effect_id, 0, 0, 0xFF, 0)))
+
+
+@pytest.mark.parametrize("effect_id", [5, 35])
+def test_the_c64_to_dos_direction_keeps_bit_7(effect_id):
+    row = effects.Effect(63, effect_id, 0xFF, 0x0A, 0x85)
+    assert effects.party_row_record(_POOL, row, 0).data == 0x85
+    assert effects.party_row_granted(
+        _POOL, effects.Effect(63, effect_id, 0xFF, 0, 0x85))[3] == 0x85

@@ -675,6 +675,7 @@ PARTY_ROW_ON_EVERY_MEMBER = frozenset({35, 49})
 
 PRAYER_ID = 49
 DETECT_MAGIC_ID = 5
+_C64_BIT7_PARTY_IDS = frozenset({DETECT_MAGIC_ID, 35})
 
 
 def prayer_dos_data(title_key: str, magnitude: int) -> int:
@@ -1393,7 +1394,7 @@ def party_granted_magnitude(title_key: str, node: bytes) -> int:
     """The C64 magnitude of a granted record `is_party_granted_record` took."""
     if is_prayer(node[0]):
         return prayer_c64_magnitude(title_key, node[3])
-    return int(node[3])
+    return c64_party_row_magnitude(node[0], int(node[3]))
 
 
 # Spells DOS writes at duration 0 (the generic cast, data 0 meaning the
@@ -1730,11 +1731,24 @@ def never_expiring_strength_row(title_key: str, node: bytes, *,
     return node[0], value | MAGNITUDE_RESTORE_FLAG
 
 
+def c64_party_row_magnitude(effect_id: int, data: int) -> int:
+    """The C64 magnitude a DOS data byte becomes in a party-wide row.
+
+    A C64 Detect Magic (5) or Prayer (35) row with bit 7 set adds a phantom
+    combatant when it expires in a fight, which DOS never does, so the bit is
+    cleared; $FF becomes $7F, which Dispel Magic still reads as level 15.
+    """
+    if effect_id in _C64_BIT7_PARTY_IDS:
+        return data & 0x7F
+    return data
+
+
 def c64_party_row(title_key: str,
                   node: RunningEffect) -> tuple[int, int] | Unconverted:
     """The C64 id and magnitude for a DOS node that becomes a party-wide row.
 
     Detect Magic's flag byte is not read: no DOS engine reads it for id 5.
+    Ids 5 and 35 lose bit 7 of the data byte (`c64_party_row_magnitude`).
     """
     if node.id not in party_row_ids(title_key):
         return Unconverted("no rule yet for this id in this title")
@@ -1742,7 +1756,7 @@ def c64_party_row(title_key: str,
         return Unconverted("a flag byte other than 0 on a party-wide effect")
     if node.id == PRAYER_ID:
         return node.id, prayer_c64_magnitude(title_key, node.data)
-    return node.id, node.data
+    return node.id, c64_party_row_magnitude(node.id, node.data)
 
 
 @dataclass(frozen=True)
