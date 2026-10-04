@@ -184,8 +184,8 @@ def _darkness_import_slot(dest: amiga_adf.AmigaDisk, dest_letter: str,
                           source: amiga_adf.AmigaDisk, source_letter: str) -> bytes:
     """Replace `dest`'s `SavGam<dest_letter>.pty` with `source`'s slot and return the bytes written.
 
-    A slot that is missing, or that the Pools of Darkness reader rejects, is refused. The
-    existing file's own name case stays and no other file, `Vault<L>.DAT` included, is touched.
+    A slot that is missing, or that the Pools of Darkness reader rejects, stops the call with an
+    error. The existing file's own name case stays and no other file, `Vault<L>.DAT` included, is touched.
     """
     data = amiga_savegame.pod_read_slot(source, source_letter)
     amiga_savegame.pod_from_amiga(data)
@@ -283,7 +283,7 @@ def _prepare_darkness_reload(run: pathlib.Path, disk3: pathlib.Path, disk3_sha25
                              accept_summary: pathlib.Path) -> dict[str, Any]:
     """Prepare a reload run on a disk 3 that a successful accept run fetched.
 
-    Refuses a file that does not hash to `disk3_sha256`, a summary that is not a successful
+    Raises on a file that does not hash to `disk3_sha256`, a summary that is not a successful
     accept run whose fetched disk 3 has that hash, a disk that is not the registered disk 3
     plus exactly the control and after saves, saves that do not decode to the registered
     party, and two saves at one place.

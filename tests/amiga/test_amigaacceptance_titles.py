@@ -872,7 +872,7 @@ def test_curse_prepare_threads_a_substitute_slot_through_to_the_manifest(
 def test_prepare_refuses_a_substitute_on_a_title_that_is_not_substitutable(
         tmp_path, monkeypatch):
     """`substitute` is only wired through `_SUBSTITUTABLE`; every other title
-    refuses it before a run folder is ever created.
+    stops with an error before a run folder is ever created.
     Pools of Darkness takes one, so the measure-only route, which loads no save, stands in."""
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
