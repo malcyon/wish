@@ -440,6 +440,57 @@ it; the existing `tools/c64/effectdrive.py` stages slots rather than casting.
 `tests/records/test_effects.py` re-takes that sweep on whatever disks the
 machine running it has, rather than trusting the count.
 
+### The Prayer holder record
+
+A DOS Pool of Radiance party holds a Prayer as one id-49 node on the member who
+cast it, and the C64 holds it as one `$FF` row with no field for who. Coming
+back, every member would get the node, so a Save As DOS after a Save As C64
+puts the +1 on every member wherever they stand. A Pool conversion therefore
+writes a 27-byte record at `$4AF9`-`$4B13` (save0 offset `0x1F9`), in a region
+the C64 game reads only to save it back; the other 108 bytes up to `$4B7F`
+stay zero.
+
+| offset | size | value |
+|---|---|---|
+| +0 | 4 | signature `57 49 53 48` (ASCII WISH) |
+| +4 | 1 | kind and version, `01` |
+| +5 | 1 | row index 0-63 of the `(49, $FF)` row as written |
+| +6 | 1 | that row's magnitude as written |
+| +7 | 1 | that row's duration byte as written, never 0 |
+| +8 | 18 | the holder's name, the 18 bytes at his C64 slot +0 exactly as written |
+| +26 | 1 | check byte: the low 8 bits of the sum of +0 to +25 |
+
+The name is stored, not the slot, because the C64's ORDER screen does not
+remap `$FF` rows, so a slot number would go stale. Raw bytes are compared, so
+the check does not depend on the name encoding.
+
+Writing: the record is written only when exactly one member's node made the
+row, the row in the save still holds the duration byte and magnitude that
+member's node asked for, and his name is not empty and not another member's.
+Otherwise the 27 bytes are zero. A granted (duration-0) Prayer record goes to
+every member and writes none.
+
+Reading (`dos_codec.c64_party`): the node goes to one member only when all six
+checks pass -- the record parses (signature, check byte, index below 64,
+duration not 0, name not starting with NUL); the row is still at the stored
+index; its owner has bit 7 set; its magnitude is the stored one; its duration
+byte is at least 1 and no higher than the stored one; and exactly one member's
+name bytes equal the stored name. Any failure gives every member the node, which
+is the C64's own state for a Prayer it cast.
+
+**Blind spot.** A recast by the C64 game at the same level and side, into the
+same row index, with a duration byte no higher than the stored one, passes
+every check, and a Prayer cast for everyone comes back on the old holder alone.
+Nothing on the row tells the two apart, and storing the clock does not help
+because walking holds a count at 1.
+
+**Evidence that the region is free.** Five VICE boots watched `$4AF9`-`$4B7F`
+with load and store traps: the KERNAL save loop read it 270 times per SAVE and
+nothing else touched it, for the actions that were run (kept under
+`~/.cache/wish/8/prayer-vice/`). ORDER, training, shops, an area change, a won
+fight, a level gain, a death and the party menu's ADD and REMOVE were not run.
+A static read found no reader.
+
 ## Pool expires one slot at a time, for that slot's own owner
 
 **CONFIRMED from the bytecode, and it withdraws this page's earlier claim that
@@ -1215,6 +1266,7 @@ save yet.
 | Pool overlapping Enlarge/Strength nodes do not have independent equivalent magnitudes | **CONFIRMED:** DOS `0x2C0D3` finds the active low-bit node, `0x2C129/0x2C12F` parks the displaced boost with bit 7, and expiry `0xF173–0xF227` selects the strongest remaining boost and moves the baseline into it. C64 `SPELLE04 $A8F4/$A8FA` updates current strength, then `$A8FD/$A904` searches ids 38/12 and `$A902/$A909` returns at `$A911` if either exists, retaining its earlier timer. `effects.pool_strength_chain_rows` writes two running strength nodes, a Strength with an Enlarge or two Strengths, as two rows timed from that chain, and `effects.pool_strength_chain_nodes` reads them back, keyed by row slot because two rows can share an id; a third running node is still refused, because the timeline then needs the whole chain. A granted strength node beside one running node converts as the granted node alone (`effects.pool_gauntlets_over_spell_row`): the C64 never holds both, and the gauntlets' row restores the base, so the spell's remaining time is the one loss, written to the debug log and not to the drop list. |
 | Pool overlapping nodes: two running strength nodes convert, and the gauntlets beside one convert as the gauntlets alone | **CONFIRMED that the destination holds them:** the cast refuses a second strength node (`SPELLE04 $A8FD`/`$A904`, returning at `$A911`), and that is all it proves, because a writer is not the cast. Every sweep is per slot -- see the section above -- so two staged slots expire at their own times and each restores its own score. A converted pair therefore reproduces the intermediate step, with the later-expiring node in the lower-numbered slot. For two running strength nodes, a Strength with an Enlarge or two Strengths, that value is written by `effects.pool_strength_chain_rows`, with equal expiry, or minutes that share a duration byte, ordered parked node first so the active node's base is the only restore whatever order the C64 sweeps its slots in; the rest need a value **recomputed from the DOS chain's timeline** rather than each node's byte translated on its own, and three concurrent boosts on one character still have nowhere to go: only ids 38 and 12 reach the restore handler. |
 | Prayer converts as one party-wide row, not as a row owned by one slot | **CONFIRMED from code:** on the C64 a row owned by one slot reaches only that character, and every C64 Prayer cast writes owner `$FF` (#666 (A C64 party under a camp Prayer loses it on the way to DOS or the Amiga, because nothing converts the save's party-wide effect rows)). DOS asks for id 49 for every combatant through the check-list routine, which gives one member's node to the whole party out of combat and to every combatant within range 6 in a fight (Pool `GAME.OVR:0x2B04A`, Curse `0x3529C`, Silver Blades `0x3606F`). So a DOS id-49 node is one `$FF` row on the C64, and coming back the row is one node on every member. An earlier reading kept the row owned by the caster's slot; it came from the owner's own query alone and had not read the routine that asks for id 49. |
+| The Prayer holder cannot live in the row | **CONFIRMED:** only magnitude bits 4-5 are unread by every routine that means to read a Prayer row, and two bits cannot name one of eight slots; a stale index in the game's own handlers also reads them (a mark there changes the charisma it writes). The owner byte's low bits are read in full when the row expires, and an owner of `$FA` behaved as `$FF` in one combat-setup run only. The holder record above lives outside the row. |
 | Pool's camp Prayer row, `$FF`/35, does nothing on the C64 | **CONFIRMED from code, and it replaces "not proved equivalent":** camp spell 42's flag `$80` takes `SPELLE04 $A704` to `$A710`'s owner `$FF`, and `SPELLE04 $A816`/`$A81C` store it with id 35 (row byte 3 is `$A3`). No constant-id query, none of the 20 check lists, the camp expiry table `ECL65 $9AD5` or ECL `CHECKPARTY` (whose only effect queries ask for 19) asks for 35. Its combat handler `SPELLE01 $A9B2` (+1 to `$2AFE` and `$2B10`) is called only from `SQRPACI01 $078B`, which a camp Prayer never reaches. What does read the row: the camp list of spells in effect (`CAMP $16C3`-`$1797`, which names it), Dispel Magic (`SPELLE04 $AA5B`, `SPELLE00 $ABCE`), and, PROBABLE, the cleanup when a combatant falls (`COMBAT $29C4`), whose query for the fallen combatant also matches owner `$FF`. DOS Pool's camp Prayer is one id-49 node on the caster (`GAME.OVR:0x27AA9`, row byte 7 = 1), but the check-list routine gives the whole party the +1. DOS Pool's Magic > Display names an id-35 node "Prayer" (`GAME.OVR:0x189E1`) and nothing else reads it. So the C64 row converts to an id-35 node on every member. The earlier "the two ports differ" came from not having read the routine that asks for id 49. Curse and Silver Blades write their camp Prayer as `$FF`/49 (row 27), which is why Pool's 35 reads as a slip in its own row 42. Evidence and addresses: #666 (A C64 party under a camp Prayer loses it on the way to DOS or the Amiga, because nothing converts the save's party-wide effect rows), Part B. |
 | Id 13 is not a proven strength mapping | **CONFIRMED negative:** the C64 combat dispatch shares id 14's charisma handler; DOS points it at the empty handler `0x11DF6`. Do not infer its value rule from the name Reduce. |
 | Later Strength, Enlarge and Friends data | **CONFIRMED, and this row used to read UNKNOWN:** the C64 magnitude is a modifier for Strength and Friends and a caster level for Enlarge, and the two ports encode it differently, so Pool's restore rule must not be copied there. The table above has each id's rule and the code behind it; what changed is reading the three casts and the recompute rather than only the combat handlers, which return immediately (DOS Curse `0x1024E`, `0x1029C`; Silver Blades `0x1126E`, `0x11297`) because nothing in a fight has to do the work twice. |

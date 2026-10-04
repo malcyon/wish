@@ -105,6 +105,12 @@ class Report(neutral.Report):
     #: the whole party, so the save counts each id once, not once per member.
     party_rows_short: set[int] = dataclasses.field(default_factory=set)
 
+    #: The party rows this character's running effects wrote, as id -> (the
+    #: duration byte, the magnitude) the row was asked to hold. A writer
+    #: that must say which member a one-row effect came from reads it.
+    party_rows_written: dict[int, tuple[int, int]] = dataclasses.field(
+        default_factory=dict)
+
     @property
     def unaccounted(self) -> list[int]:
         """C64 offsets this conversion cannot explain. Should be empty."""
@@ -1720,13 +1726,17 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
             elif payload is None:
                 rep.lost(f"{which}: no payload was given to write a row "
                          "into the save's shared effect arrays")
-            elif not effects.write_party_row(
-                    payload, party_row[0],
-                    effects.closest_duration(node.minutes, clock),
-                    party_row[1], clock):
-                rep.party_rows_short.add(party_row[0])
-                rep.lost(f"{which}: no free slot in the save's shared "
-                         "effect arrays")
+            else:
+                duration = effects.closest_duration(node.minutes, clock)
+                if effects.write_party_row(
+                        payload, party_row[0], duration, party_row[1],
+                        clock):
+                    rep.party_rows_written[party_row[0]] = (
+                        duration, party_row[1])
+                else:
+                    rep.party_rows_short.add(party_row[0])
+                    rep.lost(f"{which}: no free slot in the save's shared "
+                             "effect arrays")
             continue
         # Each 22 row is judged by its own duration unit; every 15 follows the
         # character's first 22 row (a character with two 22 rows has none in

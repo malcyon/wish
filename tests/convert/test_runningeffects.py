@@ -1520,26 +1520,37 @@ def test_a_prayer_row_makes_a_c64_dos_c64_round_trip(game, row):
             for e in effects.active_effects(bytes(fresh))] == [row]
 
 
-@pytest.mark.parametrize("game", _PARTY_TITLES, ids=lambda g: g.key)
-def test_prayer_makes_a_dos_c64_dos_round_trip(game):
-    import copy
-
-    from goldbox import world_state
-    payload = _synthetic_c64_party_payload(game, 2)
-    party, _ = dos_codec.c64_party(bytes(payload), None, game=game)
-    first, second = party[0], copy.deepcopy(party[0])
-    second.set("name", "CASTER", "built here")
-    first.set("running_effects", [PRAYER + NULL], "built here")
-    second.set("running_effects", [], "built here")
-    save0 = bytearray(payload)
-    state = world_state.from_c64(bytes(payload), game=game)
-    report = dos_codec.write_c64_save(save0, None, state, [first, second],
-                                      game=game)
+def test_prayer_makes_a_dos_c64_dos_round_trip():
+    """Pool of Radiance: the Prayer comes back on the member who held it and
+    on nobody else, because the conversion leaves a holder record beside the
+    one row."""
+    game = c64_port.POOL_OF_RADIANCE
+    save0, report, _first = _write_two_member_prayer(game)
     # Literal: side 1 is bit 6 on Pool alone, where DOS keeps it inverted.
-    magnitude = 0x43 if game.key == "pool-of-radiance" else 0x03
     assert [(e.id, e.owner, e.duration, e.magnitude)
             for e in effects.active_effects(bytes(save0))] == \
-        [(49, 0xFF, 0x0A, magnitude)]
+        [(49, 0xFF, 0x0A, 0x43)]
+    assert not [d for d in report.dropped + report.losses
+                if "effect 49" in d]
+    at = _HOLDER_AT
+    assert bytes(save0[at:at + 5]) == b"WISH\x01"
+    back, _ = dos_codec.c64_party(bytes(save0), None, game=game)
+    assert len(back) == 2
+    by_name = {c.get("name"): c for c in back}
+    assert [bytes(r) for r in by_name["AB"].get("running_effects")] == \
+        [PRAYER + NULL]
+    assert not by_name["CASTER"].get("running_effects")
+
+
+@pytest.mark.parametrize("game", [c64_port.CURSE_OF_THE_AZURE_BONDS,
+                                  c64_port.SECRET_OF_THE_SILVER_BLADES],
+                         ids=lambda g: g.key)
+def test_a_later_title_prayer_comes_back_on_every_member_after_a_dos_c64_dos_round_trip(  # noqa: E501
+        game):
+    save0, report, _first = _write_two_member_prayer(game)
+    assert [(e.id, e.owner, e.duration, e.magnitude)
+            for e in effects.active_effects(bytes(save0))] == \
+        [(49, 0xFF, 0x0A, 0x03)]
     assert not [d for d in report.dropped + report.losses
                 if "effect 49" in d]
     back, _ = dos_codec.c64_party(bytes(save0), None, game=game)
@@ -1547,6 +1558,185 @@ def test_prayer_makes_a_dos_c64_dos_round_trip(game):
     for char in back:
         assert [bytes(r) for r in char.get("running_effects")] == \
             [PRAYER + NULL]
+
+
+#: Where the Prayer holder record starts in save0 (`$4AF9`), and how long it
+#: is; literal so a change to the code's own constants is seen.
+_HOLDER_AT = 0x1F9
+_HOLDER_SIZE = 27
+
+
+def _write_two_member_prayer(game, node=True):
+    """A DOS party of two, the first holding a Prayer node, written as a C64
+    save. Returns the payload, the report and the first member."""
+    import copy
+
+    from goldbox import world_state
+    payload = _synthetic_c64_party_payload(game, 2)
+    party, _ = dos_codec.c64_party(bytes(payload), None, game=game)
+    first, second = party[0], copy.deepcopy(party[0])
+    second.set("name", "CASTER", "built here")
+    first.set("running_effects", [PRAYER + NULL] if node else [], "built here")
+    second.set("running_effects", [], "built here")
+    save0 = bytearray(payload)
+    state = world_state.from_c64(bytes(payload), game=game)
+    report = dos_codec.write_c64_save(save0, None, state, [first, second],
+                                      game=game)
+    return save0, report, first
+
+
+_NAMES = ("ALPHA", "BRAVO", "CHARLIE", "DELTA", "ECHO", "FOXTROT")
+
+
+def _pool_party_with_prayer(holders: tuple[int, ...] = (3,), granted=(),
+                            twins=False):
+    """Six named Pool of Radiance members written as a C64 save, the DOS
+    members at the indices in `holders` each holding a Prayer node and those
+    in `granted` the never-expiring record. Returns the payload."""
+    from goldbox import world_state
+    game = c64_port.POOL_OF_RADIANCE
+    payload = _synthetic_c64_party_payload(game, 6)
+    party, _ = dos_codec.c64_party(bytes(payload), None, game=game)
+    for index, char in enumerate(party):
+        char.set("name", "TWIN" if twins and index in (0, 3)
+                 else _NAMES[index], "built here")
+        char.set("running_effects",
+                 [PRAYER + NULL] if index in holders else [], "built here")
+        if index in granted:
+            char.set("granted_effects", [bytes((49, 0, 0, 3, 0)) + NULL],
+                     "built here")
+    save0 = bytearray(payload)
+    state = world_state.from_c64(bytes(payload), game=game)
+    dos_codec.write_c64_save(save0, None, state, party, game=game)
+    return save0
+
+
+def _prayer_holders(save0, game=c64_port.POOL_OF_RADIANCE):
+    """The names of the members `c64_party` gives a Prayer node, in the DOS
+    order."""
+    back, _ = dos_codec.c64_party(bytes(save0), None, game=game)
+    return [c.get("name") for c in back
+            if any(bytes(r)[0] == 49
+                   for r in c.get("running_effects") or ())]
+
+
+def _name_at(save0, place: int) -> bytes:
+    from goldbox import c64_save
+    at = c64_save.container_for(c64_port.POOL_OF_RADIANCE).slot(place)
+    return bytes(save0[at:at + 18])
+
+
+def test_a_pool_prayer_holder_in_slot_2_of_six_comes_back_alone():
+    index = next(i for i in range(6)
+                 if dos_codec.marching_slot(i, 6) == 2)
+    save0 = _pool_party_with_prayer((index,))
+    assert [(e.id, e.owner, e.duration, e.magnitude)
+            for e in effects.active_effects(bytes(save0))] == \
+        [(49, 0xFF, 0x0A, 0x43)]
+    row = effects.slot_for(bytes(save0), 49, effects.PARTY_WIDE)
+    expected = effects.prayer_holder_bytes(effects.PrayerHolder(
+        row, 0x43, 0x0A, _name_at(save0, 2)))
+    assert bytes(save0[_HOLDER_AT:_HOLDER_AT + _HOLDER_SIZE]) == expected
+    after = _HOLDER_AT + _HOLDER_SIZE
+    assert not any(save0[after:after + 108])
+    assert _prayer_holders(save0) == [_NAMES[index]]
+
+
+def _clear_region(save0, row):
+    save0[_HOLDER_AT:_HOLDER_AT + _HOLDER_SIZE] = bytes(_HOLDER_SIZE)
+
+
+def _break_signature(save0, row):
+    # The check byte is put right again, so only the signature is wrong.
+    save0[_HOLDER_AT] ^= 0x01
+    save0[_HOLDER_AT + _HOLDER_SIZE - 1] = sum(
+        save0[_HOLDER_AT:_HOLDER_AT + _HOLDER_SIZE - 1]) & 0xFF
+
+
+def _break_check_byte(save0, row):
+    save0[_HOLDER_AT + _HOLDER_SIZE - 1] ^= 0x01
+
+
+def _move_the_row(save0, row):
+    values = [save0[off + row] for off in (
+        effects.EFFECT_ID_OFFSET, effects.EFFECT_OWNER_OFFSET,
+        effects.EFFECT_DURATION_OFFSET, effects.EFFECT_MAGNITUDE_OFFSET)]
+    for off in (effects.EFFECT_ID_OFFSET, effects.EFFECT_OWNER_OFFSET,
+                effects.EFFECT_DURATION_OFFSET,
+                effects.EFFECT_MAGNITUDE_OFFSET):
+        save0[off + row] = 0
+    effects.write_effect(save0, 10, *values)
+
+
+def _change_the_magnitude(save0, row):
+    save0[effects.EFFECT_MAGNITUDE_OFFSET + row] = 0x42
+
+
+def _raise_the_duration(save0, row):
+    save0[effects.EFFECT_DURATION_OFFSET + row] += 1
+
+
+def _rename_the_holder(save0, row):
+    from goldbox import c64_save
+    at = c64_save.container_for(c64_port.POOL_OF_RADIANCE).slot(2)
+    save0[at:at + 5] = b"ZULU\x00"
+
+
+def _give_a_second_member_the_name(save0, row):
+    from goldbox import c64_save
+    container = c64_save.container_for(c64_port.POOL_OF_RADIANCE)
+    name = _name_at(save0, 2)
+    save0[container.slot(0):container.slot(0) + 18] = name
+
+
+_FAILED_CHECKS = [_clear_region, _break_signature, _break_check_byte,
+                  _move_the_row, _change_the_magnitude, _raise_the_duration,
+                  _rename_the_holder, _give_a_second_member_the_name]
+
+
+@pytest.mark.parametrize("damage", _FAILED_CHECKS, ids=lambda f: f.__name__)
+def test_a_pool_prayer_record_that_fails_a_check_gives_every_member_the_node(
+        damage):
+    index = next(i for i in range(6)
+                 if dos_codec.marching_slot(i, 6) == 2)
+    save0 = _pool_party_with_prayer((index,))
+    assert _prayer_holders(save0) == [_NAMES[index]]
+    row = effects.slot_for(bytes(save0), 49, effects.PARTY_WIDE)
+    damage(save0, row)
+    assert len(_prayer_holders(save0)) == 6
+
+
+def test_two_members_each_holding_prayer_leave_no_record_and_all_get_it():
+    save0 = _pool_party_with_prayer((1, 4))
+    assert not any(save0[_HOLDER_AT:_HOLDER_AT + _HOLDER_SIZE])
+    assert len(_prayer_holders(save0)) == 6
+
+
+def test_a_prayer_holder_sharing_a_name_with_another_member_leaves_no_record():
+    save0 = _pool_party_with_prayer((3,), twins=True)
+    assert not any(save0[_HOLDER_AT:_HOLDER_AT + _HOLDER_SIZE])
+    assert len(_prayer_holders(save0)) == 6
+
+
+def test_a_granted_prayer_beside_a_running_one_leaves_no_record():
+    save0 = _pool_party_with_prayer((3,), granted=(1,))
+    assert not any(save0[_HOLDER_AT:_HOLDER_AT + _HOLDER_SIZE])
+    back, _ = dos_codec.c64_party(bytes(save0), None,
+                                  game=c64_port.POOL_OF_RADIANCE)
+    assert len(back) == 6
+    assert all(c.get("granted_effects") for c in back)
+
+
+@pytest.mark.parametrize("game", [c64_port.CURSE_OF_THE_AZURE_BONDS,
+                                  c64_port.SECRET_OF_THE_SILVER_BLADES],
+                         ids=lambda g: g.key)
+def test_a_later_title_writes_the_same_bytes_with_and_without_a_prayer(game):
+    """The Pool gate: the holder region of Curse and Silver Blades does not
+    change when one member holds the node."""
+    with_node, _r, _f = _write_two_member_prayer(game)
+    without = _write_two_member_prayer(game, node=False)[0]
+    assert (bytes(with_node[_HOLDER_AT:_HOLDER_AT + _HOLDER_SIZE])
+            == bytes(without[_HOLDER_AT:_HOLDER_AT + _HOLDER_SIZE]))
 
 
 @pytest.mark.parametrize("row, node", [

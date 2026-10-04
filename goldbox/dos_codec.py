@@ -120,7 +120,7 @@ from .items import (
     Item,
     ItemType,
 )
-from .layout import Confidence, Field, Kind
+from .layout import NAME_SIZE, Confidence, Field, Kind
 from .neutral import NeutralCharacter, Provenance, ScrollBundle
 from .portraits import (
     PortraitError,
@@ -7305,7 +7305,7 @@ SLOT_TOTAL = 12
 # ---------------------------------------------------------------------------
 #: The header bytes no part of the conversion computes, as `(address, size)`.
 #:
-#: All 192 of them were written as zero in a converted save that was then
+#: All 165 of them were written as zero in a converted save that was then
 #: loaded, walked, taken into a random encounter and taken through an area
 #: change in VICE (#118, `p118-step3/runC.log` and `runE.log`, scratch, deleted).  The
 #: template was `PORSAVE13`, chosen because it is one of the few saves that
@@ -7317,10 +7317,11 @@ SLOT_TOTAL = 12
 #:
 #: Corroborated by a sweep of **99 distinct C64 save payloads**: 48 of the
 #: 56 that were unattributed before that run are zero in all 99, and all 56
-#: are zero in every one of Donald's own 13 `PORSAVE` disks.  The 137 in
-#: `$49FD`-`$49FE` and `$4AF9`-`$4B7F` were already graded "the engine
+#: are zero in every one of Donald's own 13 `PORSAVE` disks.  The 110 in
+#: `$49FD`-`$49FE` and `$4B14`-`$4B7F` were already graded "the engine
 #: rebuilds it" from the bytecode; the run is what turned that into a
-#: measurement.
+#: measurement.  The first 27 bytes of `$4AF9`-`$4B7F` are the Prayer holder
+#: record (`PRAYER_HOLDER`), which is not zeroed.
 #:
 #: `$49C3`-`$49C4` is here because it is zero in every indoor save, and
 #: `apply_position` overwrites it with the travel square when the DOS party is
@@ -7335,8 +7336,13 @@ SLOT_TOTAL = 12
 HEADER_ZEROED: tuple[tuple[int, int], ...] = (
     (0x49C3, 2), (0x49CC, 26), (0x49E7, 3), (0x49EB, 5), (0x49F0, 2),
     (0x49F3, 9), (0x49FC, 1), (0x49FD, 2),
-    (0x4AF9, 135), (0x4BD9, 7),
+    (0x4B14, 108), (0x4BD9, 7),
 )
+
+#: Where a Pool of Radiance conversion writes the Prayer holder record
+#: (`effects.prayer_holder_bytes`): the C64 game reads this region only to save
+#: it back, so the record survives a camp save and a Save As DOS can read it.
+PRAYER_HOLDER = (0x4AF9, effects.PRAYER_HOLDER_SIZE)
 
 #: The C64 save's own portrait switch, and the one word of `$4900`-`$52FF`
 #: this conversion writes to a value **measured in the running game** rather
@@ -8245,6 +8251,10 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
                     effects.EFFECT_DURATION_OFFSET,
                     effects.EFFECT_MAGNITUDE_OFFSET):
             report.note(arrays_at + off + slot, 1, who)
+
+    if container.key == c64_port.POOL_OF_RADIANCE.key:
+        _write_prayer_holder(save0, report, container, len(party),
+                             effect_rows)
 
     at = container.portrait_switch
     faces = bool(party) and all_faced
@@ -9565,6 +9575,56 @@ def c64_member_neutral(save0: bytes, save1: bytes | None, game,
     raise ValueError(f"C64 slot {index} holds no character")
 
 
+def _write_prayer_holder(save0: bytearray, report: Report,
+                         container: "c64_save.C64Container", party_len: int,
+                         effect_rows: "list[tuple[int, str, str, Report]]"
+                         ) -> None:
+    """Write the Prayer holder record at `PRAYER_HOLDER`, or 27 zeros.
+
+    The C64 keeps one Prayer row for the party and DOS keeps a node on one
+    member, so the record names the member whose node the row came from; the
+    way back reads it in `c64_party`. It is written only when exactly one
+    member's Prayer made the row, the row in the save still holds what that
+    member's node asked for, and his 18 name bytes pick him out of the party.
+    """
+    at, size = PRAYER_HOLDER
+    at -= SAVE0_BASE
+    prayer = effects.PRAYER_ID
+    holders = [(index, one.party_rows_written[prayer])
+               for index, _name, _who, one in effect_rows
+               if prayer in one.party_rows_written]
+    record = bytes(size)
+    why = "no single Prayer holder: the record is zero"
+    if len(holders) == 1:
+        index, (duration, magnitude) = holders[0]
+        place = marching_slot(index, party_len)
+        name_at = container.slot(place)
+        name = bytes(save0[name_at:name_at + NAME_SIZE])
+        row = effects.slot_for(bytes(save0), prayer, effects.PARTY_WIDE)
+        others = [
+            bytes(save0[container.slot(i):container.slot(i)
+                        + NAME_SIZE])
+            for i in range(party_len) if i != place]
+        if row is None:
+            why = "no Prayer row in the save: the record is zero"
+        elif (save0[effects.EFFECT_DURATION_OFFSET + row],
+              save0[effects.EFFECT_MAGNITUDE_OFFSET + row]
+              ) != (duration, magnitude):
+            why = ("the Prayer row is not the holder's: the record is "
+                   "zero")
+        elif not any(name):
+            why = "the holder's name is empty: the record is zero"
+        elif name in others:
+            why = "another member has the holder's name: the record is zero"
+        else:
+            record = effects.prayer_holder_bytes(
+                effects.PrayerHolder(row, magnitude, duration, name))
+            why = (f"the Prayer holder record: row {row}, the party "
+                   "member whose Prayer node it came from")
+    save0[at:at + size] = record
+    report.note(at, size, why)
+
+
 def c64_party(save0: bytes, save1: bytes | None, game=None,
              icon_parts: "IconParts | None" = None
              ) -> "tuple[list[NeutralCharacter], list[DosIcon | None]]":
@@ -9685,6 +9745,7 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
         # such row, reported on the first character.
         occupied = {s.index for s in party}
         party_nodes: dict[int, effects.RunningEffect] = {}
+        party_rows: dict[int, effects.Effect] = {}
         party_granted: dict[int, bytes] = {}
         for row in effects.active_effects(bytes(save0)):
             if row.owner in occupied:
@@ -9711,6 +9772,7 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
                     kept = party_nodes.get(node.id)
                     if kept is None or node.minutes > kept.minutes:
                         party_nodes[node.id] = node
+                        party_rows[node.id] = row
                     continue
             if row.owner & 0x80:
                 who = "the whole party"
@@ -9734,14 +9796,57 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
             for target in targets:
                 _add_party_granted(target, record)
         # One node per id, the longest: the C64 writer keeps one row per id.
+        prayer_holder = (_prayer_holder_member(
+            save0, c64, party, party_rows.get(effects.PRAYER_ID))
+            if effects.PRAYER_ID in party_nodes else None)
         for node_id in sorted(party_nodes):
             targets = (out if node_id in effects.PARTY_ROW_ON_EVERY_MEMBER
                        else out[:1])
+            if node_id == effects.PRAYER_ID and prayer_holder is not None:
+                targets = [out[prayer_holder]]
             for target in targets:
                 _add_party_node(target, party_nodes[node_id])
     out.reverse()
     icons.reverse()
     return out, icons
+
+
+def _prayer_holder_member(save0: bytes, c64: "c64_save.C64Container",
+                          party: Sequence, row: "effects.Effect | None"
+                          ) -> int | None:
+    """The position in `party` of the one member a Pool of Radiance save's
+    Prayer row came from, or `None` when the save does not say.
+
+    The record `_write_prayer_holder` leaves is believed only while the row
+    is still what it described: the same index, party-wide, the same
+    magnitude, a duration byte no higher than the stored one, and a name that
+    picks out exactly one member. Any other state is a row the C64 game cast
+    or changed, which reaches every member, so `None` is the C64's own answer.
+    """
+    if c64.key != POOL_OF_RADIANCE.key or row is None:
+        return None
+    at = PRAYER_HOLDER[0] - SAVE0_BASE
+    holder = effects.prayer_holder(bytes(save0[at:at + PRAYER_HOLDER[1]]))
+    if holder is None:
+        failed = "no valid record"
+    elif row.slot != holder.index:
+        failed = "the row moved"
+    elif not row.owner & 0x80:
+        failed = "the row is not party-wide"
+    elif row.magnitude != holder.magnitude:
+        failed = "the magnitude changed"
+    elif not 1 <= row.duration <= holder.duration:
+        failed = "the duration byte rose or is zero"
+    else:
+        named = [pos for pos, char_slot in enumerate(party)
+                 if bytes(save0[c64.slot(char_slot.index):
+                                c64.slot(char_slot.index) + NAME_SIZE])
+                 == holder.name]
+        if len(named) == 1:
+            return named[0]
+        failed = f"{len(named)} members have the holder's name"
+    _log.debug("c64_party: Prayer row goes to every member: %s", failed)
+    return None
 
 
 def _add_party_granted(char: "NeutralCharacter", record: bytes) -> None:

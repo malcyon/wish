@@ -1445,6 +1445,24 @@ def test_the_c64_reader_finds_the_charmed_member_through_source_neutral(
     assert len(_charmed_members(party)) == 1
 
 
+def test_a_pool_prayer_holder_survives_save_as_c64(tmp_path):
+    """The specimen is a DOS save the engine wrote, and only BROTHER SEAN holds
+    an id-49 node. Save As C64 writes the holder record naming him, and the
+    way back gives the Prayer to him alone."""
+    from goldbox import effects
+    party = _charmed_c64_party(tmp_path)
+    source = convert.Source.detect(party.path)
+    at = dos_codec.PRAYER_HOLDER[0] - dos_codec.SAVE0_BASE
+    holder = effects.prayer_holder(bytes(source.save0[at:at + 27]))
+    assert holder is not None
+    back, _ = dos_codec.c64_party(bytes(source.save0), source.save1,
+                                  game=c64_port.POOL_OF_RADIANCE)
+    prayed = [c.get("name") for c in back
+              if any(bytes(r)[0] == 49
+                     for r in c.get("running_effects") or ())]
+    assert prayed == ["BROTHER SEAN"]
+
+
 @pytest.mark.parametrize("port", ["dos", "amiga"])
 def test_a_c64_pool_party_with_a_charmed_character_saves_as_dos_and_amiga(
         tmp_path, port):
