@@ -363,9 +363,9 @@ used to describe that broken state and now describes what replaced it.
 
 Neither source survived out there:
 
-* the **status line** was blocked by `_plausible`, which caps y at `GRID` = 16 --
+* the **status line** was rejected by `_plausible`, which caps y at `GRID` = 16 --
   a dungeon's size -- while wilderness y runs to 28 and 29. North of row 16 it
-  was worse than blocked: the loose `RE_STATUS` took the final `S` of
+  was worse than rejected: the loose `RE_STATUS` took the final `S` of
   `OUTDOORS` for a facing, so a party there read as a *plausible indoor* fix on
   a square it had never stood on -- the same fault `#189 (The emulator driver
   cannot move a party on the travel grid, and reads its facing out of the word

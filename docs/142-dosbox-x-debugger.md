@@ -109,7 +109,7 @@ that the pid filter is inert there: DOSBox 0.74 is SDL 1.2, which does not set
   cannot answer it, as it exits 1 both for "no windows matched" and for "Can't
   open display", which is also why the old readiness loop never waited for
   anything.
-* **Block a capture of one colour by name.** `shot()` raises `BlankCapture`
+* **Reject a capture of one colour by name.** `shot()` raises `BlankCapture`
   rather than writing a PNG that looks like a game drawing nothing.
 
 The condition that starts it is a leaked process: `Xvfb` and `dosbox-x` are

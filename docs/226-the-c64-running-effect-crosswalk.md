@@ -1178,7 +1178,7 @@ through `DOS_PC_TAKEN_OVER`, and for a charmed Pool character (above). #720 (A P
 over converts between DOS and the C64 as a companion, because both readers take
 the control byte's bit 7 for a companion) has no build of its own: its work sits
 in WISH-8 (A DOS party under Prayer, the strength and charisma spells, Mirror Image or an effect with no C64 spell row still fails to save as a C64 save, because only the ordinary caster-level spells convert) Step C for Charm
-and in #700 (Converting a Pool of Radiance C64 party holding a camp-cast Animate Dead zombie needs more than removing the block) for
+and in the conversion of a Pool of Radiance C64 party that holds a camp-cast Animate Dead zombie, for
 Animate Dead. Bit 6 of `0x10C`
 goes with the row: written
 when a Fear row is written, and read back as `npc` true with control `0xB3`

@@ -5497,8 +5497,8 @@ step east, `21,28 E 10:15` next day), with the engine's `CHRDAT` files, the
 screenshots and `run1.py`. `run2.py` is the DOSBox-X debugger pass on save
 D; `run2.log` its output.
 
-**Result 1. The travel square is `$49C3`/`$49C4`, window-local — the #50 (Lift the wilderness block from the DOS save converter)
-blocker, settled.** (7,29) → (7,28) → (8,28) against the three screens;
+**Result 1. The travel square is `$49C3`/`$49C4`, window-local — the blocker on lifting the wilderness block
+from the DOS save converter, settled.** (7,29) → (7,28) → (8,28) against the three screens;
 world x = local x + 13 for window 26, y unchanged, exactly the C64 seam
 arithmetic. Live corroboration: `BPM` on `$49C3`'s low byte, one east step,
 `07 -> 08`, writer `2E33:095E`. Meanwhile file bytes 12801/12802 sit at the
@@ -5559,7 +5559,7 @@ different lineages) -- and byte 12805 carries the low byte of `$5200`, which
 unnamed; the counts and the whole map are `docs/141-dos-savegame.md`, which is
 the document that gets kept current.
 
-Moving an outdoor save to a new area has still not been driven; #50 (Lift the wilderness block from the DOS save converter) owns the
+Moving an outdoor save to a new area has still not been driven; the work on lifting the wilderness block from the DOS save converter owns the
 converter form.
 
 ## The later titles' mode flag is `$7F11`, and their LINKER is Pool of Radiance's
@@ -5628,7 +5628,7 @@ of `4` in any title** — the Pool of Radiance row above says of it "never
 sampled live; that row is disassembly only", and it can come off that footing
 now. The gate was exercised in the same breath: `actions.in_combat` answered
 True, `heal` stayed legal and `identify`, `store-spells` and `restore-spells`
-all blocked with "blocked during a fight (`$7F11` is 2)".
+all stopped with "not available during a fight (`$7F11` is 2)".
 
 **Curse did not give one**, and that is the one thing this pair of sittings did
 not get. About 250 driven steps through Tilverton produced scripted text, a
@@ -5884,15 +5884,15 @@ are identical in both modes; what changes is the count of rejected decodings, an
 | instruction lengths that disagreed | **0** |
 | mnemonics that disagreed | **0** |
 | operands that disagreed, after normalising the two syntaxes | **0** |
-| we blocked, capstone decoded | 2 288 — 1 943 branches to an odd address, 248 68020 scaled or memory-indirect index extensions, 97 index extensions with the 68020 format bit set. That is the whole 2 288 with nothing left over |
-| capstone blocked, we decoded | 0 |
+| we rejected, capstone decoded | 2 288 — 1 943 branches to an odd address, 248 68020 scaled or memory-indirect index extensions, 97 index extensions with the 68020 format bit set. That is the whole 2 288 with nothing left over |
+| capstone rejected, we decoded | 0 |
 
 Every one of the 2 288 is inside string data, and in each the rejection is the
 stricter reading. **Two of the three are legal encodings that no assembler
 would emit**, which is a narrower claim than "a 68000 cannot do this" and a
 more useful one: real silicon ignores the reserved extension bits, and an odd
 branch target is taken and then address-errors at run time rather than being
-an illegal instruction. Blocking them is what separates code from string data
+an illegal instruction. Rejecting them is what separates code from string data
 in a binary with both scattered through one hunk, and the comments in
 `tools/amiga/m68dis.py` say so in those words. The 24 remaining textual differences
 are capstone writing `lea.l` and `pea.l` where we write `lea` and `pea`.

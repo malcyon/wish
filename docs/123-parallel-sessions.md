@@ -291,7 +291,7 @@ The two known ways an instance wedges:
 | symptom | cause | recovery |
 |---|---|---|
 | monitor accepts the connection and never answers the greeting | another client attached, **or** the machine is halted at a checkpoint stop with no connection open, which waits for the next connection to read it (`docs/70-driving-the-game.md`) | connect and read the stop, or delete the checkpoints |
-| monitor drops the connection but the pid is alive | X gone, or VICE crashed into a dialog | kill |
+| monitor will not accept the connection but the pid is alive | X gone, or VICE crashed into a dialog | kill |
 
 `ViceTarget` already separates these: `NotConnected` on a failed connect,
 `MonitorBusy` on a greeting that times out inside `GREETING = 1.0`. It cannot

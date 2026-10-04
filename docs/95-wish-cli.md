@@ -108,7 +108,7 @@ implementation details a person editing a save should never have to learn:
 
 Multi-class is just a list, so `[magic-user, thief]` says what `class_bits: 5`
 used to. Names are case-insensitive and order does not matter. A raw number is
-still accepted if you prefer it, and an unrecognised name is blocked with the
+still accepted if you prefer it, and an unrecognised name is rejected with the
 valid options listed rather than being silently mangled.
 
 Sections are separated by headings (`# --- money`), and derived groups say so,

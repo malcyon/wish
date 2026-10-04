@@ -186,7 +186,7 @@ file cannot be loaded by the game)` reproduces every time -- so the second was
 repaired before anything read it. `tools/curse_of_the_azure_bonds/cursetrain.py stage`
 blocks such a disk instead, because closing the entry cannot show whether the
 chain holds the game's write or the save before it
-(`#714 (cursepaladin.py's --repair --close-splat can silently mask stale data instead of blocking it)`).
+(`cursepaladin.py`'s `--repair --close-splat` has the same hazard: it can silently mask stale data instead of blocking it).
 
 ## What still stands between this and Level Up for Curse
 

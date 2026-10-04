@@ -36,7 +36,7 @@ The failures came in a sequence, each one a narrower version of the last.
 First bare numbers everywhere. Then titles in the prose and bare numbers in
 tables -- a column of bare numbers is the least readable thing in a reply, not
 the most. Then titles in the table and bare numbers in the prose around it:
-"#102 (A minimally-cached save cannot walk into an area, and the party is stuck where it stands) is solved", "#59 (Map the DOS saved game, not just the character record)'s inherit list", "#50 (Lift the wilderness block from the DOS save converter)'s proof now passes". A number used
+"#102 (A minimally-cached save cannot walk into an area, and the party is stuck where it stands) is solved", "#59 (Map the DOS saved game, not just the character record)'s inherit list", and a ticket number as the subject of a sentence about its proof now passing. A number used
 as the subject of a sentence is the worst place for it, because that is exactly
 where the reader most needs to know what is being talked about. "The resizable
 columns with #135 (The automapper's roster column does not scroll, so a full party puts a 944px floor under the window)" is the same kind of failure. There is no "already introduced it above"
@@ -94,7 +94,7 @@ Cut provenance, lines 54-56 ("It does not govern code"):
 
 ### What tests and a hook said before they dropped their history
 
-The passages below stood in code comments, a hook's docstring and an agent definition until the no-history rule removed them, verbatim.
+The passages below stood in code comments, a hook's docstring and an agent definition until the no-history rule removed them, verbatim; the hook's docstring is reported in other words, because it used a word the project now bans.
 
 #### tests/suite/test_repository_contents.py (comment above CITED_ISSUE_SCOPE)
 
@@ -128,26 +128,19 @@ Also, in the same file inside `test_no_bare_issue_number_where_a_citation_belong
 
 #### .claude/hooks/check-gh-issue-titles.py (module docstring)
 
-```
-The sibling `check-issue-titles.py` is a `Stop` hook: it reads what the
-assistant said to Donald and blocks a bare `#59`. It never sees an issue
-comment, because that leaves through Bash rather than through a reply -- and
-`.claude/rules/issues.md` says the rule covers "replies, issue comments,
-documents and tables", so half the rule had no guard at all.
-
-Found on 2026-09-02, when Donald asked why the guard was not working: it was,
-for replies, while six issue comments had gone out with bare numbers in them.
-
-**It is not registered today**, along with its sibling -- `3ee1a3f "Disable
-github issue hooks."` (2026-09-03) removed both from `.claude/settings.json`.
-
-...
-
-**The description of an issue is exempt, and that is Donald's ruling**, not an
-oversight: leave them alone, because GitHub.com shows the ticket details on
-hover and makes the number a hotlink. An issue body is read on the
-web.
-```
+The docstring said that the sibling `check-issue-titles.py` is a `Stop` hook
+that reads what the assistant said to Donald and blocks a bare issue number, and that
+it never sees an issue comment, because that leaves through Bash rather than
+through a reply, although `.claude/rules/issues.md` says the rule covers
+"replies, issue comments, documents and tables", so half the rule had no guard
+at all. It said this was found on 2026-09-02, when Donald asked why the guard
+was not working: it was, for replies, while six issue comments had gone out with
+bare numbers in them. It said the hook was not registered, along with its
+sibling, because `3ee1a3f "Disable github issue hooks."` (2026-09-03) removed
+both from `.claude/settings.json`. It ended by saying that the description of
+an issue is exempt, which is Donald's ruling and not an oversight: GitHub.com
+shows the ticket details on hover and makes the number a hotlink, and an issue
+body is read on the web.
 (Also in the file's `CHECKED` comment: "which Donald has ruled is read on the web" -- and the block-message string says "issues.md says the rule covers replies, issue comments, documents and tables alike", the same misquote, in a user-facing stderr string.)
 
 ## Conciseness and replies
@@ -694,18 +687,11 @@ so the rule stopped asking an agent to weigh it and now states it outright.
 
 ### What the rule files said before they dropped their history
 
-The rule files state the rule and carry no history. These are the passages they held on this section's subject before that cut, verbatim.
+The rule files state the rule and carry no history. These are the passages they held on this section's subject before that cut, verbatim, except that two which used a word the project now bans are reported in other words.
 
 #### AGENTS.md, "The tracker is public..." hooks paragraph
 
-Cut, lines 101-106 (the whole paragraph; the two hook paths stay, the reason and the date go):
-
-> **The first two have hooks behind them**, because neither held as a rule alone:
-> `.claude/hooks/check-issue-reads.py` blocks the unfiltered reads, and
-> `.claude/hooks/check-issue-writes.py` blocks a `gh` write that would go out
-> under Donald's name. The second was written on 2026-09-11 after a subagent
-> posted its findings with `gh issue comment` hours after the rule was added --
-> the rule had reached it, and every older document shows `gh`.
+Cut, lines 101-106 (the whole paragraph; the two hook paths stay, the reason and the date go). It said that the first two rules have hooks behind them, because neither held as a rule alone: `.claude/hooks/check-issue-reads.py` blocks the unfiltered reads, and `.claude/hooks/check-issue-writes.py` blocks a `gh` write that would go out under Donald's name. It added that the second was written on 2026-09-11, after a subagent posted its findings with `gh issue comment` hours after the rule was added: the rule had reached it, and every older document shows `gh`.
 
 #### .claude/rules/issues.md -- "Citing an issue"
 
@@ -753,14 +739,7 @@ it):
 #### .claude/rules/issues.md -- "An agent files and comments as the bot"
 
 Dates and backfill history around the `AI` / `human` labels (the rule now says
-"An issue with neither label predates that workflow."):
-
-> **Nothing
-> locks anything**: a GitHub App installation is denied a comment on a locked
-> issue whatever permissions it holds, measured three ways on 2026-09-11, so
-> locking would silence this project's own bot rather than the public. An issue opened before 2026-09-11 carries neither label; nothing was
-> backfilled, because all three hundred of them were Donald's and a universal
-> label means nothing.
+"An issue with neither label predates that workflow."). The passage said that nothing locks anything: a GitHub App installation is denied a comment on a locked issue whatever permissions it holds, measured three ways on 2026-09-11, so locking would silence this project's own bot rather than the public. It said that an issue opened before 2026-09-11 carries neither label, and that nothing was backfilled, because all three hundred of them were Donald's and a universal label means nothing.
 
 #### .claude/rules/issues.md -- "Work you discover while working"
 
@@ -839,7 +818,9 @@ cheap where grinding at a disassembly it was not sent to read is not.
 **What makes an issue assignable to `junior-dev` is a property of the issue
 body.** `#71 (Character draws on top of itself when the header is squeezed to
 its floor)` looked like ordinary work and took nine rounds and a `QTableView`
-subclass. `#73 (The DOSBox-X harness will not start without DOSBox 0.74, which it never runs)` named the two candidate approaches and said which was smaller, and
+subclass. The issue about the DOSBox-X harness failing to
+start without DOSBox 0.74, an emulator it never runs, named the two candidate
+approaches and said which was smaller, and
 that is what made it assignable.
 
 **A reviewer in a shared tree reviews everybody.** `code-reviewer` starts with
@@ -849,7 +830,7 @@ you are reviewing unless it is told which files it owns.
 
 ### What the rule files said before they dropped their history
 
-The rule files state the rule and carry no history. These are the passages they held on this section's subject before that cut, verbatim.
+The rule files state the rule and carry no history. These are the passages they held on this section's subject before that cut, verbatim, except that the one on `junior-dev`'s filter, which used a word the project now bans, is reported in other words.
 
 #### AGENTS.md, opening paragraph after the routing intro
 
@@ -897,12 +878,7 @@ Why `senior-analyst` exists:
 > plan, and `architect` on Fable was doing that for bugs that did not need an
 > expert. So:
 
-The two issues that illustrated `junior-dev`'s filter:
-
-> `#71 (Character draws on top of itself when the header is squeezed to its floor)`
-> looked like ordinary work and took nine rounds and a `QTableView` subclass.
-> `#73 (The DOSBox-X harness will not start without DOSBox 0.74, which it never runs)` named the two candidate approaches and said
-> which was smaller, and that is what made it assignable.
+The rule gave two issues to illustrate `junior-dev`'s filter. It said that `#71 (Character draws on top of itself when the header is squeezed to its floor)` looked like ordinary work and took nine rounds and a `QTableView` subclass, and that the issue about the DOSBox-X harness failing to start without DOSBox 0.74, an emulator it never runs, named the two candidate approaches and said which was smaller, which is what made it assignable.
 
 #### .claude/rules/delegating.md -- "Writing the brief"
 
@@ -2059,7 +2035,7 @@ The five probe scripts and the two build scripts answered whether the automapper
 
 ###### m68dis.py and m68discheck.py
 
-The disassembler will not guess because a made-up instruction in a string table is what gets believed and written into a document. A 68020 index extension and a branch to an odd address are legal encodings on real silicon; blocking them is a judgement that no assembler emits them, so a word carrying one is data. `--refs ADDR` is how the code that opens a `.pc` was found from the string alone. The verification against capstone 5.0.7 in `CS_MODE_BIG_ENDIAN | CS_MODE_M68K_000` covered 100,385 instructions of the Amiga Pools of Darkness binary: no length disagreements, no operand disagreements, nothing capstone decoded that it blocked, written up in `docs/50-experiments.md`, "The 68000 disassembler". The checker runs both modes because capstone in 020 mode decodes instructions the target CPU does not have, so a comparison that does not name its mode says very little.
+The disassembler will not guess because a made-up instruction in a string table is what gets believed and written into a document. A 68020 index extension and a branch to an odd address are legal encodings on real silicon; rejecting them is a judgement that no assembler emits them, so a word carrying one is data. `--refs ADDR` is how the code that opens a `.pc` was found from the string alone. The verification against capstone 5.0.7 in `CS_MODE_BIG_ENDIAN | CS_MODE_M68K_000` covered 100,385 instructions of the Amiga Pools of Darkness binary: no length disagreements, no operand disagreements, nothing capstone decoded that it rejected, written up in `docs/50-experiments.md`, "The 68000 disassembler". The checker runs both modes because capstone in 020 mode decodes instructions the target CPU does not have, so a comparison that does not name its mode says very little.
 
 ###### podimportmap.py and podpcregions.py
 
@@ -2241,7 +2217,7 @@ The old scratch directory held 95 Python files. Nine were judged likely to be wr
 
 `tools.wish` is named in `wish.spec`'s `hiddenimports` because it is the body of the `wish export` and `wish import` subcommands and no static scan sees the import that reaches it; `tools.generate.genui` is imported directly by `wish/__main__.py`. `__init__.py` exists so that `from tools import anything` cannot leave a process with `tools/wish.py` where the real `wish` package should be.
 
-`wishagent.py` mints a short-lived JWT from the App's private key (`~/.config/wish-agent/private-key.pem` by default) and exchanges it for an installation token on this one repository. It calls the REST API with `urllib.request`, never GraphQL and never `gh issue`'s own subcommands, which resolve labels through GraphQL where an installation token is accepted unevenly. Subcommands: `whoami`, `token`, `create`, `comment`, `close`, `label`, `edit`, `edit-comment`. `push-token` mints the second kind of token (`contents: write` and `workflows: write`) and `git-credential` is a git credential helper built on it: it answers git's request for `github.com` over HTTPS with the user `x-access-token` and a token minted for that request, splitting the request on newlines only. A push token is minted per call and cached nowhere. The private key is blocked when group- or world-readable (skipped on Windows), the ordinary token is cached in the process and never on disk, and every body comes from `--body-file`. `docs/218-the-wish-agent-bot.md` has the setup, including resetting git's helper list.
+`wishagent.py` mints a short-lived JWT from the App's private key (`~/.config/wish-agent/private-key.pem` by default) and exchanges it for an installation token on this one repository. It calls the REST API with `urllib.request`, never GraphQL and never `gh issue`'s own subcommands, which resolve labels through GraphQL where an installation token is accepted unevenly. Subcommands: `whoami`, `token`, `create`, `comment`, `close`, `label`, `edit`, `edit-comment`. `push-token` mints the second kind of token (`contents: write` and `workflows: write`) and `git-credential` is a git credential helper built on it: it answers git's request for `github.com` over HTTPS with the user `x-access-token` and a token minted for that request, splitting the request on newlines only. A push token is minted per call and cached nowhere. The private key is rejected when group- or world-readable (skipped on Windows), the ordinary token is cached in the process and never on disk, and every body comes from `--body-file`. `docs/218-the-wish-agent-bot.md` has the setup, including resetting git's helper list.
 
 `installdesktop.py` exists because Wayland has no protocol for a client-supplied window icon: the desktop matches a window to a `.desktop` file by application id and looks the icon up by name, so `setWindowIcon` cannot help. A wheel ships both files into `<prefix>/share`, which is on the search path for `pip install --user` and not for a virtualenv or a `pipx` install; this covers those, and `wish --install-desktop` is the same code from the command line.
 

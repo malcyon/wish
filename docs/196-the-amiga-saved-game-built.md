@@ -185,8 +185,7 @@ is the next section.
 **A party on the travel grid was blocked until 2026-09-07**, because byte
 12810 (the view type) and byte 12803 (the wall in front) had never been seen
 in an outdoor Amiga saved game and writing either would have been inventing a
-value. A third WinUAE run made two,
-`#321 (An Amiga Pool of Radiance conversion blocks a party standing on the travel grid, because no outdoor Amiga saved game has ever been read)`, and
+value. A third WinUAE run made two outdoor saved games, and
 both bytes agree with DOS:
 
 | byte | outdoors | indoors | what DOS holds outdoors |

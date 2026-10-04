@@ -64,7 +64,7 @@ Animate Dead field was too broad. The registered game-written
 and an owned id-32 array row at index 63. On that input, the predicate returns
 the array index, so the temple's `STA $6BAD,X` targets `$6BEC`, not the trait
 slot at `$6BB6`; it does not clear the array id. This is an instruction-path
-finding for `#700 (Converting a Pool of Radiance C64 party holding a camp-cast Animate Dead zombie needs more than removing the block)`.
+finding for the conversion of a Pool of Radiance C64 party that holds a camp-cast Animate Dead zombie.
 A successful temple Raise Dead and its game-written resave have not been
 observed, so the resulting player state remains unconfirmed.
 
@@ -295,13 +295,13 @@ performs makes sense of it. 31 "helpless" on list 7 beside hold, sleep and
 snake charm does; 50 "mummy rot, blocking healing" on the two saving-throw
 lists does not.
 
-### The monster sweep blocked four that agreement offered
+### The monster sweep rejected four that agreement offered
 
 The route Pool of Radiance's own table was built on, over the 71 `MON*`
 records on the six Silver Blades sides. It named three -- 64 lands on this
 title's eight poisoners, the same creature set that carries it in Pool of
 Radiance, and BASILISK, MEDUSA and SARGATHA carry the pair 58/59 where Pool of
-Radiance's basilisk and medusa carry 83/127 -- and it blocked four more:
+Radiance's basilisk and medusa carry 83/127 -- and it rejected four more:
 
 | id | the name agreement offered | the creature carrying it here |
 |---|---|---|

@@ -1,7 +1,7 @@
 # Loading a Curse save disk in a driven session
 
 What Curse of the Azure Bonds' `LOAD SAVED GAME` actually does, and the three
-different things that were making it block in a pooled VICE session —
+different things that were making it fail in a pooled VICE session —
 `#291 (A Curse save disk will not load through the game's own front end in a
 pooled session, so no C64 Curse party can be got in)`. All three printed the
 same sentence, `UNABLE TO LOAD SAVED GAME.`, which is why one of them was
@@ -133,7 +133,7 @@ seconds, overridable per call. CONFIRMED by the same command run twice with
 nothing else changed: `$03F1` = 74 and a failed load without it, `$03F1` = 0 and
 a party on the screen with it.
 
-This is the same fault as `#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which the importer blocks today)`'s second `ENCAMP > SAVE`
+This is the same fault as the Curse DOS-to-C64 conversion work's second `ENCAMP > SAVE`
 coming back `--SAVE ERROR--` until the image was detached and put back.
 
 ### 60, and a save disk the drive never finished writing
@@ -199,7 +199,7 @@ leaving a working menu behind an error box: the failed load replaces the whole
 party menu with the `SAVED GAME NOT FOUND!` box, and that same party menu
 carries `BEGIN ADVENTURING` **before** a load as well as after one — so a
 driver that answers `TRY AGAIN ABORT LOAD` and then waits for that label has
-a success test a blocked load can pass. `tools/c64/splatload.py` reads `$03F1`
+a success test a failed load can pass. `tools/c64/splatload.py` reads `$03F1`
 instead of trusting the screen.
 
 Driven both ways in pool slot 2 on 2026-09-08, one flag apart: unrepaired
@@ -242,7 +242,7 @@ taken from inside the world reports its failures with less information than
 the front end does. The experiment is to break at `GEN $1FDC` during an
 `ENCAMP > SAVE` and read `$7E9F`.
 
-**Why `#291 (A Curse save disk will not load through the game's own front end in a pooled session, so no C64 Curse party can be got in)`'s own sessions blocked with the save disk attached.** Their logs
+**Why `#291 (A Curse save disk will not load through the game's own front end in a pooled session, so no C64 Curse party can be got in)`'s own sessions failed with the save disk attached.** Their logs
 survive at `cited/256-dual/c64/run.jsonl` and stop at `menu-miss` before
 any load, so the failed loads they describe came from driving by hand over the
 command port and no transcript of that survives. All three faults above were

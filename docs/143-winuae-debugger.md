@@ -1284,7 +1284,7 @@ made to walk, because the WinUAE driver sends only keystrokes)` -- §5.1 and
   console.device, no gameport.device and no keymap patch, so it is the other
   half of §5.1 rather than an exception to it. Outdoors the same `8` steps
   **north** -- overland movement is absolute and the facing shown is the
-  direction of the last step. `#321 (An Amiga Pool of Radiance conversion blocks a party standing on the travel grid, because no outdoor Amiga saved game has ever been read)`
+  direction of the last step.
 * **the whole run needed no debugger.** Three boots, about sixty keystrokes,
   five saved games and two disk images pulled back, all of it `winuae.ps1 key`
   and `winvm shot`. §9 and §10 stay unexercised

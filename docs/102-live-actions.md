@@ -106,8 +106,8 @@ went 8 → 9 mid-fight at `$6E11 = 2`. See
 [the experiments log](50-experiments.md).
 
 **A character at zero is skipped.** Zero is dead or dying and whatever else
-marks that is not decoded, so raising the byte alone would be the half-write
-levelling stops on. The outcome says whom it skipped.
+marks that is not decoded, so raising the byte alone would be a half-write, and
+levelling will not make it. The outcome says whom it skipped.
 
 ### 2. Store and restore memorized spells — `store-spells`, `restore-spells`
 

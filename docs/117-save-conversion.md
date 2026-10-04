@@ -645,7 +645,7 @@ Bonds and Secret of the Silver Blades), the per-script `scratch`, whether the
 party is `outdoors`, its `travel` square, whether it has `set_out` at all —
 false only for a save made from the party-formation menu, before `BEGIN
 ADVENTURING`, substituted from `goldbox.areas.STARTS` rather than blocked
-(#301 (A DOS Curse save standing in area 0 is blocked by the import, because no row of the area table names area 0), #326 (A Pool of Radiance save made before the party began adventuring is blocked, because the initialiser left $49E6 at 0 and New Phlan is indoors)) — and the later titles' own copied
+(the cases were a DOS Curse save standing in area 0, which no row of the area table names, and a Pool of Radiance save made before the party began adventuring, where the initialiser left `$49E6` at 0 and New Phlan is indoors) — and the later titles' own copied
 `header` words (`+$E7`-`+$E9`, `+$FD`-`+$FE`; empty of meaning for Pool of
 Radiance, which copies none of them). The addresses it reads are the ones
 `docs/141-dos-savegame.md` maps for DOS and C64 and `docs/165-amiga-savegame.md`
@@ -1074,7 +1074,7 @@ from somewhere.** This is the whole list.
 | `$8300`-`$83FF` | 256 | roster: derived combat values | **yes** — recompute for the target, do not copy |
 | `$8400`-`$8753` | 852 | `ANIMATE00`, resident — code, not party state | **yes** — read the file off the player's own `POOL` disk. 852 payload bytes at load address `$1000`, byte-identical on all eight sides, and 829 of the 852 match what an engine-written save holds here on all 14 of Donald's save disks. `$8400 + 852 - 1` is `$8753`, so the boundary with the buffer below is the file's own length rather than a guess. **Not scratch**: cache slot 11 tells the engine the file is resident, so nothing reloads it — `docs/140-loaded-files-cache.md` §"Slot 11 is not lazy, because the save is carrying the file", and #122 (A converted save says ANIMATE00 is resident and carries whatever the template had there) |
 | `$8754`-`$8AFF` | 940 | bitmap buffer | **yes, as zero** — 407 non-zero bytes of a template wiped, and the result loaded, walked, fought and changed area indistinguishably from the control (#118 (Write a C64 save from nothing, so importing a DOS save needs no existing .d64) step 3) |
-| `$4BE0`-`$4CFF` | 288 | combat icon table | **synthesise** — DOS has no equivalent; `goldbox/iconparts.py` composes the icon the game's own character creation writes. **Zero is blocked**: screen code 0 in `CHARPIC00` is a real glyph, so a zeroed icon draws as a 3x3 block of black hooks in a fight (#57 (Convert the character portrait across ports)) |
+| `$4BE0`-`$4CFF` | 288 | combat icon table | **synthesise** — DOS has no equivalent; `goldbox/iconparts.py` composes the icon the game's own character creation writes. **Zero is not written**: screen code 0 in `CHARPIC00` is a real glyph, so a zeroed icon draws as a 3x3 block of black hooks in a fight (#57 (Convert the character portrait across ports)) |
 | `$49C0`-`$49C2` | 3 | party x, y, facing | **yes** — DOS keeps them at file offsets 12801, 12802, 12803; the facing is the C64's doubled. Obstacle 2 |
 | `$4BC2` | 1 | current `GEO` | **yes** — DOS keeps the area id at file offset 395, in the same numbering. Obstacle 2 |
 | `$49C6`-`$49CB` | 6 | clock, six digits | **probably** — needs the DOS clock format |
@@ -1535,7 +1535,7 @@ for. `$49C5` is the map `LOADFILES` reloads and `$49F2` the script id;
 **So the template no longer has to stand in the DOS party's area.** What
 `convert_save` still blocks is six areas of the thirty, where the answer
 would be a guess: the four that load no map and the two whose script picks its
-map at run time. The travel-grid block came off in #50 (Lift the wilderness block from the DOS save converter): the C64 side of the
+map at run time. The travel-grid block has since been lifted: the C64 side of the
 outdoor recipe was already CONFIRMED — slot 4 = the `SQRDATA` number in place
 of slot 2, the travel square in `$49C3`/`$49C4`,
 `docs/140-loaded-files-cache.md` — and #59 (Map the DOS saved game, not just the character record)'s outdoor pass measured the DOS
@@ -1896,7 +1896,7 @@ classDiagram
   }
 
   NeutralCharacter "1" o-- "0..64" Value : fields
-  NeutralCharacter ..> FIELDS : set blocks a name not declared here
+  NeutralCharacter ..> FIELDS : set raises NeutralError for a name not declared here
   Writer --> NeutralCharacter : take, unwritten
   Writer --> Report : note, dropped, warnings
   Value --> Confidence

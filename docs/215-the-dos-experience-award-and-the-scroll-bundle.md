@@ -276,7 +276,7 @@ loader has no compare, and its one counter is never read. That is PROBABLE
 from the absent instruction. The same pattern was measured in DOS Pool of
 Radiance, where a 20-item file loaded and saved back as 20
 (`173-carrying-limits.md`). **What the player sees:** every spell arrives, but
-until CLERIC is down to fifteen items the game blocks him another one. On
+until CLERIC is down to fifteen items the game will not let him have another one. On
 the Amiga, where the case counts as one item, he had room for one more.
 HILDE (13) and INA (12) are under the limit. **The experiment that confirms
 it:** load the converted `SavGamA` in DOS, count CLERIC's 21 scrolls on

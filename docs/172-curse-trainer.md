@@ -69,7 +69,7 @@ between the two was ever distinguishable, and one attempt to test it with
 
 ## The five trainings
 
-The party is the converted Tilverton party of `#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which the importer blocks today)`, with
+The party is the converted Tilverton party of the Curse DOS-to-C64 conversion work, with
 **two fields written by us** into five of the six slots before the boot and
 nothing else: experience at record `0x0E8` and platinum at `0x0C3`. MARK's slot
 was left alone and is the control -- his 25,000 experience and 300 platinum are
@@ -193,7 +193,7 @@ there -- so the conversion does not write it and the engine does. CONFIRMED.
 SHARA is a cleric with wisdom 17 taken from 5 to 6, the level at which a Pool of
 Radiance trainer writes a new capacity byte. `0x0EE`-`0x0F6` read nine zeroes
 before and nine zeroes after. That is a third reading behind
-`levels.stores_spell_capacity=False`, after `#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which the importer blocks today)`'s code sweep and its
+`levels.stores_spell_capacity=False`, after the Curse DOS-to-C64 conversion work's code sweep and its
 memorise-screen demonstration. CONFIRMED.
 
 Five of five trained characters came out with `char_class` at `0x073` = 0 where

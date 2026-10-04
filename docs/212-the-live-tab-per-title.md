@@ -205,7 +205,7 @@ walk a Silver Blades party, because SSBSession never says which title it is)`.
 
 **A walk starts fights, and every action is blocked in one.** The first Pool
 of Radiance run left the Slums, took four steps into a wandering encounter,
-and Heal party, Fast Travel and Level up all answered "blocked during a
+and Heal party, Fast Travel and Level up all answered "not available during a
 fight". That is the gate working and it measured nothing, so the actions now
 run before the walk and the party in Pool of Radiance's default save stands in New Phlan,
 which has no wandering monsters.

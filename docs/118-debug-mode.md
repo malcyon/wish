@@ -40,7 +40,7 @@ mid-redraw can land on a real, in-range address the renderer is using as a
 scratch cursor rather than on the party's own square — CONFIRMED from the
 bytecode, `#715 (The C64 driver's screen capture and live-memory reads aren't
 atomic, and patching each surfaced race isn't converging)`. The `-e` stall
-on `#700 (Converting a Pool of Radiance C64 party holding a camp-cast Animate Dead zombie needs more than removing the block)` is the one
+met in the work on converting a Pool of Radiance C64 party that holds a camp-cast Animate Dead zombie is the one
 observed instance; that it caught the indoor renderer specifically, rather
 than one of `DUNGEON`'s four walks, is PROBABLE — the program counter was not
 recorded at the time.

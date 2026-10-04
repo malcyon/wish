@@ -1,7 +1,7 @@
 # Converting a DOS Secret of the Silver Blades save to the C64
 
 What a Silver Blades conversion writes, where the two ports disagree, and what
-was watched in the running game. `#193 (Convert a Secret of the Silver Blades DOS save into a C64 one, which the importer blocks today)` is the ticket;
+was watched in the running game.
 `docs/117-save-conversion.md` is Pool of Radiance's and Curse of the Azure
 Bonds' account of the same job, and this page carries only what is this
 title's own.
@@ -141,12 +141,12 @@ recorded the same fact from the other side and the Amiga codec has always
 computed the mask rather than copying it.
 
 **Curse of the Azure Bonds had the same defect and it shipped**, because the
-party `#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which the importer blocks today)` proved that conversion on had two paladins and no ranger. The fix
+party the Curse conversion was first proved on had two paladins and no ranger. The fix
 is in `goldbox/dos_codec.py` and covers both titles.
 
 ### Items are 67 bytes, and the four extra ones hold nothing
 
-`item_to_c64` demanded 63 and blocked every Silver Blades item. Every field it
+`item_to_c64` demanded 63 and rejected every Silver Blades item. Every field it
 reads is below `0x03E` and so is at the same offset whichever title wrote it
 (`#113 (Play DOS Curse far enough to save a party with items)`); the four extra bytes are `0x03F`-`0x042` and **read `00 00 00 00` in
 48 of 48 item records**, 24 of them distinct, across every `.STF` this project
@@ -266,8 +266,7 @@ disk to reload a party. `tools/secret_of_the_silver_blades/ssbsession.py`'s `SSB
 to check for only one of the two -- its own `SAVE_PROMPT = "SAVE DISK"` is a
 substring of the loader wording but not of camp's -- so it recognised the
 loader prompt fine and only missed the camp one, and a driven `ENCAMP > SAVE`
-sat on the camp prompt forever
-(`#539 (tools/secret_of_the_silver_blades/ssbwarp.py's SAVE_PROMPT does not match Silver Blades' actual save-disk prompt, so ENCAMP > SAVE silently blocks)`). `save_disk_wanted`
+sat on the camp prompt forever. `save_disk_wanted`
 now checks both, and no driven run has ever put the loader's own wording on
 screen -- every party load attaches the save disk before picking `LOAD SAVED
 GAME`, so which of the game's two paths would actually draw it is still
