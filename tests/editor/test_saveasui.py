@@ -157,7 +157,8 @@ def test_choosing_dos_shows_its_own_label_and_the_dos_game_folder_row(
     assert not binding._child("button_destination_save_as").isEnabled()
     binding._child("destination_dos_folder").setText(str(tmp_path))
     assert binding._child("button_destination_save_as").isEnabled()
-    assert binding._child("box_dos_folder").isHidden()
+    # The row the player typed into stays, whatever the folder now holds.
+    assert not binding._child("box_dos_folder").isHidden()
 
 
 def test_a_c64_source_missing_its_own_disks_cannot_be_fixed_from_the_section(
@@ -1339,25 +1340,17 @@ def test_a_folder_filled_from_preferences_keeps_its_row_whatever_is_typed(
     assert not binding._child("button_destination_save_as").isEnabled()
 
 
-def test_the_row_of_a_filled_folder_is_hidden_again_when_save_as_is_reopened(
+def test_the_row_is_forgotten_when_save_as_is_cancelled_and_reopened_elsewhere(
         app, tmp_path, monkeypatch):
-    """Reopened for a title with nothing in Preferences, the row follows the
-    usual rule again; cancelling forgets the fill too."""
+    """Cancelling forgets that the row was shown; a route that reads no DOS
+    folder then shows none."""
     own = game_folder(tmp_path, SILVER)
     binding = dos_save_as(app, tmp_path, monkeypatch, SILVER,
                           game_folders={SILVER: str(own)})
+    assert binding._dos_folder_row_shown
     binding.cancel_save_as()
-    assert not binding._dos_folder_filled
-    binding.game_folders = {}
-    binding.begin_save_as("dos")
-    folder_field(binding).setText(str(own))
-    assert binding._child("box_dos_folder").isHidden()
-
-
-def test_a_typed_matching_folder_still_hides_the_row_as_before(
-        app, tmp_path, monkeypatch):
-    binding = dos_save_as(app, tmp_path, monkeypatch, SILVER)
-    folder_field(binding).setText(str(game_folder(tmp_path, SILVER)))
+    assert not binding._dos_folder_row_shown
+    binding.begin_save_as("c64")
     assert binding._child("box_dos_folder").isHidden()
 
 
@@ -1390,8 +1383,144 @@ def test_reopening_for_a_route_without_a_dos_folder_forgets_the_fill(
     own = game_folder(tmp_path, SILVER)
     binding = dos_save_as(app, tmp_path, monkeypatch, SILVER,
                           game_folders={SILVER: str(own)})
-    assert binding._dos_folder_filled
+    assert binding._dos_folder_row_shown
     binding.begin_save_as("c64")
-    assert not binding._dos_folder_filled
+    assert not binding._dos_folder_row_shown
     assert folder_field(binding).text() == ""
     assert binding._child("box_dos_folder").isHidden()
+
+
+# ---------------------------------------------------------------------------
+# The DOS game folder typed by hand
+# ---------------------------------------------------------------------------
+
+def row_shown(binding):
+    return not binding._child("box_dos_folder").isHidden()
+
+
+def save_as_enabled(binding):
+    return binding._child("button_destination_save_as").isEnabled()
+
+
+def test_typing_a_path_keeps_the_row_and_holds_save_as_until_it_is_a_directory(
+        app, tmp_path, monkeypatch):
+    """Every prefix of the path is typed in turn. The row never goes, and
+    Save As is on exactly when the text is an existing directory that names
+    no other title."""
+    binding = dos_save_as(app, tmp_path, monkeypatch, SILVER)
+    target = str(game_folder(tmp_path, SILVER))
+    field = folder_field(binding)
+    held_back = 0
+    for end in range(1, len(target) + 1):
+        field.setText(target[:end])
+        assert row_shown(binding), target[:end]
+        assert save_as_enabled(binding) == pathlib.Path(target[:end]).is_dir(), (
+            target[:end])
+        held_back += not save_as_enabled(binding)
+    assert held_back > 0
+    assert save_as_enabled(binding)
+
+
+def test_a_path_that_is_not_an_existing_directory_never_enables_save_as(
+        app, tmp_path, monkeypatch):
+    binding = dos_save_as(app, tmp_path, monkeypatch, SILVER)
+    a_file = tmp_path / "a-file"
+    a_file.write_bytes(b"")
+    for text in (str(tmp_path / "missing"), str(tmp_path / "missing" / "deeper"),
+                 str(a_file), "~nobody-has-this-name/games", "no-such-folder-here"):
+        folder_field(binding).setText(text)
+        assert row_shown(binding), text
+        assert not save_as_enabled(binding), text
+        assert wrong_folder_text(binding) is None, text
+
+
+def test_a_half_typed_home_folder_does_not_raise(app, tmp_path, monkeypatch):
+    """`pathlib` cannot expand `~name` for a user the machine does not have;
+    typing it must not reach the slot as an exception, which PyQt6 turns into
+    an abort."""
+    import sys
+
+    raised = []
+    monkeypatch.setattr(sys, "excepthook", lambda *info: raised.append(info))
+    binding = dos_save_as(app, tmp_path, monkeypatch, SILVER)
+    for text in ("~nobody-has-this-name", "~nobody-has-this-name/SECRET"):
+        folder_field(binding).setText(text)
+        assert row_shown(binding), text
+        assert not save_as_enabled(binding), text
+    assert raised == []
+
+
+def test_an_existing_directory_that_names_no_title_enables_save_as_and_keeps_its_row(
+        app, tmp_path, monkeypatch):
+    """As before for the button and the missing sentence; the row now stays."""
+    binding = dos_save_as(app, tmp_path, monkeypatch, SILVER)
+    somewhere = tmp_path / "somewhere"
+    somewhere.mkdir()
+    folder_field(binding).setText(str(somewhere))
+    assert save_as_enabled(binding)
+    assert wrong_folder_text(binding) is None
+    assert row_shown(binding)
+
+
+def test_a_typed_tilde_path_to_an_existing_directory_is_accepted(
+        app, tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    folder = game_folder(tmp_path, SILVER)
+    binding = dos_save_as(app, tmp_path, monkeypatch, SILVER)
+    folder_field(binding).setText("~/" + folder.name)
+    assert save_as_enabled(binding)
+    folder_field(binding).setText("~/" + folder.name + "-missing")
+    assert not save_as_enabled(binding)
+
+
+def test_the_row_stays_after_the_typed_folder_becomes_right_and_while_it_changes(
+        app, tmp_path, monkeypatch):
+    binding = dos_save_as(app, tmp_path, monkeypatch, SILVER)
+    field = folder_field(binding)
+    field.setText(str(game_folder(tmp_path, SILVER)))
+    assert save_as_enabled(binding) and row_shown(binding)
+    field.setText(str(game_folder(tmp_path, POOL)))
+    assert not save_as_enabled(binding) and row_shown(binding)
+    field.setText("")
+    assert not save_as_enabled(binding) and row_shown(binding)
+    field.setText(str(tmp_path))
+    assert save_as_enabled(binding) and row_shown(binding)
+
+
+def test_cancelling_and_reopening_forgets_that_the_row_was_shown(
+        app, tmp_path, monkeypatch):
+    binding = dos_save_as(app, tmp_path, monkeypatch, SILVER)
+    folder_field(binding).setText(str(game_folder(tmp_path, SILVER)))
+    assert binding._dos_folder_row_shown
+    binding.cancel_save_as()
+    assert not binding._dos_folder_row_shown
+    assert binding._child("destination_section").isHidden()
+    binding.begin_save_as("dos")
+    assert folder_field(binding).text() == ""
+    assert not save_as_enabled(binding)
+    binding.begin_save_as("c64")
+    assert not binding._dos_folder_row_shown
+    assert not row_shown(binding)
+
+
+def test_a_completed_save_as_forgets_that_the_row_was_shown(
+        app, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    binding = dos_save_as(app, tmp_path, monkeypatch, SILVER)
+    folder_field(binding).setText(str(game_folder(tmp_path, SILVER)))
+    assert binding._dos_folder_row_shown
+    monkeypatch.setattr(ew.saveplan, "refuse_alias", lambda *a: None)
+    monkeypatch.setattr(
+        ew.saveplan, "prepare_save_as",
+        lambda _party, _port, path, _assets, **_k: SimpleNamespace(
+            destination=_StubDestination(path)))
+    monkeypatch.setattr(
+        ew.saveplan, "publish",
+        lambda plan, party, **_k: SimpleNamespace(
+            destination=plan.destination, backup=None, party=party))
+    monkeypatch.setattr(binding, "_adopt", lambda *a, **k: None)
+    binding._child("button_destination_save_as").click()
+    assert binding._child("destination_section").isHidden()
+    assert not binding._dos_folder_row_shown

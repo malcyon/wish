@@ -750,6 +750,7 @@ def test_a_c64_source_with_no_disks_is_refused_for_a_dos_destination(
     was not `None` and the Convert button was pressable, exactly `#482`'s
     silent loss."""
     path = _por_c64_disk(tmp_path)
+    (tmp_path / "unread").mkdir()
 
     dialog = convert.ConvertDialog(str(path), None, _no_disks,
                                    destination="dos",

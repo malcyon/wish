@@ -436,6 +436,15 @@ class WrongGameFolder(DroppedFields):
         self.lost = []
 
 
+def expand_folder(folder: "str | pathlib.Path") -> "pathlib.Path | None":
+    """`folder` with a leading `~` expanded, or `None` when the `~` names a
+    home that cannot be found, as a half-typed `~name` does."""
+    try:
+        return pathlib.Path(folder).expanduser()
+    except RuntimeError:
+        return None
+
+
 def wrong_dos_folder(source: Any, port: str,
                      folder: "str | pathlib.Path | None"
                      ) -> "tuple[str, str] | None":
@@ -448,7 +457,10 @@ def wrong_dos_folder(source: Any, port: str,
     if not folder or port != "dos" or DOS_GAME_FOLDER not in requirements(
             source, port):
         return None
-    held = titles.dos_folder_title(folder)
+    expanded = expand_folder(folder)
+    if expanded is None:
+        return None
+    held = titles.dos_folder_title(expanded)
     if held is None or held == source.key:
         return None
     return held, source.key
@@ -462,8 +474,9 @@ def holds_dos_files(folder: "str | pathlib.Path", key: str) -> bool:
     only by its name, such as one of disk images, does not hold them.
     """
     files = titles.DOS_FOLDER_FILES.get(key)
-    folder = pathlib.Path(folder).expanduser()
-    if files is None or titles.dos_folder_title(folder) != key:
+    folder = expand_folder(folder)
+    if (files is None or folder is None
+            or titles.dos_folder_title(folder) != key):
         return False
     try:
         held = {path.name.upper() for path in folder.iterdir()}
@@ -480,7 +493,7 @@ def stored_dos_folder(source: Any, port: str,
             or DOS_GAME_FOLDER not in requirements(source, port)
             or not holds_dos_files(folder, source.key)):
         return None
-    return str(pathlib.Path(folder).expanduser())
+    return str(expand_folder(folder))
 
 
 def check_dos_folder(source: Any, port: str, assets: "Assets") -> None:
@@ -604,7 +617,8 @@ class Assets:
     title's for a C64 party being converted away. `dos_folder` and
     `amiga_disk` are paths the writers read their area script out of, and
     `c64_folder` records a folder a caller named by hand rather than taking
-    whatever preferences answered.
+    whatever preferences answered. `dos_folder` counts as present only when it
+    is an existing directory.
 
     `game_disks` is the `.d64` files those `GameFiles` were actually read
     off, when anybody knows: `refuse_alias` will not let a Save As land on
@@ -629,7 +643,7 @@ class Assets:
         if requirement == SOURCE_DISKS:
             return self.source_files is not None
         if requirement == DOS_GAME_FOLDER:
-            return self.dos_folder is not None
+            return self.dos_folder is not None and self.dos_folder.is_dir()
         if requirement == AMIGA_GAME_DISK:
             return self.amiga_disk is not None
         if requirement == AMIGA_DISK_ONE:
@@ -673,6 +687,9 @@ def resolve_assets(source: Any, port: str, *, game_files: Any = None,
     overrides it for the destination's own disks when a caller has named one
     folder outright.
 
+    A `dos_folder` that is not an existing directory, after `~` is expanded,
+    is missing.
+
     Raises `MissingAssets` naming every requirement nothing answered for.
     """
     from .convert import _game_files_from_folder
@@ -680,7 +697,7 @@ def resolve_assets(source: Any, port: str, *, game_files: Any = None,
     direction = route(source, port)
     needs = requirements(source, port)
     resolved = Assets(
-        dos_folder=pathlib.Path(dos_folder) if dos_folder else None,
+        dos_folder=expand_folder(dos_folder) if dos_folder else None,
         amiga_disk=pathlib.Path(amiga_disk) if amiga_disk else None,
         amiga_disk_one=(pathlib.Path(amiga_disk_one)
                         if amiga_disk_one else None),

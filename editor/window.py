@@ -918,9 +918,9 @@ class EditorBinding(QObject):
         #: `begin_save_as` and read by `confirm_save_as` and `cancel_save_as`.
         self._save_as_source = None
         self._save_as_port: str | None = None
-        #: Whether this Save As filled the DOS game folder from Preferences,
-        #: which keeps its row on screen for the player to change.
-        self._dos_folder_filled = False
+        #: Whether this Save As has shown the DOS game folder row, which then
+        #: stays on screen for the player to change the folder.
+        self._dos_folder_row_shown = False
         #: What the player chose to leave behind for the Save As in progress,
         #: and the packs it was chosen against -- `(leave, packs)`, see
         #: `_packs_of`. Read only by a stale plan's re-preparation.
@@ -2641,7 +2641,7 @@ class EditorBinding(QObject):
         stored = (self.game_folders.get(source.key, "") or "").strip()
         folder = saveplan.stored_dos_folder(source, port, stored)
         if folder is not None:
-            self._dos_folder_filled = True
+            self._dos_folder_row_shown = True
             field.setText(folder)
 
     def _suggest_destination_path(self, source, port: str) -> pathlib.Path:
@@ -2688,7 +2688,7 @@ class EditorBinding(QObject):
             box = self._child(name)
             if box is not None:
                 box.setVisible(False)
-        self._dos_folder_filled = False
+        self._dos_folder_row_shown = False
         self._show_wrong_dos_folder(None)
 
     def _destination_manual_assets(self) -> dict[str, str]:
@@ -2757,16 +2757,15 @@ class EditorBinding(QObject):
         label.setVisible(True)
 
     def _show_asset_rows(self, missing, wrong=None) -> None:
-        """Show a row for each asset still missing, and keep the DOS game
-        folder row, with its sentence, for a folder that is another
-        title's, and for a folder filled in from Preferences; Save As stays
-        off for the first two."""
+        """Show a row for each asset still missing. The DOS game folder row,
+        once shown, stays until this Save As ends; Save As stays off while
+        the folder is missing or another title's."""
         self._show_wrong_dos_folder(wrong)
+        if saveplan.DOS_GAME_FOLDER in missing or wrong is not None:
+            self._dos_folder_row_shown = True
         rows = {
             "box_c64_disks": saveplan.DESTINATION_DISKS in missing,
-            "box_dos_folder": (saveplan.DOS_GAME_FOLDER in missing
-                               or wrong is not None
-                               or self._dos_folder_filled),
+            "box_dos_folder": self._dos_folder_row_shown,
             "box_amiga_disk": saveplan.AMIGA_GAME_DISK in missing,
             "box_amiga_disk_one": saveplan.AMIGA_DISK_ONE in missing,
         }
@@ -2893,7 +2892,7 @@ class EditorBinding(QObject):
             section.setVisible(False)
         self._save_as_source = None
         self._save_as_port = None
-        self._dos_folder_filled = False
+        self._dos_folder_row_shown = False
 
     def confirm_save_as(self) -> None:
         """The Save As button: check the name, refuse an alias, confirm a
