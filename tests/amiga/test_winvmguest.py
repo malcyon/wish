@@ -288,7 +288,7 @@ def test_diagnose_blocks_foreign_claim_receipt_and_pipe_before_any_message():
                       WINUAE_PS1.index("function Send-Pipe")]
     assert lane.index("Get-LaneDenial") < lane.index("Resolve-MyEmulator")
     assert "Get-LaneDenial" in lane and "ExecutablePath" in lane
-    assert body.index("Get-LaneEmulator") < body.index("New-Object IO.Pipes.NamedPipeClientStream")
+    assert body.index("Get-LaneEmulator") < body.index("Open-LanePipe $lane.proc.Id")
     assert body.index("GetNamedPipeServerProcessId") < body.index("$server -ne $lane.proc.Id")
     assert body.index("$server -ne $lane.proc.Id") < body.index("$again = Get-LaneEmulator")
     assert body.index("$again = Get-LaneEmulator") < body.index("Send-Pipe $pipe $query")
@@ -318,7 +318,7 @@ SETTER = 'Send-Pipe $pipe "CFG floppy$drive $path"'
 
 
 def test_ownership_is_checked_before_the_pipe_is_opened_and_again_after():
-    opened = _at("New-Object IO.Pipes.NamedPipeClientStream")
+    opened = _at("Open-LanePipe $lane.proc.Id")
     assert FLOPPY.count("Get-LaneEmulator") == 2
     assert _at("Get-LaneEmulator") < opened < _at("Get-LaneEmulator", opened) < _at(SETTER)
 
@@ -352,7 +352,7 @@ def test_the_lane_emulator_check_reuses_the_claim_and_receipt_functions():
 
 def test_the_pipe_is_bound_to_the_lanes_own_process():
     call = _at("[Wish.PipeInfo]::GetNamedPipeServerProcessId(")
-    assert _at("New-Object IO.Pipes.NamedPipeClientStream") < call
+    assert _at("Open-LanePipe $lane.proc.Id") < call
     assert call < _at("if ($server -ne $lane.proc.Id)") < _at(SETTER)
 
 
@@ -364,7 +364,7 @@ def test_the_file_and_its_hash_are_checked_after_the_last_claim_look_and_before_
 
 
 def test_the_stopwatch_starts_after_the_compile_and_a_read_never_outlasts_the_poll():
-    assert _at("Add-Type -Namespace") < _at("$sw = [Diagnostics.Stopwatch]::StartNew()") < _at("Connect(5000)")
+    assert _at("Add-Type -Namespace") < _at("$sw = [Diagnostics.Stopwatch]::StartNew()") < _at("Open-LanePipe $lane.proc.Id")
     send = WINUAE_PS1[WINUAE_PS1.index("function Send-Pipe"):WINUAE_PS1.index("function Read-Drives")]
     assert "$task.Wait($WaitMs)" in send
     reads = WINUAE_PS1[WINUAE_PS1.index("function Read-Drives"):WINUAE_PS1.index("function Invoke-Floppy")]
@@ -374,7 +374,7 @@ def test_the_stopwatch_starts_after_the_compile_and_a_read_never_outlasts_the_po
 
 
 def test_a_failure_before_the_pipe_is_open_exits_one_and_after_it_the_exit_is_zero():
-    assert _at("$open = $true") > _at("Connect(5000)")
+    assert _at("$open = $true") > _at("Open-LanePipe $lane.proc.Id")
     assert re.search(r"if \(-not \$open\) \{ \$verdict; exit 1 \}", FLOPPY)
     assert _at("if (-not $open)") > _at("finally")
     assert FLOPPY.rstrip().endswith("'<<end>>'\n}")
