@@ -3895,3 +3895,117 @@ def test_a_repair_failure_is_printed_once_however_often_close_runs(
     enc.close()
     assert len([r for r in rows if "error" in r]) == 1
     assert capsys.readouterr().out.count("cannot be read") == 1
+
+
+# party, pool and levelup
+
+#: A Pools of Darkness party of one, its record and the effect pool's slots.
+LV_RECORD = 0xC30000
+LV_POOL = 0xC31000
+
+
+def _lv_fighter(former_ranger: int) -> bytearray:
+    """A human fighter 6 with the experience for 7. With `former_ranger` 6
+    and `0x08A` 6 the press regains the ranger; with 0 it regains nothing."""
+    rec = bytearray(0x194)
+    rec[0x58] = 5
+    rec[0x60:0x65] = b"BINKY"
+    rec[0x79] = 16
+    rec[0x9D + 2] = 6
+    rec[0xA4 + 4] = former_ranger
+    rec[0x8A] = 6 if former_ranger else 0
+    rec[0x89] = 6
+    rec[0x44:0x48] = (70001).to_bytes(4, "big")
+    rec[0x81] = rec[0x191] = 50
+    return rec
+
+
+def _lv_machine(guest, former_ranger: int, effects: int = 0) -> None:
+    """Put the party and the effect pool into the `driven` machine: slots
+    0 to `effects - 1` taken and on the member's list."""
+    data = bytearray(guest.memory[BASE])
+    data[0x57A4:0x57A8] = LV_RECORD.to_bytes(4, "big")
+    bitmap = bytearray(50)
+    for slot in range(effects):
+        bitmap[slot // 8] |= 1 << slot % 8
+    data[0x75A2:0x75A2 + 58] = ((400).to_bytes(2, "big") + (10).to_bytes(2, "big")
+                                + LV_POOL.to_bytes(4, "big") + bytes(bitmap))
+    guest.memory[BASE] = bytes(data)
+    rec = _lv_fighter(former_ranger)
+    pool = bytearray(4000)
+    link = 4
+    for slot in range(effects):
+        node = LV_POOL + slot * 10
+        if link == 4:
+            rec[4:8] = node.to_bytes(4, "big")
+        else:
+            pool[link:link + 4] = node.to_bytes(4, "big")
+        pool[slot * 10:slot * 10 + 6] = bytes([0x2F, 0, 0, 0, 0xFF, 0])
+        link = slot * 10 + 6
+    guest.memory[LV_RECORD] = bytes(rec)
+    guest.memory[LV_POOL] = bytes(pool)
+    guest.writable = True
+
+
+def test_session_party_lists_levels_former_classes_and_the_effect_list(
+        driven, tmp_path):
+    guest, _ = driven
+    _lv_machine(guest, 6, effects=1)
+    events, _ = run_session(tmp_path, ["locate", "party"])
+    member = events["party"]["members"][0]
+    assert member["name"] == "BINKY" and member["address"] == hex(LV_RECORD)
+    assert member["levels"][2] == 6 and member["former"][4] == 6
+    assert member["experience"] == 70001
+    assert member["effects"] == [[hex(LV_POOL), "2f000000ff0000000000"]]
+
+
+def test_session_pool_reads_the_descriptor_and_bitmap(driven, tmp_path):
+    guest, _ = driven
+    _lv_machine(guest, 6, effects=3)
+    events, _ = run_session(tmp_path, ["locate", "pool"])
+    row = events["pool"]
+    assert (row["count"], row["size"], row["base"]) == (400, 10, hex(LV_POOL))
+    assert row["bitmap"] == "07" + "00" * 49
+
+
+def test_session_levelup_adds_the_regained_rangers_node_and_trains(
+        driven, tmp_path):
+    guest, _ = driven
+    _lv_machine(guest, 6, effects=1)
+    events, _ = run_session(tmp_path, ["locate", "levelup binky 1"])
+    row = events["levelup"]
+    assert "error" not in row, row
+    assert row["classes"] == ["fighter"] and row["added"] == [[0x69, 0, 255, 0]]
+    node = LV_POOL + 10
+    assert row["effects_after"][-1] == [hex(node), "69000000ff0000000000"]
+    assert row["pool_after"]["bitmap"].startswith("03")
+    assert guest.peek(LV_POOL + 6, 4) == node.to_bytes(4, "big")
+    assert guest.peek(LV_RECORD + 0x9D + 2, 1) == b"\x07"
+
+
+def test_session_levelup_with_no_regained_class_leaves_the_list_and_pool(
+        driven, tmp_path):
+    guest, _ = driven
+    _lv_machine(guest, 0, effects=1)
+    events, _ = run_session(tmp_path, ["locate", "pool", "levelup BINKY 1"])
+    row = events["levelup"]
+    assert row["added"] == [] and row["classes"] == ["fighter"]
+    assert row["effects_after"] == [[hex(LV_POOL), "2f000000ff0000000000"]]
+    assert row["pool_after"]["bitmap"] == events["pool"]["bitmap"]
+    assert all(LV_RECORD <= int(at, 16) < LV_RECORD + 0x194
+               for at, _ in row["writes"])
+
+
+@pytest.mark.parametrize("lines, why", [
+    (["locate", "levelup NOBODY 1"], "no party member"),
+    (["locate", "levelup BINKY"], "levelup NAME N"),
+    (["levelup BINKY 1"], "locate"),
+])
+def test_session_levelup_errors_write_nothing_and_the_session_goes_on(
+        driven, tmp_path, lines, why):
+    guest, _ = driven
+    _lv_machine(guest, 6)
+    events, rows = run_session(tmp_path, [*lines, "wait 0.5"])
+    assert why in events["levelup"]["error"]
+    assert not any(b.startswith("M") for b in guest.received)
+    assert any(r["event"] == "wait" for r in rows)

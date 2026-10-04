@@ -101,6 +101,21 @@ def _sext16(value: int) -> int:
     return value - 0x10000 if value & 0x8000 else value
 
 
+def read_pool(target, key: str, data_base: int | None = None
+              ) -> tuple[int, int, int, bytes]:
+    """The pool descriptor of the title `key` names, read from the running
+    game: slot count, element size, base address and the bitmap's bytes."""
+    pool = POOLS.get(key)
+    if pool is None:
+        raise EffectError(f"no effect pool is known for {key}")
+    base_of_data = target.data_base if data_base is None else data_base
+    if base_of_data is None:
+        raise EffectError("the data hunk's address has not been measured")
+    raw = bytes(target.read(base_of_data + pool.descriptor,
+                            8 + pool.bitmap_bytes))
+    return _u16(raw, 0), _u16(raw, 2), _u32(raw, 4), raw[8:]
+
+
 def writes(target, key: str, record_address: int, effects,
            data_base: int | None = None) -> tuple[tuple[int, bytes], ...]:
     """The `(address, bytes)` writes, in order, that add each of `effects`
@@ -109,16 +124,12 @@ def writes(target, key: str, record_address: int, effects,
     effects = tuple(effects)
     if not effects:
         return ()
-    pool = POOLS.get(key)
     row = amigaparty.ROWS.get(key)
-    if pool is None or row is None:
+    if row is None:
         raise EffectError(f"no effect pool is known for {key}")
-    base_of_data = target.data_base if data_base is None else data_base
-    if base_of_data is None:
-        raise EffectError("the data hunk's address has not been measured")
-    at = base_of_data + pool.descriptor
-    raw = bytes(target.read(at, 8 + pool.bitmap_bytes))
-    count, size, base = _u16(raw, 0), _u16(raw, 2), _u32(raw, 4)
+    count, size, base, found = read_pool(target, key, data_base)
+    pool = POOLS[key]
+    at = (target.data_base if data_base is None else data_base) + pool.descriptor
     if (count, size) != (pool.count, pool.size):
         raise EffectError(f"the effect pool reads {count} slots of {size} "
                           f"bytes, not the {pool.count} of {pool.size} the "
@@ -128,7 +139,7 @@ def writes(target, key: str, record_address: int, effects,
                            for lo, span in memory):
         raise EffectError(f"the effect pool's base {base:#x} is not in the "
                           f"Amiga's memory")
-    bitmap = bytearray(raw[8:])
+    bitmap = bytearray(found)
     head = _u32(bytes(target.read(record_address + row.effects.head, 4)), 0)
     try:
         nodes = amigaparty.chain(target, head, row.effects.link,

@@ -613,3 +613,72 @@ def test_a_press_leaves_the_input_record_unchanged(key):
     assert raw == original
     assert lv.apply_to(raw, plan) != original
     assert raw == original
+
+
+def test_summary_names_what_level_up_reads_and_writes():
+    """The `party` session verb's fields: Silver Blades' class levels at
+    `0x0AC`, former ones at `0x0B3`, experience `0x0C8`, level bytes `0x088`
+    and `0x089`, hit points `0x152` of `0x070`."""
+    rec = bytearray(340)
+    rec[0xAC + 2], rec[0xB3 + 4], rec[0x88], rec[0x89] = 9, 8, 9, 8
+    put32(rec, 0xC8, 300000)
+    rec[0x152], rec[0x70] = 90, 104
+    assert lv.summary(rec, lv.SILVER_BLADES) == {
+        "levels": [0, 0, 9, 0, 0, 0, 0], "former": [0, 0, 0, 0, 8, 0, 0],
+        "experience": 300000, "level": 9, "former_level": 8, "hp": [90, 104]}
+    assert lv.summary(bytes(0x120), lv.POOL_OF_RADIANCE)["former"] is None
+    with pytest.raises(lv.CannotLevel):
+        lv.summary(rec, "no-such-title")
+
+
+class _Slow:
+    """512K of slow memory at `0xC00000`, every write recorded."""
+
+    def __init__(self):
+        self.ram = bytearray(0x80000)
+        self.data_base = 0xC40000
+        self.written = []
+
+    def read(self, addr, length):
+        return bytes(self.ram[addr - 0xC00000:addr - 0xC00000 + length])
+
+    def write(self, addr, data):
+        self.written.append((addr, bytes(data)))
+        self.put(addr, data)
+
+    def put(self, addr, data):
+        self.ram[addr - 0xC00000:addr - 0xC00000 + len(data)] = data
+
+
+@pytest.mark.parametrize("link", ["cycle", "odd"])
+def test_write_plan_writes_nothing_when_the_live_effect_list_is_not_a_list(
+        link, monkeypatch):
+    """A human fighter 5 who left ranger at 5 regains it, so the plan adds
+    0x69; the live list it would check is a node pointing at itself, or at
+    an odd address. `_not_on_the_chain` raises before the pool is touched,
+    and nothing is written."""
+    from types import SimpleNamespace
+
+    rec = bytearray(340)
+    rec[0x6B], rec[0x19] = 6, 16
+    rec[0xAC + 2] = rec[0x88] = 5
+    rec[0xB3 + 4] = rec[0x89] = 5
+    put32(rec, 0xC8, 70000)
+    rec[0x70] = rec[0x152] = 40
+    record, node = 0xC20000, 0xC60000
+    rec[0x96:0x9A] = node.to_bytes(4, "big")
+    m = _Slow()
+    m.put(record, bytes(rec))
+    following = node if link == "cycle" else node + 0x11
+    m.put(node, bytes([0x2F, 0, 0, 0, 0xFF, 0]) + following.to_bytes(4, "big"))
+    member = SimpleNamespace(address=record, raw=bytes(rec), effect_nodes=(),
+                             item_nodes=())
+    plan = lv.plan_member(member, lv.SILVER_BLADES, rng=Dice(*[1] * 8))
+    assert [e.id for e in plan.added_effects] == [0x69]
+    reached = []
+    monkeypatch.setattr(lv.amigaeffects, "writes",
+                        lambda *a, **k: reached.append(a) or ())
+    with pytest.raises(lv.CannotLevel,
+                       match="comes back to" if link == "cycle" else "odd"):
+        lv.write_plan(m, member, plan)
+    assert m.written == [] and reached == []

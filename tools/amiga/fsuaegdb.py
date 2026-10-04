@@ -95,7 +95,8 @@ VHPOSR = 0xDFF006
 NO_TITLE = "none"
 
 #: The session commands that need a layout, and so are blocked under it.
-TITLED_COMMANDS = ("locate", "fix", "peek", "observe", "poll", "no_encounters")
+TITLED_COMMANDS = ("locate", "fix", "peek", "observe", "poll", "no_encounters",
+                   "party", "pool", "levelup")
 
 #: One `dump` is at most one region of the A500's memory, the size `probe`'s
 #: largest read and `AmigaTarget.locate()`'s sweep already take in one packet.
@@ -543,6 +544,90 @@ def peek_row(tgt, spec: str, length: int) -> dict:
         return {**row, "hex": None, "error": str(exc)}
     return {**row, "hex": None if got is None else got.hex(),
             "null_pointer": got is None}
+
+
+def machine_key(layout) -> str:
+    """The `amiga.MACHINES` key of a layout."""
+    return next(key for key, row in amiga.MACHINES.items() if row is layout)
+
+
+def _members(tgt, key: str):
+    from automap import amigaparty
+
+    if tgt.data_base is None:
+        raise amiga.GuestError("the data hunk's address has not been "
+                               "measured; run `locate` first")
+    return [m for m in amigaparty.walk(tgt, amigaparty.ROWS[key],
+                                       tgt.data_base) if m.in_party]
+
+
+def _effect_chain(member) -> list[list[str]]:
+    return [[hex(node.address), node.raw.hex()] for node in member.effect_nodes]
+
+
+def party_row(tgt, layout) -> dict:
+    """Every party member: name, record address, what Level up reads
+    (`amigalevelup.summary`) and the effect list as `[address, bytes]`."""
+    from automap import amigalevelup
+
+    key = machine_key(layout)
+    try:
+        return {"members": [
+            {"name": m.name.strip(), "address": hex(m.address),
+             **amigalevelup.summary(m.raw, key), "effects": _effect_chain(m)}
+            for m in _members(tgt, key)]}
+    except Exception as exc:        # a bad read is a row, not the run's end
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+
+def pool_row(tgt, layout) -> dict:
+    """The title's effect-node pool descriptor: count, size, base, bitmap."""
+    from automap import amigaeffects
+
+    try:
+        count, size, base, bitmap = amigaeffects.read_pool(
+            tgt, machine_key(layout))
+    except Exception as exc:
+        return {"error": f"{type(exc).__name__}: {exc}"}
+    return {"count": count, "size": size, "base": hex(base),
+            "bitmap": bytes(bitmap).hex()}
+
+
+def levelup_row(tgt, layout, rest: str) -> dict:
+    """CHANGES THE RUNNING GAME: one press of Wish's Level up for the member
+    named, with `random.Random(N)` as the dice, through
+    `amigalevelup.plan_member` and `write_plan`. The row has the plan, every
+    write in the order made, and the member's effect list and the pool read
+    back afterwards."""
+    import random
+
+    from automap import amigalevelup
+
+    name, _, seed = rest.strip().rpartition(" ")
+    if not name or not seed.lstrip("-").isdigit():
+        return {"error": "levelup takes a member's name and a seed: "
+                         "levelup NAME N"}
+    key = machine_key(layout)
+    try:
+        found = [m for m in _members(tgt, key)
+                 if m.name.strip().upper() == name.upper()]
+        if not found:
+            return {"name": name, "error": f"no party member is named {name}"}
+        member = found[0]
+        plan = amigalevelup.plan_member(member, key,
+                                        rng=random.Random(int(seed)))
+        made = amigalevelup.write_plan(tgt, member, plan)
+        after = next(m for m in _members(tgt, key)
+                     if m.address == member.address)
+    except Exception as exc:
+        return {"name": name, "error": f"{type(exc).__name__}: {exc}"}
+    return {"name": name, "seed": int(seed), "classes": list(plan.classes),
+            "experience": plan.experience,
+            "added": [[e.id, e.duration, e.at4, e.at5]
+                      for e in plan.added_effects],
+            "writes": [[hex(at), data.hex()] for at, data in made],
+            "effects_after": _effect_chain(after),
+            "pool_after": pool_row(tgt, layout)}
 
 
 def parse_peeks(items: list[str] | None) -> list[tuple[str, int]]:
@@ -1300,6 +1385,15 @@ def session(args) -> int:
         peek <spec> <n>     n bytes of memory: `+0x5B12` is a data-hunk
                             offset, `*0x57AC+0x24` dereferences the pointer
                             there first.  Read-only; blocked before `locate`
+        party               every party member: name, record address, class
+                            levels, former class levels, experience, level
+                            bytes, hit points and the effect list
+        pool                the title's effect-node pool: slot count, size,
+                            base and allocation bitmap
+        levelup <name> <n>  CHANGES THE RUNNING GAME: one press of Wish's
+                            Level up for the member named, dice seeded with
+                            n, logging every write, the effect list and the
+                            pool afterwards
         poke <spec> <hex>   CHANGES THE RUNNING GAME: writes up to 64 bytes
                             with an `M` packet and logs address, old and new
                             bytes.  `<spec>` is a peek spec or an absolute
@@ -1434,6 +1528,12 @@ def session(args) -> int:
                 row = poke_row(gdb, tgt, rest)
                 print(f"           {row}")
                 note(event="poke", at=now, **row)
+            elif word in ("party", "pool", "levelup"):
+                row = (party_row(tgt, layout) if word == "party"
+                       else pool_row(tgt, layout) if word == "pool"
+                       else levelup_row(tgt, layout, rest))
+                print(f"           {json.dumps(row)}", flush=True)
+                note(event=word, at=now, **row)
             elif word == "no_encounters":
                 enc.command(rest, now)
             elif word == "observe":
@@ -1626,7 +1726,8 @@ WISH_ENV = (*WISH_UNSET, WISH_FLAG, "XDG_CONFIG_HOME", "XDG_DATA_HOME",
 #: window holds the only way to the game, and the point of the run is that
 #: nothing else does.  `no_encounters` is the exception: it goes through a
 #: client of the window's connection helper (`helper_machine`).
-WISH_BLOCKED_VERBS = ("peek", "poke", "locate", "fix", "dump", "poll", "time", "geo")
+WISH_BLOCKED_VERBS = ("peek", "poke", "locate", "fix", "dump", "poll", "time", "geo",
+                      "party", "pool", "levelup")
 
 #: How often the window's events run while a command waits.
 PUMP_STEP = 0.05
