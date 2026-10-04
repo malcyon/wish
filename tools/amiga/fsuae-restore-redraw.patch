@@ -1,0 +1,19 @@
+Redraw the whole Amiga screen after a state restore.
+
+FS-UAE redraws only the display lines whose Amiga content changed since the
+previous frame, and nothing marks the screen lost when a state is restored, so
+after a load the picture stays black until the game draws each line again.
+Applies to grahambates/fs-uae, branch remote_debugger_barto, at b70b1180.
+
+diff --git a/src/savestate.cpp b/src/savestate.cpp
+index ced6c9f..7dbe31b 100644
+--- a/src/savestate.cpp
++++ b/src/savestate.cpp
+@@ -1014,6 +1014,7 @@ bool savestate_restore_finish(void)
+ 	savestate_state = 0;
+ 	init_hz_normal();
+ 	audio_activate();
++	notice_screen_contents_lost(0);
+ #ifdef FSUAE
+     uae_callback(uae_on_restore_state_finished, savestate_fname);
+ #endif
