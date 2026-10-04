@@ -398,7 +398,12 @@ class WinuaeDebugger:
         if not holder:
             raise ValueError("a WinUAE lane claim is required: "
                              "`winuae.ps1 claim -Holder <name>` first")
+        if not _HOLDER.fullmatch(holder):
+            raise ValueError(f"not a holder name: {holder!r}")
         self.holder = holder
+        #: Per holder, so two holders on the console route never overwrite
+        #: each other's batch.
+        self.batch_path = f"{GUEST_ROOT}\\wish-batch-{holder}.txt"
         self._run = runner or _run
         self.timeout = self.TIMEOUT if timeout is None else timeout
         #: Every batch this session sent, for a run log. Cheap and it is the
@@ -424,7 +429,7 @@ class WinuaeDebugger:
             # Set-Content: a UTF-8 BOM at the head of a debugger batch is typed
             # into the console as rubbish before the first command, and
             # `winuae-send.ps1` types every character it reads.
-            f"[IO.File]::WriteAllBytes('{GUEST_ROOT}\\wish-batch.txt',"
+            f"[IO.File]::WriteAllBytes('{self.batch_path}',"
             f"[Convert]::FromBase64String('{batch}'))",
             f"New-Item -ItemType Directory -Force -Path '{GUEST_DUMP}' "
             "| Out-Null",
@@ -433,7 +438,7 @@ class WinuaeDebugger:
             f"-Holder {self.holder}",
             "Write-Output '<<send>>'",
             f"& {ps}{GUEST_ROOT}\\winuae.ps1 send "
-            f"'-File {GUEST_ROOT}\\wish-batch.txt' -Holder {self.holder}",
+            f"'-File {self.batch_path}' -Holder {self.holder}",
         ]
         for name, path in fetch:
             parts.append(f"Write-Output '<<{name}>>'")

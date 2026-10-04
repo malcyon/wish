@@ -1324,12 +1324,14 @@ switch ($Cmd) {
     }
     if (-not $taken -and $unreadable) {
       'fail the claim file is there and cannot be read; another claim may be in flight'
-      'Try again, or take the lane with: winuae.ps1 claim -Holder <id> -Override'
+      if ($LaneCount -eq 1) { 'Try again, or take the lane with: winuae.ps1 claim -Holder <id> -Override' }
+      else { 'Try again, or take a lane with: winuae.ps1 claim -Holder <id> -Override -Lane <n>' }
       exit 1
     }
     if (-not $taken) {
       $who = if ($lost -and $lost['holder']) { $lost['holder'] } else { 'another caller' }
-      "fail the WinUAE lane was taken by $who while this call was running; one Amiga lane at a time"
+      $tail = if ($LaneCount -eq 1) { '; one Amiga lane at a time' } else { '' }
+      "fail the WinUAE lane was taken by $who while this call was running$tail"
       exit 1
     }
   }

@@ -753,3 +753,18 @@ def test_a_truncated_geo_index_is_an_error_and_not_an_empty_library():
                            for o in offsets) + body
     with pytest.raises(ValueError, match="declares 4 maps"):
         amiga.geo_library(data)
+
+
+def test_two_holders_write_and_send_different_batch_files():
+    """Two holders share the console route's guest folder, so one batch file would be overwritten by the other."""
+    scripts = [amiga.WinuaeDebugger(who, runner=lambda *_: "")._script(["m 0 1", "g"], [])
+               for who in ("wish37", "wish38")]
+    assert amiga.WinuaeDebugger("wish37").batch_path != amiga.WinuaeDebugger("wish38").batch_path
+    for who, script in zip(("wish37", "wish38"), scripts):
+        assert script.count(f"wish-batch-{who}.txt") == 2
+    assert "wish-batch-wish38" not in scripts[0]
+
+
+def test_a_holder_that_is_not_a_name_cannot_reach_a_guest_path():
+    with pytest.raises(ValueError, match="holder"):
+        amiga.WinuaeDebugger("a b")

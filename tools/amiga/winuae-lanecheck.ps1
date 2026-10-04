@@ -17,7 +17,7 @@
 #
 # -Lanes sets how many lanes the driver is checked with: when the driver's own
 # `$LaneCount` differs, it writes a copy with the count replaced. With -Lanes 2,
-# `-Scenario all` runs the four scenarios for several lanes (twolane, exclusive,
+# `-Scenario all` runs the four scenarios for several lanes (everylane, exclusive,
 # stalelane, overridelane); the single-lane scenarios assume a second holder is
 # blocked, so they are run with -Lanes 1. The deployed driver is never edited.
 #
@@ -31,7 +31,7 @@ param(
   # The check pauses its own copy of the driver between B's launch and B's
   # look, so every hijack round races and three rounds are enough.
   [int]$HijackRounds = 0,
-  [ValidateSet('all','args','own','sendpid','hijack','claimrace','reclaim','foreignstop','foreignkey','claim','twolane','exclusive','stalelane','overridelane')][string]$Scenario = 'all',
+  [ValidateSet('all','args','own','sendpid','hijack','claimrace','reclaim','foreignstop','foreignkey','claim','everylane','exclusive','stalelane','overridelane')][string]$Scenario = 'all',
   [int]$Lanes       = 1,
   # Live control for the hijack scenario: runs it against a copy of the driver
   # that adopts any new emulator, which must fail every round.
@@ -58,6 +58,13 @@ $DiskA   = "$Work\driverA.adf"
 $DiskB   = "$Work\driverB.adf"
 $ArgsA   = "-log -f $ConfigA"
 $ArgsB   = "-log -f $ConfigB"
+# Lane N's driver: A, B, C ... Each has its own holder, config and blank disk.
+function Lane-Driver([int]$I) {
+  $L = [char](64 + $I)
+  @{ holder = "driver$L"; config = "$Work\driver$L.uae"; disk = "$Work\driver$L.adf" }
+}
+# WinUAE serves at most ten pipes, so the driver has at most ten lanes.
+if ($Lanes -lt 1 -or $Lanes -gt 10) { "fail -Lanes $Lanes is outside 1..10, the most lanes WinUAE can serve"; exit 1 }
 $HijackDriver = "$Root\winuae-lanecheck-hijack.ps1"
 
 if (-not (Test-Path $Driver))  { "fail no driver at $Driver"; exit 1 }
@@ -75,6 +82,11 @@ New-Item -ItemType Directory -Force -Path $Work | Out-Null
 Copy-Item $Machine $ConfigA -Force
 Copy-Item $Machine $ConfigB -Force
 foreach ($disk in $DiskA, $DiskB) { [IO.File]::WriteAllBytes($disk, (New-Object byte[] 901120)) }
+foreach ($i in 1..[Math]::Max(2, $Lanes)) {
+  $d = Lane-Driver $i
+  Copy-Item $Machine $d.config -Force
+  [IO.File]::WriteAllBytes($d.disk, (New-Object byte[] 901120))
+}
 
 # An older winuae.ps1 has no -Holder and no claim, so the claim scenarios are
 # reported as n/a against it rather than as failures of something it never had.
@@ -479,38 +491,46 @@ function Pid-Of($Reply) { if ($Reply.out -match '(?m)^ok pid=(\d+)') { [int]$Mat
 
 # Each holder runs its own emulator, and every verb reaches only that holder's.
 # `insert` is not driven here: it needs a staged disk and its hash.
-function Scenario-TwoLane {
-  "twolane: two holders each run their own emulator and every verb reaches only theirs"
-  if ($Lanes -lt 2) { "  n/a needs -Lanes 2"; return }
+function Scenario-EveryLane {
+  "everylane: every lane's holder runs its own emulator and every verb reaches only theirs"
+  if ($Lanes -lt 2) { "  n/a needs -Lanes 2 or more"; return }
   if (-not (Reset-Lane)) { Verdict $false 'lane would not reset' ''; return }
-  $ca = Drive @('claim', '-Holder', 'driverA')
-  $cb = Drive @('claim', '-Holder', 'driverB')
-  Verdict ($ca.code -eq 0 -and $cb.code -eq 0) 'both holders are granted a lane' ($ca.out + "`n" + $cb.out)
-  $a = Drive @('start', '-Holder', 'driverA', '-log', '-f', $ConfigA, '-s', "floppy0=$DiskA")
-  $b = Drive @('start', '-Holder', 'driverB', '-log', '-f', $ConfigB, '-s', "floppy0=$DiskB")
-  $pa = Pid-Of $a; $pb = Pid-Of $b
-  Verdict ($pa -ne 0 -and $pb -ne 0 -and $pa -ne $pb) 'each start reports its own pid' ($a.out + "`n" + $b.out)
-  if ($pa -eq 0 -or $pb -eq 0 -or $pa -eq $pb) { Reset-Lane | Out-Null; return }
-  $startA = (Get-Process -Id $pa -ErrorAction SilentlyContinue).StartTime
-  $cmdA = (Get-CimInstance Win32_Process -Filter "ProcessId=$pa").CommandLine
-  $cmdB = (Get-CimInstance Win32_Process -Filter "ProcessId=$pb").CommandLine
-  Verdict (($cmdA -match [regex]::Escape($ConfigA)) -and ($cmdB -match [regex]::Escape($ConfigB))) "each emulator runs its own holder's config" "A: $cmdA`nB: $cmdB"
-  foreach ($who in @(@('driverA', $pa), @('driverB', $pb))) {
-    $h = $who[0]; $id = $who[1]
-    $l = Drive @('lane', '-Holder', $h)
-    Verdict ($l.code -eq 0 -and $l.out -match "pid=$id ") "$h's lane verb names its own pid" $l.out
-    $d = Drive @('drives', '-Holder', $h)
-    Verdict ($d.code -eq 0 -and $d.out -match "ok drives pid=$id") "$h's drives reads its own pipe" $d.out
+  $ds = @(1..$Lanes | ForEach-Object { Lane-Driver $_ })
+  $claims = @($ds | ForEach-Object { Drive @('claim', '-Holder', $_.holder) })
+  Verdict (@($claims | Where-Object { $_.code -ne 0 }).Count -eq 0) 'every holder is granted a lane' (($claims | ForEach-Object { $_.out }) -join "`n")
+  $extra = Drive @('claim', '-Holder', 'driverZ')
+  Verdict ($extra.code -ne 0 -and $extra.out -match 'every Amiga lane is in use') 'a holder beyond the last lane is blocked' $extra.out
+  $starts = @($ds | ForEach-Object { Drive @('start', '-Holder', $_.holder, '-log', '-f', $_.config, '-s', "floppy0=$($_.disk)") })
+  $pids = @($starts | ForEach-Object { Pid-Of $_ })
+  $distinct = @($pids | Where-Object { $_ -eq 0 }).Count -eq 0 -and @($pids | Sort-Object -Unique).Count -eq $Lanes
+  Verdict $distinct 'each start reports its own pid' (($starts | ForEach-Object { $_.out }) -join "`n")
+  if (-not $distinct) { Reset-Lane | Out-Null; return }
+  $began = @{}
+  foreach ($id in $pids) { $began[$id] = (Get-Process -Id $id -ErrorAction SilentlyContinue).StartTime }
+  for ($n = 0; $n -lt $Lanes; $n++) {
+    $d = $ds[$n]; $id = $pids[$n]
+    $cmd = (Get-CimInstance Win32_Process -Filter "ProcessId=$id").CommandLine
+    Verdict ($cmd -match [regex]::Escape($d.config)) "lane $($n + 1)'s emulator runs its own holder's config" $cmd
+    $l = Drive @('lane', '-Holder', $d.holder)
+    Verdict ($l.code -eq 0 -and $l.out -match "pid=$id ") "$($d.holder)'s lane verb names its own pid" $l.out
+    $r = Drive @('drives', '-Holder', $d.holder)
+    Verdict ($r.code -eq 0 -and $r.out -match "ok drives pid=$id") "$($d.holder)'s drives reads its own pipe" $r.out
   }
-  $sb = Drive @('stop', '-Holder', 'driverB')
-  $a2 = Get-Process -Id $pa -ErrorAction SilentlyContinue
-  Verdict ($sb.code -eq 0 -and -not (Get-Process -Id $pb -ErrorAction SilentlyContinue)) "driverB's stop ends driverB's emulator" $sb.out
-  Verdict ($a2 -and $a2.StartTime -eq $startA) "driverA's emulator is the same process after driverB's stop" "pid=$pa"
-  $sa = Drive @('stop', '-Holder', 'driverA')
-  Verdict ($sa.code -eq 0 -and -not (Get-Process -Id $pa -ErrorAction SilentlyContinue)) "driverA's stop ends driverA's emulator" $sa.out
-  $ra = Drive @('release', '-Holder', 'driverA')
-  $rb = Drive @('release', '-Holder', 'driverB')
-  Verdict ($ra.code -eq 0 -and $rb.code -eq 0) 'both holders release' ($ra.out + "`n" + $rb.out)
+  # Lane 2 is stopped first: the others must keep their own processes.
+  $s2 = Drive @('stop', '-Holder', $ds[1].holder)
+  Verdict ($s2.code -eq 0 -and -not (Get-Process -Id $pids[1] -ErrorAction SilentlyContinue)) "$($ds[1].holder)'s stop ends its own emulator" $s2.out
+  $others = @(0..($Lanes - 1) | Where-Object { $_ -ne 1 })
+  $moved = @($others | Where-Object {
+    $q = Get-Process -Id $pids[$_] -ErrorAction SilentlyContinue
+    -not ($q -and $q.StartTime -eq $began[$pids[$_]])
+  })
+  Verdict ($moved.Count -eq 0) "every other emulator is the same process after $($ds[1].holder)'s stop" "pids=$($pids -join ',')"
+  foreach ($n in $others) {
+    $st = Drive @('stop', '-Holder', $ds[$n].holder)
+    Verdict ($st.code -eq 0 -and -not (Get-Process -Id $pids[$n] -ErrorAction SilentlyContinue)) "$($ds[$n].holder)'s stop ends its own emulator" $st.out
+  }
+  $rels = @($ds | ForEach-Object { Drive @('release', '-Holder', $_.holder) })
+  Verdict (@($rels | Where-Object { $_.code -ne 0 }).Count -eq 0) 'every holder releases' (($rels | ForEach-Object { $_.out }) -join "`n")
   Reset-Lane | Out-Null
 }
 
@@ -522,15 +542,18 @@ function Scenario-Exclusive {
   Verdict ($a.code -eq 0) 'driverA takes lane 1' $a.out
   $x = Drive @('claim', '-Holder', 'driverB', '-Exclusive')
   Verdict ($x.code -ne 0) 'an exclusive claim fails while another holder has a lane' $x.out
-  Verdict ((Claim-Line 2) -match 'none') 'the failed exclusive claim left lane 2 free' (Claim-Line 2)
+  $rest = @(2..$Lanes | ForEach-Object { Claim-Line $_ })
+  Verdict (@($rest | Where-Object { $_ -notmatch 'none' }).Count -eq 0) "the failed exclusive claim left lanes 2..$Lanes free" ($rest -join "`n")
   Drive @('release', '-Holder', 'driverA') | Out-Null
   $x = Drive @('claim', '-Holder', 'driverB', '-Exclusive')
   Verdict ($x.code -eq 0 -and $x.out -match '^ok claimed by driverB') 'an exclusive claim succeeds once every lane is free' $x.out
-  Verdict (((Claim-Line 1) -match 'driverB') -and ((Claim-Line 2) -match 'driverB')) 'it holds every lane' ((Claim-Line 1) + "`n" + (Claim-Line 2))
+  $held = @(1..$Lanes | ForEach-Object { Claim-Line $_ })
+  Verdict (@($held | Where-Object { $_ -notmatch 'driverB' }).Count -eq 0) 'it holds every lane' ($held -join "`n")
   $o = Drive @('claim', '-Holder', 'driverA')
   Verdict ($o.code -ne 0) 'an ordinary claim by another holder fails' $o.out
   $r = Drive @('release', '-Holder', 'driverB')
-  Verdict ($r.code -eq 0 -and ((Claim-Line 1) -match 'none') -and ((Claim-Line 2) -match 'none')) 'one release frees every lane' $r.out
+  $freed = @(1..$Lanes | ForEach-Object { Claim-Line $_ })
+  Verdict ($r.code -eq 0 -and @($freed | Where-Object { $_ -notmatch 'none' }).Count -eq 0) 'one release frees every lane' $r.out
   Reset-Lane | Out-Null
 }
 
@@ -573,7 +596,7 @@ try {
   if (Wants 'hijack' $false)      { Scenario-Hijack }
   if (Wants 'foreignstop' $false) { Scenario-ForeignStop }
   if (Wants 'foreignkey' $false)  { Scenario-ForeignKey }
-  if (Wants 'twolane' $true)      { Scenario-TwoLane }
+  if (Wants 'everylane' $true)    { Scenario-EveryLane }
   if (Wants 'exclusive' $true)    { Scenario-Exclusive }
   if (Wants 'stalelane' $true)    { Scenario-StaleLane }
   if (Wants 'overridelane' $true) { Scenario-OverrideLane }

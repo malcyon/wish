@@ -52,7 +52,7 @@ class Guest:
     @staticmethod
     def _batch(script: str) -> str:
         for line in script.splitlines():
-            if "wish-batch.txt" in line and "FromBase64String" in line:
+            if "\\wish-batch-" in line and "FromBase64String" in line:
                 b64 = line.split("FromBase64String('")[1].split("'")[0]
                 return base64.b64decode(b64).decode("ascii")
         raise AssertionError("the script wrote no batch file")

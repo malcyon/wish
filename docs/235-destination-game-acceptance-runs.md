@@ -506,9 +506,9 @@ answered `N`. Silver Blades takes no Return after the camp save's letter,
 answers `N` at `EXIT GAME`, and answers its journal question through the
 private helper under `/usr/bin/python3`.
 
-**The Amiga silence proof.** Only one WinUAE lane exists, so no two WinUAE runs
-overlap (each WinUAE copy has its own claim, task, ini and screenshot folder, and
-the count stays one); an FS-UAE run takes an instance-pool slot and has no
+**The Amiga silence proof.** Each WinUAE run holds one of the guest's lanes
+(each WinUAE copy has its own claim, task, ini and screenshot folder, and the one
+endpoint mute covers every copy); an FS-UAE run takes an instance-pool slot and has no
 proof to pass. Each WinUAE run passes `--audio-proof`, the JSON `winuaemute.ps1` prints
 after muting the guest's default playback endpoint and reading the mute back,
 and the driver blocks a readback older than five minutes.
@@ -594,7 +594,7 @@ named `e47999730a-found-por-native-<run>`.
 | VICE, and FS-UAE | `tools/registry/instance.py claim --game <por\|curse\|ssb\|amiga-por> --note <issue>`; the drivers claim their own | sixteen slots, `:10`-`:25` |
 | DOSBox | `tools.dos.dosbox.claim(note)` inside the driver | sixteen, `:50`-`:65` |
 | DOSBox-X | `tools.dos.dosboxx.claim(note)` | sixteen, `:90`-`:105` |
-| WinUAE | `winuae.ps1 claim -Holder <issue-run>` through `winvm ssh`; released in `finally` | one lane for the whole project; no two WinUAE runs at once |
+| WinUAE | `winuae.ps1 claim -Holder <issue-run>` through `winvm ssh`; released in `finally` | one run per lane, with the lane count set in `winuae.ps1` |
 
 Every emulator is headless and silent, and the evidence differs by platform.
 VICE (`POR_HEADLESS=1`, `launch.sh`'s `+sound`) and DOSBox (the pooled

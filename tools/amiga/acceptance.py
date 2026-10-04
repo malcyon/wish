@@ -3350,7 +3350,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--manifest", required=True, type=pathlib.Path)
         if emulator:
             p.add_argument("--emulator", choices=EMULATORS, default="winuae",
-                           help="winuae runs in the Windows VM's single lane; fsuae runs in an "
+                           help="winuae runs in one of the Windows VM's WinUAE lanes; fsuae runs in an "
                                 "instance-pool slot")
         p.add_argument("--audio-proof", type=pathlib.Path, default=None,
                        help="the Windows VM's audio mute proof; required with --emulator winuae "

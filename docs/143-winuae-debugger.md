@@ -275,8 +275,8 @@ code. `press` takes its codes the same way, so the rule holds for it too.
 of the driver it is pointed at, so an older one can be watched to fail.
 `-Lanes` sets the lane count it checks: when the driver's own `$LaneCount`
 differs it runs a copy with the count replaced, so the single-lane scenarios run
-with `-Lanes 1` and the two-lane ones with `-Lanes 2`. It writes its own two
-configs and a blank disk per driver under `C:\Amiga\lanecheck`, and removes
+with `-Lanes 1` and the every-lane ones with `-Lanes 2` or more. It writes its
+own config and a blank disk per lane under `C:\Amiga\lanecheck`, and removes
 them, because an empty drive answers `CFG floppy0` with `404` and `drives` reads
 that as a pipe that does not answer.
 Measured 2026-09-01; the round count is per row, because the rare ones need

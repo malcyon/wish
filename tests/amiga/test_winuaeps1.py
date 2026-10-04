@@ -204,8 +204,11 @@ def test_the_lanecheck_needs_no_config_or_disk_the_guest_may_lack():
     """It writes its own two configs and blank disks, so `drives` reads a disk in each lane."""
     assert "pod-a500.uae" not in LANECHECK
     assert "$ConfigA = \"$Work\\driverA.uae\"" in LANECHECK and "$ConfigB = \"$Work\\driverB.uae\"" in LANECHECK
-    body = _lanecheck_body("Scenario-TwoLane")
-    assert "\"floppy0=$DiskA\"" in body and "\"floppy0=$DiskB\"" in body
+    setup = LANECHECK[:LANECHECK.index("$HasClaim")]
+    assert "foreach ($i in 1..[Math]::Max(2, $Lanes))" in setup
+    assert "Copy-Item $Machine $d.config" in setup and "WriteAllBytes($d.disk" in setup
+    body = _lanecheck_body("Scenario-EveryLane")
+    assert "\"floppy0=$($_.disk)\"" in body
     assert "Remove-Item -Recurse -Force $Work" in LANECHECK
 
 
@@ -215,8 +218,42 @@ def test_the_lanecheck_stops_the_lanes_then_deletes_its_files_on_any_exit_and_re
     final = tail[tail.index("} finally {"):]
     assert final.index("Reset-Lane") < final.index("Remove-Item -Recurse -Force $Work")
     assert "if (Test-Path $Work) {" in final and "if (Test-Path $Driver) {" in final
-    assert "Scenario-TwoLane }" in tail[:tail.index("} finally {")]
+    assert "Scenario-EveryLane }" in tail[:tail.index("} finally {")]
     assert "if (Test-Path $HijackDriver) {" in final and "Remove-Item $HijackDriver" in final
+
+
+def test_the_every_lane_scenario_drives_every_lane_and_blocks_one_holder_too_many():
+    body = _lanecheck_body("Scenario-EveryLane")
+    assert "1..$Lanes | ForEach-Object { Lane-Driver $_ }" in body
+    assert "Drive @('claim', '-Holder', $_.holder)" in body
+    assert "Drive @('claim', '-Holder', 'driverZ')" in body and "every Amiga lane is in use" in body
+    assert "Sort-Object -Unique).Count -eq $Lanes" in body
+    assert "Drive @('stop', '-Holder', $ds[1].holder)" in body
+    assert "$q.StartTime -eq $began[$pids[$_]]" in body
+    assert "Drive @('release', '-Holder', $_.holder)" in body
+    assert "TwoLane" not in LANECHECK and "twolane" not in LANECHECK
+    assert "'everylane'" in LANECHECK
+
+
+def test_the_exclusive_scenario_checks_every_lane():
+    body = _lanecheck_body("Scenario-Exclusive")
+    assert body.count("1..$Lanes | ForEach-Object { Claim-Line $_ }") == 2
+    assert "2..$Lanes | ForEach-Object { Claim-Line $_ }" in body
+    assert "Claim-Line 2" not in body
+
+
+def test_the_lanecheck_rejects_a_lane_count_outside_one_to_ten_before_it_writes_anything():
+    guard = LANECHECK.index("if ($Lanes -lt 1 -or $Lanes -gt 10)")
+    assert guard < LANECHECK.index("New-Item -ItemType Directory -Force -Path $Work")
+    assert "function Lane-Driver" in LANECHECK[:guard]
+
+
+def test_the_one_lane_wording_is_printed_only_when_there_is_one_lane():
+    body = _case("claim")
+    for text in ("; one Amiga lane at a time", "take the lane with: winuae.ps1 claim -Holder <id> -Override'"):
+        for found in re.finditer(re.escape(text), body):
+            assert "if ($LaneCount -eq 1)" in body[max(0, found.start() - 160):found.start()], text
+    assert "-Override -Lane <n>" in body
 
 
 def test_start_takes_the_guest_wide_mutex_before_it_launches_and_frees_it_in_a_finally():
