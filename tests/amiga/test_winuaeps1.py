@@ -54,7 +54,7 @@ def test_a_failed_move_back_names_where_the_old_snapshot_is():
 def test_every_pipe_verb_opens_the_pipe_its_own_emulator_serves():
     """Two copies make `WinUAE` possibly the other lane's pipe, so no verb names one."""
     assert "'WinUAE', 'InOut'" not in PS1
-    assert PS1.count("Open-LanePipe $lane.proc.Id") == 3
+    assert PS1.count("Open-LanePipe $lane.proc.Id") == 4
 
 
 def test_the_lane_pipe_is_chosen_by_its_server_pid():
@@ -218,3 +218,102 @@ def test_the_lane_verb_names_the_holders_lane_and_pid():
     valid = re.search(r"ValidateSet\(([^)]*)\)", PS1).group(1)
     assert "'lane'" in valid
     assert "ok lane=$ActiveLane pid=" in _case("lane")
+
+
+def _case(name: str) -> str:
+    """The text of one `switch ($Cmd)` branch."""
+    start = PS1.index(f"  '{name}' {{")
+    return PS1[start:PS1.index("\n  }\n", start)]
+
+
+def test_start_writes_the_lane_ini_with_exactly_the_screenshot_keys():
+    start = _case("start")
+    for line in ("[WinUAE]", '"ScreenshotPath=$($LanePaths.shots)"', "'Screenshot_Original=1'",
+                 "'Screenshot_Mode=1'", "'Screenshot_ClipMode=0'", '"MainPosX=$posX"', "'MainPosY=10'"):
+        assert line in start
+    assert "$posX = 10 + 740 * ($ActiveLane - 1)" in start
+    assert "Set-Content -Path $LanePaths.ini -Encoding ASCII -ErrorAction Stop" in start
+    written = start[start.index("@('[WinUAE]'"):start.index("| Set-Content -Path $LanePaths.ini")]
+    assert written.count("=") == 6 and "Screenshot" in written
+
+
+def test_start_empties_the_shots_folder_and_writes_the_ini_before_the_task_is_registered():
+    start = _case("start")
+    emptied = start.index("Get-ChildItem -Path $LanePaths.shots -Filter *.png | Remove-Item")
+    assert start.index("New-Item -ItemType Directory -Force -Path $LanePaths.shots") < emptied
+    assert emptied < start.index("Set-Content -Path $LanePaths.ini") < start.index("Register-Session1Task $LanePaths.task")
+
+
+def test_start_launches_with_the_lane_ini_in_front_of_the_callers_arguments():
+    start = _case("start")
+    assert '$wanted = "-ini `"$($LanePaths.ini)`" " + ($Rest -join \' \')' in start
+    assert "Register-Session1Task $LanePaths.task $Exe $wanted" in start
+    assert "$expected = \"`\"$Exe`\" $wanted\"" in start
+
+
+def test_every_lane_has_its_own_ini_and_shots_folder():
+    paths = _body("Lane-Paths")
+    assert '"$Root\\lanes\\1\\winuae.ini"' in paths and '"$Root\\lanes\\$n\\winuae.ini"' in paths
+    assert '"$Root\\lanes\\1\\shots\\"' in paths and '"$Root\\lanes\\$n\\shots\\"' in paths
+
+
+def test_the_script_lists_shot_and_press_as_verbs():
+    assert re.search(r"ValidateSet\([^)]*'shot'[^)]*'press'", PS1)
+    assert "'shot' { Invoke-PipeVerb 'shot' }" in PS1 and "'press' { Invoke-PipeVerb 'press' }" in PS1
+
+
+def test_shot_sends_one_screenshot_command_over_the_lanes_own_pipe_and_ownership_checks():
+    body = _body("Invoke-PipeVerb")
+    assert body.count("'DBG sc'") == 1
+    assert body.index("Get-LaneEmulator") < body.index("Open-LanePipe $lane.proc.Id") < body.index("[Wish.PipeInfo]::") < body.index("$again = Get-LaneEmulator")
+
+
+def test_shot_reads_only_a_file_that_was_not_there_before_the_command():
+    body = _body("Invoke-PipeVerb")
+    before = body.index("$before = @(Get-ChildItem")
+    assert before < body.index("'DBG sc'") < body.index("$new = @(Get-ChildItem")
+    assert "$before -cnotcontains $_.Name" in body
+    assert "$new.Count -gt 1" in body
+    assert "89504E470D0A1A0A" in body and "49454E44AE426082" in body
+
+
+def test_shot_fails_clearly_at_the_999_file_limit_and_otherwise_on_a_missing_file():
+    body = _body("Invoke-PipeVerb")
+    assert "if ($last -ge 999)" in body
+    assert "has written its 999 screenshots" in body
+    assert "wrote no file" in body and "last counter" in body
+    assert "$runKv['shots'] = [string]$counter" in body
+
+
+def test_shot_prints_the_markers_winvmguest_decodes():
+    from tools.amiga import winvmguest
+    body = _body("Invoke-PipeVerb")
+    assert f"'{winvmguest.SHOT_BEGIN}'" in body and f"'{winvmguest.SHOT_END}'" in body
+    assert 'ok shot pid=$($lane.proc.Id) counter=$counter ms=$ms' in body
+
+
+def test_shot_does_not_crop_or_touch_the_desktop():
+    body = _body("Invoke-PipeVerb")
+    for word in ("CopyFromScreen", "System.Drawing", "Invoke-Session1", "RaiseAndCheck", "SetForegroundWindow"):
+        assert word not in body
+
+
+def test_press_holds_each_code_120_ms_and_releases_it_in_a_finally():
+    body = _body("Invoke-PipeVerb")
+    down = body.index('"CFG KEY_RAW_DOWN 0x$hex"')
+    hold = body.index("Start-Sleep -Milliseconds 120")
+    finally_ = body.index("} finally {", down)
+    up = body.index('"CFG KEY_RAW_UP 0x$hex"')
+    assert down < hold < finally_ < up
+    assert "Start-Sleep -Milliseconds 150" in body
+
+
+def test_press_validates_codes_and_splits_comma_lists():
+    body = _body("Invoke-PipeVerb")
+    assert "-split ','" in body
+    assert "'^[0-9A-Fa-f]{2}\\z'" in body and "-gt 0x7F" in body and "$codes.Count -gt 16" in body
+    assert "$r -cne '404'" in body
+
+
+def test_no_screenshot_file_option_is_ever_sent():
+    assert "AKS_SCREENSHOT_FILE" not in PS1

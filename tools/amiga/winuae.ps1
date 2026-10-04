@@ -18,6 +18,8 @@
 #   winvm ssh "$ps key 7A -Holder por-run"      # F11: enter the debugger
 #   winvm ssh "$ps key 68 -Holder por-run"      # numeric keypad 8
 #   winvm ssh "$ps key 26 -Extended -Holder por-run"   # the cursor key, not KP8
+#   winvm ssh "$ps shot -Holder por-run"        # WinUAE's own screenshot over the pipe, no desktop
+#   winvm ssh "$ps press 44,45 -Holder por-run" # Amiga raw key codes over the pipe, no focus
 #   winvm ssh "$ps send '-File C:\Amiga\cmds.txt' -Holder por-run"
 #   winvm ssh "$ps send '-DumpOnly -Tail 40' -Holder por-run"
 #   winvm ssh "$ps front -Holder por-run"
@@ -73,7 +75,7 @@
 
 param(
   [Parameter(Mandatory=$true)]
-  [ValidateSet('start','stop','front','status','send','key','roms','clean','claim','release','drives','insert','diagnose','config-hash','config-remove','snapshot','restore','discard-snapshot','lane')][string]$Cmd,
+  [ValidateSet('start','stop','front','status','send','key','shot','press','roms','clean','claim','release','drives','insert','diagnose','config-hash','config-remove','snapshot','restore','discard-snapshot','lane')][string]$Cmd,
   [Parameter(ValueFromRemainingArguments=$true)][string[]]$Rest
 )
 
@@ -137,6 +139,8 @@ $LaneCount = 1
 #   claim   who holds the lane            run      which winuae64 `start` launched, for whom
 #   receipt what a session 1 helper writes back
 #   task    the scheduled task that runs the emulator
+#   ini     the lane's own WinUAE ini, written fresh by `start`
+#   shots   the folder the lane's emulator writes its screenshots to
 function Lane-Paths([int]$n) {
   if ($n -eq 1) {
     return @{
@@ -145,6 +149,8 @@ function Lane-Paths([int]$n) {
       receipt = "$Root\winuae-action.txt"
       sendlog = "$Root\send.log"
       console = "$Root\console.txt"
+      ini     = "$Root\lanes\1\winuae.ini"
+      shots   = "$Root\lanes\1\shots\"
       task    = 'winuae-run'
       helpers = @{ front = 'winuae-front'; key = 'winuae-key'; send = 'winuae-send' }
     }
@@ -155,6 +161,8 @@ function Lane-Paths([int]$n) {
     receipt = "$Root\winuae-action-$n.txt"
     sendlog = "$Root\send-$n.log"
     console = "$Root\console-$n.txt"
+    ini     = "$Root\lanes\$n\winuae.ini"
+    shots   = "$Root\lanes\$n\shots\"
     task    = "winuae-run-$n"
     helpers = @{ front = "winuae-front-$n"; key = "winuae-key-$n"; send = "winuae-send-$n" }
   }
@@ -973,6 +981,107 @@ function Invoke-Diagnose {
   '<<end>>'
 }
 
+# The pipe verbs `shot` and `press`: neither raises a window nor needs a scheduled task,
+# because the lane's own pipe works from the ssh session. They check the claim, the
+# receipt and the pipe's server pid exactly as Invoke-Diagnose does.
+#
+# `shot` sends `DBG sc`. WinUAE answers 404 whether or not it wrote a file, so the one new PNG
+# in the lane's shots folder is the only success signal. A process writes at most 999 files
+# (screenshot.cpp never resets its counter), so a shot with no file after number 999 is the
+# limit and not a transient failure. The continuous-capture option is never sent, with any value: 0 starts it too.
+#
+# `press` sends a raw Amiga key code down, holds it, and sends it up in a finally, so no failure
+# leaves a key held. A held key repeats.
+function Invoke-PipeVerb([string]$Verb) {
+  $codes = @()
+  if ($Verb -ceq 'press') {
+    foreach ($arg in $Rest) { foreach ($piece in ([string]$arg -split ',')) { if ($piece -ne '') { $codes += $piece } } }
+    if (-not $codes.Count -or $codes.Count -gt 16) { 'fail press needs 1 to 16 raw key codes in hex, such as 44,45'; exit 1 }
+    foreach ($c in $codes) {
+      if ($c -cnotmatch '^[0-9A-Fa-f]{2}\z' -or [Convert]::ToInt32($c, 16) -gt 0x7F) { "fail '$c' is not a raw key code from 00 to 7F"; exit 1 }
+    }
+  } elseif ($Rest.Count) { 'fail shot takes no arguments'; exit 1 }
+  $lane = Get-LaneEmulator
+  if ($lane.err) { $lane.err; exit 1 }
+  $pipe = $null; $verdict = $null; $out = @()
+  try {
+    Add-Type -Namespace Wish -Name PipeInfo -MemberDefinition '[DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetNamedPipeServerProcessId(IntPtr Pipe, out uint ServerProcessId);'
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    $pipe = Open-LanePipe $lane.proc.Id
+    $pipe.ReadMode = [IO.Pipes.PipeTransmissionMode]::Message
+    [uint32]$server = 0
+    if (-not [Wish.PipeInfo]::GetNamedPipeServerProcessId($pipe.SafePipeHandle.DangerousGetHandle(), [ref]$server)) {
+      throw "GetNamedPipeServerProcessId failed, error $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
+    }
+    if ($server -ne $lane.proc.Id) { $verdict = "fail pipe server pid=$server differs from lane pid=$($lane.proc.Id)" }
+    if (-not $verdict) {
+      $again = Get-LaneEmulator
+      if ($again.err) { $verdict = $again.err }
+      elseif ($again.proc.Id -ne $lane.proc.Id) { $verdict = 'fail lane PID changed before the pipe was used' }
+    }
+    if (-not $verdict -and $Verb -ceq 'shot') {
+      $before = @(Get-ChildItem -Path $LanePaths.shots -Filter *.png -ErrorAction Stop | ForEach-Object { $_.Name })
+      $reply = [Text.Encoding]::ASCII.GetString((Send-Pipe $pipe 'DBG sc' 10000)).TrimEnd([char]0)
+      $ms = $sw.ElapsedMilliseconds
+      $new = @(Get-ChildItem -Path $LanePaths.shots -Filter *.png -ErrorAction Stop | Where-Object { $before -cnotcontains $_.Name })
+      $runKv = Read-Kv $LanePaths.run
+      $last = 0
+      if ($runKv.ContainsKey('shots')) { [void][int]::TryParse($runKv['shots'], [ref]$last) }
+      if ($new.Count -eq 0) {
+        if ($last -ge 999) {
+          $verdict = "fail WinUAE has written its 999 screenshots for pid=$($lane.proc.Id) (reply $reply, last counter $last); restart the emulator"
+        } else {
+          $verdict = "fail DBG sc wrote no file in $($LanePaths.shots) (reply $reply, last counter $last)"
+        }
+      } elseif ($new.Count -gt 1) {
+        $verdict = "fail DBG sc wrote $($new.Count) files in $($LanePaths.shots): $(($new | ForEach-Object { $_.Name }) -join ', ')"
+      } else {
+        $file = $new[0]
+        $bytes = [IO.File]::ReadAllBytes($file.FullName)
+        $sig = ($bytes | Select-Object -First 8 | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+        $tail = ($bytes | Select-Object -Last 8 | ForEach-Object { '{0:X2}' -f $_ }) -join ''
+        $counter = 0
+        if ($file.Name -match '_(\d+)\.png$') { $counter = [int]$Matches[1] }
+        if ($sig -cne '89504E470D0A1A0A' -or $tail -cne '49454E44AE426082') {
+          $verdict = "fail $($file.Name) is not a complete PNG (signature $sig, tail $tail)"
+        } else {
+          $runKv['shots'] = [string]$counter
+          Write-Kv $LanePaths.run $runKv
+          Remove-Item -Path $file.FullName -ErrorAction Stop
+          $verdict = "ok shot pid=$($lane.proc.Id) counter=$counter ms=$ms"
+          $out = @('WINVM-SHOT-BEGIN', [Convert]::ToBase64String($bytes), 'WINVM-SHOT-END')
+        }
+      }
+    }
+    if (-not $verdict -and $Verb -ceq 'press') {
+      $done = @()
+      for ($k = 0; $k -lt $codes.Count -and -not $verdict; $k++) {
+        $hex = $codes[$k].ToUpper()
+        try {
+          $r = [Text.Encoding]::ASCII.GetString((Send-Pipe $pipe "CFG KEY_RAW_DOWN 0x$hex" 10000)).TrimEnd([char]0)
+          if ($r -cne '404') { $verdict = "fail KEY_RAW_DOWN 0x$hex replied $r" }
+          else { Start-Sleep -Milliseconds 120 }
+        } finally {
+          $r = [Text.Encoding]::ASCII.GetString((Send-Pipe $pipe "CFG KEY_RAW_UP 0x$hex" 10000)).TrimEnd([char]0)
+          if (-not $verdict -and $r -cne '404') { $verdict = "fail KEY_RAW_UP 0x$hex replied $r" }
+        }
+        if (-not $verdict) {
+          $done += "0x$hex"
+          if ($k -lt $codes.Count - 1) { Start-Sleep -Milliseconds 150 }
+        }
+      }
+      if (-not $verdict) { $verdict = "ok pressed $($done -join ' ') at pid=$($lane.proc.Id)" }
+    }
+  } catch {
+    $verdict = "fail $($_.Exception.GetType().FullName): $($_.Exception.Message)"
+  } finally {
+    if ($pipe) { $pipe.Dispose() }
+  }
+  $verdict
+  $out
+  if (-not $verdict.StartsWith('ok ', [StringComparison]::Ordinal)) { exit 1 }
+}
+
 function Invoke-PrivateConfig([string]$Verb) {
   $deny = Claim-Denial
   if ($deny) { $deny; exit 1 }
@@ -1307,7 +1416,7 @@ switch ($Cmd) {
       $any = @(Get-Process -Name winuae64 -ErrorAction SilentlyContinue)
       if ($any.Count) { "fail winuae64 already running pid=$($any[0].Id); stop it first"; exit 1 }
     }
-    $wanted = ($Rest -join ' ')
+    $wanted = "-ini `"$($LanePaths.ini)`" " + ($Rest -join ' ')
     $expected = "`"$Exe`" $wanted"
     # One start at a time on the whole guest, because "the new winuae64 that no
     # lane owns" only names one process while nobody else is between launching
@@ -1323,6 +1432,21 @@ switch ($Cmd) {
       if (-not $held) {
         $said = @('fail another start has held the guest-wide WinUAE start lock for 60 s'); $code = 1
       } else {
+        # The ini must exist before the launch (a missing one crashed the process) and
+        # is written fresh every time, because WinUAE writes window positions back to it.
+        # Its screenshot keys are what let `shot` read the lane's own pipe instead of
+        # photographing the desktop: the original frame, unclipped, into this lane's folder.
+        New-Item -ItemType Directory -Force -Path (Split-Path $LanePaths.ini) | Out-Null
+        New-Item -ItemType Directory -Force -Path $LanePaths.shots | Out-Null
+        Get-ChildItem -Path $LanePaths.shots -Filter *.png | Remove-Item -ErrorAction Stop
+        $posX = 10 + 740 * ($ActiveLane - 1)
+        @('[WinUAE]',
+          "ScreenshotPath=$($LanePaths.shots)",
+          'Screenshot_Original=1',
+          'Screenshot_Mode=1',
+          'Screenshot_ClipMode=0',
+          "MainPosX=$posX",
+          'MainPosY=10') | Set-Content -Path $LanePaths.ini -Encoding ASCII -ErrorAction Stop
         # No execution time limit: this one is meant to run until `stop`.
         $bad = Register-Session1Task $LanePaths.task $Exe $wanted ([TimeSpan]::Zero)
         if ($bad) { $said = @($bad); $code = 1 }
@@ -1705,6 +1829,8 @@ Report "ok pressed VK 0x$vk$how at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
   }
 
   'diagnose' { Invoke-Diagnose }
+  'shot' { Invoke-PipeVerb 'shot' }
+  'press' { Invoke-PipeVerb 'press' }
   'config-hash' { Invoke-PrivateConfig 'config-hash' }
   'config-remove' { Invoke-PrivateConfig 'config-remove' }
   'snapshot' { Invoke-State 'snapshot' }
