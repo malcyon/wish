@@ -13,7 +13,7 @@ import pytest
 
 from goldbox.amiga_adf import AmigaDisk
 from tests.amiga.fakes import WinuaeLaneNames
-from tools.amiga import acceptance, winuaesession
+from tools.amiga import acceptance, amigadrive, winuaesession
 
 
 def _sha(path):
@@ -342,35 +342,36 @@ def test_deadline_bounds_capture_and_cleanup_calls(tmp_path, monkeypatch):
 
 
 class _Desktop:
-    """A fake `winvm shot`: a desktop whose own corner changes on every grab."""
+    """A fake `winuae.ps1 shot`: WinUAE's 752x574 frame, with one pixel outside the screen that changes on every shot."""
 
-    def __init__(self, monkeypatch, clock, *, client_colours, seconds=6.0,
-                 windowless=0):
+    def __init__(self, monkeypatch, clock, *, client_colours, seconds=6.0):
         self.clock, self.seconds = clock, seconds
         self.colours = list(client_colours)
-        self.windowless = windowless
-        self.timeouts, self.shots = [], 0
-        monkeypatch.setattr(winuaesession.WinGuest, "_run",
-                            staticmethod(self._run))
+        self.timeouts, self.shots, self.commands = [], 0, []
+        monkeypatch.setattr(winuaesession.WinGuest, "_run", staticmethod(self._run))
+        monkeypatch.setattr(amigadrive, "_last_counter", {})
 
     def _run(self, *args, timeout):
-        assert args[0] == "shot"
+        assert args[0] == "ssh"
+        self.commands.append(args[1])
         self.timeouts.append(timeout)
         if timeout < self.seconds:
             raise winuaesession.RouteError(
-                f"winvm shot exceeded its {timeout:.1f}s limit")
+                f"winvm ssh exceeded its {timeout:.1f}s limit")
+        import base64
+        import io
+
         from PIL import Image
         self.shots += 1
         self.clock.now += self.seconds
-        image = Image.new("RGB", (1024, 768), (30, 60, 90))
-        # One desktop pixel outside the client and its status bar: a clock.
-        image.putpixel((1000, 700), (self.shots % 256, 0, 0))
-        if self.shots > self.windowless:
-            colour = self.colours[min(self.shots - self.windowless, len(self.colours)) - 1]
-            image.paste(colour, (10, 27, 730, 595))
-            image.paste((240, 240, 240), (10, 595, 730, 617))
-        image.save(args[1])
-        return ""
+        image = Image.new("RGB", (752, 574), (30, 60, 90))
+        image.putpixel((751, 573), (self.shots % 256, 0, 0))
+        colour = self.colours[min(self.shots, len(self.colours)) - 1]
+        image.paste(colour, (16, 4, 736, 572))
+        data = io.BytesIO()
+        image.save(data, "PNG")
+        return "\n".join([f"ok shot pid=4242 counter={self.shots:03d} ms=900", "WINVM-SHOT-BEGIN",
+                          base64.b64encode(data.getvalue()).decode(), "WINVM-SHOT-END"])
 
 
 @pytest.fixture
@@ -388,18 +389,28 @@ def desktop_clock(monkeypatch):
     return clock
 
 
-def test_capture_settles_on_the_emulator_screen_while_the_desktop_changes(
+def _guest():
+    guest = winuaesession.WinGuest()
+    guest.holder = "wish282-test"
+    return guest
+
+
+def test_capture_settles_on_the_emulator_screen_while_the_frame_border_changes(
         tmp_path, monkeypatch, desktop_clock):
     from PIL import Image
 
     desktop = _Desktop(monkeypatch, desktop_clock, client_colours=[(9, 9, 9)])
     raw, cropped = tmp_path / "s.raw.png", tmp_path / "s.png"
+    guest = _guest()
 
-    winuaesession.WinGuest().capture("boot", raw, cropped, timeout=60)
+    guest.capture("boot", raw, cropped, timeout=60)
 
     assert desktop.shots == 2
+    assert Image.open(raw).size == (752, 574)
     assert Image.open(cropped).size == (720, 568)
     assert Image.open(cropped).getpixel((5, 5)) == (9, 9, 9)
+    assert guest.last_shot == {"source": "winuae-pipe", "pid": 4242, "counter": 2}
+    assert all(command.endswith("shot -Holder wish282-test") for command in desktop.commands)
 
 
 def test_capture_that_never_settles_says_so_without_a_cut_short_shot(
@@ -408,22 +419,11 @@ def test_capture_that_never_settles_says_so_without_a_cut_short_shot(
                        client_colours=[(n, 9, 9) for n in range(1, 40)])
 
     with pytest.raises(winuaesession.RouteError, match="did not settle inside 60s"):
-        winuaesession.WinGuest().capture(
-            "boot", tmp_path / "s.raw.png", tmp_path / "s.png", timeout=60)
+        _guest().capture("boot", tmp_path / "s.raw.png", tmp_path / "s.png", timeout=60)
 
     assert desktop.shots >= 2
     assert min(desktop.timeouts) >= winuaesession.SHOT_SECONDS
     assert (tmp_path / "s.png").exists()
-
-
-def test_capture_waits_for_the_emulator_window(tmp_path, monkeypatch, desktop_clock):
-    desktop = _Desktop(monkeypatch, desktop_clock, client_colours=[(9, 9, 9)],
-                       windowless=1)
-
-    winuaesession.WinGuest().capture(
-        "boot", tmp_path / "s.raw.png", tmp_path / "s.png", timeout=60)
-
-    assert desktop.shots == 3
 
 
 def test_capture_with_little_time_left_still_takes_one_shot(
@@ -431,8 +431,7 @@ def test_capture_with_little_time_left_still_takes_one_shot(
     desktop = _Desktop(monkeypatch, desktop_clock, client_colours=[(9, 9, 9)])
 
     with pytest.raises(winuaesession.RouteError, match="did not settle inside 10s"):
-        winuaesession.WinGuest().capture(
-            "boot", tmp_path / "s.raw.png", tmp_path / "s.png", timeout=10)
+        _guest().capture("boot", tmp_path / "s.raw.png", tmp_path / "s.png", timeout=10)
 
     assert desktop.shots == 1
     assert desktop.timeouts == [10]
@@ -443,8 +442,7 @@ def test_capture_with_no_time_left_takes_no_shot(tmp_path, monkeypatch, desktop_
     desktop = _Desktop(monkeypatch, desktop_clock, client_colours=[(9, 9, 9)])
 
     with pytest.raises(winuaesession.RouteError, match="did not settle"):
-        winuaesession.WinGuest().capture(
-            "boot", tmp_path / "s.raw.png", tmp_path / "s.png", timeout=0)
+        _guest().capture("boot", tmp_path / "s.raw.png", tmp_path / "s.png", timeout=0)
 
     assert desktop.shots == 0
 
@@ -457,8 +455,7 @@ def test_grab_takes_one_shot_of_a_screen_that_never_holds_still(
     desktop = _Desktop(monkeypatch, desktop_clock,
                        client_colours=[(n, 9, 9) for n in range(1, 40)])
 
-    made = winuaesession.WinGuest().grab(
-        "title", tmp_path / "s.raw.png", tmp_path / "s.png", timeout=120)
+    made = _guest().grab("title", tmp_path / "s.raw.png", tmp_path / "s.png", timeout=120)
 
     assert made is True
     assert desktop.shots == 1
@@ -466,25 +463,11 @@ def test_grab_takes_one_shot_of_a_screen_that_never_holds_still(
     assert Image.open(tmp_path / "s.png").getpixel((5, 5)) == (1, 9, 9)
 
 
-def test_grab_without_the_emulator_window_makes_no_crop(
-        tmp_path, monkeypatch, desktop_clock):
-    desktop = _Desktop(monkeypatch, desktop_clock, client_colours=[(9, 9, 9)],
-                       windowless=1)
-
-    made = winuaesession.WinGuest().grab(
-        "title", tmp_path / "s.raw.png", tmp_path / "s.png", timeout=120)
-
-    assert made is False
-    assert desktop.shots == 1
-    assert (tmp_path / "s.raw.png").exists() and not (tmp_path / "s.png").exists()
-
-
 def test_grab_with_no_time_left_takes_no_shot(tmp_path, monkeypatch, desktop_clock):
     desktop = _Desktop(monkeypatch, desktop_clock, client_colours=[(9, 9, 9)])
 
     with pytest.raises(winuaesession.RouteError, match="no time left"):
-        winuaesession.WinGuest().grab(
-            "title", tmp_path / "s.raw.png", tmp_path / "s.png", timeout=0)
+        _guest().grab("title", tmp_path / "s.raw.png", tmp_path / "s.png", timeout=0)
 
     assert desktop.shots == 0
 

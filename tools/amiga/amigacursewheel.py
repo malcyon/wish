@@ -10,7 +10,7 @@ that repository at run time and **records nothing** here.
 
     tools/amiga/amigacursewheel.py --holder wish28
 
-What it does: grabs the guest's screen, reads the challenge off it with the
+What it does: takes WinUAE's own screenshot over its pipe, reads the challenge off it with the
 private repository's own screen reader, computes the character with its own
 transcription of the game's arithmetic, presses that key and RETURN through
 `tools/amiga/amigadrive.py`, and deletes the screenshot.  What it prints is
@@ -28,16 +28,14 @@ before it will adventure, so the title cannot be driven past its party menu)`.
 from __future__ import annotations
 
 import argparse
-import os
 import pathlib
-import subprocess
 import sys
 import tempfile
 
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent.parent))
 
-from tools.amiga import amigadrive  # noqa: E402
+from tools.amiga import amigadrive, screens  # noqa: E402
 from tools.curse_of_the_azure_bonds import cursewheel  # noqa: E402
 
 #: Where the private repository is.  `tools/curse_of_the_azure_bonds/cursewheel.py` settled this name
@@ -66,8 +64,8 @@ def _wheel_modules():
 
 #: The character pitch the private repository's reader fits over, in captured
 #: pixels per Amiga pixel across the screen.  It was written against FS-UAE,
-#: which draws the 320-pixel screen about four times over; a `winvm shot` of
-#: WinUAE puts the same screen at exactly 2.0, and the fit's search never
+#: which draws the 320-pixel screen about four times over; WinUAE's own
+#: screenshot puts the same screen at exactly 2.0, and the fit's search never
 #: reaches it.  Widening the capture by a whole number with nearest neighbour
 #: puts it back in range and invents no pixel: every sample the reader takes
 #: is a pixel that was really there.
@@ -132,9 +130,11 @@ def answer(holder: str, settle: float, shot: pathlib.Path | None = None
         handle.close()
         shot = pathlib.Path(handle.name)
     try:
-        subprocess.run(["winvm", "shot", str(shot)], check=True,
-                       capture_output=True, text=True,
-                       env=dict(os.environ, SSH_ASKPASS_REQUIRE="never"))
+        try:
+            amigadrive.shot(holder, shot)
+        except amigadrive.ShotError as exc:
+            raise SystemExit(str(exc)) from exc
+        screens.canonical_file(shot, shot)
         challenge = screen.read_challenge(_to_reader_scale(shot))
         if challenge is None:
             print("no challenge on screen")

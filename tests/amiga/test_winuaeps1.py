@@ -285,6 +285,15 @@ def test_shot_fails_clearly_at_the_999_file_limit_and_otherwise_on_a_missing_fil
     assert "$runKv['shots'] = [string]$counter" in body
 
 
+def test_shot_resets_the_screenshot_counter_after_a_good_shot_and_never_before_one():
+    body = _body("Invoke-PipeVerb")
+    reset = body.index("'CFG SPC_SCREENSHOT 0'")
+    assert body.count("SPC_SCREENSHOT") == 1
+    assert body.index("'DBG sc'") < body.index("Remove-Item -Path $file.FullName") < reset
+    assert reset < body.index('$verdict = "ok shot pid=')
+    assert "try { [void](Send-Pipe $pipe 'CFG SPC_SCREENSHOT 0' 10000) } catch { }" in body
+
+
 def test_shot_prints_the_markers_winvmguest_decodes():
     from tools.amiga import winvmguest
     body = _body("Invoke-PipeVerb")

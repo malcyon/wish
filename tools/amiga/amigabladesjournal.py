@@ -12,7 +12,7 @@ and **records nothing** here.
 
     tools/amiga/amigabladesjournal.py --holder wish331
 
-What it does: grabs the guest's screen, reads the challenge off it with the
+What it does: takes WinUAE's own screenshot over its pipe, reads the challenge off it with the
 private repository's own screen reader, matches it against the tables that
 repository extracts from `Secret` on the player's own side-A disk, types the
 word and RETURN through `tools/amiga/amigadrive.py`, and deletes the screenshot.
@@ -22,9 +22,8 @@ challenge-answer pairs is exactly what that rule keeps out of this repository.
 
 **The geometry is the part that had to be worked out on this side.**  That
 reader was written against FS-UAE, where the game's 8x8 character cell lands
-at 30.64 captured pixels; `winvm shot` grabs WinUAE's 720-wide window through
-libvirt, where the same cell is 16 pixels of a 1920x1080 desktop with the
-emulator somewhere in it.  So the grid is fitted on the capture, each of the
+at 30.64 captured pixels; WinUAE's own screenshot (`amigadrive.shot`, cut to the
+720x568 screen by `screens.canonical`) has the same cell at 16 pixels.  So the grid is fitted on the capture, each of the
 game's own pixels is sampled once at its centre, and those samples are
 replicated to a pitch of 32 -- four pixels each way, a whole number, which
 `reader_pitch()` explains and `#371` was caused by not being.  The reader is
@@ -42,10 +41,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import pathlib
 import shutil
-import subprocess
 import sys
 import tempfile
 
@@ -234,10 +231,11 @@ def text_bands(image):
 
 
 def _client_of(image):
-    """The emulator's client area cut out of a desktop grab, at a whole-pixel offset.
+    """The emulator's client area cut out of an archived desktop grab, at a whole-pixel offset.
 
     Text elsewhere on the desktop must not take part in the grid fit.  An image
-    that is no bigger than a client, or in which no client is found, is used as it is.
+    that is no bigger than a client (every live capture), or in which no client is
+    found, is used as it is.
     """
     from tools.amiga import amigashots  # noqa: PLC0415
 
@@ -265,7 +263,7 @@ def to_reader_scale(shot: pathlib.Path, out: pathlib.Path,
 
     The game draws each of the 8 pixels in its character cell as a
     `pitch / 8`-pixel block of the capture -- an exact 2-pixel block at
-    `winvm shot`'s pitch of 16 -- so every Amiga pixel has one true centre in
+    WinUAE's pitch of 16 -- so every Amiga pixel has one true centre in
     the capture, and this samples that centre directly out of the untouched
     screenshot, once per Amiga pixel.  Cropping the desktop first and
     rescaling the crop truncated the fitted origin to a whole pixel, which
@@ -520,8 +518,8 @@ def answer(holder: str, settle: float, adf: pathlib.Path,
     blocked before anything is grabbed.
 
     `capture` takes a path and puts the emulator's screen in it; `press` takes
-    one character and sends it.  Both default to WinUAE's -- `winvm shot` and
-    `tools/amiga/amigadrive.py` -- and both are arguments because the same challenge
+    one character and sends it.  Both default to WinUAE's -- `amigadrive.shot`
+    cut by `screens.canonical`, and `tools/amiga/amigadrive.py` -- and both are arguments because the same challenge
     is asked by the same game in FS-UAE, where the screen comes off an X
     server and the keys go in through XTEST (`#464 (Can the automapper follow
     a live FS-UAE game on Linux, so Wish and the Amiga game run on one
@@ -531,10 +529,13 @@ def answer(holder: str, settle: float, adf: pathlib.Path,
     """
     if capture is None:
         def capture(path):
-            subprocess.run(["winvm", "shot", str(path)], check=True,
-                           capture_output=True, text=True,
-                           env=dict(os.environ,
-                                    SSH_ASKPASS_REQUIRE="never"))
+            from tools.amiga import screens  # noqa: PLC0415
+
+            try:
+                amigadrive.shot(holder, path)
+            except amigadrive.ShotError as exc:
+                raise SystemExit(str(exc)) from exc
+            screens.canonical_file(path, path)
     if press is None:
         def press(key):
             amigadrive.press(holder, key, settle)

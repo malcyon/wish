@@ -1060,6 +1060,9 @@ function Invoke-PipeVerb([string]$Verb) {
           $runKv['shots'] = [string]$counter
           Write-Kv $LanePaths.run $runKv
           Remove-Item -Path $file.FullName -ErrorAction Stop
+          # Keeps WinUAE's per-process file counter low so a long run never reaches 999.
+          # Best effort and after the shot only: the next shot may still be numbered 002 or 003.
+          try { [void](Send-Pipe $pipe 'CFG SPC_SCREENSHOT 0' 10000) } catch { }
           $verdict = "ok shot pid=$($lane.proc.Id) counter=$counter ms=$ms"
           $out = @('WINVM-SHOT-BEGIN', [Convert]::ToBase64String($bytes), 'WINVM-SHOT-END')
         }

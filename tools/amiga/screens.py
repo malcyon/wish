@@ -17,7 +17,9 @@ _WINDOW = (360, 284)
 #: The screenshots an emulator writes itself: size -> (copies of each Amiga pixel
 #: across and down, the window's left and top in Amiga pixels). FS-UAE's own
 #: screenshot is a 377x288 frame doubled, and the window sits at column 8, row 2.
-FRAMES = {(754, 576): (2, (8, 2))}
+#: WinUAE's own screenshot (`DBG sc`) is already doubled, a 752x574 frame with the
+#: window at the same column and row, so its crop is the plain cut at (16, 4).
+FRAMES = {(754, 576): (2, (8, 2)), (752, 574): (2, (8, 2))}
 
 
 def canonical(image, *, replication: int | None = None, origin: tuple[int, int] | None = None):

@@ -22,15 +22,15 @@ Tests for the Amiga port: its filesystem, saved-game and character-record reader
 | `test_amigaacceptance_titles.py` | Checks the Pool of Radiance, Curse of the Azure Bonds and Pools of Darkness routes, including their keys, walk verdicts, preparation pins, imports and the cases where the CLI stops, plus exact published disk-one route letters and report validation. |
 | `test_amigabackstab.py` | Pins what `tools/amiga/amigabackstab.py` reads out of each Amiga title's own executable, and that erasing a step of the regain arithmetic is blocked. |
 | `test_amigabladesjournal.py` | Checks how `tools/amiga/amigabladesjournal.py` fits the game's character grid inside a desktop capture and rescales it, on synthetic frames. |
-| `test_amigacanonical.py` | Checks that `screens.canonical` cuts FS-UAE's doubled screenshot and any other exact replicated frame to the 720x568 crop, blocks a frame that is not exact, and leaves every kept WinUAE example crop unchanged with each guard rule still matching its example. |
+| `test_amigacanonical.py` | Checks that `screens.canonical` cuts FS-UAE's and WinUAE's own screenshots and any other exact replicated frame to the 720x568 crop, blocks a frame that is not exact, and leaves every kept WinUAE example crop unchanged with each guard rule still matching its example, and matches WinUAE's own Pool and Silver Blades frames against their rules. |
 | `test_amigacontainercheck.py` | Checks the parts of `tools/amiga/amigacontainercheck.py` that decide what it says, on synthetic input, and that its two readers share no code. |
 | `test_amigacursewheel.py` | Checks `tools/amiga/amigacursewheel.py`'s whole-number rescale of a WinUAE capture and that a machine without the private tables is told so. |
-| `test_amigadrive.py` | Checks `tools/amiga/amigadrive.py`'s key table and the two settings a party walks on, through the command line the driver would send. |
+| `test_amigadrive.py` | Checks `tools/amiga/amigadrive.py`'s keys as Amiga raw codes, its pipe screenshot (frame written unchanged, guest failure line, 999-shot limit) and the settings a party walks on, through the command line the driver would send. |
 | `test_amigaglobal.py` | Checks `tools/amiga/amigaglobal.py` finds a global's references and a routine's callers on an executable built here. |
 | `test_amigaicons.py` | Checks the Amiga Curse and Silver Blades combat-icon art against DOS's own, off the player's disks. |
 | `test_amigaindexedrefs.py` | Checks `tools/amiga/amigaindexedrefs.py`'s `d8(An,Xn)` indexed-site search and its `lea` base-within-reach search, on hand-built instructions in a synthetic hunk. |
 | `test_amigajournalgates.py` | Checks the Silver Blades journal preflight against a fake private reader and that the grid fit ignores green text outside the emulator window, on built images. |
-| `test_amigakeys.py` | Checks that every key `amigadrive.KEYS` and the FS-UAE drivers send is in `tools/amiga/amigakeys.py` once, and its raw codes against the Amiga Hardware Reference Manual and WinUAE's `keyboard.h`. |
+| `test_amigakeys.py` | Checks that every key the FS-UAE drivers send is in `tools/amiga/amigakeys.py` once, and its raw codes against the Amiga Hardware Reference Manual and WinUAE's `keyboard.h`. |
 | `test_amigalaterproof.py` | Checks the party ordering and the mask of engine-recomputed bytes in `tools/amiga/amigalaterproof.py`. |
 | `test_amigalaterslot.py` | Checks `tools/amiga/amigalaterslot.py` writes the name, count word and chain head the game's loader reads, on synthetic disks. |
 | `test_amigalaterwindow.py` | Checks that an Amiga Curse or Silver Blades record's unnamed `field_83_87` bytes survive to Amiga and to DOS, on records built here and on the player's disks. |
@@ -47,7 +47,7 @@ Tests for the Amiga port: its filesystem, saved-game and character-record reader
 | `test_amigaroutepool.py` | Checks that the Pool route's one step leaves the start square by an open edge, from the square's own walls, and that the manifest records and re-checks the choice. |
 | `test_amigasavedisk.py` | Checks a `POOLSAVE` save disk formatted from nothing and the filename the game builds on it. |
 | `test_amigasavegame.py` | Checks the Amiga saved-game map in `goldbox.amiga_savegame`, on synthetic saves and on the player's own. |
-| `test_amigashots.py` | Checks that `tools/amiga/amigashots.py` finds the emulator's screen inside a grab of the whole guest desktop, on desktops built here. |
+| `test_amigashots.py` | Checks that `tools/amiga/amigashots.py` finds the emulator's screen inside an archived grab of the whole guest desktop, on desktops built here. |
 | `test_amigasplit.py` | Checks that the Amiga codec is one module per title and that no title module reaches another at import time. |
 | `test_amigastaging.py` | Checks that `tools/amiga/staging.py` leaves a scratch Silver Blades boot ADF hides only its own save drawer or gains one slot file, preserves every file, and blocks unsafe output paths or replacement, using synthetic and registered disks. |
 | `test_amigaareascript.py` | Checks that `goldbox.amiga_savegame.area_script` looks an area up in block 0 of the Amiga Curse `ECL.GLB` and blocks a table that does not fit the file, using generated containers and the registered Curse disks. |
@@ -68,6 +68,6 @@ Tests for the Amiga port: its filesystem, saved-game and character-record reader
 | `test_porslot.py` | Checks that `tools/amiga/porslot.py` reads an Amiga save slot straight off the disk, from the player's own image. |
 | `test_savegamelosses.py` | Checks that a character's name cut to fit an Amiga Curse or Silver Blades save reaches the save-level report's `losses`, so `editor.saveplan` blocks the save rather than cutting the name silently. |
 | `test_tripspace.py` | Checks `tools/amiga/tripspace.py`'s script lengths, tiers, skip-switch reading and script walk on containers, switches and scripts built here. |
-| `test_winuaeps1.py` | Checks `tools/amiga/winuae.ps1`'s snapshot verbs from the script's text: the device-name pattern matches Python's, a failed marker write stops before the old snapshot is replaced, and a failed move back names the backup folder. |
+| `test_winuaeps1.py` | Checks `tools/amiga/winuae.ps1`'s snapshot, `shot` and `press` verbs from the script's text: the device-name pattern matches Python's, a failed marker write stops before the old snapshot is replaced, and a failed move back names the backup folder. |
+| `test_winuaesession.py` | Checks that `WinGuest` takes screenshots and presses keys through `winuae.ps1 shot` and `press` with Amiga raw codes, blocks other frame sizes and emulator keys, and that no run driver names a desktop grab. |
 | `test_winvmguest.py` | Checks `tools/amiga/winvmguest.py`'s ssh and scp command lines and the options none may lose, the PowerShell it encodes, the screenshot and the WinUAE lane read back from Windows' output, and the lifecycle commands it blocks, without a Windows guest. |
-| `test_winvmsettle.py` | Checks when `tools/amiga/winvmsettle.py` decides a guest screen has settled, what it keeps when it never does, and what it says with no screen. |

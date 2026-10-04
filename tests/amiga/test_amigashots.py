@@ -1,7 +1,7 @@
-"""Finding the emulator's screen inside a grab of the whole guest desktop.
+"""Finding the emulator's screen inside an archived grab of the whole guest desktop.
 
-`tools/amiga/amigashots.py` cuts a 720x568 Amiga screen out of a 1920x1080 `winvm
-shot` by looking for WinUAE's status bar underneath it.  What it must not do is
+`tools/amiga/amigashots.py` cuts a 720x568 Amiga screen out of a 1920x1080 desktop
+grab by looking for WinUAE's status bar underneath it.  What it must not do is
 cut somewhere near it: a crop that is seven rows out looks like a screenshot
 and is a picture of the wrong thing, which is the failure a person reading the
 result cannot see.
@@ -75,30 +75,3 @@ def test_the_crop_is_the_emulator_screen_and_nothing_else(tmp_path):
     assert cut.size == amigashots.CLIENT
     assert cut.getpixel((0, 0)) == (0, 0, 34)
     assert cut.getpixel((0, amigashots.CLIENT[1] - 1)) == (255, 255, 255)
-
-
-def test_run_settles_on_the_crop_not_the_whole_desktop(monkeypatch, tmp_path):
-    import types
-
-    grabs = []
-    for tick in (1, 2, 3):
-        image = _desktop((255, 255, 255))
-        image.putpixel((1900, 1070), (tick, 0, 0))
-        grabs.append(image)
-    calls = []
-
-    def _shot(args, **kwargs):
-        image = grabs[min(len(calls), len(grabs) - 1)]
-        calls.append(args[-1])
-        image.save(args[-1], "PNG")
-        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
-
-    monkeypatch.setattr(amigashots.winvmsettle.subprocess, "run", _shot)
-    monkeypatch.setattr(amigashots.amigadrive, "press",
-                        lambda *args: None)
-    monkeypatch.setattr(amigashots.winvmsettle.time, "sleep",
-                        lambda seconds: None)
-    assert amigashots.run("h", ["A"], tmp_path, 30, None,
-                          amigashots.CLIENT, 0) == 0
-    assert len(calls) == 2
-    assert (tmp_path / "01-a.png").exists()

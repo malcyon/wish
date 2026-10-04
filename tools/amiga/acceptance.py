@@ -421,6 +421,11 @@ def _exec_sample(guest: Any, holder: str,
             "replies": ptr_reads + value_reads}
 
 
+def _shot_source(guest: Any) -> dict[str, Any]:
+    """Where the guest's last frame came from (`source`, `pid`, `counter`), for the grab events."""
+    return dict(getattr(guest, "last_shot", None) or {})
+
+
 def _white_screen(path: pathlib.Path) -> bool:
     from PIL import Image  # noqa: PLC0415
 
@@ -513,7 +518,7 @@ def _run_diagnose(manifest_path: pathlib.Path, manifest: dict, title: AmigaTitle
                 break
             shown = guest.grab(name, raw, crop, timeout=boot_limit_for(min(SHOT_SECONDS, remaining)))
             event = {"state": name, "raw": str(raw), "raw_sha256": sha256(raw),
-                     "crop": str(crop) if shown else None}
+                     "crop": str(crop) if shown else None, **_shot_source(guest)}
             if shown:
                 event["crop_sha256"] = sha256(crop)
                 if guard("title", crop):
@@ -1696,15 +1701,15 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             cropped.unlink(missing_ok=True)
             if not guest.grab(state, raw, cropped, timeout=route_limit(SHOT_SECONDS)):
                 result["events"].append({"state": state, "raw": str(raw),
-                                         "sha256": sha256(raw), "crop": None})
-                log("grab", state=state, raw=str(raw), crop=None)
+                                         "sha256": sha256(raw), "crop": None, **_shot_source(guest)})
+                log("grab", state=state, raw=str(raw), crop=None, **_shot_source(guest))
                 return ""
         digest = sha256(cropped)
         result["events"].append({"state": state, "raw": str(raw),
                                  "crop": str(cropped), "sha256": sha256(raw),
-                                 "crop_sha256": digest})
+                                 "crop_sha256": digest, **_shot_source(guest)})
         log("settled" if settle else "grab", state=state, raw=str(raw),
-            crop=str(cropped), crop_sha256=digest)
+            crop=str(cropped), crop_sha256=digest, **_shot_source(guest))
         if check and not guard(state, cropped):
             raise RouteError(f"{state} screen was not recognized; kept {raw}")
         return digest

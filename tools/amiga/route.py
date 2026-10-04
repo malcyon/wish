@@ -8,11 +8,21 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from goldbox import amiga_adf, amiga_por
-from tools.amiga import amigadrive
+from tools.amiga import amigakeys
 from tools.amiga.winuaesession import HOLDER, RouteError
 
 ISSUE = "679"
 TITLE_LIMIT = 180.0
+
+
+def _has_raw_code(name: Any) -> bool:
+    """Whether `name` is a key the pipe can press: an Amiga key, not an emulator key."""
+    try:
+        return isinstance(name, str) and amigakeys.lookup(name).amiga is not None
+    except KeyError:
+        return False
+
+
 _STEP_KINDS = frozenset({"key", "write", "move", "turn", "answer", "insert"})
 _LETTER = re.compile(r"[A-Z]")
 _OPTION = re.compile(r"[A-Za-z0-9_]+=[A-Za-z0-9_.]*")
@@ -229,8 +239,8 @@ class AmigaTitle:
                     block(f"{name} DF0 insert step {step!r} names a disk that is not a spare; "
                            f"only a spare may go into DF0")
             key = key[2]
-        if not isinstance(key, str) or key.upper() not in amigadrive.KEYS:
-            block(f"{name} step {step!r} presses a key with no WinUAE code")
+        if not _has_raw_code(key):
+            block(f"{name} step {step!r} presses a key with no Amiga raw code")
         if kind == "write" and key.upper() not in (self.control_letter, self.after_letter):
             block(f"{name} write step {step!r} is not the control or after letter")
         if kind != "write" and key.upper() in self._write_letters():
@@ -248,8 +258,8 @@ class AmigaTitle:
         if action[0] == "keys":
             names = (action[1],) if isinstance(action[1], str) else tuple(action[1])
             if len(action) != 2 or not names or not all(
-                    isinstance(k, str) and k.upper() in amigadrive.KEYS for k in names):
-                block(f"interstitial {row!r} presses a key with no WinUAE code")
+                    _has_raw_code(k) for k in names):
+                block(f"interstitial {row!r} presses a key with no Amiga raw code")
             pressed = names
         elif action[0] == "insert":
             # DF0 is safe to change only on a screen where the game itself asked for a disk, and
@@ -259,7 +269,7 @@ class AmigaTitle:
                                    and row[0] in self.strict and action[2] in self.spares
                                    and action[2] != self.mounted[0]))
             if not (drive_ok and action[2] in keys
-                    and isinstance(action[3], str) and action[3].upper() in amigadrive.KEYS):
+                    and _has_raw_code(action[3])):
                 block(f"interstitial {row!r} needs (insert, drive, disk key, key): "
                        f"DF1 may change, or DF0 from a spare on a strict disk prompt")
             pressed = (action[3],)

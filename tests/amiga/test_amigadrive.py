@@ -1,10 +1,7 @@
-"""`tools/amiga/amigadrive.py`'s key table, and the two settings a party walks on.
+"""`tools/amiga/amigadrive.py`: the keys and screenshots it sends over WinUAE's pipe, and the settings a party walks on.
 
 No VM and no emulator: the `winvm` call is replaced, so what is under test is
-the command line the driver would have sent.  Both tests here guard something
-that failed silently for a fortnight -- a key that was pressed, reported `ok`,
-and reached nothing.  `#361 (An Amiga party cannot be made to walk, because
-the WinUAE driver sends only keystrokes)` has the run.
+the command line the driver would have sent.
 """
 
 from __future__ import annotations
@@ -36,30 +33,106 @@ def sent(monkeypatch):
     return lines
 
 
-def test_the_cursor_keys_go_in_extended(sent):
-    """Without the flag `UP` is keypad 8, not the cursor key.
+def test_a_key_goes_in_as_its_amiga_raw_code_over_the_pipe_and_never_as_a_virtual_key(sent):
+    """`UP` and `NP8` are two Amiga keys with two raw codes.
 
-    `keybd_event` derives a scancode from the virtual key and does not add the
-    `E0` prefix unless asked, so `VK_UP` arrives at WinUAE as `0x48` --
-    `DIK_NUMPAD8`.  Drop `-Extended` and the driver has no way to press a
-    cursor key at all, and says nothing about it.
+    The old route sent virtual keys, where `VK_UP` without the extended flag
+    arrived as keypad 8; a raw code cannot be confused that way.
     """
-    for name in ("UP", "DOWN", "LEFT", "RIGHT"):
+    for name, code in (("UP", "4C"), ("NP8", "3E"), ("RET", "44"), ("enter", "44"), ("a", "20")):
         amigadrive.press("holder", name, 0)
-    assert all(" -Extended " in line for line in sent), sent
+        assert sent[-1].endswith(f" press {code} -Holder holder"), (name, sent[-1])
+    assert not any(" key " in line or "-Extended" in line for line in sent), sent
 
 
-def test_the_keypad_goes_in_unextended(sent):
-    """The keypad is what moves a party, and it is not an extended key."""
-    amigadrive.press("holder", "NP8", 0)
-    assert "key 68 " in sent[0], sent
-    assert "-Extended" not in sent[0], sent
+def test_every_keypad_digit_is_its_own_key(sent):
+    """`NP0`-`NP9` are ten distinct codes."""
+    for digit in range(10):
+        amigadrive.press("holder", f"NP{digit}", 0)
+    codes = [line.split(" press ")[1].split()[0] for line in sent]
+    assert len(set(codes)) == 10
 
 
-def test_every_keypad_digit_is_its_own_key():
-    """`NP0`-`NP9` are `VK_NUMPAD0`-`VK_NUMPAD9`, in order and distinct."""
-    codes = [amigadrive.KEYS[f"NP{d}"] for d in range(10)]
-    assert codes == list(range(0x60, 0x6A))
+@pytest.mark.parametrize("name", ["F11", "F12"])
+def test_an_emulator_key_is_not_pressed_as_an_amiga_key(sent, name):
+    with pytest.raises(SystemExit, match="not an Amiga key"):
+        amigadrive.press("holder", name, 0)
+    assert sent == []
+
+
+def test_a_key_with_no_row_names_the_keys_it_knows(sent):
+    with pytest.raises(SystemExit, match="is not a key this knows"):
+        amigadrive.press("holder", "NOPE", 0)
+    assert sent == []
+
+
+def _reply(counter=1, pid=77, ms=800, size=(752, 574)):
+    """What `winuae.ps1 shot` prints: its `ok` line and the PNG between the markers."""
+    import base64
+    import io
+
+    from PIL import Image
+
+    data = io.BytesIO()
+    Image.new("RGB", size, (1, 2, 3)).save(data, "PNG")
+    return "\n".join([f"ok shot pid={pid} counter={counter:03d} ms={ms}", "WINVM-SHOT-BEGIN",
+                      base64.b64encode(data.getvalue()).decode(), "WINVM-SHOT-END"])
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    monkeypatch.setattr(amigadrive, "_last_counter", {})
+
+
+def test_a_shot_asks_the_guest_for_its_own_screenshot_and_writes_the_frame_unchanged(
+        tmp_path, clock):
+    from PIL import Image
+
+    calls = []
+
+    def run(*args, timeout):
+        calls.append((args, timeout))
+        return _reply(counter=7, pid=4242, ms=910)
+
+    info = amigadrive.shot("wish282-x", tmp_path / "out" / "frame.png", run=run, timeout=12)
+
+    assert info == {"pid": 4242, "counter": 7, "ms": 910}
+    assert calls == [(("ssh", f"{amigadrive.PS} shot -Holder wish282-x"), 12)]
+    with Image.open(tmp_path / "out" / "frame.png") as frame:
+        assert frame.size == (752, 574)
+
+
+def test_a_shot_that_wrote_no_file_reports_the_guests_line(tmp_path, clock):
+    def run(*args, timeout):
+        return "fail DBG sc wrote no file in C:\\Amiga\\lanes\\1\\shots\\ (reply 404, last counter 12)"
+
+    with pytest.raises(amigadrive.ShotError, match="wrote no file"):
+        amigadrive.shot("a", tmp_path / "x.png", run=run)
+    assert not (tmp_path / "x.png").exists()
+
+
+def test_the_999th_screenshot_is_the_last_and_the_next_says_so(tmp_path, clock):
+    amigadrive.shot("a", tmp_path / "x.png", run=lambda *args, timeout: _reply(counter=999))
+
+    def spent(*args, timeout):
+        return "fail DBG sc wrote no file in C:\\x (reply 404, last counter 999)"
+
+    with pytest.raises(amigadrive.ShotError, match="written its 999 screenshots"):
+        amigadrive.shot("a", tmp_path / "y.png", run=spent)
+
+
+def test_the_guests_own_limit_message_becomes_the_budget_error(tmp_path, clock):
+    def run(*args, timeout):
+        raise RuntimeError("winvm ssh failed: fail WinUAE has written its 999 screenshots for pid=5")
+
+    with pytest.raises(amigadrive.ShotError, match="restart the run"):
+        amigadrive.shot("a", tmp_path / "y.png", run=run)
+
+
+def test_the_shot_command_prints_where_the_frame_went(monkeypatch, tmp_path, capsys, clock):
+    monkeypatch.setattr(amigadrive, "_winvm", lambda *args, timeout=180: _reply(counter=3, pid=9))
+    assert amigadrive.main(["--holder", "h", "shot", str(tmp_path / "f.png")]) == 0
+    assert capsys.readouterr().out.strip() == f"{tmp_path / 'f.png'} pid=9 counter=3"
 
 
 def test_the_machine_leaves_amiga_port_two_empty():

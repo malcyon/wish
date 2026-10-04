@@ -47,6 +47,19 @@ def test_fsuaes_own_screenshot_is_cut_to_the_window_and_doubled():
     assert (255, 0, 0) not in {got.getpixel((x, y)) for x in (0, 719) for y in (0, 567)}
 
 
+def test_winuaes_own_screenshot_is_cut_at_16_4_without_rescaling():
+    native = _native()
+    frame = _replicated(native, 2, (8, 2), (752, 574))
+    got = screens.canonical(frame)
+    assert got.size == screens.CANONICAL
+    assert got.tobytes() == frame.convert("RGB").crop((16, 4, 736, 572)).tobytes()
+
+
+def test_a_winuae_frame_one_row_off_in_size_is_blocked():
+    with pytest.raises(RouteError, match="no known way to cut a 752x575 frame"):
+        screens.canonical(Image.new("RGB", (752, 575)))
+
+
 def test_a_threefold_frame_with_its_own_origin_gives_the_same_crop():
     native = _native()
     frame = _replicated(native, 3, (5, 7), (3 * 370, 3 * 295))
@@ -113,3 +126,29 @@ def test_canonical_is_the_identity_on_every_kept_winuae_crop_and_every_rule_stil
             assert screens.canonical(image).tobytes() == image.convert("RGB").tobytes(), (title, state)
         box = tuple(rule["box"])
         assert screens.box_digests(path, [box])[box] == rule["sha256"], (title, state, rule["example"])
+
+
+PIPESHOTS = pathlib.Path.home() / ".cache" / "wish" / "282" / "pipeshots"
+
+
+def _rules(title, state):
+    spec = json.loads((HERE / f"guards_{title}.json").read_text())
+    value = spec["guards"][state]
+    return value if isinstance(value, list) else [value]
+
+
+@pytest.mark.parametrize("name, title, state", [
+    ("A_por1_001.png", "pool", "wheel"), ("A_por1_004.png", "pool", "wheel"),
+    ("B_ssb0_002.png", "silver_blades", "title"), ("B_ssb0_003.png", "silver_blades", "title")])
+def test_winuaes_own_pool_and_silver_blades_frames_match_their_rules(tmp_path, name, title, state):
+    """Reads the frames WinUAE wrote itself, kept from the pipe screenshot test; skips without them."""
+    source = PIPESHOTS / name
+    if not source.is_file():
+        pytest.skip("the kept WinUAE pipe screenshots are not on this machine")
+    with Image.open(source) as frame:
+        assert frame.size == (752, 574)
+    out = tmp_path / "crop.png"
+    screens.canonical_file(source, out)
+    for rule in _rules(title, state):
+        box = tuple(rule["box"])
+        assert screens.box_digests(out, [box])[box] == rule["sha256"], (name, state)

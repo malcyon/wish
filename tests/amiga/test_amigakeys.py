@@ -16,7 +16,6 @@ import pytest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from tools.amiga import (  # noqa: E402
-    amigadrive,
     amigakeys,
     fsuaegdb,
     fsuaepor,
@@ -41,13 +40,6 @@ def _swap_keysyms() -> set[str]:
     return {re.sub(r"\*\d+$", "", word) for word in sequence.split()}
 
 
-def test_every_winuae_key_name_is_in_the_table_with_its_virtual_key():
-    for name, vk in amigadrive.KEYS.items():
-        key = amigakeys.lookup(name)
-        assert key.vk == vk, name
-        assert key.extended == (name in amigadrive.EXTENDED), name
-
-
 def test_every_keysym_the_fsuae_drivers_send_is_in_the_table():
     sent = (_fsuaepor_keysyms() | _swap_keysyms() | set(LITERAL_KEYSYMS)
             | set(fsuaegdb.KEY_ALIASES.values()))
@@ -67,14 +59,6 @@ def test_the_camp_member_and_heal_keys_are_in_the_table():
 def test_codes_are_unique(field):
     values = [getattr(k, field) for k in ROWS if getattr(k, field) is not None]
     assert len(values) == len(set(values))
-
-
-def test_virtual_keys_are_unique_with_their_extended_flag():
-    sent = [(k.vk, k.extended) for k in ROWS if k.vk is not None]
-    assert len(sent) == len(set(sent))
-    # Without the flag the cursor keys would be the keypad's virtual keys.
-    assert amigakeys.lookup("UP").vk == 0x26 and amigakeys.lookup("UP").extended
-    assert not amigakeys.lookup("NP8").extended
 
 
 def test_raw_codes_are_seven_bit_and_host_rows_have_none():

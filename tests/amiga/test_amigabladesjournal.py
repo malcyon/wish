@@ -21,6 +21,7 @@ import builtins
 import hashlib
 import json
 import pathlib
+import subprocess
 import sys
 import types
 
@@ -334,6 +335,10 @@ class _Tables:
         return types.SimpleNamespace(answer=self._word)
 
 
+#: The holders `amigadrive.shot` was called for by the last `_wire`d answer.
+SHOTS: list[str] = []
+
+
 def _wire(monkeypatch, tmp_path, challenge, word):
     """`answer()` with the private repository and the emulator replaced."""
     screen, tables = _Screen(challenge), _Tables(word)
@@ -343,10 +348,16 @@ def _wire(monkeypatch, tmp_path, challenge, word):
                         lambda shot, out, target_pitch=None, aspect=1.0:
                         None if challenge is None else (1.0, 2.0, 30.64))
 
-    def _no_emulator(*args, **kwargs):
-        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+    SHOTS.clear()
 
-    monkeypatch.setattr(journal.subprocess, "run", _no_emulator)
+    def _pipe_shot(holder, path, **kwargs):
+        from PIL import Image
+
+        SHOTS.append(holder)
+        Image.new("RGB", (752, 574)).save(path)
+        return {"pid": 1, "counter": len(SHOTS), "ms": 1}
+
+    monkeypatch.setattr(journal.amigadrive, "shot", _pipe_shot)
     pressed: list[str] = []
     monkeypatch.setattr(journal.amigadrive, "press",
                         lambda holder, name, settle: pressed.append(name))
@@ -368,6 +379,16 @@ def test_the_word_is_typed_and_the_only_thing_printed_is_that_it_was(
     assert journal.answer("holder", 0.0, tmp_path / "disk.adf") is True
     assert capsys.readouterr().out == "answered\n"
     assert pressed == list("TESTWORD") + ["RET"]
+
+
+def test_the_default_capture_is_the_pipe_shot_and_never_a_desktop_grab(
+        monkeypatch, tmp_path):
+    _wire(monkeypatch, tmp_path, {"kind": "journal"}, "TESTWORD")
+    desktop = []
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: desktop.append(args))
+    assert journal.answer("holder", 0.0, tmp_path / "disk.adf") is True
+    assert SHOTS == ["holder"]
+    assert desktop == []
 
 
 def test_a_challenge_the_tables_do_not_hold_is_reported_without_quoting_it(

@@ -17,12 +17,12 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from tools.amiga import amigadrive, amigashots, winvmsettle
+from tools.amiga import amigadrive, amigakeys
 
 BOOT_CONFIG = r"C:\Amiga\configs\goldbox-a500.uae"
 LOCAL_BOOT_CONFIG = pathlib.Path(__file__).with_name("goldbox-a500.uae")
 WINUAE_PS = r"powershell -NoProfile -ExecutionPolicy Bypass -File C:\Amiga\winuae.ps1"
-# One `winvm shot` measured 5.6-7.8 s round trip; the capture script caps itself at 20 s.
+# The longest one `winuae.ps1 shot` round trip may take before it is cut off.
 SHOT_SECONDS = 20.0
 HOLDER = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
@@ -42,6 +42,10 @@ class WinGuest:
         #: The Windows paths this instance copied to the guest; a floppy change may name only these.
         self.staged: set[str] = set()
         self._pipe: Any = None
+        #: The lane holder of the last lane action; the screenshot verb is claim-checked and `grab` takes none.
+        self.holder: str | None = None
+        #: Where the last frame came from: `source`, the emulator `pid` and WinUAE's shot `counter`.
+        self.last_shot: dict[str, Any] | None = None
 
     @staticmethod
     def remote_path(issue: str, holder: str, key: str) -> str:
@@ -75,7 +79,7 @@ class WinGuest:
     def answer_io(self, holder: str, settle: float = 1.0) -> tuple[Any, Any]:
         """The `(capture, press)` pair the journal answerer reads and types with."""
         def capture(path: pathlib.Path) -> None:
-            self._run("shot", str(path), timeout=SHOT_SECONDS)
+            self._take(holder, path, path, SHOT_SECONDS)
 
         def press(key: str) -> None:
             amigadrive.press(holder, key, settle)
@@ -103,6 +107,7 @@ class WinGuest:
         return output
 
     def _lane(self, holder: str, command: str, timeout: float) -> str:
+        self.holder = holder
         output = self._run("ssh", f"{WINUAE_PS} {command} -Holder {holder}",
                            timeout=timeout)
         if not output.startswith("ok"):
@@ -196,10 +201,28 @@ class WinGuest:
             error.receipt = exc.receipt
             raise error from exc
 
+    def _take(self, holder: str, raw: pathlib.Path, cropped: pathlib.Path, allowed: float) -> None:
+        """WinUAE's own frame into `raw` and its Amiga screen into `cropped`."""
+        # Imported here because `screens` imports `RouteError` from this module.
+        from tools.amiga import screens  # noqa: PLC0415
+
+        try:
+            info = amigadrive.shot(holder, raw, run=self._run, timeout=allowed)
+        except amigadrive.ShotError as exc:
+            raise RouteError(str(exc)) from exc
+        self.last_shot = {"source": "winuae-pipe", "pid": info["pid"], "counter": info["counter"]}
+        screens.canonical_file(raw, cropped)
+
+    def _holder(self) -> str:
+        if self.holder is None:
+            raise RouteError("no lane holder is known yet; claim the lane before taking a screenshot")
+        return self.holder
+
     def capture(self, state: str, raw: pathlib.Path, cropped: pathlib.Path,
                 timeout: float) -> None:
         """Grab until two consecutive crops of the Amiga screen are identical."""
         started, previous, made, shots = time.monotonic(), None, False, 0
+        holder = self._holder()
         try:
             while True:
                 left = timeout - (time.monotonic() - started)
@@ -207,56 +230,42 @@ class WinGuest:
                 # short: a failure capture with little time left must still leave a frame.
                 if left <= 0 or (left < SHOT_SECONDS and shots):
                     raise RouteError(f"{state} did not settle inside {timeout:.0f}s")
-                allowed = min(SHOT_SECONDS, left)
                 made = False
                 shots += 1
-                self._run("shot", str(raw), "--timeout", str(max(1, int(allowed))),
-                          timeout=allowed)
-                try:
-                    amigashots.crop(raw, cropped)
-                except LookupError:
-                    # The WinUAE window is not up yet; the desktop is not a screen.
-                    previous = None
-                else:
-                    made = True
-                    frame = cropped.read_bytes()
-                    if previous == frame:
-                        return
-                    previous = frame
-                left = timeout - (time.monotonic() - started)
-                if left > 0:
-                    time.sleep(min(winvmsettle.INTERVAL, left))
+                self._take(holder, raw, cropped, min(SHOT_SECONDS, left))
+                made = True
+                frame = cropped.read_bytes()
+                if previous == frame:
+                    return
+                previous = frame
         finally:
             if not made and raw.exists() and sys.exc_info()[0] is not None:
                 try:
-                    amigashots.crop(raw, cropped)
+                    from tools.amiga import screens  # noqa: PLC0415
+
+                    screens.canonical_file(raw, cropped)
                 except Exception:
                     pass
 
     def grab(self, state: str, raw: pathlib.Path, cropped: pathlib.Path,
              timeout: float) -> bool:
-        """One grab, cropped to the Amiga screen; False when WinUAE's window is not up.
+        """One grab, cut to the Amiga screen; always True, because WinUAE's frame always has one.
 
         A guard reads a static box, so an animated screen needs no settling.
         """
         if timeout <= 0:
             raise RouteError(f"no time left to grab {state}")
-        allowed = min(SHOT_SECONDS, timeout)
-        self._run("shot", str(raw), "--timeout", str(max(1, int(allowed))),
-                  timeout=allowed)
-        try:
-            amigashots.crop(raw, cropped)
-        except LookupError:
-            return False
+        self._take(self._holder(), raw, cropped, min(SHOT_SECONDS, timeout))
         return True
 
     def press(self, holder: str, key: str, timeout: float) -> str:
-        name = key.upper()
-        code = amigadrive.KEYS.get(name)
-        if code is None:
-            raise RouteError(f"{name} has no WinUAE key code")
-        extended = " -Extended" if name in amigadrive.EXTENDED else ""
-        return self._lane(holder, f"key {code:02X}{extended}", timeout)
+        try:
+            row = amigakeys.lookup(key)
+        except KeyError:
+            raise RouteError(f"{key.upper()} has no Amiga key code") from None
+        if row.amiga is None:
+            raise RouteError(f"{row.name} is an emulator key ({row.host}), not an Amiga key")
+        return self._lane(holder, f"press {row.amiga:02X}", timeout)
 
     def stop(self, holder: str, timeout: float) -> str:
         return self._lane(holder, "stop", timeout)

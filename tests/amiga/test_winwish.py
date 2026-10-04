@@ -463,6 +463,13 @@ def test_main_needs_a_holder_and_a_known_window():
             winwish.main(argv)
 
 
+def test_the_winuae_window_is_not_a_choice_for_shot(capsys):
+    """WinUAE's screen comes from its own pipe screenshot, never from a desktop grab."""
+    with pytest.raises(SystemExit):
+        winwish.main(["shot", "--holder", "h", "--window", "winuae", "--out", "x"])
+    assert "winuae" in capsys.readouterr().err
+
+
 def test_main_prints_one_line_and_exits_1_on_a_guest_failure(capsys):
     run = FakeRun([(lambda a: a[1] == "lane", 1, "free")])
     assert winwish.main(["stop", "--holder", "h"], guest=winwish.Guest(run)) == 1

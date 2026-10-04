@@ -1,47 +1,27 @@
 #!/usr/bin/env python3
-"""Press keys at an Amiga game under WinUAE, one at a time, and photograph each.
+"""Cut the Amiga screen out of an archived grab of the whole Windows desktop.
 
-`tools/amiga/amigadrive.py` presses a key, `tools/amiga/winvmsettle.py` waits for the
-screen to stop moving, and `winvm shot` grabs the guest's whole 1920x1080
-desktop with the emulator window somewhere in it.  Three calls per keystroke,
-and then a person reading the result is looking at a 720x568 Amiga screen
-inside a picture six times that size, most of it Windows wallpaper.
-
-    tools/amiga/amigashots.py --holder wish3q --out DIR \\
-        keys R E N A M E
-
-Every key gets its own numbered PNG, cropped to the emulator's client area, so
-a run that went wrong says which keystroke it went wrong on.  A key pressed
-while a disk is loading is swallowed with no sign (`docs/182-amiga-por-in-the-
-running-game.md` §7), which is the whole reason for settling between keys
-rather than sleeping a fixed time.
+Live runs no longer grab the desktop: WinUAE writes its own screenshot over its
+pipe (`tools/amiga/amigadrive.py shot`) and `screens.canonical` cuts it.  This is
+the offline reader of the desktop grabs kept from earlier runs, which
+`guardmaps.py` and the journal answerer's `replay` of kept challenges still read.
 
     tools/amiga/amigashots.py crop s01-boot.png s01-boot-c.png
 
-`crop` does the same to a grab somebody else took.
-
-**Finding the emulator's screen.** WinUAE draws the Amiga into a client area
+**Finding the emulator's screen.** WinUAE drew the Amiga into a client area
 whose size is the config's own `gfx_width_windowed` x `gfx_height_windowed` --
-720x568 in `tools/amiga/goldbox-a500.uae` -- and puts its status bar directly under
+720x568 in `tools/amiga/goldbox-a500.uae` -- and put its status bar directly under
 it, a band of the Windows control grey exactly that wide.  So the crop is
 found by looking for that band rather than by remembering where the window sat
 on this machine: the band names the client's left edge and its bottom, and the
 config names the height.  A desktop with no such band is reported rather than
 cropped to a guess, and `--at X,Y` overrides the search outright.
-
-Nothing here opens a window on the host, and nothing here can ask a human
-anything: every call goes through `winvm`, and `SSH_ASKPASS_REQUIRE` is set.
 """
 
 from __future__ import annotations
 
 import argparse
 import pathlib
-import sys
-
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
-
-from tools.amiga import amigadrive, winvmsettle  # noqa: E402
 
 #: The client area `tools/amiga/goldbox-a500.uae` asks WinUAE for.  Both numbers are
 #: read out of the config rather than measured off a screenshot, so a config
@@ -123,27 +103,6 @@ def crop(source: pathlib.Path, out: pathlib.Path,
     return left, top
 
 
-def run(holder: str, names: list[str], out: pathlib.Path, limit: float,
-        at: tuple[int, int] | None, size: tuple[int, int],
-        settle: float) -> int:
-    """One key, one settle, one cropped PNG, for each name in turn."""
-    out.mkdir(parents=True, exist_ok=True)
-    for n, name in enumerate(names, 1):
-        amigadrive.press(holder, name, settle)
-        whole = out / f"{n:02d}-{name.lower()}.raw.png"
-        if not winvmsettle.settle(whole, limit=limit):
-            print(f"{n:02d} {name}: never settled in {limit:g}s", flush=True)
-        shot = out / f"{n:02d}-{name.lower()}.png"
-        try:
-            left, top = crop(whole, shot, at, size)
-        except LookupError as bad:
-            print(f"{n:02d} {name}: {bad} -- kept {whole}", flush=True)
-            continue
-        whole.unlink()
-        print(f"{n:02d} {name}: {shot} (client at {left},{top})", flush=True)
-    return 0
-
-
 def _point(text: str) -> tuple[int, int]:
     x, _, y = text.partition(",")
     return int(x), int(y)
@@ -159,29 +118,14 @@ def main(argv: list[str] | None = None) -> int:
                              "is what tools/amiga/goldbox-a500.uae asks for)")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    keys = sub.add_parser("keys", help="press keys, photographing each")
-    keys.add_argument("--holder", required=True,
-                      help="the winuae.ps1 lane claim this run holds")
-    keys.add_argument("--out", required=True, type=pathlib.Path,
-                      help="a directory for the numbered PNGs")
-    keys.add_argument("--limit", type=float, default=90.0,
-                      help="seconds to wait for the screen to settle")
-    keys.add_argument("--settle", type=float, default=1.5,
-                      help="seconds to wait after each key before grabbing")
-    keys.add_argument("names", nargs="+",
-                      help="key names, as tools/amiga/amigadrive.py spells them")
-
     one = sub.add_parser("crop", help="crop a grab somebody else took")
     one.add_argument("source", type=pathlib.Path)
     one.add_argument("out", type=pathlib.Path)
 
     args = parser.parse_args(argv)
-    if args.command == "crop":
-        left, top = crop(args.source, args.out, args.at, args.size)
-        print(f"{args.out} (client at {left},{top})")
-        return 0
-    return run(args.holder, args.names, args.out, args.limit, args.at,
-               args.size, args.settle)
+    left, top = crop(args.source, args.out, args.at, args.size)
+    print(f"{args.out} (client at {left},{top})")
+    return 0
 
 
 if __name__ == "__main__":

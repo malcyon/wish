@@ -918,7 +918,7 @@ def restart_wish(guest: Guest, holder: str, flag: bool = True) -> str:
 
 
 def shot(guest: Guest, holder: str, window: str, out: pathlib.Path) -> int:
-    """Save a PNG of `window` (`wish`, `winuae` or `desktop`) to `out`; returns its size."""
+    """Save a PNG of `window` (`wish` or `desktop`) to `out`; returns its size."""
     guest.holds_lane(holder)
     capture = (lambda path: window_capture(path, holder)) if window == "wish" else None
     script = winvmguest.shot_script(secrets.token_hex(6), 20, capture=capture)
@@ -931,12 +931,6 @@ def shot(guest: Guest, holder: str, window: str, out: pathlib.Path) -> int:
         raise WinwishError(f"no screenshot came back (winvm exit {rc}): {exc}") from None
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(data)
-    if window == "winuae":
-        from tools.amiga import amigashots  # noqa: PLC0415
-        try:
-            amigashots.crop(out, out)
-        except LookupError as exc:
-            raise WinwishError(f"{exc} (the whole-desktop grab is kept at {out})") from None
     return len(data)
 
 
@@ -1095,7 +1089,7 @@ def _parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("shot", help="save a screenshot")
     holder(p)
-    p.add_argument("--window", choices=("wish", "winuae", "desktop"), default="wish")
+    p.add_argument("--window", choices=("wish", "desktop"), default="wish")
     p.add_argument("--out", required=True)
 
     p = sub.add_parser("controls", help="list Wish's controls, from a session 1 task")
