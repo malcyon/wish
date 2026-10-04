@@ -227,8 +227,9 @@ REST_DAYS_MAX = 29
 PARTY_MAX = 8
 #: The party lines whose camp sheet the title's guard map recognises, so the lines `view N`
 #: can name. Curse's sheet frame is the same for every member; whose sheet it is is checked
-#: by the identity map cut for the run's own party, and a sheet that map has no rule for
-#: fails the run.
+#: by the identity map cut for the run's own party; a sheet that map has no rule for is
+#: skipped, and the run's summary then carries `identity_checked=False`, which drops the
+#: `rest` pass flag and adds a "no identity rule checked" note.
 SHEET_LINES = {"ssb": (1, 2, 3, 4, 5, 6), "curse": (1, 2, 3, 4, 5, 6), "darkness": (1,)}
 #: The party line of the paladin whose HEAL sheets the title's guard map holds, so the line
 #: `heal N` can name: the identity rule of `camp_sheet_heal` and `camp_sheet_spent` is his.
