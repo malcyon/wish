@@ -9659,7 +9659,9 @@ class FakeScribe(FakePool):
     clears `THE PARTY MAKES CAMP...` from the message window, draws nothing and
     stays on the Magic bar; `notice` draws that many captures of `notice_text`
     there as well (the game's string is `<NAME> has no copyable scrolls`);
-    `deaf_magic` makes that `S` change nothing at all."""
+    `deaf_magic` makes that `S` change nothing at all; `lose_first` drops the
+    first `S` on the Magic bar while an unrelated line appears in the message
+    window, as a lost key beside another draw would."""
 
     CAMP = "SAVE VIEW MAGIC REST ALTER FIX EXIT"
     MAGIC = "CAST MEMORIZE SCRIBE DISPLAY REST EXIT"
@@ -9667,7 +9669,8 @@ class FakeScribe(FakePool):
     def __init__(self, tmp, title="ssb", start=None, swallow_pick=False, refuse=(),
                  marked=(), head=None, flicker=False, unseen=False, late=False,
                  lag=0, after_yes=False, stuck_list=False, copyable=True,
-                 notice=0, notice_text="HAS NO COPYABLE SCROLLS", deaf_magic=False):
+                 notice=0, notice_text="HAS NO COPYABLE SCROLLS", deaf_magic=False,
+                 lose_first=False):
         super().__init__(tmp, keys=TITLE_KEYS[title])
         self.title, self.mode, self.line, self.size = title, "camp", 1, 6
         self.rows: list[tuple[str, str]] = []
@@ -9688,6 +9691,7 @@ class FakeScribe(FakePool):
         self.copyable, self.deaf_magic = copyable, deaf_magic
         self.camp_text, self.notice, self.notices = True, 0, notice
         self.notice_text = notice_text
+        self.lose_first, self.noise = lose_first, False
 
     def key(self, k, gap=0.0):
         m = self.mode
@@ -9698,6 +9702,8 @@ class FakeScribe(FakePool):
             self.mode = "magic"
         elif m == "camp" and k == "e":
             self.exited = True
+        elif m == "magic" and k == "s" and self.lose_first:
+            self.lose_first, self.noise = False, True
         elif m == "magic" and k == "s" and self.deaf_magic:
             pass
         elif m == "magic" and k == "s" and not self.copyable:
@@ -9766,6 +9772,8 @@ class FakeScribe(FakePool):
                 _text(px, 18, 1, f"{_SCRIBE_NAMES[self.line - 1]} {self.notice_text}")
             elif self.camp_text:
                 _text(px, 18, 1, "THE PARTY MAKES CAMP...")
+            if self.noise:
+                _text(px, 20, 1, "SOMETHING ELSE WAS DRAWN")
             x, y = screens.POD_ROSTER["camp"]
             for n, name in enumerate(_SCRIBE_NAMES, 1):
                 _text(px, y // 8 + n - 1, x // 8, name, _CYAN,
@@ -9891,15 +9899,16 @@ def test_the_games_rejection_fails_the_step_after_one_key(tmp_path, scribe_measu
     assert game.scribed == [] and not d.scribing
 
 
-def test_a_scribe_the_game_takes_with_no_list_fails_after_one_key(
+def test_a_scribe_the_game_takes_with_no_list_fails_after_two_keys(
         tmp_path, scribe_measured):
     """Curse, with no scroll it can read: SCRIBE clears the message window,
-    draws nothing and leaves the Magic bar up, so no second key goes out."""
+    draws nothing and leaves the Magic bar up; the key is sent once more before
+    the step fails."""
     game, d = _scribe_camp(tmp_path, "curse", copyable=False)
     with pytest.raises(da.StepFailed, match="cleared the message window and drew "
                        "nothing.*Read Magic") as e:
         d.scribe(6, "PROTECTION FROM GOOD")
-    assert game.keys[5:] == ["m", "s"] and game.mode == "magic"
+    assert game.keys[5:] == ["m", "s", "s"] and game.mode == "magic"
     assert "scribe-6-list-none" in str(e.value)
     assert game.scribed == [] and not d.scribing
 
@@ -9910,7 +9919,7 @@ def test_the_no_copyable_scrolls_words_are_read_while_the_list_is_awaited(
     with pytest.raises(da.StepFailed, match="drew 'MORGAINE HAS NO COPYABLE "
                        "SCROLLS'.*Read Magic"):
         d.scribe(6, "PROTECTION FROM GOOD")
-    assert game.keys[5:] == ["m", "s"]
+    assert game.keys[5:] == ["m", "s", "s"]
 
 
 def test_other_words_drawn_instead_of_the_list_are_named_without_the_hint(
@@ -9919,14 +9928,32 @@ def test_other_words_drawn_instead_of_the_list_are_named_without_the_hint(
                            notice_text="IS IN NO CONDITION TO SCRIBE ANY SCROLLS")
     with pytest.raises(da.StepFailed, match="IN NO CONDITION") as e:
         d.scribe(6, "PROTECTION FROM GOOD")
-    assert "Read Magic" not in str(e.value) and game.keys[5:] == ["m", "s"]
+    assert "Read Magic" not in str(e.value) and game.keys[5:] == ["m", "s", "s"]
 
 
 def test_a_scribe_key_that_changes_nothing_is_sent_twice(tmp_path, scribe_measured):
+    """Pins the behaviour from before the message window was watched: both
+    presses go out and the step says nothing changed."""
     game, d = _scribe_camp(tmp_path, "curse", deaf_magic=True)
     with pytest.raises(da.StepFailed, match="SCRIBE changed nothing"):
         d.scribe(6, "PROTECTION FROM GOOD")
     assert game.keys[5:] == ["m", "s", "s"] and not d.scribing
+
+
+def test_a_lost_scribe_key_beside_an_unrelated_message_change_is_sent_again(
+        tmp_path, scribe_measured):
+    game, d = _scribe_camp(tmp_path, "pool", lose_first=True)
+    d.scribe(6, "PROTECTION FROM GOOD")
+    assert game.keys[5:8] == ["m", "s", "s"] and game.scribed
+
+
+def test_the_read_magic_sentence_is_only_for_curse(tmp_path, scribe_measured):
+    for title, hinted in (("curse", True), ("pool", False), ("ssb", False)):
+        (tmp_path / title).mkdir()
+        game, d = _scribe_camp(tmp_path / title, title, copyable=False)
+        with pytest.raises(da.StepFailed, match="cleared the message window") as e:
+            d.scribe(6, "PROTECTION FROM GOOD")
+        assert ("likely lists nothing until Read Magic" in str(e.value)) is hinted
 
 
 def test_a_spell_not_on_the_scroll_list_is_refused_before_any_pick(tmp_path,

@@ -69,7 +69,7 @@ a source whose title does not match `--title`:
 | `sheet N` | Pool: member N's sheet from the map (`End` to the line, `v`, `Escape`); the sheet is taken on a measured `POOL_SHEET_BARS` bar or, for any class's bar, on its words read as `POOL_SHEET_BAR_TEXT`; needs either measured map bar of `POOL_MAP_BARS` back |
 | `display` | Pool, Curse and Silver Blades, in camp: `MAGIC`, `DISPLAY`, every page of the list of spells in effect read as text with the title's own font (`load_font`), turning with `n` while the bar is ` NEXT EXIT`; `members` is each member's name and the effect names under it, and the list must name every member (Pool's page also six name rows); `Return` or `e` back to the Magic bar (`DISPLAY_LEAVE`) and `e` to camp |
 | `cast N SPELL [T]` | Pool, Curse and Silver Blades, in camp: roster line N highlighted (`End` in Pool and Curse, `Down` in Silver Blades), `MAGIC`, `CAST`; the caster's spell list read as text with the title's font (`load_font`), its title checked against line N's name, every row required to read, and SPELL (any memorised spell, as the list spells it; a hyphen reads as a space) required on it, a Curse or Silver Blades row `STRENGTH (2)` counting as two copies (`CAST_COUNT`); the highlight moved with `CAST_LIST_DOWN` (`End`, Silver Blades `Down`) to SPELL's row, reading it after each press, and `CAST`.  A spell that asks `CAST SPELL ON WHOM` gets T picked with the roster's key and `SELECT` (`Return` in Pool, `S` in the other two, `CAST_SELECT`); one that asks with no T given stops with nothing more pressed, a target prompt on any other bar stops naming it, and a spell that goes off without asking when T was given fails the step after the cast.  The cast is believed only when the list comes back holding one SPELL fewer, or, for the caster's only row, when the Magic bar comes back and `CAST` pressed there twice opens nothing, which is what it does with nothing memorised (a list that does open must not hold SPELL); `EXIT` twice to camp.  Any other screen stops the run with nothing more pressed, `LOSE IT` included |
-| `scribe N SPELL` | Pool, Curse and Silver Blades, in camp: roster line N highlighted (`End` in Pool and Curse, `Down` in Silver Blades), `MAGIC`, `SCRIBE`; the scroll list read as text with the title's font (`load_font`), its title checked against line N's name, and SPELL (several words; a hyphen reads as a space) required on it without the `*` of a spell being scribed; the highlight walked onto SPELL's row with `SCRIBE_LIST_DOWN`, reading it after each press, and `SCRIBE` believed only when that row redraws as `*SPELL`.  Each `SCRIBE` is sent only while the row is highlighted and unmarked, the second only when no text row changed after the first, while it was awaited or on a reading taken after; a changed text row without the mark is the game refusing, and the step fails with the words it drew, while a change outside the text (the camp picture, Silver Blades' pointer) is not one.  A rejection drawn and gone between two readings is not seen, so two presses with neither a mark nor a change fail saying it may have been one.  Then the list's `EXIT`, the chosen spells read (SPELL must be listed `*`), their `EXIT`, `YES` at `SCRIBE THESE SPELLS?` and the Magic bar's `EXIT`, each pressed only at the screen it belongs to.  The party stays camped, so a camp `save` keeps the scribe pending and a `rest` finishes it; that rest's `scribe_pending` says a scribe was pending when it began, which any step outside `SCRIBE_KEEPS` forgets.  A `SCRIBE` that changes the message window and leaves the Magic bar up fails at once, naming any words drawn: Curse clears the window and draws nothing when no scroll lists a spell the character may scribe, and a scroll whose name is hidden lists nothing until Read Magic is in effect on the character (`SCRIBE_NONE`).  Driven in Pool of Radiance and Curse; Silver Blades' screens and keys are the hand-driven run's |
+| `scribe N SPELL` | Pool, Curse and Silver Blades, in camp: roster line N highlighted (`End` in Pool and Curse, `Down` in Silver Blades), `MAGIC`, `SCRIBE`; the scroll list read as text with the title's font (`load_font`), its title checked against line N's name, and SPELL (several words; a hyphen reads as a space) required on it without the `*` of a spell being scribed; the highlight walked onto SPELL's row with `SCRIBE_LIST_DOWN`, reading it after each press, and `SCRIBE` believed only when that row redraws as `*SPELL`.  Each `SCRIBE` is sent only while the row is highlighted and unmarked, the second only when no text row changed after the first, while it was awaited or on a reading taken after; a changed text row without the mark is the game refusing, and the step fails with the words it drew, while a change outside the text (the camp picture, Silver Blades' pointer) is not one.  A rejection drawn and gone between two readings is not seen, so two presses with neither a mark nor a change fail saying it may have been one.  Then the list's `EXIT`, the chosen spells read (SPELL must be listed `*`), their `EXIT`, `YES` at `SCRIBE THESE SPELLS?` and the Magic bar's `EXIT`, each pressed only at the screen it belongs to.  The party stays camped, so a camp `save` keeps the scribe pending and a `rest` finishes it; that rest's `scribe_pending` says a scribe was pending when it began, which any step outside `SCRIBE_KEEPS` forgets.  A `SCRIBE` that leaves the Magic bar up with the message window changed is sent a second time, and fails if that opens no list either, naming any words drawn.  Seen live once in Curse: the window is cleared and nothing is drawn while a converted scroll with a hidden name is unread, and the list opens with a staged Read Magic effect node (a memory edit, not a cast); the cleric and item-class condition is code reading only, and the `has no copyable scrolls` string (`SCRIBE_NONE`) was never seen live.  Driven in Pool of Radiance and Curse; Silver Blades' screens and keys are the hand-driven run's |
 | `rest 5m`, `rest 1h30m`, `rest 8d` | camp `REST`, the rest time zeroed and set by key, then rested; minutes in fives; Pool's `GO STAY` random event at the end is answered `GO` (see below); in Curse a message over the continue bar that ends the rest (Tilverton's Royal Guards) gets `Return`, the map bar is required, and the party camps again, logged as `ended_by_message` |
 | `save X` | in camp, camp `SAVE` to slot X and decline the quit; at the party menu, `SAVE CURRENT GAME`; believed when `SAVGAMX.DAT` changes |
 | `train N` | Curse: roster line N (from 1), `TRAIN CHARACTER`, `YES`, and `LEARN` for any spell the level brings, back to the party menu |
@@ -378,14 +378,15 @@ SCRIBE_CONFIRM = "THESE SPELLS?"
 #: MAKES CAMP...` (row 18) and any answer to `SCRIBE` that is not the list.
 SCRIBE_MESSAGE_ROWS = range(17, 23)
 #: Curse's string for a character whose scrolls list no spell (`GAME.OVR`
-#: 0x19A8E, `<NAME> has no copyable scrolls`).  Measured, the game clears the
-#: message window and stays on the Magic bar with nothing a capture saw at
-#: ten frames a second for six seconds.  A scroll whose name is still hidden
-#: (item `+0x35` non-zero) lists its spells only while the character has Read
-#: Magic, effect 16, in effect, or for a cleric reading a scroll of the item
-#: class the type table marks 12; listing it clears the mask (`GAME.OVR`
-#: 0x2E8C7).  Measured: the converted MU scroll with mask 6 opened no list,
-#: and opened it with an effect-16 node staged on the same character.
+#: 0x19A8E, `<NAME> has no copyable scrolls`) is unconfirmed: the string was
+#: never seen live.  Seen live once in Curse: the game clears the message
+#: window and stays on the Magic bar with nothing a capture drew at ten frames
+#: a second for six seconds, for a converted MU scroll with mask 6, and the
+#: list opened after a staged Read Magic (effect 16) node, a memory edit and
+#: not a cast.  From code reading only: a scroll whose name is hidden (item
+#: `+0x35` non-zero) lists its spells while the character has Read Magic in
+#: effect, or for a cleric reading a scroll of the item class the type table
+#: marks 12, and listing it clears the mask (`GAME.OVR` 0x2E8C7).
 SCRIBE_NONE = "NO COPYABLE SCROLLS"
 #: How long a pick is given to redraw its row as `*SPELL` before the next key.
 SCRIBE_PICK_SECONDS = 6.0
@@ -6001,10 +6002,11 @@ class Driver:
         game draws there is kept, and a line it clears shows the key was
         taken.  Curse with no scroll listing a spell clears `THE PARTY MAKES
         CAMP...`, draws nothing a capture saw, and stays on the Magic bar
-        (`SCRIBE_NONE` is its string).  A second press goes out only while
-        the Magic bar shows and the window did not change; one that changed
-        fails the step at once, with any words drawn.  Any other screen
-        stops the run with nothing more pressed.
+        (`SCRIBE_NONE` is its string).  The first key can be lost while an
+        unrelated line changes in that window, so a second press goes out
+        whenever the Magic bar still shows; the step fails only when that one
+        opens no list either, with any words drawn.  Any other screen stops
+        the run with nothing more pressed.
         """
         drawn: list[str] = []
         cleared = False
@@ -6027,9 +6029,11 @@ class Driver:
 
             self.s.key(MAGIC_SCRIBE)
             if self.s.wait_for(seen, self.bounded(15.0, label)):
+                self.s.settle(quiet=0.6, timeout=20.0)
                 return
             now = self.s.capture()
             if seen(now):
+                self.s.settle(quiet=0.6, timeout=20.0)
                 return
             state = self._scribe_state(now, font)
             if state != "magic":
@@ -6037,8 +6041,6 @@ class Driver:
                                 f"scroll list ({state or 'unknown'})"
                                 + (f"; the game drew: {' / '.join(drawn)}"
                                    if drawn else ""))
-            if drawn or cleared:
-                break
         if not (drawn or cleared):
             raise self.fail(label, "SCRIBE changed nothing")
         said = " ".join(drawn)
@@ -6047,11 +6049,12 @@ class Driver:
                             f"{said!r}")
         what = (f"drew {said!r}" if drawn else
                 "cleared the message window and drew nothing")
+        hint = ("; in Curse a scroll whose name is hidden likely lists nothing "
+                "until Read Magic is in effect on the character"
+                if self.title.key == "curse" else "")
         raise self.fail(f"{label}-none", f"SCRIBE opened no scroll list: the game "
                         f"{what}.  No scroll of this character lists a spell the "
-                        "game lets it scribe; in Curse a scroll whose name is "
-                        "hidden lists nothing until Read Magic is in effect on "
-                        "the character")
+                        f"game lets it scribe{hint}")
 
     def _scribe_walk(self, row: int, font: dict[bytes, str], label: str) -> int:
         """Move the scroll list's highlight onto list row `row`, reading it
