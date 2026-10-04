@@ -1589,13 +1589,17 @@ _NAMES = ("ALPHA", "BRAVO", "CHARLIE", "DELTA", "ECHO", "FOXTROT")
 
 
 def _pool_party_with_prayer(holders: tuple[int, ...] = (3,), granted=(),
-                            twins=False):
+                            twins=False, clock=None):
     """Six named Pool of Radiance members written as a C64 save, the DOS
     members at the indices in `holders` each holding a Prayer node and those
-    in `granted` the never-expiring record. Returns the payload."""
-    from goldbox import world_state
+    in `granted` the never-expiring record. `clock` is the six clock digits
+    the source save reads. Returns the payload."""
+    from goldbox import c64_save, world_state
     game = c64_port.POOL_OF_RADIANCE
     payload = _synthetic_c64_party_payload(game, 6)
+    if clock is not None:
+        at = c64_save.container_for(game).clock
+        payload[at:at + len(clock)] = bytes(clock)
     party, _ = dos_codec.c64_party(bytes(payload), None, game=game)
     for index, char in enumerate(party):
         char.set("name", "TWIN" if twins and index in (0, 3)
@@ -1641,6 +1645,14 @@ def test_a_pool_prayer_holder_in_slot_2_of_six_comes_back_alone():
     assert bytes(save0[_HOLDER_AT:_HOLDER_AT + 5]) == b"WISH\x02"
     assert not any(save0[after:after + 104])
     assert _prayer_holders(save0) == [_NAMES[index]]
+
+
+def test_the_holder_record_stamps_the_source_clock_minutes_and_hour():
+    # Every digit is non-zero, so a writer stamping zeros or the wrong slice
+    # of the six digits (sub-minute, units, tens, hour, day, month) differs.
+    save0 = _pool_party_with_prayer((3,), clock=(0, 3, 2, 12, 5, 1))
+    stamp = bytes(save0[_HOLDER_AT + 26:_HOLDER_AT + 30])
+    assert stamp == bytes((0x03, 0x02, 0x0C, 0x05))
 
 
 def _clear_region(save0, row):
@@ -4743,4 +4755,3 @@ def test_a_pool_camp_bless_row_with_a_leftover_override_reaches_dos_whole():
         assert [bytes(r) for r in char.get("running_effects")] == \
             [bytes((1, 6, 0, 0x80, 0)) + NULL]
         assert not [d for d in char.dropped if "effect 1" in d]
-

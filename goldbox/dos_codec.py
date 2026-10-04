@@ -7315,7 +7315,7 @@ SLOT_TOTAL = 12
 #: Corroborated by a sweep of **99 distinct C64 save payloads**: 48 of the
 #: 56 that were unattributed before that run are zero in all 99, and all 56
 #: are zero in every one of Donald's own 13 `PORSAVE` disks.  The 110 in
-#: `$49FD`-`$49FE` and `$4B14`-`$4B7F` were already graded "the engine
+#: `$49FD`-`$49FE` and `$4B18`-`$4B7F` were already graded "the engine
 #: rebuilds it" from the bytecode; the run is what turned that into a
 #: measurement.  The first 31 bytes of `$4AF9`-`$4B7F` are the Prayer holder
 #: record (`PRAYER_HOLDER`), which is not zeroed.
