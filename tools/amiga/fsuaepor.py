@@ -500,8 +500,11 @@ def ready_script(row: int, item_row: int, limit: float) -> list[tuple]:
 
     Each key after the add is followed by `mark` and `moved`, so a key the game
     dropped stops the run.  Like `panel_script` it never sends `Up` or `y`, and
-    never two `e` in a row.
+    never two `e` in a row.  Both rows count from 1; anything lower raises
+    `ValueError`.
     """
+    if row < 1 or item_row < 1:
+        raise ValueError(f"row {row} and item row {item_row} must both be 1 or more")
     steps = _picker_steps([(row, f"row{row}")], limit)
 
     def press(key: str, settle: float, label: str) -> None:
@@ -539,7 +542,11 @@ def pod_ready(args) -> int:
     if not 1 <= args.row <= len(names):
         raise SystemExit(f"row {args.row} is not in {args.adf}; the picker's "
                          f"rows are {', '.join(names) or 'none'}")
-    return _run_script(args, ready_script(args.row, args.item_row, args.boot))
+    try:
+        steps = ready_script(args.row, args.item_row, args.boot)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+    return _run_script(args, steps)
 
 
 def _run_script(args, steps: list[tuple]) -> int:

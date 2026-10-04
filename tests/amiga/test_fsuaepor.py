@@ -540,7 +540,7 @@ def test_the_ready_script_presses_ready_twice_on_the_item_row_and_never_ends_the
     assert "Up" not in pressed and "y" not in pressed
     assert not any(a == b == "e" for a, b in zip(pressed, pressed[1:]))
     for i, step in enumerate(steps):
-        if step[0] == "key" and step[1] in "vir" or step[:2] == ("key", "Down"):
+        if step[0] == "key" and step[1] in ("v", "i", "r") or step[:2] == ("key", "Down"):
             if i > steps.index(("key", "e", 3)):
                 assert steps[i - 1] == ("mark",)
                 assert steps[i + 1][0] == "moved"
@@ -549,6 +549,42 @@ def test_the_ready_script_presses_ready_twice_on_the_item_row_and_never_ends_the
 def test_the_ready_script_moves_down_in_the_picker_to_the_payload_row():
     pressed = [s[1] for s in fsuaepor.ready_script(3, 1, 300) if s[0] == "key"]
     assert pressed.count("Down") == 2
+
+
+@pytest.mark.parametrize("row, item_row", [(0, 1), (-1, 1), (1, 0), (1, -2)])
+def test_the_ready_script_rejects_rows_below_one(row, item_row):
+    with pytest.raises(ValueError):
+        fsuaepor.ready_script(row, item_row, 300)
+
+
+def test_pod_ready_rejects_a_row_outside_the_picker_and_an_item_row_below_one(
+        tmp_path, monkeypatch):
+    adf = tmp_path / "pod3.adf"
+    _disk3(["ONE.pc"]).save(adf)
+    ran = []
+    monkeypatch.setattr(fsuaepor, "_run_script", lambda a, s: ran.append(s) or 0)
+
+    def args(row, item_row):
+        return type("A", (), dict(adf=str(adf), row=row, item_row=item_row, boot=300))
+
+    with pytest.raises(SystemExit, match="row 9 is not in"):
+        fsuaepor.pod_ready(args(9, 1))
+    with pytest.raises(SystemExit, match="row 0 is not in"):
+        fsuaepor.pod_ready(args(0, 1))
+    with pytest.raises(SystemExit, match="item row 0"):
+        fsuaepor.pod_ready(args(1, 0))
+    assert not ran
+    assert fsuaepor.pod_ready(args(1, 2)) == 0
+    assert len(ran) == 1
+
+
+def test_main_wires_the_pod_ready_subcommand(tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr(fsuaepor, "pod_ready", lambda a: seen.append(a) or 0)
+    # the parser binds `func` at build time, so patch the name main looks up
+    assert fsuaepor.main(["pod-ready", "--display", ":9", "--adf", "x.adf",
+                          "--out", str(tmp_path), "--row", "2", "--item-row", "3"]) == 0
+    assert (seen[0].row, seen[0].item_row, seen[0].boot) == (2, 3, 300)
 
 
 def test_pod_stage_leaves_only_the_payloads_in_the_save_drawer(
