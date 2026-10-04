@@ -902,7 +902,8 @@ def test_pod_slot_on_disk_three_replaces_both_files_and_nothing_else():
     disk = _synthetic_disk_three("A")
     before = disk.to_bytes()
     built = _synthetic_amiga_pod_save(3)
-    out = amiga_savegame.pod_slot_on_disk_three(disk, "A", built, _a_vault())
+    out = amiga_savegame.pod_slot_on_disk_three(
+        disk, "A", built, _a_vault(), replace=True)
     assert disk.to_bytes() == before
     after, kept = _files(out), _files(disk)
     changed = {p for p in kept if kept[p] != after.get(p)}
@@ -1033,7 +1034,8 @@ def test_every_registered_dos_slot_is_written_onto_disk_three_with_nothing_lost(
         built, report = amiga_savegame.pod_new_savegame(state, characters)
         assert (report.dropped, report.losses, report.warnings) == ([], [], []), label
         out = amiga_savegame.pod_slot_on_disk_three(
-            disk, letter, built, amiga_savegame.pod_vault_to_amiga(vault))
+            disk, letter, built, amiga_savegame.pod_vault_to_amiga(vault),
+            replace=True)
 
         # Only the two replaced files differ from the original disk.
         before, after = _files(disk), _files(out)
@@ -1089,7 +1091,7 @@ def test_the_largest_slot_fits_every_disk_three_for_every_letter():
     for label, disk in _every_disk_three():
         for letter in "ADHIJ":
             out = amiga_savegame.pod_slot_on_disk_three(
-                disk, letter, built, vault)
+                disk, letter, built, vault, replace=True)
             assert out.free_count() >= 0, (label, letter)
             assert amiga_savegame.pod_read_vault(out, letter) == \
                 amiga_savegame.pod_vault_from_amiga(vault), (label, letter)
@@ -1127,6 +1129,58 @@ def test_pod_dos_to_amiga_is_not_registered_with_the_flag_set(monkeypatch):
     assert convert.destinations_for(dos) == []
 
 
+def test_a_letter_the_disk_already_holds_is_not_replaced_unasked():
+    disk = _synthetic_disk_three("A")
+    before = disk.to_bytes()
+    with pytest.raises(amiga_savegame.AmigaSlotTaken):
+        amiga_savegame.pod_slot_on_disk_three(
+            disk, "A", _synthetic_amiga_pod_save(1), _a_vault())
+    # Either file alone is enough to count as taken.
+    only_vault = _synthetic_disk_three("A")
+    only_vault.remove_file(amiga_savegame.pod_slot_path("A"))
+    with pytest.raises(amiga_savegame.AmigaSlotTaken):
+        amiga_savegame.pod_slot_on_disk_three(
+            only_vault, "A", _synthetic_amiga_pod_save(1), _a_vault())
+    out = amiga_savegame.pod_slot_on_disk_three(
+        disk, "A", _synthetic_amiga_pod_save(1), _a_vault(), replace=True)
+    assert out.read_file(amiga_savegame.pod_vault_path("A")) == _a_vault()
+    assert disk.to_bytes() == before
+
+
+def test_pod_dos_to_amiga_refuses_an_unasked_replacement():
+    folder = _pod_specimen("dos-pod-foundation-walked")
+    held = next(p.stem[-1] for p in sorted(folder.glob("SAVGAM?.PTY")))
+    with pytest.raises(convert.ConvertError):
+        convert.PodDosToAmiga().rehearse(
+            _dos_source(folder, held), held, None,
+            disk_three=_synthetic_disk_three(held))
+
+
+def test_pod_dos_to_amiga_refuses_a_slot_other_than_the_sources():
+    with pytest.raises(convert.ConvertError):
+        convert.PodDosToAmiga().rehearse(
+            _dos_source(".", "A"), "B", None,
+            disk_three=_synthetic_disk_three("A"), replace=True)
+
+
+def test_pod_dos_to_amiga_turns_an_oversized_vault_into_a_convert_error(tmp_path):
+    folder = _pod_specimen("dos-pod-foundation-walked")
+    held = next(p.stem[-1] for p in sorted(folder.glob("SAVGAM?.PTY")))
+    for path in folder.iterdir():
+        if path.is_file():
+            (tmp_path / path.name).write_bytes(path.read_bytes())
+    item = bytes(dos_codec.ITEM_SIZE)
+    big = dos_codec.PodVault(
+        0, 0, 0, (item,) * (amiga_savegame.POD_VAULT_NODES + 1))
+    (tmp_path / f"VAULT{held}.DAT").write_bytes(
+        dos_codec.pod_vault_to_dos(big))
+    with pytest.raises(convert.ConvertError):
+        convert.PodDosToAmiga().rehearse(
+            _dos_source(tmp_path, held), held, None,
+            disk_three=_synthetic_disk_three("A"),
+            replace=True)
+
+
 def test_pod_dos_to_amiga_needs_the_players_disk_three():
     with pytest.raises(convert.ConvertError):
         convert.PodDosToAmiga().rehearse(
@@ -1140,7 +1194,8 @@ def test_pod_dos_to_amiga_has_no_pack_to_leave_anything_of():
 
 
 #: The DOS record's cached current values, which the round trip writes as
-#: zero.  Whether the DOS game recomputes them on load is not measured.
+#: zero, because the Amiga save never held them.  Whether the DOS game
+#: recomputes them on load is not measured; WISH-281 owns it.
 _NOT_ROUND_TRIPPED = frozenset({
     "name", "armour_class", "thac0_current", "movement_current",
     "roster_tail"})
@@ -1164,9 +1219,24 @@ def test_dos_to_amiga_to_dos_is_the_source_outside_the_declared_mask(tmp_path):
     disk = _registered_disk_three()
     for label, folder, letter in _registered_dos_slots():
         rehearsal = convert.PodDosToAmiga().rehearse(
-            _dos_source(folder, letter), letter, None, disk_three=disk)
+            _dos_source(folder, letter), letter, None, disk_three=disk,
+            replace=True)
         assert (rehearsal.report.dropped, rehearsal.report.losses,
                 rehearsal.report.warnings) == ([], [], []), label
+        # The three cached values are already zero on the Amiga side, so the
+        # loss happens at the DOS to Amiga step, not on the way back; WISH-281
+        # owns it.  The source's values are nonzero, so a change in either
+        # side shows here.
+        amiga_party = [
+            amiga_pod.pod_to_neutral(b) for b in amiga_savegame.pod_parse(
+                amiga_savegame.pod_read_slot(
+                    AmigaDisk(rehearsal.disk), letter)).blocks]
+        src = [dos_codec.to_neutral(c)
+               for c in dos_codec.read_party(folder, letter)]
+        for a, b in zip(src, amiga_party):
+            for key in ("armour_class", "thac0_current", "movement_current"):
+                assert a.get(key) != 0, (label, a.get("name"), key)
+                assert b.get(key) == 0, (label, a.get("name"), key)
         back = convert.PodAmigaToDos().rehearse(
             _amiga_source(rehearsal.disk, letter), letter, None)
 

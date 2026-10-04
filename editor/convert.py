@@ -1020,8 +1020,12 @@ class PodDosToAmiga(Direction):
     def rehearse(self, source: Source, slot: str, options: Any,
                 names: "Mapping[int, str] | None" = None,
                 leave: "Mapping[int, Collection[int]] | None" = None,
-                disk_three: "Any | None" = None) -> PodDosAmigaRehearsal:
-        """`disk_three` is the player's own `goldbox.amiga_adf.AmigaDisk`."""
+                disk_three: "Any | None" = None,
+                replace: bool = False) -> PodDosAmigaRehearsal:
+        """`disk_three` is the player's own `goldbox.amiga_adf.AmigaDisk`.
+
+        A slot letter the disk already holds is replaced only when `replace`
+        is true."""
         if leave:
             raise saveplan.SaveAsError(
                 f"{self.source_port} to {self.destination_port} has no "
@@ -1031,6 +1035,10 @@ class PodDosToAmiga(Direction):
         if disk_three is None:
             raise ConvertError("a Pools of Darkness save written for the Amiga "
                                "needs the player's disk 3")
+        if slot.upper() != source.slot.upper():
+            raise ConvertError(
+                f"slot {slot} was asked for but the source is slot "
+                f"{source.slot}")
         letter = source.slot
         container = dos_savegame.container_for(self.deltas.key)
         with source.folder() as folder:
@@ -1050,9 +1058,12 @@ class PodDosToAmiga(Direction):
             self.destination_port, self.deltas.key, names)
         savegame, save_report = amiga_savegame.pod_new_savegame(
             state, characters)
-        vault_bytes = amiga_savegame.pod_vault_to_amiga(vault)
-        disk = amiga_savegame.pod_slot_on_disk_three(
-            disk_three, letter, savegame, vault_bytes)
+        try:
+            vault_bytes = amiga_savegame.pod_vault_to_amiga(vault)
+            disk = amiga_savegame.pod_slot_on_disk_three(
+                disk_three, letter, savegame, vault_bytes, replace=replace)
+        except amiga_savegame.AmigaSaveError as e:
+            raise ConvertError(str(e)) from e
         report = neutral.Report()
         report.dropped.extend(save_report.dropped)
         report.losses.extend(save_report.losses)

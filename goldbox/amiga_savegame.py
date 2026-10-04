@@ -2375,13 +2375,21 @@ POD_DISK_THREE_MARKERS = (
 )
 
 
+class AmigaSlotTaken(AmigaSaveError):
+    """The slot letter already holds a party and the caller did not ask to
+    replace it."""
+
+
 def pod_slot_on_disk_three(disk_three: AmigaDisk, slot: str,
-                           savegame: bytes, vault: bytes) -> AmigaDisk:
+                           savegame: bytes, vault: bytes,
+                           replace: bool = False) -> AmigaDisk:
     """A copy of the player's Pools of Darkness disk 3 with one slot written.
 
     Both `SavGam<L>.pty` and `Vault<L>.DAT` are replaced every time, so a
     copy that held another party's vault for that letter never hands it to
-    the converted party.  Raises `AmigaDiskError` when `disk_three` is not
+    the converted party.  A letter that already holds either file raises
+    `AmigaSlotTaken` unless `replace` is true.  Raises `AmigaDiskError` when
+    `disk_three` is not
     that title's disk 3, `AmigaSaveError` when either file is not one the
     game's own writer makes or the result does not verify, and never changes
     `disk_three`.
@@ -2401,6 +2409,15 @@ def pod_slot_on_disk_three(disk_three: AmigaDisk, slot: str,
         entry = disk_three.lookup(path)
         if entry.is_dir != want_dir:
             raise AmigaDiskError(f"{path} is not the Pools of Darkness disk 3's")
+    if not replace:
+        for path in (pod_slot_path(letter), pod_vault_path(letter)):
+            try:
+                disk_three.lookup(path)
+            except AmigaDiskError:
+                continue
+            raise AmigaSlotTaken(
+                f"slot {letter} of the Pools of Darkness disk 3 already "
+                f"holds {path}")
     copy = AmigaDisk(disk_three.to_bytes())
     try:
         copy.write_file(pod_slot_path(letter), savegame)
