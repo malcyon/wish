@@ -220,7 +220,7 @@ def test_a_pools_of_darkness_magic_user_picks_from_the_trainers_menu():
     ({0x5E: 1}, "conscious"),
     ({0x9D + 1: 1}, "druid"),
 ])
-def test_pools_of_darkness_refuses_what_the_trainer_would_not_train(change, why):
+def test_pools_of_darkness_stops_where_the_trainer_would_not_train(change, why):
     rec = _pod_fighter(3)
     for at, value in change.items():
         rec[at] = value
@@ -230,13 +230,77 @@ def test_pools_of_darkness_refuses_what_the_trainer_would_not_train(change, why)
 
 def test_a_regained_former_paladin_needs_the_effect_the_trainer_adds():
     """A human fighter 6 who left paladin at 5: the trainer adds effect 8,
-    which a write to the record cannot, unless the character has it."""
+    which a write to the record cannot, unless the character's own effect
+    list has it already. The list is read as the game's find-effect routine
+    reads it: the id is a node's first byte."""
     rec = _pod_fighter(6)
     rec[0xA4 + 3] = 5
     rec[0x8A] = 5
     with pytest.raises(lv.CannotLevel, match="effect 0x8"):
         lv.plan(rec, lv.POOLS_OF_DARKNESS, rng=Dice(5, 5))
+    with pytest.raises(lv.CannotLevel, match="effect 0x8"):
+        lv.plan(rec, lv.POOLS_OF_DARKNESS, rng=Dice(5, 5),
+                effects=[bytes([0x69]) + bytes(9)])
+    node = bytes([8, 0, 0, 0, 0xFF, 0]) + bytes(4)
+    assert lv.plan(rec, lv.POOLS_OF_DARKNESS, rng=Dice(5, 5),
+                   effects=[node]).classes
     assert lv.plan(rec, lv.POOLS_OF_DARKNESS, rng=Dice(5, 5), effects=(8,)).classes
+
+
+def test_plan_member_reads_the_members_own_item_and_effect_nodes():
+    from types import SimpleNamespace
+
+    rec = _pod_fighter(6)
+    rec[0xA4 + 3] = 5
+    rec[0x8A] = 5
+    node = SimpleNamespace(raw=bytes([8]) + bytes(9))
+    member = SimpleNamespace(raw=bytes(rec), item_nodes=(), effect_nodes=(node,))
+    plan = lv.plan_member(member, lv.POOLS_OF_DARKNESS, rng=Dice(5, 5))
+    assert plan.classes == ("fighter",)
+
+
+def _pod_item(power: int) -> bytes:
+    node = bytearray(0x42)
+    node[0x35], node[0x41] = 1, power
+    return bytes(node)
+
+
+def test_a_pools_of_darkness_two_class_character_takes_the_constitution_steps_per_class():
+    """`0x3C5AC` runs the first column's constitution steps inside its slot
+    loop. An elf fighter 5 / magic-user 6 at constitution 19: 11, +1, then
+    the magic-user's 13 is not below 12, +1 again: 13 where a once-only
+    step would give 12. With a readied item of power 0x86 at constitution
+    14 (+4 a class): 11 + 4, then 13 + 4; an item of power 0x06 takes no
+    step, and constitution 14 no high step, so 11."""
+    rec = bytearray(POD_SIZE)
+    rec[0x9D + 2], rec[0x9D + 5] = 5, 6
+    rec[0x73] = 18
+    rec[0x79] = 19
+    lv.pod_recompute(rec)
+    assert rec[0x83] == 13
+    rec[0x79] = 14
+    lv.pod_recompute(rec, [_pod_item(0x86)])
+    assert rec[0x83] == 17
+    lv.pod_recompute(rec, [_pod_item(0x06)])        # bit 7 clear: no step
+    assert rec[0x83] == 11
+
+
+def test_a_pools_of_darkness_power_0x41_item_doubles_magic_user_level_five():
+    """`0x3C20C`: a readied item whose power byte is exactly 0x41 doubles the
+    magic-user's level-5 capacity, once per such item; unreadied, nothing."""
+    rec = bytearray(POD_SIZE)
+    rec[0x9D + 5] = 10
+    rec[0x73] = 18
+    lv.pod_recompute(rec)
+    assert rec[0x169 + 18 + 4] == 2
+    lv.pod_recompute(rec, [_pod_item(0x41)])
+    assert rec[0x169 + 18 + 4] == 4
+    lv.pod_recompute(rec, [_pod_item(0x41), _pod_item(0x41)])
+    assert rec[0x169 + 18 + 4] == 8
+    unreadied = bytearray(_pod_item(0x41))
+    unreadied[0x35] = 0
+    lv.pod_recompute(rec, [bytes(unreadied), _pod_item(0xC1)])
+    assert rec[0x169 + 18 + 4] == 2
 
 
 # --- Pool of Radiance --------------------------------------------------------
@@ -337,16 +401,103 @@ def test_curse_keeps_the_class_whose_threshold_is_largest_at_the_last_level():
     assert (after[0x78], after[0x1A9], after[0x12D]) == (35, 13, 1)
 
 
-def test_curses_clamp_reads_the_last_held_level_and_a_thief_is_refused():
+#: The `d7` the trainer saved while its prompt was up: Kickstart 1.3, the
+#: game process's message port (R6l, `974fd5e0`, all four trainings);
+#: Kickstart 2.04, the program's first segment (one training, WISH-1).
+CURSE_KS13_D7 = 0x00C05184
+CURSE_KS204_D7 = 0x00C18E6C
+
+
+def test_curses_clamp_reads_the_last_held_level():
     """`974fd5e0`: Sundra, a gnome fighter 4 / thief 5 at 100000, became
-    70000, the fighter's level 7 less one, and trained fighter. The thief
-    skills that training wrote cannot be copied from a record."""
+    70000, the fighter's level 7 less one, and trained fighter."""
     rec = _curse(3, {2: 4, 6: 5}, 100000)
     mask, clamp = lv._curse_ready(rec)
     assert clamp == 70000
     assert lv.ready_classes(rec, lv.CURSE) == ("fighter",)
-    with pytest.raises(lv.CannotLevel, match="register"):
+
+
+@pytest.mark.parametrize("race, dexterity, experience, d7, skills", [
+    # Kickstart 1.3. Sundra, gnome, dexterity 18: 56 58 51 51 42 31 76 26
+    # became these; Holland, dwarf, dexterity 17: 51 53 56 41 32 21 81 21.
+    (3, 18, 100000, CURSE_KS13_D7, [192, 194, 187, 187, 178, 162, 0, 157]),
+    (1, 17, 21000, CURSE_KS13_D7, [187, 194, 187, 177, 168, 152, 0, 0]),
+    # Kickstart 2.04: Sundra again, 108 a skill where 1.3 gave 132.
+    (3, 18, 100000, CURSE_KS204_D7, [168, 170, 163, 163, 154, 138, 0, 133]),
+])
+def test_curse_trains_a_fighter_thief_as_the_hall_did(race, dexterity,
+                                                      experience, d7, skills):
+    """The recompute rewrote each fighter / thief 5's skills at the DOS rows
+    plus the low byte of `d7`, and 0 wherever a negative race value plus
+    that byte passes the level value. Without the machine's `d7` `plan`
+    stops rather than guess it."""
+    rec = _curse(race, {2: 4, 6: 5}, experience)
+    rec[0x17], rec[0x19], rec[0x78], rec[0x1A9] = dexterity, 18, 48, 20
+    with pytest.raises(lv.CannotLevel, match="d7"):
         lv.plan(rec, lv.CURSE, rng=Dice(5, 5))
+    machine = lv.TrainerMachine(register=d7)
+    plan = lv.plan(rec, lv.CURSE, rng=Dice(5, 5), machine=machine)
+    after = lv.apply_to(rec, plan)
+    assert plan.classes == ("fighter",)
+    assert list(after[0xEA:0xF2]) == skills
+
+
+def test_a_curse_thief_item_of_kind_0x0b_sets_d7_itself():
+    """`0x390C4`: a readied item of power `0x8B` makes the step set `d7`, to
+    0 with the first skill at level 5 and the second at level 7 at least,
+    so no machine is needed. A human thief 3, dexterity 12."""
+    rec = _curse(7, {6: 3}, 10 ** 6)
+    rec[0x17], rec[0x19] = 12, 12
+    node = bytearray(0x42)
+    node[0x35], node[0x41] = 1, 0x8B
+    after = lv.apply_to(rec, lv.plan(rec, lv.CURSE, rng=Dice(4, 4),
+                                     items=[bytes(node)]))
+    # Thief 4: pick pockets at level 5 (50), open locks at level 7 (52), the
+    # rest at level 4 (35 33 25 15 88 20), dexterity 12's 0 0 0 -5 0, d7 0.
+    assert list(after[0xEA:0xF2]) == [50, 52, 35, 28, 25, 15, 88, 20]
+
+
+def _fake_amiga(port_task: int, data_base: int, cli: bool = True,
+                version: int = 34):
+    """A memory with ExecBase at 0x1000, of Kickstart `version`, whose
+    TaskWait list holds one process, at `port_task`, whose CLI's module is a
+    segment at 0x4000 followed by one at `data_base - 4` when `cli` is set."""
+    mem = {}
+
+    def put(at, value):
+        mem.update({at + i: b for i, b in enumerate(value.to_bytes(4, "big"))})
+
+    exec_base, cli_at, seglist = 0x1000, 0x3000, 0x4000
+    put(4, exec_base)
+    mem[exec_base + 0x14], mem[exec_base + 0x15] = 0, version
+    put(exec_base + 0x114, 0)
+    put(exec_base + 0x196, exec_base + 0x19A)  # TaskReady: empty
+    put(exec_base + 0x1A4, port_task)          # TaskWait: one node
+    put(port_task, exec_base + 0x1A8)          # its successor is the tail
+    mem[port_task + 8] = 13
+    put(port_task + 0xAC, cli_at // 4 if cli else 0)
+    put(cli_at + 0x3C, seglist // 4)
+    put(seglist, (data_base - 4) // 4)
+    put(data_base - 4, 0)
+
+    def read(at, length):
+        return bytes(mem.get(at + i, 0) for i in range(length))
+    return read
+
+
+def test_read_machine_takes_curses_d7_by_the_kickstarts_rule():
+    """Kickstart 1.3: the game's process's message port; 2.04: its first
+    segment; any other version, or no CLI process running the game: stop."""
+    read = _fake_amiga(0x5128, 0x8238)
+    assert lv.read_machine(read, 0x8238, lv.CURSE).register == 0x5128 + 0x5C
+    read = _fake_amiga(0x5128, 0x8238, version=37)
+    assert lv.read_machine(read, 0x8238, lv.CURSE).register == 0x4000
+    with pytest.raises(lv.CannotLevel, match="version 40"):
+        lv.read_machine(_fake_amiga(0x5128, 0x8238, version=40), 0x8238,
+                        lv.CURSE)
+    with pytest.raises(lv.CannotLevel, match="CLI"):
+        lv.read_machine(_fake_amiga(0x5128, 0x8238, cli=False), 0x8238,
+                        lv.CURSE)
 
 
 # --- Secret of the Silver Blades ---------------------------------------------
@@ -407,16 +558,69 @@ def test_silver_blades_rolls_a_die_for_every_class_held():
     assert after[0xCD] == (8 + 4) // 2
 
 
-def test_silver_blades_refuses_a_thief():
+def _secret_tables(code_base: int, data_base: int) -> bytes:
+    """`/Secret`'s data hunk from `g1F7C`, relocated as if loaded at the two
+    bases, read from the player's disks (skips without them)."""
+    from automap import gamedisks
+    from tools.amiga import amigabackstab
+    from tools.amiga.amiga68k import Executable
+
+    if not gamedisks.candidates("amiga"):
+        pytest.skip("no Amiga disks; set $AMIGA_DISKS")
+    raw = amigabackstab.executable(
+        amigabackstab.TITLES["secret-of-the-silver-blades"])
+    if raw is None:
+        pytest.skip("no Silver Blades executable on the Amiga disks")
+    exe = Executable.parse(raw)
+    data = exe.hunks[1]
+    start = data.file_offset + 0x1F7C
+    out = bytearray(raw[start:start + lv._SB_TABLES_SIZE])
+    bases = {0: code_base, 1: data_base}
+    for at in range(len(out) - 3):
+        found = exe.resolve_abs(start + at)
+        if found:
+            hunk, value, _ = found
+            out[at:at + 4] = (bases[hunk] + value).to_bytes(4, "big")
+    return bytes(out)
+
+
+def test_silver_blades_trains_malachite_as_the_hall_did():
+    """`9f0896c0`: a dwarf fighter 7 / thief 8, dexterity 17, constitution
+    17, at 126000, trained both: 58 to 66, 20 to 28, six rolled, and thief
+    skills 67 69 74 60 103 83 45 85 became 133 13 156 6 127 84 50 95, which
+    the step's reads past its tables give over the program as that boot
+    loaded it (code hunk 0xC0A830, data hunk 0xC56BF8). Without the
+    machine's bytes `plan` stops rather than guess them."""
     rec = bytearray(340)
-    rec[0x6B] = 3
+    rec[0x6B], rec[0x11], rec[0x17], rec[0x19] = 3, 18, 17, 17
     rec[0xAC + 2], rec[0xAC + 6] = 7, 8
-    put32(rec, 0xC8, 10 ** 6)
-    with pytest.raises(lv.CannotLevel, match="dexterity"):
-        lv.plan(rec, lv.SILVER_BLADES, rng=Dice(5, 5))
+    rec[0x88] = 8
+    put32(rec, 0xC8, 126000)
+    rec[0x70], rec[0x152], rec[0xCD] = 58, 20, 43
+    rec[0x8D:0x95] = bytes([67, 69, 74, 60, 103, 83, 45, 85])
+    with pytest.raises(lv.CannotLevel, match="read_machine"):
+        lv.plan(rec, lv.SILVER_BLADES, rng=Dice(8, 3, 4, 2))
+    machine = lv.TrainerMachine(tables=_secret_tables(0xC0A830, 0xC56BF8))
+    plan = lv.plan(rec, lv.SILVER_BLADES, rng=Dice(8, 3, 4, 2), machine=machine)
+    after = lv.apply_to(rec, plan)
+    assert plan.classes == ("fighter", "thief")
+    assert list(after[0x8D:0x95]) == [133, 13, 156, 6, 127, 84, 50, 95]
+    assert (after[0x70], after[0x152], after[0xCD]) == (66, 28, 49)
 
 
-def test_a_title_with_no_copied_trainer_is_refused():
+def test_read_machine_takes_the_silver_blades_bytes_from_g1f7c():
+    seen = []
+
+    def read(at, length):
+        seen.append((at, length))
+        return bytes(length)
+
+    machine = lv.read_machine(read, 0xC56BF8, lv.SILVER_BLADES)
+    assert seen == [(0xC56BF8 + 0x1F7C, lv._SB_TABLES_SIZE)]
+    assert machine.tables == bytes(lv._SB_TABLES_SIZE)
+
+
+def test_a_title_with_no_copied_trainer_stops():
     assert not lv.supported("no-such-title")
     with pytest.raises(lv.CannotLevel):
         lv.plan(bytes(400), "no-such-title")

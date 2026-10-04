@@ -2749,7 +2749,8 @@ their DOS tables, and no Amiga trainer writes `turn_class` or `attack_level`
 copies the C64 trainers, does not describe an Amiga level-up. Every claim below
 is graded from a static read of the player's executables with
 `tools/amiga/amiga68k.py`. The live check, a record dumped before and after a
-training at the game's own hall, is stage R6l on the issue and has not run.
+training at the game's own hall, is stage R6l on the issue (WISH-1 comments
+`974fd5e0` for Curse and `9f0896c0` for Silver Blades).
 
 | title | executable (sha256 prefix) | trainer | recompute it calls | hit points |
 |---|---|---|---|---|
@@ -2760,10 +2761,23 @@ training at the game's own hall, is stage R6l on the issue and has not run.
 
 Each trainer was found through the `pea` of its own `we only train conscious
 people` string. Each recompute is also called from that title's party-append
-routine (Pool `0x26EAE`, Curse `0x26E2C`, Pools of Darkness `0x27394`), so
-loading a save rewrites every derived field the recompute owns. CONFIRMED from
-the code for Pool, Curse and Pools of Darkness. For Silver Blades the append
-call was not looked for.
+routine (Pool `0x26EAE`, Curse `0x26E2C`, Pools of Darkness `0x27394`).
+CONFIRMED from the code. **That does not make every load rewrite the derived
+fields.** Pool's does: a converted slot B and the game's slot C after loading
+it agree on every recompute field, 6 of 6. Curse's LOAD SAVED GAME does not, as
+far as two measurements go: the game's slot C equals our converted slot B on
+every recompute byte in two specimens, 12 of 12 records, 4 of which the
+recompute would have changed; and in the R6l boot the two thieves' skills
+after the load were not what the recompute writes: Sundra held 56 58 51 51 42
+31 76 26, which no single `d7` turns the step's rows into, and the training
+then wrote 192 194 187 187 178 162 0 157 at the same thief level (2 of 2,
+Holland likewise). PROBABLE; a breakpoint at
+`0x38A52` during LOAD SAVED GAME settles it. This paragraph used to say every
+load rewrites the derived fields; it was read from the append call alone,
+which the measured load did not reach. For Silver Blades the append call was
+not looked for, and its saved specimens keep DOS-converted saves, so it
+probably does not recompute on load either (PROBABLE, same experiment at
+`0x3C802`).
 
 #### Who may train
 
@@ -2807,7 +2821,7 @@ for the multi-class case.
 | spell capacity | **stored** by Pool, Curse and Silver Blades, rebuilt from tables; Pools of Darkness not read | Pool stores it; Curse and Silver Blades never do |
 | cleric, paladin and ranger spells | granted whole, as on the C64 | the same |
 | magic-user spell | a forced menu when the magic-user level rose; in the later titles also whenever a ranger is above 8 | a menu when the magic-user level rose |
-| thief skills | Pool and Curse: level + race + **dexterity** on the first five, from the DOS rows (dexterity 10 reads `-19` for pick pockets); Silver Blades and Pools of Darkness not compared | Pool: level + race only. Curse: the AD&D dexterity rows (`-10` at 10, `+5` open locks at 16) |
+| thief skills | Pool: level + race + **dexterity** on the first five, from the DOS rows (dexterity 10 reads `-19` for pick pockets). Curse: the same rows **plus the low byte of the `d7` the program was started with** (below). Silver Blades: the rows read off by one, and past the dexterity table into relocated words (below). Pools of Darkness: its own level rows, the human reading the half-orc's | Pool: level + race only. Curse: the AD&D dexterity rows (`-10` at 10, `+5` open locks at 16) |
 | `turn_class`, `attack_level` | **not written** | both written |
 | `levels_drained`, `hp_lost_to_drain` | per class raised: `hp_lost -= hp_lost / drained`, then `drained -= 1` (Pools of Darkness has neither field) | the count only |
 | `hp_rolled` | `+= max(1, die / classes)`, only once `level > former_level` in the later titles | the C64 rule, with a random round-up and no minimum in the later titles |
@@ -2827,6 +2841,91 @@ mask for non-zero and never ANDs it with the class bit, where Pools of
 Darkness' `0x24374` does. PROBABLE. CONFIRMED from the code for the rest of
 this table, except where graded.
 
+#### Thief skills in Curse and Silver Blades, read from the code and the running game
+
+**A player who trains a thief in Curse or Silver Blades gets skills the DOS
+rules do not give**, often above 100 or collapsed to single figures, and the
+numbers depend on the machine the game runs on. This section used to report
+both titles' skills as "not sensible" and Level up stopped on every thief in
+them; both are now read to the byte, and Level up copies them by reading what
+the running Amiga holds (`automap/amigalevelup.py`, `read_machine`).
+
+**Curse adds the `d7` the program was started with to every skill.** The
+thief-skill step `0x390C4` adds the low byte of `d7` to each of the eight
+values and to the size of a negative race value before comparing it with the
+level value (0 if larger). It sets `d7` itself only for a readied item of
+power `0x8B`. No routine on the hall's call path writes `d7` without
+restoring it: the startup at file `0x43C06` and `0x43C80` calls `main`
+(`0x13D1C`) without touching it, and the main loop (`0x20A80`), the menus
+down to the party menu (`0x20548`, `0x176D6`, whose TRAIN CHARACTER calls the
+trainer at `0x17882`), the trainer and the recompute do not write it first.
+CONFIRMED from the code (direct calls only). What AmigaDOS leaves in `d7`
+depends on the Kickstart. Read off the trainer's saved registers while its
+prompt was up, with the disk's startup-sequence starting the game:
+
+| Kickstart | `d7` at the trainer | what it is | added to each skill | trainings |
+|---|---|---|---|---|
+| 1.3 (34), 512K chip, 512K slow | `0x00C05184` | the game's process's `pr_MsgPort` (process `0xC05128` + `0x5C`) | 132 | 4 in one boot (R6l): Sundra and Holland, 16 of 16 bytes |
+| 2.04 (37), same memory | `0x00C18E6C` | the program's first segment (code hunk `0xC18E70` less 4) | 108 | 1 in one boot (WISH-1): Sundra, 8 of 8 bytes |
+
+Each identity is a whole 32-bit pointer, so CONFIRMED for those boots; that
+every boot of the same Kickstart does the same is PROBABLE (one boot each). A
+third Kickstart, or the game started from Workbench (no CLI process), is not
+measured, and Level up stops there. The rest of the step is the DOS rows:
+level rows 0-12 at `g192C` (row 0 repeats row 1; 10-12 are `80 67 65 78 63
+30 99 50`, `90 72 70 86 70 35 99 60`, `100 77 75 94 77 35 99 65`), race rows
+at `g1994` and dexterity rows from 9 at `g19D4`, the thief level plus a
+regained former one. A readied item of power kind 2 counts a level below 4 as
+4 and from 4 adds 10 to every skill; one of kind `0x0B` counts the first skill
+at level 5 and the second at 7 at least, with `d7` 0, else `d7` 5. CONFIRMED
+from the code for both items; neither has been seen in a running game.
+
+**Silver Blades reads its three word tables off by one, and past the
+dexterity table.** `0x3CE78` reads the level word at `g1F7C + level * 16 + 2 *
+skill` and the race word at `g209C + race * 16 + 2 * skill`, skill counted
+from 1, so a thief of level L reads level L+1's row from its second word and
+the next row's first, and a human (race 6) reads the dexterity table as its
+race row. The dexterity word is `g20FC + dexterity * 10 + 2 * skill`, with no
+subtraction, from eleven five-word rows that begin at dexterity 9. From
+dexterity 10's fifth skill on it reads the relocated longwords at `g216A`,
+pointers into the code hunk, so the value depends on where AmigaDOS loaded
+the program. CONFIRMED from the code, and in the running game: the step
+copied over the R6l boot's own memory (code hunk `0xC0A830`, data hunk
+`0xC56BF8`) gives Malachite's 133 13 156 6 127 84 50 95, 8 of 8. Level up
+reads those bytes from the running machine, never from the file.
+
+**Level up and the effect a regained class brings.** When a former ranger or
+paladin regains the class, the Silver Blades and Pools of Darkness trainers
+look through the character's own effect list for effect `0x69` (ranger) or
+8 (paladin), comparing each node's first byte (`0x1AB12`, `0x1A6EE`), and add
+a node if it is missing (`0x12DAC`, `0x12FD4`). Level up reads the same list
+from the live party member and goes ahead when the effect is there. When it
+is not, it stops: adding a node takes the game's own heap allocator, and a
+level-up is writes to the record. CONFIRMED from the code.
+
+**Pools of Darkness' save rebuild applies the constitution steps per class.**
+`0x3C5AC` adds the first column's high-constitution step, and the step a
+readied item of power kind 6 gives (+1 to +5 by constitution 4-18), inside
+its loop over classes, once per class with a level and before the next
+class's cell is compared. An elf fighter 5 / magic-user 6 at constitution 19
+saves 13 on the first column where one step after the loop would give 12.
+`0x3C20C` doubles magic-user level-5 capacity once for each readied item
+whose power byte is exactly `0x41`. CONFIRMED from the code. The saves of
+all 88 saved records the tests read from the player's disk 3 still replay
+with this read; no running game has shown either step.
+
+**No player was found with a druid or monk level**, and Level up stops on
+one. None of the 15 Curse, 6 Silver Blades and 88 Pools of Darkness records
+the tests read from the player's disks holds one, current or former, and
+Curse's two character-import paths set only the cleric, fighter, magic-user
+and thief levels before calling the trainer (`0x259EA`-`0x25A26` and
+`0x25F76`-`0x25FB2`). PROBABLE. Silver Blades' screen with the sex, class and
+alignment lists (`0xF380`-`0xF720`) builds its class list with DRUID given
+the same screen word (`0x1F56`) as FIGHTER and MONK the same (`0x1F6A`) as
+CLERIC/FIGHTER; whether either can be picked was not read. To settle it,
+open each title's CREATE CHARACTER in FS-UAE and try every race: a druid or
+monk accepted refutes it.
+
 #### Not established, and what would settle it
 
 * **The Curse and Silver Blades save rebuild reads one class slot past the
@@ -2840,9 +2939,10 @@ this table, except where graded.
   the fighter row refutes it. This also bears on
   `levels.SECRET_OF_THE_SILVER_BLADES.dos_save_trailing_slot`, which reads the
   DOS compare as landing on the last real slot.
-* **Pools of Darkness' saves, capacity and thief skills** (`0x3C5AC`, `0x3BE7C`,
-  `0x3C7DE`) were not read. Neither was a second, unreferenced copy of its
-  trainer strings at `0x3790A`-`0x37B54`, which includes `not enough money.`
+* **Pools of Darkness' saves, capacity and thief skills** (`0x3C5AC`,
+  `0x3BE7C`, `0x3C7DE`) are read (WISH-1 comment `99d7ea58` and the section
+  above). A second, unreferenced copy of its trainer strings at
+  `0x3790A`-`0x37B54`, which includes `not enough money.`, was not.
 * **Pools of Darkness' ready flag and trainer disagree on race limits.**
   `0x1B500` reads the table `g1BA0` (gnome cleric 0) as well as the hard-coded
   rules, and the trainer reads only the hard-coded ones (gnome cleric 7). So a
