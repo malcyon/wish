@@ -291,3 +291,4 @@ agent_guest_plane_packages:
   - plane-sdk==0.3.1
   - fastmcp==3.2.0
   - mcp==1.28.1
+  - markdown-it-py==4.2.0
