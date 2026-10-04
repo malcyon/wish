@@ -202,7 +202,9 @@ class FsuaeGuest:
     def stop(self, holder: str, timeout: float) -> str:
         """End the emulator after a game save has had time to reach the disk image; record each image's hash."""
         if self.emulator is None:
-            raise RouteError("stop: no emulator was started")
+            if self.slot is None:
+                raise RouteError("stop: no emulator was started")
+            return "ok stopped; nothing was running"
         if self._last_key is not None:
             left = self._last_key + SAVE_REACHES_DISK - time.monotonic()
             if left > 0:
@@ -236,8 +238,8 @@ class FsuaeGuest:
                 try:
                     with Image.open(path) as image:
                         image.load()
-                except OSError:
-                    continue
+                except (OSError, SyntaxError, ValueError):
+                    continue  # still being written
                 return path
             if time.monotonic() >= end:
                 return None
@@ -333,7 +335,7 @@ class FsuaeGuest:
         end = time.monotonic() + min(SWAP_LOG_WAIT, timeout)
         while True:
             lines = fsuaegdb.swap_log_lines(log, since)
-            if any(str(path) in line for line in lines):
+            if any(_changes_drive_zero_to(line, path) for line in lines):
                 return {"index": index, "keys": keys, "log": lines, "staged": str(path), "sha256": digest}
             if time.monotonic() >= end:
                 error = RouteError(f"the emulator log shows no change to {path} after the swap keys")
@@ -364,6 +366,18 @@ class FsuaeGuest:
             time.sleep(settle)
 
         return capture, press
+
+
+_DRIVE_CHANGE = re.compile(r"gui_disk_image_change drive (\d+) name (.+?)(?: write protected \d+)?\s*$")
+
+
+def _changes_drive_zero_to(line: str, path: pathlib.Path) -> bool:
+    """Whether a log line puts `path` in DF0, matching the path as logged or resolved."""
+    match = _DRIVE_CHANGE.match(line)
+    if match is None or match.group(1) != "0":
+        return False
+    logged = match.group(2)
+    return logged in (str(path), str(path.resolve())) or pathlib.Path(logged).resolve() == path.resolve()
 
 
 def _binary() -> pathlib.Path:

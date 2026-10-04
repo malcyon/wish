@@ -385,3 +385,83 @@ def test_a_launch_namespace_is_all_start_processes_reads(lane, tmp_path):
                               floppy=None, swap=None, foreground=True, wait=1, port=6520, extra=None)
     xvfb, emulator = fsuaegdb.start_processes(args, True)
     assert "FSEMU_SCREENSHOTS_DIR" not in emulator.kw["env"]
+
+
+def test_a_start_that_fails_before_launch_can_still_be_stopped_and_released(lane, tmp_path, monkeypatch):
+    def no_binary():
+        raise RouteError("the patched FS-UAE is not installed")
+
+    monkeypatch.setattr(fsuaesession, "_binary", no_binary)
+    guest = fsuaesession.FsuaeGuest(game="amiga-pool")
+    guest.claim("wish1-test", 30)
+    guest.put(_disk(tmp_path, "one.src"), guest.remote_path("1", "wish1-test", "one"), 30)
+    with pytest.raises(RouteError, match="not installed"):
+        guest.start("wish1-test", guest.remote_path("1", "wish1-test", "one"), timeout=30, options=())
+    assert guest.stop("wish1-test", 30) == "ok stopped; nothing was running"
+    guest.release("wish1-test", 30)
+    assert lane.slot.released
+
+
+def test_a_screenshot_still_being_written_is_retried_on_the_next_poll(lane, tmp_path, monkeypatch, clock):
+    guest = _started(tmp_path, lane)
+    shots = guest.work / "shots"
+    full = tmp_path / "full.png"
+    _doubled_frame(full)
+    data = full.read_bytes()
+    target = shots / "FS-UAE_Full_261004-0000_01.png"
+    polls = []
+
+    def alt_s(display, key, settle):
+        # An IDAT length that is not written yet makes PIL raise SyntaxError ("broken PNG file"), not OSError.
+        target.write_bytes(data[:33] + b"\0\0\0\0" + data[37:])
+
+    real_sleep = clock.sleep
+
+    def sleep(seconds):
+        polls.append(seconds)
+        if len(polls) == 2:
+            target.write_bytes(data)
+        real_sleep(seconds)
+
+    monkeypatch.setattr(fsuaegdb, "press", alt_s)
+    monkeypatch.setattr(fsuaesession.time, "sleep", sleep)
+    assert guest._shoot(10) == target
+    assert len(polls) >= 2
+
+
+def _swapped(tmp_path, lane, line):
+    guest = _started(tmp_path, lane, disks=("one", "three", "two"), mounted=("one", "three"))
+    two = guest.remote_path("1", "wish1-test", "two")
+    if line:
+        _log_line(guest, line.format(path=guest.staged[two]))
+    return guest, two
+
+
+def test_insert_needs_the_change_to_be_for_drive_zero(lane, tmp_path, clock):
+    guest, two = _swapped(tmp_path, lane, "")
+    real_send = guest._send
+
+    def send(key):
+        real_send(key)
+        if key == "F12" and lane.keys.count("F12") == 2:
+            _log_line(guest, f"gui_disk_image_change drive 1 name {guest.staged[two]} write protected 0")
+
+    guest._send = send
+    with pytest.raises(RouteError, match="shows no change"):
+        guest.insert("wish1-test", 0, two, 30, hashlib.sha256(b"two").hexdigest())
+
+
+def test_insert_reads_the_real_log_line_and_matches_a_resolved_path(lane, tmp_path, clock):
+    guest, two = _swapped(tmp_path, lane, "")
+    link = tmp_path / "link"
+    link.symlink_to(guest.staged[two].parent)
+    real_send = guest._send
+
+    def send(key):
+        real_send(key)
+        if key == "F12" and lane.keys.count("F12") == 2:
+            _log_line(guest, f"gui_disk_image_change drive 0 name {link / guest.staged[two].name} write protected 0")
+
+    guest._send = send
+    receipt = guest.insert("wish1-test", 0, two, 30, hashlib.sha256(b"two").hexdigest())
+    assert receipt["index"] == 2
