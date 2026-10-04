@@ -1048,22 +1048,7 @@ such server. Its server is the `remote_debugger_barto` one, not
 the ones `src/barto_gdbserver.cpp` prints. It is newer than that branch's
 published tip, `b70b1180`, though. A build of the tip has no `M` write handler
 and no `console`/`dumpdma` monitor commands, so `poke` and Level up fail on it.
-
-**State save and load in the fork.** The shipped Linux binary ends with a
-segfault on every state save, state load and reset. Each is queued with a
-NULL string that `inputdevice_add_inputcode` passes to `strdup` (CONFIRMED,
-three crashes, client attached or not). `tools/amiga/fsuae-inputcode-null.patch`
-is the one-line source fix, and both build scripts apply it. A copy of the
-shipped binary with the same guard patched in saves (slot files
-`base/Save States/Default/FS-UAE_<n>.uss`, written in under a second) and
-loads. A load put the poked witness bytes and 22,721 of the 22,725 changed
-chip-RAM bytes back, and the GDB client stayed connected through it
-(CONFIRMED, three loads with a client attached). The restored screen stayed
-black until the game redrew it, in all three loads. A load made after the
-client had disconnected ended in an AmigaOS "Software error - task held"
-requester (one sample, cause unknown). Saving and loading by key is not
-possible: this build binds no key to either, so the F12 menu is the only
-route. The server is started by the fork's `remote_debugger=<seconds>` option, and it
+The server is started by the fork's `remote_debugger=<seconds>` option, and it
 listens on 2345 unless `remote_debugger_port=<port>` says otherwise; 2345 is the
 port the row looks for, so a different port is not found. The fork closes its
 listening socket when a client disconnects, which the helper is there to keep
@@ -1073,6 +1058,39 @@ name and the options live here. The machine has to be the A500 of
 of chip memory at `$000000` and 512K of slow memory at `$C00000`
 (`automap.amiga.MEMORY`), so a configuration with fast RAM, more chip RAM or no
 slow RAM waits on "Waiting to connect..." for ever.
+
+**State save and load in the fork.** The F12 menu is the only route: this
+build binds no key to save or load, and the GDB server has no command for
+either. Slot files are `base/Save States/Default/FS-UAE_<n>.uss`.
+* **The shipped binary crashes on every state save, state load and reset.**
+  Each is queued with a NULL string that `inputdevice_add_inputcode` passes to
+  `strdup` (CONFIRMED, three crashes, client attached or not).
+  `installfsuae.py` patches a NULL check into the binary it installs
+  (`NULL_GUARD`, two sites, checked against the pinned SHA-256 before and
+  after). `tools/amiga/fsuae-inputcode-null.patch` is the same fix for a
+  source build.
+* **Saving and loading work on the patched binary.** A save is written in about
+  0.1 s. A load puts the Amiga back exactly: the poked witness bytes come back,
+  chip RAM is byte-identical to the save, and the custom-chip state differs
+  only in the refresh counter. A client attached across the load stays
+  connected (CONFIRMED, several loads in five boots).
+* **The picture stays black after a load** until the game draws each line
+  again. Some lines stay stale even after a redraw, and neither Alt+A nor
+  pause brings it back (CONFIRMED, six of six loads). The emulator redraws only
+  the lines whose Amiga content changed, and nothing marks the screen lost
+  after a restore. `tools/amiga/fsuae-restore-redraw.patch` adds
+  `notice_screen_contents_lost(0)` at the end of `savestate_restore_finish()`.
+  A source build with it showed the pre-save frame pixel for pixel after a load
+  (CONFIRMED, one load). The shipped binary has no such fix yet; a two-site
+  binary patch is worked out but not yet run.
+* **A state saved while a GDB client was attached crashes if it is loaded after
+  the client has disconnected.** AmigaOS shows "Software error - task held"
+  (CONFIRMED, two of two). The same save and load with the client attached
+  throughout, with the client gone before the save, or with no debugger at
+  all, all work. Which part of the attached debugger causes it is not known.
+  A driver keeps one client from save through load.
+* **Pausing (Alt+P) with a client attached stops the server answering**, and
+  the client's reads time out.
 
 **The maps come from the C64 disks when there are any, and otherwise from
 loose Amiga disk images.** `automap.maps.load_maps_titled` reads the C64 disks
