@@ -81,11 +81,13 @@ floppy1=C:\Amiga\Disks\Curse_Of_The_Azure_Bonds\CurseOfTheAzureBonds_B.adf
 joyport0=mouse
 joyport1=none
 
-; F11 opens WinUAE's debugger. There is no other way in on the Windows port:
-; od-win32/win32.cpp's debuggable() returns 0 unconditionally, so main.cpp's
+; F11 opens WinUAE's debugger for someone at the keyboard; no tool uses it, and
+; the driver enters the debugger with `CFG AKS_ENTERDEBUGGER 1` over the pipe.
+; On the Windows port od-win32/win32.cpp's debuggable() returns 0
+; unconditionally, so main.cpp's
 ; `if (currprefs.start_debugger && debuggable()) activate_debugger()` never
-; fires and use_debugger=true does nothing. The only caller left is the
-; SPC_ENTERDEBUGGER input event, which has no default binding.
+; fires and use_debugger=true does nothing. SPC_ENTERDEBUGGER has no default
+; binding, so the lines below bind it to F11.
 input.config=1
 input.1.keyboard.0.friendlyname=WinUAE keyboard
 input.1.keyboard.0.name=NULLKEYBOARD

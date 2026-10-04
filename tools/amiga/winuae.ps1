@@ -33,22 +33,19 @@
 #   winvm ssh "$ps release -Holder por-run"     # let the next lane in
 #   winvm ssh "$ps clean"                       # before winvm promote
 #
-# -log is not optional if you want the debugger: it is what makes WinUAE
-# allocate a console, and the debugger has nowhere to talk without one.
+# The debugger opens with `debugger` whether or not `start` was given -log.
 #
 # Why a scheduled task and not `Start-Process`: `winvm ssh` logs in over the
-# network, which lands in Windows session 0. The VM's screen -- the only thing
-# `winvm shot` can capture -- is session 1. Session 0 has its own window
-# station, so a GUI process started there is invisible to the screenshot and
-# no call from there can raise or focus a session 1 window. A scheduled task
-# with an Interactive principal runs in whatever session the user is logged
-# on to, which is session 1.
+# network, which lands in Windows session 0, and the VM's screen is session 1.
+# Session 0 has its own window station, so a GUI process started there never
+# appears on that screen. A scheduled task with an Interactive principal runs
+# in whatever session the user is logged on to, which is session 1.
 #
 # Every action reports what it actually achieved, and exits non-zero when it
 # did not. That is not politeness: `Start-ScheduledTask` on an Interactive
 # principal succeeds and does nothing at all when nobody is logged on at the
-# console, so a `key` that reported "pressed" would leave the debugger closed,
-# a `send` typing into a console that was never created, and the whole run
+# console, so a `debugger` that reported "entered" would leave the debugger
+# closed, a `send` typing into a console that was never created, and the whole run
 # looking fine until somebody read the empty dumps hours later.
 #
 # ONE EMULATOR PER LANE, FOUND BY THE PID IN THE LANE'S OWN RECEIPT.
@@ -82,7 +79,7 @@ param(
 # one, wherever each is declared and whatever Position each is given -- so a
 # declared -Holder eats the first positional argument, such as the quoted argument of `send`.
 # Measured, with -Holder at Position 99 and $Rest at Position 1:
-# `key 7A` bound cmd=[key] holder=[7A] rest=[]. Reading them here leaves every
+# `press 7A` bound cmd=[press] holder=[7A] rest=[]. Reading them here leaves every
 # call form exactly as it was.
 #
 # For the same family of reasons neither name may be abbreviated by the caller:
@@ -118,10 +115,10 @@ $Rest = $passthru.ToArray()
 
 $Exe     = 'C:\Program Files\WinUAE\winuae64.exe'
 $Root    = 'C:\Amiga'
-# How many emulators may run at once. Raising it is safe only when keys and
-# screenshots no longer go through the shared desktop (the lanes would type into
-# and photograph each other) and a two-lane live run of winuae-lanecheck.ps1 has
-# passed; the value is then the count that run measured.
+# How many emulators may run at once. Keys and screenshots go through each lane's
+# own pipe, so lanes do not type into or photograph each other; raise it only
+# after a two-lane live run of winuae-lanecheck.ps1 has passed, and set it to the
+# count that run measured.
 $LaneCount = 1
 
 # Everything one lane owns. Lane 1 keeps the names the script has always used,

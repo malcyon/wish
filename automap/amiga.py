@@ -14,7 +14,7 @@ median of 2.3 ms a command with the emulator holding 49.9 FPS throughout, on
 
 **`WinuaeDebugger` is the older route and the one every driven tool uses.** It
 sends `CFG AKS_ENTERDEBUGGER 1` over the copy's own pipe -- no key press and no
-focus, and the only way into the *interactive* debugger, since
+focus, which is how the driver enters the *interactive* debugger, since
 `use_debugger=true` cannot start it on Windows at all -- and types `S <file> <addr> <n>` and `g` into the emulator's console.
 That halts the machine for the length of the batch and puts a console in front
 of whoever is playing, so it belongs to a driven run and not to a player's

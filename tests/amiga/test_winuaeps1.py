@@ -149,6 +149,18 @@ def test_debugger_enters_over_the_pipe_with_no_key_or_window():
     assert "'CFG AKS_ENTERDEBUGGER 1'" in body
 
 
+def test_debugger_disposes_its_pipe_on_every_path_and_fails_unless_the_reply_is_404():
+    body = _body("Invoke-PipeVerb")
+    start = body.index("$Verb -ceq 'debugger'")
+    section = body[start:body.index("$Verb -ceq 'press'", start)]
+    assert "if ($r -cne '404') { $verdict = \"fail AKS_ENTERDEBUGGER replied $r\" }" in section
+    assert "ok debugger entered" in section
+    # One finally closes the pipe whether the send returned, failed or threw.
+    tail = body[body.index("  } catch {", start):]
+    assert "} finally {\n    if ($pipe) { $pipe.Dispose() }" in tail
+    assert "if (-not $verdict.StartsWith('ok ', [StringComparison]::Ordinal)) { exit 1 }" in tail
+
+
 def test_the_lane_checks_do_not_press_a_key_or_raise_a_window():
     for name in ("winuae-lanecheck.ps1", "winuae-sendcheck.ps1"):
         text = (PS1_PATH.parent / name).read_text()
