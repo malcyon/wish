@@ -78,7 +78,8 @@ cartridge — a lot of fragility for very few users.
 
 **There is a third now, for a different machine**: an Amiga under WinUAE or a
 patched FS-UAE, in `automap/amiga.py`. The window offers it only behind
-`WISH_EXPERIMENTAL_AMIGA_FSUAE` — see
+`WISH_EXPERIMENTAL_AMIGA_FSUAE` (FS-UAE, Linux) or
+`WISH_EXPERIMENTAL_AMIGA_WINUAE` (WinUAE, Windows) — see
 "[A third machine: the Amiga](#a-third-machine-the-amiga)" below for what it
 does, what it cost to make the shared code take it, and what is left.
 
@@ -402,7 +403,9 @@ drawn on Pool of Radiance's travel grid:
 
 The Gold Box titles shipped on the Amiga too, and the automapper has a layout
 row for all four: `automap/amiga.py` is a `Target` over an Amiga emulator's
-own debugger.
+own debugger. WinUAE on Windows and FS-UAE on Linux are supported; FS-UAE on
+Windows or macOS is not, because `wish.fsuae.listening` reads `/proc` and the
+connection helper runs on Linux only.
 `docs/143-winuae-debugger.md` is the WinUAE transport, and the ticket is
 `#37 (Automap the Amiga version, not just the C64)`.
 
@@ -414,24 +417,27 @@ words. Pools of Darkness' row also carries an overland pointer and flag: while
 the flag is 1 the party is on its 38-by-15 overland, where the square bytes
 keep the last indoor square, so `AmigaTarget.fix` answers a world-map fix and
 the tab is blank rather than showing that stale square. Pool of Radiance's row
-is below, under "What is not built"; this paragraph said it had none before
-that row was added.
+has `segments` and a travel grid, under "The flags, the fork and the maps".
 
-**Three transports, one `AmigaTarget`.** The target owns the Amiga's memory map
-and the transport decides how a read reaches it:
+**Four transports, one `AmigaTarget`.** The target owns the Amiga's memory map
+and the transport decides how a read or a write reaches it:
 
-| transport | reaches | how a read goes | halts the machine |
-|---|---|---|---|
-| `WinuaeDebugger` | WinUAE, from Linux through the Windows VM | F11, then `S <file> <addr> <n>` and `g` typed into the console, dump read back as base64, one `ssh` a batch | yes |
-| `WinuaePipe` | WinUAE, through its own named pipe | `DBG m ...` down the pipe between two emulated instructions | no |
-| `FsuaeGdb` | a patched FS-UAE on the same machine | a GDB-remote `m` packet over a loopback socket, answered from the emulator's frame handler | no |
+| transport | reaches | how a read goes | how a write goes | halts the machine |
+|---|---|---|---|---|
+| `WinuaeDebugger` | WinUAE, from Linux through the Windows VM | F11, then `S <file> <addr> <n>` and `g` typed into the console, dump read back as base64, one `ssh` a batch | `W <addr> <bytes>` lines in the same batch | yes |
+| `WinuaePipe` | WinUAE, through its own named pipe, from Linux through the VM | `DBG S ...` down the pipe between two emulated instructions, one `ssh` a batch | `W <addr> <bytes>` lines in the same batch | no |
+| `WinuaeLocalPipe` (`automap/winuae.py`) | WinUAE, from Wish on the same Windows machine | `DBG S ...` down `\\.\pipe\WinUAE` in a Python call, one range at a time | `DBG W ...` lines of 16 bytes, at most 64 bytes a call, each receipt checked and the range read back | no |
+| `FsuaeGdb` | a patched FS-UAE on the same machine, through the helper | a GDB-remote `m` packet over a loopback socket, answered from the emulator's frame handler | `M` packets of at most 64 bytes inside chip or slow memory, each answered `OK` | no |
 
-`FsuaeGdb` is the one a player on Linux can use: no console, no keypress, no
-`ssh`. The installed `fs-uae-gdb` accepts a memory-write (`M`) packet (checked live
-on #37 (Automap the Amiga version, not just the C64)), but Wish's
-product path only reads, so `AmigaTarget.write` refuses over it by choice. The
-server closes its *listening* socket when a client goes, so one connection is
-all a run of the emulator ever gets.
+`FsuaeGdb` is the one a player on Linux uses and `WinuaeLocalPipe` the one a
+player on Windows uses: no console, no keypress, no `ssh`. The two `ssh`
+transports are this project's test rig. `AmigaTarget.write` goes through a
+transport's `write_memory` when it has one and `AmigaTarget.can_write` says
+whether a write can reach the machine, which is what the Action buttons ask.
+`verify=False` skips WinUAE's read-back for a write the game consumes within a
+frame, such as the key buffer; FS-UAE has no read-back, only the emulator's
+`OK`. The server closes its *listening* socket when a client goes, so one
+connection is all a run of the emulator ever gets.
 
 **What was measured on a running machine.** Amiga Silver Blades (2026-09-08):
 the shipped `Automapper.poll()` named the area from the block the game itself
@@ -439,11 +445,20 @@ had loaded, followed a party through a turn and a step, refused to move on a
 step the map says is impassable and the game refused too, and held its fix
 while a shop menu was up. `automap/target.py`, `automap/live.py`,
 `automap/state.py`, `automap/render.py` and `goldbox/geo.py` were untouched by
-any of it. Amiga Pools of Darkness, on a patched FS-UAE: the tab named the area,
-the marker moved with the party indoors (1,2 east, then 2,2 east on `GEO21`), and
-the tab went blank on the overland. Curse's row was located on a running
-machine on two boots for "The party in memory" below; its map has not been
-followed live.
+any of it.
+
+Through Wish's own window on a patched FS-UAE, the marker matched the game's
+position line, and a step taken while Wish was closed showed on reopening with
+the same helper alive, on Pool of Radiance (New Phlan and the wilderness),
+Curse (Buccaneer Base, `GEO01`), Silver Blades (`GEO10`) and Pools of Darkness
+(`GEO21`, where the tab went blank on the overland). Under the test driver's
+`session --window`, which builds the same tab, the party was followed across an
+area change on Pool of Radiance (the three wilderness windows), Silver Blades
+(New Verdigris into The Ruins) and Curse (the Dalelands map and the sewers).
+**No area change has been watched through Wish's own window on any title.**
+On WinUAE 6.0.3 Wish's own window followed Pool of Radiance through a turn and
+two steps; Curse, Silver Blades and Pools of Darkness have been read only by the
+tools there, and Pools of Darkness not at all.
 
 ### What the shared code had to learn, and it is one method
 
@@ -467,7 +482,7 @@ is exactly when the pointer may move.
 | `_refused` | `automap/state.py` | requires **both** fixes to come from the status line, so it never fires on a backend whose every fix is `"memory"` |
 | `_running`'s cheap proof | `automap/state.py` | a status line proves a Gold Box game for free on the C64; on the Amiga only the resident map block can, which costs two round trips |
 | `RESIDENT_EVERY`, `PROVEN_FOR`, the 200 ms timer | `automap/state.py`, `automap/window.py` | tuned to a poll costing 14 ms of emulated time |
-| the live party tab | `automap/live.py`, `automap/actions.py` | the C64 save image at `Game.save_load_address`, and writes to C64 addresses |
+| the live party tab, the Action buttons, Level up, Fast Travel | `automap/live.py`, `automap/actions.py` | the C64 save image at `Game.save_load_address`, and writes to C64 addresses. An Amiga gets `automap/amigaparty.py`, `automap/amigaactions.py` and `automap/amigafasttravel.py` instead; Level up is off on every Amiga title |
 | combat, the combat log, the roll reader | `combat.py`, `combatlog.py`, `rolls.py`, `screen.py` | all read the C64 text screen |
 | the map loader | `automap/maps.py` | walks a D64 directory for `GEO*` files first, and reads Amiga disk images only when it finds none |
 
@@ -512,11 +527,15 @@ same search for one title.
 
 **`AmigaTarget.c64_memory` is `False`**, an optional capability the window reads
 with `getattr(target, "c64_memory", True)` the way it reads `halts_on_read`.
-The roster, the five live actions, Fast Travel and the combat reader all read
-C64 addresses, which on a 68000 are ordinary chip RAM: the reads succeed and
-decode the game's own unrelated bytes. `AutomapBinding._refresh_roster` treats
-such a target like a wrong game and withholds it from the buttons, and
-`poll_battle` reads no fight from it. `automap.busguard`'s `BusGuard.clear` reads
+The C64 roster, the five live actions, Fast Travel, Level up and the combat
+reader all read C64 addresses, which on a 68000 are ordinary chip RAM: the reads
+succeed and decode the game's own unrelated bytes. So `AutomapBinding._refresh_roster`
+never hands such a target to them: it calls `_refresh_amiga`, which gives the
+buttons the `automap/amigaactions.py` classes, the cards `amigaparty.read_party`
+and the Fast Travel row `automap/amigafasttravel.py`. `poll_battle` reads no
+fight from it and the window's Level up handler returns at once. A layout with
+no row of its own, or a machine that is not running the title the window was set
+up for, leaves every button greyed. `automap.busguard`'s `BusGuard.clear` reads
 the attribute too: it returns True before any read for such a target, so a
 halting Amiga transport is not asked for a byte of `$DD00` on every tick.
 
@@ -573,6 +592,12 @@ of a sweep and the helper handshake, because a poll runs on the window's own
 thread; the transport's own twenty seconds is for reads made off it. Each `connect()` re-reads the cached title's anchor at its base and, when
 it is gone, forgets the title and sweeps again without closing the socket; a
 different port gets a new transport.
+* **Writes go through the helper too.** It forwards `m` reads and `M` writes
+  and nothing else (a client's `k` would quit the player's game), and an `M` is
+  one to 64 bytes inside chip or slow memory, answered with the fork's own `OK`
+  or error. The helper publishes `writes` in its JSON and `connect()` sets
+  `FsuaeGdb.can_write` from it, so a helper that does not forward `M` leaves the
+  Action buttons grey. The socket is mode 0600 in a 0700 directory.
 
 ### The party in memory
 
@@ -695,7 +720,18 @@ not just the C64), the R2, R3 and gap-run comments):
 So with a writable emulator and no fight, a player would see Heal enabled on
 Pools of Darkness only, Save spells, Restore spells and Identify on Pool of
 Radiance, Silver Blades and Pools of Darkness, Quickfight off on none, and
-nothing on Curse until a Curse fight is read.
+nothing on Curse until a Curse fight is read. A button that is not enabled
+shows the approved "Action unsupported" sentence with the title and "(Amiga)"
+added (`amigaactions.unsupported`), and a title or backend that cannot write
+(`AmigaTarget.can_write` false) enables Save spells only. Level up is off on
+every Amiga title (`roster.set_levelling(False)`), and Heal needs `hp_max`
+measured. `docs/212-the-live-tab-per-title.md` has the per-title result.
+
+**The party cards read only the name, the hit points and the quickfight flag.**
+`window.amiga_snapshot` leaves class, level, experience, armour class and THAC0
+empty, so a card draws `?  L0`, experience 0 and armour class `--`, and the
+hit-point bar's tooltip still names the C64's source. This is a defect, not a
+design: each title's record carries those fields and the cards must show them.
 
 **Pool of Radiance's record block is one byte short.** Its loader allocates
 `malloc(0x11F)` (the size word before every record reads `0x123`, which is
@@ -728,11 +764,21 @@ across an exit), and the C64's view-drawn byte `$7EDB` has no Amiga
 counterpart. So the reading that matches the game is: the map is up while
 `g5ce1` (or, when it is 0, the area id) is `$50`/`$51`, and after that while
 the area id is still `$50`/`$51` and the square still holds the bytes it held
-on the map. A prototype of that rule in `AmigaTarget.fix` gave a world-map fix
-from 1 s after `YES` on entry, held it through the stale square on exit, and
-gave the sewer's `0,0 S` on the first poll after the script placed the party,
-with the tab on `GEO03` at that square. The live run is in
-[`50-experiments.md`](50-experiments.md), "Curse's world map on the Amiga".
+on the map. `AmigaTarget._world_map_fix` is that rule, behind
+`AmigaMachine.world_map`, and it gave a world-map fix from 1 s after `YES` on
+entry, held it through the stale square on exit, and gave the sewer's `0,0 S` on
+the first poll after the script placed the party, with the tab on `GEO03` at
+that square. It costs two round trips a poll on Curse. It cannot tell an
+arriving script that places the party on the very square the map left: the map
+stays up until the area id changes. The live run, through the test driver's
+`session --window`, is in [`50-experiments.md`](50-experiments.md), "Curse's
+world map on the Amiga"; Wish's own window has not been on the Dalelands map.
+
+**With only Amiga disks configured the world-map tab has no route page.** The tab
+knows it is on the world map, the node and the destination, but
+`automap/routes.py` reads `ECL50`, `ECL51` and `GDRIVE02` from C64 disks only,
+and the Amiga marker cells for the Dalelands places have not been found (the
+scripts are `ECL.GLB` blocks 23 and 24, byte for byte).
 
 **`ECL.GLB` block numbers are not area ids.** Block 0 is a table of 25
 (area id, block) word pairs; area `$50` is block 23 and `$51` block 24. The
@@ -748,9 +794,12 @@ statements (`SAVE` x, y, facing, then `NEWECL area`) into bytes past the end of
 the loaded script, point the step entry at them, and deliver one key. The
 game's interpreter then makes the area change, with its own loader, disk
 prompt, came-from byte and arriving script. Measured under `fs-uae-gdb` in
-three titles: Curse (2 trips), Pool of Radiance (4) and Pools of Darkness (3).
-Each started within one frame of the key, and the party walked afterwards.
-Silver Blades was read from its code and not run.
+all four titles: Curse (2 trips), Pool of Radiance (4) and Pools of Darkness
+(3), then FT-L1 on Curse, Pool of Radiance and Silver Blades (a trip from New
+Verdigris to The Ruins and its Return). Each started within one frame of the
+key, and the party walked afterwards. **A Silver Blades trip to area 4 never
+finished:** the game stayed on "LOADING...PLEASE WAIT" for 12 minutes with the
+step entry still pointing at the statements, and why is not known.
 
 The step entry is the word the main loop passes to the interpreter once a
 forward key leaves the 3D menu, before the step is taken. Only `vm_init_ecl`
@@ -766,7 +815,7 @@ writes it, so the next script load also clears a redirect.
 | `SAVE` targets for the square | `$C04B`, `$C04C`, `$C04D` (facing 0-3) | same | same | variables `$34`, `$35`, `$11` |
 | one-key buffer (flag, character) | none | `g3804`, `g3805` | `g4f6c`, `g4f6d` | `g5742`, `g5743` |
 | menu kind / menu text | none (the menu is in locals) | `g1c24` / `g3342` | `g2384` / `g4a5e` | `g235e` / `g4f34` |
-| **Grade** | CONFIRMED: code and 4 trips | CONFIRMED: code and 2 trips | PROBABLE: code only | CONFIRMED: code and 3 trips |
+| **Grade** | CONFIRMED: code and 4 trips | CONFIRMED: code and 2 trips | CONFIRMED for the 2 trips to The Ruins and back; a trip to area 4 hung, so `automap/amigatrip.py` still holds its row unconfirmed | CONFIRMED: code and 3 trips |
 
 **The key.** In Curse, Silver Blades and Pools of Darkness, writing `01 b8`
 (pending, keypad 8) to the one-key buffer is read as a forward key. Pool of
@@ -784,7 +833,8 @@ and the key buffer is empty. At a "PRESS RETURN" text the kind read 2: 4 of 4
 reads in Curse, 2 of 2 in Pools of Darkness. A key sent at the wrong prompt
 was read and ignored at a "PRESS RETURN" text (Curse) and at a YES/NO menu
 (Pool of Radiance), one sample each. Pool of Radiance has no menu global, so
-its gate is the mode and view bytes only.
+its gate is the mode and view bytes only, and the gadget count below does not
+tell its world menu from camp.
 
 **Where the statements go.** The statements are 21 bytes, 27 with the
 area-file `SAVE`. No reachable statement in any Pool of Radiance (29),
@@ -795,13 +845,19 @@ counts; the next section has the count, the free bytes per area and what the
 two scripts with 2 free bytes can use instead.
 
 **What the arriving script does.** It runs as it does for a walked exit, so
-it may place the party itself. On a Return in Curse and in Pools of Darkness
-it moved the party to its own arrival square, over the statements. Arriving in
-Curse's Tilverton from the sewers replayed the game's opening ("all your gear
-is gone"). The C64 trip runs the same scripts. In Pool of Radiance a trip out
-of the wilderness grid into New Phlan worked, where the C64 refuses it. It
-left fragments of the wilderness picture around the 3D frame. A trip onto the
-grid needs `$49C3`/`$49C4` written, as on the C64.
+it may place the party itself. On a Return in Curse, Silver Blades and Pools of
+Darkness it moved the party to its own arrival square, over the statements
+(Curse 7,13 E, the same square the C64 lands on; Silver Blades 15,8 W). Arriving
+in Curse's Tilverton from the sewers replayed the game's opening ("all your gear
+is gone"), on the C64 too; on the Amiga the party's items were still there
+afterwards. In Pool of Radiance a trip out of the wilderness grid into New Phlan
+worked, where the C64 refuses it, and left fragments of the wilderness picture
+around the 3D frame; a `SAVE` of `$49E6` did not clear them and the walked boat
+exit leaves none. A trip onto the grid with `$49C3`/`$49C4` written landed on the
+written square in 3 of 3 trips, then the game asked the boat question. A jump
+to the dock lands on the recorded square (2 of 2), where the walked boat lands on
+15,1 W. Standing on a door square and sending the forward key ran the door's own
+exit and question.
 
 **Setting the program counter is possible but not needed.** `fs-uae-gdb`'s
 `P` packet cannot write PC or SR, and its A-register case writes past the
@@ -814,6 +870,16 @@ and 3 of 30 idle samples were in supervisor code, so it is not safe there.
 The three live runs, the static reading per title and the open design
 questions are the R5 comments on #37 (Automap the Amiga version, not just the
 C64).
+
+**What the window offers.** `automap/amigafasttravel.py` offers a trip only when
+the title's row in `automap/amigatrip.py` is `confirmed`, the target can write,
+the gate passes and the area's script has the free bytes. A trip that behaves
+differently from the C64's stays held (`Difference.offered` False) and the
+button reads the approved unsupported sentence. Held today: Return on every
+title; Curse's arrival in Tilverton; on Pool of Radiance every trip (`weak_gate`),
+leaving the grid, doors and a leg onto the grid. Silver Blades' row is not
+confirmed, so it offers nothing; Pools of Darkness has no area table, so its list
+is empty.
 
 ### Fast Travel's free bytes, init entries and gates, read from the code
 
@@ -881,9 +947,8 @@ that no statement from another entry covers, enough for the 52-byte message,
 with that risk; PROBABLE, because that count does not look for operands naming
 those bytes.
 
-**Pool of Radiance's world menu leaves its gadgets on the window.** The
-mechanism is CONFIRMED from the code and the marker is PROBABLE until read
-live: `displayInput` (`0x319FE`) adds one boolean gadget per menu
+**Pool of Radiance's world menu leaves its gadgets on the window.** CONFIRMED
+from the code and live, but the gadgets are no marker: `displayInput` (`0x319FE`) adds one boolean gadget per menu
 word to the game window (`[h32+0x28]`) with `AddGadget` at position 0, and
 removes them all with `RemoveGadget` on each of its six ways out, so while the menu waits
 the window's `FirstGadget` (`+0x3E`) chain holds them. The gadgets are in the
@@ -892,11 +957,14 @@ routine's stack frame, `0x2C` bytes each: `TopEdge` (`+0x06`) 192,
 eight times the word's column and `Width` (`+0x08`) eight times its length plus
 2. The world menu (`0x2F39E`, view 1) has no prefix, so its six gadgets, head
 first, are IDs 1005 to 1000 at left 232, 176, 120, 80, 40, 0 and width 34, 50,
-50, 34, 34, 34. The 3D menu is waiting when the mode byte is 4, the view is 1
-and that chain is at the head of the list. To settle it: on FS-UAE at the
-3D menu, read `[[h32+0x28]+0x3E]` and walk `+0x00` six times, expecting those
-values; at a YES/NO prompt and at a "PRESS RETURN" text, expect another
-chain or none.
+50, 34, 34, 34. Read live (FT-L1), the chain matches that on every menu, and its
+length equals the number of choices: the world menu and camp both hold six
+gadgets with IDs 1005 to 1000, the camp rest-time menu seven (1006 to 1000), the
+armourer's YES/NO two (1001, 1000) and a shop menu five (1004 to 1000). So the
+gadget count cannot tell the world menu from camp, and `weak_gate` in
+`automap/amigatrip.py` stays until another read does (gadget positions or text,
+or the menu text). Whether the chain is absent at a "PRESS RETURN" text was not
+reached.
 
 **Every title sets the area byte before the new script loads.** CONFIRMED
 from the four `NEWECL` handlers: each stores the came-from word, then the new
@@ -923,12 +991,16 @@ scripts write, and that the VM's `$7F12` reaches `g5858` (Curse) and `g5191`
 direct write should set both. Pools of Darkness loads a fixed `ECL1` and has
 no such byte.
 
-**Silver Blades' gate is Curse's.** PROBABLE, from the code: at mode 4
-(`g525c`, dispatch at `0x2EDB2`) the world menu calls the horizontal menu at
-`0x2A736`, which sets the menu kind `g2384` to 1 and copies the menu text into
-`g4a5e`; `g2384` is 2 in the key wait at `0x29FFC`. The one-key buffer
+**Silver Blades' gate is Curse's.** CONFIRMED from the code and live (FT-L1): at
+mode 4 (`g525c`, dispatch at `0x2EDB2`) the world menu calls the horizontal menu
+at `0x2A736`, which sets the menu kind `g2384` to 1 and copies the menu text
+into `g4a5e`; `g2384` is 2 in the key wait at `0x29FFC`. The one-key buffer
 (`g4f6c` flag, `g4f6d` character) is filled and read by the same routine as
-Curse's `g3804`, address for address. FT-L1 reads it live.
+Curse's `g3804`, address for address, and a `01 b8` there was consumed at once.
+At the 3D menu `g4a5e` read "Area Cast View Encamp Search Look" (spaces, not
+Curse's NULs), `g2384` 1 and `g525c` 4; in camp `g2384` and `g525c` read 2 and
+`g4a5e` the camp bar; during the "LOADING" overlay `g2384` read 2 and `g525c` 4.
+A "PRESS RETURN" text was not reached, so that reading is still unconfirmed.
 
 **Curse's opening in Tilverton has no "done" flag.** CONFIRMED from the
 script: area 1's init entry compares the came-from word `$4BF2` with 1 and
@@ -937,7 +1009,8 @@ opening. No quest flag takes part. The C64's `ECL01` has the same test. No
 script sends a party to area 1 (0 of 47 `NEWECL` statements in Curse's 25
 scripts), so a party reaches area 1's init from another area only on a new
 game and on a trip. So every Fast Travel or Return into area 1 from another
-area replays the opening; PROBABLE on the C64, which FT-C1 runs. PROBABLE: a
+area replays the opening; CONFIRMED live on the Amiga and on the C64 (FT-L1 and
+FT-C1: Return from the sewers on both). PROBABLE: a
 save made in area 1 holds `$4BF2` = 1, because the word takes the current
 area once the init entry returns, so loading it does not replay the opening.
 SPECULATIVE: writing the area byte `g5ce1` to 1 just before the key would make
@@ -946,7 +1019,7 @@ so a script `SAVE` cannot do it. To settle it: in FT-L1, arm a Curse trip from
 area 3 to area 1 with `g5ce1` = 1 written with the key, and check that no
 opening text appears and that the came-from word reads 1.
 
-### What is not built
+### The flags, the fork and the maps
 
 **The window offers it only behind `WISH_EXPERIMENTAL_AMIGA_FSUAE`.** With the
 variable set to `1`, `true`, `yes` or `on`, `wish/backends.py` lists a row named
@@ -957,12 +1030,13 @@ The row is not `disturbs` (a poll measured about 20 ms, served from the running
 machine's frame handler) and polls every 200 ms, like VICE. Its removal
 condition is written beside the flag's name in `wish/backends.py`.
 
-**The same flag decides whether Wish names Pools of Darkness from its Amiga
+**Either Amiga flag decides whether Wish names Pools of Darkness from its Amiga
 disks and offers its folder row.** Pools of Darkness never shipped on the
-Commodore 64, so no C64 container describes it. With the flag on,
+Commodore 64, so no C64 container describes it. With `WISH_EXPERIMENTAL_AMIGA_FSUAE`
+or `WISH_EXPERIMENTAL_AMIGA_WINUAE` on (`backends.amiga_only_titles`),
 `automap.maps.AMIGA_ONLY_TITLES` (Pools of Darkness) joins the titles
 Preferences has a disk-folder row for, and the map loader names a disk whose
-volume says `POD 3` or `Pools of Darkness` as that title. With the flag off
+volume says `POD 3` or `Pools of Darkness` as that title. With both off
 neither happens, and a folder holding only Pools of Darkness disks gives no
 maps.
 
@@ -973,7 +1047,11 @@ listens on 2345 unless `remote_debugger_port=<port>` says otherwise; 2345 is the
 port the row looks for, so a different port is not found. The fork closes its
 listening socket when a client disconnects, which the helper is there to keep
 from happening when Wish closes. The setup hint says only "the fork, not stock FS-UAE"; the branch
-name and the options live here.
+name and the options live here. The machine has to be the A500 of
+`tools/amiga/goldbox-a500.uae`: the sweep and every range check read only 512K
+of chip memory at `$000000` and 512K of slow memory at `$C00000`
+(`automap.amiga.MEMORY`), so a configuration with fast RAM, more chip RAM or no
+slow RAM waits on "Waiting to connect..." for ever.
 
 **The maps come from the C64 disks when there are any, and otherwise from
 loose Amiga disk images.** `automap.maps.load_maps_titled` reads the C64 disks
@@ -998,12 +1076,13 @@ window-local x and y in the block `[h32+0x98]`, valid only while that block's
 indoors word is 0, and the heading is the facing byte, already 0 to 7.
 `docs/165-amiga-savegame.md` has the hunk layout.
 
-**No area transition has been watched.** The party stayed in one area, so
-nothing here says whether the `GEO` pointer moves on an area change or the
-buffer is refilled in place. The automapper is right either way, because it
-re-reads the pointer, but the fact is unmeasured.
+**Whether the `GEO` pointer moves on an area change is unmeasured.** The
+automapper is right either way, because it re-reads the pointer every poll.
+Area changes have been watched under the test driver (see "What was measured on
+a running machine"), and the tab followed the arriving area each time, but none
+has been shown through Wish's own window.
 
-### The WinUAE backend: its transport and its missing row
+### The WinUAE backend: its transport and its row
 
 Wish and WinUAE on one Windows machine talk through WinUAE's own named pipe,
 `\\.\pipe\WinUAE` (then `WinUAE_1` to `WinUAE_9`). `automap/winuae.py` opens it
@@ -1037,12 +1116,25 @@ directory and opens nothing, because WinUAE serves one client at a time.
   seconds without a new piece, with the
   window shown its waiting line meanwhile. Leftover dump files of this process
   are deleted when the pipe is opened and when it is closed.
-* **The row is not defined yet.** Its name and setup hint are interface text and
-  wait for Donald's wording, so `WISH_EXPERIMENTAL_AMIGA_WINUAE` offers nothing
-  until `wish.winuae.AMIGA_WINUAE` exists. With either Amiga flag on, the window
-  loads the Amiga-only titles' maps and offers the Pools of Darkness folder.
-* **Never run against a real WinUAE.** The tests use a fake pipe; the
-  Windows-only tests that use a real one have not run yet.
+* **Writes are `DBG W <addr> <bytes>` lines of at most 16 bytes, up to 64 bytes a
+  call inside chip or slow memory.** Each reply must be a `Wrote ... at <address>.B`
+  receipt for the byte and address sent, and the range is read back with `S`
+  and compared unless the caller passes `verify=False`. The write is not atomic:
+  a failure part-way leaves the earlier lines written, and the error says how
+  many bytes went. The game redraws a changed field on its next redraw of the
+  row or the sheet; the pipe does not make it.
+* **The row exists.** `wish.winuae.AMIGA_WINUAE` is "WinUAE (Amiga)", with the
+  hint "Run the game in WinUAE on this computer.", behind
+  `WISH_EXPERIMENTAL_AMIGA_WINUAE`; it is listed before the FS-UAE row. With either
+  Amiga flag on, the window loads the Amiga-only titles' maps and offers the
+  Pools of Darkness folder.
+* **It has run in Wish on Pool of Radiance only.** On WinUAE 6.0.3 Wish's own
+  window followed the party through a turn and two steps with the right marker.
+  After a restart of Wish the explored squares were lost; the notes are now saved
+  as each new square is revealed, and that has not been run in a Windows build.
+  Curse, Silver Blades and Pools of Darkness have not been run in Wish on WinUAE.
+  The tests use a fake pipe, and the ones that use a real named pipe run only on
+  Windows.
 
 ## Still open
 

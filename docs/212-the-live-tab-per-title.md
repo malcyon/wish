@@ -10,7 +10,8 @@ Curse of the Azure Bonds and sixteen for Secret of the Silver Blades.
 
 This page is what three driven sessions found. The results themselves are in
 `docs/139`'s matrix, which is where somebody looks them up; what is here is
-the run, the method and the things that went wrong on the way.
+the run, the method and the things that went wrong on the way. Sections 0 to 6
+are the Commodore 64 runs; section 7 is the same tab on the four Amiga titles.
 
 ## 0. The answers
 
@@ -261,3 +262,47 @@ specimen tree, so the run does not depend on anything in scratch:
 | Pool of Radiance | `WISH-SPEC-por-amiga-newphlan-c64-resave.D64` | a town, so no wandering monsters, and seventeen items with sixteen readied |
 | Curse | `WISH-SPEC-curse-party-with-items.D64` | the only Curse save anybody has with an item area in it (`#32 (One Curse session, to get a party with items)`), added to the tree by this work |
 | Silver Blades | `WISH-SPEC-ssb-d-engine-resave-walked.D64` | an engine-written save of a converted party, standing in `GEO10` |
+
+## 7. The same tab on the Amiga
+
+The four Amiga titles behind `WISH_EXPERIMENTAL_AMIGA_FSUAE` (FS-UAE, Linux) and
+`WISH_EXPERIMENTAL_AMIGA_WINUAE` (WinUAE, Windows); FS-UAE on Windows or macOS is
+not supported. The mechanism is [`96`](96-live-memory-automapper.md) and the
+buttons' gate is [`102`](102-live-actions.md#on-the-amiga). Each cell below is
+what the code does at this commit; a cell with a result is graded by how it was
+seen.
+
+| | Pool of Radiance | Curse | Silver Blades | Pools of Darkness |
+|---|---|---|---|---|
+| Marker and facing indoors, FS-UAE, in Wish's own window | CONFIRMED: turns, steps, and a step taken while Wish was closed | CONFIRMED (`GEO01`, Buccaneer Base) | CONFIRMED (`GEO10`) | CONFIRMED (`GEO21`) |
+| Same, WinUAE, in Wish's own window | CONFIRMED: a turn and two steps; the earlier squares were lost on a restart, since fixed and not re-run | not run | not run | not run |
+| Area name | named | named | named | the map file only: no area table exists |
+| Outdoors | the wilderness page, drawn from the Amiga disks, followed across the three windows by the test driver | a world-map fix with node and destination, followed by the test driver; no route page with only Amiga disks | none: The Ruins is an ordinary area | blank tab, area strip and status line on the overland |
+| Party cards | name, hit points and quickfight flag; class, level, experience and armour class are stand-ins | same | same | same |
+| Heal | off: maximum hit points not measured | off | off: maximum not read again after a step | on |
+| Save spells, Restore spells, Identify | on | off: fight value from the code only | on | on |
+| Quickfight off | off: writing 0 did not restore the turn menu | off | off | off: never written |
+| Level up | off | off | off | off |
+| Fast Travel | held behind the weak menu gate | every area except Tilverton | not offered: row unconfirmed, a trip to area 4 hung | no area list: "No areas are known for Pools of Darkness." |
+| Return | held | held | held | held |
+
+**The cards are wrong on every Amiga title.** A card draws `?  L0`, experience 0
+and armour class `--`, and the hit-point tooltip names the C64's source. The cards
+must show each title's real class, level, experience, armour class and maximum
+hit points; none of those fields has been decoded for the Amiga yet. UNKNOWN:
+whether each title's record decoder gives what the game's View sheet prints.
+
+**Silver Blades' The Ruins prints a coordinate that is not the map square.** The
+game's status line read `x,y` equal to the engine's `(x - 11, y + 13)` mod 16 on
+four readings in `GEO20`, and the engine square agreed with the walls. The tab
+draws the engine square, so its label differs from the line the player reads.
+PROBABLE: one area, four readings. Whether other Silver Blades areas do this is
+not known.
+
+**A machine configured with fast RAM, more chip RAM or no slow RAM never
+connects**, because the sweep reads only the A500's 512K chip and 512K slow RAM
+(`automap.amiga.MEMORY`).
+
+**Not shown on any title:** an area change while Wish's own window holds the
+connection. Not checked at this commit: whether the quest log and the party-strength
+line keep a C64's last values after a switch to an Amiga.

@@ -176,10 +176,10 @@ before/after pairs, given the hit die it rolled.
 the right end of the class-and-level line, hidden unless that character has the
 experience for another level. The card is which character it means.
 
-**Pool of Radiance only.** `GEN` is a different build in every title and none of
-Pool of Radiance's addresses survives into Curse's, so `level_up_blockers`
-refuses any other title by name and the button is not drawn at all —
-[levelling](135-levelling.md), "One title, and it says so".
+**Pool of Radiance, Curse and Silver Blades.** `GEN` is a different build in every
+title, so each title's trainer was measured on its own (`levels.TRAINER_MEASURED`),
+and `level_up_blockers` refuses any other title by name and the button is not
+drawn at all — [levelling](135-levelling.md), "One title, and it says so".
 
 **It does not ask which class.** A multi-class character with two ready gets
 the one whose threshold *after* the level it is about to gain is largest —
@@ -278,6 +278,52 @@ this and `#151 (The automapper loses VICE and cannot get back in, because it nev
 
 **`FastTravelBar` does not use `_OnePoll`** and reads `$6E11` three times per
 refresh where `ActionBar` reads it once.
+
+---
+
+## On the Amiga
+
+**An attached Amiga never reaches the C64 code above.** Its addresses on a 68000
+are ordinary chip RAM, so `AutomapBinding._refresh_roster` hands an Amiga target
+to `_refresh_amiga`, and `automap/amigaactions.py` supplies the five actions.
+Each class subclasses its C64 twin, so the label, the description, the
+confirmation and every outcome sentence are the ones in this page. What differs
+is where the bytes are: `automap/amigaparty.py` walks the party's linked list of
+heap records ([the party in memory](96-live-memory-automapper.md#the-party-in-memory))
+and the title's `PartyRow` says which field each action writes.
+
+**One gate per action, title and emulator.** `legality` is enabled only when all
+of these hold, and otherwise the verdict holds one reason:
+
+| condition | where it comes from |
+|---|---|
+| the title has a party row and the action is in its `confirmed` set | `amigaparty.ROWS`: the field was written, seen on the game's own screen and kept across a step |
+| the row's `measured` set has what the action needs | Heal needs `hp_max`; on Curse every action also needs `combat_value`, because Curse's fight value is from the code only (`REQUIRES`, `FIGHT_VALUE_FROM_CODE`) |
+| the target can write, except Save spells, which only reads | `AmigaTarget.can_write`: `M` packets through the FS-UAE helper, `DBG W` lines through the WinUAE pipe |
+| the mode byte reads | `amigaparty.mode`, one byte per title; it is 5 in a fight (Curse's value is from the code only) |
+| the mode is not a fight, unless the row lists the action in `combat_legal` | no row lists any |
+
+A button that fails any of these is greyed with `ERROR: Action unsupported on
+<title> (Amiga).`; with no emulator attached it reads the C64's no-emulator
+sentence. Today **Heal is enabled on Pools of Darkness only; Save spells,
+Restore spells and Identify on Pool of Radiance, Silver Blades and Pools of
+Darkness; Quickfight off on no title** (its field is not `confirmed` anywhere);
+and every button on Curse is off. Level up is off on every Amiga title, because
+no Amiga trainer is wired in. [The per-title table](212-the-live-tab-per-title.md#7-the-same-tab-on-the-amiga)
+has the reason for each cell.
+
+**Spell lists never cross platforms.** Store and Restore keep each character's
+raw memorised span under `amiga/<amiga.MACHINES key>`, so a list stored on the C64
+is never written into an Amiga record. `QuickfightWatcher` has an Amiga twin
+that reads the mode from `amigaparty.mode`; it writes nothing while Quickfight
+off is not enabled.
+
+**A write shows when the game next redraws the row or the sheet**, not when
+the byte changes: Heal's new hit points appeared on opening VIEW. A write is
+checked by reading it back on WinUAE; FS-UAE has no read-back, only the
+emulator's `OK`. Fast Travel and Return are `automap/amigafasttravel.py`, which
+writes the game's own move statements past the area script
+([the mechanism](96-live-memory-automapper.md#fast-travel-and-return-without-the-program-counter)).
 
 ---
 
