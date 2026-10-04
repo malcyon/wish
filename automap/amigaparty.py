@@ -23,7 +23,8 @@ where memory keeps the item-list head.
 Everything here reads; nothing writes. `row_for`, `mode` and `read_party` take
 a target the way `automap/amigaactions.py` calls them. A row's `confirmed` set
 names only the actions whose field was written, seen on the game's own screen
-and kept across a game step; each row's comments grade every value.
+and kept across a game step (`level-up` is the Level up button on the party
+cards, proven by a press in the running game); each row's comments grade every value.
 """
 
 from __future__ import annotations
@@ -277,7 +278,8 @@ ROWS: dict[str, PartyRow] = {
         # the written maximum, but it was not read again after a step, so it
         # is not measured.
         **_later(amiga_port.SILVER_BLADES_DELTAS, 0x146),
-        confirmed=frozenset({"heal", "store-spells", "restore-spells", "identify"}),
+        confirmed=frozenset({"heal", "store-spells", "restore-spells", "identify",
+                            "level-up"}),
         measured=frozenset({"combat_value"})),
     # `/Pools of Darkness`: save 0x270E0 walks `g57a4` through +0x00, at most
     # eight; writer 0x26338 writes 0x194 with the item count put in +0x08 for
@@ -309,7 +311,8 @@ ROWS: dict[str, PartyRow] = {
                     1, 0x07),
         # 0x185: read 1 on a party the computer was playing; never written.
         quickfight=Spot(amiga_pod.QUICKFIGHT),
-        confirmed=frozenset({"heal", "store-spells", "restore-spells", "identify"}),
+        confirmed=frozenset({"heal", "store-spells", "restore-spells", "identify",
+                            "level-up"}),
         measured=frozenset({"hp_max", "combat_value"})),
 }
 

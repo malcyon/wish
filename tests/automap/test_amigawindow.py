@@ -16,7 +16,7 @@ from gamedata import synthetic_geo
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from automap import actions as engine
-from automap import amiga, amigaactions, amigaparty, c64, live
+from automap import amiga, amigaactions, amigalevelup, amigaparty, c64, live
 from automap.area import NOT_OURS, RESIDENT_GEO
 from automap.state import Automapper
 from automap.target import MemoryTarget
@@ -460,3 +460,185 @@ def test_a_refresh_reads_the_mode_byte_once_however_many_actions_ask(measured):
     # The control: several of Pool's actions are confirmed and reach the mode.
     assert len(window.actions_bar.actions) == 5
     assert len(amigaparty.ROWS[POOL].confirmed) > 1
+
+
+# -- Level up on a title whose row confirms it ------------------------------------
+
+POD_NAME, POD_SLOT, POD_NEXT = 0x60, 0xBD, 0x00
+POD_LEVELS, POD_EXPERIENCE = 0x9D, 0x44
+
+
+def pod_xp(name, level):
+    from goldbox import levels
+    return levels.POOLS_OF_DARKNESS.at_level(name, level).experience
+
+
+def fighter(level):
+    rec = bytearray(amigaparty.ROWS[POOLS_OF_DARKNESS].record_size)
+    rec[0x58], rec[0x79] = 5, 18
+    rec[POD_LEVELS + 2] = level
+    rec[POD_EXPERIENCE:POD_EXPERIENCE + 4] = pod_xp("fighter", level + 1).to_bytes(4, "big")
+    rec[0x81], rec[0x191] = 80, 50
+    return rec
+
+
+def magic_user():
+    rec = bytearray(amigaparty.ROWS[POOLS_OF_DARKNESS].record_size)
+    rec[0x58], rec[0x73], rec[0x79] = 0, 18, 14
+    rec[POD_LEVELS + 5] = 1
+    rec[POD_EXPERIENCE:POD_EXPERIENCE + 4] = pod_xp("magic-user", 2).to_bytes(4, "big")
+    rec[0x81] = rec[0x191] = 6
+    return rec
+
+
+def with_characters(window, target, records):
+    """Put each template over the party member at its index, keeping the name,
+    party slot and next pointer the list needs."""
+    for i, template in enumerate(records):
+        at = HEAP + 0x400 * i
+        old = bytes(target.ram[at - SLOW:at - SLOW + len(template)])
+        new = bytearray(template)
+        new[POD_NAME:POD_NAME + 16] = old[POD_NAME:POD_NAME + 16]
+        new[POD_SLOT] = old[POD_SLOT]
+        new[POD_NEXT:POD_NEXT + 4] = old[POD_NEXT:POD_NEXT + 4]
+        target.put(at, bytes(new))
+    window._refresh_roster()
+
+
+def pod_window(records, **kwargs):
+    window, target = attached(POOLS_OF_DARKNESS, people=PEOPLE[:len(records)],
+                              **kwargs)
+    with_characters(window, target, records)
+    return window, target
+
+
+def level_up_shown(window, index):
+    button = window.roster.cards[index].level_up
+    return not button.isHidden() and button.isEnabled()
+
+
+def spoken(window, monkeypatch):
+    lines = []
+    monkeypatch.setattr(window.messages, "say",
+                        lambda text, detail="", alarm=False, **k:
+                        lines.append((text, alarm)))
+    return lines
+
+
+def test_level_up_is_offered_to_the_member_the_trainer_would_train():
+    window, _ = pod_window([fighter(8), fighter(9)[:0x80] + bytes(0x114)])
+    assert level_up_shown(window, 0)
+    assert not level_up_shown(window, 1)        # the second has no experience
+    assert window.roster.cards[0].level_up.toolTip() == "level up as fighter"
+
+
+@pytest.mark.parametrize("key, offered", [
+    (POOL, False), (CURSE, False), (SILVER, True), (POOLS_OF_DARKNESS, True)])
+def test_only_a_title_whose_row_confirms_level_up_trains_anyone(
+        monkeypatch, key, offered):
+    monkeypatch.setattr(amigalevelup, "ready_classes",
+                        lambda raw, key: ("fighter",))
+    window, _ = attached(key)
+    party = amigaparty.read_party(window.mapper.target)
+    expected = {m.address for m in party} if offered else set()
+    assert window._amiga_trainable(party) == expected
+
+
+def test_nothing_is_trained_in_a_fight_or_on_a_read_only_machine(monkeypatch):
+    monkeypatch.setattr(amigalevelup, "ready_classes",
+                        lambda raw, key: ("fighter",))
+    row = amigaparty.ROWS[POOLS_OF_DARKNESS]
+    window, target = attached(POOLS_OF_DARKNESS, mode=row.combat_value)
+    assert window._amiga_trainable(amigaparty.read_party(target)) == set()
+    window, target = attached(POOLS_OF_DARKNESS, can_write=False)
+    assert window._amiga_trainable(amigaparty.read_party(target)) == set()
+
+
+def test_pressing_level_up_plans_and_writes_the_member(monkeypatch):
+    window, target = pod_window([fighter(8), fighter(8)])
+    lines = spoken(window, monkeypatch)
+    seen = []
+    real_plan, real_write = amigalevelup.plan_member, amigalevelup.write_plan
+    monkeypatch.setattr(amigalevelup, "plan_member", lambda m, key, **k: (
+        seen.append(("plan", m.name, key)) or real_plan(m, key, **k)))
+    monkeypatch.setattr(amigalevelup, "write_plan", lambda t, m, p: (
+        seen.append(("write", m.name, t)) or real_write(t, m, p)))
+    window.roster.cards[1].level_up.click()
+    assert seen == [("plan", "BRYNNA", POOLS_OF_DARKNESS),
+                    ("write", "BRYNNA", target)]
+    assert target.ram[HEAP + 0x400 + POD_LEVELS + 2 - SLOW] == 9
+    assert target.ram[HEAP + POD_LEVELS + 2 - SLOW] == 8        # ALDRIC untouched
+    assert all(HEAP + 0x400 <= addr < HEAP + 0x800 for addr, _ in target.writes)
+    assert lines == [("level up: BRYNNA is now a level 9 fighter!", False)]
+
+
+def test_a_trainer_that_will_not_train_writes_nothing(monkeypatch):
+    window, target = pod_window([fighter(8)])
+    lines = spoken(window, monkeypatch)
+
+    def stop(*_a, **_k):
+        raise amigalevelup.CannotLevel("the record changed after it was read")
+
+    monkeypatch.setattr(amigalevelup, "write_plan", stop)
+    window._level_up(0)
+    assert target.writes == []
+    assert lines == [("level up: ALDRIC cannot level: the record changed after "
+                      "it was read", True)]
+
+
+def test_the_real_planner_stops_before_a_write_when_the_record_changed(monkeypatch):
+    window, target = pod_window([fighter(8)])
+    real = amigalevelup.plan_member
+
+    def plan_then_change(member, key, **k):
+        plan = real(member, key, **k)
+        target.put(member.address + 0x81, bytes([1]))   # the game moved on
+        return plan
+
+    monkeypatch.setattr(amigalevelup, "plan_member", plan_then_change)
+    lines = spoken(window, monkeypatch)
+    window._level_up(0)
+    assert target.writes == [] and lines[0][1] is True
+
+
+def test_a_magic_user_is_asked_for_the_spell_and_it_is_learned(monkeypatch):
+    from PyQt6.QtWidgets import QInputDialog
+    window, target = pod_window([magic_user()])
+    monkeypatch.setattr(window, "_names_for_spells", lambda: {})
+    asked = []
+
+    def pick(parent, title, label, items, current, editable):
+        asked.append((label, list(items)))
+        return "spell 10", True
+
+    monkeypatch.setattr(QInputDialog, "getItem", staticmethod(pick))
+    window._level_up(0)
+    assert asked[0][0] == "ALDRIC learns one new spell:"
+    assert asked[0][1] == [f"spell {i}" for i in range(9, 22)]
+    book = target.ram[HEAP + 0x159 - SLOW:HEAP + 0x159 - SLOW + 2]
+    assert book[(10 - 1) // 8] & 1 << (10 - 1) % 8
+    assert target.ram[HEAP + POD_LEVELS + 5 - SLOW] == 2
+
+
+def test_closing_the_spell_dialog_writes_nothing(monkeypatch):
+    from PyQt6.QtWidgets import QInputDialog
+    window, target = pod_window([magic_user()])
+    monkeypatch.setattr(window, "_names_for_spells", lambda: {})
+    monkeypatch.setattr(QInputDialog, "getItem",
+                        staticmethod(lambda *a, **k: ("", False)))
+    window._level_up(0)
+    assert target.writes == []
+
+
+@pytest.mark.parametrize("how", ["fight", "read-only", "other-title"])
+def test_a_press_that_the_gate_would_not_offer_writes_nothing(how):
+    window, target = pod_window([fighter(8)])
+    if how == "fight":
+        target.put(BASE + amigaparty.ROWS[POOLS_OF_DARKNESS].mode,
+                   bytes([amigaparty.ROWS[POOLS_OF_DARKNESS].combat_value]))
+    elif how == "read-only":
+        target.can_write = False
+    else:
+        window.mapper.title_check = NOT_OURS
+    window._level_up(0)
+    assert target.writes == []

@@ -61,6 +61,7 @@ from . import (
     amiga,
     amigaactions,
     amigafasttravel,
+    amigalevelup,
     amigaparty,
     amigatrip,
     combat,
@@ -1504,9 +1505,12 @@ class AutomapBinding(QObject):
         """The Amiga's half of `_refresh_roster`.
 
         An Action button is enabled by `amigaactions` and nothing else, so the
-        gate is the one in that module. Fast Travel and Level up are not built
-        for the Amiga: they stay greyed with the approved sentence. The cards
-        come from `amigaparty.read_party`; the C64's readers are never called.
+        gate is the one in that module. Fast Travel stays greyed with the
+        approved sentence unless the title's trip is confirmed. A card's Level
+        up button is greyed the same way, then given back to each member the
+        title's trainer would train, on a title whose row confirms `level-up`
+        (`_show_amiga_party`). The cards come from `amigaparty.read_party`;
+        the C64's readers are never called.
         """
         reason = amigaactions.unsupported(title)
         self.roster.set_unsupported(reason)
@@ -1577,8 +1581,47 @@ class AutomapBinding(QObject):
             return
         snap = amiga_snapshot(party, self.state, self._amiga_key)
         self.snapshot = snap
+        # Set before the cards draw: a card shows its button from `levelling`.
+        trained = self._amiga_trainable(party)
+        for i, card in enumerate(self.roster.cards):
+            card.levelling = i < len(party) and party[i].address in trained
         self.roster.show_snapshot(snap)
+        for card in self.roster.cards:
+            if card.levelling and card.ready and card.level_up is not None:
+                card.level_up.setEnabled(True)
+                if not card.level_up.toolTip().startswith("level up as"):
+                    card.level_up.setToolTip(card.level_up_default_tip)
         self._show_strip(snap)
+
+    def _amiga_row(self):
+        """The attached title's party row when it confirms Level up and the
+        machine can be written, else None."""
+        target = self.mapper.target
+        row = amigaparty.row_for(target)
+        if (row is None or "level-up" not in row.confirmed
+                or not getattr(target, "can_write", False)):
+            return None
+        return row
+
+    def _amiga_trainable(self, party) -> set[int]:
+        """The addresses of the members the title's trainer would train now.
+
+        Empty during a fight, as the Amiga actions are, and on a title whose
+        row does not confirm `level-up`.
+        """
+        row = self._amiga_row()
+        if row is None or self._amiga_key is None:
+            return set()
+        if amigaparty.mode(self.mapper.target) == row.combat_value:
+            return set()
+        trained = set()
+        for member in party:
+            try:
+                if amigalevelup.ready_classes(member.raw, self._amiga_key):
+                    trained.add(member.address)
+            except amigalevelup.CannotLevel:
+                continue
+        return trained
 
     def show_strength(self, save0_bytes: bytes, roster_bytes: bytes) -> None:
         """Recompute party strength and show it under the strip.
@@ -1772,14 +1815,18 @@ class AutomapBinding(QObject):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes
 
-    def _chosen_spell(self, record, name: str, game=None) -> int | None:
+    def _chosen_spell(self, record, name: str, game=None,
+                      offers: list[int] | None = None) -> int | None:
         """Which spell a magic-user learns, or None if the player backed out.
 
         The trainer asks, so we ask. `$215A` builds this same list and the
         level-up does not finish until one is picked -- `docs/135-levelling.md`.
+        `offers` is the Amiga trainer's own menu, which the C64 record cannot
+        give.
         """
         from PyQt6.QtWidgets import QInputDialog
-        offers = actions.LevelUp.offers(record, game)
+        if offers is None:
+            offers = actions.LevelUp.offers(record, game)
         if not offers:
             return 0                        # nothing to learn is not a rejection
         names = self._names_for_spells()
@@ -1816,7 +1863,8 @@ class AutomapBinding(QObject):
         """
         target = self.mapper.target
         if not getattr(target, "c64_memory", True):
-            return                  # these are C64 addresses; see `_refresh_roster`
+            self._level_up_amiga(slot)      # these are not C64 addresses
+            return
         game = game_named(self.state.title)
         action = actions.LevelUp(game)
         party = actions.read_party(target, game)
@@ -1862,6 +1910,51 @@ class AutomapBinding(QObject):
             # bar, the level, and whether the button belongs there at all --
             # and a multi-class character usually still has a class to raise.
             self._refresh_roster()
+
+    def _level_up_amiga(self, slot: int) -> None:
+        """The card's button on an Amiga: the title's own trainer, copied in
+        `amigalevelup`, planned on the live record and written through the
+        target. Nothing is written unless the title's row confirms `level-up`,
+        the machine can be written and the game is not in a fight."""
+        target = self.mapper.target
+        key = self._amiga_key
+        row = self._amiga_row()
+        if (key is None or row is None
+                or self.mapper.title_check is NOT_OURS
+                or amigaparty.mode(target) in (None, row.combat_value)):
+            return
+        party = amigaparty.read_party(target)
+        member = next((m for m in party or () if m.slot == slot), None)
+        if member is None:
+            self.messages.say(f"level up: no character in slot {slot}",
+                              alarm=True)
+            return
+        items = [n.raw for n in member.item_nodes]
+        effects = [n.raw for n in member.effect_nodes]
+        spell = None
+        offers = amigalevelup.offers(member.raw, key, items, effects)
+        if offers:
+            spell = self._chosen_spell(member.raw, member.name, offers=offers)
+            if spell is None:
+                return                  # the player closed the dialog
+        try:
+            plan = amigalevelup.plan_member(member, key, learn=spell or None)
+            amigalevelup.write_plan(target, member, plan)
+        except (amigalevelup.CannotLevel, amiga.NotConnected) as why:
+            self.messages.say(f"level up: {member.name} cannot level: {why}",
+                              alarm=True)
+            return
+        before = amigalevelup.summary(member.raw, key)["levels"]
+        after = amigalevelup.summary(amigalevelup.apply_to(member.raw, plan),
+                                     key)["levels"]
+        bits = [f"a level {after[s]} {name}"
+                for s, name in amigaparty.CLASS_BY_SLOT.items()
+                if s < len(after) and after[s] > before[s]]
+        bits = bits or [f"a {name}" for name in plan.classes]
+        summary = bits[0] if len(bits) == 1 else (
+            ", ".join(bits[:-1]) + " and " + bits[-1])
+        self.messages.say(f"level up: {member.name} is now {summary}!")
+        self._refresh_roster()
 
     def point_at(self, x: int, y: int) -> None:
         """Flash a square, because a row in the notes list was clicked."""
