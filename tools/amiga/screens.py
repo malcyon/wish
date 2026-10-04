@@ -22,6 +22,10 @@ _WINDOW = (360, 284)
 FRAMES = {(754, 576): (2, (8, 2)), (752, 574): (2, (8, 2))}
 
 
+class NotExactCapture(RouteError):
+    """A frame that is not whole copies of each Amiga pixel, such as a hires AmigaDOS window."""
+
+
 def canonical(image, *, replication: int | None = None, origin: tuple[int, int] | None = None):
     """The frame as WinUAE's crop shows it: 720x568, each Amiga pixel doubled.
 
@@ -49,7 +53,7 @@ def canonical(image, *, replication: int | None = None, origin: tuple[int, int] 
     window = rgb.crop(box)
     native = window.resize(_WINDOW, Image.NEAREST)
     if native.resize(window.size, Image.NEAREST).tobytes() != window.tobytes():
-        raise RouteError(f"the frame is not {replication}x copies of each Amiga pixel, "
+        raise NotExactCapture(f"the frame is not {replication}x copies of each Amiga pixel, "
                          "so it is not an exact capture")
     return native.resize(CANONICAL, Image.NEAREST)
 

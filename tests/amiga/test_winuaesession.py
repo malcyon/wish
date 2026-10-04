@@ -155,3 +155,32 @@ def test_lane_reads_the_lane_number_from_the_lane_verb(clock):
 def test_lane_stops_on_a_reply_that_names_no_lane(clock):
     with pytest.raises(winuaesession.RouteError, match="names no lane"):
         Guest(["ok pid=4242"]).lane("wish282-x", 5)
+
+
+def _hires_shot(counter=1, pid=4242):
+    """WinUAE's 752x574 frame of a hires screen: rows doubled, columns not."""
+    image = Image.new("RGB", (752, 574), (0, 85, 170))
+    for y in range(100, 120):
+        for x in range(16, 736, 2):
+            image.putpixel((x, y), (255, 255, 255))
+    data = io.BytesIO()
+    image.save(data, "PNG")
+    return "\n".join([f"ok shot pid={pid} counter={counter:03d} ms=500", "WINVM-SHOT-BEGIN",
+                      base64.b64encode(data.getvalue()).decode(), "WINVM-SHOT-END"])
+
+
+def test_a_hires_frame_is_not_shown_and_leaves_no_crop_for_a_guard(tmp_path, clock):
+    guest = Guest([_hires_shot()])
+    guest.holder = "h"
+    raw, cropped = tmp_path / "r.png", tmp_path / "c.png"
+    cropped.write_bytes(b"a crop left by an earlier grab")
+    assert guest.grab("00-boot-00", raw, cropped, timeout=30) is False
+    assert raw.exists() and not cropped.exists()
+    assert guest.last_shot["counter"] == 1
+
+
+def test_a_hires_frame_still_fails_a_settled_capture(tmp_path, clock):
+    guest = Guest([_hires_shot()])
+    guest.holder = "h"
+    with pytest.raises(winuaesession.RouteError, match="not an exact capture"):
+        guest.capture("title", tmp_path / "r.png", tmp_path / "c.png", timeout=30)

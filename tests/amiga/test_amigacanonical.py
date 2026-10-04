@@ -86,6 +86,16 @@ def test_a_filtered_frame_is_not_passed_off_as_an_exact_capture():
         screens.canonical(frame)
 
 
+def test_a_hires_frame_raises_the_not_exact_capture_error_callers_can_tell_apart():
+    """A hires screen (the AmigaDOS window while a disk loads) is a true frame, but not 2x across."""
+    frame = _replicated(_native(), 2, (8, 2), (752, 574))
+    for x in range(16, 736, 2):
+        frame.putpixel((x, 100), (255, 255, 255))     # a one-pixel hires stroke
+    with pytest.raises(screens.NotExactCapture, match="not an exact capture") as raised:
+        screens.canonical(frame)
+    assert isinstance(raised.value, RouteError)
+
+
 def test_a_window_that_does_not_fit_the_frame_is_blocked():
     with pytest.raises(RouteError, match="does not fit"):
         screens.canonical(Image.new("RGB", (754, 576)), origin=(100, 100))

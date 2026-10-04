@@ -245,13 +245,21 @@ class WinGuest:
 
     def grab(self, state: str, raw: pathlib.Path, cropped: pathlib.Path,
              timeout: float) -> bool:
-        """One grab, cut to the Amiga screen; always True, because WinUAE's frame always has one.
+        """One grab, cut to the Amiga screen; False, with `raw` kept and no crop, for a frame
+        that is not an exact capture, such as the hires AmigaDOS window while a disk loads.
 
-        A guard reads a static box, so an animated screen needs no settling.
+        A guard reads a static box, so an animated screen needs no settling, and a frame
+        with no crop is one no guard can match.
         """
+        from tools.amiga import screens  # noqa: PLC0415
+
         if timeout <= 0:
             raise RouteError(f"no time left to grab {state}")
-        self._take(self._holder(), raw, cropped, min(SHOT_SECONDS, timeout))
+        try:
+            self._take(self._holder(), raw, cropped, min(SHOT_SECONDS, timeout))
+        except screens.NotExactCapture:
+            cropped.unlink(missing_ok=True)
+            return False
         return True
 
     def press(self, holder: str, key: str, timeout: float) -> str:
