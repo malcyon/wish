@@ -7,27 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-10-04
+
 ### Added
 
-- Character Editor opens DOS saved games (Open DOS folder… on the Open button's arrow) and Amiga save disks as well as C64 disks, and writes your edits back into the save it opened. ([#511](https://github.com/malcyon/wish/issues/511))
-- Save As on the Save button's arrow, or File ▸ Save As…, writes the open party with any unsaved edits as a C64 disk, a DOS save folder or an Amiga disk, for Pool of Radiance, Curse of the Azure Bonds and Secret of the Silver Blades; not every route has been played in the game yet, so expect bugs. ([#511](https://github.com/malcyon/wish/issues/511), [#512](https://github.com/malcyon/wish/issues/512))
+- Wish now supports import and export of save files between C64, DOS, and Amiga. "File ▸ Import" has been removed and now lives in the character editor. ([#52](https://github.com/malcyon/wish/issues/52), [#511](https://github.com/malcyon/wish/issues/511), [#512](https://github.com/malcyon/wish/issues/512))
 - Amiga disks formatted with the Fast File System, the international or directory-cache modes, or long file names now open and save. ([#809](https://github.com/malcyon/wish/issues/809))
 - Save As opens a Choose character names window when a name would be cut, erased or drawn differently in the destination game, so you pick the name each character gets. ([#619](https://github.com/malcyon/wish/issues/619))
-- Save As asks which items to leave behind when a pack does not fit the destination, and which running spells to leave out when a party has more than the C64 can hold. ([WISH-4 (A joined scroll in a DOS Silver Blades save shifts everything after it out of the character's pack)](http://plane.morton.lan/wish/projects/9c5c054c-223b-4c0e-b996-2139a5ba25e8/issues/19d4d59d-df0e-4262-93fa-03c8b26429d0), [#736](https://github.com/malcyon/wish/issues/736))
-- Joined scrolls convert between DOS, Amiga and C64 saves. ([WISH-4 (A joined scroll in a DOS Silver Blades save shifts everything after it out of the character's pack)](http://plane.morton.lan/wish/projects/9c5c054c-223b-4c0e-b996-2139a5ba25e8/issues/19d4d59d-df0e-4262-93fa-03c8b26429d0))
-- Save As to DOS checks that the DOS game folder is the title's own, fills it in from Preferences when that folder holds the title's DOS files, and stays unavailable until the matching folder is chosen. ([WISH-277 (Save As to DOS writes a save the game cannot load when the player picks another title's DOS folder, with no warning)](http://plane.morton.lan/wish/projects/9c5c054c-223b-4c0e-b996-2139a5ba25e8/issues/7fb6d146-febd-4522-bc28-d0b87c52c31a))
-- A party under a running spell keeps it, with its remaining time, when saved to another platform, for spells such as Bless, Detect Magic, Prayer, Haste, Strength and Slow Poison; an effect the destination game has no row for still stops the save. ([#600](https://github.com/malcyon/wish/issues/600), [#656](https://github.com/malcyon/wish/issues/656), [WISH-7 (A C64 party under a running spell loses it on the way to DOS or the Amiga with no line anywhere, because the C64 reader reads only the paladin's rows out of the effect arrays)](http://plane.morton.lan/wish/projects/9c5c054c-223b-4c0e-b996-2139a5ba25e8/issues/3208ae51-0656-4de3-b99e-db7f760a8c3d), [#666](https://github.com/malcyon/wish/issues/666), [#667](https://github.com/malcyon/wish/issues/667), [WISH-8 (A DOS party under Prayer, the strength and charisma spells, Mirror Image or an effect with no C64 spell row still fails to save as a C64 save, because only the ordinary caster-level spells convert)](http://plane.morton.lan/wish/projects/9c5c054c-223b-4c0e-b996-2139a5ba25e8/issues/7ecacba8-4bcb-4850-9c80-fd6f61197112))
-- A paladin's Lay on Hands, and a former paladin's Cure Disease, convert between C64, DOS and Amiga saves. ([#626](https://github.com/malcyon/wish/issues/626), [WISH-5 (The neutral vocabulary has no field for a paladin's lay-on-hands uses, so a converted paladin loses them)](http://plane.morton.lan/wish/projects/9c5c054c-223b-4c0e-b996-2139a5ba25e8/issues/0cafbe61-3bdf-46d1-8ad0-7836a0017f22), [#649](https://github.com/malcyon/wish/issues/649), [#652](https://github.com/malcyon/wish/issues/652), [#658](https://github.com/malcyon/wish/issues/658))
+- Save As asks which items to leave behind when a pack does not fit the destination, and which running spells to leave out when a party has more than the C64 can hold. ([#736](https://github.com/malcyon/wish/issues/736))
+- Joined scrolls convert between DOS, Amiga and C64 saves.
+- Save As to DOS checks that the DOS game folder is the title's own, fills it in from Preferences when that folder holds the title's DOS files, and stays unavailable until the matching folder is chosen.
+- The Automapper draws the wilderness in Pool of Radiance. It comes with a Full View and an Area View. ([#11](https://github.com/malcyon/wish/issues/11))
+- The Automapper draws the world map in Curse of the Azure Bonds. ([#804](https://github.com/malcyon/wish/issues/804))
+- Secret of the Silver Blades party cards show condition badges for hasted, blessed, warded, invisible, strengthened, silenced and slowed characters. ([#563](https://github.com/malcyon/wish/issues/563))
+- A party under a running spell keeps it, with its remaining time, when saved to another platform, for spells such as Bless, Detect Magic, Prayer, Haste, Strength and Slow Poison; an effect the destination game has no row for still stops the save. ([#600](https://github.com/malcyon/wish/issues/600), [#656](https://github.com/malcyon/wish/issues/656), [#666](https://github.com/malcyon/wish/issues/666), [#667](https://github.com/malcyon/wish/issues/667))
+- A paladin's Lay on Hands, and a former paladin's Cure Disease, convert between C64, DOS and Amiga saves. ([#626](https://github.com/malcyon/wish/issues/626), [#649](https://github.com/malcyon/wish/issues/649), [#652](https://github.com/malcyon/wish/issues/652), [#658](https://github.com/malcyon/wish/issues/658))
 - A Curse of the Azure Bonds or Secret of the Silver Blades party that has not set out yet converts between C64, DOS and Amiga saves and starts the story at its beginning. ([#640](https://github.com/malcyon/wish/issues/640), [#653](https://github.com/malcyon/wish/issues/653))
 - Parties of up to eight members open and convert whole, so a seventh or eighth companion is no longer left out. ([#641](https://github.com/malcyon/wish/issues/641), [#655](https://github.com/malcyon/wish/issues/655), [#664](https://github.com/malcyon/wish/issues/664), [#689](https://github.com/malcyon/wish/issues/689))
 - A zombie raised with Animate Dead, a charmed companion, a Training Hall hireling's treasure share and Curse's undead turning convert between C64, DOS and Amiga saves. ([#700](https://github.com/malcyon/wish/issues/700), [#667](https://github.com/malcyon/wish/issues/667), [#743](https://github.com/malcyon/wish/issues/743), [#744](https://github.com/malcyon/wish/issues/744), [#758](https://github.com/malcyon/wish/issues/758))
 - Character sheet shows Control (Player-controlled or Game-controlled), Morale for companions and Abilities altered, in place of one raw flags byte. ([#623](https://github.com/malcyon/wish/issues/623), [#647](https://github.com/malcyon/wish/issues/647), [#654](https://github.com/malcyon/wish/issues/654))
 - Thief skills box shows a thief's Backstab multiplier for the platform of the open save. ([#607](https://github.com/malcyon/wish/issues/607))
 - Misc box shows a Turns as: row naming the table a character turns undead on, for the titles and platforms that have one. ([#789](https://github.com/malcyon/wish/issues/789))
-- Automapper draws Pool of Radiance's wilderness from your own game disks, with the party's marker, the outdoor coordinate and region on the status line, and Full View and Area View choices. ([#11](https://github.com/malcyon/wish/issues/11))
-- Automapper draws Curse of the Azure Bonds' world map as the game's places and roads, with the party's place named, instead of leaving the last area's map and marker on screen. ([#804](https://github.com/malcyon/wish/issues/804))
-- Secret of the Silver Blades party cards show condition badges for hasted, blessed, warded, invisible, strengthened, silenced and slowed characters. ([#563](https://github.com/malcyon/wish/issues/563))
-- Fast Travel in Pool of Radiance leaves an area through its own exit, so the area's own exit script runs; when the destination is not one of that area's doors it walks the party out through a door that cannot start a fight and finishes the trip, and says so when every way out can start a fight. ([#207](https://github.com/malcyon/wish/issues/207))
+- Fast Travel in Pool of Radiance leaves an area through its own exit, so the area's own exit script runs; when the destination is not one of that area's doors it walks the party out through a door that cannot start a fight and finishes the trip, and warns when every way out can start a fight. ([#207](https://github.com/malcyon/wish/issues/207))
 - Fast Travel lists Curse of the Azure Bonds' and Secret of the Silver Blades' areas by name, with unnamed areas shown as Area N after the named ones. ([#15](https://github.com/malcyon/wish/issues/15))
 - Character Traits names Curse of the Azure Bonds' and Secret of the Silver Blades' effects from each game's own spell and combat data, instead of Pool of Radiance's names or bare numbers. ([#497](https://github.com/malcyon/wish/issues/497), [#561](https://github.com/malcyon/wish/issues/561), [#567](https://github.com/malcyon/wish/issues/567), [#609](https://github.com/malcyon/wish/issues/609))
 
@@ -35,12 +36,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Character sheet's Roster box is now Misc, and shows a character's condition in words and his damage as the game prints it, without the raw tail bytes. ([#761](https://github.com/malcyon/wish/issues/761))
 - Inventory lists a character's items from the highest filled slot down, as the game's own item list does, and the # column keeps each item's own slot number. ([#795](https://github.com/malcyon/wish/issues/795))
-- Preview changes lines open with a capital letter, and a retired C64 item slot that is filled again reads as an addition. ([#674](https://github.com/malcyon/wish/issues/674), [#673](https://github.com/malcyon/wish/issues/673))
-- The C64 emulator choice is now named VICE (C64), keeping a choice saved under the old name. ([WISH-1 (Automap the Amiga version, not just the C64)](http://plane.morton.lan/wish/projects/9c5c054c-223b-4c0e-b996-2139a5ba25e8/issues/76adde36-1d7d-4184-a0ae-c4f722ffdf69))
-
-### Removed
-
-- File ▸ Import ▸ DOS save folder is gone; open the DOS folder in the editor and use Save As C64 instead. ([#52](https://github.com/malcyon/wish/issues/52), [#511](https://github.com/malcyon/wish/issues/511))
 
 ### Fixed
 
@@ -55,9 +50,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A pack converted to the C64 reads top to bottom in the same order as in the DOS game, instead of reversed. ([#792](https://github.com/malcyon/wish/issues/792))
 - A DOS character whose experience is above 16,777,215 now keeps it exactly between DOS and Amiga and is capped at 16,777,215 on the C64, instead of wrapping round to a small number. ([#597](https://github.com/malcyon/wish/issues/597))
 - Secret of the Silver Blades scrolls show their spells in the editor, and a scroll's tooltip no longer lists charges, effect and power lines that hold its spells. ([#764](https://github.com/malcyon/wish/issues/764), [#766](https://github.com/malcyon/wish/issues/766))
-- The editor shows what a Curse of the Azure Bonds or Secret of the Silver Blades wand or potion does, a spell by name or an item-only effect by its item's name such as Potion of Speed, instead of misreading its effect byte with Pool of Radiance's numbering. ([#765](https://github.com/malcyon/wish/issues/765), [WISH-15 (The editor names the wrong effect for a Curse or Silver Blades wand or potion, because it reads the effect byte with Pool of Radiance's numbering)](http://plane.morton.lan/wish/projects/9c5c054c-223b-4c0e-b996-2139a5ba25e8/issues/bb92746c-3a8b-4ff0-bccf-f822629fcb97))
+- The editor shows what a Curse of the Azure Bonds or Secret of the Silver Blades wand or potion does, a spell by name or an item-only effect by its item's name such as Potion of Speed, instead of misreading its effect byte with Pool of Radiance's numbering. ([#765](https://github.com/malcyon/wish/issues/765))
 - Secret of the Silver Blades' Bestow Curse is named in the spellbook. ([#746](https://github.com/malcyon/wish/issues/746))
-- A DOS scroll saved while its spell is still being scribed now converts to the C64 as an ordinary scroll, instead of leaving a mark the C64 reads as an item effect. ([#745](https://github.com/malcyon/wish/issues/745), [WISH-11 (A DOS scroll saved while its spell is being scribed shows as an item-only effect in the editor and converts to the C64 with a byte the C64 never writes)](http://plane.morton.lan/wish/projects/9c5c054c-223b-4c0e-b996-2139a5ba25e8/issues/81f8ca77-c4f6-4282-9ca2-c5e4cfef7464))
+- A DOS scroll saved while its spell is still being scribed now converts to the C64 as an ordinary scroll, instead of leaving a mark the C64 reads as an item effect. ([#745](https://github.com/malcyon/wish/issues/745))
 - A Curse of the Azure Bonds or Secret of the Silver Blades character-only disk is no longer taken for Pool of Radiance, which could zero a Curse cleric's second set of ability scores when his spells were saved. ([#553](https://github.com/malcyon/wish/issues/553))
 - A Curse of the Azure Bonds paladin or ranger shows his real spell capacity in the editor instead of nothing, and a Silver Blades ranger's capacity line stays hidden until he has a slot in that class. ([#552](https://github.com/malcyon/wish/issues/552), [#603](https://github.com/malcyon/wish/issues/603))
 - Character Traits no longer warns falsely about missing handlers and monster attacks on Silver Blades and Curse spell effects. ([#562](https://github.com/malcyon/wish/issues/562))
@@ -65,8 +60,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The automapper marker follows a Curse of the Azure Bonds party into a new area such as the sewers, instead of staying on the square it left. ([#805](https://github.com/malcyon/wish/issues/805))
 - The automapper marker sits on a Secret of the Silver Blades party's square in The Ruins, and faces the way the party faces. ([#804](https://github.com/malcyon/wish/issues/804))
 - Clear Automap Memory now also clears the explored squares of Pool of Radiance areas whose notes were saved before notes were kept per game, which it used to leave behind. ([#663](https://github.com/malcyon/wish/issues/663))
-- The automapper keeps the squares you have explored when Wish crashes or is closed without warning, because it saves them as soon as a step reveals a new one. ([WISH-1 (Automap the Amiga version, not just the C64)](http://plane.morton.lan/wish/projects/9c5c054c-223b-4c0e-b996-2139a5ba25e8/issues/76adde36-1d7d-4184-a0ae-c4f722ffdf69))
-- The Heal party tooltip spells conscious correctly. ([WISH-1 (Automap the Amiga version, not just the C64)](http://plane.morton.lan/wish/projects/9c5c054c-223b-4c0e-b996-2139a5ba25e8/issues/76adde36-1d7d-4184-a0ae-c4f722ffdf69))
+- The automapper keeps the squares you have explored when Wish crashes or is closed without warning, because it saves them as soon as a step reveals a new one.
+- The Heal party tooltip spells conscious correctly.
 
 ## [0.1.4] - 2026-09-13
 
@@ -223,7 +218,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for Pool of Radiance.
 - Partial support for Curse of the Azure Bonds and Secrets of the Silver Blades, where character editing should work but bugs are expected.
 
-[Unreleased]: https://github.com/malcyon/wish/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/malcyon/wish/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/malcyon/wish/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/malcyon/wish/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/malcyon/wish/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/malcyon/wish/compare/v0.1.1...v0.1.2
