@@ -6476,6 +6476,28 @@ def test_a_vault_run_needs_area_18_and_storage_before_a_slot_is_claimed(
     assert "claim" not in log
 
 
+def test_a_tmpvault_in_the_specimen_or_the_play_directory_never_reaches_the_run(tmp_path):
+    # `vault_verdict` takes TMPVAULT.DAT to be the game's write; install empties
+    # the play directory and copies only the slot's own files, so none can be there.
+    saves = _pod_save(tmp_path)
+    (saves / "TMPVAULT.DAT").write_bytes(b"from the specimen")
+    play = tmp_path / "play"
+    play.mkdir()
+    (play / "TMPVAULT.DAT").write_bytes(b"from an earlier run")
+    took = staging.install(saves, play, "A")
+    assert "TMPVAULT.DAT" not in {p.name.upper() for p in play.iterdir()}
+    assert da.tmpvault(play) is None
+    assert "TMPVAULT.DAT" not in took["files"]
+
+
+def test_a_vault_step_with_no_slot_to_load_does_not_name_a_slot_none(tmp_path):
+    saves = _pod_save(tmp_path)
+    args = _vault_args(tmp_path, saves)
+    with pytest.raises(ValueError) as e:
+        da.check_vault(args, saves, None)
+    assert "None" not in str(e.value)
+
+
 def test_stage_var_writes_one_byte_of_a_pools_of_darkness_save(tmp_path):
     saves = _pod_save(tmp_path, storage=1)
     before = (saves / "SAVGAMA.PTY").read_bytes()

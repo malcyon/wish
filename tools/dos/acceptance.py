@@ -7125,8 +7125,10 @@ def check_vault(args, save: pathlib.Path, from_slot: str | None) -> None:
     must not read 1."""
     if not any(parse_step(t).kind == "vault" for t in getattr(args, "steps", [])):
         return
+    if args.title != "darkness" or from_slot is None:
+        raise ValueError("vault needs a Pools of Darkness save with a SAVGAM<slot>.PTY")
     pty = save / f"SAVGAM{from_slot}.PTY"
-    if args.title != "darkness" or not pty.is_file():
+    if not pty.is_file():
         raise ValueError(f"vault needs a Pools of Darkness SAVGAM{from_slot}.PTY")
     data = bytearray(pty.read_bytes())
     for address, value in (parse_var(t) for t in getattr(args, "stage_var", []) or []):
