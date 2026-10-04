@@ -6,6 +6,7 @@ import time
 from tools.plane import queuegap
 
 NOW = 1_000_000.0
+IN_PROGRESS_IDLE = 'In Progress with no live agent: move to Queue, or Backlog if it waits on Donald'
 
 
 def ticket(n, state='Queue', priority='high', group=None):
@@ -33,7 +34,7 @@ def cli(tmp_path, *argv):
 
 def test_queue_and_in_progress_without_agent_or_reason_are_gaps(tmp_path, capsys):
     out = run(tmp_path, [ticket(1, 'Queue'), ticket(2, 'In Progress')], capsys, '--min-agents', '0')
-    assert out == ['WISH-1 Queue high: no agent and no reason', 'WISH-2 In Progress high: no agent and no reason']
+    assert out == ['WISH-1 Queue high: no agent and no reason', 'WISH-2 In Progress high: ' + IN_PROGRESS_IDLE]
 
 
 def test_backlog_gap_only_for_high_and_medium(tmp_path, capsys):
@@ -138,3 +139,23 @@ def test_json_includes_titles_only_with_titles(tmp_path, capsys):
     assert 'title' not in plain['gaps'][0]
     titled = json.loads('\n'.join(run(tmp_path, [ticket(1)], capsys, '--min-agents', '0', '--json', '--titles')))
     assert titled['gaps'][0]['title'] == 'Title 1'
+
+
+def test_in_progress_with_no_live_agent_is_a_mismatch_whatever_its_reason(tmp_path, capsys):
+    cli(tmp_path, 'reason', 'WISH-1', 'waiting on CI')
+    out = run(tmp_path, [ticket(1, 'In Progress')], capsys, '--min-agents', '0')
+    assert out == ['WISH-1 In Progress high: ' + IN_PROGRESS_IDLE]
+
+
+def test_in_progress_waiting_on_donald_needs_backlog(tmp_path, capsys):
+    cli(tmp_path, 'reason', 'WISH-1', 'Waiting on Donald to pick a wording')
+    out = run(tmp_path, [ticket(1, 'In Progress')], capsys, '--min-agents', '0')
+    assert out == ['WISH-1 In Progress high: In Progress waiting on Donald: move to Backlog']
+
+
+def test_live_agent_clears_in_progress_mismatches(tmp_path, capsys):
+    transcript(tmp_path / 'proj', 'a1', 5)
+    cli(tmp_path, 'reason', 'WISH-1', 'waiting on Donald')
+    cli(tmp_path, 'assign', 'WISH-1', '--agent', 'a1')
+    cli(tmp_path, 'assign', 'WISH-2', '--agent', 'a1')
+    assert run(tmp_path, [ticket(1, 'In Progress'), ticket(2, 'In Progress')], capsys, '--min-agents', '0') == ['No gaps.']

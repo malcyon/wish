@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Print the tickets that have no live agent and no recorded reason.
+"""Print the tickets that have no live agent and no recorded reason, and In Progress tickets with no live agent.
 
 The orchestrator records assignments and reasons in a local JSON-lines ledger
 (never committed); Plane is only read.
@@ -98,9 +98,17 @@ def analyse(tickets, assigned, reasons, done, stale=20, min_agents=8, now=None, 
             continue
         ident = ticket['identifier']
         agents = [a for a in assigned.get(ident, {}) if status[a] != 'no']
-        if agents or ident in reasons:
+        if agents:
             continue
-        if ticket['state'] in {'Queue', 'In Progress'}:
+        if ticket['state'] == 'In Progress':
+            # A recorded reason explains a wait, not In Progress: the state means an agent works on it.
+            if reasons.get(ident, '').lower().startswith('waiting on donald'):
+                kind = 'In Progress waiting on Donald: move to Backlog'
+            else:
+                kind = 'In Progress with no live agent: move to Queue, or Backlog if it waits on Donald'
+        elif ident in reasons:
+            continue
+        elif ticket['state'] == 'Queue':
             kind = 'no agent and no reason'
         elif ticket['state'] == 'Backlog' and ticket['priority'] in WATCHED_BACKLOG:
             kind = 'backlog with no reason'
