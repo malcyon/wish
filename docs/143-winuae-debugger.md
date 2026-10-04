@@ -298,13 +298,16 @@ removed because it needed the window focus. The check's `foreignkey` round now
 sends a second driver's `debugger` at the first's emulator and expects the same
 block; no live run of that round is recorded on this page.
 
-**The hijack rounds say whether they actually raced**, and that is not a
-detail: it needs two `start` calls to overlap inside the second WinUAE takes to
-become a process, so a round that never reached that condition proves nothing
-and must not read as a pass. The check starts the intruder the instant the
-task's `LastRunTime` moves, samples for the intruder's config while the other
-call is still running, prints `N of R rounds actually raced`, and fails outright
-when that is none. Both runs above raced 8 or 9 rounds of 9.
+**The hijack rounds race on every round.** `start` gets no pid from its launch;
+it adopts the one new, unowned `winuae64` whose command line equals the one it
+passed, lane prefix included. The check writes its own copy of the driver with a
+pause right after the launch, and lets the call continue only once the
+intruder's emulator is up and the caller's own is gone. Each round passes when
+the call exits 1 with `is running a command line this call did not pass` and no
+receipt names the intruder's pid. A timing trigger on the task's `LastRunTime`
+raced 0 of 39 rounds against the lane-prefixed driver, so it was dropped.
+`-Control` runs the scenario against a copy that adopts any new emulator, which
+must fail every round. The deployed driver has no test hook.
 
 Its verdict is about **the pid the second call reported**, not about whatever is
 running when the round ends. Asking the second question failed a round against

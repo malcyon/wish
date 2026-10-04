@@ -28,16 +28,16 @@
 param(
   [string]$Driver   = 'C:\Amiga\winuae.ps1',
   [int]$Rounds      = 3,
-  # The hijack needs two calls to overlap inside the second WinUAE takes to
-  # become a process, so it lands about twice in nine tries and three rounds
-  # would usually prove nothing at all. More rounds only make the silence less
-  # likely; the scenario also says how many rounds actually raced, and fails
-  # when that is none.
+  # The check pauses its own copy of the driver between B's launch and B's
+  # look, so every hijack round races and three rounds are enough.
   [int]$HijackRounds = 0,
   [ValidateSet('all','args','own','sendpid','hijack','claimrace','reclaim','foreignstop','foreignkey','claim','twolane','exclusive','stalelane','overridelane')][string]$Scenario = 'all',
-  [int]$Lanes       = 1
+  [int]$Lanes       = 1,
+  # Live control for the hijack scenario: runs it against a copy of the driver
+  # that adopts any new emulator, which must fail every round.
+  [switch]$Control
 )
-if ($HijackRounds -le 0) { $HijackRounds = [Math]::Max(9, $Rounds * 3) }
+if ($HijackRounds -le 0) { $HijackRounds = [Math]::Max(3, $Rounds) }
 # The reclaim window is between one Remove-Item and one CreateNew -- a couple of
 # milliseconds -- so it is chased with a storm of calls over a few seconds
 # rather than with single shots.
@@ -58,6 +58,7 @@ $DiskA   = "$Work\driverA.adf"
 $DiskB   = "$Work\driverB.adf"
 $ArgsA   = "-log -f $ConfigA"
 $ArgsB   = "-log -f $ConfigB"
+$HijackDriver = "$Root\winuae-lanecheck-hijack.ps1"
 
 if (-not (Test-Path $Driver))  { "fail no driver at $Driver"; exit 1 }
 if (-not (Test-Path $Machine)) { "fail no config at $Machine"; exit 1 }
@@ -128,11 +129,17 @@ function Start-AsIntruder([string]$Arguments) {
   $p = New-ScheduledTaskPrincipal -UserId "$env:COMPUTERNAME\donald" -LogonType Interactive
   $s = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) `
          -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-  Register-ScheduledTask -TaskName $Task -Action $a -Principal $p -Settings $s -Force | Out-Null
+  # Stop first and wait for the task to leave Running: Task Scheduler drops a
+  # start it is sent while the task still runs.
   Stop-ScheduledTask -TaskName $Task -ErrorAction SilentlyContinue
+  for ($i = 0; $i -lt 50; $i++) {
+    if ((Get-ScheduledTask -TaskName $Task -ErrorAction SilentlyContinue).State -ne 'Running') { break }
+    Start-Sleep -Milliseconds 100
+  }
+  Register-ScheduledTask -TaskName $Task -Action $a -Principal $p -Settings $s -Force | Out-Null
   Start-ScheduledTask -TaskName $Task
   for ($i = 0; $i -lt 120; $i++) {
-    $e = @(Emulators)
+    $e = @(Emulators | Where-Object { $_.CommandLine -match [regex]::Escape($Arguments) })
     if ($e.Count -ge 1) { return $e[0] }
     Start-Sleep -Milliseconds 250
   }
@@ -181,77 +188,78 @@ function Scenario-Own {
   Reset-Lane | Out-Null
 }
 
+# B's `start` gets no pid from its launch; it adopts a fresh emulator whose
+# command line is exactly the one it passed. The hijack needs A's emulator to
+# be what is running when B looks, so the check writes its own copy of the
+# driver with a pause right after B's launch and lets B continue only once A's
+# emulator is up and B's is gone. The deployed driver has no such hook.
+function New-HijackDriver {
+  $text = Get-Content -Raw $Driver
+  $anchor = @([regex]::Matches($text, '(?m)^([ \t]*)Start-Session1Task \$(LanePaths\.task|Task)[ \t\r]*$'))
+  if ($anchor.Count -ne 1) { return "cannot place the pause in ${Driver}: $($anchor.Count) matches" }
+  $ind = $anchor[0].Groups[1].Value
+  $pause = "`n${ind}[IO.File]::WriteAllText('$Work\hijack-launched.txt', 'x')" +
+           "`n${ind}for (`$hw = 0; `$hw -lt 600 -and -not (Test-Path '$Work\hijack-go.txt'); `$hw++) { Start-Sleep -Milliseconds 100 }"
+  $end = $anchor[0].Index + $anchor[0].Length
+  $text = $text.Substring(0, $end) + $pause + $text.Substring($end)
+  if ($Control) {
+    $exact = '-eq ($expected -replace ''\s+'', '' '').Trim()) { $matching += $cand }'
+    $n = ([regex]::Matches($text, [regex]::Escape($exact))).Count
+    if ($n -ne 1) { return "cannot break the command-line match in ${Driver}: $n matches" }
+    $text = $text.Replace($exact, '-eq ($expected -replace ''\s+'', '' '').Trim() -or $true) { $matching += $cand }')
+  }
+  Set-Content -Path $HijackDriver -Value $text -Encoding ASCII
+  $null
+}
+
 function Scenario-Hijack {
-  "hijack: B's `start` must not report success for an emulator B did not launch"
+  "hijack: B's `start` must not report success for an emulator B did not launch$(if ($Control) { ' (control: a driver that adopts any new emulator, which must fail every round)' })"
+  $bad = New-HijackDriver
+  if ($bad) { Verdict $false $bad ''; return }
   $raced = 0
   for ($n = 1; $n -le $HijackRounds; $n++) {
     if (-not (Reset-Lane)) { Verdict $false "round ${n}: lane would not reset" ''; continue }
+    Remove-Item "$Work\hijack-launched.txt", "$Work\hijack-go.txt" -ErrorAction SilentlyContinue
     if ($HasClaim) { Drive (@('claim') + (Holder-Args 'driverB')) | Out-Null }
-    # B asks for its own config. A -- a second agent, a stale script, a person
-    # at the VM -- takes the one shared task the moment an emulator appears, so
-    # what is running when B looks is A's. That is a sub-second overlap between
-    # two calls, and it is what happened on the night this was filed.
     $job = Start-Job -ScriptBlock {
       param($drv, $cfg, $who)
       $ha = if ($who) { @('-Holder', $who) } else { @() }
       & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $drv start @ha -log -f $cfg 2>&1 | Out-String
       "exit=$LASTEXITCODE"
-    } -ArgumentList $Driver, $ConfigB, $(if ($HasClaim) { 'driverB' } else { '' })
-    # Take the task the moment B has started it, not when B's emulator appears:
-    # WinUAE takes about a second to become a process, and that second is the
-    # whole window. Trigger later and B sees its own emulator first, which is
-    # the run that goes right.
-    $before = (Get-ScheduledTaskInfo -TaskName $Task -ErrorAction SilentlyContinue).LastRunTime
-    for ($i = 0; $i -lt 1500; $i++) {
-      $now = (Get-ScheduledTaskInfo -TaskName $Task -ErrorAction SilentlyContinue).LastRunTime
-      if ($now -ne $before) { break }
-      Start-Sleep -Milliseconds 20
+    } -ArgumentList $HijackDriver, $ConfigB, $(if ($HasClaim) { 'driverB' } else { '' })
+    for ($w = 0; $w -lt 600 -and -not (Test-Path "$Work\hijack-launched.txt"); $w++) { Start-Sleep -Milliseconds 100 }
+    if (-not (Test-Path "$Work\hijack-launched.txt")) {
+      [IO.File]::WriteAllText("$Work\hijack-go.txt", 'x')
+      $out = (Receive-Job -Job $job -Wait -AutoRemoveJob) -join "`n"
+      Verdict $false "round ${n}: B never reached its launch" $out
+      continue
     }
     $intruder = Start-AsIntruder $ArgsA
-    # Whether the race happened at all, which a PASS on its own cannot say: the
-    # intruder's config has to be up while B's call is still running, or B was
-    # never in a position to be handed anything.
-    #
-    # Sampled rather than looked at once. The first version asked only what
-    # Start-AsIntruder saw first, and against the old driver it called a round
-    # "no race" that then failed -- B's own emulator was up first and the
-    # intruder replaced it while B was still polling. A disclosure that misses
-    # the very rounds it exists to explain is worse than none.
-    $landed = $false
-    for ($w = 0; $w -lt 600; $w++) {
-      if ($job.State -ne 'Running') { break }
-      if (@(Emulators | Where-Object { $_.CommandLine -match [regex]::Escape($ConfigA) }).Count -ge 1) { $landed = $true }
+    # A is up; B's emulator has to be gone before B may look, or B would adopt
+    # its own and the round would prove nothing.
+    for ($w = 0; $w -lt 100; $w++) {
+      if (@(Emulators | Where-Object { $_.CommandLine -match [regex]::Escape($ConfigB) }).Count -eq 0) { break }
       Start-Sleep -Milliseconds 100
     }
+    $landed = $intruder -and (@(Emulators | Where-Object { $_.CommandLine -match [regex]::Escape($ConfigA) }).Count -ge 1) -and
+              (@(Emulators | Where-Object { $_.CommandLine -match [regex]::Escape($ConfigB) }).Count -eq 0)
     if ($landed) { $raced++ }
+    [IO.File]::WriteAllText("$Work\hijack-go.txt", 'x')
     $out = (Receive-Job -Job $job -Wait -AutoRemoveJob) -join "`n"
     $live = Emulators | Select-Object -First 1
-    # The verdict is about the pid B reported, not about whatever is running at
-    # the end of the round. Asking the second question failed a round against
-    # the FIXED driver: B had verified its own emulator and returned ok, and the
-    # intruder then replaced it -- which is A destroying B's run afterwards, a
-    # real thing but not this scenario's, and not something `start` can prevent
-    # once it has returned. What protects B there is the run receipt, which
-    # blocks B's next call. That case is now named on its own line instead of
-    # being counted as a hijack or hidden as a pass.
     $okPid  = if ($out -match '(?m)^ok pid=(\d+)') { [int]$Matches[1] } else { 0 }
     $okProc = if ($okPid) { @(Emulators | Where-Object { $_.ProcessId -eq $okPid })[0] } else { $null }
     $handedA = ($okPid -ne 0) -and $okProc -and ($okProc.CommandLine -match [regex]::Escape($ConfigA))
-    $note = if ($landed) { '(raced)' } else { '(no race: B was not overtaken)' }
-    Verdict (-not $handedA) `
-            "round ${n}: B was not handed A's emulator as its own success $note" `
-            ("B said: $out`nfirst emulator up: $($intruder.CommandLine)`nrunning: $($live.CommandLine)")
-    if ($okPid -and -not $okProc) {
-      "        | note: A replaced B's emulator after B returned ok pid=$okPid; the run receipt is what blocks B's next call"
-    }
+    $receipt = if (Test-Path "$Root\winuae-run.txt") { Get-Content -Raw "$Root\winuae-run.txt" } else { '' }
+    $aPid = if ($intruder) { $intruder.ProcessId } else { 0 }
+    Verdict $landed "round ${n}: the intruder replaced B's emulator before B looked (a failure here is the check's own)" `
+            "first emulator up: $($intruder.CommandLine)"
+    Verdict (-not $handedA) "round ${n}: B was not handed A's emulator as its own success" "B said: $out`nrunning: $($live.CommandLine)"
+    Verdict (($out -match 'exit=1') -and ($out -match 'is running a command line this call did not pass')) `
+            "round ${n}: B failed with the command-line mismatch" "B said: $out"
+    Verdict (-not ($aPid -and $receipt -match "(?m)^pid=$aPid\s*$")) "round ${n}: no run receipt names A's emulator" $receipt
   }
   "  $raced of $HijackRounds rounds actually raced"
-  # A scenario that never reached the condition it is about has proved nothing,
-  # and reporting that as PASS is how a check outlives the bug it was written
-  # for.
-  if ($raced -eq 0) {
-    Verdict $false 'the race never landed, so this scenario proved nothing -- raise -HijackRounds' ''
-  }
   Reset-Lane | Out-Null
 }
 
@@ -552,6 +560,8 @@ try {
     Remove-Item $Driver -ErrorAction SilentlyContinue
     if (Test-Path $Driver) { "warning: $Driver was not deleted" }
   }
+  Remove-Item $HijackDriver -ErrorAction SilentlyContinue
+  if (Test-Path $HijackDriver) { "warning: $HijackDriver was not deleted" }
 }
 if (@(Emulators).Count -ne 0) { "warning: winuae64 still running: $(((Emulators) | ForEach-Object { $_.ProcessId }) -join ',')" }
 if ($script:fail -gt 0) { exit 1 }

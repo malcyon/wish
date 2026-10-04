@@ -216,6 +216,7 @@ def test_the_lanecheck_stops_the_lanes_then_deletes_its_files_on_any_exit_and_re
     assert final.index("Reset-Lane") < final.index("Remove-Item -Recurse -Force $Work")
     assert "if (Test-Path $Work) {" in final and "if (Test-Path $Driver) {" in final
     assert "Scenario-TwoLane }" in tail[:tail.index("} finally {")]
+    assert "if (Test-Path $HijackDriver) {" in final and "Remove-Item $HijackDriver" in final
 
 
 def test_start_takes_the_guest_wide_mutex_before_it_launches_and_frees_it_in_a_finally():
@@ -496,3 +497,50 @@ def test_the_lanecheck_expects_the_lane_prefix_before_the_arguments_start_was_gi
     body = _lanecheck_body("Scenario-Args")
     assert '-ini `"$laneDir\\winuae.ini`" -datapath `"$laneDir`" -log -f $ConfigB -s floppy0=' in body
     assert '$laneDir = "$Root\\lanes\\1"' in body
+
+
+# -- the hijack scenario races on every round --------------------------------------
+
+_PAUSE_ANCHOR = r"(?m)^([ \t]*)Start-Session1Task \$(LanePaths\.task|Task)[ \t\r]*$"
+
+
+def test_start_adopts_only_a_new_winuae64_running_exactly_its_own_command_line():
+    """The rule that stops a start from reporting another run's emulator as its own."""
+    body = _case("start")
+    assert "-eq ($expected -replace '\\s+', ' ').Trim()) { $matching += $cand }" in body
+    assert "is running a command line this call did not pass" in body
+
+
+def test_the_hijack_pause_lands_exactly_once_in_the_start_verb():
+    """The check places its pause by text, so renaming the launch line has to fail here and not on the guest."""
+    assert f"'{_PAUSE_ANCHOR}'" in LANECHECK
+    found = list(re.finditer(_PAUSE_ANCHOR, PS1))
+    assert len(found) == 1
+    start = PS1.index("\n  'start' {", PS1.index("switch ($Cmd) {"))
+    assert start < found[0].start() < PS1.index("\n  '", start + 5)
+
+
+def test_the_hijack_round_lets_b_continue_only_after_a_replaced_its_emulator():
+    body = _lanecheck_body("Scenario-Hijack")
+    order = [body.index(s) for s in (
+        "hijack-launched.txt", "Start-AsIntruder $ArgsA", "-match [regex]::Escape($ConfigB)",
+        "hijack-go.txt", "Receive-Job -Job $job")]
+    # The first go-file write in the body is the never-launched branch; the one that matters follows the wait.
+    assert order[0] < order[1] < order[2]
+    assert body.rindex("hijack-go.txt") > order[2]
+    assert body.rindex("Receive-Job -Job $job") > body.rindex("hijack-go.txt")
+    assert "LastRunTime" not in body
+    assert "is running a command line this call did not pass" in body
+
+
+def test_the_intruder_stops_and_waits_before_it_registers():
+    body = _lanecheck_body("Start-AsIntruder")
+    order = [body.index(s) for s in (
+        "Stop-ScheduledTask", "'Running'", "Register-ScheduledTask", "Start-ScheduledTask")]
+    assert order == sorted(order)
+
+
+def test_the_lanecheck_control_breaks_only_the_command_line_match_of_its_own_copy():
+    body = _lanecheck_body("New-HijackDriver")
+    assert "if ($Control)" in body and "$matching += $cand" in body
+    assert "Set-Content -Path $HijackDriver" in body
