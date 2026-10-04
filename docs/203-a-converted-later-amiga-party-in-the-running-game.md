@@ -106,7 +106,7 @@ party-panel highlight on cursor **down**, and `VIEW` then draws whoever is
 highlighted; the party menu, the adventuring bar and the sheet itself all ignore
 the key. **Amiga Curse does not do this at all** — its camp screen, party menu
 and bar all ignore cursor down — so on that title only the first character's
-sheet can be drawn with the keys `tools/amiga/winuae.ps1` has, and the five behind him
+sheet can be drawn with the keys `tools/amiga/amigadrive.py` sends, and the five behind him
 were read off the party panel instead.
 
 ## The engine's own resave, which is the strongest of it

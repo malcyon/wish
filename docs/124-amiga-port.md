@@ -978,8 +978,8 @@ for a joystick.** Eight of the twenty keys reached that layout and no further
 aim a key at it.** From the credits the title reaches a `PLAY DEMO QUIT` bar
 and, if nobody answers within a few seconds, starts the DEMO -- a scripted
 party in a fight, which looks enough like the game to be mistaken for one. A
-grab costs two to four seconds through `winvm shot` and a keystroke another two
-to three, so a key aimed at what the last grab showed lands after the bar has
+grab costs two to four seconds (measured then through `winvm shot`; one
+`winuae.ps1 shot` measured 2.4 s) and a keystroke another two to three, so a key aimed at what the last grab showed lands after the bar has
 gone: six of one session's keystrokes went nowhere that way on 2026-09-08. What
 works from anywhere in the loop, as one `tools/amiga/amigadrive.py` call so the keys
 are about two seconds apart:
@@ -1061,12 +1061,12 @@ fixes it. Eight turns and three steps in a row afterwards, every one drawn.
 | numeric keypad `6` | turn right -- West to North |
 | cursor **up**, sent extended | one square forward, exactly as keypad `8` |
 
-The cursor keys need `KEYEVENTF_EXTENDEDKEY`, which is `winuae.ps1 key
-<vk> -Extended` and is what `tools/amiga/amigadrive.py` sends for `UP`, `DOWN`,
-`LEFT` and `RIGHT`. Without it `keybd_event` hands `VK_UP` the unprefixed
-scancode `0x48`, which is `DIK_NUMPAD8` -- so before this the driver had no
-way to press a cursor key at all, and its `UP` was keypad `8` under another
-name.
+`tools/amiga/amigadrive.py` sends `UP`, `DOWN`, `LEFT` and `RIGHT` as the
+Amiga's own cursor raw codes (`0x4C` to `0x4F`) over WinUAE's pipe, so they
+are cursor keys and not keypad keys. The driver used to send virtual keys
+through `keybd_event`, which hands `VK_UP` the unprefixed scancode `0x48`
+(`DIK_NUMPAD8`) unless `KEYEVENTF_EXTENDEDKEY` is set; that route is gone, and
+with it the failure it had.
 
 **The step diff, which no Amiga title had.**
 `~/wish-specimens/ssb-amiga/WISH-SPEC-ssbwalk` holds three engine-written

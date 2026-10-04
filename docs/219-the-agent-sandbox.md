@@ -341,7 +341,7 @@ The check is `(Get-CimInstance Win32_VideoController).Name`, which says *Red Hat
 
 | command | how |
 |---|---|
-| `ssh [cmd...]`, `scp ...` | ssh and scp with the pinned configuration; the same arguments as the desktop's, so `tools/amiga/amigadrive.py`, `winvmsettle.py` and the rest run unchanged |
+| `ssh [cmd...]`, `scp ...` | ssh and scp with the pinned configuration; the same arguments as the desktop's, so `tools/amiga/amigadrive.py`, `tools/amiga/winuaesession.py` and the rest run unchanged |
 | `ps SCRIPT` | PowerShell sent as `-EncodedCommand`, so no shell on either side re-quotes it |
 | `put LOCAL... REMOTE`, `get REMOTE LOCAL` | scp in either direction, with a Windows path's backslashes turned into forward slashes |
 | `shot [file]` | a one-off scheduled task with an Interactive principal captures the console session, session 1, since ssh lands in session 0 and cannot see the screen; the PNG comes back base64-encoded on the same ssh call and the task and file are removed before it returns |
@@ -352,7 +352,7 @@ The check is `(Get-CimInstance Win32_VideoController).Name`, which says *Red Hat
 
 **Lane ownership is `winuae.ps1 claim`, not the Linux instance pool and not a lease.** The pool in `tools/registry/instance.py` hands out ports and displays on the machine it runs on and knows nothing of Windows, and a `winvm` lease only counts who wants the domain running. Who may drive WinUAE is decided on Windows, where the driver is, by the claim file `winuae.ps1 claim` creates atomically, and `winvm lane --expect <holder>` reads it back through `winuae.ps1 status`.
 
-**The screenshot is not the desktop's.** `virsh screenshot` reads the framebuffer, which works whatever the session state. The guest's `shot` needs somebody logged on at the console, like every `winuae.ps1` action, and says so when nobody is. It captures DPI-aware, so it has the framebuffer's pixel size.
+**The screenshot is not the desktop's.** `virsh screenshot` reads the framebuffer, which works whatever the session state. The guest's `shot` needs somebody logged on at the console, like `winuae.ps1 start`, and says so when nobody is. It captures DPI-aware, so it has the framebuffer's pixel size. It is for looking at the desktop: the Amiga drivers take WinUAE's own screenshot with `winuae.ps1 shot`, which runs from the ssh session, over the emulator's pipe.
 
 **`winvm revert` undoes the authorization.** The key's line is written into the overlay, and a revert goes back to the golden image. Re-run the playbook after a revert, or promote once with the line in place. `winvm guest-setup` keeps it: the first-logon script rewrites `administrators_authorized_keys` with the operator's key and keeps any line ending in `winvm_agent_key_comment`. A rebuilt Windows guest has a new host key and a rebuilt Ubuntu guest a new identity; the playbook handles both.
 

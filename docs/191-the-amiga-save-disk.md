@@ -246,7 +246,7 @@ winvm ssh "$ps start -Holder por36 -log -f C:\Amiga\configs\goldbox-a500.uae \
 tools/amiga/amigadrive.py --holder por36 keys L
 tools/amiga/amigadrive.py --holder por36 keys RET     # the default, POOLSAVE:
 tools/amiga/amigadrive.py --holder por36 keys B
-winvm shot $TMPDIR/loaded.png
+tools/amiga/amigadrive.py --holder por36 shot $TMPDIR/loaded.png
 ```
 
 Four things cost time on the way.

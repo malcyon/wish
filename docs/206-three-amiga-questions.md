@@ -4,7 +4,8 @@ One WinUAE session on 2026-09-07 answered three questions that had each been
 waiting for somebody to look at a running Amiga game: whether the character
 sheet draws a portrait, what the engine does with a space in a name, and
 whether the game's own `Add Character` picker lists a `.pc` file this project
-wrote. `tools/amiga/amigashots.py` drove it and photographed every keystroke;
+wrote. `tools/amiga/amigashots.py`, in a live mode since removed, drove it and
+photographed every keystroke (`tools/amiga/amigadrive.py` is the live route now);
 `docs/143-winuae-debugger.md` is how the emulator is reached and
 `docs/182-amiga-por-in-the-running-game.md` §7 is the route from a cold VM to a
 loaded slot.
@@ -239,7 +240,9 @@ were listed and left; and no drawer other than `Save` on disk 3 was tried.
   than by remembering where the window sat. Kickstart's insert-disk screen is
   the one that breaks a lazy version of that search: it is white to the client
   area's last row, so "walk up while the row is light" walks seven rows into
-  the picture. `tests/amiga/test_amigashots.py` holds that case.
+  the picture. `tests/amiga/test_amigashots.py` holds that case. Live runs no
+  longer take a desktop grab: WinUAE's own screenshot is cut at a fixed offset
+  by `screens.canonical`, and `crop` reads only archived grabs.
 * **The stock `fs-uae` is a second emulator for the same runs**, alongside
   WinUAE: `tools/amiga/fsuaepor.py` boots Amiga Pool of Radiance, Pools of
   Darkness and Curse in an instance-pool slot. Allow about a minute before a

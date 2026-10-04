@@ -55,11 +55,22 @@ PC speaker. Other launch paths must establish their own silence controls.
   `SDL_AUDIODRIVER=dummy` for a build that links SDL audio,
   `flatpak run --nosocket=pulseaudio` for the stock Flatpak, and
   `ALSOFT_DRIVERS=null` for a native 3.x build with OpenAL.
+  `tools/amiga/acceptance.py --emulator fsuae` runs the Amiga routes there in
+  an instance-pool slot, sets the last two itself and takes no `--audio-proof`.
 * **WinUAE**: it runs on the Windows VM, whose audio reaches the host, and
   `sound_output=none` is **not** available -- it deadlocks Silver Blades on its
   second turn, which is why `tools/amiga/goldbox-a500.uae` sets
   `sound_output=interrupts`. Mute the VM's own audio device rather than the
   emulator's.
+
+**Drive WinUAE only through its own pipe, never through the Windows desktop.**
+`winuae.ps1 shot` takes WinUAE's own screenshot and `winuae.ps1 press` sends
+Amiga raw key codes (`tools/amiga/amigakeys.py`); both go to the lane's
+emulator and never raise a window, take the focus or look at the desktop. Take
+no `winvm shot` of a WinUAE run and send no key that depends on which window has
+focus. `winuae.ps1 debugger` opens the debugger console for diagnosis, and the
+pipe does not answer while the debugger sits at its prompt; an acceptance run
+reads memory through the pipe and never enters the debugger.
 
 **Verify the audio path on the machine that can reach the speakers.** A host
 check of the running VM's configuration showing no virtual sound device and

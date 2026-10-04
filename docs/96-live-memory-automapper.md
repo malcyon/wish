@@ -424,7 +424,7 @@ and the transport decides how a read or a write reaches it:
 
 | transport | reaches | how a read goes | how a write goes | halts the machine |
 |---|---|---|---|---|
-| `WinuaeDebugger` | WinUAE, from Linux through the Windows VM | F11, then `S <file> <addr> <n>` and `g` typed into the console, dump read back as base64, one `ssh` a batch | `W <addr> <bytes>` lines in the same batch | yes |
+| `WinuaeDebugger` | WinUAE, from Linux through the Windows VM | `winuae.ps1 debugger` (`CFG AKS_ENTERDEBUGGER 1` over the pipe), then `S <file> <addr> <n>` and `g` typed into the console, dump read back as base64, one `ssh` a batch | `W <addr> <bytes>` lines in the same batch | yes |
 | `WinuaePipe` | WinUAE, through its own named pipe, from Linux through the VM | `DBG S ...` down the pipe between two emulated instructions, one `ssh` a batch | `W <addr> <bytes>` lines in the same batch | no |
 | `WinuaeLocalPipe` (`automap/winuae.py`) | WinUAE, from Wish on the same Windows machine | `DBG S ...` down `\\.\pipe\WinUAE` in a Python call, one range at a time | `DBG W ...` lines of 16 bytes, at most 64 bytes a call, each receipt checked and the range read back | no |
 | `FsuaeGdb` | a patched FS-UAE on the same machine, through the helper | a GDB-remote `m` packet over a loopback socket, answered from the emulator's frame handler | `M` packets of at most 64 bytes inside chip or slow memory, each answered `OK` | no |
@@ -1040,9 +1040,30 @@ volume says `POD 3` or `Pools of Darkness` as that title. With both off
 neither happens, and a folder holding only Pools of Darkness disks gives no
 maps.
 
-**What the fork needs.** The player runs the game in `grahambates/fs-uae`,
-branch `remote_debugger_prb28`, and not in stock FS-UAE, which has no such
-server. The server is started by the fork's `remote_debugger=<seconds>` option, and it
+**What the fork needs.** The player runs the game in `grahambates/fs-uae`'s
+GDB-remote build, the one `uae-dap` 1.1.5 ships and
+`tools/amiga/installfsuae.py` installs, and not in stock FS-UAE, which has no
+such server. Its server is the `remote_debugger_barto` one, not
+`remote_debugger_prb28` as this page said before: the binary's log lines are
+the ones `src/barto_gdbserver.cpp` prints. It is newer than that branch's
+published tip, `b70b1180`, though. A build of the tip has no `M` write handler
+and no `console`/`dumpdma` monitor commands, so `poke` and Level up fail on it.
+
+**State save and load in the fork.** The shipped Linux binary ends with a
+segfault on every state save, state load and reset. Each is queued with a
+NULL string that `inputdevice_add_inputcode` passes to `strdup` (CONFIRMED,
+three crashes, client attached or not). `tools/amiga/fsuae-inputcode-null.patch`
+is the one-line source fix, and both build scripts apply it. A copy of the
+shipped binary with the same guard patched in saves (slot files
+`base/Save States/Default/FS-UAE_<n>.uss`, written in under a second) and
+loads. A load put the poked witness bytes and 22,721 of the 22,725 changed
+chip-RAM bytes back, and the GDB client stayed connected through it
+(CONFIRMED, three loads with a client attached). The restored screen stayed
+black until the game redrew it, in all three loads. A load made after the
+client had disconnected ended in an AmigaOS "Software error - task held"
+requester (one sample, cause unknown). Saving and loading by key is not
+possible: this build binds no key to either, so the F12 menu is the only
+route. The server is started by the fork's `remote_debugger=<seconds>` option, and it
 listens on 2345 unless `remote_debugger_port=<port>` says otherwise; 2345 is the
 port the row looks for, so a different port is not found. The fork closes its
 listening socket when a client disconnects, which the helper is there to keep
@@ -1104,7 +1125,7 @@ directory and opens nothing, because WinUAE serves one client at a time.
   holds is waited for up to half a second (`WaitNamedPipe`), then the window
   asks again on its next tick.
 * **Every read and write is overlapped with a deadline.** WinUAE does not
-  service the pipe while its debugger waits at the F11 prompt, and a simple read
+  service the pipe while its debugger waits at its prompt, and a simple read
   would hang the window. A request waits two seconds, then is cancelled and the
   handle dropped (a late reply would answer the next request), and nothing is
   tried again for five seconds. A reply is read on only while WinUAE says more

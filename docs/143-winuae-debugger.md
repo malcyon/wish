@@ -25,7 +25,7 @@ export SSH_ASKPASS_REQUIRE=never   # see below; set it once, for the session
 winvm acquire wish-re          # start the VM, take a lease
 winvm ssh "$ps claim -Holder por-run"          # take the one Amiga lane -- 1.1
 winvm ssh "$ps start -Holder por-run -log -f C:\Amiga\configs\goldbox-a500.uae"
-winvm shot /tmp/screen.png     # see the emulator's screen, from a script
+tools/amiga/amigadrive.py --holder por-run shot /tmp/screen.png   # WinUAE's own screenshot -- 4.3
 winvm ssh "$ps stop -Holder por-run"
 winvm ssh "$ps release -Holder por-run"
 winvm release wish-re          # drop the lease; last one out shuts it down
@@ -81,9 +81,11 @@ are different window stations, and the consequences are not cosmetic:
 * `AttachConsole` cannot cross the boundary either — it fails with
   `GetLastError 203` every time.
 
-`tools/amiga/winuae.ps1` exists for this one reason: every action it takes goes
-through a scheduled task with an `Interactive` principal, which runs in
-whichever session the user is logged on to.
+`start` and `send` therefore go through a scheduled task with an `Interactive`
+principal, which runs in whichever session the user is logged on to. The named
+pipe of §4.1 does cross the boundary — a session 0 process opened it first time
+— so `shot`, `press`, `debugger`, `drives`, `insert` and the snapshot verbs run
+from the ssh session and need neither a task nor a logged-on console.
 
 The ROMs are raw dumps, not Cloanto's encrypted ones, so WinUAE identifies them
 by CRC and no `rom.key` is needed. `C:\Amiga` is excluded from Defender's
@@ -127,10 +129,10 @@ This is in golden, so opening WinUAE on the VM gets the Quickstart panel reading
 `winuae.ps1 roms` and promote again if the ROM directory ever changes.
 
 **Not against a live session.** The scan is a real `winuae64` run, so for the
-minute it takes there are two of them, and `front`, `key` and `send` pick their
-target by process name — with two, the wrong one can be picked in silence.
-`roms` blocks while an emulator is running, and those three block when they
-find more than one, naming both pids. Stop the session first.
+minute it takes there are two of them, and a verb that picked its target by
+process name could pick the wrong one in silence. Every verb that touches the
+emulator resolves it by the pid in the lane's run receipt instead, and `roms`
+blocks while any `winuae64` is running. Stop the session first.
 
 An SSH shell cannot leave one behind on its own: sshd ends its session's whole
 process tree when the call returns, so an emulator started from one dies with
@@ -142,10 +144,10 @@ from two `start` calls a second apart.
 ### 1.1 One lane at a time, and the claim that enforces it
 
 **The hazard is not two emulators. It is two drivers of the one emulator**, and
-until 2026-09-01 nothing on this machine could tell them apart. There is one
-scheduled task, one interactive session and one `winuae64`, and `key`, `send`
-and `front` find their target by process *name* — so a second agent does not
-get a second emulator, it gets yours. `#116 (Two agents cannot share the WinUAE
+until 2026-09-01 nothing on this machine could tell them apart. There was one
+scheduled task, one interactive session and one `winuae64`, and the verbs of
+the time (`key`, `send` and `front`) found their target by process *name* — so
+a second agent did not get a second emulator, it got yours. `#116 (Two agents cannot share the WinUAE
 VM, and neither of them can tell)` is the night that cost: six keystrokes into
 a stranger's Pools of Darkness, a `start` that reported `ok pid=6644` for
 somebody else's config, and a `stop` that ended their session three times.
@@ -162,7 +164,7 @@ thing at the end of a run kills the other agent's emulator.
 | `claim -Holder <id>` | takes the lane; blocks a second holder, naming who has it and since when |
 | `release -Holder <id>` | gives it back. Does *not* stop the emulator |
 | `claim -Holder <id> -Override` | takes a lane whose holder has gone away, and says whose it was |
-| everything that touches the emulator | `start`, `stop`, `key`, `send`, `front` and `roms` block a caller who is not the holder |
+| everything that touches the emulator | `start`, `stop`, `send`, `roms`, `shot`, `press`, `debugger`, `drives`, `insert` and the snapshot verbs block a caller who is not the holder |
 
 **The claim is a create, not a read-then-write**, and the difference was
 measured rather than reasoned about. Six `claim` calls released at the same
@@ -228,16 +230,25 @@ Two checks sit under the claim, because a claim only binds a caller who passes
   into an error: `fail winuae64 pid=1568 is running a command line this call
   did not pass`, quoting both.
 * **`start` writes a receipt** — `C:\Amiga\winuae-run.txt`, holding the pid, its
-  start time, the arguments and the holder — and `stop`, `key`, `send` and
-  `front` block a `winuae64` that is not the one in it. `stop -Override` ends
-  it anyway and says what it is overriding.
+  start time, the arguments and the holder — and `stop`, `send`, `shot`,
+  `press`, `debugger`, `drives` and `insert` block a `winuae64` that is not the
+  one in it. `stop -Override` ends it anyway and says what it is overriding.
 * **`send` blocks a `-TargetPid` that is not this lane's emulator.** It used to
   prefer a caller's own `-TargetPid` over the pid the ownership check had just
   proved, which walked straight past that check into whatever console the given
   pid owns. It was inert only because a *different* check blocks two
   emulators.
 
-The claim is a file in the guest, `C:\Amiga\winuae-claim.txt`, and it records
+**Each lane owns its own files**: the claim, the run receipt, the scheduled
+task, the send log, the console file, a WinUAE ini and a screenshot folder
+(§4.3). Lane 1 uses the bare names (`winuae-claim.txt`, `winuae-run.txt`,
+`lanes\1\winuae.ini`) and lane *n* adds `-n`. A holder has one lane, and every
+verb that takes `-Holder` acts on it. `$LaneCount` is still 1: keys and
+screenshots no longer share the desktop, but a second lane waits for a
+two-lane run of `winuae-lanecheck.ps1` (`-Lanes 2`) to pass against the
+driver.
+
+The claim is a file in the guest, `C:\Amiga\winuae-claim.txt` for lane 1, and it records
 the boot it was taken in: a claim cannot outlive a restart, because every
 emulator and every run in flight died with it. Nothing in the guest can see
 whether the *Linux* process that took a claim is still alive, so a claim left
@@ -249,8 +260,9 @@ declared as parameters**, and that matters before editing the script.
 PowerShell fills a positional parameter *before* a
 `ValueFromRemainingArguments` one, wherever each is declared and whatever
 `Position` each is given: measured, with `-Holder` at `Position=99` and `$Rest`
-at `Position=1`, `winuae.ps1 key 7A` bound `cmd=[key] holder=[7A] rest=[]` and
-the keypress was blocked for having no VK code.
+at `Position=1`, `winuae.ps1 key 7A` (the key verb, since removed) bound
+`cmd=[key] holder=[7A] rest=[]` and the keypress was blocked for having no VK
+code. `press` takes its codes the same way, so the rule holds for it too.
 
 `tools/amiga/winuae-lanecheck.ps1` is the proof, and it runs against whichever copy
 of the driver it is pointed at, so an older one can be watched to fail.
@@ -267,6 +279,11 @@ more of them:
 | …and the holder can still re-assert its own lane | 0 re-assertions against a build whose re-claim always failed | 18–22 a round |
 | `send` obeys a `-TargetPid` that is not the lane's emulator | yes | blocked |
 | the holder's own `start`, `key`, `send` and `stop` still work | works | works |
+
+The two `key` rows were measured with the key verb, which has since been
+removed because it needed the window focus. The check's `foreignkey` round now
+sends a second driver's `debugger` at the first's emulator and expects the same
+block; no live run of that round is recorded on this page.
 
 **The hijack rounds say whether they actually raced**, and that is not a
 detail: it needs two `start` calls to overlap inside the second WinUAE takes to
@@ -473,8 +490,9 @@ Five things constrain what may go down it:
   on the list above.
 
 `CFG <line>` on the same pipe reaches `cfgfile_modify`, which is the host-side
-equivalent of the Amiga-side `uae-configuration` program. The floppy change in
-§4.2 is the only thing this project sends through it.
+equivalent of the Amiga-side `uae-configuration` program. This project sends
+through it the floppy change (§4.2), the whole-machine snapshot and restore, the
+raw key events and the debugger entry (§4.3).
 
 **`automap.amiga.WinuaePipe` is the transport and `tools/amiga/winuaepipe.py` the
 command line.** `AmigaTarget` takes either transport and asks it one question,
@@ -547,6 +565,88 @@ the caller. The deployed `C:\Amiga\winuae.ps1` must be this repository's copy.
 swapped to a second disk and back with DF1 checked at every step, and four
 controls that must leave both drives unchanged.
 
+### 4.3 Screenshots, keys and the debugger, all over the pipe
+
+Every screenshot and every key press goes down the lane's own pipe. None raises
+a window, takes the focus or looks at the Windows desktop, all run from the ssh
+session (session 0), and they work on a copy hidden behind another. The earlier
+route photographed the whole 1920x1080 desktop and searched it for WinUAE's
+status bar, raised the window, and typed into whichever window had the focus; a
+stray window or a lost focus sent a key elsewhere or cropped the wrong picture,
+and two copies on one desktop would have photographed and typed into each
+other. That route and its verbs (`key`, `front`, `winvmsettle.py`, the live mode
+of `amigashots.py`, `winwish --window winuae`) are deleted.
+
+* **`winuae.ps1 shot` sends `DBG sc`.** WinUAE answers `404` whether or not it
+  wrote a file, so the one new PNG in the lane's shots folder is the success
+  signal; the verb checks its PNG signature and `IEND`, prints it as base64
+  between `WINVM-SHOT-BEGIN` and `WINVM-SHOT-END`, and deletes it.
+  `amigadrive.py shot` decodes it. The file is complete when the reply arrives
+  (CONFIRMED, 8 of 8 hand-sent shots, 28-80 ms on the guest), and one shot
+  through ssh took 2.4 s (CONFIRMED, one call).
+* **The lane's ini says where the file goes.** `start` writes
+  `C:\Amiga\lanes\<n>\winuae.ini` fresh every time, with `ScreenshotPath` set to
+  `C:\Amiga\lanes\<n>\shots\`, `Screenshot_Original=1`, `Screenshot_Mode=1`,
+  `Screenshot_ClipMode=0` and the window position, and launches with `-ini` in
+  front of the caller's arguments. WinUAE reads the screenshot keys again on
+  every shot, no `.uae` option changes the size or the offset (CONFIRMED from
+  the 6.0.3 source), and a limited task writes under `C:\Amiga` but not under
+  Program Files (CONFIRMED). The folder is emptied at `start`. Two copies each
+  wrote only into their own folder (CONFIRMED, two copies started).
+* **The frame is 752x574 and the Amiga screen is a fixed cut of it.**
+  `screens.canonical` cuts the 720x568 crop the guard rules were made from at
+  (16,4), with no rescale (CONFIRMED for Pool and Silver Blades: the frame is
+  24-bit RGB, 2x2 uniform, every channel a multiple of 17). A Silver Blades
+  title frame cut this way is pixel-identical to a kept crop (CONFIRMED, 0
+  differing pixels); a Pool code-wheel frame differed from its kept crop in 504
+  pixels, all in the rune pair and code-word rows (PROBABLE: a different random
+  challenge, not compared against a second boot of the same challenge).
+* **A process writes at most 999 screenshots.** The counter is a static in
+  `screenshot.cpp` and the loop is `while (++filenumber < 1000)`; deleting files
+  gives no numbers back, and shot 1000 writes nothing while the reply is still
+  `404` (CONFIRMED from source and live). `shot` sends `CFG SPC_SCREENSHOT 0`
+  after each good shot, which sets the counter back to 0; 1,100 consecutive
+  shots all wrote one valid PNG and the highest number was 5 (CONFIRMED). The
+  reset can land late: 251 of 1,100 shots (23%) were numbered `_002` or `_003`
+  (CONFIRMED), so the driver never predicts the name, and a reset 3 s before a
+  shot had not taken effect for that shot (UNKNOWN why). The name is also
+  `<DF0 file name>_<NNN>.png`, so it changes when DF0 is swapped.
+  `CFG AKS_SCREENSHOT_FILE` is never sent with any value, because `0` starts
+  capture of a PNG per frame.
+* **`winuae.ps1 press <hex raw codes>` sends `CFG KEY_RAW_DOWN 0x<code>`, waits
+  120 ms and sends `CFG KEY_RAW_UP 0x<code>`** in a `finally`, with 150 ms
+  between codes, so a failure does not leave a key held; an `UP` after a
+  timed-out `DOWN` goes on a fresh connection. WinUAE reads a code as decimal
+  unless it starts `0x`. One press gives one character with no repeat, and a
+  hidden copy received it while the copy above it received nothing (CONFIRMED).
+  The codes are the Amiga's own (`tools/amiga/amigakeys.py`), so a cursor key
+  is `0x4C` to `0x4F` and never a keypad key (§5.1).
+* **Each copy's pipe is found by its server pid.** A copy takes the first free
+  of `WinUAE`, `WinUAE_1` to `WinUAE_9`, so the name says nothing about whose it
+  is; the verbs open each in turn and keep the one whose
+  `GetNamedPipeServerProcessId` is the lane's `winuae64`. Probing another copy's
+  pipe occupies it briefly, since there is one instance.
+* **`winuae.ps1 debugger` sends `CFG AKS_ENTERDEBUGGER 1`.** It halts the
+  machine and shows the `>` prompt with no key press and no focus: the reply was
+  `404` in 312 ms and the console showed the register dump and the prompt
+  (CONFIRMED); the `SPC_ENTERDEBUGGER` binding in `goldbox-a500.uae` is not
+  needed for it, and a copy started without `-log` still got its console. The
+  cost is that WinUAE brings its debugger console window to the foreground, and
+  it stays visible after `g` (CONFIRMED, read about 8 s after the enter; whether
+  it is foreground at the very moment of the enter was not measured). A pipe
+  request sent while the debugger waits at its prompt gets no reply (CONFIRMED,
+  one request, 2 s), so nothing that needs the pipe goes after it until `g` has
+  been typed through `send`; after `g` the machine runs again (CONFIRMED,
+  Exec's `DispCount` moving). It is a diagnostic: an acceptance run reads memory
+  through the pipe and never enters the debugger. Breakpoint hits, `t` and `z`
+  stepping and `CFG AKS_SINGLESTEP` were not tested.
+* **`CFG AKS_PAUSE 1` freezes the machine without a console**, for a read that
+  needs memory to hold still: `DBG m`, `DBG S` and `DBG r` all answered while
+  paused (67 and 110 ms) and `CFG AKS_PAUSE 0` resumed it (CONFIRMED).
+
+Evidence is in the comments of `WISH-282 (Only one Amiga emulator run can happen
+at a time, so every Amiga proof waits for the single WinUAE lane)`.
+
 ## 5. Starting a game unattended
 
 Two command-line switches carry everything (`main.cpp:1023` and `:1035`):
@@ -589,8 +689,9 @@ thousands of lines, the same flood §5's `use_debugger` paragraph describes,
 with no `use_debugger` anywhere. Measured on 2026-09-07: with `-log` the
 emulator was still a blank white window three and a half minutes in; the same
 command line without it reached the code wheel in 44 seconds. It also defeated
-`tools/amiga/winvmsettle.py` outright, because `winvm shot` grabs the whole desktop
-and a scrolling console means no two grabs are ever identical. **That paragraph
+the settle check of the time (`winvmsettle.py`, since removed) outright, because
+`winvm shot` grabbed the whole desktop and a scrolling console meant no two
+grabs were ever identical. **That paragraph
 said to pass `-log` only when `send` was going to read the debugger back, and
 it is superseded**, because a run that wants both the debugger and the screen
 -- which is every driven measurement -- had no way to have them.
@@ -608,7 +709,7 @@ console, but it did not measure the effective renderer:
 | the emulator window | white for the whole run | the game, drawn |
 | FPS / CPU | 14.6 / 342% | **49.9 / 0%** |
 | the console | `Denise queue without lock! id=1` as fast as it prints | the drive's own `nnn%` line |
-| `tools/amiga/winvmsettle.py` | never settled in 180 s | 62, 7, 12, 16, 50, 56, 83 s |
+| the desktop settle check (`winvmsettle.py`, since removed) | never settled in 180 s | 62, 7, 12, 16, 50, 56, 83 s |
 
 With the rejected setting present, `#37 (Automap the Amiga version, not just the C64)`'s run drove Silver Blades from its title screen to a party
 standing in the world, photographing every screen, with the debugger reading
@@ -655,8 +756,10 @@ minutes.
 
 The only surviving caller of `activate_debugger()` is `AKS_ENTERDEBUGGER`,
 reached from the input event `SPC_ENTERDEBUGGER` (`inputevents.def:371`,
-"Activate the built-in debugger"). **It has no default binding.** Five config
-lines give it one, and `tools/amiga/goldbox-a500.uae` carries them:
+"Activate the built-in debugger"). **It has no default binding.** Driven tools
+do not need one: `CFG AKS_ENTERDEBUGGER 1` over the pipe enters the debugger
+(§4.3, `winuae.ps1 debugger`). Five config lines give a person at the keyboard
+a binding, and `tools/amiga/goldbox-a500.uae` carries them:
 
 ```
 input.config=1
@@ -666,9 +769,10 @@ input.1.keyboard.0.empty=false
 input.1.keyboard.0.button.87.0=SPC_ENTERDEBUGGER
 ```
 
-87 is `DIK_F11`. Pressing it must be a real key at the driver level —
-`keybd_event` after `SetForegroundWindow`, from session 1; `PostMessage` does
-not reach DirectInput. `winuae.ps1 key 7A` does both.
+87 is `DIK_F11`. Pressing it from a script must be a real key at the driver
+level — `keybd_event` after `SetForegroundWindow`, from session 1;
+`PostMessage` does not reach DirectInput. That route needed the window focus,
+and the `key` verb that did it is deleted in favour of the pipe entry.
 
 `activate_debugger()` carries one more guard to know before designing
 anything headless:
@@ -683,24 +787,25 @@ if (!is_interactive_console() || isfullscreen () > 0) return;
 **There is no window-level sign that the debugger is up.** With the emulation
 thread held at the `>` prompt, `Get-Process winuae64` still reported
 `Responding = True`, and `winvm shot` still showed the title bar reading
-`[goldbox-a500.uae] - WinUAE` — no `(Not Responding)`. The receipt for F11 is
-the prompt itself, in what §6's console readback returns.
+`[goldbox-a500.uae] - WinUAE` — no `(Not Responding)`. The receipt for entering
+the debugger is the prompt itself, in what §6's console readback returns.
 
 ### 5.1 The keys the guest delivers are not the keys you asked for
 
-Two traps sit between `winuae.ps1 key <vk>` and the Amiga, and both cost
-`#361 (An Amiga party cannot be made to walk, because the WinUAE driver sends
-only keystrokes)` a night before they were found.
+Two traps sat between the old `winuae.ps1 key <vk>` verb and the Amiga, and
+both cost `#361 (An Amiga party cannot be made to walk, because the WinUAE
+driver sends only keystrokes)` a night before they were found.
 
 **WinUAE reads scancodes, and `keybd_event` derives one from the virtual key
-without the `E0` prefix.** So `VK_UP` (0x26) arrives as scancode `0x48`, which
-is `DIK_NUMPAD8`; `VK_DOWN`, `VK_LEFT` and `VK_RIGHT` likewise arrive as
-keypad 2, 4 and 6. Pressing a real cursor key needs
-`KEYEVENTF_EXTENDEDKEY`, which is `key <vk> -Extended`. Before that switch
-existed the driver could not press a cursor key at all, and every "arrow" it
-had ever sent was a keypad key.
+without the `E0` prefix.** So `VK_UP` (0x26) arrived as scancode `0x48`, which
+is `DIK_NUMPAD8`; `VK_DOWN`, `VK_LEFT` and `VK_RIGHT` likewise arrived as
+keypad 2, 4 and 6, and a real cursor key needed `KEYEVENTF_EXTENDEDKEY`
+(`key <vk> -Extended`). Before that switch existed every "arrow" the driver had
+sent was a keypad key. This trap went with the verb: `winuae.ps1 press` sends
+the Amiga's own raw codes over the pipe (§4.3), where `UP` is `0x4C` and
+`NP8` is `0x3E`, and no host scancode is derived.
 
-**A port set to a keyboard layout eats those keys before the Amiga sees
+**A port set to a keyboard layout eats host keypad keys before the Amiga sees
 them.** WinUAE's `default_prefs()` puts `mouse` in Amiga port 1 and **`kbd1` in
 Amiga port 2**, and `kbd1` is Keyboard Layout A; `inputdevice.cpp`'s
 `setcompakb()` then replaces the mappings of `DIK_NUMPAD4`, `6`, `8`, `2`, `0`,
@@ -709,6 +814,8 @@ Amiga port 2**, and `kbd1` is Keyboard Layout A; `inputdevice.cpp`'s
 which is how Amiga Curse and Amiga Silver Blades move a party -- receives
 nothing at all and looks as though it ignores the key.
 `tools/amiga/goldbox-a500.uae` now says `joyport0=mouse` and `joyport1=none`.
+No measurement on this page says whether a key event injected over the pipe
+passes through that layout; the config keeps the line.
 
 **And `sound_output=none` is not "silent", it is "no Paula".** Audio interrupts
 are not emulated either, and Amiga Silver Blades deadlocks on the second turn
@@ -806,7 +913,7 @@ demonstrated rather than costed.
 
 **`g` really resumes, and the way to prove it is a second halt.** The Amiga
 screen can sit on one frame for minutes at a time, so a screenshot proves
-nothing; a second `F11` does. Across two halts the CPU was parked in the same
+nothing; a second halt does. Across two halts the CPU was parked in the same
 Kickstart idle instruction — `00fc0f90 stop #$2000`, which is why `CPU: 0%` is
 normal and not a sign of a wedge — while `VPOS` had moved from 104 to 208. The
 beam had run; the emulator had run.
@@ -890,7 +997,7 @@ Seven traps, each of which reads as "the route does not work":
    console. `tools/amiga/winuae-sendcheck.ps1` provokes it: 1 of 20 eight-line
    batches died against the old driver and injector, 0 of 20 against the
    fixed pair, 0 of 20 with either half fixed alone, and 0 of 24 four-line
-   batches with F11 between each from a fresh start.
+   batches with a debugger entry between each from a fresh start.
 
 The rejected alternative was **`SendKeys` after `AppActivate`**: simpler, and
 fragile in exactly the way that matters, since it depends on window focus.
@@ -900,14 +1007,14 @@ not.** `Start-ScheduledTask` on an `Interactive` principal returns success and
 runs nothing at all when nobody is logged on at the console — measured, with
 session 1 logged off: `LastTaskResult = 0x41303`, `LastRunTime = 11/30/1999`,
 and the task never leaves `Ready`. That is the silent failure that costs most
-here, because a `key` reporting "pressed" leaves the debugger closed, `send`
-then types into a console that was never created, and the run looks fine until
-somebody reads the empty dumps hours later.
+here, because a task that reported "started" and never ran leaves no console
+for `send` to type into, and the run looks fine until somebody reads the empty
+dumps hours later.
 
-So each session 1 helper writes a one-line receipt — `ok raised pid=... hwnd=...`
-or `fail ...` — that `winuae.ps1` waits for, and `winuae-send.ps1` ends every
-path with `--- exit N token=...`. Both carry the caller's own token, for the
-reason in trap 5. When no receipt arrives the caller reports the scheduler's own
+So each session 1 helper writes a one-line receipt — `ok ...` or `fail ...` —
+that `winuae.ps1` waits for, and `winuae-send.ps1` ends every path with
+`--- exit N token=...`. Both carry the caller's own token, for the reason in
+trap 5. When no receipt arrives the caller reports the scheduler's own
 reason rather than guessing.
 
 **A malformed call fails in milliseconds, not at the end of a timeout.**
@@ -993,7 +1100,7 @@ touched: the contract is still two methods, and everything else `AmigaTarget`
 supplies is an optional method the protocol already looks for with `getattr`.
 
 **One `ssh` call does a whole batch.** The three guest commands — write the
-batch file, press F11, inject it — are composed into a single PowerShell script
+batch file, enter the debugger, inject it — are composed into a single PowerShell script
 and base64'd into `powershell -EncodedCommand`, and the dump files come back as
 base64 on stdout. §6 proposes `S` then a separate `scp`, and that would be a
 second round trip per block. `-EncodedCommand` also removes every quoting
@@ -1057,6 +1164,10 @@ small-data one, so the anchor finds the wrong hunk and it needs hunk 32's load
 address instead.
 
 ## 11. What was checked, and what was not
+
+The records below name the verbs used at the time. `key`, `front`, the desktop
+screenshot (`winvm shot` of a WinUAE run) and `winvmsettle.py` are since
+removed; §4.3 is what replaced them.
 
 **Checked against WinUAE master source, 2026-08-25:**
 
@@ -1135,9 +1246,10 @@ address instead.
   copy of `winuae.ps1` is now the pre-`#116 (Two agents cannot share the WinUAE
   VM, and neither of them can tell)` one and no longer matches `tools/` — see
   the 2026-09-01 block below
-* **`front`, `key` and `send` block two emulators, and `roms` blocks one.**
-  Watched to fail against a second `winuae64` started on purpose and stopped by
-  its own pid: all three reported `fail 2 winuae64 processes: 1244,3652; stop
+* **`front`, `key` and `send` blocked two emulators (the first two verbs are
+  since removed; every verb now finds its emulator by the receipt's pid), and
+  `roms` blocks one.** Watched to fail against a second `winuae64` started on
+  purpose and stopped by its own pid: all three reported `fail 2 winuae64 processes: 1244,3652; stop
   all but one` with rc 1, and `roms` reported `fail winuae64 running pid=...;
   roms starts its own, stop this one first` for each — §1
 * **a backtick inside the `$Preamble` here-string is an escape, not a
@@ -1356,10 +1468,9 @@ attract-mode demo, started **without `-log`** so no console existed at all, and
   and `g` has been exercised
 * how far the game runs *behind* a debugger halt, which §10 says must be
   measured before any claim about live automapping
-* `front`, `key` and `send` have been exercised only against a *running*
-  emulator and against *no session 1 logon*. A locked session 1 — where the
-  task runs but `SetForegroundWindow` cannot succeed — has not been tried, and
-  it is the case `front`'s `foreground=` receipt exists for
+* `send` has been exercised only against a *running* emulator and against *no
+  session 1 logon*. A locked session 1, where the task still runs, has not
+  been tried
 * whether the `092%` that Curse's loader prints to the console for minutes on
   end is the cracked release waiting for something or an emulation fault. The
   game keeps running behind it — memory reads and `g` both work — so it has not
