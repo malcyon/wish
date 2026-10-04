@@ -6,7 +6,7 @@
 # THIS IS THE EXAMPLE. Copy it to `inventory.yml` in this directory -- that file
 # is gitignored, is the only inventory the playbooks are run with, and is one
 # machine's own -- and replace every value that starts with CHANGE-ME or that
-# sits in angle brackets. `tests/suite/test_repository_contents.py` refuses a tracked
+# sits in angle brackets. `tests/suite/test_repository_contents.py` fails on a tracked
 # file under `ansible/` that names a home directory or a LAN address, so keep
 # both out of anything you commit.
 #
@@ -25,7 +25,7 @@ all:
     # Where the player's own game disks are. Set once here, in `all`, so the
     # host play that builds the disks image and the guest play that rewrites
     # `gamedisks.yaml` read the same value. It must be the directory the paths in
-    # `gamedisks.yaml.example` start with, or the guest's rewrite refuses to run.
+    # `gamedisks.yaml.example` start with, or the guest's rewrite will not run.
     agent_vm_disks_dir: /data/agent-disks
 
     # The login keypair for the Ubuntu guest, both halves. The private half is

@@ -2,7 +2,7 @@
 # The agent guest's one way into the Windows guest. `winvm` passes this file
 # with -F, so nothing in ~/.ssh/config applies to it; `ssh {{ agent_winvm_conf_host }}` on its own
 # reads it through /etc/ssh/ssh_config. The host key is pinned: it was read on the
-# host through the hypervisor, and a key that differs is refused, never learnt.
+# host through the hypervisor, and a key that differs is rejected, never learnt.
 Host {{ agent_winvm_conf_host }} {{ agent_winvm_conf_ip }}
     HostName {{ agent_winvm_conf_ip }}
     User {{ agent_winvm_conf_user }}

@@ -22,4 +22,4 @@
       {{ agent_winvm_hostname.rc }}: {{ agent_winvm_hostname.stderr | trim }}).
       "Host key verification failed" means the pinned key is not the one
       Windows presents; "Permission denied" means the key was not authorized,
-      or Windows refused the from= restriction (set agent_winvm_key_from to "").
+      or Windows rejected the from= restriction (set agent_winvm_key_from to "").

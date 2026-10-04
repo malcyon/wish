@@ -23,7 +23,7 @@
   when: winvm_name in (winvm_td_running.stdout_lines | default([]))
   changed_when: true
 
-# --nvram matters: without it libvirt refuses to undefine a UEFI domain, and
+# --nvram matters: without it libvirt will not undefine a UEFI domain, and
 # the per-domain varstore is left orphaned in /var/lib/libvirt/qemu/nvram.
 - name: Undefine the domain and its NVRAM, named {{ winvm_name }}
   ansible.builtin.command: "virsh undefine --nvram {{ winvm_name }}"

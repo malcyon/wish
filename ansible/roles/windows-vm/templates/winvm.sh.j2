@@ -12,7 +12,7 @@
 #
 # Every path here is non-interactive on purpose: BatchMode and
 # SSH_ASKPASS_REQUIRE mean a failure is an error on stderr, never a password
-# dialog on somebody's screen.  `promote` refuses unless the domain is shut
+# dialog on somebody's screen.  `promote` fails unless the domain is shut
 # off, because a paused domain is a live qemu holding the very file it merges.
 set -euo pipefail
 
@@ -77,7 +77,7 @@ up() {
   case "$(state)" in
     running) ;;
     # A human who closes a viewer window leaves the domain paused, and `virsh
-    # start` refuses an already-active domain, so without this case a paused
+    # start` rejects an already-active domain, so without this case a paused
     # domain would break every command in the file.
     paused|pmsuspended) V resume "$VM" >/dev/null ;;
     # managedsave restores in a couple of seconds; a cold boot is ~40.
@@ -129,13 +129,13 @@ acquire() {
   # held -- so two agents both taking the documented `wish-re` would share one
   # lease file, invisibly, and the first of them to `release` would shut
   # the VM down on top of the other's emulator mid-debugger-session. The
-  # second acquire is refused instead, which turns a silent collision into an
+  # second acquire is rejected instead, which turns a silent collision into an
   # error naming the way out.
   #
   # `noclobber` in a subshell is what makes the create atomic: two acquires
   # landing together cannot both win it, where a test-then-write pair can.
   # (Two agents genuinely sharing one tag are indistinguishable to this file,
-  # so refusing is the safe direction: an agent re-taking its own tag is told
+  # so rejecting it is the safe direction: an agent re-taking its own tag is told
   # something is wrong rather than being handed a lease somebody else holds.)
   if ! (set -o noclobber; : > "$LEASES/$tag") 2>/dev/null; then
     echo "winvm: the lease '$tag' is already held." >&2

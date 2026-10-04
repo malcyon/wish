@@ -36,7 +36,7 @@ agent_winvm_key_name: winvm_ed25519
 # guest's first-logon script keeps the line.
 agent_winvm_key_comment: wish-agent-vm
 # The key works only from the agent guest's address. Set "" to drop the
-# restriction if a Windows OpenSSH build ever refuses it.
+# restriction if a Windows OpenSSH build ever rejects it.
 agent_winvm_key_from: "{{ agent_winvm_agent_ip }}"
 # Options written in front of the key on Windows, after `from=`.
 agent_winvm_key_options:
@@ -48,7 +48,7 @@ agent_winvm_key_options:
 # network), so nothing on the sandbox bridge can put itself in the Windows
 # guest's place while it is read. Set this to the whole line of
 # ssh_host_ed25519_key.pub, read off the console by hand, when the guest agent
-# refuses `guest-exec`.
+# rejects `guest-exec`.
 agent_winvm_host_key: ""
 agent_winvm_host_key_file: 'C:\ProgramData\ssh\ssh_host_ed25519_key.pub'
 agent_winvm_cmd_exe: 'C:\Windows\System32\cmd.exe'

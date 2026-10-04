@@ -24,7 +24,7 @@
 
 # Sent as -EncodedCommand, so neither this shell, ssh nor the PowerShell login
 # shell on Windows re-quotes it. The ACL is the one roles/windows-vm sets: sshd
-# refuses the file unless only SYSTEM and Administrators can write it.
+# rejects the file unless only SYSTEM and Administrators can write it.
 - name: Authorize the agent guest's key on Windows
   ansible.builtin.command:
     argv: >-

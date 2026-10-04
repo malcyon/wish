@@ -88,7 +88,7 @@ sandbox_net_internet_url: https://api.github.com/
 # rule is needed for it; this proves it still gets through.
 sandbox_net_peer_tcp:
   win11: [22]
-# TCP ports on the gateway that must be refused, tried by the isolation test.
+# TCP ports on the gateway that must be rejected, tried by the isolation test.
 sandbox_net_gateway_denied_tcp: [22]
 # Hosts on the home LAN that must stay unreachable, such as the router and the
 # DNS server, each probed by ping and by a TCP connect and first probed from the
@@ -156,7 +156,7 @@ sandbox_net_probe_guests:
     user: agent           # must equal agent_vm_user
     key: "{{ agent_vm_keypair_path }}"
     # /mnt/disks is not scanned here: `agent-vm`'s "Look for a token or a
-    # private key" task already refuses to build the image if one is in the
+    # private key" task already stops before building the image if one is in the
     # source, and the read-only-mount probes below prove the guest cannot have
     # written to it since, so rescanning it on every run bought nothing but
     # time.

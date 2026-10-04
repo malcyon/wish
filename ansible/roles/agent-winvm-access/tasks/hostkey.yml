@@ -73,7 +73,7 @@
         that:
           - agent_winvm_exec.rc == 0
         fail_msg: >-
-          The QEMU guest agent in {{ agent_winvm_domain }} refused guest-exec
+          The QEMU guest agent in {{ agent_winvm_domain }} rejected guest-exec
           ({{ agent_winvm_exec.stderr | trim }}). Read the key off the console
           instead -- in the Windows guest, `type {{ agent_winvm_host_key_file }}`
           -- and set the whole line as agent_winvm_host_key in

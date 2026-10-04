@@ -51,7 +51,7 @@ Every playbook is idempotent. The first `agent-vm.yml` run downloads Canonical's
 
 A section can be run alone by its tag: `boot`, `packages`, `gh`, `claude`, `vice`, `dosbox`, `wish`, `fsuae`, `node`, `agenthud`, `herdr`, `codex`, `c64u`, `herdr_integrations`, `environment`, `credential`, `disks`, `exporter`, `login`, `codewheel`; or `agent_vm` for play 1, `agent_vm_guest` for play 2, `isolation` for the test, `agent_network` for the `sandbox-network` role in `sandbox-network.yml`, `winvm` for the `windows-vm` role, `winvm_access` for `agent-winvm-access.yml`.
 
-`inventory.yml` and `group_vars/all/vault.yml` hold one machine's own values and are gitignored; `tests/suite/test_repository_contents.py` refuses a tracked file under `ansible/` that names a home directory, a LAN address or a credential.
+`inventory.yml` and `group_vars/all/vault.yml` hold one machine's own values and are gitignored; `tests/suite/test_repository_contents.py` fails on a tracked file under `ansible/` that names a home directory, a LAN address or a credential.
 
 ## What `ansible/inventory.yml` must name
 
@@ -66,7 +66,7 @@ Each row is a variable `inventory.yml.example` has a placeholder for; everything
 | `agent_vm_timezone` | A tz database name for the Ubuntu guest's clock |
 | `sandbox_net_leases` | Each guest's MAC, in libvirt's locally administered range; the addresses are `10.77.0.10` and `10.77.0.11` on every machine |
 | `sandbox_net_pinholes` | The LAN hosts, each one bare address, the guests may reach, such as the C64 Ultimate; an empty list is no hole |
-| `sandbox_net_lan_targets` | LAN machines the isolation test must fail to reach: a `name`, an `ip` and a `tcp_port` each, and each must answer a ping and accept that port from the desktop itself, or the test refuses to run |
+| `sandbox_net_lan_targets` | LAN machines the isolation test must fail to reach: a `name`, an `ip` and a `tcp_port` each, and each must answer a ping and accept that port from the desktop itself, or the test will not run |
 | `winvm_user` | The desktop account added to the `libvirt` and `kvm` groups |
 | `winvm_admin_user` | The Windows guest's local administrator, which `winvm ssh` logs in as and the isolation test probes |
 | `winvm_iso_src` | The Windows installation ISO you downloaded |
@@ -76,7 +76,7 @@ Each row is a variable `inventory.yml.example` has a placeholder for; everything
 | `ansible_host`, `ansible_user`, `ansible_ssh_private_key_file` on the `agent-vm` host | The guest's `10.77.0.10` address, `agent`, the account the guest is built with (`agent_vm_user`), and `agent_vm_keypair_path` |
 | `agent_guest_codewheel_slug` | The private repository holding the code-wheel arithmetic, which the guest clones; empty skips the clone |
 | `agent_guest_private_repos` | Optional: further private repositories the guest clones with the same GitHub App; the list replaces the default, so keep the code-wheel entry |
-| `agent_winvm_host_key` | Optional: the Windows guest's `ssh_host_ed25519_key.pub` line, read off its console, for when the QEMU guest agent refuses `guest-exec`; empty reads it through the guest agent |
+| `agent_winvm_host_key` | Optional: the Windows guest's `ssh_host_ed25519_key.pub` line, read off its console, for when the QEMU guest agent rejects `guest-exec`; empty reads it through the guest agent |
 | `agent_winvm_operator_key` | Optional: the private key on this desktop that Windows already trusts, for writing the Ubuntu guest's key into it; empty is ssh's own default |
 | `vault_windows_admin_password` | In `group_vars/all/vault.yml`, not the inventory: the Windows administrator's password, at least 8 characters |
 
@@ -114,7 +114,7 @@ The specimen tree is the one thing shared into the guest and the one thing it ca
 
 The guest reads the player's game data from a read-only virtual disk and cannot write to it, as `agent` or as `root`. Nothing on the LAN is mounted into the guest; the data is copied into an image on this host.
 
-**You fill `agent_vm_disks_dir`.** One directory per `gamedisks.yaml` entry, named for the entry (`pool-of-radiance`, `amiga`, `kickstarts` and so on, the names `gamedisks.yaml.example` uses). **`codewheel` is not one of them:** it is your private repository, the guest clones it, and the role refuses to build the image while `codewheel` exists in that directory. For each entry in this machine's `gamedisks.yaml`, copy the first path that holds data, and only what the entry needs (a save disk named among a folder of downloads is one file, not the folder; a whole ROM library is only the Gold Box titles):
+**You fill `agent_vm_disks_dir`.** One directory per `gamedisks.yaml` entry, named for the entry (`pool-of-radiance`, `amiga`, `kickstarts` and so on, the names `gamedisks.yaml.example` uses). **`codewheel` is not one of them:** it is your private repository, the guest clones it, and the role stops before building the image while `codewheel` exists in that directory. For each entry in this machine's `gamedisks.yaml`, copy the first path that holds data, and only what the entry needs (a save disk named among a folder of downloads is one file, not the folder; a whole ROM library is only the Gold Box titles):
 
 ```bash
 rsync -a "<the entry's first path that holds data>/" <agent_vm_disks_dir>/pool-of-radiance/
@@ -164,7 +164,7 @@ The `wish-agent` GitHub App is the only GitHub credential in the guest, and noth
 | commits | authored as `wish-agent[bot]` |
 | `agent_guest_private_repos` | other private repositories, cloned over https and pulled (`git pull --ff-only`) on every run, which stops rather than merge or overwrite the guest's own work; each must be on the App's repository access, with Contents read and write to push. The code-wheel repository, `agent_guest_codewheel_slug`, is the first at `~/src/goldbox-codewheel`, and the guest's `gamedisks.yaml` points its `codewheel` entry at the clone |
 
-The App needs Issues, Contents and Workflows, all read and write, on the installation. A request for a permission beyond what the installation has been granted is refused by GitHub's API, which answers the token request with `422 The permissions requested are not granted to this installation`.
+The App needs Issues, Contents and Workflows, all read and write, on the installation. A request for a permission beyond what the installation has been granted is rejected by GitHub's API, which answers the token request with `422 The permissions requested are not granted to this installation`.
 
 ## The filter, and proving it
 
@@ -176,13 +176,13 @@ A wrong filter fails silently, so the test is a task, not a memory. `ansible-pla
 |---|---|
 | the internet answers, and the peer guest does | a request and a ping |
 | no `sandbox_net_lan_targets` machine answers | a ping and a TCP connect |
-| `ssh` to `10.77.0.1` is refused while DNS through it works | a connect and a lookup |
+| `ssh` to `10.77.0.1` is rejected while DNS through it works | a connect and a lookup |
 | the Windows guest's ssh port answers from the Ubuntu guest (`sandbox_net_peer_tcp`) | a TCP connect |
 | the writable mount can be written and the read-only one cannot | a write as `agent` and as `root`, and the device's write protection |
 
 `ssh`'s own `ConnectTimeout` bounds connection setup only, not a command that has already connected, so every one of the checks above is wrapped in GNU `timeout` as well (`sandbox_net_probe_timeout_seconds`, 30s by default); a probe that hits that deadline prints no verdict and is never counted as a pass.
 
-Once every running guest's network and mount checks have reported, a second phase audits each guest whose entry names `audit_dirs` for a GitHub token (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`): first in every process's environment, then a search of `/home /root /etc /opt /tmp /var/tmp`, one root directory at a time, each under its own deadline (`sandbox_net_credential_root_timeout_seconds`, 60s by default). Kept as a second phase and out of the first loop on purpose: a scan across a whole filesystem does not finish in the second or two the network checks do, so mixing them into one probe list let a slow or stuck scan hold up the network assertions behind it. The game disks are not rescanned here -- the `agent-vm` role already refuses to build the image if a token or private key is in its source, and the read-only-mount check above proves the guest cannot have written to it since.
+Once every running guest's network and mount checks have reported, a second phase audits each guest whose entry names `audit_dirs` for a GitHub token (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`): first in every process's environment, then a search of `/home /root /etc /opt /tmp /var/tmp`, one root directory at a time, each under its own deadline (`sandbox_net_credential_root_timeout_seconds`, 60s by default). Kept as a second phase and out of the first loop on purpose: a scan across a whole filesystem does not finish in the second or two the network checks do, so mixing them into one probe list let a slow or stuck scan hold up the network assertions behind it. The game disks are not rescanned here -- the `agent-vm` role already stops before building the image if a token or private key is in its source, and the read-only-mount check above proves the guest cannot have written to it since.
 
 The per-root scan skips `sandbox_net_credential_prune_globs` (by default the whole of `~/.local/share/flatpak`) before opening anything under it: Flatpak hard-links the same object content into `repo/objects`, `runtime/…/files` and `app/…/files` once a package is deployed, so skipping `repo/objects` alone still leaves that content reachable through `runtime/`. Per-app state under `~/.var/app` is not a Flatpak payload and stays in scope.
 
@@ -227,7 +227,7 @@ ansible-playbook -i ansible/inventory.yml ansible/windows-vm.yml
 
 ### Step 2: the guest's password
 
-Set `vault_windows_admin_password` in `group_vars/all/vault.yml`, which is the file you copied from `vault.yml.example`. Windows rejects weak passwords during unattended setup: 8 or more characters with three of upper, lower, digit and symbol. The role refuses to run with it undefined or shorter than eight. The guest's key for `winvm ssh` is your public key, `winvm_ssh_pubkey_path` (default `~/.ssh/id_ed25519.pub`), which the role puts in the guest's `administrators_authorized_keys`.
+Set `vault_windows_admin_password` in `group_vars/all/vault.yml`, which is the file you copied from `vault.yml.example`. Windows rejects weak passwords during unattended setup: 8 or more characters with three of upper, lower, digit and symbol. The role stops with it undefined or shorter than eight. The guest's key for `winvm ssh` is your public key, `winvm_ssh_pubkey_path` (default `~/.ssh/id_ed25519.pub`), which the role puts in the guest's `administrators_authorized_keys`.
 
 ### Step 3: run the playbook
 
@@ -336,9 +336,9 @@ No network rule changes: the filter already lets the Ubuntu guest reach its own 
 | `winvm put a.uae C:/Amiga/configs/`, `winvm get C:/Amiga/send.log .` | copies either way |
 | `winvm shot /tmp/win11.png` | the console screen, captured on Windows by a one-off Interactive scheduled task and fetched over the same ssh call; needs a console logon |
 | `winvm status`, `winvm lane --expect <holder>` | the Windows guest's boot time and the WinUAE lane, from `winuae.ps1 status` |
-| `acquire`, `release`, `up`, `down`, `save`, `promote`, `revert`, `guest-setup` | refused; the Windows guest's state is this desktop's to change, and WinUAE's lane is `winuae.ps1 claim` |
+| `acquire`, `release`, `up`, `down`, `save`, `promote`, `revert`, `guest-setup` | fail; the Windows guest's state is this desktop's to change, and WinUAE's lane is `winuae.ps1 claim` |
 
-**Run it again** after rebuilding either guest, and after `winvm revert`, which discards the authorized key with everything else since golden; or `winvm promote` once with the key in place. `winvm guest-setup` keeps it. If the guest agent refuses `guest-exec`, set `agent_winvm_host_key` in `inventory.yml` to the line `type C:\ProgramData\ssh\ssh_host_ed25519_key.pub` prints on the Windows console. If Windows refuses the key, set `agent_winvm_key_from: ""` to drop the address restriction.
+**Run it again** after rebuilding either guest, and after `winvm revert`, which discards the authorized key with everything else since golden; or `winvm promote` once with the key in place. `winvm guest-setup` keeps it. If the guest agent rejects `guest-exec`, set `agent_winvm_host_key` in `inventory.yml` to the line `type C:\ProgramData\ssh\ssh_host_ed25519_key.pub` prints on the Windows console. If Windows rejects the key, set `agent_winvm_key_from: ""` to drop the address restriction.
 
 ### Leases, for several agents
 
@@ -351,7 +351,7 @@ winvm release re-session-1     # still held by fuzz-run-7, stays up
 winvm release fuzz-run-7       # last lease gone, shuts down
 ```
 
-**A tag is an identity.** Taking a tag that is already held is refused, and the error says to pick one of your own (`winvm acquire re-session-1-$$`) or, if the lease is stale, to `winvm release` it. Leases are files in `leases` under `winvm_base_dir` (`/var/lib/libvirt/winvm/leases` by default); a lease cannot outlive the boot it was taken in, so `acquire` clears the directory when it finds the guest off. `winvm status` lists what is held.
+**A tag is an identity.** Taking a tag that is already held fails, and the error says to pick one of your own (`winvm acquire re-session-1-$$`) or, if the lease is stale, to `winvm release` it. Leases are files in `leases` under `winvm_base_dir` (`/var/lib/libvirt/winvm/leases` by default); a lease cannot outlive the boot it was taken in, so `acquire` clears the directory when it finds the guest off. `winvm status` lists what is held.
 
 ### Reverting to a clean state
 
@@ -390,7 +390,7 @@ and re-run `windows-vm.yml`. Each entry gets a `socat` systemd unit on the host,
 | Sitting at "Press any key to boot from CD or DVD", or at a boot-device menu | The keypress window was missed (Step 4). At the boot menu pick **UEFI QEMU DVD-ROM QM00003** (`sdb`, the Windows ISO; `QM00005` and `QM00007` are the virtio and unattend ISOs and are not bootable), then send Enter again for the "press any key" prompt |
 | Setup shows its normal interactive screens | Almost always stray keypresses, which click whatever button has focus. Destroy the guest, recreate the disk, and retry hands-off: `sudo virsh destroy win11; sudo rm -f /var/lib/libvirt/winvm/win11.qcow2`, then run `windows-vm.yml` again. If the unattend really is ignored, Windows 11 24H2's new setup engine ("ConX", `SetupPrep.exe`) has reported unattend regressions, and the usual workaround is a `winpeshl.ini` in `boot.wim` calling `setup.exe /legacy`; build 26200.6584 (25H2) has not needed it |
 | "Windows cannot be installed to this disk" | The ISO shipped more than one image. `sudo wiminfo` on the mounted ISO's `sources/install.wim` lists the indexes; set `winvm_image_index` |
-| RDP refuses the connection | Check the guest is up and has its address: `sudo virsh domifaddr win11 --source agent; sudo virsh domstate win11` |
+| RDP rejects the connection | Check the guest is up and has its address: `sudo virsh domifaddr win11 --source agent; sudo virsh domstate win11` |
 | No internet inside the guest | Almost always Docker's `FORWARD DROP`. `sandbox-network` pins libvirt to the iptables backend only when the `/etc/libvirt/network.conf` the package ships mentions `firewall_backend`. Check the pin is there and libvirt reloaded: `grep firewall_backend /etc/libvirt/network.conf; sudo iptables -S FORWARD \| head` |
 | The guest has no address at all | It addresses itself from the first-logon script. `virsh net-list` should show `sandbox` active and `virbr-sandbox` holding `10.77.0.1`; inside Windows, `Get-NetIPAddress -AddressFamily IPv4` empty or showing a 169.254.x.x address means re-running the static configuration by hand, the command being in `unattend/autounattend.xml` under `winvm_state_dir` |
 | Setup stops on a compatibility screen | `Shift+F10` for a console, and check `HKLM\SYSTEM\Setup\LabConfig` has the bypass values; if not, the unattend ISO was not attached |
@@ -402,7 +402,7 @@ ansible-playbook -i ansible/inventory.yml ansible/agent-vm-teardown.yml
 ansible-playbook -i ansible/inventory.yml ansible/windows-vm-teardown.yml
 ```
 
-The Ubuntu teardown force-stops and undefines the domain, stops the sshfs mount unit and deletes its file, and removes the guest's disk, the game disks image and its staging copy, the state directory (the seed ISO, the generated domain XML and the stamps), the ssh alias and the AppArmor override. It leaves `agent_vm_disks_dir` (yours, and where `coab-source` and `game-icons` were downloaded), the downloaded cloud image, the login key, and the empty mount point `agent_vm_wish_mount` (`~/agent-wish`). The Windows teardown force-stops the domain and undefines it (with `--nvram`, or libvirt refuses and orphans the UEFI varstore), removes the port-forward units, the whole `winvm_base_dir` tree and the AppArmor override.
+The Ubuntu teardown force-stops and undefines the domain, stops the sshfs mount unit and deletes its file, and removes the guest's disk, the game disks image and its staging copy, the state directory (the seed ISO, the generated domain XML and the stamps), the ssh alias and the AppArmor override. It leaves `agent_vm_disks_dir` (yours, and where `coab-source` and `game-icons` were downloaded), the downloaded cloud image, the login key, and the empty mount point `agent_vm_wish_mount` (`~/agent-wish`). The Windows teardown force-stops the domain and undefines it (with `--nvram`, or libvirt fails and orphans the UEFI varstore), removes the port-forward units, the whole `winvm_base_dir` tree and the AppArmor override.
 
 Neither teardown removes the `sandbox` network, the `no-lan` filter or the libvirt firewall-backend pin, which both guests share, and neither removes the QEMU and libvirt packages, since pulling about 99 packages off a host is a bigger change than removing a guest; `sudo apt purge --autoremove qemu-system-x86 libvirt-daemon-system swtpm` finishes the job. libvirt's `default` network is left as it is: stopped and not autostarting only if `winvm_disable_default_network` was set when the guest was built.
 

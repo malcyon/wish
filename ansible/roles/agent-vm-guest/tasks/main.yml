@@ -792,7 +792,7 @@
         state: directory
         mode: "0700"
 
-    # 0600, owned by the guest's user: wishagent.py refuses a key that group or
+    # 0600, owned by the guest's user: wishagent.py rejects a key that group or
     # other can read. no_log, since a diff of a key is the key.
     - name: Copy the App's private key and config into the guest
       ansible.builtin.copy:

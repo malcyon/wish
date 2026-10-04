@@ -50,23 +50,6 @@ ALLOWED_LINES: tuple[tuple[str, str], ...] = ()
 
 # Most matches each file may carry until the sweep removes them (path: count).
 LIMITS_EVERY: dict[str, int] = {
-    "ansible/README.md": 14,
-    "ansible/group_vars/all/vault.yml.example": 1,
-    "ansible/inventory.yml.example": 2,
-    "ansible/roles/agent-vm-guest/tasks/main.yml": 1,
-    "ansible/roles/agent-vm-guest/templates/release-update.py.j2": 2,
-    "ansible/roles/agent-vm/tasks/main.yml": 3,
-    "ansible/roles/agent-winvm-access/defaults/main.yml": 2,
-    "ansible/roles/agent-winvm-access/tasks/authorize.yml": 1,
-    "ansible/roles/agent-winvm-access/tasks/hostkey.yml": 1,
-    "ansible/roles/agent-winvm-access/tasks/verify.yml": 1,
-    "ansible/roles/agent-winvm-access/templates/wish-winvm.conf.j2": 1,
-    "ansible/roles/sandbox-network/defaults/main.yml": 2,
-    "ansible/roles/sandbox-network/tasks/isolation-test-guest.yml": 1,
-    "ansible/roles/sandbox-network/templates/sandbox-network.xml.j2": 1,
-    "ansible/roles/windows-vm/tasks/teardown.yml": 1,
-    "ansible/roles/windows-vm/templates/guest-setup.ps1.j2": 2,
-    "ansible/roles/windows-vm/templates/winvm.sh.j2": 4,
     "automap/amiga.py": 0,
     "automap/winuae.py": 0,
     "docs/125-bug-notes.md": 1,

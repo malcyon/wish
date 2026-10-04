@@ -69,7 +69,7 @@ Step 'disable Windows Update' {
     Set-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\WindowsStore' AutoDownload 2 -Type DWord
 }
 # The services are disabled through the registry rather than Set-Service:
-# WaaSMedicSvc refuses Set-Service with access denied even elevated, and its
+# WaaSMedicSvc rejects Set-Service with access denied even elevated, and its
 # entire job is turning the others back on.
 Step 'disable Windows Update services' {
     foreach ($svc in 'wuauserv', 'UsoSvc', 'DoSvc', 'WaaSMedicSvc') {
@@ -117,7 +117,7 @@ Step 'sshd firewall rule' {
     }
 }
 # For a member of Administrators, sshd reads this file and NOT the user's
-# ~/.ssh/authorized_keys — and it refuses the file outright unless only
+# ~/.ssh/authorized_keys — and it rejects the file outright unless only
 # SYSTEM and Administrators can write it. SIDs, not names: group names are
 # localised. The agent guest's own key, written by roles/agent-winvm-access and
 # found by its comment, is kept, so re-running this script does not lock the

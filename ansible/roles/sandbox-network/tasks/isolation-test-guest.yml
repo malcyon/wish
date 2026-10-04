@@ -116,7 +116,7 @@
     success_msg: >-
       {{ guest.domain }}: {{ item.item.name }}:
       {{ 'NOT TESTED, it is not mounted' if 'RC=2' in item.stdout
-         else ('succeeded' if item.item.want == 0 else 'was refused') ~ ', as it should be' }}
+         else ('succeeded' if item.item.want == 0 else 'was rejected') ~ ', as it should be' }}
     fail_msg: >-
       {% if 'RC=0' not in item.stdout and 'RC=1' not in item.stdout -%}
       {{ guest.domain }}: {{ item.item.name }} did not run at all (ssh exited

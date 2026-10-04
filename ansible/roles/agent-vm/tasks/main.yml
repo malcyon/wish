@@ -30,7 +30,7 @@
       - agent_vm_parent.stat.isdir | default(false)
     fail_msg: >-
       {{ agent_vm_base_dir | dirname }} does not exist. Is the disk mounted?
-      Refusing to create the guest's image directory without it.
+      The guest's image directory is not created without it.
 
 - name: Create the agent-vm directories
   ansible.builtin.file:
@@ -629,10 +629,10 @@
     key: "{{ agent_vm_operator }}"
 
 # As the operator throughout. A FUSE mount made by a user is closed to everybody
-# else, root included, so a task run as root on a mounted path would be refused.
+# else, root included, so a task run as root on a mounted path would fail.
 #
 # No `mode` on the mount point: once it is mounted it is the guest's directory,
-# and setting a mode is a chmod on the guest's `/`, which it refuses. The
+# and setting a mode is a chmod on the guest's `/`, which fails. The
 # directory is only created if it is missing.
 - name: Create the mount point
   ansible.builtin.file:

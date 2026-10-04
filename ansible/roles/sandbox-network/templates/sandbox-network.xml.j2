@@ -1,7 +1,7 @@
 {# Managed by Ansible — roles/sandbox-network #}
 <network>
   <name>{{ sandbox_net_name }}</name>
-  <!-- Derived from the name rather than left to libvirt: net-define refuses
+  <!-- Derived from the name rather than left to libvirt: net-define rejects
        to redefine an existing network unless the UUID matches, so a generated
        one would make every re-run after the first fail. -->
   <uuid>{{ (sandbox_net_name ~ '-sandbox-net') | to_uuid }}</uuid>

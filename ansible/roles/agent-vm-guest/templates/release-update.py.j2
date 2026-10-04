@@ -40,7 +40,7 @@ LINK = HOME / ".local/bin" / NAME
 
 
 def get(url):
-    # GitHub refuses requests with no User-Agent.
+    # GitHub rejects requests with no User-Agent.
     request = urllib.request.Request(
         url, headers={"User-Agent": f"{NAME}-update", "Accept": "application/vnd.github+json"}
     )
@@ -118,7 +118,7 @@ def main():
         release = json.load(response)
     tag = release["tag_name"]
     if not re.fullmatch(r"[A-Za-z0-9._-]+", tag):
-        sys.exit(f"refusing a release tag that is not a simple name: {tag!r}")
+        sys.exit(f"not accepting a release tag that is not a simple name: {tag!r}")
     asset = next((a for a in release["assets"] if a["name"] == ASSET), None)
     if asset is None:
         sys.exit(f"{tag} has no {ASSET}")
