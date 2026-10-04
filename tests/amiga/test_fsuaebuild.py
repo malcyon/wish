@@ -22,6 +22,9 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 AMIGA = ROOT / "tools" / "amiga"
 PATCH = AMIGA / "fsuae-inputcode-null.patch"
 SCRIPTS = [AMIGA / "fsuaebuildcontainer.sh", AMIGA / "fsuaebuildclang.sh"]
+# The scripts join the directory and the name with "/", so on Windows the
+# printed path mixes separators; build it the way the script does.
+PRINTED_PATCH = f"{AMIGA}/{PATCH.name}"
 GUARD = "inputcode_pending[i].s = s ? my_strdup(s) : NULL;"
 UNGUARDED = "inputcode_pending[i].s = my_strdup(s);"
 
@@ -83,12 +86,12 @@ def test_the_step_applies_the_guard_then_skips_it(script, tmp_path):
     tree = _tree(tmp_path, _before())
     first = _run_step(script, tree)
     assert first.returncode == 0, first.stdout + first.stderr
-    assert f"### applied {PATCH}" in first.stdout
+    assert f"### applied {PRINTED_PATCH}" in first.stdout
     patched = (tree / "src" / "inputdevice.cpp").read_text(encoding="utf-8")
     assert GUARD in patched and UNGUARDED not in patched
     second = _run_step(script, tree)
     assert second.returncode == 0, second.stdout + second.stderr
-    assert f"### already applied {PATCH}" in second.stdout
+    assert f"### already applied {PRINTED_PATCH}" in second.stdout
     assert (tree / "src" / "inputdevice.cpp").read_text(encoding="utf-8") == patched
 
 
