@@ -2945,8 +2945,21 @@ experience 300000) and trained by Level up got slot 5 (`0xC6EA7A`, bitmap
 FIGHTER/RANGER, LEVEL 9/8, 104/104; the game's own SAVE CURRENT GAME to B
 wrote her node `69 00 0000 FF 00` and NULL (the file 10 bytes longer than
 slot A), and loading B gave her the node again from the game's loader.
-CONFIRMED for Silver Blades in one boot; Pools of Darkness rests on the same
-code read and was not run.
+The paladin's node and Pools of Darkness were measured in two more boots,
+which changes the earlier grade for Pools of Darkness from a code reading to a
+measurement. Silver Blades: EPONA staged as a former paladin 8 got node 8 in
+slot 5, the sheet read FIGHTER/PALADIN 9/8 with a HEAL button, and save C held
+her node. Pools of Darkness (disk 3 slot A): DOMINIC, a human cleric 14 staged
+as a former paladin 14 (`0x0A7` and `0x08A` 14, experience 1600000), got node 8
+in slot 3 (`0xC72AAE`, bitmap `07` to `0F`) linked from his empty list; the
+sheet read CLERIC/PALADIN 15/14 with a LAY button; save F held `08 00 0000 FF
+00` after his record, and loading F gave it back. In each boot a member with no
+former class (Silver Blades DOMINIC to cleric 9, Pools of Darkness Guy de
+Valois to paladin 13) trained with no node added, his list and the bitmap
+unchanged. In the Pools of Darkness slot A party, PAINE (magic-user 13, former
+ranger 9) already holds node 0x69, which fits the game's trainer having added
+it; that training was not watched. CONFIRMED
+on both titles, ranger and paladin.
 
 **Pools of Darkness' save rebuild applies the constitution steps per class.**
 `0x3C5AC` adds the first column's high-constitution step, and the step a
