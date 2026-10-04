@@ -66,7 +66,7 @@
   loop: "{{ (agent_vm_wish_mounts | map(attribute='mount') | list) + ['/home/' ~ agent_vm_operator ~ '/agent-wish'] }}"
   register: agent_vm_td_mounts
   changed_when: false
-  failed_when: agent_vm_td_mounts.rc != 1
+  failed_when: agent_vm_td_mounts.rc not in [1, 32]
 
 - name: Remove the guest file mount units
   ansible.builtin.file:

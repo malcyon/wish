@@ -664,7 +664,7 @@
   ansible.builtin.command: "mountpoint -q /home/{{ agent_vm_operator }}/agent-wish"
   register: agent_vm_wish_retired_mounted
   changed_when: false
-  failed_when: agent_vm_wish_retired_mounted.rc != 1
+  failed_when: agent_vm_wish_retired_mounted.rc not in [1, 32]
   when: not ansible_check_mode
 
 # A FUSE mount made by a user is closed to everybody else, root included. No

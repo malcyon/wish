@@ -1,4 +1,4 @@
-"""The two sshfs units that expose only the guest home and temporary files."""
+"""The two sshfs units rooted at the guest home and temporary directories."""
 from __future__ import annotations
 
 import pathlib
@@ -37,7 +37,7 @@ def _exec_starts() -> dict[str, str]:
     return starts
 
 
-def test_mounts_expose_only_home_and_tmp_to_the_mounting_user():
+def test_mount_roots_are_home_and_tmp_for_the_mounting_user():
     starts = _exec_starts()
     assert set(starts) == {"agent-wish-home.service", "agent-wish-tmp.service"}
     assert "agent-vm:/home/agent /home/op/agent-home" in starts["agent-wish-home.service"]
@@ -59,6 +59,8 @@ def test_retired_root_mount_stops_before_scoped_mounts_start():
         "Create the home and temporary mount points")
     assert names.index("Check that the retired root mount is gone") < names.index(
         "Enable the home and temporary mounts at login, and start them")
+    check = tasks[names.index("Check that the retired root mount is gone")]
+    assert check["failed_when"] == "agent_vm_wish_retired_mounted.rc not in [1, 32]"
     for task in tasks[names.index("Check for the retired root mount unit"):]:
         assert "agent_vm_mount" in task["tags"]
 
@@ -72,6 +74,7 @@ def test_teardown_checks_detachment_before_removing_units():
     check = tasks[names.index("Check that the guest file mounts detached")]
     assert "agent-wish" in check["loop"]
     assert "agent_vm_wish_mounts" in check["loop"]
+    assert check["failed_when"] == "agent_vm_td_mounts.rc not in [1, 32]"
 
 
 def _tasks(items):
