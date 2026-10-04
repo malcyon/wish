@@ -297,3 +297,56 @@ def test_the_live_square_is_the_status_lines_when_the_two_agree(monkeypatch):
             return Status(2, 27, 9, 13)
 
     assert savecheck.where(NoLive()) == (9, 13, 2)
+
+
+class NoLiveSquare(ShopFront):
+    """The shop front with a live square that cannot be read, and a status
+    line that is redrawn after the answer."""
+
+    def __init__(self, reads):
+        super().__init__()
+        self.reads = iter(reads)
+
+    def live_square(self):
+        return None
+
+    def status(self):
+        return next(self.reads)
+
+
+def test_without_a_live_square_a_key_is_not_resent_on_a_status_line_that_disagrees(
+        monkeypatch):
+    import pytest
+    monkeypatch.setattr(savecheck.time, "sleep", lambda _s: None)
+    here = Status(2, 27, 9, 13)
+    sess = NoLiveSquare([here, here, here, Status(2, 27, 9, 1)])
+    with pytest.raises(savecheck.WalkStopped, match="not sent again"):
+        savecheck.walk_move(sess, FakeLog(), "I", "NO")
+    assert sess.calls == ["I"]
+
+
+def test_without_a_live_square_a_key_is_resent_when_two_reads_agree_and_the_bar_is_up(
+        monkeypatch):
+    monkeypatch.setattr(savecheck.time, "sleep", lambda _s: None)
+    here = Status(2, 27, 9, 13)
+    sess = NoLiveSquare([here] * 8)
+    moved, asked = savecheck.walk_move(sess, FakeLog(), "I", "NO")
+    assert asked and sess.calls == ["I", "I"]
+
+
+def test_the_answer_and_the_wait_for_the_subbar_stop_when_the_run_has_no_time_left(
+        monkeypatch):
+    import pytest
+    monkeypatch.setattr(savecheck.time, "sleep", lambda _s: None)
+
+    class NeverUp(ShopFront):
+        def screen(self):
+            return FakeScreen("YES NO")
+
+    sess = NeverUp()
+    sess.walk_stop_screen = list(SHOP_ROWS)
+    left = iter([5.0, 0.0])
+    with pytest.raises(savecheck.WalkStopped, match="no time was left"):
+        savecheck.answer_move_question(sess, FakeLog(), "I", "NO",
+                                       left=lambda: next(left))
+    assert sess.selected == ["NO"]

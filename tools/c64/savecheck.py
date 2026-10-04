@@ -219,7 +219,7 @@ class _Rows:
 
 
 def answer_move_question(sess, log: Log, move: str, answer: str = "NO",
-                         looks: int = 27, wait: float = 0.0
+                         looks: int = 27, wait: float = 0.0, left=None
                          ) -> list[str] | None:
     """Answer the `YES NO` a square asks when `MOVE` is taken, and wait for
     the move sub-bar.
@@ -240,6 +240,10 @@ def answer_move_question(sess, log: Log, move: str, answer: str = "NO",
     (`CONTINUE BATTLE`, `ATTACK ALLY`, `FLEE`), whose NO would decide for
     the party in the fight; and when ANSWER cannot be selected or does not
     bring up the sub-bar.
+
+    LEFT, when given, returns the seconds the run has left (or None when it
+    is unbounded); the selection and the wait for the sub-bar stop within it,
+    raising `WalkStopped` when none is left.
     """
     rows = getattr(sess, "walk_stop_screen", None)
     if rows:
@@ -267,10 +271,21 @@ def answer_move_question(sess, log: Log, move: str, answer: str = "NO",
              if line.strip("$ ").strip()]
     log.say(f"    the square asked {' '.join(asked)!r} when {move} was "
             f"taken: answering {answer}")
-    if not sess.select_bar(answer, timeout=8):
+    def remaining():
+        return None if left is None else left()
+
+    room = remaining()
+    if room is not None and room <= 0:
+        raise WalkStopped(f"no time was left to answer {answer}")
+    if not sess.select_bar(answer, timeout=8 if room is None
+                           else min(8, room)):
         raise WalkStopped(f"{answer} could not be selected on {row.strip()!r}")
     for look in range(looks):
         if look:
+            room = remaining()
+            if room is not None and room <= 0:
+                raise WalkStopped(f"no time was left for {answer} to bring "
+                                  f"up {S.MOVE_SUBBAR}")
             time.sleep(0.3)
         s = sess.screen()
         if s is not None and S.MOVE_SUBBAR in s.row(24):
@@ -282,6 +297,11 @@ def answer_move_question(sess, log: Log, move: str, answer: str = "NO",
 #: Seconds between the two status-line reads `where` compares when the live
 #: square cannot be read.
 STATUS_SETTLE = 1.0
+
+
+def _live_reads(sess) -> bool:
+    live = getattr(sess, "live_square", None)
+    return live is not None and live() is not None
 
 
 def where(sess) -> tuple | None:
@@ -328,6 +348,16 @@ def walk_move(sess, log: Log, move: str, answer: str = "NO",
                 log.say(f"    {move} had already been taken: the party "
                         f"moved or turned before the question")
                 return True, asked
+            if not _live_reads(sess):
+                # The status line may not be redrawn after the answer, so a
+                # key sent on a stale line could take a second step.
+                s = sess.screen()
+                up = s is not None and S.MOVE_SUBBAR in s.row(24)
+                if before is None or now is None or not up:
+                    raise WalkStopped(
+                        f"after {answer} to {' '.join(asked)!r} the status "
+                        f"line cannot say the party has not moved, so "
+                        f"{move} is not sent again")
             moved = sess.walk_one(move)
     after = where(sess)
     if before is not None and after is not None:

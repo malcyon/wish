@@ -13688,3 +13688,57 @@ def test_an_opted_in_run_records_a_verified_gate_as_verified(tmp_path, monkeypat
     rc, slot, out = _drive(tmp_path, monkeypatch, ["load", "save"], pool=Held)
     summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
     assert summary["encounter_gates_verified"] is True
+
+
+def test_a_question_found_at_the_last_second_is_answered_within_what_is_left(
+        tmp_path, monkeypatch):
+    class Timed(ShopFrontWalk):
+        timeouts = []
+
+        def select_bar(self, label, row=24, timeout=30.0, answer_prompts=True):
+            if label in ("YES", "NO"):
+                self.timeouts.append(timeout)
+            return super().select_bar(label, row, timeout, answer_prompts)
+
+    clock = _Clock(monkeypatch)
+    sess = Timed(clock)
+    run, log = _walk_run(tmp_path, sess, clock)
+    # The question is drawn 10 s after MOVE; 0.5 s of the run remain then.
+    run.deadline = clock.now + 40.0
+    sess.PRINTED = 0.0
+    original = sess.select_bar
+
+    def late(label, *a, **k):
+        if label == "MOVE":
+            run.deadline = clock.now + Timed.PRINTED + 0.5
+            sess.PRINTED = Timed.PRINTED
+        return original(label, *a, **k)
+
+    sess.select_bar = late
+    try:
+        run.walk("I")
+    except A.StepFailed:
+        pass
+    log.close()
+    assert Timed.timeouts and max(Timed.timeouts) <= 0.5 + 1e-6
+
+
+def test_a_driver_error_with_a_blank_bar_fails_at_once_without_waiting_for_a_question(
+        tmp_path, monkeypatch):
+    class Refusing(RealWalk):
+        def __init__(self, clock):
+            super().__init__(clock, prompt_after=None)
+            self.walk_screens = self.walk_stop_screen = None
+
+        def walk_one(self, move, tries=1, answer_prompts=True):
+            self.bar = ""
+            self.walk_refused = "the driver pressed nothing"
+            return False
+
+    clock = _Clock(monkeypatch)
+    run, log = _walk_run(tmp_path, Refusing(clock), clock)
+    start = clock.now
+    with pytest.raises(A.StepFailed, match="the driver pressed nothing"):
+        run.walk("I")
+    log.close()
+    assert clock.now - start < A.QUESTION_SECONDS

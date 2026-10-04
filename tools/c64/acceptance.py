@@ -1972,6 +1972,9 @@ class PoolRun:
     def spent(self) -> bool:
         return self.deadline is not None and self.clock() >= self.deadline
 
+    def time_left(self) -> float | None:
+        return None if self.deadline is None else self.deadline - self.clock()
+
     def budget(self, timeout: float, what: str) -> float:
         """TIMEOUT, or what is left of the run when that is less; none left
         is a lost step, so a long wait is never begun past the deadline."""
@@ -5239,13 +5242,16 @@ class PoolRun:
                 screens = getattr(self.sess, "walk_screens", None)
             asked = None
             if (not status_moved and screens is None and not self.spent()
-                    and not getattr(self.sess, "walked_outdoors", False)):
+                    and not getattr(self.sess, "walked_outdoors", False)
+                    and not (getattr(self.sess, "walk_refused", None)
+                             and not self.bar().strip())):
                 # Taking MOVE put a question up before the key was sent (a
                 # shop front): NO, as `savecheck.py` answers it, then the key.
                 try:
                     asked = savecheck.answer_move_question(
                         self.sess, self.log, move, "NO",
-                        wait=self.budget(QUESTION_SECONDS, f"walk {route}"))
+                        wait=self.budget(QUESTION_SECONDS, f"walk {route}"),
+                        left=self.time_left)
                 except savecheck.WalkStopped as e:
                     raise self.fail("walk", f"walk {route}: move {n} ({move}) "
                                             f"from {before}: {e}") from e
