@@ -14,8 +14,8 @@ import sys
 from typing import Any
 
 from automap import gamedisks
-from goldbox import amiga_adf, amiga_savegame, c64_save, d64, effects
-from tools.amiga import amigabladesjournal, staging
+from goldbox import amiga_adf, amiga_savegame, c64_save, d64, effects, world_state
+from tools.amiga import amigabladesjournal, route_camp, staging
 from tools.amiga.route import AmigaTitle, check_expect, effect_fields
 from tools.amiga.staging import _entry, _verified_disk, sha256
 from tools.amiga.winuaesession import HOLDER, RouteError
@@ -24,6 +24,12 @@ from tools.registry import scratch
 DISK_B_SHA256 = "d7caf68c3333b44a4ca2951b8d51f388e4bfd7a8bafa4fd8a7fca37aa639b468"
 # The slot letter the game is offered on its own boot disk; side A ships only A.
 SLOT_LETTER = "C"
+#: The letter a substitute that runs as a title is staged under: the published route's DOS
+#: letter, so that route, its saves to C and F and its camp steps drive it unchanged.
+TITLE_SLOT_LETTER = "D"
+#: A substitute manifest that runs as a title (`substitute_title`) rather than the legacy route:
+#: one with camp steps, or one whose party has not set out.
+SUBSTITUTE_TITLE_MODE = "substitute_title"
 JOIN_SHA256 = "38c11440e578227c1a240b740f362b1b69943d9897f42dc35ac39b17508872dc"
 TITLE = "secret-of-the-silver-blades"
 # The C64 save's one file, which `CAMP` scratches and rewrites and `GEN` loads.
@@ -288,8 +294,30 @@ def prepare(source: pathlib.Path, run_id: str, *, staged_from: pathlib.Path | No
     return manifest_path
 
 
+def _substitute_slot(disk: amiga_adf.AmigaDisk, letter: str, where: Any) -> tuple[bytes, Any, Any]:
+    """Slot `letter`'s file, its decoded save and its world state; any reader failure is a `RouteError`."""
+    try:
+        slot = disk.read_file(f"/SAVE/savgam{letter}.sav")
+        save = amiga_savegame.read_slot(disk, letter, TITLE)
+        state = amiga_savegame.state_from_savegame(save)
+    except Exception as exc:  # noqa: BLE001 - any reader failure means the slot does not decode
+        raise RouteError(f"slot {letter} of {where} does not decode: "
+                         f"{type(exc).__name__}: {exc}") from exc
+    return slot, save, state
+
+
+def substitute_title(*, issue: str, items_screen: bool, opening_scene: bool) -> AmigaTitle:
+    """The route a substitute prepared as a title runs: the published route, loading slot D.
+
+    The party walks straight on from its own square, as the legacy route's does, so it never
+    turns about; camp steps go in through `acceptance.accept_title`.
+    """
+    return published_title(TITLE_SLOT_LETTER, issue=issue, turn_about=False,
+                           items_screen=items_screen, opening_scene=opening_scene)
+
+
 def prepare_substitute(substitute: pathlib.Path, run_id: str, *, letter: str = "A",
-                       issue: str = "672") -> pathlib.Path:
+                       issue: str = "672", camp: tuple[str, ...] = ()) -> pathlib.Path:
     """Stage slot `letter` of a disk some other tool wrote, such as a Save As Amiga output, into a private DF0.
 
     The legacy route's other inputs are as `prepare` makes them: DF0 is the
@@ -299,6 +327,12 @@ def prepare_substitute(substitute: pathlib.Path, run_id: str, *, letter: str = "
     a published one. The first member must carry items, since the route opens
     his item list; neither Guy de Valois nor the pinned JOIN party's joined
     inventory is required.
+
+    `camp` (`route_camp` steps), or a party that has not set out, makes the manifest a title
+    run instead (`SUBSTITUTE_TITLE_MODE`): the slot is staged as `TITLE_SLOT_LETTER` and
+    `substitute_title` drives it, through the opening scene and the camp steps, saving to C
+    and F. The legacy route has neither. A first member who carries nothing is then visited
+    without ITEMS rather than refused.
     """
     if not HOLDER.fullmatch(run_id):
         raise RouteError("run id must use letters, digits, dot, underscore or hyphen")
@@ -308,18 +342,24 @@ def prepare_substitute(substitute: pathlib.Path, run_id: str, *, letter: str = "
     if not substitute.is_file():
         raise RouteError(f"the substitute {substitute} is missing")
     substitute_sha = sha256(substitute)
-    disk = _verified_disk(substitute)
-    try:
-        slot = disk.read_file(f"/SAVE/savgam{letter}.sav")
-        save = amiga_savegame.read_slot(disk, letter, TITLE)
-        state = amiga_savegame.state_from_savegame(save)
-    except Exception as exc:  # noqa: BLE001 - any reader failure means the slot does not decode
-        raise RouteError(f"slot {letter} of {substitute} does not decode: "
-                         f"{type(exc).__name__}: {exc}") from exc
+    slot, save, state = _substitute_slot(_verified_disk(substitute), letter, substitute)
     inventory = _inventory(save, require_joined=False)
-    if inventory["members"][0]["count"] == 0:
+    place = {"area": state.area, "x": state.x, "y": state.y, "facing": state.facing}
+    names = [member["name"] for member in inventory["members"]]
+    # The reader puts a party that has not set out on the start square, where a party that has
+    # set out may also stand, so the save's own flag decides, not the place.
+    unstarted = world_state.has_not_set_out(state)
+    items_screen = inventory["members"][0]["count"] > 0
+    as_title = bool(camp) or unstarted
+    if as_title:
+        title = substitute_title(issue=issue, items_screen=items_screen, opening_scene=unstarted)
+        if camp:
+            camp = route_camp.normalise(tuple(camp))
+            route_camp.camp_title(title, camp, len(names), name="ssb")
+    elif not items_screen:
         raise RouteError(f"{inventory['members'][0]['name']} carries nothing, so the sheet the "
                          "route opens shows no ITEMS")
+    staged_letter = TITLE_SLOT_LETTER if as_title else SLOT_LETTER
     boot_source = amigabladesjournal.find_disk()
     if sha256(boot_source) != staging.SOURCE_SHA256:
         raise RouteError("registered Silver Blades side A differs from the measured build")
@@ -332,7 +372,7 @@ def prepare_substitute(substitute: pathlib.Path, run_id: str, *, letter: str = "
     published = run / "SECRETSAVE-substitute.adf"
     with substitute.open("rb") as reader, published.open("xb") as writer:
         shutil.copyfileobj(reader, writer)
-    stage = staging.stage_embedded_boot_disk(boot_source, slot, SLOT_LETTER, df0)
+    stage = staging.stage_embedded_boot_disk(boot_source, slot, staged_letter, df0)
     df1 = run / "disk-b-working.adf"
     with disk_b_source.open("rb") as reader, df1.open("xb") as writer:
         shutil.copyfileobj(reader, writer)
@@ -349,14 +389,59 @@ def prepare_substitute(substitute: pathlib.Path, run_id: str, *, letter: str = "
         "boot_source": _entry(boot_source),
         "df0": _entry(df0), "published_df1": _entry(published), "published_letter": letter,
         "disk_b_source": _entry(disk_b_source), "df1": _entry(df1),
-        "slot_letter": SLOT_LETTER, "slot_sha256": slot_sha, "published_slot_sha256": slot_sha,
-        "stage": stage, "inventory_a": inventory,
-        "state_a": {"area": state.area, "x": state.x, "y": state.y,
-                    "facing": state.facing},
+        "slot_letter": staged_letter, "slot_sha256": slot_sha, "published_slot_sha256": slot_sha,
+        "stage": stage, "inventory_a": inventory, "state_a": place,
     }
+    if as_title:
+        manifest.update({
+            "mode": SUBSTITUTE_TITLE_MODE, "title": "ssb", "issue": issue,
+            "loaded_letter": staged_letter, "names_a": names, "expected_after": None,
+            "items_screen": items_screen, "opening_scene": unstarted,
+            "disks": {"df0": manifest["df0"], "df1": manifest["df1"]},
+            "registered": {"substitute": manifest["substitute"], "published": manifest["published_df1"],
+                           "boot_source": manifest["boot_source"],
+                           "disk_b_source": manifest["disk_b_source"]},
+        })
+        if camp:
+            manifest["camp"] = list(camp)
     manifest_path = run / "prepare.json"
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     return manifest_path
+
+
+def title_for_substitute(manifest: dict) -> AmigaTitle:
+    """The route a substitute prepared as a title run drives, before its camp steps.
+
+    Refused unless the manifest agrees with itself and with its read-only copy of the
+    substitute: slot D staged and loaded, the opening scene exactly when that slot's party has
+    not set out, ITEMS exactly when the first member carries something, and the members its
+    inventory names.
+    """
+    try:
+        if manifest.get("mode") != SUBSTITUTE_TITLE_MODE or manifest.get("title") != "ssb":
+            raise RouteError("the manifest is not a Silver Blades substitute prepared as a "
+                             "title run")
+        if (manifest["loaded_letter"] != TITLE_SLOT_LETTER
+                or manifest["slot_letter"] != TITLE_SLOT_LETTER):
+            raise RouteError(f"a substitute title run loads slot {TITLE_SLOT_LETTER}")
+        copy = pathlib.Path(manifest["registered"]["published"]["path"])
+        if not copy.is_file() or sha256(copy) != manifest["registered"]["published"]["sha256"]:
+            raise RouteError("the substitute's copy is missing or changed from preparation")
+        members = manifest["inventory_a"]["members"]
+        items_screen = bool(members) and members[0]["count"] > 0
+        if manifest["items_screen"] != items_screen:
+            raise RouteError("the manifest items_screen disagrees with its first member's items")
+        if manifest["names_a"] != [member["name"] for member in members]:
+            raise RouteError("the manifest names_a disagrees with its inventory")
+        issue = str(manifest["issue"])
+        letter = manifest["published_letter"]
+    except (KeyError, TypeError) as exc:
+        raise RouteError(f"the substitute manifest is malformed: {exc!r}") from exc
+    _, _, state = _substitute_slot(_verified_disk(copy), letter, copy)
+    unstarted = world_state.has_not_set_out(state)
+    if manifest["opening_scene"] != unstarted:
+        raise RouteError("the manifest opening_scene disagrees with the substitute's slot")
+    return substitute_title(issue=issue, items_screen=items_screen, opening_scene=unstarted)
 
 
 # `title` is the screen the route starts from: the version line over the

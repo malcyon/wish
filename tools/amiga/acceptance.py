@@ -78,6 +78,7 @@ from tools.amiga.route_silver_blades import (  # noqa: E402
     ROUTE,
     SILVER_BLADES_INTERSTITIALS,
     SLOT_LETTER,
+    SUBSTITUTE_TITLE_MODE,
     _silver_blades_problems,
     _slot_reading,
     journal_preflight,
@@ -1342,7 +1343,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             if action[0] == "insert" and action[1] == 0 and not _guards(guard, screen):
                 raise RouteError(f"screen guard map lacks {screen!r}: a DF0 insert needs a "
                                  f"guard on the prompt")
-    if accept and journal_python is not None and (title is None or published_disk_one):
+    if accept and journal_python is not None and (
+            title is None or published_disk_one or _substitute_mode(manifest_path)):
         (preflight or journal_preflight)(journal_python)
     min_waits = {**(title.min_waits if title else {}), **(min_waits or {})}
     if counter is not None:
@@ -1375,6 +1377,17 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             raise RouteError("the selected title route differs from the published manifest")
     elif manifest.get("mode") == "published_disk_one":
         raise RouteError("a published disk-one manifest needs --published-disk-one")
+    elif manifest.get("mode") == SUBSTITUTE_TITLE_MODE:
+        expected_title = route_silver_blades.title_for_substitute(manifest)
+        if (title is None or title.issue != expected_title.issue or
+                title.route != expected_title.route or
+                title.mounted != expected_title.mounted or
+                title.save_disk != expected_title.save_disk):
+            raise RouteError("a substitute prepared as a title run needs its own title's route")
+        if "camp" in manifest:
+            if not accept:
+                raise RouteError("camp steps are driven on an accept run only")
+            title = accept_title(title, manifest)
     elif "camp" in manifest:
         if title is None or not accept or manifest.get("title") not in CAMP_TITLES:
             raise RouteError("camp steps are driven on a published accept, or a Pools of "
@@ -1544,7 +1557,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         result["rulebook"] = []
     landed: dict[str, Any] = {"state": None}
     # Silver Blades' loader may print SCROLLS DROPPED! as it loads, so its load is watched.
-    silver_blades = title is None or published_name == "ssb"
+    silver_blades = (title is None or published_name == "ssb"
+                     or manifest.get("mode") == SUBSTITUTE_TITLE_MODE)
     if accept and answer is None and journal_python is not None:
         answer = functools.partial(run_journal_answer, journal_python)
     claimed = start_attempted = copied = stopped = False
@@ -1703,7 +1717,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         if title is not None and answer is None:
             return run_title_answer()
         started = time.monotonic()
-        adf = (disks["df0"] if published_disk_one else originals["boot_source"])
+        # A title run's DF0 is the boot disk with the loaded slot on it.
+        adf = (disks["df0"] if title is not None else originals["boot_source"])
         while True:
             try:
                 code, line = answer(holder, adf, route_limit(180))
@@ -2454,6 +2469,15 @@ def accept_title(title: AmigaTitle, manifest: dict) -> AmigaTitle:
     return title
 
 
+def _substitute_mode(manifest_path: pathlib.Path) -> bool:
+    """Whether the manifest at `manifest_path` is a Silver Blades substitute prepared as a title run."""
+    try:
+        manifest = json.loads(pathlib.Path(manifest_path).read_text())
+    except (OSError, ValueError):
+        return False
+    return isinstance(manifest, dict) and manifest.get("mode") == SUBSTITUTE_TITLE_MODE
+
+
 def _container_key(name: str) -> str:
     return CURSE_KEY if name == "curse" else route_silver_blades.TITLE
 
@@ -2874,7 +2898,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--published-disk-one", action="store_true")
     p.add_argument("--saveas-report", type=pathlib.Path)
     p.add_argument("--camp", default="",
-                   help="published Silver Blades and Curse, Pools of Darkness or Pool of "
+                   help="published Silver Blades and Curse, a Silver Blades --substitute, "
+                        "Pools of Darkness or Pool of "
                         "Radiance: camp steps driven before the camp save, as "
                         "'view;heal;rest 1h' (view, view N, heal, heal N, rest DURATION, and "
                         "for Curse display; Pool takes items N, rest DURATION and display)")
@@ -2965,9 +2990,10 @@ def main(argv: list[str] | None = None) -> int:
                 raise RouteError("published disk one uses its source-specific route")
         elif args.command == "prepare" and args.saveas_report is not None:
             raise RouteError("--saveas-report requires --published-disk-one")
-        elif args.command == "prepare" and args.camp and args.title not in CAMP_TITLES:
+        elif (args.command == "prepare" and args.camp and args.title not in CAMP_TITLES
+              and not (silver_blades and args.substitute is not None)):
             raise RouteError("--camp requires --published-disk-one, --title darkness or "
-                             "--title pool")
+                             "--title pool, or --substitute with --title ssb")
         elif args.command == "prepare" and args.stage_place is not None:
             raise RouteError("--stage-place requires --published-disk-one")
         if args.command == "reload" and silver_blades:
@@ -3011,7 +3037,8 @@ def main(argv: list[str] | None = None) -> int:
                 if silver_blades and args.substitute is not None:
                     print(route_silver_blades.prepare_substitute(
                         args.substitute, args.run_id, letter=args.substitute_letter,
-                        issue=args.issue or "672"))
+                        issue=args.issue or "672",
+                        **({"camp": args.camp} if args.camp else {})))
                     return 0
                 if silver_blades:
                     print(route_silver_blades.prepare(
@@ -3030,6 +3057,15 @@ def main(argv: list[str] | None = None) -> int:
                 manifest, title = _published_manifest(args.manifest, args.title)
             else:
                 title = None if silver_blades else TITLES[args.title]
+            # A Silver Blades substitute prepared with camp steps, or whose party has not set out,
+            # runs as a title; any other Silver Blades manifest runs the legacy route.
+            substituted = bool(silver_blades and not args.published_disk_one
+                               and _substitute_mode(args.manifest))
+            if substituted:
+                if args.command == "measure" and (args.route or args.write_keys):
+                    raise RouteError("a substitute prepared as a title run uses its own route")
+                title = route_silver_blades.title_for_substitute(json.loads(args.manifest.read_text()))
+            legacy = silver_blades and not args.published_disk_one and not substituted
             attempt = args.attempt or ("recon1" if args.command == "measure" else
                                        "gfx705-directdraw1" if args.command == "diagnose" else
                                        "accept1")
@@ -3046,7 +3082,7 @@ def main(argv: list[str] | None = None) -> int:
             elif args.command == "measure":
                 route = (parse_route(args.route) if args.route else route_silver_blades.ROUTE)
                 write_keys = parse_write_keys(
-                    args.write_keys if args.write_keys is not None else "B") if silver_blades else None
+                    args.write_keys if args.write_keys is not None else "B") if legacy else None
                 result = run_recon(
                     args.manifest, guest=WinGuest(), holder=holder,
                     audio_proof=args.audio_proof, attempt=attempt,
@@ -3057,7 +3093,7 @@ def main(argv: list[str] | None = None) -> int:
                     **({"route": route,
                         "write_keys": write_keys,
                         "min_waits": route_silver_blades.default_min_waits(route)}
-                       if silver_blades and not args.published_disk_one else {}))
+                       if legacy else {}))
             else:
                 result = run_recon(
                     args.manifest, guest=WinGuest(), guard=PixelGuards(args.guards),
@@ -3073,7 +3109,7 @@ def main(argv: list[str] | None = None) -> int:
                     **({"accept": True,
                         "min_waits": {**route_silver_blades.default_min_waits(),
                                       **route_silver_blades.ACCEPT_MIN_WAITS}}
-                       if silver_blades and not args.published_disk_one else
+                       if legacy else
                        {"reload" if args.command == "reload" else "accept": True}))
             if silver_blades and args.command == "measure":
                 measured = {"success": result["success"], "error": result["error"],
@@ -3087,7 +3123,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(line)
             success = result["success"]
             if args.command == "accept" and expect is not None:
-                if silver_blades and not args.published_disk_one:
+                if legacy:
                     accepted, line = route_silver_blades.expect_verdict(
                         args.manifest, attempt, expect)
                 else:
