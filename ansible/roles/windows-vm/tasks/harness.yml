@@ -119,13 +119,19 @@
   vars:
     winvm_harness_probe: |
       $log = 'C:\Windows\Temp\guest-setup.log'
-      $last = if (Test-Path -LiteralPath $log) { @(Get-Content -LiteralPath $log -Tail 1) } else { @() }
-      $written = if (Test-Path -LiteralPath $log) { (Get-Item -LiteralPath $log).LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss') } else { 'no log' }
+      $missing = -not (Test-Path -LiteralPath $log)
+      $last = ''
+      if (-not $missing) {
+        try { $last = [string](Get-Content -LiteralPath $log -Tail 1 -ErrorAction Stop) } catch { $last = 'SETUP running: log unreadable' }
+      }
+      $written = if ($missing) { 'no log' } else { (Get-Item -LiteralPath $log).LastWriteTimeUtc.ToString('yyyy-MM-dd HH:mm:ss') + ' UTC' }
       "LOGWRITTEN $written"
-      if ($last.Count -eq 0 -or $last[0].Contains('{{ winvm_guest_setup_done_marker }}') -or $last[0] -match 'FAIL  install WinUAE harness files') {
+      if ($missing -or $last.Contains('{{ winvm_guest_setup_done_marker }}') -or $last -match 'FAIL  install WinUAE harness files') {
         'SETUP finished'
+      } elseif ($last -eq 'SETUP running: log unreadable') {
+        $last
       } else {
-        "SETUP running: $($last[0])"
+        "SETUP running: $last"
       }
   register: winvm_harness_ssh
   changed_when: false
