@@ -140,16 +140,19 @@ function Start-AsIntruder([string]$Arguments) {
 }
 
 function Scenario-Args {
-  "args: `start` passes its WinUAE arguments through untouched"
+  "args: `start` adds the lane's own -ini and -datapath, then passes its WinUAE arguments through untouched"
   for ($n = 1; $n -le $Rounds; $n++) {
     if (-not (Reset-Lane)) { Verdict $false "round ${n}: lane would not reset" ''; continue }
     if ($HasClaim) { Drive (@('claim') + (Holder-Args 'lanecheck')) | Out-Null }
     $r = Drive (@('start') + (Holder-Args 'lanecheck') +
                 @('-log', '-f', $ConfigB, '-s', 'floppy0='))
     $cmd = (Emulators | Select-Object -First 1).CommandLine
-    $want = "`"$Exe`" -log -f $ConfigB -s floppy0="
+    # `start` puts the lane's own settings file and data folder first on every lane, lane 1
+    # included, and the holder claimed the lowest free lane after Reset-Lane: lane 1.
+    $laneDir = "$Root\lanes\1"
+    $want = "`"$Exe`" -ini `"$laneDir\winuae.ini`" -datapath `"$laneDir`" -log -f $ConfigB -s floppy0="
     Verdict (($cmd -replace '\s+', ' ').Trim() -eq $want) `
-            "round ${n}: the emulator's command line is the one start was given" `
+            "round ${n}: the emulator's command line is the lane prefix and then the arguments start was given" `
             ("start said: $($r.out)`nran: $cmd")
   }
   Reset-Lane | Out-Null

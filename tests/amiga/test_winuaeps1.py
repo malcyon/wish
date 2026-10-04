@@ -489,3 +489,10 @@ def test_the_console_route_enters_the_debugger_over_the_pipe_not_with_a_key():
     assert "winuae.ps1 debugger -Holder wish37" in script
     assert "winuae.ps1 key" not in script
     assert not hasattr(amiga, "DEBUGGER_KEY")
+
+
+def test_the_lanecheck_expects_the_lane_prefix_before_the_arguments_start_was_given():
+    """`start` adds the lane's -ini and -datapath on every lane, so the args check must expect them."""
+    body = _lanecheck_body("Scenario-Args")
+    assert '-ini `"$laneDir\\winuae.ini`" -datapath `"$laneDir`" -log -f $ConfigB -s floppy0=' in body
+    assert '$laneDir = "$Root\\lanes\\1"' in body
