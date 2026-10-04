@@ -458,7 +458,7 @@ def test_a_curse_thief_item_of_kind_0x0b_sets_d7_itself():
 
 
 def _fake_amiga(port_task: int, data_base: int, cli: bool = True,
-                version: int = 34):
+                version: int = 34, revision: int | None = None):
     """A memory with ExecBase at 0x1000, of Kickstart `version`, whose
     TaskWait list holds one process, at `port_task`, whose CLI's module is a
     segment at 0x4000 followed by one at `data_base - 4` when `cli` is set."""
@@ -470,6 +470,8 @@ def _fake_amiga(port_task: int, data_base: int, cli: bool = True,
     exec_base, cli_at, seglist = 0x1000, 0x3000, 0x4000
     put(4, exec_base)
     mem[exec_base + 0x14], mem[exec_base + 0x15] = 0, version
+    revision = {34: 2, 37: 132}.get(version, 0) if revision is None else revision
+    mem[exec_base + 0x16], mem[exec_base + 0x17] = revision >> 8, revision & 255
     put(exec_base + 0x114, 0)
     put(exec_base + 0x196, exec_base + 0x19A)  # TaskReady: empty
     put(exec_base + 0x1A4, port_task)          # TaskWait: one node
@@ -492,7 +494,10 @@ def test_read_machine_takes_curses_d7_by_the_kickstarts_rule():
     assert lv.read_machine(read, 0x8238, lv.CURSE).register == 0x5128 + 0x5C
     read = _fake_amiga(0x5128, 0x8238, version=37)
     assert lv.read_machine(read, 0x8238, lv.CURSE).register == 0x4000
-    with pytest.raises(lv.CannotLevel, match="version 40"):
+    with pytest.raises(lv.CannotLevel, match="exec 37.152"):
+        lv.read_machine(_fake_amiga(0x5128, 0x8238, version=37, revision=152),
+                        0x8238, lv.CURSE)
+    with pytest.raises(lv.CannotLevel, match="exec 40"):
         lv.read_machine(_fake_amiga(0x5128, 0x8238, version=40), 0x8238,
                         lv.CURSE)
     with pytest.raises(lv.CannotLevel, match="CLI"):

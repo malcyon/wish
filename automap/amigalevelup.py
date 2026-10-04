@@ -1143,29 +1143,12 @@ def _por_plan(raw: bytes, rng, learn: int | None, effects, items=(),
 # Record offsets are the 428-byte Amiga record's (`CURSE_DELTAS`).
 #
 # **The thief-skill step `0x390C4` adds the `d7` the game was started with.**
-# It sets `d7` itself only when a readied item of power `0x8B` is worn. No
-# routine between the game's startup and the trainer writes `d7` without
-# restoring it: the startup (file `0x43C06`, then `0x43C80`) calls `main`
-# (`0x13D1C`) without touching it, and neither the main loop (`0x20A80`), the
-# menus down to the party menu (`0x176D6`, which calls the trainer at
-# `0x17882`), the trainer nor `0x38A52` writes it before the call. CONFIRMED
-# from the code. So the value is whatever AmigaDOS handed the program in `d7`,
-# and that depends on the Kickstart. Read off the trainer's own saved
-# registers while its prompt was up, with the disk's startup-sequence starting
-# the game (`_START_D7`):
-#
-# * Kickstart 1.3, 512K chip and 512K slow: `0x00C05184` in all four
-#   trainings, the game's own process's message port (`pr_MsgPort`, the
-#   process at `0xC05128` plus `0x5C`). Its low byte is the 132 every skill
-#   gained (`974fd5e0`; 16 of 16 bytes for Sundra and Holland).
-# * Kickstart 2.04, same memory: `0x00C18E6C`, the address of the program's
-#   first segment (the code hunk at `0xC18E70`, less 4). Sundra trained as a
-#   fighter there gained 108 (`0x6C`) instead: 168 170 163 163 154 138 0 133,
-#   8 of 8.
-#
-# Each rule rests on one boot of its Kickstart, so that every boot of that
-# Kickstart puts the same thing in `d7` is PROBABLE; a Kickstart with no
-# measurement, or a game started from Workbench, makes `read_machine` stop.
+# It sets `d7` itself only when a readied item of power `0x8B` is worn, and
+# nothing between the game's startup and the trainer writes it otherwise, so
+# the value is whatever AmigaDOS handed the program, which depends on the
+# Kickstart (`_START_D7`). A Kickstart with no measurement, or a game started
+# from Workbench, makes `read_machine` stop. `docs/124` §1.23 has the code
+# reading and the measurements.
 
 CURSE = "curse-of-the-azure-bonds"
 
@@ -2365,6 +2348,7 @@ def plan_member(member, key: str, *, rng=None, learn: int | None = None,
 #: ExecBase fields, and a process's, that `read_machine` walks (Kickstart's
 #: `exec/execbase.h` and `dos/dosextens.h`).
 _EXEC_VERSION = 0x14                        # lib_Version, a word
+_EXEC_REVISION = 0x16                       # lib_Revision, a word
 _EXEC_THIS_TASK = 0x114
 _EXEC_TASK_LISTS = (0x196, 0x1A4)           # TaskReady, TaskWait
 _TASK_TYPE = 0x08
@@ -2373,13 +2357,12 @@ _PROCESS_PORT = 0x5C                        # pr_MsgPort
 _PROCESS_CLI = 0xAC                         # pr_CLI, a BPTR
 _CLI_MODULE = 0x3C                          # cli_Module, a BPTR to the seglist
 _MAX_TASKS = 64
-#: The Kickstart versions whose start-up `d7` was measured in a training,
-#: and what it held: Kickstart 1.3 (34) the starting process's message port
-#: (`0x00C05184`, the process at `0xC05128`; `974fd5e0`, four trainings in one
-#: boot), Kickstart 2.04 (37) the address of the program's first segment
-#: (`0x00C18E6C` with the code hunk at `0xC18E70`; one training in one boot,
-#: WISH-1). The game's own code is the same in both.
-_START_D7 = {34: "port", 37: "segment"}
+#: The exec versions and revisions (`lib_Version`, `lib_Revision`) whose
+#: start-up `d7` was measured, and what it held: Kickstart 1.3 (exec 34.2) the
+#: starting process's message port, Kickstart 2.04 (exec 37.132) the address
+#: of the program's first segment. Any other revision is not known to behave
+#: the same, so `_start_d7` stops on it; `docs/124` §1.23 has the evidence.
+_START_D7 = {(34, 2): "port", (37, 132): "segment"}
 
 
 def _game_process(read, data_base: int) -> tuple[int, int]:
@@ -2415,11 +2398,13 @@ def _game_process(read, data_base: int) -> tuple[int, int]:
 def _start_d7(read, data_base: int) -> int:
     """The `d7` AmigaDOS started the game with, by the Kickstart's own rule
     (`_START_D7`)."""
-    version = int.from_bytes(read(_u32(read(4, 4)) + _EXEC_VERSION, 2), "big")
-    rule = _START_D7.get(version)
+    exec_base = _u32(read(4, 4))
+    version = int.from_bytes(read(exec_base + _EXEC_VERSION, 2), "big")
+    revision = int.from_bytes(read(exec_base + _EXEC_REVISION, 2), "big")
+    rule = _START_D7.get((version, revision))
     if rule is None:
-        raise CannotLevel(f"what Kickstart version {version} starts a program "
-                          f"with in d7 was not measured")
+        raise CannotLevel(f"what Kickstart exec {version}.{revision} starts a "
+                          f"program with in d7 was not measured")
     process, segment = _game_process(read, data_base)
     return process + _PROCESS_PORT if rule == "port" else segment
 

@@ -2901,7 +2901,7 @@ look through the character's own effect list for effect `0x69` (ranger) or
 a node if it is missing (`0x12DAC`, `0x12FD4`). Level up reads the same list
 from the live party member and goes ahead when the effect is there. When it
 is not, it stops: adding a node takes the game's own heap allocator, and a
-level-up is writes to the record. CONFIRMED from the code.
+level-up only writes to the record. CONFIRMED from the code.
 
 **Pools of Darkness' save rebuild applies the constitution steps per class.**
 `0x3C5AC` adds the first column's high-constitution step, and the step a
