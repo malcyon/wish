@@ -331,3 +331,73 @@ def test_missing_archives_stop_before_writing(fake_run, monkeypatch):
     message = _stops(fake_run, SILVER)
     assert message == ("No DOS Secret of the Silver Blades game folder was "
                        "found.")
+
+
+# ---------------------------------------------------------------------------
+# The C64 walk: the encounter switch, and a walk that never moved
+# ---------------------------------------------------------------------------
+
+def _fake_savecheck(monkeypatch, walks, title="pool-of-radiance"):
+    """`play_c64` against a `savecheck.py` that only writes `walks` to its log
+    and records the command it was given."""
+    import json
+    import subprocess
+    argvs = []
+
+    def run(argv, **kw):
+        argvs.append(argv)
+        log = pathlib.Path(argv[argv.index("--out") + 1])
+        log.write_text("".join(json.dumps({"kind": "walk", "moved": m}) + "\n"
+                               for m in walks))
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(convertrun.subprocess, "run", run)
+    monkeypatch.setattr(convertrun, "c64_title", lambda disk: title)
+    return argvs
+
+
+def test_no_encounters_reaches_savecheck(tmp_path, monkeypatch):
+    argvs = _fake_savecheck(monkeypatch, [True])
+    played = convertrun.play_c64(tmp_path / "W.D64", tmp_path, tmp_path,
+                                 "II", True, "r.D64", no_encounters=True)
+    assert "--no-encounters" in argvs[0]
+    assert played["moved"] is True
+
+
+def test_without_the_switch_savecheck_meets_encounters(tmp_path, monkeypatch):
+    argvs = _fake_savecheck(monkeypatch, [True])
+    convertrun.play_c64(tmp_path / "W.D64", tmp_path, tmp_path, "II", True,
+                        None)
+    assert "--no-encounters" not in argvs[0]
+
+
+def test_a_curse_disk_is_not_booted_with_the_switch(tmp_path, monkeypatch):
+    argvs = _fake_savecheck(monkeypatch, [True],
+                            title="curse-of-the-azure-bonds")
+    played = convertrun.play_c64(tmp_path / "W.D64", tmp_path, tmp_path,
+                                 "II", True, None, no_encounters=True)
+    assert argvs == []
+    assert played["returncode"] != 0
+
+
+def test_a_c64_walk_that_never_moved_fails_the_run(tmp_path, monkeypatch):
+    """The converted Amiga party's two `walk I` moves both read
+    `moved: false` and the run still returned 0."""
+    _fake_savecheck(monkeypatch, [False, False])
+    disk = tmp_path / "WISHSAVE.D64"
+    disk.write_bytes(b"")
+    monkeypatch.setattr(convertrun, "disks_dir", lambda named=None: tmp_path)
+    monkeypatch.setattr(convertrun, "write_via_save_as",
+                        lambda *a, **k: {"written": [str(disk)]})
+    argv = ["--source", str(tmp_path / "S.adf"), "--to", "c64",
+            "--out", str(tmp_path / "out"), "--walk", "II"]
+    assert convertrun.main(argv) == 1
+    _fake_savecheck(monkeypatch, [False, True])
+    assert convertrun.main(argv) == 0
+
+
+def test_no_encounters_is_refused_for_a_dos_destination(tmp_path):
+    with pytest.raises(SystemExit):
+        convertrun.main(["--source", str(tmp_path / "S.D64"), "--to", "dos",
+                         "--out", str(tmp_path / "out"), "--no-encounters"])
+    assert not (tmp_path / "out").exists()

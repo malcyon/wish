@@ -22,7 +22,8 @@ What it reads, in order:
 * each character's `VIEW` sheet, verbatim -- all of them with `--view` and no
   number, because the party panel is the selector and `Up`/`Down` on it is
   what reaches characters two to six (`#183`);
-* every `--walk` move, and whatever prompt it puts up;
+* every `--walk` move, and whatever prompt it puts up, with random
+  encounters held off under `--no-encounters`;
 * with `--resave`, the game's own `ENCAMP > SAVE` writing the party back --
   after the walk, so the disk it writes holds wherever `--walk` left the
   party rather than where it arrived (`#543`);
@@ -192,6 +193,80 @@ def walk_step_routed(sess, log: Log, answer: str = "NO") -> str:
     """
     sess.handle_prompt()
     return answer_bars(sess, log, answer)
+
+
+def _place(status) -> tuple | None:
+    """The square and facing of a status line, without its clock."""
+    return None if status is None else (status.x, status.y, status.facing)
+
+
+def walk_move(sess, log: Log, move: str, answer: str = "NO",
+              looks: int = 27) -> tuple[bool, list[str] | None]:
+    """`Session.walk_one`, plus the question a square asks before the key.
+
+    A shop front in New Phlan runs its script whenever `MOVE` is taken on it,
+    so `THE SHOP SPECIALIZES IN ARMS AND ARMOR. 'CAN I SHOW YOU OUR WARES?'`
+    and `YES NO` come up before the move sub-bar.  `walk_one` stops there
+    with the key unsent, and `answer_bars` then answered NO and left the
+    sub-bar that NO brings up, so every later move took `MOVE` again, met the
+    same question and was reported as a party that did not move.  This
+    answers the question with `answer`; if the status line, which the game
+    does not redraw while the question is up, then shows the party already
+    moved or turned, the move is done, and if the sub-bar is up the move is
+    sent once more at it.
+
+    Returns whether the move moved the party, and the question's text rows
+    when there was one.
+    """
+    before = _place(sess.status())
+    moved = sess.walk_one(move)
+    stop = getattr(sess, "walk_stop_screen", None)
+    if moved or not stop:
+        return bool(moved), None
+    row = stop[24]
+    if S.word_column(row, "YES") < 0 or S.word_column(row, "NO") < 0:
+        return False, None
+    asked = [line.strip("$ ").rstrip() for line in stop[17:23]
+             if line.strip("$ ").strip()]
+    log.say(f"    the square asked {' '.join(asked)!r} before {move} was "
+            f"sent: answering {answer}")
+    if not sess.select_bar(answer, timeout=8):
+        return False, asked
+    for look in range(looks):
+        if look:
+            time.sleep(0.3)
+        s = sess.screen()
+        if s is not None and S.MOVE_SUBBAR in s.row(24):
+            break
+    else:
+        return False, asked
+    after = _place(sess.status())
+    if before is not None and after is not None and after != before:
+        log.say(f"    {move} had already been taken: the status line "
+                f"moved once the question was answered")
+        return True, asked
+    return bool(sess.walk_one(move)), asked
+
+
+def restore_gates(sess, log: Log, when: str) -> list[dict]:
+    """Put back and verify every encounter gate `--no-encounters` wrote.
+
+    `Session.restore_encounter_gates` does the work and keeps `save_game`
+    blocked while any gate is unverified; this records its rows in the log
+    as `encounter_gates`, and a gate it cannot verify stops the run before
+    any save.
+    """
+    try:
+        rows = sess.restore_encounter_gates()
+    except S.GateRestoreError as e:
+        log.emit("encounter_gates", when=when, gates=e.rows, verified=False,
+                 error=str(e))
+        log.say(f"The encounter gates could not be put back {when}: {e}")
+        raise
+    log.emit("encounter_gates", when=when, gates=rows, verified=True)
+    log.say(f"The encounter gates were put back and verified {when}: "
+            f"{len(rows)} address(es)")
+    return rows
 
 
 def icon_bytes(disks: pathlib.Path) -> bytes:
@@ -815,33 +890,42 @@ def run(args, log: Log) -> int:
 
         was = area(sess)
         log.say(f"the resident area is {was}")
-        for move in args.walk:
-            moved = sess.walk_one(move)
-            log.say(f"  after {move}: {walk_step_routed(sess, log, args.answer)}")
-            now = area(sess)
-            # Read once and reported three times.  It used to be read three
-            # times, which is up to 24 screen reads for one line of log -- and
-            # outdoors the three could disagree, because the status line lags
-            # a step out there.
-            at = sess.status()
-            # The square out of memory beside it, because that is what proves
-            # an outdoor step: `$49C3`/`$49C4` move on the press and the
-            # status line catches up afterwards (`#189`).
-            here = sess.square()
-            log.emit("walk", move=move, moved=moved, status=at, area=now,
-                     square=here)
-            log.say(f"Walk {move}: moved={moved} "
-                    f"status={'none' if at is None else at.where()} "
-                    f"square={'?' if here is None else f'{here[0]},{here[1]}'} "
-                    f"area={now}")
-            if now != was:
-                log.emit("area_change", before=was, after=now, status=at)
-                log.say(f"** the area changed, {was} -> {now} **")
-                sess.kbd.screenshot(str(log.dir / f"{args.tag}-area-{now}.png"))
-                was = now
-            if sess.in_combat():
-                log.say("  a random encounter started")
-                break
+        if args.no_encounters:
+            # Before any key: taking MOVE runs the area's check once.
+            sess.no_encounters = True
+            sess.suppress_encounters()
+            log.emit("no_encounters", on=True)
+        try:
+            for move in args.walk:
+                moved, asked = walk_move(sess, log, move, args.answer)
+                log.say(f"  after {move}: {walk_step_routed(sess, log, args.answer)}")
+                now = area(sess)
+                # Read once and reported three times.  It used to be read three
+                # times, which is up to 24 screen reads for one line of log -- and
+                # outdoors the three could disagree, because the status line lags
+                # a step out there.
+                at = sess.status()
+                # The square out of memory beside it, because that is what proves
+                # an outdoor step: `$49C3`/`$49C4` move on the press and the
+                # status line catches up afterwards (`#189`).
+                here = sess.square()
+                log.emit("walk", move=move, moved=moved, status=at, area=now,
+                         square=here, asked=asked)
+                log.say(f"Walk {move}: moved={moved} "
+                        f"status={'none' if at is None else at.where()} "
+                        f"square={'?' if here is None else f'{here[0]},{here[1]}'} "
+                        f"area={now}")
+                if now != was:
+                    log.emit("area_change", before=was, after=now, status=at)
+                    log.say(f"** the area changed, {was} -> {now} **")
+                    sess.kbd.screenshot(str(log.dir / f"{args.tag}-area-{now}.png"))
+                    was = now
+                if sess.in_combat():
+                    log.say("  a random encounter started")
+                    break
+        finally:
+            if args.no_encounters:
+                restore_gates(sess, log, "after the walk")
 
         if args.resave:
             # The control `#185` wanted and nobody had: the **engine's** own
@@ -1056,6 +1140,10 @@ def main(argv=None) -> int:
                         "disk here")
     p.add_argument("--icon", action="store_true",
                    help="check the combat arena against the composed icon")
+    p.add_argument("--no-encounters", action="store_true",
+                   help="hold the area's random encounters off during "
+                        "--walk; the gates are put back and verified after "
+                        "the walk, before --resave")
     p.add_argument("--answer", default="NO",
                    help="what to answer a YES NO bar a walked step puts up")
     p.add_argument("--boat", default=None, choices=("STAY", "TAKE"),
@@ -1067,6 +1155,8 @@ def main(argv=None) -> int:
                    help="seconds to wait for the world bar after BEGIN "
                         "ADVENTURING; an arrival that animates needs longer")
     args = p.parse_args(argv)
+    if args.fight and args.no_encounters:
+        p.error("--fight needs encounters; drop --no-encounters")
     if args.disks is None:
         raise SystemExit("No game disks found. Set $POR_DISKS.")
     stem = pathlib.Path(args.disk).stem

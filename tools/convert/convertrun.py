@@ -215,7 +215,8 @@ def c64_title(disk: pathlib.Path) -> str:
 
 
 def play_c64(disk: pathlib.Path, out: pathlib.Path, disks: pathlib.Path,
-             walk: str, view: bool, resave: str | None) -> dict:
+             walk: str, view: bool, resave: str | None,
+             no_encounters: bool = False) -> dict:
     """Hand the written `.d64` to whichever reader knows its title.
 
     `tools/c64/savecheck.py` boots through `tools/c64/session.py`, which knows Pool of
@@ -225,8 +226,20 @@ def play_c64(disk: pathlib.Path, out: pathlib.Path, disks: pathlib.Path,
     of screen.  Secret of the Silver Blades has no such tool yet and falls
     through to `savecheck.py`, where it will not boot; that is the row this
     file cannot run unattended.
+
+    `no_encounters` is `savecheck.py --no-encounters`, which puts the gates
+    back and verifies them before the resave.  `cursecheck.py` has no such
+    switch, so a Curse disk asked for it is not booted.
+
+    `moved` is whether any `--walk` move moved the party, read from
+    `savecheck.py`'s own `walk` records; None for a Curse disk, whose reader
+    keeps no such record.
     """
     curse = c64_title(disk) == "curse-of-the-azure-bonds"
+    if curse and no_encounters:
+        return {"returncode": 2, "moved": None, "events": [],
+                "error": "cursecheck.py has no encounter switch, so a Curse "
+                         "disk is not booted with --no-encounters"}
     log = out / ("cursecheck.jsonl" if curse else "savecheck.jsonl")
     if curse:
         argv = [str(ROOT / ".venv" / "bin" / "python"),
@@ -251,6 +264,8 @@ def play_c64(disk: pathlib.Path, out: pathlib.Path, disks: pathlib.Path,
             argv += ["--view"]
         if resave:
             argv += ["--resave", str(out / resave)]
+        if no_encounters:
+            argv += ["--no-encounters"]
     proc = subprocess.run(argv, capture_output=True, text=True, timeout=3600)
     events = []
     if log.exists():
@@ -261,9 +276,11 @@ def play_c64(disk: pathlib.Path, out: pathlib.Path, disks: pathlib.Path,
                     events.append(json.loads(line))
                 except ValueError:
                     pass
+    walks = [e for e in events if e.get("kind") == "walk"]
     return {"returncode": proc.returncode, "log": str(log),
             "tail": proc.stdout[-4000:], "stderr": proc.stderr[-2000:],
-            "events": events}
+            "events": events,
+            "moved": None if curse else any(e.get("moved") for e in walks)}
 
 
 # ---------------------------------------------------------------------------
@@ -447,6 +464,10 @@ def main(argv: list[str] | None = None) -> int:
                         "his running effects; repeat until the party fits")
     p.add_argument("--walk", default="II",
                    help="C64: the moves savecheck walks after arriving")
+    p.add_argument("--no-encounters", action="store_true",
+                   help="C64 Pool of Radiance: hold random encounters off "
+                        "during --walk; the gates are put back and verified "
+                        "before --resave")
     p.add_argument("--steps", type=int, default=2,
                    help="DOS: steps to walk after loading")
     p.add_argument("--resave", default=None,
@@ -460,6 +481,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.source_slot is not None and not re.fullmatch(
             r"[A-Ja-j]", args.source_slot):
         p.error("--source-slot is one letter, A to J")
+    if args.no_encounters and args.to != "c64":
+        p.error("--no-encounters is for a C64 destination")
 
     # Both destinations read C64 disks: a C64 destination for its icon and
     # `ANIMATE00` tables, and a C64 source going to DOS for the source title's
@@ -533,8 +556,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.to == "c64":
         disk = next(p for p in written if p.suffix.upper() == ".D64")
         report["play"] = play_c64(disk, out, disks, args.walk,
-                                  not args.no_view, args.resave)
+                                  not args.no_view, args.resave,
+                                  args.no_encounters)
         rc = report["play"]["returncode"]
+        # A walk that never moved the party is a failed run, as it is for
+        # DOS below; the reader itself exits 0 whatever the walk did.
+        if rc == 0 and args.walk and report["play"]["moved"] is False:
+            rc = 1
     else:
         report["play"] = play_dos(written, report["write"]["slot"] or "A",
                                   out, args.steps, args.resave or "D",
