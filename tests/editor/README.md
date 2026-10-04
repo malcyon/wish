@@ -4,6 +4,7 @@ Tests for the character editor in `editor/`, its binding and window, and how it 
 
 | file | purpose |
 |---|---|
+| `test_choose_among_saves.py` | Checks that Open on a DOS folder or an Amiga disk holding several saved games supplies the party of the slot picked, that Save As publishes that party with its pending edits, and that cancelling the picker leaves the open party and its edits as they were. |
 | `test_dualclasscombo.py` | Checks that the editor's Class combo and a conversion agree on the class of a dual-classed Curse character. |
 | `test_editor.py` | Checks the editor's file handling, binding and window headless: read-only fields, editing and writing back, items, effects, icons and the roster. |
 | `test_hirelingopen.py` | Checks that a DOS or Amiga Pool of Radiance save whose party holds a Training Hall hireling opens in the editor with the hireling's own raw treasure share, and saves back with that share kept. |
