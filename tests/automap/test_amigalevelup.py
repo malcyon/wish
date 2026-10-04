@@ -420,3 +420,35 @@ def test_a_title_with_no_copied_trainer_is_refused():
     assert not lv.supported("no-such-title")
     with pytest.raises(lv.CannotLevel):
         lv.plan(bytes(400), "no-such-title")
+
+
+def _readied(key: str) -> tuple[bytearray, dict]:
+    if key == lv.POOLS_OF_DARKNESS:
+        return _pod_fighter(3), {}
+    if key == lv.POOL_OF_RADIANCE:
+        rec = bytearray(288)
+        rec[0x2E], rec[0x2F], rec[0x14] = 7, 2, 18
+        rec[0x98 + 2] = 1
+        put32(rec, 0xAE, 9000)
+        return rec, {}
+    if key == lv.CURSE:
+        rec = _curse(2, {2: 3}, 10 ** 6)
+        rec[0x19] = 17
+        return rec, {}
+    rec = bytearray(340)
+    rec[0x6B], rec[0x19] = 6, 17
+    rec[0xAC + 2] = rec[0x88] = 8
+    put32(rec, 0xC8, 900000)
+    return rec, {}
+
+
+@pytest.mark.parametrize("key", [lv.POOLS_OF_DARKNESS, lv.POOL_OF_RADIANCE,
+                                 lv.CURSE, lv.SILVER_BLADES])
+def test_a_press_leaves_the_input_record_unchanged(key):
+    rec, _ = _readied(key)
+    original = bytes(rec)
+    raw = bytearray(original)
+    plan = lv.plan(raw, key, rng=Dice(5, 5, 5, 5))
+    assert raw == original
+    assert lv.apply_to(raw, plan) != original
+    assert raw == original

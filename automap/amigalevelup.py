@@ -21,8 +21,8 @@ something no caller can supply, `plan` raises `CannotLevel` and writes
 nothing: a Curse or Silver Blades thief (see each section), and a druid or
 monk, which no title lets a player be.
 
-Each section names its executable, the routines it copies and the WISH-1
-comments that read them; addresses are file offsets into that executable and
+Each section names its executable, the routines it copies and where
+`docs/124` §1.23 records their reading; addresses are file offsets into that executable and
 `gNNNN` its data-hunk offsets, record offsets the heap record's.
 """
 
@@ -110,8 +110,8 @@ def _row(rows, name: str, level: int):
 # --- Pools of Darkness -------------------------------------------------------
 #
 # The trainer `0x3D106` of `/Pools of Darkness` (sha256 `a572e95a7bc0`), its
-# recompute `0x3C238` and hit points `0x24334`, read on WISH-1 (comments
-# `c2ad2f8c` and `99d7ea58`). Record offsets are the `.pc` file's
+# recompute `0x3C238` and hit points `0x24334`, recorded in `docs/124`
+# §1.23. Record offsets are the `.pc` file's
 # (`goldbox/amiga_pod.py`). Three item steps are not copied, each said where
 # it would run:
 #
@@ -759,7 +759,7 @@ def _pod_plan(raw: bytes, rng, learn: int | None, effects, items=()) -> Plan:
 #
 # The trainer `0x18ED8` (hunk 10) of `/program` (sha256 `b1cbbecc0188`), its
 # recompute `0x3D682`, hit dice `0x1A86C` and bonus `0x1A51C`; `docs/124`
-# §1.23 and WISH-1 comment `9121de18`, reread for this copy. Record offsets
+# §1.23. Record offsets
 # are the 288-byte Amiga record's (`goldbox.amiga_por.amiga_por_offset` of
 # the DOS ones). The halls train one class each; Level up trains the class
 # the C64 Level up would pick (`_por_pick`). Money is not charged.
@@ -1089,7 +1089,7 @@ def _por_plan(raw: bytes, rng, learn: int | None, effects, items=()) -> Plan:
 # The trainer `0x16910` of `/Curse` (sha256 `8d4ceba86e4b`), its recompute
 # `0x38A52` (capacity `0x3872A`, wisdom `0x38CB0`, saves `0x38DC6`, thief
 # skills `0x390C4`), hit dice `0x16718` and bonus `0x16310`; `docs/124`
-# §1.23 and WISH-1 comments `33d2c544` and `974fd5e0`, reread for this copy.
+# §1.23.
 # Record offsets are the 428-byte Amiga record's (`CURSE_DELTAS`).
 #
 # **A character with a thief level is refused.** `0x390C4` adds `d7` to
@@ -1599,7 +1599,7 @@ def _curse_plan(raw: bytes, rng, learn: int | None, effects, items=()) -> Plan:
 # The trainer `0xDF3E` of `/Secret` (sha256 `ba6c8b5ed94b`), its recompute
 # `0x3C802` (capacity `0x3C478`, cleric `0x3CA68`, saves `0x3CB8A`, thief
 # skills `0x3CE78`), hit points `0xB8C4` and bonus `0x17A1C`; `docs/124`
-# §1.23 and WISH-1 comments `175bdbea` and `9f0896c0`, reread for this copy.
+# §1.23.
 # Record offsets are the 340-byte Amiga record's (`SILVER_BLADES_DELTAS`).
 # The Hall of Training trains every ready class, so a press does too.
 #
