@@ -63,6 +63,17 @@ def test_retired_root_mount_stops_before_scoped_mounts_start():
         assert "agent_vm_mount" in task["tags"]
 
 
+def test_teardown_checks_detachment_before_removing_units():
+    tasks = yaml.safe_load((ROLE / "tasks" / "teardown.yml").read_text())
+    names = [task["name"] for task in tasks]
+    assert names.index("Stop and disable the guest file mounts") < names.index(
+        "Check that the guest file mounts detached") < names.index(
+            "Remove the guest file mount units")
+    check = tasks[names.index("Check that the guest file mounts detached")]
+    assert "agent-wish" in check["loop"]
+    assert "agent_vm_wish_mounts" in check["loop"]
+
+
 def _tasks(items):
     for t in items:
         yield t

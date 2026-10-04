@@ -61,6 +61,13 @@
     XDG_RUNTIME_DIR: "/run/user/{{ getent_passwd[agent_vm_operator][1] }}"
   failed_when: false
 
+- name: Check that the guest file mounts detached
+  ansible.builtin.command: "mountpoint -q {{ item | quote }}"
+  loop: "{{ (agent_vm_wish_mounts | map(attribute='mount') | list) + ['/home/' ~ agent_vm_operator ~ '/agent-wish'] }}"
+  register: agent_vm_td_mounts
+  changed_when: false
+  failed_when: agent_vm_td_mounts.rc != 1
+
 - name: Remove the guest file mount units
   ansible.builtin.file:
     path: "/home/{{ agent_vm_operator }}/.config/systemd/user/{{ item }}"
