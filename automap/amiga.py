@@ -498,13 +498,16 @@ def _blob(out: str, name: str) -> bytes | None:
     return None
 
 
-#: A debugger command that can reach `activate_debugger()`, and through it
-#: `open_console()` -- a console window in front of whoever is playing, which
-#: is the one thing this route exists to avoid. `m`, `S`, `W` and `T` stay
-#: inside `debug_parser` and are safe; the rest of the command set has not been
-#: read, so the block list is the ones known to be dangerous plus
-#: `IPC_QUIT`, which quits the emulator outright (`uaeipc.cpp:38`).
-UNSAFE_COMMANDS = frozenset("g t f b w z q x".split())
+#: The leading characters of the debugger commands this transport may send:
+#: `m` (dump memory), `S` (save memory to a file), `W` (write memory) and `T`
+#: (list tasks). `debug_line`'s `switch` selects a command by its first
+#: character alone -- `qq`, `quit` and `q` are all `q`, which quits the
+#: emulator, and `fs 1`, `fc 10` and `wd 1` reach the cycle and memory
+#: watchpoint code that halts it -- so the guard compares that character and
+#: never the whole first word. Every other character is blocked, including the
+#: ones that can reach `activate_debugger()` and open a console window in front
+#: of whoever is playing, which is the one thing this route exists to avoid.
+SAFE_COMMANDS = frozenset("mSWT")
 
 
 class PipeError(GuestError):
@@ -517,13 +520,13 @@ class PipeError(GuestError):
 
 
 def _pieces(cmd: str) -> list[str]:
-    """One line as `debug_line` splits it: on unquoted `;`.
+    """One line split on unquoted `;`, as the emulator's master branch does.
 
-    **The emulator runs every piece in the same message.** `debug.cpp`'s
-    `debug_line` walks the string tracking quotes and hands each `;`-separated
-    piece to `debug_line_2`, so `m 0 1;g` is a read *and* a go, and a guard
-    reading only the first word of the whole string sees `m` and lets it
-    through. That was true here until 2026-09-08.
+    **WinUAE 6.0.3 does not split a line**: `debug_line` hands the whole string
+    to one `switch` on its first character, so `m 0 1;g` is one `m`. The master
+    branch walks the string tracking quotes and runs each `;`-separated piece.
+    The guard checks every piece anyway, so a build that splits cannot have a
+    go hidden behind a read, and a `;` inside quotes stays in one piece.
     """
     out, piece, quoted = [], [], False
     for ch in cmd:
@@ -539,41 +542,39 @@ def _pieces(cmd: str) -> list[str]:
 
 
 def _check_commands(commands: list[str]) -> None:
-    """Block anything that could put a console in front of the player.
+    """Block every debugger command except the reading ones in `SAFE_COMMANDS`.
 
     Checked here rather than in the caller because every route into this
     transport goes through one function, and a batch is composed from several
     places.
 
-    **Tokenised the way the emulator tokenises, not the way a line looks.**
-    Two things defeated an earlier version of this guard, and both are how
-    `debug.cpp` actually reads a line rather than anything exotic:
+    **Decided by the character `debug_line` switches on, not by the first
+    word.** `ignore_ws` skips anything `_istspace`, so `g\tc00000` is a go with
+    a tab in it, and `next_char` then takes one character: `qq` and `quit` are
+    both a quit, and `wd 1` is a `w`. Each piece (see `_pieces`) is checked.
 
-    * `debug_line` splits on unquoted `;` and runs every piece, so the head of
-      each piece is checked and not merely the head of the string;
-    * `ignore_ws` skips anything `_istspace`, so `g\tc00000` is a go with a
-      tab in it -- `split()` with no argument splits on any whitespace, which
-      `split(" ")` does not.
-
-    Case is deliberately not folded. `debug_line_2`'s `switch (cmd)` is
-    case-sensitive and has no `case 'G'`; `T` and `t` are two different
-    commands and both are already classified. `IPC_QUIT` is the one thing
-    compared case-insensitively, because `uaeipc.cpp` uses `_tcsicmp` for it.
+    Case is not folded. `debug_line`'s `switch (cmd)` is case-sensitive, so `T`
+    and `t` are two different commands. `IPC_QUIT` is the one thing compared
+    case-insensitively, because `uaeipc.cpp` uses `_tcsicmp` for it.
     """
     for cmd in commands:
         for piece in _pieces(cmd):
-            words = piece.strip().split()
-            if not words:
+            text = piece.strip()
+            if not text:
                 continue
-            head = words[0]
+            head = text.split()[0]
             if head.lower() == "ipc_quit":
                 raise ValueError(
                     "IPC_QUIT quits the emulator; it is never sent")
-            if head in UNSAFE_COMMANDS:
+            if text[0] == "q":
                 raise ValueError(
-                    f"`{head}` can reach activate_debugger(), which opens a "
-                    "console window in front of the player; this transport "
-                    "sends reading commands only")
+                    f"`{head}` starts with `q`, which quits the emulator; "
+                    "it is never sent")
+            if text[0] not in SAFE_COMMANDS:
+                raise ValueError(
+                    f"`{head}` starts with `{text[0]}`, which can halt the "
+                    "emulator or open a console window in front of the "
+                    "player; this transport sends reading commands only")
 
 
 #: What a staged floppy path looks like: a file `WinGuest` copied into the disks

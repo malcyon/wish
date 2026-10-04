@@ -264,7 +264,9 @@ class WinuaeLocalPipe:
     # -- reading ---------------------------------------------------------
 
     def _request(self, text: str, timeout: float) -> str:
-        _check_commands([text])
+        # The guard reads the debugger command, so the `DBG ` word in front of
+        # it comes off first; any other message is checked whole and blocked.
+        _check_commands([text[4:] if text.startswith("DBG ") else text])
         ascii_only = text.isascii()
         body = text.encode("ascii" if ascii_only else "utf-8") + b"\0"
         message = body if ascii_only else UTF8_BOM + body

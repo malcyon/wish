@@ -148,7 +148,7 @@ def test_a_reply_keeps_its_bytes_and_loses_its_terminator():
 
 def test_the_debugger_says_it_did_not_know_the_command():
     p, _guest = pipe()
-    (_cmd, reply), = p.send(["Q"])
+    (_cmd, reply), = p.send(["T"])
     assert amiga.RE_UNKNOWN.search(reply)
 
 
@@ -178,6 +178,29 @@ def test_a_command_that_could_open_a_console_is_blocked(command):
     with pytest.raises(ValueError, match="console"):
         p.send([command])
     assert guest.scripts == [], "nothing may reach the guest"
+
+
+@pytest.mark.parametrize("command", [
+    # `debug_line` switches on the first character alone, so each of these is
+    # a quit or a halt although its first word is not a single letter.
+    "qq", "quit", "q", "fs 1", "fc 10", "wd 1", "  quit", "m 0 1;qq",
+    "ff c00000", "wx", "reset", "x",
+])
+def test_a_command_whose_first_character_quits_or_halts_is_blocked(command):
+    p, guest = pipe()
+    with pytest.raises(ValueError):
+        p.send([command])
+    assert guest.scripts == [], "nothing may reach the guest"
+
+
+@pytest.mark.parametrize("command", [
+    "m 0 1", "m c00000 20", "S C:\\Amiga\\dump\\x.bin c00000 100",
+    "W c00000 12", "T", "\tm 0 1",
+])
+def test_every_command_the_drivers_send_still_passes(command):
+    p, guest = pipe()
+    p.send([command])
+    assert guest.scripts
 
 
 def test_ipc_quit_is_blocked_by_name():
@@ -827,10 +850,8 @@ def test_a_floppy_change_never_goes_through_the_debugger_script(monkeypatch):
 @pytest.mark.parametrize("command", ["CFG floppy0 x dbg g", "ipc_quit", "g", "IPC_QUIT"])
 def test_the_debugger_route_still_blocks_what_could_open_a_console(command):
     guest = LaneGuest()
-    if command.startswith("CFG"):
-        # The debugger prefix goes on in front, so a CFG text is a debugger word, not a setter.
-        assert amiga.WinuaePipe(runner=guest).script([command]).count("CFG floppy0") == 0
-        return
+    # A CFG text is never a setter here: the debugger prefix goes on in front, and
+    # its leading `C` is not a reading command, so it is blocked before that.
     with pytest.raises(ValueError):
         amiga.WinuaePipe(runner=guest).script([command])
     assert guest.calls == []

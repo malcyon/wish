@@ -177,6 +177,14 @@ def test_a_range_comes_back_and_only_an_s_command_is_written(rig):
     assert list(folder.glob("wish-*.bin")) == []
 
 
+@pytest.mark.parametrize("text", ["DBG qq", "DBG fs 1", "DBG g", "IPC_QUIT", "CFG x"])
+def test_a_message_that_quits_or_halts_is_blocked_before_it_is_written(rig, text):
+    pipe, api, _clock, _folder = rig
+    with pytest.raises(ValueError):
+        pipe._request(text, 1.0)
+    assert api.written == []
+
+
 def test_a_reply_in_several_parts_is_put_together(rig):
     pipe, api, *_ = rig
     api.chunk = 9
