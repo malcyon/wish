@@ -2921,10 +2921,32 @@ negative skill). The choices, each with its reason:
 paladin regains the class, the Silver Blades and Pools of Darkness trainers
 look through the character's own effect list for effect `0x69` (ranger) or
 8 (paladin), comparing each node's first byte (`0x1AB12`, `0x1A6EE`), and add
-a node if it is missing (`0x12DAC`, `0x12FD4`). Level up reads the same list
-from the live party member and goes ahead when the effect is there. When it
-is not, it stops: adding a node takes the game's own heap allocator, and a
-level-up only writes to the record. CONFIRMED from the code.
+a node if it is missing by calling the constructor (`0x12DAC`, `0x12FD4`) with
+`(record, id, 0, 0xFF, 0)`, ranger first (`/Secret 0xE74A`-`0xE7B0`, `/Pools
+of Darkness 0x3D89C`-`0x3D902`). Silver Blades tests the former level signed
+(`ble`), Pools of Darkness unsigned (`bls`). The constructor takes a slot from
+the title's effect-node pool (`docs/202-the-amiga-effect-node-pad.md` §2:
+Silver Blades `g7618`, 212 slots; Pools of Darkness `g75A2`, 400 slots, set up
+at `0x1BAEC` from `0x1D89A`), appends it at the tail of the character's list
+and writes id, duration, +4 and +5 and a NULL `next`. CONFIRMED from the code.
+Curse's trainer (`0x16910`-`0x171C2`) calls neither its constructor
+(`0x0F176`, 57 callers, none in the trainer or the recompute) nor its
+regained test, so it adds no node. CONFIRMED from the code.
+
+Level up makes the same node in the running game (`automap/amigaeffects.py`):
+it takes the slot the allocator would, writes the node, sets the bitmap bit and
+links it last. This statement replaces an earlier one that Level up stopped
+here because a record write could not add a node; the pool turned out to be a
+fixed bitmap allocator Wish can drive as the game does. Measured on Silver
+Blades under FS-UAE (Kickstart 1.3, registry disks, slot A's shipped party):
+EPONA staged as a human fighter 8 who left ranger at 8 (`0x0B7` and `0x089` 8,
+experience 300000) and trained by Level up got slot 5 (`0xC6EA7A`, bitmap
+`1F` to `3F`), linked from her empty list. The game's sheet read
+FIGHTER/RANGER, LEVEL 9/8, 104/104; the game's own SAVE CURRENT GAME to B
+wrote her node `69 00 0000 FF 00` and NULL (the file 10 bytes longer than
+slot A), and loading B gave her the node again from the game's loader.
+CONFIRMED for Silver Blades in one boot; Pools of Darkness rests on the same
+code read and was not run.
 
 **Pools of Darkness' save rebuild applies the constitution steps per class.**
 `0x3C5AC` adds the first column's high-constitution step, and the step a

@@ -43,13 +43,23 @@ byte of the bitmap that is not `0xFF`, the first clear bit in it, sets that
 bit and hands back `base + slot * size`. It does not touch the slot's
 contents.
 
-| | Curse (`/Curse`) | Silver Blades (`/Secret`) |
-|---|---|---|
-| pool descriptor | `g5b1e` | `g7618` |
-| element size, written at set-up | `0x0A` at `0x1C4BE` | `0x0A` at `0x1BFA0` |
-| allocator | `0x02C5A0` | `0x02F30E` |
-| free | `0x02C64C` | `0x02F39A` |
-| the pool's own memory | `0x040BCC` | `0x04573C` |
+| | Curse (`/Curse`) | Silver Blades (`/Secret`) | Pools of Darkness |
+|---|---|---|---|
+| pool descriptor | `g5b1e` | `g7618` | `g75a2` |
+| slot count, pushed to the set-up | `0xD4` at `0x1D4C0` | `0xD4` at `0x1D6C8` | `0x190` at `0x1D89A` |
+| element size, written at set-up | `0x0A` at `0x1C4BE` | `0x0A` at `0x1BFA0` | `0x0A` at `0x1BAF8` |
+| allocator | `0x02C5A0` | `0x02F30E` | `0x02D32A` |
+| free | `0x02C64C` | `0x02F39A` | `0x02D424` |
+| the pool's own memory | `0x040BCC` | `0x04573C` | `0x045B7C` |
+
+The descriptor is the count (`u16`), the size (`u16`), the base (`u32`) and
+the bitmap from +8, bit 0 of byte 0 being slot 0. The Pools of Darkness
+allocator is the same routine with two messages added (`New memory size
+error!` when the size asked for is past the element size, `Out of dynamic
+memory!` when the pool is full). All three scan the bitmap until byte
+`count - 1` rather than its last byte, which reads past it only when every
+slot is taken, and then any slot found is past the count and the answer is
+NULL. CONFIRMED from the code.
 
 The last row is the finding under the finding. Both are the same C runtime
 routine compiled twice: `AvailMem(MEMF_PUBLIC|MEMF_LARGEST)` for the check,
