@@ -45,12 +45,16 @@ def run(specimen: pathlib.Path, disk3: pathlib.Path, out: pathlib.Path,
 
     A rehearsal that cannot be made leaves `save_as["stopped"]` set and writes no image.
     """
-    specimen = pathlib.Path(specimen)
-    disk3 = pathlib.Path(disk3)
-    out = pathlib.Path(out)
+    specimen = pathlib.Path(specimen).resolve()
+    disk3 = pathlib.Path(disk3).resolve()
+    out = pathlib.Path(out).resolve()
     report: dict = {"specimen": str(specimen), "specimen_sha256": _sha256(specimen),
                     "amiga_disk3": str(disk3), "written": [], "written_sha256": {},
                     "dropped": [], "losses": [], "warnings": []}
+    out.mkdir(parents=True, exist_ok=True)
+    # The folder is this tool's own output: an image from an earlier run must not pass for this one's.
+    for stale in out.glob("disk3-*.adf"):
+        stale.unlink()
     outcome: dict = {"source": str(specimen), "to": "amiga"}
     report["save_as"] = outcome
     try:
@@ -58,10 +62,10 @@ def run(specimen: pathlib.Path, disk3: pathlib.Path, out: pathlib.Path,
         rehearsal = convert.PodDosToAmiga().rehearse(
             source, source.slot, None, disk_three=amiga_adf.AmigaDisk.open(disk3),
             replace=replace)
-    except (convert.ConvertError, amiga_adf.AmigaDiskError) as exc:
+    except (convert.ConvertError, ValueError, OSError) as exc:
+        # ValueError covers the DOS save, DOS record and Amiga disk errors; OSError an unreadable file.
         outcome["stopped"] = [type(exc).__name__, str(exc)]
     else:
-        out.mkdir(parents=True, exist_ok=True)
         image = out / f"disk3-{rehearsal.slot}.adf"
         image.write_bytes(rehearsal.disk)
         report["dropped"] = [str(x) for x in rehearsal.report.dropped]
@@ -72,7 +76,6 @@ def run(specimen: pathlib.Path, disk3: pathlib.Path, out: pathlib.Path,
         outcome.update(slot=rehearsal.slot, destination=str(image),
                        written=report["written"], dropped=report["dropped"],
                        losses=report["losses"], warnings=report["warnings"])
-    out.mkdir(parents=True, exist_ok=True)
     (out / REPORT_NAME).write_text(json.dumps(report, indent=2) + "\n")
     tree = tree or pathlib.Path(__file__).resolve().parents[2]
     (out / COMMIT_NAME).write_text(commit_text(tree))

@@ -16,7 +16,7 @@ import pytest
 from conftest import load_tools_module
 
 from editor import convert
-from goldbox import amiga_savegame, dos_codec, dos_port
+from goldbox import amiga_savegame, dos_codec, dos_port, dos_savegame
 from goldbox.amiga_adf import AmigaDisk
 
 podsaveasdrive = load_tools_module("podsaveasdrive")
@@ -183,3 +183,58 @@ def test_the_registered_disk_three_takes_a_registered_dos_slot(tmp_path):
     assert AmigaDisk.open(image).read_file(
         amiga_savegame.pod_slot_path(report["save_as"]["slot"]))
     assert disk3.read_bytes() == data
+
+
+@pytest.mark.parametrize("error", [
+    dos_savegame.DosSaveError("short save"), dos_codec.WrongTitleError("wrong title", "x"),
+    OSError("unreadable"), amiga_savegame.AmigaSaveError("bad slot")])
+def test_any_reader_error_becomes_a_stopped_report(staged, monkeypatch, error):
+    specimen, disk3, out = staged
+
+    def stop(self, *args, **kwargs):
+        raise error
+    monkeypatch.setattr(convert.PodDosToAmiga, "rehearse", stop)
+    report = podsaveasdrive.run(specimen, disk3, out)
+    assert report["save_as"]["stopped"][0] == type(error).__name__
+    assert (out / "saveas-report.json").is_file() and (out / "commit.txt").is_file()
+    assert not list(out.glob("*.adf"))
+
+
+def test_a_wrong_size_saved_game_is_a_stopped_report(tmp_path, monkeypatch):
+    folder = tmp_path / "slot"
+    folder.mkdir()
+    specimen = folder / f"SAVGAM{LETTER}.PTY"
+    specimen.write_bytes(b"\x00" * 10)
+    (folder / f"CHRDAT{LETTER}1.SAV").write_bytes(b"\x00" * 510)
+    disk3 = tmp_path / "disk3.adf"
+    disk3.write_bytes(_synthetic_disk_three().to_bytes())
+    monkeypatch.setattr(
+        convert.Source, "detect",
+        classmethod(lambda cls, path, party=None, slot=None: convert.Source(
+            port="dos", title=dos_port.POOLS_OF_DARKNESS, path=folder, slot=LETTER)))
+    report = podsaveasdrive.run(specimen, disk3, tmp_path / "out")
+    assert report["save_as"]["stopped"], report
+    assert report["written"] == []
+
+
+def test_an_image_from_an_earlier_run_is_removed(staged, monkeypatch):
+    specimen, disk3, out = staged
+    out.mkdir()
+    (out / "disk3-A.adf").write_bytes(b"old")
+    podsaveasdrive.run(specimen, disk3, out)
+    assert [p.name for p in out.glob("disk3-*.adf")] == [f"disk3-{LETTER}.adf"]
+    monkeypatch.setattr(convert.PodDosToAmiga, "rehearse",
+                        lambda *a, **k: (_ for _ in ()).throw(convert.ConvertError("x")))
+    podsaveasdrive.run(specimen, disk3, out)
+    assert not list(out.glob("*.adf"))
+
+
+def test_paths_in_the_report_are_absolute(staged, monkeypatch):
+    specimen, disk3, out = staged
+    monkeypatch.chdir(specimen.parent)
+    report = podsaveasdrive.run(pathlib.Path(specimen.name), pathlib.Path(disk3.name),
+                                pathlib.Path("out"))
+    paths = [report["specimen"], report["amiga_disk3"], report["written"][0],
+             report["save_as"]["source"], report["save_as"]["destination"]]
+    assert all(pathlib.Path(p).is_absolute() for p in paths)
+    assert report["save_as"]["source"] == report["specimen"]
