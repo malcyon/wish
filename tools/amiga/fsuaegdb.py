@@ -593,23 +593,6 @@ def pool_row(tgt, layout) -> dict:
             "bitmap": bytes(bitmap).hex()}
 
 
-class _WriteLog:
-    """A target that lists each write it has made, so a verb that fails part-way
-    still shows what it changed in the running game."""
-
-    def __init__(self, target):
-        self._target = target
-        self.made: list[tuple[int, bytes]] = []
-
-    def write(self, at, data):
-        result = self._target.write(at, data)
-        self.made.append((at, bytes(data)))
-        return result
-
-    def __getattr__(self, name):
-        return getattr(self._target, name)
-
-
 def levelup_row(tgt, layout, rest: str) -> dict:
     """CHANGES THE RUNNING GAME: one press of Wish's Level up for the member
     named, with `random.Random(N)` as the dice, through
@@ -625,7 +608,7 @@ def levelup_row(tgt, layout, rest: str) -> dict:
         return {"error": "levelup takes a member's name and a seed: "
                          "levelup NAME N"}
     key = machine_key(layout)
-    log = _WriteLog(tgt)
+    log = amigalevelup.WriteLog(tgt)
     try:
         found = [m for m in _members(tgt, key)
                  if m.name.strip().upper() == name.upper()]

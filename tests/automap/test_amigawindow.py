@@ -562,7 +562,7 @@ def test_pressing_level_up_plans_and_writes_the_member(monkeypatch):
     monkeypatch.setattr(amigalevelup, "plan_member", lambda m, key, **k: (
         seen.append(("plan", m.name, key)) or real_plan(m, key, **k)))
     monkeypatch.setattr(amigalevelup, "write_plan", lambda t, m, p: (
-        seen.append(("write", m.name, t)) or real_write(t, m, p)))
+        seen.append(("write", m.name, t._target)) or real_write(t, m, p)))
     window.roster.cards[1].level_up.click()
     assert seen == [("plan", "BRYNNA", POOLS_OF_DARKNESS),
                     ("write", "BRYNNA", target)]
@@ -684,8 +684,31 @@ def test_a_failure_between_writes_is_logged_and_nothing_escapes(monkeypatch, cap
     monkeypatch.setattr(amigalevelup, "write_plan", half)
     with caplog.at_level("ERROR", logger="wish.automap.window"):
         window._level_up(0)
-    assert "stopped part-way" in caplog.text and "GuestError" in caplog.text
+    stops = [r for r in caplog.records if "stopped part-way" in r.message]
+    assert len(stops) == 1 and "GuestError" in stops[0].message
+    assert hex(HEAP) in stops[0].message and "'00'" in stops[0].message
     assert lines == []                      # no player line claims a result
+    assert not any("failed" in r.message for r in caplog.records)
+
+
+def test_a_transport_error_before_any_write_says_it_cannot_level(monkeypatch, caplog):
+    window, target = pod_window([fighter(8)])
+    lines = spoken(window, monkeypatch)
+
+    def early(t, member, plan):
+        raise amiga.GuestError("the emulator stopped answering")
+
+    monkeypatch.setattr(amigalevelup, "write_plan", early)
+    with caplog.at_level("ERROR", logger="wish.automap.window"):
+        window._level_up(0)
+    assert lines == [("level up: ALDRIC cannot level: the emulator stopped "
+                      "answering", True)]
+    assert "part-way" not in caplog.text and target.writes == []
+
+
+def test_the_write_log_reads_with_the_regions_of_the_target_it_wraps():
+    wrapped = amigalevelup.WriteLog(SimpleNamespace(memory=((0x1000, 0x10),)))
+    assert amigaparty._memory(wrapped) == ((0x1000, 0x10),)
 
 
 def test_an_error_after_the_writes_is_logged_and_nothing_escapes(monkeypatch, caplog):

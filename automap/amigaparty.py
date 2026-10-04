@@ -434,9 +434,10 @@ class _Chain:
 
 def _memory(source):
     """The regions a target measured, else the A500's `amiga.MEMORY`."""
-    if isinstance(source, amiga.AmigaTarget):
-        return source.memory
-    return amiga.MEMORY
+    memory = getattr(source, "memory", None)
+    # A tuple, not `AmigaTarget` itself, so a proxy that records writes (see
+    # `amigalevelup.WriteLog`) is read with the regions it wraps.
+    return memory if isinstance(memory, tuple) else amiga.MEMORY
 
 
 def _follow(batch, chains: list[_Chain], memory=amiga.MEMORY) -> None:

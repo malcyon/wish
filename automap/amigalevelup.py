@@ -2255,6 +2255,23 @@ def _not_on_the_chain(target, key: str, address: int, wanted):
     return tuple(e for e in wanted if e.id not in have)
 
 
+class WriteLog:
+    """A target that lists each write it has made, so a press that fails
+    part-way can say what it changed in the running game."""
+
+    def __init__(self, target):
+        self._target = target
+        self.made: list[tuple[int, bytes]] = []
+
+    def write(self, at, data):
+        result = self._target.write(at, data)
+        self.made.append((at, bytes(data)))
+        return result
+
+    def __getattr__(self, name):
+        return getattr(self._target, name)
+
+
 def write_plan(target, member, plan_: Plan) -> tuple[tuple[int, bytes], ...]:
     """Make `plan_` in the running game for `member`, the
     `automap.amigaparty.AmigaMember` it was planned from, and return the
