@@ -18,11 +18,13 @@ Only a directory this script made is ever replaced: nothing else under `--into`
 is touched, and a `uae-dap-<version>` that does not hold the binary is blocked.
 
 The shipped Linux binary segfaults on every state save, state load and reset,
-so the install patches it in place (`NULL_GUARD`): a binary that is neither the
-pinned original nor the patched one, or whose bytes at a patch site are not the
-expected ones, stops the install with nothing written.  A second run with the
-patched binary in place does nothing and says so; one with the original binary
-in place patches it.
+and after a state load its picture stays black, so the install patches it in
+place, one `BinaryPatch` after another (`PATCH_CHAIN`): the pinned original,
+then `NULL_GUARD`, then `RESTORE_REDRAW`.  A binary that is not at one of the
+steps, or whose bytes at a patch site are not the expected ones, stops the
+install with nothing written.  A second run with the last step in place does
+nothing and says so; one with an earlier step in place finishes the chain.
+`docs/239-fs-uae-patches.md` records every patch.
 """
 
 from __future__ import annotations
@@ -108,6 +110,32 @@ NULL_GUARD = BinaryPatch(
 )
 
 
+#: After a state load the fork's picture stays black until the game draws each
+#: line again: it redraws only the lines whose Amiga content changed, and the
+#: restore never marks the screen lost (the source fix is
+#: `fsuae-restore-redraw.patch`).  `savestate_restore_finish()` starts at
+#: 0x6b4f10 (it prints "savestate_restore_finish"); its `call audio_activate`
+#: (0x424d20) is at 0x6b4f96, file offset 0x2b4f96.  It is pointed instead at a
+#: 12-byte wrapper in the 15 bytes of padding after a `ret` at 0x6b3440, which
+#: nothing branches into: `xor edi,edi; call notice_screen_contents_lost
+#: (0x4b44b0); jmp audio_activate`.  `notice_screen_contents_lost(0)` is a leaf
+#: that only sets two `adisplays[0]` fields, so calling it first and then
+#: tail-jumping leaves `audio_activate` returning to 0x6b4f9b as before.
+RESTORE_REDRAW = BinaryPatch(
+    original_sha256=NULL_GUARD.patched_sha256,
+    patched_sha256="fbf6716089cac42bccd03eeede883d1184aa3eb00c9176aad568756eb484fbea",
+    sites=(
+        # call audio_activate  ->  call 0x6b3441
+        Site(0x2B4F96, bytes.fromhex("e885fdd6ff"), bytes.fromhex("e8a6e4ffff")),
+        # padding (cs nopw; part of nopl)  ->  the redraw wrapper
+        Site(0x2B3441, bytes.fromhex("662e0f1f8400000000000f1f"),
+             bytes.fromhex("31ffe86810e0ffe9d318d7ff")),
+    ),
+)
+
+#: The patches the install applies, in order; each starts where the last ends.
+PATCH_CHAIN = (NULL_GUARD, RESTORE_REDRAW)
+
 def default_dir() -> pathlib.Path:
     """The directory installs go under by default, beside Wish's own per-user data."""
     return paths.data_dir() / "fs-uae"
@@ -126,31 +154,52 @@ def sha256_of(path: pathlib.Path) -> str:
     return digest.hexdigest()
 
 
-def patch_binary(path: pathlib.Path, patch: BinaryPatch) -> bool:
-    """Apply `patch` to `path` in place; False if it was already applied.
-
-    Raises ValueError, writing nothing, unless the file is the patch's original
-    with the original bytes at every site.  The patched file replaces the old
-    one by a rename, so a running emulator keeps the file it started from.
-    """
-    data = bytearray(path.read_bytes())
+def _diagnose(path: pathlib.Path, data: bytes, chain: tuple[BinaryPatch, ...]) -> str:
+    """Why `data` is at no step of `chain`: a site holding unexpected bytes, else its digest."""
+    for patch in chain:
+        for site in patch.sites:
+            here = bytes(data[site.offset:site.offset + len(site.original)])
+            if here not in (site.original, site.patched):
+                return (f"{path} has {here.hex()} at 0x{site.offset:x}, not the "
+                        f"expected {site.original.hex()}; it was not patched")
     found = hashlib.sha256(data).hexdigest()
-    if found == patch.patched_sha256:
-        return False
+    return (f"{path} has SHA-256 {found}, neither the pinned original nor the "
+            f"patched binary; it was not patched")
+
+
+def _apply(path: pathlib.Path, data: bytearray, patch: BinaryPatch) -> None:
+    """Apply one step to `data` in memory, checking its sites and its result."""
     for site in patch.sites:
         here = bytes(data[site.offset:site.offset + len(site.original)])
         if here != site.original:
             raise ValueError(f"{path} has {here.hex()} at 0x{site.offset:x}, not the "
                              f"expected {site.original.hex()}; it was not patched")
-    if found != patch.original_sha256:
-        raise ValueError(f"{path} has SHA-256 {found}, neither the pinned original "
-                         f"nor the patched binary; it was not patched")
     for site in patch.sites:
         data[site.offset:site.offset + len(site.patched)] = site.patched
     made = hashlib.sha256(data).hexdigest()
     if made != patch.patched_sha256:
         raise ValueError(f"patching {path} gave SHA-256 {made}, not the expected "
                          f"{patch.patched_sha256}; it was not replaced")
+
+
+def patch_chain(path: pathlib.Path, chain: tuple[BinaryPatch, ...]) -> bool:
+    """Bring `path` to the end of `chain`; False if it is already there.
+
+    The file may be at any step: the remaining steps are applied in memory and
+    written once.  Raises ValueError, writing nothing, if the file is at no step
+    or any site holds unexpected bytes.  The patched file replaces the old one
+    by a rename, so a running emulator keeps the file it started from.
+    """
+    data = bytearray(path.read_bytes())
+    found = hashlib.sha256(data).hexdigest()
+    if found == chain[-1].patched_sha256:
+        return False
+    start = next((i for i, patch in enumerate(chain)
+                  if patch.original_sha256 == found), None)
+    if start is None:
+        raise ValueError(_diagnose(path, data, chain))
+    for patch in chain[start:]:
+        _apply(path, data, patch)
     fd, name = tempfile.mkstemp(prefix=".patch-", dir=path.parent)
     staged = pathlib.Path(name)
     try:
@@ -167,6 +216,11 @@ def patch_binary(path: pathlib.Path, patch: BinaryPatch) -> bool:
         staged.unlink(missing_ok=True)
         raise
     return True
+
+
+def patch_binary(path: pathlib.Path, patch: BinaryPatch) -> bool:
+    """Apply one `patch` to `path` in place; False if it was already applied."""
+    return patch_chain(path, (patch,))
 
 
 def check_digest(path: pathlib.Path, expected: str = SHA256) -> None:
@@ -236,10 +290,10 @@ def replace_dir(staging: pathlib.Path, into: pathlib.Path) -> None:
 
 
 def extract(tarball: pathlib.Path, into: pathlib.Path,
-            patch: BinaryPatch | None = None) -> None:
+            chain: tuple[BinaryPatch, ...] | None = None) -> None:
     """Unpack `MEMBER_ROOT` of `tarball` as the directory `into`, all or nothing.
 
-    With `patch`, the binary is patched before the swap, so a patch that fails
+    With `chain`, the binary is patched before the swap, so a patch that fails
     leaves nothing installed.
     """
     with tarfile.open(tarball, "r:gz") as archive:
@@ -259,8 +313,8 @@ def extract(tarball: pathlib.Path, into: pathlib.Path,
                 with archive.extractfile(member) as source, target.open("wb") as out:
                     shutil.copyfileobj(source, out)
                 target.chmod(0o755 if member.mode & 0o111 else 0o644)
-            if patch is not None:
-                patch_binary(staging / BINARY, patch)
+            if chain:
+                patch_chain(staging / BINARY, chain)
             # mkdtemp makes it 0700, and it is about to become the install.
             staging.chmod(0o755)
             replace_dir(staging, into)
@@ -301,18 +355,19 @@ def download(url: str, to: pathlib.Path, opener=None, limit: int = MAX_BYTES) ->
 
 
 def install(parent: pathlib.Path, fetch=download, url: str = URL,
-            expected: str = SHA256, patch: BinaryPatch | None = None) -> pathlib.Path:
+            expected: str = SHA256,
+            chain: tuple[BinaryPatch, ...] | None = None) -> pathlib.Path:
     """Return the patched binary's path, fetching and unpacking only if it is not there.
 
     The install is `install_dir(parent)`; `parent` itself is never modified
     beyond that one directory and the temporary files this removes again.
-    `patch` defaults to `NULL_GUARD`, looked up when called.
+    `chain` defaults to `PATCH_CHAIN`, looked up when called.
     """
-    patch = patch or NULL_GUARD
+    chain = chain or PATCH_CHAIN
     into = install_dir(parent)
     binary = into / BINARY
     if binary.exists():
-        if patch_binary(binary, patch):
+        if patch_chain(binary, chain):
             print(f"Patched the installed binary: {binary}")
         else:
             print(f"Already installed: {binary}")
@@ -326,7 +381,7 @@ def install(parent: pathlib.Path, fetch=download, url: str = URL,
         print(f"Fetching {url}")
         fetch(url, tarball)
         check_digest(tarball, expected)
-        extract(tarball, into, patch)
+        extract(tarball, into, chain)
     finally:
         tarball.unlink(missing_ok=True)
     return binary

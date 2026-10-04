@@ -37,23 +37,34 @@ posix_only = pytest.mark.skipif(sys.platform == "win32",
                                 reason="POSIX modes, directory renames and symlinks")
 
 
-#: The guard the installer applies, kept before `fake_guard` swaps it.
+#: The patches the installer applies, kept before `fake_chain` swaps them.
 REAL_GUARD = installfsuae.NULL_GUARD
+REAL_REDRAW = installfsuae.RESTORE_REDRAW
+REAL_CHAIN = installfsuae.PATCH_CHAIN
 
 SHIPPED = b"an executable"
 PATCHED = b"an EXECutable"
+FINAL = b"an EXECUTaBLE"
 
-#: Stands in for `NULL_GUARD` against the stand-in binary the tarballs carry.
+
+def _sha(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+#: Stand in for `NULL_GUARD` and `RESTORE_REDRAW` against the stand-in binary
+#: the tarballs carry; the redraw has two sites, as the real one does.
 FAKE_GUARD = installfsuae.BinaryPatch(
-    original_sha256=hashlib.sha256(SHIPPED).hexdigest(),
-    patched_sha256=hashlib.sha256(PATCHED).hexdigest(),
+    original_sha256=_sha(SHIPPED), patched_sha256=_sha(PATCHED),
     sites=(installfsuae.Site(3, b"exec", b"EXEC"),))
+FAKE_REDRAW = installfsuae.BinaryPatch(
+    original_sha256=_sha(PATCHED), patched_sha256=_sha(FINAL),
+    sites=(installfsuae.Site(7, b"ut", b"UT"), installfsuae.Site(10, b"ble", b"BLE")))
 
 
 @pytest.fixture(autouse=True)
-def fake_guard(monkeypatch):
+def fake_chain(monkeypatch):
     """Every install here patches the stand-in binary, as a real one is patched."""
-    monkeypatch.setattr(installfsuae, "NULL_GUARD", FAKE_GUARD)
+    monkeypatch.setattr(installfsuae, "PATCH_CHAIN", (FAKE_GUARD, FAKE_REDRAW))
 
 
 def build(path: pathlib.Path, members: dict[str, bytes | tarfile.TarInfo]) -> str:
@@ -630,12 +641,12 @@ def test_the_shipped_guard_is_consistent():
         assert len(digest) == 64 and int(digest, 16) >= 0
 
 
-def test_an_install_patches_the_binary_it_unpacks(tmp_path):
+def test_an_install_patches_the_binary_it_unpacks_through_the_whole_chain(tmp_path):
     fetch, digest = fetcher(tmp_path, good_members())
 
     binary = installfsuae.install(tmp_path / "share", fetch=fetch, expected=digest)
 
-    assert binary.read_bytes() == PATCHED
+    assert binary.read_bytes() == FINAL
 
 
 def test_an_installed_original_is_patched_without_a_download(tmp_path, capsys):
@@ -648,7 +659,7 @@ def test_an_installed_original_is_patched_without_a_download(tmp_path, capsys):
 
     assert installfsuae.install(parent, fetch=fetch, expected=digest) == binary
 
-    assert binary.read_bytes() == PATCHED
+    assert binary.read_bytes() == FINAL
     assert fetch.calls == []
     assert "Patched the installed binary" in capsys.readouterr().out
     assert sorted(p.name for p in binary.parent.iterdir()) == [installfsuae.BINARY]
@@ -688,3 +699,83 @@ def test_an_unpacked_binary_that_cannot_be_patched_fails_the_install(tmp_path):
         installfsuae.install(tmp_path / "share", fetch=fetch, expected=digest)
 
     assert not installfsuae.install_dir(tmp_path / "share").exists()
+
+
+# --- the redraw after a state load, the second step of the chain
+
+
+AUDIO_ACTIVATE = 0x424D20
+NOTICE_SCREEN_CONTENTS_LOST = 0x4B44B0
+
+
+def test_the_shipped_redraw_is_consistent():
+    call, wrapper = REAL_REDRAW.sites
+    for site in REAL_REDRAW.sites:
+        assert len(site.original) == len(site.patched)
+    assert call.original[0] == call.patched[0] == 0xE8
+    assert _rel32_target(call.offset, call.original, 0) == AUDIO_ACTIVATE
+    assert _rel32_target(call.offset, call.patched, 0) == TEXT_BASE + wrapper.offset
+    code = wrapper.patched
+    assert code[:2] == bytes.fromhex("31ff")              # xor edi, edi
+    assert code[2] == 0xE8 and _rel32_target(wrapper.offset, code, 2) \
+        == NOTICE_SCREEN_CONTENTS_LOST
+    assert code[7] == 0xE9 and _rel32_target(wrapper.offset, code, 7) == AUDIO_ACTIVATE
+    assert len(REAL_REDRAW.patched_sha256) == 64 and int(REAL_REDRAW.patched_sha256, 16) >= 0
+
+
+def test_the_shipped_chain_starts_at_the_pinned_binary_and_links_up():
+    assert REAL_CHAIN == (REAL_GUARD, REAL_REDRAW)
+    assert REAL_GUARD.original_sha256 == (
+        "cee4e3c9f735168ce97e57fa846383fa8efcd718343ee53d212af2737e697d97")
+    assert REAL_GUARD.patched_sha256 == REAL_REDRAW.original_sha256
+    sites = [s for patch in REAL_CHAIN for s in patch.sites]
+    spans = sorted((s.offset, s.offset + len(s.original)) for s in sites)
+    assert all(a_end <= b_start for (_, a_end), (b_start, _) in zip(spans, spans[1:]))
+
+
+@pytest.mark.parametrize("start", [SHIPPED, PATCHED], ids=["original", "guarded"])
+def test_an_installed_binary_at_any_step_ends_at_the_last(tmp_path, capsys, start):
+    parent = tmp_path / "share"
+    binary = installfsuae.install_dir(parent) / installfsuae.BINARY
+    binary.parent.mkdir(parents=True)
+    binary.write_bytes(start)
+    fetch, digest = fetcher(tmp_path, good_members())
+
+    installfsuae.install(parent, fetch=fetch, expected=digest)
+
+    assert binary.read_bytes() == FINAL
+    assert fetch.calls == []
+    assert "Patched the installed binary" in capsys.readouterr().out
+    assert [p.name for p in binary.parent.iterdir()] == [installfsuae.BINARY]
+
+
+def test_a_binary_at_the_end_of_the_chain_is_left_alone(tmp_path, capsys):
+    parent = tmp_path / "share"
+    binary = installfsuae.install_dir(parent) / installfsuae.BINARY
+    binary.parent.mkdir(parents=True)
+    binary.write_bytes(FINAL)
+    fetch, digest = fetcher(tmp_path, good_members())
+
+    installfsuae.install(parent, fetch=fetch, expected=digest)
+
+    assert binary.read_bytes() == FINAL
+    assert "Already installed" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("content, offset", [
+    (b"an EXECxtable", "0x7"),
+    (b"an EXECutaZZe", "0xa"),
+], ids=["call site", "wrapper site"])
+def test_wrong_bytes_at_either_redraw_site_stop_with_nothing_written(
+        tmp_path, content, offset):
+    parent = tmp_path / "share"
+    binary = installfsuae.install_dir(parent) / installfsuae.BINARY
+    binary.parent.mkdir(parents=True)
+    binary.write_bytes(content)
+    fetch, digest = fetcher(tmp_path, good_members())
+
+    with pytest.raises(ValueError, match=f"at {offset}, not the expected"):
+        installfsuae.install(parent, fetch=fetch, expected=digest)
+
+    assert binary.read_bytes() == content
+    assert [p.name for p in binary.parent.iterdir()] == [installfsuae.BINARY]
