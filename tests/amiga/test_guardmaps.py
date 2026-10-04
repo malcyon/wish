@@ -166,6 +166,34 @@ def test_pool_map_guards_line_one_items_and_holds_its_list_identity():
         assert len(_rules(spec['identity'][state])) >= 2, state
 
 
+def test_darkness_map_guards_ready_steps_and_every_lines_item_list():
+    """A Pools of Darkness `ready 1 7` run, and `items N` on any line, keys every strict state on a recognised screen."""
+    from tools.amiga import route_camp
+    from tools.amiga.route_darkness import DARKNESS
+
+    spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, 'darkness')
+    route = route_camp.camp_title(DARKNESS, ('ready 1 7', 'ready 1 7'), 6, name='darkness')
+    rows = {f'camp_items_row{n}' for n in range(2, 8)}
+    assert {'camp_sheet_items', 'camp_items'} | rows <= route.strict
+    assert route.strict <= spec['guards'].keys()
+    tokens = tuple(f'items {n}' for n in range(1, 7))
+    states = {state for _, state, _ in route_camp.steps_for(tokens, 'darkness', 6)}
+    assert {'camp_sheet_items_6', 'camp_items_6'} <= states
+    assert states <= spec['guards'].keys()
+    # Each line's sheet and list say whose they are; a row state's READY column differs by boot.
+    owned = {s for s in states if s.startswith(('camp_items', 'camp_sheet_items'))}
+    assert owned <= spec['identity'].keys()
+    assert not rows & spec['identity'].keys()
+    # Line 1 of the substituted party is not the pinned party's first member, so its world
+    # sheet and roster need a second rule beside the pinned ones.
+    for kind, state in (('guards', 'sheet'), ('identity', 'sheet'), ('identity', 'loaded_menu')):
+        assert len(_rules(spec[kind][state])) >= 2, (kind, state)
+    # Every list shows the same READY ITEM heading, so each list guard admits the others.
+    lists = {s for s in states | route.strict if route_camp.is_items(s)}
+    for state in lists:
+        assert lists - {state} <= set(spec['guards'][state]['also']), state
+
+
 def test_silver_blades_map_guards_line_one_items_and_join_steps_and_their_messages():
     from tools.amiga import route_camp, route_silver_blades
 

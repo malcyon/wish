@@ -11,6 +11,282 @@
       "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/14-camp.png",
       "sha256": "1efef6bdda92e22190e75c1df73f3d7cdd12378931d405650ba07d8f59618d5d"
     },
+    "camp_items": {
+      "also": [
+        "camp_items_2",
+        "camp_items_3",
+        "camp_items_4",
+        "camp_items_5",
+        "camp_items_6",
+        "camp_items_row2",
+        "camp_items_row3",
+        "camp_items_row4",
+        "camp_items_row5",
+        "camp_items_row6",
+        "camp_items_row7"
+      ],
+      "box": [
+        74,
+        80,
+        250,
+        96
+      ],
+      "example": "amiga-grab-crops/wish9-b1__13-camp_items.png",
+      "sha256": "a7fd993c7e37f356b00e179058557462515ca832937792258c4310eb8b75f189"
+    },
+    "camp_items_2": {
+      "also": [
+        "camp_items",
+        "camp_items_3",
+        "camp_items_4",
+        "camp_items_5",
+        "camp_items_6",
+        "camp_items_row2",
+        "camp_items_row3",
+        "camp_items_row4",
+        "camp_items_row5",
+        "camp_items_row6",
+        "camp_items_row7"
+      ],
+      "box": [
+        74,
+        80,
+        250,
+        96
+      ],
+      "example": "amiga-grab-crops/wish9-b1__25-camp_items_2.png",
+      "sha256": "a7fd993c7e37f356b00e179058557462515ca832937792258c4310eb8b75f189"
+    },
+    "camp_items_3": {
+      "also": [
+        "camp_items",
+        "camp_items_2",
+        "camp_items_4",
+        "camp_items_5",
+        "camp_items_6",
+        "camp_items_row2",
+        "camp_items_row3",
+        "camp_items_row4",
+        "camp_items_row5",
+        "camp_items_row6",
+        "camp_items_row7"
+      ],
+      "box": [
+        74,
+        80,
+        250,
+        96
+      ],
+      "example": "amiga-grab-crops/wish9-b1__28-camp_items_3.png",
+      "sha256": "a7fd993c7e37f356b00e179058557462515ca832937792258c4310eb8b75f189"
+    },
+    "camp_items_4": {
+      "also": [
+        "camp_items",
+        "camp_items_2",
+        "camp_items_3",
+        "camp_items_5",
+        "camp_items_6",
+        "camp_items_row2",
+        "camp_items_row3",
+        "camp_items_row4",
+        "camp_items_row5",
+        "camp_items_row6",
+        "camp_items_row7"
+      ],
+      "box": [
+        74,
+        80,
+        250,
+        96
+      ],
+      "example": "amiga-grab-crops/wish9-b1__30-camp_items_4.png",
+      "sha256": "a7fd993c7e37f356b00e179058557462515ca832937792258c4310eb8b75f189"
+    },
+    "camp_items_5": {
+      "also": [
+        "camp_items",
+        "camp_items_2",
+        "camp_items_3",
+        "camp_items_4",
+        "camp_items_6",
+        "camp_items_row2",
+        "camp_items_row3",
+        "camp_items_row4",
+        "camp_items_row5",
+        "camp_items_row6",
+        "camp_items_row7"
+      ],
+      "box": [
+        74,
+        80,
+        250,
+        96
+      ],
+      "example": "amiga-grab-crops/wish9-b1__32-camp_items_5.png",
+      "sha256": "a7fd993c7e37f356b00e179058557462515ca832937792258c4310eb8b75f189"
+    },
+    "camp_items_6": {
+      "also": [
+        "camp_items",
+        "camp_items_2",
+        "camp_items_3",
+        "camp_items_4",
+        "camp_items_5",
+        "camp_items_row2",
+        "camp_items_row3",
+        "camp_items_row4",
+        "camp_items_row5",
+        "camp_items_row6",
+        "camp_items_row7"
+      ],
+      "box": [
+        74,
+        80,
+        250,
+        96
+      ],
+      "example": "amiga-grab-crops/wish9-b1__34-camp_items_6.png",
+      "sha256": "a7fd993c7e37f356b00e179058557462515ca832937792258c4310eb8b75f189"
+    },
+    "camp_items_row2": {
+      "also": [
+        "camp_items",
+        "camp_items_2",
+        "camp_items_3",
+        "camp_items_4",
+        "camp_items_5",
+        "camp_items_6",
+        "camp_items_row3",
+        "camp_items_row4",
+        "camp_items_row5",
+        "camp_items_row6",
+        "camp_items_row7"
+      ],
+      "box": [
+        74,
+        80,
+        250,
+        96
+      ],
+      "example": "amiga-grab-crops/wish9-b1__14-camp_items_row2.png",
+      "sha256": "a7fd993c7e37f356b00e179058557462515ca832937792258c4310eb8b75f189"
+    },
+    "camp_items_row3": {
+      "also": [
+        "camp_items",
+        "camp_items_2",
+        "camp_items_3",
+        "camp_items_4",
+        "camp_items_5",
+        "camp_items_6",
+        "camp_items_row2",
+        "camp_items_row4",
+        "camp_items_row5",
+        "camp_items_row6",
+        "camp_items_row7"
+      ],
+      "box": [
+        74,
+        80,
+        250,
+        96
+      ],
+      "example": "amiga-grab-crops/wish9-b1__15-camp_items_row3.png",
+      "sha256": "a7fd993c7e37f356b00e179058557462515ca832937792258c4310eb8b75f189"
+    },
+    "camp_items_row4": {
+      "also": [
+        "camp_items",
+        "camp_items_2",
+        "camp_items_3",
+        "camp_items_4",
+        "camp_items_5",
+        "camp_items_6",
+        "camp_items_row2",
+        "camp_items_row3",
+        "camp_items_row5",
+        "camp_items_row6",
+        "camp_items_row7"
+      ],
+      "box": [
+        74,
+        80,
+        250,
+        96
+      ],
+      "example": "amiga-grab-crops/wish9-b1__16-camp_items_row4.png",
+      "sha256": "a7fd993c7e37f356b00e179058557462515ca832937792258c4310eb8b75f189"
+    },
+    "camp_items_row5": {
+      "also": [
+        "camp_items",
+        "camp_items_2",
+        "camp_items_3",
+        "camp_items_4",
+        "camp_items_5",
+        "camp_items_6",
+        "camp_items_row2",
+        "camp_items_row3",
+        "camp_items_row4",
+        "camp_items_row6",
+        "camp_items_row7"
+      ],
+      "box": [
+        74,
+        80,
+        250,
+        96
+      ],
+      "example": "amiga-grab-crops/wish9-b1__17-camp_items_row5.png",
+      "sha256": "a7fd993c7e37f356b00e179058557462515ca832937792258c4310eb8b75f189"
+    },
+    "camp_items_row6": {
+      "also": [
+        "camp_items",
+        "camp_items_2",
+        "camp_items_3",
+        "camp_items_4",
+        "camp_items_5",
+        "camp_items_6",
+        "camp_items_row2",
+        "camp_items_row3",
+        "camp_items_row4",
+        "camp_items_row5",
+        "camp_items_row7"
+      ],
+      "box": [
+        74,
+        80,
+        250,
+        96
+      ],
+      "example": "amiga-grab-crops/wish9-b1__18-camp_items_row6.png",
+      "sha256": "a7fd993c7e37f356b00e179058557462515ca832937792258c4310eb8b75f189"
+    },
+    "camp_items_row7": {
+      "also": [
+        "camp_items",
+        "camp_items_2",
+        "camp_items_3",
+        "camp_items_4",
+        "camp_items_5",
+        "camp_items_6",
+        "camp_items_row2",
+        "camp_items_row3",
+        "camp_items_row4",
+        "camp_items_row5",
+        "camp_items_row6"
+      ],
+      "box": [
+        74,
+        80,
+        250,
+        96
+      ],
+      "example": "amiga-grab-crops/wish9-b1__19-camp_items_row7.png",
+      "sha256": "a7fd993c7e37f356b00e179058557462515ca832937792258c4310eb8b75f189"
+    },
     "camp_save_picker": [
       {
         "also": [],
@@ -40,6 +316,12 @@
     "camp_sheet": {
       "also": [
         "camp_sheet_heal",
+        "camp_sheet_items",
+        "camp_sheet_items_2",
+        "camp_sheet_items_3",
+        "camp_sheet_items_4",
+        "camp_sheet_items_5",
+        "camp_sheet_items_6",
         "camp_sheet_spent",
         "sheet"
       ],
@@ -55,6 +337,7 @@
     "camp_sheet_heal": {
       "also": [
         "camp_sheet",
+        "camp_sheet_items_2",
         "sheet"
       ],
       "box": [
@@ -65,6 +348,132 @@
       ],
       "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/06-sheet.png",
       "sha256": "3c4726824c12aa0031f5072173912612b736595eab51f01514f41b93df4fe583"
+    },
+    "camp_sheet_items": {
+      "also": [
+        "camp_sheet",
+        "camp_sheet_heal",
+        "camp_sheet_items_2",
+        "camp_sheet_items_3",
+        "camp_sheet_items_4",
+        "camp_sheet_items_5",
+        "camp_sheet_items_6",
+        "camp_sheet_spent",
+        "sheet"
+      ],
+      "box": [
+        58,
+        402,
+        160,
+        430
+      ],
+      "example": "amiga-grab-crops/wish9-b1__12-camp_sheet_items.png",
+      "sha256": "2797c17c60a2c5c3d67f332e1d0d00a893eedf7f910ac30834a990d554f74021"
+    },
+    "camp_sheet_items_2": {
+      "also": [
+        "camp_sheet",
+        "camp_sheet_heal",
+        "camp_sheet_items",
+        "camp_sheet_items_3",
+        "camp_sheet_items_4",
+        "camp_sheet_items_5",
+        "camp_sheet_items_6",
+        "camp_sheet_spent",
+        "sheet"
+      ],
+      "box": [
+        58,
+        402,
+        160,
+        430
+      ],
+      "example": "amiga-grab-crops/wish9-b1__24-camp_sheet_items_2.png",
+      "sha256": "2797c17c60a2c5c3d67f332e1d0d00a893eedf7f910ac30834a990d554f74021"
+    },
+    "camp_sheet_items_3": {
+      "also": [
+        "camp_sheet",
+        "camp_sheet_heal",
+        "camp_sheet_items",
+        "camp_sheet_items_2",
+        "camp_sheet_items_4",
+        "camp_sheet_items_5",
+        "camp_sheet_items_6",
+        "camp_sheet_spent",
+        "sheet"
+      ],
+      "box": [
+        58,
+        402,
+        160,
+        430
+      ],
+      "example": "amiga-grab-crops/wish9-b1__27-camp_sheet_items_3.png",
+      "sha256": "2797c17c60a2c5c3d67f332e1d0d00a893eedf7f910ac30834a990d554f74021"
+    },
+    "camp_sheet_items_4": {
+      "also": [
+        "camp_sheet",
+        "camp_sheet_heal",
+        "camp_sheet_items",
+        "camp_sheet_items_2",
+        "camp_sheet_items_3",
+        "camp_sheet_items_5",
+        "camp_sheet_items_6",
+        "camp_sheet_spent",
+        "sheet"
+      ],
+      "box": [
+        58,
+        402,
+        160,
+        430
+      ],
+      "example": "amiga-grab-crops/wish9-b1__29-camp_sheet_items_4.png",
+      "sha256": "2797c17c60a2c5c3d67f332e1d0d00a893eedf7f910ac30834a990d554f74021"
+    },
+    "camp_sheet_items_5": {
+      "also": [
+        "camp_sheet",
+        "camp_sheet_heal",
+        "camp_sheet_items",
+        "camp_sheet_items_2",
+        "camp_sheet_items_3",
+        "camp_sheet_items_4",
+        "camp_sheet_items_6",
+        "camp_sheet_spent",
+        "sheet"
+      ],
+      "box": [
+        58,
+        402,
+        160,
+        430
+      ],
+      "example": "amiga-grab-crops/wish9-b1__31-camp_sheet_items_5.png",
+      "sha256": "2797c17c60a2c5c3d67f332e1d0d00a893eedf7f910ac30834a990d554f74021"
+    },
+    "camp_sheet_items_6": {
+      "also": [
+        "camp_sheet",
+        "camp_sheet_heal",
+        "camp_sheet_items",
+        "camp_sheet_items_2",
+        "camp_sheet_items_3",
+        "camp_sheet_items_4",
+        "camp_sheet_items_5",
+        "camp_sheet_spent",
+        "sheet"
+      ],
+      "box": [
+        58,
+        402,
+        160,
+        430
+      ],
+      "example": "amiga-grab-crops/wish9-b1__33-camp_sheet_items_6.png",
+      "sha256": "2797c17c60a2c5c3d67f332e1d0d00a893eedf7f910ac30834a990d554f74021"
     },
     "camp_sheet_spent": {
       "also": [
@@ -243,21 +652,45 @@
       "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/08-save_picker.png",
       "sha256": "27301b4c59f31e160132ea379d29167b88251428a94892a8ab5a5a498b33b6a8"
     },
-    "sheet": {
-      "also": [
-        "camp_sheet",
-        "camp_sheet_heal",
-        "camp_sheet_spent"
-      ],
-      "box": [
-        58,
-        402,
-        698,
-        430
-      ],
-      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/06-sheet.png",
-      "sha256": "3c4726824c12aa0031f5072173912612b736595eab51f01514f41b93df4fe583"
-    },
+    "sheet": [
+      {
+        "also": [
+          "camp_sheet",
+          "camp_sheet_heal",
+          "camp_sheet_items_2",
+          "camp_sheet_spent"
+        ],
+        "box": [
+          58,
+          402,
+          698,
+          430
+        ],
+        "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/06-sheet.png",
+        "sha256": "3c4726824c12aa0031f5072173912612b736595eab51f01514f41b93df4fe583"
+      },
+      {
+        "also": [
+          "camp_sheet",
+          "camp_sheet_heal",
+          "camp_sheet_items",
+          "camp_sheet_items_2",
+          "camp_sheet_items_3",
+          "camp_sheet_items_4",
+          "camp_sheet_items_5",
+          "camp_sheet_items_6",
+          "camp_sheet_spent"
+        ],
+        "box": [
+          58,
+          402,
+          160,
+          430
+        ],
+        "example": "amiga-grab-crops/wish9-b1__06-sheet.png",
+        "sha256": "2797c17c60a2c5c3d67f332e1d0d00a893eedf7f910ac30834a990d554f74021"
+      }
+    ],
     "title": {
       "also": [],
       "box": [
@@ -295,9 +728,76 @@
     }
   },
   "identity": {
+    "camp_items": {
+      "also": [],
+      "box": [
+        74,
+        104,
+        676,
+        400
+      ],
+      "example": "amiga-grab-crops/wish9-b1__13-camp_items.png",
+      "sha256": "f7bd8d9d2f3495bf05f565ddd3f70d28edf06590d28984b833a9494f32140b7b"
+    },
+    "camp_items_2": {
+      "also": [],
+      "box": [
+        74,
+        104,
+        676,
+        400
+      ],
+      "example": "amiga-grab-crops/wish9-b1__25-camp_items_2.png",
+      "sha256": "03250ea88a7b2c91e03aa2573a7061458205e62cc35e36258fcce2eb4ae7e235"
+    },
+    "camp_items_3": {
+      "also": [],
+      "box": [
+        74,
+        104,
+        676,
+        400
+      ],
+      "example": "amiga-grab-crops/wish9-b1__28-camp_items_3.png",
+      "sha256": "a287b28473209d728df060f1c1d434a58f03354d3aa7f3a391d00cbca0676340"
+    },
+    "camp_items_4": {
+      "also": [],
+      "box": [
+        74,
+        104,
+        676,
+        400
+      ],
+      "example": "amiga-grab-crops/wish9-b1__30-camp_items_4.png",
+      "sha256": "5ccef6d32ed31e119a7a285f99d0968af91bd6a40ea9c429abfa85bab5b748e4"
+    },
+    "camp_items_5": {
+      "also": [],
+      "box": [
+        74,
+        104,
+        676,
+        400
+      ],
+      "example": "amiga-grab-crops/wish9-b1__32-camp_items_5.png",
+      "sha256": "3aed809bd154c8957b2b92b320515a019e815a77cc41835b1e89a1902cb54a22"
+    },
+    "camp_items_6": {
+      "also": [],
+      "box": [
+        74,
+        104,
+        676,
+        400
+      ],
+      "example": "amiga-grab-crops/wish9-b1__34-camp_items_6.png",
+      "sha256": "9e45d2c4bd1578b23da1a8f8eb4ff04cc1870398ad405a1927d82f7e2d1cc0df"
+    },
     "camp_sheet": {
       "also": [
         "camp_sheet_heal",
+        "camp_sheet_items_2",
         "camp_sheet_spent",
         "sheet"
       ],
@@ -313,6 +813,7 @@
     "camp_sheet_heal": {
       "also": [
         "camp_sheet",
+        "camp_sheet_items_2",
         "camp_sheet_spent",
         "sheet"
       ],
@@ -325,10 +826,84 @@
       "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/06-sheet.png",
       "sha256": "f20f85d3f3b407e1c3151a01f4f19fb4db49f70d7112afd8d5b5d1aa227ae22e"
     },
+    "camp_sheet_items": {
+      "also": [
+        "sheet"
+      ],
+      "box": [
+        74,
+        46,
+        330,
+        62
+      ],
+      "example": "amiga-grab-crops/wish9-b1__12-camp_sheet_items.png",
+      "sha256": "1a1a57d1477a53d337a7b5dbf92fddb1079d7615b3894566273727cac365f0fd"
+    },
+    "camp_sheet_items_2": {
+      "also": [
+        "camp_sheet",
+        "camp_sheet_heal",
+        "camp_sheet_spent",
+        "sheet"
+      ],
+      "box": [
+        74,
+        46,
+        330,
+        62
+      ],
+      "example": "amiga-grab-crops/wish9-b1__24-camp_sheet_items_2.png",
+      "sha256": "f20f85d3f3b407e1c3151a01f4f19fb4db49f70d7112afd8d5b5d1aa227ae22e"
+    },
+    "camp_sheet_items_3": {
+      "also": [],
+      "box": [
+        74,
+        46,
+        330,
+        62
+      ],
+      "example": "amiga-grab-crops/wish9-b1__27-camp_sheet_items_3.png",
+      "sha256": "c0d83bd08263b0d774d717b7132879180e7d2b2994f7ae06cf71e3ce0178f9fc"
+    },
+    "camp_sheet_items_4": {
+      "also": [],
+      "box": [
+        74,
+        46,
+        330,
+        62
+      ],
+      "example": "amiga-grab-crops/wish9-b1__29-camp_sheet_items_4.png",
+      "sha256": "4c4dc1253b0dcf4376e7abc6883f4ef9e99e9181574cff874199c87982df2f8d"
+    },
+    "camp_sheet_items_5": {
+      "also": [],
+      "box": [
+        74,
+        46,
+        330,
+        62
+      ],
+      "example": "amiga-grab-crops/wish9-b1__31-camp_sheet_items_5.png",
+      "sha256": "40e2b0a4c394138afaa56cbe73732b02ea822939cc9fd8f7820dbed52d4af776"
+    },
+    "camp_sheet_items_6": {
+      "also": [],
+      "box": [
+        74,
+        46,
+        330,
+        62
+      ],
+      "example": "amiga-grab-crops/wish9-b1__33-camp_sheet_items_6.png",
+      "sha256": "d9897ab904718fcdd889c8ea0f1f25548333f2723a28a3c4c6dd273afc37f830"
+    },
     "camp_sheet_spent": {
       "also": [
         "camp_sheet",
         "camp_sheet_heal",
+        "camp_sheet_items_2",
         "sheet"
       ],
       "box": [
@@ -340,32 +915,61 @@
       "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/06-sheet.png",
       "sha256": "f20f85d3f3b407e1c3151a01f4f19fb4db49f70d7112afd8d5b5d1aa227ae22e"
     },
-    "loaded_menu": {
-      "also": [],
-      "box": [
-        74,
-        94,
-        690,
-        192
-      ],
-      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/05-loaded_menu.png",
-      "sha256": "8c258092c0599b4f5bcb5bf0d7dd2c67ec9c97ba7628ad1ed96c8d0eb9741450"
-    },
-    "sheet": {
-      "also": [
-        "camp_sheet",
-        "camp_sheet_heal",
-        "camp_sheet_spent"
-      ],
-      "box": [
-        74,
-        46,
-        330,
-        62
-      ],
-      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/06-sheet.png",
-      "sha256": "f20f85d3f3b407e1c3151a01f4f19fb4db49f70d7112afd8d5b5d1aa227ae22e"
-    }
+    "loaded_menu": [
+      {
+        "also": [],
+        "box": [
+          74,
+          94,
+          690,
+          192
+        ],
+        "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/05-loaded_menu.png",
+        "sha256": "8c258092c0599b4f5bcb5bf0d7dd2c67ec9c97ba7628ad1ed96c8d0eb9741450"
+      },
+      {
+        "also": [],
+        "box": [
+          74,
+          94,
+          690,
+          192
+        ],
+        "example": "amiga-grab-crops/wish9-b1__05-loaded_menu.png",
+        "sha256": "3d4ae38cb55ba901a1642b8136c85494f82922165644f8f225c234a91486efdc"
+      }
+    ],
+    "sheet": [
+      {
+        "also": [
+          "camp_sheet",
+          "camp_sheet_heal",
+          "camp_sheet_items_2",
+          "camp_sheet_spent"
+        ],
+        "box": [
+          74,
+          46,
+          330,
+          62
+        ],
+        "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/06-sheet.png",
+        "sha256": "f20f85d3f3b407e1c3151a01f4f19fb4db49f70d7112afd8d5b5d1aa227ae22e"
+      },
+      {
+        "also": [
+          "camp_sheet_items"
+        ],
+        "box": [
+          74,
+          46,
+          330,
+          62
+        ],
+        "example": "amiga-grab-crops/wish9-b1__06-sheet.png",
+        "sha256": "1a1a57d1477a53d337a7b5dbf92fddb1079d7615b3894566273727cac365f0fd"
+      }
+    ]
   },
   "labels": {
     "628/darkness-P1a/accept2/shots/12-world.png": [
@@ -436,6 +1040,119 @@
     ],
     "679/d2a23aa478-amiga-darkness-reload-B/reloadB/shots/11-place.png": [
       "place_x2_y2_f1"
+    ],
+    "amiga-grab-crops/wish9-b1__01-party_menu.png": [
+      "party_menu"
+    ],
+    "amiga-grab-crops/wish9-b1__02-load_from.png": [
+      "load_from"
+    ],
+    "amiga-grab-crops/wish9-b1__03-load_picker.png": [
+      "load_picker"
+    ],
+    "amiga-grab-crops/wish9-b1__04-disk2_prompt.png": [
+      "disk2_prompt"
+    ],
+    "amiga-grab-crops/wish9-b1__05-loaded_menu.png": [
+      "loaded_menu"
+    ],
+    "amiga-grab-crops/wish9-b1__06-sheet.png": [
+      "sheet"
+    ],
+    "amiga-grab-crops/wish9-b1__07-loaded_menu.png": [
+      "loaded_menu"
+    ],
+    "amiga-grab-crops/wish9-b1__08-journal.png": [
+      "journal"
+    ],
+    "amiga-grab-crops/wish9-b1__09-journal_answer.png": [
+      "journal_answer"
+    ],
+    "amiga-grab-crops/wish9-b1__10-world.png": [
+      "world",
+      "place_x1_y2_f1"
+    ],
+    "amiga-grab-crops/wish9-b1__11-camp.png": [
+      "camp",
+      "place_x1_y2_f1"
+    ],
+    "amiga-grab-crops/wish9-b1__12-camp_sheet_items.png": [
+      "camp_sheet_items"
+    ],
+    "amiga-grab-crops/wish9-b1__13-camp_items.png": [
+      "camp_items"
+    ],
+    "amiga-grab-crops/wish9-b1__14-camp_items_row2.png": [
+      "camp_items_row2"
+    ],
+    "amiga-grab-crops/wish9-b1__15-camp_items_row3.png": [
+      "camp_items_row3"
+    ],
+    "amiga-grab-crops/wish9-b1__16-camp_items_row4.png": [
+      "camp_items_row4"
+    ],
+    "amiga-grab-crops/wish9-b1__17-camp_items_row5.png": [
+      "camp_items_row5"
+    ],
+    "amiga-grab-crops/wish9-b1__18-camp_items_row6.png": [
+      "camp_items_row6"
+    ],
+    "amiga-grab-crops/wish9-b1__19-camp_items_row7.png": [
+      "camp_items_row7"
+    ],
+    "amiga-grab-crops/wish9-b1__20-camp_items_row7-ready1.png": [
+      "camp_items_row7"
+    ],
+    "amiga-grab-crops/wish9-b1__21-camp_items_row7-ready2.png": [
+      "camp_items_row7"
+    ],
+    "amiga-grab-crops/wish9-b1__22-camp_sheet_items.png": [
+      "camp_sheet_items"
+    ],
+    "amiga-grab-crops/wish9-b1__23-camp.png": [
+      "camp",
+      "place_x1_y2_f1"
+    ],
+    "amiga-grab-crops/wish9-b1__24-camp_sheet_items_2.png": [
+      "camp_sheet_items_2"
+    ],
+    "amiga-grab-crops/wish9-b1__25-camp_items_2.png": [
+      "camp_items_2"
+    ],
+    "amiga-grab-crops/wish9-b1__26-camp.png": [
+      "camp",
+      "place_x1_y2_f1"
+    ],
+    "amiga-grab-crops/wish9-b1__27-camp_sheet_items_3.png": [
+      "camp_sheet_items_3"
+    ],
+    "amiga-grab-crops/wish9-b1__28-camp_items_3.png": [
+      "camp_items_3"
+    ],
+    "amiga-grab-crops/wish9-b1__29-camp_sheet_items_4.png": [
+      "camp_sheet_items_4"
+    ],
+    "amiga-grab-crops/wish9-b1__30-camp_items_4.png": [
+      "camp_items_4"
+    ],
+    "amiga-grab-crops/wish9-b1__31-camp_sheet_items_5.png": [
+      "camp_sheet_items_5"
+    ],
+    "amiga-grab-crops/wish9-b1__32-camp_items_5.png": [
+      "camp_items_5"
+    ],
+    "amiga-grab-crops/wish9-b1__33-camp_sheet_items_6.png": [
+      "camp_sheet_items_6"
+    ],
+    "amiga-grab-crops/wish9-b1__34-camp_items_6.png": [
+      "camp_items_6"
+    ],
+    "amiga-grab-crops/wish9-b1__35-camp_sheet_items_6.png": [
+      "camp_sheet_items_6"
+    ],
+    "amiga-grab-crops/wish9-b1__36-camp.png": [
+      "camp",
+      "place_x1_y2_f1"
     ]
   }
 }
