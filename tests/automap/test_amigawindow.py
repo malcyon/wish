@@ -709,6 +709,31 @@ def test_names_are_cached_per_title_and_platform(monkeypatch):
     assert calls == [SILVER, POOLS_OF_DARKNESS]
 
 
+def test_an_empty_name_table_is_not_cached(monkeypatch):
+    window, _ = attached(SILVER)
+    assert window.disks is None
+    assert window._names_for_spells() == {}
+    amiga_names_from(monkeypatch, window, lambda game, platform, where: {1: "Name"})
+    assert window._names_for_spells() == {1: "Name"}
+
+
+def test_an_unexpected_loader_error_gives_no_names_and_is_logged(monkeypatch, caplog):
+    window, _ = attached(SILVER)
+
+    def breaks(*a):
+        raise RuntimeError("odd image")
+    amiga_names_from(monkeypatch, window, breaks)
+    with caplog.at_level("DEBUG"):
+        assert window._names_for_spells() == {}
+    assert any(r.exc_info and "odd image" in str(r.exc_info[1])
+               for r in caplog.records)
+
+
+def test_a_bare_window_has_no_cached_spell_names():
+    from automap.window import AutomapBinding
+    assert AutomapBinding._spell_names is None
+
+
 def test_a_failure_between_writes_is_logged_and_nothing_escapes(monkeypatch, caplog):
     window, target = pod_window([fighter(8)])
     lines = spoken(window, monkeypatch)

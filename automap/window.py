@@ -901,6 +901,7 @@ class AutomapBinding(QObject):
     #: Class-level defaults so a bare instance (no `__init__`) still reads as
     #: showing a C64 with no cached spell names.
     _amiga_key: str | None = None
+    _spell_names: dict[int, str] | None = None
     _spell_names_for: tuple[str, str] | None = None
 
     statusChanged = pyqtSignal(str)     # for a host window's status bar
@@ -1799,9 +1800,13 @@ class AutomapBinding(QObject):
             self._spell_names = None
             self._spell_names_for = (title, platform)
         if self._spell_names is None:
-            self._spell_names = (self._amiga_spell_names()
-                                 if platform == "amiga"
-                                 else self._c64_spell_names(title))
+            found = (self._amiga_spell_names() if platform == "amiga"
+                     else self._c64_spell_names(title))
+            # An empty answer may only mean the disk folder is not set yet, so
+            # it is asked for again at the next Level up.
+            if not found:
+                return {}
+            self._spell_names = found
         return self._spell_names
 
     def _amiga_spell_names(self) -> dict[int, str]:
@@ -1817,6 +1822,9 @@ class AutomapBinding(QObject):
             return spell_names(self._amiga_key, "amiga", images)
         except (OSError, SpellNameError) as exc:
             _log.debug("no Amiga spell names for %s: %s", self._amiga_key, exc)
+            return {}
+        except Exception:                           # never reach the Level up press
+            _log.exception("Amiga spell names for %s failed", self._amiga_key)
             return {}
 
     def _c64_spell_names(self, title) -> dict[int, str]:
