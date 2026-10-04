@@ -1359,3 +1359,39 @@ def test_a_typed_matching_folder_still_hides_the_row_as_before(
     binding = dos_save_as(app, tmp_path, monkeypatch, SILVER)
     folder_field(binding).setText(str(game_folder(tmp_path, SILVER)))
     assert binding._child("box_dos_folder").isHidden()
+
+
+def test_a_tilde_preferences_folder_fills_the_expanded_path(
+        app, tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    games = tmp_path / "games"
+    games.mkdir()
+    folder = game_folder(games, SILVER)
+    binding = dos_save_as(app, tmp_path, monkeypatch, SILVER,
+                          game_folders={SILVER: "~/games/" + folder.name})
+    assert folder_field(binding).text() == str(folder)
+    assert binding._child("button_destination_save_as").isEnabled()
+
+
+def test_lowercase_file_names_in_a_matching_folder_still_fill(
+        app, tmp_path, monkeypatch):
+    folder = tmp_path / "lower"
+    folder.mkdir()
+    for name in FOLDER_FILES[SILVER]:
+        (folder / name.lower()).write_bytes(b"")
+    binding = dos_save_as(app, tmp_path, monkeypatch, SILVER,
+                          game_folders={SILVER: str(folder)})
+    assert folder_field(binding).text() == str(folder)
+
+
+def test_reopening_for_a_route_without_a_dos_folder_forgets_the_fill(
+        app, tmp_path, monkeypatch):
+    own = game_folder(tmp_path, SILVER)
+    binding = dos_save_as(app, tmp_path, monkeypatch, SILVER,
+                          game_folders={SILVER: str(own)})
+    assert binding._dos_folder_filled
+    binding.begin_save_as("c64")
+    assert not binding._dos_folder_filled
+    assert folder_field(binding).text() == ""
+    assert binding._child("box_dos_folder").isHidden()

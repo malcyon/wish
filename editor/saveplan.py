@@ -462,11 +462,11 @@ def holds_dos_files(folder: "str | pathlib.Path", key: str) -> bool:
     only by its name, such as one of disk images, does not hold them.
     """
     files = titles.DOS_FOLDER_FILES.get(key)
+    folder = pathlib.Path(folder).expanduser()
     if files is None or titles.dos_folder_title(folder) != key:
         return False
     try:
-        held = {path.name.upper()
-                for path in pathlib.Path(folder).expanduser().iterdir()}
+        held = {path.name.upper() for path in folder.iterdir()}
     except OSError:
         return False
     return files[0] in held and files[1] in held
@@ -474,13 +474,13 @@ def holds_dos_files(folder: "str | pathlib.Path", key: str) -> bool:
 
 def stored_dos_folder(source: Any, port: str,
                       folder: "str | pathlib.Path | None") -> "str | None":
-    """`folder` when the route reads a DOS game folder and `folder` holds the
-    save's own title's DOS files, else `None`."""
+    """`folder`, with `~` expanded, when the route reads a DOS game folder and
+    `folder` holds the save's own title's DOS files, else `None`."""
     if (not folder or port != "dos"
             or DOS_GAME_FOLDER not in requirements(source, port)
             or not holds_dos_files(folder, source.key)):
         return None
-    return str(folder)
+    return str(pathlib.Path(folder).expanduser())
 
 
 def check_dos_folder(source: Any, port: str, assets: "Assets") -> None:
