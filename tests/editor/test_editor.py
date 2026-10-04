@@ -5774,6 +5774,23 @@ def test_zero_type_stale_slot_is_empty_and_untouched_bytes_survive():
     assert inventory.is_empty(0)
 
 
+def test_a_dos_pool_type_zero_block_is_a_used_unnamed_item():
+    from editor.inventory import Inventory, describe
+    from goldbox.items import Item
+
+    type_zero = bytes(6) + b"\x86" + bytes(9)
+    a = bytes([1, 0, 0, 9]) + bytes(12)
+    b = bytes([1, 0, 0, 10]) + bytes(12)
+    blocks = [type_zero, a, b] + [bytes(16)] * 13
+
+    inventory = Inventory.from_blocks(blocks, type_zero_is_an_item=True)
+    assert inventory.used == 3
+    assert not inventory.is_empty(0)
+    assert describe(inventory.item(0), None, True) == "Unnamed item"
+    assert describe(Item(type_zero), {1: "X"}, True) == "Unnamed item"
+    assert Inventory.from_blocks(blocks).used == 2
+
+
 def test_preview_calls_a_filled_zero_type_slot_an_addition():
     from types import SimpleNamespace
 

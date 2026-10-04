@@ -3591,7 +3591,9 @@ class EditorBinding(QObject):
             traits.resizeColumnsToContents()
             _fit_height(traits)
         text = ("Select an item" if item is None
-                else inventory.describe(item, self.item_names))
+                else inventory.describe(
+                    item, self.item_names,
+                    self.items.inventory.type_zero_is_an_item))
         label = self.root.findChild(QLabel, "label_traits")
         if label is not None:
             label.setText(text)

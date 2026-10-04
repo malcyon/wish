@@ -160,17 +160,18 @@ class Inventory:
     def item(self, n: int) -> Item:
         return Item(self.raws[n], self.names)
 
+    def block_is_empty(self, raw: bytes) -> bool:
+        """Whether an item block is a free slot: a zero type byte, except
+        where type 0 is a real item and any nonzero byte counts."""
+        if self.type_zero_is_an_item:
+            return not any(raw)
+        return Item(raw).is_empty
+
     def is_empty(self, n: int) -> bool:
-        return self.item(n).is_empty
+        return self.block_is_empty(self.raws[n])
 
     def holds(self, n: int) -> bool:
-        """Whether slot `n` must survive an add or a delete.
-
-        Normally that is a nonzero type byte. Where type 0 is a real item, any
-        nonzero byte in the slot counts.
-        """
-        if self.type_zero_is_an_item:
-            return any(self.raws[n])
+        """Whether slot `n` must survive an add or a delete."""
         return not self.is_empty(n)
 
     @property
@@ -252,13 +253,19 @@ class Inventory:
         payload[self.base:self.base + ITEM_BLOCK_STRIDE] = b"".join(self.raws)
 
 
-def describe(item: Item, names: dict[int, str] | None) -> str:
+def describe(item: Item, names: dict[int, str] | None,
+             type_zero_is_an_item: bool = False) -> str:
     """What to print in the name column.
+
+    A DOS Pool item whose type byte is 0 has no name to look up, with or
+    without a game disk, so it reads `UNNAMED_ITEM`.
 
     With no game disk there is no name table, and the honest thing is to show
     the indices that are actually stored rather than a blank -- the tab says
     why they are numbers.
     """
+    if type_zero_is_an_item and item.raw[0] == 0:
+        return UNNAMED_ITEM
     if names:
         return item.name or "?"
     parts = [item.raw[3], item.raw[2], item.raw[1]]
@@ -268,6 +275,7 @@ def describe(item: Item, names: dict[int, str] | None) -> str:
 # --- the table on the form ---------------------------------------------------
 
 EMPTY_TEXT = "—"                      # an em dash, for a free slot
+UNNAMED_ITEM = "Unnamed item"         # a DOS Pool item whose type byte is 0
 FADED = QColor("#808080")
 
 # The widest of the 163 item names on the eight game disks, from
@@ -372,7 +380,8 @@ class InventoryModel(QAbstractTableModel):
 
     def _text(self, item: Item, col: int, role):
         if col == NAME:
-            return describe(item, self.inventory.names)
+            return describe(item, self.inventory.names,
+                            self.inventory.type_zero_is_an_item)
         if col == QTY:
             return item.quantity if role == Qt.ItemDataRole.EditRole \
                 else (str(item.quantity) if item.quantity else "")
@@ -392,7 +401,7 @@ class InventoryModel(QAbstractTableModel):
 
     def _tooltip(self, row: int, item: Item) -> str:
         lines = [f"Slot {row}: {item.raw.hex()}"]
-        if not item.is_identified:
+        if not item.is_identified and item.unidentified_name:
             lines.append(f"Shows in game as {item.unidentified_name!r} until "
                          f"it is identified")
         if item.is_cursed:

@@ -67,20 +67,22 @@ def item_changes(member) -> list[str]:
     if inv is None or not inv.changed:
         return []
     out = []
+    zero = inv.type_zero_is_an_item
     for n in range(len(inv)):
         old, new = inv.original[n], inv.raws[n]
         if old == new:
             continue
         was, is_ = inv.original_item(n), inv.item(n)
-        if was.is_empty and is_.is_empty:
+        was_empty, now_empty = inv.block_is_empty(old), inv.block_is_empty(new)
+        if was_empty and now_empty:
             continue
-        if was.is_empty and not is_.is_empty:
-            out.append(f"item {n} added: {describe_item(is_, inv.names)}")
-        elif not was.is_empty and is_.is_empty:
-            out.append(f"item {n} removed: {describe_item(was, inv.names)}")
+        if was_empty and not now_empty:
+            out.append(f"item {n} added: {describe_item(is_, inv.names, zero)}")
+        elif not was_empty and now_empty:
+            out.append(f"item {n} removed: {describe_item(was, inv.names, zero)}")
         elif was.name != is_.name or was.raw[:4] != is_.raw[:4]:
-            out.append(f"item {n} {describe_item(was, inv.names)} -> "
-                       f"{describe_item(is_, inv.names)}")
+            out.append(f"item {n} {describe_item(was, inv.names, zero)} -> "
+                       f"{describe_item(is_, inv.names, zero)}")
         else:
             for what, a, b in (("quantity", was.quantity, is_.quantity),
                                ("readied", was.readied, is_.readied),
@@ -88,10 +90,10 @@ def item_changes(member) -> list[str]:
                                 is_.is_identified),
                                ("bonus", was.bonus, is_.bonus)):
                 if a != b:
-                    out.append(f"item {n} {describe_item(is_, inv.names)} "
+                    out.append(f"item {n} {describe_item(is_, inv.names, zero)} "
                                f"{what} {a!r} -> {b!r}")
             if old[:4] == new[:4] and not out:
-                out.append(f"item {n} {describe_item(is_, inv.names)} "
+                out.append(f"item {n} {describe_item(is_, inv.names, zero)} "
                            f"{old.hex()} -> {new.hex()}")
     return out
 
