@@ -101,8 +101,11 @@ def analyse(tickets, assigned, reasons, done, stale=20, min_agents=8, now=None, 
         if agents:
             continue
         if ticket['state'] == 'In Progress':
-            # A recorded reason explains a wait, not In Progress: the state means an agent works on it.
-            if reasons.get(ident, '').lower().startswith('waiting on donald'):
+            # In review and awaiting CI are the only waits that keep In Progress without an agent.
+            reason = reasons.get(ident, '').lstrip().lower()
+            if reason.startswith(('awaiting ci', 'in review')):
+                continue
+            if reason.startswith('waiting on donald'):
                 kind = 'In Progress waiting on Donald: move to Backlog'
             else:
                 kind = 'In Progress with no live agent: move to Queue, or Backlog if it waits on Donald'

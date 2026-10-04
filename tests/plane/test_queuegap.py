@@ -141,10 +141,22 @@ def test_json_includes_titles_only_with_titles(tmp_path, capsys):
     assert titled['gaps'][0]['title'] == 'Title 1'
 
 
-def test_in_progress_with_no_live_agent_is_a_mismatch_whatever_its_reason(tmp_path, capsys):
+def test_in_progress_with_no_live_agent_and_another_reason_is_a_mismatch(tmp_path, capsys):
     cli(tmp_path, 'reason', 'WISH-1', 'waiting on CI')
     out = run(tmp_path, [ticket(1, 'In Progress')], capsys, '--min-agents', '0')
     assert out == ['WISH-1 In Progress high: ' + IN_PROGRESS_IDLE]
+
+
+def test_in_progress_awaiting_ci_or_in_review_is_not_a_mismatch(tmp_path, capsys):
+    cli(tmp_path, 'reason', 'WISH-1', 'Awaiting CI for abc123')
+    cli(tmp_path, 'reason', 'WISH-2', '  in review by code-reviewer')
+    assert run(tmp_path, [ticket(1, 'In Progress'), ticket(2, 'In Progress')], capsys, '--min-agents', '0') == ['No gaps.']
+
+
+def test_leading_whitespace_does_not_hide_waiting_on_donald(tmp_path, capsys):
+    cli(tmp_path, 'reason', 'WISH-1', '  waiting on Donald')
+    out = run(tmp_path, [ticket(1, 'In Progress')], capsys, '--min-agents', '0')
+    assert out == ['WISH-1 In Progress high: In Progress waiting on Donald: move to Backlog']
 
 
 def test_in_progress_waiting_on_donald_needs_backlog(tmp_path, capsys):
