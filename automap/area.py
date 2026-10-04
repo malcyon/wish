@@ -364,7 +364,7 @@ class Fingerprint:
         self.occupied.update({(x0, y0), (x1, y1)})
         self._narrow()
 
-    def refused(self, x: int, y: int, direction: int) -> None:
+    def record_blocked(self, x: int, y: int, direction: int) -> None:
         """Record a step the game would not let the party take."""
         self.blocked.append((x, y, direction))
         self._narrow()

@@ -685,7 +685,7 @@ class Automapper:
             else:
                 self.fingerprint.saw(fix.x, fix.y)
                 if self._blocked_step(fix):
-                    self.fingerprint.refused(fix.x, fix.y, fix.facing)
+                    self.fingerprint.record_blocked(fix.x, fix.y, fix.facing)
             if not self.state.candidates or not self.state.candidates.certain:
                 self.state.candidates = self.fingerprint.candidates
             if self.state.candidates.best and not self.state.area:

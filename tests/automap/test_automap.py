@@ -356,7 +356,7 @@ def test_the_fingerprint_narrows_to_new_phlan():
 def test_a_blocked_step_narrows_hard():
     maps = load_geo_files(f"{DISKS}/POOL3.D64")
     fp = Fingerprint(maps)
-    fp.refused(0, 0, NORTH)               # the map edge blocks everyone
+    fp.record_blocked(0, 0, NORTH)               # the map edge blocks everyone
     assert fp.names
 
 
@@ -364,7 +364,7 @@ def test_an_observation_that_fits_nothing_is_counted_not_obeyed():
     """A contradiction says the observation was wrong, not that the map is
     unknown -- keep the last set that fitted, and say how often it happened."""
     fp = Fingerprint({"X": Geo(bytes(1024))})       # nothing is blocked here
-    fp.refused(5, 5, NORTH)
+    fp.record_blocked(5, 5, NORTH)
     assert fp.names == ["X"]
     assert fp.contradictions == 1
 
@@ -429,7 +429,7 @@ def test_one_blocked_step_beats_a_hundred_successful_ones(new_phlan):
     seen = Fingerprint(maps)
     seen.saw(3, 14)
     bumped = Fingerprint(maps)
-    bumped.refused(3, 14, SOUTH)          # the wall south of the inn door
+    bumped.record_blocked(3, 14, SOUTH)          # the wall south of the inn door
     assert len(bumped.names) < len(seen.names)
 
 
@@ -899,7 +899,7 @@ def test_an_outdoor_fix_records_the_square_and_nothing_else(tmp_path, monkeypatc
     calls = []
     mapper.fingerprint.saw = lambda *a, **k: calls.append(("saw", a))
     mapper.fingerprint.moved = lambda *a, **k: calls.append(("moved", a))
-    mapper.fingerprint.refused = lambda *a, **k: calls.append(("refused", a))
+    mapper.fingerprint.record_blocked = lambda *a, **k: calls.append(("record_blocked", a))
 
     assert mapper.poll() is True                # the square moved
     assert mapper.state.outdoors
@@ -981,7 +981,7 @@ def test_returning_to_the_same_area_does_not_feed_it_a_bogus_edge(
     calls = []
     mapper.fingerprint.saw = lambda *a, **k: calls.append(("saw", a))
     mapper.fingerprint.moved = lambda *a, **k: calls.append(("moved", a))
-    mapper.fingerprint.refused = lambda *a, **k: calls.append(("refused", a))
+    mapper.fingerprint.record_blocked = lambda *a, **k: calls.append(("record_blocked", a))
 
     assert mapper.poll() is True                 # back indoors, same area
     assert mapper.state.area == "GEO14"
