@@ -290,6 +290,28 @@ def test_the_cards_show_the_amiga_party(measured, monkeypatch):
     assert window.roster.heading.text() == "Party"
 
 
+@pytest.mark.parametrize("key", [POOL, CURSE, SILVER, POOLS_OF_DARKNESS])
+def test_a_card_shows_the_class_level_and_armour_class_in_the_c64_form(
+        measured, key):
+    levels, _f, _l, exp, ac, thac0 = {
+        POOL: (0x098, 0, 0, 0x0AE, 0x113, 0x112),
+        CURSE: (0x10A, 0, 0, 0x128, 0x19F, 0x19E),
+        SILVER: (0x0AC, 0, 0, 0x0C8, 0x148, 0x147),
+        POOLS_OF_DARKNESS: (0x09D, 0, 0, 0x044, 0x187, 0x186)}[key]
+    window, target = attached(key)
+    target.put(HEAP + levels + 2, bytes([7]))       # fighter
+    target.put(HEAP + levels + 6, bytes([8]))       # thief
+    target.put(HEAP + ac, bytes([53]))
+    target.put(HEAP + thac0, bytes([47]))
+    target.put(HEAP + exp, (10000).to_bytes(4, "big"))
+    window._refresh_roster()
+    card = window.roster.cards[0]
+    assert card.klass.text() == "F/T  L7/L8"
+    assert "AC 7   THAC0 13" in card.frame.toolTip()
+    who = window.snapshot.characters[0]
+    assert who.experience == 10000
+
+
 def test_the_cards_follow_the_party_and_hold_it_while_the_list_is_unreadable(measured):
     window, target = attached(POOL)
     target.put(HEAP + amigaparty.ROWS[POOL].hp.offset, bytes([5]))

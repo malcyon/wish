@@ -314,6 +314,82 @@ ROWS: dict[str, PartyRow] = {
 }
 
 
+@dataclass(frozen=True)
+class CardSpots:
+    """Where one title keeps what a party card shows besides name and hit points.
+
+    The class-level slots run cleric, druid, fighter, paladin, ranger,
+    magic-user, thief, monk (Silver Blades and Pools of Darkness stop at thief);
+    the sheet names a class from its slot, and `class_bits` cannot tell a
+    paladin from a ranger in Silver Blades. AC and THAC0 are the stored bytes
+    the title's rebuild leaves current, which the sheet prints as 60 minus the
+    byte.
+    """
+
+    #: Record offset of the first class-level byte, and how many slots follow.
+    levels: int
+    slots: int
+    #: Record offset of the first former-class level byte (dual class), if any.
+    former: int | None
+    #: The level byte, the highest class level.
+    level: int
+    #: `u32` big-endian experience.
+    experience: int
+    armour_class: int
+    thac0: int
+
+
+#: Offsets read from each title's own View sheet; `docs/96-live-memory-automapper.md`.
+CARD_SPOTS: dict[str, CardSpots] = {
+    "pool-of-radiance": CardSpots(0x098, 8, None, 0x073, 0x0AE, 0x113, 0x112),
+    "curse-of-the-azure-bonds": CardSpots(0x10A, 8, 0x112, 0x0E5, 0x128,
+                                          0x19F, 0x19E),
+    "secret-of-the-silver-blades": CardSpots(0x0AC, 7, 0x0B3, 0x088, 0x0C8,
+                                             0x148, 0x147),
+    "pools-of-darkness": CardSpots(0x09D, 7, 0x0A4, 0x089, 0x044,
+                                   0x187, 0x186),
+}
+
+#: Class names by slot, the C64 cards' own words. Druid (1) and monk (7) are
+#: left out: no card names them.
+CLASS_BY_SLOT = {0: "cleric", 2: "fighter", 3: "paladin", 4: "ranger",
+                 5: "magic-user", 6: "thief"}
+
+
+@dataclass(frozen=True)
+class CardFields:
+    """What a card draws for one member, decoded from its record."""
+
+    #: `(class name, level)` per class the member has, in slot order.
+    classes: tuple[tuple[str, int], ...]
+    level: int
+    experience: int
+    armour_class: int
+    thac0: int
+
+
+def card_fields(member: AmigaMember) -> CardFields:
+    """The class, level, experience, AC and THAC0 of one member."""
+    key = next(k for k, row in ROWS.items() if row is member.row)
+    spots = CARD_SPOTS[key]
+    raw = member.raw
+    classes = []
+    for slot, name in CLASS_BY_SLOT.items():
+        if slot >= spots.slots:
+            continue
+        level = raw[spots.levels + slot]
+        if spots.former is not None:
+            level += raw[spots.former + slot]
+        if level:
+            classes.append((name, level))
+    return CardFields(
+        classes=tuple(classes),
+        level=raw[spots.level],
+        experience=_u32(raw, spots.experience),
+        armour_class=60 - raw[spots.armour_class],
+        thac0=60 - raw[spots.thac0])
+
+
 def _u32(raw: bytes, at: int = 0) -> int:
     return int.from_bytes(raw[at:at + 4], "big")
 

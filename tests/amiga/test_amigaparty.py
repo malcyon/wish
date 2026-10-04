@@ -464,3 +464,60 @@ def test_read_party_is_none_for_a_blank_name_or_a_shared_slot(people, slots):
     key = "curse-of-the-azure-bonds"
     lay_party(mem, ap.ROWS[key], people, slots=slots)
     assert ap.read_party(target_for(key, mem)) is None
+
+
+# -- the card fields ---------------------------------------------------------
+
+#: Per title, the C0 offsets written out literally rather than read from the
+#: module: levels, former levels, level byte, experience, AC byte, THAC0 byte.
+CARD_OFFSETS = {
+    "pool-of-radiance": (0x098, None, 0x073, 0x0AE, 0x113, 0x112),
+    "curse-of-the-azure-bonds": (0x10A, 0x112, 0x0E5, 0x128, 0x19F, 0x19E),
+    "secret-of-the-silver-blades": (0x0AC, 0x0B3, 0x088, 0x0C8, 0x148, 0x147),
+    "pools-of-darkness": (0x09D, 0x0A4, 0x089, 0x044, 0x187, 0x186),
+}
+
+
+def member_with(key: str, **put) -> ap.AmigaMember:
+    row = ap.ROWS[key]
+    raw = bytearray(row.record_size)
+    for at, value in put.items():
+        raw[int(at[1:], 16)] = value
+    return ap.AmigaMember(row=row, index=0, address=HEAP, raw=bytes(raw))
+
+
+@pytest.mark.parametrize("key", sorted(CARD_OFFSETS))
+def test_a_card_reads_class_level_experience_ac_and_thac0(key):
+    levels, _former, level, exp, ac, thac0 = CARD_OFFSETS[key]
+    put = {f"o{levels + 2:x}": 7,        # fighter slot
+           f"o{levels + 6:x}": 8,        # thief slot
+           f"o{level:x}": 8,
+           f"o{exp + 3:x}": 0x10, f"o{exp + 2:x}": 0x27,
+           f"o{ac:x}": 53, f"o{thac0:x}": 47}
+    fields = ap.card_fields(member_with(key, **put))
+    assert fields.classes == (("fighter", 7), ("thief", 8))
+    assert fields.level == 8
+    assert fields.experience == 10000
+    assert fields.armour_class == 7
+    assert fields.thac0 == 13
+
+
+def test_a_class_is_named_from_its_slot_not_from_class_bits():
+    # Silver Blades' paladin and ranger share class_bits 0x40; the slots differ.
+    levels = CARD_OFFSETS["secret-of-the-silver-blades"][0]
+    paladin = ap.card_fields(member_with(
+        "secret-of-the-silver-blades", **{f"o{levels + 3:x}": 5, "o6c": 0x40}))
+    ranger = ap.card_fields(member_with(
+        "secret-of-the-silver-blades", **{f"o{levels + 4:x}": 5, "o6c": 0x40}))
+    assert paladin.classes == (("paladin", 5),)
+    assert ranger.classes == (("ranger", 5),)
+
+
+@pytest.mark.parametrize("key", ["curse-of-the-azure-bonds",
+                                 "secret-of-the-silver-blades",
+                                 "pools-of-darkness"])
+def test_a_dual_class_slot_adds_its_former_level_as_the_sheet_does(key):
+    levels, former = CARD_OFFSETS[key][:2]
+    fields = ap.card_fields(member_with(
+        key, **{f"o{levels + 6:x}": 3, f"o{former + 6:x}": 4}))
+    assert fields.classes == (("thief", 7),)

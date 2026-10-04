@@ -44,6 +44,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from goldbox import levels
 from goldbox import strength as strengthmod
 from goldbox.geo import GRID
 from goldbox.world import (
@@ -60,6 +61,7 @@ from . import (
     amiga,
     amigaactions,
     amigafasttravel,
+    amigaparty,
     amigatrip,
     combat,
     live,
@@ -220,21 +222,31 @@ def amiga_key(layout) -> str | None:
     return None
 
 
-def amiga_snapshot(party, state) -> live.Snapshot:
+def amiga_snapshot(party, state, key: str | None = None) -> live.Snapshot:
     """What the cards draw for an Amiga party: the list's own order.
 
-    The record reader gives a name, hit points and the quickfight flag. Class,
-    level, experience, AC and THAC0 are not read on the Amiga, so they are
-    empty here and the card draws its own stand-ins for them. The square comes
-    from the map's state, as it does for the C64.
+    Class, level, experience, AC and THAC0 come from each record the way the
+    title's own View sheet reads them. `key` is the `amiga.MACHINES` key, which
+    picks the title's experience thresholds; without it the bars use Pool of
+    Radiance's. The square comes from the map's state, as it does for the C64.
     """
-    people = tuple(
-        live.Character(slot=m.slot, name=m.name, classes=(), level=0,
-                       armour_class=None, thac0=None, hp=m.hp, hp_max=m.hp_max,
-                       experience=0, quickfight=m.quickfight)
-        for m in party)
-    return live.Snapshot(characters=people, effects=(), x=state.x, y=state.y,
-                         facing=state.facing, clock_text="", area_file="")
+    people = []
+    for m in party:
+        fields = amigaparty.card_fields(m)
+        classes = tuple(
+            live.ClassProgress(
+                name=name, level=level, experience=fields.experience,
+                fraction=levels.progress(name, level, fields.experience, key),
+                next_threshold=levels.next_threshold(name, level, key))
+            for name, level in fields.classes)
+        people.append(live.Character(
+            slot=m.slot, name=m.name, classes=classes, level=fields.level,
+            armour_class=fields.armour_class, thac0=fields.thac0, hp=m.hp,
+            hp_max=m.hp_max, experience=fields.experience,
+            quickfight=m.quickfight))
+    return live.Snapshot(characters=tuple(people), effects=(), x=state.x,
+                         y=state.y, facing=state.facing, clock_text="",
+                         area_file="")
 
 
 class MapCanvas(QWidget):
@@ -1496,8 +1508,6 @@ class AutomapBinding(QObject):
         for the Amiga: they stay greyed with the approved sentence. The cards
         come from `amigaparty.read_party`; the C64's readers are never called.
         """
-        from . import amigaparty
-
         reason = amigaactions.unsupported(title)
         self.roster.set_unsupported(reason)
         self.roster.set_levelling(False)
@@ -1565,7 +1575,7 @@ class AutomapBinding(QObject):
             self.roster.set_stale(True)
             self._show_strip(self.snapshot)
             return
-        snap = amiga_snapshot(party, self.state)
+        snap = amiga_snapshot(party, self.state, self._amiga_key)
         self.snapshot = snap
         self.roster.show_snapshot(snap)
         self._show_strip(snap)
