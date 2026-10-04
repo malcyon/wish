@@ -102,25 +102,51 @@ of padding after a `ret` at `0x6b3440`.
 **Measured on the patched binary.**
 
 - **The picture comes back exactly.** The frame after a load equals the
-  pre-save frame across the whole 754x576 Alt+S image (CONFIRMED, three loads).
-- **The Amiga rebooted once.** One further load ended in the Kickstart boot
-  screen instead (1 of 4 loads; cause UNKNOWN). That load came after a
-  512 KB chip-RAM read over GDB shortly before the save; none of the loads on
-  the NULL-guarded-only binary rebooted.
-- **Shutdown segfaults.** The emulator segfaulted on SIGTERM at the end of both
-  boots on this binary. It did not on the NULL-guarded-only binary (0 of 4
-  boots). A similar shutdown fault was seen once on the unpatched binary.
-- **What would settle both:** the same run, with the chip-RAM read before the
-  save and a SIGTERM at the end, on each binary. A reboot or segfault on the
-  patched binary only points at the redraw patch.
+  pre-save frame across the whole 754x576 Alt+S image (CONFIRMED, 22 loads in
+  six boots, with a GDB client attached).
+- **Some loads reboot the Amiga, on this binary only so far.** A soak of 20
+  save-and-load cycles per binary was run: two boots of ten cycles each, a GDB
+  client attached throughout, and a 512 KB chip-RAM read before every other
+  save. On this binary 2 of 20 loads rebooted the Amiga into the Kickstart
+  screen, and with the earlier runs it is 3 of 26. The NULL-guarded-only
+  binary rebooted in 0 of 28 loads, all with the game still running after the
+  load.
+- **The reboots come from FS-UAE's CPU tracer.** All three reboots have the
+  same cause (CONFIRMED, 3 of 3). The tracer restores the instruction the CPU
+  was in when the state was saved. In every reboot that instruction was the
+  `jsr` (`4EB9`) at `0x00fc9b18` in Kickstart. Playback fetched `0x00fced60`,
+  which was not recorded, and the log says `CPU tracer invalid state during
+  playback!`. The CPU then runs into `Illegal instruction 4e7b`, and the
+  machine resets. In 23 other loads on this binary and 28 on the other, the
+  tracer resumed elsewhere and the load worked.
+- **Whether the redraw patch causes this is not known.** The tracer and the
+  save path are code the patch does not touch. The patch could still change
+  where the CPU stands when a later save is taken, because
+  `custom_frame_redraw_necessary` also feeds the chipset's line decisions in
+  `src/custom.cpp`. To settle it, save and load enough times on the
+  NULL-guarded-only binary for a save to land on `0x00fc9b18`. If that binary
+  then fails the same way, the fault is FS-UAE's and the patch only changes
+  how often.
+- **The picture comes back after every load that does not reboot.** Every
+  one of the 17 such loads in the soak gave an Alt+S frame identical to the
+  pre-save frame (CONFIRMED).
+- **The binary exits cleanly on SIGTERM.** It ended with status 0 and no
+  segfault in four of four boots, as the NULL-guarded-only binary did in four
+  of four. The shutdown segfaults first recorded here came from the test script,
+  which sent SIGTERM to the X server instead of the emulator. Ending the X
+  server first makes the NULL-guarded-only binary segfault the same way (exit
+  245; CONFIRMED, one boot), so they say nothing about either patch.
+- **Nothing outside the call reaches the wrapper.** No unwind-table entry
+  (`.eh_frame`) covers either patched padding range, and no initialiser or
+  finaliser table entry points there.
 
 ## The SHA-256 chain
 
 `installfsuae.REDRAW_CHAIN` lists the steps in order. Each step starts from
 the digest the previous one ends at. The default install, `PATCH_CHAIN`, stops
-after step 1: step 2 is opt-in with `--with-restore-redraw` because the
-reboot and shutdown segfault under "Measured on the patched binary" are not
-yet cleared.
+after step 1: step 2 is opt-in with `--with-restore-redraw` because of the
+reboots under "Measured on the patched binary", whose link to the patch is not
+yet settled.
 
 | Step | Binary | SHA-256 |
 |---|---|---|
