@@ -552,7 +552,7 @@ def test_the_save_disk_is_reattached_before_each_copy(tmp_path):
         assert len(exports.read_file(name)) == 582
 
 
-def test_a_class_the_race_is_never_offered_is_refused_before_any_key(tmp_path):
+def test_a_class_the_race_is_never_offered_is_rejected_before_any_key(tmp_path):
     """No magic-user in a dwarf's class list: the rejection comes before the
     first character is created, even when the dwarf is the second spec."""
     dwarf = spec("VICEMAG", "DWARF", "MALE", "MAGIC-USER", "LAWFUL GOOD")
@@ -565,7 +565,7 @@ def test_a_class_the_race_is_never_offered_is_refused_before_any_key(tmp_path):
     ("THIEF", "LAWFUL GOOD"), ("THIEF", "CHAOTIC GOOD"),
     ("FIGHTER/THIEF", "LAWFUL GOOD"), ("CLERIC", "TRUE NEUTRAL"),
     ("CLERIC/FIGHTER", "TRUE NEUTRAL")])
-def test_an_alignment_the_class_is_never_offered_is_refused_before_any_key(
+def test_an_alignment_the_class_is_never_offered_is_rejected_before_any_key(
         tmp_path, cls, alignment):
     bad = spec("VICEBAD", "HALF-ELF", "MALE", cls, alignment)
     code, sess, game, out, summary = drive(tmp_path, [PAIR[0], bad])
@@ -617,7 +617,7 @@ def test_a_class_that_is_the_tail_of_a_longer_row_is_accepted_and_selected(
     assert ("class", earlier) not in game.chosen
 
 
-def test_a_roster_row_containing_the_name_is_refused_before_return(tmp_path):
+def test_a_roster_row_containing_the_name_is_rejected_before_return(tmp_path):
     """The ADD list is matched by containment, so a leftover VICEFTR above the
     spec's VICE would be taken for it."""
     game = FakeGame(tmp_path, roster=("VICEFTR",))
@@ -627,7 +627,7 @@ def test_a_roster_row_containing_the_name_is_refused_before_return(tmp_path):
     assert [k for st, k in sess.kbd.sent if st == "add"] == []
 
 
-def test_an_exact_label_present_only_as_a_non_bare_row_is_refused(tmp_path):
+def test_an_exact_label_present_only_as_a_non_bare_row_is_rejected(tmp_path):
     """The label sits in the 26-column slice `entries` reads, but the row also
     holds text further right, so the whole-row match could never succeed."""
     game = FakeGame(tmp_path, tail=("class", 30, "X"))
@@ -675,7 +675,7 @@ def test_the_class_table_is_the_lists_the_screens_draw():
     ([PAIR[0], PAIR[0]], "a name is used twice"),
     ([spec("VICE"), spec("VICEFTR")], "part of another name"),
 ])
-def test_a_party_the_driver_cannot_build_is_refused_before_any_key(
+def test_a_party_the_driver_cannot_build_is_rejected_before_any_key(
         tmp_path, specs, why):
     code, sess, _game, _out, summary = drive(tmp_path, specs)
     assert code == 1 and why in summary["lost"] and sess.kbd.sent == []
@@ -815,7 +815,7 @@ def test_records_are_checked_before_the_world_is_entered(tmp_path):
 
 
 @pytest.mark.parametrize("name", ["EYES", "VICEYESX", "EXITER", "NEXIT"])
-def test_a_name_holding_a_menu_word_is_refused(name):
+def test_a_name_holding_a_menu_word_is_rejected(name):
     with pytest.raises(ValueError, match="menu"):
         spec(name)
 
@@ -867,9 +867,9 @@ def stage_main(tmp_path, monkeypatch, slot=None):
     return out
 
 
-def test_a_refused_spec_leaves_a_summary_and_claims_no_slot(tmp_path, monkeypatch):
+def test_a_rejected_spec_leaves_a_summary_and_claims_no_slot(tmp_path, monkeypatch):
     def claim(*_a, **_k):
-        raise AssertionError("a slot was claimed for a refused party")
+        raise AssertionError("a slot was claimed for a rejected party")
     out = stage_main(tmp_path, monkeypatch)
     monkeypatch.setattr(creation.S, "claim_slot", claim)
     bad = tmp_path / "bad.json"
@@ -1036,7 +1036,7 @@ def test_a_band_never_met_ends_with_a_rejection_naming_the_rolls(tmp_path):
 @pytest.mark.parametrize("race, band", [
     ("DWARF", [8, 10]), ("DWARF", [8, 11]), ("GNOME", [4, 6]),
     ("GNOME", [19, 19]), ("HALFLING", [8, 9]), ("HUMAN", [10, 8])])
-def test_a_band_the_race_cannot_roll_is_refused_before_any_key(tmp_path, race,
+def test_a_band_the_race_cannot_roll_is_rejected_before_any_key(tmp_path, race,
                                                                band):
     with pytest.raises(ValueError):
         creation.Spec.from_json({
@@ -1165,7 +1165,7 @@ def test_a_party_disk_with_no_savegame_is_a_mismatch_not_a_raise(tmp_path):
     {"name": "VICE", "race": "HUMAN", "gender": "MALE", "class": "PALADIN",
      "alignment": "LAWFUL GOOD"},
 ])
-def test_a_spec_the_screens_cannot_take_is_refused(bad):
+def test_a_spec_the_screens_cannot_take_is_rejected(bad):
     with pytest.raises(ValueError):
         creation.Spec.from_json(bad)
 

@@ -621,33 +621,33 @@ def test_a_plain_walk_still_reports_a_press_bar(monkeypatch):
 DISK_BAR = "INSERT SIDE # 2, AND PRESS ANY KEY."
 
 
-def _refuses(sess, **kw):
+def _stops(sess, **kw):
     assert sess.walk_one("I", tries=1, encounters=True, **kw) is False
     assert "never brought up" in sess.walk_stopped or "ran out" in sess.walk_stopped
 
 
-def test_a_fighting_walk_with_no_word_still_refuses_a_press_bar(monkeypatch):
+def test_a_fighting_walk_with_no_word_still_rejects_a_press_bar(monkeypatch):
     sess = Ambush(monkeypatch)
-    _refuses(sess)
+    _stops(sess)
 
 
-def test_a_disk_prompt_bar_still_refuses(monkeypatch):
+def test_a_disk_prompt_bar_still_rejects(monkeypatch):
     sess = Ambush(monkeypatch)
     sess.walk_encounter = S.ENCOUNTER_FIGHT
     sess.wanted_disk = lambda s: "SIDE2.D64"
     sess.current = screen(DISK_BAR)
-    _refuses(sess)
+    _stops(sess)
 
 
 def test_an_expired_walk_gives_the_time_ran_out_rejection(monkeypatch):
     sess = Ambush(monkeypatch)
     sess.walk_encounter = S.ENCOUNTER_FIGHT
     sess.walk_expired = lambda: True
-    _refuses(sess)
+    _stops(sess)
     assert "ran out" in sess.walk_stopped
 
 
-def test_a_yes_no_bar_still_refuses(monkeypatch):
+def test_a_yes_no_bar_still_rejects(monkeypatch):
     sess = Ambush(monkeypatch)
     sess.walk_encounter = S.ENCOUNTER_FIGHT
     sess.current = screen(("YES NO", ["SOMETHING?"]))
@@ -656,7 +656,7 @@ def test_a_yes_no_bar_still_refuses(monkeypatch):
     assert sess.walk_stop_screen[24].strip() == "YES NO"
 
 
-def test_a_bar_gone_on_the_fresh_read_still_refuses(monkeypatch):
+def test_a_bar_gone_on_the_fresh_read_still_rejects(monkeypatch):
     sess = Ambush(monkeypatch)
     sess.walk_encounter = S.ENCOUNTER_FIGHT
     reads = iter([screen(PRESS_BAR)] * 3)
@@ -667,4 +667,4 @@ def test_a_bar_gone_on_the_fresh_read_still_refuses(monkeypatch):
         return next(reads, screen(WORLD))
 
     sess.screen = screen_
-    _refuses(sess)
+    _stops(sess)

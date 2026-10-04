@@ -12,11 +12,11 @@ It shells out to the `c64u` CLI (v0.9.4 here) over the device's REST API.  Four
 things it does that a bare CLI call does not, each of them a rule from
 `docs/161-c64-ultimate.md` made mechanical:
 
-1. **Refuses the commands that are not ours to run.**  `config save-to-flash`
+1. **Rejects the commands that are not ours to run.**  `config save-to-flash`
    persists a setting past power-off, `config load-from-flash` replaces the
    live settings wholesale, `config reset-to-default` cannot be undone from
    the CLI, `machine poweroff` turns off a machine on somebody's desk, and
-   `streams`/`ui` open a window on it.  `Refused` is raised before anything
+   `streams`/`ui` open a window on it.  `CommandBlocked` is raised before anything
    reaches the wire.
 2. **`paused()` always resumes.**  A 64K dump is many HTTP round-trips, so it
    has to be taken with the machine paused or it is a smear across time; a
@@ -81,7 +81,7 @@ KEY_COUNT = 0x00C6
 
 #: Commands this wrapper will not issue, and why.  Checked against the leading
 #: words of the argument list before anything is sent.
-REFUSED = {
+BLOCKED_COMMANDS = {
     ("config", "save-to-flash"):
         "persists a device setting past power-off",
     ("config", "reset-to-default"):
@@ -105,8 +105,8 @@ class NotReachable(UltimateError):
     """No device answered, or the CLI is not installed."""
 
 
-class Refused(UltimateError):
-    """A command on the `REFUSED` list, stopped before it reached the wire."""
+class CommandBlocked(UltimateError):
+    """A command on the `BLOCKED_COMMANDS` list, stopped before it reached the wire."""
 
 
 def find_cli() -> str | None:
@@ -180,9 +180,9 @@ class Ultimate:
         return head + list(args)
 
     def _check_allowed(self, args: tuple[str, ...]) -> None:
-        for banned, why in REFUSED.items():
+        for banned, why in BLOCKED_COMMANDS.items():
             if args[:len(banned)] == banned:
-                raise Refused(f"`c64u {' '.join(banned)}` is not ours to run: {why}")
+                raise CommandBlocked(f"`c64u {' '.join(banned)}` is not ours to run: {why}")
 
     def run(self, *args: str, binary: bool = False) -> bytes | str:
         """One CLI call.  Raises on a non-zero exit; returns stdout."""
@@ -236,7 +236,7 @@ class Ultimate:
         """Write bytes over DMA.
 
         Two traps, both from `docs/161-c64-ultimate.md`: the hex is **one**
-        argument (spaces split it into several and the CLI refuses), and 128
+        argument (spaces split it into several and the CLI rejects), and 128
         bytes is the per-call limit.  And a write only persists where nothing
         else drives the address -- `$D020` and `$0400` stick, `$DC00` is gone
         within a frame because the KERNAL keyboard scan rewrites it.

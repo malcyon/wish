@@ -193,7 +193,7 @@ def test_every_per_title_driver_names_its_own_title(
     assert cls.game.travel_grid is False
 
 
-def test_pool_of_radiance_still_reads_its_flag_and_still_refuses_a_letter():
+def test_pool_of_radiance_still_reads_its_flag_and_still_rejects_a_letter():
     """The control, and the behaviour that is right where it applies.
 
     Pool of Radiance does have a travel grid, `$49E6` does say which world

@@ -138,14 +138,14 @@ def test_a_second_write_against_the_same_out_does_not_die_read_only(tmp_path, mo
     assert traitsave.write(args) == 1  # must not raise PermissionError
 
 
-#: `os.replace` over a read-only file is a POSIX allowance and Windows refuses
+#: `os.replace` over a read-only file is a POSIX allowance and Windows rejects
 #: it: there `chmod(0o444)` sets the read-only attribute and `MoveFileEx`
 #: fails on the destination. So the answer below is the answer *here*, and on
 #: Windows the same save raises instead -- which the editor reports in a modal
 #: box, and a modal box in a headless run is a hang rather than a failure.
 posix_only = pytest.mark.skipif(
     sys.platform == "win32",
-    reason="os.replace over a read-only file is refused on Windows")
+    reason="os.replace over a read-only file is rejected on Windows")
 
 
 @posix_only

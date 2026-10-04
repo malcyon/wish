@@ -18,7 +18,7 @@ level asked for.
 **Experience is written first, at every level, and that is the whole reason
 this is not a one-liner.** The trainer clamps experience to just under the
 next threshold, so a character levelled twice in a row is short of the second
-threshold by one point and `LevelUp` refuses. Each round therefore writes a
+threshold by one point and `LevelUp` rejects. Each round therefore writes a
 number well above every threshold and lets the clamp bring it back down.
 
 **What it leaves behind is a doctored character**: the experience it was
@@ -65,7 +65,7 @@ def main(argv: list[str]) -> int:
                     "replaying what the training hall writes.")
     ap.add_argument("--port", type=int, required=True, metavar="N",
                     help="the binary monitor to drive; a pool slot prints its "
-                         "own. Required, and 6502/6510/6600 are refused")
+                         "own. Required, and 6502/6510/6600 are rejected")
     ap.add_argument("--name", default="", metavar="WHO",
                     help="the character to raise, by the name the game shows")
     ap.add_argument("--levels", type=int, default=1, metavar="N",
@@ -87,7 +87,7 @@ def main(argv: list[str]) -> int:
     # one puts experience into a character and forces a level-up, so the same
     # default would mean one forgotten flag corrupts a save somebody is in the
     # middle of playing. `--port` is required rather than defaulted, and these
-    # three are refused outright: no version of this tool's job wants them.
+    # three are rejected outright: no version of this tool's job wants them.
     if args.port in (6502, 6510, 6600):
         print(f"Port {args.port} is the human's own game, and this tool "
               f"writes to it. Claim a pool slot and pass the port it prints.",

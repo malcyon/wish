@@ -31,7 +31,7 @@ def test_missing_overlay_is_reported_by_name():
         overlay.load("NOSUCH", _root(POOL))
 
 
-def test_unknown_title_is_refused():
+def test_unknown_title_is_rejected():
     with pytest.raises(SystemExit, match="No title called nope"):
         overlay.title_game("nope")
 
@@ -43,7 +43,7 @@ def test_cli_title_and_disks_select_the_curse_disks(capsys):
     assert "mention" in capsys.readouterr().out
 
 
-def test_cli_bogus_title_is_refused():
+def test_cli_bogus_title_is_rejected():
     with pytest.raises(SystemExit, match="No title called bogus"):
         overlay.main(["overlay.py", "--title", "bogus", "hex", "X", "0"])
 

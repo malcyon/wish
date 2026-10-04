@@ -527,7 +527,7 @@ def test_a_real_blow_is_somebody_swinging_and_does_not_say_who():
     assert out.acted is False           # neither line says which side swung
 
 
-def test_fight_refuses_when_there_is_no_fight():
+def test_fight_rejects_when_there_is_no_fight():
     sess = FakeSession([(DUNGEON, FakeScreen({14: STATUS}))])
     out = sess.fight(budget=5.0, poll=0.0)
     assert out.outcome == NOT_FIGHTING
@@ -1088,7 +1088,7 @@ def test_a_step_onto_an_enemy_is_a_blow_and_is_never_avoided():
     assert sess.kbd.sent == ["Return", "KP_6"]      # MOVE, then the blow
 
 
-class RefusedArena(ArenaSession):
+class BlockedArena(ArenaSession):
     """A blow the game will not let this character strike.
 
     MALCYON with `13 DART` readied: six presses into the orc on the next
@@ -1122,7 +1122,7 @@ def test_a_blow_the_game_blocks_passes_the_turn_rather_than_pressing_on():
     b = combat.read_battle(MemoryTarget(synthetic_arena(
         fighters=((0, 25, 13), (8, 26, 13)))))
     me = b.party[0]
-    sess = RefusedArena(b, me.name, steps=9)
+    sess = BlockedArena(b, me.name, steps=9)
     sess.ATTACK_TIMEOUT = 0.5
     assert sess.melee_turn(sess.combat_state()) == "DONE"
     assert sess.kbd.sent.count("KP_6") == 1         # pressed once, not eight

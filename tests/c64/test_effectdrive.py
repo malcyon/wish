@@ -332,7 +332,7 @@ def test_a_long_later_rest_is_given_time_for_every_pass(monkeypatch):
     assert got["ended"] == "completed" and sess.passes == 3060
 
 
-def test_a_later_rest_of_no_time_is_refused_before_anything_is_pressed(
+def test_a_later_rest_of_no_time_is_rejected_before_anything_is_pressed(
         monkeypatch):
     sess = LaterPressSession(c64_port.SECRET_OF_THE_SILVER_BLADES, 0x2A8E,
                              E.LATER_LOAD, LATER_REST_ROW)
@@ -340,7 +340,7 @@ def test_a_later_rest_of_no_time_is_refused_before_anything_is_pressed(
     assert sess.pressed == []
 
 
-def test_a_later_rest_too_long_for_the_field_is_refused_before_anything_is_pressed(
+def test_a_later_rest_too_long_for_the_field_is_rejected_before_anything_is_pressed(
         monkeypatch):
     """Minutes or days past a byte cannot be written, so nothing is pressed."""
     for minutes, hours in ((300, 0), (0, 256 * 24)):
@@ -410,7 +410,7 @@ def test_a_pool_rest_the_check_interrupts_is_reported_with_its_bar(
         got["before"]["clock"]) == 5
 
 
-def test_a_pool_rest_refuses_the_later_titles_bar(monkeypatch):
+def test_a_pool_rest_rejects_the_later_titles_bar(monkeypatch):
     sess = RestingSession(c64_port.POOL_OF_RADIANCE, E.REST_TIME,
                           E.SAVE0_LOAD, LATER_REST_ROW)
     assert _rest(monkeypatch, sess, 0, 1) == {"failed": "no rest-time bar"}

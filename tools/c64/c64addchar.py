@@ -26,7 +26,7 @@ a pool slot:
   MALCYON's name -- same name as a party member, a different character, a
   different pair -- and `\\x01TWIN`, MALCYON's own record under a new name, so
   the pair matches a party member's exactly.  If the screen tests the name
-  alone, the first is starred and refused and the second is let in.
+  alone, the first is starred and rejected and the second is let in.
 
 The player's disks are read and never written; every image the game sees is
 the slot's own copy.  `POR_HEADLESS` is the slot's default, so nothing lands
@@ -264,7 +264,7 @@ def main(argv=None) -> int:
         run.dump("loaded")
         run.counts("loaded")
 
-        # Make room: the party is six strong and the add refuses a seventh
+        # Make room: the party is six strong and the add rejects a seventh
         # player character before it looks at anything else.
         run.remove(["LADY KATHERINE", "SILAS"])
         run.counts("removed")

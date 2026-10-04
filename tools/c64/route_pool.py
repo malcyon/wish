@@ -88,7 +88,7 @@ def line_number(who: str, count: int | None = None) -> int:
     """The 0-based panel row for the party line number `who`, counting from 1.
 
     `count` is the number of panel rows when the panel has been read; without
-    it only a line below 1 is refused.
+    it only a line below 1 is rejected.
     """
     n = int(who.strip())
     if n < 1 or (count is not None and n > count):
@@ -160,7 +160,7 @@ def open_items(sess: S.Session, log: Log, name: str, label: str,
     """ENCAMP > VIEW > the character called `name` > ITEMS, list left up.
 
     **From camp, not from the world.** `LIBRARY $4630`, the READY toggle,
-    refuses a magical item -- bit 7 of `+15` -- with `NOT HERE` unless
+    rejects a magical item -- bit 7 of `+15` -- with `NOT HERE` unless
     `$6DE4` is set, and CAMP sets it at `$0818` on entering the camp menu
     and clears it at `$0862` on leaving. Five runs pressed READY on the
     world's VIEW and the message flashed too briefly for a screen read.
@@ -596,7 +596,7 @@ def rest_later(sess, log, minutes: int, hours: int, cp: dict,
     `field` (minutes, hours, days), with hours of 24 or more carried into
     days, rather than stepped with `ADD`, and the bar's own `REST` starts it.
     No key is sent while it runs.  A rest of no time, or one whose minutes
-    or days do not fit a byte, is refused before anything is pressed.
+    or days do not fit a byte, is rejected before anything is pressed.
 
     `ended` in the result says how the wait stopped:
 

@@ -24,7 +24,7 @@ GAME, settle, send one space, and then ask exactly what `load_save` asks next.
 The two runs differ by one keypress and nothing else, which is what makes the
 answer a measurement rather than a story.  Nothing is written to the player's
 disks: `stage_disks` copies the eight sides into the slot and `Session.attach`
-refuses any path outside it.
+rejects any path outside it.
 """
 from __future__ import annotations
 

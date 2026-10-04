@@ -1,7 +1,7 @@
 """The parts of the add-list probe a machine with no emulator can check.
 
 `tools/c64/c64addprobe.py` drives the running game, so what it establishes cannot
-be asserted here. What can is that it refuses rather than guesses: a run with
+be asserted here. What can is that it rejects rather than guesses: a run with
 no save named, and a run that cannot find the player's own disks, both stop
 before they claim an emulator slot -- a slot claimed and then abandoned is one
 no other agent can use until the process dies.
@@ -18,7 +18,7 @@ from conftest import load_tools_module
 probe = load_tools_module("c64addprobe")
 
 
-def test_a_run_with_no_save_is_refused():
+def test_a_run_with_no_save_is_rejected():
     """`--save` is required: there is nothing to probe without a disk whose
     file name and stored name disagree."""
     with pytest.raises(SystemExit) as stopped:

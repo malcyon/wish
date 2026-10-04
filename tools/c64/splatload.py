@@ -10,7 +10,7 @@ the emulated 1541 finished its write-back carries a directory entry the drive
 still believes is open for writing -- type byte `$02` rather than `$82`, a
 block count of zero, `*PRG` in a listing -- and the drive will not open one for
 reading.  The payload is on the disk and every one of this project's readers
-gets it out, because they follow the sector chain; only the game is refused.
+gets it out, because they follow the sector chain; only the game is rejected.
 
 **The measurement is `$03F1`, not the sentence on the screen.**  That byte is
 where the load's result is turned into a number, and the drive's own error
@@ -30,7 +30,7 @@ neither names the drive error.
 copied from.  Run it both ways over the same disk and the pair is the
 differential: one rejection and one party, with nothing else changed.
 
-The player's disks are read and never written -- `Session.attach` refuses a
+The player's disks are read and never written -- `Session.attach` rejects a
 path outside the slot's own directory, and `stage_disks` copies the sides
 there first.  The pool owns the emulator: claim, launch, tear down.
 """
@@ -65,7 +65,7 @@ FASTLOADER = 0x7E9F
 #: drive would not give it one.  Both are screen text and neither is the
 #: measurement; they are here so the log says what a person would have seen.
 LOADED_HINT = "BEGIN ADVENTURING"
-REFUSED_HINTS = ("NOT FOUND", "UNABLE TO LOAD", "ERROR")
+LOAD_FAILED_HINTS = ("NOT FOUND", "UNABLE TO LOAD", "ERROR")
 
 
 def probe(sess) -> dict:
@@ -97,8 +97,8 @@ def watch(sess, note, budget: float = 120.0) -> tuple[str, str]:
         if text != last:
             note(event="screen", row24=s.row(24).strip())
             last = text
-        if any(h in text for h in REFUSED_HINTS):
-            return "refused", text
+        if any(h in text for h in LOAD_FAILED_HINTS):
+            return "rejected", text
         if LOADED_HINT in text:
             return "menu", text
         time.sleep(1.0)
@@ -160,7 +160,7 @@ def run(args) -> int:
         p = probe(sess)
         note(event="outcome", screen=seen, **p)
         result = p.get("03F1_result")
-        outcome = "loaded" if result == 0 and seen != "refused" else "failed"
+        outcome = "loaded" if result == 0 and seen != "rejected" else "failed"
         note(event="verdict", outcome=outcome, result=result,
              meaning=("the drive opened the file" if result == 0 else
                       "60, WRITE FILE OPEN" if result == 60 else

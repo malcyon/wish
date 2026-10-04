@@ -58,7 +58,7 @@ border row of this screen answers white as well, and the walk never starts.
 And **Return is not read from XTEST here**, only from the KERNAL buffer, which
 is the same finding `tools/curse_of_the_azure_bonds/cursewarp.py` records for the `YES NO` bar.
 
-`--gate-off` writes two `NOP`s over the branch that refuses -- Curse
+`--gate-off` writes two `NOP`s over the branch that rejects -- Curse
 `GEN $2396`, Silver Blades `GEN $1F8B` -- so that the same drive can be run
 with the rejection removed.  That is the differential that would turn "the
 message appeared" into "this instruction is what produced it", and it has not

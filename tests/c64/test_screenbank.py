@@ -236,7 +236,7 @@ def test_colour_ram_comes_out_of_the_chips():
     assert len(vice.colour_ram(mon)) == 1000
 
 
-def test_the_reader_refuses_rather_than_answering_a_screen_it_cannot_locate():
+def test_the_reader_rejects_rather_than_answering_a_screen_it_cannot_locate():
     """With no named banks and the chips out, there is no honest answer.
 
     Forty spaces is the answer that caused `#336`: every caller reads it as

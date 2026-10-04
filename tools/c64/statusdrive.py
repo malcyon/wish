@@ -43,7 +43,7 @@ is the one a driven fight leaves standing still.
 Everything goes to `--out`: `roster.jsonl` one sample per line, `sheet.txt` the
 character sheet the game drew afterwards, and `saved.d64` the save it wrote.
 Nothing here writes to the player's disks -- `stage_disks` copies the eight
-sides and the save into the slot, and `Session.attach` refuses any path outside
+sides and the save into the slot, and `Session.attach` rejects any path outside
 it.  Written for `#235 (Two unattributed DOS byte ranges in the combat tail are
 dropped converting to C64, and nobody knows what they hold)`.
 """

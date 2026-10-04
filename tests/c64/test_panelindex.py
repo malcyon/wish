@@ -118,7 +118,7 @@ def test_a_name_made_only_of_digits_is_a_line_number():
     assert route_pool.panel_index(sess, "2") == 1
 
 
-def test_a_number_with_no_screen_still_refuses_zero():
+def test_a_number_with_no_screen_still_rejects_zero():
     class Blind:
         def screen(self):
             return None

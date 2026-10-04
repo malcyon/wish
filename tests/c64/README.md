@@ -8,8 +8,8 @@ Tests for the C64 side: the driven-session code under `tools/c64/`, the memory m
 | `test_bamsweep.py` | Checks the byte-range comparison of `tools/c64/bamsweep.py` on buffers built here, and that its fixed table matches the documented layout. |
 | `test_beginresend.py` | Checks that `Session.begin_adventuring` resends a lost Return to BEGIN ADVENTURING, and only while the party menu is still up, on a fake session. |
 | `test_iecstall.py` | Checks that `Session.iec_stall_check` nudges drive 8 only when the C64 is stuck in the KERNAL talker turnaround with the drive idle on a LOAD, at most twice, then fails at once, on a fake monitor. |
-| `test_c64acceptance.py` | Checks that `tools/c64/acceptance.py` stages exactly the bytes asked for, the same bytes `effectdrive.py` and `traitdrive.py` write, refuses a step list or title it cannot run before claiming a slot, and reads the camp list, the whom menu and the item list's Detect Magic mark off screens composed from the game's own. |
-| `test_c64addprobe.py` | Checks that `tools/c64/c64addprobe.py` refuses a run with no save or no disks before it claims an emulator slot. |
+| `test_c64acceptance.py` | Checks that `tools/c64/acceptance.py` stages exactly the bytes asked for, the same bytes `effectdrive.py` and `traitdrive.py` write, blocks a step list or title it cannot run before claiming a slot, and reads the camp list, the whom menu and the item list's Detect Magic mark off screens composed from the game's own. |
+| `test_c64addprobe.py` | Checks that `tools/c64/c64addprobe.py` blocks a run with no save or no disks before it claims an emulator slot. |
 | `test_c64nametable.py` | Checks the six places `GEN` touches the `+$C00` name table of a C64 save, the filename prefix it uses, and that Pool of Radiance has no such table. |
 | `test_c64outdoor.py` | Checks that `outdoor_request` in `tools/c64/c64outdoor.py` builds a buffer that reads as a party set out on the requested travel window. |
 | `test_c64status.py` | Checks that a character's status, out-of-play flag, combat side, quickfight bit, share and control byte cross between a DOS record and a C64 one in both directions. |
@@ -24,7 +24,7 @@ Tests for the C64 side: the driven-session code under `tools/c64/`, the memory m
 | `test_inventorycheck.py` | Checks the item-list reader and the edit, add and remove steps of `tools/c64/inventorycheck.py` on Curse and Silver Blades. |
 | `test_laterbattle.py` | Checks that the `--goto` tour of `ssb_fight` charges a leg the steps it really took against its budget. |
 | `test_laterthac0.py` | Checks that `tools/c64/laterthac0.py` locates the THAC0 tables of the later DOS titles and that every record reproduces from them. |
-| `test_launch.py` | Checks, with stub `Xvfb`, `Xephyr`, `xdotool` and `flatpak` programs, that `launch.sh` execs the whole emulator command under the caller's PID, dies with its process group and refuses a missing disk. |
+| `test_launch.py` | Checks, with stub `Xvfb`, `Xephyr`, `xdotool` and `flatpak` programs, that `launch.sh` execs the whole emulator command under the caller's PID, dies with its process group and blocks a missing disk. |
 | `test_memory.py` | Checks that the C64 memory map has sane, uniquely named regions that agree with the constants the decoders use and the save-file ranges. |
 | `test_outdoor_boat.py` | Checks that the driver names a boat landing's question instead of pressing at it as if it were a wall. |
 | `test_outdoordrive.py` | Checks that the session driver reads the travel grid's status line and walks a party there, on a fake session that records its keys. |
@@ -33,7 +33,7 @@ Tests for the C64 side: the driven-session code under `tools/c64/`, the memory m
 | `test_pursecheck.py` | Checks the money-box reader and the seven-purse edit steps of `tools/c64/pursecheck.py` on Curse and Silver Blades. |
 | `test_recordsweep.py` | Checks the hit-finding of `tools/c64/recordsweep.py`, direct and indirect, on bytes built here. |
 | `test_savecheck.py` | Checks that `tools/c64/savecheck.py` counts the figures a fight draws against the fight the engine is running, on hand-built battles. |
-| `test_savecheck_icon_bank.py` | Checks that the `--icon` glyph read of `tools/c64/savecheck.py` goes through the RAM bank and refuses a VICE without one. |
+| `test_savecheck_icon_bank.py` | Checks that the `--icon` glyph read of `tools/c64/savecheck.py` goes through the RAM bank and blocks a VICE without one. |
 | `test_savecheck_log.py` | Checks that a failed `savecheck` run keeps its log and writes the traceback before the photograph. |
 | `test_savecheck_move_subbar.py` | Checks that `answer_bars` and `save_game` leave the dungeon's move sub-bar instead of reporting a walk as stuck. |
 | `test_savecheck_resave_order.py` | Checks that `tools/c64/savecheck.py` resaves after every walked move and not before them. |
@@ -51,5 +51,5 @@ Tests for the C64 side: the driven-session code under `tools/c64/`, the memory m
 | `test_sheetexit.py` | Checks that one interpreter reads every Gold Box command bar and that a sheet is left with the key the bar names. |
 | `test_sideprompt.py` | Checks that a disk prompt is classified as a disk prompt and answered with a disk, not treated as a `PRESS` continue bar. |
 | `test_trainerspells.py` | Checks each class's trainer spell step in each title against that title's own overlay and against `goldbox/levelup.py`. |
-| `test_traitsave.py` | Checks the editor's own write path for traits on a C64 save: the record offset arithmetic, the one-byte diff, what it refuses to write and writing over a read-only destination. |
-| `test_walkrun.py` | Checks that `tools/c64/walkrun.py` claims and refuses pool slots as asked, against a fake `Session` that launches nothing. |
+| `test_traitsave.py` | Checks the editor's own write path for traits on a C64 save: the record offset arithmetic, the one-byte diff, what it will not write and writing over a read-only destination. |
+| `test_walkrun.py` | Checks that `tools/c64/walkrun.py` claims and blocks pool slots as asked, against a fake `Session` that launches nothing. |

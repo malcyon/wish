@@ -294,8 +294,8 @@ def test_a_move_on_the_travel_grid_presses_a_compass_digit():
     assert sess.square() == (6, 27)
 
 
-def test_the_dungeons_letters_are_refused_on_the_travel_grid():
-    """And refused **without pressing anything**.
+def test_the_dungeons_letters_are_rejected_on_the_travel_grid():
+    """And rejected **without pressing anything**.
 
     `I` is not a direction out there.  Sending it moved the party not at all
     while `walk_one` reported it blocked, which reads exactly like a save that

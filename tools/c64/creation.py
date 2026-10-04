@@ -76,7 +76,7 @@ GENDERS = {"MALE": 0, "FEMALE": 1}
 #: `CLASS_BIT_FOR_NAME` but no Pool race is offered them.
 CLASS_PARTS = ("cleric", "fighter", "magic-user", "thief")
 #: The class list each race is offered, in on-screen order.  `check_specs` reads
-#: it before the first key so a class the race is never offered is refused up
+#: it before the first key so a class the race is never offered is rejected up
 #: front.
 CLASSES_BY_RACE = {
     "DWARF": ("FIGHTER", "THIEF", "FIGHTER/THIEF"),
@@ -93,7 +93,7 @@ CLASSES_BY_RACE = {
 
 #: The constitution each sturdy race's creation roll can give, from a static
 #: read of the clamp tables in `GEN`, not from rolls seen on the screen.  A band
-#: outside it is refused before any key is pressed.
+#: outside it is rejected before any key is pressed.
 CON_LIMITS = {"DWARF": (12, 19), "GNOME": (8, 18), "HALFLING": (10, 19)}
 #: The saving throws in stored order, `0x09A` to `0x09E`.
 SAVE_FIELDS = ("save_paralysis", "save_petrification", "save_wands",
@@ -143,7 +143,7 @@ RESERVED_IN_NAMES = ("YES", "EXIT")
 PARTY_MENU, PICK_RACE, PICK_GENDER, ROLL = "party", "race", "gender", "roll"
 PICK_CLASS, PICK_ALIGN, NAME, SHEET = "class", "alignment", "name", "sheet"
 PORTRAIT, ICON, ADD_LIST, SAVE_YN = "portrait", "icon", "add", "save-yn"
-SAVING, WORLD, DISK, REFUSED = "saving", "world", "disk", "refused"
+SAVING, WORLD, DISK, BLOCKED = "saving", "world", "disk", "blocked"
 
 #: Screens on which the game has stopped asking for what the driver has: a
 #: full disk, a failed write, and the format question whose YES wipes the disk.
@@ -256,7 +256,7 @@ def load_specs(path: pathlib.Path) -> list[Spec]:
 
 
 def check_specs(specs: list[Spec]) -> None:
-    """Refuse, before any key is pressed, a party the driver cannot build.
+    """Reject, before any key is pressed, a party the driver cannot build.
 
     A class the race is never offered, or an alignment the class is never offered,
     stops the run here rather than after the characters before it are made.  A
@@ -303,7 +303,7 @@ def recognise(sess, s) -> str | None:
         return None
     text = s.text()
     if any(phrase in text for phrase in REJECTIONS):
-        return REFUSED
+        return BLOCKED
     if sess.wanted_disk(s) is not None:
         return DISK
     row24 = s.row(24)
@@ -460,11 +460,11 @@ class Driver:
             s = self.sess.screen()
             last = s
             kind = recognise(self.sess, s)
-            if kind == REFUSED:
-                raise self.lost("the game refused: "
+            if kind == BLOCKED:
+                raise self.lost("the game rejected: "
                                 + " / ".join(r.strip() for r in s.rows()
                                              if any(p in r for p in REJECTIONS)),
-                                "refused")
+                                "rejected")
             if kind in kinds:
                 self.capture(tag or "-".join(kinds), s)
                 return s
@@ -503,7 +503,7 @@ class Driver:
         so they are matched whole (`MAGIC-USER/THIEF` is not the tail of
         `FIGHTER/MAGIC-USER/THIEF`); any other screen takes the first row
         containing the text, so in such a list an earlier row containing the
-        label is refused before a key is pressed.
+        label is rejected before a key is pressed.
         """
         self.check(f"selecting {label}")
         shown = entries(s, kind)
@@ -714,7 +714,7 @@ class Driver:
         The menu is recognised by its first row, which is drawn before the rows
         below it, so the screen that ends a wait can still lack the entry the
         next step selects.  A label that never appears is left for `choose` to
-        refuse.
+        reject.
         """
         end = self.clock() + self.left(MENU_DRAW_WAIT)
         while s is not None and not s.contains(label) and self.clock() < end:
@@ -1058,7 +1058,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if specs is not None:
             # Before a slot is claimed or VICE booted, but with the summary
-            # written, so a refused party leaves its reason in the evidence.
+            # written, so a rejected party leaves its reason in the evidence.
             check_specs(specs)
         slot = S.claim_slot(args.pool, f"{ISSUE_NOTE}/{args.issue}/{args.run}")
         first = S.stage_disks(slot, pathlib.Path(found))

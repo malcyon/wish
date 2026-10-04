@@ -85,7 +85,7 @@ def test_with_no_cli_installed_nothing_is_attempted(monkeypatch):
 
 
 def test_write_mem_sends_the_hex_as_a_single_argument():
-    """Spaces split the hex into several argv entries and the CLI refuses with
+    """Spaces split the hex into several argv entries and the CLI rejects with
     `accepts 2 arg(s), received 6`."""
     dev, fake = device()
     dev.write_mem(0xC000, bytes([0x78, 0xA9, 0x35, 0x85, 0x01]))
@@ -100,21 +100,21 @@ def test_more_than_128_bytes_never_reaches_the_wire():
     assert fake.calls == []
 
 
-# -- the commands it refuses to issue --------------------------------------
+# -- the commands it will not issue --------------------------------------
 
 
-@pytest.mark.parametrize("words", sorted(c64u.REFUSED))
+@pytest.mark.parametrize("words", sorted(c64u.BLOCKED_COMMANDS))
 def test_the_commands_that_are_not_ours_are_stopped_before_the_wire(words):
     """Six commands, each of which changes the device rather than reading it:
     two persist past power-off, one cannot be undone, one powers the machine
     down, and two put a window on the desktop."""
     dev, fake = device()
-    with pytest.raises(c64u.Refused):
+    with pytest.raises(c64u.CommandBlocked):
         dev.run(*words)
     assert fake.calls == []
 
 
-def test_an_ordinary_config_read_is_not_refused():
+def test_an_ordinary_config_read_is_not_rejected():
     """The rejection is per command, not a ban on the whole `config` tree."""
     dev, fake = device()
     dev.run("config", "export")

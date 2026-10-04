@@ -76,7 +76,7 @@ it, which the jiffy clock says: a value smaller than before is a machine that
 has been through a reset.
 
 The speaker must be off before a boot (`.claude/rules/emulator.md`); `trial`
-refuses to boot unless `c64u config get "Speaker Mixer" "Speaker Enable"` says
+will not boot unless `c64u config get "Speaker Mixer" "Speaker Enable"` says
 `Disabled`, and it changes no configuration itself.  It writes memory at
 `$0277`/`$00C6` for the `Y` and nowhere else, and it resets the machine to
 BASIC `READY.` at the end of every trial, hung or not.

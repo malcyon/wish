@@ -319,7 +319,7 @@ def test_a_party_of_eight_is_read_as_eight():
     assert game.character_sheet(7)[0].strip() == "TARL"
 
 
-def test_asking_for_a_slot_the_party_does_not_have_is_refused():
+def test_asking_for_a_slot_the_party_does_not_have_is_rejected():
     game = FakeGame()
     assert game.select_party(6) is False
     assert game.character_sheet(6) is None
@@ -378,8 +378,8 @@ def test_stable_party_rows_survives_the_captured_torn_frame():
     assert got == NAMES
 
 
-def test_a_genuinely_short_party_is_still_refused_quickly():
-    """The guard still guards: a real three-person party refuses slot 3 in a
+def test_a_genuinely_short_party_is_still_rejected_quickly():
+    """The guard still guards: a real three-person party rejects slot 3 in a
     bounded number of reads, not by waiting out `select_party`'s 25s timeout.
 
     A "fix" that retried "index out of range" until the deadline would pass

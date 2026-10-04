@@ -191,7 +191,7 @@ def test_a_stop_that_is_not_a_question_is_left_alone():
     assert sess.selected == []
 
 
-def test_fight_and_no_encounters_together_are_refused(capsys):
+def test_fight_and_no_encounters_together_are_rejected(capsys):
     import pytest
     with pytest.raises(SystemExit):
         savecheck.main(["--disk", "X.D64", "--fight", "--no-encounters"])

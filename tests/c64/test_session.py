@@ -108,7 +108,7 @@ def test_copy_closed_disk_retries_until_the_drive_closes_the_entry(
     assert D64.open(copied).entry(b"SAVEDGAME0").is_closed
 
 
-def test_copy_closed_disk_refuses_a_copy_the_drive_never_closes(tmp_path,
+def test_copy_closed_disk_rejects_a_copy_the_drive_never_closes(tmp_path,
                                                                   monkeypatch):
     """A bounded wait must leave a clear failure, not an unloadable output."""
     source = tmp_path / "SIDE0.D64"

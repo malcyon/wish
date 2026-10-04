@@ -112,7 +112,7 @@ def test_rest_byte_is_zeroed(game, addr):
     assert s.mem[addr] == 0
 
 
-def test_save_is_refused_once_pokes_were_written_even_after_turning_off():
+def test_save_is_rejected_once_pokes_were_written_even_after_turning_off():
     s = Fake(3)
     s._check_save_allowed()  # nothing written yet: allowed
     s.suppress_encounters()
@@ -125,7 +125,7 @@ def test_save_is_refused_once_pokes_were_written_even_after_turning_off():
         S.Session.save_game(s, allow_suppressed=True)
 
 
-def test_a_flag_on_with_nothing_written_does_not_refuse():
+def test_a_flag_on_with_nothing_written_does_not_reject():
     s = Fake(0x50)  # world map: an entry with no pokes
     s.suppress_encounters()
     s._check_save_allowed()
@@ -137,7 +137,7 @@ def test_allow_suppressed_is_keyword_only():
             save(Fake(3), "x.d64", True)
 
 
-def test_ambush_skip_works_alone_and_makes_a_save_refuse():
+def test_ambush_skip_works_alone_and_makes_a_save_reject():
     s = Fake(0x50, on=False)
     s.skip_world_map_ambushes = True
     s.suppress_encounters()
@@ -251,7 +251,7 @@ def test_base_walk_writes_pokes_before_the_key():
     assert order == ["poke", "key"]
 
 
-def test_curse_save_is_refused_after_a_restore():
+def test_curse_save_is_rejected_after_a_restore():
     s = Fake(3, on=False)
     s._restored_unattached = True
     with pytest.raises(RuntimeError, match="snapshot was restored"):

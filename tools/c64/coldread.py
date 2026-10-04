@@ -250,7 +250,7 @@ def class_ceilings(gen: bytes, game: c64_port.C64Container, base: int) -> int | 
     page = staging(game) >> 8
     anchor = bytes([0xBD, LEVEL_ARRAY, page, 0xDD])
     for at in sites(gen, anchor, base):
-        if gen[at - base + 6] == 0xB0:            # BCS: at the cap, refuse
+        if gen[at - base + 6] == 0xB0:            # BCS: at the cap, reject
             return word(gen, base, at + 4)
     return None
 

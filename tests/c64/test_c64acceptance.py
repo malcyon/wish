@@ -3,7 +3,7 @@
 The driver stages effect rows, trait slots, item bytes, record bytes and roster
 status into a copy of a C64 save, then reads the camp lists and a character's
 ITEMS list. These tests assert that staging changes only named bytes, that a
-bad step is refused before a slot is claimed, and that the screen readers use
+bad step is rejected before a slot is claimed, and that the screen readers use
 the game's own strings: the camp list (`CAMP $16C3`-`$1797`,
 " IS AFFECTED BY:" and "PRESS ANY KEY TO CONTINUE") and the item list, where
 Detect Magic prints a `*` before a magic item's name (`LIBRARY $39B7`-`$39C3`).
@@ -70,7 +70,7 @@ def test_a_row_stage_is_read_as_effectdrive_reads_it():
 
 @pytest.mark.parametrize("text", ["63=05:FF:0A", "64=05:FF:0A:03",
                                   "63=105:FF:0A:03"])
-def test_a_row_stage_out_of_range_is_refused(text):
+def test_a_row_stage_out_of_range_is_rejected(text):
     with pytest.raises(ValueError):
         A.parse_rows([text])
 
@@ -171,11 +171,11 @@ def test_temple_probe_main_accepts_raise_with_exactly_the_staging(
     (_RAISE_STAGING, "temple-probe BRUTUS HEAL"),
     (_RAISE_STAGING, "temple-probe BRUTUS"),
 ])
-def test_temple_probe_refuses_other_staging_before_a_slot_is_claimed(
+def test_temple_probe_rejects_other_staging_before_a_slot_is_claimed(
         tmp_path, monkeypatch, extra, step):
     monkeypatch.setattr(A, "temple_source_guard", lambda path: A.TEMPLE_BRUTUS_SHA256)
     kwargs = {} if step is None else {"step": step}
-    _refused_before_a_slot(tmp_path, monkeypatch, _raise_argv(
+    _stopped_before_a_slot(tmp_path, monkeypatch, _raise_argv(
         tmp_path, *extra, **kwargs)[:-2])
 
 
@@ -202,12 +202,12 @@ def test_temple_probe_rejects_other_modes_before_guest_claim(
         tmp_path, monkeypatch, extra):
     source = _fixture_disk(tmp_path)
     monkeypatch.setattr(A, "temple_source_guard", lambda path: A.TEMPLE_BRUTUS_SHA256)
-    _refused_before_a_slot(tmp_path, monkeypatch, [
+    _stopped_before_a_slot(tmp_path, monkeypatch, [
         "--save", str(source), "--disks", str(tmp_path), "--issue", "700",
         "--steps", "load", "temple-probe BRUTUS", *extra])
 
 
-def test_temple_probe_refuses_unregistered_or_changed_source_before_guest_claim(
+def test_temple_probe_rejects_unregistered_or_changed_source_before_guest_claim(
         tmp_path, monkeypatch):
     source = _fixture_disk(tmp_path)
     monkeypatch.setattr(A.S, "claim_slot", lambda *a, **k: pytest.fail("claimed"))
@@ -828,7 +828,7 @@ class _TempleSession:
         if self.unsafe == "question-twice" and not self._question_answered_once:
             self._question_answered_once = True
             # The question lingers: one more typed line, then the same
-            # question again, which the second answer must refuse.
+            # question again, which the second answer must reject.
             self.typing = ["ANOTHER GROUP APPROACHES."]
             self.phase = "question"
         else:
@@ -1393,12 +1393,12 @@ def test_temple_guards_read_the_screen_only_inside_a_monitor_pause(
     ["load", "peek 4900"],                # and how many bytes?
     ["load", "fight 0"],
 ])
-def test_a_step_list_the_driver_cannot_run_is_refused(steps):
+def test_a_step_list_the_driver_cannot_run_is_rejected(steps):
     with pytest.raises(ValueError):
         A.parse_steps(steps)
 
 
-def _refused_before_a_slot(tmp_path, monkeypatch, argv):
+def _stopped_before_a_slot(tmp_path, monkeypatch, argv):
     def no_slot(*a, **k):
         raise AssertionError("a slot was claimed")
     monkeypatch.setattr(A.S, "claim_slot", no_slot)
@@ -1407,22 +1407,22 @@ def _refused_before_a_slot(tmp_path, monkeypatch, argv):
     assert info.value.code == 2
 
 
-def test_a_run_with_no_save_is_refused_before_a_slot_is_claimed(tmp_path, monkeypatch):
-    _refused_before_a_slot(tmp_path, monkeypatch, ["--title", "ssb",
+def test_a_run_with_no_save_is_rejected_before_a_slot_is_claimed(tmp_path, monkeypatch):
+    _stopped_before_a_slot(tmp_path, monkeypatch, ["--title", "ssb",
                            "--disks", str(tmp_path), "--steps", "load"])
 
 
-def test_a_run_with_no_game_disks_is_refused_before_a_slot_is_claimed(
+def test_a_run_with_no_game_disks_is_rejected_before_a_slot_is_claimed(
         tmp_path, monkeypatch):
     monkeypatch.setattr(A, "tool_disks", lambda: None)
     monkeypatch.setattr(A.gamedisks, "find", lambda name: None)
-    _refused_before_a_slot(tmp_path, monkeypatch, [
+    _stopped_before_a_slot(tmp_path, monkeypatch, [
         "--title", "ssb", "--save", str(_fixture_disk(tmp_path)),
         "--steps", "load", "camp-list"])
 
 
-def test_a_bad_step_list_is_refused_before_a_slot_is_claimed(tmp_path, monkeypatch):
-    _refused_before_a_slot(tmp_path, monkeypatch, [
+def test_a_bad_step_list_is_rejected_before_a_slot_is_claimed(tmp_path, monkeypatch):
+    _stopped_before_a_slot(tmp_path, monkeypatch, [
         "--title", "ssb", "--save", str(_fixture_disk(tmp_path)),
         "--disks", str(tmp_path), "--steps", "camp-list"])
 
@@ -1480,7 +1480,7 @@ def test_staging_writes_exactly_the_named_bytes(tmp_path):
     assert took["magic_items"]["0"] == [2]
 
 
-def test_staging_refuses_a_save_of_another_title(tmp_path):
+def test_staging_rejects_a_save_of_another_title(tmp_path):
     with pytest.raises(ValueError, match="Pool of Radiance"):
         A.stage(_fixture_disk(tmp_path), tmp_path / "staged-copy.d64",
                 "curse-of-the-azure-bonds")
@@ -3024,10 +3024,10 @@ def test_pool_specimen_registry_failure_marks_run_lost_and_tears_down(
 def test_pool_specimen_add_rejection_marks_run_lost_and_tears_down(tmp_path, monkeypatch):
     from tools.registry import specimens
 
-    def refuse(*a, **k):
+    def reject(*a, **k):
         raise FileExistsError("specimen name is taken")
 
-    monkeypatch.setattr(specimens, "add", refuse)
+    monkeypatch.setattr(specimens, "add", reject)
     monkeypatch.setattr(specimens, "check_specimens", lambda: pytest.fail("checked"))
     rc, slot, out = _drive(tmp_path, monkeypatch,
                            ["load", "view BRUTUS", "save"], pool=_SpecimenPool,
@@ -3225,7 +3225,7 @@ def test_pool_specimen_does_not_register_stale_save_after_failed_cast(
     "cure MARK",                                # nobody
     "cure >LEDERA",                             # no paladin
 ])
-def test_cast_and_cure_steps_parse_and_bad_ones_are_refused(step):
+def test_cast_and_cure_steps_parse_and_bad_ones_are_rejected(step):
     with pytest.raises(ValueError):
         A.parse_steps(["load", step])
 
@@ -3234,12 +3234,12 @@ def test_cast_and_cure_steps_parse_and_bad_ones_are_refused(step):
     "ready BAKSHI",                       # no label
     "ready >GAUNTLETS OF OGRE POWER",     # nobody
 ])
-def test_ready_step_parses_and_bad_ones_are_refused(step):
+def test_ready_step_parses_and_bad_ones_are_rejected(step):
     with pytest.raises(ValueError):
         A.parse_steps(["load", step])
 
 
-def test_cast_and_cure_steps_keep_their_names_and_the_pool_refuses_them(tmp_path):
+def test_cast_and_cure_steps_keep_their_names_and_the_pool_rejects_them(tmp_path):
     steps = A.parse_steps(["load", "camp-list PHILIPPE,LEDERA",
                            "cast SHARA:cure blindness>PHILIPPE", "cure MARK>LEDERA"])
     assert A.parse_cast(steps[2].arg) == ("SHARA", "CURE BLINDNESS", "PHILIPPE")
@@ -3251,7 +3251,7 @@ def test_cast_and_cure_steps_keep_their_names_and_the_pool_refuses_them(tmp_path
     assert info.value.code == 2
 
 
-def test_pool_cast_accepts_animate_dead_without_a_target_and_refuses_other_forms(
+def test_pool_cast_accepts_animate_dead_without_a_target_and_rejects_other_forms(
         tmp_path):
     assert A.parse_cast("BRUTUS:animate dead") == ("BRUTUS", "ANIMATE DEAD", None)
     assert A.parse_cast("ROLAND:dispel magic>BRUTUS") == (
@@ -3294,7 +3294,7 @@ def test_bad_cast_form_is_rejected_before_claiming_a_slot(tmp_path, monkeypatch)
     assert exc.value.code == 2
 
 
-def test_ready_step_keeps_its_name_and_curse_refuses_it(tmp_path):
+def test_ready_step_keeps_its_name_and_curse_rejects_it(tmp_path):
     steps = A.parse_steps(["load", "ready BAKSHI>GAUNTLETS OF OGRE POWER"])
     assert A.parse_ready(steps[1].arg) == ("BAKSHI", "GAUNTLETS OF OGRE POWER")
     with pytest.raises(SystemExit) as info:
@@ -3327,7 +3327,7 @@ class _ReadyMonitor:
 
 def test_ready_step_reaches_the_list_through_camp_toggles_once_and_reads_around_it(
         tmp_path, monkeypatch):
-    """A magical item's READY toggle is refused with `NOT HERE` unless camp
+    """A magical item's READY toggle is rejected with `NOT HERE` unless camp
     has set `$6DE4`; the world's own `VIEW` never sets it (#694). `ready`
     must reach the item list through `traitask.open_items` (which goes
     `ENCAMP > VIEW > ITEMS`) and leave through `traitask.leave_items`, never
@@ -3955,7 +3955,7 @@ def test_pool_dispel_does_not_acknowledge_after_observation_deadline(tmp_path):
     assert ("key", 0x0D) not in sess.sent
 
 
-def test_pool_dispel_refuses_wrong_member_before_input_and_wrong_spell_before_pick(
+def test_pool_dispel_rejects_wrong_member_before_input_and_wrong_spell_before_pick(
         tmp_path):
     before, after = _dispel_readings()
     before["party"][5]["name"] = "SILAS"
@@ -3978,7 +3978,7 @@ def test_pool_dispel_refuses_wrong_member_before_input_and_wrong_spell_before_pi
     assert ("key", "Return") not in sess.sent
 
 
-def test_pool_dispel_refuses_a_resistant_row_before_game_input(tmp_path):
+def test_pool_dispel_rejects_a_resistant_row_before_game_input(tmp_path):
     before, after = _dispel_readings()
     before["effect_rows"][63][4] = 6
     run, log, sess = _dispel_run(tmp_path, before, after)
@@ -5107,7 +5107,7 @@ def test_a_walk_that_hits_the_deadline_while_waiting_for_the_subbar_presses_noth
     assert run.clock() < 5.0, "the wait ran on past the run's deadline"
 
 
-def test_a_refused_walk_writes_its_move_record_with_keyed_false(
+def test_a_rejected_walk_writes_its_move_record_with_keyed_false(
         tmp_path, monkeypatch):
     sess, run, log = _scripted_walk(tmp_path, monkeypatch)
     sess.select_bar = lambda *a, **k: (setattr(sess, "subbar_at", 1000.0), True)[1]
@@ -5397,7 +5397,7 @@ def test_every_key_is_logged_with_its_time(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("arg", ["", "X", "IQ", "walk"])
-def test_a_walk_of_anything_but_the_four_moves_is_refused(arg):
+def test_a_walk_of_anything_but_the_four_moves_is_rejected(arg):
     with pytest.raises(ValueError):
         A.parse_steps(["load", f"walk {arg}".strip()])
 
@@ -6050,7 +6050,7 @@ def test_a_curse_run_reads_its_position_as_the_steady_triple(tmp_path, monkeypat
 
 class UnsteadyCurseSession(LaterWalkSession):
     """A party whose square settles for the first SETTLED reads and never
-    again, and whose `walk_one` refuses the move for that reason."""
+    again, and whose `walk_one` rejects the move for that reason."""
 
     def __init__(self, settled, **kw):
         super().__init__(**kw)
@@ -6078,10 +6078,10 @@ def test_a_curse_run_stops_when_the_party_square_never_settles(tmp_path, monkeyp
     assert any("lost-square" in p.name for p in tmp_path.iterdir())
 
 
-def test_a_refused_curse_step_reports_the_rejection_and_keeps_the_screen(
+def test_a_rejected_curse_step_reports_the_rejection_and_keeps_the_screen(
         tmp_path, monkeypatch):
     # The walk's start and the move's `before` settle; the third read, the one
-    # `took_nothing` asks for, does not, which is also when `walk_one` refuses.
+    # `took_nothing` asks for, does not, which is also when `walk_one` rejects.
     sess = UnsteadyCurseSession(settled=2, x=4, y=4)
     run, log = _later_run(tmp_path, sess, monkeypatch)
     with pytest.raises(A.StepFailed, match="walk JI: .*did not settle"):
@@ -6407,7 +6407,7 @@ def test_the_command_line_stages_the_same_evidence_either_way(tmp_path):
     assert seen[0][1]["effects"] == [[63, 5, 0xFF, 0x0A, 0x03]]
 
 
-def test_the_command_line_refuses_a_bad_step_list_with_2(tmp_path):
+def test_the_command_line_rejects_a_bad_step_list_with_2(tmp_path):
     cmds, repo = _entry_points()
     for i, cmd in enumerate(cmds):
         got = _run_entry(cmd, repo, "--title", "pool", "--save",
@@ -6472,10 +6472,10 @@ def test_a_run_installs_the_signal_handler_once_after_staging_and_before_its_ste
 def test_no_signal_handler_is_installed_when_nothing_is_run(tmp_path, monkeypatch):
     calls = []
 
-    def refuse(*a, **k):
+    def reject(*a, **k):
         raise ValueError("no such row")
 
-    monkeypatch.setattr(A, "stage", refuse)
+    monkeypatch.setattr(A, "stage", reject)
     rc, _, _ = _drive(tmp_path, monkeypatch, ["load"], 1e9,
                       catch=lambda: calls.append(1))
     assert rc == 1 and calls == []
@@ -6840,7 +6840,7 @@ def test_warp_writes_the_new_area_then_sets_the_program_counter(tmp_path, monkey
     assert got["triple"] == [0, 4, 1] and got["area"] == 10
 
 
-def test_warp_refused_by_legality_writes_and_jumps_nothing(tmp_path, monkeypatch):
+def test_warp_rejected_by_legality_writes_and_jumps_nothing(tmp_path, monkeypatch):
     run, calls = _warp_run(tmp_path, monkeypatch, legal=False)
     with pytest.raises(A.StepFailed, match="the party is busy"):
         run.warp("10")
@@ -6853,7 +6853,7 @@ def test_warp_fails_naming_a_facing_other_than_east(tmp_path, monkeypatch):
         run.warp("10")
 
 
-def test_warp_parses_any_listed_area_and_refuses_the_rest():
+def test_warp_parses_any_listed_area_and_rejects_the_rest():
     assert A.parse_steps(["load", "warp 10"])[1] == A.Step("warp", "10")
     assert A.parse_steps(["load", "warp 9"])[1] == A.Step("warp", "9")
     for bad in ("warp", "warp x", "warp 99", "warp 12"):
@@ -6863,7 +6863,7 @@ def test_warp_parses_any_listed_area_and_refuses_the_rest():
         A.parse_warp("99")
 
 
-def test_warp_refuses_wilderness_and_non_fast_travelable_areas_at_parse():
+def test_warp_rejects_wilderness_and_non_fast_travelable_areas_at_parse():
     for area in (25, 26, 27):
         with pytest.raises(ValueError, match="wilderness"):
             A.parse_warp(str(area))
@@ -6880,7 +6880,7 @@ def test_warp_to_an_area_without_an_arrival_facing_runs_unchecked(tmp_path, monk
     assert any("facing not checked" in line for line in said)
 
 
-def test_the_warp_step_is_refused_for_curse_and_silver_blades(tmp_path, capsys):
+def test_the_warp_step_is_rejected_for_curse_and_silver_blades(tmp_path, capsys):
     for title in ("curse", "ssb"):
         with pytest.raises(SystemExit) as info:
             A.main(["--title", title, "--save", str(_fixture_disk(tmp_path)),
@@ -7732,7 +7732,7 @@ def test_a_narration_page_then_a_flee_menu_records_one_flee_with_its_fight(
     assert flee["before"] == [5, 5, 0] and flee["after"] == [5, 4, 0]
 
 
-def test_walk_flee_parses_and_is_refused_for_curse_and_silver_blades(
+def test_walk_flee_parses_and_is_rejected_for_curse_and_silver_blades(
         tmp_path, capsys):
     assert A.parse_steps(["load", "walk-flee IIK/NO"])[1] == A.Step(
         "walk-flee", "IIK/NO")
@@ -7769,7 +7769,7 @@ def test_walk_fight_answers_no_only_on_the_last_key(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("route, script", [("III/NO", {0: "yesno"}),
                                            ("II", {1: "yesno"})])
-def test_walk_fight_refuses_a_yes_no_anywhere_else_and_presses_nothing(
+def test_walk_fight_rejects_a_yes_no_anywhere_else_and_presses_nothing(
         tmp_path, monkeypatch, route, script):
     sess = FightWalk(script)
     run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
@@ -7798,7 +7798,7 @@ def test_walk_fight_parses_its_route_and_answer():
             A.parse_steps(["load", bad])
 
 
-def test_the_walk_fight_step_is_refused_for_curse_and_silver_blades(tmp_path, capsys):
+def test_the_walk_fight_step_is_rejected_for_curse_and_silver_blades(tmp_path, capsys):
     for title in ("curse", "ssb"):
         with pytest.raises(SystemExit) as info:
             A.main(["--title", title, "--save", str(_fixture_disk(tmp_path)),
@@ -7827,14 +7827,14 @@ def test_the_drain_pass_line_accepts_a_drop_of_one_or_two_levels(drop):
     assert verdict["characters"][0]["problems"] == []
 
 
-def test_the_drain_pass_line_refuses_no_drop():
+def test_the_drain_pass_line_rejects_no_drop():
     verdict = A.drain_verdict(_drain_fields(), _drain_fields())
     assert verdict["passed"] is False
     assert any("not exactly one entry by 1 or 2" in p
                for p in verdict["characters"][0]["problems"])
 
 
-def test_the_drain_pass_line_refuses_a_drop_with_zero_drain_bytes():
+def test_the_drain_pass_line_rejects_a_drop_with_zero_drain_bytes():
     after = _drain_fields(4, 0, 0, 40, (0, 0, 0, 4))
     verdict = A.drain_verdict(_drain_fields(), after)
     assert verdict["passed"] is False
@@ -7843,7 +7843,7 @@ def test_the_drain_pass_line_refuses_a_drop_with_zero_drain_bytes():
     assert any("hp_lost_to_drain is zero" in p for p in problems)
 
 
-def test_the_drain_pass_line_refuses_a_drop_of_three_and_a_wrong_hit_point_fall():
+def test_the_drain_pass_line_rejects_a_drop_of_three_and_a_wrong_hit_point_fall():
     assert A.drain_verdict(_drain_fields(),
                            _drain_fields(2, 3, 9, 31, (0, 0, 0, 2)))["passed"] is False
     assert A.drain_verdict(_drain_fields(),
@@ -7886,7 +7886,7 @@ def test_the_drain_pass_line_needs_the_level_to_fall_when_the_top_class_drained(
                for p in verdict["characters"][0]["problems"])
 
 
-def test_the_drain_pass_line_refuses_two_classes_drained():
+def test_the_drain_pass_line_rejects_two_classes_drained():
     before = _drain_fields(7, 0, 0, 60, (5, 0, 0, 7))
     after = _drain_fields(6, 2, 6, 54, (4, 0, 0, 6))
     assert A.drain_verdict(before, after)["passed"] is False
@@ -8073,11 +8073,11 @@ class EncounterTreasureWalk(EncounterWalk):
     TREASURE = "VIEW TAKE POOL SHARE EXIT"
     LEAVE = "GO BACK LEAVE TREASURE"
 
-    def __init__(self, script, clock, leave_prompt=False, refuse=None,
+    def __init__(self, script, clock, leave_prompt=False, reject=None,
                  sticky=False, blink=False, **kw):
         super().__init__(script, clock, **kw)
         self.leave_prompt = leave_prompt
-        self.refuse, self.sticky, self.blink = refuse, sticky, blink
+        self.reject, self.sticky, self.blink = reject, sticky, blink
         self.reads = 0
         self.stage = None
         self.chosen = []
@@ -8106,7 +8106,7 @@ class EncounterTreasureWalk(EncounterWalk):
     def select_bar(self, label, row=24, timeout=0, **kw):
         phase = self.phase()
         self.chosen.append((label, phase))
-        if label == self.refuse:
+        if label == self.reject:
             return False
         if self.sticky and phase in ("treasure", "leave"):
             return True
@@ -8176,14 +8176,14 @@ def test_the_treasure_words_are_told_apart():
     assert word(1, "GO BACK LEAVE TREASURE") == "LEAVE"
 
 
-@pytest.mark.parametrize("refuse, leave_prompt, bar, word", [
+@pytest.mark.parametrize("reject, leave_prompt, bar, word", [
     ("EXIT", False, "VIEW TAKE POOL SHARE EXIT", "EXIT"),
     ("LEAVE", True, "GO BACK LEAVE TREASURE", "LEAVE"),
 ])
 def test_an_unchoosable_treasure_word_fails_naming_the_bar_and_the_word(
-        tmp_path, monkeypatch, refuse, leave_prompt, bar, word):
+        tmp_path, monkeypatch, reject, leave_prompt, bar, word):
     sess, run, log = _treasure_encounter_run(
-        tmp_path, monkeypatch, refuse=refuse, leave_prompt=leave_prompt)
+        tmp_path, monkeypatch, reject=reject, leave_prompt=leave_prompt)
     with pytest.raises(A.StepFailed,
                        match=rf"treasure screen '{bar}' and {word} could not"):
         run.walk_fight("II")
@@ -8493,7 +8493,7 @@ class UnsentPressBar(AmbushWalk):
     is then blank with the mode byte at 1 for `gap_seconds` of the run's clock,
     at 4 for `prep_seconds`, and then the mode byte reads 2 (`fight` True) or,
     with no fight, the world bar returns after the gap.  `walk_one` on a screen
-    with no move bar presses nothing and refuses, as the real one does.
+    with no move bar presses nothing and rejects, as the real one does.
     `unsent_calls` says which `walk_one` calls send nothing."""
 
     TEXT = {17: "DARK, BENT CREATURES RUSH SWIFTLY AT", 18: "YOU."}
@@ -8832,7 +8832,7 @@ def _connect(run):
         pass
 
 
-def test_read_at_parses_the_plans_option_and_refuses_a_malformed_one():
+def test_read_at_parses_the_plans_option_and_rejects_a_malformed_one():
     got, = A.parse_read_at(["09DD=CD782B:2B78:2,6E3E:1,6BBB:14"])
     assert (got.pc, got.guard, got.reads) == (
         0x09DD, bytes.fromhex("CD782B"), ((0x2B78, 2), (0x6E3E, 1), (0x6BBB, 0x14)))
@@ -9127,7 +9127,7 @@ def test_the_run_deletes_its_read_at_stops_when_a_step_raises(tmp_path, monkeypa
     assert "the step broke" in json.loads((out / "summary.json").read_text())["lost"]
 
 
-def test_read_at_is_refused_outside_pool(tmp_path, capsys):
+def test_read_at_is_rejected_outside_pool(tmp_path, capsys):
     with pytest.raises(SystemExit):
         A.main(["--title", "curse", "--save", str(_fixture_disk(tmp_path)),
                 "--disks", str(tmp_path), "--read-at", "09DD=CD:2B78:2",
@@ -9208,7 +9208,7 @@ def test_a_staged_side_goes_into_the_later_roster_block_and_nothing_else(
         assert _diff(roster0, roster1) == [at]
 
 
-def test_a_staged_side_for_an_empty_roster_slot_is_refused(tmp_path):
+def test_a_staged_side_for_an_empty_roster_slot_is_rejected(tmp_path):
     from tests.c64.test_c64nametable import specimen_disk
 
     name, key = _SIDE_SPECIMENS["curse"]
@@ -9227,7 +9227,7 @@ def test_a_side_and_a_key_are_parsed():
         A.parse_key("ESC")
 
 
-def test_a_first_bar_key_without_a_fight_step_is_refused(tmp_path):
+def test_a_first_bar_key_without_a_fight_step_is_rejected(tmp_path):
     with pytest.raises(SystemExit) as info:
         A.main(["--title", "curse", "--save", str(_fixture_disk(tmp_path)),
                 "--disks", str(tmp_path), "--steps", "load",
@@ -9235,7 +9235,7 @@ def test_a_first_bar_key_without_a_fight_step_is_refused(tmp_path):
     assert info.value.code == 2
 
 
-def test_a_first_bar_key_or_side_is_refused_where_it_cannot_apply(tmp_path):
+def test_a_first_bar_key_or_side_is_rejected_where_it_cannot_apply(tmp_path):
     base = ["--save", str(_fixture_disk(tmp_path)), "--disks", str(tmp_path),
             "--steps", "load", "--out", str(tmp_path / "out")]
     for extra in (["--title", "pool", "--stage-side", "1=0x80"],
@@ -9564,7 +9564,7 @@ def test_a_silver_blades_walk_with_no_fight_fails_and_puts_the_gate_back(
     assert "lost-fight" in captures and not sess.fought
 
 
-def test_a_silver_blades_fight_outside_new_verdigris_is_refused_before_the_gate(
+def test_a_silver_blades_fight_outside_new_verdigris_is_rejected_before_the_gate(
         monkeypatch, tmp_path):
     sess = _SilverFight()
     run, _, _ = _silver_run(monkeypatch, tmp_path, sess, area="GEO11")
@@ -9714,7 +9714,7 @@ def test_temple_probe_raise_stops_on_a_price_screen_without_pay_for_cure(
 
 
 @pytest.mark.parametrize("unsafe", ["highlight-row-5", "other-top"])
-def test_temple_probe_raise_refuses_a_member_other_than_the_top_row(
+def test_temple_probe_raise_rejects_a_member_other_than_the_top_row(
         tmp_path, monkeypatch, unsafe):
     run, session, events = _temple_fake_run(tmp_path, monkeypatch,
                                             unsafe=unsafe)
@@ -9898,7 +9898,7 @@ def test_temple_staging_check_takes_the_sanctioned_records_only(tmp_path):
                                A.TEMPLE_RAISE_STAGING)
 
 
-def test_temple_staging_check_refuses_a_wrong_value_and_a_changed_hash(
+def test_temple_staging_check_rejects_a_wrong_value_and_a_changed_hash(
         tmp_path):
     source, staged = _staged_temple_pair(
         tmp_path, [(5, 0x018, 17), (5, 0x0C1, 0x70), (5, 0x0C2, 0x17)])
@@ -9950,7 +9950,7 @@ def test_temple_run_proceeds_to_the_claim_with_the_sanctioned_records(
         _run_raise(tmp_path, monkeypatch)
 
 
-def test_temple_run_refuses_an_extra_differing_byte_before_the_claim(
+def test_temple_run_rejects_an_extra_differing_byte_before_the_claim(
         tmp_path, monkeypatch):
     code, out = _run_raise(tmp_path, monkeypatch, extra_byte=0x400)
     assert code == 1
@@ -9958,7 +9958,7 @@ def test_temple_run_refuses_an_extra_differing_byte_before_the_claim(
         (out / "summary.json").read_text())["lost"]
 
 
-def test_temple_run_with_no_records_still_refuses_a_changed_hash(
+def test_temple_run_with_no_records_still_rejects_a_changed_hash(
         tmp_path, monkeypatch):
     code, out = _run_raise(tmp_path, monkeypatch, extra_byte=0x400,
                            staging=False)
@@ -10088,7 +10088,7 @@ def test_temple_probe_control_raises_an_ordinary_dead_member_without_pool(
 @pytest.mark.parametrize("reading", [
     _temple_reading(), _control_reading(status=3),
     _control_reading(flags=0xFF)])
-def test_temple_probe_control_refuses_a_member_that_is_not_status_83(
+def test_temple_probe_control_rejects_a_member_that_is_not_status_83(
         tmp_path, monkeypatch, reading):
     run, session, events = _temple_fake_run(tmp_path, monkeypatch)
     run.reading = lambda: reading
@@ -10137,10 +10137,10 @@ def test_temple_probe_main_accepts_pool_with_exactly_its_staging(
     (_POOL_STAGING, "temple-probe BRUTUS RAISE CONTROL"),
     (_POOL_STAGING, "temple-probe BRUTUS HEAL"),
 ])
-def test_temple_probe_pool_refuses_other_staging_before_a_slot_is_claimed(
+def test_temple_probe_pool_rejects_other_staging_before_a_slot_is_claimed(
         tmp_path, monkeypatch, extra, step):
     monkeypatch.setattr(A, "temple_source_guard", lambda path: A.TEMPLE_BRUTUS_SHA256)
-    _refused_before_a_slot(tmp_path, monkeypatch, _raise_argv(
+    _stopped_before_a_slot(tmp_path, monkeypatch, _raise_argv(
         tmp_path, *extra, step=step)[:-2])
 
 
@@ -10779,12 +10779,12 @@ def test_temple_probe_main_accepts_a_save_after_a_pool_or_control_raise(
     ["load", "save", "temple-probe BRUTUS RAISE POOL"],
     ["load", "temple-probe BRUTUS RAISE CONTROL", "rest 1"],
 ])
-def test_temple_probe_main_still_refuses_anything_else_after_the_probe(
+def test_temple_probe_main_still_rejects_anything_else_after_the_probe(
         tmp_path, monkeypatch, steps):
     monkeypatch.setattr(A, "temple_source_guard", lambda path: A.TEMPLE_BRUTUS_SHA256)
     arg = "BRUTUS RAISE POOL" if "POOL" in " ".join(steps) else (
         "BRUTUS RAISE CONTROL")
-    _refused_before_a_slot(tmp_path, monkeypatch, _leave_argv(
+    _stopped_before_a_slot(tmp_path, monkeypatch, _leave_argv(
         tmp_path, arg, *steps)[:-2])
 
 
@@ -11059,7 +11059,7 @@ def test_a_staged_variable_lands_at_its_address_in_savedgame0(tmp_path):
 
 
 @pytest.mark.parametrize("address", [0x6DD2, 0x6500, 0x48FF])
-def test_a_staged_variable_outside_savedgame0_is_refused(tmp_path, address):
+def test_a_staged_variable_outside_savedgame0_is_rejected(tmp_path, address):
     with pytest.raises(ValueError, match="outside the save file"):
         A.stage(_fixture_disk(tmp_path), tmp_path / "s.d64", "pool-of-radiance",
                 variables=[(address, 1)])
@@ -11072,7 +11072,7 @@ def test_a_staged_variable_at_the_last_byte_of_savedgame0_is_accepted(tmp_path):
     assert _payload(tmp_path / "s.d64")[0x1BFF] == 1
 
 
-def test_a_stage_var_line_parses_hex_and_refuses_bad_lines(tmp_path, capsys):
+def test_a_stage_var_line_parses_hex_and_rejects_bad_lines(tmp_path, capsys):
     assert A.parse_vars(["4A07=01"]) == [(0x4A07, 1)]
     assert A.parse_vars(["4A07=1,4AC5=ff"]) == [(0x4A07, 1), (0x4AC5, 0xFF)]
     for bad in ("4A07=100", "4A07", "XYZ=1", "=1", "4A07="):
@@ -11104,7 +11104,7 @@ def test_stage_var_reaches_the_staged_disk_through_the_command_line(
 # The screens are composed from the Pool of Radiance captures kept under
 # `cited/258/run3` (the list is the panel with `EXIT` under it, `REMOVE
 # CHARACTER ?` on row 24, a blank row 24 while the member is written out) and
-# `cited/439/readd1` (`MAKE SAVE GAME DISK ? YES NO` when the write is refused).
+# `cited/439/readd1` (`MAKE SAVE GAME DISK ? YES NO` when the write is rejected).
 
 _PANEL = ["BRUTUS                           9 11", "MAGNUS                           9 9",
           "SILAS                           10 9", "ROLAND                          10 7",
@@ -11170,7 +11170,7 @@ def test_the_remove_step_parses_after_load_or_another_remove():
     ["load", "remove 9"],                 # and stop at eight
     ["load", "view 1", "remove 2"],       # the party menu is behind the world
 ])
-def test_a_remove_the_party_menu_cannot_take_is_refused(steps):
+def test_a_remove_the_party_menu_cannot_take_is_rejected(steps):
     with pytest.raises(ValueError):
         A.parse_steps(steps)
 
@@ -11227,7 +11227,7 @@ def test_remove_finds_a_member_by_the_whole_name_the_row_draws(tmp_path, monkeyp
     log.close()
 
 
-def test_a_refused_write_is_answered_no_and_kept(tmp_path, monkeypatch):
+def test_a_rejected_write_is_answered_no_and_kept(tmp_path, monkeypatch):
     disk = _fixture_disk(tmp_path)
     asked = A.MAKE_SAVE_DISK + " ? YES NO"
     screens = {"menu": _party_menu(_PANEL), "list": _remove_screen(_PANEL),
@@ -11238,7 +11238,7 @@ def test_a_refused_write_is_answered_no_and_kept(tmp_path, monkeypatch):
              ("list", ("row", "EXIT")): "back"}
     sess = _RemoveSession(screens, moves, "menu", disk)
     run, log = _remove_run(tmp_path, monkeypatch, sess)
-    with pytest.raises(A.StepFailed, match="refused the write"):
+    with pytest.raises(A.StepFailed, match="rejected the write"):
         run.remove("1")
     log.close()
     assert ("bar", "YES") not in sess.sent
@@ -11461,9 +11461,9 @@ def test_a_run_with_removes_enters_the_world_once(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("probe", [["--checkpoint", "408F"],
                                    ["--read-at", "09DD=CD:2B78:2"]])
-def test_a_probe_armed_in_the_world_is_refused_when_the_run_ends_on_the_party_menu(
+def test_a_probe_armed_in_the_world_is_rejected_when_the_run_ends_on_the_party_menu(
         tmp_path, monkeypatch, probe):
-    _refused_before_a_slot(tmp_path, monkeypatch, [
+    _stopped_before_a_slot(tmp_path, monkeypatch, [
         "--title", "pool", "--save", str(_fixture_disk(tmp_path)),
         "--disks", str(tmp_path), *probe, "--steps", "load", "remove 2", "remove 1"])
 
@@ -11569,7 +11569,7 @@ def test_temple_probe_side3_prompt_on_a_route_with_no_crossing_stops(
     assert "side3" not in session.keys
 
 
-def test_temple_probe_refuses_a_member_the_source_does_not_hold(
+def test_temple_probe_rejects_a_member_the_source_does_not_hold(
         tmp_path, monkeypatch):
     run, _, _ = _ji_run(tmp_path, monkeypatch)
     run.reading = _temple_reading  # BRUTUS is in the party, WISHFTR is not
@@ -11592,14 +11592,14 @@ def test_temple_source_table_lists_each_route_and_its_crossing():
         A.Step("temple-probe", "WISHFTR RAISE POOL"))
 
 
-def test_temple_route_with_two_crossings_is_refused():
+def test_temple_route_with_two_crossings_is_rejected():
     two = (("I", (1, 0, 0, 0), (2, 0, 0, 0)), ("I", (2, 0, 0, 0), (3, 0, 0, 0)))
     with pytest.raises(ValueError, match="at most one"):
         A.temple_crossing_index(two)
     assert A.temple_crossing_index(two[:1]) == 0
 
 
-def test_temple_source_guard_accepts_each_table_hash_and_refuses_others(
+def test_temple_source_guard_accepts_each_table_hash_and_rejects_others(
         tmp_path, monkeypatch):
     source = _fixture_disk(tmp_path)
     digest = A.specimens.sha256_file(source)
@@ -11618,19 +11618,19 @@ def test_temple_source_guard_accepts_each_table_hash_and_refuses_others(
             source, [A.Step("load"), A.Step("temple-probe", "BRUTUS")])
 
 
-def test_temple_probe_wishftr_argument_refused_before_a_slot_is_claimed(
+def test_temple_probe_wishftr_argument_rejected_before_a_slot_is_claimed(
         tmp_path, monkeypatch):
     """The disk is BRUTUS's, so a step naming WISHFTR stops at the guard."""
     monkeypatch.setattr(A, "temple_source_guard",
                         lambda path: A.TEMPLE_BRUTUS_SHA256)
-    _refused_before_a_slot(tmp_path, monkeypatch, _raise_argv(
+    _stopped_before_a_slot(tmp_path, monkeypatch, _raise_argv(
         tmp_path, "--stage-record", "0:0x0C1=0x70,0:0x0C2=0x17,5:0x018=18",
         step="temple-probe WISHFTR RAISE POOL")[:-2])
 
 
-def test_temple_probe_on_an_unknown_hash_is_refused_before_a_slot_is_claimed(
+def test_temple_probe_on_an_unknown_hash_is_rejected_before_a_slot_is_claimed(
         tmp_path, monkeypatch):
-    _refused_before_a_slot(tmp_path, monkeypatch, _raise_argv(
+    _stopped_before_a_slot(tmp_path, monkeypatch, _raise_argv(
         tmp_path, "--stage-record", "0:0x0C1=0x70,0:0x0C2=0x17,5:0x018=18",
         step="temple-probe WISHFTR RAISE POOL")[:-2])
 
@@ -11714,13 +11714,13 @@ def test_the_no_disks_rejection_names_the_variable_of_the_title(
     monkeypatch.setattr(A.gamedisks, "find", lambda name: None)
     monkeypatch.setattr(A.gamedisks, "entry", lambda name: {"env": "CURSE_DISKS"})
     for title, wanted in (("pool", "$POR_DISKS"), ("curse", "$CURSE_DISKS")):
-        _refused_before_a_slot(tmp_path, monkeypatch, [
+        _stopped_before_a_slot(tmp_path, monkeypatch, [
             "--title", title, "--save", str(_fixture_disk(tmp_path)),
             "--steps", "load", "camp-list"])
         err = capsys.readouterr().err
         assert f"set {wanted} or pass --disks" in err
     monkeypatch.setattr(A.gamedisks, "entry", lambda name: {})
-    _refused_before_a_slot(tmp_path, monkeypatch, [
+    _stopped_before_a_slot(tmp_path, monkeypatch, [
         "--title", "ssb", "--save", str(_fixture_disk(tmp_path)),
         "--steps", "load", "camp-list"])
     assert "found; pass --disks" in capsys.readouterr().err
@@ -11740,7 +11740,7 @@ def _scribe_screens(name: str = "MORGAINE") -> dict:
         "list": _window(scroll, "SCRIBE EXIT"),
         "pick": _window({**scroll, 10: "  EXIT"}, A.PICK_SCRIBE),
         "picked": _window({**scroll, 10: "  EXIT"}, A.PICK_SCRIBE),
-        "refused": _window({**scroll, 10: "  EXIT", 18: f"{name} CAN'T SCRIBE",
+        "rejected": _window({**scroll, 10: "  EXIT", 18: f"{name} CAN'T SCRIBE",
                             19: "STONE TO FLESH"}, A.PICK_SCRIBE),
         "listexit": _window({**scroll, 10: "  EXIT"}, "SCRIBE EXIT"),
         "chosen": _window(chosen, "EXIT"),
@@ -11779,7 +11779,7 @@ def _page(slot: int) -> int:
     """The record page of roster SLOT: deliberately not the slot itself."""
     return (slot + 3) % 8
 #: The screens on which the game has loaded the selected member's record.
-SCRIBE_LOADED = {"list", "pick", "picked", "refused", "listexit", "chosen",
+SCRIBE_LOADED = {"list", "pick", "picked", "rejected", "listexit", "chosen",
                  "confirm"}
 SCRIBE_MOVES = {
     ("camp", ("bar", "MAGIC")): "magic",
@@ -11885,7 +11885,7 @@ class _ScribeFake(_CurseFake):
         return super()._go(what)
 
     def screen(self):
-        hot = self.hot if self.state in ("pick", "picked", "refused") else None
+        hot = self.hot if self.state in ("pick", "picked", "rejected") else None
         if self.state == "picked" and self.after_pick:
             if self.after_pick.pop(0) == "message":
                 # The message window over the list's foot and its EXIT row,
@@ -11951,7 +11951,7 @@ def test_scribe_step_parses_who_and_the_spell(step):
 
 @pytest.mark.parametrize("step", ["scribe MORGAINE", "scribe", "scribe >FOO",
                                   "scribe MORGAINE>"])
-def test_scribe_step_without_who_and_spell_is_refused(step):
+def test_scribe_step_without_who_and_spell_is_rejected(step):
     with pytest.raises(ValueError):
         A.parse_steps(["load", step])
 
@@ -12019,7 +12019,7 @@ def test_scribe_fails_when_no_key_raises_the_queue_count(tmp_path, monkeypatch):
 
 
 def test_scribe_fails_on_the_games_rejection_without_a_second_key(tmp_path):
-    sess = _ScribeFake({("pick", ("key", "Return")): "refused"})
+    sess = _ScribeFake({("pick", ("key", "Return")): "rejected"})
     run = _scribe_run(tmp_path, sess)
     with pytest.raises(A.StepFailed, match="CAN'T SCRIBE STONE TO FLESH"):
         run.scribe("MORGAINE>STONE TO FLESH")
@@ -12035,7 +12035,7 @@ def test_scribe_fails_when_the_count_is_zero_at_the_end(tmp_path):
     run.log.close()
 
 
-def test_scribe_refuses_a_spell_that_is_not_on_the_scroll(tmp_path):
+def test_scribe_rejects_a_spell_that_is_not_on_the_scroll(tmp_path):
     sess = _ScribeFake()
     run = _scribe_run(tmp_path, sess)
     with pytest.raises(A.StepFailed, match="FIREBALL is not on the scroll list"):
@@ -12208,7 +12208,7 @@ def test_scribe_does_not_send_the_second_key_after_a_rejection_flash_between_pol
 
     sess = Flash({("pick", ("key", "Return")): "pick"})
     run = _scribe_run(tmp_path, sess)
-    with pytest.raises(A.StepFailed, match="may have refused"):
+    with pytest.raises(A.StepFailed, match="may have rejected"):
         run.scribe("MORGAINE>STONE TO FLESH")
     run.log.close()
     assert ("key", 0x0D) not in sess.sent
@@ -12221,7 +12221,7 @@ def test_scribe_does_not_send_the_second_key_when_the_prompt_was_replaced(
     # The first key replaced the pick prompt: no spell row, no highlight.
     sess = _ScribeFake({("pick", ("key", "Return")): "chosen"}, scribed=set())
     run = _scribe_run(tmp_path, sess)
-    with pytest.raises(A.StepFailed, match="may have refused"):
+    with pytest.raises(A.StepFailed, match="may have rejected"):
         run.scribe("MORGAINE>PROTECTION FROM GOOD")
     run.log.close()
     assert ("key", 0x0D) not in sess.sent
@@ -12274,7 +12274,7 @@ def test_scribe_picks_from_the_first_page_of_a_paged_list(tmp_path):
     assert got["paged"] is True and sess.picked_on == 5 and sess.state == "camp2"
 
 
-def test_scribe_refuses_a_paged_list_without_the_spell_on_its_first_page(tmp_path):
+def test_scribe_rejects_a_paged_list_without_the_spell_on_its_first_page(tmp_path):
     sess = _paged(_ScribeFake())
     run = _scribe_run(tmp_path, sess)
     with pytest.raises(A.StepFailed, match="FIREBALL is not on the scroll list's "
@@ -12626,7 +12626,7 @@ def test_curse_fight_flee_settles_an_ended_fight_only_when_a_member_was_dropped(
     assert [m["name"] for m in got["left_behind"]] == ["B"]
 
 
-def test_curse_fight_flee_is_refused_under_the_attack_diagnostic():
+def test_curse_fight_flee_is_rejected_under_the_attack_diagnostic():
     run = A.CurseRun.__new__(A.CurseRun)
     run.attack_by, run.attack_owner = "ROLAND", 0
     run.capture = lambda tag: None
@@ -12720,7 +12720,7 @@ class _ItemRowsFake(FakeSession):
             last = max(r for r in rows if rows[r].strip() not in ("EXIT", ""))
             if self.answer == "readied":
                 rows[last] = rows[last].replace(" NO", " YES", 1)
-            elif self.answer == "refused":
+            elif self.answer == "rejected":
                 rows[21] = "WRONG CLASS"
             elif self.answer == "vanished":
                 del rows[last]
@@ -12771,7 +12771,7 @@ def _ready_row(tmp_path, monkeypatch, arg, answer="readied", rows=None,
         log.close()
 
 
-def test_ready_row_parses_the_row_number_and_refuses_row_zero():
+def test_ready_row_parses_the_row_number_and_rejects_row_zero():
     assert A.parse_ready("THRENDER GRONE>#3") == ("THRENDER GRONE", "#3")
     assert A.ready_row("#3") == 3 and A.ready_row("FLAIL") is None
     with pytest.raises(ValueError, match="#0 names no row"):
@@ -12788,19 +12788,19 @@ def test_ready_row_readies_the_nameless_third_row(tmp_path, monkeypatch):
     assert got["screen_changed"] is True
 
 
-def test_ready_row_refused_before_any_key_when_the_list_is_another_members(
+def test_ready_row_rejected_before_any_key_when_the_list_is_another_members(
         tmp_path, monkeypatch):
     with pytest.raises(A.StepFailed, match="not BROTHER SEAN's"):
         _ready_row(tmp_path, monkeypatch, "BROTHER SEAN>#1")
 
 
 def test_ready_row_reports_the_rejection_text_the_game_printed(tmp_path, monkeypatch):
-    got, _, _ = _ready_row(tmp_path, monkeypatch, "THRENDER GRONE>#3", "refused")
-    assert (got["outcome"], got["message"]) == ("refused", "WRONG CLASS")
+    got, _, _ = _ready_row(tmp_path, monkeypatch, "THRENDER GRONE>#3", "rejected")
+    assert (got["outcome"], got["message"]) == ("rejected", "WRONG CLASS")
     assert got["row_was"] == got["row_now"] == "NO"
 
 
-def test_ready_row_past_the_end_is_refused_before_any_key(tmp_path, monkeypatch):
+def test_ready_row_past_the_end_is_rejected_before_any_key(tmp_path, monkeypatch):
     sess = _ItemRowsFake("readied")
     monkeypatch.setattr(A.route_pool, "open_items", lambda *a: True)
     monkeypatch.setattr(A.route_pool, "leave_items",
@@ -13010,7 +13010,7 @@ def test_a_save_before_the_snapshot_does_not_stop_its_restore():
     A.parse_steps(["load", "save", "snapshot a", "restore a"])
 
 
-def test_a_negative_walk_retry_is_refused(capsys):
+def test_a_negative_walk_retry_is_rejected(capsys):
     with pytest.raises(SystemExit):
         A.main(["--walk-retry", "-1"])
     assert "--walk-retry cannot be negative" in capsys.readouterr().err
@@ -13114,7 +13114,7 @@ class _TravelMonitor:
 
     def __enter__(self):
         if self.sess.unreadable:
-            raise OSError("monitor connection refused")
+            raise OSError("monitor connection rejected")
         return self
 
     def __exit__(self, *exc):
@@ -13389,7 +13389,7 @@ def test_a_retried_outdoor_walk_into_another_window_counts_no_step(
 
 
 @pytest.mark.parametrize("arg", ["9", "2I", "0"])
-def test_a_walk_that_mixes_digits_or_names_no_compass_digit_is_refused(arg):
+def test_a_walk_that_mixes_digits_or_names_no_compass_digit_is_rejected(arg):
     with pytest.raises(ValueError):
         A.parse_steps(["load", f"walk {arg}"])
 
@@ -13725,7 +13725,7 @@ def test_a_question_found_at_the_last_second_is_answered_within_what_is_left(
 
 def test_a_driver_error_with_a_blank_bar_fails_at_once_without_waiting_for_a_question(
         tmp_path, monkeypatch):
-    class Refusing(RealWalk):
+    class Stopping(RealWalk):
         def __init__(self, clock):
             super().__init__(clock, prompt_after=None)
             self.walk_screens = self.walk_stop_screen = None
@@ -13736,7 +13736,7 @@ def test_a_driver_error_with_a_blank_bar_fails_at_once_without_waiting_for_a_que
             return False
 
     clock = _Clock(monkeypatch)
-    run, log = _walk_run(tmp_path, Refusing(clock), clock)
+    run, log = _walk_run(tmp_path, Stopping(clock), clock)
     start = clock.now
     with pytest.raises(A.StepFailed, match="the driver pressed nothing"):
         run.walk("I")

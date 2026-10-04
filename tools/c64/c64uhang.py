@@ -42,7 +42,7 @@ program and one data file, generated here, containing nothing copyrighted.
     tools/c64/c64uhang.py sweep --sizes 256,1024,4096,8192,16384 --budget 8 \\
         --log-dir SWEEPDIR
 
-Speaker off before a boot (`.claude/rules/emulator.md`); `run` refuses unless
+Speaker off before a boot (`.claude/rules/emulator.md`); `run` rejects unless
 the device reports it Disabled.  Writes memory only at `$0277`/`$00C6` for a
 keystroke, resets to `READY.` when done, and touches no device configuration.
 """

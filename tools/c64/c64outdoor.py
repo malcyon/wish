@@ -40,7 +40,7 @@ half of what this tool is for:
 * the loaded-files cache at `$4BC0`.
 
 Nothing here touches the player's disks: `tools/c64/session.py`'s `stage_disks`
-copies the eight sides into the slot and `Session.attach` refuses a path
+copies the eight sides into the slot and `Session.attach` rejects a path
 outside it.  The pool owns the emulator -- claim, launch, tear down.
 
     tools/c64/c64outdoor.py --seed-from PORSAVE13.D64 --walk 13 --saves 2

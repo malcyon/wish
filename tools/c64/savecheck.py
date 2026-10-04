@@ -33,7 +33,7 @@ What it reads, in order:
 
 `tools/dos/dosdisk.py --sheet` prints the DOS side of the same comparison.
 
-Nothing is written to the player's disks: `Session.attach` refuses a path
+Nothing is written to the player's disks: `Session.attach` rejects a path
 outside the slot's own directory, and the sides and the save are copied there
 first.
 """
@@ -152,9 +152,9 @@ def answer_bars(sess, log: Log, answer: str = "NO", tries: int = 60,
             # which one a run wants is the run's decision (`Session.
             # outdoor_boat`, `--boat`).  Said rather than sat in front of --
             # this used to spin out its whole budget and report `stuck`, which
-            # is how eight outdoor steps were recorded as refused without a
+            # is how eight outdoor steps were recorded as rejected without a
             # digit ever reaching the game (`#382 (An outdoor Pool of Radiance
-            # party's compass step is refused, and the retry cannot find the
+            # party's compass step is rejected, and the retry cannot find the
             # movement prompt afterwards)`).
             log.say(f"    the square is a boat landing: |{row.strip()}| -- "
                     f"nothing here answers it; pass --boat")
@@ -815,7 +815,7 @@ def icon_evidence(sess, icon: bytes, slots: list[dict] | None = None,
         # that answers the VIC's registers at `$D000` -- so `.get("ram", 0)`
         # would put this read straight back into the bug, reporting
         # `distinct_figures` 1 for every party with nothing to say it had
-        # (#265). `tools/c64/vicebankcheck.py` refuses the same way.
+        # (#265). `tools/c64/vicebankcheck.py` rejects the same way.
         banks = bank_ids(m)
         if "ram" not in banks:
             raise SystemExit(f"this VICE offers no bank called ram, so the "

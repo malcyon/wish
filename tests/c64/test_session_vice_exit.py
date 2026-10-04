@@ -39,9 +39,9 @@ def _session(tmp_path):
 
 
 def _no_waiting(monkeypatch):
-    def refuse(seconds):
+    def reject(seconds):
         raise AssertionError("slept instead of stopping")
-    monkeypatch.setattr(session.time, "sleep", refuse)
+    monkeypatch.setattr(session.time, "sleep", reject)
 
 
 def test_launch_raises_with_the_log_when_vice_has_already_exited(

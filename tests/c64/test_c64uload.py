@@ -63,7 +63,7 @@ class FakeDevice(c64uload.Device):
         record["reply"] = self.clock.now
         self.requests += 1
         if self.fail:
-            record.update(status=None, error="<urlopen error refused>")
+            record.update(status=None, error="<urlopen error rejected>")
             self.failed_count += 1
             self.last_error = record
             if self.failed is None:
@@ -238,7 +238,7 @@ def test_the_fit_does_not_blame_a_request_two_seconds_away():
     assert abs(abs(nearest["offset_ms"]) - 2500) < 30
 
 
-def test_the_fit_refuses_with_too_few_moving_samples():
+def test_the_fit_rejects_with_too_few_moving_samples():
     samples, requests, frozen = synthetic_log(freeze_at=15.0, minutes=1.0)
     assert "error" in c64uload.fit_freeze(samples, requests, frozen)
 

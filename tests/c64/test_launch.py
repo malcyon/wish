@@ -144,7 +144,7 @@ def test_a_group_terminate_ends_the_launch_and_its_display(stubs):
     assert _group_members(proc.pid) == []
 
 
-def test_a_missing_disk_is_refused_and_starts_nothing(stubs):
+def test_a_missing_disk_is_rejected_and_starts_nothing(stubs):
     env, record = stubs
     proc = _launch(SCRIPT, env, disk=None)
     assert proc.wait(timeout=15) != 0

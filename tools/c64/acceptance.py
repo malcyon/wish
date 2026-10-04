@@ -30,7 +30,7 @@ Staging is an input, written before the boot and never after the load:
 
 * `--stage-var ADDR=BYTE`, one byte of the save file at its memory address
   (hex, `4A07=01`), as the game loads it: only `$4900` to the end of the file
-  is reachable, so a byte the game rebuilds elsewhere (`$6DD2`) is refused.  It is applied after the other payload staging
+  is reachable, so a byte the game rebuilds elsewhere (`$6DD2`) is rejected.  It is applied after the other payload staging
   options and wins if they touch the same byte.
 
 SLOT is the save slot, 0 first.  Every option repeats, and each is logged in
@@ -54,8 +54,8 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 
 | step | what it does and reads |
 |---|---|
-| `load` | boot, `LOAD SAVED GAME`, `BEGIN ADVENTURING`; arms every `--checkpoint`. Followed by `remove`, it stops on the party menu instead, and `BEGIN ADVENTURING` waits for the first step that is not a `remove`; `--checkpoint` and `--read-at` are refused when no such step follows, and no reading is logged after a step that ends on the party menu |
-| `remove WHO` | the party menu's `REMOVE CHARACTER FROM PARTY`, then WHO's row on the list it puts up; waits for the list to come back one name shorter, `EXIT`s to the party menu, then keeps the save disk as `removed-N.D64` (attaching the image again when VICE has left the directory open) with its directory (`added`, `gone` and `changed` against the directory before) and the 1541's error-message buffer (`$02D5` in the drive). WHO is a panel number, counted on the list as it stands, so a second `remove 1` takes the member who was second; or a whole name, and a name picks the first row drawing it, so a duplicated name needs the number. Only straight after `load` or another `remove`. A `MAKE SAVE GAME DISK ? YES NO` in place of the shorter list is the game refusing the write: it is answered NO, never YES (YES formats a disk), the disk and the drive's buffer are kept, and the step fails unless the list then comes back without WHO |
+| `load` | boot, `LOAD SAVED GAME`, `BEGIN ADVENTURING`; arms every `--checkpoint`. Followed by `remove`, it stops on the party menu instead, and `BEGIN ADVENTURING` waits for the first step that is not a `remove`; `--checkpoint` and `--read-at` are rejected when no such step follows, and no reading is logged after a step that ends on the party menu |
+| `remove WHO` | the party menu's `REMOVE CHARACTER FROM PARTY`, then WHO's row on the list it puts up; waits for the list to come back one name shorter, `EXIT`s to the party menu, then keeps the save disk as `removed-N.D64` (attaching the image again when VICE has left the directory open) with its directory (`added`, `gone` and `changed` against the directory before) and the 1541's error-message buffer (`$02D5` in the drive). WHO is a panel number, counted on the list as it stands, so a second `remove 1` takes the member who was second; or a whole name, and a name picks the first row drawing it, so a duplicated name needs the number. Only straight after `load` or another `remove`. A `MAKE SAVE GAME DISK ? YES NO` in place of the shorter list is the game rejecting the write: it is answered NO, never YES (YES formats a disk), the disk and the drive's buffer are kept, and the step fails unless the list then comes back without WHO |
 | `camp-list [WHO]` | `ENCAMP > MAGIC > DISPLAY`, then each name the game offers (or WHO alone, which may be `THE WHOLE PARTY`): the spells it lists as in effect, page by page. Curse first shows the list of the member under the panel highlight and asks on whom only after its last page; that list is logged as `camp-list-highlighted` and the whom menu is then read the same way |
 | `items WHO`, `view WHO` | `VIEW` and the ITEMS list, or the sheet alone, as text, with each item's Detect Magic mark; on Curse and Silver Blades it then leaves through the list's `EXIT`, the sheet's `EXIT` and the camp's `EXIT`, so the next step starts in the world |
 | `rest 5m`, `rest 8h`, `rest 1h30m` | camp `REST` for exactly that long (`tools/c64/route_pool.py`'s rest); straight after a `scribe` it rests in the camp the scribe left open, since every camp exit cancels the scribe queue, and adds `stayed_in_camp`; a city-watch `GO STAY` event that ends it is answered `GO`, logged as `random_event`, and the result's `rest_completed` says whether the clock ran the full time.  A rest the area's check interrupted (`$6DD3` = `$FF`, or `CAMP` already gone) waits for the prompt the area puts up sending no key apart from disk-swap answers, answers it, and adds `ended: "interrupted"`, `interrupted`, `bar`, `prompts` and `watch_seen`, which only an interrupted rest carries.  Whenever a watch was answered, interrupted or not, the result has `state_cleared` (the bytes `GO` clears).  A fight fails the step at once, and any other prompt fails it naming row 24.  A Curse or Silver Blades rest the game stopped (`rest_later`'s `interrupted`) answers each `PRESS ... TO CONTINUE` page with Return, keeps its text, and adds `ended: "interrupted"`, `interrupted`, `bar`, `prompts` and `text`; a fight after the event fails the step at once naming the event's text.  Under `--no-encounters` the area's rest interruption is zeroed before the rest starts and the result has `rest_interrupt_suppressed` |
@@ -67,7 +67,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `cast CASTER:DISPEL MAGIC>TARGET` | Pool: checks the named caster, animated target and its eligible id-32 row at index 63 before input; captures the target prompt, all party and effect-row bytes before and after, and checks the game-written save. `--preserve-specimen --issue 700` registers that save or a matched no-cast BRUTUS view control before teardown |
 | `scribe WHO>SPELL` | camp `MAGIC > SCRIBE` for WHO: the scroll list kept as text, SPELL's row highlighted and picked (Return, then a KERNAL Return while the count stands), the pick prompt's `EXIT` row, the list's `EXIT`, the `CHOSEN SPELLS` page kept, `OKAY` at the confirmation, and back to the camp bar. WHO's roster slice of the scribe queue (`+0x01` first entry, `+0x02` count: Pool `$6C01`, Curse and Silver Blades `$7D01`) is read before, after the pick and at the end, with its queue entries; a rejection (`CAN'T SCRIBE`), a spell not on the list, or a count of zero at the end fails the step. A list of more than one page (`NEXT` or `PREV` on row 24) is taken when SPELL is on the first page shown, and the result's `paged` says so; SPELL not on that page fails the step as `scribe-pages`, since the other pages are not read. Measured on Silver Blades and Pool of Radiance |
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
-| `ready WHO>LABEL`, `ready WHO>#N` | Pool only: `ENCAMP > VIEW WHO > ITEMS`, press READY once for LABEL, and read every party record, effect row and item block before and after. `screen_changed` describes the item row; `memory_changed` describes bytes in those three ranges; legacy `flipped` keeps its screen-only meaning. `--capture-ready` saves three bounded in-list checkpoints for BAKSHI and registers the game-written save before teardown. `#N` is the Nth row of WHO's ITEMS list from 1, for an item that draws no name: the step checks the list up is WHO's and has a row N before any READY key, then reports `outcome` (`readied`, `unreadied`, `refused` or `unchanged`), the row before and after, and the rejection text the game printed (`WRONG CLASS`), and takes no `--capture-ready` checkpoints |
+| `ready WHO>LABEL`, `ready WHO>#N` | Pool only: `ENCAMP > VIEW WHO > ITEMS`, press READY once for LABEL, and read every party record, effect row and item block before and after. `screen_changed` describes the item row; `memory_changed` describes bytes in those three ranges; legacy `flipped` keeps its screen-only meaning. `--capture-ready` saves three bounded in-list checkpoints for BAKSHI and registers the game-written save before teardown. `#N` is the Nth row of WHO's ITEMS list from 1, for an item that draws no name: the step checks the list up is WHO's and has a row N before any READY key, then reports `outcome` (`readied`, `unreadied`, `rejected` or `unchanged`), the row before and after, and the rejection text the game printed (`WRONG CLASS`), and takes no `--capture-ready` checkpoints |
 | `fight-flee [SECONDS]` | `fight`'s route into a fight, then `fleedrive.Flight` as the tactic with no wound patch, for at most SECONDS (120): the members who run stay alive and the game's own drop of a member left behind runs, which `walk-flee`'s menu FLEE never reaches. The result records `got_away` and `left_behind` (each member's slot, name and status before and after, a member left behind being one whose name the drop cleared); a fight that does not end on `THE PARTY RUNS AWAY` (won, lost, or still going at SECONDS) fails the step naming `fight-flee` |
 | `walk-fight MOVES[/NO]` | Pool only: `walk`'s moves, but an encounter menu is answered COMBAT (never FLEE), the fight is fought out with `Session.melee_turn` (900 s each), and the route resumes from the square the fight left the party on, an `I` that did not complete being sent once more; the treasure screen a won fight reaches is kept as `NN-treasure.png` and `.txt` before the fight answers it; a treasure screen met on the walk after a fight (mode 5, a bar holding `EXIT`, such as `VIEW POOL EXIT`) is left with EXIT, once for each bar it shows (a `GO BACK LEAVE TREASURE` bar that EXIT opens is answered LEAVE), on the encounter path as well as after a `PRESS` bar, and listed in `treasure_screens`; an `INSERT SIDE # N` prompt (sides 2 to 4) is answered once per side, with the image attached, a key pressed and the frame kept as `sideN-before-answer`, and a repeat or a save-disk prompt fails the step; a forward move must land on the next square, else the step fails as blocked or as an exit or a teleport. A `YES NO` is answered NO only on the last key, and only when `/NO` is given; anywhere else it fails the step with nothing pressed. With a `save` after it, the summary's `drain` says whether some character's level fell by 1 or 2 with `levels_drained` equal to the fall, `hp_lost_to_drain` not zero, one class level down by the same amount and `hp_max` down by `hp_lost_to_drain`; nobody drained is recorded, not a failure |
 | `walk-flee MOVES[/NO]` | Pool only: `walk-fight`, but an encounter menu is answered FLEE; each flee is recorded in `flees` as `escaped` (the world bar or the move prompt `I,J,K,M, RETURN OR BUTTON` came back) or with the `fight` that opened, which is fought out; a move that escaped a flee is judged only for a readable facing, a caught one as `walk-fight` judges; a flee that ends in neither is a failure after `FIGHT_OPENS_SECONDS` |
@@ -127,7 +127,7 @@ camp lists that differ, saying whether an item row differs only by the mark.
 Evidence goes to `~/.cache/wish/acceptance/<issue>/<sha>-<run>/`:
 `run.jsonl`, `summary.json`, `staged.D64` (the save as booted), a text file
 and a PNG for every screen read, and `saved.D64` (the game's own resave).  A
-directory that already holds a run is refused.  Nothing is committed and the
+directory that already holds a run is rejected.  Nothing is committed and the
 player's disks are only read.
 """
 
@@ -230,7 +230,7 @@ def temple_crossing_index(route) -> int | None:
     """The route entry whose expected area differs from its before area: the
     only move allowed a side-3 disk prompt. None for a route that crosses no
     area, on which a side-3 prompt is unapproved. More than one crossing is
-    refused, or a second would be misrouted as an unexpected disk prompt."""
+    rejected, or a second would be misrouted as an unexpected disk prompt."""
     crossings = [i for i, (_, before, expected) in enumerate(route)
                  if before[0] != expected[0]]
     if len(crossings) > 1:
@@ -387,7 +387,7 @@ SAVE_ERROR = "TRY AGAIN"
 #: list under it puts up (`REMOVE CHARACTER ?` in Pool of Radiance, `REMOVE
 #: CHARACTER FROM PARTY` in Curse and Silver Blades: the captures kept under
 #: `cited/258`, `cited/439` and `cited/435`); and the question the game asks
-#: in place of the write when the drive refuses it (a write-protected image,
+#: in place of the write when the drive rejects it (a write-protected image,
 #: `cited/439/readd1`).
 PARTY_MENU = "BEGIN ADVENTURING"
 REMOVE_ROW = "REMOVE CHARACTER FROM PARTY"
@@ -844,7 +844,7 @@ def ready_row(label: str) -> int | None:
 #: nameless item does not, so it is what `ready WHO>#N` waits for.
 ITEM_HEADING = "EQUIPPED ITEM"
 
-#: What the game prints when READY is refused (`LIBRARY $46A6`).
+#: What the game prints when READY is rejected (`LIBRARY $46A6`).
 REJECTIONS = ("WRONG CLASS", "CURSED", "NOT HERE", "TOO MANY")
 
 
@@ -1050,7 +1050,7 @@ WARP_IDLE_SECONDS = 300.0
 def parse_warp(arg: str) -> int:
     """The area id a `warp` names: a fast-travelable dungeon or town area.
 
-    A wilderness row is refused because `warp` writes no overland square, so
+    A wilderness row is rejected because `warp` writes no overland square, so
     the party would land on its last one.
     """
     if not re.fullmatch(r"[0-9]+", arg):
@@ -1103,7 +1103,7 @@ def _guard_temple_source(source: pathlib.Path, steps: list[Step]) -> str:
 
 def temple_staging_check(source: pathlib.Path, staged: pathlib.Path,
                          records, sanctioned) -> None:
-    """Refuse a staged temple disk that differs from SOURCE by anything but
+    """Reject a staged temple disk that differs from SOURCE by anything but
     the sanctioned RECORDS (SANCTIONED, the mode's `TEMPLE_STAGING`).
 
     With no RECORDS the copy must be byte-identical. Otherwise every file
@@ -2177,7 +2177,7 @@ class PoolRun:
                                attempts=max(1, int(self.budget(10, "the disk copy"))))
             return {"kept": str(kept), "reattached": False, "closed": True}
         except RuntimeError as e:
-            self.log.emit("remove-copy-refused", why=str(e))
+            self.log.emit("remove-copy-blocked", why=str(e))
         self.sess.attach(str(disk))
         try:
             S.copy_closed_disk(disk, kept, backoff=1.0,
@@ -2216,19 +2216,19 @@ class PoolRun:
         if rows is None:
             raise self.fail("remove", f"the list still offered {listed_name(row)} "
                                       f"after {REMOVE_WAIT} s")
-        refused = drive = None
+        rejected = drive = None
         if MAKE_SAVE_DISK in rows[24]:
-            refused = rows[24].strip()
-            self.capture(f"{tag}-refused", rows)
+            rejected = rows[24].strip()
+            self.capture(f"{tag}-blocked", rows)
             drive = self.drive_error()
-            self.log.emit("remove-refused", bar=refused, drive_error=drive)
+            self.log.emit("remove-blocked", bar=rejected, drive_error=drive)
             self.answer_no()
             rows = self.wait_rows(
                 lambda r: MAKE_SAVE_DISK not in r[24]
                 and (remove_list(r) is not None or _has(r, PARTY_MENU)),
                 self.budget(60, "the list after NO"), "the list after NO")
             if rows is None:
-                raise self.fail("remove", f"nothing came back after NO on {refused!r}")
+                raise self.fail("remove", f"nothing came back after NO on {rejected!r}")
         self.capture(f"{tag}-done", rows)
         left = remove_list(rows)
         if left is not None and not self.sess.select_row(
@@ -2244,12 +2244,12 @@ class PoolRun:
         change = directory_change(self.directory or [], directory)
         self.directory = directory
         got = {"who": who, "row": row, "listed": listed, "left": left,
-               "stopped": refused, "drive_error": drive, **disk,
+               "stopped": rejected, "drive_error": drive, **disk,
                "directory": directory, **change}
-        if refused is not None and (left is None or len(left) != len(listed) - 1):
+        if rejected is not None and (left is None or len(left) != len(listed) - 1):
             # Every later step would run on a party that still holds WHO.
             self.log.emit("remove-not-taken", **got)
-            raise self.fail("remove", f"the game refused the write ({refused!r}), "
+            raise self.fail("remove", f"the game rejected the write ({rejected!r}), "
                                       f"NO was answered, and the list did not come "
                                       f"back without {listed_name(row)}")
         return got
@@ -3481,7 +3481,7 @@ class PoolRun:
         raise stalled()
 
     def _dispel_guard(self, before: dict, caster: str, target: str) -> int:
-        """Refuse a cast unless its live members and row are the intended ones."""
+        """Reject a cast unless its live members and row are the intended ones."""
         party = before.get("party", [])
         def named(name: str) -> list[dict]:
             return [p for p in party if p.get("name", "").upper() == name.upper()]
@@ -3710,10 +3710,10 @@ class PoolRun:
             while self.clock() < limit:
                 rows = self.rows()
                 if _has(rows[17:23], CANT_SCRIBE):
-                    shown = self.capture("scribe-refused", rows)
+                    shown = self.capture("scribe-blocked", rows)
                     text = " ".join(t for t in (_inner(r) for r in shown[17:23])
                                     if t and not _is_frame(t))
-                    raise self.fail("scribe-refused", f"the game refused: {text}")
+                    raise self.fail("scribe-blocked", f"the game rejected: {text}")
                 now = self.scribe_bytes()
                 if now["count"] > before["count"]:
                     return key, now
@@ -3723,7 +3723,7 @@ class PoolRun:
 
     def _scribe_untouched(self, spell: str) -> None:
         """Fail, with the screen kept, unless the pick prompt still has SPELL
-        highlighted: the count did not rise and the game may have refused."""
+        highlighted: the count did not rise and the game may have rejected."""
         # A monitor that did not answer reads as no screen; ask again before
         # calling the highlight lost.
         for attempt in range(3):
@@ -3741,7 +3741,7 @@ class PoolRun:
         self.capture("scribe-pick-moved", rows or None)
         raise self.fail("scribe-pick", f"the count did not rise for {spell} and "
                         "the highlight left its row, so the game may have "
-                        "refused it")
+                        "rejected it")
 
     def _scribe_after_pick(self, seconds: float) -> None:
         """Wait out the message a pick draws before any key goes out.
@@ -4002,11 +4002,11 @@ class PoolRun:
         the effect and item arrays before and after, Pool of Radiance only.
 
         Reaches the item list through camp, not the world's `VIEW`: a
-        magical item's READY toggle (`LIBRARY $4630`) is refused with `NOT
+        magical item's READY toggle (`LIBRARY $4630`) is rejected with `NOT
         HERE` unless `$6DE4` is set, which only camp sets (#694).
         `tools/c64/route_pool.py`'s `SLOT_BASE`, `SLOT_STRIDE` and `EFFECTS`
         are Pool's own layout, the same one `traitask.stage_items` and
-        `route_pool.toggle_item` already drive; `main` refuses this step for
+        `route_pool.toggle_item` already drive; `main` rejects this step for
         Curse and Silver Blades.
         """
         who, label = parse_ready(arg)
@@ -4156,7 +4156,7 @@ class PoolRun:
         if was["readied"] != now["readied"]:
             outcome = "readied" if now["readied"] else "unreadied"
         else:
-            outcome = "refused" if message is not None else "unchanged"
+            outcome = "rejected" if message is not None else "unchanged"
         return after != before, {
             "row": row, "row_was": was["row"], "row_now": now["row"],
             "outcome": outcome, "message": message}
@@ -4616,7 +4616,7 @@ class PoolRun:
         return {"area": area, "writes": listing, "triple": triple,
                 "position": self.position()}
 
-    def refuse_prompt(self, route: str, last, why: str) -> None:
+    def stop_at_prompt(self, route: str, last, why: str) -> None:
         """Fail the walk when a disk prompt is on the screen, answering nothing."""
         screen = self.sess.screen()
         if screen is None or not self.sess.wanted_disk(screen):
@@ -4631,7 +4631,7 @@ class PoolRun:
                     f"not a step: {row}")
 
     def answer_side_prompt(self, route: str, last, why: str) -> bool:
-        """`refuse_prompt`, except that `INSERT SIDE # N` is answered once.
+        """`stop_at_prompt`, except that `INSERT SIDE # N` is answered once.
         Returns whether a prompt was answered, which means the move key was
         read.
 
@@ -4649,7 +4649,7 @@ class PoolRun:
         sides = S.RE_GAME_SIDE.findall(text)
         n, move, before = last
         if S.SAVE_PROMPT in text or len(sides) != 1:
-            self.refuse_prompt(route, last, why)
+            self.stop_at_prompt(route, last, why)
             return False
         side, row = sides[0], screen.row(24).strip()
         if side not in WALK_SIDES:
@@ -5061,7 +5061,7 @@ class PoolRun:
         last = None
         for n, move in enumerate(route):
             self.budget(1, f"walk {route}")
-            self.refuse_prompt(route, last, "was up before the next move")
+            self.stop_at_prompt(route, last, "was up before the next move")
             before = self.travel_place()
             last = (n, move, before)
             after, resent = self._press_outdoor(route, n, move, before)
@@ -5080,7 +5080,7 @@ class PoolRun:
             look_until = self.clock() + LOOK_SECONDS
             while True:
                 self.budget(1, f"walk {route}")
-                self.refuse_prompt(route, last, "ran the square's event")
+                self.stop_at_prompt(route, last, "ran the square's event")
                 if self.clock() >= look_until:
                     break
                 time.sleep(0.3)
@@ -5105,7 +5105,7 @@ class PoolRun:
                           "blocked": after == before, "moved": after != before,
                           "window_changed": after[2] != before[2],
                           "resent": resent})
-        self.refuse_prompt(route, last, "ran the square's event")
+        self.stop_at_prompt(route, last, "ran the square's event")
         end = self.travel_place()
         self.capture(f"walked-{route}")
         return self._outdoor_result(route, start, end, moves,
@@ -5222,13 +5222,13 @@ class PoolRun:
             self.budget(1, f"walk {route}")
             # A prompt that opened after the previous move's look would be
             # answered by this move's `select_bar`, so it is looked for first.
-            self.refuse_prompt(route, last, "was up before the next move")
+            self.stop_at_prompt(route, last, "was up before the next move")
             before = self.position()
             last = (n, move, before)
             before_rows = self.rows()
             status_moved = self.sess.walk_one(move, tries=1, answer_prompts=False)
             resent = False
-            self.refuse_prompt(route, last, "ran the square's event")
+            self.stop_at_prompt(route, last, "ran the square's event")
             # Out on the travel grid a move is pressed once and never re-sent:
             # the status line lags and a turn does not exist there.
             screens = getattr(self.sess, "walk_screens", None)
@@ -5238,7 +5238,7 @@ class PoolRun:
                 resent = True
                 status_moved = self.sess.walk_one(move, tries=1,
                                                   answer_prompts=False)
-                self.refuse_prompt(route, last, "ran the square's event")
+                self.stop_at_prompt(route, last, "ran the square's event")
                 screens = getattr(self.sess, "walk_screens", None)
             asked = None
             if (not status_moved and screens is None and not self.spent()
@@ -5260,20 +5260,20 @@ class PoolRun:
                                   answer="NO")
                     status_moved = self.sess.walk_one(move, tries=1,
                                                       answer_prompts=False)
-                    self.refuse_prompt(route, last, "ran the square's event")
+                    self.stop_at_prompt(route, last, "ran the square's event")
                     screens = getattr(self.sess, "walk_screens", None)
-            refused = getattr(self.sess, "walk_stopped", None)
-            if refused:
+            rejected = getattr(self.sess, "walk_stopped", None)
+            if rejected:
                 self.log.emit("move", move=move, n=n, before=before,
                               after=self.steady_position(), resent=resent,
                               row24=self.bar().strip(), text=None, keyed=False)
-                raise self.fail("walk", f"walk {route}: {refused}")
+                raise self.fail("walk", f"walk {route}: {rejected}")
             # A square's event may put up a disk prompt after the key has been
             # read; answering it would carry the walk into another area.
             look_until = self.clock() + LOOK_SECONDS
             while True:
                 self.budget(1, f"walk {route}")
-                self.refuse_prompt(route, last, "ran the square's event")
+                self.stop_at_prompt(route, last, "ran the square's event")
                 if self.clock() >= look_until:
                     break
                 time.sleep(0.3)
@@ -5332,7 +5332,7 @@ class PoolRun:
                           "moved": before[:2] != after[:2],
                           "status_moved": status_moved, "resent": resent,
                           "asked": asked})
-        self.refuse_prompt(route, last, "ran the square's event")
+        self.stop_at_prompt(route, last, "ran the square's event")
         end = self.position()
         self.capture(f"walked-{route}")
         if not ("I" in route or "M" in route) and end[:2] != start[:2]:
@@ -5421,7 +5421,7 @@ class PoolRun:
                     self.log.emit("move-unsent", n=n, move=move,
                                   row24=self.bar().strip())
                     if after == before and again:
-                        self._refuse_blank_resend(route, n, move)
+                        self._check_blank_resend(route, n, move)
                         if unsent > MOVE_UNSENT_PASSES:
                             raise self.fail(
                                 self.walk_verb,
@@ -5474,7 +5474,7 @@ class PoolRun:
             got["flees"] = flees
         return got
 
-    def _refuse_blank_resend(self, route, n, move) -> None:
+    def _check_blank_resend(self, route, n, move) -> None:
         """Fail rather than send `walk_one` into a blank row 24: after an
         unsent pass the game may still be busy, and `walk_one` would press
         nothing and blame the driver.  A bar of any kind, a disk prompt or a
@@ -5572,9 +5572,9 @@ class PoolRun:
         answered = self.answer_side_prompt(route, last, "ran the square's event")
         unread = unread and not answered
         stop = getattr(sess, "walk_stop_screen", None)
-        refused = getattr(sess, "walk_stopped", None)
-        if refused and stop is None:
-            raise self.fail(self.walk_verb, f"{self.walk_verb} {route}: {refused}")
+        rejected = getattr(sess, "walk_stopped", None)
+        if rejected and stop is None:
+            raise self.fail(self.walk_verb, f"{self.walk_verb} {route}: {rejected}")
         pressed = stop is not None
         ambush = False
         if getattr(sess, "walk_encounter_started", False):
@@ -6042,7 +6042,7 @@ class PoolRun:
         measured here (`SAVING GAME` is, in Curse and Silver Blades: see
         `CurseRun.write_save`).  A bar coming back can precede the end of the
         write, so this wait does not prove it finished: `copy_closed_disk` is
-        what guards the copy, by refusing a disk whose directory is open.
+        what guards the copy, by rejecting a disk whose directory is open.
         """
         if not self.sess.save_game():
             raise self.fail("save", "ENCAMP > SAVE did not complete")
@@ -6359,7 +6359,7 @@ class CurseRun(PoolRun):
     def write_save(self) -> list[str]:
         """`SAVE`, `SAVE GAME`, then the write itself: `SAVING GAME` seen, gone,
         and the camp bar back.  A copy taken while it is still up finds the
-        save file unclosed, which `copy_closed_disk` refuses; waiting for the
+        save file unclosed, which `copy_closed_disk` rejects; waiting for the
         bar is what keeps the run from having no save at all."""
         if not self.to_camp():
             raise self.fail("camp", "ENCAMP never put up the camp bar")
@@ -6741,7 +6741,7 @@ class CurseRun(PoolRun):
         `fleedrive.Flight`; the drop of the members left behind is spared when
         the spare flag `$7EE6` is nonzero, so the result records it as `mercy`
         and a run with it set proves nothing about who is dropped.  `--attack-by`
-        watches a melee, so it refuses `flee`."""
+        watches a melee, so it rejects `flee`."""
         from tools.c64 import laterbattle
         from tools.curse_of_the_azure_bonds import cursethac0
 
@@ -7845,7 +7845,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--save", help="the save disk: a path, or a name inside --disks. "
                          "temple-probe takes only the registered specimen's "
                          "own path (its hash and registry entry are checked) "
-                         "and stages its own copy; a copy is refused")
+                         "and stages its own copy; a copy is rejected")
     ap.add_argument("--disks", default=None,
                     help="the player's disks; read, never written")
     ap.add_argument("--stage-row", action="append", default=[],

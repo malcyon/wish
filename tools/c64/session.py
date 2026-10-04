@@ -153,7 +153,7 @@ OUTDOOR_PROMPT = "1-8"
 #: converted Amiga party of `#376 (An Amiga party on the travel grid still
 #: cannot be converted to the C64 or DOS, because the reader refuses one)`
 #: stands on the west landing it sailed to, and eight directions in a row were
-#: recorded as refused without a digit ever reaching the game.
+#: recorded as rejected without a digit ever reaching the game.
 #:
 #: Both words, because `TAKE` alone is on other bars.
 BOAT_BAR = ("TAKE", "STAY")
@@ -489,7 +489,7 @@ BAR_NONE = "none"          # no readable screen at all
 # What row 24 becomes once the move sub-bar has gone and the turn has moved
 # on.  Deliberately not `BAR_MESSAGE` or `BAR_NONE`: a half-redrawn bar reads
 # as a message, and taking that for the end of a turn is the mistake
-# `combat_state` already refuses to make.
+# `combat_state` already will not make.
 #
 # `BAR_DISK` is in it because it used to be: a disk prompt was classified as
 # `BAR_PRESS` until `#336` gave it a kind of its own, so leaving it out here
@@ -1447,7 +1447,7 @@ class Session:
         """Put the machine back as `snapshot(name)` left it, drive included.
 
         Raises `FileNotFoundError` for a name never saved and `MonitorError`
-        if VICE refuses the file.  The machine runs on from the snapshot's
+        if VICE rejects the file.  The machine runs on from the snapshot's
         instant, and has run up to about 3 s past it when this returns (the
         drive's settling time, and with sound off the look for VICE's error
         dialog), with that dialog closed (`_close_restore_dialogs`) so keys
@@ -2179,7 +2179,7 @@ class Session:
         before the loop** -- not from a fresh `party_rows` on whatever frame
         the loop happens to poll.  Straight after a sheet that frame can be
         the world screen half-redrawn, which is what made `select_party(3)`
-        refuse a six-person Curse party at exactly three, every time (`#538`).
+        reject a six-person Curse party at exactly three, every time (`#538`).
         An empty stable read is not "no party", only "not settled in time" or
         "not on the world screen at all", so it falls through to the loop
         below, whose own "no name is highlighted" path answers that case.
@@ -2726,7 +2726,7 @@ class Session:
         `docs/121-silver-blades.md`), so there is nowhere in either of them
         for a party to be but a dungeon -- and `$49E6` there is a byte of
         `LIBRARY` code that happens to read zero, which is what made the
-        driver refuse to walk them
+        driver will not walk them
         (`#360 (The session driver will not walk a Curse or Silver Blades party
         in a dungeon, because it reads Pool of Radiance's indoors flag)`).
         """
@@ -3011,7 +3011,7 @@ class Session:
     def _check_save_allowed(self, allow_suppressed: bool = False) -> None:
         """Every `save_game`, this class's and each override, calls this first.
 
-        A save is refused after a snapshot restore until a disk is attached,
+        A save is rejected after a snapshot restore until a disk is attached,
         and once a poke has been written (`_pokes_written`) unless
         `allow_suppressed`: the pokes are save-page bytes and some are story
         counters, so the save would carry them.  Never use a save made with the override as conversion
@@ -3636,7 +3636,7 @@ class Session:
         # the top of it, a screen read that kept failing, a bar nobody has
         # named yet -- and no digit was sent, so a step recorded as blocked
         # would be the same invented map fact `#382 (An outdoor Pool of
-        # Radiance party's compass step is refused, and the retry cannot find
+        # Radiance party's compass step is rejected, and the retry cannot find
         # the movement prompt afterwards)` was.
         self.walk_stopped = (
             f"the driver pressed nothing: row 24 showed neither the direction "
@@ -3722,7 +3722,7 @@ class Session:
 
     def save_game(self, to: str | None = None, *,
                   allow_suppressed: bool = False) -> bool:
-        """`ENCAMP` then `SAVE`; refused under `no_encounters` (automapper
+        """`ENCAMP` then `SAVE`; rejected under `no_encounters` (automapper
         and driver testing only, never conversion proof) unless
         `allow_suppressed`."""
         self._check_save_allowed(allow_suppressed)
@@ -3903,9 +3903,9 @@ class Session:
             return CombatBar(BAR_YESNO, bar)
         return CombatBar(BAR_BLANK if not bar else BAR_MESSAGE, bar)
 
-    #: How long to give a blow to resolve before calling it refused.  Six
+    #: How long to give a blow to resolve before calling it rejected.  Six
     #: seconds because a landed one showed inside 1.6 s on every press
-    #: measured (`cited/127/sweep1.jsonl`) and a refused one had not
+    #: measured (`cited/127/sweep1.jsonl`) and a rejected one had not
     #: moved after ten (`cited/127/probe1.jsonl`).
     ATTACK_TIMEOUT = 6.0
 
@@ -3918,7 +3918,7 @@ class Session:
     def combat_bar(self, label: str, timeout: float = 20.0, row: int = 24) -> bool:
         """Put the combat highlight on `label` and press Return.
 
-        `select_bar` with three differences.  It **refuses every bar that is
+        `select_bar` with three differences.  It **rejects every bar that is
         not a menu**, which is what keeps a `Right` out of the move sub-bar,
         where it would step the character rather than move a highlight.  The
         highlight comes from the same screen snapshot as the text rather than
@@ -4336,7 +4336,7 @@ class Session:
                     # that count -- see `ATTACK` at the top of the file.
                     return ATTACK
                 # Still on the sub-bar six seconds later, so the blow was
-                # refused rather than struck.  Seen for a character with a
+                # rejected rather than struck.  Seen for a character with a
                 # **missile weapon readied** -- MALCYON with 13 DART, six
                 # presses watched for ten seconds apiece, no message, no
                 # damage, nothing (`cited/127/probe1.jsonl`).  Pass the
@@ -4605,7 +4605,7 @@ def claim_slot(want: int | None = None, note: str = ""):
 
 def npc_party_save() -> pathlib.Path:
     """The `npc-party-save` registry entry's `npc_party.d64`, or where it would
-    be if this machine had it -- the path a run refuses with when the file is
+    be if this machine had it -- the path a run rejects with when the file is
     missing, so the message names the place to put it (#575)."""
     return gamedisks.where("npc-party-save") / "npc_party.d64"
 
@@ -4642,7 +4642,7 @@ def stage_writable(src: pathlib.Path, dest: pathlib.Path) -> str:
     (`#455`, `#469`, `#472`).
 
     **The read-only attribute has to come off before the unlink, not after.**
-    Windows refuses to delete a file that still carries it, so a read-only
+    Windows will not delete a file that still carries it, so a read-only
     leftover -- the exact thing this function exists to clear -- made the
     unlink itself raise `PermissionError` there, on every call, and nothing
     on Linux ever showed it (`#495`).  The `chmod` is guarded because `dest`
@@ -4663,7 +4663,7 @@ def _restage(src: pathlib.Path, dest: pathlib.Path) -> None:
     """Copy `src` over `dest` and make the copy writable (`#430`, `#472`).
 
     The `try` is only for what `stage_writable` cannot fix -- the slot
-    directory itself refusing to be written -- so the error that reaches a
+    directory itself rejecting to be written -- so the error that reaches a
     caller names the path and what to do about it, rather than the bare
     `PermissionError` this replaces.
     """
@@ -4683,7 +4683,7 @@ def copy_closed_disk(src: pathlib.Path, dest: pathlib.Path, *,
 
     A successful game menu does not mean the 1541 has finished its final
     directory update.  An image copied while that update is pending contains
-    a splat entry which the game refuses with ``60, WRITE FILE OPEN``.  Copy
+    a splat entry which the game rejects with ``60, WRITE FILE OPEN``.  Copy
     each observation, rather than inspecting the live image in place, so the
     result handed to the caller is the exact image whose directory was proved
     closed.
@@ -4713,7 +4713,7 @@ def copy_closed_disk(src: pathlib.Path, dest: pathlib.Path, *,
             if attempt + 1 < attempts:
                 time.sleep(backoff)
         raise RuntimeError(
-            f"refusing to copy {src}: the drive did not close every non-empty "
+            f"not copying {src}: the drive did not close every non-empty "
             f"directory entry after {attempts} read(s); {last}")
     finally:
         candidate.unlink(missing_ok=True)
@@ -4723,7 +4723,7 @@ def stage_disks(slot, disks, save: str = "") -> str:
     """Copy the eight sides and a save into the slot, and say what to boot.
 
     **The player's disks are read and never written.**  `Session.attach`
-    refuses any path outside the slot's own directory, so everything the game
+    rejects any path outside the slot's own directory, so everything the game
     is ever shown is one of these copies: `SIDE1.D64` to `SIDE8.D64`, and the
     save as `SIDE0.D64`, which is what `Session.save_disk` points at.
     """

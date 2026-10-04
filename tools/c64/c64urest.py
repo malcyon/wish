@@ -31,7 +31,7 @@ reads or writes memory; this tool reads screen RAM so a boot can be observed
 rather than assumed, and writes exactly two addresses -- the KERNAL keyboard
 buffer and its count -- so a game's `DISABLE FASTLOADER (Y/N)?` can be
 answered.  Nothing here touches the device's configuration or reaches any of
-the routes `tools/c64/c64u.py` refuses.
+the routes `tools/c64/c64u.py` rejects.
 
     tools/c64/c64urest.py info                          device identity
     tools/c64/c64urest.py drives                        every drive and its image_path

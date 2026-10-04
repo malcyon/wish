@@ -364,14 +364,14 @@ def test_a_dos_share_reaches_the_c64_and_round_trips_exactly(share):
 
 
 @pytest.mark.parametrize("share", (4, 7))
-def test_a_three_bit_share_refuses_a_c64_destination(share):
+def test_a_three_bit_share_rejects_a_c64_destination(share):
     """No C64 byte preserves both a three-bit raw share and its effect."""
     source = _dos_record(constant=bytes((0, 0, share, 0, 0)))
     with pytest.raises(ValueError, match="treasure share"):
         c64_codec.write(dos_codec.to_neutral(source))
 
 
-def test_a_c64_three_bit_share_refuses_dos_but_round_trips_to_c64():
+def test_a_c64_three_bit_share_rejects_dos_but_round_trips_to_c64():
     """A malformed-but-preservable C64 raw byte cannot cross families."""
     record = CharacterRecord.blank()
     record.set("treasure_share", 4)

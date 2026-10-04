@@ -41,7 +41,7 @@ def ports(monkeypatch):
 def pool(tmp_path, monkeypatch, ports):
     """An isolated lease directory *and* an off-band `DISPLAY_BASE`.
 
-    Without this, `test_refuses_when_no_slot_is_available` claims every one
+    Without this, `test_rejects_when_no_slot_is_available` claims every one
     of the real `:10`-`:25` VICE displays to prove the pool can be
     exhausted -- and every agent runs this suite before reporting
     (`#233 (The test suite takes the emulator displays agents need, and
@@ -120,8 +120,8 @@ def args(tmp_path, monkeypatch, disks):
 
 
 @posix
-def test_refuses_when_no_slot_is_available(pool, fake_session, args, monkeypatch):
-    """Every slot leased elsewhere: `main()` must refuse, and must never
+def test_rejects_when_no_slot_is_available(pool, fake_session, args, monkeypatch):
+    """Every slot leased elsewhere: `main()` must reject, and must never
     construct a `Session` -- that construction is the one place the human's
     ports and display are reachable."""
     held = [instance.claim() for _ in range(instance.SLOTS)]
@@ -144,7 +144,7 @@ def test_the_named_slot_is_claimed_though_a_lower_one_is_free(
     """`--slot 3` on an idle pool must reach slot 3 (#174).
 
     `instance.claim()` is first-free and cannot be asked for a slot by
-    number, and walkrun used to claim whatever came back and refuse when it
+    number, and walkrun used to claim whatever came back and reject when it
     was not the one named -- so the ordinary case, a brief that names a slot
     and an empty pool at the start of a night, failed.  It now uses
     `session.claim_slot`, which holds the lower slots until it has the one
@@ -162,9 +162,9 @@ def test_the_named_slot_is_claimed_though_a_lower_one_is_free(
 
 
 @posix
-def test_a_named_slot_somebody_else_holds_is_refused(
+def test_a_named_slot_somebody_else_holds_is_rejected(
         pool, fake_session, args, monkeypatch):
-    """Refusing is still right when the named slot is genuinely taken: run
+    """Rejecting is still right when the named slot is genuinely taken: run
     somewhere else and two agents share one emulator."""
     held = instance.claim()             # slot 0
     mine = instance.claim()             # slot 1
@@ -229,7 +229,7 @@ def test_a_free_named_slot_is_honoured(pool, fake_session, args, monkeypatch):
 def test_the_staged_save_disk_is_writable(pool, fake_session, args):
     """`--base` is often a read-only specimen under `$WISH_SPECIMENS`;
     `shutil.copy` would carry that mode onto the slot's own `SIDE0.D64`, and
-    the game would then refuse every `ENCAMP > SAVE` with no word at all
+    the game would then reject every `ENCAMP > SAVE` with no word at all
     (#495)."""
     args.chmod(0o444)
 
@@ -274,7 +274,7 @@ def test_the_eight_sides_are_staged_before_the_session_is_built(
 
 
 @posix
-def test_missing_a_required_side_refuses_before_using_a_stale_slot_side(
+def test_missing_a_required_side_rejects_before_using_a_stale_slot_side(
         pool, fake_session, args, monkeypatch, tmp_path, capsys):
     """An incomplete ``--disks`` must not make a run borrow a prior tenant's
     side and silently walk against the wrong game content."""

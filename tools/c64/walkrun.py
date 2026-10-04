@@ -105,7 +105,7 @@ def main() -> int:
         # `stage_writable`, not a bare `shutil.copy`: `--base` is often a
         # read-only specimen under `$WISH_SPECIMENS`, and `shutil.copy`
         # carries that mode onto the copy -- the game is then handed a
-        # `SIDE0.D64` it cannot write, refuses every `ENCAMP > SAVE` with no
+        # `SIDE0.D64` it cannot write, rejects every `ENCAMP > SAVE` with no
         # word at all, and this tool reported the run as a success (#495).
         stage_writable(args.base, work_save)
 

@@ -5,7 +5,7 @@ failed to open MARK's individual sheet (a stale `bank_ids` cache made the
 underlying screen unreadable, `tests/c64/test_screenbank.py`'s
 `test_a_transport_failure_asking_for_the_banks_is_not_remembered`), yet both
 runs still logged `{"event": "sheet", "cure_offered": false}` and exited 0.
-`Run.open_sheet` already refuses a screen that is not the sheet and returns
+`Run.open_sheet` already rejects a screen that is not the sheet and returns
 `None` -- what was missing is that `Run.sheet` and `Run.cure` took that `None`
 as a negative answer instead of a failure.  Nothing here needs an emulator.
 """

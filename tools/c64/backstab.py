@@ -87,7 +87,7 @@ _MULTIPLY = bytes.fromhex(
     "85 4d aa a5 4c 18 60"
 )
 
-#: `CPX #$00 / BEQ +2 / LDA #$F0`: the two titles that refuse to let a
+#: `CPX #$00 / BEQ +2 / LDA #$F0`: the two titles that will not let a
 #: multiplied damage roll wrap past a byte store 240 instead.
 _CLAMP = bytes.fromhex("e0 00 f0 02 a9 f0")
 CLAMP_DAMAGE = 0xF0

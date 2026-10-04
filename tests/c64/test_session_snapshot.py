@@ -525,7 +525,7 @@ def test_restore_always_attaches_the_recorded_disk_even_when_it_looks_unchanged(
     assert s.attaches == [str(tmp_path / "SIDE1.D64")]
 
 
-def test_save_game_is_refused_after_a_restore_until_a_disk_is_attached(tmp_path):
+def test_save_game_is_rejected_after_a_restore_until_a_disk_is_attached(tmp_path):
     s = Fake(tmp_path)
     s.snapshot("a")
     s.restore("a")
@@ -583,7 +583,7 @@ def test_a_late_encounter_menu_on_row_24_is_caught_at_the_end(tmp_path):
     assert s.restores == 1
 
 
-def test_a_party_already_in_combat_is_refused_before_any_snapshot(tmp_path):
+def test_a_party_already_in_combat_is_rejected_before_any_snapshot(tmp_path):
     s = Fake(tmp_path)
     s.combat = True
     assert s.walk_with_retry("i") is False
@@ -591,7 +591,7 @@ def test_a_party_already_in_combat_is_refused_before_any_snapshot(tmp_path):
     assert "already in combat" in s.walk_stopped
 
 
-def test_a_snapshot_path_too_long_for_the_monitor_is_refused(tmp_path):
+def test_a_snapshot_path_too_long_for_the_monitor_is_rejected(tmp_path):
     s = Fake(tmp_path / ("d" * 260))
     with pytest.raises(ValueError, match="longer"):
         s.snapshot("a")

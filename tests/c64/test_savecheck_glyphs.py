@@ -173,7 +173,7 @@ def test_a_figure_drawn_from_the_wrong_bitmaps_matches_nothing():
     assert figure["best"] == 8
 
 
-def test_the_charset_read_still_refuses_a_vice_with_no_ram_bank():
+def test_the_charset_read_still_rejects_a_vice_with_no_ram_bank():
     """The `#265` guard survives the new arguments."""
 
     class NoRam(FakeMonitor):
@@ -181,9 +181,9 @@ def test_the_charset_read_still_refuses_a_vice_with_no_ram_bank():
             return banks_response([("default", 0), ("io", 3)])
 
     sess = FakeSession(floor_codes([(1, 1, 0x5E)]), NoRam({}, bytes(1000)))
-    with pytest.raises(SystemExit) as refused:
+    with pytest.raises(SystemExit) as rejected:
         savecheck.icon_evidence(sess, bytes(36))
-    assert "ram" in str(refused.value)
+    assert "ram" in str(rejected.value)
 
 
 def test_a_figure_facing_the_other_way_is_the_same_nine_bitmaps_turned_over():

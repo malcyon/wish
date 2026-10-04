@@ -420,7 +420,7 @@ def confirm_pool_expiry(camp: bytes, spells: bytes,
                         ecl65: bytes) -> tuple[str, ...]:
     """Check that Pool expires each slot on its own, for that slot's owner.
 
-    The cast refuses a second strength node, and this is the other half of
+    The cast rejects a second strength node, and this is the other half of
     that: the sweep and the handler read one slot at a time, so the arrays
     themselves hold as many strength restores as a writer stages.
     """

@@ -271,7 +271,7 @@ def walk_to(sess, x: int, y: int, facing: int, clock: int | None = None,
     not, and that is a much shorter sentence.
 
     Greedy, and deliberately simple: turn towards the target, step, and if the
-    step is refused try the other axis.  It has no map, so a wall it cannot go
+    step is rejected try the other axis.  It has no map, so a wall it cannot go
     round defeats it -- which is a reported failure rather than a wrong answer,
     because the caller checks the square it actually reached.
 
@@ -315,7 +315,7 @@ def walk_to(sess, x: int, y: int, facing: int, clock: int | None = None,
         return False
     log(f"arrived at {at.x},{at.y} facing {at.facing}, clock {at.minutes}")
     # Burning game time is a step out and a step back, so it can leave the
-    # party a square away when the way back is refused.  Each round therefore
+    # party a square away when the way back is rejected.  Each round therefore
     # checks the square again rather than assuming it, and gives up on the
     # clock rather than on the square: the square is what the comparison
     # needs and the clock is two bytes of it.

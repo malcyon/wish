@@ -56,7 +56,7 @@ class FakeMonitor:
         self.real = real
         self.wrong = wrong
         # An older VICE, or a build that names its banks differently. The
-        # point of the flag is that `icon_evidence` must refuse rather than
+        # point of the flag is that `icon_evidence` must reject rather than
         # read the registers again (#265).
         self.offer_ram = offer_ram
 
@@ -137,7 +137,7 @@ def test_two_different_figures_read_as_two_once_the_ram_bank_is_used():
     assert found["distinct_figures"] == 2
 
 
-def test_a_vice_with_no_ram_bank_is_refused_rather_than_read_anyway():
+def test_a_vice_with_no_ram_bank_is_rejected_rather_than_read_anyway():
     """No `ram` bank means no reading, because bank 0 is the bug (#265).
 
     An earlier version fell back to `bank_ids(m).get("ram", 0)`, and bank 0
@@ -145,7 +145,7 @@ def test_a_vice_with_no_ram_bank_is_refused_rather_than_read_anyway():
     the fallback put the read straight back into the defect and reported
     `distinct_figures` 1 for every party with nothing to say it had. This
     calls the real `icon_evidence` against a monitor that offers every bank
-    except `ram`, and it has to refuse.
+    except `ram`, and it has to reject.
     """
     figure_a, figure_b = figure(0x5E), figure(0x70)
     real = {**figure_a, **figure_b}
@@ -155,6 +155,6 @@ def test_a_vice_with_no_ram_bank_is_refused_rather_than_read_anyway():
     sess = FakeSession(codes, FakeMonitor(ram_bank=1, real=real, wrong=wrong,
                                           offer_ram=False))
 
-    with pytest.raises(SystemExit) as refused:
+    with pytest.raises(SystemExit) as rejected:
         icon_evidence(sess, bytes(36))
-    assert "ram" in str(refused.value)
+    assert "ram" in str(rejected.value)

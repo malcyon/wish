@@ -94,7 +94,7 @@ def stage(path: pathlib.Path, wanted: dict[int, int],
     into `combat_side`: a save slot stores only the record's first `0x100`
     bytes, so the roster block's copy (`+0x0C`, which `c64_codec.read`
     prefers) is the only one on disk, and the game loads it into `0x10C` of
-    the working record.  A side is refused for a slot that holds no character,
+    the working record.  A side is rejected for a slot that holds no character,
     since a byte in an empty block would make it look occupied.  When
     `replaced` is a list, it gets one `{"slot", "was", "now"}` per row, with
     the `[id, owner, duration, magnitude]` the slot held before.

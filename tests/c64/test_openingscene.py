@@ -307,7 +307,7 @@ def test_a_disk_still_open_is_repaired_on_a_copy_and_never_detached(tmp_path):
     assert not hasattr(openingscene, "detach")
 
 
-def test_a_repair_that_changes_nothing_is_refused_and_leaves_no_copy(tmp_path):
+def test_a_repair_that_changes_nothing_is_rejected_and_leaves_no_copy(tmp_path):
     calls, notes, src, dest, go = resave([RuntimeError("a")], tmp_path,
                                          changed=())
     with pytest.raises(RuntimeError, match="no unclosed entry"):
@@ -315,7 +315,7 @@ def test_a_repair_that_changes_nothing_is_refused_and_leaves_no_copy(tmp_path):
     assert not dest.exists()
 
 
-def test_a_repaired_copy_that_does_not_load_is_refused(tmp_path):
+def test_a_repaired_copy_that_does_not_load_is_rejected(tmp_path):
     calls, notes, src, dest, go = resave([RuntimeError("a")], tmp_path,
                                          verify=ValueError("unreadable"))
     with pytest.raises(ValueError, match="unreadable"):

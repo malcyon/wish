@@ -109,7 +109,7 @@ def test_a_replaced_row_is_reported_with_what_the_slot_held(tmp_path):
 
 
 @pytest.mark.parametrize("sides", [{-1: 0x80}, {8: 0x80}, {"n": 300}])
-def test_a_bad_side_is_refused_and_the_disk_is_untouched(tmp_path, sides):
+def test_a_bad_side_is_rejected_and_the_disk_is_untouched(tmp_path, sides):
     path = _disk(tmp_path)
     if "n" in sides:
         sides = {_occupied(_files(path)[1]): sides["n"]}
@@ -119,7 +119,7 @@ def test_a_bad_side_is_refused_and_the_disk_is_untouched(tmp_path, sides):
     assert path.read_bytes() == before
 
 
-def test_a_side_into_an_empty_roster_block_is_refused(tmp_path):
+def test_a_side_into_an_empty_roster_block_is_rejected(tmp_path):
     path = _disk(tmp_path)
     _, roster = _files(path)
     empty = next(i for i in range(savegame.ROSTER_COUNT)

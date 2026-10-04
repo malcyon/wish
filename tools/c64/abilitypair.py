@@ -110,7 +110,7 @@ SLOTS = 8
 
 #: The saved game each title's engine writes, by the file name on the disk.
 #: Only these two keep a second array; Pool of Radiance writes `SAVEDGAME0`
-#: and `SAVEDGAME1`, holds seven zeroes at `0x065`, and is refused here rather
+#: and `SAVEDGAME1`, holds seven zeroes at `0x065`, and is rejected here rather
 #: than read as though it had a pair.
 SAVE_FILES = (b"SAVEAZURE", b"SAVEDBASH")
 

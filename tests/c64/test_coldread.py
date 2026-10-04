@@ -482,7 +482,7 @@ def test_silver_blades_racial_limits_are_the_rulebooks_under_its_own_races():
     `goldbox/c64_port.py` has that table from the label pool and from the Curse
     import's own arithmetic. Here it is again from a table neither of those
     touches: race 1's row is an elf's limits, race 3's a dwarf's, and the
-    routine refuses to look up race 6 at all, which is the human rule.
+    routine will not look up race 6 at all, which is the human rule.
     """
     gen = _gen(SSB)
     where, guard = coldread.racial_limits(gen, SSB, BASE)
@@ -631,7 +631,7 @@ def test_a_silver_blades_party_has_level_tables_and_a_measured_trainer():
     **This assertion has inverted twice, and each time that was the point.**
     It first said Silver Blades fell back to Pool of Radiance's tables
     entirely, and #187 made it red. It then said the tables were there and
-    the trainer still refused, because the constitution hit-point bonus, the
+    the trainer still rejected, because the constitution hit-point bonus, the
     thief-skill racial adjustment and the wisdom bonus spells were unread --
     all three landed, and then fourteen driven trainings on 2026-09-16
     reproduced 196 of 196 derived fields and 224 of 224 spellbook bytes
@@ -783,7 +783,7 @@ def test_silver_blades_ceilings_and_racial_limits_match_the_module():
     rows = dict(tables.racial_limits)
     for code in range(1, guard):
         assert rows[code] == tuple(_at(gen, where + (code - 1) * 8, 8)), code
-    # Row 6, the human, is not read: $178A refuses to index race 6 at all.
+    # Row 6, the human, is not read: $178A will not index race 6 at all.
     assert rows[6] == (levels.UNLIMITED, levels.UNLIMITED, levels.UNLIMITED,
                        levels.UNLIMITED, 0, 0, levels.UNLIMITED,
                        levels.UNLIMITED)
