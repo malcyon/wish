@@ -111,3 +111,96 @@ def test_a_wrong_server_verdict_names_the_pipe_that_was_opened():
 def test_probing_another_copys_pipe_is_commented_where_it_happens():
     start = PS1.index("function Open-LanePipe")
     assert "nMaxInstances 1" in PS1[PS1.rindex("\n\n", 0, start):start]
+
+
+# -- one emulator per lane, found by the pid in the lane's own receipt --------------
+
+def _case(verb: str) -> str:
+    """The text of one `switch ($Cmd)` branch."""
+    switch = PS1.index("switch ($Cmd) {")
+    start = PS1.index(f"\n  '{verb}' {{", switch)
+    end = PS1.find("\n  '", start + 5)
+    return PS1[start:end if end > 0 else len(PS1)]
+
+
+def test_the_emulator_is_found_by_the_pid_in_the_lanes_receipt():
+    body = _body("Resolve-MyEmulator")
+    assert "Get-Process -Id" in body
+    assert "-Name winuae64" not in body
+    assert ".Count -gt 1" not in body
+
+
+def test_the_helper_preamble_takes_the_pid_and_counts_nothing():
+    body = PS1[PS1.index("function Helper-Preamble"):PS1.index("$RaiseAndCheck = ")]
+    assert "[string]$ReceiptPath, [int]$Id" in body
+    assert "winuae64 processes" not in body and "Count -gt 1" not in body
+    assert "Get-Process -Id $Id" in body
+    assert "function Pid-Guard" not in PS1
+
+
+def test_lane_one_keeps_the_names_a_run_in_flight_already_uses():
+    body = _body("Lane-Paths")
+    for name in ("winuae-claim.txt", "winuae-run.txt", "winuae-action.txt", "send.log",
+                 "console.txt", "'winuae-run'", "'winuae-front'", "'winuae-key'", "'winuae-send'"):
+        assert name in body, name
+
+
+def test_the_lane_count_is_one_constant_in_one_place():
+    assert PS1.count("$LaneCount = 1\n") == 1
+
+
+def test_start_takes_the_guest_wide_mutex_before_it_launches_and_frees_it_in_a_finally():
+    body = _case("start")
+    mutex = body.index("Global\\wish-winuae-start")
+    waited = body.index("WaitOne(", mutex)
+    launched = body.index("Start-Session1Task $LanePaths.task", waited)
+    released = body.index("ReleaseMutex()", launched)
+    assert mutex < waited < launched < released
+    assert "finally" in body[launched:released]
+    assert "AbandonedMutexException" in body
+
+
+def test_start_does_not_ask_whether_any_winuae64_exists_before_the_mutex():
+    body = _case("start")
+    before = body[:body.index("Global\\wish-winuae-start")]
+    assert "Get-Process -Name winuae64" not in before
+
+
+def test_start_adopts_the_one_new_winuae64_that_no_lane_owns():
+    body = _case("start")
+    assert "$owned.ContainsKey" in body
+    assert "Write-Kv $LanePaths.run" in body
+
+
+def test_stop_ends_this_lanes_task_and_waits_on_its_pid():
+    body = _case("stop")
+    assert "Stop-ScheduledTask -TaskName $LanePaths.task" in body
+    assert "$Task" not in body.replace("$LanePaths.task", "")
+    assert "Get-Process -Name winuae64" not in body
+
+
+def test_roms_and_clean_look_at_every_lane():
+    for verb in ("roms", "clean"):
+        assert "1..$LaneCount" in _case(verb), verb
+    assert "'winuae-*'" in _case("clean")
+
+
+def test_send_gives_the_injector_this_lanes_log_and_console():
+    body = _case("send")
+    assert "-Log $($LanePaths.sendlog)" in body and "-Out $($LanePaths.console)" in body
+
+
+def test_the_single_lane_denial_text_is_unchanged():
+    assert "fail the WinUAE lane is claimed by $($c['holder']) since $($c['since']), not by $Holder" in PS1
+
+
+def test_a_whole_desktop_claim_takes_every_lane_in_order():
+    body = _case("claim")
+    assert "$Exclusive" in body and "exclusive = 1" in body
+    assert "1..$LaneCount" in body
+
+
+def test_the_lane_verb_names_the_holders_lane_and_pid():
+    valid = re.search(r"ValidateSet\(([^)]*)\)", PS1).group(1)
+    assert "'lane'" in valid
+    assert "ok lane=$ActiveLane pid=" in _case("lane")

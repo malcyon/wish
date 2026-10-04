@@ -12,7 +12,7 @@
 #
 #   export SSH_ASKPASS_REQUIRE=never
 #   ps='powershell -NoProfile -ExecutionPolicy Bypass -File C:\Amiga\winuae.ps1'
-#   winvm ssh "$ps claim -Holder por-run"       # first: the VM is single-tenant
+#   winvm ssh "$ps claim -Holder por-run"       # first: takes the lowest free lane
 #   winvm ssh "$ps roms -Holder por-run"        # once, then winvm promote
 #   winvm ssh "$ps start -Holder por-run -log -f C:\Amiga\configs\goldbox-a500.uae"
 #   winvm ssh "$ps key 7A -Holder por-run"      # F11: enter the debugger
@@ -26,6 +26,9 @@
 #   winvm ssh "$ps snapshot -Holder por-run before-walk"   # the whole machine, to C:\Amiga\States
 #   winvm ssh "$ps restore -Holder por-run before-walk"
 #   winvm ssh "$ps discard-snapshot -Holder por-run before-walk"
+#   winvm ssh "$ps lane -Holder por-run"        # which lane and pid this holder has
+#   winvm ssh "$ps claim -Holder wish-exe -Exclusive"   # every lane, for work that needs the desktop
+#   winvm ssh "$ps claim -Holder por-run -Override -Lane 2"   # take a gone holder's lane
 #   winvm ssh "$ps status"
 #   winvm ssh "$ps stop -Holder por-run"        # before clean, always
 #   winvm ssh "$ps release -Holder por-run"     # let the next lane in
@@ -49,27 +52,28 @@
 # a `send` typing into a console that was never created, and the whole run
 # looking fine until somebody read the empty dumps hours later.
 #
-# THE VM IS SINGLE-TENANT, AND THAT IS WHAT `claim` SAYS OUT LOUD.
-# There is one scheduled task, one interactive session and one winuae64 on this
-# machine, and `key`, `send` and `front` find their target by process NAME. So a
-# second driver does not get a second emulator: it gets yours. It types into
-# your game, and its `stop` ends your run -- three Pools of Darkness sessions
-# died that way in one night, and nothing in any output said so. So:
+# ONE EMULATOR PER LANE, FOUND BY THE PID IN THE LANE'S OWN RECEIPT.
+# The guest has $LaneCount lane(s). A lane has its own claim, run receipt,
+# scheduled tasks, helper receipt, send log and console file; lane 1 uses the
+# bare names and lane n >= 2 adds `-n`. A holder has one lane, found from the
+# claim files, so every verb that takes -Holder acts on that holder's lane.
+# Nothing finds an emulator by process name:
 #
-#   * `claim` blocks a second holder, and `start`, `stop`, `key`, `send`,
-#     `front` and `roms` block a caller who is not the holder;
-#   * `start` verifies that the emulator it found is running the command line
-#     THIS call passed, and was started after this call was made -- so a
-#     neighbour's emulator can never be reported as your own success;
-#   * `start` writes a receipt naming the pid it launched, and `stop`, `key`,
-#     `send` and `front` block a winuae64 that is not the one in it.
+#   * `claim` blocks a second holder of the same lane, and `start`, `stop`, `key`,
+#     `send`, `front` and `roms` block a caller who is not the holder;
+#   * `start` takes a guest-wide mutex, launches the lane's task, and adopts the
+#     one new winuae64 that no lane's receipt names, whose command line is the
+#     one THIS call passed and which started after this call was made;
+#   * `start` writes a receipt naming the pid it launched, and every other verb
+#     resolves its emulator by that pid, its start time and its holder, so a
+#     neighbour's emulator is never reported as the caller's own;
+#   * `claim -Exclusive` takes every lane, for work that needs the whole desktop.
 #
-# See docs/143-winuae-debugger.md 1.1 and
-# #116 (Two agents cannot share the WinUAE VM, and neither of them can tell).
+# See docs/143-winuae-debugger.md 1.1.
 
 param(
   [Parameter(Mandatory=$true)]
-  [ValidateSet('start','stop','front','status','send','key','roms','clean','claim','release','drives','insert','diagnose','config-hash','config-remove','snapshot','restore','discard-snapshot')][string]$Cmd,
+  [ValidateSet('start','stop','front','status','send','key','roms','clean','claim','release','drives','insert','diagnose','config-hash','config-remove','snapshot','restore','discard-snapshot','lane')][string]$Cmd,
   [Parameter(ValueFromRemainingArguments=$true)][string[]]$Rest
 )
 
@@ -98,6 +102,11 @@ $WantTokenGiven = $false
 # VK_UP into scancode 0x48, and 0x48 with no E0 prefix is DIK_NUMPAD8. Every
 # arrow this driver has ever pressed was really a keypad key.
 $Extended = $false
+# `-Lane <n>` names a lane outright, which `-Override` needs: the holder of a
+# lane that has been abandoned is not there to be looked up. `-Exclusive` makes
+# `claim` take every lane.
+$LaneArg = ''
+$Exclusive = $false
 # @($null) is an array of one $null, not an empty one, so a command with no
 # remaining arguments at all -- `stop`, `status` -- has Count 1 and indexes into
 # nothing. Measured: "Cannot index into a null array" on bare `stop`.
@@ -109,18 +118,52 @@ for ($i = 0; $i -lt $given.Count; $i++) {
   elseif ($a -eq '-Override') { $Override = $true }
   elseif ($a -eq '-Token') { $WantTokenGiven = $true; $i++; if ($i -lt $given.Count) { $WantToken = $given[$i] } }
   elseif ($a -eq '-Extended') { $Extended = $true }
+  elseif ($a -eq '-Exclusive') { $Exclusive = $true }
+  elseif ($a -eq '-Lane') { $i++; if ($i -lt $given.Count) { $LaneArg = $given[$i] } else { $LaneArg = '-' } }
   else { [void]$passthru.Add($a) }
 }
 $Rest = $passthru.ToArray()
 
 $Exe     = 'C:\Program Files\WinUAE\winuae64.exe'
 $Root    = 'C:\Amiga'
-$Task    = 'winuae-run'
-$Helpers = 'winuae-front','winuae-key','winuae-send'
-$Receipt = "$Root\winuae-action.txt"    # what a session 1 helper writes back
-$SendLog = "$Root\send.log"
-$ClaimFile = "$Root\winuae-claim.txt"   # who holds the one Amiga lane
-$RunFile   = "$Root\winuae-run.txt"     # which winuae64 `start` launched, for whom
+# How many emulators may run at once. Raising it is safe only when keys and
+# screenshots no longer go through the shared desktop (the lanes would type into
+# and photograph each other) and a two-lane live run of winuae-lanecheck.ps1 has
+# passed; the value is then the count that run measured.
+$LaneCount = 1
+
+# Everything one lane owns. Lane 1 keeps the names the script has always used,
+# so a run started by an earlier copy of the script is lane 1 to this one.
+#   claim   who holds the lane            run      which winuae64 `start` launched, for whom
+#   receipt what a session 1 helper writes back
+#   task    the scheduled task that runs the emulator
+function Lane-Paths([int]$n) {
+  if ($n -eq 1) {
+    return @{
+      claim   = "$Root\winuae-claim.txt"
+      run     = "$Root\winuae-run.txt"
+      receipt = "$Root\winuae-action.txt"
+      sendlog = "$Root\send.log"
+      console = "$Root\console.txt"
+      task    = 'winuae-run'
+      helpers = @{ front = 'winuae-front'; key = 'winuae-key'; send = 'winuae-send' }
+    }
+  }
+  @{
+    claim   = "$Root\winuae-claim-$n.txt"
+    run     = "$Root\winuae-run-$n.txt"
+    receipt = "$Root\winuae-action-$n.txt"
+    sendlog = "$Root\send-$n.log"
+    console = "$Root\console-$n.txt"
+    task    = "winuae-run-$n"
+    helpers = @{ front = "winuae-front-$n"; key = "winuae-key-$n"; send = "winuae-send-$n" }
+  }
+}
+
+# The lane this call acts on, and its paths; both are set below, as soon as the
+# functions that read the claims exist.
+$ActiveLane = 1
+$LanePaths  = Lane-Paths 1
 $RomKey  = 'HKCU:\Software\Arabuusimiehet\WinUAE'
 $RomDir  = "$Root\Kickstarts\"
 
@@ -134,9 +177,9 @@ $RomDir  = "$Root\Kickstarts\"
 $script:readFailures = 0
 
 function Read-SendLog {
-  if (-not (Test-Path $SendLog)) { return $null }
+  if (-not (Test-Path $LanePaths.sendlog)) { return $null }
   try {
-    $fs = New-Object IO.FileStream($SendLog, [IO.FileMode]::Open, [IO.FileAccess]::Read,
+    $fs = New-Object IO.FileStream($LanePaths.sendlog, [IO.FileMode]::Open, [IO.FileAccess]::Read,
             ([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
     try {
       $r = New-Object IO.StreamReader($fs, [Text.Encoding]::UTF8)
@@ -188,9 +231,9 @@ function Boot-Stamp { (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToS
 # -Override: a steal deletes and re-creates, so two of them can take the lane
 # from each other. -Override is for a lane whose holder has gone away, not for
 # winning a race.
-function Try-TakeClaim([hashtable]$Content) {
+function Try-TakeClaim([string]$Path, [hashtable]$Content) {
   try {
-    $fs = [System.IO.File]::Open($ClaimFile, [System.IO.FileMode]::CreateNew,
+    $fs = [System.IO.File]::Open($Path, [System.IO.FileMode]::CreateNew,
                                  [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
   } catch { return $false }
   try {
@@ -225,10 +268,10 @@ function Try-TakeClaim([hashtable]$Content) {
 # either side of a deliberate clock step, or across a pause and resume of the
 # VM. The wreck branch below no longer depends on the clock at all; this one
 # still does, and the failure would be this issue reopened by clock skew.
-function Read-Claim {
+function Read-Claim([string]$Path) {
   for ($i = 0; $i -lt 10; $i++) {
-    if (-not (Test-Path $ClaimFile)) { return @{ state = 'free' } }
-    $c = Read-Kv $ClaimFile
+    if (-not (Test-Path $Path)) { return @{ state = 'free' } }
+    $c = Read-Kv $Path
     if ($c.ContainsKey('holder')) {
       if ($c['boot'] -ne (Boot-Stamp)) { return @{ state = 'stale'; claim = $c } }
       return @{ state = 'held'; claim = $c }
@@ -249,17 +292,44 @@ function Read-Claim {
     # with itself, and it fails in the safe direction: a backwards step makes
     # the age negative, the file reads as in flight, and the caller is blocked
     # rather than let in. A write lasts milliseconds; ten seconds is the margin.
-    $written = (Get-Item $ClaimFile -ErrorAction SilentlyContinue).LastWriteTime
+    $written = (Get-Item $Path -ErrorAction SilentlyContinue).LastWriteTime
     if ($written -and ((Get-Date) - $written).TotalSeconds -gt 10) { return @{ state = 'stale' } }
     Start-Sleep -Milliseconds 50
   }
   @{ state = 'unreadable' }
 }
 
-function Get-Claim {
-  $r = Read-Claim
+function Get-Claim([string]$Path = $LanePaths.claim) {
+  $r = Read-Claim $Path
   if ($r['state'] -eq 'held') { return $r['claim'] }
   $null
+}
+
+# The lowest lane `$Name` holds, or $null. A holder has one lane, except under
+# `claim -Exclusive`, where it has them all.
+function Find-HolderLane([string]$Name) {
+  if (-not $Name) { return $null }
+  for ($n = 1; $n -le $LaneCount; $n++) {
+    $r = Read-Claim (Lane-Paths $n).claim
+    if ($r['state'] -eq 'held' -and $r['claim']['holder'] -eq $Name) { return $n }
+  }
+  $null
+}
+
+# Which lane this call is about: the one named, else the one -Holder holds, else
+# lane 1. A holder-less verb such as `status` or `clean` never reads it.
+if ($LaneArg -ne '') {
+  if ($LaneArg -notmatch '^[0-9]{1,3}\z' -or [int]$LaneArg -lt 1 -or [int]$LaneArg -gt $LaneCount) {
+    "fail -Lane needs a number from 1 to $LaneCount"; exit 1
+  }
+  $ActiveLane = [int]$LaneArg
+} else {
+  $found = Find-HolderLane $Holder
+  if ($found) { $ActiveLane = $found }
+}
+$LanePaths = Lane-Paths $ActiveLane
+if ($Override -and $LaneCount -gt 1 -and $LaneArg -eq '' -and @('claim', 'release') -contains $Cmd) {
+  "fail $Cmd -Override needs -Lane <n>, from 1 to $LaneCount, to say which lane to take"; exit 1
 }
 
 # Every rejection says how to get unstuck, and that is not politeness either. An
@@ -267,12 +337,22 @@ function Get-Claim {
 # dead-agent since 09:14" and has a lock nothing tells it how to clear. The
 # second line is the way out; `fail` stays lowercase because it is the status
 # token callers match on, not prose.
-function Claim-Way-Out([hashtable]$c, [string]$Verb) {
-  "If $($c['holder']) has gone, $Verb the lane with: winuae.ps1 claim -Holder <id> -Override"
+function Claim-Way-Out([hashtable]$c, [string]$Verb, [int]$n = 0) {
+  $which = if ($LaneCount -gt 1 -and $n -gt 0) { " -Lane $n" } else { '' }
+  "If $($c['holder']) has gone, $Verb the lane with: winuae.ps1 claim -Holder <id> -Override$which"
 }
 
 function Claim-Denial {
   $c = Get-Claim
+  if ($c -and $Holder -and $Holder -eq $c['holder']) { return $null }
+  if ($LaneCount -gt 1 -and $Holder) {
+    $lines = @()
+    for ($n = 1; $n -le $LaneCount; $n++) {
+      $r = Read-Claim (Lane-Paths $n).claim
+      $lines += if ($r['state'] -eq 'held') { "lane $n is claimed by $($r['claim']['holder']) since $($r['claim']['since'])" } else { "lane $n is free" }
+    }
+    return "fail $Holder holds none of the WinUAE lanes: $($lines -join ', ')`nClaim one with: winuae.ps1 claim -Holder $Holder"
+  }
   if (-not $c) {
     return "fail the WinUAE lane is unclaimed; run: winuae.ps1 claim -Holder <id>"
   }
@@ -285,24 +365,34 @@ function Claim-Denial {
   $null
 }
 
-# The one winuae64 this lane started -- or why the caller must not touch the one
-# that is there. `key`, `send` and `front` pick their target by process name, so
-# without the receipt they drive whatever emulator is running, which on a shared
-# VM is somebody else's game.
+# The process this lane's run receipt names, or $null: the pid must be alive, be a
+# winuae64, and have the start time the receipt recorded, because a pid is reused
+# within the hour on a busy guest.
+function Get-ReceiptProcess([hashtable]$Receipt) {
+  $id = 0
+  if (-not $Receipt.ContainsKey('pid') -or -not [int]::TryParse($Receipt['pid'], [ref]$id)) { return $null }
+  $p = Get-Process -Id $id -ErrorAction SilentlyContinue
+  if (-not $p -or $p.ProcessName -ne 'winuae64') { return $null }
+  if ($Receipt['started'] -and $Receipt['started'] -ne $p.StartTime.ToString('o')) { return $null }
+  $p
+}
+
+# The one winuae64 this lane started -- or why the caller must not touch whatever
+# is there. It is looked up by the pid in the lane's run receipt, never by name,
+# so another lane's emulator cannot be mistaken for this one.
 function Resolve-MyEmulator {
-  $all = @(Get-Process -Name winuae64 -ErrorAction SilentlyContinue)
-  if ($all.Count -eq 0) { return @{ err = 'fail no winuae64 process' } }
-  if ($all.Count -gt 1) {
-    return @{ err = ('fail ' + $all.Count + ' winuae64 processes: ' +
-                     (($all | ForEach-Object { $_.Id }) -join ',') + '; stop all but one') }
-  }
-  $p = $all[0]
-  $r = Read-Kv $RunFile
+  $r = Read-Kv $LanePaths.run
   if (-not $r.ContainsKey('pid')) {
-    return @{ err = "fail winuae64 pid=$($p.Id) has no run receipt, so nothing here started it" }
+    return @{ err = "fail lane $ActiveLane has no run receipt, so nothing in it was started" }
   }
-  if ([int]$r['pid'] -ne $p.Id) {
-    return @{ err = "fail winuae64 pid=$($p.Id) is not the pid=$($r['pid']) this lane started" }
+  $id = 0
+  if (-not [int]::TryParse($r['pid'], [ref]$id)) {
+    return @{ err = "fail lane $ActiveLane's run receipt has the pid '$($r['pid'])', which is not a number" }
+  }
+  $p = Get-Process -Id $id -ErrorAction SilentlyContinue
+  if (-not $p) { return @{ err = "fail winuae64 pid=$id is not running" } }
+  if ($p.ProcessName -ne 'winuae64') {
+    return @{ err = "fail pid=$id is $($p.ProcessName), not the winuae64 this lane started" }
   }
   # A pid is reused within the hour on a busy guest, and the whole point here is
   # to be sure of the process rather than of the number.
@@ -379,7 +469,7 @@ function Invoke-Session1 {
   # half-written one, since Set-Content is not atomic; waiting for our own
   # token in it accepts neither.
   $token = [guid]::NewGuid().ToString('N').Substring(0, 12)
-  Remove-Item $Receipt -ErrorAction SilentlyContinue
+  Remove-Item $LanePaths.receipt -ErrorAction SilentlyContinue
   $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes("`$Token = '$token'`r`n" + $Script))
   $bad = Register-Session1Task $Name 'powershell.exe' `
     "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand $enc" `
@@ -387,7 +477,7 @@ function Invoke-Session1 {
   if ($bad) { return $bad }
   Start-Session1Task $Name
   for ($i = 0; $i -lt $TimeoutSec * 10; $i++) {
-    $r = (Get-Content -Raw $Receipt -ErrorAction SilentlyContinue)
+    $r = (Get-Content -Raw $LanePaths.receipt -ErrorAction SilentlyContinue)
     if ($r -and $r.Contains("token=$token")) { return ($r -replace "\s*token=$token\s*$", '').Trim() }
     Start-Sleep -Milliseconds 100
   }
@@ -396,12 +486,20 @@ function Invoke-Session1 {
 
 # Every helper ends by writing one line: "ok ..." or "fail ...".
 #
+# The helper finds its emulator by the pid the caller resolved from the lane's
+# receipt, and checks it again, because between the two there is a whole
+# scheduled-task launch, and that is long enough for the emulator to have gone.
+#
 # Double every backtick below, comments included. This is a double-quoted
 # here-string, so `r emits a carriage return -- PowerShell reads that as a
 # line ending, and the rest of a comment becomes a command. It parses clean
 # and fails only when that branch runs, which is the worst way to find it.
-$Preamble = @"
-`$Receipt = '$Receipt'
+#
+# The blank last line is deliberate: this string is concatenated before another,
+# and a here-string does not promise a newline at its end.
+function Helper-Preamble([string]$ReceiptPath, [int]$Id) {
+@"
+`$Receipt = '$ReceiptPath'
 function Report([string]`$m) { "`$m token=`$Token" | Set-Content -Path `$Receipt -Encoding ASCII }
 Add-Type @'
 using System;using System.Runtime.InteropServices;
@@ -413,34 +511,10 @@ public class W {
   [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, IntPtr extra);
 }
 '@
-`$all = @(Get-Process -Name winuae64 -ErrorAction SilentlyContinue)
-if (`$all.Count -eq 0) { Report 'fail no winuae64 process'; exit 1 }
-if (`$all.Count -gt 1) {
-  # ``Select-Object -First 1`` picked whichever the OS listed first, so a
-  # keypress could land in a second emulator -- the ``roms`` scan used to
-  # start one -- with nothing said. Block instead of guessing which is meant.
-  Report ('fail ' + `$all.Count + ' winuae64 processes: ' +
-          ((`$all | ForEach-Object { `$_.Id }) -join ',') +
-          '; stop all but one')
-  exit 1
-}
-`$p = `$all[0]
+`$p = Get-Process -Id $Id -ErrorAction SilentlyContinue
+if (-not `$p -or `$p.ProcessName -ne 'winuae64') { Report "fail winuae64 pid=$Id is not running"; exit 1 }
 `$h = `$p.MainWindowHandle
 if (`$h -eq [IntPtr]::Zero) { Report "fail pid=`$(`$p.Id) has no main window"; exit 1 }
-"@
-
-# The caller checks the pid against the run receipt before it dispatches; the
-# helper checks it again, because between the two there is a whole
-# scheduled-task launch, and that is long enough for another lane's `start` to
-# have replaced the emulator underneath this one.
-#
-# The blank first and last lines are deliberate: this string is concatenated
-# between two others, and a here-string does not promise a newline at either
-# end of itself.
-function Pid-Guard([int]$Id) {
-  @"
-
-if (`$p.Id -ne $Id) { Report "fail winuae64 pid=`$(`$p.Id) is not the pid=$Id this lane started"; exit 1 }
 
 "@
 }
@@ -1045,80 +1119,137 @@ switch ($Cmd) {
     # guaranteed and what is not.
     if (-not $Holder) { 'fail claim needs -Holder <id>'; exit 1 }
     if ($Holder -notmatch '^[A-Za-z0-9._-]{1,64}$') { "fail '$Holder' is not a usable holder name"; exit 1 }
-    # Decide from the claim's state, create the file atomically, then read it
+    $token = [guid]::NewGuid().ToString('N').Substring(0, 12)
+    if ($Exclusive -and $LaneCount -gt 1) {
+      # Every lane, in the order an ordinary claim tries them, so an ordinary
+      # claim racing this one cannot also win: whoever holds lane 1 first holds
+      # the others' fate too. A lane another holder has is a failure, and what
+      # this call already took is given back; -Override is not offered, because
+      # taking every lane from whoever holds them is not one decision.
+      if ($Override) { 'fail claim -Exclusive does not take -Override; release each lane with release -Override -Lane <n>'; exit 1 }
+      $mine = @()
+      $blocker = $null
+      foreach ($n in 1..$LaneCount) {
+        $path = (Lane-Paths $n).claim
+        $r = Read-Claim $path
+        if ($r['state'] -eq 'held' -and $r['claim']['holder'] -eq $Holder) { continue }
+        if ($r['state'] -eq 'held') { $blocker = "lane $n is claimed by $($r['claim']['holder']) since $($r['claim']['since'])"; break }
+        if ($r['state'] -eq 'unreadable') { $blocker = "the claim file of lane $n is there and cannot be read"; break }
+        if ($r['state'] -eq 'stale') { Remove-Item $path -Force -ErrorAction SilentlyContinue }
+        if (Try-TakeClaim $path @{ holder = $Holder; since = (Get-Date).ToString('o'); boot = (Boot-Stamp); token = $token; exclusive = 1 }) {
+          $mine += $path
+        } else { $blocker = "lane $n was taken by another caller while this call was running"; break }
+      }
+      if (-not $blocker) {
+        Start-Sleep -Milliseconds 150
+        foreach ($path in $mine) {
+          $after = Read-Claim $path
+          if (-not ($after['state'] -eq 'held' -and $after['claim']['token'] -eq $token)) { $blocker = "$path was overwritten while this call was running"; break }
+        }
+      }
+      if ($blocker) {
+        foreach ($path in $mine) {
+          $after = Read-Claim $path
+          if ($after['state'] -eq 'held' -and $after['claim']['token'] -eq $token) { Remove-Item $path -Force -ErrorAction SilentlyContinue }
+        }
+        "fail the WinUAE lanes are not all free: $blocker; claim -Exclusive needs every lane"
+        exit 1
+      }
+      "ok claimed by $Holder"
+      exit 0
+    }
+    # Decide from each lane's state, create the file atomically, then read it
     # back and confirm this call's token is the one in it. The confirmation is
     # what makes the answer true rather than merely likely: a delete-and-create
     # pair racing another over a stale or stolen claim can still cross, and a
     # caller whose token was overwritten reports the loss instead of announcing
     # a lane it does not hold.
-    $token  = [guid]::NewGuid().ToString('N').Substring(0, 12)
+    #
+    # The lanes tried are all of them, in order, or just the one -Lane names;
+    # -Override works on one lane only, never on a search.
+    $candidates = if ($Override -or $LaneArg -ne '') { @($ActiveLane) } else { 1..$LaneCount }
+    foreach ($n in $candidates) {
+      $r = Read-Claim (Lane-Paths $n).claim
+      if ($r['state'] -eq 'held' -and $r['claim']['holder'] -eq $Holder) {
+        # Already ours, so there is nothing to write, and writing anyway is
+        # what the fault was: re-asserting a claim used to delete the file
+        # first, and for the couple of milliseconds in between the lane read
+        # as free, so another holder's CreateNew landing in there won it
+        # without -Override. A holder retrying a claim whose ssh reply was
+        # lost is an ordinary thing to do. Touching nothing removes the
+        # window rather than narrowing it, and `since` then keeps saying when
+        # the lane was actually taken.
+        "ok claimed by $Holder (already yours since $($r['claim']['since']))"
+        exit 0
+      }
+    }
     $taken  = $false
     $lost   = $null
-    for ($attempt = 0; $attempt -lt 4 -and -not $taken; $attempt++) {
-      $r = Read-Claim
-      $previous = $null
-      if ($r['state'] -eq 'held') {
-        $c = $r['claim']
-        if ($c['holder'] -ne $Holder -and -not $Override) {
-          "fail the WinUAE lane is claimed by $($c['holder']) since $($c['since']); one Amiga lane at a time"
-          Claim-Way-Out $c 'take'
-          exit 1
+    $final  = $false
+    $blocked = @()
+    $unreadable = $false
+    for ($attempt = 0; $attempt -lt 4 -and -not $taken -and -not $final; $attempt++) {
+      $blocked = @()
+      foreach ($n in $candidates) {
+        $path = (Lane-Paths $n).claim
+        $r = Read-Claim $path
+        $previous = $null
+        if ($r['state'] -eq 'held') {
+          if (-not $Override) { $blocked += @{ n = $n; c = $r['claim'] }; continue }
+          $previous = $r['claim']['holder']
+          Remove-Item $path -Force -ErrorAction SilentlyContinue
         }
-        if ($c['holder'] -eq $Holder) {
-          # Already ours, so there is nothing to write, and writing anyway is
-          # what the fault was: re-asserting a claim used to delete the file
-          # first, and for the couple of milliseconds in between the lane read
-          # plainly FREE -- not held, not unreadable -- so another holder's
-          # CreateNew landing in there won it without -Override, and its success
-          # line did not even say it had taken anything, because what it read
-          # was an empty lane. A holder retrying a claim whose ssh reply was
-          # lost is an ordinary thing to do.
-          #
-          # Measured with the gap widened to 200 ms so it could be seen at all:
-          # five intrusions in twelve seconds. Touching nothing removes the
-          # window rather than narrowing it, and `since` then keeps saying when
-          # the lane was actually taken.
-          #
-          # The first attempt at this wrote a temporary file and called
-          # [IO.File]::Replace to rename it over the claim. It never once
-          # worked: PowerShell turns the $null backup-path argument into an
-          # empty string, and Replace answers "The path is not of a legal
-          # form" -- so every re-claim failed, and said "the lane was taken by
-          # <yourself> while this call was running".
-          "ok claimed by $Holder (already yours since $($c['since']))"
-          exit 0
-        } else {
-          $previous = $c['holder']
-          Remove-Item $ClaimFile -Force -ErrorAction SilentlyContinue
+        elseif ($r['state'] -eq 'stale') {
+          # From an earlier boot, or the wreck of a write that was killed part-way.
+          # Nobody can still be driving, because every emulator and every run in
+          # flight died with the restart.
+          Remove-Item $path -Force -ErrorAction SilentlyContinue
         }
-      }
-      elseif ($r['state'] -eq 'stale') {
-        # From an earlier boot. Nobody can still be driving, because every
-        # emulator and every run in flight died with the restart.
-        Remove-Item $ClaimFile -Force -ErrorAction SilentlyContinue
-      }
-      elseif ($r['state'] -eq 'unreadable') {
-        if (-not $Override) {
-          'fail the claim file is there and cannot be read; another claim may be in flight'
-          'Try again, or take the lane with: winuae.ps1 claim -Holder <id> -Override'
-          exit 1
+        elseif ($r['state'] -eq 'unreadable') {
+          if (-not $Override) { $unreadable = $true; continue }
+          Remove-Item $path -Force -ErrorAction SilentlyContinue
         }
-        Remove-Item $ClaimFile -Force -ErrorAction SilentlyContinue
-      }
-      if (Try-TakeClaim @{ holder = $Holder; since = (Get-Date).ToString('o'); boot = (Boot-Stamp); token = $token }) {
-        Start-Sleep -Milliseconds 150
-        $after = Read-Claim
-        if ($after['state'] -eq 'held' -and $after['claim']['token'] -eq $token) {
-          $taken = $true
-          $stolen = if ($previous) { " (taken from $previous)" } else { '' }
-          "ok claimed by $Holder$stolen"
-        } else {
+        if (Try-TakeClaim $path @{ holder = $Holder; since = (Get-Date).ToString('o'); boot = (Boot-Stamp); token = $token }) {
+          Start-Sleep -Milliseconds 150
+          $after = Read-Claim $path
+          if ($after['state'] -eq 'held' -and $after['claim']['token'] -eq $token) {
+            # Two calls by one holder racing each other can each win a lane.
+            # The lower one stays, so both calls report the same lane.
+            for ($m = 1; $m -lt $n; $m++) {
+              $low = Read-Claim (Lane-Paths $m).claim
+              if ($low['state'] -eq 'held' -and $low['claim']['holder'] -eq $Holder -and $low['claim']['token'] -ne $token) {
+                Remove-Item $path -Force -ErrorAction SilentlyContinue
+                "ok claimed by $Holder (already yours since $($low['claim']['since']))"
+                exit 0
+              }
+            }
+            $taken = $true
+            $stolen = if ($previous) { " (taken from $previous)" } else { '' }
+            "ok claimed by $Holder$stolen"
+            break
+          }
           $lost = $after['claim']
+        } else {
+          $lost = (Read-Claim $path)['claim']
+          Start-Sleep -Milliseconds 50
         }
-      } else {
-        $lost = (Read-Claim)['claim']
-        Start-Sleep -Milliseconds 50
       }
+      if (-not $taken -and ($blocked.Count -gt 0 -or $unreadable)) { $final = $true }
+    }
+    if (-not $taken -and $blocked.Count -gt 0) {
+      if ($LaneCount -eq 1) {
+        $c = $blocked[0].c
+        "fail the WinUAE lane is claimed by $($c['holder']) since $($c['since']); one Amiga lane at a time"
+      } else {
+        foreach ($b in $blocked) { "fail the WinUAE lane $($b.n) is claimed by $($b.c['holder']) since $($b.c['since']); every Amiga lane is in use" }
+      }
+      Claim-Way-Out $blocked[0].c 'take' $blocked[0].n
+      exit 1
+    }
+    if (-not $taken -and $unreadable) {
+      'fail the claim file is there and cannot be read; another claim may be in flight'
+      'Try again, or take the lane with: winuae.ps1 claim -Holder <id> -Override'
+      exit 1
     }
     if (-not $taken) {
       $who = if ($lost -and $lost['holder']) { $lost['holder'] } else { 'another caller' }
@@ -1133,90 +1264,120 @@ switch ($Cmd) {
     # round -- an emulator nobody claims is somebody's unfinished run until a
     # person says otherwise.
     if (-not $Holder) { 'fail release needs -Holder <id>'; exit 1 }
+    if ($LaneCount -gt 1 -and -not $Override -and $LaneArg -eq '') {
+      # Frees every lane this holder has: one, or all of them after `claim -Exclusive`.
+      $freed = 0
+      foreach ($n in 1..$LaneCount) {
+        $path = (Lane-Paths $n).claim
+        $r = Read-Claim $path
+        if ($r['state'] -eq 'held' -and $r['claim']['holder'] -eq $Holder) { Remove-Item $path -ErrorAction SilentlyContinue; $freed++ }
+      }
+      if ($freed -eq 0) { 'ok nothing to release'; exit 0 }
+      "ok released by $Holder"
+      exit 0
+    }
     $c = Get-Claim
     if (-not $c) { 'ok nothing to release'; exit 0 }
     if ($c['holder'] -ne $Holder -and -not $Override) {
       "fail the WinUAE lane is claimed by $($c['holder']), not by $Holder"
-      "If $($c['holder']) has gone, release it anyway with: winuae.ps1 release -Holder $Holder -Override"
+      $which = if ($LaneCount -gt 1) { " -Lane $ActiveLane" } else { '' }
+      "If $($c['holder']) has gone, release it anyway with: winuae.ps1 release -Holder $Holder -Override$which"
       exit 1
     }
-    Remove-Item $ClaimFile -ErrorAction SilentlyContinue
+    Remove-Item $LanePaths.claim -ErrorAction SilentlyContinue
     "ok released by $Holder"
   }
 
   'start' {
     $deny = Claim-Denial
     if ($deny) { $deny; exit 1 }
-    $already = @(Get-Process -Name winuae64 -ErrorAction SilentlyContinue)
-    if ($already.Count -gt 0) {
-      # Starting over a live emulator would be ignored by the scheduler and the
-      # loop below would then report the OLD process as this call's success,
-      # with whatever config that one was given.
-      $r = Read-Kv $RunFile
-      ($already | ForEach-Object {
-        # Only name a holder when the receipt is about THIS process. A leftover
-        # receipt would otherwise blame an emulator a person started at the
-        # console on whoever last used the lane.
-        $whose = if ($r['pid'] -and [int]$r['pid'] -eq $_.Id -and $r['holder']) { " started by $($r['holder'])" } else { '' }
-        "fail winuae64 already running pid=$($_.Id)$whose; stop it first"
-      })
+    # Starting over this lane's live emulator would be ignored by the scheduler,
+    # and the poll below would then adopt nothing. Other lanes' emulators do not
+    # matter here: they are not in this lane's receipt.
+    $old = Get-ReceiptProcess (Read-Kv $LanePaths.run)
+    if ($old) {
+      $whose = (Read-Kv $LanePaths.run)['holder']
+      $by = if ($whose) { " started by $whose" } else { '' }
+      "fail winuae64 already running pid=$($old.Id)$by; stop it first"
       exit 1
     }
     $wanted = ($Rest -join ' ')
-    # No execution time limit: this one is meant to run until `stop`.
-    $bad = Register-Session1Task $Task $Exe $wanted ([TimeSpan]::Zero)
-    if ($bad) { $bad; exit 1 }
-    # Everything below the launch is one question: is the emulator that is
-    # running the one THIS call asked for? Six keystrokes went into a stranger's
-    # Pools of Darkness because the old loop asked only whether a winuae64
-    # existed -- #116.
-    $launchedAt = Get-Date
-    Start-Session1Task $Task
-    for ($i = 0; $i -lt 120; $i++) {
-      $q = @(Get-Process -Name winuae64 -ErrorAction SilentlyContinue)
-      if ($q.Count -gt 1) {
-        "fail $($q.Count) winuae64 processes after starting: $(($q | ForEach-Object { $_.Id }) -join ',')"
-        exit 1
+    $expected = "`"$Exe`" $wanted"
+    # One start at a time on the whole guest, because "the new winuae64 that no
+    # lane owns" only names one process while nobody else is between launching
+    # and writing a receipt. Windows frees the mutex when its holder dies, and
+    # an abandoned one still grants ownership.
+    $mutex = New-Object System.Threading.Mutex($false, 'Global\wish-winuae-start')
+    $held = $false
+    $said = @()
+    $code = 0
+    try {
+      try { $held = $mutex.WaitOne(60000) }
+      catch [System.Threading.AbandonedMutexException] { $held = $true }
+      if (-not $held) {
+        $said = @('fail another start has held the guest-wide WinUAE start lock for 60 s'); $code = 1
+      } else {
+        # No execution time limit: this one is meant to run until `stop`.
+        $bad = Register-Session1Task $LanePaths.task $Exe $wanted ([TimeSpan]::Zero)
+        if ($bad) { $said = @($bad); $code = 1 }
+        else {
+          $owned = @{}
+          foreach ($n in 1..$LaneCount) {
+            $rr = Read-Kv (Lane-Paths $n).run
+            if ($rr.ContainsKey('pid')) { $owned[[string]$rr['pid']] = $true }
+          }
+          # Everything below the launch is one question: is the emulator that is
+          # running the one THIS call asked for?
+          $launchedAt = Get-Date
+          Start-Session1Task $LanePaths.task
+          for ($i = 0; $i -lt 120 -and -not $said.Count; $i++) {
+            $fresh = @(Get-Process -Name winuae64 -ErrorAction SilentlyContinue |
+              Where-Object { -not $owned.ContainsKey([string]$_.Id) -and $_.StartTime -ge $launchedAt.AddSeconds(-2) })
+            $matching = @()
+            $first = $null
+            foreach ($cand in $fresh) {
+              $cmdline = (Get-CimInstance Win32_Process -Filter "ProcessId=$($cand.Id)" -ErrorAction SilentlyContinue).CommandLine
+              if (($cmdline -replace '\s+', ' ').Trim() -eq ($expected -replace '\s+', ' ').Trim()) { $matching += $cand }
+              elseif (-not $first) { $first = @{ proc = $cand; cmdline = $cmdline } }
+            }
+            if ($matching.Count -gt 1) {
+              $said = @("fail $($matching.Count) new winuae64 processes after starting: $(($matching | ForEach-Object { $_.Id }) -join ',')"); $code = 1
+            }
+            elseif ($matching.Count -eq 1) {
+              $proc = $matching[0]
+              Write-Kv $LanePaths.run @{
+                holder  = $Holder
+                pid     = $proc.Id
+                started = $proc.StartTime.ToString('o')
+                args    = $wanted
+              }
+              $said = @("ok pid=$($proc.Id) session=$($proc.SessionId)")
+            }
+            elseif ($first) {
+              $said = @("fail winuae64 pid=$($first.proc.Id) is running a command line this call did not pass", "  wanted: $expected", "  found:  $($first.cmdline)"); $code = 1
+            }
+            else { Start-Sleep -Milliseconds 250 }
+          }
+          if (-not $said.Count) { $said = @("fail no new winuae64 process after 30s: $(Why-NotRun $LanePaths.task)"); $code = 1 }
+        }
       }
-      if ($q.Count -eq 1) {
-        $proc = $q[0]
-        $cmdline = (Get-CimInstance Win32_Process -Filter "ProcessId=$($proc.Id)" -ErrorAction SilentlyContinue).CommandLine
-        $expected = "`"$Exe`" $wanted"
-        if (($cmdline -replace '\s+', ' ').Trim() -ne ($expected -replace '\s+', ' ').Trim()) {
-          "fail winuae64 pid=$($proc.Id) is running a command line this call did not pass"
-          "  wanted: $expected"
-          "  found:  $cmdline"
-          exit 1
-        }
-        # Same command line and still not ours: a neighbouring lane restarting
-        # the same config would otherwise be reported as this call's success.
-        if ($proc.StartTime -lt $launchedAt.AddSeconds(-2)) {
-          "fail winuae64 pid=$($proc.Id) started $($proc.StartTime.ToString('o')), before this call did at $($launchedAt.ToString('o'))"
-          exit 1
-        }
-        Write-Kv $RunFile @{
-          holder  = $Holder
-          pid     = $proc.Id
-          started = $proc.StartTime.ToString('o')
-          args    = $wanted
-        }
-        "ok pid=$($proc.Id) session=$($proc.SessionId)"
-        exit 0
-      }
-      Start-Sleep -Milliseconds 250
+    } finally {
+      if ($held) { $mutex.ReleaseMutex() }
+      $mutex.Dispose()
     }
-    "fail no winuae64 process after 30s: $(Why-NotRun $Task)"; exit 1
+    $said
+    exit $code
   }
 
   'stop' {
-    # Ends the tree this task started. Never a kill by name: nothing here
-    # touches a winuae64 somebody else launched -- and "somebody else" is the
-    # ordinary case on a VM with one task and one process name, which is why
-    # the receipt is checked before anything is stopped.
+    # Ends the tree this lane's task started. Never a kill by name: nothing here
+    # touches a winuae64 somebody else launched, which is why the receipt is
+    # checked before anything is stopped.
     $deny = Claim-Denial
     if ($deny) { $deny; exit 1 }
-    if (-not (Get-Process -Name winuae64 -ErrorAction SilentlyContinue)) {
-      Remove-Item $RunFile -ErrorAction SilentlyContinue
+    $live = Get-ReceiptProcess (Read-Kv $LanePaths.run)
+    if (-not $live) {
+      Remove-Item $LanePaths.run -ErrorAction SilentlyContinue
       'ok stopped'; exit 0
     }
     $mine = Resolve-MyEmulator
@@ -1226,15 +1387,16 @@ switch ($Cmd) {
       exit 1
     }
     if ($mine.err) { "ok overriding: $($mine.err)" }
-    Stop-ScheduledTask -TaskName $Task -ErrorAction SilentlyContinue
+    Stop-ScheduledTask -TaskName $LanePaths.task -ErrorAction SilentlyContinue
     for ($i = 0; $i -lt 40; $i++) {
-      if (-not (Get-Process -Name winuae64 -ErrorAction SilentlyContinue)) {
-        Remove-Item $RunFile -ErrorAction SilentlyContinue
+      $again = Get-Process -Id $live.Id -ErrorAction SilentlyContinue
+      if (-not $again -or $again.StartTime -ne $live.StartTime) {
+        Remove-Item $LanePaths.run -ErrorAction SilentlyContinue
         'ok stopped'; exit 0
       }
       Start-Sleep -Milliseconds 250
     }
-    'fail winuae64 still running 10s after Stop-ScheduledTask'; exit 1
+    "fail winuae64 pid=$($live.Id) still running 10s after Stop-ScheduledTask"; exit 1
   }
 
   'front' {
@@ -1242,7 +1404,7 @@ switch ($Cmd) {
     if ($deny) { $deny; exit 1 }
     $mine = Resolve-MyEmulator
     if ($mine.err) { $mine.err; exit 1 }
-    $r = Invoke-Session1 'winuae-front' ($Preamble + (Pid-Guard $mine.proc.Id) + $RaiseAndCheck + @'
+    $r = Invoke-Session1 $LanePaths.helpers.front ((Helper-Preamble $LanePaths.receipt $mine.proc.Id) + $RaiseAndCheck + @'
 
 Report $(if ($fg) { "ok raised pid=$($p.Id) hwnd=$h" } else { "fail pid=$($p.Id) did not take the foreground" })
 '@)
@@ -1278,7 +1440,7 @@ Report $(if ($fg) { "ok raised pid=$($p.Id) hwnd=$h" } else { "fail pid=$($p.Id)
     $how  = if ($Extended) { ' extended' } else { '' }
     $mine = Resolve-MyEmulator
     if ($mine.err) { $mine.err; exit 1 }
-    $r = Invoke-Session1 'winuae-key' ($Preamble + (Pid-Guard $mine.proc.Id) + $RaiseAndCheck + @"
+    $r = Invoke-Session1 $LanePaths.helpers.key ((Helper-Preamble $LanePaths.receipt $mine.proc.Id) + $RaiseAndCheck + @"
 
 if (-not `$fg) { Report "fail pid=`$(`$p.Id) did not take the foreground, so the key would go elsewhere"; exit 1 }
 [W]::keybd_event(0x$vk, 0, $down, [IntPtr]::Zero)
@@ -1303,19 +1465,18 @@ Report "ok pressed VK 0x$vk$how at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
     # so with GetLastError 203.
     $deny = Claim-Denial
     if ($deny) { $deny; exit 1 }
-    # Two emulators means two consoles, and the injector would attach to
-    # whichever was listed first; an emulator this lane did not start means
-    # typing into somebody else's game. Same rule as `front` and `key`.
+    # Two emulators means two consoles, and an emulator this lane did not start
+    # means typing into somebody else's game. Same rule as `front` and `key`.
     $mine = Resolve-MyEmulator
     if ($mine.err) { $mine.err; exit 1 }
     $p = $mine.proc
-    Remove-Item $SendLog -ErrorAction SilentlyContinue
+    Remove-Item $LanePaths.sendlog -ErrorAction SilentlyContinue
     $token = [guid]::NewGuid().ToString('N').Substring(0, 12)
     $sendargs = $Rest -join ' '
     # A caller-supplied -TargetPid used to be preferred verbatim, which walked
     # straight past the ownership check above: the injector would attach to
     # whatever console that pid owns. It was inert only because
-    # Resolve-MyEmulator blocks when there is more than one winuae64 -- safety
+    # Resolve-MyEmulator pins the lane to its receipt's pid -- safety
     # belonging to a different check is not safety here. The driver knows the
     # right pid; anything else is blocked.
     # -match is not global, so it reads only the FIRST -TargetPid: given two,
@@ -1344,11 +1505,12 @@ Report "ok pressed VK 0x$vk$how at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
     $sendargs = "$sendargs -Token $token"
     # Bounded, unlike `start`: this finishes or it has gone wrong. A command
     # costs ~0.7s and a batch is tens of lines, so ten minutes is generous.
-    $bad = Register-Session1Task 'winuae-send' 'powershell.exe' `
+    $sendTask = $LanePaths.helpers.send
+    $bad = Register-Session1Task $sendTask 'powershell.exe' `
       ("-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden " +
-       "-File $Root\winuae-send.ps1 $sendargs") ([TimeSpan]::FromMinutes(10))
+       "-File $Root\winuae-send.ps1 $sendargs -Log $($LanePaths.sendlog) -Out $($LanePaths.console)") ([TimeSpan]::FromMinutes(10))
     if ($bad) { $bad; exit 1 }
-    Start-Session1Task 'winuae-send'
+    Start-Session1Task $sendTask
     # winuae-send.ps1 ends every path with "--- exit N token=...". Wait for it
     # rather than for the task, so what is reported is the injector's own
     # verdict -- and match OUR token, so a log an earlier call left behind
@@ -1374,13 +1536,13 @@ Report "ok pressed VK 0x$vk$how at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
     for ($i = 0; $i -lt 6600; $i++) {
       $v = & $verdict
       if (-not $v -and ($i % 10) -eq 0) {
-        $st = (Get-ScheduledTask -TaskName 'winuae-send').State
+        $st = (Get-ScheduledTask -TaskName $sendTask).State
         if ($st -eq 'Running') { $sawRunning = $true }
         elseif (-not $sawRunning -and $i -ge 300) {
           # Thirty seconds and it has never once been seen running: this is the
           # nobody-logged-on case, and waiting out the other ten and a half
           # minutes teaches nothing that Why-NotRun cannot say now.
-          "fail winuae-send never started: $(Why-NotRun 'winuae-send')"; exit 1
+          "fail winuae-send never started: $(Why-NotRun $sendTask)"; exit 1
         }
         elseif ($sawRunning) {
           # The state change and the last line of the log are not ordered
@@ -1391,7 +1553,7 @@ Report "ok pressed VK 0x$vk$how at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
             # `Why-NotRun` carries the task's own `lastResult`, so a verdict
             # line lost to a failing write still surfaces the injector's real
             # exit code -- the line is lost, the code is not.
-            "fail winuae-send ended without writing a verdict: $(Why-NotRun 'winuae-send')" +
+            "fail winuae-send ended without writing a verdict: $(Why-NotRun $sendTask)" +
               $(if ($script:readFailures) { " (send.log could not be read $script:readFailures times)" } else { '' })
             Read-SendLog
             exit 1
@@ -1405,7 +1567,7 @@ Report "ok pressed VK 0x$vk$how at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
       }
       Start-Sleep -Milliseconds 100
     }
-    "fail winuae-send never finished: $(Why-NotRun 'winuae-send')"; exit 1
+    "fail winuae-send never finished: $(Why-NotRun $sendTask)"; exit 1
   }
 
   'roms' {
@@ -1428,6 +1590,15 @@ Report "ok pressed VK 0x$vk$how at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
     # enforced this, and `roms` is the one command that creates the condition.
     $deny = Claim-Denial
     if ($deny) { $deny; exit 1 }
+    # The scan changes registry state every lane reads, so no other holder may
+    # have a lane while it runs.
+    foreach ($n in 1..$LaneCount) {
+      $r = Read-Claim (Lane-Paths $n).claim
+      if ($r['state'] -eq 'held' -and $r['claim']['holder'] -ne $Holder) {
+        "fail the WinUAE lane $n is claimed by $($r['claim']['holder']) since $($r['claim']['since']); roms needs every lane free"
+        exit 1
+      }
+    }
     $live = Get-Process -Name winuae64 -ErrorAction SilentlyContinue
     if ($live) {
       ($live | ForEach-Object { "fail winuae64 running pid=$($_.Id); roms starts its own, stop this one first" })
@@ -1489,16 +1660,24 @@ Report "ok pressed VK 0x$vk$how at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
       'fail winuae64 is running; run `stop` first, or clean would strand it'
       exit 1
     }
-    $c = Get-Claim
-    if ($c -and $c['holder'] -ne $Holder -and -not $Override) {
-      "fail the WinUAE lane is claimed by $($c['holder']) since $($c['since']); clean would take the scaffolding out from under it"
-      "If $($c['holder']) has gone, clean anyway with: winuae.ps1 clean -Override"
-      exit 1
+    foreach ($n in 1..$LaneCount) {
+      $c = Get-Claim (Lane-Paths $n).claim
+      if ($c -and $c['holder'] -ne $Holder -and -not $Override) {
+        $which = if ($LaneCount -gt 1) { " $n" } else { '' }
+        "fail the WinUAE lane$which is claimed by $($c['holder']) since $($c['since']); clean would take the scaffolding out from under it"
+        "If $($c['holder']) has gone, clean anyway with: winuae.ps1 clean -Override"
+        exit 1
+      }
     }
-    foreach ($t in @($Task) + $Helpers) {
-      Unregister-ScheduledTask -TaskName $t -Confirm:$false -ErrorAction SilentlyContinue
+    # Every task a larger earlier lane count registered goes too, so the pattern
+    # is the name prefix rather than the lanes there are now.
+    foreach ($t in @(Get-ScheduledTask -TaskName 'winuae-*' -ErrorAction SilentlyContinue)) {
+      Unregister-ScheduledTask -TaskName $t.TaskName -Confirm:$false -ErrorAction SilentlyContinue
     }
-    Remove-Item $Receipt, $SendLog, $RunFile, $ClaimFile, "$Root\console.txt" -ErrorAction SilentlyContinue
+    foreach ($n in 1..$LaneCount) {
+      $l = Lane-Paths $n
+      Remove-Item $l.receipt, $l.sendlog, $l.run, $l.claim, $l.console -ErrorAction SilentlyContinue
+    }
     Remove-Item -LiteralPath $StateRoot -Recurse -Force -ErrorAction SilentlyContinue
     'ok cleaned'
   }
@@ -1523,13 +1702,33 @@ Report "ok pressed VK 0x$vk$how at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
     Invoke-Floppy 'insert'
   }
 
+  'lane' {
+    # Read-only: which lane -Holder has and which emulator is in it, for a caller
+    # that must open that emulator's pipe itself.
+    $got = Get-LaneEmulator
+    if ($got.err) { $got.err; exit 1 }
+    "ok lane=$ActiveLane pid=$($got.proc.Id) started=$($got.proc.StartTime.ToString('o'))"
+  }
+
   'status' {
+    $owner = @{}
+    foreach ($n in 1..$LaneCount) {
+      $rr = Read-Kv (Lane-Paths $n).run
+      if ($rr.ContainsKey('pid')) { $owner[[string]$rr['pid']] = $n }
+    }
     Get-Process -Name winuae64 -ErrorAction SilentlyContinue |
-      ForEach-Object { "pid=$($_.Id) session=$($_.SessionId) responding=$($_.Responding) start=$($_.StartTime)" }
-    $c = Get-Claim
-    if ($c) { "claim = $($c['holder']) since $($c['since'])" } else { 'claim = none' }
-    $r = Read-Kv $RunFile
-    if ($r.ContainsKey('pid')) { "run   = pid=$($r['pid']) holder=$($r['holder']) args=$($r['args'])" } else { 'run   = no receipt' }
+      ForEach-Object {
+        $at = if ($owner.ContainsKey([string]$_.Id)) { $owner[[string]$_.Id] } else { 'none' }
+        "pid=$($_.Id) session=$($_.SessionId) responding=$($_.Responding) start=$($_.StartTime) lane=$at"
+      }
+    "lanes = $LaneCount"
+    foreach ($n in 1..$LaneCount) {
+      $tag = if ($n -eq 1) { '' } else { " $n" }
+      $c = Get-Claim (Lane-Paths $n).claim
+      if ($c) { "claim$tag = $($c['holder']) since $($c['since'])" } else { "claim$tag = none" }
+      $r = Read-Kv (Lane-Paths $n).run
+      if ($r.ContainsKey('pid')) { "run  $tag = pid=$($r['pid']) holder=$($r['holder']) args=$($r['args'])" } else { "run  $tag = no receipt" }
+    }
     "System ROMs = $((Get-ItemProperty $RomKey -Name KickstartPath -ErrorAction SilentlyContinue).KickstartPath)"
     $n = if (Test-Path "$RomKey\DetectedROMs") {
            (Get-Item "$RomKey\DetectedROMs" | Select-Object -ExpandProperty Property).Count

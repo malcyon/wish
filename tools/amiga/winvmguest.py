@@ -308,6 +308,7 @@ class Status:
     holder: str | None = None
     since: str = ""
     run: str = ""
+    lanes: dict[int, tuple[str | None, str]] = dataclasses.field(default_factory=dict)
     emulators: list[str] = dataclasses.field(default_factory=list)
     other: list[str] = dataclasses.field(default_factory=list)
 
@@ -316,13 +317,17 @@ class Status:
         """The lane in one line."""
         if not self.driver:
             return f"unknown: {WINUAE_PS1} is not on the Windows guest"
+        if len(self.lanes) > 1:
+            return " | ".join(
+                f"{n}: " + ("free" if holder is None else f"held by {holder} since {since}")
+                for n, (holder, since) in sorted(self.lanes.items()))
         if self.holder is None:
             return "free"
         return f"held by {self.holder} since {self.since}"
 
 
-_CLAIM = re.compile(r"^claim\s*=\s*(?P<holder>\S+)(?:\s+since\s+(?P<since>.*))?$")
-_RUN = re.compile(r"^run\s*=\s*(?P<run>.*)$")
+_CLAIM = re.compile(r"^claim(?:\s+(?P<lane>\d+))?\s*=\s*(?P<holder>\S+)(?:\s+since\s+(?P<since>.*))?$")
+_RUN = re.compile(r"^run(?:\s+(?P<lane>\d+))?\s*=\s*(?P<run>.*)$")
 
 
 def parse_status(text: str) -> Status:
@@ -343,12 +348,16 @@ def parse_status(text: str) -> Status:
             key, _, value = line.partition("=")
             setattr(st, key, value)
         elif (m := _CLAIM.match(line)):
-            saw_claim = True
-            holder = m.group("holder")
-            if holder != "none":
-                st.holder, st.since = holder, (m.group("since") or "").strip()
+            number = int(m.group("lane") or 1)
+            holder = None if m.group("holder") == "none" else m.group("holder")
+            since = (m.group("since") or "").strip() if holder else ""
+            st.lanes[number] = (holder, since)
+            if number == 1:
+                saw_claim = True
+                st.holder, st.since = holder, since
         elif (m := _RUN.match(line)):
-            st.run = m.group("run").strip()
+            if not m.group("lane") or int(m.group("lane")) == 1:
+                st.run = m.group("run").strip()
         elif line.startswith("pid="):
             st.emulators.append(line)
         else:
@@ -360,12 +369,13 @@ def parse_status(text: str) -> Status:
 
 
 def lane_matches(st: Status, expect: str) -> bool:
-    """True when the lane is `expect`: a holder's name, or `free`."""
+    """True when `expect` is a holder of any lane, or `free` and any lane is free."""
     if not st.driver:
         return False
+    held = [holder for holder, _ in st.lanes.values()]
     if expect == "free":
-        return st.holder is None
-    return st.holder == expect
+        return any(holder is None for holder in held)
+    return expect in held
 
 
 # -- running it ----------------------------------------------------------------

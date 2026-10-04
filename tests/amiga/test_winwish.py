@@ -18,7 +18,7 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
-from tools.amiga import winvmguest, winwish  # noqa: E402
+from tools.amiga import winuaesession, winvmguest, winwish  # noqa: E402
 from tools.amiga.winuaesession import RouteError  # noqa: E402
 
 SHA = "0123456789abcdef0123456789abcdef01234567"
@@ -58,7 +58,8 @@ class FakeLane:
             raise self.exc(f"{name} failed")
         return f"ok {name}"
 
-    def claim(self, holder, timeout):
+    def claim(self, holder, timeout, exclusive=False):
+        self.exclusive = exclusive
         return self._do("claim")
 
     def start(self, holder, *drives, timeout, options=()):
@@ -371,6 +372,24 @@ def test_up_runs_the_steps_in_order(tmp_path, monkeypatch):
     winwish.up(winwish.Guest(run), lane, _args(tmp_path, monkeypatch))
     assert lane.log == ["claim", r"drives=C:\Amiga\Disks\a.adf", "start"]
     assert run.verbs() == ["ps", "put", "ps", "lane", "ps"]
+
+
+def test_up_claims_every_lane(tmp_path, monkeypatch):
+    """wish.exe takes the session 1 desktop, so no other holder may run beside it."""
+    lane = FakeLane()
+    winwish.up(winwish.Guest(FakeRun()), lane, _args(tmp_path, monkeypatch))
+    assert lane.exclusive is True
+
+
+def test_an_exclusive_claim_sends_the_exclusive_switch(monkeypatch):
+    sent = []
+    monkeypatch.setattr(winuaesession.WinGuest, "_run",
+                        staticmethod(lambda *a, timeout: sent.append(a) or "ok claimed by h"))
+    guest = winuaesession.WinGuest()
+    guest.claim("h", 5, exclusive=True)
+    guest.claim("h", 5)
+    assert sent[0][1].endswith("claim -Exclusive -Holder h")
+    assert sent[1][1].endswith("claim -Holder h")
 
 
 def test_up_blocks_without_a_fresh_mute_proof(tmp_path, monkeypatch):

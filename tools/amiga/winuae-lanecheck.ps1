@@ -15,6 +15,12 @@
 # Each scenario is one of those, as a driver B doing something to a driver A's
 # emulator. PASS means B was blocked.
 #
+# With -Lanes 2 it checks the driver's two-lane mode instead: it writes a copy of
+# the driver with `$LaneCount = 1` replaced by the count, and `-Scenario all` then
+# runs the four scenarios for several lanes (twolane, exclusive, stalelane,
+# overridelane). The single-lane scenarios assume a second holder is blocked, so
+# they are run without -Lanes. The deployed driver is never edited.
+#
 # It leaves nothing behind: the lane is reset before and after every scenario,
 # and never by killing a process by name -- Stop-ScheduledTask ends the tree
 # the task started, which is the only winuae64 this check ever creates.
@@ -28,7 +34,8 @@ param(
   # likely; the scenario also says how many rounds actually raced, and fails
   # when that is none.
   [int]$HijackRounds = 0,
-  [ValidateSet('all','args','own','sendpid','hijack','claimrace','reclaim','foreignstop','foreignkey','claim')][string]$Scenario = 'all'
+  [ValidateSet('all','args','own','sendpid','hijack','claimrace','reclaim','foreignstop','foreignkey','claim','twolane','exclusive','stalelane','overridelane')][string]$Scenario = 'all',
+  [int]$Lanes       = 1
 )
 if ($HijackRounds -le 0) { $HijackRounds = [Math]::Max(9, $Rounds * 3) }
 # The reclaim window is between one Remove-Item and one CreateNew -- a couple of
@@ -46,6 +53,15 @@ $ArgsA   = "-log -f $ConfigA"
 $ArgsB   = "-log -f $ConfigB"
 
 if (-not (Test-Path $Driver))  { "fail no driver at $Driver"; exit 1 }
+if ($Lanes -gt 1) {
+  # The count is a constant in the driver, so a several-lane copy is a text
+  # replacement; it has to land exactly once or the copy is not what was asked for.
+  $text = Get-Content -Raw $Driver
+  $found = @([regex]::Matches($text, '(?m)^\$LaneCount = 1\s*$')).Count
+  if ($found -ne 1) { "fail $Driver has $found lines reading `$LaneCount = 1, not one"; exit 1 }
+  $Driver = "$Root\winuae-lanecheck-driver.ps1"
+  Set-Content -Path $Driver -Value ([regex]::Replace($text, '(?m)^\$LaneCount = 1\s*$', "`$LaneCount = $Lanes")) -Encoding ASCII
+}
 if (-not (Test-Path $ConfigA)) { "fail no config at $ConfigA"; exit 1 }
 if (-not (Test-Path $ConfigB)) { "fail no config at $ConfigB"; exit 1 }
 
@@ -84,12 +100,14 @@ function Emulators { Get-CimInstance Win32_Process -Filter "Name='winuae64.exe'"
 # this check exists because killing by name is what destroyed other people's
 # runs in the first place.
 function Reset-Lane {
-  Stop-ScheduledTask -TaskName $Task -ErrorAction SilentlyContinue
+  foreach ($t in @(Get-ScheduledTask -TaskName 'winuae-run*' -ErrorAction SilentlyContinue)) {
+    Stop-ScheduledTask -TaskName $t.TaskName -ErrorAction SilentlyContinue
+  }
   for ($i = 0; $i -lt 60; $i++) {
     if (@(Emulators).Count -eq 0) { break }
     Start-Sleep -Milliseconds 250
   }
-  Remove-Item "$Root\winuae-claim.txt", "$Root\winuae-run.txt" -ErrorAction SilentlyContinue
+  Remove-Item "$Root\winuae-claim*.txt", "$Root\winuae-run*.txt" -ErrorAction SilentlyContinue
   @(Emulators).Count -eq 0
 }
 
@@ -398,16 +416,121 @@ function Scenario-Claim {
   Reset-Lane | Out-Null
 }
 
-"driver: $Driver (claim: $(if ($HasClaim) { 'yes' } else { 'no' })), $Rounds rounds, $HijackRounds hijack rounds"
-if ($Scenario -in @('all','args'))        { Scenario-Args }
-if ($Scenario -in @('all','claim'))       { Scenario-Claim }
-if ($Scenario -in @('all','own'))         { Scenario-Own }
-if ($Scenario -in @('all','sendpid'))     { Scenario-SendPid }
-if ($Scenario -in @('all','claimrace'))   { Scenario-ClaimRace }
-if ($Scenario -in @('all','reclaim'))     { Scenario-Reclaim }
-if ($Scenario -in @('all','hijack'))      { Scenario-Hijack }
-if ($Scenario -in @('all','foreignstop')) { Scenario-ForeignStop }
-if ($Scenario -in @('all','foreignkey'))  { Scenario-ForeignKey }
+function Wants([string]$Name, [bool]$MultiLane) {
+  $Scenario -eq $Name -or ($Scenario -eq 'all' -and ($Lanes -gt 1) -eq $MultiLane)
+}
+
+# One lane's line out of `status`: `claim = ...` for lane 1, `claim 2 = ...` after.
+function Claim-Line([int]$N) {
+  $tag = if ($N -eq 1) { '' } else { " $N" }
+  ((Drive @('status')).out -split "`r?`n" | Where-Object { $_ -match "^claim$tag\s*=" }) -join ''
+}
+
+function Pid-Of($Reply) { if ($Reply.out -match '(?m)^ok pid=(\d+)') { [int]$Matches[1] } else { 0 } }
+
+# Each holder runs its own emulator, and every verb reaches only that holder's.
+# `insert` is not driven here: it needs a staged disk and its hash.
+function Scenario-TwoLane {
+  "twolane: two holders each run their own emulator and every verb reaches only theirs"
+  if ($Lanes -lt 2) { "  n/a needs -Lanes 2"; return }
+  if (-not (Reset-Lane)) { Verdict $false 'lane would not reset' ''; return }
+  $ca = Drive @('claim', '-Holder', 'driverA')
+  $cb = Drive @('claim', '-Holder', 'driverB')
+  Verdict ($ca.code -eq 0 -and $cb.code -eq 0) 'both holders are granted a lane' ($ca.out + "`n" + $cb.out)
+  $a = Drive @('start', '-Holder', 'driverA', '-log', '-f', $ConfigA)
+  $b = Drive @('start', '-Holder', 'driverB', '-log', '-f', $ConfigB)
+  $pa = Pid-Of $a; $pb = Pid-Of $b
+  Verdict ($pa -ne 0 -and $pb -ne 0 -and $pa -ne $pb) 'each start reports its own pid' ($a.out + "`n" + $b.out)
+  if ($pa -eq 0 -or $pb -eq 0 -or $pa -eq $pb) { Reset-Lane | Out-Null; return }
+  $startA = (Get-Process -Id $pa -ErrorAction SilentlyContinue).StartTime
+  $cmdA = (Get-CimInstance Win32_Process -Filter "ProcessId=$pa").CommandLine
+  $cmdB = (Get-CimInstance Win32_Process -Filter "ProcessId=$pb").CommandLine
+  Verdict (($cmdA -match [regex]::Escape($ConfigA)) -and ($cmdB -match [regex]::Escape($ConfigB))) "each emulator runs its own holder's config" "A: $cmdA`nB: $cmdB"
+  foreach ($who in @(@('driverA', $pa), @('driverB', $pb))) {
+    $h = $who[0]; $id = $who[1]
+    $l = Drive @('lane', '-Holder', $h)
+    Verdict ($l.code -eq 0 -and $l.out -match "pid=$id ") "$h's lane verb names its own pid" $l.out
+    $k = Drive @('key', '7A', '-Holder', $h)
+    Verdict ($k.code -eq 0 -and $k.out -match "at pid=$id ") "$h's key reaches its own pid" $k.out
+    $f = Drive @('front', '-Holder', $h)
+    Verdict ($f.code -eq 0 -and $f.out -match "pid=$id ") "$h's front raises its own pid" $f.out
+    $d = Drive @('drives', '-Holder', $h)
+    Verdict ($d.code -eq 0 -and $d.out -match "ok drives pid=$id") "$h's drives reads its own pipe" $d.out
+  }
+  $sb = Drive @('stop', '-Holder', 'driverB')
+  $a2 = Get-Process -Id $pa -ErrorAction SilentlyContinue
+  Verdict ($sb.code -eq 0 -and -not (Get-Process -Id $pb -ErrorAction SilentlyContinue)) "driverB's stop ends driverB's emulator" $sb.out
+  Verdict ($a2 -and $a2.StartTime -eq $startA) "driverA's emulator is the same process after driverB's stop" "pid=$pa"
+  $sa = Drive @('stop', '-Holder', 'driverA')
+  Verdict ($sa.code -eq 0 -and -not (Get-Process -Id $pa -ErrorAction SilentlyContinue)) "driverA's stop ends driverA's emulator" $sa.out
+  $ra = Drive @('release', '-Holder', 'driverA')
+  $rb = Drive @('release', '-Holder', 'driverB')
+  Verdict ($ra.code -eq 0 -and $rb.code -eq 0) 'both holders release' ($ra.out + "`n" + $rb.out)
+  Reset-Lane | Out-Null
+}
+
+function Scenario-Exclusive {
+  "exclusive: a whole-desktop claim needs every lane free and keeps every other holder out"
+  if ($Lanes -lt 2) { "  n/a needs -Lanes 2"; return }
+  if (-not (Reset-Lane)) { Verdict $false 'lane would not reset' ''; return }
+  $a = Drive @('claim', '-Holder', 'driverA')
+  Verdict ($a.code -eq 0) 'driverA takes lane 1' $a.out
+  $x = Drive @('claim', '-Holder', 'driverB', '-Exclusive')
+  Verdict ($x.code -ne 0) 'an exclusive claim fails while another holder has a lane' $x.out
+  Verdict ((Claim-Line 2) -match 'none') 'the failed exclusive claim left lane 2 free' (Claim-Line 2)
+  Drive @('release', '-Holder', 'driverA') | Out-Null
+  $x = Drive @('claim', '-Holder', 'driverB', '-Exclusive')
+  Verdict ($x.code -eq 0 -and $x.out -match '^ok claimed by driverB') 'an exclusive claim succeeds once every lane is free' $x.out
+  Verdict (((Claim-Line 1) -match 'driverB') -and ((Claim-Line 2) -match 'driverB')) 'it holds every lane' ((Claim-Line 1) + "`n" + (Claim-Line 2))
+  $o = Drive @('claim', '-Holder', 'driverA')
+  Verdict ($o.code -ne 0) 'an ordinary claim by another holder fails' $o.out
+  $r = Drive @('release', '-Holder', 'driverB')
+  Verdict ($r.code -eq 0 -and ((Claim-Line 1) -match 'none') -and ((Claim-Line 2) -match 'none')) 'one release frees every lane' $r.out
+  Reset-Lane | Out-Null
+}
+
+function Scenario-StaleLane {
+  "stalelane: a claim file from an earlier boot is taken without -Override"
+  if ($Lanes -lt 2) { "  n/a needs -Lanes 2"; return }
+  if (-not (Reset-Lane)) { Verdict $false 'lane would not reset' ''; return }
+  Drive @('claim', '-Holder', 'driverA') | Out-Null
+  Set-Content -Path "$Root\winuae-claim-2.txt" -Encoding ASCII -Value @(
+    'boot=1999-01-01T00:00:00.0000000+00:00', 'holder=ghost', 'since=1999-01-01T00:00:00.0000000+00:00', 'token=stale')
+  $b = Drive @('claim', '-Holder', 'driverB')
+  Verdict ($b.code -eq 0 -and $b.out -match '^ok claimed by driverB') 'driverB takes the stale lane without -Override' $b.out
+  Verdict ((Claim-Line 2) -match 'driverB') 'lane 2 now names driverB' (Claim-Line 2)
+  Verdict ((Claim-Line 1) -match 'driverA') 'lane 1 still names driverA' (Claim-Line 1)
+  Reset-Lane | Out-Null
+}
+
+function Scenario-OverrideLane {
+  "overridelane: -Override takes the lane it names and leaves the others"
+  if ($Lanes -lt 2) { "  n/a needs -Lanes 2"; return }
+  if (-not (Reset-Lane)) { Verdict $false 'lane would not reset' ''; return }
+  Drive @('claim', '-Holder', 'driverA') | Out-Null
+  Drive @('claim', '-Holder', 'driverB') | Out-Null
+  $bare = Drive @('claim', '-Holder', 'driverC', '-Override')
+  Verdict ($bare.code -ne 0) '-Override without -Lane is blocked when there is more than one lane' $bare.out
+  $c = Drive @('claim', '-Holder', 'driverC', '-Override', '-Lane', '2')
+  Verdict ($c.code -eq 0 -and $c.out -match 'taken from driverB') '-Override -Lane 2 takes lane 2 and says whose it was' $c.out
+  Verdict (((Claim-Line 1) -match 'driverA') -and ((Claim-Line 2) -match 'driverC')) 'lane 1 is untouched' ((Claim-Line 1) + "`n" + (Claim-Line 2))
+  Reset-Lane | Out-Null
+}
+
+"driver: $Driver (claim: $(if ($HasClaim) { 'yes' } else { 'no' })), $Lanes lane(s), $Rounds rounds, $HijackRounds hijack rounds"
+if (Wants 'args' $false)        { Scenario-Args }
+if (Wants 'claim' $false)       { Scenario-Claim }
+if (Wants 'own' $false)         { Scenario-Own }
+if (Wants 'sendpid' $false)     { Scenario-SendPid }
+if (Wants 'claimrace' $false)   { Scenario-ClaimRace }
+if (Wants 'reclaim' $false)     { Scenario-Reclaim }
+if (Wants 'hijack' $false)      { Scenario-Hijack }
+if (Wants 'foreignstop' $false) { Scenario-ForeignStop }
+if (Wants 'foreignkey' $false)  { Scenario-ForeignKey }
+if (Wants 'twolane' $true)      { Scenario-TwoLane }
+if (Wants 'exclusive' $true)    { Scenario-Exclusive }
+if (Wants 'stalelane' $true)    { Scenario-StaleLane }
+if (Wants 'overridelane' $true) { Scenario-OverrideLane }
 
 "$($script:pass) passed, $($script:fail) failed"
 if (@(Emulators).Count -ne 0) { "warning: winuae64 still running: $(((Emulators) | ForEach-Object { $_.ProcessId }) -join ',')" }

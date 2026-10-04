@@ -996,7 +996,7 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
     claimed = started = wish_tried = done = False
     with terminating():
         try:
-            result["claim"] = lane.claim(args.holder, CALL_SECONDS)
+            result["claim"] = lane.claim(args.holder, CALL_SECONDS, exclusive=True)
             claimed = True
             result["winuae"] = lane.start(args.holder, *drives, timeout=START_SECONDS + 30,
                                           options=options)

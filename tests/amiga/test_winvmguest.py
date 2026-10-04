@@ -221,6 +221,40 @@ def test_a_free_lane_is_free():
     assert w.lane_matches(st, "free")
 
 
+STATUS_TWO_LANES = """\
+host=WIN11-DEV
+user=donald
+boot=2026-09-22T08:00:00
+lanes = 2
+claim = A since 2026-09-22T09:00:00
+run   = pid=4242 holder=A args=-log
+claim 2 = none
+run 2 = no receipt
+ROM database = 14 entries
+"""
+
+
+def test_a_two_lane_status_reads_each_lane():
+    st = w.parse_status(STATUS_TWO_LANES)
+    assert st.lanes == {1: ("A", "2026-09-22T09:00:00"), 2: (None, "")}
+    assert st.holder == "A" and st.run.startswith("pid=4242 holder=A")
+    assert w.lane_matches(st, "free")
+    assert w.lane_matches(st, "A")
+    assert not w.lane_matches(st, "B")
+    assert st.lane == "1: held by A since 2026-09-22T09:00:00 | 2: free"
+
+
+def test_a_status_with_every_lane_held_is_not_free():
+    st = w.parse_status(STATUS_TWO_LANES.replace("claim 2 = none", "claim 2 = B since 2026-09-22T09:05:00"))
+    assert not w.lane_matches(st, "free")
+    assert w.lane_matches(st, "A") and w.lane_matches(st, "B")
+
+
+def test_a_one_lane_status_has_one_lane():
+    assert w.parse_status(STATUS_HELD).lanes == {1: ("por-run", "2026-09-22T09:00:00")}
+    assert w.parse_status(STATUS_FREE).lanes == {1: (None, "")}
+
+
 def test_no_driver_on_windows_is_never_a_free_lane():
     st = w.parse_status("host=WIN11-DEV\nuser=donald\nboot=x\ndriver=absent\n")
     assert not st.driver

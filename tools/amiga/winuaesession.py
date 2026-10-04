@@ -67,8 +67,9 @@ class WinGuest:
             raise RouteError(f"winuae.ps1 {command} returned {output!r}")
         return output
 
-    def claim(self, holder: str, timeout: float) -> str:
-        return self._lane(holder, "claim", timeout)
+    def claim(self, holder: str, timeout: float, exclusive: bool = False) -> str:
+        """Claim a lane; `exclusive` takes every lane, for work that needs the whole desktop."""
+        return self._lane(holder, "claim -Exclusive" if exclusive else "claim", timeout)
 
     def put(self, local: pathlib.Path, remote: str, timeout: float) -> str:
         receipt = self._run("put", str(local), remote, timeout=timeout)
