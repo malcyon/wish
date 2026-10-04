@@ -129,6 +129,9 @@ winvm_repo_dir: "{{ playbook_dir }}/.."
 # On the host: the copies a running guest is updated from, readable by the
 # account that runs `winvm`, unlike the unattend staging directory.
 winvm_harness_stage_dir: "{{ winvm_state_dir }}/harness"
+# The last line guest-setup.ps1 writes to its log; tasks/harness.yml reads it
+# to tell a finished first-logon script from one still running.
+winvm_guest_setup_done_marker: '=== guest-setup done ==='
 
 # VICE ships as a zip rather than an installer, so it is unpacked by
 # guest-setup.ps1 instead of handed to msiexec. Staged into the unattend ISO

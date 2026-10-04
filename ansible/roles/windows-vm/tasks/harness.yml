@@ -6,9 +6,10 @@
 # the `winvm` this role installs, as the account running the playbook, whose
 # key the guest trusts; root has none of those keys.
 #
-# A guest that is off, or still running its first-logon script, is skipped with
-# a message. A running guest that does not answer ssh fails the run when the
-# `winvm_harness` tag was asked for, and is skipped with the error otherwise.
+# A guest that is off is skipped with a message. A running guest that does not
+# answer ssh, or whose first-logon log does not end with its done line, fails
+# the run when the `winvm_harness` tag was asked for, and is skipped with the
+# reason otherwise.
 #
 # Under --check the survey still runs, since it only reads, and lists what a
 # real run would change; nothing is copied.
@@ -119,7 +120,9 @@
     winvm_harness_probe: |
       $log = 'C:\Windows\Temp\guest-setup.log'
       $last = if (Test-Path -LiteralPath $log) { @(Get-Content -LiteralPath $log -Tail 1) } else { @() }
-      if ($last.Count -eq 0 -or $last[0] -match '=== guest-setup done ===|FAIL  install WinUAE harness files') {
+      $written = if (Test-Path -LiteralPath $log) { (Get-Item -LiteralPath $log).LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss') } else { 'no log' }
+      "LOGWRITTEN $written"
+      if ($last.Count -eq 0 -or $last[0].Contains('{{ winvm_guest_setup_done_marker }}') -or $last[0] -match 'FAIL  install WinUAE harness files') {
         'SETUP finished'
       } else {
         "SETUP running: $($last[0])"
@@ -141,6 +144,9 @@
     winvm_harness_ready: >-
       {{ winvm_harness_running and winvm_harness_ssh.rc | default(1) == 0
          and 'SETUP finished' in winvm_harness_ssh.stdout_lines | default([]) }}
+    winvm_harness_log_written: >-
+      {{ (winvm_harness_ssh.stdout_lines | default([]) | select('match', '^LOGWRITTEN ') | list | first | default('LOGWRITTEN unknown'))
+         | replace('LOGWRITTEN ', '') }}
 
 - name: Stop on a running guest that ssh cannot reach, when the harness was asked for
   ansible.builtin.fail:
@@ -152,6 +158,18 @@
   when:
     - winvm_harness_running
     - not winvm_harness_ssh_ok
+    - winvm_harness_asked
+
+- name: Stop on a first-logon script that has not finished, when the harness was asked for
+  ansible.builtin.fail:
+    msg: >-
+      {{ winvm_name }} is running, but C:\Windows\Temp\guest-setup.log does not end with
+      "{{ winvm_guest_setup_done_marker }}"
+      ({{ winvm_harness_ssh.stdout_lines | select('match', '^SETUP ') | first }};
+      log last written {{ winvm_harness_log_written }}), so the WinUAE harness was not updated.
+  when:
+    - winvm_harness_ssh_ok
+    - not winvm_harness_ready
     - winvm_harness_asked
 
 - name: Say why the running guest's harness was not updated
@@ -166,7 +184,8 @@
       {{ ('is ' ~ (winvm_harness_state.stdout | trim) if winvm_harness_state.rc == 0 else 'is not defined')
          if not winvm_harness_running
          else ('is still running its first-logon script ('
-               ~ (winvm_harness_ssh.stdout_lines | select('match', '^SETUP ') | first) ~ ')'
+               ~ (winvm_harness_ssh.stdout_lines | select('match', '^SETUP ') | first)
+               ~ '; log last written ' ~ winvm_harness_log_written ~ ')'
                if winvm_harness_ssh_ok
                else 'is running, but `winvm ssh` failed (exit ' ~ (winvm_harness_ssh.rc | default('none'))
                     ~ ': ' ~ (winvm_harness_ssh.stderr | default('') | trim | default('no output', true)) ~ ')') }}
