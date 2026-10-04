@@ -357,7 +357,7 @@
             if ($stale -notcontains $f.src) { continue }
             $tmp = "$($f.dst).deploy"
             if ((Hash-Of $tmp) -ne $f.sha) { throw "the copy of $($f.src) at $tmp does not hash to $($f.sha)" }
-            if (Test-Path -LiteralPath $f.dst) { [IO.File]::Replace($tmp, $f.dst, $null) } else { [IO.File]::Move($tmp, $f.dst) }
+            if (Test-Path -LiteralPath $f.dst) { [IO.File]::Replace($tmp, $f.dst, [NullString]::Value) } else { [IO.File]::Move($tmp, $f.dst) }
             if ((Hash-Of $f.dst) -ne $f.sha) { throw "$($f.dst) does not hash to $($f.sha) after the copy" }
             "deployed $($f.dst) SHA256 $($f.sha)"
           }
