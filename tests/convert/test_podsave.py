@@ -865,3 +865,339 @@ def test_a_missing_drain_mark_is_reported_as_missing():
     assert _no_value_notes(char) == {
         "highest_class_levels", "highest_experience", "highest_hp_max",
         "ready_to_train"}
+
+
+# ---------------------------------------------------------------------------
+# `pod_slot_on_disk_three`: the Pools of Darkness disk 3 with a slot written
+# ---------------------------------------------------------------------------
+
+def _synthetic_disk_three(held: str = "A", data_drawer: bool = True) -> AmigaDisk:
+    """A disk 3 built from the documented drawers and nobody's game data,
+    already holding slot `held` with a vault of its own."""
+    disk = AmigaDisk.blank("POD 3")
+    disk.make_dir(f"/{amiga_savegame.SAVE_DRAWER}")
+    if data_drawer:
+        disk.make_dir("/DISK3")
+    disk.write_file(f"/{amiga_savegame.SAVE_DRAWER}/spindisk", b"\x01" * 40)
+    disk.write_file(f"/{amiga_savegame.SAVE_DRAWER}/WRITE.ME", b"\x02" * 8)
+    if data_drawer:
+        disk.write_file("/DISK3/GEN.TLB", b"\x03" * 600)
+    disk.write_file(amiga_savegame.pod_slot_path(held),
+                    _synthetic_amiga_pod_save(2))
+    disk.write_file(amiga_savegame.pod_vault_path(held),
+                    b"\xEE" * amiga_savegame.POD_VAULT_SIZE)
+    return disk
+
+
+def _a_vault() -> bytes:
+    return amiga_savegame.pod_vault_to_amiga(dos_codec.EMPTY_POD_VAULT)
+
+
+def _files(disk: AmigaDisk) -> dict[str, bytes]:
+    return {path.lower(): disk.read_file(path)
+            for path, entry in disk.walk() if not entry.is_dir}
+
+
+def test_pod_slot_on_disk_three_replaces_both_files_and_nothing_else():
+    disk = _synthetic_disk_three("A")
+    before = disk.to_bytes()
+    built = _synthetic_amiga_pod_save(3)
+    out = amiga_savegame.pod_slot_on_disk_three(disk, "A", built, _a_vault())
+    assert disk.to_bytes() == before
+    after, kept = _files(out), _files(disk)
+    changed = {p for p in kept if kept[p] != after.get(p)}
+    assert changed == {"/save/savgama.pty", "/save/vaulta.dat"}
+    assert set(after) == set(kept)
+    assert after["/save/savgama.pty"] == built
+    assert after["/save/vaulta.dat"] == _a_vault()
+
+
+def test_pod_slot_on_disk_three_adds_a_letter_the_disk_lacks():
+    disk = _synthetic_disk_three("A")
+    out = amiga_savegame.pod_slot_on_disk_three(
+        disk, "e", _synthetic_amiga_pod_save(1), _a_vault())
+    assert amiga_savegame.pod_slots_present(out) == ["A", "E"]
+    assert _files(out)["/save/vaulta.dat"] == _files(disk)["/save/vaulta.dat"]
+    assert out.read_file(amiga_savegame.pod_vault_path("E")) == _a_vault()
+
+
+@pytest.mark.parametrize("drop", ["/DISK3", "/SAVE/spindisk", "/SAVE/WRITE.ME"])
+def test_pod_slot_on_disk_three_refuses_a_disk_missing_a_marker(drop):
+    disk = _synthetic_disk_three(data_drawer=drop != "/DISK3")
+    if drop != "/DISK3":
+        disk.remove_file(drop)
+    with pytest.raises(AmigaDiskError):
+        amiga_savegame.pod_slot_on_disk_three(
+            disk, "A", _synthetic_amiga_pod_save(1), _a_vault())
+
+
+def test_pod_slot_on_disk_three_refuses_a_curse_disk_one():
+    disk = AmigaDisk.blank("CurseA")
+    disk.make_dir(f"/{amiga_savegame.SAVE_DRAWER}")
+    disk.write_file(f"/{amiga_savegame.SAVE_DRAWER}/spindisk", b"\x01")
+    disk.write_file("/Curse", b"\x00" * 10)
+    with pytest.raises(AmigaDiskError):
+        amiga_savegame.pod_slot_on_disk_three(
+            disk, "A", _synthetic_amiga_pod_save(1), _a_vault())
+
+
+def test_pod_slot_on_disk_three_refuses_files_the_game_would_not_write():
+    disk = _synthetic_disk_three()
+    with pytest.raises(amiga_savegame.AmigaSaveError):
+        amiga_savegame.pod_slot_on_disk_three(
+            disk, "A", _synthetic_amiga_pod_save(1)[:-1], _a_vault())
+    with pytest.raises(amiga_savegame.AmigaSaveError):
+        amiga_savegame.pod_slot_on_disk_three(
+            disk, "A", _synthetic_amiga_pod_save(1), _a_vault()[:-1])
+    with pytest.raises(amiga_savegame.AmigaSaveError):
+        amiga_savegame.pod_slot_on_disk_three(
+            disk, "K", _synthetic_amiga_pod_save(1), _a_vault())
+
+
+def _registered_disk_three() -> AmigaDisk:
+    import hashlib
+
+    from tools.amiga import amigasaves, route_darkness
+    for _label, data in amigasaves.images():
+        if (hashlib.sha256(data).hexdigest()
+                == route_darkness.DARKNESS_DISK3_SHA256):
+            return AmigaDisk(data)
+    pytest.skip("needs the registered Pools of Darkness disk 3; set $AMIGA_DISKS")
+
+
+#: The DOS specimens, each a folder the DOS game wrote a slot into: seven
+#: from the game and slot A of `pod-678-amiga-converted-walked-dos`, which
+#: Wish wrote.  Two hold no `VAULT<L>.DAT`.
+_DOS_SLOT_SPECIMENS = (
+    "dos-pod-foundation-walked",
+    "pod-628-amiga-to-dos-eric-rest-heal",
+    "pod-628-dos-lay-then-rest-1h",
+    "pod-650-savgama-join-weight-dos",
+    "pod-650-savgamb-walked-dos",
+    "pod-678-amiga-converted-walked-dos",
+)
+
+
+def _pod_specimen(name: str):
+    """One `pod-dos` specimen folder, hashed against its own `provenance.toml`
+    first so an edited file fails here rather than being measured.  Skips
+    without the specimen tree."""
+    import pathlib
+
+    import gamedata
+
+    from tools.registry import specimens
+    root = gamedata.specimen_root()
+    where = root / "pod-dos" / f"WISH-SPEC-{name}" if root else None
+    if where is None or not where.is_dir():
+        pytest.skip(f"needs specimen WISH-SPEC-{name} in the pod-dos tree; "
+                    f"see tools/registry/specimens.py and $WISH_SPECIMENS")
+    recorded = specimens.read_provenance(where / "provenance.toml").get(
+        "sha256", {})
+    for filename, expected in recorded.items():
+        if specimens.sha256_file(where / filename) != expected:
+            pytest.fail(f"WISH-SPEC-{name}: {filename} has changed; it is no "
+                        f"longer evidence")
+    return pathlib.Path(where)
+
+
+def _registered_dos_slots():
+    found = []
+    for name in _DOS_SLOT_SPECIMENS:
+        folder = _pod_specimen(name)
+        for path in sorted(folder.glob("SAVGAM?.PTY")):
+            found.append((f"{name}:{path.stem[-1]}", folder, path.stem[-1]))
+    return found
+
+
+def _dos_vault(folder, letter) -> dos_codec.PodVault:
+    path = folder / f"VAULT{letter}.DAT"
+    if not path.is_file():
+        return dos_codec.EMPTY_POD_VAULT
+    return dos_codec.pod_vault_from_dos(path.read_bytes())
+
+
+def test_every_registered_dos_slot_is_written_onto_disk_three_with_nothing_lost():
+    """8 of 8 slots across 6 specimens, the DOS game's own saves except slot A
+    of `pod-678-amiga-converted-walked-dos`, which Wish wrote."""
+    disk = _registered_disk_three()
+    slots = _registered_dos_slots()
+    assert len(slots) == 8
+    for label, folder, letter in slots:
+        raw = (folder / f"SAVGAM{letter}.PTY").read_bytes()
+        state = world_state.pod_from_dos(raw)
+        party = dos_codec.read_party(folder, letter)
+        characters = [dos_codec.to_neutral(c) for c in party]
+        state = dataclasses.replace(state, count=len(characters))
+        vault = _dos_vault(folder, letter)
+        built, report = amiga_savegame.pod_new_savegame(state, characters)
+        assert (report.dropped, report.losses, report.warnings) == ([], [], []), label
+        out = amiga_savegame.pod_slot_on_disk_three(
+            disk, letter, built, amiga_savegame.pod_vault_to_amiga(vault))
+
+        # Only the two replaced files differ from the original disk.
+        before, after = _files(disk), _files(out)
+        replaced = {amiga_savegame.pod_slot_path(letter).lower(),
+                    amiga_savegame.pod_vault_path(letter).lower()}
+        assert {p for p in set(before) | set(after)
+                if before.get(p) != after.get(p)} <= replaced, label
+
+        # An Amiga reader reads back what was written.
+        back = amiga_savegame.pod_read_slot(out, letter)
+        assert amiga_savegame.pod_from_amiga(back) == dataclasses.replace(
+            state, source=""), label
+        # `PodWriter` strips a name's surrounding spaces, so DOS's
+        # "saint eric  " arrives as "saint eric"; compared stripped, with
+        # that difference filed rather than masked.
+        assert [amiga_pod.pod_to_neutral(b).get("name")
+                for b in amiga_savegame.pod_parse(back).blocks] == [
+            c.get("name").strip() for c in characters], label
+        assert amiga_savegame.pod_read_vault(out, letter) == vault, label
+
+
+def _every_disk_three():
+    """Every Pools of Darkness disk 3 image on this machine, as `(label,
+    disk)`: those with the drawers `pod_slot_on_disk_three` insists on."""
+    from tools.amiga import amigasaves
+    found = []
+    for label, data in amigasaves.images():
+        try:
+            disk = AmigaDisk(data)
+            for path, want_dir in amiga_savegame.POD_DISK_THREE_MARKERS:
+                if disk.lookup(path).is_dir != want_dir:
+                    raise AmigaDiskError(path)
+        except (AmigaDiskError, ValueError):
+            continue
+        found.append((label, disk))
+    if not found:
+        pytest.skip("needs a Pools of Darkness disk 3; set $AMIGA_DISKS")
+    return found
+
+
+def _two_hundred_item_vault() -> bytes:
+    item = bytearray(dos_codec.ITEM_SIZE)
+    return amiga_savegame.pod_vault_to_amiga(
+        dos_codec.PodVault(1, 2, 3, (bytes(item),) * amiga_savegame.POD_VAULT_NODES))
+
+
+def test_the_largest_slot_fits_every_disk_three_for_every_letter():
+    """A full party and a 200-item vault, replacing a letter the disk holds
+    or adding one it lacks, on every disk 3 image here -- the free space
+    left over is what `free_count` says after each."""
+    built = _synthetic_amiga_pod_save(8)
+    vault = _two_hundred_item_vault()
+    for label, disk in _every_disk_three():
+        for letter in "ADHIJ":
+            out = amiga_savegame.pod_slot_on_disk_three(
+                disk, letter, built, vault)
+            assert out.free_count() >= 0, (label, letter)
+            assert amiga_savegame.pod_read_vault(out, letter) == \
+                amiga_savegame.pod_vault_from_amiga(vault), (label, letter)
+
+
+def test_a_party_of_one_and_an_empty_vault_write_on_a_synthetic_disk_three():
+    out = amiga_savegame.pod_slot_on_disk_three(
+        _synthetic_disk_three(), "B", _synthetic_amiga_pod_save(1), _a_vault())
+    assert amiga_savegame.pod_read_vault(out, "B") == dos_codec.EMPTY_POD_VAULT
+
+
+# ---------------------------------------------------------------------------
+# `editor.convert.PodDosToAmiga`, not registered anywhere a player reaches
+# ---------------------------------------------------------------------------
+
+def _dos_source(folder, letter):
+    import pathlib
+    return convert.Source(port="dos", title=dos_port.POOLS_OF_DARKNESS,
+                          path=pathlib.Path(folder), slot=letter)
+
+
+def _amiga_source(disk_bytes, letter):
+    import pathlib
+    return convert.Source(port="amiga", title=dos_port.POOLS_OF_DARKNESS,
+                          path=pathlib.Path("."), slot=letter,
+                          image=disk_bytes)
+
+
+def test_pod_dos_to_amiga_is_not_registered_with_the_flag_set(monkeypatch):
+    monkeypatch.setenv(convert.POD_CONVERT_ENV, "1")
+    assert convert.PodDosToAmiga not in {type(d) for d in convert.POD_DIRECTIONS}
+    assert convert.PodDosToAmiga not in {type(d) for d in convert.DIRECTIONS}
+    dos = convert.Source(port="dos", title=dos_port.POOLS_OF_DARKNESS,
+                         path=__import__("pathlib").Path("."))
+    assert convert.destinations_for(dos) == []
+
+
+def test_pod_dos_to_amiga_needs_the_players_disk_three():
+    with pytest.raises(convert.ConvertError):
+        convert.PodDosToAmiga().rehearse(
+            _dos_source(".", "A"), "A", None)
+
+
+def test_pod_dos_to_amiga_has_no_pack_to_leave_anything_of():
+    with pytest.raises(saveplan.SaveAsError):
+        convert.PodDosToAmiga().rehearse(
+            _dos_source(".", "A"), "A", None, leave={0: [1]})
+
+
+#: The DOS record's cached current values, which the round trip writes as
+#: zero.  Whether the DOS game recomputes them on load is not measured.
+_NOT_ROUND_TRIPPED = frozenset({
+    "name", "armour_class", "thac0_current", "movement_current",
+    "roster_tail"})
+
+
+def test_dos_to_amiga_to_dos_is_the_source_outside_the_declared_mask(tmp_path):
+    """Every registered DOS slot (8 of 8, 7 written by the DOS game) goes
+    through `PodDosToAmiga` onto the registered disk 3 and back through
+    `PodAmigaToDos`.  The saved game equals the source outside the
+    container's `PARTY_TABLE_SCRATCH` notes and the entries past the party,
+    the vault is identical, and every character reads back as the same
+    neutral record, a name's trailing spaces apart.
+
+    The 510-byte records are **not** compared byte for byte: `armour_class`,
+    `thac0_current`, `movement_current`, `roster_tail` and the name's padding
+    differ from the DOS game's own bytes and are in none of the writer's
+    declared lists, and the item and effect files differ in the heap
+    pointers and rendered-line caches.  Masking them would be masking by the
+    diff; they are filed rather than hidden.
+    """
+    disk = _registered_disk_three()
+    for label, folder, letter in _registered_dos_slots():
+        rehearsal = convert.PodDosToAmiga().rehearse(
+            _dos_source(folder, letter), letter, None, disk_three=disk)
+        assert (rehearsal.report.dropped, rehearsal.report.losses,
+                rehearsal.report.warnings) == ([], [], []), label
+        back = convert.PodAmigaToDos().rehearse(
+            _amiga_source(rehearsal.disk, letter), letter, None)
+
+        original = (folder / f"SAVGAM{letter}.PTY").read_bytes()
+        got = back.files[f"SAVGAM{letter}.PTY"]
+        state = world_state.pod_from_dos(original)
+        _, built = dos_codec.pod_savgam(state, letter, state.count)
+        mask = {i for i, why in built.sources.items()
+                if why == dos_codec.PARTY_TABLE_SCRATCH}
+        for n in range(state.count, dos_savegame.PARTY_ENTRIES):
+            at = POD.party_table + n * dos_savegame.PARTY_ENTRY
+            mask.update(range(at, at + dos_savegame.PARTY_ENTRY))
+        assert [i for i in range(len(original))
+                if original[i] != got[i] and i not in mask] == [], label
+
+        vault = _dos_vault(folder, letter)
+        assert dos_codec.pod_vault_from_dos(
+            back.files[f"VAULT{letter}.DAT"]) == vault, label
+
+        source_party = [dos_codec.to_neutral(c)
+                        for c in dos_codec.read_party(folder, letter)]
+        tmp = tmp_path / label.replace(":", "-")
+        tmp.mkdir()
+        for name, data in back.files.items():
+            (tmp / name).write_bytes(data)
+        round_party = [dos_codec.to_neutral(c)
+                       for c in dos_codec.read_party(tmp, letter)]
+        assert len(round_party) == len(source_party), label
+        for a, b in zip(source_party, round_party):
+            assert a.get("name").strip() == b.get("name"), label
+            assert ({k: v.value for k, v in a.fields.items()
+                     if k not in _NOT_ROUND_TRIPPED}
+                    == {k: v.value for k, v in b.fields.items()
+                        if k not in _NOT_ROUND_TRIPPED}), (label, a.get("name"))

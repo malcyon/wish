@@ -984,6 +984,83 @@ class PodAmigaToDos(Direction):
         return sorted(folder / name for name in rehearsal.files)
 
 
+@dataclasses.dataclass
+class PodDosAmigaRehearsal(Rehearsal):
+    """A Pools of Darkness DOS slot written onto a copy of the player's disk 3.
+
+    `files` is empty: the file the player is handed, and its name, are not
+    settled, so nothing here names one.  `disk` is the finished image.
+    """
+
+    disk: bytes
+    state: Any
+    characters: list
+    slot: str
+
+
+class PodDosToAmiga(Direction):
+    """A DOS Pools of Darkness save slot becomes the player's Amiga disk 3 with
+    that slot written into its `SAVE` drawer.
+
+    Not in `POD_DIRECTIONS`: the Convert dialog has no row for disk 3 and
+    `MISSING_ASSET_BLOCKS` has no entry for it, so a registered row would
+    reach a missing key.  `write` is not defined for the same reason -- the
+    file a player is handed has no name yet.  The slot keeps the source's
+    letter, as `DosToAmiga` does.
+    """
+
+    source_port = "dos"
+    destination_port = "amiga"
+
+    def __init__(self) -> None:
+        self.deltas = dos_port.POOLS_OF_DARKNESS
+        self.destination_game = dos_port.POOLS_OF_DARKNESS
+        self.source_key = self.deltas.key
+
+    def rehearse(self, source: Source, slot: str, options: Any,
+                names: "Mapping[int, str] | None" = None,
+                leave: "Mapping[int, Collection[int]] | None" = None,
+                disk_three: "Any | None" = None) -> PodDosAmigaRehearsal:
+        """`disk_three` is the player's own `goldbox.amiga_adf.AmigaDisk`."""
+        if leave:
+            raise saveplan.SaveAsError(
+                f"{self.source_port} to {self.destination_port} has no "
+                f"pack to leave anything of")
+        if not source.slot:
+            raise ConvertError(f"{source.path} names no DOS save slot")
+        if disk_three is None:
+            raise ConvertError("a Pools of Darkness save written for the Amiga "
+                               "needs the player's disk 3")
+        letter = source.slot
+        container = dos_savegame.container_for(self.deltas.key)
+        with source.folder() as folder:
+            folder = pathlib.Path(folder)
+            savgam_path = folder / f"SAVGAM{letter}{container.suffix}"
+            savgam = savgam_path.read_bytes()
+            raw_party = dos_codec.read_party(folder, letter)
+            vault_path = folder / f"VAULT{letter}.DAT"
+            # A slot with no vault file is taken to hold no stored items.
+            vault = (dos_codec.pod_vault_from_dos(vault_path.read_bytes())
+                     if vault_path.is_file() else dos_codec.EMPTY_POD_VAULT)
+        state = world_state.pod_from_dos(
+            savgam, container,
+            source=str(pathlib.Path(source.path) / savgam_path.name))
+        characters = saveplan.fit_names(
+            [dos_codec.to_neutral(c) for c in raw_party],
+            self.destination_port, self.deltas.key, names)
+        savegame, save_report = amiga_savegame.pod_new_savegame(
+            state, characters)
+        vault_bytes = amiga_savegame.pod_vault_to_amiga(vault)
+        disk = amiga_savegame.pod_slot_on_disk_three(
+            disk_three, letter, savegame, vault_bytes)
+        report = neutral.Report()
+        report.dropped.extend(save_report.dropped)
+        report.losses.extend(save_report.losses)
+        report.warnings.extend(save_report.warnings)
+        return PodDosAmigaRehearsal(report, {}, disk.to_bytes(), state,
+                                    characters, letter)
+
+
 # ---------------------------------------------------------------------------
 # C64 and DOS -> an Amiga save disk (#36, #316)
 # ---------------------------------------------------------------------------

@@ -2362,3 +2362,55 @@ def pod_vault_to_amiga(vault: dos_codec.PodVault) -> bytes:
         out += head.raw
     out += bytes(POD_VAULT_SIZE - len(out))
     return bytes(out)
+
+
+#: What marks a drawer set as Pools of Darkness' disk 3: the save drawer the
+#: engine searches, the two files it reads from that drawer after every save,
+#: and the drawer of data the game asks the player to keep on that disk.
+POD_DISK_THREE_MARKERS = (
+    (f"/{SAVE_DRAWER}", True),
+    (f"/{SAVE_DRAWER}/spindisk", False),
+    (f"/{SAVE_DRAWER}/write.me", False),
+    ("/DISK3", True),
+)
+
+
+def pod_slot_on_disk_three(disk_three: AmigaDisk, slot: str,
+                           savegame: bytes, vault: bytes) -> AmigaDisk:
+    """A copy of the player's Pools of Darkness disk 3 with one slot written.
+
+    Both `SavGam<L>.pty` and `Vault<L>.DAT` are replaced every time, so a
+    copy that held another party's vault for that letter never hands it to
+    the converted party.  Raises `AmigaDiskError` when `disk_three` is not
+    that title's disk 3, `AmigaSaveError` when either file is not one the
+    game's own writer makes or the result does not verify, and never changes
+    `disk_three`.
+    """
+    letter = slot_letter(slot)
+    pod_parse(savegame)
+    if len(savegame) != POD_SAVEGAME_SIZE:
+        raise AmigaSaveError(
+            f"a Pools of Darkness saved game is {POD_SAVEGAME_SIZE} bytes; "
+            f"got {len(savegame)}")
+    if len(vault) != POD_VAULT_SIZE:
+        raise AmigaSaveError(
+            f"a Pools of Darkness vault is {POD_VAULT_SIZE} bytes; "
+            f"got {len(vault)}")
+    pod_vault_from_amiga(vault)
+    for path, want_dir in POD_DISK_THREE_MARKERS:
+        entry = disk_three.lookup(path)
+        if entry.is_dir != want_dir:
+            raise AmigaDiskError(f"{path} is not the Pools of Darkness disk 3's")
+    copy = AmigaDisk(disk_three.to_bytes())
+    try:
+        copy.write_file(pod_slot_path(letter), savegame)
+        copy.write_file(pod_vault_path(letter), vault)
+    except AmigaDiskError as e:
+        raise AmigaSaveError(
+            f"the Pools of Darkness disk 3 has no room for slot {letter}: {e}"
+        ) from e
+    problems = copy.verify()
+    if problems:
+        raise AmigaSaveError("the Amiga disk 3 with the save does not verify: "
+                             + "; ".join(problems))
+    return copy
