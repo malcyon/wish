@@ -7317,7 +7317,7 @@ SLOT_TOTAL = 12
 #: are zero in every one of Donald's own 13 `PORSAVE` disks.  The 110 in
 #: `$49FD`-`$49FE` and `$4B14`-`$4B7F` were already graded "the engine
 #: rebuilds it" from the bytecode; the run is what turned that into a
-#: measurement.  The first 27 bytes of `$4AF9`-`$4B7F` are the Prayer holder
+#: measurement.  The first 31 bytes of `$4AF9`-`$4B7F` are the Prayer holder
 #: record (`PRAYER_HOLDER`), which is not zeroed.
 #:
 #: `$49C3`-`$49C4` is here because it is zero in every indoor save, and
@@ -7333,7 +7333,7 @@ SLOT_TOTAL = 12
 HEADER_ZEROED: tuple[tuple[int, int], ...] = (
     (0x49C3, 2), (0x49CC, 26), (0x49E7, 3), (0x49EB, 5), (0x49F0, 2),
     (0x49F3, 9), (0x49FC, 1), (0x49FD, 2),
-    (0x4B14, 108), (0x4BD9, 7),
+    (0x4B18, 104), (0x4BD9, 7),
 )
 
 #: Where a Pool of Radiance conversion writes the Prayer holder record
@@ -8246,7 +8246,8 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
 
     if container.key == c64_port.POOL_OF_RADIANCE.key:
         _write_prayer_holder(save0, report, container, len(party),
-                             effect_rows)
+                             effect_rows,
+                             bytes(d & 0xFF for d in state.clock[1:5]))
 
     at = container.portrait_switch
     faces = bool(party) and all_faced
@@ -9569,15 +9570,18 @@ def c64_member_neutral(save0: bytes, save1: bytes | None, game,
 
 def _write_prayer_holder(save0: bytearray, report: Report,
                          container: "c64_save.C64Container", party_len: int,
-                         effect_rows: "list[tuple[int, str, str, Report]]"
-                         ) -> None:
-    """Write the Prayer holder record at `PRAYER_HOLDER`, or 27 zeros.
+                         effect_rows: "list[tuple[int, str, str, Report]]",
+                         clock: bytes) -> None:
+    """Write the Prayer holder record at `PRAYER_HOLDER`, or 31 zeros.
 
     The C64 keeps one Prayer row for the party and DOS keeps a node on one
     member, so the record names the member whose node the row came from; the
     way back reads it in `c64_party`. It is written only when exactly one
     member's Prayer made the row, the row in the save still holds what that
-    member's node asked for, and his 18 name bytes pick him out of the party.
+    member's node asked for, its duration is below `$40`, and his 18 name
+    bytes pick him out of the party.  `clock` is the save's four clock digits
+    from minute units to day, which the way back reads to tell this row from
+    one the C64 game cast later.
     """
     at, size = PRAYER_HOLDER
     at -= SAVE0_BASE
@@ -9604,13 +9608,17 @@ def _write_prayer_holder(save0: bytearray, report: Report,
               ) != (duration, magnitude):
             why = ("the Prayer row is not the holder's: the record is "
                    "zero")
+        elif duration >= effects.PRAYER_HOLDER_DURATION_LIMIT:
+            why = (f"the Prayer row's duration byte is ${duration:02X}, "
+                   "which the record's clock arithmetic does not describe: "
+                   "the record is zero")
         elif not any(name):
             why = "the holder's name is empty: the record is zero"
         elif name in others:
             why = "another member has the holder's name: the record is zero"
         else:
             record = effects.prayer_holder_bytes(
-                effects.PrayerHolder(row, magnitude, duration, name))
+                effects.PrayerHolder(row, magnitude, duration, name, clock))
             why = (f"the Prayer holder record: row {row}, the party "
                    "member whose Prayer node it came from")
     save0[at:at + size] = record
@@ -9803,6 +9811,13 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
     return out, icons
 
 
+def _clock_absolute_minutes(digits: bytes) -> int:
+    """Minutes since day 0 from clock digits (minute units, minute tens, hour,
+    day), the four a Prayer holder record stores."""
+    units, tens, hour, day = digits
+    return day * 1440 + hour * 60 + tens * 10 + units
+
+
 def _prayer_holder_member(save0: bytes, c64: "c64_save.C64Container",
                           party: Sequence, row: "effects.Effect | None"
                           ) -> int | None:
@@ -9811,9 +9826,13 @@ def _prayer_holder_member(save0: bytes, c64: "c64_save.C64Container",
 
     The record `_write_prayer_holder` leaves is believed only while the row
     is still what it described: the same index, party-wide, the same
-    magnitude, a duration byte no higher than the stored one, and a name that
-    picks out exactly one member. Any other state is a row the C64 game cast
-    or changed, which reaches every member, so `None` is the C64's own answer.
+    magnitude, a duration byte the save's clock explains, and a name that
+    picks out exactly one member.  The record holds the clock it was written
+    at (T0) and the stored duration (d0); with E the minutes since and B the
+    ten-minute boundaries crossed, an untouched row reads between
+    `max(1, d0 - E)` and `d0 - E + B`.  A row outside that window, or a clock
+    that went back, is a row the C64 game cast or changed, which reaches every
+    member, so `None` is the C64's own answer.
     """
     if c64.key != POOL_OF_RADIANCE.key or row is None:
         return None
@@ -9827,9 +9846,21 @@ def _prayer_holder_member(save0: bytes, c64: "c64_save.C64Container",
         failed = "the row is not party-wide"
     elif row.magnitude != holder.magnitude:
         failed = "the magnitude changed"
-    elif not 1 <= row.duration <= holder.duration:
-        failed = "the duration byte rose or is zero"
     else:
+        now = _clock_absolute_minutes(
+            bytes(save0[c64.clock + 1:c64.clock + 5]))
+        then = _clock_absolute_minutes(holder.clock)
+        elapsed = now - then
+        boundaries = now // 10 - then // 10
+        low = max(1, holder.duration - elapsed)
+        high = holder.duration - elapsed + boundaries
+        if elapsed < 0:
+            failed = "the clock went back"
+        elif not low <= row.duration <= high:
+            failed = "the row was rewritten after the record"
+        else:
+            failed = ""
+    if not failed:
         named = [pos for pos, char_slot in enumerate(party)
                  if bytes(save0[c64.slot(char_slot.index):
                                 c64.slot(char_slot.index) + NAME_SIZE])

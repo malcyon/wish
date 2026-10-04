@@ -521,7 +521,7 @@ POOL_OF_RADIANCE = C64Container(
         (0x0E7, 3, _POOL_ZERO), (0x0EB, 5, _POOL_ZERO),
         (0x0F0, 2, _POOL_ZERO), (0x0F3, 9, _POOL_ZERO),
         (0x0FC, 1, _POOL_ZERO), (0x0FD, 2, _POOL_ZERO),
-        (0x214, 108, _POOL_ZERO), (0x2D9, 7, _POOL_ZERO),
+        (0x218, 104, _POOL_ZERO), (0x2D9, 7, _POOL_ZERO),
     ),
 )
 

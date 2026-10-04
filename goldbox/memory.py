@@ -129,7 +129,7 @@ MAP: tuple[Region, ...] = (
                 "the range, and it is zero in all 21 specimens. The old "
                 "$4A20-$4B7F region was one block only because $4B80 was the "
                 "next thing that had a name. A Wish conversion writes a "
-                "Prayer holder record in its first 27 bytes, and the C64 "
+                "Prayer holder record in its first 31 bytes, and the C64 "
                 "game reads the region only to save it"),
     Region(0x4B80, 0x40, "effect magnitude", OK, saved_in="SAVEDGAME0",
            note="the fourth of the four parallel effect arrays: how much, for "

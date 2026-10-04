@@ -703,11 +703,18 @@ def prayer_c64_magnitude(title_key: str, data: int) -> int:
 #: The record a conversion leaves at `$4AF9` of a Pool of Radiance save so the
 #: way back can give a Prayer to the one member who held it: the signature,
 #: then kind and version, the row index, magnitude and duration byte of the
-#: (49, `PARTY_WIDE`) row as written, the holder's 18 name bytes and a check
-#: byte (the low 8 bits of the sum of everything before it).
-PRAYER_HOLDER_SIGNATURE = b"WISH\x01"
-PRAYER_HOLDER_SIZE = 27
+#: (49, `PARTY_WIDE`) row as written, the holder's 18 name bytes, the four
+#: clock digits (minute units, minute tens, hour, day) the save carried when
+#: the row was written, and a check byte (the low 8 bits of the sum of
+#: everything before it).  The clock is what tells a later C64 cast from the
+#: row Wish wrote, since both age with it.
+PRAYER_HOLDER_SIGNATURE = b"WISH\x02"
+PRAYER_HOLDER_SIZE = 31
 _PRAYER_HOLDER_NAME_SIZE = 18
+_PRAYER_HOLDER_CLOCK_SIZE = 4
+#: A DOS game-cast Prayer lasts its caster's level, so a duration at or above
+#: this is not one the record's clock arithmetic describes.
+PRAYER_HOLDER_DURATION_LIMIT = 0x40
 
 
 @dataclass(frozen=True)
@@ -718,10 +725,11 @@ class PrayerHolder:
     magnitude: int
     duration: int
     name: bytes
+    clock: bytes
 
 
 def prayer_holder_bytes(holder: PrayerHolder) -> bytes:
-    """The 27 bytes of a Prayer holder record, with its check byte."""
+    """The 31 bytes of a Prayer holder record, with its check byte."""
     _check_byte("index", holder.index)
     _check_byte("magnitude", holder.magnitude)
     _check_byte("duration", holder.duration)
@@ -729,16 +737,21 @@ def prayer_holder_bytes(holder: PrayerHolder) -> bytes:
         raise ValueError(
             f"a holder name is {_PRAYER_HOLDER_NAME_SIZE} bytes, "
             f"got {len(holder.name)}")
+    if len(holder.clock) != _PRAYER_HOLDER_CLOCK_SIZE:
+        raise ValueError(
+            f"a holder clock is {_PRAYER_HOLDER_CLOCK_SIZE} bytes, "
+            f"got {len(holder.clock)}")
     body = (PRAYER_HOLDER_SIGNATURE
             + bytes((holder.index, holder.magnitude, holder.duration))
-            + holder.name)
+            + holder.name + holder.clock)
     return body + bytes((sum(body) & 0xFF,))
 
 
 def prayer_holder(region: bytes) -> PrayerHolder | None:
     """The record in `region`, or `None` unless every check passes: the
-    signature and version, the check byte, an index below the 64 slots, a
-    non-zero duration byte and a name that does not start with a NUL."""
+    signature and version (a version-1 record is no record), the check byte,
+    an index below the 64 slots, a duration byte from 1 to below `$40` and a
+    name that does not start with a NUL."""
     if len(region) < PRAYER_HOLDER_SIZE:
         return None
     region = bytes(region[:PRAYER_HOLDER_SIZE])
@@ -748,9 +761,12 @@ def prayer_holder(region: bytes) -> PrayerHolder | None:
         return None
     index, magnitude, duration = region[5], region[6], region[7]
     name = region[8:8 + _PRAYER_HOLDER_NAME_SIZE]
-    if index >= EFFECT_SLOTS or duration == 0 or name[0] == 0:
+    clock = region[26:26 + _PRAYER_HOLDER_CLOCK_SIZE]
+    if (index >= EFFECT_SLOTS
+            or not 0 < duration < PRAYER_HOLDER_DURATION_LIMIT
+            or name[0] == 0):
         return None
-    return PrayerHolder(index, magnitude, duration, name)
+    return PrayerHolder(index, magnitude, duration, name, clock)
 
 
 def party_row_ids(title_key: str) -> frozenset[int]:

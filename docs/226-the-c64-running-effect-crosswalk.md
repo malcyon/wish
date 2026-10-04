@@ -446,19 +446,20 @@ A DOS Pool of Radiance party holds a Prayer as one id-49 node on the member who
 cast it, and the C64 holds it as one `$FF` row with no field for who. Coming
 back, every member would get the node, so a Save As DOS after a Save As C64
 puts the +1 on every member wherever they stand. A Pool conversion therefore
-writes a 27-byte record at `$4AF9`-`$4B13` (save0 offset `0x1F9`), in a region
-the C64 game reads only to save it back; the other 108 bytes up to `$4B7F`
+writes a 31-byte record at `$4AF9`-`$4B17` (save0 offset `0x1F9`), in a region
+the C64 game reads only to save it back; the other 104 bytes up to `$4B7F`
 stay zero.
 
 | offset | size | value |
 |---|---|---|
 | +0 | 4 | signature `57 49 53 48` (ASCII WISH) |
-| +4 | 1 | kind and version, `01` |
+| +4 | 1 | kind and version, `02` |
 | +5 | 1 | row index 0-63 of the `(49, $FF)` row as written |
 | +6 | 1 | that row's magnitude as written |
-| +7 | 1 | that row's duration byte as written, never 0 |
+| +7 | 1 | that row's duration byte as written, from 1 to `$3F` |
 | +8 | 18 | the holder's name, the 18 bytes at his C64 slot +0 exactly as written |
-| +26 | 1 | check byte: the low 8 bits of the sum of +0 to +25 |
+| +26 | 4 | the save's clock digits when the row was written: minute units, minute tens, hour, day |
+| +30 | 1 | check byte: the low 8 bits of the sum of +0 to +29 |
 
 The name is stored, not the slot, because the C64's ORDER screen does not
 remap `$FF` rows, so a slot number would go stale. Raw bytes are compared, so
@@ -466,23 +467,40 @@ the check does not depend on the name encoding.
 
 Writing: the record is written only when exactly one member's node made the
 row, the row in the save still holds the duration byte and magnitude that
-member's node asked for, and his name is not empty and not another member's.
-Otherwise the 27 bytes are zero. A granted (duration-0) Prayer record goes to
+member's node asked for, that duration byte is below `$40`, and his name is not
+empty and not another member's. Otherwise the 31 bytes are zero. A granted (duration-0) Prayer record goes to
 every member and writes none.
 
-Reading (`dos_codec.c64_party`): the node goes to one member only when all six
-checks pass -- the record parses (signature, check byte, index below 64,
-duration not 0, name not starting with NUL); the row is still at the stored
-index; its owner has bit 7 set; its magnitude is the stored one; its duration
-byte is at least 1 and no higher than the stored one; and exactly one member's
-name bytes equal the stored name. Any failure gives every member the node, which
-is the C64's own state for a Prayer it cast.
+Reading (`dos_codec.c64_party`): the node goes to one member only when all
+checks pass -- the record parses (signature and version `02`, check byte, index
+below 64, duration from 1 to `$3F`, name not starting with NUL; a version-1
+record is no record); the row is still at the stored index; its owner has bit 7
+set; its magnitude is the stored one; its duration byte is explained by the
+clock; and exactly one member's name bytes equal the stored name. Any failure
+gives every member the node, which is the C64's own state for a Prayer it cast.
 
-**Blind spot.** A recast by the C64 game at the same level and side, into the
-same row index, with a duration byte no higher than the stored one, passes
-every check, and a Prayer cast for everyone comes back on the old holder alone.
-Nothing on the row tells the two apart, and storing the clock does not help
-because walking holds a count at 1.
+The clock check works because a Prayer row's count and the clock move together:
+a combat round takes 1 off the count and adds a minute, a camp takes off the
+minutes it passes, and walking takes 1 off a minute except the minute a
+ten-minute digit wraps. With T0 the stored clock and T the save's, both as
+minutes since day 0 (`day * 1440 + hour * 60 + tens * 10 + units`), E = T - T0
+and B = T // 10 - T0 // 10 (the ten-minute boundaries crossed), a row Wish
+wrote and nothing rewrote reads
+
+    max(1, d0 - E)  <=  duration  <=  d0 - E + B
+
+where d0 is the stored duration. A negative E is a clock that went back and
+fails the match. A row outside the window was rewritten after the record. The
+walking skip at a boundary is graded from bytecode only; the B slack covers it
+whether or not it happens.
+
+**Blind spot.** A recast by the C64 game that lands in the one minute (two,
+across a boundary) when the old row had exactly the caster's level left writes
+the same bytes the old row had, and passes. Any other recast sits above the
+window and every member gets the node. A route that moves the clock without
+ageing the row, such as an ECL time skip, puts the row above the window; one
+that ages the row without moving the clock puts it below; either way every
+member gets the node and no recast ever gets a wrong holder from it.
 
 **Evidence that the region is free.** Five VICE boots watched `$4AF9`-`$4B7F`
 with load and store traps: the KERNAL save loop read it 270 times per SAVE and

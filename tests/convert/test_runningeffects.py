@@ -1533,7 +1533,7 @@ def test_prayer_makes_a_dos_c64_dos_round_trip():
     assert not [d for d in report.dropped + report.losses
                 if "effect 49" in d]
     at = _HOLDER_AT
-    assert bytes(save0[at:at + 5]) == b"WISH\x01"
+    assert bytes(save0[at:at + 5]) == b"WISH\x02"
     back, _ = dos_codec.c64_party(bytes(save0), None, game=game)
     assert len(back) == 2
     by_name = {c.get("name"): c for c in back}
@@ -1563,7 +1563,7 @@ def test_a_later_title_prayer_comes_back_on_every_member_after_a_dos_c64_dos_rou
 #: Where the Prayer holder record starts in save0 (`$4AF9`), and how long it
 #: is; literal so a change to the code's own constants is seen.
 _HOLDER_AT = 0x1F9
-_HOLDER_SIZE = 27
+_HOLDER_SIZE = 31
 
 
 def _write_two_member_prayer(game, node=True):
@@ -1635,10 +1635,11 @@ def test_a_pool_prayer_holder_in_slot_2_of_six_comes_back_alone():
         [(49, 0xFF, 0x0A, 0x43)]
     row = effects.slot_for(bytes(save0), 49, effects.PARTY_WIDE)
     expected = effects.prayer_holder_bytes(effects.PrayerHolder(
-        row, 0x43, 0x0A, _name_at(save0, 2)))
+        row, 0x43, 0x0A, _name_at(save0, 2), bytes(4)))
     assert bytes(save0[_HOLDER_AT:_HOLDER_AT + _HOLDER_SIZE]) == expected
     after = _HOLDER_AT + _HOLDER_SIZE
-    assert not any(save0[after:after + 108])
+    assert bytes(save0[_HOLDER_AT:_HOLDER_AT + 5]) == b"WISH\x02"
+    assert not any(save0[after:after + 104])
     assert _prayer_holders(save0) == [_NAMES[index]]
 
 
@@ -1689,9 +1690,40 @@ def _give_a_second_member_the_name(save0, row):
     save0[container.slot(0):container.slot(0) + 18] = name
 
 
+def _move_the_clock(save0, minutes):
+    """Add `minutes` (negative goes back) to the save's clock digits, minute
+    units to day."""
+    from goldbox import c64_save
+    at = c64_save.container_for(c64_port.POOL_OF_RADIANCE).clock + 1
+    units, tens, hour, day = save0[at:at + 4]
+    total = day * 1440 + hour * 60 + tens * 10 + units + minutes
+    day, rest = divmod(total, 1440)
+    hour, rest = divmod(rest, 60)
+    tens, units = divmod(rest, 10)
+    save0[at:at + 4] = bytes((units, tens, hour, day))
+
+
+def _recast_by_the_c64_game(save0, row):
+    # A level-3 recast two minutes ago, seen four minutes after the record
+    # with no ten-minute boundary between: an untouched row would read 6.
+    _move_the_clock(save0, 4)
+    save0[effects.EFFECT_MAGNITUDE_OFFSET + row] = 0x43
+    save0[effects.EFFECT_DURATION_OFFSET + row] = 3
+
+
+def _turn_the_clock_back(save0, row):
+    # The save starts at 0:00 day 0, so the clock cannot go below it; the
+    # record is stamped one minute later instead, which is the same gap, and
+    # its check byte is put right again.
+    save0[_HOLDER_AT + 26] += 1
+    save0[_HOLDER_AT + _HOLDER_SIZE - 1] = sum(
+        save0[_HOLDER_AT:_HOLDER_AT + _HOLDER_SIZE - 1]) & 0xFF
+
+
 _FAILED_CHECKS = [_clear_region, _break_signature, _break_check_byte,
                   _move_the_row, _change_the_magnitude, _raise_the_duration,
-                  _rename_the_holder, _give_a_second_member_the_name]
+                  _rename_the_holder, _give_a_second_member_the_name,
+                  _recast_by_the_c64_game, _turn_the_clock_back]
 
 
 @pytest.mark.parametrize("damage", _FAILED_CHECKS, ids=lambda f: f.__name__)
@@ -1703,6 +1735,42 @@ def test_a_pool_prayer_record_that_fails_a_check_gives_every_member_the_node(
     assert _prayer_holders(save0) == [_NAMES[index]]
     row = effects.slot_for(bytes(save0), 49, effects.PARTY_WIDE)
     damage(save0, row)
+    assert len(_prayer_holders(save0)) == 6
+
+
+@pytest.mark.parametrize("minutes, duration", [
+    (3, 0x0A - 3),
+    # The save started at :00, so ten minutes crosses one boundary and the
+    # walking minute that skipped leaves the count one higher.
+    (10, 0x0A - 10 + 1),
+    # Nine minutes is the largest age that leaves the count at its lower edge
+    # of 1: an age of ten with a count of 0 would be a row that never expires.
+    (9, 0x0A - 9),
+], ids=["three-minutes", "ten-crossing-a-boundary", "nine-minutes-at-one"])
+def test_a_pool_prayer_row_aged_with_the_clock_comes_back_alone(
+        minutes, duration):
+    index = next(i for i in range(6)
+                 if dos_codec.marching_slot(i, 6) == 2)
+    save0 = _pool_party_with_prayer((index,))
+    row = effects.slot_for(bytes(save0), 49, effects.PARTY_WIDE)
+    _move_the_clock(save0, minutes)
+    save0[effects.EFFECT_DURATION_OFFSET + row] = duration
+    assert _prayer_holders(save0) == [_NAMES[index]]
+
+
+def test_a_version_1_holder_record_gives_every_member_the_node():
+    index = next(i for i in range(6)
+                 if dos_codec.marching_slot(i, 6) == 2)
+    save0 = _pool_party_with_prayer((index,))
+    row = effects.slot_for(bytes(save0), 49, effects.PARTY_WIDE)
+    # The 27-byte layout written literally: signature, version 1, index,
+    # magnitude, duration, 18 name bytes, check byte.
+    old = (b"WISH\x01" + bytes((row, 0x43, 0x0A)) + _name_at(save0, 2))
+    old += bytes((sum(old) & 0xFF,))
+    assert len(old) == 27
+    assert _prayer_holders(save0) == [_NAMES[index]]
+    save0[_HOLDER_AT:_HOLDER_AT + 27] = old
+    save0[_HOLDER_AT + 27:_HOLDER_AT + _HOLDER_SIZE] = bytes(4)
     assert len(_prayer_holders(save0)) == 6
 
 
@@ -4675,3 +4743,4 @@ def test_a_pool_camp_bless_row_with_a_leftover_override_reaches_dos_whole():
         assert [bytes(r) for r in char.get("running_effects")] == \
             [bytes((1, 6, 0, 0x80, 0)) + NULL]
         assert not [d for d in char.dropped if "effect 1" in d]
+

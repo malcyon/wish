@@ -1453,7 +1453,8 @@ def test_a_pool_prayer_holder_survives_save_as_c64(tmp_path):
     party = _charmed_c64_party(tmp_path)
     source = convert.Source.detect(party.path)
     at = dos_codec.PRAYER_HOLDER[0] - dos_codec.SAVE0_BASE
-    holder = effects.prayer_holder(bytes(source.save0[at:at + 27]))
+    holder = effects.prayer_holder(bytes(source.save0[
+        at:at + dos_codec.PRAYER_HOLDER[1]]))
     assert holder is not None
     back, _ = dos_codec.c64_party(bytes(source.save0), source.save1,
                                   game=c64_port.POOL_OF_RADIANCE)
