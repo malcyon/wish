@@ -2,6 +2,14 @@
 
 The app reads `/program` through this module and `tools/amiga/amiga68k.py`
 builds its `Executable` on it, because the app may not import `tools/`.
+
+Block ids and layouts follow the AmigaDOS Hunk format (The AmigaDOS Manual;
+`dos/doshunks.h`): `HUNK_NAME` (0x3E8) is one name, a long count then that
+many longs; `HUNK_SYMBOL` (0x3F0) is a list of (name, value) pairs, each name
+a long count then that many longs, ended by a zero-length name. A
+`HUNK_CODE`, `HUNK_DATA` or `HUNK_BSS` block starts the next hunk whether or
+not a `HUNK_END` closed the one before; the decruncher loaders on several
+Gold Box disks leave it out after their first hunk.
 """
 
 from __future__ import annotations
@@ -10,7 +18,8 @@ import dataclasses
 import struct
 
 HUNK_HEADER, HUNK_CODE, HUNK_DATA, HUNK_BSS = 0x3F3, 0x3E9, 0x3EA, 0x3EB
-HUNK_RELOC32, HUNK_END, HUNK_SYMBOL, HUNK_DEBUG = 0x3EC, 0x3F2, 0x3E8, 0x3F1
+HUNK_RELOC32, HUNK_END, HUNK_DEBUG = 0x3EC, 0x3F2, 0x3F1
+HUNK_NAME, HUNK_SYMBOL = 0x3E8, 0x3F0
 KINDS = {HUNK_CODE: "CODE", HUNK_DATA: "DATA", HUNK_BSS: "BSS"}
 
 
@@ -50,12 +59,14 @@ def parse(data: bytes) -> tuple[list[Hunk], dict[tuple[int, int], int]]:
     off += 4 * table
     hunks: list[Hunk] = []
     relocs: dict[tuple[int, int], int] = {}
-    number = 0
+    number = -1                     # the hunk the blocks belong to
     while off < len(data):
         kind = u32(off) & 0x3FFFFFFF
-        if kind in (HUNK_CODE, HUNK_DATA, HUNK_BSS) and number >= table:
-            raise ValueError(f"hunk {number} at {off:#x} is past the {table} "
-                             f"the header lists")
+        if kind in (HUNK_CODE, HUNK_DATA, HUNK_BSS):
+            number = len(hunks)
+            if number >= table:
+                raise ValueError(f"hunk {number} at {off:#x} is past the {table} "
+                                 f"the header lists")
         if kind in (HUNK_CODE, HUNK_DATA):
             n = u32(off + 4)
             hunks.append(Hunk(number, KINDS[kind], off + 8, 4 * n,
@@ -67,6 +78,8 @@ def parse(data: bytes) -> tuple[list[Hunk], dict[tuple[int, int], int]]:
                               allocated[number]))
             off += 8
         elif kind == HUNK_RELOC32:
+            if number < 0:
+                raise ValueError(f"HUNK_RELOC32 at {off:#x} precedes every hunk")
             off += 4
             while True:
                 n = u32(off)
@@ -79,7 +92,8 @@ def parse(data: bytes) -> tuple[list[Hunk], dict[tuple[int, int], int]]:
                 off += 8 + 4 * n
         elif kind == HUNK_END:
             off += 4
-            number += 1
+        elif kind == HUNK_NAME:
+            off += 8 + 4 * (u32(off + 4) & 0xFFFFFF)
         elif kind == HUNK_SYMBOL:
             off += 4
             while u32(off) != 0:

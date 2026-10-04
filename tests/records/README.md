@@ -6,6 +6,7 @@ Tests for the character record and the tables and rules around it: field layouts
 |---|---|
 | `test_abilitypair.py` | Checks which of the later C64 titles' two ability arrays the engine treats as current, through the carrying-capacity index it writes back. |
 | `test_abilitypaircross.py` | Checks that a crossed DOS ability pair keeps its permanent and in-force halves apart converting to the neutral record, to the C64 and back. |
+| `test_amiga_hunks.py` | Checks `goldbox/amiga_hunks.py` on synthetic Hunk files with `HUNK_NAME`, `HUNK_SYMBOL` and hunks that end without `HUNK_END`, then parses the Amiga programs off the player's disks that carry them. |
 | `test_amigathac0.py` | Checks Curse's and Silver Blades' guarded and unguarded THAC0 recompute loops against the player's own Amiga executables and representative engine-written records, skipping without them. |
 | `test_backstab.py` | Checks the DOS Curse and Silver Blades backstab gates, multiplier arithmetic and dual-class regain helper against the player's own executables, skipping without them. |
 | `test_backstab_multiplier.py` | Checks `goldbox/backstab.py` against each title's and port's multiplier table at levels 1 to 20, the level and multiplier caps, the regained and unregained former thief level beside a current one, the race read in the record's own table, a record with no game, and the error for a title and port with no measured rule, with no game data. |
