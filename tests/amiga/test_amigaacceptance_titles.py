@@ -13,7 +13,7 @@ import sys
 
 import pytest
 
-from goldbox import areas, geo
+from goldbox import amiga_savegame, areas, dos_codec, geo
 from goldbox.amiga_adf import AmigaDisk
 from tests import gamedata
 from tests.amiga import test_amigaacceptance_measure as measure
@@ -3006,6 +3006,14 @@ def _pty_files(disk, letter):
     return {name: disk.read_file(f"/SAVE/{name}")}
 
 
+#: The shipped vault: empty, with the item table padding that Wish's own empty vault lacks.
+_STUB_VAULT = bytearray(amiga_savegame.pod_vault_to_amiga(dos_codec.EMPTY_POD_VAULT))
+_STUB_VAULT[-1] = 0x55
+_STUB_VAULT = bytes(_STUB_VAULT)
+#: What Wish writes for a converted slot's empty vault.
+LOADED_VAULT = amiga_savegame.pod_vault_to_amiga(dos_codec.EMPTY_POD_VAULT)
+
+
 def _registered_three():
     disk = AmigaDisk.blank("POD 3")
     disk.make_dir("/SAVE")
@@ -3013,7 +3021,9 @@ def _registered_three():
     disk.write_file("/SAVE/spindisk", b"y")
     for letter in "ABCDE":
         disk.write_file(f"/SAVE/SavGam{letter}.pty", _pty(dict(DARK_START, x=5), ["OLD"]))
-        disk.write_file(f"/SAVE/Vault{letter}.DAT", b"old vault " + letter.encode())
+    # Every shipped disk 3 holds a vault for A to H and T, whether or not a saved game goes with it.
+    for letter in "ABCDEFGHT":
+        disk.write_file(f"/SAVE/Vault{letter}.DAT", _STUB_VAULT)
     return disk
 
 
@@ -3049,7 +3059,7 @@ class Three:
     def published(self, letter="D", *, mutate=None):
         disk = AmigaDisk(self.registered.to_bytes())
         disk.write_file(f"/SAVE/SavGam{letter}.pty", _pty(THREE_START))
-        disk.write_file(f"/SAVE/Vault{letter}.DAT", b"new vault")
+        disk.write_file(f"/SAVE/Vault{letter}.DAT", LOADED_VAULT)
         if mutate:
             mutate(disk)
         return disk
@@ -3142,13 +3152,15 @@ def test_a_published_disk_3_prepare_blocks_a_source_and_a_report_that_disagree(
     assert not (tmp_path / "cache").exists()
 
 
-def test_a_published_disk_3_prepare_blocks_a_slot_without_its_vault(tmp_path, monkeypatch):
+def test_a_published_disk_3_prepare_blocks_a_slot_whose_vault_is_not_the_converted_vault(
+        tmp_path, monkeypatch):
     three = Three(tmp_path, monkeypatch)
-    disk = AmigaDisk(three.registered.to_bytes())
-    disk.write_file("/SAVE/SavGamF.pty", _pty(THREE_START))
-    report, _ = three.report(disk, letter="F")
-    with pytest.raises(winuaesession.RouteError, match="outside the converted slot"):
+    # The shipped stub where the converted vault belongs.
+    report, _ = three.report(three.published("D", mutate=lambda disk: disk.write_file(
+        "/SAVE/VaultD.DAT", _STUB_VAULT)))
+    with pytest.raises(winuaesession.RouteError, match="not the vault converted"):
         foundation.prepare_published_disk_three("run", report, "2")
+    assert not (tmp_path / "cache").exists()
 
 
 def test_a_published_disk_3_prepare_removes_its_folder_when_a_working_copy_differs(
@@ -3208,17 +3220,12 @@ def test_a_published_disk_3_prepare_files_number_and_wish_number_under_one_folde
         foundation.prepare_published_disk_three("run", report, "WISH-2")
 
 
-def test_published_letters_never_take_a_letter_that_only_a_vault_holds():
-    present = ["A", "B", "C", "D", "E"]
-    assert route_darkness.published_letters("D", present)[:2] == ("F", "G")
-    control, after, kept = route_darkness.published_letters("D", present, ["f", "F"][1:])
-    assert (control, after) == ("G", "H") and kept == ("A", "B", "C", "E")
-
-
-def test_vault_letters_read_every_vault_whatever_its_case(tmp_path):
-    disk = _registered_three()
-    disk.write_file("/SAVE/vaultf.dat", b"orphan")
-    assert route_darkness.vault_letters(disk) == ["A", "B", "C", "D", "E", "F"]
+def test_published_letters_take_the_first_two_letters_without_a_saved_game():
+    # A letter that only a vault holds is the shipped state; the game overwrites that vault when it saves.
+    assert route_darkness.published_letters("D", ["A", "B", "C", "D", "E"]) == (
+        "F", "G", ("A", "B", "C", "E"))
+    with pytest.raises(winuaesession.RouteError, match="free to save to"):
+        route_darkness.published_letters("D", ["A", "B", "C", "D", "E", "F", "G"])
 
 
 def test_a_published_disk_3_prepare_keeps_camp_steps_and_blocks_bad_ones_before_a_folder_exists(
@@ -3268,14 +3275,20 @@ def test_run_recon_blocks_a_title_that_is_not_the_published_disk_3_route(tmp_pat
                              accept=True)
 
 
-def _accepted(three, path, tmp_path, *, same_place=False, extra=None):
-    """A fetched disk 3 as an accept run leaves it: the control and after saves added."""
+def _accepted(three, path, tmp_path, *, same_place=False, extra=None, vaults=None):
+    """A fetched disk 3 as an accept run leaves it: the control and after saves added.
+
+    The game copies the loaded slot's vault into both new letters; `vaults` maps a letter to other bytes.
+    """
     manifest = _three_manifest(path)
     published = AmigaDisk.open(manifest["registered"]["published"]["path"])
     fetched = AmigaDisk(published.to_bytes())
     fetched.write_file(f"/SAVE/SavGam{manifest['control_letter']}.pty", _pty(THREE_START))
     fetched.write_file(f"/SAVE/SavGam{manifest['after_letter']}.pty",
                        _pty(THREE_START if same_place else dict(THREE_START, x=4)))
+    loaded = published.read_file(f"/SAVE/Vault{manifest['loaded_letter']}.DAT")
+    for letter in (manifest["control_letter"], manifest["after_letter"]):
+        fetched.write_file(f"/SAVE/Vault{letter}.DAT", (vaults or {}).get(letter, loaded))
     if extra:
         fetched.write_file(*extra)
     file = tmp_path / "fetched3.adf"
@@ -3300,6 +3313,7 @@ def test_a_published_disk_3_reload_loads_the_after_slot_and_keeps_every_other(
     assert manifest["loaded_letter"] == "G" and manifest["other_letter"] == "F"
     assert manifest["state_a"] == dict(THREE_START, x=4) and manifest["other_place"] == THREE_START
     assert manifest["kept_letters"] == ["A", "B", "C", "D", "E", "F"]
+    assert manifest["vault_sha256"] == {c: hashlib.sha256(LOADED_VAULT).hexdigest() for c in "FG"}
     title = foundation.published_darkness_title(reload, "darkness-reload")
     assert title.control_letter is None and title.kept_letters == tuple("ABCDEF")
     assert ("G", "disk2_prompt", "key") in title.route
@@ -3308,7 +3322,7 @@ def test_a_published_disk_3_reload_loads_the_after_slot_and_keeps_every_other(
 
 @pytest.mark.parametrize("why, kwargs, match", [
     ("same place", {"same_place": True}, "one place"),
-    ("an extra file", {"extra": ("/SAVE/VaultG.DAT", b"v")}, "plus slots"),
+    ("an extra file", {"extra": ("/SAVE/VaultI.DAT", b"v")}, "plus slots"),
 ])
 def test_a_published_disk_3_reload_blocks_a_disk_that_is_not_the_published_one_plus_two_saves(
         tmp_path, monkeypatch, why, kwargs, match):
@@ -3319,6 +3333,19 @@ def test_a_published_disk_3_reload_blocks_a_disk_that_is_not_the_published_one_p
     with pytest.raises(winuaesession.RouteError, match=match):
         foundation.prepare_published_disk_three_reload("again", path, file, sha, summary)
     assert not (tmp_path / "cache" / "acceptance" / "2" / "again").exists(), why
+
+
+@pytest.mark.parametrize("letter", ["F", "G"])
+def test_a_published_disk_3_reload_blocks_a_new_slot_whose_vault_is_not_the_loaded_one(
+        tmp_path, monkeypatch, letter):
+    three = Three(tmp_path, monkeypatch)
+    report, _ = three.report(three.published("D"))
+    path = foundation.prepare_published_disk_three("run", report, "2")
+    other = amiga_savegame.pod_vault_to_amiga(dos_codec.PodVault(7, 0, 0, ()))
+    file, sha, summary = _accepted(three, path, tmp_path, vaults={letter: other})
+    with pytest.raises(winuaesession.RouteError, match="is not the loaded slot's vault"):
+        foundation.prepare_published_disk_three_reload("again", path, file, sha, summary)
+    assert not (tmp_path / "cache" / "acceptance" / "WISH-2" / "again").exists()
 
 
 def test_a_published_disk_3_reload_blocks_a_summary_of_another_disk_or_a_failed_run(

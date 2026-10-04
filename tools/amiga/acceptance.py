@@ -35,7 +35,7 @@ from typing import Any, Callable
 if __package__ in (None, ""):
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
-from goldbox import amiga_adf, amiga_savegame, areas, geo  # noqa: E402
+from goldbox import amiga_adf, amiga_savegame, areas, dos_codec, geo  # noqa: E402
 from tools.amiga import (  # noqa: E402
     amigabladesjournal,
     route_camp,
@@ -68,7 +68,6 @@ from tools.amiga.route_darkness import (  # noqa: E402
     _prepare_darkness_reload,
     published_reload_title,
     published_title,
-    vault_letters,
 )
 from tools.amiga.route_pool import (  # noqa: E402
     POOL,
@@ -168,6 +167,11 @@ PUBLISHED_SOURCES_BY_ISSUE = {
     "667": {
         ("curse", "c64"): frozenset({"ff3228edf42aa56a0fbf5159e8354358a38673115216a1b6c7f3439cae2686f2"}),
         ("ssb", "dos"): frozenset({"91a136ce86b34267b81d1ddd1d5037ce54d1a7d5b7e63732dddcb0af3070921b"}),
+    },
+    # The game-written DOS Pools of Darkness slot C after Lay on Hands and a one-hour rest, which
+    # the Save As to the Amiga disk 3 route starts from.
+    "2": {
+        ("darkness", "dos"): frozenset({"ee979bf89164742816841c9ad2dc5a550f35b3a52eec2ad3fae138c9a1653918"}),
     },
     # The two DOS saves the Character Editor's Save As converts to the Amiga: the Curse party
     # with a dual-classed member and the Silver Blades party joined by arrow.
@@ -2931,7 +2935,7 @@ def _darkness_disk_three_title(manifest: dict, disk: amiga_adf.AmigaDisk) -> Ami
         title = published_reload_title(letter, present)
         recorded = {"kept_letters": list(title.kept_letters)}
     else:
-        title = published_title(letter, present, vault_letters(disk))
+        title = published_title(letter, present)
         recorded = {"control_letter": title.control_letter, "after_letter": title.after_letter,
                     "kept_letters": list(title.kept_letters)}
     if any(manifest.get(key) != value for key, value in recorded.items()):
@@ -3028,11 +3032,19 @@ def prepare_published_disk_three(run_id: str, report_path: pathlib.Path, issue: 
         raise RouteError("the published image differs from disk 3 outside the converted slot")
     if new[slot_paths[0]] == old.get(slot_paths[0]):
         raise RouteError("the published slot was not converted")
+    # The vault the converter writes (`PodDosToAmiga.rehearse`): the DOS vault beside the source, or
+    # an empty one when the slot has none.
+    dos_vault = source.parent / f"VAULT{letter}.DAT"
+    converted_vault = amiga_savegame.pod_vault_to_amiga(
+        dos_codec.pod_vault_from_dos(dos_vault.read_bytes()) if dos_vault.is_file()
+        else dos_codec.EMPTY_POD_VAULT)
+    if new[slot_paths[1]] != converted_vault:
+        raise RouteError(f"vault {letter} is not the vault converted from the DOS source")
     reading = DARKNESS.read_slot(published, letter)
     if "place" not in reading:
         raise RouteError(f"published slot {letter} does not decode: {reading}")
     present = DARKNESS.slot_letters(published)
-    title = published_title(letter, present, vault_letters(published))
+    title = published_title(letter, present)
     if camp:
         camp = route_camp.normalise(tuple(camp))
         _camp_title("darkness", title, list(camp), reading["names"])
@@ -3129,9 +3141,16 @@ def prepare_published_disk_three_reload(
     written = {c: DARKNESS.slot_files(save, c) for c in (control, after)}
     added = {f"/save/{name}".lower() for files in written.values() for name in files}
     have, before = _disk_files(save), _disk_files(published)
+    # The game writes the loaded slot's vault over the vault file of each new letter, so those two
+    # files are compared as vaults below and not byte for byte.
+    rewritten = {_slot_paths(c)[1] for c in (control, after)}
     if len(added) != 2 or set(have) != set(before) | added or any(
-            have[name] != data for name, data in before.items()):
+            have[name] != data for name, data in before.items() if name not in rewritten):
         raise RouteError(f"disk 3 is not the published disk 3 plus slots {control} and {after}")
+    loaded_vault = amiga_savegame.pod_read_vault(published, manifest["loaded_letter"])
+    for c in (control, after):
+        if amiga_savegame.pod_read_vault(save, c) != loaded_vault:
+            raise RouteError(f"vault {c} is not the loaded slot's vault")
     reading = {c: DARKNESS.read_slot(save, c) for c in (control, after)}
     for c, one in reading.items():
         if "place" not in one:
@@ -3172,6 +3191,8 @@ def prepare_published_disk_three_reload(
         "other_letter": control, "other_place": reading[control]["place"],
         "kept_letters": list(reload_title.kept_letters),
         "slot_sha256": {c: one["sha256"] for c, one in reading.items()},
+        "vault_sha256": {c: hashlib.sha256(have[_slot_paths(c)[1]]).hexdigest()
+                         for c in (control, after)},
         "accept_summary": _entry(accept_summary),
         "published_manifest": _entry(published_manifest),
     }

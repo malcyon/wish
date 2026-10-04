@@ -185,6 +185,32 @@ def test_the_registered_disk_three_takes_a_registered_dos_slot(tmp_path):
     assert disk3.read_bytes() == data
 
 
+def test_the_vault_specimen_on_the_registered_disk_three_leaves_f_and_g_free(tmp_path):
+    """Every shipped disk 3 holds a vault for A to H; only saved games take a letter.
+
+    This pins the result; it does not prove the old code wrong, since the old parameter defaulted to empty.
+    """
+    import gamedata
+
+    from tools.amiga import amigasaves, route_darkness
+    root = gamedata.specimen_root()
+    folder = root / "pod-dos" / "WISH-SPEC-pod-650-savgamb-walked-vault-dos" if root else None
+    if folder is None or not folder.is_dir():
+        pytest.skip("needs the pod-dos specimen tree; see $WISH_SPECIMENS")
+    for _label, data in amigasaves.images():
+        if hashlib.sha256(data).hexdigest() == route_darkness.DARKNESS_DISK3_SHA256:
+            break
+    else:
+        pytest.skip("needs the registered Pools of Darkness disk 3; set $AMIGA_DISKS")
+    disk3 = tmp_path / "disk3.adf"
+    disk3.write_bytes(data)
+    report = podsaveasdrive.run(folder / "SAVGAMD.PTY", disk3, tmp_path / "out", replace=True)
+    assert not report["save_as"].get("stopped"), report
+    image = AmigaDisk.open(pathlib.Path(report["written"][0]))
+    present = route_darkness.DARKNESS.slot_letters(image)
+    assert route_darkness.published_letters(report["save_as"]["slot"], present)[:2] == ("F", "G")
+
+
 @pytest.mark.parametrize("error", [
     dos_savegame.DosSaveError("short save"), dos_codec.WrongTitleError("wrong title", "x"),
     OSError("unreadable"), amiga_savegame.AmigaSaveError("bad slot")])
