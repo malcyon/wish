@@ -32,6 +32,15 @@
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/check-orchestrator-edits.py"
           }
         ]
+      },
+      {
+        "matcher": "ScheduleWakeup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/check-queue-gaps.py"
+          }
+        ]
       }
     ]
   }
