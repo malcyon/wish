@@ -4663,7 +4663,7 @@ def _restage(src: pathlib.Path, dest: pathlib.Path) -> None:
     """Copy `src` over `dest` and make the copy writable (`#430`, `#472`).
 
     The `try` is only for what `stage_writable` cannot fix -- the slot
-    directory itself rejecting to be written -- so the error that reaches a
+    directory itself not being writable -- so the error that reaches a
     caller names the path and what to do about it, rather than the bare
     `PermissionError` this replaces.
     """

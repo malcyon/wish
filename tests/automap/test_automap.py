@@ -356,7 +356,7 @@ def test_the_fingerprint_narrows_to_new_phlan():
 def test_a_blocked_step_narrows_hard():
     maps = load_geo_files(f"{DISKS}/POOL3.D64")
     fp = Fingerprint(maps)
-    fp.record_blocked(0, 0, NORTH)               # the map edge blocks everyone
+    fp.record_blocked(0, 0, NORTH)                 # the map edge blocks everyone
     assert fp.names
 
 
@@ -429,7 +429,7 @@ def test_one_blocked_step_beats_a_hundred_successful_ones(new_phlan):
     seen = Fingerprint(maps)
     seen.saw(3, 14)
     bumped = Fingerprint(maps)
-    bumped.record_blocked(3, 14, SOUTH)          # the wall south of the inn door
+    bumped.record_blocked(3, 14, SOUTH)            # the wall south of the inn door
     assert len(bumped.names) < len(seen.names)
 
 
