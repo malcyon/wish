@@ -14,12 +14,16 @@ from PyQt6.QtCore import Qt
 from support.editorwindow import make_root
 
 from editor.inventory import NAME as NAME_COL
-from editor.inventory import READIED_COL
+from editor.inventory import READIED_COL, InventoryModel
 from editor.roster import Party
 from editor.window import EditorBinding
+from goldbox.items import Item
 
 SPECIMENS = ("por-793-treasure-type0-item", "por-793-type0-readied")
 NAME = "THRENDER GRONE"
+# `.SAV` 0x110-0x119 as the specimens hold them, which an add must not move.
+HAND_BYTES = {"por-793-treasure-type0-item": "293b3600000100060002",
+              "por-793-type0-readied": "283b3600000100060000"}
 RECORD = 63          # one `.ITM` record: the item block plus its name text
 
 
@@ -52,6 +56,10 @@ def _type_zero_blocks(inventory):
 
 def _itm(path, index):
     return next(path.parent.glob(f"CHRDAT?{index + 1}.ITM"))
+
+
+def _sav(path, index):
+    return next(path.parent.glob(f"CHRDAT?{index + 1}.SAV"))
 
 
 def _select(w, index):
@@ -133,7 +141,7 @@ def test_an_untouched_type_zero_save_writes_nothing(app, tmp_path, name):
 
 
 @pytest.mark.parametrize("name", SPECIMENS)
-def test_adding_an_item_keeps__the_type_zero_item(app, tmp_path, name):
+def test_adding_an_item_keeps_the_type_zero_item(app, tmp_path, name):
     w, path, index = _open(tmp_path, name)
     inventory = w.party.members[index].inventory
     kept = _type_zero_blocks(inventory)
@@ -149,6 +157,9 @@ def test_adding_an_item_keeps__the_type_zero_item(app, tmp_path, name):
     reread = Party(str(path)).members[index].inventory
     assert _type_zero_blocks(reread) == kept
     assert _itm(path, index).stat().st_size == before + RECORD
+    sav = _sav(path, index).read_bytes()
+    assert sav[0xC7] == 4
+    assert sav[0x110:0x11A].hex() == HAND_BYTES[name]
 
 
 @pytest.mark.parametrize("name", SPECIMENS)
@@ -214,3 +225,41 @@ def test_an_amiga_pool_member_keeps_a_type_zero_block_on_add_and_delete():
     assert inventory.raws[1] == type_zero
     inventory.delete(0)
     assert type_zero in inventory.raws
+
+
+@pytest.mark.parametrize("name", SPECIMENS)
+def test_an_untouched_save_keeps_the_item_count_and_hand_bytes(
+        app, tmp_path, name):
+    _w, path, index = _open(tmp_path, name)
+    sav = _sav(path, index).read_bytes()
+    assert sav[0xC7] == 3
+    assert sav[0x110:0x11A].hex() == HAND_BYTES[name]
+
+
+def test_a_gold_edit_leaves_the_type_zero_item_byte_for_byte(app, tmp_path):
+    w, path, index = _open(tmp_path, "por-793-type0-readied")
+    w.roster.selectRow(index)
+    before = {f.name: f.read_bytes() for f in path.parent.iterdir()}
+    box = w._widgets["gold"]
+    box.setValue(box.value() + 7)
+    w._edited()
+    w.save(interactive=False)
+
+    itm, spc = _itm(path, index), next(path.parent.glob(
+        f"CHRDAT?{index + 1}.SPC"))
+    assert itm.read_bytes() == before[itm.name]
+    assert spc.read_bytes() == before[spc.name]
+    inventory = Party(str(path)).members[index].inventory
+    assert inventory.used == 3
+    assert any(r[0] == 0 and any(r) and r[6] & 0x80 for r in inventory.raws)
+
+
+def test_an_unidentified_item_with_no_name_has_no_shows_in_game_as_line(app):
+    raw = bytearray(16)
+    raw[0] = 1
+    raw[6] = 0x86      # hidden-name bits set, no name words
+    item = Item(bytes(raw))
+    assert not item.is_identified and not item.unidentified_name
+
+    tip = InventoryModel()._tooltip(0, item)
+    assert "Shows in game as" not in tip
