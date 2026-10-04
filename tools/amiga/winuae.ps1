@@ -1301,6 +1301,12 @@ switch ($Cmd) {
       "fail winuae64 already running pid=$($old.Id)$by; stop it first"
       exit 1
     }
+    # With one lane, any winuae64 -- a person's, or a leftover with no receipt --
+    # is in the way. With several, only this lane's receipt matters.
+    if ($LaneCount -eq 1) {
+      $any = @(Get-Process -Name winuae64 -ErrorAction SilentlyContinue)
+      if ($any.Count) { "fail winuae64 already running pid=$($any[0].Id); stop it first"; exit 1 }
+    }
     $wanted = ($Rest -join ' ')
     $expected = "`"$Exe`" $wanted"
     # One start at a time on the whole guest, because "the new winuae64 that no
@@ -1324,7 +1330,7 @@ switch ($Cmd) {
           $owned = @{}
           foreach ($n in 1..$LaneCount) {
             $rr = Read-Kv (Lane-Paths $n).run
-            if ($rr.ContainsKey('pid')) { $owned[[string]$rr['pid']] = $true }
+            if ($rr.ContainsKey('pid') -and (Get-ReceiptProcess $rr)) { $owned[[string]$rr['pid']] = $true }
           }
           # Everything below the launch is one question: is the emulator that is
           # running the one THIS call asked for?
@@ -1377,6 +1383,16 @@ switch ($Cmd) {
     if ($deny) { $deny; exit 1 }
     $live = Get-ReceiptProcess (Read-Kv $LanePaths.run)
     if (-not $live) {
+      # No receipt, or one that no longer names a live process: a start that
+      # failed after launching but before writing the receipt leaves its task
+      # running, so end the task too and wait for it to leave Running.
+      Stop-ScheduledTask -TaskName $LanePaths.task -ErrorAction SilentlyContinue
+      for ($i = 0; $i -lt 40; $i++) {
+        $state = (Get-ScheduledTask -TaskName $LanePaths.task -ErrorAction SilentlyContinue).State
+        if (-not $state -or $state -ne 'Running') { break }
+        Start-Sleep -Milliseconds 250
+      }
+      if ($state -and $state -eq 'Running') { "fail the lane's task is still running 10s after Stop-ScheduledTask"; exit 1 }
       Remove-Item $LanePaths.run -ErrorAction SilentlyContinue
       'ok stopped'; exit 0
     }

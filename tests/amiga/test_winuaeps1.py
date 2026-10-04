@@ -160,10 +160,24 @@ def test_start_takes_the_guest_wide_mutex_before_it_launches_and_frees_it_in_a_f
     assert "AbandonedMutexException" in body
 
 
-def test_start_does_not_ask_whether_any_winuae64_exists_before_the_mutex():
+def test_start_with_one_lane_blocks_on_any_winuae64_before_the_mutex():
     body = _case("start")
     before = body[:body.index("Global\\wish-winuae-start")]
-    assert "Get-Process -Name winuae64" not in before
+    guard = before.index("if ($LaneCount -eq 1)")
+    assert before.index("Get-Process -Name winuae64") > guard
+    assert "winuae64 already running pid=$($any[0].Id); stop it first" in before
+
+
+def test_stop_ends_the_task_even_when_the_receipt_resolves_to_nothing():
+    body = _case("stop")
+    head = body[:body.index("$mine = Resolve-MyEmulator")]
+    assert "Stop-ScheduledTask -TaskName $LanePaths.task" in head
+    assert "(Get-ScheduledTask -TaskName $LanePaths.task" in head
+
+
+def test_start_owns_only_receipt_pids_that_resolve():
+    body = _case("start")
+    assert "(Get-ReceiptProcess $rr)) { $owned[" in body
 
 
 def test_start_adopts_the_one_new_winuae64_that_no_lane_owns():
