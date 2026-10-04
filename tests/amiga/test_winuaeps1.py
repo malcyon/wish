@@ -63,9 +63,9 @@ def test_the_lane_pipe_is_the_one_its_run_receipt_names_and_its_server_is_checke
     assert "$run = Read-Kv $LanePaths.run" in body
     assert "$run['pipe']" in body
     asked = body.index("GetNamedPipeServerProcessId")
-    closed = body.index("Close-LanePipe $try", asked)
-    thrown = body.index("is served by pid=$owner, not by this lane's winuae64 pid=$LanePid", closed)
-    assert asked < closed < thrown
+    thrown = body.index("is served by pid=$owner, not by this lane's winuae64 pid=$LanePid", asked)
+    closed = body.index("Close-LanePipe $try", thrown)
+    assert asked < thrown < closed
 
 
 def test_the_lane_pipe_opener_opens_one_name_and_never_searches():
@@ -79,7 +79,7 @@ def test_the_lane_pipe_opener_opens_one_name_and_never_searches():
 def test_a_lane_without_a_recorded_pipe_or_with_a_gone_one_says_to_restart_it():
     body = _body("Open-LanePipe")
     assert "run receipt names no WinUAE pipe; stop the lane and start it again" in body
-    assert "is gone; WinUAE never makes it again, so stop the lane and start it again" in body
+    assert "opened, is gone\"" in body
     assert "[IO.Directory]::GetFiles('\\\\.\\pipe\\')" in body
 
 
@@ -123,7 +123,7 @@ def test_start_waits_for_the_pipe_line_and_records_the_name_in_the_receipt():
     printed = body.index("ok pid=$($proc.Id) session=$($proc.SessionId) pipe=$pipeName", recorded)
     assert released < read < polled < slept < recorded < printed
     assert "$PipeLineBoundMs = 20000" in PS1
-    assert "stop the lane and start it again" in body[polled:]
+    assert "stop the lane and start it again" not in body[polled:]
     assert "wrote no IPC: Named Pipe line to" in body
     assert "exited before opening its pipe" in body
 
@@ -654,3 +654,13 @@ def test_the_lanecheck_reads_every_lane_again_in_reverse_and_checks_the_pipes_ar
     assert names < first < second < again < listed
     assert "$listed -cnotcontains $_" in body
     assert "pipe=$($pipes[$n])" in body
+
+
+def test_a_throw_after_connecting_closes_the_pipe_through_close_lane_pipe():
+    body = _body("Open-LanePipe")
+    connected = body.index("$try.Connect($WaitMs)")
+    guarded = body.index("try {", connected)
+    assert guarded < body.index("$try.ReadMode =") < body.index("GetNamedPipeServerProcessId")
+    handler = body.index("} catch {", guarded)
+    assert body.index("Close-LanePipe $try", handler) < body.index("throw", handler)
+    assert "Close-LanePipe $try\n    throw\n" in body[handler:]

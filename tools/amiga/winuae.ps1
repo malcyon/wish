@@ -804,22 +804,26 @@ function Open-LanePipe([int]$LanePid, [int]$WaitMs = 5000) {
   }
   $live = @([IO.Directory]::GetFiles('\\.\pipe\') | ForEach-Object { [IO.Path]::GetFileName($_) })
   if ($live -cnotcontains $name) {
-    throw "\\.\pipe\$name, which lane $ActiveLane's winuae64 pid=$LanePid opened, is gone; WinUAE never makes it again, so stop the lane and start it again"
+    throw "\\.\pipe\$name, which lane $ActiveLane's winuae64 pid=$LanePid opened, is gone"
   }
   $try = New-Object IO.Pipes.NamedPipeClientStream '.', $name, 'InOut'
   $try.Connect($WaitMs)
   $script:LanePipeName = $name
   $script:LanePipeState = 'opened'
-  $try.ReadMode = [IO.Pipes.PipeTransmissionMode]::Message
-  [uint32]$owner = 0
-  if (-not [Wish.PipeInfo]::GetNamedPipeServerProcessId($try.SafePipeHandle.DangerousGetHandle(), [ref]$owner)) {
-    $err = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+  # Anything that throws once connected closes the pipe through Close-LanePipe, which sends
+  # the one request WinUAE needs before it tolerates a close.
+  try {
+    $try.ReadMode = [IO.Pipes.PipeTransmissionMode]::Message
+    [uint32]$owner = 0
+    if (-not [Wish.PipeInfo]::GetNamedPipeServerProcessId($try.SafePipeHandle.DangerousGetHandle(), [ref]$owner)) {
+      throw "GetNamedPipeServerProcessId failed, error $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
+    }
+    if ($owner -ne $LanePid) {
+      throw "\\.\pipe\$name is served by pid=$owner, not by this lane's winuae64 pid=$LanePid; stop the lane and start it again"
+    }
+  } catch {
     Close-LanePipe $try
-    throw "GetNamedPipeServerProcessId failed, error $err"
-  }
-  if ($owner -ne $LanePid) {
-    Close-LanePipe $try
-    throw "\\.\pipe\$name is served by pid=$owner, not by this lane's winuae64 pid=$LanePid; stop the lane and start it again"
+    throw
   }
   $try
 }
@@ -1506,6 +1510,7 @@ switch ($Cmd) {
     }
     # The pipe name is read from this lane's own boot log, so the wait needs no lock: no
     # other lane writes that file. WinUAE writes the line within a second of starting.
+    # It does so without -log: the acceptance starts pass none and their boot logs hold it.
     if ($code -eq 0 -and $proc) {
       $pipeName = $null
       $gone = $false
@@ -1532,7 +1537,7 @@ switch ($Cmd) {
         $said = @("ok pid=$($proc.Id) session=$($proc.SessionId) pipe=$pipeName")
       } elseif ($code -eq 0) {
         $why = if ($gone) { 'exited before opening its pipe' } else { "wrote no IPC: Named Pipe line to $($LanePaths.bootlog) within $($PipeLineBoundMs / 1000) s" }
-        $said = @("fail winuae64 pid=$($proc.Id) $why; stop the lane and start it again")
+        $said = @("fail winuae64 pid=$($proc.Id) $why")
         $code = 1
       }
     }

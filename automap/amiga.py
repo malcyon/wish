@@ -1182,12 +1182,16 @@ class WinuaePipe:
     Add-Type -Namespace WishPipe -Name Info -MemberDefinition '[DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetNamedPipeServerProcessId(IntPtr Pipe, out uint ServerProcessId);'
   }
   $live=@([IO.Directory]::GetFiles('\\.\pipe\') | ForEach-Object { [IO.Path]::GetFileName($_) })
-  if ($live -cnotcontains $name) { throw [InvalidOperationException]::new("\\.\pipe\$name, which @HOLDER@'s winuae64 pid=$lanePid opened, is gone; stop the lane and start it again") }
+  if ($live -cnotcontains $name) { throw [InvalidOperationException]::new("\\.\pipe\$name, which @HOLDER@'s winuae64 pid=$lanePid opened, is gone") }
   $p=New-Object IO.Pipes.NamedPipeClientStream '.',$name,'InOut'
   $p.Connect(@CONNECT@)
-  $p.ReadMode=[IO.Pipes.PipeTransmissionMode]::Message
-  [uint32]$owner=0
-  if (-not ([WishPipe.Info]::GetNamedPipeServerProcessId($p.SafePipeHandle.DangerousGetHandle(),[ref]$owner) -and $owner -eq $lanePid)) {
+  try {
+    $p.ReadMode=[IO.Pipes.PipeTransmissionMode]::Message
+    [uint32]$owner=0
+    if (-not ([WishPipe.Info]::GetNamedPipeServerProcessId($p.SafePipeHandle.DangerousGetHandle(),[ref]$owner) -and $owner -eq $lanePid)) {
+      throw [InvalidOperationException]::new("\\.\pipe\$name is served by pid=$owner, not by @HOLDER@'s winuae64 pid=$lanePid; stop the lane and start it again")
+    }
+  } catch {
     # A pipe closed with no request sent is closed for good by WinUAE, so one read goes first.
     try {
       $q=[Text.Encoding]::ASCII.GetBytes('CFG floppy0')
@@ -1198,7 +1202,7 @@ class WinuaePipe:
       $p.ReadAsync((New-Object byte[] 65536),0,65536).Wait(@READ@) | Out-Null
     } catch { }
     $p.Dispose()
-    throw [InvalidOperationException]::new("\\.\pipe\$name is served by pid=$owner, not by @HOLDER@'s winuae64 pid=$lanePid; stop the lane and start it again")
+    throw
   }"""
         return (script.replace("@SCRIPT@", self.LANE_SCRIPT)
                 .replace("@HOLDER@", self.holder or "")

@@ -427,6 +427,17 @@ def test_a_debugger_command_over_ssh_opens_only_the_pipe_its_holders_lane_record
     assert mismatch.index("CFG floppy0") < mismatch.index("$p.Dispose()")
 
 
+def test_a_setup_that_throws_after_connecting_still_sends_a_request_before_closing():
+    p, guest = pipe({0: b"\x00" * 16})
+    p.send(["m 0 1"])
+    script = guest.scripts[0]
+    connected = script.index("$p.Connect(")
+    guarded = script.index("try {", connected)
+    assert guarded < script.index("$p.ReadMode=", connected) < script.index("[WishPipe.Info]::GetNamedPipeServerProcessId")
+    handler = script.index("} catch {", guarded)
+    assert script.index("CFG floppy0", handler) < script.index("$p.Dispose()", handler) < script.index("throw", handler)
+
+
 def test_the_lane_reply_carries_the_lane_the_pid_and_the_pipe():
     found = amiga.LANE_REPLY.search(f"{LANE_LINE} pipe=WinUAE_1")
     assert found and found.groups() == ("2", "4242", "WinUAE_1")
