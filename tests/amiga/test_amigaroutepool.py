@@ -7,7 +7,7 @@ import pytest
 from goldbox import geo
 from tests.amiga import test_amigaacceptance_measure as measure
 from tests.amiga import test_amigaacceptance_title as title_run
-from tools.amiga import acceptance, route_pool
+from tools.amiga import acceptance, route_pool, winuaesession
 from tools.amiga.route import RouteError
 
 clock = measure.clock  # the fixture that replaces the driver's time and sleep
@@ -111,7 +111,7 @@ def test_a_manifest_or_place_missing_its_area_is_a_route_error():
 
 def test_run_recon_selects_the_forward_route_for_a_manifest_that_says_so(tmp_path, monkeypatch):
     monkeypatch.setattr(route_pool, "_disk_geo", _loader(_map(x=6, y=5, closed=(geo.SOUTH,))))
-    monkeypatch.setattr(acceptance, "_mute_proof", lambda _path: True)
+    monkeypatch.setattr(winuaesession, "_mute_proof", lambda _path: True)
     seen = []
 
     def stop(_manifest, title):
@@ -122,7 +122,7 @@ def test_run_recon_selects_the_forward_route_for_a_manifest_that_says_so(tmp_pat
     path = tmp_path / "prepare.json"
     path.write_text(json.dumps({"state_a": KOBOLD_CAVES, "turn_about": False}))
     with pytest.raises(RouteError, match="stop here"):
-        acceptance.run_recon(path, guest=None, holder="wish679-test",
+        acceptance.run_recon(path, guest=winuaesession.WinGuest(), holder="wish679-test",
                              audio_proof=tmp_path / "mute.json", title=acceptance.POOL, measure=True)
     assert seen == [route_pool.POOL_FORWARD]
     assert ("NP2", "world", "turn") not in seen[0].route and seen[0].turn is None

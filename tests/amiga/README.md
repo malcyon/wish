@@ -11,6 +11,7 @@ Tests for the Amiga port: its filesystem, saved-game and character-record reader
 | `test_amigaabilitypaircross.py` | Checks that a crossed Amiga Curse or Silver Blades ability pair keeps its permanent and in-force halves apart through `to_neutral_later`. |
 | `test_amigaacceptance.py` | Checks that a failed WinUAE save probe leaves the published disk unchanged, keeps both fetched ADFs and its last screen, settles a capture on the emulator's crop, and that the lane session, the screen guards and the title description import without the runner. |
 | `test_amigaacceptance_accept.py` | Checks the WinUAE probe's accept route, guards, interstitials, verdicts and evidence, and that SIGTERM still stops, fetches and releases. |
+| `test_amigaacceptance_guest.py` | Checks that `run_recon` gives the same result events through a WinUAE-style and an FS-UAE-style lane, sends snapshot and restore steps through the guest, and that `--emulator` picks the lane and drops the audio-proof requirement for FS-UAE. |
 | `test_amigaacceptance_journal.py` | Checks that a failing journal answerer subprocess puts its exit code and the last lines of its stderr, bounded, in the driver's `RouteError`. |
 | `test_amigaacceptance_measure.py` | Checks the WinUAE probe's capture-only mode, per-state minimum waits, guard polling and configurable route with a fake clock and guest. |
 | `test_amigaacceptance_poolrest.py` | Checks Pool of Radiance's camp `rest DURATION` and `display` steps, the after slot F a camp run that presses `D` saves to, and a fake camp run that lists the effects, rests and reads them gone from the game's saves. |
@@ -21,6 +22,7 @@ Tests for the Amiga port: its filesystem, saved-game and character-record reader
 | `test_amigaacceptance_titles.py` | Checks the Pool of Radiance, Curse of the Azure Bonds and Pools of Darkness routes, including their keys, walk verdicts, preparation pins, imports and the cases where the CLI stops, plus exact published disk-one route letters and report validation. |
 | `test_amigabackstab.py` | Pins what `tools/amiga/amigabackstab.py` reads out of each Amiga title's own executable, and that erasing a step of the regain arithmetic is blocked. |
 | `test_amigabladesjournal.py` | Checks how `tools/amiga/amigabladesjournal.py` fits the game's character grid inside a desktop capture and rescales it, on synthetic frames. |
+| `test_amigacanonical.py` | Checks that `screens.canonical` cuts FS-UAE's doubled screenshot and any other exact replicated frame to the 720x568 crop, blocks a frame that is not exact, and leaves every kept WinUAE example crop unchanged with each guard rule still matching its example. |
 | `test_amigacontainercheck.py` | Checks the parts of `tools/amiga/amigacontainercheck.py` that decide what it says, on synthetic input, and that its two readers share no code. |
 | `test_amigacursewheel.py` | Checks `tools/amiga/amigacursewheel.py`'s whole-number rescale of a WinUAE capture and that a machine without the private tables is told so. |
 | `test_amigadrive.py` | Checks `tools/amiga/amigadrive.py`'s key table and the two settings a party walks on, through the command line the driver would send. |
@@ -55,6 +57,7 @@ Tests for the Amiga port: its filesystem, saved-game and character-record reader
 | `test_amigazerowords.py` | Checks that `tools/amiga/amigazerowords.py` runs without crashing against the player's specimens. |
 | `test_fsuaegdb.py` | Checks `automap.amiga.FsuaeGdb` against a fake socket that answers the way the patched FS-UAE's GDB server does. |
 | `test_fsuaegdbclick.py` | Checks that `fsuaegdb.py wish` lists the window's buttons, presses one with its answer and spell, and picks a drop-down entry, and that each reports a closed window, a disabled control or a bad argument in its own row. |
+| `test_fsuaesession.py` | Checks `tools/amiga/fsuaesession.py` with the pool, processes and xdotool faked: the slot lease, the launch command line with a third drive and a swap list, the first-key wait, stop before fetching a disk, the screenshot cut, and a disk change that needs a log line. |
 | `test_guardmaps.py` | Checks crop ownership, cross-title collisions and guard-map commands on synthetic screenshots, including atomic replacement failure cleanup. |
 | `test_installfsuae.py` | Checks that `tools/amiga/installfsuae.py` blocks a tarball with the wrong digest, a member that escapes or a non-https download, unpacks only `package/bin/fs-uae/`, never deletes what `--into` already holds, and does nothing on a second run, on tarballs built here with no network. |
 | `test_m68dis.py` | Checks the 68000 disassembler on hand-assembled encodings, including a word that is not an instruction. |

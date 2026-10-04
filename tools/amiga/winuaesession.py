@@ -36,9 +36,51 @@ class Terminated(BaseException):
 class WinGuest:
     """One holder's WinUAE commands through the agent guest's `winvm`."""
 
+    can_snapshot = True
+
     def __init__(self) -> None:
         #: The Windows paths this instance copied to the guest; a floppy change may name only these.
         self.staged: set[str] = set()
+        self._pipe: Any = None
+
+    @staticmethod
+    def remote_path(issue: str, holder: str, key: str) -> str:
+        """Where the guest keeps disk `key` of `holder`'s run for ticket `issue`."""
+        return f"C:/Amiga/Disks/wish{issue}-{holder}-{key}.adf"
+
+    @staticmethod
+    def silence(proof: pathlib.Path | None) -> bool:
+        """Whether the Windows VM's audio endpoint was read back muted in the last five minutes."""
+        return proof is not None and _mute_proof(pathlib.Path(proof))
+
+    def _machine(self) -> Any:
+        if self._pipe is None:
+            from automap import amiga  # noqa: PLC0415
+
+            self._pipe = amiga.WinuaePipe()
+        return self._pipe
+
+    def snapshot(self, name: str, holder: str) -> Any:
+        """Save the whole running machine under `name` through WinUAE's pipe."""
+        return self._machine().snapshot(name, holder)
+
+    def restore(self, name: str, holder: str) -> Any:
+        """Put the machine back as snapshot `name` left it."""
+        return self._machine().restore(name, holder)
+
+    def discard(self, name: str, holder: str) -> Any:
+        """Delete snapshot `name`."""
+        return self._machine().discard_snapshot(name, holder)
+
+    def answer_io(self, holder: str, settle: float = 1.0) -> tuple[Any, Any]:
+        """The `(capture, press)` pair the journal answerer reads and types with."""
+        def capture(path: pathlib.Path) -> None:
+            self._run("shot", str(path), timeout=SHOT_SECONDS)
+
+        def press(key: str) -> None:
+            amigadrive.press(holder, key, settle)
+
+        return capture, press
 
     @staticmethod
     def _run(*args: str, timeout: float) -> str:

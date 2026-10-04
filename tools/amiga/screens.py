@@ -10,6 +10,55 @@ from typing import Any
 
 from tools.amiga.winuaesession import RouteError
 
+#: The size of WinUAE's client area, which every guard rule's box is cut from.
+CANONICAL = (720, 568)
+#: The WinUAE window in Amiga pixels: 360 columns by 284 rows, doubled to `CANONICAL`.
+_WINDOW = (360, 284)
+#: The screenshots an emulator writes itself: size -> (copies of each Amiga pixel
+#: across and down, the window's left and top in Amiga pixels). FS-UAE's own
+#: screenshot is a 377x288 frame doubled, and the window sits at column 8, row 2.
+FRAMES = {(754, 576): (2, (8, 2))}
+
+
+def canonical(image, *, replication: int | None = None, origin: tuple[int, int] | None = None):
+    """The frame as WinUAE's crop shows it: 720x568, each Amiga pixel doubled.
+
+    A frame already that size is returned as it is, so the rules apply to a
+    WinUAE crop unchanged. Any other size must be a known emulator screenshot
+    (`FRAMES`) or be given its `replication` and `origin`; each copy-block of
+    the window must hold one colour, because a filtered or resampled frame
+    would match no rule and must not be passed off as an exact one.
+    """
+    from PIL import Image  # noqa: PLC0415
+
+    rgb = image.convert("RGB")
+    if rgb.size == CANONICAL and replication is None:
+        return rgb
+    known = FRAMES.get(rgb.size)
+    if replication is None or origin is None:
+        if known is None:
+            raise RouteError(f"no known way to cut a {rgb.width}x{rgb.height} frame to the Amiga screen")
+        replication = known[0] if replication is None else replication
+        origin = known[1] if origin is None else origin
+    left, top = origin[0] * replication, origin[1] * replication
+    box = (left, top, left + _WINDOW[0] * replication, top + _WINDOW[1] * replication)
+    if replication < 1 or box[0] < 0 or box[1] < 0 or box[2] > rgb.width or box[3] > rgb.height:
+        raise RouteError(f"the Amiga screen does not fit a {rgb.width}x{rgb.height} frame at {origin}")
+    window = rgb.crop(box)
+    native = window.resize(_WINDOW, Image.NEAREST)
+    if native.resize(window.size, Image.NEAREST).tobytes() != window.tobytes():
+        raise RouteError(f"the frame is not {replication}x copies of each Amiga pixel, "
+                         "so it is not an exact capture")
+    return native.resize(CANONICAL, Image.NEAREST)
+
+
+def canonical_file(source: pathlib.Path, target: pathlib.Path) -> None:
+    """Write `source`'s canonical frame to `target` as a PNG."""
+    from PIL import Image  # noqa: PLC0415
+
+    with Image.open(source) as image:
+        canonical(image).save(target)
+
 
 def _box_pixels(image_path: pathlib.Path, box, state: str) -> bytes:
     """The RGB pixels inside `box` of a cropped Amiga screen."""

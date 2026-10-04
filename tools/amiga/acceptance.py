@@ -106,7 +106,6 @@ from tools.amiga.winuaesession import (  # noqa: E402
     SHOT_SECONDS,
     RouteError,
     WinGuest,
-    _mute_proof,
     terminating,
 )
 from tools.registry import evidence, scratch, specimens  # noqa: E402
@@ -344,13 +343,6 @@ def _walk_leg(steps: Any) -> tuple[int, int] | None:
     return walking[0], end
 
 
-def snapshot_pipe() -> Any:
-    """The WinUAE pipe a `snapshot` or `restore` step goes through."""
-    from automap import amiga  # noqa: PLC0415
-
-    return amiga.WinuaePipe()
-
-
 def check_marks(marks: Mapping[int, tuple[tuple[str, str], ...]], steps: Any) -> None:
     """Block machine steps that cannot run: a restore before its snapshot, one after a save, one off the route."""
     taken: dict[str, bool] = {}
@@ -438,14 +430,13 @@ def _white_screen(path: pathlib.Path) -> bool:
 
 def _run_diagnose(manifest_path: pathlib.Path, manifest: dict, title: AmigaTitle,
                   disks: dict, guest: Any, guard: Any, holder: str,
-                  audio_proof: pathlib.Path, attempt: str, deadline: float,
+                  audio_proof: pathlib.Path | None, attempt: str, deadline: float,
                   boot_limit: float) -> dict[str, Any]:
     """Boot the published title without game input and preserve each read and cleanup receipt."""
     out = manifest_path.parent / attempt
     out.mkdir(parents=False, exist_ok=False)
     shots = scratch.ensure(out / "shots")
-    remotes = {key: f"C:/Amiga/Disks/wish{title.issue}-{holder}-{key}.adf"
-               for key in title.disk_keys}
+    remotes = {key: guest.remote_path(title.issue, holder, key) for key in title.disk_keys}
     result: dict[str, Any] = {
         **evidence.git_state(REPO), "argv": sys.argv[1:], "diagnose": True,
         "accept": False, "measure": False, "success": False, "completed": False,
@@ -485,7 +476,7 @@ def _run_diagnose(manifest_path: pathlib.Path, manifest: dict, title: AmigaTitle
         config_staged = True
         result["remote_config_path"] = WinGuest.private_config_path(holder)
         result["config"] = guest.stage_private_config(holder, timeout=limit(60))
-        if not _mute_proof(audio_proof):
+        if not guest.silence(audio_proof):
             raise RouteError("the Windows VM audio mute proof expired before WinUAE start")
         started = True
         result["start"] = guest.start(
@@ -1257,7 +1248,7 @@ class _LaneWatch:
 
 
 def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
-              holder: str, audio_proof: pathlib.Path, attempt: str = "recon1",
+              holder: str, audio_proof: pathlib.Path | None, attempt: str = "recon1",
               deadline_seconds: float = 1800,
               route: tuple[tuple[str, str], ...] = ROUTE,
               write_keys: tuple[str, ...] = ("B",),
@@ -1442,8 +1433,9 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         raise RouteError("holder and attempt must use simple lane-safe names")
     if deadline_seconds <= 0:
         raise RouteError("reconnaissance deadline must be positive")
-    audio_proof = pathlib.Path(audio_proof)
-    if not _mute_proof(audio_proof):
+    if audio_proof is not None:
+        audio_proof = pathlib.Path(audio_proof)
+    if not guest.silence(audio_proof):
         raise RouteError("the Windows VM audio mute has not been verified")
     manifest_path = pathlib.Path(manifest_path)
     manifest = json.loads(manifest_path.read_text())
@@ -1571,12 +1563,10 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     shots = scratch.ensure(out / "shots")
     runlog = (out / "run.jsonl").open("a", encoding="utf-8")
     if title is None:
-        remotes = {"df0": f"C:/Amiga/Disks/wish672-{holder}-df0.adf",
-                   "df1": f"C:/Amiga/Disks/wish672-{holder}-df1.adf"}
+        remotes = {key: guest.remote_path("672", holder, key) for key in ("df0", "df1")}
         local_disks = {"df0": df0, "df1": df1}
     else:
-        remotes = {key: f"C:/Amiga/Disks/wish{title.issue}-{holder}-{key}.adf"
-                   for key in title.disk_keys}
+        remotes = {key: guest.remote_path(title.issue, holder, key) for key in title.disk_keys}
         local_disks = disks
     result: dict[str, Any] = {
         **evidence.git_state(REPO), "argv": sys.argv[1:],
@@ -1616,8 +1606,9 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         if measure or reload:
             raise RouteError("snapshot and restore steps belong to an accept run")
         check_marks(marks, steps)
+    if (marks or walk_retry) and not getattr(guest, "can_snapshot", True):
+        raise RouteError("this run needs a machine snapshot, which this emulator lane cannot take yet")
     previous_state = previous_world = ""
-    pipe = None
     #: What the run had seen when each snapshot was taken, put back by its restore: the machine
     #: goes back, the run's own record of it must too.
     seen: dict[str, dict[str, Any]] = {}
@@ -1625,10 +1616,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
 
     def machine_step(verb: str, name: str, n: int) -> None:
         """Save the machine under `name`, or put it back as that left it and on its screen."""
-        nonlocal pipe, previous_state, previous_world
-        if pipe is None:
-            pipe = snapshot_pipe()
-        receipt = getattr(pipe, verb)(name, holder)
+        nonlocal previous_state, previous_world
+        receipt = getattr(guest, verb)(name, holder)
         key = name.lower()
         if verb == "snapshot":
             seen[key] = {"state": previous_state, "world": previous_world,
@@ -2088,7 +2077,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         for name, local in local_disks.items():
             guest.put(local, remotes[name], timeout=route_limit(90))
         copied = True
-        if not _mute_proof(audio_proof):
+        if not guest.silence(audio_proof):
             raise RouteError("the Windows VM audio mute proof expired before WinUAE start")
         start_attempted = True
         if title is None:
@@ -3276,6 +3265,31 @@ def _camp_steps(text: str, name: str) -> tuple[str, ...]:
     return route_camp.normalise(route_camp.parse_steps(text, name))
 
 
+EMULATORS = ("winuae", "fsuae")
+
+
+def _guest_for(args: argparse.Namespace) -> Any:
+    """The lane a command runs in: the Windows VM's WinUAE, or an FS-UAE in an instance-pool slot."""
+    if getattr(args, "emulator", "winuae") == "winuae":
+        return WinGuest()
+    from tools.amiga import fsuaesession  # noqa: PLC0415
+
+    return fsuaesession.FsuaeGuest(game=f"amiga-{args.title}",
+                                   first_key_after=fsuaesession.FIRST_KEY_AFTER.get(args.title))
+
+
+def _check_emulator(args: argparse.Namespace) -> None:
+    """Stop an FS-UAE command that needs something only the WinUAE lane has, before any slot is claimed."""
+    if getattr(args, "emulator", "winuae") != "fsuae":
+        return
+    if getattr(args, "rulebook_draws", None) is not None or getattr(args, "rulebook_records", None) is not None:
+        raise RouteError("--rulebook-draws reads the game's memory through WinUAE's pipe, so it needs "
+                         "--emulator winuae")
+    if getattr(args, "journal_python", None):
+        raise RouteError("the Silver Blades journal answerer has no FS-UAE route yet, so a Silver Blades "
+                         "accept needs --emulator winuae")
+
+
 def _draw_options(args: argparse.Namespace, holder: str) -> dict[str, Any]:
     """`run_recon`'s rulebook keywords, with the memory target only when there is more than one draw."""
     draws = getattr(args, "rulebook_draws", None)
@@ -3300,10 +3314,16 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     choices = sorted((*TITLES, "ssb"))
 
-    def common(p: argparse.ArgumentParser) -> None:
+    def common(p: argparse.ArgumentParser, emulator: bool = True) -> None:
         p.add_argument("--title", required=True, choices=choices)
         p.add_argument("--manifest", required=True, type=pathlib.Path)
-        p.add_argument("--audio-proof", required=True, type=pathlib.Path)
+        if emulator:
+            p.add_argument("--emulator", choices=EMULATORS, default="winuae",
+                           help="winuae runs in the Windows VM's single lane; fsuae runs in an "
+                                "instance-pool slot")
+        p.add_argument("--audio-proof", type=pathlib.Path, default=None,
+                       help="the Windows VM's audio mute proof; required with --emulator winuae "
+                            "and not accepted with fsuae")
         p.add_argument("--attempt")
         p.add_argument("--holder", default=None)
         p.add_argument("--deadline", type=float, default=1800,
@@ -3384,7 +3404,7 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--guards", required=True, type=pathlib.Path)
     r.add_argument("--identity", required=True, type=pathlib.Path)
     d = sub.add_parser("diagnose", help="guarded title-only boot of the published Silver Blades image")
-    common(d)
+    common(d, emulator=False)
     d.set_defaults(deadline=600)
     d.add_argument("--guards", required=True, type=pathlib.Path)
     d.add_argument("--boot-limit", type=float, default=300)
@@ -3394,6 +3414,13 @@ def main(argv: list[str] | None = None) -> int:
             args.camp = _camp_steps(args.camp, args.title) if args.camp else ()
         except RouteError as exc:
             parser.error(f"argument --camp: {exc}")
+    else:
+        emulator = getattr(args, "emulator", "winuae")
+        if emulator == "winuae" and args.audio_proof is None:
+            parser.error("--audio-proof is required with --emulator winuae")
+        if emulator == "fsuae" and args.audio_proof is not None:
+            parser.error("--audio-proof belongs to --emulator winuae; an FS-UAE run proves its "
+                         "silence from the emulator's own environment")
     try:
         silver_blades = args.title == "ssb"
         if args.command == "diagnose" and (not silver_blades or not args.published_disk_one
@@ -3493,6 +3520,7 @@ def main(argv: list[str] | None = None) -> int:
                 raise RouteError("--rulebook-draws requires --title ssb without "
                                  "--published-disk-one")
         expect = parse_expect(args.expect) if getattr(args, "expect", None) else None
+        _check_emulator(args)
         with terminating():
             if args.command == "prepare":
                 if silver_blades and args.substitute is not None:
@@ -3547,7 +3575,7 @@ def main(argv: list[str] | None = None) -> int:
                 write_keys = parse_write_keys(
                     args.write_keys if args.write_keys is not None else "B") if legacy else None
                 result = run_recon(
-                    args.manifest, guest=WinGuest(), holder=holder,
+                    args.manifest, guest=_guest_for(args), holder=holder,
                     audio_proof=args.audio_proof, attempt=attempt,
                     guard=PixelGuards(args.guards) if args.guards else None,
                     deadline_seconds=args.deadline, measure=True, title=title,
@@ -3559,7 +3587,7 @@ def main(argv: list[str] | None = None) -> int:
                        if legacy else {}))
             else:
                 result = run_recon(
-                    args.manifest, guest=WinGuest(), guard=PixelGuards(args.guards),
+                    args.manifest, guest=_guest_for(args), guard=PixelGuards(args.guards),
                     identity=PixelGuards(args.identity), holder=holder,
                     audio_proof=args.audio_proof, attempt=attempt,
                     deadline_seconds=args.deadline, title=title,

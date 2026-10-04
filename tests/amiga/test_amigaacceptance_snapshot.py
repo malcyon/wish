@@ -6,6 +6,7 @@ import pytest
 
 from tests.amiga import test_amigaacceptance_camp as camp
 from tests.amiga import test_amigaacceptance_measure as measure
+from tests.amiga.test_amigaacceptance import FailedPostWriteGuest
 from tests.amiga.test_amigaacceptance_accept import (  # noqa: F401
     KEYS,
     AcceptGuest,
@@ -14,7 +15,7 @@ from tests.amiga.test_amigaacceptance_accept import (  # noqa: F401
     readings,
 )
 from tests.amiga.test_amigaacceptance_camp import STEPS, _camp_run
-from tools.amiga import acceptance, route_camp, route_silver_blades
+from tools.amiga import route_camp, route_silver_blades
 from tools.amiga.winuaesession import RouteError
 
 clock = measure.clock  # the fixture that replaces the driver's time and sleep
@@ -43,7 +44,10 @@ class FakePipe:
 @pytest.fixture
 def pipe(monkeypatch):
     fake = FakePipe()
-    monkeypatch.setattr(acceptance, "snapshot_pipe", lambda: fake)
+    monkeypatch.setattr(FailedPostWriteGuest, "snapshot",
+                        lambda self, name, holder: fake.snapshot(name, holder), raising=False)
+    monkeypatch.setattr(FailedPostWriteGuest, "restore",
+                        lambda self, name, holder: fake.restore(name, holder), raising=False)
     return fake
 
 
@@ -134,7 +138,7 @@ def test_a_restore_puts_back_the_screen_and_the_world_crop_the_run_remembers(
     from tests.amiga.test_amigaacceptance_accept import AcceptGuest
     guest = AcceptGuest(clock)
     fake = FakePipe(guest)
-    monkeypatch.setattr(acceptance, "snapshot_pipe", lambda: fake)
+    guest.snapshot, guest.restore = fake.snapshot, fake.restore
     # Snapshot after the journal answer, restore after the first move, then the second move.
     _, result = _accept(tmp_path, clock, guest=guest,
                         marks={11: (("snapshot", "walk"),), 12: (("restore", "walk"),)})
@@ -181,7 +185,7 @@ def test_a_walk_retry_restores_the_snapshot_and_walks_the_leg_again(
         tmp_path, clock, readings, monkeypatch):  # noqa: F811
     guest = AcceptGuest(clock)
     fake = FakePipe(guest)
-    monkeypatch.setattr(acceptance, "snapshot_pipe", lambda: fake)
+    guest.snapshot, guest.restore = fake.snapshot, fake.restore
     _, result = _accept(tmp_path, clock, guest=guest, guard=_encounter_guard(fake, 1),
                         walk_retry=2)
     assert result["error"] == "" and result["success"] is True
@@ -197,7 +201,7 @@ def test_a_walk_retry_that_runs_out_stops_the_run_naming_the_step(
         tmp_path, clock, readings, monkeypatch):  # noqa: F811
     guest = AcceptGuest(clock)
     fake = FakePipe(guest)
-    monkeypatch.setattr(acceptance, "snapshot_pipe", lambda: fake)
+    guest.snapshot, guest.restore = fake.snapshot, fake.restore
     _, result = _accept(tmp_path, clock, guest=guest, guard=_encounter_guard(fake, 99),
                         walk_retry=1)
     assert result["success"] is False

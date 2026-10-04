@@ -17,6 +17,7 @@ from goldbox import areas, geo
 from goldbox.amiga_adf import AmigaDisk
 from tests import gamedata
 from tests.amiga import test_amigaacceptance_measure as measure
+from tests.amiga.fakes import WinuaeLaneNames
 from tests.amiga.test_amigaacceptance import _audio_proof
 from tests.amiga.test_amigaacceptance_accept import MapGuard, _IdentityMap
 from tests.amiga.test_amigaacceptance_title import (
@@ -286,7 +287,7 @@ def test_published_prepare_preserves_exact_reported_disk_one_and_rejects_tamperi
     published.rename(tmp_path / "evicted-original.adf")
     foundation._published_manifest(manifest_path, name)
 
-    class ClaimReached:
+    class ClaimReached(WinuaeLaneNames):
         calls = 0
 
         def claim(self, *_args, **_kwargs):
@@ -294,7 +295,7 @@ def test_published_prepare_preserves_exact_reported_disk_one_and_rejects_tamperi
             raise winuaesession.RouteError("claim boundary reached")
 
     guest = ClaimReached()
-    monkeypatch.setattr(foundation, "_mute_proof", lambda _path: True)
+    monkeypatch.setattr(winuaesession, "_mute_proof", lambda _path: True)
     monkeypatch.setattr(specimens, "add",
                         lambda *_args, **_kw: pytest.fail("measure registered a specimen"))
     result = foundation.run_recon(
@@ -321,7 +322,7 @@ def test_published_prepare_preserves_exact_reported_disk_one_and_rejects_tamperi
     with pytest.raises(winuaesession.RouteError, match="exact published image"):
         foundation._published_manifest(manifest_path, name)
 
-    class Unclaimed:
+    class Unclaimed(WinuaeLaneNames):
         def claim(self, *_args, **_kwargs):
             raise AssertionError("the guest was claimed before disk verification")
 
@@ -2138,7 +2139,7 @@ def test_diagnose_uses_private_config_and_cleans_up_without_game_input(
     monkeypatch.setattr(foundation, "_white_screen", lambda p: p.read_bytes() == b"white",
                         raising=False)
 
-    class Guest:
+    class Guest(WinuaeLaneNames):
         def __init__(self):
             self.calls = []
             self.remote = {}
@@ -2161,10 +2162,10 @@ def test_diagnose_uses_private_config_and_cleans_up_without_game_input(
             self.calls.append("start")
             self.started = True
             assert config == f"C:\\Amiga\\configs\\wish705-{holder}.uae"
-            assert drives == tuple(self.remote_path(k) for k in ("df0", "df1"))
+            assert drives == tuple(self.staged_path(k) for k in ("df0", "df1"))
             return "ok pid=123"
 
-        def remote_path(self, key):
+        def staged_path(self, key):
             return next(p for p in self.remote if p.endswith(f"-{key}.adf"))
 
         def diagnose(self, holder, section, key, timeout, address=None):
@@ -2173,7 +2174,7 @@ def test_diagnose_uses_private_config_and_cleans_up_without_game_input(
                 self.probe_timeouts.append(timeout)
             if section == "CFG":
                 value = ("directdraw" if key == "gfx_api" else
-                         self.remote_path("df0" if key == "floppy0" else "df1")
+                         self.staged_path("df0" if key == "floppy0" else "df1")
                          .replace("/", "\\"))
                 return {"reply": f"200 \n{value}"}
             value = (b"\0" * 4 + (0x1000).to_bytes(4, "big") + b"\0" * 8
@@ -2214,8 +2215,8 @@ def test_diagnose_uses_private_config_and_cleans_up_without_game_input(
                     local.write_text("previous boot log")
                 else:
                     invocation = (f"'-f C:\\Amiga\\configs\\wish705-wish705-test.uae "
-                                  f"-s floppy0={self.remote_path('df0').replace('/', chr(92))} "
-                                  f"-s floppy1={self.remote_path('df1').replace('/', chr(92))}'")
+                                  f"-s floppy0={self.staged_path('df0').replace('/', chr(92))} "
+                                  f"-s floppy1={self.staged_path('df1').replace('/', chr(92))}'")
                     local.write_text("new boot log " + invocation)
             else:
                 local.write_bytes(self.remote[remote])
@@ -2378,7 +2379,7 @@ def test_diagnose_records_config_hash_failure_and_failed_cleanup(tmp_path):
         key: {"sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
         for key, path in disks.items()}}))
 
-    class Guest:
+    class Guest(WinuaeLaneNames):
         def __init__(self):
             self.remote = {}
 
@@ -3261,7 +3262,7 @@ def test_run_recon_blocks_a_title_that_is_not_the_published_disk_3_route(tmp_pat
     report, _ = three.report(three.published("D"))
     path = foundation.prepare_published_disk_three("run", report, "2")
     with pytest.raises(winuaesession.RouteError, match="differs from the published disk 3"):
-        foundation.run_recon(path, guest=None, guard=MapGuard(states=DARK_STATES, on={}),
+        foundation.run_recon(path, guest=winuaesession.WinGuest(), guard=MapGuard(states=DARK_STATES, on={}),
                              identity=_IdentityMap(), holder="wish2-test",
                              audio_proof=_audio_proof(tmp_path), title=route_darkness.DARKNESS,
                              accept=True)

@@ -4,6 +4,15 @@ from __future__ import annotations
 
 import types
 
+from tools.amiga.winuaesession import WinGuest
+
+
+class WinuaeLaneNames:
+    """The `WinGuest` calls `run_recon` makes that touch no lane: where a disk lives, and the silence proof."""
+
+    remote_path = staticmethod(WinGuest.remote_path)
+    silence = staticmethod(WinGuest.silence)
+
 
 def fake_savecount_builder():
     """Build a fake private `savecount.py` under `directory/ssb/analysis`.

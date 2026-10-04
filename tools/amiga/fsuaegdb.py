@@ -2545,21 +2545,14 @@ def fit_window(display: str, size: tuple[int, int] = SCREEN,
     return False
 
 
-def launch(args) -> int:
-    """Start an `Xvfb` and the emulator inside it, and wait for the port.
+def start_processes(args, foreground: bool):
+    """Start the `Xvfb` and the emulator inside it; return `(xvfb, emulator)`.
 
-    Four things every run of this needs, and each has cost somebody a session:
-
-    * a private `Xvfb`, with `WAYLAND_DISPLAY` and `XDG_SESSION_TYPE` unset,
-      because a GTK or SDL child prefers Wayland over whatever `DISPLAY` says
-      and would draw on the desktop of whoever is sitting there;
-    * `SDL_AUDIODRIVER=dummy`.  **`--volume=0` does not silence this build** --
-      three runs that passed it were heard through the speakers on 2026-09-08;
-    * a `base_dir` under the run's own directory, so `~/FS-UAE/` is untouched;
-    * `setsid`, so the whole thing is one process group and the teardown kills
-      that group rather than a name.
-
-    Prints the two pids and the display.  Kill with `kill -- -<pid>`.
+    Nothing is waited for here: no window is fitted and no port is checked.
+    A failure after the first process started takes everything started so far
+    down, because the caller was never handed a process to take down itself.
+    `args.screenshots`, when set, is the directory the emulator's own
+    screenshot action (Alt+S) writes to.
     """
     # Every path here is resolved, and that is not tidiness: the emulator runs
     # with its own directory as the working directory, so a relative
@@ -2573,10 +2566,6 @@ def launch(args) -> int:
         raise SystemExit(f"{binary} is not on this machine; --fs-uae takes a "
                          "path to a patched FS-UAE that is already here")
 
-    foreground = bool(args.foreground)
-    # Detached, `launch` returns and `stop` ends the group.  In the foreground
-    # both stay in the caller's process group, so whatever holds the lease
-    # (the pool slot's `claim --`) ends them by ending itself.
     xvfb = emulator = None
     try:
         xvfb = subprocess.Popen(
@@ -2592,6 +2581,9 @@ def launch(args) -> int:
             env.pop(name, None)
         env.update(DISPLAY=args.display, GDK_BACKEND="x11",
                    SDL_AUDIODRIVER="dummy", ALSOFT_DRIVERS="null")
+        screenshots = getattr(args, "screenshots", None)
+        if screenshots:
+            env["FSEMU_SCREENSHOTS_DIR"] = str(pathlib.Path(screenshots).resolve())
         argv = [str(binary), f"--base_dir={run / 'base'}", "--fullscreen=0",
                 f"--remote_debugger={args.wait}",
                 f"--remote_debugger_port={args.port}"]
@@ -2614,7 +2606,35 @@ def launch(args) -> int:
             argv, env=env, cwd=str(binary.parent),
             stdout=(run / "fs-uae.log").open("wb"), stderr=subprocess.STDOUT,
             start_new_session=not foreground)
+    except BaseException:
+        terminate(emulator, xvfb)
+        raise
+    return xvfb, emulator
 
+
+def launch(args) -> int:
+    """Start an `Xvfb` and the emulator inside it, and wait for the port.
+
+    Four things every run of this needs, and each has cost somebody a session:
+
+    * a private `Xvfb`, with `WAYLAND_DISPLAY` and `XDG_SESSION_TYPE` unset,
+      because a GTK or SDL child prefers Wayland over whatever `DISPLAY` says
+      and would draw on the desktop of whoever is sitting there;
+    * `SDL_AUDIODRIVER=dummy`.  **`--volume=0` does not silence this build** --
+      three runs that passed it were heard through the speakers on 2026-09-08;
+    * a `base_dir` under the run's own directory, so `~/FS-UAE/` is untouched;
+    * `setsid`, so the whole thing is one process group and the teardown kills
+      that group rather than a name.
+
+    Prints the two pids and the display.  Kill with `kill -- -<pid>`.
+    """
+    run = pathlib.Path(args.out).resolve()
+    foreground = bool(args.foreground)
+    # Detached, `launch` returns and `stop` ends the group.  In the foreground
+    # both stay in the caller's process group, so whatever holds the lease
+    # (the pool slot's `claim --`) ends them by ending itself.
+    xvfb, emulator = start_processes(args, foreground)
+    try:
         print(f"display    {args.display}")
         print(f"xvfb       {xvfb.pid}")
         print(f"fs-uae     {emulator.pid}   (kill -- -{emulator.pid})")
@@ -2646,8 +2666,6 @@ def launch(args) -> int:
             terminate(emulator, xvfb)
         raise
     finally:
-        # From the first Popen, so a failing emulator start or an interrupt
-        # during the Xvfb's settling sleep does not leave the Xvfb behind.
         if foreground:
             terminate(emulator, xvfb)
 

@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from goldbox.amiga_adf import AmigaDisk
+from tests.amiga.fakes import WinuaeLaneNames
 from tools.amiga import acceptance, winuaesession
 
 
@@ -27,7 +28,7 @@ def _disk(path, volume, slot=None):
     disk.save(path)
 
 
-class FailedPostWriteGuest:
+class FailedPostWriteGuest(WinuaeLaneNames):
     def __init__(self):
         self.calls = []
         self.remote = {}
