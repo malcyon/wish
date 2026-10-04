@@ -203,7 +203,7 @@ def test_pod_vault_from_amiga_blocks_a_case_walking_past_two_hundred_nodes():
     case = _amiga_node(type_index=0x49, quantity=201)
     scroll = _amiga_node(type_index=39, quantity=0)
     data = _amiga_vault((0, 0, 0), 1, case + scroll * 201)
-    with pytest.raises(amiga_savegame.AmigaSaveError, match="200"):
+    with pytest.raises(amiga_savegame.AmigaSaveError, match="holds more items"):
         amiga_savegame.pod_vault_from_amiga(data)
 
 
