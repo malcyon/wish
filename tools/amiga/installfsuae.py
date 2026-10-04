@@ -16,12 +16,19 @@ A download whose digest differs is deleted and nothing is unpacked, and a tar
 member that would land outside the target directory blocks the whole archive.
 Only a directory this script made is ever replaced: nothing else under `--into`
 is touched, and a `uae-dap-<version>` that does not hold the binary is blocked.
-A second run with the binary already in place does nothing and says so.
+
+The shipped Linux binary segfaults on every state save, state load and reset,
+so the install patches it in place (`NULL_GUARD`): a binary that is neither the
+pinned original nor the patched one, or whose bytes at a patch site are not the
+expected ones, stops the install with nothing written.  A second run with the
+patched binary in place does nothing and says so; one with the original binary
+in place patches it.
 """
 
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import hashlib
 import http.client
 import os
@@ -61,6 +68,46 @@ MEMBER_ROOT = "package/bin/fs-uae/"
 BINARY = "fs-uae-linux_x64"
 
 
+@dataclasses.dataclass(frozen=True)
+class Site:
+    """Bytes at one file offset, as shipped and as patched."""
+
+    offset: int
+    original: bytes
+    patched: bytes
+
+
+@dataclasses.dataclass(frozen=True)
+class BinaryPatch:
+    """A fixed-size patch to one exact binary, recognised by its SHA-256 before and after."""
+
+    original_sha256: str
+    patched_sha256: str
+    sites: tuple[Site, ...]
+
+
+#: The fork queues every special input action -- state save, state load,
+#: reset -- through `inputdevice_add_inputcode(code, state, NULL)`, which calls
+#: `strdup(NULL)` and segfaults on Linux (the source fix is
+#: `fsuae-inputcode-null.patch`).  In the shipped binary the call is
+#: `e8 <rel32>` at virtual address 0x5700db (file offset 0x1700db, text loaded
+#: at 0x400000 from offset 0).  It is pointed instead at a 13-byte wrapper
+#: written into the 14 bytes of alignment padding after the function's `ret`,
+#: at 0x5700f2, which nothing branches into: `test rdi,rdi; je +5;
+#: jmp strdup@plt (0x40a070); xor eax,eax; ret`.
+NULL_GUARD = BinaryPatch(
+    original_sha256="cee4e3c9f735168ce97e57fa846383fa8efcd718343ee53d212af2737e697d97",
+    patched_sha256="3277775541ed8f65669b6beafc28dd647c4b0c030e845597b52ff1ffee29fe8b",
+    sites=(
+        # call strdup@plt  ->  call 0x5700f2
+        Site(0x1700DB, bytes.fromhex("e8909fe9ff"), bytes.fromhex("e812000000")),
+        # padding (cs nopw; nopl)  ->  the NULL-safe wrapper
+        Site(0x1700F2, bytes.fromhex("662e0f1f8400000000000f1f40"),
+             bytes.fromhex("4885ff7405e9749fe9ff31c0c3")),
+    ),
+)
+
+
 def default_dir() -> pathlib.Path:
     """The directory installs go under by default, beside Wish's own per-user data."""
     return paths.data_dir() / "fs-uae"
@@ -77,6 +124,44 @@ def sha256_of(path: pathlib.Path) -> str:
         for block in iter(lambda: handle.read(1 << 20), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def patch_binary(path: pathlib.Path, patch: BinaryPatch) -> bool:
+    """Apply `patch` to `path` in place; False if it was already applied.
+
+    Raises ValueError, writing nothing, unless the file is the patch's original
+    with the original bytes at every site.  The patched file replaces the old
+    one by a rename, so a running emulator keeps the file it started from.
+    """
+    data = bytearray(path.read_bytes())
+    found = hashlib.sha256(data).hexdigest()
+    if found == patch.patched_sha256:
+        return False
+    for site in patch.sites:
+        here = bytes(data[site.offset:site.offset + len(site.original)])
+        if here != site.original:
+            raise ValueError(f"{path} has {here.hex()} at 0x{site.offset:x}, not the "
+                             f"expected {site.original.hex()}; it was not patched")
+    if found != patch.original_sha256:
+        raise ValueError(f"{path} has SHA-256 {found}, neither the pinned original "
+                         f"nor the patched binary; it was not patched")
+    for site in patch.sites:
+        data[site.offset:site.offset + len(site.patched)] = site.patched
+    made = hashlib.sha256(data).hexdigest()
+    if made != patch.patched_sha256:
+        raise ValueError(f"patching {path} gave SHA-256 {made}, not the expected "
+                         f"{patch.patched_sha256}; it was not replaced")
+    fd, name = tempfile.mkstemp(prefix=".patch-", dir=path.parent)
+    staged = pathlib.Path(name)
+    try:
+        with os.fdopen(fd, "wb") as out:
+            out.write(data)
+        staged.chmod(path.stat().st_mode & 0o777)
+        os.replace(staged, path)
+    except BaseException:
+        staged.unlink(missing_ok=True)
+        raise
+    return True
 
 
 def check_digest(path: pathlib.Path, expected: str = SHA256) -> None:
@@ -204,16 +289,21 @@ def download(url: str, to: pathlib.Path, opener=None, limit: int = MAX_BYTES) ->
 
 
 def install(parent: pathlib.Path, fetch=download, url: str = URL,
-            expected: str = SHA256) -> pathlib.Path:
-    """Return the binary's path, fetching and unpacking only if it is not there.
+            expected: str = SHA256, patch: BinaryPatch | None = None) -> pathlib.Path:
+    """Return the patched binary's path, fetching and unpacking only if it is not there.
 
     The install is `install_dir(parent)`; `parent` itself is never modified
     beyond that one directory and the temporary files this removes again.
+    `patch` defaults to `NULL_GUARD`, looked up when called.
     """
+    patch = patch or NULL_GUARD
     into = install_dir(parent)
     binary = into / BINARY
     if binary.exists():
-        print(f"Already installed: {binary}")
+        if patch_binary(binary, patch):
+            print(f"Patched the installed binary: {binary}")
+        else:
+            print(f"Already installed: {binary}")
         return binary
     check_replaceable(into)
     parent.mkdir(parents=True, exist_ok=True)
@@ -227,6 +317,7 @@ def install(parent: pathlib.Path, fetch=download, url: str = URL,
         extract(tarball, into)
     finally:
         tarball.unlink(missing_ok=True)
+    patch_binary(binary, patch)
     return binary
 
 

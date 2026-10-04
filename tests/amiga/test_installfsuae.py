@@ -37,6 +37,25 @@ posix_only = pytest.mark.skipif(sys.platform == "win32",
                                 reason="POSIX modes, directory renames and symlinks")
 
 
+#: The guard the installer applies, kept before `fake_guard` swaps it.
+REAL_GUARD = installfsuae.NULL_GUARD
+
+SHIPPED = b"an executable"
+PATCHED = b"an EXECutable"
+
+#: Stands in for `NULL_GUARD` against the stand-in binary the tarballs carry.
+FAKE_GUARD = installfsuae.BinaryPatch(
+    original_sha256=hashlib.sha256(SHIPPED).hexdigest(),
+    patched_sha256=hashlib.sha256(PATCHED).hexdigest(),
+    sites=(installfsuae.Site(3, b"exec", b"EXEC"),))
+
+
+@pytest.fixture(autouse=True)
+def fake_guard(monkeypatch):
+    """Every install here patches the stand-in binary, as a real one is patched."""
+    monkeypatch.setattr(installfsuae, "NULL_GUARD", FAKE_GUARD)
+
+
 def build(path: pathlib.Path, members: dict[str, bytes | tarfile.TarInfo]) -> str:
     """Write a gzipped tar of name -> content and return its SHA-256."""
     with tarfile.open(path, "w:gz") as archive:
@@ -579,3 +598,91 @@ def test_main_installs_under_the_into_directory(tmp_path, monkeypatch, capsys, l
     installfsuae.main(["--into", str(tmp_path)])
 
     assert seen == [tmp_path.resolve()]
+
+
+# --- the NULL guard patched into the shipped binary
+
+
+TEXT_BASE = 0x400000      # the text segment is loaded from file offset 0 here
+STRDUP_PLT = 0x40A070
+
+
+def _rel32_target(site_offset: int, code: bytes, at: int) -> int:
+    """Where a rel32 jump or call at `code[at]` lands, as a virtual address."""
+    rel = int.from_bytes(code[at + 1:at + 5], "little", signed=True)
+    return TEXT_BASE + site_offset + at + 5 + rel
+
+
+def test_the_shipped_guard_is_consistent():
+    guard = REAL_GUARD
+    call, wrapper = guard.sites
+    for site in guard.sites:
+        assert len(site.original) == len(site.patched)
+    assert call.original[0] == call.patched[0] == 0xE8
+    assert _rel32_target(call.offset, call.original, 0) == STRDUP_PLT
+    assert _rel32_target(call.offset, call.patched, 0) == TEXT_BASE + wrapper.offset
+    code = wrapper.patched
+    assert code[:3] == bytes.fromhex("4885ff")            # test rdi, rdi
+    assert code[3:5] == bytes.fromhex("7405")             # je over the jmp
+    assert code[5] == 0xE9 and _rel32_target(wrapper.offset, code, 5) == STRDUP_PLT
+    assert code[10:] == bytes.fromhex("31c0c3")           # xor eax, eax; ret
+    for digest in (guard.original_sha256, guard.patched_sha256):
+        assert len(digest) == 64 and int(digest, 16) >= 0
+
+
+def test_an_install_patches_the_binary_it_unpacks(tmp_path):
+    fetch, digest = fetcher(tmp_path, good_members())
+
+    binary = installfsuae.install(tmp_path / "share", fetch=fetch, expected=digest)
+
+    assert binary.read_bytes() == PATCHED
+
+
+def test_an_installed_original_is_patched_without_a_download(tmp_path, capsys):
+    parent = tmp_path / "share"
+    binary = installfsuae.install_dir(parent) / installfsuae.BINARY
+    binary.parent.mkdir(parents=True)
+    binary.write_bytes(SHIPPED)
+    binary.chmod(0o755)
+    fetch, digest = fetcher(tmp_path, good_members())
+
+    assert installfsuae.install(parent, fetch=fetch, expected=digest) == binary
+
+    assert binary.read_bytes() == PATCHED
+    assert fetch.calls == []
+    assert "Patched the installed binary" in capsys.readouterr().out
+    assert sorted(p.name for p in binary.parent.iterdir()) == [installfsuae.BINARY]
+    if sys.platform != "win32":
+        assert binary.stat().st_mode & 0o777 == 0o755
+
+
+def test_a_patched_binary_is_left_alone(tmp_path):
+    binary = tmp_path / installfsuae.BINARY
+    binary.write_bytes(PATCHED)
+
+    assert installfsuae.patch_binary(binary, FAKE_GUARD) is False
+    assert binary.read_bytes() == PATCHED
+
+
+@pytest.mark.parametrize("content, message", [
+    (b"an elephant!", "at 0x3, not the expected"),
+    (b"an executablE", "neither the pinned original nor the patched"),
+])
+def test_a_binary_that_is_not_the_pinned_one_is_not_touched(tmp_path, content, message):
+    binary = tmp_path / installfsuae.BINARY
+    binary.write_bytes(content)
+
+    with pytest.raises(ValueError, match=message):
+        installfsuae.patch_binary(binary, FAKE_GUARD)
+
+    assert binary.read_bytes() == content
+    assert [p.name for p in tmp_path.iterdir()] == [installfsuae.BINARY]
+
+
+def test_an_unpacked_binary_that_cannot_be_patched_fails_the_install(tmp_path):
+    members = good_members()
+    members[ROOT + installfsuae.BINARY] = b"another build"
+    fetch, digest = fetcher(tmp_path, members)
+
+    with pytest.raises(ValueError, match="not patched"):
+        installfsuae.install(tmp_path / "share", fetch=fetch, expected=digest)
