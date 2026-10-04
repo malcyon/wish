@@ -207,12 +207,26 @@ def test_silver_blades_identity_covers_the_lists_and_sheets_but_not_the_join_gra
     # The first grab after J can catch the list half redrawn (wish4-b1__a_join1-00), so a rows
     # rule there would stop a correct run on timing; the redrawn list is checked instead.
     assert not {s for s in states if route_camp.is_join(s)} & spec['identity'].keys()
-    # Lines 1 and 2 of both Save As parties: one alternative was cut from each disk's list.
-    examples = {state: [r['example'] for r in _rules(spec['identity'][state])]
-                for state in ('camp_items', 'camp_items_2', 'camp_joined_2')}
-    for state, cut in examples.items():
-        for disk in ('wish4-uc__u_', 'wish4-uc__c_'):
-            assert any(disk in example for example in cut), (state, disk)
+    # The U and C Save As parties share these lists, and a cut alternative leaves the other
+    # disk's run stopped on a screen its guard does not know: each disk needs its own crop
+    # matched. C's lists have 13 rows, so rows 14 and 15 and PAINE's and EPONA's single-rule
+    # states are U only.
+    first = _step_states(('items 1', 'join 1 2', 'join 1 1'))
+    uc = {s for s in checked - first if not s.startswith('camp_sheet_items')} | {'camp_items'}
+    u_only = {'camp_items_2_row14', 'camp_items_2_row15', 'camp_items_3', 'camp_items_3_row2',
+              'camp_items_row3'}
+    assert u_only <= uc and 'camp_joined_3' in uc and 'camp_items_2_row7' in uc
+    for state in uc:
+        examples = [rule['example'] for rule in _rules(spec['identity'][state])]
+        disks = ('wish4-uc__u_',) if state in u_only else ('wish4-uc__u_', 'wish4-uc__c_')
+        for disk in disks:
+            assert any(disk in example for example in examples), (state, disk)
+        # Removing the other disk's alternative must fail even where the first disk's remains.
+        assert len(examples) >= len(disks), state
+    # The first-line lists also carry the first run's own alternatives.
+    assert len(_rules(spec['identity']['camp_items'])) >= 5
+    assert len(_rules(spec['identity']['camp_items_row2'])) >= 4
+    assert len(_rules(spec['identity']['camp_joined'])) >= 4
 
 
 def test_silver_blades_sheet_family_and_camp_sheet_items_list_each_other():
