@@ -24,13 +24,17 @@ Wish is a save editor and automapper for the **Commodore 64** version of *Pool o
   <img src="images/automapper1.png" alt="Automapper" width="700">
 </a>
 
+<a href="images/wilderness.png">
+  <img src="images/wilderness.png" alt="Pool of Radiance wilderness in the Automapper" width="700">
+</a>
+
 
 ### Character Editor
 - Update your stats. HP, XP, gold, etc.  
 - Spells. Change what spells you know.
 - Inventory. Edit your items, or add new ones.
 - Combat Icon Editor. A faster way to update your icon.
-- Import a DOS save and convert it into a C64 save.
+- Convert save files between C64, DOS, and Amiga.
 
 <a href="images/character_editor1.png">
   <img src="images/character_editor1.png" alt="Character Editor" title="Character Editor" width="700">
