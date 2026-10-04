@@ -258,15 +258,31 @@ def _case(name: str) -> str:
     return PS1[start:PS1.index("\n  }\n", start)]
 
 
-def test_start_writes_the_lane_ini_with_exactly_the_screenshot_keys():
+def _lane_ini_lines() -> str:
+    """The array of lines `start` writes into the lane's ini."""
+    start = _case("start")
+    return start[start.index("@('[WinUAE]'"):start.index("| Set-Content -Path $LanePaths.ini")]
+
+
+def test_start_writes_the_lane_ini_with_exactly_the_screenshot_and_path_keys():
     start = _case("start")
     for line in ("[WinUAE]", '"ScreenshotPath=$($LanePaths.shots)"', "'Screenshot_Original=1'",
-                 "'Screenshot_Mode=1'", "'Screenshot_ClipMode=0'", '"MainPosX=$posX"', "'MainPosY=10'"):
+                 "'Screenshot_Mode=1'", "'Screenshot_ClipMode=0'", '"MainPosX=$posX"', "'MainPosY=10'",
+                 "'PathMode=WinUAE'", "'RelativePaths=0'"):
         assert line in start
     assert "$posX = 10 + 740 * ($ActiveLane - 1)" in start
     assert "Set-Content -Path $LanePaths.ini -Encoding ASCII -ErrorAction Stop" in start
-    written = start[start.index("@('[WinUAE]'"):start.index("| Set-Content -Path $LanePaths.ini")]
-    assert written.count("=") == 6 and "Screenshot" in written
+    written = _lane_ini_lines()
+    assert written.count("=") == 8 and "Screenshot" in written
+
+
+def test_the_lane_ini_pins_absolute_paths_so_winuae_starts_from_the_lanes_working_directory():
+    """Without PathMode WinUAE 6.0.3 turns -ini into relative paths taken from the
+    task's working directory C:\\Amiga, lands one folder off and dies at start
+    with 0xc0000409; PathMode=WinUAE with RelativePaths=0 started from there."""
+    written = _lane_ini_lines()
+    assert "'PathMode=WinUAE'" in written and "'RelativePaths=0'" in written
+    assert "RelativePaths=1" not in written
 
 
 def test_start_empties_the_shots_folder_and_writes_the_ini_before_the_task_is_registered():

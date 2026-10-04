@@ -1398,6 +1398,9 @@ switch ($Cmd) {
         # is written fresh every time, because WinUAE writes window positions back to it.
         # Its screenshot keys are what let `shot` read the lane's own pipe instead of
         # photographing the desktop: the original frame, unclipped, into this lane's folder.
+        # PathMode and RelativePaths keep WinUAE's own folders absolute: an ini without
+        # PathMode makes it take them relative to the task's working directory, $Root,
+        # and it dies at start (0xc0000409) on the folders that lands on.
         New-Item -ItemType Directory -Force -Path (Split-Path $LanePaths.ini) | Out-Null
         New-Item -ItemType Directory -Force -Path $LanePaths.shots | Out-Null
         Get-ChildItem -Path $LanePaths.shots -Filter *.png | Remove-Item -ErrorAction Stop
@@ -1408,7 +1411,9 @@ switch ($Cmd) {
           'Screenshot_Mode=1',
           'Screenshot_ClipMode=0',
           "MainPosX=$posX",
-          'MainPosY=10') | Set-Content -Path $LanePaths.ini -Encoding ASCII -ErrorAction Stop
+          'MainPosY=10',
+          'PathMode=WinUAE',
+          'RelativePaths=0') | Set-Content -Path $LanePaths.ini -Encoding ASCII -ErrorAction Stop
         # No execution time limit: this one is meant to run until `stop`.
         $bad = Register-Session1Task $LanePaths.task $Exe $wanted ([TimeSpan]::Zero)
         if ($bad) { $said = @($bad); $code = 1 }
