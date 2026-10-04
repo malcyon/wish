@@ -137,6 +137,23 @@ def test_a_list_that_comes_back_on_itself_is_refused():
         ap.walk(mem.read, row, BASE)
 
 
+def test_a_pointer_in_the_targets_measured_memory_is_not_outside_it():
+    row, mem = ap.ROWS["pool-of-radiance"], Memory()
+    lay_party(mem, row, THREE)
+    mem.long(BASE + row.head, 0x00F00000)
+
+    class Target(amiga.AmigaTarget):
+        def __init__(self):
+            self.memory = ((0x00F00000, 0x1000),)
+
+        def read_blocks(self, blocks):
+            return [mem.read(a, n) for a, n in blocks]
+
+    with pytest.raises(Exception) as caught:
+        ap.walk(Target(), row, BASE)
+    assert "outside the Amiga's memory" not in str(caught.value)
+
+
 def test_an_odd_pointer_is_refused():
     row, mem = ap.ROWS["pool-of-radiance"], Memory()
     addrs = lay_party(mem, row, THREE)

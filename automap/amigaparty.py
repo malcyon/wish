@@ -394,12 +394,13 @@ def _u32(raw: bytes, at: int = 0) -> int:
     return int.from_bytes(raw[at:at + 4], "big")
 
 
-def _check_pointer(address: int, length: int, what: str) -> None:
+def _check_pointer(address: int, length: int, what: str,
+                   memory=amiga.MEMORY) -> None:
     if address & 1:
         raise PartyError(f"{what} is at {address:#x}, an odd address, so it is "
                          f"not a record the engine allocated")
     if not any(base <= address and address + length <= base + size
-               for base, size in amiga.MEMORY):
+               for base, size in memory):
         raise PartyError(f"{what} is at {address:#x}, outside the Amiga's "
                          f"memory")
 
@@ -428,7 +429,14 @@ class _Chain:
     seen: set = field(default_factory=set)
 
 
-def _follow(batch, chains: list[_Chain]) -> None:
+def _memory(source):
+    """The regions a target measured, else the A500's `amiga.MEMORY`."""
+    if isinstance(source, amiga.AmigaTarget):
+        return source.memory
+    return amiga.MEMORY
+
+
+def _follow(batch, chains: list[_Chain], memory=amiga.MEMORY) -> None:
     """Walk every chain at once, one batched read per level.
 
     Raises `PartyError` on a stray, odd or repeated pointer, or on a chain
@@ -444,7 +452,8 @@ def _follow(batch, chains: list[_Chain]) -> None:
                                  f"nodes")
             if c.next in c.seen:
                 raise PartyError(f"{c.what} comes back to {c.next:#x}")
-            _check_pointer(c.next, c.size, f"{c.what} node {len(c.nodes) + 1}")
+            _check_pointer(c.next, c.size, f"{c.what} node {len(c.nodes) + 1}",
+                           memory)
             c.seen.add(c.next)
         for c, raw in zip(level, batch([(c.next, c.size) for c in level])):
             c.nodes.append(Node(c.next, raw))
@@ -460,7 +469,7 @@ def chain(source, first: int, link: int, size: int, what: str,
     than `limit`.
     """
     one = _Chain(what, link, size, limit, first)
-    _follow(_batch(source), [one])
+    _follow(_batch(source), [one], _memory(source))
     return tuple(one.nodes)
 
 
@@ -479,7 +488,8 @@ def walk(source, row: PartyRow, data_base: int) -> tuple[AmigaMember, ...]:
     head = _u32(batch([(data_base + row.head, 4)])[0])
     records = _Chain(f"{row.title}'s party list", row.next_offset,
                      row.record_size, MAX_RECORDS, head)
-    _follow(batch, [records])
+    memory = _memory(source)
+    _follow(batch, [records], memory)
     lists = {}
     for index, node in enumerate(records.nodes):
         if node.raw[row.slot] < MAX_MEMBERS:
@@ -490,7 +500,7 @@ def walk(source, row: PartyRow, data_base: int) -> tuple[AmigaMember, ...]:
                 _Chain(f"{whose} effect list", row.effects.link,
                        row.effects.size, MAX_NODES,
                        _u32(node.raw, row.effects.head)))
-    _follow(batch, [c for pair in lists.values() for c in pair])
+    _follow(batch, [c for pair in lists.values() for c in pair], memory)
     out = []
     for index, node in enumerate(records.nodes):
         items, effects = lists.get(index, (None, None))

@@ -304,6 +304,8 @@ class Helper:
         self.platform = platform or PLATFORM
         self.upstream_timeout = upstream_timeout
         self.stopping = False
+        #: The regions a write may land in, measured on the first write.
+        self.memory: tuple[tuple[int, int], ...] | None = None
         self.gdb: amiga.FsuaeGdb | None = None
         self.listener = None
         self.clients: list[_Client] = []
@@ -487,10 +489,24 @@ class Helper:
                 return
         match = _WRITE.match(body)
         if match and _write_allowed(int(match[1], 16), int(match[2], 16),
-                                    match[3]):
+                                    match[3], self._regions()):
             self._queue(client, body, True)
             return
         self._send(client, NOT_SUPPORTED)
+
+    def _regions(self):
+        """The machine's memory regions, measured once from Exec's list.
+
+        The helper holds the emulator's connection, so it measures them itself
+        rather than being told: a client has no packet to tell it with. An
+        unreadable emulator measures nothing and is tried again next time.
+        """
+        if self.memory is None:
+            try:
+                self.memory = amiga.memory_regions(self.gdb.read_memory)
+            except amiga.FsuaeError:
+                return amiga.MEMORY
+        return self.memory
 
     def _queue(self, client: _Client, packet: str, short: bool) -> None:
         # A client has one outstanding request; a newer one replaces it.
@@ -536,7 +552,8 @@ class Helper:
             self._lock_fd.close()
 
 
-def _write_allowed(addr: int, length: int, digits: str) -> bool:
+def _write_allowed(addr: int, length: int, digits: str,
+                   memory=amiga.MEMORY) -> bool:
     """Is `M<addr>,<length>:<digits>` a write the helper may forward?
 
     One to `MAX_WRITE` bytes, as many as the length says, all inside one of
@@ -544,7 +561,7 @@ def _write_allowed(addr: int, length: int, digits: str) -> bool:
     """
     return (1 <= length <= MAX_WRITE and len(digits) == 2 * length
             and any(base <= addr and addr + length <= base + size
-                    for base, size in amiga.MEMORY))
+                    for base, size in memory))
 
 
 def find(port: int, runtime, platform=None) -> dict | None:

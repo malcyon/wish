@@ -10,6 +10,7 @@ from support.amigamemory import (
     EXEC_BASE,
     FAST_AT,
     FAST_END,
+    header,
     machine_with_fast_ram,
 )
 
@@ -81,6 +82,28 @@ def test_a_node_that_is_not_a_memory_header_falls_back():
     fast = bytearray(image[FAST_AT])
     fast[0x14:0x18], fast[0x18:0x1C] = fast[0x18:0x1C], fast[0x14:0x18]
     assert amiga.memory_regions(Memory({**image, FAST_AT: bytes(fast)})) == amiga.MEMORY
+
+
+EXTRA_AT = 0x300000
+
+
+def _with_extra_node(lower: int, upper: int) -> dict[int, bytes]:
+    """The fast-RAM machine with a second node after the fast header."""
+    image = machine_with_fast_ram()
+    fast = bytearray(image[FAST_AT])
+    fast[0:4] = EXTRA_AT.to_bytes(4, "big")
+    extra = header(CHIP_HEADER, lower, upper)
+    return {**image, FAST_AT: bytes(fast), EXTRA_AT: extra}
+
+
+def test_a_region_listed_twice_is_swept_once():
+    image = _with_extra_node(FAST_AT + 0x20, FAST_END)
+    assert amiga.memory_regions(Memory(image)) == (FAST, CHIP)
+
+
+def test_a_list_claiming_more_than_the_address_space_falls_back():
+    image = _with_extra_node(0x20, 0x1000000)
+    assert amiga.memory_regions(Memory(image)) == amiga.MEMORY
 
 
 def test_an_anchor_in_fast_ram_is_found_in_the_measured_regions_and_not_in_the_a500s():

@@ -792,3 +792,35 @@ def test_an_unsupported_platform_cannot_start_a_helper(runtime, monkeypatch):
     monkeypatch.setattr(fsuaehelper, "PLATFORM", _Unsupported())
     with pytest.raises(OSError, match="not supported"):
         fsuaehelper.start(1, runtime)
+
+
+FAST_REGION = ((0x200000, 0x200000),)
+
+
+def test_a_write_into_measured_fast_ram_is_allowed_and_not_without_it():
+    assert fsuaehelper._write_allowed(0x200010, 2, "0102", FAST_REGION)
+    assert not fsuaehelper._write_allowed(0x200010, 2, "0102")
+    assert not fsuaehelper._write_allowed(0x400000, 2, "0102", FAST_REGION)
+
+
+def test_the_helper_measures_the_regions_once_from_the_emulators_memory_list():
+    from support.amigamemory import machine_with_fast_ram
+
+    image = machine_with_fast_ram()
+    asked = []
+
+    def read_memory(addr, length):
+        asked.append(addr)
+        out = bytearray(length)
+        for base, blob in image.items():
+            lo, hi = max(addr, base), min(addr + length, base + len(blob))
+            if lo < hi:
+                out[lo - addr:hi - addr] = blob[lo - base:hi - base]
+        return bytes(out)
+
+    helper = fsuaehelper.Helper(0, "unused")
+    helper.gdb = type("G", (), {"read_memory": staticmethod(read_memory)})()
+    first = helper._regions()
+    assert any(base <= 0x200100 < base + size for base, size in first)
+    seen = len(asked)
+    assert helper._regions() == first and len(asked) == seen

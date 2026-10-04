@@ -2097,11 +2097,14 @@ def memory_regions(read) -> tuple[tuple[int, int], ...]:
     """The `(base, size)` regions this machine has, highest address first.
 
     Walks the `MemHeader` list in ExecBase, so fast RAM, extra chip RAM and a
-    machine with no slow RAM are all swept where they are. `MEMORY` -- the A500
-    the project's configuration describes -- when ExecBase fails its
-    complement check, a node is not a plausible `MemHeader`, or the list is
-    longer than `MEM_NODES`. A read that raises is not caught: it says
-    something about the emulator and not about the machine's memory.
+    machine with no slow RAM are all swept where they are. Duplicate regions
+    are kept once. `MEMORY` -- the A500 the project's configuration describes --
+    when ExecBase fails its complement check, a node is not a plausible
+    `MemHeader`, the list is longer than `MEM_NODES`, or the regions add up to
+    more than the 24-bit address space (a garbage list, not a machine). That
+    includes a 32-bit ExecBase and fast RAM above 16 MB, which the 24-bit
+    pointer test cannot tell from garbage. A read that raises is not caught: it
+    says something about the emulator and not about the machine's memory.
     """
     exec_base = int.from_bytes(
         read(0, EXEC_PAGE)[EXEC_BASE_AT:EXEC_BASE_AT + 4], "big")
@@ -2125,7 +2128,10 @@ def memory_regions(read) -> tuple[tuple[int, int], ...]:
         node = int.from_bytes(head[:4], "big")
     else:
         return MEMORY
-    return tuple(sorted(regions, reverse=True)) or MEMORY
+    regions = sorted(set(regions), reverse=True)
+    if sum(size for _base, size in regions) > _HIGH_POINTER:
+        return MEMORY
+    return tuple(regions) or MEMORY
 
 
 def locate_machines(read, machines, memory=MEMORY,
