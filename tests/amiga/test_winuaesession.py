@@ -13,7 +13,7 @@ import pathlib
 import pytest
 from PIL import Image
 
-from tools.amiga import amigadrive, winuaesession
+from tools.amiga import amigadrive, screens, winuaesession
 
 ROOT = pathlib.Path(winuaesession.__file__).resolve().parents[2]
 
@@ -155,6 +155,42 @@ def test_lane_reads_the_lane_number_from_the_lane_verb(clock):
 def test_lane_stops_on_a_reply_that_names_no_lane(clock):
     with pytest.raises(winuaesession.RouteError, match="names no lane"):
         Guest(["ok pid=4242"]).lane("wish282-x", 5)
+
+
+def _booting_shot(counter=1, pid=4242):
+    """WinUAE's frame while its window is still being drawn: 752x572, grey with two black rows below."""
+    image = Image.new("RGB", (752, 572), (68, 68, 68))
+    for y in (570, 571):
+        for x in range(752):
+            image.putpixel((x, y), (0, 0, 0))
+    data = io.BytesIO()
+    image.save(data, "PNG")
+    return "\n".join([f"ok shot pid={pid} counter={counter:03d} ms=500", "WINVM-SHOT-BEGIN",
+                      base64.b64encode(data.getvalue()).decode(), "WINVM-SHOT-END"])
+
+
+def test_a_booting_frame_is_not_shown_and_leaves_no_crop(tmp_path, clock):
+    guest = Guest([_booting_shot()])
+    guest.holder = "h"
+    raw, cropped = tmp_path / "r.png", tmp_path / "c.png"
+    cropped.write_bytes(b"a crop left by an earlier grab")
+    assert guest.grab("title", raw, cropped, timeout=30) is False
+    assert raw.exists() and not cropped.exists()
+
+
+def test_a_booting_frame_still_fails_a_settled_capture(tmp_path, clock):
+    guest = Guest([_booting_shot()])
+    guest.holder = "h"
+    with pytest.raises(winuaesession.RouteError, match="no Amiga picture yet"):
+        guest.capture("title", tmp_path / "r.png", tmp_path / "c.png", timeout=30)
+
+
+def test_an_unknown_size_frame_with_content_still_fails_as_a_plain_route_error():
+    frame = Image.new("RGB", (752, 572), (68, 68, 68))
+    frame.putpixel((100, 100), (255, 255, 255))
+    with pytest.raises(winuaesession.RouteError, match="no known way") as raised:
+        screens.canonical(frame)
+    assert not isinstance(raised.value, screens.NotExactCapture)
 
 
 def _hires_shot(counter=1, pid=4242):

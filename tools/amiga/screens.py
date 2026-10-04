@@ -26,6 +26,17 @@ class NotExactCapture(RouteError):
     """A frame that is not whole copies of each Amiga pixel, such as a hires AmigaDOS window."""
 
 
+def _is_blank(rgb) -> bool:
+    """Whether the frame is exactly two flat colours laid out in whole rows: a window still being drawn."""
+    from PIL import Image  # noqa: PLC0415
+
+    colours = rgb.getcolors(2)
+    if colours is None or len(colours) != 2:
+        return False
+    column = rgb.resize((1, rgb.height), Image.NEAREST)
+    return column.resize(rgb.size, Image.NEAREST).tobytes() == rgb.tobytes()
+
+
 def canonical(image, *, replication: int | None = None, origin: tuple[int, int] | None = None):
     """The frame as WinUAE's crop shows it: 720x568, each Amiga pixel doubled.
 
@@ -43,6 +54,8 @@ def canonical(image, *, replication: int | None = None, origin: tuple[int, int] 
     known = FRAMES.get(rgb.size)
     if replication is None or origin is None:
         if known is None:
+            if _is_blank(rgb):
+                raise NotExactCapture(f"the {rgb.width}x{rgb.height} frame holds no Amiga picture yet")
             raise RouteError(f"no known way to cut a {rgb.width}x{rgb.height} frame to the Amiga screen")
         replication = known[0] if replication is None else replication
         origin = known[1] if origin is None else origin
