@@ -1048,12 +1048,11 @@ def test_every_registered_dos_slot_is_written_onto_disk_three_with_nothing_lost(
         back = amiga_savegame.pod_read_slot(out, letter)
         assert amiga_savegame.pod_from_amiga(back) == dataclasses.replace(
             state, source=""), label
-        # `PodWriter` strips a name's surrounding spaces, so DOS's
-        # "saint eric  " arrives as "saint eric"; compared stripped, with
-        # that difference filed rather than masked.
+        # A name's spaces cross unchanged: DOS's "saint eric  " arrives
+        # as "saint eric  ".
         assert [amiga_pod.pod_to_neutral(b).get("name")
                 for b in amiga_savegame.pod_parse(back).blocks] == [
-            c.get("name").strip() for c in characters], label
+            c.get("name") for c in characters], label
         assert amiga_savegame.pod_read_vault(out, letter) == vault, label
 
 
@@ -1193,28 +1192,17 @@ def test_pod_dos_to_amiga_has_no_pack_to_leave_anything_of():
             _dos_source(".", "A"), "A", None, leave={0: [1]})
 
 
-#: The DOS record's cached current values, which the round trip writes as
-#: zero, because the Amiga save never held them.  Whether the DOS game
-#: recomputes them on load is not measured; WISH-281 owns it.
-_NOT_ROUND_TRIPPED = frozenset({
-    "name", "armour_class", "thac0_current", "movement_current",
-    "roster_tail"})
-
-
 def test_dos_to_amiga_to_dos_is_the_source_outside_the_declared_mask(tmp_path):
     """Every registered DOS slot (8 of 8, 7 written by the DOS game) goes
     through `PodDosToAmiga` onto the registered disk 3 and back through
     `PodAmigaToDos`.  The saved game equals the source outside the
     container's `PARTY_TABLE_SCRATCH` notes and the entries past the party,
     the vault is identical, and every character reads back as the same
-    neutral record, a name's trailing spaces apart.
+    neutral record, name included.
 
-    The 510-byte records are **not** compared byte for byte: `armour_class`,
-    `thac0_current`, `movement_current`, `roster_tail` and the name's padding
-    differ from the DOS game's own bytes and are in none of the writer's
-    declared lists, and the item and effect files differ in the heap
-    pointers and rendered-line caches.  Masking them would be masking by the
-    diff; they are filed rather than hidden.
+    The 510-byte records are compared at 0x1F1-0x1FD, the cached combat
+    tail, and not byte for byte: the item and effect files differ in the heap
+    pointers and rendered-line caches, and are filed rather than hidden.
     """
     disk = _registered_disk_three()
     for label, folder, letter in _registered_dos_slots():
@@ -1223,10 +1211,9 @@ def test_dos_to_amiga_to_dos_is_the_source_outside_the_declared_mask(tmp_path):
             replace=True)
         assert (rehearsal.report.dropped, rehearsal.report.losses,
                 rehearsal.report.warnings) == ([], [], []), label
-        # The three cached values are already zero on the Amiga side, so the
-        # loss happens at the DOS to Amiga step, not on the way back; WISH-281
-        # owns it.  The source's values are nonzero, so a change in either
-        # side shows here.
+        # The Amiga file holds the source's own cached values, so the round
+        # trip does not have to rebuild them.  The source's values are
+        # nonzero, so a change in either side shows here.
         amiga_party = [
             amiga_pod.pod_to_neutral(b) for b in amiga_savegame.pod_parse(
                 amiga_savegame.pod_read_slot(
@@ -1236,7 +1223,7 @@ def test_dos_to_amiga_to_dos_is_the_source_outside_the_declared_mask(tmp_path):
         for a, b in zip(src, amiga_party):
             for key in ("armour_class", "thac0_current", "movement_current"):
                 assert a.get(key) != 0, (label, a.get("name"), key)
-                assert b.get(key) == 0, (label, a.get("name"), key)
+                assert b.get(key) == a.get(key), (label, a.get("name"), key)
         back = convert.PodAmigaToDos().rehearse(
             _amiga_source(rehearsal.disk, letter), letter, None)
 
@@ -1256,18 +1243,18 @@ def test_dos_to_amiga_to_dos_is_the_source_outside_the_declared_mask(tmp_path):
         assert dos_codec.pod_vault_from_dos(
             back.files[f"VAULT{letter}.DAT"]) == vault, label
 
-        source_party = [dos_codec.to_neutral(c)
-                        for c in dos_codec.read_party(folder, letter)]
+        source_chars = dos_codec.read_party(folder, letter)
+        source_party = [dos_codec.to_neutral(c) for c in source_chars]
         tmp = tmp_path / label.replace(":", "-")
         tmp.mkdir()
         for name, data in back.files.items():
             (tmp / name).write_bytes(data)
-        round_party = [dos_codec.to_neutral(c)
-                       for c in dos_codec.read_party(tmp, letter)]
+        round_chars = dos_codec.read_party(tmp, letter)
+        round_party = [dos_codec.to_neutral(c) for c in round_chars]
         assert len(round_party) == len(source_party), label
         for a, b in zip(source_party, round_party):
-            assert a.get("name").strip() == b.get("name"), label
-            assert ({k: v.value for k, v in a.fields.items()
-                     if k not in _NOT_ROUND_TRIPPED}
-                    == {k: v.value for k, v in b.fields.items()
-                        if k not in _NOT_ROUND_TRIPPED}), (label, a.get("name"))
+            assert ({k: v.value for k, v in a.fields.items()}
+                    == {k: v.value for k, v in b.fields.items()}
+                    ), (label, a.get("name"))
+        for a, b in zip(source_chars, round_chars):
+            assert a._data[0x1F1:0x1FE] == b._data[0x1F1:0x1FE], label

@@ -409,8 +409,9 @@ QUICKFIGHT = 0x185
 THAC0_CURRENT = 0x186
 ARMOUR_CLASS_CURRENT = 0x187
 #: The armour bonus and the eight running attack-form bytes, in DOS's own
-#: order. **Every one of the nine is rebuilt by the engine** and none can come
-#: from a source, which is why the writer leaves the block zero:
+#: order. **Every one of the nine is rebuilt by the engine**, which is why the
+#: writer leaves the block zero for any source but a Pools of Darkness record,
+#: whose own nine bytes are copied:
 #:
 #: * `0x188`, the armour bonus, is the last thing :data:`DERIVED_REBUILD`
 #:   does -- the four accumulated armour terms less 2, at `0x0196E8`;
@@ -571,8 +572,8 @@ PORTRAIT_BODY = PORTRAIT_HEAD + 1
 
 #: The routine that rebuilds every derived byte of a record, and the reason
 #: :data:`DERIVED` is a claim about the running game rather than about a
-#: listing. *Add Character* calls it between the `.pc` loader at `0x025806`
-#: and the roster join at `0x027394` (`0x026A34`, `0x026A6C`, `0x026A74`), and
+#: listing. The saved-game loader's per-character loop calls it between the
+#: `.pc` loader at `0x025806` and the roster join at `0x027394` (`0x026A34`, `0x026A6C`, `0x026A74`), and
 #: the inter-title import path calls it at `0x026326`; §2.3's probe wrote 1234
 #: into the encumbrance word and read 233 off the sheet, which is this routine
 #: running on load.
@@ -615,9 +616,10 @@ LEFT_ZERO: tuple[tuple[int, int, str], ...] = (
     (0x193, 0x193, "the record's last byte, which nothing reaches"),
 )
 
-#: The `jsr` *Add Character* makes on the loaded record. The `.pc` loader at
-#: `0x025806` is called at `0x026A34`, its return code is tested, and this
-#: call at `0x026A6C` follows about a dozen instructions later, one push
+#: The `jsr` the saved-game loader's per-character loop (`0x026A1C`-`0x026A78`,
+#: inside the loader at `0x026904`) makes on each loaded record. The `.pc`
+#: loader at `0x025806` is called at `0x026A34`, its return code is tested, and
+#: this call at `0x026A6C` follows about a dozen instructions later, one push
 #: before the roster join at `0x027394` is called at `0x026A74`. It resolves
 #: through the small-data table to :data:`DERIVED_REBUILD`, which is what
 #: makes that routine the **load** path's and not merely a routine that exists.
@@ -1456,6 +1458,13 @@ class PodWriter:
     icon_head: int | None = None
     icon_body: int | None = None
     icon_colours: bytes | None = None
+    #: The combat tail at 0x186-0x192, in the stored form the source's own
+    #: record holds. Written only when a Pools of Darkness source gives them;
+    #: otherwise they stay zero for the engine's rebuild on load.
+    thac0_current: int | None = None
+    armour_class_current: int | None = None
+    roster_tail: bytes | None = None
+    movement_current: int | None = None
     #: The tail: twenty bytes an item, head items only, and ten an effect.
     items: tuple[bytes, ...] = ()
     effects: tuple[bytes, ...] = ()
@@ -1619,6 +1628,16 @@ class PodWriter:
                      (ICON_COLOURS, ICON_COLOUR_COUNT, "icon_colours"),
                      (ICON_DIMENSION, 1, "icon_dimension"),
                      (COMBAT_FIGURE, 1, "combat_figure")])
+        for value, at, width, what in (
+                (self.thac0_current, THAC0_CURRENT, 1, "thac0_current"),
+                (self.armour_class_current, ARMOUR_CLASS_CURRENT, 1,
+                 "armour_class_current"),
+                (self.roster_tail, ROSTER_TAIL, ROSTER_TAIL_LENGTH,
+                 "roster_tail"),
+                (self.movement_current, MOVEMENT_CURRENT, 1,
+                 "movement_current")):
+            if value is not None:
+                plan.append((at, width, what))
         nodes, effects = self._tail_nodes()
         if self.items:
             plan.append((ITEM_CHAIN, 4, "item_count"))
@@ -1779,6 +1798,15 @@ class PodWriter:
             :ICON_COLOUR_COUNT].ljust(ICON_COLOUR_COUNT, b"\0")
         out[ICON_DIMENSION] = ICON_DIMENSION_DEFAULT
         out[COMBAT_FIGURE] = self.combat_figure
+        for value, at in ((self.thac0_current, THAC0_CURRENT),
+                          (self.armour_class_current, ARMOUR_CLASS_CURRENT),
+                          (self.movement_current, MOVEMENT_CURRENT)):
+            if value is not None:
+                out[at] = min(value, 0xFF)
+        if self.roster_tail is not None:
+            out[ROSTER_TAIL:ROSTER_TAIL + ROSTER_TAIL_LENGTH] = bytes(
+                self.roster_tail)[:ROSTER_TAIL_LENGTH].ljust(
+                    ROSTER_TAIL_LENGTH, b"\0")
         out[UNNAMED_1A4] = out[UNNAMED_1A4 + 1] = UNNAMED_1A4_DEFAULT
 
         if self.items:
@@ -2179,11 +2207,17 @@ POD_WRITE_DERIVED: tuple[tuple[str, str], ...] = (
     ("encumbrance", "the word at 0x056: a probe that set it to 1234 drew 233, "
                     "which is the character's own coins, gems and jewelry"),
     ("thac0_current", "the byte at 0x186: the game recomputes THAC0 from the "
-                      "class levels on load and ignores what the file holds"),
+                      "class levels on load and ignores what the file holds, "
+                      "so it stays zero unless the source is a Pools of "
+                      "Darkness DOS or Amiga record, whose own value is "
+                      "copied"),
     ("armour_class", "the byte at 0x187, the second half of the pair, "
-                     "recomputed from what the character is wearing"),
+                     "recomputed from what the character is wearing; copied "
+                     "from a Pools of Darkness DOS or Amiga source, zero "
+                     "otherwise"),
     ("movement_current", "the byte at 0x192: a probe that set it to 99 drew "
-                         "the base's 12"),
+                         "the base's 12; copied from a Pools of Darkness DOS "
+                         "or Amiga source, zero otherwise"),
     ("combat_figure", "the byte at 0x0BD, which the engine assigns when the "
                       "character joins a party and not from the file: the "
                       "join routine at 0x027398 stores 0xFF over whatever "
@@ -2194,10 +2228,11 @@ POD_WRITE_DERIVED: tuple[tuple[str, str], ...] = (
                       "itself writes, which 17 of the 19 `.pc` files hold. "
                       "**Read out of the engine rather than watched on "
                       "screen**"),
-    ("roster_tail", "the nine bytes at 0x188, and no part of them can come "
-                    "from a source. The rebuild at 0x019428 -- which *Add "
-                    "Character* calls between the `.pc` loader and the roster "
-                    "join, and which the encumbrance probe watched run -- "
+    ("roster_tail", "the nine bytes at 0x188, copied from a Pools of "
+                    "Darkness DOS or Amiga source and zero from any other. "
+                    "The rebuild at 0x019428 -- which the "
+                    "saved-game loader's per-character loop calls between "
+                    "the `.pc` loader and the roster join, and which the encumbrance probe watched run -- "
                     "computes the armour bonus at 0x188 (0x0196E8) and copies "
                     "0x0AD-0x0B2 over 0x18B-0x190 (0x019556-0x0195AE) before "
                     "0x018778 overwrites the damage triple from the readied "
@@ -2927,8 +2962,10 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
         return None if v is None else bytes(v.value)
 
     name_value = w.use("name")
-    name = str(name_value.value if name_value else "").rstrip("\0").strip()
-    if not name:
+    # Only NUL padding comes off: a trailing or leading space is part of the
+    # name, and the game's own name compare tests the whole string.
+    name = str(name_value.value if name_value else "").rstrip("\0")
+    if not name.strip():
         raise ConversionError("a character with no name cannot be converted")
     if len(name) > NAME_LENGTH:
         rep.lost(
@@ -3171,6 +3208,22 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
                 f"record keeps {ATTACK_FORM_COUNT}, so it is cut to fit")
         forms = tuple(block[:ATTACK_FORM_COUNT].ljust(ATTACK_FORM_COUNT, b"\0"))
 
+    # -- the combat tail, copied where the source's encoding is this one's ---
+    # DOS Pools of Darkness stores these four in the same `60 - value` form as
+    # the Amiga file, and an Amiga source is the file itself. Any other source
+    # leaves them unused, so they report as derived and stay zero, which the
+    # load rebuild fills in.
+    carries_tail = (char.port in ("DOS", "Amiga")
+                    and getattr(char.game, "key", char.game)
+                    == dos_port.POOLS_OF_DARKNESS.key)
+    thac0_current = armour_class_current = movement_current = None
+    roster_tail: bytes | None = None
+    if carries_tail:
+        thac0_current = opt("thac0_current")
+        armour_class_current = opt("armour_class")
+        movement_current = opt("movement_current")
+        roster_tail = raw_opt("roster_tail")
+
     # -- magic ---------------------------------------------------------------
     book_value = w.use("spells_known")
     book: tuple[int, ...] | None = None
@@ -3294,6 +3347,10 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
         icon_head=opt("icon_head"),
         icon_body=opt("icon_body"),
         icon_colours=raw_opt("icon_colours"),
+        thac0_current=thac0_current,
+        armour_class_current=armour_class_current,
+        roster_tail=roster_tail,
+        movement_current=movement_current,
         size=(None if size_small is None else size_small + 1),
         npc_control_byte=control,
         former_level=former_level,
@@ -3491,6 +3548,10 @@ _SOURCE_OF: dict[str, str] = {
     "icon_head": "icon_head",
     "icon_body": "icon_body",
     "icon_colours": "icon_colours",
+    "thac0_current": "thac0_current",
+    "armour_class_current": "armour_class",
+    "roster_tail": "roster_tail",
+    "movement_current": "movement_current",
 }
 
 

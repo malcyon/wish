@@ -225,13 +225,17 @@ def test_write_pod_reports_the_derived_and_constant_fields_as_derived():
 
     _writer, report = amiga_pod.write_pod(character)
 
-    names = {"armour_class", "encumbrance",
-             "thac0_current", "movement_current", "combat_figure",
-             "roster_tail"}
+    # The four combat-tail fields are copied from an Amiga source, so they are
+    # neither derived nor dropped here; a source with none reports them derived
+    # (`test_to_pc_leaves_the_combat_tail_zero_for_a_c64_source`).
+    copied = {"armour_class", "thac0_current", "movement_current",
+              "roster_tail"}
+    names = {"encumbrance", "combat_figure"}
     derived_names = {line.split(":", 1)[0] for line in report.derived}
     dropped_names = {line.split(":", 1)[0] for line in report.dropped}
     assert names <= derived_names
-    assert names.isdisjoint(dropped_names)
+    assert (names | copied).isdisjoint(dropped_names)
+    assert copied.isdisjoint(derived_names)
     assert "armour_class_base" not in derived_names
 
 
@@ -467,9 +471,9 @@ def test_every_dos_record_converts_into_a_pc():
             + amiga_pod.EFFECT_FILE_SIZE * len(back.effects)), path.name
         assert len(back.items) == len(out.get("inventory")), path.name
         assert report.unaccounted(pc) == [], path.name
-        # The writer cuts trailing blanks, which DOS counts into its own
-        # length byte: Guy de Valois is stored `Guy de Valois ` there.
-        assert back.name == char.name[:amiga_pod.NAME_LENGTH].rstrip(), path.name
+        # DOS counts trailing blanks into its own length byte (Guy de Valois
+        # is stored `Guy de Valois ` there) and the writer keeps them.
+        assert back.name == char.name[:amiga_pod.NAME_LENGTH], path.name
         assert back.race == char.get("race"), path.name
         assert back.sex == char.get("sex"), path.name
         assert back.alignment == char.get("alignment"), path.name

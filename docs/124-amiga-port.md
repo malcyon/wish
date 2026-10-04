@@ -2330,9 +2330,10 @@ disk-1 build; nothing was run in an emulator.
 
 #### The load path, which is what makes this a claim about loading a file
 
-*Add Character* is `0x026A1C`-`0x026A78`. It allocates `0x194` bytes, calls the
-`.pc` loader at `0x025806`, and on success calls **`0x019428`** and then the
-roster join at `0x027394`. The inter-title import path does the same at
+`0x026A1C`-`0x026A78` is the per-character loop of the saved-game loader at
+`0x026904`, not *Add Character*. It allocates `0x194` bytes, calls the `.pc`
+loader at `0x025806`, and on success calls **`0x019428`** and then the roster
+join at `0x027394`. The inter-title import path does the same at
 `0x026326`. `0x019428` is the derived-fields rebuild §1.19a already credits
 with the item count, `hands_used` and the encumbrance word — and §2.3's probe
 wrote 1234 into that encumbrance word and read 233 off the sheet, so there is

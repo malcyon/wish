@@ -3318,3 +3318,54 @@ def test_a_c64_pool_charm_row_writes_the_amiga_node_and_control_byte():
     assert back.get("npc") is True
     assert back.get("npc_control_byte") == c64_codec.DOS_PC_TAKEN_OVER
     assert back.get("quickfight") is True
+
+
+_TAIL_VALUES = {"thac0_current": 41, "armour_class": 52, "movement_current": 9,
+                "roster_tail": bytes(range(0x61, 0x6A))}
+
+
+def _pod_source(port, **fields):
+    """A built Pools of Darkness character as a DOS or Amiga reader gives it."""
+    from goldbox import dos_port
+    char = sample(**fields)
+    char.port = port
+    char.game = dos_port.POOLS_OF_DARKNESS.key
+    return char
+
+
+@pytest.mark.parametrize("port", ["DOS", "Amiga"])
+def test_to_pc_copies_the_combat_tail_from_a_pods_source(port):
+    record, rep = amiga_pod.to_pc(_pod_source(port, **_TAIL_VALUES))
+    assert record[0x186] == 41
+    assert record[0x187] == 52
+    assert record[0x188:0x191] == _TAIL_VALUES["roster_tail"]
+    assert record[0x192] == 9
+    assert all(rep.sources[o].startswith(("thac0_current", "armour_class",
+                                          "roster_tail", "movement_current"))
+               for o in (0x186, 0x187, 0x188, 0x190, 0x192))
+
+
+def test_to_pc_writes_zero_where_a_pods_source_has_no_combat_tail():
+    record, rep = amiga_pod.to_pc(_pod_source("DOS"))
+    assert record[0x186:0x191] == bytes(11)
+    assert record[0x192] == 0
+    assert rep.sources[0x186].startswith("left zero")
+
+
+def test_to_pc_leaves_the_combat_tail_zero_for_a_c64_source():
+    record, rep = amiga_pod.to_pc(sample(**_TAIL_VALUES))
+    assert record[0x186:0x191] == bytes(11)
+    assert record[0x192] == 0
+    assert rep.sources[0x187].startswith("left zero")
+    assert any(line.startswith("thac0_current") for line in rep.derived)
+
+
+def test_to_pc_keeps_a_names_spaces():
+    record, _ = amiga_pod.to_pc(sample(name=" saint eric  "))
+    assert record[0x60:0x60 + 14] == b" saint eric  \0"
+    assert record[0x60 + 14:0x60 + 16] == b"\0\0"
+
+
+def test_to_pc_still_refuses_a_blank_name():
+    with pytest.raises(amiga_pod.ConversionError):
+        amiga_pod.to_pc(sample(name="   "))
