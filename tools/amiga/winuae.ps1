@@ -908,7 +908,7 @@ function Invoke-Diagnose {
 # in the lane's shots folder is the only success signal. After each good shot it sends
 # `CFG SPC_SCREENSHOT 0`, which resets WinUAE's per-process file counter so a long run stays
 # below the 999-file limit; a shot with no file after number 999 is that limit and not a
-# transient failure. `CFG AKS_SCREENSHOT_FILE` is never sent, with any value: 0 starts continuous capture too.
+# transient failure. The screenshot-file option is never sent, with any value: 0 starts continuous capture too.
 #
 # `press` sends a raw Amiga key code down, holds it, and sends it up in a finally, so no failure
 # leaves a key held. A held key repeats.
