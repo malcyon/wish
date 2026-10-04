@@ -254,7 +254,7 @@ def _weight_sum(rec: bytes, itm: bytes) -> int:
 #: * `pool-8-friends-mirror-prayer-level6-dos-engine-save`, party staged to
 #:   level 6, then the game only cast, camped and saved, so no rebuild ran;
 #: * `pool-8-level6-sean-prayer30-camp-save-dos-engine-save`, a copy of the
-#:   previous one's slot D, likewise only cast, camped and saved;
+#:   previous one's slot D with a staged Prayer entry, then only loaded, camped and saved;
 #: * `por-dos-alt-ctrl-name-wish14`, a Wish Amiga-to-DOS conversion loaded,
 #:   walked once and saved by the game, which does not run the rebuild.
 #:
