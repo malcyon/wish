@@ -200,52 +200,201 @@ def _place(status) -> tuple | None:
     return None if status is None else (status.x, status.y, status.facing)
 
 
-def walk_move(sess, log: Log, move: str, answer: str = "NO",
-              looks: int = 27) -> tuple[bool, list[str] | None]:
-    """`Session.walk_one`, plus the question a square asks before the key.
+class WalkStopped(RuntimeError):
+    """A walked move met a screen the walk must not answer for the party."""
+
+
+def _yes_no(row: str) -> bool:
+    return S.word_column(row, "YES") >= 0 and S.word_column(row, "NO") >= 0
+
+
+class _Rows:
+    """Twenty-five text rows as a screen, for `Session.combat_state`."""
+
+    def __init__(self, rows):
+        self.rows = rows
+
+    def row(self, r: int) -> str:
+        return self.rows[r]
+
+
+def answer_move_question(sess, log: Log, move: str, answer: str = "NO",
+                         looks: int = 27, wait: float = 0.0
+                         ) -> list[str] | None:
+    """Answer the `YES NO` a square asks when `MOVE` is taken, and wait for
+    the move sub-bar.
 
     A shop front in New Phlan runs its script whenever `MOVE` is taken on it,
     so `THE SHOP SPECIALIZES IN ARMS AND ARMOR. 'CAN I SHOW YOU OUR WARES?'`
-    and `YES NO` come up before the move sub-bar.  `walk_one` stops there
-    with the key unsent, and `answer_bars` then answered NO and left the
-    sub-bar that NO brings up, so every later move took `MOVE` again, met the
-    same question and was reported as a party that did not move.  This
-    answers the question with `answer`; if the status line, which the game
-    does not redraw while the question is up, then shows the party already
-    moved or turned, the move is done, and if the sub-bar is up the move is
-    sent once more at it.
+    and `YES NO` come up before `I,J,K,M`, and `walk_one` stops there with
+    the key unsent.  NO declines the shop and brings up the sub-bar, where
+    the move key is then read.
 
-    Returns whether the move moved the party, and the question's text rows
-    when there was one.
+    The question is read from `walk_stop_screen`, or from the screen when
+    `walk_one` left none, read again every 0.3 s for up to WAIT seconds: the
+    game prints the question a letter at a time under the stale command bar,
+    and draws `YES NO` only when it is done.  Returns its text rows once
+    ANSWER has brought up
+    the sub-bar, or None, pressing nothing, when row 24 is not a `YES NO`.
+    Raises `WalkStopped`, pressing nothing, on a fight's own `YES NO`
+    (`CONTINUE BATTLE`, `ATTACK ALLY`, `FLEE`), whose NO would decide for
+    the party in the fight; and when ANSWER cannot be selected or does not
+    bring up the sub-bar.
     """
-    before = _place(sess.status())
-    moved = sess.walk_one(move)
-    stop = getattr(sess, "walk_stop_screen", None)
-    if moved or not stop:
-        return bool(moved), None
-    row = stop[24]
-    if S.word_column(row, "YES") < 0 or S.word_column(row, "NO") < 0:
-        return False, None
-    asked = [line.strip("$ ").rstrip() for line in stop[17:23]
+    rows = getattr(sess, "walk_stop_screen", None)
+    if rows:
+        if not _yes_no(rows[24]):
+            return None
+    else:
+        waited = 0.0
+        while True:
+            s = sess.screen()
+            rows = None if s is None else [s.row(r) for r in range(25)]
+            if rows and _yes_no(rows[24]):
+                break
+            if waited >= wait:
+                return None
+            time.sleep(0.3)
+            waited += 0.3
+    row = rows[24]
+    if sess.in_combat() or \
+            sess.combat_state(_Rows(rows)).kind == S.BAR_CONTINUE:
+        log.say(f"    {move}: row 24 reads {row.strip()!r} in a fight; "
+                f"the walk stops")
+        raise WalkStopped(f"row 24 reads {row.strip()!r} in a fight, which "
+                          f"a walk does not answer")
+    asked = [line.strip("$ ").rstrip() for line in rows[17:23]
              if line.strip("$ ").strip()]
-    log.say(f"    the square asked {' '.join(asked)!r} before {move} was "
-            f"sent: answering {answer}")
+    log.say(f"    the square asked {' '.join(asked)!r} when {move} was "
+            f"taken: answering {answer}")
     if not sess.select_bar(answer, timeout=8):
-        return False, asked
+        raise WalkStopped(f"{answer} could not be selected on {row.strip()!r}")
     for look in range(looks):
         if look:
             time.sleep(0.3)
         s = sess.screen()
         if s is not None and S.MOVE_SUBBAR in s.row(24):
-            break
-    else:
-        return False, asked
-    after = _place(sess.status())
-    if before is not None and after is not None and after != before:
-        log.say(f"    {move} had already been taken: the status line "
-                f"moved once the question was answered")
-        return True, asked
-    return bool(sess.walk_one(move)), asked
+            return asked
+    raise WalkStopped(f"{answer} to {' '.join(asked)!r} did not bring up "
+                      f"{S.MOVE_SUBBAR}")
+
+
+#: Seconds between the two status-line reads `where` compares when the live
+#: square cannot be read.
+STATUS_SETTLE = 1.0
+
+
+def where(sess) -> tuple | None:
+    """The party's x, y and facing, for judging a move.
+
+    `Session.live_square` when it reads; otherwise the status line read
+    twice `STATUS_SETTLE` apart, and None unless the two agree, so a line
+    caught half drawn is not taken for a move.
+    """
+    live = getattr(sess, "live_square", None)
+    if live is not None:
+        got = live()
+        if got is not None:
+            return tuple(got)
+    first = _place(sess.status())
+    time.sleep(STATUS_SETTLE)
+    second = _place(sess.status())
+    return first if first == second else None
+
+
+def walk_move(sess, log: Log, move: str, answer: str = "NO",
+              looks: int = 27) -> tuple[bool, list[str] | None]:
+    """`Session.walk_one`, plus the question a square asks around the key.
+
+    A question when `MOVE` is taken is answered (`answer_move_question`) and
+    the move is then sent at the sub-bar, unless the party already stands
+    elsewhere or faces another way: a square that asks on arrival puts the
+    same question up after the key, and the game does not redraw the status
+    line while it is up.  Whether the party moved or turned is judged by
+    `where` before and after, and by `walk_one`'s own answer only when
+    `where` cannot say.
+
+    Returns that, and the question's text rows when there was one.  Raises
+    `WalkStopped` where `answer_move_question` does.
+    """
+    before = where(sess)
+    moved = sess.walk_one(move)
+    asked = None
+    if not moved:
+        asked = answer_move_question(sess, log, move, answer, looks)
+        if asked is not None:
+            now = where(sess)
+            if before is not None and now is not None and now != before:
+                log.say(f"    {move} had already been taken: the party "
+                        f"moved or turned before the question")
+                return True, asked
+            moved = sess.walk_one(move)
+    after = where(sess)
+    if before is not None and after is not None:
+        return after != before, asked
+    return bool(moved), asked
+
+
+def walk_route(sess, log: Log, moves: str, answer: str = "NO",
+               no_encounters: bool = False, tag: str = "walk") -> list[dict]:
+    """Walk MOVES with `walk_move`, logging one `walk` record per move.
+
+    Each record has `walk_move`'s answer, the status line, the area, and
+    `square`: x, y out of `Session.live_square`, which moves on the key where
+    the status line can lag.  The walk stops at an area's fight or a
+    `WalkStopped`.  With `no_encounters` the switch is set and the gates
+    written before the first key, and put back and verified when the walk
+    ends however it ends (`restore_gates`); a title with no known gate stops
+    the run before any key.
+    """
+    was = area(sess)
+    log.say(f"the resident area is {was}")
+    records: list[dict] = []
+    if no_encounters and not any(key == sess.game.key
+                                 for key, _area in S.ENCOUNTER_GATES):
+        raise RuntimeError(f"--no-encounters: no encounter gate is known for "
+                           f"{sess.game.key}, so nothing would hold its "
+                           f"encounters off")
+    try:
+        if no_encounters:
+            # Before any key: taking MOVE runs the area's check once.
+            sess.no_encounters = True
+            sess.suppress_encounters()
+            log.emit("no_encounters", on=True)
+        for move in moves:
+            try:
+                moved, asked = walk_move(sess, log, move, answer)
+            except WalkStopped as e:
+                log.emit("walk_stopped", move=move, why=str(e))
+                log.say(f"Walk {move}: stopped, {e}")
+                break
+            log.say(f"  after {move}: {walk_step_routed(sess, log, answer)}")
+            now = area(sess)
+            # Read once and reported three times: outdoors the status line
+            # lags a step, so three reads could disagree.
+            at = sess.status()
+            live = sess.live_square()
+            here = None if live is None else [live[0], live[1]]
+            record = dict(move=move, moved=moved, status=at, area=now,
+                          square=here, asked=asked)
+            records.append(record)
+            log.emit("walk", **record)
+            log.say(f"Walk {move}: moved={moved} "
+                    f"status={'none' if at is None else at.where()} "
+                    f"square={'?' if here is None else f'{here[0]},{here[1]}'} "
+                    f"area={now}")
+            if now != was:
+                log.emit("area_change", before=was, after=now, status=at)
+                log.say(f"** the area changed, {was} -> {now} **")
+                sess.kbd.screenshot(str(log.dir / f"{tag}-area-{now}.png"))
+                was = now
+            if sess.in_combat():
+                log.say("  a random encounter started")
+                break
+    finally:
+        if no_encounters:
+            restore_gates(sess, log, "after the walk")
+    return records
 
 
 def restore_gates(sess, log: Log, when: str) -> list[dict]:
@@ -254,7 +403,9 @@ def restore_gates(sess, log: Log, when: str) -> list[dict]:
     `Session.restore_encounter_gates` does the work and keeps `save_game`
     blocked while any gate is unverified; this records its rows in the log
     as `encounter_gates`, and a gate it cannot verify stops the run before
-    any save.
+    any save.  The record's `suppressed` is False when no gate was written,
+    because no area the walk crossed has a known gate: that walk met the
+    game's own encounter rolls.
     """
     try:
         rows = sess.restore_encounter_gates()
@@ -263,9 +414,15 @@ def restore_gates(sess, log: Log, when: str) -> list[dict]:
                  error=str(e))
         log.say(f"The encounter gates could not be put back {when}: {e}")
         raise
-    log.emit("encounter_gates", when=when, gates=rows, verified=True)
-    log.say(f"The encounter gates were put back and verified {when}: "
-            f"{len(rows)} address(es)")
+    log.emit("encounter_gates", when=when, gates=rows, verified=True,
+             suppressed=bool(rows))
+    if rows:
+        log.say(f"The encounter gates were put back and verified {when}: "
+                f"{len(rows)} address(es)")
+    else:
+        log.say(f"No encounter gate was written {when}: no area the walk "
+                f"crossed has a known gate, so its encounters were not "
+                f"held off")
     return rows
 
 
@@ -888,44 +1045,8 @@ def run(args, log: Log) -> int:
                 log.say(f"  Only {len(read)} of the {len(named)} characters "
                         f"the panel lists had a sheet read")
 
-        was = area(sess)
-        log.say(f"the resident area is {was}")
-        if args.no_encounters:
-            # Before any key: taking MOVE runs the area's check once.
-            sess.no_encounters = True
-            sess.suppress_encounters()
-            log.emit("no_encounters", on=True)
-        try:
-            for move in args.walk:
-                moved, asked = walk_move(sess, log, move, args.answer)
-                log.say(f"  after {move}: {walk_step_routed(sess, log, args.answer)}")
-                now = area(sess)
-                # Read once and reported three times.  It used to be read three
-                # times, which is up to 24 screen reads for one line of log -- and
-                # outdoors the three could disagree, because the status line lags
-                # a step out there.
-                at = sess.status()
-                # The square out of memory beside it, because that is what proves
-                # an outdoor step: `$49C3`/`$49C4` move on the press and the
-                # status line catches up afterwards (`#189`).
-                here = sess.square()
-                log.emit("walk", move=move, moved=moved, status=at, area=now,
-                         square=here, asked=asked)
-                log.say(f"Walk {move}: moved={moved} "
-                        f"status={'none' if at is None else at.where()} "
-                        f"square={'?' if here is None else f'{here[0]},{here[1]}'} "
-                        f"area={now}")
-                if now != was:
-                    log.emit("area_change", before=was, after=now, status=at)
-                    log.say(f"** the area changed, {was} -> {now} **")
-                    sess.kbd.screenshot(str(log.dir / f"{args.tag}-area-{now}.png"))
-                    was = now
-                if sess.in_combat():
-                    log.say("  a random encounter started")
-                    break
-        finally:
-            if args.no_encounters:
-                restore_gates(sess, log, "after the walk")
+        walk_route(sess, log, args.walk, args.answer, args.no_encounters,
+                   args.tag)
 
         if args.resave:
             # The control `#185` wanted and nobody had: the **engine's** own
@@ -1143,7 +1264,9 @@ def main(argv=None) -> int:
     p.add_argument("--no-encounters", action="store_true",
                    help="hold the area's random encounters off during "
                         "--walk; the gates are put back and verified after "
-                        "the walk, before --resave")
+                        "the walk, before --resave.  A title with no known "
+                        "gate stops the run, and a walk whose areas have "
+                        "none is recorded with suppressed false")
     p.add_argument("--answer", default="NO",
                    help="what to answer a YES NO bar a walked step puts up")
     p.add_argument("--boat", default=None, choices=("STAY", "TAKE"),

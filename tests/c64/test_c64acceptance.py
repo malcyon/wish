@@ -5179,6 +5179,71 @@ def test_a_step_onto_a_question_square_fails_the_walk_and_answers_nothing(
     assert TempleQuestionWalk.QUESTION in " ".join(record["stop_screen"])
 
 
+class ShopFrontWalk(RealWalk):
+    """New Phlan's arms shop front: taking `MOVE` prints `CAN I SHOW YOU OUR
+    WARES?` under the stale command bar and draws `YES NO` `PRINTED` seconds
+    later, after `walk_one` has given up on `I,J,K,M`; NO brings the sub-bar
+    up, and the key is read there."""
+
+    PRINTED = 10.0
+
+    QUESTION = ("THE SHOP SPECIALIZES IN ARMS AND",
+                "ARMOR. 'CAN I SHOW YOU OUR WARES?'")
+
+    def __init__(self, clock, bar="YES NO", fighting=False, **kw):
+        super().__init__(clock, prompt_after=None, **kw)
+        self.question_bar = bar
+        self.fighting = fighting
+        self.asking = False
+        self.asked_at = None
+        self.answers = []
+
+    def select_bar(self, label, row=24, timeout=30.0, answer_prompts=True):
+        if label == "MOVE" and not self.answers:
+            self.asking = True
+            self.asked_at = self.clock.now
+            return True
+        if label in ("YES", "NO"):
+            self.answers.append(label)
+            self.asking = False
+        self.bar = A.S.MOVE_SUBBAR
+        return True
+
+    def screen(self):
+        if self.asking:
+            printed = self.clock.now >= self.asked_at + self.PRINTED
+            return _Text(_window({17: self.QUESTION[0], 18: self.QUESTION[1]},
+                                 self.question_bar if printed else WORLD_BAR))
+        return super().screen()
+
+    def in_combat(self):
+        return self.fighting
+
+
+def test_a_question_asked_when_move_is_taken_is_answered_no_then_the_key_is_sent(
+        tmp_path, monkeypatch):
+    clock = _Clock(monkeypatch)
+    sess = ShopFrontWalk(clock)
+    run, log = _walk_run(tmp_path, sess, clock)
+    got = run.walk("I")
+    log.close()
+    assert sess.answers == ["NO"]
+    assert sess.keys.count("i") == 1
+    assert got["position"] == [5, 4, 0] and got["squares_moved"] == 1
+    assert got["moves"][0]["asked"] == list(ShopFrontWalk.QUESTION)
+
+
+def test_a_fights_yes_no_when_move_is_taken_fails_the_walk_and_answers_nothing(
+        tmp_path, monkeypatch):
+    clock = _Clock(monkeypatch)
+    sess = ShopFrontWalk(clock, bar="CONTINUE BATTLE : YES NO")
+    run, log = _walk_run(tmp_path, sess, clock)
+    with pytest.raises(A.StepFailed, match="in a fight"):
+        run.walk("I")
+    log.close()
+    assert sess.answers == [] and "i" not in sess.keys
+
+
 def test_pool_fight_asks_the_walk_to_take_an_encounter_menu_only_while_it_walks():
     seen = []
 

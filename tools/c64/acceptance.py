@@ -180,6 +180,7 @@ from goldbox.world import PLAYABLE_X, WINDOW_STEP  # noqa: E402
 from tools.c64 import (  # noqa: E402
     route_pool,
     runlog,  # noqa: E402
+    savecheck,
     screens,
 )
 from tools.c64 import session as S  # noqa: E402
@@ -658,6 +659,10 @@ TEMPLE_PRICE_NEEDLES = (("WILL COST", r"WILL COST"),
 
 #: How long a walk keeps watching for a disk prompt after a move (seconds).
 LOOK_SECONDS = 2.0
+#: How long a walk waits, with the move key unsent, for the `YES NO` of a
+#: question that taking `MOVE` prints a letter at a time; a limit, not a
+#: measurement.
+QUESTION_SECONDS = 12.0
 
 #: The moves `walk` takes, the game's own letters: forward, left, right, about.
 #: `J` and `K`'s change to the facing, which the C64 counts N 0, E 1, S 2, W 3,
@@ -5232,6 +5237,25 @@ class PoolRun:
                                                   answer_prompts=False)
                 self.refuse_prompt(route, last, "ran the square's event")
                 screens = getattr(self.sess, "walk_screens", None)
+            asked = None
+            if (not status_moved and screens is None and not self.spent()
+                    and not getattr(self.sess, "walked_outdoors", False)):
+                # Taking MOVE put a question up before the key was sent (a
+                # shop front): NO, as `savecheck.py` answers it, then the key.
+                try:
+                    asked = savecheck.answer_move_question(
+                        self.sess, self.log, move, "NO",
+                        wait=self.budget(QUESTION_SECONDS, f"walk {route}"))
+                except savecheck.WalkStopped as e:
+                    raise self.fail("walk", f"walk {route}: move {n} ({move}) "
+                                            f"from {before}: {e}") from e
+                if asked is not None:
+                    self.log.emit("move-question", move=move, n=n, asked=asked,
+                                  answer="NO")
+                    status_moved = self.sess.walk_one(move, tries=1,
+                                                      answer_prompts=False)
+                    self.refuse_prompt(route, last, "ran the square's event")
+                    screens = getattr(self.sess, "walk_screens", None)
             refused = getattr(self.sess, "walk_refused", None)
             if refused:
                 self.log.emit("move", move=move, n=n, before=before,
@@ -5300,7 +5324,8 @@ class PoolRun:
             moves.append({"move": move, "before": before, "after": after,
                           "blocked": move == "I" and before[:2] == after[:2],
                           "moved": before[:2] != after[:2],
-                          "status_moved": status_moved, "resent": resent})
+                          "status_moved": status_moved, "resent": resent,
+                          "asked": asked})
         self.refuse_prompt(route, last, "ran the square's event")
         end = self.position()
         self.capture(f"walked-{route}")

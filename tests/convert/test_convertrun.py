@@ -381,8 +381,8 @@ def test_a_curse_disk_is_not_booted_with_the_switch(tmp_path, monkeypatch):
 
 
 def test_a_c64_walk_that_never_moved_fails_the_run(tmp_path, monkeypatch):
-    """The converted Amiga party's two `walk I` moves both read
-    `moved: false` and the run still returned 0."""
+    """A run whose every walked move reads `moved: false` returns 1; one
+    move that moved is enough for 0."""
     _fake_savecheck(monkeypatch, [False, False])
     disk = tmp_path / "WISHSAVE.D64"
     disk.write_bytes(b"")

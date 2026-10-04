@@ -20,6 +20,7 @@ savecheck = load_tools_module("savecheck")
 #: `savecheck.S` to a fake.  It is a bare `NamedTuple` and `run()` calls
 #: `.where()` and `.outdoors` on whatever `sess.status()` hands back.
 Status = savecheck.S.Status
+REAL_S = savecheck.S
 
 
 class FakeKeyboard:
@@ -65,13 +66,28 @@ class FakeSession:
     """
 
     def __init__(self, disk, slot=None, calls=None, combat_after=None,
-                 save_disk=None):
+                 save_disk=None, title="pool-of-radiance",
+                 suppress_raises=False, gate_rows=None):
         self.kbd = FakeKeyboard()
         self.outdoor_boat = None
         self.calls = calls if calls is not None else []
         self.combat_after = combat_after
         self.walks = 0
         self.save_disk = str(save_disk) if save_disk else str(disk)
+        self.game = type("Game", (), {"key": title})()
+        self.no_encounters = False
+        self.suppress_raises = suppress_raises
+        self.gate_rows = [] if gate_rows is None else gate_rows
+
+    def suppress_encounters(self) -> None:
+        self.calls.append("suppress")
+        if self.suppress_raises:
+            raise OSError("monitor unreadable")
+
+    def restore_encounter_gates(self) -> list[dict]:
+        self.calls.append("restore")
+        self.no_encounters = False
+        return self.gate_rows
 
     def boot(self) -> bool:
         return True
@@ -98,7 +114,12 @@ class FakeSession:
         return FakeMon()
 
     def square(self):
+        """`$49C0` indoors: the square of the last save."""
         return (0, 4)
+
+    def live_square(self):
+        """`$C04B`-`$C04D`: where the party stands after each move."""
+        return (5, 6 + self.walks, 0)
 
     def in_combat(self) -> bool:
         return self.combat_after is not None and self.walks >= self.combat_after
@@ -134,7 +155,8 @@ def entries(path: pathlib.Path) -> list[dict]:
             if line.strip()]
 
 
-def drive(tmp_path, monkeypatch, walk="", resave=True, combat_after=None):
+def drive(tmp_path, monkeypatch, walk="", resave=True, combat_after=None,
+          extra=(), **session):
     """Run `savecheck.main` far enough to exercise the resave/walk order.
 
     Returns `(rc, calls, log_path)`, where `calls` is the shared list of
@@ -154,7 +176,12 @@ def drive(tmp_path, monkeypatch, walk="", resave=True, combat_after=None):
         Session = staticmethod(
             lambda d, slot=None: FakeSession(
                 d, slot, calls=calls, combat_after=combat_after,
-                save_disk=here / "SIDE0.D64"))
+                save_disk=here / "SIDE0.D64", **session))
+        ENCOUNTER_GATES = REAL_S.ENCOUNTER_GATES
+        GateRestoreError = REAL_S.GateRestoreError
+        word_column = staticmethod(REAL_S.word_column)
+        MOVE_SUBBAR = REAL_S.MOVE_SUBBAR
+        BAR_CONTINUE = REAL_S.BAR_CONTINUE
 
         @staticmethod
         def claim_slot(want=None, note=""):
@@ -177,6 +204,7 @@ def drive(tmp_path, monkeypatch, walk="", resave=True, combat_after=None):
             "--out", str(out), "--walk", walk]
     if resave:
         argv += ["--resave", str(resave_path)]
+    argv += list(extra)
     rc = savecheck.main(argv)
     return rc, calls, out
 
@@ -214,3 +242,46 @@ def test_a_walk_that_ends_in_combat_skips_the_resave(tmp_path, monkeypatch):
     resaves = [e for e in entries(out) if e["kind"] == "resave"]
     assert len(resaves) == 1 and resaves[0]["ok"] is False, resaves
     assert resaves[0]["reason"] == "the walk ended in combat", resaves
+
+
+def test_a_walk_record_holds_the_live_square_not_the_saved_one(
+        tmp_path, monkeypatch):
+    """`$49C0` keeps the square of the last save while the party walks; the
+    record's square is the live one, read after each move."""
+    rc, calls, out = drive(tmp_path, monkeypatch, walk="II", resave=False)
+    assert rc == 0, calls
+    walks = [e for e in entries(out) if e["kind"] == "walk"]
+    assert [w["square"] for w in walks] == [[5, 7], [5, 8]], walks
+
+
+def test_the_gates_are_put_back_when_writing_them_fails(tmp_path, monkeypatch):
+    rc, calls, out = drive(tmp_path, monkeypatch, walk="I", resave=False,
+                           extra=["--no-encounters"], suppress_raises=True)
+    assert rc == 1
+    assert calls == ["suppress", "restore"], calls
+
+
+def test_a_title_with_no_gate_is_not_walked_with_the_switch(
+        tmp_path, monkeypatch):
+    rc, calls, out = drive(tmp_path, monkeypatch, walk="I", resave=True,
+                           extra=["--no-encounters"], title="krynn")
+    assert rc == 1
+    assert calls == [], calls
+
+
+def test_a_walk_with_no_gate_written_says_its_encounters_were_not_held_off(
+        tmp_path, monkeypatch):
+    rc, calls, out = drive(tmp_path, monkeypatch, walk="I", resave=False,
+                           extra=["--no-encounters"])
+    assert rc == 0, calls
+    gates = [e for e in entries(out) if e["kind"] == "encounter_gates"]
+    assert len(gates) == 1 and gates[0]["suppressed"] is False, gates
+
+
+def test_a_walk_with_a_gate_written_says_it_was_held_off(tmp_path, monkeypatch):
+    rows = [{"address": "$4A64", "verified": True}]
+    rc, calls, out = drive(tmp_path, monkeypatch, walk="I", resave=False,
+                           extra=["--no-encounters"], gate_rows=rows)
+    assert rc == 0, calls
+    gates = [e for e in entries(out) if e["kind"] == "encounter_gates"]
+    assert gates[0]["suppressed"] is True, gates

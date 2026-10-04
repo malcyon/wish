@@ -2739,16 +2739,38 @@ class Session:
             return None
 
     def square(self) -> tuple[int, int] | None:
-        """Where the party stands, out of memory, from whichever pair is live.
+        """The travel square on the travel grid; indoors, the square of the
+        last save.
 
-        `$49C0` indoors and `$49C3` on the travel grid.  Reading `$49C0`
-        outdoors answers the square the party **left the grid on** -- the
-        pier, in all three outdoor specimens -- and it never moves however far
-        the party walks, so a driver watching it concludes every outdoor step
-        was blocked (`#189`, `docs/141-dos-savegame.md`).
+        `$49C3` on the travel grid, which moves on the key.  Indoors `$49C0`,
+        which the game writes only when it saves, so it does not change while
+        the party walks; `live_square` is where the party stands.  Reading
+        `$49C0` outdoors answers the square the party **left the grid on** --
+        the pier, in all three outdoor specimens (`#189`,
+        `docs/141-dos-savegame.md`).  A title with no travel grid reads its
+        live triple here too.
         """
         got = self.square_and_world()
         return None if got is None else (got[0], got[1])
+
+    def live_square(self) -> tuple[int, int, int | None] | None:
+        """Where the party stands while it walks: x, y and facing.
+
+        The travel pair `$49C3`/`$49C4` on the travel grid, with facing None;
+        everywhere else the live triple `$C04B`-`$C04D` once two reads agree
+        (`steady_triple`), which a step and a turn move at once.  None when
+        it cannot be read or never settles.
+        """
+        try:
+            if self.machine.title.travel_grid:
+                with self.mon(5) as m:
+                    if m.read(INDOORS_AT, 1)[0] == 0:
+                        x, y = m.read(TRAVEL_XY, 2)
+                        return x, y, None
+            steady = self.steady_triple()
+        except (OSError, MonitorError):
+            return None
+        return None if steady is None else tuple(steady)
 
     def live_triple(self) -> tuple[int, ...]:
         """`$C04B`-`$C04D`: x, y and facing, as the running game holds them.

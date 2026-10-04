@@ -102,9 +102,13 @@ SHOP_ROWS = (["$" + " " * 38 + "$"] * 17
 class ShopFront:
     """`walk_one` as it behaves on the shop front: the first call takes
     `MOVE`, meets the question and stops with the key unsent; NO brings up
-    the move sub-bar; a call made at the sub-bar sends the key and moves."""
+    the move sub-bar; a call made at the sub-bar sends the key and moves.
+    `live_square` is `$C04B`-`$C04D`, which moves with the party."""
 
-    def __init__(self, moved_on_resend=True, status_moves_on_no=False):
+    combat_state = session.Session.combat_state
+
+    def __init__(self, moved_on_resend=True, status_moves_on_no=False,
+                 fighting=False):
         self.calls: list[str] = []
         self.selected: list[str] = []
         self.walk_stop_screen = None
@@ -112,6 +116,13 @@ class ShopFront:
         self.subbar = False
         self.moved_on_resend = moved_on_resend
         self.status_moves_on_no = status_moves_on_no
+        self.fighting = fighting
+
+    def in_combat(self):
+        return self.fighting
+
+    def live_square(self):
+        return (self.at.x, self.at.y, self.at.facing)
 
     def walk_one(self, move):
         self.calls.append(move)
@@ -138,9 +149,8 @@ class ShopFront:
 
 
 def test_a_question_before_the_key_is_answered_and_the_key_sent_at_the_subbar():
-    """The converted Amiga party on the arms shop front: `walk I` used to
-    stay at 9,13 twice, because NO was answered and the sub-bar left
-    without the key ever being sent."""
+    """The arms shop front asks when MOVE is taken; NO brings up the
+    sub-bar, and the key is sent there."""
     sess = ShopFront()
     log = FakeLog()
     moved, asked = savecheck.walk_move(sess, log, "I", "NO")
@@ -153,8 +163,9 @@ def test_a_question_before_the_key_is_answered_and_the_key_sent_at_the_subbar():
 
 
 def test_a_move_the_question_hid_is_not_sent_twice():
-    """The status line is not redrawn while the question is up, so a step
-    that was taken reads as unmoved until NO; it is not stepped again."""
+    """A square that asks on arrival puts the question up after the key;
+    once it is answered the party stands elsewhere, and the move is not
+    sent again."""
     sess = ShopFront(status_moves_on_no=True)
     moved, _asked = savecheck.walk_move(sess, FakeLog(), "I", "NO")
     assert moved is True
@@ -216,3 +227,73 @@ def test_restored_gates_are_recorded_and_an_unverified_one_stops_the_run():
     with pytest.raises(savecheck.S.GateRestoreError):
         savecheck.restore_gates(GateSession(fail=True), log, "after the walk")
     assert log.emitted[-1][1]["verified"] is False
+
+
+class ArrivalQuestion(ShopFront):
+    """The step from 9,13 to 8,13: the key is read and the party moves, and
+    8,13 asks the same question on arrival, before the status line is
+    redrawn, so `walk_one` reads the step as unmoved."""
+
+    def walk_one(self, move):
+        self.calls.append(move)
+        if not self.subbar:
+            self.walk_stop_screen = list(SHOP_ROWS)
+            return False
+        self.at = Status(3, 27, 8, 13)
+        self.walk_stop_screen = list(SHOP_ROWS)
+        return False
+
+    def status(self):
+        return Status(3, 27, 9, 13)
+
+
+def test_a_step_onto_a_square_that_asks_is_judged_by_the_live_square():
+    sess = ArrivalQuestion()
+    sess.at = Status(3, 27, 9, 13)
+    moved, asked = savecheck.walk_move(sess, FakeLog(), "I", "NO")
+    assert moved is True
+    assert asked
+    assert sess.calls == ["I", "I"]
+
+
+def _combat_rows(bar):
+    rows = list(SHOP_ROWS)
+    rows[24] = bar
+    return rows
+
+
+def test_a_fights_yes_no_is_not_answered_by_a_walk():
+    import pytest
+    for bar, fighting in (("CONTINUE BATTLE : YES NO", False),
+                          ("ATTACK ALLY: YES NO", True),
+                          ("FLEE: YES NO", True)):
+        sess = ShopFront(fighting=fighting)
+        rows = _combat_rows(bar)
+        sess.walk_one = lambda move, rows=rows, sess=sess: (
+            setattr(sess, "walk_stop_screen", rows) or False)
+        with pytest.raises(savecheck.WalkStopped):
+            savecheck.walk_move(sess, FakeLog(), "I", "NO")
+        assert sess.selected == [], bar
+
+
+def test_without_a_live_square_a_half_drawn_status_line_is_not_a_move(
+        monkeypatch):
+    """Two reads of the status line that disagree say nothing."""
+    monkeypatch.setattr(savecheck.time, "sleep", lambda _s: None)
+    reads = iter([Status(2, 27, 9, 13), Status(2, 27, 9, 1)])
+
+    class NoLive:
+        def status(self):
+            return next(reads)
+
+    assert savecheck.where(NoLive()) is None
+
+
+def test_the_live_square_is_the_status_lines_when_the_two_agree(monkeypatch):
+    monkeypatch.setattr(savecheck.time, "sleep", lambda _s: None)
+
+    class NoLive:
+        def status(self):
+            return Status(2, 27, 9, 13)
+
+    assert savecheck.where(NoLive()) == (9, 13, 2)
