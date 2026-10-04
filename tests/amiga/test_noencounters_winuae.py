@@ -123,7 +123,7 @@ def changed(title, spec):
 
 @pytest.fixture
 def state(tmp_path):
-    return ne.WinuaeState(tmp_path / "winuae.json")
+    return ne.WinuaeState(tmp_path / "winuae-wish282-a.json")
 
 
 @pytest.mark.parametrize("title", TITLES)
@@ -337,7 +337,7 @@ def test_a_failed_save_leaves_no_temporary_file(state, monkeypatch):
     monkeypatch.setattr(ne.os, "replace", broken)
     with pytest.raises(OSError):
         state.save({"on": True, "rows": []})
-    assert sorted(p.name for p in state.path.parent.iterdir()) == ["winuae.json"]
+    assert sorted(p.name for p in state.path.parent.iterdir()) == ["winuae-wish282-a.json"]
     assert json.loads(state.path.read_text())["on"] is False
 
 
@@ -346,7 +346,7 @@ def test_each_holder_keeps_its_own_state_file(tmp_path, monkeypatch):
     monkeypatch.setattr(ne.scratch, "cache_dir", lambda *parts: tmp_path.joinpath(*parts))
     a, b = ne.winuae_state_path("wish282-a"), ne.winuae_state_path("wish282-b")
     assert a != b and a.parent == b.parent
-    assert a.name == "winuae-wish282-a.json"
+    assert a.name == "winuae-wish282-a.json" and b.name == "winuae-wish282-b.json"
 
 
 @pytest.mark.parametrize("holder", ["../x", "a b", "", "a" * 65])
@@ -373,3 +373,14 @@ def test_the_command_line_opens_the_holders_pipe_and_state(tmp_path, monkeypatch
 def test_status_needs_the_holder_because_the_state_is_the_holders(capsys):
     with pytest.raises(SystemExit):
         ne.main(["status"])
+
+
+def test_an_old_per_guest_state_file_stops_the_command_line(tmp_path, monkeypatch, capsys):
+    """Its originals are no longer read, so going on could leave a gate byte patched with no record."""
+    monkeypatch.setattr(ne.scratch, "cache_dir", lambda *parts: tmp_path.joinpath(*parts))
+    old = tmp_path / "noencounters" / "winuae.json"
+    old.parent.mkdir()
+    old.write_text("{}")
+    assert ne.main(["--holder", "wish282-a", "--title", "pool-of-radiance", "off"]) == 1
+    out = capsys.readouterr().out
+    assert "winuae.json" in out and "per-holder" in out

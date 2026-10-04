@@ -862,6 +862,11 @@ def main(argv: list[str] | None = None) -> int:
         state = WinuaeState(winuae_state_path(args.holder))
     except ValueError as exc:
         parser.error(str(exc))
+    old = state.path.parent / "winuae.json"
+    if old.exists():
+        print(f"{old} holds encounter state from before per-holder files; "
+              "restore it with the old holder or delete it.")
+        return 1
     try:
         saved = state.load()
     except StateError as exc:

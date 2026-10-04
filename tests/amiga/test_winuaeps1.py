@@ -209,6 +209,15 @@ def test_the_lanecheck_needs_no_config_or_disk_the_guest_may_lack():
     assert "Remove-Item -Recurse -Force $Work" in LANECHECK
 
 
+def test_the_lanecheck_stops_the_lanes_then_deletes_its_files_on_any_exit_and_reports_a_failed_delete():
+    """An emulator holding a file under the work directory makes the delete fail, and a throw must not skip it."""
+    tail = LANECHECK[LANECHECK.index("\ntry {"):]
+    final = tail[tail.index("} finally {"):]
+    assert final.index("Reset-Lane") < final.index("Remove-Item -Recurse -Force $Work")
+    assert "if (Test-Path $Work) {" in final and "if (Test-Path $Driver) {" in final
+    assert "Scenario-TwoLane }" in tail[:tail.index("} finally {")]
+
+
 def test_start_takes_the_guest_wide_mutex_before_it_launches_and_frees_it_in_a_finally():
     body = _case("start")
     mutex = body.index("Global\\wish-winuae-start")

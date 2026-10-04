@@ -523,23 +523,32 @@ function Scenario-OverrideLane {
   Reset-Lane | Out-Null
 }
 
-"driver: $Driver (claim: $(if ($HasClaim) { 'yes' } else { 'no' })), $Lanes lane(s), $Rounds rounds, $HijackRounds hijack rounds"
-if (Wants 'args' $false)        { Scenario-Args }
-if (Wants 'claim' $false)       { Scenario-Claim }
-if (Wants 'own' $false)         { Scenario-Own }
-if (Wants 'sendpid' $false)     { Scenario-SendPid }
-if (Wants 'claimrace' $false)   { Scenario-ClaimRace }
-if (Wants 'reclaim' $false)     { Scenario-Reclaim }
-if (Wants 'hijack' $false)      { Scenario-Hijack }
-if (Wants 'foreignstop' $false) { Scenario-ForeignStop }
-if (Wants 'foreignkey' $false)  { Scenario-ForeignKey }
-if (Wants 'twolane' $true)      { Scenario-TwoLane }
-if (Wants 'exclusive' $true)    { Scenario-Exclusive }
-if (Wants 'stalelane' $true)    { Scenario-StaleLane }
-if (Wants 'overridelane' $true) { Scenario-OverrideLane }
+try {
+  "driver: $Driver (claim: $(if ($HasClaim) { 'yes' } else { 'no' })), $Lanes lane(s), $Rounds rounds, $HijackRounds hijack rounds"
+  if (Wants 'args' $false)        { Scenario-Args }
+  if (Wants 'claim' $false)       { Scenario-Claim }
+  if (Wants 'own' $false)         { Scenario-Own }
+  if (Wants 'sendpid' $false)     { Scenario-SendPid }
+  if (Wants 'claimrace' $false)   { Scenario-ClaimRace }
+  if (Wants 'reclaim' $false)     { Scenario-Reclaim }
+  if (Wants 'hijack' $false)      { Scenario-Hijack }
+  if (Wants 'foreignstop' $false) { Scenario-ForeignStop }
+  if (Wants 'foreignkey' $false)  { Scenario-ForeignKey }
+  if (Wants 'twolane' $true)      { Scenario-TwoLane }
+  if (Wants 'exclusive' $true)    { Scenario-Exclusive }
+  if (Wants 'stalelane' $true)    { Scenario-StaleLane }
+  if (Wants 'overridelane' $true) { Scenario-OverrideLane }
 
-"$($script:pass) passed, $($script:fail) failed"
-Remove-Item -Recurse -Force $Work -ErrorAction SilentlyContinue
-if ($Driver -ceq "$Root\winuae-lanecheck-driver.ps1") { Remove-Item $Driver -ErrorAction SilentlyContinue }
+  "$($script:pass) passed, $($script:fail) failed"
+} finally {
+  # The lanes go first: an emulator holding a file under $Work makes its delete fail.
+  if (-not (Reset-Lane)) { "warning: a lane would not stop; $Work may not delete" }
+  Remove-Item -Recurse -Force $Work -ErrorAction SilentlyContinue
+  if (Test-Path $Work) { "warning: $Work was not deleted" }
+  if ($Driver -ceq "$Root\winuae-lanecheck-driver.ps1") {
+    Remove-Item $Driver -ErrorAction SilentlyContinue
+    if (Test-Path $Driver) { "warning: $Driver was not deleted" }
+  }
+}
 if (@(Emulators).Count -ne 0) { "warning: winuae64 still running: $(((Emulators) | ForEach-Object { $_.ProcessId }) -join ',')" }
 if ($script:fail -gt 0) { exit 1 }
