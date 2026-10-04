@@ -2357,6 +2357,9 @@ class EditorBinding(QObject):
             if table is not None:
                 party.item_types = item_types_from_payload(table)
                 return
+        if (party.port == "amiga" and folder is not None
+                and self._load_amiga_movement_items(folder)):
+            return
         found = self._find_disk(load_item_types, game.disk_glob, game)
         if found is None:
             _log.warning("No disk with ITEMS found, so movement is left as "
@@ -2367,11 +2370,16 @@ class EditorBinding(QObject):
         except Exception:
             _log.exception("could not read the item types off %s", found)
 
-    def _load_amiga_movement_items(self) -> bool:
-        """Read `/items` off an `.adf` beside the opened Amiga disk, if one has it."""
+    def _load_amiga_movement_items(self, folder=None) -> bool:
+        """Read `/items` off an `.adf` in `folder`, if one has it.
+
+        `folder` defaults to the one holding the opened Amiga disk.
+        """
         from goldbox.amiga_adf import AmigaDisk, AmigaDiskError
 
-        folder = pathlib.Path(self.party.source.path).parent
+        if folder is None:
+            folder = pathlib.Path(self.party.source.path).parent
+        folder = pathlib.Path(folder)
         try:
             images = sorted(p for p in folder.iterdir()
                             if p.suffix.lower() == ".adf")

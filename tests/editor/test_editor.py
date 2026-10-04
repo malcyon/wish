@@ -6146,6 +6146,26 @@ def test_a_pool_save_outside_the_game_folder_gets_the_table_from_preferences(
     assert list(w.party.item_types) == [7]
 
 
+def test_an_amiga_save_outside_the_game_folder_gets_the_table_off_a_preferences_adf(
+        tmp_path, monkeypatch):
+    from support.amigasavegame import synthetic_curse
+
+    from editor.window import EditorBinding
+    from goldbox import amiga_savegame
+    monkeypatch.setattr("editor.window.EditorBinding._find_disk",
+                        lambda self, *a, **k: None)
+    path = _save_outside_the_game_folder(tmp_path, "amiga")
+    prefs = _prefs_pool_folder(tmp_path)
+    disk = amiga_savegame.make_save_disk(
+        amiga_savegame.CURSE, "A", synthetic_curse(("ALPHA",)))
+    disk.write_file("/items", _items_table(7))
+    disk.save(str(tmp_path / "prefs-game" / "PoolOfRadiance-2.adf"))
+    with _window_warnings() as seen:
+        w = EditorBinding(make_root(), str(path), game_folders=prefs)
+    assert not any("No disk with ITEMS found" in m for m in seen)
+    assert list(w.party.item_types) == [7]
+
+
 @pytest.mark.parametrize("port", ["dos", "amiga"])
 def test_a_table_beside_the_save_wins_over_the_preferences_folder(
         tmp_path, monkeypatch, port):
