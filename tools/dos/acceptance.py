@@ -54,7 +54,8 @@ a source whose title does not match `--title`:
 | `load` | title screens, `LOAD SAVED GAME`, the `--slot` letter; Pool lands on the map, the other three on the party menu.  Pools of Darkness asks `LOAD FROM WHERE? POOLS SECRET EXIT` first and gets `P`.  Pool presses Return past each `PRESS <ENTER>/<RETURN> TO CONTINUE` bar first, when the loaded save is on an event square, so that screen is never recorded as the map (#701); a party that has not taken Rolf's opening tour meets eight (PROBABLE: one boot of one party), and the run stops at `POOL_LOAD_CONTINUE_ROUNDS` (#631).  Pool's map is believed only on a measured bar of `POOL_MAP_BARS`; a save made at the party menu loads back onto it, which is read as text with the title's font and left for `begin`, and any other screen stops the run naming its bar's words (#797) |
 | `begin` | Curse, Silver Blades and Pools of Darkness, and Pool straight after a `load` onto its party menu: `BEGIN ADVENTURING`, through Silver Blades' intro bars, Pools of Darkness' journal question and `YES NO` bars (below), and Pool's continue screens, to the map; Pool's party menu must read `BEGIN ADVENTURING` before `b` goes out, and Pool's and Pools of Darkness' map is believed only by a measured bar |
 | `camp` guard | Pool presses `ENCAMP` only on a measured map bar of `POOL_MAP_BARS`, and no title presses it on the party menu, where `e` is EXIT TO DOS |
-| `camp` | `ENCAMP`; records the camp bar by `bar_signature` |
+| `camp` | `ENCAMP`; records the camp bar by `bar_signature`.  After `vault`, Pools of Darkness presses `REST` on Elminster's menu instead, which opens the camp loop, and requires a bar reading `SAVE ... EXIT` |
+| `vault` | Pools of Darkness, straight after `begin`, which then takes Elminster's menu in Limbo (area 18) as its end: `STORAGE`, the vault's bar read as text, `TAKE` (and `ITEMS` at `TAKE: MONEY ITEMS EXIT`) when offered, every page of the stored items read as text with `NEXT`, `EXIT` back to the vault and `EXIT` to Elminster's menu; records the rows and the `TMPVAULT.DAT` leaving wrote.  The run fails unless every page reads the names that file caches, in order and to the last, and the file and the last saved slot's vault hold the installed items and coins (`vault_verdict`).  Blocked before the boot unless the installed save names area 18 in variable `$16` and `$A2` is not 1 |
 | `leave` | Curse and Silver Blades, in camp: the camp bar's `Exit` (`CAMP_EXIT`), believed when the map bar is back, so a `fight` can follow a camp `save` in the same boot.  Curse's has left camp in one boot; Silver Blades' is read from its key set only and is not yet verified live |
 | `sheet N`, `items N` | Curse, Silver Blades and Pools of Darkness (`items` Pools of Darkness only; Pool's is the next row), in camp: roster line N (from 1) highlighted (`End` in Curse, `Down` in the other two), `VIEW`, the sheet's name checked against line N's, the bar read for `heal_offered` and `cure_offered` (`sheet_offers`), and for `items` its `ITEMS` list page by page with `NEXT`; back to camp |
 | `heal N` | the same three, in camp: line N's sheet, `HEAL` (`LAY` in Pools of Darkness), `SELECT` at `HEAL WHOM?` on the member it opens on, and the sheet required back without the word; back to camp |
@@ -137,10 +138,37 @@ logs which kind it took (`map_bar` in `run.jsonl`); any other screen stops at
 once with a `lost-begin-screen.png`, and anything else after the answer stops
 the run in the same way rather than being typed into.  Journal, `YES NO` and
 continue screens are counted one screen at a time, at most `POD_INTERSTITIALS`
-in `begin`.  A party saved in a town begins at the services bar
-`POD_TOWN_BAR`; `begin` shoots it as `town-screen` and stops with
-`lost-begin-screen`, pressing nothing, because the driver does not leave a town.
-Use the party-menu steps (`load 'view 1' 'save D' read`) for a town party.
+in `begin`.  A party saved in Elminster's camp in Limbo (area 18) begins at
+his help menu `POD_ELMINSTER_BAR`; `begin` shoots it as `town-screen` and
+stops with `lost-begin-screen`, pressing nothing, unless the run goes on to
+`vault`.  Use the party-menu steps (`load 'view 1' 'save D' read`) for such a
+party otherwise.
+
+**`vault` opens Pools of Darkness' item vault, which only Elminster's menu
+in Limbo offers to a player.**  `ECL1.DAX` block 18 (area 18) sends both its
+step entry (`$97F6`) and, when variable `$16` already holds 18, its arrival
+entry (`$801D`) straight to the menu at `$8471`, so any square of the area
+reaches it and a save made there opens on it.  The menu has `STORAGE` while
+variable `$A2` is not 1 (`$84C0`); `STORAGE` saves 1 in variable `$31` and
+runs opcode `$24`, which opens the vault screen (`GAME.OVR` 0x3261).  The
+step runs `load begin vault`: `begin` takes Elminster's menu as its end,
+`S` opens the vault, whose bar `VIEW TAKE POOL MONEY ITEMS EXIT`
+(`DS:0x3196`) is read as text with the title's font; `TAKE` is drawn only
+while the vault holds something.  With it, `T`, then `I` when the game
+asks `TAKE: MONEY ITEMS EXIT` (`GAME.OVR` 0x5468, both coins and items
+stored), lists the stored items; each page's rows are read as text, turned
+with `NEXT`, and left with `EXIT`.  `E` at the take question and at the
+vault bar goes back to Elminster's menu, the game having written
+`TMPVAULT.DAT` (`GAME.OVR` 0x34C0), which the next `SAVE` renames to
+`VAULT<L>.DAT`.  The screen is checked against that file: the game caches
+each item's drawn name in its record (bytes 0x00-0x29), and every page
+must read those names in order (`vault_window_check`), the file holding
+the installed `VAULT<L>.DAT`'s items and coins.
+`camp` from that menu presses `REST`, whose `PROGRAM 9` opens the camp loop
+(`GAME.OVR` 0x21FF), so `load begin vault camp 'save D' read` stores the
+game's own vault file.  The installed save must name area 18 in variable
+`$16` with `$A2` not 1, which `--stage-var A2=0` arranges; the square is
+not read.
 
 **Pools of Darkness picks a character by its roster highlight, read off the
 screen.**  The current character's name is the one roster line drawn in
@@ -164,8 +192,11 @@ line N's effect file (`.SPC`, `.FX` or `.SFX`); `--stage-side
 LINE=SIDE[:QUICKFIGHT]` sets line N's combat side byte and optionally the
 quickfight byte after it (`stage_side`); `--stage-record
 LINE:OFFSET=VALUE` sets one byte of line N's `CHRDAT` record below its length; `--stage-var
-ADDRESS=VALUE` sets one script-variable word of `SAVGAM` (`read` reports it as the last saved slot holds it); `--stage-place
-X,Y,FACING` puts the party on a square of an indoor `SAVGAM` facing 0 to 3 (N E S W), last of the stages.
+ADDRESS=VALUE` sets one script-variable word of `SAVGAM`, or in Pools of
+Darkness one byte of `SAVGAM<L>.PTY` by the scripts' own 1-based index (`read`
+reports it as the last saved slot holds it); `--stage-place
+X,Y,FACING` puts the party on a square of an indoor `SAVGAM`, or of a
+Pools of Darkness save made in a dungeon, facing 0 to 3 (N E S W), last of the stages.
 
 **The rest-time keys are read from each title's `GAME.OVR`**, because nobody
 had captured the screen.  Pool of Radiance's rest menu is `Rest daYs Hours
@@ -631,13 +662,106 @@ POD_INTERSTITIALS = 12
 #: `begin`; an empty mapping makes it stop at every screen.
 POD_MAP_BARS: dict[str, str] = {"dungeon": "0409f26b63f9c492",
                                 "overland": "8ce27036e9d49c83"}
-#: The town services bar `HEAL TRAIN STORAGE REST MOVE ON`, by `bar_signature`,
-#: measured on the Amiga thief party's run `88eac43064-run2-thief` of #650
-#: (`lost-begin-screen`, the party saved standing in a town); its glyph
-#: signature there was `53b2db87f794e8bb`.  It is not a map.  The destination
-#: menu after MOVE ON is bar `151b806b9b9fe327`, unmeasured and deliberately
-#: not entered, so no key is ever pressed on this bar.
-POD_TOWN_BAR = "f8c32c677c85b2d4"
+#: Elminster's help menu in Limbo, `HEAL TRAIN STORAGE REST MOVE ON`
+#: (`ECL1.DAX` block 18, `$84CB`), by `bar_signature`, measured on the Amiga
+#: thief party's run `88eac43064-run2-thief` of #650 (`lost-begin-screen`);
+#: its glyph signature there was `53b2db87f794e8bb`, and WISH-2's run3b of
+#: SavGamH drew the same.  It is not a map.  The destination menu after MOVE
+#: ON is bar `151b806b9b9fe327`, unmeasured and deliberately not entered:
+#: only `vault`'s `STORAGE` and `camp`'s `REST` are pressed on this bar.
+POD_ELMINSTER_BAR = "f8c32c677c85b2d4"
+#: Variable `$16` holds the area the party was last in (the engine copies
+#: `DS:0xC580` into it after an area's entry script, `GAME.OVR` 0xE5F and
+#: 0x2BFA), and area 18's arrival entry goes to Elminster's menu when it
+#: already reads 18.  Variable `$A2` = 1 takes `STORAGE` off the menu.
+ELMINSTER_AREA = 18
+POD_AREA_VAR = 0x16
+POD_STORAGE_VAR = 0xA2
+#: `STORAGE` and `REST` on Elminster's menu, keyed by their capitals.
+ELMINSTER_STORAGE = "s"
+ELMINSTER_REST = "r"
+#: The vault screen's bar, `View Take Pool Money Items Exit` (`DS:0x3196`);
+#: the menu builder (`GAME.OVR` 0x330D-0x339D) leaves out `Take` with an
+#: empty vault, `Money` when the member has no coins and `Items` when he
+#: has no items.
+VAULT_WORDS = ("VIEW", "TAKE", "POOL", "MONEY", "ITEMS", "EXIT")
+VAULT_TAKE = "t"
+#: `Take: ` over `Money Items Exit` (`GAME.OVR` 0x5468 and 0x546F), asked
+#: only when the vault holds both coins and items (0x5480); `I` lists the
+#: items, and with no coins the list opens at once.
+VAULT_TAKE_PROMPT = ("TAKE:", "MONEY", "ITEMS", "EXIT")
+VAULT_TAKE_ITEMS = "i"
+VAULT_EXIT = "e"
+#: Pages of the vault's item list read before the run gives up on the last.
+VAULT_PAGES = 12
+#: What leaving the vault screen writes (`GAME.OVR` 0x34C0 -> 0x13B5D).
+TMPVAULT = "TMPVAULT.DAT"
+#: Where the vault's item list is read: rows 1 to 22, one item a row,
+#: inside the frame's columns (WISH-2 stage 9, SavGamH's 40 items).  `NEXT`
+#: moves the window 22 items on but never past the last full window, so
+#: the second page of 40 showed items 19 to 40.  The whole area above the
+#: bar is what a page turn must change.
+VAULT_ITEM_ROWS = range(1, 23)
+VAULT_WINDOW = len(VAULT_ITEM_ROWS)
+VAULT_TEXT_COLUMNS = range(1, 39)
+VAULT_LIST_RECT = (0, 8, 320, 176)
+#: Where each 63-byte vault record carries the name the game last drew for
+#: the item, as a length byte and text (`goldbox.dos_port.ITEM_LAYOUT`
+#: 0x00-0x29): the vault screen fills it, and its writer stores it.
+VAULT_NAME = slice(0x00, 0x2A)
+
+
+def is_vault_bar(words: list[str]) -> bool:
+    """Whether `words` are the vault screen's bar: `VIEW`, `POOL` and `EXIT`
+    always, the rest of `VAULT_WORDS` in their order where offered."""
+    if not words or words[0] != "VIEW" or words[-1] != "EXIT" or "POOL" not in words:
+        return False
+    rest = iter(VAULT_WORDS)
+    return all(w in rest for w in words)
+
+
+def tmpvault(save_dir: pathlib.Path) -> dict | None:
+    """The `TMPVAULT.DAT` leaving the vault wrote, decoded, or None."""
+    path = next((p for p in save_dir.iterdir() if p.name.upper() == TMPVAULT), None)
+    if path is None:
+        return None
+    data = path.read_bytes()
+    out = {"file": path.name, "size": len(data),
+           "sha256": hashlib.sha256(data).hexdigest()}
+    try:
+        v = dos_codec.pod_vault_from_dos(data)
+    except dos_codec.DosRecordError as e:
+        return {**out, "error": str(e)}
+    return {**out, "items": len(v.items), "platinum": v.platinum, "gems": v.gems,
+            "jewelry": v.jewelry, "names": [record_name(r) for r in v.items]}
+
+
+def record_name(record: bytes) -> str:
+    """The name a vault record caches, upper case and stripped, as the
+    screen's font reads it."""
+    field = record[VAULT_NAME]
+    return field[1:1 + field[0]].decode("latin-1").upper().strip()
+
+
+def vault_window_check(pages: list[list[str]], names: list[str]) -> dict:
+    """Whether the list pages read off the screen show `names` in order:
+    page k must equal `names` from `min(k * VAULT_WINDOW, len(names) -
+    VAULT_WINDOW)` on, a `?` read under the pointer matching any character,
+    and the last page must end at the last name.  Returns each page's top
+    and the first page that disagrees, if any."""
+    def same(row: str, name: str) -> bool:
+        return len(row) == len(name) and all(a in ("?", b) for a, b in zip(row, name))
+
+    tops: list[int] = []
+    for k, rows in enumerate(pages):
+        top = max(0, min(k * VAULT_WINDOW, len(names) - VAULT_WINDOW))
+        tops.append(top)
+        want = names[top:top + VAULT_WINDOW]
+        if len(rows) != len(want) or not all(map(same, rows, want)):
+            return {"tops": tops, "covered": False, "page": k + 1,
+                    "read": rows, "names": want}
+    end = tops[-1] + len(pages[-1]) if pages else 0
+    return {"tops": tops, "covered": end == len(names)}
 
 #: `View` on the map and camp bars; `Items` and `Exit` on the sheet's bar
 #: `Items Spells Trade Deposit Drop Lay Cure Exit` (`GAME.EXE` 0xBB4F).  The
@@ -1995,7 +2119,8 @@ def rest_presses(minutes: int) -> tuple[int, int, int]:
     return days, hours, mins // REST_STEP
 
 
-STEP_HELP = ("load, begin, 'walk MI', 'walk I', 'walk 1', 'turn 4', camp, leave, display, "
+STEP_HELP = ("load, begin, vault, 'walk MI', 'walk I', 'walk 1', 'turn 4', camp, leave, "
+             "display, "
              "'rest 5m', 'save D', "
              "'train 1', 'change 2 FIGHTER', 'sheet 1', 'heal 1', 'cure 1', 'items 1', "
              "'halve 1 1', 'join 4 15', 'trade 1 2 3', 'view 1', 'memorize 5', 'cast 2 BLESS', "
@@ -2013,7 +2138,8 @@ def parse_step(text: str) -> Step:
     if not words:
         raise ValueError("an empty step")
     kind = words[0].lower()
-    if kind in ("load", "begin", "camp", "leave", "display", "read") and len(words) == 1:
+    if kind in ("load", "begin", "camp", "leave", "display", "vault",
+                "read") and len(words) == 1:
         return Step(kind, text)
     if kind == "rest" and len(words) == 2:
         minutes = parse_duration(words[1])
@@ -2117,7 +2243,7 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
         # Pool's load lands on the map, or on the party menu for a save made
         # there; `begin` straight after it is for the second.
         pool_after_load = title == "pool" and last == "load"
-        last = k
+        previous, last = last, k
         if where == "pressed" and k != "press":
             raise ValueError(f"only press, shot and read may come after a press: "
                              f"{step.text!r}")
@@ -2148,6 +2274,13 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
             if where == "camp":
                 raise ValueError(f"already camped: {step.text!r}")
             where = "camp"
+        elif k == "vault":
+            if title != "darkness":
+                raise ValueError(f"vault is driven in darkness only, not {title}")
+            if previous != "begin":
+                raise ValueError(f"vault follows begin, which ends at Elminster's "
+                                 f"menu for it: {step.text!r}")
+            where = "elminster"
         elif k == "leave":
             if title not in LEAVE_TITLES:
                 raise ValueError(f"leave is driven in {', '.join(sorted(LEAVE_TITLES))} "
@@ -3133,6 +3266,9 @@ class Driver:
         self.began = time.time()
         #: What `snapshot` recorded of the driver's own place, by name.
         self._places: dict[str, dict] = {}
+        #: Set by `run` when a `vault` step follows: `begin` then takes
+        #: Pools of Darkness' Elminster menu as its end instead of stopping.
+        self.elminster_ok = False
 
     # -- evidence ----------------------------------------------------------
 
@@ -3667,14 +3803,19 @@ class Driver:
 
         screen = interstitials(screen)
         if (self.title.key == "darkness"
-                and bar_signature(screen) == POD_TOWN_BAR):
-            # The destination menu behind MOVE ON is unmeasured, so a town
-            # start is recognised and stopped at, with nothing pressed.
+                and bar_signature(screen) == POD_ELMINSTER_BAR):
+            if self.elminster_ok:
+                self.shot("elminster")
+                self.where = "elminster"
+                return {"map_bar": None, "map_kind": "elminster",
+                        "bar": POD_ELMINSTER_BAR}
+            # The destination menu behind MOVE ON is unmeasured, so a start
+            # there is recognised and stopped at, with nothing pressed.
             self.shot("town-screen")
-            raise self.fail("begin-screen", "the party starts in a town "
-                            "services screen, which this driver does not "
-                            "leave; use the party-menu steps "
-                            "(load 'view 1' 'save D' read) for a town party")
+            raise self.fail("begin-screen", "the party starts at Elminster's "
+                            "menu in Limbo, which this driver leaves only for "
+                            "the vault (load begin vault); use the party-menu "
+                            "steps (load 'view 1' 'save D' read) otherwise")
         if self.on_party_menu(screen):
             raise self.fail("begin", "the party menu is still showing")
         kind = None
@@ -3702,7 +3843,139 @@ class Driver:
         self.where = "map"
         return {"map_bar": self.world_sig, "map_kind": kind}
 
+    def bar_text(self, screen) -> list[str]:
+        """The command bar's words, read with the title's font."""
+        return text_row(screen, BAR_ROW, self.display_font()).split()
+
+    def press_bar(self, key: str, screen, label: str, *, page: bool = False):
+        """Press `key` and wait for the bar to change, or with `page` for the
+        list above it to; the settled screen and its bar's words."""
+        ink, rows = screen.ink(dosbox.BAR), screen.digest(VAULT_LIST_RECT)
+        self.s.key(key)
+        if page:
+            changed = self.s.wait_for(lambda sc: sc.digest(VAULT_LIST_RECT) != rows,
+                                      self.bounded(20.0, label))
+        else:
+            changed = self.s.wait_while_ink(dosbox.BAR, ink, self.bounded(20.0, label))
+        if not changed:
+            raise self.fail(label, f"{key} changed nothing: {self.bar_named(screen)}")
+        screen = self.s.settle(quiet=1.0, timeout=self.bounded(30.0, label))
+        return screen, self.bar_text(screen)
+
+    def installed_vault(self) -> dict:
+        """The installed `VAULT<L>.DAT` as the game will read it: absent is
+        an empty vault (`GAME.OVR` 0x138FA finds no file and reads nothing)."""
+        path = self.s.save_dir / f"VAULT{self.slot}.DAT"
+        if not path.is_file():
+            return {"file": None, "items": 0, "platinum": 0, "gems": 0, "jewelry": 0}
+        v = dos_codec.pod_vault_from_dos(path.read_bytes())
+        return {"file": path.name, "items": len(v.items), "platinum": v.platinum,
+                "gems": v.gems, "jewelry": v.jewelry}
+
+    def vault_pages(self, screen, words: list[str]) -> list[dict]:
+        """Every page of the vault's item list, read as text, turned with
+        `NEXT` while the bar offers it; a page reading as the one before
+        ends the reading."""
+        font = self.display_font()
+        pages: list[dict] = []
+        while True:
+            rows = [text_row(screen, r, font, VAULT_TEXT_COLUMNS).strip()
+                    for r in VAULT_ITEM_ROWS]
+            if pages and rows == pages[-1]["rows"]:
+                break
+            pages.append({"shot": self.shot(f"vault-items-{len(pages) + 1}"),
+                          "bar": words, "rows": rows,
+                          "items": [r for r in rows if r]})
+            if "NEXT" not in words:
+                break
+            if len(pages) >= VAULT_PAGES:
+                raise self.fail("vault-pages", f"the vault's list still offers "
+                                f"NEXT after {VAULT_PAGES} pages")
+            screen, words = self.press_bar(ITEMS_NEXT, screen, "vault-next", page=True)
+        return pages
+
+    def vault(self) -> dict:
+        """Pools of Darkness, at Elminster's menu: `STORAGE`, the vault's
+        items listed through `TAKE`, and `EXIT` back to the menu."""
+        if self.title.key != "darkness" or self.where != "elminster":
+            raise StepFailed("vault needs Elminster's menu in Limbo, which "
+                             "begin reaches for a party saved in area 18")
+        expected = self.installed_vault()
+        screen = self.s.settle(quiet=0.6, timeout=self.bounded(30.0, "vault-settle"))
+        menu = self.bar_text(screen)
+        if bar_signature(screen) != POD_ELMINSTER_BAR:
+            raise self.fail("vault-menu", f"Elminster's menu is not showing: "
+                            f"{self.bar_named(screen)}")
+        if "STORAGE" not in menu:
+            raise self.fail("vault-storage", f"Elminster's menu reads {menu} with "
+                            f"no STORAGE: variable ${POD_STORAGE_VAR:02X} is 1; "
+                            f"stage --stage-var {POD_STORAGE_VAR:02X}=0")
+        screen, words = self.press_bar(ELMINSTER_STORAGE, screen, "vault-open")
+        if not is_vault_bar(words):
+            raise self.fail("vault-open", f"STORAGE did not open the vault: "
+                            f"{self.bar_named(screen)}")
+        bar = words
+        self.shot("vault")
+        prompt, pages = False, []
+        if "TAKE" in bar:
+            screen, words = self.press_bar(VAULT_TAKE, screen, "vault-take")
+            if tuple(words) == VAULT_TAKE_PROMPT:
+                prompt = True
+                self.shot("vault-take")
+                screen, words = self.press_bar(VAULT_TAKE_ITEMS, screen,
+                                               "vault-take-items")
+            if is_vault_bar(words) or tuple(words) == VAULT_TAKE_PROMPT:
+                raise self.fail("vault-list", f"TAKE opened no item list: "
+                                f"{self.bar_named(screen)}")
+            pages = self.vault_pages(screen, words)
+            screen = self.s.capture()
+            if "EXIT" not in self.bar_text(screen):
+                raise self.fail("vault-list-exit", f"the vault's list offers no "
+                                f"EXIT: {self.bar_named(screen)}")
+            screen, words = self.press_bar(VAULT_EXIT, screen, "vault-list-exit")
+            if tuple(words) == VAULT_TAKE_PROMPT:
+                screen, words = self.press_bar(VAULT_EXIT, screen, "vault-take-exit")
+            if not is_vault_bar(words):
+                raise self.fail("vault-back", f"leaving the list did not bring the "
+                                f"vault back: {self.bar_named(screen)}")
+        screen, words = self.press_bar(VAULT_EXIT, screen, "vault-exit")
+        if not self.s.wait_for(lambda sc: bar_signature(sc) == POD_ELMINSTER_BAR,
+                               self.bounded(30.0, "vault-exit")):
+            raise self.fail("vault-exit", f"EXIT did not bring Elminster's menu "
+                            f"back: {self.bar_named(self.s.capture())}")
+        dosbox.settle_files(self.s.save_dir, quiet=1.0,
+                            timeout=self.bounded(30.0, "vault-file"))
+        self.shot("vault-left")
+        written = tmpvault(self.s.save_dir)
+        names = (written or {}).get("names", [])
+        check = vault_window_check([p["items"] for p in pages], names)
+        listed = len(names) if check["covered"] else None
+        return {"menu": menu, "vault_bar": bar, "take_prompt": prompt,
+                "pages": pages, "window": check, "listed": listed,
+                "expected": expected,
+                "matches": check["covered"] and listed == expected["items"],
+                "tmpvault": written}
+
+    def elminster_camp(self) -> dict:
+        """Camp from Elminster's menu: `REST` runs `PROGRAM 9`, the camp loop
+        (`GAME.OVR` 0x21FF calls 0x2108, which calls it at 0x104F1)."""
+        screen = self.s.settle(quiet=0.6, timeout=self.bounded(30.0, "camp-settle"))
+        if bar_signature(screen) != POD_ELMINSTER_BAR:
+            raise self.fail("camp-elminster", f"Elminster's menu is not showing: "
+                            f"{self.bar_named(screen)}")
+        screen, words = self.press_bar(ELMINSTER_REST, screen, "camp-elminster")
+        if not words or words[0] != "SAVE" or words[-1] != "EXIT":
+            raise self.fail("camp-elminster", f"REST did not open the camp bar: "
+                            f"{self.bar_named(screen)}")
+        self.camp_sig = bar_signature(screen)
+        self.left_camp = False
+        self.where = "camp"
+        self.shot("camp")
+        return {"camp_bar": self.camp_sig, "from": "elminster", "words": words}
+
     def camp(self) -> dict:
+        if self.where == "elminster":
+            return self.elminster_camp()
         # `E` at Curse's and Pool's party menu is exit to DOS, so it is never
         # pressed there; in Pool it goes out only on a measured map bar.  The
         # screen is judged once settled, and Pool's is given `CAMP_MAP_WAIT`
@@ -6668,6 +6941,7 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
             if getattr(args, "first_bar_key", None) is not None:
                 d.first_bar_key = parse_key(args.first_bar_key)
             d.intervene = bool(getattr(args, "intervene", False))
+            d.elminster_ok = any(s.kind == "vault" for s in steps)
             summary["events"] = getattr(d, "events", [])
             results = []
             for step in steps:
@@ -6685,6 +6959,8 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                     r = d.begin()
                 elif step.kind == "camp":
                     r = d.camp()
+                elif step.kind == "vault":
+                    r = d.vault()
                 elif step.kind == "leave":
                     r = d.leave()
                 elif step.kind == "walk":
@@ -6749,7 +7025,8 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
             summary["results"] = results
             unproved = (walk_verdict(steps, summary.get("read"))
                        or share_verdict(summary.get("read"))
-                       or expect_verdict(summary.get("read")))
+                       or expect_verdict(summary.get("read"))
+                       or vault_verdict(results, summary.get("read")))
             doubtful = inconclusive_watch(results)
             if unproved:
                 summary["lost"] = unproved
@@ -6805,8 +7082,19 @@ def check_gate(args, save: pathlib.Path, from_slot: str | None) -> None:
                  for s in getattr(args, "steps", []))
     if not staged and not (args.title == "ssb" and fights):
         return
+    if args.title == "darkness":
+        pty = save / f"SAVGAM{from_slot}.PTY"
+        if not pty.is_file():
+            raise ValueError(f"--stage-var needs a SAVGAM{from_slot}.PTY holding "
+                             "the variable array; there is none here")
+        for address, value in staged:
+            dos_savegame.pod_var_offset(address)
+            if value > 0xFF:
+                raise ValueError(f"--stage-var {address:02X}={value}: a Pools of "
+                                 "Darkness variable is one byte")
+        return
     savgam = save / f"SAVGAM{from_slot}.DAT"
-    if staged and (args.title == "darkness" or not savgam.is_file()):
+    if staged and not savgam.is_file():
         raise ValueError(f"--stage-var needs a SAVGAM{from_slot}.DAT holding the "
                          f"script-variable array; {args.title} has none here")
     if not savgam.is_file():
@@ -6830,6 +7118,30 @@ def check_gate(args, save: pathlib.Path, from_slot: str | None) -> None:
                          f"{gate} a wandering roll there gives no fight")
 
 
+def check_vault(args, save: pathlib.Path, from_slot: str | None) -> None:
+    """Block a `vault` step whose installed save, with its `--stage-var`
+    bytes, would not begin at Elminster's menu with `STORAGE` on it:
+    variable `POD_AREA_VAR` must read `ELMINSTER_AREA` and `POD_STORAGE_VAR`
+    must not read 1."""
+    if not any(parse_step(t).kind == "vault" for t in getattr(args, "steps", [])):
+        return
+    pty = save / f"SAVGAM{from_slot}.PTY"
+    if args.title != "darkness" or not pty.is_file():
+        raise ValueError(f"vault needs a Pools of Darkness SAVGAM{from_slot}.PTY")
+    data = bytearray(pty.read_bytes())
+    for address, value in (parse_var(t) for t in getattr(args, "stage_var", []) or []):
+        dos_savegame.put_pod_var(data, address, value)
+    area = dos_savegame.pod_var(bytes(data), POD_AREA_VAR)
+    if area != ELMINSTER_AREA:
+        raise ValueError(f"vault opens at Elminster's menu, area {ELMINSTER_AREA}; "
+                         f"{pty.name} names area {area} in variable "
+                         f"${POD_AREA_VAR:02X}")
+    if dos_savegame.pod_var(bytes(data), POD_STORAGE_VAR) == 1:
+        raise ValueError(f"vault needs STORAGE on Elminster's menu, which variable "
+                         f"${POD_STORAGE_VAR:02X} = 1 takes off: stage --stage-var "
+                         f"{POD_STORAGE_VAR:02X}=0")
+
+
 def check_staging(args, save: pathlib.Path, from_slot: str | None) -> None:
     """Block a stage the installed save cannot take, before a slot is claimed.
 
@@ -6847,10 +7159,20 @@ def check_staging(args, save: pathlib.Path, from_slot: str | None) -> None:
             raise ValueError(f"{word.name} is {word.stat().st_size} bytes, too "
                              f"short for the hall word at {HALL_WORD:#x}")
     check_gate(args, save, from_slot)
-    if getattr(args, "stage_place", None):
+    check_vault(args, save, from_slot)
+    if getattr(args, "stage_place", None) and args.title == "darkness":
+        parse_place(args.stage_place)
+        pty = save / f"SAVGAM{from_slot}.PTY"
+        if not pty.is_file():
+            raise ValueError(f"--stage-place needs a SAVGAM{from_slot}.PTY holding "
+                             "the square; there is none here")
+        if not dos_savegame.pod_in_dungeon(pty.read_bytes()):
+            raise ValueError(f"--stage-place: {pty.name} was saved in the "
+                             "wilderness; a place can be staged in a dungeon only")
+    elif getattr(args, "stage_place", None):
         parse_place(args.stage_place)
         savgam = save / f"SAVGAM{from_slot}.DAT"
-        if args.title == "darkness" or not savgam.is_file():
+        if not savgam.is_file():
             raise ValueError(f"--stage-place needs a SAVGAM{from_slot}.DAT holding "
                              f"the square; {args.title} has none here")
         data = savgam.read_bytes()
@@ -6938,11 +7260,49 @@ def stage(save_dir: pathlib.Path, letter: str, args) -> list[dict]:
         done.append(stage_side(save_dir, letter, *parse_side(text)))
     for line, offset, value in parse_record_bytes(getattr(args, "stage_record", []) or []):
         done.append(stage_record(save_dir, letter, line, offset, value))
+    pod = getattr(args, "title", None) == "darkness"
     for text in getattr(args, "stage_var", []) or []:
-        done.append(stage_var(save_dir, letter, *parse_var(text)))
+        done.append((stage_pod_var if pod else stage_var)(save_dir, letter,
+                                                          *parse_var(text)))
     if getattr(args, "stage_place", None):
-        done.append(stage_place(save_dir, letter, *parse_place(args.stage_place)))
+        done.append((stage_pod_place if pod else stage_place)(
+            save_dir, letter, *parse_place(args.stage_place)))
     return done
+
+
+def stage_pod_var(save_dir: pathlib.Path, letter: str, index: int, value: int) -> dict:
+    """Write `value` into Pools of Darkness variable `index` (1-based, as the
+    scripts number it) of `SAVGAM<letter>.PTY`: one byte, at `index - 1`."""
+    path = save_dir / f"SAVGAM{letter.upper()}.PTY"
+    data = bytearray(path.read_bytes())
+    if not 0 <= value <= 0xFF:
+        raise ValueError(f"value {value} is not one byte")
+    offset = dos_savegame.pod_var_offset(index)
+    before = data[offset]
+    dos_savegame.put_pod_var(data, index, value)
+    path.write_bytes(bytes(data))
+    return {"stage": "var", "file": path.name, "address": f"{index:#04x}",
+            "offset": hex(offset), "before": f"{before:02x}",
+            "after": f"{data[offset]:02x}"}
+
+
+def stage_pod_place(save_dir: pathlib.Path, letter: str, x: int, y: int,
+                    facing: int) -> dict:
+    """Put the party on square `x`,`y` facing `facing` (0 N, 1 E, 2 S, 3 W)
+    of `SAVGAM<letter>.PTY`, a save made in a dungeon; only the three square
+    bytes at 1024-1026 change."""
+    path = save_dir / f"SAVGAM{letter.upper()}.PTY"
+    data = bytearray(path.read_bytes())
+    if not (0 <= x <= 15 and 0 <= y <= 15 and 0 <= facing <= 3):
+        raise ValueError(f"place {x},{y},{facing}: x and y are 0 to 15, facing 0 to 3")
+    if not dos_savegame.pod_in_dungeon(bytes(data)):
+        raise ValueError(f"{path.name} was saved in the wilderness; a place can be "
+                         "staged in a dungeon save only")
+    before = list(dos_savegame.position(bytes(data)))
+    dos_savegame.put_position(data, x, y, facing)
+    path.write_bytes(bytes(data))
+    return {"stage": "place", "file": path.name, "before": before,
+            "after": [x, y, facing]}
 
 
 def place_changed(before: dict, after: dict) -> bool:
@@ -7004,6 +7364,43 @@ def expect_verdict(read: dict | None) -> str | None:
             refuted.append(f"expectation {e['name']}:{e['id']}:{e['minutes']}{data} "
                            f"refuted: {v['why']}")
     return "; ".join(refuted) or None
+
+
+def vault_verdict(results: list[dict], read: dict | None) -> str | None:
+    """Why a run with a `vault` step has not shown the vault it installed, or
+    None: the list must count the installed file's items, leaving must have
+    written `TMPVAULT.DAT` holding them and its coins, and the last saved
+    slot's vault, when a save followed, must hold the same."""
+    got = next((r for r in results if r.get("step") == "vault"), None)
+    if got is None:
+        return None
+    want = got["expected"]
+    tmp = got.get("tmpvault")
+    if tmp is None:
+        return f"leaving the vault wrote no {TMPVAULT}"
+    if not got["matches"]:
+        window = got.get("window") or {}
+        if "page" in window:
+            return (f"page {window['page']} of the vault's list reads "
+                    f"{window['read']}, not the names {tmp['file']} caches, "
+                    f"{window['names']}")
+        return (f"the vault listed {got['listed']} items where the installed "
+                f"{want['file'] or 'slot (no vault file)'} holds {want['items']}")
+    keys = ("items", "platinum", "gems", "jewelry")
+    if "error" in tmp or any(tmp[k] != want[k] for k in keys):
+        return (f"{tmp['file']} does not hold the installed vault: "
+                f"{tmp.get('error') or {k: tmp[k] for k in keys}} against "
+                f"{ {k: want[k] for k in keys} }")
+    if not read or not read.get("saved"):
+        return None
+    last = read["saved"][-1]
+    saved = (read.get("slots") or {}).get(last, {}).get("vault")
+    if saved is None:
+        return f"slot {last} was saved with no VAULT{last}.DAT"
+    held = {"items": len(saved["items"]), **{k: saved[k] for k in keys[1:]}}
+    if held != {k: want[k] for k in keys}:
+        return f"VAULT{last}.DAT holds {held}, not the installed {want}"
+    return None
 
 
 def walk_verdict(steps: list[Step], read: dict | None) -> str | None:
@@ -7069,7 +7466,13 @@ def read_step(save_dir: pathlib.Path, out: pathlib.Path, letter: str,
         if any(st.kind in ("walk", "turn") for st in steps):
             result["slots"][x]["place_changed"] = place_changed(before, after)
         previous = after
-    if saved and staged_vars:
+    if saved and staged_vars and title == "darkness":
+        data = (resave / f"SAVGAM{saved[-1]}.PTY").read_bytes()
+        result["staged_vars"] = {
+            f"{address:02X}": {"slot": saved[-1], "staged": value,
+                               "saved": dos_savegame.pod_var(data, address)}
+            for address, value in staged_vars}
+    elif saved and staged_vars:
         data = (resave / f"SAVGAM{saved[-1]}.DAT").read_bytes()
         container = dos_savegame.container_for(len(data))
         result["staged_vars"] = {
@@ -7078,8 +7481,8 @@ def read_step(save_dir: pathlib.Path, out: pathlib.Path, letter: str,
                                    data, dos_savegame.pool_address(address, container),
                                    container)}
             for address, value in staged_vars}
-        for row in result["staged_vars"].values():
-            row["held"] = row["staged"] == row["saved"]
+    for row in result.get("staged_vars", {}).values():
+        row["held"] = row["staged"] == row["saved"]
     if saved and expects:
         result["verdicts"] = [judge(e, result["slots"][saved[-1]]) for e in expects]
     for line in describe(result):
@@ -7209,11 +7612,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--stage-var", action="append", default=[], metavar="ADDRESS=VALUE",
                     help="stage one script-variable word of SAVGAM (the title's own "
                          "hex address, decimal or 0x hex value), after "
-                         "--stage-record, before the boot; a Silver Blades fight in "
+                         "--stage-record, before the boot; in darkness one byte "
+                         "of SAVGAM<L>.PTY by its 1-based hex index (A2=0 puts "
+                         "STORAGE on Elminster's menu); a Silver Blades fight in "
                          "area 16 needs 4C2D=1")
     ap.add_argument("--stage-place", default=None, metavar="X,Y,FACING",
                     help="stage the party's square and facing (0 to 15, facing 0 "
-                         "to 3 = N E S W) in an indoor SAVGAM, after --stage-var, "
+                         "to 3 = N E S W) in an indoor SAVGAM, or a dungeon "
+                         "SAVGAM<L>.PTY in darkness, after --stage-var, "
                          "before the boot")
     ap.add_argument("--first-bar-key", default=None, metavar="KEY",
                     help="SPACE or one letter or digit, pressed once at the "

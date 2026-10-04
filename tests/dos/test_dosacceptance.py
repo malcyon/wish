@@ -6090,13 +6090,13 @@ def test_pool_map_bars_distinguish_the_measured_screens(monkeypatch):
 @pytest.fixture
 def pod_town(monkeypatch, pod_yes_no):
     """The driver knows the fake's town bar by its own signature."""
-    monkeypatch.setattr(da, "POD_TOWN_BAR",
+    monkeypatch.setattr(da, "POD_ELMINSTER_BAR",
                         screens.bar_signature(_screen(FakePod.BARS["town"], b"")))
 
 
 def test_the_measured_town_bar_is_sixteen_hex_digits_and_not_a_map():
-    assert len(da.POD_TOWN_BAR) == 16 and int(da.POD_TOWN_BAR, 16) >= 0
-    assert da.POD_TOWN_BAR not in da.POD_MAP_BARS.values()
+    assert len(da.POD_ELMINSTER_BAR) == 16 and int(da.POD_ELMINSTER_BAR, 16) >= 0
+    assert da.POD_ELMINSTER_BAR not in da.POD_MAP_BARS.values()
     assert not hasattr(da, "POD_TOWN_LEAVE")
 
 
@@ -6104,7 +6104,7 @@ def test_a_town_bar_stops_begin_with_a_shot_and_presses_nothing(tmp_path,
                                                                pod_town):
     game, d = _pod_driver(tmp_path, question=False, tours=1, after_tour="town")
     d.load()
-    with pytest.raises(da.StepFailed, match="town services screen.*lost-begin-screen"):
+    with pytest.raises(da.StepFailed, match="Elminster's menu.*lost-begin-screen"):
         d.begin()
     assert game.into_town == [] and d.where == "party"
 
@@ -6115,7 +6115,7 @@ def test_a_town_screen_after_the_journal_question_is_a_town_stop(tmp_path,
     game, d = _pod_driver(tmp_path, question=False, journal=True, tours=1,
                           after_tour="town")
     d.load()
-    with pytest.raises(da.StepFailed, match="town services screen.*lost-begin-screen"):
+    with pytest.raises(da.StepFailed, match="Elminster's menu.*lost-begin-screen"):
         d.begin()
     assert [e["kind"] for e in d.events] == ["journal", "yes_no"]
     assert game.into_town == []
@@ -6129,6 +6129,409 @@ def test_an_unknown_bar_is_not_taken_for_the_town(tmp_path, pod_yes_no):
     with pytest.raises(da.StepFailed, match="lost-begin-screen"):
         d.begin()
     assert game.into_town == []
+
+
+# -- vault: Elminster's STORAGE in Limbo ------------------------------------------
+
+_BAR_INK = b"\x55\xff\x55"
+
+
+def _vault_record(n: int) -> bytes:
+    """A 63-byte record whose cached name (bytes 0x00-0x29) is `Item n `."""
+    name = f"Item {n} ".encode()
+    return (bytes((len(name),)) + name).ljust(63, b"\0")
+
+
+def _vault_file(items: int, coins=(0, 0, 0)) -> bytes:
+    """A DOS `VAULT<L>.DAT`: three u32le coins and `items` 63-byte records."""
+    import struct
+    return struct.pack("<III", *coins) + b"".join(_vault_record(n + 1)
+                                                  for n in range(items))
+
+
+class FakeVault(FakePod):
+    """Pools of Darkness from `Begin` on, for a party saved in area 18:
+    Elminster's menu (`STORAGE` unless `storage` is False), whose `S` opens
+    the vault and `R` the camp loop; the vault's bar as the menu builder at
+    `GAME.OVR` 0x330D draws it, `TAKE` only with something stored; `T` asks
+    `TAKE: MONEY ITEMS EXIT` when coins and items are both stored, and opens
+    the item list at once when only items are; the list draws 22 names a
+    window, `NEXT` moving it 22 on but never past the last full window, as
+    the game's did; `E` backs out of each, and leaving
+    the vault writes `TMPVAULT.DAT`, which a camp `SAVE` renames to the
+    slot's `VAULT<L>.DAT`.  Every bar is drawn as text in the stand-in font."""
+
+    def __init__(self, tmp, vault: bytes | None, *, storage=True, rest_opens=True,
+                 misread=None, **kw):
+        super().__init__(tmp, question=False, **kw)
+        if vault is not None:
+            (self.save_dir / "VAULTA.DAT").write_bytes(vault)
+        self.storage, self.rest_opens = storage, rest_opens
+        self.vault_page, self.from_elminster = 0, False
+        #: An item number the list draws under another name.
+        self.misread = misread
+
+    def top(self) -> int:
+        items, _ = self.stored()
+        return max(0, min(self.vault_page * da.VAULT_WINDOW, items - da.VAULT_WINDOW))
+
+    def arrival(self) -> str:
+        return "town"
+
+    def stored(self) -> tuple[int, int]:
+        path = self.save_dir / "VAULTA.DAT"
+        if not path.is_file():
+            return 0, 0
+        data = path.read_bytes()
+        return (len(data) - 12) // 63, sum(data[:12])
+
+    def key(self, k, gap=0.0):
+        m = self.mode
+        items, coins = self.stored()
+        if m == "town":
+            self.keys.append(k)
+            self.into_town.append(k)
+            if k == "s" and self.storage:
+                self.mode = "vault"
+            elif k == "r" and self.rest_opens:
+                self.mode, self.from_elminster = "camp", True
+        elif m == "vault":
+            self.keys.append(k)
+            if k == "t" and items:
+                self.mode = "take" if coins else "vlist"
+                self.vault_page = 0
+            elif k == "e":
+                (self.save_dir / "TMPVAULT.DAT").write_bytes(
+                    (self.save_dir / "VAULTA.DAT").read_bytes()
+                    if (self.save_dir / "VAULTA.DAT").is_file() else bytes(12))
+                self.mode = "town"
+        elif m == "take":
+            self.keys.append(k)
+            if k == "i":
+                self.mode, self.vault_page = "vlist", 0
+            elif k == "e":
+                self.mode = "vault"
+        elif m == "vlist":
+            self.keys.append(k)
+            if k == "n" and self.top() + da.VAULT_WINDOW < items:
+                self.vault_page += 1
+            elif k == "e":
+                self.mode = "take" if coins else "vault"
+        elif m == "save" and k.upper() in "ABCDEFGHIJ":
+            tmp = self.save_dir / "TMPVAULT.DAT"
+            if tmp.is_file():
+                tmp.rename(self.save_dir / f"VAULT{k.upper()}.DAT")
+            super().key(k, gap)
+        else:
+            super().key(k, gap)
+
+    def bar_text(self) -> str:
+        items, coins = self.stored()
+        if self.mode == "town":
+            return ("HEAL TRAIN STORAGE REST MOVE ON" if self.storage
+                    else "HEAL TRAIN REST MOVE ON")
+        if self.mode == "vault":
+            return "VIEW " + ("TAKE " if items else "") + "POOL MONEY ITEMS EXIT"
+        if self.mode == "take":
+            return "TAKE: MONEY ITEMS EXIT"
+        if self.mode == "vlist":
+            more = self.top() + da.VAULT_WINDOW < items
+            back = " PREV" if self.vault_page else ""
+            return "ITEMS : TAKE" + (" NEXT" if more else back) + " EXIT"
+        return "SAVE VIEW MAGIC ALTER EXIT"
+
+    def capture(self):
+        if self.mode not in ("town", "vault", "take", "vlist") and not (
+                self.mode == "camp" and self.from_elminster):
+            return super().capture()
+        px = bytearray(W * H * 3)
+        _draw(px, _FONT_BLOCK, da.BAR_ROW, 0, self.bar_text(), _BAR_INK)
+        if self.mode == "vlist":
+            items, _ = self.stored()
+            first = self.top()
+            for i, n in enumerate(range(first, min(first + da.VAULT_WINDOW, items))):
+                name = "ITEM X" if n + 1 == self.misread else f"ITEM {n + 1}"
+                _draw(px, _FONT_BLOCK, 1 + i, 1, name, _NAME_INK)
+        return dosbox.Screen(W, H, bytes(px))
+
+
+@pytest.fixture
+def elminster(monkeypatch):
+    """The driver knows the fake's Elminster menu by its own signature."""
+    def sig(text):
+        px = bytearray(W * H * 3)
+        _draw(px, _FONT_BLOCK, da.BAR_ROW, 0, text, _BAR_INK)
+        return screens.bar_signature(dosbox.Screen(W, H, bytes(px)))
+    monkeypatch.setattr(da, "POD_ELMINSTER_BAR", sig("HEAL TRAIN STORAGE REST MOVE ON"))
+    return sig
+
+
+def _vault_driver(tmp_path, vault, **kw):
+    game = FakeVault(tmp_path, vault, **kw)
+    d = da.Driver(game, lambda **k: None, "A", "darkness", party_size=game.size)
+    d._font = _FONT
+    d.elminster_ok = True
+    d.load()
+    d.begin()
+    game.keys.clear()
+    return game, d
+
+
+def test_vault_is_a_darkness_step_straight_after_begin():
+    steps = [da.parse_step(t) for t in ("load", "begin", "vault", "camp", "save D", "read")]
+    da.validate_steps(steps, "darkness")
+    assert steps[2].kind == "vault"
+    shot = [da.parse_step(t) for t in ("load", "begin", "shot x", "vault")]
+    da.validate_steps(shot, "darkness")
+    for bad, title, match in (
+            (("load", "vault"), "darkness", "follows begin"),
+            (("load", "begin", "camp", "vault"), "darkness", "follows begin"),
+            (("load", "begin", "vault"), "curse", "darkness only"),
+            (("load", "begin", "vault", "walk 1"), "darkness", "needs the map"),
+            (("load", "begin", "vault", "vault"), "darkness", "follows begin")):
+        with pytest.raises(ValueError, match=match):
+            da.validate_steps([da.parse_step(t) for t in bad], title)
+
+
+def test_begin_takes_elminsters_menu_as_its_end_only_for_a_vault_run(tmp_path, elminster):
+    game = FakeVault(tmp_path, _vault_file(3))
+    d = da.Driver(game, lambda **k: None, "A", "darkness", party_size=game.size)
+    d.load()
+    with pytest.raises(da.StepFailed, match="Elminster's menu.*lost-begin-screen"):
+        d.begin()
+    assert game.into_town == [] and d.where == "party"
+    (tmp_path / "second").mkdir()
+    game, d = _vault_driver(tmp_path / "second", _vault_file(3))
+    assert d.where == "elminster" and game.mode == "town" and game.into_town == []
+
+
+def test_vault_lists_every_page_and_leaves_through_each_exit(tmp_path, elminster):
+    """SavGamH's vault: 40 items and coins, so `TAKE` asks first and the list
+    runs to three pages."""
+    game, d = _vault_driver(tmp_path, _vault_file(40, (1750, 495, 82)))
+    got = d.vault()
+    assert game.keys == ["s", "t", "i", "n", "e", "e", "e"]
+    assert game.mode == "town" and d.where == "elminster"
+    assert [len(p["items"]) for p in got["pages"]] == [22, 22]
+    assert got["pages"][0]["items"][0] == "ITEM 1" and got["pages"][1]["items"][0] == "ITEM 19"
+    assert got["window"] == {"tops": [0, 18], "covered": True}
+    assert got["listed"] == 40 and got["matches"] and got["take_prompt"]
+    assert got["expected"] == {"file": "VAULTA.DAT", "items": 40, "platinum": 1750,
+                               "gems": 495, "jewelry": 82}
+    assert got["tmpvault"]["items"] == 40 and got["tmpvault"]["platinum"] == 1750
+    assert da.vault_verdict([{"step": "vault", **got}], None) is None
+
+
+@pytest.mark.parametrize("items, keys", [(22, ["s", "t", "i", "e", "e", "e"]),
+                                         (23, ["s", "t", "i", "n", "e", "e", "e"]),
+                                         (66, ["s", "t", "i", "n", "n", "e", "e", "e"])])
+def test_the_list_window_is_checked_at_each_size(tmp_path, elminster, items, keys):
+    game, d = _vault_driver(tmp_path, _vault_file(items, (1, 0, 0)))
+    got = d.vault()
+    assert game.keys == keys and got["matches"] and got["listed"] == items
+
+
+def test_a_list_that_reads_another_name_does_not_match(tmp_path, elminster):
+    game, d = _vault_driver(tmp_path, _vault_file(40, (1750, 495, 82)), misread=30)
+    got = d.vault()
+    assert not got["matches"] and got["window"]["page"] == 2
+    assert "page 2 of the vault's list" in da.vault_verdict([{"step": "vault", **got}],
+                                                            None)
+
+
+def test_items_with_no_coins_open_the_list_at_once(tmp_path, elminster):
+    game, d = _vault_driver(tmp_path, _vault_file(5))
+    got = d.vault()
+    assert game.keys == ["s", "t", "e", "e"]
+    assert got["listed"] == 5 and got["matches"] and not got["take_prompt"]
+
+
+@pytest.mark.parametrize("vault", [bytes(12), None])
+def test_an_empty_vault_offers_no_take_and_lists_nothing(tmp_path, elminster, vault):
+    game, d = _vault_driver(tmp_path, vault)
+    got = d.vault()
+    assert game.keys == ["s", "e"] and "TAKE" not in got["vault_bar"]
+    assert got["listed"] == 0 and got["matches"] and got["pages"] == []
+    assert got["tmpvault"]["items"] == 0 and got["tmpvault"]["size"] == 12
+
+
+def test_a_menu_without_storage_stops_with_the_stage_var_and_presses_nothing(
+        tmp_path, elminster, monkeypatch):
+    game = FakeVault(tmp_path, _vault_file(3), storage=False)
+    monkeypatch.setattr(da, "POD_ELMINSTER_BAR", elminster("HEAL TRAIN REST MOVE ON"))
+    d = da.Driver(game, lambda **k: None, "A", "darkness", party_size=game.size)
+    d._font, d.elminster_ok = _FONT, True
+    d.load()
+    d.begin()
+    game.keys.clear()
+    with pytest.raises(da.StepFailed, match="--stage-var A2=0.*lost-vault-storage"):
+        d.vault()
+    assert game.keys == []
+
+
+def test_camp_from_elminster_presses_rest_and_the_save_stores_the_vault(
+        tmp_path, elminster):
+    game, d = _vault_driver(tmp_path, _vault_file(40, (1750, 495, 82)))
+    d.vault()
+    got = d.camp()
+    assert game.keys[-1] == "r" and got["from"] == "elminster"
+    assert got["words"] == ["SAVE", "VIEW", "MAGIC", "ALTER", "EXIT"]
+    saved = d.save("D")
+    assert saved["back_in_camp"]
+    assert (game.save_dir / "VAULTD.DAT").read_bytes() == _vault_file(40, (1750, 495, 82))
+
+
+def test_rest_that_opens_no_camp_stops(tmp_path, elminster):
+    game, d = _vault_driver(tmp_path, _vault_file(3), rest_opens=False)
+    with pytest.raises(da.StepFailed, match="changed nothing.*lost-camp-elminster"):
+        d.camp()
+
+
+def test_vault_needs_elminsters_menu(tmp_path):
+    game, d = _pod_driver(tmp_path, question=False)
+    d.load()
+    with pytest.raises(da.StepFailed, match="Elminster's menu"):
+        d.vault()
+
+
+def _vault_result(listed=40, items=40, tmp=40, coins=(1750, 495, 82)):
+    want = {"file": "VAULTA.DAT", "items": items, "platinum": coins[0],
+            "gems": coins[1], "jewelry": coins[2]}
+    # `listed` is how many names the screen covered, or None.
+    t = None if tmp is None else {"file": "TMPVAULT.DAT", "items": tmp,
+                                  "platinum": coins[0], "gems": coins[1],
+                                  "jewelry": coins[2]}
+    return [{"step": "vault", "listed": listed, "expected": want,
+             "matches": listed == items, "tmpvault": t}]
+
+
+def _read_vault(items=40, coins=(1750, 495, 82)):
+    return {"saved": ["D"], "slots": {"D": {"vault": {
+        "platinum": coins[0], "gems": coins[1], "jewelry": coins[2],
+        "items": [{}] * items}}}}
+
+
+def test_the_window_check_reads_a_pointer_cell_as_any_character():
+    names = [f"ITEM {n}" for n in range(1, 41)]
+    first, last = names[:22], names[18:]
+    assert da.vault_window_check([first, last], names) == {"tops": [0, 18],
+                                                           "covered": True}
+    blurred = ["IT?M 1"] + first[1:]
+    assert da.vault_window_check([blurred, last], names)["covered"]
+    assert not da.vault_window_check([first], names)["covered"]
+    assert da.vault_window_check([first, names[22:]], names)["page"] == 2
+    assert da.vault_window_check([], []) == {"tops": [], "covered": True}
+    assert da.record_name(_vault_record(7)) == "ITEM 7"
+
+
+def test_the_vault_verdict():
+    assert da.vault_verdict([{"step": "load"}], None) is None
+    assert da.vault_verdict(_vault_result(), _read_vault()) is None
+    assert "listed 39 items" in da.vault_verdict(_vault_result(listed=39), None)
+    assert "no TMPVAULT.DAT" in da.vault_verdict(_vault_result(tmp=None), None)
+    assert "does not hold" in da.vault_verdict(_vault_result(tmp=12), None)
+    assert "VAULTD.DAT holds" in da.vault_verdict(_vault_result(), _read_vault(items=39))
+    assert "VAULTD.DAT holds" in da.vault_verdict(
+        _vault_result(), _read_vault(coins=(0, 495, 82)))
+    lost = {"saved": ["D"], "slots": {"D": {}}}
+    assert "no VAULTD.DAT" in da.vault_verdict(_vault_result(), lost)
+
+
+def _pod_save(tmp_path, area=18, storage=0, dungeon=1) -> pathlib.Path:
+    from goldbox import dos_savegame
+    saves = tmp_path / "saves"
+    saves.mkdir(exist_ok=True)
+    data = bytearray(1364)
+    dos_savegame.put_pod_var(data, da.POD_AREA_VAR, area)
+    dos_savegame.put_pod_var(data, da.POD_STORAGE_VAR, storage)
+    dos_savegame.put_pod_var(data, dos_savegame.POD_IN_DUNGEON, dungeon)
+    dos_savegame.put_position(data, 7, 0, 3)
+    (saves / "SAVGAMA.PTY").write_bytes(bytes(data))
+    (saves / "CHRDATA1.SAV").write_bytes(b"x")
+    return saves
+
+
+def _vault_args(tmp_path, saves, **extra):
+    args = _run_args(tmp_path, ["load", "begin", "vault", "camp", "save D", "read"])
+    args.title, args.save = "darkness", str(saves)
+    for k, v in extra.items():
+        setattr(args, k, v)
+    return args
+
+
+def test_a_vault_run_needs_area_18_and_storage_before_a_slot_is_claimed(
+        monkeypatch, tmp_path):
+    log = _fake_run(monkeypatch, tmp_path)
+    da.check_staging(_vault_args(tmp_path, _pod_save(tmp_path)),
+                     tmp_path / "saves", "A")
+    saves = _pod_save(tmp_path, area=17)
+    with pytest.raises(ValueError, match="area 18.*names area 17"):
+        da.check_staging(_vault_args(tmp_path, saves), saves, "A")
+    with pytest.raises(ValueError, match="area 18"):
+        da.run(_vault_args(tmp_path, saves))
+    saves = _pod_save(tmp_path, storage=1)
+    with pytest.raises(ValueError, match="--stage-var A2=0"):
+        da.check_staging(_vault_args(tmp_path, saves), saves, "A")
+    da.check_staging(_vault_args(tmp_path, saves, stage_var=["A2=0"]), saves, "A")
+    assert "claim" not in log
+
+
+def test_stage_var_writes_one_byte_of_a_pools_of_darkness_save(tmp_path):
+    saves = _pod_save(tmp_path, storage=1)
+    before = (saves / "SAVGAMA.PTY").read_bytes()
+    args = _vault_args(tmp_path, saves, stage_var=["A2=0"], stage_record=[])
+    da.check_staging(args, saves, "A")
+    done = da.stage(saves, "A", args)
+    after = (saves / "SAVGAMA.PTY").read_bytes()
+    assert done == [{"stage": "var", "file": "SAVGAMA.PTY", "address": "0xa2",
+                     "offset": "0xa1", "before": "01", "after": "00"}]
+    assert [i for i in range(1364) if before[i] != after[i]] == [0xA1]
+
+
+@pytest.mark.parametrize("bad, error", [("A2=256", ValueError), ("0=1", Exception),
+                                        ("401=1", Exception)])
+def test_a_pools_of_darkness_stage_var_outside_one_byte_or_the_array_is_blocked(
+        tmp_path, bad, error):
+    saves = _pod_save(tmp_path)
+    args = _vault_args(tmp_path, saves, stage_var=[bad])
+    args.steps = ["load"]
+    with pytest.raises(error):
+        da.check_staging(args, saves, "A")
+
+
+def test_stage_place_moves_a_pools_of_darkness_dungeon_party(tmp_path):
+    saves = _pod_save(tmp_path)
+    before = (saves / "SAVGAMA.PTY").read_bytes()
+    args = _vault_args(tmp_path, saves, stage_var=[], stage_record=[],
+                       stage_place="5,9,1")
+    args.steps = ["load"]
+    da.check_staging(args, saves, "A")
+    done = da.stage(saves, "A", args)
+    after = (saves / "SAVGAMA.PTY").read_bytes()
+    assert done == [{"stage": "place", "file": "SAVGAMA.PTY", "before": [7, 0, 3],
+                     "after": [5, 9, 1]}]
+    assert [i for i in range(1364) if before[i] != after[i]] == [1024, 1025, 1026]
+
+
+def test_stage_place_blocks_a_pools_of_darkness_wilderness_save(tmp_path):
+    saves = _pod_save(tmp_path, dungeon=0)
+    args = _vault_args(tmp_path, saves, stage_place="5,9,1")
+    args.steps = ["load"]
+    with pytest.raises(ValueError, match="wilderness"):
+        da.check_staging(args, saves, "A")
+    with pytest.raises(ValueError, match="wilderness"):
+        da.stage_pod_place(saves, "A", 5, 9, 1)
+
+
+def test_read_reports_a_pools_of_darkness_staged_byte(tmp_path, monkeypatch):
+    save = _pod_save(tmp_path)
+    (save / "SAVGAMD.PTY").write_bytes((save / "SAVGAMA.PTY").read_bytes())
+    monkeypatch.setattr(da, "read_slot", lambda *a: {"clock_minutes": 0, "nodes": [],
+                                                    "characters": []})
+    got = da.read_step(save, tmp_path / "out", "A", ["D"], [], [], [(0xA2, 0)],
+                       "darkness")
+    assert got["staged_vars"] == {"A2": {"slot": "D", "staged": 0, "saved": 0,
+                                         "held": True}}
 
 
 # -- turn N: the control of a walk ---------------------------------------------
@@ -8507,18 +8910,22 @@ def test_stage_var_blocks_an_address_outside_the_array_and_a_bad_value(tmp_path)
     assert (tmp_path / "SAVGAMD.DAT").read_bytes() == bytes(5469)
 
 
-def test_stage_var_blocks_pools_of_darkness_before_a_slot_is_claimed(
+def test_stage_var_outside_the_pools_of_darkness_array_is_blocked_before_a_slot_is_claimed(
         monkeypatch, tmp_path):
     log, args = _staged_run(monkeypatch, tmp_path, stage_var=["4C2D=1"])
     saves = tmp_path / "saves"
     (saves / "SAVGAMA.DAT").unlink()
     (saves / "SAVGAMA.PTY").write_bytes(bytes(1364))
     args.title = "darkness"
-    with pytest.raises(ValueError, match="--stage-var"):
+    with pytest.raises(ValueError, match="outside the 1024"):
         da.check_staging(args, saves, "A")
-    with pytest.raises(ValueError, match="--stage-var"):
+    with pytest.raises(ValueError, match="outside the 1024"):
         da.run(args)
     assert "claim" not in log
+    (saves / "SAVGAMA.PTY").unlink()
+    args.stage_var = ["A2=0"]
+    with pytest.raises(ValueError, match="--stage-var needs a SAVGAMA.PTY"):
+        da.check_staging(args, saves, "A")
 
 
 def test_the_command_line_wires_stage_var_after_stage_record(tmp_path):
@@ -8619,18 +9026,21 @@ def test_main_blocks_a_bad_stage_place_before_a_slot_is_claimed(tmp_path, monkey
     assert "6,14" in capsys.readouterr().err
 
 
-def test_stage_place_blocks_pools_of_darkness_before_a_slot_is_claimed(
+def test_stage_place_blocks_a_pools_of_darkness_wilderness_save_before_a_slot_is_claimed(
         monkeypatch, tmp_path):
     log, args = _staged_run(monkeypatch, tmp_path, stage_place="6,14,0")
     saves = tmp_path / "saves"
     (saves / "SAVGAMA.DAT").unlink()
     (saves / "SAVGAMA.PTY").write_bytes(bytes(1364))
     args.title = "darkness"
-    with pytest.raises(ValueError, match="--stage-place"):
+    with pytest.raises(ValueError, match="--stage-place.*wilderness"):
         da.check_staging(args, saves, "A")
-    with pytest.raises(ValueError, match="--stage-place"):
+    with pytest.raises(ValueError, match="--stage-place.*wilderness"):
         da.run(args)
     assert "claim" not in log
+    (saves / "SAVGAMA.PTY").unlink()
+    with pytest.raises(ValueError, match="--stage-place needs a SAVGAMA.PTY"):
+        da.check_staging(args, saves, "A")
 
 
 @pytest.mark.parametrize("size, match", [(13149, "outdoors"),
