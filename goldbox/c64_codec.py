@@ -2253,8 +2253,9 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                 # payload there is no row to write, and the id keeps the
                 # trait slot it always had.
                 # Members may carry different data for one id; the higher
-                # data byte wins, as in `dos_codec.c64_party`, so the row
-                # does not depend on the order the members are written.
+                # data byte wins, as in `dos_codec.c64_party`. Both sides are
+                # compared after bit 7 is cleared, so the row does not depend
+                # on the order the members are written.
                 held = effects.slot_for(payload, int(node[0]),
                                         effects.PARTY_WIDE)
                 if held is not None and not payload[
@@ -2262,7 +2263,8 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                     old = int(payload[effects.EFFECT_MAGNITUDE_OFFSET + held])
                     if effects.is_prayer(int(node[0])):
                         old = effects.prayer_dos_data(title_key, old)
-                    if int(node[3]) <= old:
+                    if effects.c64_party_row_magnitude(
+                            int(node[0]), int(node[3])) <= old:
                         continue
                     effects.write_effect(
                         payload, held, int(node[0]), effects.PARTY_WIDE, 0,

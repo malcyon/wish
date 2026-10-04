@@ -3710,6 +3710,19 @@ def test_pool_prayer_data_is_compared_as_data_not_as_the_c64_magnitude(order):
     assert _rows(payload)[63] == (49, 0xFF, 0, 0x03)
 
 
+@pytest.mark.parametrize("effect_id", [5, 35])
+@pytest.mark.parametrize("order", [1, -1])
+def test_members_with_data_differing_in_bit_7_write_one_row_in_either_order(
+        effect_id, order):
+    # Bit 7 is cleared on the way out, so 0x85 and 0x06 compare as 0x05 and
+    # 0x06 and the higher of those is the row, whichever member comes first.
+    payload = _write_members(POOL_OF_RADIANCE,
+                             [[bytes((effect_id, 0, 0, 0x85, 0))],
+                              [bytes((effect_id, 0, 0, 0x06, 0))]], order)
+    assert _rows(payload)[63] == (effect_id, 0xFF, 0, 0x06)
+    assert _rows(payload)[62] == (0, 0, 0, 0)
+
+
 def test_a_permanent_and_a_finite_row_of_one_id_write_back_only_the_permanent():
     game = c64_port.CURSE_OF_THE_AZURE_BONDS
     payload = _synthetic_c64_party_payload(

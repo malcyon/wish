@@ -1749,7 +1749,7 @@ def test_write_party_row_lets_a_never_expiring_row_win_in_either_order(
     assert rows[62] == (0, 0, 0, 0)
 
 
-def test_c64_party_row_keeps_the_data_byte():
+def test_c64_party_row_clears_bit_7_of_the_data_byte_for_ids_5_and_35():
     node = effects.RunningEffect(5, 10, 0x85, 0)
     assert effects.c64_party_row("pool-of-radiance", node) == (5, 0x05)
     assert isinstance(effects.c64_party_row(
