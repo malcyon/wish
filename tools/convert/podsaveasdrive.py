@@ -19,9 +19,14 @@ import json
 import pathlib
 import subprocess
 import sys
+import traceback
 
 from editor import convert
-from goldbox import amiga_adf
+from goldbox import amiga_adf, amiga_savegame, dos_codec, dos_savegame
+
+#: Errors the readers and writers raise for a save or disk they cannot take.
+KNOWN_ERRORS = (convert.ConvertError, dos_savegame.DosSaveError, dos_codec.DosRecordError,
+                amiga_adf.AmigaDiskError, amiga_savegame.AmigaSaveError)
 
 REPORT_NAME = "saveas-report.json"
 COMMIT_NAME = "commit.txt"
@@ -53,8 +58,11 @@ def run(specimen: pathlib.Path, disk3: pathlib.Path, out: pathlib.Path,
                     "dropped": [], "losses": [], "warnings": []}
     out.mkdir(parents=True, exist_ok=True)
     # The folder is this tool's own output: an image from an earlier run must not pass for this one's.
+    # Never an input that happens to sit in `out` under such a name, a link, or a directory.
     for stale in out.glob("disk3-*.adf"):
-        stale.unlink()
+        if (stale.is_file() and not stale.is_symlink()
+                and stale.resolve() not in (specimen, disk3)):
+            stale.unlink()
     outcome: dict = {"source": str(specimen), "to": "amiga"}
     report["save_as"] = outcome
     try:
@@ -63,7 +71,9 @@ def run(specimen: pathlib.Path, disk3: pathlib.Path, out: pathlib.Path,
             source, source.slot, None, disk_three=amiga_adf.AmigaDisk.open(disk3),
             replace=replace)
     except (convert.ConvertError, ValueError, OSError) as exc:
-        # ValueError covers the DOS save, DOS record and Amiga disk errors; OSError an unreadable file.
+        if not isinstance(exc, KNOWN_ERRORS):
+            # An unnamed ValueError or OSError may be a bug, so keep its traceback.
+            traceback.print_exc()
         outcome["stopped"] = [type(exc).__name__, str(exc)]
     else:
         image = out / f"disk3-{rehearsal.slot}.adf"

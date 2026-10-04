@@ -238,3 +238,34 @@ def test_paths_in_the_report_are_absolute(staged, monkeypatch):
              report["save_as"]["source"], report["save_as"]["destination"]]
     assert all(pathlib.Path(p).is_absolute() for p in paths)
     assert report["save_as"]["source"] == report["specimen"]
+
+
+def test_out_holding_the_inputs_under_a_stale_name_does_not_delete_them(staged):
+    specimen, disk3, out = staged
+    folder = disk3.parent
+    kept = folder / "disk3-input.adf"
+    kept.write_bytes(disk3.read_bytes())
+    (folder / "disk3-dir.adf").mkdir()
+    (folder / "disk3-old.adf").write_bytes(b"old")
+    report = podsaveasdrive.run(specimen, kept, folder)
+    assert kept.is_file() and not (folder / "disk3-old.adf").exists()
+    assert (folder / "disk3-dir.adf").is_dir()
+    assert not report["save_as"].get("stopped"), report
+    assert (folder / "saveas-report.json").is_file()
+
+
+def test_an_unreadable_disk_three_is_a_stopped_report_with_a_traceback(
+        tmp_path, monkeypatch, capsys):
+    specimen = _specimen(tmp_path)
+    monkeypatch.setattr(
+        convert.Source, "detect",
+        classmethod(lambda cls, path, party=None, slot=None: convert.Source(
+            port="dos", title=dos_port.POOLS_OF_DARKNESS, path=pathlib.Path(path),
+            slot=LETTER)))
+    monkeypatch.setattr(convert.PodDosToAmiga, "rehearse", _fake_rehearsal())
+    disk3 = tmp_path / "disk3.adf"
+    disk3.mkdir()
+    report = podsaveasdrive.run(specimen, disk3, tmp_path / "out")
+    assert report["save_as"]["stopped"][0] in ("IsADirectoryError", "PermissionError")
+    assert "Traceback" in capsys.readouterr().err
+    assert not list((tmp_path / "out").glob("*.adf"))
