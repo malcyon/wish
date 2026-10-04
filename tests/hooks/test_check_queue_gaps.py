@@ -9,7 +9,6 @@ import importlib.util
 import io
 import json
 import pathlib
-import stat
 import sys
 
 import pytest
@@ -30,15 +29,12 @@ def _module():
 def fake(tmp_path, monkeypatch):
     """A fake Plane runtime whose queuegap.py runs the given Python body."""
     mod = _module()
-    wrapper = tmp_path / "python"
-    wrapper.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
-    wrapper.chmod(wrapper.stat().st_mode | stat.S_IXUSR)
     config = tmp_path / "config.json"
     config.write_text("{}")
     script = tmp_path / "tools" / "plane" / "queuegap.py"
     script.parent.mkdir(parents=True)
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
-    monkeypatch.setattr(mod, "plane_python", lambda: str(wrapper))
+    monkeypatch.setattr(mod, "plane_python", lambda: sys.executable)
     monkeypatch.setattr(mod, "plane_config", lambda: str(config))
 
     def install(body):
