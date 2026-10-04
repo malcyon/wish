@@ -143,9 +143,13 @@ _helper_at: float | None = None
 
 
 #: The pieces of an unfinished sweep, `{address: (when it was read, bytes)}`.
-_sweep_cache: dict[int, tuple[float, bytes]] = {}
+#: Keyed by address and size: a `MemHeader` sits at the start of the region it
+#: describes, so a small read and a piece can share an address.
+_sweep_cache: dict[tuple[int, int], tuple[float, bytes]] = {}
 #: The size of piece the next sweep reads.
 _piece = SWEEP_CHUNK
+#: The machine's `(base, size)` regions, measured with the sweep and kept for the target.
+_memory: tuple[tuple[int, int], ...] | None = None
 
 
 class SweepPaused(amiga.FsuaeError):
@@ -169,7 +173,8 @@ def _chunked_read(transport, deadline_clock):
         nonlocal fetched
         out = bytearray()
         for at in range(base, base + length, _piece):
-            held = _sweep_cache.get(at)
+            size = min(_piece, base + length - at)
+            held = _sweep_cache.get((at, size))
             blob = None if held is None else held[1]
             if blob is None:
                 # One piece at least per call, so a slow machine finishes.
@@ -177,15 +182,14 @@ def _chunked_read(transport, deadline_clock):
                     raise SweepPaused("still sweeping the Amiga's memory")
                 try:
                     blob = transport.read_memory(
-                        at, min(_piece, base + length - at),
-                        timeout=amiga.FsuaeGdb.POLL_TIMEOUT)
+                        at, size, timeout=amiga.FsuaeGdb.POLL_TIMEOUT)
                 except amiga.FsuaeError:
                     # `_unresolved` is how the transport records a timeout; a
                     # rejected request (`E01`) is not the machine being slow.
                     if getattr(transport, "_unresolved", False):
                         _piece = SWEEP_SMALL_CHUNK
                     raise
-                _sweep_cache[at] = (started, blob)
+                _sweep_cache[(at, size)] = (started, blob)
                 fetched += 1
             out += blob
         return bytes(out)
@@ -198,10 +202,10 @@ def reset() -> None:
 
     Costs nothing: the helper keeps the emulator's connection.
     """
-    global _transport, _port, _machine, _base, _swept_at, _piece
+    global _transport, _port, _machine, _base, _swept_at, _piece, _memory
     if _transport is not None:
         _transport.close()
-    _transport = _port = _machine = _base = _swept_at = None
+    _transport = _port = _machine = _base = _swept_at = _memory = None
     _sweep_cache.clear()
     _piece = SWEEP_CHUNK
 
@@ -274,7 +278,7 @@ def connect(port: int | None = None, opener=None,
     would end the run's debugging, so an unloaded game is waited out and not
     reconnected to.
     """
-    global _transport, _port, _machine, _base, _swept_at, _piece
+    global _transport, _port, _machine, _base, _swept_at, _piece, _memory
     wanted = amiga.FSUAE_PORT if port is None else port
     if _transport is not None and (_transport.lost or _transport.sock is None
                                    or _port != wanted):
@@ -295,19 +299,24 @@ def connect(port: int | None = None, opener=None,
                 f"the last sweep of the Amiga's memory was {now - _swept_at:.1f}"
                 f"s ago and no more than one is made every {SWEEP_EVERY:.0f}s")
         try:
+            # One reader, so the measurement and the sweep share one deadline.
+            read = _chunked_read(_transport, deadline_clock)
+            if _memory is None:
+                _memory = amiga.memory_regions(read)
             found = amiga.locate_machines(
-                _chunked_read(_transport, deadline_clock),
-                amiga.MACHINES.values(), sweep_all=True)
+                read, amiga.MACHINES.values(), _memory, sweep_all=True)
         except SweepPaused:
             raise
         except Exception:
             _swept_at = clock()
             _sweep_cache.clear()
+            _memory = None
             raise
         _swept_at = clock()
         _sweep_cache.clear()
         _piece = SWEEP_CHUNK
         if not found:
+            _memory = None
             raise amiga.FsuaeError(
                 "none of the titles this knows is in the Amiga's memory yet")
         if len(found) > 1:
@@ -323,7 +332,8 @@ def connect(port: int | None = None, opener=None,
                         if m.title == title)
         _base = bases[0]
     try:
-        target = amiga.AmigaTarget(_transport, _machine, anchor_base=_base)
+        target = amiga.AmigaTarget(_transport, _machine, anchor_base=_base,
+                                   memory=_memory or amiga.MEMORY)
     except amiga.GuestError:
         # The anchor is intact but the hunks do not check out: forget the
         # title so the next sweep looks again. Only this error clears it,

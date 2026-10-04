@@ -2070,6 +2070,64 @@ def find_anchor(memory: bytes, base: int, anchor: bytes,
     return out
 
 
+#: ExecBase is the long at address 4; `ex_ChkBase` (`+0x26`) holds its
+#: complement, which tells a real one from garbage; `ex_MemList` (`+0x142`) is
+#: the list of `MemHeader`s whose `mh_Lower` (`+0x14`) and `mh_Upper`
+#: (`+0x18`) bound each region the machine has.
+EXEC_BASE_AT = 4
+#: ExecBase's pointer is read as the head of this much chip RAM, the size of
+#: the sweep's own pieces, so a piece-by-piece reader fetches it as one of them
+#: and the sweep reuses it.
+EXEC_PAGE = 0x10000
+EXEC_CHK_BASE = 0x26
+EXEC_MEM_LIST = 0x142
+MEM_LOWER = 0x14
+MEM_UPPER = 0x18
+MEM_NODES = 64
+#: The 68000 addresses 24 bits, and nothing below the vector table is a node.
+_LOW_POINTER = 0x100
+_HIGH_POINTER = 0x1000000
+
+
+def _pointer(value: int) -> bool:
+    return value & 1 == 0 and _LOW_POINTER <= value < _HIGH_POINTER
+
+
+def memory_regions(read) -> tuple[tuple[int, int], ...]:
+    """The `(base, size)` regions this machine has, highest address first.
+
+    Walks the `MemHeader` list in ExecBase, so fast RAM, extra chip RAM and a
+    machine with no slow RAM are all swept where they are. `MEMORY` -- the A500
+    the project's configuration describes -- when ExecBase fails its
+    complement check, a node is not a plausible `MemHeader`, or the list is
+    longer than `MEM_NODES`. A read that raises is not caught: it says
+    something about the emulator and not about the machine's memory.
+    """
+    exec_base = int.from_bytes(
+        read(0, EXEC_PAGE)[EXEC_BASE_AT:EXEC_BASE_AT + 4], "big")
+    if not _pointer(exec_base):
+        return MEMORY
+    if _long(read, exec_base + EXEC_CHK_BASE) != ~exec_base & 0xFFFFFFFF:
+        return MEMORY
+    list_at = exec_base + EXEC_MEM_LIST
+    node, regions = _long(read, list_at), []
+    for _ in range(MEM_NODES):
+        if node == list_at + 4:
+            break
+        if not _pointer(node):
+            return MEMORY
+        head = read(node, MEM_UPPER + 4)
+        lower = int.from_bytes(head[MEM_LOWER:MEM_LOWER + 4], "big")
+        upper = int.from_bytes(head[MEM_UPPER:], "big")
+        if lower >= upper or upper > _HIGH_POINTER:
+            return MEMORY
+        regions.append((lower, upper - lower))
+        node = int.from_bytes(head[:4], "big")
+    else:
+        return MEMORY
+    return tuple(sorted(regions, reverse=True)) or MEMORY
+
+
 def locate_machines(read, machines, memory=MEMORY,
                     sweep_all: bool = False) -> dict[str, list[int]]:
     """Which of these titles is in memory, and at which base: `{title: bases}`.
@@ -2123,12 +2181,13 @@ def _long(read, addr: int) -> int:
     return int.from_bytes(read(addr, 4), "big")
 
 
-def _in_memory(addr: int, length: int = 1) -> bool:
+def _in_memory(addr: int, length: int = 1, memory=MEMORY) -> bool:
     return any(base <= addr and addr + length <= base + size
-               for base, size in MEMORY)
+               for base, size in memory)
 
 
-def data_base_for(read, machine: AmigaMachine, anchor_base: int) -> int:
+def data_base_for(read, machine: AmigaMachine, anchor_base: int,
+                  memory=MEMORY) -> int:
     """The load address of the hunk the offsets are into.
 
     `anchor_base` unchanged, with no read, for a title without `segments`.
@@ -2142,21 +2201,22 @@ def data_base_for(read, machine: AmigaMachine, anchor_base: int) -> int:
     seg = machine.segments
     if seg is None:
         return anchor_base
-    _check_guard(read, anchor_base, seg.anchor_size, machine)
+    _check_guard(read, anchor_base, seg.anchor_size, machine, memory)
     base = anchor_base
     for _ in range(seg.data_hunk - seg.anchor_hunk):
         link = _long(read, base - 4)
-        if link == 0 or not _in_memory(4 * link + 4):
+        if link == 0 or not _in_memory(4 * link + 4, 1, memory):
             raise GuestError(
                 f"the link before {base:#x} holds {link:#x}, which is not "
                 f"the next hunk of {machine.title}")
         base = 4 * link + 4
-    _check_guard(read, base, seg.data_size, machine)
+    _check_guard(read, base, seg.data_size, machine, memory)
     return base
 
 
-def _check_guard(read, base: int, size: int, machine: AmigaMachine) -> None:
-    if not _in_memory(base - 8, 8):
+def _check_guard(read, base: int, size: int, machine: AmigaMachine,
+                 memory=MEMORY) -> None:
+    if not _in_memory(base - 8, 8, memory):
         raise GuestError(
             f"the allocation length before {base:#x} is outside the Amiga's "
             f"memory, so it is not a hunk of {machine.title}")
@@ -2341,8 +2401,12 @@ class AmigaTarget:
 
     def __init__(self, debugger, layout: AmigaMachine,
                  data_base: int | None = None,
-                 anchor_base: int | None = None, clock=time.monotonic):
+                 anchor_base: int | None = None, clock=time.monotonic,
+                 memory=MEMORY):
         self._clock = clock
+        #: The `(base, size)` regions the machine has, as `memory_regions`
+        #: measured them; every range check below is against these.
+        self.memory = tuple(memory)
         self._checked_at = clock()
         self.debugger = debugger
         self.layout = layout
@@ -2358,7 +2422,8 @@ class AmigaTarget:
         # but time.
         self.halts_on_read = getattr(debugger, "halts_machine", True)
         if anchor_base is not None:
-            self.data_base = data_base_for(self.read, layout, anchor_base)
+            self.data_base = data_base_for(self.read, layout, anchor_base,
+                                           self.memory)
 
     @property
     def can_write(self) -> bool:
@@ -2499,7 +2564,7 @@ class AmigaTarget:
 
     # -- finding the base ------------------------------------------------
 
-    def locate(self, memory=MEMORY) -> int:
+    def locate(self, memory=None) -> int:
         """Measure the data hunk's load address, and remember it.
 
         Dumps the machine's memory a region at a time and searches **on this
@@ -2517,10 +2582,14 @@ class AmigaTarget:
           be, without another boot.
 
         Raises rather than guessing when the anchor is missing or ambiguous.
+        `memory` is the regions to sweep, and replaces the ones the target
+        holds for its range checks; by default it sweeps the ones it holds.
         """
         self._require_open()
         self._checked_at = self._clock()
-        bases = locate_machines(self.read, [self.layout], memory).get(
+        if memory is not None:
+            self.memory = tuple(memory)
+        bases = locate_machines(self.read, [self.layout], self.memory).get(
             self.layout.title, [])
         if not bases:
             raise GuestError(
@@ -2535,7 +2604,7 @@ class AmigaTarget:
                   "taking the first")
         self.anchor_base = bases[0]
         self.data_base = data_base_for(self.read, self.layout,
-                                       self.anchor_base)
+                                       self.anchor_base, self.memory)
         _log.info("%s: data hunk at %#x, a4 = %#x", self.layout.title,
                   self.data_base, self.data_base + 0x7FFE)
         return self.data_base
@@ -2666,7 +2735,8 @@ class AmigaTarget:
         """
         window = grid.views.index(view)
         span = grid.indoors + 2 - grid.x
-        if pointer == 0 or not _in_memory(pointer + grid.x, span):
+        if pointer == 0 or not _in_memory(pointer + grid.x, span,
+                                                self.memory):
             return None
         blob = self.read(pointer + grid.x, span)
         if int.from_bytes(blob[grid.indoors - grid.x:], "big") != 0:
@@ -2700,8 +2770,8 @@ class AmigaTarget:
             (self._at(self.layout.party_x), square)])
         base = int.from_bytes(pointer, "big")
         span = 2 * (world.leg - world.node) + 2
-        if (base == 0 or not _in_memory(base + 2 * world.area, 2)
-                or not _in_memory(base + 2 * world.node, span)):
+        if (base == 0 or not _in_memory(base + 2 * world.area, 2, self.memory)
+                or not _in_memory(base + 2 * world.node, span, self.memory)):
             self._world_square = None
             return None
         area, places = self.read_blocks([(base + 2 * world.area, 2),
@@ -2725,7 +2795,7 @@ class AmigaTarget:
             self.read(self._at(self.layout.overland_pointer), 4), "big")
         flag_at = addr + self.layout.overland_flag
         if addr == 0 or not any(base <= flag_at < base + length
-                                for base, length in MEMORY):
+                                for base, length in self.memory):
             return False
         return self.read(flag_at, 1)[0] == 1
 
@@ -2752,7 +2822,7 @@ class AmigaTarget:
         # vector table, which is never a map. So it is refused by name rather
         # than by the range test below.
         if addr == 0 or not any(base <= addr and addr + 0x400 <= base + length
-                                for base, length in MEMORY):
+                                for base, length in self.memory):
             _log.debug("the GEO pointer holds %#x, which is in no memory this "
                        "machine has", addr)
             return None

@@ -195,6 +195,31 @@ def loaded(machine: amiga.AmigaMachine, at: int = BASE) -> dict[int, bytes]:
     return {at: bytes(data)}
 
 
+def test_a_title_running_from_fast_ram_gives_a_target_there():
+    """A machine with fast RAM and no slow RAM: the sweep follows ExecBase's list."""
+    from support.amigamemory import FAST_AT, machine_with_fast_ram
+    image = machine_with_fast_ram()
+    base = FAST_AT + 0x10000
+    geo_at = FAST_AT + 0x40000
+    data = bytearray(0x8000)
+    data[BLADES.anchor_offset:BLADES.anchor_offset + len(BLADES.anchor)] = \
+        BLADES.anchor
+    data[BLADES.geo_pointer:BLADES.geo_pointer + 4] = geo_at.to_bytes(4, "big")
+    image[base] = bytes(data)
+    clock, stepping, opener = Clock(), Stepping(), Opener(FakeSocket(image))
+    for _ in range(200):
+        try:
+            target = fsuae.connect(opener=opener, clock=clock,
+                                   deadline_clock=stepping)
+            break
+        except amiga.FsuaeError as exc:
+            assert "still sweeping" in str(exc)
+    else:
+        pytest.fail("the sweep never finished")
+    assert target.layout is BLADES and target.data_base == base
+    assert target.resident_geo_address() == geo_at
+
+
 def test_a_running_title_gives_a_target_at_its_own_base():
     opener = Opener(FakeSocket(loaded(BLADES)))
     target = fsuae.connect(opener=opener, clock=Clock())
@@ -828,7 +853,7 @@ def test_a_reset_forgets_the_pieces_of_a_paused_sweep():
     before = len(sock.received)
     with pytest.raises(amiga.FsuaeError):
         fsuae.connect(opener=opener, clock=clock, deadline_clock=stepping)
-    assert any(m.startswith("mc00000,") for m in sock.received[before:])
+    assert any(m.startswith("m0,10000") for m in sock.received[before:])
 
 
 def test_a_port_change_forgets_the_pieces_of_a_paused_sweep():
@@ -839,7 +864,7 @@ def test_a_port_change_forgets_the_pieces_of_a_paused_sweep():
     with pytest.raises(amiga.FsuaeError):
         fsuae.connect(port=6525, opener=Opener(other), clock=clock,
                       deadline_clock=stepping)
-    assert any(m.startswith("mc00000,") for m in other.received)
+    assert any(m.startswith("m0,10000") for m in other.received)
 
 
 def test_a_piece_that_times_out_empties_the_cache_and_starts_the_rate_limit():

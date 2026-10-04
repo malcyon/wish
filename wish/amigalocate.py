@@ -70,14 +70,18 @@ class Locator:
         self._error = error
         #: Raised when the time for this tick is spent; the sweep goes on later.
         self.paused = type("SweepPaused", (error,), {})
-        self._pieces: dict[int, tuple[float, bytes]] = {}   # when read, bytes
+        # Keyed by address and size: a `MemHeader` sits at the start of the
+        # region it describes, so a small read and a piece can share an address.
+        self._pieces: dict[tuple[int, int], tuple[float, bytes]] = {}
         self._piece = self.SWEEP_CHUNK
         self.machine: amiga.AmigaMachine | None = None
         self.base: int | None = None
         self.swept_at: float | None = None
+        #: The machine's regions, measured once per sweep and kept for the target.
+        self.memory: tuple[tuple[int, int], ...] | None = None
 
     def forget(self) -> None:
-        self.machine = self.base = self.swept_at = None
+        self.machine = self.base = self.swept_at = self.memory = None
         self._pieces.clear()
         self._piece = self.SWEEP_CHUNK
 
@@ -94,21 +98,20 @@ class Locator:
             nonlocal fetched
             out = bytearray()
             for at in range(base, base + length, self._piece):
-                held = self._pieces.get(at)
+                size = min(self._piece, base + length - at)
+                held = self._pieces.get((at, size))
                 if held is None:
                     if fetched and (deadline - self._clock()
                                     < self.PIECE_TIMEOUT):
                         raise self.paused(
                             "Still sweeping the Amiga's memory.")
                     try:
-                        blob = read_memory(
-                            at, min(self._piece, base + length - at),
-                            timeout=self.PIECE_TIMEOUT)
+                        blob = read_memory(at, size, timeout=self.PIECE_TIMEOUT)
                     except Exception as exc:
                         if getattr(exc, "timed_out", False):
                             self._piece = self.SWEEP_SMALL_CHUNK
                         raise
-                    self._pieces[at] = (started, blob)
+                    self._pieces[(at, size)] = (started, blob)
                     fetched += 1
                 else:
                     blob = held[1]
@@ -135,19 +138,25 @@ class Locator:
                     f"{now - self.swept_at:.1f}s ago and no more than one is "
                     f"made every {self.SWEEP_EVERY:.0f}s.")
             try:
+                # One reader, so the measurement and the sweep share one deadline.
+                read = self._reader(read_memory)
+                if self.memory is None:
+                    self.memory = amiga.memory_regions(read)
                 found = amiga.locate_machines(
-                    self._reader(read_memory), amiga.MACHINES.values(),
+                    read, amiga.MACHINES.values(), self.memory,
                     sweep_all=True)
             except self.paused:
                 raise
             except Exception:
                 self.swept_at = self._clock()
                 self._pieces.clear()
+                self.memory = None
                 raise
             self.swept_at = self._clock()
             self._pieces.clear()
             self._piece = self.SWEEP_CHUNK
             if not found:
+                self.memory = None
                 raise self._error(
                     "None of the titles this knows is in the Amiga's memory yet.")
             if len(found) > 1:
@@ -163,8 +172,12 @@ class Locator:
         try:
             # The target reads guard words while it is built; they get the same
             # short wait as a piece, and the target keeps the real transport.
+            # The factory's own default is the A500, so it is told only of a
+            # machine that differs.
+            measured = ({} if self.memory in (None, amiga.MEMORY)
+                        else {"memory": self.memory})
             target = factory(_Bounded(transport, self.PIECE_TIMEOUT),
-                             self.machine, anchor_base=self.base)
+                             self.machine, anchor_base=self.base, **measured)
             target.debugger = transport
             return target
         except amiga.GuestError as exc:
