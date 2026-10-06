@@ -2558,8 +2558,14 @@ CURSE_WALLED_WEST = {"area": 1, "x": 5, "y": 13, "facing": geo.WEST}
 def _turn_about(name: str, letter: str, place: dict | None) -> bool:
     """Whether the route turns the party about before walking out of its square.
 
-    That is the start square, or `CURSE_WALLED_WEST` for Curse, where a wall stands ahead.
+    That is the start square, or `CURSE_WALLED_WEST` for Curse, where a wall stands ahead. A
+    Silver Blades party on its start square never turns, because north of it is a wall.
     """
+    if name == "ssb":
+        start = areas.start_of(areas.SECRET_OF_THE_SILVER_BLADES)
+        if place == {"area": start.area, "x": start.arrival.x, "y": start.arrival.y,
+                     "facing": start.arrival.facing}:
+            return False
     if letter == "D":
         return True
     if name != "curse":

@@ -2948,6 +2948,23 @@ def test_only_the_walled_square_turns_a_curse_party_about(tmp_path, monkeypatch,
     assert json.loads(path.read_text())["turn_about"] is False
 
 
+def test_a_silver_blades_dos_party_on_the_start_square_walks_south_unturned():
+    start = {"area": 16, "x": 3, "y": 3, "facing": geo.SOUTH}
+    assert foundation._turn_about("ssb", "D", start) is False
+    title = foundation._published_title("ssb", "D", turn_about=False)
+    assert title.turn is None
+    assert ("NP2", "world", "turn") not in [step[:3] for step in title.route]
+
+
+@pytest.mark.parametrize("place", [
+    {"area": 16, "x": 3, "y": 7, "facing": geo.SOUTH},
+    {"area": 16, "x": 3, "y": 14, "facing": geo.SOUTH},
+    {"area": 16, "x": 3, "y": 3, "facing": geo.NORTH},
+])
+def test_a_silver_blades_dos_party_elsewhere_still_turns_about(place):
+    assert foundation._turn_about("ssb", "D", place) is True
+
+
 def test_the_curse_start_map_has_a_wall_west_of_five_thirteen_and_east_of_seven():
     where = gamedata.curse_dir()
     if where is None:
