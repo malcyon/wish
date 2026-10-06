@@ -3753,7 +3753,7 @@ def test_the_darkness_identity_recognises_the_loaded_menu_and_first_sheet_of_the
         if not crop.is_file():
             pytest.skip(f"needs the A3 shot {example} of WISH-2")
         rules = [r for r in screens.rules_of(spec["identity"][state]) if r["example"] == example]
-        assert len(rules) == 1 and rules[0]["box"] == box and rules[0]["also"] == []
+        assert len(rules) == 1 and rules[0]["box"] == box and rules[0]["also"] == (["camp_sheet"] if state == "sheet" else [])
         assert screens.box_digests(crop, [tuple(box)], state)[tuple(box)] == rules[0]["sha256"]
         # Another party's screen of the same state must not match this rule.
         others = [root / r["example"] for r in screens.rules_of(spec["identity"][state]) if r["example"] != example]
@@ -3790,7 +3790,7 @@ def test_the_darkness_identity_recognises_the_loaded_menu_and_first_sheet_of_the
         if not crop.is_file():
             pytest.skip(f"needs the A4 shot {example} of WISH-2")
         rules = [r for r in screens.rules_of(spec["identity"][state]) if r["example"] == example]
-        assert len(rules) == 1 and rules[0]["box"] == box and rules[0]["also"] == []
+        assert len(rules) == 1 and rules[0]["box"] == box and rules[0]["also"] == (["camp_sheet"] if state == "sheet" else [])
         assert screens.box_digests(crop, [tuple(box)], state)[tuple(box)] == rules[0]["sha256"]
         others = [root / r["example"] for r in screens.rules_of(spec["identity"][state]) if r["example"] != example]
         for other in others:

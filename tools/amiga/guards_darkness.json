@@ -1124,7 +1124,9 @@
         "sha256": "47aeb38422f3150771290a071955f35269e156d87d50756d8d4be2640bcff026"
       },
       {
-        "also": [],
+        "also": [
+          "camp_sheet"
+        ],
         "box": [
           74,
           46,
@@ -1135,7 +1137,9 @@
         "sha256": "8bddf7a493cf272754db7651373f27d0846ad5eb2be6d5665fe2a8daf5dcdfe2"
       },
       {
-        "also": [],
+        "also": [
+          "camp_sheet"
+        ],
         "box": [
           74,
           46,
