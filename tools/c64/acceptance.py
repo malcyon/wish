@@ -115,6 +115,15 @@ alone did not, and the saved square and facing are the ones the screen showed.
 Every wait ends at the run's own deadline (`--max-seconds`), with the screen
 kept; only the boot and load, inside `Session`, cannot be cut short.
 
+Before each step after `load` the run saves the machine as a step-start
+snapshot under `<out>/resume/current/`.  A step that fails after the load
+leaves `<out>/resume/resume.json` (`tools/registry/resumerecord.py`) holding
+that snapshot, the save disk as the step found it, the step texts before it and
+the results so far, and the run exits 3 instead of 1.  A normal run leaves no
+record.  `--read-at`, `--checkpoint`, `--capture-ready`, `--preserve-specimen`,
+`--attack-by`, `--fast-flee` and `temple-probe` take no snapshots, because a
+snapshot does not carry what they arm; `summary.json` says which one.
+
 `--no-encounters` turns `Session.no_encounters` on for each `walk` step and
 off at its end, where the gates are put back and read back
 (`Session.restore_encounter_gates`), and again before every `save` and
@@ -167,7 +176,9 @@ import json
 import pathlib
 import re
 import shlex
+import shutil
 import struct
+import subprocess
 import sys
 import time
 
@@ -213,7 +224,7 @@ from tools.c64 import (  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.pool_of_radiance.koboldnpc import SessTarget  # noqa: E402
 from tools.pool_of_radiance.tavernbrawl import Traps  # noqa: E402
-from tools.registry import evidence, scratch, specimens  # noqa: E402
+from tools.registry import evidence, resumerecord, scratch, specimens  # noqa: E402
 
 TITLES = {"pool": "pool-of-radiance", "curse": "curse-of-the-azure-bonds",
           "ssb": "secret-of-the-silver-blades"}
@@ -870,6 +881,10 @@ def parse_walk(arg: str) -> str:
 #: before anything boots.
 SNAPSHOT_NAME = S.Session.SNAPSHOT_NAME
 
+#: The snapshot the driver takes before each step after the load, which a
+#: `snapshot` or `restore` step may not use.
+RESUME_SNAPSHOT = "resume-step"
+
 
 def parse_snapshot_name(verb: str, arg: str) -> str:
     """The name a `snapshot` or `restore` step gives: letters, digits, - and _."""
@@ -877,6 +892,9 @@ def parse_snapshot_name(verb: str, arg: str) -> str:
     if not SNAPSHOT_NAME.match(name):
         raise ValueError(f"{verb} {arg!r}: a snapshot name is letters, "
                          f"digits, - and _")
+    if name == RESUME_SNAPSHOT:
+        raise ValueError(f"{verb} {arg!r}: that name is the driver's own "
+                         f"step-start snapshot")
     return name
 
 
@@ -2216,6 +2234,37 @@ class PoolRun:
     directory: list[dict] | None = None
     #: How many `remove` steps have run, which names each kept disk.
     removes = 0
+
+    #: What a step sets that a later step or a `validate_*` call reads, and
+    #: so what a resumed run must put back (`resume_state`): the party-menu
+    #: flag and directory, the `remove` count, the scribe flag and square,
+    #: `mercy_before`, `lost_reading`, `returns_sent`, `flee_escaped`, the
+    #: capture counter `shots` (so a later screen never reuses a name) and
+    #: `gate_reports`.  `walk_verb`, `walk_side_prompts`, `walk_side_open` and
+    #: `walk_treasures` are reset where their step starts, and `armed`,
+    #: `traps`, `ready_*`, `temple_*` and `read_at_counts` belong to options a
+    #: run with step snapshots does not take (`resume_blocker`), so none of
+    #: them is saved.
+    RESUME_ATTRS = ("at_menu", "directory", "removes", "scribing", "scribe_square",
+                    "mercy_before", "lost_reading", "returns_sent", "flee_escaped",
+                    "shots")
+
+    def resume_state(self) -> dict:
+        """`RESUME_ATTRS` as they stand, as plain data a record can hold."""
+        state = {name: getattr(self, name) for name in self.RESUME_ATTRS
+                 if hasattr(self, name)}
+        if self.gate_reports is not None:
+            state["gate_reports"] = list(self.gate_reports)
+        return json.loads(json.dumps(state, default=str))
+
+    def adopt_resume_state(self, state: dict) -> None:
+        """Put `resume_state`'s attributes back.  `gate_reports` is filled in
+        place, since the summary holds the same list."""
+        for name in self.RESUME_ATTRS:
+            if name in state:
+                setattr(self, name, state[name])
+        if "gate_reports" in state and self.gate_reports is not None:
+            self.gate_reports[:] = state["gate_reports"]
 
     def load(self) -> dict:
         self.boot_and_load()
@@ -6507,6 +6556,13 @@ class CurseRun(PoolRun):
     #: `placement` event belong to the run's first fight, not to each `fight` step.
     first_bar_done = False
 
+    #: Curse adds what the named-attack observation and the first bar keep.
+    #: `names`, `panel` and `attack_owner` come from the staged disk in
+    #: `__init__`, which a resumed run builds again.
+    RESUME_ATTRS = PoolRun.RESUME_ATTRS + (
+        "first_bar_done", "attack_evidence", "quit_evidence", "first_effect_loss",
+        "last_effect_row", "_saving_is_proof")
+
     def flee_result_byte(self) -> int | None:
         """Curse's `$6DC7` is not Pool's flee result, so no byte is read."""
         return None
@@ -7302,6 +7358,22 @@ class SilverRun(CurseRun):
     #: Consecutive readings of mode 0 (the party menu) during a fight.
     gen_reads = 0
 
+    #: `gen_reads` is the one Silver Blades adds; `silver_addr` is rebuilt
+    #: from the disks, so only whether it was set is kept.
+    RESUME_ATTRS = CurseRun.RESUME_ATTRS + ("gen_reads",)
+
+    def resume_state(self) -> dict:
+        state = super().resume_state()
+        state["silver_addr_set"] = self.silver_addr is not None
+        return state
+
+    def adopt_resume_state(self, state: dict) -> None:
+        super().adopt_resume_state(state)
+        if state.get("silver_addr_set"):
+            from tools.secret_of_the_silver_blades import ssbsession
+
+            self.silver_addr = ssbsession.Addresses(self.sess.game, self.disks)
+
     def __init__(self, sess, log, out, game, points, disks, staged_disk):
         PoolRun.__init__(self, sess, log, out, game, points)
         party = saved_characters(staged_disk)
@@ -7914,6 +7986,179 @@ def give_joystick(vicerc: pathlib.Path) -> None:
     tmp.replace(vicerc)
 
 
+# --- the step-start snapshot and the record a failed step leaves --------------
+
+#: Which folder under `--out` holds the snapshot and the record, and the
+#: constant `command` a C64 record carries (this driver has no subcommand).
+RESUME_FOLDER = "resume"
+RESUME_COMMAND = "steps"
+
+def resume_blocker(args, steps: list[Step]) -> str | None:
+    """The first option a step snapshot cannot carry, whose run therefore takes
+    none, or None.  `summary["resume"]` names it."""
+    if any(step.verb == "temple-probe" for step in steps):
+        return "temple-probe"
+    for flag, name in (("read_at", "--read-at"), ("checkpoint", "--checkpoint"),
+                       ("capture_ready", "--capture-ready"),
+                       ("preserve_specimen", "--preserve-specimen"),
+                       ("attack_by", "--attack-by"), ("fast_flee", "--fast-flee")):
+        if getattr(args, flag, None):
+            return name
+    return None
+
+
+def vice_version() -> str | None:
+    """The installed VICE's version as `flatpak info` states it, or None."""
+    try:
+        done = subprocess.run(["flatpak", "info", "net.sf.VICE"], capture_output=True,
+                              text=True, timeout=15, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    for line in done.stdout.splitlines():
+        if line.strip().startswith("Version:"):
+            return line.split(":", 1)[1].strip()
+    return None
+
+
+#: The arguments a resumed run must repeat, since each changes what the
+#: machine did before the snapshot.
+RESUME_OPTIONS = ("no_encounters", "walk_retry", "walk", "walk_steps",
+                  "walk_fight_seconds", "joy", "first_bar_key", "stage_row",
+                  "stage_trait", "stage_item", "stage_record", "stage_status",
+                  "stage_side", "stage_var", "stage_roster", "quit_nonattacking")
+
+
+class StepResume:
+    """Saves the machine before each step after the load and, when one fails,
+    turns the last save into a `resumerecord` the next run can start from."""
+
+    SIDECARS = (".attached", ".pokes", ".gates")
+
+    def __init__(self, out: pathlib.Path, sess, slot_dir: pathlib.Path):
+        self.folder = out / RESUME_FOLDER
+        self.current = self.folder / "current"
+        self.named = self.folder / "named"
+        self.sess = sess
+        self.slot_dir = pathlib.Path(slot_dir)
+        #: The step whose start the saved machine is, None between steps and
+        #: once a snapshot failed.
+        self.step: int | None = None
+        self.step_text = ""
+        self.state: dict = {}
+        self.sides: dict[str, str] = {}
+        self.attached_name = ""
+        self.named_copied: dict[str, tuple[int, int]] = {}
+        self.broken: str | None = None
+
+    def _copy(self, source, target: pathlib.Path) -> None:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+
+    def take(self, n: int, text: str, pool) -> None:
+        """Snapshot the machine at the start of step N and keep its files."""
+        self.step = None
+        if self.broken:
+            return
+        try:
+            shutil.rmtree(self.current, ignore_errors=True)
+            path = pathlib.Path(self.sess.snapshot(RESUME_SNAPSHOT))
+            self._copy(path, self.current / "step.vsf")
+            for suffix in self.SIDECARS:
+                if pathlib.Path(str(path) + suffix).is_file():
+                    self._copy(str(path) + suffix, self.current / f"step.vsf{suffix}")
+            attached = pathlib.Path(str(self.sess.attached))
+            self.attached_name = attached.name
+            self._copy(attached, self.current / attached.name)
+            save = pathlib.Path(self.sess.save_disk)
+            if save.name != attached.name:
+                self._copy(save, self.current / save.name)
+            self.sides = {side.name: specimens.sha256_file(side)
+                          for side in sorted(self.slot_dir.iterdir())
+                          if side.suffix.lower() == ".d64" and side != save}
+            self._keep_named(path.parent)
+            self.state = pool.resume_state()
+        except Exception as exc:  # noqa: BLE001 -- a run that cannot snapshot still runs
+            self.broken = f"the step-start snapshot failed at step {n}: {exc!r}"
+            return
+        self.step, self.step_text = n, text
+
+    def _keep_named(self, folder: pathlib.Path) -> None:
+        """Copy each live named snapshot that is new or changed since its last copy."""
+        live = {}
+        for vsf in sorted(folder.glob("*.vsf")):
+            if vsf.stem != RESUME_SNAPSHOT:
+                stat = vsf.stat()
+                live[vsf.stem] = (stat.st_mtime_ns, stat.st_size)
+        for name, mark in live.items():
+            if self.named_copied.get(name) != mark:
+                for suffix in ("", *self.SIDECARS):
+                    source = folder / f"{name}.vsf{suffix}"
+                    if source.is_file():
+                        self._copy(source, self.named / f"{name}.vsf{suffix}")
+                self.named_copied[name] = mark
+        for name in set(self.named_copied) - set(live):
+            del self.named_copied[name]
+            for suffix in ("", *self.SIDECARS):
+                (self.named / f"{name}.vsf{suffix}").unlink(missing_ok=True)
+
+    def freeze(self, *, args, steps, summary, source, staged_disk, slot, pool,
+               git, error: str) -> pathlib.Path:
+        """Write the record for the step that was saved before it failed."""
+        n = self.step
+        texts = [s.text for s in steps]
+        sidecars = [{"file": f"current/step.vsf{suffix}"} for suffix in self.SIDECARS
+                    if (self.current / f"step.vsf{suffix}").is_file()]
+        named = []
+        for name in sorted(self.named_copied):
+            named.append({"name": name, "file": f"named/{name}.vsf", "sidecars": [
+                {"file": f"named/{name}.vsf{suffix}"} for suffix in self.SIDECARS
+                if (self.named / f"{name}.vsf{suffix}").is_file()]})
+        machine = {"file": "current/step.vsf", "sidecars": sidecars,
+                   "attached": {"file": f"current/{self.attached_name}"}}
+        disks = {"save": {"file": f"current/{pathlib.Path(self.sess.save_disk).name}"},
+                 "source": {"path": str(source), "sha256": specimens.sha256_file(source)},
+                 "staged": {"sha256": specimens.sha256_file(staged_disk)},
+                 "sides": self.sides}
+        record = {
+            "driver": "c64", "argv": list(sys.argv[1:]), "command": RESUME_COMMAND,
+            "title": TITLES[args.title],
+            "created": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "git": {key: git[key] for key in ("sha", "dirty") if key in git},
+            "step": {"n": n, "text": self.step_text},
+            "sent": texts[:n - 1],
+            "machine": machine, "disks": disks, "named": named,
+            "vice": {"version": vice_version(), "vicerc_sha256": self._vicerc_hash(slot)},
+            "results": json.loads(json.dumps(summary["results"][:n - 1], default=str)),
+            "run_state": self.state,
+            "options": json.loads(json.dumps(
+                {name: getattr(args, name, None) for name in RESUME_OPTIONS},
+                default=str)),
+            "error": error, "resumable": True, "why_not": None,
+        }
+        screen = self._screen(pool)
+        if screen:
+            record["screen"] = screen
+        return resumerecord.write(self.folder, record)
+
+    @staticmethod
+    def _vicerc_hash(slot) -> str | None:
+        vicerc = getattr(slot, "vicerc", None)
+        return (specimens.sha256_file(vicerc)
+                if vicerc and pathlib.Path(vicerc).is_file() else None)
+
+    def _screen(self, pool) -> dict | None:
+        """The `lost-*` capture the failure kept, copied into the record."""
+        shots = getattr(pool, "shots", 0)
+        found = sorted(pool.out.glob(f"{shots:02d}-lost-*.png"))
+        if not found:
+            return None
+        self._copy(found[0], self.folder / "screen.png")
+        text = found[0].with_suffix(".txt")
+        if text.is_file():
+            self._copy(text, self.folder / "screen.txt")
+        return {"file": "screen.png"}
+
+
 def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
         clock=time.monotonic) -> int:
     deadline = clock() + args.max_seconds
@@ -7989,7 +8234,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
         raise
     log.emit("slot", n=slot.n, display=slot.display, dir=str(slot.dir))
     log.say(f"pool slot {slot.n} display {slot.display}; evidence {out}")
-    sess = pool = restore_input = None
+    sess = pool = restore_input = resume = None
+    resume_path = None
     stack = contextlib.ExitStack()
     try:
         if args.title == "curse":
@@ -8015,6 +8261,11 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
         if temple_mode:
             restore_input = guard_temple_input(sess, clock, deadline - 100)
         stack.enter_context(sess.watching_dialogs())
+        blocker = resume_blocker(args, steps)
+        if blocker is None:
+            resume = StepResume(out, sess, slot.dir)
+        else:
+            summary["resume"] = {"snapshots": False, "why_not": blocker, "record": None}
         pool = (CurseRun(sess, log, out, game, points, args.disks, staged_disk,
                          getattr(args, "attack_by", ""),
                          getattr(args, "quit_nonattacking", False)) if args.title == "curse"
@@ -8056,10 +8307,16 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
         # A `remove` runs on the party menu, so a load followed by one stops
         # there, and the world is entered before the first other step.
         menu_first = len(steps) > 1 and steps[1].verb == "remove"
-        for step in steps:
+        if resume is not None:
+            summary["resume"] = {"snapshots": True, "why_not": None, "record": None}
+        for n, step in enumerate(steps, 1):
             if clock() >= deadline:
                 raise StepFailed(f"the run's {args.max_seconds:g} seconds were "
                                  f"spent before '{step.text}'")
+            if resume is not None and n > 1:
+                resume.take(n, step.text, pool)
+                if resume.broken:
+                    summary["resume"].update(snapshots=False, why_not=resume.broken)
             log.emit("step", step=step.text)
             log.say(f"-- {step.text}")
             entered = None
@@ -8131,6 +8388,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             if entered is not None:
                 got["entered_world"] = entered
             summary["results"].append(got)
+            if resume is not None:
+                resume.step = None
             log.emit("done", **got)
             write_summary()
         if args.title == "curse" and getattr(args, "attack_by", ""):
@@ -8167,6 +8426,17 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             summary["lost_reading"] = pool.lost_reading
         log.emit("lost", why=str(e))
         log.say(f"lost: {e}")
+        if resume is not None and resume.step is not None:
+            try:
+                resume_path = resume.freeze(
+                    args=args, steps=steps, summary=summary, source=source,
+                    staged_disk=staged_disk, slot=slot, pool=pool, git=git,
+                    error=f"{type(e).__name__}: {e}")
+            except Exception as exc:  # noqa: BLE001 -- the stop is already recorded
+                summary["resume"]["why_not"] = f"the record was not written: {exc!r}"
+            else:
+                summary["resume"]["record"] = str(resume_path)
+                log.say(f"resume record {resume_path}")
     except Exception as e:                          # noqa: BLE001
         summary["lost"] = repr(e)
         log.emit("failed", error=repr(e))
@@ -8297,6 +8567,10 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             write_summary()
         if cleanup_errors:
             raise cleanup_errors[0]
+        if resume is not None and resume_path is None:
+            shutil.rmtree(out / RESUME_FOLDER, ignore_errors=True)
+    if resume_path is not None:
+        return resumerecord.RESUME_EXIT
     return 0 if summary["completed"] else 1
 
 
