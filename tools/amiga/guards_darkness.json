@@ -1,16 +1,29 @@
 {
   "guards": {
-    "camp": {
-      "also": [],
-      "box": [
-        58,
-        402,
-        698,
-        430
-      ],
-      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/14-camp.png",
-      "sha256": "1efef6bdda92e22190e75c1df73f3d7cdd12378931d405650ba07d8f59618d5d"
-    },
+    "camp": [
+      {
+        "also": [],
+        "box": [
+          58,
+          402,
+          698,
+          430
+        ],
+        "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/14-camp.png",
+        "sha256": "1efef6bdda92e22190e75c1df73f3d7cdd12378931d405650ba07d8f59618d5d"
+      },
+      {
+        "also": [],
+        "box": [
+          58,
+          402,
+          250,
+          430
+        ],
+        "example": "WISH-2/wish2-a4/measure-a4-32/shots/12-camp.png",
+        "sha256": "7cb82e0a60c4adc0b9cbc0a39bae39be0a479f3d35644eec9ad6ee7c7cc67b82"
+      }
+    ],
     "camp_items": {
       "also": [
         "camp_items_2",
@@ -1158,6 +1171,9 @@
     ],
     "WISH-2/wish2-a3/measure-a3-7/shots/10-world.png": [
       "world"
+    ],
+    "WISH-2/wish2-a4/measure-a4-32/shots/12-camp.png": [
+      "camp"
     ],
     "WISH-2/wish2-s5/accept2/shots/13-world.png": [
       "place_x3_y2_f1"

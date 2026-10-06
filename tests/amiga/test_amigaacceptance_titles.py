@@ -3705,3 +3705,19 @@ def test_the_pool_identity_recognises_the_first_sheet_of_the_eight_member_npc_pa
     rules = [r for r in screens.rules_of(spec["identity"]["sheet"]) if r["example"] == example]
     assert len(rules) == 1 and rules[0]["box"] == box and rules[0]["also"] == []
     assert screens.box_digests(crop, [tuple(box)], "sheet")[tuple(box)] == rules[0]["sha256"]
+
+
+def test_the_darkness_guards_recognise_the_camp_screen_of_the_a4_party():
+    from tools.amiga import screens
+
+    spec = json.loads((pathlib.Path(foundation.__file__).parent / "guards_darkness.json").read_text())
+    example = "WISH-2/wish2-a4/measure-a4-32/shots/12-camp.png"
+    assert spec["labels"][example] == ["camp"]
+    crop = scratch.cache_dir("acceptance") / example
+    if not crop.is_file():
+        pytest.skip("needs the stage 12 A4 measure shot 12 of WISH-2")
+    # The box keeps the VIEW and MAGIC buttons; the buttons to their right depend on the party's hurt and spent state.
+    box = [58, 402, 250, 430]
+    rules = [r for r in screens.rules_of(spec["guards"]["camp"]) if r["example"] == example]
+    assert len(rules) == 1 and rules[0]["box"] == box and rules[0]["also"] == []
+    assert screens.box_digests(crop, [tuple(box)], "camp")[tuple(box)] == rules[0]["sha256"]
