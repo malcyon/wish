@@ -287,7 +287,7 @@ def test_run_doors_restores_then_records_each_try(door, tmp_path):
         fake, "h", {"edge": (4, 0, 0), "other": (4, 0, 0)}, (True, False), tmp_path,
         lambda holder, path: calls.append(path.name), sleep=lambda s: None)
     assert calls == ["snapshot", "restore", "edge-attribute.png", "restore", "edge-skip.png",
-                     "restore", "other-attribute.png", "restore", "other-skip.png", "discard"]
+                     "restore", "other-attribute.png", "restore", "other-skip.png", "restore", "discard"]
     lines = [__import__("json").loads(x) for x in (tmp_path / "doors.jsonl").read_text().splitlines()]
     assert [(r["route"], r["attribute"], r["key_taken"]) for r in lines] == [
         ("edge", True, True), ("edge", False, True), ("other", True, True), ("other", False, True)]
@@ -404,19 +404,63 @@ def test_a_trigger_write_that_never_landed_still_puts_the_door_bytes_back(door, 
 
 
 def test_a_failed_restore_after_a_failed_write_does_not_replace_the_write_error(door):
-    fake = DoorFake()
+    fake = DoorFake(takes=False)
     real = fake.write
 
     def write(addr, data, verify=True):
-        if addr == BASE + NOTES["wall_ahead"] and data == b"\x07":
-            raise amiga.GuestError("write")
         if addr == PORT + amigatrip.PORT_LIST and data == amigatrip.empty_list(PORT):
             raise amiga.GuestError("restore")
+        if addr == PORT + amigatrip.PORT_LIST:
+            real(addr, data, verify)
+            raise amiga.GuestError("write")
         real(addr, data, verify)
 
     fake.write = write
     with pytest.raises(amiga.GuestError, match="write"):
         _walk(fake)
+
+
+def test_a_failed_list_read_in_the_put_back_still_restores_the_key_then_the_rest(door, monkeypatch):
+    fake = DoorFake(takes=False)
+    monkeypatch.setattr(tripprobe, "FIRE_SECONDS", 1.0)
+    before = dict(fake.mem)
+
+    def empty(target, row):
+        # The poll sees the list full; the put-back's own read then fails.
+        if sys._getframe(1).f_code.co_name == "put_back":
+            raise amiga.GuestError("list read")
+        return False
+
+    monkeypatch.setattr(tripprobe, "_list_is_empty", empty)
+    with pytest.raises(amiga.GuestError, match="list read"):
+        _walk(fake)
+    assert _same(fake, before)
+
+
+def _recording(fake, calls):
+    fake.snapshot = lambda n, h: calls.append("snapshot")
+    fake.restore = lambda n, h: calls.append("restore")
+    fake.discard_snapshot = lambda n, h: calls.append("discard")
+
+
+def test_run_doors_restores_the_snapshot_after_the_last_try(door, tmp_path):
+    fake = DoorFake()
+    calls = []
+    _recording(fake, calls)
+    tripprobe.run_doors(fake, "h", {"edge": (4, 0, 0)}, (True,), tmp_path,
+                        lambda holder, path: None, sleep=lambda s: None)
+    assert calls == ["snapshot", "restore", "restore", "discard"]
+
+
+def test_run_doors_restores_the_snapshot_when_the_last_try_raises(door, tmp_path):
+    fake = DoorFake()
+    calls = []
+    _recording(fake, calls)
+    fake.read_blocks = lambda blocks: (_ for _ in ()).throw(amiga.GuestError("read"))
+    with pytest.raises(amiga.GuestError, match="read"):
+        tripprobe.run_doors(fake, "h", {"edge": (4, 0, 0)}, (True,), tmp_path,
+                            lambda holder, path: None, sleep=lambda s: None)
+    assert calls == ["snapshot", "restore", "restore", "discard"]
 
 
 @pytest.mark.parametrize("route", ["edge", "edge=4,0", "edge=a,b,c", "edge="])

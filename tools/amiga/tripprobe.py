@@ -164,14 +164,16 @@ def put_back(target, row, done, stop_if_taken: bool = False) -> bool:
     """
     keys = [w for w in done if w.kind == "trigger"]
     rest = [w for w in done if w.kind != "trigger"]
-    consumed = stop_if_taken and bool(keys) and _list_is_empty(target, row)
     try:
+        consumed = stop_if_taken and bool(keys) and _list_is_empty(target, row)
         amigatrip._restore(target, keys)
     except BaseException:
-        try:
-            amigatrip._restore(target, rest)
-        except Exception:  # noqa: S110 - the first exception is the one to report
-            pass
+        # A read that failed before the key's restore leaves the key to put back first.
+        for records in (keys, rest):
+            try:
+                amigatrip._restore(target, records)
+            except Exception:  # noqa: S110 - the first exception is the one to report
+                pass
         raise
     if consumed:
         return True
@@ -235,6 +237,9 @@ def run_doors(target, holder: str, routes: dict[str, tuple[int, int, int]], attr
               name: str = "doorprobe", pipe=None) -> list[dict]:
     """One result per (route, attribute choice), each from a restore of one snapshot.
 
+    The snapshot is restored once more after the last try, and on any exception,
+    so no try leaves bytes in the game.
+
     Writes one JSON line per try to `out/doors.jsonl` and one screenshot per
     try, `<route>-attribute.png` or `<route>-skip.png`.
     """
@@ -255,6 +260,13 @@ def run_doors(target, holder: str, routes: dict[str, tuple[int, int, int]], attr
                                   screenshot=path.name)
                     lines.write(json.dumps(result) + "\n")
                     results.append(result)
+        pipe.restore(name, holder)
+    except BaseException:
+        try:
+            pipe.restore(name, holder)
+        except Exception:  # noqa: S110 - the probe's own exception is the one to report
+            pass
+        raise
     finally:
         pipe.discard_snapshot(name, holder)
     return results
