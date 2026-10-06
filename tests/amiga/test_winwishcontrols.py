@@ -163,6 +163,29 @@ def test_pick_opens_the_combo_selects_the_item_and_collapses_it_in_one_script():
     assert "Pick-Item $hit[0]" in inner and "Use-Control $hit[0]" not in inner
 
 
+def test_pick_snapshots_the_list_items_before_expand_and_matches_only_new_ones():
+    inner = _pick()
+    body = inner[inner.index("function Pick-Item"):inner.index("$names.Count -eq 0")]
+    snapshot = body.index("$before[")
+    assert snapshot < body.index(".Expand()") < body.index("-not $before.ContainsKey(")
+    assert "GetRuntimeId()" in body[snapshot:body.index(".Expand()")]
+    assert "-eq 'ListItem' -and $_.Current.Name -eq $item -and -not $before.ContainsKey" in body
+
+
+def test_pick_wait_counts_the_tree_walk_and_stays_inside_the_task_budget():
+    inner = _pick()
+    body = inner[inner.index("function Pick-Item"):inner.index("$names.Count -eq 0")]
+    assert "Stopwatch" in body and f"TotalSeconds -gt {winwish.UI_WAIT}" in body
+    assert 2 * winwish.UI_WAIT < winwish.ui_timeout(0, "click")
+
+
+@pytest.mark.parametrize("extra", [{"shot_after": "x.png"}, {"controls_after": "x.txt"}])
+def test_ui_inner_pick_rejects_shot_and_controls_after(extra):
+    with pytest.raises(winwish.WinwishError, match="--pick"):
+        winwish.ui_inner(r"C:\b", "click", ("ft_combo",), None, r"C:\o.txt",
+                         automation_id="ft_combo", pick="a", **extra)
+
+
 def test_pick_sends_nothing_to_the_desktop_and_keeps_the_runtime_id_dedupe():
     inner = _pick()
     for banned in ("SetForegroundWindow", "SetFocus", "SendKeys", "mouse_event", "SendInput",

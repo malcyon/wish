@@ -605,12 +605,18 @@ def _pick_function(item: str) -> list[str]:
         "  function Pick-Item($combo) {",
         "    $o = $null",
         "    if (-not $combo.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern, [ref]$o)) { throw 'the control cannot be expanded' }",
+        # Only items that were not listed before Expand belong to this combo's popup; an item of
+        # another list with the same name must not match.
+        "    $before = @{}",
+        "    foreach ($e in (Get-Controls)) { if ((Get-Kind $e) -eq 'ListItem') { try { $before[($e.GetRuntimeId() -join '.')] = $true } catch {} } }",
         "    $expand = $o; $expand.Expand()",
-        f"    $until = (Get-Date).AddSeconds({UI_WAIT})",
+        # A stopwatch, so the time a tree walk takes counts against the wait.
+        "    $clock = [System.Diagnostics.Stopwatch]::StartNew()",
         "    $items = @()",
         "    while ($true) {",
-        "      $items = @(Get-Controls | Where-Object { (Get-Kind $_) -eq 'ListItem' -and $_.Current.Name -eq $item })",
-        "      if ($items.Count -gt 0 -or (Get-Date) -gt $until) { break }",
+        "      $items = @(Get-Controls | Where-Object { (Get-Kind $_) -eq 'ListItem' -and $_.Current.Name -eq $item -and "
+        "-not $before.ContainsKey(($_.GetRuntimeId() -join '.')) })",
+        f"      if ($items.Count -gt 0 -or $clock.Elapsed.TotalSeconds -gt {UI_WAIT}) {{ break }}",
         "      Start-Sleep -Milliseconds 200",
         "    }",
         "    try {",
@@ -674,6 +680,8 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
         raise WinwishError("only a click can dump controls after")
     if pick is not None and (action != "click" or not by_id or expand):
         raise WinwishError("--pick needs a click by --automation-id, and no --expand")
+    if pick is not None and (shot_after is not None or controls_after is not None):
+        raise WinwishError("--pick goes with --automation-id alone, not --shot-after or --controls-after")
     return "\n".join([
         "$ErrorActionPreference = 'Stop'",
         f"$build = {q(build)}",
