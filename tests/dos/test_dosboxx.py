@@ -629,3 +629,44 @@ def test_a_machine_with_no_debugger_build_says_so_rather_than_failing_later():
     why = dosboxx.unavailable()
     assert why is None or "not installed" in why or "no debugger" in why
 
+
+
+def _probe_with(monkeypatch, behaviours):
+    """Make each `--help` probe do the next thing in `behaviours`."""
+    import subprocess
+
+    calls = iter(behaviours)
+
+    def run(cmd, **kw):
+        what = next(calls)
+        if isinstance(what, Exception):
+            raise what
+        return subprocess.CompletedProcess(cmd, 0, stdout=what, stderr=b"")
+
+    dosboxx.has_debugger.cache_clear()
+    monkeypatch.setattr(dosboxx.subprocess, "run", run)
+    monkeypatch.setattr(dosboxx, "missing_tools", lambda: [])
+
+
+def test_a_timed_out_help_probe_does_not_report_no_debugger(monkeypatch):
+    import subprocess
+
+    _probe_with(monkeypatch, [subprocess.TimeoutExpired("dosbox-x", 1)])
+    try:
+        why = dosboxx.unavailable()
+    finally:
+        dosboxx.has_debugger.cache_clear()
+    assert why is not None
+    assert "no debugger" not in why
+    assert "did not answer" in why
+
+
+def test_a_probe_that_works_after_a_timeout_finds_the_debugger(monkeypatch):
+    import subprocess
+
+    _probe_with(monkeypatch, [subprocess.TimeoutExpired("dosbox-x", 1), b"helpdebug"])
+    try:
+        assert dosboxx.unavailable() is not None
+        assert dosboxx.unavailable() is None
+    finally:
+        dosboxx.has_debugger.cache_clear()

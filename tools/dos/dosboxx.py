@@ -163,6 +163,10 @@ def missing_tools() -> list[str]:
     return absent
 
 
+#: Seconds the `--help` probe may take; a loaded machine starts a debug build slowly.
+HELP_TIMEOUT = 180
+
+
 @functools.lru_cache(maxsize=4)
 def has_debugger(path: str = DOSBOXX) -> bool:
     """Whether that `dosbox-x` was built with the debugger.
@@ -173,9 +177,14 @@ def has_debugger(path: str = DOSBOXX) -> bool:
     """
     try:
         out = subprocess.run(
-            [path, "--help"], capture_output=True, timeout=30,
+            [path, "--help"], capture_output=True, timeout=HELP_TIMEOUT,
             env=debug_env(display=None),
         )
+    except subprocess.TimeoutExpired:
+        # An exception is not cached, so the next call probes again.
+        raise DebuggerUnavailable(
+            f"{path} --help did not answer within {HELP_TIMEOUT} seconds"
+        ) from None
     except (OSError, subprocess.SubprocessError):
         return False
     return b"helpdebug" in out.stdout + out.stderr
