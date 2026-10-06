@@ -2616,6 +2616,23 @@ def test_items_reads_the_list_of_the_member_asked_for_and_leaves_it(tmp_path):
     assert sess.state == "world"
 
 
+def test_items_for_a_character_carrying_nothing_stops_at_once_without_choosing_a_bar(tmp_path):
+    screens = {
+        "world": _window(PARTY_PANEL, WORLD_BAR),
+        "sheet": _window({1: "BRUTUS"}, "VIEW:EXIT"),
+    }
+    moves = {("world", ("party", 1)): "world", ("world", ("bar", "VIEW")): "sheet"}
+    sess = FakeSession(screens, moves, "world")
+    run, log = _pool_run(tmp_path, sess)
+    try:
+        with pytest.raises(A.StepFailed,
+                           match="BRUTUS carries nothing: the sheet bar is VIEW:EXIT"):
+            run.items("2")
+    finally:
+        log.close()
+    assert not any(k[0] == "bar" and k[1] == "ITEMS" for k in sess.sent)
+
+
 def test_open_sheet_answers_a_portrait_disk_prompt_with_side_3_not_the_side_it_names(
         tmp_path):
     """The sheet's own portrait load asks for the *area's* side (`#694`),

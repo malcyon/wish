@@ -431,6 +431,7 @@ DETECT_MARK = "*"
 
 #: The item list's own bar, `READY TRADE DROP EXIT`.
 ITEM_BAR = "READY"
+SHEET_ITEMS = "ITEMS"
 
 #: Seconds a save may take to write before the step is lost, and the bars
 #: that can follow it: `SAVE GAME  EXIT` (`CAMP $0D94`), or the save error's
@@ -1933,6 +1934,11 @@ def compare(a: pathlib.Path, b: pathlib.Path) -> dict:
 
 class StepFailed(RuntimeError):
     pass
+
+
+class NotAnUnknownScreen(StepFailed):
+    """A step that cannot succeed from any saved state, such as `items` for a
+    character who carries nothing; no resume record is written for it."""
 
 
 class FightCastSetback(StepFailed):
@@ -4216,6 +4222,13 @@ class PoolRun:
 
     def items(self, who: str) -> dict:
         sheet = self.open_sheet(who)
+        bar = sheet[24] if len(sheet) > 24 else ""
+        if SHEET_ITEMS not in bar:
+            # Row 1 holds the name between border glyphs.
+            name = (re.sub(r"[^A-Za-z' .-]+", " ", sheet[1]).strip()
+                    if len(sheet) > 1 else "") or who
+            raise NotAnUnknownScreen(
+                f"{name} carries nothing: the sheet bar is {bar.strip()}")
         if not self.choose_bar("ITEMS", timeout=15) or self.wait_rows(
                 lambda r: ITEM_BAR in r[24] and S.SHEET_BAR not in r[24], 20) is None:
             raise self.fail("items", "ITEMS never put up the item list")
@@ -8697,7 +8710,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             summary["lost_reading"] = pool.lost_reading
         log.emit("lost", why=str(e))
         log.say(f"lost: {e}")
-        if resume is not None and resume.step is not None:
+        if (resume is not None and resume.step is not None
+                and not isinstance(e, NotAnUnknownScreen)):
             try:
                 resume_path = resume.freeze(
                     args=args, steps=steps, summary=summary, source=source,

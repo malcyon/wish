@@ -257,6 +257,16 @@ def test_a_failure_in_the_load_writes_no_record(drive, monkeypatch):
     assert rc == 1 and slot.torn and not (out / "resume").exists()
 
 
+def test_a_step_that_can_never_succeed_writes_no_record(drive, monkeypatch):
+    def empty(self, who):
+        raise A.NotAnUnknownScreen("BRUTUS carries nothing: the sheet bar is VIEW:EXIT")
+
+    monkeypatch.setattr(_Pool, "items", empty)
+    rc, _, out, _ = drive(["load", "items NOBODY"])
+    assert rc == 1 and not (out / "resume").exists()
+    assert "BRUTUS carries nothing" in _summary(out)["lost"]
+
+
 def test_an_error_that_is_not_a_step_failure_writes_no_record(drive, monkeypatch):
     def broken(self, who):
         raise RuntimeError("monitor gone")
