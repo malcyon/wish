@@ -785,3 +785,12 @@ def test_a_warm_cache_opens_no_png_on_a_second_scan(tmp_path, monkeypatch):
         image.save(other)
     assert [crop.path for crop in guardmaps.scan_crops(root)] == [first, other]
     assert opened == [other]
+
+
+def test_silver_blades_identity_holds_guys_one_row_item_list():
+    spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, 'ssb')
+    rules = _rules(spec['identity']['camp_items'])
+    # Guy's list is a one-row page, a different picture from the U and C lists.
+    assert any(rule['sha256'] == 'e2d2719448986eeddb8c5cb7bdd938384856026333e52a193f8c318ce1707cd5'
+               and rule['box'] == [88, 104, 680, 372] and rule['also'] == ['items']
+               for rule in rules)

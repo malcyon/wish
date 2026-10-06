@@ -1813,6 +1813,19 @@
         ],
         "example": "amiga-grab-crops/wish4-uc__c_l1_items-00.png",
         "sha256": "a7ea96d72dc3a78f81f8edae29527aadf2de2f9850535feb9385da7f09c8ead3"
+      },
+      {
+        "also": [
+          "items"
+        ],
+        "box": [
+          88,
+          104,
+          680,
+          372
+        ],
+        "example": "4/ssb-live7-l2/accept1/shots/24-camp_items.png",
+        "sha256": "e2d2719448986eeddb8c5cb7bdd938384856026333e52a193f8c318ce1707cd5"
       }
     ],
     "camp_items_2": [
