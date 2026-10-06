@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import base64
 import copy
+import datetime
 import functools
 import hashlib
 import importlib.util
@@ -105,13 +106,15 @@ from tools.amiga.staging import (  # noqa: E402
     stage_place,
 )
 from tools.amiga.winuaesession import (  # noqa: E402
+    BOOT_CONFIG,
     HOLDER,
+    LOCAL_BOOT_CONFIG,
     SHOT_SECONDS,
     RouteError,
     WinGuest,
     terminating,
 )
-from tools.registry import evidence, scratch, specimens  # noqa: E402
+from tools.registry import evidence, resumerecord, scratch, specimens  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 PUBLISHED_ISSUE = "677"
@@ -372,9 +375,19 @@ ENCOUNTER_TITLES = {
 #: The snapshot a walk retry restores; a `--camp` step may not use the name.
 WALK_LEG = "walk-leg"
 
+#: The snapshot a route step's screen miss leaves behind for a later run to resume from.
+RESUME = "resume"
+
 
 class GuardMissed(RouteError):
-    """A guarded state's screen did not match within its limit."""
+    """A guarded state's screen did not match within its limit.
+
+    `resume_step` and `resume_name` are set only where the miss is the wait for the screen a
+    route step's own key opened, which is the one place a later run can resume from.
+    """
+
+    resume_step: int | None = None
+    resume_name: str = ""
 
 
 def _walk_leg(steps: Any) -> tuple[int, int] | None:
@@ -1354,7 +1367,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
               lane_check: Callable[[], Any] | None = None,
               rulebook_records: list[int] | None = None,
               marks: Mapping[int, tuple[tuple[str, str], ...]] | None = None,
-              walk_retry: int = 0, encounters: Any = None) -> dict[str, Any]:
+              walk_retry: int = 0, encounters: Any = None,
+              cli_title: str | None = None) -> dict[str, Any]:
     """Walk the route, stopping at the first unrecognised state, and fetch both disks.
 
     A guarded state is found by polling single grabs until its static box
@@ -1410,6 +1424,13 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     A `move` step that answered an interstitial in the title's `move_again_after` presses its key
     again, at most `MOVE_AGAIN_LIMIT` times, listing each press in `result["moves_again"]`; a
     further answer stops the run with a `RouteError`.
+
+    A guard miss on the screen a route step's own key opened (the accept and measure loops, not the
+    title wait, a `joined_after`, `move_again` or restore reach, a walk leg or a rulebook draw)
+    takes a machine snapshot named `resume`, with the switch off, and keeps it, the screen, both
+    disks and a `resume.json` under `<attempt>/resume/` before the guest stops. The run then
+    reports `resumable` and `resume_record`, and `main` exits `RESUME_EXIT`. A disk that changed
+    between the snapshot and the stop, or a snapshot that failed, leaves no resumable record.
 
     `preserve_specimen` registers the fetched save disk of a run that succeeded by its own
     verdict, before `--expect` is judged, so a run that later fails `--expect` still leaves its
@@ -1711,6 +1732,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             marks[index] = (*pairs, *marks.get(index, ()))
     if any(name.lower() == WALK_LEG for pairs in marks.values() for _, name in pairs):
         raise RouteError(f"the snapshot name {WALK_LEG} is the walk retry's own")
+    if any(name.lower() == RESUME for pairs in marks.values() for _, name in pairs):
+        raise RouteError(f"the snapshot name {RESUME} is the resume record's own")
     if marks:
         if measure or reload:
             raise RouteError("snapshot and restore steps belong to an accept run")
@@ -1756,6 +1779,12 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 raise RouteError(f"after restoring {name}: {exc}") from exc
 
     encounters_on = False
+    #: `(key, kind)` of every route step reached so far, whether sent or skipped, for the resume record.
+    sent: list[list[Any]] = []
+    #: What the resume save found: the snapshot's receipt tags, the copies made while the guest
+    #: still ran, and what the run looked like at the miss.
+    resume: dict[str, Any] = {}
+    previous = ""
 
     def encounter_gate(kind: str) -> None:
         """Turn the switch on for a walk step and off for any other, so a save never meets it on."""
@@ -2202,6 +2231,116 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 note_draw()
                 log("draw", **record)
 
+    def keep_resume_state(miss: GuardMissed) -> None:
+        """Snapshot the machine on the missed screen and copy out what a later run needs.
+
+        Every call uses the cleanup time, so a miss at the end of the route time still saves.
+        The disks are copied while the guest runs, to be compared with the copies fetched after
+        the stop: a game save in flight at the snapshot would reach the image and not the state.
+        """
+        folder = scratch.ensure(out / "resume")
+        on_at_miss = encounters_on
+        # The machine goes back to what the snapshot held, so it must not hold the changed script.
+        encounter_gate("off")
+        receipt = guest.snapshot(RESUME, holder)
+        tags = dict(getattr(receipt, "tags", {}))
+        for tag in ("file", "sha256", "count_snapshot"):
+            if tag not in tags:
+                raise RouteError(f"the snapshot receipt has no {tag}: {receipt}")
+        guest.get(tags["file"], folder / "state.uss", timeout=cleanup_limit(60))
+        if sha256(folder / "state.uss") != tags["sha256"]:
+            raise RouteError("the state file fetched from the guest differs from the one it "
+                             "wrote")
+        readback = getattr(guest, "drives", None)
+        drives = error = None
+        if callable(readback):
+            try:
+                drives = str(readback(holder))
+            except BaseException as exc:
+                error = f"{type(exc).__name__}: {exc}"
+        prestop = {}
+        for key, remote in remotes.items():
+            guest.get(remote, folder / f"prestop-{key}.adf", timeout=cleanup_limit(60))
+            prestop[key] = sha256(folder / f"prestop-{key}.adf")
+        screen = {}
+        for label, suffix in (("crop", ".png"), ("raw", ".raw.png")):
+            source = shots / f"{miss.resume_name}{suffix}"
+            if source.is_file():
+                shutil.copyfile(source, folder / f"screen{suffix}")
+                screen[label] = {"file": f"screen{suffix}"}
+        route_steps = steps_m if measure else steps
+        resume.update(
+            tags=tags, drives=drives, drives_error=error, prestop=prestop, screen=screen,
+            step=miss.resume_step, state=route_steps[miss.resume_step - 1][1],
+            kind=route_steps[miss.resume_step - 1][2], error=str(miss),
+            route_sha256=hashlib.sha256(json.dumps(
+                [[list(k) if isinstance(k, tuple) else k, kd] for k, _, kd in route_steps],
+                sort_keys=True).encode()).hexdigest(),
+            encounters_on_at_miss=on_at_miss, folder=folder,
+            kept={"previous_state": previous_state, "previous_world": previous_world,
+                  "landed": landed["state"], "previous_digest": previous,
+                  "unguarded": list(result["unguarded"]),
+                  **{k: copy.deepcopy(result.get(k)) for k in (
+                      "camp_sheets", "camp_displays", "camp_joins", "sheets_before_last_rest",
+                      "moves_again", "load_message")}})
+
+    def write_resume_record() -> None:
+        """Copy the stopped disks beside the state and write `resume.json`, last."""
+        if not stopped:
+            raise RouteError("the guest did not stop, so the disks cannot be compared")
+        folder = resume["folder"]
+        disks, changed = {}, []
+        for key, remote in remotes.items():
+            fetched = out / f"fetched-{key}.adf"
+            if not fetched.is_file():
+                raise RouteError(f"disk {key} was not fetched after the stop")
+            shutil.copyfile(fetched, folder / f"{key}.adf")
+            settled = sha256(folder / f"{key}.adf") == resume["prestop"][key]
+            if not settled:
+                changed.append(key)
+            disks[key] = {"remote": remote, "file": f"{key}.adf", "settled": settled,
+                          "prestop_sha256": resume["prestop"][key]}
+        step, tags = resume["step"], resume["tags"]
+        resumable = not changed
+        record = {
+            "driver": "amiga",
+            "created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "git": {"sha": result.get("sha"), "dirty": result.get("dirty")},
+            "argv": result["argv"],
+            "command": "reload" if reload else "accept" if accept else "measure",
+            "title": cli_title or published_name or manifest.get("title") or (
+                "ssb" if title is None else title.issue),
+            "manifest": {"path": str(manifest_path), "sha256": sha256(manifest_path)},
+            "holder": holder, "attempt": attempt,
+            "step": {"n": step, "key": sent[step - 1][0], "state": resume["state"],
+                     "kind": resume["kind"], "phase": "awaiting_screen"},
+            "sent": sent[:step], "route_sha256": resume["route_sha256"],
+            "screen": resume["screen"], "error": resume["error"],
+            "machine": {"file": "state.uss", "count_snapshot": int(tags["count_snapshot"]),
+                        "guest_file": tags["file"], "exe": tags.get("exe"),
+                        # `file` is a record key naming a file in the folder, which the guest's path is not.
+                        "receipt": {k: v for k, v in tags.items() if k != "file"}},
+            "start": {"config": BOOT_CONFIG,
+                      "config_sha256": hashlib.sha256(LOCAL_BOOT_CONFIG.read_bytes()).hexdigest(),
+                      "mounted": ([None if k is None else remotes[k] for k in title.mounted]
+                                  if title is not None else [remotes["df0"], remotes["df1"]]),
+                      "options": list(title.options) if title is not None else [],
+                      "receipt": result.get("start"), "drives_at_stop": resume["drives"],
+                      "drives_error": resume["drives_error"]},
+            "disks": disks, "kept": resume["kept"],
+            "options": {"no_encounters": encounters is not None,
+                        "encounters_on_at_miss": resume["encounters_on_at_miss"],
+                        "walk_retry": walk_retry},
+            "resumable": resumable,
+            "why_not": None if resumable else (
+                f"the disk changed after the snapshot: {', '.join(changed)}"),
+        }
+        path = resumerecord.write(folder, record)
+        result.update(resume_record=str(path), resumable=resumable, resume_step=step)
+        if not resumable:
+            result["resume_why_not"] = record["why_not"]
+        log("resume_record", path=str(path), resumable=resumable)
+
     try:
         receipt = guest.claim(holder, timeout=30 if wait_lane > 0 else route_limit(30),
                               **_wait_option(wait_lane))
@@ -2241,6 +2380,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             for n, step in enumerate(steps_m, 1):
                 if n <= skip:
                     result["events"].append({"skipped": step[0], "step": n})
+                    sent.append([step[0], "skipped"])
                     continue
                 if title is None:
                     (key, state), kind = step, "key"
@@ -2258,9 +2398,14 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                         break
                     encounter_gate(kind)
                     perform(key, kind, state, n)
+                    sent.append([key[2] if kind == "insert" else key, kind])
                 name = f"{n:02d}-{state}"
                 if title is not None:
-                    digest = reach(state, name, min_waits.get(state, 0), strict=True)
+                    try:
+                        digest = reach(state, name, min_waits.get(state, 0), strict=True)
+                    except GuardMissed as miss:
+                        miss.resume_step, miss.resume_name = n, name
+                        raise
                 elif _guards(guard, state):
                     digest = until_guard(state, name, min_waits.get(state, 0),
                                          GUARD_POLL, GUARD_LIMIT)
@@ -2296,6 +2441,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 try:
                     if n == 1 and skip_first:
                         result["events"].append({"skipped": key, "step": n})
+                        sent.append([key, "skipped"])
                         continue
                     encounter_gate(kind)
                     if kind == "answer":
@@ -2303,6 +2449,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     else:
                         mark = len(result["events"])
                         perform(key, kind, state, n)
+                    sent.append([key[2] if kind == "insert" else key, kind])
                     name = (f"{n:02d}-post_write" if kind == "write" and state == "loaded_menu"
                             else f"{n:02d}-{state}")
                     if kind == "move":
@@ -2317,8 +2464,12 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                         watch_messages((LOAD_MESSAGE,))
                     elif route_camp.is_join(state):
                         watch_messages(tuple(route_camp.JOIN_MESSAGES))
-                    digest = reach(state, name, first_wait,
-                                   strict=not accept or state in strict_states or in_leg)
+                    try:
+                        digest = reach(state, name, first_wait,
+                                       strict=not accept or state in strict_states or in_leg)
+                    except GuardMissed as miss:
+                        miss.resume_step, miss.resume_name = n, name
+                        raise
                     if kind == "move" and title is not None and title.move_again_after:
                         again = 0
                         while (answered := next(
@@ -2373,6 +2524,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                         {"attempt": len(result["walk_retries"]) + 1, "step": n, "error": str(exc)})
                     log("walk_retry", step=n, error=str(exc))
                     machine_step("restore", WALK_LEG, leg[0])
+                    # The machine is back before the leg's first key, so the keys since then never went.
+                    del sent[leg[0] - 1:]
                     resumed = True
                     n = leg[0] - 1
             for verb, mark_name in marks.get(len(steps), ()):
@@ -2410,6 +2563,21 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 capture("failure", check=False, cleanup=True)
             except BaseException as shot_error:
                 result["failure_capture_error"] = f"{type(shot_error).__name__}: {shot_error}"
+        if start_attempted and isinstance(exc, GuardMissed):
+            if exc.resume_step is None:
+                result["resumable"] = False
+                result["resume_why_not"] = ("the missed screen is not the one a route step's own "
+                                            "key opened")
+            elif not getattr(guest, "can_snapshot", True):
+                result["resumable"] = False
+                result["resume_why_not"] = "this emulator lane cannot take a machine snapshot yet"
+            else:
+                try:
+                    keep_resume_state(exc)
+                except BaseException as save_error:
+                    resume.clear()
+                    result["resumable"] = False
+                    result["resume_error"] = f"{type(save_error).__name__}: {save_error}"
     finally:
         if encounters_on:
             # The game is still running here: put the script back before it can be saved.
@@ -2434,6 +2602,13 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     log("fetch", disk=name, **result["fetched"][name])
                 except BaseException as exc:
                     result[f"fetch_{name}_error"] = f"{type(exc).__name__}: {exc}"
+        if resume:
+            # Before the release: the record is written last, so a missing one means no resume.
+            try:
+                write_resume_record()
+            except BaseException as exc:
+                result["resumable"] = False
+                result["resume_error"] = f"{type(exc).__name__}: {exc}"
         if preserve_specimen and title is not None:
             try:
                 _read_title(title, manifest, result, out, disks, registered,
@@ -3829,7 +4004,7 @@ def main(argv: list[str] | None = None) -> int:
                     audio_proof=args.audio_proof, attempt=attempt,
                     guard=PixelGuards(args.guards) if args.guards else None,
                     deadline_seconds=args.deadline, measure=True, title=title,
-                    wait_lane=args.wait_lane,
+                    wait_lane=args.wait_lane, cli_title=args.title,
                     published_disk_one=args.published_disk_one,
                     published_name=args.title if args.published_disk_one else None,
                     **_encounters(args, holder),
@@ -3843,7 +4018,7 @@ def main(argv: list[str] | None = None) -> int:
                     identity=PixelGuards(args.identity), holder=holder,
                     audio_proof=args.audio_proof, attempt=attempt,
                     deadline_seconds=args.deadline, title=title, wait_lane=args.wait_lane,
-                    published_disk_one=args.published_disk_one,
+                    cli_title=args.title, published_disk_one=args.published_disk_one,
                     published_name=args.title if args.published_disk_one else None,
                     journal_python=getattr(args, "journal_python", None),
                     walk_retry=getattr(args, "walk_retry", 0),
@@ -3884,6 +4059,11 @@ def main(argv: list[str] | None = None) -> int:
                         accepted, line = expect_verdict(judged, args.manifest, attempt, expect)
                 print(line)
                 success = success and accepted
+            if result.get("resumable"):
+                step, record = result["resume_step"], result["resume_record"]
+                print(f"acceptance: stopped on an unrecognised screen at step {step}; resume with "
+                      f"--resume-from {record} --at-step {step}", file=sys.stderr)
+                return resumerecord.RESUME_EXIT
             return 0 if success else 1
     except (RouteError, OSError, ValueError) as exc:
         print(f"acceptance: {exc}", file=sys.stderr)
