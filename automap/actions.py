@@ -2117,6 +2117,14 @@ class FastTravel(Action):
                 _log.debug("fast travel blocked: area %d's departure needs "
                            "a stub and this machine cannot run one", here)
                 return Outcome(False, FASTTRAVEL_FAILED, ())
+        if row is not None and row.dismiss and not row.stub_dismiss:
+            # The dismissals are written before the jump and the reload flag
+            # would finish the move later, so a machine that cannot start the
+            # game must not be written to.
+            if not can_jump(target):
+                _log.debug("fast travel blocked: area %d's departure drops "
+                           "members and this machine cannot set the PC", here)
+                return Outcome(False, FASTTRAVEL_FAILED, ())
         if row is not None and row.dismiss:
             matches = _dismissal_matches(target, row, self.game)
             if matches is None:
@@ -2190,9 +2198,9 @@ class FastTravel(Action):
     def _run_via_stub(self, target, addr, area, writes, was, notes) -> Outcome:
         """Make `writes`, then start the game at the stub they include.
 
-        Unlike the plain trip, a failed jump here puts every byte back: the
-        reload flag in `writes` would finish the move at the next area change
-        without the cleanup the stub exists to run.
+        Unlike a trip with no stub, a failed write or jump here puts every
+        byte back: the reload flag in `writes` would finish the move at the
+        next area change without the cleanup the stub exists to run.
         """
         originals = []
         for address, data in writes:
@@ -2200,12 +2208,22 @@ class FastTravel(Action):
             if held is None or len(held) != len(data):
                 return Outcome(False, FASTTRAVEL_FAILED, ())
             originals.append((address, bytes(held)))
-        _write_all(target, writes)
-        if not jump(target, addr.stub_base):
+        try:
+            _write_all(target, writes)
+            started = jump(target, addr.stub_base)
+        except Exception:
+            _log.debug("fast travel: writing for the stub or starting it "
+                       "raised", exc_info=True)
+            started = False
+        if not started:
             for address, held in reversed(originals):
-                target.write(address, held)
-            _log.debug("fast travel: could not set the PC to the stub; "
-                       "every byte written is back")
+                try:
+                    target.write(address, held)
+                except Exception:
+                    _log.debug("fast travel: could not put $%04X back",
+                               address, exc_info=True)
+            _log.debug("fast travel: the stub did not start; every byte "
+                       "written was put back where it could be")
             return Outcome(False, FASTTRAVEL_FAILED, ())
         self.back = was
         name = getattr(area, "name", None) or "this area"

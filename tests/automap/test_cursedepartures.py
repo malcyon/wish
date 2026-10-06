@@ -169,6 +169,9 @@ def test_a_disabled_curse_row_goes_straight_to_the_tail(area, to, party):
     target.write(0x4C5B, b"\x00")
     target.write(0x4C2D, b"\x80")
     target.write(0x4C2E, b"\x82")
+    assert any(not r.enabled and area in r.areas
+               and r.title == departures.CURSE_OF_THE_AZURE_BONDS
+               for r in departures.DEPARTURES)
     outcome = curse_trip(target, to)
     assert outcome.ok, outcome.message
     assert target.jumps == [CURSE_ADDR.tail]
@@ -178,7 +181,7 @@ def test_a_disabled_curse_row_goes_straight_to_the_tail(area, to, party):
         assert target.read(ROSTER + 0x20 * slot, 1) == b"\x01"
 
 
-def test_the_five_new_rows_and_only_they_are_disabled():
+def test_the_six_new_rows_and_only_they_are_disabled():
     off = [row for row in departures.DEPARTURES if not row.enabled]
     assert {(r.title, min(r.areas)) for r in off} == {
         (departures.CURSE_OF_THE_AZURE_BONDS, 0x11),
@@ -399,6 +402,100 @@ def test_a_failed_jump_puts_every_written_byte_back(enabled, monkeypatch):
     before = bytes(target.ram)
     monkeypatch.setattr(actions, "jump", lambda t, a: False)
     outcome = curse_trip(target)
+    assert not outcome.ok and outcome.message == actions.FASTTRAVEL_FAILED
+    assert bytes(target.ram) == before
+
+
+class Flaky(ByteTarget):
+    """Raises on chosen writes, and on the jump when asked."""
+
+    def __init__(self, fail_writes=(), fail_jump=False):
+        super().__init__()
+        self.fail_writes = list(fail_writes)
+        self.fail_jump = fail_jump
+        self.armed = False
+
+    def write(self, address, data):
+        if self.armed and self.fail_writes and address == self.fail_writes[0]:
+            self.fail_writes.pop(0)
+            raise OSError("write failed")
+        super().write(address, data)
+
+    def __getattr__(self, name):
+        if name == "set_pc" and self.fail_jump:
+            def boom(address):
+                raise OSError("jump failed")
+            return boom
+        return super().__getattr__(name)
+
+
+def flaky_haptooth(**kwargs):
+    target = Flaky(**kwargs)
+    target.write(CURSE_ADDR.slot, b"\x31")
+    target.write(CURSE_ADDR.disk, b"\x03")
+    target.write(CURSE_ADDR.indoors, b"\x01")
+    target.write(CURSE_ADDR.live_square, bytes([5, 6, 1]))
+    put_member(target, CURSE, 0, 0, "BRUTUS", False)
+    for address in (0x8000, 0x8001, 0x801D, 0x4C00):
+        target.write(address, b"\xee")
+    target.armed = True
+    return target
+
+
+def test_a_write_that_raises_partway_puts_the_earlier_bytes_back(enabled):
+    target = flaky_haptooth(fail_writes=[CURSE_ADDR.slot])
+    before = bytes(target.ram)
+    outcome = curse_trip(target)
+    assert not outcome.ok and outcome.message == actions.FASTTRAVEL_FAILED
+    assert bytes(target.ram) == before and target.jumps == []
+
+
+def test_a_jump_that_raises_puts_every_byte_back(enabled):
+    target = flaky_haptooth(fail_jump=True)
+    before = bytes(target.ram)
+    outcome = curse_trip(target)
+    assert not outcome.ok and outcome.message == actions.FASTTRAVEL_FAILED
+    assert bytes(target.ram) == before
+
+
+def test_a_restore_that_raises_does_not_stop_the_others(enabled, monkeypatch):
+    target = flaky_haptooth()
+    before = bytes(target.ram)
+    monkeypatch.setattr(actions, "jump", lambda t, a: False)
+    # The reload flag is written, then fails to come back; the stub and the
+    # other bytes still do.
+    slot = CURSE_ADDR.slot
+    real = target.write
+    calls = []
+
+    def write(address, data):
+        calls.append(address)
+        if address == slot and calls.count(slot) == 2:
+            raise OSError("restore failed")
+        real(address, data)
+
+    target.write = write
+    outcome = curse_trip(target)
+    assert not outcome.ok and outcome.message == actions.FASTTRAVEL_FAILED
+    after = bytes(target.ram)
+    assert after[slot] != before[slot]
+    assert after[:slot] + after[slot + 1:] == before[:slot] + before[slot + 1:]
+
+
+def test_a_dismissal_only_row_writes_nothing_when_it_cannot_jump(enabled):
+    target = pit()
+    target.can_set_pc = False
+    before = bytes(target.ram)
+    outcome = curse_trip(target)
+    assert not outcome.ok and outcome.message == actions.FASTTRAVEL_FAILED
+    assert outcome.writes == () and bytes(target.ram) == before
+
+
+def test_sir_deric_writes_nothing_when_it_cannot_jump(enabled):
+    target = compound((1, 3, "SIR DERIC", False, 1))
+    target.can_set_pc = False
+    before = bytes(target.ram)
+    outcome = ssb_trip(target)
     assert not outcome.ok and outcome.message == actions.FASTTRAVEL_FAILED
     assert bytes(target.ram) == before
 
