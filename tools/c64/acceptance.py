@@ -8087,9 +8087,15 @@ def resume_options(args) -> dict:
                                  default=str))
 
 
-#: The game sides staging writes into a slot.  Any other `.D64` there is left
-#: over from an earlier tenant and is no part of a run or its record.
-STAGED_SIDE = re.compile(r"SIDE[1-8]\.D64", re.IGNORECASE)
+#: How many `SIDEn.D64` each title's staging writes (`Session` `stage_disks`
+#: for Pool, `curserun.stage` and `ssbsession.stage` for the others).  Any
+#: other `.D64` in the slot, a `SIDE7` a Pool run left included, belongs to an
+#: earlier tenant and is no part of a run or its record.
+STAGED_SIDES = {"pool": 8, "curse": 6, "ssb": 6}
+
+
+def staged_side_names(title: str) -> set[str]:
+    return {f"SIDE{i}.D64" for i in range(1, STAGED_SIDES[title] + 1)}
 
 
 class StepResume:
@@ -8098,7 +8104,8 @@ class StepResume:
 
     SIDECARS = (".attached", ".pokes", ".gates")
 
-    def __init__(self, out: pathlib.Path, sess, slot_dir: pathlib.Path):
+    def __init__(self, out: pathlib.Path, sess, slot_dir: pathlib.Path, title: str = "pool"):
+        self.staged_sides = staged_side_names(title)
         self.folder = out / RESUME_FOLDER
         self.current = self.folder / "current"
         self.named = self.folder / "named"
@@ -8142,7 +8149,7 @@ class StepResume:
                 self._copy(save, self.current / save.name)
             self.sides = {side.name: specimens.sha256_file(side)
                           for side in sorted(self.slot_dir.iterdir())
-                          if STAGED_SIDE.fullmatch(side.name) and side != save}
+                          if side.name in self.staged_sides and side != save}
             self._keep_named(path.parent)
             self.state = pool.resume_state()
         except Exception as exc:  # noqa: BLE001 -- a run that cannot snapshot still runs
@@ -8421,7 +8428,7 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
         stack.enter_context(sess.watching_dialogs())
         blocker = resume_blocker(args, steps)
         if blocker is None:
-            resume = StepResume(out, sess, slot.dir)
+            resume = StepResume(out, sess, slot.dir, args.title)
         else:
             summary["resume"] = {"snapshots": False, "why_not": blocker, "record": None}
         pool = (CurseRun(sess, log, out, game, points, args.disks, staged_disk,

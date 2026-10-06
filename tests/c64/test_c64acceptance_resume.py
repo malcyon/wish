@@ -652,3 +652,22 @@ def test_a_stray_disk_in_either_slot_is_no_part_of_the_record_or_the_resume(driv
     assert rc == 0 and "launch" in events and not (slot.dir / "SAVE_IN.D64").exists()
     rc, slot, _, _ = drive(FIXED, tag="c", sess=Stray, resume_from=str(record), at_step=3)
     assert rc == 0
+
+
+@pytest.mark.parametrize("title, kept", [
+    ("pool", ["SIDE3.D64", "SIDE7.D64"]),
+    ("curse", ["SIDE3.D64"]),
+    ("ssb", ["SIDE3.D64"]),
+])
+def test_only_the_sides_the_titles_staging_writes_are_recorded(tmp_path, title, kept):
+    events = []
+    slot = _Slot(tmp_path, events)
+    sess = _Sess(None, slot)
+    # SIDE7 is what an earlier Pool run left on the slot; SAVE_IN is older still.
+    (slot.dir / "SIDE7.D64").write_bytes(b"older pool side")
+    (slot.dir / "SAVE_IN.D64").write_bytes(b"stray")
+    (slot.dir / "SIDE0.D64").write_bytes(b"save")
+    resume = A.StepResume(tmp_path / "out", sess, slot.dir, title)
+    resume.take(2, "peek 1000 1", _Pool(sess, None, tmp_path / "out", None, None))
+    assert resume.broken is None
+    assert sorted(resume.sides) == kept
