@@ -92,7 +92,7 @@ def test_a_boundary_character_writes_and_reads_back_whole(name, caplog):
     unexpected = [d for d in rep.dropped if d not in expected_dropped]
     assert unexpected == [], (name, unexpected)
     if tables is None:
-        assert len(rep.dropped) == 2, (name, rep.dropped)
+        assert _dropped_fields(rep) == _BASE_DROPS[POOL], (name, rep.dropped)
     assert not [r for r in caplog.records if r.levelno >= logging.WARNING], \
         (name, [r.getMessage() for r in caplog.records])
 
