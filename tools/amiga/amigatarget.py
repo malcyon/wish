@@ -183,8 +183,12 @@ def _verify_segments(layout: amiga.AmigaMachine, exe: Executable) -> list[str]:
 
 def connect(holder: str, layout: amiga.AmigaMachine,
             timeout: float | None) -> amiga.AmigaTarget:
-    return _located(amiga.AmigaTarget(
-        amiga.WinuaeDebugger(holder, timeout=timeout), layout))
+    """A located target over the debugger batch, swept over the machine's own
+    memory regions as `connect_pipe` does."""
+    target = amiga.AmigaTarget(
+        amiga.WinuaeDebugger(holder, timeout=timeout), layout)
+    target.memory = amiga.memory_regions(target.read)
+    return _located(target)
 
 
 def connect_pipe(holder: str, layout: amiga.AmigaMachine) -> amiga.AmigaTarget:

@@ -166,6 +166,20 @@ def test_a_pipe_connection_finds_the_game_in_fast_ram(monkeypatch):
     assert (0x200020, 0x1FFFE0) in t.memory
 
 
+def test_a_debugger_connection_finds_the_game_in_fast_ram(monkeypatch):
+    """The route `dump`, `fix` and `automap` take: fast RAM and no slow RAM."""
+    guest = Guest(_exec_memory([(0x8E8, 0x200000), (0x200020, 0x400000)],
+                               0x263240))
+    real = amiga.WinuaeDebugger
+    monkeypatch.setattr(
+        amiga, "WinuaeDebugger",
+        lambda holder, timeout=None: real(holder, runner=guest,
+                                          timeout=timeout))
+    t = amigatarget.connect("wish37", SSB, 5.0)
+    assert t.data_base == 0x263240
+    assert (0x200020, 0x1FFFE0) in t.memory
+
+
 def test_locate_blocks_when_the_anchor_is_nowhere():
     """A machine running some other title, or one that has not finished
     loading. Blocking is the point: a base guessed here misreads every byte
@@ -888,6 +902,30 @@ def test_poke_writes_through_the_holders_pipe_and_prints_old_and_new(pooled, cap
     assert pooled[0].get(at, 4) == bytes.fromhex("080000c8")
     row = json.loads(capsys.readouterr().out)
     assert row == {"address": at, "old": "00000000", "new": "080000c8"}
+
+
+def test_poke_into_a_fast_ram_party_record_reaches_the_transports_write(
+        fake_pipe, monkeypatch, tmp_path):
+    from tools.amiga import amigatarget
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    at = 0x300000
+
+    class FastPipe(_PipeMemory):
+        def __init__(self, holder=None):
+            super().__init__(holder)
+            self.memory = {0: bytearray(0x400000)}
+            for addr, val in _exec_memory([(0x200020, 0x400000)],
+                                          0x263240).items():
+                self.put(addr, val)
+
+    monkeypatch.setattr(amigatarget.amiga, "WinuaePipe", FastPipe)
+    monkeypatch.setattr(amigatarget, "poke_ranges",
+                        lambda t, layout: [(at, at + 0x100)])
+    rc = amigatarget.main(["--holder", "h", "poke", "--at", hex(at),
+                           "--hex", "08"])
+    assert rc == 0
+    assert fake_pipe[0].get(at, 1) == b"\x08"
 
 
 def test_poke_over_the_limit_is_an_error_row_and_writes_nothing(pooled, capsys):
