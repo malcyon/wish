@@ -179,6 +179,25 @@ def test_pick_wait_counts_the_tree_walk_and_stays_inside_the_task_budget():
     assert 2 * winwish.UI_WAIT < winwish.ui_timeout(0, "click")
 
 
+def test_pick_poll_is_inside_the_try_that_collapses_the_combo():
+    inner = _pick()
+    body = inner[inner.index("function Pick-Item"):inner.index("$names.Count -eq 0")]
+    expand = body.index(".Expand()")
+    start = body.index("try {", expand)
+    assert body[expand:start].count("\n") <= 1 and "Get-Controls" not in body[expand:start]
+    assert start < body.index("Get-Controls", expand) < body.index("finally { try { $expand.Collapse()")
+
+
+def test_pick_reads_every_runtime_id_inside_a_try_so_a_failed_read_is_not_in_the_before_set():
+    inner = _pick()
+    body = inner[inner.index("function Pick-Item"):inner.index("$names.Count -eq 0")]
+    lines = [ln for ln in body.splitlines() if "GetRuntimeId()" in ln]
+    assert len(lines) >= 2
+    for ln in lines:
+        at = ln.index("GetRuntimeId()")
+        assert "try {" in ln[:at] and "catch" in ln[at:], ln
+
+
 @pytest.mark.parametrize("extra", [{"shot_after": "x.png"}, {"controls_after": "x.txt"}])
 def test_ui_inner_pick_rejects_shot_and_controls_after(extra):
     with pytest.raises(winwish.WinwishError, match="--pick"):

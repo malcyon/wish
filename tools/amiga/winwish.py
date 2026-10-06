@@ -609,17 +609,20 @@ def _pick_function(item: str) -> list[str]:
         # another list with the same name must not match.
         "    $before = @{}",
         "    foreach ($e in (Get-Controls)) { if ((Get-Kind $e) -eq 'ListItem') { try { $before[($e.GetRuntimeId() -join '.')] = $true } catch {} } }",
+        # An unreadable RuntimeId counts as not in the before set, as in the snapshot and Get-Controls.
+        "    function Get-Rid($e) { try { return ($e.GetRuntimeId() -join '.') } catch { return '' } }",
         "    $expand = $o; $expand.Expand()",
-        # A stopwatch, so the time a tree walk takes counts against the wait.
-        "    $clock = [System.Diagnostics.Stopwatch]::StartNew()",
-        "    $items = @()",
-        "    while ($true) {",
-        "      $items = @(Get-Controls | Where-Object { (Get-Kind $_) -eq 'ListItem' -and $_.Current.Name -eq $item -and "
-        "-not $before.ContainsKey(($_.GetRuntimeId() -join '.')) })",
-        f"      if ($items.Count -gt 0 -or $clock.Elapsed.TotalSeconds -gt {UI_WAIT}) {{ break }}",
-        "      Start-Sleep -Milliseconds 200",
-        "    }",
+        # The try starts right after Expand, so a throw while polling still collapses the combo.
         "    try {",
+        # A stopwatch, so the time a tree walk takes counts against the wait.
+        "      $clock = [System.Diagnostics.Stopwatch]::StartNew()",
+        "      $items = @()",
+        "      while ($true) {",
+        "        $items = @(Get-Controls | Where-Object { (Get-Kind $_) -eq 'ListItem' -and $_.Current.Name -eq $item -and "
+        "-not $before.ContainsKey((Get-Rid $_)) })",
+        f"        if ($items.Count -gt 0 -or $clock.Elapsed.TotalSeconds -gt {UI_WAIT}) {{ break }}",
+        "        Start-Sleep -Milliseconds 200",
+        "      }",
         "      if ($items.Count -eq 0) { throw \"no list item named $item\" }",
         "      if ($items.Count -gt 1) { throw \"$($items.Count) list items named $item\" }",
         "      $p = $null",
