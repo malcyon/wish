@@ -28,6 +28,13 @@ names and the width under `save_as` `unfit` and `width`. `--name POSITION=NAME`
 (repeatable) gives the name to use for that party position, as the Shorten
 window's box does: `--name 0=SHORTNAME`.
 
+`--leave ITEM_NAME` (repeatable) answers the window that opens when the party
+holds more than the destination keeps: it ticks the row showing that text, and
+`--leave auto` ticks rows top-down until the window's own count reads zero.
+The report's `save_as.leave_dialog` holds the ticked rows' text, the count label
+before and after, and whether OK was enabled. A missing row, or an OK still
+disabled, stops the run with exit status 1 and one line on stderr.
+
 Runs offscreen; nothing opens on the desktop.
 """
 from __future__ import annotations
@@ -69,6 +76,10 @@ def main(argv=None) -> int:
                     help="the name to give the party member at POSITION, in "
                          "place of one too long for the Amiga field; "
                          "repeatable, one per position")
+    ap.add_argument("--leave", action="append", default=[], metavar="ITEM_NAME",
+                    help="tick the row showing ITEM_NAME in the left-behind "
+                         "window; repeatable, or `auto` to tick rows until "
+                         "nothing is left to leave")
     ap.add_argument("--tree", type=pathlib.Path, default=ROOT,
                     help="checkout to run the conversion from (default: this "
                          "one)")
@@ -142,7 +153,8 @@ def main(argv=None) -> int:
         result = saveasdrive.save_as(window, specimen, "amiga", out,
                                      c64_folder=None, amiga_disk=amiga_disk2,
                                      amiga_disk_one=amiga_disk1,
-                                     names=names or None)
+                                     names=names or None,
+                                     leave_ticks=args.leave or None)
     finally:
         window.close()
 
@@ -155,6 +167,8 @@ def main(argv=None) -> int:
 
     print(json.dumps(report, indent=2))
     report_path.write_text(json.dumps(report, indent=2))
+    if result.get("stopped", [None])[0] == "LeaveChoiceError":
+        print(result["stopped"][1], file=sys.stderr)
     return 1 if "stopped" in result else 0
 
 

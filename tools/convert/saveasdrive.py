@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import datetime
 import pathlib
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Mapping, Sequence
 from typing import Any
 
 #: The file a Save As writes for a destination that is a single image.
@@ -34,6 +34,95 @@ def destination_path(port: str, folder: pathlib.Path) -> pathlib.Path:
     return dated if port == "dos" else dated / IMAGE_NAMES[port]
 
 
+#: The `--leave` value that ticks rows top-down until the count reaches zero.
+LEAVE_AUTO = "auto"
+
+
+class LeaveChoiceError(Exception):
+    """The left-behind window could not be completed as asked."""
+
+
+def _leave_through_window(window: Any, overflow: Any, game: Any,
+                          ticks: Sequence[str]) -> "tuple[dict, dict]":
+    """Open the editor's own left-behind window for `overflow`, tick the rows
+    named in `ticks` (or `LEAVE_AUTO`), and return its choice and a record of
+    what was ticked and what the window said.
+
+    The window is reached through `window._choose_left_behind`, so its item
+    and spell names come from the same place as in the editor; only `exec` is
+    replaced, by the ticking."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtWidgets import QDialog, QDialogButtonBox
+
+    from editor import leavebehind
+
+    dialog_class = leavebehind.LeaveBehindDialog
+    column = leavebehind.NAME_COLUMN
+    record: dict = {}
+    failure: list[str] = []
+
+    def rows(dialog):
+        found = []
+
+        def walk(item):
+            if item.data(column, leavebehind.PICK_ROLE) is not None:
+                found.append(item)
+            for n in range(item.childCount()):
+                walk(item.child(n))
+
+        for n in range(dialog.tree.topLevelItemCount()):
+            walk(dialog.tree.topLevelItem(n))
+        return found
+
+    def tick(row):
+        row.setCheckState(column, Qt.CheckState.Checked)
+        record["ticked"].append({
+            "member": row.data(column, leavebehind.PICK_ROLE)[0],
+            "text": row.text(column)})
+
+    def run(dialog):
+        label = dialog.ui.items_remaining_label
+        ok = dialog.buttons.button(QDialogButtonBox.StandardButton.Ok)
+        record["label_before"] = label.text()
+        record["ticked"] = []
+        candidates = rows(dialog)
+        if list(ticks) == [LEAVE_AUTO]:
+            done = leavebehind.ITEMS_REMAINING.format(n=0)
+            for row in candidates:
+                if label.text() == done:
+                    break
+                tick(row)
+        else:
+            for name in ticks:
+                match = next(
+                    (r for r in candidates if r.text(column) == name
+                     and r.checkState(column) == Qt.CheckState.Unchecked),
+                    None)
+                if match is None:
+                    failure.append(f"no row in the window shows {name!r}")
+                    return QDialog.DialogCode.Rejected
+                tick(match)
+        record["label_after"] = label.text()
+        record["ok_enabled"] = ok.isEnabled()
+        if not ok.isEnabled():
+            failure.append("OK is disabled after ticking: the window still "
+                           f"reads {label.text()!r}")
+            return QDialog.DialogCode.Rejected
+        return QDialog.DialogCode.Accepted
+
+    original = dialog_class.exec
+    dialog_class.exec = run
+    try:
+        choice = window._choose_left_behind(overflow, game, "OK")
+    finally:
+        dialog_class.exec = original
+    if failure:
+        raise LeaveChoiceError(failure[0])
+    if choice is None:
+        raise LeaveChoiceError("the left-behind window was not accepted")
+    return choice, record
+
+
 def save_as(window: Any, source: "str | pathlib.Path", port: str,
             folder: "str | pathlib.Path", *,
             c64_folder: "str | pathlib.Path | None" = None,
@@ -43,7 +132,8 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
             source_slot: "str | None" = None,
             names: "Mapping[int, str] | None" = None,
             leave: "Mapping[int, Collection[int]] | None" = None,
-            leave_effects: "Mapping[int, Collection[int]] | None" = None
+            leave_effects: "Mapping[int, Collection[int]] | None" = None,
+            leave_ticks: "Sequence[str] | None" = None
             ) -> dict:
     """Open `source`, Save As it to `port` under `folder`, and say what landed.
 
@@ -72,6 +162,14 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
     Blades party over the Amiga's joined-scroll limit as
     `AmigaJoinedScrollsDoNotFit`.
 
+    `leave_ticks` is what a player would tick in that same window, as the text
+    its rows show, or `[LEAVE_AUTO]`. When the party is over and no `leave`
+    is given, the editor's own window is opened for it, those rows are ticked,
+    and Save As is run again with the window's choice; the report carries
+    `leave_dialog` (`ticked`, `label_before`, `label_after`, `ok_enabled`). A
+    row that is missing, or an OK that stays disabled, is `stopped` as
+    `LeaveChoiceError`.
+
     `leave_effects` is the `{member: running-effect indices}` a player would
     tick in the window that opens when the party's running effects need more
     rows than the C64's shared table holds. A party still over is blocked as
@@ -82,7 +180,7 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
     from editor import saveplan
     from editor.convert import Source
     from editor.roster import Party
-    from goldbox import dos_codec
+    from goldbox import amiga_savegame, dos_codec
 
     report: dict = {"source": str(source), "to": port, "folder": str(folder)}
     path = destination_path(port, pathlib.Path(folder))
@@ -115,6 +213,26 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
             report["effects_needed"] = over.needed
             report["effects_limit"] = over.limit
             report["effect_entries"] = [list(e) for e in over.entries]
+        if (leave_ticks and not leave and isinstance(
+                exc, (dos_codec.JoinedScrollsDoNotFit,
+                      amiga_savegame.AmigaJoinedScrollsDoNotFit))):
+            try:
+                from editor import convert as convert_mod
+                game = saveplan.route(
+                    Source.of_snapshot(saveplan.prepare(party)),
+                    port).destination_game
+                choice, record = _leave_through_window(
+                    window, convert_mod.overflow_of(exc), game, leave_ticks)
+            except LeaveChoiceError as stop:
+                exc = stop
+            else:
+                again = save_as(
+                    window, source, port, folder, c64_folder=c64_folder,
+                    dos_folder=dos_folder, amiga_disk=amiga_disk,
+                    amiga_disk_one=amiga_disk_one, source_slot=source_slot,
+                    names=names, leave=choice, leave_effects=leave_effects)
+                again["leave_dialog"] = record
+                return again
         report["stopped"] = [type(exc).__name__, str(exc)]
         report["error"] = f"{type(exc).__name__}: {exc}"
         return report
