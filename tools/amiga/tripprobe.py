@@ -19,10 +19,24 @@ attribute byte (`0x1773`) the step entry reads uncached, and the forward key
 is sent for the game's own step code to run the exit. `--attribute skip` leaves
 `0x1773` alone, so a run can show whether it matters. A key not taken within
 `FIRE_SECONDS` puts every byte back. One JSON line per try goes to
-DIR/doors.jsonl.
+DIR/doors.jsonl, with the wall nibble and attribute byte read back just before
+the key.
 
     tools/amiga/tripprobe.py --holder wish1-por --door \\
         --route edge=4,0,0 --route question=6,14,2 --attribute both --out DIR
+
+`--answer [NAME=]KEY` answers the question the key raised: after the first
+screenshot it presses KEY, polls the area byte for `FIRE_SECONDS` (until it is
+`--expect-area [NAME=]AREA`, or until it changes when none is given), settles,
+takes a second screenshot, then presses the forward key and takes a third.
+Without NAME the value applies to every route.
+
+    tools/amiga/tripprobe.py --holder wish1-por --door --route valjevo=5,7,1 \\
+        --answer y --expect-area 5 --out DIR
+
+`--prefixes 0` fires one trip and leaves the game where it lands, so a later
+`--door` run in the same boot starts from the area the trip loaded; every
+`--door` run still restores its snapshot at the end.
 
 The lane claim is the caller's, as in `amigadrive.py`; this writes only the
 running machine's memory and DIR, and discards its snapshot at the end.
@@ -43,12 +57,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
 
 from automap import amiga, amigatrip  # noqa: E402
 from goldbox.geo import Geo  # noqa: E402
+from tools.amiga import amigakeys  # noqa: E402
 
 #: Seconds the area byte may take to change after the key, and the pause after
 #: it before the screenshot.
 FIRE_SECONDS = 20.0
 SETTLE_SECONDS = 3.0
 POLL_SECONDS = 0.25
+
+#: The key the game's own forward step answers to (Amiga raw key 8).
+FORWARD_KEY = "8"
 
 
 class ProbeError(RuntimeError):
@@ -181,6 +199,51 @@ def put_back(target, row, done, stop_if_taken: bool = False) -> bool:
     return False
 
 
+def _cached_bytes(target, row) -> dict[str, int]:
+    """The wall nibble ahead and the square's attribute byte as the game holds them."""
+    base = amigatrip._base(target)
+    notes = amiga.MACHINES[row.key].notes
+    wall, attribute = target.read_blocks([(base + notes["wall_ahead"], 1),
+                                          (base + notes["square_attribute"], 1)])
+    return {"wall_ahead": wall[0], "square_attribute": attribute[0]}
+
+
+def answer_door(target, row, route: str, key: str, expect: int | None, out: pathlib.Path,
+                shot: Callable[[pathlib.Path], object], press: Callable[[str], object],
+                sleep: Callable[[float], None]) -> dict:
+    """Press `key`, wait for the area byte, then screenshot, step forward and screenshot.
+
+    The area byte is polled for `FIRE_SECONDS` until it equals `expect`, or until
+    it differs from its value before the key when `expect` is None.
+    """
+    before = amigatrip.area_id(target, row)
+
+    def arrived() -> bool:
+        now = amigatrip.area_id(target, row)
+        return now == expect if expect is not None else now != before
+
+    press(key)
+    waited = 0.0
+    while not arrived() and waited < FIRE_SECONDS:
+        sleep(POLL_SECONDS)
+        waited += POLL_SECONDS
+    reached = arrived()
+    sleep(SETTLE_SECONDS)
+    answered = out / f"{route}-answer.png"
+    shot(answered)
+    result = {"answer": key, "expect_area": expect, "answer_area_before": before,
+              "answer_area": amigatrip.area_id(target, row), "area_reached": reached,
+              "answer_square": amigatrip.square(target, row),
+              "answer_screenshot": answered.name}
+    press(FORWARD_KEY)
+    sleep(SETTLE_SECONDS)
+    forward = out / f"{route}-forward.png"
+    shot(forward)
+    result.update(forward_square=amigatrip.square(target, row),
+                  forward_screenshot=forward.name)
+    return result
+
+
 def try_door(target, row, stand, attribute: bool,
              sleep: Callable[[float], None]) -> dict:
     """Stand the party at `stand`, send the key and wait for it to be taken.
@@ -198,8 +261,12 @@ def try_door(target, row, stand, attribute: bool,
     writes = stand_writes(target, row, stand, Geo(blob), attribute)
     originals = target.read_blocks([(a, len(d)) for a, d, _k in writes])
     done = []
+    cached = {}
     try:
         for (address, data, kind), was in zip(writes, originals):
+            if kind == "trigger":
+                # Read before the key, which the game may take within a frame.
+                cached = _cached_bytes(target, row)
             done.append(amigatrip.Written(address, was, data, kind))
             target.write(address, data, verify=kind != "trigger")
     except BaseException:
@@ -228,21 +295,28 @@ def try_door(target, row, stand, attribute: bool,
     after = amigatrip.area_id(target, row)
     return {"key_taken": taken, "area_before": here, "area_after": after,
             "area_changed": after != here, "square_after": amigatrip.square(target, row),
-            "put_back": not taken}
+            "put_back": not taken, **cached}
 
 
 def run_doors(target, holder: str, routes: dict[str, tuple[int, int, int]], attributes,
               out: pathlib.Path, shot: Callable[[str, pathlib.Path], object],
               sleep: Callable[[float], None] | None = None,
-              name: str = "doorprobe", pipe=None) -> list[dict]:
+              name: str = "doorprobe", pipe=None,
+              answers: dict[str, tuple[str, int | None]] | None = None,
+              press: Callable[[str], object] | None = None) -> list[dict]:
     """One result per (route, attribute choice), each from a restore of one snapshot.
 
     The snapshot is restored once more after the last try, and on any exception,
     so no try leaves bytes in the game.
 
     Writes one JSON line per try to `out/doors.jsonl` and one screenshot per
-    try, `<route>-attribute.png` or `<route>-skip.png`.
+    try, `<route>-attribute.png` or `<route>-skip.png`. A route in `answers`
+    (`(key, expected area or None)`) whose key was taken is answered by
+    `answer_door` through `press(key)` before the next restore.
     """
+    answers = answers or {}
+    if answers and press is None:
+        raise ValueError("answers need a press callable")
     row = amigatrip.row_for("pool-of-radiance")
     pipe = target if pipe is None else pipe
     sleep = time.sleep if sleep is None else sleep
@@ -258,6 +332,11 @@ def run_doors(target, holder: str, routes: dict[str, tuple[int, int, int]], attr
                     shot(holder, path)
                     result.update(route=route, stand=list(stand), attribute=attribute,
                                   screenshot=path.name)
+                    if route in answers and result["key_taken"]:
+                        key, expect = answers[route]
+                        result.update(answer_door(
+                            target, row, route, key, expect, out,
+                            lambda p: shot(holder, p), press, sleep))
                     lines.write(json.dumps(result) + "\n")
                     results.append(result)
         pipe.restore(name, holder)
@@ -270,6 +349,39 @@ def run_doors(target, holder: str, routes: dict[str, tuple[int, int, int]], attr
     finally:
         pipe.discard_snapshot(name, holder)
     return results
+
+
+def _answers(parser, routes, answers, expects) -> dict[str, tuple[str, int | None]]:
+    """Each route's `(key, expected area)` from `[NAME=]KEY` and `[NAME=]AREA` options."""
+    def split(item: str, what: str) -> tuple[str | None, str]:
+        label, eq, value = item.rpartition("=")
+        if not value or (eq and label not in routes):
+            parser.error(f"{what} {item!r} is not [NAME=]VALUE with NAME a --route")
+        return (label or None), value
+
+    keys: dict[str | None, str] = {}
+    for item in answers:
+        label, value = split(item, "--answer")
+        try:
+            amigakeys.lookup(value)
+        except KeyError:
+            parser.error(f"--answer {value!r} is not a key name")
+        keys[label] = value
+    areas: dict[str | None, int] = {}
+    for item in expects:
+        label, value = split(item, "--expect-area")
+        try:
+            areas[label] = int(value)
+        except ValueError:
+            parser.error(f"--expect-area {value!r} is not a number")
+    result = {}
+    for route in routes:
+        key = keys.get(route, keys.get(None))
+        if key is not None:
+            result[route] = (key, areas.get(route, areas.get(None)))
+    if areas and not set(areas) <= set(keys) | {None} or (None in areas and not keys):
+        parser.error("--expect-area needs an --answer for the same route")
+    return result
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -286,7 +398,22 @@ def main(argv: list[str] | None = None) -> int:
                         help="with --door: the square to stand on and the facing; repeatable")
     parser.add_argument("--attribute", choices=("write", "skip", "both"), default="write",
                         help="with --door: whether to write the square's attribute byte (0x1773)")
+    parser.add_argument("--answer", action="append", default=[], metavar="[NAME=]KEY",
+                        help="with --door: the key that answers the game's question")
+    parser.add_argument("--expect-area", action="append", default=[], metavar="[NAME=]AREA",
+                        help="with --door --answer: the area the answer should reach")
+    parser.add_argument("--prefixes", default="0,1,2,3,4,5",
+                        help="the prefix lengths to fire; 0 alone leaves the game where the trip lands")
     args = parser.parse_args(argv)
+    if (args.answer or args.expect_area) and not args.door:
+        parser.error("--answer and --expect-area need --door")
+    longest = len(amigatrip.boat_exit_groups())
+    try:
+        prefixes = [int(n) for n in args.prefixes.split(",")]
+    except ValueError:
+        prefixes = []
+    if not prefixes or any(not 0 <= n <= longest for n in prefixes):
+        parser.error(f"--prefixes {args.prefixes!r} is not a list of lengths 0 to {longest}")
     if args.door:
         if not args.route:
             parser.error("--door needs at least one --route")
@@ -304,6 +431,7 @@ def main(argv: list[str] | None = None) -> int:
         if label in routes:
             parser.error(f"--route {label!r} is given twice")
         routes[label] = stand
+    answers = _answers(parser, routes, args.answer, args.expect_area)
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     pipe = amiga.WinuaePipe(holder=args.holder)
@@ -314,13 +442,15 @@ def main(argv: list[str] | None = None) -> int:
             choices = {"write": (True,), "skip": (False,), "both": (True, False)}[args.attribute]
             for result in run_doors(target, args.holder, routes, choices, out,
                                     lambda holder, path: amigadrive.shot(holder, path),
-                                    pipe=pipe):
+                                    pipe=pipe, answers=answers,
+                                    press=lambda key: amigadrive.press(
+                                        args.holder, key, SETTLE_SECONDS)):
                 print(json.dumps(result))
             return 0
         square = tuple(int(n) for n in args.square.split(","))
         for prefix, path in run(target, args.holder, args.area, square, out,
                                 lambda holder, path: amigadrive.shot(holder, path),
-                                pipe=pipe):
+                                prefixes=prefixes, pipe=pipe):
             print(path if path else f"prefix {prefix}: the area byte did not change")
     except (ProbeError, amiga.GuestError) as exc:
         raise SystemExit(str(exc)) from exc

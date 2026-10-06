@@ -475,3 +475,108 @@ def test_a_duplicate_route_name_is_a_usage_error(tmp_path):
         tripprobe.main(["--holder", "h", "--door", "--route", "e=4,0,0", "--route",
                         "e=5,0,0", "--out", str(tmp_path)])
     assert exc.value.code == 2
+
+
+# -- answering the question, and the single trip ------------------------------
+
+
+def _answered(fake, tmp_path, answers, area_after=5, sleep=lambda s: None):
+    calls = []
+
+    def press(key):
+        calls.append(("press", key))
+        if key == "y":
+            fake.put(BASE + ROW.area, bytes([area_after]))
+
+    results = tripprobe.run_doors(
+        fake, "h", {"edge": (4, 0, 0)}, (True,), tmp_path,
+        lambda holder, path: calls.append(("shot", path.name)), sleep=sleep,
+        answers=answers, press=press)
+    return results, calls
+
+
+def test_the_answer_key_goes_once_after_the_question_screenshot(door, tmp_path):
+    fake = DoorFake()
+    fake.snapshot = fake.restore = fake.discard_snapshot = lambda n, h: None
+    results, calls = _answered(fake, tmp_path, {"edge": ("y", 5)})
+    assert calls == [("shot", "edge-attribute.png"), ("press", "y"),
+                     ("shot", "edge-answer.png"), ("press", "8"), ("shot", "edge-forward.png")]
+    assert results[0]["answer"] == "y"
+
+
+def test_the_answer_records_whether_the_area_became_the_target(door, tmp_path, monkeypatch):
+    fake = DoorFake()
+    fake.snapshot = fake.restore = fake.discard_snapshot = lambda n, h: None
+    results, _ = _answered(fake, tmp_path, {"edge": ("y", 5)})
+    assert results[0]["area_reached"] is True
+    assert results[0]["answer_area"] == 5 and results[0]["expect_area"] == 5
+    lines = (tmp_path / "doors.jsonl").read_text().splitlines()
+    assert '"area_reached": true' in lines[0]
+    monkeypatch.setattr(tripprobe, "FIRE_SECONDS", 1.0)
+    other = DoorFake()
+    other.snapshot = other.restore = other.discard_snapshot = lambda n, h: None
+    results, _ = _answered(other, tmp_path, {"edge": ("y", 9)}, area_after=14)
+    assert results[0]["area_reached"] is False
+
+
+def test_a_try_records_the_two_cached_bytes_read_before_the_key(door):
+    result = _walk(DoorFake())
+    assert (result["wall_ahead"], result["square_attribute"]) == (7, 0x93)
+
+
+def test_a_route_without_an_answer_is_not_answered(door, tmp_path):
+    fake = DoorFake()
+    fake.snapshot = fake.restore = fake.discard_snapshot = lambda n, h: None
+    results, calls = _answered(fake, tmp_path, {})
+    assert calls == [("shot", "edge-attribute.png")] and "answer" not in results[0]
+
+
+def _single_trip(monkeypatch, tmp_path, *extra):
+    from tools.amiga import amigadrive
+
+    FakeTarget.writes = []
+    pipes = []
+    monkeypatch.setattr(amiga, "WinuaePipe", lambda holder: pipes.append(FakePipe(holder)) or pipes[-1])
+    monkeypatch.setattr(amiga, "AmigaTarget", FakeTarget)
+    monkeypatch.setattr(amigatrip, "gate", lambda t, row: True)
+    monkeypatch.setattr(amigatrip, "area_id",
+                        lambda t, row: 26 if len(FakeTarget.writes) % 4 == 0 and FakeTarget.writes else 0)
+    monkeypatch.setattr(amigatrip, "_port", lambda t, row: 0x2000)
+    monkeypatch.setattr(amigatrip, "rawkey_message", lambda port, window: bytes(4))
+    monkeypatch.setattr(amigatrip, "link", lambda addr: bytes(4))
+    monkeypatch.setattr(amigadrive, "shot", lambda holder, path: None)
+    monkeypatch.setattr(tripprobe.time, "sleep", lambda s: None)
+    assert tripprobe.main(["--holder", "h", "--area", "14", "--square", "4,1,2",
+                           "--out", str(tmp_path), *extra]) == 0
+    return pipes[0].calls
+
+
+def test_a_single_trip_keeps_the_game_where_it_lands(monkeypatch, tmp_path):
+    calls = _single_trip(monkeypatch, tmp_path, "--prefixes", "0")
+    assert calls == ["snapshot", "restore", "discard"]
+
+
+def test_prefixes_default_is_all_six(monkeypatch, tmp_path):
+    assert _single_trip(monkeypatch, tmp_path).count("restore") == 6
+
+
+@pytest.mark.parametrize("extra", [
+    ["--answer", "y"], ["--prefixes", "7"], ["--prefixes", "a"],
+    ["--door", "--route", "e=4,0,0", "--answer", "nokey"],
+    ["--door", "--route", "e=4,0,0", "--answer", "other=y"],
+    ["--door", "--route", "e=4,0,0", "--expect-area", "5"],
+    ["--door", "--route", "e=4,0,0", "--answer", "y", "--expect-area", "x"]])
+def test_bad_answer_or_prefix_options_are_usage_errors(tmp_path, extra):
+    with pytest.raises(SystemExit) as exc:
+        tripprobe.main(["--holder", "h", "--area", "14", "--square", "4,1,2",
+                        "--out", str(tmp_path), *extra])
+    assert exc.value.code == 2
+
+
+def test_answers_resolve_per_route_over_the_default():
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    routes = {"a": (1, 1, 1), "b": (2, 2, 2)}
+    assert tripprobe._answers(parser, routes, ["y", "b=n"], ["5", "b=6"]) == {
+        "a": ("y", 5), "b": ("n", 6)}
