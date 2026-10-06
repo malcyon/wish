@@ -134,7 +134,7 @@ flight.  In a fight the party's combat blocks are the roster blocks at
 `$8300 + slot*$20`, which every save holds, and `COMBAT $16FA` lets a member
 off the map beside a monster only when his movement (`+$1B`, loaded into
 `$6C1B` by `LIBRARY $3189`) is above the fastest monster's.  So
-`fight-cast`, after the cast, and `fight-flee`, from its first turn, write
+`fight-cast` and `fight-flee`, both from their first turn, write
 twice the fastest monster's movement plus one into every occupied party
 block and into the acting member's loaded copy (`fleedrive.MovementPoke`),
 and check it again each turn, since `LIBRARY $3729` rebuilds it after an
