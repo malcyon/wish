@@ -905,6 +905,54 @@ def amiga_scrolls_over_limit(overflow: PackOverflow,
     return max(0, left - overflow.limit)
 
 
+def _member_leave_options(loose: int, room: int, counts: Sequence[int],
+                          cap: int) -> list[int]:
+    """Per items left, up to `cap`, the most scrolls one member can take out
+    of joined scrolls, as `_best_unjoin_of_packs` would after those items
+    are left.
+
+    `loose` items sit outside every joined scroll, `room` is the rows the
+    member has spare, and `counts` is the size of each joined scroll.  A
+    joined scroll ends up unjoined (it takes `count - 1` rows), broken by
+    leaving `j` of its scrolls (the joined scroll goes, `count - 1 - j` rows
+    are added, and it costs `j` items), or untouched.  Leaving an item
+    outside a joined scroll frees a row.  The unjoined ones must fit the
+    rows left; breaking is never limited by rows.
+    """
+    ahead = [0] * (len(counts) + 1)
+    for n in range(len(counts) - 1, -1, -1):
+        ahead[n] = ahead[n + 1] + counts[n] - 1
+    # (items left, spare rows, anything unjoined) -> most scrolls removed.
+    states: dict[tuple[int, int, bool], int] = {
+        (a, min(room + a, ahead[0]), False): 0
+        for a in range(min(loose, cap) + 1)}
+    for n, c in enumerate(counts):
+        grown: dict[tuple[int, int, bool], int] = {}
+
+        def offer(key: tuple[int, int, bool], removed: int) -> None:
+            if grown.get(key, -1) < removed:
+                grown[key] = removed
+
+        for (k, spare, unjoined), removed in states.items():
+            offer((k, min(spare, ahead[n + 1]), unjoined), removed)
+            offer((k, min(spare - (c - 1), ahead[n + 1]), True),
+                  removed + c)
+            for j in range(1, min(c, cap - k) + 1):
+                offer((k + j, min(spare + j + 1 - c, ahead[n + 1]), unjoined),
+                      removed + c)
+        states = grown
+    most: dict[int, int] = {}
+    for (k, spare, unjoined), removed in states.items():
+        if (not unjoined or spare >= 0) and most.get(k, -1) < removed:
+            most[k] = removed
+    out = []
+    best = 0
+    for k in range(cap + 1):
+        best = max(best, most.get(k, 0))
+        out.append(best)
+    return out
+
+
 def amiga_items_to_leave(overflow: PackOverflow,
                          leave: "Mapping[int, Collection[int]] | None"
                          ) -> int:
@@ -912,52 +960,53 @@ def amiga_items_to_leave(overflow: PackOverflow,
     best unjoin brings it within the Amiga loader's limit; 0 when it already
     does.
 
-    Exact.  Items are grouped by what leaving one does: every item that is
-    not inside a joined scroll frees a row and nothing else, and each scroll
-    of one joined scroll breaks it up and frees a row, so a group is chosen
-    by how many of it are left and not by which.
+    Exact.  The party fits when the scrolls taken out of joined scrolls, by
+    unjoining or by leaving one of their scrolls, reach the excess over the
+    limit.  Each member's best is worked out for every number of items left,
+    and the members are then combined.
     """
+    from . import amiga_later  # imports this module at its top
     leave = {m: set(v) for m, v in (leave or {}).items()}
     if amiga_scrolls_over_limit(overflow, leave) == 0:
         return 0
-    # (member, unticked indices) per group.
-    groups: list[tuple[int, list[int]]] = []
-    for member in overflow.members:
-        ticked = leave.get(member, set())
-        loose = []
-        for u in overflow.units:
-            if u.member != member:
-                continue
-            if u.kind == "item":
-                loose.extend(i for i in u.indices if i not in ticked)
-        groups.append((member, loose))
-        for u in overflow.units:
-            if u.member == member and u.kind == "joined":
-                groups.append((member,
-                               [i for i in u.indices if i not in ticked]))
-    groups = [g for g in groups if g[1]]
-    total = sum(len(g[1]) for g in groups)
-
-    def fits(counts: Sequence[int]) -> bool:
-        trial = {m: set(v) for m, v in leave.items()}
-        for (member, free), n in zip(groups, counts):
-            trial.setdefault(member, set()).update(free[:n])
-        return amiga_scrolls_over_limit(overflow, trial) == 0
-
-    def spread(start: int, left: int, counts: list[int]) -> bool:
-        if left == 0:
-            return fits(counts + [0] * (len(groups) - len(counts)))
-        if start == len(groups):
-            return False
-        for n in range(min(left, len(groups[start][1])), -1, -1):
-            if spread(start + 1, left - n, counts + [n]):
-                return True
-        return False
-
-    for k in range(1, total + 1):
-        if spread(0, k, []):
-            return k
-    return total
+    members = []
+    total = 0
+    joined = 0
+    for place, member in enumerate(overflow.members):
+        bundles = tuple(
+            ScrollBundle(u.indices[0], len(u.indices), b"")
+            for u in overflow.units
+            if u.member == member and u.kind == "joined")
+        inventory, bundles = leave_behind(overflow.items[place], bundles,
+                                          leave.get(member, ()))
+        counts = [b.count for b in bundles]
+        joined += sum(counts)
+        total += len(inventory)
+        members.append((
+            len(inventory) - sum(counts),
+            amiga_later.AMIGA_SSB_ITEM_ROWS - _amiga_rows(inventory, bundles),
+            counts))
+    need = joined - amiga_later.AMIGA_SSB_JOINED_SCROLL_LIMIT
+    # The answer is usually a few items, so the search widens until it is found.
+    cap = 1
+    while True:
+        cap = min(cap, total)
+        # Most scrolls removed for each number of items left across the members.
+        whole = [0]
+        for loose, room, counts in members:
+            member_options = _member_leave_options(loose, room, counts, cap)
+            merged = [-1] * (min(cap, len(whole) + len(member_options) - 2) + 1)
+            for k1, r1 in enumerate(whole):
+                for k2, r2 in enumerate(member_options):
+                    if k1 + k2 <= cap:
+                        merged[k1 + k2] = max(merged[k1 + k2], r1 + r2)
+            whole = merged
+        for k, removed in enumerate(whole):
+            if removed >= need:
+                return k
+        if cap == total:
+            return total
+        cap *= 2
 
 
 def _amiga_pack_overflow(party: "Sequence[DosCharacter] | Sequence[NeutralCharacter]",
