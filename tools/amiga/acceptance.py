@@ -63,6 +63,7 @@ from tools.amiga.route_darkness import (  # noqa: E402
     DARKNESS_RELOAD,
     DARKNESS_UNSTARTED,
     DARKNESS_UNSTARTED_LOADED,
+    DARKNESS_VAULT,
     DARKNESS_VOLUME,
     _prepare_darkness,
     _prepare_darkness_reload,
@@ -2427,12 +2428,14 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
 
 TITLES: dict[str, AmigaTitle] = {"pool": POOL, "curse": CURSE, "darkness": DARKNESS,
                                  "darkness-reload": DARKNESS_RELOAD,
-                                 "darkness-unstarted": DARKNESS_UNSTARTED}
+                                 "darkness-unstarted": DARKNESS_UNSTARTED,
+                                 "darkness-vault": DARKNESS_VAULT}
 
 _PREPARE = {"pool": _prepare_pool, "curse": _prepare_curse, "darkness": _prepare_darkness,
             "darkness-reload": _prepare_darkness_reload,
             "darkness-unstarted": functools.partial(
-                _prepare_darkness, loaded=DARKNESS_UNSTARTED_LOADED)}
+                _prepare_darkness, loaded=DARKNESS_UNSTARTED_LOADED),
+            "darkness-vault": _prepare_darkness}
 
 
 def _name(title: AmigaTitle) -> str:

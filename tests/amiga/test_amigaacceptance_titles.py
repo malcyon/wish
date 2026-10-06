@@ -3431,3 +3431,54 @@ def test_the_cli_routes_a_published_disk_3_prepare_and_its_reload(tmp_path, monk
                  ["prepare", "--run-id", "r", "--title", "darkness", "--published-manifest", "m"]):
         assert foundation.main(argv) == 2
     assert len(seen) == 2
+
+
+def test_the_darkness_vault_description_is_pinned():
+    vault = foundation.DARKNESS_VAULT
+    assert foundation.TITLES["darkness-vault"] is vault
+    assert foundation._PREPARE["darkness-vault"] is foundation._prepare_darkness
+    assert route_darkness.vault_title() == vault
+    assert vault.route == (
+        ("P", "party_menu", "key"), ("L", "load_from", "key"), ("P", "load_picker", "key"),
+        ("B", "disk2_prompt", "key"), route_darkness.DISK2_INSERT,
+        ("V", "sheet", "key"), ("E", "loaded_menu", "key"),
+        ("S", "save_picker", "key"), ("F", "loaded_menu", "write"),
+        ("B", "journal", "key"), ("X", "journal_answer", "key"),
+        ("RET", "elminster_menu", "key"),
+        ("S", "vault_bar", "key"), ("T", "vault_take", "key"), ("I", "vault_items", "key"),
+        ("N", "vault_items_2", "key"), ("E", "vault_bar", "key"),
+        ("E", "elminster_menu", "key"),
+        ("R", "camp", "key"), ("S", "camp_save_picker", "key"),
+        ("G", "exit_game", "write"), ("N", "camp", "key"))
+    assert vault.measure_route == (
+        *vault.route[:7], *vault.route[9:20])
+    assert vault.control_letter == "F" and vault.after_letter == "G"
+    assert vault.plain_keys == (
+        ("E", "loaded_menu"), ("E", "vault_bar"), ("E", "elminster_menu"))
+    assert {"elminster_menu", "camp"} <= vault.strict
+    assert "world" not in vault.strict
+    assert not vault.strict & {"vault_bar", "vault_take", "vault_items", "vault_items_2"}
+
+
+def test_the_vault_steps_turn_one_page_for_each_page_asked_for():
+    for pages in (1, 2, 13):
+        steps = route_darkness.vault_steps(pages)
+        assert steps[:3] == (("S", "vault_bar", "key"), ("T", "vault_take", "key"),
+                             ("I", "vault_items", "key"))
+        assert [s[1] for s in steps if s[0] == "N"] == [
+            f"vault_items_{n}" for n in range(2, pages + 1)]
+        assert steps[-2:] == (("E", "vault_bar", "key"), ("E", "elminster_menu", "key"))
+    assert route_darkness.vault_page_state(1) == "vault_items"
+    assert route_darkness.vault_page_state(13) == "vault_items_13"
+    for pages in (0, 14):
+        with pytest.raises(foundation.RouteError, match="1 to 13 pages"):
+            route_darkness.vault_steps(pages)
+
+
+def test_a_vault_run_of_two_hundred_and_one_items_builds_a_title():
+    title = route_darkness.vault_title(13)
+    pressed = [s for s in title.route if s[1].startswith("vault_items")]
+    assert len(pressed) == 13
+    assert title.route[-4:] == (("R", "camp", "key"), ("S", "camp_save_picker", "key"),
+                                ("G", "exit_game", "write"), ("N", "camp", "key"))
+    assert title.min_waits["vault_items_13"] == 10.0

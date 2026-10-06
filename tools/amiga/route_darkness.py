@@ -183,6 +183,73 @@ DARKNESS_UNSTARTED = dataclasses.replace(
 )
 
 
+#: Elminster's menu in Limbo (area 18), the only place the game offers the item vault. A party
+#: saved there opens on it after the journal, whatever square it stands on, and `S` is its
+#: `STORAGE`. The vault's bar is `View Take Pool Money Items Exit`; `T`, then `I` at the take
+#: question, lists the stored items. The keys are the first letters of the DOS bars' words and
+#: the guard states are not cut yet, so a measure boot settles each of them.
+VAULT_MENU = "elminster_menu"
+VAULT_STORAGE = "vault_bar"
+VAULT_TAKE = "vault_take"
+VAULT_ITEMS = "vault_items"
+#: The key that turns a stored-items page. The Amiga bar's word is read from the DOS one and has
+#: not been seen on this port.
+VAULT_NEXT = "N"
+#: Pages the default vault run turns to, which is what the DOS run of a 40-item vault read; the
+#: Amiga's rows per page are not measured, so a 201-item run builds `vault_title` with more.
+VAULT_PAGES = 2
+VAULT_PAGES_MAX = 13
+
+
+def vault_page_state(page: int) -> str:
+    """The guard state of stored-items page `page`, counted from 1."""
+    return VAULT_ITEMS if page == 1 else f"{VAULT_ITEMS}_{page}"
+
+
+def vault_steps(pages: int = VAULT_PAGES) -> tuple[tuple[str, str, str], ...]:
+    """From Elminster's menu: open the vault, list its items page by page, and come back to the menu."""
+    if not 1 <= pages <= VAULT_PAGES_MAX:
+        raise RouteError(f"a vault run reads 1 to {VAULT_PAGES_MAX} pages, not {pages}")
+    return (
+        ("S", VAULT_STORAGE, "key"), ("T", VAULT_TAKE, "key"),
+        ("I", vault_page_state(1), "key"),
+        *((VAULT_NEXT, vault_page_state(n), "key") for n in range(2, pages + 1)),
+        ("E", VAULT_STORAGE, "key"), ("E", VAULT_MENU, "key"),
+    )
+
+
+def vault_title(pages: int = VAULT_PAGES) -> AmigaTitle:
+    """`DARKNESS` loading a party saved in area 18: the vault, then the camp loop, a save and the exit.
+
+    `REST` on Elminster's menu opens the camp loop, which is how the party gets back to the
+    camp save. The vault states are not strict, so a screen the guard map lacks is settled and
+    the run is marked as measuring; the camp save's picker still stops a run before any write.
+    """
+    def vault_route(route: tuple) -> tuple:
+        steps = list(route)
+        at = steps.index(("RET", "world", "key"))
+        added = vault_steps(pages)
+        steps[at:at + 1] = [("RET", VAULT_MENU, "key"), *added]
+        # The walk step and the camp key follow the world; here the menu's `REST` opens the camp.
+        steps[at + 1 + len(added):steps.index(("S", "camp_save_picker", "key"))] = [
+            ("R", "camp", "key")]
+        return tuple(steps)
+
+    states = {state for _, state, _ in vault_steps(pages)}
+    return dataclasses.replace(
+        DARKNESS, route=vault_route(DARKNESS.route),
+        measure_route=vault_route(DARKNESS.measure_route),
+        plain_keys=(("E", "loaded_menu"), ("E", VAULT_STORAGE),
+                    ("E", VAULT_MENU)),
+        strict=(DARKNESS.strict - {"world"}) | {VAULT_MENU},
+        min_waits={**DARKNESS.min_waits, VAULT_MENU: 45.0,
+                   **{state: 10.0 for state in states}},
+    )
+
+
+DARKNESS_VAULT = vault_title()
+
+
 def _darkness_import_slot(dest: amiga_adf.AmigaDisk, dest_letter: str,
                           source: amiga_adf.AmigaDisk, source_letter: str) -> bytes:
     """Replace `dest`'s `SavGam<dest_letter>.pty` with `source`'s slot and return the bytes written.

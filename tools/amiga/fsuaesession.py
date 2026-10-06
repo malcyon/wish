@@ -19,7 +19,8 @@ from tools.registry import instance
 #: screen that takes a key was first seen with `--floppy_drive_speed=0`; a key sent earlier is dropped.
 #: Curse is the code wheel, not the party menu (seen at 122 s), because its first key is the wheel's ESC.
 FIRST_KEY_AFTER = {"pool": 42.0, "curse": 45.0, "ssb": 48.0, "darkness": 259.0,
-                   "darkness-reload": 259.0, "darkness-unstarted": 259.0}
+                   "darkness-reload": 259.0, "darkness-unstarted": 259.0,
+                   "darkness-vault": 259.0}
 #: Seconds a key is held; the game does not see a shorter press.
 HOLD = 0.12
 #: Seconds the emulator waits for the debugger client before it carries on alone.
