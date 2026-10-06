@@ -80,6 +80,7 @@ class FakeWinuae:
         self.read_cost = 0.0            # clock time each finished read takes
         self.wait_ms: list[int] = []    # the time each wait was given
         self.creates = self.closes = self.cancels = self.waits = 0
+        self.pipe_gone = False          # WinUAE destroyed its pipe for good
         self.modes = []
         self.written: list[bytes] = []
         self.pending: list[tuple[bytes, int]] = []
@@ -92,7 +93,7 @@ class FakeWinuae:
         self.clock.now += self.open_cost
         assert name.startswith("\\\\.\\pipe\\")
         assert flags & winuae.FILE_FLAG_OVERLAPPED
-        if self.missing:
+        if self.missing or self.pipe_gone:
             raise win_error(winuae.ERROR_FILE_NOT_FOUND)
         if self.always_busy or self.busy:
             self.busy = max(0, self.busy - 1)
@@ -110,6 +111,10 @@ class FakeWinuae:
 
     def CloseHandle(self, handle):
         self.closes += 1
+        # A request written and unanswered when the client hangs up is run on
+        # resume, fails with error 232 and ends the pipe.
+        if self.silent and self.unanswered:
+            self.pipe_gone = True
 
     def WriteFile(self, handle, data, overlapped=False):
         self.written.append(bytes(data))
@@ -219,22 +224,22 @@ def test_a_complete_message_without_its_nul_is_an_error(rig):
     assert pipe.lost and api.closes == 1
 
 
-def test_a_debugger_at_its_prompt_times_out_cancels_and_is_left_alone(rig):
+def test_a_debugger_at_its_prompt_times_out_cancels_and_keeps_the_handle(rig):
     pipe, api, clock, folder = rig
     pipe.read_memory(0, 8)
     api.silent = True
     with pytest.raises(amiga.PipeError, match="prompt"):
         pipe.read_memory(0, 16)
-    assert api.cancels == 1 and api.closes == 1 and pipe.lost
+    assert api.cancels == 1 and api.closes == 0 and pipe.lost
     assert list(folder.glob("wish-*.bin")) == []
-    creates = api.creates
     with pytest.raises(amiga.PipeError, match="not asking again"):
         pipe.read_memory(0, 16)
-    assert api.creates == creates                   # no new attempt in the quiet time
+    assert len(api.written) == 2                    # no new attempt in the quiet time
     clock.now += pipe.BACKOFF + 1
-    api.silent = False
+    api.resume()
     assert pipe.read_memory(0, 16) == MEMORY[:16]
     assert not pipe.lost
+    assert api.closes == 0 and api.creates == 1 and not api.pipe_gone
 
 
 def test_a_slow_reopen_is_not_counted_as_a_slow_answer(rig):
@@ -545,13 +550,17 @@ def test_an_unverified_write_still_checks_the_receipt_and_the_bounds(rig):
         pipe.write_memory(0xC80000, b"\x01", verify=False)
 
 
-def test_a_write_that_gets_no_answer_times_out_and_drops_the_handle(rig):
-    pipe, api, *_ = rig
+def test_a_write_that_gets_no_answer_times_out_and_keeps_the_handle(rig):
+    pipe, api, clock, _folder = rig
     pipe.read_memory(0, 8)
     api.silent = True
     with pytest.raises(amiga.PipeError, match="prompt"):
         pipe.write_memory(0x100, b"\x01")
-    assert api.cancels == 1 and api.closes == 1 and pipe.lost
+    assert api.cancels == 1 and api.closes == 0 and pipe.lost
+    api.resume()
+    clock.now += pipe.BACKOFF + 1
+    assert pipe.read_memory(0, 16) == MEMORY[:16]
+    assert api.closes == 0 and api.creates == 1 and not api.pipe_gone
 
 
 def test_a_first_request_with_no_answer_keeps_its_handle_until_winuae_replies(rig):
@@ -608,37 +617,21 @@ def test_a_slow_drain_and_its_request_share_the_calls_timeout(rig):
     assert max(api.wait_ms[1:]) <= 500
 
 
-def test_three_drain_timeouts_drop_the_handle_and_the_next_call_reconnects(rig):
+def test_a_handle_with_an_unanswered_request_survives_any_number_of_timeouts(rig):
     pipe, api, clock, _folder = rig
     api.silent = True
+    # The debugger is up for ten minutes of calls, one every BACKOFF + 1.
     with pytest.raises(winuae.PipeTimeout):
         pipe.read_memory(0, 16)
-    for _ in range(pipe.DRAIN_TIMEOUTS):
-        assert api.closes == 0
+    for _ in range(int(600 / (pipe.BACKOFF + 1))):
         clock.now += pipe.BACKOFF + 1
         with pytest.raises(winuae.PipeTimeout):
             pipe.read_memory(0, 16)
-    assert api.closes == 1
-    api.silent = False
-    clock.now += pipe.BACKOFF + 1
-    created = api.creates
-    assert pipe.read_memory(0, 16) == MEMORY[:16]
-    assert api.creates == created + 1
-
-
-def test_a_late_reply_within_the_drain_attempts_keeps_the_handle(rig):
-    pipe, api, clock, _folder = rig
-    api.silent = True
-    with pytest.raises(winuae.PipeTimeout):
-        pipe.read_memory(0, 16)
-    for _ in range(pipe.DRAIN_TIMEOUTS - 1):
-        clock.now += pipe.BACKOFF + 1
-        with pytest.raises(winuae.PipeTimeout):
-            pipe.read_memory(0, 16)
+    assert api.closes == 0 and api.creates == 1
     api.resume()
     clock.now += pipe.BACKOFF + 1
     assert pipe.read_memory(0x40, 16) == MEMORY[0x40:0x50]
-    assert api.closes == 0 and api.creates == 1
+    assert api.closes == 0 and api.creates == 1 and not api.pipe_gone
 
 
 def test_a_broken_pipe_while_a_reply_is_owed_still_closes_the_handle(rig):

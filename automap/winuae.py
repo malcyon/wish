@@ -129,10 +129,6 @@ class WinuaeLocalPipe:
     #: No new attempt for this long after a request timed out.
     BACKOFF = 5.0
 
-    #: A kept handle whose owed reply times out this many calls in a row is
-    #: dropped, so a request WinUAE never received cannot wedge the pipe.
-    DRAIN_TIMEOUTS = 3
-
     #: `write_memory` exists and is checked by reading the range back.
     can_write = True
 
@@ -150,8 +146,6 @@ class WinuaeLocalPipe:
         self._answered = False
         #: A request written on this handle has no reply read yet.
         self._owed = False
-        #: Consecutive calls on this handle whose owed reply did not arrive.
-        self._stalled = 0
         #: True after a failure, until a handle opens or a reply is read.
         self.lost = False
 
@@ -198,7 +192,6 @@ class WinuaeLocalPipe:
                 from exc
         self._handle = handle
         self._answered = self._owed = False
-        self._stalled = 0
         self.lost = False
         self._clear_leftovers(create=True)
 
@@ -236,7 +229,6 @@ class WinuaeLocalPipe:
     def _release(self) -> None:
         handle, self._handle = self._handle, None
         self._answered = self._owed = False
-        self._stalled = 0
         if handle is not None:
             try:
                 self._win().CloseHandle(handle)
@@ -313,14 +305,9 @@ class WinuaeLocalPipe:
             if self._owed:
                 # The one outstanding request's reply comes first; its dump
                 # file is written by now and the new request's does not exist.
-                try:
-                    self._read_reply(end)
-                except PipeTimeout:
-                    self._stalled += 1
-                    raise
+                self._read_reply(end)
                 self._owed = False
                 self._answered = True
-                self._stalled = 0
                 self._clear_leftovers()
             deadline = end
             # A reply is owed from the moment the write starts: a write that
@@ -337,9 +324,11 @@ class WinuaeLocalPipe:
                 raise PipeError("WinUAE closed the pipe.") from exc
             raise PipeError(f"The WinUAE pipe failed: {exc}") from exc
         except PipeError as exc:
-            if (isinstance(exc, PipeTimeout) and self._owed
-                    and not self._answered
-                    and self._stalled < self.DRAIN_TIMEOUTS):
+            if isinstance(exc, PipeTimeout) and self._owed:
+                # Closing a handle whose request was written whole and has had
+                # no reply loses the pipe: WinUAE, stopped in its debugger,
+                # runs the queued request on resume, fails to answer it and
+                # destroys the pipe.
                 self.lost = True
                 raise
             self._drop()
