@@ -22,6 +22,7 @@ from support.amigatarget import BASE, SSB, Guest, target
 
 from automap import amiga, amigaeffects
 from automap.target import Fix, NotConnected, read_fix, screen_banks
+from tools.amiga import amigatarget
 
 CURSE = amiga.MACHINES["curse-of-the-azure-bonds"]
 
@@ -130,6 +131,39 @@ def test_locate_measures_the_base_from_the_anchor_rather_than_assuming_it():
     t, guest = target(memory, base=None)
     assert t.locate() == BASE
     assert len(guest.calls) == 1, "the first region searched holds the game"
+
+
+def _long(value: int) -> bytes:
+    return value.to_bytes(4, "big")
+
+
+def _exec_memory(regions, game_at: int) -> dict[int, bytes]:
+    """ExecBase at 0x1000 whose MemHeader list holds `regions` (lower, upper),
+    each header at its region's start, and the game's anchor at `game_at`."""
+    exec_base, list_at = 0x1000, 0x1000 + amiga.EXEC_MEM_LIST
+    memory = {4: _long(exec_base),
+              exec_base + amiga.EXEC_CHK_BASE: _long(~exec_base & 0xFFFFFFFF),
+              list_at: _long(regions[0][0]),
+              game_at + SSB.anchor_offset: SSB.anchor}
+    for i, (lower, upper) in enumerate(regions):
+        following = regions[i + 1][0] if i + 1 < len(regions) else list_at + 4
+        memory[lower] = _long(following)
+        memory[lower + amiga.MEM_LOWER] = _long(lower)
+        memory[lower + amiga.MEM_UPPER] = _long(upper)
+    return memory
+
+
+def test_a_pipe_connection_finds_the_game_in_fast_ram(monkeypatch):
+    """A WinUAE machine with 2 MB of fast RAM and no slow RAM: the game is
+    outside the A500's `amiga.MEMORY`."""
+    guest = Guest(_exec_memory([(0x8E8, 0x200000), (0x200020, 0x400000)],
+                               0x263240))
+    monkeypatch.setattr(
+        amiga, "WinuaePipe",
+        lambda holder: amiga.WinuaeDebugger("wish37", runner=guest))
+    t = amigatarget.connect_pipe("wish37", SSB)
+    assert t.data_base == 0x263240
+    assert (0x200020, 0x1FFFE0) in t.memory
 
 
 def test_locate_blocks_when_the_anchor_is_nowhere():

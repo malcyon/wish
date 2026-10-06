@@ -190,9 +190,14 @@ def connect(holder: str, layout: amiga.AmigaMachine,
 def connect_pipe(holder: str, layout: amiga.AmigaMachine) -> amiga.AmigaTarget:
     """A located target over WinUAE's own pipe: it stops nothing, and a write
     goes through `AmigaTarget.write`.  The data hunk line goes to stderr so
-    stdout is the JSON row alone."""
-    return _located(amiga.AmigaTarget(amiga.WinuaePipe(holder=holder), layout),
-                    sys.stderr)
+    stdout is the JSON row alone.
+
+    The machine's own memory regions are measured first and swept and checked
+    against, as the automap does: a WinUAE machine with fast RAM and no slow
+    RAM holds the game outside `amiga.MEMORY`."""
+    target = amiga.AmigaTarget(amiga.WinuaePipe(holder=holder), layout)
+    target.memory = amiga.memory_regions(target.read)
+    return _located(target, sys.stderr)
 
 
 def _located(target: amiga.AmigaTarget, out=None) -> amiga.AmigaTarget:
