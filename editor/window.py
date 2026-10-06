@@ -3539,7 +3539,13 @@ class EditorBinding(QObject):
                 if isinstance(w, QSpinBox):
                     stored = (combat_byte(w.value()) if name in COMBAT_FIELDS
                               else w.value())
-                    if record.get(name) != stored:
+                    current = record.get(name)
+                    # A value above the box's ceiling is drawn clamped; the
+                    # clamp is not an edit, so the stored value stays.
+                    clamped = (isinstance(current, int)
+                               and current > w.maximum()
+                               and stored == w.maximum())
+                    if current != stored and not clamped:
                         record.set(name, stored)
                 elif isinstance(w, QLineEdit) and name == "name":
                     if record.name != w.text():
@@ -3650,7 +3656,8 @@ class EditorBinding(QObject):
                     if span is not None:
                         w.setSpecialValueText("")
                         w.setRange(*span)
-                    w.setValue(value if isinstance(value, int) else 0)
+                    w.setValue(min(value, SPIN_MAXIMUM)
+                               if isinstance(value, int) else 0)
                 else:
                     # A save slot holds only the first 256 of the 580 bytes a
                     # record carries, so this byte is not in the file at all
@@ -3684,6 +3691,8 @@ class EditorBinding(QObject):
                     try:
                         raw = record.get_raw(name)
                     except FieldNotStored as exc:
+                        if not isinstance(record, podsheet.PodSheetRecord):
+                            raise
                         # A block this title's record has no bytes for, such
                         # as Pools of Darkness' trait slots: empty, and
                         # greyed by `_apply_read_only`.

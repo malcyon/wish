@@ -471,9 +471,13 @@ class MemorisedEditor(SpellEditor):
             return
         self.add_spell(int(sid))
 
+    def _group(self, sid: int) -> tuple[str, int]:
+        """The (class, spell level) of an id in the open title, or ("", 0)."""
+        return spell_group(sid, self._table) or ("", 0)
+
     def _level(self, sid: int) -> int:
         """The spell level of an id in the open title, or 0 for no group."""
-        return (spell_group(sid, self._table) or ("", 0))[1]
+        return self._group(sid)[1]
 
     def add_spell(self, sid: int) -> bool:
         if self.list is None or self.list.count() >= self.slot_count():
@@ -525,8 +529,11 @@ class MemorisedEditor(SpellEditor):
         ids = self.ids()
         if cap:
             width = max(len(a) for a in cap.values())
-            counts = [sum(1 for s in ids if self._level(s) == lv)
-                      for lv in range(1, width + 1)]
+            # Per class as well as per level: each row is its own array, and
+            # a dual-classed character memorises from two at once.
+            counts = {(cls, lv): sum(1 for s in ids
+                                     if self._group(s) == (cls, lv))
+                      for cls in cap for lv in range(1, width + 1)}
             parts = []
             held = any(any(a) for a in cap.values())
             for cls, allowed in cap.items():
@@ -535,7 +542,7 @@ class MemorisedEditor(SpellEditor):
                 # starts. A character whose only lines are all zero shows them.
                 if held and not any(allowed):
                     continue
-                shown = ", ".join(f"L{lv} {counts[lv - 1]}/{allowed[lv - 1]}"
+                shown = ", ".join(f"L{lv} {counts[cls, lv]}/{allowed[lv - 1]}"
                                   for lv in range(1, len(allowed) + 1))
                 parts.append(f"{cls}: {shown}")
             text = "  ".join(parts)

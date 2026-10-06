@@ -6475,3 +6475,44 @@ def test_an_amiga_pool_name_with_an_alt_byte_shows_in_the_box_and_roster(
     assert w.model.data(w.model.index(0, 0)) == shown
     w.roster.selectRow(0)
     assert w._widgets["name"].text() == shown
+
+
+def test_a_record_missing_a_block_surfaces_the_error_outside_pools_of_darkness(
+        app, tmp_path, monkeypatch):
+    """Only Pools of Darkness' sheet record may draw an unstored block empty;
+    any other title's missing block is still an error."""
+    from PyQt6.QtWidgets import QWidget  # noqa: F401
+
+    from editor.spellwidget import MemorisedEditor, SpellbookEditor
+    from editor.window import EditorBinding
+    from goldbox.record import FieldNotStored
+
+    w = EditorBinding(make_root(), str(synthetic_save(tmp_path)))
+    w.roster.selectRow(0)
+    name = next(n for n, x in w._widgets.items()
+                if hasattr(x, "set_bytes")
+                and not isinstance(x, (SpellbookEditor, MemorisedEditor)))
+    record = w.party.member(0).record
+
+    real = type(record).get_raw
+
+    def get_raw(self, field):
+        if field == name:
+            raise FieldNotStored(field)
+        return real(self, field)
+    monkeypatch.setattr(type(record), "get_raw", get_raw)
+    with pytest.raises(FieldNotStored):
+        w._populate()
+
+
+def test_a_curse_multi_class_line_counts_per_class_and_level(app):
+    """Cleric and magic-user spells at different levels read as before."""
+    from editor.spellwidget import MemorisedEditor
+
+    widget = MemorisedEditor(make_root())
+    widget.set_capacity({"cleric": (2, 1), "magic-user": (3, 0)}, casts=True)
+    widget.add_spell(1)      # cleric 1
+    widget.add_spell(9)      # magic-user 1
+    line = widget.capacity.text()
+    assert "cleric: L1 1/2, L2 0/1" in line
+    assert "magic-user: L1 1/3, L2 0/0" in line

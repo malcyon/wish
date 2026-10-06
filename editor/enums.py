@@ -119,7 +119,9 @@ def class_bit_names(game: C64Container | None = None) -> dict[int, str]:
         bit_of = {name: bit for bit, name in table}
         if "ranger" in bit_of and "magic-user" in bit_of:
             both = bit_of["ranger"] | bit_of["magic-user"]
-            out.setdefault(both, _full_name_for_bits(both, table))
+            name = _full_name_for_bits(both, table)
+            if name is not None:
+                out.setdefault(both, name)
     return out
 
 

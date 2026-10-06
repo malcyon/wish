@@ -461,3 +461,35 @@ def test_a_member_s_first_item_is_the_name_the_reader_gives(
     shown = {inventory.data(inventory.index(row, 1))
              for row in range(inventory.rowCount())}
     assert Item(raws[0], names).name in shown
+
+
+def test_a_dual_class_character_counts_each_class_row_by_its_own_spells(
+        app, monkeypatch, tmp_path, fake_names):
+    """One memorised spell of each class at level 1 reads 1/n on every row,
+    not the three-spell total on each."""
+    window, _folder = _open_synthetic(monkeypatch, tmp_path, names=True)
+    record = window.party.member(0).record
+    slots = bytearray(record.get_raw("spells_castable"))
+    slots[0], slots[9] = 2, 1           # cleric 1, druid 1
+    record.set_raw("spells_castable", bytes(slots))
+    record.set_memorised([9, 77, 1])    # magic-user 1, druid 1, cleric 1
+    window._populate()
+    capacity = window._child("field_spells_memorised_capacity").text()
+    assert "cleric: L1 1/2" in capacity
+    assert "druid: L1 1/1" in capacity
+    assert "magic-user: L1 1/3" in capacity
+
+
+def test_a_stored_experience_above_the_box_ceiling_survives_a_flush(
+        app, monkeypatch, tmp_path, fake_names):
+    window, _folder = _open_synthetic(monkeypatch, tmp_path, names=True)
+    record = window.party.member(0).record
+    record.set("experience", 3_000_000_000)
+    window._populate()
+    assert window._widgets["experience"].value() == window._widgets[
+        "experience"].maximum() < 3_000_000_000
+    assert window._flush(0) == []
+    assert record.get("experience") == 3_000_000_000
+    window._widgets["experience"].setValue(5)
+    assert window._flush(0) == []
+    assert record.get("experience") == 5
