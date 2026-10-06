@@ -248,20 +248,44 @@ class _Me:
     x = y = 3
 
 
+#: BAKSHI's command bar in the L3 boot of WISH-286 (`05-lost-error`), on the
+#: turn after a hit took him from 18 to 7 hit points: no CAST.
+L3_BARRED_BAR = "MOVE VIEW AIM USE TURN QUICK DONE"
+
+#: His bar in the L2 boot, on turn 28, unhurt since his last turn.
+L2_CAST_BAR = "MOVE VIEW AIM USE CAST TURN QUICK DONE"
+
+
 class _CastSession:
     """Records the keys a cast sends; the spell list shows PRAYER and the
     targeting bar appears only when `asks_target`."""
 
-    def __init__(self, asks_target=False, bar_returns=True):
+    def __init__(self, asks_target=False, bar_returns=True, bars=None):
         self.asks_target = asks_target
         self.bar_returns = bar_returns
+        # The caster's command bar on each of his turns, the last one
+        # repeating; the default carries CAST.
+        self.bars = list(bars or [L2_CAST_BAR])
         self.calls: list[tuple] = []
 
     def mon(self, timeout=5.0):
         return _Mon()
 
+    def command_bar(self):
+        return self.bars[0]
+
+    def next_turn(self):
+        if len(self.bars) > 1:
+            self.bars.pop(0)
+
+    def combat_state(self, s=None):
+        return route_pool.S.CombatBar(route_pool.S.BAR_COMMAND,
+                                      self.command_bar())
+
     def combat_bar(self, word, timeout=5.0):
         self.calls.append(("bar", word))
+        if word == "CAST":
+            return route_pool.S.word_column(self.command_bar(), word) >= 0
         return True
 
     def select_bar(self, word, timeout=5.0):
@@ -502,3 +526,100 @@ def test_a_held_turn_logs_cast_wait_with_every_status(
 def test_down_words_name_every_status_that_takes_a_member_out_of_the_fight():
     assert route_pool.Caster.down_words() == {2, 3, 4, 5, 7}
     assert route_pool.Caster.down_words(gone=False) == {3, 4, 5, 7}
+
+
+# --- A turn on which the game leaves CAST off the bar ------------------------
+#
+# COMBAT `$0D9F` sets bit 7 of the hit combatant's `$A440` byte on every hit
+# for damage, the bar builder at `$09E3` drops CAST while it is set, and the
+# turn's end at `$0AD4` clears it, so a caster hit since his last turn gets
+# the L3 bar.
+
+
+def _held_then(waited, sess):
+    """A wait tactic that also moves the session on to the caster's next
+    own turn, as the real hold does by ending the turn."""
+    def wait(s, state):
+        waited.append(state)
+        sess.next_turn()
+        return "WAIT"
+    return wait
+
+
+def test_a_triggered_caster_holds_when_his_bar_has_no_cast(
+        cast_patches, monkeypatch):
+    waited, sess = [], _CastSession(bars=[L3_BARRED_BAR])
+    caster = _late_caster(monkeypatch, [0x01, 0x01, 0x86, 0x01], waited)
+    assert caster(sess, "bar") == "WAIT"
+    assert waited == ["bar"]
+    assert ("bar", "CAST") not in sess.calls
+    assert caster.queue == [("BAKSHI", "PRAYER", None)]
+    assert caster.waits == 1
+    barred = [f for k, f in caster.log.emitted if k == "cast-barred"]
+    assert barred[0]["bar"] == L3_BARRED_BAR
+
+
+def test_a_barred_caster_casts_on_his_next_turn_that_offers_cast(
+        cast_patches, monkeypatch):
+    waited = []
+    sess = _CastSession(bars=[L3_BARRED_BAR, L2_CAST_BAR])
+    caster = _late_caster(monkeypatch, [0x01, 0x01, 0x86, 0x01], waited)
+    caster.wait = _held_then(waited, sess)
+    assert caster(sess, "bar") == "WAIT"
+    assert caster(sess, "bar") == "CAST"
+    assert caster.queue == []
+    assert _triggers(caster) == ["a"]
+
+
+def test_the_trigger_stays_armed_after_a_barred_turn(
+        cast_patches, monkeypatch):
+    """Condition c is met on the barred turn and not on the next one, which
+    is the turn CAST comes back on; the cast still happens."""
+    waited = []
+    sess = _CastSession(bars=[L3_BARRED_BAR, L2_CAST_BAR])
+    start, hurt = [25] * 8, [25, 7] + [25] * 6
+    caster = _late_caster(monkeypatch, [0x01] * 4, waited,
+                          hp=[hurt, [25, 25] + [25] * 6])
+    caster.wait = _held_then(waited, sess)
+    caster.first_hp = start
+    assert caster(sess, "bar") == "WAIT"
+    assert caster(sess, "bar") == "CAST"
+    assert _triggers(caster) == ["c"]
+
+
+def test_a_first_turn_caster_also_holds_on_a_bar_with_no_cast(
+        cast_patches, monkeypatch):
+    waited = []
+    sess = _CastSession(bars=[L3_BARRED_BAR, L2_CAST_BAR])
+    caster = route_pool.Caster(FakeLog(), [("BAKSHI", "PRAYER", None)],
+                               otherwise=lambda s, state: "OTHER")
+    caster.wait = _held_then(waited, sess)
+    assert caster(sess, "bar") == "WAIT"
+    assert caster(sess, "bar") == "CAST"
+
+
+def test_the_step_fails_only_once_the_held_turns_pass_the_cap(
+        cast_patches, monkeypatch):
+    waited, sess = [], _CastSession(bars=[L3_BARRED_BAR])
+    caster = _late_caster(monkeypatch, [0x01, 0x01, 0x86, 0x01], waited)
+    cap = route_pool.Caster.HOLD_TURNS + route_pool.Caster.REGAIN_TURNS
+    for _ in range(cap):
+        assert caster(sess, "bar") == "WAIT"
+    with pytest.raises(RuntimeError, match="no CAST on BAKSHI's bar"):
+        caster(sess, "bar")
+    assert ("bar", "CAST") not in sess.calls
+
+
+def test_a_trigger_after_the_held_turns_still_gets_the_regain_turn(
+        cast_patches, monkeypatch):
+    """Condition d arms on the turn after `HOLD_TURNS` holds; if that bar has
+    no CAST, the caster holds once more before the step fails."""
+    waited = []
+    sess = _CastSession(bars=[L2_CAST_BAR] * route_pool.Caster.HOLD_TURNS
+                        + [L3_BARRED_BAR, L2_CAST_BAR])
+    caster = _late_caster(monkeypatch, [0x01] * 4, waited)
+    caster.wait = _held_then(waited, sess)
+    for _ in range(route_pool.Caster.HOLD_TURNS + 1):
+        assert caster(sess, "bar") == "WAIT"
+    assert caster(sess, "bar") == "CAST"
+    assert _triggers(caster) == ["d"]

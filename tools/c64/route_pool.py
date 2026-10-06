@@ -729,7 +729,14 @@ class Caster:
     (`fleedrive.RUNNING`), every other member is away or down, his hit points
     are at most half of what they were on the tactic's first turn, or he has
     held `HOLD_TURNS` of his own turns; the last two keep a slow flight by
-    someone else from letting the monsters kill him before he casts.
+    someone else from letting the monsters kill him before he casts.  Once a
+    condition is met it stays met.  On any turn the cast is due but the
+    command bar has no CAST -- the game drops it for a caster hit for damage
+    since his last turn ended (COMBAT `$0D9F` sets bit 7 of his `$A440`
+    byte, the bar builder at `$09E3` tests it, the turn's end at `$0AD4`
+    clears it) -- he holds instead, and that turn counts as held.  The step
+    fails when the bar still has no CAST once he has held `HOLD_TURNS` plus
+    `REGAIN_TURNS` turns.
     Everything it does is logged with the screen, because nothing in this
     project has driven CAST in combat before and a failed attempt has to say
     where it got to.
@@ -740,6 +747,14 @@ class Caster:
     #: Own turns a `late` caster holds before he casts whatever the others do.
     HOLD_TURNS = 4
 
+    #: Held turns allowed beyond `HOLD_TURNS` for CAST to come back: a hit
+    #: takes it off the bar for one turn of his, so one more turn is the
+    #: least that lets a trigger met on a barred turn cast.
+    REGAIN_TURNS = 1
+
+    #: Seconds to wait for the caster's command bar before casting blind.
+    BAR_READ_SECONDS = 6.0
+
     def __init__(self, log: Log, queue: list[tuple[str, str, str | None]],
                  otherwise=None, wait=None, late=False):
         self.log = log
@@ -747,6 +762,7 @@ class Caster:
         self.otherwise = otherwise or S.Session.melee_turn
         self.wait = wait or self.otherwise
         self.late = late
+        self.armed: str | None = None
         self.first_hp: list[int] | None = None
         self.turn = 0
         self.waits = 0
@@ -764,15 +780,19 @@ class Caster:
         me = sess.acting(b)
         if me is not None and self.queue and \
                 me.name.strip() == self.queue[0][0]:
-            if self.late:
+            if self.late and self.armed is None:
                 trigger = self.cast_trigger(sess, me, now)
                 if trigger is None:
                     self.waits += 1
                     self.report_wait(sess)
                     return self.wait(sess, state)
+                self.armed = trigger
                 self.log.emit("cast-trigger", turn=self.turn,
                               condition=trigger, waits=self.waits)
             _, spell, target = self.queue[0]
+            bar = self.command_bar(sess)
+            if bar is not None and S.word_column(bar.upper(), "CAST") < 0:
+                return self.hold_barred(sess, state, me, bar, now)
             if self.cast(sess, b, me, spell, target):
                 self.queue.pop(0)
                 return "CAST"
@@ -782,6 +802,34 @@ class Caster:
             raise RuntimeError(f"{spell} could not be cast by "
                                f"{me.name.strip()}")
         return self.otherwise(sess, state)
+
+    def command_bar(self, sess: S.Session) -> str | None:
+        """The acting caster's command bar, or None when none came up within
+        `BAR_READ_SECONDS`."""
+        deadline = time.time() + self.BAR_READ_SECONDS
+        while True:
+            state = sess.combat_state()
+            if state.kind == S.BAR_COMMAND:
+                return state.text
+            if time.time() >= deadline:
+                return None
+            time.sleep(0.3)
+
+    def hold_barred(self, sess: S.Session, state, me, bar: str,
+                    now: list[int]) -> str:
+        """Hold a turn on which the cast is due and the bar has no CAST, or
+        fail the step once the held turns have used up their allowance."""
+        name = me.name.strip()
+        cap = self.HOLD_TURNS + self.REGAIN_TURNS
+        self.log.emit("cast-barred", turn=self.turn, waits=self.waits,
+                      bar=bar, hp=now[me.index])
+        if self.waits >= cap:
+            self.queue.pop(0)
+            raise RuntimeError(f"no CAST on {name}'s bar after {self.waits} "
+                               f"held turns")
+        self.log.say(f"  no CAST on {name}'s bar ({bar}); holding")
+        self.waits += 1
+        return self.wait(sess, state)
 
     def cast_trigger(self, sess: S.Session, me, now: list[int]) -> str | None:
         """The letter of the first condition that ends a `late` caster's
