@@ -323,6 +323,102 @@ def test_rejecting_the_window_gives_no_choice_and_accepting_gives_the_ticks(
     assert seen["label"] == ACCEPT
 
 
+def _row_texts_asked_for(binding, monkeypatch, **kwargs):
+    """The texts of every row of the window `_choose_left_behind` opens."""
+    seen = []
+
+    def exec_(dialog):
+        seen.extend(r.text(NAME) for r in _rows(dialog))
+        return QDialog.DialogCode.Rejected
+
+    monkeypatch.setattr(LeaveBehindDialog, "exec", exec_)
+    overflow = dos_codec.pack_overflow(_party())
+    binding._choose_left_behind(overflow, GAME, ACCEPT, **kwargs)
+    return seen
+
+
+def _port_readers(monkeypatch, folder, items, spells=None):
+    """Make `folder` the only place a DOS reader finds names."""
+    def dos_items(where):
+        if str(where) != str(folder):
+            raise FileNotFoundError(where)
+        return items
+
+    def dos_spells(where, game):
+        if str(where) != str(folder) or spells is None:
+            raise FileNotFoundError(where)
+        return spells
+
+    def no_amiga(where, game):
+        raise FileNotFoundError(where)
+
+    monkeypatch.setattr(ew.port_item_names, "load_dos_item_names", dos_items)
+    monkeypatch.setattr(ew.port_spell_names, "load_dos_spell_names",
+                        dos_spells)
+    monkeypatch.setattr(ew.port_item_names, "load_amiga_item_names", no_amiga)
+    monkeypatch.setattr(ew.port_spell_names, "load_amiga_spell_names",
+                        no_amiga)
+
+
+def test_without_c64_disks_the_rows_take_names_from_the_dos_game_folder(
+        app, tmp_path, monkeypatch):
+    binding = _binding(app, tmp_path)
+    game_dir = tmp_path / "game"
+    game_dir.mkdir()
+    binding.disks = str(game_dir)
+    monkeypatch.setattr(binding, "_find_disk", lambda *a, **k: None)
+    _port_readers(monkeypatch, game_dir, ITEM_NAMES, SPELL_NAMES)
+    texts = _row_texts_asked_for(binding, monkeypatch)
+    assert "WAND" in texts
+    assert not [t for t in texts if t.startswith("word ")]
+
+
+def test_without_c64_disks_the_rows_take_names_from_the_save_as_amiga_disks(
+        app, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    binding = _binding(app, tmp_path)
+    monkeypatch.setattr(binding, "_find_disk", lambda *a, **k: None)
+    disk = tmp_path / "disk.adf"
+    asked = []
+
+    def amiga_items(where, game):
+        asked.append(where)
+        return ITEM_NAMES
+
+    def never(*a, **k):
+        raise FileNotFoundError
+
+    monkeypatch.setattr(ew.port_item_names, "load_amiga_item_names",
+                        amiga_items)
+    monkeypatch.setattr(ew.port_spell_names, "load_amiga_spell_names", never)
+    monkeypatch.setattr(ew.port_item_names, "load_dos_item_names", never)
+    monkeypatch.setattr(ew.port_spell_names, "load_dos_spell_names", never)
+    assets = SimpleNamespace(dos_folder=None, amiga_disk=disk,
+                             amiga_disk_one=None)
+    texts = _row_texts_asked_for(binding, monkeypatch, assets=assets)
+    assert asked[0] == [disk]
+    assert "WAND" in texts
+
+
+def test_c64_names_win_over_the_dos_folder_when_a_c64_disk_gives_them(
+        app, tmp_path, monkeypatch):
+    binding = _binding(app, tmp_path)
+    game_dir = tmp_path / "game"
+    game_dir.mkdir()
+    binding.disks = str(game_dir)
+    monkeypatch.setattr(binding, "_find_disk", lambda *a, **k: "a.d64")
+    monkeypatch.setattr(ew, "load_item_names",
+                        lambda disk, game: {1: "C64WAND", 2: "C64MAGE",
+                                            3: "C64SCROLL", 4: "C64STAFF"})
+    monkeypatch.setattr(ew, "load_spell_names",
+                        lambda disk, game: {5: "C64SLEEP", 6: "C64BALL",
+                                            7: "C64HASTE"})
+    _port_readers(monkeypatch, game_dir, ITEM_NAMES, SPELL_NAMES)
+    texts = _row_texts_asked_for(binding, monkeypatch)
+    assert "C64WAND" in texts
+    assert "WAND" not in texts
+
+
 # --- the keyboard --------------------------------------------------------------
 
 def _shown(dialog):

@@ -46,6 +46,8 @@ from goldbox import (
     treasuresplit,
 )
 from goldbox import c64_port as por_games
+from goldbox import item_names as port_item_names
+from goldbox import spell_names as port_spell_names
 from goldbox.encoding import combat_byte, combat_value
 from goldbox.iconparts import IconParts
 from goldbox.icons import load_icon_charset
@@ -2206,14 +2208,18 @@ class EditorBinding(QObject):
             return None
         return dialog.chosen()
 
-    def _choose_left_behind(self, overflow, game, accept_label: str
+    def _choose_left_behind(self, overflow, game, accept_label: str,
+                            source=None, assets=None
                             ) -> "dict[int, frozenset[int]] | None":
         """Ask which items and scrolls stay behind: one window for every
         character whose pack does not fit `game`'s record. `None` when the
         player cancels.
 
-        Item and spell names come off `game`'s own disks, the destination's,
-        so an item reads as it will in that game.
+        Item and spell names come off `game`'s own C64 disks, the
+        destination's, so an item reads as it will in that game. A table no
+        C64 disk gives is read from the DOS game folder or Amiga disks the
+        player has instead (`_port_names`); `source` and `assets` are the
+        Save As being asked about, where those are named.
         """
         from .leavebehind import LeaveBehindDialog
 
@@ -2231,11 +2237,61 @@ class EditorBinding(QObject):
                     names.update(read(disk, game))
                 except Exception:
                     _log.exception("could not read names off %s", disk)
+        for names, read_dos, read_amiga in (
+                (item_names,
+                 lambda where, _game: port_item_names.load_dos_item_names(where),
+                 port_item_names.load_amiga_item_names),
+                (spell_names, port_spell_names.load_dos_spell_names,
+                 port_spell_names.load_amiga_spell_names)):
+            if not names:
+                names.update(self._port_names(read_dos, read_amiga, game,
+                                              source, assets))
         dialog = LeaveBehindDialog(overflow, item_names, spell_names,
                                    spell_table(game), accept_label, self.root)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return None
         return dialog.chosen()
+
+    def _port_names(self, read_dos, read_amiga, game, source=None,
+                    assets=None) -> "dict[int, str]":
+        """Names off a DOS game folder or Amiga disks, for a player with no
+        C64 disks of the title; `{}` when none of them reads. Each reader
+        takes `(where, game)`.
+
+        The folders come in the order `_disk_candidates` uses for disks: the
+        title's folder in Preferences, the shared Game directory, then beside
+        the save. A Save As that names Amiga disks reads those first, so an
+        item spells as it will on the Amiga, and otherwise the DOS game
+        folder it names comes first.
+        """
+        folders = []
+        for folder in (self._own_disk_folder(game), self.disks):
+            expanded = saveplan.expand_folder(folder) if folder else None
+            if expanded is not None:
+                folders.append(expanded)
+        beside = getattr(source, "path", None) or self.path
+        if beside:
+            here = files.source_folder(beside)
+            folders += [here, here.parent]
+        dos = [getattr(assets, "dos_folder", None)] + folders
+        disks = [d for d in (getattr(assets, "amiga_disk_one", None),
+                             getattr(assets, "amiga_disk", None)) if d]
+        amiga = ([disks] if disks else []) + [f for f in folders if f.is_dir()]
+        order = [(read_amiga, amiga), (read_dos, dos)]
+        if not disks:
+            order.reverse()
+        for read, places in order:
+            for where in places:
+                if where is None:
+                    continue
+                try:
+                    names = read(where, game)
+                except Exception as exc:
+                    _log.debug("%s holds no names: %s", where, exc)
+                    continue
+                if names:
+                    return dict(names)
+        return {}
 
     def _choose_effects_left(self, overflow, game, accept_label: str
                              ) -> "dict[int, frozenset[int]] | None":
@@ -3189,7 +3245,7 @@ class EditorBinding(QObject):
                 choice = self._choose_left_behind(
                     overflow,
                     saveplan.route(source, port).destination_game,
-                    self._save_as_label())
+                    self._save_as_label(), source=source, assets=assets)
                 if choice is None:
                     return None
             self._left_behind = (

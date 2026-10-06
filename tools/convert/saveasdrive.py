@@ -46,7 +46,8 @@ class LeaveChoiceError(Exception):
 
 
 def _leave_through_window(window: Any, overflow: Any, game: Any,
-                          ticks: Sequence[str]) -> "tuple[dict, dict]":
+                          ticks: Sequence[str], source: Any = None,
+                          assets: Any = None) -> "tuple[dict, dict]":
     """Open the editor's own left-behind window for `overflow`, tick the rows
     named in `ticks` (or `LEAVE_AUTO`), and return its choice and a record of
     what was ticked and what the window said.
@@ -118,7 +119,8 @@ def _leave_through_window(window: Any, overflow: Any, game: Any,
     dialog_class.exec = run
     try:
         choice = window._choose_left_behind(
-            overflow, game, record["accept_label"])
+            overflow, game, record["accept_label"], source=source,
+            assets=assets)
     finally:
         dialog_class.exec = original
     if failure or choice is None:
@@ -230,11 +232,11 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
                       amiga_savegame.AmigaJoinedScrollsDoNotFit))):
             try:
                 from editor import convert as convert_mod
-                game = saveplan.route(
-                    Source.of_snapshot(saveplan.prepare(party)),
-                    port).destination_game
+                snapshot = Source.of_snapshot(saveplan.prepare(party))
+                game = saveplan.route(snapshot, port).destination_game
                 choice, record = _leave_through_window(
-                    window, convert_mod.overflow_of(exc), game, leave_ticks)
+                    window, convert_mod.overflow_of(exc), game, leave_ticks,
+                    source=snapshot, assets=assets)
             except LeaveChoiceError as stop:
                 exc = stop
                 report["leave_dialog"] = stop.record

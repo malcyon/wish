@@ -589,7 +589,7 @@ class _OverflowingSaveAs:
             return SimpleNamespace(destination=plan.destination, backup=None,
                                    party=party)
 
-        def choose(overflow, game, accept_label):
+        def choose(overflow, game, accept_label, **_context):
             self.asked.append((overflow, game.key, accept_label))
             return self.later_answers.pop(0) if self.later_answers else self.answer
 
@@ -985,7 +985,7 @@ def test_save_as_with_a_choice_reads_the_written_disk_back_without_a_false_misma
     asked, adopted, said = [], [], []
     choice = {0: frozenset({3})}
 
-    def choose(overflow, game, accept_label):
+    def choose(overflow, game, accept_label, **_context):
         asked.append(overflow)
         return choice
 
@@ -1053,7 +1053,7 @@ def test_save_as_to_the_amiga_of_a_party_over_the_limit_asks_party_wide_and_writ
     ordinary = len(inventory) - 1
     choice = {0: frozenset({ordinary})}
 
-    def choose(overflow, game, accept_label):
+    def choose(overflow, game, accept_label, **_context):
         asked.append(overflow)
         return choice
 
