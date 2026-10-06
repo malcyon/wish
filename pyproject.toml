@@ -86,6 +86,8 @@ packages = ["goldbox", "editor", "automap", "wish", "tools", "ui"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# A worker stuck for two minutes prints its stack instead of going silent.
+faulthandler_timeout = 120
 # `livetests/` holds the tests that start an emulator or talk to a device; a
 # run of the suite, however it is pointed, must not collect them. Setting this
 # replaces pytest's own list, so its defaults are repeated here.

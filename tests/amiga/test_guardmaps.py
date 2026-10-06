@@ -502,6 +502,9 @@ def test_the_silver_blades_camp_save_picker_guard_matches_only_the_camp_picker_c
         owned = crop.title == 'ssb' or crop.relative in spec['labels']
         if not owned or not crop.path.is_file():
             continue
+        named = crop.relative in pickers or crop.relative in not_pickers
+        if not (named or crop.relative in spec['labels'] or crop.states):
+            continue
         digest = screens.box_digests(crop.path, {box})[box]
         shown = 'camp_save_picker' in spec['labels'].get(crop.relative, crop.states)
         if crop.relative in pickers or shown:
@@ -510,6 +513,29 @@ def test_the_silver_blades_camp_save_picker_guard_matches_only_the_camp_picker_c
             assert digest != rule['sha256'], crop.relative
         elif crop.states:
             assert digest != rule['sha256'], crop.relative
+
+
+def test_the_camp_picker_guard_test_decodes_only_the_crops_an_assertion_reads(monkeypatch):
+    """Reads crops kept from live runs, so it skips on a machine without them."""
+    from tools.amiga import screens
+    from tools.registry import scratch
+
+    decoded = []
+    real = screens.box_digests
+
+    def counting(path, boxes):
+        decoded.append(path)
+        return real(path, boxes)
+
+    monkeypatch.setattr(screens, 'box_digests', counting)
+    test_the_silver_blades_camp_save_picker_guard_matches_only_the_camp_picker_crops()
+    spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, 'ssb')
+    unread = [crop for crop in guardmaps.scan_crops(scratch.cache_dir('acceptance'))
+              if crop.path in decoded and crop.relative not in spec['labels'] and not crop.states
+              and not crop.relative.endswith(('15-camp_save_picker.png', '08-save_picker.png',
+                                              '16-exit_game.png'))]
+    assert decoded
+    assert not unread, unread[0].relative
 
 
 def _second_crop(path):
