@@ -210,6 +210,20 @@ def _asks_for_slot_of(party: Any, slot: str | None,
 # What is being converted
 # ---------------------------------------------------------------------------
 
+def _unread_dos_title(folder: pathlib.Path) -> str | None:
+    """The key of a DOS title Wish does not read that `folder` or the game
+    folder above it, holds."""
+    for where in (folder, folder.parent):
+        try:
+            key = titles.dos_folder_title(
+                where, table=titles.DOS_UNREAD_FOLDER_FILES)
+        except OSError:
+            continue
+        if key is not None:
+            return key
+    return None
+
+
 @dataclasses.dataclass
 
 class Source:
@@ -409,6 +423,13 @@ class Source:
             deltas = dos_port.deltas_for(record.stat().st_size)
         except dos_port.DosDeltasError as exc:
             raise ConvertError(str(exc)) from exc
+        if (deltas.key == dos_port.CURSE_OF_THE_AZURE_BONDS.key
+                and _unread_dos_title(folder)
+                == titles.GATEWAY_TO_THE_SAVAGE_FRONTIER.key):
+            raise dos_codec.WrongTitleError(
+                f"{folder} is a Gateway to the Savage Frontier save folder; "
+                f"its 422-byte records would read through Curse's tables",
+                titles.GATEWAY_TO_THE_SAVAGE_FRONTIER.title)
         return cls(port="dos", title=deltas, path=folder, slot=slot,
                    available_slots=available_slots)
 

@@ -289,8 +289,16 @@ DOS_FOLDER_FILES = {
     "pools-of-darkness": ("START.BAT", "POOL4.CFG", "DARKNESS"),
 }
 
+#: The DOS titles Wish does not read, recognised the same way as the table
+#: above and kept apart from it because that one lists the writable titles.
+DOS_UNREAD_FOLDER_FILES = {
+    "gateway-to-the-savage-frontier": ("START1.EXE", "GAME.CFG", "GATEWAY"),
+}
 
-def dos_folder_title(folder: "str | pathlib.Path") -> str | None:
+
+def dos_folder_title(folder: "str | pathlib.Path",
+                     table: "dict[str, tuple[str, str, str]]" = DOS_FOLDER_FILES,
+                     ) -> str | None:
     """Which title a DOS game folder holds, as a key, or `None` when nothing
     says.
 
@@ -305,12 +313,12 @@ def dos_folder_title(folder: "str | pathlib.Path") -> str | None:
     except OSError:
         held = set()
     by_contents = [key for key, (launcher, config, _) in
-                   DOS_FOLDER_FILES.items()
+                   table.items()
                    if launcher in held and config in held]
     if len(by_contents) == 1:
         return by_contents[0]
     names = {folder.name.upper(), folder.resolve().name.upper()}
-    for key, (_, _, stem) in DOS_FOLDER_FILES.items():
+    for key, (_, _, stem) in table.items():
         if stem in names:
             return key
     return None
