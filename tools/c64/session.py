@@ -1637,7 +1637,10 @@ class Session:
                     # still loading; a status line that has not changed after
                     # a pause means the square was not left.
                     time.sleep(self.ENCOUNTER_RECHECK)
-                    if self.status() == before:
+                    now = self.status()
+                    # Curse and Silver Blades lag the status line by a step,
+                    # so an unreadable line on either side proves nothing.
+                    if before is not None and now == before:
                         return f"{ch} left a PRESS bar on a square it did not leave"
         time.sleep(self.LEG_END_SETTLE)
         if self.in_combat():

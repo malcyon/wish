@@ -478,6 +478,7 @@ def test_a_press_bar_on_a_square_not_left_is_an_encounter_and_rolls_back(
         return s.restores > 0
 
     s.walk_one = stuck
+    s.status = lambda: (1, 2, 3)  # a readable line that never changes
     s._press_bar_up = lambda screen: s.restores == 0
     assert s.walk_with_retry("i") is True
     assert s.restores == 1 and s.walk_retries == 1
@@ -657,3 +658,38 @@ def test_an_ordinary_yes_no_at_the_leg_end_is_not_an_encounter(tmp_path):
     assert s._walk_leg("i", 0.1, 0.1) is None
     s.menu = type("M", (), {"row": lambda self, r: "FIGHT  FLEE" if r == 24 else ""})()
     assert "encounter menu" in s._walk_leg("i", 0.1, 0.1)
+
+
+def _press_bar_leg(tmp_path, readings):
+    """A walk whose first attempt leaves a PRESS bar up on an unmoved `I`;
+    `readings` are the status lines `_walk_leg` reads in turn."""
+    s = Fake(tmp_path)
+    real = s.walk_one
+    seen = iter(readings)
+
+    def stuck(move, hold=0.15, gap=0.30, encounters=False):
+        real(move, hold, gap, encounters=encounters)
+        return False
+
+    s.walk_one = stuck
+    s.status = lambda: next(seen, readings[-1])
+    s._press_bar_up = lambda screen: True
+    s.menu = None
+    s.ENCOUNTER_RECHECK = 0
+    return s
+
+
+def test_a_press_bar_with_an_unchanged_status_line_rolls_the_leg_back(tmp_path):
+    s = _press_bar_leg(tmp_path, [(1, 2, 3), (1, 2, 3)])
+    assert s._walk_leg("I", 0, 0) is not None
+
+
+def test_a_press_bar_with_a_changed_status_line_continues_the_walk(tmp_path):
+    s = _press_bar_leg(tmp_path, [(1, 2, 3), (1, 2, 4)])
+    assert s._walk_leg("I", 0, 0) is None
+
+
+def test_an_unreadable_status_line_does_not_roll_the_leg_back(tmp_path):
+    for readings in ([None, None], [None, (1, 2, 3)], [(1, 2, 3), None]):
+        s = _press_bar_leg(tmp_path, readings)
+        assert s._walk_leg("I", 0, 0) is None, readings
