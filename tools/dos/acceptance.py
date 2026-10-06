@@ -4099,7 +4099,11 @@ class Driver:
             screen, column)
         entry = {"shot": self.shot(label), "bar": bar_signature(screen),
                  "status": status, "square": square}
-        if self.place_reader is not None:
+        # Each read halts the game, and a debugger that does not answer costs
+        # retries: read the origin once as the baseline, then only a screen
+        # whose line hides the square.
+        if self.place_reader is not None and (
+                square is None or label in ("walk-before", "turn-before")):
             entry["place"] = self.party_place(label)
         screens.append(entry)
         return status, square
@@ -4122,7 +4126,7 @@ class Driver:
         try:
             place = self.place_reader()
         except (dosnoencounters.SwitchError, dosboxx.NotHalted, RuntimeError,
-                ValueError) as e:
+                ValueError, OSError) as e:
             self.note(event="place-unread", label=label,
                       why=f"{type(e).__name__}: {e}")
             return None
@@ -7071,6 +7075,10 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                 d.first_bar_key = parse_key(args.first_bar_key)
             d.intervene = bool(getattr(args, "intervene", False))
             d.elminster_ok = any(s.kind == "vault" for s in steps)
+            # Only a walk or a turn compares squares, so only they pay for
+            # the halts of a memory read.
+            if not any(s.kind in ("walk", "turn") for s in steps):
+                d.place_reader = None
             summary["events"] = getattr(d, "events", [])
             results = []
             for step in steps:

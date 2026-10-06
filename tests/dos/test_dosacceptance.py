@@ -11889,3 +11889,52 @@ def test_a_pool_item_row_with_no_name_reads_beside_the_named_rows(monkeypatch):
         {"ready": False, "marked": True, "name": "POTION"},
         {"ready": True, "marked": True, "name": ""},
     ]
+
+
+def test_pool_party_place_logs_a_pty_error_as_unread(tmp_path):
+    game, d = _memory_walker(tmp_path)
+    notes = []
+    d.note = lambda **k: notes.append(k)
+
+    def broken():
+        raise OSError(5, "Input/output error")
+
+    d.place_reader = broken
+    assert d.party_place("x") is None
+    assert [n["event"] for n in notes] == ["place-unread"]
+
+
+@pytest.mark.parametrize("steps, installed", [
+    (["load", "prayer-watch 49"], False),
+    (["load", "walk MI"], True),
+    (["load", "turn 2"], True)])
+def test_pool_run_installs_the_place_reader_only_for_a_walk_or_turn(
+        monkeypatch, tmp_path, steps, installed):
+    _fake_run(monkeypatch, tmp_path)
+    made = []
+    fake = da.Driver
+
+    class Recording(fake):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.place_reader = object()
+            made.append(self)
+
+    for name in ("load", "walk", "turn", "prayer_watch"):
+        monkeypatch.setattr(Recording, name, lambda self, *a: {}, raising=False)
+    monkeypatch.setattr(da, "Driver", Recording)
+    da.run(_run_args(tmp_path, steps))
+    assert (made[0].place_reader is not None) is installed
+
+
+def test_pool_walk_reads_memory_once_at_the_origin_and_once_per_hidden_screen(tmp_path):
+    game, d = _memory_walker(tmp_path)
+    d.walk("MI")
+    assert game.halts == 1
+    (tmp_path / "h").mkdir()
+    game, d = _memory_walker(tmp_path / "h")
+    _hide_on_turns(game, d)
+    got = d.walk("MI")
+    hidden = sum(s["square"] is None for s in got["screens"])
+    assert hidden >= 2
+    assert game.halts == 1 + hidden
