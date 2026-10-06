@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import types
 
+import pytest
+
 from goldbox import amiga_savegame, world_state
 from tools.amiga import acceptance as foundation
 from tools.amiga import route_darkness
@@ -64,7 +66,7 @@ def test_one_step_north_outdoors_is_a_move_even_with_the_dungeon_square_stale():
     control = _outdoors(22, 5)
     after = _outdoors(22, 4, FACING_NORTH)
     after["place"] = dict(BEFORE, facing=FACING_NORTH)
-    verdict = foundation.walk_verdict(BEFORE, control, after, 1, wilderness_grid=GRID)
+    verdict = foundation.walk_verdict(BEFORE, control, after, 1, wilderness_grid=GRID, walk_keys=["NP8"])
     assert verdict["b_ok"] and verdict["d_ok"], verdict
     assert verdict["squares_moved"] is None or verdict["squares_moved"] == 1
     assert verdict["place_changed"] is True
@@ -72,15 +74,15 @@ def test_one_step_north_outdoors_is_a_move_even_with_the_dungeon_square_stale():
 
 def test_a_party_that_stood_still_outdoors_did_not_move():
     control = _outdoors(22, 5)
-    verdict = foundation.walk_verdict(BEFORE, control, dict(control), 1, wilderness_grid=GRID)
+    verdict = foundation.walk_verdict(BEFORE, control, dict(control), 1, wilderness_grid=GRID, walk_keys=["NP8"])
     assert verdict["walk_blocked"] and not verdict["d_ok"]
 
 
 def test_a_step_at_the_northern_edge_stays_put_rather_than_wrapping():
     control = _outdoors(22, 0)
-    verdict = foundation.walk_verdict(BEFORE, control, _outdoors(22, 0), 1, wilderness_grid=GRID)
+    verdict = foundation.walk_verdict(BEFORE, control, _outdoors(22, 0), 1, wilderness_grid=GRID, walk_keys=["NP8"])
     wrapped = foundation.walk_verdict(BEFORE, control, _outdoors(22, 14), 1,
-                                      wilderness_grid=GRID)
+                                      wilderness_grid=GRID, walk_keys=["NP8"])
     assert verdict["d_ok"]
     assert not wrapped["d_ok"]
 
@@ -113,3 +115,28 @@ def test_the_guard_key_adds_the_overland_square_only_outdoors():
     assert foundation.place_state(place) == "place_x4_y7_f1"
     assert foundation.place_state(place, [22, 5]) != foundation.place_state(place, [22, 4])
     assert foundation.place_state(place, None) == "place_x4_y7_f1"
+
+
+def test_a_square_outside_the_grid_fails_the_verdict_with_a_message():
+    control = _outdoors(22, 5)
+    off = foundation.walk_verdict(BEFORE, control, _outdoors(22, 15), 1,
+                                  wilderness_grid=GRID, walk_keys=["NP8"])
+    assert not off["d_ok"] and "outside the 38x15 grid" in off["verdicts"][-1]
+    wide = foundation.walk_verdict(BEFORE, _outdoors(38, 5), _outdoors(38, 4), 1,
+                                   wilderness_grid=GRID, walk_keys=["NP8"])
+    assert not wide["d_ok"] and "outside the 38x15 grid" in wide["verdicts"][0]
+
+
+def test_a_square_at_the_far_edges_is_inside_the_grid():
+    verdict = foundation.walk_verdict(BEFORE, _outdoors(37, 14), _outdoors(37, 13), 1,
+                                      wilderness_grid=GRID, walk_keys=["NP8"])
+    assert verdict["d_ok"]
+
+
+@pytest.mark.parametrize("keys, turn", [(["NP2"], None), (["NP8", "NP6"], None),
+                                        (["NP8"], "about"), (None, None)])
+def test_a_walk_the_overland_rule_cannot_predict_fails_with_a_reason(keys, turn):
+    control = _outdoors(22, 5)
+    verdict = foundation.walk_verdict(BEFORE, control, _outdoors(22, 4), len(keys or [1]),
+                                      wilderness_grid=GRID, walk_keys=keys, turn=turn)
+    assert not verdict["d_ok"] and "overland rule" in verdict["verdicts"][0]

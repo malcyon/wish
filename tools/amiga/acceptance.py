@@ -30,7 +30,7 @@ import stat
 import sys
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any, Callable
 
 if __package__ in (None, ""):
@@ -784,7 +784,8 @@ def walk_verdict(before: dict, b: dict[str, Any], d: dict[str, Any],
                  squares: int, *, control: str = "B", after: str = "D",
                  turn: str | None = None,
                  edge_exits: Mapping[tuple[int, int], int] | None = None,
-                 wilderness_grid: tuple[int, int] | None = None) -> dict[str, Any]:
+                 wilderness_grid: tuple[int, int] | None = None,
+                 walk_keys: Sequence[str] | None = None) -> dict[str, Any]:
     """Judge the two saves: `control`, saved before the walk, must be `before`; `after` must be `squares` on.
 
     The step routine wraps at 0 and 15, so `after` is compared modulo 16 along the
@@ -793,11 +794,13 @@ def walk_verdict(before: dict, b: dict[str, Any], d: dict[str, Any],
     the area and facing, on the wrapped square, and `area_crossed` records it; with no row
     the prediction stays in the starting area. With `wilderness_grid` and a control save whose
     party is outdoors, the walk is judged on the overland square instead: each step is
-    north, stops at the grid's edge, and leaves the dungeon square alone.
+    north, stops at the grid's edge, and leaves the dungeon square alone. `walk_keys` names
+    the key of each counted step; outdoors only `NP8` and no `turn` can be judged.
     """
     if wilderness_grid is not None and outdoor_square(b) is not None:
         return _wilderness_walk_verdict(before, b, d, squares, wilderness_grid,
-                                        control=control, after=after)
+                                        control=control, after=after, turn=turn,
+                                        walk_keys=walk_keys)
     verdicts: list[str] = []
     b_place, d_place = b.get("place"), d.get("place")
     b_ok = d_ok = walk_blocked = walk_partial = False
@@ -867,11 +870,34 @@ def walk_verdict(before: dict, b: dict[str, Any], d: dict[str, Any],
 
 
 def _wilderness_walk_verdict(before: dict, b: dict[str, Any], d: dict[str, Any], squares: int,
-                             grid: tuple[int, int], *, control: str, after: str) -> dict[str, Any]:
-    """`walk_verdict` for a party on the overland map, where a forward key steps absolutely north."""
+                             grid: tuple[int, int], *, control: str, after: str,
+                             turn: str | None, walk_keys: Sequence[str] | None
+                             ) -> dict[str, Any]:
+    """`walk_verdict` for a party on the overland map, where `NP8` steps absolutely north.
+
+    Any other walk key, a `turn` or a square outside `grid` fails the verdict with its reason,
+    so a route this rule cannot predict is never judged as north steps.
+    """
     start = outdoor_square(b)
     assert start is not None
+    width, height = grid
     verdicts: list[str] = []
+    problem = None
+    if turn is not None:
+        problem = f"the overland rule cannot judge turn {turn!r}"
+    elif walk_keys is None:
+        problem = "the overland rule needs the walk's keys to judge it"
+    elif any(key != "NP8" for key in walk_keys):
+        problem = (f"the overland rule judges only NP8 steps, not "
+                   f"{sorted({k for k in walk_keys if k != 'NP8'})}")
+    elif len(walk_keys) != squares:
+        problem = f"{len(walk_keys)} walk keys for {squares} steps"
+    elif not (0 <= start[0] < width and 0 <= start[1] < height):
+        problem = f"slot {control} overland square {start[0]},{start[1]} is outside the {width}x{height} grid"
+    if problem:
+        return {"verdicts": [problem], "b_ok": False, "d_ok": False, "walk_blocked": False,
+                "walk_partial": False, "squares_requested": squares, "place_changed": None,
+                "squares_moved": None, "area_crossed": None}
     b_ok = b.get("place") == before
     verdicts.append(f"slot {control}: " + ("did not move" if b_ok else
                     f"moved from {_span(before, b['place'])}, expected the prepared place"))
@@ -882,9 +908,12 @@ def _wilderness_walk_verdict(before: dict, b: dict[str, Any], d: dict[str, Any],
         verdicts.append(_unreadable(after, d))
     elif landed is None:
         verdicts.append(f"slot {after}: is not outdoors, expected the overland square")
+    elif not (0 <= landed[0] < width and 0 <= landed[1] < height):
+        verdicts.append(f"slot {after}: overland square {landed[0]},{landed[1]} is outside "
+                        f"the {width}x{height} grid")
     else:
-        # The step stops at the edge rather than wrapping.
-        expected = (start[0], max(start[1] - squares, 0))
+        # The step stops at the edge rather than wrapping; north only reaches the top edge.
+        expected = (min(max(start[0], 0), width - 1), min(max(start[1] - squares, 0), height - 1))
         text = lambda sq: f"{sq[0]},{sq[1]}"  # noqa: E731
         if landed == expected and squares:
             d_ok = True
@@ -1005,7 +1034,9 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
                 walk = walk_verdict(manifest["state_a"], control, after, squares,
                                     control=title.control_letter, after=title.after_letter,
                                     turn=title.turn, edge_exits=title.edge_exits,
-                                    wilderness_grid=title.wilderness_grid)
+                                    wilderness_grid=title.wilderness_grid,
+                                    walk_keys=[key for key, _state, kind in steps
+                                               if kind == "move"])
                 verdicts = list(walk["verdicts"])
                 expected = manifest.get("expected_after")
                 result["expected_after_matches"] = None
@@ -2825,9 +2856,12 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     "letter": letter, "place": place, "shown": False,
                     "other_letter": manifest["other_letter"], "other_place": other,
                     "other_shown": None}
-                digest = until_guard(place_state(place, manifest.get("wilderness_a")), name, 0, GUARD_POLL, GUARD_LIMIT)
+                digest = until_guard(
+                    place_state(place, manifest.get("wilderness_a")), name, 0,
+                    GUARD_POLL, GUARD_LIMIT)
                 crop = shots / f"{name}.png"
-                shown.update(shown=True, other_shown=bool(guard(place_state(other, manifest.get("wilderness_other")), crop)),
+                other_key = place_state(other, manifest.get("wilderness_other"))
+                shown.update(shown=True, other_shown=bool(guard(other_key, crop)),
                              crop=str(crop), crop_sha256=digest)
                 log("reload", **shown)
             result["completed"] = True
