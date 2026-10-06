@@ -2908,3 +2908,42 @@ def test_saving_to_a_d64_the_editor_will_not_write_says_only_that_it_cannot(
     assert editor.save() == "failed"
 
     assert shown == [("Cannot save", "Error: Cannot save to this disk.")]
+
+
+def _native_source(kind, tmp_path):
+    """The path to open, and the bytes that must be unchanged afterwards."""
+    if kind == "c64":
+        path = synthetic_save(tmp_path)
+    elif kind == "dos":
+        path = dos_folder(tmp_path / "save")
+    else:
+        path = amiga_two_slot_disk(tmp_path)
+    return path
+
+
+def _bytes_of(path):
+    return files_under(path) if path.is_dir() else path.read_bytes()
+
+
+@pytest.mark.parametrize("kind", ["c64", "dos", "amiga"])
+def test_a_save_after_a_native_save_as_writes_the_copy_and_leaves_the_source(
+        app, tmp_path, monkeypatch, kind):
+    from test_saveasui import _confirm
+
+    source = _native_source(kind, tmp_path)
+    before = _bytes_of(source)
+    out = tmp_path / ("copy" if kind == "dos" else
+                      "copy.d64" if kind == "c64" else "copy.adf")
+    binding = EditorBinding(make_root())
+    # `EditorBinding(root, path)` asks a dialog which slot a two-slot disk opens.
+    binding._adopt(Party(str(source)), str(source))
+    binding.begin_save_as(kind)
+    assert _confirm(binding, monkeypatch, out) == []
+    assert binding.path == out
+
+    binding._widgets["gold"].setValue(2468)
+    binding._edited()
+    binding.save(interactive=False)
+
+    assert Party(str(out)).members[0].record.get("gold") == 2468
+    assert _bytes_of(source) == before

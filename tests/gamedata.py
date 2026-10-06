@@ -463,7 +463,7 @@ def _disk_with(files) -> bytes:
     return bytes(data)
 
 
-def synthetic_party(game=None, race=None, trait_codes=()) -> bytes:
+def synthetic_party(game=None, race=None, trait_codes=(), item=False) -> bytes:
     """A save disk built from the format, not copied from one.
 
     `race` and `trait_codes` override the two bytes a per-title table is read
@@ -485,8 +485,17 @@ def synthetic_party(game=None, race=None, trait_codes=()) -> bytes:
     A party of six-letter names produces a minimum that is true of nothing, and
     the roster is the one thing left in the header that is sized from the
     strings it holds.
+
+    `item` puts one made-up item in the first inventory position of every
+    character, for a test that edits an item the editor lets a player edit.
     """
     from editor.enums import class_bit_names
+    from editor.inventory import (
+        ITEM_AREA_BASE,
+        ITEM_BLOCK_STRIDE,
+        ITEM_SIZE,
+        SAVE0_LOAD_ADDRESS,
+    )
     from goldbox import c64_port, titles
     from goldbox.d64 import attach_load_address
     from goldbox.encoding import COMBAT_BIAS
@@ -536,6 +545,11 @@ def synthetic_party(game=None, race=None, trait_codes=()) -> bytes:
         roster[at + ROSTER_ARMOUR_CLASS] = COMBAT_BIAS - WIDEST_AC
         roster[at + ROSTER_HP_CURRENT] = WIDEST_HP
         roster[at + ROSTER_MOVEMENT] = 12
+        if item:
+            first = (ITEM_AREA_BASE - SAVE0_LOAD_ADDRESS
+                     + i * ITEM_BLOCK_STRIDE)
+            payload[first:first + ITEM_SIZE] = bytes((1,)) + bytes(
+                range(1, ITEM_SIZE))
 
     # `Game.roster_in_payload` is the branch: Pool of Radiance alone keeps the
     # roster in its own file at its own load address, and every later title
@@ -555,7 +569,8 @@ def synthetic_party(game=None, race=None, trait_codes=()) -> bytes:
     return _disk_with(files)
 
 
-def synthetic_save(tmp_path, name: str = "SYNTHETIC.D64", game=None):
+def synthetic_save(tmp_path, name: str = "SYNTHETIC.D64", game=None,
+                   item=False):
     """`synthetic_party` written where a window can open it.
 
     `game` is forwarded to `synthetic_party` -- Pool of Radiance when left
@@ -563,7 +578,7 @@ def synthetic_save(tmp_path, name: str = "SYNTHETIC.D64", game=None):
     title's own save layout does not need a real disk to get one.
     """
     out = pathlib.Path(tmp_path) / name
-    out.write_bytes(synthetic_party(game=game))
+    out.write_bytes(synthetic_party(game=game, item=item))
     return out
 
 

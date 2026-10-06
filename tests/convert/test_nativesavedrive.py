@@ -16,7 +16,7 @@ nativesavedrive = load_tools_module("nativesavedrive")
 def test_the_edits_read_back_and_the_backup_is_the_original(tmp_path):
     base = tmp_path / "base.adf"
     amiga_savegame.make_save_disk(
-        amiga_savegame.CURSE, "A", synthetic_curse(("ALPHA", "BRAVO"))
+        amiga_savegame.CURSE, "A", synthetic_curse(("ALPHA", "BRAVO"), item=True)
     ).save(base)
     original = base.read_bytes()
     out = tmp_path / "saves" / "edited.adf"
@@ -41,7 +41,7 @@ def test_a_save_that_writes_nothing_exits_non_zero(tmp_path, monkeypatch, capsys
 
     base = tmp_path / "base.adf"
     amiga_savegame.make_save_disk(
-        amiga_savegame.CURSE, "A", synthetic_curse(("ALPHA", "BRAVO"))
+        amiga_savegame.CURSE, "A", synthetic_curse(("ALPHA", "BRAVO"), item=True)
     ).save(base)
     monkeypatch.setattr(EditorBinding, "save", lambda self, interactive=True: "failed")
 
@@ -55,9 +55,9 @@ def test_a_save_that_writes_nothing_exits_non_zero(tmp_path, monkeypatch, capsys
 
 def test_slot_edits_that_slot_and_leaves_the_other(tmp_path):
     disk = amiga_savegame.make_save_disk(
-        amiga_savegame.CURSE, "A", synthetic_curse(("ALPHA", "BRAVO")))
+        amiga_savegame.CURSE, "A", synthetic_curse(("ALPHA", "BRAVO"), item=True))
     disk.write_file(amiga_savegame.slot_path(amiga_savegame.CURSE, "B"),
-                    synthetic_curse(("CHARLIE", "DELTA")))
+                    synthetic_curse(("CHARLIE", "DELTA"), item=True))
     base = tmp_path / "base.adf"
     disk.save(base)
     out = tmp_path / "saves" / "edited.adf"
@@ -124,7 +124,7 @@ def test_a_dos_folder_is_copied_edited_and_backed_up_inside_itself(tmp_path):
 def test_a_c64_disk_is_edited_and_backed_up_beside_itself(tmp_path):
     from gamedata import synthetic_save
 
-    base = synthetic_save(tmp_path)
+    base = synthetic_save(tmp_path, item=True)
     original = base.read_bytes()
     out = tmp_path / "saves" / "edited.D64"
 
@@ -158,3 +158,46 @@ def test_an_out_that_already_holds_files_is_not_copied_into(tmp_path):
     with pytest.raises(SystemExit, match="already exists"):
         nativesavedrive._copy(base, taken)
     assert taken.read_bytes() == b"x"
+
+
+def _curse_disk(tmp_path):
+    base = tmp_path / "base.adf"
+    amiga_savegame.make_save_disk(
+        amiga_savegame.CURSE, "A", synthetic_curse(("ALPHA", "BRAVO"))
+    ).save(base)
+    return base
+
+
+def test_an_item_on_an_empty_position_exits_and_writes_nothing(
+        tmp_path, capsys):
+    from editor.roster import Party
+
+    base = _curse_disk(tmp_path)
+    inventory = Party(str(base)).members[0].inventory
+    empty = next(n for n in range(len(inventory)) if inventory.is_empty(n))
+    out = tmp_path / "out.adf"
+
+    with pytest.raises(SystemExit, match=f"holds no item at position {empty}"):
+        nativesavedrive.main([
+            "--base", str(base), "--out", str(out), "--who", "0",
+            "--gold", "10", "--strength", "12", "--item", f"{empty}=3"])
+
+    assert out.read_bytes() == base.read_bytes()
+    assert not (tmp_path / "backups").exists()
+
+
+def test_a_run_with_no_item_edits_gold_and_strength_and_leaves_a_backup(
+        tmp_path, capsys):
+    base = _curse_disk(tmp_path)
+    out = tmp_path / "out.adf"
+
+    status = nativesavedrive.main([
+        "--base", str(base), "--out", str(out), "--who", "1",
+        "--gold", "4321", "--strength", "17"])
+
+    report = __import__("json").loads(capsys.readouterr().out)
+    assert status == 0
+    assert report["after"]["gold"] == 4321
+    assert report["after"]["strength"] == 17
+    assert report["after"]["quantities"] == {}
+    assert len(report["backups"]) == 1

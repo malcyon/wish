@@ -1,7 +1,7 @@
 """Helpers `test_amigasavegame` shares with the test files that reuse them."""
 from __future__ import annotations
 
-from goldbox import amiga_port, amiga_savegame
+from goldbox import amiga_port, amiga_savegame, dos_port
 from goldbox.amiga_savegame import (
     CURSE,
     SILVER_BLADES,
@@ -25,7 +25,26 @@ def vm_with(deltas, **words) -> bytearray:
     return vm
 
 
-def synthetic_curse(names=("ALPHA", "BETA")) -> bytes:
+def curse_item_node() -> bytes:
+    """One Curse item node a character can hold: a made-up type, quantity one."""
+    raw = bytearray(amiga_port.CURSE_DELTAS.item_size)
+    for field, value in (("type_index", 1), ("quantity", 1)):
+        raw[amiga_port.CURSE_DELTAS.item_offset(
+            dos_port.item_field_by_name(field).offset)] = value
+    return bytes(raw)
+
+
+def curse_record_with_item(name: str) -> bytes:
+    """`fake_record`'s character holding one item, as a saved game stores it."""
+    from goldbox.amiga_later import AmigaCharacter, AmigaItem
+
+    deltas = amiga_port.CURSE_DELTAS
+    return AmigaCharacter.from_bytes(
+        fake_record(deltas, name), deltas,
+        items=[AmigaItem.from_bytes(curse_item_node(), deltas)]).block_bytes()
+
+
+def synthetic_curse(names=("ALPHA", "BETA"), item=False) -> bytes:
     out = bytearray([2])
     out += vm_with(CURSE, **{"0x5012": 2, "0x503E": len(names),
                              "0x49C9": 1, "0x49C8": 1, "0x49C7": 5})
@@ -36,7 +55,8 @@ def synthetic_curse(names=("ALPHA", "BETA")) -> bytes:
         out += block.to_bytes(2, "big") + slot.to_bytes(2, "big")
     out += len(names).to_bytes(2, "big")
     for n in names:
-        out += fake_record(amiga_port.CURSE_DELTAS, n)
+        out += (curse_record_with_item(n) if item
+                else fake_record(amiga_port.CURSE_DELTAS, n))
     return bytes(out)
 
 
