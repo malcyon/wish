@@ -2222,6 +2222,7 @@ graph LR
   c64_port --> titles
   c64_save --> titles
   classcode --> titles
+  curse_worldmap --> amiga_hunks
   derive --> items
   derive -.->|deferred| levels
   dos_codec -.->|deferred| amiga_later

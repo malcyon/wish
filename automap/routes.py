@@ -1,7 +1,8 @@
 """Curse's world map for the automapper tab: read off the disks, laid out.
 
 No Qt here. `load_route_map` reads the two world-map scripts and the display
-driver off a title's C64 disks through `goldbox.curse_worldmap`; `place_points`
+driver off a title's C64 disks, or the scripts and marker cells off its Amiga
+disks, through `goldbox.curse_worldmap`; `place_points`
 puts each place at its marker cell, scaled to a rectangle; `display_name` is
 the name as the tab writes it. `automap.window.RouteCanvas` paints the result.
 """
@@ -12,10 +13,16 @@ import glob
 import logging
 import os
 
-from goldbox.curse_worldmap import Road, WorldMap, read_world_map
+from goldbox.curse_worldmap import (
+    Road,
+    WorldMap,
+    read_amiga_marker_cells,
+    read_world_map,
+)
 from goldbox.d64 import D64, split_load_address
 
 from .c64 import machine_for
+from .maps import amiga_images
 from .paths import disk_globs
 
 _log = logging.getLogger("wish.automap.routes")
@@ -55,6 +62,34 @@ def _read_files(disks, game, names) -> dict[str, bytes]:
     return found
 
 
+#: The Amiga disks' files: the program holds the marker cells, and the script
+#: library holds each world-map script as a block.
+AMIGA_PROGRAM = "/CURSE"
+AMIGA_SCRIPTS = "/DISKB/ECL.GLB"
+
+
+def _read_amiga(disks, game, names) -> tuple[dict[str, bytes], tuple] | None:
+    """The scripts, named `ECL50` style, and the marker cells off the title's
+    Amiga disks, or None when no disk carries the program and the scripts."""
+    from goldbox.amiga_adf import AmigaDisk
+    from goldbox.amiga_savegame import area_script
+    program = library = None
+    for image in amiga_images(disks, machine_for(game).title):
+        try:
+            disk = AmigaDisk.open(str(image))
+            for path, _entry in disk.walk():
+                if path.upper() == AMIGA_PROGRAM and program is None:
+                    program = disk.read_file(path)
+                elif path.upper() == AMIGA_SCRIPTS and library is None:
+                    library = disk.read_file(path)
+        except Exception:                      # not readable: no candidate
+            continue
+    if program is None or library is None:
+        return None
+    scripts = {n: area_script(library, int(n[3:], 16)) for n in names}
+    return scripts, read_amiga_marker_cells(program)
+
+
 def load_route_map(disks, game) -> WorldMap | None:
     """The title's places, roads and marker cells, or None.
 
@@ -71,11 +106,15 @@ def load_route_map(disks, game) -> WorldMap | None:
             return None
         files = _read_files(disks, game, names + (DRIVER,))
         missing = [n for n in names + (DRIVER,) if n not in files]
-        if missing:
-            _log.debug("World map not drawn: %s not found on the disks",
-                       ", ".join(missing))
-            return None
-        world = read_world_map({n: files[n] for n in names}, files[DRIVER])
+        if not missing:
+            world = read_world_map({n: files[n] for n in names}, files[DRIVER])
+        else:
+            amiga = _read_amiga(disks, game, names)
+            if amiga is None:
+                _log.debug("World map not drawn: %s not found on the disks",
+                           ", ".join(missing))
+                return None
+            world = read_world_map(amiga[0], cells=amiga[1])
     except Exception as err:                   # untrusted bytes: stay blank
         _log.debug("World map not drawn: %s", err, exc_info=True)
         return None

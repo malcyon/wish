@@ -117,6 +117,22 @@ def test_places_keep_the_proportions_of_their_marker_cells():
     assert all(10 <= x <= 610 and 20 <= y <= 520 for x, y in points.values())
 
 
+def test_an_amiga_only_folder_gives_the_route_page_with_the_amigas_cells():
+    import pathlib
+
+    from automap import gamedisks
+    folder = next((p for where in gamedisks.candidates("amiga")
+                   for p in sorted(pathlib.Path(where).glob("Curse*"))
+                   if list(p.glob("*_A.adf")) and list(p.glob("*_B.adf"))), None)
+    if folder is None:
+        pytest.skip("needs the Amiga Curse disks")
+    world = routes.load_route_map(folder, CURSE)
+    assert world is not None and len(world.places) == 14
+    assert len(world.roads) == 20
+    assert all(p.cell is not None for p in world.places)
+    assert world.cells[:14] == tuple(p.cell for p in world.places)
+
+
 def test_the_drawing_is_centred_in_the_room_it_is_given():
     points = routes.place_points(synthetic_world(), 0, 0, 280, 1000)
     ys = [y for _, y in points.values()]

@@ -21,10 +21,12 @@ one by the statements that use it rather than by its contents:
 * **The `JOURNEY ON` rows** are the vertical menus (`$15`) on each arm of the
   `ONGOTO [$4C9B]` that ends in the choice `GETTABLE`. A slot that appears in
   only some of a place's menus is a road the script offers on a condition.
-* **The marker cells** are `GDRIVE02`'s two tables indexed by `LDX $4CA1`:
+* **The marker cells** on the C64 are `GDRIVE02`'s two tables indexed by `LDX $4CA1`:
   `LDY abs,X` is the column and `LDA abs,X` the row, each drawn one cell
   further on (`INY`, `ADC #1`). `$4CA1` holds the place at a stop and a
-  per-leg waypoint (`GETTABLE [table], [$4C9D], [$4CA1]`) on the road.
+  per-leg waypoint (`GETTABLE [table], [$4C9D], [$4CA1]`) on the road. The
+  Amiga keeps its own cells as two byte tables in the `/Curse` program, found
+  by the code that indexes them with `$4CA1`; see `read_amiga_marker_cells`.
 
 The operand counts of the few opcodes decoded here were read off Curse's
 `DUNGEON` dispatch tables; the player-disk test checks them against it. Nothing
@@ -33,8 +35,12 @@ here holds a byte of the game's: every value is read from the files passed in.
 
 from __future__ import annotations
 
+import re
+import struct
 from collections.abc import Mapping
 from dataclasses import dataclass
+
+from . import amiga_hunks
 
 #: The script variables the world-map scripts use, in the save's address space.
 NODE = 0x4C9B          # the place the party stands at
@@ -62,6 +68,10 @@ NO_ROAD = 0xFF
 
 #: 6502 opcodes in GDRIVE02's marker routine.
 _JMP, _LDX_ABS, _LDA_ABS_X, _LDY_ABS_X = 0x4C, 0xAE, 0xBD, 0xBC
+
+
+#: Where the Amiga program's globals sit from register A4, in the data hunk.
+_AMIGA_GLOBALS = 0x7FFE
 
 
 class WorldMapError(ValueError):
@@ -448,13 +458,59 @@ def read_marker_cells(driver: bytes) -> tuple[tuple[int, int], ...]:
                  for n in range(size))
 
 
+def _amiga_marker_run() -> re.Pattern:
+    """The marker routine's table lookup: `movea.l d16(a4),a0; adda.l
+    #2*$4CA1,a0; moveq #0,d0; move.w (a0),d0; lea d16(a4),a0; moveq #0,d1;
+    move.b (a0,d0.l),d1`. The two `d16` fields are captured."""
+    return re.compile(
+        b"\x20\x6c..\xd1\xfc" + struct.pack(">I", 2 * MARKER)
+        + b"\x70\x00\x30\x10\x41\xec(..)\x72\x00\x12\x30\x08\x00",
+        re.DOTALL)
+
+
+def read_amiga_marker_cells(program: bytes) -> tuple[tuple[int, int], ...]:
+    """The Amiga's marker cells as `(column, row)`, one per `$4CA1` value.
+
+    `program` is the `/Curse` executable. The routine that draws the marker
+    looks up two byte tables with `$4CA1` as the index, column first and row
+    second; each is a global at `$7FFE` plus a signed 16-bit displacement into
+    the data hunk. The values are the ones the Amiga draws, with no cell added.
+    """
+    try:
+        hunks, _relocs = amiga_hunks.parse(program)
+    except (ValueError, struct.error) as err:
+        raise WorldMapError(f"the program is not a Hunk executable: {err}") from err
+    data = [h for h in hunks if h.kind == "DATA"]
+    if len(data) != 1:
+        raise WorldMapError(f"{len(data)} data hunks; expected one")
+    lookups = []
+    for hunk in hunks:
+        if hunk.kind == "CODE":
+            body = program[hunk.file_offset:hunk.file_offset + hunk.size]
+            lookups += _amiga_marker_run().findall(body)
+    if len(lookups) != 2:
+        raise WorldMapError(
+            f"{len(lookups)} lookups of the table indexed by ${MARKER:04X}; "
+            f"expected a column and a row")
+    columns, rows = (_AMIGA_GLOBALS + struct.unpack(">h", d16)[0]
+                     for d16 in lookups)
+    size = rows - columns
+    if size <= 0 or columns < 0 or rows + size > data[0].size:
+        raise WorldMapError("the marker tables are not inside the data hunk")
+    start = data[0].file_offset
+    return tuple((program[start + columns + n], program[start + rows + n])
+                 for n in range(size))
+
+
 def read_world_map(scripts: Mapping[str, bytes],
-                   driver: bytes | None = None) -> WorldMap:
+                   driver: bytes | None = None,
+                   cells: tuple[tuple[int, int], ...] | None = None) -> WorldMap:
     """The places and roads of every world-map script given, merged.
 
     `scripts` maps a file name (`"ECL50"`) to its body without the load
     address. All of them must carry the same neighbour table, since a leg's
-    index is shared across the hand-over. `driver` is `GDRIVE02`, for cells.
+    index is shared across the hand-over. `driver` is `GDRIVE02`, for cells;
+    `cells` gives them directly, as the Amiga program's do, and wins over it.
     """
     if not scripts:
         raise WorldMapError("no script given")
@@ -478,7 +534,8 @@ def read_world_map(scripts: Mapping[str, bytes],
             if place in owner:
                 raise WorldMapError(f"place {place} is handled by two scripts")
             owner[place] = m
-    cells = read_marker_cells(driver) if driver is not None else ()
+    if cells is None:
+        cells = read_marker_cells(driver) if driver is not None else ()
 
     places = []
     for n in range(first.count):

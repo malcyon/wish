@@ -300,6 +300,56 @@ def test_a_driver_without_the_marker_tables_is_rejected():
         W.read_marker_cells(bytes((0x4C, 0x10, 0xC0, 0x4C, 0x20, 0xC0)) + bytes(64))
 
 
+def amiga_program(columns, rows, lookups=2):
+    """A Hunk executable: a code hunk with the marker routine's table lookups
+    and a data hunk holding the two tables, found by displacement from A4."""
+    table_at = 0x40
+    col_at, row_at = table_at, table_at + len(columns)
+
+    def lookup(at):
+        d16 = (at - W._AMIGA_GLOBALS) & 0xFFFF
+        return (bytes.fromhex("206c1234d1fc") + (2 * W.MARKER).to_bytes(4, "big")
+                + bytes.fromhex("70003010") + bytes.fromhex("41ec")
+                + d16.to_bytes(2, "big") + bytes.fromhex("720012300800"))
+
+    code = b"".join([lookup(col_at), lookup(row_at)][:lookups]) + bytes(2)
+    code += bytes(-len(code) % 4)
+    data = bytes(table_at) + bytes(columns) + bytes(rows)
+    data += bytes(-len(data) % 4)
+    word = lambda n: n.to_bytes(4, "big")      # noqa: E731
+    return b"".join([
+        word(0x3F3), word(0), word(2), word(0), word(1),
+        word(len(code) // 4), word(len(data) // 4),
+        word(0x3E9), word(len(code) // 4), code, word(0x3F2),
+        word(0x3EA), word(len(data) // 4), data, word(0x3F2)])
+
+
+def test_amiga_marker_cells_are_column_then_row_as_stored():
+    cells = W.read_amiga_marker_cells(amiga_program([3, 11, 20], [14, 6, 10]))
+    assert cells == ((3, 14), (11, 6), (20, 10))
+
+
+def test_an_amiga_program_without_both_lookups_is_rejected():
+    with pytest.raises(W.WorldMapError, match="1 lookups"):
+        W.read_amiga_marker_cells(amiga_program([3, 11], [14, 6], lookups=1))
+
+
+def test_an_amiga_program_that_is_not_a_hunk_file_is_rejected():
+    with pytest.raises(W.WorldMapError, match="not a Hunk executable"):
+        W.read_amiga_marker_cells(bytes(64))
+
+
+def test_given_cells_replace_the_drivers_in_the_world_map():
+    body = script(NAMES, TABLE, 3, MENUS)
+    given = ((5, 6), (7, 8), (9, 10), (11, 12), (13, 14))
+    world = W.read_world_map({"ECL50": body}, cells=given)
+    assert [p.cell for p in world.places] == [(5, 6), (7, 8), (9, 10), (11, 12)]
+    assert world.cells == given
+    both = W.read_world_map({"ECL50": body},
+                            driver([0, 1, 2, 3, 9], [5, 6, 7, 8, 9]), cells=given)
+    assert both.cells == given
+
+
 def test_a_menu_row_is_the_kth_real_road_when_a_slot_in_between_is_empty():
     table = [1, NO, 2,  0, NO, NO,  0, NO, NO,  0, NO, NO]
     menus = {0: ("BRIGHT FORD", "COLD HILL"), 1: ("AMBER",), 2: ("AMBER",),
@@ -455,3 +505,29 @@ def test_curse_scripts_run_where_the_tools_walk_says():
     _machine, base, *_ = eclsweep.load_port(
         eclsweep.registry(game.key), game, None)
     assert base == BASE
+
+
+def _amiga_curse_program():
+    import pathlib
+
+    from automap import gamedisks
+    from goldbox.amiga_adf import AmigaDisk
+    for where in gamedisks.candidates("amiga"):
+        for image in sorted(pathlib.Path(where).glob("Curse*/*_A.adf")):
+            try:
+                return AmigaDisk.open(str(image)).read_file("/Curse")
+            except Exception:
+                continue
+    pytest.skip("needs the Amiga Curse disk A")
+
+
+def test_amiga_curse_cells_are_the_amigas_own_one_cell_off_the_c64s(curse_world):
+    cells = W.read_amiga_marker_cells(_amiga_curse_program())
+    assert len(cells) == 32
+    assert all(0 <= c < 40 and 0 <= r < 16 for c, r in cells)
+    c64 = curse_world.cells
+    # The C64 list is the stored value plus the cell the driver adds; the
+    # Amiga's stored values lie 0-3 (column) and 1-2 (row) above the C64's.
+    assert all(-1 <= a[0] - c[0] <= 2 and 0 <= a[1] - c[1] <= 1
+               for a, c in zip(cells, c64))
+    assert cells[:14] != c64[:14]
