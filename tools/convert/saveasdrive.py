@@ -39,7 +39,10 @@ LEAVE_AUTO = "auto"
 
 
 class LeaveChoiceError(Exception):
-    """The left-behind window could not be completed as asked."""
+    """The left-behind window could not be completed as asked; `record` is
+    what had been ticked and read when it stopped."""
+
+    record: dict = {}
 
 
 def _leave_through_window(window: Any, overflow: Any, game: Any,
@@ -58,7 +61,8 @@ def _leave_through_window(window: Any, overflow: Any, game: Any,
 
     dialog_class = leavebehind.LeaveBehindDialog
     column = leavebehind.NAME_COLUMN
-    record: dict = {}
+    record: dict = {"overflow": True,
+                    "accept_label": window._save_as_label()}
     failure: list[str] = []
 
     def rows(dialog):
@@ -113,13 +117,15 @@ def _leave_through_window(window: Any, overflow: Any, game: Any,
     original = dialog_class.exec
     dialog_class.exec = run
     try:
-        choice = window._choose_left_behind(overflow, game, "OK")
+        choice = window._choose_left_behind(
+            overflow, game, record["accept_label"])
     finally:
         dialog_class.exec = original
-    if failure:
-        raise LeaveChoiceError(failure[0])
-    if choice is None:
-        raise LeaveChoiceError("the left-behind window was not accepted")
+    if failure or choice is None:
+        stop = LeaveChoiceError(
+            failure[0] if failure else "the left-behind window was not accepted")
+        stop.record = record
+        raise stop
     return choice, record
 
 
@@ -166,7 +172,9 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
     its rows show, or `[LEAVE_AUTO]`. When the party is over and no `leave`
     is given, the editor's own window is opened for it, those rows are ticked,
     and Save As is run again with the window's choice; the report carries
-    `leave_dialog` (`ticked`, `label_before`, `label_after`, `ok_enabled`). A
+    `leave_dialog` (`overflow`, `accept_label`, `ticked`, `label_before`,
+    `label_after`, `ok_enabled`); a run whose party never overflowed reports
+    `{"overflow": false, "ticked": []}`. A
     row that is missing, or an OK that stays disabled, is `stopped` as
     `LeaveChoiceError`.
 
@@ -183,6 +191,10 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
     from goldbox import amiga_savegame, dos_codec
 
     report: dict = {"source": str(source), "to": port, "folder": str(folder)}
+    if leave_ticks:
+        # Overwritten when the window opens, so a run that never needed it
+        # still says it ticked nothing.
+        report["leave_dialog"] = {"overflow": False, "ticked": []}
     path = destination_path(port, pathlib.Path(folder))
     report["destination"] = str(path)
     try:
@@ -225,6 +237,7 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
                     window, convert_mod.overflow_of(exc), game, leave_ticks)
             except LeaveChoiceError as stop:
                 exc = stop
+                report["leave_dialog"] = stop.record
             else:
                 again = save_as(
                     window, source, port, folder, c64_folder=c64_folder,

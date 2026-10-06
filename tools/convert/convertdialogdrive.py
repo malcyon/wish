@@ -167,7 +167,8 @@ def main(argv=None) -> int:
 
     print(json.dumps(report, indent=2))
     report_path.write_text(json.dumps(report, indent=2))
-    if result.get("stopped", [None])[0] == "LeaveChoiceError":
+    if "stopped" in result and (result["stopped"][0] == "LeaveChoiceError"
+                                or "leave_dialog" in result):
         print(result["stopped"][1], file=sys.stderr)
     return 1 if "stopped" in result else 0
 

@@ -131,3 +131,102 @@ def test_the_driver_passes_leave_on_and_exits_nonzero_with_one_line(
     assert seen["leave_ticks"] == ["NOPE", "TWO"]
     assert capsys.readouterr().err.strip().splitlines() == [
         "no row shows 'NOPE'"]
+
+
+def test_the_window_gets_the_label_the_real_save_as_uses(window, tmp_path):
+    binding, _source = window
+    report = _run(window, tmp_path, ["auto"])
+
+    assert report["leave_dialog"]["accept_label"] == binding._save_as_label()
+    assert report["leave_dialog"]["accept_label"] not in ("", "OK")
+
+
+def test_no_overflow_is_recorded_as_nothing_ticked(tmp_path):
+    from PyQt6.QtWidgets import QApplication
+    QApplication.instance() or QApplication([])
+    folder = dos_folder(tmp_path / "save")
+    binding = EditorBinding(make_root(), str(folder))
+    binding.game_files_for = lambda _title: GameFiles(
+        icon=bytes(36), animate=bytes(852))
+    report = saveasdrive.save_as(binding, folder / "SAVGAMA.DAT", "c64",
+                                 tmp_path / "out", leave_ticks=["auto", "X"])
+
+    assert "stopped" not in report, report
+    assert report["leave_dialog"] == {"overflow": False, "ticked": []}
+
+
+def test_an_auto_that_ticks_nothing_is_recorded(window, tmp_path, monkeypatch):
+    original = leavebehind.LeaveBehindDialog.__init__
+
+    def already_zero(self, *args, **kwargs):
+        original(self, *args, **kwargs)
+        self.ui.items_remaining_label.setText(
+            leavebehind.ITEMS_REMAINING.format(n=0))
+        self.buttons.button(
+            leavebehind.QDialogButtonBox.StandardButton.Ok).setEnabled(False)
+
+    monkeypatch.setattr(leavebehind.LeaveBehindDialog, "__init__",
+                        already_zero)
+    report = _run(window, tmp_path, ["auto"])
+
+    assert report["stopped"][0] == "LeaveChoiceError"
+    assert report["leave_dialog"]["overflow"] is True
+    assert report["leave_dialog"]["ticked"] == []
+
+
+def test_the_amiga_party_window_is_ticked_and_the_run_repeated(
+        tmp_path, monkeypatch):
+    from PyQt6.QtWidgets import QApplication
+
+    from editor import saveplan
+    from goldbox import amiga_savegame
+    QApplication.instance() or QApplication([])
+
+    folder = dos_folder(tmp_path / "save")
+    binding = EditorBinding(make_root(), str(folder))
+    # The party-wide overflow of specimen L's pack, as test_leavebehind builds it.
+    inventory, bundles = packoverflow.specimen_l_pack()
+    first = packoverflow.member("PAINE", 0)
+    first.set("inventory", inventory, "made up")
+    first.set("scroll_bundles", bundles, "made up")
+    other = packoverflow.member("OTHER", 2, packoverflow.scroll(5),
+                                packoverflow.scroll(6))
+    (over,) = dos_codec.pack_overflow([first, other], "amiga")
+    seen = {}
+
+    def prepare(party, port, path, assets, **kwargs):
+        seen.update(kwargs)
+        if not kwargs.get("leave"):
+            raise amiga_savegame.AmigaJoinedScrollsDoNotFit(over, "SB")
+        raise RuntimeError("stop after the choice")
+
+    monkeypatch.setattr(saveplan, "resolve_assets", lambda *a, **k: object())
+    monkeypatch.setattr(saveplan, "prepare_save_as", prepare)
+    report = saveasdrive.save_as(binding, folder / "SAVGAMA.DAT", "amiga",
+                                 tmp_path / "out", leave_ticks=["auto"])
+
+    assert seen["leave"], seen
+    assert report["leave_dialog"]["overflow"] is True
+    assert report["leave_dialog"]["ticked"]
+    assert report["stopped"] == ["RuntimeError", "stop after the choice"]
+
+
+def test_a_stop_after_the_windows_choice_prints_one_line_on_stderr(
+        tmp_path, capsys, monkeypatch):
+    from tools.convert import saveasdrive as driven
+
+    def stopped(window, source, port, folder, **kwargs):
+        return {"stopped": ["MissingAssets", "no disk"],
+                "leave_dialog": {"overflow": True, "ticked": []}}
+
+    monkeypatch.setattr(driven, "save_as", stopped)
+    drive = load_tools_module("convertdialogdrive")
+    specimen = tmp_path / "SAVGAMA.DAT"
+    specimen.write_bytes(b"x")
+    disk = tmp_path / "x.adf"
+    disk.write_bytes(b"")
+    status = drive.main(["--specimen", str(specimen), "--amiga-disk2", str(disk),
+                         "--out-dir", str(tmp_path / "o"), "--leave", "auto"])
+
+    assert status == 1
+    assert capsys.readouterr().err.strip().splitlines() == ["no disk"]
