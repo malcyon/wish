@@ -25,3 +25,7 @@ def test_a_non_constant_write_is_computed():
 
 def test_a_constant_and_a_non_constant_write_list_both():
     assert _row(1, 1, None).value_text == "1, computed"
+
+
+def test_the_4a81_name_carries_the_two_routes_note():
+    assert eclflags.NOTES[0x4A81] in eclflags.known_names()[0x4A81]

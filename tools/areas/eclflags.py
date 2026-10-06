@@ -106,6 +106,14 @@ TABLES = (
 )
 
 
+#: A sentence appended to an address's name, for what the flag cannot say.
+NOTES = {
+    0x4A81: ("Both routes to 255 -- delivered and killed -- write the same "
+             "value, and the wording names neither because the save cannot "
+             "tell them apart"),
+}
+
+
 # --- what we can call a flag in English -------------------------------------
 
 def known_names():
@@ -127,6 +135,8 @@ def known_names():
             per_address[address].append(f"{value} = {what}")
         for address, parts in per_address.items():
             out[address] = f"{quest.name}: " + "; ".join(parts)
+            if address in NOTES:
+                out[address] += " " + NOTES[address]
     out[commissions.COMPLETED] = "count of major commissions paid"
     # `commissions.py` knows this byte as SLUM_WANDERING but has no name-lookup
     # entry for it, so the cap is read from there rather than repeated as a
