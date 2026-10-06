@@ -3819,10 +3819,11 @@ def _dispel_readings():
     return before, after
 
 
-def _dispel_run(tmp_path, before, after):
+def _dispel_run(tmp_path, before, after, rows=("DISPEL MAGIC",)):
+    shown = {3 + n: text for n, text in enumerate(rows)}
     screens = {**CAST_SCREENS,
-               "list": _window({3: "DISPEL MAGIC"}, CAST_LIST),
-               "picking": _window({3: "DISPEL MAGIC", 4: "EXIT"}, A.PICK_SPELL),
+               "list": _window({3: rows[0]}, CAST_LIST),
+               "picking": _window({**shown, 3 + len(rows): "EXIT"}, A.PICK_SPELL),
                "whom": [*_whom_screen(("BRUTUS", "ROLAND"))[:24],
                         "CAST SPELL ON WHOM?".ljust(40)],
                "msg": _window({2: "THE MAGIC IS DISPELLED"}, A.CONTINUE)}
@@ -3859,7 +3860,7 @@ def test_pool_enlarge_is_a_camp_cast_that_picks_the_named_member(tmp_path):
     with pytest.raises(ValueError, match="needs a target"):
         A.parse_cast("MALCYON:ENLARGE")
     before, after = _dispel_readings()
-    run, log, sess = _dispel_run(tmp_path, before, after)
+    run, log, sess = _dispel_run(tmp_path, before, after, ("ENLARGE",))
     run.panel_index = lambda who: {"MALCYON": 1}[who]
     try:
         got = run.cast("MALCYON:ENLARGE>BRUTUS")
@@ -3869,6 +3870,20 @@ def test_pool_enlarge_is_a_camp_cast_that_picks_the_named_member(tmp_path):
     assert sess.sent == [("party", 1), ("bar", "MAGIC"), ("bar", "CAST"),
                          ("bar", "CAST"), ("key", "Return"), ("party", 0),
                          ("key", "Return"), ("key", 0x0D)]
+
+
+def test_pool_enlarge_fails_before_casting_when_another_spell_is_listed(tmp_path):
+    before, after = _dispel_readings()
+    run, log, sess = _dispel_run(tmp_path, before, after,
+                                 ("SLEEP", "ENLARGE"))
+    run.panel_index = lambda who: {"MALCYON": 1}[who]
+    try:
+        with pytest.raises(Exception, match="not the first listed"):
+            run.cast("MALCYON:ENLARGE>BRUTUS")
+    finally:
+        log.close()
+    assert ("key", "Return") not in sess.sent
+    assert ("key", 0x0D) not in sess.sent
 
 
 def test_pool_dispel_waits_past_blank_announcement_without_a_key(tmp_path,

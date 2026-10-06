@@ -3606,6 +3606,13 @@ class PoolRun:
         listed = self.capture("pick-list")
         if dispel and sum(spell in _inner(row) for row in listed[3:24]) != 1:
             raise self.fail("dispel-spell", f"{spell} was not the single shown spell")
+        if spell in POOL_BUFF_SPELLS:
+            # The cursor starts on the first listed row and the screen text
+            # does not mark it, so that row must name the spell.
+            first = next((_inner(row) for row in listed[3:24] if _inner(row)), "")
+            if spell not in first:
+                raise self.fail("buff-spell", f"{spell} was not the first listed "
+                                f"spell, so the cursor is not on it")
         if target is None:
             before = self.reading()
         key = self._pick_spell(listed, needs_target=target is not None)
