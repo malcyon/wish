@@ -143,7 +143,11 @@ class AmigaFastTravel(engine.FastTravel):
             # The title's disks have no script for that area (Silver Blades
             # has no area 4), and its loader retries a missing one for ever.
             return engine.Verdict(False, self.not_built)
-        if trips.free_tail(row, here, lengths) not in (1, 2):
+        # Sized with the prologue `_start` will put ahead of the trip, so the
+        # check made up front and the one made on arming agree.
+        smallest = trips.plan(to, (0, 0, 0),
+                              prologue=trips.leave_grid_prologue(row, here, to))
+        if trips.free_tail(row, here, lengths, smallest) not in (1, 2):
             return engine.Verdict(False, self.not_built)
         return engine.Verdict(True)
 

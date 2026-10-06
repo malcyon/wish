@@ -668,6 +668,19 @@ def test_a_second_hop_that_stays_off_the_grid_has_no_prologue(
     assert out.ok and BOAT_EXIT not in b"".join(d for _a, d in out.writes)
 
 
+def test_a_leg_the_prologue_alone_pushes_past_its_script_is_held_up_front(
+        disks, pool_gate, monkeypatch):
+    # Window 27's script fits the trip without the boat-exit prologue and not
+    # with it.
+    disks[27] = 7573
+    m = pool(13)
+    before = bytes(m.memory)
+    t = pool_travel(monkeypatch)
+    out = t.run(m, area(0))
+    assert not out.ok and out.message == t.not_built
+    assert bytes(m.memory) == before and t.trip is None
+
+
 def test_a_direct_trip_from_a_window_and_a_return_stay_held(
         disks, pool_gate, monkeypatch):
     t = pool_travel(monkeypatch)
