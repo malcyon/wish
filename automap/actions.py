@@ -54,11 +54,14 @@ from dataclasses import field as dc_field
 from goldbox import c64_codec, c64_port, levels, levelup
 from goldbox import items as por_items
 from goldbox.layout import Confidence, field_by_name
-from goldbox.record import CharacterRecord
+from goldbox.record import RECORD_SIZE, CharacterRecord
 from goldbox.savegame import (
+    ROSTER_COUNT,
     ROSTER_HP_CURRENT,
+    ROSTER_SLOT_INDEX,
     ROSTER_STRIDE,
     ROSTER_THAC0,
+    SLOT_COUNT,
     SLOT_STRIDE,
     SaveGame0,
     SaveGame1,
@@ -1725,6 +1728,140 @@ def leave_travel_grid_writes(addr: fasttravel.FastTravelAddresses
     return ((addr.indoors, b"\x01"), (start, b"\x7f" * count))
 
 
+#: The six 6502 instructions a stub is built from, by mnemonic. `LDA#` is
+#: load-accumulator immediate; the other three with an operand take an
+#: absolute address, low byte first.
+_OPCODES = {"CLD": 0xD8, "JSR": 0x20, "JMP": 0x4C, "LDA#": 0xA9, "STA": 0x8D}
+
+
+def _assemble(program: list[tuple[str, int | None]]) -> bytes:
+    out = bytearray()
+    for mnemonic, operand in program:
+        out.append(_OPCODES[mnemonic])
+        if mnemonic == "LDA#":
+            out.append(operand & 0xFF)
+        elif operand is not None:
+            out += (operand & 0xFFFF).to_bytes(2, "little")
+    return bytes(out)
+
+
+def item_cleanup_stub(addr: fasttravel.FastTravelAddresses,
+                      types: tuple[int, ...], dismiss_slot: int | None = None,
+                      coin_wipe: bool = False) -> bytes:
+    """The routine a trip starts the game at instead of `NEWECL`'s tail: the
+    steps `ECL30` and the other cleanup exits run, then a jump to the tail.
+
+    Order is the walk's: the coin wipe, the dismissal through the game's own
+    `$3E` body (for the member `dismiss_slot`), the `$40` body once per item
+    type, then `JMP` to the tail. Raises ValueError where the title has no
+    stub addresses or the routine does not fit.
+    """
+    if not addr.has_item_cleanup:
+        raise ValueError(f"{addr.title} has no item cleanup to call")
+    program: list[tuple[str, int | None]] = [("CLD", None)]
+    if coin_wipe:
+        program.append(("JSR", addr.coin_wipe_entry))
+    if dismiss_slot is not None:
+        program.append(("LDA#", dismiss_slot))
+        program.append(("STA", addr.member_register))
+        program.append(("JSR", addr.dismiss_entry))
+    for item_type in types:
+        program.append(("LDA#", item_type))
+        program.append(("JSR", addr.item_cleanup_entry))
+    program.append(("JMP", addr.tail))
+    stub = _assemble(program)
+    if len(stub) > addr.stub_len:
+        raise ValueError(f"the stub is {len(stub)} bytes and {addr.title} "
+                         f"has room for {addr.stub_len}")
+    return stub
+
+
+def can_jump(target) -> bool:
+    """Can `jump` set the program counter on this backend?
+
+    Checked before anything is written, so a trip whose stub must run is not
+    started on a machine that cannot start it.
+    """
+    return (callable(getattr(target, "set_pc", None))
+            or getattr(target, "_mon", None) is not None)
+
+
+#: Where a resident member lives while the game waits for a key, by title:
+#: the member index, the record index, the roster status byte and the first
+#: record byte. Only Curse's are read; Silver Blades' resident copy is not.
+_RESIDENT = {
+    "curse-of-the-azure-bonds": (0x7EB4, 0x7EB1, 0x7D00, 0x7C00),
+}
+
+#: Record offset of the flags byte whose bit 7 marks an NPC.
+_NPC_BYTE = 0x0B8
+
+
+def _dismissal_matches(target, row, game) -> list[tuple[int, int, int]] | None:
+    """`(slot, record index, roster status)` for each slot the departing
+    script would drop, in slot order, or None when the party cannot be read.
+
+    A slot with status 0 is empty (`$3E` does nothing for it). The record is
+    the one the roster block's byte `+$0D` names, which is how the game's own
+    LOADCHAR finds it.
+    """
+    machine = c64.machine_for(game)
+    found: list[tuple[int, int, int]] = []
+    for slot in range(ROSTER_COUNT):
+        block = _read(target, machine.roster_base + slot * ROSTER_STRIDE,
+                      ROSTER_STRIDE)
+        if block is None or len(block) < ROSTER_STRIDE:
+            return None
+        if block[0] == 0:
+            continue
+        index = block[ROSTER_SLOT_INDEX]
+        if index >= SLOT_COUNT:
+            continue
+        page = _read(target, machine.slot_area_base + index * SLOT_STRIDE,
+                     SLOT_STRIDE)
+        if page is None or len(page) < SLOT_STRIDE:
+            return None
+        name = CharacterRecord.from_bytes(
+            bytes(page).ljust(RECORD_SIZE, b"\x00")).name
+        if name not in row.dismiss:
+            continue
+        if row.dismiss_npc_only and not page[_NPC_BYTE] & 0x80:
+            continue
+        found.append((slot, index, block[0]))
+        if row.dismiss_first_only:
+            break
+    return found
+
+
+def dismissal_writes(target, row, game
+                     ) -> tuple[tuple[int, bytes], ...] | None:
+    """What `$3E` and the script around it write for `row`'s matching slots:
+    the stored roster status and the record's first name byte, zero, plus the
+    same two resident bytes when the matching member is the resident one, and
+    the row's status flag. None when the party cannot be read.
+    """
+    matches = _dismissal_matches(target, row, game)
+    if matches is None:
+        return None
+    machine = c64.machine_for(game)
+    resident = _RESIDENT.get(game.key)
+    writes: list[tuple[int, bytes]] = []
+    for position, (slot, index, status) in enumerate(matches):
+        if position == 0 and row.dismiss_status_flag and status != 1:
+            at, value = row.dismiss_status_flag
+            writes.append((at, bytes([value])))
+        writes.append((machine.roster_base + slot * ROSTER_STRIDE, b"\x00"))
+        writes.append((machine.slot_area_base + index * SLOT_STRIDE,
+                       b"\x00"))
+        if resident is not None:
+            member, record, status_at, name_at = resident
+            held = _read(target, member, 1), _read(target, record, 1)
+            if held == (bytes([slot]), bytes([index])):
+                writes.append((status_at, b"\x00"))
+                writes.append((name_at, b"\x00"))
+    return tuple(writes)
+
+
 class FastTravel(Action):
     """Put the party in another area, the way the game's own exits do.
 
@@ -1970,6 +2107,33 @@ class FastTravel(Action):
                     here, row.route_to, area, arrival,
                     time.monotonic() + SECOND_HOP_SECONDS)
             return outcome
+        stub = None
+        slot = None
+        front: tuple[tuple[int, bytes], ...] = ()
+        if row is not None and row.item_cleanup:
+            # The cleanup only runs by starting the game at the stub, and a
+            # backend that cannot do that must not be written to.
+            if not (addr.has_item_cleanup and can_jump(target)):
+                _log.debug("fast travel blocked: area %d's departure needs "
+                           "a stub and this machine cannot run one", here)
+                return Outcome(False, FASTTRAVEL_FAILED, ())
+        if row is not None and row.dismiss:
+            matches = _dismissal_matches(target, row, self.game)
+            if matches is None:
+                return Outcome(False, FASTTRAVEL_FAILED, ())
+            if row.stub_dismiss:
+                slot = matches[0][0] if matches else None
+            else:
+                front = dismissal_writes(target, row, self.game) or ()
+        if row is not None and row.item_cleanup:
+            try:
+                stub = item_cleanup_stub(
+                    addr, row.item_cleanup,
+                    dismiss_slot=slot if row.stub_dismiss else None,
+                    coin_wipe=row.stub_coin_wipe)
+            except ValueError as exc:
+                _log.debug("fast travel blocked: %s", exc)
+                return Outcome(False, FASTTRAVEL_FAILED, ())
         arrival, overland = self._square_writes(area, arrival=arrival)
         notes = list(self.warnings(target, area, arrival, overland))
         # Read before writing: the first write is $6E12 and the second is
@@ -1984,8 +2148,12 @@ class FastTravel(Action):
                                arrival, overland=overland, addresses=addr)
         if row is not None and row.writes:
             # The bytes the departing script sets before its own `NEWECL`.
-            writes = tuple((a, bytes((v & 0xFF,)))
-                           for a, v in row.writes) + tuple(writes)
+            front += tuple((a, bytes((v & 0xFF,))) for a, v in row.writes)
+        if stub is not None:
+            front += ((addr.stub_base, stub),)
+        writes = front + tuple(writes)
+        if stub is not None:
+            return self._run_via_stub(target, addr, area, writes, was, notes)
         _write_all(target, writes)
         if not jump(target, addr.tail):
             # Unlike `_run_via_exit`'s failure below (`#493 (A Fast Travel
@@ -2018,6 +2186,30 @@ class FastTravel(Action):
         name = getattr(area, "name", None) or "this area"
         return Outcome(True, f"Traveling to {name}.",
                        writes, tuple(notes))
+
+    def _run_via_stub(self, target, addr, area, writes, was, notes) -> Outcome:
+        """Make `writes`, then start the game at the stub they include.
+
+        Unlike the plain trip, a failed jump here puts every byte back: the
+        reload flag in `writes` would finish the move at the next area change
+        without the cleanup the stub exists to run.
+        """
+        originals = []
+        for address, data in writes:
+            held = _read(target, address, len(data))
+            if held is None or len(held) != len(data):
+                return Outcome(False, FASTTRAVEL_FAILED, ())
+            originals.append((address, bytes(held)))
+        _write_all(target, writes)
+        if not jump(target, addr.stub_base):
+            for address, held in reversed(originals):
+                target.write(address, held)
+            _log.debug("fast travel: could not set the PC to the stub; "
+                       "every byte written is back")
+            return Outcome(False, FASTTRAVEL_FAILED, ())
+        self.back = was
+        name = getattr(area, "name", None) or "this area"
+        return Outcome(True, f"Traveling to {name}.", writes, tuple(notes))
 
     def _departure_applies(self, target, row) -> bool | None:
         """Whether `row`'s guards and member hold now, or None when a guard

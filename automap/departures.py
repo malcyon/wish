@@ -22,6 +22,7 @@ from dataclasses import dataclass
 
 POOL_OF_RADIANCE = "pool-of-radiance"
 POOLS_OF_DARKNESS = "pools-of-darkness"
+CURSE_OF_THE_AZURE_BONDS = "curse-of-the-azure-bonds"
 SECRET_OF_THE_SILVER_BLADES = "secret-of-the-silver-blades"
 
 C64 = "c64"
@@ -31,8 +32,8 @@ AMIGA = "amiga"
 @dataclass(frozen=True)
 class Guard:
     """One test the departing script makes on a byte. `op` is `==`, `!=`,
-    `>=`, `not in` (`value` is a tuple) or `bits` (the mask `value` is
-    non-zero)."""
+    `>=`, `in` or `not in` (`value` is a tuple) or `bits` (the mask `value`
+    is non-zero)."""
 
     address: int
     op: str
@@ -45,6 +46,8 @@ class Guard:
             return byte != self.value
         if self.op == ">=":
             return byte >= self.value
+        if self.op == "in":
+            return byte in self.value
         if self.op == "not in":
             return byte not in self.value
         if self.op == "bits":
@@ -71,6 +74,27 @@ class Departure:
     #: Whether the destination must be (True) or must not be (False) an
     #: overland area, or None for either.
     to_overland: bool | None = None
+    #: Whether a trip may reproduce this row. A row that is built and tested
+    #: but not yet shown to match the walk stays False and `find` skips it.
+    enabled: bool = True
+    #: Names the script drops from the roster on the way out. A slot matches
+    #: on its record's name.
+    dismiss: tuple[str, ...] = ()
+    #: A match must also have record `0x0B8` bit 7 set (an NPC).
+    dismiss_npc_only: bool = False
+    #: Stop at the first match.
+    dismiss_first_only: bool = False
+    #: `(address, value)` written when the first match's roster status is not
+    #: 1, the byte the script sets before it asks its question.
+    dismiss_status_flag: tuple[int, int] | None = None
+    #: The stub dismisses through the game's own `$3E` body instead of the
+    #: trip writing the two stored bytes.
+    stub_dismiss: bool = False
+    #: The stub runs the restart's NPC coin wipe first.
+    stub_coin_wipe: bool = False
+    #: Item types the stub removes through the game's `$40`, in the script's
+    #: order. Non-empty means the trip enters the stub, not `NEWECL`'s tail.
+    item_cleanup: tuple[int, ...] = ()
 
 
 #: Each row's comment names the script that makes the departure.
@@ -125,18 +149,55 @@ DEPARTURES: tuple[Departure, ...] = (
     Departure(POOLS_OF_DARKNESS, frozenset({17, 25, 51, 80}),
               frozenset({AMIGA}), writes=((0x24, 0), (0x22, 1)),
               to_overland=False),
+    # The Pit of Moander's exit, `ECL11 $82E1-$84F3`, drops ALIAS and
+    # DRAGONBAIT (NPCs only) and sets `$4C5B` to 255. It runs only when
+    # `$4C5B` is not 255, `$4C2D` is 128 or 255 and `$4C2E` is not 0; the
+    # second level, `ECL12`, leads only back to area `$11`.
+    Departure(CURSE_OF_THE_AZURE_BONDS, frozenset({0x11}), frozenset({C64}),
+              guards=(Guard(0x4C5B, "!=", 255), Guard(0x4C2D, "in", (128, 255)),
+                      Guard(0x4C2E, "!=", 0)),
+              not_to=frozenset({0x12}), writes=((0x4C5B, 255),),
+              dismiss=("ALIAS", "DRAGONBAIT"), dismiss_npc_only=True,
+              enabled=False),
+    # The Compound's edge exit, `ECL44 $82A4-$8360` and `$98CB`, drops the
+    # first member named SIR DERIC, with no test of the NPC bit, and sets
+    # `$4C05` to 1 first when his status is not 1.
+    Departure(SECRET_OF_THE_SILVER_BLADES, frozenset({0x44}),
+              frozenset({C64}), dismiss=("SIR DERIC",),
+              dismiss_first_only=True, dismiss_status_flag=(0x4C05, 1),
+              enabled=False),
+    # Every arrival in `$30` runs `ECL30` entry 4 (`$8014-$8098`): the restart's
+    # coin wipe, Akabar's `$3E`, then `$40` for types 94, 96 and 97. A trip
+    # inside Haptooth does not run it.
+    Departure(CURSE_OF_THE_AZURE_BONDS, frozenset({0x31, 0x32, 0x33}),
+              frozenset({C64}), not_to=frozenset({0x30, 0x31, 0x32, 0x33}),
+              dismiss=("AKABAR BEL AKAS",), dismiss_npc_only=True,
+              dismiss_first_only=True, stub_dismiss=True,
+              stub_coin_wipe=True, item_cleanup=(94, 96, 97), enabled=False),
+    # The exits of the Cave of the Beholder (`ECL22 $94CB`), Oxam's Tower
+    # (`ECL25 $821F`) and the dale dungeons (`ECL35 $8538`) run `$40`
+    # unconditionally.
+    Departure(CURSE_OF_THE_AZURE_BONDS, frozenset({0x22}), frozenset({C64}),
+              item_cleanup=(97, 96), enabled=False),
+    Departure(CURSE_OF_THE_AZURE_BONDS, frozenset({0x25}), frozenset({C64}),
+              item_cleanup=(97, 96), enabled=False),
+    Departure(CURSE_OF_THE_AZURE_BONDS, frozenset({0x35}), frozenset({C64}),
+              item_cleanup=(94, 96, 97), enabled=False),
 )
 
 
 def find(title: str, port: str, here: int, to: int,
-         to_overland: bool | None = None) -> Departure | None:
+         to_overland: bool | None = None,
+         include_disabled: bool = False) -> Departure | None:
     """The departure a trip from `here` to `to` reproduces, or None.
 
     A row that depends on the destination being overland (or not) matches
-    only when the caller says which.
+    only when the caller says which. A disabled row is skipped unless
+    `include_disabled`, which is for tests of the rows themselves.
     """
     for row in DEPARTURES:
-        if (row.title == title and port in row.ports and here in row.areas
+        if ((row.enabled or include_disabled) and row.title == title
+                and port in row.ports and here in row.areas
                 and to not in row.not_to
                 and (row.to_overland is None
                      or row.to_overland == to_overland)):

@@ -121,3 +121,62 @@ def test_silver_blades_rows_are_its_own_and_c64_only():
     # Pool's rows are not Silver Blades'.
     assert departures.find(ssb, "c64", 17, 0x10) is None
     assert departures.find(ssb, "c64", 28, 0x10) is None
+
+
+def test_every_item_cleanup_row_names_a_title_that_can_run_a_stub():
+    rows = [row for row in departures.DEPARTURES if row.item_cleanup]
+    assert rows
+    for row in rows:
+        assert fasttravel.ADDRESSES[row.title].has_item_cleanup, row
+        assert departures.C64 in row.ports, row
+
+
+def test_a_row_that_dismisses_through_the_stub_names_a_cleanup_to_carry_it():
+    for row in departures.DEPARTURES:
+        if row.stub_dismiss or row.stub_coin_wipe:
+            assert row.item_cleanup, row
+
+
+def test_a_disabled_row_is_found_only_when_asked_for():
+    row = departures.find("curse-of-the-azure-bonds", "c64", 0x25, 0x10,
+                          include_disabled=True)
+    assert row.item_cleanup == (97, 96) and not row.enabled
+    assert departures.find("curse-of-the-azure-bonds", "c64", 0x25, 0x10) is None
+    assert departures.find("secret-of-the-silver-blades", "c64", 0x44, 0x10) is None
+
+
+def test_the_pit_row_carries_the_trigger_the_script_tests():
+    row = departures.find("curse-of-the-azure-bonds", "c64", 0x11, 0x10,
+                          include_disabled=True)
+    assert row.dismiss == ("ALIAS", "DRAGONBAIT") and row.dismiss_npc_only
+    assert row.writes == ((0x4C5B, 255),)
+    flag = {g.address: g for g in row.guards}
+    assert flag[0x4C5B].holds(0) and not flag[0x4C5B].holds(255)
+    assert flag[0x4C2D].holds(128) and flag[0x4C2D].holds(255)
+    assert not flag[0x4C2D].holds(0)
+    assert flag[0x4C2E].holds(130) and not flag[0x4C2E].holds(0)
+    assert departures.find("curse-of-the-azure-bonds", "c64", 0x11, 0x12,
+                           include_disabled=True) is None
+
+
+def test_the_haptooth_row_stops_at_the_first_akabar_and_skips_haptooth_moves():
+    row = departures.find("curse-of-the-azure-bonds", "c64", 0x31, 0x10,
+                          include_disabled=True)
+    assert row.dismiss == ("AKABAR BEL AKAS",)
+    assert row.dismiss_npc_only and row.dismiss_first_only
+    assert row.item_cleanup == (94, 96, 97)
+    for to in (0x30, 0x31, 0x32, 0x33):
+        assert departures.find("curse-of-the-azure-bonds", "c64", 0x31, to,
+                               include_disabled=True) is None
+
+
+def test_sir_derics_row_tests_no_npc_bit():
+    row = departures.find("secret-of-the-silver-blades", "c64", 0x44, 0x10,
+                          include_disabled=True)
+    assert row.dismiss == ("SIR DERIC",) and not row.dismiss_npc_only
+    assert row.dismiss_first_only and row.dismiss_status_flag == (0x4C05, 1)
+
+
+def test_the_in_guard_tests_membership():
+    assert departures.Guard(1, "in", (128, 255)).holds(255)
+    assert not departures.Guard(1, "in", (128, 255)).holds(0)

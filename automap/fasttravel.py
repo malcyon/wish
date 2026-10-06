@@ -187,6 +187,32 @@ class FastTravelAddresses:
     #: titles keep at it.
     grid_exit_slots: tuple[int, int] | None = None
 
+    #: The item cleanup a departing script runs through its `$40` statement,
+    #: called from a stub instead of from the script VM. **Curse only.**
+    #: `item_cleanup_entry` is `DUNGEON $16A1`, the `STA $7F83` just after the
+    #: handler's operand fetch, so the item type goes in A; the handler ends in
+    #: `RTS` and touches no script-VM state.
+    item_cleanup_entry: int | None = None
+    #: `DUNGEON $15DF`, the restart's wipe of every NPC's coin block, which
+    #: `ECL30`'s walk runs before its own `$3E` and `$40`.
+    coin_wipe_entry: int | None = None
+    #: `DUNGEON $1671`, the body of `$3E` (dismiss the member in `$7EB4`). It
+    #: takes no operand.
+    dismiss_entry: int | None = None
+    #: The member index `$1671` reads, `$7EB4`.
+    member_register: int | None = None
+    #: Where a stub lives and how many bytes of it a trip may use: the head of
+    #: the script buffer, which the arriving area's load overwrites.
+    stub_base: int | None = None
+    stub_len: int = 0
+
+    @property
+    def has_item_cleanup(self) -> bool:
+        """Can a trip run this title's item cleanup from a stub?"""
+        return None not in (self.item_cleanup_entry, self.coin_wipe_entry,
+                            self.dismiss_entry, self.member_register,
+                            self.stub_base) and self.stub_len > 0
+
     @property
     def has_travel_grid(self) -> bool:
         """Can this title put a party on an overland square at all?"""
@@ -253,6 +279,12 @@ CURSE_OF_THE_AZURE_BONDS = FastTravelAddresses(
     key_fetch=(0x2FD7, 0x2FF8),
     wall_slot_pinned=0x4BE7,
     came_from_is_destination=(0x01,),
+    item_cleanup_entry=0x16A1,
+    coin_wipe_entry=0x15DF,
+    dismiss_entry=0x1671,
+    member_register=0x7EB4,
+    stub_base=0x8000,
+    stub_len=30,
 )
 
 #: Secret of the Silver Blades. `DUNGEON $20E6`, and **six writes rather than
