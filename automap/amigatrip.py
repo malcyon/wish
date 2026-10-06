@@ -215,7 +215,20 @@ def _return_landing() -> Difference:
 #: the step cannot cross, so the party stands there without stepping (a step
 #: into the square would pass a minute and roll for a wandering monster).
 ENTRY1_FACING: Mapping[tuple[int, int], int] = MappingProxyType({
+    (0, 21): 0,
+    (0, 26): 0,
+    (0, 27): 0,
+    (9, 6): 3,
     (13, 27): 2,
+    (22, 23): 0,
+    (22, 26): 0,
+    (23, 22): 0,
+})
+
+#: Doors whose route square has no side the step cannot cross: the party
+#: stands on this square and facing instead, which has the same square id.
+ENTRY1_STAND: Mapping[tuple[int, int], tuple[int, int, int]] = MappingProxyType({
+    (0, 11): (6, 2, 2),
 })
 
 
@@ -224,17 +237,30 @@ ENTRY1_FACING: Mapping[tuple[int, int], int] = MappingProxyType({
 DOORS_PROVEN = frozenset({(7, 5), (13, 27), (14, 26), (16, 27)})
 
 
+#: The words after a block's header of five `GOTO`s, which the interpreter
+#: writes when a script block loads; the first is the step entry.
+ENTRY_WORDS = 5
+
+
+def entry_words(target, row: TripRow) -> bytes:
+    """The step entry and the four words after it. A new area can share the
+    first (areas 14 and 27 do) but not all five."""
+    return target.read(target.data_base + row.step_entry, 2 * ENTRY_WORDS)
+
+
 def stand_for(here: int, to: int, route) -> tuple[int, int, int] | None:
     """`(x, y, facing)` to stand the party on for the door `route` of the trip
     `here` to `to`, or None where the stand is not known.
 
     Entry 0 stands on its own square and facing; an entry 0 row without a
     facing is held, because the facing decides the outcome. Entry 1 stands on
-    the route square facing `ENTRY1_FACING`'s side.
+    the route square facing `ENTRY1_FACING`'s side, or on `ENTRY1_STAND`'s.
     """
     if route.entry == 0:
         return tuple(route.square) if len(route.square) == 3 else None
     if route.entry == 1:
+        if (here, to) in ENTRY1_STAND:
+            return ENTRY1_STAND[(here, to)]
         facing = ENTRY1_FACING.get((here, to))
         if facing is None:
             return None

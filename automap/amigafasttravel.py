@@ -20,7 +20,7 @@ the C64 would walk out of an exit for stands the party on the door and sends
 one forward key, and the player answers whatever the game asks. A trip that is
 no door of the departing area walks out of the one `choose_door` names, then
 makes its second hop as a script trip once the party stands in that area and
-the step entry has changed. Return is always a script trip.
+the five entry words have changed. Return is always a script trip.
 """
 
 from __future__ import annotations
@@ -70,8 +70,8 @@ class _Hop:
     #: The destination's own row, and what `run` was given for its square.
     area: object
     arrival: object
-    #: The step-entry word when the first hop was armed. Only the interpreter's
-    #: area-entry writes it, so a different value shows `through`'s script ran.
+    #: The five entry words when the first hop was armed. Only the interpreter's
+    #: area-entry writes it, so a different set shows `through`'s script ran.
     entry: bytes = b""
     deadline: float = 0.0
     #: Set once the area byte has read `through`, so a party that came back is
@@ -278,7 +278,7 @@ class AmigaFastTravel(engine.FastTravel):
         # Read before arming: the writes change the square the trip leaves.
         was = engine.Waypoint(here, None, trips.square(target, row),
                               trips.overland(target, row))
-        entry = target.read(target.data_base + row.step_entry, 2)
+        entry = trips.entry_words(target, row)
         try:
             armed = trips.arm_door(target, row, stand)
         except Exception:
@@ -431,7 +431,7 @@ class AmigaFastTravel(engine.FastTravel):
             return None
         if not trips.gate(target, row):
             return None
-        if target.read(target.data_base + row.step_entry, 2) == hop.entry:
+        if trips.entry_words(target, row) == hop.entry:
             if time.monotonic() > hop.deadline:
                 self.pending = None
             return None

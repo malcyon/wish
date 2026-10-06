@@ -763,6 +763,22 @@ def test_an_entry_one_row_stands_on_its_square_facing_the_table_side():
     assert trip.stand_for(0, 8, _route(1, (4, 4))) is None
 
 
+_F4R3_STANDS = {
+    (0, 21): (15, 1, 0), (0, 26): (15, 1, 0), (0, 27): (15, 1, 0),
+    (0, 11): (6, 2, 2), (9, 6): (7, 7, 3),
+    (22, 23): (14, 7, 0), (22, 26): (13, 15, 0), (23, 22): (6, 0, 0),
+}
+
+
+def test_each_f4_r3_stand_has_its_facing_and_none_is_offered():
+    from automap import fasttravel
+    for (here, to), stand in _F4R3_STANDS.items():
+        route = fasttravel.EXIT_ROUTES[(here, to)]
+        assert trip.stand_for(here, to, route) == stand
+        assert (here, to) not in trip.DOORS_PROVEN
+        assert _covers("door_unplaced", here, to)
+
+
 def _geo_blob() -> bytes:
     from goldbox import geo
     blob = bytearray(geo.GEO_SIZE)

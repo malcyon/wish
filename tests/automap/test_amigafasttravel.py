@@ -604,7 +604,8 @@ def test_a_two_hop_walks_out_of_the_chosen_door_and_sets_a_pending_hop(
     assert out.ok and out.message == engine.FastTravel.WALKING_OUT_DETOUR.format(
         name="Far place")
     assert stood(m) == (5, 7, 3) and key_waiting(m)
-    assert t.trip.hop.through == 5 and t.trip.hop.entry == POOL_ENTRY.to_bytes(2, "big")
+    assert t.trip.hop.through == 5 and t.trip.hop.entry == m.read(
+        BASE + trips.ROWS[POOL].step_entry, 2 * trips.ENTRY_WORDS)
     take_key(m)
     assert t.continue_pending(m) is None
     assert t.trip is None and t.pending.through == 5
@@ -744,6 +745,18 @@ def test_a_party_that_comes_back_drops_the_hop_silently(disks, monkeypatch):
 def test_a_party_in_some_other_area_drops_the_hop_silently(disks, monkeypatch):
     m, t = _pending_hop(monkeypatch, 14)
     assert t.continue_pending(m) is None and t.pending is None
+
+
+def test_the_second_hop_is_made_when_only_a_later_entry_word_changes(
+        disks, pool_gate, monkeypatch):
+    # Areas 14 and 27 share the first word, 0x9914, and differ in the rest.
+    m, t, _ = _hop_trip(monkeypatch)
+    _through(m, t)
+    assert t.continue_pending(m) is None and t.pending is not None
+    m.at(trips.ROWS[POOL].step_entry + 2, b"\x99\x40")
+    out = t.continue_pending(m)
+    assert out.ok and out.message == "Traveling to Far place."
+    assert t.pending is None and t.trip is not None
 
 
 def test_a_hop_whose_step_entry_never_changes_clears_after_the_deadline(
