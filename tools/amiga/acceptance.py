@@ -169,10 +169,15 @@ PUBLISHED_SOURCES_BY_ISSUE = {
         ("curse", "c64"): frozenset({"ff3228edf42aa56a0fbf5159e8354358a38673115216a1b6c7f3439cae2686f2"}),
         ("ssb", "dos"): frozenset({"91a136ce86b34267b81d1ddd1d5037ce54d1a7d5b7e63732dddcb0af3070921b"}),
     },
-    # The game-written DOS Pools of Darkness slot C after Lay on Hands and a one-hour rest, which
-    # the Save As to the Amiga disk 3 route starts from.
+    # The game-written DOS Pools of Darkness saves the Save As to the Amiga disk 3 route starts
+    # from: slot C after Lay on Hands and a one-hour rest, then the seven-member vault party, the
+    # overland party and the party the DOS game created itself.
     "2": {
-        ("darkness", "dos"): frozenset({"ee979bf89164742816841c9ad2dc5a550f35b3a52eec2ad3fae138c9a1653918"}),
+        ("darkness", "dos"): frozenset({
+            "ee979bf89164742816841c9ad2dc5a550f35b3a52eec2ad3fae138c9a1653918",
+            "416df285086ae434bbad4efcd2943bb419b94b287d2382fe9f5706bbb15ed371",
+            "ed4a9f68f9e2f9064d229872bce0a2f87e017c8865123159f9af54a6d8a25bb8",
+            "e913382f73be2ace0c95642d8a7742f5478ade09302f0abfe46f6259db30c11c"}),
     },
     # The two DOS saves the Character Editor's Save As converts to the Amiga: the Curse party
     # with a dual-classed member and the Silver Blades party joined by arrow.

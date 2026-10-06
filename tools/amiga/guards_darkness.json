@@ -628,6 +628,23 @@
       "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/13-world.png",
       "sha256": "7f7a66647d760ca8cdb99d4bf80142ada5459a13b263d659f3a14bb598543dbe"
     },
+    "place_x3_y2_f1": {
+      "also": [
+        "camp",
+        "camp_save_picker",
+        "exit_game",
+        "heal_whom",
+        "rest_menu"
+      ],
+      "box": [
+        330,
+        268,
+        428,
+        292
+      ],
+      "example": "WISH-2/wish2-s5/accept2/shots/13-world.png",
+      "sha256": "ae0e1ba0060976fef1fb4f541aa5172c03a77f4307427e8c5fc6e539737658e8"
+    },
     "rest_menu": {
       "also": [],
       "box": [

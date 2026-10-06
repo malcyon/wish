@@ -3482,3 +3482,37 @@ def test_a_vault_run_of_two_hundred_and_one_items_builds_a_title():
     assert title.route[-4:] == (("R", "camp", "key"), ("S", "camp_save_picker", "key"),
                                 ("G", "exit_game", "write"), ("N", "camp", "key"))
     assert title.min_waits["vault_items_13"] == 10.0
+
+
+#: The three game-written DOS saves that the Darkness Save As route starts from besides the
+#: Lay on Hands slot, as `(specimen directory, SAVGAMD.PTY SHA-256)`.
+DARKNESS_DOS_SOURCES = (
+    ("pod-650-savgamb-walked-vault-dos",
+     "416df285086ae434bbad4efcd2943bb419b94b287d2382fe9f5706bbb15ed371"),
+    ("pod-650-savgama-join-weight-dos",
+     "ed4a9f68f9e2f9064d229872bce0a2f87e017c8865123159f9af54a6d8a25bb8"),
+    ("pod-stage3a-default-begin-walked-dos",
+     "e913382f73be2ace0c95642d8a7742f5478ade09302f0abfe46f6259db30c11c"),
+)
+
+
+@pytest.mark.parametrize("name,sha", DARKNESS_DOS_SOURCES)
+def test_the_darkness_save_as_route_pins_each_dos_source_of_its_ticket(name, sha):
+    assert sha in foundation._source_pins("2", "darkness", "dos"), name
+    assert "ee979bf89164742816841c9ad2dc5a550f35b3a52eec2ad3fae138c9a1653918" in (
+        foundation._source_pins("2", "darkness", "dos"))
+
+
+def test_the_darkness_guards_hold_a_place_rule_for_the_square_after_stage_5s_walk():
+    from tools.amiga import screens
+
+    spec = json.loads((pathlib.Path(foundation.__file__).parent / "guards_darkness.json").read_text())
+    state = foundation.place_state(dict(area=2, x=3, y=2, facing=geo.EAST))
+    assert state == "place_x3_y2_f1"
+    rule = spec["guards"][state]
+    assert rule["box"] == spec["guards"]["place_x2_y2_f1"]["box"]
+    assert rule["also"] == spec["guards"]["place_x2_y2_f1"]["also"]
+    crop = scratch.cache_dir("acceptance") / "WISH-2/wish2-s5/accept2/shots/13-world.png"
+    if not crop.is_file():
+        pytest.skip("needs the stage 5 accept shot 13 of WISH-2")
+    assert screens.box_digests(crop, [tuple(rule["box"])], state)[tuple(rule["box"])] == rule["sha256"]
