@@ -104,6 +104,8 @@ class FakeFastTravel:
         self.cancelled = 0
         self.applied = []
         self.continue_error = None
+        self.continue_outcome = None
+        self.apply_busy = 0
         self.apply_writes = []
 
     def legality(self, target, area):
@@ -118,6 +120,9 @@ class FakeFastTravel:
         return engine.Verdict(True)
 
     def apply(self, target, area=None, **kw):
+        if self.apply_busy:
+            self.apply_busy -= 1
+            return engine.Outcome(False, engine.FASTTRAVEL_BUSY)
         self.applied.append(area.id)
         for addr, data in self.apply_writes:
             target.write(addr, data)
@@ -126,15 +131,23 @@ class FakeFastTravel:
     def continue_pending(self, target):
         if self.continue_error:
             raise self.continue_error
-        return None
+        return self.continue_outcome
 
     def cancel_pending(self):
         self.cancelled += 1
         self.pending = None
 
 
+_OUT = {}
+
+
+@pytest.fixture(autouse=True)
+def _out_dir(tmp_path):
+    _OUT["dir"] = tmp_path
+
+
 def build(screen_at=lambda t: Screen(), area_at=None, script_at=None, answer=None,
-          budget=60.0, **ft_kw):
+          budget=60.0, connect=None, **ft_kw):
     clock = Clock()
     memory = Memory(clock, area_at or (lambda t: 7 if t < 1 else 18),
                     script_at or (lambda t: 7 if t < 1 else 18))
@@ -142,10 +155,7 @@ def build(screen_at=lambda t: Screen(), area_at=None, script_at=None, answer=Non
     ft = FakeFastTravel(clock, memory, **ft_kw)
     stream = io.StringIO()
     log = ftr.Log(stream, clock)
-    import pathlib
-    import tempfile
-    out = pathlib.Path(tempfile.mkdtemp())
-    drv = ftr.Driver(sess, lambda: memory, ft, out, log, answer=answer,
+    drv = ftr.Driver(sess, connect or (lambda: memory), ft, _OUT["dir"], log, answer=answer,
                      sleep=clock.sleep, clock=clock, budget=budget)
     return drv, sess, ft, memory, clock, stream
 
@@ -281,6 +291,7 @@ def test_fast_travel_write_to_the_generator_stops_the_leg_and_disarms():
     with pytest.raises(ftr.DriverError):
         drv.trip(18, "t")
     assert memory.writes == []
+    assert ft.cancelled >= 1, "trip() itself disarms when apply raises"
 
 
 def test_source_never_names_a_generator_write():
@@ -293,3 +304,88 @@ def test_bad_destination_is_a_usage_error():
     with pytest.raises(SystemExit) as exc:
         ftr.main(["--save", "x.D64", "--to", "9999"])
     assert exc.value.code == 2
+
+
+def test_cannot_act_right_now_is_retried_on_apply_too():
+    drv, _, ft, _, clock, _ = build(
+        area_at=lambda t: 7 if t < 3 else 18, script_at=lambda t: 7 if t < 3 else 18)
+    ft.apply_busy = 2
+    assert drv.trip(18, "t")["result"] == "arrived"
+    assert ft.applied == [18]
+    assert clock.sleeps[:2] == [ftr.BUSY_SECONDS, ftr.BUSY_SECONDS]
+
+
+def test_cannot_act_right_now_on_apply_is_bounded():
+    drv, _, ft, _, _, _ = build()
+    ft.apply_busy = 10_000
+    assert drv.trip(18, "t")["result"] == "not_applied"
+    assert ft.apply_busy == 10_000 - ftr.BUSY_TRIES
+
+
+def test_a_failed_continue_ends_the_leg_with_its_reason():
+    drv, _, ft, _, clock, stream = build(
+        area_at=lambda t: 7, script_at=lambda t: 7, budget=100.0)
+    ft.continue_outcome = engine.Outcome(False, "the party never left")
+    result = drv.trip(18, "t")
+    assert result["result"] == "failed"
+    assert result["reason"] == "the party never left"
+    assert clock.now < 10.0, "the leg did not wait out its budget"
+    assert ft.cancelled >= 1
+
+
+def test_a_transient_connect_error_is_retried():
+    calls = []
+
+    def connect():
+        calls.append(1)
+        if len(calls) <= 2:
+            raise ftr.NotConnected("monitor not up")
+        return memory
+
+    drv, _, _, memory, clock, stream = build(
+        connect=connect, area_at=lambda t: 7 if t < 3 else 18,
+        script_at=lambda t: 7 if t < 3 else 18)
+    assert drv.trip(18, "t")["result"] == "arrived"
+    assert [e["event"] for e in events(stream)].count("connect-retry") == 2
+
+
+def test_connect_retry_is_bounded():
+    calls = []
+
+    def connect():
+        calls.append(1)
+        raise ftr.NotConnected("monitor not up")
+
+    drv, *_ = build(connect=connect)
+    with pytest.raises(ftr.NotConnected):
+        drv.trip(18, "t")
+    assert len(calls) == ftr.CONNECT_TRIES
+
+
+def test_main_logs_a_failure_and_still_releases_the_slot(tmp_path, monkeypatch, capsys):
+    from tools.c64 import session as S
+
+    class Slot:
+        dir = tmp_path
+        released = torn = False
+
+        def teardown(self):
+            self.torn = True
+
+        def release(self):
+            self.released = True
+
+    slot = Slot()
+    monkeypatch.setattr(S, "claim_slot", lambda *a, **k: slot)
+
+    def no_disks(*a, **k):
+        raise ftr.DriverError("no disks staged")
+
+    monkeypatch.setattr(S, "stage_disks", no_disks)
+    with pytest.raises(SystemExit) as exc:
+        ftr.main(["--save", "x.D64", "--to", "18", "--disks", str(tmp_path),
+                  "--out", str(tmp_path / "out")])
+    assert str(exc.value) == "no disks staged"
+    logged = [json.loads(x) for x in (tmp_path / "out" / "run.jsonl").read_text().splitlines()]
+    assert logged[-1]["event"] == "error" and "no disks staged" in logged[-1]["error"]
+    assert slot.released and slot.torn

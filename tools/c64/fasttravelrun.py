@@ -40,6 +40,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
 
 from automap import actions as engine  # noqa: E402
+from automap.target import NotConnected  # noqa: E402
 
 #: Seconds between two `continue_pending` calls.
 POLL_SECONDS = 0.2
@@ -51,6 +52,8 @@ BUDGET_SECONDS = 180.0
 BUSY_SECONDS = 0.5
 #: Tries of such a call before the leg is given up.
 BUSY_TRIES = 40
+#: Tries of one connection to the monitor before the run gives up.
+CONNECT_TRIES = 5
 #: Times one leg answers a bar with `--answer`.
 ANSWERS_PER_TRIP = 4
 #: Seconds the game takes to draw an arrival, before the last screenshot.
@@ -125,9 +128,21 @@ class Driver:
         self.sess, self.connect, self.ft = sess, connect, fasttravel
         self.out, self.log, self.answer = out, log, answer
         self.sleep, self.clock, self.budget = sleep, clock, budget
+        #: The legs finished so far, kept here so a run that stops early can still report them.
+        self.results: list[dict] = []
 
     def target(self):
-        return contextlib.closing(GuardedTarget(self.connect()))
+        """A guarded connection; a busy or briefly absent monitor is retried, bounded."""
+        for attempt in range(CONNECT_TRIES):
+            try:
+                connection = self.connect()
+                break
+            except NotConnected as exc:
+                self.log("connect-retry", attempt=attempt, error=repr(exc))
+                if attempt == CONNECT_TRIES - 1:
+                    raise
+                self.sleep(BUSY_SECONDS)
+        return contextlib.closing(GuardedTarget(connection))
 
     def shot(self, tag: str) -> None:
         self.sess.kbd.screenshot(str(self.out / f"{tag}.png"))
@@ -173,7 +188,7 @@ class Driver:
         return False, message, value
 
     def trip(self, dest_id: int, tag: str) -> dict:
-        """One trip. Result: not_legal, not_applied, arrived or timeout."""
+        """One trip. Result: not_legal, not_applied, arrived, failed (with a reason) or timeout."""
         dest = engine.area_by_id(dest_id)
         if dest is None:
             raise DriverError(f"{dest_id} is not an area of Pool of Radiance")
@@ -193,14 +208,14 @@ class Driver:
             o = self.ft.apply(target, area=dest)
             return o.ok, o.message, o
 
-        with self.target() as target:
-            self.log("pre-apply", tag=tag, **reading(target))
-        ok, message, _ = self._retry_busy(tag, apply)
-        self.log("apply", tag=tag, ok=ok, message=message)
-        if not ok:
-            summary["result"] = "not_applied"
-            return summary
         try:
+            with self.target() as target:
+                self.log("pre-apply", tag=tag, **reading(target))
+            ok, message, _ = self._retry_busy(tag, apply)
+            self.log("apply", tag=tag, ok=ok, message=message)
+            if not ok:
+                summary["result"] = "not_applied"
+                return summary
             summary["result"] = self._poll(dest_id, tag, summary)
         finally:
             # A trip still pending when this leg ends for any reason is dropped.
@@ -220,6 +235,10 @@ class Driver:
                 if got is not None:
                     self.log("continue_pending", tag=tag, ok=got.ok, message=got.message,
                              pending=self.ft.pending is not None)
+                    if not got.ok:
+                        # The game has dropped the trip, so waiting out the budget finds nothing.
+                        summary["reason"] = got.message
+                        return "failed"
                 now = reading(target)
             if self.clock() >= next_look:
                 next_look = self.clock() + SCREEN_SECONDS
@@ -244,15 +263,14 @@ class Driver:
 
     def run(self, legs: list[int]) -> list[dict]:
         """The legs in order, stopping at the first that does not arrive."""
-        results = []
         try:
             for index, dest in enumerate(legs):
-                results.append(self.trip(dest, f"t{index}-to{dest}"))
-                if results[-1]["result"] != "arrived":
+                self.results.append(self.trip(dest, f"t{index}-to{dest}"))
+                if self.results[-1]["result"] != "arrived":
                     break
         finally:
             self.ft.cancel_pending()
-        return results
+        return self.results
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -284,39 +302,49 @@ def main(argv: list[str] | None = None) -> int:
         "fasttravel", time.strftime("%Y%m%d-%H%M%S")))
     slot = S.claim_slot(args.slot, "fasttravelrun")
     sess = None
-    results: list[dict] = []
+    driver = None
+    failure: Exception | None = None
     try:
         with open(out / "run.jsonl", "w") as stream:
             log = Log(stream, time.monotonic)
-            boot = S.stage_disks(slot, disks)
-            S.stage_writable(pathlib.Path(args.save), pathlib.Path(slot.dir) / "SIDE0.D64")
-            for image in pathlib.Path(slot.dir).glob("*.D64"):
-                os.chmod(image, 0o644)
-            sess = S.Session(boot, slot=slot)
-            if not sess.boot():
-                raise DriverError("boot failed")
-            if not sess.load_save():
-                raise DriverError("the game did not accept the save")
-            if not sess.select_row("BEGIN ADVENTURING"):
-                raise DriverError("BEGIN ADVENTURING was not selected")
-            if not sess.wait_for_world(timeout=240):
-                raise DriverError("the world bar never came up")
-            sess.settle(4)
-            driver = Driver(sess, lambda: ViceTarget(port=sess.mon_port), engine.FastTravel(),
-                            out, log, answer=args.answer, budget=args.budget)
-            driver.shot("0-start")
-            results = driver.run(args.to)
-            driver.shot("final")
-    except DriverError as exc:
-        raise SystemExit(str(exc)) from exc
+            try:
+                boot = S.stage_disks(slot, disks)
+                S.stage_writable(pathlib.Path(args.save), pathlib.Path(slot.dir) / "SIDE0.D64")
+                for image in pathlib.Path(slot.dir).glob("*.D64"):
+                    os.chmod(image, 0o644)
+                sess = S.Session(boot, slot=slot)
+                if not sess.boot():
+                    raise DriverError("boot failed")
+                if not sess.load_save():
+                    raise DriverError("the game did not accept the save")
+                if not sess.select_row("BEGIN ADVENTURING"):
+                    raise DriverError("BEGIN ADVENTURING was not selected")
+                if not sess.wait_for_world(timeout=240):
+                    raise DriverError("the world bar never came up")
+                sess.settle(4)
+                driver = Driver(sess, lambda: ViceTarget(port=sess.mon_port),
+                                engine.FastTravel(), out, log, answer=args.answer,
+                                budget=args.budget)
+                driver.shot("0-start")
+                driver.run(args.to)
+                driver.shot("final")
+            except Exception as exc:
+                # The failure is on record in the log before the slot goes away.
+                log("error", error=repr(exc))
+                failure = exc
     finally:
         for step in (lambda: sess and sess.close(), slot.teardown, slot.release):
             try:
                 step()
             except Exception as failed:
                 print(f"cleanup failed: {failed!r}", file=sys.stderr)
+    results = driver.results if driver is not None else []
     for result in results:
         print(json.dumps(result))
+    if isinstance(failure, DriverError):
+        raise SystemExit(str(failure)) from failure
+    if failure is not None:
+        raise failure
     return 0 if len(results) == len(args.to) and all(
         r["result"] == "arrived" for r in results) else 1
 
