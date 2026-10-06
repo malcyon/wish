@@ -77,6 +77,7 @@ class FakeWinuae:
         self.unanswered: list[bytes] = []  # requests made while silent
         self.broken_read = False        # ReadFile fails as if WinUAE hung up
         self.write_hangs = False        # WriteFile never completes
+        self.short_write = None         # WriteFile takes only this many bytes
         self.read_cost = 0.0            # clock time each finished read takes
         self.wait_ms: list[int] = []    # the time each wait was given
         self.creates = self.closes = self.cancels = self.waits = 0
@@ -127,7 +128,8 @@ class FakeWinuae:
             self.pending = self._answer(bytes(data))
         if self.write_hangs:
             return Ov(self, None), winuae.ERROR_IO_PENDING
-        return Ov(self, (data, 0)), winuae.ERROR_IO_PENDING
+        taken = data if self.short_write is None else data[:self.short_write]
+        return Ov(self, (taken, 0)), winuae.ERROR_IO_PENDING
 
     def ReadFile(self, handle, size, overlapped=False):
         if self.broken_read:
@@ -632,6 +634,31 @@ def test_a_handle_with_an_unanswered_request_survives_any_number_of_timeouts(rig
     clock.now += pipe.BACKOFF + 1
     assert pipe.read_memory(0x40, 16) == MEMORY[0x40:0x50]
     assert api.closes == 0 and api.creates == 1 and not api.pipe_gone
+
+
+def test_a_partial_write_then_a_timeout_keeps_the_handle(rig):
+    pipe, api, clock, _folder = rig
+    api.silent = True
+    api.short_write = 4
+    with pytest.raises(amiga.PipeError, match="took 4 of"):
+        pipe.read_memory(0, 16)
+    assert api.closes == 0
+    pipe.close()
+    assert api.closes == 0
+    api.short_write = None
+    with pytest.raises(winuae.PipeTimeout):
+        pipe.read_memory(0, 16)
+    assert api.closes == 0 and not api.pipe_gone and api.creates == 1
+
+
+def test_a_handle_that_answered_once_and_is_owed_again_is_not_closed(rig):
+    pipe, api, _clock, _folder = rig
+    pipe.read_memory(0, 8)
+    api.silent = True
+    with pytest.raises(winuae.PipeTimeout):
+        pipe.read_memory(0, 16)
+    pipe.close()
+    assert api.closes == 0 and not api.pipe_gone
 
 
 def test_a_broken_pipe_while_a_reply_is_owed_still_closes_the_handle(rig):

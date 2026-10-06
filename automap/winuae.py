@@ -142,8 +142,6 @@ class WinuaeLocalPipe:
         self._handle = None
         self._count = 0
         self._quiet_until = 0.0
-        #: A reply has been read whole on this handle.
-        self._answered = False
         #: A request written on this handle has no reply read yet.
         self._owed = False
         #: True after a failure, until a handle opens or a reply is read.
@@ -191,7 +189,7 @@ class WinuaeLocalPipe:
             raise PipeError(f"Could not set message mode on the WinUAE pipe: {exc}") \
                 from exc
         self._handle = handle
-        self._answered = self._owed = False
+        self._owed = False
         self.lost = False
         self._clear_leftovers(create=True)
 
@@ -215,10 +213,10 @@ class WinuaeLocalPipe:
     def close(self) -> None:
         """Let go of the pipe so the next client is accepted. Safe to repeat.
 
-        A handle that has never had a reply and still owes one stays open:
-        WinUAE closes its pipe for good when a client leaves in that state.
+        A handle that still owes a reply stays open: WinUAE closes its pipe
+        for good when a client leaves in that state.
         """
-        if self._handle is not None and self._owed and not self._answered:
+        if self._handle is not None and self._owed:
             try:
                 self._clear_leftovers()
             except OSError:
@@ -228,7 +226,7 @@ class WinuaeLocalPipe:
 
     def _release(self) -> None:
         handle, self._handle = self._handle, None
-        self._answered = self._owed = False
+        self._owed = False
         if handle is not None:
             try:
                 self._win().CloseHandle(handle)
@@ -277,8 +275,11 @@ class WinuaeLocalPipe:
             if err == ERROR_MORE_DATA:
                 continue
             if err != 0:
+                self._owed = False
                 raise PipeError(f"Reading the reply failed with error {err}.")
             if not data.endswith(b"\0"):
+                # The reply did arrive, so nothing is owed any more.
+                self._owed = False
                 raise PipeError("The reply ended without its terminator.")
             return data[:-1]
 
@@ -307,7 +308,6 @@ class WinuaeLocalPipe:
                 # file is written by now and the new request's does not exist.
                 self._read_reply(end)
                 self._owed = False
-                self._answered = True
                 self._clear_leftovers()
             deadline = end
             # A reply is owed from the moment the write starts: a write that
@@ -316,17 +316,16 @@ class WinuaeLocalPipe:
             self._write(message, deadline)
             reply = self._read_reply(deadline)
             self._owed = False
-            self._answered = True
             self.lost = False
         except OSError as exc:
             self._drop()
             if getattr(exc, "winerror", None) == ERROR_BROKEN_PIPE:
                 raise PipeError("WinUAE closed the pipe.") from exc
             raise PipeError(f"The WinUAE pipe failed: {exc}") from exc
-        except PipeError as exc:
-            if isinstance(exc, PipeTimeout) and self._owed:
-                # Closing a handle whose request was written whole and has had
-                # no reply loses the pipe: WinUAE, stopped in its debugger,
+        except PipeError:
+            if self._owed:
+                # Closing a handle whose request was written, even in part,
+                # and has had no reply loses the pipe: WinUAE, stopped in its debugger,
                 # runs the queued request on resume, fails to answer it and
                 # destroys the pipe.
                 self.lost = True
