@@ -185,8 +185,8 @@ def _ps_quote(text: str) -> str:
     return "'" + text.replace("'", "''") + "'"
 
 
-def capture_script(out: str) -> str:
-    """What the session 1 task runs: grab the whole desktop into `out`.
+def grab_lines(out: str) -> list[str]:
+    """The PowerShell lines that grab the whole desktop into `out`.
 
     DPI-aware, so a scaled display is captured at its real pixel size and the
     grab has the same pitch as the framebuffer `winvm shot` reads on the
@@ -195,8 +195,7 @@ def capture_script(out: str) -> str:
     reads half a PNG.
     """
     tmp = out + ".tmp"
-    return "\n".join([
-        "$ErrorActionPreference = 'Stop'",
+    return [
         "Add-Type -AssemblyName System.Windows.Forms, System.Drawing",
         "Add-Type -Namespace WishShot -Name Dpi -MemberDefinition "
         "'[DllImport(\"user32.dll\")] public static extern bool SetProcessDPIAware();'",
@@ -209,7 +208,12 @@ def capture_script(out: str) -> str:
         f"$bmp.Save({_ps_quote(tmp)}, [System.Drawing.Imaging.ImageFormat]::Png)",
         "$g.Dispose(); $bmp.Dispose()",
         f"Move-Item -Force {_ps_quote(tmp)} {_ps_quote(out)}",
-    ])
+    ]
+
+
+def capture_script(out: str) -> str:
+    """What the session 1 task runs: grab the whole desktop into `out`."""
+    return "\n".join(["$ErrorActionPreference = 'Stop'", *grab_lines(out)])
 
 
 def shot_script(token: str, timeout: int = 20, capture=None) -> str:

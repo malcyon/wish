@@ -66,8 +66,43 @@ def test_ctrl_shift_s_pops_the_save_buttons_own_menu_rather_than_saving(
     saved = []
     monkeypatch.setattr(win.editor, "save", lambda *a, **k: saved.append(True))
     save_as.trigger()
+    app.processEvents()
     assert shown == [True]
     assert saved == []
+
+
+def test_save_as_returns_before_the_save_menu_opens(app, tmp_path, monkeypatch):
+    from gamedata import synthetic_save
+
+    win = window(app, str(synthetic_save(tmp_path)))
+    save_as = next(a for a in _file_menu(win).actions()
+                   if a.text() == "Save &As…")
+    button = win.editor._child("button_save")
+    shown = []
+    monkeypatch.setattr(button, "showMenu", lambda: shown.append(True))
+    saved = []
+    monkeypatch.setattr(win.editor, "save", lambda *a, **k: saved.append(True))
+    save_as.trigger()
+    assert shown == []
+    app.processEvents()
+    assert shown == [True]
+    assert saved == []
+
+
+def test_the_posted_save_menu_does_nothing_if_the_button_was_disabled(
+        app, tmp_path, monkeypatch):
+    from gamedata import synthetic_save
+
+    win = window(app, str(synthetic_save(tmp_path)))
+    save_as = next(a for a in _file_menu(win).actions()
+                   if a.text() == "Save &As…")
+    button = win.editor._child("button_save")
+    shown = []
+    monkeypatch.setattr(button, "showMenu", lambda: shown.append(True))
+    save_as.trigger()
+    button.setEnabled(False)
+    app.processEvents()
+    assert shown == []
 
 
 def test_save_as_is_enabled_whenever_a_save_is_open(app, tmp_path):

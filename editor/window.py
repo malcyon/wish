@@ -1080,7 +1080,15 @@ class EditorBinding(QObject):
     def open_save_as_menu(self) -> None:
         """`Ctrl+Shift+S` and the File menu's own `Save As…` entry: pop the
         Save button's own menu, at the button (decision 1) -- the keyboard
-        and the mouse then reach the same three-entry menu."""
+        and the mouse then reach the same three-entry menu.
+
+        The menu is popped one event-loop turn later: `showMenu()` runs the
+        menu's own loop, and a UI Automation `Invoke` on the File entry would
+        stay pending until the menu closed."""
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(0, self._pop_save_menu)
+
+    def _pop_save_menu(self) -> None:
         button = self._child("button_save")
         if button is not None and button.isEnabled():
             button.showMenu()

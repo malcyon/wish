@@ -763,6 +763,9 @@ def _every_script():
         "start-open": winwish.start_script("h", env, open_path=OPEN_PATH, reseed=True),
         "hash": winwish.hash_script(r"C:\s\a b.d64", "a" * 64),
         "ui-expand": winwish.ui_inner(r"C:\b", "click", ("Save",), None, r"C:\o.txt", expand=True),
+        "ui-shot": winwish.ui_inner(r"C:\b", "click", ("File",), None, r"C:\o.txt",
+                                    shot_after=r"C:\o.png"),
+        "ui-ssh-shot": winwish.ui_script("abc", 30, True),
         "pending": winwish.display_pending_script("h"),
         **{f"display-{a}": winwish.display_inner("h", a, r"C:\o.txt", 1920, 1080, 150)
            for a in winwish.DISPLAY_ACTIONS},
@@ -773,7 +776,7 @@ def _every_script():
 def test_no_generated_script_has_a_dollar_name_colon_in_a_double_quoted_string(name):
     strings = _double_quoted(_every_script()[name])
     assert strings or name in ("mkdir", "task", "probe", "ui-controls", "task-open",
-                               "ui-expand", "pending", "display-read", "display-set",
+                               "ui-expand", "ui-shot", "pending", "display-read", "display-set",
                                "display-restore", "display-sidecar")
     assert [bad for s in strings for bad in bad_references(s)] == []
 
@@ -1668,3 +1671,58 @@ def test_a_failed_window_close_is_logged_before_the_stop_is_forced(capsys):
 def test_an_automation_id_suffix_match_ignores_case():
     inner = winwish.ui_inner(r"C:\b", "click", ("id",), None, r"C:\o.txt", automation_id="id")
     assert "EndsWith('.' + $name, [StringComparison]::OrdinalIgnoreCase)" in inner
+
+
+# -- click --shot-after ---------------------------------------------------------
+
+def test_the_shot_after_script_grabs_the_desktop_after_the_last_click_and_its_sleep():
+    inner = winwish.ui_inner(r"C:\b", "click", ("File", "Save As"), None, r"C:\o.txt",
+                             shot_after=r"C:\o.png")
+    use = inner.index("Use-Control $hit[0]")
+    sleep = inner.index("Start-Sleep -Milliseconds 400", use)
+    assert sleep < inner.index("CopyFromScreen") < inner.index("Move-Item -Force 'C:\\o.png.tmp'")
+    assert inner.index("CopyFromScreen") < inner.index("$answer = @('ok')")
+
+
+def test_no_shot_after_means_no_grab():
+    inner = winwish.ui_inner(r"C:\b", "click", ("File",), None, r"C:\o.txt")
+    assert "CopyFromScreen" not in inner
+
+
+@pytest.mark.parametrize("action", ["controls", "close"])
+def test_shot_after_is_for_a_click_only(action):
+    with pytest.raises(winwish.WinwishError, match="only a click"):
+        winwish.ui_inner(r"C:\b", action, (), None, r"C:\o.txt", shot_after=r"C:\o.png")
+
+
+def test_the_ssh_script_prints_the_picture_only_when_one_was_asked_for():
+    assert winvmguest.SHOT_BEGIN not in winwish.ui_script("abc", 30)
+    script = winwish.ui_script("abc", 30, True)
+    assert script.index(winwish.UI_END) < script.index(winvmguest.SHOT_BEGIN)
+    assert r"C:\Users\Public\wish-ui-abc.png" in script.split("} finally {")[1]
+
+
+def test_the_shot_after_command_writes_the_png_and_its_sidecar(tmp_path):
+    png = winvmguest.PNG_SIGNATURE + winvmguest.PNG_IHDR + b"\0" * 21 + winvmguest.PNG_IEND
+    reply = _ui_reply("ok", "Save As... -> invoked") + "\n".join(
+        ["", winvmguest.SHOT_BEGIN, base64.b64encode(png).decode(), winvmguest.SHOT_END])
+    run = FakeRun([(lambda a: a[1] == "ps", 0, reply)])
+    out = tmp_path / "3-menu.png"
+    seen = []
+    guest = winwish.Guest(run)
+    orig = winwish.sidecar
+    winwish.sidecar = lambda g, h, w, p: seen.append((h, w, p)) or p
+    try:
+        rc = winwish.main(["click", "--holder", "h", "File", "Save As...",
+                           "--shot-after", str(out)], guest=guest)
+    finally:
+        winwish.sidecar = orig
+    assert rc == 0
+    assert out.read_bytes() == png
+    assert seen == [("h", "desktop", out)]
+
+
+def test_shot_after_and_expand_do_not_go_together(tmp_path, capsys):
+    rc = winwish.main(["click", "--holder", "h", "Save", "--expand",
+                       "--shot-after", str(tmp_path / "x.png")], guest=winwish.Guest(FakeRun()))
+    assert rc == 1
