@@ -310,6 +310,9 @@ class InventoryModel(QAbstractTableModel):
         super().__init__()
         self.inventory = inventory
         self.spells: SpellTable = spell_table(None)
+        #: True when the open file's writer cannot take an item edit back:
+        #: nothing in the table is editable and nothing can be added or deleted.
+        self.read_only = False
 
     def set_spells(self, spells: SpellTable) -> None:
         """The open title's spell table, which decides how +14 reads."""
@@ -349,7 +352,7 @@ class InventoryModel(QAbstractTableModel):
 
     def flags(self, index):
         base = (Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
-        if (self.inventory is None
+        if (self.inventory is None or self.read_only
                 or self.inventory.is_empty(self.slot_of(index.row()))):
             return base
         if index.column() in EDITABLE:
@@ -432,7 +435,7 @@ class InventoryModel(QAbstractTableModel):
     # -- editing ----------------------------------------------------------
 
     def setData(self, index, value, role=Qt.ItemDataRole.EditRole) -> bool:
-        if (self.inventory is None
+        if (self.inventory is None or self.read_only
                 or self.inventory.is_empty(self.slot_of(index.row()))):
             return False
         row, col = self.slot_of(index.row()), index.column()
@@ -475,7 +478,7 @@ class InventoryModel(QAbstractTableModel):
     # -- adding and removing ----------------------------------------------
 
     def add(self, raw: bytes) -> int | None:
-        if self.inventory is None:
+        if self.inventory is None or self.read_only:
             return None
         self.beginResetModel()
         where = self.inventory.add(raw)
@@ -486,7 +489,7 @@ class InventoryModel(QAbstractTableModel):
 
     def delete(self, row: int) -> bool:
         """Delete the item drawn on `row`."""
-        if (self.inventory is None
+        if (self.inventory is None or self.read_only
                 or self.inventory.is_empty(self.slot_of(row))):
             return False
         slot = self.slot_of(row)

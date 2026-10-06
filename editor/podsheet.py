@@ -103,14 +103,34 @@ UNWRITABLE = frozenset({
 #: rebuilds the class code from the levels and the class mask, so a class
 #: code typed into the box is written to the block but read back as the
 #: rebuilt one; and the block's turning row is read by neither reader, so an
-#: edit to it has no place to go (`goldbox.pod_rewrite.AMIGA_PLACES`).
-AMIGA_UNWRITABLE = UNWRITABLE | frozenset({"char_class", "turn_class"})
+#: edit to it has no place to go (`goldbox.pod_rewrite.AMIGA_PLACES`). The
+#: block's items are not written back either (`editor.saveplan
+#: .write_amiga_pod`), so the item table and its buttons are greyed under the
+#: name `INVENTORY`.
+INVENTORY = "inventory"
+AMIGA_UNWRITABLE = UNWRITABLE | frozenset({"char_class", "turn_class",
+                                           INVENTORY})
 
 
 def unwritable(port: str) -> frozenset[str]:
     """The sheet names a party on `port` greys: :data:`AMIGA_UNWRITABLE` on
     the Amiga, :data:`UNWRITABLE` on DOS."""
     return AMIGA_UNWRITABLE if port == "amiga" else UNWRITABLE
+
+
+def unwritable_levels(record: "PodSheetRecord", port: str) -> frozenset[str]:
+    """The level boxes one character cannot be given a value in, by port.
+
+    A dual-classed human on the Amiga holds a level in a class only through
+    the block's class code, which the sheet's DOS rendering derives from the
+    class he left; a level typed into any other class is kept by the disk
+    and read back as a different class and levels. Nobody else is held back:
+    a character with no former class gains a class by being given a level.
+    """
+    if port != "amiga" or record.former_class() is None:
+        return frozenset()
+    return frozenset(name for name in LEVEL_SLOTS
+                     if not record.get(name))
 
 
 #: The bit the DOS control byte sets for a character the engine drives: the

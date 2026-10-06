@@ -3707,8 +3707,12 @@ class EditorBinding(QObject):
         self._show_backstab(member)
         self._show_condition(member)
         self._show_damage(member)
+        self.items.read_only = (
+            isinstance(member.record, podsheet.PodSheetRecord)
+            and podsheet.INVENTORY in self.party.unwritable)
         self.items.set_inventory(member.inventory)
         self._size_item_columns()
+        self._lock_levels(member)
         self._show_traits()
         self._describe_inventory(member)
         icon_widget = self._widgets.get("icon")
@@ -3721,6 +3725,29 @@ class EditorBinding(QObject):
             icon_widget.setMaximumWidth(ICON_MAX_WIDTH)
         self._show_trait_buttons()
         self._loading = False
+
+    def _lock_levels(self, member) -> None:
+        """Grey the level boxes of this Pools of Darkness character that the
+        port cannot write back (`podsheet.unwritable_levels`), and re-enable
+        the others, which `_apply_read_only` set for the party as a whole."""
+        record = member.record
+        if not isinstance(record, podsheet.PodSheetRecord):
+            return
+        locked = podsheet.unwritable_levels(
+            podsheet.PodSheetRecord(member.record_original), self.party.port)
+        rules = bindings(in_save=self.party.in_save,
+                         unwritable=self.party.unwritable)
+        for name in podsheet.LEVEL_SLOTS:
+            widget = self._widgets.get(name)
+            rule = rules.get(name)
+            if widget is None or rule is None:
+                continue
+            on = not rule.read_only and name not in locked
+            widget.setEnabled(on)
+            widget.setToolTip(rule.reason if rule.read_only else "")
+            label = self._child(f"label_{name}")
+            if label is not None:
+                label.setEnabled(on)
 
     def _show_boxes(self, record) -> None:
         """Grey the boxes this character has no use for. Hide none of them."""
@@ -3781,6 +3808,8 @@ class EditorBinding(QObject):
         # the trait Add/Remove buttons need refreshing once the table itself
         # has just been greyed above.
         self._show_trait_buttons()
+        if self.current_row >= 0:
+            self._lock_levels(self.party.member(self.current_row))
 
     def _describe_spells(self, record) -> None:
         """Show what the spellbook holds and how much the class may memorise."""
@@ -3978,7 +4007,8 @@ class EditorBinding(QObject):
         for name in ("button_item_add", "button_item_delete"):
             button = self._child(name)
             if button is not None:
-                button.setEnabled(member.inventory is not None)
+                button.setEnabled(member.inventory is not None
+                                  and not self.items.read_only)
         add = self._child("button_item_add")
         if add is not None and not self.templates:
             add.setEnabled(False)
@@ -3991,6 +4021,8 @@ class EditorBinding(QObject):
         """Copy one of the game's own item records into a free slot."""
         if self.items.inventory is None:
             return "no inventory here"
+        if self.items.read_only:
+            return "items are read-only here"
         if not self.templates:
             return "no game disk, so no items to copy"
         if name is None:
@@ -4013,6 +4045,8 @@ class EditorBinding(QObject):
     def delete_item(self, row: int | None = None) -> str:
         if self.items.inventory is None:
             return "no inventory here"
+        if self.items.read_only:
+            return "items are read-only here"
         if row is None:
             table = self._child("inventory")
             index = table.currentIndex() if table is not None else None

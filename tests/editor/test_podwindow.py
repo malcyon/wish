@@ -493,3 +493,35 @@ def test_a_stored_experience_above_the_box_ceiling_survives_a_flush(
     window._widgets["experience"].setValue(5)
     assert window._flush(0) == []
     assert record.get("experience") == 5
+
+
+def test_an_amiga_character_s_items_and_unheld_levels_are_greyed_with_no_tooltip(
+        app, monkeypatch, tmp_path, fake_names):
+    """The Amiga's writer takes back neither the items nor a level in a class a
+    dual-classed human does not hold; DOS takes both."""
+    from PyQt6.QtCore import Qt
+
+    from editor import inventory as inventory_columns
+    window, _folder = _open_synthetic(monkeypatch, tmp_path, names=True)
+    levels = [n for n in podsheet.LEVEL_SLOTS if n in window._widgets]
+    assert "level_fighter" in levels
+    assert window.items.read_only is False
+    assert all(window._widgets[n].isEnabled() for n in levels)
+    assert window._child("button_item_delete").isEnabled()
+    window.party.port = "amiga"
+    window._apply_read_only()
+    window._populate()
+    assert window.items.read_only is True
+    for button in ("button_item_add", "button_item_delete"):
+        assert not window._child(button).isEnabled(), button
+    first = window.items.index(0, inventory_columns.QTY)
+    assert not window.items.flags(first) & Qt.ItemFlag.ItemIsEditable
+    raws = list(window.items.inventory.raws)
+    window.items.setData(first, 5)
+    assert window.delete_item(0) == "items are read-only here"
+    assert window.add_item("anything") == "items are read-only here"
+    assert window.items.inventory.raws == raws
+    for name in levels:
+        widget = window._widgets[name]
+        assert widget.isEnabled() == (name == "level_magic_user"), name
+        assert widget.toolTip() == "", name

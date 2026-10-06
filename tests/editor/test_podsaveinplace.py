@@ -375,7 +375,7 @@ def test_every_amiga_field_edit_reads_back_as_the_edit(monkeypatch):
 def test_the_amiga_greys_what_it_cannot_write_back():
     assert podsheet.unwritable("dos") == podsheet.UNWRITABLE
     assert podsheet.unwritable("amiga") - podsheet.UNWRITABLE == {
-        "char_class", "turn_class"}
+        "char_class", "turn_class", podsheet.INVENTORY}
     assert "turn_class" not in pod_rewrite.AMIGA_PLACES
     before = podsheet.PodSheetRecord(bytes(podsheet.SIZE))
     after = podsheet.PodSheetRecord(bytes(podsheet.SIZE))
@@ -471,9 +471,89 @@ def test_an_amiga_item_edit_stops_the_save_and_writes_nothing(
     member = next(m for m in party.members if m.inventory.holds(0))
     member.inventory.set_quantity(0, member.inventory.item(0).quantity + 1)
     image = pathlib.Path(source.path).read_bytes()
-    with pytest.raises(RewriteError, match="item changes"):
+    with pytest.raises(RuntimeError, match="read-only"):
         saveplan.amiga_image(party)
     assert pathlib.Path(source.path).read_bytes() == image, label
+
+
+def test_write_amiga_pod_raises_on_an_item_edit_before_it_reads_the_disk():
+    """The guard needs no disk: the rendering of a blank block holds no item,
+    so a sheet that holds one is an item edit."""
+    import types
+
+    member = types.SimpleNamespace(
+        name="X", index=1, native=bytes(amiga_pod.RECORD_LENGTH),
+        inventory=types.SimpleNamespace(
+            raws=[bytes([1]) + bytes(15)] + [bytes(16)] * 15))
+    party = types.SimpleNamespace(
+        source=types.SimpleNamespace(slot="A"), members=[member])
+    with pytest.raises(RuntimeError, match="read-only"):
+        saveplan.write_amiga_pod(party, None)
+
+
+def _dual_class_record(tmp_path) -> podsheet.PodSheetRecord:
+    folder = _synthetic_folder(tmp_path)
+    return podsheet.PodSheetRecord((folder / "CHRDATA1.SAV").read_bytes())
+
+
+def test_the_amiga_greys_the_levels_a_dual_classed_human_does_not_hold(
+        tmp_path):
+    record = _dual_class_record(tmp_path)
+    assert record.former_class() == ("ranger", 9)
+    names = set(podsheet.LEVEL_SLOTS)
+    assert podsheet.unwritable_levels(record, "amiga") == (
+        names - {"level_magic_user"})
+    assert podsheet.unwritable_levels(record, "dos") == frozenset()
+    single = podsheet.PodSheetRecord(bytes(podsheet.SIZE))
+    single.set("level_fighter", 5)
+    assert podsheet.unwritable_levels(single, "amiga") == frozenset()
+
+
+def test_on_dos_a_level_in_a_class_not_held_reads_back_as_typed(tmp_path):
+    """The mismatch the Amiga has (the block keeps the typed level, the
+    rendering derives other levels) does not exist on DOS: the record keeps
+    the byte and the sheet reads it, so nothing is greyed there."""
+    before = _dual_class_record(tmp_path)
+    after = podsheet.PodSheetRecord(before.to_bytes())
+    after.set("level_fighter", 3)
+    spans, _unplaced = pod_rewrite.rewrite.dos_spans(pod_rewrite.DELTAS)
+    written, _moved = pod_rewrite.rewrite.patch(
+        before.to_bytes(), before.to_bytes(), after.to_bytes(), spans)
+    back = podsheet.PodSheetRecord(written)
+    assert back.to_bytes() == after.to_bytes()
+    assert back.get("level_fighter") == 3
+    assert back.get("level_magic_user") == 9
+
+
+def test_an_added_item_moves_encumbrance_by_its_weight_on_dos(
+        monkeypatch, tmp_path):
+    """An item added from a template reaches the DOS save, and the stored
+    load is then the DOS writer's sum (`DosCharacter.expected_encumbrance`)
+    of the files written."""
+    _flag(monkeypatch, "1")
+    folder = _synthetic_folder(tmp_path)
+    # The synthetic record stores no load; give it the one its money and its
+    # one weightless item add up to, as the engine would.
+    record = podsheet.PodSheetRecord((folder / "CHRDATA1.SAV").read_bytes())
+    record.set("encumbrance", record.get("platinum"))
+    (folder / "CHRDATA1.SAV").write_bytes(record.to_bytes())
+    party = Party(convert.Source.detect(folder, slot="A"))
+    [member] = party.members
+    where = member.inventory.add(bytes(member.inventory.raws[0]))
+    assert where == 1
+    member.inventory.set_weight_tenths(1, 50)
+    member.inventory.set_quantity(1, 2)
+    files = saveplan.dos_files(party)
+    record = files["CHRDATA1.SAV"]
+    items = dos_codec.item_nodes(files["CHRDATA1.THG"],
+                                 pod_rewrite.DELTAS.item_size)
+    assert len(items) == 2
+    stored = int.from_bytes(record[ENCUMBRANCE], "little")
+    rebuilt = dos_codec.DosCharacter(
+        record, items, [], deltas=pod_rewrite.DELTAS)
+    assert rebuilt.expected_encumbrance() > 0
+    assert stored == rebuilt.expected_encumbrance()
+    assert record[podsheet.TABLE["item_count"].offset] == 2
 
 
 def test_the_flag_is_the_one_the_open_tests_set():

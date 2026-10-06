@@ -331,27 +331,29 @@ def write_amiga_pod(party: Any, disk: Any) -> None:
     Save with nothing in it leaves the image as it was. The vault and every
     other file are not touched.
 
-    An item edit stops the save with `goldbox.rewrite.RewriteError`: the
-    sheet's slots are a DOS rendering of the block's items, and nothing
-    writes them back into the block yet.
+    The window greys the item table for this port (`podsheet.INVENTORY`),
+    because the sheet's slots are a DOS rendering of the block's items and
+    nothing writes them back into the block. An item edit that reaches this
+    function anyway raises `RuntimeError` and writes nothing.
     """
     from .podsheet import item_blocks
 
+    for member in party.members:
+        if (member.inventory is not None
+                and member.inventory.raws != item_blocks(
+                    _pod_rendered(member).dos)):
+            raise RuntimeError(
+                f"{member.name}: the Items table is read-only for an Amiga "
+                f"Pools of Darkness character, so no item edit reaches a save")
     slot = party.source.slot
     path = amiga_savegame.pod_slot_path(slot)
     data = amiga_savegame.pod_read_slot(disk, slot)
     save = amiga_savegame.pod_parse(data)
     blocks = list(save.blocks)
     for member in party.members:
-        native = bytes(member.native)
-        if (member.inventory is not None
-                and member.inventory.raws != item_blocks(
-                    _pod_rendered(member).dos)):
-            raise rewrite.RewriteError(
-                f"{member.name}: item changes to an Amiga Pools of Darkness "
-                f"character cannot be saved yet")
         blocks[member.index - 1], _moved = pod_rewrite.rewrite_amiga_record(
-            native, member.record_original, member.record.to_bytes())
+            bytes(member.native), member.record_original,
+            member.record.to_bytes())
     written = pod_rewrite.replace_records(data, save.characters, blocks)
     if written != data:
         # Under the name the disk already spells it with: AmigaDOS finds the
