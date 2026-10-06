@@ -768,3 +768,108 @@ def test_two_holders_write_and_send_different_batch_files():
 def test_a_holder_that_is_not_a_name_cannot_reach_a_guest_path():
     with pytest.raises(ValueError, match="holder"):
         amiga.WinuaeDebugger("a b")
+
+
+# -- party, pool and poke over WinUAE's pipe -----------------------------------
+
+
+class _PipeMemory:
+    """`WinuaePipe.batch` over chip and slow memory held here: `S` and `W` lines."""
+
+    halts_machine = False
+    instances: list = []
+
+    def __init__(self, holder=None):
+        self.holder = holder
+        self.memory = {base: bytearray(size) for base, size in amiga.MEMORY}
+        self.put(BASE + SSB.anchor_offset, SSB.anchor)
+        _PipeMemory.instances.append(self)
+
+    def _at(self, address, n):
+        for base, buf in self.memory.items():
+            if base <= address and address + n <= base + len(buf):
+                return buf, address - base
+        raise AssertionError(f"{address:#x}+{n} is outside the fake memory")
+
+    def get(self, address, n):
+        buf, at = self._at(address, n)
+        return bytes(buf[at:at + n])
+
+    def put(self, address, data):
+        buf, at = self._at(address, len(data))
+        buf[at:at + len(data)] = data
+
+    def batch(self, lines, fetch=None):
+        files = {}
+        for line in lines:
+            words = line.split()
+            if words[0] == "S":
+                files[words[1]] = self.get(int(words[2], 16), int(words[3], 16))
+            elif words[0] == "W":
+                self.put(int(words[1], 16), bytes(int(w, 16) for w in words[2:]))
+        return "", {name: files.get(path) for name, path in (fetch or [])}
+
+
+@pytest.fixture
+def fake_pipe(monkeypatch):
+    from tools.amiga import amigatarget
+    _PipeMemory.instances = []
+    monkeypatch.setattr(amigatarget.amiga, "WinuaePipe", _PipeMemory)
+    return _PipeMemory.instances
+
+
+def test_poke_writes_through_the_holders_pipe_and_prints_old_and_new(fake_pipe, capsys):
+    from tools.amiga import amigatarget
+    at = 0xC30000
+    rc = amigatarget.main(["--holder", "wish1-levelup-w", "poke",
+                           "--at", hex(at), "--hex", "0800 00c8"])
+    assert rc == 0
+    assert fake_pipe[0].holder == "wish1-levelup-w"
+    assert fake_pipe[0].get(at, 4) == bytes.fromhex("080000c8")
+    row = json.loads(capsys.readouterr().out)
+    assert row == {"address": at, "old": "00000000", "new": "080000c8"}
+
+
+def test_poke_over_the_limit_is_an_error_row_and_writes_nothing(fake_pipe, capsys):
+    from tools.amiga import amigatarget
+    rc = amigatarget.main(["--holder", "h", "poke", "--at", "0xC30000",
+                           "--hex", "aa" * 65])
+    assert rc == 1
+    assert "error" in json.loads(capsys.readouterr().out)
+    assert fake_pipe[0].get(0xC30000, 65) == bytes(65)
+
+
+def test_pool_prints_the_descriptor_the_fs_uae_verb_prints(fake_pipe, capsys, monkeypatch):
+    from automap import amigaeffects
+    from tools.amiga import amigatarget
+    pool = amigaeffects.POOLS["secret-of-the-silver-blades"]
+
+    class Seeded(_PipeMemory):
+        def __init__(self, holder=None):
+            super().__init__(holder)
+            head = (pool.count.to_bytes(2, "big") + pool.size.to_bytes(2, "big")
+                    + (0xC40000).to_bytes(4, "big"))
+            self.put(BASE + pool.descriptor,
+                     head + bytes([0x1F]) + bytes(pool.bitmap_bytes - 1))
+
+    monkeypatch.setattr(amigatarget.amiga, "WinuaePipe", Seeded)
+    rc = amigatarget.main(["--holder", "h", "pool"])
+    row = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert row["count"] == pool.count and row["size"] == pool.size
+    assert row["base"] == "0xc40000" and row["bitmap"].startswith("1f")
+
+
+def test_party_prints_the_shared_party_row_as_json(fake_pipe, capsys, monkeypatch):
+    from tools.amiga import amigatarget, fsuaegdb
+    seen = {}
+
+    def row(target, layout):
+        seen["base"] = target.data_base
+        seen["layout"] = layout
+        return {"members": [{"name": "EPONA"}]}
+
+    monkeypatch.setattr(fsuaegdb, "party_row", row)
+    assert amigatarget.main(["--holder", "h", "party"]) == 0
+    assert json.loads(capsys.readouterr().out) == {"members": [{"name": "EPONA"}]}
+    assert seen == {"base": BASE, "layout": SSB}

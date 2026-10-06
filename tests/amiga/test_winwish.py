@@ -283,8 +283,10 @@ def test_restart_stops_before_it_starts():
     run = FakeRun()
     winwish.restart_wish(winwish.Guest(run), "h")
     scripts = [c[2] for c in run.calls if c[1] == "ps"]
-    assert "Stop-ScheduledTask" in scripts[0] and "Register-ScheduledTask" not in scripts[0]
-    assert "Register-ScheduledTask" in scripts[1]
+    stop = next(i for i, s in enumerate(scripts) if "still running 10s after stop" in s)
+    start = next(i for i, s in enumerate(scripts) if "Get-WishWindows" in s)
+    assert stop < start
+    assert "Stop-ScheduledTask" in scripts[stop] and "Register-ScheduledTask" not in scripts[stop]
 
 
 def test_stage_makes_the_folder_copies_and_unpacks_a_fresh_build_in_that_order(tmp_path):
@@ -1086,3 +1088,71 @@ def test_the_seeded_disk_folder_is_cleared_recursively():
     script = winwish.start_script("h", winwish.environment(True, "h"), disks=("a.adf",),
                                   game="pool-of-radiance")
     assert "-Recurse -Force -ErrorAction SilentlyContinue" in script.split("Copy-Item")[0].split("Remove-Item -Path")[1]
+
+
+# -- click by automation id, and stop by closing the window --------------------
+
+
+def test_click_by_automation_id_matches_the_id_or_a_dotted_suffix_and_not_the_name():
+    inner = winwish.ui_inner(r"C:\b", "click", ("card_2_level_up",), "Button", r"C:\o.txt",
+                             automation_id="card_2_level_up")
+    assert "$names = @('card_2_level_up')" in inner
+    assert "$_.Current.AutomationId -eq $name -or $_.Current.AutomationId.EndsWith('.' + $name)" in inner
+    assert "$_.Current.Name -eq $name" not in inner
+    assert "no control with automation id $name" in inner
+    # the one-match, enabled and wait rules are the name path's own
+    assert "if ($hit.Count -gt 1) { throw" in inner
+    assert inner.index("IsEnabled) { throw") < inner.index("Use-Control $hit[0]")
+
+
+def test_an_automation_id_replaces_the_names_in_the_ui_call():
+    run = FakeRun([(lambda a: a[1] == "ps", 0, _ui_reply("ok", "Level up -> invoked"))])
+    winwish.ui(winwish.Guest(run), "h", "click", automation_id="card_1_level_up")
+    put = next(c for c in run.calls if c[1] == "put")
+    assert put[2] and run.calls  # the script travelled as a file
+    with pytest.raises(winwish.WinwishError, match="not both"):
+        winwish.ui(winwish.Guest(run), "h", "click", ("Level up",), automation_id="card_1_level_up")
+
+
+def test_the_cli_takes_an_automation_id_or_names_and_not_both_or_neither(capsys):
+    args = winwish._parser().parse_args(
+        ["click", "--holder", "h", "--automation-id", "card_3_level_up"])
+    assert args.automation_id == "card_3_level_up" and args.names == []
+    run = FakeRun()
+    for argv in (["click", "--holder", "h"],
+                 ["click", "--holder", "h", "--automation-id", "x", "File"]):
+        assert winwish.main(argv, winwish.Guest(run)) == 1
+    assert run.calls == []
+    assert "automation-id" in capsys.readouterr().err
+
+
+def test_the_close_script_closes_windows_and_waits_before_it_reports():
+    inner = winwish.ui_inner(r"C:\b", "close", (), None, r"C:\o.txt")
+    assert inner.index("$o.Close()") < inner.index("Get-Process -Id $ids") \
+        < inner.index("lines.Add('closed')")
+    assert "AddSeconds(10)" in inner and "still running 10s after its window was closed" in inner
+    assert "-ne 'close') { throw 'no wish.exe" in inner
+
+
+def _close_run(close_reply):
+    def rule(argv):
+        return argv[1] == "ps" and "wish-ui-" in argv[2]
+    return FakeRun([(rule, 0, close_reply)])
+
+
+def test_stop_reports_closed_when_the_window_close_ended_wish():
+    run = _close_run(_ui_reply("ok", "closed"))
+    assert winwish.stop_wish(winwish.Guest(run), "h") == "ok closed"
+    scripts = [c[2] for c in run.calls if c[1] == "ps"]
+    assert "wish-ui-" in scripts[0] and "still running 10s after stop" in scripts[-1]
+
+
+def test_stop_forces_wish_only_after_the_close_failed_and_says_so():
+    run = _close_run(_ui_reply("fail wish.exe still running 10s after its window was closed"))
+    assert winwish.stop_wish(winwish.Guest(run), "h") == "ok stopped (forced)"
+    scripts = [c[2] for c in run.calls if c[1] == "ps"]
+    assert "Stop-Process -Force" in scripts[-1] and "wish-ui-" in scripts[0]
+
+
+def test_stop_without_a_running_wish_is_not_forced():
+    assert winwish.stop_wish(winwish.Guest(_close_run(_ui_reply("ok", "gone"))), "h") == "ok closed"

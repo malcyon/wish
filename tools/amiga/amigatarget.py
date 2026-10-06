@@ -2,7 +2,7 @@
 """Read a running Amiga Gold Box title: where the party is, and its map.
 
 `automap/amiga.py` is the backend; this is the command line that drives it and
-the thing to reach for when an address stops answering.  Five commands:
+the thing to reach for when an address stops answering.  Five commands (`party`, `pool` and `poke` are below):
 
     tools/amiga/amigatarget.py --holder wish37 verify --adf SSB-A.adf
     tools/amiga/amigatarget.py --holder wish37 locate
@@ -11,6 +11,10 @@ the thing to reach for when an address stops answering.  Five commands:
         --library GEO.GLB
     tools/amiga/amigatarget.py --holder wish37 automap --out DIR \\
         --polls 6 --walk 'NP8 NP4 NP8'
+
+`party`, `pool` and `poke --at ADDR --hex BYTES` go over WinUAE's own pipe
+(`automap.amiga.WinuaePipe`) and print one JSON row, as the FS-UAE `session`
+verbs of the same names do.
 
 **`automap` is the one that answers this ticket**: it builds the shipped
 `automap.state.Automapper` over this backend, hands it the title's own maps
@@ -167,13 +171,47 @@ def _verify_segments(layout: amiga.AmigaMachine, exe: Executable) -> list[str]:
 
 def connect(holder: str, layout: amiga.AmigaMachine,
             timeout: float | None) -> amiga.AmigaTarget:
-    debugger = amiga.WinuaeDebugger(holder, timeout=timeout)
-    target = amiga.AmigaTarget(debugger, layout)
+    return _located(amiga.AmigaTarget(
+        amiga.WinuaeDebugger(holder, timeout=timeout), layout))
+
+
+def connect_pipe(holder: str, layout: amiga.AmigaMachine) -> amiga.AmigaTarget:
+    """A located target over WinUAE's own pipe: it stops nothing, and a write
+    goes through `AmigaTarget.write`.  The data hunk line goes to stderr so
+    stdout is the JSON row alone."""
+    return _located(amiga.AmigaTarget(amiga.WinuaePipe(holder=holder), layout),
+                    sys.stderr)
+
+
+def _located(target: amiga.AmigaTarget, out=None) -> amiga.AmigaTarget:
     started = time.monotonic()
     base = target.locate()
     print(f"Data hunk  {base:#010x}   a4 {base + A4_BIAS:#010x}   "
-          f"({time.monotonic() - started:.1f}s)")
+          f"({time.monotonic() - started:.1f}s)", file=out or sys.stdout)
     return target
+
+
+#: The most a `poke` writes in one call, the same limit as the FS-UAE verb.
+POKE_LIMIT = 64
+
+
+def poke(target: amiga.AmigaTarget, address: int, data: bytes) -> dict:
+    """Write `data` at `address` and say what was there and what is now.
+
+    The row is the FS-UAE `poke` verb's: `address`, `old` and `new` as hex.
+    """
+    if not data:
+        raise ValueError("poke wants at least one byte")
+    if len(data) > POKE_LIMIT:
+        raise ValueError(f"poke of {len(data)} bytes is over the "
+                         f"{POKE_LIMIT}-byte limit")
+    old = target.read(address, len(data))
+    target.write(address, data)
+    new = target.read(address, len(data))
+    row = {"address": address, "old": old.hex(), "new": new.hex()}
+    if new != data:
+        row["error"] = "the bytes read back are not the ones written"
+    return row
 
 
 def geo_library(path: pathlib.Path) -> dict[int, bytes]:
@@ -347,6 +385,16 @@ def main(argv: list[str] | None = None) -> int:
                      help="--at is a data-hunk offset instead")
     raw.add_argument("--length", required=True, type=lambda s: int(s, 0))
     raw.add_argument("--out", required=True, help="write the bytes here")
+    sub.add_parser("party", help="every party member's record, as JSON "
+                                 "(over WinUAE's pipe)")
+    sub.add_parser("pool", help="the effect-node pool descriptor, as JSON "
+                                "(over WinUAE's pipe)")
+    poked = sub.add_parser("poke", help="write bytes into the running game "
+                                        "(over WinUAE's pipe)")
+    poked.add_argument("--at", required=True, type=lambda s: int(s, 0),
+                       help="an absolute address")
+    poked.add_argument("--hex", required=True, dest="digits",
+                       help="the bytes to write, in hex")
     mapped = sub.add_parser("automap",
                             help="run the shipped automapper and draw its map")
     mapped.add_argument("--out", required=True,
@@ -381,6 +429,21 @@ def main(argv: list[str] | None = None) -> int:
     if not args.holder:
         raise SystemExit("--holder is required for anything that reads the "
                          "machine: take the winuae.ps1 claim first")
+    if args.command in ("party", "pool", "poke"):
+        from tools.amiga import fsuaegdb  # noqa: PLC0415
+
+        target = connect_pipe(args.holder, layout)
+        if args.command == "poke":
+            try:
+                row = poke(target, args.at, bytes.fromhex(args.digits))
+            except (ValueError, amiga.GuestError) as exc:
+                row = {"address": args.at,
+                       "error": f"{type(exc).__name__}: {exc}"}
+        else:
+            row = (fsuaegdb.party_row if args.command == "party"
+                   else fsuaegdb.pool_row)(target, layout)
+        print(json.dumps(row))
+        return 1 if "error" in row else 0
     target = connect(args.holder, layout, args.timeout)
     reading: dict = {"title": args.title, "data_base": target.data_base}
 

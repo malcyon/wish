@@ -14,6 +14,7 @@ run uses.
     winwish.py up     --sha SHA --holder H --mute-proof FILE --df0 C:\\Amiga\\Disks\\a.adf
     winwish.py shot   --holder H --window wish --out wish.png
     winwish.py restart --holder H
+    winwish.py click  --holder H --automation-id card_1_level_up
     winwish.py log    --holder H --out DIR
     winwish.py down   --holder H
 
@@ -443,6 +444,8 @@ UI_WAIT = 4
 #: At most this many names in one `click`: each may wait `UI_WAIT` seconds, and the
 #: task is stopped after two minutes.
 UI_MAX_NAMES = 8
+#: Seconds `stop` waits for Wish to exit after its window is closed, before forcing it.
+CLOSE_SECONDS = 10
 
 
 def ui_timeout(count: int, action: str = "click") -> float:
@@ -450,7 +453,7 @@ def ui_timeout(count: int, action: str = "click") -> float:
 
     `controls` starts slower, because it compiles the MSAA helper and walks each dialog.
     """
-    if action == "controls":
+    if action in ("controls", "close"):
         return 50.0
     return 20.0 + (UI_WAIT + 2) * max(1, count)
 
@@ -526,12 +529,16 @@ def msaa_line(row: str) -> tuple[str, str]:
 
 
 def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, out: str,
-             prefix: bool = False) -> str:
+             prefix: bool = False, automation_id: str | None = None) -> str:
     """What the session 1 task runs: list the controls of this holder's Wish, or click some.
 
     `action` is `controls` (one line per control: `Type|Name|AutomationId|enabled=B|state`,
-    optionally only `kind`) or `click` (each name in turn, so a menu is `File`,
-    `Preferences`).  A name matches a control's Name exactly for the whole wait; with
+    optionally only `kind`), `click` (each name in turn, so a menu is `File`,
+    `Preferences`) or `close` (close each top-level window of this holder's Wish with
+    `WindowPattern.Close()` and wait up to `CLOSE_SECONDS` for the process to exit; the
+    line is `closed`, or `gone` when none was running).  With `automation_id`, `click`
+    takes the one control whose `AutomationId` equals it or ends with `.` and it, in
+    place of a name; `names` is then that id, and `prefix` is not used.  A name matches a control's Name exactly for the whole wait; with
     `prefix`, a prefix match is tried once the wait has run out.  The line reports the
     control's full name.  A disabled control is never invoked, because `Invoke` on one
     returns without an error; but a control under a modal dialog can still read enabled,
@@ -543,6 +550,9 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
     """
     tmp = out + ".tmp"
     names_ps = ", ".join(q(n) for n in names) or "@()"
+    by_id = automation_id is not None
+    if by_id and names != (automation_id,):
+        raise WinwishError("an automation id is clicked alone")
     return "\n".join([
         "$ErrorActionPreference = 'Stop'",
         f"$build = {q(build)}",
@@ -560,7 +570,7 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
         "  $UIA = [System.Windows.Automation.AutomationElement]",
         "  $procs = @(Get-Process -Name wish -ErrorAction SilentlyContinue | "
         "Where-Object { $_.Path -like \"$build\\*\" })",
-        "  if ($procs.Count -eq 0) { throw 'no wish.exe of this holder is running' }",
+        f"  if ($procs.Count -eq 0 -and {q(action)} -ne 'close') {{ throw 'no wish.exe of this holder is running' }}",
         "  function Get-Controls {",
         "    $found = New-Object System.Collections.ArrayList",
         "    foreach ($proc in $procs) {",
@@ -608,7 +618,22 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
         "    if ($e.TryGetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern, [ref]$o)) { $o.Close(); return 'closed' }",
         "    throw 'the control offers no way to be clicked'",
         "  }",
-        f"  if ({q(action)} -eq 'controls') {{",
+        f"  if ({q(action)} -eq 'close') {{",
+        "    if ($procs.Count -eq 0) { [void]$lines.Add('gone') } else {",
+        "      $ids = @($procs | ForEach-Object { $_.Id })",
+        "      foreach ($proc in $procs) {",
+        "        $mine = New-Object System.Windows.Automation.PropertyCondition($UIA::ProcessIdProperty, $proc.Id)",
+        "        foreach ($top in $UIA::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $mine)) {",
+        "          $o = $null",
+        "          if ($top.TryGetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern, [ref]$o)) { $o.Close() }",
+        "        }",
+        "      }",
+        f"      $until = (Get-Date).AddSeconds({CLOSE_SECONDS})",
+        "      while (@(Get-Process -Id $ids -ErrorAction SilentlyContinue).Count -gt 0 -and (Get-Date) -lt $until) { Start-Sleep -Milliseconds 200 }",
+        f"      if (@(Get-Process -Id $ids -ErrorAction SilentlyContinue).Count -gt 0) {{ throw 'wish.exe still running {CLOSE_SECONDS}s after its window was closed' }}",
+        "      [void]$lines.Add('closed')",
+        "    }",
+        f"  }} elseif ({q(action)} -eq 'controls') {{",
         "    foreach ($e in Get-Controls) {",
         "      if ($kind -eq '' -or (Get-Kind $e) -eq $kind) { [void]$lines.Add((Get-Line $e)) }",
         "      if ((Get-Kind $e) -eq 'Window' -and $e.Current.NativeWindowHandle -ne 0 -and "
@@ -625,13 +650,16 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
         "      $hit = @()",
         "      $expired = $false",
         "      while ($true) {",
-        "        $all = @(Get-Controls | Where-Object { $_.Current.Name -ne '' -and ($kind -eq '' -or (Get-Kind $_) -eq $kind) })",
-        "        $hit = @($all | Where-Object { $_.Current.Name -eq $name })",
+        *(["        $all = @(Get-Controls | Where-Object { $_.Current.AutomationId -ne '' -and ($kind -eq '' -or (Get-Kind $_) -eq $kind) })",
+           "        $hit = @($all | Where-Object { $_.Current.AutomationId -eq $name -or $_.Current.AutomationId.EndsWith('.' + $name) })"]
+          if by_id else
+          ["        $all = @(Get-Controls | Where-Object { $_.Current.Name -ne '' -and ($kind -eq '' -or (Get-Kind $_) -eq $kind) })",
+           "        $hit = @($all | Where-Object { $_.Current.Name -eq $name })"]),
         "        if ($hit.Count -eq 0 -and $expired -and $prefix) { $hit = @($all | Where-Object { $_.Current.Name.StartsWith($name) }) }",
         "        if ($hit.Count -gt 0 -or $expired) { break }",
         "        if ((Get-Date) -gt $until) { if ($prefix) { $expired = $true } else { break } } else { Start-Sleep -Milliseconds 200 }",
         "      }",
-        "      if ($hit.Count -eq 0) { throw \"no control named $name\" }",
+        f"      if ($hit.Count -eq 0) {{ throw \"no control {'with automation id' if by_id else 'named'} $name\" }}",
         "      if ($hit.Count -gt 1) { throw \"$($hit.Count) controls match ${name}: \" + (($hit | ForEach-Object { Get-Line $_ }) -join ' ; ') }",
         "      if (-not $hit[0].Current.IsEnabled) { throw \"$($hit[0].Current.Name) is disabled\" }",
         "      [void]$lines.Add($hit[0].Current.Name + ' -> ' + (Use-Control $hit[0]))",
@@ -719,15 +747,21 @@ def ui_lines(text: str, kind: str | None = None) -> list[str]:
 
 
 def ui(guest: "Guest", holder: str, action: str, names: tuple[str, ...] = (),
-       kind: str | None = None, prefix: bool = False) -> list[str]:
-    """List Wish's controls (`controls`) or click `names` in turn (`click`)."""
+       kind: str | None = None, prefix: bool = False,
+       automation_id: str | None = None) -> list[str]:
+    """List Wish's controls (`controls`), click `names` in turn or the one control with
+    `automation_id` (`click`), or close Wish's windows (`close`)."""
+    if automation_id is not None:
+        if names:
+            raise WinwishError("give an automation id or names, not both")
+        names = (automation_id,)
     if len(names) > UI_MAX_NAMES:
         raise WinwishError(f"click at most {UI_MAX_NAMES} names at once, not {len(names)}")
     guest.holds_lane(holder)
     token = secrets.token_hex(6)
     timeout = ui_timeout(len(names), action)
     inner = ui_inner(build_root(holder), action, names, kind,
-                     rf"C:\Users\Public\wish-ui-{token}.txt", prefix)
+                     rf"C:\Users\Public\wish-ui-{token}.txt", prefix, automation_id)
     answered = False
     try:
         with tempfile.TemporaryDirectory() as tmp:
@@ -908,8 +942,20 @@ def start_wish(guest: Guest, holder: str, flag: bool = True, disks: tuple[str, .
 
 
 def stop_wish(guest: Guest, holder: str) -> str:
+    """Close Wish's window and wait; force `wish.exe` only if that did not end it.
+
+    A forced stop can land while Wish has a request to WinUAE's pipe unanswered, and
+    WinUAE then closes the pipe for good; a window close ends Wish on its own thread
+    between requests.  The reply is `ok closed` or `ok stopped (forced)`.  The forced
+    script runs either way, to remove the holder's tasks and check no process is left.
+    """
     guest.holds_lane(holder)
-    return guest.ps(stop_script(holder))
+    try:
+        closed = ui(guest, holder, "close")[-1:] in (["closed"], ["gone"])
+    except WinwishError:
+        closed = False
+    guest.ps(stop_script(holder))
+    return "ok closed" if closed else "ok stopped (forced)"
 
 
 def restart_wish(guest: Guest, holder: str, flag: bool = True) -> str:
@@ -1084,7 +1130,7 @@ def _parser() -> argparse.ArgumentParser:
         p.add_argument("--no-flag", action="store_true",
                        help=f"leave {FLAG} unset (the control)")
 
-    p = sub.add_parser("stop", help="stop wish.exe only")
+    p = sub.add_parser("stop", help="close Wish's window; force wish.exe only if it stays up")
     holder(p)
 
     p = sub.add_parser("shot", help="save a screenshot")
@@ -1102,7 +1148,10 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--type", help="only this UI Automation type")
     p.add_argument("--prefix", action="store_true",
                    help="when no control has exactly the name, accept one that starts with it")
-    p.add_argument("names", nargs="+")
+    p.add_argument("--automation-id", help="click the one control whose UI Automation "
+                   "AutomationId is this or ends with `.` and this, instead of naming it "
+                   "(the six card buttons are all named Level up)")
+    p.add_argument("names", nargs="*")
 
     p = sub.add_parser("log", help="copy Wish's debug logs from the guest")
     holder(p)
@@ -1135,7 +1184,10 @@ def main(argv: list[str] | None = None,
         elif args.cmd == "controls":
             print("\n".join(ui(guest, args.holder, "controls", (), args.type)))
         elif args.cmd == "click":
-            print("\n".join(ui(guest, args.holder, "click", tuple(args.names), args.type, args.prefix)))
+            if bool(args.names) == bool(args.automation_id):
+                raise WinwishError("click needs names, or --automation-id and no names")
+            print("\n".join(ui(guest, args.holder, "click", tuple(args.names), args.type,
+                              args.prefix, args.automation_id)))
         elif args.cmd == "log":
             print("\n".join(collect_log(guest, args.holder, pathlib.Path(args.out))))
         elif args.cmd == "down":
