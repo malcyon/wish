@@ -124,6 +124,12 @@ record.  `--read-at`, `--checkpoint`, `--capture-ready`, `--preserve-specimen`,
 `--attack-by`, `--fast-flee` and `temple-probe` take no snapshots, because a
 snapshot does not carry what they arm; `summary.json` says which one.
 
+`--resume-from RECORD --at-step N` runs again from such a record: it checks the
+save, the step texts before N, the options, VICE and the `vicerc` before it
+claims a slot, then launches VICE without booting, restores the step-start
+snapshot on the new slot, and runs step N and those after it.  Step N and later
+may differ from the failed run's; everything before it may not.
+
 `--no-encounters` turns `Session.no_encounters` on for each `walk` step and
 off at its end, where the gates are put back and read back
 (`Session.restore_encounter_gates`), and again before every `save` and
@@ -180,7 +186,9 @@ import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 import time
+from types import SimpleNamespace
 
 TOOLS = pathlib.Path(__file__).resolve().parent.parent
 REPO = TOOLS.parent
@@ -8033,12 +8041,40 @@ def vice_version() -> str | None:
     return None
 
 
+#: The two `vicerc` lines `seed_vicerc` writes per slot, which differ between
+#: slots whatever the configuration is.
+VICERC_PORT_LINES = (b"BinaryMonitorServerAddress=", b"MonitorServerAddress=")
+
+
+def vicerc_digest(path) -> str:
+    """SHA-256 of a slot's `vicerc` without its two monitor-port lines, so the
+    same configuration on another slot gives the same digest."""
+    lines = pathlib.Path(path).read_bytes().splitlines(keepends=True)
+    kept = b"".join(line for line in lines if not line.lstrip().startswith(VICERC_PORT_LINES))
+    return hashlib.sha256(kept).hexdigest()
+
+
+def seeded_vicerc_digest() -> str:
+    """`vicerc_digest` of the file a slot would be seeded with now, found without
+    claiming a slot."""
+    with tempfile.TemporaryDirectory() as tmp:
+        folder = pathlib.Path(tmp)
+        stand_in = SimpleNamespace(port=0, text_port=0, dir=folder, vicerc=folder / "vicerc")
+        return vicerc_digest(S.instance.seed_vicerc(stand_in))
+
+
 #: The arguments a resumed run must repeat, since each changes what the
 #: machine did before the snapshot.
 RESUME_OPTIONS = ("no_encounters", "walk_retry", "walk", "walk_steps",
                   "walk_fight_seconds", "joy", "first_bar_key", "stage_row",
                   "stage_trait", "stage_item", "stage_record", "stage_status",
                   "stage_side", "stage_var", "stage_roster", "quit_nonattacking")
+
+
+def resume_options(args) -> dict:
+    """`RESUME_OPTIONS` as a record holds them, so a later run compares like with like."""
+    return json.loads(json.dumps({name: getattr(args, name, None) for name in RESUME_OPTIONS},
+                                 default=str))
 
 
 class StepResume:
@@ -8147,9 +8183,7 @@ class StepResume:
             "vice": {"version": vice_version(), "vicerc_sha256": self._vicerc_hash(slot)},
             "results": json.loads(json.dumps(summary["results"][:n - 1], default=str)),
             "run_state": self.state,
-            "options": json.loads(json.dumps(
-                {name: getattr(args, name, None) for name in RESUME_OPTIONS},
-                default=str)),
+            "options": resume_options(args),
             "error": error, "resumable": True, "why_not": None,
         }
         screen = self._screen(pool)
@@ -8160,7 +8194,7 @@ class StepResume:
     @staticmethod
     def _vicerc_hash(slot) -> str | None:
         vicerc = getattr(slot, "vicerc", None)
-        return (specimens.sha256_file(vicerc)
+        return (vicerc_digest(vicerc)
                 if vicerc and pathlib.Path(vicerc).is_file() else None)
 
     def _screen(self, pool) -> dict | None:
@@ -8174,6 +8208,81 @@ class StepResume:
         if text.is_file():
             self._copy(text, self.folder / "screen.txt")
         return {"file": "screen.png"}
+
+
+def check_resume(args, steps: list[Step], source: pathlib.Path,
+                 staged_disk: pathlib.Path) -> dict:
+    """Read the record `--resume-from` names and check this run against it, with
+    no slot claimed.  Raises `ResumeRecordError` naming the first mismatch."""
+    Error = resumerecord.ResumeRecordError
+    record = resumerecord.read(args.resume_from, "c64")
+    if not record.get("resumable"):
+        raise Error(f"the record is not resumable: {record.get('why_not')}")
+    n = record["step"]["n"]
+    if args.at_step != n:
+        raise Error(f"--at-step {args.at_step} is not the record's step {n}")
+    if record["title"] != TITLES[args.title]:
+        raise Error(f"the record is for {record['title']}, not {TITLES[args.title]}")
+    blocker = resume_blocker(args, steps)
+    if blocker:
+        raise Error(f"{blocker} cannot be resumed")
+    if record["disks"]["source"]["sha256"] != specimens.sha256_file(source):
+        raise Error(f"{source} is not the save the record started from")
+    texts = [s.text for s in steps]
+    differs = resumerecord.first_difference(record["sent"], texts[:n - 1])
+    if differs:
+        recorded = record["sent"][differs - 1] if differs <= len(record["sent"]) else None
+        now = texts[differs - 1] if differs <= len(texts) else None
+        raise Error(f"step {differs} is {now!r}, and the record sent {recorded!r}")
+    if len(texts) < n:
+        raise Error(f"the record stopped at step {n} and --steps has {len(texts)}")
+    option = resumerecord.check_options(record, resume_options(args))
+    if option:
+        raise Error(f"--{option.replace('_', '-')} differs from the record's")
+    if record["vice"]["version"] != vice_version():
+        raise Error(f"VICE is {vice_version()}, the record was made on {record['vice']['version']}")
+    if record["vice"]["vicerc_sha256"] != seeded_vicerc_digest():
+        raise Error("the vicerc a slot is seeded with has changed since the record")
+    if record["disks"]["staged"]["sha256"] != specimens.sha256_file(staged_disk):
+        raise Error("staging this save again gives a different disk than the record's")
+    return record
+
+
+def resume_into(sess, slot, pool, record: dict, folder: pathlib.Path) -> None:
+    """Put the recorded machine into a freshly launched VICE on `slot`.
+
+    The game's own sides are already staged; each must be what the record
+    hashed, except the one that was in the drive, which the record's copy
+    replaces.  A snapshot's `.attached` sidecar names the disk's path on the
+    slot that made it, so each is rewritten to the same file name in this slot.
+    """
+    Error = resumerecord.ResumeRecordError
+    slot_dir = pathlib.Path(slot.dir)
+    attached = pathlib.Path(record["machine"]["attached"]["file"]).name
+    for name, digest in record["disks"]["sides"].items():
+        side = slot_dir / name
+        if name != attached and (not side.is_file() or specimens.sha256_file(side) != digest):
+            raise Error(f"{name} staged on this slot is not the side the record hashed")
+    for entry in (record["machine"]["attached"], record["disks"]["save"]):
+        shutil.copyfile(folder / entry["file"], slot_dir / pathlib.Path(entry["file"]).name)
+    snapshots = [(RESUME_SNAPSHOT, record["machine"])] + [
+        (named["name"], named) for named in record["named"]]
+    for name, entry in snapshots:
+        target = pathlib.Path(sess.snapshot_path(name))
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(folder / entry["file"], target)
+        for sidecar in entry["sidecars"]:
+            suffix = pathlib.Path(sidecar["file"]).suffix
+            shutil.copyfile(folder / sidecar["file"], str(target) + suffix)
+        marker = pathlib.Path(str(target) + ".attached")
+        if marker.is_file():
+            was = pathlib.PurePosixPath(marker.read_text(encoding="utf-8").strip()).name
+            if not (slot_dir / was).is_file():
+                raise Error(f"snapshot {name} had {was} in the drive, which this slot lacks")
+            marker.write_text(str(slot_dir / was), encoding="utf-8")
+    sess.launch()
+    sess.restore(RESUME_SNAPSHOT)
+    pool.adopt_resume_state(record["run_state"])
 
 
 def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
@@ -8240,6 +8349,17 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
         write_summary()
         log.close()
         return 1
+
+    resume_record = None
+    if getattr(args, "resume_from", None):
+        try:
+            resume_record = check_resume(args, steps, source, staged_disk)
+        except resumerecord.ResumeRecordError as e:
+            summary["lost"] = f"not resumed: {e}"
+            write_summary()
+            log.say(summary["lost"])
+            log.close()
+            return 1
 
     game = c64_port.by_key(title_key)
     points = parse_checkpoints(args.checkpoint)
@@ -8326,7 +8446,23 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
         menu_first = len(steps) > 1 and steps[1].verb == "remove"
         if resume is not None:
             summary["resume"] = {"snapshots": True, "why_not": None, "record": None}
+        first_step = 1
+        if resume_record is not None:
+            first_step = resume_record["step"]["n"]
+            record_file = pathlib.Path(args.resume_from)
+            resume_into(sess, slot, pool, resume_record, record_file.parent)
+            summary["results"].extend(dict(r, resumed=True) for r in resume_record["results"])
+            if resume_record["results"] and "stage_roster" in resume_record["results"][0]:
+                summary["stage_roster"] = resume_record["results"][0]["stage_roster"]
+            earlier = record_file.parent.parent / "summary.json"
+            summary["resumed_from"] = {
+                "record": str(record_file), "sha256": specimens.sha256_file(record_file),
+                "step": first_step, "earlier_summary": str(earlier) if earlier.is_file() else None}
+            log.emit("resumed", **summary["resumed_from"])
+            log.say(f"resumed from {record_file} at step {first_step}")
         for n, step in enumerate(steps, 1):
+            if n < first_step:
+                continue
             if clock() >= deadline:
                 raise StepFailed(f"the run's {args.max_seconds:g} seconds were "
                                  f"spent before '{step.text}'")
@@ -8681,6 +8817,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", default=None,
                     help="evidence directory (default ~/.cache/wish/acceptance/"
                          "<issue>/<sha>-<run>)")
+    ap.add_argument("--resume-from", default=None, metavar="RECORD",
+                    help="the resume.json a failed step left: restore the machine as "
+                         "that step began and run it again, then the steps after it; "
+                         "needs --at-step, the same --save, --steps up to the failed "
+                         "step and the same options")
+    ap.add_argument("--at-step", type=int, default=None, metavar="N",
+                    help="the record's failed step, counted from 1")
     ap.add_argument("--stage-only", action="store_true",
                     help="stage and write the summary, and boot nothing")
     ap.add_argument("--compare", nargs=2, metavar="RUN", default=None,
@@ -8688,6 +8831,10 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if args.walk_retry < 0:
         ap.error("--walk-retry cannot be negative")
+    if (args.resume_from is None) != (args.at_step is None):
+        ap.error("--resume-from and --at-step go together")
+    if args.at_step is not None and args.at_step < 2:
+        ap.error("--at-step is 2 or more; a record is never left for the load step")
     if args.fast_flee and args.title != "pool":
         ap.error("--fast-flee is Pool of Radiance only")
     if args.compare:

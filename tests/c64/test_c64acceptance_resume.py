@@ -38,9 +38,10 @@ def _fixture_disk(tmp_path: pathlib.Path) -> pathlib.Path:
 class _Slot:
     n, display = 1, ":99"
 
-    def __init__(self, tmp_path, events):
-        self.dir = tmp_path / "slot"
+    def __init__(self, tmp_path, events, tag=""):
+        self.dir = tmp_path / f"slot{tag}"
         self.dir.mkdir()
+        self.claimed = False
         (self.dir / "vicerc").write_text("rc", encoding="utf-8")
         self.vicerc = self.dir / "vicerc"
         self.torn = False
@@ -115,6 +116,11 @@ class _Pool:
     def resume_state(self):
         return {"done": self.count}
 
+    def adopt_resume_state(self, state):
+        self.events.append("adopt")
+        self.adopted = state
+        self.count = state["done"]
+
     def capture(self, tag):
         self.shots += 1
         (self.out / f"{self.shots:02d}-{tag}.png").write_bytes(b"png")
@@ -152,22 +158,30 @@ class _Pool:
 def drive(tmp_path, monkeypatch):
     events = []
 
-    def go(steps, *, checkpoint=(), sess=_Sess):
-        slot = _Slot(tmp_path, events)
-        out = tmp_path / "out"
+    def go(steps, *, checkpoint=(), sess=_Sess, tag="", vice="3.9", digest=None, **more):
+        slot = _Slot(tmp_path, events, tag)
+        out = tmp_path / f"out{tag}"
         slot.out = out
+
+        def claim(*a, **k):
+            slot.claimed = True
+            return slot
+
         monkeypatch.setattr(A.runlog, "catch_signals", lambda: None)
-        monkeypatch.setattr(A.S, "claim_slot", lambda *a, **k: slot)
+        monkeypatch.setattr(A.S, "claim_slot", claim)
+        monkeypatch.setattr(A, "seeded_vicerc_digest", lambda: digest or A.vicerc_digest(slot.vicerc))
         monkeypatch.setattr(A.S, "stage_disks", lambda *a, **k: "first")
         monkeypatch.setattr(A.S, "stage_writable",
                             lambda src, dest: __import__("shutil").copyfile(src, dest))
         monkeypatch.setattr(A.S, "Session", sess)
         monkeypatch.setattr(A, "PoolRun", _Pool)
-        monkeypatch.setattr(A, "vice_version", lambda: "3.9")
-        args = types.SimpleNamespace(
+        monkeypatch.setattr(A, "vice_version", lambda: vice)
+        values = dict(
             title="pool", stage_row=[], stage_trait=[], stage_item=[], stage_only=False,
             checkpoint=list(checkpoint), pool=None, issue="i", run="r", disks=None,
             walk="I", walk_steps=1, max_seconds=1e9, read_at=[], no_encounters=False)
+        values.update(more)
+        args = types.SimpleNamespace(**values)
         rc = A.run(args, A.parse_steps(steps), out, _fixture_disk(tmp_path))
         return rc, slot, out, events
 
@@ -361,3 +375,212 @@ def test_a_cleanup_error_still_removes_the_snapshot_folder(drive, tmp_path):
         drive(["load", "peek 1000 1"], sess=Broken)
     assert (tmp_path / "out" / "summary.json").is_file()
     assert not (tmp_path / "out" / "resume").exists()
+
+
+# --- resuming from a record ------------------------------------------------
+
+
+class _ResumeSess(_Sess):
+    """Adds the two calls a resume makes: `launch` without `boot`, then `restore`."""
+
+    def launch(self):
+        self.events.append("launch")
+
+    def restore(self, name):
+        self.events.append(f"restore {name}")
+        path = pathlib.Path(self.snapshot_path(name))
+        self.restored = {"vsf": path.read_bytes(),
+                         "attached": pathlib.Path(str(path) + ".attached").read_text(encoding="utf-8")}
+        self.attached = self.restored["attached"]
+
+
+STEPS = ["load", "peek 1000 1", "items NOBODY", "peek 1000 1"]
+FIXED = ["load", "peek 1000 1", "items BRUTUS", "peek 1000 1"]
+
+
+@pytest.fixture
+def failed(drive, tmp_path):
+    """A first run that fails at step 3, and its record."""
+    rc, _, out, _ = drive(STEPS, tag="a")
+    assert rc == 3
+    return out / "resume" / "resume.json"
+
+
+def _resume(drive, record, steps=FIXED, at=3, **more):
+    return drive(steps, tag="b", sess=_ResumeSess, resume_from=str(record), at_step=at,
+                 **more)
+
+
+def test_a_record_resumes_at_its_step_and_finishes(drive, failed):
+    rc, slot, out, events = _resume(drive, failed)
+    assert rc == 0 and slot.torn
+    assert events[events.index("launch") - 1] != "load"
+    after = events[events.index("launch"):]
+    assert after[:3] == ["launch", "restore resume-step", "adopt"]
+    # Step 3 is run again, then step 4; step 1 and 2 are not.
+    assert after[3:] == ["attach", "snapshot resume-step", "items", "attach",
+                         "snapshot resume-step", "peek", "teardown"]
+    assert events.count("load") == 1            # only the first run's
+    summary = _summary(out)
+    assert summary["completed"] and [r["step"] for r in summary["results"]] == FIXED
+    assert [bool(r.get("resumed")) for r in summary["results"]] == [True, True, False, False]
+    assert summary["resumed_from"]["step"] == 3
+    assert summary["resumed_from"]["record"] == str(failed)
+    assert summary["resumed_from"]["sha256"] == specimens.sha256_file(failed)
+    assert summary["resumed_from"]["earlier_summary"] == str(failed.parent.parent / "summary.json")
+
+
+def test_the_attached_sidecar_is_rewritten_to_the_new_slot(drive, failed, monkeypatch):
+    seen = {}
+    original = _ResumeSess.restore
+
+    def keep(self, name):
+        original(self, name)
+        seen.update(self.restored, slot=str(self.slot.dir))
+
+    monkeypatch.setattr(_ResumeSess, "restore", keep)
+    old = (failed.parent / "current" / "step.vsf.attached").read_text(encoding="utf-8")
+    rc, slot, _, _ = _resume(drive, failed)
+    assert rc == 0
+    assert "slota" in old and "slotb" not in old
+    assert seen["attached"] == str(slot.dir / "SIDE3.D64") == seen["slot"] + "/SIDE3.D64"
+    assert seen["vsf"] == b"vsf resume-step 2"          # the step-start machine
+
+
+def test_the_recorded_disks_replace_the_staged_ones(drive, failed):
+    rc, slot, _, _ = _resume(drive, failed)
+    assert rc == 0
+    # The record's step-start copy had the "+" the first run's step 2 wrote;
+    # the new slot's own `side three` did not.  The run then appends more.
+    assert (slot.dir / "SIDE3.D64").read_bytes().startswith(b"side three+")
+    assert (slot.dir / "SIDE0.D64").read_bytes().startswith(
+        (failed.parent.parent / "staged.D64").read_bytes() + b"+")
+
+
+def test_run_state_is_adopted_before_the_step_runs(drive, failed, monkeypatch):
+    adopted = []
+    monkeypatch.setattr(_Pool, "adopt_resume_state",
+                        lambda self, state: (adopted.append(dict(state)),
+                                             self.events.append("adopt")))
+    rc, *_ = _resume(drive, failed)
+    assert rc == 0 and adopted == [{"done": 2}]
+
+
+def test_the_kept_results_reach_validate_walks(drive, failed, monkeypatch):
+    seen = []
+    monkeypatch.setattr(A, "validate_walks", lambda results: seen.append(list(results)))
+    rc, *_ = _resume(drive, failed)
+    assert rc == 0
+    assert [r["step"] for r in seen[0]] == FIXED and seen[0][0]["resumed"]
+
+
+def test_step_n_may_differ_from_the_failed_run(drive, failed):
+    rc, *_ = _resume(drive, failed, steps=["load", "peek 1000 1", "peek 2000 1"])
+    assert rc == 0
+
+
+def test_a_second_failure_leaves_a_record_covering_every_earlier_step(drive, failed):
+    rc, _, out, _ = drive(["load", "peek 1000 1", "items BRUTUS", "items NOBODY"], tag="b",
+                          sess=_ResumeSess, resume_from=str(failed), at_step=3)
+    assert rc == 3
+    record = resumerecord.read(out / "resume" / "resume.json", "c64")
+    assert record["step"]["n"] == 4
+    assert record["sent"] == ["load", "peek 1000 1", "items BRUTUS"]
+    assert [r["step"] for r in record["results"]] == record["sent"]
+    assert record["results"][0]["resumed"] is True
+
+
+@pytest.mark.parametrize("what, steps, at, more", [
+    ("a step before N changed", ["load", "peek 2000 1", "items BRUTUS"], 3, {}),
+    ("a wrong --at-step", FIXED, 4, {}),
+    ("--no-encounters differs", FIXED, 3, {"no_encounters": True}),
+    ("a --read-at", FIXED, 3, {"read_at": ["09DD=CD782B:2B78:2"]}),
+    ("a --checkpoint", FIXED, 3, {"checkpoint": ["408F=x"]}),
+    ("steps ending before N", ["load", "peek 1000 1"], 3, {}),
+])
+def test_a_mismatch_stops_before_a_slot_is_claimed(drive, failed, what, steps, at, more):
+    rc, slot, out, events = drive(steps, tag="b", sess=_ResumeSess, resume_from=str(failed),
+                                  at_step=at, **more)
+    assert rc == 1 and not slot.claimed and not slot.torn, what
+    assert "launch" not in events
+    assert _summary(out)["lost"].startswith("not resumed: ")
+
+
+@pytest.mark.parametrize("more, fragment", [
+    ({"vice": "3.10"}, "VICE is 3.10"),
+    ({"digest": "0" * 64}, "vicerc"),
+])
+def test_a_changed_emulator_or_configuration_stops_before_the_claim(drive, failed, more, fragment):
+    rc, slot, out, _ = _resume(drive, failed, **more)
+    assert rc == 1 and not slot.claimed
+    assert fragment in _summary(out)["lost"]
+
+
+def test_another_save_stops_before_the_claim(drive, failed):
+    record = json.loads(failed.read_text(encoding="utf-8"))
+    record["disks"]["source"]["sha256"] = "0" * 64
+    failed.write_text(json.dumps(record), encoding="utf-8")
+    rc, slot, out, _ = _resume(drive, failed)
+    assert rc == 1 and not slot.claimed
+    assert "is not the save the record started from" in _summary(out)["lost"]
+
+
+def test_a_different_staged_disk_stops_before_the_claim(drive, failed, monkeypatch):
+    real = A.stage
+
+    def stage(source, target, *a, **k):
+        done = real(source, target, *a, **k)
+        with open(target, "ab") as disk:
+            disk.write(b"x")
+        return done
+
+    monkeypatch.setattr(A, "stage", stage)
+    rc, slot, out, _ = _resume(drive, failed)
+    assert rc == 1 and not slot.claimed
+    assert "staging this save again" in _summary(out)["lost"]
+
+
+def test_a_changed_record_file_stops_before_the_claim(drive, failed):
+    (failed.parent / "current" / "step.vsf").write_bytes(b"x" * 17)
+    rc, slot, out, _ = _resume(drive, failed)
+    assert rc == 1 and not slot.claimed
+    assert "SHA-256" in _summary(out)["lost"]
+
+
+def test_a_game_side_that_is_not_the_recorded_one_releases_the_slot_before_launch(
+        drive, failed):
+    class OtherSide(_ResumeSess):
+        def __init__(self, first, slot=None):
+            super().__init__(first, slot)
+            (slot.dir / "SIDE2.D64").write_bytes(b"not the side")
+
+    record = json.loads(failed.read_text(encoding="utf-8"))
+    record["disks"]["sides"]["SIDE2.D64"] = "0" * 64
+    failed.write_text(json.dumps(record), encoding="utf-8")
+    rc, slot, out, events = drive(FIXED, tag="b", sess=OtherSide, resume_from=str(failed),
+                                  at_step=3)
+    assert rc == 1 and slot.torn and "launch" not in events
+    assert "SIDE2.D64" in _summary(out)["lost"]
+
+
+def test_resume_from_and_at_step_go_together():
+    with pytest.raises(SystemExit):
+        A.main(["--resume-from", "resume.json"])
+    with pytest.raises(SystemExit):
+        A.main(["--at-step", "3"])
+
+
+def test_a_vicerc_digest_ignores_the_slot_ports(tmp_path, monkeypatch):
+    template = tmp_path / "template"
+    template.write_text("[C64SC]\nWarpMode=0\n", encoding="utf-8")
+    monkeypatch.setenv("POR_VICERC_TEMPLATE", str(template))
+
+    def seeded(port, where):
+        folder = tmp_path / where
+        slot = SimpleNamespace(port=port, text_port=port + 1, dir=folder, vicerc=folder / "vicerc")
+        return A.vicerc_digest(A.S.instance.seed_vicerc(slot))
+
+    assert seeded(6510, "one") == seeded(6540, "two") == A.seeded_vicerc_digest()
+    first = A.seeded_vicerc_digest()
+    template.write_text("[C64SC]\nWarpMode=1\n", encoding="utf-8")
+    assert A.seeded_vicerc_digest() != first
