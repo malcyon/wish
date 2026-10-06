@@ -3673,3 +3673,19 @@ def test_the_pool_identity_recognises_the_world_screen_of_the_six_member_wish301
     rules = [r for r in screens.rules_of(spec["identity"]["world"]) if r["example"] == example]
     assert len(rules) == 1 and rules[0]["box"] == box and rules[0]["also"] == ["camp", "camp_save_picker", "quit_prompt"]
     assert screens.box_digests(crop, [tuple(box)], "world")[tuple(box)] == rules[0]["sha256"]
+
+
+def test_the_darkness_guards_recognise_the_journal_question_of_the_a2_party():
+    from tools.amiga import screens
+
+    spec = json.loads((pathlib.Path(foundation.__file__).parent / "guards_darkness.json").read_text())
+    example = "WISH-2/wish2-a2/measure3/shots/08-journal.png"
+    assert spec["labels"][example] == ["journal"]
+    crop = scratch.cache_dir("acceptance") / example
+    if not crop.is_file():
+        pytest.skip("needs the stage 8 A2 measure shot 08 of WISH-2")
+    # The box leaves out the frame rows above and below the ENTER bar, which differ by boot.
+    box = [74, 406, 170, 428]
+    rules = [r for r in screens.rules_of(spec["guards"]["journal"]) if r["example"] == example]
+    assert len(rules) == 1 and rules[0]["box"] == box and rules[0]["also"] == ["journal_answer"]
+    assert screens.box_digests(crop, [tuple(box)], "journal")[tuple(box)] == rules[0]["sha256"]

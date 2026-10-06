@@ -532,19 +532,34 @@
       "example": "628/darkness-P1a/accept1/shots/18-heal_whom.png",
       "sha256": "fc44343aed245f011a39a3db877400282b9f40cf1bbd6dfffa9398c60b727aae"
     },
-    "journal": {
-      "also": [
-        "journal_answer"
-      ],
-      "box": [
-        74,
-        404,
-        170,
-        430
-      ],
-      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/10-journal.png",
-      "sha256": "fd6386c6e091debcfb6d8dc8e89be25c7d3f149067a833e46bf6300094a34baa"
-    },
+    "journal": [
+      {
+        "also": [
+          "journal_answer"
+        ],
+        "box": [
+          74,
+          404,
+          170,
+          430
+        ],
+        "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/10-journal.png",
+        "sha256": "fd6386c6e091debcfb6d8dc8e89be25c7d3f149067a833e46bf6300094a34baa"
+      },
+      {
+        "also": [
+          "journal_answer"
+        ],
+        "box": [
+          74,
+          406,
+          170,
+          428
+        ],
+        "example": "WISH-2/wish2-a2/measure3/shots/08-journal.png",
+        "sha256": "445a48955ff91e7c7188229869fb00d9fff04676ac6f9528eeccc746f6c8c5d8"
+      }
+    ],
     "journal_answer": {
       "also": [],
       "box": [
@@ -1137,6 +1152,9 @@
     ],
     "WISH-2/wish2-a2/measure2/shots/06-sheet.png": [
       "sheet"
+    ],
+    "WISH-2/wish2-a2/measure3/shots/08-journal.png": [
+      "journal"
     ],
     "WISH-2/wish2-a3/measure-a3-7/shots/10-world.png": [
       "world"
