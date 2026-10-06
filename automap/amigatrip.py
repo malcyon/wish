@@ -63,6 +63,15 @@ BUFFER_SIZE = 0x1E00
 #: `NEWECL area`.
 SAVE = 0x09
 NEWECL = 0x20
+#: `COMPARE a, b` latches the flags of a - b; the `IF` that follows runs the
+#: next statement, and skips exactly one, by that latch.
+COMPARE = 0x03
+#: `AND a, b, dest` latches the zero flag alone.
+AND = 0x2F
+IF_EQ, IF_NE, IF_LT, IF_GE = 0x16, 0x17, 0x18, 0x1B
+#: The script variable the game's own Nomad Camp exit uses for the result of
+#: its `AND`, so a prologue that clobbers it disturbs nothing the game keeps.
+SCRATCH = 0x6E82
 #: The boat exit's redraw statements: `PICTURE value`, `CLEAR BOX` and
 #: `LOADFILES a, b, c`.
 PICTURE = 0x0E
@@ -278,21 +287,76 @@ def departure_for(key: str, here: int | None, to: int,
     return departures.find(key, departures.AMIGA, here, to, to_overland)
 
 
+#: The `IF` that runs the next statement when a guard holds, and when it fails.
+_IF_HOLDS = {"==": IF_EQ, "!=": IF_NE, ">=": IF_GE}
+_IF_FAILS = {"==": IF_NE, "!=": IF_EQ, ">=": IF_LT}
+
+
 def departure_prologue(key: str, here: int | None, to: int,
                        to_overland: bool | None = None) -> bytes:
-    """The `SAVE` statements of the departure's `writes`, run ahead of the
-    trip. A route row writes nothing: its door runs the script.
+    """The statements of the departure's `writes`, run ahead of the trip. A
+    route row writes nothing: its door runs the script.
 
-    A guarded write needs `COMPARE` and `IF` statements whose operand
-    encoding no row has asked for yet, so it raises ValueError and the trip
-    is held instead of leaving the state out.
+    A guarded write is the game's own `COMPARE`, `IF`, `SAVE` sequence, so its
+    interpreter tests the guard. Several guards are folded into `SCRATCH`.
+    A form the encoding below does not cover raises ValueError, and the trip is
+    held instead of leaving the state out.
     """
     row = departure_for(key, here, to, to_overland)
     if row is None or not row.writes:
         return b""
-    if row.guards:
-        raise ValueError("a guarded departure write has no statements yet")
-    return b"".join(save(value, address) for address, value in row.writes)
+    if not row.guards:
+        return b"".join(save(value, address) for address, value in row.writes)
+    return guarded(row.guards, row.writes)
+
+
+def compare(address: int, value: int) -> bytes:
+    """`COMPARE [address], value`: six bytes."""
+    if not 0 <= address <= 0xFFFF:
+        raise ValueError(f"address {address:#x} does not fit an operand")
+    return bytes((COMPARE, ADDRESS, address & 0xFF, address >> 8, IMMEDIATE,
+                  _byte(value, "value")))
+
+
+def and_into(address: int, mask: int, dest: int) -> bytes:
+    """`AND [address], mask, [dest]`: nine bytes."""
+    return bytes((AND, ADDRESS, address & 0xFF, address >> 8, IMMEDIATE,
+                  _byte(mask, "mask"), ADDRESS, dest & 0xFF, dest >> 8))
+
+
+def guarded(guards, writes) -> bytes:
+    """The statements that make `writes` when every guard holds.
+
+    One guard is `COMPARE` / `IF` / `SAVE`, as the game's scripts have it. With
+    more, the first guard sets `SCRATCH` (to 1, or to the masked bits) and each
+    later one clears it when it fails, then the write tests `SCRATCH`. Only
+    `COMPARE`, `IF` and one statement are used after a skip, so nothing relies
+    on a latch surviving one.
+    """
+    if len(writes) != 1:
+        raise ValueError("a guarded departure makes one write")
+    (address, value), = writes
+    first, *rest = guards
+    if first.op == "bits":
+        body = and_into(first.address, first.value, SCRATCH)
+        # `AND` leaves the result in `SCRATCH`; non-zero means the bits held.
+        final = (compare(SCRATCH, 0) + bytes((IF_NE,)) if rest
+                 else bytes((IF_NE,)))
+    elif first.op in _IF_HOLDS:
+        if not rest:
+            return (compare(first.address, first.value)
+                    + bytes((_IF_HOLDS[first.op],)) + save(value, address))
+        body = (save(0, SCRATCH) + compare(first.address, first.value)
+                + bytes((_IF_HOLDS[first.op],)) + save(1, SCRATCH))
+        final = compare(SCRATCH, 1) + bytes((IF_EQ,))
+    else:
+        raise ValueError(f"no statements for a guard {first.op!r}")
+    for guard in rest:
+        if guard.op not in _IF_FAILS:
+            raise ValueError(f"no statements for a guard {guard.op!r}")
+        body += (compare(guard.address, guard.value)
+                 + bytes((_IF_FAILS[guard.op],)) + save(0, SCRATCH))
+    return body + final + save(value, address)
 
 
 def leg_held(row: TripRow, here: int | None, to: int, back: bool,

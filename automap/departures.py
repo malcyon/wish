@@ -22,6 +22,7 @@ from dataclasses import dataclass
 
 POOL_OF_RADIANCE = "pool-of-radiance"
 POOLS_OF_DARKNESS = "pools-of-darkness"
+SECRET_OF_THE_SILVER_BLADES = "secret-of-the-silver-blades"
 
 C64 = "c64"
 AMIGA = "amiga"
@@ -30,7 +31,8 @@ AMIGA = "amiga"
 @dataclass(frozen=True)
 class Guard:
     """One test the departing script makes on a byte. `op` is `==`, `!=`,
-    `not in` (`value` is a tuple) or `bits` (the mask `value` is non-zero)."""
+    `>=`, `not in` (`value` is a tuple) or `bits` (the mask `value` is
+    non-zero)."""
 
     address: int
     op: str
@@ -41,6 +43,8 @@ class Guard:
             return byte == self.value
         if self.op == "!=":
             return byte != self.value
+        if self.op == ">=":
+            return byte >= self.value
         if self.op == "not in":
             return byte not in self.value
         if self.op == "bits":
@@ -76,11 +80,44 @@ DEPARTURES: tuple[Departure, ...] = (
     # whether to leave.
     Departure(POOL_OF_RADIANCE, frozenset({13}), frozenset({C64, AMIGA}),
               member="PRINCESS FATIMA", route_to=27),
-    # Lizardman Keep's exit sets `$4AB5`. Until its guard is read from the
-    # script, the exit is walked whenever the byte is not 254 or 255, the
-    # values it holds once the exit has run.
+    # Lizardman Keep's exit, `ECL10 $9CBD-$9CCF`, pays the commission once: it
+    # sets `$4AB5` to 254 unless it is already 255, and only for a party with
+    # 40 kills (`$4A5D`). Every walked way out passes it.
     Departure(POOL_OF_RADIANCE, frozenset({16}), frozenset({C64, AMIGA}),
-              guards=(Guard(0x4AB5, "not in", (254, 255)),), route_to=27),
+              guards=(Guard(0x4A5D, ">=", 40), Guard(0x4AB5, "!=", 255)),
+              writes=((0x4AB5, 254),)),
+    # The Buccaneer Base's edge exit, `ECL01 $9936-$993D`, sets `$4AA9` from 1
+    # to 254. The other way out is the pirate fight, which sets 128 itself.
+    Departure(POOL_OF_RADIANCE, frozenset({1}), frozenset({C64, AMIGA}),
+              guards=(Guard(0x4AA9, "==", 1),), writes=((0x4AA9, 254),)),
+    # The Nomad Camp's shared exit block, `ECL11 $A1B9-$A1ED`, sets `$4AB7` to
+    # 254 when bit 4 or bit 1 of `$4A7C` is set and it is not already 255.
+    Departure(POOL_OF_RADIANCE, frozenset({17}), frozenset({C64, AMIGA}),
+              guards=(Guard(0x4A7C, "bits", 5), Guard(0x4AB7, "!=", 255)),
+              writes=((0x4AB7, 254),)),
+    # The Zhentil Keep Outpost's edge and leave-menu exits, `ECL1C $993C` and
+    # `$B4F9-$B5EE`, set `$4AB4` to 253 whatever it held. Its fight exits do
+    # not, and Fast Travel never starts in a fight.
+    Departure(POOL_OF_RADIANCE, frozenset({28}), frozenset({C64, AMIGA}),
+              writes=((0x4AB4, 253),)),
+    # A cave in window 25, 26 or 27 keeps `$4A9E` at 255 while the party is
+    # in it, and its exit menu (`ECL19 $AB31`, `ECL1A $AAF4`, `ECL1B $A83C`)
+    # sets it to 0, which puts the next window arrival on the grid. One case
+    # is not confirmed: a camp interrupted inside a window-25 cave can leave
+    # for area 1 with the flag still 255.
+    Departure(POOL_OF_RADIANCE, frozenset({25, 26, 27}),
+              frozenset({C64, AMIGA}), guards=(Guard(0x4A9E, "==", 255),),
+              writes=((0x4A9E, 0),)),
+    # New Verdigris' leave question, `ECL10 $84F7-$84FE` and `$9A25-$9A2C`,
+    # sets `$4CD9` from 1 to `$FF`. Amiga Silver Blades has no Fast Travel.
+    Departure(SECRET_OF_THE_SILVER_BLADES, frozenset({0x10}), frozenset({C64}),
+              guards=(Guard(0x4CD9, "==", 1),), writes=((0x4CD9, 0xFF),)),
+    # Every way out of the `$5x` group (`ECL50`, `ECL51`'s exits to `$50` and
+    # `$52`, and `ECL52`) stores 9 and 12 through `GOSUB $9BE2`/`$9BBA`, which
+    # `GDRIVE01` reads. A trip inside the group does not leave it.
+    Departure(SECRET_OF_THE_SILVER_BLADES, frozenset({0x50, 0x51, 0x52}),
+              frozenset({C64}), not_to=frozenset({0x50, 0x51, 0x52}),
+              writes=((0xC059, 9), (0xC05A, 12))),
     # Pools of Darkness areas 17, 25, 51 and 80 hand the party to a parent
     # script, and a trip to a non-overland area skips what that script leaves
     # in script variables `$24` and `$22`. Nothing reads this row yet: the

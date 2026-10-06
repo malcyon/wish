@@ -726,7 +726,7 @@ def test_the_players_disks_give_the_script_ends_measured_live(key, area, end):
 
 def test_every_pool_departing_area_fits_a_trip_on_the_players_disks():
     pool = trip.ROWS["pool-of-radiance"]
-    areas = (0, 2, 3, 9, 13, 14, 16, 18, 21, 22, 23, 25, 26, 27)
+    areas = (0, 1, 2, 3, 9, 13, 14, 16, 17, 18, 21, 22, 23, 25, 26, 27, 28)
     for image in _images():
         lengths = trip.script_lengths("pool-of-radiance", [image])
         if not all(a in lengths for a in areas):
@@ -978,12 +978,14 @@ def test_a_door_row_the_departures_table_names_is_proven():
             assert (here, row.route_to) in fasttravel.EXIT_ROUTES
 
 
-def test_the_amiga_finds_the_two_pool_departures_and_no_other():
+def test_the_amiga_finds_the_pool_departures_and_no_other():
     pool = "pool-of-radiance"
     assert trip.departure_for(pool, 13, 0).member == "PRINCESS FATIMA"
-    assert trip.departure_for(pool, 16, 0).route_to == 27
+    assert trip.departure_for(pool, 16, 0).writes == ((0x4AB5, 254),)
+    assert all(trip.departure_for(pool, here, 0).writes
+               for here in (1, 16, 17, 25, 26, 27, 28))
     assert all(trip.departure_for(pool, here, 0) is None
-               for here in (0, 1, 2, 3, 7, 9, 14, 17, 18, 21, 22, 23, 25, 28))
+               for here in (0, 2, 3, 7, 9, 14, 18, 21, 22, 23))
     # Silver Blades' area 16 is a town, not Lizardman Keep.
     assert trip.departure_for("secret-of-the-silver-blades", 16, 0) is None
 
@@ -993,16 +995,116 @@ def test_a_departure_that_writes_nothing_adds_no_statements():
     assert trip.departure_prologue("pool-of-radiance", 0, 18) == b""
 
 
-def test_a_guarded_departure_write_holds_the_trip(monkeypatch):
+# The statements are the game's own where the script has the same test:
+# `COMPARE a, b` is `03 <a> <b>`, `IF` is one byte, `SAVE` is as `save()`.
+POOL = "pool-of-radiance"
+P3 = bytes.fromhex("03 01 A9 4A 00 01  16  09 00 FE 01 A9 4A")
+P5 = bytes.fromhex("09 00 FD 01 B4 4A")
+P6 = bytes.fromhex("03 01 9E 4A 00 FF  16  09 00 00 01 9E 4A")
+#: Composed, from the `COMPARE` / `IF` / one-statement form that needs no
+#: latch to survive a skipped statement (R1's first form).
+P2 = bytes.fromhex(
+    "09 00 00 01 82 6E  03 01 5D 4A 00 28  1B  09 00 01 01 82 6E"
+    "  03 01 B5 4A 00 FF  16  09 00 00 01 82 6E"
+    "  03 01 82 6E 00 01  16  09 00 FE 01 B5 4A")
+P4 = bytes.fromhex(
+    "2F 01 7C 4A 00 05 01 82 6E  03 01 B7 4A 00 FF  16  09 00 00 01 82 6E"
+    "  03 01 82 6E 00 00  17  09 00 FE 01 B7 4A")
+
+
+@pytest.mark.parametrize("here, expected", [
+    (1, P3), (28, P5), (25, P6), (26, P6), (27, P6), (16, P2), (17, P4)])
+def test_a_pool_departure_prologue_is_the_expected_statements(here, expected):
+    assert trip.departure_prologue(POOL, here, 0) == expected
+
+
+def test_the_prologue_lengths_are_the_ones_the_rows_were_sized_with():
+    assert [len(trip.departure_prologue(POOL, h, 0))
+            for h in (1, 28, 25, 16, 17)] == [13, 6, 13, 45, 35]
+
+
+def test_a_departure_prologue_is_not_made_for_a_title_that_has_no_row():
+    assert trip.departure_prologue("curse-of-the-azure-bonds", 16, 0) == b""
+    assert trip.departure_prologue(POOL, 0, 18) == b""
+
+
+def test_the_prologue_statements_decode_as_compare_if_and_save():
+    ops = [name for _at, name in _decode(trip.departure_prologue(POOL, 1, 0))]
+    assert ops == ["COMPARE", "IF=", "SAVE"]
+
+
+def _decode(blob: bytes):
+    """`(offset, mnemonic)` for each statement, by the operand kinds."""
+    names = {0x03: "COMPARE", 0x09: "SAVE", 0x2F: "AND", 0x16: "IF=",
+             0x17: "IF<>", 0x18: "IF<", 0x1B: "IF>="}
+    out, at = [], 0
+    while at < len(blob):
+        op = blob[at]
+        out.append((at, names[op]))
+        at += 1
+        count = 0 if 0x16 <= op <= 0x1B else (3 if op == 0x2F else 2)
+        if op == 0x09:
+            count = 2
+        for _ in range(count):
+            at += 2 if blob[at] == 0 else 3
+    assert at == len(blob)
+    return out
+
+
+def test_the_composed_forms_decode_to_whole_statements():
+    assert [n for _a, n in _decode(P2)] == [
+        "SAVE", "COMPARE", "IF>=", "SAVE", "COMPARE", "IF=", "SAVE",
+        "COMPARE", "IF=", "SAVE"]
+    assert [n for _a, n in _decode(P4)] == [
+        "AND", "COMPARE", "IF=", "SAVE", "COMPARE", "IF<>", "SAVE"]
+
+
+def test_a_guarded_departure_with_two_writes_holds_the_trip(monkeypatch):
     from automap import departures
     row = departures.Departure(
-        "pool-of-radiance", frozenset({3}), frozenset({"amiga"}),
-        guards=(departures.Guard(0x4AA9, "==", 1),), writes=((0x4AA9, 254),))
+        POOL, frozenset({3}), frozenset({"amiga"}),
+        guards=(departures.Guard(0x4AA9, "==", 1),),
+        writes=((0x4AA9, 254), (0x4AB4, 253)))
     monkeypatch.setattr(departures, "DEPARTURES", (row,))
     with pytest.raises(ValueError):
-        trip.departure_prologue("pool-of-radiance", 3, 0)
-    pool = trip.ROWS["pool-of-radiance"]
-    assert trip.leg_held(pool, 3, 0, False, _lengths())
+        trip.departure_prologue(POOL, 3, 0)
+    assert trip.leg_held(trip.ROWS[POOL], 3, 0, False, _lengths())
+
+
+def test_a_guard_the_encoding_does_not_cover_holds_the_trip(monkeypatch):
+    from automap import departures
+    row = departures.Departure(
+        POOL, frozenset({3}), frozenset({"amiga"}),
+        guards=(departures.Guard(1, "==", 1),
+                departures.Guard(2, "not in", (3, 4))),
+        writes=((0x4AA9, 254),))
+    monkeypatch.setattr(departures, "DEPARTURES", (row,))
+    with pytest.raises(ValueError):
+        trip.departure_prologue(POOL, 3, 0)
+
+
+def _most_room_that_holds(here: int) -> int:
+    """The longest script `here` can have and the trip still be held."""
+    pool = trip.ROWS[POOL]
+    free = [n for n in range(trip.BUFFER_SIZE)
+            if not trip.leg_held(pool, here, 0, False, {here: n, 0: 1})]
+    return len(free)
+
+
+@pytest.mark.parametrize("here, size", [(16, 45), (17, 35), (1, 13)])
+def test_the_departure_statements_are_counted_in_the_room_a_trip_needs(
+        here, size):
+    # Area 2 has no row, so the difference is the prologue alone. A tier-2
+    # layout can place a few bytes in spots the script leaves free, so the
+    # difference is at most the prologue's length.
+    assert 0 < _most_room_that_holds(2) - _most_room_that_holds(here) <= size
+
+
+def test_a_second_trip_from_lizardman_keep_walks_no_door_and_asks_nothing():
+    # The prologue's own guard decides, so no `(16, 27)` door is walked and no
+    # exit question is put to the player on any trip.
+    assert trip.departure_for(POOL, 16, 0).route_to is None
+    assert trip.departure_for(POOL, 16, 27).route_to is None
 
 
 def test_a_pods_trip_from_the_hand_over_areas_has_the_two_saves():
@@ -1017,7 +1119,8 @@ def test_a_pods_trip_from_the_hand_over_areas_has_the_two_saves():
                                        True) == b""
     assert trip.departure_prologue("pools-of-darkness", 19, 17, False) == b""
     # The row is Pools of Darkness' on the Amiga only.
-    assert trip.departure_prologue("pool-of-radiance", 17, 19, False) == b""
+    assert trip.departure_prologue("curse-of-the-azure-bonds", 17, 19,
+                                   False) == b""
 
 
 def test_the_hand_over_saves_are_counted_in_the_room_a_trip_needs():

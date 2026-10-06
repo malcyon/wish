@@ -1748,8 +1748,8 @@ def test_a_trip_with_no_departure_row_goes_straight_to_the_destination(
 
 def test_no_trip_stands_the_party_on_a_door_except_the_listed_departures():
     """Every area with a door, to every other area: only the Kobold Caves
-    and Lizardman Keep (with their triggers) walk anywhere."""
-    walked = {13, 16}
+    (with its trigger) walks anywhere."""
+    walked = {13}
     for here in range(31):
         if not fasttravel.exits_from(here) or here in walked:
             continue
@@ -1794,35 +1794,156 @@ def test_without_fatima_a_trip_to_the_exits_own_destination_goes_straight():
     assert target.jumps == [fasttravel.POOL_OF_RADIANCE.tail]
 
 
-@pytest.mark.parametrize("to", [0, 27])
-def test_lizardman_keep_walks_out_while_its_byte_is_not_254_or_255(to):
-    target = two_hop_machine(16)
-    addr = fasttravel.POOL_OF_RADIANCE
+#: `(departing area, bytes the guards read, the writes a trip makes before
+#: its jump, bytes that make the trip write nothing)`, one case per row.
+POOL_WRITE_ROWS = {
+    "lizardman keep": (
+        16, {0x4A5D: 40, 0x4AB5: 0}, ((0x4AB5, b"\xfe"),),
+        ({0x4A5D: 40, 0x4AB5: 255}, {0x4A5D: 39, 0x4AB5: 0},
+         {0x4A5D: 0, 0x4AB5: 255})),
+    "buccaneer base": (
+        1, {0x4AA9: 1}, ((0x4AA9, b"\xfe"),),
+        ({0x4AA9: 0}, {0x4AA9: 254}, {0x4AA9: 128})),
+    "nomad camp, bit 4": (
+        17, {0x4A7C: 4, 0x4AB7: 0}, ((0x4AB7, b"\xfe"),),
+        ({0x4A7C: 0, 0x4AB7: 0}, {0x4A7C: 2, 0x4AB7: 0},
+         {0x4A7C: 4, 0x4AB7: 255})),
+    "nomad camp, bit 1": (
+        17, {0x4A7C: 1, 0x4AB7: 0}, ((0x4AB7, b"\xfe"),),
+        ({0x4A7C: 1, 0x4AB7: 255},)),
+    "zhentil keep outpost": (
+        28, {}, ((0x4AB4, b"\xfd"),), ()),
+    "cave in window 25": (
+        25, {0x4A9E: 255}, ((0x4A9E, b"\x00"),), ({0x4A9E: 0},)),
+    "cave in window 26": (
+        26, {0x4A9E: 255}, ((0x4A9E, b"\x00"),), ({0x4A9E: 0},)),
+    "cave in window 27": (
+        27, {0x4A9E: 255}, ((0x4A9E, b"\x00"),), ({0x4A9E: 0},)),
+}
+
+
+def _pool_trip(here: int, memory: dict[int, int], to: int = 0):
+    target = two_hop_machine(here)
+    for address, value in memory.items():
+        target.write(address, bytes([value]))
     ft = actions.FastTravel()
-    assert ft.run(target, area=actions.area_by_id(to)).ok
-    assert target.read(addr.live_square, 2) == bytes(
-        fasttravel.EXIT_ROUTES[(16, 27)].square[:2])
-    assert target.jumps == []
-    assert (ft.pending is None) == (to == 27)
+    outcome = ft.run(target, area=actions.area_by_id(to))
+    assert outcome.ok, outcome.message
+    assert target.reenters == [] and ft.pending is None
+    assert target.jumps == [fasttravel.POOL_OF_RADIANCE.tail]
+    return target, outcome
 
 
-@pytest.mark.parametrize("byte", [254, 255])
-def test_lizardman_keep_goes_straight_once_its_byte_is_set(byte):
-    target = two_hop_machine(16)
-    target.write(0x4AB5, bytes([byte]))
-    ft = actions.FastTravel()
-    outcome = ft.run(target, area=actions.area_by_id(0))
-    _went_straight(target, ft, outcome, 16, 0)
+@pytest.mark.parametrize("name", POOL_WRITE_ROWS)
+def test_a_departure_makes_the_write_its_walked_exit_makes(name):
+    here, holds, writes, _fails = POOL_WRITE_ROWS[name]
+    target, outcome = _pool_trip(here, holds)
+    assert outcome.writes[:len(writes)] == writes
+    # Before the jump, in the order the script makes them.
+    written = [a for a, _ in outcome.writes]
+    assert written.index(writes[0][0]) < written.index(
+        fasttravel.POOL_OF_RADIANCE.slot)
+    for address, data in writes:
+        assert target.read(address, 1) == data
 
 
-def test_an_unreadable_guard_byte_fails_the_trip_and_writes_nothing():
+@pytest.mark.parametrize("name", POOL_WRITE_ROWS)
+def test_a_departure_whose_guard_is_false_writes_nothing(name):
+    here, _holds, writes, fails = POOL_WRITE_ROWS[name]
+    for memory in fails:
+        target, outcome = _pool_trip(here, memory)
+        written = {a for a, _ in outcome.writes}
+        assert not written & {a for a, _ in writes}, (name, memory)
+        for address, value in memory.items():
+            assert target.read(address, 1) == bytes([value])
+
+
+@pytest.mark.parametrize("memory, writes", [
+    ({0x4A5D: 40}, True), ({0x4A5D: 200}, True), ({0x4A5D: 39}, False)])
+def test_lizardman_keeps_commission_needs_forty_kills_as_well(memory, writes):
+    """With the interim guard (not 254 or 255) a party under 40 kills would
+    be marked paid."""
+    target, outcome = _pool_trip(16, {**memory, 0x4AB5: 0})
+    assert ((0x4AB5, b"\xfe") in outcome.writes) is writes
+    assert (target.read(0x4AB5, 1) == b"\xfe") is writes
+
+
+def test_the_outpost_departure_writes_whatever_the_byte_held():
+    for held in (0, 253, 255):
+        target, outcome = _pool_trip(28, {0x4AB4: held})
+        assert outcome.writes[0] == (0x4AB4, b"\xfd")
+
+
+def test_a_trip_between_areas_with_no_row_writes_no_departure_byte():
+    names = {a for row in departures.DEPARTURES for a, _ in row.writes}
+    for here, to in ((0, 18), (9, 18), (7, 0), (18, 2)):
+        _target, outcome = _pool_trip(here, {}, to)
+        assert not {a for a, _ in outcome.writes} & names
+
+
+def _silver_blades_trip(here: int, to: int, memory=None):
+    game = c64_port.SECRET_OF_THE_SILVER_BLADES
+    pool = fasttravel.POOL_OF_RADIANCE
+    addr = dataclasses.replace(
+        fasttravel.SECRET_OF_THE_SILVER_BLADES, after_step=pool.after_step,
+        forward_key=pool.forward_key, redraw=pool.redraw,
+        saved_sp=pool.saved_sp, main_loop_return=pool.main_loop_return)
+    ft = actions.FastTravel(game)
+    ft.addresses = addr
+    target = TwoHopTarget({
+        c64.machine_for(game).mode_flag: bytes([WORLD]),
+        addr.slot: bytes([here]), addr.disk: bytes([3]),
+        addr.indoors: bytes([1]), addr.live_square: bytes([5, 6, 1]),
+        addr.saved_sp: bytes([0xF0]),
+        **{a: bytes([v]) for a, v in (memory or {}).items()}},
+        pc=addr.key_wait[0])
+    dest = next(a for a in goldbox_areas.AREAS_SILVER_BLADES if a.id == to)
+    outcome = ft.run(target, area=dest)
+    assert outcome.ok, outcome.message
+    assert target.reenters == [] and target.jumps == [addr.tail]
+    return target, outcome
+
+
+@pytest.mark.parametrize("held, writes", [(1, True), (0xFF, False), (0, False)])
+def test_new_verdigris_clears_its_leave_flag_only_while_it_is_one(held, writes):
+    target, outcome = _silver_blades_trip(0x10, 0x20, {0x4CD9: held})
+    assert ((0x4CD9, b"\xff") in outcome.writes) is writes
+    assert target.read(0x4CD9, 1) == bytes([0xFF if writes else held])
+
+
+@pytest.mark.parametrize("here", [0x50, 0x51, 0x52])
+def test_leaving_the_5x_group_stores_the_two_bytes_the_scripts_store(here):
+    target, outcome = _silver_blades_trip(here, 0x10)
+    assert outcome.writes[:2] == ((0xC059, b"\x09"), (0xC05A, b"\x0c"))
+    assert target.read(0xC059, 2) == b"\x09\x0c"
+
+
+@pytest.mark.parametrize("here, to", [(0x50, 0x52), (0x51, 0x50),
+                                      (0x52, 0x51)])
+def test_a_trip_inside_the_5x_group_writes_neither_byte(here, to):
+    _target, outcome = _silver_blades_trip(here, to)
+    assert not {a for a, _ in outcome.writes} & {0xC059, 0xC05A}
+
+
+def test_the_pool_rows_do_not_apply_to_silver_blades_areas():
+    """Silver Blades' area 16 and 17 are towns, not Lizardman Keep or the
+    Nomad Camp."""
+    _target, outcome = _silver_blades_trip(0x10, 0x20,
+                                         {0x4AB5: 0, 0x4A5D: 40})
+    assert 0x4AB5 not in {a for a, _ in outcome.writes}
+
+
+@pytest.mark.parametrize("unread", [0x4A5D, 0x4AB5])
+def test_an_unreadable_guard_byte_fails_the_trip_and_writes_nothing(unread):
     class Unreadable(TwoHopTarget):
         def read(self, address, length):
-            if address == 0x4AB5:
+            if address == unread:
                 raise OSError("unreadable")
             return super().read(address, length)
 
-    target = Unreadable(two_hop_machine(16).memory)
+    memory = dict(two_hop_machine(16).memory)
+    memory[0x4A5D] = bytes([40])
+    target = Unreadable(memory)
     before = dict(target.memory)
     outcome = actions.FastTravel().run(target, area=actions.area_by_id(0))
     assert not outcome.ok
@@ -1894,7 +2015,7 @@ def test_a_silver_blades_area_16_is_not_pool_of_radiances_lizardman_keep():
     assert ft.pending is None
 
 
-@pytest.mark.parametrize("area", [13, 16])
+@pytest.mark.parametrize("area", [13])
 def test_a_departure_whose_route_cannot_be_walked_starts_no_trip(area):
     """On the travel grid, or on a backend that cannot re-enter `DUNGEON`,
     the row's exit cannot be walked and a jump would skip the departure. So

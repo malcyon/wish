@@ -758,31 +758,28 @@ def test_the_caves_without_fatima_go_straight(disks, pool_gate, monkeypatch):
         assert out.ok and not t.trip.door
 
 
-def test_lizardman_keep_walks_out_through_the_window_and_goes_on(
+def test_lizardman_keep_trips_are_script_trips_with_the_guarded_write(
         disks, pool_gate, monkeypatch):
-    party_with(monkeypatch, "ALIAS")
-    m = pool(16)
-    t = pool_travel(monkeypatch)
-    out = t.run(m, area(27))
-    assert out.ok and t.trip.door and t.trip.hop is None
-    assert stood(m) == (8, 15, 2)
-    m = pool(16)
-    t = pool_travel(monkeypatch)
-    out = t.run(m, area(0), arrival=(1, 2, 0))
-    assert out.ok and t.trip.door and t.trip.hop.through == 27
-    assert out.message == engine.FastTravel.WALKING_OUT_DETOUR.format(
-        name="Shadowdale")
+    """The prologue tests `$4AB5` and `$4A5D` itself, so no trip from 16 walks
+    the window or asks the exit question."""
+    for to in (27, 0):
+        m = pool(16)
+        t = pool_travel(monkeypatch)
+        out = t.run(m, area(to), arrival=(1, 2, 0))
+        assert out.ok and not t.trip.door and t.trip.hop is None
+        assert trips.departure_prologue(POOL, 16, to) in b"".join(
+            d for _a, d in out.writes)
 
 
-def test_a_door_whose_second_leg_is_held_leaves_the_party_where_it_is(
+def test_a_lizardman_keep_trip_without_room_for_its_write_is_not_offered(
         disks, pool_gate, monkeypatch):
-    disks[27] = 7573                 # no room for the boat-exit prologue
     m = pool(16)
-    before = bytes(m.memory)
     t = pool_travel(monkeypatch)
-    out = t.run(m, area(0))
-    assert not out.ok and out.message == t.not_built
-    assert bytes(m.memory) == before and t.trip is None
+    assert t.legality(m, area(0))
+    disks[16] = 7580                 # room for a bare trip, not the 45 bytes
+    t = pool_travel(monkeypatch)
+    verdict = t.legality(m, area(0))
+    assert not verdict and verdict.reason == t.not_built
 
 
 def test_a_party_of_one_title_is_not_asked_about_another_titles_area(
