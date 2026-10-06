@@ -79,6 +79,16 @@ def at_world_menu(target, key, area):
         target.put(window + trips.WINDOW_USERPORT, port.to_bytes(4, "big"))
         target.put(port + trips.PORT_LIST, trips.empty_list(port))
         put(row.view, bytes([row.world_view]))
+        gadgets = trips.gadget_layout(row.menu_text)
+        first = SLOW + 0x42000
+        target.put(window + trips.WINDOW_FIRST_GADGET, first.to_bytes(4, "big"))
+        for i, (gid, left, width) in enumerate(gadgets):
+            at = first + 0x40 * i
+            following = at + 0x40 if i + 1 < len(gadgets) else 0
+            target.put(at, following.to_bytes(4, "big"))
+            target.put(at + trips.GADGET_LEFT_EDGE, left.to_bytes(2, "big"))
+            target.put(at + trips.GADGET_WIDTH, width.to_bytes(2, "big"))
+            target.put(at + trips.GADGET_ID, gid.to_bytes(2, "big"))
         return
     put(row.menu_kind, b"\x00\x01")
     if row.menu_text is not None:            # Silver Blades' was never read

@@ -128,8 +128,13 @@ class AmigaFastTravel(engine.FastTravel):
         if any(d.covers(here, to, back) and not d.offered
                for d in row.differences):
             return engine.Verdict(False, self.not_built)
+        lengths = self.lengths(row)
+        if lengths and to not in lengths:
+            # The title's disks have no script for that area (Silver Blades
+            # has no area 4), and its loader retries a missing one for ever.
+            return engine.Verdict(False, self.not_built)
         if here is not None and trips.free_tail(
-                row, here, self.lengths(row)) not in (1, 2):
+                row, here, lengths) not in (1, 2):
             return engine.Verdict(False, self.not_built)
         return engine.Verdict(True)
 

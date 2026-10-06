@@ -15,6 +15,7 @@ WINDOW = 0x40000
 PORT = 0x40100
 GRID = 0x41000
 ENTRY = 0x8137
+GADGETS = 0x42000
 POOL_ENTRY = 0xA000
 
 
@@ -58,6 +59,19 @@ class FakeAmiga:
         self.poke(BASE + offset, data)
 
 
+def lay_gadgets(m, layout):
+    """The window's gadget chain, head first, as `(id, LeftEdge, Width)`."""
+    for i, (gid, left, width) in enumerate(layout):
+        at = GADGETS + 0x40 * i
+        following = at + 0x40 if i + 1 < len(layout) else 0
+        m.poke(at, struct.pack(">I", following))
+        m.poke(at + trip.GADGET_LEFT_EDGE, struct.pack(">h", left))
+        m.poke(at + trip.GADGET_WIDTH, struct.pack(">H", width))
+        m.poke(at + trip.GADGET_ID, struct.pack(">H", gid))
+    m.poke(WINDOW + trip.WINDOW_FIRST_GADGET,
+           struct.pack(">I", GADGETS if layout else 0))
+
+
 def machine(key, length=0x1000, area=1, stale=False, row=None):
     """A game at its world menu in `area`, with a script of `length` bytes in
     a buffer whose tail is zero, or old bytes where `stale`. The script and
@@ -76,6 +90,7 @@ def machine(key, length=0x1000, area=1, stale=False, row=None):
         m.at(row.window_pointer, struct.pack(">I", WINDOW))
         m.poke(WINDOW + trip.WINDOW_USERPORT, struct.pack(">I", PORT))
         m.poke(PORT + trip.PORT_LIST, trip.empty_list(PORT))
+        lay_gadgets(m, trip.gadget_layout(row.menu_text))
         m.at(row.grid_spots[0].pointer, struct.pack(">I", GRID))
         m.at(row.square_spots[0].offset, bytes([9, 14, 4]))
     else:
@@ -261,12 +276,65 @@ def test_pools_gate_takes_the_grid_and_not_a_waiting_message():
     m = machine("pool-of-radiance")
     m.at(pool.mode, b"\x03")
     m.at(pool.view, b"\x03")
+    lay_gadgets(m, trip.gadget_layout(pool.grid_menu_text))
     assert trip.gate(m, pool)
     m.at(pool.view, b"\x01")
     assert not trip.gate(m, pool)
     m = machine("pool-of-radiance")
     m.poke(PORT + trip.PORT_LIST, trip.link(0x45000))
     assert not trip.gate(m, pool)
+
+
+#: Measured on Pool of Radiance (FT-L1): (id, LeftEdge, Width), head first.
+WORLD_GADGETS = ((1005, 232, 34), (1004, 176, 50), (1003, 120, 50),
+                 (1002, 80, 34), (1001, 40, 34), (1000, 0, 34))
+#: Camp puts six gadgets with the same ids behind the prefix "Camp: ", the
+#: head at (1005, 264, 34). Its other words are not recorded here, so the rest
+#: stands in as the world menu's edges moved 48 to the right.
+CAMP_GADGETS = ((1005, 264, 34),) + tuple(
+    (gid, left + 48, width) for gid, left, width in WORLD_GADGETS[1:])
+
+
+def test_the_menu_layout_rule_gives_the_measured_world_menu_and_grid():
+    pool = trip.ROWS["pool-of-radiance"]
+    assert trip.gadget_layout(pool.menu_text) == WORLD_GADGETS
+    assert trip.gadget_layout(pool.grid_menu_text) == (
+        (1004, 192, 34), (1003, 136, 50), (1002, 80, 50), (1001, 40, 34),
+        (1000, 0, 34))
+
+
+def test_pools_gate_reads_the_gadgets_and_shuts_on_camp():
+    pool = trip.ROWS["pool-of-radiance"]
+    m = machine("pool-of-radiance")
+    assert trip.menu_gadgets(m, pool) == WORLD_GADGETS
+    assert trip.gate(m, pool)
+    lay_gadgets(m, CAMP_GADGETS)
+    assert not trip.gate(m, pool)
+
+
+@pytest.mark.parametrize("change", [
+    lambda g: g[:-1] + ((1000, 8, 34),),              # one edge off
+    lambda g: g[:1] + ((1004, 176, 52),) + g[2:],     # one width off
+    lambda g: g[:2] + ((1003, 120, 50),) + g[3:-1],   # a gadget short
+    lambda g: ((1006, 280, 34),) + g,                 # a seventh gadget
+    lambda g: ((1005, 0, 34),),                       # a single gadget
+    lambda g: (),                                     # an empty chain
+])
+def test_pools_gate_shuts_on_a_near_miss(change):
+    pool = trip.ROWS["pool-of-radiance"]
+    m = machine("pool-of-radiance")
+    lay_gadgets(m, change(WORLD_GADGETS))
+    assert not trip.gate(m, pool)
+
+
+def test_pools_grid_gadgets_open_the_gate_only_in_the_grid_mode():
+    pool = trip.ROWS["pool-of-radiance"]
+    m = machine("pool-of-radiance")
+    lay_gadgets(m, trip.gadget_layout(pool.grid_menu_text))
+    assert not trip.gate(m, pool)           # the 3D view wants the world menu
+    m.at(pool.mode, b"\x03")
+    m.at(pool.view, b"\x03")
+    assert trip.gate(m, pool)
 
 
 # -- arming ------------------------------------------------------------------
@@ -573,7 +641,7 @@ def test_what_each_difference_holds():
     assert held("pools-of-darkness", 0x15, 0x16, back=True) == {
         "return_landing"}
     assert held("pools-of-darkness", 0x15, 0x16) == set()
-    assert "weak_gate" in held("pool-of-radiance", 0, 14)
+    assert "weak_gate" not in held("pool-of-radiance", 0, 14)
     assert {"leave_grid", "onto_grid"} & held("pool-of-radiance", 26, 0) == {
         "leave_grid"}
     assert "onto_grid" not in held("pool-of-radiance", 0, 26)

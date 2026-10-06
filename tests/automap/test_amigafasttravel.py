@@ -158,6 +158,15 @@ def test_an_unconfirmed_row_no_disks_or_no_write_is_unsupported(disks, monkeypat
     assert travel().legality(m, area(7)).reason == UNSUPPORTED
 
 
+def test_an_area_the_disks_have_no_script_for_is_held_and_never_armed(disks):
+    m = machine(CURSE)
+    del disks[3]
+    t = travel()
+    verdict = t.legality(m, area(3))
+    assert not verdict and verdict.reason == t.not_built
+    assert t.legality(m, area(2))
+
+
 def test_a_tier_three_area_is_unsupported(disks):
     disks[5] = 0x1DF8
     out = travel().apply(machine(CURSE), area(7))

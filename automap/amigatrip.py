@@ -77,6 +77,14 @@ RAWKEY = 0x400
 RAW_KEY_8 = 0x08
 #: `struct Window` to its `UserPort`, and `struct MsgPort` to its `mp_MsgList`.
 WINDOW_USERPORT = 0x56
+#: The window's first gadget, and the fields of an Intuition gadget.
+WINDOW_FIRST_GADGET = 0x3E
+GADGET_NEXT = 0x00
+GADGET_LEFT_EDGE = 0x04
+GADGET_WIDTH = 0x08
+GADGET_ID = 0x26
+FIRST_GADGET_ID = 1000
+CHARACTER_WIDTH = 8
 PORT_LIST = 0x14
 
 #: How the facing is stored in memory: doubled, 0 north to 6 west.
@@ -168,6 +176,9 @@ class TripRow:
     grid_views: tuple[int, ...] = ()
     #: Pool of Radiance: the `u32` game window, whose `UserPort` takes the key.
     window_pointer: int | None = None
+    #: Pool of Radiance: the travel grid's menu text, laid out like the world
+    #: menu's `menu_text` (words split on spaces).
+    grid_menu_text: bytes | None = None
     #: The player's disk: the script file's path, compared without case
     #: because three titles name theirs `ECL.GLB`, and the bytes before the
     #: script in each of its blocks.
@@ -221,6 +232,8 @@ ROWS: dict[str, TripRow] = {
         grid_areas=_GRID_AREAS,
         view=_GRID.view, grid_views=tuple(_GRID.views),
         window_pointer=0x28,
+        menu_text=b"Area Cast View Encamp Search Look",
+        grid_menu_text=b"Cast View Encamp Search Look",
         script_file="/ecl.dax", script_header=2,
         confirmed=True,
         differences=(
@@ -230,9 +243,6 @@ ROWS: dict[str, TripRow] = {
                        lambda here, to, back: here in _GRID_AREAS
                        and to not in _GRID_AREAS),
             Difference("doors", "decision 4: Pool's doors", _pool_doors),
-            Difference("weak_gate",
-                       "decision 5: the gate reads only the mode and view",
-                       lambda here, to, back: True),
         )),
     # CONFIRMED: code and 2 trips.
     "curse-of-the-azure-bonds": TripRow(
@@ -563,13 +573,50 @@ def _port(target, row: TripRow) -> int:
     return _long(target, window + WINDOW_USERPORT)
 
 
+def gadget_layout(text: bytes, prefix: int = 0) -> tuple[tuple[int, int, int], ...]:
+    """`(id, LeftEdge, Width)` of each gadget the engine's menu routine puts on
+    the window for `text`, newest (the window's head) first. It splits on
+    space and `_`, sets LeftEdge to 8 x (`prefix` characters + the word's
+    column) and Width to 8 x the word's length + 2."""
+    words = []
+    column = 0
+    for word in text.replace(b"_", b" ").split(b" "):
+        if word:
+            words.append((column, len(word)))
+        column += len(word) + 1
+    return tuple((FIRST_GADGET_ID + i,
+                  CHARACTER_WIDTH * (prefix + col),
+                  CHARACTER_WIDTH * length + 2)
+                 for i, (col, length) in reversed(list(enumerate(words))))
+
+
+def menu_gadgets(target, row, limit: int = 8) -> tuple[tuple[int, int, int], ...]:
+    """`(id, LeftEdge, Width)` of the gadgets on the game window, head first,
+    until a NextGadget of 0 or `limit` gadgets."""
+    row = row_for(row)
+    gadget = _long(target, _long(target, _base(target) + row.window_pointer)
+                   + WINDOW_FIRST_GADGET)
+    found = []
+    while gadget and len(found) < limit:
+        record = target.read(gadget, GADGET_ID + 2)
+        found.append((
+            int.from_bytes(record[GADGET_ID:GADGET_ID + 2], "big"),
+            int.from_bytes(record[GADGET_LEFT_EDGE:GADGET_LEFT_EDGE + 2], "big",
+                           signed=True),
+            int.from_bytes(record[GADGET_WIDTH:GADGET_WIDTH + 2], "big")))
+        gadget = int.from_bytes(record[GADGET_NEXT:GADGET_NEXT + 4], "big")
+    return tuple(found)
+
+
 def gate(target, row) -> bool:
     """Whether the game sits at its world menu with no key pending.
 
     Curse, Silver Blades, Pools of Darkness: menu kind 1, the world menu's
     text, the walking mode and an empty key buffer. Pool of Radiance has no
-    menu global: the walking mode and the 3D view, or the grid's mode and a
-    grid view, and an empty message list on the window's port.
+    menu global: the walking mode and the 3D view with the world menu's
+    gadgets, or the grid's mode and a grid view with the grid menu's, and an
+    empty message list on the window's port. Camp and the world menu share
+    gadget ids, so the gadgets' positions and widths tell them apart.
     """
     row = row_for(row)
     base = _base(target)
@@ -579,8 +626,13 @@ def gate(target, row) -> bool:
         mode, view = target.read_blocks([(base + row.mode, 1),
                                          (base + row.view, 1)])
         here = (mode[0], view[0])
-        if here != (row.world_mode, row.world_view) and not (
-                here[0] == row.grid_mode and here[1] in row.grid_views):
+        if here == (row.world_mode, row.world_view):
+            text = row.menu_text
+        elif here[0] == row.grid_mode and here[1] in row.grid_views:
+            text = row.grid_menu_text
+        else:
+            return False
+        if text is None or menu_gadgets(target, row) != gadget_layout(text):
             return False
         port = _port(target, row)
         return target.read(port + PORT_LIST, 12) == empty_list(port)
