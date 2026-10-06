@@ -707,7 +707,31 @@ def test_a_tilverton_trip_with_the_key_taken_leaves_the_area_byte_alone():
     m = machine(key, area=3)
     armed = trip.arm(m, key, trip.plan(1, (3, 14, 1)))
     m.at(0x3804, b"\x00")                  # the game took the key
+    m.at(0x584C, b"\x80\x14")              # and loaded the script
     written = len(m.log)
     assert trip.disarm(m, armed) is False
     assert len(m.log) == written
     assert m.read(BASE + 0x5CE1, 1) == b"\x01"
+
+
+def test_a_failed_came_from_write_puts_every_earlier_write_back():
+    key = "curse-of-the-azure-bonds"
+    m = machine(key, area=3)
+    before = bytes(m.memory)
+    m.fail_at = BASE + 0x5CE1
+    assert trip.arm(m, key, trip.plan(1, (3, 14, 1))) is None
+    assert bytes(m.memory) == before
+
+
+def test_a_key_flag_change_without_the_step_entry_changing_is_not_a_taken_trip():
+    key = "curse-of-the-azure-bonds"
+    m = machine(key, area=3)
+    before = bytes(m.memory)
+    armed = trip.arm(m, key, trip.plan(1, (3, 14, 1)))
+    m.at(0x3804, b"\x00")                  # the key flag changed, no script ran
+    assert trip.disarm(m, armed) is True
+    after = bytearray(m.memory)
+    key = armed.records[-1]                # the changed key is left to the game
+    after[key.address:key.address + len(key.data)] = \
+        before[key.address:key.address + len(key.data)]
+    assert bytes(after) == before

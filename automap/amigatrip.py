@@ -819,6 +819,7 @@ def fired(target, armed: Armed) -> bool | None:
 
     A trip that writes the area byte itself cannot be judged by it; the game
     has loaded the new script once the step entry no longer reads as written.
+    A rewrite of the entry to the value already there would go unseen.
     """
     if any(w.kind == "came_from" for w in armed.records):
         w = next(w for w in armed.records if w.kind == "entry")
@@ -883,12 +884,12 @@ def _put_back(target, armed: Armed) -> bool:
     changed area. False then, with only the key's record touched.
     """
     keys = [w for w in armed.records if w.kind == "trigger"]
-    if any(w.kind == "came_from" for w in armed.records):
+    if keys and any(w.kind == "came_from" for w in armed.records):
         # The game clears the key flag when it takes the key, and then holds
         # the area byte's 1 itself, so putting the departing area back would
-        # undo its own write.
+        # undo its own write. A key flag changed on its own is not that trip.
         (cur,) = target.read_blocks([(keys[0].address, len(keys[0].data))])
-        if cur != keys[0].data:
+        if cur != keys[0].data and fired(target, armed):
             return False
     _restore(target, keys)
     if fired(target, armed):
