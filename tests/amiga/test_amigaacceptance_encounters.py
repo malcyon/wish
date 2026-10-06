@@ -12,7 +12,8 @@ from tests.amiga.test_amigaacceptance_accept import (  # noqa: F401
     _accept,
     readings,
 )
-from tests.amiga.test_amigaacceptance_measure import clock  # noqa: F401
+from tests.amiga.test_amigaacceptance_measure import _measure, clock  # noqa: F401
+from tests.amiga.test_amigaacceptance_snapshot import FakePipe, _encounter_guard
 from tools.amiga import acceptance
 from tools.amiga.winuaesession import RouteError
 
@@ -22,8 +23,9 @@ WALK = ["NP8", "NP8"]
 class FakeSwitch:
     """Records `on` and `off` in the guest's own call list, so their order against key presses is seen."""
 
-    def __init__(self, guest, off_reply=None):
+    def __init__(self, guest, off_reply=None, off_replies=()):
         self.guest, self.off_reply = guest, off_reply
+        self.off_replies = list(off_replies)
 
     def on(self):
         self.guest.calls.append(("encounters", "on"))
@@ -31,6 +33,8 @@ class FakeSwitch:
 
     def off(self):
         self.guest.calls.append(("encounters", "off"))
+        if self.off_replies:
+            return self.off_replies.pop(0)
         return self.off_reply or {"action": "off"}
 
 
@@ -42,8 +46,8 @@ def _sequence(guest):
             out.append(call[2])
         elif call[0] == "encounters":
             out.append(f"switch {call[1]}")
-        elif call[0] == "stop":
-            out.append("stop")
+        elif call[0] in ("stop", "snapshot", "restore"):
+            out.append(call[0])
     return out
 
 
@@ -115,3 +119,71 @@ def test_no_encounters_needs_winuae():
 
 def test_the_option_builds_no_switch_when_not_given():
     assert acceptance._encounters(argparse.Namespace(no_encounters=False), "holder") == {}
+
+
+def _pipe_on(guest):
+    """A pipe whose snapshots and restores are listed among the guest's calls."""
+    fake = FakePipe(guest)
+    guest.snapshot = lambda name, holder: (guest.calls.append(("snapshot", name)),
+                                           fake.snapshot(name, holder))[1]
+    guest.restore = lambda name, holder: (guest.calls.append(("restore", name)),
+                                          fake.restore(name, holder))[1]
+    return fake
+
+
+def test_a_failed_off_is_tried_again_before_the_guest_stops(tmp_path, clock, readings):  # noqa: F811
+    guest = AcceptGuest(clock)
+    switch = FakeSwitch(guest, off_replies=[{"action": "off", "error": "a row did not go back"}])
+    _, result = _accept(tmp_path, clock, guest=guest, encounters=switch)
+    sequence = _sequence(guest)
+    # The first off, before the camp key, failed and stopped the run; the cleanup's off went through.
+    assert "did not complete" in result["error"] and result["success"] is False
+    assert sequence.count("switch off") == 2 and sequence[-2:] == ["switch off", "stop"]
+    assert "D" not in sequence and "encounters_off_error" not in result
+
+
+def test_a_walk_retry_restores_with_the_switch_off_and_walks_again_with_it_on(
+        tmp_path, clock, readings):  # noqa: F811
+    guest = AcceptGuest(clock)
+    fake = _pipe_on(guest)
+    _, result = _accept(tmp_path, clock, guest=guest, guard=_encounter_guard(fake, 1),
+                        walk_retry=2, encounters=FakeSwitch(guest))
+    sequence = _sequence(guest)
+    assert result["error"] == ""
+    restore = sequence.index("restore")
+    assert sequence[restore - 1] == "switch off"
+    assert sequence[restore + 1] == "switch on" and sequence[restore + 2] == "NP8"
+    assert all(on for key, on in _on_when_walking_and_off_before_each_save(sequence)
+               if key in WALK)
+    assert not dict(_on_when_walking_and_off_before_each_save(sequence))["D"]
+
+
+def test_a_snapshot_after_a_walk_step_is_taken_with_the_switch_off(tmp_path, clock, readings):  # noqa: F811
+    guest = AcceptGuest(clock)
+    _pipe_on(guest)
+    # Before the camp key (step 14), straight after the second walk step.
+    _, result = _accept(tmp_path, clock, guest=guest, encounters=FakeSwitch(guest),
+                        marks={13: (("snapshot", "camp"),), 14: (("restore", "camp"),)})
+    sequence = _sequence(guest)
+    assert sequence[sequence.index("snapshot") - 1] == "switch off"
+    assert sequence[sequence.index("restore") - 1] != "switch on"
+    assert all(not on for key, on in _on_when_walking_and_off_before_each_save(sequence)
+               if key in ("S", "D"))
+
+
+def test_an_answer_step_between_walk_steps_has_the_switch_off(tmp_path, clock, readings, monkeypatch):  # noqa: F811
+    route = list(acceptance.ACCEPT_ROUTE)
+    route.insert(12, (None, "world", "answer"))
+    monkeypatch.setattr(acceptance, "ACCEPT_ROUTE", tuple(route))
+    guest = AcceptGuest(clock)
+    _accept(tmp_path, clock, guest=guest, encounters=FakeSwitch(guest))
+    sequence = _sequence(guest)
+    walks = [i for i, x in enumerate(sequence) if x == "NP8"]
+    assert len(walks) == 2
+    between = sequence[walks[0] + 1:walks[1]]
+    assert between == ["switch off", "switch on"]
+
+
+def test_the_measure_route_of_a_legacy_title_takes_no_switch(tmp_path, clock):  # noqa: F811
+    with pytest.raises(RouteError, match="needs a title route"):
+        _measure(tmp_path, AcceptGuest(clock), encounters=object())

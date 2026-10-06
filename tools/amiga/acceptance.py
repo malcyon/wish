@@ -1429,6 +1429,9 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         raise RouteError("a screen guard is required unless measuring")
     if encounters is not None and (reload or diagnose):
         raise RouteError("the encounter switch belongs to an accept or measure run")
+    if encounters is not None and measure and title is None:
+        raise RouteError("the encounter switch needs a title route: the Silver Blades measure "
+                         "route never walks")
     preserve_message = "specimen preservation requires a published disk-one or substituted accept"
     staged_message = preserve_message + " or a Silver Blades accept staged with --staged-from"
     if preserve_specimen and not accept:
@@ -1723,6 +1726,9 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     def machine_step(verb: str, name: str, n: int) -> None:
         """Save the machine under `name`, or put it back as that left it and on its screen."""
         nonlocal previous_state, previous_world
+        # The machine goes back to what the snapshot held, so the snapshot must not hold the
+        # changed script: a restore into a switch that is off would leave it there for a save.
+        encounter_gate("off")
         receipt = getattr(guest, verb)(name, holder)
         key = name.lower()
         if verb == "snapshot":
@@ -1761,11 +1767,13 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             reply = encounters.on()
         elif encounters_on:
             reply = encounters.off()
-            encounters_on = False
         else:
             return
         if isinstance(reply, dict) and ("error" in reply or "stopped" in reply):
+            # Still on as far as the run knows, so the cleanup tries `off` again before the stop.
             raise RouteError(f"the encounter switch did not complete: {reply}")
+        if kind not in WALKING:
+            encounters_on = False
         log("encounters", on=encounters_on, step_kind=kind)
 
     title_limit = title.title_limit if title else TITLE_LIMIT
