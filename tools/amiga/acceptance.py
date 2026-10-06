@@ -358,6 +358,17 @@ def _reader_index(before: list[str], after: list[str]) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
+#: The step kinds the encounter switch is on for; every other step has it off.
+WALKING = ("turn", "move")
+
+#: The `noencounters` title each `--title` runs.
+ENCOUNTER_TITLES = {
+    "ssb": "secret-of-the-silver-blades", "curse": "curse-of-the-azure-bonds",
+    "pool": "pool-of-radiance", "darkness": "pools-of-darkness",
+    "darkness-reload": "pools-of-darkness", "darkness-unstarted": "pools-of-darkness",
+    "darkness-vault": "pools-of-darkness",
+}
+
 #: The snapshot a walk retry restores; a `--camp` step may not use the name.
 WALK_LEG = "walk-leg"
 
@@ -1343,7 +1354,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
               lane_check: Callable[[], Any] | None = None,
               rulebook_records: list[int] | None = None,
               marks: Mapping[int, tuple[tuple[str, str], ...]] | None = None,
-              walk_retry: int = 0) -> dict[str, Any]:
+              walk_retry: int = 0, encounters: Any = None) -> dict[str, Any]:
     """Walk the route, stopping at the first unrecognised state, and fetch both disks.
 
     A guarded state is found by polling single grabs until its static box
@@ -1390,6 +1401,12 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     `result["walk_retries"]`. No game save falls inside a leg, so a restore never strands one on
     the disk image.
 
+    `encounters` (accept and measure) is the title's random-encounter switch, an object with `on()`
+    and `off()`, `noencounters.WinuaeEncounters` in a real run. It is turned on before each `turn`
+    or `move` step, since a script reload brings the rolls back, and off before every other step,
+    so no save is made while it is on, and again after the route or an error before the guest
+    stops. The summary's `no_encounters` records whether it was given.
+
     A `move` step that answered an interstitial in the title's `move_again_after` presses its key
     again, at most `MOVE_AGAIN_LIMIT` times, listing each press in `result["moves_again"]`; a
     further answer stops the run with a `RouteError`.
@@ -1410,6 +1427,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     """
     if guard is None and not measure:
         raise RouteError("a screen guard is required unless measuring")
+    if encounters is not None and (reload or diagnose):
+        raise RouteError("the encounter switch belongs to an accept or measure run")
     preserve_message = "specimen preservation requires a published disk-one or substituted accept"
     staged_message = preserve_message + " or a Silver Blades accept staged with --staged-from"
     if preserve_specimen and not accept:
@@ -1660,6 +1679,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         "events": [], "error": "", "fetched": {},
         "deadline_seconds": deadline_seconds, "measure": measure,
         "accept": accept, "completed": False, "lost": None, "unguarded": [],
+        "no_encounters": encounters is not None,
     }
     if title is not None:
         result["remotes"] = remotes
@@ -1728,6 +1748,25 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 reach(previous_state, f"{n:02d}-{previous_state}-after-restore", 0, strict=True)
             except RouteError as exc:
                 raise RouteError(f"after restoring {name}: {exc}") from exc
+
+    encounters_on = False
+
+    def encounter_gate(kind: str) -> None:
+        """Turn the switch on for a walk step and off for any other, so a save never meets it on."""
+        nonlocal encounters_on
+        if encounters is None:
+            return
+        if kind in WALKING:
+            encounters_on = True
+            reply = encounters.on()
+        elif encounters_on:
+            reply = encounters.off()
+            encounters_on = False
+        else:
+            return
+        if isinstance(reply, dict) and ("error" in reply or "stopped" in reply):
+            raise RouteError(f"the encounter switch did not complete: {reply}")
+        log("encounters", on=encounters_on, step_kind=kind)
 
     title_limit = title.title_limit if title else TITLE_LIMIT
     boot_span = title.boot_span if title else MEASURE_TITLE_SPAN
@@ -2209,6 +2248,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                         # The measured route ends where the run would first write or answer.
                         result["events"].append({"skipped_write_key": key, "step": n})
                         break
+                    encounter_gate(kind)
                     perform(key, kind, state, n)
                 name = f"{n:02d}-{state}"
                 if title is not None:
@@ -2249,6 +2289,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     if n == 1 and skip_first:
                         result["events"].append({"skipped": key, "step": n})
                         continue
+                    encounter_gate(kind)
                     if kind == "answer":
                         run_answer()
                     else:
@@ -2362,6 +2403,13 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             except BaseException as shot_error:
                 result["failure_capture_error"] = f"{type(shot_error).__name__}: {shot_error}"
     finally:
+        if encounters_on:
+            # The game is still running here: put the script back before it can be saved.
+            try:
+                encounter_gate("off")
+            except BaseException as exc:
+                result["encounters_off_error"] = f"{type(exc).__name__}: {exc}"
+                result["error"] = result["error"] or f"the encounter switch is still on: {exc}"
         if start_attempted:
             try:
                 result["stop"] = guest.stop(holder, timeout=cleanup_limit(30))
@@ -3443,6 +3491,9 @@ def _check_emulator(args: argparse.Namespace) -> None:
     if getattr(args, "rulebook_draws", None) is not None or getattr(args, "rulebook_records", None) is not None:
         raise RouteError("--rulebook-draws reads the game's memory through WinUAE's pipe, so it needs "
                          "--emulator winuae")
+    if getattr(args, "no_encounters", False):
+        raise RouteError("--no-encounters changes the game's memory through WinUAE's pipe, so it "
+                         "needs --emulator winuae")
     if getattr(args, "journal_python", None):
         raise RouteError("the Silver Blades journal answerer has no FS-UAE route yet, so a Silver Blades "
                          "accept needs --emulator winuae")
@@ -3465,6 +3516,26 @@ def _draw_options(args: argparse.Namespace, holder: str) -> dict[str, Any]:
             **({} if records is None else {"rulebook_records": records}),
             "target": amiga.AmigaTarget(pipe, amiga.MACHINES["secret-of-the-silver-blades"]),
             "lane_check": lambda: pipe.drives(holder)}
+
+
+def _encounters(args: argparse.Namespace, holder: str) -> dict[str, Any]:
+    """`run_recon`'s `encounters` keyword for `--no-encounters`: `noencounters`' own switch on the lane."""
+    if not getattr(args, "no_encounters", False):
+        return {}
+    from automap import amiga  # noqa: PLC0415
+    from tools.amiga import noencounters  # noqa: PLC0415
+
+    name = ENCOUNTER_TITLES[args.title]
+    pipe = amiga.WinuaePipe(holder=holder)
+    return {"encounters": noencounters.WinuaeEncounters(
+        name, amiga.AmigaTarget(pipe, amiga.MACHINES[name]),
+        state=noencounters.WinuaeState(noencounters.winuae_state_path(holder)),
+        lane_check=lambda: pipe.drives(holder))}
+
+
+NO_ENCOUNTERS_HELP = ("turn the title's random encounters off in memory for the turn and move "
+                      "steps, and back on before every other step, so no save carries the "
+                      "changed script")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -3538,6 +3609,7 @@ def main(argv: list[str] | None = None) -> int:
                    help="screen guard JSON; a route state it holds must match, and the boot waits for its title")
     m.add_argument("--route", help="Silver Blades only: KEY:state,KEY:state; default is the built-in route")
     m.add_argument("--write-keys", help="Silver Blades only: comma-separated keys that write; default B")
+    m.add_argument("--no-encounters", action="store_true", help=NO_ENCOUNTERS_HELP)
     a = sub.add_parser("accept", help="guarded load, sheet, two saves around a walk and the read-back")
     common(a)
     a.add_argument("--guards", required=True, type=pathlib.Path)
@@ -3545,6 +3617,7 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--expect", default=None,
                    help="NAME:ID:MINUTES:DATA, checked against the route's later slot")
     a.add_argument("--journal-python")
+    a.add_argument("--no-encounters", action="store_true", help=NO_ENCOUNTERS_HELP)
     a.add_argument("--walk-retry", type=int, default=0, metavar="N",
                    help="snapshot before the first turn or move step, and on a screen the guard "
                         "does not match restore it and walk again, at most N times; a restore "
@@ -3751,6 +3824,7 @@ def main(argv: list[str] | None = None) -> int:
                     wait_lane=args.wait_lane,
                     published_disk_one=args.published_disk_one,
                     published_name=args.title if args.published_disk_one else None,
+                    **_encounters(args, holder),
                     **({"route": route,
                         "write_keys": write_keys,
                         "min_waits": route_silver_blades.default_min_waits(route)}
@@ -3765,6 +3839,7 @@ def main(argv: list[str] | None = None) -> int:
                     published_name=args.title if args.published_disk_one else None,
                     journal_python=getattr(args, "journal_python", None),
                     walk_retry=getattr(args, "walk_retry", 0),
+                    **_encounters(args, holder),
                     **_draw_options(args, holder),
                     preserve_specimen=getattr(args, "preserve_specimen", False),
                     specimen_issue=getattr(args, "specimen_issue", None),

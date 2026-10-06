@@ -454,6 +454,10 @@ pooled instance gets its own `vicerc` seeded from his with
 `SaveResourcesOnExit=0`, so nothing an agent runs can write settings back into
 his.
 
+### Why the encounter switches came back into conversion proof
+
+`emulator.md` used to forbid the Amiga and DOS encounter switches for any run that proves a conversion. On 2026-10-06 Donald ruled that the ban goes: changing the random roll in memory gives no reason to think a conversion test is invalid, since the test judges the saved bytes and the loaded game, not the fights. The ban had a cost. A walk that meets a random encounter in a restored snapshot meets the same one again, because a restore puts the game's random state back, and WISH-2's third-party accept met the same giants every time, so the only way through was answering FLEE. The one condition that stays is `off` before any save: the Pool, Curse and Pools of Darkness saves carry the loaded area script, and the switch edits that script, so a save made with it on would carry the edit. `tools/amiga/acceptance.py --no-encounters` turns it off before every step that is not a `turn` or a `move`, so every save step is covered, and before the guest stops.
+
 ### Why four of these rules came off
 
 Every rule above except the pool's own was there because an agent and Donald
