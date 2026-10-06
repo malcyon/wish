@@ -136,3 +136,28 @@ def test_the_travel_grid_seams_get_no_square_route():
             if reason.startswith("a travel-grid edge")}
     assert grid == {("ECL19", 26), ("ECL1A", 27), ("ECL1A", 25),
                     ("ECL1B", 26)}
+
+
+def test_pick_square_keeps_a_gated_squares_tested_facing_and_no_other():
+    open_map = Geo(bytes(GEO_SIZE))          # no walls: every edge is open
+    assert G.pick_square(open_map, [(0, 0, 3)], gated=True) == (0, 0, 3)
+    assert G.pick_square(open_map, [(0, 0, 1), (15, 4, 1)],
+                         gated=True) == (15, 4, 1)
+
+
+@needs_disks
+def test_the_seven_facing_exits_get_the_edge_their_facing_leaves_by():
+    """`ECL02` east and west, `ECL0E` south and all four of `ECL12`'s arms
+    test the facing; each gets a row standing on its own edge."""
+    from automap import fasttravel as F
+
+    expected = {
+        (2, 15): (0, (15, 3, 1)), (2, 26): (0, (0, 3, 3)),
+        (14, 24): (0, (4, 15, 2)),
+        (18, 2): (0, (4, 15, 2)), (18, 9): (0, (4, 0, 0)),
+        (18, 26): (0, (0, 4, 3)), (18, 29): (0, (15, 4, 1)),
+    }
+    rows, _skipped = G.build()
+    assert {key: rows.get(key) for key in expected} == expected
+    assert {key: (F.EXIT_ROUTES[key].entry, F.EXIT_ROUTES[key].square)
+            for key in expected if key in F.EXIT_ROUTES} == expected

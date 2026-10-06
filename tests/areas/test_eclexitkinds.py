@@ -695,3 +695,97 @@ def test_ecl14s_east_edge_exit_to_area_0_keeps_the_party_square_and_facing():
                 and any(kind not in (0x00, 0x02, 0x80) and value in position
                         for kind, value in s.operands)]
     assert touching == []
+
+
+def facing_entry0(asm):
+    """Leave east off the map and stay put facing any other way, the way
+    `ECL02`, `ECL0E` and `ECL12` switch on `$C04D` behind the edge gate."""
+    op_compare(asm, EDGE_FLAG, 0)
+    op_bare(asm, 0x16)
+    op_exit(asm)
+    asm.raw(bytes([0x25]) + _addr(EK.FACING) + _imm(4))
+    for arm in ("STAY", "LEAVE", "STAY", "STAY"):
+        asm.addr(arm)
+    asm.label("STAY")
+    op_exit(asm)
+    asm.label("LEAVE")
+    op_newecl(asm, 15)
+
+
+def test_an_edge_exit_on_the_facing_names_the_edge_it_leaves_not_square_id_1():
+    data = bytearray(GEO_SIZE)
+    data[ATTRIBUTES + 0x11] = 1          # id 1, the arm number, at (1, 1)
+    body = make_body(0, facing_entry0)
+    _script, rows = EK.analyse(TableMachine(), "TEST", "SIDE", body,
+                               Geo(bytes(data)))
+    row, = rows
+    assert row["kind"] == "edge+square"
+    assert row["index"] == 1
+    assert row["facings"] == [1]
+    assert row.get("choice") is None
+    assert row["squares"] == [(15, y, 1) for y in range(16)]
+
+
+def choice_entry0(asm):
+    """Leave by any edge on the first answer to a menu, the way `ECL15`
+    switches on `$6E79`."""
+    op_compare(asm, EDGE_FLAG, 0)
+    op_bare(asm, 0x16)
+    op_exit(asm)
+    asm.raw(bytes([0x25]) + _addr(EK.ONCHOICE) + _imm(2))
+    asm.addr("LEAVE")
+    asm.addr("STAY")
+    asm.label("STAY")
+    op_exit(asm)
+    asm.label("LEAVE")
+    op_newecl(asm, 0)
+
+
+def test_an_edge_exit_on_a_menu_answer_leaves_by_every_edge():
+    body = make_body(0, choice_entry0)
+    _script, rows = EK.analyse(TableMachine(), "TEST", "SIDE", body,
+                               Geo(bytes(GEO_SIZE)))
+    row, = rows
+    assert row["kind"] == "edge+square"
+    assert row["facings"] == [0, 1, 2, 3]
+    assert row["choice"] == (EK.ONCHOICE, [0])
+    assert len(row["squares"]) == 64     # 60 edge squares, corners twice
+    assert all(d in EK.outward_facings(x, y) for x, y, d in row["squares"])
+
+
+@needs_disks
+def test_the_eleven_edge_exits_name_the_facing_or_answer_their_scripts_test():
+    """`ECL02`, `ECL0E` and `ECL12` switch on the facing `$C04D` behind the
+    edge gate, arm N/E/S/W, and `ECL15` on the answer `$6E79` to its menu, so
+    every exit leaves from the edge its facing points off, open on that side,
+    never from a square whose id is the arm number."""
+    every = W.scripts()
+    machine = W.Machine()
+    found = {}
+    for name in ("ECL02", "ECL0E", "ECL12", "ECL15"):
+        if name not in every:
+            pytest.skip(f"{name} not reachable on these disks")
+        side, body = every[name]
+        _gside, gbody = W._file("GEO" + name[3:])
+        _script, rows = EK.analyse(machine, name, side, body,
+                                   Geo.from_bytes(gbody))
+        for row in rows:
+            if row["kind"] == "edge+square":
+                found[(name, row["at"])] = (
+                    row["target"], row["facings"], row.get("choice"),
+                    row["squares"])
+    assert found == {
+        ("ECL02", 0x9985): (18, [0], None, [(4, 0, 0), (11, 0, 0)]),
+        ("ECL02", 0x998F): (15, [1], None,
+                            [(15, 3, 1), (15, 4, 1), (15, 11, 1)]),
+        ("ECL02", 0x9999): (26, [3], None, [(0, 3, 3), (0, 4, 3), (0, 11, 3)]),
+        ("ECL0E", 0x9960): (26, [0], None, [(4, 0, 0), (11, 0, 0)]),
+        ("ECL0E", 0x9976): (26, [1], None, [(15, 4, 1), (15, 11, 1)]),
+        ("ECL0E", 0x9983): (24, [2], None, [(4, 15, 2), (11, 15, 2)]),
+        ("ECL12", 0x99EC): (9, [0], None, [(4, 0, 0), (11, 0, 0)]),
+        ("ECL12", 0x99F6): (29, [1], None, [(15, 4, 1), (15, 11, 1)]),
+        ("ECL12", 0x9A00): (2, [2], None, [(4, 15, 2), (11, 15, 2)]),
+        ("ECL12", 0x9A16): (26, [3], None, [(0, 4, 3), (0, 11, 3)]),
+        ("ECL15", 0x998F): (0, [0, 1, 2, 3], (EK.ONCHOICE, [0]),
+                            [(7, 15, 2), (8, 15, 2)]),
+    }

@@ -59,7 +59,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 from goldbox import areas as A  # noqa: E402
 from goldbox.geo import Geo  # noqa: E402
 from tools.areas import eclwalk as W  # noqa: E402
-from tools.areas.eclexitkinds import analyse  # noqa: E402
+from tools.areas.eclexitkinds import analyse, outward_facings  # noqa: E402
 
 TITLE = "Pool of Radiance"
 
@@ -86,25 +86,6 @@ def area_by_ecl(title: str = TITLE) -> dict[str, int]:
     return {row.ecl: row.id for row in A.areas_for_title(title)}
 
 
-def outward_facings(x: int, y: int) -> list[int]:
-    """Which directions actually leave the 16x16 grid from `(x, y)`.
-
-    `goldbox.geo`'s own `NORTH, EAST, SOUTH, WEST = 0, 1, 2, 3`. A corner
-    square can leave two ways; either is fine, so both are offered in a
-    fixed order and the first `Geo.is_passable` confirms open wins.
-    """
-    out = []
-    if y == 0:
-        out.append(0)
-    if x == 15:
-        out.append(1)
-    if y == 15:
-        out.append(2)
-    if x == 0:
-        out.append(3)
-    return out
-
-
 def pick_square(geo: Geo | None, squares, gated: bool):
     """One square from a route's candidates, or None if none will do.
 
@@ -114,14 +95,17 @@ def pick_square(geo: Geo | None, squares, gated: bool):
     any -- except for a gated exit,
     where it also has to be a square `Geo.is_passable` says is open on the
     side that leaves the map, since `$10EC` never sets `$6DD5` for a step
-    through a wall.
+    through a wall. A gated candidate that names its facing is kept only if
+    that facing is one that leaves the map.
     """
-    for x, y, *facing in squares:
+    for x, y, *given in squares:
         if not gated:
-            return (x, y, *facing)
+            return (x, y, *given)
         if geo is None:
             continue
         for facing in outward_facings(x, y):
+            if given and facing != given[0]:
+                continue
             if geo.is_passable(x, y, facing):
                 return (x, y, facing)
     return None

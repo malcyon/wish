@@ -22,7 +22,10 @@ menu, printed text, a `LOADCHAR`, a quest flag, a position write.
 
 Six kinds come out of the 79 exits on the disks here. `edge` is entry 0
 gated on `$6DD5` with no `ONGOTO` on the route; `square` is entry 1's
-`ONGOTO`; `edge+square` is entry 0, gated *and* carrying an `ONGOTO`;
+`ONGOTO`; `edge+square` is entry 0, gated *and* carrying an `ONGOTO` -- on
+the facing `$C04D` or on a menu answer in `$6E79`, never on a square id, so
+its squares are the map-edge squares a step leaves by in the facings that
+reach the exit;
 `square-via-entry0` is entry 0's `ONGOTO` with no gate;
 `entry1-unconditional` is entry 1 with neither. The sixth, `entryN`, is the
 other three entries -- 2 before camping, 3 camp interrupted, 4 after loading
@@ -423,6 +426,60 @@ def entry0_squares(script, path, og, exit_at, geo, row):
         row["squares"] = squares_with(geo, mask, row["index"])
 
 
+def outward_facings(x: int, y: int) -> list[int]:
+    """Which directions leave the 16x16 grid from `(x, y)`, in `goldbox.geo`'s
+    order `NORTH, EAST, SOUTH, WEST = 0, 1, 2, 3`; a corner square has two."""
+    out = []
+    if y == 0:
+        out.append(0)
+    if x == 15:
+        out.append(1)
+    if y == 15:
+        out.append(2)
+    if x == 0:
+        out.append(3)
+    return out
+
+
+def edge_squares(geo, facings):
+    """`(x, y, facing)` for every square a step in one of `facings` leaves the
+    map from, open on that side: `$10EC` sets `$6DD5` for no other step."""
+    if geo is None:
+        return None
+    return [(x, y, d) for y in range(16) for x in range(16)
+            for d in outward_facings(x, y)
+            if d in facings and geo.is_passable(x, y, d)]
+
+
+def edge_dispatch(script, path, og, exit_at, geo, row):
+    """Fill `row` for an `ONGOTO` behind entry 0's `$6DD5` gate.
+
+    The edge scripts switch on the facing `$C04D` (`ECL02`, `ECL0E`, `ECL12`)
+    or on the answer `$6E79` to a menu the route has just shown (`ECL15`).
+    `row["facings"]` is each facing from which the exit runs, and
+    `row["choice"]` the `(variable, answers)` a menu selector needs. An
+    `ONGOTO` on the masked square id takes the arm as the id.
+    """
+    selector = _var(og.operands[0])
+    mask, var = mask_before(script, path)
+    if selector is not None and selector == var:
+        row["squares"] = squares_with(geo, mask, row["index"])
+        return
+    if selector is None:
+        return
+    arms = len(og.operands) - W.COUNTED[og.op]
+    answers = [n for n in range(arms)
+               if reaches(script, og.at, exit_at, {selector: n})]
+    if selector == FACING:
+        facings = [d for d in answers if d < 4]
+    else:
+        row["choice"] = (selector, answers)
+        facings = [d for d in range(4) if reaches(
+            script, script.entries[0], exit_at, {FACING: d})]
+    row["facings"] = facings
+    row["squares"] = edge_squares(geo, facings)
+
+
 def analyse(machine, name, side, body, geo):
     script = W.Script(machine, name, side, body)
     entries = script.entries
@@ -464,8 +521,7 @@ def analyse(machine, name, side, body, geo):
             elif og is not None and gated:
                 row["kind"] = "edge+square"
                 row["index"] = k
-                mask, _var = mask_before(script, path)
-                row["squares"] = squares_with(geo, mask, k)
+                edge_dispatch(script, path, og, st.at, geo, row)
             elif og is not None:
                 row["kind"] = "square-via-entry0"
                 row["index"] = k
@@ -512,6 +568,10 @@ def main():
                 if len(r["squares"]) > 6:
                     sq += "..."
             idx = f" index={r['index']}" if r["index"] is not None else ""
+            if r.get("facings") is not None:
+                idx += f" facings={r['facings']}"
+            if r.get("choice") is not None:
+                idx += f" ${r['choice'][0]:04X} in {r['choice'][1]}"
             print(f"  ${r['at']:04X} -> {where:10s} {r['kind']:22s} "
                   f"entries={r['entries']}{idx}{sq} "
                   f"{','.join(r['features']) or '-'}")

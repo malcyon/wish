@@ -1226,11 +1226,11 @@ def test_fasttravel_falls_back_to_the_tail_jump_when_the_backend_cannot_reenter(
 
 
 def test_a_one_door_area_is_the_only_kind_that_is_walked_out_of():
-    """Ten areas have exactly one exit once the ones that come back into the
+    """Eight areas have exactly one exit once the ones that come back into the
     same area are dropped; whether the party is walked out of it depends on
     whether that door can start a fight."""
     one = {a for a in range(31) if len(fasttravel.exits_from(a)) == 1}
-    assert one == {1, 2, 9, 13, 14, 16, 17, 21, 23, 28}
+    assert one == {1, 9, 13, 16, 17, 21, 23, 28}
     assert fasttravel.exits_from(13) == (
         (27, fasttravel.EXIT_ROUTES[(13, 27)]),)
     # `(25, 25)` comes back into the same area and can carry nobody anywhere.
@@ -1271,8 +1271,8 @@ def test_the_two_hop_runs_the_one_door_the_area_has():
 
 #: The destination each area with more than one known exit is walked out
 #: through: no route that can start a fight, then the lowest id.
-MULTI_DOOR_CHOICE = {0: 8, 7: 5, 22: 23, 25: 19, 26: 0, 27: 0}
-ONE_DOOR_AREAS = (1, 2, 9, 13, 14, 16, 17, 21, 23, 28)
+MULTI_DOOR_CHOICE = {0: 8, 2: 15, 7: 5, 14: 24, 18: 2, 22: 23, 25: 19, 26: 0, 27: 0}
+ONE_DOOR_AREAS = (1, 9, 13, 16, 17, 21, 23, 28)
 #: One-door areas whose only door can start a fight: Fast Travel blocks them.
 ONE_DOOR_FIGHTS = (1, 28)
 ONE_DOOR_WALKS = tuple(a for a in ONE_DOOR_AREAS if a not in ONE_DOOR_FIGHTS)
@@ -1316,7 +1316,7 @@ def test_choose_door_takes_a_single_door_only_when_it_cannot_fight():
     assert fasttravel.choose_door([]) is None
 
 
-def test_the_six_areas_with_several_doors_each_choose_the_expected_door():
+def test_the_nine_areas_with_several_doors_each_choose_the_expected_door():
     many = {a for a in range(31) if len(fasttravel.exits_from(a)) > 1}
     assert many == set(MULTI_DOOR_CHOICE)
     for area_id, expected in MULTI_DOOR_CHOICE.items():
@@ -1365,7 +1365,7 @@ def test_the_two_hop_walks_out_of_the_door_the_rule_chooses(here):
 
 
 @pytest.mark.parametrize("here", ONE_DOOR_WALKS)
-def test_the_eight_one_door_areas_whose_door_cannot_fight_walk_out(here):
+def test_the_six_one_door_areas_whose_door_cannot_fight_walk_out(here):
     """A one-door area walks out of its only door when that door cannot start
     a fight."""
     target = two_hop_machine(here)
