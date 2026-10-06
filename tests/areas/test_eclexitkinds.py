@@ -686,6 +686,7 @@ def test_the_79_exits_still_break_down_the_way_the_readme_row_says():
     assert dict(features) == {
         "call": 41, "flag": 17, "text": 47, "position": 31,
         "combat": 5, "loadchar": 3, "menu": 28, "membership": 1,
+        "scratch": 13,
     }
 
 

@@ -183,6 +183,9 @@ def features(script, path, exit_at):
                     seen.add("membership")
         elif st.op == 0x24:
             seen.add("combat")
+        if st.op == COMPARE and any(
+                k != 0 and 0x4A00 <= v <= 0x4A1F for k, v in st.operands):
+            seen.add("scratch")
     return sorted(seen)
 
 

@@ -2011,8 +2011,9 @@ class FastTravel(Action):
         run the departing handler, instead of entering `NEWECL` at its tail --
         `#207 (Run an exit's own handler before Fast Travel warps out)`.
 
-        Only `route.square` is written: everything else `newecl_writes` would
-        set -- the disk byte, `came_from`, the scratch wipe -- is the
+        Only `route.square` and the route's `EXIT_PRESETS` bytes are written:
+        everything else `newecl_writes` would set -- the disk byte,
+        `came_from`, the scratch wipe -- is the
         handler's own job now, made by its own `NEWECL` once the player has
         answered whatever it asks, the same as a walked exit. This is why
         there is no failure branch for "the handler said no": the party
@@ -2031,6 +2032,12 @@ class FastTravel(Action):
                        if self.current_indoors(target, addr) == 0 else None)
         x, y, *rest = route.square
         facing = rest[0] if rest else (was.square[2] if was.square else 0)
+        # Bytes the handler tests before it will act, read first so a failed
+        # re-entry puts them back.
+        presets = fasttravel.EXIT_PRESETS.get((here, to), ())
+        before = [(a, _read(target, a, 1)) for a, _v in presets]
+        for a, v in presets:
+            target.write(a, bytes((v,)))
         target.write(addr.live_square,
                      bytes((x & 0xFF, y & 0xFF, facing & 0xFF)))
         if not reenter(target, addr, route.entry):
@@ -2045,6 +2052,9 @@ class FastTravel(Action):
             if was.square is not None:
                 target.write(addr.live_square,
                              bytes(v & 0xFF for v in was.square))
+            for a, old in before:
+                if old:
+                    target.write(a, old)
             return Outcome(False,
                            FASTTRAVEL_FAILED,
                            ())

@@ -429,3 +429,21 @@ def choose_door(doors: Sequence[tuple[int, ExitRoute]]
     """
     safe = [row for row in doors if not row[1].combat]
     return min(safe, key=lambda row: row[0]) if safe else None
+
+
+#: `{(from_area, to_area): ((address, value), ...)}`, written by hand: the byte
+#: writes an exit's own handler needs before it will run at all, for a handler
+#: that tests a scratch byte `NEWECL` and Fast Travel's own wipe leave at zero.
+#: The three New Phlan dock rows are the harbour master's "passage bought" flag
+#: (`$4A01`, which the dock script tests and stops silently on while it is 0)
+#: and his destination index (`$4AC4`: 0 Sokal Keep, 1 the East Window, 2 the
+#: Middle Window, whose landing is the square the tail jump uses too).
+#:
+#: `tests/generate/test_genexits.py` pins which routes test a scratch byte, so
+#: a regenerated `EXIT_ROUTES` row that does needs a row here or a reason not to.
+EXIT_PRESETS: Mapping[tuple[int, int], tuple[tuple[int, int], ...]] = (
+    MappingProxyType({
+        (0, 21): ((0x4A01, 1), (0x4AC4, 0)),
+        (0, 26): ((0x4A01, 1), (0x4AC4, 2)),
+        (0, 27): ((0x4A01, 1), (0x4AC4, 1)),
+    }))

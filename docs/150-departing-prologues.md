@@ -275,7 +275,9 @@ Caves exit does to an NPC in the party is not understood, and Fast Travel
 skips it)` is closed; the mechanism is `#207 (Run an exit's own handler
 before Fast Travel warps out)`. **The shipped path has one live sample, by
 its author** -- an independent run through `tools/areas/fasttravelrun.py` would
-make it more than that.
+make it more than that. The New Phlan dock's three rows stop silently unless the
+harbour master's two scratch bytes are set first, so `EXIT_PRESETS` in
+`automap/fasttravel.py` writes them before the re-entry.
 
 The hard part is not this exit. **An area pair does not name a handler**:
 `ECL0D` has two `NEWECL 27` statements, `$9A20` with nothing in front of it and

@@ -182,3 +182,29 @@ def test_yarashs_pyramid_exits_stand_on_the_squares_their_tables_name():
     sites = {(name, target) for name, _at, target, reason in skipped
              if reason.startswith("a travel-grid site")}
     assert {("ECL19", 19), ("ECL19", 28), ("ECL1A", 0), ("ECL1B", 0)} <= sites
+
+
+@needs_disks
+def test_the_routes_that_check_a_scratch_byte_are_the_pinned_ones():
+    """A route that tests `$4A00`-`$4A1F` can `EXIT` silently, because a
+    fast travel arrives with that range zeroed. Read the new row's gate, and
+    add an `EXIT_PRESETS` row if it can `EXIT`."""
+    from tools.areas.eclexitkinds import analyse
+
+    by_ecl = G.area_by_ecl(G.TITLE)
+    machine = G.W.Machine()
+    rows, _skipped = G.build()
+    scratch = set()
+    for name, (side, body) in G.W.scripts().items():
+        from_area = by_ecl.get(name)
+        if from_area is None:
+            continue
+        _gside, gbody = G.W._file("GEO" + name[3:])
+        geo = Geo.from_bytes(gbody) if gbody is not None else None
+        _script, analysed = analyse(machine, name, side, body, geo)
+        for r in analysed:
+            key = (from_area, r["target"])
+            if key in rows and "scratch" in r["features"]:
+                scratch.add(key)
+    assert scratch == {(0, 8), (0, 11), (0, 21), (0, 26), (0, 27), (1, 25),
+                       (21, 0), (28, 25)}

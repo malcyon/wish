@@ -1156,6 +1156,59 @@ def test_fasttravel_exit_failure_message_does_not_claim_the_party_stood_still(
         "ERROR: Unable to Fast Travel. The party is back where it started.")
 
 
+def new_phlan_machine() -> ReenterTarget:
+    """The party in New Phlan (area 0), away from the dock, with the harbour
+    master's two scratch bytes at zero as a fresh arrival leaves them."""
+    addr = fasttravel.POOL_OF_RADIANCE
+    return ReenterTarget({
+        c64.MODE_FLAG_POOL: bytes([WORLD]),
+        addr.slot: bytes([0]),
+        addr.disk: bytes([3]),
+        addr.indoors: bytes([1]),
+        addr.live_square: bytes([5, 6, 1]),
+        addr.saved_sp: bytes([0xF0]),
+        0x4A01: bytes([0]),
+        0x4AC4: bytes([0]),
+    })
+
+
+@pytest.mark.parametrize("to, destination", [(21, 0), (26, 2), (27, 1)])
+def test_fasttravel_makes_the_harbour_masters_writes_before_the_dock(
+        to, destination):
+    """The dock script stops silently while `$4A01` is 0, so the party must
+    be given the passage and the destination before it is stood on the pier."""
+    target = new_phlan_machine()
+    addr = fasttravel.POOL_OF_RADIANCE
+    outcome = actions.FastTravel().run(target, area=actions.area_by_id(to))
+    assert outcome.ok, outcome.message
+    assert target.read(0x4A01, 1) == bytes([1])
+    assert target.read(0x4AC4, 1) == bytes([destination])
+    assert target.read(addr.live_square, 2) == bytes([15, 1])
+    assert target.reenters == [(addr.after_step, 0xF0 - 2)]
+    assert target.jumps == []
+
+
+def test_fasttravel_restores_the_harbour_masters_bytes_when_reentry_fails(
+        monkeypatch):
+    target = new_phlan_machine()
+    addr = fasttravel.POOL_OF_RADIANCE
+    target.write(0x4AC4, bytes([3]))
+    original = target.read(addr.live_square, 3)
+    monkeypatch.setattr(actions, "reenter", lambda *a, **k: False)
+    outcome = actions.FastTravel().run(target, area=actions.area_by_id(26))
+    assert not outcome.ok
+    assert target.read(0x4A01, 1) == bytes([0])
+    assert target.read(0x4AC4, 1) == bytes([3])
+    assert target.read(addr.live_square, 3) == original
+
+
+def test_exit_presets_are_exactly_the_three_dock_rows():
+    """A regenerated `EXIT_ROUTES` that moves the dock fails here."""
+    assert set(fasttravel.EXIT_PRESETS) == {(0, 21), (0, 26), (0, 27)}
+    for key in fasttravel.EXIT_PRESETS:
+        assert fasttravel.EXIT_ROUTES[key].square == (15, 1)
+
+
 def test_fasttravel_falls_back_to_the_tail_jump_off_the_direct_exit_table():
     """A departure with no row in `EXIT_ROUTES` at all -- Valhingen Graveyard
     (10) has no scripted exit -- still enters `NEWECL` at its tail: there is
