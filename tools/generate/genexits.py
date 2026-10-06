@@ -82,6 +82,20 @@ KINDS = {
 }
 
 
+#: Squares the generic rule gets wrong, keyed by `(script, NEWECL address)`.
+#: `square-via-entry0` takes the `ONGOTO` arm index as the square id, but entry
+#: 0 of these two scripts loops over a table of `(id, facing, action)` rows and
+#: the arm is the row's action, so the id and the facing are read from the
+#: table. ECL07 `$9971`: the stairs row for action 1 ends at area 5 only at
+#: square id 1, which is (5,7), facing W (3). ECL10 `$9A8C`: the one row whose
+#: action reaches `NEWECL 27` is id 15 facing S (2), which is (8,15). The other
+#: `square-via-entry0` exits are unchecked and keep the generic square.
+SCRIPT_SQUARES = {
+    ("ECL07", 0x9AC9): (5, 7, 3),
+    ("ECL10", 0x9CD5): (8, 15, 2),
+}
+
+
 def area_by_ecl(title: str = TITLE) -> dict[str, int]:
     return {row.ecl: row.id for row in A.areas_for_title(title)}
 
@@ -177,7 +191,9 @@ def build_with_combat(title: str = TITLE):
             if key in rows:
                 continue  # a second route to the same pair; see the docstring
             entry, gated = KINDS[r["kind"]]
-            square = pick_square(geo, r["squares"], gated)
+            square = SCRIPT_SQUARES.get((name, r["at"]))
+            if square is None:
+                square = pick_square(geo, r["squares"], gated)
             if square is None:
                 skipped.append((name, at, r["target"],
                                 "no square is open on the side that leaves "

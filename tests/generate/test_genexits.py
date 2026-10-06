@@ -101,3 +101,16 @@ def test_the_kobold_caves_exit_is_a_direct_route_to_the_east_window():
     entry, square = rows[(13, 27)]
     assert entry == 1                  # dispatched from entry 1, a square exit
     assert len(square) == 2            # not gated: no facing needed
+
+
+@needs_disks
+def test_valjevo_and_lizardman_exits_stand_where_the_script_tests():
+    """Entry 0 of `ECL07` leaves only from (5,7) facing W, and `ECL10` only
+    from (8,15) facing S; the arm index is not the square id."""
+    from automap import fasttravel as F
+
+    rows, _skipped = G.build()
+    assert rows[(7, 5)] == (0, (5, 7, 3))
+    assert rows[(16, 27)] == (0, (8, 15, 2))
+    assert F.EXIT_ROUTES[(7, 5)].square == (5, 7, 3)
+    assert F.EXIT_ROUTES[(16, 27)].square == (8, 15, 2)
