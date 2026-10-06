@@ -53,7 +53,7 @@ pool-of-radiance 6BAD 6BB6`) finds every writer:
 | `POOLRE $0BF9` | the same bytes as `GEN`'s racial seed, at the same offset; whether this file is ever loaded is unknown |
 | `SPELLE04 $ADD4` | **the grant**, when a passive item is readied: item byte `+14` goes into the first free slot scanning 9 down to 0; an equal byte already there means stop; no free slot means `$ADEF`, which writes it into the array instead |
 | `SPELLE04 $AE13` | **the revoke**, when it is un-readied: find the id in the ten slots and zero it, else look in the array |
-| `SPELLE04 $AA22` (scan at `$AA16`) | **camp-cast Animate Dead** (`ECL65` row 36, `$A9C2`): for each party member at status `$83`, up to the caster's level, writes 32 into the first free slot scanning 9 down to 0, next to status `$03` and creature type 4. The combat route (`SPELLE00 $AB29`) writes no slot |
+| `SPELLE04 $AA22` (scan at `$AA16`) | **camp-cast Animate Dead** (`ECL65` row 36, `$A9C2`): for each party member at status `$83`, up to the caster's level, writes 32 into the first free slot scanning 9 down to 0, next to status `$03` and creature type 4. The combat route (`SPELLE00 $AB29`) writes no slot, though it does write the row: its combat row's id is `$20`, and `COMBAT $29F7` passes it to the row writer `ECL64 $99D1` |
 | `ECL64 $9ACD` / `$9AFA` | the same pair for combat |
 | `SQRPACI64 $063A`, `$065A` | clear the slot the predicate just matched, on a cure -- 31 and 55 |
 | `SQRPACI64 $04FB` -> `$059A` | the temple's Raise Dead, not a cure: on a survived roll it asks for id 32 through the array-first predicate, then zeros `$6BAD,X`; the same path restores creature type, movement, fighter level, turning power and PC control, but does not explicitly clear the effect-array id, side or turning class |
@@ -695,11 +695,28 @@ wrote?)`'s ids all sat in slot 9.
 Raising Animate Dead's zombie at the temple undoes the zombie but leaves
 its marker: trait slot 9 = 32 and an effect row (id 32, duration 0, so it
 never ages out). The registered raised save holds both, on a character the
-sheet shows as alive. Only three routines read id 32, and none changes
-anything a living character shows:
+sheet shows as alive. Six routines read id 32, and none changes anything a
+living character shows. An earlier count of three missed the combat
+readers, which reach the row through id loops and a handler table, not a
+literal 32:
 
 * **Camp's Dispel** (`SPELLE04 $AA5B`-`$AA83`) finds the row, rolls against
   the caster's level, and on success zeroes the row. Trait slot 9 stays.
+* **Combat's Dispel** (`SPELLE00 $ABCE`-`$AC06`) tries ids `$3F` down to 1
+  through the array-only predicate, so it finds the row and never the slot,
+  and removes it through `SQRPACI01 $07E4`.
+* **The knock-out strip** (`COMBAT $29C4`, run from `$0DC7` when a combatant
+  falls) removes one row of every id from `$7F` down to 1 except the 20 on
+  the keep list at `$29E3`. 32 is not on that list, so a raised character who
+  falls in a fight loses the row.
+* **Handler 32** (`SPELLE01 $A889`: the handler table `$DA63`/`$DAEE` at
+  index 32, overlay byte `$DC33` = 1, the same routine as handler 22)
+  revokes id 55 and stores status `$83` with message `$2E`. It runs from
+  `SQRPACI01 $07E4` only when the removed row's magnitude has bit 7 set
+  (`$07EF`). Animate Dead writes the caster level there (1 to 6), so neither
+  Dispel nor the strip reaches it with an ordinary row. Camp removal
+  (`CAMP $131F`) looks the id up in `ECL65 $9AD5`, which holds no 32, and
+  runs nothing.
 * **Being animated again** writes 32 into the next free trait slot, because
   slot 9 already holds it, and clears his own row before writing a new one.
 * **A second raise at the temple** (`SQRPACI64 $059A`-`$05D0`) asks for id 32
