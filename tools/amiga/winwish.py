@@ -18,7 +18,6 @@ run uses.
     winwish.py shot   --holder H --window wish --out wish.png
     winwish.py restart --holder H
     winwish.py click  --holder H --automation-id card_1_level_up
-    winwish.py click  --holder H --automation-id ft_combo --pick "Tilverton streets"
     winwish.py click  --holder H --expand Save
     winwish.py click  --holder H File "Save As..." --shot-after PNG
     winwish.py click  --holder H File Save --type MenuItem --controls-after FILE
@@ -592,53 +591,10 @@ def _use_functions() -> list[str]:
     ]
 
 
-def _pick_function(item: str) -> list[str]:
-    """`Pick-Item`: open a combo box, select the list item named `item` from its popup, close it.
-
-    The items exist only while the popup is open, and UI Automation lists one element many
-    times, so the item is found through `Get-Controls` (one RuntimeId each) and must be unique.
-    The combo is only touched through `ExpandCollapsePattern`; the item through `SelectionItemPattern`,
-    or `Invoke` when it offers no selection.  Nothing is sent to the desktop.
-    """
-    return [
-        f"  $item = {q(item)}",
-        "  function Pick-Item($combo) {",
-        "    $o = $null",
-        "    if (-not $combo.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern, [ref]$o)) { throw 'the control cannot be expanded' }",
-        # Only items that were not listed before Expand belong to this combo's popup; an item of
-        # another list with the same name must not match.
-        "    $before = @{}",
-        "    foreach ($e in (Get-Controls)) { if ((Get-Kind $e) -eq 'ListItem') { try { $before[($e.GetRuntimeId() -join '.')] = $true } catch {} } }",
-        # An unreadable RuntimeId counts as not in the before set, as in the snapshot and Get-Controls.
-        "    function Get-Rid($e) { try { return ($e.GetRuntimeId() -join '.') } catch { return '' } }",
-        "    $expand = $o; $expand.Expand()",
-        # The try starts right after Expand, so a throw while polling still collapses the combo.
-        "    try {",
-        # A stopwatch, so the time a tree walk takes counts against the wait.
-        "      $clock = [System.Diagnostics.Stopwatch]::StartNew()",
-        "      $items = @()",
-        "      while ($true) {",
-        "        $items = @(Get-Controls | Where-Object { (Get-Kind $_) -eq 'ListItem' -and $_.Current.Name -eq $item -and "
-        "-not $before.ContainsKey((Get-Rid $_)) })",
-        f"        if ($items.Count -gt 0 -or $clock.Elapsed.TotalSeconds -gt {UI_WAIT}) {{ break }}",
-        "        Start-Sleep -Milliseconds 200",
-        "      }",
-        "      if ($items.Count -eq 0) { throw \"no list item named $item\" }",
-        "      if ($items.Count -gt 1) { throw \"$($items.Count) list items named $item\" }",
-        "      $p = $null",
-        "      if ($items[0].TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$p)) { $p.Select(); $how = 'selected' }",
-        "      elseif ($items[0].TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$p)) { $p.Invoke(); $how = 'invoked' }",
-        "      else { throw \"the list item $item offers no way to be selected\" }",
-        "    } finally { try { $expand.Collapse() } catch {} }",
-        "    return $how + ' ' + $item",
-        "  }",
-    ]
-
-
 def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, out: str,
              prefix: bool = False, automation_id: str | None = None,
              expand: bool = False, shot_after: str | None = None,
-             controls_after: str | None = None, pick: str | None = None) -> str:
+             controls_after: str | None = None) -> str:
     """What the session 1 task runs: list the controls of this holder's Wish, or click some.
 
     `action` is `controls` (one line per control: `Type|Name|AutomationId|enabled=B|state|RuntimeId|IsOffscreen|
@@ -665,10 +621,7 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
     path once its last name is used, before the picture: `Type|Name|AutomationId|enabled=B|
     state|RuntimeId|IsOffscreen|BoundingRectangle`, so duplicates of one element can be told
     from distinct ones.  It is a file of its own, not part of the answer, so nothing
-    shortens it.  With `pick` (which needs `automation_id`), the `click` takes the control as
-    a combo box: it expands it with `ExpandCollapsePattern`, waits for the list item of
-    that exact name its popup shows, selects it with `SelectionItemPattern` (or `Invoke`),
-    and collapses the combo, all in this one task, because the items exist only while the popup is open.
+    shortens it.
     """
     tmp = out + ".tmp"
     names_ps = ", ".join(q(n) for n in names) or "@()"
@@ -681,10 +634,6 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
         raise WinwishError("only a click can take a shot after")
     if controls_after is not None and action != "click":
         raise WinwishError("only a click can dump controls after")
-    if pick is not None and (action != "click" or not by_id or expand):
-        raise WinwishError("--pick needs a click by --automation-id, and no --expand")
-    if pick is not None and (shot_after is not None or controls_after is not None):
-        raise WinwishError("--pick goes with --automation-id alone, not --shot-after or --controls-after")
     return "\n".join([
         "$ErrorActionPreference = 'Stop'",
         f"$build = {q(build)}",
@@ -742,7 +691,6 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
         "    return (Get-Line $e) + '|' + $rid + '|offscreen=' + $off + '|' + $rect",
         "  }",
         *(_expand_function() if expand else _use_functions()),
-        *(_pick_function(pick) if pick is not None else []),
         f"  if ({q(action)} -eq 'close') {{",
         "    if ($procs.Count -eq 0) { [void]$lines.Add('gone') } else {",
         "      $ids = @($procs | ForEach-Object { $_.Id })",
@@ -787,7 +735,7 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
         f"      if ($hit.Count -eq 0) {{ throw \"no control {'with automation id' if by_id else 'named'} $name\" }}",
         "      if ($hit.Count -gt 1) { throw \"$($hit.Count) controls match ${name}: \" + (($hit | ForEach-Object { Get-Line $_ }) -join ' ; ') }",
         "      if (-not $hit[0].Current.IsEnabled) { throw \"$($hit[0].Current.Name) is disabled\" }",
-        "      [void]$lines.Add($hit[0].Current.Name + ' -> ' + (" + ("Pick-Item $hit[0]" if pick is not None else "Use-Control $hit[0]") + "))",
+        "      [void]$lines.Add($hit[0].Current.Name + ' -> ' + (Use-Control $hit[0]))",
         "      Start-Sleep -Milliseconds 400",
         "    }",
         *(["    " + line for line in _dump_lines(controls_after)] if controls_after else []),
@@ -993,13 +941,10 @@ def _session_one(guest: "Guest", holder: str, make_inner: Callable[[str], str],
 
 def ui(guest: "Guest", holder: str, action: str, names: tuple[str, ...] = (),
        kind: str | None = None, prefix: bool = False,
-       automation_id: str | None = None, expand: bool = False,
-       pick: str | None = None) -> list[str]:
+       automation_id: str | None = None, expand: bool = False) -> list[str]:
     """List Wish's controls (`controls`), click `names` in turn or the one control with
-    `automation_id` (`click`, open its menu with `expand`, or choose `pick` from the combo box it is),
-    or close Wish's windows (`close`)."""
-    return _ui(guest, holder, action, names, kind, prefix, automation_id, expand, False,
-               pick=pick)[0]
+    `automation_id` (`click`, or open its menu with `expand`), or close Wish's windows (`close`)."""
+    return _ui(guest, holder, action, names, kind, prefix, automation_id, expand, False)[0]
 
 
 def ui_shot(guest: "Guest", holder: str, names: tuple[str, ...] = (),
@@ -1024,8 +969,7 @@ def ui_dump(guest: "Guest", holder: str, names: tuple[str, ...] = (),
 
 def _ui(guest: "Guest", holder: str, action: str, names: tuple[str, ...], kind: str | None,
         prefix: bool, automation_id: str | None, expand: bool,
-        shot: bool, dump: list[str] | None = None,
-        pick: str | None = None) -> tuple[list[str], bytes | None]:
+        shot: bool, dump: list[str] | None = None) -> tuple[list[str], bytes | None]:
     if automation_id is not None:
         if names:
             raise WinwishError("give an automation id or names, not both")
@@ -1042,8 +986,7 @@ def _ui(guest: "Guest", holder: str, action: str, names: tuple[str, ...], kind: 
         lambda out: ui_inner(build_root(holder), action, names, kind, out, prefix,
                              automation_id, expand,
                              out.removesuffix(".txt") + ".png" if shot else None,
-                             out.removesuffix(".txt") + ".dump.txt" if dump is not None else None,
-                             pick),
+                             out.removesuffix(".txt") + ".dump.txt" if dump is not None else None),
         ui_timeout(len(names), action) + extra, kind, shot, dump)
 
 
@@ -1871,9 +1814,6 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--automation-id", help="click the one control whose UI Automation "
                    "AutomationId is this or ends with `.` and this, instead of naming it "
                    "(the six card buttons are all named Level up)")
-    p.add_argument("--pick", metavar="ITEM", help="with --automation-id, treat the control as a combo "
-                   "box: open it, select the list item of this exact name and close it, all in one task "
-                   "(the items exist only while the popup is open)")
     p.add_argument("names", nargs="*")
 
     p = sub.add_parser("display", help="read, set or restore the guest's display size and scale")
@@ -1946,10 +1886,6 @@ def main(argv: list[str] | None = None,
                 raise WinwishError("--shot-after and --expand are separate ways to click")
             if args.controls_after and args.expand:
                 raise WinwishError("--controls-after and --expand are separate ways to click")
-            if args.pick and (args.shot_after or args.controls_after or args.expand
-                              or not args.automation_id):
-                raise WinwishError("--pick goes with --automation-id alone, not --expand, "
-                                   "--shot-after or --controls-after")
             if args.controls_after:
                 lines, dump, png = ui_dump(guest, args.holder, tuple(args.names), args.type,
                                            args.prefix, args.automation_id, bool(args.shot_after))
@@ -1974,7 +1910,7 @@ def main(argv: list[str] | None = None,
                 print("\n".join([*lines, f"{target} ({len(png)} bytes)"]))
             else:
                 print("\n".join(ui(guest, args.holder, "click", tuple(args.names), args.type,
-                                  args.prefix, args.automation_id, args.expand, args.pick)))
+                                  args.prefix, args.automation_id, args.expand)))
         elif args.cmd == "log":
             print("\n".join(collect_log(guest, args.holder, pathlib.Path(args.out))))
         elif args.cmd == "down":
