@@ -108,14 +108,30 @@ def test_an_all_lower_case_slot_converts(tmp_path):
     assert _vault_items(_convert(tmp_path)) == ITEMS
 
 
-def test_two_names_differing_only_in_case_stop_the_conversion(tmp_path):
+def _case_sensitive(folder: pathlib.Path) -> bool:
+    """Whether the file system under folder keeps `a` and `A` as two names."""
+    probe = folder / "case_probe"
+    probe.mkdir()
+    (probe / "a").write_bytes(b"")
+    return not (probe / "A").exists()
+
+
+@pytest.fixture
+def two_case_names_possible(tmp_path):
+    if not _case_sensitive(tmp_path):
+        pytest.skip("The file system cannot hold two names differing only in case")
+
+
+def test_two_names_differing_only_in_case_stop_the_conversion(
+        two_case_names_possible, tmp_path):
     _slot(tmp_path)
     (tmp_path / "vaulta.dat").write_bytes((tmp_path / "VAULTA.DAT").read_bytes())
     with pytest.raises(dos_savegame.DosNameClashError):
         _convert(tmp_path)
 
 
-def test_two_character_files_differing_only_in_case_stop_the_slot(tmp_path):
+def test_two_character_files_differing_only_in_case_stop_the_slot(
+        two_case_names_possible, tmp_path):
     _slot(tmp_path)
     (tmp_path / "chrdata1.sav").write_bytes(
         (tmp_path / "CHRDATA1.SAV").read_bytes())
