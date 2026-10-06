@@ -858,12 +858,18 @@ NAMES_CURSE: dict[int, tuple[str, str]] = {
     109: (NAMES[109][0], "PROBABLE"),
 }
 
+#: Pools of Darkness has no effect names read off its own code yet, so its
+#: table is empty and every code shows as a number: Pool of Radiance's names
+#: are not this title's, and the default below would put them on its effects.
+NAMES_POOLS_OF_DARKNESS: dict[int, tuple[str, str]] = {}
+
 #: Code table per title key. A title that is not here gets Pool of Radiance's,
 #: which is what every caller written before this table existed means.
 TABLES: dict[str, dict[int, tuple[str, str]]] = {
     "pool-of-radiance": NAMES,
     "curse-of-the-azure-bonds": NAMES_CURSE,
     "secret-of-the-silver-blades": NAMES_SILVER_BLADES,
+    "pools-of-darkness": NAMES_POOLS_OF_DARKNESS,
 }
 
 #: What a caller gets when it says nothing.

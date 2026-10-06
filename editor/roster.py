@@ -62,7 +62,8 @@ from goldbox.savegame import (
     looks_occupied,
 )
 
-from .convert import Source
+from . import podsheet
+from .convert import Source, pod_convert_enabled
 from .inventory import Inventory
 
 #: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
@@ -85,6 +86,8 @@ class Member:
     #: file number, or for Curse and Silver Blades the 1-based position of the
     #: record inside the saved game. Not the marching position.
     index: int
+    #: A `podsheet.PodSheetRecord` for Pools of Darkness, which has no C64
+    #: record; a `CharacterRecord` for every other title.
     record: CharacterRecord
     name: str
     armour_class: int | None = None
@@ -197,9 +200,15 @@ class Member:
         (`C64Deltas.dual_class` False, e.g. Pool of Radiance) and when the
         pair holds the engine's own "never changed class" sentinel, which is
         `dual_class_level == 0` (`GEN $18EB`) rather than any particular slot.
+
+        A Pools of Darkness record keeps its former class in an array of its
+        own, read by `podsheet.PodSheetRecord.former_class`.
         """
         from goldbox.c64_codec import LEVEL_FIELDS, deltas_for
         from goldbox.layout import FIELDS_BY_NAME
+        if isinstance(self.record, podsheet.PodSheetRecord):
+            former = self.record.former_class()
+            return "" if former is None else f"(was {former[0]} {former[1]})"
         try:
             deltas = deltas_for(self.game)
         except KeyError as exc:
@@ -309,7 +318,10 @@ class Party:
         else leaves it None and the file is opened as always.
 
         Raises `dos_codec.WrongTitleError` for a title with no C64 port
-        (Pools of Darkness), which the editor cannot hold.
+        (Pools of Darkness), which the editor cannot hold -- unless
+        `WISH_EXPERIMENTAL_POD_CONVERT` is set, when a Pools of Darkness save
+        opens with `game` = `titles.POOLS_OF_DARKNESS` and each character's
+        record is a `podsheet.PodSheetRecord` over its own DOS record.
         """
         given = source
         if not isinstance(source, Source):
@@ -332,8 +344,10 @@ class Party:
             self._open_c64(game, disk)
         else:
             self.is_save = True
-            self.game = self._c64_game(source)
-            if self.port == "dos":
+            self.game = self._game_of(source)
+            if self.game is titles.POOLS_OF_DARKNESS:
+                self._load_pod()
+            elif self.port == "dos":
                 self._load_dos()
             else:
                 self._load_amiga()
@@ -358,6 +372,20 @@ class Party:
             self._load_save()
         else:
             self._load_standalone()
+
+    @classmethod
+    def _game_of(cls, source: "Source") -> "C64Container | titles.Title":
+        """The title a DOS or Amiga save is edited as.
+
+        `titles.POOLS_OF_DARKNESS` for that title while
+        `WISH_EXPERIMENTAL_POD_CONVERT` is set, so the per-title tables
+        that duck-type on `.key` answer for it; otherwise the C64
+        container, which for that title raises as it always has.
+        """
+        if (source.title.key == titles.POOLS_OF_DARKNESS.key
+                and pod_convert_enabled()):
+            return titles.POOLS_OF_DARKNESS
+        return cls._c64_game(source)
 
     @staticmethod
     def _c64_game(source: "Source") -> C64Container:
@@ -447,6 +475,57 @@ class Party:
         if not self.members:
             raise amiga_savegame.AmigaRecordError(
                 f"slot {slot} holds no characters")
+
+    def _load_pod(self) -> None:
+        """A Pools of Darkness save's characters, each a
+        `podsheet.PodSheetRecord` over its DOS record.
+
+        DOS: the `CHRDAT<slot><n>.SAV` files in file order, which is the
+        marching order. Amiga: the blocks of the slot's `SavGam<slot>.pty`
+        in their own order, each rendered as the DOS record a Save As DOS
+        writes, with the block kept as `Member.native`.
+        """
+        if self.port == "dos":
+            folder = pathlib.Path(self.source.path)
+            slot = self.source.slot
+            for number in dos_codec.party_numbers(folder, slot):
+                self._append_pod(number, podsheet.dos_member(
+                    folder / f"CHRDAT{slot}{number}.SAV"))
+            if not self.members:
+                raise dos_codec.DosRecordError(
+                    f"no CHRDAT{slot}?.SAV in {folder}")
+            return
+        from goldbox.amiga_adf import AmigaDisk
+
+        disk = AmigaDisk.open(str(self.source.path))
+        slot = self.source.slot
+        blob = amiga_savegame.pod_read_slot(disk, slot)
+        for number, block in enumerate(amiga_savegame.pod_parse(blob).blocks,
+                                       start=1):
+            self._append_pod(number, podsheet.amiga_member(block, number - 1))
+        if not self.members:
+            raise amiga_savegame.AmigaRecordError(
+                f"slot {slot} holds no characters")
+
+    def _append_pod(self, number: int, member: "podsheet.PodMember") -> None:
+        """One roster row for a Pools of Darkness character: armour class
+        and hit points off the record's own roster copies, as the other
+        titles' rows read them off the converted record's."""
+        record = member.record
+        port_name = str(member.neutral.get("name") or "")
+        self.members.append(Member(
+            number, record, record.name,
+            armour_class=combat_value(record.get("armour_class")),
+            hp_current=record.get("hp_current"),
+            hp_max=record.hp_max,
+            inventory=Inventory.from_blocks(podsheet.item_blocks(member.dos)),
+            record_original=record.to_bytes(), game=self.game,
+            native=member.native,
+            condition=(member.neutral.get("status"),
+                       member.neutral.get("active")),
+            roster_tail=record.get_raw("roster_tail"),
+            port_name=(port_name if any(not " " <= c <= "~"
+                                        for c in port_name) else None)))
 
     def _append_converted(self, number: int, record: CharacterRecord,
                           native: Any, neutral: Any) -> None:
@@ -554,11 +633,14 @@ class Party:
         """Fields whose edit the open file's own writer cannot take back.
 
         Empty for a C64 save, where `_write_back` writes the edited record
-        straight into its slot. Otherwise `goldbox.rewrite.unwritable_fields`
-        for this party's port and title.
+        straight into its slot. For Pools of Darkness, the sheet's fields the
+        title has no byte for (`podsheet.UNWRITABLE`). Otherwise
+        `goldbox.rewrite.unwritable_fields` for this party's port and title.
         """
         if self.port == "c64":
             return frozenset()
+        if self.game is titles.POOLS_OF_DARKNESS:
+            return podsheet.UNWRITABLE
         return rewrite.unwritable_fields(self.port, self.source.title.key)
 
     def write_items(self) -> None:
