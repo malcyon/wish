@@ -36,6 +36,13 @@ Staging is an input, written before the boot and never after the load:
 SLOT is the save slot, 0 first.  Every option repeats, and each is logged in
 bytes with what it replaced.
 
+One option is applied after the load instead: `--stage-roster SLOT:OFFSET=VALUE`
+(repeatable, SLOT 0 to 5, OFFSET below `0x20`) writes one byte of the live
+roster block at `$8300 + SLOT*$20 + OFFSET` once the `load` step has finished,
+reads it back, and lists the write in `summary.json` under `stage_roster`.  It
+reaches what the save file does not hold, such as the current hit points at
+`+0x19`.  An address in `$03C2` to `$03C8` is rejected.
+
 Curse's and Silver Blades' `fight` step logs a `bar` event at every command bar
 (the acting member's name, index and square, and the bar text) and one
 `placement` event at the first (every combatant's square and side byte).
@@ -176,6 +183,7 @@ from goldbox import (  # noqa: E402
     c64_port,
     c64_save,
     effects,
+    savegame,
     traits,
     world_state,
 )
@@ -530,6 +538,67 @@ def parse_sides(texts) -> list[tuple[int, int]]:
                 raise ValueError(f"{item!r}: the slot is 0 to 7")
             out.append((index, _byte(value, "the side")))
     return out
+
+
+#: The live roster block's slots a `--stage-roster` byte may name.
+ROSTER_STAGE_SLOTS = 6
+#: Addresses `--stage-roster` never writes.
+ROSTER_STAGE_FORBIDDEN = range(0x03C2, 0x03C9)
+
+
+def roster_address(slot: int, offset: int) -> int:
+    """The memory address of one roster byte; ValueError outside the block."""
+    if not 0 <= slot < ROSTER_STAGE_SLOTS:
+        raise ValueError(f"slot {slot}: the slot is 0 to {ROSTER_STAGE_SLOTS - 1}")
+    if not 0 <= offset < savegame.ROSTER_STRIDE:
+        raise ValueError(f"offset {offset:#x}: the offset is below "
+                         f"{savegame.ROSTER_STRIDE:#x}")
+    address = savegame.SAVE1_LOAD_ADDRESS + slot * savegame.ROSTER_STRIDE + offset
+    if address in ROSTER_STAGE_FORBIDDEN:
+        raise ValueError(f"${address:04X} is not written")
+    return address
+
+
+def parse_roster_bytes(texts) -> list[tuple[int, int, int]]:
+    """`SLOT:OFFSET=VALUE`, one byte of the live roster block each."""
+    out = []
+    for text in texts:
+        for item in text.split(","):
+            where, sep, value = item.partition("=")
+            parts = where.split(":")
+            if not sep or len(parts) != 2 or not value:
+                raise ValueError(f"{item!r}: a roster byte is SLOT:OFFSET=VALUE")
+            slot, offset = (int(p, 0) for p in parts)
+            try:
+                roster_address(slot, offset)
+            except ValueError as e:
+                raise ValueError(f"{item!r}: {e}") from e
+            out.append((slot, offset, _byte(value, "the value")))
+    return out
+
+
+def poke_roster(sess, writes, log) -> list[dict]:
+    """Write each `(slot, offset, value)` into memory, read it back, and fail
+    on a byte that did not take."""
+    rows = []
+    with sess.mon(5) as m:
+        for slot, offset, value in writes:
+            address = roster_address(slot, offset)
+            was = m.read(address, 1)[0]
+            m.write(address, bytes([value]))
+            found = m.read(address, 1)[0]
+            row = {"slot": slot, "offset": offset, "address": f"${address:04X}",
+                   "was": was, "now": value, "found": found}
+            log.emit("stage-roster", **row)
+            log.say(f"stage-roster {row['address']}: {was} -> {found}")
+            rows.append(row)
+        m.resume()
+    bad = [r for r in rows if r["found"] != r["now"]]
+    if bad:
+        raise StepFailed("stage-roster did not read back: "
+                         + ", ".join(f"{r['address']} wrote {r['now']} found "
+                                     f"{r['found']}" for r in bad))
+    return rows
 
 
 def parse_vars(texts) -> list[tuple[int, int]]:
@@ -7959,6 +8028,7 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             pool.gate_reports = []
             summary["no_encounters"] = True
             summary["encounter_gates"] = pool.gate_reports
+        roster_writes = parse_roster_bytes(getattr(args, "stage_roster", []))
         pool.read_ats = tuple(parse_read_at(getattr(args, "read_at", [])))
         if getattr(args, "fast_flee", False):
             pool.fast_flee = True
@@ -7994,6 +8064,9 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                 if temple_mode and clock() >= deadline - 100:
                     raise StepFailed("temple input deadline before boot")
                 got = pool.load_party() if menu_first else pool.load()
+                if roster_writes:
+                    summary["stage_roster"] = got["stage_roster"] = poke_roster(
+                        sess, roster_writes, log)
             elif step.verb == "remove":
                 got = pool.remove(step.arg)
             elif step.verb == "camp-list":
@@ -8239,6 +8312,10 @@ def main(argv: list[str] | None = None) -> int:
                     metavar="SLOT=BYTE")
     ap.add_argument("--stage-var", action="append", default=[],
                     metavar="ADDR=BYTE")
+    ap.add_argument("--stage-roster", action="append", default=[],
+                    metavar="SLOT:OFFSET=VALUE",
+                    help="one byte of the live roster block, written after "
+                         "the load step and read back")
     ap.add_argument("--first-bar-key", default=None, metavar="KEY",
                     help="SPACE or one character, pressed once at the first command "
                          "bar of the first fight (Curse and Silver Blades)")
@@ -8325,6 +8402,7 @@ def main(argv: list[str] | None = None) -> int:
         parse_statuses(args.stage_status)
         parse_sides(args.stage_side)
         parse_vars(args.stage_var)
+        parse_roster_bytes(args.stage_roster)
         if args.first_bar_key is not None:
             parse_key(args.first_bar_key)
         parse_checkpoints(args.checkpoint)
@@ -8354,7 +8432,7 @@ def main(argv: list[str] | None = None) -> int:
                 != sorted(TEMPLE_STAGING[steps[1].arg])
                 or any((args.stage_row, args.stage_trait, args.stage_item,
                         args.stage_status, args.stage_side, args.stage_var,
-                        args.first_bar_key, args.checkpoint,
+                        args.stage_roster, args.first_bar_key, args.checkpoint,
                         args.read_at))
                 or args.stage_only or args.preserve_specimen or args.capture_ready
                 or args.probe_step or args.joy or args.pool is not None

@@ -14312,3 +14312,62 @@ def test_a_save_is_held_to_the_place_a_fight_left_the_party(verb):
 def test_a_fight_with_no_recorded_place_still_exempts_the_save_check():
     A.validate_walks([_walked("I", True, [14, 7, 2]), {"verb": "fight"},
                       _saved(P, {**P, "y": 3})])
+
+
+# --- --stage-roster: live roster bytes after the load --------------------------
+
+
+def test_a_stage_roster_line_parses_and_rejects_bad_lines():
+    assert A.parse_roster_bytes(["4:0x19=60"]) == [(4, 0x19, 60)]
+    assert A.parse_roster_bytes(["0:0=1,5:0x1F=0xFF"]) == [(0, 0, 1), (5, 0x1F, 255)]
+    assert A.roster_address(4, 0x19) == 0x8399
+    for bad in ("4:0x20=1", "6:0=1", "-1:0=1", "4:0x19=256", "4:0x19", "4=1"):
+        with pytest.raises(ValueError):
+            A.parse_roster_bytes([bad])
+    # No roster byte sits in $03C2-$03C8, so the guard is on the address itself.
+    for address in (0x03C2, 0x03C8):
+        assert address in A.ROSTER_STAGE_FORBIDDEN
+
+
+def test_poke_roster_writes_each_byte_and_reads_it_back():
+    memory = {0x8399: 7}
+    events = []
+
+    class Monitor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def read(self, address, length):
+            return bytes([memory[address]])
+
+        def write(self, address, data):
+            memory[address] = data[0]
+
+        def resume(self):
+            pass
+
+    sess = SimpleNamespace(mon=lambda timeout: Monitor())
+    log = SimpleNamespace(emit=lambda kind, **kw: events.append((kind, kw)),
+                          say=lambda text: None)
+    rows = A.poke_roster(sess, [(4, 0x19, 60)], log)
+    assert memory[0x8399] == 60
+    assert rows == [{"slot": 4, "offset": 0x19, "address": "$8399", "was": 7,
+                     "now": 60, "found": 60}]
+    assert events == [("stage-roster", rows[0])]
+    memory[0x8399] = 7
+    Monitor.write = lambda self, address, data: None
+    with pytest.raises(A.StepFailed):
+        A.poke_roster(sess, [(4, 0x19, 60)], log)
+
+
+@pytest.mark.parametrize("bad", ["4:0x20=1", "6:0=1", "4:0x19"])
+def test_stage_roster_bad_line_exits_with_usage(tmp_path, bad, capsys):
+    with pytest.raises(SystemExit) as e:
+        A.main(["--title", "pool", "--save", str(_fixture_disk(tmp_path)),
+                "--stage-roster", bad, "--stage-only", "--steps", "load",
+                "--out", str(tmp_path / "evidence")])
+    assert e.value.code == 2
+    capsys.readouterr()
