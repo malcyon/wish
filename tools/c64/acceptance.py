@@ -49,6 +49,13 @@ Curse's and Silver Blades' `fight` step logs a `bar` event at every command bar
 `--first-bar-key KEY` (`SPACE`, or one printable character) is pressed once at
 that first bar, with a capture after it.
 
+`--fight-watch NAME` (Pool, with a `walk-fight` or `walk-flee` step) watches every
+command bar of the fights those steps fight, taking no snapshot away and writing no
+memory: a `fight-watch` event carries the bar's screenshot stem, the screen's text
+rows, whose turn it is, and reads of NAME's roster block (its status byte) and
+record bytes `0x0B8` and `0x10C`; a `fight-watch-placement` event at each fight's
+first bar says whether NAME is on the battlefield.
+
 `--read-at PC=GUARD:ADDR:N[,ADDR:N...]` (hex, Pool only, repeatable) is a
 stopping exec checkpoint armed at `load`: at PC it checks the code bytes there
 equal GUARD, so a hit in another overlay loaded at the same address is counted
@@ -1972,6 +1979,15 @@ class PoolRun:
     #: command line sets it per run.
     walk_fight_seconds = WALK_FIGHT_SECONDS
 
+    #: `--fight-watch`: the character whose combat state every command bar of a
+    #: walk-fight records; empty is off.
+    fight_watch = ""
+    #: The fight in progress and how many of its command bars were recorded.
+    watch_fight = 0
+    watch_bars = 0
+    #: The stem `capture` last wrote, which the watch events name.
+    last_stem = ""
+
     #: How many times a `walk` step may roll back and walk its route again
     #: after an encounter; 0 walks it once, as before.  `--walk-retry` sets it.
     walk_retry = 0
@@ -2044,6 +2060,7 @@ class PoolRun:
             "\n".join(r.rstrip() for r in rows) + "\n" if rows else "(bitmap)\n",
             encoding="utf-8")
         self.sess.kbd.screenshot(str(self.out / f"{stem}.png"))
+        self.last_stem = stem
         self.log.emit("screen", tag=tag, stem=stem,
                       rows=[r.rstrip() for r in rows if r.strip()])
         return rows
@@ -6167,7 +6184,10 @@ class PoolRun:
         sess = self.sess
         number = len(fights)
         self.capture(f"fight-{number}-start")
-        result = sess.fight(budget=self.walk_fight_seconds, tactic=S.Session.melee_turn,
+        self.watch_fight, self.watch_bars = number, 0
+        result = sess.fight(budget=self.walk_fight_seconds,
+                            tactic=(self.watch_tactic() if self.fight_watch
+                                    else S.Session.melee_turn),
                             stop=self._treasure_capture())
         self.capture(f"fight-{number}-end")
         if result.outcome == S.LOST:
@@ -6189,6 +6209,73 @@ class PoolRun:
             flees.append({"at_move": n, "escaped": False, "ambush": True,
                           "fight": fights[-1]})
             self.log.emit("flee", at_move=n, escaped=False, ambush=True)
+
+    def watch_tactic(self):
+        """`melee_turn`, recording each command bar first (`--fight-watch`)."""
+        def tactic(sess, bar):
+            self.watch_bar(sess, bar)
+            return S.Session.melee_turn(sess, bar)
+
+        return tactic
+
+    def watch_bar(self, sess, bar) -> None:
+        """Log the battlefield, its text, whose bar this is and the watched
+        character's combat state.  Only reads: no memory is written."""
+        screen = sess.screen()
+        rows = [] if screen is None else [screen.row(r) for r in range(25)]
+        battle = sess.battle()
+        actor = sess.acting(battle, screen) if battle is not None else None
+        name = self.fight_watch.upper()
+        if self.watch_bars == 0:
+            watched = next((c for c in (battle.combatants if battle is not None else ())
+                            if c.name.strip().upper() == name), None)
+            self.log.emit(
+                "fight-watch-placement", fight=self.watch_fight, name=name,
+                present=watched is not None,
+                on_map=None if watched is None else watched.on_map,
+                position=None if watched is None else [watched.x, watched.y],
+                combatants=[{"name": c.name.strip(), "index": c.index, "slot": c.slot,
+                             "position": [c.x, c.y], "on_map": c.on_map, "hp": c.hp,
+                             "side": c.side, "party": c.is_party}
+                            for c in (battle.combatants if battle is not None else ())])
+        self.capture(f"fight-{self.watch_fight}-bar-{self.watch_bars}", rows)
+        self.log.emit(
+            "fight-watch", fight=self.watch_fight, bar_number=self.watch_bars,
+            bar=getattr(bar, "text", None), screen=self.last_stem,
+            text=[r.rstrip() for r in rows if r.strip()],
+            owner=None if actor is None else {
+                "name": actor.name.strip(), "index": actor.index,
+                "position": [actor.x, actor.y]},
+            **self.watch_reads(name))
+        self.watch_bars += 1
+
+    def watch_reads(self, name: str) -> dict:
+        """NAME's roster status byte and record bytes `0x0B8` and `0x10C`.
+
+        The record slot is found by name, and the roster block by the record
+        slot it names, so the slot is never fixed in code."""
+        box = self.box
+        with self.sess.mon(10) as m:
+            roster = bytes(m.read(box.roster_base, box.roster_stride * PARTY_SLOTS))
+            names = [bytes(m.read(box.slot_area_base + i * box.slot_stride, 15))
+                     .split(b"\0")[0].decode("ascii", "replace").strip().upper()
+                     for i in range(PARTY_SLOTS)]
+            record = names.index(name) if name in names else None
+            reads = {"found": record is not None}
+            if record is not None:
+                at = box.slot_area_base + record * box.slot_stride
+                reads["record_slot"] = record
+                reads["record_0b8"] = m.read(at + 0x0B8, 1)[0]
+                reads["record_10c"] = m.read(at + 0x10C, 1)[0]
+                blocks = [i for i in range(PARTY_SLOTS)
+                          if roster[i * box.roster_stride + ROSTER_SLOT_INDEX] == record]
+                reads["roster_slot"] = blocks[0] if blocks else None
+                if blocks:
+                    base = blocks[0] * box.roster_stride
+                    reads["status"] = roster[base]
+                    reads["roster_block"] = roster[base:base + box.roster_stride].hex()
+            m.resume()
+        return reads
 
     def _treasure_capture(self):
         """A `Session.fight` stop hook that saves the treasure screen once and
@@ -8445,6 +8532,7 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
         if hasattr(args, "walk_fight_seconds"):
             pool.walk_fight_seconds = args.walk_fight_seconds
         pool.walk_retry = getattr(args, "walk_retry", 0)
+        pool.fight_watch = getattr(args, "fight_watch", "")
         if getattr(args, "no_encounters", False):
             pool.no_encounters = True
             pool.gate_reports = []
@@ -8804,6 +8892,10 @@ def main(argv: list[str] | None = None) -> int:
                          "only, e.g. 09DD=CD782B:2B78:2,6E3E:1; choose a PC that is "
                          "rarely hit, since each stop costs a monitor round trip")
     ap.add_argument("--walk", default="I", help="the move `fight` repeats")
+    ap.add_argument("--fight-watch", default="", metavar="NAME",
+                    help="Pool walk-fight: at every command bar log the battlefield "
+                         "screenshot, its text, whose turn it is and NAME's combat "
+                         "state (reads only)")
     ap.add_argument("--attack-by", default="",
                     help="record the named fighter's first confirmed melee attack")
     ap.add_argument("--quit-nonattacking", action="store_true",
@@ -8936,6 +9028,9 @@ def main(argv: list[str] | None = None) -> int:
                  "cast CASTER:DISPEL MAGIC>BRUTUS/view BRUTUS/save")
     if args.attack_by and args.title != "curse":
         ap.error("--attack-by requires --title curse")
+    if args.fight_watch and (args.title != "pool" or not any(
+            x.verb in ("walk-fight", "walk-flee") for x in steps)):
+        ap.error("--fight-watch requires --title pool and a walk-fight or walk-flee step")
     if args.first_bar_key is not None and not any(x.verb == "fight" for x in steps):
         ap.error("--first-bar-key needs a fight step")
     if args.stage_side and args.title == "pool":
