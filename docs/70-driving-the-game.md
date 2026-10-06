@@ -348,7 +348,8 @@ combatant — and steps outward from there. The combat map in the Slums ambush
 is **56 x 26** with the party at y 12-13, so the way out is twelve squares
 south: one round for a move-12 character and two for the rest. `GOT AWAY` and
 `FAILED` are the game's answers and they arrive **on row 24**, not in the
-message band.
+message band. `Flight` with `safe_edges` steps off only from a square no enemy
+stands beside, unless the character is faster than every enemy beside him.
 
 **`THE PARTY RUNS AWAY` is on the screen for under half a second**, because
 the arm that prints it calls no delay where the losing arm calls the game's

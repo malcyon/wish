@@ -13754,12 +13754,22 @@ def test_fight_cast_step_parses_and_bad_forms_are_rejected():
             A.parse_steps(["load", bad])
 
 
-def _cast_run(outcome, casts, tactics):
+class _Flight:
+    def hold(self, sess, state):
+        return "HOLD"
+
+
+def _cast_run(outcome, casts, tactics, memorised=((10, 42), (10,)),
+              slots_after=None):
     run = _flee_run(outcome, _slots(("BAKSHI", 1), ("SEAN", 1)),
-                    _slots(("BAKSHI", 1), ("SEAN", 1)), tactics)
+                    slots_after or _slots(("BAKSHI", 1), ("SEAN", 1)), tactics)
     sess = run.sess
     sess.walk_encounter = None
-    run.flight_tactic = lambda: "flight"
+    run.flight = _Flight()
+    run.flight_tactic = lambda: run.flight
+    readings = iter(memorised)
+    run.reading = lambda: {"party": [{"name": "BAKSHI ",
+                                      "memorised": list(next(readings))}]}
     inner = sess.fight
 
     def fight(*, budget, tactic):
@@ -13779,10 +13789,28 @@ def test_fight_cast_casts_untargeted_then_flees_and_records_the_cast():
     tactic = tactics[0]
     assert isinstance(tactic, A.route_pool.Caster)
     assert tactic.queue == [("BAKSHI", "PRAYER", None)]
-    assert tactic.otherwise == "flight"
+    assert tactic.otherwise is run.flight
+    assert tactic.wait == run.flight.hold
+    assert tactic.last is True
     assert got["casts"] == [cast]
+    assert got["spent"] == [42]
     assert [m["name"] for m in got["got_away"]] == ["BAKSHI", "SEAN"]
     assert got["outcome"] == A.S.RAN
+
+
+def test_fight_cast_fails_when_the_casters_memorised_list_is_unchanged():
+    cast = {"caster": "BAKSHI", "spell": "PRAYER", "target": None}
+    run = _cast_run(A.S.RAN, [cast], [], memorised=((10, 42), (10, 42)))
+    with pytest.raises(A.StepFailed, match="memorised list did not lose"):
+        run.fight_cast("BAKSHI:PRAYER", "I", 5)
+
+
+def test_fight_cast_fails_when_a_member_is_left_behind():
+    cast = {"caster": "BAKSHI", "spell": "PRAYER", "target": None}
+    run = _cast_run(A.S.RAN, [cast], [],
+                    slots_after=_slots(("BAKSHI", 1), ("SEAN", 0)))
+    with pytest.raises(A.StepFailed, match="SEAN left behind"):
+        run.fight_cast("BAKSHI:PRAYER", "I", 5)
 
 
 def test_fight_cast_fails_naming_the_step_when_nobody_cast():

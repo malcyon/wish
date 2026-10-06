@@ -363,3 +363,40 @@ def test_caster_casts_on_the_named_members_turn_and_returns_cast(cast_patches):
                                otherwise=lambda s, state: "FLEE")
     assert caster(sess, "bar") == "CAST"
     assert caster.queue == []
+
+
+def _roster(statuses):
+    from goldbox import savegame
+    page = bytearray(savegame.ROSTER_STRIDE * savegame.ROSTER_COUNT)
+    for slot, status in enumerate(statuses):
+        page[slot * savegame.ROSTER_STRIDE] = status
+    return bytes(page)
+
+
+def _last_caster(monkeypatch, statuses, waited):
+    from tools.pool_of_radiance import fleedrive
+    monkeypatch.setattr(fleedrive, "roster_page",
+                        lambda sess: _roster(statuses))
+    return route_pool.Caster(
+        FakeLog(), [("BAKSHI", "PRAYER", None)],
+        otherwise=lambda s, state: "OTHER",
+        wait=lambda s, state: waited.append(state) or "WAIT", last=True)
+
+
+def test_last_caster_waits_while_another_member_is_still_standing(
+        cast_patches, monkeypatch):
+    waited, sess = [], _CastSession()
+    caster = _last_caster(monkeypatch, [0x01, 0x01, 0x86, 0x01], waited)
+    assert caster(sess, "bar") == "WAIT"
+    assert waited == ["bar"]
+    assert ("bar", "CAST") not in sess.calls
+    assert caster.queue == [("BAKSHI", "PRAYER", None)]
+
+
+def test_last_caster_casts_once_every_other_member_is_running_or_down(
+        cast_patches, monkeypatch):
+    waited, sess = [], _CastSession()
+    caster = _last_caster(monkeypatch, [0x86, 0x01, 0x84, 0x86, 0], waited)
+    assert caster(sess, "bar") == "CAST"
+    assert waited == []
+    assert ("bar", "CAST") in sess.calls

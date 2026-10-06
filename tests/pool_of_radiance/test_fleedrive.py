@@ -213,3 +213,75 @@ def test_each_title_prints_the_same_line_by_the_same_branch(title):
     assert branch is not None, title
     _at, message, row = branch
     assert (message, row) == (index, 10)
+
+
+# -- stepping off only from a square no enemy stands beside ------------------
+
+
+def edge_walk(b, at, **kwargs):
+    """Walk to the edge, then along it for as long as the walk goes on."""
+    path = [(at.x, at.y)]
+    for _ in range(80):
+        key = fleedrive.step_to_edge(b, at, **kwargs)
+        if key is None:
+            return at, path
+        dx, dy = next(d for d, k in session.STEP_KEYS.items() if k == key)
+        at = Where(at.x + dx, at.y + dy)
+        path.append((at.x, at.y))
+    raise AssertionError(path)
+
+
+def test_a_safe_walk_ends_on_an_edge_square_no_enemy_stands_beside():
+    height = arena(25, 13).geometry.height
+    b = arena(25, 13, enemy=(24, height - 1))
+    end, _ = edge_walk(b, Where(25, 13), safe=True)
+    assert fleedrive.edges_of(b.geometry, end)
+    assert fleedrive.adjacent_enemies(b, end.x, end.y) == []
+    plain, _ = edge_walk(b, Where(25, 13))
+    assert fleedrive.adjacent_enemies(b, plain.x, plain.y) != []
+
+
+def test_with_no_safe_edge_the_walk_falls_back_to_the_nearest_edge(
+        monkeypatch):
+    b = arena(25, 13)
+    monkeypatch.setattr(fleedrive, "adjacent_enemies",
+                        lambda battle, x, y: [object()])
+    end, path = edge_walk(b, Where(25, 13), safe=True)
+    assert (end.x, end.y) == (25, b.geometry.height - 1), path
+    assert len(path) - 1 == 12
+
+
+class _Fighter:
+    def __init__(self, x, y, movement, alive=True, on_map=True):
+        self.x, self.y, self.movement = x, y, movement
+        self.alive, self.on_map = alive, on_map
+
+
+class _Field:
+    def __init__(self, *enemies):
+        self.enemies = enemies
+
+
+def test_may_step_off_only_with_nobody_beside_or_when_faster():
+    me = _Fighter(5, 0, 12)
+    assert fleedrive.may_step_off(_Field(_Fighter(9, 9, 12)), me)
+    assert fleedrive.may_step_off(_Field(_Fighter(5, 1, 9)), me)
+    assert not fleedrive.may_step_off(_Field(_Fighter(5, 1, 12)), me)
+    assert not fleedrive.may_step_off(_Field(_Fighter(5, 1, None)), me)
+    assert not fleedrive.may_step_off(_Field(_Fighter(5, 1, 9),
+                                             _Fighter(6, 1, 12)), me)
+    assert fleedrive.may_step_off(_Field(_Fighter(5, 1, 12, alive=False)), me)
+
+
+def test_the_default_walk_is_unchanged():
+    b = arena(25, 13)
+    path = []
+    at = Where(25, 13)
+    while not fleedrive.edges_of(b.geometry, at):
+        key = fleedrive.step_to_edge(b, at, safe=False)
+        dx, dy = next(d for d, k in session.STEP_KEYS.items() if k == key)
+        at = Where(at.x + dx, at.y + dy)
+        path.append((at.x, at.y))
+    height = b.geometry.height
+    assert path == [(25, y) for y in range(14, height)]
+    assert len(path) == 12

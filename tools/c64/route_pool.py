@@ -716,6 +716,10 @@ class Caster:
     them; a target of None is a spell the game casts without a target prompt
     (a party spell such as Prayer). `otherwise` is the tactic for every turn
     that is not a cast, `Session.melee_turn` unless the caller wants another.
+    With `last`, the caster casts only once every other occupied party slot has
+    bit 7 of its roster status set (running, or down), so the spell is the last
+    thing cast before the fight ends; until then his turns run `wait`, or
+    `otherwise` when `wait` is None.
     Everything it does is logged with the screen, because nothing in this
     project has driven CAST in combat before and a failed attempt has to say
     where it got to.
@@ -724,10 +728,12 @@ class Caster:
     BACK_OUT_PRESSES = 3
 
     def __init__(self, log: Log, queue: list[tuple[str, str, str | None]],
-                 otherwise=None):
+                 otherwise=None, wait=None, last=False):
         self.log = log
         self.queue = list(queue)
         self.otherwise = otherwise or S.Session.melee_turn
+        self.wait = wait or self.otherwise
+        self.last = last
         self.turn = 0
         self.casts: list[dict] = []
 
@@ -741,6 +747,8 @@ class Caster:
         me = sess.acting(b)
         if me is not None and self.queue and \
                 me.name.strip() == self.queue[0][0]:
+            if self.last and not self.others_gone(sess, me):
+                return self.wait(sess, state)
             _, spell, target = self.queue[0]
             if self.cast(sess, b, me, spell, target):
                 self.queue.pop(0)
@@ -751,6 +759,14 @@ class Caster:
             self.log.say(f"  {spell} dropped after one failed attempt")
             self.queue.pop(0)
         return self.otherwise(sess, state)
+
+    @staticmethod
+    def others_gone(sess: S.Session, me) -> bool:
+        """Whether every other occupied party slot is running or down."""
+        from tools.pool_of_radiance import fleedrive
+        states = fleedrive.statuses(fleedrive.roster_page(sess))
+        return all(st == 0 or st & 0x80
+                   for slot, st in enumerate(states) if slot != me.index)
 
     def cast(self, sess: S.Session, b, me, spell: str,
              target: str | None) -> bool:

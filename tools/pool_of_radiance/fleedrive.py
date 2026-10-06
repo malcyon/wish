@@ -377,7 +377,33 @@ def edges_of(geometry, me) -> list[tuple[int, int]]:
     return out
 
 
-def step_to_edge(battle, me, avoid=()) -> str | None:
+def adjacent_enemies(battle, x: int, y: int) -> list:
+    """The living, on-map combatants not on the party's side within one square
+    of (x, y), diagonals included."""
+    return [c for c in battle.enemies
+            if c.alive and c.on_map and (c.x, c.y) != (x, y)
+            and max(abs(c.x - x), abs(c.y - y)) <= 1]
+
+
+def may_step_off(battle, me) -> bool:
+    """Whether stepping off the map from `me`'s square gets him away.
+
+    `COMBAT $16FA` lets a character away with no roll when no enemy is beside
+    him; otherwise it compares his movement with the fastest enemy's and a tie
+    is a coin flip.  So it is true with nobody beside him, or when his
+    movement and every adjacent enemy's are known and his is the larger; a tie
+    or an unknown movement is false.
+    """
+    beside = adjacent_enemies(battle, me.x, me.y)
+    if not beside:
+        return True
+    moves = [c.movement for c in beside]
+    if me.movement is None or any(m is None for m in moves):
+        return False
+    return me.movement > max(moves)
+
+
+def step_to_edge(battle, me, avoid=(), safe=False) -> str | None:
     """The key that takes `me` one square nearer the map's edge, or None.
 
     Breadth-first **from every edge square at once**, which is the same form
@@ -385,6 +411,10 @@ def step_to_edge(battle, me, avoid=()) -> str | None:
     at a combatant, this one walks at the way out.  Rock and every other
     combatant are blocked; the character's own square never is, so a path can
     start.
+
+    With `safe`, only the edge squares no enemy stands beside are the way out,
+    so the walk carries on along an unsafe edge; when there is no such square
+    it falls back to every edge square.
     """
     geometry = battle.geometry
     blocked = {(x, y)
@@ -393,18 +423,20 @@ def step_to_edge(battle, me, avoid=()) -> str | None:
     for c in battle.combatants:
         if geometry.holds(c.x, c.y) and (c.x, c.y) != (me.x, me.y):
             blocked.add((c.x, c.y))
-    dist: dict[tuple[int, int], int] = {}
-    frontier: list[tuple[int, int]] = []
+    seeds: list[tuple[int, int]] = []
     for x in range(geometry.width):
         for y in (0, geometry.height - 1):
-            if (x, y) not in blocked:
-                dist[(x, y)] = 0
-                frontier.append((x, y))
+            if (x, y) not in blocked and (x, y) not in seeds:
+                seeds.append((x, y))
     for y in range(geometry.height):
         for x in (0, geometry.width - 1):
-            if (x, y) not in blocked and (x, y) not in dist:
-                dist[(x, y)] = 0
-                frontier.append((x, y))
+            if (x, y) not in blocked and (x, y) not in seeds:
+                seeds.append((x, y))
+    if safe:
+        quiet = [sq for sq in seeds if not adjacent_enemies(battle, *sq)]
+        seeds = quiet or seeds
+    dist: dict[tuple[int, int], int] = {sq: 0 for sq in seeds}
+    frontier = list(seeds)
     while frontier:
         nxt = []
         for at in frontier:
@@ -441,8 +473,12 @@ class Flight:
     thing `melee_turn` keeps within one turn.
     """
 
-    def __init__(self, log: Log, cancel_test: bool = False):
+    def __init__(self, log: Log, cancel_test: bool = False,
+                 safe_edges: bool = False):
         self.log = log
+        #: Step off only from a square `may_step_off` allows, walking along the
+        #: edge to a safer one first; Pool of Radiance only.
+        self.safe_edges = safe_edges
         self.attempts = 0
         self.got_away: dict[str, int] = {}
         self.failed: collections.Counter = collections.Counter()
@@ -522,6 +558,14 @@ class Flight:
         return ""
 
     def __call__(self, sess, state) -> str:
+        return self.turn(sess, state, hold=False)
+
+    def hold(self, sess, state) -> str:
+        """The same walk, ended on a quiet edge square without stepping off,
+        so a member stays in the fight until it is time for him to go."""
+        return self.turn(sess, state, hold=True)
+
+    def turn(self, sess, state, hold: bool) -> str:
         b = sess.battle()
         me = sess.acting(b)
         if b is None or me is None:
@@ -541,6 +585,16 @@ class Flight:
             if me is None or not me.on_map:
                 break
             out = edges_of(b.geometry, me)
+            if out and (hold or (self.safe_edges
+                                 and not may_step_off(b, me))):
+                # An edge square an enemy stands beside: walk on to a quiet
+                # one when there is one, and only otherwise let the game decide.
+                if hold and not adjacent_enemies(b, me.x, me.y):
+                    break
+                if step_to_edge(b, me, avoid, safe=True) is not None:
+                    out = []
+                elif hold:
+                    break
             if out:
                 # Standing on the edge: the step that leaves the map is what
                 # puts the game's own `FLEE: YES NO` up (`COMBAT $0E6E`).
@@ -566,7 +620,8 @@ class Flight:
                 if bar is not None and bar.kind == S.BAR_MOVE:
                     continue            # the step was rejected; try another
                 break
-            key = step_to_edge(b, me, avoid)
+            key = step_to_edge(b, me, avoid,
+                               safe=self.safe_edges or hold)
             if key is None:
                 break
             was, before = (me.x, me.y), sess.combat_state().moves_left
