@@ -88,7 +88,7 @@ class Member:
     index: int
     #: A `podsheet.PodSheetRecord` for Pools of Darkness, which has no C64
     #: record; a `CharacterRecord` for every other title.
-    record: CharacterRecord
+    record: CharacterRecord | podsheet.PodSheetRecord
     name: str
     armour_class: int | None = None
     hp_current: int | None = None

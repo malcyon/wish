@@ -526,6 +526,66 @@ def test_a_name_is_fifteen_characters_with_its_count():
         record.set("name", "X" * 16)
 
 
+def test_a_name_length_past_fifteen_is_an_error_when_set_raw():
+    record = _blank()
+    with pytest.raises(ValueError):
+        record.set_raw("name", bytes([16]) + bytes(15))
+    assert record.name == ""
+    record.set_raw("name", b"\x03ABC" + bytes(12))
+    assert record.name == "ABC"
+
+
+def _synthetic_folder(tmp_path) -> pathlib.Path:
+    """A one-character Pools of Darkness DOS folder made of zeros and a name:
+    the empty `SAVGAMA.PTY` names the title and the record size picks the
+    layout."""
+    record = bytearray(podsheet.SIZE)
+    record[:4] = b"\x03ABC"
+    (tmp_path / "CHRDATA1.SAV").write_bytes(bytes(record))
+    (tmp_path / "SAVGAMA.PTY").write_bytes(b"")
+    return tmp_path
+
+
+@pytest.mark.parametrize("value", ["1", "true", "yes", "on"])
+def test_a_synthetic_folder_opens_with_the_flag(monkeypatch, tmp_path, value):
+    _flag(monkeypatch, value)
+    party = Party(str(_synthetic_folder(tmp_path)))
+    assert party.game is POD
+    assert party.unwritable == podsheet.UNWRITABLE
+    [member] = party.members
+    assert isinstance(member.record, podsheet.PodSheetRecord)
+    assert member.name == "ABC"
+    assert member.record.to_bytes() == (
+        tmp_path / "CHRDATA1.SAV").read_bytes()
+
+
+def test_a_synthetic_folder_rewrites_and_edits_age_only(monkeypatch, tmp_path):
+    monkeypatch.setenv(FLAG, "1")
+    [member] = Party(str(_synthetic_folder(tmp_path))).members
+    _round_trip("synthetic", member.record)
+    original = member.record.to_bytes()
+    before = podsheet.PodSheetRecord.from_bytes(original)
+    after = podsheet.PodSheetRecord.from_bytes(original)
+    after.set("age", 40)
+    out, moved = podsheet.rewrite_record(original, before, after)
+    assert moved == ["age"]
+    assert {i for i in range(len(out)) if out[i] != original[i]} <= {
+        0x0B0, 0x0B1}
+    assert out[0x0B0:0x0B2] == (40).to_bytes(2, "little")
+
+
+def test_a_synthetic_folder_runs_without_the_specimen_variables(
+        monkeypatch, tmp_path):
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    for var in ("WISH_SPECIMENS", "FR_ARCHIVES", "AMIGA_DISKS", "POR_DISKS"):
+        monkeypatch.setenv(var, str(empty))
+    monkeypatch.setenv(FLAG, "1")
+    folder = tmp_path / "save"
+    folder.mkdir()
+    assert Party(str(_synthetic_folder(folder))).game is POD
+
+
 def test_pools_of_darkness_gets_no_effect_names_of_another_title():
     table = traits.for_game(POD)
     assert table == {}

@@ -366,6 +366,10 @@ class PodSheetRecord:
                 self._put(f, data[at:at + TABLE[f].size])
                 at += TABLE[f].size
         elif name == "name":
+            width = TABLE["name_text"].size
+            if data[0] > width:
+                raise ValueError(f"name: length {data[0]} is more than "
+                                 f"{width}")
             self._put("name_length", data[:1])
             self._put("name_text", data[1:])
         elif name in ABILITIES or name == "exceptional_strength" or (
