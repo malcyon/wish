@@ -727,6 +727,10 @@ class Caster:
 
     BACK_OUT_PRESSES = 3
 
+    #: Own turns spent waiting for the others after which every member's
+    #: roster status is logged, so a stalled wait names the member holding it.
+    WAIT_REPORT_TURNS = 20
+
     def __init__(self, log: Log, queue: list[tuple[str, str, str | None]],
                  otherwise=None, wait=None, last=False):
         self.log = log
@@ -735,6 +739,7 @@ class Caster:
         self.wait = wait or self.otherwise
         self.last = last
         self.turn = 0
+        self.waits = 0
         self.casts: list[dict] = []
 
     def __call__(self, sess: S.Session, state) -> str:
@@ -748,6 +753,9 @@ class Caster:
         if me is not None and self.queue and \
                 me.name.strip() == self.queue[0][0]:
             if self.last and not self.others_gone(sess, me):
+                self.waits += 1
+                if self.waits >= self.WAIT_REPORT_TURNS:
+                    self.report_wait(sess)
                 return self.wait(sess, state)
             _, spell, target = self.queue[0]
             if self.cast(sess, b, me, spell, target):
@@ -761,12 +769,32 @@ class Caster:
         return self.otherwise(sess, state)
 
     @staticmethod
+    def down_words(gone: bool = True) -> frozenset[int]:
+        """The low three bits of a roster status that name a member who is
+        out of the fight: dead, dying, unconscious, stoned and, with `gone`,
+        gone."""
+        from tools.pool_of_radiance import fleedrive
+        names = ("DEAD", "DYING", "UNCONSIOUS", "STONED") + (
+            ("GONE",) if gone else ())
+        return frozenset(code for code, word in fleedrive.STATUS_WORDS.items()
+                         if word in names)
+
+    @staticmethod
     def others_gone(sess: S.Session, me) -> bool:
         """Whether every other occupied party slot is running or down."""
         from tools.pool_of_radiance import fleedrive
+        down = Caster.down_words()
         states = fleedrive.statuses(fleedrive.roster_page(sess))
-        return all(st == 0 or st & 0x80
+        return all(st == 0 or st & 0x80 or st & 7 in down
                    for slot, st in enumerate(states) if slot != me.index)
+
+    def report_wait(self, sess: S.Session) -> None:
+        """Log every roster status, naming who the caster is still waiting for."""
+        from tools.pool_of_radiance import fleedrive
+        states = fleedrive.statuses(fleedrive.roster_page(sess))
+        self.log.emit("cast-wait", turn=self.turn, waits=self.waits,
+                      statuses=[f"{st:02X}" for st in states],
+                      words=[fleedrive.describe(st) for st in states])
 
     def cast(self, sess: S.Session, b, me, spell: str,
              target: str | None) -> bool:

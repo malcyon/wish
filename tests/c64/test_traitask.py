@@ -400,3 +400,32 @@ def test_last_caster_casts_once_every_other_member_is_running_or_down(
     assert caster(sess, "bar") == "CAST"
     assert waited == []
     assert ("bar", "CAST") in sess.calls
+
+
+def test_last_caster_counts_a_dead_member_without_bit_7_as_gone(
+        cast_patches, monkeypatch):
+    waited, sess = [], _CastSession()
+    caster = _last_caster(monkeypatch, [0x86, 0x03, 0x04, 0x05, 0x07, 0x02],
+                          waited)
+    assert caster(sess, "bar") == "CAST"
+    assert waited == []
+
+
+def test_last_caster_waits_for_a_member_who_is_ok_or_running_unmarked(
+        cast_patches, monkeypatch):
+    waited, sess = [], _CastSession()
+    caster = _last_caster(monkeypatch, [0x86, 0x03, 0x06], waited)
+    assert caster(sess, "bar") == "WAIT"
+
+
+def test_last_caster_logs_every_status_once_the_wait_runs_long(
+        cast_patches, monkeypatch):
+    waited, sess = [], _CastSession()
+    caster = _last_caster(monkeypatch, [0x01, 0x01, 0x03], waited)
+    for _ in range(route_pool.Caster.WAIT_REPORT_TURNS - 1):
+        caster(sess, "bar")
+    assert not [e for e in caster.log.emitted if e[0] == "cast-wait"]
+    caster(sess, "bar")
+    kind, fields = [e for e in caster.log.emitted if e[0] == "cast-wait"][0]
+    assert fields["statuses"][:3] == ["01", "01", "03"]
+    assert fields["words"][2] == "$03 DEAD"

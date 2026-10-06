@@ -13823,3 +13823,11 @@ def test_fight_cast_that_does_not_run_away_fails_naming_the_step():
     run = _cast_run(A.S.WON, [{"caster": "BAKSHI"}], [])
     with pytest.raises(A.StepFailed, match="fight-cast"):
         run.fight_cast("BAKSHI:PRAYER", "I", 5)
+
+
+def test_fight_cast_fails_naming_a_member_who_ended_the_fight_dead():
+    cast = {"caster": "BAKSHI", "spell": "PRAYER", "target": None}
+    run = _cast_run(A.S.RAN, [cast], [],
+                    slots_after=_slots(("BAKSHI", 1), ("SEAN", 3)))
+    with pytest.raises(A.StepFailed, match="fight-cast: SEAN ended the fight"):
+        run.fight_cast("BAKSHI:PRAYER", "I", 5)

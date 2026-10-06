@@ -4617,6 +4617,14 @@ class PoolRun:
             self.keep_fight_reading()
             names = ", ".join(m["name"] for m in fled["left_behind"])
             raise self.fail("fight-cast", f"fight-cast: {names} left behind")
+        down = route_pool.Caster.down_words(gone=False)
+        hurt = [m["name"] for m in fled["got_away"]
+                if m["status_after"] & 7 in down]
+        if hurt:
+            self.keep_fight_reading()
+            raise self.fail("fight-cast", f"fight-cast: {', '.join(hurt)} "
+                                          f"ended the fight dead, dying, "
+                                          f"unconscious or stoned")
         return {"walked": taken, "acted": result.acted, "casts": tactic.casts,
                 "spent": spent, **fled,
                 "ran_line_seen": seen == S.RAN, "outcome_seen": seen,
