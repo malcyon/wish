@@ -323,9 +323,11 @@ whole Amiga saved game.
 * **The C64's sixteen slots.** DOS Silver Blades allows sixteen head items
   (`173-carrying-limits.md`) holding up to ten scrolls each, so a character
   with sixteen items one of which is a joined pair already needs seventeen C64
-  slots. That is the player's choice of what stays behind; until something
-  asks, `goldbox.dos_codec.write_c64_save` raises `JoinedScrollsDoNotFit`
-  rather than dropping any.
+  slots. That is the player's choice of what stays behind: Save As asks in
+  its leave-behind window, and `goldbox.dos_codec.write_c64_save` takes the
+  choice as `leave`. A pack still over the limit after it raises
+  `JoinedScrollsDoNotFit`, so nothing is dropped that the player did not
+  choose.
 * **The Amiga loader's 120, CONFIRMED.** It adds the scroll counts of every
   joined scroll already loaded (`0x23AC8`) to this one's, and over 120
   (`0x269C2`) reads the scrolls into a scratch buffer and frees the head. The
@@ -345,22 +347,28 @@ quantity and a head's weight being its scroll count (measured on DOS, joined
 scrolls of three and ten), so the scrolls together weigh what the joined
 scroll did. A member needs `q - 1` free rows of the Amiga's sixteen
 (`0x24B50`) to unjoin a joined scroll of `q`; a party no unjoin brings to
-120 raises `AmigaJoinedScrollsDoNotFit`, and the player's choice of what to
-leave for that case is not built yet.
+120 raises `AmigaJoinedScrollsDoNotFit`. Save As offers the same
+leave-behind window for that case, so a party over 120 after unjoining
+converts once the player has ticked what stays behind. The claim changed
+because the chooser is now built and has run live.
 
-**Conversions that still stop.** The C64 has sixteen slots, and an Amiga
-party that no unjoin brings to 120 stops.
-`JoinedScrollsDoNotFit` and `AmigaJoinedScrollsDoNotFit` are stops, not
-completed conversions, until a chooser exists, and they carry no text a
-player reads yet.
+**Conversions that still stop.** A pack that the player's choice leaves over
+the C64's sixteen slots, and an Amiga party that no unjoin and no choice
+brings to 120, stop with `JoinedScrollsDoNotFit` and
+`AmigaJoinedScrollsDoNotFit`. They are stops, not completed conversions.
 
 **CONFIRMED on DOS: the head's weight.** The stored encumbrance is the
 head's weight times its quantity: a joined scroll of ten keeps weight 10 and
 a joined scroll of three weighs 3.
 
-**Not yet proven in any running game.** Every byte above is the engines' own
-code read statically; no joined scroll converted by Wish has been loaded in
-DOSBox, WinUAE or VICE.
+**Run in the games.** A DOS Silver Blades party still over the Amiga's 120
+scrolls after unjoining, converted to the Amiga with one item left behind in the
+leave-behind window, loaded in WinUAE, walked and saved by the game. The
+game wrote 120 joined scrolls and 16 rows for the member who held the
+unjoined pair, and the save differs from the DOS one only at the item left
+behind and at byte `0x39` of the pair's two scrolls, which holds the head's
+weight on the Amiga. The claim changed because the statement that no
+converted joined scroll had run was true only before that run.
 
 ## What a following agent needs
 
@@ -374,8 +382,5 @@ DOSBox, WinUAE or VICE.
 * **They convert as themselves, not as a drop.** Both ports hold both fields,
   so the conversion copies them; every record either side has zero in them,
   and a player is told nothing because there is nothing to tell.
-* **The Silver Blades item chain is read and converted** (section 4). What
-  is left on `#432 (A joined scroll in a DOS Silver Blades save shifts
-  everything after it out of the character's pack)` is the player's choice
-  when a pack does not fit the C64's sixteen slots, and a joined scroll
-  converted by Wish loaded in each destination game.
+* **The Silver Blades item chain is read and converted** (section 4), and
+  the leave-behind choice is built for both destinations.

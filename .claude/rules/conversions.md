@@ -246,7 +246,7 @@ what is measured about reaching them:
 
 | | the ceiling | can it be reached? |
 |---|---|---|
-| C64 items | 16 slots in the record | DOS and Amiga block a seventeenth head item (`docs/173-carrying-limits.md`); Silver Blades can join scrolls under one head, but a game-written bundle that exceeds the C64 slots has not been tested in the running games |
+| C64 items | 16 slots in the record | DOS and Amiga block a seventeenth head item (`docs/173-carrying-limits.md`); Silver Blades can join scrolls under one head, and a party whose joined scrolls exceed the C64 slots converts once the player has chosen what stays behind, which the C64 games have loaded |
 | C64 trait slots | 10, shared between racial effects and item grants | racial ids are 0-4 by race, CONFIRMED (human 0, elf 1, half-elf 1, halfling 2, dwarf 4, gnome 4), so it needs a dwarf or gnome with **seven or more effect-granting items readied at once** -- **UNMEASURED** |
 
 Measure per title before designing anything: Curse's items are 67 bytes where

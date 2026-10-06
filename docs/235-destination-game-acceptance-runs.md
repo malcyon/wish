@@ -342,7 +342,7 @@ at the pushed SHA the closing comment will name. The C64 fixture party is
 | to the C64 | Save As C64 from that specimen; D2 Silver Blades: `load`, `items N`, `save`. Accepts: ITEMS lists both scrolls separately with their spells, and the resaved record holds two scroll slots |
 | to the Amiga | Save As Amiga; D3 Silver Blades: `load`, `items N`, `save D`, `fetch`, `read`. Accepts: the ITEMS capture shows the joined scroll once, and `amiga_later` reads the resave back with the bundle and its two sub-nodes, the pack after it intact |
 | back to DOS | the Amiga resave converted back; D1 `load`, `items N`, `save`, `read` gives the same bundle |
-| the 121-scroll limit | a Silver Blades Amiga save with 121 joined scrolls across the party, D3 `items` per member. Optional: it turns a PROBABLE stop into a measured limit, and the chooser it would need is interface work outside these runs |
+| the 121-scroll limit | a Silver Blades Amiga save with 121 joined scrolls across the party, D3 `items` per member. Optional: it turns a PROBABLE stop into a measured limit. The chooser is built, and a DOS party over 120 converted with one item left behind has loaded, walked and saved in WinUAE at 120 |
 
 ### The opening-scene runs
 
@@ -640,5 +640,5 @@ terms and none a choice:
 * what the Silver Blades opening gives a converted party that leaves the
   starting treasure, once the opening-scene runs resave.
 
-The joined-scroll chooser and the tooltip for a greyed field are interface
-text and stay where their tickets left them; no run above depends on either.
+The tooltip for a greyed field is interface text and stays where its ticket
+left it; no run above depends on it. The joined-scroll chooser is built.
