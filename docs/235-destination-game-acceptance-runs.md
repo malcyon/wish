@@ -77,7 +77,7 @@ Each Amiga run mounts its own disks, and the game reads its saves from only
 some of them:
 
 | title | DF0 | DF1 | DF2 | save letters |
-|---|---|---|---|---|
+|---|---|---|---|---|---|---|---|
 | Pool of Radiance | Disk 1 | Disk 2 | The specimen's `POOLSAVE` disk (`nr_floppies=3`, `floppy2type=0`) | Loaded A; control C; after D; B kept |
 | Curse | A working copy of the specimen, a whole disk A with slots A, B and C in `/SAVE` | Disk B | None | Loaded B; control D, saved at the party menu before `BEGIN ADVENTURING`; after F, saved from camp; A and C kept |
 | Silver Blades | A copy of disk 1 carrying the prepared slot C (`staging.stage_embedded_boot_disk`) | Disk B, the game's second disk | None | Control B, saved at the party menu before `BEGIN ADVENTURING`; after D, saved from camp; A and C kept |
@@ -378,28 +378,32 @@ each route's proof is named in the coverage plan on #679 (Make one repeatable
 load, inspect, move, save and verify run reliable on each destination
 platform, so conversion tickets reuse it).
 
-| # | route | conversion in Wish | proof supplied by | source specimen |
-|---|---|---|---|---|
-| 1 | Pool, C64 to DOS | `C64ToDos`; Save As DOS | DOS Pool | The committed fixture `tests/fixtures/savedgame0.bin` and `savedgame1.bin` as a disk, or `WISH-SPEC-por-52-dialog-converted-resave` |
-| 2 | Pool, C64 to Amiga | `C64ToAmiga`; Save As Amiga with disk 2 | Amiga Pool | `WISH-SPEC-por-52-dialog-converted-resave` |
-| 3 | Pool, DOS to C64 | `DosToC64`; Save As C64 with the player's `POOL` sides | C64 Pool | `WISH-SPEC-por-party-l1-intown` slot E |
-| 4 | Pool, DOS to Amiga | `DosToAmiga`; Save As Amiga with disk 2 | Amiga Pool | `WISH-SPEC-por-party-l1-intown` slot E |
-| 5 | Pool, Amiga to C64 | `AmigaToC64`; Save As C64 | C64 Pool | `WISH-SPEC-por-amiga-slums-resave` |
-| 6 | Pool, Amiga to DOS | `AmigaToDos`; Save As DOS | DOS Pool | `WISH-SPEC-por-amiga-slums-resave` |
-| 7 | Curse, C64 to DOS | `C64ToDos`; Save As DOS | DOS Curse | `WISH-SPEC-curse-h-engine-resave` |
-| 8 | Curse, C64 to Amiga | `C64ToAmiga`; Save As Amiga | Amiga Curse | `WISH-SPEC-curse-party-with-items` |
-| 9 | Curse, DOS to C64 | `DosToC64`; Save As C64 | C64 Curse | `WISH-SPEC-curse-131-dualclassed-in-area-1` |
-| 10 | Curse, DOS to Amiga | `DosToAmiga`; Save As Amiga | Amiga Curse | `WISH-SPEC-curse-234-party-dualclassed` slot D |
-| 11 | Curse, Amiga to C64 | `AmigaToC64`; Save As C64 | C64 Curse | `WISH-SPEC-coab-amiga-resave` |
-| 12 | Curse, Amiga to DOS | `AmigaToDos`; Save As DOS | DOS Curse | `WISH-SPEC-coab-amiga-resave` |
-| 13 | Silver Blades, C64 to DOS | `C64ToDos`; Save As DOS | DOS Silver Blades | `WISH-SPEC-ssb-joined-arrow-c64-672` |
-| 14 | Silver Blades, C64 to Amiga | `C64ToAmiga`; Save As Amiga | Amiga Silver Blades | `WISH-SPEC-ssb-joined-arrow-c64-672` |
-| 15 | Silver Blades, DOS to C64 | `DosToC64`; Save As C64 | C64 Silver Blades | `WISH-SPEC-ssb-299-whole-engine-resave`, or `WISH-SPEC-ssb-joined-arrow-dos-672` slot D |
-| 16 | Silver Blades, DOS to Amiga | `DosToAmiga`; Save As Amiga | Amiga Silver Blades | `WISH-SPEC-ssb-joined-arrow-dos-672` slot D |
-| 17 | Silver Blades, Amiga to C64 | `AmigaToC64`; Save As C64 | C64 Silver Blades | `WISH-SPEC-ssb-amiga-moved` |
-| 18 | Silver Blades, Amiga to DOS | `AmigaToDos`; Save As DOS | DOS Silver Blades | `WISH-SPEC-ssb-amiga-moved` |
-| 19 | Pools of Darkness, Amiga to DOS | `PodAmigaToDos` behind `WISH_EXPERIMENTAL_POD_CONVERT`: File > Convert, or `acceptance.py --amiga-slot` | DOS Pools of Darkness | `SavGamB.pty` on the registry's `(SSI)(Disk 3 of 3)[a].adf`, a played save found on a disk image, so an input and not a measurement |
-| 20 | Pools of Darkness, DOS to Amiga | None: the `.pc` writer (`amiga_pod.write_pod`) exists, and the saved-game writer, its detection and the direction do not | Amiga Pools of Darkness, foundation proven (section 5) | `WISH-SPEC-p175-diff1` once a route exists |
+Routes 1 to 18 are proven: the destination game loaded, walked and saved the
+Save As output, at a pushed commit whose lint and test jobs passed. Evidence
+folders are under `~/.cache/wish/acceptance/`; routes 19 and 20 belong to WISH-2.
+
+| # | route | conversion in Wish | proof supplied by | source specimen | result | evidence | commit, CI green |
+|---|---|---|---|---|---|---|---|
+| 1 | Pool, C64 to DOS | `C64ToDos`; Save As DOS | DOS Pool | The committed fixture `tests/fixtures/savedgame0.bin` and `savedgame1.bin` as a disk, or `WISH-SPEC-por-52-dialog-converted-resave` | Proven | WISH-22 comment 8885cee6; `679/5b586acc35-found-dospool-a` | `5b586acc35` |
+| 2 | Pool, C64 to Amiga | `C64ToAmiga`; Save As Amiga with disk 2 | Amiga Pool | `WISH-SPEC-por-52-dialog-converted-resave` | Proven | WISH-22 comment 8885cee6; `679/5c70c2e5-619-amiga-pool-name/accept1` | `5c70c2e550` |
+| 3 | Pool, DOS to C64 | `DosToC64`; Save As C64 with the player's `POOL` sides | C64 Pool | `WISH-SPEC-por-party-l1-intown` slot E | Proven | WISH-22 comment 8885cee6; `682/bf8c7c325e-r-pool-ready` | `a1f5262f5d` |
+| 4 | Pool, DOS to Amiga | `DosToAmiga`; Save As Amiga with disk 2 | Amiga Pool | `WISH-SPEC-por-party-l1-intown` slot E | Proven | WISH-22 comment 0a8f2ad4; `22/wish22-r4-1cd0cf3c/accept1` | `1cd0cf3c` |
+| 5 | Pool, Amiga to C64 | `AmigaToC64`; Save As C64 | C64 Pool | `WISH-SPEC-por-amiga-slums-resave` | Proven | WISH-22 comment 8885cee6; `700/df335e74-amiga-zombie-c64/pos` | `df335e745f` |
+| 6 | Pool, Amiga to DOS | `AmigaToDos`; Save As DOS | DOS Pool | `WISH-SPEC-por-amiga-slums-resave` | Proven | WISH-22 comment f832ac3e; `22/final-6/boot1` | `c197499e` |
+| 7 | Curse, C64 to DOS | `C64ToDos`; Save As DOS | DOS Curse | `WISH-SPEC-curse-h-engine-resave` | Proven | WISH-22 comment 4ba3d116; `22/dos-7/boot1` | `c704a864` |
+| 8 | Curse, C64 to Amiga | `C64ToAmiga`; Save As Amiga | Amiga Curse | `WISH-SPEC-curse-party-with-items` | Proven | WISH-22 comment 8885cee6; `677/offline-curse-c64/accept1` | `223b8d6ff9` |
+| 9 | Curse, DOS to C64 | `DosToC64`; Save As C64 | C64 Curse | `WISH-SPEC-curse-131-dualclassed-in-area-1` | Proven | WISH-22 comment 7492f23f; `22/c64-r9-curse-dos-c64/boot1` | `c704a864` |
+| 10 | Curse, DOS to Amiga | `DosToAmiga`; Save As Amiga | Amiga Curse | `WISH-SPEC-curse-234-party-dualclassed` slot D | Proven | WISH-22 comment af09d403; `22/wish22-r10-par2/accept1` | `2066273d` |
+| 11 | Curse, Amiga to C64 | `AmigaToC64`; Save As C64 | C64 Curse | `WISH-SPEC-coab-amiga-resave` | Proven | WISH-22 comment 7492f23f; `22/c64-r11-curse-amiga-c64/boot1` | `c704a864` |
+| 12 | Curse, Amiga to DOS | `AmigaToDos`; Save As DOS | DOS Curse | `WISH-SPEC-coab-amiga-resave` | Proven | WISH-22 comment f832ac3e; `22/final-12/boot1` | `c197499e` |
+| 13 | Silver Blades, C64 to DOS | `C64ToDos`; Save As DOS | DOS Silver Blades | `WISH-SPEC-ssb-joined-arrow-c64-672` | Proven | WISH-22 comment 4ba3d116; `22/dos-13/boot1` | `c704a864` |
+| 14 | Silver Blades, C64 to Amiga | `C64ToAmiga`; Save As Amiga | Amiga Silver Blades | `WISH-SPEC-ssb-joined-arrow-c64-672` | Proven | WISH-22 comment 8885cee6; `677/offline-ssb-c64/accept3` | `9ba169a9d4` |
+| 15 | Silver Blades, DOS to C64 | `DosToC64`; Save As C64 | C64 Silver Blades | `WISH-SPEC-ssb-299-whole-engine-resave`, or `WISH-SPEC-ssb-joined-arrow-dos-672` slot D | Proven | WISH-22 comment 7492f23f; `22/c64-r15-ssb-dos-c64/boot1` | `c704a864` |
+| 16 | Silver Blades, DOS to Amiga | `DosToAmiga`; Save As Amiga | Amiga Silver Blades | `WISH-SPEC-ssb-joined-arrow-dos-672` slot D | Proven | WISH-22 comment af09d403; `22/wish22-r16-par2/accept1` | `2066273d` |
+| 17 | Silver Blades, Amiga to C64 | `AmigaToC64`; Save As C64 | C64 Silver Blades | `WISH-SPEC-ssb-amiga-moved` | Proven | WISH-22 comment 7492f23f; `22/c64-r17-ssb-amiga-c64/boot1` | `c704a864` |
+| 18 | Silver Blades, Amiga to DOS | `AmigaToDos`; Save As DOS | DOS Silver Blades | `WISH-SPEC-ssb-amiga-moved` | Proven | WISH-22 comment 4ba3d116; `22/dos-18/boot1` | `c704a864` |
+| 19 | Pools of Darkness, Amiga to DOS | `PodAmigaToDos` behind `WISH_EXPERIMENTAL_POD_CONVERT`: File > Convert, or `acceptance.py --amiga-slot` | DOS Pools of Darkness | `SavGamB.pty` on the registry's `(SSI)(Disk 3 of 3)[a].adf`, a played save found on a disk image, so an input and not a measurement | Not in the 18 | WISH-2 | |
+| 20 | Pools of Darkness, DOS to Amiga | None: the `.pc` writer (`amiga_pod.write_pod`) exists, and the saved-game writer, its detection and the direction do not | Amiga Pools of Darkness, foundation proven (section 5) | `WISH-SPEC-p175-diff1` once a route exists | Not built | WISH-2 | |
 
 Routes 8, 10, 14 and 16 (Curse and Silver Blades to the Amiga) needed
 #677 (Save As to the Amiga puts a Curse or Silver Blades party on a separate
@@ -441,7 +445,7 @@ under `672/`), each run named `<sha>-<run>`. All eleven pairs are proven, each a
 SHA whose lint and test jobs passed.
 
 | pair | status | SHA | runs | specimen registered from the game's save |
-|---|---|---|---|---|
+|---|---|---|---|---|---|---|---|
 | DOS Pool of Radiance | Proven | `5b586acc35` | `found-dospool-a`, `-b`, `-control` | `WISH-SPEC-dos-pool-foundation-walked` |
 | DOS Curse of the Azure Bonds | Proven | `5f3b09ec77` | `found-curse-a`, `-b`, `-control` | `WISH-SPEC-dos-curse-foundation-walked` |
 | DOS Secret of the Silver Blades | Proven | `5f3b09ec77` | `found-ssb-a`, `-b`, `-control` | `WISH-SPEC-dos-ssb-foundation-walked` |
@@ -566,7 +570,7 @@ characters the game's own CREATE NEW CHARACTER screens wrote
 a save we watched being written and it adds a reload.
 
 | pair | status | SHA | runs | specimen registered from the game's save |
-|---|---|---|---|---|
+|---|---|---|---|---|---|---|---|
 | C64 Pool of Radiance, native party | Proven | `e47999730a` | `found-por-native-a`, `-b`, `-control`, and one reload | `WISH-SPEC-por-c64-foundation-walked` |
 
 | pair | command | verdict lines | control |
