@@ -82,7 +82,8 @@ def _read_amiga(disks, game, names) -> tuple[dict[str, bytes], tuple] | None:
                     program = disk.read_file(path)
                 elif path.upper() == AMIGA_SCRIPTS and library is None:
                     library = disk.read_file(path)
-        except Exception:                      # not readable: no candidate
+        except Exception as err:               # not readable: no candidate
+            _log.debug("Amiga disk %s not read: %s", image, err)
             continue
     if program is None or library is None:
         return None

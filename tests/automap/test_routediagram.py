@@ -133,6 +133,103 @@ def test_an_amiga_only_folder_gives_the_route_page_with_the_amigas_cells():
     assert world.cells[:14] == tuple(p.cell for p in world.places)
 
 
+def _worldmap_tests():
+    """The reader's test module, loaded by path: its synthetic Amiga program
+    is the one builder, and the two test folders do not share an import path."""
+    import importlib.util
+    import pathlib
+    path = (pathlib.Path(__file__).parents[1] / "curse_of_the_azure_bonds"
+            / "test_curse_worldmap.py")
+    spec = importlib.util.spec_from_file_location("curse_worldmap_tests", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _amiga_curse_folder(tmp_path, program=True, scripts=True):
+    """A folder of synthetic Amiga Curse disks: A carries the program and B the
+    script library, each block holding a marker string for its area."""
+    from goldbox.amiga_adf import AmigaDisk
+    amiga_program = _worldmap_tests().amiga_program
+    disk_a = AmigaDisk.blank("Curse A")
+    disk_a.write_file("/Curse", amiga_program([3, 11, 20], [14, 6, 10]))
+    disk_b = AmigaDisk.blank("Curse B")
+    disk_b.make_dir("/DISKB")
+    table = (2).to_bytes(2, "big") + b"".join(
+        a.to_bytes(2, "big") + b.to_bytes(2, "big")
+        for a, b in ((0x50, 1), (0x51, 2)))
+    blocks = [table, b"script50", b"script51"]
+    offsets, at = [], 16 + 4 * (len(blocks) + 1)
+    for block in blocks:
+        offsets.append(at)
+        at += len(block)
+    offsets.append(at)
+    glb = (b"GLIB" + bytes(4) + len(blocks).to_bytes(2, "big") + bytes(2)
+           + b"DATA" + b"".join(o.to_bytes(4, "big") for o in offsets)
+           + b"".join(blocks))
+    disk_b.write_file("/DISKB/ECL.GLB", glb)
+    if program:
+        disk_a.save(tmp_path / "curse_a.adf")
+    if scripts:
+        disk_b.save(tmp_path / "curse_b.adf")
+    return tmp_path
+
+
+def _read_by_recording(monkeypatch):
+    calls = []
+
+    def read(scripts, driver=None, cells=None):
+        calls.append((dict(scripts), driver, cells))
+        return synthetic_world()
+
+    monkeypatch.setattr(routes, "read_world_map", read)
+    return calls
+
+
+def test_synthetic_amiga_disks_give_the_route_page(tmp_path, monkeypatch):
+    calls = _read_by_recording(monkeypatch)
+    folder = _amiga_curse_folder(tmp_path)
+    assert routes.load_route_map(folder, CURSE) is not None
+    [(scripts, driver, cells)] = calls
+    assert scripts == {"ECL50": b"script50", "ECL51": b"script51"}
+    assert driver is None and cells == ((3, 14), (11, 6), (20, 10))
+
+
+@pytest.mark.parametrize("missing", ["program", "scripts"])
+def test_one_amiga_disk_missing_gives_no_route_page(tmp_path, monkeypatch,
+                                                    missing):
+    calls = _read_by_recording(monkeypatch)
+    folder = _amiga_curse_folder(tmp_path, **{missing: False})
+    assert routes.load_route_map(folder, CURSE) is None
+    assert calls == []
+
+
+def test_c64_files_win_over_amiga_disks(tmp_path, monkeypatch):
+    calls = fake_disks(monkeypatch, synthetic_world())
+    folder = _amiga_curse_folder(tmp_path)
+    monkeypatch.setattr(routes, "_read_amiga", lambda *a: pytest.fail("Amiga"))
+    assert routes.load_route_map(folder, CURSE) is not None
+    assert calls == [["ECL50", "ECL51"]]
+
+
+def test_a_partly_read_amiga_disk_is_logged_at_debug_level(
+        tmp_path, monkeypatch, caplog):
+    from goldbox.amiga_adf import AmigaDisk, AmigaDiskError
+    folder = _amiga_curse_folder(tmp_path)
+    real = AmigaDisk.read_file
+
+    def read(self, path):
+        if path.upper().endswith("ECL.GLB"):
+            raise AmigaDiskError("broken chain")
+        return real(self, path)
+
+    monkeypatch.setattr(AmigaDisk, "read_file", read)
+    with caplog.at_level("DEBUG", logger="wish.automap.routes"):
+        assert routes._read_amiga(folder, CURSE, ("ECL50",)) is None
+    assert any("curse_b.adf" in r.getMessage() and "broken chain"
+               in r.getMessage() for r in caplog.records)
+
+
 def test_the_drawing_is_centred_in_the_room_it_is_given():
     points = routes.place_points(synthetic_world(), 0, 0, 280, 1000)
     ys = [y for _, y in points.values()]
