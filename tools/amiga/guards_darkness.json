@@ -753,19 +753,34 @@
       "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/title.png",
       "sha256": "3067b860a75e1b749371aeddd2c5ea3eb2f5537f6d63e1c39fbf0f3e5541b425"
     },
-    "world": {
-      "also": [
-        "place"
-      ],
-      "box": [
-        58,
-        402,
-        698,
-        430
-      ],
-      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/12-world.png",
-      "sha256": "8d2d010f78539968312ab2b1fbe3cc5156be453a65bd6b71f668325efa385386"
-    },
+    "world": [
+      {
+        "also": [
+          "place"
+        ],
+        "box": [
+          58,
+          402,
+          698,
+          430
+        ],
+        "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/12-world.png",
+        "sha256": "8d2d010f78539968312ab2b1fbe3cc5156be453a65bd6b71f668325efa385386"
+      },
+      {
+        "also": [
+          "place"
+        ],
+        "box": [
+          58,
+          402,
+          698,
+          430
+        ],
+        "example": "WISH-2/wish2-a3/measure-a3-7/shots/10-world.png",
+        "sha256": "c3847417fd279524ff41c32a33c6d6e3f039244003ec201eadd1249c82c4585e"
+      }
+    ],
     "yes_no": {
       "also": [],
       "box": [
@@ -1122,6 +1137,9 @@
     ],
     "WISH-2/wish2-a2/measure2/shots/06-sheet.png": [
       "sheet"
+    ],
+    "WISH-2/wish2-a3/measure-a3-7/shots/10-world.png": [
+      "world"
     ],
     "WISH-2/wish2-s5/accept2/shots/13-world.png": [
       "place_x3_y2_f1"
