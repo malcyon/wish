@@ -110,3 +110,17 @@ def test_two_runtime_ids_with_one_name_are_still_ambiguous():
     inner = _inner()
     assert "$hit.Count -gt 1" in inner
     assert "controls match" in inner
+
+
+def test_controls_and_the_dump_print_the_same_fields_per_line():
+    controls = winwish.ui_inner(r"C:\b", "controls", (), None, r"C:\o.txt")
+    branch = controls[controls.index("-eq 'controls'"):]
+    branch = branch[:branch.index("} else {")]
+    for field in ("GetRuntimeId()", "IsOffscreen", "BoundingRectangle"):
+        assert field not in branch
+    assert "Get-Detail $e" in branch
+    assert "Get-Detail $e" in _inner()
+    function = controls[controls.index("function Get-Detail"):]
+    function = function[:function.index("\n")]
+    for field in ("GetRuntimeId()", "IsOffscreen", "BoundingRectangle"):
+        assert field in function

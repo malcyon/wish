@@ -597,8 +597,8 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
              controls_after: str | None = None) -> str:
     """What the session 1 task runs: list the controls of this holder's Wish, or click some.
 
-    `action` is `controls` (one line per control: `Type|Name|AutomationId|enabled=B|state`,
-    optionally only `kind`), `click` (each name in turn, so a menu is `File`,
+    `action` is `controls` (one line per control: `Type|Name|AutomationId|enabled=B|state|RuntimeId|IsOffscreen|
+    BoundingRectangle`, optionally only `kind`), `click` (each name in turn, so a menu is `File`,
     `Preferences`) or `close` (close each top-level window of this holder's Wish with
     `WindowPattern.Close()` and wait up to `CLOSE_SECONDS` for the process to exit; the
     line is `closed`, or `gone` when none was running).  With `automation_id`, `click`
@@ -682,6 +682,7 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
         "    return ''",
         "  }",
         "  function Get-Line($e) { return ((Get-Kind $e) + '|' + $e.Current.Name + '|' + $e.Current.AutomationId + '|enabled=' + $e.Current.IsEnabled + '|' + (Get-State $e)) }",
+        "  function Get-Detail($e) { return (Get-Line $e) + '|' + ($e.GetRuntimeId() -join '.') + '|offscreen=' + $e.Current.IsOffscreen + '|' + $e.Current.BoundingRectangle }",
         *(_expand_function() if expand else _use_functions()),
         f"  if ({q(action)} -eq 'close') {{",
         "    if ($procs.Count -eq 0) { [void]$lines.Add('gone') } else {",
@@ -700,7 +701,7 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
         "    }",
         f"  }} elseif ({q(action)} -eq 'controls') {{",
         "    foreach ($e in Get-Controls) {",
-        "      if ($kind -eq '' -or (Get-Kind $e) -eq $kind) { [void]$lines.Add((Get-Line $e)) }",
+        "      if ($kind -eq '' -or (Get-Kind $e) -eq $kind) { [void]$lines.Add((Get-Detail $e)) }",
         "      if ((Get-Kind $e) -eq 'Window' -and $e.Current.NativeWindowHandle -ne 0 -and "
         "$e.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition).Count -eq 0) {",
         "        foreach ($row in Get-Msaa $e.Current.NativeWindowHandle) {",
@@ -754,8 +755,7 @@ def _dump_lines(path: str) -> list[str]:
         "$dump = New-Object System.Collections.ArrayList",
         "foreach ($e in Get-Controls) {",
         "  if ($kind -ne '' -and (Get-Kind $e) -ne $kind) { continue }",
-        "  [void]$dump.Add((Get-Line $e) + '|' + ($e.GetRuntimeId() -join '.') + '|offscreen=' "
-        "+ $e.Current.IsOffscreen + '|' + $e.Current.BoundingRectangle)",
+        "  [void]$dump.Add((Get-Detail $e))",
         "}",
         "$dump = @($dump | ForEach-Object { [regex]::Replace($_, '[^\\x20-\\x7e]', "
         "{ param($m) '\\u' + ([int][char]$m.Value).ToString('x4') }) })",
