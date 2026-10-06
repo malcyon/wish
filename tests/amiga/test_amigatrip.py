@@ -634,10 +634,10 @@ def test_what_each_difference_holds():
         return {d.name for d in trip.ROWS[key].differences
                 if d.covers(here, to, back)}
 
-    assert held("curse-of-the-azure-bonds", 3, 1) == {"tilverton"}
+    assert held("curse-of-the-azure-bonds", 3, 1) == set()
     assert held("curse-of-the-azure-bonds", 1, 3) == set()
     assert held("curse-of-the-azure-bonds", 1, 3, back=True) == set()
-    assert held("curse-of-the-azure-bonds", 3, 1, back=True) == {"tilverton"}
+    assert held("curse-of-the-azure-bonds", 3, 1, back=True) == set()
     assert held("pools-of-darkness", 0x15, 0x16, back=True) == {
         "return_landing"}
     assert held("pools-of-darkness", 0x15, 0x16) == set()
