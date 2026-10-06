@@ -480,17 +480,34 @@ def test_a_duplicate_route_name_is_a_usage_error(tmp_path):
 # -- answering the question, and the single trip ------------------------------
 
 
-def _answered(fake, tmp_path, answers, area_after=5, sleep=lambda s: None):
+def _answered(fake, tmp_path, answers, area_after=5, sleep=lambda s: None,
+              question=True, door_area=None):
+    """Run one route; the screen shows a question once the door key is taken, if `question`."""
     calls = []
+    screen = [b"world"]
+    plain_write = fake.write
+
+    def write(addr, data, verify=True):
+        plain_write(addr, data, verify)
+        if addr == PORT + amigatrip.PORT_LIST and question and fake.takes:
+            screen[0] = b"question"
+            if door_area is not None:
+                fake.put(BASE + ROW.area, bytes([door_area]))
+
+    fake.write = write
 
     def press(key):
         calls.append(("press", key))
         if key == "y":
             fake.put(BASE + ROW.area, bytes([area_after]))
+            screen[0] = b"arrived"
+
+    def shot(holder, path):
+        calls.append(("shot", path.name))
+        path.write_bytes(screen[0])
 
     results = tripprobe.run_doors(
-        fake, "h", {"edge": (4, 0, 0)}, (True,), tmp_path,
-        lambda holder, path: calls.append(("shot", path.name)), sleep=sleep,
+        fake, "h", {"edge": (4, 0, 0)}, (True,), tmp_path, shot, sleep=sleep,
         answers=answers, press=press)
     return results, calls
 
@@ -499,8 +516,8 @@ def test_the_answer_key_goes_once_after_the_question_screenshot(door, tmp_path):
     fake = DoorFake()
     fake.snapshot = fake.restore = fake.discard_snapshot = lambda n, h: None
     results, calls = _answered(fake, tmp_path, {"edge": ("y", 5)})
-    assert calls == [("shot", "edge-attribute.png"), ("press", "y"),
-                     ("shot", "edge-answer.png"), ("press", "8"), ("shot", "edge-forward.png")]
+    assert calls == [("shot", "edge-attribute-before.png"), ("shot", "edge-attribute.png"),
+                     ("press", "y"), ("shot", "edge-answer.png"), ("press", "8"), ("shot", "edge-forward.png")]
     assert results[0]["answer"] == "y"
 
 
@@ -563,6 +580,7 @@ def test_prefixes_default_is_all_six(monkeypatch, tmp_path):
 @pytest.mark.parametrize("extra", [
     ["--answer", "y"], ["--prefixes", "7"], ["--prefixes", "a"],
     ["--door", "--route", "e=4,0,0", "--answer", "nokey"],
+    ["--door", "--route", "e=4,0,0", "--answer", "y"],
     ["--door", "--route", "e=4,0,0", "--answer", "other=y"],
     ["--door", "--route", "e=4,0,0", "--expect-area", "5"],
     ["--door", "--route", "e=4,0,0", "--answer", "y", "--expect-area", "x"]])
@@ -578,5 +596,56 @@ def test_answers_resolve_per_route_over_the_default():
 
     parser = argparse.ArgumentParser()
     routes = {"a": (1, 1, 1), "b": (2, 2, 2)}
-    assert tripprobe._answers(parser, routes, ["y", "b=n"], ["5", "b=6"]) == {
+    assert tripprobe._answers(parser, routes, ["a=y", "b=n"], ["5", "b=6"]) == {
         "a": ("y", 5), "b": ("n", 6)}
+
+
+def _plain(fake):
+    fake.snapshot = fake.restore = fake.discard_snapshot = lambda n, h: None
+    return fake
+
+
+def test_no_question_on_screen_sends_no_answer_and_no_forward_key(door, tmp_path):
+    results, calls = _answered(_plain(DoorFake()), tmp_path, {"edge": ("y", 5)},
+                               question=False)
+    assert ("press", "y") not in calls and ("press", "8") not in calls
+    assert results[0]["answered"] is False
+    assert "screen did not change" in results[0]["answer_skipped"]
+
+
+def test_a_changed_area_sends_no_answer(door, tmp_path):
+    results, calls = _answered(_plain(DoorFake()), tmp_path, {"edge": ("y", 9)}, door_area=9)
+    assert not [c for c in calls if c[0] == "press"]
+    assert results[0]["answered"] is False and "area byte changed" in results[0]["answer_skipped"]
+
+
+def test_a_key_not_taken_sends_no_answer(door, tmp_path, monkeypatch):
+    monkeypatch.setattr(tripprobe, "FIRE_SECONDS", 1.0)
+    results, calls = _answered(_plain(DoorFake(takes=False)), tmp_path, {"edge": ("y", 5)})
+    assert not [c for c in calls if c[0] == "press"]
+    assert results[0]["answered"] is False and "not taken" in results[0]["answer_skipped"]
+
+
+def test_an_answered_try_says_so(door, tmp_path):
+    results, _ = _answered(_plain(DoorFake()), tmp_path, {"edge": ("y", 5)})
+    assert results[0]["answered"] is True
+
+
+def test_an_expected_area_equal_to_the_start_area_is_unproven(door, tmp_path):
+    results, _ = _answered(_plain(DoorFake()), tmp_path, {"edge": ("y", 14)}, area_after=14)
+    assert results[0]["expect_unproven"] is True and results[0]["area_reached"] is None
+
+
+def test_an_answered_door_run_still_ends_with_the_snapshot_restore(door, tmp_path):
+    fake = DoorFake()
+    calls = []
+    _recording(fake, calls)
+    _answered(fake, tmp_path, {"edge": ("y", 5)})
+    assert calls == ["snapshot", "restore", "restore", "discard"]
+
+
+def test_prefixes_with_door_is_a_usage_error(tmp_path):
+    with pytest.raises(SystemExit) as exc:
+        tripprobe.main(["--holder", "h", "--door", "--route", "e=4,0,0",
+                        "--prefixes", "0", "--out", str(tmp_path)])
+    assert exc.value.code == 2

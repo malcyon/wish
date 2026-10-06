@@ -25,16 +25,21 @@ the key.
     tools/amiga/tripprobe.py --holder wish1-por --door \\
         --route edge=4,0,0 --route question=6,14,2 --attribute both --out DIR
 
-`--answer [NAME=]KEY` answers the question the key raised: after the first
-screenshot it presses KEY, polls the area byte for `FIRE_SECONDS` (until it is
-`--expect-area [NAME=]AREA`, or until it changes when none is given), settles,
-takes a second screenshot, then presses the forward key and takes a third.
-Without NAME the value applies to every route.
+`--answer NAME=KEY` answers the question the key raised on route NAME. A
+screenshot is taken before the door key; the answer goes only when the key was
+taken, the area byte is unchanged and the screen differs from that one, so a
+route with no question is never answered. Then it presses KEY, polls the area
+byte for `FIRE_SECONDS` (until it is `--expect-area [NAME=]AREA`, or until it
+changes when none is given), settles, takes a second screenshot, then presses
+the forward key and takes a third. A route not answered records `answered:
+false` and the reason. An `--expect-area` equal to the area before the answer
+proves nothing and is recorded as `expect_unproven`. Without NAME an
+`--expect-area` applies to every answered route.
 
     tools/amiga/tripprobe.py --holder wish1-por --door --route valjevo=5,7,1 \\
         --answer y --expect-area 5 --out DIR
 
-`--prefixes 0` fires one trip and leaves the game where it lands, so a later
+`--prefixes 0` (not with `--door`) fires one trip and leaves the game where it lands, so a later
 `--door` run in the same boot starts from the area the trip loaded; every
 `--door` run still restores its snapshot at the end.
 
@@ -208,6 +213,17 @@ def _cached_bytes(target, row) -> dict[str, int]:
     return {"wall_ahead": wall[0], "square_attribute": attribute[0]}
 
 
+def _unanswered(result: dict, before: bytes, after: bytes) -> str | None:
+    """Why no question can be on screen after the door key, or None when one may be."""
+    if not result["key_taken"]:
+        return "the door key was not taken"
+    if result["area_changed"]:
+        return "the area byte changed, so the key did not raise a question"
+    if before == after:
+        return "the screen did not change after the door key"
+    return None
+
+
 def answer_door(target, row, route: str, key: str, expect: int | None, out: pathlib.Path,
                 shot: Callable[[pathlib.Path], object], press: Callable[[str], object],
                 sleep: Callable[[float], None]) -> dict:
@@ -218,20 +234,24 @@ def answer_door(target, row, route: str, key: str, expect: int | None, out: path
     """
     before = amigatrip.area_id(target, row)
 
+    # An expected area equal to the starting one is true before the first poll.
+    unproven = expect is not None and expect == before
+
     def arrived() -> bool:
         now = amigatrip.area_id(target, row)
         return now == expect if expect is not None else now != before
 
     press(key)
     waited = 0.0
-    while not arrived() and waited < FIRE_SECONDS:
+    while not unproven and not arrived() and waited < FIRE_SECONDS:
         sleep(POLL_SECONDS)
         waited += POLL_SECONDS
-    reached = arrived()
+    reached = None if unproven else arrived()
     sleep(SETTLE_SECONDS)
     answered = out / f"{route}-answer.png"
     shot(answered)
-    result = {"answer": key, "expect_area": expect, "answer_area_before": before,
+    result = {"answered": True, "answer": key, "expect_area": expect,
+              "expect_unproven": unproven, "answer_area_before": before,
               "answer_area": amigatrip.area_id(target, row), "area_reached": reached,
               "answer_square": amigatrip.square(target, row),
               "answer_screenshot": answered.name}
@@ -327,16 +347,24 @@ def run_doors(target, holder: str, routes: dict[str, tuple[int, int, int]], attr
             for route, stand in routes.items():
                 for attribute in attributes:
                     pipe.restore(name, holder)
+                    stem = f"{route}-{'attribute' if attribute else 'skip'}"
+                    path = out / f"{stem}.png"
+                    if route in answers:
+                        world = out / f"{stem}-before.png"
+                        shot(holder, world)
                     result = try_door(target, row, stand, attribute, sleep)
-                    path = out / f"{route}-{'attribute' if attribute else 'skip'}.png"
                     shot(holder, path)
                     result.update(route=route, stand=list(stand), attribute=attribute,
                                   screenshot=path.name)
-                    if route in answers and result["key_taken"]:
-                        key, expect = answers[route]
-                        result.update(answer_door(
-                            target, row, route, key, expect, out,
-                            lambda p: shot(holder, p), press, sleep))
+                    if route in answers:
+                        why = _unanswered(result, world.read_bytes(), path.read_bytes())
+                        if why is None:
+                            key, expect = answers[route]
+                            result.update(answer_door(
+                                target, row, route, key, expect, out,
+                                lambda p: shot(holder, p), press, sleep))
+                        else:
+                            result.update(answered=False, answer_skipped=why)
                     lines.write(json.dumps(result) + "\n")
                     results.append(result)
         pipe.restore(name, holder)
@@ -353,15 +381,16 @@ def run_doors(target, holder: str, routes: dict[str, tuple[int, int, int]], attr
 
 def _answers(parser, routes, answers, expects) -> dict[str, tuple[str, int | None]]:
     """Each route's `(key, expected area)` from `[NAME=]KEY` and `[NAME=]AREA` options."""
-    def split(item: str, what: str) -> tuple[str | None, str]:
+    def split(item: str, what: str, named: bool = False) -> tuple[str | None, str]:
         label, eq, value = item.rpartition("=")
-        if not value or (eq and label not in routes):
-            parser.error(f"{what} {item!r} is not [NAME=]VALUE with NAME a --route")
+        if not value or (eq and label not in routes) or (named and not eq):
+            parser.error(f"{what} {item!r} is not {'' if named else '[NAME=]'}NAME=VALUE "
+                         "with NAME a --route")
         return (label or None), value
 
     keys: dict[str | None, str] = {}
     for item in answers:
-        label, value = split(item, "--answer")
+        label, value = split(item, "--answer", named=True)
         try:
             amigakeys.lookup(value)
         except KeyError:
@@ -398,18 +427,21 @@ def main(argv: list[str] | None = None) -> int:
                         help="with --door: the square to stand on and the facing; repeatable")
     parser.add_argument("--attribute", choices=("write", "skip", "both"), default="write",
                         help="with --door: whether to write the square's attribute byte (0x1773)")
-    parser.add_argument("--answer", action="append", default=[], metavar="[NAME=]KEY",
+    parser.add_argument("--answer", action="append", default=[], metavar="NAME=KEY",
                         help="with --door: the key that answers the game's question")
     parser.add_argument("--expect-area", action="append", default=[], metavar="[NAME=]AREA",
                         help="with --door --answer: the area the answer should reach")
-    parser.add_argument("--prefixes", default="0,1,2,3,4,5",
-                        help="the prefix lengths to fire; 0 alone leaves the game where the trip lands")
+    parser.add_argument("--prefixes", default=None,
+                        help="the prefix lengths to fire, default 0,1,2,3,4,5; 0 alone leaves "
+                             "the game where the trip lands")
     args = parser.parse_args(argv)
     if (args.answer or args.expect_area) and not args.door:
         parser.error("--answer and --expect-area need --door")
+    if args.door and args.prefixes is not None:
+        parser.error("--prefixes does not apply to --door")
     longest = len(amigatrip.boat_exit_groups())
     try:
-        prefixes = [int(n) for n in args.prefixes.split(",")]
+        prefixes = [int(n) for n in (args.prefixes or "0,1,2,3,4,5").split(",")]
     except ValueError:
         prefixes = []
     if not prefixes or any(not 0 <= n <= longest for n in prefixes):
