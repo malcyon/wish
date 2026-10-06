@@ -326,7 +326,15 @@ def test_items_to_leave_matches_the_exhaustive_search(members):
         assert got == _reference_items_to_leave(overflow, leave)
 
 
-def test_items_to_leave_for_a_late_game_party_returns_at_once():
+@pytest.fixture
+def cold_member_tables():
+    """Empty the per-member table caches so the test sees a cold build."""
+    dos_codec._member_unjoin_table.cache_clear()
+    dos_codec._member_leave_options.cache_clear()
+
+
+def test_items_to_leave_for_a_late_game_party_returns_at_once(
+        cold_member_tables):
     overflow = _amiga_overflow(*[(8, (10,) * 13)] * 2)
     start = time.perf_counter()
     got = dos_codec.amiga_items_to_leave(overflow, {})
@@ -336,7 +344,7 @@ def test_items_to_leave_for_a_late_game_party_returns_at_once():
     assert left > 0
 
 
-def test_items_to_leave_for_six_members_returns_at_once():
+def test_items_to_leave_for_six_members_returns_at_once(cold_member_tables):
     overflow = _amiga_overflow(*[(6, (10,) * 6)] * 6)
     start = time.perf_counter()
     got = dos_codec.amiga_items_to_leave(overflow, {})
@@ -354,7 +362,7 @@ def _tables_built(call):
     return after[0] - before[0], after[1] - before[1]
 
 
-def test_a_tick_rebuilds_only_the_ticked_members_tables():
+def test_a_tick_rebuilds_only_the_ticked_members_tables(cold_member_tables):
     overflow = _amiga_overflow(*[(4 + 2 * n, (10,) * 16) for n in range(6)])
     leave = {overflow.members[0]: {0}}
     dos_codec.amiga_items_to_leave(overflow, leave)
