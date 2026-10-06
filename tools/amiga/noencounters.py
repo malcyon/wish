@@ -97,6 +97,15 @@ def _rest(title, spec, new, grade, source):
 #: Pool's buffer is `ecl.dax` at `[data+0xA4] + (A - $9900)`; the other titles'
 #: is `[data+pointer] + A`.  The Slums roll (`$9B3A`) has its encounter on the
 #: high side, so its constant, two bytes on, is zeroed as well.
+#:
+#: Pools of Darkness has two `Disk3/ECL.GLB` releases (sha256 `becddc5926af`
+#: and `adb9afbd3eca`) whose wilderness rolls sit at different addresses, so
+#: each has its own row; at each row's offset only its own area's block holds
+#: the statement.  Every Pools of Darkness gate is reached from step entry 1
+#: after a step counter passes its limit, and `SAVE 99` takes its `EXIT`.  The
+#: `SAVE` leaves 99, a value the roll can produce, in variable 191 (save offset
+#: `0xBE`) or 192 (`0xBF`), and the counter unreset (variable 217, `0xD8`, in
+#: areas 17 and 25; 161, `0xA0`, in area 32).
 ROWS = (
     _gate("pool-of-radiance", "*0xA4+0x7B3", "59ff65e6", PROBABLE,
           "ECL25 wilderness roll at $A0B3, same statement as area 26"),
@@ -118,6 +127,20 @@ ROWS = (
           "GLB block 17 roll at $82EA, reached from the step entry on an "
           "ordinary square: IF> 5 EXIT, else a fight; decoded with Pools of "
           "Darkness' own operand counts"),
+    _gate("pools-of-darkness", "*0x6EA6+0x8BC7", "b0469054", PROBABLE,
+          "area 17 wilderness roll at $8BC7 (becddc5926af library, GLB block "
+          "6): RANDOM 99 [191] after step counter [217] reaches 6; IF<= 20 "
+          "EXIT, else the monster tables and COMBAT at $9470"),
+    _gate("pools-of-darkness", "*0x6EA6+0x8B88", "b0469054", PROBABLE,
+          "area 17 wilderness roll at $8B88 (adb9afbd3eca library, GLB block "
+          "6): the same statements as $8BC7, COMBAT at $9435"),
+    _gate("pools-of-darkness", "*0x6EA6+0x8371", "b0469054", PROBABLE,
+          "area 25 overland roll at $8371 (becddc5926af library, GLB block "
+          "14): RANDOM 99 [191] after step counter [217] reaches 10; IF<= 5 "
+          "EXIT, else the monster tables and COMBAT"),
+    _gate("pools-of-darkness", "*0x6EA6+0x838E", "b0469054", PROBABLE,
+          "area 25 overland roll at $838E (adb9afbd3eca library, GLB block "
+          "14): the same statements as $8371"),
     _rest("pool-of-radiance", "*0x9C+0x5A6", "0000", SPECULATIVE,
           "$6DD3 chance word, confirmed on DOS, not run on the Amiga"),
     _rest("curse-of-the-azure-bonds", "*0x3DBE+0xFDA6", "0000", SPECULATIVE,
