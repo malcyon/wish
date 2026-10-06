@@ -422,7 +422,7 @@ class Source:
         `CHRDAT<slot>1.SAV`'s own size (`goldbox.dos_port.deltas_for`),
         never assumed.
         """
-        record = folder / f"CHRDAT{slot}1.SAV"
+        record = dos_savegame.save_file(folder, f"CHRDAT{slot}1.SAV")
         if not record.exists():
             raise ConvertError(
                 f"{folder} holds SAVGAM{slot} but no CHRDAT{slot}1.SAV to "
@@ -543,16 +543,13 @@ def _dos_slots(folder: pathlib.Path) -> list[str]:
     folder as DOS does not depend on which title it is, so both suffixes are
     looked for here.
     """
-    slots = set()
-    for pattern in ("SAVGAM?.DAT", "SAVGAM?.PTY"):
-        slots.update(p.name[6] for p in folder.glob(pattern))
-    return [slot for slot in sorted(slots)
+    return [slot for slot in dos_savegame.slot_letters(folder)
             if _dos_slot_is_readable(folder, slot)]
 
 
 def _dos_slot_is_readable(folder: pathlib.Path, slot: str) -> bool:
     """Whether a slot has a readable first character record of a known form."""
-    record = folder / f"CHRDAT{slot}1.SAV"
+    record = dos_savegame.save_file(folder, f"CHRDAT{slot}1.SAV")
     try:
         with record.open("rb") as source:
             source.read(1)
@@ -1081,10 +1078,11 @@ class PodDosToAmiga(Direction):
         container = dos_savegame.container_for(self.deltas.key)
         with source.folder() as folder:
             folder = pathlib.Path(folder)
-            savgam_path = folder / f"SAVGAM{letter}{container.suffix}"
+            savgam_path = dos_savegame.save_file(
+                folder, f"SAVGAM{letter}{container.suffix}")
             savgam = savgam_path.read_bytes()
             raw_party = dos_codec.read_party(folder, letter)
-            vault_path = folder / f"VAULT{letter}.DAT"
+            vault_path = dos_savegame.save_file(folder, f"VAULT{letter}.DAT")
             # A slot with no vault file is taken to hold no stored items.
             vault = (dos_codec.pod_vault_from_dos(vault_path.read_bytes())
                      if vault_path.is_file() else dos_codec.EMPTY_POD_VAULT)

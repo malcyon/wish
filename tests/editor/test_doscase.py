@@ -1,0 +1,123 @@
+"""DOS save files are found by name in any case, on a case-sensitive file system.
+
+The folders are built from synthetic bytes only, so none of this reads game data.
+"""
+
+from __future__ import annotations
+
+import pathlib
+import struct
+
+import pytest
+
+from editor import convert
+from goldbox import (
+    amiga_pod,
+    amiga_savegame,
+    dos_codec,
+    dos_port,
+    dos_savegame,
+)
+from goldbox.amiga_adf import AmigaDisk
+
+ITEMS = 3
+
+
+def _amiga_save() -> bytes:
+    out = bytearray(amiga_savegame.POD_VAR_BYTES)
+    out[dos_savegame.POD_PARTY_COUNT - 1] = 1
+    out += bytes((3, 4, 2, 5, 137, 0))
+    out += bytes((dos_savegame.POD_MODE_DUNGEON, dos_savegame.POD_MODE_DUNGEON))
+    out += struct.pack(">HHH", 6, 0, 1)
+    record = bytearray(amiga_savegame.POD_RECORD_BYTES)
+    struct.pack_into(">I", record, amiga_savegame.POD_ITEM_COUNT_AT, 0)
+    struct.pack_into(">I", record, amiga_savegame.POD_EFFECT_HEAD_AT, 0)
+    record[amiga_savegame.POD_NAME_AT:amiga_savegame.POD_NAME_AT + 4] = b"WHO\x00"
+    out += record
+    out += b"\xA5" * (amiga_savegame.POD_SAVEGAME_SIZE - len(out))
+    return bytes(out)
+
+
+def _disk_three() -> AmigaDisk:
+    disk = AmigaDisk.blank("POD 3")
+    disk.make_dir(f"/{amiga_savegame.SAVE_DRAWER}")
+    disk.make_dir("/DISK3")
+    disk.write_file(f"/{amiga_savegame.SAVE_DRAWER}/spindisk", b"\x01" * 40)
+    disk.write_file(f"/{amiga_savegame.SAVE_DRAWER}/WRITE.ME", b"\x02" * 8)
+    disk.write_file("/DISK3/GEN.TLB", b"\x03" * 600)
+    return disk
+
+
+def _vault() -> dos_codec.PodVault:
+    items = []
+    for n in range(ITEMS):
+        raw = bytearray(dos_codec.ITEM_SIZE)
+        raw[dos_port.ITEM_FIELDS_BY_NAME["type_index"].offset] = 10 + n
+        items.append(bytes(raw))
+    return dos_codec.PodVault(7, 8, 9, tuple(items))
+
+
+def _slot(folder: pathlib.Path, rename=lambda name: name) -> None:
+    """A DOS Pools of Darkness slot A with a three-item vault, every file
+    named through `rename`."""
+    state = amiga_savegame.pod_from_amiga(_amiga_save())
+    blocks = amiga_savegame.pod_parse(_amiga_save()).blocks
+    characters = [amiga_pod.pod_to_neutral(b) for b in blocks]
+    dos_codec.new_pod_save_from(state, characters, folder, "A", vault=_vault())
+    fields = dos_port.FIELDS_BY_NAME_FOR[dos_port.POOLS_OF_DARKNESS.key]
+    record = bytearray((folder / "CHRDATA1.SAV").read_bytes())
+    record[fields["char_class"].offset] = 2    # fighter, char_class 2
+    record[fields["class_levels"].offset + 2] = 1
+    record[fields["class_bits"].offset] = 8
+    (folder / "CHRDATA1.SAV").write_bytes(bytes(record))
+    for path in sorted(folder.iterdir()):
+        path.rename(folder / rename(path.name))
+
+
+def _convert(folder: pathlib.Path):
+    source = convert.Source.detect(folder)
+    assert source.port == "dos" and source.slot == "A"
+    return convert.PodDosToAmiga().rehearse(
+        source, "A", None, disk_three=_disk_three())
+
+
+def _vault_items(rehearsal) -> int:
+    disk = AmigaDisk(rehearsal.disk)
+    return len(amiga_savegame.pod_read_vault(disk, "A").items)
+
+
+def test_an_upper_case_slot_converts_with_its_vault(tmp_path):
+    _slot(tmp_path)
+    assert _vault_items(_convert(tmp_path)) == ITEMS
+
+
+def test_a_lower_case_vault_beside_upper_case_saves_keeps_its_items(tmp_path):
+    _slot(tmp_path, lambda n: n.lower() if n.startswith("VAULT") else n)
+    assert (tmp_path / "vaulta.dat").is_file()
+    assert _vault_items(_convert(tmp_path)) == ITEMS
+
+
+def test_a_mixed_case_vault_keeps_its_items(tmp_path):
+    _slot(tmp_path, lambda n: "Vaulta.dat" if n.startswith("VAULT") else n)
+    assert _vault_items(_convert(tmp_path)) == ITEMS
+
+
+def test_an_all_lower_case_slot_converts(tmp_path):
+    _slot(tmp_path, str.lower)
+    assert convert._dos_slots(tmp_path) == ["A"]
+    assert _vault_items(_convert(tmp_path)) == ITEMS
+
+
+def test_two_names_differing_only_in_case_stop_the_conversion(tmp_path):
+    _slot(tmp_path)
+    (tmp_path / "vaulta.dat").write_bytes((tmp_path / "VAULTA.DAT").read_bytes())
+    with pytest.raises(dos_savegame.DosNameClashError):
+        _convert(tmp_path)
+
+
+def test_two_character_files_differing_only_in_case_stop_the_slot(tmp_path):
+    _slot(tmp_path)
+    (tmp_path / "chrdata1.sav").write_bytes(
+        (tmp_path / "CHRDATA1.SAV").read_bytes())
+    with pytest.raises(dos_savegame.DosNameClashError):
+        convert._dos_slots(tmp_path)

@@ -2404,8 +2404,7 @@ def read_character(path: str | pathlib.Path) -> DosCharacter:
 
 def slots_available(folder: str | pathlib.Path) -> list[str]:
     """The save slot letters present in a DOS save directory."""
-    folder = pathlib.Path(folder)
-    return sorted(p.name[6] for p in folder.glob("SAVGAM?.DAT"))
+    return dos_savegame.slot_letters(folder, (".DAT",))
 
 
 def party_numbers(folder: str | pathlib.Path, slot: str) -> list[int]:
@@ -2427,8 +2426,8 @@ def party_numbers(folder: str | pathlib.Path, slot: str) -> list[int]:
     folder = pathlib.Path(folder)
     limit = dos_savegame.PARTY_ENTRIES
     for container in dos_savegame.CONTAINERS:
-        path = folder / f"SAVGAM{slot}{container.suffix}"
-        if path.is_file():
+        path = dos_savegame.find_file(folder, f"SAVGAM{slot}{container.suffix}")
+        if path is not None and path.is_file():
             data = path.read_bytes()
             if len(data) in dos_savegame.CONTAINERS_BY_SIZE:
                 count = dos_savegame.party_size(data)
@@ -2436,13 +2435,14 @@ def party_numbers(folder: str | pathlib.Path, slot: str) -> list[int]:
                     limit = min(count, dos_savegame.PARTY_ENTRIES)
             break
     return [n for n in range(1, limit + 1)
-            if (folder / f"CHRDAT{slot}{n}.SAV").exists()]
+            if dos_savegame.find_file(folder, f"CHRDAT{slot}{n}.SAV")]
 
 
 def read_party(folder: str | pathlib.Path, slot: str) -> list[DosCharacter]:
     """The characters present in one save slot, in file order."""
     folder = pathlib.Path(folder)
-    out = [read_character(folder / f"CHRDAT{slot}{n}.SAV")
+    out = [read_character(
+        dos_savegame.save_file(folder, f"CHRDAT{slot}{n}.SAV"))
            for n in party_numbers(folder, slot)]
     if not out:
         raise DosRecordError(f"no CHRDAT{slot}?.SAV in {folder}")
@@ -8667,8 +8667,8 @@ def convert_save(folder: str | pathlib.Path, slot: str,
     container = c64_save.container_for(game)
     dos_container = dos_savegame.container_for(container.key)
     party = read_party(folder, slot)
-    savgam_path = pathlib.Path(folder).joinpath(
-        f"SAVGAM{slot}{dos_container.suffix}")
+    savgam_path = dos_savegame.save_file(
+        folder, f"SAVGAM{slot}{dos_container.suffix}")
     state = world_state.from_dos(savgam_path.read_bytes(), dos_container,
                                   source=str(savgam_path))
     return write_c64_save(save0, save1, state, party, icon=icon,
@@ -8775,8 +8775,8 @@ def new_save(folder: str | pathlib.Path, slot: str,
     container = c64_save.container_for(game)
     dos_container = dos_savegame.container_for(container.key)
     party = read_party(folder, slot)
-    savgam_path = pathlib.Path(folder).joinpath(
-        f"SAVGAM{slot}{dos_container.suffix}")
+    savgam_path = dos_savegame.save_file(
+        folder, f"SAVGAM{slot}{dos_container.suffix}")
     state = world_state.from_dos(savgam_path.read_bytes(), dos_container,
                                   source=str(savgam_path))
     return new_save_from(state, party, icon, animate, portraits=portraits,
@@ -10263,7 +10263,8 @@ def write_dos_save_from(state: "world_state.WorldState",
     # answer must fail with the slot still as the last conversion left it,
     # not half cleared.
     savgam = bytearray(container.size) if template is None else \
-        bytearray((template / f"SAVGAM{slot}{container.suffix}").read_bytes())
+        bytearray(dos_savegame.save_file(
+            template, f"SAVGAM{slot}{container.suffix}").read_bytes())
     if len(savgam) != container.size:
         raise DosRecordError(
             f"the template's SAVGAM{slot}{container.suffix} is {len(savgam)} "

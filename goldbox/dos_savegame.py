@@ -55,6 +55,7 @@ block is twelve bytes rather than eight -- ``SAVE_POOLS_OF_DARKNESS`` and
 from __future__ import annotations
 
 import dataclasses
+import pathlib
 import struct
 
 
@@ -76,6 +77,51 @@ class DaxError(DosSaveError):
     around the block it lifts the target area's script out of, keeps catching
     it.
     """
+
+
+class DosNameClashError(ValueError):
+    """Two files in one DOS save folder have names that differ only in case."""
+
+
+def _folder_names(folder: pathlib.Path) -> list[str]:
+    try:
+        return [p.name for p in folder.iterdir()]
+    except (FileNotFoundError, NotADirectoryError):
+        return []
+
+
+def find_file(folder: str | pathlib.Path, name: str) -> pathlib.Path | None:
+    """The file in `folder` called `name` in any case, or None.
+
+    DOS names ignore case and Linux file systems do not, so a slot unpacked
+    in lower case must still be found; the game and our writers use upper
+    case. Raises :class:`DosNameClashError` when two names match.
+    """
+    folder = pathlib.Path(folder)
+    wanted = name.upper()
+    found = sorted(n for n in _folder_names(folder) if n.upper() == wanted)
+    if len(found) > 1:
+        raise DosNameClashError(
+            f"{folder} holds {' and '.join(found)}, which differ only in case")
+    return folder / found[0] if found else None
+
+
+def save_file(folder: str | pathlib.Path, name: str) -> pathlib.Path:
+    """:func:`find_file`, or the upper-case path the game would write when
+    the folder has no such file."""
+    return find_file(folder, name) or pathlib.Path(folder) / name.upper()
+
+
+def slot_letters(folder: str | pathlib.Path,
+                 suffixes: tuple[str, ...] = (".DAT", ".PTY")) -> list[str]:
+    """The upper-case slot letters of the `SAVGAM<slot>` files in `folder`."""
+    found = set()
+    for name in _folder_names(pathlib.Path(folder)):
+        up = name.upper()
+        if (len(up) == 11 and up.startswith("SAVGAM") and up[6].isalpha()
+                and up[7:] in suffixes):
+            found.add(up[6])
+    return sorted(found)
 
 
 SAVGAM_SIZE = 13137          # Pool of Radiance; Curse is 13149, Secret 5469,

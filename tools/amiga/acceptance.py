@@ -36,7 +36,14 @@ from typing import Any, Callable
 if __package__ in (None, ""):
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
-from goldbox import amiga_adf, amiga_savegame, areas, dos_codec, geo  # noqa: E402
+from goldbox import (  # noqa: E402
+    amiga_adf,
+    amiga_savegame,
+    areas,
+    dos_codec,
+    dos_savegame,
+    geo,
+)
 from tools.amiga import (  # noqa: E402
     amigabladesjournal,
     route_camp,
@@ -3767,7 +3774,7 @@ def prepare_published_disk_three(run_id: str, report_path: pathlib.Path, issue: 
         raise RouteError("the published slot was not converted")
     # The vault the converter writes (`PodDosToAmiga.rehearse`): the DOS vault beside the source, or
     # an empty one when the slot has none.
-    dos_vault = source.parent / f"VAULT{letter}.DAT"
+    dos_vault = dos_savegame.save_file(source.parent, f"VAULT{letter}.DAT")
     converted_vault = amiga_savegame.pod_vault_to_amiga(
         dos_codec.pod_vault_from_dos(dos_vault.read_bytes()) if dos_vault.is_file()
         else dos_codec.EMPTY_POD_VAULT)
