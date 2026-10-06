@@ -6962,19 +6962,18 @@ def test_warp_to_an_area_without_an_arrival_facing_runs_unchecked(tmp_path, monk
     assert any("facing not checked" in line for line in said)
 
 
-def test_the_warp_step_is_rejected_for_curse_and_silver_blades(tmp_path, capsys):
-    for title in ("curse", "ssb"):
-        with pytest.raises(SystemExit) as info:
-            A.main(["--title", title, "--save", str(_fixture_disk(tmp_path)),
-                    "--disks", str(tmp_path), "--steps", "load", "warp 10",
-                    "--out", str(tmp_path / "out")])
-        assert info.value.code == 2
-        assert "warp step: Pool of Radiance only" in capsys.readouterr().err
-    for cls in (A.CurseRun, A.SilverRun):
-        run = cls.__new__(cls)
-        run.fail = lambda tag, why: A.StepFailed(why)
-        with pytest.raises(A.StepFailed, match="Pool of Radiance only"):
-            run.warp("10")
+def test_the_warp_step_is_rejected_for_silver_blades(tmp_path, capsys):
+    with pytest.raises(SystemExit) as info:
+        A.main(["--title", "ssb", "--save", str(_fixture_disk(tmp_path)),
+                "--disks", str(tmp_path), "--steps", "load", "warp 10",
+                "--out", str(tmp_path / "out")])
+    assert info.value.code == 2
+    assert "warp step: Pool of Radiance and Curse" in capsys.readouterr().err
+    run = A.SilverRun.__new__(A.SilverRun)
+    run.game = SimpleNamespace(key="secret-of-the-silver-blades")
+    run.fail = lambda tag, why: A.StepFailed(why)
+    with pytest.raises(A.StepFailed, match="Pool of Radiance and Curse"):
+        run.warp("10")
 
 
 # --- walk-fight ------------------------------------------------------------------

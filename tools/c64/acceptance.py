@@ -86,7 +86,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `fight-cast CASTER:SPELL` | Pool only: snapshots the machine at the world bar as `fight-cast`, then `fight`'s route into a fight, then every member but CASTER runs `fleedrive.Flight` (stepping off only from an edge square no enemy stands beside, unless faster than every enemy in the fight) while CASTER holds on a quiet edge square, and CASTER casts SPELL through `route_pool.Caster` on his first turn on which another member is away and every member still in the fight stands on an edge square he may step off from, every other member is away or down, his hit points are at most half of what they were on the tactic's first turn, or he has held 4 of his own turns, and then on his next turn whose command bar offers CAST, since a hit taken since his last turn takes CAST off the bar and he holds instead (a spell with no target prompt, such as PRAYER; one that asks for a target fails the cast); CASTER's turns after the cast run the flight, for at most 1500 seconds an attempt. An attempt ends as soon as a member is dead, dying, unconscious or stoned, or when an encounter menu (`COMBAT WAIT ...`) comes up; that, a fight that does not end on `THE PARTY RUNS AWAY`, one in which CASTER never cast, one that leaves a member behind, one that ends with a member down, and `no CAST on <name>'s bar after N held turns` (after at most 5 held turns) restore `fight-cast` and try again, at most 2 attempts in all while 600 s of the run are left, the second walking `J` (or `I` when the walk is not `I`), since the game's dice replay exactly from a snapshot and only where the party stands when the encounter comes makes it another fight; the last of them fails the step naming `fight-cast`, as does at once a CASTER whose memorised list did not lose exactly one spell. The result records `attempts`, `setbacks` (each failed attempt's walk and reason), `walk`, `casts` (the caster, spell and roster hit points before and after), `spent` (the spell id CASTER's memorised list lost), `got_away` and `left_behind` as `fight-flee` does, and the cast's screens are in `run.jsonl` as `cast-list` and `cast-done`; under `--fast-flee` every turn, from the first, first raises the party's movement |
 | `walk-fight MOVES[/NO]` | Pool only: `walk`'s moves, but an encounter menu is answered COMBAT (never FLEE), the fight is fought out with `Session.melee_turn` (900 s each), and the route resumes from the square the fight left the party on, an `I` that did not complete being sent once more; the treasure screen a won fight reaches is kept as `NN-treasure.png` and `.txt` before the fight answers it; a treasure screen met on the walk after a fight (mode 5, a bar holding `EXIT`, such as `VIEW POOL EXIT`) is left with EXIT, once for each bar it shows (a `GO BACK LEAVE TREASURE` bar that EXIT opens is answered LEAVE), on the encounter path as well as after a `PRESS` bar, and listed in `treasure_screens`; an `INSERT SIDE # N` prompt (sides 2 to 4) is answered once per side, with the image attached, a key pressed and the frame kept as `sideN-before-answer`, and a repeat or a save-disk prompt fails the step; a forward move must land on the next square, else the step fails as blocked or as an exit or a teleport. A `YES NO` is answered NO only on the last key, and only when `/NO` is given; anywhere else it fails the step with nothing pressed. With a `save` after it, the summary's `drain` says whether some character's level fell by 1 or 2 with `levels_drained` equal to the fall, `hp_lost_to_drain` not zero, one class level down by the same amount and `hp_max` down by `hp_lost_to_drain`; nobody drained is recorded, not a failure |
 | `walk-flee MOVES[/NO]` | Pool only: `walk-fight`, but an encounter menu is answered FLEE; each flee is recorded in `flees` as `escaped` (the world bar or the move prompt `I,J,K,M, RETURN OR BUTTON` came back) or with the `fight` that opened, which is fought out; a move that escaped a flee is judged only for a readable facing, a caught one as `walk-fight` judges; a flee that ends in neither is a failure after `FIGHT_OPENS_SECONDS` |
-| `warp AREA` | Pool only: fast-travel the loaded party into area AREA (the writes and jump of `automap.actions.FastTravel`, no arrival square), wait for the key-wait loop, and fail unless the live facing byte `$C04D` is the one the area's arrival script sets (area 10: 1, east); returns the writes and the triple `$C04B`-`$C04D` |
+| `warp AREA` | Pool and Curse: fast-travel the loaded party into area AREA (the writes and jump of `automap.actions.FastTravel`, no arrival square), wait for the key-wait loop, and fail unless the live facing byte `$C04D` is the one the area's arrival script sets (area 10: 1, east); returns the writes and the triple `$C04B`-`$C04D` |; Curse makes the trip with `FastTravel.run` for its own title, so the departure lookup runs, and fails unless the area byte reads AREA, returning `outcome`, the writes, `jump` (every program-counter target set) and `areas_seen` (the area byte before and after) in place of the triple |
 | `peek ADDR N` | N bytes of memory, ADDR in hex |
 | `save` | the game's own `ENCAMP > SAVE`; the disk copied out once closed and decoded, with the place through `world_state.from_c64` against the staged one (`place_changed`, `facing_changed`), the square being the travel pair when the save stands on the travel grid; Curse and Silver Blades record row 18, row 24, every key and every attach with their times as `save-watch`, `save-key` and `save-attach` events, and a `SAVE GAME` bar that never comes is watched on to the camp bar, the disk copied to `lost-saved.D64`, then lost |
 
@@ -1194,8 +1194,11 @@ MOVE_UNSENT_PASSES = 3
 WARP_IDLE_SECONDS = 300.0
 
 
-def parse_warp(arg: str) -> int:
+def parse_warp(arg: str, title: str | None = None) -> int:
     """The area id a `warp` names: a fast-travelable dungeon or town area.
+
+    `title` is a game title (`game.title`) and picks that title's area table;
+    without it the id is looked up in whichever table has it.
 
     A wilderness row is rejected because `warp` writes no overland square, so
     the party would land on its last one.
@@ -1203,7 +1206,8 @@ def parse_warp(arg: str) -> int:
     if not re.fullmatch(r"[0-9]+", arg):
         raise ValueError(f"warp {arg!r}: an area id, a decimal integer")
     area = int(arg)
-    row = auto_actions.area_by_id(area)
+    row = (auto_actions.area_by_id(area) if title is None
+           else auto_actions.area_by_id(area, title))
     if row is None:
         raise ValueError(f"warp {arg!r}: not an area in the area table")
     if getattr(row, "overland", None) is not None:
@@ -5072,8 +5076,9 @@ class PoolRun:
         `tools/areas/wallpins.py`'s `wait_idle`, it fails the step instead of
         returning False, and the run's deadline bounds it.
         """
-        idle_ranges = (fasttravel.POOL_OF_RADIANCE.key_wait,
-                       fasttravel.POOL_OF_RADIANCE.key_fetch)
+        addr = (fasttravel.addresses_for(self.game)
+                or fasttravel.POOL_OF_RADIANCE)
+        idle_ranges = (addr.key_wait, addr.key_fetch)
         inloop = 0
         limit = self.clock() + WARP_IDLE_SECONDS
         while self.clock() < limit:
@@ -7335,7 +7340,46 @@ class CurseRun(PoolRun):
         return entered
 
     def warp(self, arg: str) -> dict:
-        raise self.fail("warp", "Pool of Radiance only")
+        if self.game.key != "curse-of-the-azure-bonds":
+            raise self.fail("warp", "Pool of Radiance and Curse of the "
+                                    "Azure Bonds only")
+        try:
+            area = parse_warp(arg, self.game.title)
+        except ValueError as e:
+            raise self.fail("warp", str(e)) from None
+        if not self.to_world():
+            raise self.fail("world", "the world bar never came back")
+        jumps: list[int] = []
+
+        class Recording(SessTarget):
+            def set_pc(self, address: int) -> None:
+                jumps.append(address)
+                super().set_pc(address)
+
+        target = Recording(self.sess)
+        # The trip is Wish's own, so the departure lookup and whatever the
+        # row writes run as they do for a player, not as a bare jump.
+        ft = auto_actions.FastTravel(self.game)
+        row = auto_actions.area_by_id(area, self.game.title)
+        here = ft.current_area(target, ft.addresses)
+        verdict = ft.legality(target, row)
+        if not verdict.ok:
+            raise self.fail("warp", verdict.reason)
+        outcome = ft.run(target, area=row)
+        listing = [f"${a:04X}={bytes(d).hex()}" for a, d in outcome.writes]
+        self.log.say("  writes: " + ", ".join(listing))
+        if not outcome.ok:
+            raise self.fail("warp", outcome.message)
+        self._wait_idle()
+        self.sess.settle(4)
+        there = ft.current_area(target, ft.addresses)
+        if there != area:
+            raise self.fail("warp", f"the area byte read {there} after the "
+                                    f"trip, not {area}")
+        self.capture(f"warped-{area}")
+        return {"area": area, "outcome": outcome.message, "writes": listing,
+                "notes": list(outcome.notes), "jump": jumps,
+                "areas_seen": [here, there], "position": self.position()}
 
     def walk_fight(self, arg: str) -> dict:
         raise self.fail("walk-fight", "Pool of Radiance only")
@@ -9000,8 +9044,10 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("--checkpoint and --read-at are armed when the party enters the "
                  "world, and every step after load is a remove, so the run never "
                  "does; add a step after the removes")
-    if any(x.verb == "warp" for x in steps) and args.title != "pool":
-        ap.error("the warp step: Pool of Radiance only")
+    if any(x.verb == "warp" for x in steps) and args.title not in ("pool",
+                                                                   "curse"):
+        ap.error("the warp step: Pool of Radiance and Curse of the Azure "
+                 "Bonds only")
     if any(x.verb == "walk-fight" for x in steps) and args.title != "pool":
         ap.error("the walk-fight step: Pool of Radiance only")
     if any(x.verb == "walk-flee" for x in steps) and args.title != "pool":
