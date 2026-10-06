@@ -137,3 +137,22 @@ def test_no_rule_gives_none():
     assert ts.share_for(SILVER, "Amiga", party(c64(0xFF)), 6) is None
     assert ts.share_for(CURSE, "Amiga", party(c64(0xFF)), 6) is None
     assert ts.share_for(POOL, "Atari", party(c64(0xFF)), 6) is None
+
+
+@pytest.mark.parametrize("port", ("DOS", "Amiga"))
+def test_status_from_condition_on_dos_and_amiga_is_zero_only_when_okay(port):
+    assert ts.status_from_condition(port, ("okay", True)) == 0
+    assert ts.status_from_condition(port, ("dead", True)) != 0
+
+
+def test_status_from_condition_on_the_c64_is_nonzero_with_bit_7_for_out_of_play():
+    in_play = ts.status_from_condition("C64", ("okay", True))
+    out = ts.status_from_condition("C64", ("okay", False))
+    assert in_play and not in_play & 0x80
+    assert out & 0x80
+
+
+@pytest.mark.parametrize("port", ("DOS", "Amiga", "C64"))
+@pytest.mark.parametrize("condition", (None, (None, None), (None, True)))
+def test_status_from_condition_is_none_when_the_save_does_not_say(port, condition):
+    assert ts.status_from_condition(port, condition) is None

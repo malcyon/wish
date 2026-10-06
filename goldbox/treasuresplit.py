@@ -41,6 +41,7 @@ __all__ = [
     "share_for",
     "pile_cut",
     "split_piles",
+    "status_from_condition",
 ]
 
 _POOL = "pool-of-radiance"
@@ -218,6 +219,23 @@ def share_for(
     """One member's share, None for a player character or with no rule."""
     result = party_shares(title_key, port, members)
     return None if result is None else result.shares[index]
+
+
+def status_from_condition(
+    port: str, condition: tuple[str | None, bool | None] | None
+) -> int | None:
+    """The port's status byte for an editor `Member.condition`, None when unread.
+
+    DOS and the Amiga read only whether the status is 0, so any state but
+    "okay" is 1.  The C64 reads nonzero and bit 7, so a member in play is 1 and
+    one out of play is 0x81.
+    """
+    if condition is None or condition[0] is None:
+        return None
+    name, in_play = condition
+    if port == "C64":
+        return 0x01 | (0x80 if in_play is False else 0)
+    return 0 if name == "okay" else 1
 
 
 def pile_cut(pile: int, denominator: int, companion_parts: int) -> int:

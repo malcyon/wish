@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import pathlib
 import shutil
+from fractions import Fraction
 
 from PyQt6.QtCore import QAbstractTableModel, QModelIndex, QObject, Qt, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor, QIcon
@@ -42,6 +43,7 @@ from goldbox import (
     classcode,
     dos_codec,
     titles,
+    treasuresplit,
 )
 from goldbox import c64_port as por_games
 from goldbox.encoding import combat_byte, combat_value
@@ -257,6 +259,28 @@ ABILITIES_ALTERED_UNCONFIRMED_TOOLTIP = "Not recorded on this title"
 #: MODIFY CHARACTER is left by KEEP (`treasure_share`); their C64 ports do not.
 _KEEP_IN_SHARE_KEYS = (por_games.CURSE_OF_THE_AZURE_BONDS.key,
                        por_games.SECRET_OF_THE_SILVER_BLADES.key)
+
+#: The Misc box's treasure share row, for a companion who takes treasure. DOS
+#: and the Amiga name his own share of each pile; the C64 names the
+#: companions' combined chance per defeated monster
+#: (`goldbox/treasuresplit.py`). The tooltips are filled with the figures the
+#: row was worked from.
+TREASURE_SHARE_LABEL = "Treasure share"
+TREASURE_SHARE_VALUE = "About {percent}%"
+TREASURE_SHARE_TOOLTIP = (
+    "After each won fight, this companion takes {parts} of every "
+    "{denominator} coins of each kind, and {parts} of every {denominator} "
+    "gems and pieces of jewellery, rounded down. What the companion takes is "
+    "lost: no character receives it. Items are never taken. A companion who "
+    "is not OK takes nothing.")
+TREASURE_CHANCE_LABEL = "Companions' treasure chance"
+TREASURE_CHANCE_VALUE = "About {percent}% per monster"
+TREASURE_CHANCE_TOOLTIP = (
+    "Each time a monster is defeated, the game rolls once for all companions "
+    "together, with a {percent}% chance of a hit. On a hit, that monster's "
+    "coins and items are lost: no character receives them. The chance rises "
+    "when another companion joins. A monster that flees gives no roll.")
+
 MORALE_ABOVE_RANGE_TOOLTIP = (
     "Stored above the normal 0-100 game range (a companion copied from a "
     "monster record); shown decoded, not editable")
@@ -1586,7 +1610,79 @@ class EditorBinding(QObject):
             altered.setEnabled(False)
             altered.blockSignals(False)
 
+        self._show_treasure_share(member, is_npc)
         self._resize_misc_box()
+
+    def _treasure_share_figures(self, member, is_npc: bool):
+        """The treasure share rule's answer for `member`'s row, or None.
+
+        None says the row stays hidden: the file is not a save, `member` is
+        not a companion, a member's condition was not read, the title and port
+        have no rule, or a DOS or Amiga party holds a member the game has
+        taken over by charm, whose place in the split cannot be stated."""
+        party = self.party
+        if party is None or not party.is_save or not is_npc:
+            return None
+        port = self._BACKSTAB_PORTS.get(party.port)
+        if port is None:
+            return None
+        members = []
+        row = None
+        for i, m in enumerate(party.members):
+            companion = is_npc if m is member else m.record.is_npc
+            if m is member:
+                row = i
+            status = treasuresplit.status_from_condition(port, m.condition)
+            if status is None:
+                return None
+            if (port != "C64" and companion
+                    and m.record.get("flags_0b8") == c64_codec.DOS_PC_TAKEN_OVER):
+                return None
+            members.append(treasuresplit.Member(
+                0x80 if companion else 0,
+                int(m.record.get("treasure_share") or 0), status))
+        if row is None:
+            return None
+        result = treasuresplit.party_shares(party.game.key, port, members)
+        if result is None or not result.certain:
+            return None
+        return result, result.shares[row]
+
+    def _show_treasure_share(self, member, is_npc: bool) -> None:
+        """The treasure share row of the Misc box, display only.
+
+        Shown for a companion whose figure is above zero, in the open port's
+        terms; a save never writes it."""
+        label = self._child("label_treasure_share")
+        value = self._child("value_treasure_share")
+        if label is None or value is None:
+            return
+        figures = self._treasure_share_figures(member, is_npc)
+        shown = False
+        if figures is not None:
+            result, share = figures
+            chance = result.kind == treasuresplit.CHANCE
+            figure = result.combined if chance else share.value
+            percent = int(figure * 100 + Fraction(1, 2))
+            if percent > 0:
+                shown = True
+                if chance:
+                    label.setText(TREASURE_CHANCE_LABEL)
+                    value.setText(TREASURE_CHANCE_VALUE.format(percent=percent))
+                    tip = TREASURE_CHANCE_TOOLTIP.format(percent=percent)
+                else:
+                    label.setText(TREASURE_SHARE_LABEL)
+                    value.setText(TREASURE_SHARE_VALUE.format(percent=percent))
+                    tip = TREASURE_SHARE_TOOLTIP.format(
+                        parts=share.parts, denominator=share.denominator)
+                label.setToolTip(tip)
+                value.setToolTip(tip)
+        if not shown:
+            for w in (label, value):
+                w.setText("")
+                w.setToolTip("")
+        label.setVisible(shown)
+        value.setVisible(shown)
 
     def _resize_misc_box(self) -> None:
         """Re-measure Misc after a row is shown or hidden.

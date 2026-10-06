@@ -241,7 +241,8 @@ NOT_ON_THE_SHEET = (
     # because which of them a spell id falls in is the title's business and not
     # the form's.
     "spells_known_high",
-    # A raw port-specific conversion byte; it has no approved sheet presentation.
+    # A raw port-specific conversion byte; the sheet shows it only as the
+    # computed, read-only `value_treasure_share` line and never edits it.
     "treasure_share",
     # The character's missile attack adjustment. It is a cache the game
     # rebuilds out of dexterity whenever a fight starts, so there is nothing
