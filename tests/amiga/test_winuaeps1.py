@@ -708,3 +708,22 @@ def test_a_throw_after_connecting_closes_the_pipe_through_close_lane_pipe():
     handler = body.index("} catch {", guarded)
     assert body.index("Close-LanePipe $try", handler) < body.index("throw", handler)
     assert "Close-LanePipe $try\n    throw\n" in body[handler:]
+
+
+def test_exclusive_waiters_are_served_in_the_order_they_arrived():
+    """The head of a name-sorted queue is decided before the reservation, so a later poll cannot jump it."""
+    assert "winuae-exclusive-queue" in PS1
+    head = _body("Get-QueueHead")
+    assert "Sort-Object Name" in head
+    assert "Remove-Item $f.FullName" in head and "Remove-Item $ReservePath" not in head
+    assert "{0:D20}-{1}.wait" in PS1 and "[DateTime]::UtcNow.Ticks" in PS1
+
+    body = _case("claim")
+    waiting = body[body.index("$Exclusive -and $WaitGiven"):body.index("if ($Exclusive -and $LaneCount -gt 1)")]
+    assert waiting.index("Try-TakeClaim (Join-Path $QueueDir") < waiting.index("Get-QueueHead")
+    assert waiting.index("Get-QueueHead") < waiting.index("Get-Reservation")
+    queued = re.search(r'"wait \$Holder is queued behind[^\n]*', waiting).group(0)
+    assert "exit 0" in queued and "exit 1" not in queued
+    assert waiting.index("Remove-QueueTicket $Holder") > waiting.index("Remove-Item $ReservePath")
+    assert "Remove-QueueTicket $Holder" in _case("release")
+    assert "Waiters are served in arrival order" in PS1[:PS1.index("param(")]

@@ -68,7 +68,7 @@
 #     pipe whichever lane it belongs to, so a Wish run is safe only when no other lane
 #     is running. `-Wait <seconds>` makes the claim a reservation: it keeps each lane it
 #     takes, ordinary claims fail until it has them all or its time is up, and the
-#     caller calls again until the reply starts with `ok`.
+#     caller calls again until the reply starts with `ok`. Waiters are served in arrival order.
 #
 # See docs/143-winuae-debugger.md 1.1.
 
@@ -270,6 +270,38 @@ function Get-Reservation {
   if (-not $written) { return $null }
   if (((Get-Date) - $written).TotalSeconds -gt 30) { return $null }
   @{ holder = 'another caller'; until = [string]([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + 30) }
+}
+
+# One ticket per waiting `claim -Exclusive -Wait` caller, named by arrival time, so the
+# waiters are served in the order they arrived whichever of them polls first. Only the
+# head ticket's holder goes on to the reservation. A ticket from an earlier boot or past
+# its `until` is dead, and one with no holder or until line written in the last 30
+# seconds is a write in flight, as for the reservation file.
+$QueueDir = Join-Path $Root 'winuae-exclusive-queue'
+function Get-QueueTicket([string]$ForHolder) {
+  if (-not (Test-Path $QueueDir)) { return $null }
+  foreach ($f in @(Get-ChildItem -Path $QueueDir -Filter '*.wait' -File -ErrorAction SilentlyContinue)) {
+    if ((Read-Kv $f.FullName)['holder'] -eq $ForHolder) { return $f.FullName }
+  }
+  $null
+}
+function Get-QueueHead {
+  if (-not (Test-Path $QueueDir)) { return $null }
+  foreach ($f in @(Get-ChildItem -Path $QueueDir -Filter '*.wait' -File -ErrorAction SilentlyContinue | Sort-Object Name)) {
+    $c = Read-Kv $f.FullName
+    if ($c.ContainsKey('holder') -and $c.ContainsKey('until')) {
+      $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+      if ($c['boot'] -ne (Boot-Stamp) -or [long]$c['until'] -le $now) { Remove-Item $f.FullName -Force -ErrorAction SilentlyContinue; continue }
+      return $c
+    }
+    if (((Get-Date) - $f.LastWriteTime).TotalSeconds -le 30) { return @{ holder = 'another caller' } }
+    Remove-Item $f.FullName -Force -ErrorAction SilentlyContinue
+  }
+  $null
+}
+function Remove-QueueTicket([string]$ForHolder) {
+  $t = Get-QueueTicket $ForHolder
+  if ($t) { Remove-Item $t -Force -ErrorAction SilentlyContinue }
 }
 
 function Reservation-Text([hashtable]$r) {
@@ -1273,9 +1305,16 @@ switch ($Cmd) {
       # freed lane again within seconds. Each lane this call takes is kept, and the caller
       # calls again: `ok` when it has every lane, `wait` while it does not.
       if ($Override) { 'fail claim -Exclusive does not take -Override; release each lane with release -Override -Lane <n>'; exit 1 }
+      $until = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + $WaitSeconds
+      New-Item -ItemType Directory -Path $QueueDir -Force | Out-Null
+      $ticket = @{ holder = $Holder; boot = (Boot-Stamp); until = $until }
+      $ticketPath = Get-QueueTicket $Holder
+      if ($ticketPath) { Write-Kv $ticketPath $ticket }
+      else { [void](Try-TakeClaim (Join-Path $QueueDir ("{0:D20}-{1}.wait" -f [DateTime]::UtcNow.Ticks, $Holder)) $ticket) }
+      $head = Get-QueueHead
+      if ($head -and $head['holder'] -ne $Holder) { "wait $Holder is queued behind $($head['holder'])"; exit 0 }
       $res = Get-Reservation
       if ($res -and $res['holder'] -ne $Holder) { "fail an exclusive claim $(Reservation-Text $res) is waiting"; exit 1 }
-      $until = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + $WaitSeconds
       $since = if ($res) { $res['since'] } else { (Get-Date).ToString('o') }
       $mine = @{ holder = $Holder; since = $since; boot = (Boot-Stamp); until = $until }
       if ($res) { Write-Kv $ReservePath $mine }
@@ -1304,6 +1343,7 @@ switch ($Cmd) {
       }
       if ($have.Count -eq $LaneCount) {
         Remove-Item $ReservePath -Force -ErrorAction SilentlyContinue
+        Remove-QueueTicket $Holder
         "ok claimed by $Holder"
         exit 0
       }
@@ -1464,6 +1504,7 @@ switch ($Cmd) {
     # person says otherwise.
     if (-not $Holder) { 'fail release needs -Holder <id>'; exit 1 }
     if ((Test-Path $ReservePath) -and (Read-Kv $ReservePath)['holder'] -eq $Holder) { Remove-Item $ReservePath -Force -ErrorAction SilentlyContinue }
+    Remove-QueueTicket $Holder
     if ($LaneCount -gt 1 -and -not $Override -and $LaneArg -eq '') {
       # Frees every lane this holder has: one, or all of them after `claim -Exclusive`.
       $freed = 0
