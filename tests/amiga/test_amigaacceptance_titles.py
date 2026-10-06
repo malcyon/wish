@@ -3611,3 +3611,20 @@ def test_the_darkness_guards_recognise_the_seven_member_loaded_menu_of_the_a2_pa
         rules = [r for r in screens.rules_of(spec[kind]["loaded_menu"]) if r["example"] == example]
         assert len(rules) == 1 and rules[0]["box"] == box and rules[0]["also"] == []
         assert screens.box_digests(crop, [tuple(box)], "loaded_menu")[tuple(box)] == rules[0]["sha256"]
+
+
+def test_the_darkness_guards_recognise_the_first_member_sheet_of_the_a2_party():
+    from tools.amiga import screens
+
+    spec = json.loads((pathlib.Path(foundation.__file__).parent / "guards_darkness.json").read_text())
+    example = "WISH-2/wish2-a2/measure2/shots/06-sheet.png"
+    assert spec["labels"][example] == ["sheet"]
+    crop = scratch.cache_dir("acceptance") / example
+    if not crop.is_file():
+        pytest.skip("needs the stage 8 A2 measure shot 06 of WISH-2")
+    camp = ["camp_sheet", "camp_sheet_heal", "camp_sheet_items", "camp_sheet_items_2", "camp_sheet_items_3",
+            "camp_sheet_items_4", "camp_sheet_items_5", "camp_sheet_items_6", "camp_sheet_spent"]
+    for kind, box, also in (("guards", [58, 402, 530, 430], camp), ("identity", [74, 46, 330, 62], ["camp_sheet"])):
+        rules = [r for r in screens.rules_of(spec[kind]["sheet"]) if r["example"] == example]
+        assert len(rules) == 1 and rules[0]["box"] == box and rules[0]["also"] == also
+        assert screens.box_digests(crop, [tuple(box)], "sheet")[tuple(box)] == rules[0]["sha256"]
