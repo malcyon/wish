@@ -11,7 +11,10 @@ address and changed again whenever a reload brings it back.
 The saved game carries the loaded script for Pool and Curse, so
 `no_encounters off` comes before any save; it stays off until turned on again.
 The Pools of Darkness save holds no script, but `off` still comes first there:
-its SPECULATIVE rest row writes variable `$2C`, which that save does store.
+with the switch on, each patched `SAVE` leaves 99 in variable 191 or 192 and
+skips resetting the step counter, and that save stores those variables.  `off`
+restores the script, not them; 99 is a value the game's own roll can produce.
+Its SPECULATIVE rest row also writes variable `$2C`, which the save stores.
 
 The class does no I/O of its own: the driver hands it `resolve`, `read` and
 `write`, so it runs against a fake, and a `journal` callback that is given
@@ -129,15 +132,17 @@ ROWS = (
           "Darkness' own operand counts"),
     _gate("pools-of-darkness", "*0x6EA6+0x8BC7", "b0469054", PROBABLE,
           "area 17 wilderness roll at $8BC7 (becddc5926af library, GLB block "
-          "6): RANDOM 99 [191] after step counter [217] reaches 6; IF<= 20 "
-          "EXIT, else the monster tables and COMBAT at $9470"),
+          "6): RANDOM 99 [191] after step counter [217] reaches 6; COMPARE "
+          "20, [191] then IF<= EXIT (20 <= roll), else the monster tables and "
+          "COMBAT at $9470"),
     _gate("pools-of-darkness", "*0x6EA6+0x8B88", "b0469054", PROBABLE,
           "area 17 wilderness roll at $8B88 (adb9afbd3eca library, GLB block "
           "6): the same statements as $8BC7, COMBAT at $9435"),
     _gate("pools-of-darkness", "*0x6EA6+0x8371", "b0469054", PROBABLE,
           "area 25 overland roll at $8371 (becddc5926af library, GLB block "
-          "14): RANDOM 99 [191] after step counter [217] reaches 10; IF<= 5 "
-          "EXIT, else the monster tables and COMBAT"),
+          "14): RANDOM 99 [191] after step counter [217] reaches 10; COMPARE "
+          "5, [191] then IF<= EXIT (5 <= roll), else the monster tables and "
+          "COMBAT"),
     _gate("pools-of-darkness", "*0x6EA6+0x838E", "b0469054", PROBABLE,
           "area 25 overland roll at $838E (adb9afbd3eca library, GLB block "
           "14): the same statements as $8371"),
