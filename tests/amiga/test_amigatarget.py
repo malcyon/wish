@@ -834,6 +834,7 @@ class _Pooled(_PipeMemory):
 def pooled(fake_pipe, monkeypatch, tmp_path):
     from tools.amiga import amigatarget
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.setattr(amigatarget.amiga, "WinuaePipe", _Pooled)
     return fake_pipe
 
