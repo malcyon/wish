@@ -1170,6 +1170,26 @@ def test_fasttravel_falls_back_to_the_tail_jump_off_the_direct_exit_table():
     assert target.read(addr.slot, 1) == bytes([0x80])  # (0 & 0x7F) | 0x80
 
 
+@pytest.mark.parametrize("here, to", [(26, 27), (26, 25), (25, 26),
+                                      (27, 26), (25, 27), (27, 25)])
+def test_fasttravel_from_the_travel_grid_takes_the_tail_jump_even_with_reentry(
+        here, to):
+    """The grid's scripts test `$49C3`/`$49C4`, which an exit route does not
+    write, so a window-to-window trip goes by the tail jump."""
+    addr = fasttravel.POOL_OF_RADIANCE
+    target = two_hop_machine(here, indoors=0)
+    area = actions.area_by_id(to)
+    ft = actions.FastTravel()
+    outcome = ft.run(target, area=area)
+    assert outcome.ok, outcome.message
+    assert target.reenters == []
+    assert target.jumps == [addr.tail]
+    assert ft.pending is None
+    assert target.read(addr.live_square, 3) == bytes([5, 6, 1])
+    assert target.read(addr.travel_square, 2) == bytes(area.overland)
+    assert outcome.message == f"Traveling to {area.name}."
+
+
 def test_fasttravel_falls_back_to_the_tail_jump_when_the_backend_cannot_reenter():
     """A backend that offers `set_pc` but neither `reenter` nor `_mon` -- a
     Commodore 64 Ultimate, whose REST API reads memory but not registers

@@ -1932,7 +1932,11 @@ class FastTravel(Action):
             return Outcome(False, UNSUPPORTED.format(title=self.game.title))
         here = self.current_area(target, addr)
         to = getattr(area, "id", area)
-        if addr.has_exit_reentry and here is not None and can_reenter(target):
+        # The grid's scripts dispatch on $49C3/$49C4, not on the `live_square`
+        # an exit route writes, so a grid departure can only take the tail jump.
+        on_grid = self.current_indoors(target, addr) == 0
+        if (addr.has_exit_reentry and here is not None and not on_grid
+                and can_reenter(target)):
             route = fasttravel.EXIT_ROUTES.get((here, to))
             if route is not None:
                 return self._run_via_exit(target, addr, area, here, to, route)
