@@ -303,7 +303,7 @@ class Row:
             return "-" if not self.writes else "computed"
         text = ", ".join(str(v) for v in sorted(
             self.values, key=lambda v: (isinstance(v, str), v)))
-        if len(self.values) < len(self.writes):
+        if any(r.value is None for r in self.writes):
             text += ", computed"
         return text
 
