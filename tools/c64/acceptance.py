@@ -8041,26 +8041,36 @@ def vice_version() -> str | None:
     return None
 
 
-#: The two `vicerc` lines `seed_vicerc` writes per slot, which differ between
-#: slots whatever the configuration is.
+#: The two `vicerc` lines `seed_vicerc` writes per slot in `[C64SC]`, which differ
+#: between slots whatever the configuration is.
 VICERC_PORT_LINES = (b"BinaryMonitorServerAddress=", b"MonitorServerAddress=")
 
 
 def vicerc_digest(path) -> str:
     """SHA-256 of a slot's `vicerc` without its two monitor-port lines, so the
     same configuration on another slot gives the same digest."""
-    lines = pathlib.Path(path).read_bytes().splitlines(keepends=True)
-    kept = b"".join(line for line in lines if not line.lstrip().startswith(VICERC_PORT_LINES))
-    return hashlib.sha256(kept).hexdigest()
+    kept, section = [], b""
+    for line in pathlib.Path(path).read_bytes().splitlines(keepends=True):
+        text = line.strip()
+        if text.startswith(b"["):
+            section = text.strip(b"[]")
+        elif section == b"C64SC" and text.startswith(VICERC_PORT_LINES):
+            continue
+        kept.append(line)
+    return hashlib.sha256(b"".join(kept)).hexdigest()
 
 
-def seeded_vicerc_digest() -> str:
+def seeded_vicerc_digest(joy: bool = False) -> str:
     """`vicerc_digest` of the file a slot would be seeded with now, found without
-    claiming a slot."""
+    claiming a slot; with `joy`, after the same `give_joystick` edit a Curse
+    `--joy` run makes."""
     with tempfile.TemporaryDirectory() as tmp:
         folder = pathlib.Path(tmp)
         stand_in = SimpleNamespace(port=0, text_port=0, dir=folder, vicerc=folder / "vicerc")
-        return vicerc_digest(S.instance.seed_vicerc(stand_in))
+        seeded = S.instance.seed_vicerc(stand_in)
+        if joy:
+            give_joystick(seeded)
+        return vicerc_digest(seeded)
 
 
 #: The arguments a resumed run must repeat, since each changes what the
@@ -8239,9 +8249,13 @@ def check_resume(args, steps: list[Step], source: pathlib.Path,
     option = resumerecord.check_options(record, resume_options(args))
     if option:
         raise Error(f"--{option.replace('_', '-')} differs from the record's")
-    if record["vice"]["version"] != vice_version():
-        raise Error(f"VICE is {vice_version()}, the record was made on {record['vice']['version']}")
-    if record["vice"]["vicerc_sha256"] != seeded_vicerc_digest():
+    version = vice_version()
+    if version is None or record["vice"]["version"] is None:
+        raise Error("the VICE version cannot be read, here or in the record")
+    if record["vice"]["version"] != version:
+        raise Error(f"VICE is {version}, the record was made on {record['vice']['version']}")
+    joy = bool(getattr(args, "joy", False)) and args.title == "curse"
+    if record["vice"]["vicerc_sha256"] != seeded_vicerc_digest(joy):
         raise Error("the vicerc a slot is seeded with has changed since the record")
     if record["disks"]["staged"]["sha256"] != specimens.sha256_file(staged_disk):
         raise Error("staging this save again gives a different disk than the record's")
@@ -8262,7 +8276,8 @@ def resume_into(sess, slot, pool, record: dict, folder: pathlib.Path) -> None:
     for name, digest in record["disks"]["sides"].items():
         side = slot_dir / name
         if name != attached and (not side.is_file() or specimens.sha256_file(side) != digest):
-            raise Error(f"{name} staged on this slot is not the side the record hashed")
+            raise Error(f"{name} staged on this slot differs from the copy the record "
+                        f"hashed, so it changed since step {record['step']['n']} began")
     for entry in (record["machine"]["attached"], record["disks"]["save"]):
         shutil.copyfile(folder / entry["file"], slot_dir / pathlib.Path(entry["file"]).name)
     snapshots = [(RESUME_SNAPSHOT, record["machine"])] + [

@@ -169,7 +169,7 @@ def drive(tmp_path, monkeypatch):
 
         monkeypatch.setattr(A.runlog, "catch_signals", lambda: None)
         monkeypatch.setattr(A.S, "claim_slot", claim)
-        monkeypatch.setattr(A, "seeded_vicerc_digest", lambda: digest or A.vicerc_digest(slot.vicerc))
+        monkeypatch.setattr(A, "seeded_vicerc_digest", lambda joy=False: digest or A.vicerc_digest(slot.vicerc))
         monkeypatch.setattr(A.S, "stage_disks", lambda *a, **k: "first")
         monkeypatch.setattr(A.S, "stage_writable",
                             lambda src, dest: __import__("shutil").copyfile(src, dest))
@@ -584,3 +584,52 @@ def test_a_vicerc_digest_ignores_the_slot_ports(tmp_path, monkeypatch):
     first = A.seeded_vicerc_digest()
     template.write_text("[C64SC]\nWarpMode=1\n", encoding="utf-8")
     assert A.seeded_vicerc_digest() != first
+
+
+def test_the_seeded_digest_after_the_joystick_edit_matches_a_joy_slot(tmp_path, monkeypatch):
+    template = tmp_path / "template"
+    template.write_text("[C64SC]\nWarpMode=0\n", encoding="utf-8")
+    monkeypatch.setenv("POR_VICERC_TEMPLATE", str(template))
+    folder = tmp_path / "slot"
+    slot = SimpleNamespace(port=6520, text_port=6521, dir=folder, vicerc=folder / "vicerc")
+    A.give_joystick(A.S.instance.seed_vicerc(slot))
+    made = A.vicerc_digest(slot.vicerc)
+    assert A.seeded_vicerc_digest(joy=True) == made
+    assert A.seeded_vicerc_digest() != made
+
+
+def test_port_lines_are_stripped_only_in_the_c64sc_section(tmp_path):
+    def digest(text):
+        path = tmp_path / "rc"
+        path.write_text(text, encoding="utf-8")
+        return A.vicerc_digest(path)
+
+    assert digest("[C64SC]\nMonitorServerAddress=1\n") == digest("[C64SC]\nMonitorServerAddress=2\n")
+    assert digest("[Other]\nMonitorServerAddress=1\n") != digest("[Other]\nMonitorServerAddress=2\n")
+
+
+@pytest.mark.parametrize("version", [None, "3.9"])
+def test_an_unreadable_vice_version_stops_before_the_claim(drive, tmp_path, version):
+    rc, _, out, _ = drive(STEPS, tag="a")
+    record = out / "resume" / "resume.json"
+    if version is None:                       # the record's side
+        data = json.loads(record.read_text(encoding="utf-8"))
+        data["vice"]["version"] = None
+        record.write_text(json.dumps(data), encoding="utf-8")
+    rc, slot, out_b, _ = _resume(drive, record, vice=None if version else "3.9")
+    assert rc == 1 and not slot.claimed
+    assert "cannot be read" in _summary(out_b)["lost"]
+
+
+def test_a_side_that_changed_since_the_step_began_is_named(drive, failed):
+    class OtherSide(_ResumeSess):
+        def __init__(self, first, slot=None):
+            super().__init__(first, slot)
+            (slot.dir / "SIDE2.D64").write_bytes(b"not the side")
+
+    record = json.loads(failed.read_text(encoding="utf-8"))
+    record["disks"]["sides"]["SIDE2.D64"] = "0" * 64
+    failed.write_text(json.dumps(record), encoding="utf-8")
+    _, _, out, _ = drive(FIXED, tag="b", sess=OtherSide, resume_from=str(failed), at_step=3)
+    assert "SIDE2.D64 staged on this slot differs" in _summary(out)["lost"]
+    assert "changed since step 3 began" in _summary(out)["lost"]
