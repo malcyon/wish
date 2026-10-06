@@ -896,3 +896,19 @@ def test_a_door_nobody_has_walked_out_of_or_with_no_stand_is_held():
 def test_every_trip_from_a_grid_window_is_held_by_grid_doors():
     assert all(_covers("grid_doors", a, 0) for a in (25, 26, 27))
     assert not _covers("grid_doors", 13, 27)
+
+
+@pytest.mark.parametrize("key", ["curse-of-the-azure-bonds",
+                                 "secret-of-the-silver-blades",
+                                 "pools-of-darkness"])
+def test_entry_words_reads_only_the_step_entry_off_pool(key):
+    row = trip.ROWS[key]
+    m = machine(key)
+    m.at(row.step_entry + 2, b"\x99" * 8)
+    assert trip.entry_words(m, row) == ENTRY.to_bytes(2, "big")
+
+
+def test_entry_words_reads_five_words_on_pool():
+    row = trip.ROWS["pool-of-radiance"]
+    m = machine("pool-of-radiance")
+    assert len(trip.entry_words(m, row)) == 2 * trip.ENTRY_WORDS

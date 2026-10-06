@@ -243,9 +243,12 @@ ENTRY_WORDS = 5
 
 
 def entry_words(target, row: TripRow) -> bytes:
-    """The step entry and the four words after it. A new area can share the
-    first (areas 14 and 27 do) but not all five."""
-    return target.read(target.data_base + row.step_entry, 2 * ENTRY_WORDS)
+    """The step entry and, on Pool of Radiance, the four words after it. A new
+    area can share the first (areas 14 and 27 do) but not all five. The
+    other titles' words after the entry are not measured, so they read the
+    entry alone."""
+    words = ENTRY_WORDS if row.key == "pool-of-radiance" else 1
+    return target.read(target.data_base + row.step_entry, 2 * words)
 
 
 def stand_for(here: int, to: int, route) -> tuple[int, int, int] | None:

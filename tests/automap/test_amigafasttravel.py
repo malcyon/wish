@@ -477,6 +477,8 @@ from automap import (
 WINDOW = 0x40000
 PORT = 0x40100
 POOL_ENTRY = 0xA000
+#: What `entry_words` reads on the fixture: the entry, then four zero words.
+POOL_WORDS = POOL_ENTRY.to_bytes(2, "big") + bytes(8)
 DOOR_NAME = "Phlan"
 
 
@@ -547,7 +549,7 @@ def test_a_direct_door_stands_on_the_square_sends_the_key_and_says_the_c64_sente
 def test_a_new_trip_supersedes_a_hop_still_waiting(disks, pool_gate, monkeypatch):
     m = pool(13)
     t = pool_travel(monkeypatch)
-    t.pending = aft._Hop(7, 5, area(9), None, b"\0\0", deadline=1e18)
+    t.pending = aft._Hop(7, 5, area(9), None, POOL_WORDS, deadline=1e18)
     assert t.run(m, area(27)).ok
     assert t.pending is None
 
@@ -702,7 +704,7 @@ def _pending_hop(monkeypatch, area_now):
     m = pool(7)
     t = pool_travel(monkeypatch)
     t.pending = aft._Hop(7, 5, area(9, "Far place"), None,
-                         POOL_ENTRY.to_bytes(2, "big"), deadline=1e18)
+                         POOL_WORDS, deadline=1e18)
     m.at(trips.ROWS[POOL].area, bytes([area_now]))
     return m, t
 
