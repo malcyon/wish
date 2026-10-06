@@ -190,12 +190,11 @@ DARKNESS_UNSTARTED = dataclasses.replace(
 
 #: Elminster's menu in Limbo (area 18), the only place the game offers the item vault. A party
 #: saved there opens on it after the journal, whatever square it stands on, and `S` is its
-#: `STORAGE`. The vault's bar is `View Take Pool Money Items Exit`; `T`, then `I` at the take
-#: question, lists the stored items. The keys are the first letters of the DOS bars' words and
-#: the guard states are not cut yet, so a measure boot settles each of them.
+#: `STORAGE`. The Amiga vault's bar is `View Pool Money Items Exit`, with no Take word, so `I`
+#: lists the stored items straight away. The menu and bar guards are cut; the item pages are not,
+#: so a measure boot settles each of them.
 VAULT_MENU = "elminster_menu"
 VAULT_STORAGE = "vault_bar"
-VAULT_TAKE = "vault_take"
 VAULT_ITEMS = "vault_items"
 #: The key that turns a stored-items page. The Amiga bar's word is read from the DOS one and has
 #: not been seen on this port.
@@ -216,7 +215,7 @@ def vault_steps(pages: int = VAULT_PAGES) -> tuple[tuple[str, str, str], ...]:
     if not 1 <= pages <= VAULT_PAGES_MAX:
         raise RouteError(f"a vault run reads 1 to {VAULT_PAGES_MAX} pages, not {pages}")
     return (
-        ("S", VAULT_STORAGE, "key"), ("T", VAULT_TAKE, "key"),
+        ("S", VAULT_STORAGE, "key"),
         ("I", vault_page_state(1), "key"),
         *((VAULT_NEXT, vault_page_state(n), "key") for n in range(2, pages + 1)),
         ("E", VAULT_STORAGE, "key"), ("E", VAULT_MENU, "key"),
@@ -246,7 +245,7 @@ def vault_title(pages: int = VAULT_PAGES) -> AmigaTitle:
         measure_route=vault_route(DARKNESS.measure_route),
         plain_keys=(("E", "loaded_menu"), ("E", VAULT_STORAGE),
                     ("E", VAULT_MENU)),
-        strict=(DARKNESS.strict - {"world"}) | {VAULT_MENU},
+        strict=(DARKNESS.strict - {"world"}) | {VAULT_MENU, VAULT_STORAGE},
         # The route never expects `world`, the only state the two inherited rows answer.
         interstitials=(), interstitial_letters=(), move_again_after=frozenset(),
         min_waits={**DARKNESS.min_waits, VAULT_MENU: 45.0,

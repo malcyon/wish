@@ -3525,26 +3525,26 @@ def test_the_darkness_vault_description_is_pinned():
         ("S", "save_picker", "key"), ("F", "loaded_menu", "write"),
         ("B", "journal", "key"), ("X", "journal_answer", "key"),
         ("RET", "elminster_menu", "key"),
-        ("S", "vault_bar", "key"), ("T", "vault_take", "key"), ("I", "vault_items", "key"),
+        ("S", "vault_bar", "key"), ("I", "vault_items", "key"),
         ("N", "vault_items_2", "key"), ("E", "vault_bar", "key"),
         ("E", "elminster_menu", "key"),
         ("R", "camp", "key"), ("S", "camp_save_picker", "key"),
         ("G", "exit_game", "write"), ("N", "camp", "key"))
     assert vault.measure_route == (
-        *vault.route[:7], *vault.route[9:20])
+        *vault.route[:7], *vault.route[9:19])
     assert vault.control_letter == "F" and vault.after_letter == "G"
     assert vault.plain_keys == (
         ("E", "loaded_menu"), ("E", "vault_bar"), ("E", "elminster_menu"))
-    assert {"elminster_menu", "camp"} <= vault.strict
+    assert {"elminster_menu", "vault_bar", "camp"} <= vault.strict
+    assert "vault_take" not in {state for _, state, _ in vault.route}
     assert "world" not in vault.strict
-    assert not vault.strict & {"vault_bar", "vault_take", "vault_items", "vault_items_2"}
+    assert not vault.strict & {"vault_items", "vault_items_2"}
 
 
 def test_the_vault_steps_turn_one_page_for_each_page_asked_for():
     for pages in (1, 2, 13):
         steps = route_darkness.vault_steps(pages)
-        assert steps[:3] == (("S", "vault_bar", "key"), ("T", "vault_take", "key"),
-                             ("I", "vault_items", "key"))
+        assert steps[:2] == (("S", "vault_bar", "key"), ("I", "vault_items", "key"))
         assert [s[1] for s in steps if s[0] == "N"] == [
             f"vault_items_{n}" for n in range(2, pages + 1)]
         assert steps[-2:] == (("E", "vault_bar", "key"), ("E", "elminster_menu", "key"))

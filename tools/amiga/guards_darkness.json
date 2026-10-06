@@ -547,6 +547,17 @@
       "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/04-disk2_prompt.png",
       "sha256": "d27a9a57ec0044d5179669bbe44bfd49ed23a81c5fee4c92c85f95fc64d68377"
     },
+    "elminster_menu": {
+      "also": [],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "WISH-6/wish6-a5/a5m1/shots/10-elminster_menu.png",
+      "sha256": "c13a2d2a5e8740caf23c3725896aa001b04e7f6bb20d7c1fda47927ca43d72cb"
+    },
     "encounter": {
       "also": [],
       "box": [
@@ -815,6 +826,17 @@
       ],
       "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/title.png",
       "sha256": "3067b860a75e1b749371aeddd2c5ea3eb2f5537f6d63e1c39fbf0f3e5541b425"
+    },
+    "vault_bar": {
+      "also": [],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "WISH-6/wish6-a5/a5m1/shots/11-vault_bar.png",
+      "sha256": "e856a4b133a6ad5e927b0434fea593a80637ee17cc9e30ffa7469cd504529bf9"
     },
     "world": [
       {
