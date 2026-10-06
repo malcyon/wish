@@ -1890,3 +1890,39 @@ def test_curse_trip_into_tilverton_leaves_the_destination_as_came_from():
     pool = dict(actions.newecl_writes(
         3, 1, addresses=fasttravel.POOL_OF_RADIANCE))
     assert pool[fasttravel.POOL_OF_RADIANCE.came_from] == b"\x03"
+
+
+def test_fasttravel_writes_no_dock_byte_when_one_cannot_be_read():
+    """A byte that cannot be read cannot be restored, so a failed trip would
+    leave it changed; nothing is written instead."""
+
+    class Unreadable(ReenterTarget):
+        def read(self, address, length):
+            if address == 0x4AC4:
+                raise OSError("unreadable")
+            return super().read(address, length)
+
+    target = Unreadable(new_phlan_machine().memory)
+    addr = fasttravel.POOL_OF_RADIANCE
+    original = target.read(addr.live_square, 3)
+    outcome = actions.FastTravel().run(target, area=actions.area_by_id(26))
+    assert not outcome.ok
+    assert target.read(0x4A01, 1) == bytes([0])
+    assert target.read(addr.live_square, 3) == original
+    assert target.reenters == []
+
+
+def test_fasttravel_restores_the_dock_bytes_when_a_write_raises():
+    addr = fasttravel.POOL_OF_RADIANCE
+
+    class FailsOnSquare(ReenterTarget):
+        def write(self, address, data):
+            if address == addr.live_square:
+                raise OSError("write failed")
+            super().write(address, data)
+
+    target = FailsOnSquare(new_phlan_machine().memory)
+    with pytest.raises(OSError):
+        actions.FastTravel().run(target, area=actions.area_by_id(26))
+    assert target.read(0x4A01, 1) == bytes([0])
+    assert target.read(0x4AC4, 1) == bytes([0])

@@ -2036,25 +2036,40 @@ class FastTravel(Action):
         # re-entry puts them back.
         presets = fasttravel.EXIT_PRESETS.get((here, to), ())
         before = [(a, _read(target, a, 1)) for a, _v in presets]
-        for a, v in presets:
-            target.write(a, bytes((v,)))
-        target.write(addr.live_square,
-                     bytes((x & 0xFF, y & 0xFF, facing & 0xFF)))
+        if any(old is None for _a, old in before):
+            # A byte that cannot be read cannot be put back, so none is written.
+            return Outcome(False, FASTTRAVEL_FAILED, ())
+
+        def restore() -> None:
+            # Each byte on its own, so one that cannot be written does not
+            # leave the rest unrestored.  `was.square` is only ever None where
+            # `current_square` could not read it in the first place, and then
+            # there is nothing recorded to put back.
+            puts = [(a, old) for a, old in before]
+            if was.square is not None:
+                puts.append((addr.live_square,
+                             bytes(v & 0xFF for v in was.square)))
+            for a, old in puts:
+                try:
+                    target.write(a, old)
+                except Exception as exc:
+                    _log.debug("could not restore $%04X: %s", a, exc)
+
+        try:
+            for a, v in presets:
+                target.write(a, bytes((v,)))
+            target.write(addr.live_square,
+                         bytes((x & 0xFF, y & 0xFF, facing & 0xFF)))
+        except Exception:
+            # Part of the writes may have landed; put back every byte this
+            # method may have changed, then let the fault reach the caller.
+            restore()
+            raise
         if not reenter(target, addr, route.entry):
             # `reenter` failing here means Wish could not rebuild `DUNGEON`'s
             # own stack -- nothing the game did, so nothing it left behind to
-            # reason about. The one write this method made is the square
-            # above, and it is the only thing to undo: `was.square` is the
-            # position read before that write, at the same three bytes
-            # (`addr.live_square`) it overwrote. `was.square` is only ever
-            # None where `current_square` could not read it in the first
-            # place, and then there is nothing recorded to put back.
-            if was.square is not None:
-                target.write(addr.live_square,
-                             bytes(v & 0xFF for v in was.square))
-            for a, old in before:
-                if old:
-                    target.write(a, old)
+            # reason about. Only the writes above are undone.
+            restore()
             return Outcome(False,
                            FASTTRAVEL_FAILED,
                            ())
