@@ -1,6 +1,7 @@
 """Check guard-map ownership, export, and cross-title collisions on synthetic crops."""
 
 import json
+import os
 
 import pytest
 from PIL import Image
@@ -678,7 +679,7 @@ def test_a_second_add_decodes_no_unchanged_crop_and_decodes_a_changed_one(tmp_pa
     decoded = []
     real = guardmaps._decode_digests
     monkeypatch.setattr(guardmaps, '_decode_digests',
-                        lambda path, boxes: decoded.append(path) or real(path, boxes))
+                        lambda path, boxes, state: decoded.append(path) or real(path, boxes, state))
     argv = ['--root', str(root), '--maps', str(maps), 'add', '--title', 'pool',
             '--map', 'guards', '--state', 'title', '--crop', str(first), '--box', '10,10,20,20']
     assert guardmaps.main(argv) == 0
@@ -691,3 +692,71 @@ def test_a_second_add_decodes_no_unchanged_crop_and_decodes_a_changed_one(tmp_pa
         image.save(other)
     assert guardmaps.main([*argv, '--replace']) == 0
     assert decoded == [other]
+
+
+def _cache_entries(root):
+    return json.loads((root / guardmaps.CACHE_NAME).read_text())
+
+
+def _add_argv(root, maps, crop, *extra, state='title', box='10,10,20,20'):
+    return ['--root', str(root), '--maps', str(maps), 'add', '--title', 'pool',
+            '--map', 'guards', '--state', state, '--crop', str(crop), '--box', box, *extra]
+
+
+def test_cache_drops_entries_for_deleted_crops(tmp_path):
+    root, maps = tmp_path / 'root', tmp_path / 'maps'
+    maps.mkdir()
+    first = _run(root, '1', 'pool-run', 'pool', 'title')
+    gone = _run(root, '2', 'curse-run', 'curse', 'title')
+    _second_crop(gone)
+    argv = _add_argv(root, maps, first)
+    assert guardmaps.main(argv) == 0
+    relative = gone.relative_to(root).as_posix()
+    assert relative in _cache_entries(root)
+    gone.unlink()
+    assert guardmaps.main([*argv, '--replace']) == 0
+    assert relative not in _cache_entries(root)
+
+
+def test_changed_inode_with_same_size_and_mtime_is_decoded_again(tmp_path, monkeypatch):
+    root, maps = tmp_path / 'root', tmp_path / 'maps'
+    maps.mkdir()
+    first = _run(root, '1', 'pool-run', 'pool', 'title')
+    other = _run(root, '2', 'curse-run', 'curse', 'title')
+    _second_crop(other)
+    decoded = []
+    real = guardmaps._decode_digests
+    monkeypatch.setattr(guardmaps, '_decode_digests',
+                        lambda path, boxes, state: decoded.append(path) or real(path, boxes, state))
+    argv = _add_argv(root, maps, first)
+    assert guardmaps.main(argv) == 0
+    stat = other.stat()
+    copy = other.with_name('copy.png')
+    copy.write_bytes(other.read_bytes())
+    os.utime(copy, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    other.unlink()
+    copy.rename(other)
+    assert other.stat().st_ino != stat.st_ino
+    assert (other.stat().st_size, other.stat().st_mtime_ns) == (stat.st_size, stat.st_mtime_ns)
+    decoded.clear()
+    assert guardmaps.main([*argv, '--replace']) == 0
+    assert decoded == [other]
+
+
+def test_bad_box_error_names_the_state(tmp_path, capsys):
+    root, maps = tmp_path / 'root', tmp_path / 'maps'
+    maps.mkdir()
+    first = _run(root, '1', 'pool-run', 'pool', 'title')
+    _run(root, '2', 'curse-run', 'curse', 'title')
+    assert guardmaps.main(_add_argv(root, maps, first, state='title', box='10,10,9000,20')) == 2
+    assert 'invalid crop box for title' in capsys.readouterr().err
+
+
+def test_a_crop_deleted_after_the_scan_is_skipped(tmp_path):
+    root = tmp_path / 'root'
+    kept = _run(root, '1', 'pool-run', 'pool', 'title')
+    gone = _run(root, '2', 'curse-run', 'curse', 'title')
+    crops = guardmaps.scan_crops(root)
+    gone.unlink()
+    digests = guardmaps.cached_digests(root, crops, [(10, 10, 20, 20)])
+    assert set(digests) == {kept.relative_to(root).as_posix()}

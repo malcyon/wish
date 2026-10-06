@@ -91,8 +91,8 @@ def scan_crops(root: pathlib.Path) -> list[Crop]:
 CACHE_NAME = 'guardmaps-digests.json'
 
 
-def _decode_digests(path: pathlib.Path, boxes) -> dict[tuple, str]:
-    return screens.box_digests(path, boxes)
+def _decode_digests(path: pathlib.Path, boxes, state: str) -> dict[tuple, str]:
+    return screens.box_digests(path, boxes, state)
 
 
 def _read_cache(root: pathlib.Path) -> dict:
@@ -120,30 +120,37 @@ def _write_cache(root: pathlib.Path, data: dict) -> None:
         temp.unlink(missing_ok=True)
 
 
-def cached_digests(root: pathlib.Path, crops: list[Crop], boxes) -> dict[str, dict[tuple, str]]:
-    """Box digests per crop, decoding a crop only when its path, size or mtime is new.
+def cached_digests(root: pathlib.Path, crops: list[Crop], boxes, state: str = 'guard') -> dict[str, dict[tuple, str]]:
+    """Box digests per crop, decoding a crop only when its path, size, mtime or inode is new.
+
+    A crop deleted since the scan is skipped. Entries for crops gone from
+    disk are dropped from the cache. `state` names the rule in a bad-box error.
 
     Reading a crop from disk dominates a scan of the acceptance cache, so each
     entry remembers the digests it has computed for the boxes asked so far.
     """
-    cache = _read_cache(root)
+    old = _read_cache(root)
+    cache = {name: entry for name, entry in old.items() if (root / name).exists()}
     result: dict[str, dict[tuple, str]] = {}
     dirty = False
     for crop in crops:
-        stat = crop.path.stat()
-        stamp = [stat.st_size, stat.st_mtime_ns]
-        entry = cache.get(crop.relative)
+        try:
+            stat = crop.path.stat()
+        except FileNotFoundError:
+            continue
+        stamp = [stat.st_size, stat.st_mtime_ns, stat.st_ino]
+        entry = old.get(crop.relative)
         if not isinstance(entry, dict) or entry.get('stamp') != stamp or not isinstance(entry.get('boxes'), dict):
             entry = {'stamp': stamp, 'boxes': {}}
         known = entry['boxes']
         missing = [tuple(box) for box in boxes if ','.join(map(str, box)) not in known]
         if missing:
-            for box, digest in _decode_digests(crop.path, missing).items():
+            for box, digest in _decode_digests(crop.path, missing, state).items():
                 known[','.join(map(str, box))] = digest
             dirty = True
         cache[crop.relative] = entry
         result[crop.relative] = {tuple(box): known[','.join(map(str, box))] for box in boxes}
-    if dirty:
+    if dirty or cache.keys() != old.keys():
         _write_cache(root, cache)
     return result
 
@@ -210,6 +217,7 @@ def _check(args, crops: list[Crop]) -> int:
     boxes = {tuple(rule['box']) for spec in specs.values() for kind in ('guards', 'identity')
              for value in spec[kind].values() for rule in screens.rules_of(value)}
     digests = cached_digests(args.root, crops, boxes)
+    crops = [c for c in crops if c.relative in digests]
     for title in args.title or FILES:
         spec = specs[title]
         problems = 0
@@ -266,9 +274,11 @@ def _add(args, crops: list[Crop]) -> int:
                   and not _shown(c, args.title, spec).intersection(args.also))]
     against = set(negatives)
     candidates = [c for c in crops if c.path in against]
-    same = cached_digests(args.root, [selected, *candidates], [box])
+    same = cached_digests(args.root, [selected, *candidates], [box], args.state)
+    if selected.relative not in same:
+        raise ValueError(f'{crop} was deleted')
     wanted = same[selected.relative][tuple(box)]
-    negatives = [c.path for c in candidates if same[c.relative][tuple(box)] == wanted]
+    negatives = [c.path for c in candidates if c.relative in same and same[c.relative][tuple(box)] == wanted]
     rule = screens.checked_rule(crop, box, args.state, negatives)
     rule = {**rule, 'example': selected.relative, 'also': sorted(args.also)}
     if args.alternative:
