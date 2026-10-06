@@ -12,6 +12,8 @@ what this measures.
     tools/secret_of_the_silver_blades/ssbwarp.py --pool 3 --probe --out DIR
     tools/secret_of_the_silver_blades/ssbwarp.py --pool 3 --to 0x22,0x50,0x60 --via-actions \
         --spoil-from 2 --walk --out DIR
+    tools/secret_of_the_silver_blades/ssbwarp.py --pool 3 --to 0x10 --via-actions --back \
+        --save SAVE.D64 --out DIR
 
 `--probe` boots, loads a party and reports what the machine holds without
 warping; it is what to run first, because the current area and the indoors
@@ -229,7 +231,7 @@ class SessTarget:
             m.set_registers({pc_register(m): address})
 
 
-def warp_via_actions(target, game, row, square) -> dict:
+def warp_via_actions(target, game, row, square, ft=None) -> dict:
     """The same trip, made by `automap.actions.FastTravel` itself.
 
     **A tool that reproduces a result its own way says nothing about the code
@@ -241,7 +243,8 @@ def warp_via_actions(target, game, row, square) -> dict:
     """
     from automap import actions
 
-    ft = actions.FastTravel(game)
+    if ft is None:
+        ft = actions.FastTravel(game)
     verdict = ft.legality(target, row)
     out = {"legal": bool(verdict), "reason": verdict.reason,
            "addresses": ft.addresses.title if ft.addresses else None}
@@ -315,6 +318,28 @@ def walk_proof(sess, keys: str = "JIKI") -> dict:
                         for s in steps)
     sess.leave_move()
     return out
+
+
+def return_via_actions(sess, addr, maps, ft, target, row, out: pathlib.Path,
+                       tag: str) -> dict:
+    """Return to where the last trip started, on the same `FastTravel` object.
+
+    `back` is set by `FastTravel.apply`, so the object that made the hop has to
+    be the one that goes back. The landing is recorded as a hop's is: the
+    machine's state, with the live `$C04B`-`$C04D` triple, and a screenshot.
+    """
+    outcome = ft.apply_back(target)
+    made = {"ok": outcome.ok, "message": outcome.message,
+            "writes": [[at, list(data)] for at, data in outcome.writes]}
+    print("wrote back:", json.dumps(made), flush=True)
+    if not outcome.ok:
+        return {"back": made, "landed": False}
+    idle, _pc = wait_idle(sess, addr)
+    sess.settle(3)
+    after = measure(sess, addr, maps, row, out, tag)
+    after["idle"] = idle
+    return {"back": made, "landed": True, "idle": idle, "state": after,
+            "square": after["square"]}
 
 
 def screen_text(sess, path: pathlib.Path | None = None) -> str:
@@ -476,6 +501,10 @@ def run(args) -> int:
             return 0
 
         target = SessTarget(sess)
+        ft = None
+        if args.back:
+            from automap import actions
+            ft = actions.FastTravel(game)
         landed_any = False
         for n, (want, row) in enumerate(zip(chain, rows), start=1):
             tag = f"hop{n}-{want:02x}"
@@ -512,7 +541,7 @@ def run(args) -> int:
                   f"square {square}, PC ${pc:04X}", flush=True)
 
             if args.via_actions:
-                made = warp_via_actions(target, game, row, square)
+                made = warp_via_actions(target, game, row, square, ft)
                 if not made.get("ok"):
                     print("FastTravel rejected:",
                           json.dumps(made), flush=True)
@@ -556,6 +585,14 @@ def run(args) -> int:
             if not landed:
                 break
             landed_any = True
+            if args.back:
+                report["back"] = return_via_actions(
+                    sess, addr, maps,
+                    ft, target, areas.area_in(here["area"],
+                                              areas.SECRET_OF_THE_SILVER_BLADES),
+                    out, f"back{n}-{here['area']:02x}")
+                (out / "report.json").write_text(json.dumps(report, indent=1))
+                break
             if args.walk and n == len(chain) and idle:
                 hop["walk"] = walk_proof(sess)
                 hop["resident_after_walk"] = resident_geo(sess, maps)
@@ -618,6 +655,10 @@ def main(argv: list[str]) -> int:
                     help="make the trip with automap.actions.FastTravel, "
                          "which is the code a player clicking Fast Travel "
                          "runs, rather than this file's own writes")
+    ap.add_argument("--back", action="store_true",
+                    help="with --via-actions, after the first hop call "
+                         "FastTravel.apply_back on the same object and "
+                         "record the landing; no second hop is made")
     ap.add_argument("--command-bar", action="store_true",
                     help="wait for ENCAMP before warping, rather than for "
                          "the first moment the machine is idle in a key "
@@ -637,6 +678,9 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--out", default=str(scratch.scratch_dir("ssbwarp", "run")),
                     help="where captures go (default: %(default)s)")
     args = ap.parse_args(argv[1:])
+    if args.back and not args.via_actions:
+        ap.error("--back needs --via-actions: only FastTravel remembers "
+                 "where the trip started")
     if not args.disks or not os.path.isdir(args.disks):
         # `automap/gamedisks.py` is the registry; `automap.paths.find_disks`
         # looks for a directory named after the game and nobody names one

@@ -457,3 +457,26 @@ def test_walk_proof_walks_nothing_when_the_world_bar_never_came(monkeypatch):
 
     out = ssbwarp.walk_proof(Sess())
     assert out["rejected"] == stopped and out["moved"] is False
+
+
+def test_return_via_actions_calls_apply_back_on_the_same_object(monkeypatch, tmp_path):
+    from types import SimpleNamespace as NS
+
+    from tools.secret_of_the_silver_blades import ssbwarp
+    calls = []
+
+    class FT:
+        def apply_back(self, target):
+            calls.append(target)
+            return NS(ok=True, message="travelled back", writes=[(0xC04B, b"\x0f\x08\x02")])
+
+    state = {"square": [15, 8, 2], "area": 0x10}
+    monkeypatch.setattr(ssbwarp, "wait_idle", lambda sess, addr: (True, 0))
+    monkeypatch.setattr(ssbwarp, "measure",
+                        lambda sess, addr, maps, row, out, tag: dict(state))
+    sess = NS(settle=lambda n: None)
+    ft, target = FT(), object()
+    out = ssbwarp.return_via_actions(sess, None, {}, ft, target, None,
+                                     tmp_path, "back1-10")
+    assert calls == [target]
+    assert out["landed"] and out["square"] == [15, 8, 2]
