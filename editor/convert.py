@@ -160,6 +160,15 @@ class ConvertError(Exception):
     player to read -- in a modal `QMessageBox` since 2026-09-10."""
 
 
+def overflow_of(exc: Exception) -> "tuple[dos_codec.PackOverflow, ...]":
+    """The packs a pack-overflow exception names, as the tuple the left-behind
+    window takes: the C64's carries one per character, the Amiga's one for the
+    party."""
+    if isinstance(exc, amiga_savegame.AmigaJoinedScrollsDoNotFit):
+        return (exc.overflow,)
+    return exc.overflow
+
+
 def _same_file(a: pathlib.Path, b: pathlib.Path) -> bool:
     """Whether two paths name the same file, across relative and symlinked forms."""
     try:
@@ -1175,6 +1184,7 @@ def _rehearse_later_savegame(state: Any, deltas: dos_port.DosDeltas,
                              ecl_glb: bytes | None,
                              icons: "list | None" = None,
                              disk_one: "str | pathlib.Path | None" = None,
+                             leave: "Mapping[int, Collection[int]] | None" = None,
                              ) -> AmigaWriteRehearsal:
     """Build a fresh Curse or Silver Blades saved game on a copy of the
     player's disk 1, the disk the game reads its `SAVE` drawer from."""
@@ -1183,7 +1193,7 @@ def _rehearse_later_savegame(state: Any, deltas: dos_port.DosDeltas,
     if disk_one is None:
         raise saveplan.MissingAssets((saveplan.AMIGA_DISK_ONE,))
     savegame, report = amiga_savegame.new_savegame(
-        state, party, slot, ecl_glb=ecl_glb, icons=icons)
+        state, party, slot, ecl_glb=ecl_glb, icons=icons, leave=leave)
     disk = amiga_savegame.slot_on_disk_one(
         AmigaDisk.open(str(disk_one)), deltas.key, slot, savegame)
     return AmigaWriteRehearsal(
@@ -1268,6 +1278,7 @@ def _rehearse_amiga_savegame(state: Any, deltas: dos_port.DosDeltas,
                              game_data: bytes | None,
                              icons: "list | None" = None,
                              disk_one: "str | pathlib.Path | None" = None,
+                             leave: "Mapping[int, Collection[int]] | None" = None,
                              ) -> AmigaWriteRehearsal:
     if deltas is dos_port.POOL_OF_RADIANCE:
         if game_data is None:
@@ -1276,7 +1287,7 @@ def _rehearse_amiga_savegame(state: Any, deltas: dos_port.DosDeltas,
             state, slot, party, game_data, icons=icons)
     return _rehearse_later_savegame(
         state, deltas, slot, party, game_data, icons=icons,
-        disk_one=disk_one)
+        disk_one=disk_one, leave=leave)
 
 
 class C64ToAmiga(Direction):
@@ -1377,9 +1388,9 @@ class DosToAmiga(Direction):
                 names: "Mapping[int, str] | None" = None,
                 leave: "Mapping[int, Collection[int]] | None" = None,
                 disk_one: "str | pathlib.Path | None" = None) -> AmigaWriteRehearsal:
-        if leave:
-            # Only a C64 record has a slot count a pack can overflow; a
-            # choice of what to leave behind means nothing to this port.
+        if leave and self.deltas is not dos_port.SECRET_OF_THE_SILVER_BLADES:
+            # Only Silver Blades' joined scrolls can pass an Amiga limit; a
+            # choice of what to leave behind means nothing to another title.
             raise saveplan.SaveAsError(
                 f"{self.source_port} to {self.destination_port} has no "
                 f"pack to leave anything of")
@@ -1416,7 +1427,7 @@ class DosToAmiga(Direction):
             source=str(pathlib.Path(source.path) / savgam_path.name))
         return _rehearse_amiga_savegame(
             state, self.deltas, letter, party, game_data, icons=icons,
-            disk_one=disk_one)
+            disk_one=disk_one, leave=leave)
 
     def write(self, rehearsal: AmigaWriteRehearsal,
              folder: str | pathlib.Path) -> list[pathlib.Path]:
@@ -2293,13 +2304,14 @@ class ConvertDialog(QDialog):
         try:
             self.rehearsal, self.slot = saveplan.rehearse(
                 direction, self.source, assets)
-        except dos_codec.JoinedScrollsDoNotFit as exc:
+        except (dos_codec.JoinedScrollsDoNotFit,
+                amiga_savegame.AmigaJoinedScrollsDoNotFit) as exc:
             # Not a rejection: the player chooses what to leave behind once
             # Convert is pressed (`EditorBinding.convert`), so nothing is
             # shown now and Convert stays pressable.
             _log.info("The pack does not fit the %s destination: %s",
                       direction.destination_port, exc)
-            self.pack_overflow = exc.overflow
+            self.pack_overflow = overflow_of(exc)
             self._name_destination()
             return
         except dos_codec.EffectsDoNotFit as exc:

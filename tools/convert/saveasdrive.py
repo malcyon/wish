@@ -68,7 +68,9 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
 
     `leave` is the `{member: pack positions}` a player would tick in the
     window that opens when a pack needs more than the C64's sixteen slots. A
-    party still over is blocked as `JoinedScrollsDoNotFit`.
+    party still over is blocked as `JoinedScrollsDoNotFit`, or for a Silver
+    Blades party over the Amiga's joined-scroll limit as
+    `AmigaJoinedScrollsDoNotFit`.
 
     `leave_effects` is the `{member: running-effect indices}` a player would
     tick in the window that opens when the party's running effects need more

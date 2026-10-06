@@ -82,3 +82,34 @@ def crowd_dos_member(folder, number: int, plain_items: int, *scrolls: bytes,
     (folder / f"CHRDATA{number}.SAV").write_bytes(record)
     (folder / f"CHRDATA{number}{deltas.item_suffix}").write_bytes(itm)
     (folder / f"CHRDATA{number}{deltas.effect_suffix}").write_bytes(spc)
+
+
+def specimen_l_pack() -> tuple[list[bytes], tuple[ScrollBundle, ...]]:
+    """Twelve joined scrolls of ten, one of two and three ordinary items:
+    sixteen rows, and 122 scrolls in joined scrolls, which no unjoin brings
+    to the Amiga loader's 120."""
+    inventory: list[bytes] = []
+    bundles = []
+    for count in [10] * 12 + [2]:
+        bundles.append(ScrollBundle(len(inventory), count, head(count)))
+        inventory.extend(scroll(1 + (len(inventory) + n) % 100)
+                         for n in range(count))
+    inventory.extend(ordinary(n) for n in range(3))
+    return inventory, tuple(bundles)
+
+
+def crowd_dos_pack(folder, number: int, inventory, bundles,
+                   name: str = "CROWDED") -> None:
+    """Replace `CHRDATA<number>` in a DOS Silver Blades save folder (slot A)
+    with a character holding exactly this pack."""
+    deltas = dos_port.SECRET_OF_THE_SILVER_BLADES
+    char = _filled(GAME)
+    char.set("name", name, "made up", Confidence.CONFIRMED,
+             c64_codec.Provenance.RESHAPED)
+    char.set("inventory", list(inventory), "made up")
+    char.set("scroll_bundles", tuple(bundles), "made up")
+    record, itm, spc, _report = dos_codec.write(char, deltas=deltas)
+    folder = pathlib.Path(folder)
+    (folder / f"CHRDATA{number}.SAV").write_bytes(record)
+    (folder / f"CHRDATA{number}{deltas.item_suffix}").write_bytes(itm)
+    (folder / f"CHRDATA{number}{deltas.effect_suffix}").write_bytes(spc)

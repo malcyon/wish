@@ -796,6 +796,15 @@ def _best_unjoin(party: "Sequence[DosCharacter] | Sequence[NeutralCharacter]",
     scrolls.  The indices are into each member's `scroll_bundles` after
     `leave`.
     """
+    return _best_unjoin_of_packs([pack_of(char) for char in party], leave)
+
+
+def _best_unjoin_of_packs(
+        packs: "Sequence[tuple[Sequence[bytes], Sequence[ScrollBundle]]]",
+        leave: "Mapping[int, Collection[int]] | None"
+        ) -> tuple[dict[int, tuple[int, ...]], int]:
+    """:func:`_best_unjoin` on each member's `(inventory, bundles)`, keyed by
+    position in `packs`."""
     from . import amiga_later  # imports this module at its top
     leave = leave or {}
     # Per member and per scrolls unjoined: the best (rows added, joined
@@ -806,8 +815,7 @@ def _best_unjoin(party: "Sequence[DosCharacter] | Sequence[NeutralCharacter]",
     member_best = []
     position = 0
     total = 0
-    for index, char in enumerate(party):
-        inventory, bundles = pack_of(char)
+    for index, (inventory, bundles) in enumerate(packs):
         inventory, bundles = leave_behind(inventory, bundles,
                                           leave.get(index, ()))
         total += sum(b.count for b in bundles)
@@ -868,6 +876,88 @@ def amiga_unjoin_choice(
     if left > amiga_later.AMIGA_SSB_JOINED_SCROLL_LIMIT:
         return None
     return choice
+
+
+def amiga_scrolls_over_limit(overflow: PackOverflow,
+                             leave: "Mapping[int, Collection[int]] | None"
+                             ) -> int:
+    """How many scrolls a party-scope `overflow` still holds in joined scrolls
+    beyond the Amiga loader's limit once `leave` is left behind and the best
+    unjoin is made; 0 when the party then fits.
+
+    Built from the overflow alone, so a window that holds only what the
+    writer reported can ask it as the player ticks.  `leave` is keyed by
+    position in the party the writer was handed, as `pack_overflow`'s is.
+    """
+    if overflow.scope != "party":
+        raise ValueError("only a party-scope overflow counts scrolls")
+    packs = []
+    where = {}
+    for place, member in enumerate(overflow.members):
+        where[member] = place
+        bundles = tuple(
+            ScrollBundle(u.indices[0], len(u.indices), b"")
+            for u in overflow.units
+            if u.member == member and u.kind == "joined")
+        packs.append((overflow.items[place], bundles))
+    chosen = {where[m]: v for m, v in (leave or {}).items() if m in where}
+    _choice, left = _best_unjoin_of_packs(packs, chosen)
+    return max(0, left - overflow.limit)
+
+
+def amiga_items_to_leave(overflow: PackOverflow,
+                         leave: "Mapping[int, Collection[int]] | None"
+                         ) -> int:
+    """The fewest more items the party must leave, beyond `leave`, before the
+    best unjoin brings it within the Amiga loader's limit; 0 when it already
+    does.
+
+    Exact.  Items are grouped by what leaving one does: every item that is
+    not inside a joined scroll frees a row and nothing else, and each scroll
+    of one joined scroll breaks it up and frees a row, so a group is chosen
+    by how many of it are left and not by which.
+    """
+    leave = {m: set(v) for m, v in (leave or {}).items()}
+    if amiga_scrolls_over_limit(overflow, leave) == 0:
+        return 0
+    # (member, unticked indices) per group.
+    groups: list[tuple[int, list[int]]] = []
+    for member in overflow.members:
+        ticked = leave.get(member, set())
+        loose = []
+        for u in overflow.units:
+            if u.member != member:
+                continue
+            if u.kind == "item":
+                loose.extend(i for i in u.indices if i not in ticked)
+        groups.append((member, loose))
+        for u in overflow.units:
+            if u.member == member and u.kind == "joined":
+                groups.append((member,
+                               [i for i in u.indices if i not in ticked]))
+    groups = [g for g in groups if g[1]]
+    total = sum(len(g[1]) for g in groups)
+
+    def fits(counts: Sequence[int]) -> bool:
+        trial = {m: set(v) for m, v in leave.items()}
+        for (member, free), n in zip(groups, counts):
+            trial.setdefault(member, set()).update(free[:n])
+        return amiga_scrolls_over_limit(overflow, trial) == 0
+
+    def spread(start: int, left: int, counts: list[int]) -> bool:
+        if left == 0:
+            return fits(counts + [0] * (len(groups) - len(counts)))
+        if start == len(groups):
+            return False
+        for n in range(min(left, len(groups[start][1])), -1, -1):
+            if spread(start + 1, left - n, counts + [n]):
+                return True
+        return False
+
+    for k in range(1, total + 1):
+        if spread(0, k, []):
+            return k
+    return total
 
 
 def _amiga_pack_overflow(party: "Sequence[DosCharacter] | Sequence[NeutralCharacter]",

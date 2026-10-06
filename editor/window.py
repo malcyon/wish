@@ -2048,12 +2048,13 @@ class EditorBinding(QObject):
                 names = choice
                 try:
                     dialog.rehearse_naming(choice)
-                except dos_codec.JoinedScrollsDoNotFit as exc:
+                except (dos_codec.JoinedScrollsDoNotFit,
+                        amiga_savegame.AmigaJoinedScrollsDoNotFit) as exc:
                     # The names were the first thing in the way; the pack is
                     # next, asked for below with these names kept.
                     _log.info("The pack does not fit the %s destination: %s",
                               dialog.direction.destination_port, exc)
-                    dialog.pack_overflow = exc.overflow
+                    dialog.pack_overflow = convert_mod.overflow_of(exc)
                 except dos_codec.EffectsDoNotFit as exc:
                     # Same again for the running effects, asked for below.
                     _log.info("The running effects do not fit the %s "
@@ -2178,6 +2179,10 @@ class EditorBinding(QObject):
         """
         from .leavebehind import LeaveBehindDialog
 
+        if not isinstance(game, por_games.C64Container):
+            # The Amiga destination's own game is a DOS title row with no C64
+            # disks of its own; the same title's C64 disks name its items.
+            game = por_games.by_key(game.key)
         item_names, spell_names = {}, {}
         disk = self._find_disk(lambda d: load_item_names(d, game),
                                game.disk_glob, game)
@@ -3073,7 +3078,8 @@ class EditorBinding(QObject):
     @staticmethod
     def _packs_of(overflow) -> "dict[int, tuple[bytes, ...]]":
         """Each overflowing member's pack, as an index in a choice names it."""
-        return {entry.members[0]: entry.items[0] for entry in overflow}
+        return {member: items for entry in overflow
+                for member, items in zip(entry.members, entry.items)}
 
     def _prepare_plan(self, source, port: str, path: pathlib.Path,
                       assets, leave=None, remembered=None, names=None,
@@ -3127,7 +3133,8 @@ class EditorBinding(QObject):
         except saveplan.SaveAsError as exc:
             _log.debug("Save As to %s blocked: %s", path, exc)
             QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, SAVE_AS_FAILED)
-        except dos_codec.JoinedScrollsDoNotFit as exc:
+        except (dos_codec.JoinedScrollsDoNotFit,
+                amiga_savegame.AmigaJoinedScrollsDoNotFit) as exc:
             _log.info("The pack does not fit the %s destination: %s",
                       port, exc)
             if leave:
@@ -3135,12 +3142,14 @@ class EditorBinding(QObject):
                 # this is a writer blocking what the player chose.
                 QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, LOSS_NOT_CONVERTED)
                 return None
-            packs = self._packs_of(exc.overflow)
+            from . import convert as convert_mod
+            overflow = convert_mod.overflow_of(exc)
+            packs = self._packs_of(overflow)
             if remembered is not None and remembered[1] == packs:
                 choice = remembered[0]
             else:
                 choice = self._choose_left_behind(
-                    exc.overflow,
+                    overflow,
                     saveplan.route(source, port).destination_game,
                     self._save_as_label())
                 if choice is None:

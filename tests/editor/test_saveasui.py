@@ -1027,6 +1027,66 @@ def test_save_as_with_a_choice_reads_the_written_disk_back_without_a_false_misma
     assert len(saveplan.c64_slot_records(out)) == 2
 
 
+def test_save_as_to_the_amiga_of_a_party_over_the_limit_asks_party_wide_and_writes(
+        app, tmp_path, monkeypatch):
+    """The real writer, with a Silver Blades party that unjoining cannot bring
+    to the Amiga's 120 scrolls: Save As opens the leave-behind step for the
+    party and, once an item is left, writes the Amiga disk."""
+    from support import packoverflow
+    from support.amigasavegame import synthetic_disk_one
+
+    from goldbox import amiga_later, amiga_savegame
+    from goldbox.amiga_adf import AmigaDisk
+
+    folder = dos_folder(tmp_path / "save")
+    inventory, bundles = packoverflow.specimen_l_pack()
+    packoverflow.crowd_dos_pack(folder, 1, inventory, bundles, name="HERO1")
+    binding = EditorBinding(make_root(), str(folder))
+    binding.backups = tmp_path / "backups"
+    binding.begin_save_as("amiga")
+    one = tmp_path / "one.adf"
+    synthetic_disk_one(SILVER_BLADES.key).save(str(one))
+    assets = saveplan.Assets(amiga_disk_one=one)
+    monkeypatch.setattr(binding, "_resolve_destination_assets", lambda: assets)
+    binding._child("button_destination_save_as").setEnabled(True)
+    asked, said = [], []
+    ordinary = len(inventory) - 1
+    choice = {0: frozenset({ordinary})}
+
+    def choose(overflow, game, accept_label):
+        asked.append(overflow)
+        return choice
+
+    monkeypatch.setattr(binding, "_choose_left_behind", choose)
+    monkeypatch.setattr(binding, "_adopt", lambda *a, **k: None)
+    monkeypatch.setattr(
+        ew.QMessageBox, "critical",
+        lambda _parent, title, text: said.append((title, text)))
+    plans = []
+    real_prepare = saveplan.prepare_save_as
+
+    def prepare(*args, **kwargs):
+        plans.append(real_prepare(*args, **kwargs))
+        return plans[-1]
+
+    monkeypatch.setattr(saveplan, "prepare_save_as", prepare)
+    out = tmp_path / "out.adf"
+    binding._child("destination_path").setText(str(out))
+    binding._child("button_destination_save_as").click()
+
+    assert said == []
+    (overflow,) = asked
+    (entry,) = overflow
+    assert (entry.scope, entry.members, entry.limit, entry.needed) == \
+        ("party", (0,), 120, 122)
+    (plan,) = plans
+    assert plan.leave == choice
+    assert out.is_file()
+    written = amiga_savegame.read_slot(
+        AmigaDisk.open(str(out)), "A", SILVER_BLADES.key).characters
+    assert amiga_later.joined_scroll_count(written) == 120
+
+
 class _RealNamesSaveAs:
     """Save As to DOS of a real C64 Curse specimen through the real
     `prepare_save_as`, with the name window and the publication replaced by

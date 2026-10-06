@@ -95,7 +95,7 @@ def test_saveplan_rehearse_hands_the_choice_to_the_direction(monkeypatch):
 
 
 @pytest.mark.parametrize("name", [
-    "C64ToDos", "AmigaToDos", "C64ToAmiga", "DosToAmiga"])
+    "C64ToDos", "AmigaToDos", "C64ToAmiga"])
 def test_a_direction_that_writes_no_c64_record_blocks_a_choice(name):
     direction = getattr(convert, name, None)
     if direction is None:
@@ -103,6 +103,17 @@ def test_a_direction_that_writes_no_c64_record_blocks_a_choice(name):
     inst = direction.__new__(direction)
     inst.source_port, inst.destination_port = "a", "b"
     inst.deltas = SSB
+    with pytest.raises(saveplan.SaveAsError):
+        inst.rehearse(type("S", (), {"slot": "A", "path": "x"})(), "A", None,
+                      leave={0: {1}})
+
+
+def test_dos_to_amiga_blocks_a_choice_for_a_title_with_no_joined_scroll():
+    from goldbox import dos_port
+
+    inst = convert.DosToAmiga.__new__(convert.DosToAmiga)
+    inst.source_port, inst.destination_port = "dos", "amiga"
+    inst.deltas = dos_port.CURSE_OF_THE_AZURE_BONDS
     with pytest.raises(saveplan.SaveAsError):
         inst.rehearse(type("S", (), {"slot": "A", "path": "x"})(), "A", None,
                       leave={0: {1}})

@@ -570,3 +570,47 @@ def test_the_editor_asks_for_effects_and_returns_the_ticks(
         overflow, c64_port.POOL_OF_RADIANCE, ACCEPT) == {
         0: frozenset({3}), 1: frozenset({1})}
     assert seen["label"] == ACCEPT
+
+
+# --- a limit the whole party shares (the Amiga's joined scrolls) ---------------
+
+def _party_overflow():
+    """Specimen L's pack for one member and a second member with a joined
+    scroll of two and loose items: 122 scrolls, no unjoin reaches 120."""
+    inventory, bundles = packs.specimen_l_pack()
+    other = packs.member("OTHER", 2, packs.scroll(5), packs.scroll(6))
+    first = packs.member("PAINE", 0)
+    first.set("inventory", inventory, "made up")
+    first.set("scroll_bundles", bundles, "made up")
+    (over,) = dos_codec.pack_overflow([first, other], "amiga")
+    return over
+
+
+def _party_dialog():
+    return LeaveBehindDialog((_party_overflow(),), ITEM_NAMES, SPELL_NAMES,
+                             for_game(GAME), ACCEPT)
+
+
+def test_a_party_wide_overflow_reuses_the_approved_words_and_hides_the_c64_explanation(app):
+    dialog = _party_dialog()
+    assert dialog.windowTitle() == "Choose what to leave behind"
+    assert dialog.ui.explanation_label.isHidden()
+    assert dialog.ui.items_remaining_label.text() == "Items still to leave: 1"
+    assert {r.text(NAME) for r in _rows(dialog) if r.childCount()
+            and r.parent() is not None and not r.flags() & CHECKABLE} \
+        == {"Joined scroll"}
+    names = [dialog.tree.topLevelItem(n).text(NAME)
+             for n in range(dialog.tree.topLevelItemCount())]
+    assert names == ["PAINE", "OTHER"]
+
+
+def test_the_party_count_falls_when_an_ordinary_item_frees_the_row_for_an_unjoin(app):
+    dialog = _party_dialog()
+    assert not _accept(dialog).isEnabled()
+    _tick(dialog, 0, 124)
+    assert dialog.ui.items_remaining_label.text() == "Items still to leave: 0"
+    assert _accept(dialog).isEnabled()
+    assert dialog.chosen() == {0: frozenset({124})}
+    _tick(dialog, 0, 124, on=False)
+    assert not _accept(dialog).isEnabled()
+    assert dialog.chosen() == {}

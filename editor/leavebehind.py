@@ -15,6 +15,12 @@ written (`.claude/rules/gui-text.md`). The accept button's label is the
 caller's: the existing Convert or Save As label. In pack mode the remaining
 count of every character together sits left of the buttons, level with them.
 
+**A party-scope overflow** (`PackOverflow.scope == "party"`, the Amiga's limit
+on joined scrolls) is drawn with the same rows and the same words, one character
+row for each member who holds a joined scroll. The count is
+`goldbox.dos_codec.amiga_items_to_leave`: the fewest items the party still has to
+leave. `EXPLANATION` is the C64's own slot limit and is hidden there.
+
 **A second mode lists running effects** (`effects=`), built from
 `goldbox.dos_codec.EffectsDoNotFit.overflow`: the C64's 64-row table of
 running effects is the whole party's, so there is one count for the party and
@@ -42,6 +48,7 @@ from PyQt6.QtWidgets import (
     QTreeWidgetItem,
 )
 
+from goldbox import dos_codec
 from goldbox.dos_codec import C64_SCROLL_TYPES, EffectOverflow, PackOverflow
 from goldbox.items import Item
 from goldbox.spells import SpellTable
@@ -99,6 +106,10 @@ class LeaveBehindDialog(QDialog):
         self.ui.explanation_label.setText(
             EXPLANATION if effects is None
             else EFFECTS_EXPLANATION.format(n=max(0, effects.over)))
+        # `EXPLANATION` states the C64's slot limit, which a party-wide limit
+        # is not, and no other explanation is approved.
+        self.ui.explanation_label.setVisible(
+            not any(o.scope == "party" for o in overflow))
 
         self.overflow = tuple(overflow)
         self.effects = effects
@@ -131,8 +142,20 @@ class LeaveBehindDialog(QDialog):
         self._entries: list[tuple[PackOverflow, QTreeWidgetItem, set[int]]] = []
         #: Effects mode: what is ticked, `{member: indices}`.
         self._ticked_effects: dict[int, set[int]] = {}
+        #: Party mode: the one overflow whose limit is the party's, and what
+        #: is ticked, `{member: indices}`.
+        self._party: PackOverflow | None = None
+        self._ticked_party: dict[int, set[int]] = {}
         for entry in self.overflow:
-            self._fill(entry)
+            if entry.scope == "party":
+                self._party = entry
+                self._fill_party(entry)
+            else:
+                self._fill(entry)
+        if self._party is not None:
+            # One count for the party, in the count beside the buttons; a
+            # character has no count of its own.
+            self.tree.setColumnHidden(COUNT_COLUMN, True)
         if effects is not None:
             self._fill_effects(effects)
             # Quantity, Readied and the remaining count have nothing to say
@@ -177,6 +200,32 @@ class LeaveBehindDialog(QDialog):
             row = self._pick_row(parent, member, index, raw)
             if unit.kind == "scroll" or raw[0] in self._scroll_types:
                 self._spell_line(row, raw)
+
+    def _fill_party(self, entry: PackOverflow) -> None:
+        """One row per member who holds a joined scroll, and beneath it that
+        member's items as `_fill` draws them."""
+        for place, member in enumerate(entry.members):
+            raws = entry.items[place]
+            character = QTreeWidgetItem(self.tree, [entry.names[place]])
+            character.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            font = character.font(NAME_COLUMN)
+            font.setBold(True)
+            character.setFont(NAME_COLUMN, font)
+            parent = character
+            for unit in entry.units:
+                if unit.member != member:
+                    continue
+                if unit.kind == "joined":
+                    parent = QTreeWidgetItem(character, [JOINED_HEADING])
+                    parent.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                    continue
+                if unit.kind == "item":
+                    parent = character
+                index = unit.indices[0]
+                raw = raws[index]
+                row = self._pick_row(parent, member, index, raw)
+                if unit.kind == "scroll" or raw[0] in self._scroll_types:
+                    self._spell_line(row, raw)
 
     def _fill_effects(self, effects: EffectOverflow) -> None:
         """One row per member who holds an effect that can be left out, and one
@@ -240,6 +289,14 @@ class LeaveBehindDialog(QDialog):
         if pick is None:
             return
         member, index = pick
+        if self._party is not None:
+            ticked = self._ticked_party.setdefault(member, set())
+            if row.checkState(NAME_COLUMN) == Qt.CheckState.Checked:
+                ticked.add(index)
+            else:
+                ticked.discard(index)
+            self._refresh()
+            return
         if self.effects is not None:
             ticked = self._ticked_effects.setdefault(member, set())
             if row.checkState(NAME_COLUMN) == Qt.CheckState.Checked:
@@ -275,6 +332,14 @@ class LeaveBehindDialog(QDialog):
             self.buttons.button(QDialogButtonBox.StandardButton.Ok
                                 ).setEnabled(remaining == 0)
             return
+        if self._party is not None:
+            remaining = dos_codec.amiga_items_to_leave(
+                self._party, self._ticked_party)
+            self.ui.items_remaining_label.setText(
+                ITEMS_REMAINING.format(n=remaining))
+            self.buttons.button(QDialogButtonBox.StandardButton.Ok
+                                ).setEnabled(remaining == 0)
+            return
         total = 0
         for entry, character, ticked in self._entries:
             left = self._remaining(entry, ticked)
@@ -289,6 +354,9 @@ class LeaveBehindDialog(QDialog):
     def chosen(self) -> dict[int, frozenset[int]]:
         """Each character's ticked inventory indices; one with nothing ticked
         is left out."""
+        if self._party is not None:
+            return {member: frozenset(ticked)
+                    for member, ticked in self._ticked_party.items() if ticked}
         return {entry.members[0]: frozenset(ticked)
                 for entry, _character, ticked in self._entries if ticked}
 
