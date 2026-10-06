@@ -33,8 +33,8 @@ import re
 import sys
 import time
 
-from . import paths
-from .amiga import MEMORY, PipeError, _check_commands
+from . import amiga, paths
+from .amiga import MEMORY, PipeError, _check_commands, _in_memory
 
 #: Win32 values `_winapi` also exports; kept here so a fake `api` needs only the
 #: calls. A Windows-only test checks them against `_winapi`.
@@ -146,6 +146,9 @@ class WinuaeLocalPipe:
         self._owed = False
         #: True after a failure, until a handle opens or a reply is read.
         self.lost = False
+        #: The `(base, size)` regions a write may land in, measured the first
+        #: time a write falls outside `MEMORY`.
+        self.memory: tuple[tuple[int, int], ...] | None = None
 
     # -- the handle ------------------------------------------------------
 
@@ -372,7 +375,8 @@ class WinuaeLocalPipe:
 
         The reply to `W` is a receipt of what the debugger parsed, not of what
         memory holds, so the read-back is the check. One to `MAX_WRITE` bytes
-        inside chip or slow memory, the range the FS-UAE helper forwards.
+        inside one of the machine's memory regions as `memory_regions` measures
+        them, or chip and slow memory when none could be measured.
 
         `timeout` is the budget for the whole call, receipts and read-back
         together. **The write is not atomic:** a range goes out as lines of
@@ -394,10 +398,9 @@ class WinuaeLocalPipe:
         if not 1 <= len(data) <= MAX_WRITE:
             raise ValueError(f"A write of {len(data)} bytes is not between 1 "
                              f"and {MAX_WRITE}.")
-        if not any(base <= addr and addr + len(data) <= base + size
-                   for base, size in MEMORY):
+        if not _in_memory(addr, len(data), self._regions(addr, len(data))):
             raise ValueError(f"A write of {len(data)} bytes at {addr:#x} is "
-                             "outside chip and slow memory.")
+                             "outside the machine's memory.")
         end = self._clock() + (self.TIMEOUT if timeout is None else timeout)
         for i in range(0, len(data), WRITE_LINE):
             chunk = data[i:i + WRITE_LINE]
@@ -418,6 +421,22 @@ class WinuaeLocalPipe:
         if held != data:
             raise PipeError(f"The memory at {addr:#x} differs from the bytes "
                             "written when read back.")
+
+    def _regions(self, addr: int, length: int):
+        """The regions a write at `addr` is checked against.
+
+        A write inside chip or slow memory needs no measurement. Otherwise the
+        regions are measured once, as the FS-UAE helper does; an unreadable
+        emulator measures nothing and is tried again next time.
+        """
+        if addr < 0 or _in_memory(addr, length, MEMORY):
+            return MEMORY
+        if self.memory is None:
+            try:
+                self.memory = amiga.memory_regions(self.read_memory)
+            except PipeError:
+                return MEMORY
+        return self.memory
 
     def _left(self, end: float) -> float:
         left = end - self._clock()

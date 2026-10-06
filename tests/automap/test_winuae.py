@@ -552,6 +552,49 @@ def test_an_unverified_write_still_checks_the_receipt_and_the_bounds(rig):
         pipe.write_memory(0xC80000, b"\x01", verify=False)
 
 
+FAST = ((0x200000, 0x100000),) + amiga.MEMORY
+
+
+def test_a_write_into_measured_fast_ram_goes_through(rig, monkeypatch):
+    pipe, api, *_ = rig
+    api.memory = bytearray(0x300000)
+    monkeypatch.setattr(amiga, "memory_regions", lambda read: FAST)
+    pipe.write_memory(0x200000, b"\xa5\x5a")
+    assert api.memory[0x200000:0x200002] == b"\xa5\x5a"
+
+
+def test_a_write_outside_every_measured_region_is_blocked(rig, monkeypatch):
+    pipe, api, *_ = rig
+    api.memory = bytearray(0x300000)
+    monkeypatch.setattr(amiga, "memory_regions", lambda read: FAST)
+    with pytest.raises(ValueError, match="outside"):
+        pipe.write_memory(0x400000, b"\x01")
+    with pytest.raises(ValueError, match="outside"):
+        pipe.write_memory(0x2FFFFF, b"\x01\x02")
+    assert not any(m.startswith(b"DBG W") for m in api.written)
+
+
+def test_with_nothing_measured_the_a500_range_applies(rig):
+    pipe, api, *_ = rig
+    api.memory = bytearray(0x300000)    # no ExecBase in it: nothing measured
+    with pytest.raises(ValueError, match="outside"):
+        pipe.write_memory(0x200000, b"\x01")
+    pipe.write_memory(0x100, b"\x01")
+
+
+def test_a_write_that_cannot_measure_is_blocked_and_measured_again(rig, monkeypatch):
+    pipe, api, *_ = rig
+    api.memory = bytearray(0x300000)
+
+    def fail(read):
+        raise amiga.PipeError("down")
+    monkeypatch.setattr(amiga, "memory_regions", fail)
+    with pytest.raises(ValueError, match="outside"):
+        pipe.write_memory(0x200000, b"\x01")
+    monkeypatch.setattr(amiga, "memory_regions", lambda read: FAST)
+    pipe.write_memory(0x200000, b"\x01")
+
+
 def test_a_write_that_gets_no_answer_times_out_and_keeps_the_handle(rig):
     pipe, api, clock, _folder = rig
     pipe.read_memory(0, 8)
@@ -680,7 +723,8 @@ def test_a_write_outside_the_bounds_sends_nothing(rig, addr, size):
     pipe, api, *_ = rig
     with pytest.raises(ValueError):
         pipe.write_memory(addr, bytes(size))
-    assert api.written == []
+    # Measuring the machine's regions reads memory; no byte may be written.
+    assert not any(m.startswith(b"DBG W") for m in api.written)
 
 
 def test_the_ends_of_chip_and_slow_memory_are_accepted(rig):
