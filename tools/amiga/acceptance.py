@@ -229,6 +229,9 @@ PUBLISHED_ISSUE_TEXT = {
             "only the ordinary caster-level spells convert)"),
     "22": ("WISH-22 (Validate Character Editor Open, Save and Save As across C64, DOS and "
            "Amiga)"),
+    "2": ("WISH-2 (Import and export a Pools of Darkness save between DOS and the Amiga)"),
+    "4": ("WISH-4 (A joined scroll in a DOS Silver Blades save shifts everything after it out "
+          "of the character's pack)"),
 }
 PUBLISHED_DISKS = {
     "ssb": ("2f9ae86494561231dd1d70b350ae07b959c9f62642b64e9d4b57ffd23686ace4",

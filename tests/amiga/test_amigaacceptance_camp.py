@@ -1218,6 +1218,10 @@ DOS_22 = {
             "b3515793dada24b6a85061f5c2fdc5555a45df40381ee0009e9fd54ba381fb72")}
 
 
+def test_every_pinned_issue_has_its_published_text():
+    assert set(foundation.PUBLISHED_SOURCES_BY_ISSUE) <= set(foundation.PUBLISHED_ISSUE_TEXT)
+
+
 def test_22_pins_the_two_dos_saves_and_names_its_issue():
     assert foundation.PUBLISHED_SOURCES_BY_ISSUE["22"] == {
         ("curse", "dos"): frozenset({DOS_22["curse"][1]}),
