@@ -3484,6 +3484,81 @@ def test_a_vault_run_of_two_hundred_and_one_items_builds_a_title():
     assert title.min_waits["vault_items_13"] == 10.0
 
 
+def test_the_vault_title_answers_no_interstitial_row_because_it_never_expects_the_world():
+    assert foundation.DARKNESS_VAULT.interstitials == ()
+    assert route_darkness.vault_title(13).interstitials == ()
+
+
+def _prepare_with(monkeypatch, tmp_path, seen):
+    monkeypatch.setattr(scratch, "cache_dir", lambda *parts: tmp_path.joinpath(*parts))
+
+    def fake(run, specimen, **kw):
+        seen.append(kw)
+        scratch.ensure(run)
+        return {"title": "darkness", "names_a": NAMES}
+
+    monkeypatch.setattr(foundation, "_PREPARE", {"darkness-vault": fake, "darkness": fake})
+
+
+def test_a_vault_prepare_takes_a_substitute_and_records_its_page_count(tmp_path, monkeypatch):
+    seen = []
+    _prepare_with(monkeypatch, tmp_path, seen)
+    substitute = tmp_path / "converted.adf"
+    path = foundation.prepare(foundation.DARKNESS_VAULT, "run", substitute=substitute,
+                              substitute_letter="B", vault_pages=13)
+    assert seen == [{"substitute": substitute, "substitute_letter": "B"}]
+    assert json.loads(path.read_text())["vault_pages"] == 13
+    default = json.loads(foundation.prepare(foundation.DARKNESS_VAULT, "run2").read_text())
+    assert default["vault_pages"] == route_darkness.VAULT_PAGES
+
+
+def test_a_vault_page_count_is_blocked_out_of_range_and_on_another_title(tmp_path, monkeypatch):
+    _prepare_with(monkeypatch, tmp_path, [])
+    with pytest.raises(winuaesession.RouteError, match="1 to 13 pages"):
+        foundation.prepare(foundation.DARKNESS_VAULT, "run", vault_pages=14)
+    with pytest.raises(winuaesession.RouteError, match="takes no vault page count"):
+        foundation.prepare(foundation.DARKNESS, "run", vault_pages=2)
+    assert not (tmp_path / "acceptance").exists()
+
+
+def test_the_cli_dispatches_a_vault_prepare_with_its_substitute_and_page_count(
+        tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr(foundation, "prepare",
+                        lambda title, run_id, **kw: seen.append((title, run_id, kw))
+                        or tmp_path / "p.json")
+    assert foundation.main(["prepare", "--title", "darkness-vault", "--run-id", "r",
+                            "--substitute", "s.adf", "--substitute-letter", "B",
+                            "--vault-pages", "13"]) == 0
+    title, run_id, kw = seen[0]
+    assert title is foundation.DARKNESS_VAULT and run_id == "r"
+    assert kw["substitute"] == pathlib.Path("s.adf") and kw["substitute_letter"] == "B"
+    assert kw["vault_pages"] == 13
+    assert foundation.main(["prepare", "--title", "darkness-vault", "--run-id", "r"]) == 0
+    assert seen[1][2]["vault_pages"] is None
+
+
+@pytest.mark.parametrize("command", ["measure", "accept"])
+def test_the_cli_runs_a_vault_title_at_the_page_count_its_manifest_recorded(
+        tmp_path, monkeypatch, command):
+    called = _Called()
+    monkeypatch.setattr(foundation, "run_recon", called)
+    monkeypatch.setattr(foundation, "WinGuest", lambda: object())
+    monkeypatch.setattr(foundation, "PixelGuards", lambda path: ("guards", str(path)))
+    manifest = tmp_path / "prepare.json"
+    expected = {}
+    for pages in (13, None):
+        manifest.write_text(json.dumps({} if pages is None else {"vault_pages": pages}))
+        extra = ["--guards", "g.json"] + (
+            ["--identity", "i.json"] if command == "accept" else [])
+        assert foundation.main([command, "--title", "darkness-vault", "--manifest", str(manifest),
+                                "--audio-proof", str(tmp_path / "mute.json"),
+                                "--attempt", "a1", *extra]) == 0
+        expected[pages] = called.calls[-1]["title"]
+    assert expected[13] == route_darkness.vault_title(13)
+    assert expected[None] == foundation.DARKNESS_VAULT
+
+
 #: The three game-written DOS saves that the Darkness Save As route starts from besides the
 #: Lay on Hands slot, as `(specimen directory, SAVGAMD.PTY SHA-256)`.
 DARKNESS_DOS_SOURCES = (

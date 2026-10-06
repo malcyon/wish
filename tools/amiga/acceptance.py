@@ -65,10 +65,13 @@ from tools.amiga.route_darkness import (  # noqa: E402
     DARKNESS_UNSTARTED_LOADED,
     DARKNESS_VAULT,
     DARKNESS_VOLUME,
+    VAULT_PAGES,
     _prepare_darkness,
     _prepare_darkness_reload,
     published_reload_title,
     published_title,
+    vault_steps,
+    vault_title,
 )
 from tools.amiga.route_pool import (  # noqa: E402
     POOL,
@@ -2452,7 +2455,7 @@ def _name(title: AmigaTitle) -> str:
 
 #: Titles with a slot importer for their own save format.
 _SUBSTITUTABLE = frozenset(
-    {"darkness", *(source.name for source in (POOL_SOURCES, CURSE_SOURCES)
+    {"darkness", "darkness-vault", *(source.name for source in (POOL_SOURCES, CURSE_SOURCES)
                    if source.import_slot is not None)})
 
 
@@ -2464,7 +2467,7 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
             specimen_sha256: str | None = None, accept_summary: pathlib.Path | None = None,
             substitute: pathlib.Path | None = None, substitute_letter: str = "A",
             camp: tuple[str, ...] = (), issue: str | None = None,
-            ) -> pathlib.Path:
+            vault_pages: int | None = None) -> pathlib.Path:
     """Copy the title's registered images and specimen into a run folder, write `prepare.json`, and return it.
 
     Blocks when any pinned hash differs, the loaded slot does not decode, or a
@@ -2477,7 +2480,9 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
     `camp` (a title in `CAMP_TITLES` only) is a list of camp steps
     (`route_camp.validate_steps`) the accept route drives between camping and
     the camp save, kept in the manifest. `issue`, on any title, puts the run
-    folder under that issue's number rather than this module's.
+    folder under that issue's number rather than this module's. `vault_pages`
+    (`darkness-vault` only, default `VAULT_PAGES`) is the number of stored-items pages the
+    run turns to, kept in the manifest for accept and measure.
     """
     if not HOLDER.fullmatch(run_id):
         raise RouteError("run id must use letters, digits, dot, underscore or hyphen")
@@ -2492,6 +2497,11 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
         raise RouteError(f"{name} takes no substitute slot")
     if camp and name not in CAMP_TITLES:
         raise RouteError(f"{name} takes camp steps only on a published prepare")
+    if vault_pages is not None and name != "darkness-vault":
+        raise RouteError(f"{name} takes no vault page count")
+    if name == "darkness-vault":
+        vault_pages = VAULT_PAGES if vault_pages is None else vault_pages
+        vault_steps(vault_pages)
     if issue is not None and not ISSUE_ARGUMENT.fullmatch(issue):
         raise RouteError("the issue is a number or WISH-N")
     if camp:
@@ -2517,6 +2527,8 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
             shutil.rmtree(run)
             raise
         manifest["camp"] = list(camp)
+    if vault_pages is not None:
+        manifest["vault_pages"] = vault_pages
     path = run / "prepare.json"
     path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     return path
@@ -2615,6 +2627,15 @@ def accept_title(title: AmigaTitle, manifest: dict) -> AmigaTitle:
     if "camp" in manifest:
         title = _camp_title(manifest["title"], title, manifest["camp"], manifest["names_a"])
     return title
+
+
+def _vault_title_for(manifest_path: pathlib.Path) -> AmigaTitle:
+    """The `darkness-vault` route for the page count its manifest recorded."""
+    try:
+        manifest = json.loads(pathlib.Path(manifest_path).read_text())
+    except (OSError, ValueError) as exc:
+        raise RouteError(f"the manifest {manifest_path} cannot be read: {exc}") from exc
+    return vault_title(manifest.get("vault_pages", VAULT_PAGES))
 
 
 def _substitute_mode(manifest_path: pathlib.Path) -> bool:
@@ -3412,6 +3433,8 @@ def main(argv: list[str] | None = None) -> int:
                         "Amiga output, whose --substitute-letter slot replaces the route's "
                         "loaded slot; Pool, Curse, Pools of Darkness and Silver Blades accept "
                         "this, Silver Blades in place of --source")
+    p.add_argument("--vault-pages", type=int, default=None,
+                   help="darkness-vault only: stored-items pages the run turns to (default 2)")
     p.add_argument("--substitute-letter", default="A",
                    help="the slot to read off --substitute (default A)")
     m = sub.add_parser("measure", help="boot and press the route up to the first save; writes nothing")
@@ -3585,12 +3608,15 @@ def main(argv: list[str] | None = None) -> int:
                               accept_summary=args.accept_summary,
                               substitute=args.substitute,
                               substitute_letter=args.substitute_letter,
-                              camp=args.camp, issue=args.issue))
+                              camp=args.camp, issue=args.issue,
+                              vault_pages=args.vault_pages))
                 return 0
             if args.published_disk_one:
                 manifest, title = _published_manifest(args.manifest, args.title)
             else:
                 title = None if silver_blades else TITLES[args.title]
+                if args.title == "darkness-vault":
+                    title = _vault_title_for(args.manifest)
                 if args.title in ("darkness", "darkness-reload"):
                     title = published_darkness_title(args.manifest, args.title) or title
             # A Silver Blades substitute prepared with camp steps, or whose party has not set out,

@@ -242,6 +242,8 @@ def vault_title(pages: int = VAULT_PAGES) -> AmigaTitle:
         plain_keys=(("E", "loaded_menu"), ("E", VAULT_STORAGE),
                     ("E", VAULT_MENU)),
         strict=(DARKNESS.strict - {"world"}) | {VAULT_MENU},
+        # The route never expects `world`, the only state the two inherited rows answer.
+        interstitials=(),
         min_waits={**DARKNESS.min_waits, VAULT_MENU: 45.0,
                    **{state: 10.0 for state in states}},
     )
