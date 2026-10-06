@@ -299,3 +299,161 @@ def test_the_default_walk_is_unchanged():
     height = b.geometry.height
     assert path == [(25, y) for y in range(14, height)]
     assert len(path) == 12
+
+
+# -- the test-only movement raise -------------------------------------------
+
+
+class _Machine:
+    """64K of memory behind a monitor that reads and writes it."""
+
+    def __init__(self):
+        self.mem = bytearray(0x10000)
+
+    def mon(self, timeout=5):
+        machine = self
+
+        class Monitor:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read(self, address, length):
+                return bytes(machine.mem[address:address + length])
+
+            def write(self, address, data):
+                machine.mem[address:address + len(data)] = data
+
+        return Monitor()
+
+
+class _Log:
+    def __init__(self):
+        self.events = []
+
+    def emit(self, kind, **kw):
+        self.events.append((kind, kw))
+
+
+def _block(m, index, status, movement, record_slot):
+    at = fleedrive.ROSTER + index * 0x20
+    m.mem[at] = status
+    m.mem[at + 0x0D] = record_slot
+    m.mem[at + fleedrive.MOVEMENT] = movement
+
+
+def _party_fight():
+    """Three members (BROTHER SEAN in slot 1 moving 6) and two kobolds, one
+    dead; slot 1 acts, and its block is the loaded copy at `$6C00`."""
+    m = _Machine()
+    _block(m, 0, 0x01, 12, 0)
+    _block(m, 1, 0x01, 6, 1)
+    _block(m, 2, 0x86, 9, 2)
+    _block(m, 8, 0x01, 6, 8)
+    _block(m, 9, 0x84, 15, 9)             # dead: $183D does not count it
+    m.mem[fleedrive.ACTING] = 1
+    m.mem[fleedrive.RESIDENT:fleedrive.RESIDENT + 0x20] = \
+        m.mem[fleedrive.ROSTER + 0x20:fleedrive.ROSTER + 0x40]
+    return m
+
+
+def _movement(m, slot):
+    return m.mem[fleedrive.MovementPoke.address(slot)]
+
+
+def test_the_raise_is_twice_the_fastest_living_monster_and_one_more():
+    m = _party_fight()
+    table = bytes(m.mem[fleedrive.ROSTER:fleedrive.ROSTER + 0x800])
+    assert fleedrive.fast_movement(table) == 13
+    _block(m, 10, 0x01, 0x20, 10)
+    with pytest.raises(ValueError, match="cap"):
+        fleedrive.fast_movement(
+            bytes(m.mem[fleedrive.ROSTER:fleedrive.ROSTER + 0x800]))
+
+
+def test_the_raise_reaches_every_member_and_the_acting_members_loaded_copy():
+    m = _party_fight()
+    poke = fleedrive.MovementPoke(_Log())
+    poke.hold(m)
+    assert [_movement(m, s) for s in range(3)] == [13, 13, 13]
+    assert _movement(m, 3) == 0                       # an empty slot is left
+    assert m.mem[0x6C1B] == 13
+    assert m.mem[fleedrive.ROSTER + 8 * 0x20 + 0x1B] == 6   # the kobold too
+    assert poke.originals == {0x831B: 12, 0x833B: 6, 0x835B: 9}
+
+
+def test_put_back_reads_every_byte_back_and_the_loaded_copy_to_its_owner():
+    m = _party_fight()
+    poke = fleedrive.MovementPoke(_Log())
+    poke.hold(m)
+    rows = poke.restore(m)
+    assert [_movement(m, s) for s in range(3)] == [12, 6, 9]
+    assert m.mem[0x6C1B] == 6
+    assert [r["action"] for r in rows] == ["put back"] * 4
+    assert all(r["verified"] for r in rows)
+    assert rows[-1]["owner"] == "$833B"
+    assert poke.applied is False
+
+
+def test_a_byte_the_game_rebuilt_is_raised_again_and_its_rebuilt_value_put_back():
+    """`LIBRARY $3729` rebuilds the movement after an attack (`COMBAT
+    $16BF`); the rebuilt value is the game's own, so it is the one put back."""
+    m = _party_fight()
+    log = _Log()
+    poke = fleedrive.MovementPoke(log)
+    poke.hold(m)
+    m.mem[0x831B] = 9                                 # rebuilt, lighter load
+    poke.hold(m)
+    assert _movement(m, 0) == 13
+    assert [kw["found"] for k, kw in log.events
+            if k == "movement-rewritten"] == [9]
+    poke.restore(m)
+    assert _movement(m, 0) == 9
+
+
+def test_a_byte_already_back_or_rebuilt_by_the_game_is_not_written():
+    m = _party_fight()
+    poke = fleedrive.MovementPoke(_Log())
+    poke.hold(m)
+    m.mem[0x831B] = 12                                # a snapshot put it back
+    m.mem[0x833B] = 7                                 # the game's own rebuild
+    m.mem[0x6C1B] = 7
+    rows = {r["address"]: r for r in poke.restore(m)}
+    assert rows["$831B"]["action"] == "already original"
+    assert rows["$833B"]["action"] == "game value"
+    assert _movement(m, 1) == 7
+    assert "$6C1B" not in rows
+
+
+def test_a_loaded_copy_holding_the_raise_with_no_owner_stops_the_put_back():
+    m = _party_fight()
+    poke = fleedrive.MovementPoke(_Log())
+    poke.hold(m)
+    m.mem[0x6C0D] = 8                                 # a monster's copy
+    with pytest.raises(fleedrive.MovementRestoreError, match=r"\$6C1B") as e:
+        poke.restore(m)
+    assert e.value.rows[-1]["action"] == "no owner"
+    assert poke.applied is True
+
+
+def test_fast_flee_raises_only_once_armed_and_reads_through_to_its_tactic():
+    m = _party_fight()
+    turns = []
+
+    class Tactic:
+        casts = []
+
+        def __call__(self, sess, state):
+            turns.append(_movement(m, 1))
+            return "MOVE"
+
+    inner = Tactic()
+    poke = fleedrive.MovementPoke(_Log())
+    tactic = fleedrive.FastFlee(inner, poke, lambda: bool(inner.casts))
+    assert tactic(m, None) == "MOVE"
+    inner.casts.append({"caster": "BAKSHI"})
+    tactic(m, None)
+    assert turns == [6, 13]
+    assert tactic.casts is inner.casts

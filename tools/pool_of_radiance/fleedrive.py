@@ -637,6 +637,213 @@ class Flight:
         return sess.combat_turn()
 
 
+# -- a test-only raise of the party's movement -------------------------------
+
+#: Roster block `+$1B`, the movement `COMBAT $16FA` compares at a flight.  In
+#: a fight the party's combat blocks **are** the roster blocks at `$8300 +
+#: slot*$20` (combatants 0-7, save-slot order), so this byte is in
+#: `SAVEDGAME1` and in every save the game writes.
+MOVEMENT = savegame.ROSTER_MOVEMENT
+
+#: `$8300`-`$8AFF`, the 64 combat blocks of `$20`; 8 upward are the monsters.
+COMBAT_BLOCKS = 64
+COMBAT_TABLE_BYTES = COMBAT_BLOCKS * savegame.ROSTER_STRIDE
+
+#: `$6C00`-`$6C1F`, the loaded combatant's copy of its block: `LIBRARY $3189`
+#: copies a block in, `$319A` copies it back.
+RESIDENT = 0x6C00
+
+#: The combat index of the combatant whose turn it is (`COMBAT $12E3`).
+ACTING = 0xA4F4
+
+#: The largest movement the raise writes.  `COMBAT $1621` adds a side bonus to
+#: the movement and `$08AB` doubles it, so a value past `$3F` would come near
+#: the byte's top.
+FAST_MOVEMENT_CAP = 0x3F
+
+
+class MovementRestoreError(RuntimeError):
+    """A raised movement byte that could not be put back and read back."""
+
+    def __init__(self, message: str, rows: list[dict]):
+        super().__init__(message)
+        self.rows = rows
+
+
+def fast_movement(table: bytes) -> int:
+    """The movement the raise writes: more than twice the fastest monster's.
+
+    `table` is `$8300`-`$8AFF`.  The monsters are combat blocks 8 upward
+    with a status `$183D` counts (1 to `$80`), the same blocks `$1768` takes
+    the fastest of; twice that and one more stays above it even when `$9B8F`
+    doubles a monster's movement and not the member's.  Raises ValueError
+    when that would pass `FAST_MOVEMENT_CAP`."""
+    stride = savegame.ROSTER_STRIDE
+    fastest = 0
+    for i in range(savegame.ROSTER_COUNT, COMBAT_BLOCKS):
+        block = table[i * stride:(i + 1) * stride]
+        if len(block) < stride or not 0 < block[STATUS] <= 0x80:
+            continue
+        fastest = max(fastest, block[MOVEMENT])
+    value = 2 * fastest + 1
+    if value > FAST_MOVEMENT_CAP:
+        raise ValueError(f"the fastest monster moves {fastest}, and twice that "
+                         f"is past the raise's cap of {FAST_MOVEMENT_CAP}")
+    return value
+
+
+class MovementPoke:
+    """Raise every party member's combat movement for a test, and put it back.
+
+    Test-only: the acceptance driver's `--fast-flee` uses it so a member who
+    steps off the map beside a monster gets away (`COMBAT $16FA`: his
+    movement against the fastest of the other side's), which
+    `may_step_off` then reads as true.  The bytes are the roster's `+$1B`,
+    which every save holds, so `restore` puts each one back and reads it
+    back, and the caller saves nothing until it has.
+
+    `hold` writes the raise on the first call and checks it on every later
+    one: a byte the game rewrote (`LIBRARY $3729` rebuilds it after an
+    attack, `COMBAT $16BF`) is logged as `movement-rewritten`, its new value
+    taken as the one to put back, and raised again.  The loaded copy
+    `$6C1B` is raised too when it is the acting member's, since `$319A` would
+    otherwise copy the old value back over the raise when his turn ends.
+    """
+
+    def __init__(self, log):
+        self.log = log
+        self.value: int | None = None
+        #: Roster address of each raised byte, and the value to put back.
+        self.originals: dict[int, int] = {}
+        #: Whether a raise is in memory that `restore` has not put back.
+        self.applied = False
+        self.rewrites: list[dict] = []
+
+    @staticmethod
+    def address(slot: int) -> int:
+        return ROSTER + slot * savegame.ROSTER_STRIDE + MOVEMENT
+
+    def hold(self, sess) -> None:
+        """Write the raise, or check it is still there and write it again."""
+        stride = savegame.ROSTER_STRIDE
+        with sess.mon(5) as m:
+            table = bytes(m.read(ROSTER, COMBAT_TABLE_BYTES))
+            resident = bytes(m.read(RESIDENT, stride))
+            acting = m.read(ACTING, 1)[0]
+            if not self.applied:
+                self.value = fast_movement(table)
+                self.originals = {
+                    self.address(slot): table[slot * stride + MOVEMENT]
+                    for slot in range(savegame.ROSTER_COUNT)
+                    if table[slot * stride + STATUS] != 0}
+                for at in self.originals:
+                    m.write(at, bytes([self.value]))
+                self.applied = True
+                self.log.emit("movement-raised", value=self.value,
+                              originals={f"${a:04X}": v for a, v
+                                         in self.originals.items()})
+            else:
+                for at, was in list(self.originals.items()):
+                    found = table[at - ROSTER]
+                    if found == self.value:
+                        continue
+                    self.originals[at] = found
+                    self.rewrites.append({"address": f"${at:04X}",
+                                          "was": was, "found": found})
+                    self.log.emit("movement-rewritten", address=f"${at:04X}",
+                                  was=was, found=found, value=self.value)
+                    m.write(at, bytes([self.value]))
+            at = self.address(acting) if acting < savegame.ROSTER_COUNT else None
+            if (at in self.originals
+                    and resident[savegame.ROSTER_SLOT_INDEX]
+                    == table[acting * stride + savegame.ROSTER_SLOT_INDEX]
+                    and resident[MOVEMENT] != self.value):
+                m.write(RESIDENT + MOVEMENT, bytes([self.value]))
+
+    def restore(self, sess) -> list[dict]:
+        """Put back every raised byte that still holds the raise, read each
+        back, and return one row per address.
+
+        A row's `action` is `put back` (the raise was there; the original
+        now reads back), `already original` (a snapshot or the game's own
+        rebuild put it back), or `game value` (the game rebuilt it to
+        another value, which `LIBRARY $3729` takes from the record's base
+        movement `$6B9F` and the load, never from the raised byte, so nothing
+        is written).  The loaded copy `$6C1B` gets a row when it holds the
+        raise: it is put back to the original of the member whose block it
+        copies (matched by `+$0D`, the record slot).  Raises
+        `MovementRestoreError` when a byte does not read back, or the loaded
+        copy holds the raise and matches no raised member."""
+        rows: list[dict] = []
+        if not self.originals:
+            return rows
+        stride = savegame.ROSTER_STRIDE
+        with sess.mon(5) as m:
+            for at, original in sorted(self.originals.items()):
+                found = m.read(at, 1)[0]
+                row = {"address": f"${at:04X}", "original": original,
+                       "raised": self.value, "found": found}
+                if found == self.value and found != original:
+                    m.write(at, bytes([original]))
+                    back = m.read(at, 1)[0]
+                    row.update(action="put back", read_back=back,
+                               verified=back == original)
+                elif found == original:
+                    row.update(action="already original", read_back=found,
+                               verified=True)
+                else:
+                    row.update(action="game value", read_back=found,
+                               verified=True)
+                rows.append(row)
+            table = bytes(m.read(ROSTER, savegame.ROSTER_COUNT * stride))
+            resident = bytes(m.read(RESIDENT, stride))
+            if resident[MOVEMENT] == self.value:
+                owner = next(
+                    (at for at in self.originals
+                     if table[at - ROSTER - MOVEMENT
+                              + savegame.ROSTER_SLOT_INDEX]
+                     == resident[savegame.ROSTER_SLOT_INDEX]), None)
+                row = {"address": f"${RESIDENT + MOVEMENT:04X}",
+                       "raised": self.value, "found": resident[MOVEMENT]}
+                if owner is None:
+                    row.update(action="no owner", verified=False)
+                else:
+                    want = self.originals[owner]
+                    m.write(RESIDENT + MOVEMENT, bytes([want]))
+                    back = m.read(RESIDENT + MOVEMENT, 1)[0]
+                    row.update(original=want, owner=f"${owner:04X}",
+                               action="put back", read_back=back,
+                               verified=back == want)
+                rows.append(row)
+        bad = next((r for r in rows if not r["verified"]), None)
+        if bad is not None:
+            raise MovementRestoreError(
+                f"the raised movement at {bad['address']} was not put back "
+                f"({bad['action']}), so the game is not saved", rows)
+        self.applied = False
+        return rows
+
+
+class FastFlee:
+    """A fight tactic around another one: once `armed()` is true (always,
+    when `armed` is None), every turn first makes `poke` hold the raised
+    movement, then runs the tactic it wraps.  Any other attribute is the
+    wrapped tactic's, so a caller can still read `casts` from it."""
+
+    def __init__(self, inner, poke: MovementPoke, armed=None):
+        self.inner = inner
+        self.poke = poke
+        self.armed = armed
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
+
+    def __call__(self, sess, state) -> str:
+        if self.armed is None or self.armed():
+            self.poke.hold(sess)
+        return self.inner(sess, state)
+
+
 def drive(sess, log: Log, frames: Frames, flight: Flight, args) -> str | None:
     """Drive the fight until one of the three outcome lines shows.
 

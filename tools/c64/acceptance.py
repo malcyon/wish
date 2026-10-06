@@ -68,8 +68,8 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `scribe WHO>SPELL` | camp `MAGIC > SCRIBE` for WHO: the scroll list kept as text, SPELL's row highlighted and picked (Return, then a KERNAL Return while the count stands), the pick prompt's `EXIT` row, the list's `EXIT`, the `CHOSEN SPELLS` page kept, `OKAY` at the confirmation, and back to the camp bar. WHO's roster slice of the scribe queue (`+0x01` first entry, `+0x02` count: Pool `$6C01`, Curse and Silver Blades `$7D01`) is read before, after the pick and at the end, with its queue entries; a rejection (`CAN'T SCRIBE`), a spell not on the list, or a count of zero at the end fails the step. A list of more than one page (`NEXT` or `PREV` on row 24) is taken when SPELL is on the first page shown, and the result's `paged` says so; SPELL not on that page fails the step as `scribe-pages`, since the other pages are not read. Measured on Silver Blades and Pool of Radiance |
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
 | `ready WHO>LABEL`, `ready WHO>#N` | Pool only: `ENCAMP > VIEW WHO > ITEMS`, press READY once for LABEL, and read every party record, effect row and item block before and after. `screen_changed` describes the item row; `memory_changed` describes bytes in those three ranges; legacy `flipped` keeps its screen-only meaning. `--capture-ready` saves three bounded in-list checkpoints for BAKSHI and registers the game-written save before teardown. `#N` is the Nth row of WHO's ITEMS list from 1, for an item that draws no name: the step checks the list up is WHO's and has a row N before any READY key, then reports `outcome` (`readied`, `unreadied`, `rejected` or `unchanged`), the row before and after, and the rejection text the game printed (`WRONG CLASS`), and takes no `--capture-ready` checkpoints |
-| `fight-flee [SECONDS]` | `fight`'s route into a fight, then `fleedrive.Flight` as the tactic with no wound patch, for at most SECONDS (120): the members who run stay alive and the game's own drop of a member left behind runs, which `walk-flee`'s menu FLEE never reaches. The result records `got_away` and `left_behind` (each member's slot, name and status before and after, a member left behind being one whose name the drop cleared); a fight that does not end on `THE PARTY RUNS AWAY` (won, lost, or still going at SECONDS) fails the step naming `fight-flee` |
-| `fight-cast CASTER:SPELL` | Pool only: snapshots the machine at the world bar as `fight-cast`, then `fight`'s route into a fight, then every member but CASTER runs `fleedrive.Flight` (stepping off only from an edge square no enemy stands beside, unless faster than every enemy in the fight) while CASTER holds on a quiet edge square, and CASTER casts SPELL through `route_pool.Caster` on his first turn on which another member is away and every member still in the fight stands on an edge square he may step off from, every other member is away or down, his hit points are at most half of what they were on the tactic's first turn, or he has held 4 of his own turns, and then on his next turn whose command bar offers CAST, since a hit taken since his last turn takes CAST off the bar and he holds instead (a spell with no target prompt, such as PRAYER; one that asks for a target fails the cast); CASTER's turns after the cast run the flight, for at most 1500 seconds an attempt. An attempt ends as soon as a member is dead, dying, unconscious or stoned, or when an encounter menu (`COMBAT WAIT ...`) comes up; that, a fight that does not end on `THE PARTY RUNS AWAY`, one in which CASTER never cast, one that leaves a member behind, one that ends with a member down, and `no CAST on <name>'s bar after N held turns` (after at most 5 held turns) restore `fight-cast` and try again, at most 2 attempts in all while 600 s of the run are left, the second walking `J` (or `I` when the walk is not `I`), since the game's dice replay exactly from a snapshot and only where the party stands when the encounter comes makes it another fight; the last of them fails the step naming `fight-cast`, as does at once a CASTER whose memorised list did not lose exactly one spell. The result records `attempts`, `setbacks` (each failed attempt's walk and reason), `walk`, `casts` (the caster, spell and roster hit points before and after), `spent` (the spell id CASTER's memorised list lost), `got_away` and `left_behind` as `fight-flee` does, and the cast's screens are in `run.jsonl` as `cast-list` and `cast-done` |
+| `fight-flee [SECONDS]` | `fight`'s route into a fight, then `fleedrive.Flight` as the tactic with no wound patch, for at most SECONDS (120): the members who run stay alive and the game's own drop of a member left behind runs, which `walk-flee`'s menu FLEE never reaches. The result records `got_away` and `left_behind` (each member's slot, name and status before and after, a member left behind being one whose name the drop cleared); a fight that does not end on `THE PARTY RUNS AWAY` (won, lost, or still going at SECONDS) fails the step naming `fight-flee`; under `--fast-flee` the party's movement is raised from the first turn |
+| `fight-cast CASTER:SPELL` | Pool only: snapshots the machine at the world bar as `fight-cast`, then `fight`'s route into a fight, then every member but CASTER runs `fleedrive.Flight` (stepping off only from an edge square no enemy stands beside, unless faster than every enemy in the fight) while CASTER holds on a quiet edge square, and CASTER casts SPELL through `route_pool.Caster` on his first turn on which another member is away and every member still in the fight stands on an edge square he may step off from, every other member is away or down, his hit points are at most half of what they were on the tactic's first turn, or he has held 4 of his own turns, and then on his next turn whose command bar offers CAST, since a hit taken since his last turn takes CAST off the bar and he holds instead (a spell with no target prompt, such as PRAYER; one that asks for a target fails the cast); CASTER's turns after the cast run the flight, for at most 1500 seconds an attempt. An attempt ends as soon as a member is dead, dying, unconscious or stoned, or when an encounter menu (`COMBAT WAIT ...`) comes up; that, a fight that does not end on `THE PARTY RUNS AWAY`, one in which CASTER never cast, one that leaves a member behind, one that ends with a member down, and `no CAST on <name>'s bar after N held turns` (after at most 5 held turns) restore `fight-cast` and try again, at most 2 attempts in all while 600 s of the run are left, the second walking `J` (or `I` when the walk is not `I`), since the game's dice replay exactly from a snapshot and only where the party stands when the encounter comes makes it another fight; the last of them fails the step naming `fight-cast`, as does at once a CASTER whose memorised list did not lose exactly one spell. The result records `attempts`, `setbacks` (each failed attempt's walk and reason), `walk`, `casts` (the caster, spell and roster hit points before and after), `spent` (the spell id CASTER's memorised list lost), `got_away` and `left_behind` as `fight-flee` does, and the cast's screens are in `run.jsonl` as `cast-list` and `cast-done`; under `--fast-flee` every turn after the cast first raises the party's movement |
 | `walk-fight MOVES[/NO]` | Pool only: `walk`'s moves, but an encounter menu is answered COMBAT (never FLEE), the fight is fought out with `Session.melee_turn` (900 s each), and the route resumes from the square the fight left the party on, an `I` that did not complete being sent once more; the treasure screen a won fight reaches is kept as `NN-treasure.png` and `.txt` before the fight answers it; a treasure screen met on the walk after a fight (mode 5, a bar holding `EXIT`, such as `VIEW POOL EXIT`) is left with EXIT, once for each bar it shows (a `GO BACK LEAVE TREASURE` bar that EXIT opens is answered LEAVE), on the encounter path as well as after a `PRESS` bar, and listed in `treasure_screens`; an `INSERT SIDE # N` prompt (sides 2 to 4) is answered once per side, with the image attached, a key pressed and the frame kept as `sideN-before-answer`, and a repeat or a save-disk prompt fails the step; a forward move must land on the next square, else the step fails as blocked or as an exit or a teleport. A `YES NO` is answered NO only on the last key, and only when `/NO` is given; anywhere else it fails the step with nothing pressed. With a `save` after it, the summary's `drain` says whether some character's level fell by 1 or 2 with `levels_drained` equal to the fall, `hp_lost_to_drain` not zero, one class level down by the same amount and `hp_max` down by `hp_lost_to_drain`; nobody drained is recorded, not a failure |
 | `walk-flee MOVES[/NO]` | Pool only: `walk-fight`, but an encounter menu is answered FLEE; each flee is recorded in `flees` as `escaped` (the world bar or the move prompt `I,J,K,M, RETURN OR BUTTON` came back) or with the `fight` that opened, which is fought out; a move that escaped a flee is judged only for a readable facing, a caught one as `walk-fight` judges; a flee that ends in neither is a failure after `FIGHT_OPENS_SECONDS` |
 | `warp AREA` | Pool only: fast-travel the loaded party into area AREA (the writes and jump of `automap.actions.FastTravel`, no arrival square), wait for the key-wait loop, and fail unless the live facing byte `$C04D` is the one the area's arrival script sets (area 10: 1, east); returns the writes and the triple `$C04B`-`$C04D` |
@@ -121,6 +121,24 @@ address the original, the value written, the value found, the action and
 whether it verified) and `encounter_gates_verified` (None when no gate was
 written).  Such a run proves
 movement and saving, not combat.
+
+`--fast-flee` (Pool only) is a test aid for the driver, not a proof of any
+flight.  In a fight the party's combat blocks are the roster blocks at
+`$8300 + slot*$20`, which every save holds, and `COMBAT $16FA` lets a member
+off the map beside a monster only when his movement (`+$1B`, loaded into
+`$6C1B` by `LIBRARY $3189`) is above the fastest monster's.  So
+`fight-cast`, after the cast, and `fight-flee`, from its first turn, write
+twice the fastest monster's movement plus one into every occupied party
+block and into the acting member's loaded copy (`fleedrive.MovementPoke`),
+and check it again each turn, since `LIBRARY $3729` rebuilds it after an
+attack.  When the fight ends, and again at the world bar before every later
+step (`camp-list` and `save` included), each raised byte still holding the
+raise is put back and read back; a byte the game rebuilt is left as the
+game's.  A byte that does not read back fails the step and nothing is saved.
+`summary.json` gets `fast_flee: true`, `movement_restores` (each check: when,
+the raised value, and per address the original, the value found, the action
+and whether it verified) and `movement_restored` (None when nothing was
+raised).
 
 `--compare A B` reads two runs' `summary.json` and lists the item rows and
 camp lists that differ, saying whether an item row differs only by the mark.
@@ -1857,6 +1875,15 @@ class PoolRun:
     #: every game save (`restore_gates`), whose reports `gate_reports` keeps.
     no_encounters = False
     gate_reports: list | None = None
+
+    #: `--fast-flee` (Pool only): `fight-cast` after the cast, and `fight-flee`
+    #: from its first turn, raise every member's combat movement above the
+    #: fastest monster's (`fleedrive.MovementPoke`); every raised byte is put
+    #: back and read back after the fight and again before every later step,
+    #: and `movement_reports` keeps each of those checks.
+    fast_flee = False
+    movement_poke = None
+    movement_reports: list | None = None
 
     #: Whether `walk-fight` asks `walk_one` to detect an encounter the move
     #: started.  Pool of Radiance only: the 12 s silent load and the mode-4
@@ -4442,6 +4469,55 @@ class PoolRun:
         return fleedrive.Flight(
             self.log, safe_edges=self.game.key == "pool-of-radiance")
 
+    def fast_flight(self, tactic, armed=None):
+        """`tactic` as it stands, or, under `--fast-flee`, wrapped so that each
+        turn once `armed()` is true (every turn when `armed` is None) first
+        raises the party's movement (`fleedrive.FastFlee`)."""
+        if not self.fast_flee:
+            return tactic
+        from tools.pool_of_radiance import fleedrive
+        if self.movement_poke is None:
+            self.movement_poke = fleedrive.MovementPoke(self.log)
+        return fleedrive.FastFlee(tactic, self.movement_poke, armed)
+
+    def put_back_movement(self, when: str, strict: bool = True) -> dict | None:
+        """Put back and read back every byte `--fast-flee` raised, recorded in
+        `movement_reports` and the run log; None when nothing was raised.  A
+        byte that cannot be put back fails the step under `strict`, and is
+        only logged otherwise (while a failure is already on its way out)."""
+        from tools.pool_of_radiance import fleedrive
+        poke = self.movement_poke
+        if poke is None or not poke.originals:
+            return None
+        if self.movement_reports is None:
+            self.movement_reports = []
+        try:
+            rows = poke.restore(self.sess)
+        except fleedrive.MovementRestoreError as e:
+            report = {"when": when, "value": poke.value, "rows": e.rows,
+                      "verified": False, "error": str(e)}
+            self.movement_reports.append(report)
+            self.log.emit("movement-restore", **report)
+            if strict:
+                raise self.fail("fast-flee", f"fast-flee: {e}") from e
+            return report
+        report = {"when": when, "value": poke.value, "rows": rows,
+                  "verified": True}
+        self.movement_reports.append(report)
+        self.log.emit("movement-restore", **report)
+        return report
+
+    def movement_before(self, what: str) -> dict | None:
+        """Before a step after a `--fast-flee` fight: back to the world bar,
+        then `put_back_movement`, so nothing the game copies or saves holds
+        the raise."""
+        poke = self.movement_poke
+        if poke is None or not poke.originals:
+            return None
+        if not self.to_world():
+            raise self.fail("world", "the world bar never came back")
+        return self.put_back_movement(f"before {what}")
+
     def flee_failure(self, arg: str, result,
                      verb: str = "fight-flee") -> StepFailed | None:
         """The failure for a `fight-flee` (or, named by `verb`, a `fight-cast`)
@@ -4677,6 +4753,19 @@ class PoolRun:
                         steps: int) -> dict:
         """One attempt of `fight_cast`, from the world bar to the fight's end."""
         taken = self.walk_into_fight(walk, steps, "fight-cast")
+        done = False
+        try:
+            got = self.fight_cast_fought(caster, spell, memorised_before,
+                                         walk, taken)
+            done = True
+            return got
+        finally:
+            self.put_back_movement("after fight-cast", strict=done)
+
+    def fight_cast_fought(self, caster: str, spell: str,
+                          memorised_before: list[int], walk: str,
+                          taken: int) -> dict:
+        """`fight_cast_once` from the fight's first turn to its checks."""
         before = self.flee_before()
         flight = self.flight_tactic()
         tactic = route_pool.Caster(self.log, [(caster, spell, None)],
@@ -4685,7 +4774,8 @@ class PoolRun:
         try:
             result = self.sess.fight(
                 budget=self.budget(self.FIGHT_CAST_SECONDS, "fight-cast"),
-                tactic=tactic, stop=self.encounter_menu_up)
+                tactic=self.fast_flight(tactic, lambda: bool(tactic.casts)),
+                stop=self.encounter_menu_up)
         except route_pool.FightSetback as e:
             raise self.setback(f"fight-cast: {e}") from e
         self.capture("fight-end")
@@ -4729,9 +4819,15 @@ class PoolRun:
     def fight(self, arg: str, walk: str, steps: int, flee: bool = False) -> dict:
         taken = self.walk_into_fight(walk, steps)
         before = self.flee_before() if flee else None
-        result = self.sess.fight(budget=float(arg or 120),
-                                 tactic=(self.flight_tactic() if flee
-                                         else S.Session.melee_turn))
+        done = False
+        try:
+            result = self.sess.fight(
+                budget=float(arg or 120),
+                tactic=(self.fast_flight(self.flight_tactic()) if flee
+                        else S.Session.melee_turn))
+            done = True
+        finally:
+            self.put_back_movement("after fight-flee", strict=done)
         self.capture("fight-end")
         if flee:
             # The flee line is on screen for under half a second, so the poll
@@ -7813,6 +7909,11 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             summary["no_encounters"] = True
             summary["encounter_gates"] = pool.gate_reports
         pool.read_ats = tuple(parse_read_at(getattr(args, "read_at", [])))
+        if getattr(args, "fast_flee", False):
+            pool.fast_flee = True
+            pool.movement_reports = []
+            summary["fast_flee"] = True
+            summary["movement_restores"] = pool.movement_reports
         if temple_mode:
             pool.temple_input_deadline = deadline - 100
         if args.title == "pool":
@@ -7835,6 +7936,9 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                 pool.scribing = False
             if step.verb not in ("load", "remove") and getattr(pool, "at_menu", False):
                 entered = pool.enter_world()
+            if getattr(pool, "fast_flee", False) and \
+                    step.verb not in ("load", "fight-flee", "fight-cast"):
+                pool.movement_before(step.verb)
             if step.verb == "load":
                 if temple_mode and clock() >= deadline - 100:
                     raise StepFailed("temple input deadline before boot")
@@ -7936,6 +8040,12 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             with contextlib.suppress(Exception):
                 pool.capture("lost-error")
     finally:
+        if summary.get("fast_flee"):
+            reports = summary["movement_restores"]
+            # None: nothing was raised, so there was nothing to put back.
+            summary["movement_restored"] = (
+                None if not reports
+                else all(r["verified"] for r in reports))
         if summary.get("no_encounters"):
             reports = summary["encounter_gates"]
             # None: no gate was ever held, so there was nothing to verify.
@@ -8124,6 +8234,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-encounters", action="store_true",
                     help="switch wandering encounters off for each `walk` step, "
                          "and put back and verify the gates before every save")
+    ap.add_argument("--fast-flee", action="store_true",
+                    help="Pool only, for driver tests: raise every member's "
+                         "combat movement above the fastest monster's after "
+                         "the cast in fight-cast and from the first turn in "
+                         "fight-flee, and put every raised byte back and read "
+                         "it back before any later step")
     ap.add_argument("--walk-fight-seconds", type=float, default=PoolRun.walk_fight_seconds,
                     help="the budget for each fight a walk-fight or walk-flee "
                          "step fights")
@@ -8142,6 +8258,8 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if args.walk_retry < 0:
         ap.error("--walk-retry cannot be negative")
+    if args.fast_flee and args.title != "pool":
+        ap.error("--fast-flee is Pool of Radiance only")
     if args.compare:
         print(json.dumps(compare(*map(pathlib.Path, args.compare)), indent=2))
         return 0

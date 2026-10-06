@@ -14025,3 +14025,184 @@ def test_fight_cast_fails_naming_a_member_who_ended_the_fight_dead():
                     slots_after=_slots(("BAKSHI", 1), ("SEAN", 3)))
     with pytest.raises(A.StepFailed, match="fight-cast: SEAN ended the fight"):
         run.fight_cast("BAKSHI:PRAYER", "I", 5)
+
+
+# -- --fast-flee: the test-only movement raise, and its put-back ------------
+
+
+class _MovementMachine:
+    """64K behind a monitor; party slots 0 and 1 move 12 and 6, a kobold at
+    combat block 8 moves 6, and slot 1's block is the loaded copy."""
+
+    def __init__(self):
+        self.mem = bytearray(0x10000)
+        for index, status, movement in ((0, 1, 12), (1, 1, 6), (8, 1, 6)):
+            at = 0x8300 + index * 0x20
+            self.mem[at], self.mem[at + 0x0D] = status, index
+            self.mem[at + 0x1B] = movement
+        self.mem[0xA4F4] = 1
+        self.mem[0x6C00:0x6C20] = self.mem[0x8320:0x8340]
+
+    def movement(self):
+        return [self.mem[0x831B], self.mem[0x833B], self.mem[0x6C1B]]
+
+    def mon(self, timeout=5):
+        machine = self
+
+        class Monitor:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read(self, address, length):
+                return bytes(machine.mem[address:address + length])
+
+            def write(self, address, data):
+                machine.mem[address:address + len(data)] = data
+
+        return Monitor()
+
+
+def _fast_cast_run(monkeypatch, machine, seen):
+    """`_cast_run` under `--fast-flee`, whose fight plays one turn before the
+    cast and one after it, noting the movement bytes at each."""
+    monkeypatch.setattr(A.route_pool.Caster, "__call__",
+                        lambda self, sess, state: "MOVE")
+    run = _cast_run(A.S.RAN, [], [])
+    run.sess.mon = machine.mon
+    run.fast_flee = True
+    run.movement_reports = []
+    run.log = _EventLog()
+
+    def fight(*, budget, tactic, stop=None):
+        tactic(run.sess, None)
+        seen.append(machine.movement())
+        tactic.casts.append(CAST)
+        tactic(run.sess, None)
+        seen.append(machine.movement())
+        return A.S.FightResult(A.S.RAN, 4, 1.0, [], [])
+
+    run.sess.fight = fight
+    return run
+
+
+def test_fast_flee_raises_the_movement_only_after_the_cast_and_puts_it_back(
+        monkeypatch):
+    machine, seen = _MovementMachine(), []
+    run = _fast_cast_run(monkeypatch, machine, seen)
+    got = run.fight_cast("BAKSHI:PRAYER", "I", 5)
+    assert seen == [[12, 6, 6], [13, 13, 13]]
+    assert machine.movement() == [12, 6, 6]
+    assert got["spent"] == [42]
+    report = run.movement_reports[-1]
+    assert report["when"] == "after fight-cast" and report["verified"]
+    assert report["value"] == 13
+    assert {r["address"]: r["action"] for r in report["rows"]} == {
+        "$831B": "put back", "$833B": "put back", "$6C1B": "put back"}
+
+
+def test_a_raise_the_game_copies_back_after_the_fight_is_put_back_before_save(
+        monkeypatch):
+    """`LIBRARY $319A` copies the loaded block back over the roster; a copy
+    still holding the raise after the fight would write it back, so the
+    check at the world bar before the save puts it back again."""
+    machine, seen = _MovementMachine(), []
+    run = _fast_cast_run(monkeypatch, machine, seen)
+    run.fight_cast("BAKSHI:PRAYER", "I", 5)
+    machine.mem[0x833B] = machine.mem[0x6C1B] = 13
+    report = run.movement_before("save")
+    assert report["when"] == "before save" and report["verified"]
+    assert machine.movement() == [12, 6, 6]
+    assert {r["address"]: r["action"] for r in report["rows"]} == {
+        "$831B": "already original", "$833B": "put back", "$6C1B": "put back"}
+
+
+def test_a_raise_that_cannot_be_put_back_fails_the_step_before_the_save(
+        monkeypatch):
+    machine, seen = _MovementMachine(), []
+    run = _fast_cast_run(monkeypatch, machine, seen)
+    run.fight_cast("BAKSHI:PRAYER", "I", 5)
+    machine.mem[0x6C1B], machine.mem[0x6C0D] = 13, 8     # a monster's copy
+    with pytest.raises(A.StepFailed, match=r"fast-flee: .*\$6C1B"):
+        run.movement_before("save")
+    assert run.movement_reports[-1]["verified"] is False
+
+
+def test_without_fast_flee_the_fight_cast_tactic_is_the_caster_itself():
+    tactics = []
+    run = _cast_run(A.S.RAN, [CAST], tactics)
+    run.fight_cast("BAKSHI:PRAYER", "I", 5)
+    assert isinstance(tactics[0], A.route_pool.Caster)
+    assert run.movement_before("save") is None
+
+
+def test_fast_flee_fight_flee_raises_from_the_first_turn_and_puts_it_back():
+    machine, seen = _MovementMachine(), []
+    run = _flee_run(A.S.RAN, _slots(("ROLAND", 1), ("SEAN", 1)),
+                    _slots(("ROLAND", 1), ("SEAN", 1)), [])
+    run.sess.mon = machine.mon
+    run.fast_flee = True
+    run.log = _EventLog()
+
+    def fight(*, budget, tactic):
+        assert isinstance(tactic, fleedrive.FastFlee)
+        tactic.poke.hold(run.sess)
+        seen.append(machine.movement())
+        return A.S.FightResult(A.S.RAN, 4, 1.0, [], [])
+
+    run.sess.fight = fight
+    run.fight("900", "I", 5, flee=True)
+    assert seen == [[13, 13, 13]]
+    assert machine.movement() == [12, 6, 6]
+    assert run.movement_reports[-1]["when"] == "after fight-flee"
+
+
+def _fast_drive(tmp_path, monkeypatch, put_back=None):
+    calls = []
+
+    class Fast(_Pool):
+        fast_flee = True
+
+        def fight_cast(self, arg, walk, steps):
+            calls.append("fight-cast")
+            return {}
+
+        def movement_before(self, what):
+            calls.append(f"put back before {what}")
+            if put_back is not None:
+                put_back()
+            return {}
+
+        def camp_list(self, who):
+            calls.append("camp-list")
+            return {}
+
+        def save(self, staged):
+            calls.append("save")
+            return {}
+
+    rc, _, out = _drive(tmp_path, monkeypatch,
+                        ["load", "fight-cast BAKSHI:PRAYER",
+                         "camp-list BAKSHI", "save"],
+                        max_seconds=5000, pool=Fast)
+    return rc, calls, json.loads((out / "summary.json").read_text("utf-8"))
+
+
+def test_the_run_puts_the_movement_back_before_camp_list_and_before_save(
+        tmp_path, monkeypatch):
+    rc, calls, _ = _fast_drive(tmp_path, monkeypatch)
+    assert calls == ["fight-cast", "put back before camp-list", "camp-list",
+                     "put back before save", "save"]
+
+
+def test_the_run_saves_nothing_when_the_movement_cannot_be_put_back(
+        tmp_path, monkeypatch):
+    def put_back():
+        raise A.StepFailed("fast-flee: the raised movement at $6C1B was not "
+                           "put back (no owner), so the game is not saved")
+
+    rc, calls, summary = _fast_drive(tmp_path, monkeypatch, put_back)
+    assert "save" not in calls and "camp-list" not in calls
+    assert "not put back" in summary["lost"]
