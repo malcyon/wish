@@ -251,7 +251,7 @@ route.
 |---|---|---|
 | Curse | C64 to DOS, DOS to C64, DOS to Amiga, C64 to Amiga, Amiga to C64, Amiga to DOS | `coab-c64/WISH-SPEC-curse-628-paladin-spent-lay-on-hands.D64`, `coab-c64/WISH-SPEC-curse-628-c7-healed-after-dos-c2.D64`, `coab-c64/WISH-SPEC-wish-628-c4-healed-after-amiga.D64`, `coab-dos/WISH-SPEC-curse-628-c2b-slot-d`, `coab-dos/WISH-SPEC-wish-628-c6-slots-c-d-after-amiga`, `coab-amiga/WISH-SPEC-wish-628-curse-gyzdqlkdgnra-mfrwgzlqoqyq`, `coab-amiga/WISH-SPEC-wish-628-curse-im2wiyq-mfrwgzlqoqyq` |
 | Silver Blades | C64 to DOS, DOS to C64, DOS to Amiga, C64 to Amiga, Amiga to C64, Amiga to DOS | `ssb-c64/WISH-SPEC-ssb-628-guy-healed-after-expiry.D64`, `ssb-c64/WISH-SPEC-ssb-628-amiga-to-c64-guy-healed.D64`, `ssb-dos/WISH-SPEC-ssb-628-c64-to-dos-guy-rest-heal`, `ssb-dos/WISH-SPEC-ssb-628-amiga-to-dos-guy-rest-heal`, `ssb-amiga/WISH-SPEC-wish-628-ssb-camp-heal-after-rest-s3b`, `ssb-amiga/WISH-SPEC-wish-628-ssb-camp-heal-after-rest-s5b` |
-| Pools of Darkness | Amiga to DOS | `pod-amiga/WISH-SPEC-pod-628-amiga-lay-then-rest-1h` (slot G: node `[140, 1380, 0, 0]` after an hour's rest), `pod-dos/WISH-SPEC-pod-628-amiga-to-dos-eric-rest-heal` (slot C: node 109 at 1310 after 70 minutes; slot D: `6D A0 05 00 00` after HEAL), `pod-dos/WISH-SPEC-pod-628-dos-lay-then-rest-1h` |
+| Pools of Darkness | Amiga to DOS, DOS to Amiga | `pod-amiga/WISH-SPEC-pod-628-amiga-lay-then-rest-1h` (slot G: node `[140, 1380, 0, 0]` after an hour's rest), `pod-dos/WISH-SPEC-pod-628-amiga-to-dos-eric-rest-heal` (slot C: node 109 at 1310 after 70 minutes; slot D: `6D A0 05 00 00` after HEAL), `pod-dos/WISH-SPEC-pod-628-dos-lay-then-rest-1h`, `pod-amiga/WISH-SPEC-wish-plane-5-darkness-o5uxg2bsfvqtcyi-mfrwgzlqoqyq`, `pod-amiga/WISH-SPEC-wish-plane-5-darkness-o5uxg2bsfvqtcyq-mfrwgzlqoqyq` |
 
 * **The Amiga unit is minutes in the running game.** Over a 62-minute
   camp (a one-hour rest and a two-square walk) node 140 lost exactly 62 in
@@ -262,16 +262,21 @@ route.
   paladin's HEAL can come back up to about half an hour early or late
   (`goldbox.effects.closest_duration`). The C64 game's own row always has
   `1440 - clock` minutes left, so there the use returns when the day changes.
+* **DOS to Amiga Pools of Darkness ran from one source in two ways.** Both start
+  from slot C of `pod-dos/WISH-SPEC-pod-628-dos-lay-then-rest-1h`, a paladin
+  (saint eric) whose node 109 holds 1380 minutes, converted by the Save As
+  route onto Amiga disk 3. In the first run (`...o5uxg2bsfvqtcyi...`) the
+  sheet offers no LAY on arrival or after a one-hour rest, and the game's
+  camp save holds his node 140 at 1310 (1380 less the walk and the rest). In
+  the second (`...o5uxg2bsfvqtcyq...`) LAY is absent on arrival, is offered
+  after a 25-hour rest, and the game's own LAY then writes `[140, 1440, 0, 0]`,
+  the only node 140 on him.
 * **The Amiga game appends its new node after the paladin's other nodes.**
   Wish's Amiga writer puts it first. Nothing in the engine is known to
   depend on the order.
 
 ## What stays open
 
-* **DOS to Amiga Pools of Darkness has not been run in the games**, because
-  Wish has no route that writes an Amiga Pools of Darkness save from a DOS
-  one yet: #194 (Import and export a Pools of Darkness save between DOS and the Amiga). The
-  node the converter would write is in "What a converter needs".
 * **Amiga Pools of Darkness' camp is driven for party line 1 only.** Its
   picker's keys are read (`01AF4A`: `$84`/`$85` next, `$87`/`$88` previous),
   but the keys that move its camp highlight are not, so a paladin on another
