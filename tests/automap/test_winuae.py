@@ -74,6 +74,8 @@ class FakeWinuae:
         self.silent_after = None        # go silent once this many messages are in
         self.write_cost = 0.0           # clock time each WriteFile takes
         self.ignore_writes = False      # receipts come, memory stays as it was
+        self.unanswered: list[bytes] = []  # requests made while silent
+        self.broken_read = False        # ReadFile fails as if WinUAE hung up
         self.creates = self.closes = self.cancels = self.waits = 0
         self.modes = []
         self.written: list[bytes] = []
@@ -111,17 +113,28 @@ class FakeWinuae:
         self.clock.now += self.write_cost
         if self.silent_after is not None and len(self.written) > self.silent_after:
             self.silent = True
-        if not self.silent:
+        if self.silent:
+            self.unanswered.append(bytes(data))
+        else:
             self.pending = self._answer(bytes(data))
         return Ov(self, (data, 0)), winuae.ERROR_IO_PENDING
 
     def ReadFile(self, handle, size, overlapped=False):
+        if self.broken_read:
+            raise win_error(winuae.ERROR_BROKEN_PIPE)
         chunk = None if self.silent or not self.pending else self.pending.pop(0)
         return Ov(self, chunk), winuae.ERROR_IO_PENDING
 
     def WaitForSingleObject(self, event, ms):
         """Done when the call has an answer; a starved read never finishes."""
         return 0 if event.chunk is not None else winuae.WAIT_TIMEOUT
+
+    def resume(self):
+        """The debugger lets go: every request made meanwhile is answered."""
+        self.silent = False
+        for message in self.unanswered:
+            self.pending += self._answer(message)
+        self.unanswered = []
 
     # -- the emulator --
     def _answer(self, message: bytes) -> list[tuple[bytes, int]]:
@@ -201,6 +214,7 @@ def test_a_complete_message_without_its_nul_is_an_error(rig):
 
 def test_a_debugger_at_its_prompt_times_out_cancels_and_is_left_alone(rig):
     pipe, api, clock, folder = rig
+    pipe.read_memory(0, 8)
     api.silent = True
     with pytest.raises(amiga.PipeError, match="prompt"):
         pipe.read_memory(0, 16)
@@ -526,10 +540,53 @@ def test_an_unverified_write_still_checks_the_receipt_and_the_bounds(rig):
 
 def test_a_write_that_gets_no_answer_times_out_and_drops_the_handle(rig):
     pipe, api, *_ = rig
+    pipe.read_memory(0, 8)
     api.silent = True
     with pytest.raises(amiga.PipeError, match="prompt"):
         pipe.write_memory(0x100, b"\x01")
     assert api.cancels == 1 and api.closes == 1 and pipe.lost
+
+
+def test_a_first_request_with_no_answer_keeps_its_handle_until_winuae_replies(rig):
+    pipe, api, clock, folder = rig
+    api.silent = True
+    with pytest.raises(winuae.PipeTimeout):
+        pipe.read_memory(0, 16)
+    assert api.closes == 0 and pipe.lost
+    pipe.close()
+    assert api.closes == 0
+    clock.now += pipe.BACKOFF + 1
+    with pytest.raises(winuae.PipeTimeout):
+        pipe.read_memory(0x40, 16)
+    assert len(api.written) == 1 and api.closes == 0
+    api.resume()
+    clock.now += pipe.BACKOFF + 1
+    assert pipe.read_memory(0x40, 16) == MEMORY[0x40:0x50]
+    assert len(api.written) == 2 and api.creates == 1 and not pipe.lost
+    assert list(folder.glob("wish-*.bin")) == []
+    pipe.close()
+    assert api.closes == 1
+
+
+def test_a_write_with_no_answer_on_a_fresh_handle_keeps_the_handle(rig):
+    pipe, api, *_ = rig
+    api.silent = True
+    with pytest.raises(winuae.PipeTimeout):
+        pipe.write_memory(0x100, b"\x01")
+    pipe.close()
+    assert api.closes == 0
+
+
+def test_a_broken_pipe_while_a_reply_is_owed_still_closes_the_handle(rig):
+    pipe, api, clock, _folder = rig
+    api.silent = True
+    with pytest.raises(winuae.PipeTimeout):
+        pipe.read_memory(0, 16)
+    api.broken_read = True
+    clock.now += pipe.BACKOFF + 1
+    with pytest.raises(amiga.PipeError, match="closed the pipe"):
+        pipe.read_memory(0, 16)
+    assert api.closes == 1
 
 
 @pytest.mark.parametrize("addr, size", [

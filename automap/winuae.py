@@ -9,9 +9,11 @@ near 4 KB a reply and about 500 lines for the life of the emulator process.
 **The pipe is serviced from the emulation thread, and not while the debugger
 waits at its prompt.** Every read is therefore overlapped, bounded by a deadline
 and cancelled when the deadline passes, so the window's thread cannot hang on
-an emulator the player has stopped in F11. After a timeout the handle is
-dropped (a late reply would answer the next request) and no new attempt is made
-for `BACKOFF` seconds.
+an emulator the player has stopped in F11. No new attempt is made for `BACKOFF`
+seconds after a timeout. A handle whose first request is unanswered is kept, and
+its late reply is read and discarded before the next request, because WinUAE
+closes its pipe for good when such a client leaves. Any other handle is closed
+on a timeout, since a late reply would answer the next request.
 
 **One handle is held while Wish is reading,** because every connect and every
 disconnect is a line in the player's WinUAE log when logging is on. WinUAE
@@ -140,7 +142,11 @@ class WinuaeLocalPipe:
         self._handle = None
         self._count = 0
         self._quiet_until = 0.0
-        #: True after a failure, until a handle opens again.
+        #: A reply has been read whole on this handle.
+        self._answered = False
+        #: A request written on this handle has no reply read yet.
+        self._owed = False
+        #: True after a failure, until a handle opens or a reply is read.
         self.lost = False
 
     # -- the handle ------------------------------------------------------
@@ -185,6 +191,7 @@ class WinuaeLocalPipe:
             raise PipeError(f"Could not set message mode on the WinUAE pipe: {exc}") \
                 from exc
         self._handle = handle
+        self._answered = self._owed = False
         self.lost = False
         self._clear_leftovers(create=True)
 
@@ -206,8 +213,22 @@ class WinuaeLocalPipe:
         return (self.directory or dump_dir()).absolute()
 
     def close(self) -> None:
-        """Let go of the pipe so the next client is accepted. Safe to repeat."""
+        """Let go of the pipe so the next client is accepted. Safe to repeat.
+
+        A handle that has never had a reply and still owes one stays open:
+        WinUAE closes its pipe for good when a client leaves in that state.
+        """
+        if self._handle is not None and self._owed and not self._answered:
+            try:
+                self._clear_leftovers()
+            except OSError:
+                pass
+            return
+        self._release()
+
+    def _release(self) -> None:
         handle, self._handle = self._handle, None
+        self._answered = self._owed = False
         if handle is not None:
             try:
                 self._win().CloseHandle(handle)
@@ -220,7 +241,7 @@ class WinuaeLocalPipe:
 
     def _drop(self) -> None:
         self.lost = True
-        self.close()
+        self._release()
 
     # -- one overlapped call ---------------------------------------------
 
@@ -279,14 +300,29 @@ class WinuaeLocalPipe:
             if self._handle is None:
                 self._open(self._clock() + self.CONNECT_S)
             deadline = self._clock() + timeout
+            if self._owed:
+                # The one outstanding request's reply comes first; its dump
+                # file is written by now and the new request's does not exist.
+                self._read_reply(deadline)
+                self._owed = False
+                self._answered = True
+                self._clear_leftovers()
             self._write(message, deadline)
+            self._owed = True
             reply = self._read_reply(deadline)
+            self._owed = False
+            self._answered = True
+            self.lost = False
         except OSError as exc:
             self._drop()
             if getattr(exc, "winerror", None) == ERROR_BROKEN_PIPE:
                 raise PipeError("WinUAE closed the pipe.") from exc
             raise PipeError(f"The WinUAE pipe failed: {exc}") from exc
-        except PipeError:
+        except PipeError as exc:
+            if (isinstance(exc, PipeTimeout) and self._owed
+                    and not self._answered):
+                self.lost = True
+                raise
             self._drop()
             raise
         return reply.decode("latin-1" if ascii_only else "utf-8", "replace")
