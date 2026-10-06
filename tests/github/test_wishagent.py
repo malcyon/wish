@@ -455,7 +455,7 @@ def test_repo_empty_env_var_falls_back_to_default(monkeypatch):
 TOKEN_REPLY = {"token": "push-token-abc", "expires_at": "2099-01-01T00:00:00Z"}
 
 
-def test_push_token_asks_for_contents_and_workflows_write_on_this_repository(
+def test_push_token_asks_for_contents_workflows_and_actions_write_on_this_repository(
     monkeypatch, configured
 ):
     calls = _install_fake_transport(monkeypatch, (201, TOKEN_REPLY))
@@ -468,7 +468,7 @@ def test_push_token_asks_for_contents_and_workflows_write_on_this_repository(
     assert url.endswith("/app/installations/67890/access_tokens")
     assert body == {
         "repositories": ["wish"],
-        "permissions": {"contents": "write", "workflows": "write"},
+        "permissions": {"contents": "write", "workflows": "write", "actions": "write"},
     }
 
 
@@ -570,7 +570,7 @@ def test_git_credential_get_answers_github_with_x_access_token_and_a_fresh_token
 
     assert rc == 0
     assert capsys.readouterr().out == "username=x-access-token\npassword=push-token-abc\n"
-    assert calls[0][3]["permissions"] == {"contents": "write", "workflows": "write"}
+    assert calls[0][3]["permissions"] == {"contents": "write", "workflows": "write", "actions": "write"}
 
 
 def test_git_credential_get_mints_a_token_per_request(monkeypatch, configured, capsys):

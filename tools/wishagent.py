@@ -24,9 +24,10 @@ through GraphQL where an installation token is accepted unevenly.
 Two modes, and a token is only ever as wide as the mode that minted it:
 
 * **issues** -- `token`, and every issue command above. `issues: write` only.
-* **push** -- `push-token` and `git-credential`. `contents: write` and
-  `workflows: write`, for a machine that pushes as the App instead of holding
-  anybody's SSH key or `gh` login. `git-credential` is a git credential helper:
+* **push** -- `push-token` and `git-credential`. `contents: write`,
+  `workflows: write` and `actions: write`, for a machine that pushes as the App
+  instead of holding anybody's SSH key or `gh` login. The token can also start
+  and re-run workflows. `git-credential` is a git credential helper:
 
       git config credential.https://github.com.helper \
           '!/path/to/python /path/to/tools/wishagent.py git-credential'
@@ -85,7 +86,7 @@ REQUEST_TIMEOUT = 30
 # the installation it comes from, so asking for exactly this costs nothing and
 # limits what a leaked token can do.
 ISSUES_PERMISSIONS = {"issues": "write"}
-PUSH_PERMISSIONS = {"contents": "write", "workflows": "write"}
+PUSH_PERMISSIONS = {"contents": "write", "workflows": "write", "actions": "write"}
 
 # The user name a GitHub App installation token is presented under over HTTPS.
 GIT_USERNAME = "x-access-token"
@@ -254,7 +255,7 @@ def get_installation_token():
 
 
 def get_push_token():
-    """A token that can push: `contents: write` and `workflows: write`.
+    """A token that can push and run workflows: `contents`, `workflows` and `actions` write.
 
     Minted on every call and cached nowhere. `_token_cache` is the issues
     token's and stays that way: a push token found there would be handed to
