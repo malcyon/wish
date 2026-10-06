@@ -834,3 +834,15 @@ def test_a_hop_whose_step_entry_never_changes_clears_after_the_deadline(
     assert t.continue_pending(m) is None and t.pending is None
     m.at(trips.ROWS[POOL].step_entry, (POOL_ENTRY + 2).to_bytes(2, "big"))
     assert t.continue_pending(m) is None and t.trip is None
+
+
+def test_return_never_goes_through_the_door_path(disks, pool_gate, monkeypatch):
+    def boom(*a, **k):
+        raise AssertionError("Return reached the door path")
+    m = pool(14)
+    t = pool_travel(monkeypatch, offered=("return_landing",))
+    monkeypatch.setattr(t, "_run_door", boom)
+    monkeypatch.setattr(trips, "door_leg_held", boom)
+    t.back = engine.Waypoint(0, None, (1, 1, 0))
+    assert t.apply_back(m).ok
+    assert not t.trip.door

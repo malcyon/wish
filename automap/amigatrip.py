@@ -337,6 +337,8 @@ def door_leg_held(row: TripRow, chosen, to, lengths) -> bool:
 def _door_unplaced(here, to, back, lengths=None) -> bool:
     if back:
         return False
+    # Safe to read Pool's row here: only Pool has door differences, and
+    # `door_leg=False` in `door_route` keeps this from recursing.
     row = ROWS["pool-of-radiance"]
     chosen = door_route(row, here, to, lengths)
     if chosen is None:

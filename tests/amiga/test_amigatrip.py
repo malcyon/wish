@@ -683,7 +683,7 @@ def test_only_measured_rows_are_confirmed_and_no_difference_is_offered():
 def test_what_each_difference_holds():
     def held(key, here, to, back=False):
         return {d.name for d in trip.ROWS[key].differences
-                if d.covers(here, to, back)}
+                if d.covers(here, to, back, _lengths())}
 
     assert held("curse-of-the-azure-bonds", 3, 1) == set()
     assert held("curse-of-the-azure-bonds", 1, 3) == set()
@@ -926,7 +926,7 @@ def test_pools_doors_are_confirmed_and_no_other_title_has_any():
 def _covers(name, here, to, back=False):
     pool = trip.ROWS["pool-of-radiance"]
     (diff,) = [d for d in pool.differences if d.name == name]
-    return diff.covers(here, to, back)
+    return diff.covers(here, to, back, _lengths())
 
 
 def test_a_door_that_was_proven_and_has_a_stand_is_not_held():
@@ -991,3 +991,25 @@ def test_entry_words_reads_five_words_on_pool():
     row = trip.ROWS["pool-of-radiance"]
     m = machine("pool-of-radiance")
     assert len(trip.entry_words(m, row)) == 2 * trip.ENTRY_WORDS
+
+
+@pytest.mark.parametrize("here, to, square", [
+    (7, 5, (5, 7, 3)),
+    (13, 27, (6, 15)),
+    (16, 27, (8, 15, 2)),
+])
+def test_the_proven_door_routes_are_pinned(here, to, square):
+    pool = trip.ROWS["pool-of-radiance"]
+    through, route = trip.door_route(pool, here, to, _lengths())
+    assert through == to and not route.combat
+    assert tuple(route.square) == square
+
+
+def test_a_back_trip_whose_door_second_leg_is_held_is_not_held_by_a_door():
+    # Return is a script trip: `_apply_back` never reaches `_run_door`, so no
+    # second leg is judged and the door differences do not cover it.
+    pool = trip.ROWS["pool-of-radiance"]
+    both_held = _lengths(a24=1, a26=1)
+    assert not _covers("door_unplaced", 14, 0, back=True)
+    assert not any(d.covers(14, 0, True, both_held)
+                   for d in pool.differences if d.door)
