@@ -14243,6 +14243,20 @@ def test_a_flight_that_drops_nobody_is_a_getaway_when_the_result_byte_reads_81()
     assert run.flee_settled(ended, before).outcome == A.S.RAN
 
 
+@pytest.mark.parametrize("cls", [A.CurseRun, A.SilverRun])
+def test_a_later_game_does_not_read_pools_result_byte_to_call_a_fight_fled(cls):
+    machine = _MovementMachine()
+    machine.mem[0x6DC7] = 0x81
+
+    run = _flee_run(A.S.ENDED, _slots(("A", 1)), _slots(("A", 1)), [])
+    run.__class__ = cls
+    run.sess.mon = machine.mon
+    before = _slots(("A", 1))
+    run.party_slots = lambda: before
+    ended = A.S.FightResult(A.S.ENDED, 4, 1.0, [], [])
+    assert run.flee_settled(ended, before).outcome == A.S.ENDED
+
+
 def test_a_fight_step_records_where_the_fight_left_the_party():
     run = _flee_run(A.S.RAN, _slots(("A", 1)), _slots(("A", 1)), [])
     run.position = lambda: [14, 6, 1]

@@ -6409,6 +6409,10 @@ class CurseRun(PoolRun):
     #: `placement` event belong to the run's first fight, not to each `fight` step.
     first_bar_done = False
 
+    def flee_result_byte(self) -> int | None:
+        """Curse's `$6DC7` is not Pool's flee result, so no byte is read."""
+        return None
+
     def __init__(self, sess, log, out, game, points, disks, staged_disk,
                  attack_by="", quit_nonattacking=False):
         super().__init__(sess, log, out, game, points)
