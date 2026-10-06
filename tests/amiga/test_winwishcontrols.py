@@ -37,7 +37,7 @@ def test_a_dump_line_carries_runtime_id_offscreen_and_rectangle_and_the_type_fil
 
 def test_no_controls_after_means_no_dump():
     inner = winwish.ui_inner(r"C:\b", "click", ("File",), None, r"C:\o.txt")
-    assert "GetRuntimeId" not in inner
+    assert "$dump = New-Object" not in inner
 
 
 @pytest.mark.parametrize("action", ["controls", "close"])
@@ -86,3 +86,27 @@ def test_controls_after_and_expand_do_not_go_together(tmp_path):
     rc = winwish.main(["click", "--holder", "h", "Save", "--expand", "--controls-after",
                        str(tmp_path / "d.txt")], guest=winwish.Guest(FakeRun()))
     assert rc == 1
+
+
+def _get_controls_body(inner: str) -> str:
+    start = inner.index("function Get-Controls {")
+    return inner[start:inner.index("function Get-Kind", start)]
+
+
+def test_the_control_search_lists_one_runtime_id_once_and_keeps_an_element_without_one():
+    body = _get_controls_body(_inner())
+    assert "GetRuntimeId()" in body
+    assert "$seen.ContainsKey($rid)" in body
+    assert "catch { $rid = $null }" in body
+    assert "if ($rid)" in body
+    # The top-level window and every descendant go through the same dedupe.
+    assert "[void]$found.Add($top)" not in body
+    assert body.count("[void]$found.Add($e)") == 1
+    assert "& $keep $top" in body
+    assert "& $keep $e" in body
+
+
+def test_two_runtime_ids_with_one_name_are_still_ambiguous():
+    inner = _inner()
+    assert "$hit.Count -gt 1" in inner
+    assert "controls match" in inner
