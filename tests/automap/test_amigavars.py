@@ -81,3 +81,11 @@ def test_an_unmapped_variable_and_an_unmapped_title_are_reported():
 
 def test_parse_takes_hex_with_or_without_a_prefix():
     assert amigavars.parse_list("$4B10, 0x25e,8000") == [0x4B10, 0x25E, 0x8000]
+
+
+def test_curse_member_range_reading_carries_its_note_and_others_do_not():
+    m = make(CURSE)
+    assert "current member" in amigavars.read_variable(m, "curse-of-the-azure-bonds", 0x7C00).note
+    assert amigavars.read_variable(m, "curse-of-the-azure-bonds", 0x4B00).note is None
+    assert "current member" in amigavars.read_variable(
+        m, "curse-of-the-azure-bonds", 0x7C00).as_log()["note"]

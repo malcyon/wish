@@ -323,7 +323,7 @@ def main(argv: list[str] | None = None) -> int:
                 results.append(run_trip(fasttravel, target, row, None, out, shot, press, log,
                                         back=True, budget=args.budget,
                                         party=amigaparty.read_party,
-                                peek_vars=peek_vars, title=args.title))
+                                        peek_vars=peek_vars, title=args.title))
     except (DriverError, amiga.GuestError) as exc:
         raise SystemExit(str(exc)) from exc
     for result in results:
