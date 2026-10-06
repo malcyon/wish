@@ -111,6 +111,27 @@ def pick_square(geo: Geo | None, squares, gated: bool):
     return None
 
 
+def _no_square_reason(row) -> str | None:
+    """Why `row` names no square to stand on, or None if it names one.
+
+    An entry-1 exit whose branch is not picked by the square id has no
+    square that runs it. The travel-grid windows look the party's grid square
+    up in a table (`row["grid"]`), which no `GEO` square expresses, as with
+    the seams. The others pick it from area state: `ECL11`'s Nomad Camp exit
+    runs only when flags in `$4A7C` and the hour select its branch and a
+    `RANDOM 3` comes up 0, so no square and facing makes it run on demand.
+    """
+    if row.get("selector") in ("table", "state") and row.get("grid"):
+        return ("a travel-grid site, looked up by the grid square, not a "
+                "GEO square")
+    if row.get("selector") in ("table", "state"):
+        return ("entry 1 picks this branch from area state, not from the "
+                "square id")
+    if not row["squares"]:
+        return "no square on the route"
+    return None
+
+
 def build(title: str = TITLE):
     """`{(from_area, to_area): (entry, square)}`, and the exits left out and
     why, as `(script, address, target, reason)`."""
@@ -159,8 +180,9 @@ def build_with_combat(title: str = TITLE):
                                 "a travel-grid edge, decided by the grid "
                                 "square and heading, not a GEO square"))
                 continue
-            if not r["squares"]:
-                skipped.append((name, at, r["target"], "no square on the route"))
+            reason = _no_square_reason(r)
+            if reason is not None:
+                skipped.append((name, at, r["target"], reason))
                 continue
             key = (from_area, r["target"])
             if "combat" in r["features"]:

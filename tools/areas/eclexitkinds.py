@@ -11,9 +11,11 @@ not give it: `ECL0D` has two `NEWECL 27`s.  What does give it is the way
   whether the step would leave the 16x16 map.  An exit guarded by
   `COMPARE [$6DD5], 0` is an **edge** exit: any edge square, facing out.
 * **entry 1** runs after every step lands and on LOOK, masks the square's
-  plane-`$200` byte (`$C04F`) and `ONGOTO`s by the result.  An exit under one
-  of its indices is a **square** exit, and the squares carrying that id in
-  the `GEO` are where it fires.
+  plane-`$200` byte (`$C04F`) and `ONGOTO`s by the result, or by an arm a
+  table indexed by it holds.  An exit under one of its arms is a **square**
+  exit, and the squares carrying an id that selects that arm in the `GEO`
+  are where it fires; an arm picked by area state or the travel grid has
+  none (`entry1_squares`).
 
 So this walks each script from each of its five entries, finds the shortest
 route to every `NEWECL`, and reports the kind, the `ONGOTO` index and the
@@ -274,9 +276,21 @@ def _successors_given(script, st, known):
     return [succ for succ, _ in script._successors(st)]
 
 
+def _table_value(script, st, known):
+    """The byte a `$2A` reads when its index is in `known`, or None."""
+    if st.op != TABLE_READ or len(st.operands) != 3:
+        return None
+    table, index = _var(st.operands[0]), _var(st.operands[1])
+    if table is None or index not in known or _var(st.operands[2]) is None:
+        return None
+    at = table - W.BASE + known[index]
+    return script.body[at] if 0 <= at < len(script.body) else None
+
+
 def reaches(script, start, goal, known):
     """Whether `goal` can run after `start` while each variable in `known`
-    holds its value, until something writes it."""
+    holds its value, until something writes it. A `$2A` whose index is known
+    gives its destination the byte it reads."""
     seen = set()
     work = [(start, tuple(sorted(known.items())))]
     while work:
@@ -291,7 +305,10 @@ def reaches(script, start, goal, known):
             continue
         values = dict(items)
         succs = _successors_given(script, st, values)
+        looked_up = _table_value(script, st, values)
         values.pop(_written(st), None)
+        if looked_up is not None:
+            values[_written(st)] = looked_up
         after = tuple(sorted(values.items()))
         work.extend((succ, after) for succ in succs)
     return False
@@ -426,6 +443,74 @@ def entry0_squares(script, path, og, exit_at, geo, row):
         row["squares"] = squares_with(geo, mask, row["index"])
 
 
+def _mask_at(script, path):
+    """Where on `path` the `AND` that masks `$C04F` sits, or None."""
+    for i, a in enumerate(path):
+        st = script.statements[a]
+        if st.op == 0x2F and any(k != 0 and v == ATTR for k, v in st.operands):
+            return i
+    return None
+
+
+def _equal_on_route(script, path, var, other):
+    """Whether `path` takes the true side of a `COMPARE [var], [other]` and
+    its `IF=`, so `var` holds `other`'s value where the route goes on."""
+    for a, b, c in zip(path, path[1:], path[2:]):
+        st = script.statements[a]
+        if st.op != COMPARE or len(st.operands) != 2:
+            continue
+        if {_var(st.operands[0]), _var(st.operands[1])} != {var, other}:
+            continue
+        nxt = script.statements[b]
+        if nxt.op == 0x16 and nxt.at == st.end and c == nxt.end:
+            return True
+    return False
+
+
+def entry1_squares(script, path, og, exit_at, geo, row):
+    """Fill `row` for entry 1's `ONGOTO`, by what its selector holds.
+
+    `row["selector"]` names it. `id`: the masked square id itself, or a
+    variable the route has just found equal to it (`ECL00`'s loop counter), so
+    the arm number is the id. `id-table`: a `$2A` reads the arm out of a table
+    indexed by the masked id (`ECL03`, `ECL16`, `ECL17`); `row["ids"]` lists
+    the ids from which the exit runs, each followed through the tables and
+    tests between the mask and the exit, and `squares` the squares carrying
+    them. `table`: a table indexed by anything else -- the travel-grid
+    windows look the party's grid square up -- and `state`: a variable set
+    from area state (`ECL11`'s flags and hour). Neither names a `GEO` square,
+    so both leave `squares` None; `row["grid"]` is True where the route reads
+    the grid square `$49C3`/`$49C4`.
+    """
+    mask, var = mask_before(script, path)
+    selector = _var(og.operands[0])
+    pos = path.index(og.at)
+    if selector is not None and var is not None and (
+            selector == var or _equal_on_route(script, path[:pos + 1],
+                                               selector, var)):
+        row["selector"] = "id"
+        row["squares"] = squares_with(geo, mask, row["index"])
+        return
+    read = _table_read_into(script, path, pos, selector)
+    masked = _mask_at(script, path)
+    if read is not None and var is not None and masked is not None \
+            and _var(read.operands[1]) == var:
+        start = path[masked + 1]
+        ids = [i for i in range(mask + 1)
+               if reaches(script, start, exit_at, {var: i})]
+        row["selector"] = "id-table"
+        row["ids"] = ids
+        row["squares"] = None if geo is None else [
+            (x, y) for y in range(16) for x in range(16)
+            if geo.script_id(x, y, mask) in ids]
+        return
+    row["selector"] = "table" if read is not None else "state"
+    row["grid"] = any(_var(operand) in GRID_SQUARE
+                      for a in path[:pos]
+                      for operand in script.statements[a].operands)
+    row["squares"] = None
+
+
 def outward_facings(x: int, y: int) -> list[int]:
     """Which directions leave the 16x16 grid from `(x, y)`, in `goldbox.geo`'s
     order `NORTH, EAST, SOUTH, WEST = 0, 1, 2, 3`; a corner square has two."""
@@ -501,7 +586,7 @@ def analyse(machine, name, side, body, geo):
             if og is not None:
                 row["kind"] = "square"
                 row["index"] = k
-                row["squares"] = squares_with(geo, mask, k)
+                entry1_squares(script, path, og, st.at, geo, row)
             else:
                 literal, test = compare_index(script, path, var)
                 if literal is not None:

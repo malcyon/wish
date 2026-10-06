@@ -474,14 +474,74 @@ def test_squares_with_is_none_without_a_geo():
 def test_analyse_reports_the_squares_a_square_exit_fires_on():
     marked = [(1, 1), (2, 2)]
     geo = _synthetic_geo(marked, marked_id=0, background_id=5)
+    sid = 0x6E82
 
     def block(asm):
-        op_ongoto(asm, ["ARM0"])
+        asm.raw(bytes([0x2F]) + _addr(ATTR) + _imm(127) + _addr(sid))
+        asm.raw(bytes([0x25]) + _addr(sid) + _imm(1))
+        asm.addr("ARM0")
         op_exit(asm)
         asm.label("ARM0")
         op_newecl(asm, 1)
-    row = analyse_one(1, block, geo=geo)
+    body = make_body(1, block)
+    _script, (row,) = EK.analyse(TableMachine(), "TEST", "SIDE", body, geo)
+    assert row["selector"] == "id"
     assert row["squares"] == marked
+
+
+def entry1_table(asm):
+    """Mask the square id, read the arm out of a table indexed by it, and
+    `ONGOTO` on the arm, the way `ECL16` and `ECL17` do: id 5 reads arm 1,
+    which leaves; id 1, the arm number itself, reads arm 0, which does not."""
+    sid, arm = 0x6E82, 0x6E7A
+    asm.raw(bytes([0x2F]) + _addr(ATTR) + _imm(31) + _addr(sid))
+    op_table(asm, "ARMS", sid, arm)
+    asm.raw(bytes([0x25]) + _addr(arm) + _imm(2))
+    asm.addr("STAY")
+    asm.addr("LEAVE")
+    asm.label("STAY")
+    op_exit(asm)
+    asm.label("LEAVE")
+    op_newecl(asm, 23)
+    asm.label("ARMS")
+    asm.raw(bytes([0, 0, 0, 0, 0, 1, 0, 0]))
+
+
+def test_entry1s_table_names_the_square_whose_id_reads_the_arm():
+    data = bytearray(GEO_SIZE)
+    data[ATTRIBUTES + 0x43] = 5          # square id 5 at (3, 4) only
+    data[ATTRIBUTES + 0x00] = 1          # id 1, the arm number, at (0, 0)
+    body = make_body(1, entry1_table)
+    _script, (row,) = EK.analyse(TableMachine(), "TEST", "SIDE", body,
+                                 Geo(bytes(data)))
+    assert row["kind"] == "square"
+    assert row["index"] == 1
+    assert row["selector"] == "id-table"
+    assert 5 in row["ids"] and 1 not in row["ids"]
+    assert row["squares"] == [(3, 4)]
+
+
+def test_entry1s_ongoto_on_a_state_variable_names_no_square():
+    """`ECL11`'s Nomad Camp exit: the selector comes from area state, not
+    the square, so even the square carrying the arm number is no route."""
+    data = bytearray(GEO_SIZE)
+    data[ATTRIBUTES + 0x00] = 1
+
+    def block(asm):
+        asm.raw(bytes([0x2F]) + _addr(ATTR) + _imm(127) + _addr(0x6E82))
+        asm.raw(bytes([0x2F]) + _addr(0x4A7C) + _imm(2) + _addr(0x6E79))
+        asm.raw(bytes([0x25]) + _addr(0x6E79) + _imm(2))
+        asm.addr("STAY")
+        asm.addr("LEAVE")
+        asm.label("STAY")
+        op_exit(asm)
+        asm.label("LEAVE")
+        op_newecl(asm, 26)
+    body = make_body(1, block)
+    _script, (row,) = EK.analyse(TableMachine(), "TEST", "SIDE", body,
+                                 Geo(bytes(data)))
+    assert row["selector"] == "state"
+    assert row["squares"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -789,3 +849,36 @@ def test_the_eleven_edge_exits_name_the_facing_or_answer_their_scripts_test():
         ("ECL15", 0x998F): (0, [0, 1, 2, 3], (EK.ONCHOICE, [0]),
                             [(7, 15, 2), (8, 15, 2)]),
     }
+
+
+def _rows(name):
+    every = W.scripts()
+    if name not in every:
+        pytest.skip(f"{name} not reachable on these disks")
+    side, body = every[name]
+    _gside, gbody = W._file("GEO" + name[3:])
+    _script, rows = EK.analyse(W.Machine(), name, side, body,
+                               Geo.from_bytes(gbody))
+    return {row["at"]: row for row in rows}
+
+
+@needs_disks
+def test_yarashs_pyramid_exits_stand_on_the_squares_their_tables_name():
+    """`ECL16` and `ECL17` read the entry-1 arm out of a table indexed by the
+    square id: the exits run from (13,15), (14,7) and (6,0), not from the
+    squares carrying the arm number, (15,15), (4,10) and (2,11)."""
+    upper, lower = _rows("ECL16"), _rows("ECL17")
+    assert upper[0xA60F]["selector"] == "id-table"
+    assert upper[0xA60F]["squares"] == [(13, 15)]
+    assert upper[0xA62D]["squares"] == [(14, 7)]
+    assert lower[0x9E1A]["selector"] == "id-table"
+    assert lower[0x9E1A]["squares"][0] == (6, 0)
+    assert (2, 11) not in lower[0x9E1A]["squares"]
+
+
+@needs_disks
+def test_the_nomad_camp_exit_has_no_square():
+    """`ECL11` picks the arm from `$4A7C` and the hour, then a `RANDOM 3`."""
+    row = _rows("ECL11")[0xA1F3]
+    assert (row["target"], row["selector"], row["squares"]) == (26, "state",
+                                                                None)

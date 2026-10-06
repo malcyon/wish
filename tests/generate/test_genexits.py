@@ -161,3 +161,24 @@ def test_the_seven_facing_exits_get_the_edge_their_facing_leaves_by():
     assert {key: rows.get(key) for key in expected} == expected
     assert {key: (F.EXIT_ROUTES[key].entry, F.EXIT_ROUTES[key].square)
             for key in expected if key in F.EXIT_ROUTES} == expected
+
+
+@needs_disks
+def test_yarashs_pyramid_exits_stand_on_the_squares_their_tables_name():
+    """`ECL16` and `ECL17` read the entry-1 arm through a table indexed by
+    the square id; the rows stand where the exits run, and the Nomad Camp
+    and the travel-grid sites, which no square selects, get no row."""
+    from automap import fasttravel as F
+
+    expected = {(22, 23): (1, (14, 7)), (22, 26): (1, (13, 15)),
+                (23, 22): (1, (6, 0))}
+    rows, skipped = G.build()
+    assert {key: rows.get(key) for key in expected} == expected
+    assert {key: (F.EXIT_ROUTES[key].entry, F.EXIT_ROUTES[key].square)
+            for key in expected if key in F.EXIT_ROUTES} == expected
+    assert (17, 26) not in rows and (17, 26) not in F.EXIT_ROUTES
+    reasons = {(name, target): reason for name, _at, target, reason in skipped}
+    assert reasons[("ECL11", 26)].startswith("entry 1 picks this branch")
+    sites = {(name, target) for name, _at, target, reason in skipped
+             if reason.startswith("a travel-grid site")}
+    assert {("ECL19", 19), ("ECL19", 28), ("ECL1A", 0), ("ECL1B", 0)} <= sites
