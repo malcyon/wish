@@ -243,6 +243,17 @@
         ],
         "example": "amiga-grab-crops/wish16-a__05-sheet.png",
         "sha256": "60830da6fe43f5f3a5e71ace3d8572085a930ca13d004b9725c3821b0d826084"
+      },
+      {
+        "also": [],
+        "box": [
+          70,
+          66,
+          330,
+          80
+        ],
+        "example": "300/wish300-amiga-npc2/accept1/shots/05-sheet.png",
+        "sha256": "11d9f0c508daead260db717b97b853b4830d1ba157aa95883f92488896b52859"
       }
     ],
     "world": [
@@ -311,6 +322,9 @@
   "labels": {
     "300/wish300-amiga-npc/accept1/shots/04-world.png": [
       "world"
+    ],
+    "300/wish300-amiga-npc2/accept1/shots/05-sheet.png": [
+      "sheet"
     ],
     "301/wish301-amiga/accept2/shots/04-world.png": [
       "world"

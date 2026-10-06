@@ -3689,3 +3689,19 @@ def test_the_darkness_guards_recognise_the_journal_question_of_the_a2_party():
     rules = [r for r in screens.rules_of(spec["guards"]["journal"]) if r["example"] == example]
     assert len(rules) == 1 and rules[0]["box"] == box and rules[0]["also"] == ["journal_answer"]
     assert screens.box_digests(crop, [tuple(box)], "journal")[tuple(box)] == rules[0]["sha256"]
+
+
+def test_the_pool_identity_recognises_the_first_sheet_of_the_eight_member_npc_party():
+    from tools.amiga import screens
+
+    spec = json.loads((pathlib.Path(foundation.__file__).parent / "guards_pool.json").read_text())
+    example = "300/wish300-amiga-npc2/accept1/shots/05-sheet.png"
+    assert spec["labels"][example] == ["sheet"]
+    shots = scratch.cache_dir("acceptance") / "300/wish300-amiga-npc2/accept1/shots"
+    crop = shots / "failure.png"
+    if not crop.is_file():
+        pytest.skip("needs the WISH-300 Amiga NPC party run's sheet shot")
+    box = [70, 66, 330, 80]
+    rules = [r for r in screens.rules_of(spec["identity"]["sheet"]) if r["example"] == example]
+    assert len(rules) == 1 and rules[0]["box"] == box and rules[0]["also"] == []
+    assert screens.box_digests(crop, [tuple(box)], "sheet")[tuple(box)] == rules[0]["sha256"]
