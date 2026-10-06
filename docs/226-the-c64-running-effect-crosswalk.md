@@ -509,6 +509,83 @@ nothing else touched it, for the actions that were run (kept under
 fight, a level gain, a death and the party menu's ADD and REMOVE were not run.
 A static read found no reader.
 
+### Prayer in a C64 Pool fight, and in its camp list
+
+**A knock-out clears the party's Prayer row on the C64, and that is the
+game's own behaviour.** When a combatant falls, `COMBAT $29C4`-`$29E2` loops
+ids `$7F` down to 1, skips the 20 ids listed at `$29E3` (04 07 0C 0E 0F 15 16
+22 26 2B 2C 32 37 39 3B 3E 63 64 66 67), and for each other id calls the row
+lookup once with the fallen combatant as owner. The lookup matches a row
+owned by that combatant or by anyone with bit 7 set, so the strip removes the
+fallen member's own rows and every party-wide row whose id is not on the keep
+list, one row per id, whatever its duration (CONFIRMED from code). Each
+removal is `SQRPACI01 $07E4`: it saves the id, stores 0 to the id array and
+leaves owner, duration and magnitude where they were, and runs the id's handler
+only when magnitude bit 7 is set. Prayer's id 49 is not on the keep list, so
+the `(49, $FF)` row the C64 itself writes ends the moment any party member
+goes down; three fights in the converted saves showed it. Friends (14) and
+Strength (38) are on the list. DOS never ends a Prayer when a member falls,
+whoever it is: leave-combat strips 16 ids from the fallen member's own chain
+and none is 49. The two games differ, and a conversion writes what each holds.
+The holder record at `$4AF9` outlives a cleared row, and the reader ignores it
+while that slot holds no Prayer.
+
+**C64 Pool never lists a Prayer row with id 49 in the camp list.** The list
+(`CAMP $1717`-`$1784`) asks the row lookup for each id from 1 to `$3F`, for
+one member or for the whole party, and names an id found by the first camp
+spell whose row byte 3 (masked with `$7F`) equals it. In Pool no camp spell
+from 1 to 55 has id 49, and spell 42, Prayer, has id 35 (row `00 01 80 a3 80 58
+a8`). The lookup matches owner `$FF` for every member, so the owner plays no
+part. So the game's own camp Prayer, `(35, $FF)`, is listed as PRAYER, and its
+own combat Prayer, `(49, $FF)` (spell 42's combat row at `SPELLE65 $D98C` is
+`00 00 01 00 00 31 20 36 ac`), is never named. A converted DOS Prayer is the
+second form, so MAGIC > DISPLAY shows nothing for it. CONFIRMED from code and
+in the running game: with a `(35, $FF)` row and a `(49, $FF)` row both
+present, each camp list showed one line, PRAYER, from the id-35 row, and a
+party holding the id-49 row alone showed none. Writing id 35 instead would list
+PRAYER but would lose the fight bonus, because nothing in C64 Pool reads id 35
+(see the Pool camp Prayer row in the negative-results table).
+
+**The C64 Pool combat Prayer helps the caster's opponents, and the
+conversion keeps that.** Bit 6 of the magnitude is the side of the caster:
+`SPELLE00 $AC3B`-`$AC49` builds it from `$A4E2`, the acting combatant's side,
+which `COMBAT $0936`-`$0939` stores at the start of every turn from record
+`0x10C` (0 for the party, `$81` for a hostile monster), and fills the low
+nibble with the caster's level. A party cleric of level 6 writes `$06`, bit 6
+clear. Id 49 is in the attack-roll event list 10 (`SPELLE65 $DBD2`) and not in
+the defender list 16, so the handler `SPELLE01 $A9B9` runs for the attacker: it
+compares bit 6 with the attacker's side bit (`$A9B9`-`$A9C7`) and, on different
+sides, adds 1 to `$2AFE` and `$2B10`, on the same side subtracts 1 from both. A
+party-cast row therefore gives monsters +1 and party members -1, the opposite
+of the spell's description. CONFIRMED from code, and by the one game-written
+sample (a level-6 party cleric wrote `$06`); the handler's effect on a roll was
+not measured live. Curse and Silver Blades build the same bit and branch the
+other way (`BEQ` for the bonus at Curse `$226A`-`$227A` and Silver Blades
+`$27C3`-`$27D3`); Pool's `BNE` is the one difference. DOS Pool's handler gives
+the bonus when the node's side equals the combatant's, so `prayer_dos_data` and
+`prayer_c64_magnitude` invert the side bit for Pool alone: `$06` becomes DOS
+data `$16`, a side-1 node that DOS answers with +1 for monsters and -1 for the
+party, the C64's own result, and a DOS party Prayer becomes `$46`, which gives
+the party +1. Who is helped is kept in both directions, so no fix is needed.
+The DOS range limit (combatants within 6 squares of a holder) against the C64
+row reaching every combatant is a port difference this does not touch.
+
+**A C64 Pool combat Prayer survives a whole-party flight and the camp
+save.** A level-6 party cleric cast PRAYER in a fight, all six members got
+away, and the party camped and saved: the game's save holds the row
+`(49, $FF)` with 2 rounds left, in the slot the game's own writer picked.
+Converting that save to DOS offline gives six members with nothing lost or
+dropped and an id-49 node in each member's `.SPC` of `31 02 00 16 00` (2
+minutes, data `$16`, flag 0). The holder record Wish had written earlier (row
+61, magnitude `$46`) was still in the save byte for byte, and the reader did
+not hand the Prayer to its old holder, because the game's row sat in a
+different slot with a different magnitude. That is the stale-record case, on a
+game-written save. **CONFIRMED in DOS:** the converted save loads, and Magic >
+Display lists PRAYER under all six members (BAKSHI's line also shows STRENGTH);
+the DOS game's own camp save then holds an id-49 node of 2 minutes and data
+`$16` on every member. The conversion dropped and lost nothing, and the source
+`.D64` was unchanged by the run.
+
 ## Pool expires one slot at a time, for that slot's own owner
 
 **CONFIRMED from the bytecode, and it withdraws this page's earlier claim that
@@ -644,6 +721,33 @@ casting level and that the duration was computed from it. It rests on one
 party. Nothing in a DOS node records who cast it, and the conversion does not
 need to know.
 
+**A Read Magic node (16) a DOS Curse cast writes holds the caster level.** A
+level-5 magic-user who casts READ MAGIC in camp (MAGIC, CAST, READ MAGIC) saves
+`(16, 10, 5, 0)`: 10 minutes, data equal to his magic-user level, flag 0. That
+is the generic caster-level rule above, and Save As C64 of that save drops and
+loses nothing. A node `(16, 60, 0, 0)` with data 0 is therefore a state no
+player reaches, and a staged specimen holding one is not evidence about the
+conversion. CONFIRMED in one DOS boot, in the specimen
+`WISH-SPEC-curse-8-dos-read-magic-cast-camp-save`. **Limits:** one caster at
+one level, so the equality with the level is read from a single point; the
+10-minute duration was not checked against a rule; the conversion was offline
+only, with no C64 boot.
+
+**A Curse Enlarge node (12) a DOS cast writes holds one of ten data values.**
+The cast at `GAME.OVR:0x2FFBA` sets 18/00 and then a ladder on the caster
+level, and adds the node once, at `0x300A5`, through the ability setter
+`0x3674A`; the data is the encoded score (score + 100, or percentile + 1 at
+18), so it can only be 1, 2, 52, 77, 92, 101, 119, 120, 121 or 122. No other
+path adds id 12: the 51 far and 5 near calls to `add_affect` and the 17 calls
+to the add-with-message routine name other ids or forward their own, item
+grants write data `0xFF` and none of the 390 Curse item templates has effect 12
+at power `0x80`, and nothing rewrites an Enlarge node after it is added. A node
+with any other value, such as the staged specimen `curse-667-optb-enlarge-1860-rest`'s
+`0x3D` (18/60), is a state no player reaches, and the Save As stop on it blocks
+no save a player can make. `effects.enlarge_level` converts all ten values,
+including the level 0 and level 12 or more result (data 1, 18/00). CONFIRMED
+from a static read of the player's `GAME.OVR`.
+
 ## Combat-cast ids and their rules
 
 **CONFIRMED from both ports' code**, by reading each DOS writer's pushes and
@@ -756,11 +860,52 @@ engine's own byte, so a converted party behaves as the destination's own
 cloud would. The two duration-0 `(31, 0, FF, 0)` records from handlers 43 and
 44 are granted effects and take the other route.
 
+**A Stinking Cloud caster node (40) in Pool of Radiance converts as an inert
+C64 row, as it does in Curse and Silver Blades.** DOS writes it for the
+caster when the cloud is cast: spell 34 pushes id `0x28`, the caster's level L
+as the duration, `L + 16n` as the data, and flag 1 (`GAME.OVR:0x28B29`), where
+n counts the caster's other standing clouds. Pool's magic-users stop at level
+6, so the data stays within `$7F` (PROBABLE, because the per-round ageing of a
+40 node in a fight was not traced; the worst case, level 6 beside five other
+clouds, is `$56`). DOS Pool has no end-of-fight strip of 40: the leave-combat
+list (`ds:0xC14`) and the other two lists name no `0x28`, no `remove_affect`
+site passes it, and the only removers are the node's own expiry and Dispel
+Magic, so one cast in the last L rounds of a fight reaches a save made within
+L minutes after it, whether or not the caster fell or fled. The node's handler
+(`GAME.OVR:0xF91E`) only restores the cloud's squares on the combat map and
+does nothing outside a fight. The C64 has no id-40 mechanism: no immediate
+`#$28` in any overlay or `POST.COM` reaches a row writer or a lookup (19 hits,
+all message numbers, loop bounds and screen columns), 40 is on none of the 20
+check lists at `SPELLE65 $DB7A`, its handler slot (`SPELLE01 $A99B`, shared
+with 41) runs only when magnitude bit 7 is set, and the C64 Stinking Cloud cast
+writes id 30 alone. So the node converts to `(40, owner, L, data)` with bit 7
+clear, which ages and is deleted with no effect
+(`effects.STINKING_CLOUD_CASTER_ID`). The C64 knock-out strip (below) also
+clears a fallen caster's 40 row, where DOS keeps the node; neither game shows
+the player a difference. **CONFIRMED live:** a staged level-6 node
+`(40, 60, 0x1A, 1)` on DARKSTAR, saved by the DOS game, converts with nothing
+lost, loads in the C64 game with its row `(40, 1, 60, $1A)`, ages a minute at
+the camp list, and is gone with every timed row after a 2-hour rest; the game
+writes a sound save, and a control without the node differs from it in two
+bytes, the owner and magnitude left in the aged-out slot, which every timed
+row on that disk also leaves. The node was staged, not cast in a DOS fight,
+and no C64 fight followed. Specimens
+`pool-8-level6-darkstar-stinking-cloud-node-camp-save-dos-engine-save` and
+`pool-8-level6-darkstar-stinking-cloud-node-rest-2h-c64-engine-save`, with
+`pool-8-level6-no-node-control-camp-save-dos-engine-save` and
+`pool-8-level6-no-node-control-rest-2h-c64-engine-save` as the controls.
+**Not shown:** whether a leftover DOS node that runs out in a later fight
+removes the caster's fresh cloud when both carry index 0 (PROBABLE from the
+handler's match by caster and index). The inert row loses only that.
+
 ### Charm and Fear keep part of their state in the record
 
 **CONFIRMED from both ports' code.** Charm converts in both directions, and the
-Pool conversion has passed in the game. The C64 then playing him as a charmed
-party member is PROBABLE (fight-start placement below; `0x0B8` in `docs/232`).
+Pool conversion has passed in the game, including the C64 fight: the converted
+character is in the party and is never offered a command bar, and the control
+without the charm row and side byte gets one every round. Not captured: him
+acting under computer control, and where fight-start placement put him
+(below; `0x0B8` in `docs/232`).
 A DOS Pool of Radiance charm node, granted or running, whichever side charmed
 whom, on a player character or a companion, writes the C64's shared effect row
 `(0x0B, slot, 0, magnitude)` with bit 7 set and the charmer's side in bit 0.
@@ -877,7 +1022,8 @@ Static reads; nothing was booted. `tools/c64/overlay.py` and
   end of a fight, without the handler; it does nothing to a slot with no row.
   The later titles' copy of this loop runs on every outcome; that Pool's does
   is PROBABLE.
-* **CONFIRMED from code, not run: fight start with a stored charm.**
+* **CONFIRMED from code; the live fight did not measure the placement: fight
+  start with a stored charm.**
   `COM.PREP` places combatants in groups by `0x10C & $7F`. The first pass
   (`$0E78`-`$0EA7`) places every value-0 combatant at the party's edge. The
   second (`$0F54`-`$0F92`) places every combatant whose value is not 0 at the
@@ -892,7 +1038,9 @@ Static reads; nothing was booted. `tools/c64/overlay.py` and
   member, walk into a fight and screenshot the first command prompt; repeat
   with `$80` as the control. Confirmed if he stands at the head of the
   monsters' formation and every monster is placed; refuted if he stands with
-  the party or a monster is missing. Evidence:
+  the party or a monster is missing. A fight on a converted DOS Pool charm
+  save, run without that staging, listed him among the party's hit points and
+  never gave him a command bar; it read no placement. Evidence:
   https://github.com/malcyon/wish/issues/667#issuecomment-5881008971.
 
 **Monster charmers, CONFIRMED from bytes.** Every copy of every `MON*` file on
@@ -1435,8 +1583,11 @@ Stun (106) convert both ways by the rules in "Combat-cast ids and their
 rules". Fear (Curse 142, Silver Blades 111) converts both ways, its row and
 its record byte together (`effects.FEAR_IDS`, `c64_codec.DOS_PC_TAKEN_OVER`).
 Charm (11) converts both ways for every DOS Pool charm node, granted or
-running, on a player character or a companion, and not yet run in the game;
-the count is kept in the row's magnitude (PROBABLE, above). A node with data
+running, on a player character or a companion, and has run in the game: DOS
+to C64, the charmed character is never offered a command bar in a C64 fight,
+and with her charm row and side byte removed the same save gives her one every
+round; C64 to DOS, the DOS game loads her in the party and its own camp save
+keeps her charm row and taken-over control byte. The count is kept in the row's magnitude (PROBABLE, above). A node with data
 bit 5 clear, data bit 4 set or a flag other than 1 is one no DOS Pool route
 writes and stays a loss. Only DOS
 Pool's duration-0 node reaches a save (PROBABLE: nobody has read whether spell
@@ -1454,8 +1605,9 @@ rows with magnitude `$FF`, which keeps the DOS node's immunity, and a `$FF` row
 reads back as the same node. Pool's own `level | $80` row reads back as
 `(level, 1, ...)` and stays dispellable at that level; in Curse and Silver
 Blades any row with bit 7 set reads back as `(22, m, 0xFF, 1)`. Any other
-node or magnitude stays a loss. Not yet run in the game on either port, and
-that the C64 reads `$83`, the state 22 stores when 55 is present, as dead is
+node or magnitude stays a loss. Only Silver Blades' DOS to Amiga leg has been
+run in the game (below); no C64 run of these nodes exists, and that the C64
+reads `$83`, the state 22 stores when 55 is present, as dead is
 PROBABLE.
 
 Silver Blades is the exception to the `$FF` rule. DOS guards both handlers in
@@ -1475,6 +1627,19 @@ Reading back, `$7F` gives `(0xFF, 1)` for those ids, as do the C64's own `$FF`
 keep `$FF` because both of their ports kill when the spell ends. C64 to DOS is
 unchanged: a C64 survivor of the C64's own cast converts to the DOS node and
 keeps his life.
+
+**Silver Blades Slow Poison, DOS to Amiga, CONFIRMED in the running game.** A
+DOS party with PAINE poisoned and Slow Poison cast on him (node `(15, 10, 0xFF,
+0)` beside `(55, 0, 0xFF, 0)` and `(22, 120, 0xFF, 1)`) converted with Save As
+Amiga with nothing lost or dropped. In the Amiga game the party loaded, walked
+two squares, rested 30 minutes and saved. PAINE kept 74 of 74 hit points and
+status OKAY on his sheet before and after the rest, and the game-written save
+holds 74 for him, as does the published one. His node 15 is gone from the
+game's save, node 55 is kept and node 22 is 120 minutes less the rest and the
+walk. The other five members' hit points are identical to the source.
+Specimen `WISH-SPEC-wish-667-ssb-heywcmjtgzrwklltoawxa33tgi-meza` (game-written
+slot, with provenance); the DOS source file's hash is the same before and after
+the run.
 
 Reproduce the static readings with `.venv/bin/python
 tools/c64/effectcrosswalk.py`; a later title's run prints its caster-level ids.
