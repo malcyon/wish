@@ -306,9 +306,32 @@ def _size_combo(combo: QComboBox) -> None:
     # A minimum as well as a ceiling. With only a maximum, a box capped to its
     # own size hint squeezed the combo below its text and `magic-user/thief`
     # came out as `magic-user`.
-    width = widest + _combo_chrome(combo) + CARET
+    width = max(widest + _combo_chrome(combo) + CARET,
+                _combo_style_width(combo, widest))
     combo.setMinimumWidth(width)
     combo.setMaximumWidth(width)
+
+
+def _combo_style_width(combo, widest: int) -> int:
+    """What the style itself asks of a dropdown whose text is `widest` wide,
+    plus the margins of the line edit an editable one draws it in."""
+    from PyQt6.QtCore import QSize
+    from PyQt6.QtWidgets import QStyle, QStyleOptionComboBox
+
+    option = QStyleOptionComboBox()
+    option.initFrom(combo)
+    option.frame = combo.hasFrame()
+    option.editable = combo.isEditable()
+    width = combo.style().sizeFromContents(
+        QStyle.ContentsType.CT_ComboBox, option,
+        QSize(widest, combo.fontMetrics().height()), combo).width()
+    edit = combo.lineEdit()
+    if edit is not None:
+        text = edit.textMargins()
+        contents = edit.contentsMargins()
+        width += (text.left() + text.right()
+                  + contents.left() + contents.right())
+    return width
 
 
 class SlotPicker(QDialog):
