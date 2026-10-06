@@ -145,14 +145,13 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
     before = _reading(target, row)
     log("read", why="before", **before)
     outcome = fasttravel.apply_back(target) if back else fasttravel.apply(target, area=area)
-    log("apply", ok=outcome.ok, message=outcome.message,
-        writes=[[hex(a), d.hex()] for a, d in outcome.writes], notes=list(outcome.notes))
-    summary["outcomes"].append({"ok": outcome.ok, "message": outcome.message})
-    if not outcome.ok:
-        summary["result"] = "not_applied"
-        return summary
-
     try:
+        log("apply", ok=outcome.ok, message=outcome.message,
+            writes=[[hex(a), d.hex()] for a, d in outcome.writes], notes=list(outcome.notes))
+        summary["outcomes"].append({"ok": outcome.ok, "message": outcome.message})
+        if not outcome.ok:
+            summary["result"] = "not_applied"
+            return summary
         started = clock()
         next_shot = started
         idle_since = None
@@ -195,8 +194,9 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
         # An armed trip left in the game is put back before the exception goes on.
         try:
             _disarm(fasttravel, target)
-        except Exception:  # noqa: S110 - the first exception is the one to report
-            pass
+        except Exception as failed:
+            print(f"disarm failed ({failed!r}); the game may still hold the armed trip",
+                  file=sys.stderr)
         raise
     if summary["result"] == "timeout":
         _disarm(fasttravel, target)

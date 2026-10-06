@@ -260,3 +260,35 @@ def test_a_trip_that_times_out_is_disarmed_in_the_game(world):
     world.drive(travel, budget=1.0)
     assert travel.trip is None
     assert world.armed == []
+
+
+def test_a_log_that_fails_right_after_apply_still_leaves_the_trip_disarmed(world):
+    travel = Travel()
+    real = world.log
+
+    def log(event, **fields):
+        if event == "apply":
+            raise OSError("disk full")
+        return real(event, **fields)
+
+    with pytest.raises(OSError):
+        ftr.run_trip(travel, Target(), ROW, SimpleNamespace(id=5), world.out,
+                     lambda p: p.write_bytes(world.screen), lambda key: None, log,
+                     sleep=world.clock.sleep, clock=world.clock)
+    assert travel.trip is None and world.armed == []
+
+
+def test_a_disarm_that_fails_is_reported_and_the_first_exception_still_raised(
+        world, monkeypatch, capsys):
+    def broken(target, armed):
+        raise ValueError("no memory")
+
+    monkeypatch.setattr(amigatrip, "disarm", broken)
+
+    class Raises(Travel):
+        def continue_pending(self, target):
+            raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError, match="boom"):
+        world.drive(Raises())
+    assert "disarm failed" in capsys.readouterr().err
