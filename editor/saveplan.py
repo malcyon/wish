@@ -1758,8 +1758,17 @@ POD_NOT_COMPARED: dict[str, str] = {
     "name_text": "compared as the name",
     **{name: why for name, why, _run in dos_codec.DERIVED
        if name in ("item_chain", "heap_104", "effect_chain", "hands_used")},
-    **{name: why for name, why in dos_codec.LATER_TITLE_DROPPED
-       if name == "unnamed_1e0"},
+}
+
+#: Losses a conversion is known to carry and that stay open. These fields are
+#: compared like any other, so a character whose value does not come back is
+#: reported by `compare` and Save As stops for him; the reason says why the
+#: loss is not yet settled.
+POD_OPEN_LOSSES: dict[str, str] = {
+    "unnamed_1e0": (
+        "UNKNOWN byte: four specimen characters hold 2 and the Amiga keeps "
+        "no place for it, so it returns as 0; open on WISH-2 until "
+        "identified"),
 }
 
 #: Values a conversion changes on purpose: field name, the function that maps
@@ -1769,7 +1778,8 @@ POD_VALUE_CHANGES: dict[str, tuple[Any, str]] = {
     "spellbook": (
         lambda raw: bytes(1 if byte else 0 for byte in raw),
         "any non-zero value becomes 1; the engine tests only zero or "
-        "non-zero -- live check pending on WISH-2"),
+        "non-zero, and a DOS character's sheet and memorise screens are "
+        "identical with 8 and with 1 (WISH-2)"),
 }
 
 
@@ -1798,7 +1808,11 @@ def _compare_pod(expected: "list[PodSheetRecord]",
                  expected_names: "list[str] | None",
                  written_names: "list[str] | None") -> list[str]:
     """What the sheet holds and the written Pools of Darkness destination
-    does not, over the whole record and the items."""
+    does not, over the whole record and the items.
+
+    The items compared are the held blocks only: empty blocks are dropped on
+    purpose, so the slot position of an empty block is not compared.
+    """
     want = sorted(_pod_signature(record, expected_names[i]
                                  if expected_names else None)
                   for i, record in enumerate(expected))

@@ -372,7 +372,16 @@ def test_every_dos_slot_crosses_to_the_amiga_with_nothing_lost(
     checked = 0
     for source in _dos_sources():
         party = Party(source)
-        plan = _to_amiga(party, tmp_path, disk)
+        try:
+            plan = _to_amiga(party, tmp_path, disk)
+        except saveplan.DroppedFields as stopped:
+            # The one open loss: a character holding the unidentified byte.
+            assert all(line.startswith("unnamed_1e0:")
+                       for line in stopped.lost), (
+                source.path, source.slot, stopped)
+            assert any(m.record.to_bytes()[
+                podsheet.TABLE["unnamed_1e0"].offset] for m in party.members)
+            continue
         report = plan.report
         assert (report.dropped, report.losses) == ([], []), (
             source.path, source.slot)
@@ -440,7 +449,8 @@ def test_a_spellbook_byte_changing_value_is_a_declared_change(
     want, got = _pair(monkeypatch, tmp_path)
     got.items = want.items
     reason = saveplan.POD_VALUE_CHANGES["spellbook"][1]
-    assert "non-zero" in reason and "WISH-2" in reason
+    assert "non-zero" in reason and "identical" in reason
+    assert "pending" not in reason
     spec = podsheet.TABLE["spellbook"]
     odd = bytearray(want.to_bytes())
     odd[spec.offset + 117] = 8
@@ -466,3 +476,18 @@ def test_every_field_left_uncompared_names_its_reason():
     for field in ("thief_pick_pockets", "former_class_levels", "field_83_87",
                   "spells_castable_cleric", "icon_head", "item_count"):
         assert field not in saveplan.POD_NOT_COMPARED
+
+
+def test_an_open_loss_is_compared_and_names_its_reason(monkeypatch, tmp_path):
+    want, got = _pair(monkeypatch, tmp_path)
+    got.items = want.items
+    assert "unnamed_1e0" not in saveplan.POD_NOT_COMPARED
+    assert "identified" in saveplan.POD_OPEN_LOSSES["unnamed_1e0"]
+    spec = podsheet.TABLE["unnamed_1e0"]
+    raw = bytearray(want.to_bytes())
+    raw[spec.offset] = 2
+    held = saveplan.PodCompared(bytes(raw))
+    held.items = want.items
+    assert saveplan.compare([held], [got]) == [
+        "unnamed_1e0: b'\\x02' arrived as b'\\x00'"]
+    assert saveplan.compare([want], [got]) == []
