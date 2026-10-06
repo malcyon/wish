@@ -545,6 +545,7 @@ def test_an_unverified_write_is_not_read_back_and_its_difference_is_no_error(rig
 
 def test_an_unverified_write_still_checks_the_receipt_and_the_bounds(rig):
     pipe, api, *_ = rig
+    api.memory = bytearray(0x10000)     # big enough to measure the machine
     api.write_receipt = "Wrote 00 (0) at 100.B\n"
     with pytest.raises(amiga.PipeError, match="receipt"):
         pipe.write_memory(0x100, b"\xa5", verify=False)
@@ -582,17 +583,78 @@ def test_with_nothing_measured_the_a500_range_applies(rig):
     pipe.write_memory(0x100, b"\x01")
 
 
-def test_a_write_that_cannot_measure_is_blocked_and_measured_again(rig, monkeypatch):
+def test_a_measuring_read_that_fails_is_a_transport_error_and_measured_again(rig, monkeypatch):
     pipe, api, *_ = rig
     api.memory = bytearray(0x300000)
 
     def fail(read):
         raise amiga.PipeError("down")
     monkeypatch.setattr(amiga, "memory_regions", fail)
-    with pytest.raises(ValueError, match="outside"):
+    with pytest.raises(amiga.PipeError, match="down"):
         pipe.write_memory(0x200000, b"\x01")
     monkeypatch.setattr(amiga, "memory_regions", lambda read: FAST)
     pipe.write_memory(0x200000, b"\x01")
+
+
+def test_a_timeout_in_the_measuring_read_is_not_turned_into_a_value_error(rig, monkeypatch):
+    pipe, api, clock, _folder = rig
+    api.memory = bytearray(0x300000)
+
+    def silent(_text, _timeout):
+        raise winuae.PipeTimeout("no answer")
+    monkeypatch.setattr(pipe, "_request", silent)
+    with pytest.raises(winuae.PipeTimeout):
+        pipe.write_memory(0x200000, b"\x01")
+
+
+def test_the_measuring_read_gets_the_writes_remaining_budget(rig, monkeypatch):
+    pipe, api, *_ = rig
+    api.memory = bytearray(0x300000)
+    seen = []
+
+    def measure(read):
+        read(0, 4)
+        return FAST
+    monkeypatch.setattr(amiga, "memory_regions", measure)
+    monkeypatch.setattr(pipe, "read_memory",
+                        lambda a, n, t=None: seen.append(t) or bytes(n))
+    pipe.write_memory(0x200000, b"\x01", timeout=3.0, verify=False)
+    assert seen[0] is not None and seen[0] <= 3.0
+
+
+def test_a_fallback_measurement_is_not_kept(rig, monkeypatch):
+    pipe, api, *_ = rig
+    api.memory = bytearray(0x300000)
+    answers = [amiga.MEMORY, FAST]
+    monkeypatch.setattr(amiga, "memory_regions", lambda read: answers.pop(0))
+    with pytest.raises(ValueError, match="outside"):
+        pipe.write_memory(0x200000, b"\x01")
+    pipe.write_memory(0x200000, b"\x01")
+    assert api.memory[0x200000] == 1
+
+
+def test_a_reconnect_measures_the_memory_again(rig, monkeypatch):
+    pipe, api, *_ = rig
+    api.memory = bytearray(0x300000)
+    answers = [FAST, amiga.MEMORY]
+    monkeypatch.setattr(amiga, "memory_regions", lambda read: answers.pop(0))
+    pipe.write_memory(0x200000, b"\x01")
+    pipe._release()
+    with pytest.raises(ValueError, match="outside"):
+        pipe.write_memory(0x200000, b"\x01")
+
+
+def test_a_write_across_the_chip_and_fast_join_is_blocked(rig, monkeypatch):
+    pipe, api, *_ = rig
+    api.memory = bytearray(0x300000)
+    chip_end = sum(amiga.CHIP)
+    regions = ((chip_end, 0x100000),) + amiga.MEMORY
+    monkeypatch.setattr(amiga, "memory_regions", lambda read: regions)
+    pipe.write_memory(chip_end - 2, b"\x01\x02")
+    pipe.write_memory(chip_end, b"\x03\x04")
+    with pytest.raises(ValueError, match="outside"):
+        pipe.write_memory(chip_end - 1, b"\x01\x02")
+    assert api.memory[chip_end - 2:chip_end + 2] == b"\x01\x02\x03\x04"
 
 
 def test_a_write_that_gets_no_answer_times_out_and_keeps_the_handle(rig):
@@ -721,6 +783,7 @@ def test_a_broken_pipe_while_a_reply_is_owed_still_closes_the_handle(rig):
     (0xBFFFFF, 1), (0xC80000, 1), (0x1000000, 1), (0xC7FFFF, 2)])
 def test_a_write_outside_the_bounds_sends_nothing(rig, addr, size):
     pipe, api, *_ = rig
+    api.memory = bytearray(0x10000)     # big enough to measure the machine
     with pytest.raises(ValueError):
         pipe.write_memory(addr, bytes(size))
     # Measuring the machine's regions reads memory; no byte may be written.

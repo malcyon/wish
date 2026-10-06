@@ -192,6 +192,7 @@ class WinuaeLocalPipe:
             raise PipeError(f"Could not set message mode on the WinUAE pipe: {exc}") \
                 from exc
         self._handle = handle
+        self.memory = None
         self._owed = False
         self.lost = False
         self._clear_leftovers(create=True)
@@ -229,6 +230,7 @@ class WinuaeLocalPipe:
 
     def _release(self) -> None:
         handle, self._handle = self._handle, None
+        self.memory = None
         self._owed = False
         if handle is not None:
             try:
@@ -398,10 +400,11 @@ class WinuaeLocalPipe:
         if not 1 <= len(data) <= MAX_WRITE:
             raise ValueError(f"A write of {len(data)} bytes is not between 1 "
                              f"and {MAX_WRITE}.")
-        if not _in_memory(addr, len(data), self._regions(addr, len(data))):
+        end = self._clock() + (self.TIMEOUT if timeout is None else timeout)
+        if not _in_memory(addr, len(data),
+                          self._regions(addr, len(data), end)):
             raise ValueError(f"A write of {len(data)} bytes at {addr:#x} is "
                              "outside the machine's memory.")
-        end = self._clock() + (self.TIMEOUT if timeout is None else timeout)
         for i in range(0, len(data), WRITE_LINE):
             chunk = data[i:i + WRITE_LINE]
             try:
@@ -422,20 +425,23 @@ class WinuaeLocalPipe:
             raise PipeError(f"The memory at {addr:#x} differs from the bytes "
                             "written when read back.")
 
-    def _regions(self, addr: int, length: int):
+    def _regions(self, addr: int, length: int, end: float):
         """The regions a write at `addr` is checked against.
 
         A write inside chip or slow memory needs no measurement. Otherwise the
-        regions are measured once, as the FS-UAE helper does; an unreadable
-        emulator measures nothing and is tried again next time.
+        regions are measured within the write's budget, and kept only when
+        they are a real measurement: the fallback `MEMORY` means ExecBase was
+        not valid yet, so the next write measures again. A transport error
+        from the measuring read propagates.
         """
         if addr < 0 or _in_memory(addr, length, MEMORY):
             return MEMORY
         if self.memory is None:
-            try:
-                self.memory = amiga.memory_regions(self.read_memory)
-            except PipeError:
+            regions = amiga.memory_regions(
+                lambda a, n: self.read_memory(a, n, self._left(end)))
+            if regions == MEMORY:
                 return MEMORY
+            self.memory = regions
         return self.memory
 
     def _left(self, end: float) -> float:
