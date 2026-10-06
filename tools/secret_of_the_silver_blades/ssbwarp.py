@@ -12,8 +12,8 @@ what this measures.
     tools/secret_of_the_silver_blades/ssbwarp.py --pool 3 --probe --out DIR
     tools/secret_of_the_silver_blades/ssbwarp.py --pool 3 --to 0x22,0x50,0x60 --via-actions \
         --spoil-from 2 --walk --out DIR
-    tools/secret_of_the_silver_blades/ssbwarp.py --pool 3 --to 0x10 --via-actions --back \
-        --save SAVE.D64 --out DIR
+    tools/secret_of_the_silver_blades/ssbwarp.py --pool 3 --to 0x20 --via-actions --back \
+        --save C64_PARTY_IN_0x10.D64 --out DIR
 
 `--probe` boots, loads a party and reports what the machine holds without
 warping; it is what to run first, because the current area and the indoors
@@ -321,25 +321,43 @@ def walk_proof(sess, keys: str = "JIKI") -> dict:
 
 
 def return_via_actions(sess, addr, maps, ft, target, row, out: pathlib.Path,
-                       tag: str) -> dict:
+                       tag: str, origin: int,
+                       timeout: float = ARRIVAL_TIMEOUT) -> dict:
     """Return to where the last trip started, on the same `FastTravel` object.
 
     `back` is set by `FastTravel.apply`, so the object that made the hop has to
     be the one that goes back. The landing is recorded as a hop's is: the
     machine's state, with the live `$C04B`-`$C04D` triple, and a screenshot.
+    It counts as landed only in `origin`, the area the hop left; a Return that
+    ends elsewhere is reported with `reached_target` false.
     """
+    # A Return written while the machine is not in a key window is the write
+    # the hop loop's guard exists to prevent.
+    pc = idle_in_key_window(sess, addr)
+    if pc is None:
+        why = "the machine is not idle in a key window; Return not made"
+        print(why, flush=True)
+        return {"skipped": why, "landed": False}
     outcome = ft.apply_back(target)
     made = {"ok": outcome.ok, "message": outcome.message,
             "writes": [[at, list(data)] for at, data in outcome.writes]}
     print("wrote back:", json.dumps(made), flush=True)
     if not outcome.ok:
         return {"back": made, "landed": False}
-    idle, _pc = wait_idle(sess, addr)
+    idle, _pc = wait_idle(sess, addr, timeout)
     sess.settle(3)
     after = measure(sess, addr, maps, row, out, tag)
     after["idle"] = idle
-    return {"back": made, "landed": True, "idle": idle, "state": after,
-            "square": after["square"]}
+    reached = after.get("area") == origin
+    after["reached_target"] = reached
+    res = {"back": made, "landed": reached, "reached_target": reached,
+           "idle": idle, "state": after, "square": after["square"]}
+    if row is not None:
+        res["verdict"] = verdict_of(after, row)
+    if not reached:
+        print(f"Return ended in ${after.get('area', 0):02X}, not "
+              f"${origin:02X}", flush=True)
+    return res
 
 
 def screen_text(sess, path: pathlib.Path | None = None) -> str:
@@ -590,7 +608,8 @@ def run(args) -> int:
                     sess, addr, maps,
                     ft, target, areas.area_in(here["area"],
                                               areas.SECRET_OF_THE_SILVER_BLADES),
-                    out, f"back{n}-{here['area']:02x}")
+                    out, f"back{n}-{here['area']:02x}", here["area"],
+                    args.arrival_timeout)
                 (out / "report.json").write_text(json.dumps(report, indent=1))
                 break
             if args.walk and n == len(chain) and idle:
@@ -678,6 +697,9 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--out", default=str(scratch.scratch_dir("ssbwarp", "run")),
                     help="where captures go (default: %(default)s)")
     args = ap.parse_args(argv[1:])
+    if args.back and args.walk:
+        ap.error("--back ends the run after the Return, so --walk would "
+                 "never run")
     if args.back and not args.via_actions:
         ap.error("--back needs --via-actions: only FastTravel remembers "
                  "where the trip started")

@@ -459,7 +459,8 @@ def test_walk_proof_walks_nothing_when_the_world_bar_never_came(monkeypatch):
     assert out["rejected"] == stopped and out["moved"] is False
 
 
-def test_return_via_actions_calls_apply_back_on_the_same_object(monkeypatch, tmp_path):
+def _back_fixture(monkeypatch, tmp_path, *, ok=True, window=0x1000, area=0x10,
+                  idle=True):
     from types import SimpleNamespace as NS
 
     from tools.secret_of_the_silver_blades import ssbwarp
@@ -467,16 +468,59 @@ def test_return_via_actions_calls_apply_back_on_the_same_object(monkeypatch, tmp
 
     class FT:
         def apply_back(self, target):
-            calls.append(target)
-            return NS(ok=True, message="travelled back", writes=[(0xC04B, b"\x0f\x08\x02")])
+            calls.append(("apply_back", target))
+            return NS(ok=ok, message="m", writes=[(0xC04B, b"\x0f\x08\x02")])
 
-    state = {"square": [15, 8, 2], "area": 0x10}
-    monkeypatch.setattr(ssbwarp, "wait_idle", lambda sess, addr: (True, 0))
+    def wait_idle(sess, addr, timeout=None):
+        calls.append(("wait_idle", timeout))
+        return idle, 0
+
+    state = {"square": [15, 8, 2], "area": area}
+    monkeypatch.setattr(ssbwarp, "idle_in_key_window", lambda sess, addr: window)
+    monkeypatch.setattr(ssbwarp, "wait_idle", wait_idle)
     monkeypatch.setattr(ssbwarp, "measure",
                         lambda sess, addr, maps, row, out, tag: dict(state))
     sess = NS(settle=lambda n: None)
-    ft, target = FT(), object()
-    out = ssbwarp.return_via_actions(sess, None, {}, ft, target, None,
-                                     tmp_path, "back1-10")
-    assert calls == [target]
-    assert out["landed"] and out["square"] == [15, 8, 2]
+    target = object()
+
+    def go(timeout=7.5):
+        return ssbwarp.return_via_actions(sess, None, {}, FT(), target, None,
+                                          tmp_path, "back1-10", 0x10, timeout)
+    return calls, target, go
+
+
+def test_return_via_actions_calls_apply_back_then_waits_with_the_timeout(
+        monkeypatch, tmp_path):
+    calls, target, go = _back_fixture(monkeypatch, tmp_path)
+    out = go()
+    assert calls == [("apply_back", target), ("wait_idle", 7.5)]
+    assert out["landed"] and out["reached_target"]
+    assert out["square"] == [15, 8, 2]
+
+
+def test_return_via_actions_reports_a_failed_return(monkeypatch, tmp_path):
+    calls, _target, go = _back_fixture(monkeypatch, tmp_path, ok=False)
+    out = go()
+    assert out["landed"] is False and out["back"]["ok"] is False
+    assert [c[0] for c in calls] == ["apply_back"]
+
+
+def test_return_via_actions_skips_when_not_in_a_key_window(monkeypatch, tmp_path):
+    calls, _target, go = _back_fixture(monkeypatch, tmp_path, window=None)
+    out = go()
+    assert calls == [] and out["landed"] is False and out["skipped"]
+
+
+def test_return_via_actions_flags_a_landing_in_the_wrong_area(monkeypatch, tmp_path):
+    _calls, _target, go = _back_fixture(monkeypatch, tmp_path, area=0x20)
+    out = go()
+    assert out["landed"] is False and out["reached_target"] is False
+    assert out["state"]["reached_target"] is False
+
+
+def test_back_with_walk_is_rejected(monkeypatch):
+    import pytest
+
+    from tools.secret_of_the_silver_blades import ssbwarp
+    with pytest.raises(SystemExit):
+        ssbwarp.main(["ssbwarp", "--via-actions", "--back", "--walk"])
