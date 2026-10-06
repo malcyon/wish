@@ -2272,6 +2272,11 @@ graph LR
   levelup --> titles
   memory --> layout
   neutral --> layout
+  pod_rewrite --> amiga_pod
+  pod_rewrite --> c64_codec
+  pod_rewrite --> dos_codec
+  pod_rewrite --> dos_port
+  pod_rewrite --> rewrite
   portraits -.->|deferred| amiga_adf
   portraits -.->|deferred| amiga_dax
   portraits -.->|deferred| c64_port

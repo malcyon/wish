@@ -52,6 +52,7 @@ from goldbox import (
     dos_port,
     effects,
     layout,
+    pod_rewrite,
     rewrite,
     titles,
 )
@@ -184,6 +185,8 @@ def dos_files(party: Any) -> dict[str, bytes | None]:
     type table to rebuild it with.
     """
     slot = party.source.slot
+    if party.game is titles.POOLS_OF_DARKNESS:
+        return pod_dos_files(party)
     written: dict[str, bytes | None] = {}
     unrebuilt: list[str] = []
     for member in party.members:
@@ -200,6 +203,34 @@ def dos_files(party: Any) -> dict[str, bytes | None]:
     if unrebuilt:
         _log.warning("Movement of %s not rebuilt: no item type table",
                      ", ".join(unrebuilt))
+    return written
+
+
+def pod_dos_files(party: Any) -> dict[str, bytes | None]:
+    """`dos_files` for a Pools of Darkness party.
+
+    The sheet's record is the character's own DOS record
+    (`editor.podsheet.PodSheetRecord`), so `goldbox.pod_rewrite.rewrite_dos`
+    copies the fields it and the record as read disagree about straight onto
+    the file, and patches the item file from the sheet's sixteen slots
+    against the slots the character was read with. The effect file is
+    returned as it was read.
+    """
+    slot = party.source.slot
+    written: dict[str, bytes | None] = {}
+    for member in party.members:
+        native = member.native
+        items_now = (None if member.inventory is None
+                     else member.inventory.raws)
+        result = pod_rewrite.rewrite_dos(
+            native, member.record_original, member.record.to_bytes(),
+            pod_rewrite.item_blocks(native.items), items_now)
+        deltas = native.deltas
+        stem = f"CHRDAT{slot}{member.index}"
+        for suffix, data in ((".SAV", result.record),
+                             (deltas.item_suffix, result.items),
+                             (deltas.effect_suffix, result.effects)):
+            written[stem + suffix] = data or None
     return written
 
 
@@ -269,6 +300,8 @@ def write_amiga(party: Any, disk: Any) -> Any:
             if unrebuilt:
                 _log.warning("Movement of %s not rebuilt: no item type table",
                              ", ".join(unrebuilt))
+        elif party.game is titles.POOLS_OF_DARKNESS:
+            write_amiga_pod(party, disk)
         else:
             save = amiga_savegame.read_slot(
                 disk, party.source.slot, party.source.title.key)
@@ -284,6 +317,56 @@ def write_amiga(party: Any, disk: Any) -> Any:
         disk.restore(snapshot)
         raise
     return disk
+
+
+def write_amiga_pod(party: Any, disk: Any) -> None:
+    """Every Pools of Darkness member's edits into the slot's saved game on
+    `disk`, an open disk 3.
+
+    Each character's block is the one the party was read with
+    (`Member.native`), with each DOS field the sheet changed put at its
+    place in the Amiga record (`goldbox.pod_rewrite.rewrite_amiga_record`);
+    its items, its effects and every other byte stay as read. The saved
+    game is written only when it differs from the file on the disk, so a
+    Save with nothing in it leaves the image as it was. The vault and every
+    other file are not touched.
+
+    An item edit stops the save with `goldbox.rewrite.RewriteError`: the
+    sheet's slots are a DOS rendering of the block's items, and nothing
+    writes them back into the block yet.
+    """
+    from .podsheet import item_blocks
+
+    slot = party.source.slot
+    path = amiga_savegame.pod_slot_path(slot)
+    data = amiga_savegame.pod_read_slot(disk, slot)
+    save = amiga_savegame.pod_parse(data)
+    blocks = list(save.blocks)
+    for member in party.members:
+        native = bytes(member.native)
+        if (member.inventory is not None
+                and member.inventory.raws != item_blocks(
+                    _pod_rendered(member).dos)):
+            raise rewrite.RewriteError(
+                f"{member.name}: item changes to an Amiga Pools of Darkness "
+                f"character cannot be saved yet")
+        blocks[member.index - 1], _moved = pod_rewrite.rewrite_amiga_record(
+            native, member.record_original, member.record.to_bytes())
+    written = pod_rewrite.replace_records(data, save.characters, blocks)
+    if written != data:
+        # Under the name the disk already spells it with: AmigaDOS finds the
+        # file whatever the case, and a write under another spelling renames
+        # the entry.
+        path = next((found for found, _entry in disk.walk()
+                     if found.lower() == path.lower()), path)
+        disk.write_file(path, written)
+
+
+def _pod_rendered(member: Any) -> Any:
+    """The DOS rendering of an Amiga member's block, as the party was read."""
+    from .podsheet import amiga_member
+
+    return amiga_member(bytes(member.native), member.index - 1)
 
 
 def amiga_image(party: Any) -> bytes:

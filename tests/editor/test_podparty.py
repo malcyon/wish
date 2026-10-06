@@ -297,7 +297,7 @@ def test_every_amiga_character_opens_and_round_trips(monkeypatch, tmp_path):
     seen = 0
     for label, source in _amiga_sources(tmp_path):
         party = Party(source)
-        assert party.unwritable == podsheet.UNWRITABLE
+        assert party.unwritable == podsheet.AMIGA_UNWRITABLE
         blob = amiga_savegame.pod_read_slot(source.amiga_disk(), source.slot)
         blocks = amiga_savegame.pod_parse(blob).blocks
         assert len(party.members) == len(blocks), label

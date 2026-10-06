@@ -98,6 +98,21 @@ UNWRITABLE = frozenset({
     "item_effects", "infravision", "strength_index", "party_order",
 })
 
+#: What an Amiga character adds to :data:`UNWRITABLE`. Its sheet record is
+#: a DOS rendering of the block (:func:`amiga_member`), and the rendering
+#: rebuilds the class code from the levels and the class mask, so a class
+#: code typed into the box is written to the block but read back as the
+#: rebuilt one; and the block's turning row is read by neither reader, so an
+#: edit to it has no place to go (`goldbox.pod_rewrite.AMIGA_PLACES`).
+AMIGA_UNWRITABLE = UNWRITABLE | frozenset({"char_class", "turn_class"})
+
+
+def unwritable(port: str) -> frozenset[str]:
+    """The sheet names a party on `port` greys: :data:`AMIGA_UNWRITABLE` on
+    the Amiga, :data:`UNWRITABLE` on DOS."""
+    return AMIGA_UNWRITABLE if port == "amiga" else UNWRITABLE
+
+
 #: The bit the DOS control byte sets for a character the engine drives: the
 #: first byte of this title's four-byte `field_83_87`
 #: (`goldbox.dos_codec.to_neutral`).

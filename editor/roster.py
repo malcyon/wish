@@ -634,13 +634,14 @@ class Party:
 
         Empty for a C64 save, where `_write_back` writes the edited record
         straight into its slot. For Pools of Darkness, the sheet's fields the
-        title has no byte for (`podsheet.UNWRITABLE`). Otherwise
+        title has no byte for, and on the Amiga the two it cannot write back
+        (`podsheet.unwritable`). Otherwise
         `goldbox.rewrite.unwritable_fields` for this party's port and title.
         """
         if self.port == "c64":
             return frozenset()
         if self.game is titles.POOLS_OF_DARKNESS:
-            return podsheet.UNWRITABLE
+            return podsheet.unwritable(self.port)
         return rewrite.unwritable_fields(self.port, self.source.title.key)
 
     def write_items(self) -> None:
