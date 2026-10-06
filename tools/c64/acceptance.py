@@ -318,6 +318,10 @@ CAMP_PARTY_SPELLS = {"ANIMATE DEAD": 36}
 #: `ECL65 $9A18` holds cleric spell 41 with target flag $02 and camp handler
 #: `$AA5B`; magic-user id 46 has the same handler but is not driven here.
 POOL_TARGET_SPELLS = {"DISPEL MAGIC": 41}
+#: Magic-user camp spells that ask `CAST SPELL ON WHOM` and are picked from
+#: the memorised list's cursor like the others; the result is read as the
+#: party and effect checkpoints before and after.
+POOL_BUFF_SPELLS = {"ENLARGE"}
 DISEASE_CURE = (34, "DISEASE")
 
 #: `MAGIC > SCRIBE`'s screens, read in Silver Blades: the scroll list,
@@ -826,7 +830,8 @@ def parse_cast(arg: str) -> tuple[str, str, str | None]:
         raise ValueError(f"cast {arg!r}: say cast CASTER:SPELL[>TARGET]")
     if target is None and spell not in CAMP_PARTY_SPELLS:
         raise ValueError(f"cast {arg!r}: {spell} needs a target")
-    if target is not None and spell not in CAMP_CURES | POOL_TARGET_SPELLS:
+    if target is not None and spell not in (
+            CAMP_CURES | POOL_TARGET_SPELLS | dict.fromkeys(POOL_BUFF_SPELLS)):
         raise ValueError(f"cast {arg!r}: {spell} has no target prompt")
     if spell in POOL_TARGET_SPELLS and (caster.isdigit() or target.isdigit()):
         raise ValueError(f"cast {arg!r}: Dispel Magic needs a named caster and target")
@@ -3576,7 +3581,7 @@ class PoolRun:
             before = self.reading()
             self.log.emit("dispel-before", reading=before)
             slot = self._dispel_guard(before, caster, target)
-        elif target is not None:
+        elif target is not None and spell not in POOL_BUFF_SPELLS:
             cure_id, word = CAMP_CURES[spell]
             self.owner_of(target)
         if not self.to_camp():
@@ -3620,6 +3625,17 @@ class PoolRun:
         first = self.reading() if not dispel else before
         if not self.pick(target, CAST_WHOM):
             raise self.fail("cast-whom", f"{target} could not be chosen")
+        if spell in POOL_BUFF_SPELLS:
+            self.capture("buff-result")
+            messages = self._acknowledge(label="buff")
+            if self._list_bar(self.bar()):
+                self.choose_bar("EXIT", timeout=15)
+            after = self.reading()
+            return {"caster": caster, "spell": spell, "target": target,
+                    "party_before": first["party"], "party_after": after["party"],
+                    "effects_before": first["effects"],
+                    "effects_after": after["effects"],
+                    "messages": messages, "key": key}
         if dispel:
             self.capture("dispel-result")
             messages = self._observe_dispel(before, caster)
@@ -8374,9 +8390,10 @@ def main(argv: list[str] | None = None) -> int:
             ap.error(str(e))
         if args.title == "pool" and not (
                 (target is None and spell in CAMP_PARTY_SPELLS)
-                or (target is not None and spell in POOL_TARGET_SPELLS)):
-            ap.error("Pool cast supports CASTER:ANIMATE DEAD or "
-                     "CASTER:DISPEL MAGIC>TARGET")
+                or (target is not None
+                    and spell in POOL_TARGET_SPELLS | dict.fromkeys(POOL_BUFF_SPELLS))):
+            ap.error("Pool cast supports CASTER:ANIMATE DEAD, "
+                     "CASTER:DISPEL MAGIC>TARGET or CASTER:ENLARGE>TARGET")
         if args.title == "curse" and (target is None or spell not in CAMP_CURES):
             ap.error("Curse cast requires CASTER:CURE BLINDNESS>TARGET")
         if args.title == "ssb":

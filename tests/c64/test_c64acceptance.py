@@ -3854,6 +3854,23 @@ def test_pool_dispel_picks_the_named_target_and_keeps_raw_row_checkpoints(tmp_pa
                          ("key", "Return"), ("key", 0x0D)]
 
 
+def test_pool_enlarge_is_a_camp_cast_that_picks_the_named_member(tmp_path):
+    assert A.parse_cast("MALCYON:enlarge>SILAS") == ("MALCYON", "ENLARGE", "SILAS")
+    with pytest.raises(ValueError, match="needs a target"):
+        A.parse_cast("MALCYON:ENLARGE")
+    before, after = _dispel_readings()
+    run, log, sess = _dispel_run(tmp_path, before, after)
+    run.panel_index = lambda who: {"MALCYON": 1}[who]
+    try:
+        got = run.cast("MALCYON:ENLARGE>BRUTUS")
+    finally:
+        log.close()
+    assert (got["spell"], got["target"]) == ("ENLARGE", "BRUTUS")
+    assert sess.sent == [("party", 1), ("bar", "MAGIC"), ("bar", "CAST"),
+                         ("bar", "CAST"), ("key", "Return"), ("party", 0),
+                         ("key", "Return"), ("key", 0x0D)]
+
+
 def test_pool_dispel_waits_past_blank_announcement_without_a_key(tmp_path,
                                                                    monkeypatch):
     before, after = _dispel_readings()
