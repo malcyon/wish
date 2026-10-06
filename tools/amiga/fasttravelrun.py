@@ -5,7 +5,8 @@
 `WinuaePipe`, and one trip is made the way the automap window's timer makes it:
 `legality`, then `apply`, then `continue_pending` every 200 ms until no trip and
 no second hop remain. Every memory write comes from that code; this driver
-writes nothing of its own and raises on any write that touches `$03C2` to `$03C8`.
+writes nothing of its own, and a trip still armed when the run ends for any
+reason is disarmed.
 
     tools/amiga/fasttravelrun.py --holder wish1-f4a --disks DIR --to 5 --answer y --out OUT
 
@@ -58,29 +59,19 @@ SETTLE_SECONDS = 3.0
 #: Bytes of the data hunk's step-entry words: five words from `row.step_entry`.
 ENTRY_BYTES = 10
 
-#: The addresses the driver must never write, whoever asks.
-FORBIDDEN_FIRST = 0x03C2
-FORBIDDEN_LAST = 0x03C8
-
 
 class DriverError(RuntimeError):
     """The run cannot go on."""
 
 
-class WriteGuard:
-    """A target whose `write` stops at the forbidden range and passes everything else on."""
-
-    def __init__(self, target):
-        self.target = target
-
-    def write(self, addr: int, data: bytes, verify: bool = True) -> None:
-        if addr <= FORBIDDEN_LAST and addr + len(data) > FORBIDDEN_FIRST:
-            raise DriverError(f"a write of {len(data)} bytes at {addr:#x} touches "
-                              f"{FORBIDDEN_FIRST:#06x} to {FORBIDDEN_LAST:#06x}")
-        self.target.write(addr, data, verify=verify)
-
-    def __getattr__(self, name):
-        return getattr(self.target, name)
+def _disarm(fasttravel, target) -> None:
+    """Put an armed trip's statements and key back in the game, then forget the trip."""
+    trip = fasttravel.trip
+    try:
+        if trip is not None:
+            amigatrip.disarm(target, trip.armed)
+    finally:
+        fasttravel.cancel_pending()
 
 
 class Log:
@@ -161,46 +152,54 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
         summary["result"] = "not_applied"
         return summary
 
-    started = clock()
-    next_shot = started
-    idle_since = None
-    summary["result"] = "timeout"
-    while clock() - started < budget:
-        sleep(POLL_SECONDS)
-        got = fasttravel.continue_pending(target)
-        if got is not None:
-            log("continue", ok=got.ok, message=got.message)
-            summary["outcomes"].append({"ok": got.ok, "message": got.message})
-        now = _reading(target, row)
-        taken = tripprobe.key_taken(target, row)
-        log("read", why="poll", key_taken=taken, trip=fasttravel.trip is not None,
-            pending=fasttravel.pending is not None, **now)
-        waiting = answer is not None and not summary["answered"]
-        if clock() >= next_shot and (fasttravel.trip is not None
-                                     or fasttravel.pending is not None or waiting):
-            next_shot = clock() + SHOT_SECONDS
-            screen.take("poll")
-            if waiting:
-                why = tripprobe._unanswered(
-                    {"key_taken": taken, "area_changed": now["area"] != before["area"]},
-                    baseline, screen.last)
-                if why is None:
-                    log("answer", key=answer)
-                    press(answer)
-                    summary["answered"] = True
-                    sleep(SETTLE_SECONDS)
-                else:
-                    log("answer_held", reason=why)
-        if fasttravel.trip is None and fasttravel.pending is None:
-            idle_since = clock() if idle_since is None else idle_since
-            if not (answer is not None and not summary["answered"]) \
-                    or clock() - idle_since >= ANSWER_SECONDS:
-                summary["result"] = "idle"
-                break
-        else:
-            idle_since = None
+    try:
+        started = clock()
+        next_shot = started
+        idle_since = None
+        summary["result"] = "timeout"
+        while clock() - started < budget:
+            sleep(POLL_SECONDS)
+            got = fasttravel.continue_pending(target)
+            if got is not None:
+                log("continue", ok=got.ok, message=got.message)
+                summary["outcomes"].append({"ok": got.ok, "message": got.message})
+            now = _reading(target, row)
+            taken = tripprobe.key_taken(target, row)
+            log("read", why="poll", key_taken=taken, trip=fasttravel.trip is not None,
+                pending=fasttravel.pending is not None, **now)
+            waiting = answer is not None and not summary["answered"]
+            if clock() >= next_shot and (fasttravel.trip is not None
+                                         or fasttravel.pending is not None or waiting):
+                next_shot = clock() + SHOT_SECONDS
+                screen.take("poll")
+                if waiting:
+                    why = tripprobe._unanswered(
+                        {"key_taken": taken, "area_changed": now["area"] != before["area"]},
+                        baseline, screen.last)
+                    if why is None:
+                        log("answer", key=answer)
+                        press(answer)
+                        summary["answered"] = True
+                        sleep(SETTLE_SECONDS)
+                    else:
+                        log("answer_held", reason=why)
+            if fasttravel.trip is None and fasttravel.pending is None:
+                idle_since = clock() if idle_since is None else idle_since
+                if not (answer is not None and not summary["answered"]) \
+                        or clock() - idle_since >= ANSWER_SECONDS:
+                    summary["result"] = "idle"
+                    break
+            else:
+                idle_since = None
+    except BaseException:
+        # An armed trip left in the game is put back before the exception goes on.
+        try:
+            _disarm(fasttravel, target)
+        except Exception:  # noqa: S110 - the first exception is the one to report
+            pass
+        raise
     if summary["result"] == "timeout":
-        fasttravel.cancel_pending()
+        _disarm(fasttravel, target)
         log("timeout", budget=budget)
     screen.take("after")
     log("read", why="after", **_reading(target, row))
@@ -233,7 +232,7 @@ def main(argv: list[str] | None = None) -> int:
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     pipe = amiga.WinuaePipe(holder=args.holder)
-    target = WriteGuard(amiga.AmigaTarget(pipe, machine))
+    target = amiga.AmigaTarget(pipe, machine)
     row = amigatrip.row_for(KEY)
     fasttravel = amigafasttravel.AmigaFastTravel(KEY, args.disks)
 

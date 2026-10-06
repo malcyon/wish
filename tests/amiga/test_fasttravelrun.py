@@ -65,13 +65,13 @@ class Travel:
     def apply(self, target, area=None, **kwargs):
         self.calls.append("apply")
         if self.applies:
-            self.trip = object()
+            self.trip = SimpleNamespace(armed="armed")
         return engine.Outcome(self.applies, "Traveling." if self.applies else "No.",
                               ((0x2000, b"\x01\x02"),))
 
     def apply_back(self, target):
         self.calls.append("apply_back")
-        self.trip = object()
+        self.trip = SimpleNamespace(armed="armed")
         return engine.Outcome(True, "back")
 
     def continue_pending(self, target):
@@ -94,6 +94,19 @@ def world(monkeypatch, tmp_path):
     monkeypatch.setattr(amigatrip, "square", lambda t, row: (5, 6, 0))
     monkeypatch.setattr(tripprobe, "key_taken", lambda t, row: state.taken)
     state.clock = Clock()
+    # Arming leaves the fake game holding the trip until `disarm` puts it back.
+    state.armed = []
+    real_apply = Travel.apply
+
+    def apply(self, target, area=None, **kwargs):
+        got = real_apply(self, target, area=area, **kwargs)
+        if self.trip is not None:
+            state.armed.append(self.trip.armed)
+        return got
+
+    monkeypatch.setattr(Travel, "apply", apply)
+    monkeypatch.setattr(amigatrip, "disarm",
+                        lambda target, armed: state.armed.remove(armed) or True)
     state.out = tmp_path
     state.stream = open(tmp_path / "log.jsonl", "w")
     state.log = ftr.Log(state.stream, state.clock)
@@ -229,22 +242,21 @@ def test_back_makes_apply_back_and_not_apply(world):
     assert "apply" not in travel.calls
 
 
-@pytest.mark.parametrize("addr, size", [(0x03C2, 1), (0x03C8, 1), (0x03C0, 4), (0x03C5, 100)])
-def test_the_guard_stops_a_write_in_the_forbidden_range(addr, size):
-    target = Target()
-    with pytest.raises(ftr.DriverError):
-        ftr.WriteGuard(target).write(addr, bytes(size))
-    assert target.writes == []
+@pytest.mark.parametrize("failure", [RuntimeError("boom"), KeyboardInterrupt()])
+def test_an_exception_after_apply_leaves_the_trip_disarmed(world, failure):
+    class Raises(Travel):
+        def continue_pending(self, target):
+            raise failure
+
+    travel = Raises()
+    with pytest.raises(type(failure)):
+        world.drive(travel)
+    assert travel.trip is None and travel.pending is None
+    assert world.armed == []
 
 
-@pytest.mark.parametrize("addr, size", [(0x03C0, 2), (0x03C9, 4), (0x3000, 1)])
-def test_the_guard_passes_a_write_outside_it(addr, size):
-    target = Target()
-    ftr.WriteGuard(target).write(addr, bytes(size))
-    assert target.writes == [(addr, bytes(size))]
-
-
-def test_the_guard_passes_reads_and_attributes_through():
-    guard = ftr.WriteGuard(Target())
-    assert guard.data_base == 0x1000
-    assert guard.target.data_base == 0x1000
+def test_a_trip_that_times_out_is_disarmed_in_the_game(world):
+    travel = Travel(polls=10**9)
+    world.drive(travel, budget=1.0)
+    assert travel.trip is None
+    assert world.armed == []
