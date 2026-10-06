@@ -1028,3 +1028,152 @@ def test_a_journal_that_cannot_be_written_is_an_error_row_and_no_write(
     assert rc == 1
     assert "disk full" in json.loads(capsys.readouterr().out)["error"]
     assert pooled[0].get(0xC30000, 1) == b"\0"
+
+
+# -- select: the game's own highlight, moved with its own key -------------------
+
+
+def _party_row():
+    from automap import amigaparty
+    return amigaparty.ROWS["secret-of-the-silver-blades"]
+
+
+#: Where the fake party's records sit, one per member, in slow memory.
+_RECORDS = 0xC20000
+
+
+class _Party(_PipeMemory):
+    """A Silver Blades game at the party menu: four members on the list and the
+    current-member pointer on the first, as the loader leaves it."""
+
+    NAMES = ("GUY DE VALOIS", "PAINE", "EPONA", "MALACHITE")
+
+    def __init__(self, holder=None):
+        super().__init__(holder)
+        row = _party_row()
+        self.addresses = [_RECORDS + i * 0x200 for i in range(len(self.NAMES))]
+        for i, (name, address) in enumerate(zip(self.NAMES, self.addresses)):
+            record = bytearray(row.record_size)
+            record[row.name:row.name + len(name)] = name.encode("latin1")
+            record[row.slot] = i
+            following = self.addresses[i + 1] if i + 1 < len(self.addresses) else 0
+            record[row.next_offset:row.next_offset + 4] = following.to_bytes(4, "big")
+            self.put(address, bytes(record))
+        self.put(BASE + row.head, self.addresses[0].to_bytes(4, "big"))
+        self.highlight(0)
+
+    def highlight(self, index):
+        self.put(BASE + _party_row().current, self.addresses[index].to_bytes(4, "big"))
+
+    def highlighted(self):
+        address = int.from_bytes(self.get(BASE + _party_row().current, 4), "big")
+        return self.addresses.index(address)
+
+
+@pytest.fixture
+def party(fake_pipe, monkeypatch):
+    """The fake game, and the keys pressed at it. NP1 moves the highlight on and
+    wraps from the last member to the first, as `/Secret`'s mover `024B92`
+    does; every other key does nothing, as NP2 did at the party menu."""
+    from tools.amiga import amigadrive, amigatarget
+    monkeypatch.setattr(amigatarget.amiga, "WinuaePipe", _Party)
+    pressed = []
+
+    def press(holder, name, settle):
+        pressed.append((holder, name))
+        game = fake_pipe[0]
+        if name == "NP1":
+            game.highlight((game.highlighted() + 1) % len(game.addresses))
+        return "ok"
+
+    monkeypatch.setattr(amigadrive, "press", press)
+    return fake_pipe, pressed
+
+
+def test_select_presses_the_next_member_key_until_the_pointer_names_the_member(party, capsys):
+    games, pressed = party
+    from tools.amiga import amigatarget
+    rc = amigatarget.main(["--holder", "wish1-levelup", "select", "epona"])
+    row = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert row == {"member": "EPONA", "line": 3, "address": hex(_RECORDS + 0x400),
+                   "from": "GUY DE VALOIS", "presses": 2}
+    assert pressed == [("wish1-levelup", "NP1")] * 2
+    assert games[0].highlighted() == 2
+
+
+def test_select_wraps_past_the_last_member_to_reach_an_earlier_one(party, capsys, monkeypatch):
+    games, pressed = party
+    from tools.amiga import amigatarget
+    original = _Party.__init__
+
+    def on_malachite(self, holder=None):
+        original(self, holder)
+        self.highlight(3)
+
+    monkeypatch.setattr(_Party, "__init__", on_malachite)
+    assert amigatarget.main(["--holder", "h", "select", "2"]) == 0
+    row = json.loads(capsys.readouterr().out)
+    assert (row["member"], row["from"], row["presses"]) == ("PAINE", "MALACHITE", 2)
+    assert games[0].highlighted() == 1
+
+
+def test_select_of_the_highlighted_member_presses_nothing(party, capsys):
+    _, pressed = party
+    from tools.amiga import amigatarget
+    assert amigatarget.main(["--holder", "h", "select", "1"]) == 0
+    assert json.loads(capsys.readouterr().out)["presses"] == 0
+    assert pressed == []
+
+
+def test_a_screen_that_ignores_the_key_stops_select_after_one_press(party, capsys, monkeypatch):
+    """What NP2 did at Silver Blades' party menu: the key is pressed and the
+    pointer stays where it was. One press, then an error row, not a loop."""
+    _, pressed = party
+    from tools.amiga import amigadrive, amigatarget
+    monkeypatch.setattr(amigadrive, "press",
+                        lambda holder, name, settle: pressed.append(name))
+    monkeypatch.setattr(amigatarget.time, "sleep", lambda s: None)
+    rc = amigatarget.main(["--holder", "h", "select", "EPONA"])
+    row = json.loads(capsys.readouterr().out)
+    assert rc == 1 and pressed == ["NP1"]
+    assert "does not move it with NP1" in row["error"]
+    assert "GUY DE VALOIS, not PAINE" in row["error"]
+
+
+@pytest.mark.parametrize("want", ["DOMINIC", "0", "5"])
+def test_select_of_no_member_is_an_error_row_and_presses_nothing(party, capsys, want):
+    _, pressed = party
+    from tools.amiga import amigatarget
+    assert amigatarget.main(["--holder", "h", "select", want]) == 1
+    row = json.loads(capsys.readouterr().out)
+    assert "GUY DE VALOIS, PAINE, EPONA, MALACHITE" in row["error"]
+    assert pressed == []
+
+
+def test_a_highlight_off_the_list_is_an_error_row_and_presses_nothing(party, capsys, monkeypatch):
+    _, pressed = party
+    from tools.amiga import amigatarget
+    original = _Party.__init__
+
+    def stray(self, holder=None):
+        original(self, holder)
+        self.put(BASE + _party_row().current, (0xC30000).to_bytes(4, "big"))
+
+    monkeypatch.setattr(_Party, "__init__", stray)
+    assert amigatarget.main(["--holder", "h", "select", "EPONA"]) == 1
+    assert "no party member" in json.loads(capsys.readouterr().out)["error"]
+    assert pressed == []
+
+
+def test_a_key_that_did_not_reach_the_game_is_an_error_row(party, capsys, monkeypatch):
+    """`amigadrive.press` ends with `SystemExit` when the guest says the key
+    was not pressed; select reports it as its row."""
+    from tools.amiga import amigadrive, amigatarget
+
+    def failing(holder, name, settle):
+        raise SystemExit("Key NP1 was not pressed: fail no lane")
+
+    monkeypatch.setattr(amigadrive, "press", failing)
+    assert amigatarget.main(["--holder", "h", "select", "EPONA"]) == 1
+    assert "was not pressed" in json.loads(capsys.readouterr().out)["error"]

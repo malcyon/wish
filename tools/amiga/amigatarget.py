@@ -2,7 +2,8 @@
 """Read a running Amiga Gold Box title: where the party is, and its map.
 
 `automap/amiga.py` is the backend; this is the command line that drives it and
-the thing to reach for when an address stops answering.  Five commands (`party`, `pool` and `poke` are below):
+the thing to reach for when an address stops answering.  Five commands
+(`party`, `pool`, `poke` and `select` are below):
 
     tools/amiga/amigatarget.py --holder wish37 verify --adf SSB-A.adf
     tools/amiga/amigatarget.py --holder wish37 locate
@@ -15,6 +16,14 @@ the thing to reach for when an address stops answering.  Five commands (`party`,
 `party`, `pool` and `poke --at ADDR --hex BYTES` go over WinUAE's own pipe
 (`automap.amiga.WinuaePipe`) and print one JSON row, as the FS-UAE `session`
 verbs of the same names do.
+
+`select MEMBER` moves the game's own highlight to a member, by name or 1-based
+party line, with the key the party menu and the camp both read (`NEXT_MEMBER`),
+and reads the current-member pointer back after every press; `V` then shows
+that member's sheet:
+
+    tools/amiga/amigatarget.py --holder wish1 select EPONA
+    tools/amiga/amigadrive.py --holder wish1 keys V
 
 **`automap` is the one that answers this ticket**: it builds the shipped
 `automap.state.Automapper` over this backend, hands it the title's own maps
@@ -56,6 +65,7 @@ import os
 import pathlib
 import sys
 import time
+from typing import Callable
 
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent.parent))
@@ -270,6 +280,81 @@ def poke(target: amiga.AmigaTarget, layout: amiga.AmigaMachine, holder: str,
     return row
 
 
+#: The key that moves the highlighted member to the next one on the party list,
+#: wrapping from the last to the first. It is keypad 1, which the key reader
+#: turns into `$105`. The party menu's key callback (file offsets of its
+#: compares: `/Secret` `017B4C`, `/Curse` `0172F2`, `/Pools of Darkness`
+#: `017820`) hands `$105` to the highlight mover as `$85` (next) and `$107`
+#: (keypad 7) as `$87` (previous).
+#: Only Pools of Darkness also takes `$104`, which cursor down and keypad 2 give,
+#: so NP2 does not move the party menu's highlight in Silver Blades. Every camp
+#: screen takes NP1 as well (`tools/amiga/route_camp.py`).
+NEXT_MEMBER = "NP1"
+
+
+def select(target: amiga.AmigaTarget, layout: amiga.AmigaMachine, want: str,
+           press: Callable[[str], object], reads: int = 3,
+           wait: Callable[[], object] = lambda: time.sleep(1.0)) -> dict:
+    """Move the game's highlight to the member `want` with its own keys.
+
+    `want` is a name (any case) or a 1-based party line. The highlight is the
+    title's current-member pointer; from where it is, `NEXT_MEMBER` is pressed
+    until the pointer names that member, and the pointer is read back after
+    each press, up to `reads` times with `wait` between. A press that leaves
+    it anywhere but on the next member stops the run with an error row:
+    that screen does not move the highlight with this key.
+    """
+    from automap import amigaparty
+    from tools.amiga import fsuaegdb
+
+    row = amigaparty.ROWS[fsuaegdb.machine_key(layout)]
+    members = [m for m in amigaparty.walk(target, row, target.data_base)
+               if m.in_party]
+    names = [m.name.strip() for m in members]
+    if not members:
+        return {"member": want, "error": "the party list is empty"}
+    if want.isdigit():
+        index = int(want) - 1 if 0 < int(want) <= len(members) else None
+    else:
+        folded = [n.casefold() for n in names]
+        index = (folded.index(want.strip().casefold())
+                 if want.strip().casefold() in folded else None)
+    if index is None:
+        return {"member": want, "error": f"no party member is {want!r}; "
+                                         f"the party is {', '.join(names)}"}
+    addresses = [m.address for m in members]
+
+    def highlighted() -> int | None:
+        raw = target.read(target.data_base + row.current, 4)
+        address = int.from_bytes(raw, "big")
+        return addresses.index(address) if address in addresses else None
+
+    at = highlighted()
+    if at is None:
+        return {"member": names[index],
+                "error": "the highlight is on no party member's record"}
+    result = {"member": names[index], "line": index + 1,
+              "address": hex(addresses[index]), "from": names[at], "presses": 0}
+    while at != index:
+        expected = (at + 1) % len(members)
+        press(NEXT_MEMBER)
+        result["presses"] += 1
+        now = highlighted()
+        for _ in range(reads - 1):
+            if now != at:
+                break
+            wait()
+            now = highlighted()
+        if now != expected:
+            where = "no party member" if now is None else names[now]
+            return {**result, "error": f"after {NEXT_MEMBER} the highlight is "
+                                       f"on {where}, not {names[expected]}: "
+                                       f"this screen does not move it with "
+                                       f"{NEXT_MEMBER}"}
+        at = now
+    return result
+
+
 def geo_library(path: pathlib.Path) -> dict[int, bytes]:
     """A loose `GEO.GLB` as `{id: 1024 bytes}`.
 
@@ -451,6 +536,12 @@ def main(argv: list[str] | None = None) -> int:
                        help="an absolute address")
     poked.add_argument("--hex", required=True, dest="digits",
                        help="the bytes to write, in hex")
+    chosen = sub.add_parser("select", help="move the game's highlight to a "
+                                           "member with its own keys (over "
+                                           "WinUAE's pipe)")
+    chosen.add_argument("member", help="a name, or a 1-based party line")
+    chosen.add_argument("--settle", type=float, default=1.5,
+                        help="seconds to wait after each key (default 1.5)")
     mapped = sub.add_parser("automap",
                             help="run the shipped automapper and draw its map")
     mapped.add_argument("--out", required=True,
@@ -485,12 +576,21 @@ def main(argv: list[str] | None = None) -> int:
     if not args.holder:
         raise SystemExit("--holder is required for anything that reads the "
                          "machine: take the winuae.ps1 claim first")
-    if args.command in ("party", "pool", "poke"):
+    if args.command in ("party", "pool", "poke", "select"):
         from automap import amigaeffects  # noqa: PLC0415
         from tools.amiga import fsuaegdb  # noqa: PLC0415
 
         target = connect_pipe(args.holder, layout)
-        if args.command == "poke":
+        if args.command == "select":
+            from tools.amiga import amigadrive  # noqa: PLC0415
+            try:
+                row = select(target, layout, args.member,
+                             lambda key: amigadrive.press(args.holder, key,
+                                                          args.settle))
+            except (SystemExit, OSError, amiga.GuestError) as exc:
+                row = {"member": args.member,
+                       "error": f"{type(exc).__name__}: {exc}"}
+        elif args.command == "poke":
             try:
                 row = poke(target, layout, args.holder, args.at,
                            bytes.fromhex(args.digits))
