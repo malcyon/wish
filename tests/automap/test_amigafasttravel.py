@@ -121,7 +121,7 @@ def test_tilverton_is_held_and_so_is_an_unconfirmed_title(disks):
             aft.amiga.MACHINES[key].title)
 
 
-def test_return_is_held_on_every_title(disks):
+def test_return_is_offered_on_curse_and_held_on_pools_of_darkness(disks):
     for key in (CURSE, POD):
         m = machine(key)
         t = aft.AmigaFastTravel(key, object())
@@ -130,6 +130,9 @@ def test_return_is_held_on_every_title(disks):
                                arrival=(1, 1, 0))).ok
         assert finish(t, m, key, 0x30 if key == POD else 7) is None
         out = t.apply_back(m)
+        if key == CURSE:
+            assert out.ok
+            continue
         assert not out.ok
         assert out.message == amigaactions.unsupported(
             aft.amiga.MACHINES[key].title)
@@ -210,7 +213,7 @@ def test_return_is_recognised_by_a_waypoints_area(disks):
     t = travel()
     t.back = engine.Waypoint(5, None, (1, 1, 0))
     t._row = lambda id: None
-    assert t.back_verdict(m).reason == UNSUPPORTED
+    assert t.back_verdict(m)
     assert t.legality(m, SimpleNamespace(area=7)).reason == (
         "the party is already in that area")
 
