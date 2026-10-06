@@ -836,3 +836,31 @@ def test_main_without_the_options_passes_no_resume(tmp_path, clock, monkeypatch)
                             str(tmp_path / "prepare.json"), "--attempt", "a",
                             "--audio-proof", str(_audio_proof(tmp_path))]) == 2
     assert "resume_from" not in seen and seen["holder"].startswith("wish")
+
+
+def test_a_mismatch_leaves_no_attempt_folder_and_the_same_attempt_can_be_retried(tmp_path, clock):
+    stopped, first = _stopped(tmp_path, clock)
+    guest = BackGuest(clock, stopped)
+    with pytest.raises(RouteError, match="--at-step 6"):
+        _resume(tmp_path, clock, stopped, first, guest=guest, at_step=6)
+    assert not (tmp_path / "resume1").exists()
+    _, result = _resume(tmp_path, clock, stopped, first)
+    assert result["error"] == "" and result["success"] is True
+
+
+@pytest.mark.parametrize("edit, message", [
+    (lambda d: d["machine"].pop("exe"), "machine entry has no exe"),
+    (lambda d: d["machine"].update(exe=None), "machine entry has no exe"),
+    (lambda d: d["kept"].pop("previous_state"), "kept entry has no previous_state"),
+    (lambda d: d["kept"].pop("previous_world"), "kept entry has no previous_world")])
+def test_a_record_missing_what_the_resume_reads_stops_before_the_claim(
+        tmp_path, clock, edit, message):
+    stopped, first = _stopped(tmp_path, clock)
+    path = pathlib.Path(first["resume_record"])
+    data = json.loads(path.read_text())
+    edit(data)
+    path.write_text(json.dumps(data))
+    guest = BackGuest(clock, stopped)
+    with pytest.raises(RouteError, match=message):
+        _resume(tmp_path, clock, stopped, first, guest=guest)
+    assert guest.calls == [] and not (tmp_path / "resume1").exists()

@@ -1790,10 +1790,6 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             raise RouteError("working DF1 is not disk B, volume 'Secret 2'")
         if sha256(df1) != manifest["disk_b_source"]["sha256"]:
             raise RouteError("working DF1 differs from the registered disk B")
-    out = manifest_path.parent / attempt
-    out.mkdir(parents=False, exist_ok=False)
-    shots = scratch.ensure(out / "shots")
-    runlog = (out / "run.jsonl").open("a", encoding="utf-8")
     if title is None:
         remotes = {key: guest.remote_path("672", holder, key) for key in ("df0", "df1")}
         local_disks = {"df0": df0, "df1": df1}
@@ -1924,9 +1920,12 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             paths = record["start"]["drives_paths_at_stop"]
             if not isinstance(paths, dict) or not paths:
                 raise RouteError("the record holds no drive readback to check the restore against")
-            for field in ("count_snapshot", "sha256"):
-                if field not in record["machine"]:
+            for field in ("count_snapshot", "sha256", "exe"):
+                if not record["machine"].get(field):
                     raise RouteError(f"the record's machine entry has no {field}")
+            for field in ("previous_state", "previous_world"):
+                if field not in record["kept"]:
+                    raise RouteError(f"the record's kept entry has no {field}")
         except (KeyError, TypeError, IndexError) as exc:
             raise RouteError(f"the resume record lacks or garbles {exc}") from exc
         return record
@@ -1938,6 +1937,11 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         resume_from = pathlib.Path(resume_from)
         earlier = check_resume()
     earlier_folder = resume_from.parent if resume_from is not None else None
+    # After the resume checks, so a mismatch leaves no attempt folder and the same `--attempt` can be retried.
+    out = manifest_path.parent / attempt
+    out.mkdir(parents=False, exist_ok=False)
+    shots = scratch.ensure(out / "shots")
+    runlog = (out / "run.jsonl").open("a", encoding="utf-8")
     previous_state = previous_world = ""
     #: What the run had seen when each snapshot was taken, put back by its restore: the machine
     #: goes back, the run's own record of it must too.
@@ -2592,16 +2596,20 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         log("stage_snapshot", receipt=str(receipt))
 
     def resume_machine() -> None:
-        """Wait for the title, restore the saved machine into the fresh one and put the run's record back."""
+        """Wait for the title, restore the saved machine into the fresh one and put the run's record back.
+
+        A `move_again` interstitial answered before the miss is not seen again, so a resumed run
+        does not press the move key again for it.
+        """
         nonlocal previous, previous_state, previous_world
         until_guard("title", "title", 0, TITLE_POLL, title_limit)
         machine, kept = earlier["machine"], earlier["kept"]
         receipt = guest.restore(RESUME, holder, fresh=True)
         log("restore", name=RESUME, fresh=True, receipt=str(receipt))
         result["events"].append({"restore": RESUME, "step": at_step, "fresh": True})
-        wanted = machine.get("exe")
+        wanted = machine["exe"]
         got = (getattr(receipt, "tags", None) or {}).get("exe")
-        if wanted and got != wanted:
+        if got != wanted:
             raise RouteError(f"the restore ran in {got!r}, the snapshot was taken in {wanted!r}")
         readback = guest.drives(holder)
         state_of = getattr(readback, "drive_state", None)
