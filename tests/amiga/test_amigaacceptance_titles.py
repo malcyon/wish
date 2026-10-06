@@ -3796,3 +3796,18 @@ def test_the_darkness_identity_recognises_the_loaded_menu_and_first_sheet_of_the
         for other in others:
             if other.is_file():
                 assert screens.box_digests(other, [tuple(box)], state)[tuple(box)] != rules[0]["sha256"]
+
+
+def test_the_darkness_guards_recognise_the_camp_button_row_of_the_a2_party():
+    from tools.amiga import screens
+
+    spec = json.loads((pathlib.Path(foundation.__file__).parent / "guards_darkness.json").read_text())
+    example = "WISH-2/wish2-a2/measure7/shots/12-camp.png"
+    assert spec["labels"][example] == ["camp"]
+    crop = scratch.cache_dir("acceptance") / example
+    if not crop.is_file():
+        pytest.skip("needs the stage 8 A2 measure7 shot 12 of WISH-2")
+    box = [74, 417, 546, 430]
+    rules = [r for r in screens.rules_of(spec["guards"]["camp"]) if r["example"] == example]
+    assert len(rules) == 1 and rules[0]["box"] == box and rules[0]["also"] == []
+    assert screens.box_digests(crop, [tuple(box)], "camp")[tuple(box)] == rules[0]["sha256"]
