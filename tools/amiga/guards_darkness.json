@@ -577,12 +577,12 @@
       "also": [],
       "box": [
         74,
-        404,
+        406,
         200,
-        430
+        428
       ],
       "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/11-journal_answer.png",
-      "sha256": "eb9c4508496db1c9c5555dd37cc1c4c7e67afadcf2152430b61f35f90effbe7d"
+      "sha256": "17903308f6cd91b211ccd9b04ebcddfb1716a3d9783cfb3ef504173f61200416"
     },
     "load_from": {
       "also": [],
@@ -1168,6 +1168,12 @@
     ],
     "WISH-2/wish2-a2/measure3/shots/08-journal.png": [
       "journal"
+    ],
+    "WISH-2/wish2-a2/measure4/shots/09-journal_answer.png": [
+      "journal_answer"
+    ],
+    "WISH-2/wish2-a3/measure-a3-7/shots/09-journal_answer.png": [
+      "journal_answer"
     ],
     "WISH-2/wish2-a3/measure-a3-7/shots/10-world.png": [
       "world"

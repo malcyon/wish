@@ -3721,3 +3721,20 @@ def test_the_darkness_guards_recognise_the_camp_screen_of_the_a4_party():
     rules = [r for r in screens.rules_of(spec["guards"]["camp"]) if r["example"] == example]
     assert len(rules) == 1 and rules[0]["box"] == box and rules[0]["also"] == []
     assert screens.box_digests(crop, [tuple(box)], "camp")[tuple(box)] == rules[0]["sha256"]
+
+
+def test_the_darkness_guards_recognise_the_journal_answer_inside_the_border_that_differs_between_boots():
+    from tools.amiga import screens
+
+    spec = json.loads((pathlib.Path(foundation.__file__).parent / "guards_darkness.json").read_text())
+    rule = spec["guards"]["journal_answer"]
+    # The A2 boot's frame rows above and below the ENTER bar differ from the A3 boot's.
+    assert rule["box"] == [74, 406, 200, 428]
+    for example in ("WISH-2/wish2-a2/measure4/shots/09-journal_answer.png",
+                    "WISH-2/wish2-a3/measure-a3-7/shots/09-journal_answer.png"):
+        assert spec["labels"][example] == ["journal_answer"]
+        crop = scratch.cache_dir("acceptance") / example
+        if not crop.is_file():
+            pytest.skip("needs the WISH-2 A2 measure4 and A3 measure-a3-7 shot 09")
+        box = tuple(rule["box"])
+        assert screens.box_digests(crop, [box], "journal_answer")[box] == rule["sha256"]
