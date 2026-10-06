@@ -1,13 +1,24 @@
 #!/usr/bin/env python3
-"""Run the app's own Fast Travel against a live C64 Pool of Radiance and log every trip.
+"""Run the app's own Fast Travel against a live C64 Gold Box game and log every trip.
 
 `automap.actions.FastTravel` is applied through a `ViceTarget` on the session's
 monitor port, one trip per `--to`, in order, with `continue_pending` called every
 poll so a two-hop trip makes its second hop. Every memory write comes from that
-code; the driver writes nothing of its own and fails on any write that
-touches the random-number generator (`$03C2`-`$03C8`).
+code, except the bytes `--stage` names: each is written before its leg, logged
+with the byte read back, and passes the same guard that fails on any write
+touching the random-number generator (`$03C2`-`$03C8`).
 
     tools/c64/fasttravelrun.py --save SPECIMEN.D64 --to 18 --to 2 --to 15 --answer YES
+
+`--title KEY` picks the game (`pool-of-radiance`, the default,
+`curse-of-the-azure-bonds` or `secret-of-the-silver-blades`): its session, disk
+sides, `FastTravel` container, area table and the cache-slot and came-from
+addresses. `--peek ADDR[:LEN]` (hex, repeatable) logs those bytes before and
+after every leg. `--stage N:ADDR=VALUE` writes one byte (VALUE decimal, or hex
+with `$` or `0x`) before leg N, counted from 0. Every leg also logs the party's
+names before and after, the live square after `apply`, and `areas_seen`: each
+area the `$6E1B`-style cache slot showed on any 0.2 s poll, in order, without
+repeats.
 
 A trip has arrived when `$6E1B` and `$49F2` both equal the destination and
 `legality` toward a different area passes; a check toward the destination
@@ -32,6 +43,7 @@ import contextlib
 import json
 import os
 import pathlib
+import re
 import sys
 import time
 from typing import Callable
@@ -40,7 +52,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
 
 from automap import actions as engine  # noqa: E402
+from automap import fasttravel  # noqa: E402
 from automap.target import NotConnected  # noqa: E402
+from goldbox import c64_port  # noqa: E402
 
 #: Seconds between two `continue_pending` calls.
 POLL_SECONDS = 0.2
@@ -108,13 +122,72 @@ def _byte(target, addr: int) -> int:
     return bytes(target.read(addr, 1))[0]
 
 
-def reading(target) -> dict:
-    return {"area6E1B": _byte(target, 0x6E1B), "script49F2": _byte(target, 0x49F2)}
+POOL_KEY = "pool-of-radiance"
+TITLE_KEYS = (POOL_KEY, "curse-of-the-azure-bonds", "secret-of-the-silver-blades")
 
 
-def other_area(dest: int) -> int:
-    """An area to ask legality about that is not the destination."""
-    return 2 if dest != 2 else 18
+def container_for(key: str):
+    """The container of one of `TITLE_KEYS`."""
+    from goldbox import c64_save  # noqa: PLC0415
+    containers = {POOL_KEY: c64_save.POOL_OF_RADIANCE,
+                  "curse-of-the-azure-bonds": c64_save.CURSE_OF_THE_AZURE_BONDS,
+                  "secret-of-the-silver-blades": c64_save.SECRET_OF_THE_SILVER_BLADES}
+    if key not in containers:
+        raise DriverError(f"{key} is not one of {', '.join(TITLE_KEYS)}")
+    return containers[key]
+
+
+def reading(target, addresses=None) -> dict:
+    """The cache-slot and came-from bytes of a title (Pool of Radiance when None)."""
+    addresses = addresses or fasttravel.POOL_OF_RADIANCE
+    return {"area6E1B": _byte(target, addresses.slot),
+            "script49F2": _byte(target, addresses.came_from)}
+
+
+def other_area(dest: int, title=engine.ANY_TITLE) -> int:
+    """An area of the title to ask legality about that is not the destination."""
+    if title is engine.ANY_TITLE:
+        return 2 if dest != 2 else 18
+    ids = [row.id for row in engine.area_rows(title)]
+    # Pool of Radiance's two known-good answers first, so its runs ask what they always asked.
+    for candidate in (2, 18, *ids):
+        if candidate != dest and candidate in ids:
+            return candidate
+    raise DriverError(f"{title} has no area but {dest}")
+
+
+def parse_peek(text: str) -> tuple[int, int]:
+    """`ADDR` or `ADDR:LEN`, both hex; an address with `$` or `0x` in front is allowed."""
+    addr, _, length = text.partition(":")
+    try:
+        return int(addr.lstrip("$"), 16), int(length, 16) if length else 1
+    except ValueError:
+        raise DriverError(f"--peek {text!r} is not ADDR[:LEN] in hex") from None
+
+
+def parse_stage(text: str) -> tuple[int, int, int]:
+    """`N:ADDR=VALUE` as (leg, address, byte); ADDR is hex, VALUE decimal or `$`/`0x` hex."""
+    found = re.fullmatch(r"(\d+):\$?([0-9A-Fa-f]+)=(\$[0-9A-Fa-f]+|\w+)", text.strip())
+    try:
+        if found is None:
+            raise ValueError
+        value = found[3]
+        parsed = (int(found[1]), int(found[2], 16),
+                  int(value[1:], 16) if value.startswith("$") else int(value, 0))
+        if not 0 <= parsed[2] <= 255:
+            raise ValueError
+    except ValueError:
+        raise DriverError(f"--stage {text!r} is not N:ADDR=VALUE with a byte value") from None
+    if RNG_FIRST <= parsed[1] <= RNG_LAST:
+        raise DriverError(f"--stage {text!r} writes the random-number generator")
+    return parsed
+
+
+def fasttravel_addresses(game):
+    found = fasttravel.addresses_for(game)
+    if found is None:
+        raise DriverError(f"{game.title} has no fast-travel addresses")
+    return found
 
 
 class Driver:
@@ -124,10 +197,18 @@ class Driver:
                  log: Log, answer: str | None = None,
                  sleep: Callable[[float], None] = time.sleep,
                  clock: Callable[[], float] = time.monotonic,
-                 budget: float = BUDGET_SECONDS):
+                 budget: float = BUDGET_SECONDS, game=None,
+                 peeks: list[tuple[int, int]] | None = None,
+                 stages: list[tuple[int, int, int]] | None = None,
+                 party_reader: Callable[[object, object], object] | None = None):
         self.sess, self.connect, self.ft = sess, connect, fasttravel
         self.out, self.log, self.answer = out, log, answer
         self.sleep, self.clock, self.budget = sleep, clock, budget
+        #: The title being travelled in; its table, addresses and party layout.
+        self.game = game or c64_port.POOL_OF_RADIANCE
+        self.addresses = fasttravel_addresses(self.game)
+        self.peeks, self.stages = peeks or [], stages or []
+        self.party_reader = party_reader or engine.read_party
         #: The legs finished so far, kept here so a run that stops early can still report them.
         self.results: list[dict] = []
 
@@ -187,12 +268,15 @@ class Driver:
             self.sleep(BUSY_SECONDS)
         return False, message, value
 
-    def trip(self, dest_id: int, tag: str) -> dict:
+    def trip(self, dest_id: int, tag: str, leg: int = 0) -> dict:
         """One trip. Result: not_legal, not_applied, arrived, failed (with a reason) or timeout."""
-        dest = engine.area_by_id(dest_id)
+        dest = engine.area_by_id(dest_id, self.game.title)
         if dest is None:
-            raise DriverError(f"{dest_id} is not an area of Pool of Radiance")
-        summary = {"dest": dest_id, "result": "not_legal", "questions": 0}
+            raise DriverError(f"{dest_id} is not an area of {self.game.title}")
+        summary = {"dest": dest_id, "result": "not_legal", "questions": 0,
+                   "areas_seen": []}
+        self.note_state(tag, "before")
+        self.stage(leg, tag)
 
         def legal(target):
             v = self.ft.legality(target, dest)
@@ -210,19 +294,57 @@ class Driver:
 
         try:
             with self.target() as target:
-                self.log("pre-apply", tag=tag, **reading(target))
+                before = reading(target, self.addresses)
+                self.log("pre-apply", tag=tag, **before)
+            self.see(summary, before["area6E1B"])
             ok, message, _ = self._retry_busy(tag, apply)
             self.log("apply", tag=tag, ok=ok, message=message)
             if not ok:
                 summary["result"] = "not_applied"
                 return summary
+            with self.target() as target:
+                square = engine.FastTravel.current_square(target, self.addresses)
+            summary["square_after_apply"] = square
+            self.log("square-after-apply", tag=tag, square=square)
             summary["result"] = self._poll(dest_id, tag, summary)
         finally:
             # A trip still pending when this leg ends for any reason is dropped.
             self.ft.cancel_pending()
         self.sleep(SETTLE_SECONDS)
+        self.note_state(tag, "after")
+        self.log("areas-seen", tag=tag, areas_seen=summary["areas_seen"])
         self.shot(tag + "-final")
         return summary
+
+    @staticmethod
+    def see(summary: dict, raw_area: int) -> None:
+        """Append the area to `areas_seen` unless it is the one seen last."""
+        area = raw_area & 0x7F
+        seen = summary["areas_seen"]
+        if not seen or seen[-1] != area:
+            seen.append(area)
+
+    def note_state(self, tag: str, when: str) -> None:
+        """Log the party's names and every `--peek` range."""
+        with self.target() as target:
+            party = self.party_reader(target, self.game)
+            names = [m.name for m in party.members] if party is not None else None
+            self.log("party", tag=tag, when=when, names=names)
+            for addr, length in self.peeks:
+                self.log("peek", tag=tag, when=when, addr=f"${addr:04X}", length=length,
+                         bytes=bytes(target.read(addr, length)).hex(" "))
+
+    def stage(self, leg: int, tag: str) -> None:
+        """Write the bytes `--stage` names for this leg, through the guard, and log each."""
+        for at, addr, value in self.stages:
+            if at != leg:
+                continue
+            with self.target() as target:
+                was = _byte(target, addr)
+                target.write(addr, bytes([value]))
+                now = _byte(target, addr)
+            self.log("stage", tag=tag, addr=f"${addr:04X}", was=was, value=value,
+                     read_back=now)
 
     def _poll(self, dest_id: int, tag: str, summary: dict) -> str:
         started = self.clock()
@@ -239,7 +361,8 @@ class Driver:
                         # The game has dropped the trip, so waiting out the budget finds nothing.
                         summary["reason"] = got.message
                         return "failed"
-                now = reading(target)
+                now = reading(target, self.addresses)
+            self.see(summary, now["area6E1B"])
             if self.clock() >= next_look:
                 next_look = self.clock() + SCREEN_SECONDS
                 done, row = self.service(self.answer, summary["questions"])
@@ -253,7 +376,9 @@ class Driver:
                 looks += 1
             if now["area6E1B"] == dest_id and now["script49F2"] == dest_id:
                 with self.target() as target:
-                    verdict = self.ft.legality(target, engine.area_by_id(other_area(dest_id)))
+                    other = engine.area_by_id(
+                        other_area(dest_id, self.game.title), self.game.title)
+                    verdict = self.ft.legality(target, other)
                 self.log("arrival-check", tag=tag, legality=bool(verdict),
                          reason=verdict.reason, **now)
                 if verdict:
@@ -265,12 +390,68 @@ class Driver:
         """The legs in order, stopping at the first that does not arrive."""
         try:
             for index, dest in enumerate(legs):
-                self.results.append(self.trip(dest, f"t{index}-to{dest}"))
+                self.results.append(self.trip(dest, f"t{index}-to{dest}", leg=index))
                 if self.results[-1]["result"] != "arrived":
                     break
         finally:
             self.ft.cancel_pending()
         return self.results
+
+
+def stage_title(key: str, S, slot, disks: pathlib.Path, save: pathlib.Path) -> tuple[str, type]:
+    """Copy the title's sides and the save into the slot; the image to boot and the session class."""
+    if key == POOL_KEY:
+        boot = S.stage_disks(slot, disks)
+        S.stage_writable(save, pathlib.Path(slot.dir) / "SIDE0.D64")
+        session_class = S.Session
+    elif key == "curse-of-the-azure-bonds":
+        from tools.curse_of_the_azure_bonds import curserun  # noqa: PLC0415
+        boot = curserun.stage(slot, str(disks), str(save))
+        session_class = curserun.CurseSession
+    else:
+        from tools.secret_of_the_silver_blades import ssbsession  # noqa: PLC0415
+        boot = ssbsession.stage(slot, str(disks), str(save))
+        session_class = ssbsession.silver_session_class()
+    for image in pathlib.Path(slot.dir).glob("*.D64"):
+        os.chmod(image, 0o644)
+    return boot, session_class
+
+
+def bring_up(key: str, sess, disks: pathlib.Path, out: pathlib.Path, log: Log) -> None:
+    """Boot, load the save and reach the world bar, the way each title's own driver does."""
+    def shot(tag: str) -> None:
+        sess.kbd.screenshot(str(out / f"{tag}.png"))
+
+    if not sess.boot():
+        raise DriverError("boot failed")
+    if key == POOL_KEY:
+        if not sess.load_save():
+            raise DriverError("the game did not accept the save")
+        if not sess.select_row("BEGIN ADVENTURING"):
+            raise DriverError("BEGIN ADVENTURING was not selected")
+        if not sess.wait_for_world(timeout=240):
+            raise DriverError("the world bar never came up")
+    elif key == "curse-of-the-azure-bonds":
+        from tools.curse_of_the_azure_bonds import curseload  # noqa: PLC0415
+        outcome = curseload.load_saved_game(
+            sess, note=lambda **kw: log("load", **kw), shot=shot, wait=240)
+        if outcome != "loaded":
+            raise DriverError(f"the game did not accept the save: {outcome}")
+        sess.patch_disk_prompt()
+        addr = curseload.Addresses(sess.game, str(disks))
+        if not curseload.enter_world(sess, addr, timeout=600):
+            raise DriverError("the world was never reached")
+        curseload.clear_messages(sess)
+    else:
+        from tools.secret_of_the_silver_blades import ssbsession  # noqa: PLC0415
+        if not ssbsession.load_party(sess):
+            raise DriverError("the game did not accept the save")
+        addr = ssbsession.Addresses(sess.game, str(disks))
+        if not ssbsession.enter_world(sess, addr, timeout=600):
+            raise DriverError("the world was never reached")
+        if "ENCAMP" not in ssbsession.clear_messages(sess):
+            raise DriverError("the world bar never came up")
+    sess.settle(4)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -280,23 +461,38 @@ def main(argv: list[str] | None = None) -> int:
     from wish.backends import ViceTarget  # noqa: PLC0415
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--save", required=True, help="a Pool of Radiance save disk image")
+    parser.add_argument("--title", default=POOL_KEY, choices=TITLE_KEYS,
+                        help="the game to travel in")
+    parser.add_argument("--save", required=True, help="a save disk image of that game")
+    parser.add_argument("--peek", action="append", default=[], metavar="ADDR[:LEN]",
+                        help="hex bytes to log before and after each leg; repeatable")
+    parser.add_argument("--stage", action="append", default=[], metavar="N:ADDR=VALUE",
+                        help="write one byte before leg N (from 0); repeatable")
     parser.add_argument("--to", type=int, action="append", required=True,
                         help="a destination area id; repeat for each further leg")
     parser.add_argument("--answer", help="a bar word to select when the game asks, e.g. YES")
     parser.add_argument("--budget", type=float, default=BUDGET_SECONDS,
                         help="seconds each leg may take")
-    parser.add_argument("--disks", help="the folder of POOL1.D64 to POOL8.D64")
+    parser.add_argument("--disks", help="the folder of the title's disk images")
     parser.add_argument("--slot", type=int, default=None,
                         help="a specific instance-pool slot; otherwise the next free one")
     parser.add_argument("--out", help="directory for the log and screenshots")
     args = parser.parse_args(argv)
+    game = container_for(args.title)
     for dest in args.to:
-        if engine.area_by_id(dest) is None:
-            parser.error(f"--to {dest} is not an area of Pool of Radiance")
-    disks = pathlib.Path(args.disks) if args.disks else tool_disks()
+        if engine.area_by_id(dest, game.title) is None:
+            parser.error(f"--to {dest} is not an area of {game.title}")
+    try:
+        peeks = [parse_peek(text) for text in args.peek]
+        stages = [parse_stage(text) for text in args.stage]
+    except DriverError as exc:
+        parser.error(str(exc))
+    for leg, _, _ in stages:
+        if leg >= len(args.to):
+            parser.error(f"--stage names leg {leg} but there are {len(args.to)} legs")
+    disks = pathlib.Path(args.disks) if args.disks else tool_disks(game)
     if disks is None:
-        parser.error("no Pool of Radiance disks; pass --disks or set POR_DISKS")
+        parser.error(f"no {game.title} disks; pass --disks or set POR_DISKS")
     os.environ.setdefault("POR_HEADLESS", "1")
     out = scratch.ensure(args.out or scratch.cache_dir(
         "fasttravel", time.strftime("%Y%m%d-%H%M%S")))
@@ -308,26 +504,19 @@ def main(argv: list[str] | None = None) -> int:
         with open(out / "run.jsonl", "w") as stream:
             log = Log(stream, time.monotonic)
             try:
-                boot = S.stage_disks(slot, disks)
-                S.stage_writable(pathlib.Path(args.save), pathlib.Path(slot.dir) / "SIDE0.D64")
-                for image in pathlib.Path(slot.dir).glob("*.D64"):
-                    os.chmod(image, 0o644)
-                sess = S.Session(boot, slot=slot)
-                if not sess.boot():
-                    raise DriverError("boot failed")
-                if not sess.load_save():
-                    raise DriverError("the game did not accept the save")
-                if not sess.select_row("BEGIN ADVENTURING"):
-                    raise DriverError("BEGIN ADVENTURING was not selected")
-                if not sess.wait_for_world(timeout=240):
-                    raise DriverError("the world bar never came up")
-                sess.settle(4)
-                driver = Driver(sess, lambda: ViceTarget(port=sess.mon_port),
-                                engine.FastTravel(), out, log, answer=args.answer,
-                                budget=args.budget)
-                driver.shot("0-start")
-                driver.run(args.to)
-                driver.shot("final")
+                boot, session_class = stage_title(
+                    args.title, S, slot, disks, pathlib.Path(args.save))
+                sess = session_class(boot, slot=slot)
+                with sess.watching_dialogs() if args.title != POOL_KEY \
+                        else contextlib.nullcontext():
+                    bring_up(args.title, sess, disks, out, log)
+                    driver = Driver(sess, lambda: ViceTarget(port=sess.mon_port),
+                                    engine.FastTravel(game), out, log, answer=args.answer,
+                                    budget=args.budget, game=game, peeks=peeks,
+                                    stages=stages)
+                    driver.shot("0-start")
+                    driver.run(args.to)
+                    driver.shot("final")
             except Exception as exc:
                 # The failure is on record in the log before the slot goes away.
                 log("error", error=repr(exc))

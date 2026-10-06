@@ -84,13 +84,18 @@ class Memory:
     def __init__(self, clock, area_at, script_at):
         self.clock, self.area_at, self.script_at = clock, area_at, script_at
         self.writes, self.closed = [], 0
+        #: Bytes by address for what the arrival bytes do not cover; the rest read as zero.
+        self.other = {}
 
     def read(self, addr, length):
-        value = {0x6E1B: self.area_at, 0x49F2: self.script_at}[addr](self.clock.now)
-        return bytes([value]) * length
+        if addr in self.other:
+            return bytes([self.other[addr]]) * length
+        slot = {0x6E1B: self.area_at, 0x49F2: self.script_at}.get(addr)
+        return bytes([slot(self.clock.now) if slot else 0]) * length
 
     def write(self, addr, data):
         self.writes.append((addr, bytes(data)))
+        self.other[addr] = data[0]
 
     def close(self):
         self.closed += 1
@@ -146,8 +151,19 @@ def _out_dir(tmp_path):
     _OUT["dir"] = tmp_path
 
 
+class Member:
+    def __init__(self, name):
+        self.name = name
+
+
+class Party:
+    def __init__(self, *names):
+        self.members = [Member(n) for n in names]
+
+
 def build(screen_at=lambda t: Screen(), area_at=None, script_at=None, answer=None,
-          budget=60.0, connect=None, **ft_kw):
+          budget=60.0, connect=None, party_at=lambda t: None, game=None, peeks=None,
+          stages=None, **ft_kw):
     clock = Clock()
     memory = Memory(clock, area_at or (lambda t: 7 if t < 1 else 18),
                     script_at or (lambda t: 7 if t < 1 else 18))
@@ -156,7 +172,8 @@ def build(screen_at=lambda t: Screen(), area_at=None, script_at=None, answer=Non
     stream = io.StringIO()
     log = ftr.Log(stream, clock)
     drv = ftr.Driver(sess, connect or (lambda: memory), ft, _OUT["dir"], log, answer=answer,
-                     sleep=clock.sleep, clock=clock, budget=budget)
+                     sleep=clock.sleep, clock=clock, budget=budget, game=game, peeks=peeks,
+                     stages=stages, party_reader=lambda target, game: party_at(clock.now))
     return drv, sess, ft, memory, clock, stream
 
 
@@ -389,3 +406,131 @@ def test_main_logs_a_failure_and_still_releases_the_slot(tmp_path, monkeypatch, 
     logged = [json.loads(x) for x in (tmp_path / "out" / "run.jsonl").read_text().splitlines()]
     assert logged[-1]["event"] == "error" and "no disks staged" in logged[-1]["error"]
     assert slot.released and slot.torn
+
+
+def walking(*areas):
+    """An `area_at` that shows each area for one second, in order, then the last."""
+    return lambda t: areas[min(int(t), len(areas) - 1)]
+
+
+def test_areas_seen_records_every_area_change_between_screen_looks():
+    # The middle area is on screen for under a second; the 2 s screen look never sees it.
+    drv, _, _, _, _, stream = build(
+        area_at=walking(13, 27, 0, 0), script_at=walking(13, 27, 0, 0))
+    result = drv.trip(0, "t")
+    assert result["result"] == "arrived"
+    assert result["areas_seen"] == [13, 27, 0]
+    assert [e["areas_seen"] for e in events(stream) if e["event"] == "areas-seen"] == [[13, 27, 0]]
+
+
+def test_areas_seen_drops_the_reload_bit_and_repeats():
+    drv, *_ = build(area_at=walking(7, 0x92, 18, 18), script_at=walking(7, 18, 18, 18))
+    assert drv.trip(18, "t")["areas_seen"] == [7, 18]
+
+
+def test_square_after_apply_is_logged():
+    drv, _, _, memory, _, stream = build()
+    memory.other.update({0xC04B: 4, 0xC04C: 5, 0xC04D: 6})
+    drv.trip(18, "t")
+    logged = [e for e in events(stream) if e["event"] == "square-after-apply"]
+    assert len(logged) == 1 and logged[0]["square"] is not None
+
+
+def test_peeks_are_logged_before_and_after_each_leg():
+    drv, _, _, memory, _, stream = build(peeks=[(0x4A62, 3), (0x4AA9, 1)])
+    memory.other[0x4AA9] = 9
+    drv.trip(18, "t")
+    peeks = [(e["when"], e["addr"], e["length"], e["bytes"])
+             for e in events(stream) if e["event"] == "peek"]
+    assert peeks == [("before", "$4A62", 3, "00 00 00"), ("before", "$4AA9", 1, "09"),
+                     ("after", "$4A62", 3, "00 00 00"), ("after", "$4AA9", 1, "09")]
+
+
+def test_party_names_are_logged_before_and_after_each_leg():
+    drv, _, _, _, _, stream = build(
+        party_at=lambda t: Party("ALIAS", "DRAGONBAIT") if t < 1 else Party("ALIAS"))
+    drv.trip(18, "t")
+    party = [(e["when"], e["names"]) for e in events(stream) if e["event"] == "party"]
+    assert party == [("before", ["ALIAS", "DRAGONBAIT"]), ("after", ["ALIAS"])]
+
+
+def test_an_unreadable_party_is_logged_as_none():
+    drv, _, _, _, _, stream = build()
+    drv.trip(18, "t")
+    assert [e["names"] for e in events(stream) if e["event"] == "party"] == [None, None]
+
+
+def test_stage_is_written_before_its_leg_only_and_logged_with_a_read_back():
+    drv, _, ft, memory, _, stream = build(stages=[(1, 0x4AA9, 1)])
+    drv.run([18, 2])
+    staged = [e for e in events(stream) if e["event"] == "stage"]
+    assert [(e["tag"], e["addr"], e["was"], e["value"], e["read_back"]) for e in staged] == [
+        ("t1-to2", "$4AA9", 0, 1, 1)]
+    assert memory.writes == [(0x4AA9, b"\x01")]
+    log = [e["event"] for e in events(stream)]
+    assert log.index("stage") < len(log) - log[::-1].index("apply")
+
+
+def test_stage_goes_through_the_generator_guard():
+    drv, *_ = build(stages=[(0, 0x03C4, 1)])
+    with pytest.raises(ftr.DriverError):
+        drv.trip(18, "t")
+
+
+def test_stage_and_peek_arguments_parse():
+    assert ftr.parse_peek("4A62:3") == (0x4A62, 3)
+    assert ftr.parse_peek("$C059:2") == (0xC059, 2)
+    assert ftr.parse_peek("4AA9") == (0x4AA9, 1)
+    assert ftr.parse_stage("1:4AA9=1") == (1, 0x4AA9, 1)
+    assert ftr.parse_stage("0:$4C5B=255") == (0, 0x4C5B, 255)
+    assert ftr.parse_stage("2:4CD9=$FF") == (2, 0x4CD9, 255)
+    for bad in ("4AA9=1", "1:4AA9=256", "1:4AA9", "1:03C4=1", "x:4AA9=1"):
+        with pytest.raises(ftr.DriverError):
+            ftr.parse_stage(bad)
+
+
+def test_title_picks_the_addresses_the_table_and_the_other_area():
+    from goldbox import c64_save
+    silver = c64_save.SECRET_OF_THE_SILVER_BLADES
+    memory_area = {0x7F1B: lambda t: 0x10 if t < 1 else 0x20,
+                   0x4BF2: lambda t: 0x10 if t < 1 else 0x20}
+    clock = Clock()
+    memory = Memory(clock, memory_area[0x7F1B], memory_area[0x4BF2])
+    memory.read = lambda addr, length, real=memory.read: (
+        bytes([memory_area[addr](clock.now)]) * length if addr in memory_area
+        else real(addr, length))
+    stream = io.StringIO()
+    ft = FakeFastTravel(clock, memory)
+    drv = ftr.Driver(Session(clock, lambda t: Screen()), lambda: memory, ft, _OUT["dir"],
+                     ftr.Log(stream, clock), sleep=clock.sleep, clock=clock, budget=60.0,
+                     game=silver, party_reader=lambda target, game: None)
+    result = drv.trip(0x20, "t")
+    assert result["result"] == "arrived" and result["areas_seen"] == [0x10, 0x20]
+    assert [e["area6E1B"] for e in events(stream) if e["event"] == "pre-apply"] == [0x10]
+    assert engine.area_by_id(ftr.other_area(0x20, silver.title), silver.title) is not None
+    assert ftr.other_area(0x20, silver.title) != 0x20
+
+
+def test_a_title_has_a_container_and_an_unknown_one_is_an_error():
+    assert ftr.container_for("curse-of-the-azure-bonds").key == "curse-of-the-azure-bonds"
+    with pytest.raises(ftr.DriverError):
+        ftr.container_for("champions-of-krynn")
+
+
+def test_a_destination_is_checked_against_the_chosen_titles_table():
+    # Area 9999 is in no title; the usage error names the title picked.
+    with pytest.raises(SystemExit) as exc:
+        ftr.main(["--title", "secret-of-the-silver-blades", "--save", "x.D64", "--to", "9999"])
+    assert exc.value.code == 2
+
+
+def test_a_stage_for_a_leg_that_does_not_exist_is_a_usage_error():
+    with pytest.raises(SystemExit) as exc:
+        ftr.main(["--save", "x.D64", "--to", "18", "--stage", "1:4AA9=1"])
+    assert exc.value.code == 2
+
+
+def test_stage_on_the_generator_is_a_usage_error():
+    with pytest.raises(SystemExit) as exc:
+        ftr.main(["--save", "x.D64", "--to", "18", "--stage", "0:03C4=1"])
+    assert exc.value.code == 2
