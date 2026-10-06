@@ -6,15 +6,20 @@ artifact that `.github/workflows/release.yml` builds for a pushed SHA.  This
 fetches it with `gh`, copies it to `C:\\Amiga\\wish\\<sha>\\`, starts `wish.exe`
 through an Interactive scheduled task (an ssh login is session 0 and cannot show a
 window; see `winuae.ps1`), grabs the Wish window, stops and restarts it, and brings
-the debug log back.  WinUAE itself is started through `winuaesession.WinGuest`, so
+the debug log back.  `up` without `--df0` starts no WinUAE but still takes every lane.
+WinUAE itself is started through `winuaesession.WinGuest`, so
 the lane claim, the audio proof and the receipts are the ones every other WinUAE
 run uses.
 
     winwish.py fetch  --sha SHA
-    winwish.py up     --sha SHA --holder H --mute-proof FILE --df0 C:\\Amiga\\Disks\\a.adf
+    winwish.py up     --sha SHA --holder H --mute-proof FILE [--df0 C:\\Amiga\\Disks\\a.adf]
+    winwish.py stage-save --holder H --save LOCAL --folder REL
+    winwish.py start  --holder H [--open GUEST_PATH] [--reseed]
     winwish.py shot   --holder H --window wish --out wish.png
     winwish.py restart --holder H
     winwish.py click  --holder H --automation-id card_1_level_up
+    winwish.py click  --holder H --expand Save
+    winwish.py display --holder H (--read | --set 1920x1080 --scale 150 | --restore) --out FILE
     winwish.py log    --holder H --out DIR
     winwish.py down   --holder H
 
@@ -68,6 +73,8 @@ SHA = re.compile(r"^[0-9a-fA-F]{7,40}$")
 CALL_SECONDS = 60.0
 COPY_SECONDS = 300.0
 START_SECONDS = 45
+#: Seconds for a display change, which waits for the new mode to settle twice.
+DISPLAY_SECONDS = 60.0
 
 
 class WinwishError(RuntimeError):
@@ -192,18 +199,27 @@ def mkdir_script(path: str) -> str:
     ])
 
 
-def _task_body(env: dict[str, str], build: str, flag: bool) -> str:
+def open_argument(path: str) -> str:
+    """`path` as the one argument Wish opens: in embedded double quotes so spaces survive."""
+    if not path or '"' in path or "\n" in path or "\r" in path:
+        raise WinwishError(f"not a path Wish can be opened with: {path!r}")
+    return f'"{path}"'
+
+
+def _task_body(env: dict[str, str], build: str, flag: bool, open_path: str | None = None) -> str:
     """What the task runs in session 1: set the environment, start Wish, wait for it.
 
     `Start-Process -Wait` because `&` returns at once for a GUI program, which would
-    end the task while Wish was still up.
+    end the task while Wish was still up.  With `open_path`, Wish gets that save as
+    its positional argument and opens on the editor tab.
     """
     lines = [f"Remove-Item Env:{k} -ErrorAction SilentlyContinue" for k in CLEARED]
     if not flag:
         lines.append(f"Remove-Item Env:{FLAG} -ErrorAction SilentlyContinue")
     lines += [f"$env:{k} = {q(v)}" for k, v in env.items()]
     lines += [f"$exe = Get-ChildItem -LiteralPath {q(build)} -Recurse -Filter wish.exe | Select-Object -First 1",
-              "Start-Process -Wait -FilePath $exe.FullName -WorkingDirectory $exe.DirectoryName"]
+              "Start-Process -Wait -FilePath $exe.FullName -WorkingDirectory $exe.DirectoryName"
+              + (f" -ArgumentList {q(open_argument(open_path))}, '--tab', 'editor'" if open_path else "")]
     return "\n".join(lines)
 
 
@@ -258,7 +274,7 @@ def window_probe(out: str, build: str) -> str:
 
 def start_script(holder: str, env: dict[str, str], wait: int = START_SECONDS,
                  disks: tuple[str, ...] = (), game: str | None = None,
-                 reseed: bool = True) -> str:
+                 reseed: bool = True, open_path: str | None = None) -> str:
     """Seed the private settings, start `wish.exe` in session 1, wait for its window.
 
     The reply is `ok pid=N session=S window=H` or `fail ...`.  Session 0 is a
@@ -269,14 +285,15 @@ def start_script(holder: str, env: dict[str, str], wait: int = START_SECONDS,
     `disks` are ADFs already on the guest; they are copied into `disks_dir` and, with
     `game`, the settings point that title's folder there.  A start with `reseed`
     false (`start`, `restart`) leaves the settings of an earlier `up` in place and
-    writes them only when there are none.
+    writes them only when there are none.  `open_path` is a save already on the guest
+    that Wish opens on its editor tab.
 
     The match assumes the title starts with "Wish": `WishWindow.setWindowTitle` and
     `wish/window.py`'s `_retitle` give "Wish" plus an optional " [logging]", and nothing
     calls `_retitle` with another base.
     """
     build, run = build_root(holder), run_dir(holder)
-    body = winvmguest.encode_powershell(_task_body(env, build, FLAG in env))
+    body = winvmguest.encode_powershell(_task_body(env, build, FLAG in env, open_path))
     args = f"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand {body}"
     probe_out = rf"{run}\windows.txt"
     folder = disks_dir(holder)
@@ -527,9 +544,53 @@ def msaa_line(row: str) -> tuple[str, str]:
     return kind, f"{kind}|{name}|{value}|enabled={not bits & 1}|checked={bool(bits & 16)} (MSAA)"
 
 
+def _expand_function() -> list[str]:
+    """The only way `click --expand` touches a control; no `Invoke` is reachable from it."""
+    return [
+        "  function Use-Control($e) {",
+        "    $o = $null",
+        "    if ($e.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern, [ref]$o)) { $o.Expand(); return 'expanded' }",
+        "    throw 'the control cannot be expanded'",
+        "  }",
+    ]
+
+
+def _use_functions() -> list[str]:
+    """How `click` uses a control: invoke, select, toggle, expand or close, in that order."""
+    return [
+        # `Invoke` on an item that opens a modal dialog does not return until the dialog
+        # closes, which would hold this task until it was killed; so it runs on its own
+        # thread, and a call still running after a moment is reported rather than waited for.
+        "  function Start-Async($pattern) {",
+        "    $ps = [PowerShell]::Create()",
+        "    [void]$ps.AddScript('param($p) $p.Invoke()').AddArgument($pattern)",
+        "    $handle = $ps.BeginInvoke()",
+        "    Start-Sleep -Milliseconds 400",
+        "    if (-not $handle.IsCompleted) { return 'invoked (still running: modal?)' }",
+        "    try {",
+        "      [void]$ps.EndInvoke($handle)",
+        "      if ($ps.HadErrors) { throw ($ps.Streams.Error | Select-Object -First 1).ToString() }",
+        "    } finally { $ps.Dispose() }",
+        "    return 'invoked'",
+        "  }",
+        "  function Use-Control($e) {",
+        "    $o = $null",
+        # A menu opens by Expand; Invoke on a menu bar item does not show its popup.
+        "    if ((Get-Kind $e) -eq 'MenuItem' -and $e.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern, [ref]$o)) { $o.Expand(); return 'expanded' }",
+        "    if ($e.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$o)) { return (Start-Async $o) }",
+        "    if ($e.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$o)) { $o.Select(); return 'selected' }",
+        "    if ($e.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$o)) { $o.Toggle(); return 'toggled' }",
+        "    if ($e.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern, [ref]$o)) { $o.Expand(); return 'expanded' }",
+        # A dialog has no button of its own in the tree to some builds; closing its window is the exit.
+        "    if ($e.TryGetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern, [ref]$o)) { $o.Close(); return 'closed' }",
+        "    throw 'the control offers no way to be clicked'",
+        "  }",
+    ]
+
 
 def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, out: str,
-             prefix: bool = False, automation_id: str | None = None) -> str:
+             prefix: bool = False, automation_id: str | None = None,
+             expand: bool = False) -> str:
     """What the session 1 task runs: list the controls of this holder's Wish, or click some.
 
     `action` is `controls` (one line per control: `Type|Name|AutomationId|enabled=B|state`,
@@ -542,7 +603,10 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
     `prefix`, a prefix match is tried once the wait has run out.  The line reports the
     control's full name.  A disabled control is never invoked, because `Invoke` on one
     returns without an error; but a control under a modal dialog can still read enabled,
-    so a click that the dialog swallows is not an error.  Every top-level window of
+    so a click that the dialog swallows is not an error.  With `expand`, a `click` only
+    uses `ExpandCollapsePattern`, so a split button opens its menu and is not invoked;
+    a control without it fails with "the control cannot be expanded", and the script
+    carries no code that invokes anything.  Every top-level window of
     every `wish.exe` under `build` is searched, so an open menu or dialog is found.
     UI Automation shows a modal dialog with no children; `controls` then reads that
     window through MSAA, whose lines read `Type|Name|Value|state=N`.  The answer is
@@ -553,6 +617,8 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
     by_id = automation_id is not None
     if by_id and names != (automation_id,):
         raise WinwishError("an automation id is clicked alone")
+    if expand and action != "click":
+        raise WinwishError("only a click can expand")
     return "\n".join([
         "$ErrorActionPreference = 'Stop'",
         f"$build = {q(build)}",
@@ -591,33 +657,7 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
         "    return ''",
         "  }",
         "  function Get-Line($e) { return ((Get-Kind $e) + '|' + $e.Current.Name + '|' + $e.Current.AutomationId + '|enabled=' + $e.Current.IsEnabled + '|' + (Get-State $e)) }",
-        # `Invoke` on an item that opens a modal dialog does not return until the dialog
-        # closes, which would hold this task until it was killed; so it runs on its own
-        # thread, and a call still running after a moment is reported rather than waited for.
-        "  function Start-Async($pattern) {",
-        "    $ps = [PowerShell]::Create()",
-        "    [void]$ps.AddScript('param($p) $p.Invoke()').AddArgument($pattern)",
-        "    $handle = $ps.BeginInvoke()",
-        "    Start-Sleep -Milliseconds 400",
-        "    if (-not $handle.IsCompleted) { return 'invoked (still running: modal?)' }",
-        "    try {",
-        "      [void]$ps.EndInvoke($handle)",
-        "      if ($ps.HadErrors) { throw ($ps.Streams.Error | Select-Object -First 1).ToString() }",
-        "    } finally { $ps.Dispose() }",
-        "    return 'invoked'",
-        "  }",
-        "  function Use-Control($e) {",
-        "    $o = $null",
-        # A menu opens by Expand; Invoke on a menu bar item does not show its popup.
-        "    if ((Get-Kind $e) -eq 'MenuItem' -and $e.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern, [ref]$o)) { $o.Expand(); return 'expanded' }",
-        "    if ($e.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$o)) { return (Start-Async $o) }",
-        "    if ($e.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$o)) { $o.Select(); return 'selected' }",
-        "    if ($e.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$o)) { $o.Toggle(); return 'toggled' }",
-        "    if ($e.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern, [ref]$o)) { $o.Expand(); return 'expanded' }",
-        # A dialog has no button of its own in the tree to some builds; closing its window is the exit.
-        "    if ($e.TryGetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern, [ref]$o)) { $o.Close(); return 'closed' }",
-        "    throw 'the control offers no way to be clicked'",
-        "  }",
+        *(_expand_function() if expand else _use_functions()),
         f"  if ({q(action)} -eq 'close') {{",
         "    if ($procs.Count -eq 0) { [void]$lines.Add('gone') } else {",
         "      $ids = @($procs | ForEach-Object { $_.Id })",
@@ -746,22 +786,17 @@ def ui_lines(text: str, kind: str | None = None) -> list[str]:
     return lines
 
 
-def ui(guest: "Guest", holder: str, action: str, names: tuple[str, ...] = (),
-       kind: str | None = None, prefix: bool = False,
-       automation_id: str | None = None) -> list[str]:
-    """List Wish's controls (`controls`), click `names` in turn or the one control with
-    `automation_id` (`click`), or close Wish's windows (`close`)."""
-    if automation_id is not None:
-        if names:
-            raise WinwishError("give an automation id or names, not both")
-        names = (automation_id,)
-    if len(names) > UI_MAX_NAMES:
-        raise WinwishError(f"click at most {UI_MAX_NAMES} names at once, not {len(names)}")
+def session_one(guest: "Guest", holder: str, make_inner: Callable[[str], str],
+                timeout: float, kind: str | None = None) -> list[str]:
+    """Run a script in session 1 and return the lines after its `ok`.
+
+    `make_inner` is given the guest path the script must write its answer to.  The
+    script is put on the guest as a file and run by a task, because session 0 cannot
+    see or change the console's desktop.
+    """
     guest.holds_lane(holder)
     token = secrets.token_hex(6)
-    timeout = ui_timeout(len(names), action)
-    inner = ui_inner(build_root(holder), action, names, kind,
-                     rf"C:\Users\Public\wish-ui-{token}.txt", prefix, automation_id)
+    inner = make_inner(rf"C:\Users\Public\wish-ui-{token}.txt")
     answered = False
     try:
         with tempfile.TemporaryDirectory() as tmp:
@@ -778,6 +813,358 @@ def ui(guest: "Guest", holder: str, action: str, names: tuple[str, ...] = (),
             # landed and a script that never did.
             _quietly(guest.ps, "Remove-Item -LiteralPath "
                      f"{q(ui_file(token))} -Force -ErrorAction SilentlyContinue\n'ok'")
+
+
+def ui(guest: "Guest", holder: str, action: str, names: tuple[str, ...] = (),
+       kind: str | None = None, prefix: bool = False,
+       automation_id: str | None = None, expand: bool = False) -> list[str]:
+    """List Wish's controls (`controls`), click `names` in turn or the one control with
+    `automation_id` (`click`, or open its menu with `expand`), or close Wish's windows (`close`)."""
+    if automation_id is not None:
+        if names:
+            raise WinwishError("give an automation id or names, not both")
+        names = (automation_id,)
+    if len(names) > UI_MAX_NAMES:
+        raise WinwishError(f"click at most {UI_MAX_NAMES} names at once, not {len(names)}")
+    return session_one(
+        guest, holder,
+        lambda out: ui_inner(build_root(holder), action, names, kind, out, prefix,
+                             automation_id, expand),
+        ui_timeout(len(names), action), kind)
+
+
+# -- the guest's display ---------------------------------------------------------
+
+#: The percentages Windows offers in its scale list, in order; the Settings app and
+#: `DisplayConfigGetDeviceInfo` count steps along it, 100 % being step 0.
+SCALES = (100, 125, 150, 175, 200, 225, 250, 300, 350, 400, 450, 500)
+MODE = re.compile(r"^(\d{3,5})x(\d{3,5})$")
+DISPLAY_ACTIONS = ("read", "set", "restore", "sidecar")
+
+#: Win32 and CCD calls for the display, from one compiled type.  The scale calls are
+#: the undocumented `DisplayConfigGetDeviceInfo` type -3 (32 bytes) and
+#: `DisplayConfigSetDeviceInfo` type -4 (24 bytes) that the Settings app uses; the
+#: structures are plain byte buffers, so no layout is declared that Windows could
+#: disagree with.
+DISPLAY_CODE = r"""
+using System; using System.Runtime.InteropServices; using System.Text;
+public class WishDisp {
+  [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
+  public struct DEVMODE {
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst=32)] public string dmDeviceName;
+    public ushort dmSpecVersion, dmDriverVersion, dmSize, dmDriverExtra;
+    public uint dmFields;
+    public int dmPositionX, dmPositionY;
+    public uint dmDisplayOrientation, dmDisplayFixedOutput;
+    public short dmColor, dmDuplex, dmYResolution, dmTTOption, dmCollate;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst=32)] public string dmFormName;
+    public ushort dmLogPixels;
+    public uint dmBitsPerPel, dmPelsWidth, dmPelsHeight, dmDisplayFlags, dmDisplayFrequency,
+      dmICMMethod, dmICMIntent, dmMediaType, dmDitherType, dmReserved1, dmReserved2,
+      dmPanningWidth, dmPanningHeight;
+  }
+  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
+  [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern bool EnumDisplaySettingsW(string dev, int mode, ref DEVMODE dm);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int ChangeDisplaySettingsExW(string dev, ref DEVMODE dm, IntPtr hwnd, uint flags, IntPtr lp);
+  [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr c);
+  [DllImport("user32.dll")] static extern IntPtr MonitorFromPoint(POINT p, uint flags);
+  [DllImport("shcore.dll")] static extern int GetDpiForMonitor(IntPtr m, int type, out uint x, out uint y);
+  [DllImport("user32.dll")] static extern uint GetDpiForWindow(IntPtr h);
+  [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
+  [DllImport("user32.dll", EntryPoint="SystemParametersInfoW")] static extern bool SpiBytes(uint a, uint b, byte[] p, uint f);
+  [DllImport("user32.dll", EntryPoint="SystemParametersInfoW")] static extern bool SpiRect(uint a, uint b, out RECT p, uint f);
+  [DllImport("user32.dll")] static extern int GetDisplayConfigBufferSizes(uint f, out uint np, out uint nm);
+  [DllImport("user32.dll")] static extern int QueryDisplayConfig(uint f, ref uint np, byte[] paths, ref uint nm, byte[] modes, IntPtr topo);
+  [DllImport("user32.dll")] static extern int DisplayConfigGetDeviceInfo(byte[] p);
+  [DllImport("user32.dll")] static extern int DisplayConfigSetDeviceInfo(byte[] p);
+
+  public static void Aware() { SetProcessDpiAwarenessContext(new IntPtr(-4)); }
+  static DEVMODE Dm() { var d = new DEVMODE(); d.dmSize = (ushort)Marshal.SizeOf(typeof(DEVMODE)); return d; }
+
+  // Mode(-1) is the current mode; Mode(n) the nth offered one, or null past the last.
+  public static int[] Mode(int index) {
+    var d = Dm();
+    if (!EnumDisplaySettingsW(null, index, ref d)) return null;
+    return new int[] { (int)d.dmPelsWidth, (int)d.dmPelsHeight, (int)d.dmBitsPerPel, (int)d.dmDisplayFrequency };
+  }
+
+  // The mode of this size nearest the current bit depth and refresh rate, applied
+  // dynamically: CDS flags 0 writes nothing to the registry.
+  public static int SetMode(int w, int h) {
+    var cur = Dm(); EnumDisplaySettingsW(null, -1, ref cur);
+    var best = Dm(); int bestScore = -1;
+    for (int i = 0; ; i++) {
+      var d = Dm();
+      if (!EnumDisplaySettingsW(null, i, ref d)) break;
+      if (d.dmPelsWidth != (uint)w || d.dmPelsHeight != (uint)h) continue;
+      int score = (d.dmBitsPerPel == cur.dmBitsPerPel ? 2 : 0) + (d.dmDisplayFrequency == cur.dmDisplayFrequency ? 1 : 0);
+      if (score > bestScore) { best = d; bestScore = score; }
+    }
+    if (bestScore < 0) return -100;
+    best.dmFields = 0x80000 | 0x100000 | 0x40000 | 0x400000;
+    return ChangeDisplaySettingsExW(null, ref best, IntPtr.Zero, 0, IntPtr.Zero);
+  }
+
+  static byte[] Header(int type, int size) {
+    uint np, nm;
+    if (GetDisplayConfigBufferSizes(2, out np, out nm) != 0) throw new Exception("GetDisplayConfigBufferSizes failed");
+    var paths = new byte[np * 72]; var modes = new byte[nm * 64];
+    if (QueryDisplayConfig(2, ref np, paths, ref nm, modes, IntPtr.Zero) != 0 || np == 0) throw new Exception("QueryDisplayConfig found no active path");
+    var p = new byte[size];
+    BitConverter.GetBytes(type).CopyTo(p, 0);
+    BitConverter.GetBytes(size).CopyTo(p, 4);
+    Array.Copy(paths, 0, p, 8, 8);
+    Array.Copy(paths, 8, p, 16, 4);
+    return p;
+  }
+  public static int[] ScaleRange() {
+    var p = Header(-3, 32);
+    int rc = DisplayConfigGetDeviceInfo(p);
+    if (rc != 0) throw new Exception("DisplayConfigGetDeviceInfo returned " + rc);
+    return new int[] { BitConverter.ToInt32(p, 20), BitConverter.ToInt32(p, 24), BitConverter.ToInt32(p, 28) };
+  }
+  public static int SetScale(int rel) {
+    var p = Header(-4, 24);
+    BitConverter.GetBytes(rel).CopyTo(p, 20);
+    return DisplayConfigSetDeviceInfo(p);
+  }
+
+  public static uint MonitorDpi() { uint x, y; GetDpiForMonitor(MonitorFromPoint(new POINT(), 1), 0, out x, out y); return x; }
+  public static int[] WorkArea() { RECT r; SpiRect(48, 0, out r, 0); return new int[] { r.L, r.T, r.R, r.B }; }
+  // lfMessageFont of NONCLIENTMETRICS (504 bytes): the height at 408, the face name 28 bytes on.
+  public static string MessageFont() {
+    var b = new byte[504]; BitConverter.GetBytes(504).CopyTo(b, 0);
+    if (!SpiBytes(0x29, 504, b, 0)) return "|0";
+    var face = Encoding.Unicode.GetString(b, 408 + 28, 64);
+    int nul = face.IndexOf('\0'); if (nul >= 0) face = face.Substring(0, nul);
+    return face + "|" + BitConverter.ToInt32(b, 408);
+  }
+  public static int[] WindowRect(IntPtr h) { RECT r; GetWindowRect(h, out r); return new int[] { r.L, r.T, r.R, r.B }; }
+  public static uint WindowDpi(IntPtr h) { return GetDpiForWindow(h); }
+}
+"""
+
+
+def display_journal(holder: str) -> str:
+    """Where the guest's display, as it was before the first `display --set`, is kept."""
+    return rf"{run_dir(holder)}\display-original.json"
+
+
+def display_pending_script(holder: str) -> str:
+    """Say `ok journal` when a `display --set` left the display changed, else `ok none`."""
+    return "\n".join([
+        "$ErrorActionPreference = 'Stop'",
+        f"if (Test-Path -LiteralPath {q(display_journal(holder))}) {{ 'ok journal' }} else {{ 'ok none' }}",
+    ])
+
+
+#: The state of the display as one ordered table, which `ConvertTo-Json` prints.
+#: The scale may fail on a build that does not take the calls; that is recorded as an
+#: `error` so the rest of the read still comes back.
+DISPLAY_STATE = [
+    "  function Get-DisplayState {",
+    "    $m = [WishDisp]::Mode(-1)",
+    "    $modes = New-Object System.Collections.ArrayList",
+    "    for ($i = 0; $i -lt 2000; $i++) {",
+    "      $d = [WishDisp]::Mode($i)",
+    "      if (-not $d) { break }",
+    "      [void]$modes.Add([ordered]@{ w = $d[0]; h = $d[1]; bits = $d[2]; hz = $d[3] })",
+    "    }",
+    "    $a = [WishDisp]::WorkArea()",
+    f"    $scales = @({', '.join(str(n) for n in SCALES)})",
+    "    try {",
+    "      $sr = [WishDisp]::ScaleRange()",
+    "      $rec = [Math]::Abs($sr[0])",
+    "      $scale = [ordered]@{ percent = $scales[$rec + $sr[1]]; allowed = @($scales[0..($rec + $sr[2])]); "
+    "min_rel = $sr[0]; cur_rel = $sr[1]; max_rel = $sr[2] }",
+    "    } catch { $scale = [ordered]@{ error = $_.Exception.Message } }",
+    "    $ta = (Get-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Accessibility' -Name TextScaleFactor "
+    "-ErrorAction SilentlyContinue).TextScaleFactor",
+    "    if (-not $ta) { $ta = 100 }",
+    "    $f = ([WishDisp]::MessageFont()) -split '\\|'",
+    "    $cv = Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion'",
+    "    return [ordered]@{",
+    "      build = ('{0}.{1}' -f $cv.CurrentBuild, $cv.UBR)",
+    "      mode = [ordered]@{ width = $m[0]; height = $m[1]; bits = $m[2]; hz = $m[3] }",
+    "      modes = @($modes)",
+    "      work_area = [ordered]@{ left = $a[0]; top = $a[1]; right = $a[2]; bottom = $a[3] }",
+    "      scale = $scale",
+    "      dpi = [int][WishDisp]::MonitorDpi()",
+    "      text_scale = [int]$ta",
+    "      font = [ordered]@{ face = $f[0]; height = [int]$f[1] }",
+    "      observed_utc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')",
+    "    }",
+    "  }",
+    "  function ConvertTo-Line($x) { return ($x | ConvertTo-Json -Depth 6 -Compress) }",
+]
+
+#: Set the scale to `$pct` percent, or throw naming the percentages the mode allows.
+DISPLAY_SET_SCALE = [
+    "  function Set-Scale([int]$pct) {",
+    f"    $scales = @({', '.join(str(n) for n in SCALES)})",
+    "    $sr = [WishDisp]::ScaleRange()",
+    "    $rec = [Math]::Abs($sr[0])",
+    "    $at = [Array]::IndexOf($scales, $pct)",
+    "    if ($at -lt 0 -or $at -gt ($rec + $sr[2])) { "
+    "throw ('a scale of ' + $pct + '% is not allowed at this size; allowed: ' + (@($scales[0..($rec + $sr[2])]) -join ', ') + '%') }",
+    "    $rc = [WishDisp]::SetScale($at - $rec)",
+    "    if ($rc -ne 0) { throw ('DisplayConfigSetDeviceInfo returned ' + $rc) }",
+    "  }",
+    "  function Set-Size([int]$w, [int]$h) {",
+    "    $rc = [WishDisp]::SetMode($w, $h)",
+    "    if ($rc -ne 0) { throw ('ChangeDisplaySettingsEx returned ' + $rc + ' for ' + $w + 'x' + $h) }",
+    "  }",
+]
+
+
+def display_inner(holder: str, action: str, out: str, width: int = 0, height: int = 0,
+                  percent: int = 0) -> str:
+    """What the session 1 task runs to read, set or restore the display.
+
+    `read` prints the state as one JSON line, and `sidecar` adds the Wish window's
+    rectangle, DPI and executable hash.  `set` writes the state to the journal first
+    (unless an earlier `set` already did, so the journal always holds the original),
+    then changes the mode, then the scale, reads back and fails if either differs.
+    `restore` applies the journal's mode and scale, reads back, and deletes the
+    journal only when both match.  The answer is `ok` and the line, or one `fail ...`.
+    """
+    if action not in DISPLAY_ACTIONS:
+        raise WinwishError(f"not a display action: {action!r}")
+    tmp = out + ".tmp"
+    journal = display_journal(holder)
+    body: list[str]
+    if action == "read":
+        body = ["    $line = ConvertTo-Line (Get-DisplayState)"]
+    elif action == "sidecar":
+        body = [
+            "    $state = Get-DisplayState",
+            f"    $root = {q(run_dir(holder))}",
+            "    $w = Get-Process -Name wish -ErrorAction SilentlyContinue | "
+            "Where-Object { $_.Path -like \"$root\\*\" -and $_.MainWindowHandle -ne 0 } | Select-Object -First 1",
+            "    if ($w) {",
+            "      $r = [WishDisp]::WindowRect($w.MainWindowHandle)",
+            "      $state['wish'] = [ordered]@{ path = $w.Path; "
+            "sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $w.Path).Hash.ToLower(); "
+            "window = [ordered]@{ left = $r[0]; top = $r[1]; right = $r[2]; bottom = $r[3] }; "
+            "dpi = [int][WishDisp]::WindowDpi($w.MainWindowHandle) }",
+            "    } else { $state['wish'] = $null }",
+            "    $line = ConvertTo-Line $state",
+        ]
+    elif action == "set":
+        body = [
+            f"    $journal = {q(journal)}",
+            "    $before = Get-DisplayState",
+            # The original goes to disk before anything is changed, so a failure half way
+            # through still leaves what `restore` needs.
+            "    if (-not (Test-Path -LiteralPath $journal)) { "
+            "[IO.File]::WriteAllText($journal, (ConvertTo-Line $before), (New-Object Text.UTF8Encoding $false)) }",
+            f"    Set-Size {int(width)} {int(height)}",
+            "    Start-Sleep -Milliseconds 1500",
+            f"    Set-Scale {int(percent)}",
+            "    Start-Sleep -Milliseconds 1500",
+            "    $after = Get-DisplayState",
+            f"    if ($after.mode.width -ne {int(width)} -or $after.mode.height -ne {int(height)} -or $after.scale.percent -ne {int(percent)}) {{",
+            "      throw ('the display reads back ' + $after.mode.width + 'x' + $after.mode.height + ' at ' + $after.scale.percent + "
+            f"'%, not {int(width)}x{int(height)} at {int(percent)}%; offered sizes: ' + "
+            "((@($after.modes | ForEach-Object { '' + $_.w + 'x' + $_.h }) | Select-Object -Unique) -join ', ') + "
+            "'; allowed scales: ' + (@($after.scale.allowed) -join ', ') + '%')",
+            "    }",
+            "    $line = '{\"original\":' + (Get-Content -Raw -LiteralPath $journal).Trim() + ',\"after\":' + (ConvertTo-Line $after) + '}'",
+        ]
+    else:
+        body = [
+            f"    $journal = {q(journal)}",
+            "    if (-not (Test-Path -LiteralPath $journal)) { throw 'there is no display journal to restore' }",
+            "    $orig = Get-Content -Raw -LiteralPath $journal | ConvertFrom-Json",
+            "    Set-Size ([int]$orig.mode.width) ([int]$orig.mode.height)",
+            "    Start-Sleep -Milliseconds 1500",
+            "    if ($orig.scale.percent) { Set-Scale ([int]$orig.scale.percent); Start-Sleep -Milliseconds 1500 }",
+            "    $after = Get-DisplayState",
+            "    if ($after.mode.width -ne $orig.mode.width -or $after.mode.height -ne $orig.mode.height -or "
+            "($orig.scale.percent -and $after.scale.percent -ne $orig.scale.percent)) {",
+            "      throw ('the display reads back ' + $after.mode.width + 'x' + $after.mode.height + ' at ' + $after.scale.percent + "
+            "'%, not the recorded ' + $orig.mode.width + 'x' + $orig.mode.height + ' at ' + $orig.scale.percent + '%; the journal is kept')",
+            "    }",
+            "    Remove-Item -LiteralPath $journal -Force",
+            "    $line = '{\"restored\":' + (ConvertTo-Line $after) + '}'",
+        ]
+    return "\n".join([
+        "$ErrorActionPreference = 'Stop'",
+        "$lines = New-Object System.Collections.ArrayList",
+        "try {",
+        "  Add-Type -TypeDefinition @'",
+        *DISPLAY_CODE.strip().splitlines(),
+        "'@",
+        "  [WishDisp]::Aware()",
+        *DISPLAY_STATE,
+        *DISPLAY_SET_SCALE,
+        "  if ($true) {",
+        *body,
+        "    [void]$lines.Add($line)",
+        "  }",
+        "  $answer = @('ok') + $lines",
+        "} catch {",
+        "  $answer = @('fail ' + $_.Exception.Message)",
+        "}",
+        # ASCII only, as `ui_inner`: a non-ASCII character becomes a JSON `\u` escape.
+        "$answer = @($answer | ForEach-Object { [regex]::Replace($_, '[^\\x20-\\x7e]', "
+        "{ param($m) '\\u' + ([int][char]$m.Value).ToString('x4') }) })",
+        f"[IO.File]::WriteAllLines({q(tmp)}, [string[]]$answer)",
+        f"Move-Item -Force {q(tmp)} {q(out)}",
+        "[Environment]::Exit(0)",
+    ])
+
+
+def offered_sizes(state: dict[str, Any]) -> list[str]:
+    """The `WxH` sizes a display read lists, each once, smallest width first."""
+    seen = {(m["w"], m["h"]) for m in state.get("modes", [])}
+    return [f"{w}x{h}" for w, h in sorted(seen)]
+
+
+def display(guest: "Guest", holder: str, action: str, width: int = 0, height: int = 0,
+            percent: int = 0) -> dict[str, Any]:
+    """Run a display `action` in session 1 and return its JSON answer.
+
+    A `set` first reads the display and fails, before changing anything, when the
+    size is not one the guest offers or the percentage is not in `SCALES`.
+    """
+    if action == "set":
+        if percent not in SCALES:
+            raise WinwishError(f"a scale of {percent}% is not one Windows lists; "
+                               f"the list is {', '.join(str(n) for n in SCALES)}%")
+        offered = offered_sizes(display(guest, holder, "read"))
+        if f"{width}x{height}" not in offered:
+            raise WinwishError(f"{width}x{height} is not an offered mode; "
+                               f"offered: {', '.join(offered) or 'none'}")
+    lines = session_one(guest, holder,
+                        lambda out: display_inner(holder, action, out, width, height, percent),
+                        DISPLAY_SECONDS)
+    try:
+        return json.loads(lines[0])
+    except (IndexError, ValueError):
+        raise WinwishError(f"the display {action} answered with no JSON: {lines[:1]}") from None
+
+
+def restore_pending_display(guest: "Guest", holder: str) -> str:
+    """Put the display back when a `display --set` changed it; says what it did.
+
+    Only an exact `ok journal` from the guest counts, so a holder that never set the
+    display costs one cheap call and no session 1 task.
+    """
+    if guest.ps(display_pending_script(holder)).strip() != "ok journal":
+        return "ok unchanged"
+    display(guest, holder, "restore")
+    return "ok restored"
+
+
+def sidecar(guest: "Guest", holder: str, window: str, png: pathlib.Path) -> pathlib.Path:
+    """Write the display, DPI, font and Wish window beside `png` as `<png>.json`."""
+    state = display(guest, holder, "sidecar")
+    path = png.with_name(png.name + ".json")
+    path.write_text(json.dumps({"holder": holder, "window": window, "png": png.name, **state},
+                               indent=1) + "\n", encoding="utf-8")
+    return path
 
 
 # -- talking to the guest and to gh ------------------------------------------
@@ -921,6 +1308,59 @@ def stage(guest: Guest, holder: str, zipped: pathlib.Path) -> str:
                     timeout=COPY_SECONDS)
 
 
+SAVES_FOLDER = "saves"
+#: Windows' `MAX_PATH` less the terminating NUL; a longer path needs the `\\?\` prefix,
+#: which the Qt file dialog does not use.
+MAX_GUEST_PATH = 259
+BAD_FOLDER_CHARS = re.compile(r'[<>:"|?*\x00-\x1f]')
+
+
+def save_guest_path(holder: str, folder: str, name: str) -> str:
+    """Where `stage-save` puts `name`: `<run_dir>\\saves\\<folder>\\<name>`, checked.
+
+    `folder` is relative, so it may hold neither `..`, a drive, nor a leading
+    separator, and the whole path must fit in `MAX_GUEST_PATH` characters.
+    """
+    rel = folder.replace("/", "\\")
+    if (not rel or ".." in rel or rel.startswith("\\") or BAD_FOLDER_CHARS.search(rel)
+            or any(not part for part in rel.split("\\"))):
+        raise WinwishError(f"not a folder under the holder's saves: {folder!r}")
+    if BAD_FOLDER_CHARS.search(name) or "\\" in name or "/" in name or name in ("", ".", ".."):
+        raise WinwishError(f"not a file name: {name!r}")
+    path = rf"{run_dir(holder)}\{SAVES_FOLDER}\{rel}\{name}"
+    if len(path) > MAX_GUEST_PATH:
+        raise WinwishError(f"{path} is {len(path)} characters; Windows allows {MAX_GUEST_PATH}")
+    return path
+
+
+def hash_script(path: str, sha: str) -> str:
+    """Say `ok sha256=...` when the guest's file hashes to `sha`, else `fail ...`."""
+    return "\n".join([
+        "$ErrorActionPreference = 'Stop'",
+        f"$got = (Get-FileHash -Algorithm SHA256 -LiteralPath {q(path)}).Hash.ToLower()",
+        f"if ($got -ne {q(sha.lower())}) {{ \"fail the copy on the guest hashes to $got, not {sha.lower()}\"; exit 1 }}",
+        "'ok sha256=' + $got",
+    ])
+
+
+def stage_save(guest: Guest, holder: str, local: pathlib.Path, folder: str) -> tuple[str, str]:
+    """Copy a save to the guest under the holder's saves folder and check its hash there.
+
+    Returns the guest path and the SHA-256, which the guest has confirmed equals the
+    local file's.  Nothing is copied when the folder or the path length is not allowed.
+    """
+    if not local.is_file():
+        raise WinwishError(f"{local} is not a file")
+    path = save_guest_path(holder, folder, local.name)
+    guest.holds_lane(holder)
+    sha = file_sha256(local)
+    here = path.rsplit("\\", 1)[0]
+    guest.ps(mkdir_script(here))
+    guest.winvm("put", str(local), here.replace("\\", "/") + "/", timeout=COPY_SECONDS)
+    guest.ps(hash_script(path, sha))
+    return path, sha
+
+
 def probe_close_script(holder: str) -> str:
     """Remove the holder's probe task; for a start that ended without reaching its own cleanup."""
     return "\n".join([
@@ -930,11 +1370,12 @@ def probe_close_script(holder: str) -> str:
 
 
 def start_wish(guest: Guest, holder: str, flag: bool = True, disks: tuple[str, ...] = (),
-               game: str | None = None, reseed: bool = False) -> str:
+               game: str | None = None, reseed: bool = False,
+               open_path: str | None = None) -> str:
     guest.holds_lane(holder)
     try:
         return guest.ps(start_script(holder, environment(flag, holder), disks=disks,
-                                     game=game, reseed=reseed),
+                                     game=game, reseed=reseed, open_path=open_path),
                         timeout=START_SECONDS + 30)
     except WinwishError:
         _quietly(guest.ps, probe_close_script(holder))
@@ -958,13 +1399,19 @@ def stop_wish(guest: Guest, holder: str) -> str:
     return "ok closed" if closed else "ok stopped (forced)"
 
 
-def restart_wish(guest: Guest, holder: str, flag: bool = True) -> str:
+def restart_wish(guest: Guest, holder: str, flag: bool = True, open_path: str | None = None,
+                 reseed: bool = False) -> str:
     stop_wish(guest, holder)
-    return start_wish(guest, holder, flag)
+    return start_wish(guest, holder, flag, reseed=reseed, open_path=open_path)
 
 
 def shot(guest: Guest, holder: str, window: str, out: pathlib.Path) -> int:
-    """Save a PNG of `window` (`wish` or `desktop`) to `out`; returns its size."""
+    """Save a PNG of `window` (`wish` or `desktop`) to `out`, and the display it was taken on beside it.
+
+    The sidecar `<out>.json` is read right after the picture: desktop size, scale, DPI,
+    system font and the Wish window's rectangle, so a picture is never judged without
+    the setting it came from.  Returns the PNG's size.
+    """
     guest.holds_lane(holder)
     capture = (lambda path: window_capture(path, holder)) if window == "wish" else None
     script = winvmguest.shot_script(secrets.token_hex(6), 20, capture=capture)
@@ -977,6 +1424,7 @@ def shot(guest: Guest, holder: str, window: str, out: pathlib.Path) -> int:
         raise WinwishError(f"no screenshot came back (winvm exit {rc}): {exc}") from None
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(data)
+    sidecar(guest, holder, window, out)
     return len(data)
 
 
@@ -993,10 +1441,10 @@ def collect_log(guest: Guest, holder: str, out: pathlib.Path) -> list[str]:
 
 
 def floppy_paths(args: argparse.Namespace) -> list[str]:
-    """The ADFs for DF0 upward; a drive may not be given without the one before it."""
+    """The ADFs for DF0 upward, none for a Wish-only run; a drive may not be given without the one before it."""
     given = [args.df0, args.df1, args.df2, args.df3]
-    if not args.df0:
-        raise WinwishError("--df0 needs the path of an ADF on the guest")
+    if not any(given):
+        return []
     count = max(n for n, path in enumerate(given) if path) + 1
     if not all(given[:count]):
         raise WinwishError("the drives must be given without a gap: "
@@ -1016,7 +1464,11 @@ def floppy_options(count: int) -> tuple[str, ...]:
 
 
 def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
-    """Fetch, stage, claim the lane, start WinUAE, start Wish.
+    """Fetch, stage, claim the lane, start WinUAE (when there are drives), start Wish.
+
+    With no drive no WinUAE is started, but the claim is still exclusive and the mute
+    proof still required: Wish takes the console's desktop, whatever it is run beside,
+    and a Windows message box plays a sound the host hears.
 
     Anything that goes wrong between the claim and the end of `start_wish` -- an
     error, Ctrl-C or SIGTERM -- stops Wish (if it was attempted), stops WinUAE and
@@ -1026,6 +1478,8 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
     options = floppy_options(len(drives))
     if args.game and not GAME_KEY.match(args.game):
         raise WinwishError(f"not a game key: {args.game!r}")
+    if args.game and not drives:
+        raise WinwishError("--game needs --df0: the game folder is built from the mounted ADFs")
     if not _mute_proof(pathlib.Path(args.mute_proof)):
         raise WinwishError(f"{args.mute_proof} is not a fresh muted-endpoint proof; "
                            "run winuaemute.ps1 first")
@@ -1038,9 +1492,10 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
         try:
             result["claim"] = lane.claim(args.holder, CALL_SECONDS, exclusive=True)
             claimed = True
-            result["winuae"] = lane.start(args.holder, *drives, timeout=START_SECONDS + 30,
-                                          options=options)
-            started = True
+            if drives:
+                result["winuae"] = lane.start(args.holder, *drives, timeout=START_SECONDS + 30,
+                                              options=options)
+                started = True
             wish_tried = True
             result["wish"] = start_wish(guest, args.holder, not args.no_flag,
                                         tuple(drives[:GAME_DISKS]), args.game, reseed=True)
@@ -1053,25 +1508,30 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
 
 def _undo(guest: Guest, lane: Any, holder: str, wish_tried: bool,
           started: bool, claimed: bool) -> None:
-    """Stop Wish, stop WinUAE, release the lane; a later step runs whatever an earlier one raised."""
+    """Stop Wish, put the display back, stop WinUAE, release the lane; a later step runs whatever an earlier one raised."""
     with _ignoring_sigterm():
         try:
             if wish_tried:
                 _quietly(guest.ps, stop_script(holder))
         finally:
             try:
-                if started:
-                    _quietly(lane.stop, holder, CALL_SECONDS)
-            finally:
                 if claimed:
-                    _quietly(lane.release, holder, CALL_SECONDS)
+                    _quietly(restore_pending_display, guest, holder)
+            finally:
+                try:
+                    if started:
+                        _quietly(lane.stop, holder, CALL_SECONDS)
+                finally:
+                    if claimed:
+                        _quietly(lane.release, holder, CALL_SECONDS)
 
 
 def down(guest: Guest, lane: Any, holder: str) -> dict[str, str]:
-    """Stop Wish and remove its task, stop WinUAE, release the lane; each step runs even if one before fails."""
+    """Stop Wish and remove its task, put the display back, stop WinUAE, release the lane; each step runs even if one before fails."""
     result: dict[str, str] = {}
     problems: list[str] = []
     for name, step in (("wish", lambda: stop_wish(guest, holder)),
+                       ("display", lambda: restore_pending_display(guest, holder)),
                        ("winuae", lambda: lane.stop(holder, CALL_SECONDS)),
                        ("release", lambda: lane.release(holder, CALL_SECONDS))):
         try:
@@ -1114,7 +1574,8 @@ def _parser() -> argparse.ArgumentParser:
     holder(p)
     p.add_argument("--mute-proof", required=True,
                    help="the JSON that winuaemute.ps1 printed, under five minutes old")
-    p.add_argument("--df0", required=True, help="a staged ADF on the guest for DF0")
+    p.add_argument("--df0", help="a staged ADF on the guest for DF0; with no drive at all "
+                   "WinUAE is not started and the lane is still claimed")
     p.add_argument("--df1", help="a staged ADF on the guest for DF1")
     p.add_argument("--df2", help="a staged ADF on the guest for DF2 (Pool of Radiance's save disk)")
     p.add_argument("--df3", help="a staged ADF on the guest for DF3; needs --df2")
@@ -1124,9 +1585,19 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--no-flag", action="store_true",
                    help=f"leave {FLAG} unset (the control)")
 
+    p = sub.add_parser("stage-save", help="copy a save to the guest and check its hash there")
+    holder(p)
+    p.add_argument("--save", required=True, help="the save file on this machine")
+    p.add_argument("--folder", required=True,
+                   help="a relative folder under the holder's saves folder on the guest")
+
     for name, text in (("start", "start wish.exe"), ("restart", "stop and start wish.exe")):
         p = sub.add_parser(name, help=text)
         holder(p)
+        p.add_argument("--open", metavar="GUEST_PATH",
+                       help="a save on the guest (from stage-save) to open on the editor tab")
+        p.add_argument("--reseed", action="store_true",
+                       help="write fresh settings, so a window size saved at another scale is not kept")
         p.add_argument("--no-flag", action="store_true",
                        help=f"leave {FLAG} unset (the control)")
 
@@ -1148,18 +1619,47 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--type", help="only this UI Automation type")
     p.add_argument("--prefix", action="store_true",
                    help="when no control has exactly the name, accept one that starts with it")
+    p.add_argument("--expand", action="store_true",
+                   help="only open the control's menu (ExpandCollapse); a split button is not invoked")
     p.add_argument("--automation-id", help="click the one control whose UI Automation "
                    "AutomationId is this or ends with `.` and this, instead of naming it "
                    "(the six card buttons are all named Level up)")
     p.add_argument("names", nargs="*")
 
+    p = sub.add_parser("display", help="read, set or restore the guest's display size and scale")
+    holder(p)
+    what = p.add_mutually_exclusive_group(required=True)
+    what.add_argument("--read", action="store_true", help="print the display as JSON")
+    what.add_argument("--set", metavar="WxH", help="change the size; needs --scale")
+    what.add_argument("--restore", action="store_true",
+                      help="put back the display recorded before the first --set")
+    p.add_argument("--scale", type=int, metavar="PCT", help="the display scale for --set, such as 150")
+    p.add_argument("--out", required=True, help="where to write the JSON answer")
+
     p = sub.add_parser("log", help="copy Wish's debug logs from the guest")
     holder(p)
     p.add_argument("--out", required=True)
 
-    p = sub.add_parser("down", help="stop Wish, stop WinUAE, release the lane")
+    p = sub.add_parser("down", help="stop Wish, put the display back, stop WinUAE, release the lane")
     holder(p)
     return parser
+
+
+def run_display(guest: Guest, args: argparse.Namespace) -> dict[str, Any]:
+    """The `display` command: run its one action and write the answer to `--out`."""
+    if args.set:
+        match = MODE.match(args.set)
+        if not match or args.scale is None:
+            raise WinwishError("--set needs a size such as 1920x1080 and --scale PCT")
+        state = display(guest, args.holder, "set", int(match[1]), int(match[2]), args.scale)
+    elif args.scale is not None:
+        raise WinwishError("--scale goes with --set")
+    else:
+        state = display(guest, args.holder, "restore" if args.restore else "read")
+    out = pathlib.Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(state, indent=1) + "\n", encoding="utf-8")
+    return state
 
 
 def main(argv: list[str] | None = None,
@@ -1173,9 +1673,15 @@ def main(argv: list[str] | None = None,
             for key, value in up(guest, lane or WinGuest(), args).items():
                 print(f"{key}: {value}")
         elif args.cmd == "start":
-            print(start_wish(guest, args.holder, not args.no_flag))
+            print(start_wish(guest, args.holder, not args.no_flag, reseed=args.reseed,
+                             open_path=args.open))
         elif args.cmd == "restart":
-            print(restart_wish(guest, args.holder, not args.no_flag))
+            print(restart_wish(guest, args.holder, not args.no_flag, args.open, args.reseed))
+        elif args.cmd == "stage-save":
+            path, digest = stage_save(guest, args.holder, pathlib.Path(args.save), args.folder)
+            print(f"{path} sha256={digest}")
+        elif args.cmd == "display":
+            print(json.dumps(run_display(guest, args)))
         elif args.cmd == "stop":
             print(stop_wish(guest, args.holder))
         elif args.cmd == "shot":
@@ -1187,7 +1693,7 @@ def main(argv: list[str] | None = None,
             if bool(args.names) == bool(args.automation_id):
                 raise WinwishError("click needs names, or --automation-id and no names")
             print("\n".join(ui(guest, args.holder, "click", tuple(args.names), args.type,
-                              args.prefix, args.automation_id)))
+                              args.prefix, args.automation_id, args.expand)))
         elif args.cmd == "log":
             print("\n".join(collect_log(guest, args.holder, pathlib.Path(args.out))))
         elif args.cmd == "down":

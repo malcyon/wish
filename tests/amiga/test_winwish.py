@@ -309,10 +309,25 @@ def _png() -> bytes:
             + winvmguest.PNG_IEND)
 
 
+STATE = {"build": "26100.1", "mode": {"width": 1920, "height": 1080, "bits": 32, "hz": 60},
+         "modes": [{"w": 1366, "h": 768, "bits": 32, "hz": 60},
+                   {"w": 1920, "h": 1080, "bits": 32, "hz": 60}],
+         "work_area": {"left": 0, "top": 0, "right": 1920, "bottom": 1040},
+         "scale": {"percent": 100, "allowed": [100, 125, 150], "min_rel": 0, "cur_rel": 0,
+                   "max_rel": 2},
+         "dpi": 96, "text_scale": 100, "font": {"face": "Segoe UI", "height": -12},
+         "observed_utc": "2026-10-05T10:00:00Z"}
+
+
+def _session_one(answer):
+    """A rule for the session 1 calls (`wish-ui-` tasks): reply with `answer`'s JSON line."""
+    return (lambda a: a[1] == "ps" and "wish-ui-" in a[2], 0, _ui_reply("ok", json.dumps(answer)))
+
+
 def test_shot_decodes_the_png_and_writes_it(tmp_path):
     png = _png()
     reply = "\n".join([winvmguest.SHOT_BEGIN, base64.b64encode(png).decode(), winvmguest.SHOT_END])
-    run = FakeRun([(lambda a: a[1] == "ps", 0, reply)])
+    run = FakeRun([_session_one(STATE), (lambda a: a[1] == "ps", 0, reply)])
     out = tmp_path / "s" / "wish.png"
     assert winwish.shot(winwish.Guest(run), "h", "wish", out) == len(png)
     assert out.read_bytes() == png
@@ -322,7 +337,7 @@ def test_shot_keeps_a_complete_png_whatever_the_exit_code_was(tmp_path):
     png = _png()
     reply = "\n".join(["#< CLIXML", winvmguest.SHOT_BEGIN, base64.b64encode(png).decode(),
                        winvmguest.SHOT_END])
-    run = FakeRun([(lambda a: a[1] == "ps", 1, reply)])
+    run = FakeRun([_session_one(STATE), (lambda a: a[1] == "ps", 1, reply)])
     out = tmp_path / "wish.png"
     assert winwish.shot(winwish.Guest(run), "h", "wish", out) == len(png)
     assert out.read_bytes() == png
@@ -394,8 +409,11 @@ def test_an_exclusive_claim_sends_the_exclusive_switch(monkeypatch):
     assert sent[1][1].endswith("claim -Holder h")
 
 
-def test_up_blocks_without_a_fresh_mute_proof(tmp_path, monkeypatch):
+@pytest.mark.parametrize("with_drive", [True, False])
+def test_up_blocks_without_a_fresh_mute_proof(tmp_path, monkeypatch, with_drive):
     args = _args(tmp_path, monkeypatch)
+    if not with_drive:
+        args.df0 = None
     monkeypatch.setattr(winwish, "_mute_proof", lambda path: False)
     run, lane = FakeRun(), FakeLane()
     with pytest.raises(winwish.WinwishError, match="winuaemute"):
@@ -551,11 +569,11 @@ def test_a_drive_after_a_gap_is_blocked_before_anything_starts(tmp_path, monkeyp
     assert lane.log == [] and run.calls == []
 
 
-def test_an_empty_df0_is_blocked_in_one_sentence(tmp_path, monkeypatch):
+def test_a_second_drive_without_the_first_is_blocked_in_one_sentence(tmp_path, monkeypatch):
     run, lane = FakeRun(), FakeLane()
-    args = _args(tmp_path, monkeypatch)
+    args = _args(tmp_path, monkeypatch, "--df1", "b.adf")
     args.df0 = ""
-    with pytest.raises(winwish.WinwishError, match="--df0 needs"):
+    with pytest.raises(winwish.WinwishError, match="--df1 needs --df0"):
         winwish.up(winwish.Guest(run), lane, args)
     assert lane.log == [] and run.calls == []
 
@@ -660,6 +678,9 @@ def bad_references(string: str) -> list[str]:
             if m.group(1).lower() not in SCOPES]
 
 
+OPEN_PATH = "C:\\Amiga\\wish\\run-h\\saves\\" + "a folder with spaces\\" * 8 + "WISH SPEC save.D64"
+
+
 def _every_script():
     env = winwish.environment(True, "h")
     return {
@@ -674,13 +695,22 @@ def _every_script():
         "probe": winwish.window_probe(r"C:\\o.txt", r"C:\\b"),
         "stop": winwish.stop_script("h"),
         "capture": winwish.window_capture(r"C:\o.png", "h"),
+        "task-open": winwish._task_body(env, winwish.build_root("h"), True, OPEN_PATH),
+        "start-open": winwish.start_script("h", env, open_path=OPEN_PATH, reseed=True),
+        "hash": winwish.hash_script(r"C:\s\a b.d64", "a" * 64),
+        "ui-expand": winwish.ui_inner(r"C:\b", "click", ("Save",), None, r"C:\o.txt", expand=True),
+        "pending": winwish.display_pending_script("h"),
+        **{f"display-{a}": winwish.display_inner("h", a, r"C:\o.txt", 1920, 1080, 150)
+           for a in winwish.DISPLAY_ACTIONS},
     }
 
 
 @pytest.mark.parametrize("name", list(_every_script()))
 def test_no_generated_script_has_a_dollar_name_colon_in_a_double_quoted_string(name):
     strings = _double_quoted(_every_script()[name])
-    assert strings or name in ("mkdir", "task", "probe", "ui-controls")
+    assert strings or name in ("mkdir", "task", "probe", "ui-controls", "task-open",
+                               "ui-expand", "pending", "display-read", "display-set",
+                               "display-restore", "display-sidecar")
     assert [bad for s in strings for bad in bad_references(s)] == []
 
 
@@ -1156,3 +1186,380 @@ def test_stop_forces_wish_only_after_the_close_failed_and_says_so():
 
 def test_stop_without_a_running_wish_is_not_forced():
     assert winwish.stop_wish(winwish.Guest(_close_run(_ui_reply("ok", "gone"))), "h") == "ok closed"
+
+
+# -- up without WinUAE -----------------------------------------------------------------
+
+def _wish_only(tmp_path, monkeypatch, *extra):
+    args = _args(tmp_path, monkeypatch, *extra)
+    args.df0 = None
+    return args
+
+
+def test_up_without_a_df0_starts_no_winuae_but_claims_every_lane(tmp_path, monkeypatch):
+    run, lane = FakeRun(), FakeLane()
+    winwish.up(winwish.Guest(run), lane, _wish_only(tmp_path, monkeypatch))
+    assert lane.log == ["claim"] and lane.exclusive is True
+    start = next(c[2] for c in run.calls if c[1] == "ps" and "Register-ScheduledTask -TaskName $task" in c[2])
+    assert "Copy-Item" not in start
+
+
+def test_a_game_without_drives_is_blocked_before_anything_runs(tmp_path, monkeypatch):
+    run, lane = FakeRun(), FakeLane()
+    args = _wish_only(tmp_path, monkeypatch, "--game", "pool-of-radiance")
+    with pytest.raises(winwish.WinwishError, match="--game needs --df0"):
+        winwish.up(winwish.Guest(run), lane, args)
+    assert run.calls == [] and lane.log == []
+
+
+def test_a_wish_only_up_that_fails_releases_without_stopping_winuae(tmp_path, monkeypatch):
+    run, lane = FakeRun([START_FAILS]), FakeLane()
+    with pytest.raises(winwish.WinwishError):
+        winwish.up(winwish.Guest(run), lane, _wish_only(tmp_path, monkeypatch))
+    assert lane.log == ["claim", "release"]
+    assert [c for c in run.calls if c[1] == "ps" and "Stop-Process" in c[2]]
+
+
+# -- stage-save, --open and --reseed --------------------------------------------------
+
+def test_the_task_body_keeps_a_long_path_with_spaces_as_one_argument():
+    assert len(OPEN_PATH) > 200 and " " in OPEN_PATH
+    body = winwish._task_body(winwish.environment(True, "h"), winwish.build_root("h"), True, OPEN_PATH)
+    assert f"-ArgumentList '\"{OPEN_PATH}\"', '--tab', 'editor'" in body
+    plain = winwish._task_body(winwish.environment(True, "h"), winwish.build_root("h"), True)
+    assert "-ArgumentList" not in plain
+
+
+def test_a_path_with_a_double_quote_cannot_be_opened():
+    with pytest.raises(winwish.WinwishError, match="not a path"):
+        winwish._task_body(winwish.environment(True, "h"), winwish.build_root("h"), True, 'C:\\a"b.D64')
+
+
+def test_the_open_path_reaches_the_task_through_start_script():
+    script = winwish.start_script("h", winwish.environment(True, "h"), open_path=OPEN_PATH)
+    body = base64.b64decode(script.split("-EncodedCommand ")[1].split("'")[0]).decode("utf-16-le")
+    assert OPEN_PATH in body and "'--tab', 'editor'" in body
+
+
+def test_stage_save_copies_then_checks_the_hash_on_the_guest(tmp_path):
+    save = tmp_path / "SAVE ONE.D64"
+    save.write_bytes(b"disk")
+    run = FakeRun()
+    path, sha = winwish.stage_save(winwish.Guest(run), "h", save, "s")
+    assert path == r"C:\Amiga\wish\run-h\saves\s\SAVE ONE.D64"
+    assert sha == winwish.file_sha256(save)
+    assert run.verbs() == ["lane", "ps", "put", "ps"]
+    assert run.calls[2][3] == "C:/Amiga/wish/run-h/saves/s/"
+    assert sha in run.calls[3][2] and "Get-FileHash" in run.calls[3][2]
+
+
+@pytest.mark.parametrize("folder", ["..\\x", "a/../b", "C:\\x", "\\x", "/x", "", "a\\\\b", "a<b"])
+def test_stage_save_blocks_a_folder_that_is_not_under_the_saves_folder(tmp_path, folder):
+    save = tmp_path / "a.D64"
+    save.write_bytes(b"d")
+    run = FakeRun()
+    with pytest.raises(winwish.WinwishError, match="not a folder"):
+        winwish.stage_save(winwish.Guest(run), "h", save, folder)
+    assert run.calls == []
+
+
+def test_stage_save_blocks_a_path_over_259_characters_before_any_copy(tmp_path):
+    save = tmp_path / "a.D64"
+    save.write_bytes(b"d")
+    run = FakeRun()
+    head = len(winwish.save_guest_path("h", "x", "a.D64")) - 1
+    folder = "x" * (259 - head)
+    assert len(winwish.save_guest_path("h", folder, "a.D64")) == 259
+    with pytest.raises(winwish.WinwishError, match="Windows allows 259"):
+        winwish.stage_save(winwish.Guest(run), "h", save, folder + "x")
+    assert run.calls == []
+
+
+def test_stage_save_fails_when_the_guest_hash_differs(tmp_path):
+    save = tmp_path / "a.D64"
+    save.write_bytes(b"d")
+    run = FakeRun([(lambda a: a[1] == "ps" and "Get-FileHash" in a[2], 1, "fail the copy on the guest hashes to x")])
+    with pytest.raises(winwish.WinwishError, match="hashes to x"):
+        winwish.stage_save(winwish.Guest(run), "h", save, "s")
+    assert "put" in run.verbs()
+
+
+def test_stage_save_needs_a_file(tmp_path):
+    with pytest.raises(winwish.WinwishError, match="not a file"):
+        winwish.stage_save(winwish.Guest(FakeRun()), "h", tmp_path / "none.D64", "s")
+
+
+def test_restart_with_open_and_reseed_writes_the_settings_unconditionally(capsys):
+    run = FakeRun()
+    argv = ["restart", "--holder", "h", "--open", OPEN_PATH, "--reseed"]
+    assert winwish.main(argv, guest=winwish.Guest(run)) == 0
+    start = next(c[2] for c in run.calls if c[1] == "ps" and "Get-WishWindows" in c[2])
+    assert "if (-not (Test-Path -LiteralPath $settings))" not in start
+    body = base64.b64decode(start.split("-EncodedCommand ")[1].split("'")[0]).decode("utf-16-le")
+    assert OPEN_PATH in body
+    run = FakeRun()
+    assert winwish.main(["restart", "--holder", "h"], guest=winwish.Guest(run)) == 0
+    start = next(c[2] for c in run.calls if c[1] == "ps" and "Get-WishWindows" in c[2])
+    assert "if (-not (Test-Path -LiteralPath $settings))" in start
+
+
+def test_start_takes_open_and_reseed():
+    run = FakeRun()
+    assert winwish.main(["start", "--holder", "h", "--open", OPEN_PATH, "--reseed"],
+                        guest=winwish.Guest(run)) == 0
+    assert any(OPEN_PATH in base64.b64decode(c[2].split("-EncodedCommand ")[1].split("'")[0]).decode("utf-16-le")
+               for c in run.calls if c[1] == "ps" and "-EncodedCommand" in c[2])
+
+
+def test_the_stage_save_command_prints_the_guest_path_and_hash(tmp_path, capsys):
+    save = tmp_path / "a.D64"
+    save.write_bytes(b"d")
+    assert winwish.main(["stage-save", "--holder", "h", "--save", str(save), "--folder", "s"],
+                        guest=winwish.Guest(FakeRun())) == 0
+    assert capsys.readouterr().out.strip() == (
+        rf"C:\Amiga\wish\run-h\saves\s\a.D64 sha256={winwish.file_sha256(save)}")
+
+
+# -- click --expand --------------------------------------------------------------------
+
+def test_expand_never_reaches_invoke_and_a_plain_click_still_does():
+    expand = winwish.ui_inner(r"C:\b", "click", ("Save",), None, r"C:\o.txt", expand=True)
+    assert "InvokePattern" not in expand and "Start-Async" not in expand
+    assert "ExpandCollapsePattern" in expand and "the control cannot be expanded" in expand
+    plain = winwish.ui_inner(r"C:\b", "click", ("Save",), None, r"C:\o.txt")
+    assert "InvokePattern" in plain and "the control cannot be expanded" not in plain
+
+
+def test_only_a_click_can_expand():
+    with pytest.raises(winwish.WinwishError, match="only a click"):
+        winwish.ui_inner(r"C:\b", "controls", (), None, r"C:\o.txt", expand=True)
+
+
+def test_the_cli_click_takes_expand():
+    run = FakeRun([(lambda a: a[1] == "ps", 0, _ui_reply("ok", "Save -> expanded"))])
+    assert winwish.main(["click", "--holder", "h", "--expand", "Save"], winwish.Guest(run)) == 0
+    put = next(c for c in run.calls if c[1] == "put")
+    assert put
+
+
+# -- the display --------------------------------------------------------------------------
+
+def _display_rules(state=STATE, journal="none", restore=None):
+    pending = (lambda a: a[1] == "ps" and "display-original.json" in a[2] and "wish-ui-" not in a[2],
+               0, f"ok {journal}")
+    return [pending, _session_one(restore or state)]
+
+
+def test_the_set_script_writes_the_journal_before_it_changes_anything():
+    script = winwish.display_inner("h", "set", r"C:\o.txt", 1920, 1080, 150)
+    journal = script.index("[IO.File]::WriteAllText($journal")
+    assert journal < script.index("Set-Size 1920 1080") < script.index("Set-Scale 150")
+    assert r"C:\Amiga\wish\run-h\display-original.json" in script
+    # an earlier `set` already holds the original; it is never overwritten
+    assert "if (-not (Test-Path -LiteralPath $journal)) { [IO.File]::WriteAllText" in script
+    assert script.index("$after = Get-DisplayState") > script.index("Set-Scale 150")
+
+
+def test_the_set_script_reads_back_and_names_the_offered_sizes_and_scales():
+    script = winwish.display_inner("h", "set", r"C:\o.txt", 1920, 1080, 150)
+    assert "$after.mode.width -ne 1920" in script and "$after.scale.percent -ne 150" in script
+    assert "offered sizes" in script and "allowed scales" in script
+    assert "is not allowed at this size; allowed:" in script
+
+
+def test_the_restore_script_keeps_the_journal_unless_the_readback_matches():
+    script = winwish.display_inner("h", "restore", r"C:\o.txt")
+    compare = script.index("throw ('the display reads back")
+    assert compare < script.index("Remove-Item -LiteralPath $journal")
+    assert "the journal is kept" in script
+    assert script.index("Set-Size ([int]$orig") < script.index("Set-Scale ([int]$orig") \
+        < script.index("$after = Get-DisplayState", script.index("$orig ="))
+
+
+def test_the_read_script_records_every_field_the_plan_names():
+    script = winwish.display_inner("h", "read", r"C:\o.txt")
+    for field in ("CurrentBuild", "UBR", "EnumDisplaySettingsW", "modes", "work_area", "min_rel",
+                  "cur_rel", "max_rel", "GetDpiForMonitor", "SetProcessDpiAwarenessContext",
+                  "TextScaleFactor", "lfMessageFont", "observed_utc", "QueryDisplayConfig"):
+        assert field in script, field
+    assert "DisplayConfigGetDeviceInfo" in script and "DisplayConfigSetDeviceInfo" in script
+    assert "SetMode(" in script  # compiled in, though `read` never calls it
+    read_body = script[script.index("if ($true)"):]
+    assert "SetMode" not in read_body and "SetScale" not in read_body and "Set-Size" not in read_body
+
+
+def test_the_sidecar_script_adds_the_wish_window():
+    script = winwish.display_inner("h", "sidecar", r"C:\o.txt")
+    for field in ("WindowRect", "WindowDpi", "Get-FileHash"):
+        assert field in script
+    assert "$state['wish']" in script
+
+
+def test_an_unknown_display_action_is_blocked():
+    with pytest.raises(winwish.WinwishError, match="not a display action"):
+        winwish.display_inner("h", "reset", r"C:\o.txt")
+
+
+def test_a_set_to_a_size_the_guest_does_not_offer_fails_with_the_list_and_changes_nothing():
+    run = FakeRun(_display_rules())
+    with pytest.raises(winwish.WinwishError, match=r"1024x768 is not an offered mode; offered: 1366x768, 1920x1080"):
+        winwish.display(winwish.Guest(run), "h", "set", 1024, 768, 100)
+    scripts = [c[2] for c in run.calls if c[1] == "ps"]
+    assert scripts and not any("Set-Size 1024" in s for s in scripts)
+
+
+def test_a_set_to_a_scale_windows_does_not_list_is_blocked_before_any_call():
+    run = FakeRun()
+    with pytest.raises(winwish.WinwishError, match="100, 125, 150"):
+        winwish.display(winwish.Guest(run), "h", "set", 1920, 1080, 130)
+    assert run.calls == []
+
+
+def test_a_set_reads_first_then_sets_and_returns_the_answer():
+    answer = {"original": STATE, "after": STATE}
+    replies = [STATE, answer]
+    puts: list[str] = []
+
+    def run(argv, timeout):
+        if argv[1] == "put":
+            puts.append(pathlib.Path(argv[2]).read_text(encoding="utf-8-sig"))
+        if argv[1] == "ps" and "wish-ui-" in argv[2]:
+            return 0, _ui_reply("ok", json.dumps(replies.pop(0)))
+        return 0, "ok"
+
+    assert winwish.display(winwish.Guest(run), "h", "set", 1920, 1080, 100) == answer
+    assert len(puts) == 2
+    assert "Set-Size 1920 1080" not in puts[0] and "Set-Size 1920 1080" in puts[1]
+
+
+def test_the_display_command_writes_its_answer_to_out(tmp_path, capsys):
+    out = tmp_path / "d" / "original.json"
+    run = FakeRun([_session_one(STATE)])
+    assert winwish.main(["display", "--holder", "h", "--read", "--out", str(out)],
+                        winwish.Guest(run)) == 0
+    assert json.loads(out.read_text()) == STATE
+
+
+def test_the_display_command_needs_one_action_and_a_scale_with_set(tmp_path):
+    out = str(tmp_path / "o.json")
+    with pytest.raises(SystemExit):
+        winwish.main(["display", "--holder", "h", "--out", out])
+    with pytest.raises(SystemExit):
+        winwish.main(["display", "--holder", "h", "--read", "--restore", "--out", out])
+    run = FakeRun()
+    assert winwish.main(["display", "--holder", "h", "--set", "1920x1080", "--out", out],
+                        winwish.Guest(run)) == 1
+    assert winwish.main(["display", "--holder", "h", "--read", "--scale", "150", "--out", out],
+                        winwish.Guest(run)) == 1
+    assert run.calls == []
+
+
+def test_a_restore_that_the_guest_fails_is_an_error_and_is_not_swallowed():
+    run = FakeRun([(lambda a: a[1] == "ps" and "wish-ui-" in a[2], 0,
+                    _ui_reply("fail the display reads back 1366x768 at 100%, not the recorded 1920x1080 at 150%; the journal is kept"))])
+    with pytest.raises(winwish.WinwishError, match="the journal is kept"):
+        winwish.display(winwish.Guest(run), "h", "restore")
+
+
+def _events(journal):
+    """A guest that records which of Wish's close, the display restore, Wish's stop, WinUAE's stop and the release ran, in order.
+
+    The session 1 scripts travel as put files, so the kind of each is read from the
+    file when it is put.
+    """
+    events: list[str] = []
+    last: list[str] = []
+
+    def run(argv, timeout):
+        if argv[1] == "put":
+            text = pathlib.Path(argv[2]).read_text(encoding="utf-8-sig")
+            last[:] = ["display" if "Remove-Item -LiteralPath $journal" in text else "wish-close"]
+            events.append(last[0])
+        elif argv[1] == "ps":
+            script = argv[2]
+            if "display-original.json" in script and "Test-Path" in script:
+                return 0, f"ok {journal}"
+            if "wish-ui-" in script:
+                if last == ["display"]:
+                    return 0, _ui_reply("ok", json.dumps({"restored": STATE}))
+                return 0, _ui_reply("ok", "closed")
+            if "still running 10s after stop" in script:
+                events.append("wish")
+        return 0, "ok"
+
+    class Lane(FakeLane):
+        def _do(self, name, *args):
+            events.append(name)
+            return super()._do(name, *args)
+
+    return events, run, Lane()
+
+
+def test_down_puts_the_display_back_after_wish_and_before_winuae_and_the_release():
+    events, run, lane = _events("journal")
+    result = winwish.down(winwish.Guest(run), lane, "h")
+    assert [e for e in events if e != "wish-close"] == ["wish", "display", "stop", "release"]
+    assert result["display"] == "ok restored"
+
+
+def test_down_without_a_journal_leaves_the_display_alone():
+    events, run, lane = _events("none")
+    assert winwish.down(winwish.Guest(run), lane, "h")["display"] == "ok unchanged"
+    assert "display" not in events
+
+
+def test_a_failed_display_restore_is_reported_and_the_release_still_runs():
+    events, run, lane = _events("journal")
+    def failing(argv, timeout):
+        answer = run(argv, timeout)
+        if argv[1] == "ps" and "wish-ui-" in argv[2] and events[-1] == "display":
+            return 0, _ui_reply("fail the journal is kept")
+        return answer
+
+    with pytest.raises(winwish.WinwishError, match="display: fail the journal is kept"):
+        winwish.down(winwish.Guest(failing), lane, "h")
+    assert lane.log[-2:] == ["stop", "release"]
+
+
+def test_a_failed_up_puts_the_display_back_between_wish_and_winuae(tmp_path, monkeypatch):
+    events, run, lane = _events("journal")
+    failing = lambda a, t: (1, "fail no wish.exe window") if (  # noqa: E731
+        a[1] == "ps" and "Start-ScheduledTask" in a[2]) else run(a, t)
+    with pytest.raises(winwish.WinwishError):
+        winwish.up(winwish.Guest(failing), lane, _args(tmp_path, monkeypatch))
+    tail = events[events.index("start"):]
+    assert [e for e in tail if e in ("display", "stop", "release")] == ["display", "stop", "release"]
+
+
+def test_a_shot_writes_the_display_beside_the_png(tmp_path):
+    png = _png()
+    reply = "\n".join([winvmguest.SHOT_BEGIN, base64.b64encode(png).decode(), winvmguest.SHOT_END])
+    wish = dict(STATE, wish={"path": r"C:\w\wish.exe", "sha256": "ab" * 32, "dpi": 96,
+                             "window": {"left": 0, "top": 0, "right": 900, "bottom": 700}})
+    run = FakeRun([_session_one(wish), (lambda a: a[1] == "ps", 0, reply)])
+    out = tmp_path / "wish.png"
+    winwish.shot(winwish.Guest(run), "hold", "wish", out)
+    side = json.loads((tmp_path / "wish.png.json").read_text())
+    assert side["holder"] == "hold" and side["window"] == "wish" and side["png"] == "wish.png"
+    assert side["mode"] == STATE["mode"] and side["dpi"] == 96 and side["font"] == STATE["font"]
+    assert side["wish"]["window"]["right"] == 900
+
+
+def test_a_desktop_shot_writes_a_sidecar_too(tmp_path):
+    png = _png()
+    reply = "\n".join([winvmguest.SHOT_BEGIN, base64.b64encode(png).decode(), winvmguest.SHOT_END])
+    run = FakeRun([_session_one(dict(STATE, wish=None)), (lambda a: a[1] == "ps", 0, reply)])
+    winwish.shot(winwish.Guest(run), "h", "desktop", tmp_path / "d.png")
+    assert json.loads((tmp_path / "d.png.json").read_text())["wish"] is None
+
+
+def test_a_failed_png_writes_no_sidecar(tmp_path):
+    run = FakeRun([(lambda a: a[1] == "ps", 1, "ssh: connection blocked")])
+    with pytest.raises(winwish.WinwishError):
+        winwish.shot(winwish.Guest(run), "h", "wish", tmp_path / "x.png")
+    assert not list(tmp_path.iterdir())
+
+
+def test_offered_sizes_are_listed_once_smallest_first():
+    state = {"modes": [{"w": 1920, "h": 1080}, {"w": 1366, "h": 768}, {"w": 1920, "h": 1080}]}
+    assert winwish.offered_sizes(state) == ["1366x768", "1920x1080"]
