@@ -89,6 +89,50 @@ later name onto a wrong — but plausible — value.
 | 64 | POTION | 127 | TOKEN | 191 | FLYING | 254 | PASS |
 | 65 | SCROLL | 128 | ROBE | 192 | TREASURE FINDING | 255 | CURSED |
 
+## The word table on DOS and the Amiga
+
+Every DOS and Amiga build carries the same word table, keyed by the same name
+word, so a DOS or Amiga item is named without a C64 disk.
+`goldbox/item_names.py` reads it; `tests/records/test_item_names.py` checks
+every build here.
+
+| port | where | form | ids | found from |
+|---|---|---|---|---|
+| DOS, all four | launcher data segment: Pool `START.EXE DS:10A7`, Curse `DS:1042`, Silver Blades `DS:0F0D`, Pools of Darkness `GAME.EXE DS:333F` | `String[20]`, id *n* at base + 21*n | Pool, Curse 1-255; Silver Blades 1-123; Pools of Darkness 1-125 | `mov al, es:[di+2Eh] / ... / mov dx, 21 / mul dx / ... / add di, base`, one site a build (Pool in `START.EXE`, the others in `GAME.OVR`) |
+| Amiga Pool | `/program` data hunk 31, `+0x383` | NUL-padded `char[21]` | 1-255 | `move.b $2E(a3,d1.l), d0 / moveq #$15, d1 / jsr mul / lea $383.l, a0` (hunk 13 `0x397C`) |
+| Amiga Curse | `/DISKA/STRINGS.GLB`, a `GLIB` `TEXT` library | block 52 + id | 1-255 | `move.b $2F(a2,d0.w), d1 / jsr -$78AE(a4)` (`0x19F3A`) to the stub at `0x352E0`, which adds `#$34` |
+| Amiga Silver Blades | `/Secret`, small-data pointer array at `-$4EC2(a4)` | pointer to a C string | 1-123 | `move.b $2F(a2,d0.w), d1 / asl.l #$2, d1 / lea -$4EC2(a4), a0`, the `lea` at `0x1909C` |
+| Amiga Pools of Darkness | `/Pools of Darkness`, pointers at `-$4A50(a4)` | pointer to a C string | 1-137 | the same sequence, `lea -$4A50(a4), a0` at `0x18B8C` |
+
+The DOS loop counts 3 down to 1 and reads item `+0x2E + counter`, the three
+name words `name1`-`name3`, with no bias; the Amiga loops read the same three
+bytes. The text is each port's own: mixed case (`Mage Scroll 3 Spells`), with
+its own spellings.
+
+**Alignment, measured.** Against the C64 table at the same id, ignoring case:
+Pool of Radiance 230 of 250 ids agree, Curse 229 of 252, Silver Blades 113 of
+117; with the DOS table moved one id either way, 0 agree in each title. The ids
+that differ are spellings of the same word (`QUARREL(S)` / `Quarrel`, `AC2` /
+`AC 2`, `MU SCROLL` / `Magic User Scroll`), except Silver Blades' 77, which DOS
+spends on its joined scroll's `Bundle of` where the C64 has `DISRUPTION`. DOS
+leaves empty the ids the C64 names but no DOS item uses: Pool 62, 63, 135, 144,
+168; Curse 62, 63, 144; Silver Blades 75, 76, 85, 86, 119, 120. The Amiga
+tables equal DOS's id for id in every English build, except Curse's `x` at
+DOS's empty 62, 63 and 144, Pools of Darkness' `blinking` at 124, and Pools of
+Darkness' twelve names past DOS's last id (126 `Hoopak` to 137 `White Mage`),
+which no item template uses: the 416 seventeen-byte templates in its `ITEM0.DAX`
+and `MON1ITM.DAX` reach 125 at most. The German Amiga Pools of Darkness reads
+135 German names under the same ids.
+
+**The pointer tables have no stored end.** Silver Blades' runs out on a slot
+that is not a pointer; Pools of Darkness' runs on into its death message
+(`who is looking very old`, id 138), so the reader stops at the first string
+longer than the DOS table's 20 characters.
+
+On specimen `ssb-wish4-joined-l122`, the Amiga overflow's first item for PAINE
+(words 40/39/102) reads `Mage Scroll 3 Spells` from the DOS game folder and
+from the Amiga disks, as `MAGE SCROLL 3 SPELLS` from the C64 disks.
+
 ## The type table (`ITEMS`)
 
 128 records of 16 bytes, loading at `$7B00` — not the `$7600` its PRG

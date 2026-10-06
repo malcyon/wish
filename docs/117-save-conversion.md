@@ -2258,6 +2258,10 @@ graph LR
   iconparts --> d64
   icons --> d64
   icons --> savegame
+  item_names --> amiga_hunks
+  item_names --> exepack
+  item_names --> spell_names
+  item_names --> stonecracker
   items --> d64
   items --> savegame
   items --> spells

@@ -34,6 +34,7 @@ Tests for the character record and the tables and rules around it: field layouts
 | `test_geoports.py` | Checks which of Curse's maps differ between the C64 and Amiga disks and that `ResidentGeo` still names an area when it holds the other port's map. |
 | `test_infravision.py` | Checks where infravision comes from on each port and what a conversion does with it. |
 | `test_innateeffects.py` | Checks each title's set of innate effect ids and that a converted paladin's or ranger's innate effect reaches the DOS `.SPC` file. |
+| `test_item_names.py` | Checks `goldbox/item_names.py` on synthetic executables and text libraries, then reads every DOS and Amiga item-name table off the player's games and checks each port names the same item under the same id as the C64. |
 | `test_items.py` | Checks `goldbox/items.py` against a save taken after the party bought equipment. |
 | `test_layonhands.py` | Checks where each port keeps a paladin's lay-on-hands use, against the player's own executables: the DOS and Amiga heal routines' effect id, one-day duration, value and flag, the sheet gate, the empty handler or the missing table slot, the cure timer beside it, and the C64's record `0x013` and one-day row; skips without the disks. |
 | `test_layonhandsconvert.py` | Checks the neutral `lay_on_hands_minutes` field converts a paladin's lay-on-hands timer between DOS and the Amiga, remapping the effect id per title where the two ports disagree (Silver Blades and Pools of Darkness), and that Pool of Radiance and a non-paladin write no node at all. |
