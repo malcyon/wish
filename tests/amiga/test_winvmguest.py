@@ -262,6 +262,23 @@ def test_a_four_lane_status_reads_every_lane():
         4: (None, ""),
     }
     assert w.lane_matches(st, "C") and w.lane_matches(st, "free")
+    assert st.lane == (
+        "1: held by A since 2026-09-22T09:00:00 | 2: free | "
+        "3: held by C since 2026-09-22T09:10:00 | 4: free"
+    )
+
+
+def test_a_four_lane_status_with_every_lane_held_is_not_free():
+    text = (
+        "host=WIN11-DEV\nuser=donald\nboot=2026-09-22T08:00:00\nlanes = 4\n"
+        "claim = A since 2026-09-22T09:00:00\nrun = no receipt\n"
+        "claim 2 = B since 2026-09-22T09:05:00\nrun 2 = no receipt\n"
+        "claim 3 = C since 2026-09-22T09:10:00\nrun 3 = no receipt\n"
+        "claim 4 = D since 2026-09-22T09:15:00\nrun 4 = no receipt\n"
+    )
+    st = w.parse_status(text)
+    assert not w.lane_matches(st, "free")
+    assert all(w.lane_matches(st, h) for h in "ABCD")
 
 
 def test_a_one_lane_status_has_one_lane():

@@ -252,7 +252,7 @@ task, the send log, the console file, a WinUAE ini and a screenshot folder
 verb that takes `-Holder` acts on it. **`$LaneCount` is 4.** Keys, screenshots
 and debugger reads each reach the holder's own emulator through the pipe its
 pid serves, and two copies booted at once each showed only their own key
-presses (CONFIRMED, one two-copy boot). `winuae-lanecheck.ps1 -Lanes 4` is the
+presses (CONFIRMED, one two-copy boot). Four copies booted at once and read through their own pipes, 18 samples each, each averaged at least 49.68 FPS and none dropped below 49, with guest CPU peaking at 38.4% (CONFIRMED, one four-copy boot). `winuae-lanecheck.ps1 -Lanes 4` passed 40 of 40, with four distinct pipes, each answering on a reverse-order second pass. `winuae-lanecheck.ps1 -Lanes 4` is the
 check to pass before the count changes again.
 
 The claim is a file in the guest, `C:\Amiga\winuae-claim.txt` for lane 1, and it records
