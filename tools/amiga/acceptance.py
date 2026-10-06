@@ -1803,6 +1803,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         "deadline_seconds": deadline_seconds, "measure": measure,
         "accept": accept, "completed": False, "lost": None, "unguarded": [],
         "no_encounters": encounters is not None,
+        "encounter_rows_patched": [],
     }
     if title is not None:
         result["remotes"] = remotes
@@ -2013,7 +2014,22 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             raise RouteError(f"the encounter switch did not complete: {reply}")
         if kind not in WALKING:
             encounters_on = False
-        log("encounters", on=encounters_on, step_kind=kind)
+        rows = reply.get("rows", []) if isinstance(reply, dict) else []
+        # A row that was written has an address and no `stopped` or `error`; `off` lists the
+        # rows it put back in the same list.
+        written = [r for r in rows if isinstance(r, dict) and "address" in r
+                   and "stopped" not in r and "error" not in r]
+        blocked = [r for r in rows if isinstance(r, dict) and "stopped" in r]
+        log("encounters", on=encounters_on, step_kind=kind, action=reply.get("action")
+            if isinstance(reply, dict) else None, matched=bool(written), rows=rows,
+            blocked=blocked)
+        if kind in WALKING:
+            seen = result["encounter_rows_patched"]
+            for row in written:
+                entry = {"row": row.get("row"), "address": row["address"],
+                         "grade": row.get("grade"), "new": row.get("new")}
+                if entry not in seen:
+                    seen.append(entry)
 
     title_limit = title.title_limit if title else TITLE_LIMIT
     boot_span = title.boot_span if title else MEASURE_TITLE_SPAN

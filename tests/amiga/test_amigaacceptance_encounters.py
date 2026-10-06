@@ -10,6 +10,7 @@ import pytest
 from tests.amiga.test_amigaacceptance_accept import (  # noqa: F401
     AcceptGuest,
     _accept,
+    _events,
     readings,
 )
 from tests.amiga.test_amigaacceptance_measure import _measure, clock  # noqa: F401
@@ -23,13 +24,13 @@ WALK = ["NP8", "NP8"]
 class FakeSwitch:
     """Records `on` and `off` in the guest's own call list, so their order against key presses is seen."""
 
-    def __init__(self, guest, off_reply=None, off_replies=()):
-        self.guest, self.off_reply = guest, off_reply
+    def __init__(self, guest, off_reply=None, off_replies=(), on_reply=None):
+        self.guest, self.off_reply, self.on_reply = guest, off_reply, on_reply
         self.off_replies = list(off_replies)
 
     def on(self):
         self.guest.calls.append(("encounters", "on"))
-        return {"action": "on"}
+        return self.on_reply or {"action": "on"}
 
     def off(self):
         self.guest.calls.append(("encounters", "off"))
@@ -187,3 +188,32 @@ def test_an_answer_step_between_walk_steps_has_the_switch_off(tmp_path, clock, r
 def test_the_measure_route_of_a_legacy_title_takes_no_switch(tmp_path, clock):  # noqa: F811
     with pytest.raises(RouteError, match="needs a title route"):
         _measure(tmp_path, AcceptGuest(clock), encounters=object())
+
+
+PATCHED = {"row": "p0x10+0x20", "grade": "confirmed", "address": 0x1234, "new": "4e75"}
+RESTORED = {"address": 0x1234, "repaired": True, "new": "2f00"}
+
+
+def test_the_run_log_and_summary_list_the_rows_the_switch_patched(tmp_path, clock, readings):  # noqa: F811
+    guest = AcceptGuest(clock)
+    switch = FakeSwitch(guest, on_reply={"action": "on", "rows": [PATCHED]},
+                        off_reply={"action": "off", "rows": [RESTORED]})
+    _, result = _accept(tmp_path, clock, guest=guest, encounters=switch)
+    events = [e for e in _events(tmp_path) if e["event"] == "encounters"]
+    on = [e for e in events if e["on"]]
+    off = [e for e in events if not e["on"]]
+    assert on and all(e["matched"] and e["rows"] == [PATCHED] for e in on)
+    assert off and all(e["rows"] == [RESTORED] for e in off)
+    # Two walk steps patch the same row, which is listed once.
+    assert result["encounter_rows_patched"] == [
+        {"row": "p0x10+0x20", "address": 0x1234, "grade": "confirmed", "new": "4e75"}]
+    summary = json.loads((tmp_path / "recon1" / "summary.json").read_text())
+    assert summary["encounter_rows_patched"] == result["encounter_rows_patched"]
+
+
+def test_a_switch_that_matched_no_row_is_logged_as_none(tmp_path, clock, readings):  # noqa: F811
+    guest = AcceptGuest(clock)
+    _, result = _accept(tmp_path, clock, guest=guest, encounters=FakeSwitch(guest))
+    events = [e for e in _events(tmp_path) if e["event"] == "encounters" and e["on"]]
+    assert events and all(e["matched"] is False and e["rows"] == [] for e in events)
+    assert result["encounter_rows_patched"] == []
