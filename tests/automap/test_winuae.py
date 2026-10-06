@@ -35,8 +35,8 @@ class Clock:
 
 
 class Ov:
-    def __init__(self, server, chunk=None):
-        self.server, self.chunk = server, chunk
+    def __init__(self, server, chunk=None, cost=0.0):
+        self.server, self.chunk, self.cost = server, chunk, cost
         self.event = self
         self.cancelled = False
 
@@ -76,6 +76,9 @@ class FakeWinuae:
         self.ignore_writes = False      # receipts come, memory stays as it was
         self.unanswered: list[bytes] = []  # requests made while silent
         self.broken_read = False        # ReadFile fails as if WinUAE hung up
+        self.write_hangs = False        # WriteFile never completes
+        self.read_cost = 0.0            # clock time each finished read takes
+        self.wait_ms: list[int] = []    # the time each wait was given
         self.creates = self.closes = self.cancels = self.waits = 0
         self.modes = []
         self.written: list[bytes] = []
@@ -117,16 +120,20 @@ class FakeWinuae:
             self.unanswered.append(bytes(data))
         else:
             self.pending = self._answer(bytes(data))
+        if self.write_hangs:
+            return Ov(self, None), winuae.ERROR_IO_PENDING
         return Ov(self, (data, 0)), winuae.ERROR_IO_PENDING
 
     def ReadFile(self, handle, size, overlapped=False):
         if self.broken_read:
             raise win_error(winuae.ERROR_BROKEN_PIPE)
         chunk = None if self.silent or not self.pending else self.pending.pop(0)
-        return Ov(self, chunk), winuae.ERROR_IO_PENDING
+        return Ov(self, chunk, self.read_cost), winuae.ERROR_IO_PENDING
 
     def WaitForSingleObject(self, event, ms):
         """Done when the call has an answer; a starved read never finishes."""
+        self.wait_ms.append(ms)
+        self.clock.now += event.cost
         return 0 if event.chunk is not None else winuae.WAIT_TIMEOUT
 
     def resume(self):
@@ -575,6 +582,29 @@ def test_a_write_with_no_answer_on_a_fresh_handle_keeps_the_handle(rig):
         pipe.write_memory(0x100, b"\x01")
     pipe.close()
     assert api.closes == 0
+
+
+def test_a_write_that_times_out_on_a_fresh_handle_keeps_the_handle(rig):
+    pipe, api, *_ = rig
+    api.write_hangs = True
+    with pytest.raises(winuae.PipeTimeout):
+        pipe.read_memory(0, 16)
+    assert pipe.lost
+    pipe.close()
+    assert api.closes == 0
+
+
+def test_a_slow_drain_leaves_the_new_request_its_whole_time(rig):
+    pipe, api, clock, _folder = rig
+    api.silent = True
+    with pytest.raises(winuae.PipeTimeout):
+        pipe.read_memory(0, 16)
+    api.resume()
+    api.read_cost = 1.5
+    clock.now += pipe.BACKOFF + 1
+    api.wait_ms.clear()
+    assert pipe.read_memory(0x40, 16, timeout=2.0) == MEMORY[0x40:0x50]
+    assert api.wait_ms[-1] == 2000
 
 
 def test_a_broken_pipe_while_a_reply_is_owed_still_closes_the_handle(rig):

@@ -299,16 +299,20 @@ class WinuaeLocalPipe:
             # not a slow answer, and must not read as a timeout.
             if self._handle is None:
                 self._open(self._clock() + self.CONNECT_S)
-            deadline = self._clock() + timeout
             if self._owed:
                 # The one outstanding request's reply comes first; its dump
                 # file is written by now and the new request's does not exist.
-                self._read_reply(deadline)
+                # It has its own time, so a slow drain leaves the new request
+                # its whole budget.
+                self._read_reply(self._clock() + timeout)
                 self._owed = False
                 self._answered = True
                 self._clear_leftovers()
-            self._write(message, deadline)
+            deadline = self._clock() + timeout
+            # A reply is owed from the moment the write starts: a write that
+            # times out may still have reached WinUAE.
             self._owed = True
+            self._write(message, deadline)
             reply = self._read_reply(deadline)
             self._owed = False
             self._answered = True
