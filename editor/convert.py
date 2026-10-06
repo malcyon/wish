@@ -1546,11 +1546,10 @@ DIRECTIONS: tuple[Direction, ...] = tuple(
 #: Amiga)`'s 2026-09-23 plan comment, "the one design point". Offered only
 #: with `WISH_EXPERIMENTAL_POD_CONVERT` set, and each row comes off this
 #: tuple on its own proof: `PodAmigaToDos` and `PodDosToAmiga` move into
-#: `DIRECTIONS` when their live proof has passed in the running game and #650 (A played
-#: Amiga Pools of Darkness party converted to DOS loses a master thief's
-#: pick pockets over 127 and a scroll case's extra spells) and #651
-#: (Convert a Pools of Darkness party's item vault between DOS and the
-#: Amiga along with its saved game) are closed. The flag, this tuple,
+#: `DIRECTIONS` when their live proof has passed in the running game and the
+#: two defects the rows still carry are fixed: a master thief's pick pockets
+#: over 127 and a scroll case's extra spells lost going to DOS, and the item
+#: vault not converted along with the saved game. The flag, this tuple,
 #: File > Convert... and `ConvertDialog` are all deleted once Pools of
 #: Darkness has a route in Save As, or Donald rules that it ships another
 #: way.

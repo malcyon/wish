@@ -78,7 +78,14 @@ def _record() -> podsheet.PodSheetRecord:
     record.set("experience", 123456)
     record.set("age", 30)
     record.set("item_count", 1)
-    return record
+    # What every character the game wrote holds in these three DOS-only
+    # fields, which the Amiga block keeps as one value of its own.
+    raw = bytearray(record.to_bytes())
+    for field, value in (("icon_dimension", b"\x01"), ("size", b"\x01"),
+                         ("unnamed_1a4", b"\x02\x02")):
+        spec = podsheet.TABLE[field]
+        raw[spec.offset:spec.offset + spec.size] = value
+    return podsheet.PodSheetRecord(bytes(raw))
 
 
 def _dos_folder(root: pathlib.Path, vault: bytes | None = None
@@ -386,3 +393,76 @@ def test_every_amiga_slot_crosses_to_dos_with_nothing_lost(
         assert {"SAVGAMA.PTY", "VAULTA.DAT"} <= set(plan.files), label
         checked += 1
     assert checked
+
+
+# ---------------------------------------------------------------------------
+# What the read-back compares
+# ---------------------------------------------------------------------------
+
+def _pair(monkeypatch, tmp_path):
+    folder, party = _dos_party(monkeypatch, tmp_path)
+    [member] = party.members
+    want = saveplan.edited_record(member)
+    assert want.items, "the synthetic character holds an item"
+    return want, saveplan.PodCompared(want.to_bytes())
+
+
+def test_a_changed_thief_skill_and_a_dropped_item_are_both_caught(
+        monkeypatch, tmp_path):
+    want, got = _pair(monkeypatch, tmp_path)
+    got.items = want.items
+    assert saveplan.compare([want], [got]) == []
+    got.set("thief_pick_pockets", 200)
+    lost = saveplan.compare([want], [got])
+    assert [line.split(":")[0] for line in lost] == ["thief_pick_pockets"]
+    got.set("thief_pick_pockets", want.get("thief_pick_pockets"))
+    got.items = ()
+    assert [line.split(":")[0] for line in saveplan.compare([want], [got])
+            ] == ["items"]
+
+
+def test_fields_only_the_dos_record_has_are_compared(monkeypatch, tmp_path):
+    want, got = _pair(monkeypatch, tmp_path)
+    got.items = want.items
+    for field in ("former_class_levels", "field_83_87", "save_spell",
+                  "spells_castable_cleric", "icon_head"):
+        spec = podsheet.TABLE[field]
+        raw = bytearray(want.to_bytes())
+        raw[spec.offset] ^= 0x55
+        changed = saveplan.PodCompared(bytes(raw))
+        changed.items = want.items
+        assert [line.split(":")[0]
+                for line in saveplan.compare([want], [changed])] == [field]
+
+
+def test_a_spellbook_byte_changing_value_is_a_declared_change(
+        monkeypatch, tmp_path):
+    want, got = _pair(monkeypatch, tmp_path)
+    got.items = want.items
+    reason = saveplan.POD_VALUE_CHANGES["spellbook"][1]
+    assert "non-zero" in reason and "WISH-2" in reason
+    spec = podsheet.TABLE["spellbook"]
+    odd = bytearray(want.to_bytes())
+    odd[spec.offset + 117] = 8
+    held = saveplan.PodCompared(bytes(odd))
+    held.items = want.items
+    # 8 and 1 are the one declared change; a known spell that goes missing
+    # is not.
+    one = bytearray(odd)
+    one[spec.offset + 117] = 1
+    amiga = saveplan.PodCompared(bytes(one))
+    amiga.items = want.items
+    assert saveplan.compare([held], [amiga]) == []
+    one[spec.offset + 117] = 0
+    gone = saveplan.PodCompared(bytes(one))
+    gone.items = want.items
+    assert [line.split(":")[0] for line in saveplan.compare([held], [gone])
+            ] == ["spellbook"]
+
+
+def test_every_field_left_uncompared_names_its_reason():
+    for field, reason in saveplan.POD_NOT_COMPARED.items():
+        assert field in podsheet.TABLE and reason, field
+    for field in ("thief_pick_pockets", "former_class_levels", "field_83_87",
+                  "spells_castable_cleric", "icon_head", "item_count"):
+        assert field not in saveplan.POD_NOT_COMPARED

@@ -63,6 +63,7 @@ from goldbox.record import RECORD_SIZE, CharacterRecord
 from goldbox.savegame import SaveGame0, SaveGame1, load_save, store_save
 
 from . import files as editor_files
+from .podsheet import PodSheetRecord
 
 _log = logging.getLogger("wish.editor.saveplan")
 
@@ -151,18 +152,35 @@ def edited_record(member: Any) -> CharacterRecord:
     """
     # Imported here because `editor.roster` imports `editor.convert`, which
     # imports this module.
-    from .podsheet import PodSheetRecord
     from .roster import _ITEMS_AT
 
     raw = bytearray(member.record.to_bytes())
     # A Pools of Darkness sheet record is the DOS record, which keeps its
     # items in a file of their own and has no item page to put them in.
-    if member.inventory is not None and not isinstance(
-            member.record, PodSheetRecord):
+    if isinstance(member.record, PodSheetRecord):
+        return pod_compared(member)
+    if member.inventory is not None:
         blocks = member.inventory.raws
         at = _ITEMS_AT
         raw[at:at + sum(len(block) for block in blocks)] = b"".join(blocks)
     return type(member.record).from_bytes(bytes(raw))
+
+
+class PodCompared(PodSheetRecord):
+    """A Pools of Darkness record with the items that go with it, which live
+    in a file of their own, so `compare` sees both."""
+
+    items: tuple[bytes, ...] = ()
+
+
+def pod_compared(member: Any) -> PodCompared:
+    """`member`'s record and the sixteen-byte blocks of the items it holds,
+    empty blocks left out."""
+    record = PodCompared(member.record.to_bytes())
+    if member.inventory is not None:
+        record.items = tuple(bytes(block) for block in member.inventory.raws
+                             if any(block))
+    return record
 
 
 def original_record(member: Any) -> CharacterRecord:
@@ -789,7 +807,8 @@ def _is_disk_three(path: pathlib.Path) -> bool:
 
     try:
         return amiga_savegame.is_pod_disk_three(AmigaDisk.open(str(path)))
-    except Exception:                   # not a disk, or not readable
+    except Exception as exc:            # not a disk, or not readable
+        _log.debug("%s is not a Pools of Darkness disk 3: %s", path, exc)
         return False
 
 
@@ -815,7 +834,8 @@ def find_disk_three(folder: "str | pathlib.Path | None"
         try:
             if amiga_savegame.is_pod_disk_three(AmigaDisk.open(str(image))):
                 return image
-        except Exception:               # not a disk, or not readable
+        except Exception as exc:        # not a disk, or not readable
+            _log.debug("%s is not a Pools of Darkness disk 3: %s", image, exc)
             continue
     return None
 
@@ -1331,7 +1351,8 @@ def written_records(port: str, at: pathlib.Path,
 
     if port == "c64":
         return c64_slot_records(at)
-    return [member.record
+    return [pod_compared(member) if isinstance(member.record, PodSheetRecord)
+            else member.record
             for member in Party(Source.detect(at, slot=slot)).members]
 
 
@@ -1352,8 +1373,6 @@ def stored_name(member: Any) -> str:
     (#631), so it goes through `amiga_por.to_dos_character` first, the same
     reader `dos_codec.write_c64_save` uses.
     """
-    from .podsheet import PodSheetRecord
-
     if member.native is None or isinstance(member.record, PodSheetRecord):
         # A Pools of Darkness sheet record is the DOS record: its name is
         # stored as typed, and an Amiga member's `native` is a bare block.
@@ -1633,23 +1652,12 @@ def _signature(record: CharacterRecord,
     both sides of a comparison. `source_port` is the port the sheet was read
     from; a C64, DOS or Amiga source has its treasure share rewritten.
     """
-    from .podsheet import PodSheetRecord
-
-    # The destination-aware overrides below are C64 and Pool of Radiance
-    # facts; a Pools of Darkness record is compared as it was written.
-    title_record = isinstance(record, PodSheetRecord)
     values = []
     for field in fields:
         value = record.get(field)
         if field == "name" and name is not None:
             value = name
-        elif title_record and field == "spells_known":
-            # The engine writes 1 and tests a spellbook byte only against
-            # zero, so a record holding another non-zero value (one DOS
-            # character holds 8) and an Amiga block holding 1 know the same
-            # spells.
-            value = bytes(1 if byte else 0 for byte in value)
-        elif destination is not None and not title_record:
+        elif destination is not None:
             if field == "char_class":
                 override = _expected_char_class(record, destination)
             elif field == "turn_power":
@@ -1711,12 +1719,10 @@ def compare(expected: "list[CharacterRecord]",
     if len(expected) != len(written):
         return [f"{len(expected)} character(s) went in and {len(written)} "
                 f"came back out"]
-    fields = _compared_fields(destination)
-    from .podsheet import PodSheetRecord
-
     if any(isinstance(record, PodSheetRecord) for record in expected + written):
-        # The title's own DOS record: only the names it maps have a byte.
-        fields = tuple(name for name in fields if PodSheetRecord.maps(name))
+        return _compare_pod(expected, written, expected_names,
+                            written_name_list)
+    fields = _compared_fields(destination)
     if expected_names is not None:
         want = sorted(_signature(record, destination, name, fields,
                                source_port)
@@ -1736,6 +1742,73 @@ def compare(expected: "list[CharacterRecord]",
     for mine, theirs in zip(want, got):
         for name, was, now in zip(fields, mine, theirs):
             line = f"{name}: {was} arrived as {now}"
+            if was != now and line not in out:
+                out.append(line)
+    return out
+
+
+#: The fields of a Pools of Darkness record `compare` does not read back,
+#: each with why. Every other field of the 510-byte record, and the items, are
+#: compared byte for byte; the C64-clamping reasons of `_NOT_COMPARED` do not
+#: apply to this title. The reasons are `goldbox.dos_codec`'s own accounting
+#: of the DOS fields an Amiga block has no place for.
+POD_NOT_COMPARED: dict[str, str] = {
+    # The name is compared as the player typed it (`expected_names`).
+    "name_length": "compared as the name",
+    "name_text": "compared as the name",
+    **{name: why for name, why, _run in dos_codec.DERIVED
+       if name in ("item_chain", "heap_104", "effect_chain", "hands_used")},
+    **{name: why for name, why in dos_codec.LATER_TITLE_DROPPED
+       if name == "unnamed_1e0"},
+}
+
+#: Values a conversion changes on purpose: field name, the function that maps
+#: a value to what the other port keeps, and why. `compare` applies it to both
+#: sides, so a difference in anything else the field holds is still reported.
+POD_VALUE_CHANGES: dict[str, tuple[Any, str]] = {
+    "spellbook": (
+        lambda raw: bytes(1 if byte else 0 for byte in raw),
+        "any non-zero value becomes 1; the engine tests only zero or "
+        "non-zero -- live check pending on WISH-2"),
+}
+
+
+def _pod_signature(record: PodSheetRecord, name: "str | None"
+                   ) -> tuple[tuple[str, str], ...]:
+    """Every compared field of one Pools of Darkness character, with its
+    items, as `(field, value)` pairs."""
+    from .podsheet import TABLE
+
+    raw = record.to_bytes()
+    out: list[tuple[str, str]] = [
+        ("name", repr(record.get("name") if name is None else name))]
+    for field, spec in TABLE.items():
+        if field in POD_NOT_COMPARED:
+            continue
+        value = raw[spec.offset:spec.offset + spec.size]
+        if field in POD_VALUE_CHANGES:
+            value = POD_VALUE_CHANGES[field][0](value)
+        out.append((field, repr(bytes(value))))
+    out.append(("items", repr(tuple(getattr(record, "items", ())))))
+    return tuple(out)
+
+
+def _compare_pod(expected: "list[PodSheetRecord]",
+                 written: "list[PodSheetRecord]",
+                 expected_names: "list[str] | None",
+                 written_names: "list[str] | None") -> list[str]:
+    """What the sheet holds and the written Pools of Darkness destination
+    does not, over the whole record and the items."""
+    want = sorted(_pod_signature(record, expected_names[i]
+                                 if expected_names else None)
+                  for i, record in enumerate(expected))
+    got = sorted(_pod_signature(record, written_names[i]
+                                if written_names else None)
+                 for i, record in enumerate(written))
+    out: list[str] = []
+    for mine, theirs in zip(want, got):
+        for (field, was), (_, now) in zip(mine, theirs):
+            line = f"{field}: {was} arrived as {now}"
             if was != now and line not in out:
                 out.append(line)
     return out
