@@ -20,7 +20,7 @@ import pathlib
 import pytest
 from support.amigatarget import BASE, SSB, Guest, target
 
-from automap import amiga
+from automap import amiga, amigaeffects
 from automap.target import Fix, NotConnected, read_fix, screen_banks
 
 CURSE = amiga.MACHINES["curse-of-the-azure-bonds"]
@@ -818,25 +818,106 @@ def fake_pipe(monkeypatch):
     return _PipeMemory.instances
 
 
-def test_poke_writes_through_the_holders_pipe_and_prints_old_and_new(fake_pipe, capsys):
+class _Pooled(_PipeMemory):
+    """A game whose effect pool of 0xC30000 onwards is described, as it is
+    once a party exists."""
+
+    def __init__(self, holder=None):
+        super().__init__(holder)
+        pool = amigaeffects.POOLS["secret-of-the-silver-blades"]
+        head = (pool.count.to_bytes(2, "big") + pool.size.to_bytes(2, "big")
+                + (0xC30000).to_bytes(4, "big"))
+        self.put(BASE + pool.descriptor, head + bytes(pool.bitmap_bytes))
+
+
+@pytest.fixture
+def pooled(fake_pipe, monkeypatch, tmp_path):
+    from tools.amiga import amigatarget
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(amigatarget.amiga, "WinuaePipe", _Pooled)
+    return fake_pipe
+
+
+def _journal(tmp_path, holder):
+    path = tmp_path / ".cache" / "wish" / "amigatarget" / f"poke-{holder}.jsonl"
+    return [json.loads(line) for line in path.read_text().splitlines()]
+
+
+def test_poke_writes_through_the_holders_pipe_and_prints_old_and_new(pooled, capsys):
     from tools.amiga import amigatarget
     at = 0xC30000
     rc = amigatarget.main(["--holder", "wish1-levelup-w", "poke",
                            "--at", hex(at), "--hex", "0800 00c8"])
     assert rc == 0
-    assert fake_pipe[0].holder == "wish1-levelup-w"
-    assert fake_pipe[0].get(at, 4) == bytes.fromhex("080000c8")
+    assert pooled[0].holder == "wish1-levelup-w"
+    assert pooled[0].get(at, 4) == bytes.fromhex("080000c8")
     row = json.loads(capsys.readouterr().out)
     assert row == {"address": at, "old": "00000000", "new": "080000c8"}
 
 
-def test_poke_over_the_limit_is_an_error_row_and_writes_nothing(fake_pipe, capsys):
+def test_poke_over_the_limit_is_an_error_row_and_writes_nothing(pooled, capsys):
     from tools.amiga import amigatarget
     rc = amigatarget.main(["--holder", "h", "poke", "--at", "0xC30000",
                            "--hex", "aa" * 65])
     assert rc == 1
     assert "error" in json.loads(capsys.readouterr().out)
-    assert fake_pipe[0].get(0xC30000, 65) == bytes(65)
+    assert pooled[0].get(0xC30000, 65) == bytes(65)
+
+
+def test_poke_outside_the_party_and_pool_records_writes_nothing(pooled, capsys, tmp_path):
+    from tools.amiga import amigatarget
+    rc = amigatarget.main(["--holder", "h", "poke", "--at", "0xC10000",
+                           "--hex", "aa"])
+    assert rc == 1
+    row = json.loads(capsys.readouterr().out)
+    assert "outside" in row["error"]
+    assert pooled[0].get(0xC10000, 1) == b"\0"
+    assert not (tmp_path / ".cache" / "wish" / "amigatarget").exists()
+
+
+def test_poke_running_off_the_end_of_the_pool_writes_nothing(pooled, capsys):
+    from tools.amiga import amigatarget
+    pool = amigaeffects.POOLS["secret-of-the-silver-blades"]
+    last = 0xC30000 + pool.count * pool.size
+    rc = amigatarget.main(["--holder", "h", "poke", "--at", hex(last - 1),
+                           "--hex", "aabb"])
+    assert rc == 1
+    assert pooled[0].get(last - 1, 2) == bytes(2)
+
+
+def test_poke_is_journalled_with_the_old_bytes_before_the_write(pooled, tmp_path, capsys, monkeypatch):
+    from tools.amiga import amigatarget
+    seen = []
+
+    class Watching(_Pooled):
+        def batch(self, lines, fetch=None):
+            if any(line.startswith("W") for line in lines):
+                seen.append(_journal(tmp_path, "h"))
+            return super().batch(lines, fetch)
+
+    monkeypatch.setattr(amigatarget.amiga, "WinuaePipe", Watching)
+    amigatarget.main(["--holder", "h", "poke", "--at", "0xC30000",
+                      "--hex", "aabb"])
+    assert len(seen) == 1 and seen[0][0]["address"] == 0xC30000
+    assert seen[0][0]["old"] == "0000" and seen[0][0]["new"] == "aabb"
+    assert '"old": "0000"' in capsys.readouterr().err
+
+
+def test_a_poke_whose_write_fails_still_reports_the_old_bytes(pooled, tmp_path, capsys, monkeypatch):
+    from tools.amiga import amigatarget
+
+    class Failing(_Pooled):
+        def batch(self, lines, fetch=None):
+            if any(line.startswith("W") for line in lines):
+                raise amiga.GuestError("the pipe went away")
+            return super().batch(lines, fetch)
+
+    monkeypatch.setattr(amigatarget.amiga, "WinuaePipe", Failing)
+    rc = amigatarget.main(["--holder", "h", "poke", "--at", "0xC30000",
+                           "--hex", "aabb"])
+    row = json.loads(capsys.readouterr().out)
+    assert rc == 1 and row["old"] == "0000" and "pipe went away" in row["error"]
+    assert _journal(tmp_path, "h")[0]["old"] == "0000"
 
 
 def test_pool_prints_the_descriptor_the_fs_uae_verb_prints(fake_pipe, capsys, monkeypatch):

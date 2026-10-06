@@ -52,6 +52,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pathlib
 import sys
 import time
@@ -62,6 +63,7 @@ sys.path.insert(0, str(HERE.parent.parent))
 from automap import amiga  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk  # noqa: E402
 from tools.amiga.amiga68k import Executable  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: The small-data base SAS/Lattice links these two titles with: `a4` is the
 #: data hunk plus this.  `tools/amiga/amiga68k.py` has it as `SMALL_DATA_BIAS`; it is
@@ -195,20 +197,67 @@ def _located(target: amiga.AmigaTarget, out=None) -> amiga.AmigaTarget:
 POKE_LIMIT = 64
 
 
-def poke(target: amiga.AmigaTarget, address: int, data: bytes) -> dict:
+def poke_ranges(target: amiga.AmigaTarget,
+                layout: amiga.AmigaMachine) -> list[tuple[int, int]]:
+    """The `(start, end)` address ranges a poke may touch: each party record
+    and the effect-node pool, both read from the running game."""
+    from automap import amigaeffects, amigaparty
+    from tools.amiga import fsuaegdb
+
+    key = fsuaegdb.machine_key(layout)
+    row = amigaparty.ROWS[key]
+    ranges = [(m.address, m.address + row.record_size)
+              for m in amigaparty.walk(target, row, target.data_base)
+              if m.in_party]
+    if key in amigaeffects.POOLS:
+        count, size, base, _ = amigaeffects.read_pool(target, key)
+        ranges.append((base, base + count * size))
+    return ranges
+
+
+def poke_journal(holder: str) -> pathlib.Path:
+    """Where `holder`'s pokes are recorded, one JSON line each."""
+    return scratch.cache_dir("amigatarget", f"poke-{holder}.jsonl")
+
+
+def poke(target: amiga.AmigaTarget, layout: amiga.AmigaMachine, holder: str,
+         address: int, data: bytes) -> dict:
     """Write `data` at `address` and say what was there and what is now.
 
     The row is the FS-UAE `poke` verb's: `address`, `old` and `new` as hex.
+    An address outside the party and effect-pool records is an error row and
+    nothing is written.  The address and old bytes reach the journal and
+    stderr before the write, so a write that fails or was a mistake can be
+    reversed; a failed write's row still carries the old bytes.
     """
     if not data:
         raise ValueError("poke wants at least one byte")
     if len(data) > POKE_LIMIT:
         raise ValueError(f"poke of {len(data)} bytes is over the "
                          f"{POKE_LIMIT}-byte limit")
+    end = address + len(data)
+    if not any(lo <= address and end <= hi
+               for lo, hi in poke_ranges(target, layout)):
+        return {"address": address,
+                "error": f"{address:#x}..{end:#x} is outside every party "
+                         "record and the effect pool"}
     old = target.read(address, len(data))
-    target.write(address, data)
-    new = target.read(address, len(data))
-    row = {"address": address, "old": old.hex(), "new": new.hex()}
+    entry = {"time": time.strftime("%Y-%m-%dT%H:%M:%S"), "address": address,
+             "old": old.hex(), "new": data.hex()}
+    path = poke_journal(holder)
+    scratch.ensure(path.parent)
+    with path.open("a", encoding="utf-8") as journal:
+        journal.write(json.dumps(entry) + "\n")
+        journal.flush()
+        os.fsync(journal.fileno())
+    print(f"poke {json.dumps(entry)}", file=sys.stderr, flush=True)
+    row = {"address": address, "old": old.hex()}
+    try:
+        target.write(address, data)
+        new = target.read(address, len(data))
+    except amiga.GuestError as exc:
+        return {**row, "error": f"{type(exc).__name__}: {exc}"}
+    row["new"] = new.hex()
     if new != data:
         row["error"] = "the bytes read back are not the ones written"
     return row
@@ -435,7 +484,8 @@ def main(argv: list[str] | None = None) -> int:
         target = connect_pipe(args.holder, layout)
         if args.command == "poke":
             try:
-                row = poke(target, args.at, bytes.fromhex(args.digits))
+                row = poke(target, layout, args.holder, args.at,
+                           bytes.fromhex(args.digits))
             except (ValueError, amiga.GuestError) as exc:
                 row = {"address": args.at,
                        "error": f"{type(exc).__name__}: {exc}"}
