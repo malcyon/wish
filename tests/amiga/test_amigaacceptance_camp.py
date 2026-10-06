@@ -1142,11 +1142,29 @@ FEEBLEMIND_661 = {
               "9f7217a53ffe162bad585bfdf93a938929165ed2e5d2552287127c79696471a9")}
 
 
+#: The registered Curse save with six Wish-staged running-spell rows, the source of the Curse
+#: non-Bless batch run.
+STAGED_661_CURSE = ("coab-c64/WISH-SPEC-curse-661-la-staged-six-rows.d64",
+                    "f156738583fd49be75b7d481b47080e6708dbc83a7cdfe8bf3533c6fa8806696")
+
+
 def test_661_pins_the_two_feeblemind_saves_and_names_its_issue():
     assert foundation.PUBLISHED_SOURCES_BY_ISSUE["661"] == {
         ("ssb", "c64"): frozenset({FEEBLEMIND_661["ssb"][1]}),
-        ("curse", "c64"): frozenset({FEEBLEMIND_661["curse"][1]})}
+        ("curse", "c64"): frozenset({FEEBLEMIND_661["curse"][1], STAGED_661_CURSE[1]})}
     assert foundation.PUBLISHED_ISSUE_TEXT["661"].startswith("WISH-7 (A C64 party under a running spell")
+
+
+def test_661_pins_the_staged_curse_batch_source():
+    assert STAGED_661_CURSE[1] in foundation.PUBLISHED_SOURCES_BY_ISSUE["661"][("curse", "c64")]
+
+
+def test_the_pinned_staged_curse_source_is_the_specimen_on_disk():
+    relative, digest = STAGED_661_CURSE
+    root = gamedata.specimen_root()
+    if root is None or not (root / relative).is_file():
+        pytest.skip(f"needs the specimen {relative}")
+    assert staging.sha256(root / relative) == digest
 
 
 @pytest.mark.parametrize("name", sorted(FEEBLEMIND_661))

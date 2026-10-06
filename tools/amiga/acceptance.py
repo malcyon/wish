@@ -164,7 +164,9 @@ PUBLISHED_SOURCES_BY_ISSUE = {
     # game-written Curse C64 save of Feeblemind cast on its first member, MATHEW.
     "661": {
         ("ssb", "c64"): frozenset({"1e5a51d1d630b518306ae9772b85de61715384ac674077fafb79f54c613e1e16"}),
-        ("curse", "c64"): frozenset({"9f7217a53ffe162bad585bfdf93a938929165ed2e5d2552287127c79696471a9"}),
+        ("curse", "c64"): frozenset({
+            "9f7217a53ffe162bad585bfdf93a938929165ed2e5d2552287127c79696471a9",
+            "f156738583fd49be75b7d481b47080e6708dbc83a7cdfe8bf3533c6fa8806696"}),
     },
     # The game-written C64 Curse save of the strength-spell ladder, reloaded and resaved, and the
     # DOS Silver Blades save of Slow Poison cast on a poisoned companion, resaved while it runs.
