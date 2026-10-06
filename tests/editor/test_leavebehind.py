@@ -338,7 +338,9 @@ def _row_texts_asked_for(binding, monkeypatch, **kwargs):
 
 
 def _port_readers(monkeypatch, folder, items, spells=None):
-    """Make `folder` the only place a DOS reader finds names."""
+    """Make `folder` the only place a DOS reader finds names, and a folder
+    of the title."""
+    monkeypatch.setattr(ew.titles, "dos_folder_title", lambda f: GAME.key)
     def dos_items(where):
         if str(where) != str(folder):
             raise FileNotFoundError(where)
@@ -710,3 +712,71 @@ def test_the_party_count_falls_when_an_ordinary_item_frees_the_row_for_an_unjoin
     _tick(dialog, 0, 124, on=False)
     assert not _accept(dialog).isEnabled()
     assert dialog.chosen() == {}
+
+
+# --- names for the Convert window and the readers' failures ------------------
+
+def test_convert_asks_with_the_dialogs_own_dos_folder_and_amiga_disk(
+        app, tmp_path, monkeypatch):
+    """No C64 disk and nothing in Preferences: the Convert dialog's own
+    rows name the items."""
+    from types import SimpleNamespace
+    binding = _binding(app, tmp_path)
+    monkeypatch.setattr(binding, "_find_disk", lambda *a, **k: None)
+    binding.disks = None
+    game_dir = tmp_path / "picked"
+    game_dir.mkdir()
+    _port_readers(monkeypatch, game_dir, ITEM_NAMES, SPELL_NAMES)
+    assets = SimpleNamespace(dos_folder=game_dir, amiga_disk=None,
+                             amiga_disk_one=None)
+    source = SimpleNamespace(path=tmp_path / "elsewhere" / "SAVE")
+    assert "WAND" not in _row_texts_asked_for(binding, monkeypatch)
+    texts = _row_texts_asked_for(binding, monkeypatch, source=source,
+                                 assets=assets)
+    assert "WAND" in texts
+
+
+def test_a_dos_folder_of_another_title_names_nothing(
+        app, tmp_path, monkeypatch):
+    binding = _binding(app, tmp_path)
+    monkeypatch.setattr(binding, "_find_disk", lambda *a, **k: None)
+    game_dir = tmp_path / "game"
+    game_dir.mkdir()
+    binding.disks = str(game_dir)
+    _port_readers(monkeypatch, game_dir, ITEM_NAMES, SPELL_NAMES)
+    monkeypatch.setattr(ew.titles, "dos_folder_title", lambda f: "other")
+    assert "WAND" not in _row_texts_asked_for(binding, monkeypatch)
+    monkeypatch.setattr(ew.titles, "dos_folder_title", lambda f: GAME.key)
+    assert "WAND" in _row_texts_asked_for(binding, monkeypatch)
+
+
+def test_a_reader_failure_is_a_warning_and_a_missing_file_is_not(
+        app, tmp_path, monkeypatch, caplog):
+    import logging
+    binding = _binding(app, tmp_path)
+    monkeypatch.setattr(binding, "_find_disk", lambda *a, **k: None)
+    game_dir = tmp_path / "game"
+    game_dir.mkdir()
+    binding.disks = str(game_dir)
+
+    def broken(where, *a):
+        raise ew.port_item_names.ItemNameError("table is empty")
+
+    _port_readers(monkeypatch, game_dir, ITEM_NAMES)
+    monkeypatch.setattr(ew.port_item_names, "load_dos_item_names", broken)
+    with caplog.at_level(logging.DEBUG, logger=ew._log.name):
+        _row_texts_asked_for(binding, monkeypatch)
+    warned = [r.getMessage() for r in caplog.records
+              if r.levelno == logging.WARNING and "names off" in r.getMessage()]
+    assert warned and "table is empty" in warned[0]
+
+    def missing(where, *a):
+        raise FileNotFoundError(where)
+
+    caplog.clear()
+    monkeypatch.setattr(ew.port_item_names, "load_dos_item_names", missing)
+    with caplog.at_level(logging.DEBUG, logger=ew._log.name):
+        _row_texts_asked_for(binding, monkeypatch)
+    assert not [r for r in caplog.records
+                if r.levelno >= logging.WARNING
+                and "names off" in r.getMessage()]

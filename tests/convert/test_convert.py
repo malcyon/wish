@@ -3755,9 +3755,11 @@ def test_pressing_convert_asks_and_the_choice_reaches_the_writer_as_leave(
     dialog.close()
     window, loaded = _window_for_pack_overflow(monkeypatch)
     asked = []
+    asked_where = []
 
-    def choose(overflow, game, accept_label):
+    def choose(overflow, game, accept_label, **where):
         asked.append((overflow, game.key, accept_label))
+        asked_where.append(where)
         return {1: frozenset({16})}
 
     monkeypatch.setattr(window, "_choose_left_behind", choose)
@@ -3768,6 +3770,10 @@ def test_pressing_convert_asks_and_the_choice_reaches_the_writer_as_leave(
 
     assert len(asked) == 1
     assert asked[0][2] == convert.BUTTON_CONVERT
+    # The names come from the dialog's own rows, not the open save.
+    assert asked_where[0]["source"] is window.shown[0][0].source
+    assert asked_where[0]["assets"] is window.shown[0][0]._assets
+    assert asked_where[0]["assets"] is not None
     assert seen[-1] == {1: frozenset({16})}
     today = datetime.date.today().isoformat()
     written = out / f"wish-{today}"
@@ -3782,7 +3788,7 @@ def test_cancelling_the_chooser_writes_nothing(tmp_path, monkeypatch):
     dialog.close()
     window, loaded = _window_for_pack_overflow(monkeypatch,
                                                presses=[True, False])
-    monkeypatch.setattr(window, "_choose_left_behind", lambda *a: None)
+    monkeypatch.setattr(window, "_choose_left_behind", lambda *a, **k: None)
     try:
         outcome = _convert_with(window, tmp_path, out)
     finally:
@@ -3815,7 +3821,7 @@ def test_cancelling_the_chooser_returns_to_the_convert_window_with_its_rows_kept
     answers = [None, {1: frozenset({16})}]
     asked = []
 
-    def choose(overflow, game, accept_label):
+    def choose(overflow, game, accept_label, **where):
         asked.append(overflow)
         return answers.pop(0)
 
@@ -3990,7 +3996,7 @@ def test_a_pack_and_effects_that_both_overflow_are_asked_one_after_the_other(
     dialog.close()
     window, _loaded = _window_for_pack_overflow(monkeypatch)
     monkeypatch.setattr(window, "_choose_left_behind",
-                        lambda *a: {1: frozenset({16})})
+                        lambda *a, **k: {1: frozenset({16})})
     monkeypatch.setattr(window, "_choose_effects_left",
                         lambda *a: {0: frozenset({0})})
     try:

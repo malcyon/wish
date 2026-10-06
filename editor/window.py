@@ -42,6 +42,7 @@ from goldbox import (
     c64_codec,
     classcode,
     dos_codec,
+    stonecracker,
     titles,
     treasuresplit,
 )
@@ -2115,7 +2116,8 @@ class EditorBinding(QObject):
                 # stays behind, now that Convert has been pressed.
                 choice = self._choose_left_behind(
                     dialog.pack_overflow, dialog.direction.destination_game,
-                    convert_mod.BUTTON_CONVERT)
+                    convert_mod.BUTTON_CONVERT, source=dialog.source,
+                    assets=dialog._assets)
                 if choice is None:
                     # Back to the Convert window with its rows as they were,
                     # the way Save As stays open.
@@ -2252,6 +2254,13 @@ class EditorBinding(QObject):
             return None
         return dialog.chosen()
 
+    @staticmethod
+    def _holds_title(folder, game) -> bool:
+        """Whether `folder`, or the game folder above a `SAVE` directory,
+        holds `game`'s DOS title."""
+        return any(titles.dos_folder_title(where) == game.key
+                   for where in (folder, folder.parent))
+
     def _port_names(self, read_dos, read_amiga, game, source=None,
                     assets=None) -> "dict[int, str]":
         """Names off a DOS game folder or Amiga disks, for a player with no
@@ -2273,7 +2282,11 @@ class EditorBinding(QObject):
         if beside:
             here = files.source_folder(beside)
             folders += [here, here.parent]
-        dos = [getattr(assets, "dos_folder", None)] + folders
+        # The folder the dialog names was picked for this conversion; the
+        # others are guesses and must hold this title, or another title's
+        # launcher would name the items.
+        dos = [getattr(assets, "dos_folder", None)] + [
+            f for f in folders if self._holds_title(f, game)]
         disks = [d for d in (getattr(assets, "amiga_disk_one", None),
                              getattr(assets, "amiga_disk", None)) if d]
         amiga = ([disks] if disks else []) + [f for f in folders if f.is_dir()]
@@ -2286,6 +2299,14 @@ class EditorBinding(QObject):
                     continue
                 try:
                     names = read(where, game)
+                except FileNotFoundError as exc:
+                    _log.debug("%s holds no names: %s", where, exc)
+                    continue
+                except (port_item_names.ItemNameError,
+                        port_spell_names.SpellNameError,
+                        stonecracker.StoneCrackerError) as exc:
+                    _log.warning("could not read names off %s: %s", where, exc)
+                    continue
                 except Exception as exc:
                     _log.debug("%s holds no names: %s", where, exc)
                     continue
