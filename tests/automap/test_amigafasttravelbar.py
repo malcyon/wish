@@ -273,9 +273,8 @@ def test_a_trip_that_fires_updates_the_window(lengths):
     assert bar.button.isEnabled()
     pick(window, SEWERS)                               # now where the party is
     assert bar.button.toolTip() == "the party is already in that area"
-    # Return is one of the held trips, and says so.
-    assert not bar.back_button.isEnabled()
-    assert bar.back_button.toolTip() == sentence(CURSE)
+    # Curse's Return is no longer a held trip.
+    assert bar.back_button.isEnabled()
     # Only the arming line was said; a trip that happened adds none.
     assert bar.last.message == "Traveling to Tilverton sewers."
 

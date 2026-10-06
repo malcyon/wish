@@ -87,12 +87,6 @@ def machine(key, length=0x1000, area=1, stale=False, row=None):
     return m
 
 
-def blades():
-    """Silver Blades' row with a menu text, which it does not have yet."""
-    return dataclasses.replace(trip.ROWS["secret-of-the-silver-blades"],
-                               menu_text=b"Made Up Menu")
-
-
 def kinds(armed):
     return [w.kind for w in armed.records]
 
@@ -255,10 +249,11 @@ def test_the_gate_stays_shut_anywhere_else(offset, data):
     assert not trip.gate(m, trip.ROWS["curse-of-the-azure-bonds"])
 
 
-def test_silver_blades_gate_stays_shut_until_its_menu_is_measured():
+def test_silver_blades_menu_text_is_the_measured_one():
     key = "secret-of-the-silver-blades"
-    assert not trip.gate(machine(key, row=blades()), trip.ROWS[key])
-    assert trip.gate(machine(key, row=blades()), blades())
+    assert trip.ROWS[key].menu_text == b"Area Cast View Encamp Search Look"
+    assert trip.gate(machine(key), trip.ROWS[key])
+    assert not trip.ROWS[key].confirmed
 
 
 def test_pools_gate_takes_the_grid_and_not_a_waiting_message():
@@ -505,7 +500,7 @@ def test_tidy_zeroes_only_leftover_statements_past_the_new_script():
 
 
 def test_tidy_on_silver_blades_too():
-    row = blades()
+    row = trip.ROWS["secret-of-the-silver-blades"]
     m = machine(row.key, area=0x20, stale=True, row=row)
     armed = trip.arm(m, row, trip.plan(0x21, (1, 2, 0)))
     _arrive(m, row, armed, 0x21, 100)
@@ -573,13 +568,15 @@ def test_what_each_difference_holds():
 
     assert held("curse-of-the-azure-bonds", 3, 1) == {"tilverton"}
     assert held("curse-of-the-azure-bonds", 1, 3) == set()
-    assert held("curse-of-the-azure-bonds", 1, 3, back=True) == {
+    assert held("curse-of-the-azure-bonds", 1, 3, back=True) == set()
+    assert held("curse-of-the-azure-bonds", 3, 1, back=True) == {"tilverton"}
+    assert held("pools-of-darkness", 0x15, 0x16, back=True) == {
         "return_landing"}
     assert held("pools-of-darkness", 0x15, 0x16) == set()
     assert "weak_gate" in held("pool-of-radiance", 0, 14)
     assert {"leave_grid", "onto_grid"} & held("pool-of-radiance", 26, 0) == {
         "leave_grid"}
-    assert "onto_grid" in held("pool-of-radiance", 0, 26)
+    assert "onto_grid" not in held("pool-of-radiance", 0, 26)
 
 
 # -- the player's own disks ----------------------------------------------------

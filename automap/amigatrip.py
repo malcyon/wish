@@ -233,9 +233,6 @@ ROWS: dict[str, TripRow] = {
             Difference("weak_gate",
                        "decision 5: the gate reads only the mode and view",
                        lambda here, to, back: True),
-            Difference("onto_grid",
-                       "FT-L1: a leg onto the grid with $49C3/$49C4, not run",
-                       lambda here, to, back: to in _GRID_AREAS),
         )),
     # CONFIRMED: code and 2 trips.
     "curse-of-the-azure-bonds": TripRow(
@@ -250,13 +247,11 @@ ROWS: dict[str, TripRow] = {
         script_file="/DISKB/ECL.GLB",
         confirmed=True,
         differences=(
-            _return_landing(),
             Difference("tilverton",
                        "decision 2: arriving in Tilverton replayed the opening",
                        lambda here, to, back: to == _TILVERTON),
         )),
-    # PROBABLE: code only. The menu text was never read, so the gate cannot
-    # pass; FT-L1 measures it.
+    # PROBABLE: code only, plus the menu text read live.
     "secret-of-the-silver-blades": TripRow(
         key="secret-of-the-silver-blades",
         title="Secret of the Silver Blades",
@@ -264,7 +259,8 @@ ROWS: dict[str, TripRow] = {
         ecl_origin=0x8000, area=0x79C9, mode=0x525C, clears_buffer=False,
         square_targets=(0xC04B, 0xC04C, 0xC04D),
         square_spots=_square(amiga.MACHINES["secret-of-the-silver-blades"]),
-        menu_kind=0x2384, menu_at=0x4A5E, menu_text=None,
+        menu_kind=0x2384, menu_at=0x4A5E,
+        menu_text=b"Area Cast View Encamp Search Look",
         key_buffer=0x4F6C, area_file=0x7F12,
         script_file="/DISK2/ECL.GLB",
         confirmed=False,
