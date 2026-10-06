@@ -210,8 +210,15 @@ def poke_ranges(target: amiga.AmigaTarget,
               for m in amigaparty.walk(target, row, target.data_base)
               if m.in_party]
     if key in amigaeffects.POOLS:
+        # A descriptor that is not the title's pool narrows the range to the
+        # party records rather than widening it to wherever it points.
         count, size, base, _ = amigaeffects.read_pool(target, key)
-        ranges.append((base, base + count * size))
+        try:
+            amigaeffects.check_pool(target, key, count, size, base)
+        except amigaeffects.EffectError:
+            pass
+        else:
+            ranges.append((base, base + count * size))
     return ranges
 
 
@@ -479,6 +486,7 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("--holder is required for anything that reads the "
                          "machine: take the winuae.ps1 claim first")
     if args.command in ("party", "pool", "poke"):
+        from automap import amigaeffects  # noqa: PLC0415
         from tools.amiga import fsuaegdb  # noqa: PLC0415
 
         target = connect_pipe(args.holder, layout)
@@ -486,7 +494,8 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 row = poke(target, layout, args.holder, args.at,
                            bytes.fromhex(args.digits))
-            except (ValueError, amiga.GuestError) as exc:
+            except (ValueError, OSError, amiga.GuestError,
+                    amigaeffects.EffectError) as exc:
                 row = {"address": args.at,
                        "error": f"{type(exc).__name__}: {exc}"}
         else:

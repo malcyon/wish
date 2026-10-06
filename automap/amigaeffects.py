@@ -116,6 +116,21 @@ def read_pool(target, key: str, data_base: int | None = None
     return _u16(raw, 0), _u16(raw, 2), _u32(raw, 4), raw[8:]
 
 
+def check_pool(target, key: str, count: int, size: int, base: int) -> None:
+    """Raise `EffectError` unless a descriptor read from the running game is
+    the pool the title sets up and its slots lie in the Amiga's memory."""
+    pool = POOLS[key]
+    if (count, size) != (pool.count, pool.size):
+        raise EffectError(f"the effect pool reads {count} slots of {size} "
+                          f"bytes, not the {pool.count} of {pool.size} the "
+                          f"game sets up")
+    memory = getattr(target, "memory", amiga.MEMORY)
+    if base & 1 or not any(lo <= base and base + count * size <= lo + span
+                           for lo, span in memory):
+        raise EffectError(f"the effect pool's base {base:#x} is not in the "
+                          f"Amiga's memory")
+
+
 def writes(target, key: str, record_address: int, effects,
            data_base: int | None = None) -> tuple[tuple[int, bytes], ...]:
     """The `(address, bytes)` writes, in order, that add each of `effects`
@@ -128,17 +143,9 @@ def writes(target, key: str, record_address: int, effects,
     if row is None:
         raise EffectError(f"no effect pool is known for {key}")
     count, size, base, found = read_pool(target, key, data_base)
-    pool = POOLS[key]
-    at = (target.data_base if data_base is None else data_base) + pool.descriptor
-    if (count, size) != (pool.count, pool.size):
-        raise EffectError(f"the effect pool reads {count} slots of {size} "
-                          f"bytes, not the {pool.count} of {pool.size} the "
-                          f"game sets up")
-    memory = getattr(target, "memory", amiga.MEMORY)
-    if base & 1 or not any(lo <= base and base + count * size <= lo + span
-                           for lo, span in memory):
-        raise EffectError(f"the effect pool's base {base:#x} is not in the "
-                          f"Amiga's memory")
+    check_pool(target, key, count, size, base)
+    at = (target.data_base if data_base is None else data_base) \
+        + POOLS[key].descriptor
     bitmap = bytearray(found)
     head = _u32(bytes(target.read(record_address + row.effects.head, 4)), 0)
     try:

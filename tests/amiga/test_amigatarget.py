@@ -954,3 +954,76 @@ def test_party_prints_the_shared_party_row_as_json(fake_pipe, capsys, monkeypatc
     assert amigatarget.main(["--holder", "h", "party"]) == 0
     assert json.loads(capsys.readouterr().out) == {"members": [{"name": "EPONA"}]}
     assert seen == {"base": BASE, "layout": SSB}
+
+
+def _described(count, size, base):
+    pool = amigaeffects.POOLS["secret-of-the-silver-blades"]
+
+    class Described(_Pooled):
+        def __init__(self, holder=None):
+            super().__init__(holder)
+            self.put(BASE + pool.descriptor,
+                     count.to_bytes(2, "big") + size.to_bytes(2, "big")
+                     + base.to_bytes(4, "big"))
+
+    return Described
+
+
+@pytest.mark.parametrize("count, size, base", [
+    (0xFFFF, 0xFFFF, 0xC30000),      # a garbage descriptor that would widen
+    (0, 0, 0),                       # a pool that was never set up
+    (0, 0, 0xC30000),
+])
+def test_a_descriptor_that_is_not_the_pool_gives_no_pool_range(
+        pooled, monkeypatch, capsys, count, size, base):
+    from tools.amiga import amigatarget
+    monkeypatch.setattr(amigatarget.amiga, "WinuaePipe",
+                        _described(count, size, base))
+    rc = amigatarget.main(["--holder", "h", "poke", "--at", "0xC30010",
+                           "--hex", "aa"])
+    assert rc == 1
+    assert "outside" in json.loads(capsys.readouterr().out)["error"]
+    assert not any(i.get(0xC30010, 1) != b"\0" for i in pooled)
+
+
+def test_a_pool_outside_the_amigas_memory_gives_no_pool_range(
+        pooled, monkeypatch, capsys):
+    from tools.amiga import amigatarget
+    pool = amigaeffects.POOLS["secret-of-the-silver-blades"]
+    monkeypatch.setattr(amigatarget.amiga, "WinuaePipe",
+                        _described(pool.count, pool.size, 0x10000000))
+    rc = amigatarget.main(["--holder", "h", "poke", "--at", "0x10000000",
+                           "--hex", "aa"])
+    assert rc == 1
+
+
+@pytest.mark.parametrize("where", ["read_pool", "machine_key"])
+def test_an_effect_error_while_finding_the_ranges_is_an_error_row(
+        pooled, monkeypatch, capsys, where):
+    from tools.amiga import amigatarget, fsuaegdb
+
+    def broken(*args, **kwargs):
+        raise amigaeffects.EffectError("no effect pool is known")
+
+    owner = amigaeffects if where == "read_pool" else fsuaegdb
+    monkeypatch.setattr(owner, where, broken)
+    rc = amigatarget.main(["--holder", "h", "poke", "--at", "0xC30000",
+                           "--hex", "aa"])
+    assert rc == 1
+    assert "no effect pool" in json.loads(capsys.readouterr().out)["error"]
+    assert pooled[0].get(0xC30000, 1) == b"\0"
+
+
+def test_a_journal_that_cannot_be_written_is_an_error_row_and_no_write(
+        pooled, monkeypatch, capsys):
+    from tools.amiga import amigatarget
+
+    def broken(holder):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(amigatarget, "poke_journal", broken)
+    rc = amigatarget.main(["--holder", "h", "poke", "--at", "0xC30000",
+                           "--hex", "aa"])
+    assert rc == 1
+    assert "disk full" in json.loads(capsys.readouterr().out)["error"]
+    assert pooled[0].get(0xC30000, 1) == b"\0"
