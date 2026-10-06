@@ -4069,10 +4069,28 @@ class Driver:
             raise self.fail(label, "the map bar did not return (combat or "
                             "an unknown screen)")
         status = self.game.status()
-        square = map_square(screen, status_column(self.title.key))
+        column = status_column(self.title.key)
+        # Only Pool's line is known to print `x,y facing clock`, so only Pool
+        # can tell a missing `x,y` from a square; other titles read it as before.
+        square = (map_square if self.title.key == "pool" else status_square)(
+            screen, column)
         screens.append({"shot": self.shot(label), "bar": bar_signature(screen),
                         "status": status, "square": square})
         return status, square
+
+    def settle_after_turns(self, label: str, origin: str, screens: list[dict]) -> None:
+        """Wait for the `x,y` to read again after turns that hid it; it must
+        equal `origin`, and one that never reads fails `walk-status`."""
+        column = status_column(self.title.key)
+        self.s.wait_for(lambda s: map_square(s, column) is not None,
+                        self.bounded(10.0, label))
+        _, square = self.map_status(label, screens)
+        if square is None:
+            raise self.fail("walk-status", "the status line had no x,y after "
+                            "the turns, so they were not shown to leave the "
+                            "square")
+        if square != origin:
+            raise self.fail(label, "the square changed on a turn")
 
     def press_walk_stories(self, label: str) -> dosbox.Screen:
         """Return past the title's `WALK_CONTINUE_BARS` story boxes a step
@@ -4113,14 +4131,18 @@ class Driver:
             raise self.fail("walk-status", "the status line is blank on the map, "
                             "so there is no starting square (a shop or an "
                             "arrival draws it later)")
+        hidden = False
         for n in (1, 2) if route == "MI" else ():
             if not self.game.turn_right():
                 raise self.fail(f"walk-turn-{n}", "the map bar did not return "
                                 "after turning (combat or an unknown screen)")
             _, square = record(f"walk-turn-{n}")
             # A view without the `x,y` is an unknown square, not a moved one.
+            hidden = hidden or square is None
             if square is not None and square != origin:
                 raise self.fail(f"walk-turn-{n}", "the square changed on a turn")
+        if hidden:
+            self.settle_after_turns("walk-turns-after", origin, screens)
         stepped = self.game.step()
         screen = self.press_walk_stories("walk-step")
         if not stepped and not self.on_world(screen):
@@ -4268,6 +4290,7 @@ class Driver:
             raise self.fail("walk-status", "the status line is blank on the map, "
                             "so there is no starting square (a shop or an "
                             "arrival draws it later)")
+        hidden = False
         for n in range(1, presses + 1):
             label = f"walk-turn-{n}"
             self.check_deadline(label)
@@ -4275,8 +4298,11 @@ class Driver:
                 raise self.fail(label, "the map bar did not return after "
                                 "turning (combat or an unknown screen)")
             _, square = self.map_status(label, screens)
+            hidden = hidden or square is None
             if square is not None and square != origin:
                 raise self.fail(label, "the square changed on a turn")
+        if hidden:
+            self.settle_after_turns("walk-turns-after", origin, screens)
         return {"route": "turn", "turns": presses, "map_bar": self.world_sig,
                 "square_before": origin, "square_after": origin,
                 "screens": screens}

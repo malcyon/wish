@@ -2520,23 +2520,72 @@ def test_pool_walk_mi_turns_twice_then_steps_and_records_each_map_state(tmp_path
     assert d.where == "map"
 
 
-def test_pool_walk_mi_goes_on_when_a_turn_leaves_the_line_without_x_y(tmp_path):
-    game, d = _pool_walker(tmp_path)
-    turn, step = d.game.turn_right, d.game.step
+def _hide_on_turns(game, d, shown_on=()):
+    """Turns hide the `x,y` except the numbered ones in `shown_on`; `x_after`
+    nothing else changes."""
+    turn, calls = d.game.turn_right, []
 
     def turn_hides():
-        game.hide_square = True
+        calls.append(1)
+        game.hide_square = len(calls) not in shown_on
         return turn()
 
-    def step_shows():
-        game.hide_square = False
-        return step()
+    d.game.turn_right = turn_hides
 
-    d.game.turn_right, d.game.step = turn_hides, step_shows
+
+def test_pool_walk_mi_goes_on_when_a_turn_leaves_the_line_without_x_y(tmp_path):
+    game, d = _pool_walker(tmp_path)
+    _hide_on_turns(game, d, shown_on=(2,))
     got = d.walk("MI")
     assert d.game.keys == ["Right", "Right", "Up"]
     assert got["square_before"] != got["square_after"]
-    assert [s["square"] for s in got["screens"]][1:3] == [None, None]
+    assert got["screens"][1]["square"] is None
+
+
+def test_pool_turn_fails_when_the_square_never_reads_after_hidden_turns(tmp_path):
+    game, d = _pool_walker(tmp_path)
+    _hide_on_turns(game, d)
+    with pytest.raises(da.StepFailed, match="walk-status|no x,y"):
+        d.turn(2)
+
+
+def test_pool_walk_fails_when_the_square_never_reads_after_hidden_turns(tmp_path):
+    game, d = _pool_walker(tmp_path)
+    _hide_on_turns(game, d)
+    with pytest.raises(da.StepFailed, match="no x,y"):
+        d.walk("MI")
+    assert d.game.keys == ["Right", "Right"]
+
+
+def test_pool_turn_fails_when_a_hidden_turn_moved_the_party(tmp_path):
+    game, d = _pool_walker(tmp_path)
+    _hide_on_turns(game, d, shown_on=(2,))
+    turn = d.game.turn_right
+
+    def moving():
+        game.x += 1
+        return turn()
+
+    d.game.turn_right = moving
+    with pytest.raises(da.StepFailed, match="square changed"):
+        d.turn(2)
+
+
+def test_pool_turn_passes_when_the_square_reads_as_origin_after_hidden_turns(tmp_path):
+    game, d = _pool_walker(tmp_path)
+    _hide_on_turns(game, d, shown_on=(2,))
+    got = d.turn(2)
+    assert got["square_after"] == got["square_before"]
+
+
+def test_a_short_status_line_is_still_a_square_outside_pool(tmp_path):
+    game, d = _pool_walker(tmp_path, title="curse")
+    game.hide_square = True
+    screen = game.capture()
+    shot = []
+    _, square = d.map_status("x", shot)
+    assert square == da.status_square(screen, da.status_column("curse"))
+    assert square is not None
 
 
 def test_pool_walk_i_steps_once_without_turning(tmp_path):
