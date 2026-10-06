@@ -382,34 +382,38 @@ def dropdowns(style):
     return made
 
 
-def what_the_style_asks(combo, items) -> int:
-    """The style's own width for the longest item, and the margins of the line
-    edit an editable dropdown draws it in."""
-    from PyQt6.QtCore import QSize
+def room_for_the_text(combo, items) -> tuple[int, int]:
+    """What a dropdown shows its text in, at the width it ends up: the width of
+    the edit-field rectangle the style gives it less the margins of the line
+    edit an editable one draws in, and the width of the longest item."""
     from PyQt6.QtWidgets import QStyleOptionComboBox
 
-    widest = max(combo.fontMetrics().horizontalAdvance(t) for t in items)
+    combo.resize(combo.minimumWidth(), combo.sizeHint().height())
     option = QStyleOptionComboBox()
     option.initFrom(combo)
     option.frame = combo.hasFrame()
     option.editable = combo.isEditable()
-    wanted = combo.style().sizeFromContents(
-        QStyle.ContentsType.CT_ComboBox, option,
-        QSize(widest, combo.fontMetrics().height()), combo).width()
+    option.rect = combo.rect()
+    field = combo.style().subControlRect(
+        QStyle.ComplexControl.CC_ComboBox, option,
+        QStyle.SubControl.SC_ComboBoxEditField, combo).width()
     edit = combo.lineEdit()
     if edit is not None:
-        for margins in (edit.textMargins(), edit.contentsMargins()):
-            wanted += margins.left() + margins.right()
-    return wanted
+        margins = edit.textMargins()
+        field -= margins.left() + margins.right()
+    widest = max(combo.fontMetrics().horizontalAdvance(t) for t in items)
+    return field, widest
 
 
-def test_a_dropdown_is_never_narrower_than_its_style_says_it_needs(app):
-    """A Windows player saw `1  larg`, `layer-controlled` and `N`: the sum of
-    the longest text, the arrow and a caret was a few pixels short of what the
-    style draws a combo box at."""
+def test_a_dropdown_shows_its_longest_item_whole_under_a_wider_style(app):
+    """A Windows player saw `1  larg`, `layer-controlled` and `N`: the field the
+    style draws the text in was a few pixels narrower than the text. Guards the
+    outcome under a style that asks for more width than its field rectangle
+    shows; the arrow, text and caret sum already covers 12 px here."""
     style = WiderCombos()
     for combo, items in dropdowns(style):
-        assert combo.minimumWidth() >= what_the_style_asks(combo, items), items
+        field, widest = room_for_the_text(combo, items)
+        assert field >= widest, items
         assert combo.maximumWidth() == combo.minimumWidth()
     del style
 
@@ -429,32 +433,28 @@ def test_an_editable_dropdown_allows_for_its_line_edit_margins(app):
     combo.lineEdit().setTextMargins(40, 0, 40, 0)
     combo.ensurePolished()
     _size_combo(combo)
-    assert combo.minimumWidth() >= what_the_style_asks(
-        combo, [CONTROL_PLAYER, CONTROL_GAME])
-    plain = QComboBox()
-    plain.setStyle(style)
-    plain.setEditable(True)
-    plain.addItems([CONTROL_PLAYER, CONTROL_GAME])
-    plain.ensurePolished()
-    _size_combo(plain)
-    assert combo.minimumWidth() >= plain.minimumWidth() + 80
+    field, widest = room_for_the_text(combo, [CONTROL_PLAYER, CONTROL_GAME])
+    assert field >= widest
     del style
 
 
-def test_a_dropdown_is_never_narrower_than_the_windows_style_says(app):
+def test_a_dropdown_shows_its_longest_item_whole_under_the_windows_style(app):
+    """Guards against regression under the "windows" style; Qt's Linux build of
+    it may already fit, so this does not by itself prove the Windows fix."""
     from PyQt6.QtWidgets import QStyleFactory
 
     style = QStyleFactory.create("windows")
     if style is None:
         pytest.skip("this Qt has no windows style")
     for combo, items in dropdowns(style):
-        assert combo.minimumWidth() >= what_the_style_asks(combo, items), items
+        field, widest = room_for_the_text(combo, items)
+        assert field >= widest, items
     del style
 
 
 def test_a_dropdown_the_style_already_fits_keeps_the_width_it_had(app):
-    """Fusion asks for less than the arrow, text and caret sum, so the floor
-    must leave that sum alone."""
+    """Fusion shows the text whole at the arrow, text and caret sum, so the
+    style's floor must leave that sum alone."""
     from PyQt6.QtWidgets import QStyleFactory
 
     from editor.window import CARET, _combo_chrome
@@ -463,8 +463,9 @@ def test_a_dropdown_the_style_already_fits_keeps_the_width_it_had(app):
     for combo, items in dropdowns(style):
         widest = max(combo.fontMetrics().horizontalAdvance(t) for t in items)
         sum_ = widest + _combo_chrome(combo) + CARET
-        assert what_the_style_asks(combo, items) <= sum_, items
         assert combo.minimumWidth() == sum_, items
+        field, widest = room_for_the_text(combo, items)
+        assert field >= widest, items
     del style
 
 
