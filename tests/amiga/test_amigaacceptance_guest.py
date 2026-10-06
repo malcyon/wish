@@ -156,3 +156,22 @@ def test_diagnose_has_no_emulator_choice(tmp_path, capsys):
         acceptance.main(["diagnose", "--title", "ssb", "--emulator", "fsuae", "--manifest", "m",
                          "--audio-proof", "a", "--guards", "g"])
     assert exc.value.code == 2 and "unrecognized arguments: --emulator fsuae" in capsys.readouterr().err
+
+
+def test_wait_lane_reaches_the_run_and_defaults_to_no_wait(tmp_path, recorded, monkeypatch):
+    monkeypatch.setattr(acceptance, "WinGuest", lambda: "the windows lane")
+    proof = ["--audio-proof", str(tmp_path / "mute.json")]
+    assert _measure(tmp_path, *proof) == 0
+    assert recorded["wait_lane"] == 0
+    assert _measure(tmp_path, *proof, "--wait-lane", "900") == 0
+    assert recorded["wait_lane"] == 900
+
+
+def test_wait_lane_is_passed_to_the_claim_only_when_asked_for():
+    assert acceptance._wait_option(0) == {}
+    assert acceptance._wait_option(900) == {"wait": 900}
+
+
+def test_wait_lane_with_fsuae_is_stopped_before_any_claim(tmp_path, recorded):
+    assert _measure(tmp_path, "--emulator", "fsuae", "--wait-lane", "60") == 2
+    assert recorded == {}

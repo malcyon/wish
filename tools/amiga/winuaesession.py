@@ -29,6 +29,10 @@ CLAIM_POLL_SECONDS = 5.0
 # within it; it must exceed one call plus one poll interval.
 RESERVATION_LEASE_SECONDS = 180
 EXCLUSIVE_WAITING = "fail an exclusive claim"
+# What an ordinary `claim` prints when it cannot have a lane yet: every lane held, or an
+# exclusive reservation waiting. Anything else it prints is a real failure.
+LANE_BUSY = ("one Amiga lane at a time", "every Amiga lane is in use",
+             "reserved for an exclusive claim", EXCLUSIVE_WAITING)
 SSH_FAILED = "winvm ssh failed: "
 HOLDER = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
@@ -120,9 +124,28 @@ class WinGuest:
             raise RouteError(f"winuae.ps1 {command} returned {output!r}")
         return output
 
-    def claim(self, holder: str, timeout: float, exclusive: bool = False) -> str:
-        """Claim a lane; `exclusive` takes every lane, for work that needs the whole desktop."""
-        return self._lane(holder, "claim -Exclusive" if exclusive else "claim", timeout)
+    def claim(self, holder: str, timeout: float, exclusive: bool = False,
+              wait: float = 0.0) -> str:
+        """Claim a lane; `exclusive` takes every lane, for work that needs the whole desktop.
+
+        With `wait` seconds the claim is asked again every `CLAIM_POLL_SECONDS` while the guest
+        says no lane is free or an exclusive reservation is waiting; any other failure raises
+        at once, and on the deadline the error names the guest's last line.
+        """
+        command = "claim -Exclusive" if exclusive else "claim"
+        if wait <= 0 or exclusive:
+            return self._lane(holder, command, timeout)
+        deadline = time.monotonic() + wait
+        while True:
+            try:
+                return self._lane(holder, command, timeout)
+            except RouteError as exc:
+                last = str(exc)
+                if not any(busy in last for busy in LANE_BUSY):
+                    raise
+            if time.monotonic() >= deadline:
+                raise RouteError(f"no lane within {wait:.0f}s: {last}")
+            time.sleep(CLAIM_POLL_SECONDS)
 
     def claim_every_lane(self, holder: str, timeout: float, wait: float) -> str:
         """Reserve and take every lane, polling the guest for up to `wait` seconds.

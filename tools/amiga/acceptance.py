@@ -456,10 +456,15 @@ def _white_screen(path: pathlib.Path) -> bool:
         return all(low >= 245 for low, _ in image.convert("RGB").getextrema())
 
 
+def _wait_option(wait_lane: float) -> dict[str, float]:
+    """The `wait` a WinUAE `claim` takes; none when no wait was asked for, which is every other lane."""
+    return {"wait": wait_lane} if wait_lane > 0 else {}
+
+
 def _run_diagnose(manifest_path: pathlib.Path, manifest: dict, title: AmigaTitle,
                   disks: dict, guest: Any, guard: Any, holder: str,
                   audio_proof: pathlib.Path | None, attempt: str, deadline: float,
-                  boot_limit: float) -> dict[str, Any]:
+                  boot_limit: float, wait_lane: float = 0.0) -> dict[str, Any]:
     """Boot the published title without game input and preserve each read and cleanup receipt."""
     out = manifest_path.parent / attempt
     out.mkdir(parents=False, exist_ok=False)
@@ -491,7 +496,7 @@ def _run_diagnose(manifest_path: pathlib.Path, manifest: dict, title: AmigaTitle
         return min(seconds, left)
 
     try:
-        receipt = guest.claim(holder, timeout=limit(30))
+        receipt = guest.claim(holder, timeout=limit(30), **_wait_option(wait_lane))
         if receipt != f"ok claimed by {holder}":
             raise RouteError(f"claim was not new: {receipt!r}")
         claimed = True
@@ -1296,7 +1301,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
               title: AmigaTitle | None = None, reload: bool = False,
               published_disk_one: bool = False, published_name: str | None = None,
               preserve_specimen: bool = False, specimen_issue: str | None = None,
-              diagnose: bool = False, boot_limit: float = 300,
+              diagnose: bool = False, boot_limit: float = 300, wait_lane: float = 0.0,
               rulebook_draws: int | None = None, target: Any = None,
               lane_check: Callable[[], Any] | None = None,
               rulebook_records: list[int] | None = None,
@@ -1566,7 +1571,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 raise RouteError("working DF1 differs from registered disk 2")
         if diagnose:
             return _run_diagnose(manifest_path, manifest, title, disks, guest, guard,
-                                 holder, audio_proof, attempt, deadline_seconds, boot_limit)
+                                 holder, audio_proof, attempt, deadline_seconds, boot_limit,
+                                 wait_lane)
     else:
         originals = {name: _input(manifest, name)
                      for name in ("source", "substitute", "boot_source", "disk_b_source")
@@ -2107,7 +2113,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 log("draw", **record)
 
     try:
-        receipt = guest.claim(holder, timeout=route_limit(30))
+        receipt = guest.claim(holder, timeout=route_limit(30), **_wait_option(wait_lane))
         if receipt != f"ok claimed by {holder}":
             raise RouteError(f"claim was not new: {receipt!r}; already yours is not a lane grant")
         result["claim"] = receipt
@@ -3365,6 +3371,8 @@ def _check_emulator(args: argparse.Namespace) -> None:
     """Stop an FS-UAE command that needs something only the WinUAE lane has, before any slot is claimed."""
     if getattr(args, "emulator", "winuae") != "fsuae":
         return
+    if getattr(args, "wait_lane", 0) > 0:
+        raise RouteError("--wait-lane waits for a WinUAE lane, so it needs --emulator winuae")
     if getattr(args, "rulebook_draws", None) is not None or getattr(args, "rulebook_records", None) is not None:
         raise RouteError("--rulebook-draws reads the game's memory through WinUAE's pipe, so it needs "
                          "--emulator winuae")
@@ -3413,6 +3421,9 @@ def main(argv: list[str] | None = None) -> int:
                        help="seconds for the whole run; the route gets this less "
                             "min(300, deadline/2), which is kept for cleanup")
         p.add_argument("--published-disk-one", action="store_true")
+        p.add_argument("--wait-lane", type=float, default=0, metavar="SECONDS",
+                       help="winuae only: keep asking for a lane for this long while every lane is "
+                            "held; the wait comes out of --deadline (default 0, fail at once)")
 
     p = sub.add_parser("prepare", help="copy the registered images and the specimen into a run folder")
     p.add_argument("--title", required=True, choices=choices)
@@ -3657,6 +3668,7 @@ def main(argv: list[str] | None = None) -> int:
                     audio_proof=args.audio_proof, attempt=attempt,
                     guard=PixelGuards(args.guards), deadline_seconds=args.deadline,
                     boot_limit=args.boot_limit, diagnose=True, title=title,
+                    wait_lane=args.wait_lane,
                     published_disk_one=True, published_name=args.title)
             elif args.command == "measure":
                 route = (parse_route(args.route) if args.route else route_silver_blades.ROUTE)
@@ -3667,6 +3679,7 @@ def main(argv: list[str] | None = None) -> int:
                     audio_proof=args.audio_proof, attempt=attempt,
                     guard=PixelGuards(args.guards) if args.guards else None,
                     deadline_seconds=args.deadline, measure=True, title=title,
+                    wait_lane=args.wait_lane,
                     published_disk_one=args.published_disk_one,
                     published_name=args.title if args.published_disk_one else None,
                     **({"route": route,
@@ -3678,7 +3691,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.manifest, guest=_guest_for(args), guard=PixelGuards(args.guards),
                     identity=PixelGuards(args.identity), holder=holder,
                     audio_proof=args.audio_proof, attempt=attempt,
-                    deadline_seconds=args.deadline, title=title,
+                    deadline_seconds=args.deadline, title=title, wait_lane=args.wait_lane,
                     published_disk_one=args.published_disk_one,
                     published_name=args.title if args.published_disk_one else None,
                     journal_python=getattr(args, "journal_python", None),

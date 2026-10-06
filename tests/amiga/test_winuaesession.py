@@ -225,3 +225,62 @@ def test_a_hires_frame_still_fails_a_settled_capture(tmp_path, clock):
     guest.holder = "h"
     with pytest.raises(winuaesession.RouteError, match="not an exact capture"):
         guest.capture("title", tmp_path / "r.png", tmp_path / "c.png", timeout=30)
+
+
+BUSY = "fail the WinUAE lane is claimed by x since 2026-10-06; one Amiga lane at a time"
+
+
+def _claim_replies(monkeypatch, replies):
+    """A guest answering `replies` in turn; a RouteError in the list is raised as `_run` would."""
+    sent = []
+
+    def run(*a, timeout):
+        sent.append(a)
+        reply = next(replies)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+    monkeypatch.setattr(winuaesession.WinGuest, "_run", staticmethod(run))
+    sleeps = []
+    monkeypatch.setattr(winuaesession.time, "sleep", sleeps.append)
+    return sent, sleeps
+
+
+def test_claim_polls_while_busy_then_succeeds(monkeypatch):
+    sent, sleeps = _claim_replies(monkeypatch, iter([
+        winuaesession.RouteError(winuaesession.SSH_FAILED + BUSY),
+        "fail the WinUAE lanes are reserved for an exclusive claim by y",
+        "ok claimed by h"]))
+    assert winuaesession.WinGuest().claim("h", 5, wait=120) == "ok claimed by h"
+    assert len(sent) == 3
+    assert sleeps == [winuaesession.CLAIM_POLL_SECONDS] * 2
+
+
+def test_claim_polls_on_a_busy_line_the_guest_exits_zero_with(monkeypatch):
+    sent, _ = _claim_replies(monkeypatch, iter([BUSY, "ok claimed by h"]))
+    assert winuaesession.WinGuest().claim("h", 5, wait=120) == "ok claimed by h"
+    assert len(sent) == 2
+
+
+def test_claim_that_only_ever_hears_busy_times_out_naming_the_line(monkeypatch):
+    _claim_replies(monkeypatch, iter([BUSY] * 10))
+    clock = iter([0.0, 1.0, 200.0])
+    monkeypatch.setattr(winuaesession.time, "monotonic", lambda: next(clock))
+    with pytest.raises(winuaesession.RouteError, match="claimed by x since 2026-10-06"):
+        winuaesession.WinGuest().claim("h", 5, wait=120)
+
+
+def test_claim_raises_a_real_failure_without_polling(monkeypatch):
+    sent, sleeps = _claim_replies(monkeypatch, iter([
+        winuaesession.RouteError(winuaesession.SSH_FAILED + "fail the claim file is there and cannot be read")]))
+    with pytest.raises(winuaesession.RouteError, match="cannot be read"):
+        winuaesession.WinGuest().claim("h", 5, wait=120)
+    assert len(sent) == 1 and sleeps == []
+
+
+def test_claim_without_wait_does_not_poll(monkeypatch):
+    sent, sleeps = _claim_replies(monkeypatch, iter([BUSY]))
+    with pytest.raises(winuaesession.RouteError, match="one Amiga lane at a time"):
+        winuaesession.WinGuest().claim("h", 5)
+    assert len(sent) == 1 and sleeps == []
