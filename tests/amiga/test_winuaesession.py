@@ -276,7 +276,8 @@ def test_claim_raises_a_real_failure_without_polling(monkeypatch):
         winuaesession.RouteError(winuaesession.SSH_FAILED + "fail the claim file is there and cannot be read")]))
     with pytest.raises(winuaesession.RouteError, match="cannot be read"):
         winuaesession.WinGuest().claim("h", 5, wait=120)
-    assert len(sent) == 1 and sleeps == []
+    assert len([a for a in sent if "claim -Holder" in a[1]]) == 1
+    assert sleeps == []
 
 
 def test_claim_without_wait_does_not_poll(monkeypatch):
@@ -299,3 +300,36 @@ def test_an_interrupt_during_a_waiting_claim_releases_the_holder(monkeypatch):
     with pytest.raises(KeyboardInterrupt):
         winuaesession.WinGuest().claim("h", 5, wait=120)
     assert len(sent) == 2 and "release -Holder h" in sent[1][1]
+
+
+def _release_sent(sent):
+    return [a for a in sent if "release -Holder h" in a[1]]
+
+
+@pytest.mark.parametrize("wait", [0, 120])
+def test_a_claim_that_times_out_releases_the_holder_then_reraises(monkeypatch, wait):
+    sent, _ = _claim_replies(monkeypatch, iter([
+        winuaesession.RouteError("winvm ssh exceeded its 30.0s limit"), "ok released"]))
+    with pytest.raises(winuaesession.RouteError, match="winvm ssh exceeded its 30.0s limit"):
+        winuaesession.WinGuest().claim("h", 5, wait=wait)
+    assert len(_release_sent(sent)) == 1
+
+
+@pytest.mark.parametrize("wait", [0, 120])
+def test_a_non_busy_failure_releases_the_holder(monkeypatch, wait):
+    sent, _ = _claim_replies(monkeypatch, iter([
+        winuaesession.RouteError(winuaesession.SSH_FAILED + "fail the claim file cannot be read"),
+        winuaesession.RouteError("release failed")]))
+    with pytest.raises(winuaesession.RouteError, match="cannot be read"):
+        winuaesession.WinGuest().claim("h", 5, wait=wait)
+    assert len(_release_sent(sent)) == 1
+
+
+@pytest.mark.parametrize("wait", [0, 120])
+def test_a_busy_reply_does_not_release(monkeypatch, wait):
+    sent, _ = _claim_replies(monkeypatch, iter([BUSY] * 10))
+    clock = iter([0.0, 1.0, 200.0])
+    monkeypatch.setattr(winuaesession.time, "monotonic", lambda: next(clock))
+    with pytest.raises(winuaesession.RouteError, match="one Amiga lane at a time"):
+        winuaesession.WinGuest().claim("h", 5, wait=wait)
+    assert _release_sent(sent) == []

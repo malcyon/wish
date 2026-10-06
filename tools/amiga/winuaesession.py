@@ -134,23 +134,39 @@ class WinGuest:
         """
         command = "claim -Exclusive" if exclusive else "claim"
         if wait <= 0 or exclusive:
-            return self._lane(holder, command, timeout)
+            return self._claim_once(holder, command, timeout)
         deadline = time.monotonic() + wait
         while True:
             try:
-                return self._lane(holder, command, timeout)
+                return self._claim_once(holder, command, timeout)
             except RouteError as exc:
                 last = str(exc)
                 if not any(busy in last for busy in LANE_BUSY):
                     raise
-            except BaseException:
-                # An interrupt mid-call may land after the guest granted the lane.
-                with contextlib.suppress(Exception):
-                    self.release(holder, timeout)
-                raise
             if time.monotonic() >= deadline:
                 raise RouteError(f"no lane within {wait:.0f}s: {last}")
             time.sleep(CLAIM_POLL_SECONDS)
+
+    def _claim_once(self, holder: str, command: str, timeout: float) -> str:
+        """One claim call; any failure but a busy line releases the holder before it propagates.
+
+        The guest may have granted the lane and lost the reply (a timeout, an interrupt), and
+        the caller never learns it holds one. The guest's `release` checks the holder, so this
+        cannot free another runner's lane.
+        """
+        try:
+            return self._lane(holder, command, timeout)
+        except RouteError as exc:
+            if not any(busy in str(exc) for busy in LANE_BUSY):
+                self._release_quietly(holder, timeout)
+            raise
+        except BaseException:
+            self._release_quietly(holder, timeout)
+            raise
+
+    def _release_quietly(self, holder: str, timeout: float) -> None:
+        with contextlib.suppress(Exception):
+            self.release(holder, timeout)
 
     def claim_every_lane(self, holder: str, timeout: float, wait: float) -> str:
         """Reserve and take every lane, polling the guest for up to `wait` seconds.
