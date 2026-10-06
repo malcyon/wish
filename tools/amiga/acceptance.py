@@ -2009,25 +2009,33 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             reply = encounters.off()
         else:
             return
-        if isinstance(reply, dict) and ("error" in reply or "stopped" in reply):
-            # Still on as far as the run knows, so the cleanup tries `off` again before the stop.
-            raise RouteError(f"the encounter switch did not complete: {reply}")
-        if kind not in WALKING:
-            encounters_on = False
         rows = reply.get("rows", []) if isinstance(reply, dict) else []
         # A row that was written has an address and no `stopped` or `error`; `off` lists the
         # rows it put back in the same list.
         written = [r for r in rows if isinstance(r, dict) and "address" in r
                    and "stopped" not in r and "error" not in r]
-        blocked = [r for r in rows if isinstance(r, dict) and "stopped" in r]
-        log("encounters", on=encounters_on, step_kind=kind, action=reply.get("action")
-            if isinstance(reply, dict) else None, matched=bool(written), rows=rows,
-            blocked=blocked)
+        failed = isinstance(reply, dict) and ("error" in reply or "stopped" in reply)
+        if not failed and kind not in WALKING:
+            encounters_on = False
+        # The reply comes from outside the run, so a value JSON cannot encode becomes its text
+        # rather than ending the run in its own log.
+        fields = json.loads(json.dumps({
+            "action": reply.get("action") if isinstance(reply, dict) else None,
+            "rows": rows, "blocked": [r for r in rows if isinstance(r, dict) and "stopped" in r],
+            "error": reply.get("error") if isinstance(reply, dict) else None,
+            "stopped": reply.get("stopped") if isinstance(reply, dict) else None,
+            ("patched" if kind in WALKING else "restored"): bool(written),
+        }, default=str))
+        log("encounters", on=encounters_on, step_kind=kind, **fields)
+        if failed:
+            # Still on as far as the run knows, so the cleanup tries `off` again before the stop.
+            raise RouteError(f"the encounter switch did not complete: {reply}")
         if kind in WALKING:
             seen = result["encounter_rows_patched"]
             for row in written:
-                entry = {"row": row.get("row"), "address": row["address"],
-                         "grade": row.get("grade"), "new": row.get("new")}
+                entry = json.loads(json.dumps(
+                    {"row": row.get("row"), "address": row["address"],
+                     "grade": row.get("grade"), "new": row.get("new")}, default=str))
                 if entry not in seen:
                     seen.append(entry)
 

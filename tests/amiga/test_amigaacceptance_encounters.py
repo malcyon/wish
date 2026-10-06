@@ -202,8 +202,9 @@ def test_the_run_log_and_summary_list_the_rows_the_switch_patched(tmp_path, cloc
     events = [e for e in _events(tmp_path) if e["event"] == "encounters"]
     on = [e for e in events if e["on"]]
     off = [e for e in events if not e["on"]]
-    assert on and all(e["matched"] and e["rows"] == [PATCHED] for e in on)
-    assert off and all(e["rows"] == [RESTORED] for e in off)
+    assert on and all(e["patched"] and "restored" not in e and e["rows"] == [PATCHED] for e in on)
+    assert off and all(e["restored"] and "patched" not in e and e["rows"] == [RESTORED]
+                       for e in off)
     # Two walk steps patch the same row, which is listed once.
     assert result["encounter_rows_patched"] == [
         {"row": "p0x10+0x20", "address": 0x1234, "grade": "confirmed", "new": "4e75"}]
@@ -215,5 +216,33 @@ def test_a_switch_that_matched_no_row_is_logged_as_none(tmp_path, clock, reading
     guest = AcceptGuest(clock)
     _, result = _accept(tmp_path, clock, guest=guest, encounters=FakeSwitch(guest))
     events = [e for e in _events(tmp_path) if e["event"] == "encounters" and e["on"]]
-    assert events and all(e["matched"] is False and e["rows"] == [] for e in events)
+    assert events and all(e["patched"] is False and e["rows"] == [] for e in events)
     assert result["encounter_rows_patched"] == []
+
+
+def test_a_reply_json_cannot_encode_does_not_stop_the_run(tmp_path, clock, readings):  # noqa: F811
+    guest = AcceptGuest(clock)
+    odd = {**PATCHED, "new": b"\x4e\x75"}
+    switch = FakeSwitch(guest, on_reply={"action": "on", "rows": [odd]})
+    _, result = _accept(tmp_path, clock, guest=guest, encounters=switch)
+    assert result["error"] == ""
+    on = [e for e in _events(tmp_path) if e["event"] == "encounters" and e["on"]]
+    assert on and on[0]["rows"][0]["new"] == str(b"\x4e\x75")
+
+
+def test_a_failed_off_is_logged_before_the_run_stops(tmp_path, clock, readings):  # noqa: F811
+    guest = AcceptGuest(clock)
+    stuck = FakeSwitch(guest, off_reply={"action": "off", "error": "a row did not go back"})
+    _accept(tmp_path, clock, guest=guest, encounters=stuck)
+    failed = [e for e in _events(tmp_path) if e["event"] == "encounters" and e.get("error")]
+    assert failed and failed[0]["error"] == "a row did not go back" and failed[0]["on"] is True
+
+
+def test_a_failed_on_is_logged_before_the_run_stops(tmp_path, clock, readings):  # noqa: F811
+    guest = AcceptGuest(clock)
+    switch = FakeSwitch(guest, on_reply={"action": "on", "rows": [{"row": "r", "stopped": "bytes"}],
+                                         "stopped": "bytes"})
+    _, result = _accept(tmp_path, clock, guest=guest, encounters=switch)
+    failed = [e for e in _events(tmp_path) if e["event"] == "encounters" and e.get("stopped")]
+    assert "did not complete" in result["error"]
+    assert failed and failed[0]["patched"] is False and failed[0]["blocked"]
