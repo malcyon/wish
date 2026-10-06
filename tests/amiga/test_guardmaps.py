@@ -608,3 +608,36 @@ def test_silver_blades_sheets_of_lines_3_to_6_share_the_sheet_frame_and_line_3_h
     assert 'camp_sheet_items_3' in identity['camp_sheet_3']['also']
     assert 'camp_sheet_3' in identity['camp_sheet_items_3']['also']
     assert not new - {'camp_sheet_3'} & identity.keys()
+
+
+def test_the_darkness_sheet_guard_matches_a_paladin_sheet_with_lay_on_hands_spent(tmp_path):
+    """Reads crops kept from live runs, so it skips on a machine without them.
+
+    The registered party's sheet bar offers LAY; a paladin who has laid on hands
+    today shows a bar without it, which only the class- and state-independent
+    alternative (the ITEMS button alone) matches.
+    """
+    from tools.amiga import screens
+    from tools.registry import scratch
+
+    root = scratch.cache_dir('acceptance')
+    sheets = ('679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/06-sheet.png',
+              'WISH-2/wish2-s5/accept1/shots/06-sheet.png')
+    not_sheets = ('WISH-2/wish2-s5/accept1/shots/05-loaded_menu.png',
+                  'WISH-2/wish2-s5/accept1/shots/04-disk2_prompt.png')
+    if not all((root / crop).is_file() for crop in (*sheets, *not_sheets)):
+        pytest.skip('the kept Pools of Darkness sheet crops are not on this machine')
+    maps = guardmaps.pathlib.Path(guardmaps.__file__).parent
+    out = tmp_path / 'darkness'
+    assert guardmaps.main(['--maps', str(maps), 'export', '--title', 'darkness', '--out', str(out)]) == 0
+    guard = screens.PixelGuards(out / 'guards.json')
+    for crop in sheets:
+        assert guard('sheet', root / crop), crop
+    for crop in not_sheets:
+        assert not guard('sheet', root / crop), crop
+    bar = [r for r in screens.rules_of(guardmaps._load(maps, 'darkness')['guards']['sheet'])
+           if r['box'] == [58, 402, 160, 430]]
+    assert len(bar) == 1
+    box = tuple(bar[0]['box'])
+    for crop in sheets:
+        assert screens.box_digests(root / crop, {box})[box] == bar[0]['sha256'], crop
