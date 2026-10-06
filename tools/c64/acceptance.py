@@ -53,7 +53,7 @@ that first bar, with a capture after it.
 command bar of the fights those steps fight, taking no snapshot away and writing no
 memory: a `fight-watch` event carries the bar's screenshot stem, the screen's text
 rows, whose turn it is, and reads of NAME's roster block (its status byte) and
-record bytes `0x0B8` and `0x10C`; a `fight-watch-placement` event at each fight's
+record byte `0x0B8` and the roster block's combat side (`+0x0C`); a `fight-watch-placement` event at each fight's
 first bar says whether NAME is on the battlefield.
 
 `--read-at PC=GUARD:ADDR:N[,ADDR:N...]` (hex, Pool only, repeatable) is a
@@ -6250,7 +6250,9 @@ class PoolRun:
         self.watch_bars += 1
 
     def watch_reads(self, name: str) -> dict:
-        """NAME's roster status byte and record bytes `0x0B8` and `0x10C`.
+        """NAME's roster status byte, its roster block's combat side
+        (`+0x0C`, the byte the record keeps at DOS `0x10C`) and record byte
+        `0x0B8`, the control byte.
 
         The record slot is found by name, and the roster block by the record
         slot it names, so the slot is never fixed in code."""
@@ -6266,13 +6268,13 @@ class PoolRun:
                 at = box.slot_area_base + record * box.slot_stride
                 reads["record_slot"] = record
                 reads["record_0b8"] = m.read(at + 0x0B8, 1)[0]
-                reads["record_10c"] = m.read(at + 0x10C, 1)[0]
                 blocks = [i for i in range(PARTY_SLOTS)
                           if roster[i * box.roster_stride + ROSTER_SLOT_INDEX] == record]
                 reads["roster_slot"] = blocks[0] if blocks else None
                 if blocks:
                     base = blocks[0] * box.roster_stride
                     reads["status"] = roster[base]
+                    reads["combat_side"] = roster[base + ROSTER_COMBAT_SIDE]
                     reads["roster_block"] = roster[base:base + box.roster_stride].hex()
             m.resume()
         return reads

@@ -7,7 +7,7 @@ import json
 from types import SimpleNamespace
 
 from goldbox.c64_port import POOL_OF_RADIANCE
-from goldbox.savegame import ROSTER_SLOT_INDEX
+from goldbox.savegame import ROSTER_COMBAT_SIDE, ROSTER_SLOT_INDEX
 from tools.c64 import acceptance as A
 
 BOX = A.c64_save.CONTAINERS[POOL_OF_RADIANCE.key]
@@ -55,10 +55,12 @@ def _memory(status=0x03):
         for j, c in enumerate(name):
             memory[BOX.slot_area_base + i * BOX.slot_stride + j] = c
     memory[BOX.slot_area_base + RECORD_SLOT * BOX.slot_stride + 0x0B8] = 0xFE
-    memory[BOX.slot_area_base + RECORD_SLOT * BOX.slot_stride + 0x10C] = 0x41
+    # The byte a read at record + 0x10C would hit: the next record's 0x0C.
+    memory[BOX.slot_area_base + (RECORD_SLOT + 1) * BOX.slot_stride + 0x0C] = 0x99
     base = BOX.roster_base + ROSTER_SLOT * BOX.roster_stride
     memory[base] = status
     memory[base + ROSTER_SLOT_INDEX] = RECORD_SLOT
+    memory[base + ROSTER_COMBAT_SIDE] = 0x41
     return memory
 
 
@@ -119,7 +121,8 @@ def test_each_bar_logs_screen_text_owner_and_the_three_reads(tmp_path, monkeypat
         assert (tmp_path / f"{bar['screen']}.png").exists()
         assert "THE ORC MISSES" in bar["text"]
         assert (bar["found"], bar["record_slot"], bar["roster_slot"]) == (True, 5, 2)
-        assert (bar["status"], bar["record_0b8"], bar["record_10c"]) == (3, 0xFE, 0x41)
+        assert (bar["status"], bar["record_0b8"], bar["combat_side"]) == (3, 0xFE, 0x41)
+        assert "record_10c" not in bar
     assert bars[0]["screen"] != bars[1]["screen"]
 
 
