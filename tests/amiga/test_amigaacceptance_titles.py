@@ -3738,3 +3738,25 @@ def test_the_darkness_guards_recognise_the_journal_answer_inside_the_border_that
             pytest.skip("needs the WISH-2 A2 measure4 and A3 measure-a3-7 shot 09")
         box = tuple(rule["box"])
         assert screens.box_digests(crop, [box], "journal_answer")[box] == rule["sha256"]
+
+
+def test_the_darkness_identity_recognises_the_loaded_menu_and_first_sheet_of_the_a3_party():
+    from tools.amiga import screens
+
+    spec = json.loads((pathlib.Path(foundation.__file__).parent / "guards_darkness.json").read_text())
+    cases = (("loaded_menu", "WISH-2/wish2-a3/accept1/shots/05-loaded_menu.png", [74, 94, 690, 192]),
+             ("sheet", "WISH-2/wish2-a3/measure-a3-8/shots/06-sheet.png", [74, 46, 330, 62]))
+    root = scratch.cache_dir("acceptance")
+    for state, example, box in cases:
+        assert spec["labels"][example] == [state]
+        crop = root / example
+        if not crop.is_file():
+            pytest.skip(f"needs the A3 shot {example} of WISH-2")
+        rules = [r for r in screens.rules_of(spec["identity"][state]) if r["example"] == example]
+        assert len(rules) == 1 and rules[0]["box"] == box and rules[0]["also"] == []
+        assert screens.box_digests(crop, [tuple(box)], state)[tuple(box)] == rules[0]["sha256"]
+        # Another party's screen of the same state must not match this rule.
+        others = [root / r["example"] for r in screens.rules_of(spec["identity"][state]) if r["example"] != example]
+        for other in others:
+            if other.is_file():
+                assert screens.box_digests(other, [tuple(box)], state)[tuple(box)] != rules[0]["sha256"]

@@ -1042,6 +1042,17 @@
         ],
         "example": "WISH-2/wish2-a2/measure1/shots/05-loaded_menu.png",
         "sha256": "d1cb551db647fb2bec1a90716f067a3ac8f053f5cb4752333819da6f51b6e1b7"
+      },
+      {
+        "also": [],
+        "box": [
+          74,
+          94,
+          690,
+          192
+        ],
+        "example": "WISH-2/wish2-a3/accept1/shots/05-loaded_menu.png",
+        "sha256": "5baa3e56ac0ef7df7ab8dc5c002eafb092faf69ec973e33076ab628cba0a6636"
       }
     ],
     "sheet": [
@@ -1087,6 +1098,17 @@
         ],
         "example": "WISH-2/wish2-a2/measure2/shots/06-sheet.png",
         "sha256": "47aeb38422f3150771290a071955f35269e156d87d50756d8d4be2640bcff026"
+      },
+      {
+        "also": [],
+        "box": [
+          74,
+          46,
+          330,
+          62
+        ],
+        "example": "WISH-2/wish2-a3/measure-a3-8/shots/06-sheet.png",
+        "sha256": "8bddf7a493cf272754db7651373f27d0846ad5eb2be6d5665fe2a8daf5dcdfe2"
       }
     ]
   },
@@ -1172,11 +1194,17 @@
     "WISH-2/wish2-a2/measure4/shots/09-journal_answer.png": [
       "journal_answer"
     ],
+    "WISH-2/wish2-a3/accept1/shots/05-loaded_menu.png": [
+      "loaded_menu"
+    ],
     "WISH-2/wish2-a3/measure-a3-7/shots/09-journal_answer.png": [
       "journal_answer"
     ],
     "WISH-2/wish2-a3/measure-a3-7/shots/10-world.png": [
       "world"
+    ],
+    "WISH-2/wish2-a3/measure-a3-8/shots/06-sheet.png": [
+      "sheet"
     ],
     "WISH-2/wish2-a4/measure-a4-32/shots/12-camp.png": [
       "camp"
