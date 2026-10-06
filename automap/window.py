@@ -44,7 +44,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from goldbox import levels
+from goldbox import levels, titles
 from goldbox import strength as strengthmod
 from goldbox.geo import GRID
 from goldbox.world import (
@@ -1569,7 +1569,7 @@ class AutomapBinding(QObject):
         title = amiga.MACHINES[key].title
         self.fasttravel_bar.use_amiga(
             amigafasttravel.AmigaFastTravel(key, self.disks), title,
-            game_named(title))
+            game_named(title) or titles.by_title(title))
 
     def _leave_amiga(self) -> None:
         """Put the C64's actions, cards and Level up back after an Amiga."""

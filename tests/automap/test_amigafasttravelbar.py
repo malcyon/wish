@@ -26,7 +26,6 @@ from automap import actionbar, amigaactions, amigafasttravel, amigatrip
 from automap import actions as engine
 from automap import amigatrip as trips
 from automap.target import MemoryTarget
-from automap.window import game_named
 
 CURSE = "curse-of-the-azure-bonds"
 POOL = "pool-of-radiance"
@@ -111,8 +110,7 @@ def attached(key, area, ticked=(), disks="the player's disks", can_write=True):
     at_world_menu(target, key, area)
     window = window_on(target)
     window.disks = disks
-    title = trips.ROWS[key].title
-    window.settings.set_chosen_areas(ticked, game_named(title))
+    window.settings.set_chosen_areas(ticked, key)
     window._refresh_roster()
     window.fasttravel_bar.reload_areas()
     return window, target
@@ -212,11 +210,30 @@ def test_an_unconfirmed_title_greys_the_whole_row_with_the_sentence(lengths):
     assert bar.target is None
 
 
-def test_a_title_with_no_area_table_says_so(lengths):
+def test_a_title_with_no_area_table_says_so(lengths, monkeypatch):
+    """No real Amiga title lacks a table now, so the premise is made."""
+    from goldbox import areas
+    monkeypatch.setattr(areas, "TABLES", {
+        title: table for title, table in areas.TABLES.items()
+        if title != areas.POOLS_OF_DARKNESS})
     window, _ = attached(POD, 0x30)
     bar = window.fasttravel_bar
     assert labels(window) == ["No areas are known for Pools of Darkness."]
     assert not bar.combo.isEnabled() and not bar.button.isEnabled()
+
+
+def test_pools_of_darkness_offers_its_own_ticks_not_pools(lengths):
+    window, _ = attached(POD, 48, ticked=(33,))
+    window.settings.set_chosen_areas((20, 21), POOL)
+    window.fasttravel_bar.reload_areas()
+    assert labels(window) == ["Aerie"]
+
+
+def test_pools_ticks_alone_leave_pools_of_darkness_with_nothing_ticked(lengths):
+    window, _ = attached(POD, 48)
+    window.settings.set_chosen_areas((0, 20, 21), POOL)
+    window.fasttravel_bar.reload_areas()
+    assert labels(window) == [actionbar.NOTHING_TICKED]
 
 
 def test_the_dropdown_lists_the_machines_title_not_the_windows(lengths):

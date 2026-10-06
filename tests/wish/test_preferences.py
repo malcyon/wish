@@ -2008,3 +2008,12 @@ def test_clear_automap_also_clears_a_notes_file_saved_before_title_folders():
     _clear_automap_from(AutomapState(area="GEO16"))
 
     assert json.loads(moved.read_text(encoding="utf-8"))["seen"] == []
+
+
+def test_pools_of_darkness_ticks_are_filed_under_its_own_key(app, tmp_path, monkeypatch):
+    from goldbox import titles
+    nowhere(tmp_path, monkeypatch)
+    win = window(app, title="Pools of Darkness")
+    win.set_fast_travel_targets([33])
+    assert win.settings.fast_travel_targets == {"pools-of-darkness": [33]}
+    assert win.map_game() is titles.POOLS_OF_DARKNESS

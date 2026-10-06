@@ -403,7 +403,8 @@ class WishWindow(QMainWindow):
         return self.game() or folder_title_named(self._title)
 
     def map_game(self):
-        """Which title the *automapper* is labelling with, as a `Game`.
+        """Which title the *automapper* is labelling with, as a `Game` or an
+        Amiga-only `Title`.
 
         **Not `game()`**, which is the open save's and is None with nothing
         open. The fast-travel list has to agree with the map, and the map
@@ -412,7 +413,7 @@ class WishWindow(QMainWindow):
         keyed off anything else would offer one game's areas in another's
         session, which is the whole of #14.
         """
-        return game_named(getattr(self.map.state, "title", None))
+        return folder_title_named(getattr(self.map.state, "title", None))
 
     def reload_disks(self) -> None:
         """Re-resolve where the disks are and hand the answer to both tabs."""
