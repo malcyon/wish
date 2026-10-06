@@ -747,3 +747,24 @@ def test_a_second_ordinary_claim_by_its_holder_writes_nothing():
 def test_stage_snapshot_is_a_verb_and_a_fresh_restore_a_flag():
     assert "'discard-snapshot','stage-snapshot','lane'" in PS1
     assert "$Fresh = $false" in PS1
+
+
+def test_stage_snapshot_checks_the_claim_token_like_every_pipe_verb():
+    body = _body("Invoke-StageSnapshot")
+    assert "$deny = Get-LaneDenial" in body
+    assert "Claim-Denial" not in body
+
+
+def test_the_staged_file_is_removed_only_after_the_snapshot_is_installed():
+    body = _body("Invoke-StageSnapshot")
+    assert "Move-Item -LiteralPath $src" not in body
+    copied = body.index('Copy-Item -LiteralPath $src -Destination "$part\\$name"')
+    installed = body.index("Replace-StateFolder $part $dir $backup", copied)
+    removed = body.index("Remove-Item -LiteralPath $src", installed)
+    assert copied < installed < removed
+
+
+def test_fresh_on_any_verb_but_restore_fails_before_the_verb_runs():
+    line = "if ($Fresh -and $Cmd -ne 'restore') { 'fail -Fresh belongs to restore only'; exit 1 }"
+    assert line in PS1
+    assert PS1.index(line) < PS1.index("switch ($Cmd)")

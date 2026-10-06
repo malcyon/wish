@@ -128,6 +128,7 @@ for ($i = 0; $i -lt $given.Count; $i++) {
   else { [void]$passthru.Add($a) }
 }
 $Rest = $passthru.ToArray()
+if ($Fresh -and $Cmd -ne 'restore') { 'fail -Fresh belongs to restore only'; exit 1 }
 
 $Exe     = 'C:\Program Files\WinUAE\winuae64.exe'
 $Root    = 'C:\Amiga'
@@ -841,7 +842,7 @@ function Invoke-State([string]$Verb) {
 # its header and hash are checked before the completion marker is written, and
 # the folder goes in through Replace-StateFolder like a snapshot's own.
 function Invoke-StageSnapshot {
-  $deny = Claim-Denial
+  $deny = Get-LaneDenial
   if ($deny) { $deny; exit 1 }
   if ($Holder -ceq '.' -or $Holder.Contains('..') -or $Holder.EndsWith('.') -or (Test-DeviceName $Holder) -or $Holder -cnotmatch '^[A-Za-z0-9._-]{1,64}\z') { 'fail -Holder is not a lane-safe name'; exit 1 }
   if ($Rest.Count -ne 3) { 'fail stage-snapshot needs <name> <sha256> <count>'; exit 1 }
@@ -866,7 +867,7 @@ function Invoke-StageSnapshot {
     Remove-Item -LiteralPath $part -Recurse -Force -ErrorAction SilentlyContinue
     if (Test-Path -LiteralPath $part) { throw "the leftover $part could not be removed" }
     New-Item -ItemType Directory -Force -Path $part -ErrorAction Stop | Out-Null
-    Move-Item -LiteralPath $src -Destination "$part\$name" -ErrorAction Stop
+    Copy-Item -LiteralPath $src -Destination "$part\$name" -ErrorAction Stop
     Write-Kv "$part\complete~" @{ sha256 = $sha; count = $count; bytes = "$($h.len)" }
     if (-not (Test-Path -LiteralPath "$part\complete~" -PathType Leaf)) { throw "the completion marker $part\complete~ was not written" }
     Replace-StateFolder $part $dir $backup
@@ -874,6 +875,8 @@ function Invoke-StageSnapshot {
     "fail the state could not be staged as $($name): $($_.Exception.Message)"
     exit 1
   }
+  # The staged copy is removed only once the snapshot is installed, so a failure above leaves it to stage again.
+  Remove-Item -LiteralPath $src -Force -ErrorAction SilentlyContinue
   "ok staged $name bytes=$($h.len)"
   "<<file>> $dir\$name"
   "<<bytes>> $($h.len)"

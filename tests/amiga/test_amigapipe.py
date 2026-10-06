@@ -1413,7 +1413,7 @@ def test_the_fresh_flag_is_read_by_hand_and_belongs_to_restore_only():
 
 def test_stage_snapshot_checks_holder_pattern_header_and_hash_before_the_marker():
     body = _body("Invoke-StageSnapshot")
-    claim = body.index("$deny = Claim-Denial")
+    claim = body.index("$deny = Get-LaneDenial")
     pattern = body.index("'^wish[0-9]+-' + [regex]::Escape($Holder) + '-state\\.uss\\z'")
     header = body.index("-cne '41534620'")
     digest = body.index("$sha -cne $want")

@@ -353,3 +353,32 @@ def test_drives_reads_the_lane_through_the_pipe_for_the_holder():
     asked = []
     guest._pipe = types.SimpleNamespace(drives=lambda holder: asked.append(holder) or "df0 rw")
     assert guest.drives("wish1-a") == "df0 rw" and asked == ["wish1-a"]
+
+
+class _RecordingPipe:
+    def __init__(self):
+        self.calls = []
+
+    def restore(self, name, holder, fresh=False):
+        self.calls.append(("restore", name, holder, fresh))
+        return "restored"
+
+    def stage_snapshot(self, name, holder, sha256, count):
+        self.calls.append(("stage_snapshot", name, holder, sha256, count))
+        return "staged"
+
+
+def test_a_guest_restore_passes_fresh_through_and_defaults_to_not_fresh():
+    guest = winuaesession.WinGuest()
+    guest._pipe = _RecordingPipe()
+    assert guest.restore("resume", "h") == "restored"
+    assert guest.restore("resume", "h", fresh=True) == "restored"
+    assert guest._pipe.calls == [("restore", "resume", "h", False),
+                                 ("restore", "resume", "h", True)]
+
+
+def test_a_guest_stage_snapshot_hands_the_name_hash_and_count_to_the_pipe():
+    guest = winuaesession.WinGuest()
+    guest._pipe = _RecordingPipe()
+    assert guest.stage_snapshot("resume", "h", "ab" * 32, 23578) == "staged"
+    assert guest._pipe.calls == [("stage_snapshot", "resume", "h", "ab" * 32, 23578)]
