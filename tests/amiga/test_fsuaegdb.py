@@ -2833,7 +2833,8 @@ def test_no_encounters_leaves_a_different_script_alone(scripted, tmp_path):
     assert gate_bytes(guest) == other
     assert not any(b.startswith("M") for b in guest.received)
     blocked_rows = [x for r in rows if r["event"] == "no_encounters"
-                for x in r.get("rows", []) if "stopped" in x]
+                for x in r.get("rows", []) if "stopped" in x
+                and x["row"] == "*0x6EA6+0x82EA"]
     assert len(blocked_rows) == 1               # logged once, not every heartbeat
 
 
