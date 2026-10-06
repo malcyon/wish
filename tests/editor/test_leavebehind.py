@@ -750,6 +750,25 @@ def test_a_dos_folder_of_another_title_names_nothing(
     assert "WAND" in _row_texts_asked_for(binding, monkeypatch)
 
 
+def test_a_guessed_folder_that_cannot_be_identified_is_skipped(
+        app, tmp_path, monkeypatch):
+    binding = _binding(app, tmp_path)
+    monkeypatch.setattr(binding, "_find_disk", lambda *a, **k: None)
+    bad = tmp_path / "loop"
+    bad.mkdir()
+    binding.disks = str(bad)
+    good = ew.files.source_folder(binding.path)
+    _port_readers(monkeypatch, good, ITEM_NAMES, SPELL_NAMES)
+
+    def title(folder):
+        if folder == bad:
+            raise RuntimeError("Symlink loop from " + str(folder))
+        return GAME.key
+
+    monkeypatch.setattr(ew.titles, "dos_folder_title", title)
+    assert "WAND" in _row_texts_asked_for(binding, monkeypatch)
+
+
 def test_a_reader_failure_is_a_warning_and_a_missing_file_is_not(
         app, tmp_path, monkeypatch, caplog):
     import logging

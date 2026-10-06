@@ -2258,8 +2258,14 @@ class EditorBinding(QObject):
     def _holds_title(folder, game) -> bool:
         """Whether `folder`, or the game folder above a `SAVE` directory,
         holds `game`'s DOS title."""
-        return any(titles.dos_folder_title(where) == game.key
-                   for where in (folder, folder.parent))
+        for where in (folder, folder.parent):
+            try:
+                if titles.dos_folder_title(where) == game.key:
+                    return True
+            except (OSError, RuntimeError) as exc:
+                _log.debug("%s cannot be identified as a game folder: %s",
+                           where, exc)
+        return False
 
     def _port_names(self, read_dos, read_amiga, game, source=None,
                     assets=None) -> "dict[int, str]":
