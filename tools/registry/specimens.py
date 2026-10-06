@@ -95,6 +95,7 @@ import datetime
 import hashlib
 import os
 import pathlib
+import re
 import stat
 import sys
 import tomllib
@@ -191,14 +192,17 @@ def _toml_str(value: str) -> str:
 
 def write_provenance(path: pathlib.Path, fields: dict, sha256: dict[str, str]) -> None:
     """Hand-rolled rather than a library: the schema is flat strings, one
-    bool, and one table of hashes, and nothing here should need a TOML
+    bool, one list of strings (`staged`), and one table of hashes, and nothing here should need a TOML
     writer's opinion about quoting a path."""
     lines = []
-    for key in REQUIRED_FIELDS + ("command", "source", "issue_note"):
+    for key in REQUIRED_FIELDS + ("command", "source", "staged", "issue_note"):
         if key not in fields:
             continue
         value = fields[key]
-        if isinstance(value, bool):
+        if isinstance(value, list):
+            items = ", ".join(_toml_str(str(v)) for v in value)
+            lines.append(f"{key} = [{items}]")
+        elif isinstance(value, bool):
             lines.append(f"{key} = {'true' if value else 'false'}")
         else:
             lines.append(f"{key} = {_toml_str(str(value))}")
@@ -293,8 +297,8 @@ def _require_items(sources: list[pathlib.Path]) -> None:
 def add(platform: str, name: str, sources: list[pathlib.Path], *,
         title: str, issue: str, made_by: str, what: str,
         command: str | None = None, created: str | None = None,
-        edited_afterwards: bool = False, root: pathlib.Path | None = None
-        ) -> pathlib.Path:
+        edited_afterwards: bool = False, staged: list[str] | None = None,
+        root: pathlib.Path | None = None) -> pathlib.Path:
     """Copy `sources` into the tree as one specimen and write its
     `provenance.toml`.  Rejects rather than overwriting: an existing
     specimen is not replaced, because replacing it silently is exactly the
@@ -353,6 +357,8 @@ def add(platform: str, name: str, sources: list[pathlib.Path], *,
     }
     if command:
         fields["command"] = command
+    if staged:
+        fields["staged"] = list(staged)
 
     if platform == "c64":
         if len(sources) != 1:
@@ -665,6 +671,79 @@ def repair_unloadable(name: str, *, note: str, root: pathlib.Path | None = None,
     return report
 
 
+def _one_entry(name: str, root: pathlib.Path) -> dict:
+    """The single specimen called `name`, or ValueError."""
+    entries = [e for e in list_specimens(root) if e.get("name") == name]
+    if not entries:
+        raise ValueError(f"no specimen named {name!r} under {root}")
+    if len(entries) > 1:
+        where = ", ".join(str(e.get("_provenance", e.get("_dir"))) for e in entries)
+        raise ValueError(f"{name!r} is registered {len(entries)} times ({where}) "
+                         f"-- correcting one of them is a guess")
+    entry = entries[0]
+    if entry.get("_no_provenance"):
+        raise ValueError(f"{name}: has no provenance.toml")
+    known = set(REQUIRED_FIELDS) | {"command", "source", "staged", "issue_note", "sha256"}
+    unknown = sorted(k for k in entry if not k.startswith("_") and k not in known)
+    if unknown:
+        raise ValueError(f"{name}: provenance.toml has key(s) "
+                         f"{', '.join(unknown)} that the writer would drop "
+                         f"-- teach write_provenance about them first")
+    manifest = dict(entry.get("sha256", {}))
+    prov_path = pathlib.Path(entry["_provenance"])
+    for fname, expected in manifest.items():
+        path = prov_path.parent / fname
+        if not path.is_file() or sha256_file(path) != expected:
+            raise ValueError(f"{name}: {fname} no longer matches its manifest "
+                             f"-- find out what moved it before correcting "
+                             f"its provenance")
+    return entry
+
+
+def _rewrite_provenance(name: str, entry: dict, fields: dict,
+                        check: dict) -> None:
+    """Replace `entry`'s provenance.toml with `fields` and its old manifest.
+
+    Written beside the original and swapped in only once it parses back to
+    the same manifest and every `check` value, so a failure leaves the old
+    file as it was.  Replacing a file needs its directory writable, which a
+    specimen directory is not.
+    """
+    manifest = dict(entry.get("sha256", {}))
+    prov_path = pathlib.Path(entry["_provenance"])
+    parent = prov_path.parent
+    parent_mode = stat.S_IMODE(parent.stat().st_mode)
+    tmp = parent / f".{prov_path.name}.new"
+    try:
+        parent.chmod(parent_mode | stat.S_IWUSR)
+        try:
+            write_provenance(tmp, fields, manifest)
+            back = read_provenance(tmp)
+            if back.get("sha256") != manifest or any(
+                    back.get(k) != v for k, v in check.items()):
+                raise ValueError(f"{name}: the rewritten provenance.toml does "
+                                 f"not read back as written; left unchanged")
+            # Windows declines to replace a file whose read-only attribute is
+            # set, whatever its directory allows.
+            prov_path.chmod(stat.S_IREAD | stat.S_IWRITE)
+            os.replace(tmp, prov_path)
+        finally:
+            tmp.unlink(missing_ok=True)
+    finally:
+        make_read_only(prov_path)
+        parent.chmod(parent_mode)
+
+
+def _noted(entry: dict, record: str) -> str:
+    old_note = entry.get("issue_note")
+    return f"{old_note}\n{record}" if old_note else record
+
+
+def _plain_fields(entry: dict) -> dict:
+    return {k: v for k, v in entry.items() if not k.startswith("_")
+            and k != "sha256"}
+
+
 def correct_what(name: str, *, what: str, reason: str,
                  root: pathlib.Path | None = None,
                  today: str | None = None) -> dict:
@@ -681,67 +760,64 @@ def correct_what(name: str, *, what: str, reason: str,
         raise ValueError("--what is empty")
     if not reason.strip():
         raise ValueError("--reason is empty")
-    entries = [e for e in list_specimens(root) if e.get("name") == name]
-    if not entries:
-        raise ValueError(f"no specimen named {name!r} under {root}")
-    if len(entries) > 1:
-        where = ", ".join(str(e.get("_provenance", e.get("_dir"))) for e in entries)
-        raise ValueError(f"{name!r} is registered {len(entries)} times ({where}) "
-                         f"-- correcting one of them is a guess")
-    entry = entries[0]
-    if entry.get("_no_provenance"):
-        raise ValueError(f"{name}: has no provenance.toml")
+    entry = _one_entry(name, root)
     if what == entry["what"]:
         raise ValueError(f"{name}: --what is the text it already has")
-    known = set(REQUIRED_FIELDS) | {"command", "source", "issue_note", "sha256"}
-    unknown = sorted(k for k in entry if not k.startswith("_") and k not in known)
-    if unknown:
-        raise ValueError(f"{name}: provenance.toml has key(s) "
-                         f"{', '.join(unknown)} that the writer would drop "
-                         f"-- teach write_provenance about them first")
-    manifest = dict(entry.get("sha256", {}))
-    prov_path = pathlib.Path(entry["_provenance"])
-    for fname, expected in manifest.items():
-        path = prov_path.parent / fname
-        if not path.is_file() or sha256_file(path) != expected:
-            raise ValueError(f"{name}: {fname} no longer matches its manifest "
-                             f"-- find out what moved it before correcting "
-                             f"its provenance")
     day = today or datetime.date.today().isoformat()
     record = (f"Corrected {day}: the `what` text used to read "
               f"{entry['what']!r}. Reason: {reason}")
-    fields = {k: v for k, v in entry.items() if not k.startswith("_")
-              and k != "sha256"}
-    old_note = fields.get("issue_note")
+    fields = _plain_fields(entry)
     fields["what"] = what
-    fields["issue_note"] = f"{old_note}\n{record}" if old_note else record
-
-    # Written beside the original and swapped in only once it parses back to
-    # the same manifest, so a failure leaves the old file as it was.  Replacing
-    # a file needs its directory writable, which a specimen directory is not.
-    parent = prov_path.parent
-    parent_mode = stat.S_IMODE(parent.stat().st_mode)
-    tmp = parent / f".{prov_path.name}.new"
-    try:
-        parent.chmod(parent_mode | stat.S_IWUSR)
-        try:
-            write_provenance(tmp, fields, manifest)
-            back = read_provenance(tmp)
-            if back.get("sha256") != manifest or back.get("what") != what \
-                    or back.get("issue_note") != fields["issue_note"]:
-                raise ValueError(f"{name}: the rewritten provenance.toml does "
-                                 f"not read back as written; left unchanged")
-            # Windows declines to replace a file whose read-only attribute is
-            # set, whatever its directory allows.
-            prov_path.chmod(stat.S_IREAD | stat.S_IWRITE)
-            os.replace(tmp, prov_path)
-        finally:
-            tmp.unlink(missing_ok=True)
-    finally:
-        make_read_only(prov_path)
-        parent.chmod(parent_mode)
+    fields["issue_note"] = _noted(entry, record)
+    _rewrite_provenance(name, entry, fields,
+                        {"what": what, "issue_note": fields["issue_note"]})
     return {"name": name, "was": entry["what"], "now": what,
             "issue_note": fields["issue_note"]}
+
+
+def correct_staged(name: str, *, staged: list[str], reason: str,
+                   root: pathlib.Path | None = None,
+                   today: str | None = None) -> dict:
+    """Record the staging writes a specimen's run made, leaving every image byte alone.
+
+    For a provenance written before the run's `--stage-*` writes were
+    recorded.  `edited_afterwards` stays as it was; the date and `reason` are
+    appended to `issue_note`.  A specimen already listing `staged` is
+    rejected, since replacing what a run recorded is not a correction.
+    """
+    root = root or tree_root()
+    if not staged:
+        raise ValueError("--staged is empty")
+    if not reason.strip():
+        raise ValueError("--reason is empty")
+    entry = _one_entry(name, root)
+    if entry.get("staged"):
+        raise ValueError(f"{name}: already records its staging")
+    day = today or datetime.date.today().isoformat()
+    record = (f"Corrected {day}: `staged` was not recorded. Reason: {reason}")
+    fields = _plain_fields(entry)
+    fields["staged"] = list(staged)
+    fields["issue_note"] = _noted(entry, record)
+    _rewrite_provenance(name, entry, fields,
+                        {"staged": list(staged),
+                         "issue_note": fields["issue_note"]})
+    return {"name": name, "staged": list(staged),
+            "issue_note": fields["issue_note"]}
+
+
+STAGED_ROSTER = re.compile(r"^roster slot (\d+) offset 0x([0-9A-Fa-f]+)\b")
+#: The roster byte holding a member's current hit points.
+ROSTER_HP_OFFSET = 0x19
+
+
+def hit_points_staged(fields: dict) -> bool:
+    """Whether a provenance's `staged` list shows a run wrote a roster
+    member's current hit points."""
+    for line in fields.get("staged", []):
+        m = STAGED_ROSTER.match(line)
+        if m and int(m.group(2), 16) == ROSTER_HP_OFFSET:
+            return True
+    return False
 
 
 def _format_row(entry: dict) -> str:
@@ -801,6 +877,16 @@ def cmd_correct(args: argparse.Namespace) -> int:
         print(f"rejected: {exc}")
         return 1
     print(f"corrected {r['name']}\n  was: {r['was']}\n  now: {r['now']}")
+    return 0
+
+
+def cmd_correct_staged(args: argparse.Namespace) -> int:
+    try:
+        r = correct_staged(args.name, staged=args.staged, reason=args.reason)
+    except ValueError as exc:
+        print(f"rejected: {exc}")
+        return 1
+    print(f"corrected {r['name']}\n  staged: {r['staged']}")
     return 0
 
 
@@ -894,6 +980,14 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--what", required=True, help="the corrected text")
     c.add_argument("--reason", required=True, help="why the old text was wrong")
     c.set_defaults(func=cmd_correct)
+
+    cs = sub.add_parser("correct-staged", help="record the staging writes a "
+                        "specimen's run made; no image byte moves")
+    cs.add_argument("name")
+    cs.add_argument("--staged", action="append", required=True,
+                    help="one staging write, repeatable")
+    cs.add_argument("--reason", required=True, help="why it was not recorded")
+    cs.set_defaults(func=cmd_correct_staged)
 
     sub.add_parser("list", help="what is in the tree").set_defaults(func=cmd_list)
     sub.add_parser("check", help="verify every specimen's SHA-256"

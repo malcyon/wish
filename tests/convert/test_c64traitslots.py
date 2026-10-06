@@ -180,6 +180,26 @@ def test_the_scan_skips_a_title_with_no_c64_port_and_keeps_the_others():
         assert _has_c64_port(_dos_record(deltas, []))
 
 
+def _holds_more_than_its_maximum(char, provenance: dict) -> bool:
+    """Whether a record's current hit points exceed its maximum, unless the
+    provenance of the run that made it lists a staged hit-point write, in
+    which case the surplus came from the staging."""
+    from tools.registry import specimens
+
+    if specimens.hit_points_staged(provenance):
+        return False
+    return char.get("hp_current") > char.get("hp_max")
+
+
+def test_hit_points_above_the_maximum_pass_only_when_the_run_staged_them():
+    char = _neutral(POOL.key, name="BAKSHI", hp_current=35, hp_max=25)
+    assert _holds_more_than_its_maximum(char, {})
+    assert _holds_more_than_its_maximum(
+        char, {"staged": ["roster slot 4 offset 0x0C ($4F4C): 0 -> 1"]})
+    assert not _holds_more_than_its_maximum(
+        char, {"staged": ["roster slot 4 offset 0x19 ($4F59): 25 -> 60"]})
+
+
 @needs_specimens
 def test_no_permanent_effect_id_in_the_specimen_tree_fails_to_cross():
     """The sweep #394 asks for, over every DOS save we watched being
@@ -191,7 +211,9 @@ def test_no_permanent_effect_id_in_the_specimen_tree_fails_to_cross():
     whose save slots were swapped without swapping the roster, which gave a
     character another's `hp_current`, armour class and items.  It is a
     DOS-side check only: the C64 record has four engine-written slots that
-    break it, so it is not an invariant there.
+    break it, so it is not an invariant there.  A folder whose provenance
+    lists a staged hit-point write is exempt from it, since the run's own
+    staging produced the surplus.
 
     Sixteen of those records are the two classes the older half of #394's own
     disagreement is about -- ten paladins carrying id 8 across Curse and
@@ -215,8 +237,8 @@ def test_no_permanent_effect_id_in_the_specimen_tree_fails_to_cross():
         # moved must fail rather than quietly leave the sweep short.
         prov = folder / "provenance.toml"
         assert prov.is_file(), f"{folder}: no provenance.toml -- not a specimen"
-        for filename, expected in \
-                specimens.read_provenance(prov).get("sha256", {}).items():
+        provenance = specimens.read_provenance(prov)
+        for filename, expected in provenance.get("sha256", {}).items():
             actual = specimens.sha256_file(folder / filename)
             assert actual == expected, (
                 f"{folder.name}/{filename} has changed -- recorded "
@@ -244,7 +266,7 @@ def test_no_permanent_effect_id_in_the_specimen_tree_fails_to_cross():
             checked += 1
             hp_now, hp_max = (neutral_char.get("hp_current"),
                               neutral_char.get("hp_max"))
-            if hp_now > hp_max:
+            if _holds_more_than_its_maximum(neutral_char, provenance):
                 overhealed.append(
                     f"{folder.name}/{path.name}: {hp_now} of {hp_max}")
             ids = _permanent_ids(char)

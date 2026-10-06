@@ -2729,7 +2729,8 @@ class _Pool:
 
 def _drive(tmp_path, monkeypatch, steps, max_seconds=150.0, claim=None, slot=None,
            pool=_Pool, title="pool", catch=lambda: None, stage_only=False,
-           capture_ready=False, preserve_specimen=False, read_at=()):
+           capture_ready=False, preserve_specimen=False, read_at=(),
+           stage_row=()):
     import types
     slot = slot or _Slot(tmp_path)
     _Pool.clock = [0.0]
@@ -2741,7 +2742,7 @@ def _drive(tmp_path, monkeypatch, steps, max_seconds=150.0, claim=None, slot=Non
     monkeypatch.setattr(A.S, "Session", _Sess)
     monkeypatch.setattr(A, "PoolRun", pool)
     args = types.SimpleNamespace(
-        title=title, stage_row=[], stage_trait=[], stage_item=[],
+        title=title, stage_row=list(stage_row), stage_trait=[], stage_item=[],
         stage_only=stage_only, checkpoint=[], pool=None,
         issue="703" if capture_ready else "700" if preserve_specimen else "i",
         run="r", disks=None,
@@ -2890,6 +2891,43 @@ def test_capture_ready_registers_and_checks_the_game_written_disk_before_teardow
     assert rc == 0 and slot.torn
     assert events == ["add", "check", "teardown"]
     assert summary["registered_specimen"] == str(tmp_path / "registered.D64")
+
+
+def test_a_preserved_staged_run_registers_the_staging_it_made(tmp_path, monkeypatch):
+    from tools.registry import specimens
+
+    class Run(_Pool):
+        def ready(self, arg):
+            return {"who": "BAKSHI"}
+
+        def save(self, staged):
+            (tmp_path / "out" / "saved.D64").write_bytes(b"saved")
+            return {"kept": str(tmp_path / "out" / "saved.D64")}
+
+    seen = {}
+
+    def add(platform, name, sources, **kw):
+        seen.update(kw)
+        return tmp_path / "registered.D64"
+
+    monkeypatch.setattr(specimens, "add", add)
+    monkeypatch.setattr(specimens, "check_specimens", lambda: [])
+    rc, _, out = _drive(tmp_path, monkeypatch, ["load", "ready BAKSHI>LABEL", "save", "ready BAKSHI>LABEL"],
+                        pool=Run, capture_ready=True, stage_row=["63=05:FF:0A:03"])
+    assert seen, json.loads((out / "summary.json").read_text())["lost"]
+    assert seen["staged"] == [
+        "effect row slot 63: [0, 0, 0, 0] -> [5, 255, 10, 3]"], seen
+
+
+def test_staging_record_names_a_roster_hit_point_write_the_registry_reads():
+    from tools.registry import specimens
+
+    lines = A.staging_record({"stage_roster": [
+        {"slot": 4, "offset": 0x19, "address": "$4F59", "was": 25, "now": 60,
+         "found": 60}]})
+    assert lines == ["roster slot 4 offset 0x19 ($4F59): 25 -> 60"]
+    assert specimens.hit_points_staged({"staged": lines})
+    assert A.staging_record({"staged": {}}) == []
 
 
 def test_capture_ready_registration_failure_is_recorded_and_still_tears_down(

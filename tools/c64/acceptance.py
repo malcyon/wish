@@ -634,6 +634,42 @@ def poke_roster(sess, game, writes, log) -> list[dict]:
     return rows
 
 
+def staging_record(summary: dict) -> list[str]:
+    """One line per byte a run staged, from its `summary.json` form: the
+    disk bytes `stage` wrote and the roster bytes `poke_roster` wrote.
+
+    A specimen preserved from such a run lists them in its provenance, since
+    a value only the staging could produce is not one the game made.  The
+    roster lines keep the form `tools.registry.specimens.hit_points_staged`
+    reads.
+    """
+    out = []
+    staged = summary.get("staged") or {}
+    for row in staged.get("rows", []):
+        out.append(f"effect row slot {row['slot']}: {row['was']} -> {row['now']}")
+    for row in staged.get("traits", []):
+        out.append(f"trait slot {row['slot']} index {row['index']} "
+                   f"(payload {row['offset']:#06x}): {row['was']} -> {row['now']}")
+    for row in staged.get("items", []):
+        out.append(f"item slot {row['slot']} item {row['item']} byte {row['byte']} "
+                   f"(payload {row['offset']:#06x}): {row['was']} -> {row['now']}")
+    for row in staged.get("record_bytes", []):
+        out.append(f"record slot {row['slot']} byte {row['byte']:#04x} "
+                   f"(payload {row['offset']:#06x}): {row['was']} -> {row['now']}")
+    for row in staged.get("statuses", []):
+        out.append(f"status slot {row['slot']} ({row['file']} {row['offset']:#06x}): "
+                   f"{row['was']} -> {row['now']}")
+    for row in staged.get("sides", []):
+        out.append(f"side slot {row['slot']} (payload {row['offset']:#06x}): "
+                   f"{row['was']} -> {row['now']}")
+    for row in staged.get("variables", []):
+        out.append(f"variable ${row['address']:04X}: {row['was']} -> {row['now']}")
+    for row in summary.get("stage_roster") or []:
+        out.append(f"roster slot {row['slot']} offset {row['offset']:#04x} "
+                   f"({row['address']}): {row['was']} -> {row['now']}")
+    return out
+
+
 def parse_vars(texts) -> list[tuple[int, int]]:
     """`ADDR=BYTE`, both hex: one byte of the save file at its load address."""
     out = []
@@ -8846,7 +8882,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                                else POOL_SPECIMEN_ISSUE),
                         made_by="tools/c64/acceptance.py through pooled VICE",
                         what=what,
-                        command=shlex.join([sys.executable, *sys.argv]))
+                        command=shlex.join([sys.executable, *sys.argv]),
+                        staged=staging_record(summary))
                     summary["registered_specimen"] = str(registered)
                     log.emit("specimen-added", path=str(registered))
                     problems = specimens.check_specimens()

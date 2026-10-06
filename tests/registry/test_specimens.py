@@ -824,3 +824,43 @@ def test_correct_what_rejects_rather_than_drop_an_unknown_key(tree, one_source):
     with pytest.raises(ValueError, match="mystery"):
         _correct(tree)
     assert prov.read_bytes() == before
+
+
+# --- staged: the writes a run made before the game wrote the save --------
+
+STAGED = ["roster slot 4 offset 0x19 ($4F59): 25 -> 60"]
+
+
+def test_add_records_the_staging_a_run_made(tree, one_source):
+    _add(tree, one_source, staged=STAGED)
+    fields = specimens.list_specimens(tree)[0]
+    assert fields["staged"] == STAGED
+    assert specimens.hit_points_staged(fields)
+    assert specimens.check_specimens(tree) == []
+
+
+def test_a_specimen_with_no_staging_does_not_show_staged_hit_points(
+        tree, one_source):
+    _add(tree, one_source)
+    fields = specimens.list_specimens(tree)[0]
+    assert "staged" not in fields
+    assert not specimens.hit_points_staged(fields)
+    assert not specimens.hit_points_staged(
+        {"staged": ["roster slot 4 offset 0x0C ($4F4C): 0 -> 1"]})
+
+
+def test_correct_staged_adds_the_list_and_keeps_the_note_and_the_manifest(
+        tree, one_source):
+    _add(tree, one_source)
+    before = specimens.list_specimens(tree)[0]
+    specimens.correct_staged("gnomf1", staged=STAGED, reason="the run staged it",
+                             root=tree, today="2026-10-06")
+    after = specimens.list_specimens(tree)[0]
+    assert after["staged"] == STAGED
+    assert after["edited_afterwards"] is False
+    assert after["sha256"] == before["sha256"]
+    assert "the run staged it" in after["issue_note"]
+    assert specimens.check_specimens(tree) == []
+    with pytest.raises(ValueError, match="already records"):
+        specimens.correct_staged("gnomf1", staged=STAGED, reason="again",
+                                 root=tree)
