@@ -137,11 +137,13 @@ from goldbox import (
     amiga_por,
     amiga_savegame,
     amiga_shared,
+    c64_codec,
     c64_port,
     dos_codec,
     dos_port,
     dos_savegame,
     neutral,
+    titles,
     world_state,
 )
 
@@ -1740,6 +1742,20 @@ CANNOT_CONVERT = dos_codec.CANNOT_CONVERT
 #: Donald's approved wording for a readable Pools of Darkness save: it has no
 #: C64 port, so `destinations_for` correctly answers no direction.
 POOLS_OF_DARKNESS_UNSUPPORTED = "Pools of Darkness saves are not yet supported."
+
+
+def unsupported_save_sentence(title: str) -> str | None:
+    """Donald's approved "[Game title] saves are not yet supported." for a
+    title the editor cannot read, or None for one it can.
+
+    "Cannot read" is a title with no row in `goldbox.c64_codec.DELTAS_BY_KEY`:
+    Pools of Darkness, Gateway, Champions and Death Knights. The sentence is
+    built from the title table's own names.
+    """
+    for known in titles.TITLES:
+        if known.title == title and known.key not in c64_codec.DELTAS_BY_KEY:
+            return f"{title} saves are not yet supported."
+    return None
 #: `editor/dosimport.py`'s `NO_DISKS`/`NO_DISKS_TITLE`. The title is Donald's
 #: of 2026-08-27; the line is his of 2026-09-05, rewritten when
 #: `#342 (A Curse or Silver Blades save cannot be converted unless its C64

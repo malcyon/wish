@@ -5662,6 +5662,35 @@ def test_opening_a_pools_of_darkness_folder_shows_the_convert_sentence(
     assert "goldbox/" not in said[0][1] and "c64_port" not in said[0][1]
 
 
+@pytest.mark.parametrize("game_attr, sentence", [
+    ("GATEWAY_TO_THE_SAVAGE_FRONTIER",
+     "Gateway to the Savage Frontier saves are not yet supported."),
+    ("CHAMPIONS_OF_KRYNN", "Champions of Krynn saves are not yet supported."),
+    ("DEATH_KNIGHTS_OF_KRYNN",
+     "Death Knights of Krynn saves are not yet supported."),
+])
+def test_opening_an_unmeasured_c64_title_shows_its_own_sentence(
+        app, tmp_path, monkeypatch, game_attr, sentence):
+    """A Gateway or Krynn save has no measured record deltas; the box shows
+    the approved sentence, not the `KeyError` text."""
+    import editor.window as ew
+    from goldbox import c64_port
+    save = synthetic_save(tmp_path, game=getattr(c64_port, game_attr))
+    said = []
+    monkeypatch.setattr(ew.QMessageBox, "critical",
+                        lambda *a, **k: said.append((a[1], a[2])))
+    ew.EditorBinding(make_root()).load(str(save))
+    assert said == [("Cannot open", sentence)]
+
+
+def test_the_pools_of_darkness_sentence_is_the_general_one():
+    from editor.convert import POOLS_OF_DARKNESS_UNSUPPORTED, unsupported_save_sentence
+    assert unsupported_save_sentence("Pools of Darkness") == \
+        POOLS_OF_DARKNESS_UNSUPPORTED == \
+        "Pools of Darkness saves are not yet supported."
+    assert unsupported_save_sentence("Curse of the Azure Bonds") is None
+
+
 def test_another_title_blocked_on_open_shows_the_general_message(
         app, tmp_path, monkeypatch):
     import editor.window as ew

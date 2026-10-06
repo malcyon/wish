@@ -369,6 +369,13 @@ class Party:
                      or c64_port.detect_from_roster(self.disk)
                      or c64_port.DEFAULT)
         if self.is_save:
+            if self.game.key not in c64_codec.DELTAS_BY_KEY:
+                # No measured record layout: reading it would raise a bare
+                # `KeyError` out of `c64_codec.deltas_for`.
+                raise dos_codec.WrongTitleError(
+                    f"{self.game.title} has no measured C64 record deltas, "
+                    f"so goldbox/c64_codec.py cannot read its characters",
+                    self.game.title)
             self._load_save()
         else:
             self._load_standalone()
