@@ -81,7 +81,7 @@ def test_curse_warp_runs_fast_travel_and_reports_its_outcome(tmp_path, monkeypat
     assert any(w.startswith(f"${ADDR.slot:04X}=") for w in got["writes"])
 
 
-def test_curse_warp_the_game_refuses_stops_before_any_write(tmp_path, monkeypatch):
+def test_a_curse_warp_the_game_does_not_take_stops_before_any_write(tmp_path, monkeypatch):
     run, sess = _run(tmp_path, monkeypatch)
     sess.pc = 0x0000                    # not in the key-wait loop
     with pytest.raises(A.StepFailed):
