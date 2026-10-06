@@ -3596,3 +3596,18 @@ def test_the_darkness_guards_hold_a_place_rule_for_the_square_after_stage_5s_wal
     if not crop.is_file():
         pytest.skip("needs the stage 5 accept shot 13 of WISH-2")
     assert screens.box_digests(crop, [tuple(rule["box"])], state)[tuple(rule["box"])] == rule["sha256"]
+
+
+def test_the_darkness_guards_recognise_the_seven_member_loaded_menu_of_the_a2_party():
+    from tools.amiga import screens
+
+    spec = json.loads((pathlib.Path(foundation.__file__).parent / "guards_darkness.json").read_text())
+    example = "WISH-2/wish2-a2/measure1/shots/05-loaded_menu.png"
+    assert spec["labels"][example] == ["loaded_menu"]
+    crop = scratch.cache_dir("acceptance") / example
+    if not crop.is_file():
+        pytest.skip("needs the stage 8 A2 measure shot 05 of WISH-2")
+    for kind, box in (("guards", [58, 262, 698, 432]), ("identity", [74, 94, 690, 192])):
+        rules = [r for r in screens.rules_of(spec[kind]["loaded_menu"]) if r["example"] == example]
+        assert len(rules) == 1 and rules[0]["box"] == box and rules[0]["also"] == []
+        assert screens.box_digests(crop, [tuple(box)], "loaded_menu")[tuple(box)] == rules[0]["sha256"]

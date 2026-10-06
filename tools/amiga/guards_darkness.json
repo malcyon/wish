@@ -578,17 +578,30 @@
       "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/03-load_picker.png",
       "sha256": "29499ed9c27ee64aeba995399a06a669d5145cb1cb70ff17e3d985ba4f6d8100"
     },
-    "loaded_menu": {
-      "also": [],
-      "box": [
-        58,
-        262,
-        698,
-        432
-      ],
-      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/05-loaded_menu.png",
-      "sha256": "fac70aaea973b6350311b8066a59267a5ddeaeee03fce1aa3871b868181a60a3"
-    },
+    "loaded_menu": [
+      {
+        "also": [],
+        "box": [
+          58,
+          262,
+          698,
+          432
+        ],
+        "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/05-loaded_menu.png",
+        "sha256": "fac70aaea973b6350311b8066a59267a5ddeaeee03fce1aa3871b868181a60a3"
+      },
+      {
+        "also": [],
+        "box": [
+          58,
+          262,
+          698,
+          432
+        ],
+        "example": "WISH-2/wish2-a2/measure1/shots/05-loaded_menu.png",
+        "sha256": "1eeb1eaa5aea1ab496173c9a50506b5b18231101312f7045119d95f6589fddf8"
+      }
+    ],
     "party_menu": {
       "also": [],
       "box": [
@@ -954,6 +967,17 @@
         ],
         "example": "amiga-grab-crops/wish9-b1__05-loaded_menu.png",
         "sha256": "3d4ae38cb55ba901a1642b8136c85494f82922165644f8f225c234a91486efdc"
+      },
+      {
+        "also": [],
+        "box": [
+          74,
+          94,
+          690,
+          192
+        ],
+        "example": "WISH-2/wish2-a2/measure1/shots/05-loaded_menu.png",
+        "sha256": "d1cb551db647fb2bec1a90716f067a3ac8f053f5cb4752333819da6f51b6e1b7"
       }
     ],
     "sheet": [
@@ -990,9 +1014,6 @@
     ]
   },
   "labels": {
-    "WISH-2/wish2-s5/accept2/shots/13-world.png": [
-      "place_x3_y2_f1"
-    ],
     "628/darkness-P1a/accept2/shots/12-world.png": [
       "place_x1_y2_f1"
     ],
@@ -1061,6 +1082,12 @@
     ],
     "679/d2a23aa478-amiga-darkness-reload-B/reloadB/shots/11-place.png": [
       "place_x2_y2_f1"
+    ],
+    "WISH-2/wish2-a2/measure1/shots/05-loaded_menu.png": [
+      "loaded_menu"
+    ],
+    "WISH-2/wish2-s5/accept2/shots/13-world.png": [
+      "place_x3_y2_f1"
     ],
     "amiga-grab-crops/wish9-b1__01-party_menu.png": [
       "party_menu"
