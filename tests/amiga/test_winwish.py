@@ -669,6 +669,23 @@ def test_two_drives_or_fewer_add_no_settings(tmp_path, monkeypatch):
     assert lane.options == ()
 
 
+def test_up_appends_uae_options_after_the_drive_settings(tmp_path, monkeypatch):
+    lane = FakeLane()
+    args = _args(tmp_path, monkeypatch, "--df1", "b.adf", "--df2", "c.adf",
+                 "--uae-option", "fastmem_size=2", "--uae-option", "bogomem_size=0")
+    winwish.up(winwish.Guest(FakeRun()), lane, args)
+    assert lane.options == ("nr_floppies=3", "floppy2type=0", "fastmem_size=2", "bogomem_size=0")
+
+
+@pytest.mark.parametrize("bad", ["fastmem_size", "a b=1", "a=\"1\"", "a='1'"])
+def test_a_malformed_uae_option_is_blocked_before_anything_starts(tmp_path, monkeypatch, bad):
+    run, lane = FakeRun(), FakeLane()
+    args = _args(tmp_path, monkeypatch, "--uae-option", bad)
+    with pytest.raises(winwish.WinwishError, match="--uae-option"):
+        winwish.up(winwish.Guest(run), lane, args)
+    assert lane.log == [] and run.calls == []
+
+
 def test_a_drive_after_a_gap_is_blocked_before_anything_starts(tmp_path, monkeypatch):
     run, lane = FakeRun(), FakeLane()
     args = _args(tmp_path, monkeypatch, "--df2", "c.adf")

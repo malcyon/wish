@@ -1618,6 +1618,14 @@ def floppy_options(count: int) -> tuple[str, ...]:
     return (f"nr_floppies={count}", *(f"floppy{n}type=0" for n in range(2, count)))
 
 
+def uae_options(values: list[str] | None) -> tuple[str, ...]:
+    """The extra `-s` settings of `up`; each must be KEY=VALUE with no whitespace or quotes."""
+    for value in values or ():
+        if "=" not in value or re.search(r"[\s\"']", value):
+            raise WinwishError(f"--uae-option needs KEY=VALUE without spaces or quotes: {value!r}")
+    return tuple(values or ())
+
+
 def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
     """Fetch, stage, claim the lane, start WinUAE (when there are drives), start Wish.
 
@@ -1632,7 +1640,7 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
     releases the lane, in that order.
     """
     drives = floppy_paths(args)
-    options = floppy_options(len(drives))
+    options = (*floppy_options(len(drives)), *uae_options(getattr(args, "uae_option", None)))
     if args.game and not GAME_KEY.match(args.game):
         raise WinwishError(f"not a game key: {args.game!r}")
     if args.game and not drives:
@@ -1741,6 +1749,8 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--df1", help="a staged ADF on the guest for DF1")
     p.add_argument("--df2", help="a staged ADF on the guest for DF2 (Pool of Radiance's save disk)")
     p.add_argument("--df3", help="a staged ADF on the guest for DF3; needs --df2")
+    p.add_argument("--uae-option", action="append", default=[], metavar="KEY=VALUE",
+                   help="a WinUAE setting added after the drive settings, such as fastmem_size=2; repeatable")
     p.add_argument("--game", help="a `game_folders` key such as pool-of-radiance: Wish's game "
                    "folder for that title is set to copies of the mounted ADFs, so it draws the map")
     p.add_argument("--zip", help="use this zip rather than fetching")
