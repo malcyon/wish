@@ -787,13 +787,14 @@ class Caster:
         with sess.mon(8) as m:
             now = roster_hp(m)
             m.resume()
-        self.log.emit("hp", turn=self.turn, hp=now)
+        b = sess.battle()
+        me = sess.acting(b)
+        self.log.emit("hp", turn=self.turn, hp=now,
+                      acting=me.name.strip() if me else None)
         if self.first_hp is None:
             self.first_hp = now
         if self.abort_down:
             self.stop_if_down(sess)
-        b = sess.battle()
-        me = sess.acting(b)
         if me is not None and self.queue and \
                 me.name.strip() == self.queue[0][0]:
             if self.late and self.armed is None:

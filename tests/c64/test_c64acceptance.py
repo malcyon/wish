@@ -14127,12 +14127,12 @@ def _fast_cast_run(monkeypatch, machine, seen):
     return run
 
 
-def test_fast_flee_raises_the_movement_only_after_the_cast_and_puts_it_back(
+def test_fast_flee_raises_the_movement_from_the_first_turn_and_puts_it_back(
         monkeypatch):
     machine, seen = _MovementMachine(), []
     run = _fast_cast_run(monkeypatch, machine, seen)
     got = run.fight_cast("BAKSHI:PRAYER", "I", 5)
-    assert seen == [[12, 6, 6], [13, 13, 13]]
+    assert seen == [[13, 13, 13], [13, 13, 13]]
     assert machine.movement() == [12, 6, 6]
     assert got["spent"] == [42]
     report = run.movement_reports[-1]

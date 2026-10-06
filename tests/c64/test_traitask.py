@@ -573,6 +573,17 @@ def test_a_held_turn_logs_cast_wait_with_every_status(
     assert fields["words"][2] == "$01 OK"
 
 
+def test_the_hp_event_names_the_acting_member_or_none(cast_patches):
+    sess = _CastSession()
+    caster = route_pool.Caster(FakeLog(), [("BAKSHI", "PRAYER", None)],
+                               otherwise=lambda s, state: "FLEE")
+    caster(sess, "bar")
+    sess.acting = lambda b: None
+    caster(sess, "bar")
+    acting = [f["acting"] for k, f in caster.log.emitted if k == "hp"]
+    assert acting == ["BAKSHI", None]
+
+
 def test_down_words_name_every_status_that_takes_a_member_out_of_the_fight():
     assert route_pool.Caster.down_words() == {2, 3, 4, 5, 7}
     assert route_pool.Caster.down_words(gone=False) == {3, 4, 5, 7}
