@@ -7,8 +7,9 @@ answers which of them clears the wilderness picture left around the 3D frame:
 the machine is snapshotted once at the world menu, and for each prefix length
 0 to 5 it is restored, the trip is written (the prefix, then the trip's own
 `SAVE` square and `NEWECL`) at the script buffer's tail with the step entry and
-the forward key's message pointed at it, and a screenshot is taken once the
-area byte has changed and the game has settled.
+the forward key's message pointed at it. The wait is: poll the area byte until
+it changes, then wait 3 s, then take the screenshot. A prefix whose area byte
+never changes is reported as not fired and the run goes on with the next one.
 
     tools/amiga/tripprobe.py --holder wish1-por --area 0 --square 9,14,2 --out DIR
 
@@ -71,33 +72,40 @@ def write_trip(target, row, data: bytes) -> int:
 
 def run(target, holder: str, area: int, square, out: pathlib.Path,
         shot: Callable[[str, pathlib.Path], object],
-        prefixes=range(6), sleep: Callable[[float], None] = time.sleep,
-        name: str = "tripprobe") -> list[pathlib.Path]:
-    """One screenshot per prefix length, each from a restore of one snapshot."""
+        prefixes=range(6), sleep: Callable[[float], None] | None = None,
+        name: str = "tripprobe", pipe=None) -> list[tuple[int, pathlib.Path | None]]:
+    """One (prefix, screenshot) per prefix length, each from a restore of one snapshot.
+
+    `target` reads and writes memory; `pipe` (default `target`) holds the
+    snapshots. The screenshot is None for a prefix whose trip did not fire.
+    """
     row = amigatrip.row_for("pool-of-radiance")
+    pipe = target if pipe is None else pipe
+    sleep = time.sleep if sleep is None else sleep
     shots = []
-    target.snapshot(name, holder)
+    pipe.snapshot(name, holder)
     try:
         for prefix in prefixes:
-            target.restore(name, holder)
+            pipe.restore(name, holder)
             here = write_trip(target, row, statements(prefix, square, area))
             waited = 0.0
-            while amigatrip.area_id(target, row) == here:
-                if waited >= FIRE_SECONDS:
-                    raise ProbeError(f"prefix {prefix}: the area byte stayed {here}")
+            while amigatrip.area_id(target, row) == here and waited < FIRE_SECONDS:
                 sleep(POLL_SECONDS)
                 waited += POLL_SECONDS
+            if amigatrip.area_id(target, row) == here:
+                shots.append((prefix, None))
+                continue
             sleep(SETTLE_SECONDS)
             path = out / f"prefix{prefix}.png"
             shot(holder, path)
-            shots.append(path)
+            shots.append((prefix, path))
     finally:
-        target.discard_snapshot(name, holder)
+        pipe.discard_snapshot(name, holder)
     return shots
 
 
 def main(argv: list[str] | None = None) -> int:
-    from automap.amiga import WinuaePipe  # noqa: PLC0415
+    from automap import amiga  # noqa: PLC0415
     from tools.amiga import amigadrive  # noqa: PLC0415
 
     parser = argparse.ArgumentParser(description=__doc__)
@@ -109,10 +117,14 @@ def main(argv: list[str] | None = None) -> int:
     square = tuple(int(n) for n in args.square.split(","))
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    pipe = amiga.WinuaePipe(holder=args.holder)
+    target = amiga.AmigaTarget(pipe, amiga.MACHINES["pool-of-radiance"])
     try:
-        for path in run(WinuaePipe(holder=args.holder), args.holder, args.area, square, out,
-                        lambda holder, path: amigadrive.shot(holder, path)):
-            print(path)
+        target.locate()
+        for prefix, path in run(target, args.holder, args.area, square, out,
+                                lambda holder, path: amigadrive.shot(holder, path),
+                                pipe=pipe):
+            print(path if path else f"prefix {prefix}: the area byte did not change")
     except ProbeError as exc:
         raise SystemExit(str(exc)) from exc
     return 0
