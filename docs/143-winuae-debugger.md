@@ -672,6 +672,14 @@ of `amigashots.py`, `winwish --window winuae`) are deleted.
   connects and closes without a request before WinUAE services the pipe makes
   WinUAE close it for good, so no tool may open another lane's pipe, and every
   connection sends one request before it closes.
+* **A harness types while Wish is attached by switching Wish to its Character
+  Editor tab.** The pipe takes one client, and Wish releases its handle while
+  that tab shows (`Session.set_reader(None)` calls `WinuaeTarget.release()`),
+  keeping its target and its Return waypoint. The steps are
+  `winwish.py click --holder H View "Character Editor" --type MenuItem`,
+  `amigadrive.py --holder H keys <codes>`, then
+  `winwish.py click --holder H View Automapper --type MenuItem`, after which
+  Wish's next read opens the pipe again. This route has not been run live.
 * **`winuae.ps1 debugger` sends `CFG AKS_ENTERDEBUGGER 1`.** It halts the
   machine and shows the `>` prompt with no key press and no focus: the reply was
   `404` in 312 ms and the console showed the register dump and the prompt

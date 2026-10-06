@@ -1131,9 +1131,11 @@ directory and opens nothing, because WinUAE serves one client at a time.
   has not been run against a real WinUAE. The reply's receipt is checked for the
   address, byte count and file name, and `wish-*.bin` files left behind by an
   abandoned request are deleted when the pipe is opened.
-* **One handle is held while Wish is attached,** so the player's WinUAE log gets
+* **One handle is held while a tab is reading,** so the player's WinUAE log gets
   one connect line and not one per read. The target the window holds releases
-  it on `close()`, and a connect that fails releases it too. A pipe another tool
+  it on `close()` and on `release()`, which `Session.set_reader(None)` calls
+  while the Character Editor tab shows; the target stays, and the next read
+  opens the pipe again. A connect that fails releases it too. A pipe another tool
   holds is waited for up to half a second (`WaitNamedPipe`), then the window
   asks again on its next tick.
 * **Every read and write is overlapped with a deadline.** WinUAE does not

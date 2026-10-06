@@ -353,6 +353,69 @@ def test_only_the_visible_tab_is_read(session):
     assert session.target.reads == []
 
 
+class ReleasingTarget(CountingTarget):
+    """A target that can let go of its connection and keep its state."""
+
+    def __init__(self, memory=None):
+        super().__init__(memory)
+        self.released = 0
+
+    def release(self) -> None:
+        self.released += 1
+
+
+@pytest.fixture
+def releasing_session(app):
+    from wish.session import Session
+    CountingTarget.built = 0
+    backend = bk.Backend(name="Fake", probe=lambda: True,
+                         connect=ReleasingTarget, setup_hint="plug it in",
+                         default_interval_ms=500)
+    return Session(find=lambda pref=None: backend)
+
+
+def test_nothing_being_read_releases_a_target_that_can_release(
+        releasing_session):
+    session = releasing_session
+    session.attach()
+    target = session.target
+    session.set_reader(None)
+    assert target.released == 1
+    assert session.target is target and target.closed is False
+
+
+def test_a_target_without_release_is_left_attached_and_untouched(session):
+    session.attach()
+    target = session.target
+    session.set_reader(None)
+    assert session.target is target and target.closed is False
+
+
+def test_a_real_reader_does_not_release(releasing_session):
+    session = releasing_session
+    session.attach()
+    session.set_reader(lambda t: None)
+    assert session.target.released == 0
+
+
+def test_a_release_that_raises_is_logged_and_the_target_is_kept(
+        releasing_session, monkeypatch):
+    from wish import session as session_module
+    logged = []
+    monkeypatch.setattr(session_module.debuglog, "exception",
+                        lambda *args: logged.append(args))
+    session = releasing_session
+    session.attach()
+    target = session.target
+
+    def broken():
+        raise OSError("nope")
+
+    target.release = broken
+    session.set_reader(None)
+    assert logged and session.target is target and session.reader is None
+
+
 def test_with_nothing_running_the_session_waits_rather_than_failing(session):
     session.present["yes"] = False
     assert session.attach() is False

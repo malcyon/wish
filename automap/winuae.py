@@ -16,9 +16,10 @@ closes its pipe for good when such a client leaves. Any other handle is closed
 on a timeout, since a late reply would answer the next request.
 
 **One handle is held while Wish is reading,** because every connect and every
-disconnect is a line in the player's WinUAE log when logging is on. WinUAE
-accepts the next client once this one leaves, so `close()` is all a second tool
-needs. A pipe that is busy is waited for with `WaitNamedPipe`, not skipped.
+disconnect is a line in the player's WinUAE log when logging is on. The window
+also lets it go while no tab is reading, and the next read opens it again.
+WinUAE accepts the next client once this one leaves, so `close()` is all a
+second tool needs. A pipe that is busy is waited for with `WaitNamedPipe`, not skipped.
 
 The Win32 calls go through an injected `api` (`_winapi` by default, imported
 only when used), so this module imports on every platform and the tests drive

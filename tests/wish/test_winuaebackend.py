@@ -3,6 +3,8 @@ only while a target is attached. No emulator and no Windows are involved."""
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from automap import amiga
@@ -160,6 +162,113 @@ def test_the_first_pipe_is_used_and_a_different_one_replaces_it():
                    factory=lambda pipe: next(made))
     winuae.connect(pipes=lambda: ["WinUAE_1"], factory=lambda pipe: next(made))
     assert first.closed == 1
+
+
+class _Done:
+    """An overlapped call that has finished with `data`."""
+
+    def __init__(self, data=b"", err=0, finished=True):
+        self.data, self.err, self.finished = data, err, finished
+        self.event = self
+
+    def GetOverlappedResult(self, wait):
+        return len(self.data), self.err
+
+    def getbuffer(self):
+        return self.data
+
+    def cancel(self):
+        pass
+
+
+class PipeApi:
+    """The `_winapi` calls a `WinuaeLocalPipe` makes, answering `DBG S` from
+    `memory` unless `silent`."""
+
+    def __init__(self, memory):
+        self.memory = memory
+        self.creates = self.closes = 0
+        self.silent = False
+        self.reply = None
+
+    def CreateFile(self, *args):
+        self.creates += 1
+        return 7
+
+    def SetNamedPipeHandleState(self, *args):
+        pass
+
+    def CloseHandle(self, handle):
+        self.closes += 1
+
+    def WriteFile(self, handle, data, overlapped=False):
+        text = bytes(data).rstrip(b"\0").decode()
+        if not self.silent:
+            path, addr, length = re.fullmatch(
+                r'DBG S "(.*)" ([0-9a-f]+) ([0-9a-f]+)', text).groups()
+            addr, length = int(addr, 16), int(length, 16)
+            out = bytearray(length)
+            for base, blob in self.memory.items():
+                lo, hi = max(addr, base), min(addr + length, base + len(blob))
+                if lo < hi:
+                    out[lo - addr:hi - addr] = blob[lo - base:hi - base]
+            with open(path, "wb") as f:
+                f.write(out)
+            self.reply = (f"Wrote {addr:08X} - {addr + length - 1:08X} "
+                          f"({length} bytes) to '{path}'.").encode() + b"\0"
+        return _Done(data), winuae_transport.ERROR_IO_PENDING
+
+    def ReadFile(self, handle, size, overlapped=False):
+        reply = None if self.silent else self.reply
+        return (_Done(reply or b"", 0, reply is not None),
+                winuae_transport.ERROR_IO_PENDING)
+
+    def WaitForSingleObject(self, event, ms):
+        return 0 if event.finished else winuae_transport.WAIT_TIMEOUT
+
+
+@pytest.fixture
+def held(tmp_path):
+    """A target on a real transport over a fake pipe, plus the pipe's counters."""
+    api = PipeApi(loaded())
+    transport = winuae_transport.WinuaeLocalPipe(
+        directory=tmp_path / "dump", api=api, sleep=lambda _s: None)
+    locator = amigalocate.Locator()
+    target = winuae.connect(pipes=lambda: ["WinUAE"],
+                            factory=lambda pipe: transport, locator=locator)
+    return target, api, locator
+
+
+def test_release_closes_the_handle_and_keeps_the_target(held):
+    target, api, _ = held
+    assert api.creates == 1 and api.closes == 0
+    target.release()
+    assert api.closes == 1
+
+
+def test_the_next_read_after_a_release_reopens_the_pipe_without_a_sweep(held):
+    target, api, locator = held
+    target.release()
+    reads = []
+    inner = target.debugger.read_memory
+
+    def watching(addr, length, timeout=None):
+        reads.append((addr, length))
+        return inner(addr, length, timeout)
+
+    again = locator.target(watching, target.debugger, factory=winuae.WinuaeTarget)
+    assert api.creates == 2
+    assert reads == [(BASE + BLADES.anchor_offset, len(BLADES.anchor))]
+    assert again.data_base == BASE
+
+
+def test_a_release_while_a_reply_is_owed_keeps_the_handle(held):
+    target, api, _ = held
+    api.silent = True
+    with pytest.raises(winuae_transport.PipeTimeout):
+        target.debugger.read_memory(0, 16)
+    target.release()
+    assert api.closes == 0
 
 
 # -- the sweep, which may not hold the window ----------------------------------

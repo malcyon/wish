@@ -170,8 +170,20 @@ class Session(QObject):
     # -- polling ---------------------------------------------------------
 
     def set_reader(self, reader: Callable[[Target], None] | None) -> None:
-        """What the visible tab wants read. None means nothing is watching."""
+        """What the visible tab wants read. None means nothing is watching.
+
+        None also asks a target that has a `release()` to let go of its
+        connection while keeping its state, so another tool can use it.
+        """
         self.reader = reader
+        release = getattr(self.target, "release", None)
+        if reader is None and release is not None:
+            try:
+                release()
+            except Exception:
+                # Broad on purpose, as in `detach`: a failed release must not
+                # stop the tab from changing.
+                debuglog.exception("releasing the connection raised")
 
     def start(self) -> None:
         self.timer.start(self.interval_ms)

@@ -3,9 +3,10 @@
 **The probe lists the pipe directory and opens nothing.** WinUAE accepts one
 client at a time, so a probing connect would take the door from a player's other
 tool. `connect()` reads through `automap.winuae.WinuaeLocalPipe`, which holds
-its handle only while a target is attached: the target it returns releases the
-pipe when the window detaches, and a failed connect releases it too. The cached
-title and sweep time survive that, because the next read opens the pipe again.
+its handle only while a tab is reading: the target it returns releases the
+pipe when the window detaches or when no tab is reading, and a failed connect
+releases it too. The target, the cached title and the sweep time survive that,
+because the next read opens the pipe again.
 
 `AMIGA_WINUAE` is the row `wish.backends` offers behind
 `WISH_EXPERIMENTAL_AMIGA_WINUAE`.
@@ -35,6 +36,14 @@ class WinuaeTarget(amiga.AmigaTarget):
 
     def close(self) -> None:
         super().close()
+        self.debugger.close()
+
+    def release(self) -> None:
+        """Let go of the pipe and keep the target, so another tool can connect.
+
+        The next read opens the pipe again. A handle still owed a reply is kept,
+        as in `close()`.
+        """
         self.debugger.close()
 
 
