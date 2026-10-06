@@ -678,6 +678,19 @@ DOS_PC_TAKEN_OVER = 0xB3
 #: Animate Dead's effect id, the id its trait slot and its row both hold.
 ANIMATE_DEAD_ID = 32
 
+
+class DispelledZombieNode(bytes):
+    """The Animate Dead node `read` makes for a zombie whose row was dispelled.
+
+    Its bytes equal a camp cast at caster level 15, which a C64 row of that
+    magnitude also reads to, so only the type tells the C64 writer to write the
+    trait and no row. DOS and Amiga writers copy the first five bytes into a
+    plain `bytes`, so the type does not outlive a trip through their files and
+    a DOS-born node is a real cast that gets its row.
+    """
+
+    __slots__ = ()
+
 #: The roster status a Pool of Radiance camp Animate Dead writes over the
 #: raised character (`SPELLE04 $AA11`): dead, bit 7 clear.
 ZOMBIE_STATUS = 0x03
@@ -2287,13 +2300,11 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                 # (`SQRPACI64 $059A`), so node byte 4, DOS's removal flag,
                 # has no C64 byte and loses nothing.
                 zombie_node_side = int(node[3]) >> 4
-                # The reader gives a dispelled zombie (trait, no row) the node
-                # with low nibble 15 and flag 1. The C64 temple raise searches
+                # The reader marks a dispelled zombie (trait, no row) by the
+                # node's type. The C64 temple raise searches
                 # the array before the trait slots, so a row written back
                 # would make it clear `$6BEC` and leave the zombie marker.
-                dispelled = (int(node[1]) == 0 and int(node[2]) == 0
-                             and int(node[3]) & 0x0F == 0x0F
-                             and int(node[4]) == 1)
+                dispelled = isinstance(node, DispelledZombieNode)
                 row_slot = (effects.free_slot(payload)
                             if payload is not None and not dispelled
                             else None)
@@ -3759,9 +3770,9 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                 and ANIMATE_DEAD_ID in rec.get_raw("item_effects")
                 and not any(r.owner == party_slot and r.id == ANIMATE_DEAD_ID
                             for r in rows)):
-            granted.append(bytes((ANIMATE_DEAD_ID, 0, 0,
-                                  ((combat_side_raw or 0) & 1) << 4 | 0x0F,
-                                  1)))
+            granted.append(DispelledZombieNode((
+                ANIMATE_DEAD_ID, 0, 0,
+                ((combat_side_raw or 0) & 1) << 4 | 0x0F, 1)))
             zombie_node_converted = True
         if running:
             out.set("running_effects", running,

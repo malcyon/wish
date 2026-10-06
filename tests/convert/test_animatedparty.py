@@ -770,10 +770,19 @@ def _round_trip_to_c64(rec, payload):
     return back, out, rep
 
 
+def _direct_to_c64(rec, payload):
+    char = c64_codec.read(rec, game=c64_port.POOL_OF_RADIANCE,
+                          payload=bytes(payload), party_slot=4)
+    out = bytearray(0x1C00)
+    back, rep = c64_codec.write(char, payload=out, party_slot=4,
+                                clock_minutes=0)
+    return back, out, rep
+
+
 @pytest.mark.parametrize("side", [0, 1])
 def test_a_dispelled_c64_zombie_comes_back_with_no_row_and_the_trait(side):
     rec, payload = _zombie_source(0, side, row=False)
-    back, out, rep = _round_trip_to_c64(rec, payload)
+    back, out, rep = _direct_to_c64(rec, payload)
     assert not [r for r in effects.active_effects(bytes(out)) if r.id == 32]
     assert bytes(back.get_raw("item_effects"))[9] == 32
     assert back.get("combat_side") == rec.get("combat_side")
@@ -787,3 +796,12 @@ def test_any_other_id_32_node_still_writes_its_row(level):
     _back, out, _rep = _round_trip_to_c64(rec, payload)
     rows = [r for r in effects.active_effects(bytes(out)) if r.id == 32]
     assert [r.magnitude for r in rows] == [level]
+
+
+@pytest.mark.parametrize("magnitude", [15, 0xF5])
+def test_a_c64_zombie_row_of_magnitude_fifteen_or_more_keeps_its_row(
+        magnitude):
+    rec, payload = _zombie_source(magnitude)
+    _back, out, _rep = _round_trip_to_c64(rec, payload)
+    rows = [r for r in effects.active_effects(bytes(out)) if r.id == 32]
+    assert [r.magnitude for r in rows] == [15]
