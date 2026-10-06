@@ -64,6 +64,66 @@ def test_launch_raises_with_the_log_when_vice_has_already_exited(
         sess.launch()
 
 
+class _Clock:
+    """A monotonic clock that `sleep` advances, so a 300 s wait takes no time."""
+
+    def __init__(self, monkeypatch):
+        self.now = 0.0
+        monkeypatch.setattr(session.time, "monotonic", lambda: self.now)
+        monkeypatch.setattr(session.time, "sleep", self.sleep)
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+
+def _launchable(sess, monkeypatch, mon):
+    class Running:
+        pid = 999999
+
+        def poll(self):
+            return None
+
+    monkeypatch.setattr(session.subprocess, "Popen",
+                        lambda args, stdout=None, **kw: Running())
+    monkeypatch.setattr(session.os, "getpgid", lambda pid: pid, raising=False)
+    monkeypatch.setattr(session.socket, "create_connection",
+                        lambda *a, **k: type("S", (), {
+                            "settimeout": lambda self, t: None})())
+    monkeypatch.setattr(sess, "mon", mon)
+    monkeypatch.setattr(sess, "log", lambda *a: None)
+
+
+def test_launch_waits_past_ninety_seconds_for_a_slow_vice(
+        tmp_path, monkeypatch):
+    sess = _session(tmp_path)
+    _Clock(monkeypatch)
+    looks = []
+
+    def mon(timeout=3.0):
+        looks.append(1)
+        if len(looks) <= 90:
+            raise OSError("not listening")
+        return FakeMon()
+
+    _launchable(sess, monkeypatch, mon)
+    sess.launch()
+    assert len(looks) == 91
+
+
+def test_launch_gives_up_once_the_clock_passes_vice_up_seconds(
+        tmp_path, monkeypatch):
+    sess = _session(tmp_path)
+    clock = _Clock(monkeypatch)
+
+    def mon(timeout=3.0):
+        raise OSError("not listening")
+
+    _launchable(sess, monkeypatch, mon)
+    with pytest.raises(RuntimeError, match="VICE never came up"):
+        sess.launch()
+    assert clock.now > session.VICE_UP_SECONDS
+
+
 def test_boot_raises_at_once_when_vice_exits_after_launch_returned(
         tmp_path, monkeypatch):
     sess = _session(tmp_path)

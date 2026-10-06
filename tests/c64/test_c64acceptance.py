@@ -1757,6 +1757,15 @@ class FakeSession:
         self.state = self.moves[key]
         return True
 
+    def _press_bar_up(self, s):
+        return s is not None and "PRESS" in s.row(24)
+
+    def _live_square(self, steady=False):
+        return None
+
+    def in_combat(self):
+        return False
+
     def screen(self):
         return FakeScreen(self.screens[self.state])
 
@@ -4677,6 +4686,25 @@ def test_a_bump_that_ticks_the_clock_is_blocked_and_not_a_step(tmp_path, monkeyp
     assert got["moves"][0]["status_moved"] is True
     assert got["blocked"] == [0] and got["squares_moved"] == 0
     assert got["position"] == [5, 5, 0]
+
+
+def test_an_unmoved_forward_with_a_press_bar_is_an_encounter_not_a_wall(
+        tmp_path, monkeypatch):
+    class Encounter(WalkSession):
+        def walk_one(self, move, *a, **k):
+            self.pressed.append(move)
+            self.clock += 1
+            return True
+
+        def _press_bar_up(self, s):
+            return True
+
+    sess = Encounter()
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    with pytest.raises(A.StepFailed, match="an encounter or a square's text"):
+        run.walk("II")
+    log.close()
+    assert sess.pressed == ["I"]
 
 
 def test_walk_k_is_the_control_it_turns_and_stays_on_the_square(tmp_path, monkeypatch):
@@ -13791,7 +13819,7 @@ def test_fight_cast_casts_untargeted_then_flees_and_records_the_cast():
     assert tactic.queue == [("BAKSHI", "PRAYER", None)]
     assert tactic.otherwise is run.flight
     assert tactic.wait == run.flight.hold
-    assert tactic.last is True
+    assert tactic.late is True
     assert got["casts"] == [cast]
     assert got["spent"] == [42]
     assert [m["name"] for m in got["got_away"]] == ["BAKSHI", "SEAN"]

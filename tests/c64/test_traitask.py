@@ -373,62 +373,101 @@ def _roster(statuses):
     return bytes(page)
 
 
-def _last_caster(monkeypatch, statuses, waited):
+def _late_caster(monkeypatch, statuses, waited, hp=None):
     from tools.pool_of_radiance import fleedrive
     monkeypatch.setattr(fleedrive, "roster_page",
                         lambda sess: _roster(statuses))
+    readings = hp if hp is not None else [[20] * 8]
+    monkeypatch.setattr(
+        route_pool, "roster_hp",
+        lambda m: readings.pop(0) if len(readings) > 1 else readings[0])
     return route_pool.Caster(
         FakeLog(), [("BAKSHI", "PRAYER", None)],
         otherwise=lambda s, state: "OTHER",
-        wait=lambda s, state: waited.append(state) or "WAIT", last=True)
+        wait=lambda s, state: waited.append(state) or "WAIT", late=True)
 
 
-def test_last_caster_waits_while_another_member_is_still_standing(
+def _triggers(caster):
+    return [f["condition"] for k, f in caster.log.emitted
+            if k == "cast-trigger"]
+
+
+def test_late_caster_holds_while_every_other_member_is_ok(
         cast_patches, monkeypatch):
     waited, sess = [], _CastSession()
-    caster = _last_caster(monkeypatch, [0x01, 0x01, 0x86, 0x01], waited)
+    caster = _late_caster(monkeypatch, [0x01, 0x01, 0x01, 0x01], waited)
     assert caster(sess, "bar") == "WAIT"
     assert waited == ["bar"]
     assert ("bar", "CAST") not in sess.calls
     assert caster.queue == [("BAKSHI", "PRAYER", None)]
 
 
-def test_last_caster_casts_once_every_other_member_is_running_or_down(
+def test_late_caster_casts_once_one_other_member_is_away(
         cast_patches, monkeypatch):
     waited, sess = [], _CastSession()
-    caster = _last_caster(monkeypatch, [0x86, 0x01, 0x84, 0x86, 0], waited)
+    caster = _late_caster(monkeypatch, [0x01, 0x01, 0x86, 0x01], waited)
+    assert caster(sess, "bar") == "CAST"
+    assert waited == []
+    assert _triggers(caster) == ["a"]
+
+
+def test_late_caster_casts_once_every_other_member_is_running_or_down(
+        cast_patches, monkeypatch):
+    waited, sess = [], _CastSession()
+    caster = _late_caster(monkeypatch, [0x84, 0x01, 0x84, 0x84, 0], waited)
     assert caster(sess, "bar") == "CAST"
     assert waited == []
     assert ("bar", "CAST") in sess.calls
+    assert _triggers(caster) == ["b"]
 
 
-def test_last_caster_counts_a_dead_member_without_bit_7_as_gone(
+def test_late_caster_counts_a_dead_member_without_bit_7_as_gone(
         cast_patches, monkeypatch):
     waited, sess = [], _CastSession()
-    caster = _last_caster(monkeypatch, [0x86, 0x03, 0x04, 0x05, 0x07, 0x02],
+    caster = _late_caster(monkeypatch, [0x03, 0x01, 0x04, 0x05, 0x07, 0x02],
                           waited)
     assert caster(sess, "bar") == "CAST"
     assert waited == []
+    assert _triggers(caster) == ["b"]
 
 
-def test_last_caster_waits_for_a_member_who_is_ok_or_running_unmarked(
+def test_late_caster_waits_for_a_member_who_is_ok_or_running_unmarked(
         cast_patches, monkeypatch):
     waited, sess = [], _CastSession()
-    caster = _last_caster(monkeypatch, [0x86, 0x03, 0x06], waited)
+    caster = _late_caster(monkeypatch, [0x83, 0x03, 0x06], waited)
     assert caster(sess, "bar") == "WAIT"
 
 
-def test_last_caster_logs_every_status_once_the_wait_runs_long(
+def test_late_caster_casts_when_his_hp_falls_to_half_of_his_first_turns(
         cast_patches, monkeypatch):
     waited, sess = [], _CastSession()
-    caster = _last_caster(monkeypatch, [0x01, 0x01, 0x03], waited)
-    for _ in range(route_pool.Caster.WAIT_REPORT_TURNS - 1):
-        caster(sess, "bar")
-    assert not [e for e in caster.log.emitted if e[0] == "cast-wait"]
+    start, hurt = [20] * 8, [20, 11, 20, 20, 20, 20, 20, 20]
+    caster = _late_caster(monkeypatch, [0x01] * 4, waited,
+                          hp=[start, hurt, [20, 10] + [20] * 6])
+    assert caster(sess, "bar") == "WAIT"
+    assert caster(sess, "bar") == "WAIT"
+    assert caster(sess, "bar") == "CAST"
+    assert _triggers(caster) == ["c"]
+
+
+def test_late_caster_casts_on_the_turn_after_hold_turns_are_held(
+        cast_patches, monkeypatch):
+    waited, sess = [], _CastSession()
+    caster = _late_caster(monkeypatch, [0x01] * 4, waited)
+    for _ in range(route_pool.Caster.HOLD_TURNS):
+        assert caster(sess, "bar") == "WAIT"
+    assert caster(sess, "bar") == "CAST"
+    assert _triggers(caster) == ["d"]
+
+
+def test_a_held_turn_logs_cast_wait_with_every_status(
+        cast_patches, monkeypatch):
+    waited, sess = [], _CastSession()
+    caster = _late_caster(monkeypatch, [0x01, 0x01, 0x01], waited)
     caster(sess, "bar")
     kind, fields = [e for e in caster.log.emitted if e[0] == "cast-wait"][0]
-    assert fields["statuses"][:3] == ["01", "01", "03"]
-    assert fields["words"][2] == "$03 DEAD"
+    assert fields["statuses"][:3] == ["01", "01", "01"]
+    assert fields["words"][2] == "$01 OK"
 
 
 def test_down_words_name_every_status_that_takes_a_member_out_of_the_fight():

@@ -813,6 +813,11 @@ FASTLOADER_PETSCII = {"y": 0x59, "n": 0x4E}
 #: is alive and the menu never comes.
 PLAY_GAME_WAIT = 500.0
 
+#: How long `Session.launch` waits for VICE's monitor.  A dead VICE fails at
+#: the next `_require_alive`, so the length only matters while VICE is alive
+#: and slow.
+VICE_UP_SECONDS = 300.0
+
 #: What `Session.stall_capture` reads out of the C64: the KERNAL's status
 #: byte, the open file's name length, logical file, secondary address,
 #: device and name pointer, the key buffer's count and first bytes, the
@@ -1172,20 +1177,21 @@ class Session:
         self.pgid = os.getpgid(proc.pid)
         if self.slot is not None:
             self.slot.record(pgid=self.pgid, launched=time.time())
-        for _ in range(60):
+        started = time.monotonic()
+        while True:
             time.sleep(1)
             self._require_alive()
             try:
                 with self.mon(3):
                     break
             except (OSError, MonitorError):
-                continue
-        else:
-            raise RuntimeError("VICE never came up")
+                if time.monotonic() - started > VICE_UP_SECONDS:
+                    raise RuntimeError("VICE never came up") from None
         self.text = socket.create_connection(("127.0.0.1", self.text_port), timeout=5)
         self.text.settimeout(3)
         self.attached = self.disk
-        self.log("VICE up; text monitor connected")
+        self.log(f"VICE up after {time.monotonic() - started:.0f} s; "
+                 f"text monitor connected")
 
     #: The process `launch()` started, so a wait can tell an emulator that is
     #: slow from one that has already exited.
@@ -1613,6 +1619,7 @@ class Session:
             # Left over from the last move, either would read as this one's.
             self.walk_encounter_started = False
             self.walk_stop_screen = None
+            before = self.status()
             moved = (self.walk_one(ch, hold, gap, encounters=True) if takes
                      else self.walk_one(ch, hold, gap))
             if self.walk_encounter_started:
@@ -1625,6 +1632,13 @@ class Session:
                 s = self.screen()
                 if s is not None and ENCOUNTER_FIGHT in s.row(24):
                     return f"{ch} met an encounter menu"
+                if self._press_bar_up(s):
+                    # A move that left a PRESS bar up may be an encounter
+                    # still loading; a status line that has not changed after
+                    # a pause means the square was not left.
+                    time.sleep(self.ENCOUNTER_RECHECK)
+                    if self.status() == before:
+                        return f"{ch} left a PRESS bar on a square it did not leave"
         time.sleep(self.LEG_END_SETTLE)
         if self.in_combat():
             return "the game is in combat at the end of the leg"

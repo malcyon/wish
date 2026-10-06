@@ -95,6 +95,10 @@ class Fake(S.Session):
     def screen(self):
         return self.menu
 
+    def status(self):
+        # `_walk_leg` compares two readings; these legs scripted no status line.
+        return None
+
 
 SLEPT = []
 
@@ -462,6 +466,21 @@ def test_a_screen_walk_one_stopped_at_is_an_encounter(tmp_path):
     s.walk_one = stopping
     assert s.walk_with_retry("i") is True
     assert s.restores == 1
+
+
+def test_a_press_bar_on_a_square_not_left_is_an_encounter_and_rolls_back(
+        tmp_path):
+    s = Fake(tmp_path)
+    real = s.walk_one
+
+    def stuck(move, hold=0.15, gap=0.30, encounters=False):
+        real(move, hold, gap, encounters=encounters)
+        return s.restores > 0
+
+    s.walk_one = stuck
+    s._press_bar_up = lambda screen: s.restores == 0
+    assert s.walk_with_retry("i") is True
+    assert s.restores == 1 and s.walk_retries == 1
 
 
 def test_retries_run_out_with_the_machine_restored_and_the_reason_set(tmp_path):

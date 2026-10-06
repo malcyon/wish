@@ -716,10 +716,12 @@ class Caster:
     them; a target of None is a spell the game casts without a target prompt
     (a party spell such as Prayer). `otherwise` is the tactic for every turn
     that is not a cast, `Session.melee_turn` unless the caller wants another.
-    With `last`, the caster casts only once every other occupied party slot has
-    bit 7 of its roster status set (running, or down), so the spell is the last
-    thing cast before the fight ends; until then his turns run `wait`, or
-    `otherwise` when `wait` is None.
+    With `late`, the caster holds, running `wait` (or `otherwise` when `wait`
+    is None), until his first own turn on which another member is away
+    (`fleedrive.RUNNING`), every other member is away or down, his hit points
+    are at most half of what they were on the tactic's first turn, or he has
+    held `HOLD_TURNS` of his own turns; the last two keep a slow flight by
+    someone else from letting the monsters kill him before he casts.
     Everything it does is logged with the screen, because nothing in this
     project has driven CAST in combat before and a failed attempt has to say
     where it got to.
@@ -727,17 +729,17 @@ class Caster:
 
     BACK_OUT_PRESSES = 3
 
-    #: Own turns spent waiting for the others after which every member's
-    #: roster status is logged, so a stalled wait names the member holding it.
-    WAIT_REPORT_TURNS = 20
+    #: Own turns a `late` caster holds before he casts whatever the others do.
+    HOLD_TURNS = 4
 
     def __init__(self, log: Log, queue: list[tuple[str, str, str | None]],
-                 otherwise=None, wait=None, last=False):
+                 otherwise=None, wait=None, late=False):
         self.log = log
         self.queue = list(queue)
         self.otherwise = otherwise or S.Session.melee_turn
         self.wait = wait or self.otherwise
-        self.last = last
+        self.late = late
+        self.first_hp: list[int] | None = None
         self.turn = 0
         self.waits = 0
         self.casts: list[dict] = []
@@ -748,15 +750,20 @@ class Caster:
             now = roster_hp(m)
             m.resume()
         self.log.emit("hp", turn=self.turn, hp=now)
+        if self.first_hp is None:
+            self.first_hp = now
         b = sess.battle()
         me = sess.acting(b)
         if me is not None and self.queue and \
                 me.name.strip() == self.queue[0][0]:
-            if self.last and not self.others_gone(sess, me):
-                self.waits += 1
-                if self.waits >= self.WAIT_REPORT_TURNS:
+            if self.late:
+                trigger = self.cast_trigger(sess, me, now)
+                if trigger is None:
+                    self.waits += 1
                     self.report_wait(sess)
-                return self.wait(sess, state)
+                    return self.wait(sess, state)
+                self.log.emit("cast-trigger", turn=self.turn,
+                              condition=trigger, waits=self.waits)
             _, spell, target = self.queue[0]
             if self.cast(sess, b, me, spell, target):
                 self.queue.pop(0)
@@ -767,6 +774,23 @@ class Caster:
             self.log.say(f"  {spell} dropped after one failed attempt")
             self.queue.pop(0)
         return self.otherwise(sess, state)
+
+    def cast_trigger(self, sess: S.Session, me, now: list[int]) -> str | None:
+        """The letter of the first condition that ends a `late` caster's
+        hold, or None: a someone is away, b every other member away or down, c his
+        hit points at most half his first turn's, d `HOLD_TURNS` turns held."""
+        from tools.pool_of_radiance import fleedrive
+        states = fleedrive.statuses(fleedrive.roster_page(sess))
+        if any(st == fleedrive.RUNNING
+               for slot, st in enumerate(states) if slot != me.index):
+            return "a"
+        if self.others_gone(sess, me):
+            return "b"
+        if now[me.index] * 2 <= self.first_hp[me.index]:
+            return "c"
+        if self.waits >= self.HOLD_TURNS:
+            return "d"
+        return None
 
     @staticmethod
     def down_words(gone: bool = True) -> frozenset[int]:
