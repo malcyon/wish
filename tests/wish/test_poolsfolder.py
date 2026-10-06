@@ -48,6 +48,8 @@ NONE_FOUND = "None; no .adf disk images here"
 def _clean_environment(monkeypatch):
     monkeypatch.delenv("POR_DISKS", raising=False)
     monkeypatch.delenv(bk.AMIGA_FSUAE_ENV, raising=False)
+    monkeypatch.delenv(bk.AMIGA_WINUAE_ENV, raising=False)
+    monkeypatch.delenv("WISH_EXPERIMENTAL_POD_CONVERT", raising=False)
     preferences._scan.cache_clear()
 
 
@@ -524,3 +526,83 @@ def test_the_dialog_capitalises_the_composed_titles_line(
         assert dialog.report_rows["Titles"].text() == NONE_FOUND
     finally:
         win.close()
+
+
+# --- the conversion flag keeps the row too ------------------------------------
+
+POD_CONVERT_ENV = "WISH_EXPERIMENTAL_POD_CONVERT"
+
+
+def dos_install(folder, launcher="START.BAT", config="POOL4.CFG"):
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / launcher).write_bytes(b"")
+    (folder / config).write_bytes(b"")
+    return folder
+
+
+def test_the_row_is_absent_with_neither_flag(app, tmp_path, monkeypatch):
+    nowhere(tmp_path, monkeypatch)
+    win = window(app)
+    try:
+        assert POD.key not in PreferencesDialog(win).game_folder_edits
+    finally:
+        win.close()
+
+
+@pytest.mark.parametrize("value", ["0", "off", "false", "no", "", "junk"])
+def test_a_forgotten_conversion_setting_does_not_add_the_row(
+        app, tmp_path, monkeypatch, value):
+    nowhere(tmp_path, monkeypatch)
+    monkeypatch.setenv(POD_CONVERT_ENV, value)
+    win = window(app)
+    try:
+        assert POD.key not in PreferencesDialog(win).game_folder_edits
+        assert preferences.game_folder_titles() == preferences.GAME_FOLDER_TITLES
+    finally:
+        win.close()
+
+
+@pytest.mark.parametrize("value", ["1", "true", "yes", "on"])
+def test_the_conversion_flag_alone_adds_the_row(app, tmp_path, monkeypatch,
+                                                value):
+    nowhere(tmp_path, monkeypatch)
+    monkeypatch.setenv(POD_CONVERT_ENV, value)
+    win = window(app)
+    try:
+        dialog = PreferencesDialog(win)
+        assert POD.key in dialog.game_folder_edits
+        assert dialog.findChild(preferences.QLineEdit,
+                                "game_folder_edit_pools_of_darkness")
+    finally:
+        win.close()
+
+
+def test_the_dos_install_note_is_not_worded_yet():
+    assert preferences.DOS_INSTALL_NOTE == ""
+
+
+def test_the_report_for_each_kind_of_folder(tmp_path):
+    only_dos = dos_install(tmp_path / "dos")
+    assert title_folder_report(str(only_dos), POD) == ""
+
+    only_images = tmp_path / "images"
+    adf(only_images, "a.adf", "POD 1")
+    assert title_folder_report(str(only_images), POD) == "1 disk"
+
+    both = dos_install(tmp_path / "both")
+    adf(both, "a.adf", "POD 1")
+    adf(both, "b.adf", "POD 2")
+    assert title_folder_report(str(both), POD) == "2 disks"
+
+    neither = tmp_path / "neither"
+    neither.mkdir()
+    assert title_folder_report(str(neither), POD) == (
+        "none; no .adf disk images here")
+
+
+def test_another_titles_dos_install_counts_as_neither(tmp_path):
+    curse = dos_install(tmp_path / "curse", "START.EXE", "CURSE.CFG")
+    assert title_folder_report(str(curse), POD) == (
+        "none; no .adf disk images here")
+    assert title_folder_report(str(curse), POOL) == (
+        f"none; no {preferences._pretty(POOL.disk_glob)} here")

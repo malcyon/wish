@@ -146,6 +146,7 @@ from goldbox import (
     titles,
     world_state,
 )
+from goldbox.amiga_adf import AmigaDiskError
 
 # By name rather than as a module: `amiga_port` and `amiga_por` differ by one
 # letter, and only one of them belongs in the line above.
@@ -1025,8 +1026,9 @@ class PodAmigaToDos(Direction):
 class PodDosAmigaRehearsal(Rehearsal):
     """A Pools of Darkness DOS slot written onto a copy of the player's disk 3.
 
-    `files` is empty: the file the player is handed, and its name, are not
-    settled, so nothing here names one.  `disk` is the finished image.
+    `files` holds the finished image under `POOLSAVE_FILENAME`, as
+    `DosToAmiga`'s does; Save As publishes it under the file name the player
+    chose.  `disk` is the same image.
     """
 
     disk: bytes
@@ -1039,11 +1041,10 @@ class PodDosToAmiga(Direction):
     """A DOS Pools of Darkness save slot becomes the player's Amiga disk 3 with
     that slot written into its `SAVE` drawer.
 
-    Not in `POD_DIRECTIONS`: the Convert dialog has no row for disk 3 and
-    `MISSING_ASSET_BLOCKS` has no entry for it, so a registered row would
-    reach a missing key.  `write` is not defined for the same reason -- the
-    file a player is handed has no name yet.  The slot keeps the source's
-    letter, as `DosToAmiga` does.
+    Registered in `POD_DIRECTIONS`.  The Convert dialog has no row for disk 3,
+    so it leaves this direction out (`amiga_needs_disk_three`); Save As asks
+    for the disk through `saveplan.AMIGA_DISK_THREE`.  The slot keeps the
+    source's letter, as `DosToAmiga` does.
     """
 
     source_port = "dos"
@@ -1099,14 +1100,23 @@ class PodDosToAmiga(Direction):
             vault_bytes = amiga_savegame.pod_vault_to_amiga(vault)
             disk = amiga_savegame.pod_slot_on_disk_three(
                 disk_three, letter, savegame, vault_bytes, replace=replace)
-        except amiga_savegame.AmigaSaveError as e:
+        except (amiga_savegame.AmigaSaveError, AmigaDiskError) as e:
             raise ConvertError(str(e)) from e
         report = neutral.Report()
         report.dropped.extend(save_report.dropped)
         report.losses.extend(save_report.losses)
         report.warnings.extend(save_report.warnings)
-        return PodDosAmigaRehearsal(report, {}, disk.to_bytes(), state,
-                                    characters, letter)
+        image = disk.to_bytes()
+        return PodDosAmigaRehearsal(report, {POOLSAVE_FILENAME: image},
+                                    image, state, characters, letter)
+
+    def write(self, rehearsal: PodDosAmigaRehearsal,
+             folder: str | pathlib.Path) -> list[pathlib.Path]:
+        folder = pathlib.Path(folder)
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / POOLSAVE_FILENAME
+        path.write_bytes(rehearsal.files[POOLSAVE_FILENAME])
+        return [path]
 
 
 # ---------------------------------------------------------------------------
@@ -1239,6 +1249,13 @@ def amiga_needs_disk_one(deltas: dos_port.DosDeltas) -> bool:
                      dos_port.SECRET_OF_THE_SILVER_BLADES)
 
 
+def amiga_needs_disk_three(deltas: dos_port.DosDeltas) -> bool:
+    """Whether an Amiga destination of this title is a copy of the player's
+    own disk 3: Pools of Darkness reads its saves from that disk's `SAVE`
+    drawer."""
+    return deltas is dos_port.POOLS_OF_DARKNESS
+
+
 def amiga_needs_game_disk(deltas: dos_port.DosDeltas,
                           source: "Source | None" = None) -> bool:
     """Whether an Amiga destination of this title reads anything off the
@@ -1250,7 +1267,8 @@ def amiga_needs_game_disk(deltas: dos_port.DosDeltas,
     stages no script either. `editor.saveplan.requirements` asks this rather
     than demanding a disk for every Amiga destination alike.
     """
-    if deltas is dos_port.SECRET_OF_THE_SILVER_BLADES:
+    if deltas in (dos_port.SECRET_OF_THE_SILVER_BLADES,
+                  dos_port.POOLS_OF_DARKNESS):
         return False
     if (deltas is dos_port.CURSE_OF_THE_AZURE_BONDS
             and source is not None and source.port == "c64"
@@ -1528,8 +1546,8 @@ DIRECTIONS: tuple[Direction, ...] = tuple(
 #: `#194 (Import and export a Pools of Darkness save between DOS and the
 #: Amiga)`'s 2026-09-23 plan comment, "the one design point". Offered only
 #: with `WISH_EXPERIMENTAL_POD_CONVERT` set, and each row comes off this
-#: tuple on its own proof: `PodAmigaToDos` moves into `DIRECTIONS` when its
-#: piece-2 proof has passed in its own running game and #650 (A played
+#: tuple on its own proof: `PodAmigaToDos` and `PodDosToAmiga` move into
+#: `DIRECTIONS` when their live proof has passed in the running game and #650 (A played
 #: Amiga Pools of Darkness party converted to DOS loses a master thief's
 #: pick pockets over 127 and a scroll case's extra spells) and #651
 #: (Convert a Pools of Darkness party's item vault between DOS and the
@@ -1537,7 +1555,7 @@ DIRECTIONS: tuple[Direction, ...] = tuple(
 #: File > Convert... and `ConvertDialog` are all deleted once Pools of
 #: Darkness has a route in Save As, or Donald rules that it ships another
 #: way.
-POD_DIRECTIONS: tuple[Direction, ...] = (PodAmigaToDos(),)
+POD_DIRECTIONS: tuple[Direction, ...] = (PodAmigaToDos(), PodDosToAmiga())
 
 #: The environment variable that gates `POD_DIRECTIONS`. `WISH_EXPERIMENTAL_`
 #: rather than `WISH_DEBUG`/`WISH_NATIVE_LOG`'s prefix, because this one is
@@ -2221,11 +2239,12 @@ class ConvertDialog(QDialog):
         try:
             self.source = Source.detect(self._source_path, party=self.party,
                                         slot=self._wanted_slot)
-            # This dialog has no row for the player's disk 1, which such a
-            # destination is a copy of; Save As is the route for those.
+            # This dialog has no row for the player's disk 1 or disk 3, which
+            # such a destination is a copy of; Save As is the route for those.
             options = [d for d in destinations_for(self.source)
                        if not (d.destination_port == "amiga"
-                               and amiga_needs_disk_one(d.deltas))]
+                               and (amiga_needs_disk_one(d.deltas)
+                                    or amiga_needs_disk_three(d.deltas)))]
         except Exception:
             _log.exception("could not read %s", self._source_path)
             self._populate_destinations([])

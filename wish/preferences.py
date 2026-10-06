@@ -176,7 +176,7 @@ def _pretty(glob: str) -> str:
 #:
 #: **Pools of Darkness is not here.** It never shipped on the Commodore 64, so
 #: it has no `disk_glob`; its row is `game_folder_titles()`'s, and exists only
-#: while the experimental Amiga backend is on.
+#: while an Amiga backend flag or `WISH_EXPERIMENTAL_POD_CONVERT` is on.
 GAME_FOLDER_TITLES: tuple[c64_port.C64Container, ...] = (
     c64_port.POOL_OF_RADIANCE,
     c64_port.CURSE_OF_THE_AZURE_BONDS,
@@ -184,11 +184,22 @@ GAME_FOLDER_TITLES: tuple[c64_port.C64Container, ...] = (
 )
 
 
+def pod_folder_row_wanted() -> bool:
+    """Whether the titles with no C64 container keep their folder row: an
+    Amiga backend is on, or the Pools of Darkness conversion is."""
+    from editor import convert
+    return backends.amiga_enabled() or convert.pod_convert_enabled()
+
+
+#: The note a folder holding this title's DOS install gets. Empty until its
+#: wording is approved, and an empty note hides the line.
+DOS_INSTALL_NOTE = ""
+
+
 def game_folder_titles() -> tuple[c64_port.C64Container | titles.Title, ...]:
     """The titles that have a folder row in this run: the three above, then
-    the titles with Amiga disks and no C64 container while the experimental
-    Amiga backend is on (`backends.amiga_enabled`)."""
-    if backends.amiga_enabled():
+    the titles with no C64 container while `pod_folder_row_wanted`."""
+    if pod_folder_row_wanted():
         return GAME_FOLDER_TITLES + maps.AMIGA_ONLY_TITLES
     return GAME_FOLDER_TITLES
 
@@ -230,6 +241,12 @@ def title_folder_report(folder: str,
         return ""
     where = pathlib.Path(folder)
     n = len(_images(where, game)) if where.is_dir() else 0
+    if (isinstance(game, titles.Title) and where.is_dir()
+            and titles.dos_folder_title(where) == game.key):
+        if not n:
+            return DOS_INSTALL_NOTE
+        return "\n".join(line for line in (
+            f"{n} disk{'' if n == 1 else 's'}", DOS_INSTALL_NOTE) if line)
     if not n:
         if isinstance(game, titles.Title):
             return "none; no .adf disk images here"
@@ -581,14 +598,14 @@ class PreferencesDialog(QDialog):
             self.game_folder_reports[game.key] = note
 
     def _build_amiga_rows(self) -> None:
-        """Keep the row of each Amiga-only title while the experimental Amiga
-        backend is on, and take it out of the form otherwise.
+        """Keep the row of each title with no C64 container while
+        `pod_folder_row_wanted`, and take it out of the form otherwise.
 
         `preferences.ui` holds the row so that it can be rearranged in
         Designer; a run without the flag never shows it, and nothing in the
         dialog refers to it.
         """
-        if backends.amiga_enabled():
+        if pod_folder_row_wanted():
             return
         for game in maps.AMIGA_ONLY_TITLES:
             group = getattr(self.ui,

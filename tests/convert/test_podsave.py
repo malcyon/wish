@@ -957,6 +957,16 @@ def test_pod_slot_on_disk_three_blocks_a_disk_missing_a_marker(drop):
             disk, "A", _synthetic_amiga_pod_save(1), _a_vault())
 
 
+def test_is_pod_disk_three_agrees_with_the_checks_the_writer_makes():
+    assert amiga_savegame.is_pod_disk_three(_synthetic_disk_three())
+    assert not amiga_savegame.is_pod_disk_three(
+        _synthetic_disk_three(data_drawer=False))
+    curse = AmigaDisk.blank("CurseA")
+    curse.make_dir(f"/{amiga_savegame.SAVE_DRAWER}")
+    assert not amiga_savegame.is_pod_disk_three(curse)
+    assert not amiga_savegame.is_pod_disk_three(AmigaDisk.blank("EMPTY"))
+
+
 def test_pod_slot_on_disk_three_blocks_a_curse_disk_one():
     disk = AmigaDisk.blank("CurseA")
     disk.make_dir(f"/{amiga_savegame.SAVE_DRAWER}")
@@ -1167,13 +1177,28 @@ def _amiga_source(disk_bytes, letter):
                           image=disk_bytes)
 
 
-def test_pod_dos_to_amiga_is_not_registered_with_the_flag_set(monkeypatch):
-    monkeypatch.setenv(convert.POD_CONVERT_ENV, "1")
-    assert convert.PodDosToAmiga not in {type(d) for d in convert.POD_DIRECTIONS}
+def test_pod_dos_to_amiga_is_registered_only_with_the_flag_set(monkeypatch):
+    assert convert.PodDosToAmiga in {type(d) for d in convert.POD_DIRECTIONS}
     assert convert.PodDosToAmiga not in {type(d) for d in convert.DIRECTIONS}
     dos = convert.Source(port="dos", title=dos_port.POOLS_OF_DARKNESS,
                          path=__import__("pathlib").Path("."))
+    monkeypatch.delenv(convert.POD_CONVERT_ENV, raising=False)
     assert convert.destinations_for(dos) == []
+    monkeypatch.setenv(convert.POD_CONVERT_ENV, "1")
+    assert [type(d) for d in convert.destinations_for(dos)] == [
+        convert.PodDosToAmiga]
+
+
+def test_pod_dos_to_amiga_returns_the_image_and_writes_it(tmp_path):
+    folder = _pod_specimen("dos-pod-foundation-walked")
+    held = next(p.stem[-1] for p in sorted(folder.glob("SAVGAM?.PTY")))
+    direction = convert.PodDosToAmiga()
+    rehearsal = direction.rehearse(
+        _dos_source(folder, held), held, None,
+        disk_three=_synthetic_disk_three(held), replace=True)
+    assert rehearsal.files == {convert.POOLSAVE_FILENAME: rehearsal.disk}
+    [written] = direction.write(rehearsal, tmp_path / "out")
+    assert written.read_bytes() == rehearsal.disk
 
 
 def test_a_letter_the_disk_already_holds_is_not_replaced_unasked():

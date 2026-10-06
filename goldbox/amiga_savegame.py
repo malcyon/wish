@@ -2382,6 +2382,25 @@ class AmigaSlotTaken(AmigaSaveError):
     replace it."""
 
 
+def _check_pod_disk_three(disk: AmigaDisk) -> None:
+    """Raises `AmigaDiskError` unless every drawer and file of
+    `POD_DISK_THREE_MARKERS` is on `disk` and of the right kind."""
+    for path, want_dir in POD_DISK_THREE_MARKERS:
+        entry = disk.lookup(path)
+        if entry.is_dir != want_dir:
+            raise AmigaDiskError(f"{path} is not the Pools of Darkness disk 3's")
+
+
+def is_pod_disk_three(disk: AmigaDisk) -> bool:
+    """Whether `disk` is a Pools of Darkness disk 3, by the checks
+    `pod_slot_on_disk_three` makes before it writes anything."""
+    try:
+        _check_pod_disk_three(disk)
+    except AmigaDiskError:
+        return False
+    return True
+
+
 def pod_slot_on_disk_three(disk_three: AmigaDisk, slot: str,
                            savegame: bytes, vault: bytes,
                            replace: bool = False) -> AmigaDisk:
@@ -2407,10 +2426,7 @@ def pod_slot_on_disk_three(disk_three: AmigaDisk, slot: str,
             f"a Pools of Darkness vault is {POD_VAULT_SIZE} bytes; "
             f"got {len(vault)}")
     pod_vault_from_amiga(vault)
-    for path, want_dir in POD_DISK_THREE_MARKERS:
-        entry = disk_three.lookup(path)
-        if entry.is_dir != want_dir:
-            raise AmigaDiskError(f"{path} is not the Pools of Darkness disk 3's")
+    _check_pod_disk_three(disk_three)
     if not replace:
         for path in (pod_slot_path(letter), pod_vault_path(letter)):
             try:

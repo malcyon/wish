@@ -147,14 +147,18 @@ def edited_record(member: Any) -> CharacterRecord:
     The inventory is a table of its own and does not write through the sheet,
     so `Member.record` alone is missing every item edit. The blocks go back at
     the record's own item page, which is where `Party._append_converted` read
-    them from.
+    them from. A Pools of Darkness record has none, and is returned as it is.
     """
     # Imported here because `editor.roster` imports `editor.convert`, which
     # imports this module.
+    from .podsheet import PodSheetRecord
     from .roster import _ITEMS_AT
 
     raw = bytearray(member.record.to_bytes())
-    if member.inventory is not None:
+    # A Pools of Darkness sheet record is the DOS record, which keeps its
+    # items in a file of their own and has no item page to put them in.
+    if member.inventory is not None and not isinstance(
+            member.record, PodSheetRecord):
         blocks = member.inventory.raws
         at = _ITEMS_AT
         raw[at:at + sum(len(block) for block in blocks)] = b"".join(blocks)
@@ -447,8 +451,8 @@ class MissingAssets(SaveAsError):
     """Game data this route needs and nobody has found yet.
 
     `missing` names each requirement -- `DESTINATION_DISKS`, `SOURCE_DISKS`,
-    `DOS_GAME_FOLDER`, `AMIGA_GAME_DISK`, `AMIGA_DISK_ONE` -- in the order the caller should
-    ask for them, so the caller chooses which of its own approved sentences
+    `DOS_GAME_FOLDER`, `AMIGA_GAME_DISK`, `AMIGA_DISK_ONE`, `AMIGA_DISK_THREE`
+    -- in the order the caller should ask for them, so the caller chooses which of its own approved sentences
     fits rather than being handed one.
     """
 
@@ -593,6 +597,16 @@ def check_dos_folder(source: Any, port: str, assets: "Assets") -> None:
         raise WrongGameFolder(assets.dos_folder, *wrong)
 
 
+class WrongDiskThree(SaveAsError):
+    """A file named as the player's Pools of Darkness disk 3 that is not one:
+    another disk, or a file the Amiga disk reader cannot open. `path` names it,
+    so the caller chooses what to say."""
+
+    def __init__(self, path: "str | pathlib.Path"):
+        self.path = pathlib.Path(path)
+        super().__init__(f"{self.path} is not a Pools of Darkness disk 3")
+
+
 class StalePlan(SaveAsError):
     """A prepared output that no longer matches the edits, the destination or
     the assets it was prepared from."""
@@ -624,6 +638,10 @@ AMIGA_GAME_DISK = "amiga_game_disk"
 #: The player's own Amiga disk 1, for a Curse or Silver Blades destination:
 #: the output is a copy of it with the party in its `SAVE` drawer.
 AMIGA_DISK_ONE = "amiga_disk_one"
+#: The player's own Amiga disk 3, for a Pools of Darkness Amiga destination:
+#: the output is a copy of it with the slot and its vault in its `SAVE`
+#: drawer.
+AMIGA_DISK_THREE = "amiga_disk_three"
 
 
 # ---------------------------------------------------------------------------
@@ -670,6 +688,7 @@ def requirements(source: Any, port: str) -> tuple[str, ...]:
     """
     from .convert import (
         amiga_needs_disk_one,
+        amiga_needs_disk_three,
         amiga_needs_game_disk,
         dos_needs_game_folder,
     )
@@ -686,6 +705,8 @@ def requirements(source: Any, port: str) -> tuple[str, ...]:
     else:
         if amiga_needs_disk_one(direction.deltas):
             needs.append(AMIGA_DISK_ONE)
+        if amiga_needs_disk_three(direction.deltas):
+            needs.append(AMIGA_DISK_THREE)
         if amiga_needs_game_disk(direction.deltas, source):
             needs.append(AMIGA_GAME_DISK)
     if source.port == "c64" and port in ("dos", "amiga"):
@@ -719,6 +740,7 @@ class Assets:
     dos_folder: pathlib.Path | None = None
     amiga_disk: pathlib.Path | None = None
     amiga_disk_one: pathlib.Path | None = None
+    amiga_disk_three: pathlib.Path | None = None
     c64_folder: pathlib.Path | None = None
     game_disks: tuple[pathlib.Path, ...] = ()
 
@@ -733,6 +755,8 @@ class Assets:
             return self.amiga_disk is not None
         if requirement == AMIGA_DISK_ONE:
             return self.amiga_disk_one is not None
+        if requirement == AMIGA_DISK_THREE:
+            return self.amiga_disk_three is not None
         raise SaveAsError(f"{requirement} is not a known requirement")
 
     def token(self) -> tuple[str, ...]:
@@ -749,20 +773,60 @@ class Assets:
         """
         return (str(self.dos_folder or ""), str(self.amiga_disk or ""),
                 str(self.amiga_disk_one or ""),
+                str(self.amiga_disk_three or ""),
                 str(self.c64_folder or ""),
                 ",".join(str(disk) for disk in self.game_disks),
                 _files_token(self.game_files),
                 _files_token(self.source_files),
                 _file_digest(self.amiga_disk),
                 _file_digest(self.amiga_disk_one),
+                _file_digest(self.amiga_disk_three),
                 _script_digest(self.dos_folder))
+
+
+def _is_disk_three(path: pathlib.Path) -> bool:
+    from goldbox.amiga_adf import AmigaDisk
+
+    try:
+        return amiga_savegame.is_pod_disk_three(AmigaDisk.open(str(path)))
+    except Exception:                   # not a disk, or not readable
+        return False
+
+
+def find_disk_three(folder: "str | pathlib.Path | None"
+                    ) -> pathlib.Path | None:
+    """The first `.adf` in `folder`, by name, that is a Pools of Darkness
+    disk 3 (`amiga_savegame.is_pod_disk_three`), or `None`.
+
+    A folder that is not an existing directory, and an `.adf` that cannot be
+    opened, hold none.
+    """
+    from goldbox.amiga_adf import AmigaDisk
+
+    where = expand_folder(folder) if folder else None
+    if where is None:
+        return None
+    try:
+        images = sorted(p for p in where.iterdir()
+                        if p.is_file() and p.suffix.lower() == ".adf")
+    except OSError:
+        return None
+    for image in images:
+        try:
+            if amiga_savegame.is_pod_disk_three(AmigaDisk.open(str(image))):
+                return image
+        except Exception:               # not a disk, or not readable
+            continue
+    return None
 
 
 def resolve_assets(source: Any, port: str, *, game_files: Any = None,
                    c64_folder: "str | pathlib.Path | None" = None,
                    dos_folder: "str | pathlib.Path | None" = None,
                    amiga_disk: "str | pathlib.Path | None" = None,
-                   amiga_disk_one: "str | pathlib.Path | None" = None
+                   amiga_disk_one: "str | pathlib.Path | None" = None,
+                   amiga_disk_three: "str | pathlib.Path | None" = None,
+                   game_folder: "str | pathlib.Path | None" = None
                    ) -> Assets:
     """Find everything `requirements` names, or say what is missing.
 
@@ -774,6 +838,11 @@ def resolve_assets(source: Any, port: str, *, game_files: Any = None,
 
     A `dos_folder` that is not an existing directory, after `~` is expanded,
     is missing.
+
+    `amiga_disk_three` is the disk 3 the caller named; with none named, the
+    disk 3 found in `game_folder` (`find_disk_three`) is used. A named file
+    that is not a Pools of Darkness disk 3 raises `WrongDiskThree` before
+    anything is prepared.
 
     Raises `MissingAssets` naming every requirement nothing answered for.
     """
@@ -803,6 +872,14 @@ def resolve_assets(source: Any, port: str, *, game_files: Any = None,
                      else None)
         resolved = dataclasses.replace(resolved, game_files=found,
                                        game_disks=disks)
+    if AMIGA_DISK_THREE in needs:
+        if amiga_disk_three:
+            named = pathlib.Path(amiga_disk_three)
+            if not _is_disk_three(named):
+                raise WrongDiskThree(named)
+        else:
+            named = find_disk_three(game_folder)
+        resolved = dataclasses.replace(resolved, amiga_disk_three=named)
     if SOURCE_DISKS in needs:
         found = game_files(direction.title) if game_files else None
         resolved = dataclasses.replace(resolved, source_files=found)
@@ -862,7 +939,15 @@ def rehearse(direction: Any, source: Any, assets: Assets,
     chosen = {"leave": leave} if leave else {}
     if leave_effects:
         chosen["leave_effects"] = leave_effects
-    if port == "amiga":
+    if port == "amiga" and direction.deltas is dos_port.POOLS_OF_DARKNESS:
+        from goldbox.amiga_adf import AmigaDisk
+
+        # The whole slot is replaced on the copy: every real disk 3 already
+        # holds a vault file for most letters, so stopping at a taken letter
+        # would stop every Save As.
+        chosen["disk_three"] = AmigaDisk.open(str(assets.amiga_disk_three))
+        chosen["replace"] = True
+    elif port == "amiga":
         chosen["disk_one"] = assets.amiga_disk_one
     if direction.source_port == "c64" and port in ("dos", "amiga"):
         return direction.rehearse(source, slot, options,
@@ -1267,7 +1352,11 @@ def stored_name(member: Any) -> str:
     (#631), so it goes through `amiga_por.to_dos_character` first, the same
     reader `dos_codec.write_c64_save` uses.
     """
-    if member.native is None:
+    from .podsheet import PodSheetRecord
+
+    if member.native is None or isinstance(member.record, PodSheetRecord):
+        # A Pools of Darkness sheet record is the DOS record: its name is
+        # stored as typed, and an Amiga member's `native` is a bare block.
         return member.record.get("name")
     if isinstance(member.native, amiga_por.AmigaPorCharacter):
         return amiga_por.to_dos_character(member.native).name
@@ -1544,12 +1633,23 @@ def _signature(record: CharacterRecord,
     both sides of a comparison. `source_port` is the port the sheet was read
     from; a C64, DOS or Amiga source has its treasure share rewritten.
     """
+    from .podsheet import PodSheetRecord
+
+    # The destination-aware overrides below are C64 and Pool of Radiance
+    # facts; a Pools of Darkness record is compared as it was written.
+    title_record = isinstance(record, PodSheetRecord)
     values = []
     for field in fields:
         value = record.get(field)
         if field == "name" and name is not None:
             value = name
-        elif destination is not None:
+        elif title_record and field == "spells_known":
+            # The engine writes 1 and tests a spellbook byte only against
+            # zero, so a record holding another non-zero value (one DOS
+            # character holds 8) and an Amiga block holding 1 know the same
+            # spells.
+            value = bytes(1 if byte else 0 for byte in value)
+        elif destination is not None and not title_record:
             if field == "char_class":
                 override = _expected_char_class(record, destination)
             elif field == "turn_power":
@@ -1612,6 +1712,11 @@ def compare(expected: "list[CharacterRecord]",
         return [f"{len(expected)} character(s) went in and {len(written)} "
                 f"came back out"]
     fields = _compared_fields(destination)
+    from .podsheet import PodSheetRecord
+
+    if any(isinstance(record, PodSheetRecord) for record in expected + written):
+        # The title's own DOS record: only the names it maps have a byte.
+        fields = tuple(name for name in fields if PodSheetRecord.maps(name))
     if expected_names is not None:
         want = sorted(_signature(record, destination, name, fields,
                                source_port)
@@ -1904,6 +2009,7 @@ def check_not_alias(path: pathlib.Path, snapshot: Snapshot,
         ("game disk", disk) for disk in assets.game_disks]
     for what, where in (("game disk", assets.amiga_disk),
                         ("game disk", assets.amiga_disk_one),
+                        ("game disk", assets.amiga_disk_three),
                         ("DOS game folder", assets.dos_folder),
                         ("C64 game folder", assets.c64_folder)):
         if where is not None:
