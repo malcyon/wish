@@ -2013,6 +2013,7 @@ def test_curse_fight_fails_through_capture_when_the_route_square_never_settles(
     run.disks = "unused"
     run.to_world = lambda: True
     run.spent = lambda: False
+    run.position = lambda: [5, 5, 0]
     run.capture = captured.append
     with pytest.raises(A.StepFailed, match="the party's square did not settle"):
         run.fight("10", "I", 5)
@@ -5296,6 +5297,7 @@ def test_pool_fight_asks_the_walk_to_take_an_encounter_menu_only_while_it_walks(
     run.sess = Session()
     run.to_world = lambda: True
     run.spent = lambda: False
+    run.position = lambda: [5, 5, 0]
     run.capture = lambda name: None
     run.fight("60", "I", 5)
     assert seen == [A.S.ENCOUNTER_FIGHT]
@@ -6546,6 +6548,7 @@ def test_pool_fight_that_runs_out_of_budget_fails_the_step_with_a_fight_capture(
     run.sess = Session()
     run.to_world = lambda: True
     run.spent = lambda: False
+    run.position = lambda: [5, 5, 0]
     captured = []
     run.capture = captured.append
     with pytest.raises(A.StepFailed, match="budget"):
@@ -6612,6 +6615,7 @@ def test_a_budget_ended_fight_keeps_the_checkpoint_reading(tmp_path):
     run.sess = Session()
     run.to_world = lambda: True
     run.spent = lambda: False
+    run.position = lambda: [5, 5, 0]
     run.capture = lambda tag: None
     run.reading = lambda: {"counts": {"x": 3}}
     with pytest.raises(A.StepFailed):
@@ -6663,6 +6667,7 @@ def _pool_run_fighting(outcome):
     run.sess = Session()
     run.to_world = lambda: True
     run.spent = lambda: False
+    run.position = lambda: [5, 5, 0]
     run.captured = []
     run.capture = run.captured.append
     run.reading = lambda: {"counts": {"x": 4}}
@@ -12436,6 +12441,7 @@ def _flee_run(outcome, slots_before, slots_after, tactics):
     run.game = SimpleNamespace(key="unmeasured")
     run.to_world = lambda: True
     run.spent = lambda: False
+    run.position = lambda: [5, 5, 0]
     run.captured = []
     run.capture = run.captured.append
     run.reading = lambda: {"counts": {"x": 1}}
@@ -13910,6 +13916,7 @@ def _retry_run(plays, deadline=None, menu_after=False):
     run.deadline = deadline
     run.to_world = lambda: True
     run.spent = lambda: False
+    run.position = lambda: [5, 5, 0]
     run.captured = []
     run.capture = run.captured.append
     run.flight_tactic = _Flight
@@ -14206,3 +14213,56 @@ def test_the_run_saves_nothing_when_the_movement_cannot_be_put_back(
     rc, calls, summary = _fast_drive(tmp_path, monkeypatch, put_back)
     assert "save" not in calls and "camp-list" not in calls
     assert "not put back" in summary["lost"]
+
+
+def test_a_camp_step_after_a_fast_flee_fight_is_not_pulled_back_to_the_world(
+        monkeypatch):
+    """Only the first step after the fight checks the movement at the world
+    bar; `scribe` then `rest` must stay in the camp."""
+    machine, seen = _MovementMachine(), []
+    run = _fast_cast_run(monkeypatch, machine, seen)
+    run.fight_cast("BAKSHI:PRAYER", "I", 5)
+    worlds = []
+    run.to_world = lambda: worlds.append(1) or True
+    assert run.movement_before("scribe") is not None
+    assert run.movement_before("rest") is None
+    assert run.movement_before("rest") is None
+    assert worlds == [1]
+
+
+def test_a_flight_that_drops_nobody_is_a_getaway_when_the_result_byte_reads_81():
+    machine = _MovementMachine()
+    run = _flee_run(A.S.ENDED, _slots(("A", 1), ("B", 1)),
+                    _slots(("A", 1), ("B", 1)), [])
+    run.sess.mon = machine.mon
+    ended = A.S.FightResult(A.S.ENDED, 4, 1.0, [], [])
+    before = _slots(("A", 1), ("B", 1))
+    run.party_slots = lambda: before
+    assert run.flee_settled(ended, before).outcome == A.S.ENDED
+    machine.mem[0x6DC7] = 0x81
+    assert run.flee_settled(ended, before).outcome == A.S.RAN
+
+
+def test_a_fight_step_records_where_the_fight_left_the_party():
+    run = _flee_run(A.S.RAN, _slots(("A", 1)), _slots(("A", 1)), [])
+    run.position = lambda: [14, 6, 1]
+    assert run.fight("900", "I", 5, flee=True)["position"] == [14, 6, 1]
+
+
+def _fought(verb, position):
+    return {"verb": verb, "position": position}
+
+
+@pytest.mark.parametrize("verb", ["fight", "fight-flee", "fight-cast"])
+def test_a_save_is_held_to_the_place_a_fight_left_the_party(verb):
+    walked = _walked("I", True, [14, 7, 2])
+    at = {"area": 0, "x": 14, "y": 6, "facing": 1}
+    old = {**at, "y": 7, "facing": 2}
+    A.validate_walks([walked, _fought(verb, [14, 6, 1]), _saved(P, at)])
+    with pytest.raises(A.StepFailed, match=r"screen showed \[14, 6, 1\]"):
+        A.validate_walks([walked, _fought(verb, [14, 6, 1]), _saved(P, old)])
+
+
+def test_a_fight_with_no_recorded_place_still_exempts_the_save_check():
+    A.validate_walks([_walked("I", True, [14, 7, 2]), {"verb": "fight"},
+                      _saved(P, {**P, "y": 3})])

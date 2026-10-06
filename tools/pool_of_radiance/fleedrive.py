@@ -93,6 +93,9 @@ RUNNING = 0x86
 #: 0 and 1 won, `$80` lost, `$81` ran away.
 RESULT = 0x6DC7
 
+#: The `RESULT` value of a fight the party got away from.
+RESULT_RAN = 0x81
+
 #: `POST.COM $0957`, the jump-to-itself the **losing** branch reaches
 #: (`#128`).  Sampled here as a control: the fleeing branch at `$0929` ends
 #: `JMP $14AC`, so a run that ends in flight should never be caught here.
@@ -822,6 +825,12 @@ class MovementPoke:
                 f"({bad['action']}), so the game is not saved", rows)
         self.applied = False
         return rows
+
+
+    def forget(self) -> None:
+        """Drop the originals after the last check, so a later step finds
+        nothing to put back; the next `hold` records them afresh."""
+        self.originals = {}
 
 
 class FastFlee:

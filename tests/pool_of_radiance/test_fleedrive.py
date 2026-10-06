@@ -457,3 +457,14 @@ def test_fast_flee_raises_only_once_armed_and_reads_through_to_its_tactic():
     tactic(m, None)
     assert turns == [6, 13]
     assert tactic.casts is inner.casts
+
+
+def test_forgetting_the_originals_leaves_nothing_for_a_later_put_back():
+    m = _party_fight()
+    poke = fleedrive.MovementPoke(_Log())
+    poke.hold(m)
+    poke.restore(m)
+    poke.forget()
+    m.mem[0x831B] = 13
+    assert poke.restore(m) == []
+    assert _movement(m, 0) == 13

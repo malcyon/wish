@@ -4516,7 +4516,12 @@ class PoolRun:
             return None
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
-        return self.put_back_movement(f"before {what}")
+        report = self.put_back_movement(f"before {what}")
+        # The first check after a fight is the one that catches a copy-back;
+        # later steps must not be pulled to the world bar again, which would
+        # take a camp step out of the camp.
+        poke.forget()
+        return report
 
     def flee_failure(self, arg: str, result,
                      verb: str = "fight-flee") -> StepFailed | None:
@@ -4589,12 +4594,23 @@ class PoolRun:
                      before: list[dict]) -> "S.FightResult":
         """`result`, upgraded to `ran` when a `stop` ended the fight before the
         game's `THE PARTY RUNS AWAY` line was read (outcome `ended`) and a
-        member's status has gone to 0, which only the flee arm writes.  A
-        member who is merely dead or dying is not a drop."""
-        if (result.outcome == S.ENDED
-                and self.dropped_slots(before, self.party_slots())):
+        member's status has gone to 0, which only the flee arm writes, or the
+        result byte `$6DC7` reads `$81` (a whole party getting away drops
+        nobody).  A member who is merely dead or dying is not a drop."""
+        if result.outcome != S.ENDED:
+            return result
+        from tools.pool_of_radiance import fleedrive
+        if (self.dropped_slots(before, self.party_slots())
+                or self.flee_result_byte() == fleedrive.RESULT_RAN):
             return dataclasses.replace(result, outcome=S.RAN)
         return result
+
+    def flee_result_byte(self) -> int | None:
+        """The fight's result byte `$6DC7`, or None when it cannot be read."""
+        from tools.pool_of_radiance import fleedrive
+        with contextlib.suppress(Exception), self.sess.mon(5) as m:
+            return m.read(fleedrive.RESULT, 1)[0]
+        return None
 
     def fight_over_budget(self, arg: str, result) -> StepFailed:
         """The failure for a fight that ran out of SECONDS.
@@ -4779,6 +4795,7 @@ class PoolRun:
         except route_pool.FightSetback as e:
             raise self.setback(f"fight-cast: {e}") from e
         self.capture("fight-end")
+        position = self.position()
         menu = self.encounter_menu_up(self.sess, self.sess.screen())
         seen = result.outcome
         result = self.flee_settled(result, before)
@@ -4814,7 +4831,7 @@ class PoolRun:
         return {"walked": taken, "walk": walk, "acted": result.acted,
                 "casts": tactic.casts, "spent": spent, **fled,
                 "ran_line_seen": seen == S.RAN, "outcome_seen": seen,
-                **dataclasses.asdict(result)}
+                "position": position, **dataclasses.asdict(result)}
 
     def fight(self, arg: str, walk: str, steps: int, flee: bool = False) -> dict:
         taken = self.walk_into_fight(walk, steps)
@@ -4836,15 +4853,17 @@ class PoolRun:
             result = self.flee_settled(result, before)
             if (failed := self.flee_failure(arg, result)) is not None:
                 raise failed
+            position = self.position()
             return {"walked": taken, "acted": result.acted,
                     **self.flee_result(before, self.party_slots()),
                     "ran_line_seen": seen == S.RAN, "outcome_seen": seen,
-                    **dataclasses.asdict(result)}
+                    "position": position, **dataclasses.asdict(result)}
         if result.outcome == S.BUDGET:
             raise self.fight_over_budget(arg, result)
         if result.outcome == S.LOST:
             raise self.fight_lost(result)
-        return {"walked": taken, "acted": result.acted,
+        position = self.position()
+        return {"walked": taken, "acted": result.acted, "position": position,
                 **dataclasses.asdict(result)}
 
     def _wait_idle(self, need: int = 6) -> bool:
@@ -7695,13 +7714,13 @@ def validate_walks(results: list[dict]) -> None:
     # what it undid counts toward neither the moves the saved square must
     # show nor the fights that moved the party.
     walks: list[tuple[int, dict]] = []
-    fights: list[int] = []
+    fights: list[tuple[int, dict]] = []
     marks: dict[str, tuple[list, list]] = {}
     for i, r in enumerate(results):
         if r["verb"] == "walk":
             walks.append((i, r))
-        elif r["verb"] == "fight":
-            fights.append(i)
+        elif r["verb"] in ("fight", "fight-flee", "fight-cast"):
+            fights.append((i, r))
         elif r["verb"] == "snapshot":
             marks[r["name"]] = (list(walks), list(fights))
         elif r["verb"] == "restore" and r.get("name") in marks:
@@ -7734,17 +7753,22 @@ def validate_walks(results: list[dict]) -> None:
     if not asked and not back and got["place_changed"]:
         raise StepFailed("only turns were asked and the saved square changed from "
                          f"{got['place_before']} to {got['place_after']}")
-    if any(i > last for i in fights):
+    # The place to hold the save to is the one the latest step recorded, a
+    # walk or a fight that read the world bar afterwards.  A fight that
+    # recorded none (another title's) moved the party somewhere unread.
+    moved = [r for i, r in fights if i > last]
+    if moved and "position" not in moved[-1]:
         return
-    seen = walks[-1][1]["position"]
+    latest = moved[-1] if moved else walks[-1][1]
+    seen = latest["position"]
     after = got["place_after"]
-    if walks[-1][1].get("outdoors"):
+    if latest.get("outdoors"):
         # A travel-grid walk ends on the travel pair, in its window.
         if not after.get("outdoors") or seen[:2] != saved_at or (
-                walks[-1][1].get("area") not in (None, after["area"])):
+                latest.get("area") not in (None, after["area"])):
             raise StepFailed(
                 f"the travel grid showed {seen[:2]} in area "
-                f"{walks[-1][1].get('area')}, the game-written save holds "
+                f"{latest.get('area')}, the game-written save holds "
                 f"{saved_at} in area {after['area']}"
                 f"{'' if after.get('outdoors') else ', indoors'}")
     elif seen[2] is None:
