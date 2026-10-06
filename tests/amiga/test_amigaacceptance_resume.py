@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import pathlib
 import types
 
 import pytest
@@ -14,12 +16,20 @@ from tests.amiga.test_amigaacceptance_accept import (  # noqa: F401
     Answer,
     MapGuard,
     _accept,
+    _IdentityMap,
     _manifest,
     readings,
 )
 from tests.amiga.test_amigaacceptance_encounters import FakeSwitch
 from tests.amiga.test_amigaacceptance_snapshot import FakePipe, _encounter_guard
-from tests.amiga.test_amigaacceptance_title import STATES, TitleGuest, _run, make_title
+from tests.amiga.test_amigaacceptance_title import (
+    STATES,
+    TitleGuest,
+    _keys,
+    _run,
+    make_title,
+    manifest_for,
+)
 from tools.amiga import acceptance
 from tools.amiga.winuaesession import RouteError
 from tools.registry import resumerecord
@@ -410,3 +420,419 @@ def test_an_insert_and_a_skipped_step_use_the_routes_own_keys_in_sent(tmp_path, 
     # The route's insert step holds a list, the form `route_sha256` hashes; the key pressed is its last.
     assert record["sent"][3] == [[1, "disk3", "SPACE"], "insert"]
     assert record["step"]["key"] == "SPACE" and record["step"]["kind"] == "insert"
+
+
+# -- resuming from a record -------------------------------------------------------------------
+
+class Readback:
+    """What `WinGuest.drives` returns: its `str` is only the status, its paths are in `drive_state`."""
+
+    def __init__(self, paths):
+        self.paths = paths
+
+    def drive_state(self):
+        return {"paths": self.paths}
+
+    def __str__(self):
+        return "ok"
+
+
+class ResumedGuard(MapGuard):
+    """The map guard, reading a crop named `...-resumed` as the screen it is a second look at."""
+
+    def shown(self, path):
+        return super().shown(path.with_name(path.name.replace("-resumed", "")))
+
+
+class StoppedGuest(ResumeTitleGuest):
+    """The first boot: its drive readback names what DF0 and DF1 held."""
+
+    def __init__(self, clock):
+        super().__init__(clock)
+        # The fake's base class keeps an attribute named `drives`, which a method would not replace.
+        self.drives = self.readback
+
+    def readback(self, holder):
+        return Readback({0: self.mounted[0], 1: self.mounted[1]})
+
+
+class BackGuest(ResumeTitleGuest):
+    """The second boot: a restore brings back the first machine's drives, keys pressed and place."""
+
+    exe = "winuae.exe"
+    restored_paths = None
+
+    def __init__(self, clock, stopped):
+        super().__init__(clock)
+        self.stopped = stopped
+        self.drive_override = None
+        self.drives = self.readback
+
+    def stage_snapshot(self, name, holder, sha256, count):
+        self.calls.append(("stage_snapshot", name, holder, sha256, count))
+        return "ok staged"
+
+    def restore(self, name, holder, fresh=False):
+        self.calls.append(("restore", name, holder, fresh))
+        self.mounted = list(self.stopped.mounted)
+        self.presses = self.stopped.presses
+        self.place = dict(self.stopped.place)
+        return types.SimpleNamespace(tags={"exe": self.exe, "count_after": "905"})
+
+    def readback(self, holder):
+        if self.drive_override is not None:
+            return Readback(self.drive_override)
+        return Readback({0: self.mounted[0], 1: self.mounted[1]})
+
+
+WORLD_AT_7 = {"world": lambda p: not p.stem.startswith("07-")}
+
+
+def _title():
+    return make_title(strict=make_title().strict | {"world"})
+
+
+def _stopped(tmp_path, clock, *, miss=7, state="world", **kw):
+    """A title accept that misses route step `miss`, and the record it leaves."""
+    guest = StoppedGuest(clock)
+    guard = MapGuard(states=("title", *STATES, "world"),
+                     on={state: lambda p: not p.stem.startswith(f"{miss:02d}-")})
+    guest, result = _run(tmp_path, clock, guest=guest, title=_title(), guard=guard, **kw)
+    assert result["resumable"] is True, result
+    return guest, result
+
+
+def _resume(tmp_path, clock, stopped, result, *, at_step=7, guest=None, guard=None,
+            title=None, holder="wish679-test", attempt="resume1", manifest=None, **kw):
+    """The same run again from the record, with its own guest, and the call list before the claim."""
+    guest = guest or BackGuest(clock, stopped)
+    kw.setdefault("accept", True)
+    kw.setdefault("resume_from", pathlib.Path(result["resume_record"]))
+    run = acceptance.run_recon(
+        manifest or manifest_for(tmp_path), guest=guest,
+        guard=guard or ResumedGuard(states=("title", *STATES, "world")),
+        identity=_IdentityMap(), holder=holder, audio_proof=_audio_proof(tmp_path),
+        title=title or _title(), attempt=attempt, at_step=at_step, **kw)
+    return guest, run
+
+
+def test_a_record_from_a_miss_resumes_at_its_step_and_finishes(tmp_path, clock):
+    stopped, first = _stopped(tmp_path, clock)
+    guest, result = _resume(tmp_path, clock, stopped, first)
+    assert result["error"] == "" and result["success"] is True, result.get("read")
+    assert result["completed"] is True
+    # Step 7's key went out before the snapshot: only steps 8 to 10 are pressed.
+    assert _keys(guest) == ["E", "S", "D"]
+    assert [e["step"] for e in result["events"] if "key" in e] == [8, 9, 10]
+    assert result["resumed_from"]["step"] == 7
+    assert result["resumed_from"]["record"] == first["resume_record"]
+    assert result["resumed_from"]["sha256"] == hashlib.sha256(
+        pathlib.Path(first["resume_record"]).read_bytes()).hexdigest()
+    assert result["resumed_from"]["earlier_summary"].endswith("recon1/summary.json")
+    assert any(e.get("state") == "07-world-resumed" for e in result["events"])
+    assert result["read"]["verdicts"][-1].startswith("slot D: moved 1 square")
+
+
+def test_the_resume_calls_go_claim_disks_state_start_title_restore_drives_then_the_screen(
+        tmp_path, clock):
+    stopped, first = _stopped(tmp_path, clock)
+    guest, _ = _resume(tmp_path, clock, stopped, first)
+    seq = []
+    for call in guest.calls:
+        if call[0] == "put":
+            seq.append("put state" if call[2].endswith("-state.uss") else "put disk")
+        elif call[0] in ("claim", "stage_snapshot", "start", "restore", "press"):
+            seq.append(call[0])
+        elif call[0] == "grab" and "start" in seq and "restore" not in seq and "title" not in seq:
+            seq.append("title")
+    assert seq[:7] == ["claim", "put disk", "put disk", "put disk", "put state", "stage_snapshot",
+                       "start"]
+    assert seq[7:] == ["title", "restore", "press", "press", "press"] or (
+        seq[7:9] == ["title", "restore"] and seq[9:] == ["press"] * 3), seq
+    (_, name, holder, fresh), = [c for c in guest.calls if c[0] == "restore"]
+    assert (name, holder, fresh) == ("resume", "wish679-test", True)
+    staged = [c for c in guest.calls if c[0] == "stage_snapshot"][0]
+    assert staged[1:3] == ("resume", "wish679-test") and staged[4] == 900
+    assert staged[3] == hashlib.sha256(STATE_BYTES).hexdigest()
+
+
+def test_the_disks_put_are_the_records_copies_not_the_manifests(tmp_path, clock):
+    stopped, first = _stopped(tmp_path, clock)
+    guest, _ = _resume(tmp_path, clock, stopped, first)
+    folder = pathlib.Path(first["resume_record"]).parent
+    puts = {c[2].rsplit("-", 1)[1]: pathlib.Path(c[1]) for c in guest.calls
+            if c[0] == "put" and c[2].endswith(".adf")}
+    assert {name: path.parent for name, path in puts.items()} == dict.fromkeys(puts, folder)
+    manifest_boot = (tmp_path / "boot.adf").read_bytes()
+    # The first run's slot C went onto its boot disk, so the record's copy is not the manifest's.
+    assert (folder / "boot.adf").read_bytes() != manifest_boot
+    assert puts["boot.adf"].name == "boot.adf"
+    state = [c for c in guest.calls if c[0] == "put" and c[2].endswith("-state.uss")]
+    assert state[0][2] == "C:/Amiga/Disks/wish679-wish679-test-state.uss"
+    assert pathlib.Path(state[0][1]).name == "state.uss"
+
+
+def test_the_start_uses_the_recorded_settings(tmp_path, clock):
+    stopped, first = _stopped(tmp_path, clock)
+    guest, _ = _resume(tmp_path, clock, stopped, first)
+    assert guest.starts == stopped.starts
+
+
+@pytest.mark.parametrize("why", [
+    "manifest", "route_before", "key_changed", "at_step", "holder", "no_encounters",
+    "walk_retry", "config", "state_hash", "disk_hash", "later_restore", "not_resumable",
+    "command"])
+def test_a_mismatch_stops_before_any_lane_call(tmp_path, clock, monkeypatch, why):
+    stopped, first = _stopped(tmp_path, clock)
+    folder = pathlib.Path(first["resume_record"]).parent
+    guest = BackGuest(clock, stopped)
+    kw, title, at_step, holder = {}, _title(), 7, "wish679-test"
+
+    def edited_route(index, key):
+        route = list(_title().route)
+        route[index] = (key, route[index][1], route[index][2])
+        return make_title(route=tuple(route), measure_route=tuple(route), strict=_title().strict)
+
+    if why == "manifest":
+        kw["manifest"], message = manifest_for(tmp_path, loaded="B"), "the manifest differs"
+    elif why == "route_before":
+        title, message = edited_route(1, "Q"), "history at entry 2"
+    elif why == "key_changed":
+        title, message = edited_route(6, "NP6"), "history at entry 7"
+    elif why == "at_step":
+        at_step, message = 6, "--at-step 6 is not the record's step 7"
+    elif why == "holder":
+        holder, message = "wish679-other", "the record's holder is wish679-test"
+    elif why == "no_encounters":
+        kw["encounters"], message = FakeSwitch(guest), "option no_encounters differs"
+    elif why == "walk_retry":
+        kw["walk_retry"], message = 1, "option walk_retry differs"
+    elif why == "config":
+        other = tmp_path / "other.uae"
+        other.write_text("changed")
+        monkeypatch.setattr(acceptance, "LOCAL_BOOT_CONFIG", other)
+        message = "start setting config_sha256 differs"
+    elif why == "state_hash":
+        (folder / "state.uss").write_bytes(b"ASF another machine")
+        message = "state.uss does not match its recorded"
+    elif why == "disk_hash":
+        (folder / "boot.adf").write_bytes(b"changed")
+        message = "boot.adf does not match its recorded"
+    elif why == "later_restore":
+        # A snapshot taken before step 7 does not exist in the new process.
+        kw["marks"] = {5: (("snapshot", "back"),), 8: (("restore", "back"),)}
+        message = "restore back goes back to a snapshot taken before step 7"
+    elif why == "not_resumable":
+        record = pathlib.Path(first["resume_record"])
+        data = json.loads(record.read_text())
+        data["resumable"], data["why_not"] = False, "the disk changed"
+        record.write_text(json.dumps(data))
+        message = "the record is not resumable: the disk changed"
+    else:
+        kw["accept"], kw["measure"] = False, True
+        message = "the record is for command 'accept', not 'measure'"
+    with pytest.raises(RouteError, match=message):
+        _resume(tmp_path, clock, stopped, first, guest=guest, title=title, at_step=at_step,
+                holder=holder, **kw)
+    assert guest.calls == []
+
+
+def test_a_resume_needs_both_options(tmp_path, clock):
+    stopped, first = _stopped(tmp_path, clock)
+    guest = BackGuest(clock, stopped)
+    with pytest.raises(RouteError, match="go together"):
+        _resume(tmp_path, clock, stopped, first, guest=guest, at_step=None)
+    assert guest.calls == []
+
+
+def test_a_miss_inside_the_walk_leg_cannot_be_resumed(tmp_path, clock, monkeypatch):
+    # B1 never records a miss inside a leg, since a retry handles it, so the leg is moved over step 9.
+    stopped, first = _stopped(tmp_path, clock, miss=9, state="camp_picker", walk_retry=1)
+    monkeypatch.setattr(acceptance, "_walk_leg", lambda steps: (7, 9))
+    guest = BackGuest(clock, stopped)
+    with pytest.raises(RouteError, match="step 9 is inside the walk leg"):
+        _resume(tmp_path, clock, stopped, first, at_step=9, guest=guest, walk_retry=1)
+    assert guest.calls == []
+
+
+def test_a_resume_at_a_miss_before_a_walk_leg_still_takes_the_leg_snapshot(tmp_path, clock):
+    stopped, first = _stopped(tmp_path, clock, miss=4, state="disk_wait", walk_retry=1)
+    guest, result = _resume(tmp_path, clock, stopped, first, at_step=4, walk_retry=1,
+                            guard=ResumedGuard(states=("title", *STATES, "world")))
+    assert result["error"] == "" and result["success"] is True
+    assert [c[1] for c in guest.calls if c[0] == "snapshot"] == ["walk-leg"]
+    assert _keys(guest) == ["C", "NP2", "NP8", "E", "S", "D"]
+
+
+def _measure_miss(tmp_path, clock):
+    """A measure run that misses step 3; its guard knows the title, which a measure run needs to resume."""
+    stopped = StoppedGuest(clock)
+    guard = MapGuard(states=("title", *STATES), on={
+        "title": lambda p: p.stem == "title" or p.stem.startswith("00-boot"),
+        "loaded_menu": lambda p: not p.stem.startswith("03-")})
+    _, first = _run(tmp_path, clock, guest=stopped, accept=False, measure=True, guard=guard)
+    assert first["resumable"] is True
+    return stopped, first
+
+
+def _measure_resume_guard():
+    return ResumedGuard(states=("title", *STATES), on={
+        "title": lambda p: p.stem == "title" or p.stem.startswith("00-boot")})
+
+
+def test_a_measure_record_resumes_and_finishes(tmp_path, clock):
+    stopped, first = _measure_miss(tmp_path, clock)
+    guest, result = _resume(tmp_path, clock, stopped, first, at_step=3, accept=False, measure=True,
+                            guard=_measure_resume_guard())
+    assert result["error"] == "" and result["resumed_from"]["step"] == 3
+    # Steps 1 to 3 were pressed before the snapshot; the measured route ends before the first write.
+    assert _keys(guest) == ["SPACE"]
+    assert result["route_changed"] is True
+
+
+def test_a_measure_resume_without_a_title_guard_is_blocked(tmp_path, clock):
+    stopped, first = _measure_miss(tmp_path, clock)
+    guest = BackGuest(clock, stopped)
+    with pytest.raises(RouteError, match="needs a title screen guard"):
+        _resume(tmp_path, clock, stopped, first, at_step=3, accept=False, measure=True,
+                guest=guest, guard=MapGuard(states=STATES))
+    assert guest.calls == []
+
+
+def test_a_restore_that_fails_presses_no_key_and_still_frees_the_lane(tmp_path, clock):
+    stopped, first = _stopped(tmp_path, clock)
+    guest = BackGuest(clock, stopped)
+
+    def failed(name, holder, fresh=False):
+        guest.calls.append(("restore", name, holder, fresh))
+        raise RouteError("the fresh machine has run longer than the snapshot; restore earlier")
+
+    guest.restore = failed
+    _, result = _resume(tmp_path, clock, stopped, first, guest=guest)
+    assert "restore earlier" in result["error"] and result["success"] is False
+    assert _keys(guest) == []
+    assert _names(guest, "stop", "release") == ["stop", "release"]
+
+
+def test_drives_that_differ_from_the_recorded_ones_stop_the_run_before_any_key(tmp_path, clock):
+    stopped, first = _stopped(tmp_path, clock)
+    guest = BackGuest(clock, stopped)
+    guest.drive_override = {0: stopped.mounted[0], 1: "C:/Amiga/Disks/wish679-other-disk3.adf"}
+    _, result = _resume(tmp_path, clock, stopped, first, guest=guest)
+    assert "after the restore DF1 holds" in result["error"] and result["success"] is False
+    assert _keys(guest) == [] and _names(guest, "stop", "release") == ["stop", "release"]
+
+
+def test_the_drive_paths_compare_without_regard_to_slashes_or_case(tmp_path, clock):
+    stopped, first = _stopped(tmp_path, clock)
+    guest = BackGuest(clock, stopped)
+    guest.drive_override = {n: p.replace("/", "\\").upper() for n, p in
+                            {0: stopped.mounted[0], 1: stopped.mounted[1]}.items()}
+    _, result = _resume(tmp_path, clock, stopped, first, guest=guest)
+    assert result["error"] == "" and _keys(guest) == ["E", "S", "D"]
+
+
+def test_an_executable_that_differs_from_the_snapshots_stops_the_run(tmp_path, clock):
+    stopped, first = _stopped(tmp_path, clock)
+    guest = BackGuest(clock, stopped)
+    guest.exe = "another.exe"
+    _, result = _resume(tmp_path, clock, stopped, first, guest=guest)
+    assert "the snapshot was taken in 'winuae.exe'" in result["error"]
+    assert _keys(guest) == []
+
+
+def _switch_calls_after_the_restore(guest):
+    """The switch changes and key presses from the restore on, in order."""
+    start = [c[0] for c in guest.calls].index("restore")
+    return [c[2] if c[0] == "press" else f"switch {c[1]}"
+            for c in guest.calls[start:] if c[0] in ("press", "encounters")]
+
+
+def test_the_switch_is_put_back_on_when_it_was_on_at_the_miss(tmp_path, clock, readings):  # noqa: F811
+    stopped = StoppedGuest(clock)
+    guard = MapGuard(states=("title", *STATES, "world"), on=WORLD_AT_7)
+    _, first = _run(tmp_path, clock, guest=stopped, title=_title(), guard=guard,
+                    encounters=FakeSwitch(stopped))
+    assert first["resumable"] is True
+    guest = BackGuest(clock, stopped)
+    _, result = _resume(tmp_path, clock, stopped, first, guest=guest, encounters=FakeSwitch(guest))
+    # On for the walk step's screen, as at the miss, before the screen is looked at; off for the camp step.
+    assert _switch_calls_after_the_restore(guest) == ["switch on", "switch off", "E", "S", "D"]
+    assert result["error"] == "" and result["success"] is True
+
+
+def test_the_switch_stays_off_when_it_was_off_at_the_miss(tmp_path, clock, readings):  # noqa: F811
+    stopped = StoppedGuest(clock)
+    guard = MapGuard(states=("title", *STATES, "world"),
+                     on={"disk_wait": lambda p: not p.stem.startswith("04-")})
+    _, first = _run(tmp_path, clock, guest=stopped, title=_title(), guard=guard,
+                    encounters=FakeSwitch(stopped))
+    assert first["resumable"] is True
+    guest = BackGuest(clock, stopped)
+    _, result = _resume(tmp_path, clock, stopped, first, at_step=4, guest=guest,
+                        encounters=FakeSwitch(guest))
+    # Step 4 is an insert: nothing is turned on until each walk step's own gate.
+    assert _switch_calls_after_the_restore(guest) == [
+        "C", "switch on", "NP2", "switch on", "NP8", "switch off", "E", "S", "D"]
+    assert result["error"] == "" and result["success"] is True
+
+
+def test_a_resumed_run_that_misses_again_writes_a_record_covering_every_step(tmp_path, clock):
+    stopped, first = _stopped(tmp_path, clock)
+    guest = BackGuest(clock, stopped)
+    again = ResumedGuard(states=("title", *STATES, "world"),
+                         on={"camp_picker": lambda p: not p.stem.startswith("09-")})
+    _, result = _resume(tmp_path, clock, stopped, first, guest=guest, guard=again)
+    assert result["resumable"] is True
+    record = resumerecord.read(result["resume_record"], "amiga")
+    assert record["step"]["n"] == 9 and len(record["sent"]) == 9
+    assert [key for key, _ in record["sent"]] == [
+        "P", "L", "A", [1, "disk3", "SPACE"], "C", "NP2", "NP8", "E", "S"]
+    assert result["resume_record"].endswith("resume1/resume/resume.json")
+    # One resume can follow another.
+    third = BackGuest(clock, guest)
+    _, final = _resume(tmp_path, clock, guest, result, at_step=9, guest=third, attempt="resume2")
+    assert final["error"] == "" and _keys(third) == ["D"]
+
+
+def test_main_resumes_with_the_recorded_holder_and_passes_the_record_on(
+        tmp_path, clock, monkeypatch, capsys):
+    record = tmp_path / "resume.json"
+    record.write_text(json.dumps({"holder": "wish2-a2"}))
+    seen = {}
+
+    def fake_run(manifest, **kw):
+        seen.update(kw)
+        raise RouteError("stop here")
+
+    monkeypatch.setattr(acceptance, "run_recon", fake_run)
+    monkeypatch.setattr(acceptance, "WinGuest", lambda: object())
+    monkeypatch.setattr(acceptance, "PixelGuards", lambda path: None)
+    args = ["measure", "--title", "pool", "--manifest", str(tmp_path / "prepare.json"),
+            "--attempt", "resume1", "--audio-proof", str(_audio_proof(tmp_path)),
+            "--resume-from", str(record), "--at-step", "13"]
+    assert acceptance.main(args) == 2
+    assert seen["holder"] == "wish2-a2"
+    assert seen["resume_from"] == record and seen["at_step"] == 13
+    seen.clear()
+    assert acceptance.main([*args, "--holder", "wish2-b"]) == 2
+    assert seen["holder"] == "wish2-b"
+    seen.clear()
+    assert acceptance.main(args[:-2]) == 2
+    assert seen["resume_from"] == record and seen["at_step"] is None
+
+
+def test_main_without_the_options_passes_no_resume(tmp_path, clock, monkeypatch):
+    seen = {}
+
+    def fake_run(manifest, **kw):
+        seen.update(kw)
+        raise RouteError("stop here")
+
+    monkeypatch.setattr(acceptance, "run_recon", fake_run)
+    monkeypatch.setattr(acceptance, "WinGuest", lambda: object())
+    monkeypatch.setattr(acceptance, "PixelGuards", lambda path: None)
+    assert acceptance.main(["measure", "--title", "pool", "--manifest",
+                            str(tmp_path / "prepare.json"), "--attempt", "a",
+                            "--audio-proof", str(_audio_proof(tmp_path))]) == 2
+    assert "resume_from" not in seen and seen["holder"].startswith("wish")

@@ -1371,7 +1371,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
               rulebook_records: list[int] | None = None,
               marks: Mapping[int, tuple[tuple[str, str], ...]] | None = None,
               walk_retry: int = 0, encounters: Any = None,
-              cli_title: str | None = None) -> dict[str, Any]:
+              cli_title: str | None = None, resume_from: pathlib.Path | None = None,
+              at_step: int | None = None) -> dict[str, Any]:
     """Walk the route, stopping at the first unrecognised state, and fetch both disks.
 
     A guarded state is found by polling single grabs until its static box
@@ -1434,6 +1435,18 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     disks and a `resume.json` under `<attempt>/resume/` before the guest stops. The run then
     reports `resumable` and `resume_record`, and `main` exits `RESUME_EXIT`. A disk that changed
     between the snapshot and the stop, or a snapshot that failed, leaves no resumable record.
+
+    `resume_from` (the record's `resume.json`) and `at_step` (its step) continue such a run. Every
+    input is compared with the record before the lane is claimed: the manifest, the route's first
+    `at_step` keys, the holder, `--no-encounters` and `--walk-retry`, the start settings and the
+    config's hash, and the record's files by their hashes. After the claim the record's disks go
+    back to the paths the state names, the state is staged, WinUAE starts, and a fresh restore
+    puts the machine back; the drive readback and the executable must match the record. The run
+    then waits for the screen of step `at_step` without pressing its key, which went out before
+    the snapshot, and goes on from the next step. `resumed_from` in the summary names the record.
+    A resumed run that misses again writes a record of its own. A restore mark that returns to a
+    snapshot taken before `at_step`, a miss inside a walk leg, `preserve_specimen` and
+    `rulebook_draws` are blocked, since the new process holds none of those snapshots.
 
     `preserve_specimen` registers the fetched save disk of a run that succeeded by its own
     verdict, before `--expect` is judged, so a run that later fails `--expect` still leaves its
@@ -1743,6 +1756,101 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         check_marks(marks, steps)
     if (marks or walk_retry) and not getattr(guest, "can_snapshot", True):
         raise RouteError("this run needs a machine snapshot, which this emulator lane cannot take yet")
+
+    def record_title() -> str:
+        return cli_title or published_name or manifest.get("title") or (
+            "ssb" if title is None else title.issue)
+
+    def check_resume() -> dict[str, Any]:
+        """Read the record and compare every input with it, so a mismatch stops the run before the claim."""
+        if diagnose:
+            raise RouteError("a diagnose run cannot be resumed")
+        if title is None:
+            raise RouteError("only a title route can be resumed")
+        if preserve_specimen or rulebook_draws is not None:
+            raise RouteError("--resume-from cannot go with --preserve-specimen or --rulebook-draws "
+                             "in this version")
+        try:
+            record = resumerecord.read(resume_from, "amiga")
+        except resumerecord.ResumeRecordError as exc:
+            raise RouteError(f"the resume record cannot be used: {exc}") from exc
+        try:
+            if not record["resumable"]:
+                raise RouteError(f"the record is not resumable: {record.get('why_not')}")
+            command = "reload" if reload else "accept" if accept else "measure"
+            for what, recorded, current in (("command", record["command"], command),
+                                            ("title", record["title"], record_title())):
+                if recorded != current:
+                    raise RouteError(f"the record is for {what} {recorded!r}, not {current!r}")
+            if record["manifest"]["sha256"] != sha256(manifest_path):
+                raise RouteError("the manifest differs from the one the record was written from")
+            step = record["step"]["n"]
+            if at_step != step:
+                raise RouteError(f"--at-step {at_step} is not the record's step {step}")
+            route_steps = title.measure_route if measure else steps
+            if not 1 <= step <= len(route_steps):
+                raise RouteError(f"step {step} is outside the route's {len(route_steps)} steps")
+            now = [[list(k) if isinstance(k, tuple) else k, kind] for k, _, kind in route_steps[:step]]
+            # A step the boot passed is recorded as skipped; its key is still the route's.
+            then = [[key, now[i][1] if kind == "skipped" and i < len(now) else kind]
+                    for i, (key, kind) in enumerate(record["sent"])]
+            differs = resumerecord.first_difference(then, now)
+            if differs is not None:
+                raise RouteError(
+                    f"the route's first {step} keys differ from the record's history at entry "
+                    f"{differs} (the record holds {len(then)}; a restore mark can cut it short)")
+            if record["holder"] != holder:
+                raise RouteError(f"the record's holder is {record['holder']}, not {holder}: the "
+                                 "disk paths the state names carry it")
+            option = resumerecord.check_options(record, {
+                "no_encounters": encounters is not None, "walk_retry": walk_retry,
+                "encounters_on_at_miss": record["options"].get("encounters_on_at_miss")})
+            if option is not None:
+                raise RouteError(f"the option {option} differs from the record's")
+            settings = {
+                "config": BOOT_CONFIG,
+                "config_sha256": hashlib.sha256(LOCAL_BOOT_CONFIG.read_bytes()).hexdigest(),
+                "mounted": [None if k is None else remotes[k] for k in title.mounted],
+                "options": list(title.options)}
+            for name, value in settings.items():
+                if record["start"][name] != value:
+                    raise RouteError(f"the start setting {name} differs from the record's: "
+                                     f"{record['start'][name]!r}, now {value!r}")
+            if {k: v["remote"] for k, v in record["disks"].items()} != remotes:
+                raise RouteError("the disks the record kept are not the ones this run mounts")
+            if not _guards(guard, "title"):
+                raise RouteError("a resumed run needs a title screen guard, to know the "
+                                 "emulator is up before the restore")
+            before = {n.lower() for index, pairs in marks.items() if index < step
+                      for verb, n in pairs if verb == "snapshot"}
+            later = [n for index, pairs in marks.items() if index >= step
+                     for verb, n in pairs if verb == "restore" and n.lower() in before]
+            if later:
+                raise RouteError(f"restore {later[0]} goes back to a snapshot taken before step "
+                                 f"{step}, which a new process does not hold")
+            leg = _walk_leg(steps) if walk_retry else None
+            if leg is not None and leg[0] <= step <= leg[1]:
+                raise RouteError(f"step {step} is inside the walk leg, whose snapshot a new "
+                                 "process does not hold")
+            if not (getattr(guest, "can_snapshot", True) and hasattr(guest, "stage_snapshot")):
+                raise RouteError("this emulator lane cannot restore a saved machine")
+            paths = record["start"]["drives_paths_at_stop"]
+            if not isinstance(paths, dict) or not paths:
+                raise RouteError("the record holds no drive readback to check the restore against")
+            for field in ("count_snapshot", "sha256"):
+                if field not in record["machine"]:
+                    raise RouteError(f"the record's machine entry has no {field}")
+        except (KeyError, TypeError, IndexError) as exc:
+            raise RouteError(f"the resume record lacks or garbles {exc}") from exc
+        return record
+
+    earlier: dict[str, Any] | None = None
+    if (resume_from is None) != (at_step is None):
+        raise RouteError("--resume-from and --at-step go together")
+    if resume_from is not None:
+        resume_from = pathlib.Path(resume_from)
+        earlier = check_resume()
+    earlier_folder = resume_from.parent if resume_from is not None else None
     previous_state = previous_world = ""
     #: What the run had seen when each snapshot was taken, put back by its restore: the machine
     #: goes back, the run's own record of it must too.
@@ -2277,11 +2385,16 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             raise RouteError("the state file fetched from the guest differs from the one it "
                              "wrote")
         readback = getattr(guest, "drives", None)
-        drives = error = None
+        drives = error = drive_paths = None
         if callable(readback):
             try:
                 spare(0)
-                drives = str(readback(holder))
+                shown = readback(holder)
+                drives = str(shown)
+                # `str` of a real readback is only its status; the paths are what a resume checks.
+                state_of = getattr(shown, "drive_state", None)
+                if callable(state_of):
+                    drive_paths = {str(drive): path for drive, path in state_of()["paths"].items()}
             except BaseException as exc:
                 error = f"{type(exc).__name__}: {exc}"
         prestop = {}
@@ -2296,7 +2409,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 screen[label] = {"file": f"screen{suffix}"}
         route_steps = steps_m if measure else steps
         resume.update(
-            tags=tags, drives=drives, drives_error=error, prestop=prestop, screen=screen,
+            tags=tags, drives=drives, drives_error=error, drive_paths=drive_paths,
+            prestop=prestop, screen=screen,
             step=miss.resume_step, state=route_steps[miss.resume_step - 1][1],
             kind=route_steps[miss.resume_step - 1][2], error=str(miss),
             route_sha256=hashlib.sha256(json.dumps(
@@ -2337,8 +2451,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             "git": {"sha": result.get("sha"), "dirty": result.get("dirty")},
             "argv": result["argv"],
             "command": "reload" if reload else "accept" if accept else "measure",
-            "title": cli_title or published_name or manifest.get("title") or (
-                "ssb" if title is None else title.issue),
+            "title": record_title(),
             "manifest": {"path": str(manifest_path), "sha256": sha256(manifest_path)},
             "holder": holder, "attempt": attempt,
             "step": {"n": step, "key": pressed, "state": resume["state"],
@@ -2355,7 +2468,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                                   if title is not None else [remotes["df0"], remotes["df1"]]),
                       "options": list(title.options) if title is not None else [],
                       "receipt": result.get("start"), "drives_at_stop": resume["drives"],
-                      "drives_error": resume["drives_error"]},
+                      "drives_error": resume["drives_error"],
+                      "drives_paths_at_stop": resume["drive_paths"]},
             "disks": disks, "kept": resume["kept"],
             "options": {"no_encounters": encounters is not None,
                         "encounters_on_at_miss": resume["encounters_on_at_miss"],
@@ -2370,6 +2484,68 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             result["resume_why_not"] = record["why_not"]
         log("resume_record", path=str(path), resumable=resumable)
 
+    def put_resume_disks() -> None:
+        """Put the record's disks at the paths its state names, each hash checked again."""
+        for entry in earlier["disks"].values():
+            local = earlier_folder / entry["file"]
+            if sha256(local) != entry["sha256"]:
+                raise RouteError(f"{local} changed after the record was read")
+            guest.put(local, entry["remote"], timeout=route_limit(90))
+
+    def stage_resume_state() -> None:
+        """Put the record's state file in the guest and install it as the snapshot `resume`."""
+        machine = earlier["machine"]
+        local = earlier_folder / machine["file"]
+        if sha256(local) != machine["sha256"]:
+            raise RouteError(f"{local} changed after the record was read")
+        staging = guest.remote_path(title.issue, holder, "state").removesuffix(".adf") + ".uss"
+        guest.put(local, staging, timeout=route_limit(90))
+        receipt = guest.stage_snapshot(RESUME, holder, machine["sha256"],
+                                       int(machine["count_snapshot"]))
+        log("stage_snapshot", receipt=str(receipt))
+
+    def resume_machine() -> None:
+        """Wait for the title, restore the saved machine into the fresh one and put the run's record back."""
+        nonlocal previous, previous_state, previous_world
+        until_guard("title", "title", 0, TITLE_POLL, title_limit)
+        machine, kept = earlier["machine"], earlier["kept"]
+        receipt = guest.restore(RESUME, holder, fresh=True)
+        log("restore", name=RESUME, fresh=True, receipt=str(receipt))
+        result["events"].append({"restore": RESUME, "step": at_step, "fresh": True})
+        wanted = machine.get("exe")
+        got = (getattr(receipt, "tags", None) or {}).get("exe")
+        if wanted and got != wanted:
+            raise RouteError(f"the restore ran in {got!r}, the snapshot was taken in {wanted!r}")
+        readback = guest.drives(holder)
+        state_of = getattr(readback, "drive_state", None)
+        if not callable(state_of):
+            raise RouteError("the drive readback after the restore names no paths")
+        shown = state_of()["paths"]
+
+        def plain(path: Any) -> str:
+            return (path or "").replace("/", "\\").lower()
+
+        for drive, wanted_path in earlier["start"]["drives_paths_at_stop"].items():
+            if plain(shown.get(int(drive))) != plain(wanted_path):
+                raise RouteError(f"after the restore DF{drive} holds {shown.get(int(drive))!r}, "
+                                 f"the saved machine had {wanted_path!r}")
+        previous_state, previous_world = kept["previous_state"], kept["previous_world"]
+        previous = kept.get("previous_digest") or ""
+        landed["state"] = kept.get("landed")
+        result["unguarded"] = list(kept.get("unguarded") or [])
+        for field in (*memory, "moves_again", "load_message"):
+            if kept.get(field) is not None:
+                result[field] = copy.deepcopy(kept[field])
+        sent[:] = [[key, kind] for key, kind in earlier["sent"]]
+        kind = (title.measure_route if measure else steps)[at_step - 1][2]
+        if earlier["options"].get("encounters_on_at_miss") and kind in WALKING:
+            # The snapshot was taken with the switch off; step N's screen was waited on with it on.
+            encounter_gate(kind)
+        result["resumed_from"] = {
+            "record": str(resume_from), "sha256": sha256(resume_from), "step": at_step,
+            "earlier_summary": str(manifest_path.parent / earlier["attempt"] / "summary.json"),
+            "earlier_restores": kept.get("restores") or []}
+
     try:
         receipt = guest.claim(holder, timeout=30 if wait_lane > 0 else route_limit(30),
                               **_wait_option(wait_lane))
@@ -2383,9 +2559,14 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         result["claim"] = receipt
         log("claim", receipt=receipt)
         claimed = True
-        for name, local in local_disks.items():
-            guest.put(local, remotes[name], timeout=route_limit(90))
+        if earlier is None:
+            for name, local in local_disks.items():
+                guest.put(local, remotes[name], timeout=route_limit(90))
+        else:
+            put_resume_disks()
         copied = True
+        if earlier is not None:
+            stage_resume_state()
         _require_silence(guest, audio_proof, wait_lane, route_limit(60))
         start_attempted = True
         if title is None:
@@ -2396,17 +2577,27 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 holder, *(None if key is None else remotes[key] for key in title.mounted),
                 timeout=route_limit(60), options=title.options)
         log("start", receipt=result["start"])
+        if earlier is not None:
+            resume_machine()
         if measure:
-            previous = measure_boot()
+            if earlier is None:
+                previous = measure_boot()
             changed = True
             steps_m = route if title is None else title.measure_route
             skip = 0
-            if landed["state"] == "title":
+            if earlier is not None:
+                pass
+            elif landed["state"] == "title":
                 skip = next((i for i, s in enumerate(steps_m, 1) if s[1] == "title"), 0)
             elif landed["state"] == "party_menu" and steps_m and steps_m[0][1] == "party_menu":
                 # Leaving the credits with ESC can land on the party menu, which `P` opens.
                 skip = 1
             for n, step in enumerate(steps_m, 1):
+                if earlier is not None and n < at_step:
+                    # The machine and `sent` already hold these steps.
+                    continue
+                # Step `at_step`'s key went out before the snapshot: only its screen is waited for.
+                at_resume = earlier is not None and n == at_step
                 if n <= skip:
                     result["events"].append({"skipped": step[0], "step": n})
                     sent.append(sent_entry(step[0], "skipped"))
@@ -2421,14 +2612,15 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     result["events"].append({"key": key, "step": n})
                 else:
                     key, state, kind = step
-                    if kind in ("write", "answer"):
-                        # The measured route ends where the run would first write or answer.
-                        result["events"].append({"skipped_write_key": key, "step": n})
-                        break
-                    encounter_gate(kind)
-                    perform(key, kind, state, n)
-                    sent.append(sent_entry(key, kind))
-                name = f"{n:02d}-{state}"
+                    if not at_resume:
+                        if kind in ("write", "answer"):
+                            # The measured route ends where the run would first write or answer.
+                            result["events"].append({"skipped_write_key": key, "step": n})
+                            break
+                        encounter_gate(kind)
+                        perform(key, kind, state, n)
+                        sent.append(sent_entry(key, kind))
+                name = f"{n:02d}-{state}" + ("-resumed" if at_resume else "")
                 if title is not None:
                     try:
                         digest = reach(state, name, min_waits.get(state, 0), strict=True)
@@ -2448,19 +2640,25 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 previous = digest
             result["route_changed"] = changed
         else:
-            until_guard("title", "title", 0, TITLE_POLL, title_limit)
+            if earlier is None:
+                until_guard("title", "title", 0, TITLE_POLL, title_limit)
+                previous_world = ""
+                previous_state = ""
             # Leaving the credits with ESC can land on the party menu, which `P` opens.
-            skip_first = landed["state"] == "party_menu" and steps[0][1] == "party_menu"
-            previous_world = ""
-            previous_state = ""
+            skip_first = (earlier is None and landed["state"] == "party_menu"
+                          and steps[0][1] == "party_menu")
             leg = _walk_leg(steps) if walk_retry else None
             resumed = False
-            n = 0
+            n = 0 if earlier is None else at_step - 1
             while n < len(steps):
                 n += 1
                 key, state, kind = steps[n - 1]
                 in_leg = leg is not None and leg[0] <= n <= leg[1]
-                if resumed and n == leg[0]:
+                # Step `at_step`'s key and the marks before it went out before the snapshot.
+                at_resume = earlier is not None and n == at_step
+                if at_resume:
+                    pass
+                elif resumed and n == leg[0]:
                     resumed = False
                 else:
                     for verb, mark_name in marks.get(n - 1, ()):
@@ -2468,19 +2666,22 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     if in_leg and n == leg[0]:
                         machine_step("snapshot", WALK_LEG, n)
                 try:
-                    if n == 1 and skip_first:
-                        result["events"].append({"skipped": key, "step": n})
-                        sent.append(sent_entry(key, "skipped"))
-                        continue
-                    encounter_gate(kind)
-                    if kind == "answer":
-                        run_answer()
-                    else:
+                    if at_resume:
                         mark = len(result["events"])
-                        perform(key, kind, state, n)
-                    sent.append(sent_entry(key, kind))
+                    else:
+                        if n == 1 and skip_first:
+                            result["events"].append({"skipped": key, "step": n})
+                            sent.append(sent_entry(key, "skipped"))
+                            continue
+                        encounter_gate(kind)
+                        if kind == "answer":
+                            run_answer()
+                        else:
+                            mark = len(result["events"])
+                            perform(key, kind, state, n)
+                        sent.append(sent_entry(key, kind))
                     name = (f"{n:02d}-post_write" if kind == "write" and state == "loaded_menu"
-                            else f"{n:02d}-{state}")
+                            else f"{n:02d}-{state}") + ("-resumed" if at_resume else "")
                     if kind == "move":
                         first_wait = min_waits.get("world_after_move", 0)
                     elif kind == "write":
@@ -2494,8 +2695,9 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     elif route_camp.is_join(state):
                         watch_messages(tuple(route_camp.JOIN_MESSAGES))
                     try:
-                        digest = reach(state, name, first_wait,
-                                       strict=not accept or state in strict_states or in_leg)
+                        digest = reach(state, name, 0 if at_resume else first_wait,
+                                       strict=at_resume or not accept or state in strict_states
+                                       or in_leg)
                     except GuardMissed as miss:
                         miss.resume_step, miss.resume_name = n, name
                         raise
@@ -3747,6 +3949,21 @@ def _encounters(args: argparse.Namespace, holder: str) -> dict[str, Any]:
         lane_check=lambda: pipe.drives(holder))}
 
 
+def _recorded_holder(path: pathlib.Path) -> str | None:
+    """The holder a resume record names, so a resumed run mounts the paths its state holds.
+
+    A record that cannot be read gives None; `run_recon` reads it again and says what is wrong.
+    """
+    try:
+        holder = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))["holder"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return holder if isinstance(holder, str) else None
+
+
+RESUME_FROM_HELP = ("continue the run a stop on an unrecognised screen left, from that "
+                    "resume.json; goes with --at-step")
+AT_STEP_HELP = "the route step the record stopped on; goes with --resume-from"
 NO_ENCOUNTERS_HELP = ("turn the title's random encounters off in memory for the turn and move "
                       "steps, and back on before every other step, so no save carries the "
                       "changed script")
@@ -3855,6 +4072,10 @@ def main(argv: list[str] | None = None) -> int:
     common(r)
     r.add_argument("--guards", required=True, type=pathlib.Path)
     r.add_argument("--identity", required=True, type=pathlib.Path)
+    for resumable in (m, a, r):
+        resumable.add_argument("--resume-from", type=pathlib.Path, default=None,
+                               help=RESUME_FROM_HELP)
+        resumable.add_argument("--at-step", type=int, default=None, help=AT_STEP_HELP)
     d = sub.add_parser("diagnose", help="guarded title-only boot of the published Silver Blades image")
     common(d, emulator=False)
     d.set_defaults(deadline=600)
@@ -4017,7 +4238,11 @@ def main(argv: list[str] | None = None) -> int:
                                        "accept1")
             holder_issue = manifest.get("issue", PUBLISHED_ISSUE) if args.published_disk_one else (
                 "672" if silver_blades else ISSUE)
-            holder = args.holder or f"wish{holder_issue}-{uuid.uuid4().hex[:12]}"
+            resume_from, at_step = getattr(args, "resume_from", None), getattr(args, "at_step", None)
+            resume = ({} if resume_from is None and at_step is None
+                      else {"resume_from": resume_from, "at_step": at_step})
+            recorded = None if resume_from is None else _recorded_holder(resume_from)
+            holder = args.holder or recorded or f"wish{holder_issue}-{uuid.uuid4().hex[:12]}"
             if args.command == "diagnose":
                 result = run_recon(
                     args.manifest, guest=WinGuest(), holder=holder,
@@ -4038,7 +4263,7 @@ def main(argv: list[str] | None = None) -> int:
                     wait_lane=args.wait_lane, cli_title=args.title,
                     published_disk_one=args.published_disk_one,
                     published_name=args.title if args.published_disk_one else None,
-                    **_encounters(args, holder),
+                    **resume, **_encounters(args, holder),
                     **({"route": route,
                         "write_keys": write_keys,
                         "min_waits": route_silver_blades.default_min_waits(route)}
@@ -4052,7 +4277,7 @@ def main(argv: list[str] | None = None) -> int:
                     cli_title=args.title, published_disk_one=args.published_disk_one,
                     published_name=args.title if args.published_disk_one else None,
                     journal_python=getattr(args, "journal_python", None),
-                    walk_retry=getattr(args, "walk_retry", 0),
+                    walk_retry=getattr(args, "walk_retry", 0), **resume,
                     **_encounters(args, holder),
                     **_draw_options(args, holder),
                     preserve_specimen=getattr(args, "preserve_specimen", False),
