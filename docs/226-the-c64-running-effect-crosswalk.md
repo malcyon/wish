@@ -478,6 +478,12 @@ record is no record); the row is still at the stored index; its owner has bit 7
 set; its magnitude is the stored one; its duration byte is explained by the
 clock; and exactly one member's name bytes equal the stored name. Any failure
 gives every member the node, which is the C64's own state for a Prayer it cast.
+CONFIRMED in the running games both ways: a converted party that only rested
+five minutes on the C64 kept its row inside the clock window, and Save As DOS
+gave the node to the holder alone, which Magic > Display and the DOS game's own
+save showed (runs C0 and D0, comment a5d38b87); after a C64 combat recast and a
+whole-party flight, the record stayed in the save unchanged and every member got
+the node (runs L7 and D1, comments 6ce52b84 and ee9a3319).
 
 The clock check works because a Prayer row's count and the clock move together:
 a combat round takes 1 off the count and adds a minute, a camp takes off the
