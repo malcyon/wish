@@ -78,9 +78,13 @@ class WinGuest:
         """Save the whole running machine under `name` through WinUAE's pipe."""
         return self._machine().snapshot(name, holder)
 
-    def restore(self, name: str, holder: str) -> Any:
-        """Put the machine back as snapshot `name` left it."""
-        return self._machine().restore(name, holder)
+    def restore(self, name: str, holder: str, fresh: bool = False) -> Any:
+        """Put the machine back as snapshot `name` left it; `fresh` for a machine just booted."""
+        return self._machine().restore(name, holder, fresh=fresh)
+
+    def stage_snapshot(self, name: str, holder: str, sha256: str, count: int) -> Any:
+        """Install the state file put for `holder` as snapshot `name`, with no emulator running."""
+        return self._machine().stage_snapshot(name, holder, sha256, count)
 
     def drives(self, holder: str) -> Any:
         """What each drive holds, read through WinUAE's pipe."""

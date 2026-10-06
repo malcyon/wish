@@ -742,3 +742,8 @@ def test_a_second_ordinary_claim_by_its_holder_writes_nothing():
     assert reuse < ordinary.index("Try-TakeClaim")
     race = ordinary[ordinary.index("for ($m = 1; $m -lt $n; $m++)"):]
     assert "Remove-Item $path" in race[:race.index("exit 0")]
+
+
+def test_stage_snapshot_is_a_verb_and_a_fresh_restore_a_flag():
+    assert "'discard-snapshot','stage-snapshot','lane'" in PS1
+    assert "$Fresh = $false" in PS1

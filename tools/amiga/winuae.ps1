@@ -74,7 +74,7 @@
 
 param(
   [Parameter(Mandatory=$true)]
-  [ValidateSet('start','stop','status','send','debugger','shot','press','roms','clean','claim','release','drives','insert','diagnose','config-hash','config-remove','snapshot','restore','discard-snapshot','lane')][string]$Cmd,
+  [ValidateSet('start','stop','status','send','debugger','shot','press','roms','clean','claim','release','drives','insert','diagnose','config-hash','config-remove','snapshot','restore','discard-snapshot','stage-snapshot','lane')][string]$Cmd,
   [Parameter(ValueFromRemainingArguments=$true)][string[]]$Rest
 )
 
@@ -102,6 +102,8 @@ $WantTokenGiven = $false
 # `claim` take every lane.
 $LaneArg = ''
 $Exclusive = $false
+# `-Fresh` makes `restore` prove a restore into a machine that has just booted.
+$Fresh = $false
 # `-Wait <seconds>` turns `claim -Exclusive` into a reservation that lasts that long.
 $WaitSeconds = 0
 $WaitGiven = $false
@@ -116,6 +118,7 @@ for ($i = 0; $i -lt $given.Count; $i++) {
   elseif ($a -eq '-Override') { $Override = $true }
   elseif ($a -eq '-Token') { $WantTokenGiven = $true; $i++; if ($i -lt $given.Count) { $WantToken = $given[$i] } }
   elseif ($a -eq '-Exclusive') { $Exclusive = $true }
+  elseif ($a -eq '-Fresh') { $Fresh = $true }
   elseif ($a -eq '-Wait') {
     $i++
     if ($i -ge $given.Count -or $given[$i] -notmatch '^[0-9]{1,6}\z' -or [int]$given[$i] -lt 1) { 'fail -Wait needs a number of seconds, 1 or more'; exit 1 }
@@ -576,6 +579,13 @@ function Why-NotRun([string]$Name) {
 # as the marker says; then `CFG statefile <file>`, and Exec's idle and dispatch
 # counts are read until they fall back to between the snapshot's value and the
 # value read just before the restore, which is the proof the machine went back.
+# `restore -Fresh` is for a machine that has only just booted, whose count is
+# below the snapshot's: the proof is `before < snap <= after`, and a reset during
+# the restore cannot pass it because a reset reads below `before`. A fresh machine
+# that already reads `snap` or more fails before anything is sent.
+# stage-snapshot <name> <sha256> <count>: installs a state file put at
+# `C:\Amiga\Disks\wish<digits>-<holder>-state.uss` as snapshot <name>, with no
+# emulator running, so a restore can follow in a new process.
 # discard-snapshot <name>: removes the folder.
 #
 # Output is the same as the floppy verbs': the verdict, the ownership tags,
@@ -673,10 +683,19 @@ function Replace-StateFolder([string]$Part, [string]$Dir, [string]$Backup) {
   if ($had) { Remove-Item -LiteralPath $Backup -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
+# Whether the count read after a restore proves the machine went back: below the
+# value read before it and no lower than the snapshot's, or, on a fresh boot,
+# where the count before is below the snapshot's, at or above the snapshot's.
+function Test-RestoreBack([bool]$Fresh, [uint64]$Before, [uint64]$Snap, [uint64]$After) {
+  if ($Fresh) { return ($Before -lt $Snap -and $After -ge $Snap) }
+  ($After -ge $Snap -and $After -lt $Before)
+}
+
 function Invoke-State([string]$Verb) {
   $deny = Get-LaneDenial
   if ($deny) { $deny; exit 1 }
   if ($Holder -ceq '.' -or $Holder.Contains('..') -or $Holder.EndsWith('.') -or (Test-DeviceName $Holder) -or $Holder -cnotmatch '^[A-Za-z0-9._-]{1,64}\z') { 'fail -Holder is not a lane-safe name'; exit 1 }
+  if ($Fresh -and $Verb -ne 'restore') { "fail -Fresh belongs to restore only"; exit 1 }
   if ($Rest.Count -ne 1 -or $Rest[0] -cnotmatch $StateNamePattern -or (Test-DeviceName $Rest[0])) { "fail $Verb needs one snapshot name of 1-32 letters, digits, - and _ that is not a Windows device name"; exit 1 }
   $name = $Rest[0]
   $dir = "$StateRoot\$Holder\$name"
@@ -745,13 +764,18 @@ function Invoke-State([string]$Verb) {
       $tags.Add("<<marker>> $marker") | Out-Null
       $tags.Add("<<count_snapshot>> $snap") | Out-Null
       $tags.Add("<<count_before>> $before") | Out-Null
+      if ($Fresh -and $before -ge $snap) {
+        $verdict = "fail the fresh machine has run longer than the snapshot; restore earlier (Exec's count reads $before, the snapshot's is $snap)"
+      }
+    }
+    if (-not $verdict -and $Verb -eq 'restore') {
       Send-Logged $pipe $sw $tags 0 'restore' "CFG statefile $file"
       $until = $sw.ElapsedMilliseconds + $RestoreBoundMs
       $after = $null; $back = $false; $readError = $null
       while (-not $back -and $sw.ElapsedMilliseconds -lt $until) {
         Start-Sleep -Milliseconds $StatePollMs
         # A read can fail while the state is being loaded; that is "not back yet".
-        try { $after = Read-ExecCount $pipe; $back = ($after -ge $snap -and $after -lt $before) }
+        try { $after = Read-ExecCount $pipe; $back = Test-RestoreBack $Fresh $before $snap $after }
         catch { $readError = $_.Exception.Message }
       }
       if ($null -ne $after) { $tags.Add("<<count_after>> $after") | Out-Null }
@@ -761,8 +785,9 @@ function Invoke-State([string]$Verb) {
       } elseif ($null -eq $after) {
         $verdict = "fail the machine was not seen to go back to snapshot $name within $($RestoreBoundMs / 1000) s, because no read of Exec's count succeeded; the last error was: $readError"
       } else {
+        $wanted = if ($Fresh) { "not $snap or more" } else { "not between $snap and $before" }
         $tail = if ($readError) { "; the last read error was: $readError" } else { '' }
-        $verdict = "fail the machine was not seen to go back to snapshot $name within $($RestoreBoundMs / 1000) s: Exec's count read $after, not between $snap and $before$tail"
+        $verdict = "fail the machine was not seen to go back to snapshot $name within $($RestoreBoundMs / 1000) s: Exec's count read $after, $wanted$tail"
       }
     }
     if (-not $verdict -and $Verb -eq 'snapshot') {
@@ -808,6 +833,53 @@ function Invoke-State([string]$Verb) {
   if (-not $open) { $verdict; exit 1 }
   $verdict
   $tags
+  '<<end>>'
+}
+
+# stage-snapshot <name> <sha256> <count>: no emulator is needed, only the holder's claim.
+# The state file is the one `wish<digits>-<holder>-state.uss` in the disk folder;
+# its header and hash are checked before the completion marker is written, and
+# the folder goes in through Replace-StateFolder like a snapshot's own.
+function Invoke-StageSnapshot {
+  $deny = Claim-Denial
+  if ($deny) { $deny; exit 1 }
+  if ($Holder -ceq '.' -or $Holder.Contains('..') -or $Holder.EndsWith('.') -or (Test-DeviceName $Holder) -or $Holder -cnotmatch '^[A-Za-z0-9._-]{1,64}\z') { 'fail -Holder is not a lane-safe name'; exit 1 }
+  if ($Rest.Count -ne 3) { 'fail stage-snapshot needs <name> <sha256> <count>'; exit 1 }
+  $name = $Rest[0]; $want = $Rest[1]; $count = $Rest[2]
+  if ($name -cnotmatch $StateNamePattern -or (Test-DeviceName $name)) { 'fail stage-snapshot needs a snapshot name of 1-32 letters, digits, - and _ that is not a Windows device name'; exit 1 }
+  if ($want -cnotmatch '^[0-9A-Fa-f]{64}\z') { "fail '$want' is not a SHA-256"; exit 1 }
+  if ($count -cnotmatch '^[0-9]{1,20}\z') { "fail '$count' is not an Exec count"; exit 1 }
+  $want = $want.ToUpperInvariant()
+  $found = @(Get-ChildItem -LiteralPath "$Root\Disks" -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -cmatch ('^wish[0-9]+-' + [regex]::Escape($Holder) + '-state\.uss\z') })
+  if ($found.Count -ne 1) { "fail $($found.Count) state files are staged for $Holder under $Root\Disks, not one"; exit 1 }
+  $src = $found[0].FullName
+  $h = Read-StateHead $src
+  if (-not $h -or $h.len -le 0 -or $h.head -cne '41534620') { "fail $src does not start with ASF"; exit 1 }
+  $sha = (Get-FileHash -LiteralPath $src -Algorithm SHA256).Hash
+  if ($sha -cne $want) { "fail $src hashes to $sha, not $want"; exit 1 }
+  $dir = "$StateRoot\$Holder\$name"
+  $part = "$StateRoot\$Holder\part~\$name"
+  $backup = "$dir~old"
+  try {
+    Repair-StateBackup $dir $backup
+    Remove-Item -LiteralPath $part -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $part) { throw "the leftover $part could not be removed" }
+    New-Item -ItemType Directory -Force -Path $part -ErrorAction Stop | Out-Null
+    Move-Item -LiteralPath $src -Destination "$part\$name" -ErrorAction Stop
+    Write-Kv "$part\complete~" @{ sha256 = $sha; count = $count; bytes = "$($h.len)" }
+    if (-not (Test-Path -LiteralPath "$part\complete~" -PathType Leaf)) { throw "the completion marker $part\complete~ was not written" }
+    Replace-StateFolder $part $dir $backup
+  } catch {
+    "fail the state could not be staged as $($name): $($_.Exception.Message)"
+    exit 1
+  }
+  "ok staged $name bytes=$($h.len)"
+  "<<file>> $dir\$name"
+  "<<bytes>> $($h.len)"
+  "<<sha256>> $sha"
+  "<<marker>> $dir\complete~"
+  "<<count_snapshot>> $count"
   '<<end>>'
 }
 
@@ -1978,6 +2050,7 @@ switch ($Cmd) {
   'snapshot' { Invoke-State 'snapshot' }
   'restore' { Invoke-State 'restore' }
   'discard-snapshot' { Invoke-State 'discard-snapshot' }
+  'stage-snapshot' { Invoke-StageSnapshot }
 
   'insert' {
     # insert <drive 0|1> <path> <sha256>: the one mutation this script makes over

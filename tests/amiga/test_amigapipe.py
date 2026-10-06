@@ -1167,6 +1167,63 @@ def test_a_restore_whose_count_did_not_go_back_to_the_snapshot_is_an_error(after
         restore(LaneGuest(restored(counts=(1000, 9000, after))))
 
 
+def fresh_restore(guest):
+    return amiga.WinuaePipe(runner=guest).restore("before-walk", HOLDER, fresh=True)
+
+
+def test_a_fresh_restore_passes_the_flag_to_the_guest_and_accepts_before_below_snap_below_after():
+    guest = LaneGuest(restored(counts=(900, 100, 905)))
+    receipt = fresh_restore(guest)
+    assert guest.calls[0][2].endswith(f"winuae.ps1 restore -Holder {HOLDER} before-walk -Fresh")
+    assert receipt.tags["count_after"] == "905"
+
+
+def test_a_restore_that_is_not_fresh_does_not_send_the_flag():
+    guest = LaneGuest(restored())
+    restore(guest)
+    assert "-Fresh" not in guest.calls[0][2]
+
+
+def test_a_fresh_restore_into_a_machine_that_ran_past_the_snapshot_is_an_error():
+    with pytest.raises(amiga.SnapshotError, match="run longer than the snapshot"):
+        fresh_restore(LaneGuest(restored(counts=(900, 950, 920))))
+
+
+def test_a_fresh_restore_that_read_below_the_snapshot_afterwards_is_an_error():
+    """A reset during the restore reads below the count before it."""
+    with pytest.raises(amiga.SnapshotError, match="not 900 or more"):
+        fresh_restore(LaneGuest(restored(counts=(900, 100, 50))))
+
+
+def test_the_default_rule_still_fails_a_count_that_rose_past_the_count_before():
+    with pytest.raises(amiga.SnapshotError, match="not between 900 and 100"):
+        restore(LaneGuest(restored(counts=(900, 100, 905))))
+
+
+def staged(sha="ab" * 32, file=SNAP_FILE, marker=MARKER):
+    return state_output("ok staged before-walk bytes=511820", [],
+                        (f"<<file>> {file}", "<<bytes>> 511820", f"<<sha256>> {sha}",
+                         f"<<marker>> {marker}", "<<count_snapshot>> 23578"), tags=False)
+
+
+def test_a_stage_snapshot_runs_the_verb_with_the_hash_and_count():
+    guest = LaneGuest(staged())
+    receipt = amiga.WinuaePipe(runner=guest).stage_snapshot("before-walk", HOLDER, "ab" * 32, 23578)
+    assert guest.calls[0][2].endswith(
+        f"winuae.ps1 stage-snapshot -Holder {HOLDER} before-walk {'ab' * 32} 23578")
+    assert receipt.tags["count_snapshot"] == "23578"
+
+
+def test_a_stage_snapshot_that_installed_a_different_hash_or_place_is_an_error():
+    pipe = amiga.WinuaePipe
+    with pytest.raises(amiga.SnapshotError, match="hashes to"):
+        pipe(runner=LaneGuest(staged(sha="cd" * 32))).stage_snapshot(
+            "before-walk", HOLDER, "ab" * 32, 23578)
+    with pytest.raises(amiga.SnapshotError, match="not"):
+        pipe(runner=LaneGuest(staged(file="C:\\elsewhere"))).stage_snapshot(
+            "before-walk", HOLDER, "ab" * 32, 23578)
+
+
 def test_a_restore_that_reported_no_counts_is_unverified_and_an_error():
     with pytest.raises(amiga.SnapshotError, match="was not verified"):
         restore(LaneGuest(restored(counts=(1000, 9000, None))))
@@ -1335,6 +1392,38 @@ def test_a_restore_reads_the_count_then_sends_then_polls():
     assert before < sent < loop < polled
 
 
+def test_the_fresh_rule_is_before_below_snap_and_after_at_or_above_it():
+    rule = _body("Test-RestoreBack")
+    assert "if ($Fresh) { return ($Before -lt $Snap -and $After -ge $Snap) }" in rule
+    assert "($After -ge $Snap -and $After -lt $Before)" in rule
+    assert "$back = Test-RestoreBack $Fresh $before $snap $after" in _body("Invoke-State")
+
+
+def test_a_fresh_machine_past_the_snapshot_fails_before_anything_is_sent():
+    body = _body("Invoke-State")
+    gate = body.index("if ($Fresh -and $before -ge $snap)")
+    assert "the fresh machine has run longer than the snapshot; restore earlier" in body[gate:gate + 200]
+    assert gate < body.index("Send-Logged $pipe $sw $tags 0 'restore'")
+
+
+def test_the_fresh_flag_is_read_by_hand_and_belongs_to_restore_only():
+    assert "elseif ($a -eq '-Fresh') { $Fresh = $true }" in PS1
+    assert "if ($Fresh -and $Verb -ne 'restore')" in _body("Invoke-State")
+
+
+def test_stage_snapshot_checks_holder_pattern_header_and_hash_before_the_marker():
+    body = _body("Invoke-StageSnapshot")
+    claim = body.index("$deny = Claim-Denial")
+    pattern = body.index("'^wish[0-9]+-' + [regex]::Escape($Holder) + '-state\\.uss\\z'")
+    header = body.index("-cne '41534620'")
+    digest = body.index("$sha -cne $want")
+    marker = body.index('Write-Kv "$part\\complete~" @{ sha256 = $sha; count = $count')
+    installed = body.index("Replace-StateFolder $part $dir $backup")
+    assert claim < pattern < header < digest < marker < installed
+    assert "Get-LaneEmulator" not in body
+    assert "'stage-snapshot' { Invoke-StageSnapshot }" in PS1
+
+
 def test_one_bad_read_in_the_restore_poll_does_not_end_it():
     body = _body("Invoke-State")
     loop = body[body.index("while (-not $back"):body.index("if ($back)")]
@@ -1359,3 +1448,8 @@ def test_the_pipe_command_line_reaches_the_holders_own_emulator(monkeypatch, cap
     assert seen == {"holder": HOLDER}
     with pytest.raises(SystemExit):
         winuaepipe.main(["probe"])
+
+
+def test_a_snapshot_receipt_keeps_the_sha256_tag_the_resume_record_reads():
+    extra = WRITTEN + ("<<sha256>> " + "ab" * 32,)
+    assert snap(LaneGuest(saved(extra=extra))).tags["sha256"] == "ab" * 32

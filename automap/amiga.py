@@ -1026,7 +1026,7 @@ def _read_state(out: str, receipt: StateReceipt) -> StateReceipt:
         except (ValueError, base64.binascii.Error, UnicodeDecodeError) as exc:
             raise SnapshotError(f"The guest printed a malformed line: {line[:120]}",
                                 receipt.as_dict()) from exc
-        m = re.match(r"<<([a-z_]+)>> (.*)\Z", line)
+        m = re.match(r"<<([a-z0-9_]+)>> (.*)\Z", line)
         if m:
             receipt.tags[m.group(1)] = m.group(2)
     status = receipt.status
@@ -1403,12 +1403,12 @@ Write-Output '<<end>>'
     # -- whole-machine snapshots -----------------------------------------
 
     def _state_verb(self, verb: str, holder: str, name: str,
-                    token: str | None) -> StateReceipt:
+                    token: str | None, extra: tuple[str, ...] = ()) -> StateReceipt:
         """Run one snapshot verb and read its receipt; nothing is judged but the verdict."""
         _folder, file = snapshot_place(holder, name)
         receipt = StateReceipt(verb, holder, name, file)
         try:
-            out, receipt.seconds = self.lane_verb(verb, holder, token, [name])
+            out, receipt.seconds = self.lane_verb(verb, holder, token, [name, *extra])
         except GuestRejection as exc:
             raise SnapshotError(f"The guest blocked the {verb}: {exc.line[5:]}",
                                 exc.receipt) from exc
@@ -1467,7 +1467,7 @@ Write-Output '<<end>>'
         return receipt
 
     def restore(self, name: str, holder: str,
-                token: str | None = None) -> StateReceipt:
+                token: str | None = None, fresh: bool = False) -> StateReceipt:
         """Put the machine back as `snapshot(name)` left it, and prove it went back.
 
         The guest blocks a snapshot with no `complete~` marker or whose file
@@ -1491,9 +1491,14 @@ Write-Output '<<end>>'
         image written since the snapshot keeps that write: a game save made
         between the snapshot and the restore stays on the disk while memory goes
         back, so the run must treat that image as changed.
+
+        `fresh` is for a machine that has only just booted, whose count is below
+        the snapshot's: the proof is `before < snap <= after`, which a reset
+        during the restore cannot pass because a reset reads below `before`.
         """
         folder, file = snapshot_place(holder, name)
-        receipt = self._state_verb("restore", holder, name, token)
+        receipt = self._state_verb("restore", holder, name, token,
+                                   ("-Fresh",) if fresh else ())
         _judge_messages(receipt, [("restore", f"CFG statefile {file}")])
         tags = receipt.tags
         if tags.get("marker") != f"{folder}\\{STATE_MARKER}":
@@ -1505,10 +1510,40 @@ Write-Output '<<end>>'
         except (KeyError, ValueError) as exc:
             raise SnapshotError(f"The restore of {file} reported no Exec counts, so "
                                 "it was not verified", receipt.as_dict()) from exc
-        if not snap <= after < before:
+        if fresh:
+            if before >= snap:
+                raise SnapshotError("The fresh machine has run longer than the snapshot; "
+                                    f"restore earlier (count {before}, snapshot {snap})",
+                                    receipt.as_dict())
+            if after < snap:
+                raise SnapshotError(f"The machine was not seen to go back to {name}: "
+                                    f"Exec's count read {after}, not {snap} or more",
+                                    receipt.as_dict())
+        elif not snap <= after < before:
             raise SnapshotError(f"The machine was not seen to go back to {name}: "
                                 f"Exec's count read {after}, not between {snap} "
                                 f"and {before}", receipt.as_dict())
+        return receipt
+
+    def stage_snapshot(self, name: str, holder: str, sha256: str, count: int,
+                       token: str | None = None) -> StateReceipt:
+        """Install a state file put in the guest's disk folder as snapshot `name`.
+
+        The guest needs the holder's claim but no running emulator. It checks the
+        `ASF ` header and the hash before it writes the completion marker, so a
+        later `restore(fresh=True)` in a new process finds the snapshot as if it
+        had been taken here.
+        """
+        folder, file = snapshot_place(holder, name)
+        receipt = self._state_verb("stage-snapshot", holder, name, token,
+                                   (sha256, str(count)))
+        tags = receipt.tags
+        if tags.get("marker") != f"{folder}\\{STATE_MARKER}" or tags.get("file") != file:
+            raise SnapshotError(f"The guest staged {tags.get('file')!r}, not {file}",
+                                receipt.as_dict())
+        if tags.get("sha256", "").lower() != sha256.lower():
+            raise SnapshotError(f"The staged state hashes to {tags.get('sha256')}, "
+                                f"not {sha256}", receipt.as_dict())
         return receipt
 
     def discard_snapshot(self, name: str, holder: str,
