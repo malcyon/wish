@@ -415,3 +415,42 @@ def test_an_unknown_title_is_a_usage_error(tmp_path):
     with pytest.raises(SystemExit):
         ftr.main(["--holder", "h", "--disks", "D", "--title", "nope", "--to", "3",
                   "--out", str(tmp_path)])
+
+
+class PeekTarget:
+    """Memory whose Pools of Darkness variable $0010 changes when the trip has run."""
+
+    data_base = 0x1000
+
+    def __init__(self, travel):
+        self.travel = travel
+
+    def read(self, addr, length):
+        if addr == self.data_base + 0x57AC:
+            return (0x4000).to_bytes(4, "big")
+        if addr == 0x4010:
+            return bytes([9 if self.travel.calls.count("continue") else 1])
+        if addr == self.data_base + ROW.step_entry:
+            return bytes(length)
+        raise AssertionError(hex(addr))
+
+    def write(self, addr, data, verify=True):
+        raise AssertionError("a peek must not write")
+
+
+def test_peek_var_logs_values_before_and_after_and_reports_unreadable(world):
+    travel = Travel(polls=2)
+    ftr.run_trip(travel, PeekTarget(travel), ROW, SimpleNamespace(id=5), world.out,
+                 lambda p: p.write_bytes(world.screen), lambda key: None, world.log,
+                 sleep=world.clock.sleep, clock=world.clock,
+                 peek_vars=[0x10, 0x401], title="pools-of-darkness")
+    world.stream.close()
+    peeks = [e for e in world.events() if e["event"] == "peek"]
+    assert [e["why"] for e in peeks] == ["before", "after"]
+    assert [v["value"] for v in (p["variables"][0] for p in peeks)] == [1, 9]
+    assert all("not readable" in p["variables"][1]["unreadable"] for p in peeks)
+
+
+def test_without_peek_var_nothing_is_peeked(world):
+    world.drive(Travel(polls=1))
+    assert "peek" not in [e["event"] for e in world.events()]

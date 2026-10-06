@@ -15,7 +15,10 @@ reason is disarmed.
 area table. `--to` is the destination area id. `--answer KEY` presses KEY once, when the
 door key has been taken, the area byte is still the starting area and the
 screen differs from the one before the trip (the game is asking something).
-`--back` makes `apply_back` once the trip has finished. The lane claim is the
+`--back` makes `apply_back` once the trip has finished.
+`--peek-var V[,V...]` (hex, `$` or `0x` optional) reads script variables through
+`automap.amigavars` before and after each leg and logs them as `peek` events;
+a variable the title's map cannot address is logged with the reason. The lane claim is the
 caller's, as in `amigadrive.py`.
 
 OUT/fasttravel.jsonl holds one line per event: the verdict, each outcome, every
@@ -46,7 +49,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
 
 from automap import actions as engine  # noqa: E402
-from automap import amiga, amigafasttravel, amigaparty, amigatrip  # noqa: E402
+from automap import (  # noqa: E402
+    amiga,
+    amigafasttravel,
+    amigaparty,
+    amigatrip,
+    amigavars,
+)
 from tools.amiga import amigakeys, tripprobe  # noqa: E402
 
 DEFAULT_TITLE = "pool-of-radiance"
@@ -131,6 +140,12 @@ def _names(party, target) -> list[str] | None:
     return None if members is None else [m.name for m in members]
 
 
+def _peek(target, title, variables, why: str, log: Log) -> None:
+    if variables:
+        log("peek", why=why, variables=[
+            r.as_log() for r in amigavars.read_variables(target, title, variables)])
+
+
 def _settle(target, row, log: Log, sleep, clock, budget: float) -> None:
     """Wait for the game to sit at its menu again, then `SETTLE_SECONDS`, before the last shot.
 
@@ -150,14 +165,16 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
              log: Log, answer: str | None = None, back: bool = False,
              sleep: Callable[[float], None] = time.sleep,
              clock: Callable[[], float] = time.monotonic,
-             budget: float = BUDGET_SECONDS, party: Callable | None = None) -> dict:
+             budget: float = BUDGET_SECONDS, party: Callable | None = None,
+             peek_vars=(), title: str | None = None) -> dict:
     """One trip, or the way back, driven as the window's timer drives it.
 
     Returns `{"result": ..., "outcomes": [...], "answered": bool}` where result
     is `not_legal`, `not_applied`, `idle` (no trip or hop left) or `timeout`;
     `areas_seen` is the starting area and then each new area byte the polls
     read. `party` reads the party (as `amigaparty.read_party`); its names are
-    logged and returned before and after the trip.
+    logged and returned before and after the trip. `peek_vars` are read
+    through `amigavars` for `title` before and after, and logged.
     """
     verdict = fasttravel.back_verdict(target) if back else fasttravel.legality(target, area)
     log("legality", ok=bool(verdict), reason=verdict.reason, back=back)
@@ -171,6 +188,7 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
     before = _reading(target, row)
     log("read", why="before", **before)
     summary["areas_seen"] = [before["area"]]
+    _peek(target, title, peek_vars, "before", log)
     summary["party_before"] = _names(party, target)
     if party is not None:
         log("party", why="before", names=summary["party_before"])
@@ -242,6 +260,7 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
     last = _reading(target, row)
     seen(last["area"])
     log("read", why="after", **last)
+    _peek(target, title, peek_vars, "after", log)
     summary["party_after"] = _names(party, target)
     if party is not None:
         log("party", why="after", names=summary["party_after"])
@@ -260,6 +279,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--answer", help="the key that answers the game's question")
     parser.add_argument("--back", action="store_true",
                         help="make apply_back once the trip has finished")
+    parser.add_argument("--peek-var", default="",
+                        help="comma-separated hex script variables to read before and after each leg")
     parser.add_argument("--budget", type=float, default=BUDGET_SECONDS,
                         help="seconds each trip may take")
     parser.add_argument("--out", required=True, help="directory for the log and screenshots")
@@ -269,6 +290,10 @@ def main(argv: list[str] | None = None) -> int:
             amigakeys.lookup(args.answer)
         except KeyError:
             parser.error(f"--answer {args.answer!r} is not a key name")
+    try:
+        peek_vars = amigavars.parse_list(args.peek_var)
+    except ValueError:
+        parser.error(f"--peek-var {args.peek_var!r} is not a list of hex numbers")
     machine = amiga.MACHINES[args.title]
     area = engine.area_by_id(args.to, machine.title)
     if area is None:
@@ -292,11 +317,13 @@ def main(argv: list[str] | None = None) -> int:
             log = Log(stream, time.monotonic)
             results = [run_trip(fasttravel, target, row, area, out, shot, press, log,
                                 answer=args.answer, budget=args.budget,
-                                party=amigaparty.read_party)]
+                                party=amigaparty.read_party,
+                                peek_vars=peek_vars, title=args.title)]
             if args.back and results[0]["result"] == "idle":
                 results.append(run_trip(fasttravel, target, row, None, out, shot, press, log,
                                         back=True, budget=args.budget,
-                                        party=amigaparty.read_party))
+                                        party=amigaparty.read_party,
+                                peek_vars=peek_vars, title=args.title))
     except (DriverError, amiga.GuestError) as exc:
         raise SystemExit(str(exc)) from exc
     for result in results:
