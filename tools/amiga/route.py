@@ -72,6 +72,14 @@ def check_expect(reading: Mapping[str, Any], expect: tuple[str, int, int, int]) 
     return False, f"{label}: refutes (holds {nodes})"
 
 
+def outdoor_square(reading: Mapping[str, Any]) -> tuple[int, int] | None:
+    """The overland square of a slot reading whose party is outdoors, else None."""
+    if reading.get("in_dungeon") is False and "wilderness_square" in reading:
+        x, y = reading["wilderness_square"]
+        return (x, y)
+    return None
+
+
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class AmigaTitle:
     """What `run_recon` needs to know about one Amiga title; Silver Blades is the default without one.
@@ -99,6 +107,8 @@ class AmigaTitle:
     state its own limit in seconds for a guarded wait, where the default is too short for the
     pages the game shows before that state. `edge_exits` maps `(area, walk facing)` to the area
     a step off that area's 16x16 map enters, for an exit that keeps the party's wrapped square and facing.
+    `wilderness_grid` is the (columns, rows) of an overland map on which a slot that reads
+    `in_dungeon` false steps in absolute directions and stops at the edge; None for a title with none.
     """
 
     issue: str
@@ -126,6 +136,7 @@ class AmigaTitle:
     move_again_after: frozenset[str] = frozenset()
     wait_limits: Mapping[str, float] = dataclasses.field(default_factory=dict)
     edge_exits: Mapping[tuple[int, int], int] = dataclasses.field(default_factory=dict)
+    wilderness_grid: tuple[int, int] | None = None
 
     @property
     def disk_keys(self) -> tuple[str, ...]:

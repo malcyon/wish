@@ -11,7 +11,7 @@ import shutil
 from typing import Any
 
 from goldbox import amiga_adf, amiga_savegame
-from tools.amiga.route import ISSUE, AmigaTitle, effect_fields
+from tools.amiga.route import ISSUE, AmigaTitle, effect_fields, outdoor_square
 from tools.amiga.staging import _find_images, sha256
 from tools.amiga.winuaesession import RouteError
 from tools.registry import scratch
@@ -20,6 +20,8 @@ DARKNESS_DISK1_SHA256 = "9d38338ecb44434331485a908b0d6c204f9b0a8a6e509baa2a8e1b2
 DARKNESS_DISK2_SHA256 = "f7819b475e4071c36d349003277e9516abfee8f9c294830d8423e98a9e6c7b71"
 DARKNESS_DISK3_SHA256 = "bba0945c39e54fee75e4453e552a54534a584a395f9796ca570c655bf02f2fdd"
 DARKNESS_VOLUME = "POD 3"
+# Columns and rows of the overland map; `NP8` steps north on it and the game stops at the edge.
+WILDERNESS_GRID = (38, 15)
 DARKNESS_LOADED = "B"
 
 _DARKNESS_SAVED_GAME = re.compile(r"savgam([A-Z])\.pty", re.IGNORECASE)
@@ -39,6 +41,9 @@ def _darkness_read_slot(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, Any
         reading["names"] = [member.name.strip() for member in parsed.characters]
         reading["place"] = {"area": state.dungeon_map, "x": state.x, "y": state.y,
                             "facing": state.facing}
+        # Outdoors the game steps on the wilderness grid and leaves the dungeon square stale.
+        reading["in_dungeon"] = state.in_dungeon
+        reading["wilderness_square"] = list(state.wilderness_square)
         reading["effects"] = {member.name.strip(): [list(effect_fields(node)) for node in nodes]
                               for member, nodes in zip(parsed.characters, parsed.effect_nodes,
                                                        strict=True)}
@@ -86,7 +91,7 @@ DISK2_INSERT = ((0, "disk2", "SPACE"), "loaded_menu", "insert")
 DARKNESS = AmigaTitle(
     issue=ISSUE,
     mounted=("disk1", "disk3"), spares=("disk2",),
-    save_disk="disk3",
+    save_disk="disk3", wilderness_grid=WILDERNESS_GRID,
     read_slot=_darkness_read_slot, slot_letters=_darkness_slot_letters,
     slot_files=_darkness_slot_files,
     # `L` opens a prompt asking where to load from, with three choices; `P` picks this title's
@@ -400,7 +405,9 @@ def _prepare_darkness_reload(run: pathlib.Path, disk3: pathlib.Path, disk3_sha25
             raise RouteError(f"slot {letter} does not decode: {one}")
         if one["names"] != party["names"]:
             raise RouteError(f"slot {letter} names another party than slot {DARKNESS_LOADED}")
-    if reading["F"]["place"] == reading["G"]["place"]:
+    outdoors = {letter: outdoor_square(one) for letter, one in reading.items()}
+    if (reading["F"]["place"] == reading["G"]["place"]
+            and outdoors["F"] == outdoors["G"]):
         raise RouteError("slots F and G are at one place, which the screen cannot tell apart")
     scratch.ensure(run)
     disks: dict[str, dict[str, str]] = {}
@@ -427,6 +434,8 @@ def _prepare_darkness_reload(run: pathlib.Path, disk3: pathlib.Path, disk3_sha25
         "loaded_letter": DARKNESS_RELOAD_LOADED,
         "state_a": reading["G"]["place"], "names_a": reading["G"]["names"],
         "other_letter": "F", "other_place": reading["F"]["place"],
+        **({"wilderness_a": outdoors["G"], "wilderness_other": outdoors["F"]}
+           if outdoors["G"] or outdoors["F"] else {}),
         "slot_sha256": {letter: one["sha256"] for letter, one in reading.items()},
         "accept_summary": {"path": str(accept_summary), "sha256": sha256(accept_summary)},
     }
