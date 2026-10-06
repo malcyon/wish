@@ -3643,3 +3643,33 @@ def test_the_darkness_guards_recognise_the_overland_world_bar_of_the_a3_party():
     rules = [r for r in screens.rules_of(spec["guards"]["world"]) if r["example"] == example]
     assert len(rules) == 1 and rules[0]["box"] == box and rules[0]["also"] == ["place"]
     assert screens.box_digests(crop, [tuple(box)], "world")[tuple(box)] == rules[0]["sha256"]
+
+
+def test_the_pool_identity_recognises_the_world_screen_of_the_eight_member_npc_party():
+    from tools.amiga import screens
+
+    spec = json.loads((pathlib.Path(foundation.__file__).parent / "guards_pool.json").read_text())
+    example = "300/wish300-amiga-npc/accept1/shots/04-world.png"
+    assert spec["labels"][example] == ["world"]
+    crop = scratch.cache_dir("acceptance") / example
+    if not crop.is_file():
+        pytest.skip("needs the WISH-300 Amiga NPC party run shot 04")
+    box = [326, 96, 578, 194]
+    rules = [r for r in screens.rules_of(spec["identity"]["world"]) if r["example"] == example]
+    assert len(rules) == 1 and rules[0]["box"] == box and rules[0]["also"] == ["camp", "camp_save_picker", "quit_prompt"]
+    assert screens.box_digests(crop, [tuple(box)], "world")[tuple(box)] == rules[0]["sha256"]
+
+
+def test_the_pool_identity_recognises_the_world_screen_of_the_six_member_wish301_party():
+    from tools.amiga import screens
+
+    spec = json.loads((pathlib.Path(foundation.__file__).parent / "guards_pool.json").read_text())
+    example = "301/wish301-amiga/accept2/shots/04-world.png"
+    assert spec["labels"][example] == ["world"]
+    crop = scratch.cache_dir("acceptance") / example
+    if not crop.is_file():
+        pytest.skip("needs the WISH-301 Amiga run shot 04")
+    box = [326, 96, 578, 194]
+    rules = [r for r in screens.rules_of(spec["identity"]["world"]) if r["example"] == example]
+    assert len(rules) == 1 and rules[0]["box"] == box and rules[0]["also"] == ["camp", "camp_save_picker", "quit_prompt"]
+    assert screens.box_digests(crop, [tuple(box)], "world")[tuple(box)] == rules[0]["sha256"]

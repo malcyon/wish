@@ -275,10 +275,46 @@
         ],
         "example": "amiga-grab-crops/wish16-a__04-world.png",
         "sha256": "d8fe9ea5e2b0e8176e36da79ff356f10a7ce5f50b686c759362bbd275477456b"
+      },
+      {
+        "also": [
+          "camp",
+          "camp_save_picker",
+          "quit_prompt"
+        ],
+        "box": [
+          326,
+          96,
+          578,
+          194
+        ],
+        "example": "300/wish300-amiga-npc/accept1/shots/04-world.png",
+        "sha256": "d4db898e05ca03c30ffe19993b9fc9bf5b439a515caadb6a92cf786bd0dc72fc"
+      },
+      {
+        "also": [
+          "camp",
+          "camp_save_picker",
+          "quit_prompt"
+        ],
+        "box": [
+          326,
+          96,
+          578,
+          194
+        ],
+        "example": "301/wish301-amiga/accept2/shots/04-world.png",
+        "sha256": "d5ce3f5d30aa28b2d3fa774380f7dd962f1bcec64fd9b9ec466888c27380ce55"
       }
     ]
   },
   "labels": {
+    "300/wish300-amiga-npc/accept1/shots/04-world.png": [
+      "world"
+    ],
+    "301/wish301-amiga/accept2/shots/04-world.png": [
+      "world"
+    ],
     "amiga-grab-crops/3q__s01-boot.png": [
       "wheel"
     ],
