@@ -2926,8 +2926,37 @@ def test_staging_record_names_a_roster_hit_point_write_the_registry_reads():
         {"slot": 4, "offset": 0x19, "address": "$4F59", "was": 25, "now": 60,
          "found": 60}]})
     assert lines == ["roster slot 4 offset 0x19 ($4F59): 25 -> 60"]
-    assert specimens.hit_points_staged({"staged": lines})
+    assert specimens.staged_hit_points({"staged": lines}) == [60]
     assert A.staging_record({"staged": {}}) == []
+
+
+def test_staging_record_names_a_roster_write_that_was_never_read_back():
+    lines = A.staging_record({"stage_roster_asked": [
+        {"slot": 4, "offset": 0x19, "address": "$4F59", "now": 60}]})
+    assert lines == ["roster slot 4 offset 0x19 ($4F59): ? -> 60"]
+
+
+def test_staging_record_has_a_line_for_each_disk_byte_kind():
+    from tools.registry import specimens
+
+    lines = A.staging_record({"staged": {
+        "traits": [{"slot": 1, "index": 2, "offset": 0x1AD, "was": 0, "now": 8}],
+        "items": [{"slot": 1, "item": 3, "byte": 4, "offset": 0x2000,
+                   "was": 0, "now": 1}],
+        "record_bytes": [{"slot": 2, "byte": 0x10, "offset": 0x310,
+                          "was": 5, "now": 6}],
+        "statuses": [{"slot": 3, "file": "SAVE", "offset": 0x20,
+                      "was": 0, "now": 1}],
+        "sides": [{"slot": 0, "offset": 0x0C, "was": 0, "now": 0x80}],
+        "variables": [{"address": 0x4F00, "offset": 9, "was": 1, "now": 2}]}})
+    assert lines == [
+        "trait slot 1 index 2 (payload 0x01ad): 0 -> 8",
+        "item slot 1 item 3 byte 4 (payload 0x2000): 0 -> 1",
+        "record slot 2 byte 0x10 (payload 0x0310): 5 -> 6",
+        "status slot 3 (SAVE 0x0020): 0 -> 1",
+        "side slot 0 (payload 0x000c): 0 -> 128",
+        "variable $4F00: 1 -> 2"]
+    assert all(specimens.STAGED_LINE.match(line) for line in lines)
 
 
 def test_capture_ready_registration_failure_is_recorded_and_still_tears_down(

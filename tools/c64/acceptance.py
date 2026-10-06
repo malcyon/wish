@@ -640,7 +640,7 @@ def staging_record(summary: dict) -> list[str]:
 
     A specimen preserved from such a run lists them in its provenance, since
     a value only the staging could produce is not one the game made.  The
-    roster lines keep the form `tools.registry.specimens.hit_points_staged`
+    roster lines keep the form `tools.registry.specimens.staged_hit_points`
     reads.
     """
     out = []
@@ -664,9 +664,13 @@ def staging_record(summary: dict) -> list[str]:
                    f"{row['was']} -> {row['now']}")
     for row in staged.get("variables", []):
         out.append(f"variable ${row['address']:04X}: {row['was']} -> {row['now']}")
-    for row in summary.get("stage_roster") or []:
+    # The asked-for writes, not only the ones `poke_roster` read back: a run
+    # that failed after writing still leaves a specimen with the staging in it.
+    rows = {(r["slot"], r["offset"]): r for r in summary.get("stage_roster_asked") or []}
+    rows.update({(r["slot"], r["offset"]): r for r in summary.get("stage_roster") or []})
+    for row in rows.values():
         out.append(f"roster slot {row['slot']} offset {row['offset']:#04x} "
-                   f"({row['address']}): {row['was']} -> {row['now']}")
+                   f"({row['address']}): {row.get('was', '?')} -> {row['now']}")
     return out
 
 
@@ -8635,10 +8639,14 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             summary["encounter_gates"] = pool.gate_reports
         roster_writes = parse_roster_bytes(getattr(args, "stage_roster", []))
         try:
-            for slot_, offset_, _ in roster_writes:
-                roster_address(game, slot_, offset_)
+            asked = [{"slot": slot_, "offset": offset_,
+                      "address": f"${roster_address(game, slot_, offset_):04X}",
+                      "now": value_}
+                     for slot_, offset_, value_ in roster_writes]
         except ValueError as e:
             raise StepFailed(f"--stage-roster: {e}") from e
+        if asked:
+            summary["stage_roster_asked"] = asked
         pool.read_ats = tuple(parse_read_at(getattr(args, "read_at", [])))
         if getattr(args, "fast_flee", False):
             pool.fast_flee = True

@@ -182,22 +182,26 @@ def test_the_scan_skips_a_title_with_no_c64_port_and_keeps_the_others():
 
 def _holds_more_than_its_maximum(char, provenance: dict) -> bool:
     """Whether a record's current hit points exceed its maximum, unless the
-    provenance of the run that made it lists a staged hit-point write, in
-    which case the surplus came from the staging."""
+    provenance of the run that made it lists a staged hit-point value at or
+    above them, in which case the surplus came from the staging."""
     from tools.registry import specimens
 
-    if specimens.hit_points_staged(provenance):
+    now = char.get("hp_current")
+    if any(now <= staged for staged in specimens.staged_hit_points(provenance)):
         return False
-    return char.get("hp_current") > char.get("hp_max")
+    return now > char.get("hp_max")
 
 
-def test_hit_points_above_the_maximum_pass_only_when_the_run_staged_them():
-    char = _neutral(POOL.key, name="BAKSHI", hp_current=35, hp_max=25)
-    assert _holds_more_than_its_maximum(char, {})
+def test_hit_points_above_the_maximum_pass_only_up_to_what_the_run_staged():
+    staged = {"staged": ["roster slot 4 offset 0x19 ($4F59): 25 -> 60"]}
+    bakshi = _neutral(POOL.key, name="BAKSHI", hp_current=35, hp_max=25)
+    assert _holds_more_than_its_maximum(bakshi, {})
     assert _holds_more_than_its_maximum(
-        char, {"staged": ["roster slot 4 offset 0x0C ($4F4C): 0 -> 1"]})
-    assert not _holds_more_than_its_maximum(
-        char, {"staged": ["roster slot 4 offset 0x19 ($4F59): 25 -> 60"]})
+        bakshi, {"staged": ["roster slot 4 offset 0x0C ($4F4C): 0 -> 1"]})
+    assert not _holds_more_than_its_maximum(bakshi, staged)
+    # A sibling above the staged value is not the staging's doing.
+    sibling = _neutral(POOL.key, name="SIBLING", hp_current=61, hp_max=25)
+    assert _holds_more_than_its_maximum(sibling, staged)
 
 
 @needs_specimens

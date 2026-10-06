@@ -835,7 +835,7 @@ def test_add_records_the_staging_a_run_made(tree, one_source):
     _add(tree, one_source, staged=STAGED)
     fields = specimens.list_specimens(tree)[0]
     assert fields["staged"] == STAGED
-    assert specimens.hit_points_staged(fields)
+    assert specimens.staged_hit_points(fields) == [60]
     assert specimens.check_specimens(tree) == []
 
 
@@ -844,9 +844,9 @@ def test_a_specimen_with_no_staging_does_not_show_staged_hit_points(
     _add(tree, one_source)
     fields = specimens.list_specimens(tree)[0]
     assert "staged" not in fields
-    assert not specimens.hit_points_staged(fields)
-    assert not specimens.hit_points_staged(
-        {"staged": ["roster slot 4 offset 0x0C ($4F4C): 0 -> 1"]})
+    assert specimens.staged_hit_points(fields) == []
+    assert specimens.staged_hit_points(
+        {"staged": ["roster slot 4 offset 0x0C ($4F4C): 0 -> 1"]}) == []
 
 
 def test_correct_staged_adds_the_list_and_keeps_the_note_and_the_manifest(
@@ -864,3 +864,11 @@ def test_correct_staged_adds_the_list_and_keeps_the_note_and_the_manifest(
     with pytest.raises(ValueError, match="already records"):
         specimens.correct_staged("gnomf1", staged=STAGED, reason="again",
                                  root=tree)
+
+
+def test_correct_staged_rejects_a_line_not_in_the_recorded_form(tree, one_source):
+    _add(tree, one_source)
+    with pytest.raises(ValueError, match="not in the form"):
+        specimens.correct_staged("gnomf1", staged=["4:0x19=60"], reason="x",
+                                 root=tree)
+    assert "staged" not in specimens.list_specimens(tree)[0]

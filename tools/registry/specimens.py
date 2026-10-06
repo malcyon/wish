@@ -192,8 +192,8 @@ def _toml_str(value: str) -> str:
 
 def write_provenance(path: pathlib.Path, fields: dict, sha256: dict[str, str]) -> None:
     """Hand-rolled rather than a library: the schema is flat strings, one
-    bool, one list of strings (`staged`), and one table of hashes, and nothing here should need a TOML
-    writer's opinion about quoting a path."""
+    bool, one list of strings (`staged`), and one table of hashes, and nothing
+    here should need a TOML writer's opinion about quoting a path."""
     lines = []
     for key in REQUIRED_FIELDS + ("command", "source", "staged", "issue_note"):
         if key not in fields:
@@ -788,6 +788,10 @@ def correct_staged(name: str, *, staged: list[str], reason: str,
     root = root or tree_root()
     if not staged:
         raise ValueError("--staged is empty")
+    bad = [line for line in staged if not STAGED_LINE.match(line)]
+    if bad:
+        raise ValueError(f"--staged line(s) not in the form 'KIND ...: WAS -> NOW': "
+                         f"{bad}")
     if not reason.strip():
         raise ValueError("--reason is empty")
     entry = _one_entry(name, root)
@@ -805,19 +809,23 @@ def correct_staged(name: str, *, staged: list[str], reason: str,
             "issue_note": fields["issue_note"]}
 
 
-STAGED_ROSTER = re.compile(r"^roster slot (\d+) offset 0x([0-9A-Fa-f]+)\b")
+STAGED_LINE = re.compile(
+    r"^(effect row|trait|item|record|status|side|variable|roster)\b.*: .+ -> .+$")
+STAGED_ROSTER = re.compile(
+    r"^roster slot (\d+) offset 0x([0-9A-Fa-f]+) .*: .+ -> (\d+)$")
 #: The roster byte holding a member's current hit points.
 ROSTER_HP_OFFSET = 0x19
 
 
-def hit_points_staged(fields: dict) -> bool:
-    """Whether a provenance's `staged` list shows a run wrote a roster
+def staged_hit_points(fields: dict) -> list[int]:
+    """The values a provenance's `staged` list shows a run wrote to a roster
     member's current hit points."""
+    out = []
     for line in fields.get("staged", []):
         m = STAGED_ROSTER.match(line)
         if m and int(m.group(2), 16) == ROSTER_HP_OFFSET:
-            return True
-    return False
+            out.append(int(m.group(3)))
+    return out
 
 
 def _format_row(entry: dict) -> str:
