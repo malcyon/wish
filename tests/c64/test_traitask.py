@@ -281,7 +281,7 @@ class _CastSession:
         return self
 
     def row(self, r):
-        return "PRAYER" if r == 5 else ""
+        return ("$  PRAYER".ljust(39) + "$") if r == 5 else ""
 
     def handle_prompt(self):
         self.calls.append(("prompt",))
@@ -334,15 +334,44 @@ def test_caster_fails_when_the_combat_bar_never_comes_back(cast_patches):
     assert sess.calls.count(("bar", "EXIT")) == route_pool.Caster.BACK_OUT_PRESSES
 
 
-def test_caster_drops_a_failed_cast_and_leaves_the_turn_to_the_other_tactic(
-        cast_patches):
+def test_caster_fails_the_run_when_a_cast_fails(cast_patches):
     sess = _CastSession(asks_target=True)
     caster = route_pool.Caster(FakeLog(), [("BAKSHI", "PRAYER", None)],
                                otherwise=lambda s, state: "FLEE")
-    assert caster(sess, "bar") == "FLEE"
+    with pytest.raises(RuntimeError, match="PRAYER could not be cast by BAKSHI"):
+        caster(sess, "bar")
     assert caster.queue == []
-    assert caster(sess, "bar") == "FLEE"
-    assert sess.calls.count(("select", "CAST")) == 1
+
+
+# BAKSHI's spell list as the Pool capture shows it: level headings start in
+# column 1, the spells are indented, and the cursor sits white on the first
+# spell, not on the one wanted.
+SPELL_LIST = {2: " BAKSHI'S SPELLS", 4: "1ST LEVEL", 5: "  CURE LIGHT WOUNDS",
+              6: "  DETECT MAGIC", 7: "  SLEEP", 9: "3RD LEVEL",
+              10: "  PRAYER", 11: "  EXIT"}
+
+
+class _SpellListScreen:
+    def __init__(self, cursor):
+        self.rows = [("$" + SPELL_LIST.get(r, "").ljust(38) + "$")
+                     for r in range(25)]
+        self.colours = bytearray([5] * 1000)
+        for r in (2, 4, 9):
+            self.colours[r * 40 + 1:r * 40 + 12] = bytes([1] * 11)
+        self.colours[cursor * 40 + route_pool.ITEM_NAME_COLUMN] = 1
+
+    def row(self, r):
+        return self.rows[r]
+
+
+def test_spell_rows_hold_every_spell_and_exit_but_no_heading():
+    assert route_pool.spell_rows(_SpellListScreen(5)) == [5, 6, 7, 10, 11]
+
+
+@pytest.mark.parametrize("cursor", [5, 6, 7, 10, 11])
+def test_the_cursor_is_found_on_a_list_with_level_headings(cursor):
+    s = _SpellListScreen(cursor)
+    assert route_pool.item_highlight(s, route_pool.spell_rows(s)) == cursor
 
 
 def test_caster_gives_other_members_turns_to_the_other_tactic(cast_patches):

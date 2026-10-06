@@ -238,6 +238,14 @@ def item_baseline(s, rows: list[int]) -> int:
             return s.colours[r * 40 + ITEM_NAME_COLUMN]
     return ITEM_PLAIN_COLOUR
 
+def spell_rows(s) -> list[int]:
+    """The rows of a spell list the cursor can be on: every spell and the
+    list's own EXIT, indented two columns, not the `NTH LEVEL` headings that
+    start in column 1. The cursor starts on the first spell, which may not be
+    the one wanted, so a row left out hides it."""
+    return [r for r in range(3, 22)
+            if not s.row(r)[1:3].strip() and s.row(r)[3:39].strip()]
+
 def item_highlight(s, rows: list[int]) -> int | None:
     """Which item row the cursor is on: the one whose name colour differs from
     `item_baseline`, or None when no row or more than one does."""
@@ -768,11 +776,11 @@ class Caster:
             if self.cast(sess, b, me, spell, target):
                 self.queue.pop(0)
                 return "CAST"
-            # One attempt per queued cast: a cast that failed is dropped, so
-            # every later turn of that member is the other tactic's and the
-            # fight is not spent retrying it.
-            self.log.say(f"  {spell} dropped after one failed attempt")
+            # A failed cast ends the run: the fight would otherwise carry on
+            # with a member who never casts, to the end of its budget.
             self.queue.pop(0)
+            raise RuntimeError(f"{spell} could not be cast by "
+                               f"{me.name.strip()}")
         return self.otherwise(sess, state)
 
     def cast_trigger(self, sess: S.Session, me, now: list[int]) -> str | None:
@@ -855,11 +863,7 @@ class Caster:
             if s is None:
                 time.sleep(0.3)
                 continue
-            # Only the spell rows and the list's own EXIT: the heading and
-            # the level line are coloured on their own account and would
-            # make the odd-one-out test find nothing.
-            rows = [r for r in range(3, 22)
-                    if spell in s.row(r) or s.row(r).strip() == "EXIT"]
+            rows = spell_rows(s)
             want = next((r for r in rows if spell in s.row(r)), None)
             at = item_highlight(s, rows)
             if want is None or at is None:
