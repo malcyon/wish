@@ -7,6 +7,7 @@ a table in which every script leaves room for a trip, so what these tests pin
 is which trips the row offers and what it does with the answers.
 """
 
+import dataclasses
 import os
 import struct
 
@@ -136,17 +137,22 @@ def test_the_combo_and_button_enable_only_for_an_offered_trip(lengths):
     assert bar.button.isEnabled() and bar.button.toolTip() == actionbar.DANGER
     pick(window, FIRE_KNIFE)
     assert bar.button.isEnabled()
-    # Held, and the area the party is in: the button says why, the dropdown
-    # stays open so another area can be picked.
     pick(window, TILVERTON)
-    assert not bar.button.isEnabled() and bar.button.toolTip() == sentence(CURSE)
+    assert bar.button.isEnabled()
+    # The area the party is in: the button says why, the dropdown stays open
+    # so another area can be picked.
     pick(window, GUILD)
     assert not bar.button.isEnabled()
     assert bar.button.toolTip() == "the party is already in that area"
     assert bar.combo.isEnabled()
 
 
-def test_with_nothing_offered_the_dropdown_closes_too(lengths):
+def test_with_nothing_offered_the_dropdown_closes_too(lengths, monkeypatch):
+    row = trips.ROWS[CURSE]
+    held = trips.Difference("held", "a made-up open question",
+                            lambda here, to, back: to == TILVERTON)
+    monkeypatch.setitem(trips.ROWS, CURSE,
+                        dataclasses.replace(row, differences=(held,)))
     window, _ = attached(CURSE, GUILD, ticked=(TILVERTON,))
     bar = window.fasttravel_bar
     assert not bar.combo.isEnabled() and not bar.button.isEnabled()

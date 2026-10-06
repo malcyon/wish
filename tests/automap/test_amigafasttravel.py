@@ -111,14 +111,33 @@ def test_an_offered_trip_arms_and_says_the_c64_sentence(disks):
     assert m.read(BASE + trips.ROWS[CURSE].key_buffer, 2) == trips.FORWARD_KEY
 
 
-def test_tilverton_is_held_and_so_is_an_unconfirmed_title(disks):
-    """Curse's Tilverton waits on a decision; Silver Blades has no menu text
-    read yet, so its row is unconfirmed."""
-    for key, to, m in ((CURSE, 1, machine(CURSE)), (BLADES, 7, Machine())):
-        verdict = travel(key).legality(m, area(to))
-        assert not verdict
-        assert verdict.reason == amigaactions.unsupported(
-            aft.amiga.MACHINES[key].title)
+def test_an_unconfirmed_title_is_held(disks):
+    """Silver Blades has no menu text read yet, so its row is unconfirmed."""
+    verdict = travel(BLADES).legality(Machine(), area(7))
+    assert not verdict
+    assert verdict.reason == amigaactions.unsupported(
+        aft.amiga.MACHINES[BLADES].title)
+
+
+def test_curse_trips_into_tilverton_are_offered(disks):
+    """Both a Fast Travel from the sewers and a Return from Tilverton's own
+    neighbour were held on the opening replaying; the came-from write
+    lifts that."""
+    assert not trips.ROWS[CURSE].differences
+    assert travel().legality(machine(CURSE), area(1))
+    assert travel().legality(machine(CURSE, area=3), area(1))
+    t = aft.AmigaFastTravel(CURSE, object())
+    t._row = lambda id: area(id, "Tilverton")
+    m = machine(CURSE, area=3)
+    assert t.apply(m, area(1, arrival=(1, 2, 0))).ok
+    assert finish(t, m, CURSE, 1) is None
+    # Out of Tilverton and back: the Return goes into area 1.
+    t = aft.AmigaFastTravel(CURSE, object())
+    t._row = lambda id: area(id, "Tilverton")
+    m = machine(CURSE, area=1)
+    assert t.apply(m, area(7, arrival=(1, 1, 0))).ok
+    assert finish(t, m, CURSE, 7) is None
+    assert t.apply_back(m).ok
 
 
 def test_return_is_offered_on_curse_and_held_on_pools_of_darkness(disks):
@@ -140,9 +159,12 @@ def test_return_is_offered_on_curse_and_held_on_pools_of_darkness(disks):
 
 def test_a_decided_difference_is_offered(disks, monkeypatch):
     row = trips.ROWS[CURSE]
-    decided = tuple(d if d.name != "tilverton" else
-                    dataclasses.replace(d, offered=True)
-                    for d in row.differences)
+    held = trips.Difference("held", "a made-up open question",
+                            lambda here, to, back: to == 1)
+    monkeypatch.setitem(trips.ROWS, CURSE,
+                        dataclasses.replace(row, differences=(held,)))
+    assert not travel().legality(machine(CURSE), area(1))
+    decided = (dataclasses.replace(held, offered=True),)
     monkeypatch.setitem(trips.ROWS, CURSE,
                         dataclasses.replace(row, differences=decided))
     assert travel().apply(machine(CURSE), area(1)).ok

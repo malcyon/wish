@@ -265,12 +265,7 @@ ROWS: dict[str, TripRow] = {
         key_buffer=0x3804, area_file=0x7F12,
         script_file="/DISKB/ECL.GLB",
         confirmed=True,
-        came_from_areas=(_TILVERTON,),
-        differences=(
-            Difference("tilverton",
-                       "decision 2: arriving in Tilverton replayed the opening",
-                       lambda here, to, back: to == _TILVERTON),
-        )),
+        came_from_areas=(_TILVERTON,)),
     # PROBABLE: code only, plus the menu text read live.
     "secret-of-the-silver-blades": TripRow(
         key="secret-of-the-silver-blades",
