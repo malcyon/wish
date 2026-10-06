@@ -5,8 +5,8 @@ title's data hunk, so a variable's address is the pointer's value plus an index
 (bytes on Pools of Darkness, big-endian words on Curse). A variable with no
 fixed address, or in no range of the title, is reported unreadable with the
 reason rather than guessed. A range whose value the game may take from elsewhere
-first (Curse `$7C00`-`$7FFF`, the current member's field) carries a `note`
-into every reading.
+first (Curse `$7C00`-`$7FFF`, the current member's field; Pool `$6B00`-`$6EFF`,
+about thirty offsets) carries a `note` into every reading.
 """
 
 from __future__ import annotations
@@ -43,6 +43,17 @@ MAPS: dict[str, VarMap] = {
             VarRange(0x8000, 0x9DFF, 0x6EA6, 1),
         ),
         unaddressed=((0x401, 0x800, "a field of the current member's record"),),
+    ),
+    # Pool's `$6E82` is the word at offset 0xF04 of `savgam?.dat`.
+    "pool-of-radiance": VarMap(
+        ranges=(
+            VarRange(0x4900, 0x4CFF, 0x98, 2, 0x4900),
+            VarRange(0x6B00, 0x6EFF, 0x9C, 2, 0x6B00,
+                     note="about thirty offsets are read from member records "
+                          "by the game, not from this table"),
+            VarRange(0x9700, 0x98FF, 0xA0, 2, 0x9700),
+            VarRange(0x9900, 0xB6FF, 0xA4, 1, 0x9900),
+        ),
     ),
     "curse-of-the-azure-bonds": VarMap(
         ranges=(

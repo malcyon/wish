@@ -76,7 +76,41 @@ def test_curse_script_bytes_are_at_the_pointer_plus_the_address():
 def test_an_unmapped_variable_and_an_unmapped_title_are_reported():
     m = make(POD)
     assert "no range" in amigavars.read_variable(m, "pools-of-darkness", 0x4B00).unreadable
-    assert "no variable map" in amigavars.read_variable(m, "pool-of-radiance", 1).unreadable
+    assert "no variable map" in amigavars.read_variable(m, "secret-of-the-silver-blades", 1).unreadable
+
+
+POOL = {0x98: 0x40000, 0x9C: 0x50000, 0xA0: 0x60000, 0xA4: 0x70000}
+
+
+@pytest.mark.parametrize("var,pointer,origin", [
+    (0x4A5D, 0x40000, 0x4900), (0x4AB5, 0x40000, 0x4900), (0x4A7C, 0x40000, 0x4900),
+    (0x4AB7, 0x40000, 0x4900), (0x6E82, 0x50000, 0x6B00), (0x9812, 0x60000, 0x9700)])
+def test_pool_word_ranges_are_big_endian_at_twice_the_offset(var, pointer, origin):
+    m = make(POOL)
+    address = pointer + 2 * (var - origin)
+    m.put(address, b"\x00\x28")
+    got = amigavars.read_variable(m, "pool-of-radiance", var)
+    assert (got.address, got.value, got.size) == (address, 0x28, 2)
+
+
+def test_pool_staged_words_sit_at_their_known_offsets_from_the_first_table():
+    m = make(POOL)
+    for var, offset in ((0x4A5D, 0x2BA), (0x4AB5, 0x36A), (0x4A7C, 0x2F8), (0x4AB7, 0x36E)):
+        assert amigavars.read_variable(m, "pool-of-radiance", var).address == 0x40000 + offset
+    assert amigavars.read_variable(m, "pool-of-radiance", 0x6E82).address == 0x50000 + 0x704
+
+
+def test_pool_script_buffer_is_a_byte_at_the_pointer_plus_the_offset():
+    m = make(POOL)
+    m.put(0x70000 + 0x10, b"\x09")
+    got = amigavars.read_variable(m, "pool-of-radiance", 0x9910)
+    assert (got.address, got.value, got.size) == (0x70010, 9, 1)
+
+
+def test_pool_record_table_reading_carries_its_note_and_others_do_not():
+    m = make(POOL)
+    assert "member records" in amigavars.read_variable(m, "pool-of-radiance", 0x6E82).note
+    assert amigavars.read_variable(m, "pool-of-radiance", 0x4A5D).note is None
 
 
 def test_parse_takes_hex_with_or_without_a_prefix():
