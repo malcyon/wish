@@ -8,8 +8,10 @@ nothing, are untouched.  A script is reloaded on an area change, a crossing and 
 saved-game load, so a roll is recognised by a short hash of its statement at the roll
 address and changed again whenever a reload brings it back.
 
-The saved game carries the loaded script for Pool, Curse and Pools of Darkness,
-so `no_encounters off` comes before any save; it stays off until turned on again.
+The saved game carries the loaded script for Pool and Curse, so
+`no_encounters off` comes before any save; it stays off until turned on again.
+The Pools of Darkness save holds no script, but `off` still comes first there:
+its SPECULATIVE rest row writes variable `$2C`, which that save does store.
 
 The class does no I/O of its own: the driver hands it `resolve`, `read` and
 `write`, so it runs against a fake, and a `journal` callback that is given
