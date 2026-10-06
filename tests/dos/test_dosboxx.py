@@ -625,12 +625,6 @@ def test_the_debugger_harness_still_needs_the_tools_it_does_run():
     assert set(dosboxx.XSession.TOOLS) == {"Xvfb", "xdotool", "import"}
 
 
-def test_a_machine_with_no_debugger_build_says_so_rather_than_failing_later():
-    why = dosboxx.unavailable()
-    assert why is None or "not installed" in why or "no debugger" in why
-
-
-
 def _probe_with(monkeypatch, behaviours):
     """Make each `--help` probe do the next thing in `behaviours`."""
     import subprocess
@@ -646,6 +640,16 @@ def _probe_with(monkeypatch, behaviours):
     dosboxx.has_debugger.cache_clear()
     monkeypatch.setattr(dosboxx.subprocess, "run", run)
     monkeypatch.setattr(dosboxx, "missing_tools", lambda: [])
+
+
+def test_a_machine_with_no_debugger_build_says_so_rather_than_failing_later(monkeypatch):
+    _probe_with(monkeypatch, [b"usage: dosbox-x"])
+    try:
+        why = dosboxx.unavailable()
+    finally:
+        dosboxx.has_debugger.cache_clear()
+    assert why is not None
+    assert "no debugger" in why
 
 
 def test_a_timed_out_help_probe_does_not_report_no_debugger(monkeypatch):

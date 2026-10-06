@@ -127,7 +127,7 @@ RE_EV = re.compile(r"EV of '([^']*)' is:\n(.*)")
 
 
 class DebuggerUnavailable(RuntimeError):
-    """`dosbox-x` is missing, or is a build with no debugger in it."""
+    """`dosbox-x` is missing, has no debugger in it, or did not answer the probe."""
 
 
 class NotHalted(RuntimeError):
@@ -174,6 +174,9 @@ def has_debugger(path: str = DOSBOXX) -> bool:
     The one-line test from `docs/142`: a debugger build prints a `helpdebug`
     line for `--help` and a packaged build does not.  Ubuntu's and Flathub's
     both do not, so "dosbox-x is installed" is not the question to ask.
+
+    Raises `DebuggerUnavailable` when the probe times out, because a build
+    that did not answer is not known to lack a debugger.
     """
     try:
         out = subprocess.run(
