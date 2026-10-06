@@ -69,14 +69,32 @@ def scan_crops(root: pathlib.Path) -> list[Crop]:
     paths = sorted((*root.glob('*/*/*/shots/*.png'), *root.glob('amiga-grab-crops/*.png')))
     runs: dict[pathlib.Path, str | None] = {}
     crops = []
+    # Opening every PNG to read its size dominates a scan of the acceptance
+    # cache, so a file whose stat stamp matches its digest-cache entry reuses
+    # the size recorded there.
+    old = _read_cache(root)
+    cache = dict(old)
     for path in paths:
         if path.name.endswith('.raw.png'):
             continue
+        relative = path.relative_to(root).as_posix()
         try:
-            with Image.open(path) as image:
-                if image.size != amigashots.CLIENT:
-                    continue
+            stat = path.stat()
         except OSError:
+            continue
+        stamp = [stat.st_size, stat.st_mtime_ns, stat.st_ino]
+        entry = old.get(relative)
+        if isinstance(entry, dict) and entry.get('stamp') == stamp and isinstance(entry.get('size'), list):
+            size = tuple(entry['size'])
+        else:
+            try:
+                with Image.open(path) as image:
+                    size = image.size
+            except OSError:
+                continue
+            kept = entry.get('boxes') if isinstance(entry, dict) and entry.get('stamp') == stamp else None
+            cache[relative] = {'stamp': stamp, 'size': list(size), 'boxes': kept if isinstance(kept, dict) else {}}
+        if size != amigashots.CLIENT:
             continue
         parts = path.relative_to(root).parts
         run = root / parts[0] / parts[1] if len(parts) >= 5 else None
@@ -85,6 +103,8 @@ def scan_crops(root: pathlib.Path) -> list[Crop]:
         title = runs.get(run) if run else None
         crops.append(Crop(path, path.relative_to(root).as_posix(), title,
                           _states(path) if title else ()))
+    if cache != old:
+        _write_cache(root, cache)
     return crops
 
 

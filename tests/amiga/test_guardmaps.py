@@ -760,3 +760,28 @@ def test_a_crop_deleted_after_the_scan_is_skipped(tmp_path):
     gone.unlink()
     digests = guardmaps.cached_digests(root, crops, [(10, 10, 20, 20)])
     assert set(digests) == {kept.relative_to(root).as_posix()}
+
+
+def test_a_warm_cache_opens_no_png_on_a_second_scan(tmp_path, monkeypatch):
+    root, maps = tmp_path / 'root', tmp_path / 'maps'
+    maps.mkdir()
+    first = _run(root, '1', 'pool-run', 'pool', 'title')
+    other = _run(root, '2', 'curse-run', 'curse', 'title')
+    _second_crop(other)
+    argv = _add_argv(root, maps, first)
+    assert guardmaps.main(argv) == 0
+    opened = []
+    real = guardmaps.Image.open
+    monkeypatch.setattr(guardmaps.Image, 'open', lambda path, *a, **k: opened.append(path) or real(path, *a, **k))
+    assert guardmaps.main([*argv, '--replace']) == 0
+    opened.clear()
+    assert len(guardmaps.scan_crops(root)) == 2
+    assert opened == []
+    # Only the crop named by --crop is opened by the command itself, never by the scan.
+    assert [path for path in opened if path != first] == []
+    opened.clear()
+    with real(other) as image:
+        image.paste('green', (15, 15, 17, 17))
+        image.save(other)
+    assert [crop.path for crop in guardmaps.scan_crops(root)] == [first, other]
+    assert opened == [other]
