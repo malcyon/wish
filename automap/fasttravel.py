@@ -45,7 +45,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Mapping, Sequence
+from typing import Mapping
 
 #: Where the engine keeps the party's square while the game runs: x, y, facing.
 #: **Unrelocated in all three titles read**, which is not an assumption --
@@ -351,7 +351,7 @@ class ExitRoute:
     square: tuple[int, int] | tuple[int, int, int]
     #: Whether the script's route to this exit runs a `COMBAT` statement, so
     #: that taking it can start a fight. Generated with the rest of the row;
-    #: a `departures` route row must not name one, and `choose_door` skips it.
+    #: a `departures` route row must not name one.
     combat: bool = False
 
 
@@ -415,18 +415,4 @@ def exits_from(area_id: int) -> tuple[tuple[int, ExitRoute], ...]:
                          EXIT_ROUTES.items() if frm == area_id and to != frm),
                         key=lambda row: row[0]))
 
-
-def choose_door(doors: Sequence[tuple[int, ExitRoute]]
-                ) -> tuple[int, ExitRoute] | None:
-    """The door a two-hop fast travel walks the party out of, from
-    `exits_from`'s rows, or None when there is none it may take.
-
-    **Every route that can start a fight is skipped and the lowest
-    destination id of the rest is taken**, so the answer does not depend on
-    how the rows arrive; an area with one door takes it when it cannot fight.
-    None means there is no door, or every one of them can start a fight, and
-    the trip is blocked rather than a fight route chosen.
-    """
-    safe = [row for row in doors if not row[1].combat]
-    return min(safe, key=lambda row: row[0]) if safe else None
 

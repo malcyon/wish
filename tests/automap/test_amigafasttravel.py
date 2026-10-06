@@ -471,8 +471,7 @@ def test_a_dropped_connection_is_an_outcome_not_an_exception(disks, monkeypatch,
 
 from automap import (
     amigaparty,  # noqa: E402
-    fasttravel,  # noqa: E402
-)
+    )
 
 WINDOW = 0x40000
 PORT = 0x40100
@@ -533,8 +532,20 @@ def pool_travel(monkeypatch, offered=()):
     return t
 
 
+FATIMA = "PRINCESS FATIMA"
+
+
+def party_with(monkeypatch, *names):
+    """The party the departures table is asked about: `names`, or None for a
+    party that cannot be read."""
+    party = (None if not names or names == (None,) else
+             tuple(SimpleNamespace(name=n) for n in names))
+    monkeypatch.setattr(amigaparty, "read_party", lambda target: party)
+
+
 def test_a_direct_door_stands_on_the_square_sends_the_key_and_says_the_c64_sentence(
         disks, pool_gate, monkeypatch):
+    party_with(monkeypatch, "ALIAS", FATIMA)
     m = pool(13)
     t = pool_travel(monkeypatch)
     out = t.run(m, area(27, "Wilderness"))
@@ -548,6 +559,7 @@ def test_a_direct_door_stands_on_the_square_sends_the_key_and_says_the_c64_sente
 
 
 def test_a_new_trip_supersedes_a_hop_still_waiting(disks, pool_gate, monkeypatch):
+    party_with(monkeypatch, FATIMA)
     m = pool(13)
     t = pool_travel(monkeypatch)
     t.pending = aft._Hop(7, 5, area(9), None, POOL_WORDS, deadline=1e18)
@@ -557,6 +569,7 @@ def test_a_new_trip_supersedes_a_hop_still_waiting(disks, pool_gate, monkeypatch
 
 def test_a_door_key_not_taken_in_time_is_put_back_and_return_is_forgiven(
         disks, pool_gate, monkeypatch):
+    party_with(monkeypatch, FATIMA)
     m = pool(13)
     before = bytes(m.memory)
     t = pool_travel(monkeypatch)
@@ -571,6 +584,7 @@ def test_a_door_key_not_taken_in_time_is_put_back_and_return_is_forgiven(
 
 
 def test_a_direct_door_is_finished_once_its_key_is_taken(disks, pool_gate, monkeypatch):
+    party_with(monkeypatch, FATIMA)
     m = pool(13)
     t = pool_travel(monkeypatch)
     t.run(m, area(27))
@@ -583,6 +597,7 @@ def test_a_direct_door_is_finished_once_its_key_is_taken(disks, pool_gate, monke
 
 def test_a_door_answered_no_leaves_nothing_in_the_buffer_to_block_the_next_trip(
         disks, pool_gate, monkeypatch):
+    party_with(monkeypatch, FATIMA)
     m = pool(13)
     t = pool_travel(monkeypatch)
     t.run(m, area(27))
@@ -594,10 +609,12 @@ def test_a_door_answered_no_leaves_nothing_in_the_buffer_to_block_the_next_trip(
 
 
 def _hop_trip(monkeypatch, entry=POOL_ENTRY):
-    """Valjevo Castle (7): the door out of it that cannot fight leads to 5."""
-    m = pool(7, entry)
+    """The Kobold Caves (13) with Princess Fatima: the door out of them leads
+    to the window, 27, and the trip goes on to New Phlan."""
+    party_with(monkeypatch, FATIMA)
+    m = pool(13, entry)
     t = pool_travel(monkeypatch)
-    out = t.run(m, area(9, "Far place", arrival=(1, 2, 0)), arrival=(1, 2, 0))
+    out = t.run(m, area(0, "Far place", arrival=(1, 2, 0)), arrival=(1, 2, 0))
     return m, t, out
 
 
@@ -606,18 +623,18 @@ def test_a_two_hop_walks_out_of_the_chosen_door_and_sets_a_pending_hop(
     m, t, out = _hop_trip(monkeypatch)
     assert out.ok and out.message == engine.FastTravel.WALKING_OUT_DETOUR.format(
         name="Far place")
-    assert stood(m) == (5, 7, 3) and key_waiting(m)
-    assert t.trip.hop.through == 5 and t.trip.hop.entry == m.read(
+    assert stood(m) == (6, 15, 2) and key_waiting(m)
+    assert t.trip.hop.through == 27 and t.trip.hop.entry == m.read(
         BASE + trips.ROWS[POOL].step_entry, 2 * trips.ENTRY_WORDS)
     take_key(m)
     assert t.continue_pending(m) is None
-    assert t.trip is None and t.pending.through == 5
+    assert t.trip is None and t.pending.through == 27
 
 
 def _through(m, t, new_entry=None):
     take_key(m)
     t.continue_pending(m)
-    m.at(trips.ROWS[POOL].area, bytes([5]))
+    m.at(trips.ROWS[POOL].area, bytes([27]))
     clear_buffer(m)
     if new_entry is not None:
         m.at(trips.ROWS[POOL].step_entry, new_entry.to_bytes(2, "big"))
@@ -633,14 +650,15 @@ def test_the_second_hop_waits_until_the_step_entry_word_changes(
     m.at(trips.ROWS[POOL].step_entry, (POOL_ENTRY + 2).to_bytes(2, "big"))
     out = t.continue_pending(m)
     assert out.ok and out.message == "Traveling to Far place."
-    assert trips.newecl(9) in b"".join(d for _a, d in out.writes)
+    assert trips.newecl(0) in b"".join(d for _a, d in out.writes)
     assert t.pending is None and t.trip is not None and not t.trip.door
-    assert t.back.area == 7                    # Return goes to where it began
+    assert t.back.area == 13                   # Return goes to where it began
 
 
 def _second_hop(monkeypatch, start, through, to):
     """A two-hop from `start` to `to`, taken to the point where the second
     hop has armed its statements."""
+    party_with(monkeypatch, FATIMA)
     m = pool(start)
     t = pool_travel(monkeypatch)
     t.run(m, area(to, "Far place", arrival=(9, 14, 2)), arrival=(9, 14, 2))
@@ -664,7 +682,8 @@ def test_a_second_hop_off_a_grid_window_runs_the_prologue_first(
 
 def test_a_second_hop_that_stays_off_the_grid_has_no_prologue(
         disks, pool_gate, monkeypatch):
-    out = _second_hop(monkeypatch, 7, 5, 9)
+    # 25 is another grid window, so the party stays on the grid.
+    out = _second_hop(monkeypatch, 13, 27, 25)
     assert out.ok and BOAT_EXIT not in b"".join(d for _a, d in out.writes)
 
 
@@ -673,6 +692,7 @@ def test_a_leg_the_prologue_alone_pushes_past_its_script_is_held_up_front(
     # Window 27's script fits the trip without the boat-exit prologue and not
     # with it.
     disks[27] = 7573
+    party_with(monkeypatch, FATIMA)
     m = pool(13)
     before = bytes(m.memory)
     t = pool_travel(monkeypatch)
@@ -681,18 +701,37 @@ def test_a_leg_the_prologue_alone_pushes_past_its_script_is_held_up_front(
     assert bytes(m.memory) == before and t.trip is None
 
 
-def test_a_direct_trip_from_a_window_and_a_return_stay_held(
+def test_a_trip_from_a_window_and_a_return_are_offered_as_script_trips(
         disks, pool_gate, monkeypatch):
     t = pool_travel(monkeypatch)
-    assert t.legality(pool(26), area(0)).reason == t.not_built
+    m = pool(26)
+    assert t.legality(m, area(0))
+    out = t.run(m, area(0))
+    assert out.ok and not t.trip.door
+    t = pool_travel(monkeypatch, offered=("return_landing",))
     t.back = engine.Waypoint(0, None, (1, 1, 0))
-    assert not t.legality(pool(26), area(0), back=True)
+    assert t.legality(pool(26), area(0), back=True)
 
 
-def test_every_door_able_to_fight_makes_the_script_trip_the_menu_offered(
+# Trips the door differences held, each now made straight.
+POOL_STRAIGHT = [(0, 18), (2, 26), (3, 0), (9, 18), (18, 0), (21, 0),
+                 (22, 0), (23, 0), (14, 0), (0, 8), (2, 18), (26, 0)]
+
+
+@pytest.mark.parametrize("here, to", POOL_STRAIGHT)
+def test_a_pool_trip_is_offered_and_goes_straight(
+        disks, pool_gate, monkeypatch, here, to):
+    party_with(monkeypatch, FATIMA)
+    m = pool(here)
+    t = pool_travel(monkeypatch)
+    assert t.legality(m, area(to))
+    out = t.run(m, area(to))
+    assert out.ok and not t.trip.door and t.pending is None
+    assert trips.newecl(to) in b"".join(d for _a, d in out.writes)
+
+
+def test_a_trip_out_of_an_area_with_doors_and_no_departure_is_a_script_trip(
         disks, pool_gate, monkeypatch):
-    fight = fasttravel.ExitRoute(1, (3, 8), combat=True)
-    monkeypatch.setattr(fasttravel, "EXIT_ROUTES", {(7, 0): fight, (7, 3): fight})
     m = pool(7)
     t = pool_travel(monkeypatch)
     assert t.legality(m, area(9))
@@ -701,49 +740,58 @@ def test_every_door_able_to_fight_makes_the_script_trip_the_menu_offered(
     assert trips.newecl(9) in b"".join(d for _a, d in out.writes)
 
 
-def test_kovel_takes_the_26_door_when_the_24_door_leaves_no_room_for_the_second_leg(
+def test_the_caves_without_fatima_go_straight(disks, pool_gate, monkeypatch):
+    for names in (("ALIAS",), (None,)):
+        party_with(monkeypatch, *names)
+        m = pool(13)
+        t = pool_travel(monkeypatch)
+        out = t.run(m, area(0))
+        if names == (None,):
+            # A party that cannot be read cannot be asked about Fatima.
+            assert not out.ok and out.message == aft.NOT_HAPPENED
+            assert t.trip is None
+            continue
+        assert out.ok and not t.trip.door
+        assert trips.newecl(0) in b"".join(d for _a, d in out.writes)
+        t = pool_travel(monkeypatch)
+        out = t.run(pool(13), area(27))
+        assert out.ok and not t.trip.door
+
+
+def test_lizardman_keep_walks_out_through_the_window_and_goes_on(
         disks, pool_gate, monkeypatch):
-    disks[24] = trips.BUFFER_SIZE - 26   # 26 free bytes: no room for a trip
-    m = pool(14)
+    party_with(monkeypatch, "ALIAS")
+    m = pool(16)
     t = pool_travel(monkeypatch)
-    to = area(0, "New Phlan", arrival=(1, 2, 0))
-    assert t.legality(m, to)
-    out = t.run(m, to, arrival=(1, 2, 0))
-    assert out.ok and t.trip.hop.through == 26
+    out = t.run(m, area(27))
+    assert out.ok and t.trip.door and t.trip.hop is None
+    assert stood(m) == (8, 15, 2)
+    m = pool(16)
+    t = pool_travel(monkeypatch)
+    out = t.run(m, area(0), arrival=(1, 2, 0))
+    assert out.ok and t.trip.door and t.trip.hop.through == 27
+    assert out.message == engine.FastTravel.WALKING_OUT_DETOUR.format(
+        name="Shadowdale")
 
 
-def test_kovel_trips_are_held_when_no_door_can_make_the_second_leg(
+def test_a_door_whose_second_leg_is_held_leaves_the_party_where_it_is(
         disks, pool_gate, monkeypatch):
-    disks[24] = trips.BUFFER_SIZE - 26
-    disks[26] = trips.BUFFER_SIZE - 26
-    m = pool(14)
+    disks[27] = 7573                 # no room for the boat-exit prologue
+    m = pool(16)
     before = bytes(m.memory)
     t = pool_travel(monkeypatch)
-    assert t.legality(m, area(0)).reason == t.not_built
     out = t.run(m, area(0))
-    assert not out.ok and bytes(m.memory) == before and t.trip is None
+    assert not out.ok and out.message == t.not_built
+    assert bytes(m.memory) == before and t.trip is None
 
 
-def test_a_door_that_can_make_the_trip_is_kept_though_unproven_and_stays_held(
-        disks, pool_gate, monkeypatch):
-    m = pool(2)
-    t = pool_travel(monkeypatch)
-    assert t.legality(m, area(0)).reason == t.not_built
-    # The proven door out of area 2 is not swapped in for it.
-    assert trips.door_route(trips.ROWS[POOL], 2, 0, disks)[0] == 15
-
-
-@pytest.mark.parametrize("here, to", [
-    (26, 0), (27, 13),                          # a grid window
-    (21, 0), (2, 18),                           # a stand nobody has run
-    (0, 8),                                     # entry 1, no facing known
-])
-def test_a_grid_departure_and_an_unplaced_door_stay_held(
-        disks, pool_gate, monkeypatch, here, to):
-    m = pool(here)
-    t = aft.AmigaFastTravel(POOL, object())
-    t._row = lambda id: area(id, DOOR_NAME)
-    assert t.legality(m, area(to)).reason == t.not_built
+def test_a_party_of_one_title_is_not_asked_about_another_titles_area(
+        disks, monkeypatch):
+    # Area 13 is Pool's cave; Curse has no row for it.
+    m = machine(CURSE, area=13)
+    t = travel()
+    out = t.run(m, area(7))
+    assert out.ok and not t.trip.door
 
 
 def test_a_proven_door_is_offered(disks, pool_gate):
@@ -842,7 +890,6 @@ def test_return_never_goes_through_the_door_path(disks, pool_gate, monkeypatch):
     m = pool(14)
     t = pool_travel(monkeypatch, offered=("return_landing",))
     monkeypatch.setattr(t, "_run_door", boom)
-    monkeypatch.setattr(trips, "door_leg_held", boom)
     t.back = engine.Waypoint(0, None, (1, 1, 0))
     assert t.apply_back(m).ok
     assert not t.trip.door

@@ -15,12 +15,14 @@ The writes, the put-back and the tiers are `automap/amigatrip.py`'s. Here:
 which trips are offered, the `Waypoint` Return needs, the 3-second wait on the
 area byte, and what to say when it does not change.
 
-**Doors.** Where a title has confirmed doors (`TripRow.door_confirmed`), a trip
-the C64 would walk out of an exit for stands the party on the door and sends
-one forward key, and the player answers whatever the game asks. A trip that is
-no door of the departing area walks out of the one `choose_door` names, then
-makes its second hop as a script trip once the party stands in that area and
-the five entry words have changed. Return is always a script trip.
+**Doors.** A trip goes straight to its destination unless an `automap/departures.py`
+row for the title and departing area says to walk out of a door. Where the row
+names a door in `trips.DOORS_PROVEN` and its party member is present, the trip
+stands the party on the door and sends one forward key, and the player answers
+whatever the game asks; for a destination that is not the door's own, the
+second hop is a script trip made once the party stands in the door's area and
+the five entry words have changed. A row that writes script variables adds
+them as statements ahead of the trip. Return is always a script trip.
 """
 
 from __future__ import annotations
@@ -127,15 +129,16 @@ class AmigaFastTravel(engine.FastTravel):
     def _row(self, id: int):
         return engine.area_by_id(id, self.title)
 
+    def _outdoors(self, to: int) -> bool:
+        return bool(getattr(self._row(to), "outdoors", False))
+
     # -- may we -----------------------------------------------------------
 
-    def _leg(self, row, here: int, to: int, back: bool,
-             door_leg: bool = True) -> engine.Verdict:
+    def _leg(self, row, here: int, to: int, back: bool) -> engine.Verdict:
         """Whether the trip `here` to `to` is held, by a difference, by the
-        disks or by the room past the departing script. `door_leg` False
-        skips the differences about leaving by a door: the second hop of a
-        two-hop trip is a script trip."""
-        if trips.leg_held(row, here, to, back, self.lengths(row), door_leg):
+        disks or by the room past the departing script."""
+        if trips.leg_held(row, here, to, back, self.lengths(row),
+                          self._outdoors(to)):
             return engine.Verdict(False, self.not_built)
         return engine.Verdict(True)
 
@@ -187,8 +190,10 @@ class AmigaFastTravel(engine.FastTravel):
         lengths = self.lengths(row)
         # The destination decides whether a grid square or an area-file byte
         # is written, so the actual trip is sized, then planned with its tier.
-        prologue = trips.leave_grid_prologue(row, here, to)
         try:
+            prologue = (trips.leave_grid_prologue(row, here, to)
+                        + trips.departure_prologue(self.key, here, to,
+                                                   self._outdoors(to)))
             tier = trips.free_tail(
                 row, here, lengths,
                 trips.plan(to, arrival, overland, prologue=prologue))
@@ -241,25 +246,32 @@ class AmigaFastTravel(engine.FastTravel):
         here = trips.area_id(target, row)
         if not row.door_confirmed or here is None or here in row.grid_areas:
             return None
+        departure = trips.departure_for(self.key, here, to,
+                                        self._outdoors(to))
+        if departure is None or departure.route_to is None:
+            return None
+        through = departure.route_to
+        if (here, through) not in trips.DOORS_PROVEN:
+            return None
+        if departure.member is not None:
+            party = amigaparty.read_party(target)
+            if party is None:
+                # A party that cannot be read cannot be tested.
+                return engine.Outcome(False, NOT_HAPPENED)
+            if departure.member not in {m.name for m in party}:
+                return None
+        # The row's guards test C64 addresses, which an Amiga cannot read: the
+        # door is walked whenever the member (if any) is present.
         name = getattr(area, "name", None) or "this area"
-        route = fasttravel.EXIT_ROUTES.get((here, to))
-        if route is not None:
+        route = fasttravel.EXIT_ROUTES[(here, through)]
+        if through == to:
             return self._door_hop(target, row, here, to, route, name, None)
-        lengths = self.lengths(row)
-        if not fasttravel.exits_from(here):
-            return None
-        chosen = trips.door_route(row, here, to, lengths)
-        if chosen is None:
-            # No door is safe to walk out of, so the script trip is made.
-            _log.debug("two-hop fast travel skipped: every door out of area "
-                       "%d can start a fight", here)
-            return None
-        through, door = chosen
         # Checked before the first hop, so a second leg that is held leaves
         # the party where it is.
-        if trips.door_leg_held(row, chosen, to, lengths):
+        if trips.leg_held(row, through, to, False, self.lengths(row),
+                          self._outdoors(to)):
             return engine.Outcome(False, self.not_built)
-        return self._door_hop(target, row, here, through, door, name,
+        return self._door_hop(target, row, here, through, route, name,
                               _Hop(here, through, area, arrival))
 
     def _door_hop(self, target, row, here: int, hop_to: int, route, name: str,

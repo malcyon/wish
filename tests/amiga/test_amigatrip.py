@@ -683,7 +683,7 @@ def test_only_measured_rows_are_confirmed_and_no_difference_is_offered():
 def test_what_each_difference_holds():
     def held(key, here, to, back=False):
         return {d.name for d in trip.ROWS[key].differences
-                if d.covers(here, to, back, _lengths())}
+                if d.covers(here, to, back)}
 
     assert held("curse-of-the-azure-bonds", 3, 1) == set()
     assert held("curse-of-the-azure-bonds", 1, 3) == set()
@@ -722,6 +722,19 @@ def test_the_players_disks_give_the_script_ends_measured_live(key, area, end):
     if not found:
         pytest.skip(f"needs the player's Amiga {key} disks")
     assert end in found
+
+
+def test_every_pool_departing_area_fits_a_trip_on_the_players_disks():
+    pool = trip.ROWS["pool-of-radiance"]
+    areas = (0, 2, 3, 9, 13, 14, 16, 18, 21, 22, 23, 25, 26, 27)
+    for image in _images():
+        lengths = trip.script_lengths("pool-of-radiance", [image])
+        if not all(a in lengths for a in areas):
+            continue
+        for here in areas:
+            assert trip.leg_held(pool, here, 0, False, lengths) is False, here
+        return
+    pytest.skip("needs the player's Amiga Pool of Radiance disks")
 
 
 def test_a_trip_into_tilverton_writes_the_area_byte_before_the_key():
@@ -818,13 +831,12 @@ _F4R3_STANDS = {
 }
 
 
-def test_each_f4_r3_stand_has_its_facing_and_none_is_offered():
+def test_each_f4_r3_stand_has_its_facing():
     from automap import fasttravel
     for (here, to), stand in _F4R3_STANDS.items():
         route = fasttravel.EXIT_ROUTES[(here, to)]
         assert trip.stand_for(here, to, route) == stand
         assert (here, to) not in trip.DOORS_PROVEN
-        assert _covers("door_unplaced", here, to)
 
 
 def _geo_blob() -> bytes:
@@ -923,24 +935,6 @@ def test_pools_doors_are_confirmed_and_no_other_title_has_any():
         "pool-of-radiance"]
 
 
-def _covers(name, here, to, back=False):
-    pool = trip.ROWS["pool-of-radiance"]
-    (diff,) = [d for d in pool.differences if d.name == name]
-    return diff.covers(here, to, back, _lengths())
-
-
-def test_a_door_that_was_proven_and_has_a_stand_is_not_held():
-    assert not _covers("door_unplaced", 13, 27)          # a direct entry 1 door
-    assert not _covers("door_unplaced", 7, 5)            # a direct entry 0 door
-    assert not _covers("door_unplaced", 7, 9)            # through 5, proven
-
-
-def test_a_door_nobody_has_walked_out_of_or_with_no_stand_is_held():
-    assert _covers("door_unplaced", 21, 0)               # a stand, never run
-    assert _covers("door_unplaced", 0, 8)                # entry 1, no facing
-    assert not _covers("door_unplaced", 7, 9, back=True)
-
-
 def _lengths(**full):
     """Every script is short; the named areas have 26 bytes of room left."""
     table = {i: 0x1000 for i in range(0x80)}
@@ -948,33 +942,124 @@ def _lengths(**full):
     return table
 
 
-def test_the_chooser_keeps_the_c64_door_when_its_whole_trip_can_be_made():
+_POOL_TRIPS = [(0, 18), (2, 26), (3, 0), (9, 18), (18, 0), (21, 0), (22, 0),
+               (23, 0), (14, 0), (0, 8)]
+
+
+@pytest.mark.parametrize("here, to", _POOL_TRIPS)
+def test_a_pool_trip_the_door_holds_used_to_hold_is_offered(here, to):
+    # Every trip from these areas is a script trip with room past its script.
     pool = trip.ROWS["pool-of-radiance"]
-    assert trip.door_route(pool, 14, 0, _lengths())[0] == 24
-    assert trip.door_route(pool, 14, 0, None)[0] == 24
-    assert trip.door_route(pool, 14, 24, _lengths())[0] == 24   # direct row
+    assert not trip.leg_held(pool, here, to, False, _lengths())
 
 
-def test_the_chooser_takes_the_next_door_when_the_c64_doors_leg_is_held():
+@pytest.mark.parametrize("here", [25, 26, 27])
+def test_a_trip_from_a_grid_window_is_offered(here):
     pool = trip.ROWS["pool-of-radiance"]
-    assert trip.door_route(pool, 14, 0, _lengths(a24=1))[0] == 26
-    # Neither door can make it: the C64's door is returned and its leg held.
-    chosen = trip.door_route(pool, 14, 0, _lengths(a24=1, a26=1))
-    assert chosen[0] == 24
-    assert trip.door_leg_held(pool, chosen, 0, _lengths(a24=1, a26=1))
+    assert not trip.leg_held(pool, here, 0, False, _lengths())
 
 
-def test_kovel_to_new_phlan_is_offered_by_door_unplaced_through_the_26_door():
+def test_pool_has_no_difference_about_doors():
+    assert [d.name for d in trip.ROWS["pool-of-radiance"].differences] == [
+        "return_landing"]
+
+
+def test_the_doors_walked_live_are_still_recorded():
+    assert trip.DOORS_PROVEN == {(7, 5), (13, 27), (14, 26), (16, 27)}
+
+
+def test_a_door_row_the_departures_table_names_is_proven():
+    from automap import departures, fasttravel
+    for row in departures.DEPARTURES:
+        if row.route_to is None or "amiga" not in row.ports:
+            continue
+        for here in row.areas:
+            assert (here, row.route_to) in trip.DOORS_PROVEN
+            assert (here, row.route_to) in fasttravel.EXIT_ROUTES
+
+
+def test_the_amiga_finds_the_two_pool_departures_and_no_other():
+    pool = "pool-of-radiance"
+    assert trip.departure_for(pool, 13, 0).member == "PRINCESS FATIMA"
+    assert trip.departure_for(pool, 16, 0).route_to == 27
+    assert all(trip.departure_for(pool, here, 0) is None
+               for here in (0, 1, 2, 3, 7, 9, 14, 17, 18, 21, 22, 23, 25, 28))
+    # Silver Blades' area 16 is a town, not Lizardman Keep.
+    assert trip.departure_for("secret-of-the-silver-blades", 16, 0) is None
+
+
+def test_a_departure_that_writes_nothing_adds_no_statements():
+    assert trip.departure_prologue("pool-of-radiance", 13, 0) == b""
+    assert trip.departure_prologue("pool-of-radiance", 0, 18) == b""
+
+
+def test_a_guarded_departure_write_holds_the_trip(monkeypatch):
+    from automap import departures
+    row = departures.Departure(
+        "pool-of-radiance", frozenset({3}), frozenset({"amiga"}),
+        guards=(departures.Guard(0x4AA9, "==", 1),), writes=((0x4AA9, 254),))
+    monkeypatch.setattr(departures, "DEPARTURES", (row,))
+    with pytest.raises(ValueError):
+        trip.departure_prologue("pool-of-radiance", 3, 0)
     pool = trip.ROWS["pool-of-radiance"]
-    (diff,) = [d for d in pool.differences if d.name == "door_unplaced"]
-    assert diff.covers(14, 0, False, _lengths())             # 24: unproven
-    assert not diff.covers(14, 0, False, _lengths(a24=1))   # 26: proven
-    assert diff.covers(14, 0, False, _lengths(a24=1, a26=1))
+    assert trip.leg_held(pool, 3, 0, False, _lengths())
 
 
-def test_every_trip_from_a_grid_window_is_held_by_grid_doors():
-    assert all(_covers("grid_doors", a, 0) for a in (25, 26, 27))
-    assert not _covers("grid_doors", 13, 27)
+def test_a_pods_trip_from_the_hand_over_areas_has_the_two_saves():
+    # `$24` and `$22` are script variables: the statements are the game's own
+    # `SAVE`, which evaluates nothing, so they are placed ahead of the trip.
+    expected = trip.save(0, 0x24) + trip.save(1, 0x22)
+    for here in (17, 25, 51, 80):
+        assert trip.departure_prologue("pools-of-darkness", here, 19,
+                                       False) == expected
+        # An overland destination does not skip the hand-over.
+        assert trip.departure_prologue("pools-of-darkness", here, 19,
+                                       True) == b""
+    assert trip.departure_prologue("pools-of-darkness", 19, 17, False) == b""
+    # The row is Pools of Darkness' on the Amiga only.
+    assert trip.departure_prologue("pool-of-radiance", 17, 19, False) == b""
+
+
+def test_the_hand_over_saves_are_counted_in_the_room_a_trip_needs():
+    pods = trip.ROWS["pools-of-darkness"]
+    bare = len(trip._statements(pods, trip.plan(19, (0, 0, 0))))
+    # One byte more than the bare trip needs: the 12 bytes of `SAVE`s do not fit.
+    lengths = {3: trip.BUFFER_SIZE - bare - 1, 17: trip.BUFFER_SIZE - bare - 1,
+               19: 1}
+    assert not trip.leg_held(pods, 3, 19, False, lengths, False)
+    assert trip.leg_held(pods, 17, 19, False, lengths, False)
+
+
+def _pods(area, mode):
+    row = trip.ROWS["pools-of-darkness"]
+    m = machine("pools-of-darkness", area=area)
+    m.at(row.mode, bytes([mode]))
+    return m, row
+
+
+@pytest.mark.parametrize("area", [17, 25, 51, 80])
+def test_the_gate_keeps_a_hand_over_area_trip_from_starting(area):
+    # D11 is dormant: in these areas the game is not in the walking mode, so
+    # no trip is armed and the row is never read.
+    m, row = _pods(area, mode=0)
+    assert not trip.gate(m, row)
+
+
+@pytest.mark.parametrize("area", [17, 25, 51, 80])
+def test_with_the_gate_open_the_hand_over_saves_lead_the_trip(area):
+    m, row = _pods(area, mode=row_world_mode())
+    assert trip.gate(m, row)
+    prologue = trip.departure_prologue(row.key, area, 19, False)
+    plan = trip.plan(19, (1, 2, 0), None, 1, prologue=prologue)
+    armed = trip.arm(m, row, plan)
+    assert armed is not None
+    statements = b"".join(d for a, d, _v in m.log
+                          if a >= BUFFER and a < BUFFER + trip.BUFFER_SIZE)
+    assert trip.save(0, 0x24) + trip.save(1, 0x22) in statements
+
+
+def row_world_mode():
+    return trip.ROWS["pools-of-darkness"].world_mode
 
 
 @pytest.mark.parametrize("key", ["curse-of-the-azure-bonds",
@@ -999,17 +1084,7 @@ def test_entry_words_reads_five_words_on_pool():
     (16, 27, (8, 15, 2)),
 ])
 def test_the_proven_door_routes_are_pinned(here, to, square):
-    pool = trip.ROWS["pool-of-radiance"]
-    through, route = trip.door_route(pool, here, to, _lengths())
-    assert through == to and not route.combat
+    from automap import fasttravel
+    route = fasttravel.EXIT_ROUTES[(here, to)]
+    assert (here, to) in trip.DOORS_PROVEN and not route.combat
     assert tuple(route.square) == square
-
-
-def test_a_back_trip_whose_door_second_leg_is_held_is_not_held_by_a_door():
-    # Return is a script trip: `_apply_back` never reaches `_run_door`, so no
-    # second leg is judged and the door differences do not cover it.
-    pool = trip.ROWS["pool-of-radiance"]
-    both_held = _lengths(a24=1, a26=1)
-    assert not _covers("door_unplaced", 14, 0, back=True)
-    assert not any(d.covers(14, 0, True, both_held)
-                   for d in pool.differences if d.door)

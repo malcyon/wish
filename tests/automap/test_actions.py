@@ -1286,32 +1286,6 @@ def test_the_two_hop_runs_the_one_door_the_area_has():
         "they are through the door")
 
 
-def test_choose_door_skips_every_fight_then_takes_the_lowest_destination():
-    fight = fasttravel.ExitRoute(1, (0, 0), combat=True)
-    calm = fasttravel.ExitRoute(1, (1, 1))
-    rows = [(3, calm), (1, fight), (9, calm), (2, calm)]
-    assert fasttravel.choose_door(rows) == (2, calm)
-    # The answer does not depend on the order the rows arrive in.
-    assert fasttravel.choose_door(rows[::-1]) == (2, calm)
-    assert fasttravel.choose_door(sorted(rows, key=lambda r: -r[0])) == (2, calm)
-
-
-def test_choose_door_blocks_when_every_route_can_start_a_fight():
-    fight = fasttravel.ExitRoute(1, (0, 0), combat=True)
-    assert fasttravel.choose_door([(1, fight), (2, fight)]) is None
-
-
-def test_choose_door_takes_a_single_door_only_when_it_cannot_fight():
-    """A single door is chosen or blocked by the same rule as several: the
-    Buccaneer Base's and the Zhentil Keep Outpost's only door can start a
-    fight, so there is no door to take."""
-    fight = fasttravel.ExitRoute(1, (0, 0), combat=True)
-    calm = fasttravel.ExitRoute(1, (1, 1))
-    assert fasttravel.choose_door([(25, fight)]) is None
-    assert fasttravel.choose_door([(25, calm)]) == (25, calm)
-    assert fasttravel.choose_door([]) is None
-
-
 def _a_second_door(monkeypatch):
     """The Kobold Caves have one door, so a second is added to test the hop
     that waits for the first."""

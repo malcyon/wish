@@ -195,17 +195,26 @@ def test_the_windows_disks_are_what_the_scripts_are_read_from(lengths):
     assert lengths[-1] == (CURSE, "elsewhere")
 
 
-def test_a_title_that_has_been_confirmed_but_has_every_trip_held(lengths):
-    """Pool of Radiance: the gate reads the mode and view only, a decision
-    waits on every trip, so each destination shows the sentence."""
+def test_pool_of_radiance_offers_every_trip_from_an_area_with_doors(lengths):
+    """Area 14 was greyed out for every destination while its doors were
+    held; every trip goes straight now."""
     window, _ = attached(POOL, 14, ticked=(0, 1, 2))
     bar = window.fasttravel_bar
     assert labels(window) == [r.name for r in bar.rows] and len(bar.rows) == 3
     for row in bar.rows:
         pick(window, row.id)
-        assert not bar.button.isEnabled()
-        assert bar.button.toolTip() == sentence(POOL)
-    assert not bar.combo.isEnabled()
+        assert bar.button.isEnabled()
+        assert bar.button.toolTip() != sentence(POOL)
+    assert bar.combo.isEnabled()
+
+
+@pytest.mark.parametrize("here", [0, 2, 3, 9, 14, 18, 21, 22, 23])
+def test_pool_of_radiance_is_not_greyed_out_in_an_area_with_doors(lengths, here):
+    to = 1 if here != 1 else 4
+    window, _ = attached(POOL, here, ticked=(to,))
+    bar = window.fasttravel_bar
+    pick(window, to)
+    assert bar.button.isEnabled()
 
 
 def test_an_unconfirmed_title_greys_the_whole_row_with_the_sentence(lengths):
