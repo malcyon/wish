@@ -1994,6 +1994,19 @@ class PodSavegame:
         """Each character's own bytes, record then items then effects."""
         return tuple(self.data[c.at:c.at + c.size] for c in self.characters)
 
+    @property
+    def effect_nodes(self) -> tuple[tuple[bytes, ...], ...]:
+        """Each character's effect nodes, ten bytes each in chain order.
+
+        They are the last `effects` nodes of the character's block, where
+        :func:`_pod_walk` stopped after the items.
+        """
+        return tuple(
+            tuple(self.data[at:at + POD_EFFECT_BYTES]
+                  for at in range(c.at + c.size - POD_EFFECT_BYTES * c.effects,
+                                  c.at + c.size, POD_EFFECT_BYTES))
+            for c in self.characters)
+
 
 def _pod_u16(data: bytes, at: int) -> int:
     return struct.unpack_from(">H", data, at)[0]

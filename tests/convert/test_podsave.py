@@ -713,6 +713,31 @@ def test_pod_new_savegame_builds_one_synthetic_character():
     assert report.unwritten == []
 
 
+def test_the_darkness_slot_reader_gives_each_character_s_effect_nodes():
+    """`--expect` judges a Pools of Darkness run on this reading: one HEAL node,
+    id 140 for 1380 minutes, comes back as its four fields under the name."""
+    from tools.amiga import route_darkness
+    from tools.amiga.route import effect_fields
+    node = bytes((amiga_pod.LAY_ON_HANDS_AMIGA_ID, 0)) + struct.pack(">H", 1380) + bytes(6)
+    fighter = amiga_pod.PodWriter(
+        name="ONE", hit_points_max=9,
+        character_class=amiga_pod.CLASSES.index("FIGHTER"),
+        class_levels=(0, 0, 3, 0, 0, 0, 0),
+        class_bits=amiga_pod.CLASS_BIT["fighter"], effects=(node,)).to_bytes()
+    built, _ = amiga_savegame.pod_new_savegame(
+        _synthetic_state(1), [amiga_pod.pod_to_neutral(fighter)])
+    parsed = amiga_savegame.pod_parse(built)
+    assert parsed.effect_nodes == tuple(
+        amiga_pod.PodCharacter(block).effects for block in parsed.blocks) == ((node,),)
+    disk = AmigaDisk.blank("POD 3")
+    disk.make_dir(f"/{amiga_savegame.SAVE_DRAWER}")
+    disk.write_file(amiga_savegame.pod_slot_path("C"), built)
+    reading = route_darkness.DARKNESS.read_slot(disk, "C")
+    assert "decode_error" not in reading
+    assert reading["effects"] == {"ONE": [list(effect_fields(node))]}
+    assert reading["effects"] == {"ONE": [[140, 1380, 0, 0]]}
+
+
 def test_pod_new_savegame_takes_a_neutral_record_with_no_paladin_cures():
     """A Pool of Radiance record has no cure-disease byte, so the neutral
     value is None; the writer leaves 0x080 zero and the plan still names it."""
@@ -979,8 +1004,8 @@ _DOS_SLOT_SPECIMENS = (
 )
 
 
-def _pod_specimen(name: str):
-    """One `pod-dos` specimen folder, hashed against its own `provenance.toml`
+def _pod_specimen(name: str, tree: str = "pod-dos"):
+    """One specimen folder in *tree*, hashed against its own `provenance.toml`
     first so an edited file fails here rather than being measured.  Skips
     without the specimen tree."""
     import pathlib
@@ -989,9 +1014,9 @@ def _pod_specimen(name: str):
 
     from tools.registry import specimens
     root = gamedata.specimen_root()
-    where = root / "pod-dos" / f"WISH-SPEC-{name}" if root else None
+    where = root / tree / f"WISH-SPEC-{name}" if root else None
     if where is None or not where.is_dir():
-        pytest.skip(f"needs specimen WISH-SPEC-{name} in the pod-dos tree; "
+        pytest.skip(f"needs specimen WISH-SPEC-{name} in the {tree} tree; "
                     f"see tools/registry/specimens.py and $WISH_SPECIMENS")
     recorded = specimens.read_provenance(where / "provenance.toml").get(
         "sha256", {})
@@ -1000,6 +1025,29 @@ def _pod_specimen(name: str):
             pytest.fail(f"WISH-SPEC-{name}: {filename} has changed; it is no "
                         f"longer evidence")
     return pathlib.Path(where)
+
+
+#: Disk 3 as the Amiga game left it after loading the Wish-written slot C,
+#: saving F at once, walking one square and saving G.
+_STAGE5_DISK3 = "wish-plane-2-darkness-o5uxg2bsfvztk-mfrwgzlqoqza"
+
+
+@pytest.mark.parametrize("letter,minutes", [("C", 1380), ("F", 1380), ("G", 1370)])
+def test_the_darkness_slot_reader_reads_saint_eric_s_heal_node_off_the_game_s_disk(
+        letter, minutes):
+    """Node 140 as Wish wrote it (C), as the game saved it on load (F), and
+    ten minutes lower after the walk (G); `--expect` accepts that value and
+    refutes the one a minute count off."""
+    from tools.amiga import route_darkness
+    from tools.amiga.route import check_expect
+    folder = _pod_specimen(_STAGE5_DISK3, tree="pod-amiga")
+    disk = AmigaDisk((folder / "fetched-disk3.adf").read_bytes())
+    reading = route_darkness.DARKNESS.read_slot(disk, letter)
+    assert "decode_error" not in reading
+    assert [140, minutes, 0, 0] in reading["effects"]["saint eric"]
+    assert check_expect(reading, ("saint eric", 140, minutes, 0))[0]
+    other = 1370 if minutes == 1380 else 1380
+    assert not check_expect(reading, ("saint eric", 140, other, 0))[0]
 
 
 def _registered_dos_slots():

@@ -11,7 +11,7 @@ import shutil
 from typing import Any
 
 from goldbox import amiga_adf, amiga_savegame
-from tools.amiga.route import ISSUE, AmigaTitle
+from tools.amiga.route import ISSUE, AmigaTitle, effect_fields
 from tools.amiga.staging import _find_images, sha256
 from tools.amiga.winuaesession import RouteError
 from tools.registry import scratch
@@ -26,7 +26,7 @@ _DARKNESS_SAVED_GAME = re.compile(r"savgam([A-Z])\.pty", re.IGNORECASE)
 
 
 def _darkness_read_slot(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, Any]:
-    """One Pools of Darkness slot in `/Save` of disk 3: `missing`, `decode_error`, or place and names."""
+    """One Pools of Darkness slot in `/Save` of disk 3: `missing`, `decode_error`, or place, names and effects."""
     try:
         raw = disk.read_file(amiga_savegame.pod_slot_path(letter))
     except amiga_adf.AmigaDiskError:
@@ -35,12 +35,16 @@ def _darkness_read_slot(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, Any
     try:
         data = amiga_savegame.pod_read_slot(disk, letter)
         state = amiga_savegame.pod_from_amiga(data)
-        reading["names"] = [member.name.strip()
-                            for member in amiga_savegame.pod_parse(data).characters]
+        parsed = amiga_savegame.pod_parse(data)
+        reading["names"] = [member.name.strip() for member in parsed.characters]
         reading["place"] = {"area": state.dungeon_map, "x": state.x, "y": state.y,
                             "facing": state.facing}
+        reading["effects"] = {member.name.strip(): [list(effect_fields(node)) for node in nodes]
+                              for member, nodes in zip(parsed.characters, parsed.effect_nodes,
+                                                       strict=True)}
     except Exception as exc:  # noqa: BLE001 - every reader failure is the verdict's `decode_error`
         reading.pop("names", None)
+        reading.pop("effects", None)
         reading["decode_error"] = f"{type(exc).__name__}: {exc}"
     return reading
 
