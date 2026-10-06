@@ -701,6 +701,38 @@ def test_every_door_able_to_fight_makes_the_script_trip_the_menu_offered(
     assert trips.newecl(9) in b"".join(d for _a, d in out.writes)
 
 
+def test_kovel_takes_the_26_door_when_the_24_door_leaves_no_room_for_the_second_leg(
+        disks, pool_gate, monkeypatch):
+    disks[24] = trips.BUFFER_SIZE - 26   # 26 free bytes: no room for a trip
+    m = pool(14)
+    t = pool_travel(monkeypatch)
+    to = area(0, "New Phlan", arrival=(1, 2, 0))
+    assert t.legality(m, to)
+    out = t.run(m, to, arrival=(1, 2, 0))
+    assert out.ok and t.trip.hop.through == 26
+
+
+def test_kovel_trips_are_held_when_no_door_can_make_the_second_leg(
+        disks, pool_gate, monkeypatch):
+    disks[24] = trips.BUFFER_SIZE - 26
+    disks[26] = trips.BUFFER_SIZE - 26
+    m = pool(14)
+    before = bytes(m.memory)
+    t = pool_travel(monkeypatch)
+    assert t.legality(m, area(0)).reason == t.not_built
+    out = t.run(m, area(0))
+    assert not out.ok and bytes(m.memory) == before and t.trip is None
+
+
+def test_a_door_that_can_make_the_trip_is_kept_though_unproven_and_stays_held(
+        disks, pool_gate, monkeypatch):
+    m = pool(2)
+    t = pool_travel(monkeypatch)
+    assert t.legality(m, area(0)).reason == t.not_built
+    # The proven door out of area 2 is not swapped in for it.
+    assert trips.door_route(trips.ROWS[POOL], 2, 0, disks)[0] == 15
+
+
 @pytest.mark.parametrize("here, to", [
     (26, 0), (27, 13),                          # a grid window
     (21, 0), (2, 18),                           # a stand nobody has run

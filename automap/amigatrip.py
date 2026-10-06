@@ -127,13 +127,19 @@ class Difference:
 
     name: str
     waits_on: str
-    test: Callable[[int | None, int | None, bool], bool] = field(compare=False)
+    test: Callable[..., bool] = field(compare=False)
     offered: bool = False
     #: True for a difference that only judges the leg a party leaves by a
     #: door; the second hop of a two-hop trip is a script trip and skips it.
     door: bool = False
 
-    def covers(self, here: int | None, to: int | None, back: bool) -> bool:
+    def covers(self, here: int | None, to: int | None, back: bool,
+               lengths: Mapping[int, int] | None = None) -> bool:
+        """`lengths` is `script_lengths`' table, which a door difference needs
+        to judge whether the trip's second leg can be made; None where it is
+        not known."""
+        if self.door:
+            return bool(self.test(here, to, back, lengths))
         return bool(self.test(here, to, back))
 
 
@@ -272,27 +278,73 @@ def stand_for(here: int, to: int, route) -> tuple[int, int, int] | None:
     return None
 
 
-def _door_route(here: int | None, to: int | None):
+def leg_held(row: TripRow, here: int | None, to: int, back: bool,
+             lengths: Mapping[int, int], door_leg: bool = True) -> bool:
+    """Whether the trip `here` to `to` is held, by a difference, by the
+    disks or by the room past the departing script. `door_leg` False skips
+    the differences about leaving by a door: the second hop of a two-hop trip
+    is a script trip."""
+    if any(d.covers(here, to, back, lengths) and not d.offered
+           for d in row.differences if door_leg or not d.door):
+        return True
+    if lengths and to not in lengths:
+        # The title's disks have no script for that area (Silver Blades has
+        # no area 4), and its loader retries a missing one for ever.
+        return True
+    # Sized with the prologue the trip will put ahead of itself, so the check
+    # made up front and the one made on arming agree.
+    smallest = plan(to, (0, 0, 0), prologue=leave_grid_prologue(row, here, to))
+    return free_tail(row, here, lengths, smallest) not in (1, 2)
+
+
+def door_route(row: TripRow, here: int | None, to: int | None,
+               lengths: Mapping[int, int] | None = None):
     """`(first hop's destination, its route)` for a trip that leaves `here` by
-    a door, or None where it leaves by script (or every door can fight)."""
+    a door, or None where it leaves by script (or every door can fight).
+
+    A direct `EXIT_ROUTES` row is taken first. Otherwise the C64's door
+    (`choose_door`) is kept when the trip through it can be made, and the next
+    door that cannot fight is taken only when it cannot: the second leg is
+    held. Where no door can make it, the C64's door is returned, so the trip
+    is held by that leg. Whether a door has been walked out of does not enter
+    the choice. `lengths` None skips the second-leg check.
+    """
     from . import fasttravel
     if here is None:
         return None
     route = fasttravel.EXIT_ROUTES.get((here, to))
     if route is not None:
         return to, route
-    return fasttravel.choose_door(fasttravel.exits_from(here))
+    doors = fasttravel.exits_from(here)
+    first = fasttravel.choose_door(doors)
+    if first is None or lengths is None or to is None:
+        return first
+    for through, door in sorted((d for d in doors if not d[1].combat),
+                                key=lambda d: d[0]):
+        if not leg_held(row, through, to, False, lengths, door_leg=False):
+            return through, door
+    return first
 
 
-def _door_unplaced(here, to, back) -> bool:
+def door_leg_held(row: TripRow, chosen, to, lengths) -> bool:
+    """Whether the second leg of the trip through `chosen` is held; a door
+    that leads straight to `to` has none."""
+    through = chosen[0]
+    return (through != to and lengths is not None
+            and leg_held(row, through, to, False, lengths, door_leg=False))
+
+
+def _door_unplaced(here, to, back, lengths=None) -> bool:
     if back:
         return False
-    chosen = _door_route(here, to)
+    row = ROWS["pool-of-radiance"]
+    chosen = door_route(row, here, to, lengths)
     if chosen is None:
         return False
     through, route = chosen
     return ((here, through) not in DOORS_PROVEN
-            or stand_for(here, through, route) is None)
+            or stand_for(here, through, route) is None
+            or door_leg_held(row, chosen, to, lengths))
 
 
 def _square(machine: amiga.AmigaMachine) -> tuple[Spot, Spot, Spot]:
@@ -338,7 +390,7 @@ ROWS: dict[str, TripRow] = {
             Difference("grid_doors",
                        "F4-G: the grid windows' own scripts, which never "
                        "test their EXIT_ROUTES squares",
-                       lambda here, to, back: here in _GRID_AREAS,
+                       lambda here, to, back, lengths=None: here in _GRID_AREAS,
                        door=True),
         )),
     # CONFIRMED: code and 2 trips.

@@ -941,6 +941,37 @@ def test_a_door_nobody_has_walked_out_of_or_with_no_stand_is_held():
     assert not _covers("door_unplaced", 7, 9, back=True)
 
 
+def _lengths(**full):
+    """Every script is short; the named areas have 26 bytes of room left."""
+    table = {i: 0x1000 for i in range(0x80)}
+    table.update({int(k[1:]): trip.BUFFER_SIZE - 26 for k in full})
+    return table
+
+
+def test_the_chooser_keeps_the_c64_door_when_its_whole_trip_can_be_made():
+    pool = trip.ROWS["pool-of-radiance"]
+    assert trip.door_route(pool, 14, 0, _lengths())[0] == 24
+    assert trip.door_route(pool, 14, 0, None)[0] == 24
+    assert trip.door_route(pool, 14, 24, _lengths())[0] == 24   # direct row
+
+
+def test_the_chooser_takes_the_next_door_when_the_c64_doors_leg_is_held():
+    pool = trip.ROWS["pool-of-radiance"]
+    assert trip.door_route(pool, 14, 0, _lengths(a24=1))[0] == 26
+    # Neither door can make it: the C64's door is returned and its leg held.
+    chosen = trip.door_route(pool, 14, 0, _lengths(a24=1, a26=1))
+    assert chosen[0] == 24
+    assert trip.door_leg_held(pool, chosen, 0, _lengths(a24=1, a26=1))
+
+
+def test_kovel_to_new_phlan_is_offered_by_door_unplaced_through_the_26_door():
+    pool = trip.ROWS["pool-of-radiance"]
+    (diff,) = [d for d in pool.differences if d.name == "door_unplaced"]
+    assert diff.covers(14, 0, False, _lengths())             # 24: unproven
+    assert not diff.covers(14, 0, False, _lengths(a24=1))   # 26: proven
+    assert diff.covers(14, 0, False, _lengths(a24=1, a26=1))
+
+
 def test_every_trip_from_a_grid_window_is_held_by_grid_doors():
     assert all(_covers("grid_doors", a, 0) for a in (25, 26, 27))
     assert not _covers("grid_doors", 13, 27)

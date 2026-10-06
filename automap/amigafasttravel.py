@@ -135,19 +135,7 @@ class AmigaFastTravel(engine.FastTravel):
         disks or by the room past the departing script. `door_leg` False
         skips the differences about leaving by a door: the second hop of a
         two-hop trip is a script trip."""
-        if any(d.covers(here, to, back) and not d.offered
-               for d in row.differences if door_leg or not d.door):
-            return engine.Verdict(False, self.not_built)
-        lengths = self.lengths(row)
-        if lengths and to not in lengths:
-            # The title's disks have no script for that area (Silver Blades
-            # has no area 4), and its loader retries a missing one for ever.
-            return engine.Verdict(False, self.not_built)
-        # Sized with the prologue `_start` will put ahead of the trip, so the
-        # check made up front and the one made on arming agree.
-        smallest = trips.plan(to, (0, 0, 0),
-                              prologue=trips.leave_grid_prologue(row, here, to))
-        if trips.free_tail(row, here, lengths, smallest) not in (1, 2):
+        if trips.leg_held(row, here, to, back, self.lengths(row), door_leg):
             return engine.Verdict(False, self.not_built)
         return engine.Verdict(True)
 
@@ -257,10 +245,10 @@ class AmigaFastTravel(engine.FastTravel):
         route = fasttravel.EXIT_ROUTES.get((here, to))
         if route is not None:
             return self._door_hop(target, row, here, to, route, name, None)
-        doors = fasttravel.exits_from(here)
-        if not doors:
+        lengths = self.lengths(row)
+        if not fasttravel.exits_from(here):
             return None
-        chosen = fasttravel.choose_door(doors)
+        chosen = trips.door_route(row, here, to, lengths)
         if chosen is None:
             # No door is safe to walk out of, so the script trip is made.
             _log.debug("two-hop fast travel skipped: every door out of area "
@@ -269,7 +257,7 @@ class AmigaFastTravel(engine.FastTravel):
         through, door = chosen
         # Checked before the first hop, so a second leg that is held leaves
         # the party where it is.
-        if not self._leg(row, through, to, False, door_leg=False):
+        if trips.door_leg_held(row, chosen, to, lengths):
             return engine.Outcome(False, self.not_built)
         return self._door_hop(target, row, here, through, door, name,
                               _Hop(here, through, area, arrival))
