@@ -1739,14 +1739,14 @@ NO_FOLDER = "Choose where to write."
 #: the wrong title)` on 2026-09-02. It names a source Wish cannot read, or a
 #: rehearsal failure that has no `dos_codec.DosRecordError.player_message`.
 CANNOT_CONVERT = dos_codec.CANNOT_CONVERT
-#: Donald's approved wording for a readable Pools of Darkness save: it has no
+#: The sentence for a readable Pools of Darkness save: it has no
 #: C64 port, so `destinations_for` correctly answers no direction.
 POOLS_OF_DARKNESS_UNSUPPORTED = "Pools of Darkness saves are not yet supported."
 
 
 def unsupported_save_sentence(title: str) -> str | None:
-    """Donald's approved "[Game title] saves are not yet supported." for a
-    title the editor cannot read, or None for one it can.
+    """"[Game title] saves are not yet supported." for a title the editor
+    cannot read, or None for one it can.
 
     "Cannot read" is a title with no row in `goldbox.c64_codec.DELTAS_BY_KEY`:
     Pools of Darkness, Gateway, Champions and Death Knights. The sentence is

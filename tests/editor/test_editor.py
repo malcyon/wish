@@ -5683,6 +5683,23 @@ def test_opening_an_unmeasured_c64_title_shows_its_own_sentence(
     assert said == [("Cannot open", sentence)]
 
 
+def test_an_unmeasured_c64_title_on_a_roster_disk_is_blocked_by_title():
+    """A roster disk with no save, read as Gateway, lacks the same measured
+    deltas as a Gateway save: `WrongTitleError`, not the bare `KeyError`."""
+    from gamedata import _disk_with
+
+    from goldbox import c64_port, dos_codec
+    from goldbox.d64 import D64
+    from goldbox.record import CharacterRecord
+    game = c64_port.GATEWAY_TO_THE_SAVAGE_FRONTIER
+    record = CharacterRecord.blank()
+    record.set("name", "ZERO")
+    disk = D64(_disk_with([(b"ZERO", record.to_prg())]))
+    with pytest.raises(dos_codec.WrongTitleError) as blocked:
+        Party("", game=game, disk=disk)
+    assert blocked.value.title == game.title
+
+
 def test_the_pools_of_darkness_sentence_is_the_general_one():
     from editor.convert import POOLS_OF_DARKNESS_UNSUPPORTED, unsupported_save_sentence
     assert unsupported_save_sentence("Pools of Darkness") == \
