@@ -2053,16 +2053,8 @@ class FastTravel(Action):
         if detour:
             # The door does not lead to `name`, so the line below would be
             # untrue: the party is walking out towards somewhere else first.
-            return Outcome(True,
-                           f"Walking out of this area on foot -- answer "
-                           f"whatever the game asks, and Wish will take the "
-                           f"party on to {name} once they are through the "
-                           f"door",
-                           ())
-        return Outcome(True,
-                       f"Walking out towards {name}, the way the party "
-                       f"would on foot -- answer whatever the game asks",
-                       ())
+            return Outcome(True, self.WALKING_OUT_DETOUR.format(name=name), ())
+        return Outcome(True, self.WALKING_OUT_DIRECT.format(name=name), ())
 
     def cancel_pending(self) -> None:
         """Forget a two-hop trip, for a target that has gone away."""
@@ -2115,9 +2107,7 @@ class FastTravel(Action):
                 _log.debug("two-hop fast travel given up: the party is still "
                            "in area %d", pending.from_area)
                 self.pending = None
-                return Outcome(False,
-                               f"The party never left, so the trip to {name} "
-                               f"did not happen")
+                return Outcome(False, self.NEVER_LEFT.format(name=name))
             return None
         if area_now != pending.through:
             self.pending = None
@@ -2245,6 +2235,20 @@ class FastTravel(Action):
         # `self.current_indoors` and `self.addresses.indoors` are still here
         # for whoever measures it.
         return tuple(out)
+
+    #: What `_run_via_exit` says when the party is stood on a door of the
+    #: destination's own area, and when the door leads to the first hop of a
+    #: two-hop trip.
+    WALKING_OUT_DIRECT = ("Walking out towards {name}, the way the party "
+                          "would on foot -- answer whatever the game asks")
+    WALKING_OUT_DETOUR = ("Walking out of this area on foot -- answer "
+                          "whatever the game asks, and Wish will take the "
+                          "party on to {name} once they are through the "
+                          "door")
+
+    #: What `continue_pending` says when a two-hop trip's wait ends with the
+    #: party still in the starting area.
+    NEVER_LEFT = "The party never left, so the trip to {name} did not happen"
 
     #: What `continue_pending` says when the party left through a door of the
     #: starting area other than the one the hop waited on.

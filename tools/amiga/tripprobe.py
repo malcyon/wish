@@ -140,36 +140,8 @@ def run(target, holder: str, area: int, square, out: pathlib.Path,
     return shots
 
 
-def stand_writes(target, row, stand, geo: Geo, attribute: bool) -> list[tuple[int, bytes, str]]:
-    """Variant D's `(address, data, kind)` writes for the party standing at `stand`.
-
-    The square, then the wall nibble ahead and (unless `attribute` is False)
-    the square's attribute byte, which the engine caches at the last redraw,
-    then the key's message and its link.
-    """
-    x, y, facing = stand
-    base = amigatrip._base(target)
-    notes = amiga.MACHINES[row.key].notes
-    writes = [(amigatrip._address(target, spot), amigatrip._encode_spot(spot, value),
-               "square") for spot, value in zip(row.square_spots, stand)]
-    writes.append((base + notes["wall_ahead"], bytes([geo.wall(x, y, facing)]), "wall"))
-    if attribute:
-        writes.append((base + notes["square_attribute"], bytes([geo.attributes(x, y)]),
-                       "attribute"))
-    at, message_at = amigatrip.layout(row, 0)
-    buffer = amigatrip._long(target, base + row.buffer_pointer) + row.buffer_bias
-    if (buffer + message_at) % 4:
-        raise ProbeError(f"the script buffer at {buffer:#x} is not longword-aligned")
-    port = amigatrip._port(target, row)
-    window = amigatrip._long(target, base + row.window_pointer)
-    writes.append((buffer + message_at, amigatrip.rawkey_message(port, window), "message"))
-    writes.append((port + amigatrip.PORT_LIST, amigatrip.link(buffer + message_at), "trigger"))
-    return writes
-
-
 def _list_is_empty(target, row) -> bool:
-    port = amigatrip._port(target, row)
-    return target.read(port + amigatrip.PORT_LIST, 12) == amigatrip.empty_list(port)
+    return amigatrip.port_empty(target, row)
 
 
 def key_taken(target, row) -> bool:
@@ -278,7 +250,10 @@ def try_door(target, row, stand, attribute: bool,
     if blob is None:
         raise ProbeError("no map is loaded")
     here = amigatrip.area_id(target, row)
-    writes = stand_writes(target, row, stand, Geo(blob), attribute)
+    try:
+        writes = amigatrip.stand_writes(target, row, stand, Geo(blob), attribute)
+    except amigatrip.ArmError as exc:
+        raise ProbeError(str(exc)) from exc
     originals = target.read_blocks([(a, len(d)) for a, d, _k in writes])
     done = []
     cached = {}

@@ -46,6 +46,7 @@ import pathlib
 import struct
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from types import MappingProxyType
 
 from . import amiga
 from .target import NotConnected
@@ -127,6 +128,9 @@ class Difference:
     waits_on: str
     test: Callable[[int | None, int | None, bool], bool] = field(compare=False)
     offered: bool = False
+    #: True for a difference that only judges the leg a party leaves by a
+    #: door; the second hop of a two-hop trip is a script trip and skips it.
+    door: bool = False
 
     def covers(self, here: int | None, to: int | None, back: bool) -> bool:
         return bool(self.test(here, to, back))
@@ -191,6 +195,8 @@ class TripRow:
     script_header: int = 0
     confirmed: bool = False
     direct_confirmed: bool = False
+    #: True where a door was stood on and its key sent live (Pool of Radiance).
+    door_confirmed: bool = False
     #: Destinations whose script plays an opening unless the area byte already
     #: names them. The trip writes the area byte first, so `fired` judges by
     #: the step entry instead.
@@ -205,10 +211,58 @@ def _return_landing() -> Difference:
         lambda here, to, back: back)
 
 
-def _pool_doors(here, to, back) -> bool:
+#: The one-sided entry-1 routes' stand facings: the side of the route square
+#: the step cannot cross, so the party stands there without stepping (a step
+#: into the square would pass a minute and roll for a wandering monster).
+ENTRY1_FACING: Mapping[tuple[int, int], int] = MappingProxyType({
+    (13, 27): 2,
+})
+
+
+#: The doors a live Pool of Radiance run walked out of with these writes, as
+#: `(area, destination)`; every other door stays held.
+DOORS_PROVEN = frozenset({(7, 5), (13, 27), (14, 26), (16, 27)})
+
+
+def stand_for(here: int, to: int, route) -> tuple[int, int, int] | None:
+    """`(x, y, facing)` to stand the party on for the door `route` of the trip
+    `here` to `to`, or None where the stand is not known.
+
+    Entry 0 stands on its own square and facing; an entry 0 row without a
+    facing is held, because the facing decides the outcome. Entry 1 stands on
+    the route square facing `ENTRY1_FACING`'s side.
+    """
+    if route.entry == 0:
+        return tuple(route.square) if len(route.square) == 3 else None
+    if route.entry == 1:
+        facing = ENTRY1_FACING.get((here, to))
+        if facing is None:
+            return None
+        return (route.square[0], route.square[1], facing)
+    return None
+
+
+def _door_route(here: int | None, to: int | None):
+    """`(first hop's destination, its route)` for a trip that leaves `here` by
+    a door, or None where it leaves by script (or every door can fight)."""
     from . import fasttravel
-    return here is not None and fasttravel.choose_door(
-        fasttravel.exits_from(here)) is not None
+    if here is None:
+        return None
+    route = fasttravel.EXIT_ROUTES.get((here, to))
+    if route is not None:
+        return to, route
+    return fasttravel.choose_door(fasttravel.exits_from(here))
+
+
+def _door_unplaced(here, to, back) -> bool:
+    if back:
+        return False
+    chosen = _door_route(here, to)
+    if chosen is None:
+        return False
+    through, route = chosen
+    return ((here, through) not in DOORS_PROVEN
+            or stand_for(here, through, route) is None)
 
 
 def _square(machine: amiga.AmigaMachine) -> tuple[Spot, Spot, Spot]:
@@ -244,14 +298,22 @@ ROWS: dict[str, TripRow] = {
         menu_text=b"Area Cast View Encamp Search Look",
         grid_menu_text=b"Cast View Encamp Search Look",
         script_file="/ecl.dax", script_header=2,
-        confirmed=True,
+        confirmed=True, door_confirmed=True,
         differences=(
             _return_landing(),
             Difference("leave_grid",
                        "decision 3: leaving the wilderness grid for a town",
                        lambda here, to, back: here in _GRID_AREAS
                        and to not in _GRID_AREAS),
-            Difference("doors", "decision 4: Pool's doors", _pool_doors),
+            Difference("door_unplaced",
+                       "F4-R3: the stand facing for Pool's entry 1 doors; F4-A: "
+                       "a live run of each other door",
+                       _door_unplaced, door=True),
+            Difference("grid_doors",
+                       "F4-G: the grid windows' own scripts, which never "
+                       "test their EXIT_ROUTES squares",
+                       lambda here, to, back: here in _GRID_AREAS,
+                       door=True),
         )),
     # CONFIRMED: code and 2 trips.
     "curse-of-the-azure-bonds": TripRow(
@@ -683,10 +745,11 @@ def gate(target, row) -> bool:
 # -- arming, and putting back -------------------------------------------------
 
 
-#: The kinds of write `arm` makes, in its order. The buffer kinds are put back
+#: The kinds of write `arm` and `arm_door` make, in their order. The buffer kinds are put back
 #: and zeroed byte by byte; the rest while they read as ours, whole or as the
 #: prefix a write that failed part way left over the original.
-KINDS = ("square", "statements", "message", "entry", "came_from", "trigger")
+KINDS = ("square", "wall", "attribute", "statements", "message", "entry",
+         "came_from", "trigger")
 _BYTEWISE = ("statements", "message")
 
 
@@ -793,6 +856,13 @@ def arm(target, row, p: Plan) -> Armed | None:
     except ArmError as exc:
         _log.debug("amiga trip not armed: %s", exc)
         return None
+    return _write_all(target, row, p, here, buffer, writes, originals)
+
+
+def _write_all(target, row: TripRow, p: Plan, here: int, buffer: int,
+               writes: list, originals: list[bytes]) -> Armed | None:
+    """Make `writes` in order, verified but for the key. None when one failed
+    and everything written could be put back; the `Armed` otherwise."""
     done: list[Written] = []
     for (address, data, kind), was in zip(writes, originals):
         try:
@@ -807,6 +877,88 @@ def arm(target, row, p: Plan) -> Armed | None:
             return None if _put_back(target, armed) else armed
         done.append(Written(address, was, data, kind))
     return Armed(row, p, here, buffer, tuple(done))
+
+
+def stand_writes(target, row, stand, geo, attribute: bool = True
+                 ) -> list[tuple[int, bytes, str]]:
+    """The door's `(address, data, kind)` writes for the party standing at
+    `stand`: the square, the wall nibble ahead and (unless `attribute` is
+    False) the square's attribute byte, which the engine caches at the last
+    redraw, then the key's message and its link.
+
+    `geo` is a `goldbox.geo.Geo`. Only Pool of Radiance has the cached bytes'
+    addresses (`amiga.MACHINES[...].notes`) and a message-list key.
+    """
+    row = row_for(row)
+    x, y, facing = stand
+    base = _base(target)
+    notes = amiga.MACHINES[row.key].notes
+    writes = [(_address(target, spot), _encode_spot(spot, value), "square")
+              for spot, value in zip(row.square_spots, stand)]
+    writes.append((base + notes["wall_ahead"], bytes([geo.wall(x, y, facing)]),
+                   "wall"))
+    if attribute:
+        writes.append((base + notes["square_attribute"],
+                       bytes([geo.attributes(x, y)]), "attribute"))
+    at, message_at = layout(row, 0)
+    buffer = _long(target, base + row.buffer_pointer) + row.buffer_bias
+    if (buffer + message_at) % 4:
+        raise ArmError(f"the script buffer at {buffer:#x} is not "
+                       "longword-aligned")
+    port = _port(target, row)
+    window = _long(target, base + row.window_pointer)
+    writes.append((buffer + message_at, rawkey_message(port, window),
+                   "message"))
+    writes.append((port + PORT_LIST, link(buffer + message_at), "trigger"))
+    return writes
+
+
+def arm_door(target, row, stand) -> Armed | None:
+    """Stand the party at `stand` and send one forward key, so the game's own
+    step runs the door's handler. No statements and no step entry are written.
+
+    None, with nothing left written, when the game is not at its world menu,
+    no map is resident, or a write fails and could be put back. The `Armed`
+    has `plan.tier` 0.
+    """
+    from goldbox.geo import Geo
+    row = row_for(row)
+    if _base(target) is None or not gate(target, row):
+        return None
+    blob = target.geo()
+    if blob is None:
+        return None
+    here = area_id(target, row)
+    try:
+        writes = stand_writes(target, row, stand, Geo(blob))
+        originals = target.read_blocks([(a, len(d)) for a, d, _k in writes])
+        _check(row, writes, originals)
+    except ArmError as exc:
+        _log.debug("amiga door not armed: %s", exc)
+        return None
+    buffer = _long(target, _base(target) + row.buffer_pointer) \
+        + row.buffer_bias
+    return _write_all(target, row, Plan(here, tuple(stand), None, 0), here,
+                      buffer, writes, originals)
+
+
+def port_empty(target, row) -> bool:
+    """Whether the game window's message list is empty again."""
+    port = _port(target, row)
+    return target.read(port + PORT_LIST, 12) == empty_list(port)
+
+
+def door_fired(target, armed: Armed) -> bool:
+    """True once the game has taken a door's key. The area byte is no judge:
+    a question answered NO takes the key and stays."""
+    return port_empty(target, armed.row)
+
+
+def trip_fired(target, armed: Armed) -> bool | None:
+    """`door_fired` for a door, `fired` for a script trip."""
+    if armed.plan.tier == 0:
+        return True if door_fired(target, armed) else None
+    return fired(target, armed)
 
 
 def fired(target, armed: Armed) -> bool | None:
@@ -879,6 +1031,14 @@ def _put_back(target, armed: Armed) -> bool:
     changed area. False then, with only the key's record touched.
     """
     keys = [w for w in armed.records if w.kind == "trigger"]
+    if armed.plan.tier == 0:
+        # A restored key reads as an empty list too, so a door is judged
+        # before its key is taken back, and only once a key was written.
+        if keys and door_fired(target, armed):
+            return False
+        _restore(target, keys)
+        _restore(target, [w for w in armed.records if w.kind != "trigger"])
+        return True
     if keys and any(w.kind == "came_from" for w in armed.records):
         # The game clears the key flag when it takes the key, and then holds
         # the area byte's 1 itself, so putting the departing area back would
@@ -896,7 +1056,7 @@ def _put_back(target, armed: Armed) -> bool:
 def disarm(target, armed: Armed) -> bool:
     """Put back a trip that did not fire. False if the area has changed after
     all, before or while putting back: the caller tidies instead."""
-    if fired(target, armed):
+    if trip_fired(target, armed):
         return False
     return _put_back(target, armed)
 
@@ -905,13 +1065,17 @@ def tidy(target, armed: Armed, new_area: int | None,
          lengths: Mapping[int, int]) -> int:
     """Zero the statements a trip left past the arriving area's script.
 
-    Only on a title whose loader does not clear the buffer, only bytes that
+    Only on a title whose loader does not clear the buffer (or for a door's
+    message, which no load may have cleared), only bytes that
     still read as written, and only past `lengths[new_area]`. An unknown
     area, or a buffer that moved, is left alone. Returns the bytes written.
     """
     row = armed.row
     length = None if new_area is None else lengths.get(new_area)
-    if row.clears_buffer or length is None or _base(target) is None:
+    # A door that was answered NO leaves the area loaded, so its message
+    # stays in a buffer the loader would otherwise have cleared.
+    if ((row.clears_buffer and armed.plan.tier != 0) or length is None
+            or _base(target) is None):
         return 0
     buffer = _long(target, _base(target) + row.buffer_pointer) \
         + row.buffer_bias

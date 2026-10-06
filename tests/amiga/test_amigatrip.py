@@ -33,6 +33,7 @@ class FakeAmiga:
         self.landed = 0
         self.on_write = None
         self.on_read = None
+        self.geo_blob: bytes | None = bytes(1024)
 
     def read(self, addr, length):
         if self.on_read is not None:
@@ -51,6 +52,9 @@ class FakeAmiga:
         self.log.append((addr, bytes(data), verify))
         if self.on_write is not None:
             self.on_write(addr, bytes(data))
+
+    def geo(self):
+        return self.geo_blob
 
     def poke(self, addr, data):
         self.memory[addr:addr + len(data)] = data
@@ -735,3 +739,144 @@ def test_a_key_flag_change_without_the_step_entry_changing_is_not_a_taken_trip()
     after[key.address:key.address + len(key.data)] = \
         before[key.address:key.address + len(key.data)]
     assert bytes(after) == before
+
+
+# -- doors ---------------------------------------------------------------------
+
+
+def _route(entry, square):
+    from automap import fasttravel
+    return fasttravel.ExitRoute(entry, square)
+
+
+def test_an_entry_zero_row_with_a_facing_stands_on_its_own_square_and_facing():
+    assert trip.stand_for(2, 18, _route(0, (4, 0, 0))) == (4, 0, 0)
+
+
+def test_an_entry_zero_row_without_a_facing_has_no_stand():
+    assert trip.stand_for(2, 18, _route(0, (4, 0))) is None
+
+
+def test_an_entry_one_row_stands_on_its_square_facing_the_table_side():
+    assert trip.stand_for(13, 27, _route(1, (6, 15))) == (6, 15, 2)
+    # A row the table has no side for is held, never given a neighbour.
+    assert trip.stand_for(0, 8, _route(1, (4, 4))) is None
+
+
+def _geo_blob() -> bytes:
+    from goldbox import geo
+    blob = bytearray(geo.GEO_SIZE)
+    blob[0x000 + 4] = 0x70           # (4,0) north wall art 7
+    blob[0x200 + 4] = 0x93           # (4,0) attribute 0x93
+    return bytes(blob)
+
+
+def _door_machine():
+    pool = trip.ROWS["pool-of-radiance"]
+    m = machine("pool-of-radiance", area=14)
+    m.geo_blob = _geo_blob()
+    return m, pool
+
+
+def test_a_door_writes_the_square_wall_attribute_message_then_the_key():
+    m, pool = _door_machine()
+    armed = trip.arm_door(m, pool, (4, 0, 0))
+    assert kinds(armed) == ["square", "square", "square", "wall", "attribute",
+                            "message", "trigger"]
+    notes = trip.amiga.MACHINES["pool-of-radiance"].notes
+    done = {a: d for a, d, _v in m.log}
+    assert done[BASE + notes["wall_ahead"]] == b"\x07"
+    assert done[BASE + notes["square_attribute"]] == b"\x93"
+    assert m.log[-1][0] == PORT + trip.PORT_LIST
+    assert not any(w.kind == "entry" for w in armed.records)
+
+
+def test_a_door_has_fired_only_once_the_game_takes_the_key():
+    m, pool = _door_machine()
+    armed = trip.arm_door(m, pool, (4, 0, 0))
+    assert not trip.door_fired(m, armed)
+    assert trip.trip_fired(m, armed) is None
+    m.poke(PORT + trip.PORT_LIST, trip.empty_list(PORT))     # the game took it
+    assert trip.door_fired(m, armed)
+    assert trip.trip_fired(m, armed) is True
+    assert trip.area_id(m, pool) == 14                        # and stayed
+
+
+def test_a_door_whose_key_is_not_taken_puts_every_byte_back_key_first():
+    m, pool = _door_machine()
+    before = bytes(m.memory)
+    armed = trip.arm_door(m, pool, (4, 0, 0))
+    assert bytes(m.memory) != before
+    m.log.clear()
+    assert trip.disarm(m, armed) is True
+    assert bytes(m.memory) == before
+    assert m.log[0][0] == PORT + trip.PORT_LIST
+
+
+def test_a_door_whose_key_was_taken_is_left_alone_by_the_put_back():
+    m, pool = _door_machine()
+    armed = trip.arm_door(m, pool, (4, 0, 0))
+    m.poke(PORT + trip.PORT_LIST, trip.empty_list(PORT))
+    m.log.clear()
+    assert trip.disarm(m, armed) is False
+    assert m.log == []
+
+
+def test_a_key_taken_between_the_look_and_the_put_back_leaves_the_rest_alone():
+    m, pool = _door_machine()
+    armed = trip.arm_door(m, pool, (4, 0, 0))
+    m.poke(PORT + trip.PORT_LIST, trip.empty_list(PORT))
+    m.log.clear()
+    assert trip._put_back(m, armed) is False
+    assert m.log == []
+
+
+def test_a_door_is_not_armed_with_no_map_a_waiting_key_or_off_the_menu():
+    m, pool = _door_machine()
+    m.geo_blob = None
+    assert trip.arm_door(m, pool, (4, 0, 0)) is None
+    m, pool = _door_machine()
+    m.poke(PORT + trip.PORT_LIST, trip.link(BUFFER))
+    before = bytes(m.memory)
+    assert trip.arm_door(m, pool, (4, 0, 0)) is None
+    assert bytes(m.memory) == before
+    m, pool = _door_machine()
+    m.at(pool.mode, b"\x00")
+    assert trip.arm_door(m, pool, (4, 0, 0)) is None
+
+
+def test_a_door_write_that_fails_puts_back_what_landed():
+    m, pool = _door_machine()
+    notes = trip.amiga.MACHINES["pool-of-radiance"].notes
+    before = bytes(m.memory)
+    m.fail_at = BASE + notes["wall_ahead"]
+    assert trip.arm_door(m, pool, (4, 0, 0)) is None
+    assert bytes(m.memory) == before
+
+
+def test_pools_doors_are_confirmed_and_no_other_title_has_any():
+    assert [k for k, r in trip.ROWS.items() if r.door_confirmed] == [
+        "pool-of-radiance"]
+
+
+def _covers(name, here, to, back=False):
+    pool = trip.ROWS["pool-of-radiance"]
+    (diff,) = [d for d in pool.differences if d.name == name]
+    return diff.covers(here, to, back)
+
+
+def test_a_door_that_was_proven_and_has_a_stand_is_not_held():
+    assert not _covers("door_unplaced", 13, 27)          # a direct entry 1 door
+    assert not _covers("door_unplaced", 7, 5)            # a direct entry 0 door
+    assert not _covers("door_unplaced", 7, 9)            # through 5, proven
+
+
+def test_a_door_nobody_has_walked_out_of_or_with_no_stand_is_held():
+    assert _covers("door_unplaced", 21, 0)               # a stand, never run
+    assert _covers("door_unplaced", 0, 8)                # entry 1, no facing
+    assert not _covers("door_unplaced", 7, 9, back=True)
+
+
+def test_every_trip_from_a_grid_window_is_held_by_grid_doors():
+    assert all(_covers("grid_doors", a, 0) for a in (25, 26, 27))
+    assert not _covers("grid_doors", 13, 27)

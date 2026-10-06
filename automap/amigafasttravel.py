@@ -14,6 +14,13 @@ is not run.
 The writes, the put-back and the tiers are `automap/amigatrip.py`'s. Here:
 which trips are offered, the `Waypoint` Return needs, the 3-second wait on the
 area byte, and what to say when it does not change.
+
+**Doors.** Where a title has confirmed doors (`TripRow.door_confirmed`), a trip
+the C64 would walk out of an exit for stands the party on the door and sends
+one forward key, and the player answers whatever the game asks. A trip that is
+no door of the departing area walks out of the one `choose_door` names, then
+makes its second hop as a script trip once the party stands in that area and
+the step entry has changed. Return is always a script trip.
 """
 
 from __future__ import annotations
@@ -23,7 +30,7 @@ import time
 from dataclasses import dataclass
 
 from . import actions as engine
-from . import amiga, amigaactions
+from . import amiga, amigaactions, amigaparty, fasttravel
 from . import amigatrip as trips
 from .target import NotConnected
 
@@ -47,6 +54,29 @@ class _Trip:
     deadline: float
     #: `back` as it was before the trip, for a trip that does not happen.
     previous_back: engine.Waypoint | None
+    #: A door hop, which is taken when the key is, not when the area changes.
+    door: bool = False
+    #: The second hop a door's first hop leads to, or None.
+    hop: _Hop | None = None
+
+
+@dataclass
+class _Hop:
+    """The second half of a two-hop trip, waiting for the party to stand in
+    `through` with that area's script loaded."""
+
+    from_area: int
+    through: int
+    #: The destination's own row, and what `run` was given for its square.
+    area: object
+    arrival: object
+    #: The step-entry word when the first hop was armed. Only the interpreter's
+    #: area-entry writes it, so a different value shows `through`'s script ran.
+    entry: bytes = b""
+    deadline: float = 0.0
+    #: Set once the area byte has read `through`, so a party that came back is
+    #: told apart from one that never left.
+    been_through: bool = False
 
 
 #: Both are `NotConnected`; named so that a reader sees what is meant.
@@ -99,6 +129,24 @@ class AmigaFastTravel(engine.FastTravel):
 
     # -- may we -----------------------------------------------------------
 
+    def _leg(self, row, here: int, to: int, back: bool,
+             door_leg: bool = True) -> engine.Verdict:
+        """Whether the trip `here` to `to` is held, by a difference, by the
+        disks or by the room past the departing script. `door_leg` False
+        skips the differences about leaving by a door: the second hop of a
+        two-hop trip is a script trip."""
+        if any(d.covers(here, to, back) and not d.offered
+               for d in row.differences if door_leg or not d.door):
+            return engine.Verdict(False, self.not_built)
+        lengths = self.lengths(row)
+        if lengths and to not in lengths:
+            # The title's disks have no script for that area (Silver Blades
+            # has no area 4), and its loader retries a missing one for ever.
+            return engine.Verdict(False, self.not_built)
+        if trips.free_tail(row, here, lengths) not in (1, 2):
+            return engine.Verdict(False, self.not_built)
+        return engine.Verdict(True)
+
     def legality(self, target, area=None, back: bool = False) -> engine.Verdict:
         if target is None:
             return engine.Verdict(False, engine.NO_EMULATOR)
@@ -125,18 +173,7 @@ class AmigaFastTravel(engine.FastTravel):
             to = getattr(area, "area", None)
         if here == to:
             return engine.Verdict(False, "the party is already in that area")
-        if any(d.covers(here, to, back) and not d.offered
-               for d in row.differences):
-            return engine.Verdict(False, self.not_built)
-        lengths = self.lengths(row)
-        if lengths and to not in lengths:
-            # The title's disks have no script for that area (Silver Blades
-            # has no area 4), and its loader retries a missing one for ever.
-            return engine.Verdict(False, self.not_built)
-        if here is not None and trips.free_tail(
-                row, here, lengths) not in (1, 2):
-            return engine.Verdict(False, self.not_built)
-        return engine.Verdict(True)
+        return self._leg(row, here, to, back)
 
     def apply(self, target, area=None, arrival=None, **kwargs) -> engine.Outcome:
         try:
@@ -181,8 +218,13 @@ class AmigaFastTravel(engine.FastTravel):
     def run(self, target, area=None, arrival=None, **kwargs) -> engine.Outcome:
         if self.trip is not None:
             return engine.Outcome(False, engine.FASTTRAVEL_BUSY)
+        # A new click supersedes a hop still waiting from an old trip.
+        self.pending = None
         row = trips.ROWS[self.key]
         to = getattr(area, "id", area)
+        door = self._run_door(target, row, area, arrival, to)
+        if door is not None:
+            return door
         arrival, overland = self._square_writes(area, arrival=arrival)
         notes = tuple(self.warnings(target, area, arrival, overland))
         # Read before arming: the writes change the square the trip leaves.
@@ -198,6 +240,62 @@ class AmigaFastTravel(engine.FastTravel):
         return engine.Outcome(True, f"Traveling to {name}.",
                               tuple(getattr(self.trip.armed, "writes", ())),
                               notes)
+
+    def _run_door(self, target, row, area, arrival, to: int
+                  ) -> engine.Outcome | None:
+        """The trip by a door, or None where it is not one."""
+        here = trips.area_id(target, row)
+        if not row.door_confirmed or here is None or here in row.grid_areas:
+            return None
+        name = getattr(area, "name", None) or "this area"
+        route = fasttravel.EXIT_ROUTES.get((here, to))
+        if route is not None:
+            return self._door_hop(target, row, here, to, route, name, None)
+        doors = fasttravel.exits_from(here)
+        if not doors:
+            return None
+        chosen = fasttravel.choose_door(doors)
+        if chosen is None:
+            _log.debug("two-hop fast travel blocked: every door out of area "
+                       "%d can start a fight", here)
+            return engine.Outcome(False, self.EVERY_DOOR_FIGHTS)
+        through, door = chosen
+        # Checked before the first hop, so a second leg that is held leaves
+        # the party where it is.
+        if not self._leg(row, through, to, False, door_leg=False):
+            return engine.Outcome(False, self.not_built)
+        return self._door_hop(target, row, here, through, door, name,
+                              _Hop(here, through, area, arrival))
+
+    def _door_hop(self, target, row, here: int, hop_to: int, route, name: str,
+                  hop: _Hop | None) -> engine.Outcome:
+        """Stand the party on `route`'s door and send the key; `hop` is the
+        second leg, or None for a door that leads to the destination."""
+        stand = trips.stand_for(here, hop_to, route)
+        if stand is None:
+            return engine.Outcome(False, self.not_built)
+        # Read before arming: the writes change the square the trip leaves.
+        was = engine.Waypoint(here, None, trips.square(target, row),
+                              trips.overland(target, row))
+        entry = target.read(target.data_base + row.step_entry, 2)
+        try:
+            armed = trips.arm_door(target, row, stand)
+        except Exception:
+            _log.warning("amiga fast travel: arming a door failed",
+                         exc_info=True)
+            armed = None
+        if armed is None:
+            return engine.Outcome(False, NOT_HAPPENED)
+        if hop is not None:
+            hop.entry = entry
+        self.trip = _Trip(armed, row, here, hop_to, name,
+                          time.monotonic() + FIRE_SECONDS, self.back,
+                          door=True, hop=hop)
+        self.back = was
+        sentence = (self.WALKING_OUT_DIRECT if hop is None
+                    else self.WALKING_OUT_DETOUR)
+        return engine.Outcome(True, sentence.format(name=name),
+                              tuple(armed.writes))
 
     def back_verdict(self, target) -> engine.Verdict:
         if self.back is None:
@@ -240,19 +338,23 @@ class AmigaFastTravel(engine.FastTravel):
 
     def cancel_pending(self) -> None:
         self.trip = None
+        self.pending = None
 
     def continue_pending(self, target) -> engine.Outcome | None:
         """Tidy a trip whose area byte changed; put back one that did not.
 
         None means nothing is waiting or nothing is to be done yet. A trip
         that happened was already reported when it was armed, so it ends
-        silently.
+        silently. A door hop is judged by its key being taken, and may leave
+        a second hop to make once the party stands in the area it leads to.
         """
-        trip = self.trip
-        if trip is None or target is None:
+        if target is None:
             return None
+        trip = self.trip
+        if trip is None:
+            return None if self.pending is None else self._continue_hop(target)
         try:
-            fired = trips.fired(target, trip.armed)
+            fired = trips.trip_fired(target, trip.armed)
         except Exception:
             _log.warning("amiga fast travel: reading the area failed",
                          exc_info=True)
@@ -279,9 +381,72 @@ class AmigaFastTravel(engine.FastTravel):
         self.back = trip.previous_back
         return engine.Outcome(False, NOT_HAPPENED)
 
+    def _in_fight(self, target, row) -> bool:
+        party = amigaparty.ROWS.get(self.key)
+        if party is None:
+            return False
+        return target.read(target.data_base + row.mode, 1)[0] == party.combat_value
+
+    def _continue_hop(self, target) -> engine.Outcome | None:
+        """The second hop of a two-hop trip, once the party stands in the
+        area the door led to, or the sentence for a trip that will not happen."""
+        hop = self.pending
+        row = trips.ROWS[self.key]
+        try:
+            now = trips.area_id(target, row)
+        except Exception:
+            _log.warning("amiga fast travel: reading the area failed",
+                         exc_info=True)
+            return None
+        if now is None:
+            return None
+        name = getattr(hop.area, "name", None) or "this area"
+        if now == hop.through:
+            hop.been_through = True
+        if now == hop.from_area:
+            if hop.been_through:
+                # The party went through and came back by the game's own
+                # route: the trip is over.
+                self.pending = None
+                return None
+            if self._in_fight(target, row):
+                hop.deadline = time.monotonic() + engine.SECOND_HOP_SECONDS
+                return None
+            if time.monotonic() > hop.deadline:
+                self.pending = None
+                return engine.Outcome(False, self.NEVER_LEFT.format(name=name))
+            return None
+        if now != hop.through:
+            self.pending = None
+            if now in (to for to, _ in fasttravel.exits_from(hop.from_area)):
+                # The party left by another door: no second hop is right for
+                # wherever it now is, and Return has nothing to go back to.
+                self.back = None
+                return engine.Outcome(
+                    False, self.LEFT_ANOTHER_WAY.format(name=name))
+            return None
+        if not trips.gate(target, row):
+            return None
+        if target.read(target.data_base + row.step_entry, 2) == hop.entry:
+            return None
+        arrival, overland = self._square_writes(hop.area, arrival=hop.arrival)
+        notes = tuple(self.warnings(target, hop.area, arrival, overland))
+        self.pending = None
+        failed = self._start(target, getattr(hop.area, "id", hop.area), name,
+                             arrival, overland, self.back)
+        if failed is not None:
+            return failed
+        # `back` is the square the first hop left, which Return goes to.
+        return engine.Outcome(True, f"Traveling to {name}.",
+                              tuple(getattr(self.trip.armed, "writes", ())),
+                              notes)
+
     def _arrived(self, target, trip: _Trip) -> None:
         """The area changed: the trip happened, and what it left is tidied."""
         self.trip = None
+        if trip.hop is not None:
+            trip.hop.deadline = time.monotonic() + engine.SECOND_HOP_SECONDS
+            self.pending = trip.hop
         try:
             trips.tidy(target, trip.armed, trips.area_id(target, trip.row),
                        self.lengths(trip.row))
