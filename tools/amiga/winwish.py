@@ -889,10 +889,12 @@ public class WishDisp {
     return new int[] { (int)d.dmPelsWidth, (int)d.dmPelsHeight, (int)d.dmBitsPerPel, (int)d.dmDisplayFrequency };
   }
 
-  // The mode of this size nearest the current bit depth and refresh rate, applied
-  // dynamically: CDS flags 0 writes nothing to the registry.
-  public static int SetMode(int w, int h) {
+  // The mode of this size nearest the wanted bit depth and refresh rate (0 meaning the
+  // current one), applied dynamically: CDS flags 0 writes nothing to the registry.
+  public static int SetMode(int w, int h, int bits, int hz) {
     var cur = Dm(); EnumDisplaySettingsW(null, -1, ref cur);
+    if (bits > 0) cur.dmBitsPerPel = (uint)bits;
+    if (hz > 0) cur.dmDisplayFrequency = (uint)hz;
     var best = Dm(); int bestScore = -1;
     for (int i = 0; ; i++) {
       var d = Dm();
@@ -1011,8 +1013,8 @@ DISPLAY_SET_SCALE = [
     "    $rc = [WishDisp]::SetScale($at - $rec)",
     "    if ($rc -ne 0) { throw ('DisplayConfigSetDeviceInfo returned ' + $rc) }",
     "  }",
-    "  function Set-Size([int]$w, [int]$h) {",
-    "    $rc = [WishDisp]::SetMode($w, $h)",
+    "  function Set-Size([int]$w, [int]$h, [int]$bits = 0, [int]$hz = 0) {",
+    "    $rc = [WishDisp]::SetMode($w, $h, $bits, $hz)",
     "    if ($rc -ne 0) { throw ('ChangeDisplaySettingsEx returned ' + $rc + ' for ' + $w + 'x' + $h) }",
     "  }",
 ]
@@ -1077,11 +1079,13 @@ def display_inner(holder: str, action: str, out: str, width: int = 0, height: in
             f"    $journal = {q(journal)}",
             "    if (-not (Test-Path -LiteralPath $journal)) { throw 'there is no display journal to restore' }",
             "    $orig = Get-Content -Raw -LiteralPath $journal | ConvertFrom-Json",
-            "    Set-Size ([int]$orig.mode.width) ([int]$orig.mode.height)",
+            "    Set-Size ([int]$orig.mode.width) ([int]$orig.mode.height) ([int]$orig.mode.bits) ([int]$orig.mode.hz)",
             "    Start-Sleep -Milliseconds 1500",
             "    if ($orig.scale.percent) { Set-Scale ([int]$orig.scale.percent); Start-Sleep -Milliseconds 1500 }",
             "    $after = Get-DisplayState",
             "    if ($after.mode.width -ne $orig.mode.width -or $after.mode.height -ne $orig.mode.height -or "
+            "($orig.mode.bits -and $after.mode.bits -ne $orig.mode.bits) -or "
+            "($orig.mode.hz -and $after.mode.hz -ne $orig.mode.hz) -or "
             "($orig.scale.percent -and $after.scale.percent -ne $orig.scale.percent)) {",
             "      throw ('the display reads back ' + $after.mode.width + 'x' + $after.mode.height + ' at ' + $after.scale.percent + "
             "'%, not the recorded ' + $orig.mode.width + 'x' + $orig.mode.height + ' at ' + $orig.scale.percent + '%; the journal is kept')",
@@ -1492,6 +1496,8 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
         try:
             result["claim"] = lane.claim(args.holder, CALL_SECONDS, exclusive=True)
             claimed = True
+            # A display an earlier holder's dead agent left changed is put back before anything runs.
+            restore_pending_display(guest, args.holder)
             if drives:
                 result["winuae"] = lane.start(args.holder, *drives, timeout=START_SECONDS + 30,
                                               options=options)

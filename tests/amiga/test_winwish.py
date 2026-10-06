@@ -388,7 +388,7 @@ def test_up_runs_the_steps_in_order(tmp_path, monkeypatch):
     run, lane = FakeRun(), FakeLane()
     winwish.up(winwish.Guest(run), lane, _args(tmp_path, monkeypatch))
     assert lane.log == ["claim", r"drives=C:\Amiga\Disks\a.adf", "start"]
-    assert run.verbs() == ["ps", "put", "ps", "lane", "ps"]
+    assert run.verbs() == ["ps", "put", "ps", "ps", "lane", "ps"]
 
 
 def test_up_claims_every_lane(tmp_path, monkeypatch):
@@ -1524,7 +1524,7 @@ def test_a_failed_display_restore_is_reported_and_the_release_still_runs():
 def test_a_failed_up_puts_the_display_back_between_wish_and_winuae(tmp_path, monkeypatch):
     events, run, lane = _events("journal")
     failing = lambda a, t: (1, "fail no wish.exe window") if (  # noqa: E731
-        a[1] == "ps" and "Start-ScheduledTask" in a[2]) else run(a, t)
+        a[1] == "ps" and "Start-ScheduledTask" in a[2] and "session=$($owner.SessionId)" in a[2]) else run(a, t)
     with pytest.raises(winwish.WinwishError):
         winwish.up(winwish.Guest(failing), lane, _args(tmp_path, monkeypatch))
     tail = events[events.index("start"):]
@@ -1563,3 +1563,23 @@ def test_a_failed_png_writes_no_sidecar(tmp_path):
 def test_offered_sizes_are_listed_once_smallest_first():
     state = {"modes": [{"w": 1920, "h": 1080}, {"w": 1366, "h": 768}, {"w": 1920, "h": 1080}]}
     assert winwish.offered_sizes(state) == ["1366x768", "1920x1080"]
+
+
+def test_up_puts_back_a_display_a_dead_agent_left_changed_before_it_starts_anything(tmp_path, monkeypatch):
+    events, run, lane = _events("journal")
+    winwish.up(winwish.Guest(run), lane, _args(tmp_path, monkeypatch))
+    assert events.index("claim") < events.index("display") < events.index("start")
+
+
+def test_up_leaves_an_unchanged_display_alone(tmp_path, monkeypatch):
+    events, run, lane = _events("none")
+    winwish.up(winwish.Guest(run), lane, _args(tmp_path, monkeypatch))
+    assert "display" not in events
+
+
+def test_the_restore_gives_the_journalled_depth_and_rate_to_the_mode_change_and_reads_them_back():
+    script = winwish.display_inner("h", "restore", r"C:\o.txt")
+    assert "Set-Size ([int]$orig.mode.width) ([int]$orig.mode.height) ([int]$orig.mode.bits) ([int]$orig.mode.hz)" in script
+    assert "[WishDisp]::SetMode($w, $h, $bits, $hz)" in script
+    assert "public static int SetMode(int w, int h, int bits, int hz)" in script
+    assert "$after.mode.bits -ne $orig.mode.bits" in script and "$after.mode.hz -ne $orig.mode.hz" in script
