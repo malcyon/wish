@@ -437,6 +437,31 @@ def test_claim_every_lane_releases_the_reservation_at_the_deadline(monkeypatch):
     assert sent[-1][1].endswith("release -Holder h")
 
 
+@pytest.mark.parametrize("failure", [KeyboardInterrupt(), winuaesession.RouteError("ssh failed")])
+def test_claim_every_lane_releases_when_the_wait_is_interrupted(monkeypatch, failure):
+    sent = []
+
+    def run(*a, timeout):
+        sent.append(a)
+        if a[1].endswith("release -Holder h"):
+            return "ok released by h"
+        raise failure
+    monkeypatch.setattr(winuaesession.WinGuest, "_run", staticmethod(run))
+    with pytest.raises(type(failure)):
+        winuaesession.WinGuest().claim_every_lane("h", 5, 120)
+    assert sent[-1][1].endswith("release -Holder h")
+
+
+def test_claim_every_lane_releases_when_the_guest_answers_something_unexpected(monkeypatch):
+    sent = []
+    monkeypatch.setattr(winuaesession.WinGuest, "_run", staticmethod(
+        lambda *a, timeout: sent.append(a) or ("ok released by h" if a[1].endswith("release -Holder h")
+                                               else "garbage")))
+    with pytest.raises(winuaesession.RouteError, match="returned 'garbage'"):
+        winuaesession.WinGuest().claim_every_lane("h", 5, 120)
+    assert sent[-1][1].endswith("release -Holder h")
+
+
 def test_an_exclusive_claim_sends_the_exclusive_switch(monkeypatch):
     sent = []
     monkeypatch.setattr(winuaesession.WinGuest, "_run",

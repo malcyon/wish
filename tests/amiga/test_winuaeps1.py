@@ -384,6 +384,26 @@ def test_a_waiting_exclusive_claim_keeps_its_lanes_and_never_gives_them_back():
     assert "Remove-Item $ReservePath" in waiting  # only once every lane is held
 
 
+def test_a_whole_desktop_claim_without_wait_checks_the_reservation_first():
+    body = _case("claim")
+    plain = body[body.index("if ($Exclusive -and $LaneCount -gt 1)"):body.index("$candidates =")]
+    assert plain.index("Get-Reservation") < plain.index("foreach ($n in 1..$LaneCount)")
+    assert "reserved for an exclusive claim" in plain
+
+
+def test_a_reservation_is_cleared_only_when_it_is_not_live():
+    body = _case("claim")
+    waiting = body[body.index("$Exclusive -and $WaitGiven"):body.index("if ($Exclusive -and $LaneCount -gt 1)")]
+    assert "if ((Test-Path $ReservePath) -and -not (Get-Reservation)) { Remove-Item $ReservePath" in waiting
+    assert "\n        Remove-Item $ReservePath -Force -ErrorAction SilentlyContinue\n        if (-not (Try-TakeClaim" not in waiting
+
+
+def test_a_reservation_file_that_vanishes_mid_read_is_no_reservation():
+    body = PS1[PS1.index("function Get-Reservation"):PS1.index("function Reservation-Text")]
+    assert "if (-not $written) { return $null }" in body
+    assert body.index("-not $written") < body.index("TotalSeconds")
+
+
 def test_the_lane_verb_names_the_holders_lane_and_pid():
     valid = re.search(r"ValidateSet\(([^)]*)\)", PS1).group(1)
     assert "'lane'" in valid

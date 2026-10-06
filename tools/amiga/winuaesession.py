@@ -129,20 +129,24 @@ class WinGuest:
         self.holder = holder
         deadline = time.monotonic() + wait
         last = ""
-        while True:
-            last = self._run(
-                "ssh", f"{WINUAE_PS} claim -Exclusive -Wait {max(1, int(wait))} -Holder {holder}",
-                timeout=timeout)
-            if last.startswith("ok"):
-                return last
-            if not last.startswith(("wait", "fail an exclusive claim")):
-                raise RouteError(f"winuae.ps1 claim -Exclusive -Wait returned {last!r}")
-            if time.monotonic() >= deadline:
-                break
-            time.sleep(CLAIM_POLL_SECONDS)
-        with contextlib.suppress(RouteError):
-            self.release(holder, timeout)
-        raise RouteError(f"no exclusive claim within {wait:.0f}s: {last}")
+        try:
+            while True:
+                last = self._run(
+                    "ssh", f"{WINUAE_PS} claim -Exclusive -Wait {max(1, int(wait))} -Holder {holder}",
+                    timeout=timeout)
+                if last.startswith("ok"):
+                    return last
+                if not last.startswith(("wait", "fail an exclusive claim")):
+                    raise RouteError(f"winuae.ps1 claim -Exclusive -Wait returned {last!r}")
+                if time.monotonic() >= deadline:
+                    raise RouteError(f"no exclusive claim within {wait:.0f}s: {last}")
+                time.sleep(CLAIM_POLL_SECONDS)
+        except BaseException:
+            # The lanes taken so far and the reservation are held in the guest, so every way
+            # out that is not success, an interrupt included, gives them back.
+            with contextlib.suppress(RouteError):
+                self.release(holder, timeout)
+            raise
 
     def lane(self, holder: str, timeout: float) -> int:
         """The lane number `holder`'s running emulator is in, from the `lane` verb."""

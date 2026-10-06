@@ -266,8 +266,9 @@ function Get-Reservation {
     }
     Start-Sleep -Milliseconds 50
   }
-  $age = (Get-Date) - (Get-Item $ReservePath -ErrorAction SilentlyContinue).LastWriteTime
-  if ($age.TotalSeconds -gt 30) { return $null }
+  $written = (Get-Item $ReservePath -ErrorAction SilentlyContinue).LastWriteTime
+  if (-not $written) { return $null }
+  if (((Get-Date) - $written).TotalSeconds -gt 30) { return $null }
   @{ holder = 'another caller'; until = [string]([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + 30) }
 }
 
@@ -1279,7 +1280,9 @@ switch ($Cmd) {
       $mine = @{ holder = $Holder; since = $since; boot = (Boot-Stamp); until = $until }
       if ($res) { Write-Kv $ReservePath $mine }
       else {
-        Remove-Item $ReservePath -Force -ErrorAction SilentlyContinue
+        # Only a file already seen not live is cleared, and it is looked at again first, so a
+        # reservation another waiter has just created is never deleted.
+        if ((Test-Path $ReservePath) -and -not (Get-Reservation)) { Remove-Item $ReservePath -Force -ErrorAction SilentlyContinue }
         if (-not (Try-TakeClaim $ReservePath $mine)) { 'fail an exclusive claim by another caller is waiting'; exit 1 }
       }
       $blocker = $null
@@ -1314,6 +1317,8 @@ switch ($Cmd) {
       # this call already took is given back; -Override is not offered, because
       # taking every lane from whoever holds them is not one decision.
       if ($Override) { 'fail claim -Exclusive does not take -Override; release each lane with release -Override -Lane <n>'; exit 1 }
+      $res = Get-Reservation
+      if ($res -and $res['holder'] -ne $Holder) { "fail the WinUAE lanes are reserved for an exclusive claim $(Reservation-Text $res)"; exit 1 }
       $mine = @()
       $blocker = $null
       foreach ($n in 1..$LaneCount) {
