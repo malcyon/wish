@@ -18,8 +18,8 @@ else writes the disk, so the bytes are what a player's Save produces.
 
 `--who` is a zero-based roster row, `--item POSITION=QUANTITY` is repeatable and
 names an occupied inventory position of that member (an empty position exits
-before anything is written, as the editor lets no one edit an empty row), and `--slot` picks the saved game on
-a disk or folder that holds several. `--slot` opens the party with `_adopt`,
+before anything is written), and `--slot` picks the saved game on a disk or
+folder that holds several. `--slot` opens the party with `_adopt`,
 because `EditorBinding.load` opens a slot-picker dialog. The exit status is 1
 unless Save wrote the file and left a backup.
 """
@@ -110,14 +110,26 @@ def drive(base: pathlib.Path, out: pathlib.Path, who: int, gold: int,
         sys.path.insert(0, str(ROOT))
     from PyQt6.QtWidgets import QApplication, QMainWindow
 
+    # The editor makes an empty inventory row non-editable, so a player cannot
+    # create an item there; stop before anything is written.
+    from editor.convert import Source
+    from editor.roster import Party
+
+    members = Party(Source.detect(str(base), slot=slot) if slot
+                    else str(base)).members
+    if not 0 <= who < len(members):
+        raise SystemExit(f"{base}: no roster row {who}; the party has "
+                         f"{len(members)} members")
+    for pos in items:
+        if members[who].inventory.is_empty(pos):
+            raise SystemExit(f"{out}: member {who} holds no item at position {pos}")
+
     out.parent.mkdir(parents=True, exist_ok=True)
     _copy(base, out)
     pre_edit = _files(out)
     before = _read_back(out, slot, who, items)
 
     app = QApplication.instance() or QApplication([])
-    from editor.convert import Source
-    from editor.roster import Party
     from editor.window import EditorBinding
     from wish.ui_window import Ui_WishWindow
 
@@ -142,13 +154,7 @@ def drive(base: pathlib.Path, out: pathlib.Path, who: int, gold: int,
         raise SystemExit(f"{out}: no roster row {who}; the party has "
                          f"{len(binding.party.members)} members")
 
-    # The editor makes an empty inventory row non-editable, so a player cannot
-    # create an item there; stop before any widget is set and Save is called.
     inventory = binding.party.members[who].inventory
-    for pos in items:
-        if inventory.is_empty(pos):
-            raise SystemExit(f"{out}: member {who} holds no item at position {pos}")
-
     # `save()` flushes the widgets of the current row, so select it first.
     binding.roster.selectRow(who)
     widget("gold").setValue(gold)

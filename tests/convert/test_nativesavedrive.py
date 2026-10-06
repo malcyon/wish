@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import pathlib
 
 import pytest
@@ -168,21 +169,21 @@ def _curse_disk(tmp_path):
     return base
 
 
-def test_an_item_on_an_empty_position_exits_and_writes_nothing(
-        tmp_path, capsys):
+def test_an_item_on_an_empty_position_exits_and_writes_nothing(tmp_path):
     from editor.roster import Party
 
     base = _curse_disk(tmp_path)
     inventory = Party(str(base)).members[0].inventory
     empty = next(n for n in range(len(inventory)) if inventory.is_empty(n))
-    out = tmp_path / "out.adf"
+    out = tmp_path / "new" / "out.adf"
 
     with pytest.raises(SystemExit, match=f"holds no item at position {empty}"):
         nativesavedrive.main([
             "--base", str(base), "--out", str(out), "--who", "0",
             "--gold", "10", "--strength", "12", "--item", f"{empty}=3"])
 
-    assert out.read_bytes() == base.read_bytes()
+    assert not out.exists()
+    assert not out.parent.exists()
     assert not (tmp_path / "backups").exists()
 
 
@@ -195,7 +196,7 @@ def test_a_run_with_no_item_edits_gold_and_strength_and_leaves_a_backup(
         "--base", str(base), "--out", str(out), "--who", "1",
         "--gold", "4321", "--strength", "17"])
 
-    report = __import__("json").loads(capsys.readouterr().out)
+    report = json.loads(capsys.readouterr().out)
     assert status == 0
     assert report["after"]["gold"] == 4321
     assert report["after"]["strength"] == 17

@@ -2911,7 +2911,7 @@ def test_saving_to_a_d64_the_editor_will_not_write_says_only_that_it_cannot(
 
 
 def _native_source(kind, tmp_path):
-    """The path to open, and the bytes that must be unchanged afterwards."""
+    """The path of a native save to open."""
     if kind == "c64":
         path = synthetic_save(tmp_path)
     elif kind == "dos":
@@ -2947,3 +2947,8 @@ def test_a_save_after_a_native_save_as_writes_the_copy_and_leaves_the_source(
 
     assert Party(str(out)).members[0].record.get("gold") == 2468
     assert _bytes_of(source) == before
+    # Save backs up beside the copy it wrote, not beside the save it was copied from.
+    backups = (out if out.is_dir() else out.parent) / "backups"
+    assert any(backups.iterdir())
+    source_backups = (source if source.is_dir() else source.parent) / "backups"
+    assert source_backups == backups or not source_backups.exists()
