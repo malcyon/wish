@@ -667,3 +667,27 @@ def test_the_darkness_sheet_guard_matches_a_paladin_sheet_with_lay_on_hands_spen
     box = tuple(bar[0]['box'])
     for crop in sheets:
         assert screens.box_digests(root / crop, {box})[box] == bar[0]['sha256'], crop
+
+
+def test_a_second_add_decodes_no_unchanged_crop_and_decodes_a_changed_one(tmp_path, monkeypatch):
+    root, maps = tmp_path / 'root', tmp_path / 'maps'
+    maps.mkdir()
+    first = _run(root, '1', 'pool-run', 'pool', 'title')
+    other = _run(root, '2', 'curse-run', 'curse', 'title')
+    _second_crop(other)
+    decoded = []
+    real = guardmaps._decode_digests
+    monkeypatch.setattr(guardmaps, '_decode_digests',
+                        lambda path, boxes: decoded.append(path) or real(path, boxes))
+    argv = ['--root', str(root), '--maps', str(maps), 'add', '--title', 'pool',
+            '--map', 'guards', '--state', 'title', '--crop', str(first), '--box', '10,10,20,20']
+    assert guardmaps.main(argv) == 0
+    assert set(decoded) == {first, other}
+    decoded.clear()
+    assert guardmaps.main([*argv, '--replace']) == 0
+    assert decoded == []
+    with Image.open(other) as image:
+        image.paste('green', (15, 15, 17, 17))
+        image.save(other)
+    assert guardmaps.main([*argv, '--replace']) == 0
+    assert decoded == [other]

@@ -9,6 +9,7 @@ import os
 import pathlib
 import re
 import sys
+import tempfile
 from dataclasses import dataclass
 
 if __package__ in (None, ""):
@@ -87,6 +88,66 @@ def scan_crops(root: pathlib.Path) -> list[Crop]:
     return crops
 
 
+CACHE_NAME = 'guardmaps-digests.json'
+
+
+def _decode_digests(path: pathlib.Path, boxes) -> dict[tuple, str]:
+    return screens.box_digests(path, boxes)
+
+
+def _read_cache(root: pathlib.Path) -> dict:
+    try:
+        data = json.loads((root / CACHE_NAME).read_text())
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _write_cache(root: pathlib.Path, data: dict) -> None:
+    """Replace the cache atomically so two runners writing at once leave one whole file."""
+    try:
+        fd, name = tempfile.mkstemp(dir=root, prefix=CACHE_NAME + '.', suffix='.tmp')
+    except OSError:
+        return
+    temp = pathlib.Path(name)
+    try:
+        with os.fdopen(fd, 'w') as handle:
+            json.dump(data, handle)
+        os.replace(temp, root / CACHE_NAME)
+    except OSError:
+        pass
+    finally:
+        temp.unlink(missing_ok=True)
+
+
+def cached_digests(root: pathlib.Path, crops: list[Crop], boxes) -> dict[str, dict[tuple, str]]:
+    """Box digests per crop, decoding a crop only when its path, size or mtime is new.
+
+    Reading a crop from disk dominates a scan of the acceptance cache, so each
+    entry remembers the digests it has computed for the boxes asked so far.
+    """
+    cache = _read_cache(root)
+    result: dict[str, dict[tuple, str]] = {}
+    dirty = False
+    for crop in crops:
+        stat = crop.path.stat()
+        stamp = [stat.st_size, stat.st_mtime_ns]
+        entry = cache.get(crop.relative)
+        if not isinstance(entry, dict) or entry.get('stamp') != stamp or not isinstance(entry.get('boxes'), dict):
+            entry = {'stamp': stamp, 'boxes': {}}
+        known = entry['boxes']
+        missing = [tuple(box) for box in boxes if ','.join(map(str, box)) not in known]
+        if missing:
+            for box, digest in _decode_digests(crop.path, missing).items():
+                known[','.join(map(str, box))] = digest
+            dirty = True
+        cache[crop.relative] = entry
+        result[crop.relative] = {tuple(box): known[','.join(map(str, box))] for box in boxes}
+    if dirty:
+        _write_cache(root, cache)
+    return result
+
+
 def _path(maps: pathlib.Path, title: str) -> pathlib.Path:
     return maps / f'guards_{FILES[title]}.json'
 
@@ -148,7 +209,7 @@ def _check(args, crops: list[Crop]) -> int:
     specs = {title: _load(args.maps, title) for title in args.title or FILES}
     boxes = {tuple(rule['box']) for spec in specs.values() for kind in ('guards', 'identity')
              for value in spec[kind].values() for rule in screens.rules_of(value)}
-    digests = {crop.relative: screens.box_digests(crop.path, boxes) for crop in crops}
+    digests = cached_digests(args.root, crops, boxes)
     for title in args.title or FILES:
         spec = specs[title]
         problems = 0
@@ -203,6 +264,11 @@ def _add(args, crops: list[Crop]) -> int:
                  (not _owned(c, args.title, spec) or
                   _shown(c, args.title, spec) and args.state not in _shown(c, args.title, spec)
                   and not _shown(c, args.title, spec).intersection(args.also))]
+    against = set(negatives)
+    candidates = [c for c in crops if c.path in against]
+    same = cached_digests(args.root, [selected, *candidates], [box])
+    wanted = same[selected.relative][tuple(box)]
+    negatives = [c.path for c in candidates if same[c.relative][tuple(box)] == wanted]
     rule = screens.checked_rule(crop, box, args.state, negatives)
     rule = {**rule, 'example': selected.relative, 'also': sorted(args.also)}
     if args.alternative:
