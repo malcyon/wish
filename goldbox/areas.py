@@ -68,6 +68,9 @@ carry a name too, approved by Donald off a forum table and graded CONFIRMED
 or PROBABLE by a driven validation pass, also on `#15`; the other one stays
 unnamed.
 
+`AREAS_POOLS_OF_DARKNESS` is the fourth: 56 scripts in one library, so no row
+has a disk side, and a name only where the title prints one.
+
 Enumerating maps by count or assuming a `GEO00` is wrong for every Gold Box
 title after this one: Curse's ids are sparse and chapter-grouped, and Silver
 Blades, Champions and Death Knights start at `$10` or `$20`
@@ -90,10 +93,12 @@ __all__ = [
     "POOL_OF_RADIANCE",
     "CURSE_OF_THE_AZURE_BONDS",
     "SECRET_OF_THE_SILVER_BLADES",
+    "POOLS_OF_DARKNESS",
     "Arrival",
     "Area",
     "AREAS",
     "AREAS_CURSE",
+    "AREAS_POOLS_OF_DARKNESS",
     "AREAS_SILVER_BLADES",
     "AREAS_BY_ID",
     "TABLES",
@@ -121,6 +126,7 @@ __all__ = [
 POOL_OF_RADIANCE = "Pool of Radiance"
 CURSE_OF_THE_AZURE_BONDS = "Curse of the Azure Bonds"
 SECRET_OF_THE_SILVER_BLADES = "Secret of the Silver Blades"
+POOLS_OF_DARKNESS = "Pools of Darkness"
 
 #: `ECL0C` is not on any of the nine disks, so there is no area 12. Kept as a
 #: named constant because "the ids are 0-30 with one hole" is a fact about the
@@ -166,8 +172,10 @@ class Area:
     #: Which disk side carries the script -- 1-8 in Pool of Radiance, 1-6 in
     #: Secret of the Silver Blades. This is what a fasttravel writes to the
     #: loader's disk byte (`$6E12` in Pool of Radiance, `$7F12` in Silver
-    #: Blades) and what the loader will prompt for.
-    disk: int
+    #: Blades) and what the loader will prompt for. None for a title whose
+    #: scripts are all in one library with no side to prompt for, which is
+    #: Pools of Darkness.
+    disk: int | None
     #: The `GEO` files the script statically loads, in the order it loads them.
     #: Empty for the three mapless Pool of Radiance areas, and for the two
     #: Silver Blades areas whose map is loaded by the script that sends the
@@ -302,6 +310,8 @@ class Area:
         maps = ", ".join(self.geos) or "no map"
         if self.sqrdata:
             maps = f"{maps}, {self.sqrdata}"
+        if self.disk is None:
+            return f"{self.name or self.ecl} - {maps}"
         side = chr(ord("A") + self.disk - 1) if self.lettered_side else self.disk
         return (f"{self.name or self.ecl} - {maps}, "
                 f"{self.side_name.format(side)}")
@@ -764,11 +774,94 @@ AREAS_CURSE: tuple[Area, ...] = (
        world_map=True),
 )
 
+def _p(id: int, geos: tuple[str, ...], arrival: Arrival | None = None,
+       name: str | None = None, **kw) -> Area:
+    """One Pools of Darkness row: id, the maps its script loads, a square.
+
+    Every row has `disk=None`, because the title keeps every script in one
+    library. `confidence` grades the name only, as in the other tables:
+    CONFIRMED for a name the title prints, UNKNOWN for a row left unnamed.
+    """
+    return Area(id=id, name=name, disk=None, geos=geos, arrival=arrival,
+                confidence=C if name else U, **kw)
+
+
+#: Pools of Darkness: 56 scripts, read statically off the Amiga `ECL.GLB` and
+#: the DOS `ECL1.DAX`, which agree on every row. `arrival` is set only where
+#: the script's default branch writes one constant square; a script that
+#: branches on the area the party came from, computes the square, reads it
+#: from a table or does not write one stores None. Every square is PROBABLE.
+#: A name is the place name the title prints on the way in, and None where it
+#: prints none. Rows 1-4 are the developers' menu, two test fights and the
+#: opening scene, not places. The 17 rows with no `GEO` of their own are
+#: entered from a parent area and use its map. WISH-1 comment 7b9be95c has
+#: the evidence for each row.
+AREAS_POOLS_OF_DARKNESS: tuple[Area, ...] = (
+    _p(1, ("GEO01",), fasttravelable=False),
+    _p(2, (), fasttravelable=False),
+    _p(3, (), fasttravelable=False),
+    _p(4, ("GEO51",), fasttravelable=False),
+    _p(16, ("GEO10", "GEO11")),
+    _p(17, ()),
+    _p(18, ("GEO12",), None, name="Elminster's Camp in Limbo"),
+    _p(19, ("GEO13",), Arrival(8, 15, 0), name="Zhentil Keep"),
+    _p(20, ("GEO14",)),
+    _p(21, ("GEO15",), Arrival(7, 15, 0), name="Steading near Dragonhorn Gap"),
+    _p(22, ("GEO16",), Arrival(7, 15, 0), name="Taydome's Keep"),
+    _p(23, (), dynamic_geo=True),
+    _p(24, ("GEO11",), Arrival(0, 5, 1)),
+    _p(25, ()),
+    _p(26, ("GEO13",), Arrival(0, 3, 1), name="The Black City of Mulmaster"),
+    _p(27, ("GEO12",)),
+    _p(32, ("GEO20",)),
+    _p(33, ("GEO21",), None, name="Aerie"),
+    _p(34, ("GEO22",), Arrival(1, 13, 2), name="Thorne"),
+    _p(35, ("GEO23",)),
+    _p(36, ("GEO24",), Arrival(0, 0, 1), name="Caves of Arcam the Beholder"),
+    _p(37, ("GEO25",), Arrival(0, 8, 1)),
+    _p(38, ("GEO24",), Arrival(4, 12, 3), name="Arcam's Cave"),
+    _p(39, ("GEO27",), Arrival(3, 7, 1)),
+    _p(40, (), dynamic_geo=True),
+    _p(41, (), Arrival(4, 11), dynamic_geo=True),
+    _p(42, (), dynamic_geo=True),
+    _p(48, ("GEO30",), None, name="Manshoon's Tower"),
+    _p(49, (), dynamic_geo=True),
+    _p(50, ("GEO32",), None, name="Temple of Tyr"),
+    _p(51, (), dynamic_geo=True),
+    _p(52, ("GEO34",), None, name="Moander"),
+    _p(53, ("GEO35",), None, name="Moander's Heart"),
+    _p(54, ("GEO32",), Arrival(7, 13, 2)),
+    _p(55, (), dynamic_geo=True),
+    _p(64, ("GEO40",), Arrival(13, 0, 3), name="Bane's Land"),
+    _p(65, ("GEO41",), Arrival(0, 0, 1), name="Palace of Gothmenes"),
+    _p(66, ("GEO42",), Arrival(15, 4, 3), name="Myth Drannor"),
+    _p(67, ("GEO43",), Arrival(1, 0, 3)),
+    _p(68, ("GEO44",), Arrival(7, 15, 0)),
+    _p(69, ("GEO45",), Arrival(8, 15, 0), name="Drow Temple"),
+    _p(70, ("GEO46", "GEO47"), Arrival(4, 15, 0), name="Garden of the Red Tower"),
+    _p(71, (), dynamic_geo=True),
+    _p(72, (), dynamic_geo=True),
+    _p(73, (), dynamic_geo=True),
+    _p(74, ("GEO41",), Arrival(0, 0, 1), name="Palace of Gothmenes"),
+    _p(75, (), dynamic_geo=True),
+    _p(76, (), dynamic_geo=True),
+    _p(77, (), dynamic_geo=True),
+    _p(80, (), dynamic_geo=True),
+    _p(81, ("GEO51",), None, name="Testing Ground"),
+    _p(82, ("GEO52", "GEO54"), None, name="Kalistes' Parlor"),
+    _p(83, ("GEO53",), None, name="Kalistes Land"),
+    _p(84, (), dynamic_geo=True),
+    _p(85, (), dynamic_geo=True),
+    _p(86, (), dynamic_geo=True),
+)
+
+
 #: Game title -> that title's areas.
 TABLES: Mapping[str, tuple[Area, ...]] = MappingProxyType({
     POOL_OF_RADIANCE: AREAS,
     CURSE_OF_THE_AZURE_BONDS: AREAS_CURSE,
     SECRET_OF_THE_SILVER_BLADES: AREAS_SILVER_BLADES,
+    POOLS_OF_DARKNESS: AREAS_POOLS_OF_DARKNESS,
 })
 
 
@@ -881,7 +974,7 @@ def areas_for(title: str | None) -> tuple[Area, ...]:
 
 
 def areas_for_title(title: str | None) -> tuple[Area, ...]:
-    """Every area a fast travel may offer, which is nothing for four of six.
+    """Every area a fast travel may offer, which is nothing for three of six.
 
     **`AREAS` is Pool of Radiance's and only Pool of Radiance's.** Every row
     carries a `POOL` disk number and an `ECL` id, and neither means anything in
@@ -1054,6 +1147,7 @@ GEO_NAMES: Mapping[str, Mapping[str, str]] = MappingProxyType({
     POOL_OF_RADIANCE: _names_for_pool(),
     CURSE_OF_THE_AZURE_BONDS: _names_for_curse(),
     SECRET_OF_THE_SILVER_BLADES: _names_for_silver_blades(),
+    POOLS_OF_DARKNESS: _names_unless_shared(AREAS_POOLS_OF_DARKNESS),
 })
 
 

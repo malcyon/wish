@@ -1093,3 +1093,112 @@ def test_every_pool_map_the_table_claims_is_one_its_script_loads(pool_table):
         if claimed != loaded:
             exceptions[a.ecl] = (sorted(claimed), sorted(loaded))
     assert exceptions == {"ECL07": ([7], [3, 7])}
+
+
+# -- Pools of Darkness -----------------------------------------------------------
+
+POD = areas.POOLS_OF_DARKNESS
+
+POD_NAMES = {
+    18: "Elminster's Camp in Limbo", 19: "Zhentil Keep",
+    21: "Steading near Dragonhorn Gap", 22: "Taydome's Keep",
+    26: "The Black City of Mulmaster", 33: "Aerie", 34: "Thorne",
+    36: "Caves of Arcam the Beholder", 38: "Arcam's Cave",
+    48: "Manshoon's Tower", 50: "Temple of Tyr", 52: "Moander",
+    53: "Moander's Heart", 64: "Bane's Land", 65: "Palace of Gothmenes",
+    66: "Myth Drannor", 69: "Drow Temple", 70: "Garden of the Red Tower",
+    74: "Palace of Gothmenes", 81: "Testing Ground",
+    82: "Kalistes' Parlor", 83: "Kalistes Land",
+}
+
+POD_ARRIVALS = {
+    19: Arrival(8, 15, 0), 21: Arrival(7, 15, 0), 22: Arrival(7, 15, 0),
+    24: Arrival(0, 5, 1), 26: Arrival(0, 3, 1), 34: Arrival(1, 13, 2),
+    36: Arrival(0, 0, 1), 37: Arrival(0, 8, 1), 38: Arrival(4, 12, 3),
+    39: Arrival(3, 7, 1), 41: Arrival(4, 11), 54: Arrival(7, 13, 2),
+    64: Arrival(13, 0, 3), 65: Arrival(0, 0, 1), 66: Arrival(15, 4, 3),
+    67: Arrival(1, 0, 3), 68: Arrival(7, 15, 0), 69: Arrival(8, 15, 0),
+    70: Arrival(4, 15, 0), 74: Arrival(0, 0, 1),
+}
+
+POD_MAPLESS = (23, 40, 41, 42, 49, 51, 55, 71, 72, 73, 75, 76, 77, 80,
+               84, 85, 86)
+
+
+def test_pools_of_darkness_names_are_exactly_the_approved_ones():
+    table = areas.TABLES[POD]
+    assert {a.id: a.name for a in table if a.name} == POD_NAMES
+    assert len(table) == 56
+    assert sum(a.name is None for a in table) == 34
+
+
+def test_pools_of_darkness_arrivals_are_the_constant_squares_only():
+    table = areas.TABLES[POD]
+    assert {a.id: a.arrival for a in table if a.arrival} == POD_ARRIVALS
+
+
+def test_pools_of_darkness_rows_have_no_disk_side():
+    assert all(a.disk is None for a in areas.TABLES[POD])
+    assert areas.area_in(33, POD).label == "Aerie - GEO21"
+    assert areas.area_in(20, POD).label == "ECL14 - GEO14"
+
+
+def test_pools_of_darkness_developer_rows_are_not_fasttravelable():
+    table = {a.id: a for a in areas.TABLES[POD]}
+    assert [i for i, a in table.items() if not a.fasttravelable] == [1, 2, 3, 4]
+
+
+def test_pools_of_darkness_scripts_without_a_map_use_their_parents():
+    table = {a.id: a for a in areas.TABLES[POD]}
+    mapless = [i for i, a in table.items() if a.dynamic_geo]
+    assert mapless == list(POD_MAPLESS)
+    assert all(table[i].geos == () for i in POD_MAPLESS)
+
+
+def test_pools_of_darkness_shared_maps_are_not_named_for_either_area():
+    names = areas.GEO_NAMES[POD]
+    assert "GEO13" not in names and "GEO24" not in names
+    assert names["GEO41"] == "Palace of Gothmenes"
+
+
+def test_pools_of_darkness_names_are_titles_and_the_string_matches():
+    from goldbox import titles
+    assert areas.POOLS_OF_DARKNESS == titles.POOLS_OF_DARKNESS.title
+    for a in areas.TABLES[POD]:
+        assert a.name is None or a.name[0].isupper(), a.name
+
+
+@pytest.fixture(scope="module")
+def pod_disks():
+    """Pools of Darkness' Amiga disk images, or skip."""
+    amigasaves = pytest.importorskip("tools.amiga.amigasaves")
+    images = [data for _label, data in amigasaves.images()]
+    if not images:
+        pytest.skip("needs the Amiga disks in the registry")
+    return images
+
+
+def test_pools_of_darkness_has_a_row_per_script_on_its_disks(pod_disks):
+    from automap import amigatrip
+    found = amigatrip.script_lengths("pools-of-darkness", pod_disks)
+    if not found:
+        pytest.skip("needs the Pools of Darkness disk 3")
+    assert set(found) == {a.id for a in areas.TABLES[POD]}
+
+
+def test_every_pools_of_darkness_map_is_on_disk_three(pod_disks):
+    from automap import amiga
+    from goldbox.amiga_adf import AmigaDisk
+    ids: set[str] = set()
+    for image in pod_disks:
+        try:
+            disk = AmigaDisk(image)
+            where = amiga.library_path(disk)
+            if where is None or "disk3" not in where.lower():
+                continue
+            ids |= {f"GEO{i:02X}" for i in amiga.geo_library(disk.read_file(where))}
+        except Exception:
+            continue
+    if not ids:
+        pytest.skip("needs the Pools of Darkness disk 3")
+    assert areas.geos_in(POD) <= ids
