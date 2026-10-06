@@ -35,9 +35,12 @@ class ResumeMixin:
     state_bytes = STATE_BYTES
     snapshot_error = None
     change_on_stop = False
+    get_seconds = 0
+    snapshot_seconds = 0
 
     def snapshot(self, name, holder):
         self.calls.append(("snapshot", name, holder))
+        self.clock.now += self.snapshot_seconds
         if self.snapshot_error:
             raise self.snapshot_error
         return types.SimpleNamespace(tags={
@@ -45,6 +48,7 @@ class ResumeMixin:
             "count_snapshot": "900", "bytes": str(len(self.state_bytes)), "exe": "winuae.exe"})
 
     def get(self, remote, local, timeout=None):
+        self.clock.now += self.get_seconds
         if remote == STATE_PATH:
             self.calls.append(("get", remote, str(local)))
             local.write_bytes(self.state_bytes)
@@ -60,6 +64,27 @@ class ResumeMixin:
 
 class ResumeAcceptGuest(ResumeMixin, AcceptGuest):
     pass
+
+
+class _Drives(tuple):
+    """The mounted paths the fake guest keeps, which can also be called as the readback."""
+
+    reply = None
+
+    def __call__(self, holder):
+        return self.reply(holder)
+
+
+class DrivesGuest(ResumeAcceptGuest):
+    """The fake guest's `start` keeps its mounted paths in `drives`; this one also answers its readback."""
+
+    reply = None
+
+    def start(self, holder, df0, df1, timeout=None):
+        shown = super().start(holder, df0, df1, timeout)
+        self.drives = _Drives(self.drives)
+        self.drives.reply = self.reply
+        return shown
 
 
 class ResumeTitleGuest(ResumeMixin, TitleGuest):
@@ -213,10 +238,10 @@ def test_a_state_file_that_differs_from_the_guests_hash_leaves_no_record(
     guest = ResumeAcceptGuest(clock)
     guest.state_bytes = b"ASF damaged"
     sent = hashlib.sha256(STATE_BYTES).hexdigest()
-    plain = guest.snapshot
+    real_snapshot = guest.snapshot
 
     def snapshot(name, holder):
-        receipt = plain(name, holder)
+        receipt = real_snapshot(name, holder)
         receipt.tags["sha256"] = sent
         return receipt
 
@@ -228,13 +253,13 @@ def test_a_state_file_that_differs_from_the_guests_hash_leaves_no_record(
 
 def test_a_miss_after_the_route_time_ended_still_saves(tmp_path, clock, readings):  # noqa: F811
     guest = ResumeAcceptGuest(clock)
-    plain = guest.grab
+    real_grab = guest.grab
 
     def late(state, raw, cropped, timeout=None):
-        shown = plain(state, raw, cropped, timeout)
+        shown = real_grab(state, raw, cropped, timeout)
         if state == "04-sheet":
             # Past the route time (the deadline less its cleanup reserve), inside the deadline.
-            clock.now = 1000 + 1600
+            clock.now = 1000 + 1510
         return shown
 
     guest.grab = late
@@ -281,3 +306,107 @@ def test_main_keeps_exit_one_when_the_record_is_not_resumable(
     guest.change_on_stop = True
     code, seen = _main(tmp_path, clock, monkeypatch, guest, _missing(4), capsys)
     assert code == 1 and "resume with" not in seen.err
+
+
+def _slow_cleanup(guest, clock, *, jump):
+    """A guest whose miss lands `jump` seconds in, and whose snapshot and every copy take time."""
+    real_grab = guest.grab
+
+    def late(state, raw, cropped, timeout=None):
+        shown = real_grab(state, raw, cropped, timeout)
+        if state == "04-sheet":
+            clock.now = 1000 + jump
+        return shown
+
+    guest.grab = late
+
+
+def test_a_snapshot_that_eats_the_cleanup_time_still_leaves_the_lane_released(
+        tmp_path, clock, readings):  # noqa: F811
+    guest = ResumeAcceptGuest(clock)
+    # 290 s of the 300 s reserve are left at the miss; the stop, two fetches and the release need 180.
+    _slow_cleanup(guest, clock, jump=1510)
+    guest.snapshot_seconds, guest.get_seconds = 100, 60
+    _, result = _accept(tmp_path, clock, guest=guest, guard=_missing(4))
+    assert "too little cleanup time" in result["resume_error"]
+    assert result["resumable"] is False and "resume_record" not in result
+    assert _names(guest, "stop", "release") == ["stop", "release"]
+    assert result["release"] is None and "release_error" not in result
+
+
+def test_a_miss_with_too_little_cleanup_time_takes_no_snapshot(
+        tmp_path, clock, readings):  # noqa: F811
+    guest = ResumeAcceptGuest(clock)
+    # 100 s left at the miss, less than the 180 s the stop, fetches and release need.
+    _slow_cleanup(guest, clock, jump=1700)
+    _, result = _accept(tmp_path, clock, guest=guest, guard=_missing(4))
+    assert _names(guest, "snapshot") == []
+    assert result["resumable"] is False and "too little cleanup time" in result["resume_why_not"]
+    assert _names(guest, "stop", "release") == ["stop", "release"]
+
+
+def test_the_drives_readback_is_kept_in_the_record(tmp_path, clock, readings):  # noqa: F811
+    guest = DrivesGuest(clock)
+    guest.reply = lambda holder: f"ok df0=C:/Amiga/Disks/a.adf rw holder={holder}"
+    _, result = _accept(tmp_path, clock, guest=guest, guard=_missing(4))
+    start = _record(result)["start"]
+    assert start["drives_at_stop"] == "ok df0=C:/Amiga/Disks/a.adf rw holder=wish672-test"
+    assert start["drives_error"] is None
+
+
+def test_a_drives_readback_that_raises_is_recorded_and_the_save_goes_on(
+        tmp_path, clock, readings):  # noqa: F811
+    guest = DrivesGuest(clock)
+
+    def unanswered(holder):
+        raise RouteError("the pipe did not answer")
+
+    guest.reply = unanswered
+    _, result = _accept(tmp_path, clock, guest=guest, guard=_missing(4))
+    start = _record(result)["start"]
+    assert start["drives_at_stop"] is None and "the pipe did not answer" in start["drives_error"]
+    assert result["resumable"] is True
+
+
+def test_main_does_not_report_a_held_lane_as_resumable(
+        tmp_path, clock, readings, monkeypatch, capsys):  # noqa: F811
+    guest = ResumeAcceptGuest(clock)
+
+    def release(holder, timeout=None):
+        raise RouteError("the lane would not release")
+
+    guest.release = release
+    code, seen = _main(tmp_path, clock, monkeypatch, guest, _missing(4), capsys)
+    assert code == 1 and "resume with" not in seen.err
+
+
+def test_a_restore_mark_cuts_the_sent_keys_back_and_the_record_lists_it(
+        tmp_path, clock, readings):  # noqa: F811
+    guest = ResumeAcceptGuest(clock)
+    fake = FakePipe(guest)
+    resume_snapshot = guest.snapshot
+    guest.snapshot = lambda name, holder: (
+        resume_snapshot(name, holder) if name == "resume" else fake.snapshot(name, holder))
+    guest.restore = fake.restore
+    # Snapshot before step 5, restore before step 8: the machine goes back to before step 5 and
+    # step 8's key goes out on that screen, so steps 5 to 7 are not in the machine's history.
+    marks = {4: (("snapshot", "walk"),), 7: (("restore", "walk"),)}
+    _, result = _accept(tmp_path, clock, guest=guest, marks=marks,
+                        guard=_missing(8, "save_picker"))
+    record = _record(result)
+    keys = "P L C V I E E S".split()
+    assert record["step"]["n"] == 8 and record["step"]["key"] == "S"
+    assert [key for key, _ in record["sent"]] == keys[:4] + keys[7:]
+    assert record["kept"]["restores"] == [{"restore": "walk", "step": 8}]
+
+
+def test_an_insert_and_a_skipped_step_use_the_routes_own_keys_in_sent(tmp_path, clock):
+    guest = ResumeTitleGuest(clock)
+    title = make_title(strict=make_title().strict | {"disk_wait"})
+    guard = MapGuard(states=("title", *STATES),
+                     on={"disk_wait": lambda p: not p.stem.startswith("04-")})
+    _, result = _run(tmp_path, clock, guest=guest, title=title, guard=guard)
+    record = _record(result)
+    # The route's insert step holds a list, the form `route_sha256` hashes; the key pressed is its last.
+    assert record["sent"][3] == [[1, "disk3", "SPACE"], "insert"]
+    assert record["step"]["key"] == "SPACE" and record["step"]["kind"] == "insert"

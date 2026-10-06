@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import io
 import pathlib
+import types
 
 import pytest
 from PIL import Image
@@ -345,3 +346,10 @@ def test_release_other_lanes_frees_only_the_holders_other_lanes():
     assert [call[1] for call in guest.sent[1:]] == [
         f"{winuaesession.WINUAE_PS} release -Lane 2 -Holder h",
         f"{winuaesession.WINUAE_PS} release -Lane 4 -Holder h"]
+
+
+def test_drives_reads_the_lane_through_the_pipe_for_the_holder():
+    guest = Guest()
+    asked = []
+    guest._pipe = types.SimpleNamespace(drives=lambda holder: asked.append(holder) or "df0 rw")
+    assert guest.drives("wish1-a") == "df0 rw" and asked == ["wish1-a"]

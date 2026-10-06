@@ -82,6 +82,10 @@ class WinGuest:
         """Put the machine back as snapshot `name` left it."""
         return self._machine().restore(name, holder)
 
+    def drives(self, holder: str) -> Any:
+        """What each drive holds, read through WinUAE's pipe."""
+        return self._machine().drives(holder)
+
     def discard(self, name: str, holder: str) -> Any:
         """Delete snapshot `name`."""
         return self._machine().discard_snapshot(name, holder)
