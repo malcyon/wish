@@ -724,15 +724,19 @@ def test_the_players_disks_give_the_script_ends_measured_live(key, area, end):
     assert end in found
 
 
-def test_every_pool_departing_area_fits_a_trip_on_the_players_disks():
+def test_every_pool_departing_area_but_three_fits_a_trip_on_the_players_disks():
     pool = trip.ROWS["pool-of-radiance"]
     areas = (0, 1, 2, 3, 9, 13, 14, 16, 17, 18, 21, 22, 23, 25, 26, 27, 28)
+    # The scripts of areas 1, 17 and 28 leave no room for their departure
+    # statements, so those trips are held rather than skipping the departure.
+    no_room = (1, 17, 28)
     for image in _images():
         lengths = trip.script_lengths("pool-of-radiance", [image])
         if not all(a in lengths for a in areas):
             continue
         for here in areas:
-            assert trip.leg_held(pool, here, 0, False, lengths) is False, here
+            held = trip.leg_held(pool, here, 0, False, lengths)
+            assert held is (here in no_room), here
         return
     pytest.skip("needs the player's Amiga Pool of Radiance disks")
 

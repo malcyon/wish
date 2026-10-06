@@ -63,8 +63,8 @@ BUFFER_SIZE = 0x1E00
 #: `NEWECL area`.
 SAVE = 0x09
 NEWECL = 0x20
-#: `COMPARE a, b` latches the flags of a - b; the `IF` that follows runs the
-#: next statement, and skips exactly one, by that latch.
+#: `COMPARE a, b` latches the flags of a - b. An `IF` placed after it runs
+#: the next statement when the latch matches and skips exactly one when not.
 COMPARE = 0x03
 #: `AND a, b, dest` latches the zero flag alone.
 AND = 0x2F
