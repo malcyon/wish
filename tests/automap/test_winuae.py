@@ -594,7 +594,7 @@ def test_a_write_that_times_out_on_a_fresh_handle_keeps_the_handle(rig):
     assert api.closes == 0
 
 
-def test_a_slow_drain_leaves_the_new_request_its_whole_time(rig):
+def test_a_slow_drain_and_its_request_share_the_calls_timeout(rig):
     pipe, api, clock, _folder = rig
     api.silent = True
     with pytest.raises(winuae.PipeTimeout):
@@ -604,7 +604,41 @@ def test_a_slow_drain_leaves_the_new_request_its_whole_time(rig):
     clock.now += pipe.BACKOFF + 1
     api.wait_ms.clear()
     assert pipe.read_memory(0x40, 16, timeout=2.0) == MEMORY[0x40:0x50]
-    assert api.wait_ms[-1] == 2000
+    assert api.wait_ms[0] == 2000
+    assert max(api.wait_ms[1:]) <= 500
+
+
+def test_three_drain_timeouts_drop_the_handle_and_the_next_call_reconnects(rig):
+    pipe, api, clock, _folder = rig
+    api.silent = True
+    with pytest.raises(winuae.PipeTimeout):
+        pipe.read_memory(0, 16)
+    for _ in range(pipe.DRAIN_TIMEOUTS):
+        assert api.closes == 0
+        clock.now += pipe.BACKOFF + 1
+        with pytest.raises(winuae.PipeTimeout):
+            pipe.read_memory(0, 16)
+    assert api.closes == 1
+    api.silent = False
+    clock.now += pipe.BACKOFF + 1
+    created = api.creates
+    assert pipe.read_memory(0, 16) == MEMORY[:16]
+    assert api.creates == created + 1
+
+
+def test_a_late_reply_within_the_drain_attempts_keeps_the_handle(rig):
+    pipe, api, clock, _folder = rig
+    api.silent = True
+    with pytest.raises(winuae.PipeTimeout):
+        pipe.read_memory(0, 16)
+    for _ in range(pipe.DRAIN_TIMEOUTS - 1):
+        clock.now += pipe.BACKOFF + 1
+        with pytest.raises(winuae.PipeTimeout):
+            pipe.read_memory(0, 16)
+    api.resume()
+    clock.now += pipe.BACKOFF + 1
+    assert pipe.read_memory(0x40, 16) == MEMORY[0x40:0x50]
+    assert api.closes == 0 and api.creates == 1
 
 
 def test_a_broken_pipe_while_a_reply_is_owed_still_closes_the_handle(rig):
