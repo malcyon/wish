@@ -529,6 +529,13 @@ class QuestLogPanel(QObject):
             self.heading.setText(f"Quest Log - {text}" if text
                                  else "Quest Log")
 
+    def clear(self) -> None:
+        """Back to the state before any game connected."""
+        self._flags = None
+        for group in self.groups.values():
+            group.show_rows([])
+        self.set_message("waiting for a game")
+
     def update_from(self, source) -> None:
         """Redraw from the flag block. Same input as `goldbox.commissions.read`."""
         flags = book.flags(source)

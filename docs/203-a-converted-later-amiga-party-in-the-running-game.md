@@ -104,7 +104,8 @@ with three effect nodes and no items: `MALE 60 YEARS`, `NEUTRAL GOOD`, `DWARF`,
 differs between the two titles.** Amiga Silver Blades' **camp** screen moves the
 party-panel highlight on cursor **down**, and `VIEW` then draws whoever is
 highlighted; the party menu, the adventuring bar and the sheet itself all ignore
-the key. **Amiga Curse does not do this at all** — its camp screen, party menu
+the key. On the party menu only keypad 1 (next member) and keypad 7
+(previous member) move the highlight; cursor down and keypad 2 do not. **Amiga Curse does not do this at all** — its camp screen, party menu
 and bar all ignore cursor down — so on that title only the first character's
 sheet can be drawn with the keys `tools/amiga/amigadrive.py` sends, and the five behind him
 were read off the party panel instead.

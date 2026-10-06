@@ -410,6 +410,28 @@ def test_switching_to_a_c64_and_back_clears_and_restores(measured):
     assert not window.roster.levelling and window.roster.unsupported
 
 
+def test_switching_from_a_c64_to_an_amiga_clears_the_quest_log_and_strength(measured):
+    c64_target = MemoryTarget(c64_memory())
+    window = window_on(c64_target)
+    waiting_heading = window.questlog.heading.text()
+    waiting_strength = window.strength_label.text()
+    waiting_tip = window.strength_label.toolTip()
+    save0, roster = bytes(0x1C00), bytes(0x800)
+    window.questlog.update_from(save0)
+    window.show_strength(save0, roster)
+    assert window.questlog.heading.text() != waiting_heading
+    assert window.strength_label.text() != waiting_strength
+
+    window.mapper.target = FakeAmiga(c64_memory(), POOL)
+    window._refresh_roster()
+    assert window.questlog.heading.text() == waiting_heading
+    assert not any(row.isVisibleTo(group)
+                   for group in window.questlog.groups.values()
+                   for row in group._rows)
+    assert window.strength_label.text() == waiting_strength
+    assert window.strength_label.toolTip() == waiting_tip
+
+
 def test_switching_between_two_amiga_titles_drops_the_first_party(measured):
     window, _ = attached(POOL)
     assert card_names(window) == ["ALDRIC", "BRYNNA", "COSIMO"]

@@ -1008,6 +1008,8 @@ class AutomapBinding(QObject):
         self.messages = MessagesPanel(self.root)
         self.combat_log = CombatLog()
         self.strength_label = self.root.findChild(QLabel, "strength_label")
+        self._strength_waiting = (self.strength_label.text(),
+                                  self.strength_label.toolTip())
         self.actions_bar = ActionBar(self.root, say=self.messages.say, game=game_named(self.state.title), settings=self.settings)
         # `_maps` is what the automapper loaded off the player's disks; the
         # Fast Travel row needs them to pick a landing square for the fourteen
@@ -1549,6 +1551,10 @@ class AutomapBinding(QObject):
         self._amiga_key = key
         self.roster.clear()
         self.snapshot = None
+        self.questlog.clear()
+        text, tip = self._strength_waiting
+        self.strength_label.setText(text)
+        self.strength_label.setToolTip(tip)
         acts = amigaactions.actions(None, key)
         quickfight = acts[-1]
         self.actions_bar.set_actions(
