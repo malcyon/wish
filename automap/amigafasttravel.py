@@ -256,9 +256,10 @@ class AmigaFastTravel(engine.FastTravel):
             return None
         chosen = fasttravel.choose_door(doors)
         if chosen is None:
-            _log.debug("two-hop fast travel blocked: every door out of area "
+            # No door is safe to walk out of, so the script trip is made.
+            _log.debug("two-hop fast travel skipped: every door out of area "
                        "%d can start a fight", here)
-            return engine.Outcome(False, self.EVERY_DOOR_FIGHTS)
+            return None
         through, door = chosen
         # Checked before the first hop, so a second leg that is held leaves
         # the party where it is.
@@ -402,6 +403,9 @@ class AmigaFastTravel(engine.FastTravel):
             return None
         name = getattr(hop.area, "name", None) or "this area"
         if now == hop.through:
+            if not hop.been_through:
+                # The wait for `through`'s script is bounded from here.
+                hop.deadline = time.monotonic() + engine.SECOND_HOP_SECONDS
             hop.been_through = True
         if now == hop.from_area:
             if hop.been_through:
@@ -428,6 +432,8 @@ class AmigaFastTravel(engine.FastTravel):
         if not trips.gate(target, row):
             return None
         if target.read(target.data_base + row.step_entry, 2) == hop.entry:
+            if time.monotonic() > hop.deadline:
+                self.pending = None
             return None
         arrival, overland = self._square_writes(hop.area, arrival=hop.arrival)
         notes = tuple(self.warnings(target, hop.area, arrival, overland))

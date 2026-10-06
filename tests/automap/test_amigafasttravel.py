@@ -654,16 +654,16 @@ def test_a_second_leg_is_judged_without_the_door_differences(
     assert out.ok and t.trip.hop.through == 27
 
 
-def test_every_door_able_to_fight_blocks_the_trip_with_nothing_written(
+def test_every_door_able_to_fight_makes_the_script_trip_the_menu_offered(
         disks, pool_gate, monkeypatch):
     fight = fasttravel.ExitRoute(1, (3, 8), combat=True)
     monkeypatch.setattr(fasttravel, "EXIT_ROUTES", {(7, 0): fight, (7, 3): fight})
     m = pool(7)
-    before = bytes(m.memory)
     t = pool_travel(monkeypatch)
+    assert t.legality(m, area(9))
     out = t.run(m, area(9))
-    assert not out.ok and out.message == engine.FastTravel.EVERY_DOOR_FIGHTS
-    assert bytes(m.memory) == before
+    assert out.ok and t.trip is not None and not t.trip.door
+    assert trips.newecl(9) in b"".join(d for _a, d in out.writes)
 
 
 @pytest.mark.parametrize("here, to", [
@@ -744,3 +744,14 @@ def test_a_party_that_comes_back_drops_the_hop_silently(disks, monkeypatch):
 def test_a_party_in_some_other_area_drops_the_hop_silently(disks, monkeypatch):
     m, t = _pending_hop(monkeypatch, 14)
     assert t.continue_pending(m) is None and t.pending is None
+
+
+def test_a_hop_whose_step_entry_never_changes_clears_after_the_deadline(
+        disks, pool_gate, monkeypatch):
+    m, t, _ = _hop_trip(monkeypatch)
+    _through(m, t)
+    assert t.continue_pending(m) is None and t.pending is not None
+    t.pending.deadline = 0.0
+    assert t.continue_pending(m) is None and t.pending is None
+    m.at(trips.ROWS[POOL].step_entry, (POOL_ENTRY + 2).to_bytes(2, "big"))
+    assert t.continue_pending(m) is None and t.trip is None
