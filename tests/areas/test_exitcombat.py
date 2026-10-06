@@ -1,8 +1,8 @@
 """Which exits can start a fight, in the checked-in table and as the game's own
 scripts say.
 
-`automap.fasttravel.choose_door` skips a route marked `combat`, so a stale flag
-would send a party through a fight or reject a door that is safe.
+An `automap/departures.py` row may only walk a route not marked `combat`, so a
+stale flag would send a party through a fight or keep a safe door out of use.
 """
 from __future__ import annotations
 

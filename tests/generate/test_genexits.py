@@ -17,6 +17,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from gamedata import needs_disks  # noqa: E402
 
+from automap import departures  # noqa: E402
 from goldbox.geo import GEO_SIZE, Geo  # noqa: E402
 from tools.generate import genexits as G  # noqa: E402
 
@@ -187,8 +188,9 @@ def test_yarashs_pyramid_exits_stand_on_the_squares_their_tables_name():
 @needs_disks
 def test_the_routes_that_check_a_scratch_byte_are_the_pinned_ones():
     """A route that tests `$4A00`-`$4A1F` can `EXIT` silently, because a
-    fast travel arrives with that range zeroed. Read the new row's gate, and
-    add an `EXIT_PRESETS` row if it can `EXIT`."""
+    fast travel arrives with that range zeroed. No `departures` row walks one
+    of these, so none needs the byte set first; a row that does needs its
+    guard read before it is added."""
     from tools.areas.eclexitkinds import analyse
 
     by_ecl = G.area_by_ecl(G.TITLE)
@@ -208,3 +210,6 @@ def test_the_routes_that_check_a_scratch_byte_are_the_pinned_ones():
                 scratch.add(key)
     assert scratch == {(0, 8), (0, 11), (0, 21), (0, 26), (0, 27), (1, 25),
                        (21, 0), (28, 25)}
+    walked = {(area, row.route_to) for row in departures.DEPARTURES
+              if row.route_to is not None for area in row.areas}
+    assert not walked & scratch

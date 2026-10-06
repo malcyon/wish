@@ -24,8 +24,8 @@ between the two, which is a different piece of work (`#207`'s own thread,
 "a two-hop trip with a wait between hops").
 
 **Which routes can start a fight.** A row carries `combat=True` where the
-script's route to that exit runs a `COMBAT` statement, which is what
-`automap.fasttravel.choose_door` skips when an area has more than one door.
+script's route to that exit runs a `COMBAT` statement; a route that can start
+a fight is one an `automap/departures.py` row must not walk.
 
 **Which square, where an exit's route lists several.** Every square on a
 route triggers the *same* handler -- `#207`'s analysis: `ECL0D`'s two

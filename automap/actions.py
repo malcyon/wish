@@ -64,7 +64,7 @@ from goldbox.savegame import (
     SaveGame1,
 )
 
-from . import c64, fasttravel, live
+from . import c64, departures, fasttravel, live
 from .combat import COMBAT
 from .paths import config_dir
 
@@ -1935,30 +1935,36 @@ class FastTravel(Action):
         # The grid's scripts dispatch on $49C3/$49C4, not on the `live_square`
         # an exit route writes, so a grid departure can only take the tail jump.
         on_grid = self.current_indoors(target, addr) == 0
-        if (addr.has_exit_reentry and here is not None and not on_grid
+        row = None
+        if here is not None:
+            row = departures.find(self.game.key, departures.C64, here, to,
+                                  to_overland=bool(getattr(area, "outdoors",
+                                                           False)))
+            if row is not None:
+                holds = self._departure_applies(target, row)
+                if holds is None:
+                    # A byte that cannot be read cannot be tested, and a trip
+                    # that guesses would skip or run a departure at random.
+                    return Outcome(False, FASTTRAVEL_FAILED, ())
+                if not holds:
+                    row = None
+        if (row is not None and row.route_to is not None
+                and addr.has_exit_reentry and not on_grid
                 and can_reenter(target)):
-            route = fasttravel.EXIT_ROUTES.get((here, to))
-            if route is not None:
+            route = fasttravel.EXIT_ROUTES[(here, row.route_to)]
+            if to == row.route_to:
                 return self._run_via_exit(target, addr, area, here, to, route)
-            # The destination is not one of this area's doors: walk out of the
-            # one `choose_door` names and finish from the poll.
-            doors = fasttravel.exits_from(here)
-            if doors:
-                chosen = fasttravel.choose_door(doors)
-                if chosen is None:
-                    _log.debug("two-hop fast travel blocked: every door out "
-                               "of area %d can start a fight", here)
-                    return Outcome(False, self.EVERY_DOOR_FIGHTS)
-                through, door = chosen
-                outcome = self._run_via_exit(target, addr, area, here,
-                                             through, door, detour=True)
-                if outcome.ok:
-                    _log.debug("two-hop fast travel started: area %d through "
-                               "area %d to area %s", here, through, to)
-                    self.pending = PendingHop(
-                        here, through, area, arrival,
-                        time.monotonic() + SECOND_HOP_SECONDS)
-                return outcome
+            # The destination is not the door's own: walk out of the door
+            # and finish from the poll.
+            outcome = self._run_via_exit(target, addr, area, here,
+                                         row.route_to, route, detour=True)
+            if outcome.ok:
+                _log.debug("two-hop fast travel started: area %d through "
+                           "area %d to area %s", here, row.route_to, to)
+                self.pending = PendingHop(
+                    here, row.route_to, area, arrival,
+                    time.monotonic() + SECOND_HOP_SECONDS)
+            return outcome
         arrival, overland = self._square_writes(area, arrival=arrival)
         notes = list(self.warnings(target, area, arrival, overland))
         # Read before writing: the first write is $6E12 and the second is
@@ -1971,6 +1977,10 @@ class FastTravel(Action):
                        ) if here is not None else None
         writes = newecl_writes(here or 0, to, getattr(area, "disk", None),
                                arrival, overland=overland, addresses=addr)
+        if row is not None and row.writes:
+            # The bytes the departing script sets before its own `NEWECL`.
+            writes = tuple((a, bytes((v & 0xFF,)))
+                           for a, v in row.writes) + tuple(writes)
         _write_all(target, writes)
         if not jump(target, addr.tail):
             # Unlike `_run_via_exit`'s failure below (`#493 (A Fast Travel
@@ -2004,6 +2014,20 @@ class FastTravel(Action):
         return Outcome(True, f"Traveling to {name}.",
                        writes, tuple(notes))
 
+    def _departure_applies(self, target, row) -> bool | None:
+        """Whether `row`'s guards and member hold now, or None when a guard
+        byte or the party cannot be read."""
+        def read_byte(address: int) -> int | None:
+            raw = _read(target, address, 1)
+            return raw[0] if raw else None
+
+        names = None
+        if row.member is not None:
+            party = read_party(target, self.game)
+            if party is not None:
+                names = [m.name for m in party]
+        return departures.applies(row, read_byte, names)
+
     def _run_via_exit(self, target, addr, area, here: int, to: int,
                       route: fasttravel.ExitRoute,
                       detour: bool = False) -> Outcome:
@@ -2011,7 +2035,7 @@ class FastTravel(Action):
         run the departing handler, instead of entering `NEWECL` at its tail --
         `#207 (Run an exit's own handler before Fast Travel warps out)`.
 
-        Only `route.square` and the route's `EXIT_PRESETS` bytes are written:
+        Only `route.square` is written:
         everything else `newecl_writes` would set -- the disk byte,
         `came_from`, the scratch wipe -- is the
         handler's own job now, made by its own `NEWECL` once the player has
@@ -2032,20 +2056,11 @@ class FastTravel(Action):
                        if self.current_indoors(target, addr) == 0 else None)
         x, y, *rest = route.square
         facing = rest[0] if rest else (was.square[2] if was.square else 0)
-        # Bytes the handler tests before it will act, read first so a failed
-        # re-entry puts them back.
-        presets = fasttravel.EXIT_PRESETS.get((here, to), ())
-        before = [(a, _read(target, a, 1)) for a, _v in presets]
-        if any(old is None for _a, old in before):
-            # A byte that cannot be read cannot be put back, so none is written.
-            return Outcome(False, FASTTRAVEL_FAILED, ())
-
         def restore() -> None:
-            # Each byte on its own, so one that cannot be written does not
-            # leave the rest unrestored.  `was.square` is only ever None where
-            # `current_square` could not read it in the first place, and then
-            # there is nothing recorded to put back.
-            puts = [(a, old) for a, old in before]
+            # `was.square` is only ever None where `current_square` could not
+            # read it in the first place, and then there is nothing recorded
+            # to put back.
+            puts = []
             if was.square is not None:
                 puts.append((addr.live_square,
                              bytes(v & 0xFF for v in was.square)))
@@ -2056,19 +2071,17 @@ class FastTravel(Action):
                     _log.debug("could not restore $%04X: %s", a, exc)
 
         try:
-            for a, v in presets:
-                target.write(a, bytes((v,)))
             target.write(addr.live_square,
                          bytes((x & 0xFF, y & 0xFF, facing & 0xFF)))
         except Exception:
-            # Part of the writes may have landed; put back every byte this
-            # method may have changed, then let the fault reach the caller.
+            # The write may have landed in part; put the square back, then
+            # let the fault reach the caller.
             restore()
             raise
         if not reenter(target, addr, route.entry):
             # `reenter` failing here means Wish could not rebuild `DUNGEON`'s
             # own stack -- nothing the game did, so nothing it left behind to
-            # reason about. Only the writes above are undone.
+            # reason about. Only the square above is undone.
             restore()
             return Outcome(False,
                            FASTTRAVEL_FAILED,
@@ -2279,11 +2292,6 @@ class FastTravel(Action):
     #: starting area other than the one the hop waited on.
     LEFT_ANOTHER_WAY = ("The party left by a different door, so the trip to "
                         "{name} did not happen")
-
-    #: What `run` says when an area has several doors and every one of them
-    #: can start a fight, so no door is chosen and nothing is written.
-    EVERY_DOOR_FIGHTS = ("ERROR: Unable to Fast Travel. Every way out of "
-                         "here can start a fight.")
 
     #: What `run` and `continue_pending` say when the writes are made and the
     #: PC cannot be set: the reload flag they wrote is what finishes the trip.

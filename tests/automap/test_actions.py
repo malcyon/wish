@@ -13,6 +13,7 @@ them.
 """
 
 
+import dataclasses
 import pathlib
 import time
 
@@ -20,6 +21,7 @@ import pytest
 
 from automap import actions, c64, live
 from automap.target import MemoryTarget
+from goldbox import areas as goldbox_areas
 from goldbox import c64_codec, c64_port, levelup
 from goldbox import items as por_items
 from goldbox.record import RECORD_SIZE, CharacterRecord
@@ -991,7 +993,7 @@ def test_the_fast_travel_dropdown_is_disabled_in_combat():
 # `FastTravel.run` reaches for it only where `automap.fasttravel.EXIT_ROUTES`
 # names a direct exit.
 
-from automap import fasttravel  # noqa: E402
+from automap import departures, fasttravel  # noqa: E402
 
 
 class ReenterTarget(MemoryTarget):
@@ -1052,6 +1054,13 @@ def test_reenter_starts_from_the_saved_depth_not_a_guess():
     assert target.reenters == [(addr.after_step, 0x42 - 2)]
 
 
+def fatima_party(*names: str) -> dict[int, bytes]:
+    """The memory blocks of a party holding `names` (the Kobold Caves'
+    Princess Fatima, by default, with one companion)."""
+    return party_of([(n, 5, 11) for n in names or ("BRUTUS",
+                                                   "PRINCESS FATIMA")]).memory
+
+
 def kobold_caves_machine() -> ReenterTarget:
     """The party in the Kobold Caves (area 13), idle in `DUNGEON`'s key-wait
     loop, ready for a fast travel to area 27 -- `#207`'s own motivating case:
@@ -1059,6 +1068,7 @@ def kobold_caves_machine() -> ReenterTarget:
     what this exit's route runs."""
     addr = fasttravel.POOL_OF_RADIANCE
     return ReenterTarget({
+        **fatima_party(),
         c64.MODE_FLAG_POOL: bytes([WORLD]),
         addr.slot: bytes([13]),
         addr.disk: bytes([3]),
@@ -1085,11 +1095,15 @@ class TwoHopTarget(ReenterTarget):
         self.jumps.append(address)
 
 
-def two_hop_machine(area: int = 13, indoors: int = 1,
-                    mode: int = WORLD) -> TwoHopTarget:
-    """The party in `area`, idle in `DUNGEON`'s key-wait loop."""
+def two_hop_machine(area: int = 13, indoors: int = 1, mode: int = WORLD,
+                    members: tuple[str, ...] | None = None) -> TwoHopTarget:
+    """The party in `area`, idle in `DUNGEON`'s key-wait loop. Area 13 has
+    Princess Fatima in it unless `members` names another party."""
     addr = fasttravel.POOL_OF_RADIANCE
+    party = fatima_party(*members) if members else (
+        fatima_party() if area == 13 else {})
     return TwoHopTarget({
+        **party,
         c64.MODE_FLAG_POOL: bytes([mode]),
         addr.slot: bytes([area]),
         addr.disk: bytes([3]),
@@ -1156,59 +1170,6 @@ def test_fasttravel_exit_failure_message_does_not_claim_the_party_stood_still(
         "ERROR: Unable to Fast Travel. The party is back where it started.")
 
 
-def new_phlan_machine() -> ReenterTarget:
-    """The party in New Phlan (area 0), away from the dock, with the harbour
-    master's two scratch bytes at zero as a fresh arrival leaves them."""
-    addr = fasttravel.POOL_OF_RADIANCE
-    return ReenterTarget({
-        c64.MODE_FLAG_POOL: bytes([WORLD]),
-        addr.slot: bytes([0]),
-        addr.disk: bytes([3]),
-        addr.indoors: bytes([1]),
-        addr.live_square: bytes([5, 6, 1]),
-        addr.saved_sp: bytes([0xF0]),
-        0x4A01: bytes([0]),
-        0x4AC4: bytes([0]),
-    })
-
-
-@pytest.mark.parametrize("to, destination", [(21, 0), (26, 2), (27, 1)])
-def test_fasttravel_makes_the_harbour_masters_writes_before_the_dock(
-        to, destination):
-    """The dock script stops silently while `$4A01` is 0, so the party must
-    be given the passage and the destination before it is stood on the pier."""
-    target = new_phlan_machine()
-    addr = fasttravel.POOL_OF_RADIANCE
-    outcome = actions.FastTravel().run(target, area=actions.area_by_id(to))
-    assert outcome.ok, outcome.message
-    assert target.read(0x4A01, 1) == bytes([1])
-    assert target.read(0x4AC4, 1) == bytes([destination])
-    assert target.read(addr.live_square, 2) == bytes([15, 1])
-    assert target.reenters == [(addr.after_step, 0xF0 - 2)]
-    assert target.jumps == []
-
-
-def test_fasttravel_restores_the_harbour_masters_bytes_when_reentry_fails(
-        monkeypatch):
-    target = new_phlan_machine()
-    addr = fasttravel.POOL_OF_RADIANCE
-    target.write(0x4AC4, bytes([3]))
-    original = target.read(addr.live_square, 3)
-    monkeypatch.setattr(actions, "reenter", lambda *a, **k: False)
-    outcome = actions.FastTravel().run(target, area=actions.area_by_id(26))
-    assert not outcome.ok
-    assert target.read(0x4A01, 1) == bytes([0])
-    assert target.read(0x4AC4, 1) == bytes([3])
-    assert target.read(addr.live_square, 3) == original
-
-
-def test_exit_presets_are_exactly_the_three_dock_rows():
-    """A regenerated `EXIT_ROUTES` that moves the dock fails here."""
-    assert set(fasttravel.EXIT_PRESETS) == {(0, 21), (0, 26), (0, 27)}
-    for key in fasttravel.EXIT_PRESETS:
-        assert fasttravel.EXIT_ROUTES[key].square == (15, 1)
-
-
 def test_fasttravel_falls_back_to_the_tail_jump_off_the_direct_exit_table():
     """A departure with no row in `EXIT_ROUTES` at all -- Valhingen Graveyard
     (10) has no scripted exit -- still enters `NEWECL` at its tail: there is
@@ -1261,6 +1222,7 @@ def test_fasttravel_falls_back_to_the_tail_jump_when_the_backend_cannot_reenter(
             self.jumps.append(address)
 
     target = NoReentryTarget({
+        **fatima_party(),
         c64.MODE_FLAG_POOL: bytes([WORLD]),
         addr.slot: bytes([13]),
         addr.disk: bytes([3]),
@@ -1323,27 +1285,6 @@ def test_the_two_hop_runs_the_one_door_the_area_has():
         "they are through the door")
 
 
-#: The destination each area with more than one known exit is walked out
-#: through: no route that can start a fight, then the lowest id.
-MULTI_DOOR_CHOICE = {0: 8, 2: 15, 7: 5, 14: 24, 18: 2, 22: 23}
-ONE_DOOR_AREAS = (1, 3, 9, 13, 16, 21, 23, 28)
-#: One-door areas whose only door can start a fight: Fast Travel blocks them.
-ONE_DOOR_FIGHTS = (1, 28)
-ONE_DOOR_WALKS = tuple(a for a in ONE_DOOR_AREAS if a not in ONE_DOOR_FIGHTS)
-
-
-def _a_destination_off_every_door(here: int):
-    """An area that is neither `here` nor one of its doors, so `run` has no
-    direct row for it and takes the two-hop branch."""
-    doors = {to for to, _ in fasttravel.exits_from(here)}
-    for area_id in range(31):
-        if area_id != here and area_id not in doors:
-            area = actions.area_by_id(area_id)
-            if area is not None:
-                return area
-    raise AssertionError(here)
-
-
 def test_choose_door_skips_every_fight_then_takes_the_lowest_destination():
     fight = fasttravel.ExitRoute(1, (0, 0), combat=True)
     calm = fasttravel.ExitRoute(1, (1, 1))
@@ -1370,117 +1311,25 @@ def test_choose_door_takes_a_single_door_only_when_it_cannot_fight():
     assert fasttravel.choose_door([]) is None
 
 
-def test_the_six_areas_with_several_doors_each_choose_the_expected_door():
-    many = {a for a in range(31) if len(fasttravel.exits_from(a)) > 1}
-    assert many == set(MULTI_DOOR_CHOICE)
-    for area_id, expected in MULTI_DOOR_CHOICE.items():
-        to, route = fasttravel.choose_door(fasttravel.exits_from(area_id))
-        assert to == expected, area_id
-        assert not route.combat, area_id
-    # Valjevo Castle the Pool: the lower id, New Phlan, is the endgame fight.
-    assert [to for to, _ in fasttravel.exits_from(7)] == [0, 5]
-    assert fasttravel.EXIT_ROUTES[(7, 0)].combat
+def _a_second_door(monkeypatch):
+    """The Kobold Caves have one door, so a second is added to test the hop
+    that waits for the first."""
+    monkeypatch.setattr(fasttravel, "EXIT_ROUTES", {
+        **fasttravel.EXIT_ROUTES, (13, 25): fasttravel.ExitRoute(1, (0, 0))})
 
 
-def test_no_area_with_several_doors_has_every_door_fighting():
-    """So the rejection in `run` is reached from the data only by the one-door
-    areas in `ONE_DOOR_FIGHTS`."""
-    for area_id in MULTI_DOOR_CHOICE:
-        assert any(not r.combat for _, r in fasttravel.exits_from(area_id))
-
-
-def test_the_areas_whose_every_door_can_fight_are_1_and_28():
-    """Read off the generated table: of every area with a door, these are
-    the ones with no door that cannot start a fight."""
-    block = {a for a in range(31)
-              if fasttravel.exits_from(a)
-              and all(r.combat for _, r in fasttravel.exits_from(a))}
-    assert block == set(ONE_DOOR_FIGHTS)
-    assert block <= set(ONE_DOOR_AREAS)
-
-
-@pytest.mark.parametrize("here", sorted(MULTI_DOOR_CHOICE))
-def test_the_two_hop_walks_out_of_the_door_the_rule_chooses(here):
-    target = two_hop_machine(here)
-    addr = fasttravel.POOL_OF_RADIANCE
-    ft = actions.FastTravel()
-    dest = _a_destination_off_every_door(here)
-    assert (here, dest.id) not in fasttravel.EXIT_ROUTES
-    outcome = ft.run(target, area=dest)
-    assert outcome.ok, outcome.message
-    through = MULTI_DOOR_CHOICE[here]
-    route = fasttravel.EXIT_ROUTES[(here, through)]
-    assert (ft.pending.from_area, ft.pending.through) == (here, through)
-    assert target.reenters == [(addr.after_step if route.entry else
-                                addr.redraw, 0xF0 - (2 if route.entry else 4))]
-    assert target.read(addr.live_square, 2) == bytes(route.square[:2])
-    assert target.jumps == []
-    assert target.read(addr.slot, 1) == bytes([here])
-
-
-@pytest.mark.parametrize("here", ONE_DOOR_WALKS)
-def test_the_six_one_door_areas_whose_door_cannot_fight_walk_out(here):
-    """A one-door area walks out of its only door when that door cannot start
-    a fight."""
-    target = two_hop_machine(here)
-    ft = actions.FastTravel()
-    (through, route), = fasttravel.exits_from(here)
-    assert not route.combat
-    dest = _a_destination_off_every_door(here)
-    outcome = ft.run(target, area=dest)
-    assert outcome.ok, outcome.message
-    assert (ft.pending.from_area, ft.pending.through) == (here, through)
-    assert target.jumps == []
-
-
-@pytest.mark.parametrize("here", ONE_DOOR_FIGHTS)
-def test_the_two_one_door_areas_whose_door_can_fight_block_and_write_nothing(
-        here):
-    """Buccaneer Base (1) and the Zhentil Keep Outpost (28): the only door
-    can start a fight, so the trip is blocked with the every-door-fights
-    outcome and the machine is left exactly as it was."""
-    (_, route), = fasttravel.exits_from(here)
-    assert route.combat
-    target = two_hop_machine(here)
-    before = dict(target.memory)
-    ft = actions.FastTravel()
-    outcome = ft.run(target, area=_a_destination_off_every_door(here))
-    assert not outcome.ok
-    assert outcome.message == actions.FastTravel.EVERY_DOOR_FIGHTS
-    assert target.memory == before
-    assert target.reenters == [] and target.jumps == []
-    assert ft.pending is None
-
-
-def test_the_two_hop_blocks_when_every_door_can_start_a_fight(monkeypatch):
-    """No data has an area like this, so the rows are made here: the trip is
-    blocked, nothing is written and no fight route is chosen."""
-    fight = fasttravel.ExitRoute(1, (0, 0), combat=True)
-    monkeypatch.setattr(fasttravel, "EXIT_ROUTES", {(13, 25): fight,
-                                                    (13, 26): fight})
+def test_leaving_by_another_door_cancels_the_hop_and_says_so(monkeypatch):
+    """The Kobold Caves' hop waits for area 27 and the party walks out by
+    area 25 instead: the hop is cancelled at once, nothing is written, and
+    the party is not told it never left."""
+    _a_second_door(monkeypatch)
     target = two_hop_machine(13)
-    before = dict(target.memory)
-    ft = actions.FastTravel()
-    outcome = ft.run(target, area=actions.area_by_id(0))
-    assert not outcome.ok
-    assert outcome.message == actions.FastTravel.EVERY_DOOR_FIGHTS
-    assert target.memory == before
-    assert target.reenters == [] and target.jumps == []
-    assert ft.pending is None
-
-
-def test_leaving_by_another_door_cancels_the_hop_and_says_so():
-    """New Phlan (0)'s chosen door is area 8, and the party walks out by area
-    11 instead: the hop is cancelled at once, nothing is written, and the
-    party is not told it never left."""
-    target = two_hop_machine(0)
     addr = fasttravel.POOL_OF_RADIANCE
     ft = actions.FastTravel()
-    dest = _a_destination_off_every_door(0)
+    dest = actions.area_by_id(0)
     assert ft.run(target, area=dest).ok
-    assert ft.pending.through == 8
-    target.memory[addr.slot] = bytes([11])
-    assert 11 in {to for to, _ in fasttravel.exits_from(0)}
+    assert ft.pending.through == 27
+    target.memory[addr.slot] = bytes([25])
     before = dict(target.memory)
     outcome = ft.continue_pending(target)
     assert outcome is not None and not outcome.ok
@@ -1493,39 +1342,41 @@ def test_leaving_by_another_door_cancels_the_hop_and_says_so():
     assert outcome.writes == ()
 
 
-def test_leaving_by_another_door_forgets_the_start_so_back_is_not_offered():
+def test_leaving_by_another_door_forgets_the_start_so_back_is_not_offered(
+        monkeypatch):
     """The first hop remembered the start square; the trip never happens, so
     Fast Travel Back has nowhere to go until the next real Fast Travel."""
-    target = two_hop_machine(0)
+    _a_second_door(monkeypatch)
+    target = two_hop_machine(13)
     ft = actions.FastTravel()
-    assert ft.run(target, area=_a_destination_off_every_door(0)).ok
-    assert ft.back is not None and ft.back.area == 0
-    target.memory[fasttravel.POOL_OF_RADIANCE.slot] = bytes([11])
+    assert ft.run(target, area=actions.area_by_id(0)).ok
+    assert ft.back is not None and ft.back.area == 13
+    target.memory[fasttravel.POOL_OF_RADIANCE.slot] = bytes([25])
     assert not ft.continue_pending(target).ok
     assert ft.back is None
     assert not ft.back_verdict(target)
 
 
 def test_leaving_by_the_awaited_door_is_still_the_second_hop():
-    target = two_hop_machine(0)
+    target = two_hop_machine(13)
     addr = fasttravel.POOL_OF_RADIANCE
     ft = actions.FastTravel()
-    assert ft.run(target, area=_a_destination_off_every_door(0)).ok
-    target.memory[addr.slot] = bytes([8])
+    assert ft.run(target, area=actions.area_by_id(0)).ok
+    target.memory[addr.slot] = bytes([27])
     outcome = ft.continue_pending(target)
     assert outcome is not None and outcome.ok, outcome
     assert target.jumps == [addr.tail]
 
 
 def test_an_area_that_is_no_door_of_the_start_is_still_dropped_silently():
-    """Not a known exit of area 0, so nothing says the party left another
+    """Not a known exit of area 13, so nothing says the party left another
     way -- only the log does."""
-    target = two_hop_machine(0)
+    target = two_hop_machine(13)
     addr = fasttravel.POOL_OF_RADIANCE
     ft = actions.FastTravel()
-    assert ft.run(target, area=_a_destination_off_every_door(0)).ok
-    assert 13 not in {to for to, _ in fasttravel.exits_from(0)}
-    target.memory[addr.slot] = bytes([13])
+    assert ft.run(target, area=actions.area_by_id(0)).ok
+    assert 20 not in {to for to, _ in fasttravel.exits_from(13)}
+    target.memory[addr.slot] = bytes([20])
     assert ft.continue_pending(target) is None
     assert ft.pending is None
 
@@ -1537,6 +1388,7 @@ def test_a_backend_that_cannot_reenter_never_starts_a_two_hop():
         reenter = None
 
     target = NoReentryTarget({
+        **fatima_party(),
         c64.MODE_FLAG_POOL: bytes([WORLD]), addr.slot: bytes([13]),
         addr.disk: bytes([3]), addr.indoors: bytes([1]),
         addr.saved_sp: bytes([0xF0])})
@@ -1892,37 +1744,176 @@ def test_curse_trip_into_tilverton_leaves_the_destination_as_came_from():
     assert pool[fasttravel.POOL_OF_RADIANCE.came_from] == b"\x03"
 
 
-def test_fasttravel_writes_no_dock_byte_when_one_cannot_be_read():
-    """A byte that cannot be read cannot be restored, so a failed trip would
-    leave it changed; nothing is written instead."""
+# --- Fast Travel goes straight, and reproduces only the departures listed ----
 
-    class Unreadable(ReenterTarget):
+#: Trips with no departure row. Each used to stand the party on a door of the
+#: departing area first: a detour into another building, the castle guards,
+#: a fight square or the New Phlan dock.
+STRAIGHT_TRIPS = [(0, 18), (9, 18), (1, 25), (28, 25), (7, 0), (0, 26),
+                  (21, 0), (22, 23), (2, 15), (14, 24), (18, 2)]
+
+
+def _went_straight(target, ft, outcome, here: int, to: int) -> None:
+    addr = fasttravel.POOL_OF_RADIANCE
+    assert outcome.ok, outcome.message
+    assert target.reenters == []
+    assert target.jumps == [addr.tail]
+    assert ft.pending is None
+    assert target.read(addr.slot, 1) == bytes([(to & 0x7F) | 0x80])
+
+
+@pytest.mark.parametrize("here, to", STRAIGHT_TRIPS)
+def test_a_trip_with_no_departure_row_goes_straight_to_the_destination(
+        here, to):
+    target = two_hop_machine(here)
+    ft = actions.FastTravel()
+    outcome = ft.run(target, area=actions.area_by_id(to))
+    _went_straight(target, ft, outcome, here, to)
+
+
+def test_no_trip_stands_the_party_on_a_door_except_the_listed_departures():
+    """Every area with a door, to every other area: only the Kobold Caves
+    and Lizardman Keep (with their triggers) walk anywhere."""
+    walked = {13, 16}
+    for here in range(31):
+        if not fasttravel.exits_from(here) or here in walked:
+            continue
+        for to in range(31):
+            area = actions.area_by_id(to)
+            if to == here or area is None:
+                continue
+            target = two_hop_machine(here)
+            ft = actions.FastTravel()
+            outcome = ft.run(target, area=area)
+            assert outcome.ok, (here, to, outcome.message)
+            assert target.reenters == [], (here, to)
+            assert target.jumps == [fasttravel.POOL_OF_RADIANCE.tail]
+            assert ft.pending is None, (here, to)
+
+
+def test_fatima_in_the_party_walks_the_caves_exit_and_the_trip_goes_on():
+    target = two_hop_machine(13)
+    addr = fasttravel.POOL_OF_RADIANCE
+    ft = actions.FastTravel()
+    assert ft.run(target, area=actions.area_by_id(0)).ok
+    route = fasttravel.EXIT_ROUTES[(13, 27)]
+    assert route.square == (6, 15)
+    assert target.read(addr.live_square, 2) == bytes(route.square)
+    assert ft.pending.through == 27
+    assert target.jumps == []
+
+
+def test_without_fatima_the_caves_trip_goes_straight():
+    target = two_hop_machine(13, members=("BRUTUS", "MAGNUS"))
+    ft = actions.FastTravel()
+    outcome = ft.run(target, area=actions.area_by_id(0))
+    _went_straight(target, ft, outcome, 13, 0)
+
+
+def test_without_fatima_a_trip_to_the_exits_own_destination_goes_straight():
+    target = two_hop_machine(13, members=("BRUTUS", "MAGNUS"))
+    ft = actions.FastTravel()
+    outcome = ft.run(target, area=actions.area_by_id(27))
+    assert outcome.ok, outcome.message
+    assert target.reenters == []
+    assert target.jumps == [fasttravel.POOL_OF_RADIANCE.tail]
+
+
+@pytest.mark.parametrize("to", [0, 27])
+def test_lizardman_keep_walks_out_while_its_byte_is_not_254_or_255(to):
+    target = two_hop_machine(16)
+    addr = fasttravel.POOL_OF_RADIANCE
+    ft = actions.FastTravel()
+    assert ft.run(target, area=actions.area_by_id(to)).ok
+    assert target.read(addr.live_square, 2) == bytes(
+        fasttravel.EXIT_ROUTES[(16, 27)].square[:2])
+    assert target.jumps == []
+    assert (ft.pending is None) == (to == 27)
+
+
+@pytest.mark.parametrize("byte", [254, 255])
+def test_lizardman_keep_goes_straight_once_its_byte_is_set(byte):
+    target = two_hop_machine(16)
+    target.write(0x4AB5, bytes([byte]))
+    ft = actions.FastTravel()
+    outcome = ft.run(target, area=actions.area_by_id(0))
+    _went_straight(target, ft, outcome, 16, 0)
+
+
+def test_an_unreadable_guard_byte_fails_the_trip_and_writes_nothing():
+    class Unreadable(TwoHopTarget):
         def read(self, address, length):
-            if address == 0x4AC4:
+            if address == 0x4AB5:
                 raise OSError("unreadable")
             return super().read(address, length)
 
-    target = Unreadable(new_phlan_machine().memory)
-    addr = fasttravel.POOL_OF_RADIANCE
-    original = target.read(addr.live_square, 3)
-    outcome = actions.FastTravel().run(target, area=actions.area_by_id(26))
+    target = Unreadable(two_hop_machine(16).memory)
+    before = dict(target.memory)
+    outcome = actions.FastTravel().run(target, area=actions.area_by_id(0))
     assert not outcome.ok
-    assert target.read(0x4A01, 1) == bytes([0])
-    assert target.read(addr.live_square, 3) == original
-    assert target.reenters == []
+    assert outcome.message == actions.FASTTRAVEL_FAILED
+    assert target.memory == before
+    assert target.reenters == [] and target.jumps == []
 
 
-def test_fasttravel_restores_the_dock_bytes_when_a_write_raises():
+def test_an_unreadable_party_fails_a_trip_that_needs_to_name_a_member():
     addr = fasttravel.POOL_OF_RADIANCE
+    target = TwoHopTarget({
+        c64.MODE_FLAG_POOL: bytes([WORLD]), addr.slot: bytes([13]),
+        addr.disk: bytes([3]), addr.indoors: bytes([1]),
+        addr.live_square: bytes([5, 6, 1]), addr.saved_sp: bytes([0xF0])})
+    before = dict(target.memory)
+    outcome = actions.FastTravel().run(target, area=actions.area_by_id(0))
+    assert not outcome.ok
+    assert outcome.message == actions.FASTTRAVEL_FAILED
+    assert target.memory == before
 
-    class FailsOnSquare(ReenterTarget):
-        def write(self, address, data):
-            if address == addr.live_square:
-                raise OSError("write failed")
-            super().write(address, data)
 
-    target = FailsOnSquare(new_phlan_machine().memory)
-    with pytest.raises(OSError):
-        actions.FastTravel().run(target, area=actions.area_by_id(26))
-    assert target.read(0x4A01, 1) == bytes([0])
-    assert target.read(0x4AC4, 1) == bytes([0])
+def test_a_row_with_writes_makes_them_before_the_jump_only_when_it_holds(
+        monkeypatch):
+    row = departures.Departure(
+        departures.POOL_OF_RADIANCE, frozenset({10}),
+        frozenset({departures.C64},),
+        guards=(departures.Guard(0x4AA9, "==", 1),),
+        writes=((0x4AA9, 254), (0x4AB4, 253)))
+    monkeypatch.setattr(departures, "DEPARTURES", (row,))
+    addr = fasttravel.POOL_OF_RADIANCE
+    for byte, applied in ((1, True), (0, False)):
+        target = two_hop_machine(10)
+        target.write(0x4AA9, bytes([byte]))
+        outcome = actions.FastTravel().run(target, area=actions.area_by_id(0))
+        assert outcome.ok, outcome.message
+        assert target.jumps == [addr.tail]
+        written = [a for a, _ in outcome.writes]
+        if applied:
+            assert outcome.writes[:2] == ((0x4AA9, b"\xfe"),
+                                          (0x4AB4, b"\xfd"))
+            assert written.index(0x4AA9) < written.index(addr.slot)
+        else:
+            assert 0x4AB4 not in written
+
+
+def test_a_silver_blades_area_16_is_not_pool_of_radiances_lizardman_keep():
+    """Rows are keyed by title: a Silver Blades session given re-entry
+    addresses still takes the tail jump out of its own area 16."""
+    game = c64_port.SECRET_OF_THE_SILVER_BLADES
+    pool = fasttravel.POOL_OF_RADIANCE
+    addr = dataclasses.replace(
+        fasttravel.SECRET_OF_THE_SILVER_BLADES, after_step=pool.after_step,
+        forward_key=pool.forward_key, redraw=pool.redraw,
+        saved_sp=pool.saved_sp, main_loop_return=pool.main_loop_return)
+    assert addr.has_exit_reentry
+    ft = actions.FastTravel(game)
+    ft.addresses = addr
+    target = TwoHopTarget({
+        c64.machine_for(game).mode_flag: bytes([WORLD]),
+        addr.slot: bytes([16]), addr.disk: bytes([3]),
+        addr.indoors: bytes([1]), addr.live_square: bytes([5, 6, 1]),
+        addr.saved_sp: bytes([0xF0])}, pc=addr.key_wait[0])
+    dest = next(a for a in goldbox_areas.AREAS_SILVER_BLADES
+                if a.id not in (16, 27) and a.fasttravelable)
+    outcome = ft.run(target, area=dest)
+    assert outcome.ok, outcome.message
+    assert target.reenters == []
+    assert target.jumps == [addr.tail]
+    assert ft.pending is None
