@@ -2299,8 +2299,15 @@ class DosCharacter(_Fielded):
 # ---------------------------------------------------------------------------
 # Reading the files
 # ---------------------------------------------------------------------------
+def _sibling_path(path: pathlib.Path, suffix: str) -> pathlib.Path:
+    """`path` with `suffix`, found in any case so a lower-case folder's
+    `chrdata1.itm` is `chrdata1.sav`'s item file."""
+    return (dos_savegame.find_file(path.parent, path.stem + suffix)
+            or path.with_suffix(suffix))
+
+
 def _sibling(path: pathlib.Path, suffix: str) -> bytes:
-    other = path.with_suffix(suffix)
+    other = _sibling_path(path, suffix)
     return other.read_bytes() if other.exists() else b""
 
 
@@ -2364,7 +2371,7 @@ def read_character(path: str | pathlib.Path) -> DosCharacter:
         deltas = deltas_for(len(data))
     except DosDeltasError as e:
         raise DosRecordError(f"{path.name}: {e}") from None
-    item_path = path.with_suffix(deltas.item_suffix)
+    item_path = _sibling_path(path, deltas.item_suffix)
     item_file_present = item_path.exists()
     itm = item_path.read_bytes() if item_file_present else b""
     spc = _sibling(path, deltas.effect_suffix)

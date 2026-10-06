@@ -1281,8 +1281,9 @@ def amiga_needs_game_disk(deltas: dos_port.DosDeltas,
         container = dos_savegame.container_for(deltas.key)
         try:
             with source.folder() as folder:
-                savgam = (pathlib.Path(folder) / f"SAVGAM{source.slot}"
-                          f"{container.suffix}").read_bytes()
+                savgam = dos_savegame.save_file(
+                    folder, f"SAVGAM{source.slot}{container.suffix}"
+                ).read_bytes()
             state = world_state.from_dos(savgam, container,
                                          source=str(source.path))
         except (OSError, dos_codec.DosRecordError):

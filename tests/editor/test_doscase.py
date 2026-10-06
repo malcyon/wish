@@ -121,3 +121,39 @@ def test_two_character_files_differing_only_in_case_stop_the_slot(tmp_path):
         (tmp_path / "CHRDATA1.SAV").read_bytes())
     with pytest.raises(dos_savegame.DosNameClashError):
         convert._dos_slots(tmp_path)
+
+
+def _with_one_item(folder: pathlib.Path) -> None:
+    """Give upper-case character 1 a stored item and its item file."""
+    fields = dos_port.FIELDS_BY_NAME_FOR[dos_port.POOLS_OF_DARKNESS.key]
+    record = bytearray((folder / "CHRDATA1.SAV").read_bytes())
+    record[fields["item_count"].offset] = 1
+    (folder / "CHRDATA1.SAV").write_bytes(bytes(record))
+    item = bytearray(dos_codec.ITEM_SIZE)
+    item[dos_port.ITEM_FIELDS_BY_NAME["type_index"].offset] = 12
+    (folder / "CHRDATA1.THG").write_bytes(bytes(item))
+
+
+@pytest.mark.parametrize("rename", [str, str.lower], ids=["upper", "lower"])
+def test_a_lower_case_slot_opens_in_the_editor_with_its_items(
+        tmp_path, monkeypatch, rename):
+    from editor.roster import Party
+
+    monkeypatch.setenv(convert.POD_CONVERT_ENV, "1")
+    _slot(tmp_path)
+    _with_one_item(tmp_path)
+    for path in sorted(tmp_path.iterdir()):
+        path.rename(tmp_path / rename(path.name))
+    party = Party(convert.Source.detect(tmp_path))
+    assert len(party) == 1
+    assert len(party.members[0].native.items) == 1
+
+
+def test_a_lower_case_curse_slot_is_read_for_the_not_set_out_check(tmp_path):
+    curse = dos_port.CURSE_OF_THE_AZURE_BONDS
+    size = dos_savegame.container_for(curse.key).size
+    (tmp_path / "savgama.dat").write_bytes(bytes(size))
+    source = convert.Source(port="dos", title=curse, path=tmp_path, slot="A")
+    # A save that has not set out needs no game disk; an unreadable one is
+    # answered with True.
+    assert convert.amiga_needs_game_disk(curse, source) is False

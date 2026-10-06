@@ -37,6 +37,7 @@ from goldbox import (
     derive,
     dos_codec,
     dos_port,
+    dos_savegame,
     rewrite,
     titles,
 )
@@ -455,7 +456,8 @@ class Party:
         gap in the numbered files `CHRDAT<slot>1` upward leaves the others where they are."""
         folder = pathlib.Path(self.source.path)
         for number in dos_codec.party_numbers(folder, self.source.slot):
-            path = folder / f"CHRDAT{self.source.slot}{number}.SAV"
+            path = dos_savegame.save_file(
+                folder, f"CHRDAT{self.source.slot}{number}.SAV")
             char = dos_codec.read_character(path)
             neutral = dos_codec.to_neutral(char)
             self._append_converted(number, _sheet_record(neutral), char,
@@ -503,7 +505,8 @@ class Party:
             slot = self.source.slot
             for number in dos_codec.party_numbers(folder, slot):
                 self._append_pod(number, podsheet.dos_member(
-                    folder / f"CHRDAT{slot}{number}.SAV"))
+                    dos_savegame.save_file(
+                        folder, f"CHRDAT{slot}{number}.SAV")))
             if not self.members:
                 raise dos_codec.DosRecordError(
                     f"no CHRDAT{slot}?.SAV in {folder}")
