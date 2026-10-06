@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the app's own Amiga Fast Travel against a live Pool of Radiance under WinUAE.
+"""Run the app's own Amiga Fast Travel against a live Amiga title under WinUAE.
 
 `automap.amigafasttravel.AmigaFastTravel` is built over an `AmigaTarget` on a
 `WinuaePipe`, and one trip is made the way the automap window's timer makes it:
@@ -10,15 +10,20 @@ reason is disarmed.
 
     tools/amiga/fasttravelrun.py --holder wish1-f4a --disks DIR --to 5 --answer y --out OUT
 
-`--to` is the destination area id. `--answer KEY` presses KEY once, when the
+`--title KEY` is the `amiga.MACHINES` key of the title in the machine
+(`pool-of-radiance` by default); it picks the machine, the trip row and the
+area table. `--to` is the destination area id. `--answer KEY` presses KEY once, when the
 door key has been taken, the area byte is still the starting area and the
 screen differs from the one before the trip (the game is asking something).
 `--back` makes `apply_back` once the trip has finished. The lane claim is the
 caller's, as in `amigadrive.py`.
 
 OUT/fasttravel.jsonl holds one line per event: the verdict, each outcome, every
-poll's area byte, square and the five step-entry words (`$AA` to `$B3` of the
-data hunk), every screenshot and every key pressed. A screenshot is kept as
+poll's area byte, square and the step-entry words (`amigatrip.entry_words`:
+five on Pool of Radiance, one on the other titles), the party's names before
+and after each trip, every screenshot and every key pressed. A trip's result
+carries `areas_seen`: the starting area, then each area byte the polls read,
+repeats dropped, so a trip that passes through another area shows it. A screenshot is kept as
 OUT/NNN.png only when it differs from the one before it. Every wait is
 bounded: the poll loop by `--budget` seconds (a trip or hop still waiting then
 is cancelled and the run ends nonzero), and an answer by `ANSWER_SECONDS`
@@ -41,10 +46,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
 
 from automap import actions as engine  # noqa: E402
-from automap import amiga, amigafasttravel, amigatrip  # noqa: E402
+from automap import amiga, amigafasttravel, amigaparty, amigatrip  # noqa: E402
 from tools.amiga import amigakeys, tripprobe  # noqa: E402
 
-KEY = "pool-of-radiance"
+DEFAULT_TITLE = "pool-of-radiance"
 
 #: Seconds between two `continue_pending` calls, as the window's timer.
 POLL_SECONDS = 0.2
@@ -56,9 +61,6 @@ SHOT_SECONDS = 2.0
 ANSWER_SECONDS = 20.0
 #: Seconds the game takes to act on a key, after it is pressed.
 SETTLE_SECONDS = 3.0
-
-#: Bytes of the data hunk's step-entry words: five words from `row.step_entry`.
-ENTRY_BYTES = 10
 
 
 class DriverError(RuntimeError):
@@ -90,10 +92,9 @@ class Log:
 
 
 def _reading(target, row) -> dict:
-    base = target.data_base
     return {"area": amigatrip.area_id(target, row),
             "square": amigatrip.square(target, row),
-            "entry_words": target.read(base + row.step_entry, ENTRY_BYTES).hex()}
+            "entry_words": amigatrip.entry_words(target, row).hex()}
 
 
 class _Screen:
@@ -124,6 +125,12 @@ class _Screen:
         return changed
 
 
+def _names(party, target) -> list[str] | None:
+    """The party's names, or None when no reader is given or the list does not decode."""
+    members = party(target) if party is not None else None
+    return None if members is None else [m.name for m in members]
+
+
 def _settle(target, row, log: Log, sleep, clock, budget: float) -> None:
     """Wait for the game to sit at its menu again, then `SETTLE_SECONDS`, before the last shot.
 
@@ -143,15 +150,19 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
              log: Log, answer: str | None = None, back: bool = False,
              sleep: Callable[[float], None] = time.sleep,
              clock: Callable[[], float] = time.monotonic,
-             budget: float = BUDGET_SECONDS) -> dict:
+             budget: float = BUDGET_SECONDS, party: Callable | None = None) -> dict:
     """One trip, or the way back, driven as the window's timer drives it.
 
     Returns `{"result": ..., "outcomes": [...], "answered": bool}` where result
-    is `not_legal`, `not_applied`, `idle` (no trip or hop left) or `timeout`.
+    is `not_legal`, `not_applied`, `idle` (no trip or hop left) or `timeout`;
+    `areas_seen` is the starting area and then each new area byte the polls
+    read. `party` reads the party (as `amigaparty.read_party`); its names are
+    logged and returned before and after the trip.
     """
     verdict = fasttravel.back_verdict(target) if back else fasttravel.legality(target, area)
     log("legality", ok=bool(verdict), reason=verdict.reason, back=back)
-    summary = {"result": "not_legal", "outcomes": [], "answered": False}
+    summary = {"result": "not_legal", "outcomes": [], "answered": False,
+               "areas_seen": [], "party_before": None, "party_after": None}
     if not verdict:
         return summary
     screen = _Screen(out, shot, log)
@@ -159,6 +170,14 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
     baseline = screen.last
     before = _reading(target, row)
     log("read", why="before", **before)
+    summary["areas_seen"] = [before["area"]]
+    summary["party_before"] = _names(party, target)
+    if party is not None:
+        log("party", why="before", names=summary["party_before"])
+
+    def seen(area) -> None:
+        if area is not None and area != summary["areas_seen"][-1]:
+            summary["areas_seen"].append(area)
     outcome = fasttravel.apply_back(target) if back else fasttravel.apply(target, area=area)
     try:
         log("apply", ok=outcome.ok, message=outcome.message,
@@ -178,6 +197,7 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
                 log("continue", ok=got.ok, message=got.message)
                 summary["outcomes"].append({"ok": got.ok, "message": got.message})
             now = _reading(target, row)
+            seen(now["area"])
             taken = tripprobe.key_taken(target, row)
             log("read", why="poll", key_taken=taken, trip=fasttravel.trip is not None,
                 pending=fasttravel.pending is not None, **now)
@@ -219,7 +239,12 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
     if summary["result"] == "idle":
         _settle(target, row, log, sleep, clock, budget)
     screen.take("after")
-    log("read", why="after", **_reading(target, row))
+    last = _reading(target, row)
+    seen(last["area"])
+    log("read", why="after", **last)
+    summary["party_after"] = _names(party, target)
+    if party is not None:
+        log("party", why="after", names=summary["party_after"])
     return summary
 
 
@@ -229,6 +254,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--holder", required=True, help="the winuae.ps1 lane claim this run holds")
     parser.add_argument("--disks", required=True, help="the folder of the title's ADFs")
+    parser.add_argument("--title", default=DEFAULT_TITLE, choices=sorted(amiga.MACHINES),
+                        help="the amiga.MACHINES key of the title in the machine")
     parser.add_argument("--to", type=int, required=True, help="the destination area id")
     parser.add_argument("--answer", help="the key that answers the game's question")
     parser.add_argument("--back", action="store_true",
@@ -242,7 +269,7 @@ def main(argv: list[str] | None = None) -> int:
             amigakeys.lookup(args.answer)
         except KeyError:
             parser.error(f"--answer {args.answer!r} is not a key name")
-    machine = amiga.MACHINES[KEY]
+    machine = amiga.MACHINES[args.title]
     area = engine.area_by_id(args.to, machine.title)
     if area is None:
         parser.error(f"--to {args.to} is not an area of {machine.title}")
@@ -250,8 +277,8 @@ def main(argv: list[str] | None = None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     pipe = amiga.WinuaePipe(holder=args.holder)
     target = amiga.AmigaTarget(pipe, machine)
-    row = amigatrip.row_for(KEY)
-    fasttravel = amigafasttravel.AmigaFastTravel(KEY, args.disks)
+    row = amigatrip.row_for(args.title)
+    fasttravel = amigafasttravel.AmigaFastTravel(args.title, args.disks)
 
     def shot(path: pathlib.Path) -> None:
         amigadrive.shot(args.holder, path)
@@ -264,10 +291,12 @@ def main(argv: list[str] | None = None) -> int:
         with open(out / "fasttravel.jsonl", "w") as stream:
             log = Log(stream, time.monotonic)
             results = [run_trip(fasttravel, target, row, area, out, shot, press, log,
-                                answer=args.answer, budget=args.budget)]
+                                answer=args.answer, budget=args.budget,
+                                party=amigaparty.read_party)]
             if args.back and results[0]["result"] == "idle":
                 results.append(run_trip(fasttravel, target, row, None, out, shot, press, log,
-                                        back=True, budget=args.budget))
+                                        back=True, budget=args.budget,
+                                        party=amigaparty.read_party))
     except (DriverError, amiga.GuestError) as exc:
         raise SystemExit(str(exc)) from exc
     for result in results:

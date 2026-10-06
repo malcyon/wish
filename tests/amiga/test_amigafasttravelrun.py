@@ -14,7 +14,8 @@ from automap import amigatrip  # noqa: E402
 from tools.amiga import fasttravelrun as ftr  # noqa: E402
 from tools.amiga import tripprobe  # noqa: E402
 
-ROW = SimpleNamespace(step_entry=0xAA)
+ROW = SimpleNamespace(key="pool-of-radiance", step_entry=0xAA)
+ENTRY_BYTES = 10
 
 
 class Clock:
@@ -37,7 +38,7 @@ class Target:
         self.writes = []
 
     def read(self, addr, length):
-        assert addr == self.data_base + ROW.step_entry and length == ftr.ENTRY_BYTES
+        assert addr == self.data_base + ROW.step_entry and length == ENTRY_BYTES
         return bytes(range(length))
 
     def write(self, addr, data, verify=True):
@@ -317,3 +318,100 @@ def test_a_disarm_that_fails_is_reported_and_the_first_exception_still_raised(
     with pytest.raises(RuntimeError, match="boom"):
         world.drive(Raises())
     assert "disarm failed" in capsys.readouterr().err
+
+
+# -- --title, areas_seen, the party and the entry words ------------------------
+
+
+def test_areas_seen_lists_the_start_then_each_new_area_byte(world, monkeypatch):
+    class Hops(Travel):
+        def continue_pending(self, target):
+            world.area = {2: 8, 4: 5}.get(len(self.calls) - 2, world.area)
+            return super().continue_pending(target)
+
+    got = world.drive(Hops(polls=8))
+    assert got["areas_seen"] == [7, 8, 5]
+
+
+def test_a_trip_that_never_leaves_sees_one_area(world):
+    assert world.drive(Travel(polls=3))["areas_seen"] == [7]
+
+
+def test_the_party_names_are_logged_and_returned_before_and_after(world):
+    names = iter([["A", "B"], ["A"]])
+    got = world.drive(Travel(polls=1), party=lambda t: [SimpleNamespace(name=n) for n in next(names)])
+    assert got["party_before"] == ["A", "B"] and got["party_after"] == ["A"]
+    assert [(e["why"], e["names"]) for e in world.events() if e["event"] == "party"] == [
+        ("before", ["A", "B"]), ("after", ["A"])]
+
+
+def test_an_unreadable_party_is_none(world):
+    got = world.drive(Travel(polls=1), party=lambda t: None)
+    assert got["party_before"] is None and got["party_after"] is None
+
+
+@pytest.mark.parametrize("key,words", [("pool-of-radiance", 5), ("pools-of-darkness", 1),
+                                       ("curse-of-the-azure-bonds", 1)])
+def test_the_entry_words_come_from_the_titles_row(key, words, monkeypatch):
+    seen = []
+
+    class T:
+        data_base = 0x1000
+
+        def read(self, addr, length):
+            seen.append(length)
+            return bytes(length)
+
+    monkeypatch.setattr(amigatrip, "area_id", lambda t, row: 1)
+    monkeypatch.setattr(amigatrip, "square", lambda t, row: (0, 0, 0))
+    got = ftr._reading(T(), amigatrip.row_for(key))
+    assert seen == [2 * words] and len(got["entry_words"]) == 4 * words
+
+
+class _Pipe:
+    def __init__(self, holder):
+        pass
+
+
+@pytest.mark.parametrize("title", ["curse-of-the-azure-bonds", "secret-of-the-silver-blades",
+                                   "pools-of-darkness"])
+def test_title_picks_the_machine_row_and_fast_travel(monkeypatch, tmp_path, title):
+    from automap import amiga, amigafasttravel
+    from tools.amiga import amigadrive
+
+    built = {}
+
+    class T:
+        def __init__(self, pipe, machine):
+            built["machine"] = machine
+
+        def locate(self):
+            return 1
+
+    class F:
+        def __init__(self, key, disks):
+            built["fasttravel"] = (key, disks)
+
+    def run_trip(fasttravel, target, row, area, *args, **kwargs):
+        built.update(row=row, area=area, party=kwargs["party"])
+        return {"result": "idle"}
+
+    monkeypatch.setattr(amiga, "WinuaePipe", _Pipe)
+    monkeypatch.setattr(amiga, "AmigaTarget", T)
+    monkeypatch.setattr(amigafasttravel, "AmigaFastTravel", F)
+    monkeypatch.setattr(ftr, "run_trip", run_trip)
+    monkeypatch.setattr(amigadrive, "shot", lambda *a: None)
+    monkeypatch.setattr(ftr.engine, "area_by_id", lambda i, t: SimpleNamespace(id=i, title=t))
+    assert ftr.main(["--holder", "h", "--disks", "D", "--title", title, "--to", "3",
+                     "--out", str(tmp_path)]) == 0
+    assert built["machine"] is amiga.MACHINES[title]
+    assert built["fasttravel"] == (title, "D")
+    assert built["row"] is amigatrip.row_for(title)
+    assert built["area"].title == amiga.MACHINES[title].title
+    assert built["party"] is ftr.amigaparty.read_party
+
+
+def test_an_unknown_title_is_a_usage_error(tmp_path):
+    with pytest.raises(SystemExit):
+        ftr.main(["--holder", "h", "--disks", "D", "--title", "nope", "--to", "3",
+                  "--out", str(tmp_path)])

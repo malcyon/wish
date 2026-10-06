@@ -73,17 +73,20 @@ POLL_SECONDS = 0.25
 #: The key the game's own forward step answers to (Amiga raw key 8).
 FORWARD_KEY = "8"
 
+#: The title the probes run against unless `--title` names another.
+DEFAULT_TITLE = "pool-of-radiance"
+
 
 class ProbeError(RuntimeError):
     """The game was not ready, or the trip did not fire."""
 
 
-def statements(prefix: int, square, area: int) -> bytes:
-    """The first `prefix` boat-exit groups, then the trip's own statements."""
+def statements(prefix: int, square, area: int, key: str = DEFAULT_TITLE) -> bytes:
+    """The first `prefix` boat-exit groups, then the trip's own statements for title `key`."""
     groups = amigatrip.boat_exit_groups()
     if not 0 <= prefix <= len(groups):
         raise ValueError(f"prefix {prefix} is outside 0 to {len(groups)}")
-    return b"".join(groups[:prefix]) + amigatrip.encode("pool-of-radiance", square, area)
+    return b"".join(groups[:prefix]) + amigatrip.encode(key, square, area)
 
 
 def write_trip(target, row, data: bytes) -> int:
@@ -109,13 +112,15 @@ def write_trip(target, row, data: bytes) -> int:
 def run(target, holder: str, area: int, square, out: pathlib.Path,
         shot: Callable[[str, pathlib.Path], object],
         prefixes=range(6), sleep: Callable[[float], None] | None = None,
-        name: str = "tripprobe", pipe=None) -> list[tuple[int, pathlib.Path | None]]:
+        name: str = "tripprobe", pipe=None,
+        title: str = DEFAULT_TITLE) -> list[tuple[int, pathlib.Path | None]]:
     """One (prefix, screenshot) per prefix length, each from a restore of one snapshot.
 
     `target` reads and writes memory; `pipe` (default `target`) holds the
     snapshots. The screenshot is None for a prefix whose trip did not fire.
+    `title` is the `amiga.MACHINES` key whose row and statements are used.
     """
-    row = amigatrip.row_for("pool-of-radiance")
+    row = amigatrip.row_for(title)
     pipe = target if pipe is None else pipe
     sleep = time.sleep if sleep is None else sleep
     shots = []
@@ -123,7 +128,7 @@ def run(target, holder: str, area: int, square, out: pathlib.Path,
     try:
         for prefix in prefixes:
             pipe.restore(name, holder)
-            here = write_trip(target, row, statements(prefix, square, area))
+            here = write_trip(target, row, statements(prefix, square, area, title))
             waited = 0.0
             while amigatrip.area_id(target, row) == here and waited < FIRE_SECONDS:
                 sleep(POLL_SECONDS)
@@ -298,7 +303,8 @@ def run_doors(target, holder: str, routes: dict[str, tuple[int, int, int]], attr
               sleep: Callable[[float], None] | None = None,
               name: str = "doorprobe", pipe=None,
               answers: dict[str, tuple[str, int | None]] | None = None,
-              press: Callable[[str], object] | None = None) -> list[dict]:
+              press: Callable[[str], object] | None = None,
+              title: str = DEFAULT_TITLE) -> list[dict]:
     """One result per (route, attribute choice), each from a restore of one snapshot.
 
     The snapshot is restored once more after the last try, and on any exception,
@@ -312,7 +318,7 @@ def run_doors(target, holder: str, routes: dict[str, tuple[int, int, int]], attr
     answers = answers or {}
     if answers and press is None:
         raise ValueError("answers need a press callable")
-    row = amigatrip.row_for("pool-of-radiance")
+    row = amigatrip.row_for(title)
     pipe = target if pipe is None else pipe
     sleep = time.sleep if sleep is None else sleep
     results = []
@@ -393,6 +399,8 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--holder", required=True, help="the winuae.ps1 lane claim this run holds")
+    parser.add_argument("--title", default=DEFAULT_TITLE, choices=sorted(amiga.MACHINES),
+                        help="the amiga.MACHINES key of the title in the machine")
     parser.add_argument("--area", type=int, help="the destination area id")
     parser.add_argument("--square", help="x,y,facing in the destination")
     parser.add_argument("--out", required=True, help="directory for prefix0.png to prefix5.png")
@@ -416,11 +424,15 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--prefixes does not apply to --door")
     longest = len(amigatrip.boat_exit_groups())
     try:
-        prefixes = [int(n) for n in (args.prefixes or "0,1,2,3,4,5").split(",")]
+        default = "0,1,2,3,4,5" if args.title == DEFAULT_TITLE else "0"
+        prefixes = [int(n) for n in (args.prefixes or default).split(",")]
     except ValueError:
         prefixes = []
     if not prefixes or any(not 0 <= n <= longest for n in prefixes):
         parser.error(f"--prefixes {args.prefixes!r} is not a list of lengths 0 to {longest}")
+    if args.title != DEFAULT_TITLE and any(n for n in prefixes):
+        parser.error("the boat-exit prefixes are Pool of Radiance statements; "
+                     f"{args.title} takes --prefixes 0 only")
     if args.door:
         if not args.route:
             parser.error("--door needs at least one --route")
@@ -442,14 +454,14 @@ def main(argv: list[str] | None = None) -> int:
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     pipe = amiga.WinuaePipe(holder=args.holder)
-    target = amiga.AmigaTarget(pipe, amiga.MACHINES["pool-of-radiance"])
+    target = amiga.AmigaTarget(pipe, amiga.MACHINES[args.title])
     try:
         target.locate()
         if args.door:
             choices = {"write": (True,), "skip": (False,), "both": (True, False)}[args.attribute]
             for result in run_doors(target, args.holder, routes, choices, out,
                                     lambda holder, path: amigadrive.shot(holder, path),
-                                    pipe=pipe, answers=answers,
+                                    pipe=pipe, answers=answers, title=args.title,
                                     press=lambda key: amigadrive.press(
                                         args.holder, key, SETTLE_SECONDS)):
                 print(json.dumps(result))
@@ -457,7 +469,7 @@ def main(argv: list[str] | None = None) -> int:
         square = tuple(int(n) for n in args.square.split(","))
         for prefix, path in run(target, args.holder, args.area, square, out,
                                 lambda holder, path: amigadrive.shot(holder, path),
-                                prefixes=prefixes, pipe=pipe):
+                                prefixes=prefixes, pipe=pipe, title=args.title):
             print(path if path else f"prefix {prefix}: the area byte did not change")
     except (ProbeError, amiga.GuestError) as exc:
         raise SystemExit(str(exc)) from exc

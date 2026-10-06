@@ -649,3 +649,48 @@ def test_prefixes_with_door_is_a_usage_error(tmp_path):
         tripprobe.main(["--holder", "h", "--door", "--route", "e=4,0,0",
                         "--prefixes", "0", "--out", str(tmp_path)])
     assert exc.value.code == 2
+
+
+# -- --title --------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("key", ["curse-of-the-azure-bonds", "pools-of-darkness"])
+def test_statements_encode_for_the_named_title(key):
+    got = tripprobe.statements(0, (9, 14, 2), 3, key)
+    assert got == amigatrip.encode(key, (9, 14, 2), 3)
+
+
+def test_run_uses_the_named_titles_row(monkeypatch, tmp_path):
+    seen = []
+    monkeypatch.setattr(tripprobe, "write_trip",
+                        lambda target, row, data: seen.append(row.key) or 1)
+    fake = Fake()
+    monkeypatch.setattr(amigatrip, "area_id", lambda t, row: 2)
+    tripprobe.run(fake, "h", 3, (9, 14, 2), tmp_path, lambda h, p: None, prefixes=[0],
+                  sleep=lambda s: None, title="pools-of-darkness")
+    assert seen == ["pools-of-darkness"]
+
+
+def test_main_builds_the_named_titles_machine(monkeypatch, tmp_path):
+    from tools.amiga import amigadrive
+
+    built = []
+
+    class T(FakeTarget):
+        def __init__(self, pipe, machine):
+            super().__init__(pipe, machine)
+            built.append(machine)
+
+    monkeypatch.setattr(amiga, "WinuaePipe", FakePipe)
+    monkeypatch.setattr(amiga, "AmigaTarget", T)
+    monkeypatch.setattr(tripprobe, "run", lambda *a, **k: built.append(k["title"]) or [])
+    monkeypatch.setattr(amigadrive, "shot", lambda *a: None)
+    assert tripprobe.main(["--holder", "h", "--title", "pools-of-darkness", "--area", "3",
+                           "--square", "1,2,0", "--out", str(tmp_path)]) == 0
+    assert built == [amiga.MACHINES["pools-of-darkness"], "pools-of-darkness"]
+
+
+def test_pool_boat_prefixes_are_a_usage_error_for_another_title(tmp_path):
+    with pytest.raises(SystemExit):
+        tripprobe.main(["--holder", "h", "--title", "pools-of-darkness", "--area", "3",
+                        "--square", "1,2,0", "--prefixes", "0,2", "--out", str(tmp_path)])
