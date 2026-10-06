@@ -429,3 +429,8 @@ def test_last_caster_logs_every_status_once_the_wait_runs_long(
     kind, fields = [e for e in caster.log.emitted if e[0] == "cast-wait"][0]
     assert fields["statuses"][:3] == ["01", "01", "03"]
     assert fields["words"][2] == "$03 DEAD"
+
+
+def test_down_words_name_every_status_that_takes_a_member_out_of_the_fight():
+    assert route_pool.Caster.down_words() == {2, 3, 4, 5, 7}
+    assert route_pool.Caster.down_words(gone=False) == {3, 4, 5, 7}
