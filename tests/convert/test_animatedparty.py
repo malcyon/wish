@@ -433,16 +433,60 @@ def test_a_c64_zombie_row_becomes_the_node_dos_writes_with_flag_one(side):
     assert not any("innate_effects 32" in line for line in report.dropped)
 
 
-@pytest.mark.parametrize("magnitude, row", [(0xFF, True), (0, False)])
-def test_a_c64_zombie_with_no_row_value_to_convert_still_blocks(
-        magnitude, row):
-    rec, payload = _zombie_source(magnitude, row=row)
+def test_a_c64_zombie_row_of_ff_has_no_value_to_convert_and_still_blocks():
+    rec, payload = _zombie_source(0xFF)
     char = c64_codec.read(rec, game=c64_port.POOL_OF_RADIANCE,
                           payload=bytes(payload), party_slot=4)
     assert 32 in char.get("innate_effects")
     _dos, _itm, _spc, report = dos_codec.write(char)
     assert any("innate_effects 32 (Animate Dead)" in line
                for line in report.dropped)
+
+
+@pytest.mark.parametrize("side", [0, 1])
+def test_a_dispelled_c64_zombie_becomes_the_node_with_the_lowest_dispel_level(
+        side):
+    """Dispel Magic clears the row and leaves the trait slot; the node's low
+    nibble 15 is the lowest chance for DOS's Dispel to kill him, nearest the
+    C64, where it never does."""
+    rec, payload = _zombie_source(0, side, row=False)
+    char = c64_codec.read(rec, game=c64_port.POOL_OF_RADIANCE,
+                          payload=bytes(payload), party_slot=4)
+    node = bytes((32, 0, 0, side << 4 | 15, 1))
+    assert 32 not in char.get("innate_effects")
+    assert char.get("granted_effects") == [node]
+    _dos, _itm, spc, report = dos_codec.write(char)
+    assert bytes(spc) == node + bytes(4)
+    assert not any("innate_effects 32" in line for line in report.dropped)
+
+
+_DISPELLED = "por-700-dispel-78a7f747a5-dispel-observed-b"
+
+
+def _dispelled_brutus():
+    from goldbox.d64 import D64
+    from goldbox.savegame import load_save
+
+    root = gamedata.specimen_root()
+    found = list(root.glob(f"*-c64/WISH-SPEC-{_DISPELLED}.D64")) if root else []
+    if not found:
+        pytest.skip(f"needs specimen WISH-SPEC-{_DISPELLED}.D64")
+    game, sg0, sg1 = load_save(D64.open(str(found[0])))
+    save0 = sg0.to_bytes()
+    (slot,) = [s for s in sg0.characters
+               if s.record.get("name") == "BRUTUS"]
+    return dos_codec.c64_member_neutral(
+        save0, sg1.to_bytes() if sg1 is not None else None, game, slot.index)
+
+
+def test_the_dispelled_zombie_specimen_converts_to_dos_and_the_amiga():
+    char = _dispelled_brutus()
+    assert 32 not in char.get("innate_effects")
+    _dos, _itm, spc, report = dos_codec.write(char)
+    assert bytes(spc) == bytes.fromhex("200000" "0F01") + bytes(4)
+    assert not [d for d in report.dropped if "innate_effects" in d]
+    _rec, _itm, amiga_spc, _rep = amiga_por.write_por(char)
+    assert bytes(amiga_spc) == bytes.fromhex("20000000" "0F01" "00000000")
 
 
 @pytest.mark.parametrize("status", [0x0B, 0x13, 0x23, 0x43, 0x7B, 0x83])
@@ -640,11 +684,10 @@ def test_the_same_residue_on_a_zombie_still_gives_the_node(form):
     rec.set("combat_side", 0)
     char = c64_codec.read(rec, game=c64_port.POOL_OF_RADIANCE,
                           payload=payload, party_slot=4)
-    if form == "trait only":
-        # No row means no caster level to convert, so it still blocks.
-        assert 32 in char.get("innate_effects")
-        return
-    assert char.get("granted_effects") == [bytes((32, 0, 0, 5, 1))]
+    # A dispelled zombie has no row and so no caster level; the node gets
+    # level 15, the lowest Dispel chance.
+    level = 15 if form == "trait only" else 5
+    assert char.get("granted_effects") == [bytes((32, 0, 0, level, 1))]
     assert 32 not in char.get("innate_effects")
 
 

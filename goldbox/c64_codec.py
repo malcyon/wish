@@ -3738,6 +3738,21 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                 running.append(node.to_record())
                 if row.id in effects.FEAR_IDS.get(title_key, ()):
                     fear_row_converted = True
+        # A dispelled zombie: Dispel Magic clears the id-32 row and leaves the
+        # trait slot, status $03 and every other zombie field in place, and
+        # the C64 temple's raise keys on the slot alone (`SQRPACI64 $059A`).
+        # DOS and the Amiga key on the node, so the slot becomes the node a
+        # camp cast writes.  The row's level died with it, so the low nibble
+        # is 15: the lowest chance for their Dispel to kill him, nearest to
+        # the C64, where it never does.  Side is bit 0 of 0x10C as for a row.
+        if (zombie_read and not zombie_node_converted
+                and ANIMATE_DEAD_ID in rec.get_raw("item_effects")
+                and not any(r.owner == party_slot and r.id == ANIMATE_DEAD_ID
+                            for r in rows)):
+            granted.append(bytes((ANIMATE_DEAD_ID, 0, 0,
+                                  ((combat_side_raw or 0) & 1) << 4 | 0x0F,
+                                  1)))
+            zombie_node_converted = True
         if running:
             out.set("running_effects", running,
                     "the save's shared effect arrays: the rows this "
