@@ -670,3 +670,44 @@ def test_the_players_disks_give_the_script_ends_measured_live(key, area, end):
     if not found:
         pytest.skip(f"needs the player's Amiga {key} disks")
     assert end in found
+
+
+def test_a_trip_into_tilverton_writes_the_area_byte_before_the_key():
+    key = "curse-of-the-azure-bonds"
+    m = machine(key, area=3)
+    armed = trip.arm(m, key, trip.plan(1, (3, 14, 1)))
+    assert kinds(armed) == ["statements", "entry", "came_from", "trigger"]
+    assert (armed.records[2].address, armed.records[2].data) \
+        == (BASE + 0x5CE1, b"\x01")
+    elsewhere = trip.arm(machine(key, area=1), key, trip.plan(3, (3, 14, 1)))
+    assert "came_from" not in kinds(elsewhere)
+
+
+def test_a_tilverton_trip_fires_on_the_step_entry_not_the_area_byte():
+    key = "curse-of-the-azure-bonds"
+    m = machine(key, area=3)
+    armed = trip.arm(m, key, trip.plan(1, (3, 14, 1)))
+    assert m.read(BASE + 0x5CE1, 1) == b"\x01"
+    assert trip.fired(m, armed) is None
+    m.at(0x584C, b"\x80\x14")              # vm_init_ecl rewrote the entry
+    assert trip.fired(m, armed) is True
+
+
+def test_an_untaken_tilverton_trip_puts_the_area_byte_back():
+    key = "curse-of-the-azure-bonds"
+    m = machine(key, area=3)
+    before = bytes(m.memory)
+    armed = trip.arm(m, key, trip.plan(1, (3, 14, 1)))
+    assert trip.disarm(m, armed) is True
+    assert bytes(m.memory) == before
+
+
+def test_a_tilverton_trip_with_the_key_taken_leaves_the_area_byte_alone():
+    key = "curse-of-the-azure-bonds"
+    m = machine(key, area=3)
+    armed = trip.arm(m, key, trip.plan(1, (3, 14, 1)))
+    m.at(0x3804, b"\x00")                  # the game took the key
+    written = len(m.log)
+    assert trip.disarm(m, armed) is False
+    assert len(m.log) == written
+    assert m.read(BASE + 0x5CE1, 1) == b"\x01"

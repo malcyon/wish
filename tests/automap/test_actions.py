@@ -1803,3 +1803,16 @@ def test_reenter_pushes_the_stack_in_a_single_write_on_the_monitor_path():
     assert mon.registers == {
         actions.sp_register(mon): sp, actions.pc_register(mon): addr.redraw}
     assert mon.resumes == 1
+
+
+def test_curse_trip_into_tilverton_leaves_the_destination_as_came_from():
+    curse = fasttravel.CURSE_OF_THE_AZURE_BONDS
+    writes = dict(actions.newecl_writes(3, 1, addresses=curse))
+    assert writes[curse.came_from] == b"\x01"
+    elsewhere = dict(actions.newecl_writes(1, 3, addresses=curse))
+    assert elsewhere[curse.came_from] == b"\x01"
+    other = dict(actions.newecl_writes(2, 3, addresses=curse))
+    assert other[curse.came_from] == b"\x02"
+    pool = dict(actions.newecl_writes(
+        3, 1, addresses=fasttravel.POOL_OF_RADIANCE))
+    assert pool[fasttravel.POOL_OF_RADIANCE.came_from] == b"\x03"

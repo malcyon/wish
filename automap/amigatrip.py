@@ -191,6 +191,10 @@ class TripRow:
     script_header: int = 0
     confirmed: bool = False
     direct_confirmed: bool = False
+    #: Destinations whose script plays an opening unless the area byte already
+    #: names them. The trip writes the area byte first, so `fired` judges by
+    #: the step entry instead.
+    came_from_areas: tuple[int, ...] = ()
     differences: tuple[Difference, ...] = ()
 
 
@@ -261,6 +265,7 @@ ROWS: dict[str, TripRow] = {
         key_buffer=0x3804, area_file=0x7F12,
         script_file="/DISKB/ECL.GLB",
         confirmed=True,
+        came_from_areas=(_TILVERTON,),
         differences=(
             Difference("tilverton",
                        "decision 2: arriving in Tilverton replayed the opening",
@@ -686,7 +691,7 @@ def gate(target, row) -> bool:
 #: The kinds of write `arm` makes, in its order. The buffer kinds are put back
 #: and zeroed byte by byte; the rest while they read as ours, whole or as the
 #: prefix a write that failed part way left over the original.
-KINDS = ("square", "statements", "message", "entry", "trigger")
+KINDS = ("square", "statements", "message", "entry", "came_from", "trigger")
 _BYTEWISE = ("statements", "message")
 
 
@@ -751,6 +756,8 @@ def _prepare(target, row: TripRow, p: Plan) -> tuple[int, list]:
         trigger = (base + row.key_buffer, FORWARD_KEY, "trigger")
     writes.append((base + row.step_entry,
                    (row.ecl_origin + at).to_bytes(2, "big"), "entry"))
+    if p.area in row.came_from_areas:
+        writes.append((base + row.area, bytes([p.area]), "came_from"))
     writes.append(trigger)
     return buffer, writes
 
@@ -808,7 +815,15 @@ def arm(target, row, p: Plan) -> Armed | None:
 
 
 def fired(target, armed: Armed) -> bool | None:
-    """True once the area byte has left the departing area, else None."""
+    """True once the area byte has left the departing area, else None.
+
+    A trip that writes the area byte itself cannot be judged by it; the game
+    has loaded the new script once the step entry no longer reads as written.
+    """
+    if any(w.kind == "came_from" for w in armed.records):
+        w = next(w for w in armed.records if w.kind == "entry")
+        (cur,) = target.read_blocks([(w.address, len(w.data))])
+        return True if _ours(cur, w) == 0 and cur != w.original else None
     here = area_id(target, armed.row)
     if here is not None and here != armed.from_area:
         return True
@@ -868,6 +883,13 @@ def _put_back(target, armed: Armed) -> bool:
     changed area. False then, with only the key's record touched.
     """
     keys = [w for w in armed.records if w.kind == "trigger"]
+    if any(w.kind == "came_from" for w in armed.records):
+        # The game clears the key flag when it takes the key, and then holds
+        # the area byte's 1 itself, so putting the departing area back would
+        # undo its own write.
+        (cur,) = target.read_blocks([(keys[0].address, len(keys[0].data))])
+        if cur != keys[0].data:
+            return False
     _restore(target, keys)
     if fired(target, armed):
         return False

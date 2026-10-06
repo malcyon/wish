@@ -131,6 +131,11 @@ class FastTravelAddresses:
     #: `$4BFB` in front of the wipe and the other two do not.
     zeroed: tuple[int, ...] = ()
 
+    #: Destinations whose script plays an opening unless the came-from word
+    #: equals the destination, as a loaded save leaves it. A trip into one
+    #: writes the destination at `came_from` instead of the departing area.
+    came_from_is_destination: tuple[int, ...] = ()
+
     #: The live x/y/facing triple, which no title relocated.
     live_square: int = LIVE_SQUARE
     scratch_len: int = SCRATCH_LEN
@@ -247,6 +252,7 @@ CURSE_OF_THE_AZURE_BONDS = FastTravelAddresses(
     key_wait=(0x101D, 0x1056),
     key_fetch=(0x2FD7, 0x2FF8),
     wall_slot_pinned=0x4BE7,
+    came_from_is_destination=(0x01,),
 )
 
 #: Secret of the Silver Blades. `DUNGEON $20E6`, and **six writes rather than

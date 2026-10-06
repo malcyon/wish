@@ -1441,7 +1441,9 @@ def newecl_writes(from_area: int, to_area: int, disk: int | None = None,
     elif overland is not None:
         writes.append((addr.travel_square,
                        bytes(int(v) & 0xFF for v in overland)))
-    writes.append((addr.came_from, bytes([from_area & 0x7F])))
+    came_from = (to_area if (to_area & 0x7F) in addr.came_from_is_destination
+                 else from_area)
+    writes.append((addr.came_from, bytes([came_from & 0x7F])))
     writes.append((addr.slot, bytes([(to_area & 0x7F) | 0x80])))
     writes.extend((at, b"\x00") for at in addr.zeroed)
     writes.append((addr.scratch, bytes(addr.scratch_len)))
