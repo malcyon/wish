@@ -2832,10 +2832,13 @@ def test_no_encounters_leaves_a_different_script_alone(scripted, tmp_path):
                                      "wait 0.5"])
     assert gate_bytes(guest) == other
     assert not any(b.startswith("M") for b in guest.received)
-    blocked_rows = [x for r in rows if r["event"] == "no_encounters"
-                for x in r.get("rows", []) if "stopped" in x
-                and x["row"] == "*0x6EA6+0x82EA"]
-    assert len(blocked_rows) == 1               # logged once, not every heartbeat
+    from tools.amiga import noencounters
+    stopped = [x["row"] for r in rows if r["event"] == "no_encounters"
+               for x in r.get("rows", []) if "stopped" in x]
+    gates = {r.spec for r in noencounters.ROWS
+             if r.title == "pools-of-darkness" and r.kind == noencounters.GATE}
+    assert len(stopped) == len(set(stopped))    # logged once, not every heartbeat
+    assert set(stopped) == gates
 
 
 def test_a_roll_opcode_with_a_different_hash_is_not_written(scripted, tmp_path):
