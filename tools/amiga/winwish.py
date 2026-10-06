@@ -1635,13 +1635,18 @@ def uae_options(values: list[str] | None) -> tuple[str, ...]:
 
 
 def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
-    """Fetch, stage, claim the lane, start WinUAE (when there are drives), start Wish.
+    """Fetch, stage, claim every lane, start WinUAE (when there are drives), start Wish, give lanes back.
 
     With no drive no WinUAE is started, but the claim is still exclusive and the mute
     proof still required. The claim takes every lane because Wish attaches to the
     lowest-numbered WinUAE pipe, whichever lane that belongs to: beside another running
     lane it can attach to that holder's emulator. With `--wait-lanes N` the claim
     reserves the lanes and waits up to N seconds for the other holders to release them.
+
+    Once Wish is up and the run's own emulator owns the `WinUAE` pipe, every lane but
+    that emulator's is released: an emulator started later takes `WinUAE_1` or higher,
+    so Wish stays on its own. Wish alone, an emulator on another pipe name, or
+    `--keep-lanes` keeps every lane until `down`.
 
     Anything that goes wrong between the claim and the end of `start_wish` -- an
     error, Ctrl-C or SIGTERM -- stops Wish (if it was attempted), stops WinUAE and
@@ -1677,11 +1682,23 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
             wish_tried = True
             result["wish"] = start_wish(guest, args.holder, not args.no_flag,
                                         tuple(drives[:GAME_DISKS]), args.game, reseed=True)
+            if drives and not args.keep_lanes and re.search(r"\bpipe=WinUAE(?![\w])", result["winuae"]):
+                result["lanes"] = _give_back_lanes(lane, args.holder)
             done = True
         finally:
             if not done:
                 _undo(guest, lane, args.holder, wish_tried, started, claimed)
     return result
+
+
+def _give_back_lanes(lane: Any, holder: str) -> str:
+    """Release every lane but the emulator's own; any failure keeps them all."""
+    try:
+        kept = lane.lane(holder, CALL_SECONDS)
+        freed = lane.release_other_lanes(holder, kept, CALL_SECONDS)
+    except Exception as exc:  # noqa: BLE001 - holding every lane is the safe direction
+        return f"failed, every lane kept: {exc}"
+    return f"ok kept lane {kept}, gave back {', '.join(map(str, freed)) or 'none'}"
 
 
 def _undo(guest: Guest, lane: Any, holder: str, wish_tried: bool,
@@ -1767,6 +1784,9 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--wait-lanes", type=int, default=0, metavar="SECONDS",
                    help="reserve every lane and wait up to this long for the other holders "
                    "to release theirs (default: claim once and fail)")
+    p.add_argument("--keep-lanes", action="store_true",
+                   help="keep every lane until `down` instead of giving back the ones the "
+                   "run's emulator is not in, for a run that restarts its pipe or uses `display --set`")
 
     p = sub.add_parser("stage-save", help="copy a save to the guest and check its hash there")
     holder(p)

@@ -214,6 +214,25 @@ class WinGuest:
             raise RouteError(f"winuae.ps1 lane names no lane: {receipt!r}")
         return int(found.group(1))
 
+    def release_other_lanes(self, holder: str, keep: int, timeout: float) -> list[int]:
+        """Release every lane `holder` holds except `keep`; lanes held by anyone else stay.
+
+        The lanes come from the guest's `status` lines (`claim = H since ...` is lane 1,
+        `claim N = H since ...` is lane N), and each is released with `-Lane N`, which
+        frees that lane alone. Returns the lanes freed.
+        """
+        freed = []
+        for line in self.status(timeout).splitlines():
+            found = re.match(r"\s*claim(?: (\d+))? = (\S+) since ", line)
+            if not found or found.group(2) != holder:
+                continue
+            number = int(found.group(1) or 1)
+            if number == keep:
+                continue
+            self._lane(holder, f"release -Lane {number}", timeout)
+            freed.append(number)
+        return freed
+
     def put(self, local: pathlib.Path, remote: str, timeout: float) -> str:
         receipt = self._run("put", str(local), remote, timeout=timeout)
         self.staged.add(remote.replace("/", "\\"))

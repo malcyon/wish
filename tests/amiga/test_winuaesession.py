@@ -333,3 +333,15 @@ def test_a_busy_reply_does_not_release(monkeypatch, wait):
     with pytest.raises(winuaesession.RouteError, match="one Amiga lane at a time"):
         winuaesession.WinGuest().claim("h", 5, wait=wait)
     assert _release_sent(sent) == []
+
+
+def test_release_other_lanes_frees_only_the_holders_other_lanes():
+    status = ("claim = h since 2026-10-06T09:00:00\n"
+              "claim 2 = h since 2026-10-06T09:00:01\n"
+              "claim 3 = other since 2026-10-06T09:00:02\n"
+              "claim 4 = h since 2026-10-06T09:00:03")
+    guest = Guest([status, "ok released", "ok released"])
+    assert guest.release_other_lanes("h", 1, 5) == [2, 4]
+    assert [call[1] for call in guest.sent[1:]] == [
+        f"{winuaesession.WINUAE_PS} release -Lane 2 -Holder h",
+        f"{winuaesession.WINUAE_PS} release -Lane 4 -Holder h"]

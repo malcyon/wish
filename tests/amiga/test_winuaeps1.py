@@ -732,3 +732,13 @@ def test_exclusive_waiters_are_served_in_the_order_they_arrived():
     assert waiting.index("Remove-QueueTicket $Holder") > waiting.index("Remove-Item $ReservePath")
     assert "Remove-QueueTicket $Holder" in _case("release")
     assert "Waiters are served in arrival order" in PS1[:PS1.index("param(")]
+
+
+def test_a_second_ordinary_claim_by_its_holder_writes_nothing():
+    claim = _case("claim")
+    ordinary = claim[claim.index("$candidates = if ($Override"):]
+    reuse = ordinary.index("(already yours since $($r['claim']['since']))")
+    assert "exit 0" in ordinary[reuse:reuse + 120]
+    assert reuse < ordinary.index("Try-TakeClaim")
+    race = ordinary[ordinary.index("for ($m = 1; $m -lt $n; $m++)"):]
+    assert "Remove-Item $path" in race[:race.index("exit 0")]
