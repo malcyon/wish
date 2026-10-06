@@ -303,7 +303,12 @@ def load_amiga_item_names(where, game) -> dict[int, str]:
     """
     if not isinstance(where, (str, pathlib.Path, list, tuple)):
         where = list(where)                         # read twice below
-    program = spell_names.amiga_program(where, game)
+    try:
+        program = spell_names.amiga_program(where, game)
+    except stonecracker.StoneCrackerError as error:
+        raise ItemNameError(
+            f"the program is {stonecracker.NAME}-crunched and does not "
+            f"decrunch: {error}") from error
     try:
         return amiga_item_names(program)
     except StringsNeeded:

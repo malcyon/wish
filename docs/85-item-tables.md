@@ -121,13 +121,15 @@ tables equal DOS's id for id in every English build, except Curse's `x` at
 DOS's empty 62, 63 and 144, Pools of Darkness' `blinking` at 124, and Pools of
 Darkness' twelve names past DOS's last id (126 `Hoopak` to 137 `White Mage`),
 which no item template uses: the 416 seventeen-byte templates in its `ITEM0.DAX`
-and `MON1ITM.DAX` reach 125 at most. The German Amiga Pools of Darkness reads
-135 German names under the same ids.
+and `MON1ITM.DAX` reach 125 at most. The German Amiga Pools of Darkness runs to the same
+id 137 (`Weissmagier`) under the same ids, with ids 47 and 48 empty, so it
+reads 135 German names.
 
 **The pointer tables have no stored end.** Silver Blades' runs out on a slot
 that is not a pointer; Pools of Darkness' runs on into its death message
 (`who is looking very old`, id 138), so the reader stops at the first string
-longer than the DOS table's 20 characters.
+longer than the DOS table's 20 characters. The German table's id 138 is the same death message in German,
+so its end is also 137.
 
 On specimen `ssb-wish4-joined-l122`, the Amiga overflow's first item for PAINE
 (words 40/39/102) reads `Mage Scroll 3 Spells` from the DOS game folder and

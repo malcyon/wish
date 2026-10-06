@@ -353,3 +353,26 @@ def test_specimen_l_item_is_named_from_the_amiga_disks(amiga_disks):
     for disks in amiga_disks[key].values():
         names = item_names.item_names(key, "amiga", disks)
         assert _paines_first_left_behind(names).upper() == "MAGE SCROLL 3 SPELLS"
+
+
+def test_amiga_program_that_does_not_decrunch_raises_item_name_error(monkeypatch):
+    from goldbox import stonecracker
+
+    def broken(_where, _game):
+        raise stonecracker.StoneCrackerError("bad crunch")
+    monkeypatch.setattr(spell_names, "amiga_program", broken)
+    with pytest.raises(item_names.ItemNameError, match="does not decrunch"):
+        item_names.load_amiga_item_names([], "pools-of-darkness")
+
+
+def test_german_amiga_pools_of_darkness_runs_to_id_137(amiga_disks):
+    from goldbox import stonecracker
+    key = "pools-of-darkness"
+    german = [disks for disks in amiga_disks.get(key, {}).values()
+              if stonecracker.is_crunched(disks[0].read_file(
+                  "/" + spell_names.AMIGA_PROGRAMS[key]))]
+    if not german:
+        pytest.skip("no German Amiga Pools of Darkness disks")
+    names = item_names.load_amiga_item_names(german[0], key)
+    assert (len(names), max(names), names[max(names)]) == (135, 137, "Weissmagier")
+    assert {47, 48}.isdisjoint(names)
