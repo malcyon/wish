@@ -314,6 +314,14 @@ _EXPECTED_DESCENDANTS = {
     "por-dos/WISH-SPEC-pool-667-strength-short-enlarge-pair-dos-later-engine-saves",
     # Names its parent, por-52-dialog-converted-resave, without the prefix.
     "por-dos/WISH-SPEC-por-667-slow-poison-no-poison-running-resave",
+    # Copies of the staged-level-6 prayer specimen, which is itself in
+    # _NOT_REBUILT: BROTHER SEAN and DARKSTAR still hold the staged-level
+    # THAC0 of 40 where the rebuild gives 41 or 42, and in the all-members
+    # copy every member's staged THAC0 is stale. The C64-to-DOS copy matches.
+    "por-dos/WISH-SPEC-pool-8-level6-all-members-sean-prayer30-camp-save-dos-engine-save",
+    "por-dos/WISH-SPEC-pool-8-level6-darkstar-stinking-cloud-node-camp-save-dos-engine-save",
+    "por-dos/WISH-SPEC-pool-8-level6-no-node-control-camp-save-dos-engine-save",
+    "por-dos/WISH-SPEC-pool-8-level6-prayer-holder-c64-to-dos-camp-save-dos-engine-save",
 }
 
 
