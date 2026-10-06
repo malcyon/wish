@@ -464,6 +464,28 @@ def _white_screen(path: pathlib.Path) -> bool:
         return all(low >= 245 for low, _ in image.convert("RGB").getextrema())
 
 
+MUTE_READBACK = (r"powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass "
+                 r"-File C:\Amiga\winuaemute.ps1")
+
+
+def _require_silence(guest: Any, audio_proof: pathlib.Path | None, wait_lane: float,
+                     timeout: float) -> None:
+    """Require a mute proof under five minutes old before WinUAE starts.
+
+    A lane granted after a long wait finds the proof the run began with expired, so after
+    such a wait a stale proof is replaced by a fresh guest readback; the age rule is unchanged.
+    """
+    if not guest.silence(audio_proof) and wait_lane > 0 and audio_proof is not None:
+        output = guest._run("ssh", MUTE_READBACK, timeout=timeout)
+        try:
+            proof = json.loads(output[output.index("{"):])
+        except ValueError as exc:
+            raise RouteError(f"winuaemute.ps1 printed no JSON proof: {output!r}") from exc
+        pathlib.Path(audio_proof).write_text(json.dumps(proof))
+    if not guest.silence(audio_proof):
+        raise RouteError("the Windows VM audio mute proof expired before WinUAE start")
+
+
 def _wait_option(wait_lane: float) -> dict[str, float]:
     """The `wait` a WinUAE `claim` takes; none when no wait was asked for, which is every other lane."""
     return {"wait": wait_lane} if wait_lane > 0 else {}
@@ -519,8 +541,7 @@ def _run_diagnose(manifest_path: pathlib.Path, manifest: dict, title: AmigaTitle
         config_staged = True
         result["remote_config_path"] = WinGuest.private_config_path(holder)
         result["config"] = guest.stage_private_config(holder, timeout=limit(60))
-        if not guest.silence(audio_proof):
-            raise RouteError("the Windows VM audio mute proof expired before WinUAE start")
+        _require_silence(guest, audio_proof, wait_lane, limit(60))
         started = True
         result["start"] = guest.start(
             holder, *(None if key is None else remotes[key] for key in title.mounted),
@@ -2141,8 +2162,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         for name, local in local_disks.items():
             guest.put(local, remotes[name], timeout=route_limit(90))
         copied = True
-        if not guest.silence(audio_proof):
-            raise RouteError("the Windows VM audio mute proof expired before WinUAE start")
+        _require_silence(guest, audio_proof, wait_lane, route_limit(60))
         start_attempted = True
         if title is None:
             result["start"] = guest.start(holder, remotes["df0"], remotes["df1"],

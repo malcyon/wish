@@ -188,3 +188,33 @@ def test_a_lane_granted_after_a_long_wait_still_gives_the_route_its_full_time(tm
     result = measure._measure(tmp_path, guest, deadline_seconds=1800, wait_lane=1700)
     assert result["error"] == "" and result["success"] is True
     assert guest.claim_timeout == 30
+
+
+def test_a_lane_granted_after_a_long_wait_takes_a_fresh_mute_readback(tmp_path, clock):
+    import json
+    from datetime import datetime, timedelta, timezone
+
+    readbacks = []
+
+    class WaitedGuest(measure.ScreenGuest):
+        silence = staticmethod(WinGuest.silence)
+
+        def claim(self, holder, timeout=None, wait=0.0):
+            # The proof was fresh when the run began and is ten minutes old at the grant.
+            aged = json.loads(proof.read_text())
+            aged["observed_utc"] = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+            proof.write_text(json.dumps(aged))
+            return super().claim(holder)
+
+        def _run(self, *args, timeout):
+            readbacks.append(args)
+            return json.dumps({**json.loads(proof.read_text()),
+                               "observed_utc": datetime.now(timezone.utc).isoformat()})
+
+    proof = _audio_proof(tmp_path)
+    guest = WaitedGuest(clock)
+    result = acceptance.run_recon(
+        measure._prepared(tmp_path), guest=guest, holder="wish672-test",
+        audio_proof=proof, measure=True, deadline_seconds=1800, wait_lane=1700)
+    assert result["error"] == "" and result["success"] is True
+    assert len(readbacks) == 1 and "winuaemute.ps1" in readbacks[0][1]
