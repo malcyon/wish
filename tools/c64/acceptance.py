@@ -38,7 +38,7 @@ bytes with what it replaced.
 
 One option is applied after the load instead: `--stage-roster SLOT:OFFSET=VALUE`
 (repeatable, SLOT 0 to 5, OFFSET below `0x20`) writes one byte of the live
-roster block at `$8300 + SLOT*$20 + OFFSET` once the `load` step has finished,
+roster block at the title's roster base `+ SLOT*$20 + OFFSET` once the `load` step has finished,
 reads it back, and lists the write in `summary.json` under `stage_roster`.  It
 reaches what the save file does not hold, such as the current hit points at
 `+0x19`.  An address in `$03C2` to `$03C8` is rejected.
@@ -546,14 +546,20 @@ ROSTER_STAGE_SLOTS = 6
 ROSTER_STAGE_FORBIDDEN = range(0x03C2, 0x03C9)
 
 
-def roster_address(slot: int, offset: int) -> int:
-    """The memory address of one roster byte; ValueError outside the block."""
+def check_roster_byte(slot: int, offset: int) -> None:
+    """ValueError unless `slot` and `offset` name a byte of the roster block."""
     if not 0 <= slot < ROSTER_STAGE_SLOTS:
         raise ValueError(f"slot {slot}: the slot is 0 to {ROSTER_STAGE_SLOTS - 1}")
     if not 0 <= offset < savegame.ROSTER_STRIDE:
         raise ValueError(f"offset {offset:#x}: the offset is below "
                          f"{savegame.ROSTER_STRIDE:#x}")
-    address = savegame.SAVE1_LOAD_ADDRESS + slot * savegame.ROSTER_STRIDE + offset
+
+
+def roster_address(game, slot: int, offset: int) -> int:
+    """The memory address of one roster byte of `game`; ValueError outside the
+    block or on an address `--stage-roster` never writes."""
+    check_roster_byte(slot, offset)
+    address = game.roster_base + slot * savegame.ROSTER_STRIDE + offset
     if address in ROSTER_STAGE_FORBIDDEN:
         raise ValueError(f"${address:04X} is not written")
     return address
@@ -570,20 +576,20 @@ def parse_roster_bytes(texts) -> list[tuple[int, int, int]]:
                 raise ValueError(f"{item!r}: a roster byte is SLOT:OFFSET=VALUE")
             slot, offset = (int(p, 0) for p in parts)
             try:
-                roster_address(slot, offset)
+                check_roster_byte(slot, offset)
             except ValueError as e:
                 raise ValueError(f"{item!r}: {e}") from e
             out.append((slot, offset, _byte(value, "the value")))
     return out
 
 
-def poke_roster(sess, writes, log) -> list[dict]:
-    """Write each `(slot, offset, value)` into memory, read it back, and fail
+def poke_roster(sess, game, writes, log) -> list[dict]:
+    """Write each `(slot, offset, value)` into `game`'s roster block, read it back, and fail
     on a byte that did not take."""
     rows = []
     with sess.mon(5) as m:
         for slot, offset, value in writes:
-            address = roster_address(slot, offset)
+            address = roster_address(game, slot, offset)
             was = m.read(address, 1)[0]
             m.write(address, bytes([value]))
             found = m.read(address, 1)[0]
@@ -8029,6 +8035,11 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             summary["no_encounters"] = True
             summary["encounter_gates"] = pool.gate_reports
         roster_writes = parse_roster_bytes(getattr(args, "stage_roster", []))
+        try:
+            for slot_, offset_, _ in roster_writes:
+                roster_address(game, slot_, offset_)
+        except ValueError as e:
+            raise StepFailed(f"--stage-roster: {e}") from e
         pool.read_ats = tuple(parse_read_at(getattr(args, "read_at", [])))
         if getattr(args, "fast_flee", False):
             pool.fast_flee = True
@@ -8066,7 +8077,7 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                 got = pool.load_party() if menu_first else pool.load()
                 if roster_writes:
                     summary["stage_roster"] = got["stage_roster"] = poke_roster(
-                        sess, roster_writes, log)
+                        sess, game, roster_writes, log)
             elif step.verb == "remove":
                 got = pool.remove(step.arg)
             elif step.verb == "camp-list":

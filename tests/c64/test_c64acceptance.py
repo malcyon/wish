@@ -14320,16 +14320,30 @@ def test_a_fight_with_no_recorded_place_still_exempts_the_save_check():
 def test_a_stage_roster_line_parses_and_rejects_bad_lines():
     assert A.parse_roster_bytes(["4:0x19=60"]) == [(4, 0x19, 60)]
     assert A.parse_roster_bytes(["0:0=1,5:0x1F=0xFF"]) == [(0, 0, 1), (5, 0x1F, 255)]
-    assert A.roster_address(4, 0x19) == 0x8399
     for bad in ("4:0x20=1", "6:0=1", "-1:0=1", "4:0x19=256", "4:0x19", "4=1"):
         with pytest.raises(ValueError):
             A.parse_roster_bytes([bad])
-    # No roster byte sits in $03C2-$03C8, so the guard is on the address itself.
-    for address in (0x03C2, 0x03C8):
-        assert address in A.ROSTER_STAGE_FORBIDDEN
+
+
+def test_roster_address_follows_the_title_roster_base():
+    pool = A.c64_port.by_key(A.TITLES["pool"])
+    curse = A.c64_port.by_key(A.TITLES["curse"])
+    assert A.roster_address(pool, 4, 0x19) == 0x8300 + 4 * 0x20 + 0x19
+    assert A.roster_address(curse, 4, 0x19) == curse.roster_base + 4 * 0x20 + 0x19
+    assert curse.roster_base != 0x8300
+
+
+def test_roster_address_guard_applies_to_the_final_address():
+    game = SimpleNamespace(roster_base=0x03C0)
+    assert A.roster_address(game, 0, 1) == 0x03C1
+    for offset in (2, 8):
+        with pytest.raises(ValueError, match="not written"):
+            A.roster_address(game, 0, offset)
+    assert A.roster_address(game, 0, 9) == 0x03C9
 
 
 def test_poke_roster_writes_each_byte_and_reads_it_back():
+    GAME = SimpleNamespace(roster_base=0x8300)
     memory = {0x8399: 7}
     events = []
 
@@ -14352,7 +14366,7 @@ def test_poke_roster_writes_each_byte_and_reads_it_back():
     sess = SimpleNamespace(mon=lambda timeout: Monitor())
     log = SimpleNamespace(emit=lambda kind, **kw: events.append((kind, kw)),
                           say=lambda text: None)
-    rows = A.poke_roster(sess, [(4, 0x19, 60)], log)
+    rows = A.poke_roster(sess, GAME, [(4, 0x19, 60)], log)
     assert memory[0x8399] == 60
     assert rows == [{"slot": 4, "offset": 0x19, "address": "$8399", "was": 7,
                      "now": 60, "found": 60}]
@@ -14360,7 +14374,86 @@ def test_poke_roster_writes_each_byte_and_reads_it_back():
     memory[0x8399] = 7
     Monitor.write = lambda self, address, data: None
     with pytest.raises(A.StepFailed):
-        A.poke_roster(sess, [(4, 0x19, 60)], log)
+        A.poke_roster(sess, GAME, [(4, 0x19, 60)], log)
+
+
+def test_run_stages_the_roster_after_load_at_the_titles_base(tmp_path, monkeypatch):
+    import contextlib
+
+    from tools.curse_of_the_azure_bonds import curserun
+
+    slot = _Slot(tmp_path)
+    monkeypatch.setattr(A.runlog, "catch_signals", lambda: None)
+    monkeypatch.setattr(A.S, "claim_slot", lambda *a, **k: slot)
+    monkeypatch.setattr(A, "stage", lambda *a, **k: {"effects": [],
+                                                    "magic_items": []})
+    monkeypatch.setattr(curserun, "stage", lambda *a, **k: "first")
+    order, memory = [], {}
+
+    class Monitor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def read(self, address, length):
+            return bytes([memory.get(address, 0)])
+
+        def write(self, address, data):
+            order.append(("write", address))
+            memory[address] = data[0]
+
+        def resume(self):
+            pass
+
+    class Session:
+        save_disk = "disk"
+
+        def __init__(self, *a, **k):
+            pass
+
+        def watching_dialogs(self):
+            return contextlib.nullcontext()
+
+        def terminate(self):
+            pass
+
+        def mon(self, timeout):
+            return Monitor()
+
+    monkeypatch.setattr(curserun, "CurseSession", Session)
+
+    class Run:
+        def __init__(self, *args):
+            pass
+
+        def load(self):
+            order.append(("load", None))
+            return {}
+
+        def reading(self):
+            return {"effects": []}
+
+        def capture(self, tag):
+            pass
+
+    monkeypatch.setattr(A, "CurseRun", Run)
+    args = SimpleNamespace(title="curse", max_seconds=120, stage_row=[],
+                           stage_trait=[], stage_item=[], stage_only=False,
+                           checkpoint=[], pool=None, issue="8", run="fake-roster",
+                           disks="unused", attack_by="", walk="I", walk_steps=60,
+                           quit_nonattacking=False, probe_step=False,
+                           stage_roster=["4:0x19=60"])
+    out = tmp_path / "evidence"
+    source = _fixture_disk(tmp_path)
+    assert A.run(args, A.parse_steps(["load"]), out, source) == 0
+    base = A.c64_port.by_key(A.TITLES["curse"]).roster_base
+    address = base + 4 * 0x20 + 0x19
+    assert order == [("load", None), ("write", address)]
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert summary["stage_roster"][0]["address"] == f"${address:04X}"
+    assert summary["stage_roster"][0]["now"] == 60
 
 
 @pytest.mark.parametrize("bad", ["4:0x20=1", "6:0=1", "4:0x19"])
