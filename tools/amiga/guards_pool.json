@@ -316,6 +316,21 @@
         ],
         "example": "301/wish301-amiga/accept2/shots/04-world.png",
         "sha256": "d5ce3f5d30aa28b2d3fa774380f7dd962f1bcec64fd9b9ec466888c27380ce55"
+      },
+      {
+        "also": [
+          "camp",
+          "camp_save_picker",
+          "quit_prompt"
+        ],
+        "box": [
+          326,
+          96,
+          578,
+          194
+        ],
+        "example": "WISH-1/f3accept/accept1/shots/04-world.png",
+        "sha256": "47991daaaf9b420dc53923469be0da736d943f50208c4d6a3c350c2568fd5827"
       }
     ]
   },
@@ -327,6 +342,9 @@
       "sheet"
     ],
     "301/wish301-amiga/accept2/shots/04-world.png": [
+      "world"
+    ],
+    "WISH-1/f3accept/accept1/shots/04-world.png": [
       "world"
     ],
     "amiga-grab-crops/3q__s01-boot.png": [

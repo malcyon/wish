@@ -3811,3 +3811,23 @@ def test_the_darkness_guards_recognise_the_camp_button_row_of_the_a2_party():
     rules = [r for r in screens.rules_of(spec["guards"]["camp"]) if r["example"] == example]
     assert len(rules) == 1 and rules[0]["box"] == box and rules[0]["also"] == []
     assert screens.box_digests(crop, [tuple(box)], "camp")[tuple(box)] == rules[0]["sha256"]
+
+
+def test_the_pool_identity_recognises_the_world_screen_of_the_new_phlan_party_of_the_f3_save():
+    from tools.amiga import screens
+
+    spec = json.loads((pathlib.Path(foundation.__file__).parent / "guards_pool.json").read_text())
+    example = "WISH-1/f3accept/accept1/shots/04-world.png"
+    assert spec["labels"][example] == ["world"]
+    box = [326, 96, 578, 194]
+    rules = [r for r in screens.rules_of(spec["identity"]["world"]) if r["example"] == example]
+    assert len(rules) == 1 and rules[0]["box"] == box and rules[0]["also"] == ["camp", "camp_save_picker", "quit_prompt"]
+    crop = scratch.cache_dir("acceptance") / example
+    if not crop.is_file():
+        pytest.skip("needs the WISH-1 f3accept world shot")
+    assert screens.box_digests(crop, [tuple(box)], "world")[tuple(box)] == rules[0]["sha256"]
+    # Another party's world screen must not match this rule.
+    for other in screens.rules_of(spec["identity"]["world"]):
+        if other["example"] != example and (scratch.cache_dir("acceptance") / other["example"]).is_file():
+            digest = screens.box_digests(scratch.cache_dir("acceptance") / other["example"], [tuple(box)], "world")[tuple(box)]
+            assert digest != rules[0]["sha256"]
