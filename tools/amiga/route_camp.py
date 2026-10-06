@@ -238,7 +238,7 @@ PARTY_MAX = 8
 #: by the identity map cut for the run's own party; a sheet that map has no rule for is
 #: skipped, and the run's summary then carries `identity_checked=False`, which drops the
 #: `rest` pass flag and adds a "no identity rule checked" note.
-SHEET_LINES = {"ssb": (1, 2, 3, 4, 5, 6), "curse": (1, 2, 3, 4, 5, 6), "darkness": (1,)}
+SHEET_LINES = {"ssb": (1, 2, 3, 4, 5, 6), "curse": (1, 2, 3, 4, 5, 6), "darkness": (1, 2, 3, 4, 5, 6, 7)}
 #: The party line of the paladin whose HEAL sheets the title's guard map holds, so the line
 #: `heal N` can name: the identity rule of `camp_sheet_heal` and `camp_sheet_spent` is his.
 HEAL_LINES = {"ssb": (1,), "curse": (6,), "darkness": (1,)}

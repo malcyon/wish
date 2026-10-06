@@ -144,13 +144,21 @@ def test_a_title_without_camp_steps_is_blocked():
 
 
 @pytest.mark.parametrize("text,why", [
-    ("view 2", "sheets for line 1 only"),
+    ("view 8", "sheets for lines 1 to 7 only"),
+    ("view 0", "sheets for lines 1 to 7 only"),
     ("heal 2", "lay on hands for line 1 only"),
     ("heal;heal", "second heal needs a rest"),
 ])
-def test_darkness_camp_steps_name_only_line_1(text, why):
+def test_darkness_camp_steps_name_lines_1_to_7(text, why):
     with pytest.raises(RouteError, match=why):
         route_camp.parse_steps(text, "darkness")
+
+
+def test_darkness_reaches_line_7_backwards_and_keeps_the_order_of_the_views():
+    assert route_camp.steps_for(("view 7",), "darkness", 7) == (
+        ("NP8", "camp", "key"), ("V", "camp_sheet_7", "key"), ("E", "camp", "key"), ("NP2", "camp", "key"))
+    text = "view 2;view 3;view 4;view 5;view 6;view 7;view 1"
+    assert route_camp.parse_steps(text, "darkness") == tuple(text.split(";"))
 
 
 def test_darkness_lays_on_hands_with_l_and_picks_the_first_member_where_the_picker_opens():
@@ -898,8 +906,8 @@ def test_only_darkness_prepares_camp_steps_outside_a_published_prepare(
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     with pytest.raises(RouteError, match="only on a published prepare"):
         foundation.prepare(foundation.CURSE, "camp-run", camp=("view",))
-    with pytest.raises(RouteError, match="sheets for line 1 only"):
-        foundation.prepare(foundation.DARKNESS, "camp-run", camp=("view 2",))
+    with pytest.raises(RouteError, match="sheets for lines 1 to 7 only"):
+        foundation.prepare(foundation.DARKNESS, "camp-run", camp=("view 8",))
     with pytest.raises(RouteError, match="is a number"):
         foundation.prepare(foundation.DARKNESS, "camp-run", issue="../628")
     assert not (tmp_path / ".cache").exists()
