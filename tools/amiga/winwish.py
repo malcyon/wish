@@ -1691,13 +1691,27 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
     return result
 
 
+def _held_lanes(lane: Any, holder: str) -> list[int]:
+    """The lanes the guest's `status` shows `holder` holding."""
+    held = []
+    for line in lane.status(CALL_SECONDS).splitlines():
+        found = re.match(r"\s*claim(?: (\d+))? = (\S+) since ", line)
+        if found and found.group(2) == holder:
+            held.append(int(found.group(1) or 1))
+    return held
+
+
 def _give_back_lanes(lane: Any, holder: str) -> str:
-    """Release every lane but the emulator's own; any failure keeps them all."""
+    """Release every lane but the emulator's own; on a failure say which lanes are still held."""
     try:
         kept = lane.lane(holder, CALL_SECONDS)
         freed = lane.release_other_lanes(holder, kept, CALL_SECONDS)
-    except Exception as exc:  # noqa: BLE001 - holding every lane is the safe direction
-        return f"failed, every lane kept: {exc}"
+    except Exception as exc:  # noqa: BLE001 - holding too many lanes is the safe direction
+        try:
+            still = f"lanes still held: {', '.join(map(str, _held_lanes(lane, holder)))}"
+        except Exception:  # noqa: BLE001
+            still = "lanes still held: unknown, run `status`"
+        return f"failed ({exc}); {still}"
     return f"ok kept lane {kept}, gave back {', '.join(map(str, freed)) or 'none'}"
 
 

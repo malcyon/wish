@@ -673,6 +673,10 @@ everything in §3 applies unchanged — different launcher, same lease.
 
 ---
 
+### WinUAE lanes under `winwish.py up`
+
+`up` claims every WinUAE lane, because Wish attaches to the lowest-numbered pipe name. Once Wish is up and the run's own emulator owns the `WinUAE` pipe, it releases every other lane the holder has and keeps that emulator's; `--keep-lanes` holds every lane until `down`, and so does Wish without an emulator or an emulator on another pipe name.
+
 ## 8. Where Proxmox fits
 
 Taking it seriously, because it was asked seriously.

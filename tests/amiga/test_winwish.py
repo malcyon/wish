@@ -52,6 +52,8 @@ class FakeLane:
         self.fail_on = fail_on
         self.exc = exc
         self.start_reply = "ok start"
+        self.emulator_lane = 1
+        self.status_text = ""
 
     def _do(self, name, *args):
         self.log.append(name)
@@ -74,7 +76,10 @@ class FakeLane:
         return self.start_reply
 
     def lane(self, holder, timeout):
-        return 1
+        return self.emulator_lane
+
+    def status(self, timeout):
+        return self.status_text
 
     def release_other_lanes(self, holder, keep, timeout):
         self.keep = keep
@@ -451,8 +456,25 @@ def test_a_failed_give_back_leaves_up_standing_with_every_lane(tmp_path, monkeyp
     lane = FakeLane(fail_on="release_other_lanes")
     lane.start_reply = "ok pid=1 session=1 pipe=WinUAE"
     result = winwish.up(winwish.Guest(FakeRun()), lane, _args(tmp_path, monkeypatch))
-    assert result["lanes"].startswith("failed, every lane kept")
+    assert result["lanes"].startswith("failed")
     assert "release" not in lane.log and "stop" not in lane.log
+
+
+def test_a_give_back_that_fails_partway_names_the_lanes_still_held(tmp_path, monkeypatch):
+    lane = FakeLane(fail_on="release_other_lanes")
+    lane.start_reply = "ok pid=1 session=1 pipe=WinUAE"
+    lane.status_text = "claim = h since t\nclaim 2 = other since t\nclaim 4 = h since t"
+    result = winwish.up(winwish.Guest(FakeRun()), lane, _args(tmp_path, monkeypatch))
+    assert result["lanes"].endswith("lanes still held: 1, 4")
+
+
+def test_up_keeps_the_lane_its_emulator_is_in_when_that_is_not_lane_1(tmp_path, monkeypatch):
+    lane = FakeLane()
+    lane.start_reply = "ok pid=1 session=1 pipe=WinUAE"
+    lane.emulator_lane = 3
+    result = winwish.up(winwish.Guest(FakeRun()), lane, _args(tmp_path, monkeypatch))
+    assert lane.keep == 3
+    assert result["lanes"].startswith("ok kept lane 3")
 
 
 def test_claim_every_lane_polls_until_the_guest_says_ok(monkeypatch):
