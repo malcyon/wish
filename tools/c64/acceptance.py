@@ -2250,12 +2250,25 @@ class PoolRun:
                     "shots")
 
     def resume_state(self) -> dict:
-        """`RESUME_ATTRS` as they stand, as plain data a record can hold."""
+        """`RESUME_ATTRS` as they stand, as JSON values a record can hold.
+
+        Each value must come back from JSON equal to what was saved; a tuple,
+        a set or an object JSON would turn into something else raises
+        `ValueError` naming the attribute, so a resume is never started from a
+        changed value.
+        """
         state = {name: getattr(self, name) for name in self.RESUME_ATTRS
                  if hasattr(self, name)}
         if self.gate_reports is not None:
             state["gate_reports"] = list(self.gate_reports)
-        return json.loads(json.dumps(state, default=str))
+        for name, value in state.items():
+            try:
+                same = json.loads(json.dumps(value)) == value
+            except TypeError:
+                same = False
+            if not same:
+                raise ValueError(f"{name} does not survive a JSON round trip: {value!r}")
+        return state
 
     def adopt_resume_state(self, state: dict) -> None:
         """Put `resume_state`'s attributes back.  `gate_reports` is filled in
@@ -8061,6 +8074,10 @@ class StepResume:
             return
         try:
             shutil.rmtree(self.current, ignore_errors=True)
+            # VICE writes a changed track back to the host image when the image
+            # is detached, so attaching the same file again is what makes the
+            # host file the disk the snapshot is about to embed.
+            self.sess.attach(str(self.sess.attached))
             path = pathlib.Path(self.sess.snapshot(RESUME_SNAPSHOT))
             self._copy(path, self.current / "step.vsf")
             for suffix in self.SIDECARS:
@@ -8565,10 +8582,10 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                 earlier = summary.get("lost")
                 summary["lost"] = f"{earlier}; {reason}" if earlier else reason
             write_summary()
-        if cleanup_errors:
-            raise cleanup_errors[0]
         if resume is not None and resume_path is None:
             shutil.rmtree(out / RESUME_FOLDER, ignore_errors=True)
+        if cleanup_errors:
+            raise cleanup_errors[0]
     if resume_path is not None:
         return resumerecord.RESUME_EXIT
     return 0 if summary["completed"] else 1

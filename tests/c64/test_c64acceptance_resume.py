@@ -20,6 +20,7 @@ from goldbox.c64_port import POOL_OF_RADIANCE
 from tools.c64 import acceptance as A
 from tools.registry import resumerecord, specimens
 
+REAL_POOL_RUN = A.PoolRun   # `drive` replaces `A.PoolRun` with a fake
 FIXTURES = pathlib.Path(__file__).resolve().parents[1] / "fixtures"
 
 
@@ -54,9 +55,14 @@ class _Slot:
 
 
 class _Sess:
-    """Writes a snapshot file whose bytes name the call, so a copy can be told apart."""
+    """Writes a snapshot file whose bytes name the call, so a copy can be told apart.
+
+    Writes the game makes to the attached disk reach its host file only when
+    `attach` is called, as VICE writes a changed track back on detach.
+    """
 
     snapshot_error_at = None
+    terminate_error = False
 
     def __init__(self, first, slot=None):
         self.slot = slot
@@ -65,12 +71,20 @@ class _Sess:
         pathlib.Path(self.attached).write_bytes(b"side three")
         self.snapshots = 0
         self.events = slot.events
+        self.pending = b""
 
     def watching_dialogs(self):
         return contextlib.nullcontext()
 
     def terminate(self):
-        pass
+        if self.terminate_error:
+            raise RuntimeError("terminate failed")
+
+    def attach(self, path):
+        self.events.append("attach")
+        with open(path, "ab") as host:
+            host.write(self.pending)
+        self.pending = b""
 
     def snapshot_path(self, name):
         return str(self.slot.dir / "snapshots" / f"{name}.vsf")
@@ -112,6 +126,7 @@ class _Pool:
     def peek(self, arg):
         with open(self.sess.save_disk, "ab") as disk:
             disk.write(b"+")
+        self.sess.pending += b"+"
         return self._step("peek")
 
     def snapshot(self, name):
@@ -120,6 +135,11 @@ class _Pool:
 
     def items(self, who):
         if who == "NOBODY":
+            # The failing step changes both disks before it raises.
+            with open(self.sess.save_disk, "ab") as disk:
+                disk.write(b"!")
+            self.sess.pending += b"!"
+            self.sess.attach(self.sess.attached)
             self.capture("lost-items")
             raise A.StepFailed("NOBODY is not in the party")
         return self._step("items")
@@ -161,8 +181,8 @@ def _summary(out):
 def test_a_snapshot_is_taken_at_each_step_start_after_the_load(drive):
     rc, _, out, events = drive(["load", "peek 1000 1", "peek 1000 1"])
     assert rc == 0
-    assert events == ["load", "snapshot resume-step", "peek",
-                      "snapshot resume-step", "peek", "teardown"]
+    assert events == ["load", "attach", "snapshot resume-step", "peek",
+                      "attach", "snapshot resume-step", "peek", "teardown"]
 
 
 def test_a_normal_run_leaves_no_record(drive):
@@ -192,16 +212,18 @@ def test_the_record_holds_the_machine_and_disks_as_step_three_began(drive):
     _, _, out, _ = drive(["load", "peek 1000 1", "items NOBODY"])
     record = resumerecord.read(out / "resume" / "resume.json", "c64")
     folder = out / "resume"
-    # The third snapshot, with the save disk after exactly one `peek`.
+    # The second snapshot, taken as step 3 began.
     assert (folder / record["machine"]["file"]).read_bytes() == b"vsf resume-step 2"
     assert [pathlib.Path(s["file"]).name for s in record["machine"]["sidecars"]] == [
         "step.vsf.attached", "step.vsf.pokes", "step.vsf.gates"]
-    assert (folder / record["machine"]["attached"]["file"]).read_bytes() == b"side three"
+    # `peek` wrote "+" to the attached disk, which only the attach before the
+    # snapshot put on the host file; the failing step's "!" is in neither copy.
+    assert (folder / record["machine"]["attached"]["file"]).read_bytes() == b"side three+"
     save = (folder / record["disks"]["save"]["file"]).read_bytes()
     assert save == (out / "staged.D64").read_bytes() + b"+"
+    assert b"!" not in (folder / record["machine"]["attached"]["file"]).read_bytes()
     assert record["disks"]["staged"]["sha256"] == specimens.sha256_file(out / "staged.D64")
-    assert record["disks"]["sides"] == {"SIDE3.D64": specimens.sha256_file(
-        out.parent / "slot" / "SIDE3.D64")}
+    assert list(record["disks"]["sides"]) == ["SIDE3.D64"]
     assert record["disks"]["source"]["sha256"] == specimens.sha256_file(
         out.parent / "fixture-source.d64")
 
@@ -304,3 +326,38 @@ def test_curse_and_silver_blades_save_what_pool_saves_and_more():
     assert set(A.PoolRun.RESUME_ATTRS) < set(A.CurseRun.RESUME_ATTRS)
     assert set(A.CurseRun.RESUME_ATTRS) < set(A.SilverRun.RESUME_ATTRS)
     assert "first_bar_done" in A.CurseRun.RESUME_ATTRS
+
+
+def test_a_state_value_json_would_change_stops_the_snapshot_and_is_named(drive, monkeypatch):
+    monkeypatch.setattr(_Pool, "resume_state", lambda self: REAL_POOL_RUN.resume_state(
+        SimpleNamespace(RESUME_ATTRS=("scribe_square",), scribe_square=(3, 4),
+                        gate_reports=None)))
+    rc, _, out, _ = drive(["load", "peek 1000 1", "items NOBODY"])
+    assert rc == 1 and not (out / "resume").exists()
+    assert "scribe_square does not survive a JSON round trip" in _summary(out)["resume"]["why_not"]
+
+
+def test_every_saved_attribute_round_trips_exactly():
+    values = {"at_menu": False, "directory": [{"name": "A", "size": 3}], "removes": 2,
+              "scribing": True, "scribe_square": [3, 4, 0], "mercy_before": 7,
+              "lost_reading": {"step": "fight", "after": {"counts": {"a": 1}}},
+              "returns_sent": 1, "flee_escaped": None, "shots": 9,
+              "first_bar_done": True, "attack_evidence": {"row": [25, 1, 2]},
+              "quit_evidence": None, "first_effect_loss": {"phase": "x", "last_present": [1, 2]},
+              "last_effect_row": [1, 2], "_saving_is_proof": False, "gen_reads": 3}
+    assert set(values) == set(A.SilverRun.RESUME_ATTRS)
+    holder = SimpleNamespace(RESUME_ATTRS=A.SilverRun.RESUME_ATTRS, gate_reports=[{"verified": True}],
+                             **values)
+    state = A.PoolRun.resume_state(holder)
+    assert json.loads(json.dumps(state)) == state
+    assert {k: state[k] for k in values} == values
+
+
+def test_a_cleanup_error_still_removes_the_snapshot_folder(drive, tmp_path):
+    class Broken(_Sess):
+        terminate_error = True
+
+    with pytest.raises(RuntimeError, match="terminate failed"):
+        drive(["load", "peek 1000 1"], sess=Broken)
+    assert (tmp_path / "out" / "summary.json").is_file()
+    assert not (tmp_path / "out" / "resume").exists()
