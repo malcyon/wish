@@ -1807,7 +1807,7 @@ class StepFailed(RuntimeError):
 class FightCastSetback(StepFailed):
     """A `fight-cast` attempt the fight itself spoiled -- a member down, the
     party not away, no cast -- which a reload of the step's snapshot can
-    retry; a driver that could not press its keys is a plain `StepFailed`."""
+    retry; a driver that could not press its keys is a simple `StepFailed`."""
 
 
 class NoMoveKeySent(StepFailed):
@@ -4571,7 +4571,7 @@ class PoolRun:
     #: one for each different fight `fight_cast_walk` can meet there.
     FIGHT_CAST_ATTEMPTS = 2
 
-    #: The run's seconds a retry needs left to be worth starting.
+    #: The fewest seconds the run must have left for a retry to start.
     FIGHT_CAST_RETRY_SECONDS = 600.0
 
     #: The snapshot a `fight-cast` takes at the world bar before its walk.
