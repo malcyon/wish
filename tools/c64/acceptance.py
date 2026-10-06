@@ -8296,7 +8296,8 @@ def resume_into(sess, slot, pool, record: dict, folder: pathlib.Path) -> None:
             shutil.copyfile(folder / sidecar["file"], str(target) + suffix)
         marker = pathlib.Path(str(target) + ".attached")
         if marker.is_file():
-            was = pathlib.PurePosixPath(marker.read_text(encoding="utf-8").strip()).name
+            # The sidecar was written on whichever OS made it, so split on either separator.
+            was = pathlib.PureWindowsPath(marker.read_text(encoding="utf-8").strip()).name
             if not (slot_dir / was).is_file():
                 raise Error(f"snapshot {name} had {was} in the drive, which this slot lacks")
             marker.write_text(str(slot_dir / was), encoding="utf-8")

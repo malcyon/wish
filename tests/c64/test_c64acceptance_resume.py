@@ -443,7 +443,7 @@ def test_the_attached_sidecar_is_rewritten_to_the_new_slot(drive, failed, monkey
     rc, slot, _, _ = _resume(drive, failed)
     assert rc == 0
     assert "slota" in old and "slotb" not in old
-    assert seen["attached"] == str(slot.dir / "SIDE3.D64") == seen["slot"] + "/SIDE3.D64"
+    assert seen["attached"] == str(slot.dir / "SIDE3.D64") == str(pathlib.Path(seen["slot"]) / "SIDE3.D64")
     assert seen["vsf"] == b"vsf resume-step 2"          # the step-start machine
 
 
