@@ -77,7 +77,7 @@ a source whose title does not match `--title`:
 | `shot NAME` | one PNG and the screen digests, nothing pressed |
 | `snapshot NAME`, `restore NAME` | DOSBox-X only (`dossnapshot.SnapshotSession`; a run with either step boots it): `snapshot` saves the whole machine under NAME (letters, digits, `-`, `_`); `restore` puts it back and settles, and the `SAVE` files changed since the snapshot are logged and recorded as `changed_saves`, because a game save stays on disk.  A `restore` needs an earlier `snapshot` of that name and no `save` between them; the run stops before boot otherwise.  Each is in `run.jsonl` and `summary.json`.  Random encounters stay on, except under `--no-encounters`, where a `restore` clears the values the switch wrote and re-arms it |
 | `press KEY` | one X keysym (`Down`, `Return`, `t`), then a settle and a PNG; capture only, so only `press`, `shot` and `read` may come after it |
-| `walk MI`, `walk I`, `walk 1` | Pool and Curse (`MI`): turn right twice at the map bar and step one square.  Pool (`I`): step one square forward without turning.  Silver Blades and Pools of Darkness (`1`): press MOVE, step one square turning right past a wall, and leave move mode (`e` in Silver Blades, `Escape` in Pools of Darkness) back to the map bar.  In Pool and Curse a `PRESS <ENTER>/<RETURN> TO CONTINUE` story box the step lands on is answered with `Return`, `WALK_CONTINUE_ROUNDS` boxes at most, each logged as `press_continue`; combat or any other screen still stops the walk.  A step is believed only when the `x,y` on the status line changes (never the clock beside it), a blank line is never the starting reading, and a run with a walk fails unless `read` shows the last saved slot's place differs from the installed one |
+| `walk MI`, `walk I`, `walk 1` | Pool and Curse (`MI`): turn right twice at the map bar and step one square.  Pool (`I`): step one square forward without turning.  Silver Blades and Pools of Darkness (`1`): press MOVE, step one square turning right past a wall, and leave move mode (`e` in Silver Blades, `Escape` in Pools of Darkness) back to the map bar.  In Pool and Curse a `PRESS <ENTER>/<RETURN> TO CONTINUE` story box the step lands on is answered with `Return`, `WALK_CONTINUE_ROUNDS` boxes at most, each logged as `press_continue`; combat or any other screen still stops the walk.  A step is believed only when the `x,y` on the status line changes (never the clock beside it), a blank line is never the starting reading; in Pool, where a turn can leave the line as `S 03:59` with no `x,y`, such a turn or step is judged by the square the DOSBox-X debugger reads at `POOL_PLACE` (x, y, facing doubled), which every reading logs as `place`, so a Pool walk or turn boots DOSBox-X, and a run with a walk fails unless `read` shows the last saved slot's place differs from the installed one |
 | `turn N` | N from 1 to 4: the walk's control.  Silver Blades and Pools of Darkness press MOVE first and leave move mode after; N `Right` presses, each reading the `x,y` square, which a turn must leave alone (`lost-walk-turn`); the party stays on the map for `camp`, `save D` and `read`.  A run with `turn` and no `walk` fails unless `read` shows the saved place unchanged ("did not move") |
 | `fight`, `fight 900` | Curse and Silver Blades, from the map: walk (Silver Blades in move mode) preferring squares not yet stood on (`Explorer`) until a fight starts, answer each bar by `FIGHT_KEYS` (`COMBAT`, `QUICK`, `EXIT` at the treasure and at a locked door, which the walk then marks walled, `NO` at `YES NO`, `Return` to continue), and end on the map once its bar has held `FIGHT_SETTLED` seconds; the number bounds walk and fight, in seconds (`FIGHT_SECONDS`).  At each command bar the debugger names who acts (`bar` in `run.jsonl`); at the first it logs `placement`, every combatant's square, side, quickfight and control (`COMBAT_LAYOUTS`), and `--first-bar-key KEY` is pressed there once instead of `QUICK`, the next bar logging every record again as `after-first-bar-key`.  A Silver Blades fight in area 16 is blocked unless the gate `$4C2D` is 1, since a successful wandering roll there is a compliment: add `--stage-var 4C2D=1`.  With `--intervene` (Silver Blades only) the game starts as `START.EXE X Gem` (`CHEAT_ARGS`) and Alt+X, the game's own end-the-fight key, is pressed once at the bar after the first-bar key, or at the first bar without one; a command bar coming back stops the run (`fight-intervene`).  The defeat screen (`PARTY_DESTROYED`) stops it at once (`fight-destroyed`).  A second `fight` in the boot follows `camp`, `save X` and `leave`, or another `fight`; the first-bar key and Alt+X are the first fight's only, each result names its fight by number, and every later fight presses `SPACE` once at its first combat screen (`HAND_BACK`: a command bar, or a blank or unclassified bar once combat has begun -- the encounter menu answered, the placement read, or the combat window changed from what the last fight left and reading as a fight, probed at most every `COMBAT_PROBE_SECONDS`), because `QUICK` survives into the next fight, logging every combatant's quickfight just before it (`before-hand-back`) and recording `handed_back`, `handed_back_to` and `before_hand_back`.  A run with a `fight` boots DOSBox-X (`dosboxx.XSession`) rather than DOSBox 0.74 |
 | `prayer-watch 49`, `prayer-watch 35` | Pool (35 and 49), Curse and Silver Blades (49), from the map, `load` first, with each title's addresses (`dosfightwatch.PRAYER_LAYOUTS`).  Pool walks to an encounter (`walk_to_encounter`) and arms at the encounter menu; Curse and Silver Blades walk as `fight` does (Silver Blades' area 16 needs `--stage-var 4C2D=1` here too) and arm at the first command bar, once `placement` is logged and `QUICK` pressed there.  At that point it reads every member's effect nodes and Prayer's handler table, breaks on the id-49 stub (and Pool's id-35 stub) and the attack roll's stub (Pool's `08D2:003E`, the table's segment less the Prayer unit plus the attack unit), arm the list-10 call and its return at the segment that stub's far jump names, re-arming when a stub hit shows a new one, arm the handler, bonus test, +1 helper and penalty at the overlay segment the stub's far jump names once it loads, answer each bar (Pool by `COMBAT_KEYS`, Curse and Silver Blades by `FIGHT_KEYS`), and log each halt as `prayer-halt`: registers, 16 bytes at `SS:SP`, the four-frame `BP` chain, combatant name and side, the node's five bytes and the two roll bytes the +1 helper raises (Pool's `DS:0x6816` and `DS:0x6822`).  A party attack is a list-10 call halt with a side-0 attacker, closed by that attacker's next return halt.  For id 49 the step stops after one party attack whose own helper or penalty halt fell inside it, and in Curse and Silver Blades only once a monster's attack has also reached the penalty (`monster_penalties`), which a conclusive run there needs (only a list-10 penalty, an attack, counts as a monster's attack; a saving-throw penalty, list 12, does not; and a later round replaces an ally's round until a member carrying the node has completed one); for id 35 three completed pairs with no Prayer stub halt inside them are a conclusive result, and the step stops after the third.  It also stops when the map has held `FIGHT_SETTLED` seconds, at the defeat screen (Curse and Silver Blades), or after `PRAYER_FIGHT_SECONDS`; the step fails if the menu or first command bar came more than `PRAYER_BOOT_SECONDS` after the driver was made (Pool's walk is bounded by its 40 steps, the other two's by `FIGHT_SECONDS`, and both by the run's `--deadline`).  The result is `conclusive: False`, and the run exits 2 with `inconclusive` in `summary.json` rather than `lost` or `completed`, when no member carried the node at the menu or at the stop, an armed or halted routine's code did not match `GAME.OVR`, the stop-time party was not read, or, for id 49, no party attack armed at the stubs ran its helper or penalty (the first call loads the overlay before its routines are armed, so a round needs a later attack).  Only `shot`, `press` and `read` may follow |
@@ -253,6 +253,7 @@ import signal
 import sys
 import time
 import traceback
+from collections.abc import Callable
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
@@ -1643,6 +1644,22 @@ def loose_halve(screen: dosbox.Screen) -> dosbox.Screen:
         row[0::3], row[1::3], row[2::3] = top[0::6], top[1::6], top[2::6]
         out[y * w * 3:(y + 1) * w * 3] = row
     return dosbox.Screen(w, h, bytes(out))
+
+
+#: Pool of Radiance's party square in the game's data segment: x, y and the
+#: facing doubled (0 N, 2 E, 4 S, 6 W), the engine's own copy that the VM
+#: hands back as `$C04B`-`$C04D` (`GAME.OVR` 0x83CA-0x8416) and the save
+#: writes at 12801 (`docs/163-dos-vm-address-map.md`).
+POOL_PLACE = 0x6AAD
+
+
+def pool_place(raw: bytes) -> dict | None:
+    """x, y and facing 0-3 from `POOL_PLACE`'s three bytes, or None when the
+    facing byte is not a doubled facing (the data segment is not the game's)."""
+    x, y, facing = raw[:3]
+    if facing not in (0, 2, 4, 6) or x > 0x3F or y > 0x3F:
+        return None
+    return {"x": x, "y": y, "facing": facing // 2}
 
 
 def map_square(screen: dosbox.Screen, column: int) -> str | None:
@@ -3285,6 +3302,12 @@ class Driver:
         #: Set by `run` when a `vault` step follows: `begin` then takes
         #: Pools of Darkness' Elminster menu as its end instead of stopping.
         self.elminster_ok = False
+        #: Pool's party place from memory (`pool_place`), for a walk whose
+        #: status line hides the `x,y`; None without a debugger.
+        self.place_reader: Callable[[], dict] | None = (
+            self._memory_place if title == "pool" and hasattr(session, "attach")
+            else None)
+        self._live: dosnoencounters.LiveVariables | None = None
 
     # -- evidence ----------------------------------------------------------
 
@@ -4074,9 +4097,46 @@ class Driver:
         # can tell a missing `x,y` from a square; other titles read it as before.
         square = (map_square if self.title.key == "pool" else status_square)(
             screen, column)
-        screens.append({"shot": self.shot(label), "bar": bar_signature(screen),
-                        "status": status, "square": square})
+        entry = {"shot": self.shot(label), "bar": bar_signature(screen),
+                 "status": status, "square": square}
+        if self.place_reader is not None:
+            entry["place"] = self.party_place(label)
+        screens.append(entry)
         return status, square
+
+    def _memory_place(self) -> dict:
+        """Pool's `POOL_PLACE` through the debugger, at one halt; the data
+        segment is the one `LiveVariables` proves by its clock digits."""
+        if self._live is None:
+            self._live = dosnoencounters.LiveVariables(self.s, dosnoencounters.POOL)
+        with self._live as live:
+            raw = self.s.read((live.ds, POOL_PLACE), 5)
+        place = pool_place(raw)
+        if place is None:
+            raise ValueError(f"DS:{POOL_PLACE:04X} reads {raw.hex()}, no square")
+        return {**place, "raw": raw.hex(), "ds": f"{live.ds:04X}"}
+
+    def party_place(self, label: str) -> dict | None:
+        """The party's place from memory (`place_reader`), logged as `place`,
+        or None when it did not read, logged as `place-unread`."""
+        try:
+            place = self.place_reader()
+        except (dosnoencounters.SwitchError, dosboxx.NotHalted, RuntimeError,
+                ValueError) as e:
+            self.note(event="place-unread", label=label,
+                      why=f"{type(e).__name__}: {e}")
+            return None
+        self.note(event="place", label=label, **place)
+        return place
+
+    @staticmethod
+    def same_place(origin: dict | None, screens: list[dict]) -> bool | None:
+        """For the latest reading: whether memory shows the party on
+        `origin`'s square, or None when either place is unread."""
+        place = screens[-1].get("place") if screens else None
+        if origin is None or place is None:
+            return None
+        return (place["x"], place["y"]) == (origin["x"], origin["y"])
 
     def settle_after_turns(self, label: str, origin: str, screens: list[dict]) -> None:
         """Wait for the `x,y` to read again after turns that hid it; it must
@@ -4131,16 +4191,18 @@ class Driver:
             raise self.fail("walk-status", "the status line is blank on the map, "
                             "so there is no starting square (a shop or an "
                             "arrival draws it later)")
+        origin_place = screens[-1].get("place")
         hidden = False
         for n in (1, 2) if route == "MI" else ():
+            label = f"walk-turn-{n}"
             if not self.game.turn_right():
-                raise self.fail(f"walk-turn-{n}", "the map bar did not return "
+                raise self.fail(label, "the map bar did not return "
                                 "after turning (combat or an unknown screen)")
-            _, square = record(f"walk-turn-{n}")
-            # A view without the `x,y` is an unknown square, not a moved one.
-            hidden = hidden or square is None
-            if square is not None and square != origin:
-                raise self.fail(f"walk-turn-{n}", "the square changed on a turn")
+            _, square = record(label)
+            if square is None:
+                hidden = self.hidden_turn(label, origin_place, screens) or hidden
+            elif square != origin:
+                raise self.fail(label, "the square changed on a turn")
         if hidden:
             self.settle_after_turns("walk-turns-after", origin, screens)
         stepped = self.game.step()
@@ -4149,16 +4211,34 @@ class Driver:
             raise self.fail("walk-step", "the map bar did not return after the "
                             "step (combat or an unknown screen)")
         after, square = record("walk-step")
-        if square is None:
+        # A line without the `x,y` after the step is read from memory.
+        same = (self.same_place(origin_place, screens)
+                if square is None else square == origin)
+        if same is None:
             raise self.fail("walk-status", "the status line was blank after the step")
-        if square == origin:
+        if same:
             raise self.fail("walk-blocked", "the settled status did not change "
                             "after Up: the x,y square is the same (a blocked "
                             "step; a clock tick is not a step)")
         return {"route": route, "map_bar": self.world_sig,
                 "status_before": before, "status_after": after,
                 "square_before": origin, "square_after": square,
+                "place_before": origin_place,
+                "place_after": screens[-1].get("place"),
                 "screens": screens}
+
+    def hidden_turn(self, label: str, origin_place: dict | None,
+                    screens: list[dict]) -> bool:
+        """A turn whose status line has no `x,y`: False when memory shows the
+        party still on `origin_place`'s square, True when the square is
+        unknown; memory showing another square fails `label`."""
+        same = self.same_place(origin_place, screens)
+        if same is False:
+            place = screens[-1]["place"]
+            raise self.fail(label, f"the square changed on a turn (memory reads "
+                            f"{place['x']},{place['y']}, it was "
+                            f"{origin_place['x']},{origin_place['y']})")
+        return same is None
 
     def _walk_one(self) -> dict:
         """Press MOVE, step one square forward, and press EXIT back to the map.
@@ -4290,6 +4370,7 @@ class Driver:
             raise self.fail("walk-status", "the status line is blank on the map, "
                             "so there is no starting square (a shop or an "
                             "arrival draws it later)")
+        origin_place = screens[-1].get("place")
         hidden = False
         for n in range(1, presses + 1):
             label = f"walk-turn-{n}"
@@ -4298,13 +4379,16 @@ class Driver:
                 raise self.fail(label, "the map bar did not return after "
                                 "turning (combat or an unknown screen)")
             _, square = self.map_status(label, screens)
-            hidden = hidden or square is None
-            if square is not None and square != origin:
+            if square is None:
+                hidden = self.hidden_turn(label, origin_place, screens) or hidden
+            elif square != origin:
                 raise self.fail(label, "the square changed on a turn")
         if hidden:
             self.settle_after_turns("walk-turns-after", origin, screens)
         return {"route": "turn", "turns": presses, "map_bar": self.world_sig,
                 "square_before": origin, "square_after": origin,
+                "place_before": origin_place,
+                "place_after": screens[-1].get("place"),
                 "screens": screens}
 
     def _turn_move(self, presses: int) -> dict:
@@ -6896,8 +6980,12 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
         # A `fight` reads the combatants through the debugger, so its run
         # boots DOSBox-X from that pool, whose captures `XSession` halves back
         # to DOSBox 0.74's 320x200.
+        # A Pool walk or turn reads the party's square from memory when the
+        # status line hides it (`POOL_PLACE`), so it boots DOSBox-X too.
         debugger = (any(s.kind in ("fight", "prayer-watch") for s in steps)
-                    or no_encounters)
+                    or no_encounters
+                    or (args.title == "pool"
+                        and any(s.kind in ("walk", "turn") for s in steps)))
         # `snapshot` and `restore` are DOSBox-X save states, so such a run boots
         # `SnapshotSession` too.
         snapshots = any(s.kind in ("snapshot", "restore") for s in steps)

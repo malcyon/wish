@@ -2034,9 +2034,11 @@ def _fake_run(monkeypatch, tmp_path, *, find_game=None, session_fail=None,
         return _Slot(log)
 
     monkeypatch.setattr(dosbox, "find_game", find)
-    monkeypatch.setattr(dosbox, "claim", claim)
-    monkeypatch.setattr(dosbox, "Session",
-                        lambda slot, game: _Session(tmp_path, log, session_fail))
+    # A Pool walk boots DOSBox-X; a test that cares which one patches it again.
+    for module, session in ((dosbox, "Session"), (da.dosboxx, "XSession")):
+        monkeypatch.setattr(module, "claim", claim)
+        monkeypatch.setattr(module, session,
+                            lambda slot, game: _Session(tmp_path, log, session_fail))
 
     class Game:
         def to_main_menu(self):
@@ -2576,6 +2578,145 @@ def test_pool_turn_passes_when_the_square_reads_as_origin_after_hidden_turns(tmp
     _hide_on_turns(game, d, shown_on=(2,))
     got = d.turn(2)
     assert got["square_after"] == got["square_before"]
+
+
+class PoolMapMemory(PoolMap):
+    """`PoolMap` with the DOSBox-X debugger's memory calls: the game's data
+    segment holds the variable-array pointer `LiveVariables` checks and, at
+    `POOL_PLACE`, the party's x, y and doubled facing as the fake moves."""
+
+    DS = 0x149E
+
+    def __init__(self, tmp, **kw):
+        super().__init__(tmp, **kw)
+        self.y = 5
+        self.mem = bytearray(0x100000)
+        ptr = da.dosboxx.linear((self.DS, da.dosnoencounters.ENGINE[
+            da.dosnoencounters.POOL].pointer))
+        self.mem[ptr:ptr + 4] = bytes((0, 0, 0x00, 0x30))  # 3000:0000
+        self.mem[0x30000] = 1  # a block that is not all zeros
+        self.halts = 0
+
+    def attach(self):
+        self.halts += 1
+        return True
+
+    def run(self):
+        pass
+
+    def regs(self, *names):
+        return {"DS": self.DS}
+
+    def read(self, addr, n):
+        at = da.dosboxx.linear((self.DS, da.POOL_PLACE))
+        # The fake's facing counts from W (3); the game's from N, doubled.
+        self.mem[at:at + 3] = bytes((self.x, self.y, 2 * ((self.facing + 1) % 4)))
+        lin = da.dosboxx.linear(addr)
+        return bytes(self.mem[lin:lin + n])
+
+
+def _memory_walker(tmp_path):
+    game = PoolMapMemory(tmp_path)
+    d = da.Driver(game, lambda **k: None, "A", "pool")
+    d.where = "map"
+    d.world_ink = game.capture().ink(dosbox.BAR)
+    d.world_sig = screens.bar_signature(game.capture())
+    d.game = PoolMovement(game)
+    return game, d
+
+
+def test_pool_place_reads_x_y_and_a_doubled_facing():
+    assert da.pool_place(bytes((6, 5, 0, 9, 0))) == {"x": 6, "y": 5, "facing": 0}
+    assert da.pool_place(bytes((6, 5, 6))) == {"x": 6, "y": 5, "facing": 3}
+    assert da.pool_place(bytes((6, 5, 3))) is None
+    assert da.pool_place(bytes((0xC0, 5, 2))) is None
+
+
+def test_pool_reads_the_square_from_memory_only_with_a_debugger(tmp_path):
+    _, d = _pool_walker(tmp_path)
+    assert d.place_reader is None
+    (tmp_path / "c").mkdir()
+    _, d = _pool_walker(tmp_path / "c", title="curse")
+    assert d.place_reader is None
+    (tmp_path / "m").mkdir()
+    game, d = _memory_walker(tmp_path / "m")
+    assert d.party_place("x") == {"x": 0, "y": 5, "facing": 0,
+                                  "raw": "0005000000", "ds": "149E"}
+    assert game.halts == 1
+
+
+def test_pool_walk_mi_reads_the_hidden_square_from_memory(tmp_path):
+    # As at 6,5 on the New Phlan map: both turns leave `S 03:59` and the line
+    # never shows the `x,y` again, so only memory can show the turns kept the
+    # party on its square.
+    game, d = _memory_walker(tmp_path)
+    notes = []
+    d.note = lambda **k: notes.append(k)
+    _hide_on_turns(game, d)
+    got = d.walk("MI")
+    assert d.game.keys == ["Right", "Right", "Up"]
+    assert [(n["label"], n["x"], n["facing"]) for n in notes
+            if n["event"] == "place"] == [("walk-before", 0, 0), ("walk-turn-1", 0, 1),
+                                         ("walk-turn-2", 0, 2), ("walk-step", 1, 2)]
+    assert got["place_before"]["x"] == 0 and got["place_after"]["x"] == 1
+    assert [s["square"] for s in got["screens"][1:3]] == [None, None]
+    assert [s["place"]["facing"] for s in got["screens"][:3]] == [0, 1, 2]
+
+
+def test_pool_walk_reads_a_hidden_step_from_memory(tmp_path):
+    game, d = _memory_walker(tmp_path)
+    _hide_on_turns(game, d)
+    real_step = d.game.step
+
+    def hidden_step():
+        game.hide_square = True
+        return real_step()
+
+    d.game.step = hidden_step
+    got = d.walk("MI")
+    assert got["square_after"] is None
+    assert (got["place_after"]["x"], got["place_after"]["y"]) == (1, 5)
+
+
+def test_pool_walk_blocked_behind_a_hidden_line_is_read_from_memory(tmp_path):
+    game, d = _memory_walker(tmp_path)
+    d.game.blocked = True
+    _hide_on_turns(game, d)
+    with pytest.raises(da.StepFailed, match="walk-blocked"):
+        d.walk("MI")
+
+
+def test_pool_turn_passes_on_memory_when_the_line_never_shows_x_y(tmp_path):
+    game, d = _memory_walker(tmp_path)
+    _hide_on_turns(game, d)
+    got = d.turn(2)
+    assert got["square_after"] == got["square_before"]
+    assert (got["place_after"]["x"], got["place_after"]["y"]) == (0, 5)
+
+
+def test_pool_turn_fails_when_memory_shows_a_hidden_turn_moved_the_party(tmp_path):
+    game, d = _memory_walker(tmp_path)
+    _hide_on_turns(game, d)
+    turn = d.game.turn_right
+
+    def moving():
+        game.x += 1
+        return turn()
+
+    d.game.turn_right = moving
+    with pytest.raises(da.StepFailed, match="memory reads 1,5, it was 0,5"):
+        d.turn(2)
+
+
+def test_pool_walk_falls_back_to_the_line_when_memory_does_not_read(tmp_path):
+    game, d = _memory_walker(tmp_path)
+    notes = []
+    d.note = lambda **k: notes.append(k)
+    game.attach = lambda: False
+    _hide_on_turns(game, d)
+    with pytest.raises(da.StepFailed, match="no x,y"):
+        d.walk("MI")
+    assert any(n["event"] == "place-unread" for n in notes)
 
 
 def test_a_short_status_line_is_still_a_square_outside_pool(tmp_path):
@@ -8294,6 +8435,25 @@ def test_a_fight_run_boots_dosbox_x_and_a_run_without_one_does_not(monkeypatch,
     args.title = "ssb"
     da.run(args)
     assert x_log == [] and log[0] == "claim"
+
+
+@pytest.mark.parametrize("walk", ["walk MI", "turn 2"])
+def test_a_pool_walk_run_boots_dosbox_x_for_the_memory_square(monkeypatch,
+                                                             tmp_path, walk):
+    log = _fake_run(monkeypatch, tmp_path, menu_error=TimeoutError("x"))
+    x_log: list[str] = []
+
+    def x_claim(note=""):
+        x_log.append("x-claim")
+        return _Slot(x_log)
+
+    monkeypatch.setattr(da.dosboxx, "claim", x_claim)
+    monkeypatch.setattr(da.dosboxx, "XSession",
+                        lambda slot, game: _Session(tmp_path, x_log))
+    args = _run_args(tmp_path, ["load", walk])
+    args.title = "pool"
+    da.run(args)
+    assert x_log[0] == "x-claim" and "claim" not in log
 
 
 # The Silver Blades layout, and a fight held in fake memory.
