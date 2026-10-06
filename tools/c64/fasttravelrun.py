@@ -118,7 +118,7 @@ def other_area(dest: int) -> int:
 
 
 class Driver:
-    """One session's worth of trips."""
+    """The trips of one session."""
 
     def __init__(self, sess, connect: Callable[[], object], fasttravel, out: pathlib.Path,
                  log: Log, answer: str | None = None,
