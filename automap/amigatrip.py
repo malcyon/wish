@@ -61,6 +61,11 @@ BUFFER_SIZE = 0x1E00
 #: `NEWECL area`.
 SAVE = 0x09
 NEWECL = 0x20
+#: The boat exit's redraw statements: `PICTURE value`, `CLEAR BOX` and
+#: `LOADFILES a, b, c`.
+PICTURE = 0x0E
+CLEAR_BOX = 0x3D
+LOADFILES = 0x21
 
 #: Operand forms: a one-byte immediate, and a little-endian two-byte address.
 IMMEDIATE = 0x00
@@ -318,6 +323,34 @@ def save(value: int, address: int) -> bytes:
 def newecl(area: int) -> bytes:
     """`NEWECL area`: three bytes."""
     return bytes((NEWECL, IMMEDIATE, _byte(area, "area")))
+
+
+def picture(value: int) -> bytes:
+    """`PICTURE value`: three bytes."""
+    return bytes((PICTURE, IMMEDIATE, _byte(value, "value")))
+
+
+def clear_box() -> bytes:
+    """`CLEAR BOX`: one byte, no operands."""
+    return bytes((CLEAR_BOX,))
+
+
+def loadfiles(first: int, second: int, third: int) -> bytes:
+    """`LOADFILES first, second, third`: seven bytes."""
+    out = bytes((LOADFILES,))
+    for value, what in ((first, "first"), (second, "second"), (third, "third")):
+        out += bytes((IMMEDIATE, _byte(value, what)))
+    return out
+
+
+def boat_exit_groups() -> tuple[bytes, ...]:
+    """The five statement groups Pool of Radiance's grid scripts run before a
+    boat's `NEWECL`, in order: `PICTURE #255`, `CLEAR BOX`, `SAVE 1,[$49E6]`,
+    `SAVE 127` into `$6E22`-`$6E27`, and `LOADFILES 127,127,127`.
+    """
+    return (picture(255), clear_box(), save(1, 0x49E6),
+            b"".join(save(127, a) for a in range(0x6E22, 0x6E28)),
+            loadfiles(127, 127, 127))
 
 
 def encode(row, square, area: int, area_file: int | None = None,
