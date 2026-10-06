@@ -150,6 +150,29 @@ def key_taken(target, row) -> bool:
     return target.read(port + amigatrip.PORT_LIST, 12) == amigatrip.empty_list(port)
 
 
+def put_back(target, done, stop_if_taken: bool = False) -> bool:
+    """Put the key link back first, then every other byte; True when the game had taken the key.
+
+    The rest is put back even when the key's restore fails, and the first
+    exception is the one raised. With `stop_if_taken`, a key the game consumed
+    before the restore leaves the other bytes under the game's own step.
+    """
+    keys = [w for w in done if w.kind == "trigger"]
+    rest = [w for w in done if w.kind != "trigger"]
+    try:
+        made = amigatrip._restore(target, keys)
+    except BaseException:
+        try:
+            amigatrip._restore(target, rest)
+        except Exception:  # noqa: S110 - the first exception is the one to report
+            pass
+        raise
+    if stop_if_taken and keys and made == 0:
+        return True
+    amigatrip._restore(target, rest)
+    return False
+
+
 def try_door(target, row, stand, attribute: bool,
              sleep: Callable[[float], None]) -> dict:
     """Stand the party at `stand`, send the key and wait for it to be taken.
@@ -172,19 +195,24 @@ def try_door(target, row, stand, attribute: bool,
             done.append(amigatrip.Written(address, was, data, kind))
             target.write(address, data, verify=kind != "trigger")
     except BaseException:
-        amigatrip._restore(target, [w for w in done if w.kind == "trigger"])
-        amigatrip._restore(target, [w for w in done if w.kind != "trigger"])
+        put_back(target, done)
         raise
-    waited = 0.0
-    while not key_taken(target, row) and waited < FIRE_SECONDS:
-        sleep(POLL_SECONDS)
-        waited += POLL_SECONDS
-    taken = key_taken(target, row)
+    try:
+        waited = 0.0
+        while not key_taken(target, row) and waited < FIRE_SECONDS:
+            sleep(POLL_SECONDS)
+            waited += POLL_SECONDS
+        taken = key_taken(target, row)
+    except BaseException:
+        try:
+            put_back(target, done)
+        except Exception:  # noqa: S110 - the poll's own exception is the one to report
+            pass
+        raise
     if not taken:
-        # The key goes back first so the game cannot take it halfway.
-        amigatrip._restore(target, [w for w in done if w.kind == "trigger"])
-        amigatrip._restore(target, [w for w in done if w.kind != "trigger"])
-    else:
+        # A key taken after the last poll is found out by the put-back.
+        taken = put_back(target, done, stop_if_taken=True)
+    if taken:
         sleep(SETTLE_SECONDS)
     after = amigatrip.area_id(target, row)
     return {"key_taken": taken, "area_before": here, "area_after": after,
@@ -243,6 +271,18 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("--door needs at least one --route")
     elif args.area is None or args.square is None:
         parser.error("without --door, --area and --square are required")
+    routes = {}
+    for item in args.route:
+        label, _, spot = item.partition("=")
+        try:
+            stand = tuple(int(n) for n in spot.split(","))
+        except ValueError:
+            stand = ()
+        if not spot or len(stand) != 3:
+            parser.error(f"--route {item!r} is not NAME=X,Y,FACING")
+        if label in routes:
+            parser.error(f"--route {label!r} is given twice")
+        routes[label] = stand
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     pipe = amiga.WinuaePipe(holder=args.holder)
@@ -250,10 +290,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         target.locate()
         if args.door:
-            routes = {}
-            for item in args.route:
-                label, _, spot = item.partition("=")
-                routes[label] = tuple(int(n) for n in spot.split(","))
             choices = {"write": (True,), "skip": (False,), "both": (True, False)}[args.attribute]
             for result in run_doors(target, args.holder, routes, choices, out,
                                     lambda holder, path: amigadrive.shot(holder, path),

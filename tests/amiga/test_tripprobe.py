@@ -309,3 +309,91 @@ def test_main_door_reports_a_guest_error_as_an_exit(monkeypatch, tmp_path):
     monkeypatch.setattr(amigadrive, "shot", lambda holder, path: None)
     with pytest.raises(SystemExit, match="no machine"):
         tripprobe.main(["--holder", "h", "--door", "--route", "edge=4,0,0", "--out", str(tmp_path)])
+
+
+def _same(fake, before):
+    return all(fake.mem.get(a, 0) == before.get(a, 0) for a in set(before) | set(fake.mem))
+
+
+def test_an_exception_while_polling_puts_every_byte_back_key_first(door):
+    fake = DoorFake(takes=False)
+    before = dict(fake.mem)
+
+    def sleep(seconds):
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        tripprobe.try_door(fake, ROW, (4, 0, 0), True, sleep)
+    assert _same(fake, before)
+
+
+def test_a_guest_error_while_polling_is_the_one_raised(door, monkeypatch):
+    fake = DoorFake(takes=False)
+    before = dict(fake.mem)
+    calls = []
+
+    def taken(target, row):
+        calls.append(1)
+        if len(calls) > 1:
+            raise amiga.GuestError("poll")
+        return False
+
+    monkeypatch.setattr(tripprobe, "key_taken", taken)
+    with pytest.raises(amiga.GuestError, match="poll"):
+        _walk(fake)
+    assert _same(fake, before)
+
+
+def test_the_key_goes_back_first_and_the_rest_follow_a_failed_restore(door, monkeypatch):
+    fake = DoorFake(takes=False)
+    monkeypatch.setattr(tripprobe, "FIRE_SECONDS", 1.0)
+    real = fake.write
+
+    def write(addr, data, verify=True):
+        if addr == PORT + amigatrip.PORT_LIST and data == amigatrip.empty_list(PORT):
+            raise amiga.GuestError("key restore")
+        real(addr, data, verify)
+
+    fake.write = write
+    with pytest.raises(amiga.GuestError, match="key restore"):
+        _walk(fake)
+    assert fake.read(BASE + NOTES["wall_ahead"], 1) == b"\x05"
+    assert fake.read(BASE + NOTES["square_attribute"], 1) == b"\x06"
+
+
+def test_the_key_is_restored_before_any_other_byte(door, monkeypatch):
+    fake = DoorFake(takes=False)
+    monkeypatch.setattr(tripprobe, "FIRE_SECONDS", 1.0)
+    _walk(fake)
+    key = next(i for i, (a, d) in enumerate(fake.writes)
+               if a == PORT + amigatrip.PORT_LIST and d == amigatrip.empty_list(PORT))
+    last_wall = max(i for i, (a, _d) in enumerate(fake.writes) if a == BASE + NOTES["wall_ahead"])
+    assert key < last_wall
+
+
+def test_a_key_taken_after_the_last_poll_leaves_the_other_bytes_alone(door, monkeypatch):
+    fake = DoorFake(takes=False)
+    monkeypatch.setattr(tripprobe, "FIRE_SECONDS", 1.0)
+    monkeypatch.setattr(tripprobe, "key_taken", lambda target, row: False)
+
+    def sleep(seconds):
+        # The game takes the key after the poll looked and before the put-back.
+        fake.put(PORT + amigatrip.PORT_LIST, amigatrip.empty_list(PORT))
+
+    result = tripprobe.try_door(fake, ROW, (4, 0, 0), True, sleep)
+    assert result["key_taken"] and not result["put_back"]
+    assert fake.read(BASE + NOTES["wall_ahead"], 1) == b"\x07"
+
+
+@pytest.mark.parametrize("route", ["edge", "edge=4,0", "edge=a,b,c", "edge="])
+def test_a_malformed_route_is_a_usage_error(tmp_path, route):
+    with pytest.raises(SystemExit) as exc:
+        tripprobe.main(["--holder", "h", "--door", "--route", route, "--out", str(tmp_path)])
+    assert exc.value.code == 2
+
+
+def test_a_duplicate_route_name_is_a_usage_error(tmp_path):
+    with pytest.raises(SystemExit) as exc:
+        tripprobe.main(["--holder", "h", "--door", "--route", "e=4,0,0", "--route",
+                        "e=5,0,0", "--out", str(tmp_path)])
+    assert exc.value.code == 2
