@@ -8,9 +8,11 @@ import json
 import pathlib
 import re
 import shutil
+import struct
 from typing import Any
 
 from goldbox import amiga_adf, amiga_savegame
+from tools.amiga import route_camp
 from tools.amiga.route import ISSUE, AmigaTitle, effect_fields, outdoor_square
 from tools.amiga.staging import _find_images, sha256
 from tools.amiga.winuaesession import RouteError
@@ -195,66 +197,67 @@ DARKNESS_UNSTARTED = dataclasses.replace(
 
 #: Elminster's menu in Limbo (area 18), the only place the game offers the item vault. A party
 #: saved there opens on it after the journal, whatever square it stands on, and `S` is its
-#: `STORAGE`. The Amiga vault's bar is `View Pool Money Items Exit`, with no Take word, so `I`
-#: lists the stored items straight away. The menu and bar guards are cut; the item pages are not,
-#: so a measure boot settles each of them.
+#: `STORAGE`. The vault's bar is `View Pool Money Items Exit`; `T` opens `TAKE: MONEY ITEMS EXIT`,
+#: which has a Money word only when the vault holds coins, and `I` lists the stored items with
+#: `NP2` moving the highlight one row. The menu guard is cut; the others are not, so a measure
+#: boot settles each of them.
 VAULT_MENU = "elminster_menu"
 VAULT_STORAGE = "vault_bar"
+VAULT_TAKE = "vault_take"
 VAULT_ITEMS = "vault_items"
-#: The key that turns a stored-items page. The Amiga bar's word is read from the DOS one and has
-#: not been seen on this port.
-VAULT_NEXT = "N"
-#: Pages the default vault run turns to, which is what the DOS run of a 40-item vault read; the
-#: Amiga's rows per page are not measured, so a 201-item run builds `vault_title` with more.
-VAULT_PAGES = 2
-VAULT_PAGES_MAX = 13
+VAULT_ROW = "vault_row"
+#: What the default title holds: the 40-item vault with coins that the DOS game wrote.
+VAULT_DEFAULT_ITEMS = 40
 
 
-def vault_page_state(page: int) -> str:
-    """The guard state of stored-items page `page`, counted from 1."""
-    return VAULT_ITEMS if page == 1 else f"{VAULT_ITEMS}_{page}"
+def vault_steps(items: int, coins: bool) -> tuple[tuple[str, str, str], ...]:
+    """From Elminster's menu: open the vault, move the highlight to its last item, and come back to the menu.
 
-
-def vault_steps(pages: int = VAULT_PAGES) -> tuple[tuple[str, str, str], ...]:
-    """From Elminster's menu: open the vault, list its items page by page, and come back to the menu."""
-    if not 1 <= pages <= VAULT_PAGES_MAX:
-        raise RouteError(f"a vault run reads 1 to {VAULT_PAGES_MAX} pages, not {pages}")
+    The first row is highlighted when the list opens, so `items - 1` presses reach the last one.
+    A vault with coins puts the TAKE bar between the vault bar and the list.
+    """
+    if not 1 <= items <= amiga_savegame.POD_VAULT_NODES:
+        raise RouteError(f"a vault run lists 1 to {amiga_savegame.POD_VAULT_NODES} items, "
+                         f"not {items}")
     return (
         ("S", VAULT_STORAGE, "key"),
-        ("I", vault_page_state(1), "key"),
-        *((VAULT_NEXT, vault_page_state(n), "key") for n in range(2, pages + 1)),
+        ("T", VAULT_TAKE if coins else VAULT_ITEMS, "key"),
+        *((("I", VAULT_ITEMS, "key"),) if coins else ()),
+        *(("NP2", VAULT_ROW, "key") for _ in range(items - 1)),
+        *((("E", VAULT_TAKE, "key"),) if coins else ()),
         ("E", VAULT_STORAGE, "key"), ("E", VAULT_MENU, "key"),
     )
 
 
-def vault_title(pages: int = VAULT_PAGES) -> AmigaTitle:
+def vault_title(items: int = VAULT_DEFAULT_ITEMS, coins: bool = True) -> AmigaTitle:
     """`DARKNESS` loading a party saved in area 18: the vault, then the camp loop, a save and the exit.
 
     `REST` on Elminster's menu opens the camp loop, which is how the party gets back to the
     camp save. The vault states are not strict, so a screen the guard map lacks is settled and
     the run is marked as measuring; the camp save's picker still stops a run before any write.
     """
+    added = vault_steps(items, coins)
+
     def vault_route(route: tuple) -> tuple:
         steps = list(route)
         at = steps.index(("RET", "world", "key"))
-        added = vault_steps(pages)
         steps[at:at + 1] = [("RET", VAULT_MENU, "key"), *added]
         # The walk step and the camp key follow the world; here the menu's `REST` opens the camp.
         steps[at + 1 + len(added):steps.index(("S", "camp_save_picker", "key"))] = [
             ("R", "camp", "key")]
         return tuple(steps)
 
-    states = {state for _, state, _ in vault_steps(pages)}
+    states = {state for _, state, _ in added}
     return dataclasses.replace(
         DARKNESS, route=vault_route(DARKNESS.route),
         measure_route=vault_route(DARKNESS.measure_route),
-        plain_keys=(("E", "loaded_menu"), ("E", VAULT_STORAGE),
-                    ("E", VAULT_MENU)),
-        strict=(DARKNESS.strict - {"world"}) | {VAULT_MENU, VAULT_STORAGE},
+        plain_keys=(("E", "loaded_menu"), *((("E", VAULT_TAKE),) if coins else ()),
+                    ("E", VAULT_STORAGE), ("E", VAULT_MENU)),
+        strict=(DARKNESS.strict - {"world"}) | {VAULT_MENU},
         # The route never expects `world`, the only state the two inherited rows answer.
         interstitials=(), interstitial_letters=(), move_again_after=frozenset(),
         min_waits={**DARKNESS.min_waits, VAULT_MENU: 45.0,
-                   **{state: 10.0 for state in states}},
+                   **{state: 10.0 for state in states}, VAULT_ROW: route_camp.ROW_WAIT},
     )
 
 
@@ -278,15 +281,57 @@ def _darkness_import_slot(dest: amiga_adf.AmigaDisk, dest_letter: str,
     return data
 
 
+def _darkness_import_vault(dest: amiga_adf.AmigaDisk, dest_letter: str,
+                           source: amiga_adf.AmigaDisk, source_letter: str) -> bytes:
+    """Replace `dest`'s `Vault<dest_letter>.DAT` with `source`'s vault and return the bytes written.
+
+    A source with no vault file, or one the reader rejects, stops the call with an error: the
+    converter always writes a vault, so a missing one means the disk is wrong. The existing
+    file's own name case stays and no other file is touched.
+    """
+    source_path = amiga_savegame.pod_vault_path(source_letter)
+    try:
+        data = source.read_file(source_path)
+    except amiga_adf.AmigaDiskError as exc:
+        raise RouteError(f"the substitute holds no vault {source_letter}: {exc}") from exc
+    amiga_savegame.pod_vault_from_amiga(data)
+    path = amiga_savegame.pod_vault_path(dest_letter)
+    try:
+        name = dest.lookup(path).name
+    except amiga_adf.AmigaDiskError:
+        name = path.rsplit("/", 1)[1]
+    else:
+        dest.remove_file(path)
+    dest.write_file(path.rsplit("/", 1)[0] + "/" + name, data)
+    return data
+
+
+def _vault_reading(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, Any]:
+    """The loaded slot's vault as the vault screen lists it: its rows, its coins and its hash.
+
+    `items` is the file's own count of top-level entries, a scroll case being one row, which is
+    what the `NP2` presses of `vault_steps` walk.
+    """
+    data = disk.read_file(amiga_savegame.pod_vault_path(letter))
+    vault = amiga_savegame.pod_vault_from_amiga(data)
+    rows = struct.unpack_from(">H", data, amiga_savegame.POD_VAULT_HEADER + 2)[0]
+    return {"items": rows, "coins": [vault.platinum, vault.gems, vault.jewelry],
+            "sha256": hashlib.sha256(data).hexdigest()}
+
+
 def _prepare_darkness(run: pathlib.Path, override: pathlib.Path | None,
                       loaded: str = DARKNESS_LOADED, *, substitute: pathlib.Path | None = None,
-                      substitute_letter: str = "A") -> dict[str, Any]:
+                      substitute_letter: str = "A", vault: bool = False) -> dict[str, Any]:
     """Disk 3 is itself the registered save disk, so `override` stands in for it and no specimen file exists.
 
     `substitute`, a disk some other tool wrote a party onto, has its `substitute_letter` slot
     replace the loaded slot on the run's working disk 3 (`_darkness_import_slot`); the pinned
     disks and the loaded slot's letter are unchanged, and `state_a` and `names_a` describe the
     substituted party.
+
+    With `vault`, the substitute's vault is copied into the loaded letter's vault as well, the
+    run stops before any disk is written when that vault holds no items, and the manifest's
+    `vault` records its rows, coins and hash.
     """
     wanted = {"disk1": DARKNESS_DISK1_SHA256, "disk2": DARKNESS_DISK2_SHA256,
               "disk3": DARKNESS_DISK3_SHA256}
@@ -318,6 +363,8 @@ def _prepare_darkness(run: pathlib.Path, override: pathlib.Path | None,
         working = amiga_adf.AmigaDisk(bytearray(images["disk3"][1]))
         try:
             _darkness_import_slot(working, loaded, source_disk, substitute_letter)
+            if vault:
+                _darkness_import_vault(working, loaded, source_disk, substitute_letter)
         except (amiga_adf.AmigaDiskError, amiga_savegame.AmigaSaveError,
                 amiga_savegame.PodSaveError, ValueError) as exc:
             raise RouteError(f"the substitute slot could not be imported: {exc}") from exc
@@ -331,6 +378,15 @@ def _prepare_darkness(run: pathlib.Path, override: pathlib.Path | None,
     reading = DARKNESS.read_slot(save, loaded)
     if "place" not in reading:
         raise RouteError(f"slot {loaded} does not decode: {reading}")
+    held = None
+    if vault:
+        try:
+            held = _vault_reading(save, loaded)
+        except (amiga_adf.AmigaDiskError, amiga_savegame.AmigaSaveError) as exc:
+            raise RouteError(f"vault {loaded} on disk 3 cannot be read: {exc}") from exc
+        if not held["items"]:
+            raise RouteError(f"vault {loaded} on disk 3 holds no items, so a vault run "
+                             "could show nothing")
     scratch.ensure(run)
     disks: dict[str, dict[str, str]] = {}
     for key, (_label, data) in images.items():
@@ -349,6 +405,8 @@ def _prepare_darkness(run: pathlib.Path, override: pathlib.Path | None,
     }
     if substituted:
         manifest["substitute"] = substituted
+    if held:
+        manifest["vault"] = held
     after = _find_images({k: v for k, v in wanted.items() if override is None or k != "disk3"})
     if any(hashlib.sha256(after[key][1]).hexdigest() != wanted[key] for key in after):
         raise RouteError("a registered image changed during preparation")

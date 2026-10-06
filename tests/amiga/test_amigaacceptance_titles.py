@@ -35,6 +35,7 @@ from tests.support import amigasavegame as synthetic_amiga
 from tools.amiga import acceptance as foundation
 from tools.amiga import (
     amigasaves,
+    route_camp,
     route_curse,
     route_darkness,
     route_pool,
@@ -3513,63 +3514,85 @@ def test_the_cli_routes_a_published_disk_3_prepare_and_its_reload(tmp_path, monk
     assert len(seen) == 2
 
 
+_VAULT_LEAD = (
+    ("P", "party_menu", "key"), ("L", "load_from", "key"), ("P", "load_picker", "key"),
+    ("B", "disk2_prompt", "key"), route_darkness.DISK2_INSERT,
+    ("V", "sheet", "key"), ("E", "loaded_menu", "key"),
+    ("S", "save_picker", "key"), ("F", "loaded_menu", "write"),
+    ("B", "journal", "key"), ("X", "journal_answer", "key"),
+    ("RET", "elminster_menu", "key"))
+_VAULT_TAIL = (("R", "camp", "key"), ("S", "camp_save_picker", "key"),
+               ("G", "exit_game", "write"), ("N", "camp", "key"))
+
+
 def test_the_darkness_vault_description_is_pinned():
     vault = foundation.DARKNESS_VAULT
     assert foundation.TITLES["darkness-vault"] is vault
-    assert foundation._PREPARE["darkness-vault"] is foundation._prepare_darkness
     assert route_darkness.vault_title() == vault
+    assert route_darkness.vault_title(40, True) == vault
     assert vault.route == (
-        ("P", "party_menu", "key"), ("L", "load_from", "key"), ("P", "load_picker", "key"),
-        ("B", "disk2_prompt", "key"), route_darkness.DISK2_INSERT,
-        ("V", "sheet", "key"), ("E", "loaded_menu", "key"),
-        ("S", "save_picker", "key"), ("F", "loaded_menu", "write"),
-        ("B", "journal", "key"), ("X", "journal_answer", "key"),
-        ("RET", "elminster_menu", "key"),
-        ("S", "vault_bar", "key"), ("I", "vault_items", "key"),
-        ("N", "vault_items_2", "key"), ("E", "vault_bar", "key"),
-        ("E", "elminster_menu", "key"),
-        ("R", "camp", "key"), ("S", "camp_save_picker", "key"),
-        ("G", "exit_game", "write"), ("N", "camp", "key"))
-    assert vault.measure_route == (
-        *vault.route[:7], *vault.route[9:19])
+        *_VAULT_LEAD,
+        ("S", "vault_bar", "key"), ("T", "vault_take", "key"), ("I", "vault_items", "key"),
+        *[("NP2", "vault_row", "key")] * 39,
+        ("E", "vault_take", "key"), ("E", "vault_bar", "key"), ("E", "elminster_menu", "key"),
+        *_VAULT_TAIL)
+    assert vault.measure_route == (*vault.route[:7], *vault.route[9:len(vault.route) - 2])
     assert vault.control_letter == "F" and vault.after_letter == "G"
     assert vault.plain_keys == (
-        ("E", "loaded_menu"), ("E", "vault_bar"), ("E", "elminster_menu"))
-    assert {"elminster_menu", "vault_bar", "camp"} <= vault.strict
-    assert "vault_take" not in {state for _, state, _ in vault.route}
+        ("E", "loaded_menu"), ("E", "vault_take"), ("E", "vault_bar"), ("E", "elminster_menu"))
+    assert {"elminster_menu", "camp"} <= vault.strict
     assert "world" not in vault.strict
-    assert not vault.strict & {"vault_items", "vault_items_2"}
+    # The guards for these states are cut from an empty vault or not cut at all.
+    assert not vault.strict & {"vault_bar", "vault_take", "vault_items", "vault_row"}
+    assert vault.min_waits["vault_row"] == route_camp.ROW_WAIT
 
 
-def test_the_vault_steps_turn_one_page_for_each_page_asked_for():
-    for pages in (1, 2, 13):
-        steps = route_darkness.vault_steps(pages)
-        assert steps[:2] == (("S", "vault_bar", "key"), ("I", "vault_items", "key"))
-        assert [s[1] for s in steps if s[0] == "N"] == [
-            f"vault_items_{n}" for n in range(2, pages + 1)]
-        assert steps[-2:] == (("E", "vault_bar", "key"), ("E", "elminster_menu", "key"))
-    assert route_darkness.vault_page_state(1) == "vault_items"
-    assert route_darkness.vault_page_state(13) == "vault_items_13"
-    for pages in (0, 14):
-        with pytest.raises(foundation.RouteError, match="1 to 13 pages"):
-            route_darkness.vault_steps(pages)
+@pytest.mark.parametrize("items", [1, 2, 40, 200])
+def test_the_vault_steps_without_coins_go_from_t_straight_to_the_list(items):
+    steps = route_darkness.vault_steps(items, False)
+    assert steps == (
+        ("S", "vault_bar", "key"), ("T", "vault_items", "key"),
+        *[("NP2", "vault_row", "key")] * (items - 1),
+        ("E", "vault_bar", "key"), ("E", "elminster_menu", "key"))
+    assert "N" not in {s[0] for s in steps}
 
 
-def test_a_vault_run_of_two_hundred_and_one_items_builds_a_title():
-    title = route_darkness.vault_title(13)
-    pressed = [s for s in title.route if s[1].startswith("vault_items")]
-    assert len(pressed) == 13
-    assert title.route[-4:] == (("R", "camp", "key"), ("S", "camp_save_picker", "key"),
-                                ("G", "exit_game", "write"), ("N", "camp", "key"))
-    assert title.min_waits["vault_items_13"] == 10.0
+@pytest.mark.parametrize("items", [1, 2, 40, 200])
+def test_the_vault_steps_with_coins_open_take_then_the_list(items):
+    steps = route_darkness.vault_steps(items, True)
+    assert steps == (
+        ("S", "vault_bar", "key"), ("T", "vault_take", "key"), ("I", "vault_items", "key"),
+        *[("NP2", "vault_row", "key")] * (items - 1),
+        ("E", "vault_take", "key"), ("E", "vault_bar", "key"), ("E", "elminster_menu", "key"))
+    assert "N" not in {s[0] for s in steps}
+
+
+def test_a_vault_of_none_or_more_than_the_game_holds_builds_no_route():
+    for items in (0, 201):
+        for coins in (False, True):
+            with pytest.raises(foundation.RouteError, match="1 to 200 items"):
+                route_darkness.vault_steps(items, coins)
+            with pytest.raises(foundation.RouteError, match="1 to 200 items"):
+                route_darkness.vault_title(items, coins)
+
+
+def test_a_vault_run_of_two_hundred_items_builds_a_title():
+    title = route_darkness.vault_title(200, False)
+    assert [s for s in title.route if s[1] == "vault_row"] == [("NP2", "vault_row", "key")] * 199
+    assert title.route[-4:] == _VAULT_TAIL
+    assert title.min_waits["vault_row"] == route_camp.ROW_WAIT
+    assert ("E", "vault_take") not in title.plain_keys
 
 
 def test_the_vault_title_answers_no_interstitial_row_because_it_never_expects_the_world():
     assert foundation.DARKNESS_VAULT.interstitials == ()
-    assert route_darkness.vault_title(13).interstitials == ()
+    assert route_darkness.vault_title(200, False).interstitials == ()
 
 
-def _prepare_with(monkeypatch, tmp_path, seen):
+_HELD = {"items": 40, "coins": [1750, 495, 82], "sha256": "ab"}
+
+
+def _prepare_with(monkeypatch, tmp_path, seen, held=_HELD):
     monkeypatch.setattr(scratch, "cache_dir", lambda *parts: tmp_path.joinpath(*parts))
 
     def fake(run, specimen, **kw):
@@ -3577,49 +3600,60 @@ def _prepare_with(monkeypatch, tmp_path, seen):
         scratch.ensure(run)
         return {"title": "darkness", "names_a": NAMES}
 
-    monkeypatch.setattr(foundation, "_PREPARE", {"darkness-vault": fake, "darkness": fake})
+    def fake_vault(run, specimen, **kw):
+        return {**fake(run, specimen, **kw), "vault": held}
+
+    monkeypatch.setattr(foundation, "_PREPARE",
+                        {"darkness-vault": fake_vault, "darkness": fake})
 
 
-def test_a_vault_prepare_takes_a_substitute_and_records_its_page_count(tmp_path, monkeypatch):
+def test_the_vault_prepare_runs_the_darkness_prepare_with_its_vault_switch_on():
+    prepare = foundation._PREPARE["darkness-vault"]
+    assert prepare.func is foundation._prepare_darkness
+    assert prepare.keywords == {"vault": True}
+    assert foundation._PREPARE["darkness"] is foundation._prepare_darkness
+
+
+def test_a_vault_prepare_takes_a_substitute_and_keeps_the_vault_its_prepare_recorded(
+        tmp_path, monkeypatch):
     seen = []
     _prepare_with(monkeypatch, tmp_path, seen)
     substitute = tmp_path / "converted.adf"
     path = foundation.prepare(foundation.DARKNESS_VAULT, "run", substitute=substitute,
-                              substitute_letter="B", vault_pages=13)
+                              substitute_letter="B")
     assert seen == [{"substitute": substitute, "substitute_letter": "B"}]
-    assert json.loads(path.read_text())["vault_pages"] == 13
-    default = json.loads(foundation.prepare(foundation.DARKNESS_VAULT, "run2").read_text())
-    assert default["vault_pages"] == route_darkness.VAULT_PAGES
+    assert json.loads(path.read_text())["vault"] == _HELD
+    plain = json.loads(foundation.prepare(foundation.DARKNESS, "run2").read_text())
+    assert "vault" not in plain
 
 
-def test_a_vault_page_count_is_blocked_out_of_range_and_on_another_title(tmp_path, monkeypatch):
-    _prepare_with(monkeypatch, tmp_path, [])
-    with pytest.raises(winuaesession.RouteError, match="1 to 13 pages"):
-        foundation.prepare(foundation.DARKNESS_VAULT, "run", vault_pages=14)
-    with pytest.raises(winuaesession.RouteError, match="takes no vault page count"):
-        foundation.prepare(foundation.DARKNESS, "run", vault_pages=2)
-    assert not (tmp_path / "acceptance").exists()
+def test_a_vault_prepare_blocks_a_vault_the_route_cannot_list_and_frees_its_run_id(
+        tmp_path, monkeypatch):
+    _prepare_with(monkeypatch, tmp_path, [], held={**_HELD, "items": 201})
+    with pytest.raises(winuaesession.RouteError, match="1 to 200 items"):
+        foundation.prepare(foundation.DARKNESS_VAULT, "run")
+    assert not (tmp_path / "acceptance" / foundation.ISSUE / "run").exists()
 
 
-def test_the_cli_dispatches_a_vault_prepare_with_its_substitute_and_page_count(
+def test_the_cli_dispatches_a_vault_prepare_with_its_substitute_and_has_no_page_count(
         tmp_path, monkeypatch):
     seen = []
     monkeypatch.setattr(foundation, "prepare",
                         lambda title, run_id, **kw: seen.append((title, run_id, kw))
                         or tmp_path / "p.json")
     assert foundation.main(["prepare", "--title", "darkness-vault", "--run-id", "r",
-                            "--substitute", "s.adf", "--substitute-letter", "B",
-                            "--vault-pages", "13"]) == 0
+                            "--substitute", "s.adf", "--substitute-letter", "B"]) == 0
     title, run_id, kw = seen[0]
     assert title is foundation.DARKNESS_VAULT and run_id == "r"
     assert kw["substitute"] == pathlib.Path("s.adf") and kw["substitute_letter"] == "B"
-    assert kw["vault_pages"] == 13
-    assert foundation.main(["prepare", "--title", "darkness-vault", "--run-id", "r"]) == 0
-    assert seen[1][2]["vault_pages"] is None
+    assert "vault_pages" not in kw
+    with pytest.raises(SystemExit):
+        foundation.main(["prepare", "--title", "darkness-vault", "--run-id", "r",
+                         "--vault-pages", "13"])
 
 
 @pytest.mark.parametrize("command", ["measure", "accept"])
-def test_the_cli_runs_a_vault_title_at_the_page_count_its_manifest_recorded(
+def test_the_cli_runs_a_vault_title_at_the_rows_and_coins_its_manifest_recorded(
         tmp_path, monkeypatch, command):
     called = _Called()
     monkeypatch.setattr(foundation, "run_recon", called)
@@ -3627,16 +3661,47 @@ def test_the_cli_runs_a_vault_title_at_the_page_count_its_manifest_recorded(
     monkeypatch.setattr(foundation, "PixelGuards", lambda path: ("guards", str(path)))
     manifest = tmp_path / "prepare.json"
     expected = {}
-    for pages in (13, None):
-        manifest.write_text(json.dumps({} if pages is None else {"vault_pages": pages}))
+    for held in ({"items": 200, "coins": [0, 0, 0]}, {"items": 40, "coins": [1750, 495, 82]}):
+        manifest.write_text(json.dumps({"vault": held}))
         extra = ["--guards", "g.json"] + (
             ["--identity", "i.json"] if command == "accept" else [])
         assert foundation.main([command, "--title", "darkness-vault", "--manifest", str(manifest),
                                 "--audio-proof", str(tmp_path / "mute.json"),
                                 "--attempt", "a1", *extra]) == 0
-        expected[pages] = called.calls[-1]["title"]
-    assert expected[13] == route_darkness.vault_title(13)
-    assert expected[None] == foundation.DARKNESS_VAULT
+        expected[held["items"]] = called.calls[-1]["title"]
+    assert expected[200] == route_darkness.vault_title(200, False)
+    assert expected[40] == foundation.DARKNESS_VAULT
+
+
+def test_a_vault_manifest_without_a_vault_builds_no_title(tmp_path):
+    manifest = tmp_path / "prepare.json"
+    manifest.write_text("{}")
+    with pytest.raises(winuaesession.RouteError, match="records no vault"):
+        foundation._vault_title_for(manifest)
+
+
+def _vault_disk(*vaults):
+    disk = AmigaDisk.blank("POD 3")
+    disk.make_dir("/SAVE")
+    for letter, vault in vaults:
+        disk.write_file(f"/SAVE/Vault{letter}.DAT", amiga_savegame.pod_vault_to_amiga(vault))
+    return disk
+
+
+def test_the_vault_check_passes_saves_that_hold_the_staged_vault_and_names_one_that_does_not(
+        tmp_path):
+    staged = dos_codec.PodVault(1750, 495, 82, (bytes(63), bytes([1]) + bytes(62)))
+    other = dos_codec.PodVault(1750, 495, 82, (bytes(63),))
+    path = tmp_path / "staged.adf"
+    _vault_disk(("B", staged)).save(path)
+    fetched = _vault_disk(("F", staged), ("G", staged))
+    assert foundation._vault_problems(fetched, path, "B", ("F", "G")) == []
+    fetched = _vault_disk(("F", staged), ("G", other))
+    assert foundation._vault_problems(fetched, path, "B", ("F", "G")) == [
+        "vault G differs from the vault staged in slot B"]
+    fetched = _vault_disk(("F", dos_codec.EMPTY_POD_VAULT), ("G", staged))
+    assert foundation._vault_problems(fetched, path, "B", ("F", "G")) == [
+        "vault F differs from the vault staged in slot B"]
 
 
 #: The three game-written DOS saves that the Darkness Save As route starts from besides the
@@ -3931,3 +3996,46 @@ def test_the_pool_identity_recognises_the_world_screen_of_the_new_phlan_party_of
         if other["example"] != example and (scratch.cache_dir("acceptance") / other["example"]).is_file():
             digest = screens.box_digests(scratch.cache_dir("acceptance") / other["example"], [tuple(box)], "world")[tuple(box)]
             assert digest != rules[0]["sha256"]
+
+
+def _vault_accept_result(tmp_path, monkeypatch, fetched_vaults):
+    """`_read_title` on an accept run whose fetched disk 3 holds `fetched_vaults` in F and G."""
+    staged = dos_codec.PodVault(1750, 495, 82, (bytes(63),))
+    (tmp_path / "out").mkdir()
+    working = tmp_path / "disk3.adf"
+    _vault_disk(("B", staged)).save(working)
+    _vault_disk(("F", fetched_vaults[0]), ("G", fetched_vaults[1])).save(
+        tmp_path / "out" / "fetched-disk3.adf")
+    monkeypatch.setattr(foundation, "walk_verdict", lambda *a, **k: {
+        "place_changed": True, "squares_moved": 0, "verdicts": [], "b_ok": True,
+        "d_ok": True})
+    here = {"place": START, "names": NAMES, "sha256": "x"}
+    title = dataclasses.replace(
+        foundation.DARKNESS, read_slot=lambda disk, letter: dict(here),
+        slot_letters=lambda disk: ["F", "G"], slot_files=lambda disk, letter: {})
+    manifest = {"state_a": START, "names_a": NAMES,
+                "registered": {}, "disks": {key: {"sha256": key} for key in title.disk_keys},
+                "vault": {"items": 1, "coins": [1750, 495, 82], "sha256": "x"}}
+    manifest["disks"]["disk3"]["sha256"] = hashlib.sha256(working.read_bytes()).hexdigest()
+    result = {"fetched": {key: {"sha256": key if key != "disk3" else "changed"}
+                          for key in title.disk_keys},
+              "error": None, "completed": True, "unguarded": [], "route_changed": True}
+    foundation._read_title(
+        title, manifest, result, tmp_path / "out", {"disk3": working}, {}, {}, "B",
+        True, False, (), False)
+    return result
+
+
+def test_an_accept_run_passes_when_both_saves_hold_the_staged_vault(tmp_path, monkeypatch):
+    staged = dos_codec.PodVault(1750, 495, 82, (bytes(63),))
+    result = _vault_accept_result(tmp_path, monkeypatch, (staged, staged))
+    assert result["vault_problems"] == []
+    assert result["success"] is True
+
+
+def test_an_accept_run_fails_when_a_save_holds_another_vault(tmp_path, monkeypatch):
+    staged = dos_codec.PodVault(1750, 495, 82, (bytes(63),))
+    result = _vault_accept_result(tmp_path, monkeypatch,
+                                  (staged, dos_codec.EMPTY_POD_VAULT))
+    assert result["vault_problems"] == ["vault G differs from the vault staged in slot B"]
+    assert result["success"] is False

@@ -67,7 +67,6 @@ from tools.amiga.route_darkness import (  # noqa: E402
     DARKNESS_UNSTARTED_LOADED,
     DARKNESS_VAULT,
     DARKNESS_VOLUME,
-    VAULT_PAGES,
     _prepare_darkness,
     _prepare_darkness_reload,
     published_reload_title,
@@ -998,6 +997,17 @@ def _clock_advanced(before: str, after: str, rest: int = 0) -> bool:
     return 0 < elapsed <= 120
 
 
+def _vault_problems(fetched: amiga_adf.AmigaDisk, staged: pathlib.Path, loaded: str,
+                    letters: tuple[str, ...]) -> list[str]:
+    """Each saved letter's decoded vault that differs from the vault staged in the loaded slot.
+
+    Decoded, not byte for byte: the game pads a vault it writes with its own template table.
+    """
+    staged_vault = amiga_savegame.pod_read_vault(_verified_disk(staged), loaded)
+    return [f"vault {c} differs from the vault staged in slot {loaded}" for c in letters
+            if amiga_savegame.pod_read_vault(fetched, c) != staged_vault]
+
+
 def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
                 out: pathlib.Path, disks: dict[str, pathlib.Path],
                 registered: dict[str, pathlib.Path], kept_before: dict[str, dict],
@@ -1058,6 +1068,10 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
                     result["read"]["effects"] = {
                         title.control_letter: control.get("effects"),
                         title.after_letter: after.get("effects")}
+                if "vault" in manifest:
+                    result["vault_problems"] = _vault_problems(
+                        fetched, disks[title.save_disk], loaded,
+                        (title.control_letter, title.after_letter))
                 result["kept_unchanged"] = {
                     c: title.slot_files(fetched, c) == before
                     for c, before in kept_before.items()}
@@ -1101,6 +1115,7 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
         and all(result["disks_unchanged"].get(k) for k in others)
         and result["menu_save_problems"] == []
         and result.get("camp_save_problems") == []
+        and ("vault" not in manifest or result.get("vault_problems") == [])
         and result.get("walk", {}).get("b_ok")
         and result.get("expected_after_matches") is not False
         and bool(result.get("kept_unchanged")) == bool(kept_before)
@@ -3119,7 +3134,7 @@ _PREPARE = {"pool": _prepare_pool, "curse": _prepare_curse, "darkness": _prepare
             "darkness-reload": _prepare_darkness_reload,
             "darkness-unstarted": functools.partial(
                 _prepare_darkness, loaded=DARKNESS_UNSTARTED_LOADED),
-            "darkness-vault": _prepare_darkness}
+            "darkness-vault": functools.partial(_prepare_darkness, vault=True)}
 
 
 def _name(title: AmigaTitle) -> str:
@@ -3142,8 +3157,7 @@ CAMP_TITLES = frozenset({"darkness", "pool"})
 def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = None,
             specimen_sha256: str | None = None, accept_summary: pathlib.Path | None = None,
             substitute: pathlib.Path | None = None, substitute_letter: str = "A",
-            camp: tuple[str, ...] = (), issue: str | None = None,
-            vault_pages: int | None = None) -> pathlib.Path:
+            camp: tuple[str, ...] = (), issue: str | None = None) -> pathlib.Path:
     """Copy the title's registered images and specimen into a run folder, write `prepare.json`, and return it.
 
     Blocks when any pinned hash differs, the loaded slot does not decode, or a
@@ -3156,9 +3170,8 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
     `camp` (a title in `CAMP_TITLES` only) is a list of camp steps
     (`route_camp.validate_steps`) the accept route drives between camping and
     the camp save, kept in the manifest. `issue`, on any title, puts the run
-    folder under that issue's number rather than this module's. `vault_pages`
-    (`darkness-vault` only, default `VAULT_PAGES`) is the number of stored-items pages the
-    run turns to, kept in the manifest for accept and measure.
+    folder under that issue's number rather than this module's. `darkness-vault` records
+    the loaded vault's rows and coins in the manifest, which accept and measure build the route from.
     """
     if not HOLDER.fullmatch(run_id):
         raise RouteError("run id must use letters, digits, dot, underscore or hyphen")
@@ -3173,11 +3186,6 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
         raise RouteError(f"{name} takes no substitute slot")
     if camp and name not in CAMP_TITLES:
         raise RouteError(f"{name} takes camp steps only on a published prepare")
-    if vault_pages is not None and name != "darkness-vault":
-        raise RouteError(f"{name} takes no vault page count")
-    if name == "darkness-vault":
-        vault_pages = VAULT_PAGES if vault_pages is None else vault_pages
-        vault_steps(vault_pages)
     if issue is not None and not ISSUE_ARGUMENT.fullmatch(issue):
         raise RouteError("the issue is a number or WISH-N")
     if camp:
@@ -3203,8 +3211,13 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
             shutil.rmtree(run)
             raise
         manifest["camp"] = list(camp)
-    if vault_pages is not None:
-        manifest["vault_pages"] = vault_pages
+    if "vault" in manifest:
+        # A vault outside the route's bounds blocks here, and takes the folder with it.
+        try:
+            vault_steps(manifest["vault"]["items"], any(manifest["vault"]["coins"]))
+        except RouteError:
+            shutil.rmtree(run)
+            raise
     path = run / "prepare.json"
     path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     return path
@@ -3306,12 +3319,16 @@ def accept_title(title: AmigaTitle, manifest: dict) -> AmigaTitle:
 
 
 def _vault_title_for(manifest_path: pathlib.Path) -> AmigaTitle:
-    """The `darkness-vault` route for the page count its manifest recorded."""
+    """The `darkness-vault` route for the rows and coins its manifest recorded."""
     try:
         manifest = json.loads(pathlib.Path(manifest_path).read_text())
     except (OSError, ValueError) as exc:
         raise RouteError(f"the manifest {manifest_path} cannot be read: {exc}") from exc
-    return vault_title(manifest.get("vault_pages", VAULT_PAGES))
+    try:
+        held = manifest["vault"]
+        return vault_title(held["items"], any(held["coins"]))
+    except (KeyError, TypeError) as exc:
+        raise RouteError(f"the manifest {manifest_path} records no vault: {exc!r}") from exc
 
 
 def _substitute_mode(manifest_path: pathlib.Path) -> bool:
@@ -4152,8 +4169,6 @@ def main(argv: list[str] | None = None) -> int:
                         "Amiga output, whose --substitute-letter slot replaces the route's "
                         "loaded slot; Pool, Curse, Pools of Darkness and Silver Blades accept "
                         "this, Silver Blades in place of --source")
-    p.add_argument("--vault-pages", type=int, default=None,
-                   help="darkness-vault only: stored-items pages the run turns to (default 2)")
     p.add_argument("--substitute-letter", default="A",
                    help="the slot to read off --substitute (default A)")
     m = sub.add_parser("measure", help="boot and press the route up to the first save; writes nothing")
@@ -4335,8 +4350,7 @@ def main(argv: list[str] | None = None) -> int:
                               accept_summary=args.accept_summary,
                               substitute=args.substitute,
                               substitute_letter=args.substitute_letter,
-                              camp=args.camp, issue=args.issue,
-                              vault_pages=args.vault_pages))
+                              camp=args.camp, issue=args.issue))
                 return 0
             if args.published_disk_one:
                 manifest, title = _published_manifest(args.manifest, args.title)

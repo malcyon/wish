@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from goldbox import amiga_savegame
+from goldbox import amiga_savegame, dos_codec
 from goldbox.amiga_adf import AmigaDisk
 from tools.amiga import route_darkness
 from tools.amiga.winuaesession import RouteError
@@ -99,3 +99,63 @@ def test_prepare_blocks_a_substitute_slot_the_reader_rejects(pinned):
     with pytest.raises(RouteError, match="is missing"):
         route_darkness._prepare_darkness(
             pinned / "run2", None, "B", substitute=pinned / "none.adf")
+
+
+#: A vault of two items and some coins, as the converter writes it.
+_HELD = dos_codec.PodVault(1750, 495, 82, (bytes(63), bytes([1]) + bytes(62)))
+_HELD_BYTES = amiga_savegame.pod_vault_to_amiga(_HELD)
+
+
+def test_a_vault_prepare_copies_the_substitutes_vault_into_the_loaded_slot_and_records_it(pinned):
+    substitute = pinned / "sub.adf"
+    _disk({"SavGamH.pty": _save(9), "VaultH.DAT": _HELD_BYTES}).save(substitute)
+    manifest = route_darkness._prepare_darkness(
+        pinned / "run", None, "B", substitute=substitute, substitute_letter="H", vault=True)
+    working = AmigaDisk.open(pinned / "run" / "disk3.adf")
+    assert working.read_file("/Save/VaultB.DAT") == _HELD_BYTES
+    assert manifest["vault"] == {"items": 2, "coins": [1750, 495, 82],
+                                 "sha256": hashlib.sha256(_HELD_BYTES).hexdigest()}
+    assert working.verify() == []
+    json.dumps(manifest)
+
+
+def test_a_vault_prepare_whose_staged_vault_is_empty_stops_before_any_disk_is_written(pinned):
+    substitute = pinned / "sub.adf"
+    empty = amiga_savegame.pod_vault_to_amiga(dos_codec.EMPTY_POD_VAULT)
+    _disk({"SavGamH.pty": _save(9), "VaultH.DAT": empty}).save(substitute)
+    with pytest.raises(RouteError, match="holds no items"):
+        route_darkness._prepare_darkness(
+            pinned / "run", None, "B", substitute=substitute, substitute_letter="H", vault=True)
+    assert not (pinned / "run").exists()
+    # With no substitute the pinned disk's own vault is the stub, which is as empty.
+    with pytest.raises(RouteError, match="cannot be read|holds no items"):
+        route_darkness._prepare_darkness(pinned / "run", None, "B", vault=True)
+    assert not (pinned / "run").exists()
+
+
+def test_a_vault_prepare_blocks_a_substitute_with_no_vault_file(pinned):
+    substitute = pinned / "sub.adf"
+    _disk({"SavGamH.pty": _save(9)}).save(substitute)
+    with pytest.raises(RouteError, match="holds no vault H"):
+        route_darkness._prepare_darkness(
+            pinned / "run", None, "B", substitute=substitute, substitute_letter="H", vault=True)
+    assert not (pinned / "run").exists()
+
+
+def test_a_prepare_without_the_vault_switch_leaves_the_loaded_vault_and_records_none(pinned):
+    substitute = pinned / "sub.adf"
+    _disk({"SavGamH.pty": _save(9), "VaultH.DAT": _HELD_BYTES}).save(substitute)
+    manifest = route_darkness._prepare_darkness(
+        pinned / "run", None, "B", substitute=substitute, substitute_letter="H")
+    assert AmigaDisk.open(pinned / "run" / "disk3.adf").read_file("/Save/VaultB.DAT") == b"v" * 12
+    assert "vault" not in manifest
+
+
+def test_the_vault_import_replaces_the_one_vault_and_keeps_its_name_case():
+    dest = _disk({"SavGamB.pty": _save(2), "vaultB.dat": b"v" * 12, "VaultC.DAT": b"c" * 12})
+    source = _disk({"VaultH.DAT": _HELD_BYTES})
+    assert route_darkness._darkness_import_vault(dest, "B", source, "H") == _HELD_BYTES
+    assert dest.read_file("/Save/vaultB.dat") == _HELD_BYTES
+    assert dest.read_file("/Save/VaultC.DAT") == b"c" * 12
+    assert {e.name for e in dest.entries(dest.lookup("/Save").block)} == {
+        "SavGamB.pty", "vaultB.dat", "VaultC.DAT"}
