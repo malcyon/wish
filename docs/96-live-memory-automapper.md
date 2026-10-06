@@ -1135,7 +1135,9 @@ directory and opens nothing, because WinUAE serves one client at a time.
   one connect line and not one per read. The target the window holds releases
   it on `close()` and on `release()`, which `Session.set_reader(None)` calls
   while the Character Editor tab shows; the target stays, and the next read
-  opens the pipe again. A connect that fails releases it too. A pipe another tool
+  opens the pipe again. A handle still owed a reply is kept
+  (`automap/winuae.py:224`), so a harness lets the Automapper's last read settle
+  before it switches tabs and only then sends its key. A connect that fails releases it too. A pipe another tool
   holds is waited for up to half a second (`WaitNamedPipe`), then the window
   asks again on its next tick.
 * **Every read and write is overlapped with a deadline.** WinUAE does not

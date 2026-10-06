@@ -675,7 +675,9 @@ of `amigashots.py`, `winwish --window winuae`) are deleted.
 * **A harness types while Wish is attached by switching Wish to its Character
   Editor tab.** The pipe takes one client, and Wish releases its handle while
   that tab shows (`Session.set_reader(None)` calls `WinuaeTarget.release()`),
-  keeping its target and its Return waypoint. The steps are
+  keeping its target and its Return waypoint. A handle still owed a reply is
+  kept (`automap/winuae.py:224`), so the harness lets the Automapper's last read
+  settle before switching tabs and only then sends the key. The steps are
   `winwish.py click --holder H View "Character Editor" --type MenuItem`,
   `amigadrive.py --holder H keys <codes>`, then
   `winwish.py click --holder H View Automapper --type MenuItem`, after which
