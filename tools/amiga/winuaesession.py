@@ -25,6 +25,11 @@ WINUAE_PS = r"powershell -NoProfile -ExecutionPolicy Bypass -File C:\Amiga\winua
 SHOT_SECONDS = 20.0
 # Seconds between two calls of a waiting `claim -Exclusive -Wait`.
 CLAIM_POLL_SECONDS = 5.0
+# The reservation lasts this long after each poll, so a waiter that dies frees the lanes
+# within it; it must exceed one call plus one poll interval.
+RESERVATION_LEASE_SECONDS = 180
+EXCLUSIVE_WAITING = "fail an exclusive claim"
+SSH_FAILED = "winvm ssh failed: "
 HOLDER = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 
@@ -122,6 +127,9 @@ class WinGuest:
     def claim_every_lane(self, holder: str, timeout: float, wait: float) -> str:
         """Reserve and take every lane, polling the guest for up to `wait` seconds.
 
+        The guest exits 1 while another holder's reservation is waiting; that is polled
+        again. The reservation lasts `RESERVATION_LEASE_SECONDS` after each poll.
+
         The guest's `claim -Exclusive -Wait` keeps each lane it takes and blocks ordinary
         claims meanwhile, so lanes other runners free are not taken again before this
         holder has all of them. On the deadline the reservation is released.
@@ -131,12 +139,18 @@ class WinGuest:
         last = ""
         try:
             while True:
-                last = self._run(
-                    "ssh", f"{WINUAE_PS} claim -Exclusive -Wait {max(1, int(wait))} -Holder {holder}",
-                    timeout=timeout)
+                lease = max(1, int(min(wait, RESERVATION_LEASE_SECONDS)))
+                try:
+                    last = self._run(
+                        "ssh", f"{WINUAE_PS} claim -Exclusive -Wait {lease} -Holder {holder}",
+                        timeout=timeout)
+                except RouteError as exc:
+                    if not str(exc).startswith(SSH_FAILED + EXCLUSIVE_WAITING):
+                        raise
+                    last = str(exc)[len(SSH_FAILED):]
                 if last.startswith("ok"):
                     return last
-                if not last.startswith(("wait", "fail an exclusive claim")):
+                if not last.startswith(("wait", EXCLUSIVE_WAITING)):
                     raise RouteError(f"winuae.ps1 claim -Exclusive -Wait returned {last!r}")
                 if time.monotonic() >= deadline:
                     raise RouteError(f"no exclusive claim within {wait:.0f}s: {last}")

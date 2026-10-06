@@ -462,6 +462,50 @@ def test_claim_every_lane_releases_when_the_guest_answers_something_unexpected(m
     assert sent[-1][1].endswith("release -Holder h")
 
 
+@pytest.mark.parametrize("line", ["fail an exclusive claim by x until T is waiting",
+                                  "fail an exclusive claim by another caller is waiting"])
+def test_claim_every_lane_polls_again_while_another_exclusive_claim_waits(monkeypatch, line):
+    sent = []
+
+    def run(*a, timeout):
+        sent.append(a)
+        if len(sent) <= 2:
+            raise winuaesession.RouteError(f"winvm ssh failed: {line}")
+        return "ok claimed by h"
+    monkeypatch.setattr(winuaesession.WinGuest, "_run", staticmethod(run))
+    monkeypatch.setattr(winuaesession.time, "sleep", lambda s: None)
+    assert winuaesession.WinGuest().claim_every_lane("h", 5, 120) == "ok claimed by h"
+    assert len(sent) == 3
+    assert not any(" release " in call[1] for call in sent)
+
+
+def test_claim_every_lane_names_the_waiter_it_timed_out_behind(monkeypatch):
+    sent = []
+
+    def run(*a, timeout):
+        sent.append(a)
+        if a[1].endswith("release -Holder h"):
+            return "ok released by h"
+        raise winuaesession.RouteError(
+            "winvm ssh failed: fail an exclusive claim by x until T is waiting")
+    monkeypatch.setattr(winuaesession.WinGuest, "_run", staticmethod(run))
+    clock = iter([0.0, 1.0, 200.0])
+    monkeypatch.setattr(winuaesession.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(winuaesession.time, "sleep", lambda s: None)
+    with pytest.raises(winuaesession.RouteError, match="within 120s: fail an exclusive claim by x"):
+        winuaesession.WinGuest().claim_every_lane("h", 5, 120)
+    assert sent[-1][1].endswith("release -Holder h")
+
+
+def test_a_long_wait_sends_the_lease_not_the_wait(monkeypatch):
+    sent = []
+    monkeypatch.setattr(winuaesession.WinGuest, "_run",
+                        staticmethod(lambda *a, timeout: sent.append(a) or "ok claimed by h"))
+    winuaesession.WinGuest().claim_every_lane("h", 5, 5400)
+    assert sent[0][1].endswith("claim -Exclusive -Wait 180 -Holder h")
+
+
+
 def test_an_exclusive_claim_sends_the_exclusive_switch(monkeypatch):
     sent = []
     monkeypatch.setattr(winuaesession.WinGuest, "_run",
