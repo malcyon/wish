@@ -20,6 +20,7 @@ run uses.
     winwish.py click  --holder H --automation-id card_1_level_up
     winwish.py click  --holder H --expand Save
     winwish.py click  --holder H File "Save As..." --shot-after PNG
+    winwish.py click  --holder H File Save --type MenuItem --controls-after FILE
     winwish.py display --holder H (--read | --set 1920x1080 --scale 150 | --restore) --out FILE
     winwish.py log    --holder H --out DIR
     winwish.py down   --holder H
@@ -35,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import binascii
 import contextlib
 import hashlib
 import json
@@ -591,7 +593,8 @@ def _use_functions() -> list[str]:
 
 def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, out: str,
              prefix: bool = False, automation_id: str | None = None,
-             expand: bool = False, shot_after: str | None = None) -> str:
+             expand: bool = False, shot_after: str | None = None,
+             controls_after: str | None = None) -> str:
     """What the session 1 task runs: list the controls of this holder's Wish, or click some.
 
     `action` is `controls` (one line per control: `Type|Name|AutomationId|enabled=B|state`,
@@ -613,7 +616,12 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
     window through MSAA, whose lines read `Type|Name|Value|state=N`.  The answer is
     `ok` then the lines, or one `fail ...` line.  With `shot_after`, a `click` grabs the
     desktop into that guest path once its last name is used, in this same task, because a
-    popup it opened is gone by the time a later task looks.
+    popup it opened is gone by the time a later task looks.  With `controls_after`, a
+    `click` also writes one line for every control of `kind` (all when none) to that guest
+    path once its last name is used, before the picture: `Type|Name|AutomationId|enabled=B|
+    state|RuntimeId|IsOffscreen|BoundingRectangle`, so duplicates of one element can be told
+    from distinct ones.  It is a file of its own, not part of the answer, so nothing
+    shortens it.
     """
     tmp = out + ".tmp"
     names_ps = ", ".join(q(n) for n in names) or "@()"
@@ -624,6 +632,8 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
         raise WinwishError("only a click can expand")
     if shot_after is not None and action != "click":
         raise WinwishError("only a click can take a shot after")
+    if controls_after is not None and action != "click":
+        raise WinwishError("only a click can dump controls after")
     return "\n".join([
         "$ErrorActionPreference = 'Stop'",
         f"$build = {q(build)}",
@@ -710,6 +720,7 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
         "      [void]$lines.Add($hit[0].Current.Name + ' -> ' + (Use-Control $hit[0]))",
         "      Start-Sleep -Milliseconds 400",
         "    }",
+        *(["    " + line for line in _dump_lines(controls_after)] if controls_after else []),
         *(["    " + line for line in winvmguest.grab_lines(shot_after)] if shot_after else []),
         "  }",
         "  $answer = @('ok') + $lines",
@@ -726,6 +737,23 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
     ])
 
 
+def _dump_lines(path: str) -> list[str]:
+    """The guest PowerShell, inside `ui_inner`'s click branch, that writes the controls dump to `path`."""
+    tmp = path + ".tmp"
+    return [
+        "$dump = New-Object System.Collections.ArrayList",
+        "foreach ($e in Get-Controls) {",
+        "  if ($kind -ne '' -and (Get-Kind $e) -ne $kind) { continue }",
+        "  [void]$dump.Add((Get-Line $e) + '|' + ($e.GetRuntimeId() -join '.') + '|offscreen=' "
+        "+ $e.Current.IsOffscreen + '|' + $e.Current.BoundingRectangle)",
+        "}",
+        "$dump = @($dump | ForEach-Object { [regex]::Replace($_, '[^\\x20-\\x7e]', "
+        "{ param($m) '\\u' + ([int][char]$m.Value).ToString('x4') }) })",
+        f"[IO.File]::WriteAllLines({q(tmp)}, [string[]]$dump)",
+        f"Move-Item -Force {q(tmp)} {q(path)}",
+    ]
+
+
 def ui_file(token: str) -> str:
     """Where a `ui_inner` script is put on the guest, for the task to run with `-File`."""
     if not re.fullmatch(r"[A-Za-z0-9]{1,32}", token):
@@ -740,22 +768,35 @@ def ui_shot_file(token: str) -> str:
     return rf"C:\Users\Public\wish-ui-{token}.png"
 
 
+def ui_dump_file(token: str) -> str:
+    """Where a `click --controls-after` task leaves its controls dump on the guest."""
+    if not re.fullmatch(r"[A-Za-z0-9]{1,32}", token):
+        raise WinwishError(f"not a usable token: {token!r}")
+    return rf"C:\Users\Public\wish-ui-{token}.dump.txt"
+
+
+DUMP_BEGIN = "WISHUI-DUMP-BEGIN"
+DUMP_END = "WISHUI-DUMP-END"
+
 #: Added to a UI call's wait when it also takes a picture.
 SHOT_EXTRA_SECONDS = 5
 
 
-def ui_script(token: str, timeout: float, shot: bool = False) -> str:
+def ui_script(token: str, timeout: float, shot: bool = False, dump: bool = False) -> str:
     """What the ssh session runs: run the put `ui_file` in session 1 and print its answer between markers.
 
     The script itself is copied across with `winvm put` rather than carried in this
     command, because a command line over 32,767 characters is blocked.  With `shot`, the
     desktop picture the task took is printed after the lines, between
-    `winvmguest.SHOT_BEGIN` and `SHOT_END`, and removed.
+    `winvmguest.SHOT_BEGIN` and `SHOT_END`, and removed.  With `dump`, the controls dump
+    follows between `DUMP_BEGIN` and `DUMP_END` as base64, so a line is never cut or
+    re-encoded on the way, and is removed.
     """
     task = f"wish-ui-{token}"
     out = rf"C:\Users\Public\{task}.txt"
     file = ui_file(token)
     png = ui_shot_file(token)
+    dump_file = ui_dump_file(token)
     args = f'-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{file}"'
     return "\n".join([
         "$ErrorActionPreference = 'Stop'",
@@ -780,11 +821,17 @@ def ui_script(token: str, timeout: float, shot: bool = False) -> str:
            f"    [Convert]::ToBase64String([IO.File]::ReadAllBytes({q(png)}), 'InsertLineBreaks')",
            f"    '{winvmguest.SHOT_END}'",
            "  }"] if shot else []),
+        *([f"  if (Test-Path {q(dump_file)}) {{",
+           f"    '{DUMP_BEGIN}'",
+           f"    [Convert]::ToBase64String([IO.File]::ReadAllBytes({q(dump_file)}), 'InsertLineBreaks')",
+           f"    '{DUMP_END}'",
+           "  }"] if dump else []),
         "} finally {",
         "  Stop-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue",
         "  Unregister-ScheduledTask -TaskName $task -Confirm:$false -ErrorAction SilentlyContinue",
         f"  Remove-Item $out, \"$out.tmp\", {q(file)}"
-        + (f", {q(png)}, {q(png + '.tmp')}" if shot else "") + " -ErrorAction SilentlyContinue",
+        + (f", {q(png)}, {q(png + '.tmp')}" if shot else "")
+        + (f", {q(dump_file)}, {q(dump_file + '.tmp')}" if dump else "") + " -ErrorAction SilentlyContinue",
         "}",
         "exit 0",
     ])
@@ -812,6 +859,21 @@ def ui_lines(text: str, kind: str | None = None) -> list[str]:
     return lines
 
 
+def decode_dump(text: str) -> list[str]:
+    """The controls dump between the markers in a `ui_script` reply, every line."""
+    lines = [line.strip() for line in text.splitlines()]
+    try:
+        start = lines.index(DUMP_BEGIN)
+        end = lines.index(DUMP_END, start + 1)
+    except ValueError:
+        raise WinwishError("the controls dump came back without its markers") from None
+    try:
+        data = base64.b64decode("".join(lines[start + 1:end]), validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise WinwishError(f"the controls dump's base64 does not decode: {exc}") from None
+    return data.decode("ascii").splitlines()
+
+
 def session_one(guest: "Guest", holder: str, make_inner: Callable[[str], str],
                 timeout: float, kind: str | None = None) -> list[str]:
     """Run a script in session 1 and return the lines after its `ok`.
@@ -824,8 +886,12 @@ def session_one(guest: "Guest", holder: str, make_inner: Callable[[str], str],
 
 
 def _session_one(guest: "Guest", holder: str, make_inner: Callable[[str], str],
-                 timeout: float, kind: str | None, shot: bool) -> tuple[list[str], bytes | None]:
-    """`session_one`; with `shot`, also the PNG the script left at `ui_shot_file`."""
+                 timeout: float, kind: str | None, shot: bool,
+                 dump: list[str] | None = None) -> tuple[list[str], bytes | None]:
+    """`session_one`; with `shot`, also the PNG the script left at `ui_shot_file`.
+
+    When `dump` is a list, the controls dump the script left at `ui_dump_file` is put into it.
+    """
     guest.holds_lane(holder)
     token = secrets.token_hex(6)
     inner = make_inner(rf"C:\Users\Public\wish-ui-{token}.txt")
@@ -835,7 +901,8 @@ def _session_one(guest: "Guest", holder: str, make_inner: Callable[[str], str],
             local = pathlib.Path(tmp) / "ui.ps1"
             local.write_bytes(b"\xef\xbb\xbf" + inner.encode("utf-8"))
             guest.winvm("put", str(local), ui_file(token).replace("\\", "/"), timeout=CALL_SECONDS)
-        rc, text = guest.run(["winvm", "ps", ui_script(token, timeout, shot)], timeout + 20)
+        rc, text = guest.run(["winvm", "ps", ui_script(token, timeout, shot, dump is not None)],
+                             timeout + 20)
         lines = ui_lines(text, kind)
         png = None
         if shot:
@@ -843,6 +910,8 @@ def _session_one(guest: "Guest", holder: str, make_inner: Callable[[str], str],
                 png = winvmguest.decode_shot(text)
             except winvmguest.WinvmError as exc:
                 raise WinwishError(f"no picture came back after the click: {exc}") from None
+        if dump is not None:
+            dump[:] = decode_dump(text)
         answered = True
         return lines, png
     finally:
@@ -870,9 +939,20 @@ def ui_shot(guest: "Guest", holder: str, names: tuple[str, ...] = (),
     return lines, png
 
 
+def ui_dump(guest: "Guest", holder: str, names: tuple[str, ...] = (),
+            kind: str | None = None, prefix: bool = False,
+            automation_id: str | None = None,
+            shot: bool = False) -> tuple[list[str], list[str], bytes | None]:
+    """`ui` for a `click`, plus every control of `kind` as the same task saw it after the
+    last name (see `ui_inner`), and with `shot` the desktop picture too."""
+    dump: list[str] = []
+    lines, png = _ui(guest, holder, "click", names, kind, prefix, automation_id, False, shot, dump)
+    return lines, dump, png
+
+
 def _ui(guest: "Guest", holder: str, action: str, names: tuple[str, ...], kind: str | None,
         prefix: bool, automation_id: str | None, expand: bool,
-        shot: bool) -> tuple[list[str], bytes | None]:
+        shot: bool, dump: list[str] | None = None) -> tuple[list[str], bytes | None]:
     if automation_id is not None:
         if names:
             raise WinwishError("give an automation id or names, not both")
@@ -888,8 +968,9 @@ def _ui(guest: "Guest", holder: str, action: str, names: tuple[str, ...], kind: 
         guest, holder,
         lambda out: ui_inner(build_root(holder), action, names, kind, out, prefix,
                              automation_id, expand,
-                             out.removesuffix(".txt") + ".png" if shot else None),
-        ui_timeout(len(names), action) + extra, kind, shot)
+                             out.removesuffix(".txt") + ".png" if shot else None,
+                             out.removesuffix(".txt") + ".dump.txt" if dump is not None else None),
+        ui_timeout(len(names), action) + extra, kind, shot, dump)
 
 
 # -- the guest's display ---------------------------------------------------------
@@ -1698,6 +1779,10 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--shot-after", metavar="PNG",
                    help="after the last name, grab the desktop in the same task and save it "
                    "here, with its sidecar; a popup the click opened is gone by a later task")
+    p.add_argument("--controls-after", metavar="FILE",
+                   help="after the last name, in the same task, write every control of --type "
+                   "(all when none) here, one line each with RuntimeId, IsOffscreen and "
+                   "BoundingRectangle, uncut; a popup the click opened is gone by a later task")
     p.add_argument("--automation-id", help="click the one control whose UI Automation "
                    "AutomationId is this or ends with `.` and this, instead of naming it "
                    "(the six card buttons are all named Level up)")
@@ -1771,7 +1856,23 @@ def main(argv: list[str] | None = None,
                 raise WinwishError("click needs names, or --automation-id and no names")
             if args.shot_after and args.expand:
                 raise WinwishError("--shot-after and --expand are separate ways to click")
-            if args.shot_after:
+            if args.controls_after and args.expand:
+                raise WinwishError("--controls-after and --expand are separate ways to click")
+            if args.controls_after:
+                lines, dump, png = ui_dump(guest, args.holder, tuple(args.names), args.type,
+                                           args.prefix, args.automation_id, bool(args.shot_after))
+                extra = []
+                if png is not None:
+                    target = pathlib.Path(args.shot_after)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(png)
+                    sidecar(guest, args.holder, "desktop", target)
+                    extra.append(f"{target} ({len(png)} bytes)")
+                listing = pathlib.Path(args.controls_after)
+                listing.parent.mkdir(parents=True, exist_ok=True)
+                listing.write_text("".join(line + "\n" for line in dump), encoding="ascii")
+                print("\n".join([*lines, *extra, f"{listing} ({len(dump)} controls)"]))
+            elif args.shot_after:
                 lines, png = ui_shot(guest, args.holder, tuple(args.names), args.type,
                                      args.prefix, args.automation_id)
                 target = pathlib.Path(args.shot_after)
