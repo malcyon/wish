@@ -2327,7 +2327,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             disks[key] = {"remote": remote, "file": f"{key}.adf", "settled": settled,
                           "prestop_sha256": resume["prestop"][key]}
         step, tags = resume["step"], resume["tags"]
-        # The miss follows step N's own entry, which is last. A restore mark leaves `sent` shorter
+        # The miss comes right after step N's own entry, which is last. A restore mark leaves `sent` shorter
         # than N, since the machine's history is what it holds. An insert's key is its last item.
         pressed = sent[-1][0][-1] if isinstance(sent[-1][0], list) else sent[-1][0]
         resumable = not changed
