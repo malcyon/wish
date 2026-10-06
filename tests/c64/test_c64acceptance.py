@@ -3388,11 +3388,11 @@ def test_bad_cast_form_is_rejected_before_claiming_a_slot(tmp_path, monkeypatch)
     assert exc.value.code == 2
 
 
-def test_ready_step_keeps_its_name_and_curse_rejects_it(tmp_path):
+def test_ready_step_keeps_its_name_and_silver_blades_rejects_it(tmp_path):
     steps = A.parse_steps(["load", "ready BAKSHI>GAUNTLETS OF OGRE POWER"])
     assert A.parse_ready(steps[1].arg) == ("BAKSHI", "GAUNTLETS OF OGRE POWER")
     with pytest.raises(SystemExit) as info:
-        A.main(["--title", "curse", "--save", str(_fixture_disk(tmp_path)),
+        A.main(["--title", "ssb", "--save", str(_fixture_disk(tmp_path)),
                 "--stage-only", "--steps", "load",
                 "ready BAKSHI>GAUNTLETS OF OGRE POWER",
                 "--out", str(tmp_path / "out")])

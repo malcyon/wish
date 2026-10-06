@@ -81,7 +81,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `cast CASTER:DISPEL MAGIC>TARGET` | Pool: checks the named caster, animated target and its eligible id-32 row at index 63 before input; captures the target prompt, all party and effect-row bytes before and after, and checks the game-written save. `--preserve-specimen --issue 700` registers that save or a matched no-cast BRUTUS view control before teardown |
 | `scribe WHO>SPELL` | camp `MAGIC > SCRIBE` for WHO: the scroll list kept as text, SPELL's row highlighted and picked (Return, then a KERNAL Return while the count stands), the pick prompt's `EXIT` row, the list's `EXIT`, the `CHOSEN SPELLS` page kept, `OKAY` at the confirmation, and back to the camp bar. WHO's roster slice of the scribe queue (`+0x01` first entry, `+0x02` count: Pool `$6C01`, Curse and Silver Blades `$7D01`) is read before, after the pick and at the end, with its queue entries; a rejection (`CAN'T SCRIBE`), a spell not on the list, or a count of zero at the end fails the step. A list of more than one page (`NEXT` or `PREV` on row 24) is taken when SPELL is on the first page shown, and the result's `paged` says so; SPELL not on that page fails the step as `scribe-pages`, since the other pages are not read. Measured on Silver Blades and Pool of Radiance |
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
-| `ready WHO>LABEL`, `ready WHO>#N` | Pool only: `ENCAMP > VIEW WHO > ITEMS`, press READY once for LABEL, and read every party record, effect row and item block before and after. `screen_changed` describes the item row; `memory_changed` describes bytes in those three ranges; legacy `flipped` keeps its screen-only meaning. `--capture-ready` saves three bounded in-list checkpoints for BAKSHI and registers the game-written save before teardown. `#N` is the Nth row of WHO's ITEMS list from 1, for an item that draws no name: the step checks the list up is WHO's and has a row N before any READY key, then reports `outcome` (`readied`, `unreadied`, `rejected` or `unchanged`), the row before and after, and the rejection text the game printed (`WRONG CLASS`), and takes no `--capture-ready` checkpoints |
+| `ready WHO>LABEL`, `ready WHO>#N` | Pool and Curse (Curse reads its own record, item and roster blocks, `roster_diff` added, and no effect array): `ENCAMP > VIEW WHO > ITEMS`, press READY once for LABEL, and read every party record, effect row and item block before and after. `screen_changed` describes the item row; `memory_changed` describes bytes in those three ranges; legacy `flipped` keeps its screen-only meaning. `--capture-ready` saves three bounded in-list checkpoints for BAKSHI and registers the game-written save before teardown. `#N` is the Nth row of WHO's ITEMS list from 1, for an item that draws no name: the step checks the list up is WHO's and has a row N before any READY key, then reports `outcome` (`readied`, `unreadied`, `rejected` or `unchanged`), the row before and after, and the rejection text the game printed (`WRONG CLASS`), and takes no `--capture-ready` checkpoints |
 | `fight-flee [SECONDS]` | `fight`'s route into a fight, then `fleedrive.Flight` as the tactic with no wound patch, for at most SECONDS (120): the members who run stay alive and the game's own drop of a member left behind runs, which `walk-flee`'s menu FLEE never reaches. The result records `got_away` and `left_behind` (each member's slot, name and status before and after, a member left behind being one whose name the drop cleared); a fight that does not end on `THE PARTY RUNS AWAY` (won, lost, or still going at SECONDS) fails the step naming `fight-flee`; under `--fast-flee` the party's movement is raised from the first turn |
 | `fight-cast CASTER:SPELL` | Pool only: snapshots the machine at the world bar as `fight-cast`, then `fight`'s route into a fight, then every member but CASTER runs `fleedrive.Flight` (stepping off only from an edge square no enemy stands beside, unless faster than every enemy in the fight) while CASTER holds on a quiet edge square, and CASTER casts SPELL through `route_pool.Caster` on his first turn on which another member is away and every member still in the fight stands on an edge square he may step off from, every other member is away or down, his hit points are at most half of what they were on the tactic's first turn, or he has held 4 of his own turns, and then on his next turn whose command bar offers CAST, since a hit taken since his last turn takes CAST off the bar and he holds instead (a spell with no target prompt, such as PRAYER; one that asks for a target fails the cast); CASTER's turns after the cast run the flight, for at most 1500 seconds an attempt. An attempt ends as soon as a member is dead, dying, unconscious or stoned, or when an encounter menu (`COMBAT WAIT ...`) comes up; that, a fight that does not end on `THE PARTY RUNS AWAY`, one in which CASTER never cast, one that leaves a member behind, one that ends with a member down, and `no CAST on <name>'s bar after N held turns` (after at most 5 held turns) restore `fight-cast` and try again, at most 2 attempts in all while 600 s of the run are left, the second walking `J` (or `I` when the walk is not `I`), since the game's dice replay exactly from a snapshot and only where the party stands when the encounter comes makes it another fight; the last of them fails the step naming `fight-cast`, as does at once a CASTER whose memorised list did not lose exactly one spell. The result records `attempts`, `setbacks` (each failed attempt's walk and reason), `walk`, `casts` (the caster, spell and roster hit points before and after), `spent` (the spell id CASTER's memorised list lost), `got_away` and `left_behind` as `fight-flee` does, and the cast's screens are in `run.jsonl` as `cast-list` and `cast-done`; under `--fast-flee` every turn, from the first, first raises the party's movement |
 | `walk-fight MOVES[/NO]` | Pool only: `walk`'s moves, but an encounter menu is answered COMBAT (never FLEE), the fight is fought out with `Session.melee_turn` (900 s each), and the route resumes from the square the fight left the party on, an `I` that did not complete being sent once more; the treasure screen a won fight reaches is kept as `NN-treasure.png` and `.txt` before the fight answers it; a treasure screen met on the walk after a fight (mode 5, a bar holding `EXIT`, such as `VIEW POOL EXIT`) is left with EXIT, once for each bar it shows (a `GO BACK LEAVE TREASURE` bar that EXIT opens is answered LEAVE), on the encounter path as well as after a `PRESS` bar, and listed in `treasure_screens`; an `INSERT SIDE # N` prompt (sides 2 to 4) is answered once per side, with the image attached, a key pressed and the frame kept as `sideN-before-answer`, and a repeat or a save-disk prompt fails the step; a forward move must land on the next square, else the step fails as blocked or as an exit or a teleport. A `YES NO` is answered NO only on the last key, and only when `/NO` is given; anywhere else it fails the step with nothing pressed. With a `save` after it, the summary's `drain` says whether some character's level fell by 1 or 2 with `levels_drained` equal to the fall, `hp_lost_to_drain` not zero, one class level down by the same amount and `hp_max` down by `hp_lost_to_drain`; nobody drained is recorded, not a failure |
@@ -4296,8 +4296,9 @@ class PoolRun:
         HERE` unless `$6DE4` is set, which only camp sets (#694).
         `tools/c64/route_pool.py`'s `SLOT_BASE`, `SLOT_STRIDE` and `EFFECTS`
         are Pool's own layout, the same one `traitask.stage_items` and
-        `route_pool.toggle_item` already drive; `main` rejects this step for
-        Curse and Silver Blades.
+        `route_pool.toggle_item` already drive; `CurseRun` reads Curse's
+        own record, item and roster blocks instead, and `main` rejects this
+        step for Silver Blades.
         """
         who, label = parse_ready(arg)
         row = ready_row(label)
@@ -4310,12 +4311,8 @@ class PoolRun:
         if row is not None:
             self.check_item_row(who, row)
         with self.sess.mon(8) as m:
-            before_records = [bytes(route_pool.live_record(m, slot))
-                              for slot in range(PARTY_SLOTS)]
-            before_effects = bytes(route_pool.live_effects(m))
-            before_items = [bytes(m.read(ITEM_AREA_BASE + slot * ITEM_BLOCK_STRIDE,
-                                         ITEM_BLOCK_STRIDE))
-                            for slot in range(PARTY_SLOTS)]
+            before_records, before_effects, before_items, before_roster = (
+                self.ready_reading(m))
             m.resume()
         said = None
         if row is not None:
@@ -4329,27 +4326,31 @@ class PoolRun:
             screen_changed = route_pool.toggle_item(self.sess, self.log, label, "ready")
         self.sess.settle(1)
         with self.sess.mon(8) as m:
-            after_records = [bytes(route_pool.live_record(m, slot))
-                             for slot in range(PARTY_SLOTS)]
-            after_effects = bytes(route_pool.live_effects(m))
-            after_items = [bytes(m.read(ITEM_AREA_BASE + slot * ITEM_BLOCK_STRIDE,
-                                        ITEM_BLOCK_STRIDE))
-                           for slot in range(PARTY_SLOTS)]
+            after_records, after_effects, after_items, after_roster = (
+                self.ready_reading(m))
             m.resume()
+        where = self.ready_layout()
         record_diff = {
             slot: route_pool.diff_bytes(
                 before_records[slot], after_records[slot],
-                route_pool.SLOT_BASE + slot * route_pool.SLOT_STRIDE)
+                where["record"] + slot * where["record_stride"])
             for slot in range(PARTY_SLOTS)}
-        effects_diff = route_pool.diff_bytes(before_effects, after_effects,
-                                             route_pool.EFFECTS[0])
+        effects_diff = (route_pool.diff_bytes(before_effects, after_effects,
+                                              route_pool.EFFECTS[0])
+                        if before_effects is not None else [])
         item_diff = {
             slot: route_pool.diff_bytes(
                 before_items[slot], after_items[slot],
-                ITEM_AREA_BASE + slot * ITEM_BLOCK_STRIDE)
+                where["item"] + slot * ITEM_BLOCK_STRIDE)
             for slot in range(PARTY_SLOTS)}
+        roster_diff = ({} if before_roster is None else {
+            slot: route_pool.diff_bytes(
+                before_roster[slot], after_roster[slot],
+                where["roster"] + slot * where["roster_stride"])
+            for slot in range(PARTY_SLOTS)})
         memory_changed = (any(record_diff.values()) or bool(effects_diff)
-                          or any(item_diff.values()))
+                          or any(item_diff.values())
+                          or any(roster_diff.values()))
         route_pool.leave_items(self.sess, self.log)
         self.to_world()
         result = {"who": who, "label": label,
@@ -4357,12 +4358,33 @@ class PoolRun:
                   "memory_changed": memory_changed,
                   "record_diff": record_diff, "effects_diff": effects_diff,
                   "item_diff": item_diff}
+        if before_roster is not None:
+            result["roster_diff"] = roster_diff
         if said is not None:
             result.update(said)
         if self.capture_ready and row is None:
             result["ready_captures"] = self.ready_captures
             result["ready_sample_errors"] = self.ready_sample_errors
         return result
+
+    def ready_layout(self) -> dict:
+        """Where this title keeps the blocks `ready` compares: Pool's own
+        constants, since Pool's live records and item area sit at fixed
+        addresses."""
+        return {"record": route_pool.SLOT_BASE,
+                "record_stride": route_pool.SLOT_STRIDE,
+                "item": ITEM_AREA_BASE}
+
+    def ready_reading(self, m) -> tuple:
+        """Every party record, the effect array, every item block and (for a
+        title with a roster block to compare) every roster block, as bytes."""
+        records = [bytes(route_pool.live_record(m, slot))
+                   for slot in range(PARTY_SLOTS)]
+        effects = bytes(route_pool.live_effects(m))
+        items = [bytes(m.read(ITEM_AREA_BASE + slot * ITEM_BLOCK_STRIDE,
+                              ITEM_BLOCK_STRIDE))
+                 for slot in range(PARTY_SLOTS)]
+        return records, effects, items, None
 
     def check_item_row(self, who: str, row: int) -> None:
         """Before any key: the list up is WHO's, and it has a row `row`.
@@ -7379,6 +7401,30 @@ class CurseRun(PoolRun):
             self.observe_curse("first-combat-mode")
         return entered
 
+    def ready_layout(self) -> dict:
+        """Curse's records, items and roster blocks, from its own container
+        row (`goldbox.c64_save`), not Pool's constants."""
+        return {"record": self.box.slot_area_base,
+                "record_stride": self.box.slot_stride,
+                "item": self.box.item_area_base,
+                "roster": self.box.roster_base,
+                "roster_stride": self.box.roster_stride}
+
+    def ready_reading(self, m) -> tuple:
+        """The same blocks as Pool's, at Curse's addresses, plus the roster
+        block.  Curse has no effect array here, so none is compared."""
+        where = self.ready_layout()
+        records = [bytes(m.read(where["record"] + slot * where["record_stride"],
+                                where["record_stride"]))
+                   for slot in range(PARTY_SLOTS)]
+        items = [bytes(m.read(where["item"] + slot * ITEM_BLOCK_STRIDE,
+                              ITEM_BLOCK_STRIDE))
+                 for slot in range(PARTY_SLOTS)]
+        roster = [bytes(m.read(where["roster"] + slot * where["roster_stride"],
+                               where["roster_stride"]))
+                  for slot in range(PARTY_SLOTS)]
+        return records, None, items, roster
+
     def warp(self, arg: str) -> dict:
         if self.game.key != "curse-of-the-azure-bonds":
             raise self.fail("warp", "Pool of Radiance and Curse of the "
@@ -9162,8 +9208,9 @@ def main(argv: list[str] | None = None) -> int:
             ap.error("Curse cast requires CASTER:CURE BLINDNESS>TARGET")
         if args.title == "ssb":
             ap.error("the cast step requires --title pool or curse")
-    if any(x.verb == "ready" for x in steps) and args.title != "pool":
-        ap.error("the ready step requires --title pool")
+    if any(x.verb == "ready" for x in steps) and args.title not in ("pool",
+                                                                    "curse"):
+        ap.error("the ready step requires --title pool or curse")
     if args.quit_nonattacking and not args.attack_by:
         ap.error("--quit-nonattacking requires --attack-by")
     if args.probe_step and not args.attack_by:

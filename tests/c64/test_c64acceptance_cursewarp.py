@@ -6,8 +6,10 @@ from __future__ import annotations
 import pytest
 
 from automap import c64, fasttravel
+from goldbox import c64_save
 from goldbox.c64_port import CURSE_OF_THE_AZURE_BONDS as CURSE
 from goldbox.c64_port import SECRET_OF_THE_SILVER_BLADES as SILVER
+from goldbox.items import ITEM_AREA_BASE, ITEM_BLOCK_STRIDE
 from tools.c64 import acceptance as A
 
 ADDR = fasttravel.CURSE_OF_THE_AZURE_BONDS
@@ -112,3 +114,81 @@ def test_pool_warp_parse_is_unchanged_and_curse_ids_use_the_curse_table():
     assert A.parse_warp("1", CURSE.title) == 1
     with pytest.raises(ValueError, match="not an area"):
         A.parse_warp("99", CURSE.title)
+
+
+# --- ready ---------------------------------------------------------------------
+
+class ReadMonitor:
+    """A monitor that can only read, and logs every address it is asked for:
+    each `(address, length)` queues a before and an after reading."""
+
+    def __init__(self, script):
+        self.script = script
+        self.asked = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self, addr, length):
+        self.asked.append((addr, length))
+        return self.script[(addr, length)].pop(0)
+
+    def resume(self):
+        pass
+
+
+def _curse_ready(tmp_path, monkeypatch):
+    box = c64_save.CONTAINERS[CURSE.key]
+    script = {}
+    for slot in range(8):
+        rec = box.slot_area_base + slot * box.slot_stride
+        item = box.item_area_base + slot * ITEM_BLOCK_STRIDE
+        ros = box.roster_base + slot * box.roster_stride
+        before = {rec: bytearray(box.slot_stride), item: bytearray(ITEM_BLOCK_STRIDE),
+                  ros: bytearray(box.roster_stride)}
+        after = {k: v.copy() for k, v in before.items()}
+        if slot == 4:
+            after[rec][0x1A] = 5            # a record byte the rebuild changed
+            after[item][6] = 0x80           # the item's readied bit
+            after[ros][0x0E] = 3            # a roster byte (armour class)
+        for addr, data in before.items():
+            script[(addr, len(data))] = [bytes(data), bytes(after[addr])]
+    monitor = ReadMonitor(script)
+    sess = FakeSession()
+    sess.mon = lambda timeout=5.0: monitor
+    run = A.CurseRun.__new__(A.CurseRun)
+    run.sess, run.game, run.box = sess, CURSE, box
+    run.capture_ready = False
+    run.log = type("L", (), {"say": staticmethod(lambda text: None)})()
+    run.to_world = lambda tries=10: True
+    monkeypatch.setattr(A.route_pool, "open_items", lambda *a: True)
+    monkeypatch.setattr(A.route_pool, "toggle_item", lambda *a, **k: True)
+    monkeypatch.setattr(A.route_pool, "leave_items", lambda *a: None)
+    sess.settle = lambda seconds=0: None
+    got = run.ready("ARIEL>PLATE MAIL")
+    return got, monitor, box
+
+
+def test_curse_ready_reads_curses_own_record_item_and_roster_blocks(
+        tmp_path, monkeypatch):
+    got, monitor, box = _curse_ready(tmp_path, monkeypatch)
+    rec = box.slot_area_base + 4 * box.slot_stride
+    ros = box.roster_base + 4 * box.roster_stride
+    item = box.item_area_base + 4 * ITEM_BLOCK_STRIDE
+    assert got["record_diff"][4] == [{"addr": rec + 0x1A, "was": 0, "now": 5}]
+    assert got["item_diff"][4] == [{"addr": item + 6, "was": 0, "now": 0x80}]
+    assert got["roster_diff"][4] == [{"addr": ros + 0x0E, "was": 0, "now": 3}]
+    assert got["memory_changed"] is True and got["effects_diff"] == []
+    pool = (A.route_pool.SLOT_BASE, ITEM_AREA_BASE, A.route_pool.EFFECTS[0])
+    assert not [a for a, _ in monitor.asked if a in pool]
+    assert len(monitor.asked) == 2 * 3 * 8      # before and after, nothing else
+
+
+def test_ready_is_still_rejected_for_silver_blades(tmp_path, capsys):
+    with pytest.raises(SystemExit) as info:
+        A.main(["--title", "ssb", "--save", str(tmp_path / "x.d64"),
+                "--steps", "load", "ready A>B", "--out", str(tmp_path / "o")])
+    assert info.value.code == 2
