@@ -94,6 +94,9 @@ def world(monkeypatch, tmp_path):
     monkeypatch.setattr(amigatrip, "square", lambda t, row: (5, 6, 0))
     monkeypatch.setattr(tripprobe, "key_taken", lambda t, row: state.taken)
     state.clock = Clock()
+    state.gate_at = 0.0
+    monkeypatch.setattr(amigatrip, "gate",
+                        lambda t, row: state.clock.now >= 1000.0 + state.gate_at)
     # Arming leaves the fake game holding the trip until `disarm` puts it back.
     state.armed = []
     real_apply = Travel.apply
@@ -141,7 +144,7 @@ def test_it_waits_for_arrival_at_the_windows_200_ms_pace(world):
     start = world.clock()
     world.drive(travel)
     assert travel.calls.count("continue") == 10
-    assert world.clock() - start == pytest.approx(10 * ftr.POLL_SECONDS)
+    assert world.clock() - start == pytest.approx(10 * ftr.POLL_SECONDS + ftr.SETTLE_SECONDS)
 
 
 def test_a_trip_that_never_ends_is_cancelled_at_the_budget(world):
@@ -189,6 +192,27 @@ def test_a_screenshot_is_kept_only_when_the_screen_changes(world):
     assert sorted(p.name for p in world.out.glob("*.png")) == ["001.png"]
 
 
+def test_the_final_shot_waits_for_the_gate_and_then_the_settle_time(world):
+    world.gate_at = 30.0
+    shots = []
+
+    def shot(path):
+        shots.append(world.clock.now)
+        path.write_bytes(b"arrived" if world.clock.now >= 1000.0 + 30.0 else b"drawing")
+
+    ftr.run_trip(Travel(polls=3), Target(), ROW, SimpleNamespace(id=5), world.out, shot,
+                 lambda key: None, world.log, sleep=world.clock.sleep, clock=world.clock)
+    assert shots[-1] >= 1000.0 + 30.0 + ftr.SETTLE_SECONDS
+    assert world.events()[-3]["event"] == "settle"
+
+
+def test_a_gate_that_never_passes_ends_at_the_budget(world):
+    world.gate_at = 1e9
+    world.drive(Travel(polls=1), budget=10.0)
+    settle = [e for e in world.events() if e["event"] == "settle"]
+    assert settle[0]["gate"] is False and settle[0]["waited"] <= 10.0 + ftr.POLL_SECONDS
+
+
 def test_the_answer_is_pressed_once_when_the_screen_changes_with_the_key_taken(world):
     class Asking(Travel):
         def continue_pending(self, target):
@@ -232,7 +256,8 @@ def test_no_answer_is_pressed_before_the_key_is_taken(world):
 def test_an_answer_never_wanted_waits_only_answer_seconds_once_idle(world):
     got = world.drive(Travel(polls=1), answer="y")
     assert got["result"] == "idle" and not got["answered"]
-    assert world.clock() - 1000.0 <= ftr.ANSWER_SECONDS + 3 * ftr.POLL_SECONDS
+    assert world.clock() - 1000.0 <= (ftr.ANSWER_SECONDS + 3 * ftr.POLL_SECONDS
+                                      + ftr.SETTLE_SECONDS)
 
 
 def test_back_makes_apply_back_and_not_apply(world):

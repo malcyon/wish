@@ -22,7 +22,8 @@ data hunk), every screenshot and every key pressed. A screenshot is kept as
 OUT/NNN.png only when it differs from the one before it. Every wait is
 bounded: the poll loop by `--budget` seconds (a trip or hop still waiting then
 is cancelled and the run ends nonzero), and an answer by `ANSWER_SECONDS`
-once nothing else is pending.
+once nothing else is pending. The final screenshot waits for the game's menu
+gate and then `SETTLE_SECONDS`, bounded by the same budget.
 """
 
 from __future__ import annotations
@@ -123,6 +124,20 @@ class _Screen:
         return changed
 
 
+def _settle(target, row, log: Log, sleep, clock, budget: float) -> None:
+    """Wait for the game to sit at its menu again, then `SETTLE_SECONDS`, before the last shot.
+
+    The trip is idle when the area byte has changed, but the game is still
+    drawing the arrival; a shot then matches the one before the second hop.
+    """
+    began = clock()
+    while not amigatrip.gate(target, row) and clock() - began < budget:
+        sleep(POLL_SECONDS)
+    passed = bool(amigatrip.gate(target, row))
+    log("settle", gate=passed, waited=round(clock() - began, 3))
+    sleep(SETTLE_SECONDS)
+
+
 def run_trip(fasttravel, target, row, area, out: pathlib.Path,
              shot: Callable[[pathlib.Path], object], press: Callable[[str], object],
              log: Log, answer: str | None = None, back: bool = False,
@@ -201,6 +216,8 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
     if summary["result"] == "timeout":
         _disarm(fasttravel, target)
         log("timeout", budget=budget)
+    if summary["result"] == "idle":
+        _settle(target, row, log, sleep, clock, budget)
     screen.take("after")
     log("read", why="after", **_reading(target, row))
     return summary
