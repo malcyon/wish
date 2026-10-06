@@ -186,6 +186,11 @@ PUBLISHED_SOURCES_BY_ISSUE = {
             "ed4a9f68f9e2f9064d229872bce0a2f87e017c8865123159f9af54a6d8a25bb8",
             "e913382f73be2ace0c95642d8a7742f5478ade09302f0abfe46f6259db30c11c"}),
     },
+    # The DOS Silver Blades save with the Quarter Staff in the joined party's lists, which the
+    # leave-behind and joined-scroll Save As route converts to the Amiga.
+    "4": {
+        ("ssb", "dos"): frozenset({"31add9859ac5cca469b7eef575ac91ecbdda2fcb49f10a174b3ccc081f4e4e0f"}),
+    },
     # The two DOS saves the Character Editor's Save As converts to the Amiga: the Curse party
     # with a dual-classed member and the Silver Blades party joined by arrow.
     "22": {

@@ -1850,6 +1850,17 @@
         ],
         "example": "amiga-grab-crops/wish4-uc__c_l2_items-00.png",
         "sha256": "87f38d10beb3518cf041a1799d4443b0e99b4037419ef9d22e780830167866e3"
+      },
+      {
+        "also": [],
+        "box": [
+          88,
+          104,
+          680,
+          372
+        ],
+        "example": "4/ssb-accept-c/accept5/shots/29-camp_items_2.png",
+        "sha256": "299fc40d547f77448ae00c13bbea47142e706cdf7bab73c85083ce03d2026e22"
       }
     ],
     "camp_items_2_row10": [
@@ -2536,6 +2547,9 @@
     }
   },
   "labels": {
+    "4/ssb-accept-c/accept5/shots/29-camp_items_2.png": [
+      "camp_items_2"
+    ],
     "449/rb449-2/accept1/shots/15-camp_save_picker.png": [
       "journal"
     ],

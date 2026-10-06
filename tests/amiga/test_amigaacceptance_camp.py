@@ -1251,6 +1251,12 @@ def test_a_published_prepare_for_22_files_under_its_issue_and_blocks_another_sou
         foundation.prepare_published(name, "other", report, "22")
 
 
+def test_4_pins_the_dos_silver_blades_save_with_the_quarter_staff():
+    assert foundation._source_pins("4", "ssb", "dos") == frozenset({
+        "31add9859ac5cca469b7eef575ac91ecbdda2fcb49f10a174b3ccc081f4e4e0f"})
+    assert foundation._source_pins("4", "ssb", "c64") == frozenset()
+
+
 def test_silver_blades_camp_steps_reach_every_line_of_a_party_of_six():
     assert route_camp.SHEET_LINES["ssb"] == (1, 2, 3, 4, 5, 6)
     tokens = route_camp.parse_steps("view 1;view 2;view 3;view 4;view 5;view 6", "ssb")

@@ -670,6 +670,26 @@ def test_the_darkness_sheet_guard_matches_a_paladin_sheet_with_lay_on_hands_spen
         assert screens.box_digests(root / crop, {box})[box] == bar[0]['sha256'], crop
 
 
+def test_the_silver_blades_identity_map_matches_the_sixteen_row_item_list(tmp_path):
+    """Reads a crop kept from a live run, so it skips on a machine without it."""
+    from tools.amiga import screens
+    from tools.registry import scratch
+
+    crop = scratch.cache_dir('acceptance') / '4/ssb-accept-c/accept5/shots/29-camp_items_2.png'
+    if not crop.is_file():
+        pytest.skip('the kept Silver Blades item-list crop is not on this machine')
+    maps = guardmaps.pathlib.Path(guardmaps.__file__).parent
+    rules = screens.rules_of(guardmaps._load(maps, 'ssb')['identity']['camp_items_2'])
+    mine = [r for r in rules if r['sha256'].startswith('299fc40d')]
+    assert len(mine) == 1
+    assert mine[0]['box'] == [88, 104, 680, 372] and mine[0]['also'] == []
+    box = tuple(mine[0]['box'])
+    assert screens.box_digests(crop, {box})[box] == mine[0]['sha256']
+    out = tmp_path / 'ssb'
+    assert guardmaps.main(['--maps', str(maps), 'export', '--title', 'ssb', '--out', str(out)]) == 0
+    assert screens.PixelGuards(out / 'identity.json')('camp_items_2', crop)
+
+
 def test_a_second_add_decodes_no_unchanged_crop_and_decodes_a_changed_one(tmp_path, monkeypatch):
     root, maps = tmp_path / 'root', tmp_path / 'maps'
     maps.mkdir()
