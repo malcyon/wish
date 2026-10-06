@@ -1234,7 +1234,7 @@ def test_a_one_door_area_is_the_only_kind_that_is_walked_out_of():
     assert fasttravel.exits_from(13) == (
         (27, fasttravel.EXIT_ROUTES[(13, 27)]),)
     # `(25, 25)` comes back into the same area and can carry nobody anywhere.
-    assert [to for to, _ in fasttravel.exits_from(25)] == [19, 26, 28]
+    assert [to for to, _ in fasttravel.exits_from(25)] == [19, 28]
     assert [to for to, _ in fasttravel.exits_from(7)] == [0, 5]
 
 

@@ -72,6 +72,10 @@ def test_pick_square_finds_the_first_gated_square_that_is_actually_open():
     assert G.pick_square(geo, [(0, 0), (7, 15)], gated=True) == (7, 15, 2)
 
 
+def test_pick_square_keeps_the_facing_a_script_tests():
+    assert G.pick_square(None, [(5, 7, 3), (6, 7, 1)], gated=False) == (5, 7, 3)
+
+
 def test_pick_square_returns_none_off_an_empty_route():
     assert G.pick_square(None, [], gated=False) is None
 
@@ -106,11 +110,29 @@ def test_the_kobold_caves_exit_is_a_direct_route_to_the_east_window():
 @needs_disks
 def test_valjevo_and_lizardman_exits_stand_where_the_script_tests():
     """Entry 0 of `ECL07` leaves only from (5,7) facing W, and `ECL10` only
-    from (8,15) facing S; the arm index is not the square id."""
+    from (8,15) facing S; the arm index is not the square id, and the reader's
+    table gives both without a per-script override."""
     from automap import fasttravel as F
 
+    assert not hasattr(G, "SCRIPT_SQUARES")
     rows, _skipped = G.build()
     assert rows[(7, 5)] == (0, (5, 7, 3))
     assert rows[(16, 27)] == (0, (8, 15, 2))
     assert F.EXIT_ROUTES[(7, 5)].square == (5, 7, 3)
     assert F.EXIT_ROUTES[(16, 27)].square == (8, 15, 2)
+
+
+@needs_disks
+def test_the_travel_grid_seams_get_no_square_route():
+    """The windows' seams leave on the grid column and heading, which a
+    `GEO` square cannot stand for, so they get no row."""
+    from automap import fasttravel as F
+
+    rows, skipped = G.build()
+    seams = {(25, 26), (26, 25), (26, 27), (27, 26)}
+    assert seams.isdisjoint(rows)
+    assert seams.isdisjoint(F.EXIT_ROUTES)
+    grid = {(name, target) for name, _at, target, reason in skipped
+            if reason.startswith("a travel-grid edge")}
+    assert grid == {("ECL19", 26), ("ECL1A", 27), ("ECL1A", 25),
+                    ("ECL1B", 26)}

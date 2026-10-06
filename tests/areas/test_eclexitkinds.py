@@ -28,7 +28,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from gamedata import needs_disks  # noqa: E402
 
-from goldbox.geo import Geo  # noqa: E402
+from goldbox.geo import ATTRIBUTES, GEO_SIZE, Geo  # noqa: E402
 from tools.areas import eclexitkinds as EK  # noqa: E402
 from tools.areas import eclwalk as W  # noqa: E402
 
@@ -195,6 +195,115 @@ def test_entry0s_ongoto_with_no_gate_is_square_via_entry0():
     row = analyse_one(0, block)
     assert row["kind"] == "square-via-entry0"
     assert row["index"] == 0
+
+
+class TableMachine(FakeMachine):
+    """`FakeMachine`, with the operand counts a table-driven step entry needs:
+    `COMPARE` of two operands, the `AND` with its destination, `$2A`'s three,
+    `$14`'s four and `ADD`'s three. None is read off `DUNGEON`."""
+    _COUNTS = {**FakeMachine._COUNTS, 0x03: 2, 0x2F: 3, 0x2A: 3, 0x14: 4,
+               0x04: 3}
+
+
+def _addr(value):
+    return bytes([0x02]) + value.to_bytes(2, "little")
+
+
+def _imm(value):
+    return bytes([0x00, value])
+
+
+def op_table(asm, table, index, dest):
+    asm.raw(bytes([0x2A]))
+    asm.addr(table)
+    asm.raw(_addr(index) + _addr(dest))
+
+
+def op_compare(asm, var, literal):
+    asm.raw(bytes([0x03]) + _addr(var) + _imm(literal))
+
+
+def table_entry0(asm):
+    """Two rows on square id 3, facing S then E, both action 0; arm 0
+    leaves only for row 0, the way `ECL07`'s stairs arm does."""
+    counter, sid, row_id, row_facing = 0x6E79, 0x6E7A, 0x6E7B, 0x6E7C
+    asm.raw(bytes([0x09]) + _imm(0) + _addr(counter))
+    asm.raw(bytes([0x2F]) + _addr(ATTR) + _imm(127) + _addr(sid))
+    asm.label("LOOP")
+    op_table(asm, "IDS", counter, row_id)
+    op_table(asm, "FACINGS", counter, row_facing)
+    asm.raw(bytes([0x14]) + _addr(sid) + _addr(row_id) + _addr(row_facing)
+            + _addr(0xC04D))
+    op_bare(asm, 0x16)
+    op_goto(asm, "MATCH")
+    asm.raw(bytes([0x04]) + _imm(1) + _addr(counter) + _addr(counter))
+    op_compare(asm, counter, 2)
+    op_bare(asm, 0x18)
+    op_goto(asm, "LOOP")
+    op_exit(asm)
+    asm.label("MATCH")
+    op_table(asm, "ACTIONS", counter, row_id)
+    asm.raw(bytes([0x25]) + _addr(row_id) + _imm(2))
+    asm.addr("ARM0")
+    asm.addr("ARM1")
+    op_exit(asm)
+    asm.label("ARM0")
+    op_compare(asm, counter, 0)
+    op_bare(asm, 0x16)
+    op_goto(asm, "LEAVE")
+    op_exit(asm)
+    asm.label("LEAVE")
+    op_newecl(asm, 9)
+    asm.label("ARM1")
+    op_exit(asm)
+    asm.label("IDS")
+    asm.raw(bytes([3, 3]))
+    asm.label("FACINGS")
+    asm.raw(bytes([2, 1]))
+    asm.label("ACTIONS")
+    asm.raw(bytes([0, 0]))
+
+
+def test_entry0s_table_names_the_square_and_facing_not_the_arm_number():
+    data = bytearray(GEO_SIZE)
+    data[ATTRIBUTES + 0x52] = 3          # square id 3 at (2, 5) only
+    data[ATTRIBUTES + 0x00] = 1          # id 1, the arm number + 1, at (0, 0)
+    body = make_body(0, table_entry0)
+    _script, rows = EK.analyse(TableMachine(), "TEST", "SIDE", body,
+                               Geo(bytes(data)))
+    row, = rows
+    assert row["kind"] == "square-via-entry0"
+    assert row["table"] == [(0, 3, 2, 0)]   # row 1 fails arm 0's counter test
+    assert row["squares"] == [(2, 5, 2)]
+
+
+def grid_entry0(asm):
+    """Leave east off column 15, heading 1 or 2, the way the travel-grid
+    windows' seams do."""
+    op_compare(asm, 0x49C3, 15)
+    op_bare(asm, 0x16)
+    op_goto(asm, "EAST")
+    op_exit(asm)
+    asm.label("EAST")
+    asm.raw(bytes([0x25]) + _addr(0x033D) + _imm(3))
+    asm.addr("STAY")
+    asm.addr("LEAVE")
+    asm.addr("LEAVE")
+    asm.label("STAY")
+    op_exit(asm)
+    asm.label("LEAVE")
+    op_newecl(asm, 26)
+
+
+def test_entry0s_ongoto_on_the_travel_heading_names_no_geo_square():
+    body = make_body(0, grid_entry0)
+    _script, rows = EK.analyse(TableMachine(), "TEST", "SIDE", body,
+                               Geo(bytes(GEO_SIZE)))
+    row, = rows
+    assert row["kind"] == "square-via-entry0"
+    assert row["squares"] is None
+    assert row["headings"] == [1, 2]
+    assert row["grid"] == [(0x49C3, "=", 15)]
 
 
 def test_entry1_with_neither_a_gate_nor_an_ongoto_is_entry1_unconditional():
@@ -517,6 +626,36 @@ def test_the_79_exits_still_break_down_the_way_the_readme_row_says():
     assert dict(features) == {
         "call": 41, "flag": 17, "text": 47, "position": 31,
         "combat": 5, "loadchar": 3, "menu": 28, "membership": 1,
+    }
+
+
+@needs_disks
+def test_the_six_ungated_entry0_exits_name_what_their_scripts_test():
+    """`ECL07` and `ECL10` loop over `(id, facing, action)` tables and leave
+    from one square and facing each; the three travel-grid scripts test the
+    window column and the heading, and name no `GEO` square."""
+    every = W.scripts()
+    machine = W.Machine()
+    found = {}
+    for name in ("ECL07", "ECL10", "ECL19", "ECL1A", "ECL1B"):
+        if name not in every:
+            pytest.skip(f"{name} not reachable on these disks")
+        side, body = every[name]
+        _gside, gbody = W._file("GEO" + name[3:])
+        _script, rows = EK.analyse(machine, name, side, body,
+                                   Geo.from_bytes(gbody))
+        for row in rows:
+            if row["kind"] == "square-via-entry0":
+                found[(name, row["at"])] = (
+                    row["target"], row["squares"], row.get("headings"),
+                    row.get("grid"))
+    assert found == {
+        ("ECL07", 0x9AC9): (5, [(5, 7, 3)], None, None),
+        ("ECL10", 0x9CD5): (27, [(8, 15, 2)], None, None),
+        ("ECL19", 0x99B0): (26, None, [1, 2, 3], [(0x49C3, "=", 15)]),
+        ("ECL1A", 0x99B4): (27, None, [1, 2, 3], [(0x49C3, "=", 15)]),
+        ("ECL1A", 0x99E2): (25, None, [5, 6, 7], [(0x49C3, "=", 2)]),
+        ("ECL1B", 0x99CE): (26, None, [5, 6, 7], [(0x49C3, "=", 2)]),
     }
 
 

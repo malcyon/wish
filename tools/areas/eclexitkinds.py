@@ -204,6 +204,225 @@ def squares_for_test(geo, mask, literal, test):
             if ok(geo.script_id(x, y, mask), literal)]
 
 
+#: `$033D`, the party's heading on the travel grid, eight ways clockwise from
+#: north; `$49C3`/`$49C4`, its window-local square there
+#: (`docs/113-world-map.md`).
+TRAVEL_HEADING, GRID_SQUARE = 0x033D, (0x49C3, 0x49C4)
+#: `$C04D`, the party's facing in a `GEO` area, 0-3 clockwise from north.
+FACING = 0xC04D
+#: `$2A` reads `table[index]` into its third operand; `$14` sets the condition
+#: when both of its operand pairs are equal. Both read off the step entries of
+#: `ECL07` and `ECL10`, whose tables name the only squares `GEO07` and `GEO10`
+#: carry those ids on.
+TABLE_READ, COMPARE_AND = 0x2A, 0x14
+#: Opcodes whose last operand is the variable they write, and the menus, which
+#: write their first.
+WRITES_LAST = {0x04, 0x05, 0x06, 0x08, 0x09, TABLE_READ, 0x2F}
+
+
+def _var(operand):
+    kind, value = operand
+    return None if kind in (0x00, 0x80) else value
+
+
+def _written(st):
+    if st.op in WRITES_LAST and st.operands:
+        return _var(st.operands[-1])
+    if st.op in MENUS and st.operands:
+        return _var(st.operands[0])
+    return None
+
+
+def _compare_literal(st, known):
+    """`(var, test, literal)` for a `COMPARE` of a variable in `known` against
+    a literal, read as `var test literal`, or None."""
+    if st.op != COMPARE or len(st.operands) != 2:
+        return None
+    (k0, v0), (k1, v1) = st.operands
+    if k0 == 0 and k1 not in (0x00, 0x80) and v1 in known:
+        return v1, True, v0
+    if k1 == 0 and k0 not in (0x00, 0x80) and v0 in known:
+        return v0, False, v1
+    return None
+
+
+def _successors_given(script, st, known):
+    """`st`'s successors, with an `ON` jump or a `COMPARE`/`IF` pair on a
+    variable in `known` decided by its value instead of taking every arm."""
+    if st.op in (W.ONGOTO, W.ONGOSUB) and _var(st.operands[0]) in known:
+        n = known[_var(st.operands[0])]
+        arms = st.operands[W.COUNTED[st.op]:]
+        out = []
+        if n < len(arms) and _var(arms[n]) is not None:
+            out.append(_var(arms[n]) - W.BASE)
+        if st.op == W.ONGOSUB or n >= len(arms):
+            out.append(st.end)
+        return out
+    test = _compare_literal(st, known)
+    nxt = script.statements.get(st.end)
+    if test is not None and nxt is not None and nxt.op in IF_TESTS:
+        var, flip, literal = test
+        op = IF_TESTS[nxt.op]
+        op = _FLIP.get(op, op) if flip else op
+        skipped = W.decode(script.machine, script.body, nxt.end)
+        if _COMPARE_OK[op](known[var], literal):
+            return [nxt.end]
+        return [] if skipped is None else [skipped.end]
+    return [succ for succ, _ in script._successors(st)]
+
+
+def reaches(script, start, goal, known):
+    """Whether `goal` can run after `start` while each variable in `known`
+    holds its value, until something writes it."""
+    seen = set()
+    work = [(start, tuple(sorted(known.items())))]
+    while work:
+        at, items = work.pop()
+        if (at, items) in seen:
+            continue
+        seen.add((at, items))
+        if at == goal:
+            return True
+        st = script.statements.get(at)
+        if st is None:
+            continue
+        values = dict(items)
+        succs = _successors_given(script, st, values)
+        values.pop(_written(st), None)
+        after = tuple(sorted(values.items()))
+        work.extend((succ, after) for succ in succs)
+    return False
+
+
+def _table_read_into(script, path, before, var):
+    """The last `$2A` on `path[:before]` that writes `var`."""
+    for a in reversed(path[:before]):
+        st = script.statements[a]
+        if st.op == TABLE_READ and len(st.operands) == 3 \
+                and _var(st.operands[2]) == var:
+            return st
+    return None
+
+
+def _row_count(script, counter, heads):
+    """N, from the `COMPARE [counter], N` / `IF<` / `GOTO` that jumps back to
+    one of `heads`, the statements of the loop before its test."""
+    for st in script.ordered():
+        test = _compare_literal(st, {counter: 0})
+        nxt = script.statements.get(st.end)
+        if test is None or test[1] or nxt is None or nxt.op != 0x18:
+            continue
+        back = script.statements.get(nxt.end)
+        if back is not None and back.op == W.GOTO \
+                and back.target() is not None \
+                and back.target() - W.BASE in heads:
+            return test[2]
+    return None
+
+
+def entry0_table(script, path, og, id_var):
+    """The `(row, id, facing, action)` table entry 0 loops over before its
+    `ONGOTO`, or None where the route does not read one.
+
+    The step entries of `ECL07` and `ECL10` mask the square id out of `$C04F`,
+    then walk a row counter over three tables -- id, facing, action -- and
+    stop at the first row whose id is the square's and whose facing is
+    `$C04D`, under `$14`. Only then does the `ONGOTO` run, on that row's
+    action: the arm number is an action, never a square id.
+    """
+    selector = _var(og.operands[0])
+    pos = path.index(og.at)
+    action = _table_read_into(script, path, pos, selector)
+    if selector is None or action is None or id_var is None:
+        return None
+    counter = _var(action.operands[1])
+    tests = [i for i in range(pos) if script.statements[path[i]].op
+             == COMPARE_AND and len(script.statements[path[i]].operands) == 4]
+    if counter is None or not tests:
+        return None
+    at = tests[-1]
+    operands = script.statements[path[at]].operands
+    tables = {}
+    for a, b in ((0, 1), (2, 3)):
+        for key, loaded in ((operands[a], operands[b]),
+                            (operands[b], operands[a])):
+            rd = _table_read_into(script, path, at, _var(loaded))
+            if rd is not None and _var(rd.operands[1]) == counter:
+                tables[_var(key)] = _var(rd.operands[0])
+    count = _row_count(script, counter, set(path[:at]))
+    if id_var not in tables or FACING not in tables or count is None:
+        return None
+    body = script.body
+
+    def column(table):
+        start = table - W.BASE
+        return None if start < 0 or start + count > len(body) \
+            else body[start:start + count]
+    ids, facings, actions = (column(tables[id_var]), column(tables[FACING]),
+                             column(_var(action.operands[0])))
+    if ids is None or facings is None or actions is None:
+        return None
+    return {"selector": selector, "counter": counter,
+            "rows": list(zip(range(count), ids, facings, actions))}
+
+
+def grid_tests(script, path):
+    """`(var, test, literal)` for each `COMPARE` of the travel-grid square
+    against a literal whose `IF` the route takes on its true side."""
+    out = []
+    for a, b in zip(path, path[1:]):
+        st = script.statements[a]
+        test = _compare_literal(st, dict.fromkeys(GRID_SQUARE, 0))
+        nxt = script.statements.get(st.end)
+        if test is None or nxt is None or nxt.op not in IF_TESTS \
+                or b != nxt.at:
+            continue
+        var, flip, literal = test
+        after = path[path.index(b) + 1] if path.index(b) + 1 < len(path) \
+            else None
+        if after == nxt.end:
+            op = IF_TESTS[nxt.op]
+            out.append((var, _FLIP.get(op, op) if flip else op, literal))
+    return out
+
+
+def entry0_squares(script, path, og, exit_at, geo, row):
+    """Fill `row` for an ungated `ONGOTO` on entry 0's route.
+
+    Three dispatches reach one. A table of `(id, facing, action)` rows gives
+    `squares` as `(x, y, facing)`, row by row, for each row whose action
+    reaches this exit -- `row["table"]` lists those rows. An `ONGOTO` on the
+    travel-grid heading gives no squares: the grid scripts test `$49C3` and
+    the heading, which `row["grid"]` and `row["headings"]` carry, and no `GEO`
+    square. An `ONGOTO` on the masked square id itself takes the arm as the id.
+    """
+    mask, var = mask_before(script, path)
+    selector = _var(og.operands[0])
+    table = entry0_table(script, path, og, var)
+    if table is not None:
+        leaving, seen = [], set()
+        for n, sid, facing, action in table["rows"]:
+            if (sid, facing) in seen:
+                continue  # the loop stops at the first row that matches
+            seen.add((sid, facing))
+            if reaches(script, og.at, exit_at,
+                       {table["selector"]: action, table["counter"]: n}):
+                leaving.append((n, sid, facing, action))
+        row["table"] = leaving
+        if geo is not None:
+            row["squares"] = [(x, y, facing) for _n, sid, facing, _a in leaving
+                              for x, y in squares_with(geo, mask, sid)]
+        return
+    if selector == TRAVEL_HEADING:
+        start = script.entries[0]
+        row["headings"] = [d for d in range(8) if reaches(
+            script, start, exit_at, {TRAVEL_HEADING: d})]
+        row["grid"] = grid_tests(script, path)
+        return
+    if selector is not None and selector == var:
+        row["squares"] = squares_with(geo, mask, row["index"])
+
+
 def analyse(machine, name, side, body, geo):
     script = W.Script(machine, name, side, body)
     entries = script.entries
@@ -242,11 +461,15 @@ def analyse(machine, name, side, body, geo):
             og, k = ongoto_index(script, path)
             if gated and og is None:
                 row["kind"] = "edge"
-            elif og is not None:
-                row["kind"] = "edge+square" if gated else "square-via-entry0"
+            elif og is not None and gated:
+                row["kind"] = "edge+square"
                 row["index"] = k
                 mask, _var = mask_before(script, path)
                 row["squares"] = squares_with(geo, mask, k)
+            elif og is not None:
+                row["kind"] = "square-via-entry0"
+                row["index"] = k
+                entry0_squares(script, path, og, st.at, geo, row)
             else:
                 row["kind"] = "entry0-unconditional"
         elif reach:

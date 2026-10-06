@@ -82,20 +82,6 @@ KINDS = {
 }
 
 
-#: Squares the generic rule gets wrong, keyed by `(script, NEWECL address)`.
-#: `square-via-entry0` takes the `ONGOTO` arm index as the square id, but entry
-#: 0 of these two scripts loops over a table of `(id, facing, action)` rows and
-#: the arm is the row's action, so the id and the facing are read from the
-#: table. ECL07 `$9971`: the stairs row for action 1 ends at area 5 only at
-#: square id 1, which is (5,7), facing W (3). ECL10 `$9A8C`: the one row whose
-#: action reaches `NEWECL 27` is id 15 facing S (2), which is (8,15). The other
-#: `square-via-entry0` exits are unchecked and keep the generic square.
-SCRIPT_SQUARES = {
-    ("ECL07", 0x9AC9): (5, 7, 3),
-    ("ECL10", 0x9CD5): (8, 15, 2),
-}
-
-
 def area_by_ecl(title: str = TITLE) -> dict[str, int]:
     return {row.ecl: row.id for row in A.areas_for_title(title)}
 
@@ -122,15 +108,17 @@ def outward_facings(x: int, y: int) -> list[int]:
 def pick_square(geo: Geo | None, squares, gated: bool):
     """One square from a route's candidates, or None if none will do.
 
-    Every square on the route triggers the same handler (see the module
-    docstring), so the first is as good as any -- except for a gated exit,
+    A candidate is `(x, y)`, or `(x, y, facing)` where the script tests the
+    facing too, and is returned as given. Every square on the route triggers
+    the same handler (see the module docstring), so the first is as good as
+    any -- except for a gated exit,
     where it also has to be a square `Geo.is_passable` says is open on the
     side that leaves the map, since `$10EC` never sets `$6DD5` for a step
     through a wall.
     """
-    for x, y in squares:
+    for x, y, *facing in squares:
         if not gated:
-            return (x, y)
+            return (x, y, *facing)
         if geo is None:
             continue
         for facing in outward_facings(x, y):
@@ -182,6 +170,11 @@ def build_with_combat(title: str = TITLE):
             if r["kind"] not in KINDS:
                 skipped.append((name, at, r["target"], f"kind {r['kind']}"))
                 continue
+            if r.get("headings") is not None:
+                skipped.append((name, at, r["target"],
+                                "a travel-grid edge, decided by the grid "
+                                "square and heading, not a GEO square"))
+                continue
             if not r["squares"]:
                 skipped.append((name, at, r["target"], "no square on the route"))
                 continue
@@ -191,9 +184,7 @@ def build_with_combat(title: str = TITLE):
             if key in rows:
                 continue  # a second route to the same pair; see the docstring
             entry, gated = KINDS[r["kind"]]
-            square = SCRIPT_SQUARES.get((name, r["at"]))
-            if square is None:
-                square = pick_square(geo, r["squares"], gated)
+            square = pick_square(geo, r["squares"], gated)
             if square is None:
                 skipped.append((name, at, r["target"],
                                 "no square is open on the side that leaves "
