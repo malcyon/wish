@@ -1619,10 +1619,11 @@ def floppy_options(count: int) -> tuple[str, ...]:
 
 
 def uae_options(values: list[str] | None) -> tuple[str, ...]:
-    """The extra `-s` settings of `up`; each must be KEY=VALUE with no whitespace or quotes."""
+    """The extra `-s` settings of `up`; each is interpolated unquoted into a guest shell command, so only a conservative character set is allowed."""
     for value in values or ():
-        if "=" not in value or re.search(r"[\s\"']", value):
-            raise WinwishError(f"--uae-option needs KEY=VALUE without spaces or quotes: {value!r}")
+        key, eq, setting = value.partition("=")
+        if not eq or not re.fullmatch(r"[A-Za-z0-9_.]+", key) or not re.fullmatch(r"[A-Za-z0-9_.:/\\-]*", setting):
+            raise WinwishError(f"--uae-option needs KEY=VALUE using only letters, digits and _ . : / \\ -: {value!r}")
     return tuple(values or ())
 
 

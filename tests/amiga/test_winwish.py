@@ -677,7 +677,8 @@ def test_up_appends_uae_options_after_the_drive_settings(tmp_path, monkeypatch):
     assert lane.options == ("nr_floppies=3", "floppy2type=0", "fastmem_size=2", "bogomem_size=0")
 
 
-@pytest.mark.parametrize("bad", ["fastmem_size", "a b=1", "a=\"1\"", "a='1'"])
+@pytest.mark.parametrize("bad", ["fastmem_size", "a b=1", "a=\"1\"", "a='1'", "=1",
+                                 *(f"x=1{c}calc" for c in ";&|$`()^%")])
 def test_a_malformed_uae_option_is_blocked_before_anything_starts(tmp_path, monkeypatch, bad):
     run, lane = FakeRun(), FakeLane()
     args = _args(tmp_path, monkeypatch, "--uae-option", bad)
