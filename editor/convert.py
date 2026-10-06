@@ -212,9 +212,16 @@ def _asks_for_slot_of(party: Any, slot: str | None,
 
 def _unread_dos_title(folder: pathlib.Path) -> str | None:
     """The key of a DOS title Wish does not read that `folder` or the game
-    folder above it, holds."""
+    folder above it, holds.
+
+    A folder the readable table already names as Curse is never Gateway's,
+    whatever else it holds or is called, so a Curse save opens as Curse.
+    """
     for where in (folder, folder.parent):
         try:
+            if (titles.dos_folder_title(where)
+                    == dos_port.CURSE_OF_THE_AZURE_BONDS.key):
+                return None
             key = titles.dos_folder_title(
                 where, table=titles.DOS_UNREAD_FOLDER_FILES)
         except OSError:

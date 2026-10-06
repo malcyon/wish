@@ -83,3 +83,15 @@ def test_the_default_folder_table_does_not_name_gateway(tmp_path):
     assert titles.dos_folder_title(
         save.parent, table=titles.DOS_UNREAD_FOLDER_FILES) \
         == titles.GATEWAY_TO_THE_SAVAGE_FRONTIER.key
+
+
+def test_a_folder_holding_both_sets_of_files_opens_as_curse(tmp_path):
+    save = _gateway(tmp_path)
+    for name in ("START.EXE", "CURSE.CFG"):
+        (save.parent / name).write_bytes(b"")
+    assert Source.detect(save).title.key == "curse-of-the-azure-bonds"
+
+
+def test_a_curse_save_under_a_gateway_named_parent_opens_as_curse(tmp_path):
+    save = _save(tmp_path / "GATEWAY", "START.EXE", "CURSE.CFG")
+    assert Source.detect(save).title.key == "curse-of-the-azure-bonds"
