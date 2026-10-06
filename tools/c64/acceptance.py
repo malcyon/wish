@@ -8087,6 +8087,11 @@ def resume_options(args) -> dict:
                                  default=str))
 
 
+#: The game sides staging writes into a slot.  Any other `.D64` there is left
+#: over from an earlier tenant and is no part of a run or its record.
+STAGED_SIDE = re.compile(r"SIDE[1-8]\.D64", re.IGNORECASE)
+
+
 class StepResume:
     """Saves the machine before each step after the load and, when one fails,
     turns the last save into a `resumerecord` the next run can start from."""
@@ -8137,7 +8142,7 @@ class StepResume:
                 self._copy(save, self.current / save.name)
             self.sides = {side.name: specimens.sha256_file(side)
                           for side in sorted(self.slot_dir.iterdir())
-                          if side.suffix.lower() == ".d64" and side != save}
+                          if STAGED_SIDE.fullmatch(side.name) and side != save}
             self._keep_named(path.parent)
             self.state = pool.resume_state()
         except Exception as exc:  # noqa: BLE001 -- a run that cannot snapshot still runs

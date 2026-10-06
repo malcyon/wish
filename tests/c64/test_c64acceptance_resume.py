@@ -633,3 +633,22 @@ def test_a_side_that_changed_since_the_step_began_is_named(drive, failed):
     _, _, out, _ = drive(FIXED, tag="b", sess=OtherSide, resume_from=str(failed), at_step=3)
     assert "SIDE2.D64 staged on this slot differs" in _summary(out)["lost"]
     assert "changed since step 3 began" in _summary(out)["lost"]
+
+
+def test_a_stray_disk_in_either_slot_is_no_part_of_the_record_or_the_resume(drive):
+    class Stray(_ResumeSess):
+        """A leftover image from an earlier tenant, different on each slot."""
+
+        def __init__(self, first, slot=None):
+            super().__init__(first, slot)
+            (slot.dir / "SAVE_IN.D64").write_bytes(b"stray " + slot.dir.name.encode())
+
+    rc, _, out, _ = drive(STEPS, tag="a", sess=Stray)
+    assert rc == 3
+    record = out / "resume" / "resume.json"
+    assert list(json.loads(record.read_text(encoding="utf-8"))["disks"]["sides"]) == ["SIDE3.D64"]
+    rc, slot, _, events = drive(FIXED, tag="b", sess=_ResumeSess, resume_from=str(record),
+                                at_step=3)
+    assert rc == 0 and "launch" in events and not (slot.dir / "SAVE_IN.D64").exists()
+    rc, slot, _, _ = drive(FIXED, tag="c", sess=Stray, resume_from=str(record), at_step=3)
+    assert rc == 0
