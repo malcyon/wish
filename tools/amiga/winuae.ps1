@@ -117,10 +117,10 @@ $Exe     = 'C:\Program Files\WinUAE\winuae64.exe'
 $Root    = 'C:\Amiga'
 # How many emulators may run at once. Keys, screenshots and debugger reads go
 # through each lane's own pipe, the one its boot log names, so lanes do not type into,
-# photograph or read each other: measured with two copies booted at once, each
-# lane's frame changed only with its own key presses, and `winuae-lanecheck.ps1
-# -Lanes 2` passed. Raise it only after a lanecheck at the new count has passed.
-$LaneCount = 2
+# photograph or read each other. Four copies at once each held full speed with
+# guest CPU under 40%, and `winuae-lanecheck.ps1 -Lanes 4` passed. Raise it
+# only after a measurement and a lanecheck at the new count have passed.
+$LaneCount = 4
 
 # Everything one lane owns. Lane 1 keeps the names the script has always used,
 # so a run started by an earlier copy of the script is lane 1 to this one.

@@ -249,10 +249,10 @@ Two checks sit under the claim, because a claim only binds a caller who passes
 task, the send log, the console file, a WinUAE ini and a screenshot folder
 (§4.3). Lane 1 uses the bare names (`winuae-claim.txt`, `winuae-run.txt`,
 `lanes\1\winuae.ini`) and lane *n* adds `-n`. A holder has one lane, and every
-verb that takes `-Holder` acts on it. **`$LaneCount` is 2.** Keys, screenshots
+verb that takes `-Holder` acts on it. **`$LaneCount` is 4.** Keys, screenshots
 and debugger reads each reach the holder's own emulator through the pipe its
 pid serves, and two copies booted at once each showed only their own key
-presses (CONFIRMED, one two-copy boot). `winuae-lanecheck.ps1 -Lanes 2` is the
+presses (CONFIRMED, one two-copy boot). `winuae-lanecheck.ps1 -Lanes 4` is the
 check to pass before the count changes again.
 
 The claim is a file in the guest, `C:\Amiga\winuae-claim.txt` for lane 1, and it records

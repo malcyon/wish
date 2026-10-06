@@ -250,6 +250,20 @@ def test_a_status_with_every_lane_held_is_not_free():
     assert w.lane_matches(st, "A") and w.lane_matches(st, "B")
 
 
+def test_a_four_lane_status_reads_every_lane():
+    text = STATUS_TWO_LANES.replace("lanes = 2", "lanes = 4").replace(
+        "ROM database", "claim 3 = C since 2026-09-22T09:10:00\nrun 3 = no receipt\nclaim 4 = none\nrun 4 = no receipt\nROM database"
+    )
+    st = w.parse_status(text)
+    assert st.lanes == {
+        1: ("A", "2026-09-22T09:00:00"),
+        2: (None, ""),
+        3: ("C", "2026-09-22T09:10:00"),
+        4: (None, ""),
+    }
+    assert w.lane_matches(st, "C") and w.lane_matches(st, "free")
+
+
 def test_a_one_lane_status_has_one_lane():
     assert w.parse_status(STATUS_HELD).lanes == {1: ("por-run", "2026-09-22T09:00:00")}
     assert w.parse_status(STATUS_FREE).lanes == {1: (None, "")}

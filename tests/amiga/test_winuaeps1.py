@@ -220,9 +220,9 @@ def test_the_lane_count_is_one_constant_in_one_place():
     assert len(re.findall(r"(?m)^\$LaneCount = \d+$", PS1)) == 1
 
 
-def test_the_guest_runs_two_lanes():
-    """Raised after a two-lane lanecheck passed and two booted copies each saw only their own keys."""
-    assert re.search(r"(?m)^\$LaneCount = 2$", PS1)
+def test_the_guest_runs_four_lanes():
+    """Raised after four booted copies each held full speed and a four-lane lanecheck passed."""
+    assert re.search(r"(?m)^\$LaneCount = 4$", PS1)
 
 
 LANECHECK = (PS1_PATH.parent / "winuae-lanecheck.ps1").read_text()
