@@ -3499,6 +3499,9 @@ DARKNESS_DOS_SOURCES = (
 @pytest.mark.parametrize("name,sha", DARKNESS_DOS_SOURCES)
 def test_the_darkness_save_as_route_pins_each_dos_source_of_its_ticket(name, sha):
     assert sha in foundation._source_pins("2", "darkness", "dos"), name
+
+
+def test_the_darkness_save_as_route_pins_the_stage_5_dos_source():
     assert "ee979bf89164742816841c9ad2dc5a550f35b3a52eec2ad3fae138c9a1653918" in (
         foundation._source_pins("2", "darkness", "dos"))
 
@@ -3512,7 +3515,9 @@ def test_the_darkness_guards_hold_a_place_rule_for_the_square_after_stage_5s_wal
     rule = spec["guards"][state]
     assert rule["box"] == spec["guards"]["place_x2_y2_f1"]["box"]
     assert rule["also"] == spec["guards"]["place_x2_y2_f1"]["also"]
-    crop = scratch.cache_dir("acceptance") / "WISH-2/wish2-s5/accept2/shots/13-world.png"
+    example = rule["example"]
+    assert spec["labels"][example] == [state]
+    crop = scratch.cache_dir("acceptance") / example
     if not crop.is_file():
         pytest.skip("needs the stage 5 accept shot 13 of WISH-2")
     assert screens.box_digests(crop, [tuple(rule["box"])], state)[tuple(rule["box"])] == rule["sha256"]
