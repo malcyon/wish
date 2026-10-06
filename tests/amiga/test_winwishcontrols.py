@@ -138,3 +138,61 @@ def test_each_detail_read_has_its_own_try_catch_and_an_empty_field_on_failure():
         line = guarded[0].strip()
         assert line.startswith("try {") and "} catch {" in line, read
         assert line.endswith("= '' }"), read
+
+
+# -- click --automation-id ... --pick: choose an item from a combo box's popup ------------
+
+def _pick(**kw):
+    return winwish.ui_inner(r"C:\b", "click", ("ft_combo",), None, r"C:\o.txt",
+                            automation_id="ft_combo", pick="Tilverton streets", **kw)
+
+
+def test_pick_opens_the_combo_selects_the_item_and_collapses_it_in_one_script():
+    inner = _pick()
+    body = inner[inner.index("function Pick-Item"):inner.index("$names.Count -eq 0")]
+    assert inner.count("function Pick-Item") == 1
+    assert "$item = 'Tilverton streets'" in inner
+    expand = body.index("ExpandCollapsePattern]::Pattern")
+    find = body.index("-eq 'ListItem' -and $_.Current.Name -eq $item")
+    select = body.index("SelectionItemPattern]::Pattern")
+    assert expand < body.index(".Expand()") < find < select < body.index(".Select()")
+    assert "InvokePattern" in body and body.index("$p.Invoke()") > select
+    assert body.index(".Collapse()") > body.index(".Select()")
+    # The popup's items are gone once the task ends, so the combo is addressed by id here.
+    assert "$_.Current.AutomationId -eq $name" in inner
+    assert "Pick-Item $hit[0]" in inner and "Use-Control $hit[0]" not in inner
+
+
+def test_pick_sends_nothing_to_the_desktop_and_keeps_the_runtime_id_dedupe():
+    inner = _pick()
+    for banned in ("SetForegroundWindow", "SetFocus", "SendKeys", "mouse_event", "SendInput",
+                   "SetCursorPos", "CopyFromScreen"):
+        assert banned not in inner
+    assert "$seen.ContainsKey($rid)" in inner
+
+
+def test_pick_needs_a_click_by_automation_id_and_no_expand():
+    def build(action="click", names=("ft_combo",), **kw):
+        return winwish.ui_inner(r"C:\b", action, names, None, r"C:\o.txt", pick="a", **kw)
+
+    for call in (lambda: build(names=("x",)),
+                 lambda: build(automation_id="ft_combo", expand=True),
+                 lambda: build("controls", automation_id="ft_combo")):
+        with pytest.raises(winwish.WinwishError, match="--pick"):
+            call()
+
+
+def test_the_cli_pick_sends_one_script_and_prints_its_answer(capsys):
+    run = FakeRun([(lambda a: a[1] == "ps", 0, _ui_reply("ok", "ft_combo -> selected Tilverton streets"))])
+    argv = ["click", "--holder", "h", "--automation-id", "ft_combo", "--pick", "Tilverton streets"]
+    assert winwish.main(argv, winwish.Guest(run)) == 0
+    assert "selected Tilverton streets" in capsys.readouterr().out
+    assert len([c for c in run.calls if c[1] == "put"]) == 1
+
+
+@pytest.mark.parametrize("extra", [["--expand"], ["--shot-after", "x.png"], ["--controls-after", "x.txt"]])
+def test_the_cli_pick_does_not_mix_with_the_other_click_forms(extra, capsys):
+    run = FakeRun()
+    argv = ["click", "--holder", "h", "--automation-id", "ft_combo", "--pick", "a", *extra]
+    assert winwish.main(argv, winwish.Guest(run)) == 1
+    assert run.calls == [] and "--pick" in capsys.readouterr().err
