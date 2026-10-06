@@ -341,6 +341,53 @@ def test_pools_grid_gadgets_open_the_gate_only_in_the_grid_mode():
     assert trip.gate(m, pool)
 
 
+# -- the grid exit's prologue --------------------------------------------------
+
+BOAT_EXIT = b"".join(trip.boat_exit_groups())
+
+
+def test_the_prologue_is_the_five_boat_exit_groups_off_a_window_only():
+    pool = trip.ROWS["pool-of-radiance"]
+    assert len(BOAT_EXIT) == 53
+    assert trip.leave_grid_prologue(pool, 26, 0) == BOAT_EXIT
+    for here, to in ((26, 25), (0, 26), (7, 5), (None, 0)):
+        assert trip.leave_grid_prologue(pool, here, to) == b""
+    curse = trip.ROWS["curse-of-the-azure-bonds"]
+    assert trip.leave_grid_prologue(curse, 26, 0) == b""
+
+
+def test_the_statements_run_the_prologue_first_and_newecl_last():
+    pool = trip.ROWS["pool-of-radiance"]
+    for tier in (1, 2):
+        p = trip.plan(0, (9, 14, 2), tier=tier, prologue=BOAT_EXIT)
+        out = trip._statements(pool, p)
+        assert out.startswith(trip.picture(255) + trip.clear_box())
+        assert out.startswith(BOAT_EXIT) and out.endswith(trip.newecl(0))
+
+
+def test_free_tail_counts_the_prologue():
+    pool = trip.ROWS["pool-of-radiance"]
+    bare = trip.plan(0, (9, 14, 2))
+    with_prologue = trip.plan(0, (9, 14, 2), prologue=BOAT_EXIT)
+    _at, message = trip.layout(pool, len(trip._statements(pool, bare)))
+    assert trip.free_tail(pool, 26, {26: message}, bare) == 1
+    assert trip.free_tail(pool, 26, {26: message}, with_prologue) == 3
+
+
+def test_arm_writes_the_prologue_at_the_buffer_tail_and_disarm_puts_it_back():
+    key = "pool-of-radiance"
+    m = machine(key, area=26)
+    before = bytes(m.memory)
+    p = trip.plan(0, (9, 14, 2), prologue=BOAT_EXIT)
+    armed = trip.arm(m, key, p)
+    statements = trip._statements(trip.ROWS[key], p)
+    assert m.read(BUFFER + trip.BUFFER_SIZE - len(statements),
+                  len(statements)) == statements
+    assert statements.startswith(BOAT_EXIT)
+    assert trip.disarm(m, armed) is True
+    assert bytes(m.memory) == before
+
+
 # -- arming ------------------------------------------------------------------
 
 
@@ -646,8 +693,9 @@ def test_what_each_difference_holds():
         "return_landing"}
     assert held("pools-of-darkness", 0x15, 0x16) == set()
     assert "weak_gate" not in held("pool-of-radiance", 0, 14)
-    assert {"leave_grid", "onto_grid"} & held("pool-of-radiance", 26, 0) == {
-        "leave_grid"}
+    assert "leave_grid" not in {d.name for d in
+                                trip.ROWS["pool-of-radiance"].differences}
+    assert "onto_grid" not in held("pool-of-radiance", 26, 0)
     assert "onto_grid" not in held("pool-of-radiance", 0, 26)
 
 

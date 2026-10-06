@@ -195,15 +195,17 @@ class AmigaFastTravel(engine.FastTravel):
         lengths = self.lengths(row)
         # The destination decides whether a grid square or an area-file byte
         # is written, so the actual trip is sized, then planned with its tier.
+        prologue = trips.leave_grid_prologue(row, here, to)
         try:
-            tier = trips.free_tail(row, here, lengths,
-                                   trips.plan(to, arrival, overland))
+            tier = trips.free_tail(
+                row, here, lengths,
+                trips.plan(to, arrival, overland, prologue=prologue))
         except ValueError:
             # The title has no target for a field this trip writes.
             tier = 3
         if tier not in (1, 2):
             return engine.Outcome(False, self.not_built)
-        plan = trips.plan(to, arrival, overland, tier)
+        plan = trips.plan(to, arrival, overland, tier, prologue=prologue)
         try:
             armed = trips.arm(target, row, plan)
         except Exception:

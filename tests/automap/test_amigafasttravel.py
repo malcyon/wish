@@ -480,6 +480,7 @@ POOL_ENTRY = 0xA000
 #: What `entry_words` reads on the fixture: the entry, then four zero words.
 POOL_WORDS = POOL_ENTRY.to_bytes(2, "big") + bytes(8)
 DOOR_NAME = "Phlan"
+BOAT_EXIT = b"".join(trips.boat_exit_groups())
 
 
 @pytest.fixture
@@ -637,24 +638,42 @@ def test_the_second_hop_waits_until_the_step_entry_word_changes(
     assert t.back.area == 7                    # Return goes to where it began
 
 
-def test_a_second_leg_that_leaves_the_grid_is_held_before_the_first_hop(
-        disks, pool_gate, monkeypatch):
-    m = pool(13)
-    before = bytes(m.memory)
+def _second_hop(monkeypatch, start, through, to):
+    """A two-hop from `start` to `to`, taken to the point where the second
+    hop has armed its statements."""
+    m = pool(start)
     t = pool_travel(monkeypatch)
-    out = t.run(m, area(0, "New Phlan"))        # 13 -> 27 -> 0, off the grid
-    assert not out.ok and out.message == t.not_built
-    assert bytes(m.memory) == before and t.trip is None
+    t.run(m, area(to, "Far place", arrival=(9, 14, 2)), arrival=(9, 14, 2))
+    assert t.trip.hop.through == through
+    take_key(m)
+    t.continue_pending(m)
+    m.at(trips.ROWS[POOL].area, bytes([through]))
+    clear_buffer(m)
+    m.at(trips.ROWS[POOL].step_entry, (POOL_ENTRY + 2).to_bytes(2, "big"))
+    return t.continue_pending(m)
 
 
-def test_a_second_leg_is_judged_without_the_door_differences(
+def test_a_second_hop_off_a_grid_window_runs_the_prologue_first(
         disks, pool_gate, monkeypatch):
-    # The same trip, with leave_grid decided: 27's own doors do not hold the
-    # statements trip the second hop makes.
-    m = pool(13)
-    t = pool_travel(monkeypatch, offered=("leave_grid",))
-    out = t.run(m, area(0, "New Phlan"))
-    assert out.ok and t.trip.hop.through == 27
+    out = _second_hop(monkeypatch, 13, 27, 0)
+    assert out.ok
+    statements = next(d for _a, d in out.writes if BOAT_EXIT in d)
+    assert statements.startswith(BOAT_EXIT) and statements.endswith(
+        trips.newecl(0))
+
+
+def test_a_second_hop_that_stays_off_the_grid_has_no_prologue(
+        disks, pool_gate, monkeypatch):
+    out = _second_hop(monkeypatch, 7, 5, 9)
+    assert out.ok and BOAT_EXIT not in b"".join(d for _a, d in out.writes)
+
+
+def test_a_direct_trip_from_a_window_and_a_return_stay_held(
+        disks, pool_gate, monkeypatch):
+    t = pool_travel(monkeypatch)
+    assert t.legality(pool(26), area(0)).reason == t.not_built
+    t.back = engine.Waypoint(0, None, (1, 1, 0))
+    assert not t.legality(pool(26), area(0), back=True)
 
 
 def test_every_door_able_to_fight_makes_the_script_trip_the_menu_offered(

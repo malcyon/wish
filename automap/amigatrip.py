@@ -41,6 +41,7 @@ read as written and lie past the arriving area's script.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import pathlib
 import struct
@@ -330,10 +331,6 @@ ROWS: dict[str, TripRow] = {
         confirmed=True, door_confirmed=True,
         differences=(
             _return_landing(),
-            Difference("leave_grid",
-                       "decision 3: leaving the wilderness grid for a town",
-                       lambda here, to, back: here in _GRID_AREAS
-                       and to not in _GRID_AREAS),
             Difference("door_unplaced",
                        "F4-R3: the stand facing for Pool's entry 1 doors; F4-A: "
                        "a live run of each other door",
@@ -504,13 +501,27 @@ class Plan:
     overland: tuple[int, int] | None
     tier: int = 1
     area_file: int | None = None
+    prologue: bytes = b""
 
 
 def plan(area: int, square=None, overland=None, tier: int = 1,
-         area_file: int | None = None) -> Plan:
+         area_file: int | None = None, prologue: bytes = b"") -> Plan:
     return Plan(area, None if square is None else tuple(square),
                 None if overland is None else tuple(overland), tier,
-                area_file)
+                area_file, prologue)
+
+
+def leave_grid_prologue(row, here: int | None, to: int) -> bytes:
+    """The boat exit's five statement groups, run ahead of a trip that leaves
+    a wilderness grid window for a place off the grid.
+
+    Without them the frame keeps the wilderness picture around it. The
+    addresses are Pool of Radiance's, the only title with grid areas.
+    """
+    row = row_for(row)
+    if here in row.grid_areas and to not in row.grid_areas:
+        return b"".join(boat_exit_groups())
+    return b""
 
 
 #: The trip `free_tail` sizes when it is given no plan: x, y and facing.
@@ -519,8 +530,9 @@ _SMALLEST = Plan(0, (0, 0, 0), None)
 
 def _statements(row: TripRow, p: Plan) -> bytes:
     if p.tier == 1:
-        return encode(row, p.square, p.area, p.area_file, p.overland)
-    return newecl(p.area)
+        return p.prologue + encode(row, p.square, p.area, p.area_file,
+                                   p.overland)
+    return p.prologue + newecl(p.area)
 
 
 def layout(row, size: int) -> tuple[int, int | None]:
@@ -567,11 +579,11 @@ def free_tail(row, area: int | None, lengths: Mapping[int, int],
     if length is None:
         return 3
     trip = trip or _SMALLEST
-    full = Plan(trip.area, trip.square, trip.overland, 1, trip.area_file)
+    full = dataclasses.replace(trip, tier=1)
     if _lowest(row, len(_statements(row, full))) >= length:
         return 1
     if (row.direct_confirmed and _direct_spots(row, trip) is not None
-            and _lowest(row, len(newecl(trip.area))) >= length):
+            and _lowest(row, len(trip.prologue + newecl(trip.area))) >= length):
         return 2
     return 3
 
