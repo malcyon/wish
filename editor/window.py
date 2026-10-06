@@ -59,11 +59,12 @@ from goldbox.items import (
     load_item_types,
 )
 from goldbox.layout import FIELDS_BY_NAME, LOAD_ADDRESS
+from goldbox.record import FieldNotStored
 from goldbox.savegame import SaveGame0, SaveGame1, store_save, tail_damage
 from goldbox.spells import capacity_by_class, load_spell_names
 from goldbox.spells import for_game as spell_table
 
-from . import activeeffects, changes, files, inventory, saveplan
+from . import activeeffects, changes, files, inventory, podsheet, saveplan
 from . import effects as trait_effects
 from .binding import COMBAT_FIELDS, bindings, field_name, value_range, widest_text
 from .enums import caster_bits, tables_for
@@ -231,6 +232,10 @@ DAMAGE_SEPARATOR = " / "
 # are morale, halved, and for a player character bit 0 is the ability-altered
 # flag on the titles where it means anything -- never both at once
 # (docs/232-the-c64-control-byte-per-title.md).
+
+#: The largest value a `QSpinBox` holds, which a 32-bit field such as Pools of
+#: Darkness' experience is held to.
+SPIN_MAXIMUM = 0x7FFFFFFF
 
 #: Donald's own two labels for the Control dropdown.
 CONTROL_PLAYER = "Player-controlled"
@@ -1598,7 +1603,7 @@ class EditorBinding(QObject):
         altered = self._child("abilities_altered_combo")
         if morale is None or altered is None:
             return
-        stored = int(member.record.get("flags_0b8") or 0)
+        stored = self._control_byte(member.record)
         same = is_npc == bool(stored & 0x80)
 
         for w in (morale_label, morale):
@@ -1662,7 +1667,8 @@ class EditorBinding(QObject):
         have no rule, or a DOS or Amiga party holds a member the game has
         taken over by charm, whose place in the split cannot be stated."""
         party = self.party
-        if party is None or not party.is_save or not is_npc:
+        if (party is None or not party.is_save or not is_npc
+                or self._is_pod()):
             return None
         port = self._BACKSTAB_PORTS.get(party.port)
         if port is None:
@@ -1764,30 +1770,63 @@ class EditorBinding(QObject):
         if text not in (CONTROL_PLAYER, CONTROL_GAME):
             raise ValueError(f"unrecognized Control value {text!r}")
         record = member.record
-        stored = int(record.get("flags_0b8") or 0)
+        stored = self._control_byte(record)
         is_npc = text == CONTROL_GAME
         if is_npc == bool(stored & 0x80):
             if is_npc and morale.isEnabled():
                 byte = 0x80 | ((morale.value() // 2) & 0x7F)
                 if byte != stored:
-                    record.set("flags_0b8", byte)
+                    self._set_control_byte(record, byte)
             return
         # The control mode itself changed: the engine's own two writes
         # (docs/232) -- to game-controlled, `0x80 | (morale / 2)`; to
         # player-controlled, the whole byte zero, never the old
         # ability-altered bit.
         byte = (0x80 | ((morale.value() // 2) & 0x7F)) if is_npc else 0x00
-        record.set("flags_0b8", byte)
+        self._set_control_byte(record, byte)
+
+    @staticmethod
+    def _control_byte(record) -> int:
+        """The control byte: bit 7 says who drives the character, and for a
+        companion the low seven bits are morale halved.
+
+        `flags_0b8` on a C64 record; Pools of Darkness keeps it as the first
+        byte of its own `field_83_87` (docs/232).
+        """
+        if isinstance(record, podsheet.PodSheetRecord):
+            return record.get_raw("field_83_87")[0]
+        return int(record.get("flags_0b8") or 0)
+
+    @staticmethod
+    def _set_control_byte(record, byte: int) -> None:
+        """The inverse of `_control_byte`: only that byte moves."""
+        if isinstance(record, podsheet.PodSheetRecord):
+            raw = bytearray(record.get_raw("field_83_87"))
+            raw[0] = byte
+            record.set_raw("field_83_87", bytes(raw))
+        else:
+            record.set("flags_0b8", byte)
+
+    @staticmethod
+    def _spellbook_fields(record) -> tuple[str, ...]:
+        """The record fields the spellbook is read from: the mask's two
+        declared halves, or for Pools of Darkness its one byte an id."""
+        if isinstance(record, podsheet.PodSheetRecord):
+            return ("spells_known",)
+        return SPELLBOOK_FIELDS
 
     def _spellbook_raw(self, record) -> bytes:
         """The whole mask at 0x078, both declared fields of it."""
-        return b"".join(record.get_raw(f) for f in SPELLBOOK_FIELDS)
+        return b"".join(record.get_raw(f)
+                        for f in self._spellbook_fields(record))
 
     def _set_spellbook_raw(self, record, raw: bytes) -> None:
         """The inverse, writing back only the halves that actually moved."""
         at = 0
-        for name in SPELLBOOK_FIELDS:
-            size = FIELDS_BY_NAME[name].size
+        for name in self._spellbook_fields(record):
+            size = (len(record.get_raw(name))
+                    if isinstance(record, podsheet.PodSheetRecord)
+                    else FIELDS_BY_NAME[name].size)
             chunk = raw[at:at + size]
             if len(chunk) == size and chunk != record.get_raw(name):
                 record.set_raw(name, chunk)
@@ -1807,12 +1846,17 @@ class EditorBinding(QObject):
         this span with the wrong one is what zeroed a Curse cleric's second
         ability array (#553).
         """
+        if game is titles.POOLS_OF_DARKNESS:
+            return record.get_raw("spells_memorised")
         return c64_codec.get_memorised(record, game)
 
     def _set_memorised_raw(self, record, raw: bytes, game) -> None:
         """The inverse, over the same span, and only when it moved."""
-        if raw != c64_codec.get_memorised(record, game):
-            c64_codec.set_memorised(record, raw, game)
+        if raw != self._memorised_raw(record, game):
+            if game is titles.POOLS_OF_DARKNESS:
+                record.set_raw("spells_memorised", raw)
+            else:
+                c64_codec.set_memorised(record, raw, game)
 
     def _game(self):
         """The open title, or None before a save is open."""
@@ -1934,9 +1978,7 @@ class EditorBinding(QObject):
         if self._game_label is not None:
             self._game_label.setText(party.game.title if party.is_save else "")
         self.status(note if note is not None else
-                    f"{party.describe()}"
-                    + ("" if self.charset else
-                       "  -- no game disk, so no item names and no icons"))
+                    f"{party.describe()}{self._no_game_disk_suffix()}")
         self._retitle()
         self._refresh_save_menu()
         self._hide_destination_section()
@@ -2618,10 +2660,68 @@ class EditorBinding(QObject):
                 return True
         return False
 
+    def _is_pod(self) -> bool:
+        """Whether the open party is a Pools of Darkness save, which has no
+        C64 disks and is edited through `editor.podsheet.PodSheetRecord`."""
+        return (self.party is not None
+                and self.party.game is titles.POOLS_OF_DARKNESS)
+
+    def _no_game_disk_suffix(self) -> str:
+        """What the status line adds when the game files gave nothing.
+
+        A C64 title's answer is the icon charset. A Pools of Darkness save
+        has none, so the item and spell names stand in for it: found names
+        add nothing, and a folder with none keeps the line as it is.
+        """
+        found = self.item_names if self._is_pod() else self.charset
+        return "" if found else (
+            "  -- no game disk, so no item names and no icons")
+
+    def _load_pod_names(self) -> None:
+        """Item and spell names off the DOS game folder or Amiga disks.
+
+        The open save's own port is tried first and the other second, each
+        through `_port_names`, which knows the folders Preferences and the
+        save's own location supply.
+        """
+        def skip(where, game):
+            return {}
+
+        game = self.party.game
+        order = (("amiga", "dos") if self.party.port == "amiga"
+                 else ("dos", "amiga"))
+        for attr, read_names in (("item_names", port_item_names.item_names),
+                                 ("spell_names", port_spell_names.spell_names)):
+            for port in order:
+                def read(where, game, port=port, read_names=read_names):
+                    return read_names(game, port, where)
+
+                names = self._port_names(read if port == "dos" else skip,
+                                         read if port == "amiga" else skip,
+                                         game)
+                if names:
+                    setattr(self, attr, names)
+                    break
+
     def _load_game_disk(self) -> None:
         self._load_movement_items()
         self.charset, self.item_names, self.templates = b"", {}, {}
         self.spell_names, self.item_types = {}, {}
+        if self._is_pod():
+            # No C64 disk of this title exists, and another title's icon
+            # parts or charset would draw the wrong game: the icon box stays
+            # empty, as for a DOS save opened with no C64 disks.
+            self.icon_parts = None
+            self.icon_parts_disk = None
+            self.game_disk_found = None
+            self._load_pod_names()
+            self.traits.set_tables({}, self.spell_names, self._spell_table())
+            self.items.set_spells(self._spell_table())
+            for member in self.party.members:
+                if member.inventory is not None:
+                    member.inventory.names = self.item_names
+            self._apply_spell_table()
+            return
         self._load_icon_parts()
         found = self._find_game_disk()
         self.game_disk_found = found
@@ -2678,9 +2778,8 @@ class EditorBinding(QObject):
         self._load_game_disk()
         self._populate()
         if self.party is not None:
-            self.status(f"{self.party.describe()}"
-                        + ("" if self.charset else
-                           "  -- no game disk, so no item names and no icons"))
+            self.status(
+                f"{self.party.describe()}{self._no_game_disk_suffix()}")
 
     def _load_icon_parts(self) -> None:
         """The icon editor's option tables, from whichever disk carries them."""
@@ -3541,8 +3640,12 @@ class EditorBinding(QObject):
             if isinstance(w, QSpinBox):
                 if name in COMBAT_FIELDS and isinstance(value, int):
                     value = combat_value(value)
-                field = FIELDS_BY_NAME.get(name)
+                field = (record.sheet_field(name)
+                         if isinstance(record, podsheet.PodSheetRecord)
+                         and record.maps(name) else FIELDS_BY_NAME.get(name))
                 span = value_range(field) if field is not None else None
+                if span is not None:
+                    span = span[0], min(span[1], SPIN_MAXIMUM)
                 if isinstance(value, int) or span is None:
                     if span is not None:
                         w.setSpecialValueText("")
@@ -3578,7 +3681,15 @@ class EditorBinding(QObject):
                 elif isinstance(w, MemorisedEditor):
                     w.set_bytes(self._memorised_raw(record, member.game))
                 else:
-                    w.set_bytes(record.get_raw(name))
+                    try:
+                        raw = record.get_raw(name)
+                    except FieldNotStored as exc:
+                        # A block this title's record has no bytes for, such
+                        # as Pools of Darkness' trait slots: empty, and
+                        # greyed by `_apply_read_only`.
+                        _log.debug("no %s on this record: %s", name, exc)
+                        raw = b""
+                    w.set_bytes(raw)
                 if hasattr(w, "codes"):
                     _fit_height(w, fixed=True)
         self._show_boxes(record)
@@ -3670,6 +3781,14 @@ class EditorBinding(QObject):
         if book is not None:
             memorised.set_known(book.known())
         game = self.party.game if self.party is not None else None
+        if isinstance(record, podsheet.PodSheetRecord):
+            # The record's own slot bytes: a dual-classed character keeps the
+            # slots of the class he left, which the levels alone do not give.
+            slots = record.spell_slots()
+            memorised.set_capacity(
+                slots if any(any(row) for row in slots.values()) else {},
+                casts=bool(record.class_bits & caster_bits(game)))
+            return
         # `record` is the raw C64 `CharacterRecord` (`goldbox/record.py`), which
         # has no neutral `"levels"` field -- so build the same class-name ->
         # level dict `c64_codec.read()` builds for the neutral record
@@ -3762,7 +3881,14 @@ class EditorBinding(QObject):
             return
         try:
             port = self._BACKSTAB_PORTS[self.party.port]
-            char = c64_codec.read(member.record, game=self.party.game)
+            if self._is_pod():
+                # Read off the sheet's own record as it stands, so an edited
+                # level shows; the DOS reader already gives the former-class
+                # levels the rule wants.
+                char = dos_codec.to_neutral(dos_codec.DosCharacter(
+                    member.record.to_bytes(), deltas=podsheet.DELTAS))
+            else:
+                char = c64_codec.read(member.record, game=self.party.game)
             if port != "C64":
                 # `member.record` is a C64-style copy on every port, so a
                 # dual-classed character whose new class has passed the

@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from goldbox import classcode
 from goldbox.c64_port import C64Container
-from goldbox.titles import class_table, race_table
+from goldbox.titles import POOLS_OF_DARKNESS, class_table, race_table
 from goldbox.yaml_io import ALIGNMENTS, SEXES
 
 
@@ -113,6 +113,13 @@ def class_bit_names(game: C64Container | None = None) -> dict[int, str]:
             name = _full_name_for_bits(bits, table)
             if name is not None:
                 out[bits] = name
+    if getattr(game, "key", None) == POOLS_OF_DARKNESS.key:
+        # A human who left the ranger for magic-user. The mask is the two
+        # bits, and the title's own class names say what each is.
+        bit_of = {name: bit for bit, name in table}
+        if "ranger" in bit_of and "magic-user" in bit_of:
+            both = bit_of["ranger"] | bit_of["magic-user"]
+            out.setdefault(both, _full_name_for_bits(both, table))
     return out
 
 

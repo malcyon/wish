@@ -5631,9 +5631,12 @@ def test_a_path_is_taken_for_a_save_by_its_name_or_for_being_a_folder(tmp_path):
         assert not Source.looks_like_a_save(tmp_path / named), named
 
 
-def test_pools_of_darkness_cannot_be_opened_and_the_rejection_is_catchable(tmp_path):
+def test_pools_of_darkness_cannot_be_opened_and_the_rejection_is_catchable(
+        tmp_path, monkeypatch):
     """No C64 port, so no sheet layout to edit its characters through."""
+    from editor.convert import POD_CONVERT_ENV
     from goldbox import dos_codec, dos_port
+    monkeypatch.delenv(POD_CONVERT_ENV, raising=False)
     (tmp_path / "CHRDATA1.SAV").write_bytes(
         bytes(dos_port.POOLS_OF_DARKNESS.record_size))
     (tmp_path / "SAVGAMA.PTY").write_bytes(b"")
@@ -5645,8 +5648,9 @@ def test_pools_of_darkness_cannot_be_opened_and_the_rejection_is_catchable(tmp_p
 def test_opening_a_pools_of_darkness_folder_shows_the_convert_sentence(
         app, tmp_path, monkeypatch):
     import editor.window as ew
-    from editor.convert import POOLS_OF_DARKNESS_UNSUPPORTED
+    from editor.convert import POD_CONVERT_ENV, POOLS_OF_DARKNESS_UNSUPPORTED
     from goldbox import dos_port
+    monkeypatch.delenv(POD_CONVERT_ENV, raising=False)
     (tmp_path / "CHRDATA1.SAV").write_bytes(
         bytes(dos_port.POOLS_OF_DARKNESS.record_size))
     (tmp_path / "SAVGAMA.PTY").write_bytes(b"")

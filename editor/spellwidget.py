@@ -249,8 +249,15 @@ class SpellbookEditor(SpellEditor):
 
         A short `raw` is not an error -- a Pool of Radiance record hands over
         seven -- so the ids read are the ones the bytes actually cover.
+
+        A title that keeps one byte an id (`SpellTable.spellbook_ids`) hands
+        over that run instead, and any non-zero byte is a known spell.
         """
         self._raw = bytes(raw)
+        if self._table.spellbook_ids:
+            self.set_ids(i for i in range(1, len(self._raw) + 1)
+                         if self._table.in_spellbook(i) and self._raw[i - 1])
+            return
         self.set_ids(i for i in range(1, len(self._raw) * 8)
                      if self._table.in_spellbook(i)
                      and self._raw[i >> 3] & (1 << (i & 7)))
@@ -263,8 +270,21 @@ class SpellbookEditor(SpellEditor):
         it opened must not touch a bit it does not understand. That is what
         keeps a Curse book -- thirteen bytes read, sixteen handed over --
         from clearing whatever the last three hold.
+
+        With one byte an id, a spell that stays ticked keeps its byte (the
+        one measured 8 stays 8), a newly ticked one gets 1 and an unticked
+        one 0.
         """
         out = bytearray(self._raw)
+        if self._table.spellbook_ids:
+            for sid, row in self._rows.items():
+                if sid > len(out):
+                    continue
+                if row.checkState() == Qt.CheckState.Checked:
+                    out[sid - 1] = out[sid - 1] or 1
+                else:
+                    out[sid - 1] = 0
+            return bytes(out)
         for sid, row in self._rows.items():
             bit = 1 << (sid & 7)
             if row.checkState() == Qt.CheckState.Checked:
