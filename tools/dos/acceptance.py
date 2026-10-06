@@ -4204,7 +4204,15 @@ class Driver:
                 raise self.fail(label, "the map bar did not return "
                                 "after turning (combat or an unknown screen)")
             _, square = record(label)
-            if square is None:
+            if origin is None:
+                # A line square cannot be compared with a memory origin.
+                if square is not None:
+                    screens[-1]["place"] = self.party_place(label)
+                if self.hidden_turn(label, origin_place, screens):
+                    raise self.fail("walk-status", "memory did not read after "
+                                    "the turn, so it was not shown to leave "
+                                    "the square")
+            elif square is None:
                 hidden = self.hidden_turn(label, origin_place, screens) or hidden
             elif square != origin:
                 raise self.fail(label, "the square changed on a turn")

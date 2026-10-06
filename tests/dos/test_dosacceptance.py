@@ -11955,3 +11955,52 @@ def test_pool_walk_reads_memory_once_at_the_origin_and_once_per_hidden_screen(tm
     hidden = sum(s["square"] is None for s in got["screens"])
     assert hidden >= 2
     assert game.halts == 1 + hidden
+
+
+def test_pool_walk_mi_with_a_hidden_origin_compares_each_turn_with_memory(tmp_path):
+    game, d = _memory_walker(tmp_path)
+    game.hide_square = True
+    _hide_on_turns(game, d, shown_on=(1,))
+    got = d.walk("MI")
+    assert d.game.keys == ["Right", "Right", "Up"]
+    assert [s["square"] is None for s in got["screens"][:3]] == [True, False, True]
+    assert (got["place_before"]["x"], got["place_after"]["x"]) == (0, 1)
+
+
+def test_pool_walk_mi_with_a_hidden_origin_fails_blocked_when_the_step_is_blocked(tmp_path):
+    game, d = _memory_walker(tmp_path)
+    game.hide_square = True
+    d.game.blocked = True
+    _hide_on_turns(game, d, shown_on=(1,))
+    with pytest.raises(da.StepFailed, match="walk-blocked"):
+        d.walk("MI")
+
+
+def test_pool_walk_mi_with_a_hidden_origin_fails_when_a_turn_moved_the_party(tmp_path):
+    game, d = _memory_walker(tmp_path)
+    game.hide_square = True
+    _hide_on_turns(game, d, shown_on=(1,))
+    turn = d.game.turn_right
+
+    def moving():
+        game.x += 1
+        return turn()
+
+    d.game.turn_right = moving
+    with pytest.raises(da.StepFailed, match="memory reads 1,5, it was 0,5"):
+        d.walk("MI")
+
+
+def test_pool_walk_i_with_a_hidden_origin_compares_a_shown_step_with_memory(tmp_path):
+    game, d = _memory_walker(tmp_path)
+    game.hide_square = True
+    step = d.game.step
+
+    def shown_step():
+        game.hide_square = False
+        return step()
+
+    d.game.step = shown_step
+    got = d.walk("I")
+    assert got["square_before"] is None and got["square_after"] is not None
+    assert (got["place_before"]["x"], got["place_after"]["x"]) == (0, 1)
