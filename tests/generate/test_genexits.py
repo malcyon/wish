@@ -185,6 +185,10 @@ def test_yarashs_pyramid_exits_stand_on_the_squares_their_tables_name():
     assert {("ECL19", 19), ("ECL19", 28), ("ECL1A", 0), ("ECL1B", 0)} <= sites
 
 
+SCRATCH_ROUTES = {(0, 8), (0, 11), (0, 21), (0, 26), (0, 27), (1, 25),
+                  (21, 0), (28, 25)}
+
+
 @needs_disks
 def test_the_routes_that_check_a_scratch_byte_are_the_pinned_ones():
     """A route that tests `$4A00`-`$4A1F` can `EXIT` silently, because a
@@ -208,8 +212,13 @@ def test_the_routes_that_check_a_scratch_byte_are_the_pinned_ones():
             key = (from_area, r["target"])
             if key in rows and "scratch" in r["features"]:
                 scratch.add(key)
-    assert scratch == {(0, 8), (0, 11), (0, 21), (0, 26), (0, 27), (1, 25),
-                       (21, 0), (28, 25)}
+    assert scratch == SCRATCH_ROUTES
+
+
+def test_no_departure_row_walks_a_route_that_checks_a_scratch_byte():
+    """The static half, which needs no disks: the pinned routes above are
+    compared with the rows as committed."""
     walked = {(area, row.route_to) for row in departures.DEPARTURES
               if row.route_to is not None for area in row.areas}
-    assert not walked & scratch
+    assert walked
+    assert not walked & SCRATCH_ROUTES

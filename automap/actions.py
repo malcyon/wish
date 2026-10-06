@@ -1948,9 +1948,14 @@ class FastTravel(Action):
                     return Outcome(False, FASTTRAVEL_FAILED, ())
                 if not holds:
                     row = None
-        if (row is not None and row.route_to is not None
-                and addr.has_exit_reentry and not on_grid
-                and can_reenter(target)):
+        if row is not None and row.route_to is not None:
+            if not (addr.has_exit_reentry and not on_grid
+                    and can_reenter(target)):
+                # The departure only runs by walking out, and a jump would
+                # skip it: nothing is started rather than dropping it.
+                _log.debug("fast travel blocked: area %d's departure needs "
+                           "its exit walked and this machine cannot", here)
+                return Outcome(False, FASTTRAVEL_FAILED, ())
             route = fasttravel.EXIT_ROUTES[(here, row.route_to)]
             if to == row.route_to:
                 return self._run_via_exit(target, addr, area, here, to, route)

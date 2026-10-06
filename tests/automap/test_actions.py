@@ -1208,7 +1208,8 @@ def test_fasttravel_falls_back_to_the_tail_jump_when_the_backend_cannot_reenter(
     """A backend that offers `set_pc` but neither `reenter` nor `_mon` -- a
     Commodore 64 Ultimate, whose REST API reads memory but not registers
     (`#375`), or a test double with no more than `jump` already needed --
-    still gets a fast travel, the same way `#421`'s optional capabilities
+    still gets a fast travel where no departure has to be walked (here a
+    party without Princess Fatima), the same way `#421`'s optional capabilities
     fall back to what every caller did before them, rather than being told a
     trip failed that was never attempted."""
     addr = fasttravel.POOL_OF_RADIANCE
@@ -1222,7 +1223,7 @@ def test_fasttravel_falls_back_to_the_tail_jump_when_the_backend_cannot_reenter(
             self.jumps.append(address)
 
     target = NoReentryTarget({
-        **fatima_party(),
+        **fatima_party("BRUTUS", "MAGNUS"),
         c64.MODE_FLAG_POOL: bytes([WORLD]),
         addr.slot: bytes([13]),
         addr.disk: bytes([3]),
@@ -1388,7 +1389,7 @@ def test_a_backend_that_cannot_reenter_never_starts_a_two_hop():
         reenter = None
 
     target = NoReentryTarget({
-        **fatima_party(),
+        **fatima_party("BRUTUS", "MAGNUS"),
         c64.MODE_FLAG_POOL: bytes([WORLD]), addr.slot: bytes([13]),
         addr.disk: bytes([3]), addr.indoors: bytes([1]),
         addr.saved_sp: bytes([0xF0])})
@@ -1917,3 +1918,32 @@ def test_a_silver_blades_area_16_is_not_pool_of_radiances_lizardman_keep():
     assert target.reenters == []
     assert target.jumps == [addr.tail]
     assert ft.pending is None
+
+
+@pytest.mark.parametrize("area", [13, 16])
+def test_a_departure_whose_route_cannot_be_walked_starts_no_trip(area):
+    """On the travel grid, or on a backend that cannot re-enter `DUNGEON`,
+    the row's exit cannot be walked and a jump would skip the departure. So
+    the trip fails and writes nothing: Princess Fatima stays in the party
+    because no trip happened, not because it was made without her leaving."""
+    to = 0
+
+    class NoReentryTarget(TwoHopTarget):
+        reenter = None
+
+    grid = two_hop_machine(area, indoors=0)
+    no_reentry = NoReentryTarget(two_hop_machine(area).memory)
+    assert not actions.can_reenter(no_reentry)
+    for target in (grid, no_reentry):
+        before = dict(target.memory)
+        ft = actions.FastTravel()
+        outcome = ft.run(target, area=actions.area_by_id(to))
+        assert not outcome.ok
+        assert outcome.message == actions.FASTTRAVEL_FAILED
+        assert outcome.writes == ()
+        assert target.memory == before
+        assert target.reenters == [] and target.jumps == []
+        assert ft.pending is None
+        if area == 13:
+            assert "PRINCESS FATIMA" in [
+                m.name for m in actions.read_party(target)]
