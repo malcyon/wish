@@ -160,8 +160,10 @@ PUBLISHED_SOURCES_BY_ISSUE = {
     "666": {
         ("curse", "c64"): frozenset({"9facc90c1f7cefdb909368b6db5b8135960631244ac259d21fab65d681352041"}),
     },
-    # The Silver Blades C64 hold resave whose sixth member, MORGAINE, is feebleminded, and the
-    # game-written Curse C64 save of Feeblemind cast on its first member, MATHEW.
+    # The game-written Silver Blades C64 hold resave whose sixth member, MORGAINE, is
+    # feebleminded; the game-written Curse C64 save of Feeblemind cast on its first member,
+    # MATHEW; and the Wish-staged, edited Curse C64 copy with six running-spell rows
+    # (`WISH_STAGED_SOURCES`).
     "661": {
         ("ssb", "c64"): frozenset({"1e5a51d1d630b518306ae9772b85de61715384ac674077fafb79f54c613e1e16"}),
         ("curse", "c64"): frozenset({
@@ -191,6 +193,11 @@ PUBLISHED_SOURCES_BY_ISSUE = {
         ("ssb", "dos"): frozenset({"b3515793dada24b6a85061f5c2fdc5555a45df40381ee0009e9fd54ba381fb72"}),
     },
 }
+
+
+#: Pinned sources that Wish edited rather than the game wrote; a run from one says so in its
+#: preserved specimen.
+WISH_STAGED_SOURCES = frozenset({"f156738583fd49be75b7d481b47080e6708dbc83a7cdfe8bf3533c6fa8806696"})
 
 
 def _source_pins(issue: str, name: str, port: str) -> frozenset:
@@ -1139,15 +1146,22 @@ def _register_fetched(specimen_name: str, full_title: str, issue: str, what: str
 
 def _preserve_published(manifest_path: pathlib.Path, attempt: str, name: str,
                         fetched: pathlib.Path, issue: str = PUBLISHED_ISSUE,
-                        staged: dict[str, Any] | None = None) -> dict[str, str]:
+                        staged: dict[str, Any] | None = None,
+                        source_sha256: str | None = None) -> dict[str, str]:
     """Register a successful game's fetched DF0 before its lane is released.
 
     `staged` is the manifest's `staged_place`; the provenance then says Wish changed the
-    loaded slot's square before the game loaded it.
+    loaded slot's square before the game loaded it. A `source_sha256` in
+    `WISH_STAGED_SOURCES` makes it say the source was edited by Wish, not game-written.
     """
     run_id = manifest_path.parent.name
-    what = (f"Run {run_id!r}, attempt {attempt!r}: loaded the published disk-one "
-            "party, walked and saved slots C and F in game")
+    if source_sha256 in WISH_STAGED_SOURCES:
+        what = (f"Run {run_id!r}, attempt {attempt!r}: loaded the party of the Wish-staged "
+                f"C64 source (SHA-256 {source_sha256}), an edited copy of a published save "
+                "that the game did not write, and the game walked and saved slots C and F")
+    else:
+        what = (f"Run {run_id!r}, attempt {attempt!r}: loaded the published disk-one "
+                "party, walked and saved slots C and F in game")
     if staged is not None:
         what += (f". Before the run Wish staged the loaded slot {staged['slot']} with "
                  f"`prepare --stage-place`: the party's x,y,facing went from "
@@ -2302,7 +2316,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     result["specimen"] = (
                         _preserve_published(manifest_path, attempt, published_name, fetched,
                                             manifest.get("issue", PUBLISHED_ISSUE),
-                                            manifest.get("staged_place"))
+                                            manifest.get("staged_place"),
+                                            manifest.get("source_sha256"))
                         if published_disk_one else _preserve_published_disk_three(
                             manifest_path, manifest, attempt, title, specimen_issue, fetched)
                         if manifest.get("mode") == PUBLISHED_DISK_THREE_MODE else

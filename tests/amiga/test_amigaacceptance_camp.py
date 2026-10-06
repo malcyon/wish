@@ -1148,15 +1148,31 @@ STAGED_661_CURSE = ("coab-c64/WISH-SPEC-curse-661-la-staged-six-rows.d64",
                     "f156738583fd49be75b7d481b47080e6708dbc83a7cdfe8bf3533c6fa8806696")
 
 
-def test_661_pins_the_two_feeblemind_saves_and_names_its_issue():
+def test_661_pins_both_feeblemind_saves_and_the_staged_curse_source_and_names_its_issue():
     assert foundation.PUBLISHED_SOURCES_BY_ISSUE["661"] == {
         ("ssb", "c64"): frozenset({FEEBLEMIND_661["ssb"][1]}),
         ("curse", "c64"): frozenset({FEEBLEMIND_661["curse"][1], STAGED_661_CURSE[1]})}
     assert foundation.PUBLISHED_ISSUE_TEXT["661"].startswith("WISH-7 (A C64 party under a running spell")
 
 
-def test_661_pins_the_staged_curse_batch_source():
-    assert STAGED_661_CURSE[1] in foundation.PUBLISHED_SOURCES_BY_ISSUE["661"][("curse", "c64")]
+def _provenance_of(tmp_path, monkeypatch, source_sha256):
+    seen = []
+    monkeypatch.setattr(foundation, "_register_fetched", lambda *args: seen.append(args[3]) or {})
+    run = tmp_path / "run1" / "prepare.json"
+    foundation._preserve_published(run, "accept1", "curse", tmp_path / "f.adf", "661", None,
+                                   source_sha256)
+    return seen[0]
+
+
+def test_the_preserved_specimen_of_a_staged_source_says_it_was_edited(tmp_path, monkeypatch):
+    text = _provenance_of(tmp_path, monkeypatch, STAGED_661_CURSE[1])
+    assert STAGED_661_CURSE[1] in text and "Wish-staged" in text and "edited" in text
+
+
+def test_the_preserved_specimen_of_a_game_written_source_keeps_the_published_text(
+        tmp_path, monkeypatch):
+    text = _provenance_of(tmp_path, monkeypatch, FEEBLEMIND_661["curse"][1])
+    assert "loaded the published disk-one party" in text and "edited" not in text
 
 
 def test_the_pinned_staged_curse_source_is_the_specimen_on_disk():
