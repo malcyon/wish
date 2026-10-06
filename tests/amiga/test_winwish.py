@@ -1127,7 +1127,8 @@ def test_click_by_automation_id_matches_the_id_or_a_dotted_suffix_and_not_the_na
     inner = winwish.ui_inner(r"C:\b", "click", ("card_2_level_up",), "Button", r"C:\o.txt",
                              automation_id="card_2_level_up")
     assert "$names = @('card_2_level_up')" in inner
-    assert "$_.Current.AutomationId -eq $name -or $_.Current.AutomationId.EndsWith('.' + $name)" in inner
+    assert ("$_.Current.AutomationId -eq $name -or "
+            "$_.Current.AutomationId.EndsWith('.' + $name, [StringComparison]::OrdinalIgnoreCase)") in inner
     assert "$_.Current.Name -eq $name" not in inner
     assert "no control with automation id $name" in inner
     # the one-match, enabled and wait rules are the name path's own
@@ -1583,3 +1584,23 @@ def test_the_restore_gives_the_journalled_depth_and_rate_to_the_mode_change_and_
     assert "[WishDisp]::SetMode($w, $h, $bits, $hz)" in script
     assert "public static int SetMode(int w, int h, int bits, int hz)" in script
     assert "$after.mode.bits -ne $orig.mode.bits" in script and "$after.mode.hz -ne $orig.mode.hz" in script
+
+
+def test_click_blocks_an_automation_id_with_prefix():
+    run = FakeRun()
+    assert winwish.main(["click", "--holder", "h", "--automation-id", "a", "--prefix"],
+                        winwish.Guest(run)) == 1
+    assert run.calls == []
+    with pytest.raises(winwish.WinwishError, match="--prefix .* --automation-id"):
+        winwish.ui(winwish.Guest(run), "h", "click", automation_id="a", prefix=True)
+
+
+def test_a_failed_window_close_is_logged_before_the_stop_is_forced(capsys):
+    run = _close_run(_ui_reply("fail wish.exe still running 10s after its window was closed"))
+    winwish.stop_wish(winwish.Guest(run), "h")
+    assert "still running 10s after its window was closed" in capsys.readouterr().err
+
+
+def test_an_automation_id_suffix_match_ignores_case():
+    inner = winwish.ui_inner(r"C:\b", "click", ("id",), None, r"C:\o.txt", automation_id="id")
+    assert "EndsWith('.' + $name, [StringComparison]::OrdinalIgnoreCase)" in inner

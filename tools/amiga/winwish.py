@@ -691,7 +691,7 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
         "      $expired = $false",
         "      while ($true) {",
         *(["        $all = @(Get-Controls | Where-Object { $_.Current.AutomationId -ne '' -and ($kind -eq '' -or (Get-Kind $_) -eq $kind) })",
-           "        $hit = @($all | Where-Object { $_.Current.AutomationId -eq $name -or $_.Current.AutomationId.EndsWith('.' + $name) })"]
+           "        $hit = @($all | Where-Object { $_.Current.AutomationId -eq $name -or $_.Current.AutomationId.EndsWith('.' + $name, [StringComparison]::OrdinalIgnoreCase) })"]
           if by_id else
           ["        $all = @(Get-Controls | Where-Object { $_.Current.Name -ne '' -and ($kind -eq '' -or (Get-Kind $_) -eq $kind) })",
            "        $hit = @($all | Where-Object { $_.Current.Name -eq $name })"]),
@@ -823,6 +823,8 @@ def ui(guest: "Guest", holder: str, action: str, names: tuple[str, ...] = (),
     if automation_id is not None:
         if names:
             raise WinwishError("give an automation id or names, not both")
+        if prefix:
+            raise WinwishError("--prefix matches names, so it cannot be used with --automation-id")
         names = (automation_id,)
     if len(names) > UI_MAX_NAMES:
         raise WinwishError(f"click at most {UI_MAX_NAMES} names at once, not {len(names)}")
@@ -1397,8 +1399,9 @@ def stop_wish(guest: Guest, holder: str) -> str:
     guest.holds_lane(holder)
     try:
         closed = ui(guest, holder, "close")[-1:] in (["closed"], ["gone"])
-    except WinwishError:
+    except WinwishError as exc:
         closed = False
+        print(f"winwish: closing Wish's window failed, forcing the stop: {exc}", file=sys.stderr)
     guest.ps(stop_script(holder))
     return "ok closed" if closed else "ok stopped (forced)"
 
