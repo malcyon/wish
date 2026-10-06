@@ -384,6 +384,14 @@ def test_the_tab_in_view_and_the_poll_interval_are_recorded(live, logs):
     assert "tab: Character Editor, polling every" in text
 
 
+def test_the_font_and_dpi_qt_uses_are_recorded(live, logs):
+    live.debug_action.setChecked(True)
+    text = only_log(logs).read_text()
+    font = live.font()
+    assert f"Font: {font.family()} {font.pointSizeF():.1f} pt, logical DPI " in text
+    assert "device pixel ratio" in text
+
+
 def test_which_backend_attached_is_recorded(live, logs):
     live.debug_action.setChecked(True)
     live.session.attach()

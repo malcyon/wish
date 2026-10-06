@@ -660,6 +660,14 @@ class WishWindow(QMainWindow):
         """What was already true when the log was turned on."""
         debuglog.note("tab: %s", self.tabs.tabText(self.tabs.currentIndex()))
         debuglog.note("%s", debugmode.note())
+        # The font and scale Qt settled on, not the ones asked for: a
+        # screenshot taken on another desktop is only comparable with them.
+        font = self.font()
+        screen = self.screen()
+        debuglog.note("Font: %s %.1f pt, logical DPI %.1f, device pixel ratio %.2f",
+                      font.family(), font.pointSizeF(),
+                      screen.logicalDotsPerInch() if screen else 0.0,
+                      screen.devicePixelRatio() if screen else 0.0)
         debuglog.note("session: %s, polling every %d ms",
                       self.session.note, self.session.interval_ms)
         self._log_save()
