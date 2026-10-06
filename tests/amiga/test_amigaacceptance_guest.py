@@ -175,3 +175,16 @@ def test_wait_lane_is_passed_to_the_claim_only_when_asked_for():
 def test_wait_lane_with_fsuae_is_stopped_before_any_claim(tmp_path, recorded):
     assert _measure(tmp_path, "--emulator", "fsuae", "--wait-lane", "60") == 2
     assert recorded == {}
+
+
+def test_a_lane_granted_after_a_long_wait_still_gives_the_route_its_full_time(tmp_path, clock):
+    class SlowClaim(measure.ScreenGuest):
+        def claim(self, holder, timeout=None, wait=0.0):
+            self.claim_timeout = timeout
+            clock.now += wait
+            return super().claim(holder)
+
+    guest = SlowClaim(clock)
+    result = measure._measure(tmp_path, guest, deadline_seconds=1800, wait_lane=1700)
+    assert result["error"] == "" and result["success"] is True
+    assert guest.claim_timeout == 30

@@ -496,9 +496,14 @@ def _run_diagnose(manifest_path: pathlib.Path, manifest: dict, title: AmigaTitle
         return min(seconds, left)
 
     try:
-        receipt = guest.claim(holder, timeout=limit(30), **_wait_option(wait_lane))
+        receipt = guest.claim(holder, timeout=30 if wait_lane > 0 else limit(30),
+                              **_wait_option(wait_lane))
         if receipt != f"ok claimed by {holder}":
             raise RouteError(f"claim was not new: {receipt!r}")
+        if wait_lane > 0:
+            # The wait for a lane is not part of the run: the deadline starts at the grant.
+            begun = time.monotonic()
+            end = begun + deadline
         claimed = True
         result["claim"] = receipt
         for key, path in disks.items():
@@ -2113,9 +2118,15 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 log("draw", **record)
 
     try:
-        receipt = guest.claim(holder, timeout=route_limit(30), **_wait_option(wait_lane))
+        receipt = guest.claim(holder, timeout=30 if wait_lane > 0 else route_limit(30),
+                              **_wait_option(wait_lane))
         if receipt != f"ok claimed by {holder}":
             raise RouteError(f"claim was not new: {receipt!r}; already yours is not a lane grant")
+        if wait_lane > 0:
+            # The wait for a lane is not part of the run: the deadline starts at the grant.
+            begun = time.monotonic()
+            route_end = begun + deadline_seconds - cleanup_window
+            total_end = begun + deadline_seconds
         result["claim"] = receipt
         log("claim", receipt=receipt)
         claimed = True
@@ -3423,7 +3434,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--published-disk-one", action="store_true")
         p.add_argument("--wait-lane", type=float, default=0, metavar="SECONDS",
                        help="winuae only: keep asking for a lane for this long while every lane is "
-                            "held; the wait comes out of --deadline (default 0, fail at once)")
+                            "held, before --deadline starts counting (default 0, fail at once)")
 
     p = sub.add_parser("prepare", help="copy the registered images and the specimen into a run folder")
     p.add_argument("--title", required=True, choices=choices)

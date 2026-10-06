@@ -284,3 +284,18 @@ def test_claim_without_wait_does_not_poll(monkeypatch):
     with pytest.raises(winuaesession.RouteError, match="one Amiga lane at a time"):
         winuaesession.WinGuest().claim("h", 5)
     assert len(sent) == 1 and sleeps == []
+
+
+def test_an_interrupt_during_a_waiting_claim_releases_the_holder(monkeypatch):
+    sent = []
+
+    def run(*a, timeout):
+        sent.append(a)
+        if "release" in a[1]:
+            raise winuaesession.RouteError("release failed")
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(winuaesession.WinGuest, "_run", staticmethod(run))
+    with pytest.raises(KeyboardInterrupt):
+        winuaesession.WinGuest().claim("h", 5, wait=120)
+    assert len(sent) == 2 and "release -Holder h" in sent[1][1]

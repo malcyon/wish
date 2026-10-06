@@ -32,7 +32,7 @@ EXCLUSIVE_WAITING = "fail an exclusive claim"
 # What an ordinary `claim` prints when it cannot have a lane yet: every lane held, or an
 # exclusive reservation waiting. Anything else it prints is a real failure.
 LANE_BUSY = ("one Amiga lane at a time", "every Amiga lane is in use",
-             "reserved for an exclusive claim", EXCLUSIVE_WAITING)
+             "reserved for an exclusive claim")
 SSH_FAILED = "winvm ssh failed: "
 HOLDER = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
@@ -143,6 +143,11 @@ class WinGuest:
                 last = str(exc)
                 if not any(busy in last for busy in LANE_BUSY):
                     raise
+            except BaseException:
+                # An interrupt mid-call may land after the guest granted the lane.
+                with contextlib.suppress(Exception):
+                    self.release(holder, timeout)
+                raise
             if time.monotonic() >= deadline:
                 raise RouteError(f"no lane within {wait:.0f}s: {last}")
             time.sleep(CLAIM_POLL_SECONDS)
