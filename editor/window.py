@@ -881,6 +881,7 @@ class EditorBinding(QObject):
                  game_folders: dict[str, str] | None = None):
         super().__init__(root)
         self.root = root
+        self._save_menu_pending = False
         self.party: Party | None = None
         self.path: pathlib.Path | None = None
         self.game_disk = game_disk
@@ -1086,9 +1087,15 @@ class EditorBinding(QObject):
         menu's own loop, and a UI Automation `Invoke` on the File entry would
         stay pending until the menu closed."""
         from PyQt6.QtCore import QTimer
+        if self._save_menu_pending:
+            return
+        self._save_menu_pending = True
         QTimer.singleShot(0, self._pop_save_menu)
 
     def _pop_save_menu(self) -> None:
+        # A second press queued behind a pending pop would re-enter showMenu()
+        # from inside the first one's loop.
+        self._save_menu_pending = False
         button = self._child("button_save")
         if button is not None and button.isEnabled():
             button.showMenu()

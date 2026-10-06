@@ -142,3 +142,21 @@ def test_save_as_reports_the_failure_when_the_open_save_cannot_be_read(
         lambda *a: shown.append(a))
     win.editor.begin_save_as("dos")
     assert shown == [(win.editor.root, CANNOT_SAVE_TITLE, SAVE_AS_FAILED)]
+
+
+def test_two_save_as_presses_before_the_loop_turns_pop_the_menu_once(
+        app, tmp_path, monkeypatch):
+    from gamedata import synthetic_save
+
+    win = window(app, str(synthetic_save(tmp_path)))
+    button = win.editor._child("button_save")
+    shown = []
+    monkeypatch.setattr(button, "showMenu", lambda: shown.append(True))
+    win.editor.open_save_as_menu()
+    win.editor.open_save_as_menu()
+    app.processEvents()
+    assert shown == [True]
+    win.editor.open_save_as_menu()
+    app.processEvents()
+    assert shown == [True, True]
+
