@@ -2708,6 +2708,23 @@ def test_pool_turn_fails_when_memory_shows_a_hidden_turn_moved_the_party(tmp_pat
         d.turn(2)
 
 
+def test_pool_walk_i_takes_its_origin_from_memory_when_the_line_hides_x_y(tmp_path):
+    game, d = _memory_walker(tmp_path)
+    game.hide_square = True
+    got = d.walk("I")
+    assert d.game.keys == ["Up"]
+    assert got["square_before"] is None
+    assert (got["place_before"]["x"], got["place_after"]["x"]) == (0, 1)
+
+
+def test_pool_walk_i_with_a_hidden_origin_fails_when_memory_does_not_read(tmp_path):
+    game, d = _memory_walker(tmp_path)
+    game.hide_square = True
+    game.attach = lambda: False
+    with pytest.raises(da.StepFailed, match="no starting square"):
+        d.walk("I")
+
+
 def test_pool_walk_falls_back_to_the_line_when_memory_does_not_read(tmp_path):
     game, d = _memory_walker(tmp_path)
     notes = []

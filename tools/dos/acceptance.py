@@ -4191,11 +4191,12 @@ class Driver:
             return self.map_status(label, screens)
 
         before, origin = record("walk-before")
-        if origin is None:
+        origin_place = screens[-1].get("place")
+        # Pool's memory read stands in for a line that hides the `x,y`.
+        if origin is None and origin_place is None:
             raise self.fail("walk-status", "the status line is blank on the map, "
                             "so there is no starting square (a shop or an "
                             "arrival draws it later)")
-        origin_place = screens[-1].get("place")
         hidden = False
         for n in (1, 2) if route == "MI" else ():
             label = f"walk-turn-{n}"
@@ -4215,9 +4216,12 @@ class Driver:
             raise self.fail("walk-step", "the map bar did not return after the "
                             "step (combat or an unknown screen)")
         after, square = record("walk-step")
-        # A line without the `x,y` after the step is read from memory.
+        # A line without the `x,y` after the step, or a walk that began without
+        # one, is read from memory.
+        if origin is None and square is not None and self.place_reader is not None:
+            screens[-1]["place"] = self.party_place("walk-step")
         same = (self.same_place(origin_place, screens)
-                if square is None else square == origin)
+                if square is None or origin is None else square == origin)
         if same is None:
             raise self.fail("walk-status", "the status line was blank after the step")
         if same:
