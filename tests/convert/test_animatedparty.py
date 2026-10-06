@@ -757,3 +757,33 @@ def test_a_raised_character_round_trips_c64_dos_c64_keeping_his_behaviour(
     assert not [r for r in effects.active_effects(bytes(back_payload))
                 if r.id == 32]
     assert not [w for w in rep.warnings if "32" in w]
+
+
+def _round_trip_to_c64(rec, payload):
+    char = c64_codec.read(rec, game=c64_port.POOL_OF_RADIANCE,
+                          payload=bytes(payload), party_slot=4)
+    dos, _itm, spc, _rep = dos_codec.write(char)
+    dos_char = dos_codec.DosCharacter(dos, effects=_nodes(spc))
+    out = bytearray(0x1C00)
+    back, rep = c64_codec.write(dos_codec.to_neutral(dos_char), payload=out,
+                                party_slot=4, clock_minutes=0)
+    return back, out, rep
+
+
+@pytest.mark.parametrize("side", [0, 1])
+def test_a_dispelled_c64_zombie_comes_back_with_no_row_and_the_trait(side):
+    rec, payload = _zombie_source(0, side, row=False)
+    back, out, rep = _round_trip_to_c64(rec, payload)
+    assert not [r for r in effects.active_effects(bytes(out)) if r.id == 32]
+    assert bytes(back.get_raw("item_effects"))[9] == 32
+    assert back.get("combat_side") == rec.get("combat_side")
+    assert back.get("flags_0b8") == rec.get("flags_0b8")
+    assert not rep.losses
+
+
+@pytest.mark.parametrize("level", [0, 14, 5])
+def test_any_other_id_32_node_still_writes_its_row(level):
+    rec, payload = _zombie_source(level)
+    _back, out, _rep = _round_trip_to_c64(rec, payload)
+    rows = [r for r in effects.active_effects(bytes(out)) if r.id == 32]
+    assert [r.magnitude for r in rows] == [level]

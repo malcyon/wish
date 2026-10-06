@@ -2287,9 +2287,19 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                 # (`SQRPACI64 $059A`), so node byte 4, DOS's removal flag,
                 # has no C64 byte and loses nothing.
                 zombie_node_side = int(node[3]) >> 4
+                # The reader gives a dispelled zombie (trait, no row) the node
+                # with low nibble 15 and flag 1. The C64 temple raise searches
+                # the array before the trait slots, so a row written back
+                # would make it clear `$6BEC` and leave the zombie marker.
+                dispelled = (int(node[1]) == 0 and int(node[2]) == 0
+                             and int(node[3]) & 0x0F == 0x0F
+                             and int(node[4]) == 1)
                 row_slot = (effects.free_slot(payload)
-                            if payload is not None else None)
-                if row_slot is None:
+                            if payload is not None and not dispelled
+                            else None)
+                if dispelled:
+                    pass
+                elif row_slot is None:
                     if payload is not None:
                         rep.effect_rows_short += 1
                     rep.lost(
