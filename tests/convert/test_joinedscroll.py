@@ -927,6 +927,43 @@ def test_specimen_l_saved_as_amiga_names_the_party_overflow(tmp_path):
     assert specimen("ssb-wish4-joined-l122")
 
 
+def test_specimen_l_leaving_a_quarter_staff_keeps_paine_at_16_rows(tmp_path):
+    from gamedata import specimen
+
+    party = [dos_codec.to_neutral(c) for c in dos_codec.read_party(
+        specimen("ssb-wish4-joined-l122"), "A")]
+    paine = next(n for n, c in enumerate(party) if c.get("name") == "PAINE")
+    inventory = party[paine].get("inventory")
+    # The first of her two Quarter Staffs (type 15, weight 50), her first
+    # ordinary item.
+    staff = next(n for n, raw in enumerate(inventory)
+                 if raw[0] == 15 and int.from_bytes(raw[8:10], "little") == 50)
+    # Run 4 of the acceptance ticked her first joined scroll's first scroll,
+    # which would have left her 24 rows.
+    assert dos_codec.pack_overflow(party, "amiga", {paine: {0}})
+    leave = {paine: {staff}}
+    assert dos_codec.pack_overflow(party, "amiga", leave) == ()
+    (over,) = dos_codec.pack_overflow(party, "amiga")
+    assert dos_codec.amiga_items_to_leave(over, {}) == 1
+    assert dos_codec.amiga_items_to_leave(over, leave) == 0
+
+    kept, unjoined, left = dos_codec.unjoined_for_amiga(party, leave)
+    char = kept[paine]
+    bundles = char.get("scroll_bundles")
+    inventory = char.get("inventory")
+    assert sum(b.count for b in bundles) == 120
+    assert len(inventory) - sum(b.count - 1 for b in bundles) == 16
+    assert len(unjoined) == 1 and len(left) == 1
+    # A joined scroll weighs its head's weight times its quantity; the
+    # scrolls of the pair now hold the head's 2 each.
+    heads = sum(int.from_bytes(b.head[8:10], "little") * b.count
+                for b in bundles)
+    inside = {n for b in bundles for n in range(b.first, b.first + b.count)}
+    loose = sum(int.from_bytes(raw[8:10], "little") * (raw[10] or 1)
+                for n, raw in enumerate(inventory) if n not in inside)
+    assert heads + loose == 1334 - 50 == 1284
+
+
 def _through_save_as_drive(tmp_path, name: str) -> dict:
     """`tools/convert/saveasdrive` Save As of an engine-written specimen to a
     new Amiga disk, the route the driven acceptance tools use."""

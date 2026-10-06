@@ -686,13 +686,16 @@ class PackOverflow(NamedTuple):
 
 def leave_behind(inventory: Sequence[bytes],
                  bundles: Sequence[ScrollBundle],
-                 indices: Collection[int]
+                 indices: Collection[int], *, head_rule: bool = False
                  ) -> tuple[list[bytes], tuple[ScrollBundle, ...]]:
     """`inventory` and `bundles` without the items at `indices`.
 
     A joined scroll that loses any of its scrolls goes from `bundles` and the
     scrolls it still holds become items of their own, the rule
     `goldbox.rewrite._regroup` applies when a scroll is deleted on the sheet.
+    With `head_rule` each of those scrolls also takes the head's weight and
+    readied bit, as :func:`unjoin` gives them, so the scrolls together still
+    weigh what the joined scroll's quantity did.
     The `first` of every bundle that stays moves down by the items removed
     before it.  An index outside the inventory raises `DosRecordError`.
     """
@@ -702,13 +705,21 @@ def leave_behind(inventory: Sequence[bytes],
             raise DosRecordError(
                 f"cannot leave inventory item {n} behind: the pack holds "
                 f"{len(inventory)}")
+    items = [bytes(it) for it in inventory]
     kept = []
     for b in bundles:
         if any(n in gone for n in range(b.first, b.first + b.count)):
+            if head_rule:
+                for n in range(b.first, b.first + b.count):
+                    raw = bytearray(items[n])
+                    raw[8:10] = b.head[8:10]
+                    raw[6] = (raw[6] & 0x7F) | (b.head[6] & 0x80)
+                    items[n] = bytes(raw)
             continue
         kept.append(b._replace(
             first=b.first - sum(1 for n in gone if n < b.first)))
-    return ([it for n, it in enumerate(inventory) if n not in gone],
+    source = items if head_rule else inventory
+    return ([it for n, it in enumerate(source) if n not in gone],
             tuple(kept))
 
 
@@ -794,7 +805,9 @@ def _best_unjoin(party: "Sequence[DosCharacter] | Sequence[NeutralCharacter]",
     joined scrolls: two fives are unjoined before one ten.  A choice
     may not take a member past :data:`amiga_later.AMIGA_SSB_ITEM_ROWS`.
     When no choice reaches the limit this is the one that unjoins the most
-    scrolls.  The indices are into each member's `scroll_bundles` after
+    scrolls.  A member left over the row limit by `leave` has no choice, and
+    the scrolls still joined are then reported as over the joined-scroll
+    limit.  The indices are into each member's `scroll_bundles` after
     `leave`.
     """
     return _best_unjoin_of_packs([pack_of(char) for char in party], leave)
@@ -838,11 +851,13 @@ def _best_unjoin_of_packs(
     member_best = []
     position = 0
     total = 0
+    over_rows = False
     for index, (inventory, bundles) in enumerate(packs):
         inventory, bundles = leave_behind(inventory, bundles,
                                           leave.get(index, ()))
         total += sum(b.count for b in bundles)
         room = amiga_later.AMIGA_SSB_ITEM_ROWS - _amiga_rows(inventory, bundles)
+        over_rows = over_rows or room < 0
         table = _member_unjoin_table(tuple(b.count for b in bundles), room)
         # The table's mask is relative to the member's first scroll; shifting
         # it left by `position` makes the party-wide position.
@@ -862,6 +877,10 @@ def _best_unjoin_of_packs(
                 if at not in grown_whole or cand[0] < grown_whole[at][0]:
                     grown_whole[at] = cand
         whole = grown_whole
+    if over_rows:
+        # Neither game holds a seventeenth row, so no unjoin makes this fit;
+        # `left` reads as over the limit so every caller sees it.
+        return {}, max(total, amiga_later.AMIGA_SSB_JOINED_SCROLL_LIMIT + 1)
     need = total - amiga_later.AMIGA_SSB_JOINED_SCROLL_LIMIT
     reach = [r for r in whole if r >= need]
     removed = (min(reach, key=lambda r: whole[r][0]) if reach
@@ -931,8 +950,9 @@ def _member_leave_options(loose: int, room: int, counts: tuple[int, ...],
     joined scroll ends up unjoined (it takes `count - 1` rows), broken by
     leaving `j` of its scrolls (the joined scroll goes, `count - 1 - j` rows
     are added, and it costs `j` items), or untouched.  Leaving an item
-    outside a joined scroll frees a row.  The unjoined ones must fit the
-    rows left; breaking is never limited by rows.
+    outside a joined scroll frees a row.  Whatever is done, the member must
+    end within his rows, as both games limit him; an item count for which no
+    way does is -1.
     """
     ahead = [0] * (len(counts) + 1)
     for n in range(len(counts) - 1, -1, -1):
@@ -958,12 +978,12 @@ def _member_leave_options(loose: int, room: int, counts: tuple[int, ...],
         states = grown
     most: dict[int, int] = {}
     for (k, spare, unjoined), removed in states.items():
-        if (not unjoined or spare >= 0) and most.get(k, -1) < removed:
+        if spare >= 0 and most.get(k, -1) < removed:
             most[k] = removed
     out = []
-    best = 0
+    best = -1
     for k in range(cap + 1):
-        best = max(best, most.get(k, 0))
+        best = max(best, most.get(k, -1))
         out.append(best)
     return tuple(out)
 
@@ -1013,11 +1033,11 @@ def amiga_items_to_leave(overflow: PackOverflow,
             merged = [-1] * (min(cap, len(whole) + len(member_options) - 2) + 1)
             for k1, r1 in enumerate(whole):
                 for k2, r2 in enumerate(member_options):
-                    if k1 + k2 <= cap:
+                    if r1 >= 0 and r2 >= 0 and k1 + k2 <= cap:
                         merged[k1 + k2] = max(merged[k1 + k2], r1 + r2)
             whole = merged
         for k, removed in enumerate(whole):
-            if removed >= need:
+            if removed >= 0 and removed >= need:
                 return k
         if cap == total:
             return total
@@ -1124,11 +1144,13 @@ class JoinedScrollsDoNotFit(DosRecordError):
 
 
 def _without_left_behind(char: NeutralCharacter,
-                         indices: Collection[int]) -> NeutralCharacter:
-    """A copy of `char` with the inventory items at `indices` removed."""
+                         indices: Collection[int], *, head_rule: bool = False
+                         ) -> NeutralCharacter:
+    """A copy of `char` with the inventory items at `indices` removed;
+    `head_rule` is :func:`leave_behind`'s."""
     inventory, bundles = leave_behind(
         char.get("inventory") or (), char.get("scroll_bundles") or (),
-        indices)
+        indices, head_rule=head_rule)
     out = NeutralCharacter(char.port, source=char.source, game=char.game)
     out.fields = dict(char.fields)
     out.dropped = list(char.dropped)
@@ -1195,7 +1217,8 @@ def unjoined_for_amiga(party: Sequence[NeutralCharacter],
                     f"loader keeps")
                 _log.info("Left behind by the player's choice: %s",
                           left_lines[-1])
-        kept[member] = _without_left_behind(kept[member], gone)
+        kept[member] = _without_left_behind(kept[member], gone,
+                                            head_rule=True)
     choice = amiga_unjoin_choice(kept)
     if choice is None:
         raise DosRecordError("no unjoin brings the party within the Amiga's "

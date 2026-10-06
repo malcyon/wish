@@ -291,22 +291,22 @@ def _amiga_overflow(*members):
     return found[0]
 
 
-# One or two members (plain items, joined scroll sizes) whose joined scrolls
-# pass the limit by 1 to 30 after the best unjoin; the exhaustive search leaves
+# One or two members (plain items, joined scroll sizes), each within the 16
+# rows both games allow, whose joined scrolls pass the limit by 1 to 30 after the best unjoin; the exhaustive search leaves
 # one to three items for them.
 SMALL_PARTIES = [
-    [(12, (3, 2, 4, 2, 7, 5, 4, 8, 4, 12)), (15, (4, 10, 2, 11, 6, 11, 3, 3, 4, 10, 11, 3, 4, 8))],
-    [(16, (4, 5, 4, 4, 1, 6, 9, 6, 8, 12)), (16, (12, 7, 12, 6, 4, 8, 8, 1, 2, 8, 7, 3))],
-    [(11, (8, 4, 6, 10, 12, 4, 1, 9, 1, 1, 1)), (11, (3, 1, 1, 3, 2, 7, 12, 10, 2, 11, 5, 9))],
-    [(8, (1, 3, 3, 9, 5, 3, 1, 7, 12, 1, 5, 9, 2)), (10, (8, 7, 12, 2, 6, 6, 2, 3, 11, 1, 2))],
-    [(16, (2, 7, 8, 8, 6, 11, 6, 3, 1, 3, 5, 2, 4, 6)), (15, (4, 12, 3, 10, 3, 7, 3, 3, 3, 5))],
-    [(7, (10, 4, 3, 5, 3, 6, 4, 4, 7, 2, 3)), (6, (11, 4, 3, 4, 11, 2, 11, 12, 5, 1, 7, 6, 7))],
-    [(16, (7, 7, 2, 10, 3, 10, 9, 8, 1, 12, 1, 12, 8, 8)), (2, (10, 3, 1, 3, 7, 8, 4, 5, 1, 4))],
-    [(15, (7, 5, 11, 11, 1, 3, 11, 4, 8, 3, 11)), (14, (12, 1, 4, 8, 4, 7, 3, 3, 10, 3, 2, 3, 9))],
-    [(9, (3, 2, 2, 12, 8, 4, 8, 3, 6, 11)), (12, (10, 4, 7, 4, 11, 3, 4, 10, 6, 1, 10, 9, 8))],
-    [(5, (12, 11, 8, 5, 1, 2, 6, 12, 4, 7, 3, 8)), (7, (11, 4, 2, 8, 10, 2, 4, 1, 4, 8, 3))],
-    [(14, (8, 6, 3, 11, 2, 9, 8, 4, 8, 1, 11, 6)), (4, (3, 4, 9, 6, 8, 1, 4, 3, 2, 8, 2, 8))],
-    [(14, (9, 7, 3, 4, 3, 4, 8, 4, 12, 4)), (7, (3, 2, 9, 8, 7, 2, 10, 12, 8, 8, 12, 1, 8, 1))],
+    [(5, (4, 12, 6, 1, 6, 7, 5, 7, 2, 12, 9)), (7, (9, 10, 5, 2, 5, 9, 9, 6))],
+    [(2, (7, 7, 3, 12, 6, 11, 5, 11, 7, 6, 9, 1, 10)), (5, (12, 3, 7, 2, 2, 1, 1, 3, 4))],
+    [(5, (1, 11, 10, 7, 12, 5, 1, 8, 1)), (1, (3, 1, 1, 9, 9, 10, 6, 2, 12, 2, 4, 8, 2, 8))],
+    [(5, (11, 1, 8, 7, 1, 1, 5, 7, 8, 5, 11)), (8, (4, 3, 12, 9, 11, 7, 4, 9))],
+    [(0, (6, 2, 3, 4, 7, 1, 1, 7, 1, 5, 4, 12, 7, 7, 3, 2)), (4, (4, 3, 7, 8, 3, 7, 1, 5, 8, 9, 4))],
+    [(2, (8, 2, 5, 7, 1, 4, 4, 11, 7, 4, 12, 8)), (1, (9, 1, 2, 9, 5, 2, 6, 6, 10, 6, 3, 1, 1))],
+    [(7, (12, 6, 6, 6, 3, 4, 7, 9)), (2, (10, 5, 7, 7, 4, 10, 3, 12, 1, 6, 1, 2, 4))],
+    [(3, (9, 10, 8, 11, 12, 2, 7, 4, 6, 4, 7)), (8, (7, 6, 4, 6, 3, 7, 6, 5))],
+    [(0, (1, 10, 2, 11, 1, 10, 6, 2, 2, 8, 1, 9, 4, 10, 8, 1)), (5, (7, 6, 2, 1, 2, 12, 4, 8, 6))],
+    [(4, (6, 10, 8, 10, 4, 4, 4, 3, 4, 2, 12)), (3, (11, 8, 1, 11, 5, 10, 8, 4, 1, 4, 1))],
+    [(5, (11, 12, 8, 7, 8, 2, 7, 8, 5, 6, 4)), (7, (3, 1, 11, 5, 6, 10, 10, 2))],
+    [(0, (1, 4, 12, 4, 9, 5, 9, 2, 1, 5, 3, 9, 10, 4, 10, 2)), (7, (5, 2, 4, 1, 7, 12, 2, 7))],
 ]
 
 
@@ -317,12 +317,20 @@ def test_items_to_leave_matches_the_exhaustive_search(members):
                   for n, m in enumerate(overflow.members)}
     rng = random.Random(len(str(members)))
     for attempt in range(4):
-        leave = {}
-        for member, size in pack_sizes.items():
-            if attempt and rng.random() < 0.7:
-                leave[member] = set(rng.sample(range(size),
-                                               rng.randrange(0, min(size, 6))))
-        got = dos_codec.amiga_items_to_leave(overflow, leave)
+        # A tick can break a joined scroll and push its member past 16 rows,
+        # which costs more items to put right than the exhaustive search can
+        # try, so a draw is kept only when the answer stays small.
+        for _draw in range(30):
+            leave = {}
+            for member, size in pack_sizes.items():
+                if attempt and rng.random() < 0.7:
+                    leave[member] = set(rng.sample(
+                        range(size), rng.randrange(0, min(size, 6))))
+            got = dos_codec.amiga_items_to_leave(overflow, leave)
+            if got <= 3:
+                break
+        else:
+            leave, got = {}, dos_codec.amiga_items_to_leave(overflow, {})
         assert got == _reference_items_to_leave(overflow, leave)
 
 
@@ -335,7 +343,7 @@ def cold_member_tables():
 
 def test_items_to_leave_for_a_late_game_party_returns_at_once(
         cold_member_tables):
-    overflow = _amiga_overflow(*[(8, (10,) * 13)] * 2)
+    overflow = _amiga_overflow(*[(3, (10,) * 13)] * 2)
     start = time.perf_counter()
     got = dos_codec.amiga_items_to_leave(overflow, {})
     assert time.perf_counter() - start < 1.0
@@ -363,7 +371,8 @@ def _tables_built(call):
 
 
 def test_a_tick_rebuilds_only_the_ticked_members_tables(cold_member_tables):
-    overflow = _amiga_overflow(*[(4 + 2 * n, (10,) * 16) for n in range(6)])
+    overflow = _amiga_overflow(*[(4 + n, ((3,) if n == 0 else (2,)) * (12 - n))
+                              for n in range(6)])
     leave = {overflow.members[0]: {0}}
     dos_codec.amiga_items_to_leave(overflow, leave)
     # One more item ticked for the second member only.
@@ -380,10 +389,8 @@ def test_a_tick_rebuilds_only_the_ticked_members_tables(cold_member_tables):
 
 
 @pytest.mark.parametrize("members", [
-    [(12, (3, 2, 4, 2, 7, 5, 4, 8)), (15, (4, 10, 2, 11, 6, 11, 3)),
-     (9, (10, 4, 7, 4, 11, 3, 4, 10))],
-    [(7, (10, 4, 3, 5, 3, 6, 4, 4)), (6, (11, 4, 3, 4, 11, 2, 11, 12)),
-     (14, (8, 6, 3, 11, 2, 9, 8, 4))],
+    [(6, (2, 9, 4, 1, 2, 11, 6, 6, 12)), (6, (5, 1, 3, 1, 7, 4, 1, 4)), (4, (6, 6, 12, 6, 4, 1, 4, 1, 10, 4))],
+    [(6, (7, 9, 3, 8, 4, 2, 3, 1, 1, 9)), (8, (2, 7, 7, 2, 8, 1, 5, 7)), (7, (1, 3, 3, 2, 12, 10, 4, 5, 2))],
 ])
 def test_items_to_leave_for_three_members_matches_the_exhaustive_search(
         members):
@@ -406,3 +413,90 @@ def test_items_to_leave_when_unjoining_must_fit_the_rows(members, monkeypatch):
     for leave in ({}, {overflow.members[0]: {0}}):
         assert (dos_codec.amiga_items_to_leave(overflow, leave)
                 == _reference_items_to_leave(overflow, leave))
+
+
+def _rows(char):
+    """The item rows a neutral member's pack takes on the Amiga."""
+    return len(char.get("inventory")) - sum(
+        b.count - 1 for b in char.get("scroll_bundles") or ())
+
+
+def _paine():
+    """Specimen L's PAINE as DOS holds her: three ordinary items, twelve joined
+    scrolls of ten and one of two, sixteen rows."""
+    return [(3, (10,) * 12 + (2,))]
+
+
+def test_leaving_a_scroll_of_a_full_pack_does_not_make_the_party_fit():
+    party = _crowd(*_paine())
+    first_scroll = 3
+    (overflow,) = dos_codec.pack_overflow(party, "amiga")
+    leave = {0: {first_scroll}}
+    # Breaking the first joined scroll would leave nine loose scrolls and a
+    # seventeenth row onwards, which neither game can hold.
+    assert dos_codec.amiga_unjoin_choice(party, leave) is None
+    assert dos_codec.pack_overflow(party, "amiga", leave)
+    assert dos_codec.amiga_scrolls_over_limit(overflow, leave) > 0
+    assert dos_codec.amiga_items_to_leave(overflow, leave) > 0
+    assert dos_codec.amiga_items_to_leave(overflow, {}) == 1
+
+
+def test_leaving_an_ordinary_item_keeps_the_pack_at_16_rows_and_120_scrolls():
+    party = _crowd(*_paine())
+    leave = {0: {0}}
+    assert dos_codec.pack_overflow(party, "amiga", leave) == ()
+    (overflow,) = dos_codec.pack_overflow(party, "amiga")
+    assert dos_codec.amiga_items_to_leave(overflow, leave) == 0
+    (paine,), _unjoined, _left = dos_codec.unjoined_for_amiga(party, leave)
+    assert _rows(paine) == 16
+    assert sum(b.count for b in paine.get("scroll_bundles")) == 120
+
+
+def test_a_scroll_left_from_a_joined_scroll_takes_the_heads_weight_and_flag():
+    # Two ordinary items and one joined scroll of two, so that leaving one of
+    # its scrolls breaks it with a free row to spare.
+    char = _crowd((2, (2,)))[0]
+    inventory = list(char.get("inventory"))
+    head = bytearray(packoverflow.head(2))
+    head[6] = 0x80
+    head[8:10] = (7).to_bytes(2, "little")
+    char.set("scroll_bundles", (ScrollBundle(2, 2, bytes(head)),), "made up")
+    inventory[2] = packoverflow.scroll(1)
+    inventory[3] = packoverflow.scroll(2)
+    char.set("inventory", inventory, "made up")
+    (out,), _unjoined, left = dos_codec.unjoined_for_amiga([char], {0: {2}})
+    assert len(left) == 1 and not out.get("scroll_bundles")
+    remaining = out.get("inventory")[-1]
+    assert remaining[6] & 0x80 and remaining[8:10] == bytes((7, 0))
+    assert remaining[13] == 2 and len(out.get("inventory")) == 3
+
+
+def test_breaking_a_joined_scroll_never_leaves_a_member_over_16_rows():
+    rng = random.Random(16)
+    broken = 0
+    for members in [*SMALL_PARTIES, _paine()]:
+        party = _crowd(*members)
+        for _draw in range(40):
+            leave = {}
+            for n, char in enumerate(party):
+                bundles = char.get("scroll_bundles") or ()
+                ticked = set(rng.sample(range(bundles[0].first), rng.randrange(
+                    0, min(bundles[0].first, 4) + 1))) if bundles else set()
+                for b in rng.sample(bundles, min(len(bundles),
+                                                 rng.randrange(0, 3))):
+                    # Part of a joined scroll breaks it; all of it frees rows.
+                    ticked |= set(rng.sample(
+                        range(b.first, b.first + b.count),
+                        rng.randrange(1, b.count + 1)))
+                leave[n] = ticked
+            if dos_codec.pack_overflow(party, "amiga", leave):
+                continue
+            kept, _unjoined, _left = dos_codec.unjoined_for_amiga(party, leave)
+            assert all(_rows(char) <= 16 for char in kept), leave
+            broken += any(
+                i in leave[n]
+                for n, char in enumerate(party)
+                for b in char.get("scroll_bundles") or ()
+                for i in range(b.first, b.first + b.count))
+    # Some draws that fit had left a scroll of a joined scroll.
+    assert broken
