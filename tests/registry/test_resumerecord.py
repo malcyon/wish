@@ -142,3 +142,64 @@ def test_failed_write_leaves_no_record(folder, monkeypatch):
 
 def test_resume_exit_is_three():
     assert R.RESUME_EXIT == 3
+
+
+@pytest.mark.parametrize("name", ["../x", "..\\x", "C:/x", "C:\\x", "/x", "\\x", "a/../../x", ""])
+def test_escaping_file_names_are_rejected_on_write_and_read(folder, name):
+    record = _record()
+    record["machine"]["file"] = name
+    with pytest.raises(R.ResumeRecordError):
+        R.write(folder, record)
+    path = R.write(folder, _record())
+    data = json.loads(path.read_text())
+    data["machine"]["file"] = name
+    path.write_text(json.dumps(data))
+    with pytest.raises(R.ResumeRecordError):
+        R.read(path, "amiga")
+
+
+@pytest.mark.parametrize("value", [7, None, ["state.uss"]])
+def test_non_string_file_value_is_a_record_error(folder, value):
+    record = _record()
+    record["machine"]["file"] = value
+    with pytest.raises(R.ResumeRecordError):
+        R.write(folder, record)
+    path = R.write(folder, _record())
+    data = json.loads(path.read_text())
+    data["machine"]["file"] = value
+    path.write_text(json.dumps(data))
+    with pytest.raises(R.ResumeRecordError):
+        R.read(path, "amiga")
+
+
+def test_read_checks_required_fields(folder):
+    path = R.write(folder, _record())
+    data = json.loads(path.read_text())
+    del data["sent"]
+    path.write_text(json.dumps(data))
+    with pytest.raises(R.ResumeRecordError, match="sent"):
+        R.read(path, "amiga")
+
+
+def test_read_checks_recorded_bytes(folder):
+    path = R.write(folder, _record())
+    data = json.loads(path.read_text())
+    data["machine"]["bytes"] += 1
+    path.write_text(json.dumps(data))
+    with pytest.raises(R.ResumeRecordError, match="size"):
+        R.read(path, "amiga")
+    del data["machine"]["bytes"]
+    path.write_text(json.dumps(data))
+    with pytest.raises(R.ResumeRecordError, match="size"):
+        R.read(path, "amiga")
+
+
+def test_failed_fdopen_closes_the_descriptor(folder, monkeypatch):
+    closed = []
+    real_close = R.os.close
+    monkeypatch.setattr(R.os, "fdopen", lambda *a, **k: (_ for _ in ()).throw(OSError("no")))
+    monkeypatch.setattr(R.os, "close", lambda fd: (closed.append(fd), real_close(fd)))
+    with pytest.raises(OSError):
+        R.write(folder, _record())
+    assert len(closed) == 1
+    assert list(folder.glob("resume.json*")) == []
