@@ -120,7 +120,21 @@ def test_controls_and_the_dump_print_the_same_fields_per_line():
         assert field not in branch
     assert "Get-Detail $e" in branch
     assert "Get-Detail $e" in _inner()
-    function = controls[controls.index("function Get-Detail"):]
-    function = function[:function.index("\n")]
+    function = _get_detail_body(controls)
     for field in ("GetRuntimeId()", "IsOffscreen", "BoundingRectangle"):
         assert field in function
+
+
+def _get_detail_body(script):
+    start = script.index("function Get-Detail")
+    return script[start:script.index("\n  }", start)]
+
+
+def test_each_detail_read_has_its_own_try_catch_and_an_empty_field_on_failure():
+    function = _get_detail_body(_inner())
+    for read in ("$e.GetRuntimeId()", "$e.Current.IsOffscreen", "$e.Current.BoundingRectangle"):
+        guarded = [ln for ln in function.splitlines() if read in ln]
+        assert len(guarded) == 1, read
+        line = guarded[0].strip()
+        assert line.startswith("try {") and "} catch {" in line, read
+        assert line.endswith("= '' }"), read
