@@ -385,6 +385,40 @@ def test_a_key_taken_after_the_last_poll_leaves_the_other_bytes_alone(door, monk
     assert fake.read(BASE + NOTES["wall_ahead"], 1) == b"\x07"
 
 
+def test_a_trigger_write_that_never_landed_still_puts_the_door_bytes_back(door, monkeypatch):
+    fake = DoorFake(takes=False)
+    # The port list holds a link that is neither ours nor empty, and the write is dropped.
+    fake.put(PORT + amigatrip.PORT_LIST, b"\x11" * 12)
+    before = dict(fake.mem)
+    monkeypatch.setattr(tripprobe, "FIRE_SECONDS", 1.0)
+    real = fake.write
+
+    def write(addr, data, verify=True):
+        if addr != PORT + amigatrip.PORT_LIST:
+            real(addr, data, verify)
+
+    fake.write = write
+    result = _walk(fake)
+    assert not result["key_taken"] and result["put_back"]
+    assert _same(fake, before)
+
+
+def test_a_failed_restore_after_a_failed_write_does_not_replace_the_write_error(door):
+    fake = DoorFake()
+    real = fake.write
+
+    def write(addr, data, verify=True):
+        if addr == BASE + NOTES["wall_ahead"] and data == b"\x07":
+            raise amiga.GuestError("write")
+        if addr == PORT + amigatrip.PORT_LIST and data == amigatrip.empty_list(PORT):
+            raise amiga.GuestError("restore")
+        real(addr, data, verify)
+
+    fake.write = write
+    with pytest.raises(amiga.GuestError, match="write"):
+        _walk(fake)
+
+
 @pytest.mark.parametrize("route", ["edge", "edge=4,0", "edge=a,b,c", "edge="])
 def test_a_malformed_route_is_a_usage_error(tmp_path, route):
     with pytest.raises(SystemExit) as exc:

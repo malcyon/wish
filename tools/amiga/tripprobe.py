@@ -144,30 +144,36 @@ def stand_writes(target, row, stand, geo: Geo, attribute: bool) -> list[tuple[in
     return writes
 
 
-def key_taken(target, row) -> bool:
-    """True once the window's port list is empty again: the game took the message."""
+def _list_is_empty(target, row) -> bool:
     port = amigatrip._port(target, row)
     return target.read(port + amigatrip.PORT_LIST, 12) == amigatrip.empty_list(port)
 
 
-def put_back(target, done, stop_if_taken: bool = False) -> bool:
+def key_taken(target, row) -> bool:
+    """True once the window's port list is empty again: the game took the message."""
+    return _list_is_empty(target, row)
+
+
+def put_back(target, row, done, stop_if_taken: bool = False) -> bool:
     """Put the key link back first, then every other byte; True when the game had taken the key.
 
     The rest is put back even when the key's restore fails, and the first
-    exception is the one raised. With `stop_if_taken`, a key the game consumed
-    before the restore leaves the other bytes under the game's own step.
+    exception is the one raised. With `stop_if_taken`, a port list that reads
+    empty before the key's restore means the game consumed the key, and the other
+    bytes stay under the game's own step.
     """
     keys = [w for w in done if w.kind == "trigger"]
     rest = [w for w in done if w.kind != "trigger"]
+    consumed = stop_if_taken and bool(keys) and _list_is_empty(target, row)
     try:
-        made = amigatrip._restore(target, keys)
+        amigatrip._restore(target, keys)
     except BaseException:
         try:
             amigatrip._restore(target, rest)
         except Exception:  # noqa: S110 - the first exception is the one to report
             pass
         raise
-    if stop_if_taken and keys and made == 0:
+    if consumed:
         return True
     amigatrip._restore(target, rest)
     return False
@@ -195,7 +201,10 @@ def try_door(target, row, stand, attribute: bool,
             done.append(amigatrip.Written(address, was, data, kind))
             target.write(address, data, verify=kind != "trigger")
     except BaseException:
-        put_back(target, done)
+        try:
+            put_back(target, row, done)
+        except Exception:  # noqa: S110 - the write's own exception is the one to report
+            pass
         raise
     try:
         waited = 0.0
@@ -205,13 +214,13 @@ def try_door(target, row, stand, attribute: bool,
         taken = key_taken(target, row)
     except BaseException:
         try:
-            put_back(target, done)
+            put_back(target, row, done)
         except Exception:  # noqa: S110 - the poll's own exception is the one to report
             pass
         raise
     if not taken:
         # A key taken after the last poll is found out by the put-back.
-        taken = put_back(target, done, stop_if_taken=True)
+        taken = put_back(target, row, done, stop_if_taken=True)
     if taken:
         sleep(SETTLE_SECONDS)
     after = amigatrip.area_id(target, row)
