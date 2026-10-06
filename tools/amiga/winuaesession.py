@@ -382,6 +382,10 @@ def terminating():
     finally:
         signal.signal(signal.SIGTERM, previous)
 
+# The Windows VM's clock reads this far ahead of the agent VM's, so a fresh readback has a small negative age.
+MUTE_CLOCK_TOLERANCE = timedelta(seconds=5)
+
+
 def _mute_proof(path: pathlib.Path) -> bool:
     """Require a recent UTC readback of the Windows VM's muted endpoint."""
     try:
@@ -396,4 +400,4 @@ def _mute_proof(path: pathlib.Path) -> bool:
             and isinstance(proof.get("endpoint_id"), str)
             and bool(proof["endpoint_id"].strip())
             and observed.utcoffset() == timedelta(0)
-            and timedelta() <= age <= timedelta(minutes=5))
+            and -MUTE_CLOCK_TOLERANCE <= age <= timedelta(minutes=5))

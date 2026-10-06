@@ -208,6 +208,27 @@ def test_stale_or_unmeasured_audio_mute_proof_is_blocked(tmp_path):
     assert winuaesession._mute_proof(proof)
 
 
+def _mute_readback(path, observed):
+    path.write_text(json.dumps({
+        "vm": "WIN11-DEV", "muted": True,
+        "method": "Windows Core Audio endpoint mute readback",
+        "endpoint_id": "synthetic-endpoint", "readback": True,
+        "observed_utc": observed.isoformat(),
+    }))
+    return path
+
+
+def test_mute_proof_dated_slightly_ahead_is_accepted(tmp_path):
+    now = datetime.now(timezone.utc)
+    assert winuaesession._mute_proof(_mute_readback(tmp_path / "m.json", now + timedelta(seconds=1)))
+
+
+def test_mute_proof_dated_far_ahead_or_past_five_minutes_is_blocked(tmp_path):
+    now = datetime.now(timezone.utc)
+    assert not winuaesession._mute_proof(_mute_readback(tmp_path / "a.json", now + timedelta(minutes=1)))
+    assert not winuaesession._mute_proof(_mute_readback(tmp_path / "b.json", now - timedelta(minutes=6)))
+
+
 def test_mute_proof_expiring_during_transfer_blocks_before_start(
         tmp_path, monkeypatch):
     class ClockedDateTime:
