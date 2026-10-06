@@ -875,7 +875,11 @@ class Caster:
     def can_leave(b, slot: int) -> bool:
         """Whether party slot `slot` stands on an edge square of the combat
         map from which stepping off gets him away (`fleedrive.may_step_off`):
-        no enemy beside him, or faster than every enemy that is."""
+        no enemy beside him, or faster than every enemy that is.
+
+        An unknown enemy movement, or a slot with no combatant, gives False,
+        so the cast falls back to the later triggers (at most `HOLD_TURNS`
+        held turns)."""
         from tools.pool_of_radiance import fleedrive
         me = next((c for c in getattr(b, "combatants", ())
                    if c.index == slot), None)

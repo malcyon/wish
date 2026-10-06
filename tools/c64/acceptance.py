@@ -4540,6 +4540,7 @@ class PoolRun:
                                   f"{result.turns} turns")
 
     def keep_fight_reading(self) -> None:
+        """Keep the checkpoint counts as `lost_reading`, if they can be read."""
         with contextlib.suppress(Exception):
             self.lost_reading = {"step": "fight", "after": self.reading()}
 
@@ -4604,7 +4605,7 @@ class PoolRun:
         the encounter comes on the same roll whatever is pressed; where the
         party stands when it comes is all a walk changes.  A turn in place
         (`J` or `K`) and a step forward (`I`) meet it as different fights; `J`
-        and `K` meet the same one turn for turn (WISH-8, boots c2 and c4)."""
+        and `K` meet the same one turn for turn, boots c2 and c4."""
         if attempt % 2 == 0:
             return walk
         return "J" if walk == "I" else "I"
@@ -4656,6 +4657,7 @@ class PoolRun:
                 self.log.emit("restore", name=snap)
                 if not self.to_world():
                     raise self.fail("world", "the world bar never came back")
+            self.lost_reading = None
             self.log.emit("fight-cast-attempt", attempt=attempt + 1, walk=key)
             try:
                 got = self.fight_cast_once(caster, spell, memorised_before,
@@ -4690,6 +4692,10 @@ class PoolRun:
         menu = self.encounter_menu_up(self.sess, self.sess.screen())
         seen = result.outcome
         result = self.flee_settled(result, before)
+        if menu and result.outcome != S.RAN:
+            # The stop ended the fight, so the flight is not what failed.
+            raise self.setback("fight-cast: an encounter menu came up after "
+                               "the fight")
         if (failed := self.flee_failure(
                 str(int(self.FIGHT_CAST_SECONDS)), result,
                 "fight-cast")) is not None:

@@ -13929,7 +13929,7 @@ AWAY = _slots(("BAKSHI", 1), ("SEAN", 1))
 
 
 def test_fight_cast_reloads_its_snapshot_and_walks_the_other_way_after_a_fall():
-    """WISH-286 L4: BROTHER SEAN went down after the cast.  The step puts its
+    """BROTHER SEAN went down after the cast.  The step puts its
     own snapshot back and meets the encounter on the other square, since the
     same walk replays the same fight."""
     fall = A.route_pool.FightSetback("slot 2 ($84 DYING) went down by turn 30")
@@ -13981,7 +13981,7 @@ def test_fight_cast_does_not_retry_a_driver_failure():
 
 
 def test_fight_cast_stops_at_an_encounter_menu_and_counts_it_a_setback():
-    """WISH-286 L4: after the fight the survivors met `YOU HAVE SURPRISED A
+    """after the fight the survivors met `YOU HAVE SURPRISED A
     PARTY OF KOBOLDS` and `Session.fight` waited 700 s on the menu."""
     run = _retry_run([(A.S.RAN, [CAST], AWAY)], menu_after=True)
     run.FIGHT_CAST_ATTEMPTS = 1
@@ -13989,6 +13989,24 @@ def test_fight_cast_stops_at_an_encounter_menu_and_counts_it_a_setback():
         run.fight_cast("BAKSHI:PRAYER", "I", 5)
     stop = next(c[1] for c in run.sess.calls if c[0] == "fight")
     assert stop == run.encounter_menu_up
+
+
+def test_fight_cast_names_the_menu_when_it_ended_the_fight_not_the_flight():
+    run = _retry_run([(A.S.ENDED, [CAST], AWAY)], menu_after=True)
+    run.FIGHT_CAST_ATTEMPTS = 1
+    with pytest.raises(A.StepFailed, match="encounter menu came up") as e:
+        run.fight_cast("BAKSHI:PRAYER", "I", 5)
+    assert "not in the party running away" not in str(e.value)
+
+
+def test_fight_cast_drops_a_spoiled_attempts_reading_when_the_next_one_succeeds():
+    fall = A.route_pool.FightSetback("slot 2 ($84 DYING) went down by turn 30")
+    run = _retry_run([fall, (A.S.RAN, [CAST], AWAY)])
+    run.lost_reading = None
+    real = run.reading
+    run.reading = lambda: {**real(), "attempt": len(run.log.of("fight-cast-attempt"))}
+    run.fight_cast("BAKSHI:PRAYER", "I", 5)
+    assert run.lost_reading is None
 
 
 @pytest.mark.parametrize("row, up", [

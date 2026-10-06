@@ -483,7 +483,7 @@ def test_late_caster_casts_once_one_is_away_and_the_rest_can_leave(
                          ids=["on-an-edge-beside-an-equal-enemy", "mid-map"])
 def test_late_caster_holds_while_a_member_still_in_cannot_leave(
         cast_patches, monkeypatch, sean):
-    """WISH-286 L4: one member away and BROTHER SEAN (move 6) on the edge at
+    """one member away and BROTHER SEAN (move 6) on the edge at
     (15,0) beside a move-6 monster, a coin flip; the cast then left him in
     the fight with the spell running, and he went down."""
     waited, sess = [], _CastSession()
