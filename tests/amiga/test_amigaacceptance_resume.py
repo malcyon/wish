@@ -528,7 +528,7 @@ def test_a_record_from_a_miss_resumes_at_its_step_and_finishes(tmp_path, clock):
     assert result["resumed_from"]["record"] == first["resume_record"]
     assert result["resumed_from"]["sha256"] == hashlib.sha256(
         pathlib.Path(first["resume_record"]).read_bytes()).hexdigest()
-    assert result["resumed_from"]["earlier_summary"].endswith("recon1/summary.json")
+    assert pathlib.Path(result["resumed_from"]["earlier_summary"]).parts[-2:] == ("recon1", "summary.json")
     assert any(e.get("state") == "07-world-resumed" for e in result["events"])
     assert result["read"]["verdicts"][-1].startswith("slot D: moved 1 square")
 
@@ -788,7 +788,7 @@ def test_a_resumed_run_that_misses_again_writes_a_record_covering_every_step(tmp
     assert record["step"]["n"] == 9 and len(record["sent"]) == 9
     assert [key for key, _ in record["sent"]] == [
         "P", "L", "A", [1, "disk3", "SPACE"], "C", "NP2", "NP8", "E", "S"]
-    assert result["resume_record"].endswith("resume1/resume/resume.json")
+    assert pathlib.Path(result["resume_record"]).parts[-3:] == ("resume1", "resume", "resume.json")
     # One resume can follow another.
     third = BackGuest(clock, guest)
     _, final = _resume(tmp_path, clock, guest, result, at_step=9, guest=third, attempt="resume2")
