@@ -51,6 +51,7 @@ lost. The plan is `docs/117-save-conversion.md` and the assertions are
 from __future__ import annotations
 
 import dataclasses
+import functools
 import hashlib
 import logging
 import pathlib
@@ -799,6 +800,28 @@ def _best_unjoin(party: "Sequence[DosCharacter] | Sequence[NeutralCharacter]",
     return _best_unjoin_of_packs([pack_of(char) for char in party], leave)
 
 
+@functools.lru_cache(maxsize=4096)
+def _member_unjoin_table(counts: tuple[int, ...], room: int
+                         ) -> "dict[int, tuple[tuple[int, int, int], tuple[int, ...]]]":
+    """One member's best unjoin for each number of scrolls unjoined, from the
+    sizes of his joined scrolls and his spare rows alone, so a tick that
+    changes another member reuses it.  Callers must not modify the result."""
+    best: dict[int, tuple[tuple[int, int, int], tuple[int, ...]]] = {
+        0: ((0, 0, 0), ())}
+    for k, count in enumerate(counts):
+        step = dict(best)
+        for removed, (key, picked) in best.items():
+            extra = key[0] + count - 1
+            if extra > room:
+                continue
+            grown = ((extra, key[1] + 1, key[2] - (1 << k)), picked + (k,))
+            at = removed + count
+            if at not in step or grown[0] < step[at][0]:
+                step[at] = grown
+        best = step
+    return best
+
+
 def _best_unjoin_of_packs(
         packs: "Sequence[tuple[Sequence[bytes], Sequence[ScrollBundle]]]",
         leave: "Mapping[int, Collection[int]] | None"
@@ -820,22 +843,13 @@ def _best_unjoin_of_packs(
                                           leave.get(index, ()))
         total += sum(b.count for b in bundles)
         room = amiga_later.AMIGA_SSB_ITEM_ROWS - _amiga_rows(inventory, bundles)
-        best: dict[int, tuple[tuple[int, int, int], tuple[int, ...]]] = {
-            0: ((0, 0, 0), ())}
-        for k, b in enumerate(bundles):
-            step = dict(best)
-            for removed, (key, picked) in best.items():
-                extra = key[0] + b.count - 1
-                if extra > room:
-                    continue
-                grown = ((extra, key[1] + 1, key[2] - (1 << (position + k))),
-                         picked + (k,))
-                at = removed + b.count
-                if at not in step or grown[0] < step[at][0]:
-                    step[at] = grown
-            best = step
+        table = _member_unjoin_table(tuple(b.count for b in bundles), room)
+        # The table's mask is relative to the member's first scroll; shifting
+        # it left by `position` makes the party-wide position.
+        member_best.append({
+            removed: ((key[0], key[1], key[2] << position), picked)
+            for removed, (key, picked) in table.items()})
         position += len(bundles)
-        member_best.append(best)
     whole: dict[int, tuple[tuple[int, int, int], tuple[tuple[int, ...], ...]]]
     whole = {0: ((0, 0, 0), ())}
     for best in member_best:
@@ -905,8 +919,9 @@ def amiga_scrolls_over_limit(overflow: PackOverflow,
     return max(0, left - overflow.limit)
 
 
-def _member_leave_options(loose: int, room: int, counts: Sequence[int],
-                          cap: int) -> list[int]:
+@functools.lru_cache(maxsize=4096)
+def _member_leave_options(loose: int, room: int, counts: tuple[int, ...],
+                          cap: int) -> tuple[int, ...]:
     """Per items left, up to `cap`, the most scrolls one member can take out
     of joined scrolls, as `_best_unjoin_of_packs` would after those items
     are left.
@@ -950,7 +965,7 @@ def _member_leave_options(loose: int, room: int, counts: Sequence[int],
     for k in range(cap + 1):
         best = max(best, most.get(k, 0))
         out.append(best)
-    return out
+    return tuple(out)
 
 
 def amiga_items_to_leave(overflow: PackOverflow,
@@ -985,7 +1000,7 @@ def amiga_items_to_leave(overflow: PackOverflow,
         members.append((
             len(inventory) - sum(counts),
             amiga_later.AMIGA_SSB_ITEM_ROWS - _amiga_rows(inventory, bundles),
-            counts))
+            tuple(counts)))
     need = joined - amiga_later.AMIGA_SSB_JOINED_SCROLL_LIMIT
     # The answer is usually a few items, so the search widens until it is found.
     cap = 1

@@ -342,3 +342,59 @@ def test_items_to_leave_for_six_members_returns_at_once():
     got = dos_codec.amiga_items_to_leave(overflow, {})
     assert time.perf_counter() - start < 1.0
     assert got > 0
+
+
+def _tables_built(call):
+    """How many member tables `call` had to build rather than reuse."""
+    before = (dos_codec._member_unjoin_table.cache_info().misses,
+              dos_codec._member_leave_options.cache_info().misses)
+    call()
+    after = (dos_codec._member_unjoin_table.cache_info().misses,
+             dos_codec._member_leave_options.cache_info().misses)
+    return after[0] - before[0], after[1] - before[1]
+
+
+def test_a_tick_rebuilds_only_the_ticked_members_tables():
+    overflow = _amiga_overflow(*[(4 + 2 * n, (10,) * 16) for n in range(6)])
+    leave = {overflow.members[0]: {0}}
+    dos_codec.amiga_items_to_leave(overflow, leave)
+    # One more item ticked for the second member only.
+    leave = {overflow.members[0]: {0}, overflow.members[1]: {0}}
+    unjoin, options = _tables_built(
+        lambda: dos_codec.amiga_items_to_leave(overflow, leave))
+    assert unjoin == 1
+    # The widening search may call each size of `cap` afresh for the ticked
+    # member, and never for the five that did not change.
+    assert 1 <= options <= 8
+    # The same call again builds nothing.
+    assert _tables_built(
+        lambda: dos_codec.amiga_items_to_leave(overflow, leave)) == (0, 0)
+
+
+@pytest.mark.parametrize("members", [
+    [(12, (3, 2, 4, 2, 7, 5, 4, 8)), (15, (4, 10, 2, 11, 6, 11, 3)),
+     (9, (10, 4, 7, 4, 11, 3, 4, 10))],
+    [(7, (10, 4, 3, 5, 3, 6, 4, 4)), (6, (11, 4, 3, 4, 11, 2, 11, 12)),
+     (14, (8, 6, 3, 11, 2, 9, 8, 4))],
+])
+def test_items_to_leave_for_three_members_matches_the_exhaustive_search(
+        members):
+    overflow = _amiga_overflow(*members)
+    for leave in ({}, {overflow.members[1]: {0, 1}},
+                  {overflow.members[0]: {2}, overflow.members[2]: {0}}):
+        assert (dos_codec.amiga_items_to_leave(overflow, leave)
+                == _reference_items_to_leave(overflow, leave))
+
+
+@pytest.mark.parametrize("members", [
+    [(6, (3, 4, 2, 5)), (7, (4, 3, 6, 2))],
+    [(4, (5, 5, 3)), (5, (2, 6, 4)), (3, (4, 4, 4))],
+])
+def test_items_to_leave_when_unjoining_must_fit_the_rows(members, monkeypatch):
+    from goldbox import amiga_later
+    monkeypatch.setattr(amiga_later, "AMIGA_SSB_ITEM_ROWS", 14)
+    monkeypatch.setattr(amiga_later, "AMIGA_SSB_JOINED_SCROLL_LIMIT", 6)
+    overflow = _amiga_overflow(*members)
+    for leave in ({}, {overflow.members[0]: {0}}):
+        assert (dos_codec.amiga_items_to_leave(overflow, leave)
+                == _reference_items_to_leave(overflow, leave))
