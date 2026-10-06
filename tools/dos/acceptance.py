@@ -1645,6 +1645,22 @@ def loose_halve(screen: dosbox.Screen) -> dosbox.Screen:
     return dosbox.Screen(w, h, bytes(out))
 
 
+def map_square(screen: dosbox.Screen, column: int) -> str | None:
+    """`status_square`, or None when the line has no `x,y` token.
+
+    A line reads `x,y facing clock`; some views draw only `facing clock`,
+    whose first token would otherwise be read as a square.  Fewer than three
+    blank-separated tokens means the position is unknown.
+    """
+    x0, y, w, h = dosbox.STATUS
+    tokens, inside = 0, False
+    for x in range(column, x0 + w, CELL):
+        lit = not screen.flat((x, y, CELL, h))
+        tokens += lit and not inside
+        inside = lit
+    return status_square(screen, column) if tokens >= 3 else None
+
+
 class Explorer:
     """Where `fight` walks next, from the squares it has stood on.
 
@@ -4053,7 +4069,7 @@ class Driver:
             raise self.fail(label, "the map bar did not return (combat or "
                             "an unknown screen)")
         status = self.game.status()
-        square = status_square(screen, status_column(self.title.key))
+        square = map_square(screen, status_column(self.title.key))
         screens.append({"shot": self.shot(label), "bar": bar_signature(screen),
                         "status": status, "square": square})
         return status, square
@@ -4102,9 +4118,9 @@ class Driver:
                 raise self.fail(f"walk-turn-{n}", "the map bar did not return "
                                 "after turning (combat or an unknown screen)")
             _, square = record(f"walk-turn-{n}")
-            if square != origin:
-                raise self.fail(f"walk-turn-{n}", "the square changed on a turn "
-                                "(or the status line went blank)")
+            # A view without the `x,y` is an unknown square, not a moved one.
+            if square is not None and square != origin:
+                raise self.fail(f"walk-turn-{n}", "the square changed on a turn")
         stepped = self.game.step()
         screen = self.press_walk_stories("walk-step")
         if not stepped and not self.on_world(screen):
@@ -4259,9 +4275,8 @@ class Driver:
                 raise self.fail(label, "the map bar did not return after "
                                 "turning (combat or an unknown screen)")
             _, square = self.map_status(label, screens)
-            if square != origin:
-                raise self.fail(label, "the square changed on a turn (or the "
-                                "status line went blank)")
+            if square is not None and square != origin:
+                raise self.fail(label, "the square changed on a turn")
         return {"route": "turn", "turns": presses, "map_bar": self.world_sig,
                 "square_before": origin, "square_after": origin,
                 "screens": screens}

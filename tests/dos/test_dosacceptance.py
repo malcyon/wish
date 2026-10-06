@@ -2450,6 +2450,7 @@ class PoolMap(FakePool):
         super().__init__(tmp, **kw)
         self.x, self.facing, self.clock_ticks = 0, 3, 0
         self.status_on = status_on
+        self.hide_square = False
 
     def capture(self):
         frame = super().capture()
@@ -2458,10 +2459,14 @@ class PoolMap(FakePool):
         px = bytearray(frame.px)
         y = dosbox.STATUS[1]
         token = bytes(((1 << self.x % 8) | 0x80, 0x18, 0x21))
-        _draw_name(px, screens.STATUS_TEXT_X, y, token, _WHITE)
-        _draw_name(px, screens.STATUS_TEXT_X + screens.CELL * 4, y,
+        # With the `x,y` hidden the facing letter opens the line, as in
+        # `E 03:59`.
+        shift = 4 * screens.CELL * self.hide_square
+        if not self.hide_square:
+            _draw_name(px, screens.STATUS_TEXT_X, y, token, _WHITE)
+        _draw_name(px, screens.STATUS_TEXT_X + screens.CELL * 4 - shift, y,
                    bytes(((1 << self.facing) | 0x40,)), _WHITE)
-        _draw_name(px, screens.STATUS_TEXT_X + screens.CELL * 6, y,
+        _draw_name(px, screens.STATUS_TEXT_X + screens.CELL * 6 - shift, y,
                    bytes(((1 << self.clock_ticks % 8) | 0x20,)), _WHITE)
         return dosbox.Screen(W, H, bytes(px))
 
@@ -2513,6 +2518,25 @@ def test_pool_walk_mi_turns_twice_then_steps_and_records_each_map_state(tmp_path
     assert got["status_before"] != got["status_after"]
     assert len(got["screens"]) == 4
     assert d.where == "map"
+
+
+def test_pool_walk_mi_goes_on_when_a_turn_leaves_the_line_without_x_y(tmp_path):
+    game, d = _pool_walker(tmp_path)
+    turn, step = d.game.turn_right, d.game.step
+
+    def turn_hides():
+        game.hide_square = True
+        return turn()
+
+    def step_shows():
+        game.hide_square = False
+        return step()
+
+    d.game.turn_right, d.game.step = turn_hides, step_shows
+    got = d.walk("MI")
+    assert d.game.keys == ["Right", "Right", "Up"]
+    assert got["square_before"] != got["square_after"]
+    assert [s["square"] for s in got["screens"]][1:3] == [None, None]
 
 
 def test_pool_walk_i_steps_once_without_turning(tmp_path):
