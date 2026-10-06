@@ -715,15 +715,20 @@ def test_exclusive_waiters_are_served_in_the_order_they_arrived():
     assert "winuae-exclusive-queue" in PS1
     head = _body("Get-QueueHead")
     assert "Sort-Object Name" in head
-    assert "Remove-Item $f.FullName" in head and "Remove-Item $ReservePath" not in head
+    assert "Remove-Item $f.FullName" in head
     assert "{0:D20}-{1}.wait" in PS1 and "[DateTime]::UtcNow.Ticks" in PS1
 
     body = _case("claim")
     waiting = body[body.index("$Exclusive -and $WaitGiven"):body.index("if ($Exclusive -and $LaneCount -gt 1)")]
     assert waiting.index("Try-TakeClaim (Join-Path $QueueDir") < waiting.index("Get-QueueHead")
     assert waiting.index("Get-QueueHead") < waiting.index("Get-Reservation")
-    queued = re.search(r'"wait \$Holder is queued behind[^\n]*', waiting).group(0)
+    start = waiting.index("if ($head -and $head['holder'] -ne $Holder) {")
+    queued = waiting[start:waiting.index("\n", waiting.index("}", waiting.index("exit", start)))]
+    assert "is queued behind $($head['holder'])" in queued
     assert "exit 0" in queued and "exit 1" not in queued
+    remove = _body("Remove-QueueTicket")
+    assert "foreach ($f in" in remove and "Remove-Item $f.FullName" in remove
+    assert "Get-QueueTicket" not in remove
     assert waiting.index("Remove-QueueTicket $Holder") > waiting.index("Remove-Item $ReservePath")
     assert "Remove-QueueTicket $Holder" in _case("release")
     assert "Waiters are served in arrival order" in PS1[:PS1.index("param(")]

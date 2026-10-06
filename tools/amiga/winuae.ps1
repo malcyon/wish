@@ -300,8 +300,12 @@ function Get-QueueHead {
   $null
 }
 function Remove-QueueTicket([string]$ForHolder) {
-  $t = Get-QueueTicket $ForHolder
-  if ($t) { Remove-Item $t -Force -ErrorAction SilentlyContinue }
+  # Every ticket of the holder goes: a poll that could not read a ticket still being written
+  # makes a second one, and a leftover would block the waiters behind it until its until.
+  if (-not (Test-Path $QueueDir)) { return }
+  foreach ($f in @(Get-ChildItem -Path $QueueDir -Filter '*.wait' -File -ErrorAction SilentlyContinue)) {
+    if ((Read-Kv $f.FullName)['holder'] -eq $ForHolder) { Remove-Item $f.FullName -Force -ErrorAction SilentlyContinue }
+  }
 }
 
 function Reservation-Text([hashtable]$r) {
