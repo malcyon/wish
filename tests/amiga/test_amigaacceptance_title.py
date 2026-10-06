@@ -667,6 +667,28 @@ def test_an_interstitial_may_not_press_a_save_or_kept_letter(action):
         make_title(interstitials=(("disk_request", action, None, 1),))
 
 
+def test_an_interstitial_may_press_a_slot_letter_only_where_its_entry_names_the_screen():
+    row = ("flee", ("keys", "C"), frozenset({"world"}), 1)
+    make_title(interstitials=(row,), interstitial_letters=(("C", "flee"),),
+               move_again_after=frozenset({"flee"}))
+    with pytest.raises(winuaesession.RouteError, match="slot letter"):
+        make_title(interstitials=(row,), interstitial_letters=(("D", "flee"),))
+
+
+@pytest.mark.parametrize("screen", ["loaded_menu", "camp_picker", "nowhere"])
+def test_an_interstitial_letter_names_a_row_that_is_not_a_route_state_or_a_picker(screen):
+    row = (screen, ("keys", "C"), None, 1)
+    other = ("flee", ("keys", "ESC"), None, 1)
+    rows = (other,) if screen == "nowhere" else (row,)
+    with pytest.raises(winuaesession.RouteError, match="interstitial letter"):
+        make_title(interstitials=rows, interstitial_letters=((("C", screen)),))
+
+
+def test_a_move_again_screen_needs_an_interstitial_row():
+    with pytest.raises(winuaesession.RouteError, match="move-again screen"):
+        make_title(move_again_after=frozenset({"flee"}))
+
+
 def test_an_interstitial_may_still_press_other_keys_and_answer():
     make_title(interstitials=(("a", ("keys", ("ESC", "RET")), None, 1),
                               ("b", ("answer",), None, 1)))

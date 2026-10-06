@@ -814,3 +814,21 @@ def test_silver_blades_identity_holds_guys_one_row_item_list():
     assert any(rule['sha256'] == 'e2d2719448986eeddb8c5cb7bdd938384856026333e52a193f8c318ce1707cd5'
                and rule['box'] == [88, 104, 680, 372] and rule['also'] == ['items']
                for rule in rules)
+
+
+def test_the_darkness_camp_save_picker_guard_recognises_the_seven_member_party_picker_only():
+    """Reads a crop kept from a live run, so it skips on a machine without it."""
+    from tools.amiga import screens
+    from tools.registry import scratch
+
+    crop = scratch.cache_dir('acceptance') / 'WISH-2/wish2-a2/measure8/shots/13-camp_save_picker.png'
+    if not crop.is_file():
+        pytest.skip('the kept Darkness camp picker crop is not on this machine')
+    spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, 'darkness')
+    matching = set()
+    for state, value in spec['guards'].items():
+        for rule in screens.rules_of(value):
+            box = tuple(rule['box'])
+            if screens.box_digests(crop, {box})[box] == rule['sha256']:
+                matching.add(state)
+    assert matching == {'camp_save_picker'}

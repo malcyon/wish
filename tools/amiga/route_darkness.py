@@ -135,7 +135,12 @@ DARKNESS = AmigaTitle(
     interstitials=(
         ("yes_no", ("keys", "N"), frozenset({"world"}), 1),
         ("continue", ("keys", "RET"), frozenset({"world"}), 3),
+        # FLEE's key is the control letter, so the row presses it only where the `encounter`
+        # guard matches the encounter bar; `run_recon` then presses the move again.
+        ("encounter", ("keys", "F"), frozenset({"world"}), 1),
     ),
+    interstitial_letters=(("F", "encounter"),),
+    move_again_after=frozenset({"encounter"}),
 )
 
 # Loads the game-written slot G and writes nothing. `run_recon` adds G to the kept slots itself,
@@ -243,7 +248,7 @@ def vault_title(pages: int = VAULT_PAGES) -> AmigaTitle:
                     ("E", VAULT_MENU)),
         strict=(DARKNESS.strict - {"world"}) | {VAULT_MENU},
         # The route never expects `world`, the only state the two inherited rows answer.
-        interstitials=(),
+        interstitials=(), interstitial_letters=(), move_again_after=frozenset(),
         min_waits={**DARKNESS.min_waits, VAULT_MENU: 45.0,
                    **{state: 10.0 for state in states}},
     )

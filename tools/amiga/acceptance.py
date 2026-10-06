@@ -254,6 +254,9 @@ BOOT_LOG = r"C:\Amiga\lanes\{lane}\winuaebootlog.txt"
 
 #: The most draws one boot may make; the route's own camp save is the first.
 RULEBOOK_DRAWS_MAX = 15
+#: How many times a `move` step's key is pressed again after the game's encounter prompt is
+#: answered; a further prompt stops the run, since a snapshot restore replays the same roll.
+MOVE_AGAIN_LIMIT = 2
 #: Seconds one draw's question may take to answer, for the deadline check; measured answers ran 48 to 114 s.
 DRAW_ANSWER_SECONDS = 120.0
 
@@ -1380,10 +1383,16 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     NAME` and `restore NAME` steps become marks.
 
     `walk_retry` (accept only) takes a snapshot named `walk-leg` before the route's first `turn`
-    or `move` step, requires each step of that leg to match its guard, and on a miss, such as an
-    encounter screen, restores the snapshot and walks the leg again, at most `walk_retry` times;
-    a further miss stops the run. Each retry is listed in `result["walk_retries"]`. No game save
-    falls inside a leg, so a restore never strands one on the disk image.
+    or `move` step, requires each step of that leg to match its guard, and on a miss restores the
+    snapshot and walks the leg again, at most `walk_retry` times; a further miss stops the run.
+    A restore also restores the game's random state, so the same keys meet the same encounter;
+    it helps only against a miss that does not repeat. Each retry is listed in
+    `result["walk_retries"]`. No game save falls inside a leg, so a restore never strands one on
+    the disk image.
+
+    A `move` step that answered an interstitial in the title's `move_again_after` presses its key
+    again, at most `MOVE_AGAIN_LIMIT` times, listing each press in `result["moves_again"]`; a
+    further answer stops the run with a `RouteError`.
 
     `preserve_specimen` registers the fetched save disk of a run that succeeded by its own
     verdict, before `--expect` is judged, so a run that later fails `--expect` still leaves its
@@ -2243,6 +2252,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     if kind == "answer":
                         run_answer()
                     else:
+                        mark = len(result["events"])
                         perform(key, kind, state, n)
                     name = (f"{n:02d}-post_write" if kind == "write" and state == "loaded_menu"
                             else f"{n:02d}-{state}")
@@ -2260,6 +2270,24 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                         watch_messages(tuple(route_camp.JOIN_MESSAGES))
                     digest = reach(state, name, first_wait,
                                    strict=not accept or state in strict_states or in_leg)
+                    if kind == "move" and title is not None and title.move_again_after:
+                        again = 0
+                        while (answered := next(
+                                (e["interstitial"] for e in result["events"][mark:]
+                                 if e.get("key") is not None
+                                 and e.get("interstitial") in title.move_again_after), None)):
+                            if again >= MOVE_AGAIN_LIMIT:
+                                raise RouteError(
+                                    f"step {n} ({state}): {answered} was answered again after "
+                                    f"{again} presses of the move")
+                            again += 1
+                            mark = len(result["events"])
+                            result.setdefault("moves_again", []).append(
+                                {"step": n, "after": answered, "attempt": again})
+                            log("move_again", step=n, after=answered, attempt=again)
+                            perform(key, kind, state, n)
+                            digest = reach(state, f"{n:02d}-{state}-again-{again}", first_wait,
+                                           strict=not accept or state in strict_states or in_leg)
                     if loading:
                         guarded = _has_rule(guard, LOAD_MESSAGE)
                         result["load_message"] = {
@@ -3519,7 +3547,9 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--journal-python")
     a.add_argument("--walk-retry", type=int, default=0, metavar="N",
                    help="snapshot before the first turn or move step, and on a screen the guard "
-                        "does not match restore it and walk again, at most N times")
+                        "does not match restore it and walk again, at most N times; a restore "
+                        "also restores the game's random state, so the same keys meet the "
+                        "same encounter")
     a.add_argument("--rulebook-draws", type=int, default=None,
                    help=f"Silver Blades only: camp saves to make in this boot, 1 to {RULEBOOK_DRAWS_MAX}")
     a.add_argument("--rulebook-records", type=_record_numbers, default=None,

@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -1008,10 +1009,11 @@ def test_darkness_accept_route_answers_the_journal_with_explicit_steps_and_asks_
         ("N", "camp", "key"))
     assert {"journal", "journal_answer", "world", "camp", "exit_game"} <= darkness.strict
     assert darkness.min_waits["exit_game"] == 20.0
-    assert [row[0] for row in darkness.interstitials] == ["yes_no", "continue"]
+    assert [row[0] for row in darkness.interstitials] == ["yes_no", "continue", "encounter"]
     assert darkness.interstitials == (
         ("yes_no", ("keys", "N"), frozenset({"world"}), 1),
-        ("continue", ("keys", "RET"), frozenset({"world"}), 3))
+        ("continue", ("keys", "RET"), frozenset({"world"}), 3),
+        ("encounter", ("keys", "F"), frozenset({"world"}), 1))
     assert not any(kind == "answer" for _, _, kind in darkness.route)
 
 
@@ -1158,16 +1160,92 @@ def test_darkness_presses_return_at_a_continue_page_three_times_at_most_and_only
     assert "RET" not in _keys(guest)
 
 
+class _EncounterGuard(MapGuard):
+    """Shows the encounter bar at each named crop until the run has answered it there.
+
+    The `world` rule is closed on such a crop until then, as the game's bar is not the world
+    bar; a crop named `...-again-N` is the same state as the one without the suffix.
+    """
+
+    def __init__(self, stems):
+        self.fired: set[str] = set()
+        self.pending = set(stems)
+
+        def encounter(path):
+            if path.stem in self.pending and path.stem not in self.fired:
+                self.fired.add(path.stem)
+                return True
+            return False
+
+        def world(path):
+            return self.shown(path) == "world" and not (
+                path.stem in self.pending and path.stem not in self.fired)
+
+        super().__init__(states=(*DARK_STATES, "encounter"),
+                         on={**DARK_FIRST_SCREEN, "encounter": encounter, "world": world})
+
+    def shown(self, path):
+        return super().shown(path.with_name(re.sub(r"-again-\d+", "", path.name)))
+
+
+class _EncounterGuest(DarkGuest):
+    """The encounter stops the party's first `NP8`, and the next `F` flees it instead of saving."""
+
+    stopped = False
+    fleeing = False
+
+    def press(self, holder, key, timeout=None):
+        if key == "NP8" and not self.stopped:
+            self.stopped = self.fleeing = True
+            return super(TitleGuest, self).press(holder, key, timeout)
+        if key == "F" and self.fleeing:
+            self.fleeing = False
+            return super(TitleGuest, self).press(holder, key, timeout)
+        return super().press(holder, key, timeout)
+
+
+def test_darkness_flees_an_encounter_once_and_presses_the_move_again_to_end_one_square_on(
+        tmp_path, clock):
+    guest, result = _dark_run(tmp_path, clock, guest=_EncounterGuest(clock, save_key="disk3"),
+                              guard=_EncounterGuard(["13-world"]))
+    keys = _keys(guest)
+    assert result["error"] == "" and result["success"] is True, result["read"]
+    assert keys.count("F") == 2 and keys.count("NP8") == 2  # the route's own F, then FLEE
+    assert keys[keys.index("NP8") - 1] == "RET" and keys[keys.index("NP8") + 1] == "F"
+    assert result["moves_again"] == [{"step": 13, "after": "encounter", "attempt": 1}]
+    assert result["read"]["verdicts"][1].startswith("slot G: moved 1 square")
+
+
+def test_darkness_presses_no_flee_key_for_an_encounter_screen_outside_the_world_wait(
+        tmp_path, clock):
+    guest, result = _dark_run(tmp_path, clock, guard=_EncounterGuard([]))
+    other = tmp_path / "other"
+    other.mkdir()
+    guest, _ = _dark_run(other, clock, guard=_EncounterGuard(["01-party_menu"]))
+    assert _keys(guest).count("F") == 1 and "moves_again" not in result
+
+
+def test_darkness_stops_at_the_move_again_cap_and_writes_no_slot_g(tmp_path, clock):
+    stems = ["13-world", *(f"13-world-again-{i}" for i in range(1, foundation.MOVE_AGAIN_LIMIT + 1))]
+    guest, result = _dark_run(tmp_path, clock, guest=_EncounterGuest(clock, save_key="disk3"),
+                              guard=_EncounterGuard(stems))
+    keys = _keys(guest)
+    assert result["success"] is False
+    assert result["error"].startswith("RouteError: step 13 (world)")
+    assert keys.count("NP8") == foundation.MOVE_AGAIN_LIMIT + 1 and "G" not in keys
+    assert len(result["moves_again"]) == foundation.MOVE_AGAIN_LIMIT
+
+
 def test_a_run_records_the_interstitial_screens_its_guard_map_cannot_recognise(tmp_path, clock):
     _, result = _dark_run(tmp_path, clock)
-    assert result["interstitials_without_guard"] == ["continue", "yes_no"]
+    assert result["interstitials_without_guard"] == ["continue", "encounter", "yes_no"]
     events = [json.loads(line) for line in (tmp_path / "recon1" / "run.jsonl").read_text().splitlines()]
     logged = [e for e in events if e["event"] == "interstitials_without_guard"]
-    assert [e["screens"] for e in logged] == [["continue", "yes_no"]]
+    assert [e["screens"] for e in logged] == [["continue", "encounter", "yes_no"]]
     other = tmp_path / "other"
     other.mkdir()
     _, result = _dark_run(other, clock, guard=_dark_guard("continue", ["12-world"], world=1))
-    assert result["interstitials_without_guard"] == ["yes_no"]
+    assert result["interstitials_without_guard"] == ["encounter", "yes_no"]
 
 
 def test_the_unguarded_interstitials_come_back_sorted_whatever_order_the_title_lists_them(
@@ -1184,7 +1262,7 @@ def test_the_unguarded_interstitials_come_back_sorted_whatever_order_the_title_l
         _dark_manifest(tmp_path), guest=guest,
         guard=MapGuard(states=DARK_STATES, on=DARK_FIRST_SCREEN), holder="wish679-test",
         audio_proof=_audio_proof(tmp_path), title=title, accept=True, identity=_IdentityMap())
-    assert result["interstitials_without_guard"] == sorted([*names, "continue", "yes_no"])
+    assert result["interstitials_without_guard"] == sorted([*names, "continue", "encounter", "yes_no"])
 
 
 def test_a_strict_timeout_names_the_interstitial_screens_with_no_guard(tmp_path, clock):
@@ -1194,7 +1272,8 @@ def test_a_strict_timeout_names_the_interstitial_screens_with_no_guard(tmp_path,
     assert "continue" in result["error"] and "yes_no" in result["error"]
     other = tmp_path / "other"
     other.mkdir()
-    both = MapGuard(states=(*DARK_STATES, "continue", "yes_no"), on={"world": _never})
+    both = MapGuard(states=(*DARK_STATES, "continue", "encounter", "yes_no"),
+                    on={"world": _never})
     _, result = _dark_run(other, clock, guard=both)
     assert result["interstitials_without_guard"] == []
     assert "no rule" not in result["error"]
@@ -1313,7 +1392,8 @@ def test_darkness_inserts_disk_2_into_df0_at_the_prompt_after_the_slot_letter():
 def test_darkness_has_no_disk_prompt_interstitial_and_pins_its_boot_span_as_a_guess():
     # With disk 3 mounted no prompt appeared. The 225 s span puts the first key near the title in
     # the one measured boot; that timing is a guess until a title guard recognises the screen.
-    assert [row[0] for row in foundation.DARKNESS.interstitials] == ["yes_no", "continue"]
+    assert [row[0] for row in foundation.DARKNESS.interstitials] == [
+        "yes_no", "continue", "encounter"]
     assert foundation.DARKNESS.boot_span == 225.0
     first_four = (("P", "party_menu", "key"), ("L", "load_from", "key"),
                   ("P", "load_picker", "key"), ("B", "disk2_prompt", "key"))

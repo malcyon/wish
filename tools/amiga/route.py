@@ -84,7 +84,11 @@ class AmigaTitle:
     written, so a non-write step may press one only where `plain_keys` names its `(key, state)`:
     the game's own key that happens to be a slot's letter. A simple key is blocked on a screen
     where some step writes and on a state whose name contains `picker`; the run's compare of
-    every kept slot after the fetch is what proves none changed.
+    every kept slot after the fetch is what proves none changed. An interstitial row may press a
+    save or kept letter only where `interstitial_letters` names its `(key, screen)`: the game's own
+    key on a screen the guard recognises, such as FLEE on an encounter bar. Its screen is never a
+    route state or a picker. After an interstitial screen in `move_again_after` has been answered
+    during a `move` step, that step's key is pressed again.
     Every entry must be a kept letter that some non-write step presses in that state. An `insert`
     may name drive 1, or drive 0 when the step before it is in `disk_prompts` (states where the
     game itself asks for a disk) and `strict`, naming a disk other than the one in DF0; an
@@ -118,6 +122,8 @@ class AmigaTitle:
     kept_letters: tuple[str, ...] = ()
     turn: str | None = None
     plain_keys: tuple[tuple[str, str], ...] = ()
+    interstitial_letters: tuple[tuple[str, str], ...] = ()
+    move_again_after: frozenset[str] = frozenset()
     wait_limits: Mapping[str, float] = dataclasses.field(default_factory=dict)
     edge_exits: Mapping[tuple[int, int], int] = dataclasses.field(default_factory=dict)
 
@@ -200,6 +206,25 @@ class AmigaTitle:
                 block(f"simple key {entry!r} is pressed by no step in that state")
         for row in self.interstitials:
             self._check_row(row, keys, block)
+        letters_ok = self.interstitial_letters
+        if not (isinstance(letters_ok, tuple) and all(
+                isinstance(e, tuple) and len(e) == 2 and all(isinstance(x, str) for x in e)
+                for e in letters_ok)):
+            block(f"interstitial letters {letters_ok!r} must be (key, screen) pairs")
+        row_screens = {row[0] for row in self.interstitials}
+        route_states = {step[1] for route in (self.route, self.measure_route)
+                        for step in route if isinstance(step, tuple) and len(step) == 3}
+        for entry in letters_ok:
+            if entry[1] not in row_screens:
+                block(f"interstitial letter {entry!r} names a screen with no interstitial row")
+            if entry[1] in route_states:
+                block(f"interstitial letter {entry!r} names a screen that is also a route state")
+            if "picker" in entry[1].lower():
+                block(f"interstitial letter {entry!r} names a picker screen, which takes a slot "
+                      f"letter as a save")
+        for screen in self.move_again_after:
+            if screen not in row_screens:
+                block(f"move-again screen {screen!r} has no interstitial row")
 
     def _write_letters(self) -> frozenset[str]:
         """The letters that save, or belong to a slot that must not change."""
@@ -277,5 +302,6 @@ class AmigaTitle:
             return
         else:
             block(f"interstitial {row!r} has an unknown action")
-        if any(k.upper() in self._write_letters() for k in pressed):
+        if any(k.upper() in self._write_letters()
+               and (k.upper(), row[0]) not in self.interstitial_letters for k in pressed):
             block(f"interstitial {row!r} presses a save or kept slot letter")

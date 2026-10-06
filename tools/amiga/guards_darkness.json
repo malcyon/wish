@@ -335,6 +335,19 @@
         ],
         "example": "628/darkness-P1a/accept1/shots/30-camp_save_picker.png",
         "sha256": "27301b4c59f31e160132ea379d29167b88251428a94892a8ab5a5a498b33b6a8"
+      },
+      {
+        "also": [
+          "save_picker"
+        ],
+        "box": [
+          74,
+          404,
+          322,
+          430
+        ],
+        "example": "WISH-2/wish2-a2/measure8/shots/13-camp_save_picker.png",
+        "sha256": "df9c8ff025a19c80ae58285e082eae7f42dd3374765bb132adb9dd01d5a3d3b2"
       }
     ],
     "camp_sheet": {
@@ -533,6 +546,17 @@
       ],
       "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/04-disk2_prompt.png",
       "sha256": "d27a9a57ec0044d5179669bbe44bfd49ed23a81c5fee4c92c85f95fc64d68377"
+    },
+    "encounter": {
+      "also": [],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "WISH-2/wish2-a3/accept2/shots/13-world.png",
+      "sha256": "03aa1e681bdb5c268b6323dbc66d5bd296a336789bfce2a78bb6fd59e95ac527"
     },
     "exit_game": {
       "also": [],
