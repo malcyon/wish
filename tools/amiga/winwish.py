@@ -12,7 +12,7 @@ the lane claim, the audio proof and the receipts are the ones every other WinUAE
 run uses.
 
     winwish.py fetch  --sha SHA
-    winwish.py up     --sha SHA --holder H --mute-proof FILE [--df0 C:\\Amiga\\Disks\\a.adf]
+    winwish.py up     --sha SHA --holder H --mute-proof FILE [--df0 C:\\Amiga\\Disks\\a.adf] [--wait-lanes SECONDS]
     winwish.py stage-save --holder H --save LOCAL --folder REL
     winwish.py start  --holder H [--open GUEST_PATH] [--reseed]
     winwish.py shot   --holder H --window wish --out wish.png
@@ -1474,8 +1474,10 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
     """Fetch, stage, claim the lane, start WinUAE (when there are drives), start Wish.
 
     With no drive no WinUAE is started, but the claim is still exclusive and the mute
-    proof still required: Wish takes the console's desktop, whatever it is run beside,
-    and a Windows message box plays a sound the host hears.
+    proof still required. The claim takes every lane because Wish attaches to the
+    lowest-numbered WinUAE pipe, whichever lane that belongs to: beside another running
+    lane it can attach to that holder's emulator. With `--wait-lanes N` the claim
+    reserves the lanes and waits up to N seconds for the other holders to release them.
 
     Anything that goes wrong between the claim and the end of `start_wish` -- an
     error, Ctrl-C or SIGTERM -- stops Wish (if it was attempted), stops WinUAE and
@@ -1497,7 +1499,10 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
     claimed = started = wish_tried = done = False
     with terminating():
         try:
-            result["claim"] = lane.claim(args.holder, CALL_SECONDS, exclusive=True)
+            if args.wait_lanes > 0:
+                result["claim"] = lane.claim_every_lane(args.holder, CALL_SECONDS, args.wait_lanes)
+            else:
+                result["claim"] = lane.claim(args.holder, CALL_SECONDS, exclusive=True)
             claimed = True
             # A display an earlier holder's dead agent left changed is put back before anything runs.
             restore_pending_display(guest, args.holder)
@@ -1593,6 +1598,9 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--zip", help="use this zip rather than fetching")
     p.add_argument("--no-flag", action="store_true",
                    help=f"leave {FLAG} unset (the control)")
+    p.add_argument("--wait-lanes", type=int, default=0, metavar="SECONDS",
+                   help="reserve every lane and wait up to this long for the other holders "
+                   "to release theirs (default: claim once and fail)")
 
     p = sub.add_parser("stage-save", help="copy a save to the guest and check its hash there")
     holder(p)

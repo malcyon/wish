@@ -23,6 +23,8 @@ LOCAL_BOOT_CONFIG = pathlib.Path(__file__).with_name("goldbox-a500.uae")
 WINUAE_PS = r"powershell -NoProfile -ExecutionPolicy Bypass -File C:\Amiga\winuae.ps1"
 # The longest one `winuae.ps1 shot` round trip may take before it is cut off.
 SHOT_SECONDS = 20.0
+# Seconds between two calls of a waiting `claim -Exclusive -Wait`.
+CLAIM_POLL_SECONDS = 5.0
 HOLDER = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 
@@ -116,6 +118,31 @@ class WinGuest:
     def claim(self, holder: str, timeout: float, exclusive: bool = False) -> str:
         """Claim a lane; `exclusive` takes every lane, for work that needs the whole desktop."""
         return self._lane(holder, "claim -Exclusive" if exclusive else "claim", timeout)
+
+    def claim_every_lane(self, holder: str, timeout: float, wait: float) -> str:
+        """Reserve and take every lane, polling the guest for up to `wait` seconds.
+
+        The guest's `claim -Exclusive -Wait` keeps each lane it takes and blocks ordinary
+        claims meanwhile, so lanes other runners free are not taken again before this
+        holder has all of them. On the deadline the reservation is released.
+        """
+        self.holder = holder
+        deadline = time.monotonic() + wait
+        last = ""
+        while True:
+            last = self._run(
+                "ssh", f"{WINUAE_PS} claim -Exclusive -Wait {max(1, int(wait))} -Holder {holder}",
+                timeout=timeout)
+            if last.startswith("ok"):
+                return last
+            if not last.startswith(("wait", "fail an exclusive claim")):
+                raise RouteError(f"winuae.ps1 claim -Exclusive -Wait returned {last!r}")
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(CLAIM_POLL_SECONDS)
+        with contextlib.suppress(RouteError):
+            self.release(holder, timeout)
+        raise RouteError(f"no exclusive claim within {wait:.0f}s: {last}")
 
     def lane(self, holder: str, timeout: float) -> int:
         """The lane number `holder`'s running emulator is in, from the `lane` verb."""

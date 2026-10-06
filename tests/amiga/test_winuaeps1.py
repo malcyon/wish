@@ -360,6 +360,30 @@ def test_a_whole_desktop_claim_takes_every_lane_in_order():
     assert "1..$LaneCount" in body
 
 
+def test_an_ordinary_claim_reads_the_reservation_before_its_candidate_loop():
+    body = _case("claim")
+    ordinary = body[body.index("$candidates ="):]
+    assert ordinary.index("Get-Reservation") < ordinary.index("foreach ($n in $candidates)")
+    assert "fail the WinUAE lanes are reserved for an exclusive claim" in ordinary
+    assert "if (-not $Override)" in ordinary[:ordinary.index("Get-Reservation")]
+
+
+def test_release_removes_the_callers_reservation():
+    body = _case("release")
+    assert "$ReservePath" in body and "-eq $Holder" in body[:body.index("Remove-Item $ReservePath")]
+    assert body.index("Remove-Item $ReservePath") < body.index("$LaneCount -gt 1")
+    assert r"winuae-exclusive.claim" in PS1
+
+
+def test_a_waiting_exclusive_claim_keeps_its_lanes_and_never_gives_them_back():
+    body = _case("claim")
+    waiting = body[body.index("$Exclusive -and $WaitGiven"):body.index("if ($Exclusive -and $LaneCount -gt 1)")]
+    assert "$until" in waiting and "$WaitSeconds" in waiting
+    assert "Remove-Item $path" not in waiting.replace("if ($r['state'] -eq 'stale') { Remove-Item $path", "")
+    assert "\"wait $Holder holds lanes" in waiting
+    assert "Remove-Item $ReservePath" in waiting  # only once every lane is held
+
+
 def test_the_lane_verb_names_the_holders_lane_and_pid():
     valid = re.search(r"ValidateSet\(([^)]*)\)", PS1).group(1)
     assert "'lane'" in valid

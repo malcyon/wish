@@ -26,7 +26,8 @@
 #   winvm ssh "$ps restore -Holder por-run before-walk"
 #   winvm ssh "$ps discard-snapshot -Holder por-run before-walk"
 #   winvm ssh "$ps lane -Holder por-run"        # which lane and pid this holder has
-#   winvm ssh "$ps claim -Holder wish-exe -Exclusive"   # every lane, for work that needs the desktop
+#   winvm ssh "$ps claim -Holder wish-exe -Exclusive"   # every lane, or none, for Wish's pipe choice
+#   winvm ssh "$ps claim -Holder wish-exe -Exclusive -Wait 900"   # reserve, keep what is free, call again
 #   winvm ssh "$ps claim -Holder por-run -Override -Lane 2"   # take a gone holder's lane
 #   winvm ssh "$ps status"
 #   winvm ssh "$ps stop -Holder por-run"        # before clean, always
@@ -63,7 +64,11 @@
 #   * `start` writes a receipt naming the pid it launched, and every other verb
 #     resolves its emulator by that pid, its start time and its holder, so a
 #     neighbour's emulator is never reported as the caller's own;
-#   * `claim -Exclusive` takes every lane, for work that needs the whole desktop.
+#   * `claim -Exclusive` takes every lane. Wish attaches to the lowest-numbered WinUAE
+#     pipe whichever lane it belongs to, so a Wish run is safe only when no other lane
+#     is running. `-Wait <seconds>` makes the claim a reservation: it keeps each lane it
+#     takes, ordinary claims fail until it has them all or its time is up, and the
+#     caller calls again until the reply starts with `ok`.
 #
 # See docs/143-winuae-debugger.md 1.1.
 
@@ -97,6 +102,9 @@ $WantTokenGiven = $false
 # `claim` take every lane.
 $LaneArg = ''
 $Exclusive = $false
+# `-Wait <seconds>` turns `claim -Exclusive` into a reservation that lasts that long.
+$WaitSeconds = 0
+$WaitGiven = $false
 # @($null) is an array of one $null, not an empty one, so a command with no
 # remaining arguments at all -- `stop`, `status` -- has Count 1 and indexes into
 # nothing. Measured: "Cannot index into a null array" on bare `stop`.
@@ -108,6 +116,11 @@ for ($i = 0; $i -lt $given.Count; $i++) {
   elseif ($a -eq '-Override') { $Override = $true }
   elseif ($a -eq '-Token') { $WantTokenGiven = $true; $i++; if ($i -lt $given.Count) { $WantToken = $given[$i] } }
   elseif ($a -eq '-Exclusive') { $Exclusive = $true }
+  elseif ($a -eq '-Wait') {
+    $i++
+    if ($i -ge $given.Count -or $given[$i] -notmatch '^[0-9]{1,6}\z' -or [int]$given[$i] -lt 1) { 'fail -Wait needs a number of seconds, 1 or more'; exit 1 }
+    $WaitGiven = $true; $WaitSeconds = [int]$given[$i]
+  }
   elseif ($a -eq '-Lane') { $i++; if ($i -lt $given.Count) { $LaneArg = $given[$i] } else { $LaneArg = '-' } }
   else { [void]$passthru.Add($a) }
 }
@@ -236,6 +249,30 @@ function Read-Kv([string]$Path) {
 
 function Write-Kv([string]$Path, [hashtable]$H) {
   ($H.Keys | Sort-Object | ForEach-Object { "$_=$($H[$_])" }) | Set-Content -Path $Path -Encoding ASCII -ErrorAction Stop
+}
+
+# The reservation a waiting `claim -Exclusive -Wait` holds, so an ordinary claim cannot take
+# a lane the waiter has just seen freed. `until` is Unix seconds. A reservation from an
+# earlier boot, past its `until`, or a wreck left by a killed write is not live.
+$ReservePath = Join-Path $Root 'winuae-exclusive.claim'
+function Get-Reservation {
+  for ($i = 0; $i -lt 10; $i++) {
+    if (-not (Test-Path $ReservePath)) { return $null }
+    $c = Read-Kv $ReservePath
+    if ($c.ContainsKey('holder') -and $c.ContainsKey('until')) {
+      $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+      if ($c['boot'] -ne (Boot-Stamp) -or [long]$c['until'] -le $now) { return $null }
+      return $c
+    }
+    Start-Sleep -Milliseconds 50
+  }
+  $age = (Get-Date) - (Get-Item $ReservePath -ErrorAction SilentlyContinue).LastWriteTime
+  if ($age.TotalSeconds -gt 30) { return $null }
+  @{ holder = 'another caller'; until = [string]([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + 30) }
+}
+
+function Reservation-Text([hashtable]$r) {
+  "by $($r['holder']) until $([DateTimeOffset]::FromUnixTimeSeconds([long]$r['until']).LocalDateTime.ToString('o'))"
 }
 
 function Boot-Stamp { (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToString('o') }
@@ -1230,6 +1267,46 @@ switch ($Cmd) {
     if (-not $Holder) { 'fail claim needs -Holder <id>'; exit 1 }
     if ($Holder -notmatch '^[A-Za-z0-9._-]{1,64}$') { "fail '$Holder' is not a usable holder name"; exit 1 }
     $token = [guid]::NewGuid().ToString('N').Substring(0, 12)
+    if ($Exclusive -and $WaitGiven -and $LaneCount -gt 1) {
+      # A reservation, so a waiting caller is not starved by other runners that take each
+      # freed lane again within seconds. Each lane this call takes is kept, and the caller
+      # calls again: `ok` when it has every lane, `wait` while it does not.
+      if ($Override) { 'fail claim -Exclusive does not take -Override; release each lane with release -Override -Lane <n>'; exit 1 }
+      $res = Get-Reservation
+      if ($res -and $res['holder'] -ne $Holder) { "fail an exclusive claim $(Reservation-Text $res) is waiting"; exit 1 }
+      $until = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + $WaitSeconds
+      $since = if ($res) { $res['since'] } else { (Get-Date).ToString('o') }
+      $mine = @{ holder = $Holder; since = $since; boot = (Boot-Stamp); until = $until }
+      if ($res) { Write-Kv $ReservePath $mine }
+      else {
+        Remove-Item $ReservePath -Force -ErrorAction SilentlyContinue
+        if (-not (Try-TakeClaim $ReservePath $mine)) { 'fail an exclusive claim by another caller is waiting'; exit 1 }
+      }
+      $blocker = $null
+      foreach ($n in 1..$LaneCount) {
+        $path = (Lane-Paths $n).claim
+        $r = Read-Claim $path
+        if ($r['state'] -eq 'held' -and $r['claim']['holder'] -eq $Holder) { continue }
+        if ($r['state'] -eq 'held') { if (-not $blocker) { $blocker = "lane $n is claimed by $($r['claim']['holder']) since $($r['claim']['since'])" }; continue }
+        if ($r['state'] -eq 'unreadable') { if (-not $blocker) { $blocker = "the claim file of lane $n is there and cannot be read" }; continue }
+        if ($r['state'] -eq 'stale') { Remove-Item $path -Force -ErrorAction SilentlyContinue }
+        if (-not (Try-TakeClaim $path @{ holder = $Holder; since = (Get-Date).ToString('o'); boot = (Boot-Stamp); token = $token; exclusive = 1 })) {
+          if (-not $blocker) { $blocker = "lane $n was taken by another caller while this call was running" }
+        }
+      }
+      $have = @()
+      foreach ($n in 1..$LaneCount) {
+        $r = Read-Claim (Lane-Paths $n).claim
+        if ($r['state'] -eq 'held' -and $r['claim']['holder'] -eq $Holder) { $have += $n }
+      }
+      if ($have.Count -eq $LaneCount) {
+        Remove-Item $ReservePath -Force -ErrorAction SilentlyContinue
+        "ok claimed by $Holder"
+        exit 0
+      }
+      "wait $Holder holds lanes $($have -join ',') of $LaneCount; $blocker"
+      exit 0
+    }
     if ($Exclusive -and $LaneCount -gt 1) {
       # Every lane, in the order an ordinary claim tries them, so an ordinary
       # claim racing this one cannot also win: whoever holds lane 1 first holds
@@ -1278,6 +1355,11 @@ switch ($Cmd) {
     # The lanes tried are all of them, in order, or just the one -Lane names;
     # -Override works on one lane only, never on a search.
     $candidates = if ($Override -or $LaneArg -ne '') { @($ActiveLane) } else { 1..$LaneCount }
+    # A waiting exclusive claim is reserved against everyone but its own holder.
+    if (-not $Override) {
+      $res = Get-Reservation
+      if ($res -and $res['holder'] -ne $Holder) { "fail the WinUAE lanes are reserved for an exclusive claim $(Reservation-Text $res)"; exit 1 }
+    }
     foreach ($n in $candidates) {
       $r = Read-Claim (Lane-Paths $n).claim
       if ($r['state'] -eq 'held' -and $r['claim']['holder'] -eq $Holder) {
@@ -1376,6 +1458,7 @@ switch ($Cmd) {
     # round -- an emulator nobody claims is somebody's unfinished run until a
     # person says otherwise.
     if (-not $Holder) { 'fail release needs -Holder <id>'; exit 1 }
+    if ((Test-Path $ReservePath) -and (Read-Kv $ReservePath)['holder'] -eq $Holder) { Remove-Item $ReservePath -Force -ErrorAction SilentlyContinue }
     if ($LaneCount -gt 1 -and -not $Override -and $LaneArg -eq '') {
       # Frees every lane this holder has: one, or all of them after `claim -Exclusive`.
       $freed = 0

@@ -62,6 +62,10 @@ class FakeLane:
         self.exclusive = exclusive
         return self._do("claim")
 
+    def claim_every_lane(self, holder, timeout, wait):
+        self.waited = wait
+        return self._do("claim_every_lane")
+
     def start(self, holder, *drives, timeout, options=()):
         self.log.append("drives=" + ",".join(drives))
         self.options = options
@@ -392,10 +396,45 @@ def test_up_runs_the_steps_in_order(tmp_path, monkeypatch):
 
 
 def test_up_claims_every_lane(tmp_path, monkeypatch):
-    """wish.exe takes the session 1 desktop, so no other holder may run beside it."""
+    """Wish opens the lowest-numbered WinUAE pipe, so no other lane may be running beside it."""
     lane = FakeLane()
     winwish.up(winwish.Guest(FakeRun()), lane, _args(tmp_path, monkeypatch))
     assert lane.exclusive is True
+
+
+def test_up_with_wait_lanes_reserves_and_waits_for_every_lane(tmp_path, monkeypatch):
+    lane = FakeLane()
+    winwish.up(winwish.Guest(FakeRun()), lane,
+               _args(tmp_path, monkeypatch, "--wait-lanes", "900"))
+    assert lane.waited == 900
+    assert lane.log[0] == "claim_every_lane"
+    assert "claim" not in lane.log
+
+
+def test_claim_every_lane_polls_until_the_guest_says_ok(monkeypatch):
+    sent = []
+    replies = iter(["wait h holds lanes 1 of 4; lane 2 is claimed by x",
+                    "wait h holds lanes 1,2 of 4; lane 3 is claimed by x", "ok claimed by h"])
+    monkeypatch.setattr(winuaesession.WinGuest, "_run",
+                        staticmethod(lambda *a, timeout: sent.append(a) or next(replies)))
+    monkeypatch.setattr(winuaesession.time, "sleep", lambda s: None)
+    receipt = winuaesession.WinGuest().claim_every_lane("h", 5, 120)
+    assert receipt == "ok claimed by h"
+    assert len(sent) == 3
+    assert all(call[1].endswith("claim -Exclusive -Wait 120 -Holder h") for call in sent)
+
+
+def test_claim_every_lane_releases_the_reservation_at_the_deadline(monkeypatch):
+    sent = []
+    monkeypatch.setattr(winuaesession.WinGuest, "_run", staticmethod(
+        lambda *a, timeout: sent.append(a) or ("ok released by h" if a[1].endswith("release -Holder h")
+                                               else "wait h holds lanes 1 of 4; lane 2 is claimed by x")))
+    clock = iter([0.0, 1.0, 200.0])
+    monkeypatch.setattr(winuaesession.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(winuaesession.time, "sleep", lambda s: None)
+    with pytest.raises(winuaesession.RouteError, match="lane 2 is claimed by x"):
+        winuaesession.WinGuest().claim_every_lane("h", 5, 120)
+    assert sent[-1][1].endswith("release -Holder h")
 
 
 def test_an_exclusive_claim_sends_the_exclusive_switch(monkeypatch):
