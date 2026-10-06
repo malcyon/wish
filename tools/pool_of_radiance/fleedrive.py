@@ -389,15 +389,16 @@ def may_step_off(battle, me) -> bool:
     """Whether stepping off the map from `me`'s square gets him away.
 
     `COMBAT $16FA` lets a character away with no roll when no enemy is beside
-    him; otherwise it compares his movement with the fastest enemy's and a tie
-    is a coin flip.  So it is true with nobody beside him, or when his
-    movement and every adjacent enemy's are known and his is the larger; a tie
-    or an unknown movement is false.
+    him (`$184D`); otherwise it compares his movement (`$6C1B`) with the
+    fastest of the other side's, which `$1768` takes over every combatant in
+    the fight wherever it stands, not only the ones beside him, and a tie is
+    a coin flip.  So it is true with nobody beside him, or when his movement
+    and every living enemy's on the map are known and his is the larger; a
+    tie or an unknown movement is false.
     """
-    beside = adjacent_enemies(battle, me.x, me.y)
-    if not beside:
+    if not adjacent_enemies(battle, me.x, me.y):
         return True
-    moves = [c.movement for c in beside]
+    moves = [c.movement for c in battle.enemies if c.alive and c.on_map]
     if me.movement is None or any(m is None for m in moves):
         return False
     return me.movement > max(moves)

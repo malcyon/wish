@@ -716,6 +716,12 @@ def roster_hp(m) -> list[int]:
     return [raw[i * ROSTER_STRIDE + ROSTER_HP] for i in range(8)]
 
 
+class FightSetback(RuntimeError):
+    """A fight outcome the game decided -- a member down, a caster whose bar
+    kept losing CAST -- rather than a driver that could not press a key; a
+    caller holding a snapshot can put the machine back and try again."""
+
+
 class Caster:
     """A fight tactic: the named caster casts the named spell at the named
     party member when his turn comes, and everybody else fights as before.
@@ -726,17 +732,24 @@ class Caster:
     that is not a cast, `Session.melee_turn` unless the caller wants another.
     With `late`, the caster holds, running `wait` (or `otherwise` when `wait`
     is None), until his first own turn on which another member is away
-    (`fleedrive.RUNNING`), every other member is away or down, his hit points
-    are at most half of what they were on the tactic's first turn, or he has
-    held `HOLD_TURNS` of his own turns; the last two keep a slow flight by
-    someone else from letting the monsters kill him before he casts.  Once a
+    (`fleedrive.RUNNING`) and every member still in the fight stands on an
+    edge square he may step off from (`can_leave`), every other member is
+    away or down, his hit points are at most half of what they were on the
+    tactic's first turn, or he has held `HOLD_TURNS` of his own turns; the
+    first keeps a member who cannot yet get away from being left in the fight
+    with the spell running, and the last two keep a slow flight by someone
+    else from letting the monsters kill him before he casts.  Once a
     condition is met it stays met.  On any turn the cast is due but the
     command bar has no CAST -- the game drops it for a caster hit for damage
     since his last turn ended (COMBAT `$0D9F` sets bit 7 of his `$A440`
     byte, the bar builder at `$09E3` tests it, the turn's end at `$0AD4`
     clears it) -- he holds instead, and that turn counts as held.  The step
-    fails when the bar still has no CAST once he has held `HOLD_TURNS` plus
-    `REGAIN_TURNS` turns.
+    fails with `FightSetback` when the bar still has no CAST once he has held
+    `HOLD_TURNS` plus `REGAIN_TURNS` turns.
+    With `abort_down`, every turn first reads the roster statuses and raises
+    `FightSetback` as soon as a party member is dead, dying, unconscious or
+    stoned, since the game strips a party-wide spell row on any knock-out
+    (`COMBAT $29D8`) and the fight can no longer end the way the caller needs.
     Everything it does is logged with the screen, because nothing in this
     project has driven CAST in combat before and a failed attempt has to say
     where it got to.
@@ -756,12 +769,13 @@ class Caster:
     BAR_READ_SECONDS = 6.0
 
     def __init__(self, log: Log, queue: list[tuple[str, str, str | None]],
-                 otherwise=None, wait=None, late=False):
+                 otherwise=None, wait=None, late=False, abort_down=False):
         self.log = log
         self.queue = list(queue)
         self.otherwise = otherwise or S.Session.melee_turn
         self.wait = wait or self.otherwise
         self.late = late
+        self.abort_down = abort_down
         self.armed: str | None = None
         self.first_hp: list[int] | None = None
         self.turn = 0
@@ -776,12 +790,14 @@ class Caster:
         self.log.emit("hp", turn=self.turn, hp=now)
         if self.first_hp is None:
             self.first_hp = now
+        if self.abort_down:
+            self.stop_if_down(sess)
         b = sess.battle()
         me = sess.acting(b)
         if me is not None and self.queue and \
                 me.name.strip() == self.queue[0][0]:
             if self.late and self.armed is None:
-                trigger = self.cast_trigger(sess, me, now)
+                trigger = self.cast_trigger(sess, b, me, now)
                 if trigger is None:
                     self.waits += 1
                     self.report_wait(sess)
@@ -825,20 +841,27 @@ class Caster:
                       bar=bar, hp=now[me.index])
         if self.waits >= cap:
             self.queue.pop(0)
-            raise RuntimeError(f"no CAST on {name}'s bar after {self.waits} "
+            raise FightSetback(f"no CAST on {name}'s bar after {self.waits} "
                                f"held turns")
         self.log.say(f"  no CAST on {name}'s bar ({bar}); holding")
         self.waits += 1
         return self.wait(sess, state)
 
-    def cast_trigger(self, sess: S.Session, me, now: list[int]) -> str | None:
+    def cast_trigger(self, sess: S.Session, b, me,
+                     now: list[int]) -> str | None:
         """The letter of the first condition that ends a `late` caster's
-        hold, or None: a someone is away, b every other member away or down, c his
+        hold, or None: a someone is away and every member still in the fight
+        can leave on his next turn, b every other member away or down, c his
         hit points at most half his first turn's, d `HOLD_TURNS` turns held."""
         from tools.pool_of_radiance import fleedrive
         states = fleedrive.statuses(fleedrive.roster_page(sess))
-        if any(st == fleedrive.RUNNING
-               for slot, st in enumerate(states) if slot != me.index):
+        others = [(slot, st) for slot, st in enumerate(states)
+                  if slot != me.index]
+        down = self.down_words()
+        still_in = [slot for slot, st in others
+                    if st != 0 and not st & 0x80 and st & 7 not in down]
+        if still_in and any(st == fleedrive.RUNNING for _, st in others) \
+                and all(self.can_leave(b, slot) for slot in still_in):
             return "a"
         if self.others_gone(sess, me):
             return "b"
@@ -847,6 +870,35 @@ class Caster:
         if self.waits >= self.HOLD_TURNS:
             return "d"
         return None
+
+    @staticmethod
+    def can_leave(b, slot: int) -> bool:
+        """Whether party slot `slot` stands on an edge square of the combat
+        map from which stepping off gets him away (`fleedrive.may_step_off`):
+        no enemy beside him, or faster than every enemy that is."""
+        from tools.pool_of_radiance import fleedrive
+        me = next((c for c in getattr(b, "combatants", ())
+                   if c.index == slot), None)
+        return (me is not None and me.on_map
+                and bool(fleedrive.edges_of(b.geometry, me))
+                and fleedrive.may_step_off(b, me))
+
+    def stop_if_down(self, sess: S.Session) -> None:
+        """Raise `FightSetback` when an occupied party slot's roster status is
+        dead, dying, unconscious or stoned."""
+        from tools.pool_of_radiance import fleedrive
+        down = self.down_words(gone=False)
+        states = fleedrive.statuses(fleedrive.roster_page(sess))
+        fallen = [(slot, st) for slot, st in enumerate(states)
+                  if st != 0 and st & 7 in down]
+        if fallen:
+            self.log.emit("member-down", turn=self.turn,
+                          slots=[slot for slot, _ in fallen],
+                          words=[fleedrive.describe(st) for _, st in fallen])
+            raise FightSetback(
+                "slot " + ", ".join(f"{slot} ({fleedrive.describe(st)})"
+                                    for slot, st in fallen)
+                + f" went down by turn {self.turn}")
 
     @staticmethod
     def down_words(gone: bool = True) -> frozenset[int]:

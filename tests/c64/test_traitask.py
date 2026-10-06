@@ -15,6 +15,8 @@ the pattern `tests/c64/test_savecheck_move_subbar.py` uses.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from tools.c64 import route_pool
@@ -455,13 +457,61 @@ def test_late_caster_holds_while_every_other_member_is_ok(
     assert caster.queue == [("BAKSHI", "PRAYER", None)]
 
 
-def test_late_caster_casts_once_one_other_member_is_away(
+def _field(sess, members, enemies):
+    """Stand party slots and enemies on a 20 x 10 combat map the session's
+    `battle()` returns; each is `(slot or None, x, y, movement)`."""
+    def fighter(index, x, y, movement):
+        return SimpleNamespace(index=index, x=x, y=y, movement=movement,
+                               alive=True, on_map=True)
+    sess.geometry = SimpleNamespace(width=20, height=10)
+    sess.combatants = [fighter(*m) for m in members]
+    sess.enemies = [fighter(None, *e) for e in enemies]
+    return sess
+
+
+def test_late_caster_casts_once_one_is_away_and_the_rest_can_leave(
         cast_patches, monkeypatch):
     waited, sess = [], _CastSession()
+    _field(sess, [(0, 0, 5, 12), (3, 7, 0, 6)], [(15, 5, 6)])
     caster = _late_caster(monkeypatch, [0x01, 0x01, 0x86, 0x01], waited)
     assert caster(sess, "bar") == "CAST"
     assert waited == []
     assert _triggers(caster) == ["a"]
+
+
+@pytest.mark.parametrize("sean", [(3, 15, 0, 6), (3, 5, 5, 6)],
+                         ids=["on-an-edge-beside-an-equal-enemy", "mid-map"])
+def test_late_caster_holds_while_a_member_still_in_cannot_leave(
+        cast_patches, monkeypatch, sean):
+    """WISH-286 L4: one member away and BROTHER SEAN (move 6) on the edge at
+    (15,0) beside a move-6 monster, a coin flip; the cast then left him in
+    the fight with the spell running, and he went down."""
+    waited, sess = [], _CastSession()
+    _field(sess, [(0, 0, 5, 12), sean], [(15, 1, 6)])
+    caster = _late_caster(monkeypatch, [0x01, 0x01, 0x86, 0x01], waited)
+    assert caster(sess, "bar") == "WAIT"
+    assert ("bar", "CAST") not in sess.calls
+    assert _triggers(caster) == []
+
+
+def test_a_caster_that_aborts_on_a_fall_stops_before_any_key(
+        cast_patches, monkeypatch):
+    waited, sess = [], _CastSession()
+    caster = _late_caster(monkeypatch, [0x01, 0x01, 0x84, 0x86], waited)
+    caster.abort_down = True
+    with pytest.raises(route_pool.FightSetback, match=r"slot 2 .*went down"):
+        caster(sess, "bar")
+    assert sess.calls == [] and waited == []
+    down = [f for k, f in caster.log.emitted if k == "member-down"]
+    assert down[0]["slots"] == [2]
+
+
+def test_a_caster_that_aborts_on_a_fall_plays_on_while_nobody_is_down(
+        cast_patches, monkeypatch):
+    waited, sess = [], _CastSession()
+    caster = _late_caster(monkeypatch, [0x86, 0x01, 0x86, 0x02, 0], waited)
+    caster.abort_down = True
+    assert caster(sess, "bar") == "CAST"
 
 
 def test_late_caster_casts_once_every_other_member_is_running_or_down(
@@ -549,7 +599,7 @@ def _held_then(waited, sess):
 def test_a_triggered_caster_holds_when_his_bar_has_no_cast(
         cast_patches, monkeypatch):
     waited, sess = [], _CastSession(bars=[L3_BARRED_BAR])
-    caster = _late_caster(monkeypatch, [0x01, 0x01, 0x86, 0x01], waited)
+    caster = _late_caster(monkeypatch, [0x86, 0x01, 0x86, 0x86], waited)
     assert caster(sess, "bar") == "WAIT"
     assert waited == ["bar"]
     assert ("bar", "CAST") not in sess.calls
@@ -563,12 +613,12 @@ def test_a_barred_caster_casts_on_his_next_turn_that_offers_cast(
         cast_patches, monkeypatch):
     waited = []
     sess = _CastSession(bars=[L3_BARRED_BAR, L2_CAST_BAR])
-    caster = _late_caster(monkeypatch, [0x01, 0x01, 0x86, 0x01], waited)
+    caster = _late_caster(monkeypatch, [0x86, 0x01, 0x86, 0x86], waited)
     caster.wait = _held_then(waited, sess)
     assert caster(sess, "bar") == "WAIT"
     assert caster(sess, "bar") == "CAST"
     assert caster.queue == []
-    assert _triggers(caster) == ["a"]
+    assert _triggers(caster) == ["b"]
 
 
 def test_the_trigger_stays_armed_after_a_barred_turn(
@@ -601,11 +651,12 @@ def test_a_first_turn_caster_also_holds_on_a_bar_with_no_cast(
 def test_the_step_fails_only_once_the_held_turns_pass_the_cap(
         cast_patches, monkeypatch):
     waited, sess = [], _CastSession(bars=[L3_BARRED_BAR])
-    caster = _late_caster(monkeypatch, [0x01, 0x01, 0x86, 0x01], waited)
+    caster = _late_caster(monkeypatch, [0x86, 0x01, 0x86, 0x86], waited)
     cap = route_pool.Caster.HOLD_TURNS + route_pool.Caster.REGAIN_TURNS
     for _ in range(cap):
         assert caster(sess, "bar") == "WAIT"
-    with pytest.raises(RuntimeError, match="no CAST on BAKSHI's bar"):
+    with pytest.raises(route_pool.FightSetback,
+                       match="no CAST on BAKSHI's bar"):
         caster(sess, "bar")
     assert ("bar", "CAST") not in sess.calls
 

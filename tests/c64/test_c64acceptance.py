@@ -13793,6 +13793,11 @@ def _cast_run(outcome, casts, tactics, memorised=((10, 42), (10,)),
                     slots_after or _slots(("BAKSHI", 1), ("SEAN", 1)), tactics)
     sess = run.sess
     sess.walk_encounter = None
+    sess.snapshot = lambda name: f"/snapshots/{name}.vsf"
+    sess.screen = lambda: None
+    run.log = _EventLog()
+    run.deadline = None
+    run.FIGHT_CAST_ATTEMPTS = 1
     run.flight = _Flight()
     run.flight_tactic = lambda: run.flight
     readings = iter(memorised)
@@ -13800,7 +13805,7 @@ def _cast_run(outcome, casts, tactics, memorised=((10, 42), (10,)),
                                       "memorised": list(next(readings))}]}
     inner = sess.fight
 
-    def fight(*, budget, tactic):
+    def fight(*, budget, tactic, stop=None):
         tactic.casts.extend(casts)
         return inner(budget=budget, tactic=tactic)
 
@@ -13820,6 +13825,8 @@ def test_fight_cast_casts_untargeted_then_flees_and_records_the_cast():
     assert tactic.otherwise is run.flight
     assert tactic.wait == run.flight.hold
     assert tactic.late is True
+    assert tactic.abort_down is True
+    assert got["attempts"] == 1 and got["setbacks"] == []
     assert got["casts"] == [cast]
     assert got["spent"] == [42]
     assert [m["name"] for m in got["got_away"]] == ["BAKSHI", "SEAN"]
@@ -13851,6 +13858,147 @@ def test_fight_cast_that_does_not_run_away_fails_naming_the_step():
     run = _cast_run(A.S.WON, [{"caster": "BAKSHI"}], [])
     with pytest.raises(A.StepFailed, match="fight-cast"):
         run.fight_cast("BAKSHI:PRAYER", "I", 5)
+
+
+class _RetrySession:
+    """A fight-cast session whose fight plays `plays` in turn: an exception
+    to raise from inside the fight, or `(outcome, casts, slots_after)`."""
+
+    attached = "/cache/staged.D64"
+
+    def __init__(self, plays, menu_after=False):
+        self.plays = list(plays)
+        self.menu_after = menu_after
+        self.calls = []
+        self.walk_encounter = None
+        self.slots = []
+
+    def in_combat(self):
+        return True
+
+    def snapshot(self, name):
+        self.calls.append(("snapshot", name))
+        return f"/snapshots/{name}.vsf"
+
+    def restore(self, name):
+        self.calls.append(("restore", name))
+        self.slots = []                 # the machine is back before the fight
+
+    def attach(self, path):
+        self.calls.append(("attach", path))
+
+    def screen(self):
+        row = "COMBAT WAIT FLEE PARLAY" if self.menu_after else ""
+        return SimpleNamespace(row=lambda r: row if r == 24 else "")
+
+    def fight(self, *, budget, tactic, stop=None):
+        self.calls.append(("fight", stop))
+        play = self.plays.pop(0)
+        if isinstance(play, Exception):
+            raise play
+        outcome, casts, slots_after = play
+        tactic.casts.extend(casts)
+        self.slots.append(slots_after)
+        return A.S.FightResult(outcome, 4, 1.0, [], [])
+
+
+def _retry_run(plays, deadline=None, menu_after=False):
+    run = A.PoolRun.__new__(A.PoolRun)
+    run.sess = sess = _RetrySession(plays, menu_after)
+    run.log = _EventLog()
+    run.game = SimpleNamespace(key="unmeasured")
+    run.deadline = deadline
+    run.to_world = lambda: True
+    run.spent = lambda: False
+    run.captured = []
+    run.capture = run.captured.append
+    run.flight_tactic = _Flight
+    run.reading = lambda: {"party": [{"name": "BAKSHI ",
+                                      "memorised": [10] if sess.slots
+                                      else [10, 42]}]}
+    both = _slots(("BAKSHI", 1), ("SEAN", 1))
+    run.party_slots = lambda: sess.slots[-1] if sess.slots else both
+    walks = []
+    run.walks = walks
+    run.walk_into_fight = lambda walk, steps, verb="fight": walks.append(walk) or 3
+    return run
+
+
+CAST = {"caster": "BAKSHI", "spell": "PRAYER", "target": None}
+AWAY = _slots(("BAKSHI", 1), ("SEAN", 1))
+
+
+def test_fight_cast_reloads_its_snapshot_and_walks_the_other_way_after_a_fall():
+    """WISH-286 L4: BROTHER SEAN went down after the cast.  The step puts its
+    own snapshot back and meets the encounter on the other square, since the
+    same walk replays the same fight."""
+    fall = A.route_pool.FightSetback("slot 2 ($84 DYING) went down by turn 30")
+    run = _retry_run([fall, (A.S.RAN, [CAST], AWAY)])
+    got = run.fight_cast("BAKSHI:PRAYER", "I", 5)
+    assert run.walks == ["I", "J"]
+    assert [c for c in run.sess.calls if c[0] != "fight"] == [
+        ("snapshot", "fight-cast"), ("restore", "fight-cast"),
+        ("attach", "/cache/staged.D64")]
+    assert got["attempts"] == 2
+    assert got["walk"] == "J"
+    assert got["setbacks"][0]["walk"] == "I"
+    assert "went down by turn 30" in got["setbacks"][0]["why"]
+    assert got["spent"] == [42]
+
+
+@pytest.mark.parametrize("walk, other", [("I", "J"), ("J", "I"), ("K", "I")])
+def test_fight_cast_second_walk_meets_the_encounter_on_the_other_square(
+        walk, other):
+    assert A.PoolRun.fight_cast_walk(walk, 0) == walk
+    assert A.PoolRun.fight_cast_walk(walk, 1) == other
+
+
+def test_fight_cast_retries_a_member_left_behind_and_fails_after_the_last():
+    behind = _slots(("BAKSHI", 1), ("SEAN", 0))
+    run = _retry_run([(A.S.RAN, [CAST], behind), (A.S.RAN, [CAST], behind)])
+    with pytest.raises(A.StepFailed, match=r"SEAN left behind \(attempt 2 of 2\)"):
+        run.fight_cast("BAKSHI:PRAYER", "I", 5)
+    assert run.walks == ["I", "J"]
+    assert len(run.log.of("fight-cast-setback")) == 2
+
+
+def test_fight_cast_starts_no_retry_without_the_seconds_for_one():
+    fall = A.route_pool.FightSetback("slot 2 ($84 DYING) went down by turn 30")
+    run = _retry_run([fall, (A.S.RAN, [CAST], AWAY)],
+                     deadline=time.monotonic() + 60)
+    run.clock = time.monotonic
+    with pytest.raises(A.StepFailed, match="no time left for attempt 2"):
+        run.fight_cast("BAKSHI:PRAYER", "I", 5)
+    assert ("restore", "fight-cast") not in run.sess.calls
+
+
+def test_fight_cast_does_not_retry_a_driver_failure():
+    run = _retry_run([RuntimeError("PRAYER could not be cast by BAKSHI"),
+                      (A.S.RAN, [CAST], AWAY)])
+    with pytest.raises(RuntimeError, match="could not be cast"):
+        run.fight_cast("BAKSHI:PRAYER", "I", 5)
+    assert ("restore", "fight-cast") not in run.sess.calls
+
+
+def test_fight_cast_stops_at_an_encounter_menu_and_counts_it_a_setback():
+    """WISH-286 L4: after the fight the survivors met `YOU HAVE SURPRISED A
+    PARTY OF KOBOLDS` and `Session.fight` waited 700 s on the menu."""
+    run = _retry_run([(A.S.RAN, [CAST], AWAY)], menu_after=True)
+    run.FIGHT_CAST_ATTEMPTS = 1
+    with pytest.raises(A.StepFailed, match="encounter menu came up"):
+        run.fight_cast("BAKSHI:PRAYER", "I", 5)
+    stop = next(c[1] for c in run.sess.calls if c[0] == "fight")
+    assert stop == run.encounter_menu_up
+
+
+@pytest.mark.parametrize("row, up", [
+    ("COMBAT WAIT FLEE PARLAY", True), ("COMBAT WAIT FLEE ADVANCE", True),
+    ("MOVE VIEW CAST AREA ENCAMP SEARCH LOOK", False), ("FLEE: YES NO", False),
+    ("MOVE VIEW AIM USE CAST TURN QUICK DONE", False)])
+def test_an_encounter_menu_is_told_from_the_bars_of_a_fight(row, up):
+    s = SimpleNamespace(row=lambda r: row if r == 24 else "")
+    assert A.PoolRun.encounter_menu_up(None, s) is up
+    assert A.PoolRun.encounter_menu_up(None, None) is False
 
 
 def test_fight_cast_fails_naming_a_member_who_ended_the_fight_dead():

@@ -273,6 +273,20 @@ def test_may_step_off_only_with_nobody_beside_or_when_faster():
     assert fleedrive.may_step_off(_Field(_Fighter(5, 1, 12, alive=False)), me)
 
 
+def test_may_step_off_compares_with_the_fastest_enemy_anywhere_on_the_map():
+    """`COMBAT $1768` keeps the fastest of each side over every combatant in
+    the fight, and `$16FA` compares the leaver with that, not with the
+    enemies beside him: a move-9 member beside a move-6 kobold, with a
+    move-12 enemy across the map, is a slower leaver and fails."""
+    me = _Fighter(5, 0, 9)
+    assert not fleedrive.may_step_off(
+        _Field(_Fighter(5, 1, 6), _Fighter(15, 9, 12)), me)
+    assert fleedrive.may_step_off(
+        _Field(_Fighter(5, 1, 6), _Fighter(15, 9, 12, alive=False)), me)
+    assert fleedrive.may_step_off(
+        _Field(_Fighter(5, 1, 6), _Fighter(15, 9, 12, on_map=False)), me)
+
+
 def test_the_default_walk_is_unchanged():
     b = arena(25, 13)
     path = []

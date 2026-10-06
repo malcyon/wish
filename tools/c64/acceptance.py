@@ -69,7 +69,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
 | `ready WHO>LABEL`, `ready WHO>#N` | Pool only: `ENCAMP > VIEW WHO > ITEMS`, press READY once for LABEL, and read every party record, effect row and item block before and after. `screen_changed` describes the item row; `memory_changed` describes bytes in those three ranges; legacy `flipped` keeps its screen-only meaning. `--capture-ready` saves three bounded in-list checkpoints for BAKSHI and registers the game-written save before teardown. `#N` is the Nth row of WHO's ITEMS list from 1, for an item that draws no name: the step checks the list up is WHO's and has a row N before any READY key, then reports `outcome` (`readied`, `unreadied`, `rejected` or `unchanged`), the row before and after, and the rejection text the game printed (`WRONG CLASS`), and takes no `--capture-ready` checkpoints |
 | `fight-flee [SECONDS]` | `fight`'s route into a fight, then `fleedrive.Flight` as the tactic with no wound patch, for at most SECONDS (120): the members who run stay alive and the game's own drop of a member left behind runs, which `walk-flee`'s menu FLEE never reaches. The result records `got_away` and `left_behind` (each member's slot, name and status before and after, a member left behind being one whose name the drop cleared); a fight that does not end on `THE PARTY RUNS AWAY` (won, lost, or still going at SECONDS) fails the step naming `fight-flee` |
-| `fight-cast CASTER:SPELL` | Pool only: `fight`'s route into a fight, then every member but CASTER runs `fleedrive.Flight` (stepping off only from an edge square no enemy stands beside, unless faster than every enemy beside him) while CASTER holds on a quiet edge square, and CASTER casts SPELL through `route_pool.Caster` on his first turn on which another member is away, every other member is away or down, his hit points are at most half of what they were on the tactic's first turn, or he has held 4 of his own turns, and then on his next turn whose command bar offers CAST, since a hit taken since his last turn takes CAST off the bar and he holds instead, failing the step with `no CAST on <name>'s bar after N held turns` after at most 5 held turns (a spell with no target prompt, such as PRAYER; one that asks for a target fails the cast); CASTER's turns after the cast run the flight, for at most 1500 seconds. The result records `casts` (the caster, spell and roster hit points before and after), `spent` (the spell id CASTER's memorised list lost), `got_away` and `left_behind` as `fight-flee` does, and the cast's screens are in `run.jsonl` as `cast-list` and `cast-done`; a fight that does not end on `THE PARTY RUNS AWAY`, one in which CASTER never cast, one in which CASTER's memorised list did not lose exactly one spell, or one that leaves a member behind fails the step naming `fight-cast` |
+| `fight-cast CASTER:SPELL` | Pool only: snapshots the machine at the world bar as `fight-cast`, then `fight`'s route into a fight, then every member but CASTER runs `fleedrive.Flight` (stepping off only from an edge square no enemy stands beside, unless faster than every enemy in the fight) while CASTER holds on a quiet edge square, and CASTER casts SPELL through `route_pool.Caster` on his first turn on which another member is away and every member still in the fight stands on an edge square he may step off from, every other member is away or down, his hit points are at most half of what they were on the tactic's first turn, or he has held 4 of his own turns, and then on his next turn whose command bar offers CAST, since a hit taken since his last turn takes CAST off the bar and he holds instead (a spell with no target prompt, such as PRAYER; one that asks for a target fails the cast); CASTER's turns after the cast run the flight, for at most 1500 seconds an attempt. An attempt ends as soon as a member is dead, dying, unconscious or stoned, or when an encounter menu (`COMBAT WAIT ...`) comes up; that, a fight that does not end on `THE PARTY RUNS AWAY`, one in which CASTER never cast, one that leaves a member behind, one that ends with a member down, and `no CAST on <name>'s bar after N held turns` (after at most 5 held turns) restore `fight-cast` and try again, at most 2 attempts in all while 600 s of the run are left, the second walking `J` (or `I` when the walk is not `I`), since the game's dice replay exactly from a snapshot and only where the party stands when the encounter comes makes it another fight; the last of them fails the step naming `fight-cast`, as does at once a CASTER whose memorised list did not lose exactly one spell. The result records `attempts`, `setbacks` (each failed attempt's walk and reason), `walk`, `casts` (the caster, spell and roster hit points before and after), `spent` (the spell id CASTER's memorised list lost), `got_away` and `left_behind` as `fight-flee` does, and the cast's screens are in `run.jsonl` as `cast-list` and `cast-done` |
 | `walk-fight MOVES[/NO]` | Pool only: `walk`'s moves, but an encounter menu is answered COMBAT (never FLEE), the fight is fought out with `Session.melee_turn` (900 s each), and the route resumes from the square the fight left the party on, an `I` that did not complete being sent once more; the treasure screen a won fight reaches is kept as `NN-treasure.png` and `.txt` before the fight answers it; a treasure screen met on the walk after a fight (mode 5, a bar holding `EXIT`, such as `VIEW POOL EXIT`) is left with EXIT, once for each bar it shows (a `GO BACK LEAVE TREASURE` bar that EXIT opens is answered LEAVE), on the encounter path as well as after a `PRESS` bar, and listed in `treasure_screens`; an `INSERT SIDE # N` prompt (sides 2 to 4) is answered once per side, with the image attached, a key pressed and the frame kept as `sideN-before-answer`, and a repeat or a save-disk prompt fails the step; a forward move must land on the next square, else the step fails as blocked or as an exit or a teleport. A `YES NO` is answered NO only on the last key, and only when `/NO` is given; anywhere else it fails the step with nothing pressed. With a `save` after it, the summary's `drain` says whether some character's level fell by 1 or 2 with `levels_drained` equal to the fall, `hp_lost_to_drain` not zero, one class level down by the same amount and `hp_max` down by `hp_lost_to_drain`; nobody drained is recorded, not a failure |
 | `walk-flee MOVES[/NO]` | Pool only: `walk-fight`, but an encounter menu is answered FLEE; each flee is recorded in `flees` as `escaped` (the world bar or the move prompt `I,J,K,M, RETURN OR BUTTON` came back) or with the `fight` that opened, which is fought out; a move that escaped a flee is judged only for a readable facing, a caught one as `walk-fight` judges; a flee that ends in neither is a failure after `FIGHT_OPENS_SECONDS` |
 | `warp AREA` | Pool only: fast-travel the loaded party into area AREA (the writes and jump of `automap.actions.FastTravel`, no arrival square), wait for the key-wait loop, and fail unless the live facing byte `$C04D` is the one the area's arrival script sets (area 10: 1, east); returns the writes and the triple `$C04B`-`$C04D` |
@@ -1802,6 +1802,12 @@ def compare(a: pathlib.Path, b: pathlib.Path) -> dict:
 
 class StepFailed(RuntimeError):
     pass
+
+
+class FightCastSetback(StepFailed):
+    """A `fight-cast` attempt the fight itself spoiled -- a member down, the
+    party not away, no cast -- which a reload of the step's snapshot can
+    retry; a driver that could not press its keys is a plain `StepFailed`."""
 
 
 class NoMoveKeySent(StepFailed):
@@ -4557,8 +4563,18 @@ class PoolRun:
         self.capture("fight-start")
         return taken
 
-    #: The seconds a `fight-cast` has to cast and then run away.
+    #: The seconds one `fight-cast` attempt has to cast and then run away.
     FIGHT_CAST_SECONDS = 1500.0
+
+    #: Attempts a `fight-cast` makes from its own snapshot before it fails:
+    #: one for each different fight `fight_cast_walk` can meet there.
+    FIGHT_CAST_ATTEMPTS = 2
+
+    #: The run's seconds a retry needs left to be worth starting.
+    FIGHT_CAST_RETRY_SECONDS = 600.0
+
+    #: The snapshot a `fight-cast` takes at the world bar before its walk.
+    FIGHT_CAST_SNAPSHOT = "fight-cast"
 
     def memorised_of(self, name: str) -> list[int]:
         """The memorised spell ids the live record of the member called `name`
@@ -4580,33 +4596,107 @@ class PoolRun:
             left.remove(spell)
         return left if len(left) == 1 else None
 
+    @staticmethod
+    def fight_cast_walk(walk: str, attempt: int) -> str:
+        """The walk into the fight for attempt `attempt`: WALK, then `J` (or
+        `I` when WALK is not `I`), in turn.  The game's dice replay exactly
+        from a snapshot (`LIBRARY $2D88` never advances while it waits), so
+        the encounter comes on the same roll whatever is pressed; where the
+        party stands when it comes is all a walk changes.  A turn in place
+        (`J` or `K`) and a step forward (`I`) meet it as different fights; `J`
+        and `K` meet the same one turn for turn (WISH-8, boots c2 and c4)."""
+        if attempt % 2 == 0:
+            return walk
+        return "J" if walk == "I" else "I"
+
+    @staticmethod
+    def encounter_menu_up(sess, s) -> bool:
+        """Whether row 24 is an encounter's opening menu (`COMBAT WAIT FLEE
+        PARLAY`), which can come up as soon as a flight ends and which
+        `Session.fight` would otherwise wait on until its budget is gone."""
+        if s is None:
+            return False
+        words = s.row(24).upper().split()
+        return S.ENCOUNTER_FIGHT in words and "WAIT" in words
+
+    def setback(self, why: str) -> FightCastSetback:
+        """`fail`'s capture and reading, as a failure a retry may undo."""
+        self.keep_fight_reading()
+        failed = self.fail("fight-cast", why)
+        return FightCastSetback(str(failed))
+
     def fight_cast(self, arg: str, walk: str, steps: int) -> dict:
         """`fight`'s route into a fight, then CASTER casts SPELL on his turn
         and the party runs away under `fleedrive.Flight`.
 
         The cast is `route_pool.Caster`'s, with no target; every other turn is
         the flight's, so the party leaves the fight with nobody knocked out.
-        A fight in which CASTER never cast fails the step."""
+        The step snapshots the machine at the world bar first.  An attempt the
+        fight spoils (`FightCastSetback`: a member down, the party not away,
+        no cast, an encounter menu after the fight) puts that snapshot back
+        and tries again with the other walk, because the same moves replay the
+        same fight, up to `FIGHT_CAST_ATTEMPTS` in all; the last setback fails
+        the step."""
         caster, spell = parse_fight_cast(arg)
         memorised_before = self.memorised_of(caster)
+        if not self.to_world():
+            raise self.fail("world", "the world bar never came back")
+        snap = self.FIGHT_CAST_SNAPSHOT
+        self.log.emit("snapshot", name=snap, path=str(self.sess.snapshot(snap)))
+        setbacks: list[dict] = []
+        for attempt in range(self.FIGHT_CAST_ATTEMPTS):
+            key = self.fight_cast_walk(walk, attempt)
+            if attempt:
+                left = self.time_left()
+                if left is not None and left < self.FIGHT_CAST_RETRY_SECONDS:
+                    raise StepFailed(f"{setbacks[-1]['why']}; no time left "
+                                     f"for attempt {attempt + 1}")
+                self.sess.restore(snap)
+                self.reattach()
+                self.log.emit("restore", name=snap)
+                if not self.to_world():
+                    raise self.fail("world", "the world bar never came back")
+            self.log.emit("fight-cast-attempt", attempt=attempt + 1, walk=key)
+            try:
+                got = self.fight_cast_once(caster, spell, memorised_before,
+                                           key, steps)
+            except FightCastSetback as e:
+                setbacks.append({"attempt": attempt + 1, "walk": key,
+                                 "why": str(e)})
+                self.log.emit("fight-cast-setback", **setbacks[-1])
+                self.log.say(f"  attempt {attempt + 1}: {e}")
+                continue
+            return {"attempts": attempt + 1, "setbacks": setbacks, **got}
+        raise StepFailed(f"{setbacks[-1]['why']} (attempt "
+                         f"{len(setbacks)} of {self.FIGHT_CAST_ATTEMPTS})")
+
+    def fight_cast_once(self, caster: str, spell: str,
+                        memorised_before: list[int], walk: str,
+                        steps: int) -> dict:
+        """One attempt of `fight_cast`, from the world bar to the fight's end."""
         taken = self.walk_into_fight(walk, steps, "fight-cast")
         before = self.flee_before()
         flight = self.flight_tactic()
         tactic = route_pool.Caster(self.log, [(caster, spell, None)],
                                    otherwise=flight, wait=flight.hold,
-                                   late=True)
-        result = self.sess.fight(budget=self.FIGHT_CAST_SECONDS, tactic=tactic)
+                                   late=True, abort_down=True)
+        try:
+            result = self.sess.fight(
+                budget=self.budget(self.FIGHT_CAST_SECONDS, "fight-cast"),
+                tactic=tactic, stop=self.encounter_menu_up)
+        except route_pool.FightSetback as e:
+            raise self.setback(f"fight-cast: {e}") from e
         self.capture("fight-end")
+        menu = self.encounter_menu_up(self.sess, self.sess.screen())
         seen = result.outcome
         result = self.flee_settled(result, before)
         if (failed := self.flee_failure(
                 str(int(self.FIGHT_CAST_SECONDS)), result,
                 "fight-cast")) is not None:
-            raise failed
+            raise FightCastSetback(str(failed))
         if not tactic.casts:
-            self.keep_fight_reading()
-            raise self.fail("fight-cast", f"fight-cast: {caster} never cast "
-                                          f"{spell} in the fight")
+            raise self.setback(f"fight-cast: {caster} never cast {spell} in "
+                               f"the fight")
         spent = self.spent_spells(memorised_before, self.memorised_of(caster))
         if spent is None:
             self.keep_fight_reading()
@@ -4614,19 +4704,19 @@ class PoolRun:
                                           f"list did not lose the spell")
         fled = self.flee_result(before, self.party_slots())
         if fled["left_behind"]:
-            self.keep_fight_reading()
             names = ", ".join(m["name"] for m in fled["left_behind"])
-            raise self.fail("fight-cast", f"fight-cast: {names} left behind")
+            raise self.setback(f"fight-cast: {names} left behind")
         down = route_pool.Caster.down_words(gone=False)
         hurt = [m["name"] for m in fled["got_away"]
                 if m["status_after"] & 7 in down]
         if hurt:
-            self.keep_fight_reading()
-            raise self.fail("fight-cast", f"fight-cast: {', '.join(hurt)} "
-                                          f"ended the fight dead, dying, "
-                                          f"unconscious or stoned")
-        return {"walked": taken, "acted": result.acted, "casts": tactic.casts,
-                "spent": spent, **fled,
+            raise self.setback(f"fight-cast: {', '.join(hurt)} ended the "
+                               f"fight dead, dying, unconscious or stoned")
+        if menu:
+            raise self.setback("fight-cast: an encounter menu came up after "
+                               "the fight")
+        return {"walked": taken, "walk": walk, "acted": result.acted,
+                "casts": tactic.casts, "spent": spent, **fled,
                 "ran_line_seen": seen == S.RAN, "outcome_seen": seen,
                 **dataclasses.asdict(result)}
 
