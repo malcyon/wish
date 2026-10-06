@@ -55,9 +55,15 @@ def test_winuaes_own_screenshot_is_cut_at_16_4_without_rescaling():
     assert got.tobytes() == frame.convert("RGB").crop((16, 4, 736, 572)).tobytes()
 
 
+def _with_content(frame):
+    """A frame with one pixel off its background, so it is a picture and not a blank frame."""
+    frame.putpixel((1, 1), (255, 255, 255))
+    return frame
+
+
 def test_a_winuae_frame_one_row_off_in_size_is_blocked():
     with pytest.raises(RouteError, match="no known way to cut a 752x575 frame"):
-        screens.canonical(Image.new("RGB", (752, 575)))
+        screens.canonical(_with_content(Image.new("RGB", (752, 575))))
 
 
 def test_a_threefold_frame_with_its_own_origin_gives_the_same_crop():
@@ -76,7 +82,7 @@ def test_a_known_size_takes_a_replication_and_origin_given_beside_it():
 
 def test_a_frame_of_no_known_size_and_no_calibration_is_blocked():
     with pytest.raises(RouteError, match="no known way to cut a 800x600 frame"):
-        screens.canonical(Image.new("RGB", (800, 600)))
+        screens.canonical(_with_content(Image.new("RGB", (800, 600))))
 
 
 def test_a_filtered_frame_is_not_passed_off_as_an_exact_capture():

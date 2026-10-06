@@ -27,12 +27,14 @@ class NotExactCapture(RouteError):
 
 
 def _is_blank(rgb) -> bool:
-    """Whether the frame is exactly two flat colours laid out in whole rows: a window still being drawn."""
+    """Whether the frame is one flat colour, or two in whole rows: a window still being drawn."""
     from PIL import Image  # noqa: PLC0415
 
     colours = rgb.getcolors(2)
-    if colours is None or len(colours) != 2:
+    if colours is None:
         return False
+    if len(colours) == 1:
+        return True
     column = rgb.resize((1, rgb.height), Image.NEAREST)
     return column.resize(rgb.size, Image.NEAREST).tobytes() == rgb.tobytes()
 

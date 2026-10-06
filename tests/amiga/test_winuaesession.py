@@ -80,7 +80,13 @@ def test_a_lane_action_teaches_the_guest_its_holder(tmp_path, clock):
 
 
 def test_a_frame_of_any_other_size_is_blocked(tmp_path, clock):
-    guest = Guest([_shot(size=(1920, 1080))])
+    image = Image.new("RGB", (1920, 1080), (17, 34, 51))
+    image.putpixel((1, 1), (255, 255, 255))
+    data = io.BytesIO()
+    image.save(data, "PNG")
+    reply = "\n".join(["ok shot pid=4242 counter=001 ms=500", "WINVM-SHOT-BEGIN",
+                       base64.b64encode(data.getvalue()).decode(), "WINVM-SHOT-END"])
+    guest = Guest([reply])
     guest.holder = "h"
     with pytest.raises(winuaesession.RouteError, match="no known way to cut a 1920x1080 frame"):
         guest.grab("title", tmp_path / "r.png", tmp_path / "c.png", timeout=30)
@@ -189,6 +195,24 @@ def test_a_booting_frame_still_fails_a_settled_capture(tmp_path, clock):
     guest.holder = "h"
     with pytest.raises(winuaesession.RouteError, match="no Amiga picture yet"):
         guest.capture("title", tmp_path / "r.png", tmp_path / "c.png", timeout=30)
+
+
+def _solid_shot(counter=1, pid=4242):
+    """WinUAE's frame before it has drawn anything: 752x572, a single white colour."""
+    data = io.BytesIO()
+    Image.new("RGB", (752, 572), (255, 255, 255)).save(data, "PNG")
+    return "\n".join([f"ok shot pid={pid} counter={counter:03d} ms=500", "WINVM-SHOT-BEGIN",
+                      base64.b64encode(data.getvalue()).decode(), "WINVM-SHOT-END"])
+
+
+def test_a_solid_colour_first_frame_is_retried_and_the_next_real_frame_is_cut(tmp_path, clock):
+    guest = Guest([_solid_shot(), _shot(counter=2)])
+    guest.holder = "h"
+    raw, cropped = tmp_path / "r.png", tmp_path / "c.png"
+    assert guest.grab("title", raw, cropped, timeout=30) is False
+    assert not cropped.exists()
+    assert guest.grab("title", raw, cropped, timeout=30) is True
+    assert cropped.exists()
 
 
 def test_an_unknown_size_frame_with_content_still_fails_as_a_plain_route_error():
