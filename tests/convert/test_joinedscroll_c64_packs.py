@@ -1,8 +1,9 @@
 """The C64 packs PAINE ends up with when Silver Blades' engine-written joined
 scroll specimens are converted, pinned for the live run that boots them.
 
-Each expected pack is the DOS pack with the chosen index removed, read through
-`dos_codec.pack_of`; no item bytes are typed here.  The test reads the player's
+Each expected pack is the DOS pack, read through `dos_codec.pack_of`, with every
+joined scroll taken apart by `dos_codec.unjoin` (the C64 holds none, so each
+scroll takes the head's weight) and the chosen index removed; no item bytes are typed here.  The test reads the player's
 Silver Blades C64 disks and the two specimens, and skips without them.
 """
 
@@ -23,9 +24,9 @@ GUY, PAINE = 0, 1
 
 
 def _dos_pack(folder, slot: str, member_file: str) -> list[bytes]:
-    pack, _bundles = dos_codec.pack_of(
+    pack, bundles = dos_codec.pack_of(
         dos_codec.read_character(folder / f"CHRDAT{slot}{member_file}.SAV"))
-    return pack
+    return dos_codec.unjoin(pack, bundles, range(len(bundles)))[0]
 
 
 def _c64_pack(path: str, member: int) -> list[bytes]:

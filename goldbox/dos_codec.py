@@ -1189,6 +1189,22 @@ def _with_pack(char: NeutralCharacter, inventory: Sequence[bytes],
     return out
 
 
+def _unjoined_for_c64(char: NeutralCharacter) -> NeutralCharacter:
+    """`char` with every joined scroll taken apart by :func:`unjoin`.
+
+    The C64 holds no joined scroll and totals a sheet's weight from its items,
+    so each scroll arrives with the head's weight and readied bit, which is
+    what DOS counted for the joined scroll.  `unjoin` moves no item, so a
+    leave index still names the same item afterwards."""
+    bundles = char.get("scroll_bundles")
+    if not bundles:
+        return char
+    inventory, rest = unjoin(char.get("inventory") or (), bundles,
+                             range(len(bundles)))
+    return _with_pack(char, inventory, rest,
+                      ", its joined scrolls taken apart for the C64")
+
+
 def unjoined_for_amiga(party: Sequence[NeutralCharacter],
                        leave: "Mapping[int, Collection[int]] | None" = None
                        ) -> tuple[tuple[NeutralCharacter, ...], list[str],
@@ -3606,6 +3622,7 @@ def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
         out.fields["name"] = dataclasses.replace(
             held, value=name,
             origin=f"{held.origin}, renamed to the name the player chose")
+    out = _unjoined_for_c64(out)
     if leave:
         out = _without_left_behind(out, leave)
     if leave_effects:
@@ -8297,7 +8314,9 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
             source_icon = (neutral_icons[index]
                            if neutral_icons is not None else None)
             size = "large" if char.get("size_small") else "small"
-            kept = _without_left_behind(char, left) if left else char
+            kept = _unjoined_for_c64(char)
+            if left:
+                kept = _without_left_behind(kept, left)
             if left_effects:
                 kept = _without_left_effects(kept, left_effects)
             if drop_zero:

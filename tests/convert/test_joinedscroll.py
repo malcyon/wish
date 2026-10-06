@@ -501,6 +501,12 @@ B_SLOT = bytes.fromhex("27000000000000000100006400040000")
 C_SLOT = bytes.fromhex("28000000000000000100 00c8000506 00".replace(" ", ""))
 
 
+def _headed(slot: bytes, weight: int) -> bytes:
+    """`slot` with the weight of the joined scroll it came out of, which is
+    what the C64 sheet adds up for it."""
+    return slot[:8] + weight.to_bytes(2, "little") + slot[10:]
+
+
 def _plain(n: int) -> bytes:
     return dos_codec.item_to_c64(bytes(_item(10 + n, weight=10)))
 
@@ -607,7 +613,8 @@ def test_leaving_one_item_writes_the_other_sixteen_slots(tmp_path, neutral):
     save0, cont, report = _write_save(party, leave={0: {3}})
     name = "ROUNDTRIP"
     assert _slots_by_name(save0, cont, name) == \
-        [_plain(n) for n in range(15) if n != 3] + [A_SLOT, B_SLOT]
+        [_plain(n) for n in range(15) if n != 3] + [
+            _headed(A_SLOT, 2), _headed(B_SLOT, 2)]
     assert len(report.left_behind) == 1
     assert "inventory item 3" in report.left_behind[0]
 
@@ -619,7 +626,7 @@ def test_leaving_one_scroll_of_the_pair_leaves_the_other_a_plain_scroll(
     party = [dos_codec.to_neutral(char)] if neutral else [char]
     save0, cont, report = _write_save(party, leave={0: {15}})
     assert _slots_by_name(save0, cont, "ROUNDTRIP") == \
-        [_plain(n) for n in range(15)] + [B_SLOT]
+        [_plain(n) for n in range(15)] + [_headed(B_SLOT, 2)]
     assert report.left_behind[0].count("spells 1 2 3") == 1
 
 
@@ -639,11 +646,14 @@ def test_two_members_overflowing_are_each_cut_and_the_third_is_untouched(
     save0, cont, report = _write_save([a, b, c],
                                       leave={0: {3}, 2: {14, 15}})
     assert _slots_by_name(save0, cont, "AAA") == \
-        [_plain(n) for n in range(15) if n != 3] + [A_SLOT, B_SLOT]
+        [_plain(n) for n in range(15) if n != 3] + [
+            _headed(A_SLOT, 2), _headed(B_SLOT, 2)]
     assert _slots_by_name(save0, cont, "BBB") == \
-        [_plain(n) for n in range(14)] + [A_SLOT, A_SLOT]
+        [_plain(n) for n in range(14)] + [
+            _headed(A_SLOT, 2), _headed(A_SLOT, 2)]
     assert _slots_by_name(save0, cont, "CCC") == \
-        [_plain(n) for n in range(14)] + [C_SLOT, A_SLOT]
+        [_plain(n) for n in range(14)] + [
+            _headed(C_SLOT, 4), _headed(A_SLOT, 4)]
     assert len(report.left_behind) == 3
     assert not any("inventory" in line
                    for line in report.losses + report.dropped)
@@ -1062,3 +1072,36 @@ def test_the_amiga_overflow_describes_the_pack_before_leave_and_needs_after(
     assert after.needed == 130
     assert after.items == before.items and after.units == before.units
     assert len(after.items[0]) == len(paine.get("inventory"))
+
+
+# --- the C64 holds no joined scroll, so its scrolls take the head's weight ---
+@pytest.mark.parametrize("readied", [False, True])
+def test_a_joined_scroll_on_the_c64_gives_its_scrolls_the_head_weight_and_bit(
+        tmp_path, readied):
+    itm = b"".join(bytes(_item(10 + n, weight=10)) for n in range(2)) \
+        + _joined(SCROLL_A, SCROLL_B, SCROLL_C, readied=readied)
+    char = _read(tmp_path, itm, 3)
+    rec, _report = dos_codec.to_c64_record(char)
+    scrolls = _slots(rec)[-3:]
+    assert [int.from_bytes(s[8:10], "little") for s in scrolls] == [3, 3, 3]
+    assert [bool(s[6] & 0x80) for s in scrolls] == [readied] * 3
+    # `neutral_to_c64_record` is the sheet's own route and stays as it was.
+    bare, _ = dos_codec.neutral_to_c64_record(dos_codec.to_neutral(char))
+    assert [int.from_bytes(s[8:10], "little") for s in _slots(bare)[-3:]] == \
+        [1, 1, 1]
+
+
+def test_specimen_c_converted_to_the_c64_weighs_what_dos_counts():
+    from gamedata import specimen
+    folder = specimen("ssb-432-joined-fits")
+    char = dos_codec.read_character(folder / "CHRDATC2.SAV")
+    pack, bundles = dos_codec.pack_of(char)
+    (pair,) = bundles
+    head = int.from_bytes(pair.head[8:10], "little")
+    counted = sum(int.from_bytes(r[8:10], "little") for n, r in enumerate(pack)
+                  if not pair.first <= n < pair.first + pair.count) \
+        + head * pair.count
+    rec, _report = dos_codec.to_c64_record(char)
+    weights = [int.from_bytes(s[8:10], "little") for s in _slots(rec)]
+    assert weights[-2:] == [head] * 2
+    assert sum(weights) == counted
