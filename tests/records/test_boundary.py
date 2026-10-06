@@ -212,12 +212,13 @@ SILVER = "secret-of-the-silver-blades"
 POOLS_OF_DARKNESS = "pools-of-darkness"
 
 #: The drop lines a base character produces in each title, by field, and no
-#: others.  Pool of Radiance drops the portrait pair because there is no menu
-#: to turn it into a position with; Pools of Darkness keeps no drained-level
+#: others.  Pool of Radiance drops nothing: the base character is a companion
+#: (`npc` is set from `c64_codec.DIRECT`), whose portrait pair crosses
+#: unchanged and needs no menu; Pools of Darkness keeps no drained-level
 #: pair, no lighter coins and no per-hit-point rate, so a base character that
 #: sets them is told.  Any other line is a loss the sweep has not accounted for.
 _BASE_DROPS = {
-    POOL: {"portrait_head", "portrait_body"},
+    POOL: set(),
     CURSE: set(),
     SILVER: set(),
     POOLS_OF_DARKNESS: {"levels_drained", "hp_lost_to_drain", "copper",

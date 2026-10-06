@@ -3460,6 +3460,12 @@ def to_neutral(dos: DosCharacter,
     # because a byte converted costs nothing, but a title whose engine draws
     # no portrait gets no line whatever happens.
     draws_portrait = draws_sheet_portrait(dos.deltas.key)
+    # A companion's pair is the byte its own `MON` record holds, which is the
+    # same on all three ports, and DOS draws it by indexing past the end of
+    # its menu table; it is not a menu position, so it crosses unchanged.  A
+    # player character, and one the game has taken over (0xB3), keep the
+    # menu mapping.
+    companion = bool(control & 0x80) and control != 0xB3
     for name, art_of, stem in (("portrait_head", "head_art", "HEAD"),
                                ("portrait_body", "body_art", "BODY")):
         if portraits is None or name not in dos.fields:
@@ -3472,6 +3478,12 @@ def to_neutral(dos: DosCharacter,
             continue
         f = FIELDS_BY_NAME[name]
         position = dos.get(name)
+        if companion:
+            out.set(name, position,
+                    f"DOS {name} @{f.offset:#05x}, unchanged: a companion's "
+                    f"own record holds the same byte on every port",
+                    f.confidence, Provenance.COPIED)
+            continue
         art = getattr(portraits, art_of)(position)
         if art is None:
             # Position 0 is not a menu entry -- it is how this record says
@@ -6269,10 +6281,17 @@ def write(char: NeutralCharacter,
     # Radiance's own sheet draws a portrait the DOS record cannot name.
     draws_portrait = draws_sheet_portrait(deltas.key)
     portraits_written: set[str] = set()
+    companion = bool(w.get("npc")) and w.get("npc_control_byte") != 0xB3
     for pname, lookup, stem in (("portrait_head", "head_position", "HEAD"),
                                 ("portrait_body", "body_position", "BODY")):
         v = use(pname)
         position = None
+        if v is not None and companion and draws_portrait:
+            # The byte is the companion's own, not a menu position (see the
+            # reader), so no table is needed.
+            put(v, pname, ", a companion's own byte, unchanged")
+            portraits_written.add(pname)
+            continue
         if v is not None and portraits is not None and draws_portrait:
             position = getattr(portraits, lookup)(int(v.value))
         if position is not None:
