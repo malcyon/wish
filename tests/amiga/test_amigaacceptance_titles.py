@@ -3760,3 +3760,39 @@ def test_the_darkness_identity_recognises_the_loaded_menu_and_first_sheet_of_the
         for other in others:
             if other.is_file():
                 assert screens.box_digests(other, [tuple(box)], state)[tuple(box)] != rules[0]["sha256"]
+
+
+def test_the_darkness_guards_recognise_the_dungeon_world_bar_of_the_a2_party():
+    from tools.amiga import screens
+
+    spec = json.loads((pathlib.Path(foundation.__file__).parent / "guards_darkness.json").read_text())
+    example = "WISH-2/wish2-a2/measure5/shots/10-world.png"
+    assert spec["labels"][example] == ["world"]
+    crop = scratch.cache_dir("acceptance") / example
+    if not crop.is_file():
+        pytest.skip("needs the stage 8 A2 measure5 shot 10 of WISH-2")
+    box = [58, 402, 698, 430]
+    rules = [r for r in screens.rules_of(spec["guards"]["world"]) if r["example"] == example]
+    assert len(rules) == 1 and rules[0]["box"] == box and rules[0]["also"] == ["place"]
+    assert screens.box_digests(crop, [tuple(box)], "world")[tuple(box)] == rules[0]["sha256"]
+
+
+def test_the_darkness_identity_recognises_the_loaded_menu_and_first_sheet_of_the_a4_party():
+    from tools.amiga import screens
+
+    spec = json.loads((pathlib.Path(foundation.__file__).parent / "guards_darkness.json").read_text())
+    cases = (("loaded_menu", "WISH-2/wish2-a4/measure-a4-33/shots/05-loaded_menu.png", [74, 94, 690, 192]),
+             ("sheet", "WISH-2/wish2-a4/measure-a4-33/shots/06-sheet.png", [74, 46, 330, 62]))
+    root = scratch.cache_dir("acceptance")
+    for state, example, box in cases:
+        assert spec["labels"][example] == [state]
+        crop = root / example
+        if not crop.is_file():
+            pytest.skip(f"needs the A4 shot {example} of WISH-2")
+        rules = [r for r in screens.rules_of(spec["identity"][state]) if r["example"] == example]
+        assert len(rules) == 1 and rules[0]["box"] == box and rules[0]["also"] == []
+        assert screens.box_digests(crop, [tuple(box)], state)[tuple(box)] == rules[0]["sha256"]
+        others = [root / r["example"] for r in screens.rules_of(spec["identity"][state]) if r["example"] != example]
+        for other in others:
+            if other.is_file():
+                assert screens.box_digests(other, [tuple(box)], state)[tuple(box)] != rules[0]["sha256"]

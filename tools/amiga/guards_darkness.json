@@ -807,6 +807,19 @@
         ],
         "example": "WISH-2/wish2-a3/measure-a3-7/shots/10-world.png",
         "sha256": "c3847417fd279524ff41c32a33c6d6e3f039244003ec201eadd1249c82c4585e"
+      },
+      {
+        "also": [
+          "place"
+        ],
+        "box": [
+          58,
+          402,
+          698,
+          430
+        ],
+        "example": "WISH-2/wish2-a2/measure5/shots/10-world.png",
+        "sha256": "0f9629a5a7b915f49628f00c930aef5644d31570294e1532e967ba5cb2051569"
       }
     ],
     "yes_no": {
@@ -1053,6 +1066,17 @@
         ],
         "example": "WISH-2/wish2-a3/accept1/shots/05-loaded_menu.png",
         "sha256": "5baa3e56ac0ef7df7ab8dc5c002eafb092faf69ec973e33076ab628cba0a6636"
+      },
+      {
+        "also": [],
+        "box": [
+          74,
+          94,
+          690,
+          192
+        ],
+        "example": "WISH-2/wish2-a4/measure-a4-33/shots/05-loaded_menu.png",
+        "sha256": "9d5fc20803198cd2d90a42322e8f0d13739d202497221b8a9ff356e95a86846d"
       }
     ],
     "sheet": [
@@ -1109,6 +1133,17 @@
         ],
         "example": "WISH-2/wish2-a3/measure-a3-8/shots/06-sheet.png",
         "sha256": "8bddf7a493cf272754db7651373f27d0846ad5eb2be6d5665fe2a8daf5dcdfe2"
+      },
+      {
+        "also": [],
+        "box": [
+          74,
+          46,
+          330,
+          62
+        ],
+        "example": "WISH-2/wish2-a4/measure-a4-33/shots/06-sheet.png",
+        "sha256": "c18a06b2ebc643a788a75c0bf4307b99b67c16c535f38cea87c8705e498d4da3"
       }
     ]
   },
@@ -1191,6 +1226,9 @@
     "WISH-2/wish2-a2/measure3/shots/08-journal.png": [
       "journal"
     ],
+    "WISH-2/wish2-a2/measure5/shots/10-world.png": [
+      "world"
+    ],
     "WISH-2/wish2-a2/measure4/shots/09-journal_answer.png": [
       "journal_answer"
     ],
@@ -1208,6 +1246,12 @@
     ],
     "WISH-2/wish2-a4/measure-a4-32/shots/12-camp.png": [
       "camp"
+    ],
+    "WISH-2/wish2-a4/measure-a4-33/shots/05-loaded_menu.png": [
+      "loaded_menu"
+    ],
+    "WISH-2/wish2-a4/measure-a4-33/shots/06-sheet.png": [
+      "sheet"
     ],
     "WISH-2/wish2-s5/accept2/shots/13-world.png": [
       "place_x3_y2_f1"
