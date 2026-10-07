@@ -76,7 +76,8 @@ a source whose title does not match `--title`:
 | `save X` | in camp, camp `SAVE` to slot X and decline the quit; at the party menu, `SAVE CURRENT GAME`; believed when `SAVGAMX.DAT` changes |
 | `train N` | Curse: roster line N (from 1), `TRAIN CHARACTER`, `YES`, and `LEARN` for any spell the level brings, back to the party menu |
 | `map` | Pools of Darkness, after `press` steps that left the party on a map (the tester's JUMP): the screen settled (quiet 1.5 s, at most 30 s), its bar required to be one of `POD_MAP_BARS` and taken as the world bar, so `camp` and `save` may follow |
-| `continue` | Pools of Darkness, after `press` steps that left the story bar `PRESS BUTTON OR ENTER TO CONTINUE` showing (`POD_CONTINUE_BAR`): `Return` only on that bar, then waits for it to go; any other screen fails and nothing is pressed, as a blind `Return` on a tester bar would select an entry |
+| `continue` | Pools of Darkness, after `press` steps that left the story bar `PRESS BUTTON OR ENTER TO CONTINUE` showing (`POD_CONTINUE_BAR`): `Return` only on that bar, then waits for it to go, and again while the same bar stays up, `POD_CONTINUE_PRESSES` at most; any other screen fails and nothing is pressed, as a blind `Return` on a tester bar would select an entry |
+| `exit` | Pools of Darkness, after `press` steps that left a menu with `EXIT` showing: `e` only on a bar of `POD_EXIT_BARS` (the treasure menu and the tester's `SELECT EXIT` prompt, never a party menu); any other screen fails and nothing is pressed.  `press e` stays blocked |
 | `shot NAME` | one PNG and the screen digests, nothing pressed |
 | `snapshot NAME`, `restore NAME` | DOSBox-X only (`dossnapshot.SnapshotSession`; a run with either step boots it): `snapshot` saves the whole machine under NAME (letters, digits, `-`, `_`); `restore` puts it back and settles, and the `SAVE` files changed since the snapshot are logged and recorded as `changed_saves`, because a game save stays on disk.  A `restore` needs an earlier `snapshot` of that name and no `save` between them; the run stops before boot otherwise.  Each is in `run.jsonl` and `summary.json`.  Random encounters stay on, except under `--no-encounters`, where a `restore` clears the values the switch wrote and re-arms it.  A `snapshot` after a `press` is taken only once the screen has held unchanged for `Driver.SNAPSHOT_QUIET` seconds (30 s at most) and fails if it never does or changes while the state is written; its digest is recorded as `screen`, and a `restore` of that name fails unless the same screen comes back |
 | `press KEY` | one X keysym (`Down`, `Return`, `t`), then a settle and a PNG; capture only, so only `press`, `shot`, `read`, `snapshot` and `restore` (and in darkness `map` and `continue`) may come after it, and none of the last two after a `prayer-watch` |
@@ -629,6 +630,16 @@ POD_CONTINUE_BAR = "7a286012361f96ae"
 POD_CONTINUE = "Return"
 #: Continue screens answered one after another before the run gives up.
 POD_CONTINUE_ROUNDS = 5
+#: `Return`s the `continue` step sends at one bar that stays up after the first
+#: (the tester's message after removing an NPC takes a second key).
+POD_CONTINUE_PRESSES = 3
+#: Bars `exit` presses `e` on, by `bar_signature`, each a menu with `EXIT` that
+#: is not a party menu (where `e` is exit to DOS).  Measured in live runs: the
+#: treasure menu `VIEW TAKE POOL SHARE EXIT` and the tester's `SELECT EXIT`
+#: prompt.  The party menu `b3205ea937285f8a` and the tester's pages, which
+#: have no `EXIT`, are not listed.
+POD_EXIT_BARS = {"8f3017206b2a788d": "treasure", "4181ac2ffc4f8c7c": "select"}
+POD_EXIT = "e"
 
 #: Curse's `PRESS <ENTER>/<RETURN> TO CONTINUE` bar (`Screen.glyphs(dosbox.BAR)`), the
 #: one `route_silver_blades.BARS` measured; a party saved before BEGIN ADVENTURING
@@ -2322,7 +2333,7 @@ STEP_HELP = ("load, begin, vault, 'walk MI', 'walk I', 'walk 1', 'turn 4', camp,
              "'cast 2 RESIST-COLD 4', 'scribe 5 PROTECTION FROM GOOD', 'shot NAME', "
              "'press KEY', 'fight', 'fight 900', 'fight first-bar', 'prayer-watch 49', "
              "'add ARRONEL', 'walk KKIIJI', 'temple raise 1', "
-             "'snapshot NAME', 'restore NAME', 'deposit 5 2', map, continue, read; "
+             "'snapshot NAME', 'restore NAME', 'deposit 5 2', map, continue, exit, read; "
              "'press e' and 'press Escape' are blocked everywhere: after a press nobody "
              "knows the screen, and E is exit to DOS at a party menu")
 #: The class names `change N CLASS` takes: Curse's own (`START.EXE` data
@@ -2337,7 +2348,7 @@ def parse_step(text: str) -> Step:
         raise ValueError("an empty step")
     kind = words[0].lower()
     if kind in ("load", "begin", "camp", "leave", "display", "vault", "map",
-                "continue", "read") and len(words) == 1:
+                "continue", "exit", "read") and len(words) == 1:
         return Step(kind, text)
     deposit = parse_deposit(words, text)
     if deposit is not None:
@@ -2462,9 +2473,9 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
             raise ValueError(f"only shot and read may come after fight "
                              f"{FIRST_BAR}: {step.text!r}")
         if (where == "pressed" and k not in ("press", "snapshot", "restore")
-                and not (k in ("map", "continue") and title == "darkness")):
+                and not (k in ("map", "continue", "exit") and title == "darkness")):
             raise ValueError(f"only press, shot and read, a snapshot or restore, or "
-                             f"map or continue in darkness, may come after a press: "
+                             f"map, continue or exit in darkness, may come after a press: "
                              f"{step.text!r}")
         if watched and k in ("snapshot", "restore"):
             raise ValueError(f"no snapshot or restore after prayer-watch, which "
@@ -2480,6 +2491,13 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
             if where != "pressed":
                 raise ValueError(f"continue follows a press, which left a continue "
                                  f"bar showing: {step.text!r}")
+            continue
+        if k == "exit":
+            if title != "darkness":
+                raise ValueError(f"exit is driven in darkness only, not {title}")
+            if where != "pressed":
+                raise ValueError(f"exit follows a press, which left a menu "
+                                 f"with EXIT showing: {step.text!r}")
             continue
         if k == "map":
             if title != "darkness":
@@ -4112,18 +4130,41 @@ class Driver:
         """Pools of Darkness, after `press` steps that left the story bar
         `PRESS BUTTON OR ENTER TO CONTINUE` showing: `Return` on it, and only
         on it, since a blind `Return` on a tester bar would select an entry.
-        The step fails if another bar shows or the bar does not go."""
+        A bar that stays up gets `Return` again, `POD_CONTINUE_PRESSES` at most,
+        each followed by the wait.  The step fails if another bar shows first
+        or the bar is still up after the last."""
         screen = self.s.settle(quiet=1.0, timeout=self.bounded(30.0, "continue"))
         if bar_signature(screen) != POD_CONTINUE_BAR:
             raise self.fail("continue", "the screen is not the continue bar "
                             f"(POD_CONTINUE_BAR): {self.bar_named(screen)}")
         shot = self.shot("continue")
-        self.s.key(POD_CONTINUE)
-        if not self.s.wait_for(lambda sc: bar_signature(sc) != POD_CONTINUE_BAR, 10.0):
-            raise self.fail("continue", "the continue bar is still showing after Return")
+        presses = 0
+        while True:
+            self.s.key(POD_CONTINUE)
+            presses += 1
+            if self.s.wait_for(lambda sc: bar_signature(sc) != POD_CONTINUE_BAR, 10.0):
+                break
+            if presses >= POD_CONTINUE_PRESSES:
+                raise self.fail("continue", "the continue bar is still showing "
+                                f"after {presses} Returns")
         self.s.settle(quiet=1.0, timeout=60.0)
         return {"shot": f"{shot}.png", "bar": POD_CONTINUE_BAR, "answered": POD_CONTINUE,
-                "after": self.shot("continued")}
+                "presses": presses, "after": self.shot("continued")}
+
+    def exit_menu(self) -> dict:
+        """Pools of Darkness, after `press` steps that left a menu with `EXIT`
+        showing: `e` only on a bar of `POD_EXIT_BARS`, since `e` at a party menu
+        is exit to DOS.  Any other screen fails and nothing is pressed."""
+        screen = self.s.settle(quiet=1.0, timeout=self.bounded(30.0, "exit"))
+        kind = POD_EXIT_BARS.get(bar_signature(screen))
+        if kind is None:
+            raise self.fail("exit", "the screen is not a menu of POD_EXIT_BARS: "
+                            f"{self.bar_named(screen)}")
+        shot = self.shot("exit")
+        self.s.key(POD_EXIT)
+        self.s.settle(quiet=1.0, timeout=60.0)
+        return {"shot": f"{shot}.png", "menu": kind, "answered": POD_EXIT,
+                "after": self.shot("exited")}
 
     def at_map(self) -> dict:
         """Pools of Darkness, after `press` steps that left the party on a
@@ -7937,6 +7978,8 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                     r = d.at_map()
                 elif step.kind == "continue":
                     r = d.continue_bar()
+                elif step.kind == "exit":
+                    r = d.exit_menu()
                 elif step.kind == "camp":
                     r = d.camp()
                 elif step.kind == "vault":

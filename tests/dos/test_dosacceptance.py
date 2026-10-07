@@ -4468,6 +4468,9 @@ class FakePod(FakePool):
         #: `Return` (`into_cont` has every key typed at one) unless
         #: `dead_return`; the last leads to the map.
         self.continues, self.dead_return, self.into_cont = continues, dead_return, []
+        #: `Return`s the story bar ignores before one takes, as the tester's
+        #: message does after a removed NPC.
+        self.stuck = 0
         #: The first `Return` takes effect only after one more capture, as a
         #: redraw that lands after the driver's wait has run out.
         self.late_return, self.late_wait = late_return, 0
@@ -4509,6 +4512,8 @@ class FakePod(FakePool):
             self.into_cont.append(k)
             if k == "Return" and self.late_return:
                 self.late_return, self.late_wait = False, 1
+            elif k == "Return" and self.stuck:
+                self.stuck -= 1
             elif k == "Return" and not self.dead_return:
                 self._next_cont()
         elif m == "map" and k in ("Return", "n"):
@@ -12769,6 +12774,65 @@ def test_continue_fails_when_the_bar_does_not_go(tmp_path, pod_continue):
     d.where = "pressed"
     with pytest.raises(da.StepFailed, match="still showing"):
         d.continue_bar()
+
+
+def test_continue_presses_return_again_while_the_same_bar_stays_up(tmp_path, pod_continue):
+    game, d = _pod_driver(tmp_path, question=False)
+    game.mode, game.continues, game.stuck = "cont", 1, 2
+    d.where = "pressed"
+    got = d.continue_bar()
+    assert game.into_cont == ["Return"] * 3 and game.mode == "map"
+    assert got["presses"] == 3
+
+
+def test_continue_stops_after_three_returns_on_a_bar_that_stays(tmp_path, pod_continue):
+    game, d = _pod_driver(tmp_path, question=False)
+    game.mode, game.continues, game.stuck = "cont", 1, 3
+    d.where = "pressed"
+    with pytest.raises(da.StepFailed, match="still showing after 3 Returns"):
+        d.continue_bar()
+    assert game.into_cont == ["Return"] * 3
+
+
+@pytest.fixture
+def pod_exit(monkeypatch):
+    """The driver knows the fake's `overland` bar as an exit menu."""
+    sig = screens.bar_signature(_screen(FakePod.BARS["overland"], b""))
+    monkeypatch.setattr(da, "POD_EXIT_BARS", {sig: "treasure"})
+
+
+def test_exit_presses_e_on_a_listed_menu(tmp_path, pod_exit):
+    game, d = _pod_driver(tmp_path, question=False)
+    game.mode = "overland"
+    d.where = "pressed"
+    got = d.exit_menu()
+    assert game.keys == ["e"] and got["menu"] == "treasure"
+
+
+@pytest.mark.parametrize("mode", ["party", "map", "cont"])
+def test_exit_on_a_party_menu_or_another_bar_fails_and_presses_nothing(
+        tmp_path, pod_exit, mode):
+    game, d = _pod_driver(tmp_path, question=False)
+    game.mode = mode
+    d.where = "pressed"
+    with pytest.raises(da.StepFailed, match="lost-exit"):
+        d.exit_menu()
+    assert game.keys == []
+
+
+def test_the_exit_bars_are_not_the_party_menu():
+    assert "b3205ea937285f8a" not in da.POD_EXIT_BARS
+
+
+def test_exit_is_for_darkness_straight_after_a_press_and_press_e_stays_blocked():
+    da.validate_steps(_steps("load", "begin", "press t", "continue", "exit", "map"),
+                      "darkness")
+    with pytest.raises(ValueError, match="in darkness"):
+        da.validate_steps(_steps("load", "press t", "exit"), "pool")
+    with pytest.raises(ValueError, match="follows a press"):
+        da.validate_steps(_steps("load", "begin", "exit"), "darkness")
+    with pytest.raises(ValueError, match="blocked"):
+        da.parse_step("press e")
 
 
 def test_continue_is_allowed_after_a_press_in_darkness_only():
