@@ -2730,11 +2730,6 @@ LATER_TITLE_DROPPED: tuple[tuple[str, str], ...] = (
      "Pools of Darkness' ready-to-train flag, read into the neutral "
      "`ready_to_train`; see `highest_class_levels` for why the C64 writer "
      "drops it"),
-    ("unnamed_1e0",
-     "one byte only Pools of Darkness has, 0 in 20 of its 24 records and 2 "
-     "in the four that are ABAGAIL and BRYTWYN. UNKNOWN, so there is "
-     "nothing to convert it into; the writer puts back the 0 that twenty of "
-     "them hold"),
 )
 
 #: DOS fields the C64 recomputes or never needed in the first place, measured
@@ -2797,6 +2792,18 @@ DERIVED: tuple[tuple[str, str, str], ...] = (
 #: that the C64 recomputes for itself).
 CONSTANTS: tuple[tuple[str, str], ...] = ()
 
+#: :data:`DERIVED` for a field only a later title declares, split off the way
+#: :data:`LATER_TITLE_DROPPED` is split off :data:`DROPPED`.
+LATER_TITLE_DERIVED: tuple[tuple[str, str, str], ...] = (
+    ("item_save_bonus", "the saving-throw bonus summed from the readied "
+                        "protection items, which the engine clears and "
+                        "rebuilds for every character it loads; the Amiga's "
+                        "twin at record 0x0C9 is rebuilt the same way",
+     "52 of 52 DOS records the game resaved hold the sum of their items, "
+     "24 of them written as 0 by Wish "
+     "(acceptance/650/3569be30a9-run2-thief-partysave)"),
+)
+
 #: The same, for a field only a later title declares -- split off the way
 #: :data:`LATER_TITLE_DROPPED` is split off :data:`DROPPED`, so that
 #: `field_disposition` for Pool of Radiance is built from the tables Pool of
@@ -2853,7 +2860,8 @@ def field_disposition(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
             if n not in {m for m, _ in undead_direct(deltas.key)})
             if deltas is not POOL_OF_RADIANCE else ())),
         "the C64's",
-        derived=only(tuple((n, w) for n, w, _run in DERIVED)),
+        derived=only(tuple((n, w) for n, w, _run in
+                           DERIVED + LATER_TITLE_DERIVED)),
         constants=only(CONSTANTS + LATER_TITLE_CONSTANTS))
 
 
@@ -2918,7 +2926,7 @@ def portrait_tables(game: str | pathlib.Path | None
 #:
 #: Two of the deltas' eight UNKNOWN runs turned out to carry something, and
 #: both are named in `goldbox/dos_port.py` rather than left as gaps a
-#: writer would zero: `unnamed_1a4` and `unnamed_1e0`.
+#: writer would zero: `unnamed_1a4` and `item_save_bonus`.
 CONVERTS: tuple[DosDeltas, ...] = (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS,
                                   SECRET_OF_THE_SILVER_BLADES,
                                   POOLS_OF_DARKNESS)
@@ -4364,18 +4372,6 @@ WRITE_DEFAULTS: tuple[tuple[str, bytes, str, str], ...] = (
      "written only when the source supplies none of status, active, the "
      "combat side or quickfight -- each of the four converts on its own "
      "when the source has it"),
-    ("unnamed_1e0", b"\x00",
-     "0 in 20 of the 24 Pools of Darkness records on this machine. The four "
-     "that hold 2 are ABAGAIL and BRYTWYN, found twice each, and they are "
-     "also the only two of the twelve whose stored encumbrance is not the "
-     "960 the rest share -- one byte, two characters, no third value, so "
-     "there is nothing to convert it from. Pool of Radiance keeps a byte "
-     "here too and it is zero in all 238 of its records. Only Pools of "
-     "Darkness declares the field",
-     "the byte's meaning is UNKNOWN, so a source that holds 2 there loses "
-     "it. What would settle it: play DOS Pools of Darkness far enough to "
-     "make a character the byte changes for, and diff the save one action "
-     "apart (#194)"),
 )
 
 #: Fields written from a rule rather than copied from a single neutral value:
@@ -5263,6 +5259,14 @@ WRITE_DERIVED_LATER: tuple[tuple[str, str], ...] = (
      "the offer, so the byte does not gate the command in that title. It "
      "*is* cure-disease bookkeeping: one use took a staged 2 to 0 in the "
      "engine's own resave (#299)"),
+    ("item_save_bonus",
+     "the saving-throw bonus summed from the readied protection items' "
+     "plus_save. Written as 0, because the Pools of Darkness engine clears "
+     "and rebuilds it for every character it loads (`GAME.OVR` `0x34D5D`, "
+     "called from the loader for a saved game and for Add Character), and "
+     "so does the Amiga engine for its twin at record 0x0C9: 52 of 52 DOS "
+     "and 88 of 88 Amiga game-resaved records hold the sum of their items, "
+     "including those Wish wrote as 0"),
 )
 
 
@@ -5275,7 +5279,7 @@ WRITE_DERIVED_LATER: tuple[tuple[str, str], ...] = (
 #: **Pool of Radiance's**, which is what it has always been; ask
 #: :func:`write_targets` for another title's.  The tables it is built from
 #: now carry rows for fields only a later title declares -- `unnamed_1a4` and
-#: `unnamed_1e0` are Pools of Darkness' -- so the whole is cut to Pool of
+#: `item_save_bonus` are Pools of Darkness' -- so the whole is cut to Pool of
 #: Radiance's own field names at the end, the way :func:`write_targets` cuts
 #: it to whichever title it was asked about (#194).
 WRITE_TARGETS: dict[str, str] = {n: w for n, w in (
@@ -5399,8 +5403,8 @@ def write_targets(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
     out |= {name: f"constant: {why}"
             for name, _, why in write_constants(deltas)}
     # The whole of `WRITE_DEFAULTS`, not the part Pool of Radiance declares:
-    # `WRITE_TARGETS` is cut to its own title's names and Pools of Darkness'
-    # `unnamed_1e0` is not one of them (#194).
+    # `WRITE_TARGETS` is cut to its own title's names, which would leave out
+    # a default only a later title declares (#194).
     out |= {name: f"default: {why}" for name, _, why, _ in WRITE_DEFAULTS}
     out |= {
         "former_level": "from neutral former_levels, the one level again in "
@@ -6852,7 +6856,7 @@ def write(char: NeutralCharacter,
     # character creation writes and how it leaves the byte after HUMAN CHANGE
     # CLASSES.  An in-place rewrite copies, so the engine's own byte stands.
     if "paladin_cures" in table:
-        (_pal_name, _pal_why), = WRITE_DERIVED_LATER
+        _pal_name, _pal_why = WRITE_DERIVED_LATER[0]
         f = table[_pal_name]
         held = use(_pal_name)
         _left = int((w.get("former_levels") or {}).get("paladin") or 0)
@@ -6888,6 +6892,15 @@ def write(char: NeutralCharacter,
             (why,) = (why for n, why in WRITE_DROPPED
                       if n == "paladin_cures")
             rep.dropped.append(f"paladin_cures: {why}")
+
+    # -- the readied items' saving-throw bonus -------------------------------
+    # Left at 0: both engines clear and rebuild it on load, so a converted
+    # character gets the right bonus from his readied items regardless.
+    if "item_save_bonus" in table:
+        _isb_name, _isb_why = WRITE_DERIVED_LATER[1]
+        f = table[_isb_name]
+        rec[f.offset:f.end] = b"\x00"
+        rep.note(f.offset, f.size, f"{_isb_name}: 0 -- {_isb_why}")
 
     # -- the saves, thac0_current and movement the DOS loader rebuilds -------
     # `WRITE_DIRECT`'s copy is skipped above for these seven, as for

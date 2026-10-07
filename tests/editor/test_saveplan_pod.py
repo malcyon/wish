@@ -369,24 +369,20 @@ def test_every_dos_slot_crosses_to_the_amiga_with_nothing_lost(
         monkeypatch, tmp_path):
     _flag(monkeypatch, "1")
     disk = _registered_disk_three(tmp_path)
-    checked = 0
+    checked = held_bonus = 0
     for source in _dos_sources():
         party = Party(source)
-        try:
-            plan = _to_amiga(party, tmp_path, disk)
-        except saveplan.DroppedFields as stopped:
-            # The one open loss: a character holding the unidentified byte.
-            assert all(line.startswith("unnamed_1e0:")
-                       for line in stopped.lost), (
-                source.path, source.slot, stopped)
-            assert any(m.record.to_bytes()[
-                podsheet.TABLE["unnamed_1e0"].offset] for m in party.members)
-            continue
+        plan = _to_amiga(party, tmp_path, disk)
+        # The readied items' saving-throw bonus is rebuilt by both games on
+        # load, so a character holding it is not a loss and not a stop.
+        held_bonus += any(m.record.to_bytes()[
+            podsheet.TABLE["item_save_bonus"].offset] for m in party.members)
         report = plan.report
         assert (report.dropped, report.losses) == ([], []), (
             source.path, source.slot)
         checked += 1
     assert checked
+    assert held_bonus
 
 
 def test_every_amiga_slot_crosses_to_dos_with_nothing_lost(
@@ -478,16 +474,15 @@ def test_every_field_left_uncompared_names_its_reason():
         assert field not in saveplan.POD_NOT_COMPARED
 
 
-def test_an_open_loss_is_compared_and_names_its_reason(monkeypatch, tmp_path):
+def test_the_item_save_bonus_is_not_a_loss_because_both_games_rebuild_it(
+        monkeypatch, tmp_path):
     want, got = _pair(monkeypatch, tmp_path)
     got.items = want.items
-    assert "unnamed_1e0" not in saveplan.POD_NOT_COMPARED
-    assert "identified" in saveplan.POD_OPEN_LOSSES["unnamed_1e0"]
-    spec = podsheet.TABLE["unnamed_1e0"]
+    assert saveplan.POD_NOT_COMPARED["item_save_bonus"]
+    spec = podsheet.TABLE["item_save_bonus"]
     raw = bytearray(want.to_bytes())
     raw[spec.offset] = 2
     held = saveplan.PodCompared(bytes(raw))
     held.items = want.items
-    assert saveplan.compare([held], [got]) == [
-        "unnamed_1e0: b'\\x02' arrived as b'\\x00'"]
+    assert saveplan.compare([held], [got]) == []
     assert saveplan.compare([want], [got]) == []

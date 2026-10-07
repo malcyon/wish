@@ -1338,7 +1338,7 @@ def por_write_mask() -> set[int]:
 
     def field(name: str) -> set[int]:
         # A name only a later title declares has no Pool of Radiance offset
-        # to mask -- `unnamed_1a4` and `unnamed_1e0` are Pools of Darkness'
+        # to mask -- `unnamed_1a4` and `item_save_bonus` are Pools of Darkness'
         # (#194) -- and this mask is over the 285-byte record.
         f = dos_port.FIELDS_BY_NAME.get(name)
         if f is None:

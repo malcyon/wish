@@ -1756,19 +1756,10 @@ POD_NOT_COMPARED: dict[str, str] = {
     # The name is compared as the player typed it (`expected_names`).
     "name_length": "compared as the name",
     "name_text": "compared as the name",
-    **{name: why for name, why, _run in dos_codec.DERIVED
-       if name in ("item_chain", "heap_104", "effect_chain", "hands_used")},
-}
-
-#: Losses a conversion is known to carry and that stay open. These fields are
-#: compared like any other, so a character whose value does not come back is
-#: reported by `compare` and Save As stops for him; the reason says why the
-#: loss is not yet settled.
-POD_OPEN_LOSSES: dict[str, str] = {
-    "unnamed_1e0": (
-        "UNKNOWN byte: four specimen characters hold 2 and the Amiga keeps "
-        "no place for it, so it returns as 0; open on WISH-2 until "
-        "identified"),
+    **{name: why for name, why, _run in (
+           dos_codec.DERIVED + dos_codec.LATER_TITLE_DERIVED)
+       if name in ("item_chain", "heap_104", "effect_chain", "hands_used",
+                   "item_save_bonus")},
 }
 
 #: Values a conversion changes on purpose: field name, the function that maps

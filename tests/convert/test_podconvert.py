@@ -78,7 +78,10 @@ def _mask(original: bytes) -> set[int]:
     named = ([n for n, _ in dos_codec.WRITE_UNSOURCED + dos_codec.WRITE_UNSOURCED_LATER]
              + [n for n, _, _, _ in dos_codec.WRITE_DEFAULTS
                 if n != "field_10c_10f"]
-             + [n for n, _ in dos_codec.WRITE_DERIVED])
+             + [n for n, _ in dos_codec.WRITE_DERIVED]
+             # Rebuilt by the game on load, so written 0 rather than copied.
+             + [n for n, _ in dos_codec.WRITE_DERIVED_LATER
+                if n == "item_save_bonus"])
     for name in named:
         if name in table:
             out.update(range(table[name].offset, table[name].end))
@@ -273,13 +276,13 @@ def test_the_two_unnamed_runs_are_declared_rather_than_left_as_gaps():
     table = dos_port.FIELDS_BY_NAME_FOR[POD.key]
     assert table["unnamed_1a4"].offset == 0x1A4
     assert table["unnamed_1a4"].size == 2
-    assert table["unnamed_1e0"].offset == 0x1E0
-    assert table["unnamed_1e0"].size == 1
+    assert table["item_save_bonus"].offset == 0x1E0
+    assert table["item_save_bonus"].size == 1
     # Only this title has either, so no other title's record moves.
     for deltas in (POOL, dos_port.CURSE_OF_THE_AZURE_BONDS, SSB):
         other = dos_port.FIELDS_BY_NAME_FOR[deltas.key]
         assert "unnamed_1a4" not in other
-        assert "unnamed_1e0" not in other
+        assert "item_save_bonus" not in other
 
 
 def test_the_pair_at_0x1a4_is_the_measured_constant_in_every_record():
@@ -306,22 +309,25 @@ def test_the_pair_at_0x1a4_is_the_measured_constant_in_every_record():
     assert "unnamed_1a4" not in [n for n, _, _ in dos_codec.write_constants(POOL)]
 
 
-def test_the_byte_at_0x1e0_is_written_at_the_value_twenty_of_them_hold():
-    """0 in 20 of 24 and 2 in the four that are ABAGAIL and BRYTWYN. One
-    byte, two characters, no third value, so it is a measured default rather
-    than a constant -- and a default is masked out of the round trip, which
-    is why the two who hold 2 do not show up as a failure above.
+def test_the_byte_at_0x1e0_is_the_item_save_bonus_and_is_written_zero():
+    """0 in 20 of 24 and 2 in the four that are ABAGAIL and BRYTWYN, who each
+    wear a Ring Of Prot +2. Both games rebuild it on load, so it is a derived
+    field that the writer leaves at 0 and the round trip masks.
     """
-    f = dos_port.FIELDS_BY_NAME_FOR[POD.key]["unnamed_1e0"]
+    f = dos_port.FIELDS_BY_NAME_FOR[POD.key]["item_save_bonus"]
     held: dict[str, set[int]] = {}
     for path in _records():
         char = dos_codec.read_character(path)
         held.setdefault(char.name, set()).add(path.read_bytes()[f.offset])
+        rec, _itm, _spc, _rep = dos_codec.write(dos_codec.to_neutral(char))
+        assert rec[f.offset] == 0, path.name
     values = {v for s in held.values() for v in s}
     assert values <= {0, 2}, sorted(values)
     assert {n for n, s in held.items() if s != {0}} == {"ABAGAIL", "BRYTWYN"}
-    assert ("unnamed_1e0", b"\x00") in [
-        (n, v) for n, v, _, _ in dos_codec.WRITE_DEFAULTS]
+    assert "item_save_bonus" in [n for n, _ in dos_codec.WRITE_DERIVED_LATER]
+    assert "item_save_bonus" not in [
+        n for n, _, _, _ in dos_codec.WRITE_DEFAULTS]
+    assert "item_save_bonus" in [n for n, _, _ in dos_codec.LATER_TITLE_DERIVED]
 
 
 # --- the race table this title never had -------------------------------------

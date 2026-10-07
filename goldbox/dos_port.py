@@ -1132,23 +1132,18 @@ _UNNAMED_1A4_NOTE = (
     "them, ABAGAIL's small icon included. The writer puts the measured pair "
     "back rather than the zero a gap would get (#194)")
 
-#: The byte between `hands_used` and `encumbrance` -- Pool of Radiance's
-#: `gap_101`, which is zero in all 238 of its records and in all 110 Curse
-#: and 74 Silver Blades ones.
-#:
-#: **Pools of Darkness writes something in it**: 0 in 20 of 24 records and 2
-#: in the other four, which are two distinct characters found twice each --
-#: ABAGAIL and BRYTWYN, both magic-users, and both the only two of the twelve
-#: whose stored `encumbrance` is not the party's shared 960. Treasures of the
-#: Savage Frontier holds 4 in two of its 28. UNKNOWN, and there is no third
-#: value to reason from.
-_UNNAMED_1E0_NOTE = (
-    "one byte between hands_used and encumbrance. 0 in 20 of 24 Pools of "
-    "Darkness records and 2 in the four that are ABAGAIL and BRYTWYN, the "
-    "two characters whose encumbrance is not the 960 the other ten share. "
-    "UNKNOWN. Pool of Radiance keeps a byte here too and it is zero in all "
-    "238 of its records, so nothing in the earlier engines says what this "
-    "is (#194)")
+#: The byte between `hands_used` and `encumbrance` -- the saving-throw bonus
+#: summed from the readied protection items' `plus_save` (item byte `0x33`).
+#: Pools of Darkness' `GAME.OVR` clears and rebuilds it for every character
+#: it loads (`0x34D5D`, called from the loader for a saved game and for Add
+#: Character) and only the saving throw reads it (`0x32AD9`).  The Amiga's
+#: twin is record `0x0C9`, which that engine also rebuilds on load.  Pool of
+#: Radiance's `gap_101` is zero in all 238 of its records.
+_ITEM_SAVE_BONUS_NOTE = (
+    "the saving-throw bonus summed from the readied protection items' "
+    "plus_save, as ABAGAIL's and BRYTWYN's Ring Of Prot +2 give 2. The "
+    "game rebuilds it for every character it loads, so the converter writes "
+    "0 and the Amiga's twin at 0x0C9 is rebuilt the same way")
 
 
 #: Pool of Radiance itself: the table above, unchanged.  Present so callers
@@ -1292,7 +1287,7 @@ _READY_TO_TRAIN_NOTE = (
 #: Curse (110) and Silver Blades (74) reads zero in every record on this
 #: machine; two of Pools of Darkness' do not, so they are named here rather
 #: than left as gaps a writer would silently zero: :data:`_UNNAMED_1A4_NOTE`
-#: at `0x1A4` and :data:`_UNNAMED_1E0_NOTE` at `0x1E0`.
+#: at `0x1A4` and :data:`_ITEM_SAVE_BONUS_NOTE` at `0x1E0`.
 #:
 #: **This title has no `attack_level`**: its `GAME.OVR` never addresses
 #: `0x130`, and every id loop of the spellbook runs to 126, so the byte is
@@ -1357,8 +1352,9 @@ POOLS_OF_DARKNESS = DosDeltas(
                     _DRUID_SLOT_NOTE),),
              "icon_colours": (_x(2, "unnamed_1a4", "Unattributed @0x1A4",
                                  _NOPE, _UNNAMED_1A4_NOTE),),
-             "hands_used": (_x(1, "unnamed_1e0", "Unattributed @0x1E0",
-                               _NOPE, _UNNAMED_1E0_NOTE, kind=Kind.U8),),
+             "hands_used": (_x(1, "item_save_bonus",
+                               "Saving-throw bonus from readied items",
+                               _OK, _ITEM_SAVE_BONUS_NOTE, kind=Kind.U8),),
              "heap_104": (1, _x(1, "ready_to_train", "Ready to train", _OK,
                                 _READY_TO_TRAIN_NOTE, kind=Kind.U8))})
 

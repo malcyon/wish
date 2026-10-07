@@ -119,7 +119,10 @@ def masked(deltas: dos_port.DosDeltas) -> set[int]:
     named = ([n for n, _ in dos_codec.WRITE_UNSOURCED + dos_codec.WRITE_UNSOURCED_LATER]
              + [n for n, _, _, _ in dos_codec.WRITE_DEFAULTS
                 if n != "field_10c_10f"]
-             + [n for n, _ in dos_codec.WRITE_DERIVED])
+             + [n for n, _ in dos_codec.WRITE_DERIVED]
+             # Rebuilt by the game on load, so written 0 rather than copied.
+             + [n for n, _ in dos_codec.WRITE_DERIVED_LATER
+                if n == "item_save_bonus"])
     for name in named:
         if name in table:
             out.update(range(table[name].offset, table[name].end))
