@@ -1673,6 +1673,17 @@
         ],
         "example": "WISH-6/wish6-accept1/wish6-accept1/shots/05-loaded_menu.png",
         "sha256": "8939d6af13bce8a031a1d5846b6f841659e8c56a5cc3299610e39e888281f8b5"
+      },
+      {
+        "also": [],
+        "box": [
+          74,
+          94,
+          690,
+          192
+        ],
+        "example": "WISH-2/l4-r6-control/control/shots/05-loaded_menu.png",
+        "sha256": "5eb702a18d0deb25ab184ab0e63bf366aaf184bef15c860ceea77bc7e886bfb5"
       }
     ],
     "sheet": [
@@ -1757,6 +1768,19 @@
         ],
         "example": "WISH-6/wish6-accept2/wish6-accept2/shots/06-sheet.png",
         "sha256": "c75614e39ddd32e3b9f22b757dca54b1c859d6c97b5320917f3c9a1c58d87088"
+      },
+      {
+        "also": [
+          "camp_sheet"
+        ],
+        "box": [
+          74,
+          46,
+          330,
+          62
+        ],
+        "example": "WISH-2/l4g-b1/b1/shots/06-sheet.png",
+        "sha256": "dd122a3a955b85f58433fea7064b4ac2ca3beb3d5bd813d891c041dc25a76dc4"
       }
     ]
   },
@@ -1841,6 +1865,24 @@
     ],
     "9/wish9-test/accept3/shots/13-world.png": [
       "place_x2_y2_f1"
+    ],
+    "WISH-2/l4-r6-control/control/shots/05-loaded_menu.png": [
+      "loaded_menu"
+    ],
+    "WISH-2/l4g-b1/b1/shots/05-loaded_menu.png": [
+      "loaded_menu"
+    ],
+    "WISH-2/l4g-b1/b1/shots/06-sheet.png": [
+      "sheet"
+    ],
+    "WISH-2/l4g-b2/b2/shots/05-loaded_menu.png": [
+      "loaded_menu"
+    ],
+    "WISH-2/l4g-b2/b2/shots/06-sheet.png": [
+      "sheet"
+    ],
+    "WISH-2/l4g-b2/b2/shots/07-loaded_menu.png": [
+      "loaded_menu"
     ],
     "WISH-2/wish2-a1a/accept1/shots/12-world.png": [
       "place_x2_y2_f1"
