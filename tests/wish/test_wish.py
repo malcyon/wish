@@ -569,6 +569,30 @@ def test_the_editor_tab_is_never_given_the_machine(window):
     assert window.session.reader is None
 
 
+def _switch_away_and_back(window, charset):
+    import types
+
+    from wish.window import EDITOR_TAB, MAP_TAB
+    window.editor.party = types.SimpleNamespace(
+        describe=lambda: "a party", game=None)
+    window.editor.item_names = {}
+    window.editor.charset = charset
+    window.tabs.setCurrentIndex(MAP_TAB)
+    window.tabs.setCurrentIndex(EDITOR_TAB)
+    return window.statusBar().currentMessage()
+
+
+def test_the_tab_switch_line_keeps_the_no_game_disk_note(window):
+    line = _switch_away_and_back(window, {})
+    assert line.endswith(window.editor.no_game_disk_suffix())
+    assert line.endswith("no item names and no icons")
+
+
+def test_the_tab_switch_line_has_no_note_when_a_disk_was_found(window):
+    line = _switch_away_and_back(window, {1: b"x"})
+    assert line == "? - a party"
+
+
 #: What `editor/` may not reach for. `INDEX.md` states the promise: the editor
 #: is a file tool that runs with no emulator installed anywhere.
 FORBIDDEN_IN_EDITOR = ("automap", "socket", "telnet", "telnetlib", "serial")

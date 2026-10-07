@@ -735,7 +735,8 @@ class WishWindow(QMainWindow):
         if self.editor.party is None:
             return "Open a save disk to begin"
         name = self.editor.path.name if self.editor.path else "?"
-        return f"{name} - {self.editor.party.describe()}"
+        return (f"{name} - {self.editor.party.describe()}"
+                f"{self.editor.no_game_disk_suffix()}")
 
     # -- shutting down ---------------------------------------------------
 

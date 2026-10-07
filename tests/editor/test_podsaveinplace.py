@@ -799,6 +799,7 @@ def test_the_item_picker_never_offers_an_item_to_an_amiga_save(
     window._populate()
     assert window.templates == {}
     assert not window._child("button_item_add").isEnabled()
+    assert window._child("button_item_add").toolTip() == ""
     before = list(window.items.inventory.raws)
     assert window.add_item("any") == "no game disk, so no items to copy"
     assert window.items.inventory.raws == before

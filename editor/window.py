@@ -1981,7 +1981,7 @@ class EditorBinding(QObject):
         if self._game_label is not None:
             self._game_label.setText(party.game.title if party.is_save else "")
         self.status(note if note is not None else
-                    f"{party.describe()}{self._no_game_disk_suffix()}")
+                    f"{party.describe()}{self.no_game_disk_suffix()}")
         self._retitle()
         self._refresh_save_menu()
         self._hide_destination_section()
@@ -2669,7 +2669,7 @@ class EditorBinding(QObject):
         return (self.party is not None
                 and self.party.game is titles.POOLS_OF_DARKNESS)
 
-    def _no_game_disk_suffix(self) -> str:
+    def no_game_disk_suffix(self) -> str:
         """What the status line adds when the game files gave nothing.
 
         A C64 title's answer is the icon charset. A Pools of Darkness save
@@ -2782,7 +2782,7 @@ class EditorBinding(QObject):
         self._populate()
         if self.party is not None:
             self.status(
-                f"{self.party.describe()}{self._no_game_disk_suffix()}")
+                f"{self.party.describe()}{self.no_game_disk_suffix()}")
 
     def _load_icon_parts(self) -> None:
         """The icon editor's option tables, from whichever disk carries them."""
@@ -4021,11 +4021,17 @@ class EditorBinding(QObject):
                 button.setEnabled(member.inventory is not None
                                   and not self.items.read_only)
         add = self._child("button_item_add")
-        if add is not None and not self.templates:
-            add.setEnabled(False)
-            add.setToolTip("adding an item copies one of the game disks' own "
-                           "163 records; without a game disk there are none. "
-                           "File > Preferences… to say where they are")
+        if add is not None:
+            no_disk = not self.templates
+            if no_disk:
+                add.setEnabled(False)
+            # A Pools of Darkness save has no records to copy whatever was
+            # found, so the missing disk is no reason for its greyed button.
+            add.setToolTip(
+                "adding an item copies one of the game disks' own "
+                "163 records; without a game disk there are none. "
+                "File > Preferences… to say where they are"
+                if no_disk and not self._is_pod() else "")
         return text
 
     def add_item(self, name: str | None = None) -> str:

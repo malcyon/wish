@@ -1233,6 +1233,19 @@ def test_items_are_shown_by_name_not_by_number(editor):
 
 
 @game_disks
+def test_finding_the_game_disk_clears_the_add_item_tooltip(app, save):
+    from editor.window import EditorBinding
+    w = EditorBinding(make_root(), str(save))
+    w.roster.selectRow(2)
+    add = w.root.findChild(QWidget, "button_item_add")
+    assert not add.isEnabled() and "without a game disk" in add.toolTip()
+    w.set_disks(DISKS)
+    w.roster.selectRow(2)
+    assert add.isEnabled()
+    assert add.toolTip() == ""
+
+
+@game_disks
 def test_without_a_game_disk_the_tab_says_why_items_are_numbers(app, save):
     from editor.window import EditorBinding
     w = EditorBinding(make_root(), str(save))                      # no game disk beside it
