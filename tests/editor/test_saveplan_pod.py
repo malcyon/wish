@@ -316,6 +316,52 @@ def test_an_edited_stat_and_item_cross_before_any_save(monkeypatch, tmp_path):
     assert back.inventory.item(0).quantity == 3
 
 
+def _weighted_party(monkeypatch, tmp_path, weight: int = 80):
+    """`_dos_party` whose one item weighs `weight` and whose stored load
+    balances, so the load the writers store is the one a Save As expects."""
+    _flag(monkeypatch, "1")
+    folder = _dos_folder(tmp_path)
+    data = bytearray((folder / "CHRDATA1.THG").read_bytes())
+    data[dos_codec.DosItem._TABLE["weight"].span] = struct.pack("<H", weight)
+    (folder / "CHRDATA1.THG").write_bytes(bytes(data))
+    record = podsheet.PodSheetRecord((folder / "CHRDATA1.SAV").read_bytes())
+    record.set("encumbrance", record.get("platinum") + weight)
+    (folder / "CHRDATA1.SAV").write_bytes(record.to_bytes())
+    return folder, Party(convert.Source.detect(folder, slot="A"))
+
+
+def _published_load(party, tmp_path, port):
+    """The `encumbrance` a Save As to `port` publishes; a stop fails the test."""
+    if port == "amiga":
+        disk = _disk_file(tmp_path, _disk_three())
+        plan = _to_amiga(party, tmp_path, disk)
+    else:
+        plan = saveplan.prepare_save_as(party, "dos", tmp_path / "dos-out")
+    published = saveplan.publish(plan, party, backups=str(tmp_path / "b"))
+    [back] = published.party.members
+    return back.record.get("encumbrance")
+
+
+@pytest.mark.parametrize("port", ["amiga", "dos"])
+def test_an_edited_quantity_moves_the_expected_load_on_every_route(
+        monkeypatch, tmp_path, port):
+    folder, party = _weighted_party(monkeypatch, tmp_path)
+    [member] = party.members
+    start = member.record.get("encumbrance")
+    member.inventory.set_quantity(0, 3)
+    assert _published_load(party, tmp_path, port) == start + 80 * 2
+
+
+@pytest.mark.parametrize("port", ["amiga", "dos"])
+def test_an_edited_coin_amount_moves_the_expected_load(
+        monkeypatch, tmp_path, port):
+    folder, party = _weighted_party(monkeypatch, tmp_path)
+    [member] = party.members
+    start = member.record.get("encumbrance")
+    member.record.set("platinum", member.record.get("platinum") + 500)
+    assert _published_load(party, tmp_path, port) == start + 500
+
+
 def test_a_vault_of_two_hundred_and_one_items_converts_whole(
         monkeypatch, tmp_path):
     item = bytes(dos_codec.ITEM_SIZE)

@@ -256,6 +256,28 @@ def pod_dos_files(party: Any) -> dict[str, bytes | None]:
     return written
 
 
+def pod_written_encumbrance(member: Any) -> int:
+    """The `encumbrance` the DOS rewrite stores for this Pools of Darkness
+    member: the load as read, moved by the change in money and item weight.
+
+    The sheet's own record never moves it, so a Save As expects this value
+    rather than the sheet's. An Amiga member is rewritten from the DOS
+    rendering of its block, which is what its sheet was built from.
+    """
+    from .podsheet import item_blocks
+
+    if isinstance(member.native, dos_codec.DosCharacter):
+        native, was = member.native, pod_rewrite.item_blocks(member.native.items)
+    else:
+        native = _pod_rendered(member).dos
+        was = item_blocks(native)
+    items_now = None if member.inventory is None else member.inventory.raws
+    result = pod_rewrite.rewrite_dos(
+        native, member.record_original, member.record.to_bytes(),
+        None if items_now is None else was, items_now)
+    return PodSheetRecord(result.record).get("encumbrance")
+
+
 def dos_snapshot(party: Any) -> dict[str, bytes]:
     """The whole DOS saved game with the edits in it, by file name.
 
@@ -2161,7 +2183,8 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
     ever been written. A destination of the source's own port is a native
     copy; anything else is the registered conversion, which is **blocked
     outright if it would lose a field**, before a byte of the destination is
-    touched.
+    touched. The load a Pools of Darkness save is expected to hold is the one
+    the writer stores (`pod_written_encumbrance`).
 
     **The destination is never the save it came from.** Writing a Save As
     over its own source destroys the thing it is reading, and for a copy of
@@ -2223,6 +2246,9 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
                               slot=None if port == "c64" else slot,
                               title=title, native=direction is None)
     expected = [edited_record(member) for member in party.members]
+    for member, record in zip(party.members, expected):
+        if isinstance(record, PodSheetRecord):
+            record.set("encumbrance", pod_written_encumbrance(member))
     expected_names = None
     if port in ("dos", "amiga"):
         # The name a DOS or Amiga destination should be read back holding.

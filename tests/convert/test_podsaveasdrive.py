@@ -190,6 +190,32 @@ def test_the_registered_disk_three_takes_a_registered_dos_slot(tmp_path):
     assert disk3.read_bytes() == data
 
 
+def test_an_edited_item_quantity_converts_to_the_registered_disk_three(tmp_path, monkeypatch):
+    """The load a quantity edit moves is the one Save As expects, on the real slot."""
+    import gamedata
+
+    from editor.roster import Party
+    from tools.amiga import amigasaves, route_darkness
+    root = gamedata.specimen_root()
+    folder = root / "pod-dos" / "WISH-SPEC-pod-628-dos-lay-then-rest-1h" if root else None
+    if folder is None or not folder.is_dir():
+        pytest.skip("needs the pod-dos specimen tree; see $WISH_SPECIMENS")
+    for _label, data in amigasaves.images():
+        if hashlib.sha256(data).hexdigest() == route_darkness.DARKNESS_DISK3_SHA256:
+            break
+    else:
+        pytest.skip("needs the registered Pools of Darkness disk 3; set $AMIGA_DISKS")
+    disk3 = tmp_path / "disk3.adf"
+    disk3.write_bytes(data)
+    specimen = folder / "SAVGAMC.PTY"
+    report = podsaveasdrive.run(specimen, disk3, tmp_path / "out", items=("0:0=3",))
+    assert not report["save_as"].get("stopped"), report
+    image = pathlib.Path(report["written"][0])
+    monkeypatch.setenv("WISH_EXPERIMENTAL_POD_CONVERT", "1")
+    party = Party(convert.Source.detect(image, slot="C"))
+    assert party.members[0].inventory.item(0).quantity == 3
+
+
 def test_the_vault_specimen_on_the_registered_disk_three_leaves_f_and_g_free(tmp_path):
     """Every shipped disk 3 holds a vault for A to H; only saved games take a letter.
 
