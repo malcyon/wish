@@ -12,6 +12,7 @@ import json
 import pytest
 
 from automap import actions as engine
+from automap.vice import MonitorError
 from tools.c64 import fasttravelrun as ftr
 
 DISK_TEXT = "INSERT SIDE # 4 AND PRESS RETURN"
@@ -71,7 +72,16 @@ class Session:
         self.no_encounters = False
         return []
 
+    #: What a party that has just walked meets: combat, or an encounter's opening menu.
+    combat = False
+    menu_after_step = None
+
+    def in_combat(self):
+        return self.combat
+
     def screen(self):
+        if self.menu_after_step and self.pressed:
+            return Screen(self.menu_after_step)
         return self.screen_at(self.clock.now)
 
     def wanted_disk(self, screen):
@@ -93,13 +103,20 @@ class Session:
     outdoors = False
     pressed = ()
 
+    indoors_is = "derive"
+    fail_on = None
+
     def indoors(self):
-        return not self.outdoors
+        if self.fail_on == "indoors":
+            raise MonitorError("monitor gone")
+        return None if self.indoors_is is None else not self.outdoors
 
     def square(self):
         return self.pos
 
     def live_square(self):
+        if self.fail_on == "live_square":
+            raise MonitorError("monitor gone")
         return (*self.pos, 0)
 
     def _press(self, key):
@@ -884,3 +901,50 @@ def test_no_step_without_the_flag():
 def test_step_after_flag_reaches_the_driver():
     import inspect
     assert "step_after" in inspect.signature(ftr.Driver).parameters
+
+
+def test_step_logs_no_encounter_when_the_game_is_quiet():
+    drv, sess, _ft, _mem, _clock, stream = build()
+    drv.step_after = True
+    drv.run([18])
+    (step,) = _step_events(stream)
+    assert step["encounter"] is False
+
+
+def test_step_logs_an_encounter_when_the_game_is_in_combat():
+    drv, sess, _ft, _mem, _clock, stream = build()
+    drv.step_after = True
+    sess.combat = True
+    drv.run([18])
+    (step,) = _step_events(stream)
+    assert step["encounter"] is True
+
+
+def test_an_encounter_menu_after_the_step_stops_the_run_naming_the_leg():
+    drv, sess, _ft, _mem, _clock, stream = build()
+    drv.step_after = True
+    sess.menu_after_step = "COMBAT WAIT FLEE PARLAY"
+    with pytest.raises(ftr.DriverError, match="t0-to18"):
+        drv.run([18, 2])
+    assert [e["tag"] for e in events(stream) if e["event"] == "step"] == ["t0-to18"]
+
+
+def test_a_monitor_error_in_the_step_is_logged_and_the_leg_continues():
+    drv, sess, _ft, _mem, _clock, stream = build()
+    drv.step_after = True
+    sess.fail_on = "live_square"
+    results = drv.run([18])
+    (err,) = [e for e in events(stream) if e["event"] == "step-error"]
+    assert "monitor gone" in err["message"]
+    assert _step_events(stream) == [] and results[0]["result"] == "arrived"
+
+
+def test_an_unknown_indoors_answer_skips_the_step():
+    drv, sess, _ft, _mem, _clock, stream = build()
+    drv.step_after = True
+    sess.indoors_is = None
+    results = drv.run([18])
+    (step,) = [e for e in events(stream) if e["event"] == "step-skipped"]
+    assert step["where"] == "unknown"
+    assert sess.pressed == () and _step_events(stream) == []
+    assert results[0]["result"] == "arrived"

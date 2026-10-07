@@ -68,6 +68,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
 from automap import actions as engine  # noqa: E402
 from automap import fasttravel  # noqa: E402
 from automap.target import NotConnected  # noqa: E402
+from automap.vice import MonitorError  # noqa: E402
 from goldbox import c64_port  # noqa: E402
 
 #: Seconds between two `continue_pending` calls.
@@ -473,32 +474,58 @@ class Driver:
 
         Indoors the live square is read, because `square()` there is the last
         save's and does not move; on the travel grid it is `square()` and the
-        keys are compass digits. A party that never moves is logged, not failed.
+        keys are compass digits. A party that never moves is logged, not failed;
+        so is a monitor error, as `step-error`, and a party whose location cannot
+        be read is not stepped at all. An encounter menu on screen afterwards
+        stops the run, because the next leg would apply a trip under it.
         """
         sess = self.sess
-        grid = sess.indoors() is False
-        if grid:
-            read = sess.square
-            tries = [(key,) for key in OUTDOOR_STEP_KEYS]
-        else:
-            def read():
-                live = sess.live_square()
-                return None if live is None else tuple(live[:2])
-            tries = [("I",)] + [(turn, "I") for turn in "JKM"]
-        before = read()
-        key, after, moved = None, before, False
-        for keys in tries[:STEP_TRIES]:
-            key = "".join(keys)
-            for press in keys:
-                if grid:
-                    sess.walk_outdoors(press)
-                else:
-                    sess.walk_one(press)
-            after = read()
-            moved = before is not None and after is not None and after != before
-            if moved:
-                break
-        self.log("step", tag=tag, key=key, before=before, after=after, moved=moved)
+        try:
+            indoors = sess.indoors()
+            if indoors is None:
+                self.log("step-skipped", tag=tag, where="unknown")
+                return
+            grid = indoors is False
+            if grid:
+                read = sess.square
+                tries = [(key,) for key in OUTDOOR_STEP_KEYS]
+            else:
+                def read():
+                    live = sess.live_square()
+                    return None if live is None else tuple(live[:2])
+                tries = [("I",)] + [(turn, "I") for turn in "JKM"]
+            before = read()
+            key, after, moved = None, before, False
+            for keys in tries[:STEP_TRIES]:
+                key = "".join(keys)
+                for press in keys:
+                    if grid:
+                        sess.walk_outdoors(press)
+                    else:
+                        sess.walk_one(press)
+                after = read()
+                moved = before is not None and after is not None and after != before
+                if moved:
+                    break
+            screen = sess.screen()
+            sess.handle_prompt(screen)
+            menu = self.encounter_menu(screen)
+            encounter = menu or bool(sess.in_combat())
+        except MonitorError as error:
+            self.log("step-error", tag=tag, message=str(error))
+            return
+        self.log("step", tag=tag, key=key, before=before, after=after, moved=moved,
+                 encounter=encounter)
+        if menu:
+            raise DriverError(f"leg {tag}: an encounter menu is up after the step")
+
+    @staticmethod
+    def encounter_menu(screen) -> bool:
+        """Whether row 24 is an encounter's opening menu (`COMBAT WAIT FLEE PARLAY`)."""
+        if screen is None:
+            return False
+        words = screen.row(24).upper().split()
+        return "COMBAT" in words and "WAIT" in words
 
     @staticmethod
     def see(summary: dict, raw_area: int) -> None:
