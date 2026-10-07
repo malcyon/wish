@@ -192,6 +192,8 @@ def test_pool_route_picks_the_temple_the_fight_or_the_walk(monkeypatch):
         route_pool.POOL_TEMPLE)
     assert acceptance.pool_route({"encounter": True, "state_a": start}) is (
         route_pool.POOL_ENCOUNTER)
+    assert acceptance.pool_route({"encounter": True, "state_a": dict(
+        route_pool.POOL_TEMPLE_SQUARE)}) is route_pool.POOL_ENCOUNTER_FROM_TEMPLE
     monkeypatch.setattr(route_pool, "pool_title_for", lambda _m: "walk")
     monkeypatch.setattr(acceptance, "pool_title_for", lambda _m: "walk")
     assert acceptance.pool_route({"state_a": start}) == "walk"
@@ -199,11 +201,20 @@ def test_pool_route_picks_the_temple_the_fight_or_the_walk(monkeypatch):
 
 STAGED_GOLD = 6000
 PAID_GOLD = STAGED_GOLD - route_pool.POOL_RAISE_PRICE
+COINS = ("copper", "silver", "electrum", "gold", "platinum", "gems", "jewelry")
+#: The payer's purse before the raise, and after it as the game writes it: the change in platinum.
+STAGED = dict.fromkeys(COINS, 0) | {"gold": STAGED_GOLD}
+PAID = dict.fromkeys(COINS, 0) | {"platinum": PAID_GOLD // route_pool.PLATINUM_IN_GOLD}
+#: A second member whose purse the raise leaves alone.
+OTHER = dict.fromkeys(COINS, 0) | {"silver": 103, "gold": 2, "platinum": 1}
 
 
-def _slot(place, status=0, control=0, nodes=(), gold=PAID_GOLD):
-    return {"place": place, "members": [{"name": "BRUTUS", "status_bytes": [status, 1, 0, 0],
-                                         "control": control, "gold": gold}],
+def _slot(place, status=0, control=0, nodes=(), money=PAID, other=OTHER):
+    return {"place": place,
+            "members": [{"name": "BRUTUS", "status_bytes": [status, 1, 0, 0],
+                         "control": control, "gold": money["gold"], "money": dict(money)},
+                        {"name": "MAGNUS", "status_bytes": [0, 1, 0, 0], "control": 0,
+                         "gold": other["gold"], "money": dict(other)}],
             "effects": {"BRUTUS": [list(n) for n in nodes]}}
 
 
@@ -211,23 +222,57 @@ START = dict(route_pool.POOL_TEMPLE_START)
 SQUARE = dict(route_pool.POOL_TEMPLE_SQUARE)
 
 
+def _verdict(b, d):
+    return route_pool.temple_verdict(START, b, d, "BRUTUS", expected_gold=PAID_GOLD)
+
+
 def test_a_raised_member_on_the_temple_square_passes():
-    walk = route_pool.temple_verdict(START, _slot(START), _slot(SQUARE), "BRUTUS", expected_gold=PAID_GOLD)
+    walk = _verdict(_slot(START, status=6, money=STAGED), _slot(SQUARE))
     assert walk["b_ok"] and walk["d_ok"]
     assert walk["area_crossed"] == {"from": 20, "to": 0}
-    assert walk["raised"] == {"status": 0, "control": 0, "node_32": False, "gold": PAID_GOLD}
+    assert walk["raised"] == {"status": 0, "control": 0, "node_32": False, "gold": 0,
+                              "platinum": 100, "paid": True}
+
+
+def test_change_left_in_gold_is_the_same_payment():
+    assert _verdict(_slot(START, money=STAGED),
+                    _slot(SQUARE, money=dict(STAGED, gold=PAID_GOLD)))["d_ok"]
 
 
 @pytest.mark.parametrize("after", [
     _slot(SQUARE, status=6), _slot(SQUARE, control=0xB3), _slot(SQUARE, nodes=[(32, 0, 5, 1)]),
-    _slot(dict(SQUARE, y=4)), _slot(SQUARE, gold=STAGED_GOLD), {"missing": True}])
-def test_a_member_not_raised_or_elsewhere_fails(after):
-    assert not route_pool.temple_verdict(START, _slot(START), after, "BRUTUS", expected_gold=PAID_GOLD)["d_ok"]
+    _slot(dict(SQUARE, y=4)), {"missing": True},
+    # The money moved wrongly: nothing paid, gold left as staged with platinum added, too much
+    # taken, another coin changed, another member paid, or the purse is not read.
+    _slot(SQUARE, money=STAGED), _slot(SQUARE, money=dict(STAGED, platinum=100)),
+    _slot(SQUARE, money=dict(PAID, platinum=99)), _slot(SQUARE, money=dict(PAID, silver=1)),
+    _slot(SQUARE, other=dict(OTHER, platinum=0)),
+    {**_slot(SQUARE), "members": [{"name": "BRUTUS", "status_bytes": [0, 1, 0, 0],
+                                   "control": 0, "gold": 0}]}])
+def test_a_member_not_raised_elsewhere_or_not_paid_fails(after):
+    assert not _verdict(_slot(START, status=6, money=STAGED), after)["d_ok"]
+
+
+def test_a_purse_whose_value_is_right_but_not_after_the_price_fails():
+    # Slot C already held the paid purse: nothing changed, so nothing was paid.
+    walk = _verdict(_slot(START, money=PAID), _slot(SQUARE))
+    assert not walk["d_ok"] and not walk["raised"]["paid"]
+    assert "expected 500 after paying 5500" in walk["verdicts"][-1]
 
 
 def test_a_control_save_that_moved_fails():
-    walk = route_pool.temple_verdict(START, _slot(SQUARE), _slot(SQUARE), "BRUTUS", expected_gold=PAID_GOLD)
+    walk = _verdict(_slot(SQUARE, money=STAGED), _slot(SQUARE))
     assert not walk["b_ok"] and walk["d_ok"]
+
+
+def test_the_slot_reader_reads_every_coin_big_endian_at_its_dos_offset():
+    raw = bytearray(_record(gold=0))
+    for n, coin in enumerate(COINS):
+        at = amiga_por.amiga_por_offset(0x088 + 2 * n)
+        raw[at:at + 2] = (0x0100 + n).to_bytes(2, "big")
+    reading = route_pool._pool_member_bytes(bytes(raw))
+    assert reading["money"] == {coin: 0x0100 + n for n, coin in enumerate(COINS)}
+    assert reading["gold"] == reading["money"]["gold"] == 0x0103
 
 
 # --- the until_encounter step --------------------------------------------------------------
@@ -241,13 +286,42 @@ def test_an_until_encounter_step_needs_two_keys_and_a_bound(key):
                             kept_letters=("D",))
 
 
-def test_the_fight_route_saves_nothing_and_ends_on_the_first_command_bar():
-    title = route_pool.POOL_ENCOUNTER
+@pytest.mark.parametrize("title", [route_pool.POOL_ENCOUNTER,
+                                   route_pool.POOL_ENCOUNTER_FROM_TEMPLE])
+def test_the_fight_route_saves_nothing_and_ends_on_the_first_command_bar(title):
     assert title.control_letter is None and title.after_letter is None
     assert all(kind != "write" for *_, kind in title.route)
     assert title.route[-2:] == ((route_pool.ENCOUNTER_STEP, "encounter", "until_encounter"),
                                 ("C", "combat_bar", "key"))
+    assert title.measure_route[-2:] == title.route[-2:]
     assert acceptance.fights(title) and not acceptance.fights(route_pool.POOL)
+
+
+def test_a_party_saved_at_the_temple_turns_about_steps_out_and_faces_west_before_the_walk():
+    leave = (("NP2", "world", "turn"), ("NP8", "world", "move"), ("NP6", "world", "turn"))
+    load = route_pool.POOL_ENCOUNTER.route[:-2]
+    title = route_pool.POOL_ENCOUNTER_FROM_TEMPLE
+    assert title.route == (*load, *leave, *route_pool.POOL_ENCOUNTER.route[-2:])
+    assert title.measure_route == (*route_pool.POOL_ENCOUNTER.measure_route[:-2], *leave,
+                                   *route_pool.POOL_ENCOUNTER.measure_route[-2:])
+
+
+@pytest.mark.parametrize(("place", "expected"), [
+    (dict(route_pool.POOL_TEMPLE_SQUARE), "POOL_ENCOUNTER_FROM_TEMPLE"),
+    (dict(route_pool.POOL_TEMPLE_START), "POOL_ENCOUNTER"),
+    (dict(route_pool.POOL_TEMPLE_SQUARE, facing=geo.SOUTH), "POOL_ENCOUNTER"),
+    (None, "POOL_ENCOUNTER")])
+def test_the_fight_route_leaves_the_temple_only_for_a_party_saved_there(place, expected):
+    assert route_pool.pool_encounter_title({"state_a": place}) is getattr(route_pool, expected)
+
+
+def test_a_fight_run_picks_its_route_from_the_start_square(tmp_path, clock, monkeypatch):
+    seen = []
+    monkeypatch.setattr(acceptance, "pool_encounter_title",
+                        lambda manifest: seen.append(manifest["state_a"]) or _fight_title())
+    guest = FightGuest(clock, met=1)
+    result = _fight(tmp_path, clock, guest, title=route_pool.POOL_ENCOUNTER)
+    assert len(seen) == 1 and result["success"], result["error"]
 
 
 class FightGuest(title_run.TitleGuest):
@@ -391,20 +465,20 @@ def _temple_read_slot(disk, letter):
 class TempleGuest(title_run.TitleGuest):
     """Saves C where the party stands and D on the temple square with BRUTUS as `raised` leaves him."""
 
-    def __init__(self, clock, raised, gold=PAID_GOLD):
+    def __init__(self, clock, raised, money=PAID):
         super().__init__(clock, land=dict(SQUARE))
-        self.raised, self.gold = raised, gold
+        self.raised, self.money = raised, money
 
     def _write(self, letter, place):
         remote = next(r for r in self.mounted if r and r.endswith(f"-{self.save_key}.adf"))
         disk = AmigaDisk(self.remote[remote])
-        status = self.raised if letter == "D" else 6
+        status, money = (self.raised, self.money) if letter == "D" else (6, STAGED)
         disk.write_file(f"/SAVE/savgam{letter}.sav", json.dumps(
-            {**_slot(place, status=status, gold=self.gold), "names": title_run.NAMES}).encode())
+            {**_slot(place, status=status, money=money), "names": title_run.NAMES}).encode())
         self.remote[remote] = disk.to_bytes()
 
 
-def _temple_run(tmp_path, clock, monkeypatch, raised, gold=PAID_GOLD, temple_route=True):
+def _temple_run(tmp_path, clock, monkeypatch, raised, money=PAID, temple_route=True):
     synthetic = title_run.make_title()
     title = dataclasses.replace(
         route_pool.POOL_TEMPLE if temple_route else synthetic, mounted=synthetic.mounted, spares=synthetic.spares,
@@ -420,7 +494,7 @@ def _temple_run(tmp_path, clock, monkeypatch, raised, gold=PAID_GOLD, temple_rou
     monkeypatch.setattr(acceptance, "check_staged_member", lambda *_args: None)
     path.write_text(json.dumps(data))
     states = {s for _, s, _ in title.route} | {"title"}
-    guest = TempleGuest(clock, raised, gold)
+    guest = TempleGuest(clock, raised, money)
     result = acceptance.run_recon(
         path, guest=guest, guard=MapGuard(states=states), identity=_IdentityMap(),
         holder="wish303-test", audio_proof=_audio_proof(tmp_path), title=title, accept=True)
@@ -431,7 +505,7 @@ def test_a_temple_run_passes_when_slot_d_holds_him_raised_on_the_temple_square(t
     guest, result = _temple_run(tmp_path, clock, monkeypatch, raised=0)
     assert result["success"], (result["error"], result["read"]["verdicts"])
     assert result["walk"]["raised"] == {"status": 0, "control": 0, "node_32": False,
-                                        "gold": PAID_GOLD}
+                                        "gold": 0, "platinum": 100, "paid": True}
     keys = title_run._keys(guest)
     assert keys.count("Y") == 2 and keys.count("H") == 2
 
@@ -443,9 +517,10 @@ def test_a_temple_run_whose_slot_d_still_holds_him_dead_fails(tmp_path, clock, m
 
 
 def test_a_temple_run_whose_raised_member_kept_his_gold_fails(tmp_path, clock, monkeypatch):
-    _guest, result = _temple_run(tmp_path, clock, monkeypatch, raised=0, gold=STAGED_GOLD)
+    _guest, result = _temple_run(tmp_path, clock, monkeypatch, raised=0, money=STAGED)
     assert not result["success"]
-    assert any("not raised" in line and "gold" in line for line in result["read"]["verdicts"])
+    assert any("not raised" in line and "expected 500 after paying 5500" in line
+               for line in result["read"]["verdicts"])
 
 
 def test_a_run_not_on_the_temple_route_is_not_judged_by_the_temple_verdict(tmp_path, clock, monkeypatch):

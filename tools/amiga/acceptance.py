@@ -89,6 +89,7 @@ from tools.amiga.route_pool import (  # noqa: E402
     POOL_TEMPLE,
     _prepare_pool,
     pool_camp_title,
+    pool_encounter_title,
     pool_temple_title,
     pool_title_for,
     temple_verdict,
@@ -1884,6 +1885,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                              f"{SPECIMEN_ISSUE_FORMS} naming its issue")
     if title is POOL:
         title = pool_route(manifest)
+    elif title is POOL_ENCOUNTER:
+        title = pool_encounter_title(manifest)
     if fights(title) != bool(manifest.get("encounter")):
         raise RouteError("a fight run needs a manifest prepared with --encounter, and that "
                          "manifest runs only as a fight or a measure")
@@ -3690,7 +3693,7 @@ def pool_route(manifest: dict) -> AmigaTitle:
     if manifest.get("temple"):
         return pool_temple_title(manifest)
     if manifest.get("encounter"):
-        return POOL_ENCOUNTER
+        return pool_encounter_title(manifest)
     return pool_title_for(manifest)
 
 

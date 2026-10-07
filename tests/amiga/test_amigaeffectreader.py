@@ -256,6 +256,7 @@ def test_pool_read_slot_reads_the_dos_member_keys_through_the_amiga_offsets(monk
         "turn_class": record.get("turn_class"),
         "movement": record.get("movement"),
         "gold": int.from_bytes(raw[0x90:0x92], "big"),
+        "money": record.money,
     }
     assert member["status_bytes"] == list(raw[0x10E:0x112])
     assert member["control"] == raw[0x85]

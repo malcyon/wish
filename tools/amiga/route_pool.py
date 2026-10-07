@@ -38,18 +38,24 @@ def _pool_name(name: str) -> str:
 _POOL_MEMBER_BYTES = (("control", 0x084), ("treasure_share", 0x085), ("creature_type", 0x09F),
                       ("turn_class", 0x076), ("movement", 0x072))
 _POOL_STATUS_BYTES = 0x10C
-#: The two-byte big-endian gold field, at its DOS offset (`staging.POR_STAGE_FIELDS`).
-_POOL_GOLD = 0x08E
+#: The seven two-byte big-endian coin counts, each at its DOS offset (`dos_port`'s copper to
+#: jewelry, 0x088-0x094); gold is the field `staging.POR_STAGE_FIELDS` writes.
+_POOL_COINS = (("copper", 0x088), ("silver", 0x08A), ("electrum", 0x08C), ("gold", 0x08E),
+               ("platinum", 0x090), ("gems", 0x092), ("jewelry", 0x094))
 
 
 def _pool_member_bytes(raw: bytes) -> dict[str, Any]:
-    """The status, control, treasure share, creature type, turn class, movement and gold of one Amiga record."""
+    """The status, control, treasure share, creature type, turn class, movement, gold and coins of one Amiga record."""
     at = amiga_por.amiga_por_offset(_POOL_STATUS_BYTES)
     reading: dict[str, Any] = {"status_bytes": list(raw[at:at + 4])}
     for key, dos_offset in _POOL_MEMBER_BYTES:
         reading[key] = raw[amiga_por.amiga_por_offset(dos_offset)]
-    gold_at = amiga_por.amiga_por_offset(_POOL_GOLD)
-    reading["gold"] = int.from_bytes(raw[gold_at:gold_at + 2], "big")
+    money = {}
+    for coin, dos_offset in _POOL_COINS:
+        coin_at = amiga_por.amiga_por_offset(dos_offset)
+        money[coin] = int.from_bytes(raw[coin_at:coin_at + 2], "big")
+    reading["gold"] = money["gold"]
+    reading["money"] = money
     return reading
 
 
@@ -330,12 +336,54 @@ def pool_temple_title(manifest: dict) -> AmigaTitle:
     return POOL_TEMPLE
 
 
+#: Gold pieces in one platinum piece: the temple took 5,500 of the payer's staged 6,000 gold and
+#: the game wrote back gold 0 and platinum 100 (measured in the run's slot D and on his sheet).
+PLATINUM_IN_GOLD = 5
+#: The coins the raise left alone in the measured run; a change to any of them is not judged paid.
+_COINS_KEPT = ("copper", "silver", "electrum", "gems", "jewelry")
+
+
+def _gold_value(money: dict[str, int]) -> int:
+    return money["gold"] + PLATINUM_IN_GOLD * money["platinum"]
+
+
+def temple_payment(b: dict[str, Any], d: dict[str, Any], member: str, *,
+                   expected_gold: int) -> tuple[bool, str]:
+    """Whether `member` paid `POOL_RAISE_PRICE` between slot readings `b` and `d`, and why not.
+
+    The game takes the price from the payer's own purse and writes the change back in platinum,
+    so paid means: his gold plus `PLATINUM_IN_GOLD` times his platinum fell by exactly the price
+    to `expected_gold`, his other coins did not change, and no other member's purse did.
+    """
+    def purses(reading: dict[str, Any]) -> dict[str, dict[str, int] | None]:
+        return {m.get("name"): m.get("money") for m in reading.get("members", [])}
+
+    before, after = purses(b), purses(d)
+    mine_before, mine_after = before.get(member), after.get(member)
+    if mine_before is None or mine_after is None:
+        return False, f"{member}'s purse was not read in both slots"
+    value_before, value_after = _gold_value(mine_before), _gold_value(mine_after)
+    if value_before - value_after != POOL_RAISE_PRICE or value_after != expected_gold:
+        return False, (f"{member} held {value_before} gold in value and then {value_after} "
+                       f"(gold {mine_after['gold']}, platinum {mine_after['platinum']}), "
+                       f"expected {expected_gold} after paying {POOL_RAISE_PRICE}")
+    moved = [coin for coin in _COINS_KEPT if mine_before[coin] != mine_after[coin]]
+    if moved:
+        return False, f"{member}'s {', '.join(moved)} changed"
+    others = sorted(name for name in set(before) | set(after)
+                    if name != member and before.get(name) != after.get(name))
+    if others:
+        return False, f"the purse of {', '.join(others)} changed"
+    return True, f"{member} paid {POOL_RAISE_PRICE}"
+
+
 def temple_verdict(before: dict, b: dict[str, Any], d: dict[str, Any], member: str, *,
                    expected_gold: int, control: str = "C", after: str = "D") -> dict[str, Any]:
     """Judge a temple run's saves: `control` unmoved at `before`; `after` on the temple square with `member` raised.
 
     Raised is what the game writes for a living character: status byte 0, a control byte below
-    `$80` (the player's), no effect node 32 and the temple paid: gold equal to `expected_gold`. The keys match `walk_verdict`'s, so the run's
+    `$80` (the player's), no effect node 32, and the temple paid (`temple_payment`): his purse,
+    counted in gold pieces, comes to `expected_gold`. The keys match `walk_verdict`'s, so the run's
     other checks read it the same way.
     """
     verdicts: list[str] = []
@@ -355,9 +403,10 @@ def temple_verdict(before: dict, b: dict[str, Any], d: dict[str, Any], member: s
         else:
             row = rows[0]
             nodes = [n for n in (d.get("effects") or {}).get(member, []) if n and n[0] == 32]
+            paid, payment = temple_payment(b, d, member, expected_gold=expected_gold)
             raised = {"status": row["status_bytes"][0], "control": row["control"],
-                      "node_32": bool(nodes), "gold": row.get("gold")}
-            paid = raised["gold"] == expected_gold
+                      "node_32": bool(nodes), "gold": row.get("gold"),
+                      "platinum": (row.get("money") or {}).get("platinum"), "paid": paid}
             alive = (raised["status"] == 0 and raised["control"] < 0x80 and not nodes
                      and paid)
             at_temple = d_place == POOL_TEMPLE_SQUARE
@@ -367,8 +416,8 @@ def temple_verdict(before: dict, b: dict[str, Any], d: dict[str, Any], member: s
                                      f"stands at {d_place}, not the temple {POOL_TEMPLE_SQUARE}")
                 + f"; {member} " + ("raised" if alive else
                                     f"not raised (status {raised['status']}, control "
-                                    f"{raised['control']:#04x}, node 32 {raised['node_32']}, gold "
-                                    f"{raised['gold']}, expected {expected_gold})"))
+                                    f"{raised['control']:#04x}, node 32 {raised['node_32']})")
+                + f"; {payment}")
     return {"verdicts": verdicts, "b_ok": b_ok, "d_ok": d_ok, "walk_blocked": False,
             "walk_partial": False, "squares_requested": sum(
                 1 for *_, kind in _TEMPLE_WALK if kind == "move"),
@@ -398,6 +447,25 @@ POOL_ENCOUNTER = dataclasses.replace(
     control_letter=None, after_letter=None, turn=None,
     strict=POOL.strict | {"encounter", "combat_bar"},
     min_waits={**POOL.min_waits, "combat_bar": 5.0})
+
+#: Out of the temple for a party saved on `POOL_TEMPLE_SQUARE`: a step north re-enters the temple
+#: and its greeting (measured), so turn about, step south through the door the party came in by,
+#: and turn right to face west, where `ENCOUNTER_STEP` walks back towards the Slums.
+_TEMPLE_LEAVE = (_ABOUT_STEP, ("NP8", "world", "move"), ("NP6", "world", "turn"))
+
+#: `POOL_ENCOUNTER` for a party saved at the temple after its raise.
+POOL_ENCOUNTER_FROM_TEMPLE = dataclasses.replace(
+    POOL_ENCOUNTER,
+    route=(*_POOL_LOAD, *_TEMPLE_LEAVE, *POOL_ENCOUNTER.route[len(_POOL_LOAD):]),
+    measure_route=(("RET", "title", "key"), *_POOL_LOAD, *_TEMPLE_LEAVE,
+                   *POOL_ENCOUNTER.measure_route[1 + len(_POOL_LOAD):]))
+
+
+def pool_encounter_title(manifest: dict) -> AmigaTitle:
+    """The fight route for `manifest`'s start square: out of the temple first when the party stands there."""
+    if manifest.get("state_a") == POOL_TEMPLE_SQUARE:
+        return POOL_ENCOUNTER_FROM_TEMPLE
+    return POOL_ENCOUNTER
 
 
 POOL_SOURCES = _Sources("pool", POOL, POOL_SPECIMEN, POOL_SPECIMEN_SHA256, POOL_VOLUME,
