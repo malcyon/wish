@@ -30,7 +30,20 @@ because the gates are saved variables and some are story counters.  The
 written values live only in the emulator's memory, so ending the emulator ends
 them; nothing is journalled.  Never use it for conversion proof.
 
+**Pools of Darkness has no gate variable** (`SCRIPT_GATES`): its step entry
+counts steps and then rolls with `RANDOM`, so the switch changes the loaded
+script instead, as the Amiga switch does (`tools/amiga/noencounters.py`).  Each
+covered `RANDOM` becomes `SAVE`, which stores the constant (or 0, where the
+fight is on the high side) and takes the statement's `EXIT`.  A row is written
+only where the bytes at its address hash to its guard, so a reloaded script is
+changed again and another area's script is left alone.  `off` puts back each
+statement still holding the switch's bytes.  The variables `SAVE` leaves (the
+roll variable and an unreset step counter) are not put back; they are values
+the game's own roll can leave, and the save stores them, so `off` still comes
+before any save.
+
     dosnoencounters.py gates
+    dosnoencounters.py scan
     dosnoencounters.py live --title pool-of-radiance \\
         --folder /mnt/specimens/por-dos/WISH-SPEC-por-amiga-slums-dos-resave --steps 40
 """
@@ -39,6 +52,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import hashlib
 import json
 import shutil
 import sys
@@ -56,14 +70,16 @@ from tools.registry import scratch  # noqa: E402
 POOL = "pool-of-radiance"
 CURSE = "curse-of-the-azure-bonds"
 SILVER = "secret-of-the-silver-blades"
+DARKNESS = "pools-of-darkness"
 
-#: Each title's saved-game container and its DOS game directory's name.
+#: Each gate-variable title's saved-game container and its DOS game
+#: directory's name.
 CONTAINERS = {
     POOL: dos_savegame.SAVE_POOL_OF_RADIANCE,
     CURSE: dos_savegame.SAVE_CURSE_OF_THE_AZURE_BONDS,
     SILVER: dos_savegame.SAVE_SECRET_OF_THE_SILVER_BLADES,
 }
-STEMS = {POOL: "POOLRAD", CURSE: "CURSE", SILVER: "SECRET"}
+STEMS = {POOL: "POOLRAD", CURSE: "CURSE", SILVER: "SECRET", DARKNESS: "DARKNESS"}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -163,6 +179,132 @@ GATES: dict[tuple[str, int], Gate] = {
         f"(at $85AC); {_SAME}",
         ((0x4C2D, 0),)),
 }
+
+
+# --------------------------------------------------------------------------
+# Pools of Darkness: the rolls in the loaded script
+# --------------------------------------------------------------------------
+
+@dataclasses.dataclass(frozen=True)
+class ScriptEngine:
+    """Two data-segment offsets in a title's `GAME.OVR`: far pointers to its
+    byte-wide variable 1 and to the loaded script's ECL address `$8000`."""
+
+    variables: int
+    script: int
+    where: str
+    grade: str
+
+
+SCRIPT_ENGINE = {
+    DARKNESS: ScriptEngine(
+        0x87F8, 0x87FC,
+        "GAME.OVR GetVar/SetVar: `les di, [0x87F8]` for a variable and "
+        "`les di, [0x87FC]; add di, ax; add di, 0x8000` for a script address "
+        "(0x6EF7, 0x7054); live, area 16 loaded, the script pointer held the "
+        "ECL1.DAX block byte for byte and the variable pointer 1022 of the "
+        "save's 1024 bytes", CONFIRMED),
+}
+
+#: The ECL address of a script buffer's first byte.
+SCRIPT_BASE = 0x8000
+
+#: The roll's opcode, and the one it becomes: `SAVE` takes the same operands
+#: and stores the constant instead of a roll.
+RANDOM, SAVE = 0x08, 0x09
+
+#: The bytes a row's guard hashes: `RANDOM` and `COMPARE` (six each), the
+#: condition and the `EXIT` it guards.
+GUARD_BYTES = 14
+
+#: The variable index the engine writes the running area to after an entry
+#: script (`tools/dos/acceptance.py` `POD_AREA_VAR`); it read the loaded
+#: script's area once live.
+DARKNESS_AREA_VAR = 0x16
+
+#: Each clock digit's radix, from variable 5 (`dos_savegame.POD_CLOCK`); a
+#: real variable block has every digit below its radix.
+POD_CLOCK = dos_savegame.POD_CLOCK
+POD_CLOCK_RADIX = dos_savegame.POD_CLOCK_RADIX
+
+
+@dataclasses.dataclass(frozen=True)
+class ScriptGate:
+    """One encounter roll: the area whose script holds it, the ECL address of
+    its `RANDOM`, the short hash of the `GUARD_BYTES` it starts, and the
+    `(offset, value)` bytes written over it."""
+
+    area: int
+    address: int
+    guard: str
+    changes: tuple[tuple[int, int], ...]
+    grade: str
+    source: str
+
+
+#: `RANDOM` becomes `SAVE`, which stores the roll's limit.
+_TO_SAVE = ((0, SAVE),)
+#: `SAVE 0`, where the limit would land on the fight side.
+_TO_ZERO = ((0, SAVE), (2, 0))
+
+
+def _row(area: int, address: int, guard: str, source: str,
+         changes: tuple[tuple[int, int], ...] = _TO_SAVE,
+         grade: str = PROBABLE) -> ScriptGate:
+    return ScriptGate(area, address, guard, changes, grade,
+                      f"area {area} step entry, after its step counter: {source}")
+
+
+#: Every `RANDOM`/`COMPARE`/`IF`/`EXIT` roll the step entry (entry 1) of a
+#: `ECL1.DAX` area script reaches whose other side leads to `COMBAT`
+#: (`dosnoencounters.py scan`), keyed by title.  Rolls of that kind whose
+#: other side is only text or a `NEWECL` are left alone: area 16 `$8E8C`,
+#: `$8EC8`; 22 `$8567`; 24 `$8AF0`, `$956F`, `$95AB`; 39 `$8B5C`, `$909C`;
+#: 53 `$9903`; 54 `$8868`.  Rolls compared with a variable rather than a
+#: constant (53 `$9313`, 69 `$9CE3`) are not covered.  PROBABLE: read from the
+#: script; area 33's is CONFIRMED live.
+SCRIPT_GATES: dict[str, tuple[ScriptGate, ...]] = {DARKNESS: (
+    _row(16, 0x89A3, "0074b0e9", "RANDOM 99 [191]; COMPARE [191], 10; IF> EXIT: 11 of 100 fight, COMBAT at $8A15"),
+    _row(17, 0x8BC7, "ab3e8354", "RANDOM 99 [191]; COMPARE 20, [191]; IF<= EXIT: 20 of 100 fight, COMBAT at $9470"),
+    _row(19, 0x825E, "e5b5ee32", "RANDOM 99 [191]; COMPARE [191], 10; IF>= EXIT: 10 of 100 fight, COMBAT at $82DE"),
+    _row(21, 0x8603, "0074b0e9", "RANDOM 99 [191]; COMPARE [191], 10; IF> EXIT: 11 of 100 fight, COMBAT at $9D7C"),
+    _row(21, 0x86BE, "5137e3df", "RANDOM 99 [191]; COMPARE [191], 5; IF> EXIT: 6 of 100 fight, COMBAT at $9D7C"),
+    _row(21, 0x9737, "f60fea4c", "RANDOM 99 [191]; COMPARE [191], 70; IF> $23: 71 of 100 fight, COMBAT at $96D5"),
+    _row(22, 0x9B3E, "7dc31bbd", "RANDOM 99 [173]; COMPARE 3, [173]; IF<= EXIT: 3 of 100 fight, COMBAT at $9D54"),
+    _row(25, 0x8371, "5aa8a7ca", "RANDOM 99 [191]; COMPARE 5, [191]; IF<= EXIT: 5 of 100 fight, COMBAT at $8A2A"),
+    _row(26, 0x81EE, "e5b5ee32", "RANDOM 99 [191]; COMPARE [191], 10; IF>= EXIT: 10 of 100 fight, COMBAT at $826A"),
+    _row(32, 0x82EA, "294a21bf", "RANDOM 99 [192]; COMPARE [192], 5; IF> EXIT: 6 of 100 fight, COMBAT at $835A"),
+    _row(33, 0x830A, "6872c50c", "RANDOM 99 [160]; COMPARE [160], 5; IF> EXIT: 6 of 100 fight, COMBAT at $8405; "
+         "live, step counter [159] staged to 24: 40 steps with it on and no encounter, against a "
+         "control that met one on its 13th step", grade=CONFIRMED),
+    _row(34, 0x8286, "5137e3df", "RANDOM 99 [191]; COMPARE [191], 5; IF> EXIT: 6 of 100 fight, COMBAT at $82D0"),
+    _row(37, 0x8345, "5137e3df", "RANDOM 99 [191]; COMPARE [191], 5; IF> EXIT: 6 of 100 fight, COMBAT at $83E4"),
+    _row(39, 0x8631, "5137e3df", "RANDOM 99 [191]; COMPARE [191], 5; IF> EXIT: 6 of 100 fight, COMBAT at $8699"),
+    _row(40, 0x8178, "5137e3df", "RANDOM 99 [191]; COMPARE [191], 5; IF> EXIT: 6 of 100 fight, COMBAT at $81DF"),
+    _row(50, 0x9C39, "4bf5e551", "RANDOM 99 [191]; COMPARE [191], 1; IF> EXIT: 2 of 100 fight, COMBAT at $9D33"),
+    _row(51, 0x81D6, "ab3e8354", "RANDOM 99 [191]; COMPARE 20, [191]; IF<= EXIT: 20 of 100 fight, COMBAT at $843B"),
+    _row(52, 0x87CA, "0074b0e9", "RANDOM 99 [191]; COMPARE [191], 10; IF> EXIT: 11 of 100 fight, COMBAT at $8820"),
+    _row(54, 0x998C, "4bf5e551", "RANDOM 99 [191]; COMPARE [191], 1; IF> EXIT: 2 of 100 fight, COMBAT at $9A7D"),
+    _row(64, 0x8724, "ab937717", "RANDOM 99 [191]; COMPARE 10, [191]; IF< EXIT: 11 of 100 fight, COMBAT at $9D8D"),
+    _row(65, 0x912D, "e4a1c84c", "RANDOM 5 [192]; COMPARE [192], 0; IF!= EXIT: 1 of 6 fight, COMBAT at $8C24"),
+    _row(66, 0x8B78, "0074b0e9", "RANDOM 99 [191]; COMPARE [191], 10; IF> EXIT: 11 of 100 fight, COMBAT at $8BD9"),
+    _row(67, 0x83C5, "f939acc4", "RANDOM 20 [191]; COMPARE [191], 1; IF> EXIT: 2 of 21 fight, COMBAT at $844B"),
+    _row(68, 0x84A5, "de9d6f13", "RANDOM 99 [191]; COMPARE 15, [191]; IF> EXIT: 85 of 100 fight, COMBAT at $8526", _TO_ZERO),
+    _row(69, 0x8DDB, "2311e021", "RANDOM 99 [191]; COMPARE 10, [191]; IF<= EXIT: 10 of 100 fight, COMBAT at $8EB9"),
+    _row(69, 0x8E62, "9e8efd2e", "RANDOM 50 [192]; COMPARE 10, [192]; IF<= EXIT: 10 of 51 fight, COMBAT at $8EB9"),
+    _row(69, 0x8ED7, "2311e021", "RANDOM 99 [191]; COMPARE 10, [191]; IF<= EXIT: 10 of 100 fight, COMBAT at $8FB4"),
+    _row(69, 0x8F5B, "d16971bd", "RANDOM 50 [192]; COMPARE 10, [192]; IF<= $23: 10 of 51 fight, COMBAT at $8FB4"),
+    _row(71, 0x80E7, "de9d6f13", "RANDOM 99 [191]; COMPARE 15, [191]; IF> EXIT: 85 of 100 fight, COMBAT at $8145", _TO_ZERO),
+    _row(80, 0x82C0, "ab3e8354", "RANDOM 99 [191]; COMPARE 20, [191]; IF<= EXIT: 20 of 100 fight, COMBAT at $8552"),
+    _row(81, 0x9B9D, "22d64801", "RANDOM 99 [191]; COMPARE 5, [191]; IF< $23: 6 of 100 fight, COMBAT at $9C1B"),
+    _row(82, 0x9BD3, "ac1a1459", "RANDOM 99 [192]; COMPARE 5, [192]; IF<= EXIT: 5 of 100 fight, COMBAT at $9CA4"),
+)}
+
+
+def digest(span: bytes) -> str:
+    """The short hash a `ScriptGate` names its bytes by, so the table
+    describes the script without holding it."""
+    return hashlib.sha256(span).hexdigest()[:8]
 
 
 class SaveBlocked(RuntimeError):
@@ -408,6 +550,212 @@ class LiveVariables:
         self.block = bytes(block)
 
 
+class ScriptSwitch:
+    """The Pools of Darkness switch's logic, over `read(address, n) -> bytes`
+    and `write(address, data)` on the loaded script's ECL addresses and
+    `area() -> int`.  `EncounterSwitch`'s interface: the caller brackets
+    `apply` and `off` with whatever halts the machine."""
+
+    def __init__(self, title: str, read: Callable[[int, int], bytes],
+                 write: Callable[[int, bytes], None], area: Callable[[], int],
+                 log: Callable[[str], None] = print):
+        if title not in SCRIPT_GATES:
+            raise ValueError(f"no script gates are known for {title!r}")
+        self.title = title
+        self.rows = SCRIPT_GATES[title]
+        self.read, self.write, self.area, self.log = read, write, area, log
+        self.active = False
+        #: address -> (bytes before the change, bytes written)
+        self.held: dict[int, tuple[bytes, bytes]] = {}
+        #: Never filled: the switch writes the script, which the game never
+        #: changes, so nothing yields.  `NoEncounters` reads it.
+        self.yielded: set[int] = set()
+        #: Moves made with no row's roll in the loaded script.
+        self.unsuppressed_moves = 0
+        self._unsuppressed: set[int] = set()
+        self.low = min(r.address for r in self.rows)
+        self.high = max(r.address for r in self.rows) + GUARD_BYTES
+
+    def on(self) -> None:
+        self.active = True
+
+    @property
+    def pending(self) -> bool:
+        return bool(self.held)
+
+    def check_save(self) -> None:
+        if self.active or self.pending:
+            raise SaveBlocked(
+                "no_encounters is on or a script byte it wrote is still in the "
+                "game; turn it off before saving")
+
+    def _put(self, address: int, data: bytes, original: bytes) -> None:
+        self.write(address, data)
+        got = self.read(address, len(data))
+        if got != data:
+            self.write(address, original[:len(data)])
+            raise SwitchError(f"${address:04X} read back {got.hex()} after "
+                              f"writing {data.hex()}")
+
+    def apply(self) -> list[dict]:
+        """Change every row whose roll is in the loaded script; what was
+        written comes back."""
+        if not self.active:
+            return []
+        script = self.read(self.low, self.high - self.low)
+        done, loaded = [], False
+        area = self.area()
+        for row in self.rows:
+            if row.area != area:
+                # Rows can share a guard; only the running area's own row
+                # is the roll that script holds.
+                self.held.pop(row.address, None)
+                continue
+            at = row.address - self.low
+            now = script[at:at + GUARD_BYTES]
+            held = self.held.get(row.address)
+            if held is not None and now == held[1]:
+                loaded = True
+                continue
+            if digest(now) != row.guard:
+                # Another script is loaded: nothing of this row is there.
+                self.held.pop(row.address, None)
+                continue
+            loaded = True
+            new = bytearray(now)
+            for offset, value in row.changes:
+                new[offset] = value
+            new = bytes(new)
+            self._put(row.address, new[:3], now)
+            self.held[row.address] = (now, new)
+            done.append({"area": row.area, "address": f"${row.address:04X}",
+                         "was": now[:3].hex(), "wrote": new[:3].hex()})
+        if not loaded:
+            self.unsuppressed_moves += 1
+            if area not in self._unsuppressed:
+                self._unsuppressed.add(area)
+                self.log(f"encounters are not suppressed in area {area}: no "
+                         "known roll is in its script")
+        return done
+
+    def off(self) -> list[dict]:
+        """Put back every statement still holding the switch's bytes; the
+        switch stays off."""
+        self.active = False
+        done = []
+        for address, (original, written) in list(self.held.items()):
+            now = self.read(address, GUARD_BYTES)
+            row = {"address": f"${address:04X}", "original": original[:3].hex(),
+                   "written": written[:3].hex(), "now": now[:3].hex()}
+            if now == written:
+                self._put(address, original[:3], written)
+                row["action"] = "restored"
+            elif now == original:
+                row["action"] = "already original"
+            else:
+                row["action"] = "another script is loaded"
+            del self.held[address]
+            done.append(row)
+        return done
+
+
+class LiveScript:
+    """Pools of Darkness' loaded script and variables in a running game,
+    through the DOSBox-X debugger: `LiveVariables`' context manager, over the
+    two far pointers of `SCRIPT_ENGINE`.
+
+    A data segment is believed when its script pointer leads to a block that
+    opens with the five entry `GOTO`s and its variable pointer to a block
+    whose clock digits are each below their radix (and, given the loaded
+    save, which agrees with it in `MATCH_FRACTION` of its bytes).
+    """
+
+    def __init__(self, session, title: str, save: bytes | None = None):
+        self.s = session
+        self.title = title
+        self.engine = SCRIPT_ENGINE[title]
+        self.saved = save[:dos_savegame.POD_VAR_COUNT] if save else None
+        self.ds: int | None = None
+        self.found: dict = {}
+        self.script_base: int | None = None
+        self.var_base: int | None = None
+        self.block = b""
+
+    def __enter__(self):
+        tried = []
+        for n in range(DS_TRIES):
+            # As `LiveVariables`: any way out but a return runs the machine.
+            try:
+                if not self.s.attach():
+                    raise SwitchError("The debugger did not halt the machine.")
+                ds = self.ds if self.ds is not None else self.s.regs("DS")["DS"]
+                why = self._read(ds)
+            except BaseException:
+                self.s.run()
+                raise
+            if why is None:
+                if self.ds is None:
+                    self.found["tries"] = n + 1
+                self.ds = ds
+                return self
+            tried.append(f"DS {ds:04X}: {why}")
+            self.ds = None
+            self.s.run()
+        raise SwitchError("no halt showed the game's data segment: "
+                          + "; ".join(tried))
+
+    def __exit__(self, *exc):
+        self.s.run()
+        return False
+
+    def _pointer(self, ds: int, offset: int) -> tuple[int, str] | None:
+        raw = self.s.read((ds, offset), 4)
+        off, seg = int.from_bytes(raw[:2], "little"), int.from_bytes(raw[2:], "little")
+        base = dosboxx.linear((seg, off))
+        if seg == 0 or base + 0x2000 > 0x100000:
+            return None
+        return base, f"{seg:04X}:{off:04X}"
+
+    def _read(self, ds: int) -> str | None:
+        """Read the variable block through `ds`; why not, or None."""
+        script = self._pointer(ds, self.engine.script)
+        variables = self._pointer(ds, self.engine.variables)
+        if script is None or variables is None:
+            return "a far pointer reads 0 or past the first megabyte"
+        head = self.s.read(script[0], 20)
+        if any(head[4 * n] != 0x01 or head[4 * n + 3] < SCRIPT_BASE >> 8
+               for n in range(5)):
+            return f"the script pointer {script[1]} leads to {head.hex()}"
+        self.block = self.s.read(variables[0], dos_savegame.POD_VAR_COUNT)
+        why = self.check()
+        if why is None and self.saved is not None:
+            same = sum(a == b for a, b in zip(self.block, self.saved))
+            if same < MATCH_FRACTION * len(self.saved):
+                why = f"{same} of {len(self.saved)} bytes match the save"
+        if why is None:
+            self.script_base, self.var_base = script[0], variables[0]
+            if self.ds is None:
+                self.found = {"ds": f"{ds:04X}", "pointer": script[1],
+                              "variables": variables[1], "area": self.area(),
+                              "base": f"{script[0]:#x}"}
+        return why
+
+    def check(self) -> str | None:
+        digits = self.block[POD_CLOCK - 1:POD_CLOCK - 1 + len(POD_CLOCK_RADIX)]
+        if any(d >= r for d, r in zip(digits, POD_CLOCK_RADIX)):
+            return f"the clock digits read {list(digits)}"
+        return None
+
+    def area(self) -> int:
+        return self.block[DARKNESS_AREA_VAR - 1]
+
+    def read(self, address: int, n: int) -> bytes:
+        return self.s.read(self.script_base + address - SCRIPT_BASE, n)
+
+    def write(self, address: int, data: bytes) -> None:
+        self.s.write(self.script_base + address - SCRIPT_BASE, data)
+
+
 def find_data_segments(image: bytes, base: int, pointer: int) -> list[int]:
     """Every data segment whose `pointer` offset holds a far pointer to
     `base` in a memory image: a check of `ENGINE` that needs no halt in the
@@ -429,13 +777,19 @@ class NoEncounters:
     `save` is the loaded saved game's bytes, which `LiveVariables` checks the
     live block against; without it only a title whose `ENGINE` row is
     CONFIRMED is accepted, and the clock check decides.  `speculative` allows
-    a title whose row is not, which then needs `save`."""
+    a title whose row is not, which then needs `save`.  A title in
+    `SCRIPT_GATES` gets `LiveScript` and `ScriptSwitch` instead."""
 
     def __init__(self, session, title: str, save: bytes | None = None,
                  log: Callable[[str], None] = print, speculative: bool = False):
-        self.live = LiveVariables(session, title, save, speculative)
-        self.switch = EncounterSwitch(title, self.live.peek, self.live.poke,
-                                      self.live.area, log)
+        if title in SCRIPT_GATES:
+            self.live = LiveScript(session, title, save)
+            self.switch = ScriptSwitch(title, self.live.read, self.live.write,
+                                       self.live.area, log)
+        else:
+            self.live = LiveVariables(session, title, save, speculative)
+            self.switch = EncounterSwitch(title, self.live.peek, self.live.poke,
+                                          self.live.area, log)
         self.writes: list[dict] = []
         #: How many moves found the party in each area.
         self.areas: dict[int, int] = {}
@@ -802,10 +1156,138 @@ def live(title: str, folder: Path, steps: int, out: Path,
     return report
 
 
+#: `IF` opcodes and what each tests of `COMPARE a, b`: "a c b".
+CONDITIONS = {0x16: lambda a, b: a == b, 0x17: lambda a, b: a != b,
+              0x18: lambda a, b: a < b, 0x19: lambda a, b: a > b,
+              0x1A: lambda a, b: a <= b, 0x1B: lambda a, b: a >= b}
+#: Opcodes nothing runs after: `EXIT`, `GOTO`, `RETURN`, `NEWECL`, and Pools
+#: of Darkness' `$23`, which clears the text window and exits.
+SCRIPT_STOPS = {0x00, 0x01, 0x13, 0x20, 0x23}
+COMBAT = 0x24
+
+
+def darkness_scripts(game: Path | None = None) -> dict[int, bytes]:
+    """Every area script of DOS Pools of Darkness' `ECL1.DAX`, by area, as
+    the buffer holds it: the block without its two-byte header."""
+    from tools.dos import dospod
+
+    game = game or dospod.find_game(STEMS[DARKNESS])
+    dax = (game / "ECL1.DAX").read_bytes()
+    return {area: body[2:] for area, body in dos_savegame.dax_blocks(dax, "ECL1.DAX")}
+
+
+def roll_exit(model, body: bytes, at: int):
+    """The roll at `at` if it is `RANDOM n, [v]`, `COMPARE` of `[v]` with a
+    constant, an `IF` and an `EXIT` (or `$23`): `(limit, exits, end)`, where
+    `exits(r)` says whether a roll of `r` takes the `EXIT`; else None."""
+    from tools.amiga import tripspace as ts
+
+    roll = ts.decode(model, body, at)
+    if roll is None or roll.op != RANDOM or roll.operands[0][0] != 0:
+        return None
+    compare = ts.decode(model, body, roll.end)
+    if compare is None or compare.op != 0x03 or roll.operands[1] not in compare.operands:
+        return None
+    condition = ts.decode(model, body, compare.end)
+    if condition is None or condition.op not in CONDITIONS:
+        return None
+    exit_ = ts.decode(model, body, condition.end)
+    if exit_ is None or exit_.op not in (0x00, 0x23):
+        return None
+    (ka, va), (kb, vb) = compare.operands
+    variable = roll.operands[1]
+    if (kb, vb) != variable and kb != 0 or (ka, va) != variable and ka != 0:
+        return None
+
+    def exits(r: int) -> bool:
+        a = r if (ka, va) == variable else va
+        b = r if (kb, vb) == variable else vb
+        return CONDITIONS[condition.op](a, b)
+    return roll.operands[0][1], exits, exit_.end
+
+
+def scan_darkness(game: Path | None = None) -> list[dict]:
+    """Every roll of `roll_exit`'s kind that a Pools of Darkness area's step
+    entry reaches, with the `SAVE` constant that takes its `EXIT`, how many
+    rolls fight, and the first `COMBAT` a walk of its other side meets.
+
+    The scripts are walked with the operand counts of the Amiga Pools of
+    Darkness executable's skip switch (`tools/amiga/tripspace.py`), since the
+    DOS scripts are the same language."""
+    from tools.amiga import amigasaves
+    from tools.amiga import tripspace as ts
+    from tools.amiga.amiga68k import Executable
+
+    models = set()
+    for _t, _label, _path, body in ts.disk_files(
+            amigasaves.images(), {ts.DARKNESS: ts.EXECUTABLE[ts.DARKNESS]}):
+        try:
+            model = ts.skip_model(Executable.parse(body).data)
+        except Exception:                       # a packed or foreign file
+            model = None
+        if model:
+            models.add(model)
+    if len(models) != 1:
+        raise SwitchError(f"{len(models)} Amiga Pools of Darkness operand "
+                          "models found; the scan needs exactly one")
+    skip = next(iter(models))
+    model = tuple(skip)
+    listed = {(r.area, r.address) for r in SCRIPT_GATES[DARKNESS]}
+    out = []
+    for area, body in sorted(darkness_scripts(game).items()):
+        found, _bad = ts.walk(ts.DARKNESS, model, skip, body, entries=[1])
+        for at in sorted(found):
+            got = roll_exit(model, body, at)
+            if got is None:
+                continue
+            limit, exits, end = got
+            save = limit if exits(limit) else 0 if exits(0) else None
+            out.append({"area": area, "address": SCRIPT_BASE + at,
+                        "guard": digest(body[at:at + GUARD_BYTES]),
+                        "save": save,
+                        "fights": f"{sum(not exits(r) for r in range(limit + 1))}"
+                                  f"/{limit + 1}",
+                        "combat": _first_combat(model, skip, body, end),
+                        "listed": (area, SCRIPT_BASE + at) in listed})
+    return out
+
+
+def _first_combat(model, skip, body: bytes, start: int, limit: int = 2000) -> int | None:
+    """The ECL address of the first `COMBAT` a breadth-first walk from
+    `start` meets, or None."""
+    from tools.amiga import tripspace as ts
+
+    seen, work = set(), [start]
+    while work and len(seen) < limit:
+        i = work.pop(0)
+        if i in seen:
+            continue
+        s = ts.decode(model, body, i)
+        if s is None:
+            continue
+        seen.add(i)
+        if s.op == COMBAT:
+            return SCRIPT_BASE + i
+        if s.op in (0x01, 0x02) and s.address(0) is not None:
+            work.append(s.address(0) - SCRIPT_BASE)
+        if s.op in (ts.ONGOTO, ts.ONGOSUB):
+            work += [s.address(k) - SCRIPT_BASE for k in range(2, len(s.operands))
+                     if s.address(k) is not None]
+        if s.op not in SCRIPT_STOPS:
+            work.append(s.end)
+        if s.op in CONDITIONS:
+            skipped = ts.decode(skip, body, s.end)
+            if skipped is not None:
+                work.append(skipped.end)
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="command", required=True)
     sub.add_parser("gates", help="print the gate table")
+    sub.add_parser("scan", help="list every Pools of Darkness step-entry "
+                   "roll in ECL1.DAX and whether a fight is on its other side")
     run = sub.add_parser("live", help="one boot: a walk with the switch on, "
                          "then a control walk with it off")
     run.add_argument("--title", choices=sorted(CONTAINERS), default=POOL)
@@ -828,6 +1310,18 @@ def main(argv: list[str] | None = None) -> int:
         for (title, area), gate in sorted(GATES.items()):
             pokes = ", ".join(f"${a:04X}={v}" for a, v in gate.pokes) or "none"
             print(f"{title:28} ${area:02X}  {gate.grade:9} {pokes:24} {gate.source}")
+        for title, rows in SCRIPT_GATES.items():
+            for row in rows:
+                change = " ".join(f"+{o}={v:02X}" for o, v in row.changes)
+                print(f"{title:28} {row.area:3} ${row.address:04X} {row.grade:9} "
+                      f"{row.guard} {change:12} {row.source}")
+        return 0
+    if args.command == "scan":
+        for found in scan_darkness():
+            print(f"area {found['area']:3} ${found['address']:04X} {found['guard']} "
+                  f"SAVE {found['save']} {found['fights']} "
+                  f"{'COMBAT at $%04X' % found['combat'] if found['combat'] else 'no COMBAT'}"
+                  f"{'  (in SCRIPT_GATES)' if found['listed'] else ''}")
         return 0
 
     stage = []

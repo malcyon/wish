@@ -103,8 +103,11 @@ stays PROBABLE.  A screen that does not answer its key stops the run with a
 proves a conversion.**  It boots DOSBox-X and, through
 `dosnoencounters.NoEncounters`, writes the running area's encounter gate before
 every move key of a `walk`, `turn` or `fight`; the gates are saved variables, so
-a `save` step stops the run while the switch is on.  `--speculative-encounters`
-allows Silver Blades, whose offsets were not read in a running game.
+a `save` step stops the run while the switch is on.  In Pools of Darkness it
+changes each encounter roll in the loaded script to `SAVE` instead
+(`dosnoencounters.SCRIPT_GATES`), and a `save` step stops the run the same way.
+`--speculative-encounters` allows Silver Blades, whose offsets were not read in
+a running game.
 `summary.json` records `no_encounters: true` and a `no_encounters_report` of
 the switch's reads and writes.  Without the flag random encounters stay on and
 nothing is written.
@@ -2110,11 +2113,11 @@ def launch_args(title: Title, intervene: bool = False) -> dict[str, str]:
     return {} if exe == "START.EXE" else {"exe": exe}
 
 
-#: The `dosnoencounters` title each `--no-encounters` run names; Pools of
-#: Darkness has no switch.
+#: The `dosnoencounters` title each `--no-encounters` run names.
 NO_ENCOUNTER_TITLES = {"pool": dosnoencounters.POOL,
                        "curse": dosnoencounters.CURSE,
-                       "ssb": dosnoencounters.SILVER}
+                       "ssb": dosnoencounters.SILVER,
+                       "darkness": dosnoencounters.DARKNESS}
 
 #: The C64 party `--fixture-row` stages into for each later title: an
 #: engine-written save in `$WISH_SPECIMENS/por-c64/` (`docs/235` §4).  Pool
