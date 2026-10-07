@@ -78,8 +78,11 @@ a source whose title does not match `--title`:
 | `snapshot NAME`, `restore NAME` | DOSBox-X only (`dossnapshot.SnapshotSession`; a run with either step boots it): `snapshot` saves the whole machine under NAME (letters, digits, `-`, `_`); `restore` puts it back and settles, and the `SAVE` files changed since the snapshot are logged and recorded as `changed_saves`, because a game save stays on disk.  A `restore` needs an earlier `snapshot` of that name and no `save` between them; the run stops before boot otherwise.  Each is in `run.jsonl` and `summary.json`.  Random encounters stay on, except under `--no-encounters`, where a `restore` clears the values the switch wrote and re-arms it |
 | `press KEY` | one X keysym (`Down`, `Return`, `t`), then a settle and a PNG; capture only, so only `press`, `shot` and `read` may come after it |
 | `walk MI`, `walk I`, `walk 1` | Pool and Curse (`MI`): turn right twice at the map bar and step one square.  Pool (`I`): step one square forward without turning.  Silver Blades and Pools of Darkness (`1`): press MOVE, step one square turning right past a wall, and leave move mode (`e` in Silver Blades, `Escape` in Pools of Darkness) back to the map bar.  In Pool and Curse a `PRESS <ENTER>/<RETURN> TO CONTINUE` story box the step lands on is answered with `Return`, `WALK_CONTINUE_ROUNDS` boxes at most, each logged as `press_continue`; combat or any other screen still stops the walk.  A step is believed only when the `x,y` on the status line changes (never the clock beside it), a blank line is never the starting reading; in Pool, where a turn can leave the line as `S 03:59` with no `x,y`, such a turn or step is judged by the square the DOSBox-X debugger reads at `POOL_PLACE` (x, y, facing doubled), which every reading logs as `place`, so a Pool walk or turn boots DOSBox-X, and a run with a walk fails unless `read` shows the last saved slot's place differs from the installed one |
+| `walk KKIIJI` | Pool: a run of `I` (step forward), `J` (turn left) and `K` (turn right), each move judged by the place the DOSBox-X debugger reads at `POOL_PLACE` and the area byte `POOL_AREA`, both logged as `place`: a step must change the square or the area and a turn must leave both alone, so the area changes only on the step that crosses into the next one (`crossings` lists them).  A story box a step lands on gets `Return`.  The last step may end on a screen that is not the map, whose text is kept as `arrival` (the temple's `DO YOU SEEK HEALING?` for `temple raise`); on any earlier move such a screen stops the run |
+| `temple raise N` | Pool, at the temple's arrival question a walk ended on (from the Slums square 15,4 facing W, `walk KKIIJI` reaches it at 1,3 in New Phlan): `YES`; roster line N highlighted (`End`); its sheet's money read (`VIEW`, `Escape`); `HEAL`, the service list read and its highlight moved with `End` onto `RAISE DEAD`, read after each press; `HEAL`; the price read off `PAY FOR CURE YES NO`; `YES`; the message window watched until the list holds clear; the list's `EXIT`, the sheet's money read again and the temple's `EXIT` back to the map.  `outcome` is `no-money` when the window says `NOT ENOUGH MONEY`, `alive` when the roster line's hit points then read 1 and the money changed, and `unknown` otherwise (the game draws no message for a raise and rolls nothing).  The result has the price, `gold_before`, `gold_after` and each sheet's money.  A run with it stages record bytes only with `--stage-record`, and only gold (`0x08E`, `0x08F`) and constitution (`0x014`) |
 | `turn N` | N from 1 to 4: the walk's control.  Silver Blades and Pools of Darkness press MOVE first and leave move mode after; N `Right` presses, each reading the `x,y` square, which a turn must leave alone (`lost-walk-turn`); the party stays on the map for `camp`, `save D` and `read`.  A run with `turn` and no `walk` fails unless `read` shows the saved place unchanged ("did not move") |
-| `fight`, `fight 900` | Curse and Silver Blades, from the map: walk (Silver Blades in move mode) preferring squares not yet stood on (`Explorer`) until a fight starts, answer each bar by `FIGHT_KEYS` (`COMBAT`, `QUICK`, `EXIT` at the treasure and at a locked door, which the walk then marks walled, `NO` at `YES NO`, `Return` to continue), and end on the map once its bar has held `FIGHT_SETTLED` seconds; the number bounds walk and fight, in seconds (`FIGHT_SECONDS`).  At each command bar the debugger names who acts (`bar` in `run.jsonl`); at the first it logs `placement`, every combatant's square, side, quickfight and control (`COMBAT_LAYOUTS`), and `--first-bar-key KEY` is pressed there once instead of `QUICK`, the next bar logging every record again as `after-first-bar-key`.  A Silver Blades fight in area 16 is blocked unless the gate `$4C2D` is 1, since a successful wandering roll there is a compliment: add `--stage-var 4C2D=1`.  With `--intervene` (Silver Blades only) the game starts as `START.EXE X Gem` (`CHEAT_ARGS`) and Alt+X, the game's own end-the-fight key, is pressed once at the bar after the first-bar key, or at the first bar without one; a command bar coming back stops the run (`fight-intervene`).  The defeat screen (`PARTY_DESTROYED`) stops it at once (`fight-destroyed`).  A second `fight` in the boot follows `camp`, `save X` and `leave`, or another `fight`; the first-bar key and Alt+X are the first fight's only, each result names its fight by number, and every later fight presses `SPACE` once at its first combat screen (`HAND_BACK`: a command bar, or a blank or unclassified bar once combat has begun -- the encounter menu answered, the placement read, or the combat window changed from what the last fight left and reading as a fight, probed at most every `COMBAT_PROBE_SECONDS`), because `QUICK` survives into the next fight, logging every combatant's quickfight just before it (`before-hand-back`) and recording `handed_back`, `handed_back_to` and `before_hand_back`.  A run with a `fight` boots DOSBox-X (`dosboxx.XSession`) rather than DOSBox 0.74 |
+| `fight first-bar` | Pool, Curse and Silver Blades, from the map: walk into a fight as `fight` does, log `placement` and who acts at the first command bar, shoot it (`first_bar_shot`), and stop there with nothing pressed at it; no fight is fought out, so only `shot` and `read` may come after it |
+| `fight`, `fight 900` | Pool: walk with `dosfightwatch.walk_to_encounter` until a fight bar shows, answer each bar by `PoolOfRadiance.COMBAT_KEYS`, log the command bars as below, and end on the map once its bar has held `FIGHT_SETTLED` seconds; one fight a boot.  Curse and Silver Blades, from the map: walk (Silver Blades in move mode) preferring squares not yet stood on (`Explorer`) until a fight starts, answer each bar by `FIGHT_KEYS` (`COMBAT`, `QUICK`, `EXIT` at the treasure and at a locked door, which the walk then marks walled, `NO` at `YES NO`, `Return` to continue), and end on the map once its bar has held `FIGHT_SETTLED` seconds; the number bounds walk and fight, in seconds (`FIGHT_SECONDS`).  At each command bar the debugger names who acts (`bar` in `run.jsonl`); at the first it logs `placement`, every combatant's square, side, quickfight and control (`COMBAT_LAYOUTS`), and `--first-bar-key KEY` is pressed there once instead of `QUICK`, the next bar logging every record again as `after-first-bar-key`.  A Silver Blades fight in area 16 is blocked unless the gate `$4C2D` is 1, since a successful wandering roll there is a compliment: add `--stage-var 4C2D=1`.  With `--intervene` (Silver Blades only) the game starts as `START.EXE X Gem` (`CHEAT_ARGS`) and Alt+X, the game's own end-the-fight key, is pressed once at the bar after the first-bar key, or at the first bar without one; a command bar coming back stops the run (`fight-intervene`).  The defeat screen (`PARTY_DESTROYED`) stops it at once (`fight-destroyed`).  A second `fight` in the boot follows `camp`, `save X` and `leave`, or another `fight`; the first-bar key and Alt+X are the first fight's only, each result names its fight by number, and every later fight presses `SPACE` once at its first combat screen (`HAND_BACK`: a command bar, or a blank or unclassified bar once combat has begun -- the encounter menu answered, the placement read, or the combat window changed from what the last fight left and reading as a fight, probed at most every `COMBAT_PROBE_SECONDS`), because `QUICK` survives into the next fight, logging every combatant's quickfight just before it (`before-hand-back`) and recording `handed_back`, `handed_back_to` and `before_hand_back`.  A run with a `fight` boots DOSBox-X (`dosboxx.XSession`) rather than DOSBox 0.74 |
 | `prayer-watch 49`, `prayer-watch 35` | Pool (35 and 49), Curse and Silver Blades (49), from the map, `load` first, with each title's addresses (`dosfightwatch.PRAYER_LAYOUTS`).  Pool walks to an encounter (`walk_to_encounter`) and arms at the encounter menu; Curse and Silver Blades walk as `fight` does (Silver Blades' area 16 needs `--stage-var 4C2D=1` here too) and arm at the first command bar, once `placement` is logged and `QUICK` pressed there.  At that point it reads every member's effect nodes and Prayer's handler table, breaks on the id-49 stub (and Pool's id-35 stub) and the attack roll's stub (Pool's `08D2:003E`, the table's segment less the Prayer unit plus the attack unit), arm the list-10 call and its return at the segment that stub's far jump names, re-arming when a stub hit shows a new one, arm the handler, bonus test, +1 helper and penalty at the overlay segment the stub's far jump names once it loads, answer each bar (Pool by `COMBAT_KEYS`, Curse and Silver Blades by `FIGHT_KEYS`), and log each halt as `prayer-halt`: registers, 16 bytes at `SS:SP`, the four-frame `BP` chain, combatant name and side, the node's five bytes and the two roll bytes the +1 helper raises (Pool's `DS:0x6816` and `DS:0x6822`).  A party attack is a list-10 call halt with a side-0 attacker, closed by that attacker's next return halt.  For id 49 the step stops after one party attack whose own helper or penalty halt fell inside it, and in Curse and Silver Blades only once a monster's attack has also reached the penalty (`monster_penalties`), which a conclusive run there needs (only a list-10 penalty, an attack, counts as a monster's attack; a saving-throw penalty, list 12, does not; and a later round replaces an ally's round until a member carrying the node has completed one); for id 35 three completed pairs with no Prayer stub halt inside them are a conclusive result, and the step stops after the third.  It also stops when the map has held `FIGHT_SETTLED` seconds, at the defeat screen (Curse and Silver Blades), or after `PRAYER_FIGHT_SECONDS`; the step fails if the menu or first command bar came more than `PRAYER_BOOT_SECONDS` after the driver was made (Pool's walk is bounded by its 40 steps, the other two's by `FIGHT_SECONDS`, and both by the run's `--deadline`).  The result is `conclusive: False`, and the run exits 2 with `inconclusive` in `summary.json` rather than `lost` or `completed`, when no member carried the node at the menu or at the stop, an armed or halted routine's code did not match `GAME.OVR`, the stop-time party was not read, or, for id 49, no party attack armed at the stubs ran its helper or penalty (the first call loads the overlay before its routines are armed, so a round needs a later attack).  Only `shot`, `press` and `read` may follow |
 | `read` | copies `SAVE/` out and decodes every node, the clock, the place and each character's experience, installed slot against each saved one; for Pools of Darkness also each character's eight thief skills, item count, encumbrance, movement, current movement, record byte 0x130 (spell id 126's book byte, `book_0x130`) and items |
 
@@ -1476,7 +1479,17 @@ CHEAT_ARGS = {"ssb": "X Gem"}
 PARTY_DESTROYED = ("01364f4c1cd47efa", "e97633ef7e8cf145")
 PARTY_DESTROYED_LINE = (16, 40, 288, 8)
 #: The titles `fight` drives.
-FIGHT_TITLES = frozenset({"curse", "ssb"})
+FIGHT_TITLES = frozenset({"pool", "curse", "ssb"})
+#: The titles whose `fight` may run a second time in one boot: the later
+#: fight hands the party back with `HAND_BACK`, whose handler is read in
+#: Curse and Silver Blades only.
+SECOND_FIGHT_TITLES = frozenset({"curse", "ssb"})
+#: `fight first-bar`: walk into a fight, log the placement and who acts at
+#: its first command bar, shoot it and end the run there.
+FIRST_BAR = "first-bar"
+#: Steps Pool's `fight` walks with `dosfightwatch.walk_to_encounter` before
+#: giving up on meeting one.
+POOL_FIGHT_WALK_STEPS = 40
 #: The Prayer node ids `prayer-watch` tests: 49 is DOS's own Prayer (the
 #: control), 35 the id a C64 camp Prayer converts to.
 PRAYER_NODES = (35, 49)
@@ -1509,14 +1522,19 @@ class CombatLayout:
     """Where a title keeps a fight's combatants: `DS` offsets and record offsets.
 
     Read from each `GAME.OVR`'s combat setup, which stores each combatant's
-    record pointer and then its map entry (Curse 0xF166, Silver Blades
-    0xFE1C: `mov [array+4i], offset / segment`, `mov al, es:[di+side]`,
+    record pointer and then its map entry (Pool 0xE202, Curse 0xF166, Silver
+    Blades 0xFE1C: `mov [array+4i], offset / segment`, `mov al, es:[di+side]`,
     `mov [map+4i+2], index`, `mov [map+4i+3], size`), and from the `SPACE`
     handler of the combat menu, which walks the combatant list (the party
     first) from `party_at` through `next_at` and clears `quick_at` wherever
     `control_at` is below 0x80 (Curse 0xAADF, Silver Blades 0xBF84).  `selected_at` is the pointer
-    the overlays load most (`les di, [selected_at]`: Curse 288 sites, Silver
-    Blades 315); Curse's is `player_ptr` in the reconstruction's listing.
+    the overlays load most (`les di, [selected_at]`: Pool 202 sites, Curse
+    288, Silver Blades 315); Curse's is `player_ptr` in the reconstruction's
+    listing.  Pool's setup (0xE1C2-0xE3D9) sets `[map_at+3]` to 1, walks the
+    list from `party_at` through `next_at`, and stores the pointer at
+    0xE202, the index at 0xE223 and the size (record `0x6C` and 7) at
+    0xE23D; its control byte is the one `Attack Ally` tests for 0x80
+    (`docs/169-dos-combat-side.md`).
     """
 
     #: Four bytes per combatant, from entry 1: x, y, index, size.  Entry 0's
@@ -1536,6 +1554,9 @@ class CombatLayout:
 
 
 COMBAT_LAYOUTS = {
+    "pool": CombatLayout(map_at=0x5F27, array_at=0x65B9, selected_at=0x5D92,
+                         party_at=0x5D96, next_at=0x104, control_at=0x84,
+                         status_at=0x10C, hp_at=0x11B),
     "curse": CombatLayout(map_at=0x66BD, array_at=0x6D4F, selected_at=0x6520,
                           party_at=0x6524, next_at=0x189, control_at=0xF7,
                           status_at=0x195, hp_at=0x1A4),
@@ -1660,6 +1681,57 @@ def pool_place(raw: bytes) -> dict | None:
     if facing not in (0, 2, 4, 6) or x > 0x3F or y > 0x3F:
         return None
     return {"x": x, "y": y, "facing": facing // 2}
+
+
+#: Pool of Radiance's current-area byte in the data segment: the start-up
+#: copy `les di, [0x49D2]; mov al, es:[di+0x1E4]; mov [0x84DC], al`, read 20
+#: in the Slums in a running game.  The live VM word `$49F2` is the area the
+#: party came from, not the one it is in.
+POOL_AREA = 0x84DC
+#: Pool's message window: the text rows inside the frame under the picture,
+#: where a story box, the temple's question and its price are drawn.
+POOL_MESSAGE_ROWS = range(17, 23)
+
+#: Pool's temple, as the DOS game draws it (`GAME.OVR` strings 0x4578-0x4A7D
+#: and 0x51DF; captured in New Phlan at 1,3 facing N, area 0): the question
+#: the party's arrival asks, the temple bar, the service list's bar and its
+#: rows (text rows 4 to 13, the highlight white), the price prompt's bar, and
+#: the keys: `y` YES, `h` HEAL, `v` VIEW, `e` EXIT, `Escape` from the sheet,
+#: and `dosbox.LIST_DOWN` down the list.
+TEMPLE_ARRIVAL = "DO YOU SEEK HEALING"
+TEMPLE_BAR = "HEAL VIEW POOL APPRAISE EXIT"
+TEMPLE_LIST_BAR = "HEAL EXIT"
+TEMPLE_PRICE_BAR = "PAY FOR CURE YES NO"
+TEMPLE_LIST_ROWS = range(4, 14)
+#: The service list's title row, `<NAME>, HOW CAN WE HELP YOU?`.
+TEMPLE_TITLE_ROW = 1
+TEMPLE_LIST_RECT = (16, 32, 288, 80)
+TEMPLE_RAISE = "RAISE DEAD"
+TEMPLE_YES, TEMPLE_HEAL, TEMPLE_VIEW, TEMPLE_EXIT = "y", "h", "v", "e"
+TEMPLE_SHEET_BACK = "Escape"
+#: `RAISE DEAD WILL ONLY COST 5500 GOLD PIECES.`
+TEMPLE_PRICE = re.compile(r"COST (\d+) (\w+) PIECES")
+#: What the message window says after `YES` at the price, to the outcome:
+#: `Not enough money.` (0x461B), upper case as drawn.  A raise draws no
+#: message: the handler (`GAME.OVR` 0x4A88-0x4CA4) takes a status 6 (dead) or
+#: 1 member, asks the price (0x4636, 5500 gold), removes effect ids 32 and 55,
+#: and sets hit points 1 (0x4B5C), status 0, active 1 and constitution one
+#: lower, with no roll, so a raise that was paid for cannot fail.
+TEMPLE_OUTCOMES = (("NOT ENOUGH MONEY", "no-money"),)
+#: The hit points the raise leaves, which the temple's roster line then draws.
+TEMPLE_RAISED_HP = 1
+#: Seconds `temple raise` watches the message window after `YES`, and how
+#: long the list must hold unchanged before the watch ends.
+TEMPLE_RESULT_SECONDS = 20.0
+TEMPLE_RESULT_HOLD = 3.0
+#: The only record bytes `--stage-record` may write in a run with `temple
+#: raise`: Pool's gold (`0x08E`, two bytes little-endian) for the payment and
+#: constitution (`0x014`) for the survival roll.
+TEMPLE_STAGE_FIELDS = {0x08E: "gold", 0x08F: "gold", 0x014: "constitution"}
+#: The money words a Pool sheet draws, and where: text rows 7 to 12, columns
+#: 1 to 26, left of the portrait's frame.
+SHEET_MONEY = re.compile(r"\b(COPPER|SILVER|ELECTRUM|GOLD|PLATINUM|GEMS|JEWELRY) (\d+)")
+SHEET_MONEY_ROWS = range(7, 13)
 
 
 def map_square(screen: dosbox.Screen, column: int) -> str | None:
@@ -1925,6 +1997,10 @@ def ninth_level(rows: list[str]) -> list[int | str]:
 #: Curse); `I`, one step forward without turning (Pool, for a party already
 #: facing open ground); `1`, a step in move mode (Silver Blades, Pools of Darkness).
 WALKS = {"pool": ("MI", "I"), "curse": ("MI",), "ssb": ("1",), "darkness": ("1",)}
+#: Pool's other walks: a run of `I` (step forward), `J` (turn left) and `K`
+#: (turn right), each judged from the party's place in memory, as the C64
+#: driver's moves are named.
+POOL_WALK_LETTERS = re.compile(r"[IJK]+")
 #: The titles whose `turn N` control is driven: those with a walk to check.
 TURNS = frozenset(WALKS)
 #: The titles whose party menu `view N` opens a sheet from.  Pool's party
@@ -2158,7 +2234,8 @@ STEP_HELP = ("load, begin, vault, 'walk MI', 'walk I', 'walk 1', 'turn 4', camp,
              "'train 1', 'change 2 FIGHTER', 'sheet 1', 'heal 1', 'cure 1', 'items 1', "
              "'halve 1 1', 'join 4 15', 'trade 1 2 3', 'view 1', 'memorize 5', 'cast 2 BLESS', "
              "'cast 2 RESIST-COLD 4', 'scribe 5 PROTECTION FROM GOOD', 'shot NAME', "
-             "'press KEY', 'fight', 'fight 900', 'prayer-watch 49', 'add ARRONEL', "
+             "'press KEY', 'fight', 'fight 900', 'fight first-bar', 'prayer-watch 49', "
+             "'add ARRONEL', 'walk KKIIJI', 'temple raise 1', "
              "'snapshot NAME', 'restore NAME', read")
 #: The class names `change N CLASS` takes: Curse's own (`START.EXE` data
 #: 0x0CB8), upper case.
@@ -2222,8 +2299,9 @@ def parse_step(text: str) -> Step:
             raise ValueError(f"trade {text!r} is blocked: line {to} would trade "
                              "with itself")
         return Step(kind, text, line=int(words[1]), row=row, to=to)
-    if kind == "walk" and len(words) == 2 and any(
-            words[1].upper() in routes for routes in WALKS.values()):
+    if kind == "walk" and len(words) == 2 and (any(
+            words[1].upper() in routes for routes in WALKS.values())
+            or POOL_WALK_LETTERS.fullmatch(words[1].upper())):
         return Step(kind, text, key=words[1].upper())
     if kind == "turn" and len(words) == 2 and re.fullmatch(r"[1-4]", words[1]):
         return Step(kind, text, line=int(words[1]))
@@ -2233,9 +2311,14 @@ def parse_step(text: str) -> Step:
         if not dossnapshot.SNAPSHOT_NAME.match(words[1]):
             raise ValueError(f"{text!r}: a snapshot name is letters, digits, - and _")
         return Step(kind, text, name=words[1])
+    if kind == "fight" and len(words) == 2 and words[1].lower() == FIRST_BAR:
+        return Step(kind, text, name=FIRST_BAR)
     if kind == "fight" and (len(words) == 1 or (
             len(words) == 2 and re.fullmatch(r"[1-9]\d*", words[1]))):
         return Step(kind, text, seconds=int(words[1]) if len(words) == 2 else 0)
+    if kind == "temple" and len(words) == 3 and words[1].lower() == "raise" \
+            and re.fullmatch(r"[1-8]", words[2]):
+        return Step(kind, text, name="raise", line=int(words[2]))
     if kind == "prayer-watch" and len(words) == 2 and words[1] in (
             str(n) for n in PRAYER_NODES):
         return Step(kind, text, node=int(words[1]))
@@ -2260,7 +2343,9 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
     The party is somewhere at each step -- not yet loaded, on the map, at the
     party menu or in camp -- and each step needs one of those.  `shot` and
     `read` need nothing.  After a `press` nobody knows where the party is,
-    so only more `press`, `shot` and `read` may come after it.
+    so only more `press`, `shot` and `read` may come after it, and after
+    `fight first-bar`, which ends the run at a fight's first command bar,
+    only `shot` and `read`.
     """
     t = TITLES[title]
     where = "boot"
@@ -2269,6 +2354,7 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
     taken: dict[str, bool] = {}
     #: Where the party was at each snapshot, which a restore returns it to.
     places: dict[str, str] = {}
+    fights = 0
     for step in steps:
         k = step.kind
         if k in ("shot", "read"):
@@ -2277,6 +2363,9 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
         # there; `begin` straight after it is for the second.
         pool_after_load = title == "pool" and last == "load"
         previous, last = last, k
+        if where == "first-bar":
+            raise ValueError(f"only shot and read may come after fight "
+                             f"{FIRST_BAR}: {step.text!r}")
         if where == "pressed" and k != "press":
             raise ValueError(f"only press, shot and read may come after a press: "
                              f"{step.text!r}")
@@ -2324,9 +2413,11 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
         elif k == "walk":
             if title not in WALKS:
                 raise ValueError(f"walk is not driven in {title}")
-            if step.key not in WALKS[title]:
+            letters = title == "pool" and POOL_WALK_LETTERS.fullmatch(step.key)
+            if step.key not in WALKS[title] and not letters:
                 routes = " or ".join(f"'walk {r}'" for r in WALKS[title])
-                raise ValueError(f"{title}'s walk is {routes}, not {step.text!r}")
+                more = " (or a run of I, J and K)" if title == "pool" else ""
+                raise ValueError(f"{title}'s walk is {routes}, not {step.text!r}{more}")
             if where != "map":
                 raise ValueError(f"walk needs the map: {step.text!r}")
         elif k == "turn":
@@ -2430,6 +2521,19 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
                                  f"{', '.join(sorted(FIGHT_TITLES))} only, not {title}")
             if where != "map":
                 raise ValueError(f"fight needs the map: {step.text!r}")
+            if fights and title not in SECOND_FIGHT_TITLES:
+                raise ValueError(f"a second fight in one boot is driven in "
+                                 f"{', '.join(sorted(SECOND_FIGHT_TITLES))} only, "
+                                 f"not {title}: its hand-back key is unread")
+            fights += 1
+            if step.name == FIRST_BAR:
+                where = "first-bar"
+        elif k == "temple":
+            if title != "pool":
+                raise ValueError(f"temple raise is driven in pool only, not {title}")
+            if where != "map":
+                raise ValueError(f"temple raise needs the map, where the walk "
+                                 f"to the temple begins: {step.text!r}")
         elif k == "prayer-watch":
             why = prayer_watch_rejection(title, step.node)
             if why:
@@ -2588,6 +2692,25 @@ def parse_record_bytes(texts) -> list[tuple[int, int, int]]:
                                  "not negative, the value one byte")
             out.append((line, offset, byte))
     return out
+
+
+def temple_staging_rejection(args, steps: list[Step]) -> str | None:
+    """Why a run's staging does not fit its `temple raise`, or None: such a
+    run stages record bytes only through `--stage-record`, and only the
+    fields of `TEMPLE_STAGE_FIELDS`, the payment's gold and the survival
+    roll's constitution."""
+    if not any(s.kind == "temple" for s in steps):
+        return None
+    for option in ("xp", "add_node", "stage_control", "stage_side"):
+        if getattr(args, option, None):
+            return (f"a run with temple raise stages only gold and constitution "
+                    f"with --stage-record, not --{option.replace('_', '-')}")
+    for line, offset, _ in parse_record_bytes(getattr(args, "stage_record", []) or []):
+        if offset not in TEMPLE_STAGE_FIELDS:
+            return (f"a run with temple raise stages only gold (0x08E, 0x08F) and "
+                    f"constitution (0x014); --stage-record {line}:{offset:#05x} is "
+                    "neither")
+    return None
 
 
 def parse_var(text: str) -> tuple[int, int]:
@@ -4115,10 +4238,11 @@ class Driver:
             self._live = dosnoencounters.LiveVariables(self.s, dosnoencounters.POOL)
         with self._live as live:
             raw = self.s.read((live.ds, POOL_PLACE), 5)
+            area = self.s.read((live.ds, POOL_AREA), 1)
         place = pool_place(raw)
         if place is None:
             raise ValueError(f"DS:{POOL_PLACE:04X} reads {raw.hex()}, no square")
-        return {**place, "raw": raw.hex(), "ds": f"{live.ds:04X}"}
+        return {**place, "area": area[0], "raw": raw.hex(), "ds": f"{live.ds:04X}"}
 
     def party_place(self, label: str) -> dict | None:
         """The party's place from memory (`place_reader`), logged as `place`,
@@ -4180,6 +4304,9 @@ class Driver:
         """
         if self.title.key in MOVE_KEYS and self.where == "map" and route == "1":
             return self._walk_one()
+        if (self.title.key == "pool" and self.where == "map"
+                and route not in WALKS["pool"] and POOL_WALK_LETTERS.fullmatch(route)):
+            return self._walk_letters(route)
         if self.title.key not in ("pool", "curse") or self.where != "map" \
                 or route not in WALKS[self.title.key]:
             raise StepFailed("walk MI needs a Pool of Radiance or Curse map; "
@@ -4242,6 +4369,237 @@ class Driver:
                 "place_before": origin_place,
                 "place_after": screens[-1].get("place"),
                 "screens": screens}
+
+    def _walk_letters(self, route: str) -> dict:
+        """Pool: `I` steps forward, `J` turns left and `K` turns right, in turn.
+
+        Each move is judged from the party's place in memory (`POOL_PLACE`
+        and `POOL_AREA`, `place_reader`): a step must change the square or
+        the area, and a turn must leave both alone, so an area changes only
+        on the step that crosses into the next one.  A story box a step lands
+        on gets `Return` (`press_walk_stories`).  The last step may end on a
+        screen that is not the map, such as the temple's `DO YOU SEEK
+        HEALING?`; its text is kept as `arrival` and the party's place is
+        `arrival` for the next step.  On any earlier move a screen that is
+        not the map stops the run.
+        """
+        if self.place_reader is None:
+            raise StepFailed("a walk of I, J and K moves reads the party's square "
+                             "from memory, which needs the DOSBox-X debugger")
+        screens: list[dict] = []
+        self.map_status("walk-before", screens)
+        here = screens[-1].get("place")
+        if here is None:
+            raise self.fail("walk-status", "the party's square did not read from "
+                            "memory before the walk")
+        moves: list[dict] = []
+        arrival = None
+        for n, letter in enumerate(route, 1):
+            label = f"walk-{n}-{letter}"
+            if letter == "I":
+                back = self.game.step()
+                screen = self.press_walk_stories(label)
+                if not back and not self.on_world(screen):
+                    if n < len(route):
+                        raise self.fail(label, "the map bar did not return after "
+                                        "the step (combat or an unknown screen)")
+                    arrival = self.screen_text(screen)
+            elif not (self.game.turn_left() if letter == "J" else self.game.turn_right()):
+                raise self.fail(label, "the map bar did not return after turning "
+                                "(combat or an unknown screen)")
+            shot = self.shot(label)
+            place = self.party_place(label)
+            if place is None:
+                raise self.fail("walk-status", f"the party's square did not read "
+                                f"from memory after move {n} ({letter})")
+            before = (here["x"], here["y"], here["area"])
+            after = (place["x"], place["y"], place["area"])
+            if letter == "I" and after == before:
+                raise self.fail("walk-blocked", f"move {n} (I) left the party on "
+                                f"{before[0]},{before[1]} in area {before[2]}: a "
+                                "blocked step")
+            if letter != "I" and after != before:
+                raise self.fail(label, f"the square changed on a turn: move {n} "
+                                f"({letter}) went from {before} to {after}")
+            moves.append({"move": letter, "before": list(before), "after": list(after),
+                          "facing": place["facing"], "crossed": after[2] != before[2],
+                          "shot": shot})
+            here = place
+        if arrival is not None:
+            self.where = "arrival"
+        return {"route": route, "moves": moves,
+                "place_before": screens[0].get("place"), "place_after": here,
+                "crossings": [i for i, m in enumerate(moves, 1) if m["crossed"]],
+                "arrival": arrival, "screens": screens}
+
+    # -- Pool's temple -----------------------------------------------------------
+
+    def temple_raise(self, line: int) -> dict:
+        """Buy RAISE DEAD at Pool's temple for roster line `line`, from the
+        arrival question a walk ended on, and leave to the map.
+
+        `YES` to `DO YOU SEEK HEALING?`; line `line` highlighted at the
+        temple bar (`POOL_ROSTER_NEXT`); its sheet read for money (`VIEW`,
+        `Escape`); `HEAL`, the service list read and its highlight moved
+        with `dosbox.LIST_DOWN` onto `RAISE DEAD`, read after each press;
+        `HEAL` there; the price read off `PAY FOR CURE YES NO`; `YES`, and
+        the message window watched until the list has held
+        `TEMPLE_RESULT_HOLD` seconds; then the list's `EXIT`, the sheet read
+        again, and the temple's `EXIT` to the map.  `outcome` is no-money by
+        the message the window drew (`TEMPLE_OUTCOMES`); alive when no such
+        message came, the roster line's hit points read `TEMPLE_RAISED_HP`
+        after and the sheet's money changed; and unknown otherwise.  The
+        game draws no message for a raise and rolls nothing, so there is
+        no failed outcome to read.  Each key goes only to the screen it
+        belongs to; any other screen stops the run with nothing more
+        pressed.
+        """
+        if self.title.key != "pool":
+            raise StepFailed("temple raise is driven in pool only")
+        if self.where != "arrival":
+            raise StepFailed("temple raise begins at the temple's arrival "
+                             "question, where a walk to the temple ends")
+        font = self.display_font()
+        shots: list[str] = []
+        here = self.screen_text(self.s.settle(quiet=0.6, timeout=self.bounded(
+            20.0, "temple-arrival")))
+        if TEMPLE_ARRIVAL not in here["text"] or here["bar"] != "YES NO":
+            raise self.fail("temple-arrival", f"not the temple's arrival "
+                            f"question: {here}")
+        shots.append(self.shot("temple-arrival"))
+        screen = self._temple_key(TEMPLE_YES, lambda t: t["bar"] == TEMPLE_BAR,
+                                  "temple-bar")
+        self.where = "temple"
+        moved = self.pick_line(line, "camp", "temple-select", POOL_ROSTER_NEXT)
+        screen = self.s.settle(quiet=0.6, timeout=self.bounded(20.0, "temple-select"))
+        name = text_row(screen, 3 + line, font, range(17, 33)).strip()
+        roster_before = text_row(screen, 3 + line, font, range(17, 39)).strip()
+        shots.append(self.shot("temple-bar"))
+        money_before = self._temple_sheet(name, "temple-sheet-before", shots)
+        screen = self._temple_key(TEMPLE_HEAL, lambda t: t["bar"] == TEMPLE_LIST_BAR,
+                                  "temple-list")
+        services = [text_row(screen, r, font, range(1, 39)).strip()
+                    for r in TEMPLE_LIST_ROWS]
+        title = text_row(screen, TEMPLE_TITLE_ROW, font, range(1, 39)).strip()
+        if not title.startswith(f"{name},"):
+            raise self.fail("temple-list", f"the service list is not {name}'s: "
+                            f"{title!r}")
+        if TEMPLE_RAISE not in services:
+            raise self.fail("temple-list", f"no {TEMPLE_RAISE} row: {services}")
+        presses = self._temple_highlight(services.index(TEMPLE_RAISE))
+        shots.append(self.shot("temple-raise-row"))
+        screen = self._temple_key(TEMPLE_HEAL, lambda t: t["bar"] != TEMPLE_LIST_BAR,
+                                  "temple-price")
+        asked = self.screen_text(screen)
+        shots.append(self.shot("temple-price"))
+        price = TEMPLE_PRICE.search(asked["text"])
+        if asked["bar"] != TEMPLE_PRICE_BAR or price is None:
+            raise self.fail("temple-price", f"{TEMPLE_RAISE} gave no price: {asked}")
+        self.s.key(TEMPLE_YES)
+        messages = self._temple_messages(asked["text"])
+        shots.append(self.shot("temple-result"))
+        screen = self._temple_key(TEMPLE_EXIT, lambda t: t["bar"] == TEMPLE_BAR,
+                                  "temple-bar-after")
+        roster_after = text_row(screen, 3 + line, font, range(17, 39)).strip()
+        money_after = self._temple_sheet(name, "temple-sheet-after", shots)
+        hp_after = roster_after.split()[-1] if roster_after else ""
+        outcome = next((o for want, o in TEMPLE_OUTCOMES
+                        if any(want in m for m in messages)), None)
+        if outcome is None:
+            outcome = ("alive" if hp_after == str(TEMPLE_RAISED_HP)
+                       and money_after != money_before else "unknown")
+        self.s.key(TEMPLE_EXIT)
+        if not self.s.wait_for(self.on_world, self.bounded(20.0, "temple-leave")):
+            left = self.screen_text(self.s.capture())
+            raise self.fail("temple-leave", f"EXIT did not bring the map back: {left}")
+        self.where = "map"
+        shots.append(self.shot("temple-left"))
+        return {"member": name, "line": line, "line_presses": moved["presses"],
+                "services": services, "list_presses": presses,
+                "price": int(price.group(1)), "price_coin": price.group(2),
+                "price_text": asked["text"], "messages": messages,
+                "outcome": outcome, "gold_before": money_before.get("GOLD", 0),
+                "gold_after": money_after.get("GOLD", 0),
+                "money_before": money_before, "money_after": money_after,
+                "roster_before": roster_before, "roster_after": roster_after,
+                "shots": shots}
+
+    def _temple_key(self, key: str, arrived, label: str):
+        """Press `key` and wait for the screen whose `screen_text` `arrived`
+        accepts; the settled screen, or the run stops at `label`."""
+        self.s.key(key)
+        if not self.s.wait_for(lambda sc: arrived(self.screen_text(sc)),
+                               self.bounded(20.0, label)):
+            raise self.fail(label, f"{key} did not bring the next temple screen: "
+                            f"{self.screen_text(self.s.capture())}")
+        return self.s.settle(quiet=0.6, timeout=self.bounded(20.0, label))
+
+    def _temple_sheet(self, name: str, label: str, shots: list[str]) -> dict[str, int]:
+        """From the temple bar, `VIEW` the highlighted member, check the sheet
+        is `name`'s, read its money (`SHEET_MONEY`) and go back."""
+        font = self.display_font()
+        screen = self._temple_key(
+            TEMPLE_VIEW, lambda t: t["bar"] != TEMPLE_BAR and t["bar"].startswith("VIEW"),
+            label)
+        shots.append(self.shot(label))
+        if text_row(screen, 1, font, range(1, 26)).strip() != name:
+            raise self.fail(label, f"the sheet is not {name}'s")
+        money = {coin: int(n) for r in SHEET_MONEY_ROWS
+                 for coin, n in SHEET_MONEY.findall(text_row(screen, r, font, range(1, 27)))}
+        self._temple_key(TEMPLE_SHEET_BACK, lambda t: t["bar"] == TEMPLE_BAR,
+                         f"{label}-back")
+        return money
+
+    def _temple_highlight(self, row: int) -> int:
+        """Move the service list's highlight onto `row` with `dosbox.LIST_DOWN`,
+        reading it after each press; the presses."""
+        presses = 0
+        here = self.s.capture().highlight_row(TEMPLE_LIST_RECT)
+        while here != row:
+            if here is None or presses > len(TEMPLE_LIST_ROWS):
+                raise self.fail("temple-row", f"the list's highlight is on row "
+                                f"{here}, not {row}, after {presses} presses")
+            self.s.key(dosbox.LIST_DOWN)
+            presses += 1
+            was = here
+            self.s.wait_for(lambda sc, was=was: sc.highlight_row(TEMPLE_LIST_RECT) != was,
+                            self.bounded(5.0, "temple-row"))
+            here = self.s.capture().highlight_row(TEMPLE_LIST_RECT)
+            if here == was:
+                raise self.fail("temple-row", f"{dosbox.LIST_DOWN} did not move "
+                                f"the list's highlight off row {here}")
+        return presses
+
+    def _temple_messages(self, price: str) -> list[str]:
+        """The texts the message window draws after `YES` at the price, in
+        order, until the service list has held `TEMPLE_RESULT_HOLD` seconds
+        with the window clear, within `TEMPLE_RESULT_SECONDS`."""
+        seen: list[str] = []
+        end = time.time() + self.bounded(TEMPLE_RESULT_SECONDS, "temple-result")
+        held_since = None
+        while time.time() < end:
+            now = self.screen_text(self.s.capture())
+            if now["text"] and now["text"] != price and (not seen or seen[-1] != now["text"]):
+                seen.append(now["text"])
+                self.note(event="temple-message", text=now["text"], bar=now["bar"])
+            if now["bar"] == TEMPLE_LIST_BAR and not now["text"]:
+                held_since = held_since or time.time()
+                if time.time() - held_since >= TEMPLE_RESULT_HOLD:
+                    return seen
+            else:
+                held_since = None
+            time.sleep(0.1)
+        raise self.fail("temple-result", f"the service list did not come back "
+                        f"clear after YES; drawn: {seen}")
+
+    def screen_text(self, screen) -> dict:
+        """The text window's rows and the bar of `screen`, read with the
+        title's font, blank rows left out."""
+        font = self.display_font()
+        rows = [text_row(screen, r, font, range(1, 39)).strip()
+                for r in POOL_MESSAGE_ROWS]
+        return {"text": " ".join(r for r in rows if r),
+                "bar": text_row(screen, BAR_ROW, font).strip()}
 
     def hidden_turn(self, label: str, origin_place: dict | None,
                     screens: list[dict]) -> bool:
@@ -4486,9 +4844,9 @@ class Driver:
         finally:
             self.game.record_map(map_screen)
 
-    # -- a fight, in Curse and Silver Blades ---------------------------------
+    # -- a fight ----------------------------------------------------------------
 
-    def fight(self, seconds: int = 0) -> dict:
+    def fight(self, seconds: int = 0, first_bar: bool = False) -> dict:
         """Walk until a fight starts, and fight it to its end with `QUICK`.
 
         The walk (`Explorer`) steps in move mode in Silver Blades and at the
@@ -4506,7 +4864,12 @@ class Driver:
         bar coming back fails the step; the defeat screen fails it at once.
         The step ends when the map bar has
         held `FIGHT_SETTLED` seconds after the fight, with the party left on
-        the map; `seconds` bounds walk and fight together.
+        the map; `seconds` bounds walk and fight together.  Pool walks and
+        answers its bars its own way (`_pool_fight`).
+
+        With `first_bar` the step ends at the first command bar, once the
+        placement and who acts are logged and the bar shot, pressing nothing
+        there; the fight is left running, so only `shot` and `read` may come after it.
         """
         key = self.title.key
         if key not in FIGHT_TITLES:
@@ -4517,6 +4880,8 @@ class Driver:
         if not hasattr(self.s, "attach"):
             raise StepFailed("fight reads the combatants through the DOSBox-X "
                              "debugger, and this session has none")
+        if key == "pool":
+            return self._pool_fight(seconds, first_bar)
         map_screen = self.s.capture()
         if not self.on_world(map_screen):
             raise self.fail("fight-before", "the map bar is not showing")
@@ -4528,6 +4893,8 @@ class Driver:
         enter, leave = MOVE_KEYS.get(key, (None, None))
         walker = Explorer()
         state = self._fight_state(first_fight, enter)
+        if first_bar:
+            state.update(first_bar_key=None, intervene=False, stop_at_first=True)
         try:
             while True:
                 self.check_deadline("fight")
@@ -4543,6 +4910,11 @@ class Driver:
                     state["torn"] += 1
                     walker.square = None
                     time.sleep(0.25)
+            if state["stopped"]:
+                self.where = "pressed"
+                return self._first_bar_result(state, {
+                    "walked": walker.steps, "walked_before_fight": state["met_after"],
+                    "squares": len(walker.visits), "bumps": walker.bumps})
             last = self.s.capture()
             if enter and bar_signature(last) == state["walking"]:
                 self.s.key(leave)
@@ -4573,6 +4945,111 @@ class Driver:
                 "repeated_bars": state["repeats"],
                 "screens": state["kinds"]}
 
+    def _first_bar_result(self, state: dict, walk: dict) -> dict:
+        """What `fight first-bar` records: the walk, the placement, who acts
+        at the first command bar, and its shot."""
+        bars = state["bars"]
+        return {"fight": self.fights, "first_bar": True, **walk,
+                "presses": state["presses"], "encounters": state["encounters"],
+                "bars": len(bars),
+                "actor": bars[0]["actor"] if bars else None,
+                "placement": state["placement"],
+                "first_bar_shot": state["first_bar_shot"],
+                "ds": None if state["ds"] is None else f"{state['ds']:04X}",
+                "torn_frames": state["torn"], "loose_frames": state["loose"],
+                "screens": state["kinds"]}
+
+    def _pool_fight(self, seconds: int, first_bar: bool) -> dict:
+        """Pool's `fight`: walk with `dosfightwatch.walk_to_encounter` until a
+        fight bar shows, then answer each bar by `PoolOfRadiance.COMBAT_KEYS`
+        (its digests, `bar_kind`), logging the command bars as `fight` does
+        (`_command_bar`).  The fight is over once the map bar has held
+        `FIGHT_SETTLED` seconds; with `first_bar` the step ends at the first
+        command bar instead.  A bar with no key that holds `FIGHT_PATIENCE`
+        seconds stops the run, as does the map coming back before any
+        command bar in a `first_bar` step.
+        """
+        map_screen = self.s.capture()
+        if not self.on_world(map_screen):
+            raise self.fail("fight-before", "the map bar is not showing")
+        budget = float(seconds or FIGHT_SECONDS)
+        end = time.time() + self.bounded(budget, "fight")
+        self.fights += 1
+        try:
+            walk = dosfightwatch.walk_to_encounter(self.game, POOL_FIGHT_WALK_STEPS)
+            self.note(event="fight-walk", **walk)
+            if not walk["met"]:
+                raise self.fail("fight-walk", f"no encounter: {walk.get('why')}")
+            state = self._fight_state(True, None)
+            state.update(first_bar_key=None, intervene=False, hand_back=False,
+                         met=True, met_after=walk["walked"],
+                         stop_at_first=first_bar)
+            while not state["stopped"]:
+                self.check_deadline("fight")
+                if time.time() > end:
+                    raise self.fail("fight-budget", self._fight_short(
+                        budget, Explorer(), state))
+                if self._pool_fight_tick(state, first_bar):
+                    break
+        finally:
+            self.game.record_map(map_screen)
+        moved = {"walked": walk["walked"], "blocked": walk["blocked"],
+                 "prompts": walk["prompts"], "walked_before_fight": walk["walked"]}
+        if state["stopped"]:
+            self.where = "pressed"
+            return self._first_bar_result(state, moved)
+        self.where = "map"
+        self._fight_shot("fight-end")
+        bars = state["bars"]
+        return {"fight": self.fights, **moved,
+                "presses": state["presses"], "encounters": state["encounters"],
+                "bars": len(bars),
+                "actors": [b["actor"]["name"] if b["actor"] else None for b in bars],
+                "placement": state["placement"],
+                "ds": None if state["ds"] is None else f"{state['ds']:04X}",
+                "torn_frames": state["torn"], "loose_frames": state["loose"],
+                "repeated_bars": state["repeats"], "screens": state["kinds"]}
+
+    def _pool_fight_tick(self, state: dict, first_bar: bool) -> bool:
+        """One look at a Pool fight and one answer; True once the map bar
+        has held `FIGHT_SETTLED` seconds."""
+        screen = self._look(state)
+        glyphs = screen.glyphs(dosbox.BAR)
+        if glyphs == self.game.world_glyphs:
+            if first_bar:
+                raise self.fail("fight-first-bar", "the map came back before "
+                                "any command bar")
+            state["unknown_since"] = None
+            state["back_since"] = state["back_since"] or time.time()
+            if time.time() - state["back_since"] >= FIGHT_SETTLED:
+                return True
+            time.sleep(0.25)
+            return False
+        state["back_since"] = None
+        kind = self.game.bar_kind(screen)
+        self._first_sight(kind, glyphs, screen, state)
+        if kind == "command":
+            state["unknown_since"] = None
+            self._command_bar(glyphs, state)
+            return False
+        key = self.game.COMBAT_KEYS.get(kind or "")
+        if key is None:
+            if kind == "blank":
+                state["last_bar"] = None
+            state["unknown_since"] = state["unknown_since"] or time.time()
+            if time.time() - state["unknown_since"] >= FIGHT_PATIENCE:
+                raise self.fail(f"fight-unknown-{glyphs}",
+                                f"a bar with no key ({kind or 'unclassified'}) "
+                                f"stayed {FIGHT_PATIENCE:.0f} s")
+            time.sleep(0.25)
+            return False
+        state["unknown_since"] = None
+        state["last_bar"] = None
+        if kind == "encounter":
+            state["encounters"] += 1
+        self._answer(key, glyphs, kind, state)
+        return False
+
     def _fight_state(self, first_fight: bool, enter: str | None) -> dict:
         """What `_fight_tick` keeps across one fight's looks, fresh."""
         state: dict = {"met": False, "met_after": None, "bars": [],
@@ -4587,7 +5064,9 @@ class Driver:
                        "intervene": self.intervene and first_fight,
                        "hand_back": not first_fight, "handed_back": False,
                        "before_hand_back": None, "begun": False,
-                       "stale_window": None, "probed_at": None, "probes": 0}
+                       "stale_window": None, "probed_at": None, "probes": 0,
+                       "stop_at_first": False, "stopped": False,
+                       "first_bar_shot": None}
         if not first_fight:
             # What the last fight left in the combat window, so that a fight
             # with no encounter menu and no command bar is still seen to begin.
@@ -4917,7 +5396,7 @@ class Driver:
             state["met_after"] = walker.steps
         if kind == "command":
             self._command_bar(glyphs, state)
-            return False
+            return state["stopped"]
         if kind == "encounter":
             state["encounters"] += 1
         state["last_bar"] = None
@@ -5051,7 +5530,7 @@ class Driver:
         first = not state["bars"]
         after_key = state["key_pressed"] and state["after_key"] is None
         if first:
-            self._fight_shot("fight-first-bar")
+            state["first_bar_shot"] = self._fight_shot("fight-first-bar")
         snap = self.combat_memory(first or after_key, state["records"])
         state["ds"] = snap["ds"]
         actor = next((c for c in snap["combatants"] if c["index"] == snap["selected"]),
@@ -5074,6 +5553,9 @@ class Driver:
             state["placement"] = public
             self.note(event="placement", combatants=public, ds=f"{snap['ds']:04X}",
                       selected=snap["selected"])
+            if state["stop_at_first"]:
+                state["stopped"] = True
+                return
             if state["first_bar_key"] is not None:
                 self.s.key(state["first_bar_key"])
                 state["presses"] += 1
@@ -7154,9 +7636,11 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                 elif step.kind == "shot":
                     r = {"shot": d.shot(step.name)}
                 elif step.kind == "fight":
-                    r = d.fight(step.seconds)
+                    r = d.fight(step.seconds, step.name == FIRST_BAR)
                 elif step.kind == "prayer-watch":
                     r = d.prayer_watch(step.node)
+                elif step.kind == "temple":
+                    r = d.temple_raise(step.line)
                 elif step.kind == "press":
                     r = d.press(step.key)
                 elif step.kind == "snapshot":
@@ -7826,6 +8310,9 @@ def main(argv: list[str] | None = None) -> int:
         if getattr(args, "stage_place", None):
             parse_place(args.stage_place)
         validate_steps([parse_step(s) for s in args.steps], args.title)
+        why = temple_staging_rejection(args, [parse_step(s) for s in args.steps])
+        if why:
+            raise ValueError(why)
         if not (args.save or args.fixture_row or args.amiga_slot or args.convert):
             parsed = [parse_step(s) for s in args.steps]
             if not parsed or parsed[0].kind != "add":
@@ -7845,9 +8332,10 @@ def main(argv: list[str] | None = None) -> int:
                                  "one, and a run with no save installs none")
         if args.first_bar_key is not None:
             parse_key(args.first_bar_key)
-            if not any(parse_step(s).kind == "fight" for s in getattr(args, "steps", [])):
+            if not any(parse_step(s).kind == "fight" and parse_step(s).name != FIRST_BAR
+                       for s in getattr(args, "steps", [])):
                 raise ValueError("--first-bar-key is pressed in a fight: add a "
-                                 "fight step")
+                                 f"fight step other than fight {FIRST_BAR}")
         if args.speculative_encounters and not args.no_encounters:
             raise ValueError("--speculative-encounters goes with --no-encounters")
         if args.no_encounters and args.title == "ssb" \
@@ -7863,8 +8351,10 @@ def main(argv: list[str] | None = None) -> int:
             if args.title not in CHEAT_ARGS:
                 raise ValueError(f"--intervene is measured for "
                                  f"{', '.join(sorted(CHEAT_ARGS))} only, not {args.title}")
-            if not any(parse_step(s).kind == "fight" for s in args.steps):
-                raise ValueError("--intervene is pressed in a fight: add a fight step")
+            if not any(parse_step(s).kind == "fight" and parse_step(s).name != FIRST_BAR
+                       for s in args.steps):
+                raise ValueError("--intervene is pressed in a fight: add a fight "
+                                 f"step other than fight {FIRST_BAR}")
         if args.hall and args.title not in HALL_TITLES:
             raise ValueError(f"--hall is measured for {', '.join(sorted(HALL_TITLES))} "
                              f"only, not {args.title}")

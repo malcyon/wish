@@ -2640,7 +2640,7 @@ def test_pool_reads_the_square_from_memory_only_with_a_debugger(tmp_path):
     assert d.place_reader is None
     (tmp_path / "m").mkdir()
     game, d = _memory_walker(tmp_path / "m")
-    assert d.party_place("x") == {"x": 0, "y": 5, "facing": 0,
+    assert d.party_place("x") == {"x": 0, "y": 5, "facing": 0, "area": 0,
                                   "raw": "0005000000", "ds": "149E"}
     assert game.halts == 1
 
@@ -8387,7 +8387,7 @@ def test_the_encounter_and_treasure_bars_are_known_by_their_letters():
     assert not da.treasure_words(_words("SAVE VIEW MAGIC REST EXIT"))
 
 
-def test_the_fight_step_parses_for_curse_and_silver_blades_only():
+def test_the_fight_step_parses_for_pool_curse_and_silver_blades_only():
     assert da.parse_step("fight").seconds == 0
     assert da.parse_step("fight 900").seconds == 900
     for bad in ("fight 0", "fight x", "fight 9 9"):
@@ -8398,10 +8398,10 @@ def test_the_fight_step_parses_for_curse_and_silver_blades_only():
                            ("load", "begin", "fight", "camp", "save E", "read")], title)
         with pytest.raises(ValueError, match="needs the map"):
             da.validate_steps([da.parse_step(s) for s in ("load", "fight")], title)
-    for title, steps in (("pool", ("load", "fight")),
-                         ("darkness", ("load", "begin", "fight"))):
-        with pytest.raises(ValueError, match="curse, ssb only"):
-            da.validate_steps([da.parse_step(s) for s in steps], title)
+    da.validate_steps([da.parse_step(s) for s in ("load", "fight", "read")], "pool")
+    with pytest.raises(ValueError, match="curse, pool, ssb only"):
+        da.validate_steps([da.parse_step(s) for s in ("load", "begin", "fight")],
+                          "darkness")
 
 
 def test_the_first_bar_key_is_space_or_one_letter_or_digit():
@@ -12004,3 +12004,669 @@ def test_pool_walk_i_with_a_hidden_origin_compares_a_shown_step_with_memory(tmp_
     got = d.walk("I")
     assert got["square_before"] is None and got["square_after"] is not None
     assert (got["place_before"]["x"], got["place_after"]["x"]) == (0, 1)
+
+
+# -- Pool's fight and `fight first-bar` (WISH-303) ------------------------------
+
+
+def test_fight_first_bar_parses_for_every_fight_title():
+    step = da.parse_step("fight first-bar")
+    assert (step.kind, step.name, step.seconds) == ("fight", da.FIRST_BAR, 0)
+    da.validate_steps([da.parse_step(s) for s in
+                       ("load", "fight first-bar", "shot after", "read")], "pool")
+    for title in ("curse", "ssb"):
+        da.validate_steps([da.parse_step(s) for s in
+                           ("load", "begin", "fight first-bar", "read")], title)
+    with pytest.raises(ValueError, match="curse, pool, ssb only"):
+        da.validate_steps([da.parse_step(s) for s in
+                           ("load", "begin", "fight first-bar")], "darkness")
+
+
+@pytest.mark.parametrize("after", ["camp", "press Return", "fight", "walk I",
+                                   "snapshot x"])
+def test_only_shot_and_read_may_follow_fight_first_bar(after):
+    with pytest.raises(ValueError, match="only shot and read may come after fight"):
+        da.validate_steps([da.parse_step(s) for s in
+                           ("load", "fight first-bar", after)], "pool")
+
+
+def test_a_second_pool_fight_in_one_boot_is_blocked():
+    with pytest.raises(ValueError, match="hand-back key is unread"):
+        da.validate_steps([da.parse_step(s) for s in ("load", "fight", "fight")],
+                          "pool")
+
+
+def test_a_first_bar_key_needs_a_fight_that_reaches_a_second_bar(tmp_path, monkeypatch,
+                                                                  capsys):
+    def claimed(*a, **k):
+        raise AssertionError("an emulator slot was claimed")
+
+    monkeypatch.setattr(da.dosbox, "claim", claimed)
+    monkeypatch.setattr(da.dosboxx, "claim", claimed)
+    with pytest.raises(SystemExit):
+        da.main(["--title", "ssb", "--save", str(tmp_path), "--steps", "load",
+                 "begin", "fight first-bar", "--first-bar-key", "SPACE",
+                 "--out", str(tmp_path / "out")])
+    assert "other than fight first-bar" in capsys.readouterr().err
+
+
+def _pool_layout():
+    return da.COMBAT_LAYOUTS["pool"]
+
+
+def _layout_record(layout, name: str, side: int, quick: int, control: int, hp: int,
+                   after: tuple[int, int] = (0, 0)) -> bytearray:
+    rec = bytearray(max(layout.hp_at, layout.next_at + 3) + 1)
+    rec[0] = len(name)
+    rec[1:1 + len(name)] = name.encode()
+    rec[layout.status_at:layout.status_at + 4] = bytes((0, 1, side, quick))
+    rec[layout.control_at] = control
+    rec[layout.hp_at] = hp
+    seg, off = after
+    rec[layout.next_at:layout.next_at + 4] = (off.to_bytes(2, "little")
+                                              + seg.to_bytes(2, "little"))
+    return rec
+
+
+def _far(ptr: tuple[int, int]) -> bytes:
+    seg, off = ptr
+    return off.to_bytes(2, "little") + seg.to_bytes(2, "little")
+
+
+def _pool_fight_memory() -> tuple[bytearray, dict, dict]:
+    """A Pool fight in fake memory at Pool's own offsets: GUY and PAINE the
+    player's, BRUTUS run by the computer (control 0xB3), a KOBOLD on side 1;
+    the list from the party head runs on into the KOBOLD."""
+    lay = _pool_layout()
+    ptrs = {"GUY": (0x3000, 0x10), "PAINE": (0x3000, 0x200),
+            "BRUTUS": (0x3000, 0x400), "KOBOLD": (0x3100, 0x10)}
+    records = {
+        ptrs["GUY"]: _layout_record(lay, "GUY", 0, 0, 0, 30, ptrs["PAINE"]),
+        ptrs["PAINE"]: _layout_record(lay, "PAINE", 0, 0, 0, 25, ptrs["BRUTUS"]),
+        ptrs["BRUTUS"]: _layout_record(lay, "BRUTUS", 0, 1, 0xB3, 9, ptrs["KOBOLD"]),
+        ptrs["KOBOLD"]: _layout_record(lay, "KOBOLD", 1, 1, 0x80, 4),
+    }
+    ds = bytearray(0x10000)
+    order = ("GUY", "PAINE", "BRUTUS", "KOBOLD")
+    ds[lay.map_at + 3] = len(order) + 1
+    for i, who in enumerate(order, 1):
+        x, y = (9 + i, 12) if who != "KOBOLD" else (10, 6)
+        ds[lay.map_at + 4 * i:lay.map_at + 4 * i + 4] = bytes((x, y, i, 1))
+        ds[lay.array_at + 4 * i:lay.array_at + 4 * i + 4] = _far(ptrs[who])
+    ds[lay.party_at:lay.party_at + 4] = _far(ptrs["GUY"])
+    ds[lay.selected_at:lay.selected_at + 4] = _far(ptrs["PAINE"])
+    return ds, records, ptrs
+
+
+def test_pools_layout_is_the_one_its_game_ovr_combat_setup_writes():
+    # Pool `GAME.OVR` 0xE1C2-0xE3D9: [0x5F2A] = 1, the list from [0x5D96]
+    # through record +0x104, the pointer at 0x65B9+4i, the index at
+    # 0x5F29+4i and the size at 0x5F2A+4i; `les di, [0x5D92]` at 202 sites.
+    assert _pool_layout() == da.CombatLayout(
+        map_at=0x5F27, array_at=0x65B9, selected_at=0x5D92, party_at=0x5D96,
+        next_at=0x104, control_at=0x84, status_at=0x10C, hp_at=0x11B)
+    assert da.dosfightwatch.PRAYER_LAYOUTS["pool"].party_list == _pool_layout().party_at
+    assert da.dosfightwatch.PRAYER_LAYOUTS["pool"].next_record == _pool_layout().next_at
+    assert da.dosfightwatch.PRAYER_LAYOUTS["pool"].side == _pool_layout().status_at + 2
+
+
+def test_pools_layout_decodes_a_combat_window():
+    ds, records, ptrs = _pool_fight_memory()
+    lay = _pool_layout()
+    lo, n = da.combat_window(lay)
+    got = da.read_combat(bytes(ds[lo:lo + n]), lo, lay)
+    assert got["count"] == 4 and got["selected"] == 2
+    assert [c["position"] for c in got["combatants"]] == [[10, 12], [11, 12],
+                                                          [12, 12], [10, 6]]
+    assert got["party_head"] == list(ptrs["GUY"])
+    brutus = da.combatant_record(bytes(records[ptrs["BRUTUS"]]), lay)
+    assert (brutus["name"], brutus["side"], brutus["quickfight"], brutus["control"],
+            brutus["hp"]) == ("BRUTUS", 0, 1, 0xB3, 9)
+
+
+class FakePoolFight:
+    """A DOS Pool session at the map, with a fight in memory.
+
+    The walk is `dosfightwatch.walk_to_encounter`'s, replaced in the tests;
+    it ends on the encounter menu.  `c` there opens GUY's command bar, `q`
+    moves on to PAINE's and then to the win message, `Return` to the
+    treasure, and `e` to the map.  Its bars are told apart by `kind`, which
+    stands in for `PoolOfRadiance.bar_kind`'s measured digests.
+    """
+
+    BARS = {"map": b"\x11\x22\x33\x44", "encounter": b"\x51\x52",
+            "bar1": b"\x61\x62\x63", "bar2": b"\x61\x62\x63",
+            "won": b"\x71", "treasure": b"\x72\x73"}
+    KINDS = {"encounter": "encounter", "bar1": "command", "bar2": "command",
+             "won": "press_return", "treasure": "treasure"}
+
+    def __init__(self, tmp_path):
+        self.dir = tmp_path / "session"
+        (self.dir / "shots").mkdir(parents=True)
+        self.save_dir = self.dir / "SAVE"
+        self.state, self.actor = "map", None
+        self.keys: list[str] = []
+        self.halts = 0
+        self.ds, self.records, self.ptrs = _pool_fight_memory()
+
+    def frame(self) -> dosbox.Screen:
+        return _screen(self.BARS[self.state], b"")
+
+    def kind(self, screen=None) -> str | None:
+        screen = screen if screen is not None else self.frame()
+        glyphs = screen.glyphs(dosbox.BAR)
+        for state, bar in self.BARS.items():
+            if _screen(bar, b"").glyphs(dosbox.BAR) == glyphs:
+                return self.KINDS.get(state)
+        return None
+
+    def capture(self):
+        return self.frame()
+
+    grab = capture
+
+    def settle(self, quiet=0.6, timeout=30.0):
+        return self.frame()
+
+    def wait_for(self, pred, timeout=30.0):
+        return pred(self.frame())
+
+    def wait_until_ink(self, rect, want, timeout=30.0):
+        return self.frame().ink(rect) == want
+
+    def wait_while_ink(self, rect, same, timeout=30.0):
+        return self.frame().ink(rect) != same
+
+    def wait_while_glyphs(self, rect, same, timeout=30.0):
+        return self.frame().glyphs(rect) != same
+
+    def shot(self, name, allow_blank=False):
+        path = self.dir / "shots" / f"{name}.png"
+        path.write_bytes(b"x")
+        return path
+
+    def key(self, *keys, gap=0.35):
+        for k in keys:
+            self.keys.append(k)
+            step = {("encounter", "c"): ("bar1", "GUY"), ("bar1", "q"): ("bar2", "PAINE"),
+                    ("bar2", "q"): ("won", None), ("won", "Return"): ("treasure", None),
+                    ("treasure", "e"): ("map", None)}.get((self.state, k))
+            if step is not None:
+                self.state, actor = step
+                if actor:
+                    at = _pool_layout().selected_at
+                    self.ds[at:at + 4] = _far(self.ptrs[actor])
+
+    def attach(self):
+        self.halts += 1
+        return True
+
+    def regs(self, *names):
+        return {"DS": _DS}
+
+    def read(self, addr, n):
+        seg, off = addr
+        if seg == _DS:
+            return bytes(self.ds[off:off + n])
+        return bytes(self.records[(seg, off)][:n])
+
+    def run(self):
+        pass
+
+
+def _pool_fighter(tmp_path, monkeypatch, met=True):
+    game = FakePoolFight(tmp_path)
+    d = da.Driver(game, lambda **k: None, "D", "pool", party_size=3)
+    d.logged = []
+    d.note = lambda **k: d.logged.append(k)
+    d.record_world(game.capture())
+    d.where = "map"
+    d.game.bar_kind = game.kind
+    walks = []
+
+    def walk(por, steps, **kw):
+        walks.append(steps)
+        if not met:
+            return {"met": False, "why": "no encounter in the steps asked",
+                    "walked": steps, "blocked": 0, "prompts": 0}
+        game.state = "encounter"
+        return {"met": True, "at_step": 3, "bar": "encounter", "walked": 2,
+                "blocked": 1, "prompts": 0}
+
+    monkeypatch.setattr(da.dosfightwatch, "walk_to_encounter", walk)
+    return game, d, walks
+
+
+def test_a_pool_fight_first_bar_logs_placement_and_stops_pressing_nothing_there(
+        tmp_path, monkeypatch, fight_now):
+    game, d, walks = _pool_fighter(tmp_path, monkeypatch)
+    got = d.fight(first_bar=True)
+    assert walks == [da.POOL_FIGHT_WALK_STEPS]
+    assert game.keys == ["c"] and game.state == "bar1"
+    assert d.where == "pressed"
+    assert got["first_bar"] and got["bars"] == 1 and got["actor"]["name"] == "GUY"
+    assert got["first_bar_shot"] is not None and got["ds"] == f"{_DS:04X}"
+    rows = {c["name"]: c for c in got["placement"]}
+    assert (rows["BRUTUS"]["control"], rows["BRUTUS"]["slot"], rows["BRUTUS"]["party"],
+            rows["BRUTUS"]["position"]) == (0xB3, 2, True, [12, 12])
+    assert (rows["KOBOLD"]["side"], rows["KOBOLD"]["party"]) == (1, False)
+    assert len(_events(d, "placement")) == 1
+
+
+def test_a_pool_fight_answers_its_bars_and_ends_on_the_map(tmp_path, monkeypatch,
+                                                           fight_now):
+    game, d, _ = _pool_fighter(tmp_path, monkeypatch)
+    got = d.fight()
+    assert game.keys == ["c", "q", "q", "Return", "e"] and game.state == "map"
+    assert d.where == "map"
+    assert got["actors"] == ["GUY", "PAINE"] and got["encounters"] == 1
+    assert got["walked_before_fight"] == 2
+
+
+def test_a_pool_fight_with_no_encounter_stops_the_run(tmp_path, monkeypatch):
+    game, d, _ = _pool_fighter(tmp_path, monkeypatch, met=False)
+    with pytest.raises(da.StepFailed, match="no encounter"):
+        d.fight(first_bar=True)
+    assert game.keys == []
+
+
+def test_a_curse_or_silver_blades_fight_first_bar_stops_at_its_first_bar(
+        tmp_path, fight_now):
+    game, d = _fighter(tmp_path, key="space", intervene=True)
+    got = d.fight(first_bar=True)
+    # The walk, COMBAT, and nothing at the bar: no QUICK, no first-bar key,
+    # no Alt+X, and move mode is not left.
+    assert game.keys == ["m", "Up", "Up", "c"] and game.state == "bar1"
+    assert d.where == "pressed"
+    assert got["first_bar"] and got["actor"]["name"] == "GUY"
+    assert len(got["placement"]) == 4 and got["walked_before_fight"] == 1
+
+
+# -- Pool's I, J and K walk and `temple raise N` (WISH-303) ---------------------
+
+
+class FakeTextScreen:
+    """A frame as text rows (40 columns each), with the digests and the
+    highlights the driver reads named after its state."""
+
+    def __init__(self, state: str, rows: dict[int, str], list_row: int | None = None,
+                 roster_row: int | None = 0):
+        self.state, self.text_rows = state, rows
+        self.list_row, self.roster_row = list_row, roster_row
+        self.width, self.height = W, H
+
+    def row_text(self, row: int, columns) -> str:
+        line = self.text_rows.get(row, "")
+        return "".join(line[c] if c < len(line) else " " for c in columns).rstrip()
+
+    def ink(self, rect) -> str:
+        return f"ink-{self.state}"
+
+    def glyphs(self, rect) -> str:
+        return f"glyphs-{self.state}"
+
+    def flat(self, rect) -> bool:
+        return False
+
+    def digest(self, rect=None) -> str:
+        return f"digest-{self.state}-{self.list_row}"
+
+    def highlight_row(self, rect, row_height=8, minimum=10):
+        if rect == da.TEMPLE_LIST_RECT:
+            return self.list_row
+        return self.roster_row
+
+
+class FakeTextSession:
+    """What the driver asks of a session, over `FakeTextScreen` frames that
+    the subclass's `screen` draws and its `press` changes."""
+
+    def __init__(self, tmp_path):
+        self.dir = tmp_path / "session"
+        (self.dir / "shots").mkdir(parents=True)
+        self.save_dir = self.dir / "SAVE"
+        self.keys: list[str] = []
+
+    def capture(self):
+        return self.screen()
+
+    grab = capture
+
+    def settle(self, quiet=0.6, timeout=30.0):
+        return self.screen()
+
+    def wait_for(self, pred, timeout=30.0):
+        return pred(self.screen())
+
+    def wait_until_ink(self, rect, want, timeout=30.0):
+        return self.screen().ink(rect) == want
+
+    def wait_while_ink(self, rect, same, timeout=30.0):
+        return self.screen().ink(rect) != same
+
+    def shot(self, name, allow_blank=False):
+        path = self.dir / "shots" / f"{name}.png"
+        path.write_bytes(b"x")
+        return path
+
+    def key(self, *keys, gap=0.35):
+        for k in keys:
+            self.keys.append(k)
+            self.press(k)
+
+    def attach(self):
+        return True
+
+    def run(self):
+        pass
+
+
+@pytest.fixture
+def text_rows(monkeypatch):
+    """`text_row` reads a `FakeTextScreen`'s rows, and no font is loaded."""
+    monkeypatch.setattr(da, "text_row",
+                        lambda screen, row, font, columns=range(40):
+                        screen.row_text(row, columns))
+
+
+def _text_driver(game) -> da.Driver:
+    d = da.Driver(game, lambda **k: None, "D", "pool", party_size=6)
+    d.logged = []
+    d.note = lambda **k: d.logged.append(k)
+    d._font = {}
+    d.record_world(game.capture())
+    d.where = "map"
+    return d
+
+
+class FakeWalk(FakeTextSession):
+    """The map, with the party's place from a script: `places[i]` after the
+    i-th move (x, y, area, facing); the step that is move `arrive` lands on
+    the temple's question instead of the map."""
+
+    def __init__(self, tmp_path, places, arrive=None):
+        super().__init__(tmp_path)
+        self.places, self.arrive, self.moves = list(places), arrive, 0
+        self.state = "map"
+
+    def screen(self):
+        if self.state == "arrival":
+            return FakeTextScreen("arrival", {17: "YOU ARE WELCOMED BY PRIESTESS JOY OF",
+                                              18: "SUNE.' DO YOU SEEK HEALING?'",
+                                              24: "YES NO"})
+        return FakeTextScreen("map", {15: f"{self.moves},4 N 21:16", 24: "AREA CAST"})
+
+    def press(self, key):
+        pass
+
+    def move(self, letter):
+        self.keys.append(letter)
+        self.moves += 1
+        if letter == "I" and self.moves == self.arrive:
+            self.state = "arrival"
+            return False
+        return True
+
+    def place(self):
+        x, y, area, facing = self.places[min(self.moves, len(self.places) - 1)]
+        return {"x": x, "y": y, "area": area, "facing": facing}
+
+
+def _walker(tmp_path, places, arrive=None):
+    game = FakeWalk(tmp_path, places, arrive)
+    d = _text_driver(game)
+    d.place_reader = game.place
+    d.game.step = lambda: game.move("I")
+    d.game.turn_left = lambda: game.move("J")
+    d.game.turn_right = lambda: game.move("K")
+    return game, d
+
+
+#: The C64 temple route's places from the Slums square, as (x, y, area,
+#: facing), which DOS captures matched: two right turns, a step east into
+#: New Phlan, a step, a left turn, and the step onto the temple's square.
+_TEMPLE_WALK = [(15, 4, 20, 3), (15, 4, 20, 0), (15, 4, 20, 1), (0, 4, 0, 1),
+                (1, 4, 0, 1), (1, 4, 0, 0), (1, 3, 0, 0)]
+
+
+def test_pool_walk_letters_parse_and_validate():
+    assert da.parse_step("walk KKIIJI").key == "KKIIJI"
+    assert da.parse_step("walk kkiiji").key == "KKIIJI"
+    da.validate_steps([da.parse_step(s) for s in ("load", "walk KKIIJI", "walk J",
+                                                  "walk I", "walk MI")], "pool")
+    with pytest.raises(ValueError, match="not a step"):
+        da.parse_step("walk KX")
+    with pytest.raises(ValueError, match="curse's walk is 'walk MI'"):
+        da.validate_steps([da.parse_step(s) for s in ("load", "begin", "walk KKIIJI")],
+                          "curse")
+
+
+def test_a_pool_letter_walk_judges_each_move_by_the_place_in_memory(tmp_path,
+                                                                   text_rows):
+    game, d = _walker(tmp_path, _TEMPLE_WALK)
+    got = d.walk("KKIIJI")
+    assert game.keys == list("KKIIJI") and d.where == "map"
+    assert [m["move"] for m in got["moves"]] == list("KKIIJI")
+    assert got["crossings"] == [3]
+    assert got["moves"][2]["before"] == [15, 4, 20] and got["moves"][2]["after"] == [0, 4, 0]
+    assert got["arrival"] is None
+
+
+def test_a_turn_that_moves_the_square_fails_the_walk(tmp_path, text_rows):
+    places = [(15, 4, 20, 3), (15, 5, 20, 0)]
+    game, d = _walker(tmp_path, places)
+    with pytest.raises(da.StepFailed, match="square changed on a turn"):
+        d.walk("KI")
+    assert game.keys == ["K"]
+
+
+def test_a_turn_that_changes_the_area_fails_the_walk(tmp_path, text_rows):
+    game, d = _walker(tmp_path, [(15, 4, 20, 3), (15, 4, 0, 0)])
+    with pytest.raises(da.StepFailed, match="square changed on a turn"):
+        d.walk("KI")
+
+
+def test_a_step_that_stays_on_its_square_fails_the_walk(tmp_path, text_rows):
+    game, d = _walker(tmp_path, [(15, 4, 20, 3), (15, 4, 20, 3)])
+    with pytest.raises(da.StepFailed, match="blocked step"):
+        d.walk("IK")
+
+
+def test_a_letter_walk_needs_the_place_from_memory(tmp_path, text_rows):
+    game, d = _walker(tmp_path, _TEMPLE_WALK)
+    d.place_reader = None
+    with pytest.raises(da.StepFailed, match="DOSBox-X debugger"):
+        d.walk("KKIIJI")
+    assert game.keys == []
+
+
+def test_only_the_last_step_may_end_off_the_map_and_it_is_the_arrival(tmp_path,
+                                                                     text_rows):
+    game, d = _walker(tmp_path, _TEMPLE_WALK, arrive=6)
+    got = d.walk("KKIIJI")
+    assert d.where == "arrival"
+    assert "DO YOU SEEK HEALING" in got["arrival"]["text"]
+    assert got["arrival"]["bar"] == "YES NO"
+    game, d = _walker(tmp_path / "early", _TEMPLE_WALK[:5], arrive=3)
+    with pytest.raises(da.StepFailed, match="map bar did not return after the step"):
+        d.walk("KKII")
+    assert game.keys == ["K", "K", "I"]
+
+
+def test_temple_raise_parses_and_needs_the_map():
+    step = da.parse_step("temple raise 1")
+    assert (step.kind, step.name, step.line) == ("temple", "raise", 1)
+    for bad in ("temple raise 9", "temple raise", "temple heal 1"):
+        with pytest.raises(ValueError):
+            da.parse_step(bad)
+    da.validate_steps([da.parse_step(s) for s in
+                       ("load", "walk KKIIJI", "temple raise 1", "sheet 1", "camp",
+                        "save D", "read")], "pool")
+    with pytest.raises(ValueError, match="temple raise needs the map"):
+        da.validate_steps([da.parse_step(s) for s in
+                           ("load", "camp", "temple raise 1")], "pool")
+    with pytest.raises(ValueError, match="pool only"):
+        da.validate_steps([da.parse_step(s) for s in
+                           ("load", "begin", "temple raise 1")], "curse")
+
+
+def test_temple_raise_at_runtime_needs_the_arrival_question(tmp_path, text_rows):
+    game, d = _walker(tmp_path, _TEMPLE_WALK)
+    with pytest.raises(da.StepFailed, match="arrival question"):
+        d.temple_raise(1)
+    assert game.keys == []
+
+
+def _temple_args(**kw):
+    import argparse
+    base = dict(xp=[], add_node=[], stage_control=[], stage_side=[], stage_record=[])
+    base.update(kw)
+    return argparse.Namespace(**base)
+
+
+def test_a_temple_run_stages_only_gold_and_constitution():
+    steps = [da.parse_step(s) for s in ("load", "walk KKIIJI", "temple raise 1")]
+    ok = _temple_args(stage_record=["1:0x8E=0x70,1:0x8F=0x17,1:0x14=18"])
+    assert da.temple_staging_rejection(ok, steps) is None
+    why = da.temple_staging_rejection(_temple_args(stage_record=["1:0x15=18"]), steps)
+    assert "only gold (0x08E, 0x08F) and constitution (0x014)" in why
+    assert "1:0x015" in why
+    assert "--stage-control" in da.temple_staging_rejection(
+        _temple_args(stage_control=["1=0x80"]), steps)
+    # Without a temple step nothing here limits the staging.
+    assert da.temple_staging_rejection(_temple_args(stage_record=["1:0x15=18"]),
+                                       steps[:2]) is None
+
+
+def test_main_blocks_other_staging_with_temple_raise_before_any_boot(tmp_path,
+                                                                    monkeypatch, capsys):
+    def claimed(*a, **k):
+        raise AssertionError("an emulator slot was claimed")
+
+    monkeypatch.setattr(da.dosbox, "claim", claimed)
+    monkeypatch.setattr(da.dosboxx, "claim", claimed)
+    with pytest.raises(SystemExit):
+        da.main(["--title", "pool", "--save", str(tmp_path), "--steps", "load",
+                 "walk KKIIJI", "temple raise 1", "--stage-record", "1:0x10=18",
+                 "--out", str(tmp_path / "out")])
+    assert "temple raise stages only gold" in capsys.readouterr().err
+
+
+_SERVICES = ["CURE BLINDNESS", "CURE DISEASE", "CURE LIGHT WOUNDS",
+             "CURE SERIOUS WOUNDS", "CURE CRITICAL WOUNDS", "NEUTRALIZE POISON",
+             "RAISE DEAD", "REMOVE CURSE", "STONE TO FLESH", "EXIT"]
+
+
+class FakeTemple(FakeTextSession):
+    """DOS Pool's temple as the captures drew it, from the arrival question.
+
+    `y` there opens the temple bar; `v` the highlighted member's sheet and
+    `Escape` back; `h` the service list (highlight on row 0, `End` moves it
+    down); `h` on RAISE DEAD the price; `y` there pays, draws `result` for
+    two looks and the list again; `e` from the list to the bar and from the
+    bar to the map.  With `pays` the raise happens, as the game draws it:
+    no message, hit points 1 on the roster and the money changed; without,
+    `message` is drawn and nothing changes.
+    """
+
+    def __init__(self, tmp_path, pays=True, message=""):
+        super().__init__(tmp_path)
+        self.state, self.row, self.message, self.looks = "arrival", 0, message, 0
+        self.pays, self.raised = pays, False
+
+    def screen(self):
+        s = self.state
+        roster = {4: " " * 17 + f"BRUTUS           3  {1 if self.raised else 11:>2}",
+                  5: " " * 17 + "MAGNUS           2   9"}
+        if s == "map":
+            return FakeTextScreen("map", {15: "1,3 N 21:18", 24: "AREA CAST"})
+        if s == "arrival":
+            return FakeTextScreen(s, {17: "YOU ARE WELCOMED BY PRIESTESS JOY OF",
+                                      18: "SUNE.' DO YOU SEEK HEALING?'", 24: "YES NO"})
+        if s == "bar":
+            return FakeTextScreen(s, {**roster, 24: da.TEMPLE_BAR})
+        if s == "sheet":
+            # As drawn: the money ends at column 25 or before, and the
+            # portrait's frame is column 27.
+            money = " PLATINUM 101" if self.raised else "     GOLD 6000"
+            return FakeTextScreen(s, {1: " BRUTUS", 7: f" STR 18(98){money}  |",
+                                      8: " INT 16       SILVER 102" if not self.raised
+                                      else " INT 16", 24: "VIEW:ITEMS TRADE DROP EXIT"})
+        rows = {1: " BRUTUS, HOW CAN WE HELP YOU?", 24: da.TEMPLE_LIST_BAR,
+                **{4 + i: f" {name}" for i, name in enumerate(_SERVICES)}}
+        if s == "price":
+            rows.update({17: " RAISE DEAD WILL ONLY COST 5500 GOLD",
+                         18: " PIECES.", 24: da.TEMPLE_PRICE_BAR})
+            return FakeTextScreen(s, rows, list_row=None)
+        if s == "result":
+            self.looks += 1
+            if self.looks > 2:
+                self.state = "list"
+            if self.message:
+                rows.update({18: f" {self.message}"})
+        return FakeTextScreen("list", rows, list_row=self.row)
+
+    def press(self, key):
+        s = "list" if self.state == "result" else self.state
+        step = {("arrival", "y"): "bar", ("bar", "v"): "sheet", ("sheet", "Escape"): "bar",
+                ("bar", "h"): "list", ("list", "e"): "bar", ("bar", "e"): "map"}
+        if (s, key) in step:
+            self.state = step[(s, key)]
+            if self.state == "list":
+                self.row = 0
+        elif s == "list" and key == "End":
+            self.row += 1
+        elif s == "list" and key == "h" and _SERVICES[self.row] == "RAISE DEAD":
+            self.state = "price"
+        elif s == "price" and key == "y":
+            self.state, self.looks = "result", 0
+            self.raised = self.pays
+
+
+@pytest.fixture
+def temple_now(monkeypatch):
+    monkeypatch.setattr(da, "TEMPLE_RESULT_HOLD", 0.0)
+
+
+def _temple(tmp_path, pays=True, message=""):
+    game = FakeTemple(tmp_path, pays, message)
+    game.state = "map"
+    d = _text_driver(game)
+    game.state = "arrival"
+    d.where = "arrival"
+    return game, d
+
+
+def test_temple_raise_buys_raise_dead_and_leaves_to_the_map(tmp_path, text_rows,
+                                                            temple_now):
+    game, d = _temple(tmp_path)
+    got = d.temple_raise(1)
+    assert game.keys == ["y", "v", "Escape", "h"] + ["End"] * 6 + [
+        "h", "y", "e", "v", "Escape", "e"]
+    assert d.where == "map" and game.state == "map"
+    assert (got["member"], got["price"], got["price_coin"], got["outcome"]) == (
+        "BRUTUS", 5500, "GOLD", "alive")
+    assert got["list_presses"] == 6 and got["messages"] == []
+    assert (got["gold_before"], got["gold_after"]) == (6000, 0)
+    assert got["money_before"] == {"GOLD": 6000, "SILVER": 102}
+    assert got["money_after"] == {"PLATINUM": 101}
+    assert got["roster_before"].endswith("11") and got["roster_after"].endswith(" 1")
+
+
+@pytest.mark.parametrize("message, outcome", [
+    ("NOT ENOUGH MONEY.", "no-money"), ("", "unknown"),
+    ("THE GODS ARE SILENT", "unknown")])
+def test_a_raise_that_did_not_happen_is_not_called_alive(tmp_path, text_rows,
+                                                         temple_now, message, outcome):
+    game, d = _temple(tmp_path, pays=False, message=message)
+    got = d.temple_raise(1)
+    assert got["outcome"] == outcome and got["roster_after"].endswith("11")
+
+
+def test_temple_raise_stops_at_a_screen_it_does_not_know(tmp_path, text_rows,
+                                                        temple_now):
+    game, d = _temple(tmp_path)
+    game.state = "bar"
+    with pytest.raises(da.StepFailed, match="arrival question"):
+        d.temple_raise(1)
+    assert game.keys == []
