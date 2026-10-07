@@ -44,6 +44,7 @@ Two facts from `docs/50-experiments.md` bound what is safe to write:
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 import struct
@@ -2588,6 +2589,27 @@ class FastTravel(Action):
         was, self.back = self.back, None
         here = self.current_area(target, addr)
         area = self._row(was.area)
+        if here is not None and area is not None:
+            # The same lookup a trip makes: Return out of an area whose exit
+            # is proven necessary runs it too.
+            row = departures.find(self.game.key, departures.C64, here,
+                                  was.area,
+                                  to_overland=bool(getattr(area, "outdoors",
+                                                           False)))
+            holds = (self._departure_applies(target, row)
+                     if row is not None else False)
+            if holds is None:
+                self.back = was
+                return Outcome(False, FASTTRAVEL_FAILED, ())
+            if holds:
+                # `run` takes the destination's own overland square, and
+                # Return goes back to the one the party left.
+                dest = (dataclasses.replace(area, overland=was.overland)
+                        if was.overland is not None else area)
+                outcome = self.run(target, area=dest, arrival=was.square)
+                # Return is not itself a place to return to.
+                self.back = None if outcome.ok else was
+                return outcome
         # `was.square` is $C04B at departure; `was.overland` is $49C3/$49C4
         # at departure. The area we are returning to decides which one is
         # its real position -- $C04B is not GDRIVE00's square outdoors

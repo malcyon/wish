@@ -136,14 +136,19 @@ DEPARTURES: tuple[Departure, ...] = (
               writes=((0x4A9E, 0),)),
     # New Verdigris' leave question, `ECL10 $84F7-$84FE` and `$9A25-$9A2C`,
     # sets `$4CD9` from 1 to `$FF`. Amiga Silver Blades has no Fast Travel.
+    # Off until a live run shows the skip breaks game state: Fast Travel goes
+    # straight to the destination otherwise.
     Departure(SECRET_OF_THE_SILVER_BLADES, frozenset({0x10}), frozenset({C64}),
-              guards=(Guard(0x4CD9, "==", 1),), writes=((0x4CD9, 0xFF),)),
+              guards=(Guard(0x4CD9, "==", 1),), writes=((0x4CD9, 0xFF),),
+              enabled=False),
+    # Off until a live run shows the skip breaks game state: Fast Travel goes
+    # straight to the destination otherwise.
     # Every way out of the `$5x` group (`ECL50`, `ECL51`'s exits to `$50` and
     # `$52`, and `ECL52`) stores 9 and 12 through `GOSUB $9BE2`/`$9BBA`, which
     # `GDRIVE01` reads. A trip inside the group does not leave it.
     Departure(SECRET_OF_THE_SILVER_BLADES, frozenset({0x50, 0x51, 0x52}),
               frozenset({C64}), not_to=frozenset({0x50, 0x51, 0x52}),
-              writes=((0xC059, 9), (0xC05A, 12))),
+              writes=((0xC059, 9), (0xC05A, 12)), enabled=False),
     # Pools of Darkness areas 17, 25, 51 and 80 hand the party to a parent
     # script, and a trip to a non-overland area skips what that script leaves
     # in script variables `$24` and `$22`. All four exit subroutines are the

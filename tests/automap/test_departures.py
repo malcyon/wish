@@ -108,17 +108,20 @@ def test_the_cave_flag_row_covers_all_three_windows():
 
 def test_silver_blades_rows_are_its_own_and_c64_only():
     ssb = departures.SECRET_OF_THE_SILVER_BLADES
-    verdigris = departures.find(ssb, "c64", 0x10, 0x20)
+    verdigris = departures.find(ssb, "c64", 0x10, 0x20, include_disabled=True)
+    assert departures.find(ssb, "c64", 0x10, 0x20) is None
     assert verdigris.writes == ((0x4CD9, 0xFF),)
     assert [(g.address, g.op, g.value) for g in verdigris.guards] == [
         (0x4CD9, "==", 1)]
     assert departures.find(ssb, "amiga", 0x10, 0x20) is None
     for here in (0x50, 0x51, 0x52):
-        row = departures.find(ssb, "c64", here, 0x10)
+        assert departures.find(ssb, "c64", here, 0x10) is None
+        row = departures.find(ssb, "c64", here, 0x10, include_disabled=True)
         assert row.writes == ((0xC059, 9), (0xC05A, 12))
         assert row.guards == ()
         for inside in (0x50, 0x51, 0x52):
-            assert departures.find(ssb, "c64", here, inside) is None
+            assert departures.find(ssb, "c64", here, inside,
+                                   include_disabled=True) is None
     # Pool's rows are not Silver Blades'.
     assert departures.find(ssb, "c64", 17, 0x10) is None
     assert departures.find(ssb, "c64", 28, 0x10) is None

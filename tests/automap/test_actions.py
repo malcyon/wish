@@ -1904,11 +1904,11 @@ def _silver_blades_trip(here: int, to: int, memory=None):
     return target, outcome
 
 
-@pytest.mark.parametrize("held, writes", [(1, True), (0xFF, False), (0, False)])
-def test_new_verdigris_clears_its_leave_flag_only_while_it_is_one(held, writes):
+@pytest.mark.parametrize("held", [1, 0xFF, 0])
+def test_new_verdigris_leaves_its_leave_flag_alone_while_its_row_is_off(held):
     target, outcome = _silver_blades_trip(0x10, 0x20, {0x4CD9: held})
-    assert ((0x4CD9, b"\xff") in outcome.writes) is writes
-    assert target.read(0x4CD9, 1) == bytes([0xFF if writes else held])
+    assert 0x4CD9 not in {a for a, _ in outcome.writes}
+    assert target.read(0x4CD9, 1) == bytes([held])
 
 
 def test_a_trip_into_the_well_writes_the_bytes_the_shaft_walk_writes():
@@ -2035,10 +2035,9 @@ def test_the_arrival_bytes_are_written_before_the_wipe_and_never_wiped(to, at):
 
 
 @pytest.mark.parametrize("here", [0x50, 0x51, 0x52])
-def test_leaving_the_5x_group_stores_the_two_bytes_the_scripts_store(here):
-    target, outcome = _silver_blades_trip(here, 0x10)
-    assert outcome.writes[:2] == ((0xC059, b"\x09"), (0xC05A, b"\x0c"))
-    assert target.read(0xC059, 2) == b"\x09\x0c"
+def test_leaving_the_5x_group_stores_nothing_while_its_row_is_off(here):
+    _target, outcome = _silver_blades_trip(here, 0x10)
+    assert not {a for a, _ in outcome.writes} & {0xC059, 0xC05A}
 
 
 @pytest.mark.parametrize("here, to", [(0x50, 0x52), (0x51, 0x50),
@@ -2165,3 +2164,49 @@ def test_a_departure_whose_route_cannot_be_walked_starts_no_trip(area):
         if area == 13:
             assert "PRINCESS FATIMA" in [
                 m.name for m in actions.read_party(target)]
+
+
+def _pool_back(here: int, back_to: int, memory: dict[int, int]):
+    target = two_hop_machine(here)
+    for address, value in memory.items():
+        target.write(address, bytes([value]))
+    ft = actions.FastTravel()
+    ft.back = actions.Waypoint(back_to, 3, (2, 3, 1))
+    return ft, target, ft.apply_back(target)
+
+
+def test_back_out_of_an_area_with_an_enabled_departure_runs_it():
+    ft, target, outcome = _pool_back(16, 0, {0x4A5D: 40, 0x4AB5: 0})
+    assert outcome.ok, outcome.message
+    assert (0x4AB5, b"\xfe") in outcome.writes
+    assert target.read(0x4AB5, 1) == b"\xfe"
+    assert ft.back is None
+
+
+def test_back_out_of_the_kobold_caves_walks_the_exit_the_trip_walks():
+    target = two_hop_machine(13)
+    ft = actions.FastTravel()
+    ft.back = actions.Waypoint(27, 3, None, (4, 5))
+    outcome = ft.apply_back(target)
+    assert outcome.ok, outcome.message
+    route = fasttravel.EXIT_ROUTES[(13, 27)]
+    assert target.read(fasttravel.POOL_OF_RADIANCE.live_square, 3)[:2] == bytes(
+        route.square[:2])
+    assert len(target.reenters) == 1
+    assert ft.back is None
+
+
+def test_back_out_of_an_area_with_no_departure_row_is_the_plain_jump():
+    ft, target, outcome = _pool_back(9, 0, {})
+    assert outcome.ok, outcome.message
+    assert not {a for a, _ in outcome.writes} & {
+        a for row in departures.DEPARTURES for a, _ in row.writes}
+    assert target.reenters == []
+    assert target.jumps == [fasttravel.POOL_OF_RADIANCE.tail]
+    assert ft.back is None
+
+
+def test_back_leaves_a_departure_alone_whose_guard_does_not_hold():
+    _ft, target, outcome = _pool_back(16, 0, {0x4A5D: 39, 0x4AB5: 0})
+    assert outcome.ok, outcome.message
+    assert target.read(0x4AB5, 1) == b"\x00"

@@ -181,7 +181,7 @@ def test_a_disabled_curse_row_goes_straight_to_the_tail(area, to, party):
         assert target.read(ROSTER + 0x20 * slot, 1) == b"\x01"
 
 
-def test_the_six_new_rows_and_only_they_are_disabled():
+def test_these_eight_rows_and_only_they_are_disabled():
     off = [row for row in departures.DEPARTURES if not row.enabled]
     assert {(r.title, min(r.areas)) for r in off} == {
         (departures.CURSE_OF_THE_AZURE_BONDS, 0x11),
@@ -189,8 +189,10 @@ def test_the_six_new_rows_and_only_they_are_disabled():
         (departures.CURSE_OF_THE_AZURE_BONDS, 0x31),
         (departures.CURSE_OF_THE_AZURE_BONDS, 0x22),
         (departures.CURSE_OF_THE_AZURE_BONDS, 0x25),
-        (departures.CURSE_OF_THE_AZURE_BONDS, 0x35)}
-    assert len(off) == 6
+        (departures.CURSE_OF_THE_AZURE_BONDS, 0x35),
+        (departures.SECRET_OF_THE_SILVER_BLADES, 0x10),
+        (departures.SECRET_OF_THE_SILVER_BLADES, 0x50)}
+    assert len(off) == 8
 
 
 # --- C1, the Pit of Moander -----------------------------------------------
