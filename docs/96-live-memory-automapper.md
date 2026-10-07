@@ -873,13 +873,26 @@ C64).
 
 **What the window offers.** `automap/amigafasttravel.py` offers a trip only when
 the title's row in `automap/amigatrip.py` is `confirmed`, the target can write,
-the gate passes and the area's script has the free bytes. A trip that behaves
-differently from the C64's stays held (`Difference.offered` False) and the
-button reads the approved unsupported sentence. Held today: Return on every
-title; Curse's arrival in Tilverton; on Pool of Radiance every trip (`weak_gate`),
-leaving the grid, doors and a leg onto the grid. Silver Blades' row is not
-confirmed, so it offers nothing; Pools of Darkness has no area table, so its list
-is empty.
+the gate passes, the destination is `fasttravelable` and has a script on the
+player's disks, and the departing area's script has room for the trip and any
+departure statements (tier 1 or 2, or Pool of Radiance's init span in areas 1
+and 28). A trip goes straight to the destination unless a row of
+`automap/departures.py` applies ([`150`](150-departing-prologues.md), "How Fast
+Travel leaves an area"): a row that writes adds its guarded `SAVE`s ahead of
+the trip's statements, and the one door row, Princess Fatima at the Kobold
+Caves, walks out of a door in `DOORS_PROVEN`. A trip that behaves differently
+from the C64's stays held (`Difference.offered` False) and the button reads the
+approved unsupported sentence. Held today: Return on Pool of Radiance, Silver
+Blades and Pools of Darkness (`return_landing`), and a trip whose departing
+script has no room. Silver Blades' row is not confirmed, so it offers nothing.
+Pools of Darkness offers the rows of its own table, `AREAS_POOLS_OF_DARKNESS` in
+`goldbox/areas.py`, less those marked not `fasttravelable` (the areas with no
+map of their own among them); its gate also opens on an overland: mode 3, menu kind 4 and the menu text
+`Encamp`, CONFIRMED live (WISH-338 comment 5f95b787). This paragraph used to list Pool of
+Radiance's door holds and an empty Pools of Darkness list: the door chooser
+went with the straight-by-default rule, the gate below stopped needing
+`weak_gate`, the trip writes the grid prologue to leave the grid, and Pools of
+Darkness got its table.
 
 ### Fast Travel's free bytes, init entries and gates, read from the code
 
@@ -948,7 +961,12 @@ with that risk; PROBABLE, because that count does not look for operands naming
 those bytes.
 
 **Pool of Radiance's areas 1 and 28 hold the trip in their init span.**
-CONFIRMED from the code (`/program`, sha1 `469ab418200b`); not yet run live.
+CONFIRMED from the code (`/program`, sha1 `469ab418200b`), and live: trips 1 to
+0, 1 to 25, 28 to 0 and 28 to 25 fired from the span with their departure
+writes, and a game-written save after them holds none of the trip's bytes
+([the Amiga Buccaneer Base and Zhentil Keep Outpost
+runs](50-experiments.md#leaving-the-buccaneer-base-and-the-zhentil-keep-outpost-by-fast-travel-on-the-amiga-wish-313));
+this said "not yet run live" before those runs.
 The init entry (the fifth header `GOTO`) is `$B6A0` in area 1 and `$B693` in
 area 28, so the span to the buffer's end is `0x1DA0`-`0x1DFF` (96 bytes, 87 of
 them the script's) and `0x1D93`-`0x1DFF` (109 bytes, 96 of them the script's).
@@ -981,10 +999,11 @@ first, are IDs 1005 to 1000 at left 232, 176, 120, 80, 40, 0 and width 34, 50,
 length equals the number of choices: the world menu and camp both hold six
 gadgets with IDs 1005 to 1000, the camp rest-time menu seven (1006 to 1000), the
 armourer's YES/NO two (1001, 1000) and a shop menu five (1004 to 1000). So the
-gadget count cannot tell the world menu from camp, and `weak_gate` in
-`automap/amigatrip.py` stays until another read does (gadget positions or text,
-or the menu text). Whether the chain is absent at a "PRESS RETURN" text was not
-reached.
+gadget count cannot tell the world menu from camp. `gate` in
+`automap/amigatrip.py` therefore compares the chain with the positions and
+widths the menu's own text gives (`gadget_layout`), and `weak_gate` is gone.
+Whether the chain is absent at a "PRESS RETURN" text was not reached; a trip
+started on an arrival page found the gate closed (WISH-313 comment 4237adf3).
 
 **Every title sets the area byte before the new script loads.** CONFIRMED
 from the four `NEWECL` handlers: each stores the came-from word, then the new

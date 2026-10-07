@@ -8491,3 +8491,145 @@ current routine matrix uses eight test jobs with four workers each. The
 successful timings come with more concurrent runners and repeated setup across
 those jobs. Aggregate test-job time fell from 1,770 seconds in the baseline to
 1,695–1,741 seconds across the three runs; these job sums do not include lint.
+
+## Fast Travel's departure writes on the Amiga: the Lizardman Keep and the Nomad Camp (WISH-313)
+
+For `WISH-313 (Fast Travel goes straight to the destination and runs a
+departure sequence only where skipping it is shown to break game state)`. The
+rule and the table of departures are in
+[`150`](150-departing-prologues.md#how-fast-travel-leaves-an-area).
+
+**The question.** An Amiga Pool of Radiance trip out of the Lizardman Keep (16)
+or the Nomad Camp (17) puts the departure's guarded `SAVE` ahead of its own
+statements, so the game's interpreter tests the guard. Does the write land
+exactly when the departing script's guard holds?
+
+**Method.** WinUAE, one lane, English disks 1 and 2 and the registered Pool
+save (slot A, area 0 at 9,13), all copies. A trip from 0 into the area, the
+arrival page dismissed, a snapshot; then for each case a restore, the guard
+variables staged with `amigatarget.py poke --var`, and a trip back to 0 with
+`tools/amiga/fasttravelrun.py --peek-var`. No walking and nothing saved.
+
+| case | staged | written byte after the trip | expected |
+|---|---|---|---|
+| P2-i | `$4A5D` 40, `$4AB5` 0 | `$4AB5` 254 | 254 |
+| P2-ii | `$4A5D` 39, `$4AB5` 0 | 0 | 0 |
+| P2-iii | `$4A5D` 40, `$4AB5` 255 | 255 | 255 |
+| P4-a | `$4A7C` 4, `$4AB7` 0 | `$4AB7` 254 | 254 |
+| P4-b | `$4A7C` 0, `$4AB7` 0 | 0 | 0 |
+| P4-c | `$4A7C` 1, `$4AB7` 0 | 254 | 254 |
+| P4-d | `$4A7C` 4, `$4AB7` 255 | 255 | 255 |
+| P4-e | `$4A7C` 2, `$4AB7` 0 | 0 | 0 |
+
+**Result.** 8 of 8 match the guard; every trip arrived with `areas_seen`
+[16, 0] or [17, 0] and the same six names. CONFIRMED for the trip's write on
+the Amiga. Not shown: the City Hall clerk paying either commission, and the
+same rows on the C64 (L4, not run).
+
+**The first P2 attempt never started its second leg.** The snapshot had been
+taken on area 16's arrival page, where the gate is closed, so `legality`
+returned the busy sentence. A player presses RETURN first; nothing holds area
+16 (WISH-313 comment 4237adf3). The driver now reports `settled` false and
+exits 1 when its settle ends with the gate closed, and the rerun's first leg
+showed it.
+
+## Leaving the Buccaneer Base and the Zhentil Keep Outpost by Fast Travel on the Amiga (WISH-313)
+
+**The question.** Pool of Radiance's areas 1 and 28 have no room past their
+scripts, so the Amiga trip goes in each area's init span
+([`96`](96-live-memory-automapper.md), "Fast Travel's free bytes, init entries
+and gates"). Does a trip from there fire, make the departure write when the
+guard holds (P3: `$4AA9` 1 to 254; P5: `$4AB4` = 253 always), agree with a
+walked exit, survive a game-written save and a reload, and leave the City Hall
+clerk saying what he says to a walking party?
+
+**Method.** Four runs (lb, lb2, lb3, lb4), WinUAE, one lane each, English disks
+1 and 2 and the registered Pool save (slot A, area 0 at 9,13) copied; the
+original disks' hashes were unchanged after each. The encounter switch was
+never on. WISH-313 comments 085e8c32, 891fe8e4, e6ae6b60 and f2a76b7f are the
+four run reports.
+
+| check | what was done | result |
+|---|---|---|
+| B1 | trip 0 to 1 | pass: [0, 1], party at 8,10 facing S |
+| B2 | trip 1 to 0, `$4AA9` staged 1 | pass: `$4AA9` 0xFE, from `SAVE 254,[$4AA9]` at the head of the trip's statements; entry words unchanged after |
+| B3 | trip 1 to 0, `$4AA9` 0 | pass by the polls: stays 0 |
+| B4 | trip 1 to 25, `$4AA9` staged 1 | pass: 0xFE, the party on the grid at 14,29 S |
+| B8 | trip 0 to 28 | pass: [0, 28], then the first-visit escort pages; `$4A18` 0 to 0x80 |
+| B9a, B9b | trips 28 to 0 and 28 to 25 | pass: `$4AB4` 0 to 0xFD in both |
+| B10 | 28 to 0, then 0 to 28 | the escort pages again, `$4A18` 0: expected, below |
+| B5 | walked control: from 8,10 with `$4AA9` = 1 and `$4A13` = 1 staged, NP2, NP8 ten times to 8,0, NP8 off the north edge | pass: no fight, area 25, `$4AA9` 0xFE, the same byte the trip writes |
+| B6 | trip 25 to 0, camp, save to slot C; reload slot C on a second boot | pass: the saved `$4AA9` is 0xFE, the 24 trip statement bytes occur nowhere in it, its script buffer (0x1400-0x31FF) equals slot A's in every byte; reloaded at 15,1 S with six members, a sheet opened, one step to 14,1 W. `$4AA9` was not reread after the reload |
+| B7 | the clerk on (5,5), after a trip 0 to 8 and after a walk in | parity pass: the same five pages and the closing line "These are all of the commissions currently available." in both; slot A holds no earned commission, so neither arm was paid |
+| K3 | the driver killed mid-arm, then rerun | pass, one sample: below |
+
+**B10: the outpost tour repeats for every party.** `$4A18` is in the per-area
+scratch page `$4A00`-`$4A1F`. The Amiga engine zeroes those 32 words at
+`/program` 0x96D2-0x96EE, inside the area-start routine at 0x954E that
+`NEWECL`'s handler (0x286E6) reaches; only the load path skips the clear
+(`h32+0xBF`). The C64 clears the same page at `DUNGEON $202A`-`$2032`. In area
+28, `$9AB3 SAVE 128,[$4A18]` at the start of the tour is the one writer and
+`$9A7A COMPARE [$4A18],0`, on the gate squares (7,0) and (8,0), the one reader:
+0x80 means "the tour has run during this visit". Every way out, walked or
+trip, clears it, so a walked party coming back gets the tour too. CONFIRMED
+(bytecode, and B10's reading); that a party walking in from area 25 gets it is
+PROBABLE, from the code, and one walked arrival would settle it. No departure
+write is needed for `$4A18`. This corrected the plan's expected B10 result
+("the first-visit event does not run") and the read that put a return visit on
+`$B5CB`: the survey's "first-visit event repeats" was true, but it is not a
+consequence of skipping a departure. The outpost's 75-in-100 fight needs a step
+back on to a gate square in the same visit with `$4AB4` = 0 and `$4A1E` = 0
+(`$B531`), and P5's write already gives the walked result.
+
+**The encounter switch reports rows of unloaded areas as stopped.**
+`noencounters.py on` reported all four Pool rows (the rolls of areas 25, 26, 27
+and 20, at `ecl.dax` block offsets +0x7B3, +0x7E7, +0x5A7 and +0x23A, digests
+matching these disks) as held and stopped while the party was in areas 0, 1
+and 28. The script buffer holds only the current area's script, so the bytes
+at those offsets belong to another script. `keys` applies the rows again before
+each key, so each row changes as soon as its area loads. Not a harness defect;
+only the word "stopped" misleads. The fights met in these runs, area 1's gate
+guards and area 28's gate roll `$B56F RANDOM 99`, are fixed fights the switch
+does not cover, and should not.
+
+**B5 met the gate guards the first time.** In lb2 the walk from 8,10 met "Some
+guards rush forward and attack" on the step onto 8,0: area 1's gate fights a
+party with `$4AA9` = 1 unless `$4A13`, set at `$9D67` when the guards are beaten
+this visit, is non-zero. lb3 staged `$4A13` = 1 and the walk crossed. A Fast
+Travel out of area 1 skips that fight, which writes only scratch; under the
+rule that is not state damage (PROBABLE, static).
+
+**City Hall arrival.** In lb3 a trip 0 to 8 left the party on New Phlan's
+street square 9,13 with City Hall's script loaded, and no walk from there
+reaches the lobby. `goldbox/areas.py` had no arrival square for area 8, so the
+trip kept the square it left (the driver logged "no arrival square is known
+for this area"). City Hall has no map of its own and runs on GEO00, its rooms
+at (3-6, 3-9); every way into the lobby (4,4) crosses a door square of attribute
+26, whose arm in area 8 is `$9A4F NEWECL 0`, and New Phlan's `$AD7F NEWECL 8`
+puts a walking party on (4,4). Filed as `WISH-352 (Fast Travel to Pool of
+Radiance City Hall leaves the party on the New Phlan street square it left)`
+and fixed there to land on (4,4); lb4's trip landed at 4,4 facing S with the
+lobby text. The clerk is on (5,5), attribute 29, arm `$9B91` with the payment
+test `$9D2A COMPARE [$6E7A],254`; he speaks only to a party that came through
+(4,5), whose arm sets `$4A06` = 0.
+
+**A good restore reported as failed.** lb3's `restore S25` reported "Exec's
+count read 53892" with the machine already in the wanted state. The check
+accepted only a count below the one read before the restore, which cannot
+happen when the machine is at an earlier time than the snapshot it restores.
+Filed as `WISH-353 (The WinUAE snapshot restore check fails a good restore when
+the current Exec count is below the snapshot's)`.
+
+**A killed arm.** In lb the driver's timeout killed a trip during its arm; the
+trip's statements stayed in the script buffer and the retries stopped with "the
+script buffer is not free at 0xc5cac3". The arm now journals its writes and the
+next attach puts them back. In lb2 (K3) the driver was killed the moment the
+journal named it, before `apply`: the statements were in the buffer and the
+entry word unchanged; a rerun with no reboot arrived [0, 1] with no error and
+the journal file gone. One sample; the clean control trip after the repair was
+not run.
+
+**Not established.** The clerk paying a commission after a departure write, in
+either arm; `$4AA9` read after a reload; the walked leave-route control from
+area 28 (B9c, optional, since `$993C SAVE 253,[$4AB4]` is in the bytecode and
+B9a and B9b pass).
