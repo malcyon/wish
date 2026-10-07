@@ -128,11 +128,14 @@ class Session:
 
     def _press(self, key):
         self.pressed += (key,)
+        if key in self.TURNS:
+            self.facing = (self.facing + self.TURNS[key]) % 4
         if self.moves_on is not None and self.pressed.count(key) >= 1 \
                 and self.pressed[-len(self.moves_on):] == self.moves_on:
             self.pos = (self.pos[0] + 1, self.pos[1])
         return True
 
+    TURNS = {"J": -1, "K": 1, "M": 2}
     walk_one = _press
     walk_outdoors = _press
 
@@ -1000,7 +1003,8 @@ def test_an_answer_waits_for_its_words_on_the_menu():
     drv, sess, _, _, _, _ = build(
         screen_at=lambda t: Screen("YES NO"), answer=["LEAVE", "YES"],
         script_at=lambda t: 7, area_at=lambda t: 7, budget=10.0)
-    drv.trip(18, "t")
+    with pytest.raises(ftr.DriverError, match="LEAVE is not among YES NO"):
+        drv.trip(18, "t")
     assert sess.bars == []
 
 
@@ -1050,6 +1054,35 @@ def test_step_after_does_not_press_forward_on_an_exit_square():
     (step,) = _step_events(stream)
     assert sess.pressed[:2] == ("J", "I")
     assert any(e["event"] == "step-exit-square" for e in events(stream))
+
+
+def test_a_turn_that_faces_the_exit_is_not_followed_by_forward():
+    drv, sess, _, _, _, stream = build()
+    drv.step_after = True
+    sess.pos, sess.facing = (0, 4), 0
+    drv.run([18])
+    assert sess.pressed[:3] == ("I", "J", "K")
+    assert sess.pressed[3] == "I"  # facing is back off the exit after K
+    assert any(e["event"] == "step-exit-square" and e.get("keys") for e in events(stream))
+
+
+def test_a_question_nobody_answers_is_diagnosed_with_its_words():
+    for bar in ("LARGE SMALL LEAVE", "LARGE SMALL", "LEAVE"):
+        drv, sess, _, _, _, stream = build(
+            screen_at=lambda t, bar=bar: Screen(bar), answer=["YES"],
+            script_at=lambda t: 7, area_at=lambda t: 7, budget=10.0)
+        with pytest.raises(ftr.DriverError, match=bar.split()[0]):
+            drv.trip(18, "t")
+        (e,) = [e for e in events(stream) if e["event"] == "question-unanswerable"]
+        assert e["words"] == bar.split()
+
+
+def test_a_message_row_containing_no_is_not_a_question():
+    drv, sess, _, _, _, _ = build(
+        screen_at=lambda t: Screen("THERE IS NO WAY OUT"), answer=["YES"],
+        script_at=lambda t: 7, area_at=lambda t: 7, budget=10.0)
+    drv.trip(18, "t")
+    assert sess.bars == []
 
 
 def test_a_step_that_changes_the_area_stops_the_run_and_is_logged():

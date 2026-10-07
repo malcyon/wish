@@ -103,7 +103,9 @@ SHOT_EVERY = 4
 RNG_FIRST, RNG_LAST = 0x03C2, 0x03C8
 MOVE_SUBBAR = "I,J,K,M"
 #: Bar words that mark a game question when `--answer` is given more than once.
-QUESTION_WORDS = frozenset({"YES", "NO", "LEAVE"})
+QUESTION_WORDS = frozenset({"YES", "NO", "LEAVE", "LARGE", "SMALL"})
+#: Consecutive looks at a question bar the next `--answer` word is not on before the leg is given up.
+UNANSWERED_LOOKS = 3
 #: Looks, a second apart, at the screen before a save while it is cleared back to the world bar.
 SAVE_CLEAR_TRIES = 30
 #: A script's acknowledgement, which is answered with RETURN.
@@ -361,6 +363,8 @@ class Driver:
         self.out, self.log, self.answer = out, log, answer
         #: With several `--answer` words each answers one question, in order.
         self.answers_used = 0
+        #: (row, looks) of a question bar the next `--answer` word is not on.
+        self._unanswered: tuple[str, int] = ("", 0)
         self.sleep, self.clock, self.budget = sleep, clock, budget
         #: The title being travelled in; its table, addresses and party layout.
         self.game = game or c64_port.POOL_OF_RADIANCE
@@ -411,10 +415,22 @@ class Driver:
                 if answer[self.answers_used] in words:
                     self.sess.select_bar(answer[self.answers_used], timeout=15)
                     self.answers_used += 1
+                    self._unanswered = ("", 0)
                     return "answer", row
-            elif QUESTION_WORDS & set(words):
-                raise DriverError(
-                    f"the game asks a question ({row}) and all {len(answer)} --answer words are used")
+            if self.question_bar(words):
+                if self.answers_used >= len(answer):
+                    raise DriverError(
+                        f"the game asks a question ({row}) and all {len(answer)} --answer words are used")
+                # The bar just answered can still be up for a look or two; only a bar that stays is unanswerable.
+                looks = self._unanswered[1] + 1 if self._unanswered[0] == row else 1
+                self._unanswered = (row, looks)
+                if looks >= UNANSWERED_LOOKS:
+                    self.log("question-unanswerable", words=words, wanted=answer[self.answers_used])
+                    raise DriverError(
+                        f"the game asks a question ({row}) and the next --answer word "
+                        f"{answer[self.answers_used]} is not among {' '.join(words)}")
+            else:
+                self._unanswered = ("", 0)
         elif answer and answered < ANSWERS_PER_TRIP and answer in row.split():
             self.sess.select_bar(answer, timeout=15)
             return "answer", row
@@ -422,6 +438,11 @@ class Driver:
             self.sess.kbd.key("Return", 0.2, 0.3)
             return "return", row
         return None, row
+
+    @staticmethod
+    def question_bar(words: list[str]) -> bool:
+        """Whether row 24 is a menu bar of question words, not a message that happens to contain one."""
+        return bool(words) and all(word in QUESTION_WORDS for word in words)
 
     def _retry_busy(self, tag: str, call: Callable[[object], tuple[bool, str, object]]):
         """`call` until it stops answering "cannot act right now" or the bar's "the game was busy"; bounded."""
@@ -513,6 +534,12 @@ class Driver:
         return {tuple(route.square) for (frm, _to), route in fasttravel.EXIT_ROUTES.items()
                 if frm == area and route.entry == 0}
 
+    def on_exit_square(self, area: int | None) -> bool:
+        """Whether the live (x, y, facing) is a square where the forward key leaves `area`."""
+        live = self.sess.live_square()
+        return (live is not None and len(live) > 2 and area is not None
+                and tuple(live[:3]) in self.exit_squares(area))
+
     def step(self, tag: str, area: int | None = None) -> None:
         """Try up to `STEP_TRIES` moves on the arrived party and log the first that moves it.
 
@@ -552,6 +579,10 @@ class Driver:
             for keys in tries[:STEP_TRIES]:
                 key = "".join(keys)
                 for press in keys:
+                    if not grid and press == "I" and self.on_exit_square(area):
+                        # A turn can face the exit, and the forward key there leaves the area.
+                        self.log("step-exit-square", tag=tag, keys=key)
+                        break
                     if grid:
                         sess.walk_outdoors(press)
                     else:
