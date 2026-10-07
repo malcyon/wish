@@ -56,6 +56,7 @@ from automap import (  # noqa: E402
     amigatrip,
     amigavars,
 )
+from goldbox import areas as goldbox_areas  # noqa: E402
 from tools.amiga import amigakeys, tripprobe  # noqa: E402
 
 DEFAULT_TITLE = "pool-of-radiance"
@@ -298,7 +299,10 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError:
         parser.error(f"--peek-var {args.peek_var!r} is not a list of hex numbers")
     machine = amiga.MACHINES[args.title]
-    area = engine.area_by_id(args.to, machine.title)
+    # area_by_id is empty for a title the C64 fast travel does not support, which
+    # Pools of Darkness is; the Amiga legality check decides what is offered.
+    area = (engine.area_by_id(args.to, machine.title)
+            or goldbox_areas.area_in(args.to, machine.title))
     if area is None:
         parser.error(f"--to {args.to} is not an area of {machine.title}")
     out = pathlib.Path(args.out)

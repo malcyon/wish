@@ -490,6 +490,34 @@ def test_title_picks_the_machine_row_and_fast_travel(monkeypatch, tmp_path, titl
     assert built["party"] is ftr.amigaparty.read_party
 
 
+@pytest.mark.parametrize("to", [84, 82])
+def test_pools_of_darkness_destinations_come_from_its_amiga_table(monkeypatch, tmp_path, to):
+    from automap import amiga, amigafasttravel
+    from tools.amiga import amigadrive
+
+    seen = {}
+
+    class T:
+        def __init__(self, pipe, machine):
+            pass
+
+        def locate(self):
+            return 1
+
+    def run_trip(fasttravel, target, row, area, *args, **kwargs):
+        seen["area"] = area
+        return {"result": "idle"}
+
+    monkeypatch.setattr(amiga, "WinuaePipe", _Pipe)
+    monkeypatch.setattr(amiga, "AmigaTarget", T)
+    monkeypatch.setattr(amigafasttravel, "AmigaFastTravel", lambda key, disks: None)
+    monkeypatch.setattr(ftr, "run_trip", run_trip)
+    monkeypatch.setattr(amigadrive, "shot", lambda *a: None)
+    assert ftr.main(["--holder", "h", "--disks", "D", "--title", "pools-of-darkness",
+                     "--to", str(to), "--out", str(tmp_path)]) == 0
+    assert seen["area"].id == to
+
+
 def test_an_unknown_title_is_a_usage_error(tmp_path):
     with pytest.raises(SystemExit):
         ftr.main(["--holder", "h", "--disks", "D", "--title", "nope", "--to", "3",
