@@ -25,7 +25,18 @@ RECORD_PAGES, RECORD_STRIDE, MEMORISED_AT = 0x4D00, 0x100, 0x020
 SLOT = 7
 SPELL_IDS = {"BLESS": {1}, "CURSE": {2}, "CURE LIGHT WOUNDS": {3},
              "SPIRITUAL HAMMER": {28}, "ANIMATE DEAD": {36, 90},
-             "DISPEL MAGIC": {41}, "PRAYER": {42}}
+             "DISPEL MAGIC": {41}, "PRAYER": {42},
+             "HIGH SPELL 6": {16}}
+#: A first page as long as a full cleric's: eight first-level spells, a blank
+#: row, six second-level ones, so the pick prompt's `EXIT` is the fifteenth
+#: row of the list, fourteen Downs from the top.
+LONG_PAGES = [
+    [("1ST LEVEL", None, 1), ("BLESS", 1, 1)]
+    + [(f"LOW SPELL {n}", n, 1) for n in range(2, 9)]
+    + [("", None, 1), ("2ND LEVEL", None, 2)]
+    + [(f"HIGH SPELL {n}", 10 + n, 2) for n in range(1, 7)],
+    PAGES[1],
+]
 
 
 def _window(lines: dict[int, str], bar: str) -> list[str]:
@@ -90,7 +101,8 @@ class MemorizeFake:
     is; a key the game would not take fails the test."""
 
     def __init__(self, free, memorised=(28, 26, 3, 3), lost_returns=0,
-                 message_reads=2):
+                 message_reads=2, pages=PAGES):
+        self.pages = pages
         self.free = dict(free)
         self.memorised = list(memorised)
         self.lost_returns = lost_returns
@@ -103,12 +115,12 @@ class MemorizeFake:
 
     # -- the screens -------------------------------------------------------------
     def _entries(self):
-        return [(name, ident, level) for name, ident, level in PAGES[self.page]
+        return [(name, ident, level) for name, ident, level in self.pages[self.page]
                 if ident is not None]
 
     def _page_rows(self, title, bar, with_exit):
         lines, r = {2: title}, 4
-        for name, ident, _ in PAGES[self.page]:
+        for name, ident, _ in self.pages[self.page]:
             lines[r] = name if ident is None else f"  {name}"
             r += 1
         if with_exit:
@@ -117,7 +129,7 @@ class MemorizeFake:
 
     def _book_bar(self):
         words = ["MEMORIZE"]
-        if self.page + 1 < len(PAGES):
+        if self.page + 1 < len(self.pages):
             words.append("NEXT")
         if self.page > 0:
             words.append("PREV")
@@ -143,10 +155,10 @@ class MemorizeFake:
                                            A.PICK_MEMORIZE, True), self._hot_row())
         chosen = {2: "DIRTEN'S CHOSEN SPELLS"}
         r = 4
-        for _, ident, _ in [e for p in PAGES for e in p if e[1] is not None]:
+        for _, ident, _ in [e for p in self.pages for e in p if e[1] is not None]:
             for entry in self.memorised:
                 if entry == ident | 0x80:
-                    chosen[r] = f"  {next(n for p in PAGES for n, i, _ in p if i == ident)}"
+                    chosen[r] = f"  {next(n for p in self.pages for n, i, _ in p if i == ident)}"
                     r += 1
         if self.state == "chosen":
             return _Screen(_window(chosen, "EXIT"))
@@ -298,6 +310,28 @@ def test_memorize_leaves_the_pick_prompt_to_turn_the_page_for_the_next_spell(
     assert [p["after"] for p in got["picks"]] == ["pick", "pick"]
     assert [p["pages_turned"] for p in got["picks"]] == [0, 1]
     assert sorted(got["chosen"]) == ["ANIMATE DEAD", "BLESS"]
+    assert sess.state == "camp2"
+
+
+def test_memorize_walks_a_full_page_to_its_exit_row_to_turn_the_page(tmp_path):
+    sess = MemorizeFake(free={1: 2, 3: 1}, pages=LONG_PAGES)
+    run = _run(tmp_path, sess)
+    got = run.memorize("DIRTEN>BLESS,ANIMATE DEAD")
+    assert [p["entry"] for p in got["picks"]] == [0x81, 0xA4]
+    assert [p["pages_turned"] for p in got["picks"]] == [0, 1]
+    # BLESS needs no key; EXIT under fourteen spells is fourteen Downs.
+    first_page = sess.sent[:sess.sent.index(("bar", "NEXT"))]
+    assert first_page.count(("key", "Down")) == 14
+    assert ("key", "Up") not in sess.sent
+    assert sess.state == "camp2"
+
+
+def test_memorize_walks_to_the_last_spell_of_a_full_page(tmp_path):
+    sess = MemorizeFake(free={1: 1, 2: 1}, pages=LONG_PAGES)
+    run = _run(tmp_path, sess)
+    got = run.memorize("DIRTEN>HIGH SPELL 6")
+    assert got["picks"][0]["entry"] == 0x80 | 16
+    assert sess.sent.count(("key", "Down")) == 14
     assert sess.state == "camp2"
 
 

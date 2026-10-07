@@ -3314,7 +3314,7 @@ def test_pool_specimen_does_not_register_stale_save_after_failed_cast(
 @pytest.mark.parametrize("step", [
     "cast SHARA CURE BLINDNESS>PHILIPPE",       # no colon
     "cast SHARA:CURE BLINDNESS PHILIPPE",       # no arrow
-    "cast SHARA:FIREBALL>PHILIPPE",             # not a camp cure
+    "cast SHARA:ANIMATE DEAD>PHILIPPE",         # a whole-party spell
     "cast SHARA:CURE BLINDNESS>",               # nobody
     "cure MARK",                                # nobody
     "cure >LEDERA",                             # no paladin

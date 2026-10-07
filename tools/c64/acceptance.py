@@ -79,7 +79,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `fight [SECONDS]` | walk until a fight starts, then fight it with `Session.melee_turn` for at most SECONDS (120); a fight still going when SECONDS end, or one the party loses, fails the step (the run cannot continue from it), and the checkpoint counts read at that point are kept as `lost_reading` in the summary. Pool repeats `--walk`; Curse walks to Tilverton's tavern and punches the barkeep; Silver Blades sets the wandering roll's fight gate `$4C2D` to 1, walks `GEO10` toward 12,0 and 12,15 in turn (at most `--walk-steps` moves), sends each key only once the move bar is up and the engine idles in its key wait, sends none from `COM.PREP` until the first command bar, and puts `$4C2D` back after the fight (`wander_gate` in the result); a party wiped back to the party menu fails the step at once |
 | `cast CASTER:SPELL>TARGET` | Curse: `ENCAMP > MAGIC > CAST`, the one spell named, on TARGET; the target's row of the cured id before and after (`CURE BLINDNESS`) |
 | `cast CASTER:ANIMATE DEAD` | Pool: camp cast without a target prompt; every party slot's roster status, trait slots, creature byte `0xD7`, and the effect arrays before and after |
-| `cast CASTER:SPELL` | Pool, any other spell with no target question (`PRAYER`): camp `MAGIC > CAST` for CASTER (a name), the list `<NAME>'S MEMORIZED SPELLS` checked as CASTER's, its highlight moved onto SPELL with Down and Up (judged by the row drawn white), Return (then a KERNAL Return when nothing moved), the game's `<NAME> CASTS` message kept and any `PRESS ANY KEY` page answered, then the pick prompt's `EXIT` row, the list's `EXIT` and the MAGIC bar's `EXIT`, ending on the camp bar. Every action is a key and nothing is written. CASTER's memorised list, read from the live record, must lose exactly one entry of an id the title's spell table draws SPELL for and gain none; a caster without SPELL ready (a pick still pending does not count), a target question, or a pick that spends nothing fails the step. The result has `spell_id` (the id spent), `memorised_before`/`_after`, `messages`, `pages` and the party and effect arrays before and after |
+| `cast CASTER:SPELL`, `cast CASTER:SPELL>TARGET` | Pool, any other spell, `>TARGET` naming the member a spell's target question (`CURE LIGHT WOUNDS`, `PROTECTION FROM EVIL`) is answered with: camp `MAGIC > CAST` for CASTER (a name), the list `<NAME>'S MEMORIZED SPELLS` checked as CASTER's, its highlight moved onto SPELL with Down and Up (judged by the row drawn white), Return (then a KERNAL Return when nothing moved), `CAST SPELL ON WHOM` captured and TARGET chosen on it as the camp list chooses a member, the game's `<NAME> CASTS` message kept and any `PRESS ANY KEY` page answered, then the pick prompt's `EXIT` row, the list's `EXIT` and the MAGIC bar's `EXIT`, ending on the camp bar. Every action is a key and nothing is written. CASTER's memorised list, read from the live record, must lose exactly one entry of an id the title's spell table draws SPELL for and gain none; a caster without SPELL ready (a pick still pending does not count), a target question with no TARGET, a TARGET not on it or never asked for, or a pick that spends nothing fails the step. The result has `target`, `spell_id` (the id spent), `memorised_before`/`_after`, `messages`, `pages` and the party and effect arrays before and after |
 | `cast CASTER:DISPEL MAGIC>TARGET` | Pool: checks the named caster (cleric level 5 or more, Dispel Magic among whatever else he holds), animated target and its eligible id-32 row at index 63 before input; moves the list's highlight onto `DISPEL MAGIC` when other spells are listed, captures the target prompt, all party and effect-row bytes before and after, takes the cast as done once the caster holds one Dispel Magic fewer (leaving the pick prompt by its `EXIT` row when the game puts it back up), and checks the game-written save. `--preserve-specimen --issue 700` registers that save or a matched no-cast BRUTUS view control before teardown; with `--dispel-tries N` a cast the game resists (one Dispel Magic spent, the row and target unchanged) is recorded as `resisted` and the step goes to a new camp, `memorize`s, `rest offered`s and casts again in the same boot, up to N casts |
 | `scribe WHO>SPELL` | camp `MAGIC > SCRIBE` for WHO: the scroll list kept as text, SPELL's row highlighted and picked (Return, then a KERNAL Return while the count stands), the pick prompt's `EXIT` row, the list's `EXIT`, the `CHOSEN SPELLS` page kept, `OKAY` at the confirmation, and back to the camp bar. WHO's roster slice of the scribe queue (`+0x01` first entry, `+0x02` count: Pool `$6C01`, Curse and Silver Blades `$7D01`) is read before, after the pick and at the end, with its queue entries; a rejection (`CAN'T SCRIBE`), a spell not on the list, or a count of zero at the end fails the step. A list of more than one page (`NEXT` or `PREV` on row 24) is taken when SPELL is on the first page shown, and the result's `paged` says so; SPELL not on that page fails the step as `scribe-pages`, since the other pages are not read. Measured on Silver Blades and Pool of Radiance |
 | `memorize WHO>SPELL[,SPELL...]` | Pool only: camp `MAGIC > MEMORIZE` for WHO (a name), the book `<NAME>'S BOOK OF SPELLS` turned with `NEXT`/`PREV` to each SPELL's page, its `MEMORIZE`, SPELL's row highlighted and picked (Return, then a KERNAL Return when nothing moved), the pick prompt's `EXIT` row, the book's `EXIT`, the `CHOSEN SPELLS` page kept and checked, `OKAY` at the confirmation, and back to the camp bar, where the party stays so a `rest` next learns them, since leaving camp drops the choice. Every action is a key and nothing is written. WHO's memorised list is read from the live record before, after each pick and at the end: each pick must add one entry, the spell's id (any id the title's spell table draws SPELL for) with bit 7 set; `<NAME> CAN'T MEMORIZE` (no slot of that level left), a pick that adds nothing, a spell in no page of the book, a choice already pending, or an end list other than the start list plus those entries fails the step. The `rest` after it adds `memorised` (the list, `learned`, `still_pending`) and fails when it ran its full time in that camp and an entry is still pending |
@@ -397,8 +397,9 @@ POOL_TARGET_SPELLS = {"DISPEL MAGIC": 41}
 #: the memorised list's cursor like the others; the result is read as the
 #: party and effect checkpoints before and after.
 POOL_BUFF_SPELLS = {"ENLARGE"}
-#: The spells `cast` drives through the target question; any other spell is
-#: cast with no target, Pool's `ANIMATE DEAD` and `PRAYER` among them.
+#: The spells `cast` must have a target for, each driven on its own path; any
+#: other Pool spell is cast from the memorised list, its target question
+#: answered with the member the step names (`cast CASTER:SPELL>TARGET`).
 TARGETED_CAST_SPELLS = set(CAMP_CURES) | set(POOL_TARGET_SPELLS) | POOL_BUFF_SPELLS
 DISEASE_CURE = (34, "DISEASE")
 
@@ -1082,7 +1083,9 @@ def parse_walk_fight(arg: str) -> tuple[str, str | None]:
 
 
 def parse_cast(arg: str) -> tuple[str, str, str | None]:
-    """A target for a cure, names for Pool dispel, or no party-spell target."""
+    """CASTER, SPELL and the member named after `>`, or None: a cure and
+    Dispel Magic need one, a whole-party spell takes none, and any other
+    spell may name the member its target question is answered with."""
     m = re.fullmatch(r"([^:>]+):([^:>]+)(?:>([^:>]+))?", arg.strip())
     if m is None:
         raise ValueError(f"cast {arg!r}: say cast CASTER:SPELL[>TARGET]")
@@ -1094,7 +1097,7 @@ def parse_cast(arg: str) -> tuple[str, str, str | None]:
     if target is None and any(spell == t or spell.startswith(t + " ")
                               for t in TARGETED_CAST_SPELLS):
         raise ValueError(f"cast {arg!r}: {spell} needs a target")
-    if target is not None and spell not in TARGETED_CAST_SPELLS:
+    if target is not None and spell in CAMP_PARTY_SPELLS:
         raise ValueError(f"cast {arg!r}: {spell} has no target prompt")
     if spell in POOL_TARGET_SPELLS and (caster.isdigit() or target.isdigit()):
         raise ValueError(f"cast {arg!r}: Dispel Magic needs a named caster and target")
@@ -4045,7 +4048,7 @@ class PoolRun:
 
     def _leave_cast_pick(self) -> None:
         """The pick prompt's `EXIT` row, back to the spell list's bar."""
-        self._scribe_walk("EXIT", limit=24)
+        self._scribe_walk("EXIT")
         for key in ("xtest-return", "kernal-return"):
             self._send_pick(key)
             if self.wait_rows(lambda r: self._list_bar(r[24]) or MAGIC_BAR in r[24],
@@ -4067,15 +4070,18 @@ class PoolRun:
         return (self._list_bar(rows[24]) or MAGIC_BAR in rows[24]
                 or (PICK_SPELL in rows[24] and scribe_row(rows, "EXIT") is not None))
 
-    def _cast_untargeted_pick(self, spell: str, slot: int, ids: set[int],
-                              held: list[int]) -> dict:
+    def _cast_list_pick(self, spell: str, slot: int, ids: set[int],
+                        held: list[int], target: str | None = None) -> dict:
         """Pick the highlighted SPELL and judge it by CASTER's list: exactly one
-        entry gone, an id SPELL is drawn for, and nothing added.  A target
-        question fails the step; a `PRESS ANY KEY` page is answered with a
-        KERNAL Return and kept.  A Return that changed nothing is followed by
-        a KERNAL Return."""
+        entry gone, an id SPELL is drawn for, and nothing added.  The target
+        question is answered once by choosing TARGET on it (`pick`); without
+        a TARGET it fails the step, and a TARGET the game never asked for
+        fails it once the entry is spent.  A `PRESS ANY KEY` page is answered
+        with a KERNAL Return and kept.  A Return that changed nothing is
+        followed by a KERNAL Return."""
         messages: list[str] = []
         pages: list[list[str]] = []
+        asked = False
         for key in ("xtest-return", "kernal-return"):
             was = self.rows()
             self._send_pick(key)
@@ -4083,9 +4089,18 @@ class PoolRun:
             moved = False
             while self.clock() < limit:
                 rows = self.rows()
-                if rows and CAST_WHOM in rows[24]:
-                    raise self.fail("cast-whom-unexpected", f"{spell} asked "
-                                    f"{CAST_WHOM}; name a target")
+                if rows and CAST_WHOM in rows[24] and not asked:
+                    if target is None:
+                        raise self.fail("cast-whom-unexpected", f"{spell} asked "
+                                        f"{CAST_WHOM}; name a target")
+                    self.capture("cast-whom", rows)
+                    if not self.pick(target, CAST_WHOM):
+                        raise self.fail("cast-whom", f"{target} could not be "
+                                        f"chosen on {CAST_WHOM}")
+                    asked = moved = True
+                    limit = self.clock() + self.budget(CAST_PICK_SECONDS,
+                                                       "the cast on its target")
+                    continue
                 for text in self._cast_message(rows) if rows else []:
                     if text not in messages:
                         messages.append(text)
@@ -4111,8 +4126,13 @@ class PoolRun:
                         raise self.fail("cast-spent", f"casting {spell} took "
                                         f"{lost} from the list and added {added}, "
                                         f"not one entry of id {sorted(ids)}")
+                    if target is not None and not asked:
+                        raise self.fail("cast-whom-missing", f"{spell} was cast "
+                                        f"without {CAST_WHOM}, so {target} was "
+                                        "never chosen")
                     return {"key": key, "spent": lost[0], "messages": messages,
-                            "pages": pages, "memorised_after": now}
+                            "pages": pages, "memorised_after": now,
+                            "asked": asked}
                 time.sleep(0.3)
             if moved:
                 self.capture("cast-not-spent")
@@ -4144,20 +4164,23 @@ class PoolRun:
                                 f"list did not come back within {seconds:g} s")
             time.sleep(0.3)
 
-    def cast_untargeted(self, caster: str, spell: str) -> dict:
-        """`cast CASTER:SPELL` in Pool's camp for a spell with no target
-        question, such as `PRAYER`: the spell list's highlight moved onto
-        SPELL, Return, and the game's `<NAME> CASTS` message kept; then the
-        pick prompt's `EXIT` row, the list's `EXIT` and the MAGIC bar's `EXIT`,
-        ending on the camp bar.  Every action is a key and nothing is written.
+    def cast_memorised(self, caster: str, spell: str,
+                       target: str | None = None) -> dict:
+        """`cast CASTER:SPELL[>TARGET]` in Pool's camp: the spell list's
+        highlight moved onto SPELL, Return, `CAST SPELL ON WHOM` answered with
+        TARGET when one is named, and the game's `<NAME> CASTS` message kept;
+        then the pick prompt's `EXIT` row, the list's `EXIT` and the MAGIC
+        bar's `EXIT`, ending on the camp bar.  Every action is a key and
+        nothing is written.
 
         CASTER's memorised list, read from the live record, must lose exactly
         one entry of an id the title's spell table draws SPELL for and gain
         none; a caster without SPELL ready, a list owned by another member, a
-        target question or a pick that spends nothing fails the step."""
+        target question with no TARGET, a TARGET not on it or never asked
+        for, or a pick that spends nothing fails the step."""
         if self.game.key != "pool-of-radiance":
-            raise self.fail("cast", "a cast with no target is measured on Pool "
-                            "of Radiance only")
+            raise self.fail("cast", "a cast from the memorised list is measured "
+                            "on Pool of Radiance only")
         ids = self.spell_ids().get(spell)
         if not ids:
             raise self.fail("cast-spell", f"{spell}: no spell of this title is "
@@ -4178,7 +4201,7 @@ class PoolRun:
             raise self.fail("cast-list-member", f"the spell list is {owner!r}'s, "
                             f"not {caster}'s")
         self._cast_highlight(spell, listed)
-        picked = self._cast_untargeted_pick(spell, slot, ids, held)
+        picked = self._cast_list_pick(spell, slot, ids, held, target)
         self.capture("cast-result")
         if PICK_SPELL in self.bar():
             self._leave_cast_pick()
@@ -4190,7 +4213,7 @@ class PoolRun:
                 lambda r: CAMP_BAR in r[24], 20, "the camp bar") is None:
             raise self.fail("cast-camp", "the camp bar never came back")
         after = self.reading()
-        return {"caster": caster, "spell": spell, "slot": slot,
+        return {"caster": caster, "spell": spell, "target": target, "slot": slot,
                 "spell_id": picked["spent"], "key": picked["key"],
                 "messages": picked["messages"], "pages": picked["pages"],
                 "memorised_before": held, "memorised_after": picked["memorised_after"],
@@ -4226,7 +4249,9 @@ class PoolRun:
     def _cast_once(self, arg: str, resist_ok: bool = False) -> dict:
         caster, spell, target = parse_cast(arg)
         if target is None and spell not in CAMP_PARTY_SPELLS:
-            return self.cast_untargeted(caster, spell)
+            return self.cast_memorised(caster, spell)
+        if target is not None and spell not in TARGETED_CAST_SPELLS:
+            return self.cast_memorised(caster, spell, target)
         dispel = spell in POOL_TARGET_SPELLS
         if dispel:
             before = self.reading()
@@ -4395,14 +4420,23 @@ class PoolRun:
                         f"selected slot {got['slot']}, resident "
                         f"{got['resident_name']!r})")
 
-    def _scribe_walk(self, label: str, limit: int = 12) -> None:
-        """Move the scroll list's highlight onto LABEL's row with Down and Up."""
-        for _ in range(limit):
+    def _scribe_walk(self, label: str, limit: int | None = None) -> None:
+        """Move the list's highlight onto LABEL's row with Down and Up, one key
+        a read.  LIMIT is how many reads it gets; by default twice the rows
+        of the list first read, plus two, so a long page (a cleric's book page
+        of fourteen spells and `EXIT`) is walked end to end."""
+        tries, cap = 0, limit or 12
+        while tries < cap:
+            tries += 1
             screen = self.sess.screen()
             if screen is None:
                 self.sess.settle(0.5)
                 continue
             rows = [screen.row(r) for r in range(25)]
+            if limit is None:
+                limit = cap = tries + 2 * sum(
+                    1 for r in range(3, 23) if r < len(rows)
+                    and rows[r][1:39].startswith("  ") and rows[r][1:39].strip()) + 1
             target = scribe_row(rows, label)
             if target is None:
                 raise self.fail("scribe-row", f"{label} is not a row of the list")
@@ -10590,8 +10624,8 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as e:
             ap.error(str(e))
         if args.title == "pool" and target is not None and spell in CAMP_CURES:
-            ap.error("Pool cast supports CASTER:SPELL for a spell with no target "
-                     "question, CASTER:DISPEL MAGIC>TARGET or CASTER:ENLARGE>TARGET")
+            ap.error("Pool cast supports CASTER:SPELL, or CASTER:SPELL>TARGET "
+                     "for a spell that asks CAST SPELL ON WHOM")
         if args.title == "curse" and (target is None or spell not in CAMP_CURES):
             ap.error("Curse cast requires CASTER:CURE BLINDNESS>TARGET")
         if args.title == "ssb":

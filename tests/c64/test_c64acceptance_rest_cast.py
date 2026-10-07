@@ -1,5 +1,5 @@
 """Three Pool camp steps driven with keys alone and no memory write: `rest
-offered`, `cast CASTER:SPELL` for a spell with no target question, and Dispel
+offered`, `cast CASTER:SPELL[>TARGET]` from the memorised list, and Dispel
 Magic picked from a list that holds other spells, on a fake of the screens the
 game drew in the measuring boots (`~/.cache/wish/303/memorize/explore*` and
 `~/.cache/wish/303/p3-driver/`)."""
@@ -423,8 +423,10 @@ DIRTEN = [1, 1, 3, 3, 3, 28, 42]
 def test_cast_reads_a_spell_with_no_target():
     assert A.parse_cast("DIRTEN:prayer") == ("DIRTEN", "PRAYER", None)
     assert A.parse_steps(["load", "cast DIRTEN:PRAYER"])[1].arg == "DIRTEN:PRAYER"
-    for bad in ("DIRTEN:PRAYER>BRUTUS", "SHARA:CURE BLINDNESS PHILIPPE",
-                "ROLAND:DISPEL MAGIC"):
+    assert A.parse_cast("DIRTEN:cure light wounds>Brutus") == (
+        "DIRTEN", "CURE LIGHT WOUNDS", "Brutus")
+    for bad in ("DIRTEN:ANIMATE DEAD>BRUTUS", "SHARA:CURE BLINDNESS PHILIPPE",
+                "ROLAND:DISPEL MAGIC", "DIRTEN:CURE LIGHT WOUNDS>"):
         with pytest.raises(ValueError):
             A.parse_cast(bad)
 
@@ -462,6 +464,44 @@ def test_cast_with_no_target_fails_when_the_game_asks_whom(tmp_path):
     run = _run(tmp_path, sess)
     with pytest.raises(A.StepFailed, match="asked CAST SPELL ON WHOM"):
         run.cast("DIRTEN:PRAYER")
+
+
+def test_pool_main_takes_a_cast_with_a_target(tmp_path):
+    assert A.main(["--title", "pool", "--save", str(_fixture_disk(tmp_path)),
+                   "--stage-only", "--steps", "load",
+                   "cast DIRTEN:CURE LIGHT WOUNDS>BRUTUS",
+                   "--out", str(tmp_path / "cure")]) == 0
+
+
+def test_cast_answers_the_target_question_with_the_named_member(tmp_path):
+    sess = CampFake(DIRTEN, whom_spells=(3,), dispel_page=False)
+    run = _run(tmp_path, sess)
+    got = run.cast("DIRTEN:CURE LIGHT WOUNDS>DIRTEN")
+    assert (got["spell"], got["target"], got["spell_id"]) == (
+        "CURE LIGHT WOUNDS", "DIRTEN", 3)
+    assert got["memorised_after"] == [1, 1, 3, 3, 28, 42]
+    # The whom menu lists BRUTUS, then DIRTEN: the second row is chosen, after
+    # the pick's Return, and chosen with a Return of its own.
+    after_pick = sess.sent[sess.sent.index(("key", "Return")):]
+    assert after_pick[1:3] == [("party", 1), ("key", "Return")]
+    assert list(tmp_path.glob("*cast-whom.txt"))
+    assert sess.state == "camp"
+
+
+def test_cast_fails_when_the_target_is_not_on_the_whom_menu(tmp_path):
+    sess = CampFake(DIRTEN, whom_spells=(3,), dispel_page=False)
+    run = _run(tmp_path, sess)
+    with pytest.raises(A.StepFailed, match="NOBODY could not be chosen"):
+        run.cast("DIRTEN:CURE LIGHT WOUNDS>NOBODY")
+    assert sess.state == "whom"
+
+
+def test_cast_with_a_target_fails_when_the_game_never_asks_whom(tmp_path):
+    sess = CampFake(DIRTEN, whom_spells=())
+    run = _run(tmp_path, sess)
+    with pytest.raises(A.StepFailed, match="without CAST SPELL ON WHOM, so "
+                       "BRUTUS was never chosen"):
+        run.cast("DIRTEN:CURE LIGHT WOUNDS>BRUTUS")
 
 
 def test_cast_with_no_target_fails_before_any_key_without_the_spell_ready(tmp_path):
