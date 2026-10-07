@@ -931,3 +931,43 @@ def test_the_darkness_vault_guards_match_their_screens_and_not_the_neighbours(tm
                 assert not guard(state, root / crop), (state, crop)
         for crop in others:
             assert not guard(state, root / crop), (state, crop)
+
+
+_DARKNESS_WORLD_LABELS = {
+    '9/wish9-control/accept1/shots/12-world.png': 'place_x1_y2_f1',
+    '9/wish9-test/accept3/shots/12-world.png': 'place_x1_y2_f1',
+    '9/wish9-control/accept1/shots/13-world.png': 'place_x2_y2_f1',
+    '9/wish9-test/accept3/shots/13-world.png': 'place_x2_y2_f1',
+    'WISH-2/wish2-a1a/accept1/shots/12-world.png': 'place_x2_y2_f1',
+    'WISH-2/wish2-a1b/accept1/shots/12-world.png': 'place_x2_y2_f1',
+    'WISH-2/wish2-s5/accept2/shots/12-world.png': 'place_x2_y2_f1',
+    'WISH-2/wish2-a1a/accept1/shots/13-world.png': 'place_x3_y2_f1',
+    'WISH-2/wish2-a1b/accept1/shots/13-world.png': 'place_x3_y2_f1',
+    'WISH-2/wish2-s5-reload/reload1/shots/10-world.png': 'place_x3_y2_f1',
+    'WISH-2/wish2-s5-reload/reload1/shots/11-place.png': 'place_x3_y2_f1',
+}
+_DARKNESS_SHEET_CROPS = (
+    'WISH-2/wish2-a1a/accept1/shots/06-sheet.png',
+    'WISH-2/wish2-a1b/accept1/shots/06-sheet.png',
+    'WISH-2/wish2-s5/accept2/shots/06-sheet.png',
+    'WISH-2/wish2-s5-reload/reload1/shots/06-sheet.png',
+)
+
+
+def test_the_darkness_map_declares_the_spent_sheet_and_the_walked_world_crops():
+    """The party-menu sheet is the spent-sheet bar, and each walked world crop names its place guard."""
+    spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, 'darkness')
+    assert 'sheet' in spec['guards']['camp_sheet_spent']['also']
+    for path, guard in _DARKNESS_WORLD_LABELS.items():
+        assert spec['labels'].get(path) == [guard], path
+
+
+def test_the_darkness_guard_map_checks_clean_over_the_kept_crops():
+    """Every kept Pools of Darkness crop that a guard matches is a state that guard declares."""
+    from tools.registry import scratch
+
+    root = scratch.cache_dir('acceptance')
+    wanted = [*_DARKNESS_WORLD_LABELS, *_DARKNESS_SHEET_CROPS]
+    if not all((root / path).is_file() for path in wanted):
+        pytest.skip('the kept Pools of Darkness acceptance crops are not on this machine')
+    assert guardmaps.main(['check', '--title', 'darkness']) == 0

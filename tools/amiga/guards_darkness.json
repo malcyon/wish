@@ -718,7 +718,8 @@
     },
     "camp_sheet_spent": {
       "also": [
-        "camp_sheet"
+        "camp_sheet",
+        "sheet"
       ],
       "box": [
         58,
@@ -1591,6 +1592,30 @@
     "679/d2a23aa478-amiga-darkness-reload-B/reloadB/shots/11-place.png": [
       "place_x2_y2_f1"
     ],
+    "9/wish9-control/accept1/shots/12-world.png": [
+      "place_x1_y2_f1"
+    ],
+    "9/wish9-control/accept1/shots/13-world.png": [
+      "place_x2_y2_f1"
+    ],
+    "9/wish9-test/accept3/shots/12-world.png": [
+      "place_x1_y2_f1"
+    ],
+    "9/wish9-test/accept3/shots/13-world.png": [
+      "place_x2_y2_f1"
+    ],
+    "WISH-2/wish2-a1a/accept1/shots/12-world.png": [
+      "place_x2_y2_f1"
+    ],
+    "WISH-2/wish2-a1a/accept1/shots/13-world.png": [
+      "place_x3_y2_f1"
+    ],
+    "WISH-2/wish2-a1b/accept1/shots/12-world.png": [
+      "place_x2_y2_f1"
+    ],
+    "WISH-2/wish2-a1b/accept1/shots/13-world.png": [
+      "place_x3_y2_f1"
+    ],
     "WISH-2/wish2-a2/measure1/shots/05-loaded_menu.png": [
       "loaded_menu"
     ],
@@ -1629,6 +1654,15 @@
     ],
     "WISH-2/wish2-a4/measure-a4-33/shots/06-sheet.png": [
       "sheet"
+    ],
+    "WISH-2/wish2-s5-reload/reload1/shots/10-world.png": [
+      "place_x3_y2_f1"
+    ],
+    "WISH-2/wish2-s5-reload/reload1/shots/11-place.png": [
+      "place_x3_y2_f1"
+    ],
+    "WISH-2/wish2-s5/accept2/shots/12-world.png": [
+      "place_x2_y2_f1"
     ],
     "WISH-2/wish2-s5/accept2/shots/13-world.png": [
       "place_x3_y2_f1"
