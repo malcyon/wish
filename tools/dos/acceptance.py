@@ -8617,6 +8617,10 @@ def describe(result: dict) -> list[str]:
     return lines
 
 
+# Files Save As leaves beside the party that the report need not list.
+SAVEAS_REPORT_FILES = frozenset({"saveas-report.json", "commit.txt"})
+
+
 def check_saveas_report(report_path: str | pathlib.Path, save: str | pathlib.Path) -> None:
     """Raise `ValueError` unless `save` holds exactly the files the Save As report at `report_path` wrote.
 
@@ -8629,7 +8633,11 @@ def check_saveas_report(report_path: str | pathlib.Path, save: str | pathlib.Pat
         report = json.loads(report_path.read_text())
     except (OSError, ValueError) as e:
         raise ValueError(f"cannot read the Save As report {report_path}: {e}") from e
-    outcome = report.get("save_as") or {}
+    if not isinstance(report, dict):
+        raise ValueError(f"the Save As report {report_path} is not a JSON object")
+    outcome = report.get("save_as", {})
+    if not isinstance(outcome, dict):
+        raise ValueError(f"the Save As report {report_path} has a save_as that is not an object")
     if outcome.get("stopped"):
         raise ValueError(f"the Save As report {report_path} stopped: {outcome['stopped']}")
     if outcome.get("to") != "dos":
@@ -8647,6 +8655,12 @@ def check_saveas_report(report_path: str | pathlib.Path, save: str | pathlib.Pat
             raise ValueError(f"{save} lacks {name}, which the Save As report names")
         if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
             raise ValueError(f"{path} differs from the {name} the Save As report names")
+    if save.is_dir():
+        extra = sorted(p.name for p in save.iterdir()
+                       if p.name not in written and p.name not in SAVEAS_REPORT_FILES)
+        if extra:
+            raise ValueError(f"{save} holds {', '.join(extra)}, which the Save As report "
+                             "does not name")
 
 
 def main(argv: list[str] | None = None) -> int:

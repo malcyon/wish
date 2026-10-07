@@ -12899,3 +12899,35 @@ def test_saveas_report_goes_with_save_and_is_checked_before_any_boot(
     assert da.main(["--title", "darkness", "--save", str(folder), "--saveas-report",
                     str(report), "--steps", "load"]) == 0
     assert len(ran) == 1
+
+
+def test_a_saveas_report_fails_a_folder_holding_a_file_it_did_not_write(tmp_path):
+    folder = tmp_path / "out"
+    folder.mkdir()
+    (folder / "SAVGAMA.PTY").write_bytes(b"party")
+    (folder / "saveas-report.json").write_text("{}")
+    (folder / "commit.txt").write_text("x")
+    report = _saveas_report(tmp_path, {"SAVGAMA.PTY": b"party"})
+    da.check_saveas_report(report, folder)
+    (folder / "CHRDATA.OLD").write_bytes(b"stale")
+    with pytest.raises(ValueError, match="holds CHRDATA.OLD"):
+        da.check_saveas_report(report, folder)
+
+
+@pytest.mark.parametrize("text", ["[]", '{"save_as": []}', '{"save_as": "x"}'])
+def test_a_malformed_saveas_report_raises_a_clean_error(tmp_path, text):
+    report = tmp_path / "saveas-report.json"
+    report.write_text(text)
+    with pytest.raises(ValueError, match="not a JSON object|not an object"):
+        da.check_saveas_report(report, tmp_path)
+
+
+@pytest.mark.parametrize("extra", [["--convert", "x.d64"], ["--fixture-row", "0=1:2:3:4"],
+                                   ["--amiga-slot", "SavGamA.pty"]])
+def test_saveas_report_is_not_accepted_with_a_source_that_replaces_the_folder(
+        monkeypatch, tmp_path, extra):
+    monkeypatch.setattr(da, "run", lambda args: 0)
+    report = _saveas_report(tmp_path, {"SAVGAMA.PTY": b"party"})
+    with pytest.raises(SystemExit):
+        da.main(["--title", "darkness", "--save", str(tmp_path), "--saveas-report",
+                 str(report), "--steps", "load", *extra])
