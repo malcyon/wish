@@ -4362,6 +4362,16 @@ class PoolRun:
                                         f"added {added}, not one pending entry "
                                         f"for id {sorted(ids)}")
                     settled = self._memorize_settle(MEMORIZE_REDRAW_SECONDS)
+                    # A first Return the game was slow to take can land after
+                    # the KERNAL retry and add the pick a second time.
+                    final = list((collections.Counter(
+                        self.memorised_entries(slot))
+                        - collections.Counter(before)).elements())
+                    if len(final) != 1:
+                        raise self.fail("memorize-duplicate", f"picking {spell} "
+                                        f"added {final} once the screen "
+                                        "settled, not one pending entry: the "
+                                        "pick was taken twice")
                     return {"spell": spell, "entry": added[0],
                             "id": added[0] & ~MEMORISE_PENDING & 0xFF, "key": key,
                             "messages": messages,
@@ -4492,7 +4502,9 @@ class PoolRun:
             raise self.fail("memorize-list", f"{who}'s memorised list is {after}, "
                             f"not {held} with {entries} added")
         self.scribing = True
-        self.memorize_pending = {"who": who, "slot": slot, "entries": entries}
+        self.memorize_pending = {
+            "who": who, "slot": slot, "entries": entries,
+            "learned_before": [n for n in held if not n & MEMORISE_PENDING]}
         return {"who": who, "slot": slot, "spells": spells, "panel_row": index + 1,
                 "book_first_page": book, "picks": picks, "chosen": chosen,
                 "memorised_before": held, "memorised_after": after,
@@ -4902,7 +4914,11 @@ class PoolRun:
         now = self.memorised_entries(pending["slot"])
         want = collections.Counter(e & ~MEMORISE_PENDING & 0xFF
                                    for e in pending["entries"])
-        learned = not (want - collections.Counter(now))
+        # Only entries this step made count: the member may already hold the
+        # same spell learned, and a pick left pending must not match it.
+        gained = (collections.Counter(n for n in now if not n & MEMORISE_PENDING)
+                  - collections.Counter(pending.get("learned_before", ())))
+        learned = not (want - gained)
         got = {"who": pending["who"], "pending_before": pending["entries"],
                "after": now, "learned": learned,
                "still_pending": [n for n in now if n & MEMORISE_PENDING]}

@@ -285,7 +285,8 @@ def test_memorize_turns_to_the_spell_picks_it_confirms_and_ends_in_camp(tmp_path
     assert ("bar", "NEXT") in sess.sent
     assert sess.sent.count(("key", "Down")) == 1
     assert run.scribing and run.memorize_pending == {
-        "who": "DIRTEN", "slot": SLOT, "entries": [0xA4]}
+        "who": "DIRTEN", "slot": SLOT, "entries": [0xA4],
+        "learned_before": [28, 26, 3, 3]}
 
 
 def test_memorize_leaves_the_pick_prompt_to_turn_the_page_for_the_next_spell(
@@ -374,3 +375,58 @@ def test_an_interrupted_rest_records_the_lost_choice_without_failing(tmp_path):
     got = run._memorize_learned({"who": "DIRTEN", "slot": SLOT, "entries": [0xA4]},
                                 in_camp=True, completed=False)
     assert got["learned"] is False and got["after"] == [28]
+
+
+def test_a_pick_left_pending_does_not_pass_as_the_spell_already_learned(tmp_path):
+    sess = MemorizeFake(free={}, memorised=(0x24, 0xA4, 28))
+    run = _run(tmp_path, sess)
+    pending = {"who": "DIRTEN", "slot": SLOT, "entries": [0xA4],
+               "learned_before": [0x24, 28]}
+    with pytest.raises(A.StepFailed, match="without \\[36\\] learned"):
+        run._memorize_learned(pending, in_camp=True, completed=True)
+
+
+def test_a_pick_that_became_learned_passes_beside_the_same_spell_held_before(
+        tmp_path):
+    sess = MemorizeFake(free={}, memorised=(0x24, 0x24, 28))
+    run = _run(tmp_path, sess)
+    pending = {"who": "DIRTEN", "slot": SLOT, "entries": [0xA4],
+               "learned_before": [0x24, 28]}
+    assert run._memorize_learned(pending, in_camp=True, completed=True)["learned"]
+
+
+# -- the pick's own check ---------------------------------------------------------
+
+class _DuplicatingFake(MemorizeFake):
+    """A first Return the game took late: the pick shows once, then a second
+    copy lands on the second read of the list after it."""
+
+    reads = None
+
+    def go(self, what):
+        before = len(self.memorised)
+        done = super().go(what)
+        if len(self.memorised) > before:
+            self.reads = 0
+        return done
+
+    def mon(self, timeout=0):
+        if self.reads is not None:
+            self.reads += 1
+            if self.reads == 2:
+                self.memorised.append(self.memorised[-1])
+        return super().mon(timeout)
+
+
+def test_a_pick_taken_twice_fails_naming_the_duplicate(tmp_path):
+    sess = _DuplicatingFake(free={3: 2})
+    run = _run(tmp_path, sess)
+    with pytest.raises(A.StepFailed, match="added \\[164, 164\\].*taken twice"):
+        run.memorize("DIRTEN>ANIMATE DEAD")
+
+
+def test_a_pick_that_adds_nothing_and_draws_no_message_fails(tmp_path):
+    sess = MemorizeFake(free={3: 1}, lost_returns=2)
+    run = _run(tmp_path, sess)
+    with pytest.raises(A.StepFailed, match="neither Return picked ANIMATE DEAD"):
+        run.memorize("DIRTEN>ANIMATE DEAD")
