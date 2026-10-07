@@ -647,10 +647,12 @@ POD_CONTINUE_ROUNDS = 5
 POD_CONTINUE_PRESSES = 3
 #: Bars `exit` presses `e` on, by `bar_signature`, each a menu with `EXIT` that
 #: is not a party menu (where `e` is exit to DOS).  Measured in live runs: the
-#: treasure menu `VIEW TAKE POOL SHARE EXIT` and the tester's `SELECT EXIT`
+#: treasure menu `VIEW TAKE POOL SHARE EXIT`, its item list `ITEMS : TAKE NEXT
+#: EXIT`, its take bar `TAKE: MONEY ITEMS EXIT` and the tester's `SELECT EXIT`
 #: prompt.  The party menu `b3205ea937285f8a` and the tester's pages, which
 #: have no `EXIT`, are not listed.
-POD_EXIT_BARS = {"8f3017206b2a788d": "treasure", "4181ac2ffc4f8c7c": "select"}
+POD_EXIT_BARS = {"8f3017206b2a788d": "treasure", "4181ac2ffc4f8c7c": "select",
+                 "8f9a22c9f2996980": "items", "28ace249ea92355a": "take"}
 POD_EXIT = "e"
 
 #: Curse's `PRESS <ENTER>/<RETURN> TO CONTINUE` bar (`Screen.glyphs(dosbox.BAR)`), the

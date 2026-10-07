@@ -13006,6 +13006,27 @@ def test_exit_on_a_party_menu_or_another_bar_fails_and_presses_nothing(
     assert game.keys == []
 
 
+@pytest.mark.parametrize("sig, kind", [("8f9a22c9f2996980", "items"),
+                                        ("28ace249ea92355a", "take")])
+def test_exit_presses_e_on_the_treasure_item_and_take_bars(tmp_path, monkeypatch, sig, kind):
+    game, d = _pod_driver(tmp_path, question=False)
+    monkeypatch.setattr(da, "bar_signature", lambda sc: sig)
+    game.mode = "overland"
+    d.where = "pressed"
+    got = d.exit_menu()
+    assert game.keys == ["e"] and got["menu"] == kind
+
+
+def test_a_party_menu_signature_still_fails_exit_with_no_key(tmp_path, monkeypatch):
+    game, d = _pod_driver(tmp_path, question=False)
+    monkeypatch.setattr(da, "bar_signature", lambda sc: "b3205ea937285f8a")
+    game.mode = "overland"
+    d.where = "pressed"
+    with pytest.raises(da.StepFailed, match="lost-exit"):
+        d.exit_menu()
+    assert game.keys == []
+
+
 def test_the_exit_bars_are_not_the_party_menu():
     assert "b3205ea937285f8a" not in da.POD_EXIT_BARS
 
