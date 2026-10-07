@@ -136,6 +136,12 @@ class FastTravelAddresses:
     #: writes the destination at `came_from` instead of the departing area.
     came_from_is_destination: tuple[int, ...] = ()
 
+    #: `(destination, address, value)` triples: bytes a walked route sets
+    #: before its `NEWECL` that the destination's own entry script reads. A
+    #: trip into that destination writes them because it does not walk the
+    #: route. No address may lie in `scratch`..`scratch + scratch_len`.
+    arrival_writes: tuple[tuple[int, int, int], ...] = ()
+
     #: The live x/y/facing triple, which no title relocated.
     live_square: int = LIVE_SQUARE
     scratch_len: int = SCRATCH_LEN
@@ -292,10 +298,9 @@ CURSE_OF_THE_AZURE_BONDS = FastTravelAddresses(
 #: The back edge is the `STA $4C00,X`, so `$4BFB` is written once and the wipe
 #: 32 times.
 #:
-#: `$4BFB` is the flag that suppresses the party's coordinates on the status
-#: line -- `DUNGEON $0A0E` is `LDA $4BFB / BNE` over the block that loads the
-#: square for printing (`docs/138-multiple-games.md` §8). Zeroing it is what
-#: the handler does, so a trip does it too.
+#: `$4BFB` is read once by `DUNGEON`, at `$09C0`: `LDA #$FF / LDX $4BFB / BEQ /
+#: AND #$F7`, which clears bit 3 of a mask passed on to `$4872`. Zeroing it is
+#: what the handler does, so a trip does it too.
 #:
 #: PROBABLE rather than CONFIRMED: every address is read off Silver Blades' own
 #: overlays and the handler is the same routine, and **no Silver Blades party
@@ -315,6 +320,17 @@ SECRET_OF_THE_SILVER_BLADES = FastTravelAddresses(
     key_fetch=(0x4101, 0x4122),
     wall_slot_pinned=0x4BE7,
     zeroed=(0x4BFB,),
+    # The Well: New Verdigris's shaft exit (ECL10 $9A32-$9A4A) stores
+    # $4C62 = 1 and $4C2A = 1 before NEWECL 33; without $4C62 the Well's entry
+    # reads its landing table from past the end of ECL21.
+    # The four areas whose entry scripts never store $4CFD = $FF: DUNGEON
+    # $0A23 prints $4CFD/$4CFE while $4CFD is below $80. Every walked route
+    # comes from $40/$42 ($41), $40 ($44), $60/$62 ($61) or $61/$63 ($62),
+    # which store $FF. Not written for every trip: ECL31, ECL50 and ECL52
+    # branch on where the party came from.
+    arrival_writes=((0x21, 0x4C62, 1), (0x21, 0x4C2A, 1),
+                    (0x41, 0x4CFD, 0xFF), (0x44, 0x4CFD, 0xFF),
+                    (0x61, 0x4CFD, 0xFF), (0x62, 0x4CFD, 0xFF)),
 )
 
 #: Every title whose overlays have been read, by `C64Container.key`. Champions of

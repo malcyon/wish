@@ -1396,6 +1396,8 @@ def newecl_writes(from_area: int, to_area: int, disk: int | None = None,
       `LDX #$1F / LDA #$00 / STA $4BFB / STA $4C00,X / DEX / BPL`, and the
       back edge is the `STA $4C00,X` -- so `$4BFB` is written once, in front
       of the wipe, and that order is kept here.
+    * **`arrival_writes` carries the bytes a walked route sets** before its
+      `NEWECL` and the destination's script reads, for the destination only.
 
     `arrival` is `(x, y, facing)`, or `(x, y)` where the departing script sets
     the square but not the direction, or None to write no square at all and let
@@ -1437,6 +1439,9 @@ def newecl_writes(from_area: int, to_area: int, disk: int | None = None,
     if addr.wall_slot_pinned is not None:
         writes.append((addr.wall_slot_pinned,
                        bytes(addr.wall_slot_pinned_len)))
+    writes.extend((at, bytes([value & 0xFF]))
+                  for dest, at, value in addr.arrival_writes
+                  if dest == to_area & 0x7F)
     if disk is not None:
         writes.append((addr.disk, bytes([disk & 0xFF])))
     if arrival is not None:

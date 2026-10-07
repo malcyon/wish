@@ -1911,6 +1911,32 @@ def test_new_verdigris_clears_its_leave_flag_only_while_it_is_one(held, writes):
     assert target.read(0x4CD9, 1) == bytes([0xFF if writes else held])
 
 
+def test_a_trip_into_the_well_writes_the_bytes_the_shaft_walk_writes():
+    target, outcome = _silver_blades_trip(0x20, 0x21,
+                                          {0x4C4C: 0, 0x4C62: 0})
+    assert (0x4C62, b"\x01") in outcome.writes
+    assert (0x4C2A, b"\x01") in outcome.writes
+    assert target.read(0x4C62, 1) == b"\x01"
+    assert 0x4C4C not in {a for a, _ in outcome.writes}
+
+
+def test_a_trip_into_another_area_writes_neither_well_byte():
+    _target, outcome = _silver_blades_trip(0x20, 0x22)
+    assert not {a for a, _ in outcome.writes} & {0x4C62, 0x4C2A}
+
+
+@pytest.mark.parametrize("to", [0x41, 0x44, 0x61, 0x62])
+def test_a_trip_into_a_frameless_area_leaves_the_status_line_on_the_engine_square(to):
+    target, outcome = _silver_blades_trip(0x20, to, {0x4CFD: 0x00})
+    assert (0x4CFD, b"\xff") in outcome.writes
+    assert target.read(0x4CFD, 1) == b"\xff"
+
+
+def test_a_trip_into_area_40_does_not_write_the_frame_byte():
+    _target, outcome = _silver_blades_trip(0x20, 0x40)
+    assert 0x4CFD not in {a for a, _ in outcome.writes}
+
+
 @pytest.mark.parametrize("here", [0x50, 0x51, 0x52])
 def test_leaving_the_5x_group_stores_the_two_bytes_the_scripts_store(here):
     target, outcome = _silver_blades_trip(here, 0x10)

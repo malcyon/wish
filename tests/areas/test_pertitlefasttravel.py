@@ -153,11 +153,9 @@ def test_a_curse_trip_writes_curses_addresses_and_none_of_pool_of_radiances():
 def test_silver_blades_makes_the_sixth_write_and_the_others_do_not():
     """`$4BFB` is zeroed by Silver Blades' handler and by no other title's.
 
-    It is the flag that suppresses the party's coordinates on the status line
-    (`docs/138-multiple-games.md` §8). Eleven of the twenty-two areas set it
-    again in their own arrival script and four never touch it, so a trip that
-    skipped this write would drop a party into one of those four with its
-    coordinates hidden and nothing to say why.
+    `DUNGEON $09C0` reads it once: `LDA #$FF / LDX $4BFB / BEQ / AND #$F7`,
+    which clears bit 3 of a mask passed on to `$4872`. The handler zeroes it,
+    so a trip does too.
     """
     silver = dict(actions.newecl_writes(0x10, 0x11, disk=2,
                                         addresses=fasttravel.
@@ -370,3 +368,11 @@ def test_a_jump_that_fails_tells_the_player_no_address(caplog):
     assert "flagged for reload" not in outcome.message
     assert any("flagged for reload" in r.getMessage()
                for r in caplog.records), "the address did not reach the log"
+
+
+def test_no_arrival_write_lands_in_the_scratch_wipe_and_only_silver_blades_has_any():
+    for row in fasttravel.ADDRESSES.values():
+        for _area, address, _value in row.arrival_writes:
+            assert not row.scratch <= address < row.scratch + row.scratch_len
+    assert fasttravel.POOL_OF_RADIANCE.arrival_writes == ()
+    assert fasttravel.CURSE_OF_THE_AZURE_BONDS.arrival_writes == ()
