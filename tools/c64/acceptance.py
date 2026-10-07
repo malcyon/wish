@@ -6223,12 +6223,13 @@ class PoolRun:
                                                 screen)
             return True
         if side not in WALK_SIDES:
+            answered = ("only side 2, the encounter's, and the last forward "
+                        "move's area edge are" if self.edge_crossing
+                        else "only side 2, the encounter's, is")
             raise self.fail(
                 "walk", f"{self.walk_verb} {route}: move {n} ({move}) from "
                         f"{before}: the game asks for side {side} mid-walk, "
-                        f"which the step does not answer (only side 2, the "
-                        f"encounter's, and the last forward move's area edge "
-                        f"are): {row}")
+                        f"which the step does not answer ({answered}): {row}")
         if side in self.walk_side_open:
             raise self.fail(
                 "walk", f"{self.walk_verb} {route}: move {n} ({move}) from "
@@ -9436,10 +9437,11 @@ def seeded_vicerc_digest(joy: bool = False) -> str:
 
 #: The arguments a resumed run must repeat, since each changes what the
 #: machine did before the snapshot.
-RESUME_OPTIONS = ("no_encounters", "walk_retry", "dispel_tries", "cross_edge", "walk", "walk_steps",
-                  "walk_fight_seconds", "joy", "first_bar_key", "stage_row",
-                  "stage_trait", "stage_item", "stage_record", "stage_status",
-                  "stage_side", "stage_var", "stage_roster", "quit_nonattacking")
+RESUME_OPTIONS = ("no_encounters", "walk_retry", "dispel_tries", "cross_edge",
+                  "walk", "walk_steps", "walk_fight_seconds", "joy",
+                  "first_bar_key", "stage_row", "stage_trait", "stage_item",
+                  "stage_record", "stage_status", "stage_side", "stage_var",
+                  "stage_roster", "quit_nonattacking")
 
 
 def resume_options(args) -> dict:

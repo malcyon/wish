@@ -233,3 +233,45 @@ def test_the_last_try_does_not_record_a_resist_as_an_outcome(tmp_path):
     with pytest.raises(A.StepFailed, match="dispel-roll"):
         run.cast("ROLAND:DISPEL MAGIC>BRUTUS")
     assert flags == [True]
+
+
+def _resisting_run(tmp_path):
+    """The real `_cast_once` on the camp fake, with the game's roll failing:
+    the Dispel Magic is spent and row 63 never clears."""
+    from test_c64acceptance_rest_cast import CampFake, _dispel_run
+
+    sess = CampFake([1, 3, 28, 41, 42])
+    run = _dispel_run(tmp_path, sess)
+    cleared = run.reading
+
+    def reading():
+        got = cleared()
+        got["effect_rows"][63][1] = 32
+        return got
+
+    run.reading = reading
+    return run
+
+
+def test_cast_once_reports_a_resisted_dispel_when_resisting_is_allowed(tmp_path):
+    run = _resisting_run(tmp_path)
+    got = run._cast_once("DIRTEN:DISPEL MAGIC>BRUTUS", resist_ok=True)
+    assert got["outcome"] == "resisted" and got["slot"] == 5
+    assert got["row"] == [63, 32, 5, 0, 5]
+    assert got["memorised_before"] == [1, 3, 28, 41, 42]
+    assert got["memorised_after"] == [1, 3, 28, 42]
+
+
+def test_cast_once_fails_a_resisted_dispel_when_resisting_is_not_allowed(tmp_path):
+    run = _resisting_run(tmp_path)
+    with pytest.raises(A.StepFailed, match="unsuccessful roll"):
+        run._cast_once("DIRTEN:DISPEL MAGIC>BRUTUS")
+
+
+def test_a_walk_failure_names_the_area_edge_only_when_crossing_is_on(tmp_path, monkeypatch):
+    for crossing, wanted in ((False, False), (True, True)):
+        run = _run(tmp_path, monkeypatch, _Session())
+        run.edge_crossing = crossing
+        with pytest.raises(A.StepFailed, match="side 7 mid-walk") as caught:
+            run.answer_side_prompt("KKII", (2, "I", [14, 4, 1]), "ran")
+        assert ("area edge" in str(caught.value)) is wanted
