@@ -1052,7 +1052,7 @@ def _check_init(target, row: TripRow, buffer: int, room: InitRoom) -> None:
         raise ArmError("the init entry does not point at the span")
 
 
-def arm(target, row, p: Plan) -> Armed | None:
+def arm(target, row, p: Plan, token=None) -> Armed | None:
     """Write the trip: the tier-2 square, the statements (and Pool's message),
     the step entry, then the key, each checked before the next.
 
@@ -1076,7 +1076,7 @@ def arm(target, row, p: Plan) -> Armed | None:
         _check(row, writes, originals)
         if p.placement is not None and p.placement.room is not None:
             _check_init(target, row, buffer, p.placement.room)
-            journal_write(target, row, here, buffer, writes, originals)
+            journal_write(target, row, here, buffer, writes, originals, token)
             journalled = True
     except ArmError as exc:
         _log.debug("amiga trip not armed: %s", exc)
@@ -1368,48 +1368,71 @@ def _started(pid: int) -> str | None:
     return stat.rpartition(")")[2].split()[19]
 
 
-def _owner() -> dict:
-    """The process writing a journal: its pid and start time."""
-    return {"pid": os.getpid(), "started": _started(os.getpid())}
+def _owner(token=None) -> dict:
+    """The process writing a journal: its pid, start time and the token of
+    the instance that armed the trip."""
+    return {"pid": os.getpid(), "started": _started(os.getpid()),
+            "token": token}
 
 
-def _owner_alive(owner) -> bool:
-    """Whether the process that wrote a journal is still running. A journal
-    with no readable owner (written before owners were recorded) counts as
-    dead, since only a crash could have left it."""
+def _windows_alive(pid: int) -> bool:
+    import ctypes
+    kernel32 = ctypes.windll.kernel32
+    kernel32.OpenProcess.restype = ctypes.c_void_p
+    kernel32.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int,
+                                     ctypes.c_uint32]
+    kernel32.WaitForSingleObject.restype = ctypes.c_uint32
+    kernel32.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+    kernel32.CloseHandle.restype = ctypes.c_int
+    kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+    handle = kernel32.OpenProcess(0x100000, False, pid)
+    if not handle:
+        # Access denied means the process exists; only an invalid parameter
+        # (no such pid) means it has gone.
+        return ctypes.GetLastError() == 5
+    try:
+        # SYNCHRONIZE: a wait of zero times out only on a live process.
+        return kernel32.WaitForSingleObject(handle, 0) == 0x102
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def _owner_alive(owner, token=None, journal=None) -> bool:
+    """Whether the process that wrote a journal is still running, or is this
+    process under another instance's token. A journal with no readable owner
+    counts as dead, as does one with a pid of 0 or below."""
     try:
         pid, started = int(owner["pid"]), owner.get("started")
     except (KeyError, TypeError, ValueError, AttributeError):
         return False
-    if pid == os.getpid():
+    if pid <= 0:
         return False
-    if os.name == "nt":
-        import ctypes
-        handle = ctypes.windll.kernel32.OpenProcess(0x100000, False, pid)
-        if not handle:
+    if pid == os.getpid():
+        if started is not None and _started(pid) not in (None, started):
             return False
-        try:
-            # SYNCHRONIZE: a wait of zero times out only on a live process.
-            return ctypes.windll.kernel32.WaitForSingleObject(
-                handle, 0) == 0x102
-        finally:
-            ctypes.windll.kernel32.CloseHandle(handle)
+        return owner.get("token") != token
+    if os.name == "nt":
+        return _windows_alive(pid)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
         return False
+    except PermissionError:
+        _log.info("amiga trip: the journal %s is left unrepaired, since its "
+                  "owner cannot be signalled", journal)
+        return True
     except OSError:
         return True
     return started is None or _started(pid) in (None, started)
 
 
 def journal_write(target, row: TripRow, here: int, buffer: int, writes: list,
-                  originals: list[bytes]) -> None:
+                  originals: list[bytes], token=None) -> None:
     """Record `writes` and what they will overwrite, before the first is made.
     An unwritable journal is an `ArmError`: nothing is armed that a crash
     could leave in the game."""
     saved = {"title": row.key, "from_area": here, "data_base": _base(target),
-             "buffer": buffer, "owner": _owner(),
+             "buffer": buffer, "owner": _owner(token),
              "records": [{"address": a, "original": was.hex(),
                           "data": d.hex(), "kind": k}
                          for (a, d, k), was in zip(writes, originals)]}
@@ -1442,7 +1465,7 @@ def _unjournal(target) -> None:
                      exc_info=True)
 
 
-def repair(target) -> bool:
+def repair(target, token=None) -> bool:
     """Put back an init trip that an earlier run of Wish left armed, from its
     journal. True when a journal was found and dealt with.
 
@@ -1451,8 +1474,9 @@ def repair(target) -> bool:
     each recorded word that still reads as written is put back, newest
     first, as `disarm` does. A machine that cannot be read or written leaves
     the journal for the next attempt. A journal whose writing process is
-    still running belongs to another Wish on the same machine and is left
-    alone.
+    still running belongs to another Wish on the same machine, and one
+    written under another `token` by this process to another trip of it; both
+    are left alone.
     """
     path = journal_path(target)
     try:
@@ -1470,7 +1494,7 @@ def repair(target) -> bool:
         _log.warning("amiga trip: the journal %s cannot be read, so a trip "
                      "may still be in the game", path, exc_info=True)
         return False
-    if _owner_alive(owner):
+    if _owner_alive(owner, token, path):
         return False
     if _base(target) is None:
         return False

@@ -28,6 +28,7 @@ them as statements ahead of the trip. Return is always a script trip.
 from __future__ import annotations
 
 import logging
+import secrets
 import time
 from dataclasses import dataclass
 
@@ -94,6 +95,9 @@ class AmigaFastTravel(engine.FastTravel):
     def __init__(self, key: str, disks=None):
         self.key = key
         self.disks = disks
+        #: Marks the journals this instance wrote, so another instance in the
+        #: same process leaves them alone.
+        self.token = secrets.token_hex(8)
         self._lengths: dict[int, int] | None = None
         self._init_areas: frozenset[int] | None = None
         #: The machine whose journal of a half-made trip was last looked at.
@@ -232,7 +236,7 @@ class AmigaFastTravel(engine.FastTravel):
         plan = trips.plan(to, arrival, overland, tier, prologue=prologue,
                           placement=placement)
         try:
-            armed = trips.arm(target, row, plan)
+            armed = trips.arm(target, row, plan, self.token)
         except trips.ArmIncomplete as exc:
             # Still pending, as any armed trip is: kept with its deadline
             # passed, so the next poll puts it back and says so once, or
@@ -431,7 +435,7 @@ class AmigaFastTravel(engine.FastTravel):
         if self._repaired is target:
             return
         try:
-            trips.repair(target)
+            trips.repair(target, self.token)
         except Exception:
             _log.warning("amiga fast travel: repairing a journalled trip "
                          "failed", exc_info=True)

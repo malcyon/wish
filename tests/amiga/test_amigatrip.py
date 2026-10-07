@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import struct
+import sys
 
 import pytest
 
@@ -1574,6 +1575,52 @@ def test_a_journal_another_live_wish_wrote_is_left_alone(monkeypatch, journal):
     path.write_text(json.dumps(saved))
     assert trip.repair(m) is True
     assert bytes(m.ram) == before and not list(journal.iterdir())
+
+
+def test_a_journal_another_instance_in_this_process_wrote_is_left_alone(
+        monkeypatch, journal):
+    room = init_room(monkeypatch)
+    m = init_machine(room)
+    before = bytes(m.ram)
+    p, placed = init_plan(room)
+    assert trip.arm(m, POOL, dataclasses.replace(p, placement=placed), "a")
+    armed_ram = bytes(m.ram)
+    assert trip.repair(m, "b") is False
+    assert bytes(m.ram) == armed_ram and list(journal.iterdir())
+    assert trip.repair(m, "a") is True
+    assert bytes(m.ram) == before and not list(journal.iterdir())
+
+
+@pytest.mark.parametrize("error, alive", [(5, True), (87, False)])
+def test_windows_access_denied_is_a_live_owner(monkeypatch, error, alive):
+    import types
+    kernel32 = types.SimpleNamespace(
+        OpenProcess=lambda *a: None, CloseHandle=lambda h: 1,
+        WaitForSingleObject=lambda h, t: 0x102)
+    ctypes = types.SimpleNamespace(
+        windll=types.SimpleNamespace(kernel32=kernel32),
+        GetLastError=lambda: error, c_void_p=object, c_uint32=object,
+        c_int=object)
+    monkeypatch.setitem(sys.modules, "ctypes", ctypes)
+    monkeypatch.setattr(trip.os, "name", "nt")
+    assert trip._owner_alive({"pid": 4242, "started": None}) is alive
+    assert kernel32.OpenProcess.restype is object
+
+
+def test_a_pid_of_zero_or_below_is_a_dead_owner():
+    assert not trip._owner_alive({"pid": 0, "started": None})
+    assert not trip._owner_alive({"pid": -1, "started": None})
+
+
+def test_a_pid_that_cannot_be_signalled_is_alive_and_logged(
+        monkeypatch, caplog):
+    def kill(pid, sig):
+        raise PermissionError
+    monkeypatch.setattr(trip.os, "kill", kill)
+    with caplog.at_level("INFO"):
+        assert trip._owner_alive({"pid": os.getppid(), "started": None},
+                                 None, "the-journal.json")
+    assert "the-journal.json" in caplog.text
 
 
 def test_a_reused_pid_is_not_the_journals_owner(monkeypatch, journal):

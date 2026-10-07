@@ -2,6 +2,7 @@
 
 import dataclasses
 import hashlib
+import json
 import logging
 import struct
 from types import SimpleNamespace
@@ -1111,7 +1112,11 @@ def test_attaching_after_a_crash_puts_the_init_trip_back(init_span, monkeypatch)
     first = pool_travel(monkeypatch)
     assert first.run(m, area(0), arrival=(1, 2, 0)).ok
     assert bytes(m.ram) != before
-    # Wish is gone; a new one polls the same machine.
+    # Wish is gone (its process with it); a new one polls the same machine.
+    path = next(m.journal.iterdir())
+    saved = json.loads(path.read_text())
+    saved["owner"] = {"pid": 2 ** 22 + 12345, "started": None}
+    path.write_text(json.dumps(saved))
     second = pool_travel(monkeypatch)
     assert second.continue_pending(m) is None
     assert bytes(m.ram) == before and not list(m.journal.iterdir())
