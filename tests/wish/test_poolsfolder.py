@@ -766,3 +766,20 @@ def test_another_titles_dos_install_does_not_name_the_title(tmp_path,
     curse = dos_install(tmp_path / "curse", "START.EXE", "CURSE.CFG")
     rows = dict(preferences.report(Settings(), flag=str(curse), game=POD))
     assert rows["Titles"] == "none; no .adf disk images here"
+
+
+@pytest.mark.parametrize("game", [None, POOL])
+def test_the_titles_line_names_a_dos_install_on_any_title(tmp_path, monkeypatch,
+                                                          game):
+    nowhere(tmp_path, monkeypatch)
+    folder = dos_install(tmp_path / "dos")
+    rows = dict(preferences.report(Settings(), flag=str(folder), game=game))
+    assert rows["Titles"] == POD.title
+
+
+def test_another_titles_dos_install_is_not_named_with_no_title(tmp_path,
+                                                               monkeypatch):
+    nowhere(tmp_path, monkeypatch)
+    curse = dos_install(tmp_path / "curse", "START.EXE", "CURSE.CFG")
+    rows = dict(preferences.report(Settings(), flag=str(curse)))
+    assert POD.title not in rows["Titles"]

@@ -205,6 +205,16 @@ def _is_dos_install(where: pathlib.Path,
             and titles.dos_folder_title(where) == game.key)
 
 
+def _dos_installed_titles(where: pathlib.Path,
+                          game: c64_port.C64Container | titles.Title | None
+                          ) -> list[titles.Title]:
+    """The title with no C64 container whose DOS install `where` is, whichever
+    title the window is on: `game` and the Amiga-only titles are tried."""
+    wanted = ([game] if isinstance(game, titles.Title) else [])
+    wanted += [t for t in maps.AMIGA_ONLY_TITLES if t not in wanted]
+    return [t for t in wanted if _is_dos_install(where, t)]
+
+
 def game_folder_titles() -> tuple[c64_port.C64Container | titles.Title, ...]:
     """The titles that have a folder row in this run: the three above, then
     the titles with no C64 container while `pod_folder_row_wanted`."""
@@ -396,9 +406,8 @@ def report(settings, flag=None, beside=None,
     present = _scan(str(where), backends.amiga_enabled())["titles"]
     names = [f"{g.title} ({n} disk{'' if n == 1 else 's'})"
              for g, n in present]
-    if (_is_dos_install(pathlib.Path(where), game)
-            and all(g.key != game.key for g, _n in present)):
-        names.append(game.title)
+    names += [t.title for t in _dos_installed_titles(pathlib.Path(where), game)
+              if all(g.key != t.key for g, _n in present)]
     if names:
         titles_line = " · ".join(names)
     else:
