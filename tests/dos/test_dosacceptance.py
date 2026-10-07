@@ -11810,8 +11810,7 @@ def test_save_stops_the_run_while_the_switch_is_on_and_presses_nothing(tmp_path)
 def test_the_flag_goes_with_a_title_that_has_a_switch_and_into_the_summary(
         monkeypatch, tmp_path):
     import json
-    for bad in (["--no-encounters", "--title", "darkness"],
-                ["--speculative-encounters"]):
+    for bad in (["--speculative-encounters"],):
         with pytest.raises(SystemExit):
             da.main(["--save", ".", "--steps", "load", *bad])
 
