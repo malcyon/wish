@@ -99,6 +99,13 @@ class Session:
 
     #: Stepping: the square the party stands on, the keys that move it, and whether it is outdoors.
     pos = (5, 5)
+    facing = 0
+    save_disk = "SIDE0.D64"
+    save_ok = True
+
+    def save_game(self):
+        self.calls.append(("save_game", self.no_encounters))
+        return self.save_ok
     moves_on = None
     outdoors = False
     pressed = ()
@@ -117,7 +124,7 @@ class Session:
     def live_square(self):
         if self.fail_on == "live_square":
             raise MonitorError("monitor gone")
-        return (*self.pos, 0)
+        return (*self.pos, self.facing)
 
     def _press(self, key):
         self.pressed += (key,)
@@ -163,6 +170,7 @@ class FakeFastTravel:
         self.continue_error = None
         self.continue_outcome = None
         self.apply_busy = 0
+        self.apply_message = engine.FASTTRAVEL_BUSY
         self.apply_writes = []
 
     def legality(self, target, area):
@@ -179,7 +187,7 @@ class FakeFastTravel:
     def apply(self, target, area=None, **kw):
         if self.apply_busy:
             self.apply_busy -= 1
-            return engine.Outcome(False, engine.FASTTRAVEL_BUSY)
+            return engine.Outcome(False, self.apply_message)
         self.applied.append(area.id)
         for addr, data in self.apply_writes:
             target.write(addr, data)
@@ -949,3 +957,113 @@ def test_an_unknown_indoors_answer_skips_the_step():
     assert step["where"] == "unknown"
     assert sess.pressed == () and _step_events(stream) == []
     assert results[0]["result"] == "arrived"
+
+
+# --- the bar's busy message, several answers, the save and the exit square ----------
+
+
+def test_the_bars_busy_message_is_retried_two_seconds_later():
+    from automap.actionbar import FastTravelBar
+    drv, _, ft, _, clock, stream = build(
+        area_at=lambda t: 7 if t < 9 else 18, script_at=lambda t: 7 if t < 9 else 18)
+    ft.apply_busy, ft.apply_message = 2, FastTravelBar.STILL_BUSY
+    assert drv.trip(18, "t")["result"] == "arrived"
+    assert ft.applied == [18]
+    assert clock.sleeps[:2] == [ftr.BAR_BUSY_SECONDS, ftr.BAR_BUSY_SECONDS]
+    assert [e["message"] for e in events(stream) if e["event"] == "busy"] == [FastTravelBar.STILL_BUSY] * 2
+
+
+def test_the_bars_busy_message_is_bounded_to_sixty_seconds():
+    from automap.actionbar import FastTravelBar
+    drv, _, ft, _, _, _ = build()
+    ft.apply_busy, ft.apply_message = 10_000, FastTravelBar.STILL_BUSY
+    assert drv.trip(18, "t")["result"] == "not_applied"
+    assert ft.apply_busy == 10_000 - ftr.BAR_BUSY_TRIES
+    assert ftr.BAR_BUSY_TRIES * ftr.BAR_BUSY_SECONDS == 60
+
+
+def test_several_answers_are_used_in_order_one_per_question():
+    held = []
+
+    def screen_at(t):
+        # Each question goes away once it is answered.
+        return Screen(["YES NO", "LARGE SMALL LEAVE", ""][min(len(held[0].bars), 2)])
+    drv, sess, _, _, _, _ = build(
+        screen_at=screen_at,
+        answer=["YES", "LEAVE"], script_at=lambda t: 7, area_at=lambda t: 7, budget=10.0)
+    held.append(sess)
+    drv.trip(18, "t")
+    assert sess.bars == ["YES", "LEAVE"]
+
+
+def test_an_answer_waits_for_its_words_on_the_menu():
+    drv, sess, _, _, _, _ = build(
+        screen_at=lambda t: Screen("YES NO"), answer=["LEAVE", "YES"],
+        script_at=lambda t: 7, area_at=lambda t: 7, budget=10.0)
+    drv.trip(18, "t")
+    assert sess.bars == []
+
+
+def test_a_question_with_no_answer_left_fails_clearly():
+    drv, sess, _, _, _, _ = build(
+        screen_at=lambda t: Screen("YES NO"), answer=["YES", "LEAVE"],
+        script_at=lambda t: 7, area_at=lambda t: 7, budget=10.0)
+    sess.select_bar = lambda label, **kw: sess.bars.append(label) or True
+    drv.answers_used = 2
+    with pytest.raises(ftr.DriverError, match="--answer"):
+        drv.trip(18, "t")
+
+
+def test_then_save_saves_after_the_gates_are_back_and_keeps_the_disk(monkeypatch):
+    from tools.c64 import session as S
+    copied = []
+    monkeypatch.setattr(S, "copy_closed_disk", lambda src, dest, **kw: copied.append((str(src), dest)))
+    drv, sess, _, _, _, stream = build(screen_at=lambda t: Screen("ENCAMP"))
+    drv.no_encounters = True
+    drv.run([18])
+    drv.save()
+    assert sess.calls[-2:] == [("restore",), ("save_game", False)]
+    assert copied == [("SIDE0.D64", _OUT["dir"] / "saved.D64")]
+    assert events(stream)[-1]["event"] == "saved"
+    assert any(path.endswith("saved.png") for path in sess.kbd.shots)
+
+
+def test_then_save_without_a_world_bar_saves_nothing():
+    drv, sess, _, _, _, _ = build(screen_at=lambda t: Screen("WHATEVER"))
+    with pytest.raises(ftr.DriverError, match="nothing was saved"):
+        drv.save()
+    assert ("save_game", False) not in sess.calls
+
+
+def test_main_saves_only_when_every_leg_arrived():
+    import inspect
+    source = inspect.getsource(ftr.main)
+    assert "args.then_save and all(" in source and '"arrived"' in source
+
+
+def test_step_after_does_not_press_forward_on_an_exit_square():
+    # Podol Plaza's arrival square and facing is the west gate.
+    drv, sess, _, _, _, stream = build()
+    drv.step_after = True
+    sess.pos, sess.facing = (0, 4), 3
+    drv.run([18])
+    (step,) = _step_events(stream)
+    assert sess.pressed[:2] == ("J", "I")
+    assert any(e["event"] == "step-exit-square" for e in events(stream))
+
+
+def test_a_step_that_changes_the_area_stops_the_run_and_is_logged():
+    drv, sess, _, memory, clock, stream = build(
+        area_at=lambda t: 18 if t < 3 else 27, script_at=lambda t: 18)
+    drv.step_after = True
+    clock.now = 0
+    sess_press = sess._press
+
+    def press(key):
+        clock.now = 5
+        return sess_press(key)
+    sess.walk_one = press
+    with pytest.raises(ftr.DriverError, match="left area"):
+        drv.step("t", 18)
+    (left,) = [e for e in events(stream) if e["event"] == "left-area"]
+    assert left["was"] == 18 and left["now"] == 27

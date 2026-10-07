@@ -24,8 +24,7 @@ repeats.
 `tools/c64/acceptance.py --no-encounters`) before each leg and again whenever
 the came-from or cache-slot byte changes during the leg, so the area each hop
 loads is covered as well as the one the party starts in, and
-`restore_encounter_gates` when the run ends, logging each; the driver makes no
-save. Only areas in `tools/c64/session.py` `ENCOUNTER_GATES` are covered; an
+`restore_encounter_gates` when the run ends, logging each; Only areas in `tools/c64/session.py` `ENCOUNTER_GATES` are covered; an
 area with no gate there is logged as `encounters-live`.
 
 A trip has arrived when `$6E1B` and `$49F2` both equal the destination and
@@ -35,8 +34,14 @@ itself answers "already in that area" and proves nothing. Each poll first lets
 presses RETURN, and only on a `PRESS ...` message: the move sub-bar
 `I,J,K,M, RETURN OR BUTTON` is left alone. `--answer WORD` selects that word
 on a bar offering it (`YES NO`, at most `ANSWERS_PER_TRIP` times a trip).
+Given several times, each word answers one question in order, only when it is
+on the bar, and a question met with none left fails the run.
 A "cannot act right now" answer from `legality` or `apply` is retried every
-`BUSY_SECONDS`, at most `BUSY_TRIES` times.
+`BUSY_SECONDS`, at most `BUSY_TRIES` times; the bar's "the game was busy"
+message every `BAR_BUSY_SECONDS`, at most `BAR_BUSY_TRIES` times.
+`--then-save` makes camp and saves once every leg arrived, and keeps the disk
+as `saved.D64`. `--step-after` turns before it steps when the party stands where
+the forward key leaves the area.
 
 `--through-bar` runs each leg through the Fast Travel row the window builds for
 the title (offscreen), picks the destination in its dropdown, presses its
@@ -81,6 +86,10 @@ BUDGET_SECONDS = 180.0
 BUSY_SECONDS = 0.5
 #: Tries of such a call before the leg is given up.
 BUSY_TRIES = 40
+#: Seconds between two tries of a bar that answered "the game was busy", and the tries
+#: before the leg is given up (sixty seconds in all; each try already waits the bar's own two).
+BAR_BUSY_SECONDS = 2.0
+BAR_BUSY_TRIES = 30
 #: Tries of one connection to the monitor before the run gives up.
 CONNECT_TRIES = 5
 #: Times one leg answers a bar with `--answer`.
@@ -93,6 +102,10 @@ SHOT_EVERY = 4
 #: The generator's seven bytes.
 RNG_FIRST, RNG_LAST = 0x03C2, 0x03C8
 MOVE_SUBBAR = "I,J,K,M"
+#: Bar words that mark a game question when `--answer` is given more than once.
+QUESTION_WORDS = frozenset({"YES", "NO", "LEAVE"})
+#: Looks, a second apart, at the screen before a save while it is cleared back to the world bar.
+SAVE_CLEAR_TRIES = 30
 #: A script's acknowledgement, which is answered with RETURN.
 RETURN_MESSAGE = "PRESS"
 
@@ -329,7 +342,7 @@ class Driver:
     """The trips of one session."""
 
     def __init__(self, sess, connect: Callable[[], object], fasttravel, out: pathlib.Path,
-                 log: Log, answer: str | None = None,
+                 log: Log, answer: str | list[str] | None = None,
                  sleep: Callable[[float], None] = time.sleep,
                  clock: Callable[[], float] = time.monotonic,
                  budget: float = BUDGET_SECONDS, game=None,
@@ -346,6 +359,8 @@ class Driver:
         self._held_at: tuple[int, int] | None = None
         self.sess, self.connect, self.ft = sess, connect, fasttravel
         self.out, self.log, self.answer = out, log, answer
+        #: With several `--answer` words each answers one question, in order.
+        self.answers_used = 0
         self.sleep, self.clock, self.budget = sleep, clock, budget
         #: The title being travelled in; its table, addresses and party layout.
         self.game = game or c64_port.POOL_OF_RADIANCE
@@ -390,7 +405,17 @@ class Driver:
             return None, row
         if MOVE_SUBBAR in row:
             return None, row
-        if answer and answered < ANSWERS_PER_TRIP and answer in row.split():
+        if isinstance(answer, (list, tuple)):
+            words = row.split()
+            if self.answers_used < len(answer):
+                if answer[self.answers_used] in words:
+                    self.sess.select_bar(answer[self.answers_used], timeout=15)
+                    self.answers_used += 1
+                    return "answer", row
+            elif QUESTION_WORDS & set(words):
+                raise DriverError(
+                    f"the game asks a question ({row}) and all {len(answer)} --answer words are used")
+        elif answer and answered < ANSWERS_PER_TRIP and answer in row.split():
             self.sess.select_bar(answer, timeout=15)
             return "answer", row
         if RETURN_MESSAGE in row:
@@ -399,16 +424,30 @@ class Driver:
         return None, row
 
     def _retry_busy(self, tag: str, call: Callable[[object], tuple[bool, str, object]]):
-        """`call` until it stops answering "cannot act right now"; bounded."""
-        for attempt in range(BUSY_TRIES):
+        """`call` until it stops answering "cannot act right now" or the bar's "the game was busy"; bounded."""
+        from automap.actionbar import FastTravelBar  # noqa: PLC0415
+        bar_tries = 0
+        for attempt in range(BUSY_TRIES + BAR_BUSY_TRIES):
             with self.target() as target:
                 ok, message, value = call(target)
-            if ok or message != engine.FASTTRAVEL_BUSY:
+            if ok:
+                return ok, message, value
+            if message == FastTravelBar.STILL_BUSY:
+                # The bar has already waited its own two seconds; the game is still printing.
+                bar_tries += 1
+                if bar_tries >= BAR_BUSY_TRIES:
+                    return False, message, value
+                self.log("busy", tag=tag, attempt=bar_tries, message=message)
+                self.sleep(BAR_BUSY_SECONDS)
+                continue
+            if message != engine.FASTTRAVEL_BUSY:
                 return ok, message, value
             self.log("busy", tag=tag, attempt=attempt, message=message)
             if attempt % 4 == 3:
                 self.service(None, 0)
             self.sleep(BUSY_SECONDS)
+            if attempt + 1 - bar_tries >= BUSY_TRIES:
+                break
         return False, message, value
 
     def trip(self, dest_id: int, tag: str, leg: int = 0) -> dict:
@@ -464,19 +503,26 @@ class Driver:
         self.sleep(SETTLE_SECONDS)
         self.note_state(tag, "after")
         if self.step_after and summary["result"] == "arrived":
-            self.step(tag)
+            self.step(tag, dest_id)
         self.log("areas-seen", tag=tag, areas_seen=summary["areas_seen"])
         self.shot(tag + "-final")
         return summary
 
-    def step(self, tag: str) -> None:
+    def exit_squares(self, area: int) -> set[tuple[int, int, int]]:
+        """The (x, y, facing) squares where the forward key leaves `area` (the entry-0 exit routes)."""
+        return {tuple(route.square) for (frm, _to), route in fasttravel.EXIT_ROUTES.items()
+                if frm == area and route.entry == 0}
+
+    def step(self, tag: str, area: int | None = None) -> None:
         """Try up to `STEP_TRIES` moves on the arrived party and log the first that moves it.
 
         Indoors the live square is read, because `square()` there is the last
         save's and does not move; on the travel grid it is `square()` and the
         keys are compass digits. A party that never moves is logged, not failed;
         so is a monitor error, as `step-error`, and a party whose location cannot
-        be read is not stepped at all. An encounter menu on screen afterwards
+        be read is not stepped at all. Standing on a square where the forward key leaves the area
+        (`EXIT_ROUTES`), the party turns before it steps; a step that changes the area stops the run.
+        An encounter menu on screen afterwards
         or the game in combat stops the run, because the next leg would apply a trip under it.
         """
         sess = self.sess
@@ -494,6 +540,13 @@ class Driver:
                     live = sess.live_square()
                     return None if live is None else tuple(live[:2])
                 tries = [("I",)] + [(turn, "I") for turn in "JKM"]
+                live = sess.live_square()
+                if (live is not None and len(live) > 2 and area is not None
+                        and tuple(live[:3]) in self.exit_squares(area)):
+                    self.log("step-exit-square", tag=tag, square=list(live))
+                    tries = tries[1:]
+            with self.target() as target:
+                area_before = reading(target, self.addresses)["area6E1B"]
             before = read()
             key, after, moved = None, before, False
             for keys in tries[:STEP_TRIES]:
@@ -507,6 +560,8 @@ class Driver:
                 moved = before is not None and after is not None and after != before
                 if moved:
                     break
+            with self.target() as target:
+                area_after = reading(target, self.addresses)["area6E1B"]
             screen = sess.screen()
             sess.handle_prompt(screen)
             menu = self.encounter_menu(screen)
@@ -516,6 +571,9 @@ class Driver:
             return
         self.log("step", tag=tag, key=key, before=before, after=after, moved=moved,
                  encounter=encounter)
+        if area_after & 0x7F != area_before & 0x7F:
+            self.log("left-area", tag=tag, was=area_before & 0x7F, now=area_after & 0x7F)
+            raise DriverError(f"leg {tag}: the step left area {area_before & 0x7F} for {area_after & 0x7F}")
         if encounter:
             raise DriverError(f"leg {tag}: an encounter is under way after the step")
 
@@ -664,6 +722,37 @@ class Driver:
         self.finish()
         return self.results
 
+    def save(self) -> str:
+        """Save the game with ENCAMP > SAVE and keep the disk as `saved.D64`; call after `run` has put the gates back.
+
+        The camp and save code is `Session.save_game`, which fails while an
+        encounter gate is still written. The screen is first cleared back to the
+        world bar (prompts answered), because a leg ends on whatever the arrival drew.
+        """
+        from tools.c64 import session as S  # noqa: PLC0415
+        for _ in range(SAVE_CLEAR_TRIES):
+            screen = self.sess.screen()
+            row = self.row24(screen)
+            if "ENCAMP" in row or MOVE_SUBBAR in row:
+                break
+            self.service(None, 0)
+            self.sleep(1.0)
+        else:
+            raise DriverError("the world bar never came back, so nothing was saved")
+        if not self.sess.save_game():
+            raise DriverError("ENCAMP > SAVE did not complete")
+        kept = self.out / "saved.D64"
+        try:
+            S.copy_closed_disk(pathlib.Path(self.sess.save_disk), kept, attempts=30, backoff=1.0)
+        except RuntimeError as exc:
+            raise DriverError(str(exc)) from exc
+        with self.target() as target:
+            party = self.party_reader(target, self.game)
+            names = [m.name for m in party.members] if party is not None else None
+        self.log("saved", kept=str(kept), names=names)
+        self.shot("saved")
+        return str(kept)
+
     def finish(self) -> None:
         """Put the gates back, then drop any pending trip, each even if the other raises."""
         try:
@@ -763,10 +852,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--through-bar", action="store_true",
                         help="run each leg through the Fast Travel row the window builds "
                              "for the title, and log its buttons' state")
-    parser.add_argument("--answer", help="a bar word to select when the game asks, e.g. YES")
+    parser.add_argument("--answer", action="append", metavar="WORD",
+                        help="a bar word to select when the game asks, e.g. YES; given more than once "
+                             "each word answers one question, in order, and a further question fails the run")
+    parser.add_argument("--then-save", action="store_true",
+                        help="after every leg arrived, make camp and save the game, and keep the "
+                             "disk as saved.D64 in --out")
     parser.add_argument("--no-encounters", action="store_true",
                         help="hold the running area's random encounters off before each leg "
-                             "(the gates are put back when the run ends; the driver saves nothing)")
+                             "(the gates are put back when the run ends)")
     parser.add_argument("--step-after", action="store_true",
                         help="after each leg arrives, try up to four moves and log a `step` event")
     parser.add_argument("--budget", type=float, default=BUDGET_SECONDS,
@@ -777,6 +871,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", help="directory for the log and screenshots")
     args = parser.parse_args(argv)
     game = container_for(args.title)
+    answer = args.answer[0] if args.answer and len(args.answer) == 1 else args.answer
     if BACK in args.to and not args.through_bar:
         parser.error(f"--to {BACK} needs --through-bar")
     for dest in args.to:
@@ -814,13 +909,15 @@ def main(argv: list[str] | None = None) -> int:
                     if args.through_bar:
                         action = BarFastTravel(build_bar(game, disks), log)
                     driver = Driver(sess, lambda: ViceTarget(port=sess.mon_port),
-                                    action, out, log, answer=args.answer,
+                                    action, out, log, answer=answer,
                                     budget=args.budget, game=game, peeks=peeks,
                                     stages=stages, no_encounters=args.no_encounters,
                                     step_after=args.step_after)
                     driver.shot("0-start")
                     driver.run(args.to)
                     driver.shot("final")
+                    if args.then_save and all(r["result"] == "arrived" for r in driver.results):
+                        driver.save()
             except Exception as exc:
                 # The failure is on record in the log before the slot goes away.
                 log("error", error=repr(exc))
