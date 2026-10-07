@@ -80,8 +80,8 @@ def _accept_manifest(tmp_path):
 class DriveGuest(TitleGuest):
     """The game saves to the disk in DF1: the slot, then the loaded slot's vault on that disk copied to the new letter.
 
-    Like the lane, an insert names the file's hash, and a wrong one is recorded and refused
-    the drive.
+    Like the lane, an insert names the file's hash, and a wrong one is recorded and the insert raises
+    a RouteError.
     """
 
     def __init__(self, clock, *, loaded="B", to_drive=1, writes=("F", "G")):
