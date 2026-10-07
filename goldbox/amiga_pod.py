@@ -1231,6 +1231,11 @@ class PodCharacter:
         return self.raw[SIZE]
 
     @property
+    def unnamed_1a4(self) -> bytes:
+        """The creature-category flag pair, DOS's `0x1A4`."""
+        return bytes(self.raw[UNNAMED_1A4:UNNAMED_1A4 + 2])
+
+    @property
     def encumbrance(self) -> int:
         return u16(self.raw, ENCUMBRANCE)
 
@@ -1418,6 +1423,9 @@ class PodWriter:
     experience_award: int | None = None
     #: The game's own 1 small / 2 medium, not the neutral 0/1.
     size: int | None = None
+    #: The two flag bytes at :data:`UNNAMED_1A4`; a source with none gets
+    #: :data:`UNNAMED_1A4_DEFAULT` twice.
+    unnamed_1a4: bytes | None = None
     npc_control_byte: int | None = None
     former_level: int | None = None
     former_class_levels: tuple[int, ...] | None = None
@@ -1787,7 +1795,8 @@ class PodWriter:
         # routine writes, for a record it did not create. A source with no
         # size of its own gets the one its race would have been given, which
         # is also what the icon's own art library is chosen by.
-        size = self.size if self.size else engine_size_for_race(self.race)
+        size = (self.size if self.size is not None
+                else engine_size_for_race(self.race))
         out[SIZE] = size
         head, body = engine_default_icon(self.race, self.sex, size,
                                          self.class_levels)
@@ -1808,7 +1817,9 @@ class PodWriter:
             out[ROSTER_TAIL:ROSTER_TAIL + ROSTER_TAIL_LENGTH] = bytes(
                 self.roster_tail)[:ROSTER_TAIL_LENGTH].ljust(
                     ROSTER_TAIL_LENGTH, b"\0")
-        out[UNNAMED_1A4] = out[UNNAMED_1A4 + 1] = UNNAMED_1A4_DEFAULT
+        pair = (bytes(self.unnamed_1a4)[:2] if self.unnamed_1a4 is not None
+                else bytes((UNNAMED_1A4_DEFAULT,) * 2))
+        out[UNNAMED_1A4:UNNAMED_1A4 + 2] = pair
 
         if self.items:
             struct.pack_into(">I", out, ITEM_CHAIN, len(self.items))
@@ -2783,6 +2794,11 @@ def pod_to_neutral(char: PodCharacter | bytes | bytearray) -> NeutralCharacter:
             f"Amiga .pc size @{SIZE:#05x} less one. 1 for the one "
             f"dwarf and 2 for the eighteen humans, elves and half-elves",
             Confidence.PROBABLE, neutral.Provenance.RESHAPED)
+    # Both ports store the byte and the pair alike, so they travel raw beside
+    # the vocabulary: a story companion holds size 0 and `00 02`, which
+    # `size_small` and a constant pair cannot say.
+    _dos.set_creature_source(out, "size", char.size)
+    _dos.set_creature_source(out, "unnamed_1a4", char.unnamed_1a4)
 
     # -- what the character is carrying, and what is running on him ---------
     # The tail past the 404-byte record: twenty bytes an item, ten an effect.
@@ -3122,6 +3138,12 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
 
     # The neutral 0 small / 1 large is this port's 1 small / 2 medium.
     size_small = opt("size_small")
+    # The source's own byte wins while it still agrees with `size_small`,
+    # which is how a companion's 0 survives; an edited size_small does not.
+    raw_size = _dos.creature_source(char, "size")
+    pod_size = (None if size_small is None else
+                raw_size if raw_size is not None
+                and max(0, raw_size - 1) == size_small else size_small + 1)
 
     # -- the class a dual-classed character left, and the level he left at --
     # The engine's own dual-class routine writes the character level into
@@ -3352,7 +3374,8 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
         armour_class_current=armour_class_current,
         roster_tail=roster_tail,
         movement_current=movement_current,
-        size=(None if size_small is None else size_small + 1),
+        size=pod_size,
+        unnamed_1a4=_dos.creature_source(char, "unnamed_1a4"),
         npc_control_byte=control,
         former_level=former_level,
         former_class_levels=former_slots,

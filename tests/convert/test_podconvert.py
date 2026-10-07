@@ -285,10 +285,9 @@ def test_the_two_unnamed_runs_are_declared_rather_than_left_as_gaps():
         assert "item_save_bonus" not in other
 
 
-def test_the_pair_at_0x1a4_is_the_measured_constant_in_every_record():
+def test_the_pair_at_0x1a4_is_02_02_in_every_player_record():
     """`02 02` in 24 of 24 -- twelve characters found under both archive
-    paths -- and the writer puts the same pair back rather than the zero a
-    gap would get.
+    paths -- and the writer puts the source's own pair back.
 
     **Not the icon's size**: ABAGAIL is the one character of the twelve whose
     `size` byte is 1 rather than 2, and she holds `02 02` like everybody
@@ -304,9 +303,7 @@ def test_the_pair_at_0x1a4_is_the_measured_constant_in_every_record():
             small += 1
             _rec, _itm, _spc, _rep = dos_codec.write(dos_codec.to_neutral(char))
     assert small, "no small character here, so the size reading is untested"
-    assert ("unnamed_1a4", b"\x02\x02") in [
-        (n, v) for n, v, _ in dos_codec.write_constants(POD)]
-    assert "unnamed_1a4" not in [n for n, _, _ in dos_codec.write_constants(POOL)]
+    assert "unnamed_1a4" not in [n for n, _, _ in dos_codec.write_constants(POD)]
 
 
 def test_the_byte_at_0x1e0_is_the_item_save_bonus_and_is_written_zero():
@@ -631,3 +628,55 @@ def test_the_same_item_on_the_c64_still_keeps_only_the_name_bits():
     c64 = dos_codec.item_to_c64(_bolt_plus_4())
     assert c64[6] == 0x06 and c64[7] == 0
     assert _hidden(dos_codec.item_from_c64(c64)) == 0x06
+
+
+# --- the story companions' size and flag pair (WISH-2) -----------------------
+
+SIZE_AT = dos_port.FIELDS_BY_NAME_FOR[POD.key]["size"].offset
+PAIR_AT = dos_port.FIELDS_BY_NAME_FOR[POD.key]["unnamed_1a4"].offset
+
+
+def _amiga_creature(size, pair):
+    return amiga_pod.PodWriter(
+        name="PRIAM", size=size, unnamed_1a4=pair, hit_points_max=30,
+        character_class=amiga_pod.CLASSES.index("FIGHTER"),
+        class_levels=(0, 0, 0, 0, 0, 3, 0),
+        class_bits=amiga_pod.CLASS_BIT["fighter"]).to_bytes()
+
+
+@pytest.mark.parametrize("size, pair", [
+    (0, b"\x00\x02"),     # a story companion, MON ids 112-119
+    (0, b"\x01\x3a"),     # a monster's pair
+    (2, b"\x02\x02"),     # a player character
+])
+def test_a_creatures_size_and_flag_pair_cross_unchanged_both_ways(size, pair):
+    raw = _amiga_creature(size, pair)
+    rec, itm, spc, rep = dos_codec.write(amiga_pod.pod_to_neutral(raw))
+    assert rep.losses == []
+    assert rec[SIZE_AT] == size and rec[PAIR_AT:PAIR_AT + 2] == pair
+    writer, _rep = amiga_pod.write_pod(_read_back(rec, itm, spc))
+    out = writer.to_bytes()
+    assert out[amiga_pod.SIZE] == size
+    assert out[amiga_pod.UNNAMED_1A4:amiga_pod.UNNAMED_1A4 + 2] == pair
+    again, _itm, _spc, _rep = dos_codec.write(
+        amiga_pod.pod_to_neutral(out))
+    assert again[SIZE_AT] == size and again[PAIR_AT:PAIR_AT + 2] == pair
+
+
+def test_a_source_with_no_size_or_pair_gets_the_creation_defaults():
+    char = amiga_pod.pod_to_neutral(_amiga_creature(0, b"\x00\x02"))
+    delattr(char, dos_codec._CREATURE_SOURCE)
+    rec, _itm, _spc, _rep = dos_codec.write(char)
+    assert rec[SIZE_AT] == char.get("size_small") + 1
+    assert rec[PAIR_AT:PAIR_AT + 2] == b"\x02\x02"
+    out = amiga_pod.write_pod(char)[0].to_bytes()
+    assert out[amiga_pod.SIZE] == char.get("size_small") + 1
+    assert out[amiga_pod.UNNAMED_1A4:amiga_pod.UNNAMED_1A4 + 2] == b"\x02\x02"
+
+
+def test_an_edited_size_replaces_the_sources_zero():
+    char = amiga_pod.pod_to_neutral(_amiga_creature(0, b"\x00\x02"))
+    char.set("size_small", 1, "edited", dos_codec.Confidence.CONFIRMED)
+    rec, _itm, _spc, _rep = dos_codec.write(char)
+    assert rec[SIZE_AT] == 2
+    assert amiga_pod.write_pod(char)[0].to_bytes()[amiga_pod.SIZE] == 2

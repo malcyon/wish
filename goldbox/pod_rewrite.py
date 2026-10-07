@@ -309,6 +309,7 @@ def _amiga_places() -> dict[str, Place]:
         "hp_rolled": _copy("hp_rolled", a.HP_ROLLED),
         "experience_award": _swapped("experience_award", a.EXPERIENCE_AWARD),
         "size": _copy("size", a.SIZE),
+        "unnamed_1a4": _copy("unnamed_1a4", a.UNNAMED_1A4),
         "ready_to_train": _copy("ready_to_train", a.READY_TO_TRAIN),
         "thac0_current": _copy("thac0_current", a.THAC0_CURRENT),
         "armour_class": _copy("armour_class", a.ARMOUR_CLASS_CURRENT),

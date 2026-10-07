@@ -2832,8 +2832,8 @@ LATER_TITLE_CONSTANTS: tuple[tuple[str, str], ...] = (
      "Secret of the Silver Blades' fourth spell-slot array, which no shipped "
      "character sets a byte of and nobody has attributed to a class"),
     ("unnamed_1a4",
-     "two bytes only Pools of Darkness has, `02 02` in 24 of 24 of its "
-     "records and never zero; the writer puts the same pair back"),
+     "two bytes only Pools of Darkness has and the C64 has no home for; "
+     "a Pools of Darkness target gets the pair back from the source"),
 )
 
 #: How the ability pairs are reported for a title that keeps two copies.
@@ -3260,6 +3260,11 @@ def to_neutral(dos: DosCharacter,
     # -- size: DOS 1 small / 2 medium, the neutral 0 small / 1 large ---------
     out.set("size_small", max(0, dos.get("size") - 1),
             "DOS size @0x0C0, less one", FIELDS_BY_NAME["size"].confidence)
+    # The raw byte travels beside the vocabulary: size 0 is a story companion's
+    # own value and `size_small` has no way to say it (see `_CREATURE_SOURCE`).
+    _set_creature_source(out, "size", dos.get("size"))
+    if "unnamed_1a4" in dos.fields:
+        _set_creature_source(out, "unnamed_1a4", dos.raw("unnamed_1a4"))
 
     # Pool's target-side turning row crossed in POOL_DIRECT, separately from
     # the caster's turn_power, which DOS computes from the class levels.
@@ -4346,15 +4351,6 @@ WRITE_CONSTANTS: tuple[tuple[str, bytes, str], ...] = (
      "control byte and the share then over those, from the neutral npc, "
      "npc_control_byte and treasure_share fields (#303, #614)"),
     ("strength_bonus", b"\x01", "1 in all 24 DOS specimens"),
-    ("unnamed_1a4", b"\x02\x02",
-     "`02 02` in 24 of 24 Pools of Darkness records, which is every one on "
-     "this machine -- twelve characters found under both archive paths -- "
-     "and never zero. Only Pools of Darkness declares the field; "
-     "`write_constants` leaves the row out for a title that has no such "
-     "bytes. **What they are is UNKNOWN** and the value is measured rather "
-     "than reasoned: nothing in the record correlates with them, ABAGAIL's "
-     "small combat icon included, so writing the zero a gap would get is "
-     "the one answer no Pools of Darkness record supports (#194)"),
 )
 
 #: Fields written to a **measured default** rather than converted from the
@@ -5213,6 +5209,41 @@ def set_window_source(char: NeutralCharacter, raw: bytes) -> None:
     setattr(char, _FIELD_83_87_SOURCE, bytes(raw))
 
 
+#: The source record's own `size` byte and, for Pools of Darkness, its
+#: `unnamed_1a4` pair, as attributes on the neutral record.  The two ports
+#: store both identically, and the story companions (MON ids 112-119) hold
+#: size 0 and `00 02`, which `size_small` (one less, floored at 0) and a
+#: constant `02 02` would turn into 1 and `02 02`.  **Outside the vocabulary
+#: for the same reason as** :data:`_FIELD_83_87_SOURCE`: the C64 has neither
+#: byte, and declaring them would put two more unwritten fields on the drop
+#: list of every conversion to it.
+_CREATURE_SOURCE = "_creature_source"
+
+#: The pair a source with none of its own gets: what character creation
+#: writes in both ports.  That is a C64 record, a record built by hand, and
+#: any source whose reader did not call :func:`_set_creature_source` for it.
+UNNAMED_1A4_DEFAULT = b"\x02\x02"
+
+
+def _set_creature_source(char: NeutralCharacter, name: str, raw) -> None:
+    held = getattr(char, _CREATURE_SOURCE, None)
+    if held is None:
+        held = {}
+        setattr(char, _CREATURE_SOURCE, held)
+    held[name] = bytes(raw) if isinstance(raw, (bytes, bytearray)) else raw
+
+
+def creature_source(char: NeutralCharacter, name: str):
+    """The source's own `size` (an int) or `unnamed_1a4` (two bytes), or None
+    for a source that held none."""
+    return (getattr(char, _CREATURE_SOURCE, None) or {}).get(name)
+
+
+def set_creature_source(char: NeutralCharacter, name: str, raw) -> None:
+    """Hand :func:`write` the source's own `size` or `unnamed_1a4`."""
+    _set_creature_source(char, name, raw)
+
+
 def dos_share_from_c64(raw: int) -> int:
     """The DOS or Amiga treasure share that splits treasure as C64 `raw` does.
 
@@ -5426,6 +5457,9 @@ def write_targets(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
             for n, dos_name in DARKNESS_WRITE_DIRECT}
     out |= {name: f"constant: {why}"
             for name, _, why in write_constants(deltas)}
+    if "unnamed_1a4" in declared:
+        out["unnamed_1a4"] = ("the source's own pair; `02 02` for a source "
+                              "with none")
     # The whole of `WRITE_DEFAULTS`, not the part Pool of Radiance declares:
     # `WRITE_TARGETS` is cut to its own title's names, which would leave out
     # a default only a later title declares (#194).
@@ -6279,8 +6313,15 @@ def write(char: NeutralCharacter,
     # -- size: neutral 0 small / 1 large, DOS 1 small / 2 medium -------------
     size_small = use("size_small")
     if size_small is not None:
-        put(size_small, "size", " plus one -- DOS stores 1 small / 2 medium",
-            value=int(size_small.value) + 1)
+        # The source's own byte wins while it still agrees with `size_small`,
+        # which is how a companion's 0 survives; an edited size_small does not.
+        raw_size = creature_source(char, "size")
+        keeps = (raw_size is not None
+                 and max(0, raw_size - 1) == int(size_small.value))
+        put(size_small, "size",
+            " unchanged, the source's own byte" if keeps else
+            " plus one -- DOS stores 1 small / 2 medium",
+            value=raw_size if keeps else int(size_small.value) + 1)
 
     # -- two blocks the ports share byte for byte ----------------------------
     forms = use("attack_forms")
@@ -6693,6 +6734,17 @@ def write(char: NeutralCharacter,
         f = table[cname]
         rec[f.offset:f.end] = data
         rep.note(f.offset, f.size, f"{cname}: {why}")
+
+    # -- unnamed_1a4: the source's own pair, else character creation's ------
+    if "unnamed_1a4" in table:
+        f = table["unnamed_1a4"]
+        pair = creature_source(char, "unnamed_1a4")
+        own = pair is not None and len(pair) == f.size
+        rec[f.offset:f.end] = pair if own else UNNAMED_1A4_DEFAULT
+        rep.note(f.offset, f.size,
+                 "unnamed_1a4: the source's own pair, unchanged" if own else
+                 "unnamed_1a4: `02 02`, what character creation writes, for a "
+                 "source with no pair of its own")
 
     # -- field_83_87, over the constant just written -------------------------
     # A source with a window of its own -- a DOS record, or an Amiga one
