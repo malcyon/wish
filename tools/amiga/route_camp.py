@@ -562,7 +562,9 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
     (only for a title in `JOIN_TITLES`), and `ready N I` presses READY on it (only for a
     title in `READY_TITLES`). `use N I ANSWERS` presses USE on row I and casts one case spell
     per letter of ANSWERS, `S` for a spell that asks whom and `Y` for a combat-only one (only for
-    a title in `USE_TITLES`).
+    a title in `USE_TITLES`). The caller gives one answer per spell: the guards tell the list,
+    the target picker and the prompt apart, not how many spells are left in the case, so the run's
+    later `read` of the game-written save is what proves none was left unread.
     """
     view_lines, heal_lines = sheet_lines(name)
     _validate_machine_steps(tuple(t for t in tokens if is_machine_step(t)))
@@ -830,7 +832,8 @@ def camp_title(title: AmigaTitle, tokens: tuple[str, ...], party_size: int = PAR
     limits = dict(title.wait_limits)
     if rest_minutes(tokens):
         limits[CAMP] = max(limits.get(CAMP, 0.0), REST_LIMIT)
-    item_tokens = tuple(t for t in normalise(tokens) if t.split()[0] in ("items", "join", "ready", "use"))
+    item_tokens = tuple(t for t in normalise(tokens)
+                        if t.split()[0] in ("items", "join", "ready", "use"))
     item_states = {state for _, state, _ in steps_for(item_tokens, name, party_size)}
     item_states |= {joined_after(state) for state in item_states if is_join(state)}
     strict = title.strict | ({CAMP} | item_states if item_states else set())

@@ -412,7 +412,8 @@ def _play_use(steps, spells, row):
     """The screens a case's `U`, `C` and answer keys lead to, for spells that ask `spells` in turn.
 
     Returns the screen after every step: a spell that asks whom shows the target picker, a
-    combat-only one shows its prompt, and either answer returns to the list with the row kept.
+    combat-only one shows its prompt, any other name (a thief's `oops!`, "Must be readied") shows
+    a screen of its own that no answer leaves, and either answer returns to the list with the row kept.
     """
     screen, asked, shown = "camp", iter(spells), []
     for key, _state, _ in steps:
@@ -426,7 +427,8 @@ def _play_use(steps, spells, row):
         elif screen.startswith("camp_items_5") and key == "U":
             screen = "camp_use_list"
         elif screen == "camp_use_list" and key == "C":
-            screen = "camp_use_target" if next(asked) == "target" else "camp_use_combat"
+            screen = {"target": "camp_use_target", "combat": "camp_use_combat"}.get(
+                (asked_next := next(asked)), f"camp_use_{asked_next}")
         elif screen == "camp_use_target" and key == "S" or (
                 screen == "camp_use_combat" and key == "Y"):
             screen = f"camp_items_5_row{row}" if row > 1 else "camp_items_5"
@@ -458,3 +460,16 @@ def test_a_spell_that_asks_whom_is_not_answered_with_the_combat_only_key():
     expected = [state for _, state, _ in steps]
     assert shown != expected
     assert shown[expected.index("camp_use_combat")] == "camp_use_target"
+
+
+@pytest.mark.parametrize("what", ["oops", "must_be_readied"])
+def test_a_screen_after_cast_that_is_neither_prompt_stops_the_run_before_any_answer(what):
+    steps = route_camp.steps_for(("use 5 3 SY",), "darkness", 7)
+    shown = _play_use(steps, [what], 3)
+    # The runner stops at the first step whose screen is not the state it waits for.
+    stop = next(i for i, (s, (_, state, _)) in enumerate(zip(shown, steps)) if s != state)
+    assert steps[stop][0] == "C" and shown[stop] == f"camp_use_{what}"
+    assert not {"S", "Y"} & {key for key, _, _ in steps[:stop + 1]}
+    assert {"camp_use_target", "camp_use_combat"} <= set(
+        route_camp.camp_title(route_darkness.DARKNESS, ("use 5 3 SY",), 7,
+                              name="darkness").strict)
