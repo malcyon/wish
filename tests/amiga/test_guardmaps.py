@@ -894,6 +894,49 @@ def test_the_darkness_exit_game_guard_recognises_a_quit_question_drawn_with_the_
             assert 'exit_game' not in _darkness_matching(crop), name
 
 
+def test_the_darkness_exit_game_guard_recognises_the_seven_member_quit_question():
+    """Reads crops kept from live runs, so it skips on a machine without them."""
+    from tools.registry import scratch
+
+    root = scratch.cache_dir('acceptance')
+    crop = root / 'WISH-2/wish2-a2-capture/sheets2/shots/54-exit_game.png'
+    if not crop.is_file():
+        pytest.skip('the kept Darkness seven-member quit question is not on this machine')
+    assert _darkness_matching(crop) == {'exit_game'}
+    for name in ('628/darkness-P1a/accept2/shots/31-exit_game.png',
+                 'WISH-2/wish2-a3/accept3b/shots/16-exit_game.png'):
+        other = root / name
+        if other.is_file():
+            assert 'exit_game' in _darkness_matching(other), name
+
+
+def test_the_darkness_camp_sheet_identities_match_their_seven_member_line_and_not_the_others():
+    """Reads crops kept from live runs, so it skips on a machine without them."""
+    from tools.amiga import screens
+    from tools.registry import scratch
+
+    shots = scratch.cache_dir('acceptance') / 'WISH-2/wish2-a2-capture/sheets2/shots'
+    sheets = {'camp_sheet': '51-camp_sheet.png', 'camp_sheet_2': '16-camp_sheet_2.png',
+              'camp_sheet_3': '21-camp_sheet_3.png', 'camp_sheet_4': '28-camp_sheet_4.png',
+              'camp_sheet_5': '36-camp_sheet_5.png', 'camp_sheet_6': '43-camp_sheet_6.png',
+              'camp_sheet_7': '48-camp_sheet_7.png'}
+    if not all((shots / name).is_file() for name in sheets.values()):
+        pytest.skip('the kept Darkness seven-member sheet crops are not on this machine')
+    spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, 'darkness')
+
+    def matching(crop):
+        found = set()
+        for state in sheets:
+            for rule in screens.rules_of(spec['identity'][state]):
+                box = tuple(rule['box'])
+                if screens.box_digests(crop, {box})[box] == rule['sha256']:
+                    found.add(state)
+        return found
+
+    for state, name in sheets.items():
+        assert matching(shots / name) == {state}, state
+
+
 def test_the_darkness_vault_guards_match_their_screens_and_not_the_neighbours(tmp_path):
     """Reads crops kept from the vault measure boot, so it skips on a machine without them.
 

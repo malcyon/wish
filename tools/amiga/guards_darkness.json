@@ -796,6 +796,17 @@
         ],
         "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/16-camp.png",
         "sha256": "7d337901cf9c94999dfd2cd288958b770f48e0e6c132dc630d9866053e77c89e"
+      },
+      {
+        "also": [],
+        "box": [
+          74,
+          406,
+          242,
+          428
+        ],
+        "example": "WISH-2/wish2-a2-capture/sheets2/shots/54-exit_game.png",
+        "sha256": "190a2a8ea8877fb6868a905fe59fb104efb1f62fd300a98ce52c60182c1098de"
       }
     ],
     "heal_whom": {
@@ -1288,6 +1299,72 @@
         "sha256": "47aeb38422f3150771290a071955f35269e156d87d50756d8d4be2640bcff026"
       }
     ],
+    "camp_sheet_2": {
+      "also": [],
+      "box": [
+        74,
+        46,
+        330,
+        62
+      ],
+      "example": "WISH-2/wish2-a2-capture/sheets2/shots/16-camp_sheet_2.png",
+      "sha256": "895aade1c0c21866de9227162924de10d1d1de56834a1943b51d51338c800b89"
+    },
+    "camp_sheet_3": {
+      "also": [],
+      "box": [
+        74,
+        46,
+        330,
+        62
+      ],
+      "example": "WISH-2/wish2-a2-capture/sheets2/shots/21-camp_sheet_3.png",
+      "sha256": "f70d58fa2e89d4f270e499ca781633c1e967eddea04bd70a52ee93bc99c8db7d"
+    },
+    "camp_sheet_4": {
+      "also": [],
+      "box": [
+        74,
+        46,
+        330,
+        62
+      ],
+      "example": "WISH-2/wish2-a2-capture/sheets2/shots/28-camp_sheet_4.png",
+      "sha256": "3ebf5a6716032a590c394e79e50ea29bfc1cb535ad7ca6563ddd879219941968"
+    },
+    "camp_sheet_5": {
+      "also": [],
+      "box": [
+        74,
+        46,
+        330,
+        62
+      ],
+      "example": "WISH-2/wish2-a2-capture/sheets2/shots/36-camp_sheet_5.png",
+      "sha256": "767e04178168c0fb82181009b4c56753530e86aced5ae3be73cc26e999412acb"
+    },
+    "camp_sheet_6": {
+      "also": [],
+      "box": [
+        74,
+        46,
+        330,
+        62
+      ],
+      "example": "WISH-2/wish2-a2-capture/sheets2/shots/43-camp_sheet_6.png",
+      "sha256": "9ac29b23bc52978b62a572fee505112aa118accd30d8319bd820766865a2ae43"
+    },
+    "camp_sheet_7": {
+      "also": [],
+      "box": [
+        74,
+        46,
+        330,
+        62
+      ],
+      "example": "WISH-2/wish2-a2-capture/sheets2/shots/48-camp_sheet_7.png",
+      "sha256": "ad76cbf44d309d6f978ecb5a1dfadee50b3a522d117773df1a7533b09a0472cd"
+    },
     "camp_sheet_heal": {
       "also": [
         "camp_sheet",
