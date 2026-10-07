@@ -215,10 +215,12 @@ def vault_steps(items: int, coins: bool) -> tuple[tuple[str, str, str], ...]:
 
     The first row is highlighted when the list opens, so `items - 1` presses reach the last one.
     A vault with coins puts the TAKE bar between the vault bar and the list.
+    The bound is the item pool size, an upper bound on any vault file the harness may meet; the
+    party's own items share the pool, so the converter writes at most 445 minus the party's items.
     """
     if not 1 <= items <= amiga_savegame.POD_POOL_NODES:
-        raise RouteError(f"a vault run lists 1 to {amiga_savegame.POD_POOL_NODES} items, "
-                         f"not {items}")
+        raise RouteError(f"a vault run lists 1 to {amiga_savegame.POD_POOL_NODES} items (the item "
+                         f"pool size, not the reachable vault size), not {items}")
     return (
         ("S", VAULT_STORAGE, "key"),
         ("T", VAULT_TAKE if coins else VAULT_ITEMS, "key"),
