@@ -2101,6 +2101,10 @@
     "9/wish9-test/accept3/shots/13-world.png": [
       "place_x2_y2_f1"
     ],
+    "WISH-2/abagail-pre/b1/shots/12-world.png": [
+      "place_x11_y3_f2",
+      "world"
+    ],
     "WISH-2/l4-r6-control/control/shots/05-loaded_menu.png": [
       "loaded_menu"
     ],
