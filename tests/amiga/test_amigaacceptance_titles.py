@@ -3429,6 +3429,33 @@ def test_a_published_disk_3_reload_loads_the_after_slot_and_keeps_every_other(
     assert title.plain_keys == (("E", "loaded_menu"), ("B", "journal"))
 
 
+@pytest.mark.parametrize("squares, expected", [
+    ({"G": (22, 5), "F": (22, 4)}, {"wilderness_a": (22, 5), "wilderness_other": (22, 4)}),
+    ({}, {}),
+])
+def test_a_published_disk_3_reload_records_the_wilderness_squares_of_overland_slots(
+        tmp_path, monkeypatch, squares, expected):
+    three = Three(tmp_path, monkeypatch)
+    report, _ = three.report(three.published("D"))
+    path = foundation.prepare_published_disk_three("run", report, "WISH-2")
+    file, sha, summary = _accepted(three, path, tmp_path)
+    plain = foundation.DARKNESS.read_slot
+
+    def read(disk, letter):
+        one = plain(disk, letter)
+        if letter in squares:
+            one = dict(one, in_dungeon=False, wilderness_square=list(squares[letter]))
+        return one
+
+    monkeypatch.setattr(foundation, "DARKNESS",
+                        dataclasses.replace(foundation.DARKNESS, read_slot=read))
+    manifest = _three_manifest(
+        foundation.prepare_published_disk_three_reload("again", path, file, sha, summary))
+    for key in ("wilderness_a", "wilderness_other"):
+        want = expected.get(key)
+        assert manifest.get(key) == (list(want) if want else None)
+
+
 @pytest.mark.parametrize("why, kwargs, match", [
     ("same place", {"same_place": True}, "one place"),
     ("an extra file", {"extra": ("/SAVE/VaultI.DAT", b"v")}, "plus slots"),

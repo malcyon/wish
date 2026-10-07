@@ -4280,6 +4280,7 @@ def prepare_published_disk_three_reload(
     if reading[control]["place"] == reading[after]["place"]:
         raise RouteError(f"slots {control} and {after} are at one place, which the screen "
                          "cannot tell apart")
+    outdoors = {c: outdoor_square(one) for c, one in reading.items()}
     present = DARKNESS.slot_letters(save)
     reload_title = published_reload_title(after, present)
     run = scratch.cache_dir("acceptance", issue, run_id)
@@ -4309,6 +4310,8 @@ def prepare_published_disk_three_reload(
         "loaded_letter": after, "state_a": reading[after]["place"],
         "names_a": reading[after]["names"],
         "other_letter": control, "other_place": reading[control]["place"],
+        **({"wilderness_a": outdoors[after], "wilderness_other": outdoors[control]}
+           if outdoors[after] or outdoors[control] else {}),
         "kept_letters": list(reload_title.kept_letters),
         "slot_sha256": {c: one["sha256"] for c, one in reading.items()},
         "vault_sha256": {c: hashlib.sha256(have[_slot_paths(c)[1]]).hexdigest()
