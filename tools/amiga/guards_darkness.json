@@ -41,6 +41,8 @@
         "camp_items_3",
         "camp_items_4",
         "camp_items_5",
+        "camp_items_5_row2",
+        "camp_items_5_row3",
         "camp_items_6",
         "camp_items_row2",
         "camp_items_row3",
@@ -64,6 +66,8 @@
         "camp_items_3",
         "camp_items_4",
         "camp_items_5",
+        "camp_items_5_row2",
+        "camp_items_5_row3",
         "camp_items_6",
         "camp_items_row2",
         "camp_items_row3",
@@ -87,6 +91,8 @@
         "camp_items_2",
         "camp_items_4",
         "camp_items_5",
+        "camp_items_5_row2",
+        "camp_items_5_row3",
         "camp_items_6",
         "camp_items_row2",
         "camp_items_row3",
@@ -110,6 +116,8 @@
         "camp_items_2",
         "camp_items_3",
         "camp_items_5",
+        "camp_items_5_row2",
+        "camp_items_5_row3",
         "camp_items_6",
         "camp_items_row2",
         "camp_items_row3",
@@ -133,6 +141,8 @@
         "camp_items_2",
         "camp_items_3",
         "camp_items_4",
+        "camp_items_5_row2",
+        "camp_items_5_row3",
         "camp_items_6",
         "camp_items_row2",
         "camp_items_row3",
@@ -157,6 +167,7 @@
         "camp_items_3",
         "camp_items_4",
         "camp_items_5",
+        "camp_items_5_row3",
         "camp_items_6",
         "camp_items_row2",
         "camp_items_row3",
@@ -206,6 +217,8 @@
         "camp_items_3",
         "camp_items_4",
         "camp_items_5",
+        "camp_items_5_row2",
+        "camp_items_5_row3",
         "camp_items_row2",
         "camp_items_row3",
         "camp_items_row4",
@@ -229,6 +242,8 @@
         "camp_items_3",
         "camp_items_4",
         "camp_items_5",
+        "camp_items_5_row2",
+        "camp_items_5_row3",
         "camp_items_6",
         "camp_items_row3",
         "camp_items_row4",
@@ -252,6 +267,8 @@
         "camp_items_3",
         "camp_items_4",
         "camp_items_5",
+        "camp_items_5_row2",
+        "camp_items_5_row3",
         "camp_items_6",
         "camp_items_row2",
         "camp_items_row4",
@@ -275,6 +292,8 @@
         "camp_items_3",
         "camp_items_4",
         "camp_items_5",
+        "camp_items_5_row2",
+        "camp_items_5_row3",
         "camp_items_6",
         "camp_items_row2",
         "camp_items_row3",
@@ -298,6 +317,8 @@
         "camp_items_3",
         "camp_items_4",
         "camp_items_5",
+        "camp_items_5_row2",
+        "camp_items_5_row3",
         "camp_items_6",
         "camp_items_row2",
         "camp_items_row3",
@@ -321,6 +342,8 @@
         "camp_items_3",
         "camp_items_4",
         "camp_items_5",
+        "camp_items_5_row2",
+        "camp_items_5_row3",
         "camp_items_6",
         "camp_items_row2",
         "camp_items_row3",
@@ -344,6 +367,8 @@
         "camp_items_3",
         "camp_items_4",
         "camp_items_5",
+        "camp_items_5_row2",
+        "camp_items_5_row3",
         "camp_items_6",
         "camp_items_row2",
         "camp_items_row3",
@@ -711,33 +736,62 @@
       "example": "amiga-grab-crops/wish9-b1__29-camp_sheet_items_4.png",
       "sha256": "2797c17c60a2c5c3d67f332e1d0d00a893eedf7f910ac30834a990d554f74021"
     },
-    "camp_sheet_items_5": {
-      "also": [
-        "camp_sheet",
-        "camp_sheet_2",
-        "camp_sheet_3",
-        "camp_sheet_4",
-        "camp_sheet_5",
-        "camp_sheet_6",
-        "camp_sheet_7",
-        "camp_sheet_heal",
-        "camp_sheet_items",
-        "camp_sheet_items_2",
-        "camp_sheet_items_3",
-        "camp_sheet_items_4",
-        "camp_sheet_items_6",
-        "camp_sheet_spent",
-        "sheet"
-      ],
-      "box": [
-        58,
-        402,
-        160,
-        430
-      ],
-      "example": "amiga-grab-crops/wish9-b1__31-camp_sheet_items_5.png",
-      "sha256": "2797c17c60a2c5c3d67f332e1d0d00a893eedf7f910ac30834a990d554f74021"
-    },
+    "camp_sheet_items_5": [
+      {
+        "also": [
+          "camp_sheet",
+          "camp_sheet_2",
+          "camp_sheet_3",
+          "camp_sheet_4",
+          "camp_sheet_5",
+          "camp_sheet_6",
+          "camp_sheet_7",
+          "camp_sheet_heal",
+          "camp_sheet_items",
+          "camp_sheet_items_2",
+          "camp_sheet_items_3",
+          "camp_sheet_items_4",
+          "camp_sheet_items_6",
+          "camp_sheet_spent",
+          "sheet"
+        ],
+        "box": [
+          58,
+          402,
+          160,
+          430
+        ],
+        "example": "amiga-grab-crops/wish9-b1__31-camp_sheet_items_5.png",
+        "sha256": "2797c17c60a2c5c3d67f332e1d0d00a893eedf7f910ac30834a990d554f74021"
+      },
+      {
+        "also": [
+          "camp_sheet",
+          "camp_sheet_2",
+          "camp_sheet_3",
+          "camp_sheet_4",
+          "camp_sheet_5",
+          "camp_sheet_6",
+          "camp_sheet_7",
+          "camp_sheet_heal",
+          "camp_sheet_items",
+          "camp_sheet_items_2",
+          "camp_sheet_items_3",
+          "camp_sheet_items_4",
+          "camp_sheet_items_6",
+          "camp_sheet_spent",
+          "sheet"
+        ],
+        "box": [
+          58,
+          402,
+          160,
+          430
+        ],
+        "example": "WISH-354/w354-live3/live3/shots/17-camp_sheet_items_5.png",
+        "sha256": "c7b2485a1ff17c081eb472d0e2a627784888e56a766611e38643b73f84db6cc3"
+      }
+    ],
     "camp_sheet_items_6": {
       "also": [
         "camp_sheet",
@@ -1465,17 +1519,30 @@
       "example": "amiga-grab-crops/wish9-b1__30-camp_items_4.png",
       "sha256": "fa62970c20d962b8b30d81a9d76fc2ffec9adcac1dba8cb6f819e491931966f5"
     },
-    "camp_items_5": {
-      "also": [],
-      "box": [
-        150,
-        104,
-        676,
-        400
-      ],
-      "example": "amiga-grab-crops/wish9-b1__32-camp_items_5.png",
-      "sha256": "f9fb8774868dbe7dddda0a69b9c82357e1d4bbf51f2389e7ee76b84937be9aa6"
-    },
+    "camp_items_5": [
+      {
+        "also": [],
+        "box": [
+          150,
+          104,
+          676,
+          400
+        ],
+        "example": "amiga-grab-crops/wish9-b1__32-camp_items_5.png",
+        "sha256": "f9fb8774868dbe7dddda0a69b9c82357e1d4bbf51f2389e7ee76b84937be9aa6"
+      },
+      {
+        "also": [],
+        "box": [
+          150,
+          104,
+          676,
+          142
+        ],
+        "example": "amiga-grab-crops/wish2-hilde__camp_items_5.png",
+        "sha256": "bbe57f0cfe0436b0931a8f2e1c9ccec69c2dba1c3e707962b3952da29bbc7b94"
+      }
+    ],
     "camp_items_6": {
       "also": [],
       "box": [
@@ -1552,7 +1619,9 @@
       "sha256": "3ebf5a6716032a590c394e79e50ea29bfc1cb535ad7ca6563ddd879219941968"
     },
     "camp_sheet_5": {
-      "also": [],
+      "also": [
+        "camp_sheet_items_5"
+      ],
       "box": [
         74,
         46,
@@ -1651,17 +1720,32 @@
       "example": "amiga-grab-crops/wish9-b1__29-camp_sheet_items_4.png",
       "sha256": "4c4dc1253b0dcf4376e7abc6883f4ef9e99e9181574cff874199c87982df2f8d"
     },
-    "camp_sheet_items_5": {
-      "also": [],
-      "box": [
-        74,
-        46,
-        330,
-        62
-      ],
-      "example": "amiga-grab-crops/wish9-b1__31-camp_sheet_items_5.png",
-      "sha256": "40e2b0a4c394138afaa56cbe73732b02ea822939cc9fd8f7820dbed52d4af776"
-    },
+    "camp_sheet_items_5": [
+      {
+        "also": [],
+        "box": [
+          74,
+          46,
+          330,
+          62
+        ],
+        "example": "amiga-grab-crops/wish9-b1__31-camp_sheet_items_5.png",
+        "sha256": "40e2b0a4c394138afaa56cbe73732b02ea822939cc9fd8f7820dbed52d4af776"
+      },
+      {
+        "also": [
+          "camp_sheet_5"
+        ],
+        "box": [
+          74,
+          46,
+          330,
+          62
+        ],
+        "example": "WISH-354/w354-live3/live3/shots/17-camp_sheet_items_5.png",
+        "sha256": "767e04178168c0fb82181009b4c56753530e86aced5ae3be73cc26e999412acb"
+      }
+    ],
     "camp_sheet_items_6": {
       "also": [],
       "box": [
@@ -2079,6 +2163,10 @@
     "WISH-2/wish317-lower/accept317/shots/13-world.png": [
       "place_x4_y7_f0_w22_4"
     ],
+    "WISH-354/w354-live3/live3/shots/17-camp_sheet_items_5.png": [
+      "camp_sheet_5",
+      "camp_sheet_items_5"
+    ],
     "WISH-6/wish6-a5/a5m1/shots/11-vault_bar.png": [
       "vault_bar"
     ],
@@ -2225,6 +2313,13 @@
     ],
     "WISH-6/wish6-l1/measure2/shots/55-elminster_menu.png": [
       "elminster_menu"
+    ],
+    "amiga-grab-crops/wish2-hilde__camp_items_5.png": [
+      "camp_items_5"
+    ],
+    "amiga-grab-crops/wish2-hilde__camp_sheet_items_5.png": [
+      "camp_sheet_5",
+      "camp_sheet_items_5"
     ],
     "amiga-grab-crops/wish2-use__camp_use_combat.png": [
       "camp_use_combat"
