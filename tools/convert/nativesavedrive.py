@@ -2,8 +2,8 @@
 """Edit a copy of a native save through the Character Editor's own Save, and report.
 
 Copies `--base` (a disk image, or a DOS save folder) to `--out`, opens it in
-`editor.window.EditorBinding` (offscreen), changes one member's gold, strength
-and one item quantity the way the editor's widgets and inventory model do, and
+`editor.window.EditorBinding` (offscreen), changes one member's gold, strength,
+any `--set` field and one item quantity the way the editor's widgets and inventory model do, and
 calls `save(interactive=False)`. `--out` must not exist, or be an empty folder
 for a DOS save, so no stale file or earlier backup reaches the report. The report
 (JSON, also printed) gives each field before and after, read back from the
@@ -14,10 +14,14 @@ else writes the disk, so the bytes are what a player's Save produces.
 
     .venv/bin/python tools/convert/nativesavedrive.py --base curse.adf \\
         --out /tmp/edited/curse.adf --who 1 --gold 5000 --strength 18 \\
-        [--item 0=3] [--readied 2=0] [--delete-item 1] [--slot B] \\
+        [--set FIELD=VALUE] [--item 0=3] [--readied 2=0] [--delete-item 1] [--slot B] \\
         [--report report.json]
 
-`--who` is a zero-based roster row, `--item POSITION=QUANTITY` is repeatable and
+`--who` is a zero-based roster row, `--gold`, `--strength` and `--set FIELD=VALUE`
+(repeatable) are each optional but at least one edit must be given; a field the
+title's record does not store, such as gold on Pools of Darkness, exits before
+anything is written. Pools of Darkness needs `WISH_EXPERIMENTAL_POD_CONVERT=1`
+in the environment. `--item POSITION=QUANTITY` is repeatable and
 names an occupied inventory position of that member (an empty position exits
 before anything is written). `--readied POSITION=0|1` sets the Readied box of an
 occupied position and `--delete-item POSITION` deletes it, both repeatable;
@@ -78,15 +82,14 @@ def _copy(base: pathlib.Path, out: pathlib.Path) -> None:
 
 
 def _read_back(path: pathlib.Path, slot: str | None, who: int,
-               items: dict[int, int]) -> dict:
-    """The member's gold, strength and the named item quantities in `path`."""
+               fields: dict[str, int | str], items: dict[int, int]) -> dict:
+    """The member's named fields and item quantities in `path`."""
     from editor.convert import Source
     from editor.roster import Party
 
     source = Source.detect(str(path), slot=slot) if slot else str(path)
     member = Party(source).members[who]
-    return {"gold": member.record.get("gold"),
-            "strength": member.record.get("strength"),
+    return {**{name: member.record.get(name) for name in fields},
             "quantities": {str(pos): member.inventory.raws[pos][10]
                            for pos in items}}
 
@@ -105,11 +108,16 @@ def _original(backup: pathlib.Path, names: list[str]) -> str:
     return max((n for n in names if backup.name.startswith(n + ".")), key=len)
 
 
-def drive(base: pathlib.Path, out: pathlib.Path, who: int, gold: int,
-          strength: int, items: dict[int, int],
+def drive(base: pathlib.Path, out: pathlib.Path, who: int,
+          items: dict[int, int],
           slot: str | None = None, readied: dict[int, bool] | None = None,
-          deletes: Sequence[int] = ()) -> dict:
-    """Copy `base` to `out`, edit and save through the editor, and report."""
+          deletes: Sequence[int] = (), *,
+          fields: dict[str, int | str]) -> dict:
+    """Copy `base` to `out`, edit and save through the editor, and report.
+
+    `fields` maps a record field name to its new value, set through the
+    sheet's own widget. Pools of Darkness needs `WISH_EXPERIMENTAL_POD_CONVERT`.
+    """
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     os.environ.pop("WAYLAND_DISPLAY", None)
     if str(ROOT) not in sys.path:
@@ -126,6 +134,9 @@ def drive(base: pathlib.Path, out: pathlib.Path, who: int, gold: int,
     if not 0 <= who < len(members):
         raise SystemExit(f"{base}: no roster row {who}; the party has "
                          f"{len(members)} members")
+    for name in fields:
+        if not members[who].record.is_stored(name):
+            raise SystemExit(f"{out}: this title's record does not store {name!r}")
     readied = readied or {}
     for pos in (*items, *readied, *deletes):
         if members[who].inventory.is_empty(pos):
@@ -134,7 +145,7 @@ def drive(base: pathlib.Path, out: pathlib.Path, who: int, gold: int,
     out.parent.mkdir(parents=True, exist_ok=True)
     _copy(base, out)
     pre_edit = _files(out)
-    before = _read_back(out, slot, who, items)
+    before = _read_back(out, slot, who, fields, items)
 
     app = QApplication.instance() or QApplication([])
     from editor.window import EditorBinding
@@ -164,8 +175,8 @@ def drive(base: pathlib.Path, out: pathlib.Path, who: int, gold: int,
     inventory = binding.party.members[who].inventory
     # `save()` flushes the widgets of the current row, so select it first.
     binding.roster.selectRow(who)
-    widget("gold").setValue(gold)
-    widget("strength").setValue(strength)
+    for name, value in fields.items():
+        widget(name).setValue(value)
     for pos, qty in items.items():
         inventory.set_quantity(pos, qty)
     for pos, on in readied.items():
@@ -192,7 +203,7 @@ def drive(base: pathlib.Path, out: pathlib.Path, who: int, gold: int,
         "base": str(base), "out": str(out), "who": who, "slot": slot,
         "save_said": note,
         "before": before,
-        "after": _read_back(out, slot, who, items),
+        "after": _read_back(out, slot, who, fields, items),
         "backups": [{"path": str(b), "sha256": sha256(b),
                      "equals_pre_edit": b.read_bytes() == pre_edit[_original(b, names)]}
                     for b in backups],
@@ -212,8 +223,11 @@ def main(argv=None) -> int:
     ap.add_argument("--slot", help="saved-game slot, for a disk holding several")
     ap.add_argument("--who", required=True, type=int,
                     help="zero-based roster row to edit")
-    ap.add_argument("--gold", required=True, type=int)
-    ap.add_argument("--strength", required=True, type=int)
+    ap.add_argument("--gold", type=int)
+    ap.add_argument("--strength", type=int)
+    ap.add_argument("--set", dest="sets", action="append", default=[],
+                    metavar="FIELD=VALUE",
+                    help="any other record field and its new number; repeatable")
     ap.add_argument("--item", action="append", default=[],
                     metavar="POSITION=QUANTITY",
                     help="occupied inventory position and its new quantity; "
@@ -243,8 +257,22 @@ def main(argv=None) -> int:
             ap.error(f"--readied wants POSITION=0|1, got {spec!r}")
         readied[int(pos)] = on == "1"
 
-    report = drive(args.base, args.out, args.who, args.gold, args.strength,
-                   items, args.slot, readied, args.delete_item)
+    fields: dict[str, int | str] = {}
+    if args.gold is not None:
+        fields["gold"] = args.gold
+    if args.strength is not None:
+        fields["strength"] = args.strength
+    for spec in args.sets:
+        name, sep, value = spec.partition("=")
+        if not sep or not name or not value.lstrip("-").isdigit():
+            ap.error(f"--set wants FIELD=VALUE, got {spec!r}")
+        fields[name] = int(value)
+    if not (fields or items or readied or args.delete_item):
+        ap.error("give at least one of --gold, --strength, --set, --item, "
+                 "--readied or --delete-item")
+
+    report = drive(args.base, args.out, args.who, items, args.slot, readied,
+                   args.delete_item, fields=fields)
     text = json.dumps(report, indent=2)
     if args.report:
         args.report.write_text(text + "\n")

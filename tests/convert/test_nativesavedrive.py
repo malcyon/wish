@@ -22,7 +22,7 @@ def test_the_edits_read_back_and_the_backup_is_the_original(tmp_path):
     original = base.read_bytes()
     out = tmp_path / "saves" / "edited.adf"
 
-    report = nativesavedrive.drive(base, out, who=1, gold=4321, strength=17,
+    report = nativesavedrive.drive(base, out, who=1, fields={"gold": 4321, "strength": 17},
                                    items={0: 3})
 
     assert base.read_bytes() == original
@@ -63,7 +63,7 @@ def test_slot_edits_that_slot_and_leaves_the_other(tmp_path):
     disk.save(base)
     out = tmp_path / "saves" / "edited.adf"
 
-    report = nativesavedrive.drive(base, out, who=1, gold=777, strength=16,
+    report = nativesavedrive.drive(base, out, who=1, fields={"gold": 777, "strength": 16},
                                    items={0: 2}, slot="B")
 
     assert report["ok"]
@@ -103,7 +103,7 @@ def test_a_dos_folder_is_copied_edited_and_backed_up_inside_itself(tmp_path):
     before = {p.name: p.read_bytes() for p in base.iterdir()}
     out = tmp_path / "saves" / "edited"
 
-    report = nativesavedrive.drive(base, out, who=1, gold=4321, strength=17,
+    report = nativesavedrive.drive(base, out, who=1, fields={"gold": 4321, "strength": 17},
                                    items={0: 3}, slot="A")
 
     assert report["ok"], report["problem"]
@@ -129,7 +129,7 @@ def test_a_c64_disk_is_edited_and_backed_up_beside_itself(tmp_path):
     original = base.read_bytes()
     out = tmp_path / "saves" / "edited.D64"
 
-    report = nativesavedrive.drive(base, out, who=0, gold=4321, strength=17,
+    report = nativesavedrive.drive(base, out, who=0, fields={"gold": 4321, "strength": 17},
                                    items={0: 3})
 
     assert report["ok"], report["problem"]
@@ -217,13 +217,13 @@ def test_readied_and_delete_item_edit_the_table_and_report_a_bad_position(
     assert held
     out = tmp_path / "ready" / "out.adf"
     report = nativesavedrive.drive(
-        base, out, who=0, gold=10, strength=12, items={}, readied={held[0]: True})
+        base, out, who=0, fields={"gold": 10, "strength": 12}, items={}, readied={held[0]: True})
     assert report["ok"]
     assert Party(str(out)).members[0].inventory.item(held[0]).readied
 
     gone = tmp_path / "gone" / "out.adf"
     report = nativesavedrive.drive(
-        base, gone, who=0, gold=10, strength=12, items={}, deletes=[held[0]])
+        base, gone, who=0, fields={"gold": 10, "strength": 12}, items={}, deletes=[held[0]])
     assert report["ok"]
     after = Party(str(gone)).members[0].inventory
     assert len([n for n in range(len(after)) if after.holds(n)]) == len(held) - 1
@@ -234,3 +234,114 @@ def test_readied_and_delete_item_edit_the_table_and_report_a_bad_position(
             "--base", str(base), "--out", str(tmp_path / "x" / "o.adf"),
             "--who", "0", "--gold", "10", "--strength", "12",
             "--delete-item", str(empty)])
+
+
+def _editor_tests(monkeypatch):
+    """Let this test import the Pools of Darkness helpers of `tests/editor`."""
+    monkeypatch.syspath_prepend(str(pathlib.Path(__file__).parents[1] / "editor"))
+
+
+def _pod_folder(tmp_path, monkeypatch):
+    _editor_tests(monkeypatch)
+    from test_podparty import FLAG
+    from test_podwindow import _synthetic_folder
+
+    monkeypatch.setenv(FLAG, "1")
+    return _synthetic_folder(tmp_path)
+
+
+def _tree(path):
+    return {p.name: p.read_bytes() for p in sorted(path.iterdir()) if p.is_file()}
+
+
+def test_set_writes_a_pools_of_darkness_field_and_leaves_gold_unreported(
+        tmp_path, monkeypatch):
+    base = _pod_folder(tmp_path, monkeypatch)
+    before = _tree(base)
+    out = tmp_path / "saves" / "edited"
+
+    report = nativesavedrive.drive(base, out, who=0, items={}, slot="A",
+                                   fields={"strength": 18})
+
+    assert report["ok"], report["problem"]
+    assert report["after"]["strength"] == 18
+    assert "gold" not in report["after"]
+    assert _tree(base) == before
+    assert report["backups"]
+    assert all(b["equals_pre_edit"] for b in report["backups"])
+
+
+def test_an_unstored_field_exits_and_writes_nothing(tmp_path, monkeypatch):
+    base = _pod_folder(tmp_path, monkeypatch)
+    out = tmp_path / "saves" / "edited"
+
+    with pytest.raises(SystemExit, match="does not store 'gold'"):
+        nativesavedrive.drive(base, out, who=0, items={}, slot="A",
+                              fields={"gold": 5})
+
+    assert not out.exists()
+    assert not (tmp_path / "saves").exists()
+
+
+def test_main_set_and_the_old_flags_both_reach_the_report(
+        tmp_path, monkeypatch, capsys):
+    base = _pod_folder(tmp_path, monkeypatch)
+
+    status = nativesavedrive.main([
+        "--base", str(base), "--out", str(tmp_path / "o" / "a"), "--slot", "A",
+        "--who", "0", "--set", "age=31", "--strength", "16"])
+
+    report = json.loads(capsys.readouterr().out)
+    assert status == 0
+    assert report["after"]["age"] == 31
+    assert report["after"]["strength"] == 16
+
+    with pytest.raises(SystemExit, match="does not store 'gold'"):
+        nativesavedrive.main([
+            "--base", str(base), "--out", str(tmp_path / "o" / "b"),
+            "--slot", "A", "--who", "0", "--gold", "5", "--strength", "16"])
+    assert not (tmp_path / "o" / "b").exists()
+
+
+def test_a_run_with_no_edit_option_is_a_usage_error(tmp_path):
+    with pytest.raises(SystemExit) as caught:
+        nativesavedrive.main(["--base", str(tmp_path / "x"),
+                              "--out", str(tmp_path / "y"), "--who", "0"])
+    assert caught.value.code == 2
+    assert not (tmp_path / "y").exists()
+
+
+def test_set_and_delete_item_on_a_played_amiga_disk_change_only_its_slot_file(
+        tmp_path, monkeypatch):
+    _editor_tests(monkeypatch)
+    from test_podparty import FLAG, _amiga_images
+
+    from editor.convert import Source
+    from editor.roster import Party
+
+    monkeypatch.setenv(FLAG, "1")
+    for _label, data, slots in _amiga_images():
+        base = tmp_path / "disk.adf"
+        base.write_bytes(data)
+        if "B" not in slots:
+            continue
+        members = Party(Source.detect(str(base), slot="B")).members
+        if len(members) < 5 or members[4].name != "HILDE":
+            continue
+        break
+    else:
+        pytest.skip("needs the played Pools of Darkness disk 3 with HILDE in slot B")
+    inventory = members[4].inventory
+    cases = inventory.item(3)
+    assert cases is not None
+    out = tmp_path / "saves" / "edited.adf"
+
+    report = nativesavedrive.drive(base, out, who=4, items={}, slot="B",
+                                   deletes=[3], fields={"strength": 17})
+
+    assert report["ok"], report["problem"]
+    assert report["after"]["strength"] == 17
+    from goldbox.amiga_adf import AmigaDisk
+    old, new = AmigaDisk(data), AmigaDisk(out.read_bytes())
+    changed = [n for n, _e in old.walk() if old.read_file(n) != new.read_file(n)]
+    assert [n.lower().rsplit("/", 1)[-1] for n in changed] == ["savgamb.pty"]
