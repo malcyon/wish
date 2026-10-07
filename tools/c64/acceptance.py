@@ -2043,6 +2043,10 @@ class PoolRun:
     watch_bar_rows: frozenset = frozenset()
     watch_prev_rows: frozenset = frozenset()
     watch_lines = 0
+    #: How many times each message text appeared this fight; only its first
+    #: appearance is logged and captured, so a row that changes on every read
+    #: cannot flood the log.
+    watch_counts: dict = {}
     #: The stem `capture` last wrote, which the watch events name.
     last_stem = ""
 
@@ -6275,6 +6279,7 @@ class PoolRun:
         self.watch_fight, self.watch_bars = number, 0
         self.watch_bar_rows = self.watch_prev_rows = frozenset()
         self.watch_lines = 0
+        self.watch_counts = {}
         if self.fight_watch:
             # The engine runs a character between two command bars, so its
             # messages show for less than the default one-second poll.
@@ -6322,7 +6327,12 @@ class PoolRun:
         between two command bars, then asks `inner` (`--fight-watch`)."""
         def hook(sess, screen) -> bool:
             if screen is not None:
-                self.watch_read(screen)
+                # A capture failure must not abort the fight or skip `inner`.
+                try:
+                    self.watch_read(screen)
+                except Exception as exc:
+                    self.log.emit("fight-watch-error", fight=self.watch_fight,
+                                  error=f"{type(exc).__name__}: {exc}")
             return inner(sess, screen)
 
         return hook
@@ -6330,7 +6340,9 @@ class PoolRun:
     def watch_read(self, screen) -> None:
         """Log every row of SCREEN that was not on the previous read and is
         not part of the last command bar's screen; a row naming the watched
-        character also gets a screenshot."""
+        character also gets a screenshot.  A text is logged and captured only
+        the first time it appears in the fight; later appearances are counted
+        in `watch_counts`."""
         rows = [screen.row(r) for r in range(25)]
         now = frozenset(r.strip() for r in rows if r.strip())
         new = sorted(now - self.watch_prev_rows - self.watch_bar_rows,
@@ -6338,6 +6350,11 @@ class PoolRun:
         self.watch_prev_rows = now
         name = self.fight_watch.upper()
         for text in new:
+            # Rebound, not mutated: the class attribute is shared.
+            self.watch_counts = {**self.watch_counts,
+                                 text: self.watch_counts.get(text, 0) + 1}
+            if self.watch_counts[text] > 1:
+                continue
             named = name in text.upper()
             if named:
                 self.capture(f"fight-{self.watch_fight}-line-{self.watch_lines}", rows)
@@ -6361,7 +6378,8 @@ class PoolRun:
                        if c.name.strip().upper() == name), None)
         self.log.emit("fight-watch-end", fight=self.watch_fight, name=name,
                       outcome=result.outcome, lines=list(result.lines),
-                      bars=list(result.bars), hp=hp, **reads)
+                      bars=list(result.bars), hp=hp,
+                      line_counts=dict(self.watch_counts), **reads)
 
     def watch_bar(self, sess, bar) -> None:
         """Log the battlefield, its text, whose bar this is and the watched

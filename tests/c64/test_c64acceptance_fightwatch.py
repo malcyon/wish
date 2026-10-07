@@ -188,3 +188,54 @@ def test_a_lost_fight_still_logs_its_lines_and_the_watched_hit_points(
     (end,) = [e for e in events if e.get("kind") == "fight-watch-end"]
     assert end["lines"] == ["BRUTUS HITS"] and end["outcome"] == A.S.LOST
     assert (end["hp"], end["status"]) == (11, 3)
+
+
+def _hook_run(tmp_path, reads, inner=None):
+    """Feed READS (lists of row-20 texts) to a watch_stop hook; return the
+    run, the events and how many times `inner` was asked."""
+    run = A.PoolRun(_Session([], {}, []), A.Log(tmp_path), tmp_path, POOL_OF_RADIANCE, {})
+    run.fight_watch = "brutus"
+    asked = []
+    hook = run.watch_stop(lambda sess, screen: asked.append(screen) or False)
+    for text in reads:
+        shown = _Screen("", "")
+        shown.rows[20] = text
+        shown.rows[22] = ""
+        hook(run.sess, shown)
+    run.log.close()
+    events = [json.loads(line) for line in (tmp_path / "run.jsonl").read_text().splitlines()]
+    return run, events, asked
+
+
+def _lines(events):
+    return [e["text"] for e in events if e.get("kind") == "fight-watch-line"]
+
+
+def test_a_row_unchanged_across_two_reads_is_logged_once(tmp_path):
+    _, events, asked = _hook_run(tmp_path, ["THE ORC MISSES"] * 2)
+    assert _lines(events) == ["THE ORC MISSES"] and len(asked) == 2
+
+
+def test_an_alternating_row_is_logged_once_per_distinct_text(tmp_path):
+    run, events, asked = _hook_run(
+        tmp_path, ["BRUTUS HITS", "THE ORC MISSES", "BRUTUS HITS", "THE ORC MISSES"])
+    assert _lines(events) == ["BRUTUS HITS", "THE ORC MISSES"]
+    assert len(list((tmp_path).glob("*line*.png"))) == 1
+    assert run.watch_counts == {"BRUTUS HITS": 2, "THE ORC MISSES": 2}
+    assert len(asked) == 4
+
+
+def test_an_error_inside_watch_read_is_logged_and_inner_still_runs(tmp_path, monkeypatch):
+    run = A.PoolRun(_Session([], {}, []), A.Log(tmp_path), tmp_path, POOL_OF_RADIANCE, {})
+
+    def boom(screen):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(run, "watch_read", boom)
+    asked = []
+    hook = run.watch_stop(lambda sess, screen: asked.append(screen) or True)
+    assert hook(run.sess, _Screen("", "")) is True and len(asked) == 1
+    run.log.close()
+    events = [json.loads(line) for line in (tmp_path / "run.jsonl").read_text().splitlines()]
+    (err,) = [e for e in events if e.get("kind") == "fight-watch-error"]
+    assert "OSError" in err["error"] and "disk full" in err["error"]
