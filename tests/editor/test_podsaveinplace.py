@@ -1035,3 +1035,170 @@ def test_an_empty_case_stays_after_the_head_it_followed_when_one_is_deleted(
     new_heads, _c, _t = pod_rewrite._amiga_nodes(out)
     assert new_heads == [heads[1], heads[2]]
     assert _count(out) == 2
+
+
+# A Pools of Darkness scroll case: what an edit leaves of it.  The nodes are
+# built here field by field; no byte comes from a game file.
+_AT = amiga_pod.ITEM_FIELD_AT
+
+
+def _scroll_node(spells: tuple[int, int, int], readied: int = 0,
+                 weight: int = 1) -> bytes:
+    """A synthetic chained scroll node: type 39, three spell ids."""
+    node = bytearray(amiga_pod.ITEM_FILE_SIZE)
+    node[_AT["type_index"]] = 0x27
+    node[_AT["name1"]] = 100 + sum(1 for s in spells if s)
+    node[_AT["name2"]], node[_AT["name3"]] = 0x27, 0x28
+    node[_AT["plus"]] = 1
+    node[_AT["readied"]] = readied
+    node[_AT["weight"]:_AT["weight"] + 2] = weight.to_bytes(2, "big")
+    node[_AT["charges"]], node[_AT["effect"]], node[_AT["power"]] = spells
+    return bytes(node)
+
+
+_SCROLLS = (_scroll_node((11, 22, 33)), _scroll_node((44, 0, 55)),
+            _scroll_node((66, 77, 88)))
+
+
+def _block_with_case(monkeypatch, tmp_path, scrolls=_SCROLLS) -> bytes:
+    """A synthetic Amiga block: a mace, a readied case of `scrolls` that
+    weighs 4, and a second mace."""
+    _flag(monkeypatch, "1")
+    [member] = Party(convert.Source.detect(
+        _synthetic_folder(tmp_path), slot="A")).members
+    mace = bytearray(amiga_pod.PodItem.from_dos_bytes(
+        member.native.items[0].to_bytes()).raw)
+    case = bytearray(amiga_pod.ITEM_FILE_SIZE)
+    case[_AT["type_index"]] = amiga_pod.SCROLL_TYPE_INDEX
+    case[_AT["readied"]] = 1
+    case[_AT["weight"]:_AT["weight"] + 2] = (4).to_bytes(2, "big")
+    case[pod_rewrite._QUANTITY_AT] = len(scrolls)
+    other = bytearray(mace)
+    other[_AT["plus"]] ^= 1
+    block = bytearray(amiga_pod.RECORD_BYTES)
+    block[amiga_pod.ITEM_CHAIN:amiga_pod.ITEM_CHAIN + 4] = (3).to_bytes(
+        4, "big")
+    return bytes(block + mace + case + b"".join(scrolls) + other)
+
+
+def _keep(was: list[bytes], gone: set[int]) -> list[bytes]:
+    kept = [b for n, b in enumerate(was) if n not in gone]
+    return kept + [bytes(len(was[0]))] * (len(was) - len(kept))
+
+
+def test_a_case_left_with_two_scrolls_stays_a_case_of_two(
+        monkeypatch, tmp_path):
+    block = _block_with_case(monkeypatch, tmp_path)
+    heads, _chains, _tail = pod_rewrite._amiga_nodes(block)
+    out, _moved = pod_rewrite.rewrite_amiga_items(
+        block, _shown(block), _keep(_shown(block), {2}))
+    new_heads, new_chains, _t = pod_rewrite._amiga_nodes(out)
+    assert _count(out) == 3
+    assert new_heads[1][pod_rewrite._QUANTITY_AT] == 2
+    assert [bytes(n) for n in new_chains[1]] == [_SCROLLS[0], _SCROLLS[2]]
+    assert new_heads[0] == heads[0] and new_heads[2] == heads[2]
+
+
+def test_a_case_left_with_one_scroll_becomes_that_scroll(monkeypatch,
+                                                         tmp_path):
+    """The game copies the last scroll's node over the case: the item is
+    that scroll, with its own `readied` and weight, and no case is left."""
+    block = _block_with_case(monkeypatch, tmp_path)
+    heads, _chains, tail = pod_rewrite._amiga_nodes(block)
+    out, moved = pod_rewrite.rewrite_amiga_items(
+        block, _shown(block), _keep(_shown(block), {1, 2}))
+    new_heads, new_chains, new_tail = pod_rewrite._amiga_nodes(out)
+    assert _count(out) == 3
+    assert [bytes(h) for h in new_heads] == [heads[0], _SCROLLS[2], heads[2]]
+    assert new_chains == [[], [], []]
+    assert new_tail == tail
+    assert len(out) == len(block) - 3 * amiga_pod.ITEM_FILE_SIZE
+    assert "item 1: case of one scroll written as that scroll" in moved
+    # The sheet shows it as an item of its own, not readied.
+    assert pod_rewrite.amiga_item_sources(out)[1] == (1, None)
+    from editor.inventory import READIED
+    reopened = _shown(out)
+    assert not reopened[1][6] & READIED
+    assert reopened[1][:4] == _shown(block)[3][:4]
+
+
+def test_a_lone_scroll_keeps_a_readied_edit_made_on_its_row(monkeypatch,
+                                                            tmp_path):
+    from editor.inventory import READIED
+    block = _block_with_case(monkeypatch, tmp_path)
+    was = _shown(block)
+    assert was[3][6] & READIED
+    now = _keep(was, {1, 2})
+    raw = bytearray(now[1])
+    raw[6] &= ~READIED
+    now[1] = bytes(raw)
+    out, _moved = pod_rewrite.rewrite_amiga_items(block, was, now)
+    assert pod_rewrite._amiga_nodes(out)[0][1] == bytearray(_SCROLLS[2])
+    # A readied edit on an unreadied case's last scroll is kept.
+    (tmp_path / "2").mkdir()
+    block = _block_with_case(monkeypatch, tmp_path / "2")
+    off = bytearray(block)
+    off[amiga_pod.RECORD_BYTES + amiga_pod.ITEM_FILE_SIZE + _AT["readied"]] = 0
+    was = _shown(bytes(off))
+    now = _keep(was, {1, 2})
+    raw = bytearray(now[1])
+    raw[6] |= READIED
+    now[1] = bytes(raw)
+    out, _moved = pod_rewrite.rewrite_amiga_items(bytes(off), was, now)
+    lone = pod_rewrite._amiga_nodes(out)[0][1]
+    assert lone[_AT["readied"]] == 1
+    assert bytes(lone[:7]) == _SCROLLS[2][:7]
+    assert bytes(lone[8:]) == _SCROLLS[2][8:]
+
+
+def test_a_case_left_with_no_scroll_is_removed(monkeypatch, tmp_path):
+    block = _block_with_case(monkeypatch, tmp_path)
+    heads, _chains, tail = pod_rewrite._amiga_nodes(block)
+    out, _moved = pod_rewrite.rewrite_amiga_items(
+        block, _shown(block), _keep(_shown(block), {1, 2, 3}))
+    new_heads, _c, new_tail = pod_rewrite._amiga_nodes(out)
+    assert [bytes(h) for h in new_heads] == [heads[0], heads[2]]
+    assert _count(out) == 2 and new_tail == tail
+
+
+def test_a_case_of_one_already_in_the_file_is_written_as_its_scroll(
+        monkeypatch, tmp_path):
+    """An edit to another item writes a case of one, as an earlier Wish
+    left it, as the scroll the game would have made of it."""
+    block = _block_with_case(monkeypatch, tmp_path, _SCROLLS[1:2])
+    was = _shown(block)
+    now = list(was)
+    raw = bytearray(now[0])
+    raw[4] = (raw[4] + 5) & 0xFF
+    now[0] = bytes(raw)
+    out, _moved = pod_rewrite.rewrite_amiga_items(block, was, now)
+    assert bytes(pod_rewrite._amiga_nodes(out)[0][1]) == _SCROLLS[1]
+    assert _count(out) == 3
+
+
+def test_dos_scrolls_left_two_one_and_none_stay_items_of_their_own(
+        monkeypatch, tmp_path):
+    """DOS keeps no case: each scroll is an item, and a delete drops only
+    its own node, whatever is left."""
+    _flag(monkeypatch, "1")
+    for kept in (2, 1, 0):
+        (tmp_path / str(kept)).mkdir()
+        folder = _synthetic_folder(tmp_path / str(kept))
+        record = podsheet.PodSheetRecord(
+            (folder / "CHRDATA1.SAV").read_bytes())
+        record.set("item_count", 4)
+        (folder / "CHRDATA1.SAV").write_bytes(record.to_bytes())
+        mace = (folder / "CHRDATA1.THG").read_bytes()
+        scrolls = [amiga_pod.PodItem.from_bytes(n).to_dos_bytes()
+                   for n in _SCROLLS]
+        (folder / "CHRDATA1.THG").write_bytes(mace + b"".join(scrolls))
+        party = Party(convert.Source.detect(folder, slot="A"))
+        [member] = party.members
+        for _ in range(3 - kept):
+            member.inventory.delete(1)
+        files = saveplan.dos_files(party)
+        nodes = dos_codec.item_nodes(files["CHRDATA1.THG"],
+                                     pod_rewrite.DELTAS.item_size)
+        assert [bytes(n) for n in nodes] == [mace] + scrolls[3 - kept:]
+        assert files["CHRDATA1.SAV"][
+            podsheet.TABLE["item_count"].offset] == 1 + kept

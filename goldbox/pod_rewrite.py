@@ -452,9 +452,12 @@ def rewrite_amiga_items(block: bytes, was: Sequence[bytes],
 
     A scroll in a case is a node chained off the case.  Its `readied` and
     `weight` are shown from the case, so an edit to either is written to the
-    case's head node; the case's own count at `+0x0C` follows the scrolls it
-    keeps, and a case none of whose scrolls remain is dropped.  A case that
-    was already empty is kept where it was.  The count of
+    case's head node; the case's own count at `+0x0C` is set to the scrolls
+    it keeps, and a case none of whose scrolls remain is dropped.  A case
+    left with one scroll is written as that scroll's own node in the case's
+    place, as the game does when a use leaves one, keeping the node's own
+    `readied` and `weight` unless the edit changed them on that scroll's
+    row.  A case that was already empty is kept where it was.  The count of
     head nodes at `0x008` is rewritten; the bytes the game derives on load
     (encumbrance, the item count cache, hands) and the effect nodes are left
     as read.
@@ -472,6 +475,7 @@ def rewrite_amiga_items(block: bytes, was: Sequence[bytes],
         return bytes(block), []
 
     used: set[int] = set()
+    case_edits: dict[tuple[int, int], tuple[bytes, bytes]] = {}
     order: list[tuple[str, Any]] = []
     moved: list[str] = []
     after = 0
@@ -498,6 +502,7 @@ def rewrite_amiga_items(block: bytes, was: Sequence[bytes],
                 names = _patch_node(chains[h][c], was[n], block_n, [
                     f for f in amiga_pod.ITEM_FIELDS if f not in _CASE_FIELDS])
                 _patch_node(heads[h], was[n], block_n, _CASE_FIELDS)
+                case_edits[(h, c)] = (was[n], block_n)
             moved.extend(f"item {n}: {name}" for name in names)
             order.append(("entry", n))
             continue
@@ -513,7 +518,8 @@ def rewrite_amiga_items(block: bytes, was: Sequence[bytes],
     out_chains: list[list[bytearray]] = []
     origin: list[int | None] = []
     placed: dict[int, int] = {}
-    for kind, what in order:
+    kept: dict[int, list[tuple[int, int]]] = {}
+    for row, (kind, what) in enumerate(order):
         if kind == "new":
             out_heads.append(what)
             out_chains.append([])
@@ -531,8 +537,20 @@ def rewrite_amiga_items(block: bytes, was: Sequence[bytes],
             out_chains.append([])
             origin.append(h)
         out_chains[placed[h]].append(chains[h][c])
-    for at in placed.values():
-        out_heads[at][_QUANTITY_AT] = len(out_chains[at])
+        kept.setdefault(h, []).append((c, row))
+    for h, at in placed.items():
+        if len(out_chains[at]) != 1:
+            out_heads[at][_QUANTITY_AT] = len(out_chains[at])
+            continue
+        # The game never keeps a case of one: it copies the last scroll's
+        # node over the case and clears the chain.
+        [(c, row)] = kept[h]
+        lone = bytearray(out_chains[at][0])
+        if (h, c) in case_edits:
+            _patch_node(lone, *case_edits[(h, c)], _CASE_FIELDS)
+        out_heads[at] = lone
+        out_chains[at] = []
+        moved.append(f"item {row}: case of one scroll written as that scroll")
     # A case that held no scroll when the game wrote it has no sheet row, so
     # no edit can have emptied it: it stays after the head that preceded it.
     for h, head in enumerate(heads):
