@@ -1618,6 +1618,31 @@ def charmed_pool_fields(record: CharacterRecord, neutral: NeutralCharacter,
     return {}
 
 
+def dispelled_zombie_fields(member, snapshot,
+                            destination: "Destination") -> dict[str, int]:
+    """The four bytes a dispelled C64 Pool zombie should be read back holding
+    from a DOS or Amiga save.
+
+    The sheet shows the C64's own zombie form, and the conversion makes him an
+    ordinary dead character (`dos_codec.c64_member_dispelled_zombie`), so
+    `movement`, `turn_class`, `creature_type` and the ability flag differ by
+    that rule and not by a loss. `{}` for any other character or route.
+    """
+    if destination.native or not _is_pool(destination):
+        return {}
+    if snapshot.port != "c64" or destination.port not in ("dos", "amiga"):
+        return {}
+    if not dos_codec.c64_member_dispelled_zombie(
+            snapshot.save0, snapshot.save1, snapshot.title, member.index):
+        return {}
+    neutral = source_neutral(member, snapshot, snapshot.title)
+    return {"movement": int(neutral.get("movement")),
+            "turn_class": int(neutral.get("turn_class")),
+            "creature_type": int(neutral.get("creature_type")),
+            "flags_0b8": c64_codec.pool_ability_flag(
+                int(neutral.get("treasure_share"))) or 0}
+
+
 def _is_pool(destination: "Destination") -> bool:
     return (getattr(destination.title, "key", destination.title)
             == dos_codec.POOL_OF_RADIANCE.key)
@@ -2251,6 +2276,10 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
                 record, source_neutral(member, snapshot, snapshot.title),
                 source.port, destination)
             for name, value in fields.items():
+                record.set(name, value)
+        for member, record in zip(party.members, expected):
+            for name, value in dispelled_zombie_fields(
+                    member, snapshot, destination).items():
                 record.set(name, value)
     validate(destination, files, expected, accounted=losses(report),
              expected_names=expected_names, source_port=source.port)

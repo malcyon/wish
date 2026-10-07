@@ -195,6 +195,7 @@ __all__ = [
     "item_type_table",
     "WRITE_NO_SUCH_FIELD",
     "write_field_disposition",
+    "c64_member_dispelled_zombie",
     "c64_member_neutral",
     "c64_party",
     "write_dos_save_from",
@@ -9786,11 +9787,18 @@ def _read_c64_slot(char_slot, sg1, c64, save0, clock_mins) -> "NeutralCharacter"
 
     block = sg1.roster(char_slot.index) if sg1 is not None else None
     inv = [i.raw for i in items_for_slot(bytes(save0), char_slot.index)]
-    return c64_codec.read(char_slot.record, roster=block,
-                          inventory=inv, game=c64,
-                          source=f"C64 slot {char_slot.index}",
-                          payload=save0, party_slot=char_slot.index,
-                          clock_minutes=clock_mins)
+    character = c64_codec.read(char_slot.record, roster=block,
+                               inventory=inv, game=c64,
+                               source=f"C64 slot {char_slot.index}",
+                               payload=save0, party_slot=char_slot.index,
+                               clock_minutes=clock_mins)
+    if c64_codec.dispelled_pool_zombie(
+            c64, block.roster_in_use if block is not None else None,
+            save0, char_slot.index):
+        c64_codec.as_ordinary_dead(character)
+        _log.debug("C64 slot %d: a dispelled zombie converts as an "
+                   "ordinary dead character", char_slot.index)
+    return character
 
 
 def c64_member_neutral(save0: bytes, save1: bytes | None, game,
@@ -9803,6 +9811,17 @@ def c64_member_neutral(save0: bytes, save1: bytes | None, game,
         if char_slot.index == index:
             return _read_c64_slot(char_slot, sg1, c64, save0, clock_mins)
     raise ValueError(f"C64 slot {index} holds no character")
+
+
+def c64_member_dispelled_zombie(save0: bytes, save1: bytes | None, game,
+                                index: int) -> bool:
+    """Whether the C64 member in slot `index` is a dispelled zombie, which
+    `c64_party` converts as an ordinary dead character."""
+    c64 = c64_save.container_for(game)
+    sg, sg1, _clock = _c64_save_context(save0, save1, c64)
+    block = sg1.roster(index) if sg1 is not None else None
+    return c64_codec.dispelled_pool_zombie(
+        c64, block.roster_in_use if block is not None else None, save0, index)
 
 
 def _write_prayer_holder(save0: bytearray, report: Report,

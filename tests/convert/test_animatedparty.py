@@ -444,49 +444,294 @@ def test_a_c64_zombie_row_of_ff_has_no_value_to_convert_and_still_blocks():
 
 
 @pytest.mark.parametrize("side", [0, 1])
-def test_a_dispelled_c64_zombie_becomes_the_node_with_the_lowest_dispel_level(
+def test_a_dispelled_c64_zombie_reads_as_the_node_and_converts_as_ordinary_dead(
         side):
-    """Dispel Magic clears the row and leaves the trait slot; the node's low
-    nibble 15 is the lowest chance for DOS's Dispel to kill him, nearest the
-    C64, where it never does."""
+    """`read` keeps the C64's own form, the level-15 node; the DOS and Amiga
+    conversion turns him into an ordinary dead character before any writer."""
     rec, payload = _zombie_source(0, side, row=False)
     char = c64_codec.read(rec, game=c64_port.POOL_OF_RADIANCE,
                           payload=bytes(payload), party_slot=4)
     node = bytes((32, 0, 0, side << 4 | 15, 1))
     assert 32 not in char.get("innate_effects")
     assert char.get("granted_effects") == [node]
-    _dos, _itm, spc, report = dos_codec.write(char)
-    assert bytes(spc) == node + bytes(4)
+    assert c64_codec.dispelled_pool_zombie(
+        c64_port.POOL_OF_RADIANCE, 0x03, payload, 4)
+    c64_codec.as_ordinary_dead(char)
+    dos, _itm, spc, report = dos_codec.write(char)
+    assert dos[0x10C] == 6
+    assert bytes(spc) == b""
     assert not any("innate_effects 32" in line for line in report.dropped)
 
 
 _DISPELLED = "por-700-dispel-78a7f747a5-dispel-observed-b"
+_ANIMATED = "por-700-animate-dead-c64"
 
 
-def _dispelled_brutus():
+def _c64_image(name):
+    from test_convertmatrix import _c64_specimen
+
+    path = _c64_specimen(name)
+    if path is None:
+        pytest.skip(f"needs specimen WISH-SPEC-{name}.D64")
+    return path
+
+
+def _brutus(path):
+    """`(game, save0, save1, slot)` for BRUTUS on a C64 disk image."""
     from goldbox.d64 import D64
     from goldbox.savegame import load_save
 
-    root = gamedata.specimen_root()
-    found = list(root.glob(f"*-c64/WISH-SPEC-{_DISPELLED}.D64")) if root else []
-    if not found:
-        pytest.skip(f"needs specimen WISH-SPEC-{_DISPELLED}.D64")
-    game, sg0, sg1 = load_save(D64.open(str(found[0])))
-    save0 = sg0.to_bytes()
-    (slot,) = [s for s in sg0.characters
-               if s.record.get("name") == "BRUTUS"]
-    return dos_codec.c64_member_neutral(
-        save0, sg1.to_bytes() if sg1 is not None else None, game, slot.index)
+    game, sg0, sg1 = load_save(D64.open(str(path)))
+    (slot,) = [s for s in sg0.characters if s.record.get("name") == "BRUTUS"]
+    return (game, sg0.to_bytes(), sg1.to_bytes() if sg1 is not None else None,
+            slot)
 
 
-def test_the_dispelled_zombie_specimen_converts_to_dos_and_the_amiga():
-    char = _dispelled_brutus()
-    assert 32 not in char.get("innate_effects")
-    _dos, _itm, spc, report = dos_codec.write(char)
-    assert bytes(spc) == bytes.fromhex("200000" "0F01") + bytes(4)
-    assert not [d for d in report.dropped if "innate_effects" in d]
-    _rec, _itm, amiga_spc, _rep = amiga_por.write_por(char)
-    assert bytes(amiga_spc) == bytes.fromhex("20000000" "0F01" "00000000")
+def _save_as(tmp_path, name, port):
+    """Save As of specimen `name` to `port`: `(plan, party)`, the plan
+    already checked to drop and lose nothing."""
+    from editor import convert, roster, saveplan
+    from tools.convert import convertdrops
+    from tools.dos import dosbox
+
+    party = roster.Party(str(_c64_image(name)))
+    source = party.source or convert.Source.detect(party.path)
+    try:
+        if port == "dos":
+            assets = saveplan.resolve_assets(
+                source, "dos", game_files=convertdrops.game_files,
+                dos_folder=dosbox.find_game("POOLRAD"))
+            where = tmp_path / "dos-out"
+        else:
+            amiga = convertdrops.amiga_game_disks(tmp_path).get(
+                c64_port.POOL_OF_RADIANCE.key)
+            if amiga is None:
+                pytest.skip("needs Pool of Radiance's own Amiga game disk")
+            assets = saveplan.resolve_assets(
+                source, "amiga", game_files=convertdrops.game_files,
+                amiga_disk=amiga)
+            where = tmp_path / "out.adf"
+    except FileNotFoundError:
+        pytest.skip("needs the DOS Pool of Radiance archives ($FR_ARCHIVES)")
+    except saveplan.MissingAssets:
+        pytest.skip("needs Pool of Radiance's own C64 disks")
+    plan = saveplan.prepare_save_as(party, port, where, assets)
+    assert plan.report.dropped == [] and saveplan.losses(plan.report) == []
+    return plan, party
+
+
+def _dos_brutus(plan):
+    """BRUTUS's `.SAV` bytes and his `.SPC` bytes (`b""` when absent)."""
+    (name,) = [n for n, d in plan.files.items()
+               if n.endswith(".SAV") and d[1:7] == b"BRUTUS"]
+    return plan.files[name], plan.files.get(name[:-4] + ".SPC", b"")
+
+
+def _amiga_brutus(plan):
+    from goldbox import amiga_savegame
+    from goldbox.amiga_adf import AmigaDisk
+
+    (image,) = plan.files
+    disk = AmigaDisk(bytearray(plan.files[image]))
+    drawer = amiga_savegame.por_save_drawer(disk)
+    (char,) = [c for c in amiga_savegame.read_por_characters(disk, "A", drawer)
+               if c.name == "BRUTUS"]
+    return char
+
+
+def _check_dos_ordinary_dead(record, spc):
+    assert record[0x10C:0x110] == bytes((6, 0, 0, 0))
+    assert record[0x11B] == 0
+    assert (record[0x6B], record[0x72], record[0x76], record[0x84],
+            record[0x9F]) == (1, 12, 0, 0, 0)
+    assert 32 not in [spc[i] for i in range(0, len(spc), 9)]
+
+
+def _check_amiga_ordinary_dead(raw):
+    assert raw[0x10E:0x112] == bytes((6, 0, 0, 0))
+    assert raw[0x11D] == 0
+    assert (raw[0x6B], raw[0x72], raw[0x76], raw[0x85], raw[0xA1]) == (
+        1, 12, 0, 0, 0)
+
+
+def test_a_dispelled_zombie_save_converts_to_an_ordinary_dead_dos_character(
+        tmp_path):
+    plan, _party = _save_as(tmp_path, _DISPELLED, "dos")
+    record, spc = _dos_brutus(plan)
+    _check_dos_ordinary_dead(record, spc)
+
+
+def test_a_dispelled_zombie_save_converts_to_an_ordinary_dead_amiga_character(
+        tmp_path):
+    plan, _party = _save_as(tmp_path, _DISPELLED, "amiga")
+    char = _amiga_brutus(plan)
+    _check_amiga_ordinary_dead(char.raw)
+    assert 32 not in [bytes(n)[0] for n in char.effects]
+
+
+def test_the_combat_cast_zombie_form_converts_to_an_ordinary_dead_character():
+    """Dispel in combat leaves no trait and no row; he converts the same."""
+    game, save0, save1, slot = _brutus(_c64_image(_DISPELLED))
+    save0 = bytearray(save0)
+    at = c64_save.container_for(game).slot(slot.index) + 0x0AD + 9
+    assert save0[at] == 0x20
+    save0[at] = 0
+    party, _icons = dos_codec.c64_party(bytes(save0), save1, game)
+    (char,) = [c for c in party if c.get("name") == "BRUTUS"]
+    record, _itm, spc, _rep = dos_codec.write(char)
+    _check_dos_ordinary_dead(record, bytes(spc))
+    amiga, _itm, amiga_spc, _rep = amiga_por.write_por(char)
+    _check_amiga_ordinary_dead(amiga)
+    assert 32 not in [bytes(amiga_spc)[i] for i in range(0, len(amiga_spc), 9)]
+
+
+def test_a_zombie_with_his_animate_dead_row_stays_a_zombie(tmp_path):
+    plan, _party = _save_as(tmp_path, _ANIMATED, "dos")
+    record, spc = _dos_brutus(plan)
+    assert record[0x10C] == 1
+    assert spc == bytes.fromhex("2000000501") + bytes(4)
+
+
+def test_a_zombie_row_of_any_magnitude_keeps_him_a_zombie():
+    game, save0, save1, slot = _brutus(_c64_image(_ANIMATED))
+    save0 = bytearray(save0)
+    (row,) = [r for r in effects.active_effects(bytes(save0))
+              if r.id == 32 and r.owner == slot.index]
+    save0[effects.EFFECT_MAGNITUDE_OFFSET + row.slot] = 0xD1
+    party, _icons = dos_codec.c64_party(bytes(save0), save1, game)
+    (char,) = [c for c in party if c.get("name") == "BRUTUS"]
+    assert char.get("status") == "animated"
+    assert [bytes(n) for n in char.get("granted_effects")] == [
+        bytes.fromhex("2000000F01")]
+
+
+def _synthetic_payload(row):
+    payload = bytearray(0x1C00)
+    if row is not None:
+        effects.write_effect(payload, 3, 32, 4, *row)
+    return bytes(payload)
+
+
+@pytest.mark.parametrize("game, status, row, expected", [
+    (c64_port.POOL_OF_RADIANCE, 0x03, None, True),
+    (c64_port.POOL_OF_RADIANCE, 0x03, (0, 5), False),
+    (c64_port.POOL_OF_RADIANCE, 0x03, (0, 0xD1), False),
+    (c64_port.POOL_OF_RADIANCE, 0x03, (0, 0xFF), False),
+    (c64_port.POOL_OF_RADIANCE, 0x03, (4, 5), True),
+    (c64_port.POOL_OF_RADIANCE, 0x01, None, False),
+    (c64_port.POOL_OF_RADIANCE, 0x83, None, False),
+    (c64_port.POOL_OF_RADIANCE, None, None, False),
+    (c64_port.CURSE_OF_THE_AZURE_BONDS, 0x03, None, False),
+])
+def test_the_dispelled_zombie_predicate(game, status, row, expected):
+    assert c64_codec.dispelled_pool_zombie(
+        game, status, _synthetic_payload(row), 4) is expected
+
+
+def test_a_zombie_with_no_trait_and_no_row_is_a_dispelled_one():
+    rec, payload = _zombie_source(0, row=False)
+    assert 32 in rec.get_raw("item_effects")
+    assert c64_codec.dispelled_pool_zombie(
+        c64_port.POOL_OF_RADIANCE, 0x03, payload, 4)
+    assert c64_codec.dispelled_pool_zombie(
+        c64_port.POOL_OF_RADIANCE, 0x03, bytes(0x1C00), 4)
+
+
+def test_ordinary_dead_removes_the_first_node_of_each_death_write_id():
+    rec, payload = _zombie_source(0, row=False)
+    char = c64_codec.read(rec, game=c64_port.POOL_OF_RADIANCE,
+                          payload=payload, party_slot=4)
+    keep = bytes((13, 0, 0, 1, 0))
+    char.set("granted_effects", [*char.get("granted_effects"), keep,
+                                 bytes((7, 0, 0, 1, 0)),
+                                 bytes((7, 0, 0, 2, 0))],
+             "test")
+    char.set("running_effects", [bytes((11, 4, 0, 1, 0)),
+                                 bytes((7, 4, 0, 3, 0))], "test")
+    c64_codec.as_ordinary_dead(char)
+    assert [bytes(n) for n in char.get("granted_effects")] == [
+        keep, bytes((7, 0, 0, 2, 0))]
+    assert [bytes(n) for n in char.get("running_effects")] == [
+        bytes((7, 4, 0, 3, 0))]
+    assert char.get("npc") is False
+    assert char.get("npc_control_byte") is None
+
+
+def _return_trip(tmp_path, plan, port):
+    """Save As of the converted output back to the C64: `(game, save0, save1,
+    slot)` for BRUTUS."""
+    from editor import convert, roster, saveplan
+    from tools.convert import convertdrops
+
+    if port == "dos":
+        where = tmp_path / "dos-back"
+        where.mkdir()
+        for name, data in plan.files.items():
+            (where / name).write_bytes(data)
+    else:
+        (image,) = plan.files
+        where = tmp_path / "back.adf"
+        where.write_bytes(plan.files[image])
+    back = roster.Party(str(where))
+    source = back.source or convert.Source.detect(back.path)
+    assets = saveplan.resolve_assets(source, "c64",
+                                     game_files=convertdrops.game_files)
+    again = saveplan.prepare_save_as(back, "c64", tmp_path / "out.d64", assets)
+    (image,) = again.files
+    out = tmp_path / "read-back.d64"
+    out.write_bytes(again.files[image])
+    return _brutus(out)
+
+
+@pytest.mark.parametrize("port", ["dos", "amiga"])
+def test_a_dispelled_zombie_comes_back_to_the_c64_as_an_ordinary_dead_character(
+        tmp_path, port):
+    plan, _party = _save_as(tmp_path, _DISPELLED, port)
+    game, save0, save1, slot = _return_trip(tmp_path, plan, port)
+    sg1 = dos_codec._c64_save_context(save0, save1,
+                                      c64_save.container_for(game))[1]
+    assert sg1.roster(slot.index).roster_in_use == 0x83
+    assert bytes(slot.record.get_raw("item_effects"))[9] == 0
+    assert not [r for r in effects.active_effects(save0)
+                if r.owner == slot.index and r.id == 32]
+
+
+@pytest.mark.parametrize("port", ["dos", "amiga"])
+def test_a_zombie_with_his_row_comes_back_to_the_c64_with_the_same_row(
+        tmp_path, port):
+    plan, _party = _save_as(tmp_path, _ANIMATED, port)
+    game, save0, save1, slot = _return_trip(tmp_path, plan, port)
+    sg1 = dos_codec._c64_save_context(save0, save1,
+                                      c64_save.container_for(game))[1]
+    assert sg1.roster(slot.index).roster_in_use == 0x03
+    rows = [r for r in effects.active_effects(save0)
+            if r.owner == slot.index and r.id == 32]
+    assert [(r.duration, r.magnitude) for r in rows] == [(0, 5)]
+
+
+def test_a_dispelled_zombie_save_converts_to_the_c64_unchanged(tmp_path):
+    from editor import convert, roster, saveplan
+    from tools.convert import convertdrops
+
+    disk = _c64_image(_DISPELLED)
+    party = roster.Party(str(disk))
+    source = party.source or convert.Source.detect(party.path)
+    try:
+        assets = saveplan.resolve_assets(
+            source, "c64", game_files=convertdrops.game_files)
+    except saveplan.MissingAssets:
+        pytest.skip("needs Pool of Radiance's own C64 disks")
+    plan = saveplan.prepare_save_as(party, "c64", tmp_path / "out.d64", assets)
+    (image,) = plan.files
+    assert plan.files[image] == disk.read_bytes()
+    game, save0, save1, slot = _brutus(disk)
+    block = dos_codec._c64_save_context(
+        save0, save1, c64_save.container_for(game))[1].roster(slot.index)
+    char = c64_codec.read(slot.record, roster=block, game=game,
+                          payload=save0, party_slot=slot.index)
+    assert char.get("status") == "animated"
+    assert [type(n) for n in char.get("granted_effects")] == [
+        c64_codec.DispelledZombieNode]
 
 
 @pytest.mark.parametrize("status", [0x0B, 0x13, 0x23, 0x43, 0x7B, 0x83])
@@ -684,8 +929,8 @@ def test_the_same_residue_on_a_zombie_still_gives_the_node(form):
     rec.set("combat_side", 0)
     char = c64_codec.read(rec, game=c64_port.POOL_OF_RADIANCE,
                           payload=payload, party_slot=4)
-    # A dispelled zombie has no row and so no caster level; the node gets
-    # level 15, the lowest Dispel chance.
+    # A dispelled zombie has no row and so no caster level; `read` gives the
+    # level-15 node, the form the C64 writer needs.
     level = 15 if form == "trait only" else 5
     assert char.get("granted_effects") == [bytes((32, 0, 0, level, 1))]
     assert 32 not in char.get("innate_effects")

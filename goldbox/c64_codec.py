@@ -682,11 +682,12 @@ ANIMATE_DEAD_ID = 32
 class DispelledZombieNode(bytes):
     """The Animate Dead node `read` makes for a zombie whose row was dispelled.
 
-    Its bytes equal a camp cast at caster level 15, which a C64 row of that
-    magnitude also reads to, so only the type tells the C64 writer to write the
-    trait and no row. DOS and Amiga writers copy the first five bytes into a
-    plain `bytes`, so the type does not outlive a trip through their files and
-    a DOS-born node is a real cast that gets its row.
+    It is the form the C64 writer needs for a C64-to-C64 conversion: its bytes
+    equal a camp cast at caster level 15, which a C64 row of that magnitude
+    also reads to, so only the type tells the writer to write the trait and no
+    row. A C64-to-DOS or C64-to-Amiga conversion turns this character into an
+    ordinary dead one before any writer sees the node
+    (`dos_codec._read_c64_slot`), so the type never reaches their files.
     """
 
     __slots__ = ()
@@ -694,6 +695,63 @@ class DispelledZombieNode(bytes):
 #: The roster status a Pool of Radiance camp Animate Dead writes over the
 #: raised character (`SPELLE04 $AA11`): dead, bit 7 clear.
 ZOMBIE_STATUS = 0x03
+
+#: The ids DOS's and the Amiga's death write removes the first node of
+#: (DOS table DS:0C14, Amiga h8+0x39C; both images hold the same bytes).
+DEATH_WRITE_EFFECT_IDS = (7, 11, 30, 31, 32, 51, 52, 53, 54, 58, 59, 95, 98,
+                          137, 74, 75)
+
+
+def dispelled_pool_zombie(game, roster_status, payload, party_slot) -> bool:
+    """Whether a Pool of Radiance character is a zombie whose Animate Dead
+    row was dispelled.
+
+    Status `$03` with no duration-0 id-32 row owned by `party_slot` is the
+    residue of Dispel Magic, and also of a camp-animated zombie whose row
+    found the 64 effect entries full. Only bytes decide: a row of any
+    magnitude keeps the character a zombie. `roster_status` is `None` when
+    the save has no roster block.
+    """
+    if deltas_for(game) is not POOL_OF_RADIANCE_RECORD:
+        return False
+    if roster_status != ZOMBIE_STATUS:
+        return False
+    return not any(r.owner == party_slot and r.id == ANIMATE_DEAD_ID
+                   and r.duration == 0
+                   for r in effects.active_effects(bytes(payload)))
+
+
+def as_ordinary_dead(char: NeutralCharacter) -> None:
+    """Turn a dispelled zombie into the ordinary dead character DOS and the
+    Amiga leave when their own Dispel removes node 32: their handler resets
+    the animation fields and runs the death write. A C64-to-C64 conversion
+    never calls this, so the C64's own form is untouched.
+    """
+    why = ("a dispelled zombie converts to an ordinary dead character: "
+           "DOS and the Amiga Dispel handler for Animate Dead followed by "
+           "their death write")
+    for name, value in (("status", "dead"), ("active", False),
+                        ("hp_current", 0), ("hostile", False),
+                        ("quickfight", False), ("turn_class", 0),
+                        ("movement", 12), ("creature_type", 0)):
+        char.set(name, value, why, Confidence.CONFIRMED, Provenance.COMPUTED)
+    if char.get("npc_control_byte") == DOS_PC_TAKEN_OVER:
+        char.set("npc", False, why, Confidence.CONFIRMED, Provenance.COMPUTED)
+        char.fields.pop("npc_control_byte", None)
+    # The death write removes the first node of each id, and
+    # `dos_codec.write` lays granted nodes into `.SPC` before running ones.
+    lists = {name: list(char.get(name) or ())
+             for name in ("granted_effects", "running_effects")
+             if char.get(name) is not None}
+    for eid in DEATH_WRITE_EFFECT_IDS:
+        for nodes in lists.values():
+            hit = next((i for i, n in enumerate(nodes)
+                        if bytes(n)[0] == eid), None)
+            if hit is not None:
+                del nodes[hit]
+                break
+    for name, nodes in lists.items():
+        char.set(name, nodes, why, Confidence.CONFIRMED, Provenance.COMPUTED)
 
 #: What a player is told when the source's status has no C64 value.
 #:
@@ -3762,10 +3820,10 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
         # A dispelled zombie: Dispel Magic clears the id-32 row and leaves the
         # trait slot, status $03 and every other zombie field in place, and
         # the C64 temple's raise keys on the slot alone (`SQRPACI64 $059A`).
-        # DOS and the Amiga key on the node, so the slot becomes the node a
-        # camp cast writes.  The row's level died with it, so the low nibble
-        # is 15: the lowest chance for their Dispel to kill him, nearest to
-        # the C64, where it never does.  Side is bit 0 of 0x10C as for a row.
+        # The slot becomes the level-15 node a camp cast writes, which only
+        # the C64 writer turns back into the slot and no row; a conversion to
+        # DOS or the Amiga makes him an ordinary dead character instead
+        # (`dos_codec._read_c64_slot`).  Side is bit 0 of 0x10C as for a row.
         if (zombie_read and not zombie_node_converted
                 and ANIMATE_DEAD_ID in rec.get_raw("item_effects")
                 and not any(r.owner == party_slot and r.id == ANIMATE_DEAD_ID
