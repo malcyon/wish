@@ -716,3 +716,56 @@ def test_a_c64_sourced_regained_class_is_still_repaired():
     rec, _itm, _spc, _rep = dos_codec.write(char)
     levels_at = dos_port.FIELDS_BY_NAME_FOR[POD.key]["class_levels"].offset
     assert rec[levels_at] == 0
+
+
+# --- the class code of a DOS or Amiga source is copied, not repaired (WISH-2) -
+
+CODE_AT = dos_port.FIELDS_BY_NAME_FOR[POD.key]["char_class"].offset
+
+
+def _dos_sourced(game, code):
+    """A fighter whose class code disagrees with its mask, as a DOS source."""
+    char = amiga_pod.pod_to_neutral(amiga_pod.PodWriter(
+        name="PRIAM", hit_points_max=30,
+        character_class=amiga_pod.CLASSES.index("FIGHTER"),
+        class_levels=(0, 0, 0, 0, 0, 3, 0),
+        class_bits=amiga_pod.CLASS_BIT["fighter"]).to_bytes())
+    char.port = "DOS"
+    char.game = game
+    char.set("char_class", code, "edited", dos_codec.Confidence.CONFIRMED)
+    return char
+
+
+@pytest.mark.parametrize("game", [dos_port.CURSE_OF_THE_AZURE_BONDS, SSB])
+def test_a_dos_curse_or_silver_blades_class_code_passes_through_unrepaired(game):
+    char = _dos_sourced(game, 3)
+    rec, _itm, _spc, _rep = dos_codec.write(char, deltas=game)
+    at = dos_port.FIELDS_BY_NAME_FOR[game.key]["char_class"].offset
+    assert rec[at] == 3
+
+
+def test_a_dos_pools_of_darkness_regained_class_survives_to_dos():
+    char = amiga_pod.pod_to_neutral(_dual_classed())
+    char.port = "DOS"
+    rec, _itm, _spc, _rep = dos_codec.write(char)
+    levels_at = dos_port.FIELDS_BY_NAME_FOR[POD.key]["class_levels"].offset
+    assert rec[levels_at:levels_at + 7] == bytes.fromhex("01000000000c00")
+    assert rec[CODE_AT] == 5
+
+
+def test_a_dos_pools_of_darkness_regained_class_survives_to_amiga():
+    char = amiga_pod.pod_to_neutral(_dual_classed())
+    char.port = "DOS"
+    out = amiga_pod.write_pod(char)[0].to_bytes()
+    assert out[amiga_pod.CLASS] == 5
+    assert out[amiga_pod.CLASS_LEVELS:amiga_pod.CLASS_LEVELS + 7] == (
+        bytes.fromhex("01000000000c00"))
+
+
+def test_a_class_combo_edit_reaches_dos_and_amiga_as_the_edited_code():
+    char = amiga_pod.pod_to_neutral(_amiga_creature(2, b"\x02\x02"))
+    wanted = amiga_pod.CLASSES.index("THIEF")
+    char.set("char_class", wanted, "edited", dos_codec.Confidence.CONFIRMED)
+    rec, _itm, _spc, _rep = dos_codec.write(char)
+    assert rec[CODE_AT] == wanted
+    assert amiga_pod.write_pod(char)[0].to_bytes()[amiga_pod.CLASS] == wanted

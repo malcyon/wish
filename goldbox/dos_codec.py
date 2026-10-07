@@ -5862,6 +5862,9 @@ def write(char: NeutralCharacter,
     # straight across, that drew CLERIC on a dwarf thief 6 / fighter 5 in the
     # running game.
     #
+    # That repair runs only for a C64 source: a DOS or Amiga record's code
+    # is its own engine's bookkeeping and is copied unrepaired.
+    #
     # So the code is checked against the **class mask** and rewritten when the
     # two contradict each other.  The mask is the right source and the level
     # array is not: SILAS, the shipped Pool of Radiance fighter, holds a
