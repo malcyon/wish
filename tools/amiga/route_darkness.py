@@ -11,7 +11,7 @@ import shutil
 import struct
 from typing import Any
 
-from goldbox import amiga_adf, amiga_savegame
+from goldbox import amiga_adf, amiga_savegame, dos_codec
 from tools.amiga import route_camp
 from tools.amiga.route import ISSUE, AmigaTitle, effect_fields, outdoor_square
 from tools.amiga.staging import _find_images, sha256
@@ -324,7 +324,10 @@ def spare_save_title(title: AmigaTitle) -> AmigaTitle:
         for step in route:
             if step == _CAMP_SAVE:
                 out.append(swap_df1(SPARE, step))
-            elif step == _QUIT_NO and out and out[-1][1] == "exit_game":
+            elif step == _QUIT_NO:
+                if not out or out[-1][1] != "exit_game":
+                    raise RouteError("the route's quit answer does not follow exit_game, so "
+                                     "disk 3 cannot be put back before it")
                 out.append(swap_df1("disk3", step))
             else:
                 out.append(step)
@@ -396,6 +399,16 @@ def _check_spare(spare: pathlib.Path) -> dict[str, Any]:
         raise RouteError(f"the spare disk {spare} has no readable SAVE drawer: {exc}") from exc
     if held:
         raise RouteError(f"the spare disk {spare} already holds saved games {held}")
+    for path in files:
+        name = path.rsplit("/", 1)[-1].lower()
+        if name.startswith("vault") and name.endswith(".dat"):
+            try:
+                vault = amiga_savegame.pod_vault_from_amiga(disk.read_file(path))
+            except (amiga_adf.AmigaDiskError, ValueError) as exc:
+                raise RouteError(f"the spare disk {spare} holds an unreadable vault "
+                                 f"{path}: {exc}") from exc
+            if vault != dos_codec.EMPTY_POD_VAULT:
+                raise RouteError(f"the spare disk {spare} is not blank: {path} holds items or coins")
     return {"path": str(spare), "sha256": sha256(spare), "volume": disk.volume_name,
             "files": files}
 
@@ -560,6 +573,8 @@ def _prepare_darkness(run: pathlib.Path, override: pathlib.Path | None,
     after = _find_images({k: v for k, v in wanted.items() if override is None or k != "disk3"})
     if any(hashlib.sha256(after[key][1]).hexdigest() != wanted[key] for key in after):
         raise RouteError("a registered image changed during preparation")
+    if spare_record is not None and sha256(pathlib.Path(spare_record["path"])) != spare_record["sha256"]:
+        raise RouteError("the source spare disk changed during preparation")
     return manifest
 
 

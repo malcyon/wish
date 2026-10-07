@@ -1646,6 +1646,19 @@ class _LaneWatch:
         return used >= limit - min(self.SLACK, limit / 2)
 
 
+def _same_disk_grown(fetched: pathlib.Path, staged: pathlib.Path, key: str) -> None:
+    """Raise unless `fetched` is a verifying ADF of `staged`'s volume that still holds all its files."""
+    disk = _verified_disk(fetched)
+    before = _verified_disk(staged)
+    if disk.volume_name != before.volume_name:
+        raise RouteError(f"the fetched {key} is volume {disk.volume_name!r}, not "
+                         f"{before.volume_name!r}")
+    have = {path.lower() for path, _entry in disk.walk()}
+    lost = sorted(path for path, _entry in before.walk() if path.lower() not in have)
+    if lost:
+        raise RouteError(f"the fetched {key} no longer holds {lost}")
+
+
 def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
               holder: str, audio_proof: pathlib.Path | None, attempt: str = "recon1",
               deadline_seconds: float = 1800,
@@ -2587,15 +2600,18 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     def insert(drive: int, disk_key: str, why: Any) -> None:
         entry = (manifest if title is None else manifest["disks"])[disk_key]
         want = entry["sha256"]
-        if title is not None and SPARE in manifest and disk_key in been_in_drive:
-            # The game may have saved to it while it was in a drive, and the guest inserts a
-            # file only at the hash it is given: hash the copy as it is now.
-            local = out / f"swap-{why}-{disk_key}.adf"
-            guest.get(remotes[disk_key], local, timeout=route_limit(60))
-            want = sha256(local)
-            result["events"].append({"rehashed": disk_key, "for": why, "sha256": want})
-            log("rehash", disk=disk_key, sha256=want)
         try:
+            if title is not None and SPARE in manifest and disk_key in (SPARE, "disk3") \
+                    and disk_key in been_in_drive:
+                # The game may have saved to it while it was in a drive, and the guest inserts a
+                # file only at the hash it is given: hash the copy as it is now, once it is
+                # shown to be this run's own disk.
+                local = out / f"swap-{why}-{disk_key}.adf"
+                guest.get(remotes[disk_key], local, timeout=route_limit(60))
+                _same_disk_grown(local, pathlib.Path(entry["path"]), disk_key)
+                want = sha256(local)
+                result["events"].append({"rehashed": disk_key, "for": why, "sha256": want})
+                log("rehash", disk=disk_key, sha256=want)
             receipt = guest.insert(holder, drive, remotes[disk_key], timeout=route_limit(60),
                                    sha256=want)
         except BaseException as exc:

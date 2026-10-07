@@ -490,3 +490,84 @@ def test_the_spare_reload_measures_its_route_and_writes_nothing(tmp_path, clock)
         "P", ("insert", 1, "spare.adf"), "L", "P", "G", ("insert", 1, "disk3.adf"), "SPACE",
         ("insert", 0, "disk2.adf"), "SPACE", "V", "E", "B", "X", "RET", "S", "T", "NP2", "E", "E"]
     assert guest.bad_hash == [] and all(result["disks_unchanged"].values())
+
+
+# The disk 3 the run hashes again before it goes back into DF1.
+
+def _insert_errors(result):
+    return [e for e in result["events"] if "insert" in e and "error" in e]
+
+
+@pytest.mark.parametrize("damage", ["volume", "file", "unverified"])
+def test_a_fetched_disk_3_that_is_not_the_staged_disk_is_not_put_back(tmp_path, clock, damage):
+    class Swapped(DriveGuest):
+        def get(self, remote, local, timeout=None):
+            super().get(remote, local, timeout)
+            if remote.endswith("-disk3.adf"):
+                disk = AmigaDisk(local.read_bytes())
+                if damage == "volume":
+                    other = _disk("OTHER", (), {})
+                    local.write_bytes(other.to_bytes())
+                elif damage == "file":
+                    disk.remove_file("/SAVE/savgamA.sav")
+                    local.write_bytes(disk.to_bytes())
+                else:
+                    local.write_bytes(b"\0" * len(local.read_bytes()))
+
+    guest, result = _accept(tmp_path, clock, guest=Swapped(clock))
+    assert result["success"] is False
+    errors = _insert_errors(result)
+    assert [e["insert"] for e in errors] == ["disk3"]
+    assert not any("rehashed" in e for e in result["events"])
+
+
+def test_a_failed_fetch_before_the_reinsert_is_logged_as_an_insert_error(tmp_path, clock):
+    class NoFetch(DriveGuest):
+        def get(self, remote, local, timeout=None):
+            if remote.endswith("-disk3.adf") and any(c[0] == "insert" for c in self.calls):
+                raise OSError("no such file on the guest")
+            super().get(remote, local, timeout)
+
+    _, result = _accept(tmp_path, clock, guest=NoFetch(clock))
+    assert result["success"] is False
+    assert [e["insert"] for e in _insert_errors(result)] == ["disk3"]
+
+
+def test_only_disk_3_and_the_spare_are_hashed_again(tmp_path, clock):
+    guest, result = _accept(tmp_path, clock)
+    assert {e["rehashed"] for e in result["events"] if "rehashed" in e} <= {"disk3", SPARE}
+
+
+# The route and the spare source.
+
+def test_a_quit_answer_that_does_not_follow_exit_game_stops_the_spare_route():
+    title = _readers(route_darkness.vault_title(2, True))
+    route = tuple(("P", "party_menu", "key") if step == route_darkness._QUIT_NO else step
+                  for step in title.route)
+    bare = dataclasses.replace(title, route=(*route, route_darkness._QUIT_NO))
+    with pytest.raises(RouteError, match="exit_game"):
+        route_darkness.spare_save_title(bare)
+
+
+def test_a_spare_with_a_vault_that_holds_items_is_not_blank(pinned):
+    spare = pinned / "full.adf"
+    _disk("Empty", (), {**_empty_vaults(), "A": HELD_BYTES}).save(spare)
+    with pytest.raises(RouteError, match="not blank"):
+        route_darkness._prepare_darkness(pinned / "run", None, "B", spare=spare)
+
+
+def test_a_spare_source_that_changes_during_preparation_stops_the_run(pinned, monkeypatch):
+    spare = pinned / "minimal.adf"
+    _disk("Empty", (), _empty_vaults()).save(spare)
+    real = route_darkness._find_images
+    calls = []
+
+    def touching(wanted):
+        calls.append(1)
+        if len(calls) == 2:
+            spare.write_bytes(spare.read_bytes() + b"x")
+        return real(wanted)
+
+    monkeypatch.setattr(route_darkness, "_find_images", touching)
+    with pytest.raises(RouteError, match="source spare"):
+        route_darkness._prepare_darkness(pinned / "run", None, "B", spare=spare)
