@@ -4962,9 +4962,13 @@ class PoolRun:
         rows = self.wait_rows(lambda r: question in r[24], 30)
         if rows is None:
             return False
-        entries = whom_entries(rows, question) + ["EXIT"]
-        if target.isdigit():
+        party = whom_entries(rows, question)
+        entries = party + ["EXIT"]
+        if target.isascii() and target.isdigit():
             at = int(target) - 1
+            if not 0 <= at < len(party):
+                raise StepFailed(f"party slot {target} is not one of the "
+                                 f"{len(party)} entries of the whom menu: {party}")
         else:
             wanted = (target.upper(), screens.as_drawn(target).upper())
             hits = [i for i, e in enumerate(entries) if e.upper() in wanted]

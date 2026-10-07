@@ -540,3 +540,17 @@ def test_pick_on_the_cast_question_takes_a_party_slot_and_a_single_name(tmp_path
     run, sess = _pick_run(tmp_path, ["BRUTUS", "BRUTUS", "SHARA"])
     assert run.pick("2", A.CAST_WHOM) and run.pick("SHARA", A.CAST_WHOM)
     assert sess.picked == [1, 2]
+
+
+@pytest.mark.parametrize("target", ["4", "0"])
+def test_pick_on_the_cast_question_fails_for_a_slot_outside_the_party(tmp_path, target):
+    run, sess = _pick_run(tmp_path, ["BRUTUS", "ALMA", "SHARA"])
+    with pytest.raises(A.StepFailed, match="party slot"):
+        run.pick(target, A.CAST_WHOM)
+    assert sess.picked == [] and sess.keys == []
+
+
+def test_pick_on_the_cast_question_fails_cleanly_for_a_non_ascii_digit(tmp_path):
+    run, sess = _pick_run(tmp_path, ["BRUTUS", "ALMA", "SHARA"])
+    assert run.pick("\u00b2", A.CAST_WHOM) is False
+    assert sess.picked == [] and sess.keys == []
