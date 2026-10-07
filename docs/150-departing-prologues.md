@@ -317,6 +317,38 @@ the move the flag would have cancelled is abandoned anyway. The scripts write
 it as belt-and-braces for a path that returns; on the path that reaches
 `NEWECL` it is dead.
 
+## Amiga Pools of Darkness: the overland cell
+
+The same gap exists on the Amiga in Pools of Darkness, and there the trip does
+write the cell. The party marker on an overland sits at `$25` (x, 0-37) and
+`$26` (y, 0-14), and no arriving script writes either: each exit of the game
+that enters an overland writes the cell with two `SAVE` statements just before
+its `NEWECL`. A trip entered past those statements leaves the marker on
+whatever cell the party last stood on in any overland.
+
+A Fast Travel trip into an overland therefore writes the cell of the game's
+first constant exit into it. That exit is the one with the lowest departing area
+id, then the lowest script address, whose `SAVE` run sits directly before the
+`NEWECL` and writes constants to both bytes; a compare between the `SAVE`s and
+the `NEWECL` disqualifies a site, and so does a cell read from a table. Read
+statically from both Amiga releases on the disks, which agree:
+
+| overland | cell | exit it comes from | offered by Fast Travel |
+|---|---|---|---|
+| 17, the Moonsea overland | (6, 12) | Phlan's (area 16) first exit | yes |
+| 25, the Moonsea overland after the ending | (10, 4) | the restored Phlan's (area 24) exit | yes |
+| 51, the story dimension | none | its entries from areas 52 and 53 write the cell from a table | no |
+| 80, Kalistes' dimension | (34, 1) | area 82's exit | no |
+
+Both offered overlands put the party outside Phlan, as the game's own Phlan exit
+does. The cell is written only for the offered rows.
+
+**Not confirmed: `$0E`.** Every one of the chosen exits also writes `$0E`, and
+writes 2. The trip leaves it alone. No script reads it except the developers'
+menu in area 1, so only the engine can, and what it does with it is unread. If
+the marker or facing after a trip differs from the one after walking out of
+Phlan, `$0E` is the first suspect.
+
 ## What this does not cover
 
 * **`ECL1E`, the attract-mode demo, has no `NEWECL` at all** and nothing
