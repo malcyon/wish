@@ -9793,7 +9793,7 @@ def _read_c64_slot(char_slot, sg1, c64, save0, clock_mins) -> "NeutralCharacter"
                                payload=save0, party_slot=char_slot.index,
                                clock_minutes=clock_mins)
     if c64_codec.dispelled_pool_zombie(
-            c64, block.roster_in_use if block is not None else None,
+            c64, c64_codec.roster_status(char_slot.record, block),
             save0, char_slot.index):
         c64_codec.as_ordinary_dead(character)
         _log.debug("C64 slot %d: a dispelled zombie converts as an "
@@ -9820,8 +9820,9 @@ def c64_member_dispelled_zombie(save0: bytes, save1: bytes | None, game,
     c64 = c64_save.container_for(game)
     sg, sg1, _clock = _c64_save_context(save0, save1, c64)
     block = sg1.roster(index) if sg1 is not None else None
+    (char_slot,) = [s for s in sg.characters if s.index == index]
     return c64_codec.dispelled_pool_zombie(
-        c64, block.roster_in_use if block is not None else None, save0, index)
+        c64, c64_codec.roster_status(char_slot.record, block), save0, index)
 
 
 def _write_prayer_holder(save0: bytearray, report: Report,

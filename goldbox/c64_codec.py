@@ -702,6 +702,17 @@ DEATH_WRITE_EFFECT_IDS = (7, 11, 30, 31, 32, 51, 52, 53, 54, 58, 59, 95, 98,
                           137, 74, 75)
 
 
+def roster_status(rec, roster=None):
+    """The roster status byte `read` reads: the roster block's when the save
+    has one, else the one stored in the character record, else `None`.
+    A save without `SAVEDGAME1` has no roster block, so both the reader and
+    the dispelled-zombie check take this fallback rather than the block alone.
+    """
+    if roster is not None:
+        return roster.roster_in_use
+    return rec.get("roster_in_use") if rec.is_stored("roster_in_use") else None
+
+
 def dispelled_pool_zombie(game, roster_status, payload, party_slot) -> bool:
     """Whether a Pool of Radiance character is a zombie whose Animate Dead
     row was dispelled.
@@ -710,7 +721,7 @@ def dispelled_pool_zombie(game, roster_status, payload, party_slot) -> bool:
     residue of Dispel Magic, and also of a camp-animated zombie whose row
     found the 64 effect entries full. Only bytes decide: a row of any
     magnitude keeps the character a zombie. `roster_status` is `None` when
-    the save has no roster block.
+    neither the roster block nor the record stores one (`roster_status()`).
     """
     if deltas_for(game) is not POOL_OF_RADIANCE_RECORD:
         return False
@@ -3669,9 +3680,7 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
         combat_side_raw = None
     # Whether this is Animate Dead's zombie, read here rather than at the
     # status step below because its id-32 row converts in the loop that follows.
-    early_raw = (roster.roster_in_use if roster is not None
-                 else rec.get("roster_in_use") if rec.is_stored("roster_in_use")
-                 else None)
+    early_raw = roster_status(rec, roster)
     zombie_read = bool(deltas is POOL_OF_RADIANCE_RECORD
                        and early_raw is not None
                        and early_raw == ZOMBIE_STATUS)

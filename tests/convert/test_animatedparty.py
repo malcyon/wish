@@ -585,6 +585,30 @@ def test_the_combat_cast_zombie_form_converts_to_an_ordinary_dead_character():
     assert 32 not in [bytes(amiga_spc)[i] for i in range(0, len(amiga_spc), 9)]
 
 
+def test_a_dispelled_zombie_with_no_roster_block_converts_as_ordinary_dead():
+    """With no `SAVEDGAME1` the status stored in the record is read, as
+    `read` reads it, so the predicate and the reader agree. A real save slot
+    stores 256 bytes, which end before `roster_in_use`, so only a full-size
+    record reaches this."""
+    import types
+
+    game = c64_save.container_for(c64_port.POOL_OF_RADIANCE)
+    rec, payload = _zombie_source(0, row=False)
+    slot = types.SimpleNamespace(index=4, record=rec)
+    char = dos_codec._read_c64_slot(slot, None, game, bytes(payload), 0)
+    assert char.get("status") == "dead"
+    assert char.get("hp_current") == 0
+    assert not char.get("granted_effects")
+
+
+def test_the_roster_status_falls_back_to_the_stored_record_byte():
+    rec = _pool_c64(0xFE, 0x03)
+    assert c64_codec.roster_status(rec, None) == 0x03
+    assert c64_codec.dispelled_pool_zombie(
+        c64_port.POOL_OF_RADIANCE, c64_codec.roster_status(rec, None),
+        bytes(0x1C00), 4)
+
+
 def test_a_zombie_with_his_animate_dead_row_stays_a_zombie(tmp_path):
     plan, _party = _save_as(tmp_path, _ANIMATED, "dos")
     record, spc = _dos_brutus(plan)
