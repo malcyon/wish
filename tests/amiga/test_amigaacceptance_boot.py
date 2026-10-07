@@ -18,12 +18,14 @@ class LaneGuest:
     remote_path = staticmethod(WinGuest.remote_path)
     silence = staticmethod(WinGuest.silence)
 
-    def __init__(self, *, fail_start=False, fail_stop=False):
+    def __init__(self, *, fail_start=False, fail_stop=False, fail_release=False):
         self.calls = []
         self.fail_start, self.fail_stop = fail_start, fail_stop
+        self.fail_release = fail_release
 
     def claim(self, holder, timeout=None, **kw):
         self.calls.append(("claim", holder))
+        self.claim_kw = {"timeout": timeout, **kw}
         return f"ok claimed by {holder}"
 
     def put(self, local, remote, timeout=None):
@@ -43,6 +45,8 @@ class LaneGuest:
 
     def release(self, holder, timeout=None):
         self.calls.append(("release", holder))
+        if self.fail_release:
+            raise RouteError("lane host unreachable")
         return "ok released"
 
 
@@ -79,6 +83,18 @@ def test_a_failed_start_stops_the_emulator_and_releases_the_lane(tmp_path):
     with pytest.raises(RouteError, match="did not start"):
         _boot(tmp_path, guest)
     assert [c[0] for c in guest.calls][-2:] == ["stop", "release"]
+
+
+def test_a_failed_start_whose_release_also_fails_names_the_release_failure(tmp_path):
+    guest = LaneGuest(fail_start=True, fail_release=True)
+    with pytest.raises(RouteError, match="did not start.*release: lane host unreachable"):
+        _boot(tmp_path, guest)
+
+
+def test_boot_with_wait_lane_waits_for_the_claim(tmp_path):
+    guest = LaneGuest()
+    _boot(tmp_path, guest, wait_lane=60.0)
+    assert guest.claim_kw == {"timeout": 30, "wait": 60.0}
 
 
 def test_boot_of_the_legacy_silver_blades_route_is_blocked_before_a_claim(tmp_path):

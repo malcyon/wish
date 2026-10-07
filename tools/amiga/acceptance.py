@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import argparse
 import base64
-import contextlib
 import copy
 import datetime
 import functools
@@ -4191,13 +4190,20 @@ def boot_lane(manifest_path: pathlib.Path, manifest: dict, title: AmigaTitle | N
         result["start"] = guest.start(
             holder, *(None if key is None else remotes[key] for key in title.mounted),
             timeout=timeout, options=title.options)
-    except BaseException:
+    except BaseException as exc:
+        problems: list[str] = []
         if claimed:
-            with contextlib.suppress(Exception):
-                if start_attempted:
-                    guest.stop(holder, timeout=30)
-            with contextlib.suppress(Exception):
-                guest.release(holder, timeout=30)
+            for name, step, run in (("stop", guest.stop, start_attempted),
+                                    ("release", guest.release, True)):
+                if not run:
+                    continue
+                try:
+                    step(holder, timeout=30)
+                except Exception as cleanup:  # noqa: BLE001 - a lane left behind must be named
+                    problems.append(f"{name}: {cleanup}")
+        if problems and isinstance(exc, Exception):
+            raise RouteError(f"{exc}; cleanup failed, lane {holder} may be left claimed: "
+                             + "; ".join(problems)) from exc
         raise
     return result
 
