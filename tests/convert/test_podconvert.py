@@ -680,3 +680,39 @@ def test_an_edited_size_replaces_the_sources_zero():
     rec, _itm, _spc, _rep = dos_codec.write(char)
     assert rec[SIZE_AT] == 2
     assert amiga_pod.write_pod(char)[0].to_bytes()[amiga_pod.SIZE] == 2
+
+
+# --- a dual-classed character who has regained her old class (WISH-2) --------
+
+def _dual_classed(former_cleric=11):
+    """A human magic-user 12 who left cleric at 11 and holds cleric 1 again."""
+    return amiga_pod.PodWriter(
+        name="ABAGAIL", race=amiga_pod.RACES.index("HUMAN"),
+        hit_points_max=30,
+        character_class=amiga_pod.CLASSES.index("MAGIC-USER"),
+        class_levels=(1, 0, 0, 0, 0, 12, 0),
+        former_class_levels=(former_cleric, 0, 0, 0, 0, 0, 0),
+        class_bits=(amiga_pod.CLASS_BIT["cleric"]
+                    | amiga_pod.CLASS_BIT["magic-user"])).to_bytes()
+
+
+def test_a_regained_cleric_level_and_class_code_survive_amiga_dos_amiga():
+    raw = _dual_classed()
+    char = amiga_pod.pod_to_neutral(raw)
+    rec, itm, spc, _rep = dos_codec.write(char)
+    levels_at = dos_port.FIELDS_BY_NAME_FOR[POD.key]["class_levels"].offset
+    code_at = dos_port.FIELDS_BY_NAME_FOR[POD.key]["char_class"].offset
+    assert rec[levels_at:levels_at + 7] == bytes.fromhex("01000000000c00")
+    assert rec[code_at] == 5
+    out = amiga_pod.write_pod(_read_back(rec, itm, spc))[0].to_bytes()
+    assert out[amiga_pod.CLASS] == 5
+    assert out[amiga_pod.CLASS_LEVELS:amiga_pod.CLASS_LEVELS + 7] == (
+        bytes.fromhex("01000000000c00"))
+
+
+def test_a_c64_sourced_regained_class_is_still_repaired():
+    char = amiga_pod.pod_to_neutral(_dual_classed())
+    char.port = "C64"
+    rec, _itm, _spc, _rep = dos_codec.write(char)
+    levels_at = dos_port.FIELDS_BY_NAME_FOR[POD.key]["class_levels"].offset
+    assert rec[levels_at] == 0

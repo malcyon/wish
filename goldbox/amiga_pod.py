@@ -3046,7 +3046,7 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
             named = keep
     classes, class_warnings = _classes_of(named)
     rep.warnings.extend(class_warnings)
-    w.use("char_class")
+    source_code = w.use("char_class")
     combination = frozenset(classes)
     if combination not in CLASS_CODE_FROM_C64:
         raise ConversionError(
@@ -3336,7 +3336,11 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
     writer = PodWriter(
         name=name[:NAME_LENGTH],
         race=RACES.index(race_name),
-        character_class=CLASSES.index(CLASS_CODE_FROM_C64[combination]),
+        character_class=(
+            int(source_code.value)
+            if carries_tail and source_code is not None
+            and 0 <= int(source_code.value) < len(CLASSES)
+            else CLASSES.index(CLASS_CODE_FROM_C64[combination])),
         sex=int(sex.value),
         alignment=int(align.value),
         age=num("age"),

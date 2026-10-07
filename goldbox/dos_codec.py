@@ -4473,6 +4473,11 @@ IDENTITY_HELD_PORTS = ("C64", "Amiga")
 #: way C64's was (#318).
 _THAC0_RECOMPUTE_FROM_PORTS = ("C64",)
 
+#: Ports `write` zeroes a regained class's level and recomputes `char_class`
+#: for: both repairs undo the C64 trainer, and a DOS or Amiga record is the
+#: engine's own bookkeeping, so it keeps its levels and class code.
+_REGAIN_REPAIR_FROM_PORTS = ("C64",)
+
 #: Ports `write` recomputes the five saving throws and `thac0_current` for,
 #: the way `_THAC0_RECOMPUTE_FROM_PORTS` gates `thac0_base` -- and for the
 #: same reason: DOS Curse's own character loader rebuilds both from the class
@@ -5833,6 +5838,10 @@ def write(char: NeutralCharacter,
     regained_classes = sorted(
         cname for cname, lv in _former_for_regain.items()
         if lv and _dos_levels.get(cname))
+    # Only a C64 source stores the old level back; a DOS or Amiga record
+    # already holds what its engine keeps.
+    if port not in _REGAIN_REPAIR_FROM_PORTS:
+        regained_classes = []
     for _cname in regained_classes:
         _dos_levels[_cname] = 0
 
@@ -5872,8 +5881,10 @@ def write(char: NeutralCharacter,
     if code is not None:
         former = _former_for_regain
         source = "levels" if any(former.values()) else "class_bits"
-        want = classcode.repair(int(code.value), int(w.get("class_bits") or 0),
-                                _dos_levels, former, deltas.key)
+        want = (classcode.repair(int(code.value),
+                                 int(w.get("class_bits") or 0),
+                                 _dos_levels, former, deltas.key)
+                if port in _REGAIN_REPAIR_FROM_PORTS else None)
         if want is None:
             put(code, "char_class")
         else:
