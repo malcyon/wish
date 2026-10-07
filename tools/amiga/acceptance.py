@@ -31,7 +31,7 @@ import sys
 import time
 import uuid
 from collections.abc import Mapping, Sequence
-from typing import Any, Callable
+from typing import Any, Callable, NamedTuple
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
@@ -406,6 +406,64 @@ class GuardMissed(RouteError):
 
     resume_step: int | None = None
     resume_name: str = ""
+
+
+class ReadAt(NamedTuple):
+    """One `--read-at`: `length` bytes at `anchor` + `offset`, once step `step` has matched its guard."""
+
+    step: str
+    anchor: str
+    offset: int
+    length: int
+
+    @property
+    def text(self) -> str:
+        if self.anchor == "abs":
+            where = f"{self.offset:#x}"
+        else:
+            where = f"{self.anchor}{'-' if self.offset < 0 else '+'}{abs(self.offset):#x}"
+        return f"{self.step}:{where}:{self.length}"
+
+
+RE_READ_ADDRESS = re.compile(r"^(?:(a4|base)([+-])(0x[0-9a-f]+|[0-9a-f]+)|(0x[0-9a-f]+))$", re.I)
+
+#: The most one `--read-at` fetches; a bigger range is a dump, which `amigatarget.py` already does.
+READ_AT_LIMIT = 4096
+
+
+def parse_read_at(text: str) -> ReadAt:
+    """`STEP:ADDR:LEN`: STEP is a route step number or a state name, ADDR is `0xHEX`, `a4+HEX`,
+    `a4-HEX`, `base+HEX` or `base-HEX`, LEN is a decimal byte count.
+
+    `a4` is the located data hunk plus `A4_BIAS`; `base` is the data hunk itself.
+    """
+    parts = text.split(":")
+    if len(parts) != 3 or not parts[0]:
+        raise RouteError(f"--read-at wants STEP:ADDR:LEN, not {text!r}")
+    step, address, length = parts
+    match = RE_READ_ADDRESS.match(address)
+    if match is None:
+        raise RouteError(f"--read-at address {address!r} is not 0xHEX, a4+HEX, a4-HEX, base+HEX or base-HEX")
+    if not length.isdigit() or not 0 < int(length) <= READ_AT_LIMIT:
+        raise RouteError(f"--read-at length {length!r} is not a byte count from 1 to {READ_AT_LIMIT}")
+    if match.group(4):
+        return ReadAt(step, "abs", int(match.group(4), 16), int(length))
+    value = int(match.group(3), 16)
+    return ReadAt(step, match.group(1).lower(), -value if match.group(2) == "-" else value,
+                  int(length))
+
+
+def _read_address(spec: ReadAt, reader: Any) -> int:
+    from tools.amiga.amigatarget import A4_BIAS  # noqa: PLC0415
+
+    if spec.anchor == "abs":
+        return spec.offset
+    base = reader.locate()
+    return (base + A4_BIAS if spec.anchor == "a4" else base) + spec.offset
+
+
+def _read_matches(spec: ReadAt, n: int, state: str) -> bool:
+    return spec.step == str(n) or spec.step.lower() == state.lower()
 
 
 def _walk_leg(steps: Any) -> tuple[int, int] | None:
@@ -1487,7 +1545,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
               marks: Mapping[int, tuple[tuple[str, str], ...]] | None = None,
               walk_retry: int = 0, encounters: Any = None,
               cli_title: str | None = None, resume_from: pathlib.Path | None = None,
-              at_step: int | None = None) -> dict[str, Any]:
+              at_step: int | None = None, reads: Sequence[ReadAt] = (),
+              reader: Any = None) -> dict[str, Any]:
     """Walk the route, stopping at the first unrecognised state, and fetch both disks.
 
     A guarded state is found by polling single grabs until its static box
@@ -1540,6 +1599,12 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     so no save is made while it is on, and again after the route or an error before the guest
     stops. The summary's `no_encounters` records whether it was given.
 
+    `reads` (accept and measure) are `ReadAt` memory ranges fetched through `reader`, an object with
+    `read(address, length)` and `locate()` (`AmigaTarget`), once the named step's guard has matched.
+    A fetch only reads; it is recorded in the events and in `result["memory_reads"]` with its
+    resolved address and the bytes in hex. A run that finishes its route without reaching a read's
+    step fails.
+
     Outside measure, a `key` step whose screen matches its guard only unchanged from the screen
     before it stops the run with `KeyUnchanged`, except the steps `route_camp.may_keep_screen`
     names; a measure run records the same event and ends the route.
@@ -1588,6 +1653,10 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     if encounters is not None and measure and title is None:
         raise RouteError("the encounter switch needs a title route: the Silver Blades measure "
                          "route never walks")
+    if reads and (reload or diagnose):
+        raise RouteError("--read-at belongs to an accept or measure run")
+    if reads and reader is None:
+        raise RouteError("--read-at needs a memory reader")
     preserve_message = "specimen preservation requires a published disk-one or substituted accept"
     staged_message = preserve_message + " or a Silver Blades accept staged with --staged-from"
     if preserve_specimen and not accept:
@@ -1837,7 +1906,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         "deadline_seconds": deadline_seconds, "measure": measure,
         "accept": accept, "completed": False, "lost": None, "unguarded": [],
         "no_encounters": encounters is not None,
-        "encounter_rows_patched": [],
+        "encounter_rows_patched": [], "memory_reads": [],
     }
     if title is not None:
         result["remotes"] = remotes
@@ -2022,6 +2091,24 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                                  strict=True)
             except RouteError as exc:
                 raise RouteError(f"after restoring {name}: {exc}") from exc
+
+    def read_after(n: int, state: str) -> None:
+        for spec in reads:
+            if not _read_matches(spec, n, state):
+                continue
+            address = _read_address(spec, reader)
+            data = reader.read(address, spec.length)
+            row = {"spec": spec.text, "step": n, "state": state, "address": address,
+                   "length": len(data), "hex": data.hex(), "set_bits": sum(b.bit_count() for b in data)}
+            result["memory_reads"].append(row)
+            result["events"].append({"memory_read": spec.text, "step": n, "address": address})
+            log("memory_read", **row)
+
+    def reads_unreached() -> None:
+        missing = [spec.text for spec in reads
+                   if not any(r["spec"] == spec.text for r in result["memory_reads"])]
+        if missing:
+            raise RouteError(f"--read-at {missing[0]}: the route never reached that step")
 
     encounters_on = False
     #: `[key, kind]` of every route step reached so far, for the resume record. `key` is the route
@@ -2805,12 +2892,15 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 else:
                     wait(min_waits.get(state, 0))
                     digest = capture(name, check=False)
+                read_after(n, state)
                 if digest == previous:
                     result["events"].append({"unchanged": key, "step": n})
                     changed = False
                     break
                 previous = digest
             result["route_changed"] = changed
+            if changed:
+                reads_unreached()
         else:
             if earlier is None:
                 previous = until_guard("title", "title", 0, TITLE_POLL, title_limit)
@@ -2916,6 +3006,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                             route_camp.REST_GO, route_camp.CAMP, route_camp.REST_MENU):
                         # A sheet counts as showing a rest's result only if it comes after it.
                         result["sheets_before_last_rest"] = len(result.get("camp_sheets", []))
+                    read_after(n, state)
                     previous_state = state
                     previous = digest
                     if kind == "move":
@@ -2937,6 +3028,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     machine_step("restore", WALK_LEG, leg[0])
                     resumed = True
                     n = leg[0] - 1
+            reads_unreached()
             for verb, mark_name in marks.get(len(steps), ()):
                 machine_step(verb, mark_name, len(steps) + 1)
             if counter is not None:
@@ -4054,6 +4146,13 @@ def _record_numbers(text: str) -> list[int]:
         raise argparse.ArgumentTypeError("record numbers are comma-separated integers") from None
 
 
+def _read_at_arg(text: str) -> ReadAt:
+    try:
+        return parse_read_at(text)
+    except RouteError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from None
+
+
 def parse_place(text: str) -> tuple[int, int, int]:
     """`X,Y,FACING`: a square of 0 to 15 each way and a facing of 0 to 3 (N E S W)."""
     parts = [p.strip() for p in text.split(",")]
@@ -4119,6 +4218,18 @@ def _draw_options(args: argparse.Namespace, holder: str) -> dict[str, Any]:
             "lane_check": lambda: pipe.drives(holder)}
 
 
+def _read_options(args: argparse.Namespace, holder: str) -> dict[str, Any]:
+    """`run_recon`'s `reads` and `reader` keywords for `--read-at`: the title's target on the lane's pipe."""
+    specs = getattr(args, "read_at", None)
+    if not specs:
+        return {}
+    from automap import amiga  # noqa: PLC0415
+
+    pipe = amiga.WinuaePipe(holder=holder)
+    return {"reads": tuple(specs),
+            "reader": amiga.AmigaTarget(pipe, amiga.MACHINES[ENCOUNTER_TITLES[args.title]])}
+
+
 def _encounters(args: argparse.Namespace, holder: str) -> dict[str, Any]:
     """`run_recon`'s `encounters` keyword for `--no-encounters`: `noencounters`' own switch on the lane."""
     if not getattr(args, "no_encounters", False):
@@ -4149,6 +4260,11 @@ def _recorded_holder(path: pathlib.Path) -> str | None:
 RESUME_FROM_HELP = ("continue the run a stop on an unrecognised screen left, from that "
                     "resume.json; goes with --at-step")
 AT_STEP_HELP = "the route step the record stopped on; goes with --resume-from"
+READ_AT_HELP = ("STEP:ADDR:LEN, repeatable: once step STEP (a number, or a state name for every step in it) has matched "
+                "its guard, read LEN bytes at ADDR (0xHEX, a4+HEX, a4-HEX, base+HEX or base-HEX; "
+                "a4 is the data hunk plus 0x7FFE, base the hunk itself) into the events and the "
+                "summary's memory_reads; writes nothing")
+
 NO_ENCOUNTERS_HELP = ("turn the title's random encounters off in memory for the turn and move "
                       "steps, and back on before every other step, so no save carries the "
                       "changed script")
@@ -4322,6 +4438,8 @@ def main(argv: list[str] | None = None) -> int:
     m.add_argument("--route", help="Silver Blades only: KEY:state,KEY:state; default is the built-in route")
     m.add_argument("--write-keys", help="Silver Blades only: comma-separated keys that write; default B")
     m.add_argument("--no-encounters", action="store_true", help=NO_ENCOUNTERS_HELP)
+    m.add_argument("--read-at", action="append", type=_read_at_arg, metavar="STEP:ADDR:LEN",
+                   help=READ_AT_HELP)
     a = sub.add_parser("accept", help="guarded load, sheet, two saves around a walk and the read-back")
     common(a)
     a.add_argument("--guards", required=True, type=pathlib.Path)
@@ -4330,6 +4448,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="NAME:ID:MINUTES:DATA, checked against the route's later slot")
     a.add_argument("--journal-python")
     a.add_argument("--no-encounters", action="store_true", help=NO_ENCOUNTERS_HELP)
+    a.add_argument("--read-at", action="append", type=_read_at_arg, metavar="STEP:ADDR:LEN",
+                   help=READ_AT_HELP)
     a.add_argument("--walk-retry", type=int, default=0, metavar="N",
                    help="snapshot before the first turn or move step, and on a screen the guard "
                         "does not match restore it and walk again, at most N times; a restore "
@@ -4548,7 +4668,7 @@ def main(argv: list[str] | None = None) -> int:
                     wait_lane=args.wait_lane, cli_title=args.title,
                     published_disk_one=args.published_disk_one,
                     published_name=args.title if args.published_disk_one else None,
-                    **resume, **_encounters(args, holder),
+                    **resume, **_encounters(args, holder), **_read_options(args, holder),
                     **({"route": route,
                         "write_keys": write_keys,
                         "min_waits": route_silver_blades.default_min_waits(route)}
@@ -4563,7 +4683,7 @@ def main(argv: list[str] | None = None) -> int:
                     published_name=args.title if args.published_disk_one else None,
                     journal_python=getattr(args, "journal_python", None),
                     walk_retry=getattr(args, "walk_retry", 0), **resume,
-                    **_encounters(args, holder),
+                    **_encounters(args, holder), **_read_options(args, holder),
                     **_draw_options(args, holder),
                     preserve_specimen=getattr(args, "preserve_specimen", False),
                     specimen_issue=getattr(args, "specimen_issue", None),
