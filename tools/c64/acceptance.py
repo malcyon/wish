@@ -272,6 +272,10 @@ TEMPLE_WISHFTR_SHA256 = (
 #: `DUNGEON`'s entry.
 TEMPLE_CONTROL_SHA256 = (
     "ec1a531926ad50845af86af9a585b100cc6d7614c70e682731f2fadc0f11ef13")
+#: The registered game-written C64 save of BRUTUS after a camp Dispel Magic:
+#: status `$03`, trait 32 still on him and no effect row for it.
+TEMPLE_DISPELLED_SHA256 = (
+    "eb29193039aa8223d60197c83792ee51659c8f36431824ac72fc0bf9ffaf5d10")
 TEMPLE_ROUTE = (
     ("K", (0x14, 15, 4, 3), (0x14, 15, 4, 0)),
     ("K", (0x14, 15, 4, 0), (0x14, 15, 4, 1)),
@@ -295,20 +299,34 @@ def temple_crossing_index(route) -> int | None:
     return crossings[0] if crossings else None
 
 
+#: What BRUTUS is on a temple source: a camp-cast zombie ("animated"), a
+#: zombie a camp Dispel Magic ended ("dispelled"), or an ordinary dead
+#: member ("dead").
+TEMPLE_KINDS = ("animated", "dispelled", "dead")
+
+
 @dataclasses.dataclass(frozen=True)
 class TempleSource:
     """One registered disk the temple probe may start from: the walk to the
-    temple, the member it raises, his slot and effect row 63, and the
-    `--stage-record` bytes each `temple-probe` mode takes on it, keyed by the
-    argument's text after the name ('' for the bare name)."""
+    temple, the member it raises, his slot, the effect row 63 of an animated
+    one, the `--stage-record` bytes each `temple-probe` mode takes on it,
+    keyed by the argument's text after the name ('' for the bare name), its
+    kind and the `--issue` its runs file under."""
     route: tuple
     name: str
     slot: int
-    row: tuple
+    row: tuple | None
     staging: dict
+    kind: str
+    issue: str
 
     def __post_init__(self):
         temple_crossing_index(self.route)
+        if self.kind not in TEMPLE_KINDS:
+            raise ValueError(f"temple source kind {self.kind!r} is not one of "
+                             + ", ".join(TEMPLE_KINDS))
+        if self.kind == "animated" and self.row is None:
+            raise ValueError("an animated temple source names its row 63")
 
     @property
     def crossing_index(self) -> int | None:
@@ -794,45 +812,53 @@ TEMPLE_SOURCES = {
     TEMPLE_BRUTUS_SHA256: TempleSource(
         TEMPLE_ROUTE, "BRUTUS", 5, _TEMPLE_ROW,
         {"": (), " HEAL": (), " RAISE": TEMPLE_RAISE_STAGING,
-         " RAISE POOL": TEMPLE_POOL_STAGING,
-         " RAISE CONTROL": TEMPLE_CONTROL_STAGING}),
+         " RAISE POOL": TEMPLE_POOL_STAGING},
+        kind="animated", issue="700"),
     TEMPLE_WISHFTR_SHA256: TempleSource(
         TEMPLE_ROUTE[4:], "WISHFTR", 5, _TEMPLE_ROW,
-        {"": (), " HEAL": (), " RAISE POOL": TEMPLE_POOL_STAGING}),
+        {"": (), " HEAL": (), " RAISE POOL": TEMPLE_POOL_STAGING},
+        kind="animated", issue="700"),
+    TEMPLE_CONTROL_SHA256: TempleSource(
+        TEMPLE_ROUTE, "BRUTUS", 5, None,
+        {" RAISE CONTROL": TEMPLE_CONTROL_STAGING},
+        kind="dead", issue="700"),
+    TEMPLE_DISPELLED_SHA256: TempleSource(
+        TEMPLE_ROUTE, "BRUTUS", 5, None,
+        {"": (), " HEAL": (), " RAISE POOL": TEMPLE_POOL_STAGING},
+        kind="dispelled", issue="303"),
 }
 
-TEMPLE_PROBE_ARGS = tuple(f"{src.name}{mode}"
-                          for src in TEMPLE_SOURCES.values()
-                          for mode in src.staging)
+#: Every `temple-probe` argument, for parsing only: which source it runs on
+#: is decided by the disk's digest, since several sources name BRUTUS.
+TEMPLE_PROBE_ARGS = tuple(dict.fromkeys(
+    f"{src.name}{mode}" for src in TEMPLE_SOURCES.values()
+    for mode in src.staging))
 
 #: The `temple-probe` arguments a `save` step may follow, which then leaves
 #: the temple after an `alive` raise so the save runs from the world bar.
 TEMPLE_SAVE_ARGS = tuple(arg for arg in TEMPLE_PROBE_ARGS
                          if arg.endswith((" POOL", " CONTROL")))
 
-#: The staging each `temple-probe` argument takes; none for the read-only ones.
-TEMPLE_STAGING = {f"{src.name}{mode}": staging
-                  for src in TEMPLE_SOURCES.values()
-                  for mode, staging in src.staging.items()}
+
+def temple_staging(digest: str, arg: str):
+    """The `--stage-record` bytes ARG takes on the source DIGEST; a KeyError
+    when that disk does not hold the argument's member or take its mode."""
+    src = TEMPLE_SOURCES[digest]
+    name, _, rest = arg.partition(" ")
+    if name != src.name:
+        raise KeyError(arg)
+    return src.staging[f" {rest}" if rest else ""]
 
 
 def temple_usage() -> str:
     """Each `temple-probe` argument with the `--stage-record` bytes it takes,
-    read from `TEMPLE_STAGING`."""
+    for each source that takes it."""
     return "; ".join(
-        f"{arg} takes " + (",".join(f"{slot}:{off:#05x}={val:#x}"
-                                    for slot, off, val in staging)
-                           or "none")
-        for arg, staging in TEMPLE_STAGING.items())
-
-
-def temple_source_named(who: str) -> TempleSource:
-    """The source whose member the `temple-probe` argument WHO names."""
-    name = who.split(" ", 1)[0]
-    for src in TEMPLE_SOURCES.values():
-        if src.name == name:
-            return src
-    raise KeyError(name)
+        f"{src.name}{mode} takes " + (",".join(
+            f"{slot}:{off:#05x}={val:#x}" for slot, off, val in staging)
+            or "none")
+        for src in TEMPLE_SOURCES.values()
+        for mode, staging in src.staging.items())
 
 
 #: The POOL prompt's text (`POST.COM $1AD8`), and how long to wait for it and
@@ -1316,17 +1342,14 @@ def parse_warp(arg: str, title: str | None = None) -> int:
     return area
 
 
-def temple_source_guard(source: pathlib.Path,
-                        expected: str | None = None) -> str:
-    """Require an exact registered, unchanged `TEMPLE_SOURCES` disk, or the
-    control specimen when EXPECTED is `TEMPLE_CONTROL_SHA256`. Returns the
-    SHA-256."""
+def temple_source_guard(source: pathlib.Path) -> str:
+    """Require an exact registered, unchanged `TEMPLE_SOURCES` disk. Returns
+    the SHA-256."""
     source = source.resolve()
     digest = specimens.sha256_file(source)
-    allowed = [expected] if expected else list(TEMPLE_SOURCES)
-    if digest not in allowed:
+    if digest not in TEMPLE_SOURCES:
         raise ValueError(f"temple source SHA-256 {digest} is not "
-                         + " or ".join(allowed))
+                         + " or ".join(TEMPLE_SOURCES))
     for entry in specimens.list_specimens():
         if (entry.get("platform") == "c64"
                 and entry.get("title") == "Pool of Radiance"
@@ -1337,23 +1360,26 @@ def temple_source_guard(source: pathlib.Path,
 
 
 def _guard_temple_source(source: pathlib.Path, steps: list[Step]) -> str:
-    """`temple_source_guard` with the specimen the probe's mode runs on."""
-    if any(step.verb == "temple-probe" and step.arg.endswith(" CONTROL")
-           for step in steps):
-        return temple_source_guard(source, TEMPLE_CONTROL_SHA256)
+    """`temple_source_guard` with the probe's member and mode required of
+    the disk's own source."""
     digest = temple_source_guard(source)
-    name = next(step.arg for step in steps
-                if step.verb == "temple-probe").split(" ", 1)[0]
+    arg = next(step.arg for step in steps if step.verb == "temple-probe")
+    name = arg.split(" ", 1)[0]
     owner = TEMPLE_SOURCES[digest].name
     if owner != name:
         raise ValueError(f"temple source {digest} holds {owner}, not {name}")
+    try:
+        temple_staging(digest, arg)
+    except KeyError:
+        raise ValueError(f"temple source {digest} does not take "
+                         f"temple-probe {arg}") from None
     return digest
 
 
 def temple_staging_check(source: pathlib.Path, staged: pathlib.Path,
                          records, sanctioned) -> None:
     """Reject a staged temple disk that differs from SOURCE by anything but
-    the sanctioned RECORDS (SANCTIONED, the mode's `TEMPLE_STAGING`).
+    the sanctioned RECORDS (SANCTIONED, the mode's `temple_staging`).
 
     With no RECORDS the copy must be byte-identical. Otherwise every file
     must match except the save file, whose payload may differ only at those
@@ -3539,7 +3565,7 @@ class PoolRun:
                 and S.word_column(bar, "GO") >= 0
                 and S.word_column(bar, "LEAVE") >= 0)
 
-    def temple_probe(self, who: str, leave: bool = False) -> dict:
+    def temple_probe(self, who: str, digest: str, leave: bool = False) -> dict:
         """Capture the temple arrival screen and stop; with `HEAL`, select it
         once and capture the last settled screen after it; with `RAISE`,
         go on to buy RAISE DEAD for the highlighted member.
@@ -3565,11 +3591,15 @@ class PoolRun:
         bar."""
         if who not in TEMPLE_PROBE_ARGS or self.game.key != "pool-of-radiance":
             raise StepFailed("temple probe requires a Pool member it knows")
-        source = temple_source_named(who)
+        source = TEMPLE_SOURCES[digest]
+        try:
+            temple_staging(digest, who)
+        except KeyError:
+            raise StepFailed(f"temple source {digest} does not take "
+                             f"temple-probe {who}") from None
         route = source.route
         raising = " RAISE" in who
         pooling = who.endswith(" POOL")
-        control = who.endswith(" CONTROL")
         heal = raising or who.endswith(" HEAL")
         initial = self.temple_checkpoint(
             "loaded-source", self._temple_steady("in the loaded source"))
@@ -3585,7 +3615,7 @@ class PoolRun:
         member = named[0] if len(named) == 1 else None
         traits = [] if member is None else member.get("traits", [])
         effect_rows = reading.get("effect_rows", [])
-        if control:
+        if source.kind == "dead":
             # An ordinary dead member: roster status $83 and the engine-
             # controlled bit (0x0B8 bit 7) clear, so his purse is kept.
             fits = (member is not None and member.get("slot") == source.slot
@@ -3593,6 +3623,17 @@ class PoolRun:
                     and member.get("record_bytes", {}).get("0xB8", 0x80)
                     & 0x80 == 0)
             what = f"control {source.name} is not an ordinary status $83 member"
+        elif source.kind == "dispelled":
+            # A zombie a camp Dispel Magic ended: the status and trait 32
+            # stay, and no effect row holds id 32.
+            fits = (member is not None and member.get("slot") == source.slot
+                    and member.get("status") == 0x03
+                    and len(traits) == 10 and traits[9] == 32
+                    and member.get("creature_type") == 4
+                    and all(not row or row[1] != 32
+                            for row in effect_rows))
+            what = (f"loaded {source.name} is not a dispelled zombie: status "
+                    "$03, trait 32, creature type 4 and no id-32 effect row")
         else:
             fits = (member is not None and member.get("slot") == source.slot
                     and member.get("status") == 0x03
@@ -9001,7 +9042,7 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
     deadline = clock() + args.max_seconds
     temple_mode = any(step.verb == "temple-probe" for step in steps)
     if temple_mode:
-        _guard_temple_source(source, steps)
+        temple_digest = _guard_temple_source(source, steps)
     scratch.ensure(out)
     log = Log(out)
     git = evidence.git_state(REPO)
@@ -9040,8 +9081,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             temple_staging_check(
                 source, staged_disk,
                 parse_record_bytes(getattr(args, "stage_record", [])),
-                TEMPLE_STAGING[next(step.arg for step in steps
-                                    if step.verb == "temple-probe")])
+                temple_staging(temple_digest, next(
+                    step.arg for step in steps if step.verb == "temple-probe")))
         except ValueError as e:
             summary["lost"] = str(e)
             write_summary()
@@ -9249,8 +9290,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             elif step.verb == "temple-probe":
                 leaves = (step.arg in TEMPLE_SAVE_ARGS
                           and steps[-1].verb == "save")
-                got = (pool.temple_probe(step.arg, leave=True) if leaves
-                       else pool.temple_probe(step.arg))
+                got = (pool.temple_probe(step.arg, temple_digest, leave=True)
+                       if leaves else pool.temple_probe(step.arg, temple_digest))
             else:
                 got = pool.save(staged)
             got = {"step": step.text, "verb": step.verb, **got}
@@ -9604,9 +9645,7 @@ def main(argv: list[str] | None = None) -> int:
                           for arg in TEMPLE_PROBE_ARGS]
                 + [[Step("load"), Step("temple-probe", arg), Step("save")]
                    for arg in TEMPLE_SAVE_ARGS]
-                or args.title != "pool" or args.issue != "700"
-                or sorted(parse_record_bytes(args.stage_record))
-                != sorted(TEMPLE_STAGING[steps[1].arg])
+                or args.title != "pool"
                 or any((args.stage_row, args.stage_trait, args.stage_item,
                         args.stage_status, args.stage_side, args.stage_var,
                         args.stage_roster, args.first_bar_key, args.checkpoint,
@@ -9616,7 +9655,7 @@ def main(argv: list[str] | None = None) -> int:
                 or args.attack_by or args.quit_nonattacking
                 or args.walk != "I" or args.walk_steps != 40
                 or not 100 < args.max_seconds <= 1500):
-            ap.error("temple-probe requires exactly --title pool --issue 700 "
+            ap.error("temple-probe requires exactly --title pool "
                      "--steps load 'temple-probe ARG' [save, after an ARG "
                      "ending POOL or CONTROL only], one ARG and its "
                      f"--stage-record bytes being {temple_usage()}; no "
@@ -9683,9 +9722,16 @@ def main(argv: list[str] | None = None) -> int:
         ap.error(f"no save disk at {source}")
     if temple_mode:
         try:
-            _guard_temple_source(source, steps)
+            digest = _guard_temple_source(source, steps)
+            wanted = temple_staging(digest, steps[1].arg)
         except ValueError as exc:
             ap.error(str(exc))
+        if (args.issue != TEMPLE_SOURCES[digest].issue
+                or sorted(parse_record_bytes(args.stage_record))
+                != sorted(wanted)):
+            ap.error(f"temple-probe on this source requires --issue "
+                     f"{TEMPLE_SOURCES[digest].issue} and --stage-record "
+                     f"bytes being {temple_usage()}")
     if not args.stage_only and args.disks is None:
         env = ("POR_DISKS" if args.title == "pool"
                else gamedisks.entry(TITLES[args.title]).get("env"))

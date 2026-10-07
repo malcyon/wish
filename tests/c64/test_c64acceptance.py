@@ -889,7 +889,7 @@ def test_temple_probe_reaches_and_captures_arrival_then_stops(
     live (#700)."""
     run, session, events = _temple_fake_run(tmp_path, monkeypatch,
                                             after_side3=after_side3)
-    result = run.temple_probe("BRUTUS")
+    result = run.temple_probe("BRUTUS", A.TEMPLE_BRUTUS_SHA256)
     assert result["arrival"] == run.temple_checkpoints[-1]["stem"]
     assert result["side3_prompts"] == 1
     assert result["questions"] == 1
@@ -930,7 +930,7 @@ def test_temple_probe_reaches_and_captures_arrival_then_stops(
 def test_temple_probe_heal_selects_it_once_and_keeps_the_next_drawn_screen(
         tmp_path, monkeypatch):
     run, session, events = _temple_fake_run(tmp_path, monkeypatch)
-    result = run.temple_probe("BRUTUS HEAL")
+    result = run.temple_probe("BRUTUS HEAL", A.TEMPLE_BRUTUS_SHA256)
     assert session.keys == ["side3", "YES", "HEAL"]
     assert session.phase == "heal"
     assert run.temple_checkpoints[-1]["tag"] == "heal-screen"
@@ -954,7 +954,7 @@ def test_temple_probe_heal_stops_at_ninety_seconds_keeping_the_blank_frame(
     run, session, events = _temple_fake_run(tmp_path, monkeypatch,
                                             unsafe="heal-never-draws")
     with pytest.raises(A.StepFailed, match="90 second limit"):
-        run.temple_probe("BRUTUS HEAL")
+        run.temple_probe("BRUTUS HEAL", A.TEMPLE_BRUTUS_SHA256)
     assert session.keys[-1] == "HEAL"
     assert run.temple_checkpoints[-1]["tag"] == "lost-heal"
     assert run.clock() >= 90
@@ -965,7 +965,7 @@ def test_temple_probe_heal_stops_when_the_highlight_is_not_on_brutus_row(
     run, session, events = _temple_fake_run(tmp_path, monkeypatch,
                                             unsafe="highlight-row-5")
     with pytest.raises(A.StepFailed, match="highlighted top row"):
-        run.temple_probe("BRUTUS HEAL")
+        run.temple_probe("BRUTUS HEAL", A.TEMPLE_BRUTUS_SHA256)
     assert "HEAL" not in session.keys
     assert run.temple_checkpoints[-1]["tag"] == "lost-member"
 
@@ -974,7 +974,7 @@ def test_temple_probe_heal_does_not_keep_the_lingering_temple_bar(
         tmp_path, monkeypatch):
     run, session, events = _temple_fake_run(tmp_path, monkeypatch,
                                             unsafe="heal-slow")
-    run.temple_probe("BRUTUS HEAL")
+    run.temple_probe("BRUTUS HEAL", A.TEMPLE_BRUTUS_SHA256)
     kept = run.temple_checkpoints[-1]
     assert kept["tag"] == "heal-screen"
     assert (tmp_path / f"{kept['stem']}.json").is_file()
@@ -989,7 +989,7 @@ def test_temple_probe_heal_keeps_only_a_bar_seen_twice_running(
     real = run.temple_checkpoint
     run.temple_checkpoint = lambda tag, sample=None: (
         kept.append((tag, sample and sample.screen.text())) or real(tag, sample))
-    run.temple_probe("BRUTUS HEAL")
+    run.temple_probe("BRUTUS HEAL", A.TEMPLE_BRUTUS_SHA256)
     assert kept[-1][0] == "heal-screen"
     assert "HOW MAY WE HELP YOU" in kept[-1][1]
     assert "HELP" not in "".join(
@@ -1010,7 +1010,7 @@ def test_temple_probe_heal_waits_out_a_list_that_draws_after_twelve_seconds(
         tmp_path, monkeypatch):
     run, session, events = _temple_fake_run(tmp_path, monkeypatch,
                                             unsafe="heal-late-list")
-    result = run.temple_probe("BRUTUS HEAL")
+    result = run.temple_probe("BRUTUS HEAL", A.TEMPLE_BRUTUS_SHA256)
     got = result["heal_screen"]
     assert got["rows"][15] == _framed("RAISE DEAD")
     assert got["settled"] is True and got["held"] >= A.HEAL_SETTLE
@@ -1034,7 +1034,7 @@ def test_temple_probe_heal_cut_after_a_steady_welcome_keeps_it_unsettled(
             offset[0] = 1385.0 - fake_now()
 
     session.confirm_bar = late
-    result = run.temple_probe("BRUTUS HEAL")
+    result = run.temple_probe("BRUTUS HEAL", A.TEMPLE_BRUTUS_SHA256)
     got = result["heal_screen"]
     assert got["settled"] is False and 1 <= got["held"] < A.HEAL_SETTLE
     assert got["rows"][3] == "WELCOME TO THE TEMPLE,"
@@ -1062,7 +1062,7 @@ def test_temple_probe_heal_stops_at_the_input_deadline_not_ninety_seconds(
 
     session.confirm_bar = late
     with pytest.raises(A.StepFailed, match="temple input deadline"):
-        run.temple_probe("BRUTUS HEAL")
+        run.temple_probe("BRUTUS HEAL", A.TEMPLE_BRUTUS_SHA256)
     assert run.temple_checkpoints[-1]["tag"] == "lost-heal"
     assert 1400 <= run.clock() < 1450
 
@@ -1072,7 +1072,7 @@ def test_temple_probe_heal_stops_before_heal_when_another_member_is_on_top(
     run, session, events = _temple_fake_run(tmp_path, monkeypatch,
                                             unsafe="other-top")
     with pytest.raises(A.StepFailed, match="highlighted top row"):
-        run.temple_probe("BRUTUS HEAL")
+        run.temple_probe("BRUTUS HEAL", A.TEMPLE_BRUTUS_SHA256)
     assert "HEAL" not in session.keys
     assert run.temple_checkpoints[-1]["tag"] == "lost-member"
 
@@ -1090,7 +1090,7 @@ def test_temple_probe_stops_at_unsafe_screen_or_state_before_more_input(
         tmp_path, monkeypatch, unsafe, maximum_moves):
     run, session, _ = _temple_fake_run(tmp_path, monkeypatch, unsafe=unsafe)
     with pytest.raises(A.StepFailed):
-        run.temple_probe("BRUTUS")
+        run.temple_probe("BRUTUS", A.TEMPLE_BRUTUS_SHA256)
     assert len(session.moves) <= maximum_moves
     assert "HEAL" not in session.keys
     assert session.keys.count("side3") <= 1
@@ -1132,7 +1132,7 @@ def test_temple_probe_pins_the_lost_stop_the_live_m_route_hit(
 
     session.move_key = move_key
     with pytest.raises(A.StepFailed) as info:
-        run.temple_probe("BRUTUS")
+        run.temple_probe("BRUTUS", A.TEMPLE_BRUTUS_SHA256)
     assert ("movement 1 reached (0, 0, 4, 1), expected (20, 15, 4, 1)"
             in str(info.value))
 
@@ -1145,7 +1145,7 @@ def test_temple_quiet_screen_that_never_resolves_stops_at_the_transition_limit(
     run, session, _ = _temple_fake_run(tmp_path, monkeypatch)
     session.quiet_reads = 10 ** 6
     with pytest.raises(A.StepFailed) as info:
-        run.temple_probe("BRUTUS")
+        run.temple_probe("BRUTUS", A.TEMPLE_BRUTUS_SHA256)
     assert "movement 3 did not settle within 90 seconds" in str(info.value)
     assert session.moves == list("KKI")
     assert "side3" not in session.keys
@@ -1160,7 +1160,7 @@ def test_temple_text_with_a_bar_never_drawn_stops_at_the_transition_limit(
     session.quiet_text = "A GROUP OF KOBOLDS"
     session.quiet_reads = 10 ** 6
     with pytest.raises(A.StepFailed) as info:
-        run.temple_probe("BRUTUS")
+        run.temple_probe("BRUTUS", A.TEMPLE_BRUTUS_SHA256)
     assert "movement 3 did not settle within 90 seconds" in str(info.value)
     assert session.moves == list("KKI")
     assert "side3" not in session.keys
@@ -1173,7 +1173,7 @@ def test_temple_arrival_settles_without_a_status_line(tmp_path, monkeypatch):
     reappears. The rebuilt fake models this as the default arrival
     screen, so this is the ordinary case rather than an opt-in one."""
     run, session, _ = _temple_fake_run(tmp_path, monkeypatch)
-    result = run.temple_probe("BRUTUS")
+    result = run.temple_probe("BRUTUS", A.TEMPLE_BRUTUS_SHA256)
     assert result["arrival"] == "09-temple-temple-arrival"
 
 
@@ -1185,7 +1185,7 @@ def test_temple_arrival_never_settles_on_a_stale_greeting_status_line(
     run, session, _ = _temple_fake_run(tmp_path, monkeypatch)
     session.unsafe = "stale-greeting-status"
     with pytest.raises(A.StepFailed) as info:
-        run.temple_probe("BRUTUS")
+        run.temple_probe("BRUTUS", A.TEMPLE_BRUTUS_SHA256)
     assert "movement 6 did not settle within 90 seconds" in str(info.value)
     assert session.moves == list("KKIIJI")
 
@@ -1197,7 +1197,7 @@ def test_temple_question_at_a_lagging_place_waits_then_answers(
     reread the fix added has to catch up with the screen."""
     run, session, _ = _temple_fake_run(tmp_path, monkeypatch)
     session.unsafe = "question-lag"
-    result = run.temple_probe("BRUTUS")
+    result = run.temple_probe("BRUTUS", A.TEMPLE_BRUTUS_SHA256)
     assert result["arrival"] == "09-temple-temple-arrival"
     assert session.moves == list("KKIIJI")
     assert session.keys.count("YES") == 1
@@ -1213,7 +1213,7 @@ def test_temple_question_at_the_wrong_place_waits_then_stops(
     run, session, _ = _temple_fake_run(tmp_path, monkeypatch)
     session.unsafe = "question-wrong-place"
     with pytest.raises(A.StepFailed) as info:
-        run.temple_probe("BRUTUS")
+        run.temple_probe("BRUTUS", A.TEMPLE_BRUTUS_SHA256)
     assert "healing question at the wrong place" in str(info.value)
     assert session.moves == list("KKIIJI")
     assert "YES" not in session.keys
@@ -1236,7 +1236,7 @@ def test_temple_text_with_a_blank_bar_waits_then_stops_on_an_unapproved_bar(
 
     session.move_key = move_key
     with pytest.raises(A.StepFailed) as info:
-        run.temple_probe("BRUTUS")
+        run.temple_probe("BRUTUS", A.TEMPLE_BRUTUS_SHA256)
     assert "unexpected screen after movement" in str(info.value)
     assert session.moves == list("KKI")
     assert "side3" not in session.keys
@@ -1264,7 +1264,7 @@ def test_temple_quiet_screen_at_an_unplanned_place_still_stops(
 
     session.move_key = move_key
     with pytest.raises(A.StepFailed) as info:
-        run.temple_probe("BRUTUS")
+        run.temple_probe("BRUTUS", A.TEMPLE_BRUTUS_SHA256)
     assert ("movement 1 reached (0, 0, 4, 1), expected (20, 15, 4, 0)"
             in str(info.value))
     assert session.moves == ["K"]
@@ -1300,7 +1300,7 @@ def test_temple_one_poll_renderer_cursor_after_the_crossing_does_not_stop(
     live. `cursor_after_side3=1` reproduces that one-poll glitch exactly."""
     run, session, _ = _temple_fake_run(tmp_path, monkeypatch,
                                        cursor_after_side3=1)
-    result = run.temple_probe("BRUTUS")
+    result = run.temple_probe("BRUTUS", A.TEMPLE_BRUTUS_SHA256)
     assert result["arrival"] == run.temple_checkpoints[-1]["stem"]
     assert session.moves == list("KKIIJI")
 
@@ -1313,7 +1313,7 @@ def test_temple_renderer_cursor_on_two_samples_still_stops(
     run, session, _ = _temple_fake_run(tmp_path, monkeypatch,
                                        cursor_after_side3=2)
     with pytest.raises(A.StepFailed) as info:
-        run.temple_probe("BRUTUS")
+        run.temple_probe("BRUTUS", A.TEMPLE_BRUTUS_SHA256)
     assert ("movement 3 reached (0, 1, 4, 1), expected (0, 0, 4, 1)"
             in str(info.value))
     assert session.moves == list("KKI")
@@ -1375,7 +1375,7 @@ def test_temple_guards_read_the_screen_only_inside_a_monitor_pause(
         return real_screen()
 
     session.screen = guarded_screen
-    result = run.temple_probe("BRUTUS")
+    result = run.temple_probe("BRUTUS", A.TEMPLE_BRUTUS_SHA256)
     assert result["arrival"] == run.temple_checkpoints[-1]["stem"]
 
 
@@ -2762,7 +2762,7 @@ def test_temple_probe_run_records_hashes_checkpoints_and_cleanup(
             super().__init__(*args, **kwargs)
             self.temple_checkpoints = [{"tag": "heal-services"}]
 
-        def temple_probe(self, who):
+        def temple_probe(self, who, digest):
             assert who == "BRUTUS"
             assert self.temple_input_deadline == 1400
             return {"resident": {"slot": 5, "name": "BRUTUS"}}
@@ -2790,7 +2790,7 @@ def test_temple_cleanup_still_terminates_session_after_earlier_error(
             super().__init__(*args, **kwargs)
             self.temple_checkpoints = []
 
-        def temple_probe(self, who):
+        def temple_probe(self, who, digest):
             return {}
 
     terminated = []
@@ -9797,7 +9797,7 @@ def _raise_tags(run):
 def test_temple_probe_raise_buys_raise_dead_and_records_the_result(
         tmp_path, monkeypatch):
     run, session, events = _temple_fake_run(tmp_path, monkeypatch)
-    result = run.temple_probe("BRUTUS RAISE")
+    result = run.temple_probe("BRUTUS RAISE", A.TEMPLE_BRUTUS_SHA256)
     assert session.keys == (["side3", "YES", "HEAL"] + ["Down"] * 6
                             + ["Return", "YES"])
     assert _raise_tags(run)[-3:] == ["heal-screen", "raise-price",
@@ -9817,7 +9817,7 @@ def test_temple_probe_raise_records_each_outcome_and_sends_nothing_after_yes(
         tmp_path, monkeypatch, text, outcome):
     run, session, events = _temple_fake_run(tmp_path, monkeypatch)
     session.result_text = text
-    result = run.temple_probe("BRUTUS RAISE")
+    result = run.temple_probe("BRUTUS RAISE", A.TEMPLE_BRUTUS_SHA256)
     assert result["outcome"] == outcome
     assert session.keys[-1] == "YES" and session.keys.count("YES") == 2
     assert session.keys.count("Return") == 1
@@ -9825,7 +9825,7 @@ def test_temple_probe_raise_records_each_outcome_and_sends_nothing_after_yes(
 
 def test_temple_probe_heal_sends_no_key_after_the_list(tmp_path, monkeypatch):
     run, session, events = _temple_fake_run(tmp_path, monkeypatch)
-    result = run.temple_probe("BRUTUS HEAL")
+    result = run.temple_probe("BRUTUS HEAL", A.TEMPLE_BRUTUS_SHA256)
     assert session.keys == ["side3", "YES", "HEAL"]
     assert "outcome" not in result and "raise_price" not in result
 
@@ -9835,7 +9835,7 @@ def test_temple_probe_raise_without_the_row_stops_before_any_down(
     run, session, events = _temple_fake_run(tmp_path, monkeypatch,
                                             unsafe="list-no-raise")
     with pytest.raises(A.StepFailed, match="RAISE DEAD absent"):
-        run.temple_probe("BRUTUS RAISE")
+        run.temple_probe("BRUTUS RAISE", A.TEMPLE_BRUTUS_SHA256)
     assert session.keys == ["side3", "YES", "HEAL"]
     assert run.temple_checkpoints[-1]["tag"] == "lost-list"
 
@@ -9845,7 +9845,7 @@ def test_temple_probe_raise_stops_after_one_down_when_the_highlight_is_stuck(
     run, session, events = _temple_fake_run(tmp_path, monkeypatch,
                                             unsafe="list-stuck")
     with pytest.raises(A.StepFailed, match="did not move"):
-        run.temple_probe("BRUTUS RAISE")
+        run.temple_probe("BRUTUS RAISE", A.TEMPLE_BRUTUS_SHA256)
     assert session.keys[3:] == ["Down"]
     assert run.temple_checkpoints[-1]["tag"] == "lost-list"
 
@@ -9855,7 +9855,7 @@ def test_temple_probe_raise_stops_on_a_price_screen_without_pay_for_cure(
     run, session, events = _temple_fake_run(tmp_path, monkeypatch,
                                             unsafe="price-wrong")
     with pytest.raises(A.StepFailed, match="price screen"):
-        run.temple_probe("BRUTUS RAISE")
+        run.temple_probe("BRUTUS RAISE", A.TEMPLE_BRUTUS_SHA256)
     assert session.keys[-1] == "Return"
     assert "raise-price" in _raise_tags(run)
     assert run.temple_checkpoints[-1]["tag"] == "lost-price"
@@ -9867,7 +9867,7 @@ def test_temple_probe_raise_rejects_a_member_other_than_the_top_row(
     run, session, events = _temple_fake_run(tmp_path, monkeypatch,
                                             unsafe=unsafe)
     with pytest.raises(A.StepFailed, match="highlighted top row"):
-        run.temple_probe("BRUTUS RAISE")
+        run.temple_probe("BRUTUS RAISE", A.TEMPLE_BRUTUS_SHA256)
     assert session.keys == ["side3", "YES"]
     assert run.temple_checkpoints[-1]["tag"] == "lost-member"
 
@@ -9895,7 +9895,7 @@ def test_temple_probe_raise_classifies_the_outcome_from_the_last_screen_only(
             session.screen = screen
 
     session.confirm_bar = confirm
-    result = run.temple_probe("BRUTUS RAISE")
+    result = run.temple_probe("BRUTUS RAISE", A.TEMPLE_BRUTUS_SHA256)
     assert any("IS ALIVE" in "\n".join(kw["rows"]) for a, kw in events
                if a[0] == "temple-heal-frame")
     assert any("IS ALIVE" in "\n".join(kw["rows"]) for a, kw in events
@@ -9931,7 +9931,7 @@ def test_temple_probe_raise_keeps_a_result_frame_that_gives_way_to_the_menu(
 
     session.confirm_bar = confirm
     run.reading = reading
-    result = run.temple_probe("BRUTUS RAISE")
+    result = run.temple_probe("BRUTUS RAISE", A.TEMPLE_BRUTUS_SHA256)
     assert result["outcome"] == "alive"
     assert any("BRUTUS IS ALIVE" in f["rows"][12]
                for f in result["result_frames"])
@@ -9954,7 +9954,7 @@ def test_temple_probe_raise_says_when_the_deadline_cut_the_result_window(
 
     session.confirm_bar = confirm
     with pytest.raises(A.StepFailed, match="no steady screen"):
-        run.temple_probe("BRUTUS RAISE")
+        run.temple_probe("BRUTUS RAISE", A.TEMPLE_BRUTUS_SHA256)
     window = run.temple_result_window
     assert window["cut"] is True
     assert window["end"] - window["start"] < A.TEMPLE_RESULT_WINDOW
@@ -9984,7 +9984,7 @@ def test_temple_probe_raise_with_no_frame_in_the_window_reads_the_settled_screen
             session.screen = screen
 
     session.confirm_bar = confirm
-    result = run.temple_probe("BRUTUS RAISE")
+    result = run.temple_probe("BRUTUS RAISE", A.TEMPLE_BRUTUS_SHA256)
     assert result["result_frames"] == []
     assert result["result_window"]["cut"] is False
     assert result["result_window"]["frames"] == 1
@@ -10007,7 +10007,7 @@ def test_temple_probe_raise_records_a_fault_inside_the_result_window(
 
     session.confirm_bar = confirm
     with pytest.raises(A.StepFailed, match="unreadable"):
-        run.temple_probe("BRUTUS RAISE")
+        run.temple_probe("BRUTUS RAISE", A.TEMPLE_BRUTUS_SHA256)
     window = run.temple_result_window
     assert "stale" not in window and "unreadable" in window["faulted"]
     assert window["seconds"] == window["end"] - window["start"]
@@ -10021,7 +10021,7 @@ def test_temple_probe_raise_price_stop_names_the_missing_text(
     run, session, events = _temple_fake_run(tmp_path, monkeypatch,
                                             unsafe=unsafe)
     with pytest.raises(A.StepFailed, match=f"missing {missing}$"):
-        run.temple_probe("BRUTUS RAISE")
+        run.temple_probe("BRUTUS RAISE", A.TEMPLE_BRUTUS_SHA256)
 
 
 def _staged_temple_pair(tmp_path, records):
@@ -10141,7 +10141,7 @@ def test_temple_probe_keeps_a_rejection_drawn_on_row_24_over_the_price_screen(
             _menu_after(session, 5)
 
     session.confirm_bar = confirm
-    result = run.temple_probe("BRUTUS RAISE")
+    result = run.temple_probe("BRUTUS RAISE", A.TEMPLE_BRUTUS_SHA256)
     rejection = [f for f in result["result_frames"]
                if f["rows"][24] == "NOT ENOUGH MONEY !"]
     assert len(rejection) == 1
@@ -10161,7 +10161,7 @@ def test_temple_probe_still_drops_a_frame_that_is_the_price_screen_itself(
             _menu_after(session, 5)
 
     session.confirm_bar = confirm
-    result = run.temple_probe("BRUTUS RAISE")
+    result = run.temple_probe("BRUTUS RAISE", A.TEMPLE_BRUTUS_SHA256)
     assert not any(f["is_price"] for f in result["result_frames"])
     assert result["outcome"] == "unknown"
 
@@ -10181,7 +10181,7 @@ _POOL_KEYS = ["side3", "YES", "Right", "Right", "POOL", "pool-YES",
 def test_temple_probe_pools_the_money_then_raises_and_sends_nothing_after_yes(
         tmp_path, monkeypatch):
     run, session, events = _temple_fake_run(tmp_path, monkeypatch)
-    result = run.temple_probe("BRUTUS RAISE POOL")
+    result = run.temple_probe("BRUTUS RAISE POOL", A.TEMPLE_BRUTUS_SHA256)
     assert session.keys == _POOL_KEYS
     assert session.keys[-1] == "YES" and session.keys.count("YES") == 2
     assert _raise_tags(run)[-5:] == ["pool-question", "pool-done",
@@ -10193,7 +10193,7 @@ def test_temple_probe_pools_the_money_then_raises_and_sends_nothing_after_yes(
 
 def test_temple_probe_plain_raise_never_touches_pool(tmp_path, monkeypatch):
     run, session, events = _temple_fake_run(tmp_path, monkeypatch)
-    run.temple_probe("BRUTUS RAISE")
+    run.temple_probe("BRUTUS RAISE", A.TEMPLE_BRUTUS_SHA256)
     assert "POOL" not in session.keys and "pool-YES" not in session.keys
 
 
@@ -10211,7 +10211,7 @@ def test_temple_probe_stops_when_pool_asks_something_else(
         return got
     session.screen = screen
     with pytest.raises(A.StepFailed, match="no POOL question"):
-        run.temple_probe("BRUTUS RAISE POOL")
+        run.temple_probe("BRUTUS RAISE POOL", A.TEMPLE_BRUTUS_SHA256)
     assert "pool-YES" not in session.keys and "HEAL" not in session.keys
     assert run.temple_checkpoints[-1]["tag"] == "lost-pool"
 
@@ -10227,7 +10227,7 @@ def test_temple_probe_control_raises_an_ordinary_dead_member_without_pool(
         tmp_path, monkeypatch):
     run, session, events = _temple_fake_run(tmp_path, monkeypatch)
     run.reading = _control_reading
-    result = run.temple_probe("BRUTUS RAISE CONTROL")
+    result = run.temple_probe("BRUTUS RAISE CONTROL", A.TEMPLE_CONTROL_SHA256)
     assert session.keys == (["side3", "YES", "HEAL"] + ["Down"] * 6
                             + ["Return", "YES"])
     assert "pool" not in result and result["outcome"] == "alive"
@@ -10241,7 +10241,7 @@ def test_temple_probe_control_rejects_a_member_that_is_not_status_83(
     run, session, events = _temple_fake_run(tmp_path, monkeypatch)
     run.reading = lambda: reading
     with pytest.raises(A.StepFailed, match="control BRUTUS"):
-        run.temple_probe("BRUTUS RAISE CONTROL")
+        run.temple_probe("BRUTUS RAISE CONTROL", A.TEMPLE_CONTROL_SHA256)
     assert session.keys == []
 
 
@@ -10307,17 +10307,21 @@ def test_temple_staging_check_takes_the_pool_records_only(tmp_path):
                                A.TEMPLE_POOL_STAGING)
 
 
-def test_guard_temple_source_passes_the_control_hash_only_for_a_control_step(
+def test_guard_temple_source_takes_a_mode_only_on_the_source_that_lists_it(
         monkeypatch, tmp_path):
-    seen = []
-    monkeypatch.setattr(A, "temple_source_guard",
-                        lambda path, expected=None: seen.append(expected)
-                        or A.TEMPLE_BRUTUS_SHA256)
-    A._guard_temple_source(tmp_path, [A.Step("load"), A.Step(
-        "temple-probe", "BRUTUS RAISE CONTROL")])
-    A._guard_temple_source(tmp_path, [A.Step("load"), A.Step(
-        "temple-probe", "BRUTUS RAISE POOL")])
-    assert seen == [A.TEMPLE_CONTROL_SHA256, None]
+    steps = {mode: [A.Step("load"), A.Step("temple-probe", f"BRUTUS {mode}")]
+             for mode in ("RAISE CONTROL", "RAISE POOL")}
+    for digest, good in ((A.TEMPLE_CONTROL_SHA256, "RAISE CONTROL"),
+                         (A.TEMPLE_BRUTUS_SHA256, "RAISE POOL"),
+                         (A.TEMPLE_DISPELLED_SHA256, "RAISE POOL")):
+        monkeypatch.setattr(A, "temple_source_guard", lambda path, d=digest: d)
+        assert A._guard_temple_source(tmp_path, steps[good]) == digest
+    for digest, bad in ((A.TEMPLE_BRUTUS_SHA256, "RAISE CONTROL"),
+                        (A.TEMPLE_DISPELLED_SHA256, "RAISE CONTROL"),
+                        (A.TEMPLE_CONTROL_SHA256, "RAISE POOL")):
+        monkeypatch.setattr(A, "temple_source_guard", lambda path, d=digest: d)
+        with pytest.raises(ValueError, match="does not take"):
+            A._guard_temple_source(tmp_path, steps[bad])
 
 
 _CONTROL_STAGING = ["--stage-record", "5:0x018=18,5:0x0C1=0x70,5:0x0C2=0x17"]
@@ -10326,9 +10330,8 @@ _CONTROL_STAGING = ["--stage-record", "5:0x018=18,5:0x0C1=0x70,5:0x0C2=0x17"]
 def test_temple_probe_main_accepts_control_with_exactly_its_staging(
         tmp_path, monkeypatch):
     observed = []
-    guards = []
     monkeypatch.setattr(A, "temple_source_guard",
-                        lambda path, expected=None: guards.append(expected))
+                        lambda path: A.TEMPLE_CONTROL_SHA256)
     monkeypatch.setattr(A, "run", lambda args, steps, out, selected: observed.append(
         (steps, args.stage_record)) or 0)
     assert A.main(_raise_argv(tmp_path, *_CONTROL_STAGING,
@@ -10355,7 +10358,7 @@ def test_temple_probe_reads_the_cure_frames_into_an_outcome(
             _menu_after(session, 10)
 
     session.confirm_bar = confirm
-    result = run.temple_probe("BRUTUS RAISE")
+    result = run.temple_probe("BRUTUS RAISE", A.TEMPLE_BRUTUS_SHA256)
     seen = ["\n".join(f["rows"]) for f in result["result_frames"]]
     assert any("CURED" in text for text in seen)
     assert result["outcome"] == outcome
@@ -10364,19 +10367,19 @@ def test_temple_probe_reads_the_cure_frames_into_an_outcome(
 def test_temple_probe_pool_keeps_the_pool_coins_before_yes_and_after(
         tmp_path, monkeypatch):
     run, session, events = _temple_fake_run(tmp_path, monkeypatch)
-    result = run.temple_probe("BRUTUS RAISE POOL")
+    result = run.temple_probe("BRUTUS RAISE POOL", A.TEMPLE_BRUTUS_SHA256)
     assert result["pool_before"]["words"] == [0, 0, 0, 6000, 0]
     assert result["pool_after"]["words"] == [0, 0, 0, 500, 0]
     (tmp_path / "b").mkdir()
     ordinary = _temple_fake_run(tmp_path / "b", monkeypatch)
-    assert "pool_before" not in ordinary[0].temple_probe("BRUTUS RAISE")
+    assert "pool_before" not in ordinary[0].temple_probe("BRUTUS RAISE", A.TEMPLE_BRUTUS_SHA256)
 
 
 def test_temple_probe_pool_records_an_unreadable_pool_and_still_finishes(
         tmp_path, monkeypatch):
     run, session, events = _temple_fake_run(tmp_path, monkeypatch)
     session.pool_read_error = True
-    result = run.temple_probe("BRUTUS RAISE POOL")
+    result = run.temple_probe("BRUTUS RAISE POOL", A.TEMPLE_BRUTUS_SHA256)
     assert list(result["pool_before"]) == ["error"]
     assert "monitor gone" in result["pool_before"]["error"]
     assert list(result["pool_after"]) == ["error"]
@@ -10910,7 +10913,9 @@ def _leave_argv(tmp_path, arg, *steps):
 def test_temple_probe_main_accepts_a_save_after_a_pool_or_control_raise(
         tmp_path, monkeypatch, steps):
     observed = []
-    monkeypatch.setattr(A, "temple_source_guard", lambda *a: A.TEMPLE_BRUTUS_SHA256)
+    digest = (A.TEMPLE_CONTROL_SHA256 if steps[1].endswith("CONTROL")
+              else A.TEMPLE_BRUTUS_SHA256)
+    monkeypatch.setattr(A, "temple_source_guard", lambda *a: digest)
     monkeypatch.setattr(A, "run", lambda args, got, out, source: observed.append(
         got) or 0)
     assert A.main(_leave_argv(tmp_path, steps[1], *steps)) == 0
@@ -10949,7 +10954,9 @@ def test_temple_probe_leave_walks_the_list_and_the_bar_out_to_the_world(
     session.press_line = True
     if who.endswith("CONTROL"):
         run.reading = _control_reading
-    result = run.temple_probe(who, leave=True)
+    digest = (A.TEMPLE_CONTROL_SHA256 if who.endswith("CONTROL")
+              else A.TEMPLE_BRUTUS_SHA256)
+    result = run.temple_probe(who, digest, leave=True)
     tail = (["Right"] * 4 + ["SHARE"] + ["Right"] * 2 if who.endswith("POOL")
             else ["Right"] * 4)
     assert session.keys[-(13 + len(tail)):] == (
@@ -10967,7 +10974,7 @@ def test_temple_probe_leave_takes_the_temple_bar_when_return_shows_it(
         tmp_path, monkeypatch):
     run, session, events = _temple_fake_run(tmp_path, monkeypatch)
     session.press_line, session.after_continue = True, "bar"
-    run.temple_probe("BRUTUS RAISE POOL", leave=True)
+    run.temple_probe("BRUTUS RAISE POOL", A.TEMPLE_BRUTUS_SHA256, leave=True)
     assert session.keys[-10:] == (["YES", "Return"] + ["Right"] * 4
                                   + ["SHARE"] + ["Right"] * 2 + ["EXIT"])
     assert _raise_tags(run)[-3:] == ["raise-continued", "leave-share",
@@ -10979,7 +10986,7 @@ def test_temple_probe_without_leave_sends_nothing_after_the_result(
         tmp_path, monkeypatch):
     run, session, events = _temple_fake_run(tmp_path, monkeypatch)
     session.press_line = True
-    run.temple_probe("BRUTUS RAISE POOL")
+    run.temple_probe("BRUTUS RAISE POOL", A.TEMPLE_BRUTUS_SHA256)
     assert session.keys[-1] == "YES" and "EXIT" not in session.keys
 
 
@@ -10988,7 +10995,7 @@ def test_temple_probe_leave_stops_and_keeps_the_frame_on_an_unknown_screen(
     run, session, events = _temple_fake_run(tmp_path, monkeypatch)
     session.press_line, session.after_continue = True, "unknown"
     with pytest.raises(A.StepFailed, match="neither the service list"):
-        run.temple_probe("BRUTUS RAISE POOL", leave=True)
+        run.temple_probe("BRUTUS RAISE POOL", A.TEMPLE_BRUTUS_SHA256, leave=True)
     assert run.temple_checkpoints[-1]["tag"] == "lost-exit"
     assert session.keys[-1] == "Return" and "EXIT" not in session.keys
 
@@ -10997,7 +11004,7 @@ def test_temple_probe_leave_sends_no_key_without_the_continue_frame(
         tmp_path, monkeypatch):
     run, session, events = _temple_fake_run(tmp_path, monkeypatch)
     with pytest.raises(A.StepFailed, match="no PRESS"):
-        run.temple_probe("BRUTUS RAISE POOL", leave=True)
+        run.temple_probe("BRUTUS RAISE POOL", A.TEMPLE_BRUTUS_SHA256, leave=True)
     assert session.keys[-1] == "YES"
     assert run.temple_checkpoints[-1]["tag"] == "lost-exit"
 
@@ -11006,7 +11013,7 @@ def test_temple_probe_leave_keeps_the_first_frame_under_continued(
         tmp_path, monkeypatch):
     run, session, events = _temple_fake_run(tmp_path, monkeypatch)
     session.press_line = True
-    result = run.temple_probe("BRUTUS RAISE POOL", leave=True)
+    result = run.temple_probe("BRUTUS RAISE POOL", A.TEMPLE_BRUTUS_SHA256, leave=True)
     first = next(c for c in run.temple_checkpoints
                  if c["tag"] == "raise-continued")
     assert result["leave"]["continued"] == first["stem"]
@@ -11021,7 +11028,7 @@ def test_temple_probe_leave_stops_when_the_raise_did_not_end_alive(
     run, session, events = _temple_fake_run(tmp_path, monkeypatch)
     session.press_line, session.result_text = True, text
     with pytest.raises(A.StepFailed, match="not leaving"):
-        run.temple_probe("BRUTUS RAISE POOL", leave=True)
+        run.temple_probe("BRUTUS RAISE POOL", A.TEMPLE_BRUTUS_SHA256, leave=True)
     assert session.keys[-1] == "YES"
     assert run.temple_checkpoints[-1]["tag"] == "lost-exit"
 
@@ -11046,7 +11053,7 @@ def _leave_with_disk_prompt(tmp_path, monkeypatch, phase):
 def test_temple_probe_leave_answers_one_side_3_prompt_before_the_world_bar(
         tmp_path, monkeypatch):
     run, session = _leave_with_disk_prompt(tmp_path, monkeypatch, "side3")
-    result = run.temple_probe("BRUTUS RAISE POOL", leave=True)
+    result = run.temple_probe("BRUTUS RAISE POOL", A.TEMPLE_BRUTUS_SHA256, leave=True)
     assert session.keys[-2:] == ["EXIT", "leave-side3"]
     assert _raise_tags(run)[-2:] == ["leave-side3-before-answer", "outside"]
     assert result["leave"]["stem"]
@@ -11056,7 +11063,7 @@ def test_temple_probe_leave_stops_on_another_disk_prompt_keeping_the_frame(
         tmp_path, monkeypatch):
     run, session = _leave_with_disk_prompt(tmp_path, monkeypatch, "side4")
     with pytest.raises(A.StepFailed, match="disk prompt"):
-        run.temple_probe("BRUTUS RAISE POOL", leave=True)
+        run.temple_probe("BRUTUS RAISE POOL", A.TEMPLE_BRUTUS_SHA256, leave=True)
     assert session.keys[-1] == "EXIT"
     assert run.temple_checkpoints[-1]["tag"] == "lost-exit"
 
@@ -11093,7 +11100,7 @@ def test_temple_probe_leave_waits_out_a_side_3_prompt_that_lingers_after_the_ans
         tmp_path, monkeypatch):
     run, session = _leave_with_scripted_reads(
         tmp_path, monkeypatch, ["side3", "side3", "world"])
-    result = run.temple_probe("BRUTUS RAISE POOL", leave=True)
+    result = run.temple_probe("BRUTUS RAISE POOL", A.TEMPLE_BRUTUS_SHA256, leave=True)
     assert session.keys.count("leave-side3") == 1
     assert _raise_tags(run)[-1] == "outside" and result["leave"]["stem"]
 
@@ -11103,7 +11110,7 @@ def test_temple_probe_leave_stops_on_a_side_3_prompt_that_returns_after_another_
     run, session = _leave_with_scripted_reads(
         tmp_path, monkeypatch, ["side3", "blank", "side3"])
     with pytest.raises(A.StepFailed, match="repeated disk prompt"):
-        run.temple_probe("BRUTUS RAISE POOL", leave=True)
+        run.temple_probe("BRUTUS RAISE POOL", A.TEMPLE_BRUTUS_SHA256, leave=True)
     assert session.keys.count("leave-side3") == 1
     assert run.temple_checkpoints[-1]["tag"] == "lost-exit"
 
@@ -11115,14 +11122,14 @@ def test_temple_probe_leave_timeout_names_the_bound_that_expired(
     session.screen = lambda: (_TempleScreen([""] * 25)
                               if "EXIT" in session.keys else read())
     with pytest.raises(A.StepFailed, match="before the 90 second limit"):
-        run.temple_probe("BRUTUS RAISE POOL", leave=True)
+        run.temple_probe("BRUTUS RAISE POOL", A.TEMPLE_BRUTUS_SHA256, leave=True)
 
 
 def test_temple_probe_leave_shares_the_pool_before_exit_and_reaches_outside(
         tmp_path, monkeypatch):
     run, session, events = _temple_fake_run(tmp_path, monkeypatch)
     session.press_line = True
-    result = run.temple_probe("BRUTUS RAISE POOL", leave=True)
+    result = run.temple_probe("BRUTUS RAISE POOL", A.TEMPLE_BRUTUS_SHA256, leave=True)
     assert session.keys.index("SHARE") < session.keys.index("EXIT")
     assert session.keys.count("SHARE") == 1 and "GO BACK" not in session.keys
     assert _raise_tags(run)[-3:] == ["list-exit", "leave-share", "outside"]
@@ -11136,7 +11143,7 @@ def test_temple_probe_control_leave_never_chooses_share(tmp_path, monkeypatch):
     run, session, events = _temple_fake_run(tmp_path, monkeypatch)
     session.press_line = True
     run.reading = _control_reading
-    result = run.temple_probe("BRUTUS RAISE CONTROL", leave=True)
+    result = run.temple_probe("BRUTUS RAISE CONTROL", A.TEMPLE_CONTROL_SHA256, leave=True)
     assert "SHARE" not in session.keys and "share" not in result["leave"]
 
 
@@ -11144,7 +11151,7 @@ def test_temple_probe_leave_answers_the_treasure_prompt_with_go_back_once(
         tmp_path, monkeypatch):
     run, session, events = _temple_fake_run(tmp_path, monkeypatch)
     session.press_line, session.treasure_prompts = True, 1
-    result = run.temple_probe("BRUTUS RAISE POOL", leave=True)
+    result = run.temple_probe("BRUTUS RAISE POOL", A.TEMPLE_BRUTUS_SHA256, leave=True)
     assert session.keys[session.keys.index("EXIT"):] == (
         ["EXIT", "GO BACK"] + ["Right"] * 4 + ["SHARE"] + ["Right"] * 2
         + ["EXIT"])
@@ -11165,7 +11172,7 @@ def test_temple_probe_leave_stops_when_the_treasure_prompt_comes_back(
     run, session, events = _temple_fake_run(tmp_path, monkeypatch)
     session.press_line, session.treasure_prompts = True, 2
     with pytest.raises(A.StepFailed, match="again after GO BACK and SHARE"):
-        run.temple_probe("BRUTUS RAISE POOL", leave=True)
+        run.temple_probe("BRUTUS RAISE POOL", A.TEMPLE_BRUTUS_SHA256, leave=True)
     assert session.keys.count("GO BACK") == 1
     assert session.keys.count("EXIT") == 2
     assert run.temple_checkpoints[-1]["tag"] == "lost-exit"
@@ -11176,7 +11183,7 @@ def test_temple_probe_leave_stops_when_share_shows_a_prompt(
     run, session, events = _temple_fake_run(tmp_path, monkeypatch)
     session.press_line, session.after_share = True, "prompt"
     with pytest.raises(A.StepFailed, match="unexpected prompt after SHARE"):
-        run.temple_probe("BRUTUS RAISE POOL", leave=True)
+        run.temple_probe("BRUTUS RAISE POOL", A.TEMPLE_BRUTUS_SHA256, leave=True)
     assert "EXIT" not in session.keys
     assert run.temple_checkpoints[-1]["tag"] == "lost-exit"
 
@@ -11186,7 +11193,7 @@ def test_temple_probe_leave_share_timeout_names_the_bound_that_expired(
     run, session, events = _temple_fake_run(tmp_path, monkeypatch)
     session.press_line, session.after_share = True, "unknown"
     with pytest.raises(A.StepFailed, match="before the 30 second limit"):
-        run.temple_probe("BRUTUS RAISE POOL", leave=True)
+        run.temple_probe("BRUTUS RAISE POOL", A.TEMPLE_BRUTUS_SHA256, leave=True)
 
 
 # --- --stage-var -------------------------------------------------------------
@@ -11699,7 +11706,7 @@ def _ji_run(tmp_path, monkeypatch, *, side3=False):
 def test_temple_probe_wishftr_runs_two_moves_and_meets_no_side3_prompt(
         tmp_path, monkeypatch):
     run, session, _ = _ji_run(tmp_path, monkeypatch)
-    result = run.temple_probe("WISHFTR")
+    result = run.temple_probe("WISHFTR", A.TEMPLE_WISHFTR_SHA256)
     assert session.moves == list("JI")
     assert result["route"] == "JI"
     assert result["movement_keys"] == 2
@@ -11713,7 +11720,7 @@ def test_temple_probe_side3_prompt_on_a_route_with_no_crossing_stops(
         tmp_path, monkeypatch):
     run, session, _ = _ji_run(tmp_path, monkeypatch, side3=True)
     with pytest.raises(A.StepFailed, match="unexpected or repeated disk"):
-        run.temple_probe("WISHFTR")
+        run.temple_probe("WISHFTR", A.TEMPLE_WISHFTR_SHA256)
     assert "side3" not in session.keys
 
 
@@ -11722,7 +11729,7 @@ def test_temple_probe_rejects_a_member_the_source_does_not_hold(
     run, _, _ = _ji_run(tmp_path, monkeypatch)
     run.reading = _temple_reading  # BRUTUS is in the party, WISHFTR is not
     with pytest.raises(A.StepFailed, match="loaded WISHFTR"):
-        run.temple_probe("WISHFTR")
+        run.temple_probe("WISHFTR", A.TEMPLE_WISHFTR_SHA256)
 
 
 def test_temple_source_table_lists_each_route_and_its_crossing():
@@ -11734,7 +11741,7 @@ def test_temple_source_table_lists_each_route_and_its_crossing():
     assert (wishftr.crossing_index, wishftr.last_index) == (None, 1)
     assert (wishftr.name, wishftr.slot, wishftr.row) == (
         "WISHFTR", 5, (63, 32, 5, 0, 5))
-    assert A.TEMPLE_STAGING["WISHFTR RAISE POOL"] == A.TEMPLE_POOL_STAGING
+    assert A.temple_staging(A.TEMPLE_WISHFTR_SHA256, "WISHFTR RAISE POOL") == A.TEMPLE_POOL_STAGING
     assert "WISHFTR RAISE POOL" in A.TEMPLE_SAVE_ARGS
     assert A.parse_steps(["load", "temple-probe WISHFTR RAISE POOL"])[1] == (
         A.Step("temple-probe", "WISHFTR RAISE POOL"))
@@ -14547,3 +14554,74 @@ def test_stage_roster_bad_line_exits_with_usage(tmp_path, bad, capsys):
                 "--out", str(tmp_path / "evidence")])
     assert e.value.code == 2
     capsys.readouterr()
+
+
+def _dispelled_reading():
+    return {"party": [{"slot": 5, "name": "BRUTUS", "status": 3,
+                       "traits": [0] * 9 + [32], "creature_type": 4,
+                       "record_bytes": {"0xA3": 2}}],
+            "effect_rows": [[slot, 0, 0, 0, 0] for slot in range(64)],
+            "effects": []}
+
+
+def test_temple_sources_named_brutus_resolve_by_digest_to_their_own_kind():
+    kinds = {digest: src.kind for digest, src in A.TEMPLE_SOURCES.items()
+             if src.name == "BRUTUS"}
+    assert kinds == {A.TEMPLE_BRUTUS_SHA256: "animated",
+                     A.TEMPLE_CONTROL_SHA256: "dead",
+                     A.TEMPLE_DISPELLED_SHA256: "dispelled"}
+    assert {d: A.TEMPLE_SOURCES[d].issue for d in kinds} == {
+        A.TEMPLE_BRUTUS_SHA256: "700", A.TEMPLE_CONTROL_SHA256: "700",
+        A.TEMPLE_DISPELLED_SHA256: "303"}
+    assert A.TEMPLE_SOURCES[A.TEMPLE_DISPELLED_SHA256].row is None
+    assert not hasattr(A, "temple_source_named")
+
+
+def test_temple_probe_dispelled_passes_only_a_dispelled_reading(
+        tmp_path, monkeypatch):
+    run, session, _ = _temple_fake_run(tmp_path, monkeypatch)
+    run.reading = _dispelled_reading
+    result = run.temple_probe("BRUTUS", A.TEMPLE_DISPELLED_SHA256)
+    assert result["route"] == "KKIIJI"
+    for digest, match in ((A.TEMPLE_BRUTUS_SHA256, "row 63"),
+                          (A.TEMPLE_CONTROL_SHA256, "control BRUTUS")):
+        other, session, _ = _temple_fake_run(tmp_path, monkeypatch)
+        other.reading = _dispelled_reading
+        with pytest.raises(A.StepFailed, match=match):
+            other.temple_probe(
+                "BRUTUS RAISE CONTROL" if digest == A.TEMPLE_CONTROL_SHA256
+                else "BRUTUS", digest)
+        assert session.keys == []
+
+
+@pytest.mark.parametrize("reading", [_temple_reading(), _control_reading()])
+def test_temple_probe_dispelled_rejects_an_active_zombie_or_a_dead_member(
+        tmp_path, monkeypatch, reading):
+    run, session, _ = _temple_fake_run(tmp_path, monkeypatch)
+    run.reading = lambda: reading
+    with pytest.raises(A.StepFailed, match="not a dispelled zombie"):
+        run.temple_probe("BRUTUS", A.TEMPLE_DISPELLED_SHA256)
+    assert session.keys == []
+
+
+def test_temple_probe_raise_control_on_the_animated_digest_stops_before_a_slot(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(A, "temple_source_guard",
+                        lambda path: A.TEMPLE_BRUTUS_SHA256)
+    _stopped_before_a_slot(tmp_path, monkeypatch, _raise_argv(
+        tmp_path, *_CONTROL_STAGING,
+        step="temple-probe BRUTUS RAISE CONTROL")[:-2])
+
+
+def test_temple_probe_issue_comes_from_the_source_digest(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(A, "temple_source_guard",
+                        lambda path: A.TEMPLE_DISPELLED_SHA256)
+    argv = _raise_argv(tmp_path, *_POOL_STAGING,
+                       step="temple-probe BRUTUS RAISE POOL")
+    _stopped_before_a_slot(tmp_path, monkeypatch, argv[:-2])
+    observed = []
+    monkeypatch.setattr(A, "run", lambda args, steps, out, selected:
+                        observed.append(args.issue) or 0)
+    argv[argv.index("--issue") + 1] = "303"
+    assert A.main(argv) == 0 and observed == ["303"]
