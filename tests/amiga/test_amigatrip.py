@@ -222,7 +222,10 @@ def test_pool_needs_room_for_its_message_below_the_statements():
     assert at == trip.BUFFER_SIZE - 21 and message % 4 == 0
     assert at - 3 <= message + trip.MESSAGE_SIZE <= at
     assert trip.free_tail(pool, 0, {0: message}) == 1
-    assert trip.free_tail(pool, 0, {0: message + 1}) == 3
+    # The packed layout takes the statements at the script's end, which
+    # reaches six bytes further than the default one.
+    assert trip.free_tail(pool, 0, {0: message + 1}) == 1
+    assert trip.free_tail(pool, 0, {0: 7608}) == 3
     grid = trip.plan(26, None, (20, 29))
     assert trip.free_tail(pool, 0, {0: message}, grid) == 1
 
@@ -724,12 +727,12 @@ def test_the_players_disks_give_the_script_ends_measured_live(key, area, end):
     assert end in found
 
 
-def test_every_pool_departing_area_but_three_fits_a_trip_on_the_players_disks():
+def test_every_pool_departing_area_but_two_fits_a_trip_on_the_players_disks():
     pool = trip.ROWS["pool-of-radiance"]
     areas = (0, 1, 2, 3, 9, 13, 14, 16, 17, 18, 21, 22, 23, 25, 26, 27, 28)
-    # The scripts of areas 1, 17 and 28 leave no room for their departure
+    # The scripts of areas 1 and 28 leave no room for their departure
     # statements, so those trips are held rather than skipping the departure.
-    no_room = (1, 17, 28)
+    no_room = (1, 28)
     for image in _images():
         lengths = trip.script_lengths("pool-of-radiance", [image])
         if not all(a in lengths for a in areas):
@@ -737,6 +740,20 @@ def test_every_pool_departing_area_but_three_fits_a_trip_on_the_players_disks():
         for here in areas:
             held = trip.leg_held(pool, here, 0, False, lengths)
             assert held is (here in no_room), here
+        return
+    pytest.skip("needs the player's Amiga Pool of Radiance disks")
+
+
+def test_a_trip_out_of_the_nomad_camp_is_held_for_no_destination_on_the_players_disks():
+    pool = trip.ROWS["pool-of-radiance"]
+    for image in _images():
+        lengths = trip.script_lengths("pool-of-radiance", [image])
+        if not all(a in lengths for a in (0, 17, 26)):
+            continue
+        for to in (0, 26):
+            for outdoors in (False, to == 26):
+                assert not trip.leg_held(pool, 17, to, False, lengths,
+                                         outdoors)
         return
     pytest.skip("needs the player's Amiga Pool of Radiance disks")
 
@@ -999,32 +1016,65 @@ def test_a_departure_that_writes_nothing_adds_no_statements():
     assert trip.departure_prologue("pool-of-radiance", 0, 18) == b""
 
 
-# The statements are the game's own where the script has the same test:
-# `COMPARE a, b` is `03 <a> <b>`, `IF` is one byte, `SAVE` is as `save()`.
 POOL = "pool-of-radiance"
-P3 = bytes.fromhex("03 01 A9 4A 00 01  16  09 00 FE 01 A9 4A")
-P5 = bytes.fromhex("09 00 FD 01 B4 4A")
-P6 = bytes.fromhex("03 01 9E 4A 00 FF  16  09 00 00 01 9E 4A")
-#: Composed, from the `COMPARE` / `IF` / one-statement form that needs no
-#: latch to survive a skipped statement (R1's first form).
-P2 = bytes.fromhex(
-    "09 00 00 01 82 6E  03 01 5D 4A 00 28  1B  09 00 01 01 82 6E"
-    "  03 01 B5 4A 00 FF  16  09 00 00 01 82 6E"
-    "  03 01 82 6E 00 01  16  09 00 FE 01 B5 4A")
-P4 = bytes.fromhex(
-    "2F 01 7C 4A 00 05 01 82 6E  03 01 B7 4A 00 FF  16  09 00 00 01 82 6E"
-    "  03 01 82 6E 00 00  17  09 00 FE 01 B7 4A")
+#: Where the fake data hunk keeps Pool's `$4900` table.
+VARS = 0x40000
 
 
-@pytest.mark.parametrize("here, expected", [
-    (1, P3), (28, P5), (25, P6), (26, P6), (27, P6), (16, P2), (17, P4)])
-def test_a_pool_departure_prologue_is_the_expected_statements(here, expected):
-    assert trip.departure_prologue(POOL, here, 0) == expected
+def staged(values):
+    """A Pool machine whose `$4900` table holds `values` (variable -> word),
+    and the `read` that `AmigaFastTravel` hands `departure_prologue`."""
+    from automap import amigavars
+    m = machine(POOL)
+    m.at(0x98, struct.pack(">I", VARS))
+    for variable, word in values.items():
+        m.poke(VARS + 2 * (variable - 0x4900), word.to_bytes(2, "big"))
+    return lambda v: amigavars.read_variable(m, POOL, v).value
 
 
-def test_the_prologue_lengths_are_the_ones_the_rows_were_sized_with():
-    assert [len(trip.departure_prologue(POOL, h, 0))
-            for h in (1, 28, 25, 16, 17)] == [13, 6, 13, 45, 35]
+def _save(value, address):
+    return trip.save(value, address)
+
+
+@pytest.mark.parametrize("here, values, expected", [
+    (1, {0x4AA9: 1}, _save(254, 0x4AA9)),
+    (1, {0x4AA9: 0}, b""),
+    (1, {0x4AA9: 255}, b""),
+    (28, {}, _save(253, 0x4AB4)),
+    (25, {0x4A9E: 255}, _save(0, 0x4A9E)),
+    (26, {0x4A9E: 0}, b""),
+    (27, {0x4A9E: 255}, _save(0, 0x4A9E)),
+])
+def test_a_pool_departure_prologue_is_the_one_save_when_its_guard_holds(
+        here, values, expected):
+    assert trip.departure_prologue(POOL, here, 0, None, staged(values)) \
+        == expected
+
+
+@pytest.mark.parametrize("kills, paid, expected", [
+    (39, 0, b""), (40, 0, _save(254, 0x4AB5)), (41, 0, _save(254, 0x4AB5)),
+    (40, 255, b""), (39, 255, b"")])
+def test_lizardman_keep_saves_only_for_forty_kills_and_an_unpaid_commission(
+        kills, paid, expected):
+    read = staged({0x4A5D: kills, 0x4AB5: paid})
+    assert trip.departure_prologue(POOL, 16, 0, None, read) == expected
+
+
+@pytest.mark.parametrize("flags, done, saved", [
+    (0x04, 0, True), (0x01, 0, True), (0x05, 254, True), (0x02, 0, False),
+    (0x00, 0, False), (0x05, 255, False), (0x80, 0, False)])
+def test_the_nomad_camp_saves_254_exactly_when_the_exit_block_would(
+        flags, done, saved):
+    read = staged({0x4A7C: flags, 0x4AB7: done})
+    assert trip.departure_prologue(POOL, 17, 0, None, read) \
+        == (_save(254, 0x4AB7) if saved else b"")
+
+
+def test_without_a_reader_the_prologue_is_the_most_a_trip_can_need():
+    for here, size in ((1, 6), (28, 6), (25, 6), (16, 6), (17, 6)):
+        prologue = trip.departure_prologue(POOL, here, 0)
+        assert len(prologue) == size
+        assert [name for _at, name in _decode(prologue)] == ["SAVE"]
 
 
 def test_a_departure_prologue_is_not_made_for_a_title_that_has_no_row():
@@ -1032,59 +1082,42 @@ def test_a_departure_prologue_is_not_made_for_a_title_that_has_no_row():
     assert trip.departure_prologue(POOL, 0, 18) == b""
 
 
-def test_the_prologue_statements_decode_as_compare_if_and_save():
-    ops = [name for _at, name in _decode(trip.departure_prologue(POOL, 1, 0))]
-    assert ops == ["COMPARE", "IF=", "SAVE"]
+def test_a_guard_that_cannot_be_read_raises_and_makes_no_statements():
+    with pytest.raises(trip.GuardUnreadable):
+        trip.departure_prologue(POOL, 17, 0, None, lambda v: None)
+    # The first guard decides: a later unreadable one is not reached.
+    assert trip.departure_prologue(
+        POOL, 16, 0, None, lambda v: 1 if v == 0x4A5D else None) == b""
+    assert issubclass(trip.GuardUnreadable, ValueError)
 
 
 def _decode(blob: bytes):
     """`(offset, mnemonic)` for each statement, by the operand kinds."""
-    names = {0x03: "COMPARE", 0x09: "SAVE", 0x2F: "AND", 0x16: "IF=",
-             0x17: "IF<>", 0x18: "IF<", 0x1B: "IF>="}
     out, at = [], 0
     while at < len(blob):
-        op = blob[at]
-        out.append((at, names[op]))
+        assert blob[at] == 0x09, "only SAVE is made"
+        out.append((at, "SAVE"))
         at += 1
-        count = 0 if 0x16 <= op <= 0x1B else (3 if op == 0x2F else 2)
-        if op == 0x09:
-            count = 2
-        for _ in range(count):
+        for _ in range(2):
             at += 2 if blob[at] == 0 else 3
     assert at == len(blob)
     return out
 
 
-def test_the_composed_forms_decode_to_whole_statements():
-    assert [n for _a, n in _decode(P2)] == [
-        "SAVE", "COMPARE", "IF>=", "SAVE", "COMPARE", "IF=", "SAVE",
-        "COMPARE", "IF=", "SAVE"]
-    assert [n for _a, n in _decode(P4)] == [
-        "AND", "COMPARE", "IF=", "SAVE", "COMPARE", "IF<>", "SAVE"]
-
-
-def test_a_guarded_departure_with_two_writes_holds_the_trip(monkeypatch):
+def test_a_departure_with_two_writes_makes_both_saves(monkeypatch):
     from automap import departures
     row = departures.Departure(
         POOL, frozenset({3}), frozenset({"amiga"}),
         guards=(departures.Guard(0x4AA9, "==", 1),),
         writes=((0x4AA9, 254), (0x4AB4, 253)))
     monkeypatch.setattr(departures, "DEPARTURES", (row,))
-    with pytest.raises(ValueError):
-        trip.departure_prologue(POOL, 3, 0)
-    assert trip.leg_held(trip.ROWS[POOL], 3, 0, False, _lengths())
-
-
-def test_a_guard_the_encoding_does_not_cover_holds_the_trip(monkeypatch):
-    from automap import departures
-    row = departures.Departure(
-        POOL, frozenset({3}), frozenset({"amiga"}),
-        guards=(departures.Guard(1, "==", 1),
-                departures.Guard(2, "not in", (3, 4))),
-        writes=((0x4AA9, 254),))
-    monkeypatch.setattr(departures, "DEPARTURES", (row,))
-    with pytest.raises(ValueError):
-        trip.departure_prologue(POOL, 3, 0)
+    assert trip.departure_prologue(POOL, 3, 0) \
+        == _save(254, 0x4AA9) + _save(253, 0x4AB4)
+    assert trip.departure_prologue(POOL, 3, 0, None,
+                                   staged({0x4AA9: 1})) \
+        == _save(254, 0x4AA9) + _save(253, 0x4AB4)
+    assert trip.departure_prologue(POOL, 3, 0, None,
+                                   staged({0x4AA9: 2})) == b""
 
 
 def _most_room_that_holds(here: int) -> int:
@@ -1095,12 +1128,10 @@ def _most_room_that_holds(here: int) -> int:
     return len(free)
 
 
-@pytest.mark.parametrize("here, size", [(16, 45), (17, 35), (1, 13)])
+@pytest.mark.parametrize("here, size", [(16, 6), (17, 6), (1, 6)])
 def test_the_departure_statements_are_counted_in_the_room_a_trip_needs(
         here, size):
-    # Area 2 has no row, so the difference is the prologue alone. A tier-2
-    # layout can place a few bytes in spots the script leaves free, so the
-    # difference is at most the prologue's length.
+    # Area 2 has no row, so the difference is the prologue alone.
     assert 0 < _most_room_that_holds(2) - _most_room_that_holds(here) <= size
 
 
@@ -1109,6 +1140,51 @@ def test_a_second_trip_from_lizardman_keep_walks_no_door_and_asks_nothing():
     # exit question is put to the player on any trip.
     assert trip.departure_for(POOL, 16, 0).route_to is None
     assert trip.departure_for(POOL, 16, 27).route_to is None
+
+
+def test_a_27_byte_plan_past_a_7601_byte_script_is_tier_one_packed():
+    pool = trip.ROWS[POOL]
+    p = trip.plan(0, (1, 2, 3), prologue=b"\x09\x00\x00\x01\x00\x00")
+    assert len(trip._statements(pool, p)) == 27
+    lengths = {17: 7601}
+    assert trip.place(pool, 17, lengths, p) == trip.Placement(7601, 0x1DCC)
+    assert 0x1DCC + trip.MESSAGE_SIZE == trip.BUFFER_SIZE
+    assert trip.free_tail(pool, 17, lengths, p) == 1
+    # One byte longer and the message runs off the buffer.
+    assert trip.place(pool, 17, {17: 7602}, p) is None
+    assert trip.free_tail(pool, 17, {17: 7602}, p) == 3
+
+
+def test_the_default_layout_is_kept_where_it_fits():
+    pool = trip.ROWS[POOL]
+    p = trip.plan(0, (1, 2, 3))
+    at, message = trip.layout(pool, 21)
+    assert trip.place(pool, 17, {17: 100}, p) == trip.Placement(at, message)
+    assert trip.place(pool, 17, {}, p) is None
+    assert trip.place(pool, None, {17: 100}, p) is None
+
+
+def test_a_title_with_no_message_has_no_packed_layout():
+    curse = trip.ROWS["curse-of-the-azure-bonds"]
+    p = trip.plan(3, (1, 1, 0))
+    assert trip.place(curse, 1, {1: trip.BUFFER_SIZE - 20}, p) is None
+    assert trip.place(curse, 1, {1: 100}, p).message_at is None
+
+
+def test_a_packed_trip_writes_the_statements_at_the_script_end_then_the_message():
+    key = POOL
+    m = machine(key, length=7601, area=17)
+    row = trip.ROWS[key]
+    p = trip.plan(0, (1, 2, 3), prologue=trip.save(254, 0x4AB7))
+    placed = trip.place(row, 17, {17: 7601}, p)
+    armed = trip.arm(m, row, dataclasses.replace(p, placement=placed))
+    assert armed is not None
+    written = {w.kind: w.address for w in armed.records}
+    assert written["statements"] == BUFFER + 7601
+    assert written["message"] == BUFFER + 0x1DCC
+    assert m.read(BUFFER + 7601, 6) == trip.save(254, 0x4AB7)
+    entry = m.read(trip.ROWS[key].step_entry + BASE, 2)
+    assert int.from_bytes(entry, "big") == row.ecl_origin + 7601
 
 
 def test_a_pods_trip_from_the_hand_over_areas_has_the_two_saves():

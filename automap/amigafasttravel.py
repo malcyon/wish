@@ -32,7 +32,7 @@ import time
 from dataclasses import dataclass
 
 from . import actions as engine
-from . import amiga, amigaactions, amigaparty, fasttravel
+from . import amiga, amigaactions, amigaparty, amigavars, fasttravel
 from . import amigatrip as trips
 from .target import NotConnected
 
@@ -190,19 +190,29 @@ class AmigaFastTravel(engine.FastTravel):
         lengths = self.lengths(row)
         # The destination decides whether a grid square or an area-file byte
         # is written, so the actual trip is sized, then planned with its tier.
+        # The departure's guards are read here, so its `SAVE` is in the trip
+        # only when the game's own script would have made it.
+        def read(variable: int):
+            return amigavars.read_variable(target, self.key, variable).value
+
+        placement = None
         try:
             prologue = (trips.leave_grid_prologue(row, here, to)
                         + trips.departure_prologue(self.key, here, to,
-                                                   self._outdoors(to)))
-            tier = trips.free_tail(
-                row, here, lengths,
-                trips.plan(to, arrival, overland, prologue=prologue))
+                                                   self._outdoors(to), read))
+            trip = trips.plan(to, arrival, overland, prologue=prologue)
+            tier = trips.free_tail(row, here, lengths, trip)
+            if tier == 1:
+                placement = trips.place(row, here, lengths, trip)
+        except trips.GuardUnreadable:
+            return engine.Outcome(False, NOT_HAPPENED)
         except ValueError:
             # The title has no target for a field this trip writes.
             tier = 3
         if tier not in (1, 2):
             return engine.Outcome(False, self.not_built)
-        plan = trips.plan(to, arrival, overland, tier, prologue=prologue)
+        plan = trips.plan(to, arrival, overland, tier, prologue=prologue,
+                          placement=placement)
         try:
             armed = trips.arm(target, row, plan)
         except Exception:

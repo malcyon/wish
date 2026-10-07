@@ -758,17 +758,43 @@ def test_the_caves_without_fatima_go_straight(disks, pool_gate, monkeypatch):
         assert out.ok and not t.trip.door
 
 
+VARS = 0x40000
+
+
+def stage(m, values):
+    """Pool's `$4900` table in the fake data hunk, holding `values`."""
+    m.at(0x98, struct.pack(">I", VARS))
+    for variable, word in values.items():
+        at = VARS + 2 * (variable - 0x4900)
+        m.memory[at:at + 2] = word.to_bytes(2, "big")
+
+
+def statements_written(out):
+    return b"".join(d for _a, d in out.writes)
+
+
 def test_lizardman_keep_trips_are_script_trips_with_the_guarded_write(
         disks, pool_gate, monkeypatch):
-    """The prologue tests `$4AB5` and `$4A5D` itself, so no trip from 16 walks
-    the window or asks the exit question."""
+    """Wish tests `$4AB5` and `$4A5D` itself, so no trip from 16 walks the
+    window or asks the exit question, and the `SAVE` is made when they hold."""
     for to in (27, 0):
         m = pool(16)
+        stage(m, {0x4A5D: 40, 0x4AB5: 0})
         t = pool_travel(monkeypatch)
         out = t.run(m, area(to), arrival=(1, 2, 0))
         assert out.ok and not t.trip.door and t.trip.hop is None
-        assert trips.departure_prologue(POOL, 16, to) in b"".join(
-            d for _a, d in out.writes)
+        assert trips.save(254, 0x4AB5) in statements_written(out)
+
+
+def test_a_lizardman_keep_trip_whose_guard_fails_carries_no_save(
+        disks, pool_gate, monkeypatch):
+    for values in ({0x4A5D: 39, 0x4AB5: 0}, {0x4A5D: 40, 0x4AB5: 255}):
+        m = pool(16)
+        stage(m, values)
+        t = pool_travel(monkeypatch)
+        out = t.run(m, area(0), arrival=(1, 2, 0))
+        assert out.ok
+        assert trips.save(254, 0x4AB5) not in statements_written(out)
 
 
 def test_a_lizardman_keep_trip_without_room_for_its_write_is_not_offered(
@@ -776,10 +802,65 @@ def test_a_lizardman_keep_trip_without_room_for_its_write_is_not_offered(
     m = pool(16)
     t = pool_travel(monkeypatch)
     assert t.legality(m, area(0))
-    disks[16] = 7580                 # room for a bare trip, not the 45 bytes
+    disks[16] = 7602                 # room for a bare trip, not the 6-byte save
     t = pool_travel(monkeypatch)
     verdict = t.legality(m, area(0))
     assert not verdict and verdict.reason == t.not_built
+
+
+def test_a_trip_out_of_the_nomad_camp_is_offered_and_packs_the_save_into_the_tail(
+        disks, pool_gate, monkeypatch):
+    disks[17] = 7601                 # the 79-byte tail of the player's disk
+    m = pool(17)
+    stage(m, {0x4A7C: 4, 0x4AB7: 0})
+    t = pool_travel(monkeypatch)
+    assert t.legality(m, area(0))
+    out = t.run(m, area(0), arrival=(1, 2, 0))
+    assert out.ok and t.trip is not None
+    assert m.read(BUFFER + 7601, 6) == trips.save(254, 0x4AB7)
+    assert m.read(BUFFER + 0x1DCC, 4) != bytes(4)
+    assert trips.newecl(0) in statements_written(out)
+
+
+def test_a_trip_out_of_the_nomad_camp_to_a_window_writes_the_grid_square(
+        disks, pool_gate, monkeypatch):
+    disks[17] = 7601
+    m = pool(17)
+    stage(m, {0x4A7C: 4, 0x4AB7: 0})
+    t = pool_travel(monkeypatch)
+    out = t.run(m, area(26, outdoors=True, overland=(20, 29)),
+                arrival=(1, 2, 0))
+    assert out.ok
+    written = statements_written(out)
+    # Departure save, grid x and y, then NEWECL: 21 bytes, no indoor square.
+    assert len(t.trip.armed.records[0].data) == 21
+    assert trips.save(254, 0x4AB7) in written
+
+
+def test_a_trip_out_of_the_nomad_camp_with_a_false_guard_carries_no_save(
+        disks, pool_gate, monkeypatch):
+    disks[17] = 7601
+    m = pool(17)
+    stage(m, {0x4A7C: 2, 0x4AB7: 0})
+    t = pool_travel(monkeypatch)
+    out = t.run(m, area(0), arrival=(1, 2, 0))
+    assert out.ok
+    assert trips.save(254, 0x4AB7) not in statements_written(out)
+
+
+def test_a_departure_guard_that_cannot_be_read_arms_nothing(
+        disks, pool_gate, monkeypatch):
+    from automap import amigavars
+    monkeypatch.setattr(
+        amigavars, "read_variable",
+        lambda target, title, var: amigavars.VarReading(
+            var, None, 0, None, "not readable"))
+    m = pool(17)
+    before = bytes(m.memory)
+    t = pool_travel(monkeypatch)
+    out = t.run(m, area(0), arrival=(1, 2, 0))
+    assert not out.ok and out.message == aft.NOT_HAPPENED
+    assert t.trip is None and bytes(m.memory) == before
 
 
 def test_a_party_of_one_title_is_not_asked_about_another_titles_area(
