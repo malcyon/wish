@@ -1937,6 +1937,103 @@ def test_a_trip_into_area_40_does_not_write_the_frame_byte():
     assert 0x4CFD not in {a for a, _ in outcome.writes}
 
 
+def _silver_blades_machine(here: int, memory=None):
+    game = c64_port.SECRET_OF_THE_SILVER_BLADES
+    pool = fasttravel.POOL_OF_RADIANCE
+    addr = dataclasses.replace(
+        fasttravel.SECRET_OF_THE_SILVER_BLADES, after_step=pool.after_step,
+        forward_key=pool.forward_key, redraw=pool.redraw,
+        saved_sp=pool.saved_sp, main_loop_return=pool.main_loop_return)
+    ft = actions.FastTravel(game)
+    ft.addresses = addr
+    target = TwoHopTarget({
+        c64.machine_for(game).mode_flag: bytes([WORLD]),
+        addr.slot: bytes([here]), addr.disk: bytes([3]),
+        addr.indoors: bytes([1]), addr.live_square: bytes([5, 6, 1]),
+        addr.saved_sp: bytes([0xF0]),
+        **{a: bytes([v]) for a, v in (memory or {}).items()}},
+        pc=addr.key_wait[0])
+    return ft, target, addr
+
+
+def _silver_blades_row(area_id: int):
+    return next(a for a in goldbox_areas.AREAS_SILVER_BLADES
+                if a.id == area_id)
+
+
+def _silver_blades_back(away: int, back_to: int, memory=None):
+    """A trip from `back_to` to `away`, then Fast Travel Back."""
+    ft, target, addr = _silver_blades_machine(back_to, memory)
+    assert ft.run(target, area=_silver_blades_row(away)).ok
+    target.memory[addr.slot] = bytes([away])
+    target._pc = addr.key_wait[0]
+    outcome = ft.apply_back(target)
+    assert outcome.ok, outcome.message
+    return target, outcome
+
+
+def _silver_blades_second_hop(through: int, to: int, memory=None):
+    """The second half of a two-hop trip into `to`, the party standing in
+    `through` and idle."""
+    ft, target, addr = _silver_blades_machine(through, memory)
+    ft.pending = actions.PendingHop(
+        from_area=0x10, through=through, area=_silver_blades_row(to),
+        arrival=None, deadline=time.monotonic() + 60)
+    outcome = ft.continue_pending(target)
+    assert outcome is not None and outcome.ok, outcome
+    return target, outcome
+
+
+def test_fast_travel_back_into_the_well_writes_its_arrival_bytes():
+    target, outcome = _silver_blades_back(0x22, 0x21,
+                                          {0x4C62: 0, 0x4C2A: 0})
+    assert (0x4C62, b"\x01") in outcome.writes
+    assert (0x4C2A, b"\x01") in outcome.writes
+    assert target.read(0x4C62, 1) == b"\x01"
+    assert target.read(0x4C2A, 1) == b"\x01"
+
+
+@pytest.mark.parametrize("to", [0x41, 0x44, 0x61, 0x62])
+def test_fast_travel_back_into_a_frameless_area_writes_its_arrival_byte(to):
+    target, outcome = _silver_blades_back(0x20, to, {0x4CFD: 0x00})
+    assert (0x4CFD, b"\xff") in outcome.writes
+    assert target.read(0x4CFD, 1) == b"\xff"
+
+
+def test_the_second_hop_into_the_well_writes_its_arrival_bytes():
+    target, outcome = _silver_blades_second_hop(0x20, 0x21,
+                                                {0x4C62: 0, 0x4C2A: 0})
+    assert (0x4C62, b"\x01") in outcome.writes
+    assert (0x4C2A, b"\x01") in outcome.writes
+    assert target.read(0x4C62, 1) == b"\x01"
+    assert target.read(0x4C2A, 1) == b"\x01"
+
+
+@pytest.mark.parametrize("to", [0x41, 0x44, 0x61, 0x62])
+def test_the_second_hop_into_a_frameless_area_writes_its_arrival_byte(to):
+    target, outcome = _silver_blades_second_hop(0x20, to, {0x4CFD: 0x00})
+    assert (0x4CFD, b"\xff") in outcome.writes
+    assert target.read(0x4CFD, 1) == b"\xff"
+
+
+@pytest.mark.parametrize("to, at", [(0x21, 0x4C62), (0x21, 0x4C2A),
+                                    (0x41, 0x4CFD), (0x44, 0x4CFD),
+                                    (0x61, 0x4CFD), (0x62, 0x4CFD)])
+def test_the_arrival_bytes_are_written_before_the_wipe_and_never_wiped(to, at):
+    """The wipe zeroes `$4C00`..`$4C1F`; an arrival byte it covered would be
+    cleared, and one written after it would be ahead of the wipe's own end."""
+    addr = fasttravel.SECRET_OF_THE_SILVER_BLADES
+    writes = actions.newecl_writes(0x20, to, addresses=addr)
+    wipe = next(i for i, (a, b) in enumerate(writes)
+                if a == addr.scratch and len(b) == addr.scratch_len)
+    index = next(i for i, (a, _) in enumerate(writes) if a == at)
+    assert index < wipe
+    assert not addr.scratch <= at < addr.scratch + addr.scratch_len
+    assert not any(a <= at < a + len(b) for a, b in writes[index + 1:])
+    target, outcome = _silver_blades_trip(0x20, to, {at: 0})
+    assert target.read(at, 1) == bytes([0xFF if at == 0x4CFD else 1])
+
+
 @pytest.mark.parametrize("here", [0x50, 0x51, 0x52])
 def test_leaving_the_5x_group_stores_the_two_bytes_the_scripts_store(here):
     target, outcome = _silver_blades_trip(here, 0x10)
