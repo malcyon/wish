@@ -2800,10 +2800,15 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         for tag in ("file", "sha256", "count_snapshot"):
             if tag not in tags:
                 raise RouteError(f"the snapshot receipt has no {tag}: {receipt}")
+        wrote = tags["sha256"]
+        if not re.fullmatch(r"[0-9A-Fa-f]{64}", wrote):
+            raise RouteError(f"the snapshot receipt's sha256 {wrote!r} is not a SHA-256")
         guest.get(tags["file"], folder / "state.uss", timeout=spare(60))
-        if sha256(folder / "state.uss") != tags["sha256"]:
-            raise RouteError("the state file fetched from the guest differs from the one it "
-                             "wrote")
+        fetched = sha256(folder / "state.uss")
+        # The guest's Get-FileHash prints upper-case hex and hashlib lower-case.
+        if fetched != wrote.lower():
+            raise RouteError(f"the state file fetched from the guest hashes to {fetched}, which "
+                             f"differs from the one it wrote ({wrote.lower()})")
         readback = getattr(guest, "drives", None)
         drives = error = drive_paths = None
         if callable(readback):
