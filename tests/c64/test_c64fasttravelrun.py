@@ -915,7 +915,8 @@ def test_step_logs_an_encounter_when_the_game_is_in_combat():
     drv, sess, _ft, _mem, _clock, stream = build()
     drv.step_after = True
     sess.combat = True
-    drv.run([18])
+    with pytest.raises(ftr.DriverError, match="t0-to18"):
+        drv.run([18, 2])
     (step,) = _step_events(stream)
     assert step["encounter"] is True
 

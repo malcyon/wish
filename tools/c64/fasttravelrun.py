@@ -477,7 +477,7 @@ class Driver:
         keys are compass digits. A party that never moves is logged, not failed;
         so is a monitor error, as `step-error`, and a party whose location cannot
         be read is not stepped at all. An encounter menu on screen afterwards
-        stops the run, because the next leg would apply a trip under it.
+        or the game in combat stops the run, because the next leg would apply a trip under it.
         """
         sess = self.sess
         try:
@@ -516,16 +516,17 @@ class Driver:
             return
         self.log("step", tag=tag, key=key, before=before, after=after, moved=moved,
                  encounter=encounter)
-        if menu:
-            raise DriverError(f"leg {tag}: an encounter menu is up after the step")
+        if encounter:
+            raise DriverError(f"leg {tag}: an encounter is under way after the step")
 
     @staticmethod
     def encounter_menu(screen) -> bool:
         """Whether row 24 is an encounter's opening menu (`COMBAT WAIT FLEE PARLAY`)."""
         if screen is None:
             return False
+        from tools.c64 import session  # noqa: PLC0415
         words = screen.row(24).upper().split()
-        return "COMBAT" in words and "WAIT" in words
+        return session.ENCOUNTER_FIGHT in words and "WAIT" in words
 
     @staticmethod
     def see(summary: dict, raw_area: int) -> None:
