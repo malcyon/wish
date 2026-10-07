@@ -26,7 +26,7 @@ class FakeAmiga:
     write and `on_read` before each read."""
 
     def __init__(self):
-        self.memory = bytearray(0x50000)
+        self.ram = bytearray(0x50000)
         self.data_base = BASE
         self.log: list[tuple[int, bytes, bool]] = []
         self.fail_at: int | None = None
@@ -38,17 +38,17 @@ class FakeAmiga:
     def read(self, addr, length):
         if self.on_read is not None:
             self.on_read(addr, length)
-        return bytes(self.memory[addr:addr + length])
+        return bytes(self.ram[addr:addr + length])
 
     def read_blocks(self, blocks):
         return [self.read(b[0], b[1]) for b in blocks]
 
     def write(self, addr, data, verify=True):
         if addr == self.fail_at:
-            self.memory[addr:addr + self.landed] = data[:self.landed]
+            self.ram[addr:addr + self.landed] = data[:self.landed]
             self.fail_at = None
             raise NotConnected("the emulator went away")
-        self.memory[addr:addr + len(data)] = data
+        self.ram[addr:addr + len(data)] = data
         self.log.append((addr, bytes(data), verify))
         if self.on_write is not None:
             self.on_write(addr, bytes(data))
@@ -57,7 +57,7 @@ class FakeAmiga:
         return self.geo_blob
 
     def poke(self, addr, data):
-        self.memory[addr:addr + len(data)] = data
+        self.ram[addr:addr + len(data)] = data
 
     def at(self, offset, data):
         self.poke(BASE + offset, data)
@@ -380,7 +380,7 @@ def test_free_tail_counts_the_prologue():
 def test_arm_writes_the_prologue_at_the_buffer_tail_and_disarm_puts_it_back():
     key = "pool-of-radiance"
     m = machine(key, area=26)
-    before = bytes(m.memory)
+    before = bytes(m.ram)
     p = trip.plan(0, (9, 14, 2), prologue=BOAT_EXIT)
     armed = trip.arm(m, key, p)
     statements = trip._statements(trip.ROWS[key], p)
@@ -388,7 +388,7 @@ def test_arm_writes_the_prologue_at_the_buffer_tail_and_disarm_puts_it_back():
                   len(statements)) == statements
     assert statements.startswith(BOAT_EXIT)
     assert trip.disarm(m, armed) is True
-    assert bytes(m.memory) == before
+    assert bytes(m.ram) == before
 
 
 # -- arming ------------------------------------------------------------------
@@ -459,10 +459,10 @@ def test_arm_writes_nothing_when_it_should_not_arm(why):
 def test_a_failed_write_puts_back_what_was_already_written():
     key = "curse-of-the-azure-bonds"
     m = machine(key)
-    before = bytes(m.memory)
+    before = bytes(m.ram)
     m.fail_at = BASE + 0x584C
     assert trip.arm(m, key, trip.plan(3, (10, 1, 0))) is None
-    assert bytes(m.memory) == before
+    assert bytes(m.ram) == before
     assert len(m.log) == 2
 
 
@@ -474,14 +474,14 @@ def test_a_failed_write_puts_back_what_was_already_written():
 ])
 def test_a_write_that_fails_part_way_is_put_back_too(key, kind, landed):
     m = machine(key, stale=key == "pools-of-darkness")
-    before = bytes(m.memory)
+    before = bytes(m.ram)
     row = trip.ROWS[key]
     p = trip.plan(3, (1, 1, 0))
     _buffer, writes = trip._prepare(m, row, p)
     m.fail_at = next(a for a, _d, k in writes if k == kind)
     m.landed = landed
     assert trip.arm(m, key, p) is None
-    assert bytes(m.memory) == before
+    assert bytes(m.ram) == before
 
 
 def test_a_half_linked_message_the_game_takes_is_a_trip_that_happened():
@@ -531,11 +531,11 @@ def test_fired_is_none_until_the_area_changes():
                                  "pool-of-radiance", "pools-of-darkness"])
 def test_a_trip_that_does_not_fire_is_put_back(key):
     m = machine(key, stale=key == "pools-of-darkness")
-    before = bytes(m.memory)
+    before = bytes(m.ram)
     armed = trip.arm(m, key, trip.plan(3, (1, 1, 0)))
-    assert bytes(m.memory) != before
+    assert bytes(m.ram) != before
     assert trip.disarm(m, armed) is True
-    assert bytes(m.memory) == before
+    assert bytes(m.ram) == before
 
 
 def test_put_back_leaves_alone_what_the_game_changed_since():
@@ -782,10 +782,10 @@ def test_a_tilverton_trip_fires_on_the_step_entry_not_the_area_byte():
 def test_an_untaken_tilverton_trip_puts_the_area_byte_back():
     key = "curse-of-the-azure-bonds"
     m = machine(key, area=3)
-    before = bytes(m.memory)
+    before = bytes(m.ram)
     armed = trip.arm(m, key, trip.plan(1, (3, 14, 1)))
     assert trip.disarm(m, armed) is True
-    assert bytes(m.memory) == before
+    assert bytes(m.ram) == before
 
 
 def test_a_tilverton_trip_with_the_key_taken_leaves_the_area_byte_alone():
@@ -803,20 +803,20 @@ def test_a_tilverton_trip_with_the_key_taken_leaves_the_area_byte_alone():
 def test_a_failed_came_from_write_puts_every_earlier_write_back():
     key = "curse-of-the-azure-bonds"
     m = machine(key, area=3)
-    before = bytes(m.memory)
+    before = bytes(m.ram)
     m.fail_at = BASE + 0x5CE1
     assert trip.arm(m, key, trip.plan(1, (3, 14, 1))) is None
-    assert bytes(m.memory) == before
+    assert bytes(m.ram) == before
 
 
 def test_a_key_flag_change_without_the_step_entry_changing_is_not_a_taken_trip():
     key = "curse-of-the-azure-bonds"
     m = machine(key, area=3)
-    before = bytes(m.memory)
+    before = bytes(m.ram)
     armed = trip.arm(m, key, trip.plan(1, (3, 14, 1)))
     m.at(0x3804, b"\x00")                  # the key flag changed, no script ran
     assert trip.disarm(m, armed) is True
-    after = bytearray(m.memory)
+    after = bytearray(m.ram)
     key = armed.records[-1]                # the changed key is left to the game
     after[key.address:key.address + len(key.data)] = \
         before[key.address:key.address + len(key.data)]
@@ -901,12 +901,12 @@ def test_a_door_has_fired_only_once_the_game_takes_the_key():
 
 def test_a_door_whose_key_is_not_taken_puts_every_byte_back_key_first():
     m, pool = _door_machine()
-    before = bytes(m.memory)
+    before = bytes(m.ram)
     armed = trip.arm_door(m, pool, (4, 0, 0))
-    assert bytes(m.memory) != before
+    assert bytes(m.ram) != before
     m.log.clear()
     assert trip.disarm(m, armed) is True
-    assert bytes(m.memory) == before
+    assert bytes(m.ram) == before
     assert m.log[0][0] == PORT + trip.PORT_LIST
 
 
@@ -934,9 +934,9 @@ def test_a_door_is_not_armed_with_no_map_a_waiting_key_or_off_the_menu():
     assert trip.arm_door(m, pool, (4, 0, 0)) is None
     m, pool = _door_machine()
     m.poke(PORT + trip.PORT_LIST, trip.link(BUFFER))
-    before = bytes(m.memory)
+    before = bytes(m.ram)
     assert trip.arm_door(m, pool, (4, 0, 0)) is None
-    assert bytes(m.memory) == before
+    assert bytes(m.ram) == before
     m, pool = _door_machine()
     m.at(pool.mode, b"\x00")
     assert trip.arm_door(m, pool, (4, 0, 0)) is None
@@ -945,10 +945,10 @@ def test_a_door_is_not_armed_with_no_map_a_waiting_key_or_off_the_menu():
 def test_a_door_write_that_fails_puts_back_what_landed():
     m, pool = _door_machine()
     notes = trip.amiga.MACHINES["pool-of-radiance"].notes
-    before = bytes(m.memory)
+    before = bytes(m.ram)
     m.fail_at = BASE + notes["wall_ahead"]
     assert trip.arm_door(m, pool, (4, 0, 0)) is None
-    assert bytes(m.memory) == before
+    assert bytes(m.ram) == before
 
 
 def test_pools_doors_are_confirmed_and_no_other_title_has_any():

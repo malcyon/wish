@@ -32,14 +32,14 @@ class Machine:
     data_base = BASE
 
     def __init__(self):
-        self.memory = bytearray(0x50000)
+        self.ram = bytearray(0x50000)
         self.fail_write = False
         #: An address whose write raises, and what runs after any later write.
         self.fail_at = None
         self.on_write = None
 
     def read(self, addr, length):
-        return bytes(self.memory[addr:addr + length])
+        return bytes(self.ram[addr:addr + length])
 
     def read_blocks(self, blocks):
         return [self.read(a, n) for a, n in blocks]
@@ -47,12 +47,12 @@ class Machine:
     def write(self, addr, data, verify=True):
         if self.fail_write or addr == self.fail_at:
             raise NotConnected("the emulator went away")
-        self.memory[addr:addr + len(data)] = data
+        self.ram[addr:addr + len(data)] = data
         if self.on_write is not None:
             self.on_write(addr, bytes(data))
 
     def at(self, offset, data):
-        self.memory[BASE + offset:BASE + offset + len(data)] = data
+        self.ram[BASE + offset:BASE + offset + len(data)] = data
 
     geo_blob = None
 
@@ -64,9 +64,9 @@ def machine(key, area=5, stale=False):
     """A title at its world menu in `area`; the script is made up."""
     row = trips.ROWS[key]
     m = Machine()
-    m.memory[BUFFER:BUFFER + 0x1000] = b"\xee" * 0x1000
+    m.ram[BUFFER:BUFFER + 0x1000] = b"\xee" * 0x1000
     if stale:
-        m.memory[BUFFER + 0x1000:BUFFER + trips.BUFFER_SIZE] = (
+        m.ram[BUFFER + 0x1000:BUFFER + trips.BUFFER_SIZE] = (
             b"\x77" * (trips.BUFFER_SIZE - 0x1000))
     m.at(row.buffer_pointer, struct.pack(">I", BUFFER - row.buffer_bias))
     m.at(row.area, bytes([area]))
@@ -102,17 +102,17 @@ def finish(t, m, key, new_area):
     m.at(row.area, bytes([new_area]))
     m.at(row.key_buffer, b"\x00\x0d")      # the game took the key
     if row.clears_buffer:                  # and the loader cleared the buffer
-        m.memory[BUFFER + 0x1000:BUFFER + trips.BUFFER_SIZE] = bytes(
+        m.ram[BUFFER + 0x1000:BUFFER + trips.BUFFER_SIZE] = bytes(
             trips.BUFFER_SIZE - 0x1000)
     return t.continue_pending(m)
 
 
 def test_an_offered_trip_arms_and_says_the_c64_sentence(disks):
     m = machine(CURSE)
-    before = bytes(m.memory)
+    before = bytes(m.ram)
     out = travel().apply(m, area(7, arrival=(1, 2, 0)))
     assert out.ok and out.message == "Traveling to Shadowdale."
-    assert out.writes and bytes(m.memory) != before
+    assert out.writes and bytes(m.ram) != before
     assert m.read(BASE + trips.ROWS[CURSE].key_buffer, 2) == trips.FORWARD_KEY
 
 
@@ -271,15 +271,15 @@ def test_when_it_does_not_change_the_trip_is_put_back(disks, monkeypatch):
     now = [100.0]
     monkeypatch.setattr(aft.time, "monotonic", lambda: now[0])
     m = machine(CURSE)
-    before = bytes(m.memory)
+    before = bytes(m.ram)
     t = travel()
     t.apply(m, area(7))
-    assert bytes(m.memory) != before
+    assert bytes(m.ram) != before
     assert t.continue_pending(m) is None
     now[0] += aft.FIRE_SECONDS + 0.1
     out = t.continue_pending(m)
     assert not out.ok and out.message == aft.NOT_HAPPENED
-    assert bytes(m.memory) == before
+    assert bytes(m.ram) == before
     assert t.back is None and t.trip is None
 
 
@@ -357,13 +357,13 @@ def test_a_raising_disarm_keeps_the_trip_and_logs_a_warning(disks, monkeypatch, 
 
 def test_a_write_error_while_arming_reports_the_failure(disks, caplog):
     m = machine(CURSE)
-    before = bytes(m.memory)
+    before = bytes(m.ram)
     m.fail_write = True
     t = travel()
     with caplog.at_level(logging.WARNING):
         out = t.apply(m, area(7))
     assert not out.ok and out.message == aft.NOT_HAPPENED
-    assert t.trip is None and t.back is None and bytes(m.memory) == before
+    assert t.trip is None and t.back is None and bytes(m.ram) == before
 
 
 def test_an_arm_that_raises_is_reported_and_logged(disks, monkeypatch, caplog):
@@ -421,7 +421,7 @@ def test_a_trip_the_game_took_during_a_failed_arm_is_in_progress(disks):
     m.fail_at = BASE + row.key_buffer
 
     def game_takes_it(addr, data):
-        m.memory[BASE + row.area] = 7
+        m.ram[BASE + row.area] = 7
 
     m.on_write = game_takes_it
     t = travel()
@@ -475,6 +475,7 @@ from automap import (
 
 WINDOW = 0x40000
 PORT = 0x40100
+ZEROED_VARS = 0x48000
 POOL_ENTRY = 0xA000
 #: What `entry_words` reads on the fixture: the entry, then four zero words.
 POOL_WORDS = POOL_ENTRY.to_bytes(2, "big") + bytes(8)
@@ -497,14 +498,16 @@ def pool(area_id=13, entry=POOL_ENTRY):
     m.at(row.mode, bytes([row.world_mode]))
     m.at(row.step_entry, entry.to_bytes(2, "big"))
     m.at(row.window_pointer, struct.pack(">I", WINDOW))
-    m.memory[WINDOW + trips.WINDOW_USERPORT:WINDOW + trips.WINDOW_USERPORT + 4] = \
+    # A zeroed `$4900` table, clear of the window, so every departure guard reads.
+    m.at(0x98, struct.pack(">I", ZEROED_VARS))
+    m.ram[WINDOW + trips.WINDOW_USERPORT:WINDOW + trips.WINDOW_USERPORT + 4] = \
         struct.pack(">I", PORT)
     take_key(m)
     return m
 
 
 def take_key(m):
-    m.memory[PORT + trips.PORT_LIST:PORT + trips.PORT_LIST + 12] = \
+    m.ram[PORT + trips.PORT_LIST:PORT + trips.PORT_LIST + 12] = \
         trips.empty_list(PORT)
 
 
@@ -513,7 +516,7 @@ def key_waiting(m):
 
 
 def clear_buffer(m):
-    m.memory[BUFFER + 0x1000:BUFFER + trips.BUFFER_SIZE] = bytes(
+    m.ram[BUFFER + 0x1000:BUFFER + trips.BUFFER_SIZE] = bytes(
         trips.BUFFER_SIZE - 0x1000)
 
 
@@ -571,7 +574,7 @@ def test_a_door_key_not_taken_in_time_is_put_back_and_return_is_forgiven(
         disks, pool_gate, monkeypatch):
     party_with(monkeypatch, FATIMA)
     m = pool(13)
-    before = bytes(m.memory)
+    before = bytes(m.ram)
     t = pool_travel(monkeypatch)
     t.back = engine.Waypoint(2, None, (1, 1, 0))
     previous = t.back
@@ -579,7 +582,7 @@ def test_a_door_key_not_taken_in_time_is_put_back_and_return_is_forgiven(
     t.trip.deadline = 0.0
     out = t.continue_pending(m)
     assert not out.ok and out.message == aft.NOT_HAPPENED
-    assert bytes(m.memory) == before
+    assert bytes(m.ram) == before
     assert t.trip is None and t.back == previous
 
 
@@ -694,11 +697,11 @@ def test_a_leg_the_prologue_alone_pushes_past_its_script_is_held_up_front(
     disks[27] = 7573
     party_with(monkeypatch, FATIMA)
     m = pool(13)
-    before = bytes(m.memory)
+    before = bytes(m.ram)
     t = pool_travel(monkeypatch)
     out = t.run(m, area(0))
     assert not out.ok and out.message == t.not_built
-    assert bytes(m.memory) == before and t.trip is None
+    assert bytes(m.ram) == before and t.trip is None
 
 
 def test_a_trip_from_a_window_and_a_return_are_offered_as_script_trips(
@@ -766,7 +769,7 @@ def stage(m, values):
     m.at(0x98, struct.pack(">I", VARS))
     for variable, word in values.items():
         at = VARS + 2 * (variable - 0x4900)
-        m.memory[at:at + 2] = word.to_bytes(2, "big")
+        m.ram[at:at + 2] = word.to_bytes(2, "big")
 
 
 def statements_written(out):
@@ -856,11 +859,11 @@ def test_a_departure_guard_that_cannot_be_read_arms_nothing(
         lambda target, title, var: amigavars.VarReading(
             var, None, 0, None, "not readable"))
     m = pool(17)
-    before = bytes(m.memory)
+    before = bytes(m.ram)
     t = pool_travel(monkeypatch)
     out = t.run(m, area(0), arrival=(1, 2, 0))
     assert not out.ok and out.message == aft.NOT_HAPPENED
-    assert t.trip is None and bytes(m.memory) == before
+    assert t.trip is None and bytes(m.ram) == before
 
 
 def test_a_party_of_one_title_is_not_asked_about_another_titles_area(

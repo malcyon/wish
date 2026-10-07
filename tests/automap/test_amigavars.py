@@ -147,3 +147,11 @@ def test_an_unlocated_data_base_is_a_typed_error_and_reports_the_size():
         amigavars.resolve(m, "pool-of-radiance", 0x4AB5)
     reading = amigavars.read_variable(m, "pool-of-radiance", 0x4AB5)
     assert (reading.size, reading.address) == (2, None)
+
+
+def test_a_target_whose_memory_is_not_yet_measured_resolves_within_chip_and_slow():
+    m = make(POD)
+    m.memory = None
+    m.put(0x40000 + 0x25E, b"\x02")
+    got = amigavars.read_variable(m, "pools-of-darkness", 0x25E)
+    assert (got.address, got.value, got.unreadable) == (0x4025E, 2, None)

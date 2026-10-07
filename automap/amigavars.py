@@ -124,7 +124,9 @@ def resolve(target, title: str, var: int) -> tuple[int, VarRange]:
             if head == 0:
                 raise VarError(f"the table pointer for ${var:04X} is zero")
             address = head + rng.size * (var - rng.origin)
-            memory = getattr(target, "memory", amiga.MEMORY)
+            # A live target holds None until its first measured write, so the
+            # chip and slow ranges stand in until it has regions of its own.
+            memory = getattr(target, "memory", None) or amiga.MEMORY
             if not amiga._in_memory(address, rng.size, memory):
                 raise VarError(f"${var:04X} resolves to {address:#x}, "
                                "outside the guest's memory")
