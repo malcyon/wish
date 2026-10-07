@@ -10,6 +10,7 @@ is which trips the row offers and what it does with the answers.
 import dataclasses
 import os
 import struct
+from types import SimpleNamespace
 
 import pytest
 from test_amigawindow import (
@@ -481,3 +482,25 @@ def test_a_c64_two_hop_trip_is_forgotten_when_an_amiga_attaches(lengths):
     window._refresh_roster()
     assert window.fasttravel_bar.fasttravel is c64_action
     assert c64_action.pending is None
+
+
+@pytest.mark.parametrize("title", ["Curse of the Azure Bonds",
+                                   "Secret of the Silver Blades"])
+def test_a_c64_back_watches_for_the_attached_titles_area(title):
+    """Area 0x21 is an area in each of these titles and means something else
+    (or nothing) in Pool of Radiance's table."""
+    watched = []
+    back = SimpleNamespace(area=0x21)
+    stub = SimpleNamespace(
+        title=title, _amiga=False, target=object(),
+        fasttravel=SimpleNamespace(
+            back=back, back_verdict=None,
+            apply_back=lambda target: engine.Outcome(True, "ok")),
+        _asked=lambda call, *args: engine.Verdict(True),
+        _idle_poll=lambda: None,
+        _ready=lambda verdict: verdict,
+        _expect=watched.append,
+        _report=lambda *args: None)
+    assert actionbar.FastTravelBar.run_back(stub).ok
+    assert watched == [engine.area_by_id(0x21, title)]
+    assert watched[0] is not None

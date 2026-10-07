@@ -177,6 +177,11 @@ class TripRow:
     #: The same three in memory, for a tier-2 write and for `square`.
     square_spots: tuple[Spot, Spot, Spot]
     world_mode: int = 4
+    #: Pools of Darkness: the mode, menu kind and menu text of an overland,
+    #: where the one menu item reads as `Encamp` (PROBABLE, not read live).
+    overland_mode: int | None = None
+    overland_menu_kind: int | None = None
+    overland_menu_text: bytes | None = None
     #: The menu-kind word (1 at a horizontal menu), where the menu's text is,
     #: and the world menu's text, which is NUL-terminated in memory.
     menu_kind: int | None = None
@@ -344,7 +349,8 @@ def departure_prologue(key: str, here: int | None, to: int,
                                   "could not be read")
         if not held:
             return b""
-    return b"".join(save(value, address) for address, value in row.writes)
+    out = b"".join(save(value, address) for address, value in row.writes)
+    return out + clear_box() if row.clear_box else out
 
 
 def leg_held(row: TripRow, here: int | None, to: int, back: bool,
@@ -445,6 +451,7 @@ ROWS: dict[str, TripRow] = {
         menu_kind=0x235E, menu_at=0x4F34,
         menu_text=b"Area Cast View Encamp Search Look",
         key_buffer=0x5742,
+        overland_mode=3, overland_menu_kind=4, overland_menu_text=b"Encamp",
         script_file="/Disk3/ECL.GLB",
         confirmed=True,
         differences=(_return_landing(),)),
@@ -895,7 +902,8 @@ def gate(target, row) -> bool:
     """Whether the game sits at its world menu with no key pending.
 
     Curse, Silver Blades, Pools of Darkness: menu kind 1, the world menu's
-    text, the walking mode and an empty key buffer. Pool of Radiance has no
+    text, the walking mode and an empty key buffer. Pools of Darkness also
+    opens on an overland: its mode, its menu kind and its menu text. Pool of Radiance has no
     menu global: the walking mode and the 3D view with the world menu's
     gadgets, or the grid's mode and a grid view with the grid menu's, and an
     empty message list on the window's port. Camp and the world menu share
@@ -925,9 +933,20 @@ def gate(target, row) -> bool:
         (base + row.menu_kind, 2),
         (base + row.menu_at, len(row.menu_text) + 1),
         (base + row.mode, 1), (base + row.key_buffer, 1)])
-    return (int.from_bytes(kind, "big") == 1
-            and text == row.menu_text + b"\0"
-            and mode[0] == row.world_mode and key[0] == 0)
+    if key[0] != 0:
+        return False
+    if (int.from_bytes(kind, "big") == 1 and text == row.menu_text + b"\0"
+            and mode[0] == row.world_mode):
+        return True
+    if row.overland_mode is None or row.overland_menu_kind is None \
+            or row.overland_menu_text is None:
+        return False
+    if mode[0] != row.overland_mode \
+            or int.from_bytes(kind, "big") != row.overland_menu_kind:
+        return False
+    return target.read(base + row.menu_at,
+                       len(row.overland_menu_text) + 1) \
+        == row.overland_menu_text + b"\0"
 
 
 # -- arming, and putting back -------------------------------------------------

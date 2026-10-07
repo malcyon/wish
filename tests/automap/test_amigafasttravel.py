@@ -1173,3 +1173,55 @@ def test_a_new_instance_repairs_a_stopped_runs_journal_before_it_arms(
     assert bytes(m.ram) != before
     # `run`, not `apply`: the legality check's gate would already see the residue.
     assert travel(key).run(m, area(0x30), arrival=(1, 1, 0)).ok
+
+
+def test_a_pools_of_darkness_row_comes_from_the_amiga_table():
+    t = aft.AmigaFastTravel(POD, object())
+    assert t._row(33).name == "Aerie"
+    assert t._row(17).overland_view
+    assert not t._row(33).overland_view
+
+
+def test_a_pools_of_darkness_return_names_the_area(disks, monkeypatch):
+    # The held Return is a separate matter; lift it to see the sentence.
+    row = dataclasses.replace(trips.ROWS[POD], differences=())
+    monkeypatch.setitem(trips.ROWS, POD, row)
+    t = aft.AmigaFastTravel(POD, object())
+    m = machine(POD, area=33)
+    assert t.apply(m, areas.area_in(0x30, areas.POOLS_OF_DARKNESS)).ok
+    assert finish(t, m, POD, 0x30) is None
+    out = t.apply_back(m)
+    assert out.ok
+    assert "Aerie" in out.message and "area 33" not in out.message
+
+
+def _overland(key, area_id):
+    m = machine(POD, area=area_id)
+    row = trips.ROWS[POD]
+    m.at(row.mode, bytes([row.overland_mode]))
+    m.at(row.menu_kind, row.overland_menu_kind.to_bytes(2, "big"))
+    m.at(row.menu_at, row.overland_menu_text + b"\0" + b"\0" * 40)
+    return m, row
+
+
+def _statements(m):
+    return bytes(m.ram[BUFFER:BUFFER + trips.BUFFER_SIZE])
+
+
+def test_a_trip_off_an_overland_is_offered_and_leads_with_the_exit_statements(
+        disks):
+    t = aft.AmigaFastTravel(POD, object())
+    m, _row = _overland(POD, 17)
+    zhentil = areas.area_in(19, areas.POOLS_OF_DARKNESS)
+    assert t.legality(m, zhentil)
+    assert t.apply(m, zhentil, arrival=(8, 15, 0)).ok
+    lead = (trips.save(0, 0x24) + trips.save(1, 0x22) + trips.clear_box())
+    assert _statements(m).startswith(lead) or lead in _statements(m)
+
+
+def test_a_trip_between_overlands_has_no_exit_statements(disks):
+    t = aft.AmigaFastTravel(POD, object())
+    m, _row = _overland(POD, 17)
+    assert t.legality(m, areas.area_in(25, areas.POOLS_OF_DARKNESS))
+    assert t.apply(m, areas.area_in(25, areas.POOLS_OF_DARKNESS)).ok
+    assert trips.save(1, 0x22) not in _statements(m)

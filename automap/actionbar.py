@@ -1047,7 +1047,7 @@ class FastTravelBar(QObject):
         return outcome
 
     def run_back(self) -> engine.Outcome | None:
-        going = engine.area_by_id(self.fasttravel.back.area) \
+        going = engine.area_by_id(self.fasttravel.back.area, self.title) \
             if self.fasttravel.back is not None and not self._amiga else None
         ready = self._ready(self._asked(self.fasttravel.back_verdict,
                                         self._idle_poll()))

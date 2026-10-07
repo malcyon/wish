@@ -32,10 +32,11 @@ def test_a_row_is_found_by_title_port_and_area():
     assert departures.find("secret-of-the-silver-blades", "c64", 0x20, 0) is None
 
 
-def test_the_pools_of_darkness_row_is_dormant_and_amiga_only():
+def test_the_pools_of_darkness_row_is_amiga_only_and_ends_with_clear_box():
     row = departures.find("pools-of-darkness", "amiga", 17, 19,
                           to_overland=False)
     assert row.writes == ((0x24, 0), (0x22, 1))
+    assert row.clear_box
     assert departures.find("pools-of-darkness", "amiga", 17, 19) is None
     assert departures.find("pools-of-darkness", "amiga", 17, 19,
                            to_overland=True) is None

@@ -77,6 +77,8 @@ class Departure:
     #: Whether a trip may reproduce this row. A row that is built and tested
     #: but not yet shown to match the walk stays False and `find` skips it.
     enabled: bool = True
+    #: Whether the script's exit also runs `CLEAR BOX` after its `SAVE`s.
+    clear_box: bool = False
     #: Names the script drops from the roster on the way out. A slot matches
     #: on its record's name.
     dismiss: tuple[str, ...] = ()
@@ -144,11 +146,12 @@ DEPARTURES: tuple[Departure, ...] = (
               writes=((0xC059, 9), (0xC05A, 12))),
     # Pools of Darkness areas 17, 25, 51 and 80 hand the party to a parent
     # script, and a trip to a non-overland area skips what that script leaves
-    # in script variables `$24` and `$22`. Nothing reads this row yet: the
-    # Amiga trip gate keeps every such trip from starting.
+    # in script variables `$24` and `$22`. All four exit subroutines are the
+    # same 13 bytes, `SAVE 0,[$24]`, `SAVE 1,[$22]`, `CLEAR BOX`, `RETURN`:
+    # 17 `$9653`, 25 `$8BA2`, 51 `$87AE`, 80 `$87FC`.
     Departure(POOLS_OF_DARKNESS, frozenset({17, 25, 51, 80}),
               frozenset({AMIGA}), writes=((0x24, 0), (0x22, 1)),
-              to_overland=False),
+              to_overland=False, clear_box=True),
     # The Pit of Moander's exit, `ECL11 $82E1-$84F3`, drops ALIAS and
     # DRAGONBAIT (NPCs only) and sets `$4C5B` to 255. It runs only when
     # `$4C5B` is not 255, `$4C2D` is 128 or 255 and `$4C2E` is not 0; the

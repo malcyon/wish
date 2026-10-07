@@ -249,6 +249,8 @@ class Area:
     #: to `DUNGEON`'s key-wait loop, so **no later fasttravel can be started**
     #: (write-up lost, `reports/p20-arrivals.md`).
     fasttravelable: bool = True
+    #: Pools of Darkness: the script sets the overland view (`$24` = 1, `$22` = 0) at entry 4.
+    overland_view: bool = False
     #: How this title names a disk side, for `label`. Pool of Radiance's sides
     #: are `POOL1`-`POOL8` and Silver Blades' are `SILVER-1`-`SILVER-6`, and a
     #: dropdown that said `POOL3` under a Silver Blades session would be
@@ -809,7 +811,7 @@ AREAS_POOLS_OF_DARKNESS: tuple[Area, ...] = (
     _p(3, (), fasttravelable=False),
     _p(4, ("GEO51",), fasttravelable=False),
     _p(16, ("GEO10", "GEO11")),
-    _p(17, ()),
+    _p(17, (), overland_view=True),
     _p(18, ("GEO12",), None, name="Elminster's Camp in Limbo"),
     _p(19, ("GEO13",), Arrival(8, 15, 0), name="Zhentil Keep"),
     _p(20, ("GEO14",)),
@@ -817,7 +819,7 @@ AREAS_POOLS_OF_DARKNESS: tuple[Area, ...] = (
     _p(22, ("GEO16",), Arrival(7, 15, 0), name="Taydome's Keep"),
     _p(23, (), dynamic_geo=True, fasttravelable=False),
     _p(24, ("GEO11",), Arrival(0, 5, 1)),
-    _p(25, ()),
+    _p(25, (), overland_view=True),
     _p(26, ("GEO13",), Arrival(0, 3, 1), name="The Black City of Mulmaster"),
     _p(27, ("GEO12",)),
     _p(32, ("GEO20",)),
@@ -834,7 +836,8 @@ AREAS_POOLS_OF_DARKNESS: tuple[Area, ...] = (
     _p(48, ("GEO30",), None, name="Manshoon's Tower"),
     _p(49, (), dynamic_geo=True, fasttravelable=False),
     _p(50, ("GEO32",), None, name="Temple of Tyr"),
-    _p(51, (), dynamic_geo=True, fasttravelable=False),
+    _p(51, (), dynamic_geo=True, fasttravelable=False,
+       overland_view=True),
     _p(52, ("GEO34",), None, name="Moander"),
     _p(53, ("GEO35",), None, name="Moander's Heart"),
     _p(54, ("GEO32",), Arrival(7, 13, 2)),
@@ -853,7 +856,8 @@ AREAS_POOLS_OF_DARKNESS: tuple[Area, ...] = (
     _p(75, (), dynamic_geo=True, fasttravelable=False),
     _p(76, (), dynamic_geo=True, fasttravelable=False),
     _p(77, (), dynamic_geo=True, fasttravelable=False),
-    _p(80, (), dynamic_geo=True, fasttravelable=False),
+    _p(80, (), dynamic_geo=True, fasttravelable=False,
+       overland_view=True),
     _p(81, ("GEO51",), None, name="Testing Ground"),
     _p(82, ("GEO52", "GEO54"), None, name="Kalistes' Parlor"),
     _p(83, ("GEO53",), None, name="Kalistes Land"),

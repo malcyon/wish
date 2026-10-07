@@ -1210,3 +1210,12 @@ def test_every_pools_of_darkness_map_is_on_disk_three(pod_disks):
     if not ids:
         pytest.skip("needs the Pools of Darkness disk 3")
     assert areas.geos_in(POD) <= ids
+
+
+def test_pools_of_darkness_overlands_are_marked():
+    marked = {a.id for a in areas.TABLES[POD] if a.overland_view}
+    assert marked == {17, 25, 51, 80}
+    assert not any(a.outdoors for a in areas.TABLES[POD])
+    for title, table in areas.TABLES.items():
+        if title != POD:
+            assert not any(a.overland_view for a in table), title

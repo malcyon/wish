@@ -32,6 +32,8 @@ import secrets
 import time
 from dataclasses import dataclass
 
+from goldbox import areas
+
 from . import actions as engine
 from . import amiga, amigaactions, amigaparty, amigavars, fasttravel
 from . import amigatrip as trips
@@ -148,10 +150,12 @@ class AmigaFastTravel(engine.FastTravel):
         return self._init_areas
 
     def _row(self, id: int):
-        return engine.area_by_id(id, self.title)
+        return areas.area_in(id, self.title)
 
     def _outdoors(self, to: int) -> bool:
-        return bool(getattr(self._row(to), "outdoors", False))
+        row = self._row(to)
+        return bool(getattr(row, "outdoors", False)
+                    or getattr(row, "overland_view", False))
 
     # -- may we -----------------------------------------------------------
 
@@ -182,8 +186,7 @@ class AmigaFastTravel(engine.FastTravel):
         if not getattr(area, "fasttravelable", True):
             # A party that left from inside such a child area must see the
             # Return sentence, not the attract-mode one. Unreachable today:
-            # a Waypoint has no `fasttravelable`, so it defaults to True, and
-            # Pools of Darkness `_row` finds no row for a stored Back area.
+            # a Waypoint has no `fasttravelable`, so it defaults to True.
             return engine.Verdict(False, self.not_built if back
                                   else self.ATTRACT_TRAP)
         here = trips.area_id(target, row)

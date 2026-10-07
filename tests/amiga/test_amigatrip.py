@@ -1201,7 +1201,7 @@ def test_a_packed_trip_writes_the_statements_at_the_script_end_then_the_message(
 def test_a_pods_trip_from_the_hand_over_areas_has_the_two_saves():
     # `$24` and `$22` are script variables: the statements are the game's own
     # `SAVE`, which evaluates nothing, so they are placed ahead of the trip.
-    expected = trip.save(0, 0x24) + trip.save(1, 0x22)
+    expected = trip.save(0, 0x24) + trip.save(1, 0x22) + trip.clear_box()
     for here in (17, 25, 51, 80):
         assert trip.departure_prologue("pools-of-darkness", here, 19,
                                        False) == expected
@@ -1231,17 +1231,39 @@ def _pods(area, mode):
     return m, row
 
 
+def _overland(area, mode=3, kind=4, text=b"Encamp"):
+    m, row = _pods(area, mode=mode)
+    m.at(row.menu_kind, kind.to_bytes(2, "big"))
+    m.at(row.menu_at, text + b"\0" + b"\0" * 40)
+    return m, row
+
+
 @pytest.mark.parametrize("area", [17, 25, 51, 80])
-def test_the_gate_keeps_a_hand_over_area_trip_from_starting(area):
-    # D11 is dormant: in these areas the game is not in the walking mode, so
-    # no trip is armed and the row is never read.
-    m, row = _pods(area, mode=0)
+def test_the_gate_opens_at_the_overland_menu(area):
+    m, row = _overland(area)
+    assert trip.gate(m, row)
+
+
+@pytest.mark.parametrize("mode,kind,text", [
+    (3, 1, b"Encamp"),
+    (3, 4, b"Area Cast View Encamp Search Look"),
+    (4, 4, b"Encamp"),
+    (0, 4, b"Encamp"),
+])
+def test_the_gate_stays_shut_at_mixed_overland_state(mode, kind, text):
+    m, row = _overland(17, mode=mode, kind=kind, text=text)
+    assert not trip.gate(m, row)
+
+
+def test_the_gate_stays_shut_at_the_overland_with_a_key_pending():
+    m, row = _overland(17)
+    m.at(row.key_buffer, b"\x01\x0d")
     assert not trip.gate(m, row)
 
 
 @pytest.mark.parametrize("area", [17, 25, 51, 80])
 def test_with_the_gate_open_the_hand_over_saves_lead_the_trip(area):
-    m, row = _pods(area, mode=row_world_mode())
+    m, row = _overland(area)
     assert trip.gate(m, row)
     prologue = trip.departure_prologue(row.key, area, 19, False)
     plan = trip.plan(19, (1, 2, 0), None, 1, prologue=prologue)
@@ -1249,11 +1271,8 @@ def test_with_the_gate_open_the_hand_over_saves_lead_the_trip(area):
     assert armed is not None
     statements = b"".join(d for a, d, _v in m.log
                           if a >= BUFFER and a < BUFFER + trip.BUFFER_SIZE)
-    assert trip.save(0, 0x24) + trip.save(1, 0x22) in statements
-
-
-def row_world_mode():
-    return trip.ROWS["pools-of-darkness"].world_mode
+    assert (trip.save(0, 0x24) + trip.save(1, 0x22) + trip.clear_box()
+            in statements)
 
 
 @pytest.mark.parametrize("key", ["curse-of-the-azure-bonds",
