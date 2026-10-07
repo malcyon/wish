@@ -3076,6 +3076,18 @@ class Session:
                 "restore_encounter_gates() puts them back and verifies them; "
                 "allow_suppressed=True saves anyway")
 
+    def _known_script_loaded(self, mon, gated_area: int) -> bool:
+        """Whether the running area is another area with a script gate whose
+        guard bytes are in memory, so the script the gate patched is gone
+        whole and a byte equal to the poke belongs to the loaded script."""
+        area = mon.read(self._title_entry(AREA_BYTE, "area byte").addr, 1)[0]
+        gate = ENCOUNTER_GATES.get((self.game.key, area))
+        if area == gated_area or gate is None or gate.guard is None:
+            return False
+        at, want = gate.guard
+        return guard_holds(bytes(mon.read(at, len(want))), gate.guard,
+                           gate.pokes)
+
     def restore_encounter_gates(self) -> list[dict]:
         """Turn `no_encounters` and `skip_world_map_ambushes` off, put back
         every gate value written since the last verified restore, read each
@@ -3122,7 +3134,9 @@ class Session:
                             # and writing into that script is no answer.
                             left = found[addr - at]
                             poke_left = (left == h["written"]
-                                         and left != h["original"])
+                                         and left != h["original"]
+                                         and not self._known_script_loaded(
+                                             mon, h["area"]))
                             row.update(now=left, read_back=left,
                                        action="script replaced",
                                        verified=not poke_left)

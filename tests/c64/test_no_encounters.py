@@ -453,6 +453,35 @@ def test_a_silver_blades_gate_writes_nothing_over_another_script():
     assert any("not suppressed" in line for line in s.lines)
 
 
+def _well_then(area, script):
+    s, at = _silver(0x21)
+    s.suppress_encounters()
+    s.mem[S.AREA_BYTE[s.game.key].addr] = area
+    for i, b in enumerate(script):
+        s.mem[at + i] = b
+    return s, at
+
+
+def test_another_known_script_holding_the_poked_byte_is_replaced_not_left():
+    """ECL20 holds $09 at $834F, the Well's gate address."""
+    ruins_at, ruins = S.SILVER_BLADES_ROLLS[0x20]
+    s, at = _well_then(0x21, bytes(13))
+    s.mem[S.AREA_BYTE[s.game.key].addr] = 0x20
+    for i, b in enumerate(bytes.fromhex(ruins)):
+        s.mem[ruins_at + i] = b
+    s.mem[at] = S.ECL_SAVE
+    rows = s.restore_encounter_gates()
+    assert rows[0]["action"] == "script replaced" and rows[0]["verified"]
+    s._check_save_allowed()
+
+
+def test_an_unidentified_script_holding_the_poked_byte_still_raises():
+    s, at = _well_then(0x20, bytes(13))
+    s.mem[at] = S.ECL_SAVE
+    with pytest.raises(S.GateRestoreError, match="still holds the poke"):
+        s.restore_encounter_gates()
+
+
 @pytest.mark.parametrize("area", (0x44, 0x61))
 def test_silver_blades_areas_without_a_roll_are_known_and_write_nothing(area):
     s, _ = _silver(0x20)
