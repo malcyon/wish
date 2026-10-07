@@ -217,6 +217,21 @@ VAULT_ROW = "vault_row"
 VAULT_DEFAULT_ITEMS = 40
 
 
+def camp_in_place_title(title: AmigaTitle) -> AmigaTitle:
+    """`title` with its walk steps dropped, so the route goes from the loaded menu to camp where the party stands.
+
+    For a party whose next square holds a scripted prompt the route has no answer for.
+    Camp entry and every guard after it are unchanged.
+    """
+    def without_walk(route: tuple) -> tuple:
+        return tuple(step for step in route if step[2] != "move")
+
+    if without_walk(title.route) == title.route:
+        raise RouteError("the route has no walk step to skip")
+    return dataclasses.replace(title, route=without_walk(title.route),
+                               measure_route=without_walk(title.measure_route))
+
+
 def vault_steps(items: int, coins: bool) -> tuple[tuple[str, str, str], ...]:
     """From Elminster's menu: open the vault, move the highlight to its last item, and come back to the menu.
 

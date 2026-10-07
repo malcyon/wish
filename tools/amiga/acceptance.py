@@ -76,6 +76,7 @@ from tools.amiga.route_darkness import (  # noqa: E402
     DARKNESS_VOLUME,
     _prepare_darkness,
     _prepare_darkness_reload,
+    camp_in_place_title,
     published_reload_title,
     published_title,
     vault_steps,
@@ -1150,6 +1151,8 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
                         f"{'matches' if matches else 'differs from'} "
                         f"the game's own save after the same walk")
                 result["walk"] = walk
+                if squares == 0:
+                    result["walk_skipped"] = True
                 result["read"] = {
                     "place_before": manifest["state_a"], "menu_save": control.get("place"),
                     "place_after": after.get("place"),
@@ -1600,7 +1603,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
               lane_check: Callable[[], Any] | None = None,
               rulebook_records: list[int] | None = None,
               marks: Mapping[int, tuple[tuple[str, str], ...]] | None = None,
-              walk_retry: int = 0, encounters: Any = None,
+              walk_retry: int = 0, camp_in_place: bool = False, encounters: Any = None,
               cli_title: str | None = None, resume_from: pathlib.Path | None = None,
               at_step: int | None = None, reads: Sequence[ReadAt] = (),
               reader: Any = None) -> dict[str, Any]:
@@ -1865,6 +1868,11 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             raise RouteError("camp steps are driven on a published accept, or a Pools of "
                              "Darkness or Pool of Radiance accept, only")
         title = accept_title(title, manifest)
+    if camp_in_place:
+        # After the manifest checks above, which compare the title with the published route.
+        if cli_title not in ("darkness", "darkness-reload") or title is None:
+            raise RouteError("--camp-in-place is for Pools of Darkness only")
+        title = camp_in_place_title(title)
     if preserve_specimen and "substitute" in manifest and manifest.get("title") == "darkness":
         raise RouteError("a Pools of Darkness substitute has no registered specimen to preserve")
     if preserve_specimen and manifest.get("mode") == PUBLISHED_DISK_THREE_MODE:
@@ -4721,6 +4729,9 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--no-encounters", action="store_true", help=NO_ENCOUNTERS_HELP)
     a.add_argument("--read-at", action="append", type=_read_at_arg, metavar="STEP:ADDR:LEN",
                    help=READ_AT_HELP)
+    a.add_argument("--camp-in-place", action="store_true",
+                   help="Pools of Darkness only: skip the walk and enter camp where the party "
+                        "stands; the summary records walk_skipped")
     a.add_argument("--walk-retry", type=int, default=0, metavar="N",
                    help="snapshot before the first turn or move step, and on a screen the guard "
                         "does not match restore it and walk again, at most N times; a restore "
@@ -4961,7 +4972,8 @@ def main(argv: list[str] | None = None) -> int:
                     cli_title=args.title, published_disk_one=args.published_disk_one,
                     published_name=args.title if args.published_disk_one else None,
                     journal_python=getattr(args, "journal_python", None),
-                    walk_retry=getattr(args, "walk_retry", 0), **resume,
+                    walk_retry=getattr(args, "walk_retry", 0),
+                    camp_in_place=getattr(args, "camp_in_place", False), **resume,
                     **_encounters(args, holder), **_read_options(args, holder),
                     **_draw_options(args, holder),
                     preserve_specimen=getattr(args, "preserve_specimen", False),
