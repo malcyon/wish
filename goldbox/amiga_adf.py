@@ -758,9 +758,12 @@ class AmigaDisk:
         exist; this creates files, not directories, because every path a
         conversion needs is already on the game disk.
 
-        A failure leaves the disk unchanged: the blocks are counted and
-        reserved before anything is linked, and an existing file of the same
-        name is only unlinked once the new one is written.
+        An existing file of the same name is unlinked and its blocks freed
+        before the new one's are allocated, as AmigaDOS does when the game
+        replaces a save, so a replacement fits whenever the old file's blocks
+        and the free ones together suffice. A failure leaves the disk
+        unchanged, the old file included, because `_all_or_nothing` puts
+        every byte back.
         """
         self._check_writable()
         parts = [p for p in path.replace("\\", "/").split("/") if p]
@@ -792,21 +795,15 @@ class AmigaDisk:
         if not self.ffs:
             blocks_needed = max(1, blocks_needed)
         headers_needed = max(1, -(-blocks_needed // MAX_DATA_POINTERS))
-        # Allocate the replacement before touching the old file, so a
-        # failure leaves the disk exactly as it was: an existing file of the
-        # same name is only unlinked once the new one's blocks are secured.
-        # A consequence: the old file's own blocks are not up for reuse by
-        # its own replacement, so a same-size replace that used to succeed
-        # on a disk with no other room now fails instead of overwriting in
-        # place (#36).
-        old_blocks = (self._file_blocks(existing.block)
-                      if existing is not None else [])
-        allocated = self._allocate(blocks_needed + headers_needed)
+        # Free the old file first so its blocks count towards the new one;
+        # `_all_or_nothing` restores it if the allocation then falls short.
         if existing is not None:
+            old_blocks = self._file_blocks(existing.block)
             self._unlink(parent, existing)
             self._free_blocks(old_blocks)
             if self.dircache:
                 self._cache_remove(parent, existing.block)
+        allocated = self._allocate(blocks_needed + headers_needed)
         header = allocated[0]
         extensions = allocated[1:headers_needed]
         data_blocks = allocated[headers_needed:]

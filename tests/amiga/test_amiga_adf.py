@@ -263,24 +263,68 @@ def _data_blocks_for_total(total_blocks: int,
 
 
 def test_a_failed_replacement_leaves_the_original_file_readable():
-    """The docstring's promise: the old file is only unlinked once the new
-    one's blocks are secured, so a replacement that cannot fit leaves the
-    original exactly as it was.
+    """A replacement that cannot fit even in the old file's blocks plus the
+    free ones leaves the original exactly as it was.
 
-    The replacement is sized to need exactly one block more than is
-    currently free -- which the old, buggy order would have satisfied by
-    freeing `KEEP.cha` first, and the fixed order must not."""
+    The replacement is sized to need exactly one block more than the free
+    blocks and `KEEP.cha`'s own together."""
     disk = AmigaDisk.blank()
     original = b"original bytes"
+    before = disk.free_count()
     disk.write_file("KEEP.cha", original, when=WHEN)
     free = disk.free_count()
-    data_blocks = _data_blocks_for_total(free + 1)
+    data_blocks = _data_blocks_for_total(free + (before - free) + 1)
     payload = bytes(OFS_DATA_SIZE * data_blocks)
     with pytest.raises(AmigaDiskError, match="nothing was written"):
         disk.write_file("KEEP.cha", payload, when=WHEN)
     assert disk.free_count() == free
     assert [name for name, _ in disk.walk()] == ["/KEEP.cha"]
     assert disk.read_file("KEEP.cha") == original
+    assert disk.verify() == []
+
+
+def _crowded_disk(dos_type: int, save_total: int,
+                  spare: int) -> tuple[AmigaDisk, int]:
+    """A disk holding `SAVE` in `save_total` blocks and a filler that leaves
+    about `spare` free; returns it and the exact free count."""
+    disk = AmigaDisk.blank(dos_type=dos_type)
+    size = disk.data_block_size
+    disk.write_file("SAVE", b"\x11" * (size * _data_blocks_for_total(save_total)),
+                    when=WHEN)
+    filler = _data_blocks_for_total(disk.free_count() - spare)
+    disk.write_file("FILL", bytes(size * filler), when=WHEN)
+    return disk, disk.free_count()
+
+
+@pytest.mark.parametrize("dos_type", (0, 1, 4, 5))
+def test_a_same_size_replacement_reuses_the_old_files_blocks(dos_type):
+    """Fewer blocks free than the file holds, as on a nearly full save disk
+    the game itself can still replace a slot on: the old file's blocks are
+    the room, and the replacement fits exactly as AmigaDOS's does."""
+    disk, free = _crowded_disk(dos_type, save_total=24, spare=12)
+    assert free < 24
+    new = b"\x22" * (disk.data_block_size * _data_blocks_for_total(24))
+    disk.write_file("SAVE", new, when=WHEN)
+    assert disk.read_file("SAVE") == new
+    assert disk.free_count() == free
+    assert disk.verify() == []
+
+
+@pytest.mark.parametrize("dos_type", (0, 1, 4, 5))
+def test_a_larger_replacement_fits_in_old_plus_free_and_no_further(dos_type):
+    disk, free = _crowded_disk(dos_type, save_total=24, spare=12)
+    size = disk.data_block_size
+    original = disk.read_file("SAVE")
+    image = disk.to_bytes()
+    too_big = bytes(size * _data_blocks_for_total(24 + free + 1))
+    with pytest.raises(AmigaDiskError, match="nothing was written"):
+        disk.write_file("SAVE", too_big, when=WHEN)
+    assert disk.to_bytes() == image
+    assert disk.read_file("SAVE") == original
+    exact = b"\x33" * (size * _data_blocks_for_total(24 + free))
+    disk.write_file("SAVE", exact, when=WHEN)
+    assert disk.read_file("SAVE") == exact
+    assert disk.free_count() == 0
     assert disk.verify() == []
 
 
