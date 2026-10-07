@@ -166,3 +166,40 @@ def test_the_three_strings_stay_empty_until_donald_words_them(
     assert window._child("label_amiga_disk_three_caption").text() == ""
     assert convert.DISK_THREE_TITLE == ""
     assert ew.WRONG_DISK_THREE == ""
+
+
+# ---------------------------------------------------------------------------
+# The flag: the row exists only where the Amiga destination does
+# ---------------------------------------------------------------------------
+
+def _amiga_offered(window) -> bool:
+    return any(d.destination_port == "amiga"
+               for d in convert.destinations_for(window._save_as_source))
+
+
+@pytest.mark.parametrize("value", [None, "0", "off"])
+def test_flag_off_at_open_the_save_never_loads_and_no_row_shows(
+        app, monkeypatch, tmp_path, value):
+    _flag(monkeypatch, value)
+    monkeypatch.setattr(ew.QMessageBox, "critical", lambda *a, **k: None)
+    window = _window()
+    window.load(str(_dos_folder(tmp_path)))
+    window.begin_save_as("amiga")
+    assert window.party is None
+    assert window._save_as_source is None
+    assert window._child("destination_section").isHidden()
+
+
+@pytest.mark.parametrize("value", [None, "0", "off"])
+def test_flag_off_offers_no_amiga_destination_for_a_dos_save(
+        app, monkeypatch, tmp_path, value):
+    window = _save_as_amiga(monkeypatch, tmp_path)
+    assert _amiga_offered(window)
+    _flag(monkeypatch, value)
+    assert not _amiga_offered(window)
+
+
+def test_flag_on_offers_amiga_and_shows_the_row(app, monkeypatch, tmp_path):
+    window = _save_as_amiga(monkeypatch, tmp_path)
+    assert _amiga_offered(window)
+    assert not window._child(ROW).isHidden()
