@@ -2434,7 +2434,8 @@ class FastTravel(Action):
         overland square it last stood on)`). Indoors takes `arrival`,
         falling back to the area's own square.
         """
-        if getattr(area, "outdoors", False):
+        if (getattr(area, "outdoors", False)
+                or getattr(area, "overland_view", False)):
             if overland is None:
                 overland = getattr(area, "overland", None)
             return None, overland
@@ -2451,7 +2452,8 @@ class FastTravel(Action):
         """
         out = ["the arriving script assumes quest flags the party never set; "
                "arriving this way is not the same as having played there"]
-        outdoors_target = getattr(area, "outdoors", False)
+        outdoors_target = (getattr(area, "outdoors", False)
+                           or getattr(area, "overland_view", False))
         if not outdoors_target and arrival is None:
             # #263: this used to go on to cite `$addr.came_from` as the proof
             # that the claim is true -- a developer's citation, not something

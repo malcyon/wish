@@ -1729,3 +1729,11 @@ def test_a_key_buffer_title_has_taken_the_key_once_its_buffer_byte_reads_zero():
     assert not trip.port_empty(m, pods)
     m.at(pods.key_buffer, b"\x00")
     assert trip.port_empty(m, pods)
+
+
+def test_a_pools_of_darkness_trip_can_write_the_overland_cell():
+    pod = trip.ROWS["pools-of-darkness"]
+    assert trip.encode(pod, None, 17, grid=(6, 12)) \
+        == trip.save(6, 0x25) + trip.save(12, 0x26) + trip.newecl(17)
+    # No spots to read it back with: tier 2 and `overland()` stay as they were.
+    assert pod.grid_spots is None and pod.indoors_spot is None

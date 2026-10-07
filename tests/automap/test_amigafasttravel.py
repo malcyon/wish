@@ -1225,6 +1225,22 @@ def test_a_trip_between_overlands_has_no_exit_statements(disks):
     assert t.legality(m, areas.area_in(25, areas.POOLS_OF_DARKNESS))
     assert t.apply(m, areas.area_in(25, areas.POOLS_OF_DARKNESS)).ok
     assert trips.save(1, 0x22) not in _statements(m)
+    assert trips.save(10, 0x25) + trips.save(4, 0x26) in _statements(m)
+
+
+@pytest.mark.parametrize("to, cell", [(17, (6, 12)), (25, (10, 4))])
+def test_a_trip_into_a_pools_of_darkness_overland_writes_its_landing_cell(
+        disks, to, cell):
+    t = aft.AmigaFastTravel(POD, object())
+    m = machine(POD, area=19)
+    target = areas.area_in(to, areas.POOLS_OF_DARKNESS)
+    assert t.legality(m, target)
+    out = t.apply(m, target)
+    assert out.ok
+    assert (trips.save(cell[0], 0x25) + trips.save(cell[1], 0x26)
+            + trips.newecl(to)) in _statements(m)
+    assert any(str(cell) in note for note in out.notes)
+    assert not any("no arrival square" in note.lower() for note in out.notes)
 
 
 @pytest.mark.parametrize("key", [CURSE, POOL])

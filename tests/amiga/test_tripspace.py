@@ -385,3 +385,57 @@ def test_the_players_disks_give_pools_statement_counts_in_every_script():
         pytest.skip("needs the player's Amiga Pool of Radiance disks")
     assert (counts[1], counts[17], counts[28]) == (582, 624, 487)
     assert len(counts) == 29
+
+
+def _save(value: int, var: int) -> bytes:
+    return bytes([0x09, 0x00, value, 0x01, var, 0x00])
+
+
+def _newecl(area: int) -> bytes:
+    return bytes([0x20, 0x00, area])
+
+
+def test_the_first_constant_exit_gives_the_landing_cell():
+    m = model()
+    cond = bytes([0x16])
+    # Area 19 has a qualifying exit into 17 too, but area 16 comes first, and
+    # within 16 the exit at the lower address wins.
+    first = _save(6, 0x25) + _save(12, 0x26) + _newecl(17)
+    second = _save(26, 0x25) + _save(6, 0x26) + _newecl(17)
+    area16 = script([0x8014, 0x8014 + len(first), 0x8014, 0x8014, 0x8014],
+                    first + second)
+    area19 = script([0x8014] * 5,
+                    _save(1, 0x25) + _save(5, 0x26) + _newecl(17))
+    # A compare between the SAVEs and the NEWECL disqualifies the site.
+    area20 = script([0x8014] * 5,
+                    _save(1, 0x25) + _save(1, 0x26) + cond + _newecl(25))
+    # A site writing only $25 is skipped; the next one counts.
+    area21 = script([0x8014, 0x8014 + 9, 0x8014, 0x8014, 0x8014],
+                    _save(9, 0x25) + _newecl(25) + _save(10, 0x25)
+                    + _save(4, 0x26) + _newecl(25))
+    blocks = [area_table([(19, 1), (16, 2), (20, 3), (21, 4)]),
+              area19, area16, area20, area21]
+    got = t.overland_landings(t.DARKNESS, m, m, glib(blocks))
+    assert got == {17: (6, 12), 25: (10, 4)}
+    assert t.overland_landings(t.DARKNESS, m, m, glib(blocks), {25}) \
+        == {25: (10, 4)}
+
+
+def test_the_players_disks_give_the_pools_of_darkness_landing_cells():
+    from goldbox import areas
+    offered = {a.id: a.overland for a in areas.TABLES[areas.POOLS_OF_DARKNESS]
+               if a.overland_view and a.fasttravelable}
+    assert offered
+    got = t.glib_model(t.DARKNESS, t.images(None))
+    if got is None:
+        pytest.skip("needs the player's Amiga Pools of Darkness disks")
+    model_, skip = got
+    seen = 0
+    for _t, _label, _path, lib in t.disk_files(
+            t.images(None), {t.DARKNESS: t.LIBRARY[t.DARKNESS]}):
+        cells = t.overland_landings(t.DARKNESS, model_, skip, lib,
+                                    set(offered))
+        assert cells == offered
+        seen += 1
+    if not seen:
+        pytest.skip("needs the player's Amiga Pools of Darkness disks")

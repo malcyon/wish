@@ -192,7 +192,9 @@ class TripRow:
     #: The area-file byte the exits set (`$7F12`), and where it is in memory.
     area_file: int | None = None
     area_file_spot: Spot | None = None
-    #: Pool of Radiance: the travel-grid square `$49C3`/`$49C4` and `$49E6`.
+    #: The travel-grid square: Pool of Radiance's `$49C3`/`$49C4` (and
+    #: `$49E6`), Pools of Darkness' overland cell `$25`/`$26`. Only Pool of
+    #: Radiance has `grid_spots` to read it back.
     grid_targets: tuple[int, int] | None = None
     grid_spots: tuple[Spot, Spot] | None = None
     indoors_spot: Spot | None = None
@@ -446,7 +448,7 @@ ROWS: dict[str, TripRow] = {
         key="pools-of-darkness", title="Pools of Darkness",
         step_entry=0x72C6, buffer_pointer=0x6EA6, buffer_bias=0x8000,
         ecl_origin=0x8000, area=0x7A0A, mode=0x5B12, clears_buffer=False,
-        square_targets=(0x34, 0x35, 0x11),
+        square_targets=(0x34, 0x35, 0x11), grid_targets=(0x25, 0x26),
         square_spots=_square(amiga.MACHINES["pools-of-darkness"]),
         menu_kind=0x235E, menu_at=0x4F34,
         menu_text=b"Area Cast View Encamp Search Look",

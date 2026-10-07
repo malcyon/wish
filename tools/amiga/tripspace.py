@@ -13,6 +13,7 @@ leftovers as free space.
     tools/amiga/tripspace.py --title pools-of-darkness
     tools/amiga/tripspace.py --disks DIR               loose .adf files in DIR
     tools/amiga/tripspace.py refs pools-of-darkness    the tail-reference walk
+    tools/amiga/tripspace.py landings                  Pools of Darkness' overland cells
 
 `refs` walks every statement reachable from a script's five entries with the
 operand counts read from the title's own executable, and reports any operand
@@ -23,6 +24,10 @@ walk uses `POOL_SKIP_GROUPS` and `POOL_HANDLERS`, and `refs pool-of-radiance`
 also prints each area's init span: the room from the init entry to the end of
 the buffer, the statements of entries 0-3 that cover or name it, and the SHA-1
 of the span's disk bytes that `automap/amigatrip.py`'s `INIT_ROOM` records.
+
+`landings` prints, for each Pools of Darkness overland, the cell `$25`/`$26`
+that the game's first exit into it writes (`overland_landings`); `Area.overland`
+holds the same cells.
 
 Everything is read from the disks at run time; nothing here holds a script
 byte, a length or an operand table copied from the game.
@@ -483,6 +488,47 @@ def init_space(title: str, model, skip, area: int, body: bytes) -> InitSpace:
                      hashlib.sha1(disk).hexdigest())
 
 
+#: Pools of Darkness' overland cell: x and y.
+OVERLAND_VARS = (0x25, 0x26)
+SAVE = 0x09
+
+
+def overland_landings(title: str, model, skip, library: bytes,
+                      targets=None) -> dict[int, tuple[int, int]]:
+    """The cell `$25`/`$26` the game's first exit into each overland writes.
+
+    An exit is a `NEWECL` with an immediate target, counted only if the
+    `SAVE`s straight before it (each ending where the next statement starts)
+    write constants to both variables. Exits are ordered by the departing
+    area, then by script address; `targets` limits the areas reported.
+    """
+    blocks = glib_blocks(library)
+    out: dict[int, tuple[int, int]] = {}
+    for space in spaces(title, library):
+        found, _bad = walk(title, model, skip, blocks[space.block])
+        saves = {s.end: s for s in found.values()
+                 if s.op == SAVE and len(s.operands) == 2
+                 and s.operands[0][0] == 0x00 and s.operands[1][0] == 1}
+        for at in sorted(found):
+            s = found[at]
+            if s.op != NEWECL or not s.operands or s.operands[0][0] != 0x00:
+                continue
+            to = s.operands[0][1]
+            if to in out or (targets is not None and to not in targets):
+                continue
+            cell = {}
+            end = s.at
+            while end in saves:
+                save = saves[end]
+                var = save.operands[1][1]
+                if var in OVERLAND_VARS:
+                    cell.setdefault(var, save.operands[0][1])
+                end = save.at
+            if all(v in cell for v in OVERLAND_VARS):
+                out[to] = tuple(cell[v] for v in OVERLAND_VARS)
+    return out
+
+
 # -- the command -------------------------------------------------------------
 
 def table(args) -> int:
@@ -537,11 +583,10 @@ def pool_refs(args) -> int:
     return status
 
 
-def refs(args) -> int:
-    title = args.title
-    if title == POOL:
-        return pool_refs(args)
-    found = list(disk_files(images(args.disks), {title: EXECUTABLE[title]}))
+def glib_model(title: str, images_):
+    """`(model, skip)` for a title whose operand counts are read from its own
+    executable, or None. Prints what it read."""
+    found = list(disk_files(images_, {title: EXECUTABLE[title]}))
     models = {}
     for _t, label, path, body in found:
         from tools.amiga.amiga68k import Executable
@@ -557,14 +602,24 @@ def refs(args) -> int:
             models[model] = digest
     if len(models) != 1:
         print(f"{len(models)} distinct operand models; need exactly one.")
-        return 1
+        return None
     print(f"Operand model from the skip switch of {next(iter(models.values()))}"
           f"; a library whose own executable is unreadable is walked with it.")
     skip = next(iter(models))
     model = list(skip)
     for op, counts in HANDLER_COUNTS.get(title, {}).items():
         model[op] = counts
-    model = tuple(model)
+    return tuple(model), skip
+
+
+def refs(args) -> int:
+    title = args.title
+    if title == POOL:
+        return pool_refs(args)
+    got = glib_model(title, images(args.disks))
+    if got is None:
+        return 1
+    model, skip = got
     status = 0
     for _t, label, path, lib in disk_files(images(args.disks),
                                            {title: LIBRARY[title]}):
@@ -591,6 +646,29 @@ def refs(args) -> int:
     return status
 
 
+def landings(args) -> int:
+    from goldbox import areas
+    ids = {a.id for a in areas.TABLES[areas.POOLS_OF_DARKNESS]
+           if a.overland_view}
+    got = glib_model(DARKNESS, images(args.disks))
+    if got is None:
+        return 1
+    model, skip = got
+    status = 1
+    for _t, _label, path, lib in disk_files(images(args.disks),
+                                            {DARKNESS: LIBRARY[DARKNESS]}):
+        status = 0
+        cells = overland_landings(DARKNESS, model, skip, lib, ids)
+        print(f"{path} sha256 {hashlib.sha256(lib).hexdigest()[:12]}")
+        for area in sorted(ids):
+            cell = cells.get(area)
+            print(f"  overland {area:3}: "
+                  + (f"({cell[0]}, {cell[1]})" if cell else "no constant exit"))
+    if status:
+        print("No Pools of Darkness script library found on the disks.")
+    return status
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -599,10 +677,14 @@ def main(argv=None) -> int:
     sub = parser.add_subparsers(dest="command")
     r = sub.add_parser("refs", help="walk each script for tail references")
     r.add_argument("title", choices=TITLES)
+    sub.add_parser("landings", help="the overland cells Pools of Darkness' "
+                   "exits write")
     parser.add_argument("--title", choices=TITLES)
     args = parser.parse_args(argv)
     if args.command == "refs":
         return refs(args)
+    if args.command == "landings":
+        return landings(args)
     return table(args)
 
 

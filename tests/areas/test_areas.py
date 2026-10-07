@@ -1226,3 +1226,17 @@ def test_pools_of_darkness_overlands_are_marked():
     for title, table in areas.TABLES.items():
         if title != POD:
             assert not any(a.overland_view for a in table), title
+
+
+def test_offered_pools_of_darkness_overlands_carry_a_landing_cell():
+    table = {a.id: a for a in areas.TABLES[POD]}
+    overlands = {i: a for i, a in table.items() if a.overland_view}
+    assert sorted(overlands) == [17, 25, 51, 80]
+    for i, a in overlands.items():
+        if a.fasttravelable:
+            x, y = a.overland
+            assert 0 <= x <= 37 and 0 <= y <= 14 and a.arrival is None, i
+        else:
+            assert a.overland is None, i
+    assert overlands[17].overland == (6, 12)
+    assert overlands[25].overland == (10, 4)

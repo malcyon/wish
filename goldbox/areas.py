@@ -203,6 +203,8 @@ class Area:
     #: trustworthiness off `confidence`; raised in the code review of #178 on
     #: 2026-09-02, when nothing displayed it yet and the trap was one
     #: dropdown column away.
+    #: Pools of Darkness: the overland cell `$25`/`$26`, written by a trip
+    #: into an `overland_view` row.
     overland: tuple[int, int] | None = None
     #: **What this grades is the `name`, and only the name.** Every PROBABLE
     #: row is one whose name is a guess -- the five Valjevo Castle floors and
@@ -804,14 +806,18 @@ def _p(id: int, geos: tuple[str, ...], arrival: Arrival | None = None,
 #: overlands instead: at entry 4 each sets the overland view (`$24` = 1,
 #: `$22` = 0) and draws a full-screen picture of its own (240, 245, 242 and
 #: 241). 17 and 25 are offered; 51 and 80 stay unoffered as story
-#: dimensions. WISH-1 comment 7b9be95c has the evidence for each row.
+#: dimensions. WISH-1 comment 7b9be95c has the evidence for each row. An
+#: offered overland's `overland` cell (`$25`/`$26`) is the one written by the
+#: game's first exit into it, ordered by departing area and then script
+#: address, counting only exits whose `SAVE` run straight before the `NEWECL`
+#: writes constants to both (`tools/amiga/tripspace.py landings`).
 AREAS_POOLS_OF_DARKNESS: tuple[Area, ...] = (
     _p(1, ("GEO01",), fasttravelable=False),
     _p(2, (), fasttravelable=False),
     _p(3, (), fasttravelable=False),
     _p(4, ("GEO51",), fasttravelable=False),
     _p(16, ("GEO10", "GEO11")),
-    _p(17, (), overland_view=True),
+    _p(17, (), overland_view=True, overland=(6, 12)),
     _p(18, ("GEO12",), None, name="Elminster's Camp in Limbo"),
     _p(19, ("GEO13",), Arrival(8, 15, 0), name="Zhentil Keep"),
     _p(20, ("GEO14",)),
@@ -819,7 +825,7 @@ AREAS_POOLS_OF_DARKNESS: tuple[Area, ...] = (
     _p(22, ("GEO16",), Arrival(7, 15, 0), name="Taydome's Keep"),
     _p(23, (), dynamic_geo=True, fasttravelable=False),
     _p(24, ("GEO11",), Arrival(0, 5, 1)),
-    _p(25, (), overland_view=True),
+    _p(25, (), overland_view=True, overland=(10, 4)),
     _p(26, ("GEO13",), Arrival(0, 3, 1), name="The Black City of Mulmaster"),
     _p(27, ("GEO12",)),
     _p(32, ("GEO20",)),
