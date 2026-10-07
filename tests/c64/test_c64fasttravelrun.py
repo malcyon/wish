@@ -665,3 +665,72 @@ def test_stage_on_the_generator_is_a_usage_error():
     with pytest.raises(SystemExit) as exc:
         ftr.main(["--save", "x.D64", "--to", "18", "--stage", "0:03C4=1"])
     assert exc.value.code == 2
+
+
+def test_back_without_the_bar_is_a_usage_error():
+    with pytest.raises(SystemExit) as exc:
+        ftr.main(["--save", "x.D64", "--to", "18", "--to", "back"])
+    assert exc.value.code == 2
+
+
+def test_parse_leg_takes_an_id_or_back():
+    assert ftr.parse_leg("18") == 18
+    assert ftr.parse_leg("back") == ftr.BACK
+    with pytest.raises(Exception):
+        ftr.parse_leg("sideways")
+
+
+class FakeButton:
+    def __init__(self, enabled, tip):
+        self._enabled, self._tip = enabled, tip
+
+    def isEnabled(self):
+        return self._enabled
+
+    def toolTip(self):
+        return self._tip
+
+
+def test_the_bar_adapter_logs_the_rows_state_and_runs_the_legs_through_it():
+    area = engine.area_by_id(18)
+    calls = []
+    inner = FakeFastTravel(Clock(), None)
+    inner.game = engine.c64_port.POOL_OF_RADIANCE
+    inner.back = None
+
+    class Combo:
+        def setCurrentIndex(self, i):
+            calls.append(("select", i))
+
+    class Bar:
+        fasttravel = inner
+        rows = [area]
+        combo = Combo()
+        button = FakeButton(False, engine.FASTTRAVEL_BUSY)
+        back_button = FakeButton(True, "")
+
+        def attach(self, target):
+            calls.append("attach")
+
+        def refresh(self):
+            calls.append("refresh")
+
+        def run(self):
+            calls.append("run")
+            return engine.Outcome(True, "ok")
+
+        def run_back(self):
+            calls.append("run_back")
+            return engine.Outcome(True, "back")
+
+    stream = io.StringIO()
+    adapter = ftr.BarFastTravel(Bar(), ftr.Log(stream, Clock()))
+    verdict = adapter.legality(object(), area)
+    assert not verdict and verdict.reason == engine.FASTTRAVEL_BUSY
+    logged = events(stream)[0]
+    assert logged["event"] == "bar" and logged["game"] == "pool-of-radiance"
+    assert logged["enabled"] is False
+    assert adapter.apply(object(), area=area).ok
+    assert adapter.back_verdict(object())
+    assert adapter.apply_back(object()).message == "back"
+    assert ("select", 0) in calls and "run" in calls and "run_back" in calls

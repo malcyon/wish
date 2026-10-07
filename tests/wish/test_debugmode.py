@@ -688,8 +688,10 @@ def test_the_row_follows_the_title_when_the_disks_change(app):
               game=c64_port.POOL_OF_RADIANCE)
     assert [r.name for r in row.rows] == ["New Phlan", "Sokol Keep",
                                           "The Slums"]
+    assert row.fasttravel.game is c64_port.POOL_OF_RADIANCE
     row.set_title(c64_port.SECRET_OF_THE_SILVER_BLADES.title,
                   c64_port.SECRET_OF_THE_SILVER_BLADES)
+    assert row.fasttravel.game is c64_port.SECRET_OF_THE_SILVER_BLADES
     # Silver Blades has a table now -- twenty-two areas, two of them (the mine
     # levels, which a trip cannot enter) not offered, fourteen of them
     # driven into on a running machine (`#20 (Build an area table for Silver
@@ -700,8 +702,36 @@ def test_the_row_follows_the_title_when_the_disks_change(app):
     assert len(row.all_rows) == 20
     assert "No areas ticked" in row.combo.itemText(0)
     row.set_title(c64_port.POOL_OF_RADIANCE.title, c64_port.POOL_OF_RADIANCE)
+    assert row.fasttravel.game is c64_port.POOL_OF_RADIANCE
     assert [r.name for r in row.rows] == ["New Phlan", "Sokol Keep",
                                           "The Slums"]
+
+
+def test_a_title_change_cancels_a_pending_hop_and_an_amiga_round_trip_rebinds(app):
+    from types import SimpleNamespace
+
+    from automap.config import Settings
+
+    row = bar(app, settings=Settings(), title=c64_port.POOL_OF_RADIANCE.title,
+              game=c64_port.POOL_OF_RADIANCE)
+    old = row.fasttravel
+    cancelled = []
+    old.cancel_pending = lambda: cancelled.append(True)
+    row.set_title(c64_port.CURSE_OF_THE_AZURE_BONDS.title,
+                  c64_port.CURSE_OF_THE_AZURE_BONDS)
+    assert cancelled == [True]
+    assert row.fasttravel is not old
+    from automap import actions as engine
+    no = engine.Verdict(False, "no")
+    stand_in = SimpleNamespace(
+        cancel_pending=lambda: None, legality=lambda *a, **k: no,
+        back_verdict=lambda *a, **k: no, back=None, pending=None, trip=None,
+        game=None, addresses=None)
+    row.use_amiga(stand_in, "Pool of Radiance")
+    row.set_title(c64_port.SECRET_OF_THE_SILVER_BLADES.title,
+                  c64_port.SECRET_OF_THE_SILVER_BLADES)
+    row.use_c64()
+    assert row.fasttravel.game is c64_port.SECRET_OF_THE_SILVER_BLADES
 
 
 def test_the_button_carries_its_rejection_in_its_tooltip(app):

@@ -38,6 +38,12 @@ on a bar offering it (`YES NO`, at most `ANSWERS_PER_TRIP` times a trip).
 A "cannot act right now" answer from `legality` or `apply` is retried every
 `BUSY_SECONDS`, at most `BUSY_TRIES` times.
 
+`--through-bar` runs each leg through the Fast Travel row the window builds for
+the title (offscreen), picks the destination in its dropdown, presses its
+button and logs a `bar` event with the action's title and the buttons' enabled
+state and tooltips. `--to back` is a leg that presses the row's Return button;
+it needs `--through-bar`.
+
 OUT/run.jsonl holds one line per event; screenshots sit beside it. OUT defaults
 to a directory under `~/.cache/wish/fasttravel`. The emulator slot is claimed
 from the pool (`--slot` names one) and released on every exit, and a trip still
@@ -90,8 +96,110 @@ MOVE_SUBBAR = "I,J,K,M"
 RETURN_MESSAGE = "PRESS"
 
 
+#: The leg token that travels back to where the last leg started.
+BACK = "back"
+
+
 class DriverError(RuntimeError):
     """The run cannot go on."""
+
+
+class BarFastTravel:
+    """The `FastTravel` interface over the Fast Travel row, so a leg is run the
+    way the window's buttons run it and the row's own state is logged.
+
+    The row rebinds its action when the title changes, so everything here asks
+    `bar.fasttravel` at the moment of the call.
+    """
+
+    def __init__(self, bar, log):
+        self.bar, self.log = bar, log
+
+    @property
+    def game(self):
+        return self.bar.fasttravel.game
+
+    @property
+    def back(self):
+        return self.bar.fasttravel.back
+
+    @property
+    def pending(self):
+        return self.bar.fasttravel.pending
+
+    def _attach(self, target, area=None) -> bool:
+        """Attach, and pick `area` in the dropdown; False when it is not listed."""
+        self.bar.attach(target)
+        if area is None:
+            return True
+        if area not in self.bar.rows:
+            return False
+        self.bar.combo.setCurrentIndex(self.bar.rows.index(area))
+        self.bar.refresh()
+        return True
+
+    def _state(self) -> None:
+        bar = self.bar
+        self.log("bar", game=bar.fasttravel.game.key,
+                 enabled=bar.button.isEnabled(), tooltip=bar.button.toolTip(),
+                 back_enabled=bar.back_button.isEnabled(),
+                 back_tooltip=bar.back_button.toolTip())
+
+    def legality(self, target, area):
+        if not self._attach(target, area):
+            return self.bar.fasttravel.legality(target, area)
+        self._state()
+        if self.bar.button.isEnabled():
+            return engine.Verdict(True)
+        return engine.Verdict(False, self.bar.button.toolTip())
+
+    def apply(self, target, area=None, **kwargs):
+        if not self._attach(target, area):
+            raise DriverError(f"{getattr(area, 'name', area)} is not in the row")
+        return self.bar.run() or engine.Outcome(False, "the row has no area")
+
+    def back_verdict(self, target):
+        self._attach(target)
+        self._state()
+        if self.bar.back_button.isEnabled():
+            return engine.Verdict(True)
+        return engine.Verdict(False, self.bar.back_button.toolTip())
+
+    def apply_back(self, target):
+        self._attach(target)
+        return self.bar.run_back()
+
+    def continue_pending(self, target):
+        self.bar.attach(target)
+        return None
+
+    def cancel_pending(self):
+        self.bar.fasttravel.cancel_pending()
+
+
+def build_bar(game):
+    """The Fast Travel row of a window opened on `game`, offscreen."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PyQt6.QtWidgets import QApplication, QMainWindow  # noqa: PLC0415
+
+    from automap.actionbar import FastTravelBar  # noqa: PLC0415
+    from wish.ui_window import Ui_WishWindow  # noqa: PLC0415
+    app = QApplication.instance() or QApplication([])
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    root._driver_app = app
+    return FastTravelBar(root, title=game.title, game=game)
+
+
+def parse_leg(text: str):
+    """An area id, or `back`."""
+    if text == BACK:
+        return BACK
+    try:
+        return int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"{text!r} is neither an area id nor {BACK!r}") from None
 
 
 class GuardedTarget:
@@ -290,6 +398,11 @@ class Driver:
 
     def trip(self, dest_id: int, tag: str, leg: int = 0) -> dict:
         """One trip. Result: not_legal, not_applied, arrived, failed (with a reason) or timeout."""
+        going_back = dest_id == BACK
+        if going_back:
+            if self.ft.back is None:
+                raise DriverError("there is no earlier leg to go back from")
+            dest_id = self.ft.back.area
         dest = engine.area_by_id(dest_id, self.game.title)
         if dest is None:
             raise DriverError(f"{dest_id} is not an area of {self.game.title}")
@@ -300,7 +413,8 @@ class Driver:
         self.hold_encounters(tag)
 
         def legal(target):
-            v = self.ft.legality(target, dest)
+            v = (self.ft.back_verdict(target) if going_back
+                 else self.ft.legality(target, dest))
             return bool(v), v.reason, v
 
         ok, reason, _ = self._retry_busy(tag, legal)
@@ -310,7 +424,8 @@ class Driver:
             return summary
 
         def apply(target):
-            o = self.ft.apply(target, area=dest)
+            o = (self.ft.apply_back(target) if going_back
+                 else self.ft.apply(target, area=dest))
             return o.ok, o.message, o
 
         try:
@@ -452,7 +567,7 @@ class Driver:
         self.log("timeout", tag=tag, budget=self.budget)
         return "timeout"
 
-    def run(self, legs: list[int]) -> list[dict]:
+    def run(self, legs: list) -> list[dict]:
         """The legs in order, stopping at the first that does not arrive.
 
         The gates are put back however the legs end. When a leg raised and the
@@ -557,8 +672,12 @@ def main(argv: list[str] | None = None) -> int:
                         help="hex bytes to log before and after each leg; repeatable")
     parser.add_argument("--stage", action="append", default=[], metavar="N:ADDR=VALUE",
                         help="write one byte before leg N (from 0); repeatable")
-    parser.add_argument("--to", type=int, action="append", required=True,
-                        help="a destination area id; repeat for each further leg")
+    parser.add_argument("--to", type=parse_leg, action="append", required=True,
+                        help="a destination area id, or `back` (with --through-bar) for the way "
+                             "back to where the last leg started; repeat for each further leg")
+    parser.add_argument("--through-bar", action="store_true",
+                        help="run each leg through the Fast Travel row the window builds "
+                             "for the title, and log its buttons' state")
     parser.add_argument("--answer", help="a bar word to select when the game asks, e.g. YES")
     parser.add_argument("--no-encounters", action="store_true",
                         help="hold the running area's random encounters off before each leg "
@@ -571,8 +690,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", help="directory for the log and screenshots")
     args = parser.parse_args(argv)
     game = container_for(args.title)
+    if BACK in args.to and not args.through_bar:
+        parser.error(f"--to {BACK} needs --through-bar")
     for dest in args.to:
-        if engine.area_by_id(dest, game.title) is None:
+        if dest != BACK and engine.area_by_id(dest, game.title) is None:
             parser.error(f"--to {dest} is not an area of {game.title}")
     try:
         peeks = [parse_peek(text) for text in args.peek]
@@ -602,8 +723,11 @@ def main(argv: list[str] | None = None) -> int:
                 with sess.watching_dialogs() if args.title != POOL_KEY \
                         else contextlib.nullcontext():
                     bring_up(args.title, sess, disks, out, log)
+                    action = engine.FastTravel(game)
+                    if args.through_bar:
+                        action = BarFastTravel(build_bar(game), log)
                     driver = Driver(sess, lambda: ViceTarget(port=sess.mon_port),
-                                    engine.FastTravel(game), out, log, answer=args.answer,
+                                    action, out, log, answer=args.answer,
                                     budget=args.budget, game=game, peeks=peeks,
                                     stages=stages, no_encounters=args.no_encounters)
                     driver.shot("0-start")

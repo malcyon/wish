@@ -38,7 +38,7 @@ from PyQt6.QtWidgets import (
 )
 
 from . import actions as engine
-from . import amigatrip, fasttravel
+from . import amigatrip
 from .area import ResidentGeo
 from .config import Settings
 from .panel import (
@@ -88,7 +88,7 @@ class _NotAskingThePC(_OnePoll):
     samples a second apart, which is a Fast Travel button that goes grey for
     one refresh about every thirty seconds while nothing is happening (#152).
 
-    So `legality` is asked with the PC already inside `DUNGEON`'s key-wait
+    So `legality` is asked with the PC already inside this title's key-wait
     loop. Every other question it asks is answered truthfully off the machine;
     the real PC is waited for **after** the click, in
     `FastTravelBar.wait_for_key_wait`, and `FastTravel.apply` still checks it
@@ -96,8 +96,12 @@ class _NotAskingThePC(_OnePoll):
     these.
     """
 
-    def pc(self) -> int:
-        return fasttravel.POOL_OF_RADIANCE.key_wait[0]
+    def __init__(self, target, addresses):
+        super().__init__(target)
+        self.addresses = addresses
+
+    def pc(self) -> int | None:
+        return None if self.addresses is None else self.addresses.key_wait[0]
 
 
 class _AmigaPoll:
@@ -140,16 +144,16 @@ class _AmigaPoll:
         return [self._seen[b] for b in blocks]
 
 
-def in_key_wait(pc: int) -> bool:
+def in_key_wait(pc: int, addresses) -> bool:
     """Whether the CPU is somewhere `NEWECL` may be entered from.
 
-    The two windows are Pool of Radiance's row in `automap/fasttravel.py` -- P15's key-wait loop and the
+    The two windows are the title's row in `automap/fasttravel.py` -- its key-wait loop and the
     key fetcher it calls -- and this is the test `FastTravel.legality` makes on
     them. It is asked separately here because the wait after a click needs to
     know when to stop, and `legality` answers about a whole trip.
     """
-    row = fasttravel.POOL_OF_RADIANCE
-    return any(lo <= pc < hi for lo, hi in (row.key_wait, row.key_fetch))
+    return any(lo <= pc < hi
+               for lo, hi in (addresses.key_wait, addresses.key_fetch))
 
 
 #: Buttons per row. Three keeps the block no wider than the 596px map above
@@ -465,14 +469,12 @@ class FastTravelBar(QObject):
     the click instead, `wait_for_key_wait`. A click on a genuinely busy game
     gives up after `WAIT_SECONDS` and says so in the messages panel.
 
-    **One title has areas and the other five have none.** `AREAS` is Pool of
-    Radiance's -- `POOL` disk numbers and `ECL` ids, both of which a trip
-    writes into the machine -- so a session of any other title is offered
-    nothing and told which game it is that nothing is known for. The row used
-    to offer Pool of Radiance's thirty in a Curse session and fasttraveling on one
-    wrote Pool of Radiance's numbers into Curse (#14); falling back to that
-    list is the one answer that corrupts, so the title is asked for at
-    construction and again whenever the disks change.
+    **Each C64 title has its own areas and its own trip.** A trip writes
+    that title's disk numbers, area ids and key-wait addresses into the
+    machine, so the row builds the `FastTravel` of the title it is showing, at
+    construction and again whenever the disks change, and a title with no
+    table is offered nothing. Falling back to another title's list or
+    addresses is the one answer that corrupts.
 
     The area table is `goldbox/areas.py`, and the row holds no copy of it.
     """
@@ -503,7 +505,8 @@ class FastTravelBar(QObject):
         self._amiga = False
         self._c64_fasttravel = None
         self._c64_title: tuple = (title, game)
-        self.fasttravel = fasttravel or engine.FastTravel()
+        self._own_fasttravel = fasttravel is not None
+        self.fasttravel = fasttravel or engine.FastTravel(game)
         #: `{GEO name: Geo}`, for choosing a square in an area whose arrival
         #: square nobody has harvested. The window hands its own maps over.
         self.maps = maps if maps is not None else {}
@@ -583,7 +586,24 @@ class FastTravelBar(QObject):
         if (title, game) == (self.title, self.game):
             return
         self.title, self.game = title, game
+        self._bind_c64()
         self._rebuild_rows()
+
+    def _bind_c64(self) -> None:
+        """Give the row the action of the C64 title it is now showing.
+
+        A title's trip writes that title's own addresses, so an action built for
+        another title must neither be asked nor run; its `back` names an area
+        of the other title too.
+        """
+        if self._own_fasttravel:
+            return
+        wanted = self.game or engine.c64_port.POOL_OF_RADIANCE
+        if self.fasttravel.game.key == wanted.key:
+            return
+        self.fasttravel.cancel_pending()
+        self.fasttravel = engine.FastTravel(self.game)
+        self._pending = None
 
     def _rebuild_rows(self) -> None:
         if not self._own_areas:
@@ -618,6 +638,7 @@ class FastTravelBar(QObject):
         self.fasttravel = self._c64_fasttravel
         self._c64_fasttravel = None
         self.title, self.game = self._c64_title
+        self._bind_c64()
         self._pending = None
         self._rebuild_rows()
 
@@ -1002,7 +1023,7 @@ class FastTravelBar(QObject):
                 _log("gave up waiting for the key-wait loop: %s", exc)
                 return engine.Verdict(False, self.LOST_WHILE_WAITING)
             looks += 1
-            if seen is None or in_key_wait(seen):
+            if seen is None or in_key_wait(seen, self.fasttravel.addresses):
                 return engine.Verdict(True)
             if time.monotonic() >= deadline:
                 _log("the PC was outside the key-wait windows for all %d looks "
@@ -1016,7 +1037,7 @@ class FastTravelBar(QObject):
         if self.target is None:
             return None
         return (_AmigaPoll(self.target) if self._amiga
-                else _NotAskingThePC(self.target))
+                else _NotAskingThePC(self.target, self.fasttravel.addresses))
 
     def _ready(self, verdict: engine.Verdict) -> engine.Verdict:
         """The durable rejections first, then the wait for a quiet machine.

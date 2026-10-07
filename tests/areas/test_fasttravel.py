@@ -26,6 +26,7 @@ import pytest
 
 from automap import actionbar, actions, c64, fasttravel
 from automap.target import MemoryTarget, NotConnected
+from goldbox import c64_port
 
 WORLD, COMBAT = 1, 2                    # $6E11: DUNGEON, COMBAT
 IN_THE_LOOP = 0x10C2                    # a PC a fast travel will accept
@@ -252,3 +253,87 @@ def test_a_messages_panel_line_opens_with_a_capital(app):
                 actions.Outcome(False, actionbar.FastTravelBar.STILL_BUSY))
     assert said[-1] == ("Fast travel: the game was busy and nothing was "
                         "written; try again in a moment.")
+
+
+# --- each C64 title is asked, and written to, at its own addresses -----------
+
+CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
+SILVER = c64_port.SECRET_OF_THE_SILVER_BLADES
+POOL = c64_port.POOL_OF_RADIANCE
+POOL_BYTES = (fasttravel.POOL_OF_RADIANCE.slot, fasttravel.POOL_OF_RADIANCE.disk)
+
+#: (title, area the party is in, area it travels to)
+TRIPS = [(POOL, 0x00, 13), (CURSE, 0x01, 0x03), (SILVER, 0x10, 0x20)]
+LATER = [(CURSE, 0x01, 0x03), (SILVER, 0x10, 0x20)]
+
+
+def title_machine(game, area, resting=None) -> Machine:
+    """A party in `area` of `game`, with Pool of Radiance's mode flag at 0
+    because that is what the later titles' memory holds."""
+    addr = fasttravel.addresses_for(game)
+    memory = {c64.machine_for(POOL).mode_flag: bytes([0]),
+              c64.machine_for(game).mode_flag: bytes([WORLD]),
+              addr.slot: bytes([area]),
+              addr.disk: bytes([3]),
+              addr.indoors: bytes([1]),
+              addr.live_square: bytes([5, 6, 1]),
+              0x4CD9: bytes([0])}
+    memory[c64.machine_for(game).mode_flag] = bytes([WORLD])
+    return Machine(memory, resting=addr.key_wait[0] if resting is None
+                   else resting)
+
+
+def pick(bar, to):
+    bar.combo.setCurrentIndex(
+        bar.rows.index(actions.area_by_id(to, bar.game.title)))
+
+
+def traced(machine: Machine) -> list:
+    log = []
+    original = machine.write
+
+    def write(addr, data):
+        log.append((addr, bytes(data)))
+        original(addr, data)
+    machine.write = write
+    return log
+
+
+@pytest.mark.parametrize("game,here,to", TRIPS, ids=lambda v: getattr(v, "key", v))
+def test_the_button_travels_in_the_attached_title(app, monkeypatch, game, here, to):
+    """A player on a C64 Curse or Silver Blades game has a live Fast Travel
+    button, and its trip writes that title's own addresses."""
+    monkeypatch.setattr(actionbar, "WAIT_SECONDS", 0.1)
+    addr = fasttravel.addresses_for(game)
+    target = title_machine(game, here)
+    bar = row(app, target, title=game.title, game=game)
+    pick(bar, to)
+    assert bar.fasttravel.game is game
+    assert bar.button.isEnabled(), bar.button.toolTip()
+    log = traced(target)
+    outcome = bar.run()
+    assert outcome is not None and outcome.ok, outcome
+    assert target.jumps == [addr.tail]
+    if game is not POOL:
+        assert not [w for w in log if w[0] in POOL_BYTES]
+    control = title_machine(game, here)
+    expected = actions.FastTravel(game).run(
+        control, area=actions.area_by_id(to, game.title))
+    assert outcome.writes == expected.writes
+
+
+@pytest.mark.parametrize("game,here,to", LATER, ids=lambda v: getattr(v, "key", v))
+def test_the_idle_poll_and_the_wait_use_the_titles_own_windows(app, game, here, to):
+    addr = fasttravel.addresses_for(game)
+    bar = row(app, title_machine(game, here), title=game.title, game=game)
+    assert bar._idle_poll().pc() == addr.key_wait[0]
+    assert actionbar.in_key_wait(addr.key_wait[0], addr)
+    assert not actionbar.in_key_wait(fasttravel.POOL_OF_RADIANCE.key_wait[0], addr)
+
+
+def test_the_silver_blades_mine_level_has_its_own_return_tooltip(app):
+    target = title_machine(SILVER, 0x31)
+    bar = row(app, target, title=SILVER.title, game=SILVER)
+    bar.fasttravel.back = actions.Waypoint(0x31, 3, (3, 3, 1), None)
+    bar.refresh()
+    assert bar.back_button.toolTip() == actions.FastTravel.MINE_LEVEL_BACK
