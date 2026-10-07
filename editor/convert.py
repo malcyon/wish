@@ -1720,6 +1720,10 @@ DISK_TITLE = "Choose Amiga game disk 2"
 #: The picker title for the player's disk 1, beside `DISK_TITLE` and worded
 #: like it.
 DISK_ONE_TITLE = "Choose Amiga game disk 1"
+
+#: The picker title for the player's Pools of Darkness disk 3. Empty until
+#: Donald words it.
+DISK_THREE_TITLE = ""
 FOLDER_TITLE = "Choose where to write"
 
 #: The save picker's filter: a `.d64` or the DOS save container itself, so

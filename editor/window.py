@@ -173,6 +173,9 @@ LOSS_NOT_CONVERTED = "The save could not be converted."
 #: the two names are the titles' own (`goldbox.titles.Title.title`).
 WRONG_DOS_FOLDER = ("This folder is for {folder}. "
                     "Choose the {save} DOS game folder.")
+#: Shown at the Pools of Darkness disk 3 row when the file chosen is not that
+#: title's disk 3. Empty until Donald words it; the label stays blank.
+WRONG_DISK_THREE = ""
 #: C4.
 TARGET_NOT_EMPTY = "You must choose an empty folder or type a new folder name."
 #: C5.
@@ -977,6 +980,8 @@ class EditorBinding(QObject):
         #: Whether this Save As has shown the DOS game folder row, which then
         #: stays on screen for the player to change the folder.
         self._dos_folder_row_shown = False
+        #: The same for the Pools of Darkness disk 3 row.
+        self._disk_three_row_shown = False
         #: What the player chose to leave behind for the Save As in progress,
         #: and the packs it was chosen against -- `(leave, packs)`, see
         #: `_packs_of`. Read only by a stale plan's re-preparation.
@@ -3016,17 +3021,19 @@ class EditorBinding(QObject):
 
     def _clear_destination_asset_fields(self) -> None:
         for name in ("destination_c64_disks", "destination_dos_folder", "destination_amiga_disk",
-                     "destination_amiga_disk_one"):
+                     "destination_amiga_disk_one", "destination_amiga_disk_three"):
             field = self._child(name)
             if field is not None:
                 field.clear()
         for name in ("box_c64_disks", "box_dos_folder", "box_amiga_disk",
-                     "box_amiga_disk_one"):
+                     "box_amiga_disk_one", "box_amiga_disk_three"):
             box = self._child(name)
             if box is not None:
                 box.setVisible(False)
         self._dos_folder_row_shown = False
+        self._disk_three_row_shown = False
         self._show_wrong_dos_folder(None)
+        self._show_wrong_disk_three(False)
 
     def _destination_manual_assets(self) -> dict[str, str]:
         """What the player has typed or browsed into the asset rows.
@@ -3042,6 +3049,7 @@ class EditorBinding(QObject):
         dos = self._child("destination_dos_folder")
         amiga = self._child("destination_amiga_disk")
         amiga_one = self._child("destination_amiga_disk_one")
+        amiga_three = self._child("destination_amiga_disk_three")
         if c64 is not None and c64.text().strip():
             manual[saveplan.DESTINATION_DISKS] = c64.text().strip()
         if dos is not None and dos.text().strip():
@@ -3050,6 +3058,8 @@ class EditorBinding(QObject):
             manual[saveplan.AMIGA_GAME_DISK] = amiga.text().strip()
         if amiga_one is not None and amiga_one.text().strip():
             manual[saveplan.AMIGA_DISK_ONE] = amiga_one.text().strip()
+        if amiga_three is not None and amiga_three.text().strip():
+            manual[saveplan.AMIGA_DISK_THREE] = amiga_three.text().strip()
         return manual
 
     def _resolve_destination_assets(self) -> "saveplan.Assets | None":
@@ -3069,9 +3079,15 @@ class EditorBinding(QObject):
                 c64_folder=manual.get(saveplan.DESTINATION_DISKS),
                 dos_folder=manual.get(saveplan.DOS_GAME_FOLDER),
                 amiga_disk=manual.get(saveplan.AMIGA_GAME_DISK),
-                amiga_disk_one=manual.get(saveplan.AMIGA_DISK_ONE))
+                amiga_disk_one=manual.get(saveplan.AMIGA_DISK_ONE),
+                amiga_disk_three=manual.get(saveplan.AMIGA_DISK_THREE),
+                game_folder=(self.game_folders.get(source.key, "")
+                             or "").strip() or None)
         except saveplan.MissingAssets as exc:
             self._show_asset_rows(exc.missing, wrong)
+            return None
+        except saveplan.WrongDiskThree:
+            self._show_asset_rows((), wrong, wrong_disk_three=True)
             return None
         self._show_asset_rows((), wrong)
         path = self._child("destination_path")
@@ -3093,18 +3109,33 @@ class EditorBinding(QObject):
         label.setText(WRONG_DOS_FOLDER.format(folder=folder, save=save))
         label.setVisible(True)
 
-    def _show_asset_rows(self, missing, wrong=None) -> None:
-        """Show a row for each asset still missing. The DOS game folder row,
-        once shown, stays until this Save As ends; Save As stays off while
-        the folder is missing or another title's."""
+    def _show_wrong_disk_three(self, wrong: bool) -> None:
+        """`WRONG_DISK_THREE` at the disk 3 row for a file that is not this
+        title's disk 3, or nothing when `wrong` is false."""
+        label = self._child("label_amiga_disk_three_wrong")
+        if label is None:
+            return
+        label.setText(WRONG_DISK_THREE if wrong else "")
+        label.setVisible(wrong)
+
+    def _show_asset_rows(self, missing, wrong=None,
+                         wrong_disk_three: bool = False) -> None:
+        """Show a row for each asset still missing. The DOS game folder row
+        and the disk 3 row, once shown, stay until this Save As ends; Save As
+        stays off while the folder is missing or another title's, and while
+        the file at the disk 3 row is not a disk 3."""
         self._show_wrong_dos_folder(wrong)
+        self._show_wrong_disk_three(wrong_disk_three)
         if saveplan.DOS_GAME_FOLDER in missing or wrong is not None:
             self._dos_folder_row_shown = True
+        if saveplan.AMIGA_DISK_THREE in missing or wrong_disk_three:
+            self._disk_three_row_shown = True
         rows = {
             "box_c64_disks": saveplan.DESTINATION_DISKS in missing,
             "box_dos_folder": self._dos_folder_row_shown,
             "box_amiga_disk": saveplan.AMIGA_GAME_DISK in missing,
             "box_amiga_disk_one": saveplan.AMIGA_DISK_ONE in missing,
+            "box_amiga_disk_three": self._disk_three_row_shown,
         }
         for name, visible in rows.items():
             box = self._child(name)
@@ -3113,7 +3144,8 @@ class EditorBinding(QObject):
         # `missing` may hold `SOURCE_DISKS`, which shows no row of its own
         # (above) -- Save As stays off for that too, not only for what a row
         # here could still fix.
-        self._set_save_as_button_enabled(not missing and wrong is None)
+        self._set_save_as_button_enabled(
+            not missing and wrong is None and not wrong_disk_three)
 
     def _set_save_as_button_enabled(self, enabled: bool) -> None:
         button = self._child("button_destination_save_as")
@@ -3134,11 +3166,15 @@ class EditorBinding(QObject):
         self._connect(
             "button_amiga_disk_one_browse",
             lambda: self._destination_asset_browse(saveplan.AMIGA_DISK_ONE))
+        self._connect(
+            "button_amiga_disk_three_browse",
+            lambda: self._destination_asset_browse(saveplan.AMIGA_DISK_THREE))
         self._connect("button_destination_cancel", self.cancel_save_as)
         self._connect("button_destination_save_as", self.confirm_save_as)
         for name in ("destination_path", "destination_c64_disks",
                      "destination_dos_folder", "destination_amiga_disk",
-                     "destination_amiga_disk_one"):
+                     "destination_amiga_disk_one",
+                     "destination_amiga_disk_three"):
             field = self._child(name)
             if field is not None:
                 field.textChanged.connect(self._destination_field_edited)
@@ -3192,6 +3228,7 @@ class EditorBinding(QObject):
                       saveplan.DOS_GAME_FOLDER: "destination_dos_folder",
                       saveplan.AMIGA_GAME_DISK: "destination_amiga_disk",
                       saveplan.AMIGA_DISK_ONE: "destination_amiga_disk_one",
+                      saveplan.AMIGA_DISK_THREE: "destination_amiga_disk_three",
                       }[requirement]
         field = self._child(field_name)
         if field is None:
@@ -3206,6 +3243,10 @@ class EditorBinding(QObject):
         elif requirement == saveplan.AMIGA_DISK_ONE:
             path, _ = QFileDialog.getOpenFileName(
                 self.root, convert_mod.DISK_ONE_TITLE, current,
+                convert_mod.DISK_FILTER)
+        elif requirement == saveplan.AMIGA_DISK_THREE:
+            path, _ = QFileDialog.getOpenFileName(
+                self.root, convert_mod.DISK_THREE_TITLE, current,
                 convert_mod.DISK_FILTER)
         elif requirement == saveplan.DOS_GAME_FOLDER:
             path = QFileDialog.getExistingDirectory(
@@ -3230,6 +3271,7 @@ class EditorBinding(QObject):
         self._save_as_source = None
         self._save_as_port = None
         self._dos_folder_row_shown = False
+        self._disk_three_row_shown = False
 
     def confirm_save_as(self) -> None:
         """The Save As button: check the name, block an alias, confirm a
