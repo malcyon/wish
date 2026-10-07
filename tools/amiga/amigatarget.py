@@ -70,7 +70,7 @@ from typing import Callable
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent.parent))
 
-from automap import amiga  # noqa: E402
+from automap import amiga, amigavars  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk  # noqa: E402
 from tools.amiga.amiga68k import Executable  # noqa: E402
 from tools.registry import scratch  # noqa: E402
@@ -267,6 +267,31 @@ def poke(target: amiga.AmigaTarget, layout: amiga.AmigaMachine, holder: str,
         return {"address": address,
                 "error": f"{address:#x}..{end:#x} is outside every party "
                          "record and the effect pool"}
+    return _write_logged(target, holder, address, data)
+
+
+def poke_var(target: amiga.AmigaTarget, title: str, holder: str, var: int,
+             value: int) -> dict:
+    """Write script variable `var` of `title` in the width its map gives.
+
+    The address comes from `automap.amigavars`; a variable outside the
+    title's mapped ranges is an error row and nothing is written.
+    """
+    try:
+        address, rng = amigavars.resolve(target, title, var)
+    except amigavars.VarError as exc:
+        return {"var": f"${var:04X}", "error": str(exc)}
+    if not 0 <= value < 1 << (8 * rng.size):
+        return {"var": f"${var:04X}", "address": address,
+                "error": f"{value:#x} does not fit in {rng.size} byte(s)"}
+    row = _write_logged(target, holder, address,
+                        value.to_bytes(rng.size, "big"))
+    return {"var": f"${var:04X}", **row}
+
+
+def _write_logged(target: amiga.AmigaTarget, holder: str, address: int,
+                  data: bytes) -> dict:
+    """Journal, write and read back `data` at `address`."""
     old = target.read(address, len(data))
     entry = {"time": time.strftime("%Y-%m-%dT%H:%M:%S"), "address": address,
              "old": old.hex(), "new": data.hex()}
@@ -541,10 +566,15 @@ def main(argv: list[str] | None = None) -> int:
                                 "(over WinUAE's pipe)")
     poked = sub.add_parser("poke", help="write bytes into the running game "
                                         "(over WinUAE's pipe)")
-    poked.add_argument("--at", required=True, type=lambda s: int(s, 0),
+    poked.add_argument("--at", type=lambda s: int(s, 0),
                        help="an absolute address")
-    poked.add_argument("--hex", required=True, dest="digits",
-                       help="the bytes to write, in hex")
+    poked.add_argument("--hex", dest="digits",
+                       help="the bytes to write at --at, in hex")
+    poked.add_argument("--var", type=amigavars.parse,
+                       help="an engine script variable, in hex, instead of "
+                            "--at; written in the width the title's map gives")
+    poked.add_argument("--value", type=lambda s: int(s, 0),
+                       help="the number to write to --var")
     chosen = sub.add_parser("select", help="move the game's highlight to a "
                                            "member with its own keys (over "
                                            "WinUAE's pipe)")
@@ -600,9 +630,20 @@ def main(argv: list[str] | None = None) -> int:
                 row = {"member": args.member,
                        "error": f"{type(exc).__name__}: {exc}"}
         elif args.command == "poke":
+            by_var = (args.var is not None and args.value is not None
+                      and args.at is None and args.digits is None)
+            by_at = (args.at is not None and args.digits is not None
+                     and args.var is None and args.value is None)
+            if not (by_var or by_at):
+                parser.error("poke wants either --at with --hex, or --var "
+                             "with --value")
             try:
-                row = poke(target, layout, args.holder, args.at,
-                           bytes.fromhex(args.digits))
+                if args.var is not None:
+                    row = poke_var(target, args.title, args.holder, args.var,
+                                   args.value)
+                else:
+                    row = poke(target, layout, args.holder, args.at,
+                               bytes.fromhex(args.digits))
             except (ValueError, OSError, amiga.GuestError,
                     amigaeffects.EffectError) as exc:
                 row = {"address": args.at,

@@ -1249,3 +1249,71 @@ def test_a_key_that_did_not_reach_the_game_is_an_error_row(party, capsys, monkey
     monkeypatch.setattr(amigadrive, "press", failing)
     assert amigatarget.main(["--holder", "h", "select", "EPONA"]) == 1
     assert "was not pressed" in json.loads(capsys.readouterr().out)["error"]
+
+
+# -- poke --var: engine script variables -----------------------------------------
+
+
+class _VarTarget:
+    """A located target whose memory is a dict, with the Pool variable tables'
+    pointers at its data base plus 0x98 (words) and 0xA4 (bytes)."""
+
+    data_base = 0x10000
+
+    def __init__(self):
+        self.mem = {}
+        for pointer, table in ((0x98, 0x40000), (0xA4, 0x48000)):
+            for i, b in enumerate(table.to_bytes(4, "big")):
+                self.mem[self.data_base + pointer + i] = b
+
+    def read(self, address, n):
+        return bytes(self.mem.get(address + i, 0) for i in range(n))
+
+    def write(self, address, data):
+        for i, b in enumerate(data):
+            self.mem[address + i] = b
+
+
+@pytest.fixture
+def var_target(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    fake = _VarTarget()
+    monkeypatch.setattr(amigatarget, "connect_pipe", lambda holder, layout: fake)
+    return fake
+
+
+def test_poke_var_writes_the_mapped_word_big_endian(var_target, capsys, tmp_path):
+    rc = amigatarget.main(["--holder", "h", "--title", "pool-of-radiance",
+                           "poke", "--var", "4AB5", "--value", "0x00FE"])
+    assert rc == 0
+    address = 0x40000 + 2 * (0x4AB5 - 0x4900)
+    assert var_target.read(address, 2) == b"\x00\xfe"
+    row = json.loads(capsys.readouterr().out)
+    assert row == {"var": "$4AB5", "address": address, "old": "0000", "new": "00fe"}
+    assert _journal(tmp_path, "h")[0]["new"] == "00fe"
+
+
+def test_poke_var_writes_a_byte_where_the_map_says_byte(var_target):
+    rc = amigatarget.main(["--holder", "h", "--title", "pool-of-radiance",
+                           "poke", "--var", "$9900", "--value", "7"])
+    assert rc == 0
+    assert var_target.read(0x48000, 2) == b"\x07\x00"
+
+
+def test_poke_var_outside_every_mapped_range_writes_nothing(var_target, capsys):
+    before = dict(var_target.mem)
+    rc = amigatarget.main(["--holder", "h", "--title", "pool-of-radiance",
+                           "poke", "--var", "0x0100", "--value", "1"])
+    assert rc == 1
+    assert "no range" in json.loads(capsys.readouterr().out)["error"]
+    assert var_target.mem == before
+
+
+def test_poke_var_wider_than_the_variable_writes_nothing(var_target, capsys):
+    before = dict(var_target.mem)
+    rc = amigatarget.main(["--holder", "h", "--title", "pool-of-radiance",
+                           "poke", "--var", "9900", "--value", "0x100"])
+    assert rc == 1
+    assert "fit" in json.loads(capsys.readouterr().out)["error"]
+    assert var_target.mem == before

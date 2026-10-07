@@ -97,24 +97,40 @@ def parse_list(text: str) -> list[int]:
     return [parse(part) for part in text.split(",") if part.strip()]
 
 
-def read_variable(target, title: str, var: int) -> VarReading:
-    """Read one variable through the title's map; never writes."""
+class VarError(Exception):
+    """A variable that has no guest address, with the reason."""
+
+
+def resolve(target, title: str, var: int) -> tuple[int, VarRange]:
+    """The guest address and range of script variable `var` on `title`."""
     table = MAPS.get(title)
     if table is None:
-        return VarReading(var, None, 0, None, f"no variable map for {title}")
+        raise VarError(f"no variable map for {title}")
     for first, last, why in table.unaddressed:
         if first <= var <= last:
-            return VarReading(var, None, 0, None, f"not readable: {why}")
+            raise VarError(f"not readable: {why}")
     for rng in table.ranges:
         if rng.first <= var <= rng.last:
             base = target.data_base
             if base is None:
-                return VarReading(var, None, rng.size, None, "data base not located")
+                raise VarError("data base not located")
             head = int.from_bytes(target.read(base + rng.pointer, 4), "big")
-            address = head + rng.size * (var - rng.origin)
-            value = int.from_bytes(target.read(address, rng.size), "big")
-            return VarReading(var, address, rng.size, value, note=rng.note)
-    return VarReading(var, None, 0, None, f"${var:04X} is in no range mapped for {title}")
+            return head + rng.size * (var - rng.origin), rng
+    raise VarError(f"${var:04X} is in no range mapped for {title}")
+
+
+def read_variable(target, title: str, var: int) -> VarReading:
+    """Read one variable through the title's map; never writes."""
+    try:
+        address, rng = resolve(target, title, var)
+    except VarError as exc:
+        size = 0
+        table = MAPS.get(title)
+        if table is not None and str(exc) == "data base not located":
+            size = next(r.size for r in table.ranges if r.first <= var <= r.last)
+        return VarReading(var, None, size, None, str(exc))
+    value = int.from_bytes(target.read(address, rng.size), "big")
+    return VarReading(var, address, rng.size, value, note=rng.note)
 
 
 def read_variables(target, title: str, variables) -> list[VarReading]:

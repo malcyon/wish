@@ -123,3 +123,11 @@ def test_curse_member_range_reading_carries_its_note_and_others_do_not():
     assert amigavars.read_variable(m, "curse-of-the-azure-bonds", 0x4B00).note is None
     assert "current member" in amigavars.read_variable(
         m, "curse-of-the-azure-bonds", 0x7C00).as_log()["note"]
+
+
+def test_resolve_gives_the_address_and_range_and_blocks_an_unmapped_variable():
+    m = make({0x98: 0x40000})
+    address, rng = amigavars.resolve(m, "pool-of-radiance", 0x4AB5)
+    assert (address, rng.size) == (0x40000 + 2 * 0x1B5, 2)
+    with pytest.raises(amigavars.VarError, match="no range"):
+        amigavars.resolve(m, "pool-of-radiance", 0x100)
