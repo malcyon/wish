@@ -241,6 +241,7 @@ class AmigaFastTravel(engine.FastTravel):
         plan = trips.plan(to, arrival, overland, tier, prologue=prologue,
                           placement=placement)
         try:
+            self._repair(target)
             armed = trips.arm(target, row, plan, self.token)
         except trips.ArmIncomplete as exc:
             # Still pending, as any armed trip is: kept with its deadline

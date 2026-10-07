@@ -85,6 +85,12 @@ def area(id, name="Shadowdale", **kw):
     return SimpleNamespace(id=id, name=name, **kw)
 
 
+@pytest.fixture(autouse=True)
+def _journal_in_tmp(tmp_path, monkeypatch):
+    """No test writes a trip journal into the player's cache."""
+    monkeypatch.setattr(trips, "journal_dir", lambda: tmp_path / "journal")
+
+
 @pytest.fixture
 def disks(monkeypatch):
     """Every area's script is 0x1000 bytes long, so every tail is free."""
@@ -1147,5 +1153,23 @@ def test_a_journal_is_not_looked_for_while_a_trip_is_armed(
     m = init_span
     t = pool_travel(monkeypatch)
     assert t.run(m, area(0), arrival=(1, 2, 0)).ok
+    calls = []
+    monkeypatch.setattr(trips, "repair", lambda *a: calls.append(a))
     t.continue_pending(m)
-    assert t.trip is not None and t._repaired is None
+    assert t.trip is not None and not calls
+
+
+def test_a_new_instance_repairs_a_stopped_runs_journal_before_it_arms(
+        disks, tmp_path):
+    key = POD
+    m = machine(key, area=0x15, stale=True)
+    before = bytes(m.ram)
+    assert travel(key).apply(m, area(0x30, arrival=(1, 1, 0))).ok
+    path = trips.journal_path(m)
+    saved = json.loads(path.read_text())
+    saved["owner"] = {"pid": 0}
+    path.write_text(json.dumps(saved))
+    # The new process finds the residue in the buffer; no poll comes first.
+    assert bytes(m.ram) != before
+    # `run`, not `apply`: the legality check's gate would already see the residue.
+    assert travel(key).run(m, area(0x30), arrival=(1, 1, 0)).ok

@@ -1303,6 +1303,12 @@ def init_room(monkeypatch, area=INIT_AREA, size=INIT_LENGTH - INIT_START):
     return room
 
 
+@pytest.fixture(autouse=True)
+def _journal_in_tmp(tmp_path, monkeypatch):
+    """No test writes a trip journal into the player's cache."""
+    monkeypatch.setattr(trip, "journal_dir", lambda: tmp_path / "journal")
+
+
 @pytest.fixture
 def journal(tmp_path, monkeypatch):
     monkeypatch.setattr(trip, "journal_dir", lambda: tmp_path / "journal")
@@ -1645,3 +1651,52 @@ def test_arm_clears_the_journal_whenever_nothing_was_left_armed(
     m.fail_at = BUFFER + room.start
     assert trip.arm(m, POOL, dataclasses.replace(p, placement=placed)) is None
     assert not list(journal.iterdir())
+
+
+def test_a_tail_trip_is_journalled_before_the_first_write(journal):
+    key = "pool-of-radiance"
+    m = machine(key, area=26)
+    seen = []
+    m.on_write = lambda addr, data: seen.append(
+        json.loads(next(journal.iterdir()).read_text())) if not seen else None
+    armed = trip.arm(m, key, trip.plan(0, (9, 14, 2), prologue=BOAT_EXIT))
+    saved = seen[0]
+    assert saved["from_area"] == 26 and saved["title"] == key
+    assert [r["kind"] for r in saved["records"]] == kinds(armed)
+    assert "init" not in kinds(armed)
+
+
+def test_a_tail_arm_stopped_partway_is_repaired_and_the_next_arm_succeeds(
+        journal):
+    key = "pool-of-radiance"
+    m = machine(key, area=26)
+    before = bytes(m.ram)
+    writes = []
+
+    def stop(addr, data):
+        writes.append(addr)
+        if len(writes) == 2:
+            raise SystemExit
+
+    m.on_write = stop
+    p = trip.plan(0, (9, 14, 2), prologue=BOAT_EXIT)
+    with pytest.raises(SystemExit):
+        trip.arm(m, key, p)
+    m.on_write = None
+    assert bytes(m.ram) != before
+    assert trip.arm(m, key, p) is None
+    assert trip.repair(m) is True
+    assert bytes(m.ram) == before
+    assert not list(journal.iterdir())
+    assert trip.arm(m, key, p) is not None
+
+
+def test_a_door_put_back_leaves_another_trips_journal_alone(journal):
+    key = "pool-of-radiance"
+    tail = machine(key, area=26)
+    assert trip.arm(tail, key, trip.plan(0, (9, 14, 2), prologue=BOAT_EXIT))
+    saved = next(journal.iterdir()).read_text()
+    m, pool = _door_machine()
+    armed = trip.arm_door(m, pool, (4, 0, 0))
+    assert trip.disarm(m, armed) is True
+    assert next(journal.iterdir()).read_text() == saved

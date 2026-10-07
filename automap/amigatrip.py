@@ -41,7 +41,8 @@ its offset and the SHA-1 of its bytes on the disk. A trip is placed there only
 for a disk whose span hashes to it, and armed only while the live span still
 reads as the disk's. A save made while such a trip is armed would run it on
 loading, so every write is journalled to a file first, and `repair` puts it
-back after a crash.
+back after a crash. Every trip `arm` writes is journalled, tail trips too, since
+a crash partway leaves statements that block the next arm.
 
 **A trip that does not fire is put back.** `disarm` writes back every word that
 still holds what `arm` wrote, newest first, and leaves alone any the game has
@@ -1076,8 +1077,8 @@ def arm(target, row, p: Plan, token=None) -> Armed | None:
         _check(row, writes, originals)
         if p.placement is not None and p.placement.room is not None:
             _check_init(target, row, buffer, p.placement.room)
-            journal_write(target, row, here, buffer, writes, originals, token)
-            journalled = True
+        journal_write(target, row, here, buffer, writes, originals, token)
+        journalled = True
     except ArmError as exc:
         _log.debug("amiga trip not armed: %s", exc)
         return None
@@ -1452,8 +1453,10 @@ def journal_write(target, row: TripRow, here: int, buffer: int, writes: list,
 
 
 def journal_clear(target, armed: Armed) -> None:
-    """Delete the journal once an init trip has fired or been put back."""
-    if any(w.kind == "init" for w in armed.records):
+    """Delete the journal once a trip `arm` journalled has fired or been put
+    back. A door writes no statements, journals nothing, and so leaves a
+    journal of another Wish alone."""
+    if any(w.kind in ("statements", "init") for w in armed.records):
         _unjournal(target)
 
 
@@ -1466,7 +1469,7 @@ def _unjournal(target) -> None:
 
 
 def repair(target, token=None) -> bool:
-    """Put back an init trip that an earlier run of Wish left armed, from its
+    """Put back a trip that an earlier run of Wish left armed, from its
     journal. True when a journal was found and dealt with.
 
     A journal for another boot of the game (the data hunk moved) or for an
@@ -1501,6 +1504,8 @@ def repair(target, token=None) -> bool:
     if base == _base(target) and records:
         armed = Armed(row, Plan(here, None, None), here, buffer, records)
         if not fired(target, armed):
+            _log.info("amiga trip: putting back a trip left armed in area %s "
+                      "at 0x%x (%d records)", here, buffer, len(records))
             _put_back(target, armed)
     path.unlink(missing_ok=True)
     return True
