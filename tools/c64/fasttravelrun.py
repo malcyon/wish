@@ -145,15 +145,21 @@ def reading(target, addresses=None) -> dict:
 
 
 def other_area(dest: int, title=engine.ANY_TITLE) -> int:
-    """An area of the title to ask legality about that is not the destination."""
-    if title is engine.ANY_TITLE:
-        return 2 if dest != 2 else 18
-    ids = [row.id for row in engine.area_rows(title)]
-    # Pool of Radiance's two known-good answers first, so its runs ask what they always asked.
+    """An area of the title to ask legality about that is not the destination.
+
+    It is on the same side of the overland/indoors split as the destination: from the
+    overland grid every indoor area is illegal by design, so asking about one never
+    reports arrival at an overland window.
+    """
+    rows = engine.area_rows(title)
+    ids = [row.id for row in rows]
+    outdoors = {row.id: bool(getattr(row, "outdoors", False)) for row in rows}
+    # Pool of Radiance's two known-good answers first, so its indoor runs ask what they always asked.
     for candidate in (2, 18, *ids):
-        if candidate != dest and candidate in ids:
+        if (candidate != dest and candidate in ids
+                and outdoors[candidate] == outdoors.get(dest, False)):
             return candidate
-    raise DriverError(f"{title} has no area but {dest}")
+    raise DriverError(f"{title} has no other area on the same side of the overland split as {dest}")
 
 
 def parse_peek(text: str) -> tuple[int, int]:

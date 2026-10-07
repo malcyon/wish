@@ -212,6 +212,26 @@ def test_legality_is_asked_toward_a_different_area():
     assert ftr.other_area(2) == 18
 
 
+def test_legality_toward_a_window_is_asked_about_another_window():
+    windows = {25, 26, 27}
+    assert ftr.other_area(27) in windows - {27}
+    assert ftr.other_area(25) in windows - {25}
+    assert ftr.other_area(26) in windows - {26}
+
+
+def test_a_trip_to_a_window_arrives_under_the_grid_rule():
+    # From the travel grid an indoor area is always illegal, so only another window can answer.
+    drv, _, ft, _, _, _ = build(
+        area_at=lambda t: 26 if t < 1 else 27, script_at=lambda t: 26 if t < 1 else 27)
+
+    def legality(target, area):
+        if not area.outdoors:
+            return engine.Verdict(False, engine.FastTravel.OUTDOORS_TRAP)
+        return engine.Verdict(True)
+    ft.legality = legality
+    assert drv.trip(27, "t")["result"] == "arrived"
+
+
 def test_disk_prompt_is_answered_and_return_is_never_pressed():
     drv, sess, _, _, _, _ = build(
         screen_at=lambda t: Screen("PRESS RETURN", DISK_TEXT) if t < 5 else Screen(),
