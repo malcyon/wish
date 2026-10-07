@@ -21,11 +21,10 @@ from test_podparty import (
     _dos_sources,
     _flag,
 )
-from test_podwindow import (  # noqa: F401
+from test_podwindow import (
     _no_box,
     _synthetic_folder,
     _window,
-    information_boxes,
 )
 
 from editor import convert, podsheet, saveplan

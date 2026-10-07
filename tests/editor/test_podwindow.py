@@ -131,20 +131,6 @@ def fake_names(monkeypatch):
     return calls
 
 
-@pytest.fixture(autouse=True)
-def information_boxes(monkeypatch):
-    """Stand in for every information box, so none blocks, and collect what
-    each one said as `(title, text)`."""
-    import editor.window as ew
-    boxes = []
-
-    def box(parent, title, text, *args, **kwargs):
-        boxes.append((title, text))
-        return ew.QMessageBox.StandardButton.Ok
-    monkeypatch.setattr(ew.QMessageBox, "information", box)
-    return boxes
-
-
 def _open_synthetic(monkeypatch, tmp_path, *, names: bool):
     _flag(monkeypatch, "1")
     _no_box(monkeypatch)
