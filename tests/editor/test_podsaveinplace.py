@@ -144,6 +144,64 @@ def test_an_age_edit_and_a_save_move_only_the_age_bytes(
             assert after[name] == before[name], name
 
 
+STRENGTH = podsheet.TABLE["strength"].span
+WISDOM = podsheet.TABLE["wisdom"].span
+
+
+def test_an_ability_edit_and_a_save_move_both_bytes_of_the_pair(
+        app, monkeypatch, tmp_path):
+    """The DOS engine rebuilds the score in force from the permanent one, so
+    the save holds the edit in both bytes of each pair."""
+    _flag(monkeypatch, "1")
+    _no_box(monkeypatch)
+    folder = _synthetic_folder(tmp_path)
+    data = bytearray((folder / "CHRDATA1.SAV").read_bytes())
+    data[STRENGTH] = bytes([18, 18])
+    data[WISDOM] = bytes([12, 12])
+    (folder / "CHRDATA1.SAV").write_bytes(bytes(data))
+    before = _files(folder)
+    window = _open(convert.Source.detect(folder, slot="A"), tmp_path / "b")
+    window._child("roster").selectRow(0)
+    window._widgets["strength"].setValue(15)
+    window._widgets["wisdom"].setValue(14)
+    assert window.save(interactive=False) != "no changes"
+    after = _files(folder)
+    record = after["CHRDATA1.SAV"]
+    assert record[STRENGTH] == bytes([15, 15])
+    assert record[WISDOM] == bytes([14, 14])
+    assert _differing(before["CHRDATA1.SAV"], record) == [
+        *_span(STRENGTH), *_span(WISDOM)]
+    for name in before:
+        if name != "CHRDATA1.SAV":
+            assert after[name] == before[name], name
+
+
+def test_an_amiga_ability_edit_moves_both_bytes_of_the_pair():
+    """The Amiga block keeps the same `(permanent, in force)` pairs as DOS,
+    and the exceptional-strength pair the other way round."""
+    block = bytearray(amiga_pod.RECORD_BYTES)
+    block[amiga_pod.ABILITIES:amiga_pod.ABILITIES + 2] = bytes([18, 18])
+    block[amiga_pod.ABILITIES + 4:amiga_pod.ABILITIES + 6] = bytes([12, 12])
+    at = amiga_pod.EXCEPTIONAL_STRENGTH
+    block[at:at + 2] = bytes([67, 67])
+    data = bytearray(podsheet.SIZE)
+    data[STRENGTH] = bytes([18, 18])
+    data[WISDOM] = bytes([12, 12])
+    data[podsheet.TABLE["exceptional_strength"].span] = bytes([67, 67])
+    before = podsheet.PodSheetRecord(bytes(data))
+    after = podsheet.PodSheetRecord(before.to_bytes())
+    after.set("strength", 15)
+    after.set("wisdom", 14)
+    after.set("exceptional_strength", 50)
+    written, moved = pod_rewrite.rewrite_amiga_record(
+        bytes(block), before.to_bytes(), after.to_bytes())
+    assert set(moved) == {"strength", "wisdom", "exceptional_strength"}
+    a = amiga_pod.ABILITIES
+    assert written[a:a + 2] == bytes([15, 15])
+    assert written[a + 4:a + 6] == bytes([14, 14])
+    assert written[at:at + 2] == bytes([50, 50])
+
+
 def test_a_save_with_no_edit_writes_nothing(app, monkeypatch, tmp_path):
     _flag(monkeypatch, "1")
     _no_box(monkeypatch)

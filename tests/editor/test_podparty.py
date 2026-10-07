@@ -500,14 +500,39 @@ def test_hit_points_past_one_byte_are_an_error():
     assert record.get("experience") == 2**32 - 1
 
 
-def test_an_ability_edit_moves_the_in_force_byte_only():
+#: Each ability with the record byte of its permanent score and the one of
+#: its score in force (`goldbox.dos_codec._ability_pair`).
+_PAIRS = [(name, 0, 1) for name in podsheet.ABILITIES] + [
+    ("exceptional_strength", 1, 0)]
+
+
+@pytest.mark.parametrize("name,permanent,in_force", _PAIRS)
+def test_an_ability_edit_moves_the_permanent_and_in_force_bytes(
+        name, permanent, in_force):
+    """The engine rebuilds the score in force from the permanent one, so an
+    edit to the in-force byte alone is undone by the game."""
+    record = _blank()
+    at = podsheet.TABLE[name].offset
+    data = bytearray(record.to_bytes())
+    data[at:at + 2] = bytes([18, 18])
+    record = podsheet.PodSheetRecord(bytes(data))
+    record.set(name, 15)
+    pair = record.to_bytes()[at:at + 2]
+    assert (pair[permanent], pair[in_force]) == (15, 15)
+    assert record.get(name) == 15
+    assert record.ability_pair(name) == (15, 15)
+
+
+def test_an_ability_set_to_the_score_in_force_keeps_the_permanent_byte():
+    """A pair an item or a spell holds apart is written only when edited."""
     record = _blank()
     at = podsheet.TABLE["strength"].offset
-    record.set("strength", 17)
-    assert record.to_bytes()[at:at + 2] == bytes([0, 17])
-    record.set("exceptional_strength", 50)
-    at = podsheet.TABLE["exceptional_strength"].offset
-    assert record.to_bytes()[at:at + 2] == bytes([50, 0])
+    data = bytearray(record.to_bytes())
+    data[at:at + 2] = bytes([16, 21])
+    record = podsheet.PodSheetRecord(bytes(data))
+    record.set("strength", 21)
+    record.set_raw("strength", bytes([21]))
+    assert record.to_bytes() == bytes(data)
 
 
 def test_memorised_spells_are_the_dos_run_reversed():

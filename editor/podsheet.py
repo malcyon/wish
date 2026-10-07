@@ -307,9 +307,12 @@ class PodSheetRecord:
         """Encode `value` into the sheet field `name`.
 
         Only that field's bytes move, and nothing moves when `value` is what
-        :meth:`get` already reads.  An ability writes its in-force byte and
-        keeps the permanent one, as the sheet does for Curse and Silver
-        Blades, whose permanent copy has no box either.
+        :meth:`get` already reads.  An ability writes both bytes of its pair,
+        the permanent score and the score in force, as a character with no
+        item or spell on that score holds them: the engine rebuilds the score
+        in force from the permanent one, so an edit to the in-force byte
+        alone is undone by the game, and an item or spell still running is
+        put back on top of the edited score at that rebuild.
         """
         if not self.maps(name):
             raise FieldNotStored(f"Pools of Darkness has no {name} field")
@@ -318,8 +321,9 @@ class PodSheetRecord:
         if name == "name":
             self._set_name(str(value))
         elif name in ABILITIES or name == "exceptional_strength":
-            at = TABLE[name].offset + (1 if name in ABILITIES else 0)
-            self._data[at] = _byte(name, value)
+            at = TABLE[name].offset
+            score = _byte(name, value)
+            self._data[at:at + 2] = bytes([score, score])
         elif name in LEVEL_SLOTS:
             at = TABLE["class_levels"].offset + LEVEL_SLOTS[name]
             self._data[at] = _byte(name, value)
