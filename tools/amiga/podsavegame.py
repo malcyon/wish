@@ -105,6 +105,15 @@ def slots() -> dict[str, list[tuple[str, bytes]]]:
     return files(r"SavGam.\.pty")
 
 
+def vault_length_ok(length: int) -> bool:
+    """Whether `length` is a vault the game writes: the padded 4016 bytes, or 16 + 20n unpadded up to the item pool."""
+    if length == amiga_savegame.POD_VAULT_SIZE:
+        return True
+    body = length - amiga_savegame.POD_VAULT_HEADER - 4
+    return (body >= 0 and body % amiga_savegame.POD_ITEM_BYTES == 0
+            and body // amiga_savegame.POD_ITEM_BYTES <= amiga_savegame.POD_POOL_NODES)
+
+
 def vaults() -> dict[str, list[tuple[str, bytes]]]:
     return files(r"Vault.\.dat")
 
@@ -249,9 +258,10 @@ def main(argv: list[str] | None = None) -> int:
                     continue
                 marker = _u16(blob, amiga_savegame.POD_VAULT_HEADER)
                 count = _u16(blob, amiga_savegame.POD_VAULT_HEADER + 2)
-                ok = (len(blob) == amiga_savegame.POD_VAULT_SIZE
+                ok = (vault_length_ok(len(blob))
                       and marker == amiga_savegame.POD_VAULT_MARKER
-                      and count <= amiga_savegame.POD_VAULT_NODES)
+                      and count <= (len(blob) - amiga_savegame.POD_VAULT_HEADER - 4)
+                      // amiga_savegame.POD_ITEM_BYTES)
                 print(f"{label}  {len(blob)}"
                       f"  marker=${marker:04X}  items={count}"
                       f"{'' if ok else '  <- not the measured vault'}")

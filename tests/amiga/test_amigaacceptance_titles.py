@@ -3568,11 +3568,11 @@ def test_the_vault_steps_with_coins_open_take_then_the_list(items):
 
 
 def test_a_vault_of_none_or_more_than_the_game_holds_builds_no_route():
-    for items in (0, 201):
+    for items in (0, 449):
         for coins in (False, True):
-            with pytest.raises(foundation.RouteError, match="1 to 200 items"):
+            with pytest.raises(foundation.RouteError, match="1 to 448 items"):
                 route_darkness.vault_steps(items, coins)
-            with pytest.raises(foundation.RouteError, match="1 to 200 items"):
+            with pytest.raises(foundation.RouteError, match="1 to 448 items"):
                 route_darkness.vault_title(items, coins)
 
 
@@ -3629,8 +3629,8 @@ def test_a_vault_prepare_takes_a_substitute_and_keeps_the_vault_its_prepare_reco
 
 def test_a_vault_prepare_blocks_a_vault_the_route_cannot_list_and_frees_its_run_id(
         tmp_path, monkeypatch):
-    _prepare_with(monkeypatch, tmp_path, [], held={**_HELD, "items": 201})
-    with pytest.raises(winuaesession.RouteError, match="1 to 200 items"):
+    _prepare_with(monkeypatch, tmp_path, [], held={**_HELD, "items": 449})
+    with pytest.raises(winuaesession.RouteError, match="1 to 448 items"):
         foundation.prepare(foundation.DARKNESS_VAULT, "run")
     assert not (tmp_path / "acceptance" / foundation.ISSUE / "run").exists()
 

@@ -216,8 +216,8 @@ def vault_steps(items: int, coins: bool) -> tuple[tuple[str, str, str], ...]:
     The first row is highlighted when the list opens, so `items - 1` presses reach the last one.
     A vault with coins puts the TAKE bar between the vault bar and the list.
     """
-    if not 1 <= items <= amiga_savegame.POD_VAULT_NODES:
-        raise RouteError(f"a vault run lists 1 to {amiga_savegame.POD_VAULT_NODES} items, "
+    if not 1 <= items <= amiga_savegame.POD_POOL_NODES:
+        raise RouteError(f"a vault run lists 1 to {amiga_savegame.POD_POOL_NODES} items, "
                          f"not {items}")
     return (
         ("S", VAULT_STORAGE, "key"),
