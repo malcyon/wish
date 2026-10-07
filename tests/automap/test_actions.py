@@ -2268,11 +2268,24 @@ def test_back_out_of_the_kobold_caves_answered_no_writes_only_the_walk_out():
     # The game's own question is unanswered here; "no" leaves the party where
     # the walk-out put it, with nothing else written.
     assert outcome.writes == ()
+    assert outcome.message == actions.FastTravel.WALKING_OUT_DIRECT.format(
+        name=actions.area_by_id(27).name)
     assert target.read(addr.live_square, 3)[:2] != before[addr.live_square][:2]
     for untouched in (addr.slot, addr.disk):
         assert target.memory[untouched] == before[untouched]
     assert "PRINCESS FATIMA" in [m.name for m in actions.read_party(target)]
     assert ft.back is None
+
+
+def test_back_through_a_detour_departure_says_it_is_walking_out():
+    target = two_hop_machine(13)
+    ft = actions.FastTravel()
+    ft.back = actions.Waypoint(0, 3, (2, 3, 1))
+    outcome = ft.apply_back(target)
+    assert outcome.ok, outcome.message
+    assert ft.pending is not None
+    assert outcome.message == actions.FastTravel.WALKING_OUT_DETOUR.format(
+        name=actions.area_by_id(0).name)
 
 
 def test_back_leaves_a_departure_alone_whose_guard_does_not_hold():

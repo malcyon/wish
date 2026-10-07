@@ -2615,6 +2615,10 @@ class FastTravel(Action):
                 self.back = None if outcome.ok else was
                 if not outcome.ok:
                     return outcome
+                if self.pending is not None or not outcome.writes:
+                    # The party is walking out, not arrived: say what the
+                    # forward trip says over this row.
+                    return outcome
                 name = getattr(area, "name", None) or f"area {was.area}"
                 return Outcome(True, f"travelled back to {name}",
                                outcome.writes)
