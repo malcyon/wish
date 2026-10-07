@@ -149,6 +149,20 @@ def test_committed_maps_cover_guarded_routes():
     assert required <= spec['guards'].keys()
 
 
+def test_committed_darkness_map_guards_every_vault_route_state():
+    """Both vault forms and Elminster's menu each have a rule; no crops are needed, so CI sees a missing one."""
+    from tools.amiga import route_darkness
+
+    spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, 'darkness')
+    required = {route_darkness.VAULT_MENU, 'elminster_menu'}
+    for coins in (True, False):
+        required.update(state for _, state, _ in route_darkness.vault_steps(3, coins))
+    assert {'vault_take', 'vault_items', 'vault_row', 'vault_bar'} <= required
+    for state in sorted(required):
+        assert state in spec['guards'], state
+        assert spec['guards'][state] and _rules(spec['guards'][state]), state
+
+
 def test_pool_map_guards_line_one_items_and_holds_its_list_identity():
     """A Pool substitute run with `items 1` keys every strict state on a recognised screen."""
     from tools.amiga import route_camp
